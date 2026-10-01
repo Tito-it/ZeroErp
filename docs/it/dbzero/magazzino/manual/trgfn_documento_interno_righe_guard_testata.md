@@ -22,7 +22,7 @@ DELETE` sulle righe:
 | Testata in… | Le righe… |
 | --- | --- |
 | `DRAFT` | si scrivono |
-| `CONFIRM` | le scrive **solo l'operazione** (la stessa GUC della porta `POSTED`: è lei a fissare `qta_sistema`) |
+| `CONFIRM` | le scrive **solo l'operazione**: la stessa GUC della porta `POSTED` (è lei a fissare `qta_sistema`) **e** chi esegue dev'essere il proprietario, cioè un verbo ([script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella), dal 25-09-2026: la GUC l'app può accenderla da sola) |
 | `POSTED`, `CANCEL` | sono congelate |
 
 Altrimenti `E_MAG_DOCUMENTO_RIGHE_CONGELATE`, con lo stato nella frase. Un `UPDATE` che sposta

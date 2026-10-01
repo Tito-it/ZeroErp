@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — In quale magazzino rientra la merce di un reso
+#   vendite.resi.magazzino_id
+#   Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 3 (D-3b-a, Tid 2026-09-28)
+#
+# -- PERCHE' SULLA TESTATA ------------------------------------------------------------------------
+#   E' D-L3-a rovesciata: un reso e' un arrivo, e un arrivo va in un posto. Il
+#   reso ha UN emittente sulla testata (lo eredita dalla bolla,
+#   trgfn_resi_normalize): magazzino ed emittente stanno allo stesso livello.
+#   Il dettaglio fisico (quale prelievo rientra, in quale ubicazione) sta sotto
+#   la riga, nei rientri (20260928-85).
+#   ⭐ Dove si mette la merce dice in che stato e': un magazzino «resi da
+#   verificare» e' una scelta di chi riceve, non un concetto nuovo.
+#
+# -- NULLABLE, E NON E' UNA SVISTA ----------------------------------------------------------------
+#   La bozza si compila per gradi: il magazzino e' OBBLIGATORIO ALLA CONFERMA
+#   quando il reso muove merce, ed e' un motivo di script.fn_check_reso_merce
+#   (20260928-91), non un NOT NULL. Un reso da una bolla che non ha mosso merce
+#   non ne ha bisogno.
+#
+# -- IL RESTO LO FA IL GUARD (20260928-89) --------------------------------------------------------
+#   default dalla bolla d'origine, stesso emittente, immutabile fuori bozza:
+#   guardano altre tabelle o lo stato vecchio, un CHECK non li vede.
+#
+# -- FK ------------------------------------------------------------------------------------------
+#   ON DELETE NO ACTION: un magazzino citato da un reso non si cancella (lo si
+#   spegne). La riga in dbops.fk_index_policy sta nel CSV principale:
+#   consentito = false, nessuna query dell'app entra dal magazzino del reso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260928-84-alter-resi-add-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20260928-84-alter-resi-add-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.resi prende magazzino_id: il magazzino in cui rientra la merce resa. Nullable:
+        obbligatorio alla conferma di un reso che muove merce, motivo di script.fn_check_reso_merce.
+        Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 3 (D-3b-a).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: magazzini
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: resi
+                    columnName: magazzino_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.resi
+                  ADD COLUMN magazzino_id BIGINT;
+
+              ALTER TABLE vendite.resi
+                  ADD CONSTRAINT fk_resi_magazzino
+                      FOREIGN KEY (magazzino_id)
+                      REFERENCES magazzino.magazzini (id)
+                      ON UPDATE CASCADE
+                      ON DELETE NO ACTION;
+
+              COMMENT ON COLUMN vendite.resi.magazzino_id IS
+                  'Il magazzino in cui RIENTRA la merce resa (D-3b-a: sulla testata, accanto '
+                  'all''emittente). Stesso emittente del reso (guard trgfn_resi_guard_magazzino). '
+                  'All''INSERT, se manca, prende il magazzino della bolla d''origine '
+                  '(trgfn_resi_default_magazzino): la domanda del reso e'' «da dove era partita?». '
+                  'Nullable in bozza; obbligatorio alla conferma quando il reso muove merce '
+                  '(script.fn_check_reso_merce). Si sceglie solo in bozza. Brief: '
+                  'brief-db-magazzino-lotto-3-bis-carico-da-reso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.resi
+                  DROP CONSTRAINT IF EXISTS fk_resi_magazzino,
+                  DROP COLUMN IF EXISTS magazzino_id;

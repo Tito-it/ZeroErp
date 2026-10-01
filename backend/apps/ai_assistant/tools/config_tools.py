@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.amm_software.api.views import OperatoriListView
+from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 
 
 class CercaOperatoriTool(AITool):
@@ -30,7 +32,7 @@ class CercaOperatoriTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "Ricerca libera su username, email, cognome, nome o ragione sociale",
+                        "description": f"Ricerca libera su username, email, cognome, nome o ragione sociale (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "is_super_admin": {
                         "type": "boolean",
@@ -47,8 +49,7 @@ class CercaOperatoriTool(AITool):
                 },
                 "required": [],
             },
-            required_area="amm_software",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(OperatoriListView, "GET"),
         )
 
     _FIELD_MAP = {
@@ -69,7 +70,7 @@ class CercaOperatoriTool(AITool):
         solo_attivi = params.get("solo_attivi", True)
 
         items, total = svc.list_operatori(
-            search=params.get("search"),
+            search=self.termine_ricerca(params),
             is_super_admin=params.get("is_super_admin"),
             is_active=True if solo_attivi else None,
             limit=self.safe_page_size(params),
@@ -78,9 +79,13 @@ class CercaOperatoriTool(AITool):
 
         simplified = self.simplify_results(items, self._FIELD_MAP)
         # Arricchisci con nome_completo (campo calcolato)
+        # ⚠️ `soggetto_ragione_sociale`, il nome che `list_operatori` proietta
+        #    (dal 2026-09-24): fino ad allora qui si leggeva
+        #    `ragione_sociale_completa`, una chiave che la lista non ha mai
+        #    restituito, e il ramo era sempre vuoto.
         for i, item in enumerate(items):
             simplified[i]["nome_completo"] = (
-                item.get("ragione_sociale_completa")
+                item.get("soggetto_ragione_sociale")
                 or f"{item.get('first_name', '')} {item.get('last_name', '')}".strip()
                 or item.get("username", "")
             )

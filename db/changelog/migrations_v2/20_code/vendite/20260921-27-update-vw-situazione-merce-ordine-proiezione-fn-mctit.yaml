@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 — LA VISTA E' LA PROIEZIONE DELLA FUNZIONE (quarta leva, giro 2 — D3)
+#   brief-db-partita-merce-per-documento §7 «Giro 2»; decisioni D1 (un corpo)
+#   e D3 di Tid del 2026-09-21.
+#
+# ── COSA CAMBIA ────────────────────────────────────────────────────────
+#
+#   Niente nel risultato: stesse 21 colonne, stessi tipi, stesse righe e
+#   stessi numeri (EXCEPT ALL a zero nei due versi con la definizione viva,
+#   fatto datato del 21-09). Cambia DOVE sta l'aggregato: in
+#   vendite.fn_situazione_merce_ordine (20260921-26), di cui questa vista e'
+#   la proiezione senza filtro — fn(NULL, NULL). Un corpo solo, come per
+#   vw_partite_merce nel giro 1.
+#
+# ── PERCHE' NON `SELECT *` (brief §2-bis.1, la stessa trappola) ────────
+#
+#   Un RETURNS TABLE perde il typmod: `ordinato` — che nella vista e'
+#   numeric(18,6), da ordini_righe.quantita — dalla funzione torna `numeric`.
+#   `SELECT *` PASSEREBBE e cambierebbe il contratto in silenzio; il ritorno
+#   sarebbe poi rifiutato. Colonne per NOME e `ordinato::numeric(18,6)`.
+#   Le altre numeriche sono somme e saldi: `numeric` senza scala anche oggi.
+#
+# ── security_invoker VA RI-SPECIFICATO ─────────────────────────────────
+#
+#   Un CREATE OR REPLACE senza la reloption la azzera: qui farebbe girare la
+#   funzione — e sotto di lei fn_partite_merce — come OWNER, bypass della RLS.
+#   Presidiato da rls/test-rls-viste-security-invoker, che dal 21-09 attraversa
+#   le funzioni BEGIN ATOMIC (anche funzione → funzione).
+#
+# Presidio: test-fn-situazione-merce-ordine-chiusura-v1 (pin di forma: la
+#   vista nomina la funzione e nessuna tabella; 21 colonne, ordinato
+#   numeric(18,6)) + test-vw-situazione-merce-ordine-v1 (17) e
+#   test-situazione-merce-ritardo-v1, invariati.
+# Dipendenze: 20260921-26.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260921-27-update-vw-situazione-merce-ordine-proiezione-fn-mctit.yaml
+
+  - changeSet:
+      id: 20260921-27-update-vw-situazione-merce-ordine-proiezione-fn
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 giro 2 (D1, D3): vendite.vw_situazione_merce_ordine diventa la proiezione
+        senza filtro di vendite.fn_situazione_merce_ordine(NULL, NULL) — un corpo solo.
+        Colonne per NOME con ordinato::numeric(18,6) (un SELECT * perderebbe il
+        typmod). Stesse 21 colonne, stessi tipi, stessi numeri. security_invoker=on
+        ri-specificato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_situazione_merce_ordine
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_situazione_merce_ordine'
+                     AND pronamespace = 'vendite'::regnamespace
+                     AND prosqlbody IS NOT NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_situazione_merce_ordine
+              WITH (security_invoker=on) AS
+              -- D14 (2026-09-21, giro 2 — D3): la vista e' la PROIEZIONE senza filtro
+              -- di fn_situazione_merce_ordine. L'aggregato sta nella funzione: chi
+              -- legge per documento la chiama con un seme. Colonne per nome, non
+              -- `*`: il RETURNS TABLE perde il typmod di `ordinato`.
+              SELECT s.ordine_riga_id,
+                     s.ordine_id,
+                     s.riga_nr,
+                     s.articolo_id,
+                     s.ordinato::numeric(18,6) AS ordinato,
+                     s.consegnato,
+                     s.reso,
+                     s.in_riconsegna,
+                     s.tenuti,
+                     s.fatturato_merce,
+                     s.fatturato_da_ordine,
+                     s.fatturato,
+                     s.fatturato_anticipato,
+                     s.da_spedire,
+                     s.partite_merce,
+                     s.misurabile,
+                     s.differenza,
+                     s.stato,
+                     s.data_consegna_richiesta_cliente,
+                     s.data_consegna_confermata,
+                     s.giorni_ritardo
+                FROM vendite.fn_situazione_merce_ordine(NULL::bigint[], NULL::bigint[]) s;
+
+              COMMENT ON VIEW vendite.vw_situazione_merce_ordine
+              IS 'Aggregato PARLANTE per riga d''ordine, per il pannello situazione merce richiesta BE/FE del 2026-08-17; ragioni di disegno nelle intestazioni dei changeSet 20260817-15 e 20260818-06 e in dbzero/vendite/manual/vw_situazione_merce_ordine.md. ⭐ rev 2026-09-21 (D14, giro 2 — D3): l''aggregato NON sta piu'' qui — sta in vendite.fn_situazione_merce_ordine(p_ddt_ids, p_ordine_ids), e questa vista ne e'' la proiezione senza filtro, fn(NULL, NULL): UN corpo solo (D1). Chi legge PER DOCUMENTO chiama la funzione con un seme e paga le righe d''ordine chieste, non tutte: BE list_situazione_merce_ordine (per ordine e per DDT). Colonne proiettate per NOME con ordinato::numeric(18,6): un SELECT * perderebbe il typmod in silenzio. Una riga per riga d''ordine ATTIVA, comprese quelle mai spedite — che vw_contatore_merce non contiene. ⚠️ NON sostituisce vw_contatore_merce, che resta il contatore grezzo: questa gli sta accanto. `differenza` = Σ dei saldi delle PARTITE, con propagazione dei NULL (nessuna partita, o nessuna con un conto che si applica -> NULL, MAI zero: e'' la differenza fra «non si applica» e «non c''e'' nulla da fare»). Il fatturato in anticipo resta FUORI dal saldo, in `fatturato_anticipato`: ne discende che una riga fatturata alla conferma e spedita a meta'' esce PAREGGIATA e non «da accreditare». ⚠️ `da_spedire` viene dalla formula del residuo GIA'' esistente (ordinato − Σ qta_evasa + fn_ordine_riga_qta_riconsegna), NON da ordinato − consegnato: le due divergono, perche'' il consegnato delle partite include le ri-consegne. Le righe di RI-CONSEGNA sono escluse (conterebbero due volte). origine MULTIPLA -> misurabile false: si dichiara, non si ripartisce. rev 2026-08-18 (20260818-06) — LA SOGLIA DELL''IMPEGNO: impegnata := stato dell''ordine >= soglia(CONFERMATO, per codice_interno) AND NOT is_abortito. Sotto soglia `da_spedire` e'' NULL e non un numero e `stato` e'' NON_IMPEGNATA; la riga NON sparisce (il pannello e'' per ordine). ⚠️ Le PARTITE hanno la precedenza: dove c''e'' merce uscita vince il verso del saldo anche su ordine annullato. `stato` ha SETTE valori: NON_IMPEGNATA | NON_SPEDITA | NON_MISURABILE | NON_FATTURABILE | DA_FATTURARE | DA_ACCREDITARE | PAREGGIATA — i consumatori NON devono ri-tradurre il segno. rev 2026-09-13 (P-6): + data_consegna_richiesta_cliente, data_consegna_confermata e giorni_ritardo, in coda; il ritardo e'' «oggi > data di riferimento (la promessa, o la richiesta del cliente) E resta merce da spedire», NULL quando da_spedire e'' NULL o zero o nessuna data e'' dichiarata, 0 = non in ritardo. security_invoker=on ri-specificato (la reloption non si vede in pg_get_viewdef e un CREATE OR REPLACE la azzera: qui significa far girare la funzione come owner, bypass della RLS).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Non si torna indietro da soli: va ri-applicato 20260913-18, che
+              --    porta il corpo dell'aggregato dentro la vista.
+              SELECT 1;

@@ -22,6 +22,10 @@
 #   Guardrail multilingua colonne (2026-08-22)
 #  12. sql_del_catalogo_seleziona_la_chiave_i18n
 #  13. catalogo_reale_porta_la_chiave_valorizzata (e2e, opt-in)
+#   Guardia di contesto della schermata (brief ricerca full §12)
+#  14. guc_vuota_e_un_errore_tecnico
+#  15. guc_di_un_altro_utente_e_un_errore_tecnico
+#  16. guc_dello_stesso_utente_legge_ricerca_full
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ from unittest import TestCase as UnittestTestCase
 
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.ui.services.ui_service import (
+    E_UI_CHIAMATA_NON_VALIDA,
     E_UI_GENERIC_FAILED,
     E_UI_LISTA_NON_TROVATA,
     UiService,
@@ -81,6 +86,17 @@ class UiServiceGetListaConfigTests(SimpleTestCase):
             auth_user_id=42,
             emittente_fiscale_id=11,
         )
+        # ⚠️ La configurazione «nuda» (export, modale) non paga la lettura
+        #    della ricerca: `ricerca_full` e' solo della schermata.
+        self.assertNotIn("ricerca_full", config)
+        repo.ha_ricerca_full.assert_not_called()
+        # La schermata: la casella dalla stessa lettura del BB di ricerca.
+        repo.utente_di_sessione.return_value = 42
+        repo.ha_ricerca_full.return_value = False
+        self.assertFalse(
+            svc.get_lista_config_per_video(_make_user(), "anagrafiche.clienti")["ricerca_full"]
+        )
+        repo.ha_ricerca_full.assert_called_once_with("anagrafiche.clienti")
 
     @patch(
         "apps.core.services.perimetro_emittente.PermissionResolver.get_emittenti_pk_ids",
@@ -374,3 +390,56 @@ class CatalogoColonneI18nGuardrailTests(UnittestTestCase):
             senza_chiave, [],
             f"colonne senza chiave i18n su vendite.lotti: {senza_chiave}",
         )
+
+
+# ⭐ La configurazione risponde per `user.id`, la ricerca per l'utente della
+#    GUC: se i due non coincidono la casella e la ricerca direbbero cose
+#    diverse. La guardia fa rumore invece di scegliere una delle due fonti.
+@patch(
+    "apps.core.services.perimetro_emittente.PermissionResolver.get_emittenti_pk_ids",
+    return_value=[11],
+)
+@patch(
+    "apps.ui.services.ui_service.PermissionResolver.get_emittente_for_user",
+    return_value=11,
+)
+@patch("apps.core.services.error_manager.ErrorManager.log_error_only")
+class UiServiceGuardiaContestoTests(SimpleTestCase):
+    # Scopo: un repository con una configurazione valida e la GUC data.
+    def _svc(self, utente_guc: int | None) -> tuple[UiService, MagicMock]:
+        repo = MagicMock()
+        repo.resolve_lista_config.return_value = {
+            "colonne": [], "ordinamento": [], "filtri": {},
+            "pagina_dimensione": 25, "colonne_nuove": 0,
+        }
+        repo.utente_di_sessione.return_value = utente_guc
+        repo.ha_ricerca_full.return_value = True
+        return UiService(repository=repo), repo
+
+    def test_guc_vuota_e_un_errore_tecnico(self, log, *_mocks) -> None:
+        svc, repo = self._svc(None)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.get_lista_config_per_video(_make_user(42), "anagrafiche.clienti")
+        self.assertEqual(ctx.exception.code, E_UI_CHIAMATA_NON_VALIDA)
+        self.assertEqual(
+            ctx.exception.context,
+            {"lista_codice": "anagrafiche.clienti", "auth_user_id": 42, "utente_di_sessione": None},
+        )
+        # La ricerca non si legge per nessuno dei due, e il guasto va al diario.
+        repo.ha_ricerca_full.assert_not_called()
+        log.assert_called_once()
+
+    def test_guc_di_un_altro_utente_e_un_errore_tecnico(self, log, *_mocks) -> None:
+        svc, repo = self._svc(7)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.get_lista_config_per_video(_make_user(42), "anagrafiche.clienti")
+        self.assertEqual(ctx.exception.code, E_UI_CHIAMATA_NON_VALIDA)
+        self.assertEqual(ctx.exception.context["utente_di_sessione"], 7)
+        repo.ha_ricerca_full.assert_not_called()
+
+    def test_guc_dello_stesso_utente_legge_ricerca_full(self, log, *_mocks) -> None:
+        svc, repo = self._svc(42)
+        config = svc.get_lista_config_per_video(_make_user(42), "anagrafiche.clienti")
+        self.assertTrue(config["ricerca_full"])
+        repo.ha_ricerca_full.assert_called_once_with("anagrafiche.clienti")
+        log.assert_not_called()

@@ -22,21 +22,45 @@
 //    entra in `$slots`, quindi qui non viene creato e <ListaConfigurabile>
 //    non monta la colonna — che e' esattamente il comportamento di prima.
 //
-// ⚠️ TRE NOMI SONO RISERVATI e non si inoltrano — `help`, `testata`, `filtri`:
-//    stanno sopra o dentro la toolbar, che e' markup di questo componente.
-//    `testata` e' il posto della form di inserimento quando il tab ne ha una
-//    sopra la lista (il mapping BA aggiunge da li', non da un drawer).
+// ⚠️ QUATTRO NOMI SONO RISERVATI e non si inoltrano — `help`, `testata`,
+//    `filtri`, `filtri-sempre`: stanno sopra o dentro la toolbar, che e'
+//    markup di questo componente. `testata` e' il posto della form di
+//    inserimento quando il tab ne ha una sopra la lista (il mapping BA
+//    aggiunge da li', non da un drawer).
+//
+// ⭐ I DUE SLOT DEI FILTRI SONO I DUE DI `FiltriLista` (2026-09-23, lotto L2
+//    del brief dei filtri compatti), e la differenza e' la decisione D2:
+//    · `filtri-sempre` la RICERCA — resta a video anche in modalita' compatta,
+//      perche' e' il gesto principale della lista;
+//    · `filtri` gli altri filtri — in linea su desktop, nel drawer dal basso
+//      sotto i 1024px, col segno di quanti ne sono attivi.
+//    ⛔ Una ricerca lasciata in `filtri` finisce DENTRO il drawer, dietro due
+//    tocchi proprio sul dispositivo in cui digitare costa di piu' — e da
+//    desktop non si vede, perche' la' i due slot si rendono uno accanto
+//    all'altro. Lo guarda `npm run guard:filtri`, che conosce questi nomi.
 import { computed, ref } from 'vue'
+import FiltriLista from './FiltriLista.vue'
 import ListaConfigurabile from './ListaConfigurabile.vue'
 import ListaConfigStatusTag from './ListaConfigStatusTag.vue'
 import PageActionsBar from './PageActionsBar.vue'
 import Message from 'primevue/message'
 
-const SLOT_PROPRI = ['help', 'testata', 'filtri']
+const SLOT_PROPRI = ['help', 'testata', 'filtri', 'filtri-sempre']
 
 defineProps({
   // --- identita' e dati della lista (girati a <ListaConfigurabile>) ---
   codice: { type: String, required: true },
+  // Lo store-lista del tab — lo stesso che il caller passa a
+  // `useDrawerTabLista`. Serve al segno dei filtri attivi e a «Pulisci
+  // filtri»: e' il contratto di `FiltriLista` (`chiaviFiltro`,
+  // `filtriDefault`, `azzeraFiltri`).
+  // ⛔ Non si deriva da `rows`/`total`: quelli sono il risultato, non i filtri.
+  // ⭐ Dallo store si legge anche `attesaPadre` (padre composto a meta': il
+  //    documento c'e', il suo emittente non ancora), reso come CARICAMENTO —
+  //    qui e non nei chiamanti, perche' e' lo stesso per ogni tab-lista, e
+  //    senza la lista in attesa mostrerebbe la frase del vuoto su righe che
+  //    nessuno ha letto (`useListaStoreCore`, «il padre composto»).
+  store: { type: Object, default: null },
   // Girata a <ListaConfigurabile>: l'emittente che il drawer ha gia' fissato.
   // ⭐ E' la ragione per cui un tab-lista dentro il drawer di un emittente non
   //    deve vedere il pannello «scegli un emittente» — ce l'ha davanti.
@@ -144,9 +168,28 @@ defineExpose({
     <slot name="testata" />
 
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <slot name="filtri" />
-      </div>
+      <!-- ⚠️ `v-if` sui due slot: un tab-lista senza filtri non deve rendere
+           la barra: in modalita' compatta comparirebbe l'icona a imbuto su una
+           lista che non ha niente da filtrare. Senza zona sinistra le azioni
+           restano a destra per regola di foglio
+           (`.app-page-toolbar > .app-page-actions:first-child`). -->
+      <FiltriLista
+        v-if="$slots.filtri || $slots['filtri-sempre']"
+        :store="store"
+        :inert="perimetroBloccato"
+      >
+        <template v-if="$slots['filtri-sempre']" #sempre>
+          <slot name="filtri-sempre" />
+        </template>
+        <!-- ⚠️ ANCHE IL DEFAULT E' CONDIZIONATO, e non e' ridondanza: uno
+             `<slot name="filtri" />` scritto senza `v-if` E' un default slot
+             per `FiltriLista` anche quando il caller non passa `#filtri` — la
+             funzione dello slot esiste, e rende il vuoto. Il building block
+             accenderebbe l'icona a imbuto su un drawer senza niente dentro. -->
+        <template v-if="$slots.filtri" #default>
+          <slot name="filtri" />
+        </template>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />
@@ -160,7 +203,7 @@ defineExpose({
       :emittente-esplicito="emittenteEsplicito"
       :rows="rows"
       :total="total"
-      :loading="loading"
+      :loading="loading || store?.attesaPadre === true"
       :paginator-options="paginatorOptions"
       :paginata="paginata"
       :page="page"
@@ -172,8 +215,16 @@ defineExpose({
       @row-click="emit('row-click', $event)"
       @config-loaded="emit('config-loaded', $event)"
     >
+      <!-- ⚠️ La frase del vuoto del caller NON si rende mentre la lista carica
+           o aspetta il padre: il DataTable disegna la riga vuota anche sotto
+           la maschera di caricamento, e «nessuna revisione» sotto lo spinner
+           dice una cosa che nessuno ha ancora letto. -->
       <template v-for="nome in slotInoltrati($slots)" #[nome]="scope" :key="nome">
-        <slot :name="nome" v-bind="scope ?? {}" />
+        <slot
+          v-if="nome !== 'empty' || !(loading || store?.attesaPadre === true)"
+          :name="nome"
+          v-bind="scope ?? {}"
+        />
       </template>
     </ListaConfigurabile>
   </div>

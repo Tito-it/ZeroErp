@@ -16,6 +16,8 @@
 #   6. post_ignore_preset_update_envelope_corretto (DEF-2)
 #   7. post_ignore_preset_update_richiede_jwt (DEF-2)
 #   8. post_ignore_preset_update_richiede_idempotency_key (DEF-2)
+#   9. get_misure_pagina_envelope_corretto
+#  10. get_misure_pagina_richiede_jwt
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -62,7 +64,7 @@ class UiListaApiTests(JwtMockedApiTest):
         return_value=(_UserStub(), None),
     )
     @patch(
-        "apps.ui.api.views.UiService.get_lista_config",
+        "apps.ui.api.views.UiService.get_lista_config_per_video",
         return_value={
             "colonne": [{"codice": "ragione_sociale", "ordine": 1}],
             "ordinamento": [],
@@ -82,6 +84,27 @@ class UiListaApiTests(JwtMockedApiTest):
     def test_get_config_richiede_jwt(self) -> None:
         # Senza Authorization header: 401 (DRF default per SimpleJWT).
         response = self.client.get("/api/v1/ui/liste/anagrafiche.clienti/config/")
+        self.assertEqual(response.status_code, 401)
+
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(_UserStub(), None),
+    )
+    @patch(
+        "apps.ui.api.views.UiService.get_misure_pagina",
+        return_value={"misure": [10, 25, 50, 100], "default_compatta": 10, "default_pagina": 25},
+    )
+    def test_get_misure_pagina_envelope_corretto(self, mock_svc, _mock_auth) -> None:
+        response = self.client.get("/api/v1/ui/misure-pagina/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["data"],
+            {"misure": [10, 25, 50, 100], "default_compatta": 10, "default_pagina": 25},
+        )
+        mock_svc.assert_called_once()
+
+    def test_get_misure_pagina_richiede_jwt(self) -> None:
+        response = self.client.get("/api/v1/ui/misure-pagina/")
         self.assertEqual(response.status_code, 401)
 
     @patch(

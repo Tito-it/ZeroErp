@@ -20,8 +20,10 @@ import Message from 'primevue/message'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
 
@@ -53,8 +55,28 @@ const isReadonlyEffective = computed(
 const composizione = ref([]) // [{colonna_id, codice, etichetta, ordine, larghezza, visibile, fissata}]
 const catalogo = ref([])     // [{id, codice, etichetta, gruppo, tipo_colonna}]
 const fetching = ref(false)
-const dirty = ref(false)
 const fetchError = ref(null)
+
+// Modifiche non salvate (conferma alla chiusura, pallino, titolo arancio):
+// si confronta cio' che il Salva manda, senza `ordine`, che lo spostamento
+// rinumera (l'ordine lo dice la posizione nell'elenco).
+// ⭐ E' l'UNICA risposta a «c'e' qualcosa da salvare?»: abilita il Salva,
+//    mostra l'avviso e chiede conferma all'uscita (prima un `dirty` acceso a
+//    mano la affiancava, e diceva «toccato» invece di «diverso»: spostare una
+//    colonna e rimetterla a posto lasciava il Salva acceso).
+// ⚠️ L'InputNumber della larghezza scrive il modello solo al blur: nel
+//    template lo si aggiorna anche su `@input`, o il Salva resterebbe spento
+//    durante la digitazione (e un Salva spento non toglie il fuoco al campo).
+const composizioneDaSalvare = computed(() =>
+  composizione.value.map((c) => ({
+    colonna_id: c.colonna_id,
+    larghezza: c.larghezza ?? null,
+    visibile: c.visibile,
+    fissata: c.fissata,
+  })),
+)
+const { fissa, modificato, chiudiConConferma } =
+  useDrawerFormPreserve(composizioneDaSalvare, { visibile: () => props.visible })
 
 // Colonne del catalogo NON ancora in composizione (combo "aggiungi").
 const catalogoDisponibile = computed(() => {
@@ -91,7 +113,7 @@ async function loadAll() {
       fissata: !!row.fissata,
     }))
     catalogo.value = cat
-    dirty.value = false
+    fissa()
     colonnaDaAggiungere.value = null
   } catch (e) {
     fetchError.value = e
@@ -119,14 +141,12 @@ function aggiungiColonna() {
     fissata: false,
   })
   colonnaDaAggiungere.value = null
-  markDirty()
 }
 
 function rimuoviColonna(colonna_id) {
   composizione.value = composizione.value.filter(
     (c) => c.colonna_id !== colonna_id,
   )
-  markDirty()
 }
 
 function spostaSu(idx) {
@@ -134,7 +154,6 @@ function spostaSu(idx) {
   const items = [...composizione.value]
   ;[items[idx - 1], items[idx]] = [items[idx], items[idx - 1]]
   composizione.value = riassegnaOrdini(items)
-  markDirty()
 }
 
 function spostaGiu(idx) {
@@ -142,18 +161,13 @@ function spostaGiu(idx) {
   const items = [...composizione.value]
   ;[items[idx + 1], items[idx]] = [items[idx], items[idx + 1]]
   composizione.value = riassegnaOrdini(items)
-  markDirty()
 }
 
 function riassegnaOrdini(items) {
   return items.map((c, i) => ({ ...c, ordine: (i + 1) * 10 }))
 }
 
-function markDirty() {
-  dirty.value = true
-}
-
-const canSave = computed(() => dirty.value && !fetching.value)
+const canSave = computed(() => modificato.value && !fetching.value)
 
 async function onSave() {
   if (!canSave.value) return
@@ -171,20 +185,22 @@ async function onSave() {
     { successMessage: t('notifications.save_success') },
   )
   if (result !== null) {
-    dirty.value = false
+    // Resta aperto senza ricaricare: la fotografia e' cio' che si e' salvato.
+    fissa()
     emit('saved', result)
   }
 }
 
 function onCancel() {
-  emit('update:visible', false)
+  chiudiConConferma(() => emit('update:visible', false))
 }
+const suVisibile = gestoreVisibile(emit, onCancel)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="(v) => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
     :modal="true"
@@ -194,7 +210,8 @@ function onCancel() {
     <template #header>
       <DrawerTitle
         :title="`${t('ui.admin.preset_composizione')} — ${presetCodice}`"
-        icon="pi pi-table"
+        :icon="NAV_ICONS.PERSONALIZZAZIONI_LISTE"
+        :modificato="modificato"
       />
     </template>
 
@@ -223,7 +240,7 @@ function onCancel() {
         />
         <Button
           :label="t('common.add')"
-          icon="pi pi-plus"
+          :icon="MANAGE_ICONS.ADD"
           class="app-action-btn"
           :disabled="isReadonlyEffective || !colonnaDaAggiungere"
           @click="aggiungiColonna"
@@ -242,7 +259,7 @@ function onCancel() {
           <template #body="{ index }">
             <div class="ordine-actions">
               <Button
-                icon="pi pi-chevron-up"
+                :icon="MANAGE_ICONS.SPOSTA_SU"
                 text
                 rounded
                 size="small"
@@ -250,7 +267,7 @@ function onCancel() {
                 @click="spostaSu(index)"
               />
               <Button
-                icon="pi pi-chevron-down"
+                :icon="MANAGE_ICONS.SPOSTA_GIU"
                 text
                 rounded
                 size="small"
@@ -271,7 +288,7 @@ function onCancel() {
               :disabled="isReadonlyEffective"
               show-buttons
               size="small"
-              @input="markDirty"
+              @input="(e) => (data.larghezza = e.value)"
             />
           </template>
         </Column>
@@ -281,7 +298,6 @@ function onCancel() {
               v-model="data.visibile"
               binary
               :disabled="isReadonlyEffective || data.tipo_colonna === 'identificatore' || data.tipo_colonna === 'azione'"
-              @change="markDirty"
             />
           </template>
         </Column>
@@ -291,7 +307,6 @@ function onCancel() {
               v-model="data.fissata"
               binary
               :disabled="isReadonlyEffective"
-              @change="markDirty"
             />
           </template>
         </Column>
@@ -311,7 +326,7 @@ function onCancel() {
       </DataTable>
 
       <Message
-        v-if="dirty"
+        v-if="modificato"
         severity="warn"
         :closable="false"
         size="small"

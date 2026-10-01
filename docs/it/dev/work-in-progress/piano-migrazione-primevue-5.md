@@ -1333,7 +1333,7 @@ fuori. Fonderle produrrebbe una lista sbagliata e `codice` duplicati.
 
 - `core/components/ConfigTablePanel.vue`
 - `core/components/details/SearchDetailTable.vue`
-- `core/components/GeoSearchTable.vue`
+- `anagrafiche/components/GeoSearchTable.vue` (in `core/components/` fino al 2026-09-26)
 - `core/components/ListaConfigurabile.vue`
 - `core/components/RigheMasterDetailTable.vue`
 - `core/components/SearchDrawer.vue`
@@ -1483,7 +1483,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 01-08 | `config/components/TemplateAssetSearchTable.vue` | 8 | sì |
 | ✅ 01-08 | `pratiche/components/PraticheSearchTable.vue` | 8 | sì |
 | ✅ 03-08 | `strumenti/components/CodaLavoriTab.vue` | 8 | sì |
-| ⏸ dec.4 | `vendite/components/ContrattiBillingAccountDrawer.vue` | 8 | — |
+| ✅ 26-09 | `vendite/components/ContrattiBillingAccountDrawer.vue` | 8 | sì — `vendite.contratti` filtrata sul cliente, `useDrawerTabLista` + store `contrattiCliente`; la «decisione 4» non serviva: l'endpoint era gia' paginato e filtrava per cliente. Chiuso anche il troncamento a 50 righe e il filtro di stato fatto sul client |
 | ✅ 01-08 | `vendite/components/PromoArticoliSearchTable.vue` | 8 | sì |
 | ⏸ dec.4 | `vendite/offerte/components/OffertaEccezioniDrawer.vue` | 8 | — |
 | ✅ 01-08 | `amministrazione/components/CategorieClientiListiniSearchTable.vue` | 9 | sì |
@@ -2482,7 +2482,7 @@ un wrapper sottile da estrarre alla seconda occorrenza
 > | Domanda | Se sì |
 > | --- | --- |
 > | ⭐ **L'entità ha vita propria** — un endpoint suo, una popolazione arbitraria, un ciclo di vita indipendente dal padre? | **Gruppo A**: `<ListaConfigurabile>` + `useDrawerTabLista` + `DrawerTabLista`. Le manca il paginator, non la natura |
-> | Sono le **righe** del documento che la contiene (righe ordine, componenti BoM, righe reso)? | **Gruppo B**: `RigheMasterDetailTable` / `SearchDetailTable`. È un dettaglio del master, non una lista |
+> | ~~Sono le **righe** del documento che la contiene (righe ordine, componenti BoM, righe reso)?~~ | ⛔ **Domanda ritirata il 2026-09-28** (decisione di Tid, [brief-db-liste-righe-documento](brief-db-liste-righe-documento.md) §1): un documento ha un numero **arbitrario** di righe con molti attributi, quindi le righe **sono** una lista e rispondono sì alla prima domanda — **Gruppo A**. `RigheMasterDetailTable` monta ora `<DrawerTabLista>`. Resta Gruppo B solo il dettaglio espanso della ricerca (`SearchDetailTable`) |
 > | È una **matrice slot/override** — la popolazione la decide il catalogo (LEFT JOIN su tutte le voci ammesse), l'operatore compila le celle? | 🔴 **Nessuna delle due**, vedi il buco qui sotto |
 >
 > ⛔ **«È dentro un drawer» e «non ha il paginator» NON sono più il criterio.**
@@ -2544,7 +2544,7 @@ un wrapper sottile da estrarre alla seconda occorrenza
 | ☐ | `amministrazione/views/RepartiProfiloView.vue` | 3 |
 | ☐ | `core/components/ScadenzeSintesi.vue` | 3 |
 | ☐ | `amministrazione/views/PermessiRiepilogoView.vue` | 4 |
-| ☐ | `catalogo/components/UomConversioniDrawer.vue` | 4 |
+| ✅ 26-09 → **Gruppo A** | `catalogo/components/UomConversioniDrawer.vue` | 4 | criterio in tre domande: le conversioni hanno endpoint e lista loro (`catalogo.conversioni_uom`). Convertito con `useDrawerTabLista` + store `uomConversioni`, fattore modificabile nello slot `cell-fattore`; chiuso il troncamento a 200 righe |
 | ☐ | `core/components/SessioniAttivePanel.vue` | 4 |
 | ☐ | `vendite/components/AlertScadenzeWidget.vue` | 4 |
 | ☐ | `vendite/components/ApplicaVariazioneDialog.vue` | 4 |

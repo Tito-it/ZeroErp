@@ -32,8 +32,10 @@ import Message from 'primevue/message'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useUiColonnaAdminStore } from '../stores/uiColonnaAdmin'
 
 
@@ -116,6 +118,9 @@ function defaultForm() {
 }
 
 const form = ref(defaultForm())
+// Modifiche non salvate: fotografia a form popolato, conferma alla chiusura
+// (BB useDrawerFormPreserve). Prima del watch immediate (TDZ).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 watch(
   () => [props.visible, props.recordData],
@@ -150,6 +155,7 @@ watch(
     } else {
       form.value = defaultForm()
     }
+    fissa()
   },
   { immediate: true },
 )
@@ -224,12 +230,14 @@ function onCancel() {
   emit('cancelled')
   emit('update:visible', false)
 }
+const chiudi = () => chiudiConConferma(onCancel)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="(v) => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
     :modal="true"
@@ -238,9 +246,10 @@ function onCancel() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('ui.admin.colonna')"
-        icon="pi pi-table"
+        :icon="NAV_ICONS.PERSONALIZZAZIONI_LISTE"
       />
     </template>
 
@@ -447,7 +456,7 @@ function onCancel() {
       :loading="loading"
       :disabled="!canSave"
       @save="onSave"
-      @cancel="onCancel"
+      @cancel="chiudi"
     />
   </Drawer>
 </template>

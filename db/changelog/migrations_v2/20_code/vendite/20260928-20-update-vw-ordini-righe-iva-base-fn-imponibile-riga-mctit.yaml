@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.vw_ordini_righe_iva_base: l'imponibile di riga dalla sede unica.
+#
+# La vista che alimenta il riepilogo IVA dell'ordine calcolava
+# `imponibile_riga_full` con la formula a mano: una delle otto copie censite
+# il 2026-09-28. Ritirata nello stesso giro in cui nasce la funzione, per la
+# regola del 2 (le copie si ritirano insieme all'estrazione).
+#
+# -- COSA CAMBIA, e cosa NO ------------------------------------------------
+#   Solo l'espressione dell'imponibile: al posto della formula scritta a mano,
+#   la sede unica script.fn_imponibile_riga (20260928-16, D-8.8 del brief).
+#   Stesso valore, stesse colonne con gli stessi nomi, tipi e posizioni
+#   (CREATE OR REPLACE VIEW non ammette altro), stessi filtri, stesso COMMENT
+#   (resta sull'oggetto). `security_invoker` e' RIPETUTO: e' una reloption,
+#   non sta nel corpo, e un CREATE OR REPLACE che non la ripete la azzera.
+#
+# Base: corpo vivo dalla doc auto-gen (identico a pg_get_viewdef sullo scratch
+#   il 2026-09-28), patchato da uno script che dichiara la sostituzione e ne
+#   CONTA le occorrenze: nessun'altra riga toccata.
+# Cantiere: brief-db-liste-righe-documento §8.8 (D-8.8), §8.10 passo 3
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260928-20-update-vw-ordini-righe-iva-base-fn-imponibile-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260928-20-update-vw-ordini-righe-iva-base-fn-imponibile-riga
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_ordini_righe_iva_base: imponibile_riga_full da script.fn_imponibile_riga invece
+        della formula scritta a mano. Stesso valore, stesse colonne, security_invoker ripetuto.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_imponibile_riga'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_ordini_righe_iva_base
+              WITH (security_invoker=on) AS
+              SELECT r.ordine_id,
+                  r.id AS riga_id,
+                  r.riga_nr,
+                  o.emittente_fiscale_id,
+                  s.stato_id AS stato_emittente_id,
+                  r.iva_id,
+                      CASE
+                          WHEN (r.iva_id IS NOT NULL) THEN config.fn_get_aliquota_iva(r.iva_id, s.stato_id)
+                          ELSE NULL::numeric
+                      END AS aliquota_effettiva,
+                  r.quantita,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  (r.quantita * r.prezzo_unitario) AS imponibile_lordo_full,
+                  (((r.quantita * r.prezzo_unitario) * COALESCE(r.sconto_percentuale, (0)::numeric)) / (100)::numeric) AS sconto_riga_full,
+                  script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale) AS imponibile_riga_full,
+                  r.attivo,
+                  r.data_insert,
+                  r.data_update
+                 FROM ((((vendite.ordini_righe r
+                   JOIN vendite.ordini o ON ((o.id = r.ordine_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = o.emittente_fiscale_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ef.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                WHERE ((r.attivo IS TRUE) AND (r.quantita > (0)::numeric));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino: il corpo vivo prima di questo changeSet (formula scritta
+              -- a mano), dalla doc auto-gen del 2026-09-28.
+              CREATE OR REPLACE VIEW vendite.vw_ordini_righe_iva_base
+              WITH (security_invoker=on) AS
+              SELECT r.ordine_id,
+                  r.id AS riga_id,
+                  r.riga_nr,
+                  o.emittente_fiscale_id,
+                  s.stato_id AS stato_emittente_id,
+                  r.iva_id,
+                      CASE
+                          WHEN (r.iva_id IS NOT NULL) THEN config.fn_get_aliquota_iva(r.iva_id, s.stato_id)
+                          ELSE NULL::numeric
+                      END AS aliquota_effettiva,
+                  r.quantita,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  (r.quantita * r.prezzo_unitario) AS imponibile_lordo_full,
+                  (((r.quantita * r.prezzo_unitario) * COALESCE(r.sconto_percentuale, (0)::numeric)) / (100)::numeric) AS sconto_riga_full,
+                  ((r.quantita * r.prezzo_unitario) * ((1)::numeric - (COALESCE(r.sconto_percentuale, (0)::numeric) / (100)::numeric))) AS imponibile_riga_full,
+                  r.attivo,
+                  r.data_insert,
+                  r.data_update
+                 FROM ((((vendite.ordini_righe r
+                   JOIN vendite.ordini o ON ((o.id = r.ordine_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = o.emittente_fiscale_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ef.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                WHERE ((r.attivo IS TRUE) AND (r.quantita > (0)::numeric));

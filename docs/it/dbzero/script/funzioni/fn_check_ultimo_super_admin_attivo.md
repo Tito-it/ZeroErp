@@ -29,6 +29,11 @@ AS $function$
     -- source of truth concettuale):
     --   identita attiva, ruolo OPERATORE, in finestra,
     --   binding attivo, profilo attivo, tipo SUPER_ADMIN.
+    --   ⭐ rev 2026-09-25: e credenziale NON bloccata
+    --   dall'amministratore (config.credenziali.bloccata_at),
+    --   come fn_check_almeno_un_super_admin_attivo — un SUPER_ADMIN
+    --   bloccato non e' raggiungibile. Brief:
+    --   brief-db-blocco-login-per-credenziale §3.3.
     --
     -- NB: la duplicazione del blocco filtri e' voluta. Una CTE
     -- referenziata 2 volte verrebbe materializzata da PG e
@@ -53,6 +58,12 @@ AS $function$
                AND pab.attivo = true
                AND pa.attivo  = true
                AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+               AND NOT EXISTS (
+                   SELECT 1
+                     FROM config.credenziali c
+                    WHERE c.auth_user_id = id.auth_user_id
+                      AND c.bloccata_at IS NOT NULL
+               )
         )
         AND NOT EXISTS (
             SELECT 1
@@ -69,11 +80,17 @@ AS $function$
                AND pab.attivo = true
                AND pa.attivo  = true
                AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+               AND NOT EXISTS (
+                   SELECT 1
+                     FROM config.credenziali c
+                    WHERE c.auth_user_id = id.auth_user_id
+                      AND c.bloccata_at IS NOT NULL
+               )
         );
 $function$
 
 COMMENT ON FUNCTION script.fn_check_ultimo_super_admin_attivo(p_auth_user_id integer)
-IS 'Predicato per-utente: true sse questo auth_user e'' l''unico SUPER_ADMIN attivo del sistema (rimuovergli il privilegio causerebbe lockout). Allineato alla semantica del guard 384 ma con perimetro per-utente. Usato per le capability can_disable / can_demote_super_admin del drawer Operatore (P1 2026-04-29). LANGUAGE sql STABLE, pure check, nessun raise. Param INTEGER esplicito (rappresenta django.auth_user.id; niente %TYPE su colonne django.*).';
+IS 'Predicato per-utente: true sse questo auth_user e'' l''unico SUPER_ADMIN attivo e raggiungibile del sistema (rimuovergli il privilegio causerebbe lockout). Raggiungibile = identita OPERATORE attiva e in finestra, binding e profilo SUPER_ADMIN attivi, credenziale NON bloccata dall''amministratore (config.credenziali.bloccata_at; rev 2026-09-25, stesso gate di fn_check_almeno_un_super_admin_attivo). Usato per le capability can_disable / can_demote_super_admin del drawer Operatore. LANGUAGE sql STABLE, pure check, nessun raise. Param INTEGER esplicito (django.auth_user.id; niente %TYPE su colonne django.*).';
 ```
 
 ---

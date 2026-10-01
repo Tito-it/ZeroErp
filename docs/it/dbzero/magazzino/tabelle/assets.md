@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Istanza fisica di un bene serializzato (contatore, apparecchiatura): l'oggetto che movimenti.asset_id sposta uno alla volta (|qta| = 1). Di un emittente (emittente_fiscale_id), con una proprieta' (ownership_id), eventualmente presso un billing account e sotto un contratto. Dal 2026-09-15 non porta piu' la posizione (magazzino, ubicazione): la dice il registro. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7.
+> Istanza fisica di un bene serializzato (contatore, apparecchiatura): l'oggetto che movimenti.asset_id sposta uno alla volta (|qta| = 1). Di un emittente (emittente_fiscale_id), con una proprieta' (ownership_id), eventualmente presso un billing account. Dal 2026-09-15 non porta piu' la posizione (magazzino, ubicazione): la dice il registro. Dal 2026-10-01 non porta il contratto: il registro non conosce i documenti che lo usano, e il legame, se servira', nasce nel contratto. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7; brief-db-magazzino-registro-anello-interno (D-3).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -12,7 +12,6 @@
 | articolo_id | uuid | NO |  |
 | seriale | character varying | NO |  |
 | billing_account_id | bigint | YES |  |
-| contratto_id | bigint | YES |  |
 | data_stato | timestamp with time zone | NO | now() |
 | attivo | boolean | NO | true |
 | meta | jsonb | YES | '{}'::jsonb |
@@ -31,7 +30,6 @@
 |------|------|---------|
 | FOREIGN KEY | fk_mag_assets_articolo | articolo_id |
 | FOREIGN KEY | fk_mag_assets_billing_account | billing_account_id |
-| FOREIGN KEY | fk_mag_assets_contratto | contratto_id |
 | FOREIGN KEY | fk_mag_assets_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_mag_assets_ownership_id | ownership_id |
 | FOREIGN KEY | fk_mag_assets_stato | stato_id |
@@ -50,16 +48,17 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_assets_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_assets_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
-| trg_assets_a10_assets_ownership_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'assets_ownership', 'attivo', 'ownership_id', 'id')` |
+| trg_assets_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_assets_a10_assets_ownership_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'assets_ownership', 'attivo', 'ownership_id', 'id')` |
+| trg_assets_a10_assets_ownership_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'assets_ownership', 'attivo', 'ownership_id', 'id')` |
+| trg_assets_a10_ddt_righe_prelievi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt_righe_prelievi', 'asset_id', 'id', 'attivo')` |
 | trg_assets_a10_default_emittente_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA')` |
 | trg_assets_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_assets_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_assets_a10_eventi_assets_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'eventi_assets', 'asset_id', 'id', 'attivo')` |
-| trg_assets_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_assets_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
+| trg_assets_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_assets_a10_inventari_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'inventari_righe', 'asset_id', 'id', 'attivo')` |
 | trg_assets_a10_movimenti_attesi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'movimenti_attesi', 'asset_id', 'id', 'attivo')` |
 | trg_assets_a10_movimenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'movimenti', 'asset_id', 'id', 'attivo')` |
@@ -72,8 +71,8 @@
 | trg_assets_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_assets_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_assets_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_assets_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('assets_id')` |
 | trg_assets_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('assets_id')` |
+| trg_assets_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('assets_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

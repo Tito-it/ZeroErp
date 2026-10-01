@@ -17,7 +17,7 @@ Unitari (senza DB — la forma dell'eccezione e' riprodotta fedelmente):
  5) test_codice_legacy_senza_prefisso_arriva_e_ha_la_sua_policy
  6) test_nessun_codice_ripiega_su_e_database
  7) test_raise_from_database_error_usa_il_campo_se_dichiarato
- 8) test_raise_from_database_error_ignora_il_campo_non_dichiarato
+ 8) test_raise_from_database_error_codice_del_catalogo_vince_anche_non_dichiarato
 
 End-to-end su DB reale (OPT-IN `ZEROERP_TEST_DB_E2E=1`, vedi la classe):
  9) test_e2e_helper_db_codice_e_status
@@ -124,12 +124,16 @@ class DbErrorFieldsUnitTests(TestCase):
                 log_to_db=False,
             )
         self.assertEqual(ctx.exception.code, "E_UI_LISTA_NON_TROVATA")
+        # La frase e' quella del DB, non il `message` del chiamante.
+        self.assertEqual(ctx.exception.message, "Testo che non nomina il codice.")
 
-    # Scopo: Verifica il caso `test_raise_from_database_error_ignora_il_campo_non_dichiarato`.
-    def test_raise_from_database_error_ignora_il_campo_non_dichiarato(self):
-        # Un codice che il chiamante non ha dichiarato non e' "riconosciuto":
-        # accettarlo gli farebbe usare il messaggio del caso riconosciuto per un
-        # errore che non aspettava. Resta il fallback.
+    # Scopo: Verifica il caso `test_raise_from_database_error_codice_del_catalogo_vince_anche_non_dichiarato`.
+    def test_raise_from_database_error_codice_del_catalogo_vince_anche_non_dichiarato(self):
+        # ⭐ Decisione di Tid, 2026-09-23 (brief-db-guard-date-validita §13).
+        # Fino ad allora un codice non in `known_markers` cadeva sul fallback:
+        # un guard comune — le date di validita', su 25 tabelle — diventava il
+        # codice generico del service che lo attraversava. Ora il codice del
+        # catalogo vince sempre, con la sua frase.
         exc = make_db_error("Testo qualunque.", sqlstate="P0001", codice="E_ALTRO_DOMINIO")
         with self.assertRaises(ServiceError) as ctx:
             ErrorManager.raise_from_database_error(
@@ -139,7 +143,8 @@ class DbErrorFieldsUnitTests(TestCase):
                 message="Errore risoluzione lista.",
                 log_to_db=False,
             )
-        self.assertEqual(ctx.exception.code, "E_UI_GENERIC_FAILED")
+        self.assertEqual(ctx.exception.code, "E_ALTRO_DOMINIO")
+        self.assertEqual(ctx.exception.message, "Testo qualunque.")
 
 
 class DbErrorFieldsEndToEndTests(TestCase):

@@ -2,8 +2,10 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useNavigationStore } from '../stores/navigation'
 import { useTabsStore } from '../stores/tabs'
-import { DOMAINS, resolveTabLabel, resolveTabIcon } from '../core/navigation'
-import { FE_NAMESPACE, resolveRuoloFeConfig } from '../core/constants'
+import { DOMAINS, findMenuItem, isMenuItemAllowed, resolveTabLabel, resolveTabIcon } from '../core/navigation'
+import { FE_NAMESPACE, STATUS_ICONS, resolveRuoloFeConfig } from '../core/constants'
+import { MOTIVO_USCITA, sessioneDichiarataChiusa } from '../core/sessione'
+import { caricaMisurePagina } from '../core/misurePagina'
 import i18n from '../core/i18n'
 import { chiudiTuttiIDrawer } from '../core/composables/useDrawerChiusuraGlobale'
 import { CODE } from '../pagamenti/vocabolari'
@@ -17,10 +19,13 @@ const t = i18n.global.t
 // Rotte autenticate universali: accessibili a tutte le vesti, non
 // passano per il check namespace. Include la pagina cambio password
 // (tipicamente forzata post-invito) e le pagine d'errore.
+const ROTTA_AVVIO_NON_RIUSCITO = 'avvio-non-riuscito'
+
 const UNIVERSAL_ROUTE_NAMES = new Set([
   'change-password',
   'forbidden',
-  'not-found'
+  'not-found',
+  ROTTA_AVVIO_NON_RIUSCITO
 ])
 
 // Tabella statica path → namespace. Definita come array ordinato per
@@ -108,6 +113,18 @@ const router = createRouter({
       name: 'attivazione-shop',
       component: () => import('../shop/views/AttivazioneShopView.vue'),
       meta: { public: true, domain: 'shop', menuKey: 'attivazione' }
+    },
+
+    // Configurazione globale non letta (le misure di pagina, BB
+    // `core/misurePagina`): la apre il guard. ⛔ FUORI da `AppLayout`, ed e' il
+    // punto: il layout monta componenti che le misure le leggono, quindi una
+    // pagina d'errore dentro il layout cadrebbe per la stessa causa che deve
+    // mostrare. «Torna alla home» ripassa dal guard e riprova.
+    {
+      path: '/avvio-non-riuscito',
+      name: ROTTA_AVVIO_NON_RIUSCITO,
+      component: () => import('../core/views/ErrorView.vue'),
+      meta: { errorKey: 'avvio_non_riuscito', errorIcon: STATUS_ICONS.ERRORE }
     },
 
     // Rotte autenticate — con layout principale
@@ -361,12 +378,6 @@ const router = createRouter({
           meta: { domain: 'vendite', menuKey: 'lotti' }
         },
         {
-          path: 'vendite/giornale',
-          name: 'vendite-giornale',
-          component: () => import('../vendite/views/GiornaleListView.vue'),
-          meta: { domain: 'vendite', menuKey: 'giornale' }
-        },
-        {
           // Tool della fatturazione: contenitore a tab degli elenchi che il
           // giro automatico lascia a una persona. Prima voce: i fondi fattura
           // da decidere. Sta sotto `vendite` e non sotto `strumenti` perche' i
@@ -384,6 +395,23 @@ const router = createRouter({
           name: 'strumenti-code-lavoro',
           component: () => import('../strumenti/views/CodeLavoroView.vue'),
           meta: { domain: 'strumenti', menuKey: 'code-lavoro' }
+        },
+        {
+          // Strumenti → Giornale eventi: la vista e il client restano in
+          // `vendite/` perche' dati ed endpoint sono di area vendite; qui sta
+          // solo la porta di menu (cancello: `requireArea` sulla voce).
+          path: 'strumenti/giornale',
+          name: 'strumenti-giornale',
+          component: () => import('../vendite/views/GiornaleListView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'giornale' }
+        },
+        {
+          // Strumenti → Email: le mail dell'operatore, voce senza area
+          // (`skip_area_check` BE): la vede ogni operatore.
+          path: 'strumenti/email',
+          name: 'strumenti-email',
+          component: () => import('../strumenti/views/EmailLogView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'email' }
         },
         {
           path: 'vendite/preventivi',
@@ -455,6 +483,15 @@ const router = createRouter({
         //    implementazione con due configurazioni, `FAMIGLIE` di
         //    `magazzino/vocabolari.js`). Le due porte restano deep-linkabili e
         //    distinguibili nel tab, come le due code degli incassi.
+        // L'anagrafica dei magazzini (2026-09-21, piano anagrafiche-fuori-dal-
+        // pannello-config): prima voce del dominio, le anagrafiche precedono
+        // i documenti (Q-4).
+        {
+          path: 'magazzino/magazzini',
+          name: 'magazzino-magazzini',
+          component: () => import('../magazzino/views/MagazziniListView.vue'),
+          meta: { domain: 'magazzino', menuKey: 'magazzini' }
+        },
         {
           path: 'magazzino/inventari',
           name: 'magazzino-inventari',
@@ -585,7 +622,7 @@ const router = createRouter({
           path: 'forbidden',
           name: 'forbidden',
           component: () => import('../core/views/ErrorView.vue'),
-          meta: { domain: 'home', errorKey: 'forbidden', errorIcon: 'pi pi-lock' }
+          meta: { domain: 'home', errorKey: 'forbidden', errorIcon: STATUS_ICONS.VIETATO }
         },
 
         // --- Catch-all 404 ---
@@ -593,7 +630,7 @@ const router = createRouter({
           path: ':pathMatch(.*)*',
           name: 'not-found',
           component: () => import('../core/views/ErrorView.vue'),
-          meta: { domain: 'home', errorKey: 'not_found', errorIcon: 'pi pi-map' }
+          meta: { domain: 'home', errorKey: 'not_found', errorIcon: STATUS_ICONS.NON_TROVATO }
         }
       ]
     }
@@ -607,47 +644,44 @@ router.beforeEach(async (to) => {
   // Rotte pubbliche (login, reset, attivazione)
   if (to.meta.public) {
     // ⛔ «Sei già dentro, torna alla home» NON vale quando è l'applicazione
-    //    stessa a dichiarare la sessione morta (`reason=session_expired`, che
-    //    mandano l'interceptor 401 e questo guard). `isAuthenticated` guarda la
-    //    SCADENZA dei token in memoria, non se il server li accetta ancora: una
-    //    sessione revocata lato server ha token non scaduti, quindi il rimbalzo
-    //    scattava e il login diventava irraggiungibile — l'operatore restava su
-    //    una home che rispondeva 401 a ogni gesto e ne usciva solo ricaricando
-    //    (rilievo di Tid, 2026-09-04).
+    //    stessa a dichiarare la sessione morta (`reason=` con un motivo di
+    //    `MOTIVO_USCITA`: lo mandano l'interceptor 401, il logout di un'altra
+    //    scheda e questo guard). Un access in memoria può
+    //    essere non scaduto e già rifiutato dal server (sessione revocata),
+    //    quindi il rimbalzo scattava e il login diventava irraggiungibile —
+    //    l'operatore restava su una home che rispondeva 401 a ogni gesto e ne
+    //    usciva solo ricaricando (rilievo di Tid, 2026-09-04).
     // ⚠️ È la seconda metà della correzione, non un doppione: la prima azzera
     //    lo stato nello store (`redirectToLogin` in `core/api.js`), questa
-    //    impedisce che un `isAuthenticated` sbagliato per qualunque ALTRA
-    //    ragione ci rimandi indietro. Chi ha una sessione viva e digita /login
+    //    impedisce che una sessione creduta viva per qualunque ALTRA ragione
+    //    ci rimandi indietro. Chi ha una sessione viva e digita /login
     //    continua a essere riportato alla home.
-    const sessioneDichiarataMorta = to.query.reason === 'session_expired'
-    if (to.name === 'login' && auth.isAuthenticated && !sessioneDichiarataMorta) {
+    const sessioneDichiarataMorta = sessioneDichiarataChiusa(to.query.reason)
+    // ⭐ Dal 2026-09-28 l'access sta solo in memoria: al ricaricamento non c'è
+    //    mai, e se la sessione è viva lo si sa solo chiedendolo al backend
+    //    (rinnovo dal cookie HttpOnly). Si chiede solo per il login: le altre
+    //    rotte pubbliche (reset, attivazione) non ne hanno bisogno.
+    if (
+      to.name === 'login' &&
+      !sessioneDichiarataMorta &&
+      (await auth.ripristinaSessione())
+    ) {
       return { name: 'home' }
     }
     return
   }
 
-  // Utente non autenticato -> login (vale per requiresAuth e rotte layout).
-  // `isAuthenticated` ora considera scaduto sia access che refresh: se entrambi
-  // morti, l'utente NON puo' navigare (prima poteva, perche' il check era solo
-  // sulla presenza dell'access token in localStorage, anche scaduto).
-  if (!auth.isAuthenticated) {
-    const query = { reason: 'session_expired' }
+  // Sessione assente o morta -> login (vale per requiresAuth e rotte layout).
+  // `ripristinaSessione` usa l'access in memoria se è valido, altrimenti
+  // rinnova dal cookie del refresh: al ricaricamento della pagina, o dopo i
+  // 10 minuti dell'access, è qui che la sessione si ritrova. Se il rinnovo
+  // fallisce (cookie assente, scaduto, revocato) si va al login con
+  // reason=session_expired (`MOTIVO_USCITA.SESSIONE_SCADUTA`). Sostituisce il vecchio «refresh proattivo», che
+  // guardava la scadenza del refresh in localStorage.
+  if (!(await auth.ripristinaSessione())) {
+    const query = { reason: MOTIVO_USCITA.SESSIONE_SCADUTA }
     if (to.fullPath !== '/') query.redirect = to.fullPath
     return { name: 'login', query }
-  }
-
-  // Refresh proattivo: access scaduto ma refresh ancora valido. Evitiamo la
-  // chiamata 401 di troppo che farebbe poi scattare l'interceptor — qui
-  // preveniamo il problema prima che la pagina monti i suoi store. Se il
-  // refresh fallisce (es. refresh revocato server-side) il guard rimanda al
-  // login con reason=session_expired.
-  if (!auth.accessTokenValid && auth.refreshTokenValid) {
-    const ok = await auth.tryRefreshToken()
-    if (!ok) {
-      const query = { reason: 'session_expired' }
-      if (to.fullPath !== '/') query.redirect = to.fullPath
-      return { name: 'login', query }
-    }
   }
 
   // Carica profilo se mancante — se fallisce, token non valido → login
@@ -692,6 +726,24 @@ router.beforeEach(async (to) => {
     }
   }
 
+  // ⭐ Le misure «righe per pagina» (catalogo DB, BB `core/misurePagina`):
+  //    una volta per sessione, ATTESE, prima di qualunque rotta sotto
+  //    `AppLayout` — anche 404 e forbidden, perche' e' il LAYOUT a leggerle
+  //    (la ricerca della topbar), non solo le liste. Solo per l'operatore: e'
+  //    la veste di quel layout, e l'endpoint e' della sua API.
+  //    ⛔ Nessun ripiego se la chiamata fallisce (sarebbe una copia del
+  //    catalogo): si apre la pagina d'errore, fuori dal layout.
+  if (
+    to.matched.some((r) => r.components?.default === AppLayout) &&
+    resolveRuoloFeConfig(auth.ruoloApplicativo)?.namespace === FE_NAMESPACE.ADMIN
+  ) {
+    try {
+      await caricaMisurePagina()
+    } catch {
+      return { name: ROTTA_AVVIO_NON_RIUSCITO }
+    }
+  }
+
   // Guard dominio admin: controlla permesso (solo namespace operatore)
   const domain = to.meta.domain
   if (domain === 'amm-software' && !auth.isSuperAdmin) {
@@ -708,6 +760,16 @@ router.beforeEach(async (to) => {
     }
   }
 
+  // Guard di VOCE: i cancelli `requireArea`/`requireAnyAction` della voce di
+  // menu, con la stessa regola della sidebar (BB `isMenuItemAllowed`). Serve ai
+  // domini che portano l'area sulle voci e non su di se' (Strumenti): senza,
+  // la pagina si aprirebbe dall'indirizzo e il backend risponderebbe 403.
+  // Una rotta senza voce di menu (dettagli, pagine errore) non ha cancello qui.
+  const menuItem = findMenuItem(domain, to.meta.menuKey)
+  if (menuItem && !isMenuItemAllowed(menuItem, auth)) {
+    return { name: 'forbidden' }
+  }
+
   // Imposta dominio attivo nello store navigation
   const nav = useNavigationStore()
   if (domain && domain !== 'home') {
@@ -717,8 +779,19 @@ router.beforeEach(async (to) => {
   }
 
   // Apre tab (escluso home e pagine errore)
+  // ⭐ E' L'UNICO PUNTO CHE APRE LE SCHEDE: sidebar, preferiti e widget fanno
+  //    solo `router.push`. Fino al 2026-09-30 aprivano anche loro, prima del
+  //    push, e il guard riapriva: con una conferma in mezzo sarebbero state
+  //    due dialog per un clic. Oltre il limite si sostituisce l'ultima in fila,
+  //    se l'operatore conferma; «Annulla» lo lascia dov'era.
   if (domain && domain !== 'home' && to.name !== 'forbidden' && to.name !== 'not-found') {
     const tabs = useTabsStore()
+    const daSostituire = tabs.schedaDaSostituire(to.path)
+    if (daSostituire) {
+      const conferma = await tabs.chiediSostituzione(daSostituire)
+      if (!conferma) return false
+      tabs.removeTab(daSostituire.id)
+    }
     const opened = tabs.openTab({
       path: to.path,
       label: resolveTabLabel(to.meta, t) || to.path,
@@ -726,7 +799,6 @@ router.beforeEach(async (to) => {
       menuKey: to.meta.menuKey || null,
       icon: resolveTabIcon(to.meta)
     })
-    // Limite raggiunto — blocca navigazione
     if (!opened) return false
   }
 })

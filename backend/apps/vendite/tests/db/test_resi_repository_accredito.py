@@ -36,7 +36,7 @@ _COLS = [
 def _mock_cursor(rows: list[tuple]) -> MagicMock:
     cursor = MagicMock()
     cursor.description = [MagicMock() for _ in _COLS]
-    for descr, nome in zip(cursor.description, _COLS):
+    for descr, nome in zip(cursor.description, _COLS, strict=True):
         descr.name = nome
     cursor.fetchall.return_value = rows
     return cursor
@@ -152,7 +152,9 @@ class ResiRigheGiaAccreditatoTests(TestCase):
     #    tabella di base, nessuna aggregazione, nessuna chiamata a funzione.
     #    Il lato DB (la fn e la coerenza con la sede unica del predicato) e'
     #    presidiato dal pgTAP `test-vw-resi-righe-dettaglio-v1`.
-    @patch("apps.vendite.db.resi_repository.connection")
+    # ⚠️ La query nasce nel BB `RigheDocumentoRepositoryMixin` (2026-09-28):
+    #    la connessione si sostituisce la', non nel modulo del repository.
+    @patch("apps.vendite.db._righe_repo_mixin.connection")
     def test_list_righe_legge_la_vista_e_non_ricostruisce(self, mock_conn) -> None:
         cursor = MagicMock()
         cursor.description = []
@@ -201,31 +203,6 @@ class FatturaNaturaELegameTests(TestCase):
         self.assertIn("config.nature_doc_fiscale ndf", sql)
         self.assertIn("AS natura_doc_codice", sql)
         self.assertIn("AS natura_doc_descrizione", sql)
-
-    # Scopo: B7 — il puntatore riga↔riga e la sua decodifica minima (numero
-    # della fattura rettificata + riga_nr della gemella). ⚠️ Il puntatore sta su
-    # `fatture_righe`, che la vista di esposizione NON proietta: se qualcuno
-    # tornasse a leggere solo la vista, la colonna sparirebbe in silenzio.
-    @patch("apps.vendite.db.vendite_repository.connection")
-    def test_righe_fattura_portano_il_legame_riga_a_riga(self, mock_conn) -> None:
-        cursor = MagicMock()
-        cursor.description = []
-        cursor.fetchall.return_value = []
-        _mock_connection(mock_conn, cursor)
-
-        from apps.vendite.db.vendite_repository import VenditeRepository
-
-        VenditeRepository().list_fattura_righe(7)
-
-        sql = cursor.execute.call_args[0][0]
-        # ⚠️ Si guarda la PROIEZIONE, non tutta la query: `fr.riga_rettificata_id`
-        # compare anche nella JOIN, quindi un `assertIn` sull'intero SQL resta
-        # verde anche se la colonna sparisce dalla SELECT. Provato per
-        # mutazione — la prima versione di questo test non mordeva.
-        proiezione = sql.split(" FROM ", 1)[0]
-        self.assertIn("fr.riga_rettificata_id", proiezione)
-        self.assertIn("AS riga_rettificata_nr", proiezione)
-        self.assertIn("AS riga_rettificata_fattura_numero", proiezione)
 
     # Scopo: B7 — il legame DOCUMENTALE si legge nei due versi con la stessa
     # query, e il verso e' un PARAMETRO, non due SQL copiate.

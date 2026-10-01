@@ -12,7 +12,7 @@
 #   2. upsert_payload_chiavi_extra_raises
 #   3. upsert_colonna_codice_mancante_raises
 #   4. upsert_colonna_chiavi_extra_raises
-#   5. upsert_pagina_dimensione_oltre_max_raises
+#   5. upsert_pagina_dimensione_la_decide_il_db
 #   6. upsert_pagina_dimensione_non_int_raises
 #   7. upsert_visibile_non_bool_raises
 #   8. upsert_payload_non_dict_raises
@@ -160,15 +160,22 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         ".get_emittente_for_user",
         return_value=11,
     )
-    def test_upsert_pagina_dimensione_oltre_max_raises(self, _mock_em) -> None:
+    # ⭐ Dal 2026-09-30 il service NON giudica la misura: quali sono ammesse lo
+    #    dice il catalogo `ui.misure_pagina`, e il rifiuto lo da' il guard a DB
+    #    (`E_UI_MISURA_PAGINA_NON_AMMESSA`, provato sul DB vero in
+    #    `tests/db/test_misure_pagina_db`). Qui si prova che la misura arriva
+    #    intatta al repository: un tetto rimasto nel service sarebbe una
+    #    seconda regola, diversa dal catalogo.
+    def test_upsert_pagina_dimensione_la_decide_il_db(self, _mock_em) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
+        repo.get_preset_base_snapshot.return_value = (None, None)
+        repo.upsert_preferenza.return_value = 7
         svc = ListaPreferenzaService(repository=repo)
 
-        bad = {"pagina_dimensione": 5000}
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "anagrafiche.clienti", bad)
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
+        svc.upsert(_make_user(), "anagrafiche.clienti", {"pagina_dimensione": 5000})
+        cfg = repo.upsert_preferenza.call_args.kwargs["configurazione"]
+        self.assertEqual(cfg["pagina_dimensione"], 5000)
 
     @patch(
         "apps.ui.services.lista_preferenza_service.PermissionResolver"

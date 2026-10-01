@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — L'OBBLIGO DEL SECONDO FATTORE SULLA CREDENZIALE
+#   Brief: brief-db-secondo-fattore-totp, sezione 2.1 (decisione di Tid del
+#   2026-09-28: obbligo = flag sulla credenziale OPPURE profilo privilegiato).
+#
+# ── ⭐ PERCHE' SULLA CREDENZIALE ─────────────────────────────────────
+#   Il vecchio `totp_obbligatorio` stava su anagrafiche.identita_digitali, una
+#   riga per VESTE: e' uscito con 90_end/20260925-25 (D-10) ma non era mai
+#   arrivato qui. La password e' una, il secondo fattore protegge quella: vale
+#   per tutte le porte, come il blocco dell'admin.
+#
+# ── ⚠️ LA RIGA ASSENTE VALE false ────────────────────────────────────
+#   Come le altre colonne di config.credenziali: il default e' quello della
+#   riga che non c'e'. Lo legge una sola funzione, script.fn_totp_obbligatorio
+#   (20260929-13), e lo scrive una sola, script.fn_imposta_totp_obbligatorio
+#   (-12). Nessun backfill: la colonna nasce false su ogni riga esistente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260929-05-alter-credenziali-add-totp-obbligatorio-mctit.yaml
+
+  - changeSet:
+      id: 20260929-05-alter-credenziali-add-totp-obbligatorio
+      author: mctit
+      failOnError: true
+      comment: >
+        config.credenziali.totp_obbligatorio boolean NOT NULL DEFAULT false: l'obbligo del
+        secondo fattore deciso sulla CREDENZIALE (una per tutte le porte). La riga assente vale
+        false. Letto da script.fn_totp_obbligatorio, scritto da script.fn_imposta_totp_obbligatorio.
+        Brief: brief-db-secondo-fattore-totp §2.1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: credenziali }
+            - not:
+                - columnExists:
+                    { schemaName: config, tableName: credenziali, columnName: totp_obbligatorio }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.credenziali
+                  ADD COLUMN totp_obbligatorio boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN config.credenziali.totp_obbligatorio IS
+                  'Secondo fattore (TOTP) obbligatorio per questa CREDENZIALE, deciso da un SUPER_ADMIN (script.fn_imposta_totp_obbligatorio). E'' una delle due fonti dell''obbligo: l''altra e'' un profilo con richiede_secondo_fattore (config.profili_accesso). La risposta unica e'' script.fn_totp_obbligatorio. Riga assente = false. Brief: brief-db-secondo-fattore-totp §2.1.';
+
+              COMMENT ON TABLE config.credenziali IS
+                  'Stato della CREDENZIALE (1:1 con django.auth_user): la password e'' una e vale per tutte le porte, e qui sta cio'' che le appartiene. La riga nasce alla prima scrittura; la sua ASSENZA vale «nessun tentativo, non bloccata, nessun obbligo di cambio password, nessun obbligo di secondo fattore». Nessuno la legge o scrive fuori dal DB: lo fanno le funzioni di script (fn_check_blocco_login, fn_registra_tentativo_login, fn_azzera_tentativi_credenziale, fn_blocca_credenziale, fn_sblocca_credenziale, fn_get/fn_imposta_deve_cambiare_password, fn_totp_obbligatorio, fn_imposta_totp_obbligatorio). All''app solo SELECT. Niente storico (cambierebbe a ogni password sbagliata), niente RLS (nessuno scope, letta prima del login). Brief: brief-db-blocco-login-per-credenziale, brief-db-secondo-fattore-totp.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.credenziali DROP COLUMN IF EXISTS totp_obbligatorio;

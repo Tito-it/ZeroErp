@@ -8,12 +8,12 @@ import Select from 'primevue/select'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import api from '../api'
+import { lookupTipiRuoloRicerca, ricercaSoggetti } from '../api/ricerca'
 import { useApiHandler } from '../composables/useApiHandler'
 import { usePagination } from '../composables/usePagination'
 import { useContextStore } from '../../stores/context'
-import { DRAWER_WIDTH, TIPO_RUOLO } from '../constants'
-import { NAV_ICONS } from '../navigation'
+import { DRAWER_WIDTH, MANAGE_ICONS, RICERCA, STATUS_ICONS, TIPO_RUOLO } from '../constants'
+import { termineCorto } from '../utils/listParams'
 import DrawerTitle from './DrawerTitle.vue'
 import SearchDetailTable from './details/SearchDetailTable.vue'
 import { useAuthStore } from '../../stores/auth'
@@ -41,6 +41,13 @@ const emit = defineEmits(['update:visible'])
 const tipiRuolo = ref([])
 const selectedTipoRuolo = ref(null)
 const searchTerm = ref('')
+// Il termine come lo legge il backend (`require_min_search_length` fa lo
+// `strip`): la soglia si misura su questo, non sul testo della casella —
+// « ab» sono tre caratteri nella casella e un 400 per il backend. La soglia
+// e' quella di progetto (`termineCorto` senza `minCaratteri`): la ricerca
+// universale non e' una lista a catalogo.
+const termine = computed(() => searchTerm.value.trim())
+const termineInsufficiente = computed(() => !termine.value || termineCorto(termine.value))
 const auth = useAuthStore()
 
 // Etichetta di perimetro sulla ricerca (P-2c): qui il rischio non e' «non
@@ -77,7 +84,7 @@ const showPaginator = computed(() => {
 // Scopo: carica i tipi ruolo visibili nella ricerca
 async function loadTipiRuolo() {
   const data = await execute(
-    () => api.get('/core/lookup/tipi-ruoli/', { params: { ricerca_visibile: true } }),
+    () => lookupTipiRuoloRicerca(),
     { silent: true }
   )
   if (data?.results) {
@@ -90,20 +97,20 @@ async function loadTipiRuolo() {
 
 // Scopo: esegue la ricerca soggetti con i parametri correnti
 async function doSearch() {
-  if (!selectedTipoRuolo.value || searchTerm.value.length < 3) {
+  if (!selectedTipoRuolo.value || termineInsufficiente.value) {
     results.value = []
     return
   }
 
   const params = {
-    q: searchTerm.value,
+    q: termine.value,
     tipo_ruolo_id: selectedTipoRuolo.value.id,
     ...pagination.queryParams.value,
     ...(sortField.value ? { order_by: sortField.value, order_dir: sortOrder.value === 1 ? 'ASC' : 'DESC' } : {})
   }
 
   const data = await execute(
-    () => api.get('/core/search/', { params }),
+    () => ricercaSoggetti(params),
     { silent: true }
   )
   if (data) {
@@ -229,7 +236,7 @@ watch(() => props.visible, (newVal) => {
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :title="t('search.title')" :icon="NAV_ICONS.SEARCH" />
+      <DrawerTitle :title="t('search.title')" :icon="MANAGE_ICONS.RICERCA" />
     </template>
     <div v-if="contentReady" class="app-drawer-content search-drawer-content">
       <!-- Filtri ricerca -->
@@ -244,7 +251,7 @@ watch(() => props.visible, (newVal) => {
             @change="onFilterChange"
           />
           <div class="search-input-wrapper">
-            <i class="pi pi-search search-input-icon" />
+            <i class="search-input-icon" :class="MANAGE_ICONS.RICERCA" />
             <InputText
               v-model="searchTerm"
               :placeholder="t('search.placeholder')"
@@ -253,7 +260,7 @@ watch(() => props.visible, (newVal) => {
             />
             <Button
               v-if="searchTerm"
-              icon="pi pi-times"
+              :icon="MANAGE_ICONS.SVUOTA"
               text
               rounded
               size="small"
@@ -269,7 +276,7 @@ watch(() => props.visible, (newVal) => {
            saperlo, perche' due omonimi di emittenti diversi sono voci
            indistinguibili. -->
       <div v-if="auth.perimetroMultiEmittente" class="search-perimetro">
-        <i class="pi pi-info-circle" />
+        <i :class="STATUS_ICONS.INFO" />
         <span>{{ t('common.perimetro_emittente.etichetta_ricerca') }}</span>
       </div>
 
@@ -296,7 +303,7 @@ watch(() => props.visible, (newVal) => {
       >
         <template #empty>
           <div class="search-empty">
-            {{ searchTerm.length < 3 ? t('search.min_chars') : t('common.no_results') }}
+            {{ termineInsufficiente ? t('search.min_chars', { n: RICERCA.MIN_CARATTERI }) : t('common.no_results') }}
           </div>
         </template>
 
@@ -417,6 +424,6 @@ watch(() => props.visible, (newVal) => {
 .search-empty {
   text-align: center;
   padding: 2rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 </style>

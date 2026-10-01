@@ -11,14 +11,34 @@
 >   su `dev/db-tid`, e i file di CI. Nessun conteggio di righe di lavoro è usato
 >   come argomento.
 >
-> ✅ **Sfoltito il 2026-09-12.** Le voci chiuse fra l'8 e l'11 settembre — D1,
-> D2, D3, D10, la decisione di D8 e la metà di D4/D5 — sono ridotte a **data di
-> chiusura, stato attuale e rimando al brief**. Il dettaglio di com'erano e di
-> come si è arrivati a chiuderle sta nei brief citati e nella storia git di
-> questo file: qui avrebbe fatto sembrare il documento vecchio. Le voci aperte
-> restano com'erano al 2026-09-08, con i numeri aggiornati dove il registro sta
-> nel repo (e allora con la data).
-
+> ✅ **Come è tenuto.** §3 contiene **solo il lavoro che resta**, §6 ne è la
+> check-list, e le voci chiuse stanno in fondo, in **§7 «Attività svolte»**, con
+> la data e il rimando al brief. Quando una voce ha ancora una parte aperta il
+> numero compare **due volte**: in alto ciò che resta, in fondo ciò che è fatto
+> (`D6`, `D7`, `D11`, `D12`). Il dettaglio di come si è arrivati a chiudere sta
+> nei brief e nella storia git di questo file (sfoltito il 12-09, riordinato il
+> 20-09, il 22-09 e il 26-09).
+>
+> ✅ **Riordinato il 2026-09-26.** Usciti da §3 perché fatti o superati: in D6 la
+> tabella delle tre `SECURITY DEFINER` «senza `search_path`» e l'avvertimento su
+> `dblink` (i pin del 12-09 includono `public`; il vincolo resta scritto in
+> D6-bis); in D7 il triage del 20-09, la rev `20260920-01`, la corsa del 21-09
+> con il suo rimedio, il debito dei `COMMIT`/autocommit e i residui `PGTR…`
+> sullo scratch — chiusi dal giro 2 e riassunti in §7 D7. Il difetto di
+> `storico.parameters` trovato nel lotto 1 è chiuso il 25-09. In D8 `magazzino`
+> non è più «modellato e non scritto»: ha i lotti 1 e 2.
+>
+> ✅ **Numeri rimisurati il 2026-09-26** — i registri che stanno nel repo si
+> rimisurano, non si citano: suite pgTAP a **714** file (conteggio della CI);
+> `SOGLIA_THROWS_SENZA_DISCRIMINANTE` a **117** (123 al 20-09, 131 quando questa
+> valutazione è stata scritta); `baseline-rossi.tsv` di sviluppo a **12** file
+> (16 al 12-09). ✅ **La CI ha misurato il 26-09: 227 rossi su 714**, contro
+> **361** noti in `baseline-rossi-ci.tsv` (la baseline sullo scratch
+> `zeroerp_ci` del 24-09 dava 229 su 687): il registro scende a 227 solo con
+> `pgtap-baseline-ci-rientrati.sh` lanciato sul log di **questa** corsa, il
+> giorno stesso. I numeri che stanno solo nel catalogo del database
+> (`vw_codici_errore_da_dichiarare` 545, `rls_perimetro_debito` 7) sono del
+> 20-09: la data è accanto.
 ---
 
 ## 0. Come si legge, e perché il metodo conta più del voto
@@ -59,7 +79,7 @@ vista). Non sono valutati.
 **L'unico allarme vero era «test coverage 7.0/10, priorità alta»**, e sette mesi
 dopo era ancora l'allarme — non perché i test non fossero cresciuti (94 → **600
 file**, ~6.183 asserzioni), ma perché il problema non era il numero: era che
-**nessuno li faceva contare**. Vedi §3 D1 (chiuso il 2026-09-09).
+**nessuno li faceva contare**. Vedi §7 D1 (chiuso il 2026-09-09).
 
 Erano corrette anche: la lode ai trigger generici (oggi il riuso è
 strutturalmente più forte di allora), l'error handling centralizzato, la FK index
@@ -67,27 +87,27 @@ policy, la disciplina Liquibase.
 
 ### 1.2 Cosa non reggeva, già allora
 
-| Diceva febbraio | Perché non reggeva |
-| --- | --- |
-| «`contabilita`: **0 test, gap critico, dominio business-critical**» | ⛔ **Sbagliato allora e sbagliato oggi.** Lo schema `contabilita` è **vuoto**: zero tabelle, zero funzioni, zero viste. La misura «0 test» è stata letta come difetto senza chiedere al modello *cosa* avrebbe dovuto coprire. È il caso da manuale della Regola zero: un conteggio ha disegnato una priorità alta su un perimetro che non esiste |
-| «`acquisti`: 0 test, **critico — specchia vendite**» | Mezzo giusto. Che *specchi* vendite è un'affermazione sul modello, e vale. Che il rimedio sia «aggiungere test» no: mancano prima **le funzioni** — `acquisti` ha 42 FK e 2 funzioni. Non si collauda un dominio che non è stato scritto |
-| «`clienti` ha 18 trigger → valutare consolidamento (**priorità bassa**)» | Osservazione a livello di **sintomo**. Il numero non è una scelta di stile: è la conseguenza meccanica di un pattern che genera **un trigger per figlia**. Oggi `catalogo.articoli` ne ha **46**. La domanda giusta non era «consolidare?» ma «la forma del pattern regge al crescere delle figlie?» — vedi §3 D9 |
-| «Voto 8.9/10 — design **production-ready**» | Nessuna area era pesata per conseguenza, e due delle domande che decidono la frase «production-ready» non erano nella griglia: *chi vede quali righe* (la RLS non esisteva ancora) e *cosa impedisce a una regressione di entrare* |
-| «509 pagine manuali, gap su 3 schemi» | Corretto e **chiuso**: oggi 1.410 pagine manuali su 1.500 auto-generate. `magazzino` 32, `acquisti` 11, viste coperte |
+| Diceva febbraio                                                          | Perché non reggeva                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| «`contabilita`: **0 test, gap critico, dominio business-critical**»      | ⛔ **Sbagliato allora e sbagliato oggi.** Lo schema `contabilita` è **vuoto**: zero tabelle, zero funzioni, zero viste. La misura «0 test» è stata letta come difetto senza chiedere al modello *cosa* avrebbe dovuto coprire. È il caso da manuale della Regola zero: un conteggio ha disegnato una priorità alta su un perimetro che non esiste |
+| «`acquisti`: 0 test, **critico — specchia vendite**»                     | Mezzo giusto. Che *specchi* vendite è un'affermazione sul modello, e vale. Che il rimedio sia «aggiungere test» no: mancano prima **le funzioni** — `acquisti` ha 42 FK e 2 funzioni. Non si collauda un dominio che non è stato scritto                                                                                                         |
+| «`clienti` ha 18 trigger → valutare consolidamento (**priorità bassa**)» | Osservazione a livello di **sintomo**. Il numero non è una scelta di stile: è la conseguenza meccanica di un pattern che genera **un trigger per figlia**. Oggi `catalogo.articoli` ne ha **46**. La domanda giusta non era «consolidare?» ma «la forma del pattern regge al crescere delle figlie?» — vedi §3 D9                                |
+| «Voto 8.9/10 — design **production-ready**»                              | Nessuna area era pesata per conseguenza, e due delle domande che decidono la frase «production-ready» non erano nella griglia: *chi vede quali righe* (la RLS non esisteva ancora) e *cosa impedisce a una regressione di entrare*                                                                                                               |
+| «509 pagine manuali, gap su 3 schemi»                                    | Corretto e **chiuso**: oggi 1.410 pagine manuali su 1.500 auto-generate. `magazzino` 32, `acquisti` 11, viste coperte                                                                                                                                                                                                                            |
 
 ### 1.3 Le proposte di automazione di febbraio, sette mesi dopo
 
-| # | Proposta | Stato al 2026-09-08 |
-| --- | --- | --- |
-| 1 | Scaffolding changelog YAML | ⛔ non fatto |
-| 2 | Scaffolding pgTAP | ⚠️ parziale — `db/pgtap/_TEMPLATE.sql.txt` + `docs/it/guide/pgtap-come-si-scrive-un-test.md` |
-| 3 | Generatore `loadUpdateData` da CSV | ⛔ non fatto (esiste `scripts/gen_seed_lista.py`, che è un'altra cosa) |
-| 4 | Linter `%TYPE` | ⛔ non fatto |
-| 5 | `fn_setup_standard_table` | ⭐ **superata da qualcosa di meglio.** Il framework automazioni (`dbops.fn_run_automations_*` + `automation_scope`/`automation_rules_tbl`) applica audit, `tx_id`, storico, lock colonne, cleanup e delete-block **per pattern** nella passata `ci_apply`. Non serve chiamarla per tabella: non serve chiamarla affatto |
-| 6 | Validatore pre-deploy | ⭐ **realizzato in forma migliore**: sette cancelli statici in `ci-validate.yaml` (`runOnChange`, preambolo pgTAP, letterali SQL, preCondition su `80_data`, DDL su trigger di automazione, GRANT ai ruoli batch, licenze) più `scripts/ci-local.sh`, che replica la CI in locale |
-| 7 | Diff signature funzioni | ⛔ non fatto |
-| 8 | Report trigger per tabella | ⚠️ interrogabile (`dbops.vw_trigger_functions`), non confezionato |
-| 9 | Template Liquibase per pattern | ⛔ non fatto — e in buona parte reso inutile dal #5 |
+| #   | Proposta                           | Stato al 2026-09-08                                                                                                                                                                                                                                                                                                    |
+| --- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Scaffolding changelog YAML         | ⛔ non fatto                                                                                                                                                                                                                                                                                                            |
+| 2   | Scaffolding pgTAP                  | ⚠️ parziale — `db/pgtap/_TEMPLATE.sql.txt` + `docs/it/guide/pgtap-come-si-scrive-un-test.md`                                                                                                                                                                                                                            |
+| 3   | Generatore `loadUpdateData` da CSV | ⛔ non fatto (esiste `scripts/gen_seed_lista.py`, che è un'altra cosa)                                                                                                                                                                                                                                                  |
+| 4   | Linter `%TYPE`                     | ⛔ non fatto                                                                                                                                                                                                                                                                                                            |
+| 5   | `fn_setup_standard_table`          | ⭐ **superata da qualcosa di meglio.** Il framework automazioni (`dbops.fn_run_automations_*` + `automation_scope`/`automation_rules_tbl`) applica audit, `tx_id`, storico, lock colonne, cleanup e delete-block **per pattern** nella passata `ci_apply`. Non serve chiamarla per tabella: non serve chiamarla affatto |
+| 6   | Validatore pre-deploy              | ⭐ **realizzato in forma migliore**: sette cancelli statici in `ci-validate.yaml` (`runOnChange`, preambolo pgTAP, letterali SQL, preCondition su `80_data`, DDL su trigger di automazione, GRANT ai ruoli batch, licenze) più `scripts/ci-local.sh`, che replica la CI in locale                                       |
+| 7   | Diff signature funzioni            | ⛔ non fatto                                                                                                                                                                                                                                                                                                            |
+| 8   | Report trigger per tabella         | ⚠️ interrogabile (`dbops.vw_trigger_functions`), non confezionato                                                                                                                                                                                                                                                       |
+| 9   | Template Liquibase per pattern     | ⛔ non fatto — e in buona parte reso inutile dal #5                                                                                                                                                                                                                                                                     |
 
 ⭐ Le due proposte che sono state realizzate sono anche le due che hanno cambiato
 forma strada facendo. Le sette non fatte sono tutte **acceleratori di scrittura**:
@@ -117,9 +137,10 @@ meccanismo suo, e non da una policy dimenticata.
 
 ⚠️ **Ed era anche l'area con il difetto peggiore** (D2, D3): costruita bene dove
 era finita, ed era finita su **una famiglia di documenti su sei**, con lo storico
-interamente fuori. ✅ Chiusi entrambi l'11-09-2026: il dominio documento è
+interamente fuori. ✅ Chiusi entrambi l'11-09-2026 (§7): il dominio documento è
 protetto fino ai satelliti e ogni versione di storico porta lo scope congelato.
-Resta D4 (tre policy inerti, a registro).
+Resta **D8** — le due policy inerti di `acquisti`, che aspettano il modello, a
+registro con la ragione.
 
 ### 2.2 ⭐ I presidi e i registri del debito — un artefatto raro
 
@@ -138,14 +159,14 @@ progetto e vanno considerate un asset, non uno strumento.
 
 ### 2.3 Il codice errore come contratto a tre lati
 
-852 codici a catalogo, 847 messaggi, dieci classi. Il contratto è esplicito:
+897 codici a catalogo, 847 messaggi, dieci classi. Il contratto è esplicito:
 `codice` → backend (status HTTP e `ui_action`), `context->>'campo'` → frontend,
 `VARIADIC valori` → l'operatore. Con il presidio del «terzo lato»
 (`dbops.vw_codici_errore_da_dichiarare`) e il «rubinetto» che impedisce a un
 codice di allargare il proprio significato.
 
-⚠️ Il registro non cala: 508 codici su 852 risultano non dichiarati lato
-applicativo. Vedi §3 D11.
+⚠️ **Il registro non cala: cresce.** 545 codici su 897 risultano non dichiarati
+lato applicativo — erano 508 su 852 l'08-09. Vedi §3 D11.
 
 ⛔ **Sei codici vivi non hanno nessun messaggio.** Tutti `AVVISO`, tutti nominati
 da esattamente una funzione: `W_FONDO_ESEGUITO_NON_RESETTABILE`,
@@ -189,266 +210,64 @@ PostgreSQL 18, Liquibase 5, `daterange`/`tstzrange` nativi su 18 tabelle (con
 
 ---
 
-## 3. I difetti che pesano oggi, in ordine di conseguenza
+## 3. I difetti **aperti**, in ordine di conseguenza
 
-### ✅ D1 — Il cancello pgTAP in CI non misurava niente — CHIUSO il 2026-09-09
+> ✅ **Le voci chiuse non stanno qui**: sono in **§7 «Attività svolte»**, con la
+> data e il rimando al brief — chiuse **per intero** D1, D2, D3, D4, D5, D10,
+> D13, D14; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
+> registri calati), D12 (la quantità).
+>
+> ⭐ **D15 è nata dalla chiusura di D14** (2026-09-22) e **D16** da un test
+> diventato rosso da solo (2026-09-23).
+>
+> Qui sotto, **solo il lavoro che resta**: D6, D7, D8, D9, D11, D12, D15, D16.
 
-Il passo «Suite pgTAP» di `ci-validate.yaml` (nato il 2026-08-07) girava con
-`continue-on-error: true` e leggeva una baseline che non era mai stata
-committata: l'esito di 600 file e ~6.183 asserzioni veniva buttato via a ogni
-corsa. Era il §6 punto 5 della guida sui presidi applicato al contrario — *un
-cancello che passa perché non ha misurato niente è peggio di un cancello
-assente*.
+### 🟠 D6 — Resta solo D6-bis: i pin e il registro degli owner sono chiusi (§7)
 
-✅ **Chiuso il 2026-09-09**, tutto nello stesso giorno:
+✅ I pin del `search_path` sulle tre DEFINER di `postgres` dal 12-09, e il
+registro degli owner con la sync **riservati al migratore** dal 26-09: §7 D6.
+Qui resta D6-bis.
 
-* `scripts/pgtap-baseline.sh` classifica con `grep -qE "(ERRORE|ERROR):"` — il
-  server della CI parla inglese, e con la sola stringa italiana nessun rosso
-  poteva risultare `ERRORE_FIXTURE`. E in `--update` sulla suite intera **si
-  rifiuta di scrivere** se non passa nemmeno un file: una corsa a zero verdi ha
-  misurato l'ambiente, non la suite (esattamente ciò che sarebbe successo sullo
-  scratch senza `CREATE EXTENSION pgtap`: 600 rossi su 600, committati per
-  sempre come debito noto);
-* `db/pgtap/baseline-rossi-ci.tsv` committato, **misurato dalla CI** e non in
-  locale (407 rossi su 601 alla prima corsa);
-* `continue-on-error` tolto dopo una corsa di confronto verde, e il ramo di
-  bootstrap ora **fallisce** dopo aver stampato la baseline: un file sparito non
-  può spegnere il cancello in silenzio.
+#### D6-bis — una forma di `search_path` per le 38 `SECURITY DEFINER`
 
-⚠️ Quello che resta è il registro, che deve calare: **403 righe al 2026-09-12**
-(323 `ERRORE_FIXTURE`, 80 `ASSERZIONE`) → D7.
+Le `SECURITY DEFINER` proprie sono **38**, e il `search_path` ha sei forme
+(2026-09-08, con i tre pin del 12-09):
 
----
-
-### ✅ D2 — Il perimetro emittente si fermava alla testata — CHIUSO l'11-09-2026
-
-Delle sei famiglie di documento di `vendite`, una sola (`fatture`) era protetta
-fino a righe e satelliti; le altre cinque avevano la policy sulla testata e
-**nessuna** sulle figlie, con `zeroerp_app` in `SELECT, INSERT, UPDATE, DELETE`
-su tutte — e almeno una vista (`vw_preventivi_righe_dettaglio`) le leggeva
-senza passare dalla testata. Una riga di documento *ha* un emittente, quello
-della sua testata: il modello lo ammetteva per costruzione.
-
-✅ **Chiuso l'11-09-2026** — brief
-`work-done/brief-db-perimetro-emittente-righe-documento.md`: **nove famiglie
-armate** (non le cinque della voce: un elenco scritto a mano non è un perimetro,
-e a quello mancavano sei figlie di `fatture` e le sette partizioni di
-`vendite.note`), registro del debito da 33 a **10 righe**, `db/pgtap/rls/` da
-30 a 39 file.
-
-⭐ Ne è rimasto in servizio un **presidio a criterio transitivo** —
-`dbops.vw_rls_perimetro_scoperto` + `dbops.rls_perimetro_debito` +
-`db/pgtap/rls/test-rls-perimetro-scoperto.sql`: una tabella nuova con una FK
-verso una protetta esce `NON_DICHIARATO` e fa rosso il test 2.
-
-⚠️ Le 10 righe che restano non sono D2 non finito: sono decisioni di modello su
-chiavi nullable, la domanda gemella del legame emittente-BA e i cantieri di
-`acquisti`/`shop` (→ D4, D8), ognuna con la ragione scritta nel registro.
-
----
-
-### ✅ D3 — `storico` era interamente fuori dal perimetro — CHIUSO l'11-09-2026
-
-120 tabelle in `storico`, zero con RLS, 52 con `SELECT` a `zeroerp_app`: il
-dato vivo di `vendite.fatture` era protetto da due policy, **ogni sua versione
-precedente no**. Chiudere D2 senza D3 avrebbe solo spostato il punto da cui si
-legge.
-
-✅ **Chiuso l'11-09-2026** (applicato alle 19:54, pgTAP senza regressioni) —
-brief `work-done/brief-db-rls-storico-scope-congelato.md`. Lo scope **non si
-deriva a runtime dalla madre: si cattura alla scrittura e si congela** in
-`origine_schema` + `scope_emittente_fiscale_id` (mappa
-`dbops.storico_scope_policy`, ripiego sull'archivio del padre). Le **37** shadow
-delle madri protette hanno policy generate (`FOR SELECT` sull'emittente
-congelato, scrittura del trigger libera); backfill di 65.751 versioni, zero
-residue; l'applicazione non può cancellare una versione (`REVOKE DELETE` su
-tutto lo schema). Le tabelle nuove nascono armate dal generatore, e
-`dbops.vw_storico_scope_da_dichiarare` (settimanale, dal 12-09) vede quelle che
-non lo sono. Il lavoro è stato **uno**, non 120: la forma delle shadow è
-uniforme e generata.
-
-✅ **`dbops.audit_log`** — stessa famiglia, rimedio diverso, chiuso anch'esso
-l'11-09 (brief §8). Non è un registro di dominio: ci scrivono solo `dbops` e
-`maintenance`. Quindi il presidio non è una policy ma un **cancello** alla
-scrittura — `dbops.vw_audit_log_scrittori_fuori_perimetro`, natura CANCELLO a
-catalogo — più il **REVOKE di `UPDATE`/`DELETE`** all'app, dichiarato nel loop
-dei grant (`v_registri_append_only`, con `dbops.error_log`): *un registro di
-audit modificabile da chi è auditato non è un registro.*
-
----
-
-### ✅ D4 — Tre tabelle avevano una policy e la RLS spenta — CHIUSO il 2026-09-12 (per la parte che era D4)
-
-`acquisti.ddt`, `acquisti.ordini`, `shop.ricevute`: `pg_policy` ha la riga,
-`relrowsecurity` è `false`. **La policy non filtra niente.**
-
-⛔ È il difetto che si auto-nasconde: chi verifica con `EXISTS (SELECT 1 FROM
-pg_policies …)` legge verde. La policy *esiste*. Non è **accesa**.
-
-✅ **L'invariante generale è presidiato dall'11-09-2026** (cantiere D2): è il
-criterio `POLICY_INERTE` di `dbops.vw_rls_perimetro_scoperto`, con il caso
-costruito nel test 7 di `test-rls-perimetro-scoperto.sql`. Le tre tabelle sono
-le sue tre righe di debito dichiarato, e il registro dice **perché** non si
-accendono:
-
-* `acquisti.ddt` e `acquisti.ordini` hanno una policy di **sola veste
-  `FORNITORE_PORTALE`** e **nessuna colonna emittente**: la RLS è default-deny,
-  accenderla renderebbe le due tabelle invisibili e non scrivibili
-  all'**operatore**, che ci ha `SELECT/INSERT/UPDATE/DELETE`. ⇒ *Manca il
-  modello, non l'accensione* — è D8, non D4;
-* `shop.ricevute` è un caso da un minuto: `zeroerp_app` non ha **nessun** GRANT
-  su quella tabella, quindi accendere la RLS non toglie niente a nessuno.
-  ✅ **Pagata e applicata il 2026-09-12** (decisione di Tid): changeSet
-  `20260912-42` (`ENABLE`) + `-43` (le due righe fuori dal registro, 10 → 8),
-  pgTAP senza regressioni — brief `brief-db-fixture-che-costruiscono-d7-d6-d4.md` §5.
-  ⇒ Di D4 resta solo ciò che **è D8**: le due di `acquisti`, a registro con la
-  ragione.
-
----
-
-### 🟠 D5 — Il criterio con cui nasce un presidio è un indicatore in ritardo
-
-Tre invarianti della stessa famiglia — «una proprietà strutturale che, se
-violata, non produce nessun errore visibile»:
-
-| Invariante | Presidiato? |
-| --- | --- |
-| Una vista che tocca dati in RLS ha `security_invoker` | ⭐ **sì, e benissimo**: criterio transitivo, casi costruiti, ha sostituito quattro elenchi a mano (2026-09-07). Zero violazioni |
-| Una tabella con policy ha la RLS **accesa** | ✅ **sì dall'11-09-2026**: criterio `POLICY_INERTE` di `dbops.vw_rls_perimetro_scoperto`, caso costruito nel test 7. Le 2 violazioni rimaste (`acquisti`, → D8) sono dichiarate a registro con la loro ragione |
-| Una funzione `SECURITY DEFINER` ha un `search_path` fisso | ✅ **sì dal 2026-09-12**: `db/pgtap/dbops/test-security-definer-search-path-v1.sql` — invariante generale sul catalogo (estensioni escluse per `pg_depend`), verde con i pin di D6 applicati, più due rubinetti per D6-bis (18 senza `pg_temp`, 5 con `public` prima) che possono solo calare |
-
-⭐ **La differenza fra le righe non è tecnica: è che le prime due hanno morso.**
-Il progetto costruisce un presidio quando un difetto si è già manifestato, o
-quando ci passa un cantiere che ne ha bisogno (la riga 2 è nata insieme al
-criterio `FIGLIA_DI_TABELLA_PROTETTA`, non perché qualcuno fosse tornato a
-chiudere D5). È un ottimo riflesso, ma è un criterio che arriva sempre
-**dopo**: la riga 3 non ha ancora morso, ed è già violata.
-
-**Rimedio** (scritto il 2026-09-12, vedi la riga 3): un pgTAP «postura di
-sicurezza» con il terzo criterio come invariante generale sul catalogo, non un
-elenco di nomi, e i debiti a soglia che può solo calare.
-
----
-
-### 🟠 D6 — Tre `SECURITY DEFINER` di `postgres`, eseguibili da chiunque, senza `search_path` — pin CHIUSI il 2026-09-12, resta il registro
-
-| Funzione | Owner | `EXECUTE` | `search_path` |
-| --- | --- | --- | --- |
-| `dbops.fn_generate_tx_id` | `postgres` | **PUBLIC** | ⛔ nessuno |
-| `dbops.fn_get_or_create_session_tx_id` | `postgres` | **PUBLIC** | ⛔ nessuno |
-| `dbops.fn_sync_functions_owner` | `postgres` | **PUBLIC** | ⛔ nessuno |
-
-La seconda sta sul percorso di scrittura di **305 trigger `tx_id`**, cioè quasi
-ogni scrittura del sistema. La terza **cambia il proprietario di funzioni**.
-
-⚠️ **Onestà sulla gravità**: non è sfruttabile oggi. I corpi qualificano quasi
-tutto (`dbops.transaction_ids`, `script.fn_ensure_logconn()`, `script.uuid_nil()`);
-l'unica chiamata non qualificata è `dblink(...)`, e per dirottarla servirebbe
-`CREATE` su uno schema nel `search_path` del chiamante — che `zeroerp_app` non ha
-(solo `USAGE` su `public`). Le funzioni non si risolvono da `pg_temp`.
-
-⛔ **Ma la difesa è tutta in un GRANT che nessun presidio verifica.** Il giorno in
-cui a un ruolo servisse `CREATE` da qualche parte, o si installasse un'estensione
-in uno schema scrivibile, tre funzioni con i privilegi del superutente
-diventerebbero una scala.
-
-✅ **Pin applicati il 2026-09-12** (`20260912-39/40/41`, pgTAP senza
-regressioni): tutti nella timeline normale, senza superuser — `-39/-40` con il **prestito di
-proprietà** via `fn_sync_functions_owner` (precedente `20260722-10`), `-41`
-con una **copia di servizio** della sync che fa da secondo DEFINER di
-postgres, perché la sync non può prestarsi a sé stessa. 🔴 Quel giro mostra
-che `zeroerp_app` — che scrive `dbops.sec_functions_owner` ed esegue la sync
-(`=X` a PUBLIC) — può rendersi proprietario delle sei DEFINER indurite: è il
-prossimo pezzo di D6 (registro e sync riservati al migratore). ⚠️ La forma
-**non** è
-`pg_catalog, pg_temp`, che il testo qui sopra proponeva: è `pg_catalog, public,
-pg_temp`, perché la catena tocca `dblink` che vive in `public` e il path di una
-DEFINER vale per tutto ciò che chiama. L'`EXECUTE` a PUBLIC su
-`fn_sync_functions_owner` è **valutato e non ritirato**: il migratore in CI ce
-l'ha solo via PUBLIC (brief `brief-db-fixture-che-costruiscono-d7-d6-d4.md` §3,
-archiviato in `work-done/` il 19-09).
-⭐ **Dal 19-09 il pezzo che resta ha un brief suo**,
-`work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md`,
-con due fatti letti dal vivo che cambiano la forma: l'app ha sulla sync anche
-un `EXECUTE` **esplicito** (`zeroerp_app=X/postgres`, dal loop dei grant —
-quindi la difesa sta nel corpo, non nell'ACL), e dentro una DEFINER
-`current_user` è il proprietario: la guardia legge **`session_user`**.
-
-⚠️ Seconda faccia, meno visibile: le `SECURITY DEFINER` proprie sono **38** e il
-`search_path` ha **cinque forme diverse**:
-
-| Forma | Quante |
-| --- | --- |
-| `pg_catalog, public` | 16 |
-| `pg_catalog, pg_temp` | 8 |
-| `public, pg_temp` | 5 |
-| `pg_catalog, pratiche, script, config, dbops, pg_temp` | 4 |
-| `pg_catalog, anagrafiche, config, script` | 2 |
-| *(nessuno)* | 3 |
+| Forma                                                  | Quante |
+| ------------------------------------------------------ | ------ |
+| `pg_catalog, public`                                   | 16     |
+| `pg_catalog, pg_temp`                                  | 8      |
+| `public, pg_temp`                                      | 5      |
+| `pg_catalog, pratiche, script, config, dbops, pg_temp` | 4      |
+| `pg_catalog, public, pg_temp` *(i pin del 12-09)*      | 3      |
+| `pg_catalog, anagrafiche, config, script`              | 2      |
 
 In **18 su 38** `pg_temp` non è elencato — e quando non è elencato PostgreSQL lo
-cerca **per primo** per le relazioni. Non è una preferenza di stile: è un pezzo di
-semantica. In altre 5 `public` viene **prima** di `pg_catalog`, che è l'ordine
-opposto a quello prudente.
+cerca **per primo** per le relazioni. In altre 5 `public` viene **prima** di
+`pg_catalog`, che è l'ordine opposto a quello prudente.
 
-#### 🔴 AVVERTIMENTO — la forma «prudente» rompe una di queste tre, in silenzio
-
-> Trovato il 2026-09-12 chiudendo `brief-db-un-destinatario-per-i-presidi` §13, su
-> un difetto della **stessa famiglia** ma preso dal verso opposto: lì un
-> `search_path` blindato non ha aperto una porta, ha **accecato** ciò che chiamava.
-
-⛔ **`SET search_path = pg_catalog, pg_temp` su `dbops.fn_get_or_create_session_tx_id`
-non si può applicare così com'è.** Quella funzione chiama **`dblink(...)` non
-qualificato** (verificato: `prosrc` non contiene `public.dblink`), e `dblink` vive
-in **`public`** — come `unaccent`, `postgis` e `plpgsql_check`. Togliendo `public`
-dal percorso, la chiamata non si risolve.
-
-🔴 **E non fallirebbe: degraderebbe.** Quel `dblink` sta dentro un
-`EXCEPTION WHEN OTHERS` — il «ripiego (c)» — che scrive un `RAISE WARNING` e torna
-la sentinella `script.uuid_nil()`. Quindi:
-
-| | |
-| --- | --- |
-| le scritture | ✅ continuano, nessun errore |
-| il `tx_id` | 🔴 **non viene più registrato** in `dbops.transaction_ids`, e la GUC di sessione non viene pubblicata |
-| chi se ne accorge | nessuno: un `WARNING` nel log |
-
-⇒ Si spegnerebbe il tracciamento delle transazioni sul percorso di **305 trigger**
-— quasi ogni scrittura del sistema — **senza un rosso da nessuna parte**.
-⭐ Ed è la firma esatta del difetto del brief §13: *chiamata a un'estensione non
-qualificata + `search_path` stretto + `WHEN OTHERS` = una cosa rotta che si
-traveste da esito normale.*
-
-✅ **Oggi non è rotto**, e va detto: quelle tre funzioni non hanno **alcun**
-`search_path`, quindi `dblink` si risolve e tutto gira. Il rischio nasce nel
-momento in cui si chiude D6.
-
-**L'ordine delle operazioni, ed è una riga in più:**
-
-1. qualificare la chiamata nel corpo — `public.dblink(...)` — con un changeSet suo;
-2. **poi** il `SET search_path` stretto.
-
-⚠️ **E questo è il vincolo per D6-bis**: una forma canonica **uguale per tutte** non
-esiste. Prima di stringere il `search_path` di una funzione va guardato se lei — o
-ciò che chiama — tocca un'estensione; se sì, o si qualifica la chiamata o `public`
-resta nell'elenco. ⛔ La regola non si può applicare a vista su 38 funzioni: si
-decide **per funzione**, guardando i suoi chiamati, e `pg_catalog, pg_temp` è la
-scelta *sbagliata* per chi usa un'estensione.
-⭐ Il caso già riparato mostra anche la forma giusta quando `public` serve davvero:
-`dbops.fn_check_funzioni_riferimenti_morti` pinna `pg_catalog, public, pg_temp`
-**e** qualifica la chiamata — i due strati insieme (changeSet `20260912-37`).
+⛔ **Una forma canonica uguale per tutte non esiste** (lezione del 12-09, §7 D6).
+`pg_catalog, pg_temp` **accieca** chi chiama un'estensione non qualificata —
+`dblink`, `unaccent`, `postgis`, `plpgsql_check` stanno tutte in `public` — e
+dentro un `EXCEPTION WHEN OTHERS` la cecità non fa un rosso: degrada in
+silenzio. Quindi si decide **per funzione**, guardando i suoi chiamati: o si
+qualifica la chiamata, o `public` resta nell'elenco. ⭐ La forma giusta quando
+`public` serve davvero è quella di `dbops.fn_check_funzioni_riferimenti_morti`:
+pinna `pg_catalog, public, pg_temp` **e** qualifica la chiamata (changeSet
+`20260912-37`). ⚠️ Vale anche per `fn_get_or_create_session_tx_id`: se un giorno
+il suo pin si stringesse, **prima** `public.dblink(...)` nel corpo, poi il pin.
 
 ---
 
 ### 🟠 D7 — La copertura dei test non è bassa: è concentrata
 
-600 file, ~6.183 asserzioni (2026-09-08). Il numero non dice niente; la
-distribuzione sì.
+600 file, ~6.183 asserzioni (2026-09-08; 714 file al 26-09, e `magazzino` da 1
+a 17 coi suoi lotti — D8). Il numero non dice niente; la distribuzione sì.
 
-| | mai nominato in un pgTAP | totale |
-| --- | --- | --- |
-| **Funzioni** | **315** | 829 (38%) |
-| **Tabelle** | **83** | 372 (22%) |
+|              | mai nominato in un pgTAP | totale    |
+| ------------ | ------------------------ | --------- |
+| **Funzioni** | **315**                  | 829 (38%) |
+| **Tabelle**  | **83**                   | 372 (22%) |
 
 *(«mai nominato» è la soglia più generosa possibile: essere nominato non
 significa essere collaudato. È un limite inferiore.)*
@@ -460,59 +279,93 @@ Per schema, i file di test: `vendite` 253, `script` 69, `anagrafiche` 66,
 
 ⚠️ E la copertura dichiarata è più alta di quella reale per due motivi già
 scritti nella guida sui presidi: **110 file** contengono uno `skip()`
-condizionato (su un DB ricostruito da zero si saltano, e un test saltato conta
-verde), e il debito `throws_ok` senza discriminante è a **131** — un
+condizionato (2026-09-08: su un DB ricostruito da zero si saltano, e un test
+saltato conta verde), e il debito `throws_ok` senza discriminante è a **117**
+(2026-09-26; 131 quando questa valutazione è stata scritta) — un
 `throws_ok(sql, NULL, NULL)` accetta *qualunque* errore, compreso quello
-sbagliato.
+sbagliato. Due volte, sanandone uno, è venuto fuori un test **verde per l'errore
+sbagliato** (§7 D11, §7 D7).
 
 ### 🔴 Il numero che conta davvero: la suite fuori dalla macchina di sviluppo
 
-Su un database **ricostruito da zero** — cioè quello di cui si ha bisogno il
-giorno in cui si prepara un'installazione nuova — la prima misura della CI
-(2026-09-09) ha dato **407 rossi su 601**. Il registro
-`db/pgtap/baseline-rossi-ci.tsv` al 2026-09-12 è a **403 righe** (323
-`ERRORE_FIXTURE`, 80 `ASSERZIONE`), su 634 file di test nel repo:
+Su un database **ricostruito da zero** — quello che serve il giorno in cui si
+prepara un'installazione nuova — la prima misura della CI (2026-09-09) ha dato
+**407 rossi su 601**. La misura più recente della CI, **227 rossi su 714**
+(2026-09-26; lo scratch `zeroerp_ci` dava 229 su 687 il 24-09), dice che oggi
+fuori dalla macchina di sviluppo la suite è **verde su due terzi dei file**. Il calo è
+lavoro vero, non igiene: la fixture che **costruisce** il mondo invece di
+cercarlo (§7 D7).
 
-| Schema | Rossi | | Schema | Rossi |
-| --- | --- | --- | --- | --- |
-| `vendite` | 215 | | `documenti` | 6 |
-| `script` | 50 | | `catalogo` | 6 |
-| `anagrafiche` | 42 | | `ui` | 5 |
-| `pratiche` | 37 | | `dbops` | 3 |
-| `pagamenti` | 15 | | `maintenance` | 1 |
-| `config` | 14 | | | |
-| `rls` | 9 | | **Totale** | **403** |
+⚠️ **Il registro però non lo sa ancora.** `db/pgtap/baseline-rossi-ci.tsv` è
+**fermo a 361 righe** dal 22-09, mentre la CI del 26-09 ne vede rossi 227: le righe rientrate le toglie
+`scripts/pgtap-baseline-ci-rientrati.sh` leggendo il **log della corsa CI**, e
+il log scade — va lanciato **il giorno stesso** della push su `Tito-dev` che
+tocca `db/`. Finché non succede, il cancello tollera come «noti» circa 134 file
+che sono già verdi: una regressione su uno di loro **non ferma il merge**.
 
-⛔ **La suite è verde per un terzo fuori dalla macchina di sviluppo.** Non è una
-sorpresa concettuale — la guida sui presidi §4 lo dice da mesi («69 file su 437
-contengono un salto condizionato… su un database vuoto non falliscono: si
-saltano») — ma il numero non era mai stato preso, ed è **sei volte** quella
-stima.
+⚠️ E il difetto vero non è la percentuale: è che quei file **passano sul DB di
+sviluppo**. Cioè la suite verifica in larga parte *lo stato di una macchina*,
+non che le migrazioni sappiano ricostruirla — e la seconda è la proprietà che
+serve al secondo cliente. Un rosso `ERRORE_FIXTURE` non esegue **nessuna**
+asserzione: sono aree che *sembrano* coperte.
 
-⚠️ E il difetto vero non è la percentuale: è che quei 403 file **passano sul DB
-di sviluppo**. Cioè la suite oggi verifica in larga parte *lo stato di una
-macchina*, non che le migrazioni sappiano ricostruirla. Sono due proprietà
-diverse, e la seconda è quella che serve al secondo cliente.
+#### Che cosa resta
 
-⭐ Dal 2026-09-09 il cancello tiene: un rosso **nuovo** ferma il merge (D1). Ma
-il registro cala solo se qualcuno lo abbassa, e 323 di quei file muoiono nella
-fixture — cioè **non eseguono nessuna asserzione**: sono le aree che *sembrano*
-coperte. La domanda che decide il triage è quanti di quei 323 sono «il test
-cerca un soggetto nei dati esistenti», un difetto noto e sanabile in blocco, e
-quanti sono altro.
+La ricetta è stabilita e i builder ci sono (§7 D7: la riga di contesto che
+costruisce se il DB è vuoto, il BB di composizione
+`dbops.fn_pgtap_crea_mondo_cliente()`, i builder di fattura, filiale, gestore,
+operatore umano, PDP e listino). Resta applicarla, e ciò che il giro 2 ha
+lasciato
+([brief-db-fixture-che-costruiscono-giro-2.md](../work-done/brief-db-fixture-che-costruiscono-giro-2.md)
+§5, §7, §9, §11):
 
-✅ **Il triage è cominciato dalla parte giusta, il 2026-09-12**: nel registro
-stavano **21 file del perimetro** (12 `script/test-fn-scope-*` + 9 `rls/`) —
-cioè i test delle funzioni che decidono *chi vede cosa* e della proprietà
-fail-closed — tutti con la stessa causa (fixture che cerca soggetti in un DB
-vuoto). Riscritti: **20 verdi su dbdev e su `zeroerp_ci`**, committati il 12-09 con la
-baseline di sviluppo senza regressioni; il ventunesimo
-(`test-role-batch-fatturazione-postura`) era un'altra classe — in CI il ruolo
-batch non veniva provisionato — e ha avuto il passo in `ci-validate.yaml`.
-Brief: `brief-db-fixture-che-costruiscono-d7-d6-d4.md` (archiviato in
-`work-done/` il 19-09). ✅ La CI ha detto la sua: i 21 sono usciti dal
-registro (14-09), e i rientrati li toglie
-`scripts/pgtap-baseline-ci-rientrati.sh`, non una mano.
+* ⏳ **certificare in CI** i rientrati dei lotti 1 e 2 — corsa e
+  `pgtap-baseline-ci-rientrati.sh` lo stesso giorno (361 → 227, misura CI del
+  26-09);
+* ⏳ **i 18 rossi del lotto 2**, da guardare uno per uno (elenco nel brief, §11
+  «Stato di chiusura»; ⚠️ per nome sono 19, scarto di uno da riconciliare), più
+  i 3 del lotto 1 da riconciliare (16 + 21 + 3 = 40 su 43);
+* ⏳ **lotto 3** — `pratiche` (37 a registro, quasi tutti verdi nella simulazione
+  del 20-09) — e **lotto 4** — `vendite` (211), a famiglie: dash, resi,
+  fatture, DDT, preventivi;
+* ⏳ i file che fissano `SET LOCAL app.current_user_id = '1'` (28 al 22-09:
+  l'utente 1 non esiste in CI) — una ricetta a sé, l'utente di sessione è
+  quello del mondo costruito;
+* ⏳ la **baseline di sviluppo** (`baseline-rossi.tsv`): 12 file, di cui **6**
+  muoiono nella fixture;
+* ⏳ i 109 file con `pgtap-runner: owner` (22-09): quanti di quei motivi siano
+  ancora veri dopo la rev `20260912-38` non è misurato;
+* 🔵 **decisione (Tid)**: i file legati a dati di **questa** macchina (gestore,
+  CF, PIVA, PDP GAS) — si riscrivono o si dichiarano test di macchina;
+* 🔵 **decisione (Tid)**: il ramo «ultimo SUPER_ADMIN» sull'identità è
+  raggiungibile o è codice morto? Oggi a rifiutare è sempre il guard generico
+  delle figlie, che scatta prima (brief giro 2, §7 punto 7).
+
+#### 🔵 Due cancelli da disegnare (Tid)
+
+1. **Il verso del registro** (brief giro 2, §6): un pgTAP che pesca in
+   `anagrafiche.*` o `vendite.*` con `LIMIT 1` senza passare da un builder è
+   rosso, con una soglia che può solo calare, come quella dei `throws_ok`.
+   Deciso il 22-09: **dopo** il primo lotto, che è chiuso.
+2. **La finestra differita dopo la riga di contesto.** La regola è scritta
+   (template §3, guida pgTAP, `COMMENT` di `fn_pgtap_set_contesto_operatore`):
+   *dopo la riga di contesto non si conta sulla finestra differita di default;
+   chi la vuole la riapre con `SET CONSTRAINTS ALL DEFERRED`*. Un cancello in
+   `guardrail_pgtap_preambolo.py` la renderebbe leggibile da uno script, ma il
+   censimento del 21-09 dà 9 candidati e 7 falsi positivi, e il criterio
+   «`IMMEDIATE` dopo una scrittura» è cieco sui file che **non hanno** un
+   `IMMEDIATE` (i `pgtap-differiti: escluso`: nove caduti il 23-09).
+
+⛔ Per tutti e due vale la lezione del 21-09: un criterio testuale conta le
+scritture che **vede**, e una scrittura che passa per una funzione
+(`fn_crea_*`, `fn_pgtap_crea_*`) è invisibile. Il cancello o guarda anche
+quelle, o **dichiara di non vederle** — nel messaggio, non in un commento.
+
+> ⭐ **Incrocio con D11, e decide l'ordine dei due lavori** (2026-09-20). Dei
+> `throws_ok` senza discriminante, **102** stavano in file a registro qui, e
+> **94** di quei 102 in file `ERRORE_FIXTURE` — che su un database ricostruito
+> non eseguono nessuna asserzione. Discriminarli lì è severità che si vede solo
+> su dbdev: prima la fixture, poi il discriminante.
 
 ---
 
@@ -523,13 +376,22 @@ scritto in `.codex/PROJECT_CONTEXT.md`, con la conseguenza che questa voce
 cercava: *ogni decisione presa su `vendite` è presa anche per `acquisti`*, e
 un'asimmetria fra i due si chiude subito, non in una «fase due». ⚠️ `storico`
 **non** è coperto dalla decisione come dominio (sul lato RLS l'ha chiuso D3).
-Ciò che segue resta vero finché il comportamento non c'è.
 
-| Schema | Tabelle | FK | CHECK | Funzioni | Viste | Test |
-| --- | --- | --- | --- | --- | --- | --- |
-| `magazzino` | 26 | 57 | 71 | **2** | 4 | **1** |
-| `acquisti` | 9 | 42 | 25 | **2** | 0 | **0** |
-| `vendite` (confronto) | 88 | 359 | 194 | 292 | 60 | 253 |
+✅ **Al 2026-09-26 i due schemi non sono più allo stesso punto.** `magazzino` ha
+il comportamento dei lotti 1 e 2 — il terreno vuoto
+(`work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md`, chiuso il 17-09), il
+motore (`work-done/brief-db-magazzino-lotto-2-motore.md`, lato DB chiuso il
+18-09) e i verbi con permesso
+(`work-done/brief-db-magazzino-verbi-con-permesso.md`, 25-09) — e **17** file
+pgTAP; resta aperto come cantiere (collaudo a video). ⛔ `acquisti` è ancora
+dove lo descrive la tabella: **zero** test, comportamento da scrivere. La
+tabella qui sotto è la fotografia dell'8-09 e per `acquisti` resta vera.
+
+| Schema                | Tabelle | FK  | CHECK | Funzioni | Viste | Test  |
+| --------------------- | ------- | --- | ----- | -------- | ----- | ----- |
+| `magazzino`           | 26      | 57  | 71    | **2**    | 4     | **1** |
+| `acquisti`            | 9       | 42  | 25    | **2**    | 0     | **0** |
+| `vendite` (confronto) | 88      | 359 | 194   | 292      | 60    | 253   |
 
 ⭐ Il modello c'è, ed è curato: 71 CHECK su `magazzino` non sono di un abbozzo.
 Manca lo **strato di comportamento**. In un progetto DB-first questo è un tipo
@@ -580,45 +442,24 @@ con più conseguenze e non era misurata.
 
 ---
 
-### ✅ D10 — I presidi non avevano un destinatario — CHIUSO l'11-09-2026
-
-30 viste di presidio in `dbops` e nessun canale che le portasse davanti a una
-persona su base regolare: sei lavori falliti da tre notti stavano in una vista
-che si chiama `vw_coda_lavori_**da_guardare**`, e guardare non era di nessuno.
-
-✅ **Chiuso l'11-09-2026** — catalogo `dbops.presidi` (la classificazione è
-**dato**, non un elenco di viste scritto in Python), digest costruito dal
-backend, due timer in servizio (giornaliero 07:00, settimanale lunedì 07:30),
-e il primo giro ha già riferito. Storia:
-`brief-db-un-destinatario-per-i-presidi.md`.
-
-⚠️ Residuo dichiarato: `maintenance.vw_job_run_da_guardare` guarda sette giorni
-e **non filtra i processi ritirati** (`obsoleto_dal`), quindi il debutto ha
-riferito un allarme su un processo obsoleto dal 07-09. Si è spento da sé con la
-finestra; se un processo ritirato debba uscire dalla vista è una decisione del
-team DB. *Un presidio che comincia col rumore insegna a non guardarlo*, ed è
-proprio la proprietà che il cantiere comprava.
-
----
-
 ### 🟡 D11 — I registri di debito non calano
 
 Un registro di debito è una buona invenzione **a condizione che scenda**. Stato
 al 2026-09-08, salvo dove è scritta un'altra data:
 
-| Registro | Oggi |
-| --- | --- |
-| `dbops.vw_codici_errore_da_dichiarare` | **508** su 852 codici |
-| `db/pgtap/baseline-rossi-ci.tsv` | **403** file al 2026-09-12 (323 `ERRORE_FIXTURE`, 80 `ASSERZIONE`) — nato il 09-09 con 407 |
-| `SOGLIA_THROWS_SENZA_DISCRIMINANTE` | **131** |
-| `dbops.vw_fk_con_indice_missing_policy` | **57** |
-| `db/pgtap/baseline-rossi.tsv` | **16** file al 2026-09-12 (9 `ERRORE_FIXTURE`, 7 `ASSERZIONE`) — erano 19 |
-| `dbops.rls_perimetro_debito` | **10** righe (nato l'11-09 con 33, → D2) |
-| `backend/scripts/tests/baseline-smoke.tsv` | 2 su 16 script (2026-09-12) |
-| Header di licenza mancanti | 2.042 file (misura 2026-08-26) |
-| `dbops.vw_indici_ridondanti_prefisso` | 1 |
-| Codici vivi senza messaggio | 6 (tutti `W_`, §2.3) |
-| `dbops.vw_processi_che_bypassano` | 1 (dichiarato, con data di ritiro) |
+| Registro                                   | Oggi                                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `dbops.vw_codici_errore_da_dichiarare`     | **545** su 897 codici (2026-09-20)                                                         |
+| `db/pgtap/baseline-rossi-ci.tsv`           | **361** file, fermo dal 2026-09-22 — nato il 09-09 con 407; la CI del 26-09 misura **227 rossi su 714**: il registro scende con `pgtap-baseline-ci-rientrati.sh` (D7) |
+| `SOGLIA_THROWS_SENZA_DISCRIMINANTE`        | **117** (2026-09-26; 129 all'08-09)                                                        |
+| `dbops.vw_fk_con_indice_missing_policy`    | **57**                                                                                     |
+| `db/pgtap/baseline-rossi.tsv`              | **12** file al 2026-09-24 (6 `ERRORE_FIXTURE`, 6 `ASSERZIONE`) — erano 19, poi 16 al 12-09 |
+| `dbops.rls_perimetro_debito`               | **7** righe (2026-09-20 — era 10, → D2)                                                    |
+| `backend/scripts/tests/baseline-smoke.tsv` | 2 su 16 script (2026-09-12)                                                                |
+| Header di licenza mancanti                 | 2.042 file (misura 2026-08-26)                                                             |
+| `dbops.vw_indici_ridondanti_prefisso`      | 1                                                                                          |
+| Codici vivi senza messaggio                | 6 (tutti `W_`, §2.3)                                                                       |
+| `dbops.vw_processi_che_bypassano`          | 1 (dichiarato, con data di ritiro)                                                         |
 
 ⭐ L'ultima riga è l'unica fatta bene: **una** voce, con il motivo e il momento in
 cui sparisce. Le prime quattro sono liste lunghe, e la guida sui presidi dice
@@ -627,9 +468,18 @@ trenta righe, nessuno lo leggerà»*. `rls_perimetro_debito` è nato nella forma
 giusta — ogni riga con la sua ragione — ed è calato di due terzi nel cantiere
 che l'ha aperto.
 
-⚠️ Le due baseline pgTAP meritano una riga a parte: **323 + 9 file falliscono
-nella fixture**, cioè non eseguono **nessuna** asserzione. La loro copertura
-vale zero, non «parziale» — e sono aree che *sembrano* coperte.
+⚠️ **E uno di questi registri cresce: i codici.** 508 → **545** su 897 (08-09 →
+20-09) mentre `rls_perimetro_debito` scendeva. Il motivo è strutturale e sta
+nella forma: gli altri hanno una **causa** e un **rimedio** (riscrivere la
+fixture, discriminare l'asserzione, armare la RLS), il registro dei codici
+misura il *terzo lato* — le dichiarazioni dell'applicativo — che si allarga a
+ogni dominio nuovo. Non è un presidio che mente: è un presidio **senza un
+verso**, ed è esattamente ciò che D11 chiede di dargli.
+
+⚠️ Le due baseline pgTAP meritano una riga a parte: i file `ERRORE_FIXTURE`
+(293 in CI al 20-09, 6 in sviluppo al 24-09) non eseguono **nessuna**
+asserzione. La loro copertura vale zero, non «parziale» — e sono aree che
+*sembrano* coperte.
 
 ---
 
@@ -645,124 +495,76 @@ il gap di febbraio è chiuso. Restano due cose:
 
 ---
 
-### ✅ D13 — Come `zeroerp_app`, l'operatore di un emittente non di default non creava un billing account — CHIUSO il 2026-09-13
+### 🔴 D15 — Nessuno analizza le tabelle: ogni piano nasce da stime di default
 
-Trovato il 2026-09-12: `INSERT INTO anagrafiche.billing_account … RETURNING id`
-moriva con «la nuova riga viola la regola di sicurezza per riga» (42501) ogni
-volta che l'emittente di chi agiva non era quello di default — la policy di
-lettura risolve il BA dal legame, il legame lo scrive il trigger **AFTER**
-`z90_link_ef` *dopo* il `RETURNING`, e nel frattempo
-`script.fn_get_ba_emittente_sr_id` ricadeva sul **default**, un'altra azienda.
-Il backend fa lo stesso `RETURNING` (`clienti_repository.create_billing_account`)
-⇒ con due emittenti in esercizio gli operatori del secondo non aprivano clienti.
+> Emerso il 2026-09-22 chiudendo D14 (brief §15.2 e §16.6). ⛔ Non è un residuo
+> di quel cantiere: è la **condizione** in cui sono state prese tutte le misure
+> di piano di questo progetto, compresa ogni riga di D14.
 
-✅ **Deciso da Tid il 2026-09-12 (opzione 1 di tre) e chiuso il 2026-09-13** —
-brief `brief-db-ba-riserva-emittente-operatore-d13.md`: *un BA non ancora
-collegato appartiene a chi lo sta creando*. La riserva del resolver ha ora
-**tre livelli** (mapping specifico; in sessione, l'emittente dell'operatore —
-la stessa funzione con cui il trigger scrive il legame; senza sessione, il
-default). Tre changeSet `20260913-01/02/03` applicati, baseline di sviluppo
-senza regressioni: la decisione (01), l'onestà del `PARALLEL SAFE` che cade
-sul resolver e sulla chiamante (02, la mossa già fatta il 18-08 sulla ricerca),
-e la **seconda copia** della regola trovata leggendo i chiamanti —
-`anagrafiche.fn_get_emittente_fiscale_pk`, usata dai guard dei documenti — che
-ora delega (03). Nessuna bonifica dei dati. Presidio: il pgTAP che costruisce
-l'operatore del secondo emittente e prova l'`INSERT … RETURNING` come
-`zeroerp_app` (rosso sullo scratch senza i changeSet, verde con), più i tre
-file che pinnavano «BA senza mapping → default» con il contesto aperto,
-spezzati in «in sessione / senza sessione».
+In `vendite` **82 tabelle su 87 non hanno mai avuto un `ANALYZE`** — né a mano né
+dall'autovacuum. Con le soglie di default (50 righe più il 10%) una tabella
+piccola non ci arriva mai da sé, e nello scheduler non c'è nessun job che le
+analizzi.
 
-⚠️ **Il prezzo, dichiarato**: un BA che *resta* senza legame (seed, migrazione)
-è ora, in sessione, di chiunque lo guardi — dato anomalo che il modello ammette.
-Restano in coda, come decisioni e non come lavoro: la forma «emittente come
-colonna del BA» (opzione 3) e un presidio `ZERO` sui BA senza legame.
-✅ **Team BE, chiuso il 2026-09-13**: le tre copie inline della regola vecchia
-(`clienti_repository.list_clienti`, `soggetti_repository` ×2) delegano ora a
-`fn_check_ba_visible_for_emittenti` — un frammento solo, usato in tre punti —
-con un presidio a registro zero sulla forma (`test_scope_ba_delega_alla_fn.py`).
-Risultati identici prima/dopo su 5 perimetri × 4 query (oggi tutti i BA sono
-collegati, ed è il motivo per cui nessuna lista mentiva).
+⛔ **La conseguenza non è «dbdev è lento»**: è che il planner sceglie su stime di
+default, e il piano **si ribalta da solo**. Fatto datato del 22-09: lo stesso
+corpo, senza nessuna modifica in mezzo, misurava 63 ms alle 16:12 e **95–104 ms
+alle 17:19**, con lo stesso piano storto. ⇒ Una misura di piano, in qualunque
+cantiere, è **rumore** finché le statistiche non ci sono — e un cantiere che
+promette un guadagno in millisecondi dichiara un numero che non può difendere.
 
----
+⭐ Ciò che regge, ed è il modo in cui D14 è stata portata a casa, sono le **forme**
+del piano — `loops=1`, `Index Cond`, una lettura invece di N — non i millisecondi
+confrontati fra due momenti.
 
-### 🟠 D14 — La capability di UN DDT paga le partite di TUTTI i DDT, e sotto RLS le paga venti volte
+⚠️ **Il perimetro non è `vendite`**: la domanda sul modello è se esista **un**
+posto che tiene aggiornate le statistiche del database, e oggi non esiste. Sede
+`dbops`/`maintenance`, non un dominio: soglie di autovacuum per le tabelle
+piccole, un job nello scheduler, o entrambi — con il presidio che dice quando
+l'ultimo `ANALYZE` è più vecchio di quanto si è dichiarato. ⭐ È un
+**prerequisito**, non una miglioria: chiunque riapra una famiglia di funzioni per
+prestazioni lo trova davanti.
 
-Trovato il 2026-09-17 inseguendo un pgTAP lento
-(`script/test-capability-motivi-e-nessuna-azione-v1.sql`, oltre i 90 s a cui
-`pgtap-baseline.sh` uccide un file). Il test aveva un difetto suo — richiamava
-le stesse funzioni `STABLE` fino a quattro volte per documento — ed è stato
-riscritto perché il blob si calcoli una volta (36 s). Ma il grosso del tempo
-era del **prodotto**, e resta:
+### 🟡 D16 — Test con una data scritta a mano: diventano rossi da soli
 
-* `script.fn_available_actions_ddt(id)` chiama `vendite.fn_list_ddt_da_pushare(p_ddt_id)`
-  **e**, nel ramo dei motivi, `vendite.fn_ddt_push_diagnosi(p_ddt_id)`. Entrambe
-  fanno `JOIN vendite.vw_partite_merce`, e la vista è a CTE **materializzate**
-  (`riga` è letta due volte, `alloc` e `migra` sono finestre sulla popolazione):
-  il predicato sul documento **non entra**, quindi ogni chiamata ricalcola le
-  partite di tutti i DDT. È strutturale, non un caso del planner: la partita di
-  una riga dipende dalle spedizioni **precedenti** della stessa riga d'ordine
-  (greedy di `alloc`), quindi filtrare `riga` per DDT darebbe un numero
-  sbagliato. ⇒ Una funzione «per documento» — quella che alimenta il drawer del
-  DDT a ogni apertura — ha il costo della lista;
-* sotto RLS quel costo si moltiplica: la CTE `sospetto` (`sospetto_duplicato_ordine`)
-  è un `EXISTS` correlato a quattro tabelle che il planner esegue **riga per
-  riga**, e ogni riga scandita paga la sua policy (`fn_scope_ef_whitelist_via_ddt`,
-  `…_via_ordine_riga`, `…_via_ordine`): ~3.500 valutazioni per una lettura.
+> Emerso il 2026-09-23: `vendite/test-nc-rata-unica-v1.sql`, test 6, rosso senza
+> che fosse cambiato il codice.
 
-**Misurato il 2026-09-17 su dbdev** (51 DDT, 36 partite), come `zeroerp_app` con
-contesto operatore, salvo dove scritto: `vw_partite_merce` intera **18 ms da
-owner, 396 ms da app** (di cui 322 nella sola `sospetto`);
-`fn_available_actions_ddt` **33 ms da owner, ~850 ms da app**. Per confronto
-`fn_available_actions_preventivo` ~10 ms e `_ordine` ~29 ms.
+Il test creava la nota di credito con `DATE '2026-09-10'` e poi le assegnava il
+numero. La numerazione applica la **finestra di emissione** del registro: un
+documento non può essere datato più indietro di N giorni. Quando il test è stato
+scritto (17-18 settembre) il 10-09 era dentro la finestra. Il 23-09 la prima data
+ammessa era l'11-09, e il test è morto con «la data del documento è troppo
+vecchia perché sia ancora emettibile».
 
-⭐ **La leva provata, ancora da decidere.** `sospetto` riscritta *set-based* —
-prima l'insieme delle coppie `(ddt_id, articolo_id)` coperte da un ordine
-collegato al DDT (`DISTINCT`, quindi una riga per coppia e nessuna
-moltiplicazione), poi il `JOIN` delle righe senza fulfillment su quella coppia —
-con **`AS MATERIALIZED`** su entrambe le CTE (senza, il planner la inlina e
-torna al ciclo per riga; la forma è già in uso in tre changeSet). Provata come
-`SELECT` in transazione ritirata: **375 ms → 88 ms**, e `EXCEPT ALL` nei due
-versi a **zero righe**. È equivalente per costruzione, non solo sui dati di
-oggi: l'`EXISTS` vecchio è esattamente «la coppia della riga sta in
-quell'insieme». Il presidio esiste già (`test-vw-partite-merce-v1.sql`, test 11,
-costruisce il caso). Con questa sola mossa la capability del DDT scende a
-~200 ms.
+⛔ **Non è un caso isolato, è una classe.** Ogni volta che il database applica una
+regola che dipende da **oggi** (finestra di emissione, scadenze, congelamenti,
+competenze chiuse), un test che scrive a mano una data è una bomba a tempo:
+verde il giorno in cui nasce, rosso qualche settimana dopo, senza che nessuno
+abbia toccato niente. E il rosso arriva sempre nel momento peggiore, mentre si
+sta lavorando ad altro, e sembra una regressione.
 
-⚠️ **La seconda leva è più profonda**: la capability legge la vista **due
-volte** (lister + diagnosi), e la diagnosi da sola risponde a entrambe le
-domande (`motivo IS NULL` = eleggibile). Va guardata insieme al contratto di
-equivalenza fra le due funzioni, «blindato a pgTAP» — non è una riga da
-cambiare di straforo.
+**La regola:** in un test, una data che passa da una regola temporale si scrive
+**relativa a oggi** (`current_date`, `current_date - 5`, il primo del mese
+corrente…), mai come letterale. Le date assolute vanno bene solo quando la regola
+non guarda il calendario (per esempio una competenza passata a una funzione pura).
 
-⛔ Non è un problema del solo test: **ogni pgTAP che itera i DDT vivi paga lo
-stesso conto** (`test-capability-annulla-aspetto-e-stato-leggibile-v1.sql`
-chiamava la capability su tutti gli otto domini una volta: ~49 s, di cui 43
-sui 51 DDT — senza chiamate duplicate) e lo paga il drawer.
-✅ **Applicato il 2026-09-17 alle 12:39**: capability DDT 850 → **230 ms**,
-quel file 49 → 11 s. ⭐ E poi, decisione di Tid lo stesso giorno, quel file è
-passato da «tutti i documenti» a **un documento per (dominio, stato)** — non un
-campionamento sui dati ma il perimetro giusto per una misura sulla **forma**
-delle azioni: le transizioni le produce `t.stato_da_id`, quindi il secondo
-documento nello stesso stato ripete il ramo del primo; le azioni applicative
-sono oggetti costanti nel codice, coperti se il rappresentante le esercita
-(e non era garantito nemmeno prima). Risultato: 8/8 in **2 s**, 35 stati
-attraversati, dichiarati nel messaggio del test 8.
+**Sanato:** il test 6 (fixture a `current_date`, e l'atteso del test 3 calcolato
+dalla stessa data), con un commento sul perché.
 
-✅ **Prima leva scritta il 2026-09-17 (decisione di Tid, stesso giorno):
-`20_code/vendite/20260917-01-update-vw-partite-merce-sospetto-set-based`**,
-`security_invoker=on` ri-specificato, COMMENT della vista con la rev, manuale
-aggiornato. Provato con l'**SQL estratto** dallo YAML in transazione ritirata
-(owner): `reloptions` intatte, `EXCEPT ALL` con la definizione viva a zero nei
-due versi, e nella stessa transazione **verdi** `test-vw-partite-merce-v1`
-(11/11, compreso il test 11 che costruisce il caso — il dato vivo ha zero
-sospetti, quindi l'equivalenza sulle righe da sola non proverebbe il ramo),
-`test-vw-partite-merce-riconsegna-dopo-nc-v1` (8/8),
-`test-fn-list-ddt-da-pushare-contatore-v1` (7/7),
-`test-fn-available-actions-ddt-reason-catch-all-v1` (8/8);
-`test-vw-situazione-merce-ordine-v1` 16/17 con il solo test 11 rosso, che è
-l'asserzione di **scope** e come owner è rossa anche senza il changeSet. Cancelli
-statici della CI verdi. ⏳ **In attesa di apply e della corsa come app.**
-La seconda leva (una lettura invece di due nella capability) resta aperta.
+**Che cosa resta:**
+
+* ⏳ **Censimento.** Oggi nei pgTAP ci sono decine di date scritte a mano. Quasi
+  tutte sono competenze, attività, ordini o preventivi, e non passano dalla
+  finestra di emissione (se ci passassero, sarebbero già rosse). Il censimento
+  vero va fatto per **regola temporale** — quali regole del DB leggono
+  `current_date` — e poi per test che le attraversano, non per ricerca testuale
+  delle date.
+* 💡 **Presidio possibile**: un guardrail statico come
+  `scripts/guardrail_pgtap_preambolo.py`, che segnali un letterale `DATE '…'`
+  nella colonna `data` di un documento fiscale che il test poi numera. Da
+  valutare dopo il censimento: senza sapere quali regole sono temporali, il
+  presidio sarebbe una ricerca testuale, cioè il criterio sbagliato.
 
 ---
 
@@ -786,24 +588,24 @@ La seconda leva (una lettura invece di due nella capability) resta aperta.
 
 ---
 
-## 5. Scorecard — pesata, non mediata (2026-09-08, aggiornata al 2026-09-12)
+## 5. Scorecard — pesata, non mediata (2026-09-08, aggiornata al 2026-09-26)
 
 Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione.
 
-| Area | Peso | Voto | Perché |
-| --- | --- | --- | --- |
-| **Catena di verifica (CI)** | 🔴 alto | **7,5/10** | Dal 2026-09-09 la suite pgTAP è un cancello vero: baseline misurata dalla CI, niente `continue-on-error`, bootstrap che fallisce invece di passare. Resta il registro a 403, che deve calare (D7) |
-| **Perimetro dei dati (RLS)** | 🔴 alto | **8/10** | D2 e D3 chiusi l'11-09-2026: dominio documento protetto fino ai satelliti, versioni di storico con scope congelato, e due presidi a criterio (`vw_rls_perimetro_scoperto`, `vw_storico_scope_da_dichiarare`) che vedono le tabelle nuove. Restano le due policy inerti di `acquisti` (D4 → D8), a registro con la ragione; `shop.ricevute` armata il 12-09. D13 (il `RETURNING` del BA per gli operatori non di default) chiuso il 13-09 |
-| **Copertura test** | 🔴 alto | **4/10** | 634 file, ma su un DB ricostruito da zero la suite è rossa per due terzi (403 rossi noti al 2026-09-12). Il 38% delle funzioni non è mai nominato (D7) |
-| **Postura di sicurezza degli oggetti** | 🟠 medio | **7,5/10** | I tre invarianti di D5 presidiati per criterio (`search_path` dal 12-09, pin applicati). Non di più per i due rubinetti di D6-bis e per il pezzo nuovo: registro `sec_functions_owner` e sync scrivibili/eseguibili da `zeroerp_app` |
-| **Simmetria del dominio** | 🟠 medio | **4/10** | `acquisti` e `magazzino` modellati e non scritti (D8). La decisione dell'11-09 («prossimo cantiere») dà al debito un verso, ma il voto misura il comportamento, che ancora non c'è: *una decisione non scrive il codice* |
-| **Osservabilità dei presidi** | 🟠 medio | **7/10** | D10 chiuso l'11-09-2026: le 30 viste hanno un destinatario che ha già riferito, e la classificazione è **dato** (`dbops.presidi`). Non 8+ per il debutto col rumore (processi ritirati in `vw_job_run_da_guardare`) |
-| **Gestione del debito** | 🟠 medio | **6/10** | Registri ben progettati; le liste lunghe restano lunghe, e ne è nata una nuova da 403 (D11) |
-| **Pattern trigger e automazioni** | 🟡 basso | **7,5/10** | Riuso raro (758 trigger da due funzioni), framework `ci_apply` eccellente; la forma per-figlia non scala e la fase è al 66% (D9) |
-| **Error handling / codici errore** | 🟡 basso | **8,5/10** | Contratto a tre lati esplicito e presidiato; il registro non cala |
-| **Disciplina Liquibase** | 🟡 basso | **9/10** | 3.354 changeSet, cinque cancelli dedicati, tutti nati da un incidente reale |
-| **Documentazione** | 🟡 basso | **8,5/10** | Copertura piena; sottile dove il dominio è sottile |
-| **Naming** | 🟡 basso | **8/10** | 94-99% sui vincoli; 66% sulla fase dei trigger, che è la voce con conseguenze |
+| Area                                   | Peso    | Voto       | Perché                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------------------------- | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Catena di verifica (CI)**            | 🔴 alto  | **7,5/10** | Dal 2026-09-09 la suite pgTAP è un cancello vero: baseline misurata dalla CI, niente `continue-on-error`, bootstrap che fallisce invece di passare. Resta il registro fermo a 361 mentre la CI misura 227 rossi (26-09): finché non si tolgono i rientrati, file già verdi sono tollerati come rossi (D7)                                                                                                                                                                                                                              |
+| **Perimetro dei dati (RLS)**           | 🔴 alto  | **8/10**   | D2 e D3 chiusi l'11-09-2026: dominio documento protetto fino ai satelliti, versioni di storico con scope congelato, e due presidi a criterio (`vw_rls_perimetro_scoperto`, `vw_storico_scope_da_dichiarare`) che vedono le tabelle nuove. Restano le due policy inerti di `acquisti` (D4 → D8), a registro con la ragione; `shop.ricevute` armata il 12-09. D13 (il `RETURNING` del BA per gli operatori non di default) chiuso il 13-09 |
+| **Copertura test**                     | 🔴 alto  | **4/10**   | 714 file (26-09), ma su un DB ricostruito da zero la suite è rossa su **227 file su 714** (corsa CI del 26-09; il registro è ancora a 361 finché non si tolgono i rientrati). Il 38% delle funzioni non è mai nominato (D7)                                                                                                                                                                                                                                                                                          |
+| **Postura di sicurezza degli oggetti** | 🟠 medio | **7,5/10** | I tre invarianti di D5 presidiati per criterio (`search_path` dal 12-09, pin applicati). Non di più per i due rubinetti di D6-bis (il registro `sec_functions_owner` e la sync sono riservati al migratore dal 26-09)                                                                                                                                                                                                     |
+| **Simmetria del dominio**              | 🟠 medio | **4/10**   | `acquisti` e `magazzino` modellati e non scritti (D8). La decisione dell'11-09 («prossimo cantiere») dà al debito un verso, ma il voto misura il comportamento, che ancora non c'è: *una decisione non scrive il codice*                                                                                                                                                                                                                 |
+| **Osservabilità dei presidi**          | 🟠 medio | **7/10**   | D10 chiuso l'11-09-2026: le 30 viste hanno un destinatario che ha già riferito, e la classificazione è **dato** (`dbops.presidi`). Non 8+ per il debutto col rumore (processi ritirati in `vw_job_run_da_guardare`)                                                                                                                                                                                                                      |
+| **Gestione del debito**                | 🟠 medio | **6/10**   | Registri ben progettati; le liste lunghe restano lunghe, e ne è nata una nuova da 362 (D11)                                                                                                                                                                                                                                                                                                                                              |
+| **Pattern trigger e automazioni**      | 🟡 basso | **7,5/10** | Riuso raro (758 trigger da due funzioni), framework `ci_apply` eccellente; la forma per-figlia non scala e la fase è al 66% (D9)                                                                                                                                                                                                                                                                                                         |
+| **Error handling / codici errore**     | 🟡 basso | **8,5/10** | Contratto a tre lati esplicito e presidiato; il registro **sale**                                                                                                                                                                                                                                                                                                                                                                        |
+| **Disciplina Liquibase**               | 🟡 basso | **9/10**   | 3.354 changeSet, cinque cancelli dedicati, tutti nati da un incidente reale                                                                                                                                                                                                                                                                                                                                                              |
+| **Documentazione**                     | 🟡 basso | **8,5/10** | Copertura piena; sottile dove il dominio è sottile                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Naming**                             | 🟡 basso | **8/10**   | 94-99% sui vincoli; 66% sulla fase dei trigger, che è la voce con conseguenze                                                                                                                                                                                                                                                                                                                                                            |
 
 ### Il giudizio, in una frase
 
@@ -814,8 +616,9 @@ cose che in un ERP non si vedono quasi mai.
 
 ✅ **E la catena che deve rendere vero tutto questo, dal 2026-09-09, tiene**:
 la suite pgTAP ferma un merge su un rosso nuovo (D1). ⚠️ Con una cosa scomoda,
-adesso misurata: fuori dalla macchina di sviluppo la suite è rossa per due
-terzi. Non è una regressione — è sempre stato così — e la differenza fra «i test
+adesso misurata: fuori dalla macchina di sviluppo la suite era rossa per due
+terzi (09-09), ed è ancora rossa per un terzo (227 file su 714, CI del 26-09). Non è
+una regressione — è sempre stato così — e la differenza fra «i test
 passano» e «le migrazioni sanno ricostruire un sistema che passa i test» è
 tutta lì dentro (D7).
 
@@ -831,6 +634,10 @@ D6 e il registro dei rossi in CI.
 ---
 
 ## 6. Checklist, in ordine di ritorno
+
+> `[ ]` = **da fare** — sono le voci di §3. `[x]` = **fatta** — resta qui perché
+> una check-list completa serve a chi la scorre, e il **dettaglio** di ognuna è
+> in §7 «Attività svolte» (con la data e il brief).
 
 ### 🔴 Prima di tutto il resto
 
@@ -854,20 +661,13 @@ D6 e il registro dei rossi in CI.
 * [x] **D5** — ✅ tre invarianti su tre presidiati per criterio
       (`security_invoker` dal 09-07, `relrowsecurity` dall'11-09, `search_path`
       dal 12-09 in `test-security-definer-search-path-v1.sql`).
-* [~] **D6** — ✅ pin applicati il 12-09 (`-39/-40/-41`, forma `pg_catalog,
-      public, pg_temp`). ⛔ Resta il pezzo nuovo: registro `sec_functions_owner`
-      e `fn_sync_functions_owner` riservati al migratore (oggi
-      scrivibili/eseguibili da `zeroerp_app`) — dal 19-09 brief suo,
-      `work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md`
-      (forma in §2, tre decisioni per Tid in §6), stima ≈ mezza giornata.
-      `EXECUTE` a PUBLIC su `fn_sync_functions_owner`: valutato, resta — e
-      resta anche la voce esplicita dell'app (loop dei grant): la sync si
-      difende da sola, con `session_user`.
-      ✅ La «riga obbligatoria» su `public.dblink(...)` in
-      `fn_get_or_create_session_tx_id` **non serve più così com'era scritta**:
-      il pin applicato il 12-09 include `public`, quindi il `dblink` si
-      risolve. Vale ancora come vincolo di D6-bis (sotto): se un giorno quel
-      pin si stringesse, prima la qualifica.
+* [x] **D6** — ✅ pin applicati il 12-09 (`-39/-40/-41`, forma `pg_catalog,
+      public, pg_temp`); ✅ il 26-09 registro `sec_functions_owner` in sola
+      lettura per l'app e `fn_sync_functions_owner` riservata al migratore da
+      una guardia nel corpo (`20260926-11`/`-12`, applicati, pgTAP verdi) —
+      brief `work-done/brief-db-registro-owner-e-sync-riservati-al-migratore.md`.
+      `EXECUTE` a PUBLIC sulla sync: valutato, resta — la sync si difende da
+      sola, con `session_user`.
 * [ ] **D6-bis** — scegliere **una** forma canonica di `search_path` per le
       `SECURITY DEFINER` (`pg_catalog, <schemi necessari>, pg_temp`, con
       `pg_temp` sempre ultimo ed esplicito) e allineare le 18 che oggi non
@@ -881,36 +681,56 @@ D6 e il registro dei rossi in CI.
 ### 🟠 La sostanza
 
 * [x] **D8** — ✅ deciso l'11-09-2026 (Tid): prossimo cantiere, scritto in
-      `.codex/PROJECT_CONTEXT.md`. ⚠️ `storico` resta senza decisione come
-      dominio; sul lato RLS l'ha chiuso D3.
+      `.codex/PROJECT_CONTEXT.md`. ✅ `magazzino` ha il comportamento dei lotti
+      1 e 2 (17-09, 18-09, verbi con permesso il 25-09). ⛔ `acquisti` è ancora
+      a zero. ⚠️ `storico` resta senza decisione come dominio; sul lato RLS
+      l'ha chiuso D3.
 * [x] **D10** — ✅ chiuso l'11-09-2026: digest su catalogo `dbops.presidi`, due
       timer. Residuo: i processi ritirati in `vw_job_run_da_guardare` (decisione
       del team DB).
-* [~] **D7** — far calare il registro della CI (403, di cui 323 nella fixture)
-      e portare a zero i 9 file della baseline di sviluppo che falliscono nella
-      *fixture*. ✅ 12-09: i **21 del perimetro** riscritti (20 verdi sui due
-      database, uno in CI con il passo di provisioning nuovo), in attesa di
-      apply e della corsa CI.
+* [~] **D7** — far calare il registro della CI e portare a zero la baseline
+      di sviluppo nella *fixture*. ✅ Fatto (§7 D7): il perimetro (12-09), il
+      triage delle cause e la riga di contesto che costruisce (20/21-09), il BB
+      di composizione e i lotti 1 e 2 (22-24/09) — **227 rossi su 714** in
+      CI il 26-09, contro 407 su 601 il 09-09. ⏳ Resta (§3 D7): la corsa CI
+      che certifica i rientrati (registro **fermo a 361**), i 18 rossi del
+      lotto 2, i lotti 3 (`pratiche`) e 4 (`vendite`), i file con l'utente
+      `'1'`, i 6 `ERRORE_FIXTURE` della baseline di sviluppo, due decisioni
+      per Tid e due cancelli da disegnare.
 * [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`
       applicati, baseline di sviluppo senza regressioni, brief
       `brief-db-ba-riserva-emittente-operatore-d13.md`. ✅ Le tre copie
       Python della regola vecchia sono delegate al check dal 13-09 (team BE,
       brief §6.2). Restano due decisioni di modello in coda (§3.4).
-* [ ] **D11** — dare a ciascun registro lungo un **verso** (chi lo abbassa, di
+* [~] **D11** — dare a ciascun registro lungo un **verso** (chi lo abbassa, di
       quanto, entro quando), o dichiararlo congelato con il motivo.
+      ✅ La soglia `throws_ok` è scesa **129 → 117** fra il 20 e il 24-09 —
+      due volte con un test verde per l'errore sbagliato (§7 D11, §7 D7).
+      ⛔ Restano i due registri grossi, e sono quelli che non hanno un verso:
+      i rossi della CI (361 a registro, 227 misurati il 26-09) e i codici da
+      dichiarare, che sono **saliti** (508 → 545 al 20-09).
 * [ ] **D11-bis** — scrivere il messaggio dei sei `W_` che non ce l'hanno
       (append al CSV dei messaggi, mai un loader nuovo), oppure dichiarare che
       quei codici non raggiungono mai un operatore — e scriverlo nel `note`.
-* [~] **D14** — (aperto il 2026-09-17) ✅ changeSet `20260917-01` **applicato**
-      lo stesso giorno (`sospetto` set-based + `AS MATERIALIZED`, vista
-      375 → 88 ms da app, capability DDT 850 → 230 ms). ✅ I due pgTAP lenti:
-      `capability-motivi` >90 s → 36 s (blob una volta per documento),
-      `annulla-aspetto` 49 → 11 → **2 s** (un documento per stato, decisione
-      di Tid). ⏳ Resta aperta la seconda leva: la capability del DDT legge la
-      vista **due** volte (lister + diagnosi) — derivare `push_ok` dalla
-      diagnosi la dimezzerebbe, ma è una scelta di contratto e vuole un brief.
-      Terza leva possibile, semantica invariata: `vw_af_merce_per_riga` letta
-      quattro volte dentro la vista (~12 ms l'una), una CTE condivisa.
+* [x] **D14** — ✅ chiusa il 2026-09-22, brief archiviato in
+      `work-done/brief-db-partita-merce-per-documento.md`: otto giri fra il 17 e
+      il 22-09, **sette applicati** e l'ottavo provato e **ritirato** lo stesso
+      giorno. La partita di merce si legge **per documento**, l'eleggibilità ha
+      **una** implementazione e il classificatore, `af` e i billing account si
+      leggono **per chiave** (§7). Residui dichiarati, ciascuno con la sua sede:
+      due decisioni **non prese** (la catena del `sospetto`, raccomandato
+      lasciar stare; **D8(b)**, che nessuna misura reclama), i tre `LIKE` di
+      `fn_accredita_riga_reso` — un changeSet suo —, i preventivi come quarto
+      adottante del BB «righe solo in bozza» (dopo il censimento
+      dell'approvazione prezzo) e tre voci BE (due commenti che nominano oggetti
+      ritirati, la decisione sui pre-check `_STATI_RIGHE_MODIFICABILI`).
+      ⛔ La statistica assente **non** è un residuo di questo cantiere: è **D15**.
+* [ ] **D15** — dare al database **un** posto che tiene aggiornate le
+      statistiche (`dbops`/`maintenance`): in `vendite` 82 tabelle su 87 non
+      hanno mai avuto un `ANALYZE`, quindi ogni piano nasce da stime di default
+      e si ribalta da solo. ⛔ È un **prerequisito** di qualunque cantiere che
+      misuri un piano, non una miglioria — e finché non c'è, un guadagno
+      dichiarato in millisecondi non è difendibile.
 
 ### 🟡 Struttura
 
@@ -920,6 +740,345 @@ D6 e il registro dei rossi in CI.
 * [ ] **D9-bis** — portare la fase (`_a10_`/`_z90_`) sul 34% di trigger che non
       ce l'ha, o dichiarare che per quelli l'ordine è indifferente.
 * [ ] **D12** — nessuna azione: la documentazione seguirà il dominio.
+* [ ] **D16** — censire le regole del DB che leggono `current_date` e i pgTAP
+      che le attraversano con una data scritta a mano; poi decidere se serve un
+      guardrail statico.
+
+---
+
+## 7. Attività svolte — cosa è stato chiuso, e con che cosa
+
+> Questa sezione è il **rovescio di §3**: qui sta ciò che era un difetto e non lo
+> è più. Un numero che compare in **tutti e due** i posti (D6, D7, D11,
+> D12) non è una ripetizione: in §3 c'è **il lavoro che resta**, qui **quello
+> fatto**. ⭐ **D14 non è più in §3**: è chiusa, e ciò che la sua chiusura ha
+> scoperto è una voce nuova: **D15**, le statistiche che non esistono.
+>
+> Le date sono quelle dichiarate nei brief, e i brief restano la sede del
+> dettaglio: qui si dice **che cosa è cambiato nel sistema**, non come ci si è
+> arrivati.
+
+### ✅ D1 — Il cancello pgTAP in CI — chiuso il 2026-09-09
+
+Il passo «Suite pgTAP» girava con `continue-on-error: true` e leggeva una
+baseline mai committata: **600 file e ~6.183 asserzioni** buttati via a ogni
+corsa. Ora il classificatore è bilingue (`ERRORE|ERROR`, il server della CI parla
+inglese), `--update` **si rifiuta di scrivere** se non passa nemmeno un file,
+`baseline-rossi-ci.tsv` è committato e **misurato dalla CI** (407 rossi su 601
+alla prima corsa), `continue-on-error` è tolto e il ramo di bootstrap
+**fallisce** invece di passare. ⭐ *Un cancello che passa perché non ha misurato
+niente è peggio di un cancello assente.*
+
+### ✅ D2 — Il perimetro emittente, fino a righe e satelliti — chiuso l'11-09-2026
+
+Era protetta **una** famiglia di documento su sei, e le righe delle altre
+cinque erano leggibili da qualunque operatore. Ora sono **nove** (più le sette
+partizioni di `vendite.note`), il registro del debito è sceso da **33 a 10
+righe** e `db/pgtap/rls/` è passato da 30 a 39 file. ⭐ In servizio resta un
+**presidio a criterio transitivo** (`dbops.vw_rls_perimetro_scoperto` +
+`rls_perimetro_debito` + `test-rls-perimetro-scoperto.sql`): una tabella nuova
+con una FK verso una protetta esce `NON_DICHIARATO` e fa rosso il test 2.
+Brief `work-done/brief-db-perimetro-emittente-righe-documento.md`.
+
+### ✅ D3 — Lo `storico` porta il proprio perimetro — chiuso l'11-09-2026
+
+120 tabelle senza RLS e 52 leggibili dall'app: chiudere D2 senza D3 avrebbe solo
+spostato il punto da cui si legge. Ora lo scope **si cattura alla scrittura e si
+congela** (`origine_schema` + `scope_emittente_fiscale_id`, mappa
+`storico_scope_policy` con ripiego sull'archivio del padre), le **37 shadow**
+delle madri protette hanno policy generata, backfill di **65.751 versioni** senza
+residue, `REVOKE DELETE` all'app su tutto lo schema, e
+`vw_storico_scope_da_dichiarare` vede quelle che non lo portano. Le tabelle nuove
+nascono **armate** dal generatore: il lavoro è stato **uno**, non 120. Nello
+stesso giro `dbops.audit_log` prende un **cancello** alla scrittura più il
+`REVOKE UPDATE/DELETE` dichiarato nel loop dei grant — *un registro di audit
+modificabile da chi è auditato non è un registro*.
+Brief `brief-db-rls-storico-scope-congelato.md`.
+
+### ✅ D4 — Le policy inerti — chiusa il 2026-09-12 (il resto è D8)
+
+`acquisti.ddt`, `acquisti.ordini`, `shop.ricevute`: la policy c'era, la RLS era
+spenta — il difetto che si auto-nasconde, perché `EXISTS (SELECT 1 FROM
+pg_policies …)` legge verde. ✅ L'invariante generale è presidiato dal **criterio
+`POLICY_INERTE`** (caso costruito nel test 7), e `shop.ricevute` è stata
+**armata** il 2026-09-12 (`20260912-42/43`, registro 10 → **8**). Le due di
+`acquisti` sono **D8**: *manca il modello, non l'accensione*.
+Brief `brief-db-fixture-che-costruiscono-d7-d6-d4.md` §5.
+
+### ✅ D5 — I tre invarianti di forma hanno un presidio — chiusa il 2026-09-12
+
+Tre proprietà che, se violate, **non producono nessun errore visibile**, ora
+hanno un presidio a **criterio** (non un elenco di nomi):
+
+| Invariante                                                | Presidio                                                                                                    |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Una vista che tocca dati in RLS ha `security_invoker`     | criterio transitivo dal 2026-09-07, ha sostituito quattro elenchi a mano. Zero violazioni                   |
+| Una tabella con policy ha la RLS **accesa**               | criterio `POLICY_INERTE` dall'11-09 (le 2 violazioni rimaste sono D8)                                       |
+| Una funzione `SECURITY DEFINER` ha un `search_path` fisso | `db/pgtap/dbops/test-security-definer-search-path-v1.sql` dal 12-09, con due soglie che possono solo calare |
+
+⭐ **La lezione che resta, ed è la ragione per cui D5 esiste**: il criterio con
+cui nasce un presidio è un **indicatore in ritardo** — le prime due righe hanno
+morso prima di essere presidiate, la terza è stata presidiata prima di mordere
+solo perché le è passato accanto un cantiere. Non è una voce da fare: è il
+motivo per cui i presidi si scrivono **quando un cantiere ci passa**.
+
+### ✅ D6 — I pin del `search_path` — chiusi il 2026-09-12
+
+Tre `SECURITY DEFINER` di `postgres` senza `search_path`, una sul percorso di
+**305 trigger** (`fn_get_or_create_session_tx_id`), una che cambia il
+proprietario di funzioni. Pin applicati (`20260912-39/40/41`) nella timeline
+normale, senza superuser: due col **prestito di proprietà** via
+`fn_sync_functions_owner`, la terza con una **copia di servizio** della sync —
+la sync non può prestarsi a sé stessa. La forma è `pg_catalog, public, pg_temp`
+e **non** `pg_catalog, pg_temp`: la catena tocca `dblink`, che vive in `public`.
+⚠️ La lezione del giro: la forma «prudente» avrebbe **accecato** `dblink` dentro
+un `WHEN OTHERS`, spegnendo il tracciamento delle transazioni **senza un rosso da
+nessuna parte** — *una forma canonica uguale per tutte non esiste: si decide per
+funzione, guardando ciò che chiama.*
+
+✅ **E il registro degli owner — chiuso il 2026-09-26.** Chi scriveva
+`dbops.sec_functions_owner` ed eseguiva la sync sceglieva il proprietario delle
+DEFINER di `postgres`, e `zeroerp_app` aveva entrambe le porte. Ora il registro
+è in sola lettura per l'app (tre sedi, `90_end/20260926-12`) e la sync rifiuta
+con `42501` chi non possiede lo schema `dbops` (`20_code/dbops/20260926-11`). La
+difesa sta **nel corpo** e non nell'ACL, che per una funzione di `postgres` il
+loop dei grant riscrive e il cambio di proprietario rimappa; il chiamante si
+legge da `session_user` (dentro una DEFINER `current_user` è il proprietario —
+limite dichiarato: un `SET ROLE` non lo cambia). Presidi:
+`test-sec-functions-owner-riservato-v1` (come app) e
+`test-sec-functions-owner-migratore-passa-v1` (come owner). Dettaglio nel
+[brief](../work-done/brief-db-registro-owner-e-sync-riservati-al-migratore.md).
+Resta D6-bis (§3).
+
+### ✅ D7 — Il triage è partito dal perimetro — 2026-09-12, in CI dal 14-09
+
+Dei rossi sul database ricostruito da zero, i primi **21** erano i test di
+`script/fn_scope_*` (12) e di `rls/` (9) — cioè quelli che decidono *chi vede
+cosa* — tutti con la stessa causa: la fixture **cercava** i soggetti nei dati
+esistenti, e su un database ricostruito `anagrafiche` è a zero. Riscritti con
+fixture che **costruiscono** il mondo: **20 verdi** su dbdev e su `zeroerp_ci`,
+e il ventunesimo era un'altra classe (in CI il ruolo batch non veniva
+provisionato) e ha avuto il suo passo in `ci-validate.yaml`. Sono **usciti dal
+registro**, e da allora i rientrati li toglie
+`scripts/pgtap-baseline-ci-rientrati.sh` **leggendo il log della corsa**, non una
+mano. Il debito che resta è in §3 D7. Brief
+`brief-db-fixture-che-costruiscono-d7-d6-d4.md` (in `work-done/` dal 19-09).
+
+### ✅ D7 — Il giro 2: la fixture che costruisce il mondo — 20-09 → 24-09
+
+* **Il triage delle cause (20-09).** I 362 file a registro, rieseguiti come
+  `zeroerp_app` sullo scratch leggendo la **prima** riga `ERROR` di ciascuno:
+  una malattia sola in tre forme — la fixture *cerca* l'azienda, il billing
+  account, un soggetto, invece di costruirli. E la radice era una riga di
+  preambolo: su un DB vuoto `fn_pgtap_set_contesto_operatore()` apriva un
+  contesto vuoto.
+* **La riga di contesto costruisce se il DB è vuoto** (`20260920-01`, nel BB e
+  non nei 352 file): 66 file da rosso a verde. Nello stesso giro un difetto del
+  **database da zero** reso visibile: `config.tipi_ruoli.entita_tabella` /
+  `entita_colonna_codice` le scriveva solo un `UPDATE` in `00_schema`, che da
+  zero tocca zero righe — su un'installazione nuova la ricerca soggetti per
+  codice era rotta. Rimedio nel CSV e nel mirror.
+* **La corsa CI del 21-09** (293 rossi su 674) ha trovato una regressione, e la
+  causa era la rev stessa: quando costruisce, la riga di contesto chiude la
+  finestra dei differiti come ogni builder. Il rimedio «uscire IMMEDIATE in
+  tutti i rami» è stato provato e **ritirato** (chiudere i vincoli nei panni di
+  un altro attore vuol dire sotto un'altra RLS); è stato scritto invece il
+  **contratto** (`20260921-18`, solo `COMMENT`) e la regola per i file: dopo la
+  riga di contesto, chi vuole la finestra differita la riapre.
+* **I file che committavano** (col contesto in autocommit o chiusi con
+  `COMMIT`): chiusi nel lotto 2, nella suite non committa più nessuno. Il
+  residuo `PGTR0001` che lasciavano teneva verdi altri sei file; tolto quello,
+  nove file che contavano sulla finestra di default sono caduti e sono stati
+  sanati. Lo scratch ricostruito ha **zero** emittenti residui.
+* **Il BB di composizione** `dbops.fn_pgtap_crea_mondo_cliente()` (`20260922-17`,
+  con il suo presidio): la regola d'ordine fra mondo, legame del BA e contesto
+  sta in un oggetto, invece di essere riscritta a mano in 205 file.
+* **Lotto 1** (`config`, `pagamenti`, `documenti`, `catalogo`, `ui`, `dbops`, 43
+  file), chiuso il 23-09: 21 file riscritti, 235 asserzioni verdi da zero, i
+  builder `fn_pgtap_crea_fattura` e `fn_pgtap_crea_filiale_bancaria`
+  (`20260923-04/-05`) — un BB, non nove copie. Committato in `9304f209c`
+  (PR #1649).
+* **Lotto 2** (`anagrafiche`, `script`, 70 file): da 12 a **51 verdi** (+1 da
+  owner), con i builder `fn_pgtap_crea_gestore`, `_operatore_umano`, `_pdp`,
+  `_listino` (`20260923-06/-08/-09/-50`).
+* **Difetti del prodotto** trovati costruendo invece di pescare: il profilo
+  SUPER_ADMIN per id cablato in `fn_crea_risorsa_umana_v2` (`-10`);
+  `fn_get_indirizzo` / `_by_soggetto` che confrontavano il codice col
+  `codice_interno` (`-49`); il presidio C1 che contava le fixture come
+  scrittori (`-51`); i CSV di `tipi_utenze`/`classi_utenze` che nessuno
+  caricava (`-52/-53`); e `storico.parameters` con `parameter_id` dove il
+  trigger passa `parameters_id` — le madri erano cinque, quattro rotte anche su
+  dbdev — chiuso il 25-09 da
+  [brief-db-storico-colonna-fk-dei-trigger.md](../work-done/brief-db-storico-colonna-fk-dei-trigger.md).
+* **Verdi finti smascherati**: tre skip soft che scrivevano il valore atteso,
+  sei test che asserivano per la ragione sbagliata, uno verde per l'errore
+  sbagliato (il super admin).
+
+Risultato: **229 rossi su 687** sul database da zero (24-09), contro i 362 del
+20-09 — e la CI del 26-09 ha confermato: **227 su 714**; `baseline-rossi.tsv` di sviluppo da 16 a **12**. Brief
+[brief-db-fixture-che-costruiscono-giro-2.md](../work-done/brief-db-fixture-che-costruiscono-giro-2.md),
+chiuso il 23-09. Il debito che resta è in §3 D7.
+
+### ✅ D10 — I presidi hanno un destinatario — chiuso l'11-09-2026
+
+Trenta viste di presidio che nessuno guardava — e sei lavori falliti da tre
+notti in una vista che si chiama `vw_coda_lavori_**da_guardare**`. Ora la
+classificazione è **dato** (`dbops.presidi`), il **digest** lo costruisce il
+backend, due timer sono in servizio (giornaliero 07:00, settimanale lunedì
+07:30), e dal 19-09 il contatore è anche a video, nel **pallino in topbar**,
+sullo stesso metro. Il primo giro ha già riferito, e ha insegnato il resto: un
+allarme su un processo obsoleto dal 07-09 — *un presidio che comincia col rumore
+insegna a non guardarlo*, ed è proprio la proprietà che il cantiere comprava.
+Brief `brief-db-un-destinatario-per-i-presidi.md`.
+
+### ✅ D11 — I registri che sono calati (e quello che cresce)
+
+Non tutti i registri di §3 stanno fermi: `dbops.rls_perimetro_debito` è sceso da
+**33 a 7 righe** (ogni riga con la sua ragione tecnica, calato nei cantieri D2,
+D4 e in quelli passati dopo), `db/pgtap/baseline-rossi.tsv` da **19 a 12** file
+sul database di sviluppo (16 al 12-09, 12 col giro 2 di D7 il 24-09), e
+`db/pgtap/baseline-rossi-ci.tsv` da **403 a 361** (22-09; la misura da zero
+della CI del 26-09 è a 227: le righe rientrate sono da togliere). ⭐ È la forma che la guida prescrive e che
+qui ha funzionato: registro piccolo, ogni voce con il motivo, e un cantiere che
+lo abbassa mentre passa. ⚠️ E ce n'è uno che invece **cresce** — `vw_codici_errore_da_dichiarare`,
+508 → 545 su 897: è il registro **senza un verso** (§3 D11).
+
+#### La soglia `throws_ok`: 129 → 123, e il test che era verde per l'errore sbagliato
+
+Il 2026-09-20 sei asserzioni di
+`db/pgtap/catalogo/test-articoli-vincoli-note-uom-overlap.sql` hanno ricevuto il
+loro discriminante — `23505` per i tre casi di unicità (il codice duplicato e i
+due `uq_artuomop_*`), `23514` per il CHECK su
+`note_target_tipo`, `23503` per la FK su `note_id`, `23P01` per l'`exclusion`
+sull'overlap — e la soglia del cancello è scesa a **123**.
+
+⚠️ **Non è stata una passata di cosmetica: una di quelle sei era verde per
+l'errore sbagliato.** Il test 11 dichiarava «codice articolo duplicato:
+bloccato» e in realtà moriva su **`23502`** — un `NULL` su `uom_id`, che è NOT
+NULL — perché l'INSERT ometteva quella colonna *e* il codice «duplicato» era
+`'ART…'` mentre l'articolo creato sopra è `'ARC…'`: non duplicava niente. Il
+vincolo che il test credeva di collaudare non era mai stato raggiunto, e il test
+passava lo stesso.
+
+⭐ **La sonda, ed è tutta qui** — il metodo vale più delle sei righe:
+
+1. su una **copia usa-e-getta** del file, sostituire il secondo argomento con uno
+   SQLSTATE impossibile (`'ZZZZZ'`), senza toccare il repository;
+2. far girare il file: pgTAP non accetta più qualunque errore, e nel messaggio di
+   fallimento stampa `caught: <stato>: <frase>` — cioè il dato che si cercava,
+   per **tutte** le asserzioni, in una corsa sola;
+3. leggerlo: l'asserzione che dichiarava lo stato giusto resta verde dopo il
+   ripristino, quella sbagliata si spiega da sé;
+4. **prima** correggere la causa, **poi** scrivere il discriminante — l'ordine
+   conta: con `'23505'` e l'INSERT ancora incompleto il test sarebbe diventato
+   rosso, e qualcuno avrebbe «aggiustato» il discriminante invece del test.
+
+Costo: una copia temporanea e una corsa, zero modifiche al prodotto.
+⭐ Resa: sei occorrenze in meno su 123, **un falso-verde trovato**, e una lista
+di lavoro che si ripete su ogni file — i 123 sono elencabili in un comando, e
+**21** di loro stanno in file che in CI girano davvero, **102** in file che lì
+muoiono nella fixture (§3 D7).
+
+Poi la soglia è scesa ancora, a **117** il 24-09: il lotto 1 del giro 2 (§7 D7)
+e il test 1 di `vendite/test-preventivi-approvazione-prezzo.sql`, un
+`throws_ok(…, NULL, NULL)` che passava con qualunque errore, anche uno della
+fixture (`brief-db-preventivi-congelamento-pricing`).
+
+### ✅ D12 — La quantità di documentazione — chiusa (era il gap di febbraio)
+
+1.410 pagine **manuali** contro 1.500 autogenerate: il gap di febbraio («509
+pagine, tre schemi scoperti») non c'è più — `magazzino` 32 pagine, `acquisti` 11,
+viste coperte. Restano i due residui di **forma** (§3 D12): le pagine-specchio
+dello `storico` che gonfiano il conteggio, e le pagine presenti ma sottili dei due
+domini non ancora scritti (D8).
+
+### ✅ D13 — Il `RETURNING` del billing account sotto RLS — chiuso il 2026-09-13
+
+Con due emittenti in esercizio, l'operatore del secondo **non apriva clienti**:
+il `RETURNING` chiedeva di vedere la riga *prima* che il trigger `AFTER` scrivesse
+il legame, e il resolver ricadeva sul default — un'altra azienda. Ora *un BA non
+ancora collegato appartiene a chi lo sta creando*: riserva a **tre livelli**
+(`20260913-01/02/03`), la seconda copia della regola
+(`fn_get_emittente_fiscale_pk`) che **delega**, e un pgTAP che costruisce
+l'operatore del secondo emittente e prova l'`INSERT … RETURNING` **come
+`zeroerp_app`**. Lato BE le tre copie inline delegano a
+`fn_check_ba_visible_for_emittenti`, con un presidio a registro zero sulla forma.
+⚠️ Prezzo dichiarato: un BA che *resta* senza legame è, in sessione, di chiunque
+lo guardi — dato anomalo che il modello ammette.
+Brief `brief-db-ba-riserva-emittente-operatore-d13.md`.
+
+### ✅ D14 — La partita di merce si legge per documento — chiusa il 2026-09-22
+
+Era: `script.fn_available_actions_ddt(id)` — la funzione che alimenta il drawer di
+**un** DDT a ogni apertura — ricalcolava le partite di **tutti** i DDT, e sotto
+RLS ogni riga scandita pagava la propria policy (~3.500 valutazioni per una
+lettura). ⭐ Il difetto era **strutturale, non del planner**: la partita di una
+riga dipende dalle spedizioni precedenti della stessa riga d'ordine, quindi
+filtrare la CTE per documento avrebbe dato un numero **sbagliato**. La cura non
+era un indice: era dare alla partita un **seme**, dopo aver mostrato sul modello
+che la dipendenza è *bounded* (le due finestre sono partizionate per
+`ordine_riga_id` e `ddt_riga_origine`: la chiusura di un documento è a due salti).
+
+Otto giri fra il 17 e il 22 settembre, **sette applicati** e l'ottavo provato e
+**ritirato lo stesso giorno**. Brief
+`work-done/brief-db-partita-merce-per-documento.md`; changeSet `20260917-01`,
+`20260921-20 → -34`, `20260921-50 → -55`, `20260922-01 → -16`; committato in
+`c60f39eaa`, `559dbf351`, `acaaab569`, `e05e3b1e5`, `b40d9de24`, `660bbac59` e
+`8d7f14829` (PR #1634, #1635, #1639, #1640, #1646).
+
+**Che cosa è cambiato nel sistema** — le forme, non i millisecondi:
+
+* `vendite.fn_partite_merce` (`BEGIN ATOMIC`) **semina** la partita con il
+  documento o con l'ordine e ne calcola la chiusura; le viste diventano sue
+  **proiezioni per nome** (un `SELECT *` perdeva `numeric(18,6)` e faceva uscire
+  la vista dal presidio `security_invoker`);
+* la stessa forma per `fn_situazione_merce_ordine`, `fn_resi_da_accreditare` e i
+  due verbi degli accrediti: un seme, non un filtro su una popolazione intera;
+* l'**eleggibilità ha una sola implementazione**: `fn_ddt_push_diagnosi` è la
+  fonte, il lister ne deriva (`WHERE motivo IS NULL`) e la capability la legge
+  **una** volta — prima erano due letture e due regole che potevano dissentire;
+* ciò che è un insieme si legge **per chiave**: `vw_af_merce_per_riga` in una CTE
+  `af AS MATERIALIZED` invece di quattro volte, il classificatore di segmento in
+  forma a **range leakproof** (`~>=~`/`~<~`) con l'indice `varchar_pattern_ops`,
+  i billing account seminati;
+* `vw_contatore_merce` **ritirata** (censimento dal catalogo: nessun lettore), e
+  nasce un BB generico — `trgfn_doc_righe_lock_fuori_bozza`, «le righe di un
+  documento si toccano solo in bozza» — su `ddt_righe`, `ordini_righe` (solo
+  DELETE) e `contratti_righe`, con le **due copie a DB ritirate** nello stesso
+  giro.
+
+| Lettura, come `zeroerp_app` | 17-09 | 22-09 sera |
+| --------------------------- | ----- | ---------- |
+| capability di un DDT (il drawer) | 290 ms | **39 ms** |
+| partita di un DDT                | 120 ms | **27 ms**  |
+| lista push senza documento (cockpit) | 214 ms | 73–94 ms |
+| diagnosi di tutti i documenti    | 348 ms | 63–104 ms |
+
+⚠️ **Le forcelle non sono un refuso**: sono lo stesso corpo misurato a un'ora di
+distanza, ed è il motivo per cui è nata **D15**.
+
+⭐ **Tre lezioni che valgono oltre il cantiere:**
+
+1. *Ciò che è un insieme si legge una volta, e si semina con le chiavi in gioco.*
+   ⛔ Col corollario che il giro 7 ha pagato: «una volta sola» **non basta** —
+   leggere l'insieme intero è una volta sola, e fa pagare tutta la storia a chi
+   chiede **un** documento. Le due forme si somigliano e non sono la stessa cosa.
+2. ⛔ **Il banco di prova prova le righe, non il piano.** Il corpo eseguito come
+   `SELECT` non predice il piano **dentro** la funzione: qui ha nascosto un
+   difetto vero, ne ha **inventato** uno (la «terza occorrenza» che non esisteva)
+   e ha promesso un guadagno che era una perdita. ⇒ L'equivalenza si prova sul
+   banco, e il confronto **per seme** ha trovato un errore che il confronto
+   globale dichiarava equivalente; il **piano** si misura dopo l'apply, sulla
+   funzione, come applicazione.
+3. ⚠️ **Un presidio verde a vuoto non è un presidio**: il ramo `DDT_SENZA_BA` non
+   era esercitato da nessuna riga viva: caso costruito, e rosso per mutazione.
+
+⛔ **Ciò che resta non è lavoro sospeso**, e sta in §6: due decisioni **non prese**
+(la catena del `sospetto` — un avviso per una persona che nessuna macchina legge,
+17,6 ms su 46, raccomandato lasciar stare; e **D8(b)**, che nessuna misura
+reclama), i tre `LIKE` di `fn_accredita_riga_reso`, i preventivi come quarto
+adottante del BB delle righe in bozza, e tre voci BE.
+
 
 ---
 
@@ -927,4 +1086,11 @@ D6 e il registro dei rossi in CI.
 database di sviluppo `zeroerp` (PostgreSQL 18.6) e sul repo al commit `89d36ad1b`,
 branch `dev/db-tid`. La valutazione di febbraio 2026 resta in §1 come fatto
 datato. Sfoltito il 2026-09-12: le voci chiuse sono ridotte a data e rimando; la
-versione integrale è nella storia git del file.*
+versione integrale è nella storia git del file. **Riordinato il 2026-09-20**: §3
+contiene solo i difetti aperti, e le attività svolte stanno in §7 — con lo stesso
+numero in entrambe le sezioni quando una voce ha due facce. **Riordinato il
+2026-09-22**: D14 è chiusa e passata per intero in §7, e al suo posto in §3 è
+entrata D15 — le statistiche assenti, che la sua chiusura ha scoperto.
+**Riordinato il 2026-09-26**: D6 e D7 ridotti in §3 al lavoro che resta, il
+giro 2 di D7 riassunto in §7, `magazzino` uscito dalla fotografia di D8, numeri
+del repo rimisurati.*

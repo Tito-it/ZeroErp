@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-presidio-stati-mai-scritti §2.4 / §3-bis — il contenuto iniziale del
+# registro del presidio C1: le 40 righe che la misura trova NON_DICHIARATO il
+# 2026-09-21, ognuna con il suo canale e la sua ragione.
+#
+# ── ⭐ SEED DI CATALOGO, non di macchina ────────────────────────────
+#   Il contenuto nomina TABELLE, COLONNE e VALORI del software. Nessuna cella
+#   valorizza una FK verso `anagrafiche.*` (linee-guida-sql §11.7): vale
+#   identico su qualunque installazione, quindi niente `context: dati_macchina`.
+#
+# ── ⚠️ QUARANTA RIGHE, E NON DICIANNOVE ─────────────────────────────
+#   Il §3 del brief (19-09) contava 19 valori senza scrittore su 18 colonne.
+#   Sono 40 su 32 colonne, per due ragioni scritte nel §3-bis:
+#     · la regex del 19-09 vedeva UNA delle due scritture del cast del CHECK
+#       (text si', varchar no): 14 colonne erano fuori dalla misura;
+#     · il perimetro del nome include `esito` (documenti_generati_eventi).
+#   ⚠️ Delle 40, VENTISEI sono dichiarazioni (canale APPLICAZIONE: il valore lo
+#   scrive un repository Python, e il test del backend — richiesta §6 — lo
+#   verifica) e QUATTORDICI sono debito (canale ESENTE): tre C1 veri nel
+#   cantiere documenti (ANNULLATO/ARCHIVIATO del documento generato, KO
+#   dell'evento di generazione), quattro del magazzino Lotto 2, quattro di
+#   `sepa_mandati` (tabella senza scrittori, candidata ai dati morti), due di
+#   `attivita_consumi` (cantiere consumi rimandato) e UNA che il criterio non
+#   sa vedere: `fatturazione_lotti_log.stato_operativo = APERTO`, scritto 1193
+#   volte per COPIA dalla colonna madre.
+#
+# ── ⛔ LEGGERE «DICHIARATO» COME «RISOLTO» E' L'UNICO MODO DI SBAGLIARE ─
+#   Ogni riga ESENTE e' un lavoro con un nome e una data. Il presidio tace su
+#   queste 40 e parla su tutto il resto: e' il patto che permette di accendere
+#   il cancello oggi — un cancello rosso dal primo giorno viene disattivato.
+#   ⚠️ E il verso di ritiro e' gia' stato visto funzionare PRIMA di nascere:
+#   fra il 19 e il 21-09 il Lotto 2 ha scritto CONFIRM/POSTED su rettifiche e
+#   inventari, e le sei righe «magazzino» del brief sono diventate quattro.
+#
+# ⚠️ `loadUpdateData` non cancella: pagare un debito vuol dire togliere la riga
+#   dal CSV **e** cancellarla con un `DELETE` forward-only. Il presidio se ne
+#   accorge da solo — una riga rimasta esce come `DEBITO_ESTINTO` e fa rosso.
+# ⚠️ Chiave dell'upsert: la chiave NATURALE (tabella, colonna, valore), non
+#   `id`, che e' IDENTITY proprio perche' nessuno lo assegni a mano.
+# ⚠️ La data sta nel CSV e non si lascia al DEFAULT: su un database ricostruito
+#   da zero CURRENT_DATE direbbe «oggi», e l'orologio del debito ripartirebbe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260921-19-upsert-dbops-stati-check-dichiarazioni-mctit.yaml
+
+  - changeSet:
+      id: 20260921-19-upsert-dbops-stati-check-dichiarazioni
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed di catalogo di dbops.stati_check_dichiarazioni dal CSV (mirror
+        loadUpdateData sulla chiave naturale): le 40 righe che la misura del
+        presidio C1 trova NON_DICHIARATO il 2026-09-21 — 26 scritte
+        dall'applicazione (canale APPLICAZIONE) e 14 esenti con la ragione
+        (canale ESENTE).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: stati_check_dichiarazioni
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/stati_check_dichiarazioni.csv
+            tableName: stati_check_dichiarazioni
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "schema_tabella,nome_tabella,colonna,valore"
+            columns:
+              - column: { name: schema_tabella,     type: STRING }
+              - column: { name: nome_tabella,       type: STRING }
+              - column: { name: colonna,            type: STRING }
+              - column: { name: valore,             type: STRING }
+              - column: { name: canale,             type: STRING }
+              - column: { name: ragione,            type: STRING }
+              - column: { name: data_registrazione, type: DATE }
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.stati_check_dichiarazioni;

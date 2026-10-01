@@ -15,7 +15,8 @@
 #      `solo_vive` bool; default `gravita=['ERROR']`, `order_by=quando`,
 #      `order_dir` grezzo (None)
 #   4. `gravita` fuori vocabolario -> 400 (non «zero righe»)
-#   5. `registro` fuori vocabolario -> 400
+#   5. `registro` fuori vocabolario -> 400: il vocabolario e' LETTO dal
+#      catalogo (`registri_giornale_ammessi`), e senza filtro non si legge
 #   6. `filo` non uuid -> 400; data malformata -> 400
 #   7. envelope: paginato standard + `ritirate_count`; con `solo_vive=0` il
 #      totale include le ritirate e `ritirate_count` e' 0
@@ -37,6 +38,8 @@ _AUTH = patch(
 _REPO = "apps.vendite.services.vendite_service.VenditeRepository"
 _URL = "/api/v1/vendite/giornale/"
 _FILO = "123e4567-e89b-12d3-a456-426614174000"
+# Il catalogo, come lo risponderebbe `registri_giornale_ammessi` sul DB vero.
+_REGISTRI = frozenset({"EVENT_LOG", "LOTTO_LOG", "TASK_RUN", "FATTURA_LOG"})
 
 
 def _riga(**override) -> dict:
@@ -72,6 +75,7 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
     @patch(_REPO)
     def test_filtri_normalizzati(self, repo_cls, _auth) -> None:
         repo_cls.return_value.list_giornale_trasversale.return_value = ([], 0, 0, 0)
+        repo_cls.return_value.registri_giornale_ammessi.return_value = _REGISTRI
         resp = self.client.get(_URL, {
             "gravita": "error, warn", "registro": "event_log,task_run",
             "entity_type": "lotto", "data_da": "2026-09-01", "data_a": "2026-09-19",
@@ -82,7 +86,10 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
             gravita=["ERROR", "WARN"], registri=["EVENT_LOG", "TASK_RUN"],
             entity_type="LOTTO", data_da=date(2026, 9, 1), data_a=date(2026, 9, 19),
             filo=_FILO, solo_vive=False, limit=10, offset=20,
-            sort_by="quando", sort_dir="desc",
+            # Verso assente = `None`: il DESC lo decide il repository
+            # (`sql_order_direction(default_desc=True)`), sede unica del
+            # default per i tre lettori del giornale (2026-09-27).
+            sort_by="quando", sort_dir=None,
         )
         self.assertEqual(resp.json()["data"]["page"], 3)
 
@@ -95,7 +102,10 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
         self.assertEqual(chiamata["gravita"], ["ERROR"])
         self.assertIsNone(chiamata["registri"])
         self.assertTrue(chiamata["solo_vive"])
-        self.assertEqual((chiamata["sort_by"], chiamata["sort_dir"]), ("quando", "desc"))
+        # Senza il filtro `registro` il catalogo non si interroga: e' il costo
+        # dichiarato della lettura dal catalogo (una SELECT solo quando serve).
+        repo_cls.return_value.registri_giornale_ammessi.assert_not_called()
+        self.assertEqual((chiamata["sort_by"], chiamata["sort_dir"]), ("quando", None))
 
     # 4-5. Vocabolari: un valore ignoto e' un 400, mai «zero righe».
     @_AUTH
@@ -109,9 +119,17 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
     @_AUTH
     @patch(_REPO)
     def test_registro_fuori_vocabolario_400(self, repo_cls, _auth) -> None:
+        # ⭐ Il vocabolario e' quello che il CATALOGO risponde, non una costante:
+        #    un registro che il catalogo non conosce e' un 400, e uno che conosce
+        #    passa anche se questo file non l'ha mai sentito nominare.
+        repo_cls.return_value.registri_giornale_ammessi.return_value = _REGISTRI
         resp = self.client.get(_URL, {"registro": "PRATICHE"})
         self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.json()["error"]["fields"], ["registro"])
         repo_cls.return_value.list_giornale_trasversale.assert_not_called()
+        repo_cls.return_value.registri_giornale_ammessi.return_value = _REGISTRI | {"PRATICHE"}
+        repo_cls.return_value.list_giornale_trasversale.return_value = ([], 0, 0, 0)
+        self.assertEqual(self.client.get(_URL, {"registro": "PRATICHE"}).status_code, 200)
 
     # 6.
     @_AUTH

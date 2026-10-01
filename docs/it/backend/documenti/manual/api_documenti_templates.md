@@ -30,6 +30,23 @@ Gli endpoint di generazione/anteprima/download dei documenti generati sono
 documentati nelle API delle sorgenti funzionali che li espongono
 (es. contratti e preventivi).
 
+### La forma dei dati (dal 2026-09-30)
+
+Ogni versione dichiara la **forma dei dati che legge**
+(`versione_contesto`, intero >= 1, NOT NULL senza default). Il builder di
+contesto del template dichiara la forma che **produce** (`CONTEXT_VERSION`
+nel codice, da cui esce anche `_meta.context_version` del contesto). Una
+versione si **pubblica** e si **stampa** solo se le due coincidono: lo decide
+`documenti.fn_guard_versione_contesto`, chiamata dal verbo di pubblicazione,
+dal backend prima del render (generazione e anteprima) e dal trigger
+sull'INSERT della stampa. Il rifiuto è `409
+E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`, con la frase a catalogo che nomina
+versione, template e le due forme. Una BOZZA può dichiarare una forma che il
+builder non produce ancora: è così che si prepara la versione successiva.
+La ristampa fedele non ricontrolla: la coppia versione/contesto congelata è
+stata verificata alla stampa. Brief:
+`brief-db-documenti-versione-contesto-template.md`.
+
 ---
 
 ## Endpoint
@@ -43,7 +60,10 @@ documentati nelle API delle sorgenti funzionali che li espongono
 - Header sicurezza: `Authorization: Bearer <access_token>`
 - `is_search_endpoint = True` -> attiva `SearchBurstRateThrottle`
 - Query param (tutti opzionali; assente o vuoto = nessun filtro):
-  - `search` (string, min 3 char) — ILIKE su `codice`, `codice_interno`, `descrizione`
+  - `search` (string) — ricerca libera: le colonne le decide il catalogo della lista
+    `documenti.template_documenti` (`ricerca_full` nella sua configurazione). Da un
+    carattere, senza 400: tabella di configurazione (Tid, 2026-09-24). ⛔ Il `codice_interno` non si cerca (dal
+    2026-09-24, decisione di Tid)
   - `attivo` (bool) — `true`/`false` per filtrare solo attivi/disattivati
   - `tipo_documento_output_id` (int)
   - `sorgente_tipo_id` (int)
@@ -92,7 +112,7 @@ documentati nelle API delle sorgenti funzionali che li espongono
 }
 ```
 
-- `400`: parametri non validi (`search` < 3 char con `E_API_VALIDATION`; query param int malformato)
+- `400`: parametri non validi (query param int malformato)
 - `401`: JWT mancante o non valido
 - `403`: livello area `documenti` = BLOCCATO
 
@@ -107,7 +127,11 @@ documentati nelle API delle sorgenti funzionali che li espongono
 #### Output
 
 - `200`: stessi campi della lista + `meta` (jsonb), `storicizza`,
-  `user_insert`, `user_update`.
+  `user_insert`, `user_update`, e `versione_contesto_builder` (int|null): la
+  forma dei dati che il builder del template (`context_builder_code`) produce
+  **oggi**. Non è una colonna: la legge il backend dal registry dei builder.
+  `null` = builder non registrato, e il template non genera né pubblica.
+  La portano anche le risposte di crea/aggiorna testata.
 - `404`: template inesistente o fuori scope emittente — codice
   `E_DOCUMENTI_NOT_FOUND`. La risposta non distingue i due casi (no leak
   di esistenza fuori scope).
@@ -118,9 +142,20 @@ documentati nelle API delle sorgenti funzionali che li espongono
 
 - Metodo: `GET`
 - Path: `/api/v1/documenti/templates/<int:template_id>/versioni/`
+- Lista a catalogo `documenti.template_versioni` (dal 2026-09-27: paginata).
 - Query param (opzionali):
-  - `attivo` (bool) — default `true`
+  - `attivo` (bool strict) — assente = nessun filtro (attive e non)
   - `stato` (string) — whitelist: `BOZZA`, `PUBBLICATA`, `OBSOLETA` (case-insensitive)
+  - `search` (string) — ricerca libera sulle colonne accese a catalogo (`titolo`)
+  - `limit` / `offset` (int) — paginazione (default 25, massimo 200)
+  - `order_by` (string) — whitelist `TEMPLATE_VERSIONI_ORDER_COLUMNS`:
+    `versione`, `titolo`, `stato`, `valido_dal`, `valido_al` (NULL = senza
+    scadenza, in fondo in ASC), `attivo`, `data_update`; senza = `versione DESC`
+  - `order_dir` (string) — `asc` / `desc`; assente = DESC sulle date
+  - `emittente_fiscale_id` (int, PK) — `lista_emittente_param`: scioglie il
+    cancello di perimetro per chi vede più emittenti (il super admin su
+    «Tutti»). Vale anche sul **POST** di creazione versione (§7), che sta sulla
+    stessa rotta: il FE lo manda con `paramsEmittente()`. Non filtra.
 
 #### Output
 
@@ -129,6 +164,10 @@ documentati nelle API delle sorgenti funzionali che li espongono
 ```json
 {
   "data": {
+    "count": 1,
+    "page": 1,
+    "page_size": 25,
+    "total_pages": 1,
     "results": [
       {
         "id": 11,
@@ -145,6 +184,7 @@ documentati nelle API delle sorgenti funzionali che li espongono
         "page_orientation": "PORTRAIT",
         "valido_dal": "2026-05-01",
         "valido_al": null,
+        "versione_contesto": 2,
         "attivo": true,
         "data_insert": "2026-04-29T00:00:00+02:00",
         "data_update": "2026-04-29T00:00:00+02:00"
@@ -155,8 +195,9 @@ documentati nelle API delle sorgenti funzionali che li espongono
 }
 ```
 
-- `400`: `stato` non in whitelist — codice `E_DOCUMENTI_VALIDATION`
+- `400`: `stato` non in whitelist — codice `E_DOCUMENTI_VALIDATION`; `order_dir` non valido
 - `404`: template inesistente o fuori scope — codice `E_DOCUMENTI_NOT_FOUND`
+- `422`: `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` — più emittenti nello scope e nessun `emittente_fiscale_id` in query
 
 > **Campi render engine** — `render_engine_codice_interno` e' la chiave
 > **immutabile** (`documenti.render_engine_documento.codice_interno`, es.
@@ -277,6 +318,9 @@ nuovo template e disabilitare il precedente.
   - `titolo`* (string non vuota, max 500)
   - `html_template`* (string non vuota — payload HTML del template)
   - `render_engine_id`* (int positivo, FK su `documenti.render_engine_documento`)
+  - `versione_contesto`* (int positivo) — la forma dei dati che la versione
+    legge. **Nessun default**, né qui né a DB: la dichiara chi scrive la
+    versione (il frontend propone `versione_contesto_builder` del template)
   - `formato_template` (string in `{HTML, HTML_MARKDOWN_BLOCKS}`, default `HTML`)
   - `css_template` (string nullable)
   - `markdown_template` (string nullable)
@@ -295,9 +339,9 @@ nuovo template e disabilitare il precedente.
   - `versione`: numero calcolato come `MAX(versione)+1` per il template.
   - `stato`: sempre `BOZZA` su create.
 - `400` `E_DOCUMENTI_VALIDATION`: chiave non whitelisted, campo richiesto
-  mancante, formato/page_format/orientation fuori whitelist, margine
-  negativo, race su `uq_template_documenti_versioni_template_versione`
-  (riprovare).
+  mancante (anche `versione_contesto`, col campo), formato/page_format/
+  orientation fuori whitelist, margine negativo, race su
+  `uq_template_documenti_versioni_template_versione` (riprovare).
 - `404` `E_DOCUMENTI_NOT_FOUND`: template inesistente o fuori scope.
 
 ### 8. Aggiorna versione BOZZA (Tranche F)
@@ -310,7 +354,8 @@ nuovo template e disabilitare il precedente.
 - Body JSON (tutti opzionali; almeno uno obbligatorio): stesse chiavi della
   create, esclusi i campi calcolati `template_documento_id`, `versione`,
   `stato`. La transizione di stato passa solo dall'endpoint dedicato
-  `pubblica/`.
+  `pubblica/`. `versione_contesto` si cambia qui, solo in BOZZA (da
+  PUBBLICATA lo rifiuta anche il trigger A1, dal `20260930-17`).
 
 #### Output
 
@@ -365,8 +410,9 @@ nuovo template e disabilitare il precedente.
 - `200`: dettaglio della nuova versione clone.
   - Source copiato: `formato_template`, `html_template`, `css_template`,
     `markdown_template`, `render_engine_id`, `page_format`,
-    `page_orientation`, `margin_*`, `context_schema`. (`meta` se non
-    overrideato.)
+    `page_orientation`, `margin_*`, `context_schema`, `versione_contesto`
+    (il corpo è lo stesso, quindi legge le stesse chiavi; per preparare la
+    forma successiva la si cambia sulla bozza). (`meta` se non overrideato.)
   - Default forzati: `stato='BOZZA'`, `versione=MAX+1`, `valido_dal=NULL`,
     `valido_al=NULL` (le date di una nuova bozza si fissano alla
     pubblicazione).
@@ -383,18 +429,32 @@ nuovo template e disabilitare il precedente.
 - Body JSON:
   - `valido_dal`* (date ISO) — obbligatorio per la transizione (vincolo
     DB `chk_template_documenti_versioni_valido_dal_pubblicata`).
-  - `valido_al` (date ISO, nullable) — se valorizzato deve essere `>= valido_dal`.
+  - `valido_al` (date ISO, nullable) — se valorizzato deve essere `>= valido_dal`
+    (lo giudica il database, non il service: vedi sotto).
 
 #### Output
 
 - `200`: dettaglio della versione pubblicata (`stato='PUBBLICATA'`,
   `valido_dal` valorizzato).
+- `400` `E_DATA_AL_MINORE_DAL` (campo `valido_al`): `valido_al < valido_dal`.
+  Lo solleva il guard comune `script.trgfn_guard_date_validita` sull'UPDATE
+  finale della funzione di pubblicazione, come negli altri scritti delle
+  versioni; le chiusure delle versioni precedenti già fatte si annullano con la
+  transazione. Dal 2026-09-24 la funzione non ripete più la regola sui
+  parametri (brief-db-guard-date-validita §14).
 - `400` `E_DOCUMENTI_VALIDATION`:
   - `valido_dal` mancante;
-  - `valido_al < valido_dal`;
   - versione gia' in `PUBBLICATA` o `OBSOLETA` (idempotenza per design:
     una seconda chiamata dopo la pubblicazione iniziale ritorna 400 con
     "stato_corrente=PUBBLICATA").
+- `400` `E_DOCUMENTI_VALIDATION` dal registry: il `context_builder_code` del
+  template non è un builder registrato — non c'è una forma con cui
+  confrontare, e la pubblicazione non arriva al verbo.
+- `409` `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`: la versione legge una forma
+  dei dati diversa da quella che il builder del template produce oggi. Il
+  service passa al verbo la forma del builder (`p_versione_contesto`,
+  obbligatorio dal `20260930-21`); il confronto è del DB, prima di chiudere
+  qualunque altra versione. La versione resta BOZZA.
 - `409` `E_DOCUMENTI_VERSIONE_OVERLAP`: violazione EXCLUDE gist parziale
   `ex_template_documenti_versioni_no_overlap_pubblicata` (ripristino enforcement
   2026-06-02, migration `20260602-05`) — le date si sovrappongono con un'altra
@@ -412,7 +472,8 @@ transazione la funzione:
 
 1. blocca le versioni dello stesso template;
 2. individua le versioni `PUBBLICATA + attivo` con `valido_dal < nuovo.valido_dal`
-   e intervallo sovrapposto;
+   ancora aperte a `nuovo.valido_dal` (`nuovo.valido_al` non entra nel
+   giudizio: con date valide è lo stesso insieme delle «sovrapposte»);
 3. le porta a `OBSOLETA`;
 4. imposta `valido_al = nuovo.valido_dal - 1`;
 5. pubblica la nuova `BOZZA`.
@@ -433,9 +494,9 @@ gestibili automaticamente.
   *dentro* lo scope. Un operatore che chiede `?emittente_fiscale_id=999`
   fuori dal proprio scope ottiene comunque lista vuota (no
   `forbidden`/`leak`).
-- **Search ricerca testuale**: minimo 3 caratteri (regola
-  `require_min_search_length`). Search vuota o `< 3` -> `400`
-  `E_API_VALIDATION`.
+- **Search ricerca testuale**: le colonne le decide il catalogo della lista
+  (BB `add_ricerca_full_condition`, dal 2026-09-24). Da un carattere, senza
+  400 (tabella di configurazione, Tid 2026-09-24); search vuota = nessun filtro.
 - **Paginazione**: `page>=1`, `page_size` in `[1, 200]`. Ordinamento
   `id ASC` come tiebreaker garantisce paginazione deterministica anche
   con duplicati sulla colonna di sort.
@@ -472,7 +533,7 @@ gestibili automaticamente.
 - **Pubblicazione e overlap**: il comando `pubblica/` delega alla funzione DB
   `documenti.fn_pubblica_template_documento_versione(...)`. La funzione blocca
   le versioni dello stesso template, chiude a `nuovo.valido_dal - 1` le
-  `PUBBLICATA` precedenti sovrapposte con decorrenza strettamente precedente,
+  `PUBBLICATA` con decorrenza strettamente precedente ancora aperte a quella data,
   le porta a `OBSOLETA` e pubblica la nuova `BOZZA`. Il vincolo GiST EXCLUDE
   `ex_template_documenti_versioni_no_overlap_pubblicata` resta guardrail finale
   contro sovrapposizioni residue o race concorrenti.
@@ -543,11 +604,12 @@ Vedi Decisione 75 in `sviluppo-documenti.md` §10.
 
 | Codice | HTTP | Quando |
 |---|---|---|
-| `E_DOCUMENTI_VALIDATION` | 400 | `stato` versione fuori whitelist; `template_id`/`versione_id` non interi positivi; in write: chiave non whitelisted, campo richiesto mancante, campo immutabile, `emittente_fiscale_id` fuori scope, margini non numerici/negativi, violazioni unique/partial-unique/FK del DDL; pubblicazione: `valido_dal` mancante, `valido_al < valido_dal`, stato non BOZZA, overlap residuo con altra PUBBLICATA |
+| `E_DOCUMENTI_VALIDATION` | 400 | `stato` versione fuori whitelist; `template_id`/`versione_id` non interi positivi; in write: chiave non whitelisted, campo richiesto mancante, campo immutabile, `emittente_fiscale_id` fuori scope, margini non numerici/negativi, violazioni unique/partial-unique/FK del DDL; pubblicazione: `valido_dal` mancante, stato non BOZZA |
+| `E_DATA_AL_MINORE_DAL` | 400 | `valido_al < valido_dal` in create/clone/update/pubblicazione di una versione e in upload/PATCH di un asset: guard comune `script.trgfn_guard_date_validita`, campo `valido_al`. Il service non lo anticipa (dal 2026-09-23) |
+| `E_DOCUMENTI_VERSIONE_OVERLAP` | 409 | pubblicazione con overlap residuo verso un'altra versione `PUBBLICATA` attiva che l'auto-close non risolve (EXCLUDE `ex_template_documenti_versioni_no_overlap_pubblicata`) |
 | `E_DOCUMENTI_NOT_FOUND` | 404 | template/versione inesistente o fuori scope emittente (no leak) |
 | `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` | 409 | tentativo di modificare versione `PUBBLICATA` (Tranche F). Trigger DB A1 + service guard |
 | `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` | 409 | tentativo di eliminare versione non-BOZZA o gia' usata da documenti generati (Tranche F). Trigger DB A2 + service guard |
-| `E_API_VALIDATION` | 400 | search < 3 char (helper core) |
 
 Codici Fase A `E_DOCUMENTI_*` registrati in `apps.core.services.error_policies`
 (5 codici dominio + 2 guard timeline `E_EVENTO_DOCUMENTO_*`).
@@ -612,7 +674,7 @@ cambia, e le ristampe di ieri devono continuare a mostrare quello di ieri.
 
 | | |
 |---|---|
-| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `page`, `page_size`, `order_by`, `order_dir` |
+| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `utilizzabili`, `page`, `page_size`, `order_by`, `order_dir` |
 | **Upload** | `POST /api/v1/documenti/asset/` — **multipart**: campo `file` piu' l'anagrafica (`codice`, `codice_interno`, `descrizione`, `asset_tipo_id`, `emittente_fiscale_id`, `valido_dal`…). I metadati si possono passare come campi form singoli **oppure** come JSON nel campo `metadati`: la view accetta entrambe le forme |
 | **Dettaglio / aggiorna** | `GET` `PATCH /api/v1/documenti/asset/{asset_id}/` — la `PATCH` tocca i **metadati**, non il binario |
 | **Download** | `GET /api/v1/documenti/asset/{asset_id}/file/` — il file originale, come `attachment` |
@@ -626,5 +688,52 @@ renderebbe **irriproducibile** ogni documento che lo incorporava — la
 riproducibilita' si difende impedendo la cancellazione, non sperando che
 nessuno la faccia.
 
-La lista e' `is_search_endpoint` (throttling di ricerca).
+La lista e' `is_search_endpoint` (throttling di ricerca). `search`: le colonne le
+decide il catalogo della lista `documenti.template_asset`; da un carattere, senza
+400 (tabella di configurazione, Tid 2026-09-24). ⛔ Il `codice_interno` non si cerca (dal 2026-09-24).
+
+### Come un template richiama un asset
+
+Nell'HTML o nel CSS di una versione un asset si richiama per **`codice_interno`**,
+con lo schema `asset:`:
+
+```html
+<img src="asset:LOGO_INTESTAZIONE">
+<link rel="stylesheet" href="asset:STILE_BASE">
+```
+
+```css
+.firma { background: url(asset:FIRMA_AD); }
+```
+
+Il `codice_interno` non si modifica (lock automatico del DB), mentre il `codice`
+e' un'etichetta che si puo' cambiare: per questo il riferimento sta sul primo.
+
+**Che cosa il render carica**, ed e' una lista chiusa:
+
+| Riferimento | Esito |
+|---|---|
+| `asset:<codice_interno>` | l'asset **dello stesso emittente del template**. Nella generazione e nell'anteprima deve essere attivo e valido oggi; nella **ristampa fedele** vale anche se oggi e' scaduto o disattivato, perche' e' il file di allora |
+| `data:...` | ammesso: il contenuto e' gia' nella stringa |
+| `file:`, `http:`, `https:`, ogni altro schema | **rifiutato** |
+
+Gli asset di un altro emittente non si vedono, e non esiste un livello globale
+da usare come ripiego.
+
+⭐ **Il filtro `utilizzabili` della lista** (`true` = solo gli asset attivi e
+validi oggi, `false` = solo gli altri, assente = tutti) usa **la stessa
+condizione** con cui il render risolve `asset:` (`_ASSET_UTILIZZABILE_OGGI` nel
+repository). È quello che usa l'editor dei template per proporre gli asset da
+richiamare: un asset proposto lì non viene rifiutato alla stampa per scadenza.
+È un **filtro**, non un perimetro: la lista di amministrazione degli asset
+continua a mostrarli tutti.
+
+Ogni rifiuto **ferma il render** con `E_DOCUMENTI_RENDER_FAILED` e l'URL nel
+`detail`: un asset che l'emittente non ha, uno schema non ammesso, anche dentro
+un SVG o un CSS importato. Un PDF senza logo e senza errore non esce mai. Un
+render carica al massimo 50 risorse: e' il limite che ferma un CSS che importa
+se stesso. Se il file sullo storage non corrisponde allo `sha256` registrato, il
+render si ferma con `E_DOCUMENTI_STORAGE_FAILED`.
+
+Decisioni e motivi: `work-in-progress/brief-be-documenti-risorse-esterne-render-pdf.md`.
 

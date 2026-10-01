@@ -79,19 +79,73 @@ exclude = [
 #       `logger.error(..., exc_info=True)`).
 # LOG = uso del logging, l'altra meta': `.exception()` FUORI da un except.
 #
-# ⛔ B (bugbear) NON e' acceso, e la ragione va scritta perche' e' il candidato
-#    piu' ovvio: dei 54 rilievi, `B017` (2) e' stato sanato subito — era un
-#    `assertRaises(Exception)`, cioe' un test che passa su QUALUNQUE errore, la
-#    stessa regola gia' scritta per i pgTAP — ma restano `B905` (34, `zip()`
-#    senza `strict=`: tronca in silenzio alla lista piu' corta) e `B023` (5),
-#    che sono 39 decisioni una per una, non una sostituzione.
-#    ⚠️ E `B904` (12) e' stato guardato e SCARTATO: 8 sono
-#    `raise AssertionError("unreachable")  # pragma: no cover`, righe che non
-#    si eseguono mai, e le altre 4 non traducono errori di database — nessuna
-#    perde la diagnostica psycopg, che e' l'unica cosa che il `from` porta qui
-#    (`db_error_fields` legge `__cause__` in cinque punti). Correggerle sarebbe
-#    stato rumore su righe morte.
-select = ["F", "E9", "T20", "C4", "A", "PIE", "G", "LOG"]
+# ⭐ ALLARGAMENTO DEL 2026-09-28 — B = bugbear (brief
+#    `brief-be-fe-sicurezza-header-token-mfa.md` §4). Rimandato il 2026-09-10
+#    perche' chiedeva decisioni una per una, non una sostituzione; misurati il
+#    2026-09-28 74 rilievi, sanati PRIMA di accendere:
+#    - `B905` (50, `zip()` senza `strict=`): TUTTI `strict=True`. Nessuno
+#      voleva la troncatura: 45 sono `dict(zip(colonne, riga))`, dove colonne
+#      e valori hanno per costruzione la stessa lunghezza, gli altri coppie che
+#      devono combaciare (cifre e pesi del codice fiscale, rate e metadati).
+#      ⛔ La correzione automatica di ruff mette `strict=False`, cioe'
+#      conserva il difetto: una `zip` nuova si scrive `strict=True`, e
+#      `strict=False` solo dove la troncatura e' VOLUTA, col perche' accanto.
+#    - `B023` (6, funzione nel ciclo che legge la variabile del ciclo): tutte
+#      invocate subito, nessun difetto oggi; le variabili ora si LEGANO come
+#      argomenti di default, cosi' restano giuste se un giorno la chiamata
+#      viene rimandata (`commesse_service`, due test DB).
+#    - `B007` (11, variabile del ciclo non usata): rinominate `_x`. Due erano
+#      altro: in `test_ui_action_e_canale_campi` il sorgente «senza docstring»
+#      era calcolato e mai letto (codice morto, tolto); in
+#      `check_i18n_keys.py` le intestazioni rotte non dicevano DOVE, a
+#      differenza delle altre due liste dello stesso script (corretto).
+#    - `B904` (7, `raise` dentro `except` senza `from`): 3 punti veri
+#      (utente non trovato, intero non valido) ora `from None`; 4 sono
+#      `raise AssertionError("unreachable")` dopo `ErrorManager.raise_error`,
+#      righe che non si eseguono mai, marcate `noqa: B904` sul punto. ⚠️ La
+#      regola resta ACCESA: il 2026-09-10 era stata proposta da ignorare in
+#      blocco, ma i rilievi di allora non erano quelli di oggi — tre erano
+#      traduzioni d'errore vere.
+#
+# ⭐ ALLARGAMENTO DEL 2026-09-26 — S = regole di sicurezza (flake8-bandit, le
+#    stesse di Bandit: niente dipendenza nuova). Misurate 883 rilievi, sanati
+#    PRIMA di accendere, stessa disciplina:
+#    - `S608` (SQL composto con stringhe): ogni punto guardato. Dove i pezzi
+#      interpolati vengono da letterali o whitelist e i valori viaggiano come
+#      parametri, `# noqa: S608 — <da dove arriva il pezzo>` sul punto. Il
+#      motivo dice l'ORIGINE, non «sicuro»: e' cio' che il prossimo deve poter
+#      ricontrollare.
+#    - `S110`/`S112` (`except: pass`): ogni errore ingoiato e' stato ristretto
+#      alla classe attesa, oppure ora si logga.
+#    - `S701`: il render documentale girava con autoescape spento e i dati
+#      utente nel context — era un difetto vero, chiuso in `render_service`.
+#    - `S105`/`S106`: tutti falsi positivi (codici tipo token, messaggi con la
+#      parola «password»), marcati sul punto.
+#
+# ⛔ `S101` (`assert`) e' SPENTA, ed e' una decisione, non una resa: circa 460
+#    dei 575 `assert` applicativi restringono solo il tipo dopo un
+#    `ErrorManager.require` o dopo una funzione SQL che ritorna sempre una riga
+#    — 460 `noqa` sarebbero stati rumore. Il rischio della regola (con
+#    `python -O` gli assert spariscono in silenzio) e' chiuso alla radice:
+#    `settings.py` RIFIUTA l'avvio con gli assert disattivati.
+#    ⚠️ Gli `assert` che proteggevano qualcosa (whitelist prima di scrivere
+#    SQL, validazioni di input) sono stati convertiti in `raise` espliciti. Un
+#    controllo si scrive `if ...: raise`, mai `assert`: S101 spenta non vuol
+#    dire che l'assert sia diventato un controllo.
+#
+# RUF100 = `# noqa` che non serve piu' (la regola non scatta su quella riga, o
+#          non e' accesa). ⭐ Accesa il 2026-09-26 a ZERO, dopo aver tolto 102
+#          direttive morte: 61 `S608` messi sulla riga sbagliata o su SQL che
+#          ruff non segnala, 41 su regole mai accese (BLE001, ARG, E731...).
+#          Un `noqa` morto non e' innocuo: dice «qui c'e' un rischio
+#          controllato» dove non c'e' niente, e il giorno che la riga cambia
+#          nessuno sa piu' quale dei due fosse vero.
+# ⚠️ Pulirli con `ruff --select RUF100 --fix` e' SBAGLIATO: con `--select` le
+#    altre regole risultano spente, e ruff toglie TUTTI i `noqa` del repo
+#    (427 il 2026-09-26, ripristinati). Si usa la configurazione intera
+#    (`ruff check .`), e il motivo scritto dopo la direttiva va conservato.
+select = ["F", "E9", "T20", "C4", "A", "PIE", "G", "LOG", "S", "B", "RUF100"]
+ignore = ["S101"]
 
 [lint.per-file-ignores]
 # Un import "inutilizzato" in `apps.py` o in `settings.py` e' spesso IL LAVORO:
@@ -112,8 +166,22 @@ select = ["F", "E9", "T20", "C4", "A", "PIE", "G", "LOG"]
 #    livello, senza `request_id`, e nessuno lo vede).
 # ⚠️ Il `noqa` sul punto qui non e' una via: sarebbero 352 righe di rumore in
 #    file dove la regola non ha nulla da dire.
-"scripts/**" = ["T201", "T203"]
-"backend/scripts/**" = ["T201", "T203"]
+#
+# ⛔ Stesso ragionamento per `S603`/`S607` negli script: lanciare `git` o
+#    `zensical` dal PATH con un argv fisso E' il lavoro dello script, e chi lo
+#    lancia e' lo sviluppatore sulla sua macchina. Nel codice servito da Django
+#    le due regole restano accese (l'unico `subprocess` di `backend/apps/` porta
+#    gia' il suo `noqa` motivato).
+"scripts/**" = ["T201", "T203", "S603", "S607"]
+"backend/scripts/**" = ["T201", "T203", "S603", "S607"]
+#
+# ⛔ Nei test le regole di sicurezza non si applicano per NATURA: `assert` e'
+#    il linguaggio del test, le password sono finte per costruzione, e l'SQL
+#    di preparazione e' composto da fixture. Misurati il 2026-09-26: 112 rilievi,
+#    tutti di queste classi.
+"**/tests/**" = ["S"]
+"**/test_*.py" = ["S"]
+"**/conftest.py" = ["S"]
 [format]
 # ⛔ Il formattatore NON e' acceso. Riformattare 258.000 righe in un colpo
 #    renderebbe illeggibile ogni `git blame` del progetto, e non e' una

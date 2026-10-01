@@ -36,7 +36,6 @@ def _mock_request(
     request.user = user
     # Simula assenza cache per-request
     del request._zeroerp_perms_cache
-    del request._zeroerp_perms_cache_loaded_from_redis
     return request
 
 

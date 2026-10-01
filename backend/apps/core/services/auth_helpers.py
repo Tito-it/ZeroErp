@@ -6,6 +6,7 @@
 #        - extract_identita_id_from_request: claim `identita_id` dal JWT
 #        - extract_identita_id_from_token_meta: `identita_id` dal meta token monouso
 #        - validate_and_extract_token: validazione token senza consumo
+#        - valida_nuova_password: presente, uguale alla conferma, valida
 #        - apply_new_password: set password + reset flag + blacklist JWT
 #        Eliminano duplicazione tra password_reset, attivazione, change_password
 #        e middleware (§8.4.1).
@@ -18,10 +19,9 @@ import logging
 from typing import Any
 
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_constants import (
@@ -29,6 +29,7 @@ from apps.core.services.auth_constants import (
     JWT_CLAIM_IDENTITA_ID,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.core.services.token_service import TokenService
 
 logger = logging.getLogger("security")
@@ -121,22 +122,44 @@ def validate_and_extract_token(
     return token_result
 
 
-# Scopo: Applica nuova password, resetta flag deve_cambiare_password,
+# Scopo: ⭐ Le regole della NUOVA password, in un posto solo: presente,
+#        uguale alla conferma, accettata dai validatori di Django. Le usano
+#        reset, attivazione della veste e cambio password, ognuno col proprio
+#        codice errore. Va chiamata PRIMA di consumare un token: una password
+#        rifiutata non brucia il link.
+# ⛔ La password arriva com'e' stata digitata (S-5, 2026-09-27): niente
+#    `strip`, qui o dal chiamante. La si legge dal corpo con
+#    `payload_validators.password_digitata`, che rifiuta cio' che non e' testo.
+# Un controllo in piu' del singolo flusso (es. «diversa dalla precedente» del
+# cambio password) resta al chiamante, dopo questa.
+def valida_nuova_password(
+    new_password: str,
+    new_password_confirm: str,
+    *,
+    user: User,
+    code: str,
+) -> None:
+    ErrorManager.require(bool(new_password), code=code, message="Nuova password obbligatoria.")
+    ErrorManager.require(
+        new_password == new_password_confirm,
+        code=code,
+        message="La nuova password e la conferma non coincidono.",
+    )
+    try:
+        validate_password(new_password, user=user)
+    except DjangoValidationError as exc:
+        ErrorManager.raise_error(code=code, message=" ".join(exc.messages), cause=exc)
+
+
+# Scopo: Applica nuova password, spegne il cambio password obbligatorio,
 #        opzionalmente blacklista tutti i refresh token JWT precedenti.
 #        Tutto in un'unica transazione atomica.
-# Post modello 1:N (§8.4.1) il flag `deve_cambiare_password` e' per veste
-# (ogni identita_digitali ha il proprio); `identita_id` kw-only:
-#   - valorizzato: reset flag solo sulla veste specifica (es. cambio
-#     password autenticato tocca la veste del JWT corrente, attivazione
-#     invito tocca la veste che si sta attivando).
-#   - None: reset flag su tutte le identita attive dell'utente (semantica
-#     corretta per password reset self-service — l'utente non ha una
-#     veste corrente, sta rientrando su tutto il suo account).
+# L'obbligo di cambio password e' della CREDENZIALE (D-7): la password e' una
+# sola, quindi averla cambiata lo spegne per tutte le vesti.
 def apply_new_password(
     user: User,
     new_password: str,
     *,
-    identita_id: int | None = None,
     blacklist_tokens: bool = True,
     auth_repo: AuthRepository | None = None,
 ) -> None:
@@ -144,16 +167,7 @@ def apply_new_password(
     with transaction.atomic():
         user.set_password(new_password)
         user.save(update_fields=["password"])
-        repo.set_deve_cambiare_password(
-            user.id, False, identita_id=identita_id
-        )
+        repo.set_deve_cambiare_password(user.id, False)
 
         if blacklist_tokens:
-            for ot in OutstandingToken.objects.filter(user=user):
-                try:
-                    RefreshToken(ot.token).blacklist()
-                except TokenError:
-                    logger.debug(
-                        "Blacklist token fallita per user_id=%s: token gia' invalido",
-                        user.id,
-                    )
+            blocca_token_sessioni(user.id)

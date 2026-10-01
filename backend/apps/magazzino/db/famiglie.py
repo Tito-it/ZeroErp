@@ -44,6 +44,13 @@ class FamigliaDocumentoInterno:
     fk_riga: str                   # "inventario_id" — la colonna di riga verso la testata
     col_stato: str                 # "stato_mag_inventario"
     fn_posta: str                  # "magazzino.fn_posta_inventario"
+    # La capability del dettaglio (R-1 del brief 2-bis): l'INVOLUCRO della
+    # famiglia, non il corpo parametrico — `script.fn_available_actions_
+    # documento_interno(p_famiglia, id)` vuole il nome della famiglia come
+    # valore, e un valore in piu' da passare e' un valore in piu' da
+    # sbagliare. L'involucro lo sa gia' (doc: «i due involucri, che sono
+    # cio' che il backend chiama»).
+    fn_capability: str             # "script.fn_available_actions_inventario"
     sorgente_codice_interno: str   # "INVENTARIO_RIGA" — `config.sorgenti`
     lista_codice: str              # "magazzino.inventari" — `ui.lista_definizione`
     lista_righe_codice: str        # "magazzino.inventario_righe"
@@ -56,6 +63,7 @@ class FamigliaDocumentoInterno:
     def __post_init__(self) -> None:
         for nome in (
             "tabella", "tabella_righe", "fk_riga", "col_stato", "fn_posta", "col_qta",
+            "fn_capability",
         ):
             valore = getattr(self, nome)
             if not _IDENT.match(valore):
@@ -70,6 +78,7 @@ INVENTARI = FamigliaDocumentoInterno(
     fk_riga="inventario_id",
     col_stato="stato_mag_inventario",
     fn_posta="magazzino.fn_posta_inventario",
+    fn_capability="script.fn_available_actions_inventario",
     sorgente_codice_interno="INVENTARIO_RIGA",
     lista_codice="magazzino.inventari",
     lista_righe_codice="magazzino.inventario_righe",
@@ -88,6 +97,7 @@ RETTIFICHE = FamigliaDocumentoInterno(
     fk_riga="rettifica_id",
     col_stato="stato_mag_rettifiche",
     fn_posta="magazzino.fn_posta_rettifica",
+    fn_capability="script.fn_available_actions_rettifica",
     sorgente_codice_interno="RETTIFICA_RIGA",
     lista_codice="magazzino.rettifiche",
     lista_righe_codice="magazzino.rettifica_righe",

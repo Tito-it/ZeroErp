@@ -21,19 +21,19 @@ Il login deve discriminare quale "veste" sta usando l'utente: il claim
 
 ### Login
 
-| Path | Vesti ammesse | View |
-|---|---|---|
-| `POST /api/v1/admin/token/` | `OPERATORE` | `AdminTokenView` |
+| Path                          | Vesti ammesse                          | View               |
+| ----------------------------- | -------------------------------------- | ------------------ |
+| `POST /api/v1/admin/token/`   | `OPERATORE`                            | `AdminTokenView`   |
 | `POST /api/v1/portale/token/` | `CLIENTE_PORTALE`, `FORNITORE_PORTALE` | `PortaleTokenView` |
-| `POST /api/v1/shop/token/` | `SHOP_CUSTOMER` | `ShopTokenView` |
+| `POST /api/v1/shop/token/`    | `SHOP_CUSTOMER`                        | `ShopTokenView`    |
 
 ### Refresh
 
-| Path | Vesti ammesse | View |
-|---|---|---|
-| `POST /api/v1/admin/token/refresh/` | `OPERATORE` | `AdminTokenRefreshView` |
+| Path                                  | Vesti ammesse                          | View                      |
+| ------------------------------------- | -------------------------------------- | ------------------------- |
+| `POST /api/v1/admin/token/refresh/`   | `OPERATORE`                            | `AdminTokenRefreshView`   |
 | `POST /api/v1/portale/token/refresh/` | `CLIENTE_PORTALE`, `FORNITORE_PORTALE` | `PortaleTokenRefreshView` |
-| `POST /api/v1/shop/token/refresh/` | `SHOP_CUSTOMER` | `ShopTokenRefreshView` |
+| `POST /api/v1/shop/token/refresh/`    | `SHOP_CUSTOMER`                        | `ShopTokenRefreshView`    |
 
 ## Input
 
@@ -50,54 +50,111 @@ Headers: nessun auth necessario (endpoint pubblico `AllowAny`).
 
 ### Refresh (tutti e 3)
 
-```json
-{
-  "refresh": "eyJhbGciOi..."
-}
+Corpo **vuoto**: il refresh token arriva dal cookie `zeroerp_refresh`, che il
+browser manda da solo (vedi [Cookie di refresh](#cookie-di-refresh)).
+
+```http
+POST /api/v1/admin/token/refresh/
+X-Requested-With: XMLHttpRequest
+Cookie: zeroerp_refresh=eyJhbGciOi...
 ```
 
-Headers: nessun auth necessario (il token del body fa fede).
+Headers:
+
+- nessun `Authorization`: la sessione la porta il solo cookie;
+- `X-Requested-With: XMLHttpRequest` **obbligatorio** (anti-CSRF): e' l'unico
+  endpoint autenticato dal solo cookie, e un form o un link di un altro sito
+  non puo' mandare un header custom. Senza l'header → 403 `E_PERMISSION_DENIED`,
+  prima ancora di leggere il cookie.
+
+Senza cookie (o con cookie vuoto) → 401 `E_AUTHENTICATION_FAILED`
+(`InvalidToken`): il client torna al login.
 
 ## Output
 
 ### Login success (HTTP 200)
 
+```http
+HTTP/1.1 200 OK
+Set-Cookie: zeroerp_refresh=eyJhbGciOi...; HttpOnly; Max-Age=86400; Path=/api/v1/; SameSite=Strict; Secure
+```
+
 ```json
 {
   "access": "eyJhbGciOi...",
-  "refresh": "eyJhbGciOi...",
-  "password_change_required": false
+  "password_change_required": true
 }
 ```
 
-`password_change_required` e' presente (valore `true`) solo se
-l'identita ha il flag `deve_cambiare_password = true`.
+Il corpo porta solo l'`access`: il refresh esce nel `Set-Cookie`, mai nel
+corpo. La view lo sposta come ultimo passo (`sposta_refresh_nel_cookie`),
+dopo l'audit e le GUC che ne leggono ancora i claim.
+
+`password_change_required` e' presente (valore `true`) solo se la
+**credenziale** ha l'obbligo di cambio password (`fn_get_deve_cambiare_password`:
+e' della credenziale, non della veste — vale su ogni porta); altrimenti la
+chiave **manca** (non vale mai `false`).
 
 ### Refresh success (HTTP 200)
 
+```http
+HTTP/1.1 200 OK
+Set-Cookie: zeroerp_refresh=eyJhbGciOi...; HttpOnly; Max-Age=86400; Path=/api/v1/; SameSite=Strict; Secure
+```
+
 ```json
 {
-  "access": "eyJhbGciOi...",
-  "refresh": "eyJhbGciOi..."
+  "access": "eyJhbGciOi..."
 }
 ```
 
-Il nuovo refresh e' rotato (`SIMPLE_JWT.ROTATE_REFRESH_TOKENS=True`)
-e il vecchio blacklistato (`BLACKLIST_AFTER_ROTATION=True`). I claim
-custom (`identita_id`, `ruolo_applicativo`, `sid`) sono **preservati**
-nel nuovo refresh (SimpleJWT ruota solo `jti/exp/iat`).
+Il nuovo refresh e' rotato (`SIMPLE_JWT.ROTATE_REFRESH_TOKENS=True`), il
+vecchio blacklistato (`BLACKLIST_AFTER_ROTATION=True`), e torna nel
+`Set-Cookie` al posto del precedente. I claim custom (`identita_id`,
+`ruolo_applicativo`, `sid`, `emittente_attivo_id`) sono **preservati** nel
+nuovo refresh (SimpleJWT ruota solo `jti/exp/iat`). La validazione (firma,
+scadenza, blacklist, rotazione) e' quella di `TokenViewBase.post`, col refresh
+preso dal cookie (`AuditTokenRefreshView._rinnova`).
+
+### Cookie di refresh
+
+Dal 2026-09-28 il refresh token non viaggia mai nel corpo, ne' in entrata ne'
+in uscita: sta in un cookie che lo script della pagina non puo' leggere. La
+sede unica di nome, attributi, lettura, scrittura e cancellazione e' il
+building block `apps/core/api/refresh_cookie.py`.
+
+| Attributo  | Valore                                                                                          |
+| ---------- | ----------------------------------------------------------------------------------------------- |
+| Nome       | `zeroerp_refresh`                                                                               |
+| `HttpOnly` | sempre                                                                                          |
+| `SameSite` | `Strict`                                                                                        |
+| `Path`     | `/api/v1/` — il refresh serve anche a logout, cambio password e cambio emittente attivo, che stanno fuori da `/token/` |
+| `Secure`   | setting `REFRESH_COOKIE_SECURE` (segue `SESSION_COOKIE_SECURE`: attivo fuori da `DEBUG`)       |
+| `Max-Age`  | `SIMPLE_JWT.REFRESH_TOKEN_LIFETIME` (1 giorno): il cookie non sopravvive al token che porta    |
+
+Lo scrivono login e refresh dei tre canali, il cambio password e il cambio
+emittente attivo; lo legge il logout, che lo cancella
+([api_logout.md](api_logout.md)).
+
+L'access token resta nel corpo, dura `SIMPLE_JWT.ACCESS_TOKEN_LIFETIME` =
+**10 minuti**, e il frontend lo tiene solo in memoria, rinnovandolo in silenzio
+dal cookie.
 
 ## Claim JWT custom
 
 Oltre ai claim standard SimpleJWT (`token_type`, `exp`, `iat`, `jti`,
-`user_id`), il JWT emesso da `MultiVesteTokenSerializer` contiene:
+`user_id`), il JWT emesso da `MultiVesteTokenSerializer` contiene i claim seguenti.
+Li inietta `emetti_refresh_veste(user, identita)`, la catena **unica** di chi apre una
+sessione: il login e — dal 2026-09-24 — il cambio password
+([api_token_cambio_password.md](api_token_cambio_password.md)).
 
-| Claim | Tipo | Fonte | Scopo |
-|---|---|---|---|
-| `identita_id` | int | `anagrafiche.identita_digitali.id` | Discriminatore veste. Usato da `JwtAuditAuthentication` per popolare GUC `app.current_identita_id` + validare che l'identita sia ancora attiva |
+| Claim               | Tipo   | Fonte                                             | Scopo                                                                                                                                                                        |
+| ------------------- | ------ | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `identita_id`       | int    | `anagrafiche.identita_digitali.id`                | Discriminatore veste. Usato da `JwtAuditAuthentication` per popolare GUC `app.current_identita_id` + validare che l'identita sia ancora attiva                               |
 | `ruolo_applicativo` | string | `anagrafiche.identita_digitali.ruolo_applicativo` | `OPERATORE` \| `CLIENTE_PORTALE` \| `FORNITORE_PORTALE` \| `SHOP_CUSTOMER` \| `API_CLIENT` \| `DISABILITATO`. Letto da guard cross-namespace del refresh + esposto in `/me/` |
-| `sid` | uuid | `SidTokenObtainPairSerializer.get_token` | Session ID stabile (invariato tra rotazioni). Usato dall'audit sessioni |
-| `user_id` | int | `auth_user.id` | Standard SimpleJWT |
+| `sid`               | uuid   | `SidTokenObtainPairSerializer.get_token`          | Session ID stabile (invariato tra rotazioni). Usato dall'audit sessioni                                                                                                      |
+| `emittente_attivo_id` | int  | `EmittenteAttivoService.risolvi_per_login`        | **Opzionale, solo veste `OPERATORE`**: emittente attivo (impersonazione di scope). Claim assente = «Tutti gli emittenti». Popola la GUC `app.current_emittente_id`, rivalidata (emittente ancora attivo) a ogni richiesta |
+| `user_id`           | int    | `auth_user.id`                                    | Standard SimpleJWT                                                                                                                                                           |
 
 I claim sono iniettati sul **refresh token**; SimpleJWT li copia
 automaticamente sull'access token via property `access_token` (eccezione:
@@ -109,6 +166,8 @@ Le costanti Python per i claim custom vivono in
 ```python
 JWT_CLAIM_IDENTITA_ID = "identita_id"
 JWT_CLAIM_RUOLO_APPLICATIVO = "ruolo_applicativo"
+JWT_CLAIM_SID = "sid"
+JWT_CLAIM_EMITTENTE_ATTIVO_ID = "emittente_attivo_id"
 ```
 
 **Mai hardcodare i nomi** nei consumer: importare le costanti.
@@ -129,12 +188,18 @@ subset del namespace. Se assente:
 
 ### 2. Guard cross-namespace al refresh (§8.3.5)
 
-Prima di delegare al parent SimpleJWT, `AuditTokenRefreshView.post()`
-estrae il claim `ruolo_applicativo` dal refresh token e verifica che
+Prima della validazione SimpleJWT (`_rinnova`), `AuditTokenRefreshView.post()`
+controlla l'header anti-CSRF, legge il refresh dal cookie, ne
+estrae il claim `ruolo_applicativo` e verifica che
 rientri nel set `expected_ruoli_applicativi` del namespace chiamato:
 
 - Refresh OPERATORE su `/portale/token/refresh/` → 403 `E_VESTE_NON_ATTIVA`
 - Refresh OPERATORE su `/admin/token/refresh/` → OK
+- Refresh nostro senza claim `ruolo_applicativo` → 403 `E_VESTE_NON_ATTIVA`
+  (il guard gira **prima** della validazione SimpleJWT, che ruoterebbe il token).
+- Refresh illeggibile o con una firma non nostra → 401 `E_AUTHENTICATION_FAILED`:
+  la veste si legge solo da claim con la **firma verificata** (BB
+  `claims_refresh_firmati`, lo stesso del logout; E-8, chiuso 2026-09-28).
 
 Non c'e' escalation di privilegio (il claim veste viene dal token firmato),
 ma chiude l'ambiguita' semantica cross-path.
@@ -144,23 +209,39 @@ ma chiude l'ambiguita' semantica cross-path.
 Ad **ogni** richiesta con Bearer, `JwtAuditAuthentication.authenticate()`:
 
 1. Estrae `identita_id` dal claim. Se assente → 401 `E_JWT_SENZA_IDENTITA`.
-2. Query CTE che valida `(auth_user, identita_id)` attivi + popola 5 GUC
+   Poi verifica il claim `sid`: se assente o vuoto → 401 `E_JWT_SENZA_SID`.
+2. Query CTE che valida `(auth_user, identita_id)` attivi + popola 6 GUC
    di sessione in singola round-trip. Se count = 0 → 401 `E_IDENTITA_NON_ATTIVA`.
 3. Setta marker `request._zeroerp_jwt_guc_set = True` per il reset
    simmetrico via middleware a response.
 
 ## Codici errore
 
-| Codice | HTTP | UI action | Quando | Policy |
-|---|---|---|---|---|
-| `E_AUTHENTICATION_FAILED` | 401 | show_error_banner | Credenziali errate, token scaduto/invalid | Pre-esistente |
-| `E_NOT_AUTHENTICATED` | 401 | show_error_banner | Header `Authorization` assente su endpoint protetto | Pre-esistente |
-| `E_VESTE_NON_ATTIVA` | 403 | show_error_banner | Utente senza identita del namespace chiamato (login) / refresh cross-namespace | §8.3.2 |
-| `E_JWT_SENZA_IDENTITA` | 401 | redirect_login | JWT senza claim `identita_id` (token pre-refactor) | §8.3.4 |
-| `E_IDENTITA_NON_ATTIVA` | 401 | redirect_login | `identita_id` non corrisponde a identita attiva (revocata) | §8.3.4 |
-| `E_UTENTE_BLOCCATO` | 403 | show_error_banner | Identita con `bloccato_fino_a > now()` (tentativi falliti) | Pre-esistente |
+| Codice                    | HTTP | UI action         | Quando                                                                         | Policy        |
+| ------------------------- | ---- | ----------------- | ------------------------------------------------------------------------------ | ------------- |
+| `E_AUTHENTICATION_FAILED` | 401  | show_error_banner | Credenziali errate; refresh senza cookie `zeroerp_refresh` o con refresh non valido/scaduto/in blacklist | Pre-esistente |
+| `E_NOT_AUTHENTICATED`     | 401  | show_error_banner | Header `Authorization` assente su endpoint protetto                            | Pre-esistente |
+| `E_PERMISSION_DENIED`     | 403  | show_error_banner | Refresh senza header `X-Requested-With: XMLHttpRequest` (anti-CSRF)            | 2026-09-28    |
+| `E_VESTE_NON_ATTIVA`      | 403  | show_error_banner | Utente senza identita del namespace chiamato (login) / refresh cross-namespace | §8.3.2        |
+| `E_JWT_SENZA_IDENTITA`    | 401  | redirect_login    | JWT senza claim `identita_id` (token pre-refactor)                             | §8.3.4        |
+| `E_JWT_SENZA_SID`         | 401  | redirect_login    | JWT senza claim `sid` (o con `sid` vuoto)                                      | —             |
+| `E_IDENTITA_NON_ATTIVA`   | 401  | redirect_login    | `identita_id` non corrisponde a identita attiva (revocata)                     | §8.3.4        |
+| `E_CREDENZIALE_BLOCCATA`  | 403  | show_error_banner | Credenziale bloccata dall'amministratore: tutte le porte, non scade, il reset non la toglie | 2026-09-25 |
+| `E_UTENTE_BLOCCATO`       | 403  | show_error_banner | Freno sulla **provenienza**: troppe password sbagliate di fila da questo IP (frase chiusa, i minuti restano nel contesto del DB) | Pre-esistente, per credenziale + provenienza dal 2026-09-25 |
+| `E_LOGIN_ATTESA`          | 403  | show_error_banner | Attesa crescente sulla credenziale oltre il tetto di fallimenti da qualunque provenienza; i secondi nel `message` (⚠️ non in `detail`, che porta la causa del catalogo) | 2026-09-25 |
+| `E_AUTH_CHIAMATA_NON_VALIDA` | 500 | show_error_banner | Provenienza (IP fidato) non ricavabile: il login si rifiuta prima di cercare lo username | 2026-09-25 |
 
-Tutti i codici sono registrati in `apps/core/services/error_policies.py`.
+La classe di ogni codice sta in `apps/core/services/error_policies_generated.py`
+(`CLASSE_PER_CODICE`), i tre `redirect_login` in
+`apps/core/services/error_ui_overrides.py`, i messaggi in
+`apps/core/services/error_messages_fallback.py`.
+
+> Il 401 da token scaduto o invalido (`InvalidToken` di SimpleJWT) esce
+> nell'envelope come `E_AUTHENTICATION_FAILED` (E-3, chiuso 2026-09-27).
+>
+> I tre rifiuti della credenziale sono 403, non 429: il 429 e' il throttle
+> per IP, che il frontend intercetta prima di leggere il codice. Modello
+> delle tre regole: [guida multi-face §3.1-bis](../../../guide/architettura-multi-face-auth.md).
 
 ## Audit sessione
 
@@ -187,37 +268,42 @@ l'audit procede comunque con GUC vuote.
   non esiste piu'. I client devono aggiornarsi a `/api/v1/admin/token/`.
   Nessun alias/grace period.
 - Le view base `AuditTokenObtainPairView` e `AuditTokenRefreshView` sono
-  **astratte**: istanziarle direttamente solleva AssertionError.
+  **astratte**: registrarne una direttamente in una rotta fa sollevare
+  `RuntimeError` al primo `post()` (guardia esplicita, non un `assert`).
   Usare SEMPRE le subclass namespace-specific.
 - Il claim `sid` e' preservato da `SidTokenObtainPairSerializer`: il
   `MultiVesteTokenSerializer` eredita da Sid (non da `TokenObtainPairSerializer`
   diretto) — senza questa catena l'audit sessioni si romperebbe.
-- Il throttle `LoginRateThrottle` (5 tentativi / 5 minuti per IP) e' applicato
+- Il throttle `LoginRateThrottle` (5 richieste / 5 minuti per IP) e' applicato
   su **tutte e 3** le view di login (ereditato da `AuditTokenObtainPairView`).
+  ⚠️ E' una regola diversa dal freno sulla provenienza (N password sbagliate
+  sulla **stessa credenziale** dallo stesso IP): il throttle ferma chi inonda
+  l'endpoint, il freno chi prova una credenziale.
 
 ## Dipendenze DB
 
-| Tabella/Funzione | Schema | Ruolo |
-|---|---|---|
-| `anagrafiche.identita_digitali` | `anagrafiche` | Bridge auth_user ↔ soggetto_ruolo per veste. `UNIQUE(auth_user_id, ruolo_applicativo)` post migration 20260420 |
-| `django.auth_user` | `django` | Credenziali |
-| `dbops.sessioni_utente` | `dbops` | Audit login/refresh |
-| `script.fn_check_blocco_login` | `script` | Blocco tentativi falliti |
-| `script.fn_registra_tentativo_login` | `script` | Incremento/reset contatore |
+| Tabella/Funzione                     | Schema        | Ruolo                                                                                                          |
+| ------------------------------------ | ------------- | -------------------------------------------------------------------------------------------------------------- |
+| `anagrafiche.identita_digitali`      | `anagrafiche` | Bridge auth_user ↔ soggetto_ruolo per veste. `UNIQUE(auth_user_id, ruolo_applicativo) WHERE attivo` post migration 20260420 |
+| `django.auth_user`                   | `django`      | Credenziali                                                                                                    |
+| `dbops.sessioni_utente`              | `dbops`       | Audit login/refresh                                                                                            |
+| `script.fn_check_blocco_login`       | `script`      | Blocco dell'admin, freno per provenienza, attesa — prima della password                                        |
+| `script.fn_registra_tentativo_login` | `script`      | Esito del tentativo per credenziale + provenienza                                                              |
+| `script.fn_get_deve_cambiare_password` | `script`    | Cambio password obbligatorio della credenziale                                                                 |
 
 ## File backend
 
-| File | Ruolo |
-|---|---|
-| `apps/core/api/auth_views.py` | `AuditTokenObtainPairView` (astratta) + 3 subclass login; `AuditTokenRefreshView` (astratta) + 3 subclass refresh; helper `_extract_identita_id_from_refresh`, `_extract_ruolo_applicativo_from_refresh`, `_decode_refresh_payload` |
-| `apps/core/api/multi_veste_token_serializer.py` | `MultiVesteTokenSerializer` + 3 subclass (Admin/Portale/Shop), `VesteNonAttivaError` |
-| `apps/core/api/jwt_audit_authentication.py` | `JwtAuditAuthentication` (legge claim + popola GUC), `set_jwt_gucs`, `JwtSenzaIdentitaError`, `IdentitaNonAttivaError` |
-| `apps/core/api/token_serializers.py` | `SidTokenObtainPairSerializer` (parent di MultiVeste, aggiunge `sid`) |
-| `apps/core/db/auth_repository.py` | `find_identita_attiva_for_ruoli`, `get_identita_dettaglio`, `check_blocco_login`, `registra_tentativo_login` |
-| `apps/core/services/auth_constants.py` | Costanti `JWT_CLAIM_*` + `RUOLO_APPLICATIVO_*` |
-| `apps/core/services/error_policies.py` | Policy `E_VESTE_NON_ATTIVA`, `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA` |
-| `apps/core/api/error_responses.py` | `drf_exception_handler` — priorita' a `default_code` E_* delle subclass AuthenticationFailed |
-| `backend/zeroerp_backend/urls.py` | 6 route registrate |
+| File                                            | Ruolo                                                                                                                                                                                                                               |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/core/api/auth_views.py`                   | `AuditTokenObtainPairView` (astratta) + 3 subclass login; `AuditTokenRefreshView` (astratta) + 3 subclass refresh; helper `_extract_identita_id_from_refresh`, `_decode_refresh_payload` (claim per audit e GUC, dopo la validazione); la veste del guard da `claims_refresh_firmati` di `refresh_cookie.py` |
+| `apps/core/api/multi_veste_token_serializer.py` | `MultiVesteTokenSerializer` + 3 subclass (Admin/Portale/Shop), `VesteNonAttivaError`                                                                                                                                                |
+| `apps/core/api/jwt_audit_authentication.py`     | `JwtAuditAuthentication` (legge claim + popola GUC), `set_jwt_gucs`, `JwtSenzaIdentitaError`, `IdentitaNonAttivaError`                                                                                                              |
+| `apps/core/api/token_serializers.py`            | `SidTokenObtainPairSerializer` (parent di MultiVeste, aggiunge `sid`)                                                                                                                                                               |
+| `apps/core/db/auth_repository.py`               | `find_identita_attiva_for_ruoli`, `get_identita_dettaglio`, `check_blocco_login`, `registra_tentativo_login`, `get_deve_cambiare_password`                                                                                          |
+| `apps/core/services/auth_constants.py`          | Costanti `JWT_CLAIM_*` + `RUOLO_APPLICATIVO_*`                                                                                                                                                                                      |
+| `apps/core/services/error_policies_generated.py` | Classe di `E_VESTE_NON_ATTIVA`, `E_JWT_SENZA_IDENTITA`, `E_JWT_SENZA_SID`, `E_IDENTITA_NON_ATTIVA` (`CLASSE_PER_CODICE`)                                                                                                             |
+| `apps/core/api/error_responses.py`              | `drf_exception_handler` — priorita' a `default_code` E_* delle subclass AuthenticationFailed                                                                                                                                        |
+| `backend/zeroerp_backend/urls.py`               | 6 route registrate                                                                                                                                                                                                                  |
 
 ## Note di migrazione
 

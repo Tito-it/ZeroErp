@@ -39,12 +39,18 @@ from apps.core.api.success_responses import success_response
 #                          (service.list_riepilogo_iva)
 #         - doc:           docstring completa della classe (testo dominio
 #                          preservato 1:1 per OpenAPI/description)
+#         - model_permission: oggetto del catalogo permessi del documento
+#                          (es. ("vendite", "preventivo")): la view e' una
+#                          parte dell'oggetto e ne chiede il livello
+#                          (brief-db-be-fe-catalogo-oggetti-permessi §3.2).
+#                          None = solo l'area.
 def build_riepilogo_iva_view(
     *,
     schema_prefix: str,
     url_kwarg: str,
     list_call: Callable[[int], list[dict[str, Any]]],
     doc: str,
+    model_permission: tuple[str, str] | None = None,
 ) -> type[DomainAPIView]:
     class _RiepilogoIvaView(DomainAPIView):
         area_funzionale = "vendite"
@@ -62,4 +68,6 @@ def build_riepilogo_iva_view(
     _RiepilogoIvaView.__doc__ = doc
     _RiepilogoIvaView.__name__ = f"Api{schema_prefix}RiepilogoIva"
     _RiepilogoIvaView.__qualname__ = _RiepilogoIvaView.__name__
+    if model_permission is not None:
+        _RiepilogoIvaView.model_permission = model_permission
     return _RiepilogoIvaView

@@ -15,8 +15,10 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useFormInline } from '../../core/composables/useFormInline'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -32,10 +34,10 @@ import {
   deleteBundleComponenti,
 } from '../api/listini'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
-import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { useListiniRigheStore } from '../stores/listiniRighe'
 import { MANAGE_ICONS } from '../../core/constants'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
@@ -49,8 +51,7 @@ import Tag from 'primevue/tag'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
-
-
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
@@ -89,21 +90,21 @@ const {
       kind: 'utility',
       label: t('vendite.listini.variazione_short'),
       tooltip: t('vendite.listini.variazione_pct_titolo'),
-      icon: 'pi pi-percentage',
+      icon: MANAGE_ICONS.VARIAZIONE_PREZZO,
       showLabel: true,
       visible: isBozza.value,
       command: () => { showVariazioneDialog.value = true },
     },
-    {
+    // ⚠️ A form aperto «Nuovo» sparisce (regola del BB `useFormInline`):
+    //    prima restava attivo durante la modifica di una riga, e un clic
+    //    buttava via la modifica in corso.
+    azioneNuovaRiga({
       key: 'new',
-      kind: 'primary',
       label: t('common.new'),
       tooltip: t('vendite.listini.aggiungi_prezzo_hint'),
-      icon: MANAGE_ICONS.ADD,
-      visible: isBozza.value,
-      disabled: formMode.value === 'create' || isReadonly.value,
+      visible: () => isBozza.value,
       command: onNew,
-    },
+    }),
   ],
   searchTableOptions: {
     defaultSortField: 'articolo_descrizione',
@@ -113,10 +114,20 @@ const {
 const DRAWER_WIDTH_RIGHE_LISTINO = '1000px'
 
 // Stato master-detail inline
-// formMode: null (nessun form visibile), 'create', 'edit'
-const formMode = ref(null)
-const rigaEditId = ref(null)
+// formMode: null (nessun form visibile), 'create', 'edit' — la macchina e' il
+// BB core `useFormInline` (sede unica, ok Tid 2026-09-28); qui restano i verbi
+// che ci aggiungono il form del prezzo. Il click apre la modifica solo in
+// BOZZA (getter letto al click: `isBozza` e' dichiarata piu' sotto).
+const {
+  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({ puoModificare: () => isBozza.value })
 const form = ref({})
+// Modifiche non salvate del form inline: conferma alla chiusura del drawer e
+// all'Annulla del form, scritta arancio nel titolo.
+const inline = useDrawerFormPreserve(form, {
+  visibile: () => props.visible && formAperto.value,
+})
+const modificato = inline.modificato
 
 // UoM operative dell'articolo selezionato (pattern ContrattoRigheDrawer).
 // Composable centralizzato (Fase 4.F1): autopick base solo in create.
@@ -176,9 +187,9 @@ async function reloadAll() {
 // === Azioni master ===
 function onNew() {
   form.value = defaultForm()
-  formMode.value = 'create'
-  rigaEditId.value = null
+  nuovaRiga()
   resetUomOptions()
+  inline.fissa()
 }
 
 // Scopo: click riga (pattern standard liste = interazione principale).
@@ -195,9 +206,9 @@ function onRowClick(r) {
     })
     return
   }
-  if (!isBozza.value) {
-    return
-  }
+  apriRiga(r)
+  // Fuori da BOZZA il BB non apre: sola lettura, nessun form.
+  if (!formAperto.value) return
   form.value = {
     articolo_id: r.articolo_id,
     articolo_obj: {
@@ -209,8 +220,7 @@ function onRowClick(r) {
     uom_id: r.uom_id,
     prezzo: r.prezzo != null ? Number(r.prezzo) : null,
   }
-  formMode.value = 'edit'
-  rigaEditId.value = r.id
+  inline.fissa()
   // Edit: UoM gia' nel form, no autopick.
   loadUomPerArticolo(r.articolo_id)
 }
@@ -306,8 +316,7 @@ async function onBundleConfirm({ overrides }) {
 }
 
 function closeForm() {
-  formMode.value = null
-  rigaEditId.value = null
+  chiudiForm()
   form.value = {}
   resetUomOptions()
 }
@@ -355,7 +364,7 @@ async function onSave() {
     }
   } else {
     const result = await execute(
-      () => updateRiga(props.listinoId, props.versione.id, rigaEditId.value, payload),
+      () => updateRiga(props.listinoId, props.versione.id, rigaInModifica.value?.id, payload),
       { successMessage: t('vendite.listini.riga_salvata') }
     )
     if (result !== null) {
@@ -394,7 +403,7 @@ function onDelete(row) {
     )
     if (result !== null) {
       // Se stavo editando questa riga, chiudi il form.
-      if (rigaEditId.value === row.id) closeForm()
+      if (rigaInModifica.value?.id === row.id) closeForm()
       await store.fetchList()
     }
   })
@@ -440,15 +449,19 @@ function onVariazioneApplied() {
 }
 
 const onClose = useDrawerClose(emit)
+// Chiusure per volonta' dell'utente: con il form inline modificato chiedono conferma.
+const chiudi = () => inline.chiudiConConferma(onClose)
+const annullaForm = () => inline.chiudiConConferma(closeForm)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH_RIGHE_LISTINO }" :dismissable="!hasChildOpen"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :title="t('vendite.listini.tab_righe')" :icon="MANAGE_ICONS.RIGHE" />
+      <DrawerTitle :title="t('vendite.listini.tab_righe')" :icon="MANAGE_ICONS.RIGHE" :modificato="modificato" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -487,10 +500,12 @@ const onClose = useDrawerClose(emit)
 
       <!-- === MASTER: toolbar + lista configurabile (server-side lazy) === -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText v-model="searchText" :placeholder="t('vendite.listini.righe_cerca_articolo')"
-            style="width: 240px;" />
-        </div>
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText v-model="searchText" class="app-filter-w-lg"
+              :placeholder="t('vendite.listini.righe_cerca_articolo')" />
+          </template>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -542,8 +557,8 @@ const onClose = useDrawerClose(emit)
           <AttivoTag :active="data.attivo" />
         </template>
 
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRigaActions(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
         </template>
       </ListaConfigurabile>
 
@@ -586,10 +601,10 @@ const onClose = useDrawerClose(emit)
           </div>
         </div>
 
-        <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="closeForm" />
+        <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="annullaForm" />
       </template>
 
-      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
     </div>
 
     <ApplicaVariazioneDialog

@@ -8,11 +8,12 @@
 
 """
 Indice test eseguiti:
- 1) test_create_operatore_ok — happy path
+ 1) test_create_operatore_ok — happy path, credenziale col segnaposto non utilizzabile
  2) test_create_operatore_missing_cognome — campo obbligatorio mancante
- 3) test_create_operatore_missing_password — password vuota
+ 3) test_create_operatore_rifiuta_password — la password la sceglie l'operatore (L-3)
  4) test_create_operatore_missing_qualifica — qualifica mancante
- 5) test_create_operatore_password_hashed — password non in chiaro
+ 5) test_create_operatore_credenziale_riusata — la risposta dice il riuso (D-6)
+ 5a) test_create_operatore_consenso_al_riuso — `riusa_auth_user_id` arriva al repo, assente = None
  6) test_get_operatore_ok — dettaglio operatore
  7) test_get_operatore_not_found — id inesistente
  8) test_update_operatore_ok — aggiorna e invalida cache
@@ -22,6 +23,7 @@ Indice test eseguiti:
  9c) test_update_operatore_super_admin_guard_dbtrigger — race condition trigger 384
  9d) test_update_operatore_attivo_only — solo attivo passa al repo
 10) test_disabilita_operatore_ok — disabilita e invalida cache + blacklist
+10b) test_disabilita_operatore_revoca_fallita_propaga — revoca e disattivazione in una transazione
 11) test_disabilita_operatore_not_found — id inesistente
 11a) test_disabilita_operatore_ultimo_super_admin_preview — preview Python (fast-path)
 11b) test_disabilita_operatore_ultimo_super_admin_dbtrigger — race condition trigger 384
@@ -41,9 +43,8 @@ Indice test eseguiti:
 23) test_list_emittente_rounding_modes_ok — 4 codici nell'ordine canonico
 24) test_list_emittente_rounding_modes_coverage — descrizioni coprono enum (no HALF_EVEN)
 25) test_list_audit_sources_delegates_to_repo — service ritorna 8 sorgenti
-26) test_list_email_log_stati_ok — l'atteso si deriva da _EMAIL_LOG_STATI_DESCRIZIONI,
-    default-first SENT (5 codici dal 2026-09-11, con SIMULATA)
-27) test_list_email_log_stati_coverage — descrizioni coprono _EMAIL_LOG_STATI_VALIDI
+26-27) (usciti il 2026-09-26 col vocabolario degli stati email: ora in
+    `core/tests/api/test_email_log_stati_lookup.py`)
 28) test_get_audit_summary_param_invalido_code_assente — E_AUDIT_SUMMARY_PARAM_NON_VALIDO
 29) test_get_audit_summary_param_invalido_storico_id_zero — E_AUDIT_SUMMARY_PARAM_NON_VALIDO
 30) test_get_audit_summary_source_non_trovato — E_AUDIT_SOURCE_NON_TROVATO
@@ -62,77 +63,119 @@ from apps.core.services.service_errors import ServiceError
 REPO = "apps.amm_software.services.amm_software_service.AmmSoftwareRepository"
 INVALIDATE_USER = "apps.amm_software.services.amm_software_service.invalidate_user"
 INVALIDATE_DEPT = "apps.amm_software.services.amm_software_service.invalidate_department"
-BLACKLIST = "apps.amm_software.services.amm_software_service._blacklist_user_tokens"
-MAKE_PW = "apps.amm_software.services.amm_software_service.make_password"
+BLACKLIST = "apps.amm_software.services.amm_software_service.blocca_token_sessioni"
+TRANSACTION = "apps.amm_software.services.amm_software_service.transaction"
+
+
+# Scopo: `django.db.transaction` finto, senza database: `atomic()` esegue i
+#        callback di `on_commit` SOLO se il blocco esce senza eccezioni, come
+#        il commit vero. Basta a provare l'ORDINE (cosa sta dentro la
+#        transazione, cosa aspetta il commit), non il ROLLBACK, che e' del DB.
+class _TransazioneFinta:
+    def __init__(self) -> None:
+        self._in_attesa: list = []
+
+    def on_commit(self, callback) -> None:
+        self._in_attesa.append(callback)
+
+    def atomic(self):
+        finta = self
+
+        class _Blocco:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, tipo, _valore, _tb):
+                callback, finta._in_attesa = finta._in_attesa, []
+                if tipo is None:
+                    for cb in callback:
+                        cb()
+                return False
+
+        return _Blocco()
 
 
 class TestCreateOperatore(TestCase):
-    """Test AmmSoftwareService.create_operatore()."""
+    """Test AmmSoftwareService.create_operatore() — regola unica dell'invito
+    (L-3): niente password dall'admin, veste spenta, credenziale riusata."""
 
-    @patch(MAKE_PW, return_value="hashed_pw")
-    @patch(REPO)
-    def test_create_operatore_ok(self, mock_repo_cls, mock_pw):
-        """Happy path: crea operatore, password hashata."""
+    _PAYLOAD = {
+        "cognome": "Rossi", "nome": "Mario", "codice_fiscale": "RSSMRA80A01H501Z",
+        "username": "mrossi", "email": "m@test.it", "qualifica_id": 1,
+    }
+
+    def _repo(self, mock_repo_cls, *, riusata=False):
         mock_repo = mock_repo_cls.return_value
-        mock_repo.crea_operatore.return_value = 1
-        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1, "username": "test"}
+        mock_repo.crea_operatore.return_value = {
+            "auth_user_id": 1, "username": "mrossi", "credenziale_riusata": riusata,
+        }
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1, "username": "mrossi"}
+        return mock_repo
+
+    # Scopo: Happy path: la credenziale nuova nasce col segnaposto NON
+    # utilizzabile (la password la sceglie la persona attivando l'invito).
+    @patch(REPO)
+    def test_create_operatore_ok(self, mock_repo_cls):
+        from django.contrib.auth.hashers import is_password_usable
+
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        result = AmmSoftwareService().create_operatore({
-            "cognome": "Rossi", "nome": "Mario", "codice_fiscale": "RSSMRA80A01H501Z",
-            "username": "mrossi", "email": "m@test.it", "password": "secret123",
-            "qualifica_id": 1,
-        })
+        mock_repo = self._repo(mock_repo_cls)
+        result = AmmSoftwareService().create_operatore(dict(self._PAYLOAD))
         self.assertEqual(result["auth_user_id"], 1)
-        mock_repo.crea_operatore.assert_called_once()
-        # Verifica password hashata
-        self.assertEqual(mock_repo.crea_operatore.call_args.kwargs["password_hash"], "hashed_pw")
+        self.assertFalse(result["credenziale_riusata"])
+        kwargs = mock_repo.crea_operatore.call_args.kwargs
+        self.assertFalse(is_password_usable(kwargs["password_hash"]))
+        self.assertNotIn("attivo", kwargs)
+
+    # Scopo: Email di una credenziale esistente (D-6): la risposta lo dice,
+    # perche' il pannello avvisi l'admin.
+    @patch(REPO)
+    def test_create_operatore_credenziale_riusata(self, mock_repo_cls):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        self._repo(mock_repo_cls, riusata=True)
+        result = AmmSoftwareService().create_operatore(dict(self._PAYLOAD))
+        self.assertTrue(result["credenziale_riusata"])
+
+    # Scopo: Il consenso al riuso (`20260925-51`) e' una dichiarazione del
+    # client: il service la trasporta com'e' e, assente, non la inventa (la
+    # prima chiamata DEVE andare senza, perche' la madre chieda conferma).
+    @patch(REPO)
+    def test_create_operatore_consenso_al_riuso(self, mock_repo_cls):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        mock_repo = self._repo(mock_repo_cls, riusata=True)
+        AmmSoftwareService().create_operatore(dict(self._PAYLOAD))
+        self.assertIsNone(mock_repo.crea_operatore.call_args.kwargs["riusa_auth_user_id"])
+        AmmSoftwareService().create_operatore({**self._PAYLOAD, "riusa_auth_user_id": "42"})
+        self.assertEqual(mock_repo.crea_operatore.call_args.kwargs["riusa_auth_user_id"], 42)
+
+    # Scopo: `password` nel payload e' rifiutata: un client che la manda
+    # crederebbe che valga.
+    @patch(REPO)
+    def test_create_operatore_rifiuta_password(self, mock_repo_cls):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().create_operatore({**self._PAYLOAD, "password": "pw"})
+        self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        self.assertIn("password", ctx.exception.message)
+        mock_repo_cls.return_value.crea_operatore.assert_not_called()
 
     @patch(REPO)
     def test_create_operatore_missing_cognome(self, mock_repo_cls):
         """Cognome vuoto -> ServiceError."""
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
-            AmmSoftwareService().create_operatore({
-                "cognome": "", "nome": "Mario", "codice_fiscale": "CF",
-                "username": "u", "email": "e@t.it", "password": "pw", "qualifica_id": 1,
-            })
+            AmmSoftwareService().create_operatore({**self._PAYLOAD, "cognome": ""})
         self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
-
-    @patch(REPO)
-    def test_create_operatore_missing_password(self, mock_repo_cls):
-        """Password vuota -> ServiceError."""
-        from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        with self.assertRaises(ServiceError) as ctx:
-            AmmSoftwareService().create_operatore({
-                "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-                "username": "u", "email": "e@t.it", "password": "", "qualifica_id": 1,
-            })
-        self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        self.assertIn("Cognome", ctx.exception.message)
 
     @patch(REPO)
     def test_create_operatore_missing_qualifica(self, mock_repo_cls):
         """Qualifica None -> ServiceError."""
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
-            AmmSoftwareService().create_operatore({
-                "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-                "username": "u", "email": "e@t.it", "password": "pw", "qualifica_id": None,
-            })
+            AmmSoftwareService().create_operatore({**self._PAYLOAD, "qualifica_id": None})
         self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
-
-    @patch(MAKE_PW, return_value="hashed")
-    @patch(REPO)
-    def test_create_operatore_password_hashed(self, mock_repo_cls, mock_pw):
-        """Verifica che make_password venga chiamato con la password raw."""
-        mock_repo = mock_repo_cls.return_value
-        mock_repo.crea_operatore.return_value = 1
-        mock_repo.get_operatore_detail.return_value = {}
-        from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        AmmSoftwareService().create_operatore({
-            "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-            "username": "u", "email": "e@t.it", "password": "mypassword", "qualifica_id": 1,
-        })
-        mock_pw.assert_called_once_with("mypassword")
+        self.assertIn("Qualifica", ctx.exception.message)
 
     # Scopo: Fase 1 multi-face — il payload con `ruolo_sistema` legacy e'
     # rifiutato (E_AMM_VALIDAZIONE) prima di toccare il repo.
@@ -140,47 +183,23 @@ class TestCreateOperatore(TestCase):
     def test_create_operatore_rifiuta_ruolo_sistema_legacy(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
-            AmmSoftwareService().create_operatore({
-                "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-                "username": "u", "email": "e@t.it", "password": "pw",
-                "qualifica_id": 1, "ruolo_sistema": "ADMIN",
-            })
+            AmmSoftwareService().create_operatore({**self._PAYLOAD, "ruolo_sistema": "ADMIN"})
         self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
         mock_repo_cls.return_value.crea_operatore.assert_not_called()
 
-    # Scopo: Fase 7 — il contract pubblico passa `is_super_admin` come bool
-    # al repo, niente piu' `ruolo_sistema` legacy esposto. La traduzione
-    # verso l'enum legacy della fn DB e' un dettaglio di
-    # `AmmSoftwareRepository._legacy_ruolo_from_contract` (privato).
-    @patch(MAKE_PW, return_value="hashed")
+    # Scopo: `is_super_admin` passa al repo come bool (default False).
     @patch(REPO)
-    def test_create_operatore_is_super_admin_passato_al_repo(
-        self, mock_repo_cls, _mock_pw
-    ):
-        mock_repo = mock_repo_cls.return_value
-        mock_repo.crea_operatore.return_value = 1
-        mock_repo.get_operatore_detail.return_value = {}
+    def test_create_operatore_is_super_admin_passato_al_repo(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        AmmSoftwareService().create_operatore({
-            "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-            "username": "u", "email": "e@t.it", "password": "pw",
-            "qualifica_id": 1, "is_super_admin": True,
-        })
+        mock_repo = self._repo(mock_repo_cls)
+        AmmSoftwareService().create_operatore({**self._PAYLOAD, "is_super_admin": True})
         kwargs = mock_repo.crea_operatore.call_args.kwargs
         self.assertTrue(kwargs["is_super_admin"])
-        self.assertTrue(kwargs["attivo"])
         self.assertNotIn("ruolo_sistema", kwargs)
 
-        # Caso default: nessun flag -> is_super_admin=False, attivo=True.
         mock_repo.crea_operatore.reset_mock()
-        AmmSoftwareService().create_operatore({
-            "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-            "username": "u", "email": "e@t.it", "password": "pw",
-            "qualifica_id": 1,
-        })
-        kwargs = mock_repo.crea_operatore.call_args.kwargs
-        self.assertFalse(kwargs["is_super_admin"])
-        self.assertTrue(kwargs["attivo"])
+        AmmSoftwareService().create_operatore(dict(self._PAYLOAD))
+        self.assertFalse(mock_repo.crea_operatore.call_args.kwargs["is_super_admin"])
 
 
 class TestGetOperatore(TestCase):
@@ -323,10 +342,11 @@ class TestUpdateOperatore(TestCase):
 class TestDisabilitaOperatore(TestCase):
     """Test AmmSoftwareService.disabilita_operatore()."""
 
+    @patch(TRANSACTION, new_callable=_TransazioneFinta)
     @patch(BLACKLIST)
     @patch(INVALIDATE_USER)
     @patch(REPO)
-    def test_disabilita_operatore_ok(self, mock_repo_cls, mock_invalidate, mock_blacklist):
+    def test_disabilita_operatore_ok(self, mock_repo_cls, mock_invalidate, mock_blacklist, _tx):
         """Disabilita, invalida cache, blacklist token."""
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
@@ -335,6 +355,25 @@ class TestDisabilitaOperatore(TestCase):
         mock_repo.disabilita_operatore.assert_called_once_with(1)
         mock_invalidate.assert_called_once_with(1)
         mock_blacklist.assert_called_once_with(1)
+
+    # Scopo: la revoca delle sessioni FALLISCE → l'errore propaga e la cache
+    #        NON si invalida: la disattivazione e la revoca stanno nella stessa
+    #        transazione, e senza commit non c'e' niente da invalidare. Prima
+    #        la disattivazione committava da sola e l'operatore restava
+    #        disattivato con le sessioni vive.
+    @patch(TRANSACTION, new_callable=_TransazioneFinta)
+    @patch(BLACKLIST)
+    @patch(INVALIDATE_USER)
+    @patch(REPO)
+    def test_disabilita_operatore_revoca_fallita_propaga(
+        self, mock_repo_cls, mock_invalidate, mock_blacklist, _tx,
+    ):
+        mock_repo_cls.return_value.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_blacklist.side_effect = DatabaseError("scrittura blacklist fallita")
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        with self.assertRaises(DatabaseError):
+            AmmSoftwareService().disabilita_operatore(1)
+        mock_invalidate.assert_not_called()
 
     @patch(REPO)
     def test_disabilita_operatore_not_found(self, mock_repo_cls):
@@ -345,7 +384,7 @@ class TestDisabilitaOperatore(TestCase):
 
     # Scopo: Preview `can_disable=false` -> short-circuit Python con
     # E_PROFILO_ULTIMO_SUPER_ADMIN, niente round-trip DB. Il `disable_reason`
-    # del detail (it-IT free-form da DB) propaga nel `detail` dell'errore.
+    # e' un codice macchina (§16): NON finisce nel `detail`, sta nel contesto.
     @patch(REPO)
     def test_disabilita_operatore_ultimo_super_admin_preview(self, mock_repo_cls):
         mock_repo = mock_repo_cls.return_value
@@ -353,23 +392,27 @@ class TestDisabilitaOperatore(TestCase):
             "auth_user_id": 1,
             "is_super_admin": True,
             "can_disable": False,
-            "disable_reason": "E' l'ultimo super admin attivo.",
+            "disable_reason": "ULTIMO_SUPER_ADMIN",
+            "disable_reason_key": "amministrazione.operatori.disabilita_reason.ultimo_super_admin",
         }
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
             AmmSoftwareService().disabilita_operatore(1)
         self.assertEqual(ctx.exception.code, "E_PROFILO_ULTIMO_SUPER_ADMIN")
+        self.assertNotIn("ULTIMO_SUPER_ADMIN", ctx.exception.detail or "")
+        self.assertEqual(ctx.exception.context["reason"], "ULTIMO_SUPER_ADMIN")
         # disabilita_operatore del repo NON deve essere chiamato (short-circuit)
         mock_repo.disabilita_operatore.assert_not_called()
 
     # Scopo: Preview UX passa (can_disable=true) ma il trigger DB rifiuta
     # comunque per race tra sessioni. Il service traduce DatabaseError in
     # ServiceError E_PROFILO_ULTIMO_SUPER_ADMIN.
+    @patch(TRANSACTION, new_callable=_TransazioneFinta)
     @patch(BLACKLIST)
     @patch(INVALIDATE_USER)
     @patch(REPO)
     def test_disabilita_operatore_ultimo_super_admin_dbtrigger(
-        self, mock_repo_cls, _mock_invalidate, _mock_blacklist
+        self, mock_repo_cls, _mock_invalidate, _mock_blacklist, _tx,
     ):
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_operatore_detail.return_value = {
@@ -607,45 +650,6 @@ class TestListAuditSources(TestCase):
 
         self.assertEqual(result, sample_sources)
         mock_repo_cls.return_value.list_audit_sources.assert_called_once_with()
-
-
-class TestListEmailLogStati(TestCase):
-    """Lookup statico stati email log (Fase 5)."""
-
-    def test_list_email_log_stati_ok(self):
-        from apps.amm_software.services.amm_software_service import AmmSoftwareService
-
-        result = AmmSoftwareService().list_email_log_stati()
-
-        codici = [r["codice"] for r in result]
-        # ⭐ L'atteso si DERIVA dall'ordine dichiarato, non si ricopia: fino al
-        #    2026-09-11 qui c'era la lista dei quattro codici scritta a mano —
-        #    una SEDE IN PIU' dello stesso vocabolario, che il quinto valore
-        #    (`SIMULATA`) ha fatto emergere facendo rosso in due punti.
-        # ⚠️ E non e' tautologico: pretende che l'ordine di USCITA coincida con
-        #    il campo `ordering`, che nessun codice si perda per strada e che
-        #    «default-first» sopravviva.
-        # ⛔ Attenzione a come e' scritto il service: NON ordina: restituisce la
-        #    tupla nell'ordine in cui e' DICHIARATA. Quindi questo confronto e'
-        #    proprio il presidio di quella coincidenza — una riga aggiunta in
-        #    fondo con `ordering` basso fa rosso qui, che e' cio' che si vuole.
-        from apps.amm_software.services import amm_software_service as _svc
-        atteso = [c for c, _d, _o in sorted(
-            _svc._EMAIL_LOG_STATI_DESCRIZIONI, key=lambda r: r[2],
-        )]
-        self.assertEqual(codici, atteso)
-        self.assertEqual(codici[0], "SENT", "l'ordinamento resta default-first")
-        for row in result:
-            self.assertTrue(row["descrizione"])
-            self.assertIsInstance(row["ordering"], int)
-
-    def test_list_email_log_stati_coverage(self):
-        # Difesa coerenza enum/descrizioni: aggiungere un codice in
-        # _EMAIL_LOG_STATI_DESCRIZIONI senza aggiornare _VALIDI fa fallire qui.
-        from apps.amm_software.services import amm_software_service as svc
-
-        descritti = {codice for codice, _desc, _ord in svc._EMAIL_LOG_STATI_DESCRIZIONI}
-        self.assertEqual(descritti, svc._EMAIL_LOG_STATI_VALIDI)
 
 
 class TestGetAuditSummary(TestCase):

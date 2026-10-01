@@ -30,9 +30,10 @@ logger = logging.getLogger(__name__)
 from django.db import connection, transaction
 from django.utils.timezone import now
 
-from apps.core.db._helpers import resolve_config_id_by_codice_interno
+from apps.core.db._helpers import resolve_config_id_by_codice_interno, row_to_dict
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.pratiche.db.pratiche_repository import (
     PRATICHE_ORDER_COLS,
@@ -173,6 +174,16 @@ def _require_sorgente(sorgente: str) -> dict[str, Any]:
     return cfg
 
 
+# Scopo: le colonne di riga che il workflow L3 scrive, e SOLO lui (il
+#        contratto dell'operatore le rifiuta: `COMPONENTE_PATCH_OPERATORE`,
+#        `UPDATE_KEYS_RIGA`). Dichiarate qui perche' il presidio
+#        `test_whitelist_service_dentro_repository` le trovi accanto alle chiavi
+#        dell'operatore: il repository deve saperle scrivere tutte.
+CAMPI_RIGA_WORKFLOW_L3: frozenset[str] = frozenset({
+    "stato_approvazione_prezzo", "pratica_approvazione_prezzo_id", "meta",
+})
+
+
 def _update_riga_workflow(
     *,
     sorgente: str,
@@ -181,6 +192,12 @@ def _update_riga_workflow(
 ) -> None:
     # Scopo: UPDATE workflow su riga (stato_approvazione_prezzo / pratica_id /
     #        meta). Dispatch via callable iniettato in `_SORGENTE_CONFIG`.
+    # ⛔ Un campo fuori `CAMPI_RIGA_WORKFLOW_L3` e' un errore di programmazione
+    #    (`RuntimeError`, 500 col traceback): la dichiarazione e' cio' che il
+    #    presidio confronta col repository, e deve restare vera.
+    fuori = sorted(set(fields) - CAMPI_RIGA_WORKFLOW_L3)
+    if fuori:
+        raise RuntimeError(f"_update_riga_workflow: campi non del workflow L3: {fuori}")
     cfg = _require_sorgente(sorgente)
     cfg["update_riga"](riga_id, fields)
 
@@ -338,14 +355,11 @@ def crea_richiesta_approvazione(
     auth_user_id: int | None,
 ) -> int:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.crea_richiesta_approvazione",
+    testata = testata_o_not_found(
+        repo.get_preventivo, preventivo_id,
+        code="E_PREV_NOT_FOUND", message="Preventivo non trovato.",
+        id_name="preventivo_id", function_name=f"{_FN}.crea_richiesta_approvazione",
     )
-    assert testata is not None
 
     contesto = repo.resolve_contesto_pratica(preventivo_id)
     ErrorManager.require(
@@ -391,14 +405,11 @@ def crea_richiesta_approvazione_contratto(
 ) -> int:
     from apps.vendite.db.contratti_repository import ContrattiRepository
     repo = ContrattiRepository()
-    testata = repo.get_contratto(contratto_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_VENDITE_NOT_FOUND",
-        message="Contratto non trovato.",
-        function_name=f"{_FN}.crea_richiesta_approvazione_contratto",
+    testata = testata_o_not_found(
+        repo.get_contratto, contratto_id,
+        code="E_VENDITE_NOT_FOUND", message="Contratto non trovato.",
+        id_name="contratto_id", function_name=f"{_FN}.crea_richiesta_approvazione_contratto",
     )
-    assert testata is not None
 
     contesto = repo.resolve_contesto_pratica(contratto_id)
     ErrorManager.require(
@@ -448,14 +459,11 @@ def crea_richiesta_approvazione_offerta(
 ) -> int:
     from apps.vendite.db.offerte_repository import OfferteRepository
     repo = OfferteRepository()
-    testata = repo.get_offerta(offerta_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_VENDITE_NOT_FOUND",
-        message="Offerta non trovata.",
-        function_name=f"{_FN}.crea_richiesta_approvazione_offerta",
+    testata = testata_o_not_found(
+        repo.get_offerta, offerta_id,
+        code="E_VENDITE_NOT_FOUND", message="Offerta non trovata.",
+        id_name="offerta_id", function_name=f"{_FN}.crea_richiesta_approvazione_offerta",
     )
-    assert testata is not None
 
     contesto = repo.resolve_contesto_pratica(offerta_id)
     ErrorManager.require(
@@ -765,17 +773,15 @@ def _get_riga_pending(
     """  # noqa: S608 - whitelist interna
     with connection.cursor() as cursor:
         cursor.execute(sql, [riga_id])
-        cols = [c[0] for c in cursor.description]
-        row = cursor.fetchone()
+        riga = row_to_dict(cursor)
     ErrorManager.require(
-        row is not None,
+        riga is not None,
         code=cfg["error_code_not_found"],
         message=cfg["error_message_not_found"],
         detail=f"riga_id={riga_id}",
         function_name=function_name,
     )
-    assert row is not None
-    riga = dict(zip(cols, row))
+    assert riga is not None
 
     ErrorManager.require(
         riga["stato_approvazione_prezzo"] == _STATO_RIGA_PENDING,
@@ -868,7 +874,7 @@ def _invia_email_richiesta_approvazione(
             #    preso da un parametro — quindi e' `SISTEMA`.
             ambito="SISTEMA",
         )
-    except Exception as exc:  # noqa: BLE001 - best-effort, log + continue
+    except Exception as exc:  # best-effort, log + continue
         logger.warning(
             "Email notifica approvazione prezzo fallita per pratica %s: %s",
             pratica_id, exc,
@@ -899,7 +905,7 @@ def _risolvi_email_approver(emittente_fiscale_id: int) -> str | None:
             )
             if valore and str(valore).strip():
                 return str(valore).strip()
-    except Exception:  # noqa: BLE001 - parameter non configurato = skip email
+    except Exception:  # parameter non configurato = skip email
         return None
     return None
 
@@ -946,4 +952,3 @@ def _get_user(auth_user_id: int):
             detail=f"auth_user_id={auth_user_id}",
             function_name=f"{_FN}._get_user",
         )
-        raise AssertionError("unreachable")  # pragma: no cover

@@ -13,6 +13,7 @@ Indice test eseguiti:
  2) test_user_message_from_policy_registry — message deriva da ErrorPolicyRegistry
  3) test_fallback_to_map_per_exception_standard — eccezione DRF standard usa _DRF_ERROR_CODE_MAP
  4) test_envelope_porta_la_ui_action — i due percorsi dell'envelope portano gli stessi campi
+ 5) test_sottoclasse_prende_il_codice_della_madre — InvalidToken (token scaduto) nell'envelope (E-3)
 """
 
 from unittest import TestCase
@@ -65,7 +66,7 @@ class DrfExceptionHandlerTests(TestCase):
     @patch("apps.core.api.error_responses.drf_default_handler")
     def test_fallback_to_map_per_exception_standard(self, mock_default):
         """Le eccezioni DRF standard (senza default_code E_*) usano la
-        mappa type-name -> code. PermissionDenied -> E_PERMISSION_DENIED."""
+        mappa classe -> code. PermissionDenied -> E_PERMISSION_DENIED."""
         mock_default.return_value = Response(
             {"detail": "permission"}, status=403
         )
@@ -97,3 +98,20 @@ class DrfExceptionHandlerTests(TestCase):
             errore["ui_action"],
             ErrorPolicyRegistry.resolve("E_PERMISSION_DENIED").ui_action,
         )
+
+    # Scopo: E-3 — `InvalidToken` di SimpleJWT (token scaduto o illeggibile)
+    # e' una sottoclasse di `AuthenticationFailed`: col confronto per nome
+    # usciva nel formato grezzo di DRF (`{"detail", "code": "token_not_valid"}`).
+    @patch("apps.core.api.error_responses.drf_default_handler")
+    def test_sottoclasse_prende_il_codice_della_madre(self, mock_default):
+        from rest_framework_simplejwt.exceptions import InvalidToken
+
+        mock_default.return_value = Response(
+            {"detail": "Token is invalid", "code": "token_not_valid"}, status=401
+        )
+
+        response = drf_exception_handler(InvalidToken(), context={})
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.data["error"]["code"], "E_AUTHENTICATION_FAILED")
+        self.assertNotIn("detail", response.data)

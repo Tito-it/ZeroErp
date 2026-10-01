@@ -16,7 +16,8 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params
+from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.payload_validators import corpo_oggetto, optional_int, paginated_envelope, parse_list_params
 from apps.core.api.success_responses import success_response
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.anagrafiche.services.clienti_service import ClientiService
@@ -37,8 +38,7 @@ class ClientiView(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False,
-                             description="Ricerca su ragione_sociale, codice_fiscale, codice BA"),
+            param_ricerca_full(),
             OpenApiParameter(name="utility_id", type=int, required=False),
             OpenApiParameter(name="stato_cliente_id", type=int, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
@@ -135,7 +135,7 @@ class ClientiDetailView(DomainAPIView):
     #        e si aggiornano dalla PATCH del soggetto.
     def patch(self, request: Request, cliente_id: int) -> JsonResponse:
         svc = ClientiService()
-        result = svc.update_cliente(cliente_id, request.data)
+        result = svc.update_cliente(cliente_id, corpo_oggetto(request))
         return success_response(result)
 
 
@@ -197,7 +197,7 @@ class ClientiExportView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="utility_id", type=int, required=False),
             OpenApiParameter(name="stato_cliente_id", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
@@ -246,7 +246,6 @@ class ClientiExportView(DomainAPIView):
             order_dir=p["order_dir"],
         )
         filtri_applicati = svc.resolve_filtri_export_label(
-            search=p["search"],
             utility_id=utility_id,
             stato_cliente_id=stato_id,
         )

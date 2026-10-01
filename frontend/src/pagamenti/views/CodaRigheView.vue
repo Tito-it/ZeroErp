@@ -12,10 +12,11 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import CodaRigheSearchTable from '../components/CodaRigheSearchTable.vue'
 import { CODE } from '../vocabolari'
 
-useReadonlyMode('pagamenti')
+useReadonlyMode(READONLY_DOMAINS.PAGAMENTI)
 
 const route = useRoute()
 // ⚠️ Il ripiego e' `DA_ABBINARE` e non «tutte»: se la rotta non dicesse niente,

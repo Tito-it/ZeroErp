@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-5 — UNA FUNZIONE SOLA RISPONDE: script.fn_totp_obbligatorio(p_auth_user_id)
+#   Brief: brief-db-secondo-fattore-totp, sezione 2.3 (decisione di Tid del
+#   2026-09-28: obbligo = flag sulla credenziale OPPURE profilo privilegiato).
+#
+# ── ⭐ LE DUE FONTI, IN QUEST'ORDINE ─────────────────────────────────
+#   1. CREDENZIALE: config.credenziali.totp_obbligatorio (riga assente = false);
+#   2. PROFILO: un profilo applicabile con richiede_secondo_fattore, di TUTTE
+#      le vesti (script.fn_get_profili_accesso_applicabili con veste NULL: la
+#      credenziale e' una e vale per tutte le porte, come il blocco), piu' il
+#      SUPER_ADMIN (script.fn_is_super_admin_account).
+#   Il motivo della prima fonte che risponde si': al frontend serve per
+#   spiegare PERCHE'.
+#
+# ── ⛔ IL SUPER_ADMIN NON E' FRA I PROFILI APPLICABILI ─────────────────
+#   fn_get_profili_accesso_applicabili risolve AD_HOC, REPARTO e PORTALE: il
+#   SUPER_ADMIN e' un bypass, non un profilo di permessi, e non ci passa. La
+#   prima stesura del brief contava su quella funzione sola: il super admin,
+#   che e' il caso per cui l'obbligo esiste, sarebbe rimasto fuori. Si chiede
+#   al BB fn_is_super_admin_account, e NON a fn_is_super_admin: quella si
+#   spegne fuori dalla veste OPERATORE (entrando dal portale con la stessa
+#   password il super admin non avrebbe avuto l'obbligo).
+#   Il profilo SUPER_ADMIN ha sempre il segno (CHECK, 90_end/20260929-23):
+#   il motivo e' PROFILO, lo stesso degli altri profili privilegiati.
+#
+# ── ⚠️ SECURITY DEFINER: LA RISPOSTA NON DIPENDE DA CHI CHIEDE ────────
+#   La chiama il backend al login, prima che esista un contesto. Le tabelle
+#   lette oggi non hanno RLS (struttura letta il 2026-09-29), ma se una
+#   entrasse sotto una policy un INVOKER senza contesto vedrebbe zero binding e
+#   risponderebbe «nessun obbligo»: fail-open sulla sicurezza. Come proprietario
+#   la risposta e' quella dell'account. search_path bloccato.
+#
+# ── ⚠️ UNA CREDENZIALE CHE NON ESISTE ───────────────────────────────
+#   Risponde (false, NULL), come fn_get_deve_cambiare_password risponde false:
+#   e' una lettura. Solo l'id rotto (NULL o <= 0) solleva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260929-13-create-fn-totp-obbligatorio-mctit.yaml
+
+  - changeSet:
+      id: 20260929-13-create-fn-totp-obbligatorio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_totp_obbligatorio(p_auth_user_id) -> (obbligatorio, motivo): la risposta unica
+        sull'obbligo del secondo fattore. CREDENZIALE se lo dice config.credenziali, PROFILO se un
+        profilo applicabile di qualunque veste ha richiede_secondo_fattore o la credenziale e'
+        SUPER_ADMIN (fn_is_super_admin_account), altrimenti (false, NULL). SECURITY DEFINER: la
+        risposta non dipende da cosa vede chi chiede. Brief: brief-db-secondo-fattore-totp §2.3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                { schemaName: config, tableName: credenziali, columnName: totp_obbligatorio }
+            - columnExists:
+                { schemaName: config, tableName: profili_accesso, columnName: richiede_secondo_fattore }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_is_super_admin_account';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_obbligatorio(p_auth_user_id integer)
+              RETURNS TABLE (
+                  obbligatorio config.credenziali.totp_obbligatorio%TYPE,
+                  motivo       text
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: dire se la credenziale deve usare il secondo fattore, e
+              --   perche': CREDENZIALE, PROFILO o nessun obbligo (NULL).
+              DECLARE
+                  v_credenziale config.credenziali.totp_obbligatorio%TYPE;
+              BEGIN
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_obbligatorio', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_obbligatorio',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  -- 1. La credenziale. Riga assente: SELECT INTO lascia NULL = false.
+                  SELECT c.totp_obbligatorio
+                    INTO v_credenziale
+                    FROM config.credenziali c
+                   WHERE c.auth_user_id = p_auth_user_id;
+
+                  IF COALESCE(v_credenziale, false) THEN
+                      RETURN QUERY SELECT true, 'CREDENZIALE'::text;
+                      RETURN;
+                  END IF;
+
+                  -- 2. I profili: quelli applicabili in qualunque veste, e il
+                  --    SUPER_ADMIN, che fra quelli non c'e' e ha sempre il segno.
+                  IF script.fn_is_super_admin_account(p_auth_user_id)
+                     OR EXISTS (
+                         SELECT 1
+                           FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id, NULL) ap
+                           JOIN config.profili_accesso pa
+                             ON pa.id = ap.profilo_accesso_id
+                          WHERE pa.richiede_secondo_fattore) THEN
+                      RETURN QUERY SELECT true, 'PROFILO'::text;
+                      RETURN;
+                  END IF;
+
+                  RETURN QUERY SELECT false, NULL::text;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_totp_obbligatorio(integer) IS
+                  'La risposta unica sull''obbligo del secondo fattore (TOTP) di una CREDENZIALE (brief-db-secondo-fattore-totp §2.3): obbligatorio = flag sulla credenziale OPPURE profilo privilegiato. motivo: CREDENZIALE (config.credenziali.totp_obbligatorio), PROFILO (un profilo applicabile in qualunque veste con richiede_secondo_fattore, o la credenziale e'' SUPER_ADMIN per script.fn_is_super_admin_account — il SUPER_ADMIN non e'' fra i profili di fn_get_profili_accesso_applicabili, e fn_is_super_admin si spegne fuori dalla veste OPERATORE), NULL = nessun obbligo. La credenziale e'' una e vale per tutte le porte. La chiama il backend al login e nel middleware che porta al setup; il motivo serve al frontend per spiegare perche''. Credenziale inesistente: (false, NULL), e'' una lettura; id NULL o <= 0 -> E_AUTH_CHIAMATA_NON_VALIDA. SECURITY DEFINER (la risposta non dipende da cosa vede chi chiede: senza contesto una RLS futura darebbe fail-open), STABLE, search_path bloccato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_totp_obbligatorio(integer);

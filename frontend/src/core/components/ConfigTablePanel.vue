@@ -1,26 +1,47 @@
 <script setup>
-// Scopo: pannello gestione tabelle config.
+// Scopo: pannello gestione tabelle config — i VOCABOLARI della lista a DB
+//        `config.tabelle_gestibili` con `pannello` (`GET /core/config/tables/`;
+//        tutti ammessi al lookup generico: la lista qui sotto passa da li').
+//        ⛔ Nessun registro nel frontend: fino al 2026-09-28 c'era
+//        `config-tables.js`, terza copia della lista (D-P5,
+//        brief-db-pannello-config-verbo-generico). Aggiungere una tabella =
+//        una riga nel CSV del DB piu' l'etichetta
+//        `config_panel.tabelle.<schema>.<tabella>` in it.json e en.json.
 // Sinistra: lista tabelle raggruppate per schema.
 // Destra: DataTable della tabella selezionata con CRUD generico.
-import { ref, computed, watch, onUnmounted } from 'vue'
+// Note: ⚠️ Un errore della lista o del metadata va A VIDEO (toast di
+//       `useApiHandler`), mai ingoiato: fino al 2026-09-21 un 400 su una tabella
+//       dichiarata nel registro (`magazzino.lotti`, senza `descrizione`) si
+//       vedeva come «lista vuota» — piano-be-fe-magazzino-anagrafiche-fuori-
+//       dal-pannello-config §1.
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode } from '../composables/useReadonlyMode'
-import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../constants'
-import { getTablesBySchema, getTableConfig } from '../config-tables'
+import { useApiHandler } from '../composables/useApiHandler'
+import { MANAGE_ICONS, READONLY_DOMAINS } from '../constants'
+import { NAV_ICONS } from '../navigation'
+import { labelOrCode } from '../utils/i18nLabel'
+import { chiaveEtichettaTabella } from '../utils/campoConfig'
 import { useDrawerState } from '../composables/useDrawerState'
 import GenericConfigDrawer from './GenericConfigDrawer.vue'
 import PageActionsBar from './PageActionsBar.vue'
+// DataTable grezza: le colonne non stanno in un catalogo, le descrive
+// `/metadata/` a runtime per la tabella di configurazione scelta.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import AttivoTag from './AttivoTag.vue'
-import api from '../api'
+import { getConfigTableMetadata, listConfigRecords, listConfigTables } from '../api/configTables'
+import FiltriLista from './FiltriLista.vue'
+import { USO_MISURA, misuraDefault, misureOpzioni } from '../misurePagina'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.CONFIG)
 const drawer = useDrawerState()
+const { execute } = useApiHandler()
 
 // Stato
+const tabelle = ref([])
 const selectedRel = ref(null)
 const searchTable = ref('')
 const searchRecords = ref('')
@@ -28,18 +49,40 @@ const items = ref([])
 const totalRecords = ref(0)
 const loading = ref(false)
 const page = ref(1)
-const pageSize = ref(PAGINATION.DEFAULT_ROWS)
+const pageSize = ref(misuraDefault(USO_MISURA.PAGINA))
 const sortField = ref('descrizione')
 const sortOrder = ref(1)
 
-// Tabelle raggruppate e filtrate
-const tablesBySchema = getTablesBySchema()
+// Le tabelle del pannello. Una volta sola: la lista cambia col seed del DB,
+// non durante la sessione. Lista non letta: il toast dice perche', e la
+// colonna resta vuota.
+onMounted(async () => {
+  const data = await execute(() => listConfigTables())
+  tabelle.value = data ? data.results : []
+})
+
+// Tabelle raggruppate per schema (schemi e tabelle in ordine alfabetico, le
+// tabelle per etichetta), con l'etichetta tradotta
+// (`config_panel.tabelle.<rel>`, ripiego fail-visible sulla rel), e filtrate.
+// Computed e non costante: cambia col locale.
+const tablesBySchema = computed(() => {
+  const grouped = {}
+  for (const tbl of tabelle.value) {
+    if (!grouped[tbl.schema]) grouped[tbl.schema] = []
+    grouped[tbl.schema].push({ ...tbl, label: labelOrCode(t, te, chiaveEtichettaTabella(tbl.rel), tbl.rel) })
+  }
+  const ordinato = {}
+  for (const schema of Object.keys(grouped).sort()) {
+    ordinato[schema] = grouped[schema].sort((a, b) => a.label.localeCompare(b.label))
+  }
+  return ordinato
+})
 const filteredTables = computed(() => {
   const q = searchTable.value.toLowerCase()
-  if (!q) return tablesBySchema
+  if (!q) return tablesBySchema.value
   const result = {}
-  for (const [schema, tables] of Object.entries(tablesBySchema)) {
-    const filtered = tables.filter(t => t.label.toLowerCase().includes(q) || t.rel.includes(q))
+  for (const [schema, tables] of Object.entries(tablesBySchema.value)) {
+    const filtered = tables.filter(tbl => tbl.label.toLowerCase().includes(q) || tbl.rel.includes(q))
     if (filtered.length > 0) result[schema] = filtered
   }
   return result
@@ -52,11 +95,9 @@ const hasAttivo = computed(() => tableColumns.value.includes('attivo'))
 const hasCodiceInterno = computed(() => tableColumns.value.includes('codice_interno'))
 
 // Label tabella selezionata
-const selectedLabel = computed(() => {
-  if (!selectedRel.value) return ''
-  const cfg = getTableConfig(selectedRel.value)
-  return cfg ? cfg.label : selectedRel.value
-})
+const selectedLabel = computed(() =>
+  selectedRel.value ? labelOrCode(t, te, chiaveEtichettaTabella(selectedRel.value), selectedRel.value) : '',
+)
 const pageActions = computed(() => [
   {
     key: 'new',
@@ -77,10 +118,10 @@ watch(selectedRel, async (rel) => {
   sortOrder.value = 1
   tableColumns.value = []
   if (rel) {
-    try {
-      const meta = await api.get(`/core/config/tables/${rel}/metadata/`)
-      tableColumns.value = meta.data.data.columns.map(c => c.name)
-    } catch { /* colonne vuote = mostra solo codice/descrizione */ }
+    const meta = await execute(() => getConfigTableMetadata(rel))
+    // Metadata non letto: il toast lo ha detto; la tabella resta con le sole
+    // colonne fisse (codice/descrizione).
+    if (meta) tableColumns.value = meta.columns.map(c => c.name)
   }
   loadRecords()
 })
@@ -107,13 +148,10 @@ async function loadRecords() {
       params.order_dir = sortOrder.value === -1 ? 'desc' : 'asc'
     }
 
-    const res = await api.get(`/core/config/tables/${selectedRel.value}/`, { params })
-    const data = res.data.data
-    items.value = data.results
-    totalRecords.value = data.count
-  } catch {
-    items.value = []
-    totalRecords.value = 0
+    const data = await execute(() => listConfigRecords(selectedRel.value, params))
+    // Lista non letta (toast gia' mostrato): vuota, e il totale a zero.
+    items.value = data ? data.results : []
+    totalRecords.value = data ? data.count : 0
   } finally {
     loading.value = false
   }
@@ -179,12 +217,19 @@ function selectTable(rel) {
     <div class="config-panel-content">
       <template v-if="selectedRel">
         <div class="app-page-toolbar">
-          <div class="app-page-filters">
-            <InputText
-              v-model="searchRecords"
-              :placeholder="t('config_panel.search_record')"
-            />
-          </div>
+          <!-- ⚠️ Nessuno `:store`: questo pannello non ha uno store-lista e non
+               ha FILTRI — solo la ricerca, che per D2 non e' un filtro. Senza
+               slot di default il building block non rende ne' l'imbuto ne' il
+               drawer, quindi non c'e' nessun segno da alimentare. -->
+          <FiltriLista>
+            <template #sempre>
+              <InputText
+                v-model="searchRecords"
+                class="app-filter-w-lg"
+                :placeholder="t('config_panel.search_record')"
+              />
+            </template>
+          </FiltriLista>
           <PageActionsBar :actions="pageActions" />
         </div>
 
@@ -194,7 +239,7 @@ function selectTable(rel) {
           :total-records="totalRecords"
           :rows="pageSize"
           :first="(page - 1) * pageSize"
-          :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+          :rows-per-page-options="misureOpzioni()"
           paginator
           paginator-position="top"
           :paginator-template="'FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport'"
@@ -225,7 +270,7 @@ function selectTable(rel) {
       </template>
 
       <div v-else class="config-panel-empty">
-        <i class="pi pi-table" style="font-size: 2rem; opacity: 0.3;"></i>
+        <i :class="NAV_ICONS.TABELLE" style="font-size: 2rem; opacity: 0.3;"></i>
         <p>{{ t('config_panel.select_tabella') }}</p>
       </div>
     </div>
@@ -275,7 +320,7 @@ function selectTable(rel) {
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   padding: 0.5rem 0.5rem 0.25rem;
   margin-top: 0.5rem;
   letter-spacing: 0.05em;
@@ -290,13 +335,13 @@ function selectTable(rel) {
   cursor: pointer;
   border-radius: var(--p-border-radius-sm);
   font-size: 0.85rem;
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   transition: background 0.15s, color 0.15s;
   border-left: 3px solid transparent;
 }
 
 .config-panel-item:hover {
-  background: var(--p-content-hover-background);
+  background: var(--app-hover-bg);
   color: var(--p-text-hover-color);
   border-left-color: var(--p-primary-300);
 }
@@ -323,6 +368,6 @@ function selectTable(rel) {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 </style>

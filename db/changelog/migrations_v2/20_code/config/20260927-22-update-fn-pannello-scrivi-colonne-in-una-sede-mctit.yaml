@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO DEL PANNELLO LEGGE LE COLONNE SCRIVIBILI DALLA LORO SEDE: config.fn_pannello_scrivi
+#   Brief: brief-db-pannello-config-verbo-generico, sezione 6 (decisa da Tid il 2026-09-27)
+#
+# -- COSA CAMBIA ----------------------------------------------------------------------------------
+#   Corpo preso dalla doc auto-generata (dbzero/config/funzioni/fn_pannello_scrivi),
+#   cioe' dalla versione di 20260925-33. Due punti, il resto invariato:
+#   - Passo 2: le colonne scrivibili le da' config.fn_pannello_colonne_scrivibili
+#     (20260927-21). La costante c_escluse e la query su pg_attribute escono dal
+#     verbo: la regola ha una sede sola, che legge anche il metadata del backend.
+#   - Passo 4: la riga ritornata porta `id` e le colonne scrivibili, cioe' i campi
+#     del form. Prima era «tutte le colonne tranne le escluse», e con la costante
+#     ritirata quella forma avrebbe richiesto una seconda copia dell'elenco. Esce di
+#     conseguenza anche una colonna generata o identity ALWAYS (diversa da `id`),
+#     che il form non mostra: dichiarato al backend nel brief (sezione 6).
+#
+# -- CHE COSA NON CAMBIA ---------------------------------------------------------------------------
+#   Firma, RETURNS, codici di errore, SECURITY DEFINER del proprietario e
+#   search_path bloccato: i chiamanti non cambiano. EXECUTE a PUBLIC resta tolto,
+#   all'app resta dato (ridichiarati, idempotenti).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260927-22-update-fn-pannello-scrivi-colonne-in-una-sede-mctit.yaml
+
+  - changeSet:
+      id: 20260927-22-update-fn-pannello-scrivi-colonne-in-una-sede
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.fn_pannello_scrivi: le colonne scrivibili arrivano da
+        config.fn_pannello_colonne_scrivibili (sede unica, 20260927-21); la riga ritornata porta id
+        e le colonne scrivibili. Firma, codici e forma invariati. Brief:
+        brief-db-pannello-config-verbo-generico, sezione 6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config' AND p.proname = 'fn_pannello_colonne_scrivibili';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_pannello_scrivi(
+                  p_tabella config.tabelle_gestibili.codice_interno%TYPE,
+                  p_id      bigint,
+                  p_dati    jsonb
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: scrivere (INSERT o UPDATE per id) una riga di una tabella gestita
+              --   dal pannello di configurazione, applicando il livello TUTTO sull'oggetto
+              --   a cui la tabella appartiene. Ritorna la riga scritta.
+              DECLARE
+                  v_voce      config.tabelle_gestibili%ROWTYPE;
+                  v_nome      text;      -- schema.tabella quotato, composto dalla lista
+                  v_relid     oid;
+                  v_rls       boolean;
+                  v_scrivibili text[];
+                  v_chiavi    text[];
+                  v_estranea  text;
+                  v_colonne   text;      -- colonne del payload, quotate
+                  v_riga      jsonb;
+              BEGIN
+                  -- 0. La tabella: nella lista, nel pannello, esistente, senza RLS.
+                  SELECT tg.*
+                    INTO v_voce
+                    FROM config.tabelle_gestibili tg
+                   WHERE tg.codice_interno = p_tabella
+                     AND tg.pannello;
+
+                  IF FOUND THEN
+                      v_nome := format('%I.%I', v_voce.schema_tabella, v_voce.nome_tabella);
+                      SELECT c.oid, c.relrowsecurity
+                        INTO v_relid, v_rls
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = v_voce.schema_tabella
+                         AND c.relname = v_voce.nome_tabella
+                         AND c.relkind IN ('r', 'p');
+                  END IF;
+
+                  IF v_relid IS NULL OR v_rls THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_pannello_scrivi', 'E_PANNELLO_TABELLA_NON_AMMESSA',
+                          jsonb_build_object('tabella',  p_tabella,
+                                             'in_lista', v_voce.id IS NOT NULL,
+                                             'esiste',   v_relid IS NOT NULL,
+                                             'rls',      v_rls),
+                          NULL::uuid,
+                          COALESCE(p_tabella, '(nessuna)'));
+                  END IF;
+
+                  -- 1. Il permesso: TUTTO sull'oggetto della riga di lista (D-5).
+                  PERFORM script.fn_guard_livello(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      v_voce.app_label, v_voce.model_name, 'TUTTO');
+
+                  -- 2. Il payload: un oggetto non vuoto, solo colonne scrivibili.
+                  IF p_dati IS NULL OR jsonb_typeof(p_dati) <> 'object' OR p_dati = '{}'::jsonb THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_pannello_scrivi', 'E_PANNELLO_DATI_VUOTI',
+                          jsonb_build_object('tabella', p_tabella, 'id', p_id,
+                                             'tipo', jsonb_typeof(p_dati)),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- Le colonne scrivibili hanno una sede sola, letta anche dal metadata
+                  -- del backend (20260927-21).
+                  v_scrivibili := config.fn_pannello_colonne_scrivibili(p_tabella);
+
+                  SELECT array_agg(k ORDER BY k)
+                    INTO v_chiavi
+                    FROM jsonb_object_keys(p_dati) AS k;
+
+                  SELECT k
+                    INTO v_estranea
+                    FROM unnest(v_chiavi) AS k
+                   WHERE k <> ALL (COALESCE(v_scrivibili, ARRAY[]::text[]))
+                   ORDER BY k
+                   LIMIT 1;
+
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_pannello_scrivi', 'E_PANNELLO_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('tabella', p_tabella, 'id', p_id,
+                                             'campo',   v_estranea),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  SELECT string_agg(quote_ident(k), ', ' ORDER BY k)
+                    INTO v_colonne
+                    FROM unnest(v_chiavi) AS k;
+
+                  -- 3. La scrittura. I valori li converte PostgreSQL, sul tipo di riga.
+                  IF p_id IS NULL THEN
+                      EXECUTE format(
+                          'INSERT INTO %s AS t (%s) SELECT %s FROM jsonb_populate_record(NULL::%s, $1) '
+                          'RETURNING to_jsonb(t.*)',
+                          v_nome, v_colonne, v_colonne, v_nome)
+                         INTO v_riga
+                        USING p_dati;
+                  ELSE
+                      EXECUTE format(
+                          'UPDATE %s AS t SET (%s) = (SELECT %s FROM jsonb_populate_record(NULL::%s, $1)) '
+                          'WHERE t.id = $2 RETURNING to_jsonb(t.*)',
+                          v_nome, v_colonne, v_colonne, v_nome)
+                         INTO v_riga
+                        USING p_dati, p_id;
+
+                      IF v_riga IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'config', 'config.fn_pannello_scrivi', 'E_PANNELLO_RIGA_NON_TROVATA',
+                              jsonb_build_object('tabella', p_tabella, 'id', p_id),
+                              NULL::uuid,
+                              p_id::text);
+                      END IF;
+                  END IF;
+
+                  -- 4. La riga, con i campi del form: id e le colonne scrivibili.
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id'
+                              OR e.key = ANY (v_scrivibili));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_pannello_scrivi(text, bigint, jsonb) IS
+                  'VERBO del pannello di configurazione (modello «una scrittura = un verbo», D-3 di '
+                  'brief-db-permesso-nel-verbo-di-scrittura). Scrive una riga di una tabella di '
+                  'config.tabelle_gestibili con pannello = true: p_id NULL = INSERT, altrimenti UPDATE '
+                  'per id. Passo 0: tabella in lista, esistente e SENZA RLS (il verbo non sa rimettere '
+                  'un perimetro, D-P2) -> altrimenti E_PANNELLO_TABELLA_NON_AMMESSA. Passo 1: '
+                  'script.fn_guard_livello(utente, app_label, model_name, TUTTO) sull''oggetto della '
+                  'riga di lista, non sull''area del pannello (E_PERMESSO_NEGATO). Passo 2: p_dati '
+                  'oggetto jsonb non vuoto (E_PANNELLO_DATI_VUOTI) con sole colonne scrivibili, che '
+                  'da'' config.fn_pannello_colonne_scrivibili (sede unica della regola, letta anche dal '
+                  'metadata del backend); una chiave estranea si RIFIUTA (E_PANNELLO_CAMPO_NON_AMMESSO '
+                  'con campo, D-P3). Passo 3: valori convertiti da jsonb_populate_record sul tipo di '
+                  'riga, scritte solo le colonne del payload; UPDATE su id assente -> '
+                  'E_PANNELLO_RIGA_NON_TROVATA. Ritorna la riga con id e le colonne scrivibili, cioe'' i '
+                  'campi del form. I trigger della tabella scattano come sempre. Nessun DELETE. '
+                  'SECURITY DEFINER del proprietario con search_path bloccato; il nome della tabella si '
+                  'compone dalla lista con format(%I.%I). Brief: brief-db-pannello-config-verbo-generico '
+                  '§3.3 e §6.';
+
+              REVOKE EXECUTE ON FUNCTION config.fn_pannello_scrivi(text, bigint, jsonb) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION config.fn_pannello_scrivi(text, bigint, jsonb) TO zeroerp_app;

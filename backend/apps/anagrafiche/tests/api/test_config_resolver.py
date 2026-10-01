@@ -12,17 +12,32 @@
 Indice test eseguiti:
  1) test_config_resolver_ris_umana — ruolo con singola natura PF
  2) test_config_resolver_cliente — ruolo con nature multiple PF/PG/ENC
- 3) test_config_resolver_ruolo_senza_matrice — nature libere (fallback)
+ 3) test_config_resolver_ruolo_senza_matrice — nature libere, lette dall'enum
  4) test_config_resolver_ruolo_non_trovato — codice inesistente → 404
  5) test_config_resolver_case_insensitive — codice minuscolo accettato
  6) test_config_resolver_default_present — DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO> risolve a id
  7) test_config_resolver_default_codice_orfano — codice non tra dettagli → default_id None
  8) test_config_resolver_default_assente — fn_get_parameter_full ritorna None → default_id None
- 9) test_config_resolver_min_search_length_costante — campo min_search_length sempre presente
+ 9) test_config_resolver_min_search_length_dal_catalogo — la soglia e' quella del
+    catalogo della lista `anagrafiche.soggetti` (`soglia_ricerca`), non una costante
 """
 
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
+
+# La soglia del resolver e' letta dal catalogo della lista soggetti
+# (`soglia_ricerca`, brief-db-be-fe-ricerca-soglia-per-lista §6 b): qui, come
+# la connessione, e' sostituita per tutto il modulo.
+_SOGLIA_PATH = "apps.anagrafiche.db.soggetti_repository.soglia_ricerca"
+_soglia = patch(_SOGLIA_PATH, return_value=3)
+
+
+def setUpModule():
+    _soglia.start()
+
+
+def tearDownModule():
+    _soglia.stop()
 
 
 def _mock_cursor():
@@ -64,9 +79,10 @@ def _set_description(mock_cur, cols):
     mock_cur.description = desc
 
 
-def _build_side_effect(mock_cur, ruolo_row, nature_rows, dettaglio_rows):
-    """Scopo: side_effect cursor che simula le 3 SQL query del repo soggetti
-    (ruolo, nature, dettagli). La 4ª lookup (default tipo) passa via
+def _build_side_effect(mock_cur, ruolo_row, nature_rows, dettaglio_rows, dominio_nature=()):
+    """Scopo: side_effect cursor che simula le SQL query del repo soggetti
+    (ruolo, nature, dettagli e — solo senza matrice — il dominio delle nature,
+    `dominio_nature`, dall'enum). Il default tipo passa via
     ParameterRepository, mockato separatamente nei test che lo richiedono.
     """
     call_count = [0]
@@ -85,6 +101,8 @@ def _build_side_effect(mock_cur, ruolo_row, nature_rows, dettaglio_rows):
             _set_description(mock_cur, _DETTAGLIO_COLS)
             mock_cur.fetchone.return_value = dettaglio_rows[0] if dettaglio_rows else None
             mock_cur.fetchall.return_value = dettaglio_rows
+        elif call_count[0] == 4:
+            mock_cur.fetchall.return_value = [(n,) for n in dominio_nature]
 
     return side_effect
 
@@ -167,7 +185,9 @@ class TestConfigResolverCliente(TestCase):
 class TestConfigResolverSenzaMatrice(TestCase):
     """Config resolver per ruolo senza matrice — nature libere."""
 
-    # Scopo: Ruolo attivo ma senza righe in tipi_ruoli_nature_ammesse → fallback tutte le nature.
+    # Scopo: Ruolo attivo ma senza righe in tipi_ruoli_nature_ammesse → tutte
+    #        le nature, LETTE dal dominio (l'enum), non da un elenco nel codice:
+    #        una natura che il codice non conosce arriva lo stesso.
     def test_config_resolver_ruolo_senza_matrice(self, mock_conn, _mock_get_param):
         from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 
@@ -178,12 +198,14 @@ class TestConfigResolverSenzaMatrice(TestCase):
             (99, "NUOVO", "Ruolo Nuovo"),
             [],  # nessuna natura
             [],
+            dominio_nature=("PF", "PG", "ENTE", "NUOVA"),
         )
 
         result = SoggettiRepository().get_config_resolver("NUOVO")
 
         self.assertIsNotNone(result)
-        self.assertEqual(sorted(result["nature_ammesse"]), ["ENTE", "PF", "PG"])
+        self.assertEqual(result["nature_ammesse"], ["PF", "PG", "ENTE", "NUOVA"])
+        self.assertIn("natura_soggetto_enum", mock_cur.execute.call_args_list[3].args[0])
 
 
 @patch(_GET_PARAM_PATH, return_value=None)
@@ -308,8 +330,10 @@ class TestConfigResolverDefault(TestCase):
 
         self.assertIsNone(result["default_tipo_soggetto_dettaglio_id"])
 
-    # Scopo: min_search_length sempre presente come campo del response.
-    def test_config_resolver_min_search_length_costante(self, mock_conn, mock_get_param):
+    # Scopo: min_search_length e' la soglia del catalogo della lista che il
+    #        resolver interroga (`anagrafiche.soggetti`), letta a ogni config:
+    #        un valore diverso da quello di progetto arriva cosi' com'e'.
+    def test_config_resolver_min_search_length_dal_catalogo(self, mock_conn, mock_get_param):
         from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 
         mock_cur = _mock_cursor()
@@ -319,7 +343,8 @@ class TestConfigResolverDefault(TestCase):
         )
         mock_get_param.return_value = None
 
-        result = SoggettiRepository().get_config_resolver("CL")
+        with patch(_SOGLIA_PATH, return_value=5) as soglia:
+            result = SoggettiRepository().get_config_resolver("CL")
 
-        self.assertIn("min_search_length", result)
-        self.assertEqual(result["min_search_length"], 3)
+        soglia.assert_called_once_with("anagrafiche.soggetti")
+        self.assertEqual(result["min_search_length"], 5)

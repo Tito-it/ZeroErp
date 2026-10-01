@@ -27,7 +27,8 @@ Indice test eseguiti:
 14) test_crea_cliente_duplicato_istanza — IntegrityError UNIQUE istanza → E_ANAG_DUPLICATO
 15) test_update_cliente_ok — aggiorna campi editabili
 16) test_update_cliente_not_found — id inesistente → E_ANAG_NOT_FOUND
-17) test_update_cliente_no_fields — nessun campo valido → E_ANAG_NOT_FOUND
+17) test_update_cliente_no_fields — nessun campo → E_ANAG_VALIDAZIONE
+17b) test_update_cliente_chiave_estranea_400 — chiave fuori contratto → 400 prima del repository (2026-09-26)
 18) test_guard_admin_globale_blocca_creazione_ba — admin globale + emittenti → E_BA_ADMIN_GLOBALE_VIETATO
 19) test_guard_skip_quando_auth_user_id_none — contesto sistema → no check
 20) test_guard_skip_quando_ba_preesistente — riuso BA → no check (no nuovo INSERT)
@@ -461,8 +462,29 @@ class TestUpdateCliente(TestCase):
         }
         from apps.anagrafiche.services.clienti_service import ClientiService
         with self.assertRaises(ServiceError) as ctx:
-            ClientiService().update_cliente(1, {"campo_ignoto": "valore"})
+            ClientiService().update_cliente(1, {})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+
+    # ⛔ Dal 2026-09-26 una chiave fuori contratto e' un 400 PARLANTE, prima di
+    #    toccare il database: fino a quel giorno il repository la scartava in
+    #    silenzio. `stato_cliente_id` e' il caso vero: `ClienteDrawer.vue` lo
+    #    spedisce in ogni PATCH, ma non e' un campo editabile (non e' nella
+    #    whitelist della fn madre `fn_update_cliente`).
+    @patch(CLI_REPO)
+    def test_update_cliente_chiave_estranea_400(self, mock_repo):
+        """Chiave fuori contratto → E_ANAG_VALIDAZIONE con le chiavi ignote nel contesto."""
+        repo = mock_repo.return_value
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        for chiave in ("campo_ignoto", "stato_cliente_id", "iva_id"):
+            with self.subTest(chiave=chiave):
+                with self.assertRaises(ServiceError) as ctx:
+                    ClientiService().update_cliente(1, {
+                        "modalita_pagamento_id": 5, chiave: 1,
+                    })
+                self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+                self.assertEqual(ctx.exception.context["unknown_keys"], [chiave])
+        repo.get_cliente.assert_not_called()
+        repo.update_cliente_atomico.assert_not_called()
 
 
 # =================================================================

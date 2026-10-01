@@ -94,7 +94,7 @@ SAMPLE_MODEL_OVERRIDE = {
 }
 
 SAMPLE_MODEL_OVERRIDE_RISERVATO = {
-    # Coppia coerente con `_MODEL_OVERRIDE_RISERVATI`: identita_digitali
+    # Riga `riservato = t` del catalogo (`area_model_overrides.csv`): identita_digitali
     # appartiene al kernel permessi e non puo' essere target di override
     # granulari (Fase 8 amm-software).
     "id": 99, "app_label": "anagrafiche", "model_name": "identita_digitali",

@@ -11,13 +11,15 @@
 //        Costruito sopra useFetchVersion.
 import { ref } from 'vue'
 import { useFetchVersion } from './useFetchVersion'
-import { PAGINATION } from '../constants'
+import { USO_MISURA, misuraDefault } from '../misurePagina'
 
 // Scopo: crea lo stato e le action di una sezione paginata.
 // - fetchPage: (paging: {page, page_size}, ...args) => Promise (axios) verso
 //   un endpoint con envelope paginato standard {data: {results, count, ...}}.
 //   Gli ...args extra di fetch() vengono inoltrati (es. competenza_mese).
-// - defaultPageSize: default PAGINATION.DEFAULT_ROWS.
+// - misura: l'USO della sezione (`USO_MISURA.PAGINA` di default,
+//   `USO_MISURA.COMPATTA` per un drill-down): il numero di righe di partenza
+//   lo dice il catalogo DB (BB `core/misurePagina`).
 // - onPayload(payload): hook opzionale (2026-07-27) per i campi EXTRA che
 //   l'endpoint mette accanto a results/count — es. il `riepilogo` di perimetro
 //   della lista gruppi fatturabili. Viene invocato SOLO dopo il guard di
@@ -31,8 +33,9 @@ import { PAGINATION } from '../constants'
 // Ritorna { items, count, page, pageSize, loading, loaded, fetch, reset, resetAll }.
 export function usePagedDashFetch(
   fetchPage,
-  { defaultPageSize = PAGINATION.DEFAULT_ROWS, onPayload = null } = {},
+  { misura = USO_MISURA.PAGINA, onPayload = null } = {},
 ) {
+  const defaultPageSize = misuraDefault(misura)
   const items = ref([])
   const count = ref(0)
   const page = ref(1)

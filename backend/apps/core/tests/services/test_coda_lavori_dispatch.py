@@ -104,7 +104,7 @@ class DispatchTests(SimpleTestCase):
 def _dimentica_handler(codice: str) -> None:
     from apps.core.services.coda_lavori import handler_registry
 
-    handler_registry._REGISTRY.pop(codice, None)  # noqa: SLF001
+    handler_registry._REGISTRY.pop(codice, None)
 
 
 class RegistryTests(SimpleTestCase):
@@ -119,7 +119,7 @@ class RegistryTests(SimpleTestCase):
     #    sporca uno stato condiviso rompe un ALTRO test, e il rosso compare dove
     #    il difetto non e'.
     def test_registry_register_e_get(self) -> None:
-        def _h(payload, *, scope):  # noqa: ARG001
+        def _h(payload, *, scope):
             return {}
         register_handler("test_handler_xyz", _h)
         self.addCleanup(_dimentica_handler, "test_handler_xyz")
@@ -165,7 +165,7 @@ class OperatorIdentityContextTests(SimpleTestCase):
     @patch(f"{_CTX}.connection")
     @patch(f"{_CTX}.set_jwt_gucs")
     def test_context_operatore_senza_emittente_congelato(
-        self, set_gucs, conn,  # noqa: ARG002
+        self, set_gucs, conn,
     ) -> None:
         from apps.core.services.coda_lavori.context import (
             operator_identity_context,

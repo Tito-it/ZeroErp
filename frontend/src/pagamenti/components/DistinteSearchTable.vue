@@ -12,16 +12,16 @@
 //    si digitano le righe, si abbinano alle rate e infine si REGISTRA, che e'
 //    l'unico gesto irreversibile del cantiere.
 //
-// ⚠️ Niente campo di ricerca: l'endpoint non ha ricerca testuale a contratto.
-//    Montarlo darebbe un input che digita e non filtra — l'operatore vedrebbe
-//    la lista intera credendo di aver cercato.
+// ⭐ La ricerca (brief-be-ricerca-full-liste-residue §5.3): la casella sta nel
+//    `#sempre` di `FiltriLista`, che la rende solo se la configurazione dice
+//    `ricerca_full` — le colonne le decide il catalogo, non questo file.
 // ⚠️ Niente export: il backend non espone `/export/` per questo dominio, e dal
 //    2026-07-31 il BB il pulsante non lo mette se non gli passi `exportFn`. Un
 //    pulsante che apre un dialogo inerte e' peggio della sua assenza.
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
-import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
 
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -33,12 +33,13 @@ import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
-import { DATE_FORMAT } from '../../core/constants'
 import { statoDistintaSeverity } from '../../core/utils/severity'
 import { useEtichettePagamenti } from '../etichette'
 import { formatCurrency } from '../../core/utils/format'
 import { useDistinteStore } from '../stores/distinte'
-
+import { STATUS_ICONS } from '../../core/constants'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
@@ -46,7 +47,7 @@ const store = useDistinteStore()
 const isBlocked = useInjectBlocked()
 
 const {
-  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   // ⭐ «Apri distinta» e non «Nuovo»: il gesto ha un nome nel dominio, e non e'
@@ -57,13 +58,13 @@ const {
   searchTableOptions: { defaultSortField: 'data_contabile', defaultSortOrder: 'desc' },
 })
 
-const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato')
 const { value: origineFilter, onChange: onOrigineChange } = bindSelect('origine')
 const { value: centroFilter, onChange: onCentroChange } = bindSelect('centro_riscossione_id')
 const { value: canaleFilter, onChange: onCanaleChange } = bindSelect('ente_incasso_id')
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 
 // ⛔ L'ORIGINE e' un vocabolario chiuso di tre valori, ed e' un CHECK del
 //    database (`MANUALE` | `AUTOMATICA` | `GENERATA`): un Select statico, non un
@@ -97,54 +98,55 @@ onMounted(() => store.fetchList())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <!-- La ricerca: colonne dal catalogo (`ricerca_full`: senza colonne
+               accese la casella non si rende), sotto 3 caratteri il termine
+               non filtra. -->
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
           <LookupSelect
             v-model="statoFilter"
+            class="app-filter-w-md"
             rel="pagamenti.vendite_contabili_stati"
             value-field="codice_interno"
             :placeholder="t('pagamenti.distinte.filtro_stato')"
             show-clear
             :filter="false"
-            style="width: 170px;"
             @change="onStatoChange"
           />
           <Select
             v-model="origineFilter"
+            class="app-filter-w-md"
             :options="opzioniOrigine"
             option-label="label"
             option-value="value"
             :placeholder="t('pagamenti.distinte.filtro_origine')"
             show-clear
-            style="width: 170px;"
             @update:model-value="onOrigineChange"
           />
           <LookupSelect
             v-model="centroFilter"
+            class="app-filter-w-md"
             rel="pagamenti.centri_riscossione"
             :placeholder="t('pagamenti.distinte.filtro_centro')"
             show-clear
-            style="width: 190px;"
             @change="onCentroChange"
           />
           <LookupSelect
             v-model="canaleFilter"
+            class="app-filter-w-md"
             rel="pagamenti.enti_incasso"
             :placeholder="t('pagamenti.distinte.filtro_canale')"
             show-clear
-            style="width: 190px;"
             @change="onCanaleChange"
           />
-          <DatePicker
-            v-model="dataDaFilter" :placeholder="t('common.data_da')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataDaChange" @clear-click="onDataDaChange"
-          />
-          <DatePicker
-            v-model="dataAFilter" :placeholder="t('common.data_a')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataAChange" @clear-click="onDataAChange"
-          />
-        </div>
+          <FiltroPeriodo :periodo="periodo" />
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -217,7 +219,7 @@ onMounted(() => store.fetchList())
 
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-credit-card" />
+            <i :class="STATUS_ICONS.VUOTO" />
             <p>{{ t('pagamenti.distinte.nessuna_distinta') }}</p>
           </div>
         </template>

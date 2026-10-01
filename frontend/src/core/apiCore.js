@@ -5,6 +5,13 @@ import api from './api'
 
 const BASE = '/core'
 
+// --- Emittenti fiscali: il vocabolario che ogni dominio usa per il campo
+//     «emittente» (`useEmittenteFiscaleField`). L'endpoint lo serve
+//     `amm_software`, ma il lookup e' di tutti: per questo sta qui. ---
+export function listEmittentiFiscali() {
+  return api.get('/amm-software/lookup/emittenti-fiscali/')
+}
+
 // --- Lookup codici generico (qualifiche, stati, ecc.) ---
 
 export function lookupCodici(rel, params = {}) {
@@ -38,14 +45,6 @@ export function lookupMatriceIndirizzi(tipoSoggettoDettaglioId) {
 export function lookupMatriceIndirizziRuolo(tipoRuoloCodice) {
   return api.get(
     `${BASE}/lookup/tipi-ruolo/${tipoRuoloCodice}/indirizzi/`
-  )
-}
-
-// Scopo: Lookup utility ammesse per un tipo ruolo (strict, da config.utilities_tipi_ruolo).
-// Usato dal componente riusabile UtilityPerRuoloSelect.
-export function lookupUtilitiesPerRuolo(tipoRuoloCodice) {
-  return api.get(
-    `${BASE}/lookup/tipi-ruolo/${tipoRuoloCodice}/utilities/`
   )
 }
 

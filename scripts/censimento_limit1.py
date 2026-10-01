@@ -123,7 +123,7 @@ for f in sorted(pathlib.Path('db/pgtap').rglob('*.sql')):
         righe.append((str(f), t[:mo.start()].count('\n')+1, tab, rischio))
 
 schemi = collections.Counter(); alti = collections.Counter(); files = collections.defaultdict(set)
-for f, ln, tab, r in righe:
+for f, _ln, _tab, r in righe:
     s = f.split('/')[2]; schemi[s] += 1; files[s].add(f)
     if r == 'ALTO': alti[s] += 1
 print(f"{'schema':<14}{'LIMIT 1 senza ORDER BY':>24}{'di cui ALTO':>13}{'file':>7}")

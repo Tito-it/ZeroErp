@@ -20,7 +20,8 @@
 -- merce "fatturata"): questo test chiude quel buco.
 --
 -- FIXTURE — perche' e' articolato: per far entrare la riga in coda accrediti
--- serve differenza < 0 in vw_contatore_merce, cioe' tenuti < fatturati:
+-- serve differenza < 0 nella partita di merce (fn_partite_merce; fino al
+-- 22-09-2026 il conto era vw_contatore_merce, ritirata), cioe' tenuti < fatturati:
 --   tenuti    = evaso - reso            (dai fulfillment e dai resi)
 --   fatturati = somma delle attivita_fatturabili NORMALE con segment_key
 --               'DDT:<uid>:R:<ddt_riga_id>' (o 'ORD:...'), ricondotte alla riga
@@ -56,6 +57,14 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+-- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
+-- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+-- l'operatore di fixture non ha azioni, si concede qui.
+DO $az$ BEGIN
+    PERFORM dbops.fn_pgtap_concedi_azione(
+        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
+END $az$;
 
 SELECT plan(9);
 
@@ -106,9 +115,9 @@ SELECT dr.id AS ddt_riga_id, dr.quantita AS consegnato, dr.articolo_id,
           dr.id
  LIMIT 1;
 
--- Commessa + attivita' con il segment_key che il contatore riconosce come
--- "fatturato": 'DDT:<uid>:R:<ddt_riga_id>'. La CTE fatt di vw_contatore_merce
--- lo ricollega alla riga ordine via ordini_righe_fulfillment.
+-- Commessa + attivita' con il segment_key che il conto della merce riconosce
+-- come "fatturato": 'DDT:<uid>:R:<ddt_riga_id>' (la corsia DDT di
+-- fn_af_merce_per_riga, letta dalla partita per chiave).
 CREATE TEMP TABLE tmp_com AS
 SELECT vendite.fn_get_or_create_commessa(
   p_billing_account_id     => (SELECT billing_account_id FROM tmp_r),

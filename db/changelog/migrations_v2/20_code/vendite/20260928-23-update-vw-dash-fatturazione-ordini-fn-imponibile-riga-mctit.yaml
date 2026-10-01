@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.vw_dash_fatturazione_ordini: valore e residuo di riga dalla sede unica.
+#
+# Due copie nella stessa vista: `valore_riga` (sulla quantita' della riga) e
+# `valore_riga_residua` (sulla quantita' residua: ordinato - evaso + riconsegna,
+# mai negativa). La funzione riceve la quantita' GIA' calcolata: la regola del
+# residuo resta dov'e', la formula dell'imponibile esce.
+#
+# ⚠️ Questa copia divideva lo sconto per `100.0` invece che per `100`: il
+#   VALORE e' identico (la divisione per cento e' esatta in numeric), cambia
+#   al piu' la SCALA del numeric non arrotondato. La vista espone somme che il
+#   cruscotto formatta; l'equivalenza e' provata sul valore, riga per riga, nel
+#   brief (§8.10).
+#
+# -- COSA CAMBIA, e cosa NO ------------------------------------------------
+#   Solo l'espressione dell'imponibile: al posto della formula scritta a mano,
+#   la sede unica script.fn_imponibile_riga (20260928-16, D-8.8 del brief).
+#   Stesso valore, stesse colonne con gli stessi nomi, tipi e posizioni
+#   (CREATE OR REPLACE VIEW non ammette altro), stessi filtri, stesso COMMENT
+#   (resta sull'oggetto). `security_invoker` e' RIPETUTO: e' una reloption,
+#   non sta nel corpo, e un CREATE OR REPLACE che non la ripete la azzera.
+#
+# Base: corpo vivo dalla doc auto-gen (identico a pg_get_viewdef sullo scratch
+#   il 2026-09-28), patchato da uno script che dichiara la sostituzione e ne
+#   CONTA le occorrenze: nessun'altra riga toccata.
+# Cantiere: brief-db-liste-righe-documento §8.8 (D-8.8), §8.10 passo 3
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260928-23-update-vw-dash-fatturazione-ordini-fn-imponibile-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260928-23-update-vw-dash-fatturazione-ordini-fn-imponibile-riga
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_fatturazione_ordini: valore_riga e valore_riga_residua da
+        script.fn_imponibile_riga (stessi argomenti) invece della formula a mano. Stesso
+        valore, security_invoker ripetuto.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_imponibile_riga'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ordini
+              WITH (security_invoker=on) AS
+              WITH righe AS (
+                       SELECT orr.ordine_id,
+                          orr.id AS riga_id,
+                          script.fn_imponibile_riga(orr.quantita, orr.prezzo_unitario, orr.sconto_percentuale) AS valore_riga,
+                          script.fn_imponibile_riga(GREATEST((0)::numeric, ((orr.quantita - COALESCE(ful.evasa, (0)::numeric)) + vendite.fn_ordine_riga_qta_riconsegna(orr.id))), orr.prezzo_unitario, orr.sconto_percentuale) AS valore_riga_residua,
+                          (EXISTS ( SELECT 1
+                                 FROM vendite.commesse_attivita ca
+                                WHERE (((ca.segment_key)::text = ((('ORD:'::text || (o2.uid)::text) || ':R:'::text) || (orr.id)::text)) AND ((ca.stato_emissione)::text = 'EMESSA'::text)))) AS transitata
+                         FROM ((vendite.ordini_righe orr
+                           JOIN vendite.ordini o2 ON ((o2.id = orr.ordine_id)))
+                           LEFT JOIN ( SELECT f.ordine_riga_id,
+                                  sum(f.qta_evasa) AS evasa
+                                 FROM vendite.ordini_righe_fulfillment f
+                                GROUP BY f.ordine_riga_id) ful ON ((ful.ordine_riga_id = orr.id)))
+                        WHERE (orr.attivo IS TRUE)
+                      )
+               SELECT 'ORDINI'::character varying AS area,
+                  (date_trunc('month'::text, (o.data)::timestamp with time zone))::date AS competenza_mese,
+                  o.id AS documento_id,
+                  (o.uid)::text AS documento_uid,
+                  (o.numero)::text AS codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                      CASE
+                          WHEN ((o.fatturazione_trigger)::text = ANY (ARRAY['SPEDITO'::text, 'CONSEGNATO'::text])) THEN COALESCE(sum(r.valore_riga_residua), (0)::numeric)
+                          ELSE COALESCE(sum(r.valore_riga), (0)::numeric)
+                      END AS valore_totale,
+                  COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), (0)::numeric) AS valore_transitato,
+                  (count(r.riga_id))::integer AS unita_totali,
+                  (count(r.riga_id) FILTER (WHERE r.transitata))::integer AS unita_transitate,
+                  ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) AS is_transitato,
+                  COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) AS is_abortito,
+                  (
+                      CASE
+                          WHEN COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
+                          WHEN ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) THEN NULL::text
+                          WHEN ((sdo.codice_interno)::text = 'DRAFT'::text) THEN 'DOC_BOZZA'::text
+                          WHEN ((o.fatturazione_trigger)::text = ANY (ARRAY['SPEDITO'::text, 'CONSEGNATO'::text])) THEN 'IN_ATTESA_DDT'::text
+                          WHEN (count(r.riga_id) FILTER (WHERE r.transitata) = 0) THEN 'PUSH_NON_ESEGUITO'::text
+                          ELSE 'PUSH_PARZIALE'::text
+                      END)::character varying AS motivo_fermo,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.codice AS stato_codice,
+                  sdo.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  o.data AS data_riferimento
+                 FROM ((((vendite.ordini o
+                   JOIN config.stati_doc_ordini sdo ON ((sdo.id = o.stato_doc_ordine_id)))
+                   LEFT JOIN righe r ON ((r.ordine_id = o.id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = o.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                GROUP BY o.id, o.uid, o.numero, o.data, o.emittente_fiscale_id, o.fatturazione_trigger, sdo.codice_interno, sdo.codice, sdo.fase, sdo.esito, s.ragione_sociale_completa;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino: il corpo vivo prima di questo changeSet (formula scritta
+              -- a mano), dalla doc auto-gen del 2026-09-28.
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ordini
+              WITH (security_invoker=on) AS
+              WITH righe AS (
+                       SELECT orr.ordine_id,
+                          orr.id AS riga_id,
+                          ((orr.quantita * orr.prezzo_unitario) * ((1)::numeric - (COALESCE(orr.sconto_percentuale, (0)::numeric) / 100.0))) AS valore_riga,
+                          ((GREATEST((0)::numeric, ((orr.quantita - COALESCE(ful.evasa, (0)::numeric)) + vendite.fn_ordine_riga_qta_riconsegna(orr.id))) * orr.prezzo_unitario) * ((1)::numeric - (COALESCE(orr.sconto_percentuale, (0)::numeric) / 100.0))) AS valore_riga_residua,
+                          (EXISTS ( SELECT 1
+                                 FROM vendite.commesse_attivita ca
+                                WHERE (((ca.segment_key)::text = ((('ORD:'::text || (o2.uid)::text) || ':R:'::text) || (orr.id)::text)) AND ((ca.stato_emissione)::text = 'EMESSA'::text)))) AS transitata
+                         FROM ((vendite.ordini_righe orr
+                           JOIN vendite.ordini o2 ON ((o2.id = orr.ordine_id)))
+                           LEFT JOIN ( SELECT f.ordine_riga_id,
+                                  sum(f.qta_evasa) AS evasa
+                                 FROM vendite.ordini_righe_fulfillment f
+                                GROUP BY f.ordine_riga_id) ful ON ((ful.ordine_riga_id = orr.id)))
+                        WHERE (orr.attivo IS TRUE)
+                      )
+               SELECT 'ORDINI'::character varying AS area,
+                  (date_trunc('month'::text, (o.data)::timestamp with time zone))::date AS competenza_mese,
+                  o.id AS documento_id,
+                  (o.uid)::text AS documento_uid,
+                  (o.numero)::text AS codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                      CASE
+                          WHEN ((o.fatturazione_trigger)::text = ANY (ARRAY['SPEDITO'::text, 'CONSEGNATO'::text])) THEN COALESCE(sum(r.valore_riga_residua), (0)::numeric)
+                          ELSE COALESCE(sum(r.valore_riga), (0)::numeric)
+                      END AS valore_totale,
+                  COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), (0)::numeric) AS valore_transitato,
+                  (count(r.riga_id))::integer AS unita_totali,
+                  (count(r.riga_id) FILTER (WHERE r.transitata))::integer AS unita_transitate,
+                  ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) AS is_transitato,
+                  COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) AS is_abortito,
+                  (
+                      CASE
+                          WHEN COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
+                          WHEN ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) THEN NULL::text
+                          WHEN ((sdo.codice_interno)::text = 'DRAFT'::text) THEN 'DOC_BOZZA'::text
+                          WHEN ((o.fatturazione_trigger)::text = ANY (ARRAY['SPEDITO'::text, 'CONSEGNATO'::text])) THEN 'IN_ATTESA_DDT'::text
+                          WHEN (count(r.riga_id) FILTER (WHERE r.transitata) = 0) THEN 'PUSH_NON_ESEGUITO'::text
+                          ELSE 'PUSH_PARZIALE'::text
+                      END)::character varying AS motivo_fermo,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.codice AS stato_codice,
+                  sdo.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  o.data AS data_riferimento
+                 FROM ((((vendite.ordini o
+                   JOIN config.stati_doc_ordini sdo ON ((sdo.id = o.stato_doc_ordine_id)))
+                   LEFT JOIN righe r ON ((r.ordine_id = o.id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = o.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                GROUP BY o.id, o.uid, o.numero, o.data, o.emittente_fiscale_id, o.fatturazione_trigger, sdo.codice_interno, sdo.codice, sdo.fase, sdo.esito, s.ragione_sociale_completa;

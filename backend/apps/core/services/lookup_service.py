@@ -11,11 +11,13 @@ import math
 
 from django.db import DatabaseError
 
-from apps.core.db.dbops_repository import DbopsRepository
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.db.dbops_repository import LOOKUP_ORDER_COLONNE, DbopsRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_order_params
 
-_ORDER_COL_VALIDI: frozenset[str] = frozenset({"codice", "descrizione"})
-_ORDER_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
+# La whitelist di ordinamento e' quella del repository (sede unica).
+_ORDER_COL_VALIDI: frozenset[str] = frozenset(LOOKUP_ORDER_COLONNE)
 
 # Mapping P0001 -> codice applicativo per errori sollevati da dbops.fn_get_lookup_codici.
 # Pattern speculare a `pricing_service._KNOWN_DB_ERROR_MARKERS`: substring stretti
@@ -46,7 +48,7 @@ def fn_list_lookup_codici(
     attivo_only: bool = True,
     includi_obsoleti: bool = True,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict[str, object]:
     ErrorManager.require(
         page >= 1,
@@ -58,31 +60,24 @@ def fn_list_lookup_codici(
         log_to_db=True,
     )
     ErrorManager.require(
-        1 <= page_size <= 200,
+        1 <= page_size <= MAX_LIMIT,
         code="E_CORE_VALIDATION",
         message="Parametri paginazione non validi.",
-        detail="page_size deve essere compreso tra 1 e 200",
+        detail=f"page_size deve essere compreso tra 1 e {MAX_LIMIT}",
         context={"page_size": page_size},
         function_name="core.lookup_service.fn_list_lookup_codici",
         log_to_db=True,
     )
-    ErrorManager.require(
-        order_col in _ORDER_COL_VALIDI,
-        code="E_CORE_VALIDATION",
-        message="Parametro order_col non valido.",
-        detail="Valori ammessi: codice, descrizione",
-        context={"order_col": order_col},
+    # ⛔ Colonna e direzione dal BB `validate_order_params` (2026-09-26): qui
+    #    c'era un secondo insieme `{asc, desc}` confrontato case-sensitive, per
+    #    cui `DESC` era un 400 sulla lookup e passava sulle liste. La direzione
+    #    torna normalizzata (`asc`/`desc`), e l'SQL la vuole maiuscola.
+    order_col, order_dir = validate_order_params(
+        order_col,
+        order_dir,
+        allowed_columns=_ORDER_COL_VALIDI,
+        error_code="E_CORE_VALIDATION",
         function_name="core.lookup_service.fn_list_lookup_codici",
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        order_dir in _ORDER_DIR_VALIDI,
-        code="E_CORE_VALIDATION",
-        message="Parametro order_dir non valido.",
-        detail="Valori ammessi: asc, desc",
-        context={"order_dir": order_dir},
-        function_name="core.lookup_service.fn_list_lookup_codici",
-        log_to_db=True,
     )
 
     offset = (page - 1) * page_size

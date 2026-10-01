@@ -516,6 +516,13 @@ Funziona quindi senza translator dedicato lato service.
 - [ ] Tenta accettazione preventivo (cambio stato → ACCETTATO)
 - [ ] Errore 409 `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (toast)
 
+> **Nota 2026-09-24** — `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` è ritirato, con il trigger
+> `trg_preventivi_a10_guard_transizione_approvazione_upd`. Oggi il codice atteso è
+> `E_DOC_PREZZO_PENDENTE` (409), e `E_DOC_PREZZO_RIFIUTATO` per un prezzo rifiutato; il blocco
+> vale anche verso EMESSO, e i pulsanti «Emetti» / «Accetta» sono già spenti col motivo.
+> Vedi [script.fn_check_prezzi_autorizzati](/dbzero/script/funzioni/fn_check_prezzi_autorizzati)
+> (brief `brief-db-preventivi-congelamento-pricing`).
+
 ### 4.3 Guard modifica riga PENDING
 
 - [ ] Tenta modifica della riga PENDING (es. cambia quantità) via UI
@@ -567,6 +574,7 @@ finale contro bug FE.
 - [ ] UPDATE riga PENDING su `prezzo_unitario` via PATCH diretto → `E_RIGA_PREZZO_PENDENTE`
 - [ ] UPDATE riga PENDING su `meta` via PATCH → ammesso (allowlist trigger 07)
 - [ ] Transizione preventivo → ACCETTATO con riga PENDING via POST diretto → `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`
+  *(nota 2026-09-24: codice ritirato; oggi → `E_DOC_PREZZO_PENDENTE`, vedi §4.2)*
 
 ---
 

@@ -71,8 +71,6 @@
   --app-toolbar-bg: var(--p-surface-900);
   --app-toolbar-border: var(--p-surface-700);
   --app-toolbar-tab-hover-bg: var(--p-surface-800);
-  --app-toolbar-tab-active-bg: var(--p-primary-color);
-  --app-toolbar-tab-active-color: var(--p-primary-contrast-color);
 
   /* ===== Icone informative ===== */
   /* Colore standard per icone non-pulsante (sidebar, drawer, dettagli, topbar).
@@ -104,6 +102,38 @@
   --app-focus-ring: var(--p-focus-ring-color);            /* l'anello di fuoco */
   --app-space-sm: 0.5rem;                                 /* la spaziatura piccola (gap, padding) */
 
+  /* ===== Larghezze dei FILTRI di lista (BB `FiltriLista`) =====
+   * ⭐ L'UNITA' e' la larghezza minima di un filtro leggibile, ed e' la stessa
+   * cosa per una data e per una combo: il drawer dal basso dispone i filtri su
+   * una griglia di queste unita', quindi due date (o due combo) stanno
+   * affiancate appena ce ne stanno due.
+   * ⭐ Perche' 8rem, e non e' un numero pescato: sono ~13 caratteri al font
+   * della toolbar, cioe' `31/12/2026` intero piu' l'icona del calendario. Per
+   * una combo e' il punto in cui il VALORE SCELTO resta riconoscibile
+   * («Energia el…» si legge, «Ene…» no).
+   * ⭐ E il minimo NON riguarda la scelta, solo la lettura di cio' che e' gia'
+   * scelto: PrimeVue impone al pannello `min-width` = larghezza del trigger
+   * (`alignOverlay`), e le opzioni hanno `white-space: nowrap`, quindi il
+   * pannello CRESCE col contenuto — un trigger stretto non taglia le
+   * descrizioni, e il valore selezionato degrada in ellissi
+   * (`.p-select-label` ce l'ha nel tema).
+   * ⛔ Chi ha bisogno di piu' spazio NON e' la combo: e' l'interruttore
+   * (`FiltroToggle`), la cui etichetta sta FUORI dal controllo e non sa
+   * andare in ellissi. Nella griglia occupa due unita'. */
+  --app-filtro-unita: 8rem;
+  /* Il pavimento di una COMBO leggibile: sotto questa larghezza il valore
+   * scelto e' solo un'ellissi, quindi nel drawer una combo prende la riga
+   * intera invece di affiancarsi (la soglia `@container` in main.css e' due
+   * volte questo piu' il gap). ⚠️ Coincide con `--app-filter-w-md` di
+   * proposito: e' la stessa grandezza detta per due usi — la taglia in linea e
+   * il pavimento nella griglia. */
+  --app-filtro-min-combo: 13rem;
+  /* Le tre taglie del filtro nella toolbar in linea (desktop), al posto delle
+   * larghezze scritte nei tag. Multipli dell'unita', non numeri nuovi. */
+  --app-filter-w-sm: 10rem;   /* date, stati, codici brevi */
+  --app-filter-w-md: 13rem;   /* combo con descrizioni */
+  --app-filter-w-lg: 16rem;   /* ricerca, lookup ricchi */
+
   /* ===== Semantica esiti ===== */
   /* Verde "fatto/successo" per icone di completamento (es. check dei passi
    * conclusi nel percorso pratica). Centralizzato: mai green hardcoded. */
@@ -127,6 +157,20 @@
    * accreditare» del pannello situazione merce) resta `warn`/arancio: li' non
    * c'e' un verso opposto accanto da distinguere. */
   --app-accredito-color: var(--p-red-600);
+
+  /* Colore d'ACCENTO: il primario del tema, dove un componente sottolinea
+   * cio' che e' attivo o selezionato (passo corrente, titolo del drawer, tab
+   * attiva). Il componente non scrive mai `--p-primary-color`: se l'accento
+   * cambia, cambia qui. */
+  --app-accent-color: var(--p-primary-color);
+
+  /* Dato che viene dal SOGGETTO e non dal ruolo o dall'istanza: il bordo delle
+   * schede ereditate nei drawer di contatti, conti bancari e indirizzi. */
+  --app-fonte-soggetto-color: var(--p-orange-300);
+
+  /* Pannello FISSATO nello split: la tab pinnata e il badge di sola lettura
+   * del pannello affiancato. Non e' un avviso: dice dove si sta guardando. */
+  --app-split-color: var(--p-orange-400);
 
   /* Attività IN CORSO (spinner di riga): il colore primario del tema, non un
    * colore d'allarme — un lavoro che sta girando è normale, non un problema.
@@ -186,9 +230,11 @@
    * righe arrivano — senza, la lista si rende all'altezza del contenuto e il
    * dialog salta da «corto a vuoto» ad «alto con le righe» (rilievo di Tid
    * sul picker delle rate, 2026-09-18). ~32rem = barra filtri + paginatore +
-   * intestazione + DIECI righe, il passo con cui quelle liste nascono
-   * (`PAGINATION.COMPACT_ROWS`); una pagina piu' lunga scorre dentro la
-   * tabella, non allunga il dialog. */
+   * intestazione + DIECI righe, il passo con cui quelle liste nascono (la
+   * misura COMPATTA del catalogo DB `ui.misure_pagina`, 10 al 2026-09-30);
+   * una pagina piu' lunga scorre dentro la tabella, non allunga il dialog.
+   * ⚠️ Se il CSV sposta la COMPATTA, quest'altezza non la segue da sola: la
+   * lista resta giusta, e scorre. */
   --app-dialog-lista-h: 32rem;
 
   /* ===== AI Assistant Widget ===== */
@@ -235,6 +281,9 @@
   --app-table-cell-padding: var(--app-table-cell-padding-y) var(--app-table-cell-padding-x);
   --app-table-header-padding: 0.35rem var(--app-table-cell-padding-x);
   --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-700) 30%, transparent);
+  /* Voce di un registro (nota, allegato, sospensione, evento di giornale):
+     la tinta di fondo della classe `app-voce-registro`. */
+  --app-voce-registro-bg: color-mix(in srgb, var(--p-surface-700) 20%, transparent);
   --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 8%, transparent);
 
   /* ===== Pulsanti azione riga (DataTable / card) ===== */
@@ -255,9 +304,6 @@
   --app-btn-action-hover-color: var(--app-btn-manage-hover-color);
   --app-btn-action-hover-bg: var(--app-btn-manage-hover-bg);
 
-  --app-btn-edit-color: var(--p-primary-color);
-  --app-btn-edit-hover-color: var(--p-primary-700);
-  --app-btn-edit-hover-bg: var(--p-primary-50);
   --app-btn-delete-color: var(--p-red-500);
   --app-btn-delete-hover-color: var(--p-red-700);
   --app-btn-delete-hover-bg: var(--p-red-50);
@@ -366,6 +412,7 @@
 
   /* DataTable */
   --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-100) 60%, transparent);
+  --app-voce-registro-bg: color-mix(in srgb, var(--p-surface-100) 70%, transparent);
   --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 6%, transparent);
 
   /* Row expansion: tinta primary piu' marcata in light mode (10% vs 6% dark)
@@ -395,8 +442,12 @@
   --app-ai-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-/* Tablet: sidebar collassata piu' stretta */
-@media (max-width: 1023px) and (min-width: 768px) {
+/* Tablet: sidebar collassata piu' stretta.
+ * ⚠️ `1023.98px` / `768px` citano `BREAKPOINTS.TABLET` e `BREAKPOINTS.MOBILE`
+ * (`core/constants.js`), che sono la sede di verita': un `@media` non accetta
+ * `var()`, quindi il numero si ricopia — ma con UNA grafia sola in tutto il
+ * progetto (allineate il 2026-09-23). */
+@media (max-width: 1023.98px) and (min-width: 768px) {
   :root {
     --app-sidebar-width-collapsed: 46px;
   }

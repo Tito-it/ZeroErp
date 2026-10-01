@@ -114,15 +114,41 @@ SELECT is(
        FROM ui.lista_definizione
       WHERE NOT perimetro_emittente),
     ARRAY['amm.processi',
+          -- ⭐ 2026-09-27 (brief-db-liste-datatable-grezze, riga 5): i reparti
+          --   sono `config.unita_organizzative`, catalogo senza emittente.
+          'amm.reparti',
           -- ⭐ D-1 (Tid, 2026-09-18): la riga non APPARTIENE a un emittente,
           --   la riga E' l'emittente. Scegliere un emittente per vedere
           --   l'elenco degli emittenti era una domanda senza risposta.
           'anagrafiche.emittenti_fiscali',
+          -- ⭐ 2026-09-27 (brief-db-liste-datatable-grezze, riga 9): le sei
+          --   liste geografiche leggono cataloghi di `config` senza emittente
+          --   ne' RLS — la geografia e' la stessa per tutte le aziende.
+          'config.codici_postali',
+          'config.comuni',
+          'config.province',
+          'config.regioni',
+          'config.stati',
+          'config.toponomastica',
+          -- ⭐ 2026-09-27 (Tid, stesso brief §8 punto 7): la matrice utility /
+          --   tipi ruolo e' un vocabolario uguale per tutte le aziende. Gli
+          --   override per emittente stanno nella lista del suo tab «Utilizzo»
+          --   (`config.utilities_tipi_ruolo_usage`, con perimetro).
+          'config.utilities_tipi_ruolo',
+          -- ⭐ 2026-09-27 (stesso brief, riga 1): una sessione e' di un
+          --   UTENTE (`dbops.sessioni_utente`), non di un'azienda.
+          'core.sessioni_attive',
           -- ⭐ Diario tecnico di sistema (analisi-osservabilita-log, pezzo E,
           --   2026-09-19): come `storico.audit_log`, la riga non ha nessuna
           --   dimensione emittente. Arrivata nel CSV da un cantiere BE senza
           --   passare di qui: e' il rosso che questo elenco esiste per dare.
           'dbops.error_log',
+          -- ⭐ Il lotto APPARTIENE ALL'ARTICOLO, che e' catalogo globale: la
+          --   tabella non ha ne' emittente ne' magazzino (D-L2, brief del Lotto
+          --   2; piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config,
+          --   2026-09-21). Arrivata nel CSV dal cantiere BE con il residuo
+          --   «il nome nell'elenco: team DB» — questo e' il nome.
+          'magazzino.lotti',
           'storico.audit_log',
           'ui.lista_colonna',
           'ui.lista_colonna_permesso',

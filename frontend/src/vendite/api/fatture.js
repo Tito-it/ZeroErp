@@ -7,6 +7,7 @@
 // (`/vendite/fatture/<id>/documenti/…`, BB `PdfDocumentiSorgenteDialog`) e le
 // azioni di processo dal cockpit fatturazione.
 import api from '../../core/api'
+import { makeRigheListaApi } from '../_shared/righe/righeListaApi'
 
 const BASE = '/vendite/fatture'
 
@@ -27,16 +28,14 @@ export function getFatturaDettaglio(fatturaId) {
 //    fattura è legata, questo cosa le è successo. Domande diverse, sorgenti
 //    diverse.
 // ⚠️ 404 unificato inesistente/fuori scope, come il dettaglio.
-// ⭐ `sortBy` di default è la GRAVITÀ, e l'ordinamento lo fa il SERVER: la lista
-//    è paginata, quindi riordinare qui riordinerebbe la sola pagina caricata —
-//    «il più grave» diventerebbe «il più grave fra i primi 50», senza dirlo.
-export function getFatturaGiornale(
-  fatturaId,
-  { page = 1, pageSize = 50, sortBy = 'gravita', sortDir = 'desc' } = {},
-) {
-  return api.get(`${BASE}/${fatturaId}/giornale/`, {
-    params: { page, page_size: pageSize, sort_by: sortBy, sort_dir: sortDir },
-  })
+// ⭐ Dal 2026-09-27 è la lista a catalogo `vendite.giornale` filtrata sul
+//    documento (la stessa del giornale trasversale): contratto di lista
+//    standard — `limit`/`offset`/`order_by`/`order_dir` dallo store, più
+//    `emittente_soggetto_ruolo_id`, l'emittente del documento che scioglie il
+//    cancello di perimetro della lista. I params passano tali e quali: chi li
+//    compone è lo store (`giornaleEntita`), non questo modulo.
+export function listFatturaGiornale(fatturaId, params = {}) {
+  return api.get(`${BASE}/${fatturaId}/giornale/`, { params })
 }
 
 // ⭐ LA LISTA DEI DOCUMENTI FISCALI — la settima del ciclo attivo. Sorgente
@@ -52,3 +51,8 @@ export function listFatture(params = {}) {
 export function exportFatture(params = {}) {
   return api.get(`${BASE}/export/`, { params, responseType: 'blob' })
 }
+
+// Le righe come LISTA CONFIGURABILE `vendite.fattura_righe` (lista 102,
+// brief-db-liste-righe-documento lotto C): pagina ed export, stessa factory dei
+// quattro documenti gemelli. Sola lettura: niente POST sulle righe.
+export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)

@@ -20,7 +20,6 @@ import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import Button from 'primevue/button'
-import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 
@@ -38,10 +37,12 @@ import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { DATE_FORMAT, TAB_ENTITIES, TIPO_RUOLO } from '../../core/constants'
+import { TAB_ENTITIES, TIPO_RUOLO, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { exportFatture } from '../api/fatture'
 import { useFattureStore } from '../stores/fatture'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click'])
 const { t } = useI18n()
@@ -60,12 +61,12 @@ const {
 })
 
 // --- Filtri (toolbar caller), legati allo store dal BB ---
-const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_codice_interno')
 const { value: naturaFilter, onChange: onNaturaChange } = bindSelect('natura_doc_codice')
 const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 
 // ⭐ La natura è un vocabolario CHIUSO e cortissimo (tre valori): un Select
 // statico, non un lookup — un round-trip per tre voci è lavoro sprecato, e il
@@ -121,7 +122,7 @@ function rimuoviCollegamento() {
   store.rimuoviCollegamento()
 }
 
-useTabFreshness(TAB_ENTITIES.FATTURA, () => store.fetchList())
+useTabFreshness(store, TAB_ENTITIES.FATTURA)
 onMounted(() => {
   const q = route.query
   const idFiscale = typeof q.id_fiscale === 'string' ? q.id_fiscale.trim() : ''
@@ -168,13 +169,13 @@ onMounted(() => {
         class="app-mb-1"
         :closable="false"
       >
-        <div class="app-page-filters">
+        <div class="app-msg-riga">
           <span>{{ etichettaCollegamento }}</span>
           <Button
             text
             size="small"
             :label="t('vendite.fatture.collegamento_rimuovi')"
-            icon="pi pi-times"
+            :icon="MANAGE_ICONS.FILTRI_PULISCI"
             @click="rimuoviCollegamento"
           />
         </div>
@@ -182,33 +183,36 @@ onMounted(() => {
 
       <!-- Toolbar UNICA esterna (pattern lista standard). -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText
-            v-model="searchText"
-            :placeholder="t('vendite.fatture.search_placeholder')"
-            style="width: 260px;"
-          />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('vendite.fatture.search_placeholder')"
+            />
+          </template>
           <LookupSelect
             v-model="statoFilter"
+            class="app-filter-w-md"
             rel="config.stati_doc_fiscale"
             value-field="codice_interno"
             :placeholder="t('vendite.fatture.filtro_stato')"
             show-clear
-            style="width: 170px;"
             @change="onStatoChange"
           />
           <Select
             v-model="naturaFilter"
+            class="app-filter-w-md"
             :options="opzioniNatura"
             option-label="label"
             option-value="value"
             :placeholder="t('vendite.fatture.filtro_natura')"
             show-clear
-            style="width: 170px;"
             @update:model-value="onNaturaChange"
           />
           <UtilityPerRuoloSelect
             v-model="utilityFilter"
+            class="app-filter-w-md"
             :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
             :placeholder="t('vendite.fatture.filtro_utility')"
             show-clear
@@ -217,13 +221,8 @@ onMounted(() => {
           />
           <!-- ⚠️ È la data del DOCUMENTO, non la competenza della commessa:
                è la ragione per cui questa lista esiste. -->
-          <DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataDaChange" @clear-click="onDataDaChange" />
-          <DatePicker v-model="dataAlFilter" :placeholder="t('common.data_a')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataAlChange" @clear-click="onDataAlChange" />
-        </div>
+          <FiltroPeriodo :periodo="periodo" />
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -287,7 +286,7 @@ onMounted(() => {
 
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-file" />
+            <i :class="STATUS_ICONS.VUOTO" />
             <p>{{ t('vendite.fatture.nessuna_fattura') }}</p>
           </div>
         </template>

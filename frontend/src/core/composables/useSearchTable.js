@@ -19,7 +19,8 @@ import { ref, computed, watch, onMounted, onActivated, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useContextStore } from '../../stores/context'
-import { BREAKPOINTS, MANAGE_ICONS, PAGINATION } from '../constants'
+import { MANAGE_ICONS } from '../constants'
+import { QUERY_VIEWPORT_COMPATTO, USO_MISURA, misuraDefault, misuraPerViewport, misureOpzioni } from '../misurePagina'
 import { SEARCH_DEBOUNCE_MS } from './useDebouncedAction'
 
 export function useSearchTable(store, options = {}) {
@@ -34,16 +35,24 @@ export function useSearchTable(store, options = {}) {
     debounceMs = SEARCH_DEBOUNCE_MS,
     extraFilters = null, // funzione che ritorna filtri aggiuntivi da applicare
     defaultSortField = null, // campo sort iniziale (es. 'descrizione')
-    defaultSortOrder = 'asc' // direzione sort iniziale
+    defaultSortOrder = 'asc', // direzione sort iniziale
+    // ⭐ Lista INCORPORATA (pannello della home, sezione di una pagina che
+    //    non e' la lista): non e' la lista di rotta, quindi non segue la
+    //    ricerca universale (`?search=`, `ctx.searchTerm`) e non intercetta
+    //    F5. Senza, un pannello sotto KeepAlive si trova la casella riempita
+    //    dall'ultima ricerca fatta altrove, e ogni F5 in qualunque pagina lo
+    //    ricarica (il listener si toglie solo allo smontaggio, che sotto
+    //    KeepAlive non arriva).
+    incorporata = false,
   } = options
 
   const route = useRoute()
   const ctx = useContextStore()
   const { t } = useI18n()
   const initialLimit = store.filters.limit
-  const useResponsiveDefaultRows = initialLimit === PAGINATION.DEFAULT_ROWS
+  const useResponsiveDefaultRows = initialLimit === misuraDefault(USO_MISURA.PAGINA)
   const compactRowsQuery = typeof window !== 'undefined'
-    ? window.matchMedia(`(max-width: ${BREAKPOINTS.TABLET - 1}px)`)
+    ? window.matchMedia(QUERY_VIEWPORT_COMPATTO)
     : null
   let userChangedRows = false
 
@@ -68,13 +77,13 @@ export function useSearchTable(store, options = {}) {
   }
 
   // Risolve termine ricerca iniziale: route query > context > vuoto
-  const resolvedSearch = route.query.search || ctx.searchTerm || ''
+  const resolvedSearch = incorporata ? '' : (route.query.search || ctx.searchTerm || '')
   const searchText = ref(resolvedSearch)
   // Ultimo `?search` di deep-link gia' consumato: serve a onActivated per
   // ri-applicare SOLO un deep-link NUOVO, non a re-imporre quello vecchio a
   // ogni riattivazione (altrimenti svuotare/modificare la ricerca in pagina
   // verrebbe annullato al rientro nel tab, finche' l'URL conserva ?search).
-  let lastConsumedSearch = route.query.search || null
+  let lastConsumedSearch = incorporata ? null : (route.query.search || null)
   if (resolvedSearch) {
     store.filters.search = resolvedSearch
     clearDateDefaultsForExternalSearch()
@@ -85,6 +94,7 @@ export function useSearchTable(store, options = {}) {
   // Watch reattivo su ctx.searchTerm — gestisce nuove ricerche da SearchDrawer
   // e navigazione tra pagine con contesto attivo. Aggiorna immediatamente (no debounce).
   watch(() => ctx.searchTerm, (newTerm) => {
+    if (incorporata) return
     const term = newTerm || ''
     if (term !== searchText.value) {
       clearTimeout(searchTimeout)
@@ -105,7 +115,15 @@ export function useSearchTable(store, options = {}) {
     }
     clearTimeout(searchTimeout)
     searchTimeout = setTimeout(() => {
-      store.filters.search = searchText.value || ''
+      const termine = searchText.value || ''
+      // ⭐ Se il termine non cambia la richiesta (sotto la soglia della lista,
+      //    o uguale dopo il `trim`) la lista a video e' gia' la risposta: si
+      //    allinea lo store e basta — ne' fetch ne' ritorno a pagina 1. Lo
+      //    decide il BB di stato, che conosce soglia e ultima richiesta. Uno
+      //    store che non lo espone ricarica a ogni tasto, come sempre.
+      const cambia = store.ricercaCambiaLaRichiesta?.(termine) ?? true
+      store.filters.search = termine
+      if (!cambia) return
       store.filters.offset = 0
       store.fetchList()
     }, debounceMs)
@@ -116,15 +134,11 @@ export function useSearchTable(store, options = {}) {
     store.fetchList()
   }
 
-  function defaultRowsForViewport() {
-    return compactRowsQuery?.matches ? PAGINATION.COMPACT_ROWS : PAGINATION.DEFAULT_ROWS
-  }
-
   // Scopo: applica il default responsive solo alle liste standard che nascono
-  // a 25 righe. Le rare liste che nascono a 10 restano eccezioni esplicite.
+  // alla misura di pagina. Le liste che nascono compatte restano eccezioni esplicite.
   function applyResponsiveDefaultRows({ fetch = false } = {}) {
     if (!useResponsiveDefaultRows || userChangedRows) return
-    const nextLimit = defaultRowsForViewport()
+    const nextLimit = misuraPerViewport()
     if (store.filters.limit === nextLimit) return
     store.filters.limit = nextLimit
     store.filters.offset = 0
@@ -145,7 +159,7 @@ export function useSearchTable(store, options = {}) {
   applyResponsiveDefaultRows()
 
   onMounted(() => {
-    window.addEventListener('keydown', onKeydown)
+    if (!incorporata) window.addEventListener('keydown', onKeydown)
     compactRowsQuery?.addEventListener('change', onRowsMediaChange)
   })
 
@@ -185,7 +199,7 @@ export function useSearchTable(store, options = {}) {
     )
   }
   onActivated(() => {
-    const qs = route.query.search
+    const qs = incorporata ? null : route.query.search
     // Applica solo un deep-link NUOVO (query cambiata da quando l'abbiamo
     // consumata l'ultima volta), non a ogni riattivazione: preserva le
     // modifiche/lo svuotamento fatti dall'utente sulla ricerca in pagina.
@@ -291,7 +305,7 @@ export function useSearchTable(store, options = {}) {
     totalRecords: store.totalRecords,
     rows: store.filters.limit,
     first: store.filters.offset,
-    rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+    rowsPerPageOptions: misureOpzioni(),
     paginator: true,
     paginatorPosition: 'top',
     paginatorTemplate: 'FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown JumpToPageDropdown CurrentPageReport',

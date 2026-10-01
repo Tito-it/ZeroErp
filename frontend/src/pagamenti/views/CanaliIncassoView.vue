@@ -6,11 +6,12 @@
 // Scopo: pagina dei CANALI DI INCASSO — l'elenco e il drawer di configurazione.
 import { ref } from 'vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import CanaliIncassoSearchTable from '../components/CanaliIncassoSearchTable.vue'
 import CanaleIncassoDrawer from '../components/CanaleIncassoDrawer.vue'
 import { useCanaliIncassoStore } from '../stores/canaliIncasso'
 
-useReadonlyMode('pagamenti')
+useReadonlyMode(READONLY_DOMAINS.PAGAMENTI)
 
 const store = useCanaliIncassoStore()
 const drawerVisible = ref(false)

@@ -2,14 +2,15 @@
 // Scopo: Drawer crea/modifica listino.
 //        In edit: pulsanti per aprire drawer autonomi versioni (eventi al parent).
 //        Contenuto deferito a dopo l'animazione per evitare rimbalzi visivi.
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useAuthStore } from '../../stores/auth'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -41,6 +42,9 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
+// Modifiche non salvate: fotografia a form popolato (creazione o modifica),
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const detail = ref(null)
 
 // Deferimento contenuto (pattern feedback_content_ready_after_show
@@ -94,10 +98,14 @@ watch(() => props.visible, async (v) => {
   // defaultForm() legge utilityDefaultId.value gia' risolto a id locale.
   await loadUtilityDefault()
   if (isEdit.value) {
-    loadDetail()
+    await loadDetail()
   } else {
     resetForm()
   }
+  // Dopo il nextTick: il watch su utility_id qui sotto puo' ancora scrivere
+  // tipologia_id, e la fotografia deve vedere il form com'e' davvero.
+  await nextTick()
+  fissa()
 })
 
 // Scopo: Watch su utility_id — al cambio reale (non al caricamento iniziale),
@@ -124,7 +132,9 @@ const canSave = computed(() => {
     && !!form.value.tipologia_id
   if (!base) return false
   if (isEdit.value) return true
-  return !!auth.emittenteCorrente?.soggettoRuoloId
+  // In creazione serve l'emittente su cui la sessione scrive: quello
+  // dell'operatore o quello scelto dal super admin (ne basta il ruolo).
+  return auth.emittenteScritturaSoggettoRuoloId != null
 })
 
 async function handleSave() {
@@ -143,14 +153,14 @@ async function handleSave() {
     if (result !== null) { emit('saved', result); close() }
   } else {
     // emittente_soggetto_ruolo_id: pricing v5 §3.1 — dimensione NOT NULL del
-    // listino. FK verso soggetti_ruoli (NON emittenti_fiscali): usare
-    // soggettoRuoloId dal profilo operatore, non id.
+    // listino. FK verso soggetti_ruoli (NON emittenti_fiscali): il RUOLO
+    // dell'emittente di scrittura, non la sua PK.
     const payload = {
       codice: f.codice?.trim(),
       descrizione: f.descrizione?.trim(),
       utility_id: f.utility_id,
       tipologia_id: f.tipologia_id,
-      emittente_soggetto_ruolo_id: auth.emittenteCorrente?.soggettoRuoloId ?? null,
+      emittente_soggetto_ruolo_id: auth.emittenteScritturaSoggettoRuoloId,
     }
     const result = await execute(
       () => store.create(payload),
@@ -164,14 +174,19 @@ function close() {
   emit('update:visible', false)
   emit('cancelled')
 }
+
+// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
+const chiudi = () => chiudiConConferma(close)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.STANDARD }" :dismissable="true"
     @after-show="onAfterShow">
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('vendite.listini.listino')"
         :icon="NAV_ICONS.LISTINI"
@@ -180,12 +195,13 @@ function close() {
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <template v-if="contentReady">
-        <!-- Banner refactor operatore-emittenti (solo creazione) -->
-        <Message v-if="!isEdit && auth.isAdminGlobale" severity="warn" :closable="false">
-          {{ t('vendite.listini.banner_admin_globale_no_create') }}
+        <!-- Solo in creazione: su quale emittente nasce il listino, o che
+             prima va scelto (super admin su «Tutti gli emittenti»). -->
+        <Message v-if="!isEdit && auth.emittenteScritturaSoggettoRuoloId == null" severity="warn" :closable="false">
+          {{ t('vendite.listini.banner_scegli_emittente') }}
         </Message>
-        <Message v-else-if="!isEdit && auth.emittenteCorrente" severity="info" :closable="false">
-          {{ t('vendite.listini.banner_emittente_corrente', { nome: auth.emittenteCorrente.ragioneSociale }) }}
+        <Message v-else-if="!isEdit && auth.emittenteScritturaNome" severity="info" :closable="false">
+          {{ t('vendite.listini.banner_emittente_corrente', { nome: auth.emittenteScritturaNome }) }}
         </Message>
         <div class="form-grid-2col">
           <div class="form-field">
@@ -227,10 +243,10 @@ function close() {
       </template>
 
       <div v-else class="app-loading">
-        <i class="pi pi-spin pi-spinner"></i>
+        <i :class="STATUS_ICONS.CARICAMENTO"></i>
       </div>
 
-      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 </template>

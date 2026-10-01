@@ -14,7 +14,23 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_clause
+from apps.core.db._helpers import (
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
+    fetch_paged_with_total,
+    row_to_dict,
+    rows_to_list,
+    sql_order_clause,
+)
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+_RICERCA = RicercaFull("config.utilities_tipi_ruolo", {
+    "utility_codice": "u.codice",
+    "utility_descrizione": "u.descrizione",
+    "tipo_ruolo_codice": "tr.codice",
+    "tipo_ruolo_descrizione": "tr.descrizione",
+})
 
 
 # Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
@@ -30,19 +46,39 @@ _ORDER_COLS: dict[str, str] = {
 }
 
 
+# Lista `config.utilities_tipi_ruolo_usage` (lista 86, tab «Utilizzo»):
+# whitelist ORDER BY chiavata sul `campo_sorgente` del catalogo, valore =
+# l'espressione che la SELECT proietta con quel nome (brief-db-liste-datatable-
+# grezze §4.1 riga 4). Lista `multi_emittente`: ogni riga E' un emittente, e il
+# codice e la ragione sociale lo dicono da se'.
+USAGE_ORDER_COLS: dict[str, str] = {
+    "emittente_codice": "ef.codice",
+    "emittente_descrizione": "s_ef.ragione_sociale_completa",
+    "emittente_attivo": "ef.attivo",
+    "override_attivo": "efu.attivo",
+}
+
+# Cosa si PUO' cercare nella lista 86: codice e ragione sociale dell'emittente
+# (lista_colonna 962-963, `ricercabile_full = t`).
+_RICERCA_USAGE = RicercaFull("config.utilities_tipi_ruolo_usage", {
+    "emittente_codice": "ef.codice",
+    "emittente_descrizione": "s_ef.ragione_sociale_completa",
+})
+
+
 # Codice interno del tipo_ruolo "Emittente Fiscale", usato per filtrare
 # le query di usage. Estratto come costante per evitare hardcoding duplicato
 # nelle query SQL.
 _RUOLO_EF_CODICE = "EF"
 
 
-# Frammento SQL FROM+JOIN+WHERE comune alle query usage emittenti fiscali.
-# Estratto per garantire allineamento tra count e list (evita drift in caso
-# di refactor di una sola delle due).
-# Il soggetto dell'emittente serve solo alla list (ragione sociale a video), ma
-# sta qui perche' il frammento e' condiviso: i due JOIN sono 1:1 su PK
+# Frammento SQL FROM+JOIN+WHERE della lista usage emittenti fiscali: lo
+# condividono la pagina e il ripiego del conteggio di `fetch_paged_with_total`,
+# cosi' i due non possono contare perimetri diversi.
+# Il soggetto dell'emittente serve alla ragione sociale a video (e alla ricerca
+# e all'ordinamento su di essa): i due JOIN sono 1:1 su PK
 # (`emittenti_fiscali.soggetto_ruolo_id` e' NOT NULL + UNIQUE) e non alterano
-# la cardinalita' della count.
+# la cardinalita' del conteggio.
 _USAGE_FROM_WHERE = """
     FROM config.utilities_tipi_ruolo utr
     JOIN config.tipi_ruoli tr
@@ -87,8 +123,7 @@ class UtilitiesTipiRuoloRepository:
             default=_ORDER_COLS["utility_descrizione"],
             tiebreak="utr.id",
         )
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -102,14 +137,9 @@ class UtilitiesTipiRuoloRepository:
         if tipo_ruolo_id is not None:
             conditions.append("utr.tipo_ruolo_id = %s")
             params.append(tipo_ruolo_id)
-        if search:
-            # Ricerca ILIKE su codice/descrizione di utility e tipo ruolo.
-            conditions.append(
-                "(u.codice ILIKE %s OR u.descrizione ILIKE %s "
-                "OR tr.codice ILIKE %s OR tr.descrizione ILIKE %s)"
-            )
-            like = f"%{search.strip()}%"
-            params.extend([like, like, like, like])
+        # Soglia della ricerca: la dichiara il catalogo della lista
+        # (`ricerca_min_caratteri`), non questo modulo.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -237,53 +267,63 @@ class UtilitiesTipiRuoloRepository:
     # Utilizzo: emittenti fiscali con override per la stessa coppia
     # =================================================================
 
-    # Scopo: Conta gli emittenti fiscali che hanno gia' configurato un
-    #        override (anagrafiche.emittenti_fiscali_utilities) per la stessa
-    #        utility della riga matrice indicata. La query e' significativa
-    #        solo se la matrice e' per il ruolo EF (codice_interno o codice
-    #        del tipo_ruolo); per altri ruoli ritorna sempre 0.
+    # Scopo: la lista `config.utilities_tipi_ruolo_usage` (lista 86, tab
+    #        «Utilizzo» del drawer della matrice): gli emittenti fiscali che
+    #        hanno gia' configurato un override
+    #        (anagrafiche.emittenti_fiscali_utilities) per la stessa utility
+    #        della riga matrice indicata. Significativa solo se la riga e' del
+    #        ruolo EF (codice_interno o codice del tipo_ruolo); per altri ruoli
+    #        la lista e' vuota. Restituisce (results, total_count).
     #        Riferimento: feedback_slot_override_matrix.md (pattern slot/override).
-    def count_emittenti_usage(self, record_id: int) -> int:
-        sql = f"SELECT COUNT(*) {_USAGE_FROM_WHERE}"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [record_id, _RUOLO_EF_CODICE])
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
-
-    # Scopo: Lista paginata degli emittenti fiscali che usano la matrice
-    #        indicata (override esistente). Filtra sul ruolo EF. Restituisce
-    #        (results, total_count).
+    #
+    # ⭐ Pagina e conteggio in UNA valutazione (`fetch_paged_with_total`,
+    #    `COUNT(*) OVER ()`): fino al 2026-09-27 erano due query
+    #    (`count_emittenti_usage` + la pagina) sul frammento condiviso — il
+    #    frammento resta, e ora serve la pagina e il ripiego del conteggio.
+    # ⭐ `emittente_descrizione` porta la ragione sociale del SOGGETTO
+    #    dell'emittente, non `emittenti_fiscali.descrizione` (etichetta interna
+    #    divergente, in via di eliminazione — brief
+    #    `brief-emittente-ragione-sociale-dal-soggetto.md`).
+    # ⚠️ Ordine di partenza = quello storico del tab (ragione sociale, poi
+    #    codice): lo porta `default_clause`, perche' e' a DUE criteri e non
+    #    una colonna sola.
     def list_emittenti_usage(
         self,
         record_id: int,
         *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
-        total_count = self.count_emittenti_usage(record_id)
-        # `emittente_descrizione` porta la ragione sociale del SOGGETTO
-        # dell'emittente, non `emittenti_fiscali.descrizione` (etichetta interna
-        # divergente, in via di eliminazione — brief
-        # `brief-emittente-ragione-sociale-dal-soggetto.md`). L'alias resta
-        # invariato: il FE non si accorge del cambio di sorgente.
-        sql = f"""
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=USAGE_ORDER_COLS,
+            default_clause="s_ef.ragione_sociale_completa ASC, ef.codice ASC",
+            tiebreak="ef.id",
+        )
+        conditions: list[str] = []
+        params: list[Any] = [record_id, _RUOLO_EF_CODICE]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_USAGE)
+        # ⚠️ Il frammento finisce col suo WHERE: la ricerca si ACCODA in AND.
+        from_where = _USAGE_FROM_WHERE + "".join(f" AND {c}" for c in conditions)
+        return fetch_paged_with_total(
+            f"""
             SELECT ef.id                         AS emittente_id,
                    ef.codice                     AS emittente_codice,
                    s_ef.ragione_sociale_completa AS emittente_descrizione,
                    ef.attivo                     AS emittente_attivo,
                    efu.id                        AS override_id,
-                   efu.attivo                    AS override_attivo
-            {_USAGE_FROM_WHERE}
-             ORDER BY s_ef.ragione_sociale_completa ASC, ef.codice ASC
+                   efu.attivo                    AS override_attivo,
+                   COUNT(*) OVER ()              AS total_count
+            {from_where}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(
-                sql,
-                [record_id, _RUOLO_EF_CODICE, safe_limit, safe_offset],
-            )
-            results = rows_to_list(cursor)
-        return results, total_count
+            """,  # ORDER BY da sql_order_clause su whitelist USAGE_ORDER_COLS, WHERE da frammento costante + add_ricerca_full_condition, valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )

@@ -27,7 +27,7 @@ from django.db import IntegrityError
 class TestToponomasticaRepository(TestCase):
     """Test IndirizziRepository — metodi toponomastica."""
 
-    @patch("apps.anagrafiche.db.geo_repository.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_list_toponomastica(self, mock_conn):
         """Lista toponomastica con risultati e paginazione."""
         cols = ["id", "descrizione", "attivo", "total_count"]
@@ -53,7 +53,7 @@ class TestToponomasticaRepository(TestCase):
         self.assertEqual(total, 3)
         self.assertEqual(results[0]["descrizione"], "Via")
 
-    @patch("apps.anagrafiche.db.geo_repository.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_list_toponomastica_empty(self, mock_conn):
         """Lista vuota."""
         mock_cursor = MagicMock()
@@ -89,8 +89,12 @@ class TestToponomasticaRepository(TestCase):
 
         self.assertEqual(result["id"], 10)
         self.assertEqual(result["descrizione"], "Viale")
-        sql = mock_cursor.execute.call_args[0][0]
-        self.assertIn("INSERT INTO config.toponomastica", sql)
+        # INSERT ... RETURNING id, poi la riga riletta dalla sorgente della
+        # lista (dal 2026-09-28): la create restituisce cio' che mostra il dettaglio.
+        insert_sql, rilettura_sql = (c[0][0] for c in mock_cursor.execute.call_args_list)
+        self.assertIn("INSERT INTO config.toponomastica", insert_sql)
+        self.assertIn("FROM config.toponomastica WHERE id = %s", rilettura_sql)
+        self.assertEqual(mock_cursor.execute.call_args_list[1][0][1], [10])
 
     @patch("apps.anagrafiche.db.geo_repository.connection")
     def test_create_toponomastica_duplicate(self, mock_conn):

@@ -34,6 +34,8 @@
 #   8. create_documento_generato_inserts_whitelisted_returns_id_and_uid
 #   9. create_documento_generato_file_inserts_whitelisted_returns_id
 #  10. emit_evento_documento_inserts_whitelisted_no_tx_id
+#  10-bis. emit_evento_documento_tx_id_esplicito_rifiutato
+#  10-ter. emit_evento_documento_stringa_jsonb_e_testo_json
 #  11. get_tipo_file_documento_by_codice_returns_dict_or_none
 # ------------------------------------------------------------
 
@@ -292,6 +294,7 @@ class CreateDocumentoGeneratoTests(TestCase):
     ) -> None:
         cursor = _mk_cursor(
             fetchone_results=[(99, "0190a000-0000-7000-8000-000000000001")],
+            descriptions=[_columns("id", "uid")],
         )
         mocked_factory.return_value = cursor
 
@@ -313,7 +316,6 @@ class CreateDocumentoGeneratoTests(TestCase):
             "generato_da_user_id": 5,
             "emittente_fiscale_id": 11,
             "meta": {},
-            "chiave_extra": "ignorata",  # non whitelisted
         }
         new_id, uid = DocumentiRepository().create_documento_generato(data)
         self.assertEqual(new_id, 99)
@@ -322,7 +324,6 @@ class CreateDocumentoGeneratoTests(TestCase):
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("INSERT INTO documenti.documenti_generati", sql)
         self.assertIn("RETURNING id, uid", sql)
-        self.assertNotIn("chiave_extra", sql)
         # 17 chiavi whitelisted nel data, tutte presenti.
         self.assertEqual(len(params), len(DOCUMENTO_GENERATO_CREATE_COLUMNS))
         self.assertIn("%s::jsonb", sql)
@@ -340,7 +341,9 @@ class CreateDocumentoGeneratoFileTests(TestCase):
     def test_create_documento_generato_file_inserts_whitelisted_returns_id(
         self, mocked_factory
     ) -> None:
-        cursor = _mk_cursor(fetchone_results=[(123,)])
+        cursor = _mk_cursor(
+            fetchone_results=[(123,)], descriptions=[_columns("id")],
+        )
         mocked_factory.return_value = cursor
 
         data = {
@@ -354,7 +357,6 @@ class CreateDocumentoGeneratoFileTests(TestCase):
             "ordinamento": 1,
             "is_principale": True,
             "meta": {},
-            "chiave_extra": "ignorata",
         }
         new_id = DocumentiRepository().create_documento_generato_file(data)
         self.assertEqual(new_id, 123)
@@ -362,7 +364,6 @@ class CreateDocumentoGeneratoFileTests(TestCase):
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("INSERT INTO documenti.documenti_generati_file", sql)
         self.assertIn("RETURNING id", sql)
-        self.assertNotIn("chiave_extra", sql)
         self.assertEqual(
             len(params), len(DOCUMENTO_GENERATO_FILE_CREATE_COLUMNS),
         )
@@ -378,7 +379,9 @@ class EmitEventoDocumentoTests(TestCase):
     def test_emit_evento_documento_inserts_whitelisted_no_tx_id(
         self, mocked_factory
     ) -> None:
-        cursor = _mk_cursor(fetchone_results=[(7,)])
+        cursor = _mk_cursor(
+            fetchone_results=[(7,)], descriptions=[_columns("id")],
+        )
         mocked_factory.return_value = cursor
 
         data = {
@@ -389,7 +392,6 @@ class EmitEventoDocumentoTests(TestCase):
             "messaggio": None,
             "detail": {"size_bytes": 4096},
             "meta": {},
-            "tx_id": "would-be-bug",  # Decisione 76: must be ignored
         }
         new_id = DocumentiRepository().emit_evento_documento(data)
         self.assertEqual(new_id, 7)
@@ -402,9 +404,44 @@ class EmitEventoDocumentoTests(TestCase):
         self.assertIn("%s::jsonb", sql)
         self.assertIn(json.dumps({"size_bytes": 4096}), params)
         self.assertIn(json.dumps({}), params)
-        # `tx_id="would-be-bug"` non deve risultare nei params: la
-        # whitelist EVENTO_DOCUMENTO_CREATE_COLUMNS lo esclude per design.
-        self.assertNotIn("would-be-bug", params)
+
+    # 10-bis. ⛔ `tx_id` esplicito (Decisione 76) e' fuori whitelist: dal
+    #         2026-09-26 e' RuntimeError, non piu' scartato in silenzio.
+    #         Nessuna SQL parte.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_emit_evento_documento_tx_id_esplicito_rifiutato(
+        self, mocked_factory
+    ) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            DocumentiRepository().emit_evento_documento({
+                "documento_generato_id": 99,
+                "evento_tipo": "GENERATO",
+                "tx_id": "would-be-bug",
+            })
+        self.assertIn("tx_id", str(ctx.exception))
+        mocked_factory.assert_not_called()
+
+    # 10-ter. ⭐ Colonna jsonb dichiarata al BB: una STRINGA e' testo JSON
+    #         (regola Tid 2026-09-26), passa cosi' com'e' col cast — non
+    #         diventa lo scalare stringa che faceva `to_write_param`.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_emit_evento_documento_stringa_jsonb_e_testo_json(
+        self, mocked_factory
+    ) -> None:
+        cursor = _mk_cursor(
+            fetchone_results=[(8,)], descriptions=[_columns("id")],
+        )
+        mocked_factory.return_value = cursor
+
+        DocumentiRepository().emit_evento_documento({
+            "documento_generato_id": 99,
+            "evento_tipo": "GENERATO",
+            "detail": '{"size_bytes": 1}',
+        })
+
+        sql, params = cursor.execute.call_args_list[0].args
+        self.assertEqual(params, [99, "GENERATO", '{"size_bytes": 1}'])
+        self.assertIn("%s::jsonb", sql)
 
 
 class GetTipoFileDocumentoByCodiceTests(TestCase):

@@ -24,7 +24,6 @@
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
@@ -43,13 +42,15 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useInjectBlocked, useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { documentoInternoSeverity } from '../../core/utils/severity'
 import { exportDocumenti } from '../api/magazzino'
 import { useEtichetteMagazzino } from '../etichette'
 import { useDocumentiInterniStore } from '../stores/documentiInterni'
 import { FAMIGLIE, STATO_DOCUMENTO } from '../vocabolari'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const props = defineProps({
   famiglia: {
@@ -88,11 +89,11 @@ const {
 })
 
 // --- Filtri ---
-const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 const { value: magazzinoFilter, onChange: onMagazzinoChange } = bindSelect('magazzino_id')
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato')
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 
 function onRowClick(data) { emit('row-click', data) }
 
@@ -155,52 +156,35 @@ onMounted(() => store.fetchList())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText
-            v-model="searchText"
-            :placeholder="t(`${f.i18n}.search_placeholder`)"
-            style="width: 240px;"
-          />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t(`${f.i18n}.search_placeholder`)"
+            />
+          </template>
           <LookupSelect
             v-model="magazzinoFilter"
+            class="app-filter-w-md"
             rel="magazzino.magazzini"
             :placeholder="t('magazzino.documenti_interni.filtro_magazzino')"
             show-clear
             show-code
-            style="width: 220px;"
             @change="onMagazzinoChange"
           />
           <Select
             v-model="statoFilter"
+            class="app-filter-w-md"
             :options="opzioniStato"
             option-label="label"
             option-value="value"
             :placeholder="t('magazzino.documenti_interni.filtro_stato')"
             show-clear
-            style="width: 160px;"
             @update:model-value="onStatoChange"
           />
-          <DatePicker
-            v-model="dataDaFilter"
-            :placeholder="t('common.data_da')"
-            :date-format="DATE_FORMAT"
-            show-icon
-            show-button-bar
-            style="width: 150px;"
-            @date-select="onDataDaChange"
-            @clear-click="onDataDaChange"
-          />
-          <DatePicker
-            v-model="dataAFilter"
-            :placeholder="t('common.data_a')"
-            :date-format="DATE_FORMAT"
-            show-icon
-            show-button-bar
-            style="width: 150px;"
-            @date-select="onDataAChange"
-            @clear-click="onDataAChange"
-          />
-        </div>
+          <FiltroPeriodo :periodo="periodo" />
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -231,8 +215,8 @@ onMounted(() => store.fetchList())
           <Tag :value="statoDocumento(data.stato)" :severity="documentoInternoSeverity(data.stato)" />
         </template>
 
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </ListaConfigurabile>
     </template>

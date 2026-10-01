@@ -67,6 +67,7 @@ _views = build_documenti_sorgente_views(
     doc_service=_doc_service,
     emetti_call=_emetti_call,
     emetti_response_key="ordine",
+    model_permission=("vendite", "ordine"),
 )
 
 ApiOrdineEmetti = _views.emetti

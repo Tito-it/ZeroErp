@@ -64,17 +64,41 @@ SELECT ok(
 );
 
 -- =========================================================
--- 2) Recupero soggetto test (codice fiscale noto)
+-- 2) Il soggetto del test: una persona fisica COSTRUITA
 -- =========================================================
+-- ⛔ 2026-09-23: il file cercava il soggetto per un codice fiscale di QUESTA
+--   macchina (`TTNMHL…`, una persona vera del database di sviluppo). Su un
+--   database ricostruito dai changelog non c'e', e la fixture moriva su
+--   «soggetto_id mancante per il ruolo RIS_UMANA».
+-- ⭐ Si costruisce dal percorso di produzione — anagrafiche.fn_crea_soggetto_pf
+--   e fn_crea_indirizzo_soggetto, come fa fn_crea_operatore_v2 — e SENZA
+--   risorsa umana: inserirla e' il caso del test. Per questo non si usa
+--   dbops.fn_pgtap_crea_operatore_umano, che la risorsa umana la crea gia'.
+-- ⚠️ E' una SAGA: il guard degli indirizzi del soggetto e' DEFERRABLE, e gli
+--   indirizzi arrivano dopo il soggetto. Si apre la finestra, si costruisce,
+--   si richiude (i guard scattano li', su un soggetto finito).
+SET CONSTRAINTS ALL DEFERRED;
+
 CREATE TEMP TABLE tmp_soggetto_test AS
-SELECT id
-FROM anagrafiche.soggetti
-WHERE codice_fiscale = 'TTNMHL68E07D042Z';
+SELECT anagrafiche.fn_crea_soggetto_pf(
+           p_cognome        := 'Risorsa',
+           p_nome           := 'pgTAP',
+           p_codice_fiscale := dbops.fn_pgtap_cf_libero(),
+           -- obbligatoria: la madre ne fa il contatto di default del soggetto
+           p_email          := 'pgtap_risorse_umane@example.com') AS id;
+
+SELECT anagrafiche.fn_crea_indirizzo_soggetto(
+           p_soggetto_id            := (SELECT id FROM tmp_soggetto_test),
+           p_tipo_indirizzo_codice  := t.codice,
+           p_indirizzo_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('risorse umane'))
+  FROM (VALUES ('RES'), ('DOMFISC')) AS t(codice);
+
+SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT is(
-    (SELECT count(*)::int FROM tmp_soggetto_test),
+    (SELECT count(*)::int FROM tmp_soggetto_test WHERE id IS NOT NULL),
     1,
-    'Trovato esattamente 1 soggetto con codice_fiscale = ''TTNMHL68E07D042Z'''
+    'Costruito il soggetto persona fisica del test'
 );
 
 -- =========================================================
@@ -123,28 +147,35 @@ SELECT ok(
 -- =========================================================
 -- 5) Vincolo date: valido_al >= valido_dal
 -- =========================================================
-SELECT throws_ok(
+-- ⭐ CHI RIFIUTA E' IL GUARD COMUNE DELLE DATE (2026-09-23,
+--   brief-db-guard-date-validita). Lo stesso giorno questo test aveva scoperto che
+--   chk_risorse_umane_date non parlava mai: la colonna `validita` e' GENERATED
+--   STORED su daterange(valido_dal, valido_al), PostgreSQL la calcola prima dei
+--   CHECK, e con le date invertite rifiutava il daterange con una frase tecnica
+--   (22000). Ora parla script.trgfn_guard_date_validita, montato dall'automazione
+--   DATE_VALIDITA: e' un BEFORE ROW e arriva prima della colonna generata.
+--   Il CHECK e il daterange restano sotto, come ultima difesa.
+SELECT throws_like(
     $$
     UPDATE anagrafiche.risorse_umane
        SET valido_al = valido_dal - INTERVAL '1 day'
      WHERE id = (SELECT id FROM tmp_risorsa_umana_test);
     $$,
-    '23514',
-    NULL,
+    '%è inferiore alla data dal%',
     'Vincolo date: valido_al non puo'' essere precedente a valido_dal'
 );
 
 -- =========================================================
--- 6) Recupero soggetto alternativo per test mismatch
+-- 6) Un soggetto ALTRO, per il test del mismatch
 -- =========================================================
+-- ⛔ 2026-09-23: era il soggetto di una partita IVA di QUESTA macchina. Serve
+--   solo che sia un soggetto diverso da quello del ruolo: si costruisce.
 CREATE TEMP TABLE tmp_soggetto_alt AS
-SELECT id
-FROM anagrafiche.soggetti
-WHERE partita_iva = '29878230910';
+SELECT dbops.fn_pgtap_crea_soggetto_pg('Soggetto altro risorse umane') AS id;
 
 SELECT ok(
-    (SELECT count(*) FROM tmp_soggetto_alt) = 1,
-    'Trovato soggetto alternativo con partita_iva = 29878230910'
+    (SELECT count(*) FROM tmp_soggetto_alt WHERE id <> (SELECT id FROM tmp_soggetto_test)) = 1,
+    'Costruito un soggetto alternativo, diverso da quello del ruolo'
 );
 
 -- =========================================================

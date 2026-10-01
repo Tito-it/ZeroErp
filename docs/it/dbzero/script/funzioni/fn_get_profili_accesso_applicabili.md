@@ -15,18 +15,23 @@ CREATE OR REPLACE FUNCTION script.fn_get_profili_accesso_applicabili(p_auth_user
 AS $function$
     -- =========================================================
     -- Risolve i profili di accesso applicabili a un utente
-    -- via bindings (AD_HOC prio 1, PORTALE/REPARTO prio 2).
+    -- via bindings, dal piu' specifico al piu' generale:
+    --   AD_HOC  prio 1 (sull'identita')
+    --   REPARTO prio 2 (sull'unita' organizzativa)
+    --   PORTALE prio 3 (sulla veste, cioe' tutti)
+    -- Rev 20260925-80 (D-3): PORTALE era 2, a pari merito col
+    -- REPARTO; sotto la veste OPERATORE i due coesistono e
+    -- LIMIT 1 sceglieva a caso.
     --
-    -- Post 20-04-2026 accetta p_ruolo_applicativo opzionale:
+    -- p_ruolo_applicativo:
     --   NULL -> tutti i profili applicabili all'user
-    --           (comportamento legacy, backward compat)
-    --   non NULL -> filtra solo le identita dell'user con
-    --               quel ruolo_applicativo (veste corrente)
-    --
-    -- Le 3 subquery condividono il predicato
-    --   AND (p_ruolo_applicativo IS NULL OR
-    --        id.ruolo_applicativo = p_ruolo_applicativo)
-    -- che e' idempotente quando p_ruolo_applicativo e' NULL.
+    --           (comportamento legacy, tutte le vesti)
+    --   non NULL -> solo le identita dell'user con quel
+    --               ruolo_applicativo (veste corrente)
+    -- ⚠️ Con una veste sola ogni priorita' ha al massimo UN
+    --   profilo (indici unici dei binding e di risorse_umane):
+    --   chi ordina per priorita' ha uno spareggio determinato.
+    --   Con NULL no: due vesti di portale danno due PORTALE.
     -- =========================================================
 
     -- 1) AD_HOC: binding diretto sull'identita
@@ -51,29 +56,7 @@ AS $function$
 
     UNION ALL
 
-    -- 2) PORTALE: binding per ruolo_applicativo dell'identita
-    SELECT DISTINCT
-           pab.profilo_accesso_id,
-           2::smallint AS priorita
-      FROM anagrafiche.identita_digitali id
-      JOIN config.profili_accesso_bindings pab
-        ON pab.ruolo_applicativo = id.ruolo_applicativo
-      JOIN config.profili_accesso pa
-        ON pa.id = pab.profilo_accesso_id
-     WHERE id.auth_user_id      = p_auth_user_id
-       AND id.attivo            = true
-       AND id.ruolo_applicativo <> 'DISABILITATO'
-       AND (p_ruolo_applicativo IS NULL
-            OR id.ruolo_applicativo = p_ruolo_applicativo)
-       AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
-       AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
-       AND pab.attivo = true
-       AND pa.attivo  = true
-       AND pa.tipo    = 'PORTALE'::config.tipo_profilo_accesso
-
-    UNION ALL
-
-    -- 3) REPARTO: binding per UO (solo identita OPERATORE)
+    -- 2) REPARTO: binding per UO (solo identita OPERATORE)
     SELECT DISTINCT
            pab.profilo_accesso_id,
            2::smallint AS priorita
@@ -94,11 +77,33 @@ AS $function$
        AND ru.attivo  = true
        AND pab.attivo = true
        AND pa.attivo  = true
-       AND pa.tipo    = 'REPARTO'::config.tipo_profilo_accesso;
+       AND pa.tipo    = 'REPARTO'::config.tipo_profilo_accesso
+
+    UNION ALL
+
+    -- 3) PORTALE: binding per ruolo_applicativo dell'identita
+    SELECT DISTINCT
+           pab.profilo_accesso_id,
+           3::smallint AS priorita
+      FROM anagrafiche.identita_digitali id
+      JOIN config.profili_accesso_bindings pab
+        ON pab.ruolo_applicativo = id.ruolo_applicativo
+      JOIN config.profili_accesso pa
+        ON pa.id = pab.profilo_accesso_id
+     WHERE id.auth_user_id      = p_auth_user_id
+       AND id.attivo            = true
+       AND id.ruolo_applicativo <> 'DISABILITATO'
+       AND (p_ruolo_applicativo IS NULL
+            OR id.ruolo_applicativo = p_ruolo_applicativo)
+       AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+       AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+       AND pab.attivo = true
+       AND pa.attivo  = true
+       AND pa.tipo    = 'PORTALE'::config.tipo_profilo_accesso;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_profili_accesso_applicabili(p_auth_user_id integer, p_ruolo_applicativo config.ruolo_applicativo)
-IS 'Profili applicabili a un auth_user (AD_HOC prio 1, PORTALE/REPARTO prio 2). Parametro p_ruolo_applicativo opzionale (post 20-04-2026): se NULL comportamento legacy (tutte le vesti), se valorizzato filtra la veste corrente. Usato dai resolver generalizzati.';
+IS 'Profili applicabili a un auth_user, dal piu'' specifico al piu'' generale: AD_HOC priorita'' 1 (sull''identita''), REPARTO 2 (sull''unita'' organizzativa), PORTALE 3 (sulla veste). Rev 20260925-80 (D-3 di brief-db-pgtap-permessi-ereditati): PORTALE era 2, a pari merito col REPARTO, e sotto la veste OPERATORE lo spareggio per priorita'' sceglieva a caso. p_ruolo_applicativo NULL = tutte le vesti (legacy), valorizzato = solo quella veste; con una veste sola ogni priorita'' ha al massimo un profilo (indici unici dei binding e di risorse_umane). I resolver dei permessi da operatore passano ''OPERATORE'' tramite script.fn_get_permessi_ereditati_aree / _azioni (D-1).';
 ```
 
 ---

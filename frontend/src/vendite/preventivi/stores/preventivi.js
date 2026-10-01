@@ -11,9 +11,9 @@ import { defaultFiltroDataDaString } from '../../../core/utils/date'
 import { defineStore } from 'pinia'
 import {
   listPreventivi, getPreventivo, createPreventivo, updatePreventivo, deletePreventivo,
-  cambiaStatoPreventivo, emettiPreventivo, creaRevisione, listRevisioni,
-  listRighe, createRiga, updateRiga, deleteRiga, getRiepilogoIva,
-  pushCommessa, getSmistamento, generaPratica,
+  cambiaStatoPreventivo, emettiPreventivo, creaRevisione,
+  createRiga, updateRiga, deleteRiga, getRiepilogoIva,
+  pushCommessa, getSmistamento, generaPratica, generaOrdineFromPreventivo,
 } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
@@ -47,6 +47,13 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
       // come `false` esplicito.
       solo_ultima_revisione: true,
     },
+    // ⛔ IL VALORE CHE NON RESTRINGE, dichiarato (2026-09-23). «Mostra storico»
+    //    acceso scrive `false`, che deve viaggiare sul filo — il BE e'
+    //    `qp_bool(..., default=True)` — ma la lista in quello stato e' la piu'
+    //    LARGA possibile: senza questa riga il segno dei filtri attivi contava 1
+    //    proprio quando l'operatore aveva tolto la restrizione, cioe' il numero
+    //    saliva allargando. Il perche' per intero sta su `segnoFiltri`.
+    filtriNeutri: { solo_ultima_revisione: false },
     gateKeys: ['stato', 'billing_account_id', 'utility_id', 'data_a', 'data_da'],
     // Il BE chiama la data di fine `data_al` (preventivi_views.py); nello store
     // resta `data_a`, che e' il nome che `useSearchTable` azzera sul deep-link
@@ -116,20 +123,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     return res.data.data
   }
 
-  // Scopo: Lista catena revisioni del preventivo (stesso `numero`, ordinate
-  // per `rev` ASC). Mirror del pattern offerte.
-  async function loadRevisioni(id) {
-    const res = await listRevisioni(id)
-    return res.data?.data ?? []
-  }
-
   // --- Righe ---
-
-  // Scopo: Carica righe del preventivo.
-  async function loadRighe(preventivoId) {
-    const res = await listRighe(preventivoId)
-    return res.data.data
-  }
 
   // Scopo: Aggiunge riga al preventivo.
   async function addRiga(preventivoId, payload) {
@@ -172,6 +166,20 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     return res.data.data
   }
 
+  // Scopo: Ramo merce dello smistamento: genera l'ordine dalle righe merce.
+  //        Il verbo scrive su DUE entita' — il preventivo (righe smistate,
+  //        transizione verso EVASO) e l'ordine che nasce — e lo store le avvisa
+  //        entrambe: qualunque superficie smisti, le due liste lo sanno senza
+  //        che il chiamante se ne ricordi (frontend-standards §«Producer
+  //        cross-tab»).
+  async function generaOrdine(preventivoId, righeIds = null) {
+    const res = await generaOrdineFromPreventivo(preventivoId, righeIds)
+    const data = res.data.data
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, preventivoId)
+    if (data?.ordine_id) emitDataChanged(TAB_ENTITIES.ORDINE, data.ordine_id)
+    return data
+  }
+
   // Scopo: Carica lo smistamento del preventivo (aggregato per ramo + righe
   //        con stato autorevole) per il Pannello Smistamento.
   async function loadSmistamento(preventivoId) {
@@ -191,9 +199,9 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
     ...lista,
     fetchDetail, create, update, elimina,
-    cambiaStato, emetti, nuovaRevisione, loadRevisioni,
-    loadRighe, addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
-    inviaACommessa, loadSmistamento,
+    cambiaStato, emetti, nuovaRevisione,
+    addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
+    inviaACommessa, generaOrdine, loadSmistamento,
     creaPratica,
   }
 }, {

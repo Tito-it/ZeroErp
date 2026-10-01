@@ -5,6 +5,14 @@
 **Stack**: Vue 3.5 + PrimeVue 4.5 + Pinia  
 **Stato**: Da implementare
 
+> ⚠️ **Documento di progetto di marzo 2026, in parte superato.** Le sezioni
+> 10.1, 10.9, 10.13 e 10.15 sono state **riscritte sullo stato del codice il
+> 2026-09-26**, quando `AppToolbar.vue`, `useTabLabel`, `useLoading` e
+> `useDirtyState` — i pezzi che quelle sezioni progettavano — sono stati
+> ritirati perche' nessun file li usava. Per il resto la fonte e'
+> [frontend-standards](../../frontend/frontend-standards.md) con il
+> [catalogo BB](../../frontend/catalogo-building-block-frontend.md).
+
 ---
 
 ## Indice
@@ -437,35 +445,35 @@ Le card mostreranno dati filtrati per l'utente corrente (es. solo le sue pratich
 <a id="10-note-architetturali--integrazione-con-frontend-esistente"></a>
 ## 10. Note architetturali — Integrazione con frontend esistente
 
-### 10.1 Content tabs, AppToolbar e tab di livello 3 — come convivono
+### 10.1 Content tabs, azioni di pagina e tab di livello 3 — come convivono
+> Riscritta il 2026-09-26 sullo stato del codice. Il progetto di marzo
+> prevedeva una barra di layout, `AppToolbar.vue`, alimentata da
+> `route.meta.actions`: non e' mai entrata in uso ed e' stata ritirata.
 
-Con le content tabs (browser-style) che occupano la barra sopra il content area, la gerarchia visiva diventa:
+La gerarchia visiva e' su tre livelli, con responsabilita' separate:
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │ Content tabs (L2 — pagine aperte tipo browser)              │
-│ [ Clienti ]  [ Fattura #127 ● ]  [ Ordine #45 ]            │
+│ [ Clienti ]  [ Fatture ]  [ Ordini ]                        │
 ├─────────────────────────────────────────────────────────────┤
-│ AppToolbar (azioni: pulsanti "Nuovo", "Esporta", ecc.)      │
-├─────────────────────────────────────────────────────────────┤
-│ Contenuto pagina                                            │
-│ ┌─────────────────────────────────────────────────────────┐ │
-│ │ TabView L3 (sezioni: Lista | Statistiche | Impostazioni)│ │
-│ │ ─────────────────────────────────────────────────────── │ │
-│ │ [ contenuto della tab L3 attiva ]                       │ │
-│ └─────────────────────────────────────────────────────────┘ │
+│ Pagina                                                      │
+│   PageActionsBar (azioni della pagina: «Nuovo», «Esporta»…) │
+│   Tabs L3, se la pagina ha sezioni                          │
+│   [ contenuto ]                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
-
-**Decisione**: i tre livelli hanno responsabilita' separate e non si sovrappongono.
 
 | Livello | Componente | Cosa mostra | Chi lo gestisce |
 | --- | --- | --- | --- |
 | Content tabs | `ContentTabs.vue` | Pagine aperte (tipo browser) | `stores/tabs.js` |
-| Toolbar azioni | `AppToolbar.vue` | Pulsanti azione della pagina ("Nuovo", "Esporta", filtri) | `route.meta.actions` |
-| Tab L3 (sezioni) | `TabView` PrimeVue | Sezioni dentro la pagina (Lista, Statistiche, ecc.) | Ogni pagina internamente |
+| Azioni di pagina | `PageActionsBar.vue` | Azione primaria, utility inline, secondarie nel menu (su mobile tutto tranne la primaria va nel kebab) | la **pagina**, che le dichiara |
+| Tab L3 (sezioni) | `Tabs` PrimeVue | Sezioni dentro la pagina | la pagina |
 
-`AppToolbar.vue` **non mostra piu' tab** — mostra solo pulsanti azione. La proprieta' `route.meta.tabs` viene rimossa; le tab L3 sono gestite da `TabView` dentro ogni pagina (approccio B). Questo e' coerente: le sezioni di una pagina sono responsabilita' della pagina stessa, non del layout.
+⭐ Le azioni stanno **nella pagina**, non nel layout: le conosce solo chi sa
+che cosa la pagina fa, e una barra di layout guidata da `route.meta` le avrebbe
+separate dal codice che le esegue. Per le liste la toolbar e' quella di
+`<ListaConfigurabile>` (frontend-standards §«Lista standard»).
 
 ### 10.2 Convivenza navigation.js (config) e stores/navigation.js (store)
 
@@ -604,35 +612,21 @@ Pattern d'uso nelle pagine:
 > **Nota**: il context store (ricerca universale) e' **globale** — non e' per-tab. Se l'utente ha selezionato un contesto (es. "Cliente Rossi"), tutte le tab che supportano il filtro per contesto lo applicano. Questo e' coerente: il contesto rappresenta "su chi sto lavorando ora", non "cosa ho aperto".
 
 ### 10.9 Label dinamiche nelle content tabs
+> Riscritta il 2026-09-26 sullo stato del codice. Il progetto di marzo
+> prevedeva `useTabLabel` per rinominare la tab con il dato caricato
+> («Fattura #127»): non e' mai entrato in uso ed e' stato ritirato.
 
-Le tab della sidebar hanno label fisse ("Clienti", "Fatture"). Quando si apre un'entita' specifica, la content tab deve mostrare una label significativa (es. "Fattura #127", "Rossi Mario").
+La label di una content tab e' **quella della rotta**: `resolveTabLabel` in
+`core/navigation.js`, dalla `meta` della rotta, alla sua apertura. Non cambia
+col contenuto, e oggi non ne ha bisogno: un'entita' specifica (una fattura, un
+cliente) **non apre una pagina**, si apre nel **drawer** sopra la lista, e il
+drawer porta il proprio titolo (`DrawerTitle`, `DrawerContextHeader`). La tab
+resta «Fatture» perche' la pagina e' la lista delle fatture.
 
-Meccanismo: composable `useTabLabel` che aggiorna la label della tab corrente.
-
-```javascript
-// composables/useTabLabel.js
-import { useTabsStore } from '@/stores/tabs'
-
-export function useTabLabel() {
-  const tabsStore = useTabsStore()
-
-  function setTabLabel(label) {
-    tabsStore.updateActiveTabLabel(label)
-  }
-
-  return { setTabLabel }
-}
-
-// Uso nella pagina dettaglio:
-// FatturaDetail.vue
-const { setTabLabel } = useTabLabel()
-onMounted(async () => {
-  const fattura = await fetchFattura(route.params.id)
-  setTabLabel(`Fattura #${fattura.numero}`)
-})
-```
-
-La label iniziale viene da `route.meta.breadcrumb` (ultimo segmento). `setTabLabel` la sovrascrive con il dato reale una volta caricato.
+⚠️ `stores/tabs.js` espone ancora `updateLabel(path, label)`, senza nessun
+chiamante. Se nascera' una pagina di dettaglio con rotta propria (oggi l'unica
+con un `:id` e' l'editor delle definizioni di workflow), il punto d'aggancio e'
+quello.
 
 ### 10.10 Pagine errore (404, 403)
 
@@ -814,81 +808,23 @@ export function useKeyboardShortcuts(shortcuts) {
 ```
 
 ### 10.13 Loading states e transizioni
+> Riscritta il 2026-09-26 sullo stato del codice. Il progetto di marzo
+> prevedeva `useLoading` (skeleton al primo caricamento, ProgressBar ai
+> successivi): non e' mai entrato in uso ed e' stato ritirato.
 
-Pattern unico per tutti i caricamenti, tramite composable `useLoading` (da affiancare al gia' esistente `useApiHandler`).
+Lo stato di caricamento **non ha un composable proprio**: sta dove sta la
+chiamata.
 
-| Contesto | Tipo loading | Dove appare |
+| Contesto | Chi tiene lo stato | Dove appare |
 | --- | --- | --- |
-| Caricamento pagina/tab | Skeleton PrimeVue | Dentro la content tab, al posto del contenuto |
-| Cambio dominio sidebar | Nessuno (istantaneo) | La sidebar si aggiorna senza animazione di caricamento |
-| Chiamata API in corso | ProgressBar PrimeVue (sottile, in cima) | Barra orizzontale nella topbar o sopra il content |
-| Salvataggio form | Button loading state | Il pulsante mostra spinner, disabilitato |
-| Transizione sidebar morfica | CSS transition (150ms) | Fade/slide del contenuto sidebar |
+| Chiamata di un componente | il `loading` di `useApiHandler` (lo stesso `execute` che gestisce errori e toast) | sul controllo che l'ha lanciata: pulsante, drawer, pannello |
+| Lista | lo store della lista (`useListaStoreCore`) | il `loading` della DataTable |
+| Salvataggio form | il `loading` di `useApiHandler` | il pulsante Salva (`FormFooter`) |
+| Apertura drawer | `useDrawerContentReady` | il contenuto pesante monta a fine animazione, per non rimbalzare |
+| Cambio dominio sidebar | nessuno | istantaneo |
 
-Best practice:
-
-- **Skeleton** per il primo caricamento di una pagina (l'utente vede la struttura prima dei dati)
-- **ProgressBar** per le operazioni successive (l'utente ha gia' visto la pagina, serve solo un feedback di attivita')
-- **Mai bloccare l'intera UI**: il loading e' sempre localizzato nella tab o nel componente che sta caricando
-
-#### Implementazione: composable `useLoading`
-
-```javascript
-// composables/useLoading.js
-import { ref, readonly } from 'vue'
-
-export function useLoading() {
-  const loading = ref(false)
-  const firstLoad = ref(true)
-
-  async function withLoading(asyncFn) {
-    loading.value = true
-    try {
-      return await asyncFn()
-    } finally {
-      loading.value = false
-      firstLoad.value = false
-    }
-  }
-
-  return {
-    loading: readonly(loading),
-    firstLoad: readonly(firstLoad),
-    withLoading,
-  }
-}
-```
-
-#### Uso nelle pagine
-
-```vue
-<template>
-  <!-- Primo caricamento: skeleton -->
-  <Skeleton v-if="firstLoad && loading" height="300px" />
-
-  <!-- Caricamenti successivi: ProgressBar sottile -->
-  <ProgressBar v-if="!firstLoad && loading" mode="indeterminate"
-               style="height: 3px" />
-
-  <!-- Contenuto -->
-  <DataTable v-if="!firstLoad" :value="items" ... />
-</template>
-
-<script setup>
-import { onMounted } from 'vue'
-import { useLoading } from '@/composables/useLoading'
-
-const { loading, firstLoad, withLoading } = useLoading()
-
-async function fetchData() {
-  await withLoading(() => api.get('/endpoint'))
-}
-
-onMounted(fetchData)
-</script>
-```
-
-Il composable `useLoading` si affianca all'esistente `useApiHandler` (che gestisce errori e toast). `useLoading` gestisce solo lo stato di caricamento e la distinzione primo/successivi. Per operazioni di salvataggio, il `loading` del Button PrimeVue e' sufficiente — non serve questo composable.
+Principio invariato: **mai bloccare l'intera UI**, il caricamento e' sempre
+localizzato nel componente che lo aspetta. Gli skeleton non si usano.
 
 ### 10.14 Contesto globale (ricerca universale) e interazione con tab/domini
 
@@ -942,116 +878,38 @@ Content tabs con contesto attivo
 ```
 
 ### 10.15 Dirty state e conferma chiusura tab
+> Riscritta il 2026-09-26 sullo stato del codice. Il progetto di marzo
+> prevedeva `useDirtyState`, che alzava il flag `dirty` della tab dalla
+> pagina: non e' mai entrato in uso ed e' stato ritirato.
 
-Quando l'utente ha modifiche non salvate in una tab, la chiusura (click X o `Ctrl+W`) richiede conferma. Il composable `useDirtyState` traccia lo stato e si integra con lo store tabs.
+🟡 **In corso dal 2026-09-26 — scelta A di Tid: lo scrittore parte dai drawer.**
 
-```javascript
-// composables/useDirtyState.js
-import { ref, onMounted, onUnmounted, watch } from 'vue'
-import { useTabsStore } from '@/stores/tabs'
-import { useRoute } from 'vue-router'
+Fino a quel giorno i lettori c'erano (flag `dirty` in `stores/tabs.js`,
+pallino in `ContentTabs.vue`, conferma di chiusura in `useConfirmCloseTab`,
+avviso «N schede con modifiche» nel cambio emittente) e lo scrittore no:
+nessuno alzava il flag, e nessun errore lo segnalava.
 
-export function useDirtyState() {
-  const dirty = ref(false)
-  const tabs = useTabsStore()
-  const route = useRoute()
+⚠️ `useDirtyState` non aveva mai trovato un consumatore perche' le modifiche
+non vivono nella **pagina**: vivono nel **drawer** aperto sopra la lista. Lo
+scrittore quindi sta nei drawer:
 
-  // Sincronizza il flag dirty con lo store tabs
-  watch(dirty, (val) => {
-    tabs.setDirty(route.path, val)
-  })
-
-  function markDirty() { dirty.value = true }
-  function markClean() { dirty.value = false }
-
-  // Guard browser: beforeunload per evitare perdita dati su refresh/chiusura browser
-  function beforeUnload(e) {
-    if (dirty.value) {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-  }
-  onMounted(() => window.addEventListener('beforeunload', beforeUnload))
-  onUnmounted(() => {
-    window.removeEventListener('beforeunload', beforeUnload)
-    tabs.setDirty(route.path, false)
-  })
-
-  return { dirty, markDirty, markClean }
-}
-```
-
-#### Uso nelle pagine con form
-
-```vue
-<script setup>
-import { useDirtyState } from '@/composables/useDirtyState'
-
-const { dirty, markDirty, markClean } = useDirtyState()
-
-function onFieldChange() {
-  markDirty()
-}
-
-async function onSave() {
-  await api.post('/endpoint', formData)
-  markClean()
-}
-</script>
-```
-
-#### Integrazione con `stores/tabs.js`
-
-```javascript
-// stores/tabs.js — metodi aggiuntivi per dirty state
-function setDirty(path, isDirty) {
-  const tab = tabs.value.find(t => t.path === path)
-  if (tab) tab.dirty = isDirty
-}
-
-function closeTab(tabId) {
-  const tab = tabs.value.find(t => t.id === tabId)
-  if (!tab) return
-
-  if (tab.dirty) {
-    // Mostra dialog conferma PrimeVue ConfirmDialog
-    confirm.require({
-      message: 'Ci sono modifiche non salvate. Chiudere comunque?',
-      header: 'Conferma chiusura',
-      icon: 'pi pi-exclamation-triangle',
-      acceptLabel: 'Chiudi senza salvare',
-      rejectLabel: 'Annulla',
-      accept: () => removeTab(tabId),
-    })
-    return
-  }
-  removeTab(tabId)
-}
-```
-
-La tab mostra un **indicatore visivo** (pallino o asterisco nella label) quando `dirty === true`, cosi' l'operatore vede a colpo d'occhio quali tab hanno modifiche in sospeso.
-
----
-
-<a id="11-riepilogo-attività-di-sviluppo"></a>
-## 11. Riepilogo Attività di Sviluppo
-
-| #   | Componente              | Descrizione                                                      | Note                             |
-| --- | ----------------------- | ---------------------------------------------------------------- | -------------------------------- |
-| 1   | `stores/navigation.js`  | Store Pinia: `currentDomain`, `setDomain`/`clearDomain`          | Consuma config da navigation.js  |
-| 2   | `core/navigation.js`    | Estendere con `DOMAIN_MENUS` (voci L2 per ogni dominio)          | Config statica, no logica        |
-| 3   | `stores/auth.js`        | Aggiungere `visibleDomains` getter basato su ruolo e aree        | Usa dati da `GET /core/me/`      |
-| 4   | `AppSidebar.vue`        | Refactor: sidebar morfica con switch Home/Domain                 | Sostituisce sidebar piatta       |
-| 5   | `SidebarHome.vue`       | Lista domini icona+label. Click → `setDomain` + navigate         | Solo ADMIN vede Amministrazione  |
-| 6   | `SidebarDomain.vue`     | ← Home + titolo + `PanelMenu` con voci del dominio               | `PanelMenu` gestisce nesting     |
-| 7   | `AppBreadcrumb.vue`     | Breadcrumb da route `meta` + tab attiva via composable           | Automatico, no logica manuale    |
-| 8   | `router/index.js`       | Route con `meta.domain` e `meta.breadcrumb` per ogni pagina      | Guard per ripristino sidebar     |
-| 9   | `useTabBreadcrumb.js`   | Composable per aggiornare terzo segmento breadcrumb              | Usato da ogni pagina con tab     |
-| 10  | `HomeView.vue`          | Sostituire griglia 9 domini con 4 card placeholder dashboard     | Vedi sezione 9                   |
-
----
-
-## 12. Checklist Implementazione
+* la fotografia del form di `useDrawerFormPreserve` risponde anche «ci sono
+  modifiche non salvate?» (`modificato`);
+* con l'opzione `visibile` il drawer lo dice alla sua tab
+  (`tabs.segnalaModifiche(path, sorgente, sporca)`): una tab e' sporca finche'
+  almeno un suo drawer aperto ha modifiche; chiudere o salvare abbassa il
+  segnale;
+* ⭐ la protezione vera sta **alla chiusura del drawer** (`chiudiConConferma`):
+  con il drawer aperto il velo copre tab e topbar, e il primo clic sulla X di
+  una tab chiudeva il drawer — cioe' abbandonava le modifiche — prima di
+  arrivare alla tab (prova in-app di Tid, 2026-09-26). Chiudere un drawer con
+  modifiche chiede «Chiudi senza salvare?»; la scritta «Modifica» del titolo
+  e' arancio finche' c'e' qualcosa da salvare;
+* collegati (2026-09-26, due giri; il primo provato in-app da Tid): tutti i drawer
+  con un form da salvare, i form inline sotto una lista, i form a elenco e
+  quelli spezzati su piu' campi, i drawer generici (`EntityFormDrawer`,
+  `GenericConfigDrawer`, `AppDrawer`). Fuori: le AppDialog (piccoli form di
+  conferma), e il drawer del lotto di vendite, che non ha un form.
 
 ### Sprint 1 — Tutta l'infrastruttura di navigazione
 
@@ -1097,10 +955,10 @@ La tab mostra un **indicatore visivo** (pallino o asterisco nella label) quando 
 
 **1e. Composable di supporto**
 
-- [ ] `useTabLabel.js` — aggiorna label dinamica della tab corrente (sez. 10.9)
+- ~~`useTabLabel.js` — aggiorna label dinamica della tab corrente (sez. 10.9)~~ ritirato il 2026-09-26
 - [ ] `useTabEvents.js` — event bus inter-tab per invalidazione dati (sez. 10.8)
 - [ ] `useKeyboardShortcuts.js` — scorciatoie tastiera registrate in AppLayout (sez. 10.12)
-- [ ] `useDirtyState.js` — traccia modifiche non salvate per conferma chiusura tab
+- ~~`useDirtyState.js` — traccia modifiche non salvate per conferma chiusura tab~~ ritirato il 2026-09-26
 
 **1f. Home, breadcrumb, pagine placeholder**
 
@@ -1182,4 +1040,4 @@ Questo layout si può implementare come un semplice componente `PlaceholderView.
 | D16 | Layout mobile | Sidebar overlay + content tabs come dropdown sotto 768px | Usabilita' tablet/magazzino; incluso nello Sprint 1 |
 | D17 | Keyboard shortcuts | Composable `useKeyboardShortcuts` in AppLayout | Power user ERP; disattivato quando input ha focus |
 | D18 | Loading pattern | Skeleton per primo caricamento, ProgressBar per operazioni successive | Loading localizzato nella tab, mai bloccante l'intera UI |
-| D19 | Dirty state tab | Composable `useDirtyState` + flag in store tabs + conferma chiusura | Previene perdita dati; indicatore visivo su tab con modifiche |
+| D19 | Dirty state tab | Composable `useDirtyState` + flag in store tabs + conferma chiusura | Previene perdita dati; indicatore visivo su tab con modifiche. ⚠️ Mai attivo: vedi §10.15 |

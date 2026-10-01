@@ -7,9 +7,13 @@
 #          con derivazione automatica `emittente_fiscale_id` (1:1
 #          operatore->emittente via PermissionResolver) e traduzione
 #          DatabaseError P0001 in ServiceError.
+#        - get_lista_config_per_video(): la stessa, piu' cio' che serve
+#          solo alla schermata (`ricerca_full`, la casella di ricerca).
 #        - get_catalogo(): catalogo colonne per la modale di
 #          personalizzazione (filtra colonne BLOCCATE riusando
 #          get_lista_config — single source of truth permessi).
+#        - get_misure_pagina(): le misure «righe per pagina» e i due
+#          default, per tutti i paginatori (catalogo `ui.misure_pagina`).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -23,12 +27,18 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.db.ui_repository import UiRepository
 
-__all__ = ["UiService", "E_UI_LISTA_NON_TROVATA", "E_UI_GENERIC_FAILED"]
+__all__ = [
+    "UiService",
+    "E_UI_LISTA_NON_TROVATA",
+    "E_UI_GENERIC_FAILED",
+    "E_UI_CHIAMATA_NON_VALIDA",
+]
 
 
 # Codici errore registrati in apps/core/services/error_policies.py.
 E_UI_LISTA_NON_TROVATA = "E_UI_LISTA_NON_TROVATA"
 E_UI_GENERIC_FAILED = "E_UI_GENERIC_FAILED"  # fallback per DatabaseError ignote
+E_UI_CHIAMATA_NON_VALIDA = "E_UI_CHIAMATA_NON_VALIDA"  # contesto di sessione != utente
 
 # Marker substring per riconoscere errori del DB. Stessa strategia di
 # `pricing_service._KNOWN_DB_ERROR_MARKERS`: il codice originale e'
@@ -124,6 +134,61 @@ class UiService:
 
         return config
 
+    # Scopo: La configurazione della lista per la SCHERMATA che la mostra
+    #        (`GET /ui/liste/<codice>/config`): quella di `get_lista_config`
+    #        piu' cio' che serve solo a video.
+    # ⭐ `ricerca_full` (chiave ADDITIVA): la lista ha, per QUESTO utente,
+    #    almeno una colonna in cui la ricerca libera cerca. Il frontend mostra
+    #    la casella di ricerca solo se e' vera (Tid, 2026-09-23 — brief-be-
+    #    ricerca-full-liste-residue §7-bis): una casella senza colonne accese
+    #    non trova niente per costruzione (il BB mette `FALSE`). La lettura e'
+    #    la stessa del BB (`colonne_ricerca_accese`): una seconda sede della
+    #    stessa verita' sarebbe la duplicazione che poi diverge.
+    # ⭐ La SOGLIA della ricerca (`ricerca_min_caratteri`) non si aggiunge qui:
+    #    arriva gia' nel jsonb del risolutore, accanto a `pagina_dimensione`,
+    #    letta dalla stessa colonna che legge il BB di ricerca
+    #    (`soglia_ricerca`) — brief-db-be-fe-ricerca-soglia-per-lista §4-bis. Il
+    #    frontend non manda un termine sotto quella soglia.
+    # ⚠️ Qui e NON in `get_lista_config` (Tid, 2026-09-24): quella la leggono
+    #    anche l'export (`export_helpers`) e la modale (`get_catalogo`), che
+    #    la casella non la mostrano e pagherebbero una query per niente.
+    # ⛔ La guardia di contesto (brief §12): la configurazione risponde per
+    #    `user.id`, passato esplicito; `ricerca_full` e la ricerca vera per
+    #    l'utente della GUC `app.current_user_id`. In una richiesta HTTP
+    #    coincidono, ma il modello ammette che non coincidano (GUC vuota fuori
+    #    da una richiesta, contesto aperto per un altro utente): allora la
+    #    casella direbbe una cosa e la ricerca ne farebbe un'altra — le colonne
+    #    sensibili, senza utente, non hanno grant — senza nessun errore. Non si
+    #    sceglie una delle due fonti: una differenza fa rumore, con un errore
+    #    TECNICO (l'operatore non ha niente da correggere).
+    def get_lista_config_per_video(
+        self,
+        user: Any,
+        lista_codice: str,
+        emittente_esplicito: Any = None,
+    ) -> dict[str, Any]:
+        config = self.get_lista_config(
+            user, lista_codice, emittente_esplicito=emittente_esplicito,
+        )
+        utente_guc = self._repo.utente_di_sessione()
+        ErrorManager.require(
+            utente_guc is not None and utente_guc == user.id,
+            code=E_UI_CHIAMATA_NON_VALIDA,
+            message=(
+                "Chiamata non valida alla configurazione della lista: il "
+                "contesto della richiesta non corrisponde all'utente."
+            ),
+            context={
+                "lista_codice": lista_codice,
+                "auth_user_id": user.id,
+                "utente_di_sessione": utente_guc,
+            },
+            function_name="ui_service.get_lista_config_per_video",
+            log_to_db=True,
+        )
+        config["ricerca_full"] = self._repo.ha_ricerca_full(lista_codice)
+        return config
+
     # Scopo: Catalogo colonne per la modale di personalizzazione.
     #        Strategia: riusa get_lista_config() — il suo risultato
     #        contiene gia' tutte le colonne del catalogo non BLOCCATE
@@ -157,3 +222,11 @@ class UiService:
         ]
 
         return {"colonne": colonne_visibili}
+
+    # Scopo: le misure «righe per pagina» ammesse e i due default
+    #        (`COMPATTA`, `PAGINA`), lette dal catalogo `ui.misure_pagina`:
+    #        la sede unica per DB, backend e frontend. Non dipendono
+    #        dall'utente ne' dalla lista: il frontend le legge una volta per
+    #        sessione. Un default mancante e' un errore del DB, non si ripiega.
+    def get_misure_pagina(self) -> dict[str, Any]:
+        return self._repo.get_misure_pagina()

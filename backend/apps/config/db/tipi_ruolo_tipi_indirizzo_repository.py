@@ -13,7 +13,18 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_clause
+from apps.core.db._helpers import (
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
+    row_to_dict,
+    rows_to_list,
+    sql_order_clause,
+)
+from apps.core.db.sql_write_helpers import (
+    execute_dynamic_insert,
+    execute_dynamic_update,
+)
 
 
 # Whitelist colonne ammesse per ORDER BY.
@@ -31,18 +42,23 @@ _ORDER_COLS: dict[str, str] = {
 }
 
 # Colonne SELECT comuni a list e get.
+# ⛔ `*_codice` e' il `codice` (mutabile, dell'operatore), MAI il
+#    `codice_interno`: fino al 2026-09-23 era `COALESCE(x.codice_interno,
+#    x.codice)`, cioe' un codice interno sotto un nome che dice il contrario
+#    (linee-guida-sql §6c) — e la ricerca, che cerca su cio' che si mostra,
+#    sarebbe finita sul `codice_interno`, che non si usa per cercare (Tid).
 _SELECT_COLS = """
     trti.id,
     trti.tipo_ruolo_id,
-    COALESCE(tr.codice_interno, tr.codice) AS tipo_ruolo_codice,
+    tr.codice                              AS tipo_ruolo_codice,
     tr.descrizione                         AS tipo_ruolo_descrizione,
     trti.tipo_indirizzo_id,
-    COALESCE(ti.codice_interno, ti.codice) AS tipo_indirizzo_codice,
+    ti.codice                              AS tipo_indirizzo_codice,
     ti.descrizione                         AS tipo_indirizzo_descrizione,
     trti.obbligatorio,
     trti.fallback_tipo_indirizzo_id,
-    COALESCE(ti_fb.codice_interno, ti_fb.codice) AS fallback_codice,
-    ti_fb.descrizione                             AS fallback_descrizione,
+    ti_fb.codice                           AS fallback_codice,
+    ti_fb.descrizione                      AS fallback_descrizione,
     trti.attivo,
     trti.valido_dal,
     trti.valido_al,
@@ -52,6 +68,15 @@ _SELECT_COLS = """
     trti.user_update
 """
 
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⭐ Le stesse espressioni che la `SELECT` proietta con quei nomi.
+_RICERCA = RicercaFull("config.tipi_ruolo_tipi_indirizzo", {
+    "tipo_ruolo_codice": "tr.codice",
+    "tipo_ruolo_descrizione": "tr.descrizione",
+    "tipo_indirizzo_codice": "ti.codice",
+    "tipo_indirizzo_descrizione": "ti.descrizione",
+})
+
 # FROM + JOIN comuni a list e get.
 _FROM_JOINS = """
     FROM config.tipi_ruolo_tipi_indirizzo trti
@@ -59,6 +84,12 @@ _FROM_JOINS = """
     JOIN config.tipi_indirizzi ti   ON ti.id = trti.tipo_indirizzo_id
     LEFT JOIN config.tipi_indirizzi ti_fb ON ti_fb.id = trti.fallback_tipo_indirizzo_id
 """
+
+
+# Colonne modificabili in update (whitelist RIGIDA del BB, 2026-09-26).
+_UPDATE_COLS: frozenset[str] = frozenset({
+    "attivo", "obbligatorio", "fallback_tipo_indirizzo_id",
+})
 
 
 class TipiRuoloTipiIndirizzoRepository:
@@ -87,8 +118,7 @@ class TipiRuoloTipiIndirizzoRepository:
             default=_ORDER_COLS["tipo_ruolo_descrizione"],
             tiebreak="trti.id",
         )
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -102,19 +132,15 @@ class TipiRuoloTipiIndirizzoRepository:
         if tipo_indirizzo_id is not None:
             conditions.append("trti.tipo_indirizzo_id = %s")
             params.append(tipo_indirizzo_id)
-        if search:
-            conditions.append(
-                "(tr.codice ILIKE %s OR tr.descrizione ILIKE %s "
-                "OR ti.codice ILIKE %s OR ti.descrizione ILIKE %s)"
-            )
-            like = f"%{search.strip()}%"
-            params.extend([like, like, like, like])
+        # Soglia della ricerca: la dichiara il catalogo della lista
+        # (`ricerca_min_caratteri`), non questo modulo.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         with connection.cursor() as cursor:
             cursor.execute(
-                f"SELECT COUNT(*) {_FROM_JOINS} {where_clause}",  # noqa: S608
+                f"SELECT COUNT(*) {_FROM_JOINS} {where_clause}",
                 params,
             )
             row = cursor.fetchone()
@@ -128,7 +154,7 @@ class TipiRuoloTipiIndirizzoRepository:
                 {where_clause}
                 ORDER BY {ordinamento}
                 LIMIT %s OFFSET %s
-                """,  # noqa: S608
+                """,
                 params + [safe_limit, safe_offset],
             )
             results = rows_to_list(cursor)
@@ -139,7 +165,7 @@ class TipiRuoloTipiIndirizzoRepository:
     def get_matrice(self, record_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                f"SELECT {_SELECT_COLS} {_FROM_JOINS} WHERE trti.id = %s",  # noqa: S608
+                f"SELECT {_SELECT_COLS} {_FROM_JOINS} WHERE trti.id = %s",
                 [record_id],
             )
             return row_to_dict(cursor)
@@ -158,52 +184,46 @@ class TipiRuoloTipiIndirizzoRepository:
         fallback_tipo_indirizzo_id: int | None = None,
         attivo: bool | None = None,
     ) -> int:
-        cols = ["tipo_ruolo_id", "tipo_indirizzo_id"]
-        vals: list[Any] = [tipo_ruolo_id, tipo_indirizzo_id]
-        if obbligatorio is not None:
-            cols.append("obbligatorio")
-            vals.append(obbligatorio)
-        if fallback_tipo_indirizzo_id is not None:
-            cols.append("fallback_tipo_indirizzo_id")
-            vals.append(fallback_tipo_indirizzo_id)
-        if attivo is not None:
-            cols.append("attivo")
-            vals.append(attivo)
-        placeholders = ["%s"] * len(cols)
-        cols.append("valido_dal")
-        placeholders.append("CURRENT_DATE")
-        sql = f"""
-            INSERT INTO config.tipi_ruolo_tipi_indirizzo ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        # ⭐ BB core `execute_dynamic_insert` (2026-09-26). `allowed=None`
+        #    perche' le chiavi sono i kwargs LETTERALI di questo metodo;
+        #    `skip_none=True` omette gli opzionali None (DEFAULT del DB, come
+        #    prima); `valido_dal` e' l'espressione letterale `CURRENT_DATE`.
+        riga = execute_dynamic_insert(
+            "config.tipi_ruolo_tipi_indirizzo",
+            {
+                "tipo_ruolo_id": tipo_ruolo_id,
+                "tipo_indirizzo_id": tipo_indirizzo_id,
+                "obbligatorio": obbligatorio,
+                "fallback_tipo_indirizzo_id": fallback_tipo_indirizzo_id,
+                "attivo": attivo,
+            },
+            allowed=None,
+            skip_none=True,
+            espressioni={"valido_dal": "CURRENT_DATE"},
+        )
+        return int(riga["id"])
 
     # Scopo: Aggiorna i campi modificabili di una riga matrice.
-    #        FK (tipo_ruolo_id, tipo_indirizzo_id) immutabili.
+    #        FK (tipo_ruolo_id, tipo_indirizzo_id) immutabili: fuori da
+    #        `_UPDATE_COLS`, quindi `RuntimeError` se arrivassero (BB
+    #        `execute_dynamic_update`, whitelist RIGIDA dal 2026-09-26).
+    #        `attivo` trascina `valido_al`: riattivare azzera la fine
+    #        validita', disattivare la chiude a oggi.
+    # ⭐ La clausola su `valido_al` e' un LITERAL scelto qui dal valore Python
+    #    (`extra_set`), non un `CASE WHEN %s`: il BB appende `extra_set` dopo i
+    #    SET composti e non ne conosce i parametri. Il valore di `attivo` e' un
+    #    bool validato dal service; `bool()` fissa la stessa verita' del `CASE`.
     def update_matrice(self, record_id: int, fields: dict[str, Any]) -> bool:
-        if not fields:
-            return False
-        set_clauses = [f"{k} = %s" for k in fields]
-        vals = list(fields.values())
+        extra_set = None
         if "attivo" in fields:
-            set_clauses.append(
-                "valido_al = CASE WHEN %s THEN NULL ELSE CURRENT_DATE END"
+            extra_set = (
+                "valido_al = NULL" if bool(fields["attivo"])
+                else "valido_al = CURRENT_DATE"
             )
-            vals.append(fields["attivo"])
-        vals.append(record_id)
-        sql = f"""
-            UPDATE config.tipi_ruolo_tipi_indirizzo
-               SET {", ".join(set_clauses)}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "config.tipi_ruolo_tipi_indirizzo", record_id, fields,
+            allowed=_UPDATE_COLS, extra_set=extra_set,
+        )
 
     # Scopo: Sotto-matrice attiva del ruolo per il calcolo `fallback_options`
     #        (Fase 4 — A10). Ritorna tutte le righe attive del ruolo con i
@@ -215,7 +235,7 @@ class TipiRuoloTipiIndirizzoRepository:
             cursor.execute(
                 """
                 SELECT trti.tipo_indirizzo_id,
-                       COALESCE(ti.codice_interno, ti.codice) AS codice,
+                       ti.codice AS codice,
                        ti.descrizione,
                        trti.fallback_tipo_indirizzo_id
                   FROM config.tipi_ruolo_tipi_indirizzo trti

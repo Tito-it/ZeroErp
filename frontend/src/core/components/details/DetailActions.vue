@@ -1,6 +1,7 @@
 <script setup>
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
+import { MANAGE_ICONS } from '../../constants'
 
 const { t } = useI18n()
 
@@ -20,14 +21,14 @@ function buildPayload() {
 <template>
   <div class="detail-actions-inline">
     <Button
-      icon="pi pi-check-circle"
+      :icon="MANAGE_ICONS.IMPOSTA_CONTESTO"
       size="small"
       rounded
       v-tooltip.top="t('search.set_context_hint')"
       @click="emit('set-context', buildPayload())"
     />
     <Button
-      icon="pi pi-external-link"
+      :icon="MANAGE_ICONS.VAI_A"
       size="small"
       rounded
       severity="secondary"

@@ -12,9 +12,11 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useEmailTemplatesStore } from '../stores/emailTemplates'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { previewEmailTemplate } from '../api/amministrazione'
@@ -39,6 +41,9 @@ const isReadonly = useInjectReadonly()
 const { execute, loading: saving } = useApiHandler()
 
 const form = ref({})
+// Modifiche non salvate: fotografia dopo il caricamento del dettaglio, e
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const previewHtml = ref('')
 const previewLoading = ref(false)
 const showPreview = ref(false)
@@ -64,6 +69,7 @@ watch(() => props.visible, async (vis) => {
       lingua: d?.lingua || 'it',
       variabili_disponibili: d?.variabili_disponibili || []
     }
+    fissa()
   }
 })
 
@@ -74,10 +80,15 @@ async function handleSave() {
     corpo_html: form.value.corpo_html,
     corpo_testo: form.value.corpo_testo || null
   }
-  await execute(
+  const result = await execute(
     () => store.update(props.templateId, payload),
     { successMessage: t('notifications.save_success') }
   )
+  // Salvataggio fallito: il drawer resta aperto col lavoro dell'operatore (il
+  // padre su `saved` chiude — prima chiudeva anche sull'errore, e il lavoro
+  // si perdeva senza conferma).
+  if (result === null) return
+  fissa()
   emit('saved')
 }
 
@@ -100,12 +111,19 @@ async function handlePreview() {
     previewLoading.value = false
   }
 }
+// Uscita per volonta' dell'utente (Annulla, X, ESC, clic fuori): con
+// modifiche non salvate si chiede prima.
+const chiudi = () => chiudiConConferma(() => {
+  emit('update:visible', false)
+  emit('cancelled')
+})
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="v => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     :dismissable="true"
@@ -113,9 +131,10 @@ async function handlePreview() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="t('common.edit')"
         :title="t('amministrazione.email_template_title')"
-        icon="pi pi-file-edit"
+        :icon="NAV_ICONS.TEMPLATE_EMAIL"
       />
     </template>
 
@@ -158,7 +177,7 @@ async function handlePreview() {
         <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
           <Button
             :label="t('amministrazione.email_preview')"
-            icon="pi pi-eye"
+            :icon="MANAGE_ICONS.ANTEPRIMA"
             :loading="previewLoading"
             outlined
             size="small"
@@ -184,7 +203,7 @@ async function handlePreview() {
         :loading="saving"
         :disabled="!canSave"
         @save="handleSave"
-        @cancel="emit('cancelled')"
+        @cancel="chiudi"
       />
     </template>
   </Drawer>

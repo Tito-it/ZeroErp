@@ -14,7 +14,8 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { provideTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { useAuthStore } from '../../stores/auth'
-import { MANAGE_ICONS, READONLY_DOMAINS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, READONLY_MODELS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { usePraticheStore } from '../stores/pratiche'
 import PraticheSearchTable from '../components/PraticheSearchTable.vue'
 import PraticaPercorso from '../components/PraticaPercorso.vue'
@@ -130,7 +131,9 @@ async function applyFlussoDeepLink() {
 applyTipoDeepLink({ refetch: false }) // primo mount: fetcha la SearchTable
 const { execute } = useApiHandler()
 const notify = useNotify()
-useReadonlyMode(READONLY_DOMAINS.PRATICHE)
+// Permessi: area `pratiche` + oggetto `pratica` (brief-db-be-fe-catalogo-
+// oggetti-permessi §3.3); la lista gestisce il BLOCCATO col suo pannello.
+useReadonlyMode(READONLY_DOMAINS.PRATICHE, READONLY_MODELS.PRATICA)
 
 // Modalita' tecnica (diagnostica super-admin, B5): toggle opt-in che riespone
 // il plumbing del motore (codici/sequenza/stati/rami) nelle viste runtime
@@ -254,13 +257,22 @@ async function onOpenFlussoById(flussoId) {
   }
 }
 
+// L'emittente della pratica selezionata, in query sulla creazione di un flusso
+// (vedi `createFlusso`): e' della riga di lista, che lo porta (`_PRATICA_SELECT`).
+function emittenteDellaPratica() {
+  const id = selectedItem.value?.emittente_fiscale_id
+  return id ? { emittente_fiscale_id: id } : {}
+}
+
 // Crea uno step della roadmap (template-bound) e lo apre. Il guard prerequisiti
 // DB (esito-aware, BEFORE INSERT) rifiuta con errore parlante se non abilitato.
 async function onCreateFlusso(templateFlussoId) {
   percorsoBusy.value = true
   try {
     const res = await execute(
-      () => createFlusso(store.selectedPraticaId, { template_flusso_id: templateFlussoId }),
+      () => createFlusso(
+        store.selectedPraticaId, { template_flusso_id: templateFlussoId }, emittenteDellaPratica(),
+      ),
       { successMessage: t('pratiche.flusso_creato') }
     )
     if (res !== null) {
@@ -293,7 +305,7 @@ const selectedPraticaContext = computed(() => ({
 
 // --- Attività UI di dominio aperte da un flusso (data-driven, registry) ---
 // L'azione "apri documento" sul flusso (azione_ui_key) è risolta dal registry
-// UI_ACTIVITY_REGISTRY: nessun drawer hardcoded qui. Il componente è dinamico,
+// Registro delle attivita' UI (uiActivityRegistry, iscritto dai domini): nessun drawer hardcoded qui. Il componente è dinamico,
 // le props e il gancio post-save arrivano dalla voce di registry.
 const activityVisible = ref(false)
 const activityComponent = shallowRef(null)
@@ -316,7 +328,9 @@ async function ensureFlussoInCorso(payload) {
   let flussoId = payload.flussoId
   if (!flussoId) {
     const created = await execute(
-      () => createFlusso(store.selectedPraticaId, { template_flusso_id: payload.templateFlussoId }),
+      () => createFlusso(
+        store.selectedPraticaId, { template_flusso_id: payload.templateFlussoId }, emittenteDellaPratica(),
+      ),
       { successMessage: t('pratiche.flusso_creato') }
     )
     if (created === null) return null
@@ -459,11 +473,11 @@ onUnmounted(() => {
       >
         <div class="dashboard-flussi-context">
           <span class="flussi-context-label">
-            <i class="pi pi-folder-open" />
+            <i :class="NAV_ICONS.PRATICHE" />
             {{ t('pratiche.visualizzazione_pratica', { codice: selectedPraticaCodice }) }}
             <Button
               :label="t('pratiche.apri_scheda')"
-              icon="pi pi-external-link"
+              :icon="MANAGE_ICONS.VAI_A"
               text
               size="small"
               class="app-escape"
@@ -475,7 +489,7 @@ onUnmounted(() => {
           <Button
             v-if="auth.isSuperAdmin"
             :label="t('pratiche.modalita_tecnica')"
-            :icon="modalitaTecnica ? 'pi pi-eye-slash' : 'pi pi-wrench'"
+            :icon="modalitaTecnica ? MANAGE_ICONS.NASCONDI_TECNICO : MANAGE_ICONS.MODALITA_TECNICA"
             text
             size="small"
             class="tecnico-toggle"
@@ -535,7 +549,7 @@ onUnmounted(() => {
     />
 
     <!-- Drawer documento collegato (data-driven): componente risolto dal registry
-         UI_ACTIVITY_REGISTRY in base all'azione_ui_key del flusso. Per il
+         registro delle attivita' UI in base all'azione_ui_key del flusso. Per il
          preventivo, praticaId+praticaContext (da buildProps) nascondono l'azione
          accetta e pre-compilano/bloccano cliente+istanza; l'accettazione passa
          dal flusso M2. -->
@@ -626,7 +640,7 @@ onUnmounted(() => {
 }
 
 /* Tablet/mobile: la dashboard impila (rail sopra) e scrolla per intero */
-@media (max-width: 1279px) {
+@media (max-width: 1279.98px) {
   .pratiche-dashboard {
     flex-direction: column;
     overflow-y: auto;

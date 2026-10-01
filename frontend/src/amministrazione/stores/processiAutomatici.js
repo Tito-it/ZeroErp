@@ -17,6 +17,7 @@
 import { computed, ref } from 'vue'
 import { createListaStore } from '../../core/stores/createListaStore'
 import { listProcessi, getProcessiPresidi } from '../api/amministrazione'
+import { adottaTestataPresidi } from '../../core/composables/usePresidiPolling'
 
 export const useProcessiAutomaticiStore = createListaStore(
   'amm-processi-automatici',
@@ -69,6 +70,8 @@ export const useProcessiAutomaticiStore = createListaStore(
           presidi.value = res.data.data.presidi
           presidiConRighe.value = res.data.data.con_righe
           presidiNonLetti.value = res.data.data.non_letti ?? 0
+          // Il pallino della topbar adotta la testata appena letta.
+          adottaTestataPresidi(presidiTestata.value)
         } catch {
           presidi.value = []
           presidiConRighe.value = 0

@@ -47,6 +47,7 @@ Indice test eseguiti:
 24-bis) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_emittibilita_testata_col_motivo
 24-ter) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_cliente_di_fatturazione_e_ne_preserva_il_null
 24-quater) DashCompetenzaGruppiRepositoryTests.test_where_gruppi_filtro_cliente_e_ricerca
+24-quater-bis) DashCompetenzaGruppiRepositoryTests.test_filtri_gruppi_colonne_della_ricerca
 24-quinquies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_emittente_ragione_sociale
 24-sexies) DashCompetenzaGruppiRepositoryTests.test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga
 24-septies) DashCompetenzaGruppiRepositoryTests.test_larghezza_riga_finta_uguale_al_select
@@ -70,7 +71,14 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
 from apps.vendite.db.vendite_repository import VenditeRepository
+
+# Le cinque colonne che il seed accende sulla lista gruppi, per il catalogo
+# finto del BB della ricerca libera (`catalogo_ricerca_finto`).
+_GRUPPI_ACCESE = (
+    "riferimento", "cliente_display", "commessa_codice", "ba_codice_fatturazione", "id_fiscale",
+)
 from apps.vendite.services import vendite_service
 from apps.vendite.services.vendite_service import (
     fn_dash_competenza_attivita,
@@ -1390,15 +1398,20 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
         self.assertIn("g.ba_fatturazione_id IS NULL", cond)
         self.assertNotIn(77, params)
 
-        # Sotto soglia: ignorata, non solleva e non svuota la lista.
-        cond, _ = VenditeRepository._where_gruppi(
-            competenza_mese=date(2026, 8, 1), stadio=None, search="OR",
-        )
-        self.assertTrue(all("ILIKE" not in c for c in cond))
+        # Sotto soglia: ignorata, non solleva e non svuota la lista — e le
+        # colonne del catalogo non si leggono nemmeno (si legge solo la soglia).
+        # ⭐ Dal 2026-09-24 la ricerca passa dal BB `add_ricerca_full_condition`:
+        #    le colonne le decide il catalogo, qui mockato con le cinque accese.
+        with catalogo_ricerca_finto(_GRUPPI_ACCESE) as (lettura, _):
+            cond, _ = VenditeRepository._where_gruppi(
+                competenza_mese=date(2026, 8, 1), stadio=None, search="OR",
+            )
+            self.assertTrue(all("ILIKE" not in c for c in cond))
+            lettura.assert_not_called()
 
-        cond, params = VenditeRepository._where_gruppi(
-            competenza_mese=date(2026, 8, 1), stadio=None, search="ORD0005174",
-        )
+            cond, params = VenditeRepository._where_gruppi(
+                competenza_mese=date(2026, 8, 1), stadio=None, search="ORD0005174",
+            )
         ramo = [c for c in cond if "ILIKE" in c]
         self.assertEqual(len(ramo), 1)
         # ⚠️ Un solo gruppo parentesizzato: senza le parentesi l'OR si legherebbe
@@ -1407,6 +1420,21 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
         self.assertTrue(ramo[0].startswith("(") and ramo[0].endswith(")"))
         self.assertEqual(ramo[0].count("ILIKE"), 5)
         self.assertEqual(params.count("%ORD0005174%"), 5)
+
+    # 24-quater-bis) Il contorno (riepilogo + facet) filtra un perimetro GIA'
+    #     letto, quindi deve sapere quali colonne portarsi dietro: con la
+    #     ricerca attiva quelle della dichiarazione, senza ricerca nessuna. E una
+    #     colonna che il catalogo spegne esce dalla condizione (non dalla CTE).
+    def test_filtri_gruppi_colonne_della_ricerca(self) -> None:
+        with catalogo_ricerca_finto(_GRUPPI_ACCESE):
+            _, _, colonne = VenditeRepository._where_gruppi_filtri(search="OR")
+            self.assertEqual(colonne, [])
+            _, _, colonne = VenditeRepository._where_gruppi_filtri(search="ORD0005174")
+            self.assertEqual(set(colonne), {f"g.{c}" for c in _GRUPPI_ACCESE})
+        with catalogo_ricerca_finto(["riferimento"]):
+            cond, params, _ = VenditeRepository._where_gruppi_filtri(search="ORD0005174")
+        self.assertEqual(cond, ["((g.riferimento)::text ILIKE %s)"])
+        self.assertEqual(params, ["%ORD0005174%"])
 
     # ═══ IL SEZIONALE PREVISTO (brief-db-registro-e-data-prevista) ═══════════
 

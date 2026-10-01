@@ -35,7 +35,7 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
   - `utility_id` (int) — filtro per utility
   - `data_da` (date ISO) — data minima (su `data` preventivo). **Default: 1 gennaio anno-1** (regola standard liste con date, lato frontend)
   - `data_al` (date ISO) — data massima
-  - `search` (string, min 3 char) — ILIKE su `numero` e `ragione_sociale_completa`
+  - `search` (string, min 3 char) — ILIKE su `numero`, `ragione_sociale_completa`, `ba_codice` e `id_fiscale_univoco_cf_piva`
   - `solo_attiva` (bool, default `true`) — solo l'ultima revisione viva per numero (`is_attiva`); `false` = storico revisioni completo (toggle "Mostra storico")
   - `page` (int, default 1) — pagina
   - `page_size` (int, default 50, max 200) — righe per pagina
@@ -135,11 +135,11 @@ permessi — colonne nascoste escluse, ordine utente rispettato).
 - **Fase 3.F6 refactor frontend vendite** — il detail NON include piu' `righe[]` (decisione C2: detail = testata + summary, righe via endpoint autonomo `/righe/`). Il FE chiama `GET /righe/` separatamente. Vantaggi: payload detail piu' leggero su lista refresh, mai mismatch con totali ricalcolati dai trigger DB. `righe_count` resta disponibile come badge UX.
 - Errori: `E_PREV_NOT_FOUND` (404)
 
-**Capabilities** (spalmate top-level nel detail, da `script.fn_available_actions_preventivo`):
+**Capabilities** (da `script.fn_available_actions_preventivo`, nella chiave `capabilities` del detail, non fuse nella testata — dal 2026-09-23, [api.md §«Il blob sta SOTTO `capabilities`»](../../../dev/api.md)):
 
 | Campo | Tipo | Significato |
 | --- | --- | --- |
-| `available_actions[]` | array | Azioni cambio stato disponibili: `{key, target_state, label_key (i18n), severity, icon, requires_confirm}`. Non include transizioni automatiche (job notturno SCADUTO) |
+| `available_actions[]` | array | Azioni cambio stato disponibili: `{key, target_state, label_key (i18n), requires_confirm}` — Icona e colore non viaggiano: li sceglie il frontend dal `key` (`frontend/src/core/aspettoAzioni.js`; l'icona dal 2026-09-27, il colore dal 2026-09-28). Non include transizioni automatiche (job notturno SCADUTO) |
 | `can_edit_testata` | bool | `true` solo in DRAFT |
 | `can_edit_righe` | bool | `true` solo in DRAFT |
 | `can_create_revisione` | bool | `true` per ACCETTATO (revisione = nuova rev del preventivo) |
@@ -149,6 +149,19 @@ permessi — colonne nascoste escluse, ordine utente rispettato).
 | `non_editable_fields[]` | string[] | Whitelist campi immutabili nello stato corrente. **`utility_id` sempre incluso** (regola di dominio: utility immutabile post-create) |
 
 Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: niente `if (stato === 'DRAFT')` cablato.
+
+⭐ **Il blob arriva intatto** (dal 2026-09-24). Un prezzo non autorizzato —
+riga o componente BoM attivo `PENDING` o `REJECTED` — spegne «Emetti» e
+«Accetta» **a DB**: l'azione ha `enabled: false` e i motivi in `reasons[]`
+(`PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, `dettaglio.n_prezzi`), dallo stesso
+building block con cui il guard solleva (`script.fn_check_prezzi_autorizzati`).
+«Annulla» resta acceso e testata e righe restano modificabili in BOZZA: il
+blocco sta sulla sola riga in attesa, dal suo guard per riga. Il drawer mostra
+i motivi nel tooltip del pulsante spento, col conteggio (`valori`). ⛔ Fino a quella data il service riscriveva
+`available_actions`/`can_edit_*` in Python e aggiungeva sulla testata quattro
+riepiloghi (`frozen_for_*`, `*_pricing_count`) che contavano le sole righe:
+tutti ritirati
+([brief-db-preventivi-congelamento-pricing §6.1](../../../dev/work-done/brief-db-preventivi-congelamento-pricing.md)).
 
 ---
 
@@ -171,8 +184,8 @@ Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: nient
 - Regole: delega a `vendite.fn_cambia_stato_preventivo()` che valida transizioni e prerequisiti
 - Transizioni: EMESSO→ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO, BOZZA→ANNULLATO
 - **Transizione BOZZA→EMESSO non ammessa da questo endpoint** (refactor 2026-05-28): il service fail-fast con `E_PREV_VALIDAZIONE` (400) e indirizza all'endpoint dedicato `POST /<id>/emetti/` (§5b). Motivo: l'emissione deve orchestrare atomicamente cambio stato + generazione documento + allegati per garantire l'invariante "stato EMESSO ⇒ esiste un documento PDF persistito".
-- **Guard L3 verso ACCETTATO (Sprint E)**: il trigger DB `trg_preventivi_a10_guard_transizione_approvazione_upd` blocca la transizione verso ACCETTATO se esiste almeno una riga con `stato_approvazione_prezzo='PENDING'`. Errore `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (409). L'admin deve attendere esito approvazione (vedi `api_approvazioni_prezzo.md`) o annullare la richiesta prima di accettare.
-- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (409), `E_PREV_VALIDAZIONE` (400 se `nuovo_stato="EMESSO"`)
+- **Prezzi non autorizzati verso ACCETTATO**: la Regola 3 di `vendite.trgfn_preventivi_guard_transizione` rifiuta la transizione se una riga o un componente BoM attivo ha il prezzo `PENDING` o `REJECTED` (building block `script.fn_check_prezzi_autorizzati`, vedi `api_approvazioni_prezzo.md`): si attende l'esito, si corregge il prezzo o si toglie la riga. Annulla resta sempre ammesso.
+- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_DOC_PREZZO_PENDENTE` (409), `E_DOC_PREZZO_RIFIUTATO` (409), `E_PREV_VALIDAZIONE` (400 se `nuovo_stato="EMESSO"`)
 
 ---
 
@@ -211,12 +224,13 @@ Nuovo endpoint multipart 2026-05-28. Mirror del flusso offerta `POST /api/v1/ven
 - Semantica transazionale: la view apre `transaction.atomic()` che racchiude (in ordine): `preventivi_service.emetti(preventivo_id)` (cambio stato + valorizza `data_emissione = now()`) → `_resolve_contesto_preventivo` (entity + sorgente_tipo) → `DocumentGenerationService.genera_documento(allegati=...)` (render + persist su `documenti.documenti_generati` + evento `GENERATO`). Se il render fallisce o uno qualsiasi degli allegati viola MIME/size, l'eccezione propaga e l'`atomic` esterno fa rollback completo → il preventivo resta BOZZA, nessun record orfano. **Invariante di dominio**: `stato='EMESSO'` ⇒ esiste almeno un record `documenti_generati` con `sorgente_tipo=PREVENTIVO, sorgente_id=preventivo.id`.
 - Regole pre-emissione (validate dal service + trigger DB):
   - Preventivo in stato BOZZA con almeno una riga attiva
-  - Righe senza prezzo `PENDING` (Guard L3, vedi §5)
+  - Nessun prezzo non autorizzato (`PENDING` o `REJECTED`, righe e componenti BoM attivi): motivo 2 di `script.fn_check_preventivo_emettibile`, vedi §5
   - Template documento applicabile (`PUBBLICATA` valido alla data)
 - Errori:
   - `E_PREV_NOT_FOUND` (404) — preventivo inesistente
   - `E_PREV_STATO_TRANSIZIONE` (409) — preventivo non in BOZZA
   - `E_PREV_NESSUNA_RIGA` (400) — nessuna riga attiva
+  - `E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO` (409) — prezzi in attesa di approvazione o rifiutati
   - `E_DOCUMENTI_VALIDATION` (400/422) — emittente non risolto / sorgente PREVENTIVO non attiva / template non trovato / MIME allegato non ammesso / size oltre limite
   - `E_DOCUMENTI_NOT_FOUND` (404) — entity attesa non trovata dal resolver di contesto
 
@@ -344,7 +358,8 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 
 - Metodo: `GET`
 - Path: `/api/v1/vendite/preventivi/{id}/righe/`
-- Output `200`: lista righe con JOIN articolo (codice, descrizione), UoM (codice), IVA (codice, aliquota)
+- Output `200`: TUTTE le righe attive, nell'ordine del documento, dalla vista `vw_preventivi_righe_dettaglio`
+- La **lista configurabile** delle righe (pagina ed export, `…/righe/lista/`) è il BB condiviso: vedi [api_righe_documento.md](api_righe_documento.md).
 
 ---
 
@@ -374,7 +389,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   - **Componenti BoM CASO composito**: dopo `create_riga`, se l'articolo e' `is_composito=TRUE`, il service invoca `fn_preventivo_riga_componenti_init` che popola `preventivi_righe_componenti` per tutti i figli BoM validi alla data. Errori bloccanti: `E_DOC_COMPOSITO_BOM_VUOTA` (422) se la BoM e' vuota/scaduta alla data del documento; `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422) se un override mette prezzo 0 su un obbligatorio; `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422) se il resolver fallisce per un componente senza override. Tutta la transazione e' atomica (init + UPDATE attivazioni avvengono in `@transaction.atomic`).
   - **Meta audit**: popolato sempre con `origine_prezzo` (PROMO/CONTRATTO_OVERRIDE/CONTRATTO_LISTINO/CATEGORIA/MANUALE/LISTINO_BUNDLE) + `prezzo_resolver_context` (listino/contratto/promo + variazione). Se override manuale: anche `prezzo_base_resolver`, `delta_override`, `delta_override_pct`, `override_user_id`. Se workflow L3: anche `richiesta_approvazione_pending=true` + `violazione_l2` (tipo, variazione_abs_pct, limite_pct).
   - Ricalcolo totali automatico dopo insert (trigger DB). Per padri compositi il prezzo unitario padre viene **immediatamente sovrascritto** dal trigger `_z90_ricalcola_padre` come SUM(figli × coeff_qta_snapshot).
-- Errori: `E_PREV_VALIDAZIONE` (400), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_DOC_COMPOSITO_BOM_VUOTA` (422), `E_DOC_COMPONENTE_OBBLIGATORIO` (422), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422), `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422)
+- Errori: `E_PREV_VALIDAZIONE` (400), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_DOC_COMPOSITO_BOM_VUOTA` (422), `E_DOC_COMPONENTE_OBBLIGATORIO` (422), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422), `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422)
 
 ---
 
@@ -443,7 +458,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   - Trigger DB `_z90_ricalcola_padre` aggiorna il `prezzo_unitario` della riga padre come SUM(figli × coeff_qta) post-update
   - **Guard prezzo zero**: `prezzo_unitario=0` su componente obbligatorio rejected dal trigger `script.trgfn_componenti_check_prezzo_obbligatorio` con `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422)
 - Area: `vendite` livello SCRITTURA + azione `prezzo_override_manuale` per modifica `prezzo_unitario`
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422)
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422)
 
 ---
 
@@ -457,7 +472,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   - **Guard componente obbligatorio**: tentativo di disattivare un componente `obbligatorio=TRUE` rejected dal trigger `script.trgfn_componenti_guard_obbligatorio` con `E_DOC_COMPONENTE_OBBLIGATORIO` (422)
   - Trigger DB `_z90_ricalcola_padre` aggiorna il `prezzo_unitario` della riga padre post-delete
 - Output `200`: `{ "data": { "status": "deleted", "componente_id": 1, "deleted": true } }`
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_DOC_COMPONENTE_OBBLIGATORIO` (422)
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409), `E_DOC_COMPONENTE_OBBLIGATORIO` (422)
 
 ---
 
@@ -470,7 +485,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 - **L1+L2+L3 su PATCH**: se il payload tocca `prezzo_unitario`, scattano gli stessi check dell'insert (autorizzazione + audit meta + L2 limite + L3 workflow opzionale via flag `richiesta_approvazione=true`). L'articolo/UoM della riga esistente sono usati come contesto resolver
 - **Trigger DB guard riga PENDING**: se la riga ha `stato_approvazione_prezzo='PENDING'`, il trigger `trg_preventivi_righe_a10_guard_pending_upd` (Sprint E) blocca modifica di campi struttura (prezzo, qta, articolo, sconto, ecc.) con `E_RIGA_PREZZO_PENDENTE` (409). Solo `stato_approvazione_prezzo`, `pratica_approvazione_prezzo_id` e `meta` sono ammessi. Per modificare prezzo: prima chiudere il workflow (approva/rifiuta) o annullare la pratica.
 - **Guard componenti via PATCH riga**: payload con `componenti_overrides` o `componenti_attivazioni` viene rifiutato con `E_PREV_VALIDAZIONE` (422). La PATCH riga e' solo testata; per modificare i componenti BoM usare gli endpoint dedicati §8e (PATCH componente) / §8f (DELETE componente).
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_RIGA_PREZZO_PENDENTE` (409), `E_PREV_VALIDAZIONE` (422 — payload con campi componenti)
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_RIGA_PREZZO_PENDENTE` (409), `E_PREV_VALIDAZIONE` (422 — payload con campi componenti)
 
 ---
 
@@ -479,7 +494,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 - Metodo: `DELETE`
 - Path: `/api/v1/vendite/preventivi/{id}/righe/{rid}/`
 - Regole: soft delete (attivo=false), ammesso solo in stato BOZZA, ricalcolo totali
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409)
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409)
 
 ---
 
@@ -715,7 +730,7 @@ attiva) via helper condiviso `apps.documenti.api.contesto_helpers.resolve_contes
 
 | Metodo | Path | Effetto |
 | --- | --- | --- |
-| `GET` | `/api/v1/vendite/preventivi/<id>/documenti/` | Lista documenti generati per il preventivo (paginata, scope emittente) |
+| `GET` | `/api/v1/vendite/preventivi/<id>/documenti/` | Lista documenti generati per il preventivo (paginata, scope emittente) — contratto di lista in [api_documenti_per_sorgente](../../documenti/manual/api_documenti_per_sorgente.md) §3.4 |
 | `POST` | `/api/v1/vendite/preventivi/<id>/documenti/anteprima/` | Render PDF temporaneo, no persist (Decisione 30) |
 | `POST` | `/api/v1/vendite/preventivi/<id>/documenti/genera/` | Persiste PDF + record DB + evento `GENERATO` (per preventivi già EMESSI: ristampe successive all'emissione iniziale) |
 | `GET` | `/api/v1/vendite/preventivi/<id>/documenti/<doc_id>/file/` | Download PDF principale + evento `SCARICATO` (Decisione 31) |

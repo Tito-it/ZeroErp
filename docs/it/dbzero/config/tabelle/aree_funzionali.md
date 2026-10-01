@@ -3,11 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo aree funzionali del sistema permessi.
->  Ogni area corrisponde a uno schema DB; il mapping area-&gt;schema
->  e' automatico (Django risolve l'area dal db_table del model).
->  schema_db separato da codice per consentire rinomina label
->  senza impatto sullo schema fisico.
+> Catalogo delle aree funzionali del sistema permessi: l'unità a cui si concede un livello (BLOCCATO, LETTURA, TUTTO) nei profili di accesso e negli override utente. L'area si identifica con schema_db, la sua chiave tecnica, uguale a codice; codice_interno è il codice immutabile. Il backend ricava l'area di un endpoint dal db_table del model o, quando la view non ne ha uno, dal suo attributo area_funzionale: un'area non ha bisogno di uno schema fisico omonimo. Piano: brief-db-area-funzionale-assistente-ai, §4.1.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -46,11 +42,11 @@
 |------|--------|--------|--------|
 | trg_aree_funzionali_a10_area_model_overrides_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'area_model_overrides', 'area_id', 'id', 'attivo')` |
 | trg_aree_funzionali_a10_azioni_processo_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'azioni_processo', 'area_id', 'id', 'attivo')` |
-| trg_aree_funzionali_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+| trg_aree_funzionali_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_aree_funzionali_a10_profili_accesso_aree_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'profili_accesso_aree', 'area_id', 'id', 'attivo')` |
 | trg_aree_funzionali_a10_user_override_aree_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'user_override_aree', 'area_id', 'id', 'attivo')` |
-| trg_aree_funzionali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_aree_funzionali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_aree_funzionali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

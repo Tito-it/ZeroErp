@@ -6,10 +6,14 @@
 // (items/totalRecords/loading/filters/fetchList/hasSearched), come i gemelli
 // resi (stores/resiCoda.js).
 //
-// I filtri di dominio (ambito miei/tutti, stato, range date col floor
-// standard) restano con i NOMI della CodaFiltriToolbar condivisa
-// (ambito/stato/dataDa/dataA — la toolbar muta l'oggetto per riferimento);
-// qui si mappano ai query param del BE. L'ordinamento viaggia come
+// I filtri di dominio (ambito miei/tutti, stato, periodo col floor standard)
+// portano i NOMI di ogni altra lista — `data_da`/`data_a` in stringa ISO — e
+// qui si mappano ai query param del BE.
+// ⭐ Prima del 2026-09-23 si chiamavano `dataDa`/`dataA` e tenevano OGGETTI
+//    `Date`: era l'unica coppia di date del prodotto fuori standard, e per
+//    questo l'unica che non poteva passare da `bindPeriodo` — cioe' l'unica
+//    senza l'invariante «`da > a` non puo' esistere» e senza il verso giusto
+//    degli eventi (una data digitata a mano non applicava il filtro). L'ordinamento viaggia come
 // `sort_by`/`sort_dir` (convenzione endpoint tracciamento, whitelist BE
 // ELENCA_SORT_SQL / CODA_STAMPA_SORT_SQL).
 //
@@ -21,7 +25,9 @@ import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { listCodaLavori, listCodaStampa } from '../../core/api/tracciamento'
-import { defaultFiltroDataDa, toDateStringOrNull } from '../../core/utils/date'
+import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
+import { defaultFiltroDataDaString } from '../../core/utils/date'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 // Scopo: mappa filtri store → query param degli endpoint coda (limit/offset +
 //        filtri opzionali + sort_by/sort_dir maiuscolo come da contratto BE).
@@ -29,12 +35,11 @@ function buildCodaParams(f) {
   const p = { limit: f.limit, offset: f.offset }
   if (f.ambito === 'tutti') p.ambito = 'tutti'
   if (f.stato) p.stato = f.stato
-  // ⛔ `toDateStringOrNull`, non `toDateString`: qui una data non valida vale
-  //    «non filtrare», nei form varrebbe «svuota il campo». Il perche' — e da
-  //    dove arriva una Invalid Date — sta una volta sola, sulla funzione.
-  // ⚠️ Il null non parte affatto: axios omette i parametri nulli.
-  if (f.dataDa) p.data_da = toDateStringOrNull(f.dataDa)
-  if (f.dataA) p.data_a = toDateStringOrNull(f.dataA)
+  // ⚠️ Gia' in stringa ISO nello store (come ogni altra lista): qui non c'e'
+  //    nessuna conversione da fare. Il null non parte affatto — axios omette i
+  //    parametri nulli.
+  if (f.data_da) p.data_da = f.data_da
+  if (f.data_a) p.data_a = f.data_a
   // Interruttore «mostra archiviate»: le righe messe via sono nascoste di
   // default, e il parametro le chiede. ⛔ Il filtro sta nel BACKEND e non qui:
   // la lista è paginata lato server, filtrare a valle filtrerebbe solo la
@@ -74,17 +79,24 @@ function buildCodaParams(f) {
 //    averlo consegnato.
 function createCodaJobsStore(id, fetchPage, { orderBy }) {
   return defineStore(id, () => {
-    const filters = ref({
+    // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i
+    //    valori di partenza E il contratto che `FiltriLista` legge per il segno
+    //    dei filtri attivi.
+    const FILTRI_DEFAULT = {
       ambito: 'miei',
       stato: null,
       // Floor temporale di default, regola unica di progetto (core/utils/date).
-      dataDa: defaultFiltroDataDa(),
-      dataA: null,
+      data_da: defaultFiltroDataDaString(),
+      data_a: null,
       // Le righe ARCHIVIATE sono nascoste di default: l'archiviazione serve a
       // togliere dall'elenco cio' che ha finito, e mostrarle sempre sarebbe
       // non averla. L'interruttore della toolbar le riporta a video.
       archiviate: false,
-      limit: 25,
+    }
+
+    const filters = ref({
+      ...FILTRI_DEFAULT,
+      limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
       order_by: orderBy,
       order_dir: 'desc',
@@ -97,21 +109,48 @@ function createCodaJobsStore(id, fetchPage, { orderBy }) {
     // niente di nascosto da dichiarare.
     const archiviateCount = ref(0)
 
-    const { items, totalRecords, loading, hasSearched, fetchList } =
-      useListaEmptyStateFetch({
-        filters,
-        buildParams: buildCodaParams,
-        fetchPage,
-        alwaysFetch: true,
-        // ⛔ L'hook vive nel BB e non nel `fetchPage`: li' fuori applicherebbe
-        // il conteggio anche alle risposte SCARTATE dal guard anti-race, e il
-        // numero racconterebbe un contesto diverso dalla lista sopra di se'.
-        onPayload: (payload) => { archiviateCount.value = payload.archiviate_count ?? 0 },
-      })
+    // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).
+    // ⛔ Non si elencano i suoi ref a mano: un ref nuovo del BB (com'e'
+    //    successo con `ricercaFull`, `ricercaMinCaratteri`,
+    //    `ricercaCambiaLaRichiesta`) arriverebbe solo agli store che lo
+    //    ricordano — e senza errore sugli altri.
+    const lista = useListaEmptyStateFetch({
+      filters,
+      buildParams: buildCodaParams,
+      fetchPage,
+      alwaysFetch: true,
+      // ⛔ L'hook vive nel BB e non nel `fetchPage`: li' fuori applicherebbe
+      // il conteggio anche alle risposte SCARTATE dal guard anti-race, e il
+      // numero racconterebbe un contesto diverso dalla lista sopra di se'.
+      onPayload: (payload) => { archiviateCount.value = payload.archiviate_count ?? 0 },
+    })
+    const { fetchList } = lista
+
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li' («Pulisci filtri»).
+    // ⛔ IL VERSO DI `ambito` E' ROVESCIATO rispetto al filo, ed e' il motivo per
+    //    cui il valore neutro qui si DICHIARA (2026-09-23): `buildCodaParams`
+    //    manda il parametro SOLO quando vale «tutti» — quindi sul filo il
+    //    silenzio e' «miei» — mentre nel dominio e' «miei» a restringere e
+    //    «tutti» a non restringere niente. Senza questa riga il segno contava un
+    //    filtro attivo proprio sull'ambito piu' largo.
+    // ⭐ E `archiviate` e' la stessa cosa nell'altro verso, che il primo giro
+    //    aveva mancato: `false` NASCONDE le righe archiviate (restringe, conta a
+    //    ragione), `true` le include — cioe' l'elenco piu' largo che questa coda
+    //    sappia mostrare. Un interruttore «mostra anche X» ha SEMPRE un valore
+    //    neutro: e' quello acceso.
+    const { chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri } = useContrattoFiltriLista({
+      filters,
+      filterDefaults: FILTRI_DEFAULT,
+      filtriNeutri: { ambito: 'tutti', archiviate: true },
+      fetchList,
+    })
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList,
+      ...lista,
+      filters,
       archiviateCount,
+      chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri,
     }
   }, {
     userScoped: true,

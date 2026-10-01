@@ -59,82 +59,28 @@ SELECT ok(
 -- ============================================================
 -- 2) Riferimenti minimi
 -- ============================================================
-CREATE TEMP TABLE tmp_refs_vmcr AS
-WITH ba AS (
-  SELECT b.id AS billing_account_id
-  FROM anagrafiche.billing_account b
-  ORDER BY b.data_insert DESC NULLS LAST
-  LIMIT 1
-)
-SELECT
-  (SELECT id
-     FROM vendite.registri_fatturazione
-    WHERE attivo IS TRUE
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1) AS registro_id,
-  (SELECT billing_account_id FROM ba) AS billing_account_id,
-  (SELECT id
-     FROM config.tipi_doc_fiscale
-    WHERE attivo IS TRUE
-    ORDER BY id
-    LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT id
-     FROM config.valute
-    ORDER BY id
-    LIMIT 1) AS valuta_id,
-  (
-    SELECT anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM ba))
-  ) AS emittente_soggetto_ruolo_id;
-
-
--- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva.
---   La riga sopra sceglieva «un registro qualunque» accanto a un emittente che
---   viene da un'altra parte: che i due coincidessero era un CASO, e dal
---   2026-08-30 vendite.trgfn_fatture_guard_registro_emittente non lo ammette
---   piu'. L'helper risponde con il registro di QUESTO emittente, creandolo se
---   non ce n'e' uno — la riga vive nella transazione del test.
-UPDATE tmp_refs_vmcr SET registro_id = script.fn_pgtap_registro_fattura(emittente_soggetto_ruolo_id);
+-- ⛔ LA FATTURA SI COSTRUISCE, TUTTA (2026-09-23). Questo blocco faceva gia'
+--   la cosa giusta a meta': se una fattura non c'era la scriveva. Ma i suoi
+--   mattoni li PESCAVA — il billing account «piu' recente», il registro, il
+--   tipo documento, la valuta — e su un database ricostruito `anagrafiche` e
+--   `vendite` sono a zero: tutte le colonne uscivano NULL, il ramo `ins`
+--   inseriva zero righe per via dei suoi stessi `IS NOT NULL`, e il file
+--   moriva sulla RLS di `vendite_contabili_righe` con una fattura che non
+--   esisteva.
+-- ⭐ Resta la lezione che il blocco portava e che il BB ha ereditato: il
+--   registro si ALLINEA all'emittente (`script.fn_pgtap_registro_fattura`),
+--   perche' dal 2026-08-30 `trgfn_fatture_guard_registro_emittente` non ammette
+--   piu' che i due coincidano per caso.
 CREATE TEMP TABLE tmp_fattura_ref AS
-WITH existing AS (
-  SELECT f.id AS fattura_id, f.billing_account_id
-  FROM vendite.fatture f
-  WHERE f.billing_account_id IS NOT NULL
-  ORDER BY f.id DESC
-  LIMIT 1
-), ins AS (
-  INSERT INTO vendite.fatture (
-    registro_id,
-    data,
-    emittente_soggetto_ruolo_id,
-    billing_account_id,
-    tipo_doc_fiscale_id,
-    valuta_id,
-    minimo,
-    totale_a_pagare,
-    meta
-  )
-  SELECT
-    r.registro_id,
-    current_date,
-    r.emittente_soggetto_ruolo_id,
-    r.billing_account_id,
-    r.tipo_doc_fiscale_id,
-    r.valuta_id,
-    false,
-    1.00,
-    jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_vmcr), 'case', 'fattura_fallback')
-  FROM tmp_refs_vmcr r
-  WHERE NOT EXISTS (SELECT 1 FROM existing)
-    AND r.registro_id IS NOT NULL
-    AND r.billing_account_id IS NOT NULL
-    AND r.tipo_doc_fiscale_id IS NOT NULL
-    AND r.valuta_id IS NOT NULL
-    AND r.emittente_soggetto_ruolo_id IS NOT NULL
-  RETURNING id AS fattura_id, billing_account_id
-)
-SELECT * FROM existing
-UNION ALL
-SELECT * FROM ins;
+SELECT fattura_id, billing_account_id
+  FROM dbops.fn_pgtap_crea_fattura('vendite movimenti contabile riga');
+
+-- L'importo e' il caso del test, non del builder.
+UPDATE vendite.fatture
+   SET totale_a_pagare = 1.00,
+       minimo = false,
+       meta = meta || jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_vmcr))
+ WHERE id = (SELECT fattura_id FROM tmp_fattura_ref);
 
 CREATE TEMP TABLE tmp_centro_ref AS
 WITH existing AS (
@@ -236,12 +182,8 @@ SELECT id FROM ins;
 
 SELECT ok(
   (SELECT count(*) = 1 FROM tmp_fattura_ref)
-  AND (SELECT registro_id IS NOT NULL
-         AND billing_account_id IS NOT NULL
-         AND tipo_doc_fiscale_id IS NOT NULL
-         AND valuta_id IS NOT NULL
-         AND emittente_soggetto_ruolo_id IS NOT NULL
-       FROM tmp_refs_vmcr)
+  AND (SELECT fattura_id IS NOT NULL AND billing_account_id IS NOT NULL
+       FROM tmp_fattura_ref)
   AND (SELECT count(*) = 1 FROM tmp_centro_ref)
   AND (SELECT count(*) = 1 FROM tmp_stato_contabile_ref)
   AND (SELECT count(*) = 1 FROM tmp_stato_riga_ref),

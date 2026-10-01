@@ -28,10 +28,14 @@
 --    4. Regressione: GUC vuota + user senza OPERATORE -> raise
 --       E_ADMIN_VALIDAZIONE
 --
--- Fixture: uso tid (auth_user_id=1) che ha identita OPERATORE via
--- seed 20260419-95. Per il caso multi-veste aggiungo un'identita
--- CLIENTE_PORTALE su un SR-CL libero. Per il caso 4 creo un fresh
--- auth_user + identita CLIENTE_PORTALE (senza OPERATORE).
+-- Fixture (rev 2026-09-23): un operatore UMANO costruito
+-- (dbops.fn_pgtap_crea_operatore_umano) e due clienti costruiti, i cui
+-- ruoli CL non hanno nessuna identita' per costruzione. Per il caso
+-- multi-veste aggiungo all'operatore un'identita' CLIENTE_PORTALE sul
+-- primo; per il caso 4 creo un fresh auth_user + identita'
+-- CLIENTE_PORTALE (senza OPERATORE) sul secondo.
+-- ⛔ Prima: l'utente 1 («tid», che in CI non esiste) e «un SR-CL libero»
+--   pescato fra i clienti, con due rami `skip` se non ce n'erano.
 --
 -- BEGIN + ROLLBACK isolamento completo.
 -- ------------------------------------------------------------
@@ -56,78 +60,46 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(4);
 
 -- =========================================================
--- Setup: tid (auth_user_id=1) esiste con identita OPERATORE.
--- Recupero un SR-CL libero per aggiungere un'identita
--- CLIENTE_PORTALE collegata allo stesso auth_user.
+-- Setup: l'operatore e i due ruoli CL si COSTRUISCONO.
 -- =========================================================
+-- ⛔ 2026-09-23: il file usava l'utente 1 — «tid, che ha identita' OPERATORE
+--   via seed» — e su un database ricostruito quell'utente non c'e': la
+--   fixture moriva su «auth_user con id=1 non trovato». Ora l'operatore e'
+--   UMANO e costruito dal percorso di produzione.
 CREATE TEMP TABLE _t_tid AS
-SELECT 1::int AS auth_user_id;
+SELECT ou.auth_user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('profilo GUC') ou;
+
+-- Due clienti: i loro ruoli CL non hanno identita' per costruzione, e sono
+-- quelli su cui nascono le vesti CLIENTE_PORTALE dei casi 1 e 4. Il contesto
+-- e' aperto dalla riga sopra: il primo lo da' il mondo (ramo B), il secondo il
+-- builder atomico.
+CREATE TEMP TABLE _t_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('profilo GUC 1');
+
+CREATE TEMP TABLE _t_cli_2 AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('profilo GUC 2');
 
 CREATE TEMP TABLE _t_sr_cl_libero AS
-WITH sr_liberi AS (
-    SELECT DISTINCT sr.id AS sr_id
-      FROM anagrafiche.clienti        c
-      JOIN anagrafiche.soggetti_ruoli sr ON sr.id = c.soggetto_ruolo_id
-      JOIN anagrafiche.soggetti       s  ON s.id = sr.soggetto_id
-     WHERE s.attivo = true
-       AND NOT EXISTS (
-           SELECT 1
-             FROM anagrafiche.identita_digitali id
-            WHERE id.soggetto_ruolo_id = sr.id
-              AND id.attivo = true
-       )
-)
-SELECT sr_id
-  FROM sr_liberi
- ORDER BY sr_id
- LIMIT 1;
+SELECT m.cliente_soggetto_ruolo_id AS sr_id FROM _t_mondo m;
 
--- Aggiungo identita CLIENTE_PORTALE a tid (setup multi-veste).
--- L'insert scatta il guard coerenza; se il SR-CL e' gia' un cliente
--- valido con soggetto attivo, il guard passa. Skip-friendly se il
--- pool SR-CL liberi e' vuoto.
-DO $pgtap$
-DECLARE
-    v_sr_cl bigint;
-BEGIN
-    SELECT sr_id INTO v_sr_cl FROM _t_sr_cl_libero;
-    IF v_sr_cl IS NULL THEN
-        RAISE NOTICE 'Nessun SR-CL libero: test 1 usera'' skip';
-        RETURN;
-    END IF;
-
-    -- 🔴 PULIZIA D'INGRESSO, aggiunta il 2026-08-18.
-    --   Il test crea la SECONDA veste dell'utente 1 (multi-veste: OPERATORE +
-    --   CLIENTE_PORTALE) per verificare che la GUC scelga quale prevale. Ma
-    --   `uq_identita_digitali_auth_user_ruolo` e' unica su
-    --   (auth_user_id, ruolo_applicativo), e in sviluppo quella veste ORA
-    --   ESISTE gia' come dato vero: l'INSERT moriva e con lui l'intero file.
-    --   ⚠️ La fixture dava per scontato che nessuno avesse gia' quella veste.
-    --   Il file e' transazionale: l'identita' vera torna al ROLLBACK.
-    DELETE FROM anagrafiche.identita_digitali
-     WHERE auth_user_id = 1
-       AND ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo;
-
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr_cl, 1, 'CLIENTE_PORTALE', true);
-END
-$pgtap$;
+-- Aggiungo all'operatore un'identita' CLIENTE_PORTALE (setup multi-veste).
+-- L'insert scatta il guard coerenza: il ruolo CL e' di un cliente vero.
+INSERT INTO anagrafiche.identita_digitali
+    (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
+SELECT (SELECT sr_id FROM _t_sr_cl_libero), t.auth_user_id, 'CLIENTE_PORTALE', true
+  FROM _t_tid t;
 
 -- =========================================================
 -- 1) Multi-veste + GUC=CLIENTE_PORTALE -> top-level=CLIENTE_PORTALE
 -- =========================================================
 SET LOCAL app.ruolo_applicativo = 'CLIENTE_PORTALE';
 
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM _t_sr_cl_libero)
-    THEN is(
-        (script.fn_get_user_profile(1) ->> 'ruolo_applicativo'),
-        'CLIENTE_PORTALE',
-        '1. Multi-veste + GUC=CLIENTE_PORTALE -> top-level=CLIENTE_PORTALE'
-    )
-    ELSE skip('Nessun SR-CL libero: setup multi-veste non possibile', 1)
-END;
+SELECT is(
+    (script.fn_get_user_profile((SELECT auth_user_id FROM _t_tid)) ->> 'ruolo_applicativo'),
+    'CLIENTE_PORTALE',
+    '1. Multi-veste + GUC=CLIENTE_PORTALE -> top-level=CLIENTE_PORTALE'
+);
 
 -- =========================================================
 -- 2) GUC vuota + user con identita OPERATORE -> top-level=OPERATORE
@@ -136,7 +108,7 @@ END;
 SET LOCAL app.ruolo_applicativo = '';
 
 SELECT is(
-    (script.fn_get_user_profile(1) ->> 'ruolo_applicativo'),
+    (script.fn_get_user_profile((SELECT auth_user_id FROM _t_tid)) ->> 'ruolo_applicativo'),
     'OPERATORE',
     '2. GUC vuota + user con identita OPERATORE -> top-level=OPERATORE (fallback)'
 );
@@ -149,13 +121,13 @@ SELECT is(
 -- scatenerebbe altro trigger; in transazione BEGIN il DELETE e'
 -- rollbackato.
 DELETE FROM anagrafiche.identita_digitali
- WHERE auth_user_id = 1
+ WHERE auth_user_id = (SELECT auth_user_id FROM _t_tid)
    AND ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo;
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 
 SELECT is(
-    (script.fn_get_user_profile(1) ->> 'ruolo_applicativo'),
+    (script.fn_get_user_profile((SELECT auth_user_id FROM _t_tid)) ->> 'ruolo_applicativo'),
     'OPERATORE',
     '3. Single-veste OPERATORE + GUC=OPERATORE -> top-level=OPERATORE'
 );
@@ -164,26 +136,10 @@ SELECT is(
 -- 4) Regressione: GUC vuota + user senza identita OPERATORE
 --    -> raise E_ADMIN_VALIDAZIONE (guard invariato).
 -- =========================================================
--- Creo fresh auth_user + identita CLIENTE_PORTALE (senza OPERATORE).
--- Uso un SR-CL ancora libero (potrebbe non esserci se pool esiguo).
+-- Creo fresh auth_user + identita CLIENTE_PORTALE (senza OPERATORE),
+-- sul ruolo CL del secondo cliente costruito.
 CREATE TEMP TABLE _t_sr_cl_libero_2 AS
-WITH sr_liberi AS (
-    SELECT DISTINCT sr.id AS sr_id
-      FROM anagrafiche.clienti        c
-      JOIN anagrafiche.soggetti_ruoli sr ON sr.id = c.soggetto_ruolo_id
-      JOIN anagrafiche.soggetti       s  ON s.id = sr.soggetto_id
-     WHERE s.attivo = true
-       AND NOT EXISTS (
-           SELECT 1
-             FROM anagrafiche.identita_digitali id
-            WHERE id.soggetto_ruolo_id = sr.id
-              AND id.attivo = true
-       )
-)
-SELECT sr_id
-  FROM sr_liberi
- ORDER BY sr_id
- LIMIT 1;
+SELECT c.soggetto_ruolo_id AS sr_id FROM _t_cli_2 c;
 
 CREATE TEMP TABLE _t_au_portale_only (auth_user_id int);
 DO $pgtap$
@@ -192,9 +148,6 @@ DECLARE
     v_sr_cl  bigint;
 BEGIN
     SELECT sr_id INTO v_sr_cl FROM _t_sr_cl_libero_2;
-    IF v_sr_cl IS NULL THEN
-        RETURN;
-    END IF;
 
     INSERT INTO django.auth_user
         (username, password, is_active, is_staff, is_superuser,
@@ -214,19 +167,18 @@ $pgtap$;
 
 SET LOCAL app.ruolo_applicativo = '';
 
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM _t_au_portale_only)
-    THEN throws_ok(
-        format(
-            $sql$ SELECT script.fn_get_user_profile(%L::int) $sql$,
-            (SELECT auth_user_id FROM _t_au_portale_only)
-        ),
-        NULL,
-        NULL,
-        '4. Regressione: user senza identita OPERATORE -> raise E_ADMIN_VALIDAZIONE'
-    )
-    ELSE skip('Nessun SR-CL libero: setup portale-only non possibile', 1)
-END;
+-- ⚠️ Il discriminante e' il frammento stabile della frase (2026-09-23): il
+--   throws_ok(sql, NULL, NULL) di prima accettava anche un permesso negato o
+--   il crash del guard, e lo stesso codice E_ADMIN_VALIDAZIONE esce anche per
+--   «auth_user non trovato».
+SELECT throws_like(
+    format(
+        $sql$ SELECT script.fn_get_user_profile(%L::int) $sql$,
+        (SELECT auth_user_id FROM _t_au_portale_only)
+    ),
+    '%Nessuna identita OPERATORE%',
+    '4. Regressione: user senza identita OPERATORE -> raise E_ADMIN_VALIDAZIONE'
+);
 
 SELECT * FROM finish();
 ROLLBACK;

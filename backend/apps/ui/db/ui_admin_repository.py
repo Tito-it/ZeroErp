@@ -26,7 +26,8 @@ from typing import Any
 
 from django.db import connection, transaction
 
-from apps.core.db._helpers import fetchone_scalar
+from apps.core.db._helpers import fetchone_scalar, row_to_dict, rows_to_list
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 
 
 # SELECT comune per ui.lista_preset con display fields (profilo accesso +
@@ -120,8 +121,7 @@ class UiAdminRepository:
                  ORDER BY descrizione, id
                 """
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Lista TUTTE le definizioni (incluse disattivate) con campi
     #        completi per la pagina tecnica Fase 2. Ordinate per
@@ -132,8 +132,7 @@ class UiAdminRepository:
                 self._DEFINIZIONE_SELECT_FULL
                 + " ORDER BY attivo DESC, codice, id"
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Conta TUTTE le definizioni (incluse disattivate), con lo stesso
     #        perimetro di `list_definizioni_admin` ma senza passare dalle righe.
@@ -166,11 +165,7 @@ class UiAdminRepository:
                 """,
                 [lista_id],
             )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c[0] for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # Scopo: Restituisce la definizione per id (anche disattivate, campi
     #        completi inclusi vista_sql/note/audit). Usato dal service
@@ -185,24 +180,20 @@ class UiAdminRepository:
                 self._DEFINIZIONE_SELECT_FULL + " WHERE id = %s",
                 [lista_id],
             )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c[0] for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # Scopo: INSERT lista_definizione. Il trigger
     #        trgfn_ui_lista_definizione_a10_valida_vista_sql verifica
     #        l'esistenza della view in pg_catalog ma skippa se attivo=
     #        FALSE o vista_sql=NULL: il workflow draft "registra prima,
     #        attiva dopo aver creato la view" e' supportato nativamente.
-    # 🚫 `multi_emittente` non compare in questo INSERT ne' nel tuple di
-    #    `update_definizione`, ed e' deliberato: il flag si accende SOLO dal
+    # 🚫 `multi_emittente` non compare in questo INSERT ne' nella whitelist
+    #    `_DEFINIZIONE_UPDATE_COLS` di `update_definizione`, ed e' deliberato: il flag si accende SOLO dal
     #    seed. Il presidio forte e' il trigger DB — la scrittura verrebbe
     #    rifiutata comunque con `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` — ma la
     #    colonna non va nominata nemmeno qui, o l'applicazione chiederebbe al
     #    database una cosa che il database le vieta.
-    #    Perche' e come: `lista_definizione_admin_service._CREATE_KEYS`.
+    #    Perche' e come: `lista_definizione_admin_service.CREATE_KEYS`.
     def create_definizione(
         self,
         data: dict[str, Any],
@@ -237,8 +228,20 @@ class UiAdminRepository:
             assert row is not None
             return int(row[0])
 
+    # Colonne scrivibili da `update_definizione` (whitelist del BB
+    # `execute_dynamic_update`) + `user_update`, l'audit che il repository
+    # aggiunge lui stesso. 🚫 `multi_emittente` resta fuori: vedi il
+    # commento su `create_definizione`.
+    _DEFINIZIONE_UPDATE_COLS: frozenset[str] = frozenset({
+        "codice", "descrizione", "schema_dati", "vista_sql", "note", "attivo",
+        "user_update",
+    })
+
     # Scopo: UPDATE lista_definizione sui soli campi presenti in `data`.
     #        Il trigger guard verifica vista_sql come per l'INSERT.
+    #        SET dinamico via BB `execute_dynamic_update`; `user_update`
+    #        viaggia fra i valori (parametro), `data_update = now()` come
+    #        `extra_set`. Payload vuoto -> False senza query.
     def update_definizione(
         self,
         lista_id: int,
@@ -247,24 +250,12 @@ class UiAdminRepository:
     ) -> bool:
         if not data:
             return False
-        sets: list[str] = []
-        params: list[Any] = []
-        for field in ("codice", "descrizione", "schema_dati",
-                      "vista_sql", "note", "attivo"):
-            if field in data:
-                sets.append(f"{field} = %s")
-                params.append(data[field])
-        sets.append("data_update = now()")
-        sets.append("user_update = %s")
-        params.append(user_update)
-        params.append(lista_id)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"UPDATE ui.lista_definizione "
-                f"SET {', '.join(sets)} WHERE id = %s",
-                params,
-            )
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "ui.lista_definizione", lista_id,
+            {**data, "user_update": user_update},
+            allowed=self._DEFINIZIONE_UPDATE_COLS,
+            extra_set="data_update = now()",
+        )
 
     # Scopo: DELETE lista_definizione. Le FK su lista_colonna,
     #        lista_preset e lista_preferenza_utente sono RESTRICT (NO
@@ -347,8 +338,7 @@ class UiAdminRepository:
                 """,
                 [lista_id],
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Lista TUTTE le colonne di una lista (incluse disattivate)
     #        con campi completi per la pagina tecnica Fase 2. Stesso
@@ -366,8 +356,7 @@ class UiAdminRepository:
                   "          ordine_default, id",
                 [lista_id],
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Conta le colonne di una lista con lo STESSO perimetro di
     #        `list_colonne_by_lista_admin` (stessa tabella, stesso WHERE),
@@ -397,11 +386,7 @@ class UiAdminRepository:
                 self._COLONNA_SELECT_FULL + " WHERE id = %s",
                 [colonna_id],
             )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c[0] for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # Scopo: INSERT lista_colonna. Il trigger valida_campo_sorgente
     #        verifica esistenza dell'attributo nella vista_sql della
@@ -480,11 +465,32 @@ class UiAdminRepository:
             assert row is not None
             return int(row[0])
 
+    # Colonne scrivibili da `update_colonna` (whitelist RIGIDA del BB
+    # `execute_dynamic_update`) + `user_update`, l'audit che il repository
+    # aggiunge lui stesso. `lista_id` resta fuori: e' immutabile.
+    _COLONNA_UPDATE_COLS: frozenset[str] = frozenset({
+        "codice", "etichetta", "etichetta_estesa", "etichetta_i18n_key",
+        "campo_sorgente", "tipo_colonna", "tipo_dato", "formato",
+        "larghezza_default", "ordine_default", "allineamento", "gruppo",
+        "gruppo_ordine", "filtrabile", "ordinabile", "esportabile",
+        "ricercabile_full", "sensibile", "attivo", "user_update",
+    })
+    # I tre enum della tabella: il valore arriva come testo e va castato.
+    _COLONNA_CASTS: dict[str, str] = {
+        "tipo_colonna": "ui.tipo_colonna",
+        "tipo_dato": "ui.tipo_dato",
+        "allineamento": "ui.allineamento_colonna",
+    }
+
     # Scopo: UPDATE lista_colonna sui soli campi presenti in `data`.
     #        Il trigger guard ricontrolla campo_sorgente come per
     #        l'INSERT. lista_id NON e' aggiornabile (nel service e'
     #        immutabile), per spostare una colonna serve cancellarla e
-    #        ricrearla.
+    #        ricrearla. SET dinamico via BB `execute_dynamic_update` (con
+    #        `casts` per gli enum, 2026-09-26: prima era un SET scritto a mano
+    #        che scartava in silenzio le chiavi fuori elenco); `user_update`
+    #        fra i valori, `data_update = now()` come `extra_set`.
+    #        Payload vuoto -> False senza query.
     def update_colonna(
         self,
         colonna_id: int,
@@ -493,40 +499,13 @@ class UiAdminRepository:
     ) -> bool:
         if not data:
             return False
-        # Mappa campo -> snippet SET con cast espliciti per gli enum.
-        cast_map = {
-            "tipo_colonna": "tipo_colonna = %s::ui.tipo_colonna",
-            "tipo_dato": "tipo_dato = %s::ui.tipo_dato",
-            "allineamento": "allineamento = %s::ui.allineamento_colonna",
-        }
-        plain_fields = (
-            "codice", "etichetta", "etichetta_estesa", "etichetta_i18n_key",
-            "campo_sorgente", "formato", "larghezza_default",
-            "ordine_default", "gruppo", "gruppo_ordine", "filtrabile",
-            "ordinabile", "esportabile", "ricercabile_full", "sensibile",
-            "attivo",
+        return execute_dynamic_update(
+            "ui.lista_colonna", colonna_id,
+            {**data, "user_update": user_update},
+            allowed=self._COLONNA_UPDATE_COLS,
+            casts=self._COLONNA_CASTS,
+            extra_set="data_update = now()",
         )
-        sets: list[str] = []
-        params: list[Any] = []
-        for field in plain_fields:
-            if field in data:
-                sets.append(f"{field} = %s")
-                params.append(data[field])
-        for field, snippet in cast_map.items():
-            if field in data:
-                sets.append(snippet)
-                params.append(data[field])
-        sets.append("data_update = now()")
-        sets.append("user_update = %s")
-        params.append(user_update)
-        params.append(colonna_id)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"UPDATE ui.lista_colonna "
-                f"SET {', '.join(sets)} WHERE id = %s",
-                params,
-            )
-            return cursor.rowcount > 0
 
     # Scopo: DELETE lista_colonna. Le FK su lista_preset_colonna e
     #        lista_colonna_permesso hanno ON DELETE CASCADE: vengono
@@ -592,11 +571,7 @@ class UiAdminRepository:
         ) + " ORDER BY p.ambito, p.codice, p.id"
         with connection.cursor() as cursor:
             cursor.execute(sql, [lista_id])
-            cols = [c[0] for c in cursor.description]
-            return [
-                self._normalize_preset_jsonb(dict(zip(cols, row)))
-                for row in cursor.fetchall()
-            ]
+            return [self._normalize_preset_jsonb(r) for r in rows_to_list(cursor)]
 
     # Scopo: Conta i preset di una lista con lo STESSO perimetro di
     #        `list_preset_by_lista` (`p.lista_id = %s`), senza passare dalle
@@ -623,11 +598,8 @@ class UiAdminRepository:
         )
         with connection.cursor() as cursor:
             cursor.execute(sql, [preset_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c[0] for c in cursor.description]
-            return self._normalize_preset_jsonb(dict(zip(cols, row)))
+            riga = row_to_dict(cursor)
+            return self._normalize_preset_jsonb(riga) if riga is not None else None
 
     # Scopo: Crea preset (testata). I campi `lista_id`/`ambito`/refs sono
     #        obbligatori e validati dal service; FK + CHECK ambito_refs
@@ -685,10 +657,20 @@ class UiAdminRepository:
             assert row is not None
             return int(row[0])
 
-    # Scopo: Aggiorna preset sui soli campi presenti in `data`. Costruisce
-    #        SET dinamico per evitare di sovrascrivere campi non passati.
-    #        Gli immutabili (lista_id/ambito/profilo/emittente) NON sono
-    #        in whitelist update lato service, quindi non arrivano qui.
+    # Colonne scrivibili da `update_preset` (whitelist del BB) +
+    # `user_update` aggiunto dal repository. Gli immutabili (lista_id/
+    # ambito/profilo/emittente) restano fuori anche qui.
+    _PRESET_UPDATE_COLS: frozenset[str] = frozenset({
+        "codice", "descrizione", "is_default", "pagina_dimensione",
+        "ordinamento_default", "filtri_default", "attivo", "user_update",
+    })
+
+    # Scopo: Aggiorna preset sui soli campi presenti in `data`. SET
+    #        dinamico via BB `execute_dynamic_update`: i JSONB
+    #        `ordinamento_default` (lista) / `filtri_default` (oggetto) vanno
+    #        a `::jsonb` dal BB, None azzera. Gli immutabili (lista_id/
+    #        ambito/profilo/emittente) NON sono in whitelist update lato
+    #        service, quindi non arrivano qui.
     def update_preset(
         self,
         preset_id: int,
@@ -697,31 +679,12 @@ class UiAdminRepository:
     ) -> bool:
         if not data:
             return False
-        sets: list[str] = []
-        params: list[Any] = []
-        for field in ("codice", "descrizione", "is_default",
-                      "pagina_dimensione", "attivo"):
-            if field in data:
-                sets.append(f"{field} = %s")
-                params.append(data[field])
-        if "ordinamento_default" in data:
-            sets.append("ordinamento_default = %s::jsonb")
-            value = data["ordinamento_default"]
-            params.append(json.dumps(value) if value is not None else None)
-        if "filtri_default" in data:
-            sets.append("filtri_default = %s::jsonb")
-            value = data["filtri_default"]
-            params.append(json.dumps(value) if value is not None else None)
-        sets.append("data_update = now()")
-        sets.append("user_update = %s")
-        params.append(user_update)
-        params.append(preset_id)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"UPDATE ui.lista_preset SET {', '.join(sets)} WHERE id = %s",
-                params,
-            )
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "ui.lista_preset", preset_id,
+            {**data, "user_update": user_update},
+            allowed=self._PRESET_UPDATE_COLS,
+            extra_set="data_update = now()",
+        )
 
     # Scopo: Cancella preset per id. Le FK su lista_preferenza_utente
     #        hanno ON DELETE SET NULL (DB-2 landed): la preferenza
@@ -762,8 +725,7 @@ class UiAdminRepository:
                 """,
                 [preset_id],
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: REPLACE atomico della composizione di un preset. Cancella
     #        tutte le righe esistenti e re-inserisce quelle del payload
@@ -802,7 +764,7 @@ class UiAdminRepository:
                         preset_id, colonna_id, ordine, larghezza,
                         visibile, fissata
                     ) VALUES {", ".join(placeholders)}
-                    """,
+                    """,  # noqa: S608 — VALUES solo segnaposto %s generati, valori come parametri
                     args,
                 )
                 return len(rows)
@@ -840,8 +802,7 @@ class UiAdminRepository:
                 """,
                 [lista_id],
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Conta i permessi di una lista con lo STESSO perimetro di
     #        `list_permessi_by_lista`, senza passare dalle righe.

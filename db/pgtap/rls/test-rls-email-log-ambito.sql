@@ -4,6 +4,9 @@
 --
 -- Test: config.email_log — la policy `rls_email_log_ambito` e il write-guard
 -- ChangeSet: 20260905-43 / -44 · Brief: brief-db-email-perimetro-e-invio-di-sistema
+-- Rev 2026-09-25 (20260925-66): la policy distingue REPARTO e OPERATORE. Qui
+--   resta l'asse AZIENDA; i due rami nuovi li prova
+--   db/pgtap/rls/test-rls-email-ambito-reparto-operatore.sql.
 --
 -- Elenco test (plan 6):
 --  1) ⭐ IL PRESUPPOSTO: questa sessione SUBISCE la row level security
@@ -93,10 +96,17 @@ SELECT is_empty(
 -- Prima del rifiuto va provato il consenso: una policy che nega tutto
 -- passerebbe i test 2 e 4 senza essere corretta.
 SELECT lives_ok(
+    -- ⚠️ Rev 2026-09-25: con l'autore. Una mail OPERATORE nomina chi l'ha
+    --   scritta (chk_email_log_operatore_creatore) e la vede solo lui
+    --   (rls_email_log_ambito, 20260925-66): senza, il test si fermerebbe sul
+    --   ramo nuovo invece di provare l'azienda.
     $$INSERT INTO config.email_log
-          (destinatario, oggetto, stato, ambito, emittente_fiscale_id, contesto_json)
+          (destinatario, oggetto, stato, ambito, emittente_fiscale_id,
+           creato_da_user_id, contesto_json)
       VALUES ('mia@example.invalid', 'pgtap mia', 'PENDING', 'OPERATORE',
-              script.fn_pgtap_emittente_operatore(), '{}'::jsonb)$$,
+              script.fn_pgtap_emittente_operatore(),
+              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+              '{}'::jsonb)$$,
     '3. una email della PROPRIA azienda si scrive'
 );
 
@@ -116,10 +126,15 @@ BEGIN
       FROM _mondi m WHERE m.lato = 'ALTRUI';
 
     BEGIN
+        -- ⚠️ Rev 2026-09-25: con l'autore (vedi test 3), cosi' l'unica cosa
+        --   fuori posto resta l'azienda.
         INSERT INTO config.email_log
-            (destinatario, oggetto, stato, ambito, emittente_fiscale_id, contesto_json)
+            (destinatario, oggetto, stato, ambito, emittente_fiscale_id,
+             creato_da_user_id, contesto_json)
         VALUES ('altrui@example.invalid', 'pgtap altrui', 'PENDING', 'OPERATORE',
-                v_altro, '{}'::jsonb);
+                v_altro,
+                NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                '{}'::jsonb);
     EXCEPTION WHEN OTHERS THEN
         v_esito := SQLSTATE || '|' ||
                    CASE WHEN SQLERRM ILIKE '%scope emittente fiscale%'

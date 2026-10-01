@@ -3,7 +3,7 @@
 // Scaffolding (useSearchTable + ref lista + export + pageActions + onConfigLoaded)
 // centralizzato in useListaConfigurabilePage (estrazione regola del 2,
 // 2026-06-02): qui restano filtri, slot e azioni di riga specifici.
-import { ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useClientiStore } from '../stores/clienti'
@@ -27,8 +27,19 @@ import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import EstensioneDrawerHost from '../../core/components/EstensioneDrawerHost.vue'
+import { useAzioniEstese } from '../../core/composables/useAzioniEstese'
+import { PUNTI_ESTENSIONE } from '../../core/estensioni'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
-const emit = defineEmits(['new', 'row-click', 'soggetto', 'contatti', 'indirizzi', 'conti-bancari', 'contratti'])
+const emit = defineEmits(['new', 'row-click', 'soggetto', 'contatti', 'indirizzi', 'conti-bancari'])
+
+// Le azioni di riga che altri domini contribuiscono al cliente (oggi: i
+// contratti di vendite), col drawer che aprono (core/estensioni.js).
+const {
+  voci: azioniEstese, aperto: drawerEsteso, impostaVisibile: visibileEsteso,
+} = useAzioniEstese(PUNTI_ESTENSIONE.CLIENTE_AZIONI_RIGA)
 const { t } = useI18n()
 // Navigazione verso la lista fatture (azione di riga): e' un cambio di
 // pagina, non un sotto-drawer, quindi non passa dal padre come le altre voci.
@@ -51,8 +62,15 @@ const {
 })
 
 // Filtri custom (toolbar caller)
-const utilityFilter = ref(null)
-const statoFilter = ref(null)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
+const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_cliente_id')
 
 // Params export: la lista che stai guardando, dalla sede unica dello store
 // (`paramsFiltro`: ricerca, filtri di dominio, ORDINAMENTO). ⚠️ Fino al
@@ -65,20 +83,10 @@ function buildExportParams(format) {
   return { formato: format, ...store.paramsFiltro() }
 }
 
-function onUtilityChange() {
-  store.filters.utility_id = utilityFilter.value
-  applyFilters()
-}
-
-function onStatoChange() {
-  store.filters.stato_cliente_id = statoFilter.value
-  applyFilters()
-}
-
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento Primevue).
 function onRowClick(data) { emit('row-click', data) }
 
-// Scopo: azioni di riga del cliente (sub-drawer anagrafici + contratti).
+// Scopo: azioni di riga del cliente (sub-drawer anagrafici + le azioni contribuite).
 // Ogni sub-drawer con model_permission proprio disabilita la sua voce se
 // l'oggetto e' BLOCCATO per l'operatore (evita click che genererebbero 403).
 function buildRowActions(data) {
@@ -109,12 +117,7 @@ function buildRowActions(data) {
       disabled: contiBlocked,
       command: () => emit('conti-bancari', data),
     },
-    {
-      key: 'contratti',
-      label: t('vendite.contratti.gestisci_contratti'),
-      icon: MANAGE_ICONS.CONTRATTI,
-      command: () => emit('contratti', data),
-    },
+    ...azioniEstese(data),
     // ⭐ Porta alla LISTA FATTURE già filtrata su questo conto. Non apre un
     // sotto-drawer: è una navigazione, e la lista dichiara a video da dove
     // arriva e come togliere il filtro.
@@ -162,14 +165,17 @@ onMounted(() => {
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText
-            v-model="searchText"
-            :placeholder="t('anagrafiche.clienti.search_placeholder')"
-            style="width: 320px;"
-          />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('anagrafiche.clienti.search_placeholder')"
+            />
+          </template>
           <UtilityPerRuoloSelect
             v-model="utilityFilter"
+            class="app-filter-w-md"
             :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
             :placeholder="t('anagrafiche.clienti.filtro_utility')"
             show-clear
@@ -178,12 +184,13 @@ onMounted(() => {
           />
           <LookupSelect
             v-model="statoFilter"
+            class="app-filter-w-md"
             rel="config.stati_cliente"
             :placeholder="t('anagrafiche.clienti.filtro_stato')"
             show-clear
             @change="onStatoChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -237,11 +244,13 @@ onMounted(() => {
           <Tag :value="data.stato_descrizione" :severity="statoClienteSeverity(data.stato_codice_interno)" />
         </template>
 
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </ListaConfigurabile>
     </template>
+
+    <EstensioneDrawerHost :stato="drawerEsteso" @update:visible="visibileEsteso" />
 
     <ExportDialog
       v-model:visible="exportDialogVisible"

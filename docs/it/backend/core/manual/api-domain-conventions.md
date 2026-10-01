@@ -21,11 +21,12 @@ Per ridurre duplicazioni tra app dominio usare helper core:
   - errore: `{ "error": ..., "meta": { "request_id": ... } }`
 
 ## Regole
-- Versioning URL: endpoint canonici sotto `/api/v1/...`; le route non versionate restano solo come compatibilita` temporanea.
+- Versioning URL: tutti gli endpoint sono sotto `/api/v1/...` (fuori da `/api/v1/` restano solo `health`, `/api/schema/` e `/api/docs/`).
 - Autenticazione: endpoint `/api/v1/*` protetti con JWT Bearer.
 - Emissione token:
-  - `POST /api/v1/admin/token/` (operatori interni; namespace portale/shop aggiunti in PR-B)
-  - `POST /api/v1/admin/token/refresh/`
+  - `POST /api/v1/admin/token/` + `POST /api/v1/admin/token/refresh/` (operatori interni)
+  - `POST /api/v1/portale/token/` + `POST /api/v1/portale/token/refresh/` (vesti portale)
+  - `POST /api/v1/shop/token/` + `POST /api/v1/shop/token/refresh/` (veste shop)
 - Endpoint POST JSON: usare `handle_post_json(request, handler=...)`.
 - Per endpoint write critici, impostare `require_idempotency_key=True`.
 - Nel handler dominio: validare campi specifici e invocare service.
@@ -34,16 +35,11 @@ Per ridurre duplicazioni tra app dominio usare helper core:
 - Evitare `try/except Exception` generici nella view: il fallback globale su errori non gestiti e` nel middleware `apps/core/middleware/api_exception_middleware.py`.
 - Se serve disattivare fallback middleware (debug mirato), usare `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED=0`.
 - Context middleware assegna `request_id` (header `X-Request-ID`) e propaga `Idempotency-Key` se presente.
-- Rate limiting: non e` ancora applicato a livello applicativo; baseline consigliata su Nginx/API gateway per endpoint write/retryable.
-- Paginazione/ricerca: seguire la policy `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md`.
-  - Parametri standard: `page`, `page_size`, `cursor`, `ordering`, `term`, `from`, `to`.
-  - Max page size: 200 (hard cap).
-  - `contains/ilike` solo con `term` >= 3.
+- Rate limiting applicativo (`apps/core/api/throttling.py`): `LoginRateThrottle` (5 ogni 5 minuti per IP) sui login, `PasswordResetRateThrottle` (3 ogni 15 minuti per IP) su reset password e attivazioni, `SearchBurstRateThrottle` sulle ricerche (sotto). Per gli altri endpoint write/retryable la baseline resta su Nginx/API gateway.
+- Paginazione/ricerca: seguire la policy `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md`;
+  parametri, tetti e soglia di ricerca stanno in `docs/it/dev/api.md` §«Paginazione» e
+  §«Ricerca e throttling» (non si ricopiano qui).
   - Throttling search: DRF `SearchBurstRateThrottle` attivo su view con `is_search_endpoint = True`.
-- Fase 2 deprecazione legacy:
-  - route legacy abilitate/disabilitate via `DJANGO_API_LEGACY_ROUTES_ENABLED` (default `0`, v1-only)
-  - header deprecazione su legacy via `DJANGO_API_LEGACY_DEPRECATION_HEADERS_ENABLED` (default `1`)
-  - sunset configurabile via `DJANGO_API_LEGACY_SUNSET_HEADER`
 
 ## Dipendenze DB
 - Nessuna diretta (layer API)
@@ -57,8 +53,8 @@ Per ridurre duplicazioni tra app dominio usare helper core:
   - UI: `GET /api/docs/`
 
 ## Promemoria JWT (ambiente test/dev)
-- Durata `access_token`: 60 minuti.
-- Durata `refresh_token`: 1 giorno.
+- Durata `access_token`: 10 minuti (dal 2026-09-28); il frontend lo tiene solo in memoria e lo rinnova in silenzio.
+- Durata `refresh_token`: 1 giorno; viaggia solo nel cookie HttpOnly `zeroerp_refresh`, mai nel corpo (vedi [api_multi_veste_token.md](api_multi_veste_token.md#cookie-di-refresh)).
 - Dopo modifiche a `SIMPLE_JWT` in settings, riavviare Gunicorn per applicare i nuovi valori.
 
 ## Checklist operativa (nuove API dominio)

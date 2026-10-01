@@ -22,7 +22,12 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
+    colonne_identita,
     sql_order_clause,
     call_jsonb_fn,
     fetch_paged_with_total,
@@ -31,13 +36,27 @@ from apps.core.db._helpers import (
     sql_order_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
-from apps.core.db.sql_write_helpers import execute_dynamic_update
+from apps.vendite.db._coda_documento_filtro import lettura_coda_per_documento
+from apps.vendite.db._righe_repo_mixin import RigheDocumentoRepositoryMixin
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 
 # Scopo: Whitelist colonne ORDER BY per la lista resi (SQL injection safe). Le
 #        chiavi sono i `campo_sorgente` del catalogo liste ('vendite.resi') che
 #        il FE invia come sortField; i valori sono le colonne reali di
 #        `vendite.vw_resi_lista` (alias `v`).
+# Colonne che la ricerca libera SA cercare nella lista `vendite.resi`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+# ⭐ `ddt_origine_numero`: la ricerca per DDT di origine e' voluta (Tid,
+#    2026-09-23) e il seed `lista_colonna.csv` la accende (id 156).
+_RICERCA_RESI = RicercaFull(
+    "vendite.resi",
+    (
+        "numero", "destinatario_denominazione", "ba_codice",
+        "id_fiscale_univoco_cf_piva", "ddt_origine_numero",
+    ),
+)
+
 _ORDER_COLS_RESI: dict[str, str] = {
     "numero": "v.numero",
     "data": "v.data",
@@ -65,7 +84,8 @@ _ORDER_COLS_RESI: dict[str, str] = {
 #        per nome vista. `order_cols`: whitelist SQL-safe sortField -> colonna
 #        reale (le chiavi sono i `campo_sorgente` `ordinabile=t` del catalogo
 #        liste `vendite.resi_da_accreditare` / `..._riconsegnare`, id 10/11).
-#        `search_cols`: colonne `ricercabile_full=t` per la search ILIKE. Le due
+#        `ricerca`: la dichiarazione `RicercaFull` della coda (cosa si PUO'
+#        cercare; cosa si cerca lo legge il BB dal catalogo). Le due
 #        code hanno colonne diverse (accreditare espone il conto del contatore
 #        accredito_dovuto/tenuti/fatturati + etichetta DOVUTA|FACOLTATIVA;
 #        riconsegnare la copertura resa/riconsegnata/residua + stato_riconsegna),
@@ -87,10 +107,13 @@ _CODA_META: dict[str, dict[str, Any]] = {
             "tenuti": "v.tenuti",
             "fatturati": "v.fatturati",
         },
-        "search_cols": [
-            "v.reso_numero", "v.destinatario_denominazione",
-            "v.descrizione", "v.ddt_numero", "v.ba_codice",
-        ],
+        "ricerca": RicercaFull(
+            "vendite.resi_da_accreditare",
+            (
+                "reso_numero", "destinatario_denominazione",
+                "descrizione", "ddt_numero", "ba_codice",
+            ),
+        ),
     },
     "vendite.vw_resi_da_riconsegnare": {
         "order_cols": {
@@ -107,16 +130,44 @@ _CODA_META: dict[str, dict[str, Any]] = {
             "qta_residua": "v.qta_residua",
             "stato_riconsegna": "v.stato_riconsegna",
         },
-        "search_cols": [
-            "v.reso_numero", "v.destinatario_denominazione",
-            "v.descrizione", "v.ddt_numero",
-        ],
+        "ricerca": RicercaFull(
+            "vendite.resi_da_riconsegnare",
+            (
+                "reso_numero", "destinatario_denominazione",
+                "descrizione", "ddt_numero",
+            ),
+        ),
     },
 }
 
 
-class ResiRepository:
+# Le righe del reso come lista configurabile `vendite.reso_righe` (BB
+# `RigheDocumentoRepositoryMixin`, brief-db-liste-righe-documento lotto A):
+# le colonne ordinabili e ricercabili del catalogo (lista 100), che la vista
+# espone con lo stesso nome. `test_ricerca_full_seed` legge `_RICERCA_RIGHE`.
+_RICERCA_RIGHE = RicercaFull("vendite.reso_righe", ("articolo_codice", "descrizione", "motivo"))
+_ORDER_COLS_RIGHE: dict[str, str] = colonne_identita(
+    "articolo_codice", "descrizione", "qta_operativa", "stato_riconsegna",
+    "tipo_reso_descrizione", "uom_codice", "gia_accreditato", "motivo",
+)
+
+
+class ResiRepository(RigheDocumentoRepositoryMixin):
     """Repository resi di vendita (motore resi su DDT)."""
+
+    # Righe (BB `RigheDocumentoRepositoryMixin`) dalla vista canonica
+    # `vw_resi_righe_dettaglio` (changeSet `20260825-25`): decodifiche, copertura
+    # ri-consegna, `gia_accreditato` e `annullo_blocco_codice`.
+    # ⛔ Il perimetro non e' a carico del repository: la vista passa da
+    #    `vendite.resi` (RLS `rls_resi_ef_whitelist`), perche' `resi_righe`
+    #    non ce l'ha. Dal 2026-09-28 anche la riga singola legge la vista:
+    #    prima leggeva la tabella, cioe' fuori dalla RLS.
+    _righe_vista = "vendite.vw_resi_righe_dettaglio"
+    _righe_tabella = "vendite.resi_righe"
+    _righe_fk_documento = "reso_id"
+    _righe_ordine_documento = "riga_nr"
+    _righe_ordinamento = _ORDER_COLS_RIGHE
+    _righe_ricerca = _RICERCA_RIGHE
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_resi_lista)
@@ -147,7 +198,7 @@ class ResiRepository:
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -163,10 +214,9 @@ class ResiRepository:
             #    DDT il 2026-09-02).
             default_desc=True,
         )
-        # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
+        # `max_limit`: lista cap `MAX_LIMIT` (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -185,16 +235,7 @@ class ResiRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        if search and len(search) >= 3:
-            # Ricerca estesa: numero reso + destinatario + codice BA +
-            # id fiscale + numero DDT di origine.
-            conditions.append(
-                "(v.numero ILIKE %s OR v.destinatario_denominazione ILIKE %s "
-                "OR v.ba_codice ILIKE %s OR v.id_fiscale_univoco_cf_piva ILIKE %s "
-                "OR v.ddt_origine_numero ILIKE %s)"
-            )
-            like = f"%{search}%"
-            params.extend([like, like, like, like, like])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_RESI)
 
         # Scope emittente (defense-in-depth applicativa, mirror ddt/ordini).
         # La vista e' `security_invoker=on` e `vendite.resi` ha la policy RLS
@@ -265,12 +306,14 @@ class ResiRepository:
     def get_capabilities(self, reso_id: int) -> dict[str, Any]:
         return call_jsonb_fn("script.fn_available_actions_reso", reso_id)
 
-    # Scopo: Lettura LEGGERA per i guard delle righe: stato corrente + id del
-    #        DDT di origine (via uid sorgente), senza materializzare la vista
-    #        lista con le decodifiche. None se il reso non esiste.
+    # Scopo: Lettura LEGGERA per i guard delle righe: stato corrente, numero
+    #        (l'etichetta del rifiuto «Reso 2026/00012», o «Reso #131» se NULL)
+    #        e id del DDT di origine (via uid sorgente), senza materializzare
+    #        la vista lista con le decodifiche. None se il reso non esiste.
     def get_stato_e_ddt_origine(self, reso_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT sdr.codice_interno AS stato_codice_interno,
+                   r.numero,
                    d.id               AS ddt_origine_id
               FROM vendite.resi r
               JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
@@ -294,84 +337,6 @@ class ResiRepository:
             cursor.execute(sql, [reso_id])
             row = cursor.fetchone()
             return row[0] if row else None
-
-    # ══════════════════════════════════════════════════════════
-    #  LETTURE — Righe
-    # ══════════════════════════════════════════════════════════
-
-    # Scopo: Conteggio righe attive del reso (per `righe_count` del detail).
-    def count_righe(self, reso_id: int) -> int:
-        sql = (
-            "SELECT COUNT(*) FROM vendite.resi_righe "
-            "WHERE reso_id = %s AND attivo IS TRUE"
-        )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [reso_id])
-            row = cursor.fetchone()
-            return int(row[0]) if row else 0
-
-    # Scopo: Righe attive del reso, lette dalla vista canonica
-    #        `vendite.vw_resi_righe_dettaglio` (changeSet `20260825-25`).
-    #        Porta le decodifiche articolo/uom/tipo reso, la copertura
-    #        ri-consegna (`qta_riconsegnata`/`qta_rinunciata`/`qta_residua`/
-    #        `stato_riconsegna`), `gia_accreditato` e — dal 2026-08-25 —
-    #        `annullo_blocco_codice`, il motivo per cui l'annullo dell'accredito
-    #        NON e' ammesso (`NULL` = ammesso).
-    #
-    # ⭐ QUI C'ERANO CINQUANTA RIGHE DI SQL, ed erano una vista scritta in
-    #    Python: nessun filtro dinamico, solo `reso_id` e `attivo`. Le righe del
-    #    reso erano l'UNICO dettaglio documento senza una sede a DB — ed e' il
-    #    motivo per cui il motivo di blocco dell'annullo poteva arrivare sulla
-    #    coda accrediti e non sulla superficie dove il pulsante vive davvero.
-    #    Verificato prima dello scambio: `EXCEPT` nei due versi fra la vecchia
-    #    query e la vista, su tutti i resi -> **0 differenze**, 17 righe.
-    #
-    # ⚠️ Il filtro `attivo` resta QUI, e la vista non lo incorpora: `attivo` e'
-    #    una colonna, non un filtro nascosto. Una vista «dettaglio» che
-    #    nascondesse righe di nascosto darebbe un conteggio diverso da quello
-    #    della tabella senza dirlo (presidiato dal pgTAP 5 della vista).
-    # ⛔ Il perimetro non e' a carico di questo metodo: la vista passa da
-    #    `vendite.resi` (che ha la RLS `rls_resi_ef_whitelist`) perche'
-    #    `vendite.resi_righe` non ce l'ha. Che il service autorizzi prima non
-    #    basta — un oggetto di database dev'essere sicuro da solo.
-    def list_righe(self, reso_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT *
-              FROM vendite.vw_resi_righe_dettaglio
-             WHERE reso_id = %s
-               AND attivo IS TRUE
-             ORDER BY riga_nr, id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [reso_id])
-            return rows_to_list(cursor)
-
-    # Scopo: Carica una singola riga reso per id (proiezione lean per i guard
-    #        del service: appartenenza al reso + snapshot corrente).
-    def get_riga(self, riga_id: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT
-                rr.id,
-                rr.reso_id,
-                rr.riga_nr,
-                rr.attivo,
-                rr.ddt_riga_id,
-                rr.ordine_riga_id,
-                rr.articolo_id,
-                rr.descrizione,
-                rr.quantita,
-                rr.qta_operativa,
-                rr.factor_to_base,
-                rr.uom_operativa_id,
-                rr.tipo_reso_id,
-                rr.motivo,
-                rr.meta
-              FROM vendite.resi_righe rr
-             WHERE rr.id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [riga_id])
-            return row_to_dict(cursor)
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Righe DDT per il pannello "crea reso" (dominio sorgente)
@@ -458,7 +423,7 @@ class ResiRepository:
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         # La condizione etichetta vive QUI, non nel builder condiviso: la
         # colonna esiste solo su questa vista, e il builder deve restare
@@ -469,6 +434,13 @@ class ResiRepository:
         if etichetta is not None:
             extra_conditions.append("v.etichetta = %s")
             extra_params.append(etichetta)
+        # ⭐ Col documento la coda si legge dalla FUNZIONE (dal 2026-09-21, giro
+        #    2 del brief partita): `fn_resi_da_accreditare` ha la chiusura
+        #    dentro e per ordine segue lo stesso `EXISTS` sul fulfillment del
+        #    predicato — stesse righe del pannello (`_list_coda_su_partite`).
+        #    Senza documento resta la vista, che e' `fn(NULL, NULL)`: «tutte».
+        #    ⚠️ Che questa coda abbia la funzione NON lo sa questo wrapper: lo
+        #    dice `FUNZIONE_PER_CODA`, e `_list_coda` applica la forma.
         return self._list_coda(
             "vendite.vw_resi_da_accreditare",
             billing_account_id=billing_account_id,
@@ -505,7 +477,7 @@ class ResiRepository:
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         return self._list_coda(
             "vendite.vw_resi_da_riconsegnare",
@@ -526,6 +498,13 @@ class ResiRepository:
     # Scopo: Lettura condivisa delle due code (stesse colonne di filtro:
     #        billing_account_id, data, emittente_fiscale_id). Il nome vista
     #        arriva SOLO dai due wrapper (statico, no input utente).
+    # ⭐ Col documento (dal 2026-09-21) la forma di lettura la decide il BB
+    #        `lettura_coda_per_documento` sulla mappa `FUNZIONE_PER_CODA`: la
+    #        funzione con la chiusura dentro nel `FROM` (accrediti), oppure la
+    #        vista col predicato nel `WHERE` (ri-consegne). `vista` resta la
+    #        chiave di `_CODA_META` (ordinamento e ricerca sono gli stessi: la
+    #        funzione ha le colonne della vista per costruzione). Senza
+    #        documento e' la vista, senza condizione.
     def _list_coda(
         self,
         vista: str,
@@ -543,13 +522,16 @@ class ResiRepository:
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
-        # `max_limit` distingue le due chiamate: la lista pagina (cap 200,
+        # `max_limit` distingue le due chiamate: la lista pagina (cap `MAX_LIMIT`,
         # il paginator manda al piu' 100), l'export chiede fino a
         # EXPORT_MAX_ROWS+1 per intercettare l'overflow SENZA troncare in
         # silenzio (il guard di build_export_response usa la COUNT reale).
         meta = _CODA_META[vista]
+        # Il service garantisce «al piu' uno» dei due id (`_valida_filtro_documento`,
+        # rifiuto parlante); con entrambi il BB solleva, per programmazione.
+        lettura = lettura_coda_per_documento(vista, ddt_id=ddt_id, ordine_id=ordine_id)
         order_column = meta["order_cols"].get(order_by) or "v.data"
         direction = sql_order_direction(order_dir, default_desc=True)
         # ⚠️ Qui il tiebreak NON si allinea alla direzione (regola 2026-08-03,
@@ -557,8 +539,7 @@ class ResiRepository:
         # righe di uno stesso reso e `v.resi_riga_id ASC` le tiene nel loro
         # ordine naturale DENTRO il reso. Ribaltarle farebbe leggere le righe
         # di un reso al contrario ordinando la lista per un'altra colonna.
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -571,31 +552,24 @@ class ResiRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        # Restrizione al documento: filtro COMUNE alle due code, quindi vive qui
-        # accanto a billing_account_id e alle date — non negli `extra_conditions`
-        # dei wrapper, che sono per le colonne di UNA vista sola (l'etichetta).
-        # ⭐ Il predicato e' il BB condiviso col pannello situazione merce: le due
-        # schermate rispondono alla stessa domanda e devono contare le stesse
-        # righe.
-        condizione_doc, params_doc = filtro_coda_per_documento(
-            ddt_id=ddt_id, ordine_id=ordine_id
-        )
-        if condizione_doc is not None:
-            conditions.append(condizione_doc)
-            params.extend(params_doc)
+        # Restrizione al documento nel WHERE — solo per la coda che la chiusura
+        # NON ce l'ha nella sorgente (oggi le ri-consegne): filtro COMUNE alle
+        # code, quindi vive qui accanto a billing_account_id e alle date — non
+        # negli `extra_conditions` dei wrapper, che sono per le colonne di UNA
+        # vista sola (l'etichetta).
+        # ⭐ Forma e predicato sono il BB condiviso col pannello situazione merce:
+        # le due schermate rispondono alla stessa domanda e devono contare le
+        # stesse righe.
+        if lettura.condizione is not None:
+            conditions.append(lettura.condizione)
+            params.extend(lettura.params_condizione)
         if extra_conditions:
             # Condizioni vista-specifiche costruite dal wrapper chiamante
             # (es. etichetta della coda accrediti): il builder resta neutro
             # rispetto alle colonne delle singole viste.
             conditions.extend(extra_conditions)
             params.extend(extra_params or [])
-        if search and len(search) >= 3:
-            # Ricerca estesa sulle colonne `ricercabile_full=t` della coda
-            # (numero reso + destinatario + articolo + DDT [+ ba_codice]).
-            cols = meta["search_cols"]
-            conditions.append("(" + " OR ".join(f"{c} ILIKE %s" for c in cols) + ")")
-            like = f"%{search}%"
-            params.extend([like] * len(cols))
+        add_ricerca_full_condition(conditions, params, search, meta["ricerca"])
         add_emittente_scope_condition(
             conditions, params,
             auth_user_id=auth_user_id,
@@ -613,18 +587,20 @@ class ResiRepository:
         # raggiunti). Tie-breaker stabile (reso_id, resi_riga_id) appeso
         # all'order utente per paginazione deterministica anche su colonne
         # non univoche.
+        # ⚠️ I parametri della sorgente vengono PRIMA di quelli del WHERE: e'
+        # l'ordine dei `%s` nel testo, e vale per il conteggio di ripiego.
         data_sql = f"""
             SELECT v.*, COUNT(*) OVER () AS total_count
-            FROM {vista} v
+            FROM {lettura.sorgente} v
             {where}
             ORDER BY {order_column} {direction}, v.reso_id DESC, v.resi_riga_id ASC
             LIMIT %s OFFSET %s
         """  # noqa: S608
         return fetch_paged_with_total(
             data_sql,
-            [*params, safe_limit, safe_offset],
-            fallback_count_sql=f"SELECT COUNT(*) FROM {vista} v {where}",  # noqa: S608
-            fallback_params=params,
+            [*lettura.params_sorgente, *params, safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) FROM {lettura.sorgente} v {where}",  # noqa: S608
+            fallback_params=[*lettura.params_sorgente, *params],
             offset=safe_offset,
         )
 
@@ -647,30 +623,38 @@ class ResiRepository:
         data: date | None = None,
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        cols: list[str] = ["sorgente_tipo_id", "sorgente_uid", "stato_doc_reso_id"]
-        vals: list[Any] = [sorgente_tipo_id, sorgente_uid, stato_doc_reso_id]
-        if data is not None:
-            cols.append("data")
-            vals.append(data)
-        cols.append("meta")
-        placeholders = ["%s"] * (len(cols) - 1) + ["%s::jsonb"]
-        vals.append(json.dumps(meta or {}))
-        sql = (  # noqa: S608 — colonne whitelisted (chiavi statiche)
-            f"INSERT INTO vendite.resi ({', '.join(cols)}) "
-            f"VALUES ({', '.join(placeholders)}) "
-            f"RETURNING id, uid::text AS uid, numero"
+        # BB `execute_dynamic_insert`: `data` None si omette (`skip_none`) e
+        # vale il DEFAULT CURRENT_DATE; chiavi letterali del metodo.
+        return execute_dynamic_insert(
+            "vendite.resi",
+            {
+                "sorgente_tipo_id": sorgente_tipo_id,
+                "sorgente_uid": sorgente_uid,
+                "stato_doc_reso_id": stato_doc_reso_id,
+                "data": data,
+                "meta": meta or {},
+            },
+            allowed=None, skip_none=True,
+            returning="id, uid::text AS uid, numero",
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+
+    # ⛔ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): una
+    #    chiave fuori lista e' `ValueError`, non uno scarto. E' l'elenco delle
+    #    colonne che QUESTO metodo scrive, non il contratto dell'operatore (che
+    #    sta nel service, `resi_service.UPDATE_KEYS_RESO / UPDATE_KEYS_RIGA`): se il service ne aggiunge una, va aggiunta
+    #    qui — e dimenticarlo e' un errore che si vede, non un campo perso.
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({"data", "meta"})
+    RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "tipo_reso_id", "qta_operativa", "motivo", "meta",
+    })
 
     # Scopo: Aggiorna campi modificabili della testata reso (data/meta: il
     #        resto e' ereditato dal DDT sorgente e immutabile — vedi
     #        non_editable_fields della fn capabilities). Meta ::jsonb via BB.
     def update_reso(self, reso_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.resi", reso_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.resi", reso_id, kwargs, allowed=self.TESTATA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Hard-delete reso (flusso abbandono bozza orfana). Guard di dominio
     #        (stato DRAFT, 0 righe) applicati nel service.
@@ -740,7 +724,9 @@ class ResiRepository:
 
     # Scopo: Aggiorna una riga reso esistente (qta/tipo/motivo/meta). Meta ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.resi_righe", riga_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.resi_righe", riga_id, kwargs, allowed=self.RIGA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Elimina una riga reso (HARD DELETE, solo con testata DRAFT — guard
     #        nel service; il ponte ri-consegna esiste solo post-conferma).

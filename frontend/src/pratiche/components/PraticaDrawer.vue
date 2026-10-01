@@ -8,21 +8,23 @@ import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
-import { DRAWER_WIDTH, STATO_PRATICA, STATI_PRATICA_TERMINALI } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, STATO_PRATICA, STATI_PRATICA_TERMINALI } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
-import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
+import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoRuoloLookup from '../../core/components/SoggettoRuoloLookup.vue'
 import IstanzaUtilityLookup from '../../core/components/IstanzaUtilityLookup.vue'
-import { getSoggettoRuoloLookupById, lookupCodici } from '../../core/apiCore'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { getSoggettoRuoloLookupById } from '../../core/apiCore'
+import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import PraticaFlussiTab from './PraticaFlussiTab.vue'
 import PraticaNoteTab from './PraticaNoteTab.vue'
 import PraticaAllegatiTab from './PraticaAllegatiTab.vue'
@@ -41,7 +43,6 @@ import TabPanel from 'primevue/tabpanel'
 import TabPanels from 'primevue/tabpanels'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
-import { MANAGE_ICONS } from '../../core/constants'
 
 const { t } = useI18n()
 const store = usePraticheStore()
@@ -85,6 +86,18 @@ function defaultForm() {
 const resolverVisible = ref(false)
 const contestoSelezionato = ref(null)
 const istanzaSelezionata = ref(null)
+
+// Modifiche non salvate: fotografia a form popolato (apertura, ricarica,
+// salvataggio), chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+// In creazione contesto e istanza scelti stanno fuori dal form: il confronto
+// ne raccoglie gli id. Dopo i loro ref: il computed li legge subito (TDZ).
+const formSalvato = computed(() => ({
+  ...form.value,
+  contesto_soggetto_id: contestoSelezionato.value?.soggetto_id ?? null,
+  contesto_soggetto_ruolo_id: contestoSelezionato.value?.soggetto_ruolo_id ?? null,
+  istanza_id: istanzaSelezionata.value?.id ?? null
+}))
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
 
 // Solo il ruolo CLIENTE ha istanze (la catena istanza -> BA -> cliente vive
 // sul ramo CL); per gli altri ruoli il campo istanza non ha senso.
@@ -176,6 +189,7 @@ watch(() => props.visible, async (val) => {
     await preselectTipoPreset()
     await preselectPrioritaDefault()
   }
+  fissa()
 }, { immediate: true })
 
 // Scopo: preset tipo dal contesto del caller (filtro lista attivo): default
@@ -184,10 +198,7 @@ watch(() => props.visible, async (val) => {
 // extra): il filtro lista include gli obsoleti, e un id fuori opzioni
 // renderebbe il Select vuoto a video ma il valore verrebbe comunque salvato.
 // Preset non tra le opzioni → si ignora (campo vuoto, scelta all'operatore).
-const tipiLookup = useGlobalLookup(
-  'pratiche.tipi_prestazione::no-obsoleti',
-  () => lookupCodici('pratiche.tipi_prestazione', { page_size: 200, includi_obsoleti: false }),
-)
+const tipiLookup = useLookupCodici('pratiche.tipi_prestazione', { includiObsoleti: false })
 
 async function preselectTipoPreset() {
   const presetId = props.presetTipoPrestazioneId
@@ -205,13 +216,10 @@ async function preselectTipoPreset() {
 // Scopo: default priorita' NORMALE in creazione, risolto per codice_interno
 // dal lookup (mai id hardcodato — feedback_no_hardcoded_ids). Il BE applica
 // comunque lo stesso default se il campo arriva vuoto: qui serve solo a
-// renderlo VISIBILE all'operatore nel form. Cache useGlobalLookup con la
-// STESSA chiave/fetch della LookupSelect del form (rel + page_size 200):
-// la preselezione non aggiunge round-trip.
-const prioritaLookup = useGlobalLookup(
-  'config.priorita_pratiche',
-  () => lookupCodici('config.priorita_pratiche', { page_size: 200 }),
-)
+// renderlo VISIBILE all'operatore nel form. STESSA entry di cache della
+// LookupSelect del form, per costruzione (`useLookupCodici`): la
+// preselezione non aggiunge round-trip.
+const prioritaLookup = useLookupCodici('config.priorita_pratiche')
 
 async function preselectPrioritaDefault() {
   if (form.value.priorita_id != null) return
@@ -229,6 +237,7 @@ async function reloadDetail() {
   const d = await store.fetchDetail(props.praticaId)
   detail.value = d
   populateFormFromDetail(d)
+  fissa()
 }
 
 // --- Azioni stato pratica ---
@@ -292,7 +301,7 @@ const drawerActions = computed(() => {
       key: 'apri',
       kind: 'state',
       label: t('pratiche.azione_apri'),
-      icon: 'pi pi-lock-open',
+      icon: MANAGE_ICONS.APRI,
       severity: 'info',
       visible: s === STATO_PRATICA.BOZZA,
       hideWhenReadonly: true,
@@ -302,7 +311,7 @@ const drawerActions = computed(() => {
       key: 'sospendi',
       kind: 'state',
       label: t('pratiche.azione_sospendi'),
-      icon: 'pi pi-pause',
+      icon: MANAGE_ICONS.SOSPENDI,
       severity: 'warn',
       visible: s === STATO_PRATICA.APERTA,
       hideWhenReadonly: true,
@@ -312,7 +321,7 @@ const drawerActions = computed(() => {
       key: 'riattiva',
       kind: 'state',
       label: t('pratiche.azione_riattiva'),
-      icon: 'pi pi-play',
+      icon: MANAGE_ICONS.PLAY,
       severity: 'success',
       visible: s === STATO_PRATICA.SOSPESA,
       hideWhenReadonly: true,
@@ -348,7 +357,7 @@ async function onSave() {
       () => store.update(props.praticaId, payload),
       { successMessage: t('pratiche.pratica_salvata') }
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   } else {
     const payload = {
       tipo_prestazione_id: form.value.tipo_prestazione_id,
@@ -367,7 +376,7 @@ async function onSave() {
       () => store.create(payload),
       { successMessage: t('pratiche.pratica_creata') }
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   }
 }
 
@@ -379,6 +388,9 @@ const canSave = computed(() => {
 })
 
 const onClose = useDrawerClose(emit, 'cancelled')
+// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
+const chiudi = () => chiudiConConferma(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -386,14 +398,15 @@ const onClose = useDrawerClose(emit, 'cancelled')
     :visible="props.visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    @update:visible="val => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('pratiche.pratica')"
-        icon="pi pi-folder"
+        :icon="NAV_ICONS.PRATICHE"
       />
     </template>
 
@@ -414,7 +427,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <small class="app-text-muted">{{ t('pratiche.soggetto_opzionale') }}</small>
           </div>
           <div>
-            <Button :label="t('pratiche.nuovo_soggetto')" icon="pi pi-user-plus"
+            <Button :label="t('pratiche.nuovo_soggetto')" :icon="MANAGE_ICONS.ADD"
               text size="small" @click="resolverVisible = true" />
           </div>
 
@@ -443,7 +456,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <div v-else-if="istanzaDerivata" class="form-field">
             <label>{{ t('pratiche.field_istanza') }}</label>
             <div class="app-field-hint">
-              <i class="pi pi-link" style="margin-right: 0.4rem;"></i>
+              <i :class="MANAGE_ICONS.DERIVATO" style="margin-right: 0.4rem;"></i>
               {{ t('pratiche.istanza_derivata', { codice: contestoSelezionato.istanza_unica_codice }) }}
             </div>
           </div>
@@ -479,7 +492,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </div>
         </div>
         <div>
-          <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+          <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="chiudi" />
         </div>
 
         <!-- Sotto-drawer: SoggettoResolver -->
@@ -572,13 +585,18 @@ const onClose = useDrawerClose(emit, 'cancelled')
             </div>
 
             <div>
-              <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+              <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="chiudi" />
             </div>
           </TabPanel>
 
           <!-- Tab Flussi -->
           <TabPanel value="flussi">
-            <PraticaFlussiTab :pratica-id="props.praticaId" />
+            <!-- L'emittente della pratica scioglie il cancello di perimetro
+                 della lista `pratiche.flussi` (non `multi_emittente`). -->
+            <PraticaFlussiTab
+              :pratica-id="props.praticaId"
+              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+            />
           </TabPanel>
 
           <!-- Tab Note -->

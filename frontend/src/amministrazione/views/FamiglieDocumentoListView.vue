@@ -19,7 +19,7 @@
 // ⛔ Il CRUD è per il solo AMMINISTRATORE (D6): il cancello sta sull'endpoint
 //    (`AdminAPIView`), non nel database — `vendite.famiglie_documento` non ha
 //    RLS e non gliene si aggiunge una per un caso che un permesso risolve.
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -40,6 +40,9 @@ import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { READONLY_DOMAINS, MANAGE_ICONS } from '../../core/constants'
 import { useFamiglieDocumentoStore } from '../stores/famiglieDocumento'
 import { exportFamiglie } from '../api/famiglieDocumento'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import { buildAttivoOptions } from '../../core/utils/options'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -65,13 +68,18 @@ const {
 // ⛔ `null` = TUTTE, spente comprese: una famiglia spenta è la riga che spiega
 //    perché una tabella non è più disponibile. Un default «solo attive»
 //    nasconderebbe proprio quella.
-const attivoFilter = ref(null)
-const serieFilter = ref(null)
-const attivoOptions = [
-  { label: t('amministrazione.stato_all'), value: null },
-  { label: t('amministrazione.stato_attivo'), value: true },
-  { label: t('amministrazione.stato_inattivo'), value: false },
-]
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
+const { value: serieFilter, onChange: onSerieChange } = bindSelect('gestisce_serie')
+// ⭐ Dal BB (regola del 2, ok Tid 2026-09-23). ⛔ Anche qui la tendina diceva
+//    «Inattivo» e la colonna, resa da `AttivoTag`, «Non attivo».
+const attivoOptions = buildAttivoOptions(t)
 const serieOptions = [
   { label: t('amministrazione.famiglie_documento.serie_tutte'), value: null },
   { label: t('amministrazione.famiglie_documento.serie_si'), value: true },
@@ -79,12 +87,6 @@ const serieOptions = [
 ]
 
 onMounted(() => { store.fetchList() })
-
-function applyExtraFilters() {
-  store.filters.attivo = attivoFilter.value
-  store.filters.gestisce_serie = serieFilter.value
-  applyFilters()
-}
 
 function onRowClick(data) {
   drawer.editRow(data, 'id')
@@ -114,7 +116,10 @@ function buildRowActions(data) {
       label: data.attivo
         ? t('amministrazione.famiglie_documento.action_disattiva')
         : t('amministrazione.famiglie_documento.action_attiva'),
-      icon: data.attivo ? MANAGE_ICONS.CANCEL : MANAGE_ICONS.RELOAD,
+      // Lo STESSO senso delle anagrafiche di magazzino (spegni/riaccendi): un
+      // glifo per concetto, non uno per pagina (frontend-standards §«Dove vive
+      // il NOME di un'icona»). Fino al 21-09 qui erano `CANCEL`/`RELOAD`.
+      icon: data.attivo ? MANAGE_ICONS.DISATTIVA : MANAGE_ICONS.RIATTIVA,
       disabled: bloccata,
       tooltip: bloccata ? motivoBloccoRiga(t, te, data, 'rimozione_blocco') : undefined,
       // ⛔ `allowWhenInactive` NON è un di più: `RowActionsMenu` disabilita da
@@ -150,33 +155,37 @@ function cambiaAttivo(data) {
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText
-            v-model="searchText"
-            :placeholder="t('amministrazione.famiglie_documento.search_placeholder')"
-            style="width: 250px;"
-          />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('amministrazione.famiglie_documento.search_placeholder')"
+            />
+          </template>
           <!-- ⚠️ Il placeholder porta l'etichetta del DEFAULT: il valore di
                partenza e' `null` = tutte, e per PrimeVue `null` e' «niente
                selezionato» — senza, le due combo escono vuote su filtri che
                valgono «tutte». -->
           <Select
             v-model="attivoFilter"
+            class="app-filter-w-sm"
             :options="attivoOptions"
             :placeholder="t('amministrazione.stato_all')"
             option-label="label"
             option-value="value"
-            @change="applyExtraFilters"
+            @change="onAttivoChange"
           />
           <Select
             v-model="serieFilter"
+            class="app-filter-w-sm"
             :options="serieOptions"
             :placeholder="t('amministrazione.famiglie_documento.serie_tutte')"
             option-label="label"
             option-value="value"
-            @change="applyExtraFilters"
+            @change="onSerieChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -216,8 +225,8 @@ function cambiaAttivo(data) {
         </template>
         <!-- ⛔ Lo slot del kebab si chiama `#actions`: col nome sbagliato la
              colonna non viene resa affatto, e senza errori. -->
-        <template v-if="!isReadonly" #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+        <template v-if="!isReadonly" #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </ListaConfigurabile>
 

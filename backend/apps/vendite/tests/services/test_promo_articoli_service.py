@@ -31,7 +31,7 @@ Indice test eseguiti:
 16) test_create_uuid_formato_invalido          — articolo_id non UUID -> VALIDATION
 17) test_create_missing_uom                    — uom_id mancante -> VALIDATION
 18) test_create_unknown_key                    — chiave extra -> VALIDATION
-19) test_create_valido_al_prima_dal            — range date invalido -> VALIDATION
+19) test_create_delega_ordine_date_al_db      — range date invertito arriva al DB (guard comune)
 20) test_create_valido_al_required             — valido_al mancante -> VALIDATION
 21) test_create_duplicate_codice               — UNIQUE codice -> DUPLICATO
 22) test_create_overlap                        — ExclusionViolation -> PROMO_OVERLAP
@@ -168,7 +168,7 @@ class TestGet(TestCase):
     def test_get_ok(self, mock_repo):
         mock_repo.return_value.get_promo.return_value = {"id": 1}
         mock_repo.return_value.get_capabilities.return_value = {}
-        self.assertEqual(PromoArticoliService().get_promo(1), {"id": 1})
+        self.assertEqual(PromoArticoliService().get_promo(1), {"id": 1, "capabilities": {}})
 
     @patch(_REPO)
     def test_get_not_found(self, mock_repo):
@@ -186,7 +186,8 @@ class TestGet(TestCase):
 
     # Scopo: get_promo includa il blob capabilities (Fase 1.B3 refactor
     #        frontend vendite) — stato_temporale, can_update,
-    #        min_valido_*, non_editable_fields.
+    #        min_valido_*, non_editable_fields — SOTTO `capabilities`, intatto
+    #        (api.md §«Il blob sta SOTTO `capabilities`»).
     @patch(_REPO)
     def test_get_include_capabilities(self, mock_repo):
         mock_repo.return_value.get_promo.return_value = {"id": 1, "codice": "PR-1"}
@@ -201,9 +202,13 @@ class TestGet(TestCase):
                                      "valido_dal", "attivo"],
         }
         result = PromoArticoliService().get_promo(1)
-        self.assertEqual(result["stato_temporale"], "INIZIATA")
-        self.assertTrue(result["can_update"])
-        self.assertIn("codice", result["non_editable_fields"])
+        caps = result["capabilities"]
+        self.assertEqual(caps, mock_repo.return_value.get_capabilities.return_value)
+        self.assertEqual(caps["stato_temporale"], "INIZIATA")
+        self.assertTrue(caps["can_update"])
+        self.assertIn("codice", caps["non_editable_fields"])
+        for chiave in caps:
+            self.assertNotIn(chiave, result)
         mock_repo.return_value.get_capabilities.assert_called_once_with(1)
 
 
@@ -332,17 +337,20 @@ class TestCreate(TestCase):
             PromoArticoliService().create_promo(_base_payload(colonna_ignota=1))
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
+    # L'ordine delle date NON lo giudica il service: il guard comune del DB
+    # risponde E_DATA_AL_MINORE_DAL col campo (provato sul DB vero in
+    # apps/core/tests/db/test_date_validita_guard_comune_db).
     @patch(_REPO)
-    def test_create_valido_al_prima_dal(self, mock_repo):
-        del mock_repo
-        # Entrambe future, ma dal > al -> coerenza range fallisce.
-        dal_late = (_TODAY + timedelta(days=180)).isoformat()
-        al_early = (_TODAY + timedelta(days=30)).isoformat()
-        with self.assertRaises(ServiceError) as ctx:
-            PromoArticoliService().create_promo(_base_payload(
-                valido_dal=dal_late, valido_al=al_early,
-            ))
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+    def test_create_delega_ordine_date_al_db(self, mock_repo):
+        mock_repo.return_value.create_promo.return_value = 1
+        mock_repo.return_value.get_promo.return_value = {"id": 1}
+        dal_late = _TODAY + timedelta(days=180)
+        al_early = _TODAY + timedelta(days=30)
+        PromoArticoliService().create_promo(_base_payload(
+            valido_dal=dal_late.isoformat(), valido_al=al_early.isoformat(),
+        ))
+        data = mock_repo.return_value.create_promo.call_args.args[0]
+        self.assertEqual((data["valido_dal"], data["valido_al"]), (dal_late, al_early))
 
     @patch(_REPO)
     def test_create_valido_al_required(self, mock_repo):

@@ -40,19 +40,22 @@ BEGIN
   IF v_tipo_soggetto_dettaglio_id IS NULL THEN RETURN; END IF;
 
   LOOP
+    -- Il tipo si confronta per ID (rev 20260923-49): la vista espone in
+    -- tipo_indirizzo_codice il CODICE (display, mutabile), il parametro e' il
+    -- CODICE_INTERNO. Confrontati come testo non si incontravano mai.
+    SELECT ti.id INTO v_current_tipo_id
+    FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+    IF v_current_tipo_id IS NULL THEN RETURN; END IF;
+
     -- Cerca indirizzi per il tipo corrente
     RETURN QUERY
     SELECT * FROM anagrafiche.vw_indirizzi_resolved_soggetto r
-    WHERE r.soggetto_id = p_soggetto_id AND r.tipo_indirizzo_codice = v_current_codice;
+    WHERE r.soggetto_id = p_soggetto_id AND r.tipo_indirizzo_id = v_current_tipo_id;
 
     GET DIAGNOSTICS v_rows_found = ROW_COUNT;
     IF v_rows_found > 0 THEN RETURN; END IF;
 
     -- Nessun indirizzo trovato: cerca fallback
-    SELECT ti.id INTO v_current_tipo_id
-    FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
-    IF v_current_tipo_id IS NULL THEN RETURN; END IF;
-
     -- Protezione anti-loop circolare
     IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN RETURN; END IF;
     v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);

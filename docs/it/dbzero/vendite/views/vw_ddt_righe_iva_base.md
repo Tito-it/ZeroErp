@@ -25,7 +25,7 @@ SELECT r.ddt_id,
     r.sconto_percentuale,
     (r.quantita * r.prezzo_unitario) AS imponibile_lordo_full,
     (((r.quantita * r.prezzo_unitario) * COALESCE(r.sconto_percentuale, (0)::numeric)) / (100)::numeric) AS sconto_riga_full,
-    ((r.quantita * r.prezzo_unitario) * ((1)::numeric - (COALESCE(r.sconto_percentuale, (0)::numeric) / (100)::numeric))) AS imponibile_riga_full,
+    script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale) AS imponibile_riga_full,
     r.attivo,
     r.data_insert,
     r.data_update

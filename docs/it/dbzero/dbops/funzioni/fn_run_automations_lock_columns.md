@@ -12,174 +12,139 @@ CREATE OR REPLACE FUNCTION dbops.fn_run_automations_lock_columns(p_exec_mode tex
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
-DECLARE
-  v_schemas text[];
-  rtab record;
-  rrule record;
-  rcol record;
-  rel  regclass;
-  col_list text[];
-  arg_list text[];
-  trg_name text;
-  tmpl     text;
-  exist_strat text;
-  update_cols text;
-  arg_text text;
-  created boolean;
-BEGIN
-
 /*
   Scopo
   -----
-  Esegue l'automazione di provisioning dei trigger "LOCK_COLUMNS" sulle tabelle in scope,
-  applicando il blocco su:
-  - codice_interno (se presente in tabella),
-  - colonne extra definite in dbops.automation_lock_columns.
+  Porta i trigger LOCK_COLUMNS (script.trgfn_lock_columns) delle tabelle in
+  scope allo stato che il registro dichiara:
+  - codice_interno, se presente in tabella (implicito);
+  - colonne extra attive in dbops.automation_lock_columns.
+  Il confronto fra atteso e vivo lo fa dbops.fn_lock_columns_divergenze:
+  qui si esegue l'azione di ogni riga.
 
-  Regole di selezione colonne
-  ---------------------------
-  1) codice_interno e' implicito: non si configura nella tabella di setup.
-  2) Le colonne extra sono lette da dbops.automation_lock_columns con:
-     - enabled = true
-     - exec_mode = 'AUTO' oppure exec_mode = p_exec_mode
-  3) Una colonna e' aggiunta solo se esiste fisicamente nella tabella target.
+  Azioni
+  ------
+  CREA      trigger unico col nome da template (dbops.automation_rules_tbl)
+  RIGENERA  toglie tutti i lock vivi della tabella, qualunque nome abbiano,
+            e crea quello atteso
+  TOGLIE    toglie tutti i lock vivi (nessuna colonna da bloccare)
 
-  Trigger generato
-  ----------------
-  Unico trigger per tabella:
-    BEFORE UPDATE OF <colonne>
-    EXECUTE FUNCTION script.trgfn_lock_columns(<col,msgcode...>)
-  Nome trigger:
-    trg_{table}_a10_lock_columns_upd (via dbops.fn_name_from_template)
+  Colonne fuori dal registro
+  --------------------------
+  Una colonna bloccata dal vivo che il registro non nomina affatto ferma il
+  giro con E_LOCK_COLUMNS, prima di qualunque DDL: convergere la
+  cancellerebbe in silenzio. Si aggiunge la riga (enabled = false se il
+  blocco va tolto).
 
-  Modalita' DRY RUN
-  ----------------
-  Se p_dry_run=true non esegue DDL (CREATE TRIGGER) e registra audit con dbops.fn_audit_log_once.
-
-  Error handling
-  --------------
-  In caso di errore nella creazione del trigger, log strutturato e rilancio tramite
-  script.fn_log_and_raise_error con contesto 'LOCK_COLUMNS'.
+  DRY RUN
+  -------
+  p_dry_run = true: nessuna DDL, azione e colonne perse nell'audit
+  (dbops.fn_audit_log_once).
 */
+DECLARE
+    r        record;
+    v_trg    text;
+    v_cols   text;
+    v_args   text;
+    v_perse  text;
+BEGIN
+    -- ⭐ Prima di qualunque DDL, e per TUTTE le tabelle insieme: un lock nato
+    --    fuori dal registro non si cancella. Chi lancia la migrate riceve
+    --    l'elenco intero, non la prima tabella.
+    IF NOT p_dry_run THEN
+        SELECT string_agg(d.schema_name||'.'||d.table_name||' ('||array_to_string(d.colonne_perse, ', ')||')',
+                          '; ' ORDER BY d.schema_name, d.table_name)
+          INTO v_perse
+          FROM dbops.fn_lock_columns_divergenze(p_exec_mode, p_schemas) AS d
+         WHERE cardinality(d.colonne_perse) > 0;
 
-  v_schemas := dbops.fn_resolve_scope(p_schemas);
-  FOR rtab IN
-    SELECT n.nspname AS schema_name,
-          c.relname AS table_name,
-          (quote_ident(n.nspname)||'.'||quote_ident(c.relname))::regclass AS rel
-    FROM pg_class c
-    JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE c.relkind='r'
-      AND n.nspname = ANY(v_schemas)
-      AND dbops.fn_table_in_scope(n.nspname, c.relname)
-  LOOP
-    rel := rtab.rel;
-    col_list := ARRAY[]::text[];
-    arg_list := ARRAY[]::text[];
-    created := false;
-
-    IF dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'codice_interno') THEN
-      col_list := array_append(col_list, 'codice_interno');
-      arg_list := array_append(arg_list, quote_literal('codice_interno'));
-      arg_list := array_append(arg_list, quote_literal('E_CODICE_NON_MODIFICABILE'));
+        IF v_perse IS NOT NULL THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                'dbops.fn_run_automations_lock_columns',
+                'E_LOCK_COLUMNS',
+                jsonb_build_object('where', 'LOCK_COLUMNS_FUORI_REGISTRO', 'tabelle', v_perse),
+                NULL::uuid,
+                format('colonne bloccate da un trigger che il registro dbops.automation_lock_columns '
+                       'non nomina: %s. Aggiungere le righe (enabled = false se il blocco va tolto) '
+                       'prima di convergere', v_perse)
+            );
+        END IF;
     END IF;
 
-    FOR rcol IN
-      SELECT column_name,
-             COALESCE(error_code, 'E_CODICE_NON_MODIFICABILE') AS error_code
-        FROM dbops.automation_lock_columns
-       WHERE enabled
-         AND target_schema = rtab.schema_name
-         AND target_table = rtab.table_name
-         AND (upper(btrim(exec_mode)) = 'AUTO' OR exec_mode = p_exec_mode)
-       ORDER BY column_name
+    FOR r IN
+        SELECT d.*
+          FROM dbops.fn_lock_columns_divergenze(p_exec_mode, p_schemas) AS d
+         ORDER BY d.schema_name, d.table_name
     LOOP
-      IF dbops.fn_col_exists(rtab.schema_name, rtab.table_name, rcol.column_name) THEN
-        IF NOT (rcol.column_name = ANY(col_list)) THEN
-          col_list := array_append(col_list, rcol.column_name);
-          arg_list := array_append(arg_list, quote_literal(rcol.column_name));
-          arg_list := array_append(arg_list, quote_literal(rcol.error_code));
-        END IF;
-      END IF;
-    END LOOP;
-
-    IF array_length(col_list, 1) IS NOT NULL THEN
-      FOR rrule IN
-        SELECT *
-          FROM dbops.automation_rules_tbl r
-        WHERE r.enabled
-          AND upper(btrim(r.rule_type))='LOCK_COLUMNS'
-          AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
-          AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
-          AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
-        ORDER BY r.priority, r.id
-      LOOP
-        EXIT WHEN created;
-        exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
-        tmpl := COALESCE(rrule.name_template, 'trg_{table}_a10_lock_columns_upd');
-        trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL, NULL, NULL, NULL);
-
-        IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
-        OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel, 'script', 'trgfn_lock_columns'))
-        OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
-                                          OR dbops.fn_trigger_exists_by_function(rel, 'script', 'trgfn_lock_columns')))
-        THEN
-          update_cols := (
-            SELECT string_agg(quote_ident(c), ', ')
-              FROM unnest(col_list) AS c
-          );
-          arg_text := array_to_string(arg_list, ', ');
-
-          IF p_dry_run THEN
+        IF p_dry_run THEN
             PERFORM dbops.fn_audit_log_once(
-              p_function_name => 'dbops.fn_run_automations',
-              p_status        => 'DRYRUN',
-              p_rule_type     => 'LOCK_COLUMNS',
-              p_exec_mode     => p_exec_mode,
-              p_parts         => ARRAY['LOCK_COLUMNS'],
-              p_dry_run       => true,
-              p_params        => jsonb_build_object(
-                                  'table', rtab.schema_name||'.'||rtab.table_name,
-                                  'trigger', trg_name,
-                                  'columns', col_list,
-                                  'action', 'DRYRUN_CREATE_TRIGGER'
-                                ),
-              p_message       => 'Trigger would be created'
+                p_function_name => 'dbops.fn_run_automations',
+                p_status        => 'DRYRUN',
+                p_rule_type     => 'LOCK_COLUMNS',
+                p_exec_mode     => p_exec_mode,
+                p_parts         => ARRAY['LOCK_COLUMNS'],
+                p_dry_run       => true,
+                p_params        => jsonb_build_object(
+                                    'table',         r.schema_name||'.'||r.table_name,
+                                    'trigger',       r.trigger_atteso,
+                                    'columns',       r.colonne_attese,
+                                    'trigger_vivi',  r.trigger_vivi,
+                                    'colonne_perse', r.colonne_perse,
+                                    'action',        'DRYRUN_'||r.azione
+                                  ),
+                p_message       => 'Lock columns: '||r.azione
             );
-            created := true;
-          ELSE
-            BEGIN
-              EXECUTE format($f$
-                CREATE TRIGGER %I
-                BEFORE UPDATE OF %s ON %I.%I
-                FOR EACH ROW
-                EXECUTE FUNCTION script.trgfn_lock_columns(%s)
-              $f$, trg_name, update_cols, rtab.schema_name, rtab.table_name, arg_text);
-              created := true;
-            EXCEPTION WHEN others THEN
-              PERFORM script.fn_log_and_raise_error(
-                'dbops',
-                'run_automations',
+            CONTINUE;
+        END IF;
+
+        BEGIN
+            FOREACH v_trg IN ARRAY r.trigger_vivi LOOP
+                EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I',
+                               v_trg, r.schema_name, r.table_name);
+            END LOOP;
+
+            IF r.azione IN ('CREA', 'RIGENERA') THEN
+                SELECT string_agg(quote_ident(c), ', ' ORDER BY i)
+                  INTO v_cols
+                  FROM unnest(r.colonne_attese) WITH ORDINALITY AS u(c, i);
+                SELECT string_agg(quote_literal(a), ', ' ORDER BY i)
+                  INTO v_args
+                  FROM unnest(r.argomenti_attesi) WITH ORDINALITY AS u(a, i);
+
+                EXECUTE format($f$
+                  CREATE TRIGGER %I
+                  BEFORE UPDATE OF %s ON %I.%I
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_lock_columns(%s)
+                $f$, r.trigger_atteso, v_cols, r.schema_name, r.table_name, v_args);
+            END IF;
+        EXCEPTION WHEN others THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                'dbops.fn_run_automations_lock_columns',
                 'E_LOCK_COLUMNS',
                 jsonb_build_object(
-                  'where','LOCK_COLUMNS',
-                  'table', rtab.schema_name||'.'||rtab.table_name,
-                  'error', SQLERRM
+                    'where',  'LOCK_COLUMNS',
+                    'table',  r.schema_name||'.'||r.table_name,
+                    'azione', r.azione,
+                    'error',  SQLERRM
                 ),
                 NULL::uuid,
                 SQLERRM
-              );
-            END;
-          END IF;
-        END IF;
-      END LOOP;
-    END IF;
-  END LOOP;
+            );
+        END;
+
+        RAISE NOTICE 'LOCK_COLUMNS: % %.% (vivi: %; attese: %)',
+            r.azione, r.schema_name, r.table_name,
+            COALESCE(array_to_string(r.trigger_vivi, ', '), ''),
+            COALESCE(array_to_string(r.colonne_attese, ', '), '');
+    END LOOP;
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_lock_columns(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Crea i trigger di lock columns per codice_interno e colonne extra configurate.';
+IS 'Converge i trigger di lock columns (script.trgfn_lock_columns) verso lo stato dichiarato: codice_interno implicito + colonne attive di dbops.automation_lock_columns. Crea, rigenera (anche i lock scritti a mano, qualunque nome abbiano) o toglie, secondo dbops.fn_lock_columns_divergenze. Si ferma con E_LOCK_COLUMNS, prima di qualunque DDL, se una colonna bloccata non e'' nominata dal registro. Rev 20260926-04: assorbe dbops.fn_run_automations_drop_lock_trg (ritirata). Brief: brief-db-lock-di-colonna-fuori-registro §4 D2.';
 ```
 
 ---

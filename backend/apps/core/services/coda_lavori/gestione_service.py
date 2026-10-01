@@ -38,14 +38,14 @@ from apps.core.services.coda_lavori.repository import (
 from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import run_fan_out
-from apps.core.services.list_helpers import validate_enum_param
+from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.processi import (
     PROCESSO_DRAINA_CODA_LAVORI,
     PROCESSO_DRAINA_CODA_STAMPA,
 )
-from apps.core.services.service_errors import ServiceError
+from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
 # Azione di processo che sblocca la vista cross-utente e le azioni su job
 # altrui (D-A). Seed a carico del team DB (brief §6, area core); finché non è
@@ -123,16 +123,15 @@ def _valida_ordinamento(
     default: str,
     function_name: str,
 ) -> tuple[str, str]:
-    validate_enum_param(
-        sort_by, allowed=allowed, param_name="sort_by",
+    # ⛔ Il BB `validate_order_params` (2026-09-26), non due `validate_enum_param`
+    #    con un insieme `("ASC", "DESC")` scritto qui: la direzione la giudica
+    #    `order_dir_ammessa`, la stessa regola del repository e di ogni lista.
+    #    `nullable`: l'assenza prende i default di Tid qui sotto.
+    sort_by, sort_dir_norm = validate_order_params(
+        sort_by, sort_dir, allowed_columns=allowed, nullable=True,
         error_code="E_SEARCH_VALIDATION", function_name=function_name,
     )
-    sort_dir_norm = sort_dir.upper() if sort_dir else None
-    validate_enum_param(
-        sort_dir_norm, allowed=("ASC", "DESC"), param_name="sort_dir",
-        error_code="E_SEARCH_VALIDATION", function_name=function_name,
-    )
-    return sort_by or default, sort_dir_norm or "DESC"
+    return sort_by or default, (sort_dir_norm or "desc").upper()
 
 
 # Scopo: liveness dei worker, con la soglia PRESA DAL CONTRATTO A CATALOGO
@@ -439,7 +438,7 @@ def requeue_job(
 ) -> dict[str, Any]:
     ErrorManager.require(
         1 <= int(extra_tentativi) <= 10,
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message="`extra_tentativi` deve essere tra 1 e 10.",
         detail=f"extra_tentativi={extra_tentativi}",
     )
@@ -546,7 +545,7 @@ def _guard_archiviazione(user: Any) -> None:
 def _valida_ids_archiviazione(ids: object, *, function_name: str) -> list[int]:
     ErrorManager.require(
         isinstance(ids, list) and len(ids) > 0,
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message="Selezionare almeno una riga.",
         detail="`ids` deve essere una lista non vuota.",
         context={"field": "ids"},
@@ -555,7 +554,7 @@ def _valida_ids_archiviazione(ids: object, *, function_name: str) -> list[int]:
     assert isinstance(ids, list)
     ErrorManager.require(
         all(isinstance(i, int) and not isinstance(i, bool) and i > 0 for i in ids),
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message="Elenco di righe non valido.",
         detail="Ogni elemento di `ids` deve essere un intero positivo.",
         context={"field": "ids"},
@@ -563,7 +562,7 @@ def _valida_ids_archiviazione(ids: object, *, function_name: str) -> list[int]:
     )
     ErrorManager.require(
         len(ids) <= MAX_RIGHE_ARCHIVIAZIONE,
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message=f"Troppe righe selezionate (massimo {MAX_RIGHE_ARCHIVIAZIONE}).",
         detail=f"Ricevute {len(ids)} righe.",
         context={"field": "ids"},

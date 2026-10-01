@@ -14,23 +14,27 @@ CREATE OR REPLACE FUNCTION script.fn_get_user_permissions_map(p_auth_user_id int
  STABLE
 AS $function$
 DECLARE
-    v_has_identita boolean;
-    v_is_super     boolean;
-    v_ctx_ruolo    config.ruolo_applicativo;
+    v_has_identita boolean;   -- flag calcolato (fn_has_identita_attiva)
+    v_is_super     boolean;   -- flag calcolato (fn_is_super_admin)
+    v_ctx_ruolo    anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Mappa livello accesso per tutte le aree funzionali
     --   attive (single roundtrip). JSONB { "schema": "LIV", ... }.
     --
-    -- Catena (post PR-B 21-04-2026, context-aware):
+    -- Catena (context-aware dal 21-04-2026):
     --   1. Guard parametro obbligatorio
     --   2. Gate GUC: se app.ruolo_applicativo popolata e
     --      != OPERATORE -> v_has_identita=false, v_is_super=false
     --      (il CASE nel jsonb_object_agg produce BLOCCATO
     --      per tutte le aree).
-    --   3. Altrimenti pre-calcolo legacy dei due flag.
-    --   4. CTE best_per_area + aggregazione jsonb invariata.
+    --   3. Altrimenti pre-calcolo dei due flag.
+    --   4. Per area attiva: override, poi ereditato
+    --      (fn_get_permessi_ereditati_aree), poi BLOCCATO.
+    -- Rev 20260925-85: l'ereditato non si ricalcola qui (erano le
+    -- CTE livelli_user/best_per_area): lo da' il building block,
+    -- sede unica dello spareggio e della veste OPERATORE (D-1, D-2).
     -- =========================================================
 
     -- 1. Guard parametro obbligatorio.
@@ -61,23 +65,8 @@ BEGIN
         v_is_super     := script.fn_is_super_admin(p_auth_user_id);
     END IF;
 
-    -- 4. CTE best_per_area + aggregazione jsonb.
+    -- 4. Aggregazione jsonb: override, poi ereditato, poi BLOCCATO.
     RETURN (
-        WITH livelli_user AS (
-            SELECT paa.area_id,
-                   paa.livello,
-                   h.priorita
-              FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
-              JOIN config.profili_accesso_aree paa
-                ON paa.profilo_accesso_id = h.profilo_accesso_id
-        ),
-        best_per_area AS (
-            SELECT DISTINCT ON (area_id)
-                   area_id,
-                   livello
-              FROM livelli_user
-             ORDER BY area_id, priorita
-        )
         SELECT COALESCE(
             jsonb_object_agg(
                 af.schema_db,
@@ -88,7 +77,7 @@ BEGIN
                         THEN 'TUTTO'
                     ELSE COALESCE(
                         uoa.livello,
-                        bpa.livello,
+                        e.livello,
                         'BLOCCATO'::config.livello_accesso
                     )::text
                 END
@@ -100,15 +89,15 @@ BEGIN
             ON uoa.auth_user_id = p_auth_user_id
            AND uoa.area_id = af.id
            AND uoa.validita @> CURRENT_DATE
-          LEFT JOIN best_per_area bpa
-            ON bpa.area_id = af.id
+          LEFT JOIN script.fn_get_permessi_ereditati_aree(p_auth_user_id) e
+            ON e.area_id = af.id
          WHERE af.attivo = TRUE
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_permissions_map(p_auth_user_id integer)
-IS 'Mappa permessi aree set-based. Context-aware (post PR-B 21-04-2026): gate GUC app.ruolo_applicativo != OPERATORE -> tutti BLOCCATO. Altrimenti catena legacy: has_identita, fn_is_super_admin, override, profili via helper.';
+IS 'Mappa dei livelli di accesso di un utente su tutte le aree attive, in una chiamata ({schema_db: livello}). Stessa catena di script.fn_resolve_livello_area: gate di contesto (veste diversa da OPERATORE -> tutto BLOCCATO), identita'' OPERATORE attiva, super admin -> TUTTO, override utente, ereditato dal profilo (script.fn_get_permessi_ereditati_aree: sola veste OPERATORE), default BLOCCATO. Rev 20260925-85 (brief-db-pgtap-permessi-ereditati, D-1 e D-2): l''ereditato non si ricalcola qui, e non conta piu'' i profili delle altre vesti dell''utente.';
 ```
 
 ---

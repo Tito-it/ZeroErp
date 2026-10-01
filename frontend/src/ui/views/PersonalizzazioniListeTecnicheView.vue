@@ -26,6 +26,8 @@ import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
 import TabPanels from 'primevue/tabpanels'
 import StatusPage from '../../core/components/StatusPage.vue'
+import { STATUS_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useAuthStore } from '../../stores/auth'
 import ListaCorrenteSelect from '../components/ListaCorrenteSelect.vue'
 import ListaDefinizionePanel from '../components/ListaDefinizionePanel.vue'
@@ -55,11 +57,11 @@ async function onDefinizioneChanged() {
   <div class="app-page">
     <StatusPage
       v-if="!canAccess"
-      icon="pi pi-lock"
+      :icon="STATUS_ICONS.VIETATO"
       :title="t('errors.forbidden_title')"
       :message="t('errors.forbidden_message')"
       :action-label="t('errors.back_home')"
-      action-icon="pi pi-home"
+      :action-icon="NAV_ICONS.HOME"
       @action="router.push('/')"
     />
 

@@ -15,6 +15,7 @@ import AppDialog from '../../../../core/components/AppDialog.vue'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import { displayDate, parseIsoDate, toDateString } from '../../../../core/utils/date'
+import { MANAGE_ICONS } from '../../../../core/constants'
 
 const { t } = useI18n()
 
@@ -74,7 +75,7 @@ function onIspezionaContratto() {
         {{ props.contratto.numero }}
         <Button
           :label="t('vendite.offerte.successione_apri_contratto')"
-          icon="pi pi-eye"
+          :icon="MANAGE_ICONS.INSPECT"
           text
           size="small"
           @click="onIspezionaContratto"

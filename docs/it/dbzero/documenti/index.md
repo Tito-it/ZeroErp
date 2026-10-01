@@ -7,18 +7,20 @@
 - [render_engine_documento](tabelle/render_engine_documento.md) — (latest review 29-04-2026) `documenti.render_engine_documento` definisce il catalogo dei motori di rendering ammessi per la trasformazione del template in documento finale.
 - [template_asset](tabelle/template_asset.md) — (latest review 29-04-2026) `documenti.template_asset` è il catalogo degli **asset documentali riusabili** associati a un emittente fiscale: logo, firme, immagini, CSS o altri file di supporto usati nella resa dei template.
 - [template_documenti](tabelle/template_documenti.md) — (latest review 29-04-2026) `documenti.template_documenti` rappresenta il **contenitore logico** di un template documentale. Non contiene ancora il contenuto renderizzabile del template: definisce l'identità funzionale del template per tipo output, sorgente applicativa ed emittente fiscale.
-- [template_documenti_versioni](tabelle/template_documenti_versioni.md) — (latest review 29-04-2026) `documenti.template_documenti_versioni` contiene le **versioni renderizzabili** del template documentale, con stato di pubblicazione e finestra temporale di validità.
+- [template_documenti_versioni](tabelle/template_documenti_versioni.md) — (latest review 30-09-2026) `documenti.template_documenti_versioni` contiene le **versioni renderizzabili** del template documentale, con stato di pubblicazione e finestra temporale di validità.
 - [tipi_asset_documento](tabelle/tipi_asset_documento.md) — (latest review 29-04-2026) `documenti.tipi_asset_documento` definisce la tipologia funzionale degli asset riusabili nei template documentali: logo, firma, immagine, PDF di supporto, CSS e altre risorse statiche.
 - [tipi_documento_output](tabelle/tipi_documento_output.md) — (latest review 29-04-2026) `documenti.tipi_documento_output` definisce il catalogo dei **tipi di output** producibili dal motore documentale. Serve a separare il "che cosa genero" dalla sorgente applicativa e dal template usato per la resa PDF.
 - [tipi_file_documento](tabelle/tipi_file_documento.md) — (latest review 29-04-2026) `documenti.tipi_file_documento` definisce il catalogo dei **tipi di file persistiti** a valle della generazione di un documento.
 
 ## ⚙️ Funzioni
-- [fn_pubblica_template_documento_versione](funzioni/fn_pubblica_template_documento_versione.md) — (latest review 06-05-2026)
+- [fn_guard_versione_contesto](funzioni/fn_guard_versione_contesto.md)
+- [fn_pubblica_template_documento_versione](funzioni/fn_pubblica_template_documento_versione.md) — (latest review 30-09-2026 — il patto versione/forma dei dati: brief-db-documenti-versione-contesto-template)
 - [trgfn_documenti_generati_block_delete](funzioni/trgfn_documenti_generati_block_delete.md)
 - [trgfn_documenti_generati_check_coerenza](funzioni/trgfn_documenti_generati_check_coerenza.md)
 - [trgfn_documenti_generati_eventi_block_delete](funzioni/trgfn_documenti_generati_eventi_block_delete.md)
 - [trgfn_documenti_generati_eventi_block_update](funzioni/trgfn_documenti_generati_eventi_block_update.md)
 - [trgfn_documenti_generati_file_protect_file](funzioni/trgfn_documenti_generati_file_protect_file.md)
+- [trgfn_documenti_generati_guard_versione_contesto](funzioni/trgfn_documenti_generati_guard_versione_contesto.md)
 - [trgfn_documenti_generati_protect_snapshot](funzioni/trgfn_documenti_generati_protect_snapshot.md)
 - [trgfn_template_asset_block_delete](funzioni/trgfn_template_asset_block_delete.md)
 - [trgfn_template_asset_protect_file](funzioni/trgfn_template_asset_protect_file.md)

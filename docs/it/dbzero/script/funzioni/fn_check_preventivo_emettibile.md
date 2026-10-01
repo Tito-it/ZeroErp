@@ -20,6 +20,9 @@ AS $function$
 --   script.fn_available_actions_preventivo (che spegne il bottone).
 --   Gemella di fn_check_preventivo_annullabile.
 --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, I9 / §R-3.
+--   rev 2026-09-24: + MOTIVO 2, i prezzi non autorizzati, dal building
+--   block script.fn_check_prezzi_autorizzati
+--   (brief-db-preventivi-congelamento-pricing, D-1/D-2).
 -- Ritorna: [] se emettibile; altrimenti array ORDINATO di
 --   {codice, reason, reason_key, dettaglio}.
 DECLARE
@@ -108,12 +111,23 @@ BEGIN
                                             COALESCE(v_riga_des, 'senza descrizione')));
     END IF;
 
+    -- MOTIVO 2 (rev 2026-09-24) — PREZZI NON AUTORIZZATI: un preventivo
+    --   con un prezzo in attesa di approvazione o rifiutato dal
+    --   responsabile non si emette (D-1, D-2).
+    -- ⭐ Il predicato NON sta qui: sta nel building block comune ai cinque
+    --   documenti di vendita. Questa funzione decide solo che l'EMISSIONE
+    --   lo chiede. Dopo l'aliquota: quel motivo si corregge sulla riga,
+    --   questo spesso si aspetta.
+    v_motivi := v_motivi
+             || script.fn_check_prezzi_autorizzati('vendite.preventivi'::regclass,
+                                                   p_preventivo_id);
+
     RETURN v_motivi;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_preventivo_emettibile(p_preventivo_id bigint)
-IS 'Single source dei motivi che impediscono l''EMISSIONE di un preventivo. Ritorna [] se emettibile, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. PURA: non solleva e non scrive. Consumatori: vendite.trgfn_preventivi_guard_transizione (solleva il codice del primo motivo) e script.fn_available_actions_preventivo (spegne il bottone ed espone la reason). ⭐ Oggi UN motivo: E_PREV_RIGA_IVA_MANCANTE, una riga attiva con quantita e prezzo ma senza aliquota. Chiude un difetto silenzioso gemello di quelli sanati sul DDT (2026-08-28) e sull''ordine (2026-08-29): fn_ricalcola_riepilogo_iva_preventivo aggrega le righe attive con quantita > 0 e calcola l''imposta con COALESCE(fn_get_aliquota_iva(iva_id, stato), 0), quindi una riga senza aliquota finisce in vendite.preventivi_riepiloghi_iva con imponibile pieno e imposta zero. ⭐ IL PREDICATO E'' COPIATO DAL CONSUMATORE (attivo IS TRUE AND quantita > 0): il vincolo deve avere lo stesso perimetro di cio'' che protegge. ⚠️ E NON e'' una copia della gemella sugli ordini, perche'' i due documenti divergono su tre punti strutturali: preventivi_righe non ha riga_nr (nel messaggio va la DESCRIZIONE, non «la riga 0» che darebbe la colonna `ordine`), quantita e'' nullable e senza CHECK di positivita'' (sugli ordini c''e'' chk_ordini_v_r_qta_pos, quindi li'' il filtro sarebbe ridondante), attivo e'' nullable (su ordini_righe e'' NOT NULL). ⛔ NON contiene il motivo «documento senza righe»: quello vive nella porta vendite.fn_cambia_stato_preventivo ed e'' un''asimmetria gia'' dichiarata, non una regola dell''emissione. Piano: brief-db-be-iva-risolutore-e-regime-cliente, I9.';
+IS 'Single source dei motivi che impediscono l''EMISSIONE di un preventivo. Ritorna [] se emettibile, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. PURA: non solleva e non scrive. Consumatori: vendite.trgfn_preventivi_guard_transizione (solleva il codice del primo motivo) e script.fn_available_actions_preventivo (spegne il bottone ed espone la reason). ⭐ Oggi UN motivo: E_PREV_RIGA_IVA_MANCANTE, una riga attiva con quantita e prezzo ma senza aliquota. Chiude un difetto silenzioso gemello di quelli sanati sul DDT (2026-08-28) e sull''ordine (2026-08-29): fn_ricalcola_riepilogo_iva_preventivo aggrega le righe attive con quantita > 0 e calcola l''imposta con COALESCE(fn_get_aliquota_iva(iva_id, stato), 0), quindi una riga senza aliquota finisce in vendite.preventivi_riepiloghi_iva con imponibile pieno e imposta zero. ⭐ IL PREDICATO E'' COPIATO DAL CONSUMATORE (attivo IS TRUE AND quantita > 0): il vincolo deve avere lo stesso perimetro di cio'' che protegge. ⚠️ E NON e'' una copia della gemella sugli ordini, perche'' i due documenti divergono su tre punti strutturali: preventivi_righe non ha riga_nr (nel messaggio va la DESCRIZIONE, non «la riga 0» che darebbe la colonna `ordine`), quantita e'' nullable e senza CHECK di positivita'' (sugli ordini c''e'' chk_ordini_v_r_qta_pos, quindi li'' il filtro sarebbe ridondante), attivo e'' nullable (su ordini_righe e'' NOT NULL). ⛔ NON contiene il motivo «documento senza righe»: quello vive nella porta vendite.fn_cambia_stato_preventivo ed e'' un''asimmetria gia'' dichiarata, non una regola dell''emissione. Piano: brief-db-be-iva-risolutore-e-regime-cliente, I9. ⭐ rev 2026-09-24: + MOTIVO 2, i prezzi non autorizzati (E_DOC_PREZZO_PENDENTE, E_DOC_PREZZO_RIFIUTATO) su righe e componenti BoM attivi, dal building block script.fn_check_prezzi_autorizzati: il predicato sta li'''', qui si decide solo che l''''emissione lo chiede. Sommati dopo il motivo dell''''aliquota. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2).';
 ```
 
 ---

@@ -61,28 +61,21 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
     def test_conferma_senza_righe(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = []
+        # Contano solo le righe ATTIVE (guard DB, Regola 2 rev 2026-07-16):
+        # il filtro sta nel conteggio del BB (`count_righe`, presidiato in
+        # tests/db/test_righe_documento_lista), qui arriva gia' zero.
+        repo.count_righe.return_value = 0
         with self.assertRaises(ServiceError) as cm:
             ordini_service.conferma(7)
         self.assertEqual(cm.exception.code, "E_ORD_NESSUNA_RIGA")
-
-    @patch(_REPO)
-    def test_conferma_solo_righe_disattivate(self, repo_cls) -> None:
-        # Allineamento al guard DB (Regola 2 rev 2026-07-16): le righe
-        # disattivate non contano — sole righe attivo=False -> rifiuto.
-        repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1, "attivo": False}]
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.conferma(7)
-        self.assertEqual(cm.exception.code, "E_ORD_NESSUNA_RIGA")
+        repo.count_righe.assert_called_once_with(7)
 
     @patch(_COMPLETA_STEP)
     @patch(_REPO)
     def test_conferma_ok_deriva_stato(self, repo_cls, _mock_step) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1, "attivo": True}]
+        repo.count_righe.return_value = 1
         repo.get_stato_id_by_codice.return_value = 2
         out = ordini_service.conferma(7)
         self.assertEqual(out["stato"], "CONFERMATO")
@@ -152,12 +145,14 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         repo.update_ordine.assert_called_once()
 
     @patch(_REPO)
-    def test_get_ordine_merge_capabilities_data_driven(self, repo_cls) -> None:
-        # get_ordine fonde le capability da fn_available_actions_ordine
-        # (available_actions, can_edit_*, ...). `can_conferma` non e' piu' un flag.
+    def test_get_ordine_capabilities_annidate(self, repo_cls) -> None:
+        # get_ordine trasporta le capability di fn_available_actions_ordine
+        # (available_actions, can_edit_*, ...) SOTTO `capabilities`, senza
+        # fonderle nella testata (api.md §«Il blob sta SOTTO `capabilities`»).
+        # `can_conferma` non e' piu' un flag.
         repo = repo_cls.return_value
         repo.get_ordine.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
-        repo.list_righe.return_value = [{"id": 1}]
+        repo.count_righe.return_value = 1
         repo.get_capabilities.return_value = {
             "available_actions": [{"key": "conferma", "target_state": "CONFERMATO"}],
             "can_edit_testata": True,
@@ -165,10 +160,13 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
             "stato_codice": "DRAFT",
         }
         out = ordini_service.get_ordine(7)
-        self.assertEqual(out["available_actions"][0]["key"], "conferma")
+        caps = out["capabilities"]
+        self.assertEqual(caps, repo.get_capabilities.return_value)
+        self.assertEqual(caps["available_actions"][0]["key"], "conferma")
         self.assertEqual(out["righe_count"], 1)
-        self.assertEqual(out["stato_codice"], "DRAFT")
-        self.assertNotIn("can_conferma", out)
+        for chiave in caps:
+            self.assertNotIn(chiave, out)
+        self.assertNotIn("can_conferma", caps)
 
     @patch(_REPO)
     def test_cambia_stato_ok(self, repo_cls) -> None:
@@ -198,7 +196,7 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         # in bozza CON righe non si cancella, si annulla.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1}]
+        repo.count_righe.return_value = 1
         with self.assertRaises(ServiceError) as cm:
             ordini_service.elimina_ordine(7)
         self.assertEqual(cm.exception.code, "E_ORD_STATO_TRANSIZIONE")
@@ -210,7 +208,7 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         # abbandono auto-save).
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = []
+        repo.count_righe.return_value = 0
         repo.delete_ordine.return_value = True
         out = ordini_service.elimina_ordine(7)
         self.assertTrue(out["deleted"])
@@ -328,12 +326,12 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
         )
 
         # ⭐ E' la WHITELIST il cancello vero: `iva_id` non e' in
-        #    `_CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
+        #    `CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
         #    asserzione morde ANCHE se qualcuno rimettesse la chiave, perche'
         #    allora `payload_iva_id` tornerebbe 999.
         self.assertIsNone(iva.call_args.kwargs["payload_iva_id"])
-        self.assertNotIn("iva_id", ordini_service._CREATE_KEYS_RIGA)
-        self.assertNotIn("iva_id", ordini_service._UPDATE_KEYS_RIGA)
+        self.assertNotIn("iva_id", ordini_service.CREATE_KEYS_RIGA)
+        self.assertNotIn("iva_id", ordini_service.UPDATE_KEYS_RIGA)
         self.assertEqual(repo.create_riga.call_args.kwargs["iva_id"], 9)
 
 
@@ -697,7 +695,7 @@ class OrdiniStepPraticaTests(SimpleTestCase):
     def test_conferma_completa_step_conferma_ordine(self, ord_cls, MockPrat, mock_step) -> None:
         repo = ord_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1, "attivo": True}]
+        repo.count_righe.return_value = 1
         repo.get_stato_id_by_codice.return_value = 2
         MockPrat.return_value.get_pratica_id_by_sorgente.return_value = 290
 
@@ -714,7 +712,7 @@ class OrdiniStepPraticaTests(SimpleTestCase):
     def test_conferma_senza_pratica_noop(self, ord_cls, MockPrat, mock_step) -> None:
         repo = ord_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1, "attivo": True}]
+        repo.count_righe.return_value = 1
         repo.get_stato_id_by_codice.return_value = 2
         MockPrat.return_value.get_pratica_id_by_sorgente.return_value = None
 
@@ -925,3 +923,53 @@ class OrdiniRigaDateConsegnaTests(SimpleTestCase):
         _, kwargs = repo.update_riga.call_args
         self.assertIsNone(kwargs["data_consegna_confermata"])
         self.assertEqual(kwargs["data_consegna_richiesta_cliente"], date(2026, 10, 2))
+
+
+# Scopo: I satelliti «leggono prima la testata» (2026-09-21, allineamento a
+#        api.md §Scope emittente): un ordine fuori perimetro RLS — che il
+#        repository vede come `None`, identico a un id inesistente — deve
+#        essere un 404, non un 200 con lista vuota. Prova i tre satelliti e
+#        il caso felice (la testata trovata non cambia la delega).
+#
+# Indice:
+#  1. test_list_righe_ordine_non_trovato_e_404
+#  2. test_list_riepilogo_iva_ordine_non_trovato_e_404
+#  3. test_list_componenti_riga_di_altro_ordine_e_404
+#  4. test_list_righe_con_testata_delega_al_repo
+class OrdiniSatellitiTestataTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_list_righe_ordine_non_trovato_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.list_righe(99)
+        self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
+        repo.list_righe.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_riepilogo_iva_ordine_non_trovato_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.list_riepilogo_iva(99)
+        self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
+        repo.list_riepilogo_iva.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_componenti_riga_di_altro_ordine_e_404(self, repo_cls) -> None:
+        # La riga esiste ma appartiene a un altro ordine: l'id incrociato
+        # nell'URL non deve aprire i componenti di nessuno.
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 31, "ordine_id": 8}
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.list_componenti_riga(7, 31)
+        self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
+        repo.list_componenti_riga.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_righe_con_testata_delega_al_repo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        repo.list_righe.return_value = [{"id": 31}]
+        self.assertEqual(ordini_service.list_righe(7), [{"id": 31}])
+        repo.list_righe.assert_called_once_with(7)

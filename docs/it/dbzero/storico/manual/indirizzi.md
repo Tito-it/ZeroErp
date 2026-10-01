@@ -36,10 +36,8 @@ Il suo utilizzo è cruciale per:
 ### Collegamenti con Altre Tabelle
 
 * **`anagrafiche.indirizzi`**  
-  - Il campo `indirizzo_id` riferisce direttamente alla chiave primaria di `anagrafiche.indirizzi`.  
-  - Vincolo referenziale:  
-    - **ON UPDATE CASCADE** (propaga eventuali modifiche alla PK di `anagrafiche.indirizzi`)  
-    - **ON DELETE NO ACTION** (non permette la cancellazione se esistono record storici collegati).  
+  - Il campo `indirizzi_id` riferisce la chiave primaria di `anagrafiche.indirizzi` (nome allineato all'automazione da `20260925-26`: prima era `indirizzo_id`, e il trigger di storico non lo trovava).  
+  - ⚠️ FK **logica**, senza vincolo: le FK dello schema `storico` le ha tolte `20250827-02`, così uno snapshot sopravvive alla cancellazione della madre.  
 
 ---
 

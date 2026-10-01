@@ -33,7 +33,8 @@ import { extractApiError } from '../utils/apiError'
 import { displayTimestamp } from '../utils/date'
 import { formatFatturaNumero } from '../utils/format'
 import { statoCodaLavoriSeverity, statoCodaStampaSeverity } from '../utils/severity'
-import { CODE_TABS, DRAWER_WIDTH } from '../constants'
+import { CODE_TABS, DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../constants'
+import { NAV_ICONS } from '../navigation'
 import { getCodeConteggi, listCodaLavori, listCodaStampa } from '../api/tracciamento'
 import { STATI_CODA_VIVI, contaVivi, workerOkDaConteggi } from '../composables/useQueueCountsPolling'
 import { useDrawerContentReady } from '../composables/useDrawerContentReady'
@@ -117,7 +118,7 @@ const sezioni = computed(() => [
   {
     tab: CODE_TABS.LAVORI,
     chiave: 'coda_lavori',
-    icona: 'pi pi-inbox',
+    icona: NAV_ICONS.CODE_LAVORO,
     titolo: t('strumenti.code.coda_lavori'),
     severity: statoCodaLavoriSeverity,
     titoloRecenti: t('strumenti.code.ultimi_job'),
@@ -132,7 +133,7 @@ const sezioni = computed(() => [
   {
     tab: CODE_TABS.STAMPA,
     chiave: 'coda_stampa',
-    icona: 'pi pi-print',
+    icona: MANAGE_ICONS.STAMPA,
     titolo: t('strumenti.code.coda_stampa'),
     severity: statoCodaStampaSeverity,
     titoloRecenti: t('strumenti.code.ultime_stampe'),
@@ -229,13 +230,13 @@ function apriCoda(tab) {
         >
           <i :class="sez.icona" />
           <span>{{ sez.titolo }}</span>
-          <i class="pi pi-arrow-right app-code-sezione-vai" />
+          <i class="app-code-sezione-vai" :class="MANAGE_ICONS.VAI_A" />
         </Button>
 
         <div class="app-code-chips">
           <!-- Finché la lettura è in volo non si afferma niente: né le chip
                (i conteggi non ci sono) né «coda vuota». -->
-          <i v-if="loading" class="pi pi-spin pi-spinner app-spinner-in-corso" />
+          <i v-if="loading" class="app-spinner-in-corso" :class="STATUS_ICONS.CARICAMENTO" />
           <template v-for="s in STATI_VIVI" :key="s.codice">
             <Tag
               v-if="(sez.conteggi?.[s.chiave] ?? 0) > 0"

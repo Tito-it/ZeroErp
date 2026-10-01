@@ -1,0 +1,188 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Helper di fixture pgTAP: un OPERATORE UMANO — persona fisica, risorsa umana,
+#   utente, identita' OPERATORE — costruito dal percorso di produzione, e
+#   volendo SUPER ADMIN.
+#
+# ── ⛔ IL DIFETTO ────────────────────────────────────────────────────
+#   Il builder che c'era, `dbops.fn_pgtap_crea_emittente_operatore`, costruisce
+#   un utente TECNICO: e' l'unico percorso di produzione che lega un utente a
+#   un'azienda, ed e' giusto per «un operatore su un emittente». Ma non ha una
+#   risorsa umana, e ha SEMPRE un'azienda assegnata. Tre file del lotto 2
+#   chiedono l'altra cosa, e la PESCAVANO — su un database ricostruito dai
+#   changelog non c'e':
+#     - `anagrafiche/test-guard-albero-ba-omogeneo-v1` vuole un SUPER ADMIN
+#       SENZA azienda: e' multi-emittente per modello (il super admin di dbdev
+#       non ha righe in config.user_emittenti_fiscali), e non e' un dettaglio —
+#       script.fn_get_ba_emittente_sr_id fa ricadere un BA senza legame
+#       sull'emittente di CHI AGISCE prima che sul gestore globale, quindi un
+#       super admin con un'azienda sposta il ripiego (misurato il 2026-09-23);
+#       e togliergliela dopo non si puo': il guard di user_emittenti_fiscali
+#       ammette la cancellazione solo dentro la disattivazione dell'utente;
+#     - `script/test-fn-get-soggetto-dati-and-user-profile` vuole «il primo
+#       operatore con una risorsa umana attiva»;
+#     - `script/test-fn-get-user-profile-guc-aware` usava l'utente 1 (tid).
+#
+# ── ⭐ LA FORMA ──────────────────────────────────────────────────────
+#   Si chiama `anagrafiche.fn_crea_operatore_v2`, la stessa madre che usa il
+#   backend per creare un operatore: nessuna scrittura a mano, nessuna catena
+#   ricopiata. Il builder aggiunge solo cio' che una fixture non puo' scegliere
+#   bene da se':
+#     1. la FINESTRA DIFFERITA: la madre scrive il soggetto persona fisica e
+#        solo al passo 4 i suoi indirizzi, e il guard degli indirizzi e'
+#        DEFERRABLE — col preambolo dei pgTAP (IMMEDIATE) scatta sul soggetto
+#        nudo. Nel percorso reale la chiusura e' il COMMIT; qui e' la
+#        richiusura esplicita, che i guard li fa scattare davvero;
+#     2. un codice fiscale LIBERO, chiesto nel momento in cui serve
+#        (dbops.fn_pgtap_cf_libero: libero vuol dire libero ADESSO), e lo
+#        username derivato da quello, quindi libero anche lui;
+#     3. un indirizzo di dettaglio costruito (dbops.fn_pgtap_crea_indirizzo_dettaglio).
+#
+# ── ⭐ COSA NON ENTRA ────────────────────────────────────────────────
+#   L'AZIENDA. Un operatore umano nasce senza, come in produzione, e un
+#   operatore senza azienda e' fail-closed (P-2a): chi lo vuole su un emittente
+#   chiama script.fn_change_user_emittenti_scope, che e' il verbo del drawer
+#   Operatore. Un parametro «emittente» qui sarebbe la seconda sede di quel
+#   verbo. Non apre nemmeno il contesto: chi agisce lo decide il test.
+#
+# Permessi: funzione di chi migra, non SECURITY DEFINER, non in
+# dbops.sec_functions_owner.
+# Brief: brief-db-fixture-che-costruiscono-giro-2.md §11, lotto 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260923-08-create-fn-pgtap-crea-operatore-umano-mctit.yaml
+
+  - changeSet:
+      id: 20260923-08-create-fn-pgtap-crea-operatore-umano
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Helper di fixture pgTAP: dbops.fn_pgtap_crea_operatore_umano() costruisce
+        un operatore UMANO (persona fisica, risorsa umana, utente, identita'
+        OPERATORE), volendo super admin, chiamando la madre di produzione
+        anagrafiche.fn_crea_operatore_v2 dentro la finestra differita, con codice
+        fiscale e username liberi. Nasce senza azienda, come in produzione.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_operatore_umano(
+                  p_etichetta   text    DEFAULT 'pgTAP',
+                  p_super_admin boolean DEFAULT false
+              )
+               RETURNS TABLE (
+                  auth_user_id      anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  identita_id       anagrafiche.identita_digitali.id%TYPE,
+                  risorsa_umana_id  anagrafiche.risorse_umane.id%TYPE,
+                  soggetto_ruolo_id anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE,
+                  soggetto_id       anagrafiche.risorse_umane.soggetto_id%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un OPERATORE UMANO — persona
+              --   fisica, risorsa umana, utente, identita' OPERATORE — dal
+              --   percorso di produzione (anagrafiche.fn_crea_operatore_v2),
+              --   volendo super admin.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_sa AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('albero', true);
+              -- ⚠️ Nasce SENZA azienda, come in produzione: per legarlo a un
+              --   emittente si chiama script.fn_change_user_emittenti_scope.
+              --   Un super admin senza azienda e' il caso NORMALE (multi-emittente).
+              -- ⚠️ Non apre il contesto, ed esce con i vincoli IMMEDIATE.
+              -- ⛔ Cio' che scrive si legge in un'ISTRUZIONE SEPARATA: un JOIN
+              --   (o una funzione STABLE, come script.fn_is_super_admin) nella
+              --   stessa istruzione della chiamata vede la snapshot di PRIMA.
+              DECLARE
+                  v_cf        text;
+                  v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_identita  anagrafiche.identita_digitali.id%TYPE;
+                  v_ru_id     anagrafiche.risorse_umane.id%TYPE;
+                  v_sr_id     anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
+                  v_sog_id    anagrafiche.risorse_umane.soggetto_id%TYPE;
+                  v_qualifica config.qualifiche.id%TYPE;
+              BEGIN
+                  -- Libero ADESSO: si chiede qui, subito prima di scriverlo, e
+                  -- una volta sola (due chiamate prima della scrittura
+                  -- rispondono lo stesso numero).
+                  v_cf := dbops.fn_pgtap_cf_libero();
+
+                  SELECT q.id INTO v_qualifica
+                    FROM config.qualifiche q
+                   WHERE q.codice_interno = 'DIPENDENTE';
+
+                  IF v_qualifica IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_operatore_umano: la qualifica DIPENDENTE non e'' a catalogo (config.qualifiche)';
+                  END IF;
+
+                  -- ⛔ LA FINESTRA DIFFERITA. La madre scrive il soggetto
+                  --   persona fisica e SOLO al passo 4 i suoi indirizzi; il guard
+                  --   degli indirizzi obbligatori e' DEFERRABLE, e col preambolo
+                  --   dei pgTAP (IMMEDIATE) scatta sul soggetto ancora nudo. Nel
+                  --   percorso reale la chiusura e' il COMMIT.
+                  SET CONSTRAINTS ALL DEFERRED;
+
+                  v_user_id := anagrafiche.fn_crea_operatore_v2(
+                      p_cognome                     := 'Operatore ' || p_etichetta,
+                      p_nome                        := 'pgTAP',
+                      p_codice_fiscale              := v_cf,
+                      -- Username ed email dal codice fiscale: libero lui,
+                      -- liberi loro.
+                      p_username                    := 'pgtap_' || lower(v_cf),
+                      p_email                       := 'pgtap_' || lower(v_cf) || '@example.com',
+                      -- Una fixture non fa login: basta che non sia vuoto.
+                      p_password_hash               := 'pgtap-nessun-login',
+                      p_qualifica_id                := v_qualifica,
+                      p_is_super_admin              := p_super_admin,
+                      p_indirizzo_resid_dettaglio_id
+                          := dbops.fn_pgtap_crea_indirizzo_dettaglio(p_etichetta));
+
+                  -- Saga completa: i guard differiti scattano QUI, su un
+                  -- operatore finito.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  -- Una sola riga per costruzione:
+                  -- uq_identita_digitali_auth_user_ruolo_attivo e' UNIQUE su
+                  -- (auth_user_id, ruolo_applicativo) WHERE attivo.
+                  SELECT idg.id, ru.id, ru.soggetto_ruolo_id, ru.soggetto_id
+                    INTO v_identita, v_ru_id, v_sr_id, v_sog_id
+                    FROM anagrafiche.identita_digitali idg
+                    JOIN anagrafiche.risorse_umane ru
+                      ON ru.soggetto_ruolo_id = idg.soggetto_ruolo_id
+                   WHERE idg.auth_user_id = v_user_id
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                     AND idg.attivo;
+
+                  -- ⚠️ Guard sul RISULTATO: una tupla con un NULL dentro
+                  --   manderebbe il chiamante a cercare il difetto tre passi piu'
+                  --   in la'.
+                  IF v_identita IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_operatore_umano: fn_crea_operatore_v2 ha risposto auth_user_id = % ma non si legge nessuna identita'' OPERATORE attiva con una risorsa umana',
+                          v_user_id;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT v_user_id, v_identita, v_ru_id, v_sr_id, v_sog_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_operatore_umano(text, boolean)
+              IS 'Fixture pgTAP: un OPERATORE UMANO — persona fisica, risorsa umana, utente, identita'' OPERATORE — costruito chiamando la madre di produzione anagrafiche.fn_crea_operatore_v2, volendo SUPER ADMIN (secondo parametro). Aggiunge solo cio'' che una fixture non sceglie bene da se'': la finestra differita (il guard degli indirizzi del soggetto e'' DEFERRABLE e gli indirizzi arrivano all''ultimo passo), un codice fiscale libero adesso e lo username derivato, un indirizzo di dettaglio. ⭐ Diverso da dbops.fn_pgtap_crea_emittente_operatore, che costruisce un utente TECNICO legato alla sua azienda: questo nasce SENZA azienda, come in produzione — un super admin senza azienda e'' il caso normale (multi-emittente), e toglierla dopo non si puo''. Per legarlo a un emittente: script.fn_change_user_emittenti_scope. ⚠️ Non apre il contesto; esce con i vincoli IMMEDIATE. ⛔ Cio'' che scrive si legge in un''istruzione SEPARATA: un JOIN o una funzione STABLE (script.fn_is_super_admin) nella stessa istruzione della chiamata vede la snapshot di prima. Brief: brief-db-fixture-che-costruiscono-giro-2.md';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_operatore_umano(text, boolean);

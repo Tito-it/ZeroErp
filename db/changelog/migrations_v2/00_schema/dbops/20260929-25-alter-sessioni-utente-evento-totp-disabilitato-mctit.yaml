@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-T5 — LA TRACCIA DELLO SBLOCCO DAL SERVER: un evento nuovo nell'audit degli accessi
+#   Brief: brief-db-secondo-fattore-totp, §9.6 (decisione di Tid del 2026-09-29:
+#   strada B, il database scrive lui la traccia quando lo sblocco arriva dal server).
+#
+# ── ⭐ PERCHE' QUI ───────────────────────────────────────────────────
+#   D-T3 mette chi / quando / perche' di una disattivazione nell'audit degli
+#   eventi di autenticazione che il backend gia' scrive: e' dbops.sessioni_utente
+#   (login, refresh, logout, scadenza, revoca — una riga per evento, per
+#   credenziale, con un dettaglio jsonb). Nella strada del migratore (D-T4) il
+#   backend non c'e': la riga la scrive il verbo, nella stessa tabella, cosi'
+#   chi legge la storia degli accessi di una persona la trova accanto agli altri
+#   eventi. Nessun registro nuovo.
+#
+# ── ⚠️ SENZA jti ─────────────────────────────────────────────────────
+#   Non e' un evento di una sessione: jti resta NULL. I lettori del pannello
+#   delle sessioni scelgono le righe con evento LOGIN o REFRESH: questa non ci
+#   entra (letto il 2026-09-29 in backend/apps/core/db/session_audit_repository.py).
+#   La retention e' quella della tabella (CLEANUP_AT, 180 giorni).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260929-25-alter-sessioni-utente-evento-totp-disabilitato-mctit.yaml
+
+  - changeSet:
+      id: 20260929-25-alter-sessioni-utente-evento-totp-disabilitato
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.sessioni_utente: evento TOTP_DISABILITATO ammesso dal CHECK chk_sessioni_utente_evento.
+        Lo scrive script.fn_totp_disabilita_device quando lo sblocco del secondo fattore arriva
+        dalla sessione del migratore (D-T5). Brief: brief-db-secondo-fattore-totp §9.6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint c
+               WHERE c.conrelid = 'dbops.sessioni_utente'::regclass
+                 AND c.conname = 'chk_sessioni_utente_evento'
+                 AND pg_catalog.pg_get_constraintdef(c.oid) NOT LIKE '%TOTP_DISABILITATO%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.sessioni_utente
+                  DROP CONSTRAINT chk_sessioni_utente_evento,
+                  ADD CONSTRAINT chk_sessioni_utente_evento
+                      CHECK (evento IN ('LOGIN', 'REFRESH', 'LOGOUT', 'SCADENZA', 'REVOCA',
+                                        'TOTP_DISABILITATO'));
+
+              COMMENT ON COLUMN dbops.sessioni_utente.evento IS
+                  'Tipo evento: LOGIN, REFRESH, LOGOUT, SCADENZA, REVOCA (sessioni JWT, li scrive il backend); TOTP_DISABILITATO (dal 2026-09-29: il secondo fattore di questa credenziale disattivato dal server dalla sessione del migratore, lo scrive script.fn_totp_disabilita_device; jti NULL, chi / perche'' in dettaglio). Brief: brief-db-secondo-fattore-totp §9.6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.sessioni_utente
+                  DROP CONSTRAINT chk_sessioni_utente_evento,
+                  ADD CONSTRAINT chk_sessioni_utente_evento
+                      CHECK (evento IN ('LOGIN', 'REFRESH', 'LOGOUT', 'SCADENZA', 'REVOCA'));

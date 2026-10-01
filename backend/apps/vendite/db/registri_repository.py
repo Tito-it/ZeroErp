@@ -34,13 +34,16 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
     sql_lateral_primo_motivo,
-    extract_paginated,
+    fetch_paged_with_total,
     jsonb_out,
     row_to_dict,
     rows_to_list,
 )
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
 # Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
 # `vendite.registri_numerazione` (e' quello che <ListaConfigurabile> invia come
@@ -146,6 +149,14 @@ _CAMPI_UPDATE: tuple[str, ...] = (
     "lunghezza_numero",
 )
 
+# ⛔ PREFISSO E SUFFISSO NON SI STRIPPANO (2026-09-26, migrazione ai BB core di
+#    scrittura, che strippano ogni stringa). Sono PEZZI DEL NUMERO stampato:
+#    `"FT "` + `"12"` e' una forma, `"FT"` + `"12"` e' un'altra — uno spazio
+#    ai bordi e' contenuto, non rumore, e toglierlo in silenzio cambierebbe
+#    la numerazione senza che l'operatore l'abbia chiesto. Le altre stringhe
+#    (codice, descrizione, serie...) si strippano come ovunque.
+_CAMPI_LETTERALI: tuple[str, ...] = ("prefisso", "suffisso")
+
 # ⭐ I DUE VERBI, LETTI IN UNA QUERY SOLA (brief §9.2, misurato: 9,161 ms
 #    sull'intera tabella). Non serve nessuna vista nuova e non si chiamano le
 #    check riga per riga dal service.
@@ -212,6 +223,9 @@ _FROM = """
               LEFT JOIN config.utilities u            ON u.id     = r.utility_id
 """
 
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+_RICERCA = RicercaFull("vendite.registri_numerazione", ("codice", "descrizione", "prefisso"))
+
 # Colonne jsonb da decodificare: fuori dall'ORM psycopg 3 consegna i jsonb come
 # `str`, e un oggetto servito come stringa arriva al client come testo — che nel
 # template non fallisce, si limita a non avere le sue chiavi. E' proprio il
@@ -260,35 +274,32 @@ class RegistriRepository:
             default=_ORDER_COLS[_ORDER_DEFAULT],
             tiebreak="r.id",
         )
-        pattern = f"%{search.strip()}%" if search and search.strip() else None
-        sql = f"""
-            SELECT {_PROIEZIONE},
-                   COUNT(*) OVER () AS total_count
-            {_FROM}
-            {_LATERAL_BLOCCHI}
-             WHERE (%s::bigint[] IS NULL OR r.emittente_soggetto_ruolo_id = ANY(%s))
-               AND (%s::bigint IS NULL OR r.emittente_soggetto_ruolo_id = %s)
-               AND (%s::text IS NULL OR r.famiglia_documento = %s)
-               AND (%s::boolean IS NULL OR r.attivo = %s)
-               AND (%s::text IS NULL OR (
-                       r.codice ILIKE %s
-                    OR r.descrizione ILIKE %s
-                    OR r.prefisso ILIKE %s
-                   ))
-             ORDER BY {ordinamento}
-             LIMIT %s OFFSET %s
-        """  # noqa: S608
+        conditions: list[str] = [
+            "(%s::bigint[] IS NULL OR r.emittente_soggetto_ruolo_id = ANY(%s))",
+            "(%s::bigint IS NULL OR r.emittente_soggetto_ruolo_id = %s)",
+            "(%s::text IS NULL OR r.famiglia_documento = %s)",
+            "(%s::boolean IS NULL OR r.attivo = %s)",
+        ]
         params: list[Any] = [
             emittenti_sr_ids, emittenti_sr_ids,
             emittente_soggetto_ruolo_id, emittente_soggetto_ruolo_id,
             famiglia_documento, famiglia_documento,
             attivo, attivo,
-            pattern, pattern, pattern, pattern,
-            limit, offset,
         ]
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            righe, totale = extract_paginated(cursor)
+        # Soglia della ricerca: la dichiara il catalogo della lista
+        # (`ricerca_min_caratteri`), non questo modulo.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA, alias="r")
+        sql = f"""
+            SELECT {_PROIEZIONE},
+                   COUNT(*) OVER () AS total_count
+            {_FROM}
+            {_LATERAL_BLOCCHI}
+             WHERE {" AND ".join(conditions)}
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+        """
+        params.extend([limit, offset])
+        righe, totale = fetch_paged_with_total(sql, params, offset=offset)
         return _decodifica_jsonb(righe), totale
 
     # Scopo: il dettaglio di un registro, con lo scope applicato.
@@ -308,7 +319,7 @@ class RegistriRepository:
             {_LATERAL_BLOCCHI}
              WHERE r.id = %s
                AND (%s::bigint[] IS NULL OR r.emittente_soggetto_ruolo_id = ANY(%s))
-        """  # noqa: S608
+        """
         with connection.cursor() as cursor:
             cursor.execute(sql, [registro_id, emittenti_sr_ids, emittenti_sr_ids])
             riga = row_to_dict(cursor)
@@ -358,18 +369,19 @@ class RegistriRepository:
         emittente_soggetto_ruolo_id: int,
         dati: dict[str, Any],
     ) -> int:
-        colonne = [c for c in _CAMPI_CREATE if c in dati]
-        campi = ["emittente_soggetto_ruolo_id", *colonne]
-        segnaposti = ", ".join(["%s"] * len(campi))
-        sql = f"""
-            INSERT INTO vendite.registri_fatturazione ({", ".join(campi)})
-            VALUES ({segnaposti})
-            RETURNING id
-        """  # noqa: S608
-        params = [emittente_soggetto_ruolo_id, *[dati[c] for c in colonne]]
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.fetchone()[0]
+        # ⭐ BB core `execute_dynamic_insert` (2026-09-26): la whitelist e'
+        #    RIGIDA — una chiave fuori `_CAMPI_CREATE` e' `RuntimeError`, non
+        #    piu' uno scarto silenzioso. Il 400 educato lo da' il service
+        #    (`_verifica_chiavi`), che il contratto lo controlla prima.
+        # ⚠️ L'emittente si scrive PER ULTIMO nel dict: e' quello del
+        #    contesto, e nessuna chiave del payload lo puo' sovrascrivere.
+        riga = execute_dynamic_insert(
+            "vendite.registri_fatturazione",
+            {**dati, "emittente_soggetto_ruolo_id": emittente_soggetto_ruolo_id},
+            allowed=("emittente_soggetto_ruolo_id", *_CAMPI_CREATE),
+            letterali=_CAMPI_LETTERALI,
+        )
+        return riga["id"]
 
     # Scopo: aggiorna le colonne ammesse. Ritorna il numero di righe toccate,
     #        cosi' il service distingue «non esiste / fuori perimetro» da «fatto».
@@ -381,20 +393,23 @@ class RegistriRepository:
         emittenti_sr_ids: list[int] | None,
         dati: dict[str, Any],
     ) -> int:
-        colonne = [c for c in _CAMPI_UPDATE if c in dati]
-        if not colonne or (emittenti_sr_ids is not None and not emittenti_sr_ids):
+        if not dati or (emittenti_sr_ids is not None and not emittenti_sr_ids):
             return 0
-        set_sql = ", ".join(f"{c} = %s" for c in colonne)
+        # ⭐ BB core `sql_set_clause` (2026-09-26): il WHERE resta qui perche'
+        #    porta lo SCOPE emittente, che `execute_dynamic_update` (WHERE id e
+        #    basta) non sa scrivere. Whitelist RIGIDA: una chiave fuori
+        #    `_CAMPI_UPDATE` e' `RuntimeError` — il service l'ha gia' rifiutata
+        #    con un 400 (`_verifica_chiavi`).
+        set_sql, params = sql_set_clause(
+            dati, allowed=_CAMPI_UPDATE, letterali=_CAMPI_LETTERALI,
+        )
         sql = f"""
             UPDATE vendite.registri_fatturazione
                SET {set_sql}
              WHERE id = %s
                AND (%s::bigint[] IS NULL OR emittente_soggetto_ruolo_id = ANY(%s))
-        """  # noqa: S608
-        params = [
-            *[dati[c] for c in colonne],
-            registro_id, emittenti_sr_ids, emittenti_sr_ids,
-        ]
+        """  # noqa: S608 — set_sql dal BB sql_set_clause (colonne in whitelist _CAMPI_UPDATE, valori come parametri)
+        params += [registro_id, emittenti_sr_ids, emittenti_sr_ids]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.rowcount

@@ -76,6 +76,7 @@ const isEdit = computed(() => props.famigliaId != null)
 function defaultForm() {
   return {
     codice_interno: '',
+    codice: '',
     descrizione: '',
     schema_tabella: '',
     nome_tabella: '',
@@ -117,6 +118,7 @@ async function carica() {
   dettaglio.value = dati
   form.value = {
     codice_interno: dati.codice_interno ?? '',
+    codice: dati.codice ?? '',
     descrizione: dati.descrizione ?? '',
     schema_tabella: dati.schema_tabella ?? '',
     nome_tabella: dati.nome_tabella ?? '',
@@ -146,6 +148,10 @@ function payload() {
   // ⛔ `codice_interno` solo in creazione: dopo lo tiene il lock automatico, e
   //    spedirlo uguale a sé stesso sveglierebbe comunque quel presidio.
   if (!isEdit.value) p.codice_interno = form.value.codice_interno
+  // ⭐ Il `codice` dell'operatore si cambia in MODIFICA (Tid, 2026-09-24): alla
+  //    nascita lo copia il database dal `codice_interno`, e la madre di
+  //    creazione non ha il parametro.
+  if (isEdit.value) p.codice = form.value.codice
   // Le quattro colonne strutturali si spediscono solo quando sono davvero
   // modificabili: in creazione sempre, in modifica solo se la check non le ha
   // bloccate.
@@ -223,6 +229,18 @@ const titolo = computed(() => (isEdit.value
           <small v-if="isEdit" class="app-field-hint">
             {{ t('amministrazione.famiglie_documento.codice_immutabile') }}
           </small>
+          <small v-else class="app-field-hint">
+            {{ t('amministrazione.famiglie_documento.codice_nasce_dal_interno') }}
+          </small>
+        </div>
+        <div v-if="isEdit" class="form-field">
+          <label>{{ t('vendite.famiglie_documento.col_codice') }} *</label>
+          <!-- Il codice che la lista mostra e cerca: mutabile e unico. -->
+          <InputText
+            v-model="form.codice"
+            :maxlength="FIELD_LENGTH.FAMIGLIA_CODICE_OPERATORE_MAX"
+            :disabled="isReadonly"
+          />
         </div>
         <div class="form-field">
           <label>{{ t('vendite.famiglie_documento.col_descrizione') }} *</label>

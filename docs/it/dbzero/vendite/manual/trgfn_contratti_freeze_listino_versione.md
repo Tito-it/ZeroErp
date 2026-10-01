@@ -77,6 +77,13 @@ Se il listino esiste ma non ha versioni con `validita @> CURRENT_DATE AND attivo
 | `guard_transizione_stato` | 2° (lex.) | Valida matrice transizioni + check componenti PENDING |
 | `lock_post_attivazione` | — (UPDATE OF diverso) | Blocca modifica campi pricing post-attivazione |
 
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+La versione del listino in vigore da fissare all'attivazione non è più scelta qui: la dice [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore) (`20260928-38`). Per ogni data la versione in vigore è **al più una**, per costruzione (nessuna sovrapposizione fra versioni ATTIVE e CHIUSE, date di una CHIUSA bloccate), quindi «la prima» e «tutte le valide» sono la stessa cosa. Stesso esito, provato sui dati di dev.
+
+---
+
 {% include-markdown "signature-core.md" %}
 
 ---

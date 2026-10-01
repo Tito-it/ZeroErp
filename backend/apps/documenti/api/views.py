@@ -13,7 +13,8 @@
 
 from __future__ import annotations
 
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseNotModified, JsonResponse
+from django.utils.http import parse_etags
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -21,12 +22,13 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
 )
-from apps.core.api.search_validators import require_min_search_length
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -55,7 +57,7 @@ class ApiTemplateList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(
                 name="tipo_documento_output_id",
@@ -94,7 +96,8 @@ class ApiTemplateList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         params = parse_list_params(qp, default_order="codice")
-        require_min_search_length(params["search"], field_name="search")
+        # Colonne e soglia le decide il catalogo della lista (BB nel
+        # repository): tabella di configurazione, niente 400 (Tid, 2026-09-24).
 
         result = TemplateService().list_templates(
             request.user,
@@ -201,7 +204,7 @@ class ApiTemplateDetail(DomainAPIView):
     #        rifiutate dal service con E_DOCUMENTI_VALIDATION.
     def patch(self, request: Request, template_id: int) -> JsonResponse:
         result = TemplateAdminService().update_template(
-            request.user, int(template_id), dict(request.data)
+            request.user, int(template_id), dict(corpo_oggetto(request))
         )
         return success_response(result)
 
@@ -214,11 +217,36 @@ class ApiTemplateVersioniList(DomainAPIView):
 
     area_funzionale = "documenti"
     post_permission = "documenti_template_manage"
+    is_search_endpoint = True
+    lista_codice = "documenti.template_versioni"
+    # ⭐ Le versioni si aprono DENTRO il drawer del template, che e' di UN
+    #    emittente (`template_documenti.emittente_fiscale_id` NOT NULL): la
+    #    lista a catalogo non e' certificata multi-emittente (`multi_emittente
+    #    = f`), e senza questa riga il cancello chiederebbe al super admin su
+    #    «Tutti» di scegliere l'emittente del template che ha gia' aperto.
+    # ⚠️ Il cancello vale per OGNI metodo della view, anche il POST che crea
+    #    una versione: il frontend manda il parametro in query su entrambi.
+    # ⚠️ Non filtra: le righe le fissa il template nel path (e il service ne
+    #    verifica la visibilita' con lo scope, 404 fuori perimetro).
+    lista_emittente_param = "emittente_fiscale_id"
 
     @extend_schema(
         parameters=[
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="stato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="emittente_fiscale_id", type=int, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "L'emittente del template, gia' fissato dal drawer che apre "
+                    "la lista: scioglie il cancello di perimetro, non filtra."
+                ),
+            ),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
         ],
         responses={
             200: inline_serializer(
@@ -230,16 +258,31 @@ class ApiTemplateVersioniList(DomainAPIView):
             )
         },
     )
-    # Scopo: Ritorna lista versioni del template (proiezione leggera, no html).
+    # Scopo: Lista paginata delle versioni del template (proiezione leggera,
+    #        no html), col contratto di lista standard: `limit`/`offset`,
+    #        `order_by`/`order_dir` sulla whitelist del repository, `search`
+    #        dal catalogo, envelope `paginated_envelope`.
     def get(self, request: Request, template_id: int) -> JsonResponse:
         stato = request.query_params.get("stato")
+        # ⚠️ `default_order=""` e non "versione": senza `order_by` deve
+        #    decidere il repository (`versione DESC`, la piu' recente in cima,
+        #    come il preset). Una chiave qui arriverebbe senza verso e
+        #    ripiegherebbe ASC — la lista aperta dalla versione 1.
+        p = parse_list_params(request.query_params, default_order="")
         result = TemplateService().list_versioni(
             request.user,
             int(template_id),
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             stato=stato.strip().upper() if stato else None,
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
         )
-        return success_response(result)
+        return success_response(paginated_envelope(
+            result["results"], result["total_count"], p["page"], p["limit"],
+        ))
 
     @extend_schema(
         request=inline_serializer(
@@ -248,6 +291,10 @@ class ApiTemplateVersioniList(DomainAPIView):
                 "titolo": serializers.CharField(),
                 "html_template": serializers.CharField(),
                 "render_engine_id": serializers.IntegerField(),
+                # La forma dei dati che la versione legge: obbligatoria,
+                # senza default (vedi il `versione_contesto_builder` del
+                # dettaglio template per la forma che il builder produce).
+                "versione_contesto": serializers.IntegerField(min_value=1),
                 "formato_template": serializers.CharField(required=False),
                 "css_template": serializers.CharField(required=False, allow_null=True),
                 "markdown_template": serializers.CharField(required=False, allow_null=True),
@@ -323,6 +370,7 @@ class ApiTemplateVersioneDetail(DomainAPIView):
                 "css_template": serializers.CharField(required=False, allow_null=True),
                 "markdown_template": serializers.CharField(required=False, allow_null=True),
                 "render_engine_id": serializers.IntegerField(required=False),
+                "versione_contesto": serializers.IntegerField(required=False, min_value=1),
                 "formato_template": serializers.CharField(required=False),
                 "page_format": serializers.CharField(required=False),
                 "page_orientation": serializers.CharField(required=False),
@@ -355,7 +403,7 @@ class ApiTemplateVersioneDetail(DomainAPIView):
             request.user,
             int(template_id),
             int(versione_id),
-            dict(request.data),
+            dict(corpo_oggetto(request)),
         )
         return success_response(result)
 
@@ -474,10 +522,18 @@ class ApiAssetList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="asset_tipo_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="emittente_fiscale_id", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="utilizzabili", type=bool, location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "true = solo gli asset che il render accetta oggi (attivi e "
+                    "validi oggi), la stessa regola di `asset:<codice_interno>`; "
+                    "false = solo gli altri; assente = tutti."
+                ),
+            ),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
@@ -497,13 +553,15 @@ class ApiAssetList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         params = parse_list_params(qp, default_order="codice")
-        require_min_search_length(params["search"], field_name="search")
+        # Colonne e soglia le decide il catalogo della lista (BB nel
+        # repository): tabella di configurazione, niente 400 (Tid, 2026-09-24).
 
         result = TemplateService().list_asset(
             request.user,
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             asset_tipo_id=qp_int_optional(request.query_params.get("asset_tipo_id"), "asset_tipo_id"),
             emittente_fiscale_id=qp_int_optional(request.query_params.get("emittente_fiscale_id"), "emittente_fiscale_id"),
+            utilizzabili=qp_bool_optional(request.query_params.get("utilizzabili"), "utilizzabili"),
             search=params["search"],
             order_by=params["order_by"],
             order_dir=params["order_dir"],
@@ -550,7 +608,6 @@ class ApiAssetList(DomainAPIView):
                 code="E_DOCUMENTI_VALIDATION",
                 message="Campo 'file' mancante nel multipart/form-data.",
             )
-            raise  # unreachable, per type checker
         metadati = self._extract_metadati(request)
         result = TemplateAssetAdminService().upload_asset(
             request.user,
@@ -567,7 +624,7 @@ class ApiAssetList(DomainAPIView):
     #        del service (int, bool, ecc.). Conversioni "permissive":
     #        validazione fine demandata al PayloadValidator del service.
     def _extract_metadati(self, request: Request) -> dict:
-        raw = dict(request.data)
+        raw = dict(corpo_oggetto(request))
         metadati: dict = {}
         # Form multipart: i valori arrivano come liste in alcuni framework;
         # normalizziamo a singolo valore.
@@ -642,7 +699,7 @@ class ApiAssetDetail(DomainAPIView):
     #        blocca comunque modifiche a storage_key/sha256/file_size/mime/file_name.
     def patch(self, request: Request, asset_id: int) -> JsonResponse:
         result = TemplateAssetAdminService().update_asset_metadati(
-            request.user, int(asset_id), dict(request.data)
+            request.user, int(asset_id), dict(corpo_oggetto(request))
         )
         return success_response(result)
 
@@ -668,4 +725,36 @@ class ApiAssetFileDownload(DomainAPIView):
             f'attachment; filename="{result["file_name"]}"'
         )
         response["Content-Length"] = str(result["size_bytes"])
+        return response
+
+
+class ApiAssetMiniatura(DomainAPIView):
+    """
+    GET /api/v1/documenti/asset/<id>/miniatura/ — miniatura di un asset
+    immagine (PNG di lato al massimo `LATO_MINIATURA`; SVG cosi' com'e').
+    """
+
+    area_funzionale = "documenti"
+
+    @extend_schema(
+        responses={200: bytes, 304: None},
+    )
+    # Scopo: Restituisce la miniatura inline, con `ETag` e
+    #        `Cache-Control: private, no-cache`: il browser la riusa, ma la
+    #        rivalida a ogni richiesta (304 se l'asset e' lo stesso), cosi'
+    #        lo scope si ricontrolla sempre e un altro utente dello stesso
+    #        browser non la riceve dalla cache.
+    def get(self, request: Request, asset_id: int) -> HttpResponse:
+        result = TemplateService().miniatura_asset(
+            request.user, int(asset_id),
+            etag_noti=parse_etags(request.headers.get("If-None-Match", "")),
+        )
+        if result["file_bytes"] is None:
+            response = HttpResponseNotModified()
+        else:
+            response = HttpResponse(
+                result["file_bytes"], content_type=result["mime_type"],
+            )
+        response["ETag"] = result["etag"]
+        response["Cache-Control"] = "private, no-cache"
         return response

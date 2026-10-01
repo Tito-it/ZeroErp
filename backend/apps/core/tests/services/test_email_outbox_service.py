@@ -18,12 +18,22 @@ Indice test eseguiti:
 8) AttachmentTests.test_add_attachment_valid
 9) AttachmentTests.test_add_attachment_invalid_mime
 10) AttachmentTests.test_remove_attachment
+11) ConfirmAndSendTests.test_la_mail_resta_dell_autore_e_dell_azienda_della_bozza
+12) CancelDraftTests.test_gli_allegati_si_tolgono_prima_di_annullare
+13) AttachmentTests.test_su_una_mail_non_in_bozza_risponde_col_codice_del_db
+14) DeleteFileTests.test_un_percorso_fuori_radice_non_si_cancella
+15) DeleteFileTests.test_riga_rifiutata_toglie_il_file_scritto
+16) UpdateDraftTests.test_update_draft_chiave_estranea_rifiutata
+17) UpdateDraftTests.test_update_draft_cc_non_lista_rifiutato
+18) ConfirmAndSendTests.test_senza_account_la_bozza_resta_draft
 """
 
+import os
+import tempfile
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from apps.core.services.email_outbox_service import EmailOutboxService
+from apps.core.services.email_outbox_service import EmailOutboxService, _delete_file
 from apps.core.services.email_service import CANALE_CONSOLE, CANALE_SMTP
 from apps.core.services.service_errors import ServiceError
 
@@ -50,7 +60,8 @@ _MOCK_OUTBOX_DRAFT = {
     "email_account_id": 1, "email_template_id": 1,
     "ambito": "SISTEMA", "unita_organizzativa_id": None,
     "pratica_id": None, "auth_user_id": None,
-    "creato_da_user_id": 1, "contesto_json": {"nome": "Mario"},
+    "creato_da_user_id": 1, "emittente_fiscale_id": None,
+    "contesto_json": {"nome": "Mario"},
     "allegati": [],
 }
 
@@ -137,13 +148,40 @@ class UpdateDraftTests(TestCase):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
         repo.update_outbox.return_value = True
-        # Mock _OUTBOX_UPDATE_COLS referenziato dal service
-        MockRepo._OUTBOX_UPDATE_COLS = frozenset({"oggetto", "corpo_html", "corpo_testo", "destinatario", "destinatari_cc"})
 
         service = EmailOutboxService()
-        service.update_draft(10, oggetto="Nuovo oggetto")
+        service.update_draft(10, oggetto="Nuovo oggetto", destinatari_cc=["a@b.it"])
 
-        repo.update_outbox.assert_called_once()
+        repo.update_outbox.assert_called_once_with(
+            10, oggetto="Nuovo oggetto", destinatari_cc=["a@b.it"],
+        )
+
+    # Scopo: ⛔ Una chiave estranea e' un 400 `E_OUTBOX`, non uno scarto
+    #        silenzioso (2026-09-26): il repository non viene toccato.
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_update_draft_chiave_estranea_rifiutata(self, MockRepo, MockDispatch):
+        repo = MockRepo.return_value
+        repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
+
+        with self.assertRaises(ServiceError) as ctx:
+            EmailOutboxService().update_draft(10, oggetto="X", stato="SENT")
+        self.assertEqual(ctx.exception.code, "E_OUTBOX")
+        self.assertIn("stato", ctx.exception.detail)
+        repo.update_outbox.assert_not_called()
+
+    # Scopo: `destinatari_cc` non lista di stringhe: 400, non il 500 del cast
+    #        `text[]` sul DB.
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_update_draft_cc_non_lista_rifiutato(self, MockRepo, MockDispatch):
+        repo = MockRepo.return_value
+        repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
+
+        with self.assertRaises(ServiceError) as ctx:
+            EmailOutboxService().update_draft(10, destinatari_cc="a@b.it")
+        self.assertEqual(ctx.exception.code, "E_OUTBOX")
+        repo.update_outbox.assert_not_called()
 
     # Scopo: Verifica che modificare una bozza non-DRAFT lanci errore.
     @patch(_DISPATCH)
@@ -212,6 +250,50 @@ class ConfirmAndSendTests(TestCase):
         # ⛔ E nessuna data di consegna su una consegna che non c'e' stata.
         self.assertNotIn("inviato_at", finale[1])
 
+    # Scopo: ⭐ La mail spedita porta l'AUTORE e l'AZIENDA della bozza, e i
+    #        suoi allegati (brief-db-email-visibilita-per-ambito D-5, §8.4.2).
+    # ⛔ L'autore e' `creato_da_user_id` della bozza, non chi conferma: un
+    #    super admin che spedisce la bozza di un altro non ne diventa l'autore.
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_la_mail_resta_dell_autore_e_dell_azienda_della_bozza(self, MockRepo, MockDispatch):
+        repo = MockRepo.return_value
+        dispatch = MockDispatch.return_value
+        allegati = [{"id": 5, "nome_file": "a.pdf", "mime_type": "application/pdf", "file_path": "x/a.pdf"}]
+        repo.get_outbox.return_value = {
+            **_MOCK_OUTBOX_DRAFT, "ambito": "OPERATORE", "creato_da_user_id": 42,
+            "emittente_fiscale_id": 7, "allegati": allegati,
+        }
+        repo.resolve_account.return_value = _MOCK_ACCOUNT
+        dispatch.send_raw.return_value = (99, True)
+        dispatch.canale_invio.return_value = CANALE_SMTP
+
+        EmailOutboxService().confirm_and_send(10)
+
+        kwargs = dispatch.send_raw.call_args.kwargs
+        self.assertEqual(kwargs["creato_da_user_id"], 42)
+        self.assertEqual(kwargs["emittente_fiscale_id"], 7)
+        self.assertEqual(kwargs["allegati"], allegati)
+
+    # Scopo: ⭐ Senza account email la bozza RESTA DRAFT (F-1, 2026-09-28).
+    # ⛔ READY si committa subito e `cancel_draft` accetta solo DRAFT: con
+    #    l'account cercato dopo READY la bozza restava bloccata, ne' rinviabile
+    #    ne' annullabile. Il rifiuto deve arrivare prima di toccare lo stato.
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_senza_account_la_bozza_resta_draft(self, MockRepo, MockDispatch):
+        repo = MockRepo.return_value
+        dispatch = MockDispatch.return_value
+        repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
+        repo.resolve_account.return_value = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            EmailOutboxService().confirm_and_send(10)
+
+        self.assertEqual(ctx.exception.code, "E_OUTBOX")
+        repo.update_outbox_stato.assert_not_called()
+        dispatch.send_raw.assert_not_called()
+
     # Scopo: Verifica che conferma di bozza non-DRAFT lanci errore.
     @patch(_DISPATCH)
     @patch(_REPO)
@@ -239,13 +321,42 @@ class CancelDraftTests(TestCase):
 
         repo.update_outbox_stato.assert_called_once_with(10, "CANCELLED")
 
+    # Scopo: ⛔ Le righe degli allegati si tolgono PRIMA di scrivere
+    #        `CANCELLED`: dopo, il database non le lascia piu' toccare
+    #        (`E_EMAIL_ALLEGATO_NON_BOZZA`). I file si cancellano dopo il commit.
+    @patch("apps.core.services.email_outbox_service._delete_file")
+    @patch("apps.core.services.email_outbox_service.transaction")
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_gli_allegati_si_tolgono_prima_di_annullare(self, MockRepo, MockDispatch, mock_tx, mock_delete):
+        repo = MockRepo.return_value
+        repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
+        ordine: list[str] = []
+
+        def _togli_righe(*_a):
+            ordine.append("righe")
+            return ["x/a.pdf"]
+
+        repo.delete_allegati_by_outbox.side_effect = _togli_righe
+        repo.update_outbox_stato.side_effect = lambda *a, **k: ordine.append("stato")
+        dopo_il_commit = []
+        mock_tx.on_commit.side_effect = dopo_il_commit.append
+
+        EmailOutboxService().cancel_draft(10)
+
+        self.assertEqual(ordine, ["righe", "stato"])
+        mock_delete.assert_not_called()
+        for callback in dopo_il_commit:
+            callback()
+        mock_delete.assert_called_once_with("x/a.pdf")
+
 
 class AttachmentTests(TestCase):
 
     # Scopo: Verifica upload allegato con MIME valido.
     @patch("apps.core.services.email_outbox_service._get_max_count", return_value=10)
     @patch("apps.core.services.email_outbox_service._get_max_size_bytes", return_value=10 * 1024 * 1024)
-    @patch("apps.core.services.email_outbox_service._get_attachments_root", return_value="/tmp/test_attachments")
+    @patch("apps.core.services.email_outbox_service.radice_allegati", return_value="/tmp/test_attachments")
     @patch("apps.core.services.email_outbox_service.os.makedirs")
     @patch("builtins.open", create=True)
     @patch(_DISPATCH)
@@ -285,6 +396,21 @@ class AttachmentTests(TestCase):
                 mime_type="application/x-msdownload",
             )
 
+    # Scopo: «Solo in bozza» e' una regola del database: il pre-check che la
+    #        dice prima di scrivere il file usa il SUO codice, non `E_OUTBOX`.
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_su_una_mail_non_in_bozza_risponde_col_codice_del_db(self, MockRepo, MockDispatch):
+        repo = MockRepo.return_value
+        repo.get_outbox.return_value = {**_MOCK_OUTBOX_DRAFT, "stato": "SENT"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            EmailOutboxService().add_attachment(
+                outbox_id=10, file_name="a.pdf", file_content=b"x", mime_type="application/pdf",
+            )
+        self.assertEqual(ctx.exception.code, "E_EMAIL_ALLEGATO_NON_BOZZA")
+        repo.create_allegato.assert_not_called()
+
     # Scopo: Verifica rimozione allegato.
     @patch(_DISPATCH)
     @patch(_REPO)
@@ -296,3 +422,40 @@ class AttachmentTests(TestCase):
         result = service.remove_attachment(1)
         self.assertTrue(result)
         repo.delete_allegato.assert_called_once_with(1)
+
+
+class DeleteFileTests(TestCase):
+
+    # Scopo: ⛔ Un `file_path` che esce dalla radice (assoluto o con `..`) non
+    #        si cancella: con un `os.path.join` nudo un path assoluto scartava
+    #        la radice e toglieva un file qualunque.
+    @patch("apps.core.services.email_outbox_service.os.remove")
+    def test_un_percorso_fuori_radice_non_si_cancella(self, mock_remove):
+        with tempfile.TemporaryDirectory() as radice, \
+                patch("apps.core.services.email_allegati_storage.radice_allegati", return_value=radice):
+            _delete_file("/etc/passwd")
+            _delete_file("../fuori.pdf")
+            mock_remove.assert_not_called()
+
+            _delete_file("2026/09/dentro.pdf")
+            mock_remove.assert_called_once_with(os.path.join(radice, "2026", "09", "dentro.pdf"))
+
+    # Scopo: ⚠️ Se il database rifiuta la riga dell'allegato, il file appena
+    #        scritto su disco si toglie e l'errore risale.
+    @patch("apps.core.services.email_outbox_service._delete_file")
+    @patch("apps.core.services.email_outbox_service._get_max_count", return_value=10)
+    @patch("apps.core.services.email_outbox_service._get_max_size_bytes", return_value=10 * 1024 * 1024)
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_riga_rifiutata_toglie_il_file_scritto(self, MockRepo, MockDispatch, _size, _count, mock_delete):
+        repo = MockRepo.return_value
+        repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
+        repo.create_allegato.side_effect = ServiceError(code="E_EMAIL_ALLEGATO_NON_BOZZA", message="x")
+        with tempfile.TemporaryDirectory() as radice, \
+                patch("apps.core.services.email_outbox_service.radice_allegati", return_value=radice):
+            with self.assertRaises(ServiceError):
+                EmailOutboxService().add_attachment(
+                    outbox_id=10, file_name="a.pdf", file_content=b"x", mime_type="application/pdf",
+                )
+        mock_delete.assert_called_once()
+        self.assertTrue(mock_delete.call_args.args[0].endswith(".pdf"))

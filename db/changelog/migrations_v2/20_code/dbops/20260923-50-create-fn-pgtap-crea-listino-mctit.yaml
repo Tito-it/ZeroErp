@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Helper di fixture pgTAP: un LISTINO con una versione ATTIVA, dell'azienda di
+#   chi agisce, per l'utility scelta dal test.
+#
+# ── ⛔ IL DIFETTO ────────────────────────────────────────────────────
+#   `vendite.listini` e' anagrafica: su un database ricostruito dai changelog
+#   e' vuota. script/test-fn-available-actions-offerta-v1 pescava «il primo
+#   listino attivo» e «la prima versione ATTIVA» (nemmeno legati fra loro)
+#   e moriva al primo INSERT. dbops/test-fn-apply-chiusura-scadenze-v1 (lotto
+#   1) il listino se lo costruiva gia', a mano, con la tipologia «prima per
+#   id»: e' la PRIMA copia della ricetta, l'offerta sarebbe stata la seconda
+#   ⇒ regola del 2, la copia si ritira nello stesso giro.
+#
+# ── ⭐ LA FORMA, e le due trappole ──────────────────────────────────
+#   Un listino sono due INSERT (testata + versione), con due guard da
+#   rispettare:
+#   * emittente_scope: l'emittente del listino deve essere nel perimetro di
+#     chi agisce ⇒ NON si sceglie, si DERIVA
+#     (script.fn_pgtap_emittente_sr_operatore), e il contesto va aperto prima;
+#   * tipologia_utility: la tipologia deve essere ammessa per l'utility
+#     (config.listini_tipologie_utilities) ⇒ la prima AMMESSA, non la prima
+#     per id — quella sbatterebbe sul guard per le utility che non la
+#     prevedono (BASE ammette solo PRODOTTI e SERVIZI).
+#   Le date della versione sono parametri: il default (da oggi, aperta)
+#   serve a chi usa il listino; chi collauda la chiusura la vuole scaduta.
+#
+# ── ⭐ COSA NON ENTRA ────────────────────────────────────────────────
+#   Le RIGHE del listino (prezzi, componenti) e le versioni in altri stati:
+#   sono il caso dei test.
+#
+# Permessi: funzione di chi migra, non SECURITY DEFINER, non in
+# dbops.sec_functions_owner.
+# Brief: brief-db-fixture-che-costruiscono-giro-2.md §11, terzo giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260923-50-create-fn-pgtap-crea-listino-mctit.yaml
+
+  - changeSet:
+      id: 20260923-50-create-fn-pgtap-crea-listino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Helper di fixture pgTAP: dbops.fn_pgtap_crea_listino() costruisce un
+        listino con una versione ATTIVA per l'utility scelta, sull'emittente di
+        chi agisce e con la prima tipologia ammessa per l'utility. Ritira la
+        copia a mano in dbops/test-fn-apply-chiusura-scadenze-v1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_listino(
+                  p_utility_id  vendite.listini.utility_id%TYPE,
+                  p_etichetta   text DEFAULT 'pgTAP',
+                  p_valido_dal  vendite.listini_versioni.valido_dal%TYPE DEFAULT CURRENT_DATE,
+                  p_valido_al   vendite.listini_versioni.valido_al%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE (
+                  listino_id           vendite.listini.id%TYPE,
+                  listino_versione_id  vendite.listini_versioni.id%TYPE,
+                  tipologia_id         vendite.listini.tipologia_id%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un LISTINO con una versione ATTIVA,
+              --   dell'azienda di chi agisce, per l'utility scelta dal test.
+              --   vendite.listini e' anagrafica: su un database ricostruito e' vuota.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_listino AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_listino(<utility_id>, 'offerta');
+              --   -- versione scaduta, per chi collauda la chiusura:
+              --   SELECT * FROM dbops.fn_pgtap_crea_listino(<utility_id>, 'chiusura',
+              --                                             DATE '2022-01-01', DATE '2022-12-31');
+              -- ⚠️ L'emittente non si sceglie: e' quello di CHI AGISCE
+              --   (script.fn_pgtap_emittente_sr_operatore), perche' il guard
+              --   emittente_scope di vendite.listini non ne accetta un altro. Quindi
+              --   il contesto va aperto PRIMA.
+              -- ⚠️ La tipologia e' la prima AMMESSA per l'utility
+              --   (config.listini_tipologie_utilities, guard
+              --   trgfn_listini_guard_tipologia_utility): una qualunque sbatterebbe
+              --   sul guard per le utility che non la prevedono.
+              -- ⛔ Le RIGHE del listino non le scrive: prezzi e componenti sono il
+              --   caso del test.
+              DECLARE
+                  v_emittente_sr vendite.listini.emittente_soggetto_ruolo_id%TYPE;
+                  v_tipologia    vendite.listini.tipologia_id%TYPE;
+                  v_listino      vendite.listini.id%TYPE;
+                  v_versione     vendite.listini_versioni.id%TYPE;
+              BEGIN
+                  v_emittente_sr := script.fn_pgtap_emittente_sr_operatore();
+
+                  IF v_emittente_sr IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_listino: nessun emittente per chi agisce — aprire il contesto prima (script.fn_pgtap_set_contesto_operatore)';
+                  END IF;
+
+                  SELECT ltu.tipologia_id INTO v_tipologia
+                    FROM config.listini_tipologie_utilities ltu
+                    JOIN config.listini_tipologie lt
+                      ON lt.id = ltu.tipologia_id
+                     AND lt.attivo
+                   WHERE ltu.utility_id = p_utility_id
+                     AND ltu.attivo
+                   ORDER BY lt.ordinamento, lt.id
+                   LIMIT 1;
+
+                  IF v_tipologia IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_listino: nessuna tipologia di listino ammessa per l''utility % (config.listini_tipologie_utilities)',
+                          p_utility_id;
+                  END IF;
+
+                  -- Codice libero: uq_listini_codice e' globale, una sigla fissa
+                  -- farebbe collidere la seconda chiamata con la prima.
+                  INSERT INTO vendite.listini (
+                      codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id
+                  )
+                  VALUES (
+                      'PGTAP_LST_' || substr(md5(clock_timestamp()::text || random()::text), 1, 16),
+                      'Fixture pgTAP: listino ' || p_etichetta,
+                      p_utility_id, v_tipologia, v_emittente_sr
+                  )
+                  RETURNING id INTO v_listino;
+
+                  INSERT INTO vendite.listini_versioni (
+                      listino_id, codice_versione, valido_dal, valido_al, stato
+                  )
+                  VALUES (v_listino, 'PGTAP_V1', p_valido_dal, p_valido_al, 'ATTIVA')
+                  RETURNING id INTO v_versione;
+
+                  RETURN QUERY SELECT v_listino, v_versione, v_tipologia;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_listino(integer, text, date, date)
+              IS 'Fixture pgTAP: un listino con una versione ATTIVA, dell''emittente di chi agisce (contesto aperto prima), per l''utility scelta; tipologia = la prima ammessa per l''utility. Date della versione a scelta (default: da oggi, aperta). Le righe restano al test. Brief: brief-db-fixture-che-costruiscono-giro-2.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_listino(integer, text, date, date);

@@ -19,6 +19,7 @@ from apps.config.db.utilities_tipi_ruolo_repository import (
     UtilitiesTipiRuoloRepository,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -40,14 +41,17 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         "Esiste gia' una riga matrice per questa coppia utility/tipo ruolo.",
     ),
 }
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+# Il terzo elemento e' il campo del form (presidio C2, §3-ter).
+_FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_utilities_tipi_ruolo_utility": (
         E_CONFIG_MATRICE_FK,
         "Utility inesistente.",
+        "utility_id",
     ),
     "fk_utilities_tipi_ruolo_tipo_ruolo": (
         E_CONFIG_MATRICE_FK,
         "Tipo ruolo inesistente.",
+        "tipo_ruolo_id",
     ),
 }
 
@@ -88,7 +92,7 @@ class UtilitiesTipiRuoloService:
         order_by: str = "utility_descrizione",
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI)
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI, order_dir=order_dir)
         return self._repo.list_matrice(
             search=search,
             attivo=attivo,
@@ -103,14 +107,11 @@ class UtilitiesTipiRuoloService:
     # Scopo: Dettaglio singola riga matrice; solleva not found se assente.
     def get_matrice(self, record_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(record_id, field="record_id")
-        result = self._repo.get_matrice(record_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_CONFIG_MATRICE_NOT_FOUND,
-            message="Riga matrice utilities/ruoli non trovata.",
-            context={"record_id": record_id},
+        result = testata_o_not_found(
+            self._repo.get_matrice, record_id,
+            code=E_CONFIG_MATRICE_NOT_FOUND, message="Riga matrice utilities/ruoli non trovata.",
+            id_name="record_id", function_name="utilities_tipi_ruolo_service.get_matrice",
         )
-        assert result is not None
         return result
 
     # =================================================================
@@ -195,15 +196,24 @@ class UtilitiesTipiRuoloService:
 
     # Scopo: Restituisce conteggio + lista paginata degli emittenti che
     #        hanno gia' un override per la stessa coppia (utility, EF) della
-    #        riga matrice indicata. Solo letture.
+    #        riga matrice indicata (lista `config.utilities_tipi_ruolo_usage`).
+    #        Solo letture. Ricerca e ordinamento li risolve il repository sulla
+    #        sua whitelist; la direzione estranea la rifiuta il BB SQL (400).
     def list_usage(
         self,
         record_id: int,
         *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         # Valida l'esistenza della riga matrice prima di leggere usage.
         self.get_matrice(record_id)
-        return self._repo.list_emittenti_usage(record_id, limit=limit, offset=offset)
+        return self._repo.list_emittenti_usage(
+            record_id,
+            search=search, order_by=order_by, order_dir=order_dir,
+            limit=limit, offset=offset,
+        )
 

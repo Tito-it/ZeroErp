@@ -85,12 +85,6 @@ class VenditeListiniApiTests(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        self._request_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log",
-            return_value=None,
-        )
-        self._request_log_patcher.start()
-        self.addCleanup(self._request_log_patcher.stop)
 
     # Scopo: Serializza payload JSON per richieste POST/PATCH.
     def _json(self, payload: dict) -> str:

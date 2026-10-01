@@ -34,7 +34,7 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_modalita_addebito_trasporto_a10_ddt_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ddt', 'modalita_addebito_trasporto_id', 'id', 'attivo')` |
-| trg_modalita_addebito_trasporto_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+| trg_modalita_addebito_trasporto_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_modalita_addebito_trasporto_a10_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini', 'modalita_addebito_trasporto_id', 'id', 'attivo')` |
 
 ---

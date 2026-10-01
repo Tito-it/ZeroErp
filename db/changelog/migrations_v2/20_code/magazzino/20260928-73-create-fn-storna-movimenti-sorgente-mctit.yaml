@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-8 — La utility di storno: lo specchio lo genera il programma, non l'operatore
+#   magazzino.fn_storna_movimenti_sorgente(p_sorgente_tipo_id, p_sorgente_righe)
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 4 (P-8);
+#          carico/scarico §7-quinquies (M-8, idea di Tid: la utility che genera lo specchio)
+#
+# -- PERCHE' UNA UTILITY --------------------------------------------------------------------------
+#   Si corregge aggiungendo, non annullando (M-8). Lo specchio lo costruisce
+#   una funzione che LEGGE l'originale: cosi' un costo o un segno sbagliato non
+#   trasformano la correzione in un secondo errore. La primitiva ha gia' il
+#   ramo storno (passo 9): pretende articolo, magazzino, sorgente e posizione
+#   dell'originale, quantita' opposta, causale STORNO_POS/NEG, e rifiuta lo
+#   storno doppio (uq_mag_movimenti_storno_di). Qui si CHIAMA quel ramo, non lo
+#   si riscrive.
+#
+# -- COSA STORNA ---------------------------------------------------------------------------------
+#   Tutti i movimenti di una sorgente (tipo + righe) che NON sono uno storno e
+#   non sono gia' stornati: e' la forma dell'annullo di un documento (la bolla
+#   annullata storna i movimenti dei suoi prelievi). Dal piu' recente al piu'
+#   vecchio: un'entrata si storna prima dell'uscita che l'ha generata.
+#   Il costo: quello dell'originale (lo mette la primitiva, passo 12).
+#
+# -- RISERVATA ------------------------------------------------------------------------------------
+#   SECURITY DEFINER del proprietario e NON concessa all'app (v_fn_riservate
+#   nel loop dei grant, 90_end 20260928-83): la chiamano i verbi, che hanno gia'
+#   applicato permesso e perimetro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260928-73-create-fn-storna-movimenti-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260928-73-create-fn-storna-movimenti-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.fn_storna_movimenti_sorgente: la utility di storno (M-8). Per ogni movimento di
+        una sorgente che non e' uno storno e non e' gia' stornato, scrive lo specchio attraverso il
+        ramo storno della primitiva (stessa sorgente e posizione, quantita' opposta,
+        STORNO_POS/STORNO_NEG, costo dell'originale). DEFINER, riservata ai verbi. Brief:
+        brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 4 (P-8).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'magazzino' AND p.proname = 'fn_scrivi_movimento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_storna_movimenti_sorgente(
+                  p_sorgente_tipo_id magazzino.movimenti.sorgente_tipo_id%TYPE,
+                  p_sorgente_righe   bigint[])
+               RETURNS TABLE(
+                  movimento_id            magazzino.movimenti.id%TYPE,
+                  storno_di_movimento_id  magazzino.movimenti.id%TYPE,
+                  qta                     magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              #variable_conflict use_column
+              -- Scopo: stornare tutti i movimenti di una sorgente (tipo + righe) che
+              --   non sono uno storno e non sono gia' stornati, dal piu' recente.
+              --   Lo specchio lo compone QUI, dall'originale, e lo scrive la
+              --   primitiva nel suo ramo storno (M-8). Ritorna un record per storno.
+              -- ⚠️ p_sorgente_righe e' bigint[] e non %TYPE[]: la sintassi non esiste.
+              DECLARE
+                  v_orig magazzino.movimenti%ROWTYPE;
+              BEGIN
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_storna_movimenti_sorgente',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'tipo di sorgente obbligatorio e maggiore di zero',
+                                             'p_sorgente_tipo_id', p_sorgente_tipo_id),
+                          NULL::uuid, 'magazzino.fn_storna_movimenti_sorgente',
+                          'p_sorgente_tipo_id (obbligatorio, maggiore di zero)');
+                  END IF;
+                  IF p_sorgente_righe IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_storna_movimenti_sorgente',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'elenco delle righe di sorgente obbligatorio (vuoto ammesso)'),
+                          NULL::uuid, 'magazzino.fn_storna_movimenti_sorgente',
+                          'p_sorgente_righe (obbligatorio, anche vuoto)');
+                  END IF;
+
+                  FOR v_orig IN
+                      SELECT m.*
+                        FROM magazzino.movimenti m
+                       WHERE m.sorgente_tipo_id = p_sorgente_tipo_id
+                         AND m.sorgente_riga = ANY (p_sorgente_righe)
+                         AND m.storno_di_movimento_id IS NULL
+                         AND NOT EXISTS (SELECT 1 FROM magazzino.movimenti s
+                                          WHERE s.storno_di_movimento_id = m.id)
+                       ORDER BY m.id DESC
+                  LOOP
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id           => v_orig.magazzino_id,
+                          p_articolo_id            => v_orig.articolo_id,
+                          p_causale                => CASE WHEN v_orig.qta < 0 THEN 'STORNO_POS' ELSE 'STORNO_NEG' END,
+                          p_qta                    => -v_orig.qta,
+                          p_sorgente_tipo_id       => v_orig.sorgente_tipo_id,
+                          p_sorgente_riga          => v_orig.sorgente_riga,
+                          p_sorgente_uid           => v_orig.sorgente_uid,
+                          p_lotto_id               => v_orig.lotto_id,
+                          p_asset_id               => v_orig.asset_id,
+                          p_ubicazione_id          => v_orig.ubicazione_id,
+                          p_data_mov               => now(),
+                          p_storno_di_movimento_id => v_orig.id);
+                      storno_di_movimento_id := v_orig.id;
+                      qta                    := -v_orig.qta;
+                      RETURN NEXT;
+                  END LOOP;
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_storna_movimenti_sorgente(bigint, bigint[]) IS
+                  'La utility di storno (M-8): per ogni movimento di una sorgente (tipo + righe) '
+                  'che non e'' uno storno e non e'' gia'' stornato, dal piu'' recente, scrive lo '
+                  'SPECCHIO attraverso il ramo storno di magazzino.fn_scrivi_movimento: stessa '
+                  'sorgente, articolo, magazzino e posizione (lotto, seriale, ubicazione), '
+                  'quantita'' opposta, causale STORNO_POS (se l''originale era un''uscita) o '
+                  'STORNO_NEG, costo dell''originale (lo mette la primitiva). Lo specchio lo '
+                  'compone il programma leggendo l''originale: non puo'' divergere. Lo storno '
+                  'doppio lo rifiuta la primitiva (uq_mag_movimenti_storno_di). Ritorna '
+                  '(movimento_id, storno_di_movimento_id, qta) per storno. SECURITY DEFINER, '
+                  'RISERVATA: la chiamano i verbi (vendite.fn_cambia_stato_ddt all''annullo di una '
+                  'bolla emessa). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-8).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS magazzino.fn_storna_movimenti_sorgente(bigint, bigint[]);

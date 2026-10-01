@@ -679,7 +679,12 @@ class PipelineStepExecutor:
                 str(exc),
             )
         except Exception:
-            pass  # Mai mascherare l'eccezione originale.
+            # Mai mascherare l'eccezione originale: si ingoia la seconda, ma la
+            # si scrive — senza traccia il task_run resterebbe IN CORSO e
+            # nessuno saprebbe perche'.
+            logging.getLogger(__name__).exception(
+                "fail_lotto_task_run fallito: task_run_id=%s", task_run_id,
+            )
 
     # Scopo: Valida la funzione legacy `fn` del task contro whitelist consentita per evitare override non ammessi.
     def _validate_task_function_name(

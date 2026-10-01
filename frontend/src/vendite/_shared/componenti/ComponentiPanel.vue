@@ -42,6 +42,7 @@ import { useNotify } from '../../../core/composables/useNotify'
 import { useRigaComponenti } from '../../../core/composables/useRigaComponenti'
 import { extractApiError } from '../../../core/utils/apiError'
 import { coerceJsonbToArray } from '../../../core/utils/meta'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../../core/constants'
 import {
   pricingOrigineLabelKey,
   pricingOrigineSeverity,
@@ -49,11 +50,12 @@ import {
 import { formatCurrency, formatNumber, PRICE_EPSILON } from '../../../core/utils/format'
 import { useAuthStore } from '../../../stores/auth'
 import {
-  ORIGINE_PREZZO,
   PRICING_ACTIONS,
   STATO_APPROVAZIONE,
 } from '../../constants'
 
+// DataTable grezza: sono i componenti BoM della riga padre (sotto-righe del
+// documento, o `initialData` di anteprima), con prezzo editabile sulla cella.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
@@ -331,9 +333,11 @@ async function onSalvaPrezzo(comp) {
     return
   }
   try {
+    // `origine_prezzo` NON si manda: un prezzo scritto dall'operatore e'
+    // MANUALE per definizione, e lo scrive il backend (contratto PATCH dei
+    // componenti, 2026-09-26). Mandarlo ora e' un 400.
     await fetcher.update(props.rigaId, comp.id, {
       prezzo_unitario: nuovoPrezzo,
-      origine_prezzo: ORIGINE_PREZZO.MANUALE,
     })
     notify.success(t(localizedKey('prezzo_aggiornato')))
     const next = { ...prezzoEditato.value }
@@ -349,7 +353,7 @@ async function onSalvaPrezzo(comp) {
 <template>
   <div>
     <div v-if="loading && componenti.length === 0" class="componenti-panel-loading">
-      <i class="pi pi-spin pi-spinner" /> {{ t('common.loading') }}
+      <i :class="STATUS_ICONS.CARICAMENTO" /> {{ t('common.loading') }}
     </div>
     <div v-else-if="componenti.length === 0" class="componenti-panel-empty">
       {{ t(localizedKey('vuoto')) }}
@@ -404,7 +408,7 @@ async function onSalvaPrezzo(comp) {
                 class="componenti-panel-input" />
               <Button
                 v-if="isDirty(data)"
-                icon="pi pi-check"
+                :icon="MANAGE_ICONS.CONFIRM"
                 text rounded size="small"
                 severity="success"
                 :disabled="!isPrezzoEditatoValido(data) || loading"
@@ -460,7 +464,7 @@ async function onSalvaPrezzo(comp) {
       {{ t(localizedKey('section_hint')) }}
     </small>
     <small v-if="!effectiveReadonly && !canOverride && componenti.length > 0" class="componenti-panel-hint componenti-panel-hint-lock">
-      <i class="pi pi-lock" /> {{ t(localizedKey('l1_richiede_autorizzazione')) }}
+      <i :class="STATUS_ICONS.BLOCCATO" /> {{ t(localizedKey('l1_richiede_autorizzazione')) }}
     </small>
   </div>
 </template>

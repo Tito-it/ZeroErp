@@ -29,6 +29,11 @@ BEGIN;
 --   della fixture leggono ZERO righe, e il test diventa verde per sottrazione
 --   (le asserzioni finiscono nei rami `skip`, che non verificano niente).
 --
+--   Su un database VUOTO (CI, installazione nuova) questa riga costruisce da
+--   se' azienda + operatore (rev 20260920-01): il mondo si costruisce, non si
+--   cerca. Servono gli ID del mondo, o due aziende? Chiama tu
+--   dbops.fn_pgtap_crea_emittente_operatore() PRIMA e passa l'auth_user_id.
+--
 --   Se il test ha bisogno di una veste DIVERSA da OPERATORE — per esempio
 --   CLIENTE_PORTALE — si fa in due tempi: prima questa riga, perche' la fixture
 --   deve VEDERE per costruire; poi, appena creata l'identita':
@@ -45,6 +50,11 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   in quella dopo, metterla qui fa scattare il vincolo a meta' strada. In quel
 --   caso si sposta dopo l'ultima coppia — e comunque PRIMA di ogni cleanup,
 --   altrimenti scatta su righe gia' cancellate.
+--   ⛔ E SE LA SPOSTI, LA FINESTRA LA DICHIARI: subito dopo la riga di contesto
+--   scrivi `SET CONSTRAINTS ALL DEFERRED;`. Su un database vuoto la riga di
+--   contesto COSTRUISCE il mondo ed esce con i vincoli IMMEDIATE, come ogni
+--   helper pgTAP: contare sulla finestra differita «di default» e' verde su
+--   dev e rosso in CI (anagrafiche/create-cliente, 2026-09-21).
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(0);   -- <-- il numero vero

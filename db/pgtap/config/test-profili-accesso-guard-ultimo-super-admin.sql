@@ -55,21 +55,14 @@ CREATE OR REPLACE FUNCTION pg_temp.mk_admin(OUT id_id bigint, OUT bind_id bigint
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    SELECT id.id INTO id_id
-      FROM anagrafiche.identita_digitali id
-     WHERE id.ruolo_applicativo = 'OPERATORE'
-       AND id.attivo = true
-       AND NOT EXISTS (
-           SELECT 1
-             FROM config.profili_accesso_bindings pab
-            WHERE pab.identita_digitale_id = id.id
-       )
-     ORDER BY id.id
-     LIMIT 1;
-
-    IF id_id IS NULL THEN
-        RAISE EXCEPTION 'Setup impossibile: nessuna identita OPERATORE vergine (tutte hanno gia un binding)';
-    END IF;
+    -- ⛔ L'identita' si COSTRUISCE (2026-09-23). Cercare un'identita'
+    --   OPERATORE «vergine» funzionava finche' il database ne aveva in
+    --   abbondanza: su uno ricostruito ce n'e' UNA, quella dell'operatore di
+    --   contesto, e dopo il primo scenario non e' piu' vergine — il terzo
+    --   moriva sul «Setup impossibile». Un'azienda nuova con il suo operatore
+    --   e' vergine per costruzione, e ogni scenario ha la sua.
+    SELECT ceo.identita_id INTO id_id
+      FROM dbops.fn_pgtap_crea_emittente_operatore() ceo;
 
     INSERT INTO config.profili_accesso_bindings
         (profilo_accesso_id, identita_digitale_id, attivo)
@@ -113,6 +106,18 @@ END
 $$;
 
 -- =========================================================
+-- 0) Il SUPER_ADMIN che deve RESTARE
+-- =========================================================
+-- ⛔ Lo scenario 1 dice «ne disattivo uno e ne restano altri attivi»: su un
+--   database ricostruito non ce n'e' nessun altro, quindi disattivare il
+--   proprio era disattivare L'ULTIMO e il guard scattava — la fixture moriva
+--   con il messaggio del guard, che e' il comportamento GIUSTO del prodotto
+--   contro una precondizione che il file dava per scontata. Qui il
+--   «preesistente» si costruisce, e lo scenario 1 torna a dire cio' che vuole
+--   dire.
+CREATE TEMP TABLE _t_c0 AS SELECT * FROM pg_temp.mk_admin();
+
+-- =========================================================
 -- 1) Scenario SANO: disattivo 1 binding SA ad-hoc lasciando preesistenti
 --    attivi -> il guard non scatta, fn_check resta true.
 -- =========================================================
@@ -135,13 +140,17 @@ CREATE TEMP TABLE _t_c2 AS SELECT * FROM pg_temp.mk_admin();
 
 SELECT pg_temp.disable_others((SELECT bind_id FROM _t_c2));
 
-SELECT throws_ok(
+-- ⭐ Il discriminante c'e' (2026-09-23): un `throws_ok(sql, NULL, NULL)`
+--   accetta QUALUNQUE errore — anche quello sbagliato, ed e' il debito che il
+--   cancello `guardrail_pgtap_preambolo.py` conta. Qui si pinna la frase del
+--   guard, che e' il discriminante piu' stretto disponibile: gli errori di
+--   dominio del progetto sono tutti `P0001`.
+SELECT throws_like(
     format(
         $sql$ UPDATE config.profili_accesso_bindings SET attivo = false WHERE id = %s $sql$,
         (SELECT bind_id FROM _t_c2)
     ),
-    NULL,
-    NULL,
+    '%zero SUPER_ADMIN attivi%',
     '2. Scenario lockout binding: UPDATE attivo=false dell''ultimo SUPER_ADMIN -> raise E_PROFILO_ULTIMO_SUPER_ADMIN'
 );
 
@@ -156,14 +165,24 @@ CREATE TEMP TABLE _t_c3 AS SELECT * FROM pg_temp.mk_admin();
 
 SELECT pg_temp.disable_others((SELECT bind_id FROM _t_c3));
 
-SELECT throws_ok(
+-- ⛔ TROVATO IL 2026-09-23: fino al 2026-09-25 questo UPDATE NON lo
+--   rifiutava `E_PROFILO_ULTIMO_SUPER_ADMIN`, ma il guard GENERICO delle
+--   figlie — `trgfn_prevent_deactivate_if_children` montato dall'automazione
+--   ATTIVO fra identita_digitali e profili_accesso_bindings — che rifiutava
+--   qualunque identita' con un binding attivo e scattava prima. Il ramo
+--   specifico sull'identita' non era raggiungibile, e l'asserzione era
+--   generica (P0001) per reggere in entrambi i mondi.
+-- ⭐ Rev 2026-09-25 (brief-db-blocco-login-per-credenziale §12.3): porta e
+--   profili si sono SGANCIATI — la coppia e' un'eccezione dichiarata in
+--   dbops.automazione_attivo_eccezioni e quel block non c'e' piu'. Il ramo
+--   specifico e' raggiungibile, e l'asserzione pinna la regola: E_PROFILO_ULTIMO_SUPER_ADMIN.
+SELECT throws_like(
     format(
         $sql$ UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = %s $sql$,
         (SELECT id_id FROM _t_c3)
     ),
-    NULL,
-    NULL,
-    '3. Scenario lockout identita: UPDATE attivo=false sull''ultima identita con SUPER_ADMIN -> raise E_PROFILO_ULTIMO_SUPER_ADMIN'
+    '%zero SUPER_ADMIN attivi%',
+    '3. Scenario lockout identita: disattivare l''ultima identita'' con SUPER_ADMIN -> E_PROFILO_ULTIMO_SUPER_ADMIN'
 );
 
 SELECT * FROM finish();

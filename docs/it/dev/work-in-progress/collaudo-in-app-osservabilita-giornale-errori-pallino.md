@@ -86,7 +86,7 @@ insieme, filtrata per gravità.
 | **3.3** | Spegni «Solo errori» | Compaiono anche gli **avvisi** (`WARN`). Le `INFO` non arrivano da qui: sono nella Storia dell'entità | — |
 | **3.4** | Leggi **Riferimento** | Il **codice del lotto** o il **numero della fattura** (con la natura); una bozza senza numero mostra il ripiego, non `/` vuoto | Il rilievo 3 del 19-09: `serie/numero` a mano dava `''` e il ripiego non scattava mai |
 | **3.5** | Leggi **Cosa** | L'etichetta dell'evento (dal catalogo `config.eventi_dominio`), non il codice grezzo; se manca la chiave, il codice | — |
-| **3.6** | Tendina **Registro** → `TASK_RUN` | Solo le corse di task. ⚠️ **Quando** è l'**inizio** della corsa (R-6, chiuso a DB il 19-09): non un orario del giorno dopo | Se vedi orari «del futuro», la vista è tornata a `COALESCE(ended_at, …)` |
+| **3.6** | Tendina **Registro** → «Giri dei task» | ⭐ Le voci vengono dal **catalogo** (`config.registri_giornale`, lookup generico) e portano l'**etichetta** (`etichetta_key` del DB), non più `TASK_RUN` grezzo — anche nella colonna «Registro». Solo le corse di task. ⚠️ **Quando** è l'**inizio** della corsa (R-6, chiuso a DB il 19-09): non un orario del giorno dopo | Se vedi orari «del futuro», la vista è tornata a `COALESCE(ended_at, …)` |
 | **3.7** | Tendina **Entità** | Le voci vengono dal **catalogo** (`config.tipi_entita`, lookup dedicato), non da una lista scritta nel FE | — |
 | **3.8** | Kebab riga su un **LOTTO** → «Apri …» | Si apre il lotto (per rotta, `?open=`); la scheda **Storia** è lì dentro — nessun secondo pulsante «Storia» in lista, per scelta | — |
 | **3.9** | Kebab riga su una **FATTURA** → «Apri …» | Si apre la fattura | — |
@@ -120,9 +120,44 @@ Non sono domande: sono cose decise o dichiarate, che il collaudo deve **vedere**
 | | Cosa | Dove sta scritto |
 | --- | --- | --- |
 | **§3.15** | Il Giornale eventi su «Tutti gli emittenti» chiede un emittente. Per farlo multi serve `emittente_soggetto_ruolo_id` nei quattro rami della vista: **richiesta DB non urgente** | piano §10, registro 19-09 (pezzo G, nota ⚠️) |
-| **§3.6-3.7** | La tendina **Registro** è ancora una **seconda sede** nel FE (quattro letterali) finché non esiste `config.registri_giornale`: brief DB [brief-db-registri-giornale-catalogo.md](brief-db-registri-giornale-catalogo.md). Quando arriva, la tendina porta le **etichette** invece di `EVENT_LOG` grezzo | PROJECT_CONTEXT «Aperto» |
+| **§3.6-3.7** | ~~La tendina **Registro** è ancora una **seconda sede** nel FE (quattro letterali) finché non esiste `config.registri_giornale`~~ ✅ **Chiuso il 19-09 sera**: catalogo a DB, BE e FE sul catalogo, etichette a video — [brief-db-registri-giornale-catalogo.md](../work-done/brief-db-registri-giornale-catalogo.md) (`work-done/`). Il §3.6 lo collauda | — |
 | **R-5** | Sul giornale convivono **due generazioni** di righe: le vecchie con transazione vuota, le nuove col giro. A video sono indistinguibili, e resta così | analisi §3-quater |
 | **R-7** | Il **rumore**: un lotto sporco ripete la stessa storia N volte. Il toggle «Solo errori» ne toglie una parte; la de-duplicazione **non è stata fatta**, per scelta: si guarda col pannello davanti | analisi §3-quater |
+
+---
+
+## 5-bis. 🟠 Trovato a video — il presidio parla a chi lo mantiene, non a chi deve agire
+
+**Il fatto (Tid, 2026-09-19, sul pannello Processi automatici).** Con due
+presidi accesi — `dbops.vw_articoli_a_magazzino_prontezza` (`NESSUNO_MARCATO`)
+e `dbops.vw_lotti_fermi_da_guardare` (16 righe) — il testo mostrato sotto ogni
+riga era *«complicato da capire»*. La stessa cosa detta in chat in due righe
+(«nessun articolo è marcato gestito a magazzino: marcane uno dal drawer
+articolo» · «sono 16 lotti di prova con critiche vive da giugno: rilanciali o
+annullali») ha reso l'azione ovvia, e i due presidi si sono spenti in pochi
+minuti.
+
+**Perché succede, sul modello.** Il testo che il pannello mostra è il
+`COMMENT` della vista (`presidi_repository.py`, `obj_description`): un testo
+scritto **per chi mantiene il presidio** — spiega perché esiste, cita i brief,
+dichiara il perimetro e la cadenza. Chi lo legge in-app è **l'operatore**, che
+ha una domanda sola: *cosa vuol dire, e cosa devo fare*. Il pannello risponde
+alla domanda sbagliata perché l'unico dato che ha in mano è stato scritto per
+un altro lettore. La `nota` di `presidi.csv` va nella stessa direzione ma resta
+prosa da sviluppatore, e il commento della vista **deve** restare tecnico: non è
+lui da riscrivere.
+
+**Cosa manca.** Una seconda voce per presidio, **l'azione**: una frase
+imperativa, scritta per l'operatore, che dice cosa fare per spegnere il
+presidio (o, per i presidi che una persona non può spegnere, chi avvisare).
+Forma proposta: colonna `azione_operatore` in `dbops.presidi`, alimentata dal
+CSV come tutto il resto del catalogo; il pannello la mostra **per prima**, con
+la descrizione tecnica sotto, ripiegabile. Lato BE/FE è una colonna in più
+nella proiezione del pannello e nel digest.
+
+⚠️ È una richiesta **DB** (colonna + una riga di CSV per ognuno dei presidi a
+catalogo) più BE/FE a valle: **non c'è ancora un brief**, sta qui come nota
+del collaudo finché Tid non decide di aprirlo.
 
 ---
 
@@ -131,3 +166,4 @@ Non sono domande: sono cose decise o dichiarate, che il collaudo deve **vedere**
 | Data | Cosa |
 | --- | --- |
 | **2026-09-19** | ✏️ Stesura, alla chiusura dell'analisi e del piano (archiviati in `work-done/` lo stesso giorno). Tutto a codice, **niente visto a video**. Prima della stesura: i due rossi CI del commit `9c11a485b` — l'elenco delle liste globali nel pgTAP e il `SELECT` di `zeroerp_app` su `maintenance.job_run_log` che esisteva solo su dev — chiusi lato DB, da committare |
+| **2026-09-19** | Primo giro a video sul pannello Processi automatici (Tid): due presidi accesi erano entrambi **stati del dato** di dev, non difetti — spenti marcando un articolo a magazzino e chiudendo i 16 lotti di prova. Trovato che la descrizione mostrata è scritta per chi mantiene il presidio, non per chi deve agire → **§5-bis**, senza brief per ora |

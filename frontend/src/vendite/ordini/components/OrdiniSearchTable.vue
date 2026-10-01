@@ -11,7 +11,6 @@
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
-import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 
 import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.vue'
@@ -22,6 +21,8 @@ import ReadonlyBadge from '../../../core/components/ReadonlyBadge.vue'
 import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import ListaConfigurabile from '../../../core/components/ListaConfigurabile.vue'
+import FiltriLista from '../../../core/components/FiltriLista.vue'
+import FiltroPeriodo from '../../../core/components/FiltroPeriodo.vue'
 import LineagePraticaCell from '../../_shared/lineage/LineagePraticaCell.vue'
 import LineageFaseTag from '../../_shared/lineage/LineageFaseTag.vue'
 import LineageFrontieraChip from '../../_shared/lineage/LineageFrontieraChip.vue'
@@ -33,7 +34,7 @@ import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
-import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
 import { exportOrdini } from '../api/ordiniApi'
 import { PDF_MODE } from '../../../documenti/constants'
@@ -57,11 +58,11 @@ const {
 })
 
 // --- Filtri custom (toolbar caller) — binding store via BB (B14) ---
-const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_codice_interno')
 const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 
 // Scopo: i parametri dell'export = QUELLI DELLA LISTA a video, dalla sede
 //        unica dello store (`paramsFiltro`: ricerca, filtri di dominio col nome
@@ -140,32 +141,34 @@ onMounted(() => store.fetchList())
     <template v-else>
       <!-- Toolbar UNICA esterna (pattern lista standard). -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText v-model="searchText" :placeholder="t('vendite.ordini.search_placeholder')" style="width: 260px;" />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('vendite.ordini.search_placeholder')"
+            />
+          </template>
           <LookupSelect
             v-model="statoFilter"
             rel="config.stati_doc_ordini"
             value-field="codice_interno"
+            class="app-filter-w-sm"
             :placeholder="t('vendite.ordini.filtro_stato')"
             show-clear
-            style="width: 160px;"
             @change="onStatoChange"
           />
           <UtilityPerRuoloSelect
             v-model="utilityFilter"
+            class="app-filter-w-md"
             :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
             :placeholder="t('vendite.ordini.filtro_utility')"
             show-clear
             apply-default
             @change="onUtilityChange"
           />
-          <DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataDaChange" @clear-click="onDataDaChange" />
-          <DatePicker v-model="dataAlFilter" :placeholder="t('common.data_a')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataAlChange" @clear-click="onDataAlChange" />
-        </div>
+          <FiltroPeriodo :periodo="periodo" />
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -208,8 +211,8 @@ onMounted(() => store.fetchList())
             :fase="data.frontiera_fase" :n-attivi="data.n_discendenti_attivi" />
         </template>
 
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </ListaConfigurabile>
     </template>
@@ -232,6 +235,7 @@ onMounted(() => store.fetchList())
       v-model:visible="pdfDialogVisible"
       :sorgente-code="SORGENTE_CODES.ORDINE_VENDITA"
       :sorgente-id="pdfDialogOrdine?.id ?? null"
+      :emittente-fiscale-id="pdfDialogOrdine?.emittente_fiscale_id ?? null"
       :title="pdfDialogOrdine
         ? t('vendite.ordini.pdf.dialog_title', { numero: pdfDialogOrdine.numero })
         : ''"

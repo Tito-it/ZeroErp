@@ -20,7 +20,7 @@
 // ⚠️ Niente `useReadonlyMode`: in `amm-software` non c'è un livello d'area da
 //    risolvere — o sei super admin e vedi tutto, o non arrivi alla pagina. Un
 //    terzo cancello che non decide niente sarebbe rumore.
-import { computed, ref, onMounted, onActivated } from 'vue'
+import { computed, onMounted, onActivated } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -36,6 +36,8 @@ import ProcessoDrawer from '../components/ProcessoDrawer.vue'
 import PresidiProcessiPanel from '../components/PresidiProcessiPanel.vue'
 import { displayTimestamp } from '../../core/utils/date'
 import { SEGMENTO_NON_LETTI, statoPallino } from '../../core/utils/pallinoPresidi'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const { t } = useI18n()
 const store = useProcessiAutomaticiStore()
@@ -60,8 +62,15 @@ const {
 })
 
 const drawer = useDrawerState()
-const classeFilter = ref(null)
-const canaleFilter = ref(null)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: classeFilter, onChange: onClasseChange } = bindSelect('classe')
+const { value: canaleFilter, onChange: onCanaleChange } = bindSelect('canale')
 
 const classeOptions = [
   { label: t('amministrazione.processi.classe_tutte'), value: null },
@@ -95,12 +104,6 @@ onActivated(() => {
   store.caricaPresidi()
 })
 
-function applyExtraFilters() {
-  store.filters.classe = classeFilter.value
-  store.filters.canale = canaleFilter.value
-  applyFilters()
-}
-
 function openDettaglio(row) {
   drawer.editRow(row, 'codice')
 }
@@ -115,28 +118,33 @@ function onIdentitaCreata() {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('amministrazione.processi.search_placeholder')"
-        />
+      <FiltriLista :store="store">
+        <template #sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('amministrazione.processi.search_placeholder')"
+          />
+        </template>
         <Select
           v-model="classeFilter"
+          class="app-filter-w-sm"
           :options="classeOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.processi.classe_tutte')"
-          @change="applyExtraFilters"
+          @change="onClasseChange"
         />
         <Select
           v-model="canaleFilter"
+          class="app-filter-w-sm"
           :options="canaleOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.processi.canale_tutti')"
-          @change="applyExtraFilters"
+          @change="onCanaleChange"
         />
-      </div>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

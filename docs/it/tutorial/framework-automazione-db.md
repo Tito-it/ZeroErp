@@ -90,7 +90,7 @@ Dovresti vedere righe come:
 
 **Se queste regole ci sono**: la tua tabella e coperta. Vai al Passo 3.
 
-**Se mancano**: consulta la [Guida Framework – Esempi SQL](/guide/automazione-db#6-esempi-sql-di-configurazione) per gli insert SQL di ciascuna regola.
+**Se mancano**: consulta la [Guida Framework – Esempi SQL](/guide/automazione-db#area-tecnica-esempi) per gli insert SQL di ciascuna regola.
 
 ---
 
@@ -331,7 +331,7 @@ Questi job mantengono allineati i trigger su tutte le tabelle nell'ambito. Se cr
 | **STORICO_PROVISION** | `automations_storico_provision` | `proc_automations_storico_provision_job()` | `dbops.fn_run_automations_storico_provision('SCHEDULED', NULL, false)` |
 | **STORICO**           | `automations_storico`           | `proc_automations_storico_job()`           | `dbops.fn_run_automations_storico('SCHEDULED', NULL, false)`           |
 | **ATTIVO**            | `automations_attivo`            | `proc_automations_attivo_job()`            | `dbops.fn_run_automations_attivo('SCHEDULED', NULL, false)`            |
-| **LOCK_COLUMNS**      | `automations_lock_columns`      | `proc_automations_lock_columns_job()`      | `fn_run_automations_lock_columns` + `fn_run_automations_drop_lock_trg` |
+| **LOCK_COLUMNS**      | `automations_lock_columns`      | `proc_automations_lock_columns_job()`      | `dbops.fn_run_automations_lock_columns('SCHEDULED', NULL, false)`      |
 
 #### Job settimanali (sabato/domenica)
 

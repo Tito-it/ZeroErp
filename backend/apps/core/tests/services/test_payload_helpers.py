@@ -64,6 +64,7 @@ Indice test eseguiti:
 53) test_map_integrity_fk_preferita_su_specific — review: piu' constraint precisi -> il piu' specifico vince via word boundary
 54) test_validate_order_by_ok                   — nuovo helper V6-B2 review
 55) test_validate_order_by_invalid              — nuovo helper V6-B2 review
+55b) test_validate_order_by_rifiuta_una_direzione_estranea — 2026-09-26: la direzione e' validata insieme alla colonna
 56) test_reject_keys_empty_ok                   — nuovo helper V6-B2 review
 57) test_reject_keys_presente                   — nuovo helper V6-B2 review
 58) test_require_decimal_ok_int_float_str        — 2026-09-18: int, float e stringa passano da `str` (Decimal esatto)
@@ -83,6 +84,10 @@ Indice test eseguiti:
 72) test_optional_enum                           — assente o None -> None; presente -> stesso rigore
 73) test_extract_optional_enum_tre_stati         — assente -> MISSING; None nullable -> None; None non nullable -> VALIDATION
 74) test_coerce_enum_scalare                     — la forma per un parametro di firma; None e' obbligatorio
+75) test_extract_optional_string_max_len         — 2026-09-21 (regola del 2): oltre `max_len` -> VALIDATION col campo; MISSING e None (nullable) non lo misurano
+76) test_optional_smallint_porta_il_campo         — 2026-09-21 (presidio C2 §3-bis.4): i tre rifiuti nominano `field`, come le sorelle
+77) test_optional_bool_porta_il_campo             — idem
+78) test_optional_meta_porta_il_campo             — idem, sui due rifiuti (JSON rotto, non oggetto)
 """
 
 from decimal import Decimal
@@ -171,6 +176,18 @@ class TestRequireString(_Base):
             self.v.require_string({"codice": 123}, "codice", max_len=10)
 
 
+class TestExtractOptionalString(_Base):
+    # 75. Il tetto e' quello di `require_string`, sullo stesso campo: prima il
+    #     PATCH per delta lo riscriveva a mano dopo la chiamata.
+    def test_extract_optional_string_max_len(self):
+        self.assertIs(self.v.extract_optional_string({}, "descrizione", nullable=True, max_len=5), MISSING)
+        self.assertIsNone(self.v.extract_optional_string({"descrizione": None}, "descrizione", nullable=True, max_len=5))
+        self.assertEqual(self.v.extract_optional_string({"descrizione": " abc "}, "descrizione", max_len=5), "abc")
+        with self.assertRaisesValidation() as ctx:
+            self.v.extract_optional_string({"descrizione": "abcdef"}, "descrizione", nullable=True, max_len=5)
+        self.assertEqual(ctx.exception.context.get("field"), "descrizione")
+
+
 class TestRequirePositiveInt(_Base):
     def test_require_positive_int_ok_int(self):
         self.assertEqual(self.v.require_positive_int({"id": 42}, "id"), 42)
@@ -243,6 +260,19 @@ class TestOptionalSmallint(_Base):
         self.assertIsNone(self.v.optional_smallint({}, "o"))
         self.assertIsNone(self.v.optional_smallint({"o": None}, "o"))
 
+    # Scopo: il canale del campo (presidio C2, brief-be-presidio-ui-action-e-
+    #        canale-campi §3-bis.4). Fino al 2026-09-21 i tre rifiuti scrivevano
+    #        `context={key: value}` — il nome del campo come CHIAVE, che
+    #        `_campi_da_correggere` non legge — e l'envelope usciva senza
+    #        `fields` su un errore che sa esattamente quale input ha sbagliato.
+    #        E' un metodo che estrae dal PAYLOAD, come `require_string`: il
+    #        campo e' un input del form, e va nominato.
+    def test_optional_smallint_porta_il_campo(self):
+        for payload in ({"o": True}, {"o": "x"}, {"o": 40000}):
+            with self.assertRaises(ServiceError) as ctx:
+                self.v.optional_smallint(payload, "o")
+            self.assertEqual(ctx.exception.context.get("field"), "o", payload)
+
 
 class TestOptionalBool(_Base):
     def test_optional_bool_true(self):
@@ -260,6 +290,12 @@ class TestOptionalBool(_Base):
     def test_optional_bool_str(self):
         with self.assertRaisesValidation():
             self.v.optional_bool({"attivo": "true"}, "attivo")
+
+    # Scopo: come `test_optional_smallint_porta_il_campo`, sul booleano.
+    def test_optional_bool_porta_il_campo(self):
+        with self.assertRaises(ServiceError) as ctx:
+            self.v.optional_bool({"attivo": "true"}, "attivo")
+        self.assertEqual(ctx.exception.context.get("field"), "attivo")
 
     def test_optional_bool_int(self):
         with self.assertRaisesValidation():
@@ -431,6 +467,14 @@ class TestOptionalMeta(_Base):
         with self.assertRaisesValidation():
             self.v.optional_meta({"meta": "[1,2,3]"})
 
+    # Scopo: come `test_optional_smallint_porta_il_campo`, sui due rifiuti del
+    #        blob: il campo e' la chiave del payload (`meta`), non `meta_raw`.
+    def test_optional_meta_porta_il_campo(self):
+        for raw in ("{not json", "[1,2,3]"):
+            with self.assertRaises(ServiceError) as ctx:
+                self.v.optional_meta({"meta": raw})
+            self.assertEqual(ctx.exception.context.get("field"), "meta", raw)
+
 
 class TestInstanceDefaults(TestCase):
     """Test propagazione log_to_db e function_name (V6-B2 extension).
@@ -529,12 +573,27 @@ class TestValidateOrderBy(_Base):
     _ALLOWED = frozenset({"codice", "descrizione", "data_insert"})
 
     def test_validate_order_by_ok(self):
-        self.v.validate_order_by("codice", allowed=self._ALLOWED)
+        # La direzione ASSENTE e' ammessa (prende il default del repository),
+        # e maiuscole/spazi valgono come nel BB SQL.
+        for order_dir in (None, "", "asc", "desc", " DESC "):
+            with self.subTest(order_dir=order_dir):
+                self.v.validate_order_by("codice", allowed=self._ALLOWED, order_dir=order_dir)
 
     def test_validate_order_by_invalid(self):
         with self.assertRaisesValidation() as ctx:
-            self.v.validate_order_by("random_col", allowed=self._ALLOWED)
+            self.v.validate_order_by("random_col", allowed=self._ALLOWED, order_dir="asc")
         self.assertEqual(ctx.exception.code, _CODE)
+
+    # ⛔ 2026-09-26: prima il metodo guardava la sola colonna, e `?order_dir=giu`
+    #    arrivava al repository che lo trasformava in ASC. Ora e' il 400 di
+    #    dominio, con il campo nel context.
+    def test_validate_order_by_rifiuta_una_direzione_estranea(self):
+        for order_dir in ("giu", "desc;", "ASC NULLS LAST"):
+            with self.subTest(order_dir=order_dir):
+                with self.assertRaisesValidation() as ctx:
+                    self.v.validate_order_by("codice", allowed=self._ALLOWED, order_dir=order_dir)
+                self.assertEqual(ctx.exception.code, _CODE)
+                self.assertEqual(ctx.exception.context, {"order_dir": order_dir})
 
 
 class TestRejectKeys(_Base):

@@ -14,7 +14,16 @@ Guide: brief `brief-db-magazzino-lotto-2-motore` (§3 D-L2-h, §6-ter C3, C13)
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-09-18 — Lotto 2 del magazzino)
+(rev 2026-09-22 — R-1 del Lotto 2-bis: la matrice **esce dal corpo**)
+
+⭐ **Dal 22-09-2026 il guard non CONTIENE più la matrice: la LEGGE** da
+[magazzino.fn_documento_interno_transizioni](/dbzero/magazzino/funzioni/fn_documento_interno_transizioni),
+la stessa sede da cui la capability del drawer disegna i pulsanti. Cambia dove
+sta la regola, non chi la fa rispettare — e cambia perché adesso i lettori sono
+**due**: un `CASE` nel corpo avrebbe costretto il frontend a scriverne una
+seconda copia (linee-guida-sql §12.2 punto 1). Comportamento, codici e frasi
+sono invariati. Il DELETE solo in bozza e la porta `POSTED` restano qui: sono
+regole di questo guard, non della matrice.
 
 **La matrice degli stati** dei documenti interni — una funzione per le due famiglie
 (`TG_ARGV`: la colonna di stato, il nome della GUC), montata `BEFORE UPDATE OF <stato> OR
@@ -30,11 +39,24 @@ Il ritorno in bozza (`CONFIRM → DRAFT`) esiste perché il piano dell'inventari
 `CONFIRM` e le righe si correggono in `DRAFT`: senza, l'unica uscita da una riga sbagliata
 sarebbe annullare e rifare.
 
-**La porta `POSTED`.** Un documento «registrato» senza movimenti dietro direbbe il falso:
-`POSTED` è ammesso solo se la GUC transazionale `zeroerp.magazzino_posting_<famiglia>` porta
-l'id del documento — la impostano `fn_posta_inventario` / `fn_posta_rettifica` e la azzerano in
-coda. Un `UPDATE` diretto è `E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE` (tecnico: nessuna
-interfaccia lo produce). Ogni altra transizione fuori matrice è
+**La porta `POSTED`.** Un documento «registrato» senza movimenti dietro direbbe il falso.
+`POSTED` è ammesso solo se valgono **due condizioni insieme**:
+
+1. la GUC transazionale `zeroerp.magazzino_posting_<famiglia>` porta l'id del documento. La
+   impostano `fn_posta_inventario` / `fn_posta_rettifica` e la azzerano in coda. Dice **quale
+   operazione e quale documento**;
+2. chi esegue è il proprietario della tabella
+   ([script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella)).
+   Dice **che la scrittura passa da un verbo**: i due verbi girano con i privilegi del
+   proprietario, l'app no.
+
+La seconda condizione c'è dal 25-09-2026 (D-V1 di brief-db-magazzino-verbi-con-permesso).
+Prima bastava la GUC, ma l'app può accenderla da sola: poteva segnare un documento come
+registrato senza movimenti e senza il permesso. Da sola, ora, la GUC non apre più niente.
+
+Un `UPDATE` diretto è `E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE` (tecnico: nessuna
+interfaccia lo produce). Nel contesto dell'errore `dentro_verbo` e `db_user` dicono quale
+delle due condizioni è mancata. Ogni altra transizione fuori matrice è
 `E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`, con i due stati nella frase.
 
 **Il cestino.** Le righe cascano con la testata; cancellare un documento registrato lascerebbe i

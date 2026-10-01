@@ -24,27 +24,37 @@ AS $function$
 -- DEF-2: step 2.5 calcola preset_aggiornato (flag banner "novita' preset").
 -- DB-A:  step 5 aggiunge priorita (peso ritiro dinamico FE), letta fresca
 --        da ui.lista_colonna (attributo globale, non overridabile).
+-- 2026-09-23: la veste la legge ui.fn_veste_corrente() e il livello di
+--        colonna lo calcola ui.fn_lista_colonne_livello(): due building
+--        block condivisi con la ricerca libera (fn_lista_colonne_ricerca_full).
+-- 2026-09-25: la riga della lista la legge ui.fn_lista_da_codice() (BB
+--        condiviso con la ricerca libera e col backend), e il JSONB porta
+--        ricerca_min_caratteri, la soglia della ricerca libera della lista.
+-- 2026-09-30: la misura di pagina dal catalogo ui.misure_pagina (brief-db-
+--        misure-pagina-catalogo): via il 25 scritto cinque volte, e la misura
+--        che risponde e' sempre una del catalogo (passo 5-ter).
 DECLARE
+  -- La riga della lista, letta una volta dal BB: id, multi_emittente (P-2b,
+  -- 2026-08-18), perimetro_emittente (2026-09-02), ricerca_min_caratteri
+  -- (2026-09-25) vengono tutti da qui.
+  v_lista            ui.lista_definizione%ROWTYPE;
   v_lista_id         ui.lista_definizione.id%TYPE;
-  -- P-2b (2026-08-18): la capacita' dichiarata della lista.
-  v_multi_emittente  ui.lista_definizione.multi_emittente%TYPE;
-  -- 2026-09-02: la lista ha righe che appartengono a un emittente?
-  v_perimetro_emitt  ui.lista_definizione.perimetro_emittente%TYPE;
   v_config_colonne   JSONB;
-  v_ordinamento      JSONB;
-  v_filtri           JSONB;
-  v_pagina_dim       ui.lista_preset.pagina_dimensione%TYPE := 25;
+  v_ordinamento      ui.lista_preset.ordinamento_default%TYPE;
+  v_filtri           ui.lista_preset.filtri_default%TYPE;
+  -- La misura scelta (preferenza o preset); NULL = nessuna scelta. Quella che
+  -- risponde la decide il passo 5-ter, dal catalogo.
+  v_pagina_dim       ui.lista_preset.pagina_dimensione%TYPE;
   v_profili_ids      INTEGER[];
   v_colonne_nuove    INTEGER := 0;
   -- I codici mergiati dal catalogo al passo 3. Servono al passo 5-bis per
   -- ricontarli DOPO il filtro dei permessi: senza, il contatore annuncia
   -- colonne che la funzione ha appena tolto (brief §4-ter).
   v_codici_mergiati  TEXT[]  := ARRAY[]::TEXT[];
-  v_permessi         JSONB   := '{}'::JSONB;
 
-  -- DB-4: veste corrente dalla GUC (raw TEXT per cast sicuro sotto)
-  v_ruolo_guc_raw    TEXT    := NULLIF(current_setting('app.ruolo_applicativo', true), '');
-  v_ruolo_guc        config.ruolo_applicativo;
+  -- DB-4: veste corrente dalla GUC. NULL = tutte le vesti, anche per un
+  --   valore fuori dominio: la regola sta nel building block (2026-09-23).
+  v_ruolo_guc        config.ruolo_applicativo := ui.fn_veste_corrente();
 
   -- DEF-2: snapshot preset di base dalla preferenza utente
   v_pref_preset_base_id    ui.lista_preferenza_utente.preset_base_id%TYPE;
@@ -55,37 +65,16 @@ DECLARE
   -- DEF-2: flag risultato
   v_preset_aggiornato      BOOLEAN := FALSE;
 BEGIN
-  -- Cast GUC -> ENUM blindato: valore non nel ENUM (bug middleware,
-  -- variabile env errata) -> fallback NULL = tutte le vesti, mai eccezione.
-  IF v_ruolo_guc_raw IS NOT NULL THEN
-    BEGIN
-      v_ruolo_guc := v_ruolo_guc_raw::config.ruolo_applicativo;
-    EXCEPTION WHEN invalid_text_representation THEN
-      v_ruolo_guc := NULL;
-    END;
-  END IF;
   -- -------------------------------------------------------
-  -- 0. Recupera lista_id dal codice
+  -- 0. La riga della lista dal codice (2026-09-25: dal BB)
   -- -------------------------------------------------------
-  -- ⚠️ P-2b: multi_emittente si legge QUI, nella SELECT che c'era gia'.
-  --   Una seconda query sulla stessa riga sarebbe un round-trip in piu' su
-  --   una funzione che gira a ogni apertura di lista.
-  SELECT id, multi_emittente, perimetro_emittente
-    INTO v_lista_id, v_multi_emittente, v_perimetro_emitt
-    FROM ui.lista_definizione
-   WHERE codice = p_lista_codice
-     AND attivo = TRUE;
-
-  IF v_lista_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database',
-      'ui.fn_resolve_lista_config',
-      'E_UI_LISTA_NON_TROVATA',
-      jsonb_build_object('detail', format('codice lista: ''%s''', p_lista_codice)),
-      NULL,
-      p_lista_codice
-    );
-  END IF;
+  -- ⚠️ Una lettura sola: multi_emittente, perimetro_emittente e la soglia
+  --   della ricerca si prendono da questa riga. Una seconda query sulla
+  --   stessa riga sarebbe un round-trip in piu' su una funzione che gira a
+  --   ogni apertura di lista. Lista assente o spenta: E_UI_LISTA_NON_TROVATA,
+  --   sollevato dal BB.
+  v_lista    := ui.fn_lista_da_codice(p_lista_codice);
+  v_lista_id := v_lista.id;
 
   -- -------------------------------------------------------
   -- 1. Risolvi profili applicabili (DB-4: GUC-aware)
@@ -110,7 +99,10 @@ BEGIN
       (pu.configurazione -> 'colonne'),
       (pu.configurazione -> 'ordinamento'),
       (pu.configurazione -> 'filtri'),
-      COALESCE((pu.configurazione ->> 'pagina_dimensione')::INTEGER, 25),
+      -- Nessun cast che possa cadere: un valore che intero non e' vale «nessuna
+      -- scelta» (lo rifiuta alla scrittura il guard della preferenza).
+      CASE WHEN (pu.configurazione ->> 'pagina_dimensione') ~ '^[0-9]{1,9}$'
+           THEN (pu.configurazione ->> 'pagina_dimensione')::INTEGER END,
       pu.preset_base_id,
       pu.preset_base_data_update,
       pu.preset_aggiornato_ignored_at
@@ -142,7 +134,7 @@ BEGIN
         ),
         lp.ordinamento_default,
         lp.filtri_default,
-        COALESCE(lp.pagina_dimensione, 25)
+        lp.pagina_dimensione
       INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim
       FROM ui.lista_preset lp
       JOIN script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc) pa
@@ -176,7 +168,7 @@ BEGIN
         ),
         lp.ordinamento_default,
         lp.filtri_default,
-        COALESCE(lp.pagina_dimensione, 25)
+        lp.pagina_dimensione
       INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim
       FROM ui.lista_preset lp
      WHERE lp.lista_id             = v_lista_id
@@ -208,7 +200,7 @@ BEGIN
         ),
         lp.ordinamento_default,
         lp.filtri_default,
-        COALESCE(lp.pagina_dimensione, 25)
+        lp.pagina_dimensione
       INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim
       FROM ui.lista_preset lp
      WHERE lp.lista_id   = v_lista_id
@@ -293,41 +285,19 @@ BEGIN
    );
 
   -- -------------------------------------------------------
-  -- 4. Risolvi permessi effettivi per colonna (DB-4: GUC-aware)
-  --    DISTINCT ON: profilo piu' specifico (priorita asc),
-  --    a parita' di priorita' il piu' restrittivo (BLOCCATO>LETTURA>TUTTO)
+  -- 4. Livello effettivo per colonna (2026-09-23).
+  --    Non si calcola piu' qui: lo da' ui.fn_lista_colonne_livello, letto
+  --    nel passo 5 (grant del profilo piu' specifico, a parita' il piu'
+  --    restrittivo; senza grant sensibile -> BLOCCATO, altrimenti TUTTO).
+  --    ⭐ E' lo stesso calcolo della ricerca libera: una sede, due lettori.
+  --    Se divergessero, la ricerca troverebbe righe per il valore di una
+  --    colonna che la lista non mostra.
   -- -------------------------------------------------------
-  IF array_length(v_profili_ids, 1) > 0 THEN
-    SELECT jsonb_object_agg(colonna_codice, livello)
-      INTO v_permessi
-      FROM (
-        SELECT DISTINCT ON (lc.codice)
-               lc.codice                AS colonna_codice,
-               lcp.livello_accesso      AS livello
-          FROM ui.lista_colonna lc
-          JOIN ui.lista_colonna_permesso lcp
-            ON lcp.colonna_id = lc.id
-          JOIN script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc) pa
-            ON pa.profilo_accesso_id = lcp.profilo_accesso_id
-         WHERE lc.lista_id = v_lista_id
-         ORDER BY lc.codice,
-                  pa.priorita ASC,
-                  CASE lcp.livello_accesso
-                    WHEN 'BLOCCATO' THEN 1
-                    WHEN 'LETTURA'  THEN 2
-                    WHEN 'TUTTO'    THEN 3
-                  END ASC
-      ) sub;
-  END IF;
-
-  IF v_permessi IS NULL THEN
-    v_permessi := '{}'::JSONB;
-  END IF;
 
   -- -------------------------------------------------------
   -- 5. Applica permessi + normalizzazione colonne obbligatorie
   --    - tipo 'identificatore' e 'azione': forzate visibile=true
-  --    - sensibile=TRUE senza grant esplicito: BLOCCATO
+  --    - sensibile=TRUE senza grant esplicito: BLOCCATO (regola nel BB)
   --    - colonne BLOCCATE: rimosse
   --    - colonne LETTURA: esportabile=false
   --    - F.2: aggiunge etichetta_i18n_key (NULL se non valorizzata)
@@ -355,10 +325,7 @@ BEGIN
         lc.esportabile,
         lc.etichetta_i18n_key,
         lc.priorita,
-        COALESCE(
-          v_permessi ->> (elem ->> 'codice'),
-          CASE WHEN lc.sensibile THEN 'BLOCCATO' ELSE 'TUTTO' END
-        )                               AS livello_eff,
+        lv.livello_accesso::text        AS livello_eff,
         CASE
           WHEN lc.tipo_colonna IN ('identificatore', 'azione')
             THEN TRUE
@@ -374,6 +341,9 @@ BEGIN
         ON lc.lista_id = v_lista_id
        AND lc.codice   = elem ->> 'codice'
        AND lc.attivo   = TRUE
+      -- Il livello: una riga per ogni colonna attiva della lista.
+      JOIN ui.fn_lista_colonne_livello(v_lista_id, p_auth_user_id, v_ruolo_guc) lv
+        ON lv.colonna_id = lc.id
       WHERE lc.id IS NOT NULL
     ) sub
     WHERE livello_eff <> 'BLOCCATO';
@@ -413,6 +383,14 @@ BEGIN
   END IF;
 
   -- -------------------------------------------------------
+  -- 5-ter. La misura di pagina (2026-09-30): quella scelta se e' nel catalogo,
+  --   altrimenti il default PAGINA del catalogo. Chiude anche il NULL del
+  --   ripiego 2e (il SELECT INTO del passo 2a a zero righe azzera la misura).
+  -- -------------------------------------------------------
+  v_pagina_dim := CASE WHEN ui.fn_misura_pagina_ammessa(v_pagina_dim) THEN v_pagina_dim
+                       ELSE ui.fn_misura_pagina_default('PAGINA') END;
+
+  -- -------------------------------------------------------
   -- 6. Ritorna il JSONB finale
   -- -------------------------------------------------------
   RETURN jsonb_build_object(
@@ -420,6 +398,11 @@ BEGIN
     'ordinamento',       COALESCE(v_ordinamento, '[]'::JSONB),
     'filtri',            COALESCE(v_filtri, '{}'::JSONB),
     'pagina_dimensione', v_pagina_dim,
+    -- ⭐ 2026-09-25: la soglia della ricerca libera, una proprieta' della
+    --   LISTA (non del preset, non dell'utente): sotto questo numero di
+    --   caratteri il termine non si manda. E' la stessa colonna che legge il
+    --   BB di ricerca del backend: una sede, due lettori. Chiave ADDITIVA.
+    'ricerca_min_caratteri', v_lista.ricerca_min_caratteri,
     'colonne_nuove',     v_colonne_nuove,
     'preset_aggiornato', v_preset_aggiornato,
     -- ⭐ P-2b: la lista dichiara se sa reggere piu' emittenti.
@@ -430,7 +413,7 @@ BEGIN
     --   decidono lo scope e la RLS), dice se la SCHERMATA e' leggibile nella
     --   condizione in cui sta per essere aperta. Chi la usa come controllo di
     --   autorizzazione crea una seconda via d'accesso accanto a quella vera.
-    'multi_emittente',   COALESCE(v_multi_emittente, false),
+    'multi_emittente',   COALESCE(v_lista.multi_emittente, false),
     -- ⭐ 2026-09-02 — IL TERZO CASO, e senza di lui il flag sopra risponde a
     --   una domanda che per certe liste non esiste. `multi_emittente` dice
     --   «so dire da quale emittente arriva ogni riga»; su un catalogo GLOBALE
@@ -446,14 +429,14 @@ BEGIN
     --   dire (perimetro_emittente = false). Sono due ragioni diverse per lo
     --   stesso gesto, e vanno tenute distinte: la prima e' una capacita'
     --   conquistata, la seconda e' la natura del dato.
-    'perimetro_emittente', COALESCE(v_perimetro_emitt, true)
+    'perimetro_emittente', COALESCE(v_lista.perimetro_emittente, true)
   );
 
 END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. DEF-2 (2026-05-11): preset_aggiornato. DB-A (2026-06-02): priorita per colonna (peso ritiro dinamico FE), letta fresca da ui.lista_colonna (attributo globale, non overridabile). P-2b (2026-08-18): l''envelope porta anche multi_emittente, la capacita'' dichiarata dalla lista di reggere piu'' emittenti. Chiave ADDITIVA, letta nella SELECT che gia'' recuperava la lista (nessun round-trip in piu''). ⚠️ NON e'' un permesso: non decide cosa l''utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se la SCHERMATA e'' leggibile nella condizione in cui sta per essere aperta. Brief perimetro-emittente P-2b.';
+IS 'Risolve configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. DEF-2 (2026-05-11): preset_aggiornato. DB-A (2026-06-02): priorita per colonna (peso ritiro dinamico FE), letta fresca da ui.lista_colonna (attributo globale, non overridabile). P-2b (2026-08-18): l''envelope porta anche multi_emittente, la capacita'' dichiarata dalla lista di reggere piu'' emittenti. Chiave ADDITIVA, letta nella SELECT che gia'' recuperava la lista (nessun round-trip in piu''). ⚠️ NON e'' un permesso: non decide cosa l''utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se la SCHERMATA e'' leggibile nella condizione in cui sta per essere aperta. Brief perimetro-emittente P-2b. 2026-09-23: la veste la legge ui.fn_veste_corrente() e il livello di colonna lo calcola ui.fn_lista_colonne_livello(), building block condivisi con la ricerca libera (fn_lista_colonne_ricerca_full): una sede per il calcolo, perche'' la ricerca non trovi righe per una colonna che la lista non mostra. Brief: brief-db-ricerca-full-colonne-permessi. 2026-09-25: la riga della lista la legge ui.fn_lista_da_codice(), building block condiviso con la ricerca libera e col backend (una lettura sola, stesso E_UI_LISTA_NON_TROVATA), e il JSONB porta ricerca_min_caratteri: la soglia della ricerca libera, proprieta'' della lista (ui.lista_definizione.ricerca_min_caratteri), la stessa che legge il BB di ricerca del backend. Brief: brief-db-be-fe-ricerca-soglia-per-lista.';
 ```
 
 ---

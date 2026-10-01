@@ -13,8 +13,8 @@ Indice test eseguiti:
  3) test_rounding_modes_lookup_ok — GET 200, lista 4 codici (no HALF_EVEN)
  4) test_rounding_modes_lookup_response_shape — data e' lista nuda, non envelope paginato
  5) test_audit_sources_lookup_ok — GET 200, delega a service.list_audit_sources (Fase 5)
- 6) test_email_log_stati_lookup_ok — GET 200, codici statici derivati dalla
-    sede unica _EMAIL_LOG_STATI_DESCRIZIONI (5 dal 2026-09-11, con SIMULATA)
+(Il lookup degli stati email log e' uscito il 2026-09-26: ora e'
+`/core/email/log/stati/`, test in `core/tests/api/test_email_log_stati_lookup.py`.)
 """
 
 import json
@@ -23,7 +23,6 @@ from unittest.mock import MagicMock, patch
 
 from apps.amm_software.api.views import (
     AuditSourcesLookupView,
-    EmailLogStatiLookupView,
     EmittenteRoundingModesLookupView,
     EmittentiFormDefaultsView,
 )
@@ -109,7 +108,7 @@ class TestEmittenteRoundingModesLookupView(TestCase):
 
 
 # =================================================================
-# Fase 5 — audit-sources + email-log-stati lookup
+# Fase 5 — audit-sources lookup (email-log-stati: sceso in core il 2026-09-26)
 # =================================================================
 
 
@@ -143,26 +142,3 @@ class TestAuditSourcesLookupView(TestCase):
             self.assertIn("label_key", row)
             self.assertIn("area_funzionale", row)
 
-
-class TestEmailLogStatiLookupView(TestCase):
-    """View GET /api/v1/amm-software/lookup/email-log-stati/ (Fase 5)."""
-
-    def test_email_log_stati_lookup_ok(self) -> None:
-        # Lookup statico Python: nessun DB, no mock necessario.
-        view = EmailLogStatiLookupView()
-        view.check_permissions = MagicMock()
-        response = view.get(_admin_request())
-
-        self.assertEqual(response.status_code, 200)
-        body = json.loads(response.content)
-        self.assertIsInstance(body["data"], list)
-        codici = [r["codice"] for r in body["data"]]
-        # ⭐ Derivato dalla sede unica, non ricopiato (vedi il gemello in
-        #    `test_amm_software_service`): l'elenco scritto a mano qui era la
-        #    quinta copia del vocabolario degli stati email.
-        from apps.amm_software.services import amm_software_service as _svc
-        atteso = [c for c, _d, _o in sorted(
-            _svc._EMAIL_LOG_STATI_DESCRIZIONI, key=lambda r: r[2],
-        )]
-        self.assertEqual(codici, atteso)
-        self.assertEqual(codici[0], "SENT", "default-first: SENT resta il primo")

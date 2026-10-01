@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.email_allegato — il satellite segue i suoi padri.
+#   Brief: brief-db-email-visibilita-per-ambito §4 D-4, §4.1
+#   Chiude il debito id 60 di dbops.rls_perimetro_debito (20260925-69).
+#
+# ── ⛔ IL DIFETTO ──────────────────────────────────────────────────
+#   Nessuna policy e RLS spenta: gli allegati di una mail OPERATORE erano
+#   leggibili da chiunque arrivasse alla tabella, mentre la mail no. Un
+#   allegato vale quanto la mail che lo porta.
+#
+# ── ⭐ LA FORMA: un ramo per padre, e il padre decide ───────────────
+#   Due FK nullable, `email_outbox_id` e `email_log_id`. ⚠️ Il registro diceva
+#   «una sola valorizzata per riga», ma non e' cosi': all'invio il backend fa
+#   `UPDATE … SET email_log_id` sulla stessa riga (copy_allegati_to_log), e
+#   l'allegato ha entrambi i padri. ⇒ I due rami stanno in OR: si vede se si
+#   vede almeno uno dei padri.
+#   ⭐ L'`EXISTS` sul padre attraversa la POLICY del padre, perche' la
+#   sottoquery gira con l'identita' di chi legge: la regola dell'ambito resta
+#   in UN posto (script.fn_scope_email_ambito, via le due policy) e qui non si
+#   ricopia. E' la forma dei satelliti gia' in casa (le righe delle contabili,
+#   20260822-24). Una funzione `fn_scope_*` qui non aggiungerebbe niente: la
+#   logica di scope non e' in questa policy, e' nei padri.
+#   ⚠️ Il gate OPERATORE non si ripete: lo porta ciascun padre.
+#   * Allegato senza padri — il modello lo ammette (nessun CHECK): non lo
+#     vede nessuno, nemmeno il super admin. Fail-closed; il BE nega gia'
+#     l'accesso a un allegato senza bozza (_check_allegato_access).
+#   * WITH CHECK uguale: si attacca un allegato solo a una mail che si vede.
+#   * Il CASCADE da email_outbox resta com'e': le azioni referenziali non
+#     passano dalla row level security.
+#
+# ⚠️ Nessuna vista e nessuna funzione legge questa tabella (pg_depend e
+#   prosrc, 2026-09-25): accendere la RLS tocca solo il backend, che la legge
+#   dalla sessione dell'operatore.
+#
+# Verifica: db/pgtap/rls/test-rls-email-ambito-reparto-operatore.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260925-68-create-policy-rls-email-allegato-ambito-mctit.yaml
+
+  - changeSet:
+      id: 20260925-68-create-policy-rls-email-allegato-ambito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Policy rls_email_allegato_ambito su config.email_allegato (FOR ALL) e
+        RLS accesa: un allegato si vede se si vede la sua mail — log o bozza,
+        in OR perche' dopo l'invio li porta entrambi. L'EXISTS attraversa la
+        policy del padre, quindi la regola dell'ambito non si ricopia. Chiude
+        il debito id 60 (D-4). Brief: brief-db-email-visibilita-per-ambito.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: email_allegato
+            - sqlCheck:
+                expectedResult: 2
+                sql: >-
+                  SELECT count(*) FROM pg_policy
+                   WHERE (polrelid, polname) IN (
+                           ('config.email_log'::regclass,    'rls_email_log_ambito'),
+                           ('config.email_outbox'::regclass, 'rls_email_outbox_ambito'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_email_allegato_ambito ON config.email_allegato;
+
+              CREATE POLICY rls_email_allegato_ambito ON config.email_allegato
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      -- ⭐ Ogni EXISTS passa dalla policy del padre: e' li'
+                      --   che sta la regola dell'ambito.
+                      (email_log_id IS NOT NULL
+                       AND EXISTS (SELECT 1 FROM config.email_log l
+                                    WHERE l.id = email_allegato.email_log_id))
+                      OR
+                      (email_outbox_id IS NOT NULL
+                       AND EXISTS (SELECT 1 FROM config.email_outbox o
+                                    WHERE o.id = email_allegato.email_outbox_id))
+                  )
+                  WITH CHECK (
+                      (email_log_id IS NOT NULL
+                       AND EXISTS (SELECT 1 FROM config.email_log l
+                                    WHERE l.id = email_allegato.email_log_id))
+                      OR
+                      (email_outbox_id IS NOT NULL
+                       AND EXISTS (SELECT 1 FROM config.email_outbox o
+                                    WHERE o.id = email_allegato.email_outbox_id))
+                  );
+
+              ALTER TABLE config.email_allegato ENABLE ROW LEVEL SECURITY;
+
+              COMMENT ON POLICY rls_email_allegato_ambito ON config.email_allegato IS
+                  'Un allegato si vede se si vede la sua mail: il log (email_log_id) O '
+                  'la bozza (email_outbox_id). In OR e non «uno per riga», perche'' '
+                  'all''invio il backend attacca l''allegato anche al log e la riga porta '
+                  'entrambi i padri. ⭐ Ogni EXISTS attraversa la policy del padre '
+                  '(rls_email_log_ambito, rls_email_outbox_ambito): la regola '
+                  'dell''ambito resta in script.fn_scope_email_ambito e qui non si '
+                  'ricopia, gate OPERATORE compreso. Un allegato senza padri non lo vede '
+                  'nessuno. Stessa regola in USING e WITH CHECK. Chiude il debito id 60 '
+                  'di dbops.rls_perimetro_debito. Brief: '
+                  'brief-db-email-visibilita-per-ambito, D-4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.email_allegato DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_email_allegato_ambito ON config.email_allegato;

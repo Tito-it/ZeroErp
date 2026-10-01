@@ -16,7 +16,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import router from '../router'
+import { routerApp } from '../core/routerApp'
 import { queryAI } from '../core/api/ai-api'
 import { useApiHandler } from '../core/composables/useApiHandler'
 
@@ -112,7 +112,7 @@ export const useAiStore = defineStore('ai', () => {
   // Scopo: esegue un'azione di navigazione suggerita dall'AI.
   function executeAction(action) {
     if (action.type === 'navigate' && action.route) {
-      router.push(action.route)
+      routerApp().push(action.route)
     }
   }
 

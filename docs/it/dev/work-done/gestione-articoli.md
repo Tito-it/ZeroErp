@@ -141,7 +141,7 @@ Codici registrati in `error_policies.py`:
 * `E_CATALOGO_COMPONENTE_NOT_FOUND`
 * `E_CATALOGO_NOTA_NOT_FOUND`
 
-Helper condiviso: `_sql_write_helpers.py` (JSONB cast).
+Helper condiviso: il BB core `apps/core/db/sql_write_helpers.py` (JSONB cast). La copia locale `catalogo/db/_sql_write_helpers.py` e' stata tolta il 2026-09-26: nessuno la importava.
 
 ---
 

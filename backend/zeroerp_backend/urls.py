@@ -14,10 +14,8 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
-from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny
 from apps.core.api.auth_views import (
@@ -28,7 +26,13 @@ from apps.core.api.auth_views import (
     ShopTokenRefreshView,
     ShopTokenView,
 )
+from apps.core.api.api_docs_gate import solo_se_api_docs_abilitate
 from apps.core.api.change_password_view import ChangePasswordView
+from apps.core.api.secondo_fattore_token_views import (
+    AdminSecondoFattoreTokenView,
+    PortaleSecondoFattoreTokenView,
+    ShopSecondoFattoreTokenView,
+)
 from apps.core.api.logout_view import LogoutView
 from apps.core.api.attivazione_view import AttivazioneValidateView, AttivazioneView
 from apps.core.api.password_reset_views import (
@@ -47,15 +51,22 @@ def health_view(_request):
 
 urlpatterns = [
     path("health", health_view, name="health"),
-    path("admin/", admin.site.urls),
+    # Niente `/admin/` e niente redirect della root: l'admin Django non e'
+    # installato (settings, «Superficie pubblica»). La root risponde 404.
+    # Swagger/OpenAPI: `AllowAny` perche' non c'e' un token da esibire, quindi
+    # esistono solo dove `API_DOCS_ENABLED` lo dice (404 altrove).
     path(
         "api/schema/",
-        SpectacularAPIView.as_view(api_version="v1", permission_classes=[AllowAny]),
+        solo_se_api_docs_abilitate(
+            SpectacularAPIView.as_view(api_version="v1", permission_classes=[AllowAny])
+        ),
         name="api-schema",
     ),
     path(
         "api/docs/",
-        SpectacularSwaggerView.as_view(url_name="api-schema", permission_classes=[AllowAny]),
+        solo_se_api_docs_abilitate(
+            SpectacularSwaggerView.as_view(url_name="api-schema", permission_classes=[AllowAny])
+        ),
         name="api-docs",
     ),
     path(
@@ -87,6 +98,23 @@ urlpatterns = [
         "api/v1/shop/token/refresh/",
         ShopTokenRefreshView.as_view(permission_classes=[AllowAny]),
         name="shop-token-refresh",
+    ),
+    # Secondo passo del login (brief sicurezza §3.4-bis, T-2): sotto /token/,
+    # cosi' il frontend non prova a rinnovare la sessione su un suo 401.
+    path(
+        "api/v1/admin/token/secondo-fattore/",
+        AdminSecondoFattoreTokenView.as_view(),
+        name="admin-token-secondo-fattore",
+    ),
+    path(
+        "api/v1/portale/token/secondo-fattore/",
+        PortaleSecondoFattoreTokenView.as_view(),
+        name="portale-token-secondo-fattore",
+    ),
+    path(
+        "api/v1/shop/token/secondo-fattore/",
+        ShopSecondoFattoreTokenView.as_view(),
+        name="shop-token-secondo-fattore",
     ),
     path(
         "api/v1/auth/logout/",
@@ -136,13 +164,18 @@ urlpatterns = [
     path("api/v1/portale/", include("apps.portale.api.urls")),
     path("api/v1/shop/", include("apps.shop.api.urls")),
     path("api/v1/ui/", include("apps.ui.api.urls")),
-    path("", RedirectView.as_view(url="/admin/", permanent=False)),
 ]
 
-# Rotte AI assistant — incluse solo se AI_ENABLED=True
-if getattr(settings, "AI_ENABLED", False):
-    # Inserisce prima del RedirectView catch-all (ultimo elemento)
-    urlpatterns.insert(
-        len(urlpatterns) - 1,
-        path("api/v1/ai-assistant/", include("apps.ai_assistant.api.urls_v1")),
-    )
+# Rotte montate solo se una flag e' accesa: (prefisso, urlconf, flag).
+# ⭐ E' la sede UNICA: da qui le monta questo file, e da qui le legge
+#    `apps.core.api.rotte.rotte_servite(anche_condizionali=True)`, cosi' i
+#    presidi del codice vedono anche le view che in CI (flag spenta) non sono
+#    instradate. Una rotta condizionale nuova si aggiunge qui, non con un `if`.
+ROTTE_CONDIZIONALI: tuple[tuple[str, str, str], ...] = (
+    # AI assistant: a flag spenta l'app non e' nemmeno in INSTALLED_APPS.
+    ("api/v1/ai-assistant/", "apps.ai_assistant.api.urls_v1", "AI_ENABLED"),
+)
+
+for _prefisso, _urlconf, _flag in ROTTE_CONDIZIONALI:
+    if getattr(settings, _flag, False):
+        urlpatterns.append(path(_prefisso, include(_urlconf)))

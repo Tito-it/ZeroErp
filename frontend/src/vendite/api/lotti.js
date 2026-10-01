@@ -5,6 +5,7 @@
 // motore DB/BE, il drawer diagnostico rende ed esercita.
 import api from '../../core/api'
 import { generateIdempotencyKey } from '../../core/utils/idempotency'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 const BASE = '/vendite/lotti'
 
@@ -60,7 +61,7 @@ export function listLottoFatture(lottoId, params = {}) {
 // tentati (esito vuoto).
 // `statoEsecuzione` assente = tutti, compresi i mai tentati.
 export function listLottoGruppi(
-  lottoId, { page = 1, pageSize = 25, orderBy = null, orderDir = null, statoEsecuzione = null } = {},
+  lottoId, { page = 1, pageSize = misuraDefault(USO_MISURA.PAGINA), orderBy = null, orderDir = null, statoEsecuzione = null } = {},
 ) {
   const params = { page, page_size: pageSize }
   if (orderBy) params.order_by = orderBy
@@ -121,7 +122,7 @@ export function escludiDocumentiDaGiro(lottoId, { gruppoKeys, motivo }) {
 //    stato che non conosce non aggiunge e non toglie nulla.
 export function listLottoTaskRuns(
   lottoId,
-  { page = 1, pageSize = 25, orderBy = null, orderDir = 'desc', taskStato = null, soloGiroCorrente = false } = {},
+  { page = 1, pageSize = misuraDefault(USO_MISURA.PAGINA), orderBy = null, orderDir = 'desc', taskStato = null, soloGiroCorrente = false } = {},
 ) {
   const params = { page_size: pageSize, offset: (page - 1) * pageSize, order_dir: orderDir }
   if (orderBy) params.order_by = orderBy
@@ -174,7 +175,7 @@ export function getLottoSegnalazioni(lottoId) {
 // corsa di pipeline. Senza quel numero un elenco filtrato e uno vuoto si
 // leggono uguali.
 export function listLottoSegnalazioni(
-  lottoId, { livello = null, page = 1, pageSize = 25, orderBy = null, orderDir = 'desc' } = {},
+  lottoId, { livello = null, page = 1, pageSize = misuraDefault(USO_MISURA.PAGINA), orderBy = null, orderDir = 'desc' } = {},
 ) {
   const params = { page, page_size: pageSize, order_dir: orderDir }
   if (livello) params.livello = livello
@@ -388,19 +389,11 @@ export function eliminaFatturaDaLotto(lottoId, fatturaId) {
 // ⚠️ 404 unificato inesistente/fuori scope, deciso dalla TESTATA: la vista da
 //    sola risponderebbe zero righe, cioè «nessuna storia» invece di «non lo
 //    vedi».
-// ⭐ Ordinamento e filtri sono del SERVER: la lista è paginata, quindi filtrare
-//    o riordinare qui lavorerebbe sulla sola pagina caricata.
-export function getLottoGiornale(
-  lottoId,
-  { page = 1, pageSize = 50, sortBy = 'gravita', sortDir = 'desc', info = false } = {},
-) {
-  return api.get(`${BASE}/${lottoId}/giornale/`, {
-    params: {
-      page, page_size: pageSize, sort_by: sortBy, sort_dir: sortDir,
-      // ⚠️ Solo quando serve: il default del server è «nascoste», e mandare
-      // `info=false` esplicito funzionerebbe uguale ma legherebbe il client a
-      // un default che è del backend.
-      ...(info ? { info: true } : {}),
-    },
-  })
+// ⭐ Dal 2026-09-27 è la lista a catalogo `vendite.giornale` (la stessa della
+//    Storia della fattura e del trasversale): contratto di lista standard dallo
+//    store (`giornaleEntita`), più il filtro che è solo del lotto — `info`,
+//    «anche le righe di routine» — e l'emittente del lotto
+//    (`emittente_soggetto_ruolo_id`) che scioglie il cancello di perimetro.
+export function listLottoGiornale(lottoId, params = {}) {
+  return api.get(`${BASE}/${lottoId}/giornale/`, { params })
 }

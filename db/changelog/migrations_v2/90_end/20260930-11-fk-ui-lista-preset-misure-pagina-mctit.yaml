@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# M-11 — LA FK DEI PRESET VERSO IL CATALOGO DELLE MISURE
+#   Brief: brief-db-misure-pagina-catalogo, sezioni 2 (regola 1) e 3.
+#
+# ── ⭐ COSA FA ───────────────────────────────────────────────────────
+#   ui.lista_preset.pagina_dimensione -> ui.misure_pagina(misura): la rete sotto
+#   il guard (che parla col codice di catalogo), e il blocco alla cancellazione
+#   di una misura che un preset usa. NULL resta ammesso: e' «il default».
+#   Riferimento per chiave naturale (linee-guida §6b): il numero, non l'id.
+#
+# ── ⛔ PERCHE' IN 90_end ─────────────────────────────────────────────
+#   Da zero i preset si seminano in 80_data/20260507-08, PRIMA del catalogo
+#   (80_data/20260930-02): una FK nata in 00_schema fermerebbe il migrate sul
+#   primo preset. Qui i due seed sono gia' scritti (brief §3).
+#   ⚠️ Se l'ALTER fallisse, c'e' un preset con una misura fuori catalogo: va
+#   corretto il dato (il CSV), non tolto il vincolo.
+#   Registro indici FK: fk_index_policy_ui.csv (consentito = false).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260930-11-fk-ui-lista-preset-misure-pagina-mctit.yaml
+
+  - changeSet:
+      id: 20260930-11-fk-ui-lista-preset-misure-pagina
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        FK fk_lista_preset_misure_pagina: ui.lista_preset.pagina_dimensione -> ui.misure_pagina(misura)
+        (NULL = il default). In 90_end perche' da zero i preset si seminano prima del catalogo.
+        Brief: brief-db-misure-pagina-catalogo §2-3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: ui, tableName: misure_pagina }
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE c.conrelid = 'ui.lista_preset'::regclass
+                     AND c.conname = 'fk_lista_preset_misure_pagina';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.lista_preset
+                  ADD CONSTRAINT fk_lista_preset_misure_pagina
+                  FOREIGN KEY (pagina_dimensione) REFERENCES ui.misure_pagina (misura);
+
+              COMMENT ON COLUMN ui.lista_preset.pagina_dimensione IS
+                  'Righe per pagina del preset: una misura del catalogo ui.misure_pagina (FK fk_lista_preset_misure_pagina, e il guard trg_ui_lista_preset_a10_guard_pagina_ins_upd che rifiuta con E_UI_MISURA_PAGINA_NON_AMMESSA). NULL = il default PAGINA del catalogo, deciso da ui.fn_resolve_lista_config. Brief: brief-db-misure-pagina-catalogo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE ui.lista_preset DROP CONSTRAINT IF EXISTS fk_lista_preset_misure_pagina;

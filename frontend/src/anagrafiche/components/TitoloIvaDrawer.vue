@@ -21,6 +21,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { labelOrCode } from '../../core/utils/i18nLabel'
@@ -40,7 +41,6 @@ import {
   createTitoloIvaForzatura,
 } from '../api/anagrafiche'
 import {
-  chiaveTitolo,
   useTitoloIvaAmbitiStore,
   useTitoloIvaMovimentiStore,
 } from '../stores/titoloIvaSottoliste'
@@ -55,7 +55,7 @@ import IvaSelect from '../../core/components/IvaSelect.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
@@ -88,6 +88,10 @@ const fv = useFetchVersion()
 
 const form = ref(defaultForm())
 const detail = ref(null)
+// Modifiche non salvate del titolo (BB useDrawerFormPreserve): conferma alla
+// chiusura, «Modifica» arancio. Il form inline degli ambiti ha la sua
+// fotografia (`inlineAmbito`, piu' sotto).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 // ⭐ LE DUE SOTTO-LISTE NON SONO PIU' DUE `ref` ALIMENTATI DAL DETTAGLIO
 //    (2026-09-02, liste 64 e 65 del lotto 3). Erano `DataTable` grezze che
@@ -147,12 +151,24 @@ const ambitoIncompleto = computed(
     && storeAmbiti.totalRecords === 0,
 )
 
+// Scopo: il padre COMPOSTO delle due sotto-liste (soggetto + titolo, i due id
+//        del path), acceso solo quando la sezione e' a video. ⚠️ La
+//        condizione sta su ENTRAMBE le parti: con una sola spenta il BB
+//        leggerebbe il padre come «a meta'» (in attesa) invece che assente, e
+//        la lista chiusa resterebbe in caricamento.
+function padreSeAperto(aperta) {
+  return {
+    soggettoId: () => (aperta() ? props.soggettoId : null),
+    titoloId: () => (aperta() ? props.titoloId : null),
+  }
+}
+
 // Scaffolding delle due sotto-liste. ⚠️ Deve stare DOPO `form`: il building
 // block ci mette sopra un `watch` **immediate**, e una variabile toccata da un
 // watch immediate dichiarata piu' sotto e' una TDZ silenziosa
 // (`feedback_vue_watch_immediate_tdz`).
 //
-// ⛔ `parentId` porta la chiave SOLO quando la sezione e' davvero a video, e i
+// ⛔ `parentId` porta il padre SOLO quando la sezione e' davvero a video, e i
 //    `null` non sono un dettaglio: sono quelli che dicono al BB di chiamare
 //    `reset()`. Senza, gli ambiti del titolo precedente resterebbero sotto il
 //    prossimo che si apre — righe vere di un padre sbagliato.
@@ -169,14 +185,15 @@ const {
   onConfigLoaded: onConfigLoadedAmbiti, pageActions: azioniAmbiti,
   perimetroBloccato: perimetroAmbiti, reloadAll: reloadAmbiti,
 } = useDrawerTabLista(storeAmbiti, {
-  parentId: () => (
-    props.visible && isEdit.value && form.value.ambito === 'RISTRETTO'
-      ? chiaveTitolo(props.soggettoId, props.titoloId)
-      : null
+  parentId: padreSeAperto(
+    () => props.visible && isEdit.value && form.value.ambito === 'RISTRETTO',
   ),
-  parentField: 'chiaveTitolo',
   newTooltipKey: 'anagrafiche.titoli_iva.aggiungi_ambito',
-  onNew: () => { ambitoFormAperto.value = true },
+  onNew: () => {
+    ambitoForm.value = nuovoAmbito()
+    ambitoFormAperto.value = true
+    inlineAmbito.fissa()
+  },
 })
 
 const {
@@ -186,12 +203,7 @@ const {
   onConfigLoaded: onConfigLoadedMovimenti, pageActions: azioniMovimenti,
   perimetroBloccato: perimetroMovimenti, reloadAll: reloadMovimenti,
 } = useDrawerTabLista(storeMovimenti, {
-  parentId: () => (
-    props.visible && isEdit.value && mostraPlafond.value
-      ? chiaveTitolo(props.soggettoId, props.titoloId)
-      : null
-  ),
-  parentField: 'chiaveTitolo',
+  parentId: padreSeAperto(() => props.visible && isEdit.value && mostraPlafond.value),
   // ⛔ Da qui si scrive SOLO una forzatura (Q3), e il pulsante lo dice nel nome:
   //    fatture e note di credito le produce la fatturazione, dalla primitiva che
   //    tiene il lock.
@@ -237,6 +249,10 @@ function populateFromDetail(d) {
 watch(() => props.visible, async (val) => {
   if (!val) { fv.invalidate(); return }
   const v = fv.tag()
+  // Il form ambito riparte chiuso e vuoto: il drawer e' un'istanza sola, e un
+  // ambito abbandonato sul titolo precedente finirebbe su questo.
+  ambitoFormAperto.value = false
+  ambitoForm.value = nuovoAmbito()
   if (isEdit.value) {
     const res = await execute(() => getSoggettoTitoloIva(props.soggettoId, props.titoloId))
     if (res === null || !fv.isCurrent(v)) return
@@ -246,6 +262,7 @@ watch(() => props.visible, async (val) => {
     detail.value = null
     form.value = defaultForm()
   }
+  fissa()
 })
 
 // Scopo: passando a un tipo SENZA tetto, il plafond digitato si azzera.
@@ -304,6 +321,17 @@ async function onSave() {
 // === Ambiti (master-detail inline) ===
 const ambitoForm = ref(nuovoAmbito())
 const ambitoFormAperto = ref(false)
+// Modifiche non salvate del form inline degli ambiti: conferma all'Annulla e
+// alla chiusura del drawer, scritta arancio nel titolo.
+const inlineAmbito = useDrawerFormPreserve(ambitoForm, {
+  visibile: () => props.visible && ambitoFormAperto.value,
+})
+function annullaAmbito() {
+  inlineAmbito.chiudiConConferma(() => {
+    ambitoFormAperto.value = false
+    ambitoForm.value = nuovoAmbito()
+  })
+}
 
 function nuovoAmbito() {
   return {
@@ -511,6 +539,12 @@ function movimentoSeverity(tipo) {
 }
 
 const onClose = useDrawerClose(emit)
+// La chiusura chiede conferma se il titolo O il form ambito e' modificato,
+// con un dialog solo.
+const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
+  unisciFotografie({ modificato, chiudiConConferma }, inlineAmbito)
+const chiudi = () => chiudiTutto(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -522,10 +556,11 @@ const onClose = useDrawerClose(emit)
        maschera sembrava «scritta male» quando era solo strizzata.
        ⇒ Presidiato da `scripts/check-drawer-width.mjs`, che nasce da qui. -->
   <Drawer
-    :visible="visible" @update:visible="emit('update:visible', $event)"
+    :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.WIDE }" @after-show="onAfterShow">
     <template #header>
       <DrawerTitle
+        :modificato="modificatoTutto"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('anagrafiche.titoli_iva.titolo')"
         :icon="MANAGE_ICONS.TITOLI_IVA" />
@@ -648,6 +683,7 @@ const onClose = useDrawerClose(emit)
           ref="listaAmbitiRef"
           codice="anagrafiche.titolo_iva_ambiti"
           :paginata="false"
+          :store="storeAmbiti"
           :rows="storeAmbiti.items"
           :total="storeAmbiti.totalRecords"
           :loading="storeAmbiti.loading"
@@ -666,9 +702,8 @@ const onClose = useDrawerClose(emit)
                tipo): non ha un `campo_sorgente` e il catalogo la dichiara
                calcolata. -->
           <template #cell-oggetto="{ data }">{{ descriviAmbito(data) }}</template>
-          <template #actions="{ data, compact }">
-            <RowActionsMenu :row="data" :actions="azioniRigaAmbito(data)"
-              :force-compact="compact" />
+          <template #actions="{ data }">
+            <RowActionsMenu :row="data" :actions="azioniRigaAmbito(data)" />
           </template>
         </DrawerTabLista>
 
@@ -688,7 +723,7 @@ const onClose = useDrawerClose(emit)
                   @select="ambitoForm.articolo_id = $event?.id ?? null" />
                 <LookupSelect v-else-if="ambitoForm.livello === 'GRUPPO_VOCE'"
                   v-model="ambitoForm.gruppo_voce_id" rel="vendite.articoli_gruppi"
-                  />
+                />
                 <LookupSelect v-else v-model="ambitoForm.tipo_voce_id"
                   rel="vendite.articoli_tipologie" />
               </div>
@@ -697,7 +732,7 @@ const onClose = useDrawerClose(emit)
               <Button :label="t('common.add')" :icon="MANAGE_ICONS.ADD" size="small"
                 :disabled="!ambitoValido" :loading="loading" @click="onAddAmbito" />
               <Button :label="t('common.cancel')" text size="small"
-                @click="ambitoFormAperto = false; ambitoForm = nuovoAmbito()" />
+                @click="annullaAmbito" />
             </div>
           </div>
         </div>
@@ -721,6 +756,7 @@ const onClose = useDrawerClose(emit)
         <DrawerTabLista
           ref="listaMovimentiRef"
           codice="anagrafiche.titolo_iva_movimenti"
+          :store="storeMovimenti"
           :rows="storeMovimenti.items"
           :total="storeMovimenti.totalRecords"
           :loading="storeMovimenti.loading"
@@ -748,9 +784,8 @@ const onClose = useDrawerClose(emit)
                ⛔ Il motivo arriva dalla vista, e lo produce la STESSA check che
                la madre interroga per rifiutare: tooltip e rifiuto non possono
                divergere. -->
-          <template #actions="{ data, compact }">
-            <RowActionsMenu :row="data" :actions="azioniRigaMovimento(data)"
-              :force-compact="compact" />
+          <template #actions="{ data }">
+            <RowActionsMenu :row="data" :actions="azioniRigaMovimento(data)" />
           </template>
         </DrawerTabLista>
       </template>
@@ -761,8 +796,8 @@ const onClose = useDrawerClose(emit)
       </div>
 
       <FormFooter v-if="!isReadonly" :loading="loading" :disabled="!canSave"
-        @save="onSave" @cancel="onClose" />
-      <FormFooter v-else close-only @cancel="onClose" />
+        @save="onSave" @cancel="chiudi" />
+      <FormFooter v-else close-only @cancel="chiudi" />
     </div>
 
     <!-- L'annullo di una forzatura (Q7): un contro-movimento, non una delete. -->

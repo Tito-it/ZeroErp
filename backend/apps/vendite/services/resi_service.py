@@ -32,13 +32,16 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
 from apps.core.services.list_helpers import validate_enum_param
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     make_db_errors_translator,
 )
+from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.resi_repository import ResiRepository
 
@@ -75,8 +78,13 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 # ── Costanti di dominio ──
 _FN = "vendite.resi_service"
 _STATO_BOZZA = "DRAFT"
-# Un solo set: testata E righe sono editabili solo in bozza (se in futuro le
-# regole divergono, si sdoppia allora — non prima).
+# La TESTATA e' editabile solo in bozza (E_RESO_STATO_TRANSIZIONE). Le RIGHE
+# seguono la stessa regola ma col codice del DB, `E_RIGA_DOC_NON_BOZZA` (BB
+# `richiedi_righe_in_bozza`, come ddt/ordini/preventivi/contratti): fino al
+# 2026-09-22 un set solo serviva entrambe, e lo stesso rifiuto usciva con un
+# nome diverso per il reso. A DB il BB `trgfn_doc_righe_lock_fuori_bozza`
+# non e' ancora montato su `resi_righe` (il lettore non conosce RESO): il
+# pre-check e' l'unico cancello, e quando il DB arrivera' avra' lo stesso codice.
 _STATI_MODIFICABILI: frozenset[str] = frozenset({_STATO_BOZZA})
 # Stato richiesto al DDT sorgente per aprire un reso (non si rende cio' che
 # non e' stato consegnato — brief DB §3).
@@ -92,19 +100,44 @@ _SORGENTE_DDT = "DDT_VENDITA"
 # di `MAX_GRUPPI_EMISSIONE_MIRATA` per l'emissione mirata.
 MAX_ACCREDITI_MASSIVI = 200
 
+
+# Scopo: Carica la testata reso o solleva E_RESO_NOT_FOUND (BB core
+#        `testata_o_not_found`, stesso nome del helper di ordini e DDT).
+def _get_testata_or_raise(
+    repo: ResiRepository, reso_id: int, *, op: str,
+) -> dict[str, Any]:
+    return testata_o_not_found(
+        repo.get_reso, reso_id,
+        code="E_RESO_NOT_FOUND", message="Reso non trovato.",
+        id_name="reso_id", function_name=f"{_FN}.{op}",
+    )
+
+
+# Scopo: Carica la riga o solleva E_RESO_NOT_FOUND se non esiste o non e' di questo
+#        documento (BB core `riga_del_padre_o_not_found`: qui solo codice e
+#        messaggio del dominio).
+def _get_riga_or_raise(
+    repo: ResiRepository, reso_id: int, riga_id: int, *, op: str,
+) -> dict[str, Any]:
+    return riga_del_padre_o_not_found(
+        repo.get_riga, riga_id, padre_id=reso_id, chiave_padre="reso_id",
+        code="E_RESO_NOT_FOUND", message="Riga non trovata per questo reso.",
+        function_name=f"{_FN}.{op}",
+    )
+
 # Whitelist campi testata accettati in create/update (null_vs_empty -> None).
 # Il resto (BA/destinatario/utility/valuta/emittente) e' EREDITATO dal DDT
 # sorgente via trgfn_resi_normalize e immutabile (non_editable_fields).
-_CREATE_KEYS_RESO: frozenset[str] = frozenset({"ddt_id", "data", "meta", "righe"})
-_UPDATE_KEYS_RESO: frozenset[str] = frozenset({"data", "meta"})
+CREATE_KEYS_RESO: frozenset[str] = frozenset({"ddt_id", "data", "meta", "righe"})
+UPDATE_KEYS_RESO: frozenset[str] = frozenset({"data", "meta"})
 # NB: `quantita` (base) NON e' accettata nel payload riga: il trigger DB
 # `trgfn_qta_from_operativa` su INSERT la calcola SEMPRE da qta_operativa
 # (E_QTA_MISSING se assente) e su UPDATE un set diretto della base senza
 # input operativi creerebbe un'incoerenza silente base<->operativa.
-_CREATE_KEYS_RIGA: frozenset[str] = frozenset({
+CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "ddt_riga_id", "tipo_reso_id", "qta_operativa", "motivo", "meta",
 })
-_UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
+UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "tipo_reso_id", "qta_operativa", "motivo", "meta",
 })
 
@@ -127,7 +160,7 @@ def list_resi_rows(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
     repo = ResiRepository()
     return repo.list_resi(
@@ -150,15 +183,12 @@ def list_resi_rows(
 #        delle code), niente utility. Gemello ddt_service.resolve_filtri_export_label.
 def resolve_filtri_export_label(
     *,
-    search: str | None = None,
     stato_codice: str | None = None,
     billing_account_id: int | None = None,
     data_da: date | None = None,
     data_al: date | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    if search:
-        out["Ricerca"] = search
     if stato_codice:
         out["Stato"] = stato_codice
     if billing_account_id is not None:
@@ -174,30 +204,48 @@ def resolve_filtri_export_label(
 #        /righe/). Mirror get_ddt.
 def get_reso(reso_id: int) -> dict[str, object]:
     repo = ResiRepository()
-    testata = repo.get_reso(reso_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_RESO_NOT_FOUND",
-        message="Reso non trovato.",
-        detail=f"reso_id={reso_id}",
-        function_name=f"{_FN}.get_reso",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, reso_id, op="get_reso")
     # Capability da script.fn_available_actions_reso (matrice
     # config.transizioni_stati_reso): available_actions (conferma/annulla),
     # can_change_state, can_edit_testata/righe, non_editable_fields,
-    # stato_codice. Mirror ridotto DDT (no push, no pdf).
+    # stato_codice. Mirror ridotto DDT (no push, no pdf). Il blob viaggia
+    # SOTTO `capabilities` (api.md §«Il blob sta SOTTO `capabilities`»).
     capabilities = repo.get_capabilities(reso_id)
     return {
         **testata,
-        **capabilities,
+        "capabilities": capabilities,
         "righe_count": repo.count_righe(reso_id),
     }
 
 
-# Scopo: Lista righe di un reso (con copertura ri-consegna derivata).
+# Scopo: Lista righe di un reso (con copertura ri-consegna derivata). Legge
+#        prima la testata: un reso fuori perimetro (o inesistente) e' un 404,
+#        non un pannello vuoto.
 def list_righe(reso_id: int) -> list[dict[str, Any]]:
-    return ResiRepository().list_righe(reso_id)
+    repo = ResiRepository()
+    _get_testata_or_raise(repo, reso_id, op="list_righe")
+    return repo.list_righe(reso_id)
+
+
+# Scopo: Una PAGINA delle righe del reso, per la lista configurabile
+#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina. Legge prima la
+#        testata come `list_righe`. Ritorna `(righe, totale)`.
+def list_righe_pagina(
+    reso_id: int,
+    *,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int,
+    offset: int = 0,
+    max_limit: int = MAX_LIMIT,
+) -> tuple[list[dict[str, Any]], int]:
+    repo = ResiRepository()
+    _get_testata_or_raise(repo, reso_id, op="list_righe_pagina")
+    return repo.list_righe_pagina(
+        reso_id, search=search, order_by=order_by, order_dir=order_dir,
+        limit=limit, offset=offset, max_limit=max_limit,
+    )
 
 
 # Scopo: Righe del DDT sorgente con gia'-reso/residuo rendibile (pannello FE
@@ -205,15 +253,11 @@ def list_righe(reso_id: int) -> list[dict[str, Any]]:
 #        resta il trigger DB a20 (E_RESO_QTA_SUPERA_CONSEGNATO).
 def list_righe_ddt_per_reso(ddt_id: int) -> list[dict[str, Any]]:
     repo = ResiRepository()
-    ddt = repo.get_ddt_sorgente(ddt_id)
-    ErrorManager.require(
-        ddt is not None,
-        code="E_DDT_NOT_FOUND",
-        message="DDT non trovato.",
-        detail=f"ddt_id={ddt_id}",
-        function_name=f"{_FN}.list_righe_ddt_per_reso",
+    testata_o_not_found(
+        repo.get_ddt_sorgente, ddt_id,
+        code="E_DDT_NOT_FOUND", message="DDT non trovato.",
+        id_name="ddt_id", function_name=f"{_FN}.list_righe_ddt_per_reso",
     )
-    assert ddt is not None
     return repo.list_righe_ddt_per_reso(ddt_id)
 
 
@@ -269,7 +313,7 @@ def list_da_accreditare(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
     _valida_filtro_documento(
         ddt_id=ddt_id,
@@ -320,7 +364,7 @@ def list_da_riconsegnare(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
     _valida_filtro_documento(
         ddt_id=ddt_id,
@@ -349,7 +393,6 @@ def list_da_riconsegnare(
 #        (auto-limitate a CONFERMATO dalla vista) ne' utility.
 def resolve_filtri_coda_export_label(
     *,
-    search: str | None = None,
     billing_account_id: int | None = None,
     data_da: date | None = None,
     data_al: date | None = None,
@@ -358,8 +401,6 @@ def resolve_filtri_coda_export_label(
     ordine_id: int | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    if search:
-        out["Ricerca"] = search
     if billing_account_id is not None:
         out["Cliente BA (id)"] = billing_account_id
     if data_da is not None:
@@ -393,7 +434,7 @@ def resolve_filtri_coda_export_label(
 #        transazione (compone 2+ scritture — guardrail atomicita' api.md).
 def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
     repo = ResiRepository()
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_RESO}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RESO}
 
     ddt_id = _PAYLOAD.require_positive_int(
         data, "ddt_id",
@@ -401,15 +442,11 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
         function_name=f"{_FN}.crea_reso",
     )
 
-    ddt = repo.get_ddt_sorgente(ddt_id)
-    ErrorManager.require(
-        ddt is not None,
-        code="E_DDT_NOT_FOUND",
-        message="DDT sorgente non trovato.",
-        detail=f"ddt_id={ddt_id}",
-        function_name=f"{_FN}.crea_reso",
+    ddt = testata_o_not_found(
+        repo.get_ddt_sorgente, ddt_id,
+        code="E_DDT_NOT_FOUND", message="DDT sorgente non trovato.",
+        id_name="ddt_id", function_name=f"{_FN}.crea_reso",
     )
-    assert ddt is not None
     # Guard gemello del trigger DB `trgfn_resi_guard_ddt_consegnato`: STESSO
     # codice del trigger (E_RESO_DDT_NON_CONSEGNATO, 409) cosi' il FE vede un
     # solo errore per questo caso a prescindere dal percorso (service o
@@ -486,7 +523,7 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
 def aggiorna_reso(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = ResiRepository()
     _assert_stato(repo, reso_id, _STATI_MODIFICABILI, op="aggiorna_reso")
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_RESO}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RESO}
     ErrorManager.require(
         len(data) > 0,
         code="E_RESO_VALIDAZIONE",
@@ -738,14 +775,7 @@ def annulla_accredito_riga_reso(
     # (la madre non conosce il reso), e' la coerenza del PERCORSO — senza,
     # `/resi/999/righe/24/annulla-accredito/` annullerebbe l'accredito della
     # riga 24 di un altro reso. Stesso guard di `aggiorna_riga`.
-    riga = repo.get_riga(int(riga_id))
-    ErrorManager.require(
-        riga is not None and riga["reso_id"] == int(reso_id),
-        code="E_RESO_NOT_FOUND",
-        message="Riga non trovata per questo reso.",
-        detail=f"reso_id={reso_id} riga_id={riga_id}",
-        function_name=f"{_FN}.annulla_accredito_riga_reso",
-    )
+    _get_riga_or_raise(repo, int(reso_id), int(riga_id), op="annulla_accredito_riga_reso")
     # Stringa vuota / soli spazi -> NULL: normalizzazione dell'input, non un
     # guard. Il rifiuto lo fa la madre (E_ACCREDITO_MOTIVO_OBBLIGATORIO), che
     # e' anche l'unica a sapere perche' il motivo serve — l'annullo cancella le
@@ -777,22 +807,7 @@ def gestisci_riga(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     # Lettura LEGGERA (stato + id DDT origine): la testata piena della vista
     # lista (decodifiche destinatario/BA/emittente) qui non serve — il reso
     # non ha pricing/componenti che la richiedano (diverso dal gemello DDT).
-    reso = repo.get_stato_e_ddt_origine(reso_id)
-    ErrorManager.require(
-        reso is not None,
-        code="E_RESO_NOT_FOUND",
-        message="Reso non trovato.",
-        detail=f"reso_id={reso_id}",
-        function_name=f"{_FN}.gestisci_riga",
-    )
-    assert reso is not None
-    ErrorManager.require(
-        reso["stato_codice_interno"] in _STATI_MODIFICABILI,
-        code="E_RESO_STATO_TRANSIZIONE",
-        message="Righe modificabili solo su reso in bozza.",
-        detail=f"stato={reso['stato_codice_interno']}",
-        function_name=f"{_FN}.gestisci_riga",
-    )
+    reso = _richiedi_righe_in_bozza(repo, reso_id, verbo="aggiungere", op="gestisci_riga")
     ddt_id = reso.get("ddt_origine_id")
     ErrorManager.require(
         ddt_id is not None,
@@ -813,19 +828,9 @@ def aggiorna_riga(
     reso_id: int, riga_id: int, payload: dict[str, Any],
 ) -> dict[str, Any]:
     repo = ResiRepository()
-    _assert_stato(
-        repo, reso_id, _STATI_MODIFICABILI, op="aggiorna_riga",
-        message="Righe modificabili solo su reso in bozza.",
-    )
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None and riga["reso_id"] == reso_id,
-        code="E_RESO_NOT_FOUND",
-        message="Riga non trovata per questo reso.",
-        function_name=f"{_FN}.aggiorna_riga",
-    )
-    assert riga is not None
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_RIGA}
+    _richiedi_righe_in_bozza(repo, reso_id, verbo="modificare", op="aggiorna_riga")
+    _get_riga_or_raise(repo, reso_id, riga_id, op="aggiorna_riga")
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
     ErrorManager.require(
         len(data) > 0,
         code="E_RESO_VALIDAZIONE",
@@ -841,18 +846,8 @@ def aggiorna_riga(
 #        esiste solo post-conferma: nessun collegamento da verificare qui.
 def elimina_riga(reso_id: int, riga_id: int) -> dict[str, Any]:
     repo = ResiRepository()
-    _assert_stato(
-        repo, reso_id, _STATI_MODIFICABILI, op="elimina_riga",
-        message="Righe eliminabili solo su reso in bozza.",
-    )
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None and riga["reso_id"] == reso_id,
-        code="E_RESO_NOT_FOUND",
-        message="Riga non trovata per questo reso.",
-        function_name=f"{_FN}.elimina_riga",
-    )
-    assert riga is not None
+    _richiedi_righe_in_bozza(repo, reso_id, verbo="togliere", op="elimina_riga")
+    _get_riga_or_raise(repo, reso_id, riga_id, op="elimina_riga")
     with _db_errors("elimina_riga"):
         deleted = repo.delete_riga(riga_id)
     return {"reso_id": reso_id, "riga_id": riga_id, "deleted": deleted}
@@ -872,7 +867,7 @@ def _crea_riga(
     repo: ResiRepository, reso_id: int, ddt_id: int, payload: dict[str, Any],
     *, riga_nr: int | None = None,
 ) -> dict[str, Any]:
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_RIGA}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RIGA}
     fn = f"{_FN}._crea_riga"
 
     ddt_riga_id = _PAYLOAD.require_positive_int(
@@ -963,7 +958,6 @@ def _parse_data_iso(value: Any, *, op: str) -> date | None:
             detail=f"data={value!r}",
             context={"op": f"{_FN}.{op}"},
         )
-        raise AssertionError("unreachable")  # pragma: no cover
 
 
 # Scopo: Valida il body `righe` della ri-spedizione parziale. Contratto:
@@ -1113,21 +1107,38 @@ _db_errors = make_db_errors_translator(
 )
 
 
+# Scopo: «Le righe si toccano solo in bozza» sul reso, col codice del DB
+#        (`E_RIGA_DOC_NON_BOZZA`, BB `richiedi_righe_in_bozza`): legge la
+#        testata col lettore leggero (stato, numero, DDT di origine) — reso
+#        inesistente -> E_RESO_NOT_FOUND — e la restituisce al chiamante, che
+#        di quella lettura puo' aver bisogno (il DDT di origine in `gestisci_riga`).
+def _richiedi_righe_in_bozza(
+    repo: ResiRepository, reso_id: int, *, verbo: Verbo, op: str,
+) -> dict[str, Any]:
+    reso = testata_o_not_found(
+        repo.get_stato_e_ddt_origine, reso_id,
+        code="E_RESO_NOT_FOUND", message="Reso non trovato.",
+        id_name="reso_id", function_name=f"{_FN}.{op}",
+    )
+    richiedi_righe_in_bozza(
+        reso, documento="Reso", documento_id=reso_id, verbo=verbo,
+        function_name=f"{_FN}.{op}",
+    )
+    return reso
+
+
 # Scopo: Guard di stato leggero (solo codice_interno): E_RESO_NOT_FOUND se il
 #        reso non esiste, E_RESO_STATO_TRANSIZIONE se lo stato non e' ammesso.
 def _assert_stato(
     repo: ResiRepository, reso_id: int, ammessi: frozenset[str], *, op: str,
     message: str | None = None,
 ) -> str:
-    stato = repo.get_stato_codice(reso_id)
-    ErrorManager.require(
-        stato is not None,
-        code="E_RESO_NOT_FOUND",
-        message="Reso non trovato.",
-        detail=f"reso_id={reso_id}",
-        function_name=f"{_FN}.{op}",
+    # Stesso BB del guard di testata, col getter leggero (solo codice_interno).
+    stato = testata_o_not_found(
+        repo.get_stato_codice, reso_id,
+        code="E_RESO_NOT_FOUND", message="Reso non trovato.",
+        id_name="reso_id", function_name=f"{_FN}.{op}",
     )
-    assert stato is not None
     ErrorManager.require(
         stato in ammessi,
         code="E_RESO_STATO_TRANSIZIONE",

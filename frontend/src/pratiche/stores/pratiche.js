@@ -16,8 +16,9 @@ import {
   fetchCodaLavoro, prendiInCaricoFlusso, listFlussi, fetchPercorso,
 } from '../api/pratiche-api'
 import { useTabEvents } from '../../core/composables/useTabEvents'
-import { PAGINATION, TAB_ENTITIES } from '../../core/constants'
+import { TAB_ENTITIES } from '../../core/constants'
 import { useAuthStore } from '../../stores/auth'
+import { USO_MISURA } from '../../core/misurePagina'
 
 export const usePraticheStore = defineStore('pratiche', () => {
   const { emitDataChanged } = useTabEvents()
@@ -39,7 +40,7 @@ export const usePraticheStore = defineStore('pratiche', () => {
   // dashboard: `selectedItem` si risolve da `items`, e una lista svuotata
   // mentre si digita annulla il guard readonly della pratica terminale
   // selezionata e il contesto cliente del percorso.
-  // ⚠️ Nasce a DIECI righe (`PAGINATION.COMPACT_ROWS`): e' la lista della
+  // ⚠️ Nasce a DIECI righe (`USO_MISURA.COMPATTA`): e' la lista della
   //    dashboard, che ha il dettaglio a lato — e' l'eccezione dichiarata da
   //    `useSearchTable` («le liste che nascono a 10 restano eccezioni»).
   // ⛔ E IL PRESET DICE LO STESSO NUMERO (`lista_preset` 17,
@@ -58,7 +59,7 @@ export const usePraticheStore = defineStore('pratiche', () => {
     fetchPage: (params) => listPratiche({ ...params, emittente_fiscale_id: auth.emittenteCorrente?.id }),
     startsEmpty: false,
     ricercaCorta: 'ignora',
-    limit: PAGINATION.COMPACT_ROWS,
+    misura: USO_MISURA.COMPATTA,
     filterDefaults: {
       // Codice stato (es. 'APERTA'): il BE filtra per codice_interno via param
       // `stato` (fix 2026-06-12: prima si inviava `stato_id`, ignorato dal BE).
@@ -70,10 +71,15 @@ export const usePraticheStore = defineStore('pratiche', () => {
       risorsa_umana_id: null,
       // Lente di contesto canonica (D1, workflow v2): solo pratiche interne
       // (senza soggetto). Esclusiva con le lenti ruolo/istanza (usate dalle
-      // viste embedded, non dalla dashboard). ⚠️ Viaggia anche a `false`: il
-      // BE lo legge con `qp_bool_optional(...) or False`, quindi «falso» e
-      // «assente» sono la stessa cosa.
-      solo_interne: false,
+      // viste embedded, non dalla dashboard).
+      // ⛔ `null` E NON `false` (2026-09-23): il BE lo legge con
+      //    `qp_bool_optional(...) or False`, quindi «falso» e «assente» sono
+      //    davvero la stessa cosa — ma un `false` VIAGGIA, e il segno dei filtri
+      //    attivi lo contava come un filtro acceso mentre non restringeva
+      //    niente. E' la forma che `bindToggle` dichiara di default (`off:
+      //    null`) proprio per questo: *un `false` sul filo e' un parametro che
+      //    il backend legge senza che filtri niente*.
+      solo_interne: null,
       data_da: defaultDataDa,
       data_a: null,
     },

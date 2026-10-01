@@ -1,0 +1,302 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 — LA PARTITA DENTRO LA DIAGNOSI SI CALCOLA UNA VOLTA
+#   (giro 6 di brief-db-partita-merce-per-documento §11.8, §13; decisione
+#   di Tid del 2026-09-22). Primo di quattro changeSet del giro: -07 la
+#   diagnosi, -08 il ritiro di vw_contatore_merce (D6), -09/-10 i due
+#   COMMENT che la nominavano.
+#
+# ── IL DIFETTO, SUL MODELLO ────────────────────────────────────────────
+#
+#   La diagnosi legge la partita con `LEFT JOIN vendite.fn_partite_merce(…)
+#   pm ON pm.ddt_riga_id = dr.id`. La funzione e' SQL e si INLINA: le sue
+#   CTE MATERIALIZED (riga, orig, af…) si calcolano una volta, ma il SELECT
+#   finale della partita — i join riga ⋈ orig ⋈ af ⋈ alloc — non e' una CTE
+#   e al planner arriva come una sottoquery qualunque. Sopra le CTE non ci
+#   sono statistiche, le stime sono piccole, e il nested loop «costa poco»
+#   sulla carta: la partita finisce come LATO INTERNO di un nested loop con
+#   `Join Filter: (r.ddt_riga_id = dr.id)` e viene RI-ESEGUITA PER OGNI RIGA
+#   della diagnosi. E' una forma, non una quantita': cresce con le righe
+#   attive di DDT per il costo di una partita intera.
+#   ⚠️ Come owner il planner sceglie l'hash join da solo: il nested loop
+#   compare COME APP, dove le policy cambiano stime e costi. La prova di
+#   forma si e' fatta come zeroerp_app sul corpo eseguito come query
+#   (brief §13.2): partita inlinata, `CTE Scan on riga (loops=1944)`;
+#   partita in CTE MATERIALIZED, `CTE pm … (loops=1)`.
+#
+# ── LA FORMA ───────────────────────────────────────────────────────────
+#
+#   La partita entra in una CTE `pm AS MATERIALIZED` che seleziona PER NOME
+#   le tre colonne che la diagnosi usa (ddt_riga_id, differenza, stato):
+#   calcolata una volta, poi agganciata alle righe con un hash join. Il seme
+#   (`CASE WHEN p_ddt_id IS NULL THEN NULL ELSE ARRAY[p_ddt_id] END`) e'
+#   lo stesso di prima: per un documento la CTE ha le righe di quel DDT e
+#   non costa niente in piu'; per «tutte» e' cio' che si voleva.
+#   ⛔ NON e' D8(b): il classificatore per riga resta com'e' (giro 4). Questo
+#   e' il passo PRIMA, da una riga, che la misura di §11.8 ha messo davanti.
+#
+# ── COSA NON CAMBIA ────────────────────────────────────────────────────
+#
+#   Firma, RETURNS TABLE, le rank 1..11, le etichette, il perimetro (righe
+#   ATTIVE), il seme a due rami in UNION ALL, BEGIN ATOMIC, INVOKER.
+#   CREATE OR REPLACE: nessun dipendente in pg_depend (i chiamanti — lister
+#   e capability — sono plpgsql e non cambiano).
+#
+# Base: definizione VIVA (pg_get_functiondef il 22-09, identica alla scheda
+#   auto-gen del 20260921-32).
+# Presidi: i venti del giro 3 (§10.5) rilanciati sull'SQL estratto, in
+#   testa test-fn-available-actions-ddt-reason-catch-all-v1 (16),
+#   test-fn-list-ddt-da-pushare-*, test-ddt-read-side-v1.
+# Dipendenze: 20260921-32 (la rev che qui si ricopia), 20260921-53
+#   (fn_partite_merce, af per chiave).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260922-07-update-fn-ddt-push-diagnosi-partita-materialized-mctit.yaml
+
+  - changeSet:
+      id: 20260922-07-update-fn-ddt-push-diagnosi-partita-materialized
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 giro 6 (§11.8): vendite.fn_ddt_push_diagnosi legge la partita da una CTE
+        MATERIALIZED (calcolata una volta, hash join sulle righe) invece che dal
+        LEFT JOIN inlinato che come app veniva ri-eseguito per ogni riga. Stessa
+        firma, stesso RETURNS, stesse rank.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_partite_merce'
+                     AND pronamespace = 'vendite'::regnamespace
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_ddt_push_diagnosi'
+                     AND pronamespace = 'vendite'::regnamespace
+                     AND prosqlbody IS NOT NULL
+      changes:
+        # 1/2 — la funzione, DA SOLA nel suo change (BEGIN ATOMIC + pgjdbc).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Firma e RETURNS TABLE ancorati (%TYPE) dove proiettano una colonna;
+              -- tipo esplicito, con la ragione, dove il valore e' CALCOLATO.
+              CREATE OR REPLACE FUNCTION vendite.fn_ddt_push_diagnosi(
+                       p_ddt_id vendite.ddt.id%TYPE DEFAULT NULL)
+               RETURNS TABLE(
+                  ddt_id             vendite.ddt.id%TYPE,
+                  riga_id            vendite.ddt_righe.id%TYPE,
+                  motivo_rank        integer,   -- una precedenza, non una colonna
+                  motivo             text,      -- un vocabolario chiuso (CASE), non una colonna
+                  billing_account_id anagrafiche.billing_account.id%TYPE,
+                  ordine_riga_id     vendite.ordini_righe.id%TYPE,
+                  segment            text,      -- il ritorno di script.fn_get_stato_push_segment
+                  -- La DOSE: GREATEST(0, LEAST(dr.quantita, differenza)). E' un
+                  -- calcolo, ma la sua unita' e il suo tetto sono la colonna
+                  -- quantita della riga, e il lister la proietta in una colonna
+                  -- con lo stesso ancoraggio.
+                  quantita_push      vendite.ddt_righe.quantita%TYPE)
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                -- Scopo: per ogni riga ATTIVA di DDT, IL motivo per cui non e'
+                --   inviabile a commessa (NULL = eleggibile) e i fatti che
+                --   servono a chi agisce: BA, riga d'ordine sorgente, stato-push
+                --   del segmento, dose da spingere. p_ddt_id NULL = tutte.
+                -- ⭐ FONTE UNICA (rev 2026-09-21, D14 seconda leva, forma B2):
+                --   vendite.fn_list_ddt_da_pushare NON riproduce piu' questi
+                --   predicati — fa `FROM fn_ddt_push_diagnosi(p) WHERE motivo IS
+                --   NULL` e aggiunge solo i suoi filtri di chiamata; la
+                --   capability script.fn_available_actions_ddt legge questa
+                --   funzione UNA volta (flag, precedenza sul segment, motivo).
+                --   ⛔ Chi aggiunge un predicato di eleggibilita' lo aggiunge QUI,
+                --   come rank: nel lister non c'e' piu' un posto dove metterlo.
+                -- rev 2026-08-18: riallineata alla PARTITA (§23.2 del brief
+                --   partita generalizzata): i motivi 7/8/9 si leggono da
+                --   `stato`, che e' gia' la decomposizione di «differenza IS NULL».
+                -- rev 2026-09-21 (D14, quarta leva): la partita si legge da
+                --   vendite.fn_partite_merce col DDT come seme (la chiusura).
+                -- rev 2026-09-22 (D14 giro 6, §11.8): la partita sta in una CTE
+                --   MATERIALIZED, calcolata UNA volta. Inlinata nel LEFT JOIN,
+                --   come app il planner la metteva come lato interno di un
+                --   nested loop e la ri-eseguiva per ogni riga della diagnosi.
+                WITH docs AS (
+                  -- Il documento chiesto, o tutti: DUE rami, mai
+                  -- `p_ddt_id IS NULL OR d.id = p_ddt_id`. Il primo e' un
+                  -- Index Cond sulla PK; il secondo ha un predicato senza
+                  -- colonne che in piano generico diventa un One-Time Filter
+                  -- e non viene nemmeno eseguito (brief §2-bis.2).
+                  SELECT d.id, d.uid, d.stato_doc_ddt_id, d.causale_trasporto_id,
+                         d.billing_account_id
+                    FROM vendite.ddt d
+                   WHERE d.id = p_ddt_id
+                  UNION ALL
+                  SELECT d.id, d.uid, d.stato_doc_ddt_id, d.causale_trasporto_id,
+                         d.billing_account_id
+                    FROM vendite.ddt d
+                   WHERE p_ddt_id IS NULL
+                ),
+                pm AS MATERIALIZED (
+                  -- ⭐ LA PARTITA, una volta sola. MATERIALIZED e' la forma, non
+                  -- un suggerimento: senza, la SRF si inlina e il suo SELECT
+                  -- finale torna a essere ri-eseguito per riga (§11.8). Le tre
+                  -- colonne per NOME: sono le sole che la diagnosi legge.
+                  -- `stato` e' gia' la decomposizione di «differenza IS NULL»
+                  -- nelle sue tre cause: si legge, non si ri-deriva.
+                  SELECT p.ddt_riga_id, p.differenza, p.stato
+                    FROM vendite.fn_partite_merce(
+                           CASE WHEN p_ddt_id IS NULL THEN NULL::bigint[] ELSE ARRAY[p_ddt_id] END,
+                           NULL::bigint[]) p
+                ),
+                cand AS (
+                  -- ⚠️ Cio' che esclude e' un LEFT JOIN con una rank sotto: la
+                  -- diagnosi deve SPIEGARE l'esclusione, non ripeterla.
+                  SELECT
+                    d.id   AS d_id,
+                    dr.id  AS dr_id,
+                    -- Il BA attraverso la sua tabella (RLS): NULL se non c'e'
+                    -- O se chi legge non lo vede. E' cio' che l'INNER JOIN del
+                    -- lister faceva in silenzio; qui e' la rank 3.
+                    ba.id  AS ba_id,
+                    src.src_ordine_riga_id,
+                    sdd.codice_interno AS sdd_cod,
+                    sdd.ordine         AS sdd_ord,
+                    sdd.is_abortito    AS sdd_abort,
+                    caus.fatturabile   AS caus_fatt,
+                    src.src_fatturazione_trigger AS trg,
+                    sdd_trg.ordine     AS trg_ord,
+                    pm.ddt_riga_id     AS pm_presente,
+                    pm.stato           AS pm_stato,
+                    script.fn_get_stato_push_segment(
+                      'DDT:'||d.uid::text||':R:'||dr.id::text) AS segment,
+                    -- La dose, UNA volta: rank 11 la giudica, il lister la
+                    -- proietta. Il cap a dr.quantita e' una cintura: oggi la
+                    -- differenza non supera il consegnato, ma quando la nota di
+                    -- credito abbassa il fatturato quel rapporto va ri-verificato.
+                    GREATEST(0::numeric,
+                             LEAST(dr.quantita, COALESCE(pm.differenza, 0))) AS qta_push
+                  FROM docs d
+                  JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                  JOIN vendite.ddt_righe dr ON dr.ddt_id = d.id AND dr.attivo IS TRUE
+                  LEFT JOIN config.causali_trasporto caus ON caus.id = d.causale_trasporto_id
+                  LEFT JOIN pm ON pm.ddt_riga_id = dr.id
+                  -- La riga d'ordine SORGENTE: il primo fulfillment per id. E'
+                  -- l'unica sede della regola; il lister la riceve da qui.
+                  LEFT JOIN LATERAL (
+                    SELECT o.billing_account_id   AS src_billing_account_id,
+                           o.fatturazione_trigger AS src_fatturazione_trigger,
+                           orr.id                 AS src_ordine_riga_id
+                    FROM vendite.ordini_righe_fulfillment ful
+                    JOIN vendite.ordini_righe orr ON orr.id = ful.ordine_riga_id
+                    JOIN vendite.ordini o        ON o.id = orr.ordine_id
+                    WHERE ful.ddt_riga_id = dr.id ORDER BY ful.id LIMIT 1
+                  ) src ON TRUE
+                  LEFT JOIN anagrafiche.billing_account ba
+                    ON ba.id = COALESCE(d.billing_account_id, src.src_billing_account_id)
+                  LEFT JOIN config.stati_doc_ddt sdd_trg
+                    ON sdd_trg.codice_interno = src.src_fatturazione_trigger
+                ),
+                diag AS (
+                  -- IL motivo, per precedenza. Le rank 7..10 stanno PRIMA di
+                  -- DDT_CONTATORE apposta: una partita senza conto ha
+                  -- differenza NULL, quindi dose 0 — e il contatore
+                  -- scatterebbe per primo mascherando la ragione vera.
+                  SELECT c.*,
+                    (SELECT r.rank FROM (VALUES
+                      (1,  c.sdd_abort),                                  -- ANNULLATO
+                      (1,  c.sdd_cod = 'RESO'),                           -- RESO
+                      -- ⚠️ `IS NOT TRUE` e non `IS FALSE`: la causale ASSENTE
+                      -- esclude quanto quella non fatturabile.
+                      (2,  c.caus_fatt IS NOT TRUE),
+                      (3,  c.ba_id IS NULL),
+                      (4,  c.segment <> 'LIBERA'),
+                      (5,  c.trg IS NOT NULL AND c.trg <> 'CONFERMATO'
+                           AND (c.trg_ord IS NULL OR c.sdd_ord < c.trg_ord)),
+                      (5,  c.trg IS NULL
+                           AND c.sdd_cod NOT IN ('SPEDITO','CONSEGNATO')),
+                      (6,  c.trg = 'CONFERMATO'),
+                      -- I tre motivi che stanno dietro «differenza IS NULL»,
+                      -- letti dalla partita.
+                      (7,  c.pm_stato = 'RICONSEGNA'),
+                      (8,  c.pm_stato = 'NON_FATTURABILE'),
+                      (9,  c.pm_stato = 'NON_MISURABILE'),
+                      -- Fallback: nessuna partita affatto (DDT sotto EMESSO).
+                      -- Esiste perche' una riga non spingibile NON deve mai
+                      -- uscire di qui con motivo NULL: «eleggibile» e' la bugia
+                      -- peggiore per questa funzione.
+                      (10, c.pm_presente IS NULL),
+                      -- C'e' un conto, ed e' <= 0: tutto gia' fatturato.
+                      (11, c.qta_push <= 0)
+                    ) AS r(rank, hit) WHERE r.hit ORDER BY r.rank LIMIT 1) AS mrank
+                  FROM cand c
+                )
+                SELECT d_id, dr_id, mrank,
+                       CASE mrank
+                         WHEN 1  THEN CASE WHEN sdd_cod = 'RESO' THEN 'DDT_RESO' ELSE 'DDT_ANNULLATO' END
+                         WHEN 2  THEN 'DDT_SOLO_TRASPORTO'
+                         WHEN 3  THEN 'DDT_SENZA_BA'
+                         WHEN 4  THEN 'DDT_ROUTED'
+                         WHEN 5  THEN 'DDT_MERCE_IN_VIAGGIO'
+                         WHEN 6  THEN 'DDT_FATTURA_DA_ORDINE'
+                         WHEN 7  THEN 'DDT_RICONSEGNA'
+                         WHEN 8  THEN 'DDT_NON_FATTURABILE'
+                         WHEN 9  THEN 'DDT_NON_MISURABILE'
+                         WHEN 10 THEN 'DDT_SENZA_PARTITA'
+                         WHEN 11 THEN 'DDT_CONTATORE'
+                       END,
+                       ba_id, src_ordine_riga_id, segment, qta_push
+                  FROM diag;
+              END;
+        # 2/2 — il COMMENT in un change SUO (pgjdbc dopo l'END non spezza).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_ddt_push_diagnosi(bigint) IS
+                'FONTE UNICA dell''eleggibilita'' al push a commessa (rev 2026-09-21, D14 seconda leva, forma B2): '
+                'per ogni riga ATTIVA di DDT, IL motivo di esclusione (NULL = eleggibile) e i fatti per chi agisce — '
+                'billing_account_id (testata o ordine sorgente, letto attraverso anagrafiche.billing_account: NULL anche '
+                'se invisibile a chi legge), ordine_riga_id (la riga d''ordine sorgente: primo fulfillment per id), '
+                'segment (LIBERA/ALLOCATA/EMESSA da script.fn_get_stato_push_segment), quantita_push (la dose: '
+                'GREATEST(0, LEAST(quantita, differenza della partita))). p_ddt_id NULL = tutte le righe. '
+                'vendite.fn_list_ddt_da_pushare DERIVA da qui (FROM fn_ddt_push_diagnosi WHERE motivo IS NULL + filtri di '
+                'chiamata e proiezione) e script.fn_available_actions_ddt la legge UNA volta: flag = esiste motivo NULL; '
+                'poi ALLOCATA -> DDT_GIA_INVIATO, EMESSA -> DDT_GIA_FATTURATO; poi min(rank). ⛔ Un predicato di '
+                'eleggibilita'' nuovo si aggiunge QUI come rank: nel lister non c''e'' piu'' un posto dove metterlo. '
+                'motivo_rank = precedenza: 1 ANNULLATO/RESO, 2 SOLO_TRASPORTO (causale non fatturabile O assente), '
+                '3 SENZA_BA, 4 ROUTED, 5 MERCE_IN_VIAGGIO, 6 FATTURA_DA_ORDINE, 7 RICONSEGNA, 8 NON_FATTURABILE, '
+                '9 NON_MISURABILE, 10 SENZA_PARTITA, 11 CONTATORE. La capability mappa per STRINGA, non per numero, '
+                'e il suo CASE ha un ELSE che fa cadere i motivi nuovi nel generico. BEGIN ATOMIC: le dipendenze '
+                '(fn_partite_merce, fn_get_stato_push_segment, tabelle) sono in pg_depend. Il documento chiesto e'' un '
+                'seme a due rami in UNION ALL, mai `p IS NULL OR`. La partita si legge da vendite.fn_partite_merce col '
+                'DDT come seme (D14 quarta leva, 2026-09-21) — ⭐ rev 2026-09-22 (giro 6, §11.8): in una CTE '
+                'MATERIALIZED, calcolata UNA volta e agganciata alle righe con un hash join; inlinata nel LEFT JOIN, '
+                'come app era il lato interno di un nested loop ri-eseguito per ogni riga della diagnosi. I motivi '
+                '7/8/9 si leggono da `stato` (rev 2026-08-18, §23.2 brief-design-partita-merce-generalizzata). '
+                'Brief: brief-db-partita-merce-per-documento §10, §13; brief-db-ddt-reason-push-catch-all §3 (Decisione A).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Stessa firma e stesso RETURNS: si torna alla rev 20260921-32
+              --    ri-applicandone il change 2/3 e 3/3 (CREATE OR REPLACE).
+              SELECT 1;

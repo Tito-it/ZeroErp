@@ -217,6 +217,7 @@ function buildRowActions(data) {
     codice="anagrafiche.emittente_billing_account"
     :emittente-esplicito="emittenteId"
     :help-text="t('amministrazione.emittenti_fiscali.ba_help')"
+    :store="store"
     :rows="store.items"
     :total="store.totalRecords"
     :loading="store.loading"
@@ -243,14 +244,14 @@ function buildRowActions(data) {
         <div>
           <Button
             :label="t('amministrazione.emittenti_fiscali.ba_add_specific')"
-            icon="pi pi-plus"
+            :icon="MANAGE_ICONS.ADD"
             :loading="adding"
             :disabled="!selectedBA?.id"
             @click="addSpecificMapping"
           />
           <Button
             :label="t('amministrazione.emittenti_fiscali.ba_add_default')"
-            icon="pi pi-star"
+            :icon="MANAGE_ICONS.PREDEFINITO"
             severity="secondary"
             :disabled="hasDefault"
             @click="addDefaultMapping"
@@ -259,11 +260,11 @@ function buildRowActions(data) {
       </div>
     </template>
 
-    <template #filtri>
+    <template #filtri-sempre>
       <InputText
         v-model="searchText"
+        class="app-filter-w-lg"
         :placeholder="t('amministrazione.emittenti_fiscali.ba_filter_placeholder')"
-        style="width: 300px;"
       />
     </template>
 
@@ -287,9 +288,8 @@ function buildRowActions(data) {
     <!-- v-if sul TEMPLATE dello slot: senza slot `actions` ne' il BB ne'
          <ListaConfigurabile> montano la colonna, come la <Column v-if>
          pre-conversione. -->
-    <template v-if="!isReadonly" #actions="{ data, compact }">
-      <RowActionsMenu :row="data" :actions="buildRowActions(data)"
-        :force-compact="compact" />
+    <template v-if="!isReadonly" #actions="{ data }">
+      <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
     </template>
 
     <template #empty>

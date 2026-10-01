@@ -97,7 +97,9 @@ Step migliorativo data-driven applicato dopo la consegna della fn DB
 
 - **Capability blob** nel detail: `get_offerta` ora include
   `available_actions[]`, `can_edit_*`, `can_push_contratto`,
-  `non_editable_fields`, `stato_codice` letti da `script.fn_available_actions_offerta`.
+  `non_editable_fields`, `stato_codice` letti da `script.fn_available_actions_offerta`,
+  nella chiave `capabilities` (dal 2026-09-23; vuota, mai assente, se la
+  funzione fallisce).
   Il FE consuma con `useEntityCapabilities` + `mapAvailableActionsToDrawerActions`,
   rimuovendo lo state-machine FE hardcoded.
 - **Contratto collegato**: `contratto_id` + `contratto_numero` esposti
@@ -178,7 +180,7 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
 | Parametro              | Tipo     | Descrizione                                                                                |
 | ---------------------- | -------- | ------------------------------------------------------------------------------------------ |
-| `search`               | string   | ILIKE su `codice` offerta e `ragione_sociale_completa` BA (minimo 3 char se valorizzato)    |
+| `search`               | string   | ILIKE su `codice` offerta, `ragione_sociale_completa`, `ba_codice` e `id_fiscale_univoco_cf_piva`. Sotto 3 caratteri il termine **non filtra** (nessun errore) |
 | `billing_account_id`   | int      | Filtro cliente                                                                              |
 | `stato_codice_interno` | string   | `BOZZA` \| `EMESSA` \| `ACCETTATA` \| `RIFIUTATA` \| `ANNULLATA` \| `SUPERATA`               |
 | `utility_id`           | int      | Filtro utility                                                                              |
@@ -191,8 +193,20 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 | `order_by`             | string   | `campo_sorgente` catalogo `vendite.offerte`: `codice` \| `ragione_sociale_completa` \| `ba_codice` \| `id_fiscale_univoco_cf_piva` \| `utility_codice` \| `utility_descrizione` \| `listino_codice` \| `validita_dal` \| `validita_al` \| `data_emissione` \| `stato_descrizione` \| `stato_codice_interno` \| `data_insert`. `revisione_numero` **non ordinabile** |
 | `order_dir`            | string   | `asc` o `desc` (default)                                                                    |
 
-> **`search` vuoto**: stringa vuota o whitespace-only trattato come "no filter"
-> (non solleva 422). Il minimo 3 char si applica solo a `search` non-vuota.
+> **`search` corto o vuoto**: vuoto, whitespace-only o sotto 3 caratteri →
+> nessun filtro, nessun errore (BB `add_ricerca_full_condition`, soglia unica
+> delle liste). Fino al 2026-09-23 sotto i 3 caratteri rispondeva 400
+> `E_VENDITE_VALIDATION`.
+
+> **Scope emittente** (dal 2026-09-21): lista **ed export** applicano il filtro
+> applicativo `v.emittente_fiscale_id = ANY(<whitelist>)` risolto da
+> `get_scope_user_id(request)` → `add_emittente_scope_condition` (convenzione
+> `pk`), lo stesso calco di preventivi e contratti; `None` = nessuna
+> restrizione, whitelist vuota = **fail-closed**. Si **somma** alla RLS della
+> vista (`security_invoker=on`), non la sostituisce (api.md §«Scope emittente»).
+> Fino a quel giorno la lista offerte era l'unica di testata del dominio senza
+> — il «B1» dell'analisi RLS. Presidio:
+> `apps/vendite/tests/db/test_offerte_scope_emittente.py`.
 
 ### Export lista offerte `GET /api/v1/vendite/offerte/export/`
 
@@ -320,37 +334,37 @@ non ancora compilato).
       "param_1_num": "1500", "param_2_txt": "POD-XYZ",
       "istanza_dati_precontrattuali_id": null, "meta": {}
     },
-    "available_actions": [
-      {
-        "key": "emetti", "target_state": "EMESSA",
-        "label_key": "vendite.offerte.azione_emetti",
-        "severity": "success", "icon": "pi pi-send",
-        "requires_confirm": true, "requires_motivazione": false
-      },
-      {
-        "key": "annulla", "target_state": "ANNULLATA",
-        "label_key": "vendite.offerte.azione_annulla",
-        "severity": "danger", "icon": "pi pi-ban",
-        "requires_confirm": true, "requires_motivazione": true
-      }
-    ],
-    "can_change_state": true,
-    "can_edit_testata": true,
-    "can_edit_eccezioni": true,
-    "can_edit_utility": true,
-    "can_create_revisione": false,
-    "can_push_contratto": false,
-    "can_push_contratto_reason": "OFFERTA_NON_ACCETTATA",
-    "can_push_contratto_reason_key": "vendite.offerte.push_reason.non_accettata",
-    "can_genera_ordine": false,
-    "can_genera_ordine_reason": "OFFERTA_NON_ACCETTATA",
-    "can_genera_ordine_reason_key": "vendite.offerte.push_reason.non_accettata",
-    "non_editable_fields": [
-      "codice", "uid", "revisione_numero", "revisione_padre_id",
-      "stato_doc_offerta_id", "data_emissione", "data_accettazione",
-      "data_rifiuto", "data_annullamento", "motivazione_rifiuto"
-    ],
-    "stato_codice": "BOZZA",
+    "capabilities": {
+      "available_actions": [
+        {
+          "key": "emetti", "target_state": "EMESSA",
+          "label_key": "vendite.offerte.azione_emetti",
+          "requires_confirm": true, "requires_motivazione": false
+        },
+        {
+          "key": "annulla", "target_state": "ANNULLATA",
+          "label_key": "vendite.offerte.azione_annulla",
+          "requires_confirm": true, "requires_motivazione": true
+        }
+      ],
+      "can_change_state": true,
+      "can_edit_testata": true,
+      "can_edit_eccezioni": true,
+      "can_edit_utility": true,
+      "can_create_revisione": false,
+      "can_push_contratto": false,
+      "can_push_contratto_reason": "OFFERTA_NON_ACCETTATA",
+      "can_push_contratto_reason_key": "vendite.offerte.push_reason.non_accettata",
+      "can_genera_ordine": false,
+      "can_genera_ordine_reason": "OFFERTA_NON_ACCETTATA",
+      "can_genera_ordine_reason_key": "vendite.offerte.push_reason.non_accettata",
+      "non_editable_fields": [
+        "codice", "uid", "revisione_numero", "revisione_padre_id",
+        "stato_doc_offerta_id", "data_emissione", "data_accettazione",
+        "data_rifiuto", "data_annullamento", "motivazione_rifiuto"
+      ],
+      "stato_codice": "BOZZA"
+    },
     "data_insert": "2026-05-24T18:30:00Z", "user_insert": "mctit",
     "data_update": null, "user_update": null
   }
@@ -369,8 +383,8 @@ non ancora compilato).
   `uq_contratti_offerta_id`): max 1 contratto per offerta. Il FE usa
   questi campi per il dialog "gia' generato" e per il deep-link
   `/vendite/contratti?open=<id>` post-push.
-- **Capability blob** (da `script.fn_available_actions_offerta`, mergiato
-  nel dict): `available_actions[]` lista azioni ammesse nello stato
+- **Capability blob** (da `script.fn_available_actions_offerta`, sotto
+  `capabilities`): `available_actions[]` lista azioni ammesse nello stato
   corrente (mappabili 1:1 a `DrawerActionsBar` via
   `mapAvailableActionsToDrawerActions`); `can_edit_testata` /
   `can_edit_eccezioni` / `can_edit_utility` flag editabilita';

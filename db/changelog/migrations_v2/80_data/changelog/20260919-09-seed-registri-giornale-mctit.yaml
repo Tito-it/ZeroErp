@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I QUATTRO REGISTRI DEL GIORNALE (seed)
+#   config.registri_giornale: EVENT_LOG, LOTTO_LOG, TASK_RUN, FATTURA_LOG
+#   Brief: brief-db-registri-giornale-catalogo, sezione 4.2
+#
+# ⚠️ Mirror `loadUpdateData`, `runOnChange`: un valore si cambia nel CSV, mai
+#   con un UPDATE a parte (AGENTS 80_data). Colonne di audit lasciate ai
+#   DEFAULT del database (now() / CURRENT_USER), come per le sorelle.
+# ⭐ UNA RIGA = UN RAMO DELLA VISTA. Il quinto registro entra qui, nello
+#   stesso giro del suo UNION ALL in script.vw_giornale_entita: il pgTAP
+#   test-giornale-registri-catalogo-v1 fa rosso se una delle due meta' manca.
+#   Per lo stesso motivo la tabella NON si popola dall'applicazione.
+# ⚠️ Gli id sono FISSI nel CSV e un INSERT con id esplicito NON avanza la
+#   sequence: il primo INSERT senza id prenderebbe l'id 1 (23505). Provato il
+#   19-09 nella mutazione del pgTAP. Il secondo change riallinea la sequence
+#   a ogni passata (idempotente, non arretra mai; stampo 20260802-27) — senza
+#   `dbms:`, perche' in un runOnChange un change con `dbms:` ri-esegue una
+#   volta fuori ordine (PROJECT_CONTEXT, voce aperta del 17-09).
+# ⚠️ `codice` = `codice_interno` alla nascita, come nelle sorelle. Le
+#   `etichetta_key` sono il patto col frontend (config.registri_giornale.
+#   <codice_interno minuscolo>): le chiavi nei locales le porta il cantiere
+#   BE/FE (brief, sezione 5) — scripts/check_i18n_keys.py NON legge questa
+#   colonna, quindi una chiave mancante non fa rosso da sola.
+# ⚠️ Seed di CATALOGO: nessuna FK verso anagrafiche.*, nessun `context`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260919-09-seed-registri-giornale-mctit.yaml
+
+  - changeSet:
+      id: 20260919-09-seed-registri-giornale
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed config.registri_giornale: i quattro registri che
+        script.vw_giornale_entita cuce (EVENT_LOG, LOTTO_LOG, TASK_RUN,
+        FATTURA_LOG), con etichetta_key e tabella sorgente. codice_interno =
+        chiave naturale stabile; codice e descrizione sono dell'operatore.
+        Mirror loadUpdateData. Brief: brief-db-registri-giornale-catalogo,
+        sezione 4.2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: registri_giornale
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/registri_giornale.csv
+            tableName: registri_giornale
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id,             type: NUMERIC }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: codice,         type: STRING }
+              - column: { name: descrizione,    type: STRING }
+              - column: { name: etichetta_key,  type: STRING }
+              - column: { name: sorgente,       type: STRING }
+              - column: { name: obsoleto_dal,   type: DATE }
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT setval(pg_get_serial_sequence('config.registri_giornale', 'id'),
+                            GREATEST((SELECT COALESCE(max(id), 1) FROM config.registri_giornale),
+                                     (SELECT last_value FROM config.registri_giornale_id_seq)),
+                            true);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM config.registri_giornale
+               WHERE codice_interno IN ('EVENT_LOG', 'LOTTO_LOG', 'TASK_RUN', 'FATTURA_LOG');

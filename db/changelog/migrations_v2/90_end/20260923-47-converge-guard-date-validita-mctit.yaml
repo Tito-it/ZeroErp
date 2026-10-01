@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Convergenza DATE_VALIDITA: a ogni migrate, ogni tabella con `valido_dal` e
+#   `valido_al` ha il guard della regola del periodo.
+#
+# ── ⭐ PERCHE' runAlways, e perche' in 90_end ────────────────────────
+#   La regola e' «la coppia di colonne c'e' ⇒ il guard c'e'». Una rete che
+#   gira a OGNI migrate la rende vera anche per le tabelle nate dopo questo
+#   changeSet, senza aspettare il job notturno. Il precedente e'
+#   l'apply_fk_index_policy (linee-guida-sql §9).
+#   ⭐ 90_end e' incluso DOPO tutto l'autogen (changelog-master-v2), quindi
+#   quando gira qui le tabelle ci sono tutte — anche su un database da zero,
+#   anche quelle di un changeSet con data successiva a questo.
+#   ⚠️ A differenza delle convergenze sui trigger generati da ci_apply
+#   (memoria: runAlways in 90_end gira PRIMA di 90_end/ci_apply), questa non
+#   dipende da nessun oggetto delle automazioni: legge solo le colonne. Non ha
+#   bisogno di stare in ci_apply.
+#   A regime non fa DDL: il modulo riconosce i trigger gia' montati.
+#
+# ── ⛔ IL CONTROLLO IN CODA ───────────────────────────────────────────
+#   Dopo il giro, ogni tabella dello scope (storico escluso) con la coppia di
+#   colonne deve avere un trigger che esegue script.trgfn_guard_date_validita.
+#   Se ne manca uno — la regola DATE_VALIDITA disabilitata, tolta dal CSV,
+#   un'esclusione di scope — il migrate si FERMA e dice quali: un guard che
+#   manca in silenzio e' esattamente il difetto da cui nasce questo lavoro.
+#
+# Brief: brief-db-guard-date-validita.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260923-47-converge-guard-date-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260923-47-converge-guard-date-validita
+      author: mctit
+      runAlways: true
+      # Una rete che converge: il corpo puo' cambiare senza che il checksum
+      # debba invalidare i database dove ha gia' girato.
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Converge l'automazione DATE_VALIDITA a ogni migrate: monta
+        script.trgfn_guard_date_validita su ogni tabella con valido_dal e
+        valido_al che ancora non l'ha, e si ferma se al termine una di quelle
+        tabelle ne e' ancora senza.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_run_automations_date_validita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $convergenza$
+              DECLARE
+                  v_scoperte text;
+              BEGIN
+                  PERFORM dbops.fn_run_automations_date_validita('AUTO', NULL, false);
+
+                  SELECT string_agg(n.nspname || '.' || c.relname, ', ' ORDER BY n.nspname, c.relname)
+                    INTO v_scoperte
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE c.relkind = 'r'
+                     AND n.nspname = ANY(dbops.fn_resolve_scope(NULL))
+                     AND n.nspname <> 'storico'
+                     AND dbops.fn_table_in_scope(n.nspname, c.relname)
+                     AND dbops.fn_col_exists(n.nspname, c.relname, 'valido_dal')
+                     AND dbops.fn_col_exists(n.nspname, c.relname, 'valido_al')
+                     AND NOT dbops.fn_trigger_exists_by_function(
+                             c.oid::regclass, 'script', 'trgfn_guard_date_validita');
+
+                  IF v_scoperte IS NOT NULL THEN
+                      RAISE EXCEPTION
+                        'DATE_VALIDITA: tabelle con valido_dal/valido_al ancora senza il guard delle date: %. '
+                        'Controllare la regola DATE_VALIDITA in dbops.automation_rules_tbl (abilitata, exec_mode AUTO).',
+                        v_scoperte;
+                  END IF;
+              END
+              $convergenza$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- No-op dichiarato: la rete non ha uno stato «prima» da ripristinare.
+              -- Per togliere il guard da una tabella si disabilita la regola e si
+              -- rimuovono i trigger; non si torna indietro da qui.
+              SELECT 1;

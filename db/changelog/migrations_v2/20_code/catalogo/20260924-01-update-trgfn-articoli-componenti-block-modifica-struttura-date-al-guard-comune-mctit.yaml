@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.trgfn_articoli_componenti_block_modifica_struttura: il ramo
+#   «NEW.valido_al < OLD.valido_dal» -> E_BOM_VALIDO_AL_INVALIDO si ritira —
+#   l'ordine delle date lo dice il guard comune. Resta tutto il resto: DELETE
+#   vietato, campi di struttura immutabili, valido_al (la chiusura) ammesso.
+#
+# ── ⭐ PERCHE' E' UNA COPIA, E NON UNA REGOLA DELLA BoM ─────────────────
+#   Il ramo confronta NEW.valido_al con OLD.valido_dal. Ma poche righe sopra la
+#   stessa funzione vieta di cambiare valido_dal (E_BOM_MODIFICA_VIETATA): al
+#   ramo si arriva solo con NEW.valido_dal = OLD.valido_dal, e allora la regola
+#   e' esattamente quella del periodo — valido_al non precede valido_dal — che
+#   ha UNA sede dal 23-09: script.trgfn_guard_date_validita (20260923-40),
+#   montata dall'automazione DATE_VALIDITA anche su questa tabella. Regola del
+#   2 (AGENTS.md): la copia si ritira.
+#   ⚠️ Il commento del ramo citava `chk_articoli_componenti_valid_dates` come
+#   CHECK stretto «valido_al > valido_dal»: non esiste (droppato in 20260427-02;
+#   su pg_constraint la tabella ha solo coeff_qta_pos, no_selfref,
+#   note_target_tipo). Va via con il ramo.
+#
+# ── ⚠️ E NON ERA CODICE MORTO ───────────────────────────────────────────
+#   `trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt` precede in
+#   ordine alfabetico `…_a10_date_validita_ins_upd` (`b` < `d`): fino a oggi,
+#   su UPDATE, rispondeva LUI, con un codice diverso da quello delle altre 24
+#   tabelle. Da questo changeSet risponde il guard comune (E_DATA_AL_MINORE_DAL,
+#   campo valido_al). Su INSERT rispondeva gia' il guard comune.
+#
+# ── ORIGINE DEL CORPO ───────────────────────────────────────────────────
+#   Corpo VIVO (pg_get_functiondef, 24-09) = doc auto-gen; stesso md5 del prosrc
+#   su dbdev e su zeroerp_ci. Il diff e' il solo ramo tolto e il punto 3 del
+#   commento di testa. La preCondition ancora l'md5 letto: se qualcuno tocca la
+#   funzione prima dell'apply, il migrate si FERMA invece di disfargli il lavoro.
+#
+# Nello stesso giro: E_BOM_VALIDO_AL_INVALIDO -> obsoleto_dal 2026-09-24
+#   (80_data/sql/config/codici_errore.csv: nessun'altra funzione lo solleva).
+# Presidio: catalogo/test-articoli-componenti-immutabilita t.11 (ora pretende la
+#   frase del guard comune), dbops/test-punti-canale-campo-v1 t.1 (la riga del
+#   codice ritirato esce dall'elenco).
+# Brief: brief-db-guard-date-validita.md §13
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260924-01-update-trgfn-articoli-componenti-block-modifica-struttura-date-al-guard-comune-mctit.yaml
+
+  - changeSet:
+      id: 20260924-01-update-trgfn-articoli-componenti-block-modifica-struttura-date-al-guard-comune
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.trgfn_articoli_componenti_block_modifica_struttura: ritirato il ramo
+        E_BOM_VALIDO_AL_INVALIDO (copia della regola del periodo, ora in
+        script.trgfn_guard_date_validita). md5 ancorato in preCondition.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            catalogo.trgfn_articoli_componenti_block_modifica_struttura: il corpo non e'
+            quello letto il 24-09 (md5 diverso): qualcuno l'ha toccata dopo. Rileggere il
+            vivo e rigenerare questo changeSet, non applicarlo.
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'catalogo' AND p.proname = 'trgfn_articoli_componenti_block_modifica_struttura'
+                 AND md5(p.prosrc) = 'e4f5de8ae17c9131940582b3afec253f'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Garantire che la struttura di una BoM sia immutabile
+                  --   una volta inserita. Pattern admin "chiudi+inserisci":
+                  --   per correggere si chiude la riga esistente (UPDATE
+                  --   valido_al alla data di fine) e si inserisce una
+                  --   nuova riga con valido_dal successivo. Il temporal UNIQUE
+                  --   constraint uq_articoli_componenti_no_overlap (PG 18)
+                  --   garantisce non-overlap sul triplo (prodotto, componente,
+                  --   validita WITHOUT OVERLAPS).
+                  --
+                  -- Regole:
+                  --   1. DELETE -> bloccato sempre (E_BOM_MODIFICA_VIETATA).
+                  --   2. UPDATE dei campi di struttura -> bloccato
+                  --      (coeff_qta, componente_id, obbligatorio,
+                  --      esposto_in_fattura, partecipa_qta,
+                  --      determina_qta_padre, valido_dal).
+                  --      Nota: validita rimossa dalla lista perche' e' ora
+                  --      STORED generated: PostgreSQL rifiuta scritture dirette
+                  --      prima che il trigger venga eseguito; in BEFORE trigger
+                  --      NEW.validita e' NULL e non puo' essere usata per check.
+                  --   3. UPDATE di valido_al ammesso (chiusura della riga).
+                  --      L'ordine delle date NON si giudica qui: lo giudica il
+                  --      guard comune script.trgfn_guard_date_validita, montato
+                  --      dall'automazione DATE_VALIDITA su ogni tabella con la
+                  --      coppia valido_dal/valido_al (rev 20260924-01: ritirato
+                  --      il ramo E_BOM_VALIDO_AL_INVALIDO, che ne era una copia).
+                  --   4. UPDATE di campi note/meta/attivo + audit
+                  --      (user_update/data_update/tx_id) -> ammesso.
+                  -- =========================================================
+
+                  IF TG_OP = 'DELETE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_BOM_MODIFICA_VIETATA',
+                          jsonb_build_object(
+                              'operazione',    'DELETE',
+                              'hint',          'Chiudi la riga impostando valido_al invece di eliminarla.',
+                              'prodotto_id',   OLD.prodotto_id,
+                              'componente_id', OLD.componente_id,
+                              'riga_id',       OLD.id
+                          ),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                      );
+                  END IF;
+
+                  IF TG_OP = 'UPDATE' THEN
+                      -- Blocca modifiche ai campi di struttura.
+                      -- validita non inclusa: e' STORED generated, scritture dirette
+                      -- sono gia' rifiutate da PostgreSQL prima che il trigger esegua.
+                      IF NEW.coeff_qta              IS DISTINCT FROM OLD.coeff_qta
+                         OR NEW.componente_id       IS DISTINCT FROM OLD.componente_id
+                         OR NEW.obbligatorio        IS DISTINCT FROM OLD.obbligatorio
+                         OR NEW.esposto_in_fattura  IS DISTINCT FROM OLD.esposto_in_fattura
+                         OR NEW.partecipa_qta       IS DISTINCT FROM OLD.partecipa_qta
+                         OR NEW.determina_qta_padre IS DISTINCT FROM OLD.determina_qta_padre
+                         OR NEW.valido_dal          IS DISTINCT FROM OLD.valido_dal
+                      THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME,
+                              'E_BOM_MODIFICA_VIETATA',
+                              jsonb_build_object(
+                                  'operazione',    'UPDATE_STRUTTURA',
+                                  'hint',          'Chiudi questa riga (imposta valido_al) e inserisci una nuova riga con i valori aggiornati.',
+                                  'prodotto_id',   OLD.prodotto_id,
+                                  'componente_id', OLD.componente_id,
+                                  'riga_id',       OLD.id
+                              ),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()
+              IS 'Trigger function: blocca DELETE e UPDATE dei campi di struttura di catalogo.articoli_componenti (BoM immutabile, pattern chiudi+inserisci). Ammette UPDATE di valido_al (chiusura), attivo, note, meta, audit. validita e'' STORED generated: scritture dirette rifiutate da PG. Error code: E_BOM_MODIFICA_VIETATA (387). Rev 20260924-01: l''ordine delle date (valido_al non precede valido_dal) non e'' piu'' qui: ha una sede sola, script.trgfn_guard_date_validita (automazione DATE_VALIDITA); E_BOM_VALIDO_AL_INVALIDO ritirato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' nella doc auto-gen alla revisione prima di
+              -- questa (20260921-44). Non si riscrive un corpo stantio.
+              SELECT 1;

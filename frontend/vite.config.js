@@ -26,13 +26,25 @@ export default defineConfig({
 
   // ⭐ Il PRIMO test del frontend (2026-09-09). Fino a quel giorno non esisteva
   //    nessuno strumento di test: zero file, nessuno script, nessun pacchetto.
-  //    ⚠️ `environment` resta quello di node, non jsdom: qui si provano
-  //    composable e JS puro, che un DOM non lo toccano. Il giorno in cui servira'
-  //    montare un componente si aggiungeranno `@vue/test-utils` + `jsdom` —
-  //    allora, non prima: una dipendenza messa «per dopo» resta in
-  //    `package.json` senza un solo test che la usi.
+  //    ⚠️ `environment` resta quello di NODE, ed e' il default giusto: la gran
+  //    parte dei test prova composable e JS puro, che un DOM non lo toccano, e
+  //    in node partono piu' in fretta.
+  // ⭐ **Dal 2026-09-23 si montano anche i componenti** (`@vue/test-utils` +
+  //    `jsdom`, ok di Tid): quel giorno e' arrivato dopo che TRE cantieri in
+  //    una settimana — rate, filtri di lista, barra del drawer di magazzino —
+  //    hanno lasciato scoperto lo stesso difetto, e i filtri ne hanno pagati
+  //    due in un giorno soli (brief-fe-filtri-lista §9).
+  //    ⛔ Il DOM NON si accende qui per tutti: chi ne ha bisogno lo dichiara
+  //    in testa al proprio file con `// @vitest-environment jsdom`. Accenderlo
+  //    globalmente rallenterebbe i test puri — che sono la maggioranza — per
+  //    servire i pochi che montano, e nasconderebbe QUALI file toccano il DOM.
+  //    Il presidio e' la riga stessa: si legge in cima al file che la usa.
+  //    ⭐ `setupFiles`: le misure «righe per pagina» (BB `core/misurePagina`)
+  //    nell'app le carica il guard del router; nei test le registra
+  //    `src/core/misurePagina.setup-test.js`, prima di ogni file.
   test: {
     include: ['src/**/*.{test,spec}.js'],
+    setupFiles: ['src/core/misurePagina.setup-test.js'],
     reporters: ['default'],
   },
   resolve: {
@@ -40,13 +52,21 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  // ⭐ In sviluppo si entra SOLO da Nginx, come in produzione (2026-09-25,
+  //    piano-be-fe-accessi-credenziale-e-vesti §2): il browser apre
+  //    `https://<host>/`, Nginx passa `/api/` a Gunicorn e il resto a Vite.
+  //    Cosi' la catena davanti al backend e' una sola (Nginx = 1 proxy fidato,
+  //    `DJANGO_TRUSTED_PROXY_COUNT`), e in sviluppo si provano davvero rate
+  //    limit, HTTPS e l'IP del client.
+  //    ⛔ Niente `proxy` per `/api` e niente `--host`: una seconda strada
+  //    Vite → Django scavalcherebbe Nginx (e Django vedrebbe una catena che in
+  //    produzione non esiste). Una chiamata API arrivata a Vite deve fallire.
   server: {
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true
-      }
-    }
+    host: '127.0.0.1',
+    strictPort: true,
+    // Niente `ws.clientPort`: senza, il client HMR apre il websocket sull'host
+    // E sulla porta della pagina, cioe' quella di Nginx. La porta d'ingresso
+    // resta scritta in un posto solo, il vhost.
   },
   build: {
     rollupOptions: {

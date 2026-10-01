@@ -18,6 +18,7 @@ import json
 import logging
 from typing import Any
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params, validate_pagination
 from apps.core.services.payload_helpers import (
@@ -93,10 +94,11 @@ def list_eccedenze(
     *,
     chi_e_in_credito: str | None = None,
     billing_account_id: int | None = None,
+    search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict[str, Any]:
     ErrorManager.require(
         chi_e_in_credito is None or chi_e_in_credito in CHI_E_IN_CREDITO,
@@ -108,7 +110,7 @@ def list_eccedenze(
     )
     order_by, order_dir = validate_order_params(
         order_by or "eccedenza_cliente",
-        (order_dir or "desc").lower(),
+        order_dir or "desc",
         allowed_columns=frozenset(ECCEDENZE_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_eccedenze",
@@ -121,6 +123,7 @@ def list_eccedenze(
     results, total = repository.list_eccedenze(
         chi_e_in_credito=chi_e_in_credito,
         billing_account_id=billing_account_id,
+        search=search,
         order_by=order_by,
         order_dir=order_dir,
         limit=page_size,

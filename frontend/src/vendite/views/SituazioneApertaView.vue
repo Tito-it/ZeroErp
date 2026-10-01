@@ -28,13 +28,13 @@ import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
-import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { faseDocumentoSeverity } from '../../core/utils/severity'
-import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
-import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
+import DocumentoDrawerHost from '../../core/components/DocumentoDrawerHost.vue'
+import { useDocumentoDrawer } from '../../core/composables/useDocumentoDrawer'
 import {
   DASH_AREA_CONFIG,
   buildApriDocumentoAction,
@@ -44,6 +44,9 @@ import {
   dashMotivoLabel,
 } from '../dashboardAree'
 import { useDashboardApertoStore } from '../stores/dashboardAperto'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
+import { misureOpzioni } from '../../core/misurePagina'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -81,7 +84,7 @@ const documentiPaginatorOptions = computed(() => ({
   totalRecords: documentiCount.value,
   rows: documentiPageSize.value,
   first: (documentiPage.value - 1) * documentiPageSize.value,
-  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+  rowsPerPageOptions: misureOpzioni(),
 }))
 
 // Scopo: allinea una volta la dimensione pagina a quella risolta dal BE.
@@ -193,6 +196,25 @@ function onFiltriChange() {
   store.resetDocumenti()
   loadDocumenti()
 }
+
+// Scopo: il contratto dei filtri della barra — chi sono, che default hanno, il
+//        segno che mostrano e «Pulisci filtri». UNA sede: chiave, `rif` e
+//        default sulla stessa riga.
+// ⛔ Il default si DICHIARA e non si fotografa dal `ref`: questi due filtri
+//    vivono nello store `userScoped` del cruscotto, che SOPRAVVIVE al
+//    componente — al secondo montaggio una fotografia avrebbe preso il filtro
+//    lasciato dall'operatore come se fosse il default.
+// ⚠️ I due nascono entrambi a `null`, quindi il numero grigio non compare mai:
+//    o non filtrano, o sono stati scelti a mano (numero blu).
+// ⛔ Non c'e' l'AREA: quella si sceglie dalle card, che restano sempre a video
+//    — il segno esiste per cio' che in modalita' compatta non si vede piu'.
+const {
+  segno: segnoFiltriCruscotto,
+  azzeraFiltri: pulisciFiltri,
+} = useContrattoFiltriLocali({
+  ritardo_giorni: { rif: ritardoGiorni, default: null },
+  fase: { rif: faseSelezionata, default: null },
+}, { onAzzera: () => onFiltriChange() })
 
 // Scopo: click sul corpo della card = livello AREA (nessuna fase), SELEZIONE
 //        esclusiva (non piu' toggle: un secondo click sulla stessa area non la
@@ -326,7 +348,7 @@ onActivated(() => {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">{{ t('vendite.situazione_aperta.page_title') }}</h2>
         <small class="app-text-muted">{{ t('vendite.situazione_aperta.page_description') }}</small>
       </div>
@@ -381,7 +403,7 @@ onActivated(() => {
             <i
               v-if="card.hint"
               v-tooltip.bottom="card.hint"
-              class="pi pi-info-circle app-dash-card-hint"
+              class="app-dash-card-hint" :class="STATUS_ICONS.INFO"
               role="img"
               tabindex="0"
               :aria-label="card.hint"
@@ -406,31 +428,37 @@ onActivated(() => {
           <h4 class="app-dash-fermi-title">
             {{ t('vendite.situazione_aperta.lista_titolo') }}
           </h4>
-          <div class="app-page-filters">
+          <!-- ⚠️ `:segno` e non `:store`: un cruscotto non ha uno store-LISTA —
+               i suoi filtri sono ref sciolte, non un oggetto `filters` coi
+               propri default. E' il ripiego dichiarato dal brief per le
+               superfici senza store.
+               ⛔ `areaSelezionata` NON ci entra: si sceglie dalle card, che sono
+               sempre a video. -->
+          <FiltriLista :segno="segnoFiltriCruscotto" @pulisci="pulisciFiltri">
             <label class="app-dash-filter-toggle">
               <span>{{ t('vendite.situazione_aperta.filtro_ritardo_label') }}</span>
               <Select
                 v-model="ritardoGiorni"
+                class="app-filter-w-sm"
                 :options="ritardoOptions"
                 option-label="label"
                 option-value="value"
                 :placeholder="t('vendite.situazione_aperta.ritardo_tutti')"
                 size="small"
-                style="width: 150px;"
                 @change="onFiltriChange"
               />
             </label>
             <Select
               v-model="faseSelezionata"
+              class="app-filter-w-md"
               :options="faseOptions"
               option-label="label"
               option-value="value"
               :placeholder="t('vendite.situazione_aperta.filtro_fase_tutte')"
               size="small"
-              style="width: 200px;"
               @change="onFiltriChange"
             />
-          </div>
+          </FiltriLista>
         </div>
         <ListaConfigurabile
           v-if="documentiCount > 0 || documentiLoading"
@@ -486,8 +514,8 @@ onActivated(() => {
             {{ data.motivo_fermo ? motivoLabel(data.motivo_fermo) : '—' }}
           </template>
 
-          <template #actions="{ data, compact }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+          <template #actions="{ data }">
+            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
           </template>
         </ListaConfigurabile>
         <DashEmptyState

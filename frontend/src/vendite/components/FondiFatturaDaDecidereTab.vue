@@ -45,7 +45,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
@@ -54,6 +54,7 @@ import FatturaDrawer from './FatturaDrawer.vue'
 import { cancellaFondoFattura, exportFondiFatturaDaDecidere } from '../api/fondiFattura'
 import { useFondiFatturaDaDecidereStore } from '../stores/fondiFatturaDaDecidere'
 import { paramsOrdinamento } from '../../core/utils/listParams'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 // Vocabolario CHIUSO dei motivi (quattro letterali nei rami della UNION della
 // vista: nessun dato li produce). Vive qui e non in `constants.js` perché è
@@ -241,11 +242,12 @@ onMounted(load)
 <template>
   <div class="app-tab-content">
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
+      <FiltriLista :store="store" :inert="perimetroBloccato">
         <div class="form-field">
           <label>{{ t('vendite.fondi_fattura_da_decidere.filtro_motivo') }}</label>
           <Select
             v-model="motivoFilter"
+            class="app-filter-w-md"
             :options="motivoOptions"
             option-label="label"
             option-value="value"
@@ -253,7 +255,7 @@ onMounted(load)
             @update:model-value="onMotivoChange"
           />
         </div>
-      </div>
+      </FiltriLista>
       <!-- Icone a destra, e su schermo stretto la barra le raccoglie da sé nel
            kebab: è il meccanismo standard di PageActionsBar. -->
       <PageActionsBar :actions="pageActions">
@@ -316,7 +318,7 @@ onMounted(load)
 
       <template #empty>
         <div class="app-empty-state">
-          <i class="pi pi-check-circle" />
+          <i :class="STATUS_ICONS.TUTTO_OK" />
           <p>{{ t('vendite.fondi_fattura_da_decidere.nessuna_riga') }}</p>
         </div>
       </template>

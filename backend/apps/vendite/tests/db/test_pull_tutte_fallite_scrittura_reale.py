@@ -166,7 +166,7 @@ class PullTutteFalliteScritturaReale(TestCase):
                     params={},
                     dry_run=False,
                 )
-        except Exception as exc:  # noqa: BLE001 - e' esattamente cio' che si misura
+        except Exception as exc:  # e' esattamente cio' che si misura
             return None, exc
         return esito, None
 

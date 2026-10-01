@@ -4,7 +4,7 @@
 //        ordine e visibilita' dal catalogo `ui.lista_colonna`, con ritiro
 //        dinamico e personalizzazione per utente. Nessun export: il dominio non
 //        ha endpoint (lo scaffolding omette l'azione da se').
-import { ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUnitaMisuraStore } from '../stores/unitaMisura'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -21,6 +21,8 @@ import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { buildBoolOptions } from '../../core/utils/options'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const emit = defineEmits(['new', 'row-click', 'manage-conversioni'])
 const { t } = useI18n()
@@ -37,13 +39,15 @@ const {
   searchTableOptions: { defaultSortField: 'codice' },
 })
 
-const attivoFilter = ref(true)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
 const boolOptions = buildBoolOptions(t)
-
-function onAttivoChange() {
-  store.filters.attivo = attivoFilter.value
-  applyFilters()
-}
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -70,11 +74,14 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText v-model="searchText" :placeholder="t('catalogo.uom_search_placeholder')" />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t('catalogo.uom_search_placeholder')" />
+        </template>
         <Select v-model="attivoFilter" :options="boolOptions" option-label="label" option-value="value"
-          :placeholder="t('catalogo.filtro_attivo')" @change="onAttivoChange" style="width: 120px;" />
-      </div>
+          class="app-filter-w-sm"
+          :placeholder="t('catalogo.filtro_attivo')" @change="onAttivoChange" />
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />
@@ -102,8 +109,8 @@ onMounted(() => store.fetchList())
         <AttivoTag :active="data.attivo" />
       </template>
 
-      <template #actions="{ data, compact }">
-        <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
       </template>
     </ListaConfigurabile>
     </template>

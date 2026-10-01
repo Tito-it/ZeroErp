@@ -1,0 +1,13 @@
+{
+  "_scopo": "Registro di debito dei filtri di lista. PUO SOLO CALARE: il guard e rosso sia se cresce (una lista nuova coi filtri scritti a mano, o una larghezza inline in piu) sia se cala senza che questo file sia stato riscritto (una baseline stantia riapre lo spazio appena chiuso). Si riscrive con --baseline, e la ragione va nel messaggio di commit.",
+  "_regola": "docs/it/dev/frontend/frontend-standards.md §«Filtri della lista — FiltriLista»",
+  "_brief": "docs/it/dev/work-done/brief-fe-filtri-lista-su-schermo-compatto.md",
+  "_lotti": {
+    "grezzi": "L2 CHIUSO il 2026-09-23: zero. Erano 76 blocchi in 70 file il 22-09, di cui nove non erano filtri affatto (un titolo, un pulsante, spaziatori vuoti) e sono passati a `app-page-toolbar-start`, presidiata dal controllo 3-bis. Da qui in avanti il registro dice una cosa sola: una lista NUOVA coi filtri scritti a mano lo fa risalire.",
+    "larghezze_inline": "L3 CHIUSO il 2026-09-23: zero. Erano 114 in 42 file; il criterio ora guarda anche rem/%/input-style, perche' l'unita' non cambia il difetto.",
+    "coppie_date_a_mano": "L2 CHIUSO il 2026-09-23: zero. Erano 17 file. ⭐ Con l'ultima coppia sparisce anche l'ultimo buco dell'invariante D8 («da > a non puo' esistere»), che vive in `bindPeriodo`."
+  },
+  "grezzi": [],
+  "larghezze_inline": {},
+  "coppie_date_a_mano": []
+}

@@ -122,7 +122,7 @@ def accoda_giri_fatturazione(
                 ),
                 origine=ORIGINE_CRON,
             )
-        except Exception as exc:  # noqa: BLE001 — isolamento per azienda voluto
+        except Exception as exc:  # isolamento per azienda voluto
             logger.warning(
                 "fatturazione.accodamento_fallito emittente=%s badge=%s errore=%s",
                 badge["emittente_codice"], badge["username"], exc, exc_info=True,

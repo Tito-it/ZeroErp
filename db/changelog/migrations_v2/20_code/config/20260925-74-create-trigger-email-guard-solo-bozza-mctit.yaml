@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I due trigger della regola «una mail si tocca solo in bozza».
+#   Brief: brief-db-email-visibilita-per-ambito §8 (decisione Tid 2026-09-25)
+#
+#   * config.email_outbox — BEFORE DELETE, sul BB
+#     vendite.trgfn_doc_guard_delete_solo_bozza (ramo email: 20260925-72).
+#     Una mail spedita non si cancella; una bozza si annulla (CANCELLED).
+#   * config.email_allegato — BEFORE INSERT/UPDATE/DELETE, su
+#     config.trgfn_email_allegato_guard_solo_bozza (20260925-73).
+#
+#   Fascia _a10_: sono gli unici guard di riga delle due tabelle per questi
+#   eventi, non c'e' un ordine fra rifiuti da imporre.
+#   ⚠️ Il guard della bozza e' anche la chiusura della porta del CASCADE: in
+#   un BEFORE DELETE di allegato innescato dal cascade la bozza risulta gia'
+#   cancellata, e il guard dell'allegato passa. E' questo trigger a decidere
+#   se quel cascade puo' partire.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260925-74-create-trigger-email-guard-solo-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20260925-74-create-trigger-email-guard-solo-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta trg_email_outbox_a10_guard_delete_solo_bozza_dlt (una mail si
+        elimina solo in DRAFT) e trg_email_allegato_a10_guard_solo_bozza_ins_upd_dlt
+        (gli allegati si toccano solo a bozza DRAFT, salvo l'aggancio al log).
+        Brief: brief-db-email-visibilita-per-ambito.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 2
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE (n.nspname, p.proname) IN (
+                           ('vendite', 'trgfn_doc_guard_delete_solo_bozza'),
+                           ('config',  'trgfn_email_allegato_guard_solo_bozza'))
+            - sqlCheck:
+                expectedResult: 0
+                sql: >-
+                  SELECT count(*) FROM pg_trigger
+                   WHERE NOT tgisinternal
+                     AND (tgrelid, tgname) IN (
+                           ('config.email_outbox'::regclass,
+                            'trg_email_outbox_a10_guard_delete_solo_bozza_dlt'),
+                           ('config.email_allegato'::regclass,
+                            'trg_email_allegato_a10_guard_solo_bozza_ins_upd_dlt'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_email_outbox_a10_guard_delete_solo_bozza_dlt
+                BEFORE DELETE ON config.email_outbox
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza();
+
+              CREATE TRIGGER trg_email_allegato_a10_guard_solo_bozza_ins_upd_dlt
+                BEFORE INSERT OR UPDATE OR DELETE ON config.email_allegato
+                FOR EACH ROW
+                EXECUTE FUNCTION config.trgfn_email_allegato_guard_solo_bozza();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_email_allegato_a10_guard_solo_bozza_ins_upd_dlt ON config.email_allegato;
+              DROP TRIGGER IF EXISTS trg_email_outbox_a10_guard_delete_solo_bozza_dlt ON config.email_outbox;

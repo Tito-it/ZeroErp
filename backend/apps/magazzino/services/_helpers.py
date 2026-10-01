@@ -29,11 +29,16 @@ from apps.core.services.payload_helpers import PayloadValidator
 
 _FN = "magazzino.helpers"
 
-# Il codice di validazione del payload. ⚠️ Quello GENERICO (`DATO_ERRATO`,
-# `highlight_form_fields`): il dominio non ha ancora il suo — e' un seed del
-# team DB (`E_MAGAZZINO_VALIDATION`, come `E_PAGAMENTI_VALIDATION`), chiesto
-# nel brief 2-bis. Cambiarlo e' una riga qui.
-E_VALIDAZIONE = "E_VALIDATION_INPUT"
+# Il codice di validazione del payload del dominio (`DATO_ERRATO`,
+# `highlight_form_fields`), gemello di `E_PAGAMENTI_VALIDATION`. ⭐ A catalogo
+# dal 2026-09-23 (R-6 del brief 2-bis): fino a quel giorno il magazzino usava
+# il generico `E_VALIDATION_INPUT`, e nel registro degli errori i suoi rifiuti
+# non si distinguevano da quelli di ogni altro dominio.
+# ⚠️ La frase a catalogo e' SENZA segnaposto, come quella dei diciotto
+# fratelli `*_VALIDATION`: a riempire un `%s` e' `fn_log_and_raise_error`, e un
+# codice che solleva solo il BACKEND da li' non ci passa mai. Quale campo non
+# va lo dice il `ServiceError` (`context.field`), non la frase.
+E_VALIDAZIONE = "E_MAGAZZINO_VALIDATION"
 
 _PAYLOAD = PayloadValidator(validation_code=E_VALIDAZIONE, function_name=_FN)
 
@@ -47,8 +52,9 @@ def risposta_paginata(results: list[Any], total: int) -> dict[str, Any]:
 # Scopo: Valida `order_by`/`order_dir` di una lista contro la whitelist del
 #        repository. `nullable=True`: «non specificato» e' legittimo e l'ordine
 #        lo decide il repository; fuori whitelist e' un 400 col campo.
-# ⚠️ `order_dir` arriva GREZZO dalla query string (api.md §parse_list_params):
-#    il BB confronta case-sensitive, quindi qui si normalizza a minuscolo.
+# ⭐ `order_dir` arriva GREZZO dalla query string (api.md §parse_list_params)
+#    e passa grezzo: dal 2026-09-26 il BB lo giudica con `order_dir_ammessa`
+#    (maiuscole e spazi ammessi) e lo ritorna normalizzato.
 def ordinamento_validato(
     order_by: str | None,
     order_dir: str | None,
@@ -58,7 +64,7 @@ def ordinamento_validato(
 ) -> tuple[str | None, str | None]:
     return validate_order_params(
         order_by,
-        order_dir.lower() if order_dir else None,
+        order_dir,
         allowed_columns=colonne,
         error_code=E_VALIDAZIONE,
         function_name=function_name,

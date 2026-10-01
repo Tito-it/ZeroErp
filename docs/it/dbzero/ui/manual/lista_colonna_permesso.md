@@ -33,7 +33,7 @@ La tabella **`ui.lista_colonna_permesso`** implementa il **controllo accesso a l
 |--------|-----------------|
 | `TUTTO` | Visibile e esportabile |
 | `LETTURA` | Visibile a video, non esportabile |
-| `BLOCCATO` | Nascosta completamente (rimossa dall'output di `fn_resolve_lista_config`) |
+| `BLOCCATO` | Nascosta completamente (rimossa dall'output di `fn_resolve_lista_config`) ed esclusa dalla ricerca libera (`fn_lista_colonne_ricerca_full`) |
 
 ---
 
@@ -44,7 +44,7 @@ Quando un utente ha più profili applicabili (es. profilo AD_HOC + profilo REPAR
 1. Il profilo con **priorità più bassa** (AD_HOC=1 prevale su REPARTO=2)
 2. A parità di priorità, il **livello più restrittivo** (BLOCCATO > LETTURA > TUTTO)
 
-Implementato in `fn_resolve_lista_config` tramite `DISTINCT ON (lc.codice)` ordinato per `(priorita ASC, restrittivita ASC)`.
+La regola ha una sede sola, [`ui.fn_lista_colonne_livello`](/dbzero/ui/funzioni/fn_lista_colonne_livello), che la legge per due consumatori: `fn_resolve_lista_config` (quali colonne mostrare) e `fn_lista_colonne_ricerca_full` (in quali colonne cercare).
 
 ---
 

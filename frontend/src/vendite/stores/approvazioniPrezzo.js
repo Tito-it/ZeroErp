@@ -18,6 +18,7 @@ import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { listCodaApprovazioni } from '../api/approvazioniPrezzo'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 // Scopo: mappa filtri store → query params dell'endpoint coda (solo
 //        paginazione + ordinamento: l'endpoint non legge altro).
@@ -34,7 +35,7 @@ export const useApprovazioniPrezzoStore = defineStore(
   'vendite-approvazioni-prezzo',
   () => {
     const filters = ref({
-      limit: 25,
+      limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
       // Default sort allineato al default storico del BE e al preset del
       // seed (data_insert desc): al primo caricamento la lista non si
@@ -43,15 +44,19 @@ export const useApprovazioniPrezzoStore = defineStore(
       order_dir: 'desc',
     })
 
-    const { items, totalRecords, loading, hasSearched, fetchList } =
-      useListaEmptyStateFetch({
-        filters,
-        buildParams,
-        fetchPage: listCodaApprovazioni,
-        alwaysFetch: true,
-      })
+    // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).
+    // ⛔ Non si elencano i suoi ref a mano: un ref nuovo del BB (com'e'
+    //    successo con `ricercaFull`, `ricercaMinCaratteri`,
+    //    `ricercaCambiaLaRichiesta`) arriverebbe solo agli store che lo
+    //    ricordano — e senza errore sugli altri.
+    const lista = useListaEmptyStateFetch({
+      filters,
+      buildParams,
+      fetchPage: listCodaApprovazioni,
+      alwaysFetch: true,
+    })
 
-    return { items, totalRecords, loading, hasSearched, filters, fetchList }
+    return { ...lista, filters }
   },
   {
     userScoped: true,

@@ -57,7 +57,26 @@ AS $function$
 --   il caso peggiore, gia' denunciato nel §8.3 del brief. Rinomina della
 --   proprieta' proposta come slice a se'.
 --   brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.
+--   ⭐ rev 2026-09-21 (D14, seconda leva, forma B2 — decisione D4 di Tid):
+--   la partita del push si legge UNA volta. Prima erano quattro letture:
+--   EXISTS sul lister (push_ok), due EXISTS su fn_get_stato_push_segment
+--   riga per riga (GIA_INVIATO / GIA_FATTURATO) e la diagnosi per il
+--   motivo — e lister e diagnosi calcolavano ciascuno la partita del
+--   documento. Ora vendite.fn_ddt_push_diagnosi e' la FONTE UNICA (il
+--   lister ne deriva) ed espone `segment`: una SELECT aggregata da' il
+--   flag (esiste motivo NULL: vero per COSTRUZIONE, perche' il push legge
+--   la stessa cosa), la precedenza sul segmento (ALLOCATA -> GIA_INVIATO,
+--   EMESSA -> GIA_FATTURATO: come prima, PRIMA del min(rank)) e il motivo
+--   piu' forte. ⚠️ Perimetro: la diagnosi guarda le righe ATTIVE, mentre i
+--   due EXISTS di prima scandivano ddt_righe senza guardare `attivo`; la
+--   differenza si raggiunge solo disattivando una riga gia' instradata su
+--   un DDT emesso (D7 del brief). `DDT_ROUTED` non va piu' escluso dal
+--   min(rank): una riga ROUTED ha per definizione segment ALLOCATA o
+--   EMESSA, quindi non arriva mai al ramo del motivo.
+--   brief-db-partita-merce-per-documento §10.
 DECLARE
+    -- Tipi nudi solo per valori CALCOLATI (azioni e motivi jsonb, flag,
+    -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
     v_ddt        vendite.ddt%ROWTYPE;
     v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
     v_pdf_mode   config.stati_doc_ddt.pdf_mode%TYPE;
@@ -73,6 +92,9 @@ DECLARE
     v_push_ok    boolean := false;
     v_push_reason     text := NULL;
     v_push_reason_key text := NULL;
+    -- Le due facce del `segment` della diagnosi (precedenza GIA_*).
+    v_push_allocata  boolean := false;
+    v_push_emessa    boolean := false;
     c_non_edit_draft CONSTANT jsonb :=
         '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id"]'::jsonb;
     c_non_edit_tutti CONSTANT jsonb :=
@@ -130,8 +152,6 @@ BEGIN
                 -- derivarla dal codice.
                 'target_state_descrizione', sa.descrizione,
                 'label_key',        t.meta->>'label_key',
-                'severity',         t.meta->>'severity',
-                'icon',             t.meta->>'icon',
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
                 'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
                 -- Verso EMESSO comandano i motivi della fn_check;
@@ -173,41 +193,43 @@ BEGIN
     -- comparire proprio per mostrare il pulsante grigio + tooltip.
     v_can_change := jsonb_array_length(v_actions) > 0;
 
-    IF EXISTS (SELECT 1
-                 FROM vendite.fn_list_ddt_da_pushare(p_ddt_id := p_ddt_id)) THEN
-        v_push_ok := true;
-    -- Nessuna riga pushabile: distinguere il PERCHE' via
-    -- classificatore condiviso (stesso predicato della push-list,
-    -- vede anche i componenti #CMP).
-    ELSIF EXISTS (SELECT 1
-                    FROM vendite.ddt_righe r
-                   WHERE r.ddt_id = p_ddt_id
-                     AND script.fn_get_stato_push_segment(
-                           'DDT:' || v_ddt.uid::text || ':R:' || r.id::text) = 'ALLOCATA') THEN
+    -- ⭐ UNA lettura della diagnosi (fonte unica, D4 B2). Quattro aggregati
+    -- sulla stessa scansione:
+    --   push_ok   = esiste una riga con motivo NULL. E' vero per COSTRUZIONE,
+    --               non per pgTAP: il lister che alimenta il push e' `FROM
+    --               fn_ddt_push_diagnosi WHERE motivo IS NULL`.
+    --   allocata  = esiste una riga instradata e non ancora fatturata;
+    --   emessa    = esiste una riga fatturata;
+    --   reason    = il motivo piu' forte (min rank, precedenza Decisione E).
+    -- I COALESCE: su un DDT senza righe attive gli aggregati sono NULL.
+    SELECT COALESCE(bool_or(g.motivo IS NULL), false),
+           COALESCE(bool_or(g.segment = 'ALLOCATA'), false),
+           COALESCE(bool_or(g.segment = 'EMESSA'), false),
+           (array_agg(g.motivo ORDER BY g.motivo_rank)
+              FILTER (WHERE g.motivo IS NOT NULL))[1]
+      INTO v_push_ok, v_push_allocata, v_push_emessa, v_push_reason
+      FROM vendite.fn_ddt_push_diagnosi(p_ddt_id) g;
+
+    IF v_push_ok THEN
+        -- Ammesso: nessun motivo.
+        v_push_reason := NULL;
+    -- Nessuna riga pushabile: PRIMA la precedenza sul segmento (stesso
+    -- ordine di prima: un DDT annullato con una riga instradata dice
+    -- «gia' inviato»), POI il motivo della diagnosi.
+    ELSIF v_push_allocata THEN
         -- pushato, in attesa di fatturazione
         v_push_reason     := 'DDT_GIA_INVIATO';
         v_push_reason_key := 'vendite.ddt.push_commessa_reason.gia_inviato';
-    ELSIF EXISTS (SELECT 1
-                    FROM vendite.ddt_righe r
-                   WHERE r.ddt_id = p_ddt_id
-                     AND script.fn_get_stato_push_segment(
-                           'DDT:' || v_ddt.uid::text || ':R:' || r.id::text) = 'EMESSA') THEN
+    ELSIF v_push_emessa THEN
         v_push_reason     := 'DDT_GIA_FATTURATO';
         v_push_reason_key := 'vendite.ddt.push_commessa_reason.gia_fatturato';
     ELSE
-        -- Catch-all DECOMPOSTO (brief-db-ddt-reason-push-catch-all §3):
-        -- la diagnosi (fonte unica) da' IL motivo per riga; qui si prende
-        -- il piu' forte (min rank = precedenza Decisione E) e lo si mappa a
-        -- una reason. DDT_ROUTED escluso: gia' intercettato sopra.
-        SELECT g.motivo INTO v_push_reason
-          FROM vendite.fn_ddt_push_diagnosi(p_ddt_id) g
-         WHERE g.motivo IS NOT NULL AND g.motivo <> 'DDT_ROUTED'
-         ORDER BY g.motivo_rank
-         LIMIT 1;
-
-        -- Collasso: solo 3 cause hanno ramo proprio; le altre (senza-BA,
-        -- contatore, annullato, reso) restano nel generico riscritto, che
-        -- NON afferma piu' una condizione di stato (Decisione C).
+        -- Catch-all DECOMPOSTO (brief-db-ddt-reason-push-catch-all §3): il
+        -- motivo piu' forte, mappato a una reason. Solo 3 cause hanno ramo
+        -- proprio; le altre (senza-BA, contatore, annullato, reso, senza
+        -- partita, ri-consegna, non misurabile) restano nel generico, che
+        -- NON afferma una condizione di stato (Decisione C). DDT_ROUTED non
+        -- puo' arrivare qui: ha sempre un segment ALLOCATA o EMESSA.
         v_push_reason := CASE v_push_reason
             WHEN 'DDT_FATTURA_DA_ORDINE' THEN 'DDT_FATTURA_DA_ORDINE'
             WHEN 'DDT_SOLO_TRASPORTO'    THEN 'DDT_SOLO_TRASPORTO'
@@ -231,8 +253,6 @@ BEGIN
                 -- da nominare.
                 'target_state_descrizione', NULL,
                 'label_key',        'vendite.ddt.azione_push_commessa',
-                'severity',         'success',
-                'icon',             'pi pi-arrow-right',
                 'requires_confirm', true,
                 'outlined',         false,
                 'enabled',          true,
@@ -261,7 +281,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
-IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-19: transizioni verso EMESSO via fn_check_ddt_emittibile; reason push GIA_INVIATO/GIA_FATTURATO via fn_get_stato_push_segment. rev 2026-07-19 (ter): il catch-all DDT_NON_PUSHABILE e'' decomposto nelle 7 cause di esclusione via vendite.fn_ddt_push_diagnosi (fonte unica, equivalenza col lister blindata a pgTAP); rami propri DDT_FATTURA_DA_ORDINE (XOR, speculare di ORDINE_FATTURA_DA_DDT), DDT_SOLO_TRASPORTO (causale non fatturabile), DDT_MERCE_IN_VIAGGIO (stato pre-trigger); casi senza-BA/contatore/annullato/reso nel generico riscritto (non piu'' basato sullo stato); precedenza a due livelli (documento prima, poi riga azionabile) — brief-db-ddt-reason-push-catch-all §3. rev 2026-08-04: + nessuna_azione_key dal meta dello stato corrente (CONSEGNATO / RESO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_ddt.descrizione della destinazione). E'' il campo che mancava alla frase di conferma «Portare il DDT nello stato {x}?», dove il FE poteva mettere solo il nome dell''azione e si leggeva «nello stato Annulla DDT»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. NULL su push_commessa, che non e'' una transizione. rev 2026-08-10 (2): il campo si chiama ora stato_info_key e NON e'' piu'' subordinato alla lista vuota: viene emesso sempre che lo stato lo dichiari nel proprio meta, anche accanto a un''azione ancora abilitata. Decisione §5 di Tid: la nota spiega lo STATO, e chi ha ancora un bottone deve comunque poter leggere cos''e'' successo; cade quindi il presupposto che la faceva sparire, e v_nessuna_azione con il suo NOT EXISTS escono come codice morto. Il nome vecchio nessuna_azione_key diventava falso proprio nel momento in cui il campo inizia a comparire QUANDO le azioni ci sono, e il vocabolario giusto era gia'' dall''altra parte: le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*. ⚠️ La PROPRIETA'' nel meta dello stato resta nessuna_azione_key, ed e'' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare il guard lo renderebbe verde per cecita'' — il caso peggiore, gia'' denunciato nel §8.3 del brief. Rinomina della proprieta'' proposta come slice a se''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare con l''operatore di presenza risponde vero per TUTTI i documenti, va guardato il valore. Il FE rinomina la prop nello stesso rilascio (8 drawer + DrawerActionsBar). brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.';
+IS 'rev 2026-09-21 (D14, seconda leva, forma B2 — decisione D4): la partita del push si legge UNA volta. vendite.fn_ddt_push_diagnosi e'' la FONTE UNICA dell''eleggibilita'' (il lister ne deriva) ed espone `segment`: una SELECT aggregata da'' can_push_commessa (esiste motivo NULL — vero per costruzione, perche'' il push legge la stessa cosa), la precedenza sul segmento (ALLOCATA -> DDT_GIA_INVIATO, EMESSA -> DDT_GIA_FATTURATO, prima del min(rank), come prima) e il motivo piu'' forte. Prima erano quattro letture (lister, due EXISTS per riga su fn_get_stato_push_segment, diagnosi), due delle quali calcolavano la partita del documento. ⚠️ Perimetro: la diagnosi guarda le righe ATTIVE; i due EXISTS di prima no (D7 del brief). Contratto del blob invariato. brief-db-partita-merce-per-documento §10. Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-19: transizioni verso EMESSO via fn_check_ddt_emittibile; reason push GIA_INVIATO/GIA_FATTURATO via fn_get_stato_push_segment. rev 2026-07-19 (ter): il catch-all DDT_NON_PUSHABILE e'' decomposto nelle 7 cause di esclusione via vendite.fn_ddt_push_diagnosi (fonte unica, equivalenza col lister blindata a pgTAP); rami propri DDT_FATTURA_DA_ORDINE (XOR, speculare di ORDINE_FATTURA_DA_DDT), DDT_SOLO_TRASPORTO (causale non fatturabile), DDT_MERCE_IN_VIAGGIO (stato pre-trigger); casi senza-BA/contatore/annullato/reso nel generico riscritto (non piu'' basato sullo stato); precedenza a due livelli (documento prima, poi riga azionabile) — brief-db-ddt-reason-push-catch-all §3. rev 2026-08-04: + nessuna_azione_key dal meta dello stato corrente (CONSEGNATO / RESO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_ddt.descrizione della destinazione). E'' il campo che mancava alla frase di conferma «Portare il DDT nello stato {x}?», dove il FE poteva mettere solo il nome dell''azione e si leggeva «nello stato Annulla DDT»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. NULL su push_commessa, che non e'' una transizione. rev 2026-08-10 (2): il campo si chiama ora stato_info_key e NON e'' piu'' subordinato alla lista vuota: viene emesso sempre che lo stato lo dichiari nel proprio meta, anche accanto a un''azione ancora abilitata. Decisione §5 di Tid: la nota spiega lo STATO, e chi ha ancora un bottone deve comunque poter leggere cos''e'' successo; cade quindi il presupposto che la faceva sparire, e v_nessuna_azione con il suo NOT EXISTS escono come codice morto. Il nome vecchio nessuna_azione_key diventava falso proprio nel momento in cui il campo inizia a comparire QUANDO le azioni ci sono, e il vocabolario giusto era gia'' dall''altra parte: le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*. ⚠️ La PROPRIETA'' nel meta dello stato resta nessuna_azione_key, ed e'' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare il guard lo renderebbe verde per cecita'' — il caso peggiore, gia'' denunciato nel §8.3 del brief. Rinomina della proprieta'' proposta come slice a se''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare con l''operatore di presenza risponde vero per TUTTI i documenti, va guardato il valore. Il FE rinomina la prop nello stesso rilascio (8 drawer + DrawerActionsBar). brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2. rev 2026-09-27 (20260927-14): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-11): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9).';
 ```
 
 ---

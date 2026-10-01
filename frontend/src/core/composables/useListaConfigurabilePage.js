@@ -39,6 +39,15 @@ import { useI18n } from 'vue-i18n'
 import { useSearchTable } from './useSearchTable'
 import { useListaAzioni } from './useListaAzioni'
 import { MANAGE_ICONS } from '../constants'
+import { paramsRicerca } from '../utils/listParams'
+
+// Scopo: la soglia della ricerca libera dalla configurazione risolta
+//        (`ricerca_min_caratteri`): un intero >= 1, altrimenti `null` («non
+//        nota»: `listParams` usa la soglia di progetto).
+function sogliaDellaConfig(config) {
+  const v = config?.ricerca_min_caratteri
+  return Number.isInteger(v) && v >= 1 ? v : null
+}
 
 export function useListaConfigurabilePage(
   store,
@@ -115,14 +124,62 @@ export function useListaConfigurabilePage(
     // scaffolding non ha modo di PRETENDERLO — chi domani passera' uno store
     // fatto a mano non deve schiantare su una pagina che, senza sospensione,
     // funziona lo stesso: il cancello si vede, e il backend rifiuta comunque.
+    const eraSospesa = store.fetchSospesa === true
     if ('fetchSospesa' in store) store.fetchSospesa = perimetroBloccato.value
-    if (configAligned.value) return
-    configAligned.value = true
-    const newLimit = config?.pagina_dimensione
-    if (newLimit && newLimit !== store.filters.limit) {
-      store.filters.limit = newLimit
-      if (store.hasSearched) store.fetchList()
+    // ⛔ E ABBASSARE LA BANDIERA NON BASTA: la fetch chiesta mentre era su e'
+    //    uscita senza chiamare (`useListaEmptyStateFetch`), e nessuno la rifa'.
+    //    Il caso e' il tab-lista in un drawer: si monta prima del dettaglio, la
+    //    prima config arriva senza emittente (cancello su), la fetch del padre
+    //    completo cade nel vuoto, e la config riletta con l'emittente sblocca
+    //    una lista che resta vuota — con la frase «nessuna riga» sotto.
+    const sbloccata = eraSospesa && !perimetroBloccato.value
+    // ⭐ La casella di ricerca si mostra solo se la lista cerca davvero
+    //    (`ricerca_full`, brief-be-ricerca-full-liste-residue §7-bis): la
+    //    legge `FiltriLista` dallo store. Prima della guardia `configAligned`,
+    //    come il cancello: l'amministratore puo' spegnere le colonne, e la
+    //    configurazione si ricarica (salvataggio della personalizzazione).
+    // ⚠️ Assegnata senza guard `in`: gli store scritti a mano senza il core
+    //    la ricevono lo stesso (lo store Pinia e' reattivo anche sulle chiavi
+    //    nuove). Una chiave assente sarebbe una casella sempre accesa.
+    store.ricercaFull = typeof config?.ricerca_full === 'boolean' ? config.ricerca_full : null
+    // Un termine arrivato da fuori (`?search=` di un deep-link, un tab
+    // riattivato) su una lista che non cerca: la casella non c'e' piu' per
+    // cancellarlo, e il backend risponderebbe una lista vuota. Si svuota dalla
+    // casella stessa, cosi' il `watch` di `useSearchTable` riallinea lo store
+    // e rifa' la fetch.
+    if (store.ricercaFull === false && search.searchText.value) search.searchText.value = ''
+    // ⭐ Da quanti caratteri la lista cerca (`ricerca_min_caratteri`, brief-db-
+    //    be-fe-ricerca-soglia-per-lista): un fatto della lista, letto dalla
+    //    stessa colonna con cui il BB del backend decide se filtrare. Lo tiene
+    //    lo store (dichiarato dal BB di stato), lo usano `termineCorto` e
+    //    `paramsRicerca`. Prima della guardia `configAligned`, come
+    //    `ricercaFull`: e' un fatto della lista, e si rilegge a ogni config.
+    // ⚠️ Un valore che non e' un intero >= 1 non si prende per buono: `null`
+    //    = soglia di progetto. Un `0` o una stringa manderebbero ogni lettera.
+    const soglia = sogliaDellaConfig(config)
+    // ⚠️ La prima fetch puo' essere partita PRIMA della config (liste che
+    //    partono piene, deep-link `?search=KG`), con la soglia di ripiego: se
+    //    la soglia vera cambia cio' che si manda, la lista si ricarica — senza,
+    //    «KG» su unita' di misura mostrerebbe la lista intera fino al tasto
+    //    successivo. Si confronta il PARAMETRO, non il numero: da 3 a 1 senza
+    //    termine in casella non c'e' niente da rifare.
+    const cambiaLaRicerca = store.ricercaMinCaratteri !== soglia
+      && paramsRicerca(store.filters, { minCaratteri: store.ricercaMinCaratteri }).search
+        !== paramsRicerca(store.filters, { minCaratteri: soglia }).search
+    store.ricercaMinCaratteri = soglia
+    // Su una lista che non cerca il termine e' appena stato tolto dalla
+    // casella, e la fetch la rifa' il `watch` di `useSearchTable`.
+    let ricarica = (cambiaLaRicerca && store.ricercaFull !== false) || (sbloccata && !store.loading)
+    if (!configAligned.value) {
+      configAligned.value = true
+      const newLimit = config?.pagina_dimensione
+      if (newLimit && newLimit !== store.filters.limit) {
+        store.filters.limit = newLimit
+        if (store.hasSearched) ricarica = true
+      }
     }
+    // Una fetch sola anche quando cambiano insieme pagina e soglia.
+    if (ricarica) store.fetchList()
   }
 
   const pageActions = computed(() => {

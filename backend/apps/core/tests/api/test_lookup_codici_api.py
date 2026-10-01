@@ -23,7 +23,7 @@ Indice test eseguiti:
 14) CoreLookupCodiciApiTests.test_lookup_lista_vuota_ok
 15) CoreLookupCodiciApiTests.test_lookup_page_non_numerica
 16) CoreLookupCodiciApiTests.test_lookup_page_size_non_numerica
-17) CoreLookupCodiciApiTests.test_lookup_rel_nature_vendita_consentita
+17) (spostato sul DB vero: test_config_panel_registro_db, la lista e' in config.tabelle_gestibili)
 """
 
 from unittest.mock import Mock, patch
@@ -70,20 +70,14 @@ class CoreLookupCodiciApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 401)
 
     # Scopo: Verifica il caso `test_lookup_rel_non_consentita`: rel fuori whitelist → 400.
+    @patch("apps.core.db.dbops_repository.TabelleGestibiliRepository.voce", return_value=None)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_lookup_rel_non_consentita(self, _mock_auth):
+    def test_lookup_rel_non_consentita(self, _mock_auth, _voce):
         response = self.client.get(_URL + "?rel=public.users")
         self.assertEqual(response.status_code, 400)
         body = response.json()["error"]
         self.assertEqual(body["code"], "E_CORE_VALIDATION")
 
-    # Scopo: Verifica che `config.nature_vendita` sia in whitelist (Select
-    # natura di vendita su ArticoloDrawer, modello split per natura). Assert
-    # diretto sulla costante: mockare il service bypasserebbe la whitelist.
-    def test_lookup_rel_nature_vendita_consentita(self):
-        from apps.core.db.dbops_repository import _REL_CONSENTITE
-
-        self.assertIn("config.nature_vendita", _REL_CONSENTITE)
 
     # Scopo: Verifica il caso `test_lookup_rel_mancante`: rel vuota → 400.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

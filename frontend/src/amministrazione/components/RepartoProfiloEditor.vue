@@ -2,12 +2,13 @@
 // Scopo: drawer editor profilo permessi di un reparto.
 // Aree: griglia con Select livello (TUTTO/LETTURA/BLOCCATO).
 // Azioni: lista con ToggleSwitch.
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRepartiStore } from '../stores/reparti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useLookup } from '../../core/composables/useLookup'
 import { listAreeFunzionali, listAzioniProcesso } from '../api/amministrazione'
 import { LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
@@ -55,6 +56,14 @@ const livelloOptions = buildLivelloOptions(t)
 const localAree = ref([])
 const localAzioni = ref([])
 
+// Modifiche non salvate: i due elenchi raccolti in cio' che il Salva manda.
+const profiloDaSalvare = computed(() => ({
+  aree: localAree.value.map(a => ({ area_id: a.area_id, livello: a.livello })),
+  azioni: localAzioni.value.map(a => ({ azione_id: a.azione_id, abilitata: a.abilitata })),
+}))
+const { fissa, modificato, chiudiConConferma } =
+  useDrawerFormPreserve(profiloDaSalvare, { visibile: () => props.visible })
+
 watch(() => props.visible, async (val) => {
   if (!val || !props.uoId) return
   await repartiStore.fetchProfilo(props.uoId)
@@ -79,19 +88,14 @@ watch(() => props.visible, async (val) => {
       pericolosa: ap.pericolosa,
       abilitata: existingAzioni.get(ap.id) || false
     }))
+    fissa()
   }
 })
 
 function onSave() {
   confirmSave(async () => {
-    const aree = localAree.value.map(a => ({
-      area_id: a.area_id,
-      livello: a.livello
-    }))
-    const azioni = localAzioni.value.map(a => ({
-      azione_id: a.azione_id,
-      abilitata: a.abilitata
-    }))
+    // Lo stesso payload che la fotografia confronta: una definizione sola.
+    const { aree, azioni } = profiloDaSalvare.value
     const result = await execute(
       () => repartiStore.saveProfilo(props.uoId, aree, azioni),
       { successMessage: t('notifications.save_success') }
@@ -101,6 +105,8 @@ function onSave() {
 }
 
 const onClose = useDrawerClose(emit, 'cancelled')
+const chiudi = () => chiudiConConferma(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -108,11 +114,11 @@ const onClose = useDrawerClose(emit, 'cancelled')
     :visible="props.visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    @update:visible="val => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('amministrazione.profilo_reparto', { nome: uoNome })" :icon="NAV_ICONS.SITEMAP" />
+      <DrawerTitle :action="t('common.edit')" :title="t('amministrazione.profilo_reparto', { nome: uoNome })" :icon="NAV_ICONS.PROFILI_REPARTO" :modificato="modificato" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -149,6 +155,6 @@ const onClose = useDrawerClose(emit, 'cancelled')
     </Accordion>
     </div>
 
-    <FormFooter v-if="contentReady" :loading="loading" @save="onSave" @cancel="onClose" />
+    <FormFooter v-if="contentReady" :loading="loading" @save="onSave" @cancel="chiudi" />
   </Drawer>
 </template>

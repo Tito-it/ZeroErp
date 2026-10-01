@@ -57,6 +57,25 @@ La soluzione è stata quindi la creazione di un meccanismo automatico di *harden
 
 ---
 
+### ⛔ Chi la scrive: il migratore, e basta (dal 2026-09-26)
+
+Chi scrive questa tabella sceglie il proprietario delle funzioni sensibili,
+perché `dbops.fn_sync_functions_owner()` applica ciò che vi trova. Per questo:
+
+* la **scrive solo il migratore** — il seed CSV (`80_data/20251123-51`) e i
+  changeSet che prendono una funzione «in prestito» per sostituirla;
+* l’**applicazione la legge** e basta: `SELECT` sì, `INSERT`, `UPDATE`, `DELETE`
+  no. Leggere il registro senza poterlo scrivere né eseguire la sync non dà
+  nessuna leva.
+
+La postura sta in tre sedi, come per le altre tabelle in sola lettura (loop dei
+grant, provisioning, changeSet `90_end/20260926-12`): il perché è in
+[linee guida SQL §11.8](/linee-guida-sql). La sync, a sua volta, rifiuta chi non
+è il migratore: vedi
+[`dbops.fn_sync_functions_owner`](/dbzero/dbops/funzioni/fn_sync_functions_owner).
+
+---
+
 ### Flusso Operativo
 
 ```mermaid

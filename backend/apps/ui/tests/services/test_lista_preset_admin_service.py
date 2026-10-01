@@ -29,11 +29,12 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
+from apps.ui.db.ui_admin_repository import UiAdminRepository
 from apps.ui.services.lista_preset_admin_service import (
     E_LISTA_NOT_FOUND,
     E_PRESET_NOT_FOUND,
@@ -305,3 +306,73 @@ class ListaPresetAdminColonneTests(SimpleTestCase):
                 ],
             })
         self.assertEqual(ctx.exception.code, E_PRESET_VALIDATION)
+
+
+# Scopo: presidia l'SQL di `update_preset` / `update_definizione` dopo il
+#        passaggio al BB `execute_dynamic_update` (2026-09-26): audit
+#        `user_update` come parametro + `data_update = now()`, JSONB a
+#        `::jsonb` con json.dumps, None che azzera, chiavi fuori whitelist
+#        RIFIUTATE (RuntimeError, dal 2026-09-26: prima scartate in silenzio),
+#        payload vuoto senza query.
+class UiAdminRepositoryUpdateSqlTests(SimpleTestCase):
+    def _esegui(self, azione):
+        with patch("apps.core.db.sql_write_helpers.connection") as mock_conn:
+            cursor = MagicMock()
+            cursor.rowcount = 1
+            mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+            mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+            esito = azione(UiAdminRepository())
+            return esito, cursor
+
+    def test_update_preset_jsonb_audit_e_whitelist(self) -> None:
+        esito, cursor = self._esegui(lambda r: r.update_preset(
+            5,
+            {
+                "descrizione": "Base",
+                "ordinamento_default": [{"campo": "codice", "dir": "asc"}],
+                "filtri_default": None,
+            },
+            user_update="tester",
+        ))
+        self.assertTrue(esito)
+        sql, params = cursor.execute.call_args.args
+        self.assertTrue(sql.startswith("UPDATE ui.lista_preset SET "))
+        self.assertIn("ordinamento_default = %s::jsonb", sql)
+        self.assertIn("filtri_default = %s", sql)
+        self.assertIn("user_update = %s", sql)
+        self.assertIn("data_update = now()", sql)
+        self.assertTrue(sql.endswith("WHERE id = %s"))
+        self.assertEqual(
+            params,
+            ["Base", '[{"campo": "codice", "dir": "asc"}]', None, "tester", 5],
+        )
+
+    # ⛔ Un immutabile (`ambito`) che arrivasse fin qui e' un errore di
+    #    programmazione — il service lo rifiuta prima con un 400 — e non uno
+    #    scarto silenzioso: nessuna query parte.
+    def test_update_preset_chiave_fuori_whitelist_rifiutata(self) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            self._esegui(lambda r: r.update_preset(
+                5, {"descrizione": "Base", "ambito": "globale"}, user_update="tester",
+            ))
+        self.assertIn("ambito", str(ctx.exception))
+
+    def test_update_preset_payload_vuoto_nessuna_query(self) -> None:
+        esito, cursor = self._esegui(
+            lambda r: r.update_preset(5, {}, user_update="tester")
+        )
+        self.assertFalse(esito)
+        cursor.execute.assert_not_called()
+
+    def test_update_definizione_audit(self) -> None:
+        esito, cursor = self._esegui(lambda r: r.update_definizione(
+            7, {"note": None, "attivo": False}, user_update="tester",
+        ))
+        self.assertTrue(esito)
+        sql, params = cursor.execute.call_args.args
+        self.assertEqual(
+            sql,
+            "UPDATE ui.lista_definizione SET note = %s, attivo = %s, "
+            "user_update = %s, data_update = now() WHERE id = %s",
+        )
+        self.assertEqual(params, [None, False, "tester", 7])

@@ -1,68 +1,38 @@
-# Guida – Risorse Umane e Accessi al Software
+# Guida — Risorse Umane e Accessi al Software
 
-> (latest review 19-04-2026, post-cutover multi-face-auth)
+> **Ultimo aggiornamento**: 25 settembre 2026
 >
-> Destinatari: sviluppatori database, backend, integratori e analisti funzionali
+> **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
-> Vedi anche
+> **Vedi anche** — schemi DB:
+>
+> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane) — la persona, con ruolo, qualifica e reparto
+> * [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — la veste nel sistema: il ponte verso l'utente Django
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la persona fisica o giuridica
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — i ruoli del soggetto (es. RIS_UMANA)
+> * [anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori) — il soggetto gestore (l'azienda)
+> * [config.qualifiche](/dbzero/config/tabelle/qualifiche) — mansioni e posizioni
+> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — reparti e uffici
+> * [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings) — i binding profilo ↔ identità, fra cui `SUPER_ADMIN`
+> * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali) — il perimetro di emittenti fiscali di un operatore
+> * [config.token_monouso](/dbzero/config/tabelle/token_monouso) — i token di invito e reset password
+> * [config.email_account](/dbzero/config/tabelle/email_account) — gli account SMTP per l'invio email
+>
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active) — allinea `auth_user.is_active` allo stato delle identità
+> * [anagrafiche.fn_sync_auth_user_expired](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired) — la scadenza notturna delle finestre di validità
+> * [anagrafiche.trgfn_risorse_umane_guard_identita_attiva](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_identita_attiva) — «una risorsa con identità operatore attiva non si disattiva»
+> * [anagrafiche.trgfn_identita_digitali_guard_coerenza](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_coerenza) — coerenza della veste e vincolo di persona fisica pura
+> * [anagrafiche.fn_notify_cambio_reparto](/dbzero/anagrafiche/funzioni/fn_notify_cambio_reparto) — la notifica di cambio reparto
+>
+> **Vedi anche** — guide correlate:
 >
 > * [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici)
 > * [Gestione dei contatti](/guide/gestione-dei-contatti)
 > * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 > * [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
 > * [Guida Gestione Mail](/guide/gestione-mail)
-
----
-
-> **Multi-Face Auth — modello post-cutover (aprile 2026)**
->
-> Il bridge verso `auth_user` e' stato generalizzato (cutover
-> §13.3.2 del 19-04-2026). ⛔ **Dal 12-09-2026 pomeriggio il nome
-> `risorse_umane_auth_user` non esiste piu' in nessuna forma**: la ex tabella
-> (archiviata come `_legacy_…`) e' stata eliminata la mattina
-> (`90_end/20260912-10`), la **vista** che ne aveva preso il nome la sera
-> (`90_end/20260912-26`; decisione Tid: «via il nome», analisi
-> `analisi-software-per-dati-morti` §2.1). I riferimenti nel corpo di questa
-> guida a `risorse_umane_auth_user` vanno riletti come **`identita_digitali`
-> filtrata su `ruolo_applicativo = 'OPERATORE'`**, collegata a
-> `risorse_umane` per `soggetto_ruolo_id`.
-> ⚠️ Il guard «una risorsa umana con un'identita' operatore attiva non si
-> disattiva» vive ora scritto a mano sulla madre:
-> [`trgfn_risorse_umane_guard_identita_attiva`](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_identita_attiva)
-> (`E_RISORSA_UMANA_IDENTITA_ATTIVA`) — prima viveva per caso, attraverso il
-> nome vecchio.
->
-> **Mappature chiave** (legacy → nuovo modello):
->
-> | Concetto legacy | Post-cutover |
-> | --- | --- |
-> | `risorse_umane_auth_user` (tabella, poi vista) | **Non esiste piu'**: `identita_digitali` (`ruolo_applicativo = 'OPERATORE'`) ⋈ `risorse_umane` su `soggetto_ruolo_id`. Verso RU → utente: `script.fn_get_auth_user_id_for_risorsa_umana`; verso utente → UO: `script.fn_get_uo_id_for_user` |
-> | `ruolo_sistema = 'ADMIN'` | Binding `SUPER_ADMIN` (profilo id=9100) su `profili_accesso_bindings` AD_HOC |
-> | `ruolo_sistema = 'DISABILITATO'` | `identita_digitali.ruolo_applicativo = 'DISABILITATO'` oppure `attivo = false` |
-> | `ruolo_sistema = 'OPERATIVO'` | `ruolo_applicativo = 'OPERATORE'` + `attivo = true` + nessun binding SUPER_ADMIN |
-> | `trgfn_risorse_umane_auth_user_sync_active` (legacy) | `fn_sync_auth_user_is_active(auth_user_id)` letta solo da `identita_digitali` |
-> | Vincolo R4 sul bridge (PF pura) | Guard `fn_guard_soggetto_pf_pura` su `identita_digitali` quando `ruolo_applicativo='OPERATORE'` (portali/shop non hanno il vincolo) |
->
-> **Nuovi elementi** introdotti dal refactor:
->
-> * [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
->   — bridge generalizzato per 5 ruoli applicativi
-> * GUC PostgreSQL `app.current_identita_id`, `app.ruolo_applicativo`,
->   `app.soggetto_ruolo_id` propagati da `JwtAuditAuthentication`
-> * Scope policy generalizzato (`BA_OWNERSHIP`, `FORNITORE_OWNERSHIP`,
->   `EF_WHITELIST`) con fn `script.fn_scope_*` inlineable
-> * Policy RLS **a due velocità** (giugno 2026): branch **scope emittente
->   OPERATORI ATTIVA** (`ENABLE`, Ondata 1+2 su fatture/scadenze/lotti/ordini/
->   preventivi/contratti/offerte/documenti_generati/pratiche/billing_account —
->   vedi `dev/work-done/analisi-attivazione-rls-operatori.md`; dal **2026-06-03**
->   `FOR ALL` + `WITH CHECK` → copertura **scrittura**, no `FORCE`, batch come
->   `postgres` esenti); branch
->   **portale/shop** ancora **dry-run**, differita alle relative API di dominio
->
-> Dettagli:
->
-> * Guida architetturale: [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
-> * Piano di sviluppo: roadmap storica multi-face auth consolidata
 
 ---
 
@@ -84,27 +54,9 @@ Questa guida copre **due aspetti strettamente legati**: il modulo risorse umane 
 * **Reset password dimenticata**: flusso self-service senza intervento admin
 * **Sicurezza login**: blocco per tentativi falliti, throttle per IP, audit sessioni
 
-### Il collegamento a Django e opzionale
+### Il collegamento a un account e opzionale
 
-Non tutte le risorse umane accedono al software. Un magazziniere potrebbe non avere un account, mentre il responsabile amministrativo si. Il collegamento a `auth_user` e un passo esplicito e separato dalla creazione della risorsa — e consentito solo per soggetti **persona fisica pura** (con codice fiscale e senza partita IVA).
-
----
-
-## Tabelle coinvolte
-
-* [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane) — la persona con ruolo, qualifica e reparto
-* [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — il ponte verso l'utente Django (per gli operatori: `ruolo_applicativo = 'OPERATORE'`; il nome vecchio `risorse_umane_auth_user` e' stato ritirato il 12-09-2026)
-* [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la persona fisica o giuridica
-* [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — i ruoli del soggetto (es. RIS_UMANA)
-* [anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori) — il soggetto gestore (l'azienda)
-* `django.auth_user` — l'utente Django (tabella creata e gestita dal migratore Django, non documentata in `dbzero`)
-* [config.qualifiche](/dbzero/config/tabelle/qualifiche) — mansioni e posizioni
-* [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — reparti e uffici
-* [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — il bridge multi-veste: `ruolo_applicativo` + `attivo` sono la classificazione utente (OPERATIVO / DISABILITATO)
-* [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings) — i binding profilo↔identita': il binding `SUPER_ADMIN` e' cio' che un tempo era `ruolo_sistema = 'ADMIN'`
-* [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali) — scope emittenti fiscali per operatore
-* [config.token_monouso](/dbzero/config/tabelle/token_monouso) — token sicuri per inviti e reset password
-* [config.email_account](/dbzero/config/tabelle/email_account) — account SMTP per invio email (vedi [Guida Gestione Mail](/guide/gestione-mail))
+Non tutte le risorse umane accedono al software. Un magazziniere potrebbe non avere un account, mentre il responsabile amministrativo si. Il collegamento a `django.auth_user` passa da una **identita digitale**: e un passo esplicito e separato dalla creazione della risorsa, ed e consentito solo per soggetti **persona fisica pura** (con codice fiscale e senza partita IVA) — vedi [R4](#r4--collegamento-a-django-solo-persona-fisica-pura).
 
 ---
 
@@ -113,6 +65,8 @@ Non tutte le risorse umane accedono al software. Un magazziniere potrebbe non av
 ### Risorsa umana
 
 E la persona che lavora per l'azienda. Ha una qualifica (cosa fa), un reparto (dove lavora), una finestra di validita (da quando a quando) e un flag attivo/inattivo.
+
+La risorsa umana **non e l'utente**: e la persona. L'accesso al software e un fatto separato, che passa da una o piu **identita digitali** (vedi sotto). La stessa persona che qui compare come dipendente puo quindi avere, con lo stesso login, la veste di cliente del portale.
 
 La risorsa e legata al soggetto tramite un **ruolo RIS_UMANA** ([R1](#r1--ruolo-corretto)): la stessa persona (soggetto PF) che nel sistema potrebbe essere anche cliente o fornitore, qui compare nel suo ruolo di dipendente/collaboratore.
 
@@ -125,17 +79,35 @@ Campi chiave:
 * `valido_dal`, `valido_al`: finestra di validita ([R3](#r3--validita-temporale))
 * `attivo`: flag operativo
 
-### Ponte verso Django (`risorse_umane_auth_user`)
+### Identita digitale (la veste nel sistema)
 
-E il collegamento **1:1** tra una risorsa e un utente Django. Non tutte le risorse lo hanno — solo quelle che devono accedere al software.
+E il ponte tra una persona e un account Django. Non tutte le risorse lo hanno — solo quelle che devono accedere al software.
 
-Il ponte porta con se il `ruolo_sistema`, che classifica il tipo di utente:
+**Un account puo portare piu vesti attive contemporaneamente**: la stessa persona puo essere `OPERATORE` verso l'ERP e, con lo stesso login, `CLIENTE_PORTALE` verso il portale. Ogni veste e un record a se. L'unicita e per coppia: una sola identita *attiva* per (`auth_user_id`, `ruolo_applicativo`) e una sola per (`soggetto_ruolo_id`, `ruolo_applicativo`) — due indici parziali, non un vincolo unico globale.
 
-| Tipo | Significato | Esempio |
-| --- | --- | --- |
-| `ADMIN` | Accesso completo, nessun controllo permessi | Titolare, responsabile IT |
-| `OPERATIVO` | Accesso governato dai permessi (reparto + override) | Dipendente standard |
-| `DISABILITATO` | Nessun accesso, bloccato ovunque | Ex-dipendente, utente sospeso |
+Le vesti ammesse (`config.ruolo_applicativo`):
+
+| Ruolo applicativo   | Chi e                                                  | Cosa vede                                                    |
+| ------------------- | ------------------------------------------------------ | ------------------------------------------------------------ |
+| `OPERATORE`         | Persona interna: dipendente, consulente, collaboratore | L'ERP, con i permessi del reparto e gli override individuali |
+| `CLIENTE_PORTALE`   | Il cliente che entra dal portale                       | Il perimetro del portale                                     |
+| `FORNITORE_PORTALE` | Il fornitore che entra dal portale                     | Il perimetro del portale                                     |
+| `SHOP_CUSTOMER`     | Chi acquista dallo shop                                | Il perimetro dello shop                                      |
+| `API_CLIENT`        | Integrazione macchina-macchina                         | Il perimetro dell'integrazione                               |
+| `DISABILITATO`      | Veste sospesa                                          | Niente: l'accesso e bloccato                                 |
+
+> Chi arriva da documentazione piu vecchia trovera due nomi che oggi non esistono: `risorse_umane_auth_user` (la tabella, poi vista, che teneva il ponte verso Django) e `ruolo_sistema` (il campo che classificava l'utente). Il primo e **`identita_digitali`**; il secondo e **`ruolo_applicativo`** piu il binding `SUPER_ADMIN`.
+
+Campi chiave:
+
+* `soggetto_ruolo_id`: il ruolo del soggetto a cui la veste appartiene — per un operatore e il ruolo RIS_UMANA della risorsa umana
+* `auth_user_id`: l'account Django (`django.auth_user`, tabella creata e gestita dal migratore Django, non documentata in `dbzero`)
+* `ruolo_applicativo`: la veste (tabella sopra)
+* `attivo`, `valido_dal`, `valido_al`: stato e finestra di validita della veste
+* `invito_inviato_at`: quando è partito l'ultimo invito della veste (vedi [Primo accesso e gestione credenziali](#primo-accesso-e-gestione-credenziali)). Tentativi falliti, blocco e cambio password obbligatorio **non** sono della veste: sono della credenziale (`config.credenziali`), perché la password è una sola
+* `tecnica`: `false` per una persona, `true` per un **processo automatico** che opera nel sistema come utente ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura))
+
+**«Admin» non e un ruolo: e un binding.** Non esiste un `ruolo_applicativo = 'ADMIN'` — l'accesso completo si esprime con il profilo `SUPER_ADMIN` legato all'identita su `config.profili_accesso_bindings`. La funzione [`script.fn_is_super_admin`](/dbzero/script/funzioni/fn_is_super_admin) e il punto unico che risponde alla domanda «questo utente e un super admin?».
 
 ### Qualifica
 
@@ -171,12 +143,16 @@ Se `valido_al` e valorizzato, deve essere >= `valido_dal`. Il check `chk_risorse
 ### R4 — Collegamento a Django (solo persona fisica pura)
 <a id="r4--collegamento-a-django-solo-persona-fisica-pura"></a>
 
-Il collegamento a `django.auth_user` e consentito **solo** per soggetti **persona fisica pura**. Il guard [`trgfn_risorse_umane_auth_user_guard_persona_fisica`](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_auth_user_guard_persona_fisica) verifica due condizioni strutturali:
+Il collegamento a `django.auth_user` e consentito **solo** per soggetti **persona fisica pura**. Per la veste `OPERATORE` il guard [`trgfn_identita_digitali_guard_coerenza`](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_coerenza) verifica due condizioni strutturali, tramite l'helper [`script.fn_guard_soggetto_pf_pura`](/dbzero/script/funzioni/fn_guard_soggetto_pf_pura):
 
 1. **`partita_iva IS NULL`** — un soggetto con P.IVA (anche se ha CF) e un professionista o ditta individuale, non un dipendente
 2. **`codice_fiscale IS NOT NULL`** — la persona deve essere identificata fiscalmente
 
-Il vincolo emittente fiscale ("su quali emittenti l'utente puo operare?") **non** e verificato a livello DB ma al login lato Django (auth view), perche `user_emittenti_fiscali` richiede un `auth_user_id` che esiste solo dopo la creazione del ponte. Per limitare l'operativita per emittente, esiste la whitelist `config.user_emittenti_fiscali` (vedi [Autorizzazioni e permessi](#autorizzazioni-e-permessi)).
+⚠️ **L'eccezione sono le identita tecniche.** Un processo automatico che opera nel sistema (flag `tecnica = true`) non e una persona e non ha codice fiscale: il suo soggetto-ruolo e di tipo `PROC_AUTO`, e le due condizioni qui sopra non si applicano. Il verso opposto non passa: marcare `tecnica = true` l'identita di una persona viene rifiutato, perche il guard pretende la coerenza fra il flag e il tipo di soggetto-ruolo.
+
+Il vincolo vale per la veste `OPERATORE` persona. Portale e shop **non** lo hanno: un cliente persona giuridica puo avere la sua identita digitale. Le vesti `API_CLIENT` e `DISABILITATO` non hanno vincolo di coerenza in questa fase.
+
+Il vincolo emittente fiscale ("su quali emittenti l'utente puo operare?") **non** e verificato a livello DB ma al login lato Django (auth view), perche `config.user_emittenti_fiscali` richiede un `auth_user_id` che esiste solo dopo la creazione dell'identita. Per limitare l'operativita per emittente, esiste la whitelist `config.user_emittenti_fiscali` (vedi [Autorizzazioni e permessi](#autorizzazioni-e-permessi)).
 
 ### R5 — Unicita per persona
 <a id="r5--unicita-per-persona"></a>
@@ -187,62 +163,40 @@ La catena `soggetti_ruoli(soggetto_id, tipo_ruolo_id)` UNIQUE + `risorse_umane(s
 
 ## Accesso al software
 
-L'accesso applicativo e governato da **due livelli** complementari che lavorano insieme per garantire che solo gli utenti autorizzati possano operare nel sistema.
+L'accesso applicativo e governato da **due livelli** complementari: il primo decide *cosa puo fare* l'utente, il secondo decide *se puo entrare*.
 
-### Livello 1 — `ruolo_sistema` (enforcement permessi)
+### Livello 1 — il ruolo applicativo (enforcement permessi)
 
-Il primo livello decide **cosa puo fare** l'utente. Il campo `ruolo_sistema` su `risorse_umane_auth_user` determina il comportamento nella catena di risoluzione permessi:
+Il primo livello decide **cosa puo fare** l'utente. E il campo `identita_digitali.ruolo_applicativo` a determinare il comportamento nella catena di risoluzione permessi:
 
-* **ADMIN**: bypass completo — accede a tutto senza verifiche
-* **OPERATIVO**: eredita i permessi dal profilo del suo reparto, con eventuali override individuali
-* **DISABILITATO**: bloccato su ogni endpoint protetto (403)
+* **`OPERATORE` con binding `SUPER_ADMIN`**: bypass completo — accede a tutto senza verifiche
+* **`OPERATORE`**: eredita i permessi dal profilo del suo reparto, con eventuali override individuali
+* **`DISABILITATO`** (oppure `attivo = false`): bloccato su ogni endpoint protetto (403)
 
 > Per l'architettura completa della catena di risoluzione: vedi [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni).
 
 ### Livello 2 — Sync `auth_user.is_active` (blocco login)
 
-Il secondo livello decide **se l'utente puo entrare**. Impostare `ruolo_sistema = DISABILITATO` blocca l'accesso a livello API (403), ma l'utente potrebbe ancora ottenere un token JWT. Per bloccare il **login stesso** serve che `auth_user.is_active` sia `false`.
+Il secondo livello decide **se l'utente puo entrare**. Una veste `DISABILITATO` blocca l'accesso a livello API (403), ma l'utente potrebbe ancora ottenere un token JWT. Per bloccare il **login stesso** serve che `auth_user.is_active` sia `false`. Questo allineamento avviene in automatico.
 
-Questo allineamento avviene in automatico.
+**Come funziona.** La funzione [`anagrafiche.fn_sync_auth_user_is_active`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active) riceve un `auth_user_id` e calcola lo stato atteso di `auth_user.is_active`:
 
-**Come funziona:**
+* l'account resta **attivo** se **esiste almeno una** identita *utilizzabile*: veste `attivo = true`, `ruolo_applicativo <> 'DISABILITATO'`, data corrente dentro la finestra `[valido_dal, valido_al]` ([R3](#r3--validita-temporale)) e **soggetto attivo** (`anagrafiche.soggetti.attivo`)
+* altrimenti `is_active = false`, e il login viene bloccato
 
-La funzione `anagrafiche.fn_sync_auth_user_is_active(p_risorsa_umana_id)` calcola lo stato atteso di `auth_user.is_active` come AND logico di tre condizioni:
-
-1. `risorse_umane.attivo = true`
-2. `risorse_umane_auth_user.attivo = true`
-3. `CURRENT_DATE` dentro la finestra `[valido_dal, valido_al]` ([R3](#r3--validita-temporale))
-
-Se una qualsiasi condizione non e soddisfatta → `is_active = false` e il login viene bloccato.
+⚠️ La condizione e un **OR fra le vesti**, non un AND: se un utente ha tre vesti e due vengono disattivate, deve poter entrare con la terza. Il blocco della singola veste sospesa non passa da `is_active` — lo applicano il namespace API e le policy di visibilita dei dati. Solo quando **nessuna** veste resta utilizzabile l'account si spegne.
 
 **Quando scatta la sync:**
 
-| Evento | Trigger | Cosa succede |
-| --- | --- | --- |
-| Cambio stato risorsa | `trg_risorse_umane_z90_sync_auth_user_active_upd` | UPDATE di `attivo`, `valido_dal` o `valido_al` su `risorse_umane` |
-| Cambio stato ponte | `trg_risorse_umane_auth_user_z90_sync_auth_user_active_upd` | UPDATE di `attivo` su `risorse_umane_auth_user` |
-| Primo collegamento | `trg_risorse_umane_auth_user_z90_sync_auth_user_active_ins` | INSERT su `risorse_umane_auth_user` |
+| Evento               | Trigger                                               | Cosa succede                                                      |
+| -------------------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
+| Cambio stato risorsa | `trg_risorse_umane_z90_sync_auth_user_active_upd`     | UPDATE di `attivo`, `valido_dal` o `valido_al` su `risorse_umane` |
+| Cambio stato veste   | `trg_identita_digitali_z90_sync_auth_user_active_upd` | UPDATE di `attivo` su `identita_digitali`                         |
+| Nuova veste          | `trg_identita_digitali_z90_sync_auth_user_active_ins` | INSERT su `identita_digitali`                                     |
 
-**Scadenze overnight:**
+**Scadenze overnight.** I trigger reagiscono a UPDATE espliciti: se ieri sera `valido_al` e scaduto e nessuno ha toccato nulla, nessun trigger parte. Se ne occupa la funzione batch [`anagrafiche.fn_sync_auth_user_expired`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired), eseguita ogni giorno alle 06:00 dal job schedulato: trova le identita con finestra scaduta ancora collegate a un `auth_user` attivo e le disattiva. Al posto del job si puo usare il management command Django `sync_auth_user_active`, che offre la stessa funzionalita — con un `--dry-run` per il solo report, senza modifiche — ed e la via da preferire quando si vuole far girare il controllo a mano.
 
-I trigger reagiscono a UPDATE espliciti. Ma cosa succede se ieri sera `valido_al` e scaduto e nessuno ha fatto alcuna operazione? La funzione batch `anagrafiche.fn_sync_auth_user_expired()` viene eseguita giornalmente alle 06:00 via pgAgent (`sync_auth_user_expired_daily`). Trova tutte le risorse con finestra scaduta ancora collegate a un `auth_user` attivo e le disattiva. In alternativa al job pgAgent, il management command Django `sync_auth_user_active` offre la stessa funzionalita via cron/systemd:
-
-```bash
-# Esecuzione diretta
-python manage.py sync_auth_user_active
-
-# Solo report, senza modifiche
-python manage.py sync_auth_user_active --dry-run
-
-# In cron (alternativa a pgAgent)
-0 6 * * * /path/to/manage.py sync_auth_user_active
-```
-
-**Invalidazione cache permessi:**
-
-Il management command `sync_auth_user_active` invalida automaticamente la cache permessi per ogni utente disattivato, in modo che il blocco sia immediato e non debba attendere la scadenza naturale della cache (TTL 300s).
-
-Per le disattivazioni real-time (trigger DB 1.2, 1.3, 1.4), la cache si rinnova automaticamente alla scadenza del TTL. Il listener LISTEN/NOTIFY (vedi sezione Cambio reparto) offre un pattern event-driven estendibile anche a questi scenari in futuro.
+**Invalidazione cache permessi.** Il management command `sync_auth_user_active` invalida automaticamente la cache permessi per ogni utente disattivato, cosi il blocco e immediato e non deve attendere la scadenza naturale della cache (TTL 300s). Per le disattivazioni real-time dei trigger la cache si rinnova alla scadenza del TTL; il listener LISTEN/NOTIFY (vedi [Cambio reparto](#cambio-reparto)) e il pattern event-driven su cui estendere anche questi scenari.
 
 ---
 
@@ -252,7 +206,7 @@ Il sistema di autorizzazioni **non** usa i gruppi e permessi nativi di Django (`
 
 In sintesi, i permessi di un utente dipendono da tre fattori:
 
-* **`ruolo_sistema`**: ADMIN (accesso totale), OPERATIVO (governato dai permessi) o DISABILITATO (bloccato)
+* **Ruolo applicativo e binding**: `OPERATORE` (accesso governato dai permessi) oppure `OPERATORE` con binding `SUPER_ADMIN` (accesso totale); `DISABILITATO` o `attivo = false` significa bloccato
 * **Profilo reparto**: ogni reparto ha un set di permessi predefiniti che vengono ereditati automaticamente da tutti i suoi membri
 * **Override individuali**: eccezioni per singolo utente, con priorita sul profilo reparto — utili per dare o togliere permessi specifici senza creare un reparto ad hoc
 
@@ -268,11 +222,15 @@ Le tabelle coinvolte:
 
 * `config.profili_accesso`, `config.profili_accesso_aree`, `config.profili_accesso_azioni`, `config.profili_accesso_bindings` — capability generalizzate (REPARTO, PORTALE, AD_HOC, SUPER_ADMIN)
 * `config.user_override_aree`, `config.user_override_oggetti`, `config.user_override_azioni` — eccezioni individuali
-* `config.user_emittenti_fiscali` — whitelist opzionale per limitare l'operativita per emittente fiscale
+* `config.user_emittenti_fiscali` — il perimetro di emittenti fiscali su cui l'utente puo operare (fail-closed: senza righe non vede nessun emittente)
 
 **Ambito emittente fiscale:** in un sistema multi-emittente (piu soggetti che emettono fatture), la tabella `config.user_emittenti_fiscali` consente di restringere su quali emittenti un utente puo operare. ⚠️ **Dal 2026-08-18 e fail-closed**: se l'utente non ha righe non vede NESSUN emittente — la riga mancante e un errore di configurazione, non un permesso (prima valeva il contrario). L'unico attore legittimamente multi-emittente e il SUPER_ADMIN, che passa da `fn_is_super_admin` e non da questa tabella. Chi resta senza assegnazione compare in `dbops.vw_operatori_senza_emittente`, che deve restare a zero righe. Questo ambito e ortogonale ai permessi reparto: un utente puo avere accesso alla fatturazione (profilo reparto) ma essere limitato a un solo emittente (whitelist). L'enforcement avviene sia a livello API (`EmittenteFiscaleScopeMixin`) che a livello DB (trigger `fn_check_user_emittente_scope`).
 
-> Per il modello dati completo, le funzioni SQL di risoluzione e l'enforcement Django:
+**Permessi e scope non sono la stessa cosa.** I permessi dicono *cosa* l'utente puo fare; lo **scope** dice *su quali righe*. Lo scope si esprime con policy dichiarative che il DB applica da solo — `BA_OWNERSHIP` (i billing account dell'utente), `FORNITORE_OWNERSHIP`, `EF_WHITELIST` (il perimetro degli emittenti) — tramite funzioni `script.fn_scope_*` pensate per essere risolte inline dal pianificatore.
+
+**Row Level Security.** Sul branch dello scope operatore la RLS e **attiva** sulle tabelle del perimetro (fatture, scadenze, lotti, ordini, preventivi, contratti, offerte, documenti generati, pratiche, billing account): la copertura include la scrittura, e i processi batch che girano come utente `postgres` ne sono esenti per costruzione. Il branch portale e shop e invece ancora **spento** — si accende insieme alle rispettive API di dominio.
+
+> Per il modello dati completo, le policy di scope, lo stato della RLS e l'enforcement Django:
 > vedi [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni).
 
 ---
@@ -286,7 +244,7 @@ Quando una nuova persona entra nell'organico, la sequenza e:
 1. Creare il soggetto PF (se non esiste gia nel sistema)
 2. Assegnare il ruolo `RIS_UMANA` via `script.fn_get_or_create_soggetto_ruolo` ([R1](#r1--ruolo-corretto))
 3. Inserire in `risorse_umane` con `valido_dal`, `qualifica_id`, `unita_organizzativa_id`
-4. (Opzionale) Collegare a `auth_user` via `risorse_umane_auth_user` — il trigger sync imposta `is_active` automaticamente
+4. (Opzionale) Creare l'**identita digitale** verso `auth_user` con `ruolo_applicativo = 'OPERATORE'` — il trigger di sync imposta `is_active` automaticamente
 
 ### Cambio reparto
 
@@ -296,15 +254,11 @@ Quando una risorsa cambia ufficio o reparto, basta un UPDATE di `risorse_umane.u
 
 **Invalidazione cache automatica (LISTEN/NOTIFY):**
 
-Il sistema si occupa automaticamente di aggiornare la cache. Quando `unita_organizzativa_id` cambia, il trigger `trg_risorse_umane_z90_notify_cambio_reparto_upd` emette una notifica PostgreSQL sul canale `cambio_reparto` con un payload JSON:
+Il sistema si occupa automaticamente di aggiornare la cache. Quando `unita_organizzativa_id` cambia, il trigger `trg_risorse_umane_z90_notify_cambio_reparto_upd` emette una notifica PostgreSQL sul canale `cambio_reparto`, con dentro gli id della risorsa, del vecchio e del nuovo reparto e dell'account Django.
 
-```json
-{"risorsa_umana_id": 42, "old_uo_id": 1, "new_uo_id": 3, "auth_user_id": 7}
-```
+Il listener backend (`CambioRepartoListener`, avviato con `python manage.py listen_cambio_reparto`) intercetta la notifica e chiama `invalidate_user(auth_user_id)` per l'utente spostato. Il meccanismo e trasparente: qualsiasi strada che modifica il reparto (API, management command, operazione diretta sul DB, import massivo) ottiene l'invalidazione automatica, senza doverla ricordare caso per caso.
 
-Il listener backend (`CambioRepartoListener`, avviato tramite `python manage.py listen_cambio_reparto`) intercetta la notifica e chiama `invalidate_user(auth_user_id)` per l'utente spostato. Il meccanismo e trasparente: qualsiasi path che modifica il reparto (API, management command, operazione diretta sul DB, import bulk) ottiene l'invalidazione automatica senza dover ricordare di aggiungerla caso per caso.
-
-Il listener usa una connessione psycopg3 dedicata con riconnessione automatica (backoff esponenziale) in caso di caduta connessione PostgreSQL. Va eseguito come processo long-running (systemd, supervisor, o in foreground durante lo sviluppo).
+Il listener usa una connessione psycopg3 dedicata con riconnessione automatica (backoff esponenziale) in caso di caduta della connessione a PostgreSQL. Va eseguito come processo long-running (systemd, supervisor, o in foreground durante lo sviluppo).
 
 ### Cambio qualifica
 
@@ -316,13 +270,13 @@ UPDATE di `risorse_umane.qualifica_id`.
 
 Quando una persona lascia l'organico, la sequenza e:
 
-1. Disattivare il ponte: UPDATE `risorse_umane_auth_user.attivo = false` — il trigger sync imposta `auth_user.is_active = false` e il login viene bloccato
+1. Disattivare la veste: UPDATE `identita_digitali.attivo = false` — il trigger di sync imposta `auth_user.is_active = false` e il login viene bloccato
 2. Disattivare la risorsa: UPDATE `risorse_umane.attivo = false`
 3. Il backend invalida la cache permessi dell'utente
 
-**Perche questo ordine?** Il framework ATTIVO (`trgfn_prevent_deactivate_if_children`) impedisce di disattivare un genitore che ha figli ancora attivi. Poiche `risorse_umane_auth_user` e figlio di `risorse_umane`, bisogna disattivare il ponte (figlio) prima della risorsa (genitore). Tentare l'ordine inverso produce un errore.
+**Perche questo ordine?** Disattivare la risorsa mentre una sua identita `OPERATORE` e ancora attiva viene **rifiutato** dal guard [`trgfn_risorse_umane_guard_identita_attiva`](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_identita_attiva), con l'errore `E_RISORSA_UMANA_IDENTITA_ATTIVA`: una persona che entra ancora nel sistema non si spegne. Si disattiva prima la veste, poi la risorsa. Tentare l'ordine inverso produce un errore.
 
-Se la risorsa non ha un collegamento a `auth_user`, basta il solo passo 2.
+Se la risorsa non ha un'identita digitale, basta il solo passo 2.
 
 ⛔ **Il passo 2 è rifiutato finché la persona governa qualcosa.** Il framework
 ATTIVO monta su `risorse_umane` un block per ogni tabella che la referenzia
@@ -343,9 +297,9 @@ Il vincolo di unicita ([R5](#r5--unicita-per-persona)) garantisce un solo record
 La sequenza e l'inversa della cessazione:
 
 1. Riattivare la risorsa: UPDATE `risorse_umane.attivo = true`, aggiornare `valido_dal`/`valido_al`
-2. Riattivare il ponte: UPDATE `risorse_umane_auth_user.attivo = true` — il trigger sync imposta `auth_user.is_active = true` e il login viene riabilitato
+2. Riattivare la veste: UPDATE `identita_digitali.attivo = true` — il trigger di sync imposta `auth_user.is_active = true` e il login viene riabilitato
 
-**Perche questo ordine?** Il framework ATTIVO (`trgfn_child_requires_active_parent`) impedisce di attivare un figlio se il genitore e inattivo. Bisogna riattivare la risorsa (genitore) prima del ponte (figlio).
+**Perche questo ordine?** E il verso inverso della cessazione, e la ragione e la stessa: la veste attiva e cio che tiene in piedi l'accesso, la risorsa attiva e cio che la rende sensata. Riattivando prima la risorsa si evita la finestra in cui la veste risulta attiva su una persona non ancora in forza.
 
 ### Assegnazione emittente fiscale (scope operativo)
 
@@ -363,7 +317,7 @@ Dopo aver creato l'operatore e collegato il suo account Django, e necessario def
 
 **Regole:**
 
-* Se l'operatore non ha nessun emittente assegnato, il comportamento dipende dal ruolo: un ADMIN vede tutto (bypass scope), un OPERATIVO non vedra dati filtrati per emittente
+* Se l'operatore non ha nessun emittente assegnato **e fail-closed**: non vede nessun emittente, e il vuoto e un errore di configurazione, non un permesso. Gli operatori rimasti senza assegnazione si contano in `dbops.vw_operatori_senza_emittente`, che deve restare a zero righe. L'unico attore legittimamente multi-emittente e il `SUPER_ADMIN`, che passa da `fn_is_super_admin` e non da questa tabella
 * L'emittente fiscale e un soggetto con ruolo EMITTENTE nel sistema anagrafico — il dropdown mostra la **ragione sociale** del soggetto associato
 * Il vincolo e verificato a runtime da `get_scope_user_id(request)` negli endpoint API: se l'utente ha emittenti assegnati, le query vengono filtrate automaticamente
 * La modifica dell'emittente ha effetto immediato — non richiede invalidazione cache perche il check avviene ad ogni richiesta API
@@ -386,70 +340,76 @@ l'accesso effettivo.
 ### Scelta architetturale: nessuna password comunicata
 
 In Zero ERP **nessuna password viene mai comunicata verbalmente o via messaggio**. L'admin non
-assegna una password all'operatore — il sistema genera un token monouso, lo invia via email,
-e l'operatore sceglie la propria password al primo accesso. Questa scelta elimina il rischio
+assegna una password all'operatore — nemmeno alla creazione: l'account nuovo nasce senza una
+password utilizzabile, il sistema genera un token monouso, lo invia via email, e l'operatore
+sceglie la propria password attivando l'accesso. Questa scelta elimina il rischio
 di password condivise, annotate su post-it o inviate in chiaro su canali non sicuri.
 
 ### Invito operatore
 
-Quando l'admin crea un operatore e decide di abilitarlo al software, il flusso e':
+L'invito è lo stesso per ogni veste (operatore, portale, shop): cambia solo la **porta** —
+il link, il template dell'email, i tipi di token. Per l'operatore:
 
 ```text
-1. Admin → Amm. Software → Operatori → seleziona operatore → "Invia invito"
+1. Admin → Amm. Software → Operatori → «Nuovo»: nome utente, email, qualifica
+   - la veste OPERATORE nasce SPENTA: nessuno entra prima di aver accettato
+   - se l'email è già di un account (la persona è, per esempio, cliente del
+     portale) si usa QUELL'account: una persona, un accesso. Il pannello lo
+     dice, con il nome utente che vale
    |
-2. Il sistema verifica 5 condizioni di invitabilita':
-   - auth_user esiste e is_active = true
-   - risorse_umane_auth_user esiste e attivo = true
-   - ruolo_sistema <> DISABILITATO
-   - l'utente ha un indirizzo email configurato
-   - last_login IS NULL (non ha mai fatto login)
+2. Dettaglio operatore → «Invia invito» (compare quando il sistema lo ammette:
+   veste spenta, nella sua finestra di validità, email presente — altrimenti
+   il pannello dice perché)
    |
-3. Imposta una password temporanea casuale (MAI comunicata)
-4. Imposta il flag deve_cambiare_password = true
-5. Genera un token monouso tipo INVITO_OPERATORE (scadenza 72 ore)
-6. Invia email con link di attivazione
-7. Registra invito_inviato_at
+3. Il sistema genera un token monouso (72 ore) e lo invia via email:
+   - account senza password → il link chiede di sceglierla
+   - account che ha già una password → il link attiva con un clic
+   La password esistente non viene mai toccata.
    |
-8. L'operatore riceve l'email → clicca il link
+4. L'operatore clicca il link
+   - con la scelta della password: il token viene validato PRIMA, la password
+     DOPO; se è troppo debole il token resta valido e l'operatore riprova
    |
-9. Pagina attivazione: sceglie la propria password
-   - Il token viene validato PRIMA, la password DOPO
-   - Se la password e' troppo debole, il token resta valido e l'operatore riprova
-   |
-10. Account attivato → l'operatore fa login con la password scelta
+5. La veste si accende → l'operatore entra con il nome utente e la password
 ```
 
-**Reinvio invito**: se l'email non e' arrivata o il token e' scaduto, l'admin puo'
-reinviare l'invito. Il sistema invalida automaticamente il token precedente e ne genera
-uno nuovo.
+**Reinvio invito**: se l'email non è arrivata o il token è scaduto, l'admin rinvia
+l'invito. I token pendenti di quella veste vengono invalidati insieme all'emissione del
+nuovo: o tutti e due, o nessuno.
 
 **L'email di invito** viene inviata con l'account SMTP del reparto dell'operatore
 (se configurato) o con l'account di sistema. Il template e' personalizzabile per reparto
 (vedi [Guida Gestione Mail](/guide/gestione-mail)).
 
+**L'ultimo accesso** di un operatore è visibile nel suo dettaglio: si registra a ogni
+login riuscito.
+
 ### Cambio password obbligatorio
 
-Il flag `deve_cambiare_password` su `risorse_umane_auth_user` forza l'operatore a cambiare
-password prima di poter usare il sistema. Il meccanismo e':
+Il cambio password obbligatorio è della **credenziale** (`config.credenziali`): la password
+è una sola per tutte le vesti della persona. Forza a cambiarla prima di poter usare il
+sistema. Il meccanismo e':
 
 1. **Al login**: se il flag e' attivo, la response JWT include `password_change_required: true`
 2. **Frontend**: il router guard redirect a `/change-password` e blocca ogni altra navigazione
-3. **Backend**: il middleware `PasswordChangeRequiredMiddleware` blocca tutte le API tranne:
+3. **Backend**: il cancello degli obblighi (`apps/core/api/cancello_obblighi.py`, dopo
+   l'autenticazione DRF) risponde 403 `E_CAMBIO_PASSWORD_RICHIESTO` a tutte le API tranne:
    * `POST /auth/change-password/`
    * `POST /auth/logout/`
    * `GET /core/me/`
 4. **Dopo il cambio**: il flag viene resettato, i vecchi token JWT invalidati, nuovi token rilasciati
 
-Il middleware opera in **fail-closed**: se il DB non risponde durante il check, l'accesso
-viene bloccato (503) piuttosto che concesso.
+Il cancello opera in **fail-closed**: se il DB non risponde durante il check, la richiesta
+fallisce con `E_DATABASE` piuttosto che passare.
 
-Il flag puo' essere impostato in tre scenari:
+Chi lo accende e chi lo spegne:
 
-| Scenario | Chi lo imposta | Quando |
-| --- | --- | --- |
-| Primo accesso | `InvitoOperatoreService` | Alla creazione dell'invito |
-| Reset admin | L'admin manualmente | Quando vuole forzare un cambio |
-| Reset password dimenticata | `PasswordResetConfirmView` | Alla conferma del reset |
+| Verso    | Chi                                                                  | Quando                                |
+| -------- | -------------------------------------------------------------------- | ------------------------------------- |
+| Acceso   | L'admin                                                              | Quando vuole forzare un cambio        |
+| Spento   | Cambio password, reset password dimenticata, attivazione di un invito | Quando la persona sceglie la password |
+
+L'invito **non** lo accende: la password la sceglie la persona nell'attivazione stessa.
 
 ### Cambio password volontario
 
@@ -506,13 +466,13 @@ e riduce il carico sul sistema email.
 Sia l'invito che il reset password usano lo stesso meccanismo di **token monouso generico**
 (`config.token_monouso`):
 
-| Caratteristica | Valore |
-| --- | --- |
-| Lunghezza | 32 bytes casuali → 64 caratteri hex |
-| Storage | Solo hash SHA-256 in DB — il token in chiaro **non e' recuperabile** |
-| Invalidazione | Alla creazione, tutti i token precedenti dello stesso tipo/utente vengono invalidati |
-| Consumo | Registra IP e timestamp |
-| Pulizia | `config.fn_cleanup_token_scaduti()` — job pgAgent periodico |
+| Caratteristica | Valore                                                                               |
+| -------------- | ------------------------------------------------------------------------------------ |
+| Lunghezza      | 32 bytes casuali → 64 caratteri hex                                                  |
+| Storage        | Solo hash SHA-256 in DB — il token in chiaro **non e' recuperabile**                 |
+| Invalidazione  | Alla creazione, tutti i token precedenti dello stesso tipo/utente vengono invalidati |
+| Consumo        | Registra IP e timestamp                                                              |
+| Pulizia        | `config.fn_cleanup_token_scaduti()` — job pgAgent periodico                          |
 
 Il token in chiaro viaggia **solo** nell'email di invito o reset. Non e' mai salvato
 in DB, non e' mai visibile nell'API, non e' mai loggato.
@@ -521,15 +481,19 @@ in DB, non e' mai visibile nell'API, non e' mai loggato.
 
 Il sistema protegge il login con tre meccanismi complementari:
 
-#### Blocco per utente (tentativi falliti)
+#### Tentativi falliti: freno, attesa, blocco
 
-Dopo N tentativi falliti consecutivi, l'utente viene bloccato temporaneamente.
-Il blocco si resetta automaticamente alla scadenza o al login riuscito.
+Lo stato è della **credenziale**, non della veste: la password è una sola e
+vale per tutte le porte. Tre regole, prima di guardare la password: il
+**blocco** dell'amministratore, il **freno** sulla provenienza dopo N password
+sbagliate di fila, l'**attesa** crescente sulla credenziale. Valgono anche per
+un nome che non esiste, così la risposta non dice se il nome c'è. Il modello
+completo è in [Architettura multi-face §3.1-bis](/guide/architettura-multi-face-auth#31-bis-la-credenziale-tentativi-freno-blocco).
 
-* `script.fn_check_blocco_login(auth_user_id)` — verifica se l'utente e' bloccato
-* `script.fn_registra_tentativo_login(auth_user_id, successo)` — registra l'esito
-* `risorse_umane_auth_user.tentativi_falliti` — contatore
-* `risorse_umane_auth_user.bloccato_fino_a` — timestamp fine blocco
+* [`script.fn_check_blocco_login`](/dbzero/script/funzioni/fn_check_blocco_login) — le tre regole, prima della password
+* [`script.fn_registra_tentativo_login`](/dbzero/script/funzioni/fn_registra_tentativo_login) — l'esito del tentativo
+* `config.credenziali`, `config.credenziali_provenienze` — lo stato della credenziale
+* `config.nomi_tentati`, `config.nomi_tentati_provenienze` — lo stato di un nome che non è una credenziale
 
 #### Throttle per IP (rate limiting)
 
@@ -541,14 +505,14 @@ distribuiti su piu' utenti dallo stesso IP.
 
 Ogni evento di autenticazione viene registrato in `dbops.sessioni_utente`:
 
-| Evento | Quando | Dati registrati |
-| --- | --- | --- |
-| LOGIN | Login JWT riuscito | user_id, IP, user_agent, session_id |
-| REFRESH | Refresh token | user_id, IP, session_id |
-| LOGOUT | Logout esplicito | user_id, IP, session_id |
-| PASSWORD_CHANGED | Cambio password | user_id |
-| PASSWORD_RESET | Reset password da link | user_id |
-| INVITO_INVIATO | Invito operatore | user_id, admin_id |
+| Evento           | Quando                 | Dati registrati                     |
+| ---------------- | ---------------------- | ----------------------------------- |
+| LOGIN            | Login JWT riuscito     | user_id, IP, user_agent, session_id |
+| REFRESH          | Refresh token          | user_id, IP, session_id             |
+| LOGOUT           | Logout esplicito       | user_id, IP, session_id             |
+| PASSWORD_CHANGED | Cambio password        | user_id                             |
+| PASSWORD_RESET   | Reset password da link | user_id                             |
+| INVITO_INVIATO   | Invito operatore       | user_id, admin_id                   |
 
 ---
 
@@ -558,7 +522,7 @@ Il modello e rappresentato in due diagrammi separati per facilitare la lettura.
 
 ### Catena identita e accesso
 
-La catena principale: dalla persona al suo account Django, passando per il ruolo e il ponte.
+La catena principale: dalla persona al suo account Django, passando per il ruolo e la veste.
 
 ```mermaid
 erDiagram
@@ -585,12 +549,14 @@ erDiagram
         boolean attivo
     }
 
-    risorse_umane_auth_user {
+    identita_digitali {
         bigint id PK
-        bigint risorsa_umana_id FK
+        bigint soggetto_ruolo_id FK
         int auth_user_id FK
+        enum ruolo_applicativo
         boolean attivo
-        enum ruolo_sistema
+        date valido_dal
+        date valido_al
     }
 
     auth_user {
@@ -600,9 +566,9 @@ erDiagram
     }
 
     soggetti ||--o{ soggetti_ruoli : "ha ruoli"
-    soggetti_ruoli ||--|| risorse_umane : "ruolo RIS_UMANA"
-    risorse_umane ||--o| risorse_umane_auth_user : "collegamento"
-    auth_user ||--o| risorse_umane_auth_user : "collegamento"
+    soggetti_ruoli ||--o| risorse_umane : "ruolo RIS_UMANA"
+    soggetti_ruoli ||--o{ identita_digitali : "veste"
+    auth_user ||--o{ identita_digitali : "veste"
 ```
 
 ### Parte organizzativa
@@ -648,19 +614,19 @@ erDiagram
 
 > **Nota:** `soggetto_id` su `risorse_umane` e la persona (PF), non l'azienda.
 > L'azienda (datore) si identifica tramite `anagrafiche.gestori` — un soggetto PG con ruolo GESTORE.
-> Il guard `trgfn_risorse_umane_auth_user_guard_persona_fisica` ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)) verifica che il collegamento a `auth_user` sia consentito solo per soggetti persona fisica pura (CF obbligatorio, P.IVA vietata).
+> Il guard `trgfn_identita_digitali_guard_coerenza` ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)) verifica che una veste `OPERATORE` di persona sia consentita solo a soggetti persona fisica pura (CF obbligatorio, P.IVA vietata).
 
 ---
 
 ## Integrazione con il sistema operativo
 
-La risorsa umana e l'**identita dell'operatore** nel sistema. Quando un utente accede e compie operazioni, il sistema sa sempre chi sta agendo grazie alla catena `auth_user → risorse_umane_auth_user → risorse_umane`.
+Ogni operazione nel sistema porta con se l'**identita** di chi l'ha eseguita: il sistema sa sempre chi sta agendo grazie alla catena `auth_user → identita_digitali → risorse_umane`.
 
 In pratica:
 
-* Il middleware `jwt_audit_middleware` propaga `auth_user_id` come `app.current_user_id` nella sessione PostgreSQL
+* L'autenticazione JWT propaga l'utente e la sua veste come parametri di sessione PostgreSQL: `app.current_user_id` e `app.jwt_user`, piu la tripla multi-veste `app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id` (vedi [Propagazione identita utente al database](#propagazione-identita-utente-al-database-guc-app))
 * I trigger defense-in-depth (es. ambito emittente fiscale) usano `current_setting('app.current_user_id')` per verificare le autorizzazioni a livello DB
-* L'`auth_user_id` che esegue le pipeline fatturazione, i push commesse e i lotti e lo stesso che arriva dalla catena risorsa → ponte → utente
+* L'`auth_user_id` che esegue le pipeline di fatturazione, i push commesse e i lotti e lo stesso che arriva dalla catena risorsa → veste → utente
 
 > Per i dettagli su audit e defense-in-depth: vedi [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni).
 > Per i flussi operativi: vedi [Guida Fatturazione](/guide/fatturazione).
@@ -682,254 +648,103 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 
 ### Sync `auth_user.is_active`
 
-| Funzione / Trigger | Quando scatta | Cosa fa |
-| --- | --- | --- |
-| `fn_sync_auth_user_is_active` | Chiamata dai trigger sotto | Calcola lo stato atteso e aggiorna `auth_user.is_active` se diverso |
-| `trgfn_risorse_umane_sync_auth_user_active` | AFTER UPDATE di `attivo`, `valido_dal`, `valido_al` su `risorse_umane` | Reagisce a cambio stato della risorsa |
-| `trgfn_risorse_umane_auth_user_sync_active` | AFTER INSERT / AFTER UPDATE di `attivo` su `risorse_umane_auth_user` | Reagisce a cambio stato del ponte o primo collegamento |
-| `fn_sync_auth_user_expired` | Job pgAgent giornaliero (06:00) o management command `sync_auth_user_active` | Disattiva in batch gli utenti con finestra scaduta |
+| Funzione / Trigger                                    | Quando scatta                                                                   | Cosa fa                                                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `fn_sync_auth_user_is_active`                         | Chiamata dai trigger sotto                                                      | Calcola lo stato atteso con un **OR sulle vesti** e aggiorna `auth_user.is_active` se diverso |
+| `trg_risorse_umane_z90_sync_auth_user_active_upd`     | AFTER UPDATE di `attivo`, `valido_dal`, `valido_al` su `risorse_umane`          | Reagisce a cambio stato della risorsa                                                         |
+| `trg_identita_digitali_z90_sync_auth_user_active_upd` | AFTER UPDATE di `attivo` su `identita_digitali`                                 | Reagisce a cambio stato di una veste                                                          |
+| `trg_identita_digitali_z90_sync_auth_user_active_ins` | AFTER INSERT su `identita_digitali`                                             | Reagisce alla creazione di una veste                                                          |
+| `fn_sync_auth_user_expired`                           | Job schedulato giornaliero (06:00) o management command `sync_auth_user_active` | Disattiva in batch le vesti con finestra scaduta                                              |
 
 ### Invalidazione cache al cambio reparto
 
-| Funzione / Trigger | Quando scatta | Cosa fa |
-| --- | --- | --- |
-| `fn_notify_cambio_reparto` | Chiamata dal trigger sotto | Emette `NOTIFY cambio_reparto` con payload JSON |
-| `trgfn_risorse_umane_notify_cambio_reparto` | AFTER UPDATE di `unita_organizzativa_id` su `risorse_umane` (solo se cambiato) | Invoca `fn_notify_cambio_reparto` con vecchio e nuovo reparto |
-| `CambioRepartoListener` (backend) | Processo long-running (`listen_cambio_reparto`) | Ascolta `NOTIFY cambio_reparto` e chiama `invalidate_user()` |
+| Funzione / Trigger                        | Quando scatta                                                                  | Cosa fa                                                       |
+| ----------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| `fn_notify_cambio_reparto`                | Chiamata dal trigger sotto                                                     | Emette `NOTIFY cambio_reparto` con gli id utili al listener   |
+| `trg_risorse_umane_notify_cambio_reparto` | AFTER UPDATE di `unita_organizzativa_id` su `risorse_umane` (solo se cambiato) | Invoca `fn_notify_cambio_reparto` con vecchio e nuovo reparto |
+| `CambioRepartoListener` (backend)         | Processo long-running (`listen_cambio_reparto`)                                | Ascolta `NOTIFY cambio_reparto` e chiama `invalidate_user()`  |
 
 ### Guard e vincoli
 
-| Funzione / Trigger | Quando scatta | Cosa fa |
-| --- | --- | --- |
-| `trgfn_risorse_umane_guard_ruolo` | BEFORE INSERT/UPDATE su `risorse_umane` | Verifica che il ruolo sia RIS_UMANA |
-| `trgfn_risorse_umane_auth_user_guard_persona_fisica` | BEFORE INSERT/UPDATE su `risorse_umane_auth_user` | Verifica che il soggetto sia persona fisica pura (CF obbligatorio, P.IVA vietata) |
-| `trgfn_prevent_deactivate_if_children` | BEFORE UPDATE su `risorse_umane` | Blocca disattivazione se il ponte e ancora attivo |
-| `trgfn_child_requires_active_parent` | AFTER INSERT/UPDATE su `risorse_umane` e `risorse_umane_auth_user` | Verifica che i genitori (qualifiche, soggetti, unita org.) siano attivi |
+| Funzione / Trigger                                 | Quando scatta                                          | Cosa fa                                                                                                                                                       |
+| -------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trgfn_risorse_umane_guard_ruolo`                  | BEFORE INSERT/UPDATE su `risorse_umane`                | Verifica che il ruolo sia RIS_UMANA                                                                                                                           |
+| `trgfn_risorse_umane_guard_identita_attiva`        | BEFORE UPDATE di `attivo` su `risorse_umane`           | Rifiuta di spegnere una risorsa che ha ancora una veste `OPERATORE` attiva (`E_RISORSA_UMANA_IDENTITA_ATTIVA`)                                                |
+| `trgfn_identita_digitali_guard_coerenza`           | BEFORE INSERT/UPDATE su `identita_digitali`            | Verifica la coerenza fra veste e tipo di soggetto-ruolo, e la persona fisica pura per `OPERATORE` ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)) |
+| `trgfn_identita_digitali_guard_ultimo_super_admin` | AFTER UPDATE su `identita_digitali`                    | Presidia il caso limite dell'ultimo `SUPER_ADMIN`: il sistema non resta senza                                                                                 |
+| `trgfn_prevent_deactivate_if_children`             | BEFORE UPDATE su `risorse_umane` e `identita_digitali` | Blocca la disattivazione finche esistono figli attivi: per la risorsa commesse, pratiche e flussi; per la veste i binding di profilo e di scope               |
+| `trgfn_child_requires_active_parent`               | AFTER INSERT/UPDATE su `risorse_umane`                 | Verifica che i genitori (qualifiche, soggetti, unita organizzative) siano attivi                                                                              |
 
 ---
 
 ## Propagazione identita utente al database (GUC `app.*`)
 
-> Sezione aggiunta nello sprint 2026-04-XX a seguito del refactor operatore-emittenti.
-> Risolve il bug "audit JWT inerte" e abilita i trigger di scope a livello DB.
-
 ### Il problema
 
-Alcuni trigger PostgreSQL hanno bisogno di sapere **chi** sta eseguendo la transazione corrente, per:
+Alcuni trigger PostgreSQL hanno bisogno di sapere **chi** sta eseguendo la transazione corrente. Serve per due cose: scrivere l'audit trail con lo username JWT reale — e non con il ruolo DB `zeroerp_app`/`titodb` — e applicare a livello DB le regole di sicurezza che il backend potrebbe aver dimenticato, come il perimetro degli emittenti fiscali.
 
-1. **Audit trail JWT** — `script.trgfn_audit_data_user_generic` popola `user_insert` / `user_update`
-   con lo username JWT reale (non con il ruolo DB `zeroerp_app`/`titodb`).
-2. **Defense-in-depth scope emittente** — `anagrafiche.trgfn_billing_account_guard_admin_globale`,
-   `anagrafiche.trgfn_billing_account_link_ef`, `script.trgfn_guard_emittente_scope` leggono
-   l'utente corrente per applicare regole di sicurezza che il backend Python potrebbe aver dimenticato.
+L'identita viene propagata alla sessione PostgreSQL con **sei parametri di sessione** (GUC, *Grand Unified Configuration*):
 
-L'identita utente viene propagata via due **GUC PostgreSQL** (Grand Unified Configuration parameters):
+| GUC                        | Valore                                     | Chi la usa                                  |
+| -------------------------- | ------------------------------------------ | ------------------------------------------- |
+| `app.current_user_id`      | la PK Django dell'utente                   | Trigger di scope e defense-in-depth         |
+| `app.jwt_user`             | lo username Django                         | Trigger di audit                            |
+| `app.current_identita_id`  | l'id della veste in `identita_digitali`    | Policy RLS e guard che distinguono le vesti |
+| `app.ruolo_applicativo`    | il `ruolo_applicativo` della veste         | Policy RLS: il «cancello» per veste         |
+| `app.soggetto_ruolo_id`    | il soggetto-ruolo della veste              | Scope e ownership                           |
+| `app.current_emittente_id` | l'id dell'emittente in `emittenti_fiscali` | Scope emittente: policy RLS e funzioni SQL  |
 
-| GUC | Valore | Letta da |
-| --- | --- | --- |
-| `app.jwt_user` | `str(user)` (username Django) | Trigger di audit |
-| `app.current_user_id` | `str(user.id)` (PK Django) | Trigger di scope |
+Le prime due sono di vecchia data e riguardano l'utente; le successive tre sono la tripla multi-veste, e dicono **con quale veste** l'utente sta operando; l'ultima dice **per quale emittente** quella veste sta lavorando (l'impersonazione di scope). Si popolano tutte insieme, o nessuna: la tripla senza l'utente — o viceversa — lascia i guard in uno stato ambiguo, quindi l'invariante e **tutto-o-niente**. L'emittente è l'unico dei sei a poter restare **vuoto con una veste valida**, quando il token non ne dichiara uno.
 
-### Il timing problem
+### Dove vengono impostate
 
-Per i request `/api/*` JWT in produzione, l'autenticazione **non avviene nei middleware Django** ma
-nel **view dispatch DRF**: la classe `JWTAuthentication` (registrata in
-`REST_FRAMEWORK.DEFAULT_AUTHENTICATION_CLASSES`) gira dentro `APIView.initial()` →
-`perform_authentication()`. Questo accade **dopo** tutti i Django middleware `process_view`.
+L'autenticazione JWT avviene dentro il view dispatch DRF, non nei middleware Django: quando i middleware girano, per una request con bearer token l'utente non e ancora risolto. I parametri vanno quindi popolati **subito dopo** che l'utente e noto, e **prima** che il view cominci a scrivere.
 
-Quindi:
+Il punto scelto e la classe di autenticazione: `apps/core/api/jwt_audit_authentication.py` (classe `JwtAuditAuthentication`) estende `JWTAuthentication` e, come effetto collaterale di `authenticate()`, popola i sei parametri. Cosi **tutti** gli endpoint JWT sono coperti automaticamente: nessun boilerplate nelle view, nessuna disciplina richiesta agli sviluppatori dei domini. Il middleware `JwtAuditMiddleware` resta e si occupa del resto — azzeramento dei parametri a **inizio** richiesta (fail-closed) e controllo che la connessione web non bypassi la RLS. Il rifiuto delle vesti `DISABILITATO` non è suo: a quel punto l'utente JWT non è ancora autenticato, e lo fa la catena di `ZeroERPPermission`.
 
-* Un middleware Django che provasse a settare le GUC in `process_view` vedrebbe
-  `request.user = AnonymousUser` per le request JWT (Django session middleware non vede
-  i bearer token) → le GUC non verrebbero mai impostate per le request JWT reali.
-* La GUC deve essere settata **dopo** che `JWTAuthentication.authenticate()` ha risolto l'utente,
-  ma **prima** che il view body inizi a fare INSERT/UPDATE (altrimenti i trigger non vedono nulla).
+I parametri sono **session-scoped**, non `SET LOCAL`: al momento dell'autenticazione la connessione e ancora in autocommit, quindi un `SET LOCAL` andrebbe perso immediatamente. Restano sulla connessione fino all'azzeramento esplicito a fine request — ed e proprio quell'azzeramento a rendere la connessione sicura da riusare (vedi [Ottimizzazione connessioni](#ottimizzazione-connessioni-database-in-produzione)).
 
-### Soluzione adottata: hook nella DRF authentication class
+Nei test API il side-effect si mocka con la base class `JwtMockedApiTest` (`apps/core/tests/_helpers/jwt_mock.py`).
 
-> **Pattern: subclass di `JWTAuthentication` che setta le GUC come side-effect di `authenticate()`**.
+### Per gli entry point non-HTTP
 
-File: `apps/core/api/jwt_audit_authentication.py` (classe `JwtAuditAuthentication`).
+La soluzione qui sopra copre le request HTTP con JWT. Non vede, per definizione, chi non passa dall'HTTP: management command, job schedulati, worker di background, test di integrazione che chiamano un service direttamente.
 
-Registrata in `settings.REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"]` al posto di
-`rest_framework_simplejwt.authentication.JWTAuthentication`. La classe:
-
-1. Chiama `super().authenticate(request)` (logica JWT invariata)
-2. Se l'autenticazione ha avuto successo, propaga `app.jwt_user` e `app.current_user_id` come
-   GUC **session-scoped** (`set_config(..., is_local=false)`) sulla connessione PostgreSQL
-3. Ritorna il risultato standard `(user, token)` come ogni `BaseAuthentication`
-4. Il **reset** delle GUC al termine della request e demandato a `JwtAuditMiddleware.process_response`,
-   che usa un flag `request._zeroerp_jwt_guc_set` per agire solo quando la auth class ha effettivamente
-   propagato l'identita
-
-**Perche session-scoped (`false`) e non `SET LOCAL` (`true`)**: a `authenticate()` time la
-connessione e in autocommit (il view body non ha ancora aperto la sua `transaction.atomic()`),
-quindi `SET LOCAL` verrebbe perso al COMMIT immediato dello statement.
-`set_config(..., false)` invece persiste sulla connessione fino al reset esplicito o alla
-chiusura connessione (`CONN_MAX_AGE=0` di default chiude a fine request).
-
-**Perche questo e il punto giusto**:
-
-* E **l'unico** punto del flusso DRF dove l'identita JWT e gia risolta E il view body non e
-  ancora partito → i trigger DB vedono la GUC quando le scritture avvengono.
-* Copre **tutti** gli endpoint JWT automaticamente: niente boilerplate nelle view, niente
-  base class da modificare, niente disciplina richiesta agli sviluppatori dei domini.
-* `JwtAuditMiddleware` esistente resta semplificato: si occupa solo di rifiuto early
-  `DISABILITATO` su `/api/`, pre-load cache permessi Redis L2 e reset GUC simmetrico.
-* Single Responsibility: chi conosce l'utente (la auth class) e chi popola la GUC sono lo
-  stesso punto.
-
-**Test isolation**: i test API che usano `SimpleTestCase` + Django test client mockano
-il side-effect via `JwtAuditAuthentication._set_gucs` (metodo separato e mockabile),
-attraverso una base class `JwtMockedApiTest` in `apps/core/tests/_helpers/jwt_mock.py`.
-La logica `super().authenticate()` resta mockabile come prima al livello
-`rest_framework_simplejwt.authentication.JWTAuthentication.authenticate`.
-
-### Pattern complementare per entry point non-HTTP (futuro)
-
-> **Pattern: helper `app_atomic(auth_user_id=...)` a livello service, alternativa a `transaction.atomic()`**.
-
-La soluzione adottata copre **tutte** le request HTTP JWT, ma per definizione non vede:
-
-* `manage.py` command (es. import batch, migration di dati)
-* Cron job / task pgAgent
-* Worker background / signal handlers
-* Test di integrazione che chiamano i service direttamente
-
-Per questi casi futuri, il pattern corretto e propagare l'identita **al livello del service**
-che apre la transazione, non al livello HTTP. Implementazione raccomandata:
-
-```python
-# apps/core/services/db_context.py (DA IMPLEMENTARE QUANDO SERVIRA)
-from contextlib import contextmanager
-from django.db import connection, transaction
-
-@contextmanager
-def app_atomic(*, auth_user_id: int | None = None, jwt_user: str | None = None):
-    """Apre transaction.atomic() e propaga l'identita utente come GUC PG
-    (`SET LOCAL` con scope transazione, autoreset al COMMIT/ROLLBACK).
-
-    Da usare nei service di scrittura quando l'entry point NON e HTTP/JWT
-    (CLI, cron, signal): in quei contesti JwtAuditAuthentication non gira
-    e le GUC devono essere propagate esplicitamente.
-
-    Per le request HTTP JWT NON serve: la propagazione e gia automatica
-    via JwtAuditAuthentication.
-    """
-    with transaction.atomic():
-        if auth_user_id is not None:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT set_config('app.current_user_id', %s, true), "
-                    "       set_config('app.jwt_user',        %s, true)",
-                    [str(auth_user_id), jwt_user or str(auth_user_id)],
-                )
-        yield
-```
-
-Uso tipico in un management command:
-
-```python
-class Command(BaseCommand):
-    def handle(self, *args, **opts):
-        admin_user_id = opts["admin_user_id"]
-        for record in records_to_import:
-            with app_atomic(auth_user_id=admin_user_id):
-                ClientiService().crea_cliente(record, auth_user_id=admin_user_id)
-```
-
-**Quando implementarlo**: solo quando arriva il **primo** entry point non-HTTP che scrive
-entita audited (oggi non esiste). Non si fanno preventivamente helper inutilizzati
-(principio "non creare astrazioni per scenari ipotetici" — vedi `AGENTS.md`).
-
-### Sintesi delle due soluzioni
-
-| Aspetto | A — `JwtAuditAuthentication` (oggi) | P — `app_atomic` helper (futuro) |
-| --- | --- | --- |
-| Dove vive | DRF auth class, registrata in settings | Service layer, helper `apps/core/services/db_context.py` |
-| Quando girare | Automatico per ogni request `/api/*` JWT | Esplicito al call site del service |
-| Copre | HTTP/JWT (100% degli endpoint) | Qualsiasi entry point (CLI, cron, signal, test integration) |
-| Discipline richiesta | Nessuna (auto) | Service deve usare `app_atomic` invece di `transaction.atomic()` |
-| GUC scope | Session-scoped (`set_config(.., false)`) + reset in middleware | `SET LOCAL` (transazione del service, autoreset) |
-| Stato | **Implementato 2026-04-XX** (BE-2.0ter del refactor operatore-emittenti) | **Da implementare quando servira** |
-| Testing | Mock di `JwtAuditAuthentication._set_gucs` via base class `JwtMockedApiTest` | Mock di `app_atomic` (drop-in replacement di `transaction.atomic`) |
-
-I due pattern **non si sovrappongono**: A copre HTTP, P copre non-HTTP. Quando saranno entrambi
-attivi, P resta complementare ad A — un service chiamato sia da view HTTP che da CLI puo
-ricevere l'identita per due strade diverse senza conflitti (la GUC e idempotente).
+Se in futuro arrivera un entry point di questo tipo che **scrive** entita sottoposte ad audit, la strada e propagare l'identita **al livello del service** che apre la transazione, con un helper che sostituisca `transaction.atomic()` impostando i parametri con scope di transazione. Oggi non ne esiste nessuno, e non si costruisce un'astrazione per uno scenario che non c'e.
 
 ### Riferimenti
 
-* `apps/core/api/jwt_audit_authentication.py` — classe `JwtAuditAuthentication`
-* `apps/core/middleware/jwt_audit_middleware.py` — middleware semplificato (DISABILITATO + cleanup)
-* `apps/core/tests/_helpers/jwt_mock.py` — base class `JwtMockedApiTest` per i test API
+* `apps/core/api/jwt_audit_authentication.py` — la classe `JwtAuditAuthentication`
+* `apps/core/middleware/jwt_audit_middleware.py` — il middleware (rifiuto anticipato e azzeramento)
+* `apps/core/tests/_helpers/jwt_mock.py` — la base class `JwtMockedApiTest` per i test API
 * [JwtAuditMiddleware (manual)](/backend/core/manual/jwt_audit_middleware) — dettaglio tecnico
-* [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — quadro generale GUC
+* [Contratto GUC `app.*`](/guide/contratto-guc-app) — il contratto completo dei sei parametri
+* [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — quadro generale
 * [Parametri Personalizzati GUC](/postgresql/parametri-personalizzati-(GUC)) — semantica session-scoped vs transaction-scoped
 
 ---
 
 ## Ottimizzazione connessioni database in produzione
 
-> Questa sezione spiega come funzionano le connessioni tra Django e PostgreSQL,
-> cosa succede quando ci sono molti operatori collegati, e come preparare il sistema
-> per la produzione. Il linguaggio e volutamente semplice e operativo.
+> Questa sezione spiega come si comportano le connessioni tra Django e PostgreSQL, cosa cambia quando gli operatori collegati crescono, e quando vale la pena intervenire. Il linguaggio e volutamente semplice e operativo.
 
-### Come funziona oggi (sviluppo)
+### Come funziona oggi
 
-Ogni volta che un operatore fa una qualsiasi azione nell'interfaccia (aprire una lista,
-salvare un form, cercare un soggetto), il browser invia una richiesta HTTP al backend Django.
-Per ogni richiesta, Django:
+A ogni azione nell'interfaccia — aprire una lista, salvare un form, cercare un soggetto — il browser invia una richiesta al backend, e Django apre una connessione verso PostgreSQL, imposta i parametri di sessione per identificare l'operatore, esegue le query, li azzera e chiude la connessione.
 
-1. **Apre una nuova connessione** a PostgreSQL
-2. Imposta le variabili GUC (`app.jwt_user`, `app.current_user_id`) per identificare l'operatore
-3. Esegue le query necessarie
-4. Resetta le variabili GUC
-5. **Chiude la connessione**
+E il comportamento determinato da `CONN_MAX_AGE = 0`, il valore di default. In sviluppo va benissimo; in produzione con molti operatori attivi diventa uno spreco, perche aprire e chiudere una connessione TCP ha un costo: handshake di rete, autenticazione, memoria sul server DB.
 
-Questo comportamento e determinato dal parametro Django `CONN_MAX_AGE = 0` (valore di default).
-In sviluppo funziona perfettamente, ma in produzione con molti operatori attivi diventa
-uno spreco: aprire e chiudere una connessione TCP ha un costo (handshake di rete,
-autenticazione PostgreSQL, allocazione memoria sul server DB).
+### Primo passo: riusare le connessioni
 
-### Primo passo: riutilizzo connessioni (`CONN_MAX_AGE`)
+`CONN_MAX_AGE` dice a Django di **non chiudere** la connessione a fine richiesta, ma di tenerla aperta per le successive. Passare da 0 a 600 secondi significa che cento richieste in dieci minuti non producono piu cento connessioni: ne bastano poche, riutilizzate.
 
-Il parametro `CONN_MAX_AGE` dice a Django: "dopo aver finito con questa richiesta,
-**non chiudere** la connessione — tienila aperta per le prossime richieste".
+**Perche e sicuro**: i parametri di sessione vengono azzerati a fine richiesta (vedi [Propagazione identita utente al database](#propagazione-identita-utente-al-database-guc-app)), quindi quando la connessione passa a un altro operatore non porta con se l'identita del precedente. La difesa e stata progettata da subito per questo scenario.
 
-```python
-# settings.py
-DATABASES = {
-    'default': {
-        ...
-        'CONN_MAX_AGE': 600,  # 10 minuti
-    }
-}
-```
+**Limiti**: ogni worker del server applicativo tiene aperta la sua connessione, quindi quattro worker fanno al massimo quattro connessioni permanenti verso PostgreSQL. Per una squadra di 5-15 operatori e piu che sufficiente.
 
-**Cosa cambia in pratica:**
+### Secondo passo: un pool di connessioni (pgbouncer)
 
-* Con `CONN_MAX_AGE = 0`: 100 richieste = 100 connessioni aperte e chiuse
-* Con `CONN_MAX_AGE = 600`: 100 richieste in 10 minuti = poche connessioni riutilizzate
-
-**Perche e sicuro nel nostro caso:** il middleware `JwtAuditMiddleware` gia resetta le GUC
-a fine richiesta (vedi sezione precedente). Questo significa che quando la stessa connessione
-viene riutilizzata da un altro operatore, le variabili dell'operatore precedente sono gia
-state cancellate. Il codice era stato scritto fin dall'inizio per supportare questo scenario.
-
-**Limiti:** ogni processo (worker) Gunicorn tiene aperta la sua connessione. Con 4 worker
-= massimo 4 connessioni permanenti verso PostgreSQL. Per un team di 5-15 operatori
-e piu che sufficiente.
-
-**Quando non basta piu:** quando il numero di worker Gunicorn cresce (perche servono
-piu operatori simultanei), le connessioni permanenti verso PostgreSQL aumentano in modo
-proporzionale. A quel punto serve un **pool di connessioni dedicato**.
-
-### Secondo passo: pgbouncer (pool di connessioni)
-
-pgbouncer e un software leggero che si posiziona **tra Django e PostgreSQL** e gestisce
-un pool condiviso di connessioni. Invece di avere ogni worker con la sua connessione
-diretta, tutti i worker condividono un numero limitato di connessioni reali.
+Quando i worker crescono, le connessioni permanenti crescono con loro, e a quel punto serve un pool: un software leggero che si posiziona **tra Django e PostgreSQL** e distribuisce un numero limitato di connessioni reali fra tutti i worker.
 
 ```text
 Senza pgbouncer:
@@ -945,53 +760,81 @@ Con pgbouncer (transaction mode):
   Worker 4 ─┘
 ```
 
-**Come funziona (transaction mode):**
+In modalita *transaction* la connessione viene assegnata per la durata di una transazione e poi rimessa nel pool, quindi PostgreSQL vede poche connessioni anche con molti worker e molti operatori collegati. PostgreSQL dedica un processo a ogni connessione: meno connessioni significa meno memoria e meno CPU sul server DB.
 
-1. Un worker chiede una connessione a pgbouncer
-2. pgbouncer gli assegna una connessione dal pool
-3. Il worker esegue la sua transazione (query, INSERT, UPDATE)
-4. Appena la transazione finisce, pgbouncer **rimette la connessione nel pool**
-5. Un altro worker puo usare la stessa connessione
+**Regola importante**: con pgbouncer davanti, `CONN_MAX_AGE` va **riportato a 0**. Se Django tiene la connessione aperta, occupa uno slot del pool anche quando non sta facendo nulla, e il pool perde il suo vantaggio.
 
-Il vantaggio e che PostgreSQL vede solo poche connessioni (es. 10), anche se ci sono
-50 worker o 100 operatori collegati. PostgreSQL gestisce ogni connessione con un processo
-dedicato, quindi meno connessioni = meno memoria e CPU sul server DB.
+| Scenario                    | `CONN_MAX_AGE` | Perche                                          |
+| --------------------------- | -------------- | ----------------------------------------------- |
+| Django → PostgreSQL diretto | 600            | Evita l'overhead di apertura e chiusura         |
+| Django → pgbouncer          | 0              | Lascia che sia il pool a gestire le connessioni |
 
-**Regola importante:** quando si usa pgbouncer, `CONN_MAX_AGE` va **riportato a 0**.
-Il motivo e semplice: se Django tiene la connessione aperta (`CONN_MAX_AGE > 0`),
-sta occupando uno slot nel pool di pgbouncer anche quando non sta facendo nulla.
-Questo vanifica il vantaggio del pool. Con `CONN_MAX_AGE = 0`, Django rilascia
-la connessione subito e pgbouncer la ricicla per altri worker.
-
-```text
-Scenario                    │ CONN_MAX_AGE │ Perche
-────────────────────────────┼──────────────┼──────────────────────────
-Django → PostgreSQL diretto │ 600          │ Evita overhead apertura/chiusura
-Django → pgbouncer          │ 0            │ Lascia pgbouncer gestire il pool
-```
-
-**Perche e sicuro nel nostro caso:** il reset delle GUC nel middleware funziona in entrambi
-gli scenari. La difesa e stata progettata fin dall'inizio proprio per supportare sia
-connessioni dirette che connessioni pooled.
+L'azzeramento dei parametri di sessione funziona in entrambi gli scenari: la difesa vale sia su connessioni dirette sia su connessioni riciclate dal pool. Con pgbouncer attivo basta cambiare host e porta del database nelle variabili d'ambiente e riportare `CONN_MAX_AGE` a 0.
 
 ### Quando serve pgbouncer?
 
-Non serve subito. Ecco una guida orientativa:
+Non serve subito. Indicativamente:
 
-| Situazione | Soluzione |
-| --- | --- |
-| 1-15 operatori, 2-4 worker Gunicorn | `CONN_MAX_AGE = 600` e sufficiente |
-| 15-50 operatori, 8+ worker Gunicorn | Valutare pgbouncer |
-| 50+ operatori o microservizi multipli | pgbouncer e raccomandato |
+| Situazione                           | Soluzione                          |
+| ------------------------------------ | ---------------------------------- |
+| 1-15 operatori, 2-4 worker           | `CONN_MAX_AGE = 600` e sufficiente |
+| 15-50 operatori, 8+ worker           | Valutare pgbouncer                 |
+| 50+ operatori, o piu servizi insieme | pgbouncer e raccomandato           |
 
-Il segnale che serve pgbouncer e quando PostgreSQL mostra molte connessioni aperte
-(`SELECT count(*) FROM pg_stat_activity`) rispetto al lavoro effettivo, o quando
-i tempi di connessione diventano visibili nelle metriche.
+Il segnale che serve e vedere PostgreSQL con molte connessioni aperte rispetto al lavoro effettivo — lo si legge dalle viste di `pg_stat_activity` — oppure tempi di connessione che diventano visibili nelle metriche.
 
-### Configurazione tipica pgbouncer (riferimento)
+### Il listener LISTEN/NOTIFY non passa dal pool
 
-Questa e una configurazione di riferimento per quando si decidera di adottare pgbouncer.
-Non va applicata adesso — serve come base quando il momento arrivera.
+Il `CambioRepartoListener` (vedi [Cambio reparto](#cambio-reparto)) usa una connessione psycopg3 **dedicata e persistente**, perche LISTEN richiede una connessione stabile che non viene mai rilasciata. In produzione con pgbouncer va configurato per connettersi **direttamente** a PostgreSQL, bypassando il pool: in modalita *transaction* il pool riassegnerebbe la connessione e il listener smetterebbe di ascoltare.
+
+---
+
+## Best practice
+
+* Usa `risorse_umane` solo per descrivere **persone interne** (dipendenti, consulenti, collaboratori). I referenti esterni vanno su `contatti`.
+* Per il rientro di un ex-dipendente, **riattiva il record esistente** — non crearne uno nuovo.
+* Per sospendere un utente, metti la sua veste a `ruolo_applicativo = 'DISABILITATO'` (oppure `attivo = false`): la sync di `is_active` segue automaticamente.
+* Per disattivare una risorsa che ha ancora una veste attiva, ricorda l'ordine: **veste prima, risorsa dopo** — il guard sulla risorsa rifiuta l'ordine inverso.
+* Per riattivare: **risorsa prima, veste dopo**.
+* Al cambio reparto la cache viene invalidata automaticamente — non serve intervento manuale.
+* Mantieni una policy chiara su `attivo` e periodi di validita: la scadenza overnight lavora ogni notte, ma la disattivazione esplicita e sempre preferibile per cessazioni programmate.
+* Per il primo accesso, usa sempre il flusso di **invito**: l'admin non deve comunicare password a voce o via messaggio.
+* Il **reinvio invito** invalida automaticamente il token precedente — non serve annullare manualmente.
+* Il reset password e' **self-service**: l'operatore lo fa da solo, l'admin non deve intervenire.
+* Per la configurazione email (account SMTP, template, personalizzazioni): vedi [Guida Gestione Mail](/guide/gestione-mail).
+
+---
+
+## Area tecnica — esempi
+
+Questa parte raccoglie gli esempi operativi: cosa serve per invocare un comando, cosa aspettarsi da una notifica, come si configura un pezzo di infrastruttura. La documentazione dei singoli oggetti — firme, corpi, commenti — non sta qui: sta nelle schede sotto `/dbzero/...`, linkate nel corpo della guida.
+
+### La notifica di cambio reparto
+
+Quando `unita_organizzativa_id` cambia, il trigger emette sul canale `cambio_reparto` un payload di questa forma:
+
+```json
+{"risorsa_umana_id": 42, "old_uo_id": 1, "new_uo_id": 3, "auth_user_id": 7}
+```
+
+### Allineamento manuale di `is_active`
+
+Il controllo gira ogni notte, ma lo si puo far girare a mano — utile dopo un import massivo, o per verificare una configurazione sospetta prima che sia il job a intervenire:
+
+```bash
+# Esecuzione diretta
+python manage.py sync_auth_user_active
+
+# Solo report, senza modifiche
+python manage.py sync_auth_user_active --dry-run
+
+# In cron, in alternativa al job schedulato
+0 6 * * * /path/to/manage.py sync_auth_user_active
+```
+
+### Configurazione di riferimento pgbouncer
+
+Serve se e quando si adotta un pool di connessioni davanti a PostgreSQL (vedi [Ottimizzazione connessioni](#ottimizzazione-connessioni-database-in-produzione)). Non va applicata adesso.
 
 ```ini
 ; /etc/pgbouncer/pgbouncer.ini (esempio)
@@ -1011,34 +854,7 @@ reserve_pool_size = 5
 max_client_conn = 100
 ```
 
-Con pgbouncer attivo, Django si connette a `127.0.0.1:6432` invece che direttamente
-al server PostgreSQL. Basta cambiare `DB_HOST` e `DB_PORT` nelle variabili d'ambiente
-e riportare `CONN_MAX_AGE = 0`.
-
-### Nota sul listener LISTEN/NOTIFY
-
-Il `CambioRepartoListener` (descritto nella sezione cambio reparto) usa una connessione
-psycopg3 **dedicata e persistente** per ascoltare le notifiche PostgreSQL. Questa
-connessione **non deve passare per pgbouncer** in transaction mode, perche LISTEN
-richiede una connessione stabile che non viene mai rilasciata. In produzione con pgbouncer,
-il listener va configurato per connettersi **direttamente** a PostgreSQL, bypassando
-il pool.
-
----
-
-## Best practice
-
-* Usa `risorse_umane` solo per descrivere **persone interne** (dipendenti, consulenti, collaboratori). I referenti esterni vanno su `contatti`.
-* Per il rientro di un ex-dipendente, **riattiva il record esistente** — non crearne uno nuovo.
-* `ruolo_sistema = DISABILITATO` e il modo corretto per sospendere un utente — la sync `is_active` segue automaticamente.
-* Per disattivare una risorsa con ponte attivo, ricorda l'ordine: **ponte prima, risorsa dopo** (framework ATTIVO).
-* Per riattivare: **risorsa prima, ponte dopo**.
-* Al cambio reparto la cache viene invalidata automaticamente — non serve intervento manuale.
-* Mantieni una policy chiara su `attivo` e periodi di validita: la scadenza overnight lavora ogni notte, ma la disattivazione esplicita e sempre preferibile per cessazioni programmate.
-* Per il primo accesso, usa sempre il flusso di **invito**: l'admin non deve comunicare password a voce o via messaggio.
-* Il **reinvio invito** invalida automaticamente il token precedente — non serve annullare manualmente.
-* Il reset password e' **self-service**: l'operatore lo fa da solo, l'admin non deve intervenire.
-* Per la configurazione email (account SMTP, template, personalizzazioni): vedi [Guida Gestione Mail](/guide/gestione-mail).
+Con pgbouncer attivo, Django si connette a `127.0.0.1:6432` invece che direttamente al server PostgreSQL: si cambiano host e porta nelle variabili d'ambiente e si riporta `CONN_MAX_AGE` a 0.
 
 ---
 

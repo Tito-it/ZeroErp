@@ -51,18 +51,18 @@ from functools import lru_cache
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
-from django.urls import URLPattern, URLResolver, get_resolver
 
 from apps.anagrafiche.api.views_ruoli_config import RuoliConfigResolverView
 from apps.core.api.email_views import EmailOutboxSendView
-from apps.core.api.permissions import ZeroERPPermission
+from apps.core.api.permissions import ZeroERPPermission, chiamata_in_scrittura
+from apps.core.api.rotte import classi_view
 
-# I metodi HTTP che la catena tratta come scrittura: derivati da
-# `METHOD_REQUIRES`, che e' la sede della regola — tutto cio' che non e' `view`.
-_METODI_SCRITTURA: frozenset[str] = frozenset(
-    metodo.lower()
-    for metodo, richiesto in ZeroERPPermission.METHOD_REQUIRES.items()
-    if richiesto != "view"
+# I metodi HTTP che una view puo' servire come scrittura. Se lo fa DAVVERO lo
+# decide `chiamata_in_scrittura`, per view: la sede della regola — tutto cio'
+# che non e' `view`, compresa la dichiarazione `<metodo>_accesso` (una POST
+# che e' una lettura non e' una scrittura scoperta).
+_METODI_CANDIDATI: frozenset[str] = frozenset(
+    metodo.lower() for metodo in ZeroERPPermission.METHOD_REQUIRES
 )
 
 
@@ -82,7 +82,7 @@ _METODI_SCRITTURA: frozenset[str] = frozenset(
 #      `email_views.py`). Sei di quelle scrivono senza permesso: con lo skip
 #      attivo sarebbero state un relay di posta per qualunque operatore;
 #    - `RuoliConfigResolverView` (1) → vale lo SKIP, come i lookup soggetti di
-#      cui e' la configurazione (lo consuma `core/components/SoggettoResolver`).
+#      cui e' la configurazione (lo consuma `anagrafiche/components/SoggettoResolver`).
 #    ⭐ A ZERO dal 2026-09-12. Resta qui perche' e' la sede in cui la prossima
 #    finirebbe: una view che dichiara entrambi e' rossa il giorno stesso.
 #    Chiave: `modulo.QualName` della classe.
@@ -140,20 +140,12 @@ def _chiave(cls: type) -> str:
     return base
 
 
-# Scopo: tutte le classi view raggiungibili dall'URLconf, una volta ciascuna.
+# Scopo: tutte le classi view raggiungibili dall'URLconf, una volta ciascuna,
+#        comprese quelle delle rotte montate a condizione (l'assistente AI in
+#        CI e' spento): e' codice che il prodotto serve. Il cammino e' il BB
+#        `apps.core.api.rotte` (estratto il 2026-09-25, regola del 2).
 def _classi_instradate() -> set[type]:
-    def _cammina(patterns: list) -> set[type]:
-        trovate: set[type] = set()
-        for pattern in patterns:
-            if isinstance(pattern, URLResolver):
-                trovate |= _cammina(pattern.url_patterns)
-            elif isinstance(pattern, URLPattern):
-                cls = getattr(pattern.callback, "view_class", None) or getattr(pattern.callback, "cls", None)
-                if cls is not None:
-                    trovate.add(cls)
-        return trovate
-
-    return _cammina(get_resolver().url_patterns)
+    return classi_view(anche_condizionali=True)
 
 
 # Scopo: UNA passata sulle view instradate sotto `ZeroERPPermission`, letta con
@@ -176,8 +168,9 @@ def _scansione() -> dict[str, _Vista]:
                 area_dichiarata = ZeroERPPermission._resolve_area(cls, cache={}) is not None
             scoperte = frozenset(
                 metodo
-                for metodo in _METODI_SCRITTURA
+                for metodo in _METODI_CANDIDATI
                 if getattr(cls, metodo, None) is not None
+                and chiamata_in_scrittura(cls, method=metodo.upper())
                 and getattr(cls, f"{metodo}_permission", None) is None
             )
             vista = _Vista(

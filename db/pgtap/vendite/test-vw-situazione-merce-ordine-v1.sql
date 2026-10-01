@@ -38,8 +38,9 @@
 -- Scopo:
 --  - il 6) e' il ramo che **nessun dato attraversa oggi** e che il perimetro
 --    BE ha chiesto esplicitamente di costruire: su una riga d'ordine le cui
---    partite sono tutte NON_FATTURABILE, `vw_contatore_merce` direbbe
---    «N da fatturare» (fa `tenuti − 0`). Qui deve dire «non si applica».
+--    partite sono tutte NON_FATTURABILE, il vecchio contatore grezzo
+--    (`vw_contatore_merce`, ritirata il 22-09-2026) diceva «N da fatturare»
+--    (faceva `tenuti − 0`). Qui deve dire «non si applica».
 --  - l' 8) presidia la correzione piu' importante rispetto alla richiesta
 --    originale. `GREATEST(0, ordinato − consegnato)` avrebbe dato 0 su questa
 --    fixture, mentre l'ordine deve ancora spedire: il `consegnato` delle
@@ -94,6 +95,14 @@ SELECT plan(17);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
+
+-- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
+-- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+-- l'operatore di fixture non ha azioni, si concede qui.
+DO $az$ BEGIN
+    PERFORM dbops.fn_pgtap_concedi_azione(
+        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
+END $az$;
 
 -- ============================================================
 -- 1-3) Struttura
@@ -214,8 +223,9 @@ SELECT is(
 
 -- ============================================================
 -- B) Tutte le partite NON fatturabili — test 6
---    ⭐ Il ramo che nessun dato attraversa: `vw_contatore_merce` qui direbbe
---    «10 da fatturare» (tenuti − 0) su un conto visione.
+--    ⭐ Il ramo che nessun dato attraversa: il contatore grezzo ritirato
+--    (`vw_contatore_merce`) qui diceva «10 da fatturare» (tenuti − 0) su un
+--    conto visione.
 -- ============================================================
 CREATE TEMP TABLE tmp_b AS SELECT * FROM pg_temp.mk_ordine(10);
 SELECT pg_temp.mk_spedizione((SELECT ordine_id FROM tmp_b), (SELECT ordine_riga_id FROM tmp_b),

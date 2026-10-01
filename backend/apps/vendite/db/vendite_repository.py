@@ -17,8 +17,11 @@ from typing import Any
 
 from django.db import DatabaseError, connection, transaction
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
-    LIST_MAX_LIMIT,
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
     call_jsonb_fn,
     conta_con_perimetro,
     fetch_paged_with_total,
@@ -28,6 +31,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_lateral_primo_motivo,
+    sql_order_clause,
     sql_order_direction,
     sql_tiebreak_direction,
 )
@@ -38,7 +42,10 @@ from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
-from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
+from apps.vendite.db._coda_documento_filtro import (
+    lettura_coda_per_documento,
+    sorgente_per_documento,
+)
 from apps.vendite.db._data_documento_sql import (
     SQL_DATA_DOCUMENTO_CORRENTE,
     costruisci_perimetro_lotti_numerabili,
@@ -83,7 +90,7 @@ logger = logging.getLogger(__name__)
 # identificativo fiscale e stati. Prima ne erano ordinabili 3 su 11, cioe' la
 # lista sarebbe nata con cinque colonne di nucleo rotte.
 # Il tetto delle righe esportabili delle liste del DRAWER LOTTO (documenti del
-# lotto e documenti presi in carico). Il tetto di PAGINA (`LIST_MAX_LIMIT`, 200)
+# lotto e documenti presi in carico). Il tetto di PAGINA (`MAX_LIMIT`)
 # resta dov'e': sono due limiti diversi per due usi diversi, e confonderli
 # significa o una pagina enorme o un file troncato.
 #
@@ -119,10 +126,31 @@ GIORNALE_SORT_COLUMNS: dict[str, str] = {
     "quando": "quando",
 }
 
-# I quattro registri che la vista cuce, nel suo vocabolario. ⚠️ Un ramo nuovo
-# della vista (pratiche, documenti) entra qui con la sua UNION ALL: il filtro
-# `registro` del giornale trasversale lo valida contro questo insieme.
-GIORNALE_REGISTRI: frozenset[str] = frozenset({"EVENT_LOG", "LOTTO_LOG", "TASK_RUN", "FATTURA_LOG"})
+# ⭐ L'ORDINE DI PARTENZA DEL GIORNALE, uno per i TRE lettori: il tempo, dal piu'
+#    recente — lo stesso del preset `giornale_default` di `vendite.giornale`.
+#    Dal 2026-09-27 (brief-db-liste-datatable-grezze §3.1, decisione di Tid) la
+#    Storia della fattura e quella del lotto sono la STESSA lista a catalogo del
+#    giornale trasversale, e una lista non parte in due modi a seconda della
+#    scheda da cui la si apre.
+# ⚠️ Fino a quel giorno la Storia di un'entita' partiva dalla GRAVITA' (Tid,
+#    2026-08-24): «c'e' qualcosa che non va?» e' ora il banner della fattura,
+#    che ha una fonte sua (`get_giornale_errore_vivo`) e non dipende piu'
+#    dall'ordine della pagina. La gravita' resta a un clic sulla colonna.
+# ⭐ La leggono le view (`parse_list_params(default_order=...)`) e
+#    `_giornale_order_clause` qui sotto: un nome solo, o le due sedi del
+#    default divergono al primo ritocco.
+GIORNALE_ORDINE_DEFAULT = "quando"
+
+# ⛔ I REGISTRI che la vista cuce NON stanno piu' qui (2026-09-19, brief-db-
+#    registri-giornale-catalogo): fino a quel giorno `GIORNALE_REGISTRI` era la
+#    seconda delle tre sedi che non si conoscevano (i letterali dei rami
+#    `UNION ALL`, questa costante, l'array del frontend), e un ramo nuovo
+#    entrava nella vista lasciando le altre due indietro senza nessun errore.
+#    La sede e' `config.registri_giornale` (pgTAP `test-giornale-registri-
+#    catalogo-v1` la lega alla vista nei due versi): il filtro `registro` si
+#    valida con `VenditeRepository.registri_giornale_ammessi()`, il frontend
+#    legge la tendina dal lookup generico. Il quinto registro = un `UNION ALL`
+#    + una riga di CSV, e qui non cambia niente.
 # Le tre gravita' normalizzate della vista. ⚠️ `NULL` non e' una quarta: e' il
 # segnale di «un vincolo si e' allargato e la mappa e' rimasta indietro», e
 # viaggia INSIEME a `ERROR` (pesa come un ERROR, vedi `rango_gravita`).
@@ -135,9 +163,14 @@ GIORNALE_GRAVITA: tuple[str, ...] = ("ERROR", "WARN", "INFO")
 #        a video somiglia a un ordinamento giusto. Cosi' si prova senza DB.
 # ⚠️ Non concatena mai `NULLS ...` a mano: la direzione la compone
 #    `sql_order_direction`, che i NULL li porta gia' con se' (BB di casa).
+# ⚠️ Una colonna fuori whitelist ricade sul default (`GIORNALE_ORDINE_DEFAULT`):
+#    qui e' l'ultima rete, non il cancello — i service la rifiutano PRIMA con un
+#    400 (`_valida_ordinamento`), perche' un ordine diverso da quello chiesto
+#    non solleva niente.
 def _giornale_order_clause(sort_by: str | None, sort_dir: str | None) -> str:
     direzione = sql_order_direction(sort_dir, default_desc=True)
-    if GIORNALE_SORT_COLUMNS.get(sort_by or "", "rango") == "rango":
+    colonna = GIORNALE_SORT_COLUMNS.get(sort_by or "") or GIORNALE_SORT_COLUMNS[GIORNALE_ORDINE_DEFAULT]
+    if colonna == "rango":
         # ⚠️ Dentro la stessa gravita' ordina il TEMPO, sempre dal piu' recente,
         #    e NON segue il verso scelto: «i piu' gravi, e fra quelli i piu'
         #    recenti» resta la lettura utile anche guardando dal meno grave.
@@ -159,6 +192,9 @@ LOTTO_FATTURE_SORT_COLUMNS: dict[str, str] = {
     "totale_doc": "f.totale_doc",
     "totale_a_pagare": "f.totale_a_pagare",
 }
+# Le colonne DATA di `LOTTO_FATTURE_SORT_COLUMNS`: senza direzione indicata
+# partono DESC (regola Tid 2026-09-02, `colonne_desc` di `sql_order_clause`).
+LOTTO_FATTURE_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data"})
 
 # Ordinamenti ammessi sui GRUPPI di un lotto — i documenti che il lotto ha
 # preso in carico, con l'esito di ciascuno (brief-db-esito-gruppo-lotto §6).
@@ -241,11 +277,31 @@ DASH_APERTO_FASI: tuple[str, ...] = (
 # questo valore non esiste).
 TIPO_GRUPPO_ONERI = "ONERI_COMMESSA"
 
-# Minimo di caratteri della ricerca libera (Policy-ricerca-e-paginazione).
-# Vive QUI e non nel service perche' il repository lo applica anche quando la
-# chiamata arriva dall'export, che non passa dalla validazione della view: una
-# sola sede, mai un 3 scritto in due posti che poi divergono.
-SEARCH_MIN_LEN = 3
+# Colonne su cui la ricerca libera della lista GRUPPI (D-6) SA cercare; quali
+# cerca davvero, per questo operatore, lo dice il catalogo a ogni ricerca
+# (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §2).
+# Sono cinque perche' l'operatore fa due domande diverse — «dammi tutto di
+# questo cliente» e «dov'e' finito ORD0005174» — e la seconda non si risponde
+# con un filtro strutturato.
+# ⭐ 2026-09-24 (passo 7 del brief): la lista cercava senza che il catalogo lo
+#    dichiarasse (§7-bis); il seed del team DB ha acceso le cinque colonne e la
+#    ricerca e' passata dal BB. ⛔ Ritirati nello stesso giro
+#    `DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS` (l'elenco cablato) e
+#    `SEARCH_MIN_LEN` (un 3 scritto qui accanto a quello del BB, cioe' la
+#    seconda sede che il suo stesso commento diceva di non volere): la soglia e'
+#    quella del BB, che vale anche per l'export perche' sta nel repository.
+# ⚠️ Costo dichiarato, non scoperto dopo: quattro di queste hanno un indice
+#    trigram a monte (ragione sociale, id fiscale, codice BA, codice commessa),
+#    `riferimento` NO — e' un `COALESCE` il cui primo ramo si risolve per riga
+#    (`vendite.fn_get_sorgente_documento_ref`, una tabella), quindi va valutato
+#    per ogni gruppo del perimetro PRIMA di poter filtrare. Resta dentro perche'
+#    e' la domanda che l'operatore fa davvero; se un mese pieno non reggesse, il
+#    rimedio NON e' togliere il campo ma ancorare la ricerca alla sorgente del
+#    documento (DL-2 del brief, aperto).
+_RICERCA_DASH_COMPETENZA_GRUPPI = RicercaFull(
+    "vendite.dash_competenza_gruppi",
+    ("riferimento", "cliente_display", "commessa_codice", "ba_codice_fatturazione", "id_fiscale"),
+)
 
 # Vocabolario dell'esito di esecuzione dentro un lotto — specchio Python del
 # CHECK `chk_lotti_gruppi_stato_esecuzione` (e del gemello sulle fatture del
@@ -606,8 +662,16 @@ class VenditeRepository:
                 (SELECT count(*)
                    FROM vendite.fatturazione_lotti_esiti e_c
                   WHERE e_c.lotto_id = fl.id
-                    AND e_c.stato_esecuzione = '{STATO_ESECUZIONE_COMPLETED}') AS n_esiti_completati
-    """
+                    AND e_c.stato_esecuzione = '{STATO_ESECUZIONE_COMPLETED}') AS n_esiti_completati,
+                -- ⭐ La PK dell'emittente (2026-09-27, brief-db-liste-datatable-
+                -- grezze): il lotto porta il SOGGETTO-RUOLO, ma le liste aperte
+                -- dal suo drawer (i documenti di una fattura del lotto) passano
+                -- il cancello di perimetro con `emittente_fiscale_id`, la PK.
+                -- Due id diversi, non intercambiabili
+                -- (feedback_emittente_pk_vs_soggetto_ruolo). ⚠️ In coda, come
+                -- impone il mapper posizionale.
+                ef_pk.id AS emittente_fiscale_id
+    """  # noqa: S608 — costanti di modulo STATO_ESECUZIONE_* letterali
 
     _LOTTO_JOINS = f"""
             LEFT JOIN config.utilities u
@@ -626,6 +690,12 @@ class VenditeRepository:
                 ON sr_ef.id = fl.emittente_soggetto_ruolo_id
             LEFT JOIN anagrafiche.soggetti s_ef
                 ON s_ef.id = sr_ef.soggetto_id
+            -- La PK dall'emittente soggetto-ruolo: `soggetto_ruolo_id` e' UNIQUE
+            -- su `emittenti_fiscali` (uq_emittenti_fiscali_ruolo), quindi la
+            -- JOIN non moltiplica la riga e il conteggio della lista resta
+            -- quello della tabella madre.
+            LEFT JOIN anagrafiche.emittenti_fiscali ef_pk
+                ON ef_pk.soggetto_ruolo_id = fl.emittente_soggetto_ruolo_id
     """
 
     # Scopo: mappa una riga (ordine di _LOTTO_SELECT_COLS) in LottoListRow.
@@ -683,6 +753,7 @@ class VenditeRepository:
             # (giri precedenti al 07-09): il client non mostra niente.
             "n_presi_in_carico": int(row[25]),
             "n_esiti_completati": int(row[26]),
+            "emittente_fiscale_id": None if row[27] is None else int(row[27]),
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
@@ -975,7 +1046,7 @@ class VenditeRepository:
             {self._LOTTO_JOINS}
             {where_clause}
             GROUP BY fl.stato_lotto
-        """
+        """  # noqa: S608 — WHERE da _lotti_where (clausole letterali con %s), JOIN da costante _LOTTO_JOINS, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             rows = cursor.fetchall()
@@ -999,17 +1070,16 @@ class VenditeRepository:
         order_dir: str | None = None,
         limit: int,
         offset: int,
-        max_limit: int = LIST_MAX_LIMIT,
+        max_limit: int = MAX_LIMIT,
         solo_recuperi_mese: bool = False,
         includi_annullati: bool = False,
     ) -> tuple[list[LottoListRow], int]:
-        # Il cap standard (LIST_MAX_LIMIT, fonte unica in core/db/_helpers)
+        # Il cap standard (MAX_LIMIT, fonte unica in core/db/_helpers)
         # protegge la lista a video; l'export lo alza esplicitamente (fino a
         # EXPORT_MAX_ROWS + 1, per poter *rilevare* il superamento del limite
         # invece di troncare in silenzio). Resta un cap passato dal chiamante:
         # nessun percorso senza tetto.
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         where_clause, params = self._lotti_where(
             competenza_mese=competenza_mese,
@@ -1030,7 +1100,7 @@ class VenditeRepository:
             FROM vendite.fatturazione_lotti fl
             {joins}
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da _lotti_where (clausole letterali con %s), JOIN da costante _LOTTO_JOINS, valori come parametri
 
         # ORDER BY server-side (corretto su TUTTE le pagine, non solo su quella
         # visibile): colonna dalla whitelist + direzione, con tiebreak stabile
@@ -1039,8 +1109,11 @@ class VenditeRepository:
         # prima), cioe' esattamente il comportamento precedente: la lista non
         # cambia aspetto finche' l'utente non tocca un'intestazione.
         sort_col = self.LOTTI_SORT_COLUMNS.get(order_by or "")
+        # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): il ramo storico la
+        #    ignora, e un `order_dir` estraneo passava muto (il service non la
+        #    valida). Il BB la rifiuta anche quando poi non la si usa.
+        direction = sql_order_direction(order_dir)
         if sort_col is not None:
-            direction = sql_order_direction(order_dir)
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = f"ORDER BY {sort_col} {direction}, fl.id {tiebreak_dir}"
         else:
@@ -1053,7 +1126,7 @@ class VenditeRepository:
             {where_clause}
             {order_clause}
             LIMIT %s OFFSET %s
-        """
+        """  # noqa: S608 — WHERE da _lotti_where (clausole letterali con %s), JOIN da costante _LOTTO_JOINS, valori come parametri; ORDER BY da whitelist LOTTI_SORT_COLUMNS + sql_order_direction
 
         with connection.cursor() as cursor:
             cursor.execute(count_sql, params)
@@ -1160,7 +1233,7 @@ class VenditeRepository:
                   ) d(data_doc) ON TRUE
                  WHERE {perimetro}
                  ORDER BY d.data_doc NULLS LAST, fl.id
-                """.format(
+                """.format(  # noqa: S608 — costante SQL_DATA_DOCUMENTO_CORRENTE + perimetro da costruisci_perimetro_lotti_numerabili, valori come parametri
                     data_corrente=SQL_DATA_DOCUMENTO_CORRENTE.format(lotto="fl.id"),
                     perimetro=perimetro,
                 ),
@@ -1190,7 +1263,7 @@ class VenditeRepository:
             FROM vendite.fatturazione_lotti fl
             {self._LOTTO_JOINS}
             {where_clause}
-        """
+        """  # noqa: S608 — colonne/JOIN da costanti di classe, WHERE letterale + BB scope emittente, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
@@ -1331,7 +1404,7 @@ class VenditeRepository:
                 d.emittente_ragione_sociale
             FROM vendite.vw_dash_aperto_documenti d
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
 
         # ORDER BY server-side (corretto su TUTTE le pagine, non solo quella
         # visibile): colonna dalla whitelist DASH_APERTO_SORT_COLUMNS + direzione
@@ -1698,7 +1771,7 @@ class VenditeRepository:
             LEFT JOIN catalogo.articoli art
                 ON art.id = a.articolo_id
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
 
         # Una sola valutazione della vista (CTE materializzata + COUNT(*) OVER)
         # con CLAMP dell'offset all'ultima pagina reale, come le altre liste dei
@@ -1858,7 +1931,7 @@ class VenditeRepository:
                 a.emittente_ragione_sociale
             FROM vendite.vw_dash_competenza_attivita a
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
 
         rows, total_count = self._query_paged_view(
             select_sql=select_sql,
@@ -1967,7 +2040,7 @@ class VenditeRepository:
             {where_clause}
             GROUP BY a.commessa_id, a.commessa_codice, a.cliente_display,
                      a.emittente_ragione_sociale
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
         # ⚠️ `emittente_ragione_sociale` entra nel GROUP BY, e non e' indolore:
         #    se una commessa avesse attivita' di emittenti DIVERSI si
         #    spezzerebbe in piu' righe: i totali resterebbero giusti e il
@@ -2083,34 +2156,6 @@ class VenditeRepository:
         "ultimo_lotto_codice": "ultimo_lotto_codice",
     }
 
-    # Scopo: colonne su cui lavora la ricerca libera della lista gruppi (D-6).
-    #        Sono cinque perche' l'operatore fa due domande diverse — «dammi
-    #        tutto di questo cliente» e «dov'e' finito ORD0005174» — e la seconda
-    #        non si risponde con un filtro strutturato.
-    # ⚠️ Costo dichiarato, non scoperto dopo: quattro di queste hanno un indice
-    #        trigram a monte (ragione sociale, id fiscale, codice BA, codice
-    #        commessa), `riferimento` NO — e' un `COALESCE` il cui primo ramo si
-    #        risolve per riga, quindi va valutato per ogni gruppo del perimetro
-    #        PRIMA di poter filtrare. Resta dentro perche' e' la domanda che
-    #        l'operatore fa davvero; se un mese pieno non reggesse, il rimedio
-    #        NON e' togliere il campo ma ancorare la ricerca alla sorgente del
-    #        documento (DL-2 del brief).
-    # ⚠️ Questo commento diceva «`COALESCE(doc.codice, …)` su una LEFT JOIN
-    #        LATERAL che unisce sei rami»: dal 2026-09-01 e' FALSO — la vista
-    #        risolve con `vendite.fn_get_sorgente_documento_ref`, che legge UNA
-    #        tabella (brief-db-riferimento-gruppi-lateral-costosa). Il costo per
-    #        riga resta, la sua natura no: chi progettasse intorno alle «sei
-    #        scansioni» ottimizzerebbe una cosa che non c'e' piu'. ⛔ E cio' che
-    #        NON cambia e' la conclusione: la ricerca resta **non indicizzata**,
-    #        quindi il DL-2 resta aperto.
-    DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS = (
-        "g.cliente_display",
-        "g.id_fiscale",
-        "g.ba_codice_fatturazione",
-        "g.commessa_codice",
-        "g.riferimento",
-    )
-
     # Scopo: Elenco dei GRUPPI FATTURABILI di un mese/stadio — l'unita' su cui
     #        l'operatore decide nella card «Da emettere»: un documento sorgente
     #        (PRV-0012, CTR-0007…) oppure gli oneri di una commessa, che
@@ -2133,9 +2178,9 @@ class VenditeRepository:
     #        e' l'assenza del primo. Rappresentarla con un id sentinella (0, -1)
     #        avrebbe messo un valore finto in un campo che porta chiavi vere —
     #        e prima o poi qualcuno lo confronta con una PK.
-    # ⚠️ La ricerca sotto i 3 caratteri viene IGNORATA (non svuota la lista):
-    #        policy ricerca e paginazione. Il gate vero e' nel service, qui c'e'
-    #        la rete perche' il repository e' chiamato anche dall'export.
+    # ⚠️ La ricerca sotto la soglia del BB viene IGNORATA (non svuota la
+    #        lista): policy ricerca e paginazione. La soglia sta nel BB, cioe'
+    #        nel repository, perche' il repository e' chiamato anche dall'export.
     # Scopo: il perimetro BASE — competenza e stadio, e nient'altro.
     # ⭐ Separato dagli altri filtri perche' i due insiemi rispondono a domande
     #    diverse: la lista e i totali seguono TUTTI i filtri, le tre facet solo
@@ -2213,18 +2258,23 @@ class VenditeRepository:
             conditions.append("%s = ANY(g.registri_ids)")
             params.append(registro_id)
             colonne.append("g.registri_ids")
-        termine = (search or "").strip()
-        if len(termine) >= SEARCH_MIN_LEN:
-            # OR fra le cinque colonne, in UN solo gruppo parentesizzato: senza
-            # le parentesi l'OR si legherebbe all'ultima AND della catena e il
-            # filtro mese/stadio smetterebbe di valere per i rami successivi —
-            # una ricerca che allarga il perimetro invece di restringerlo.
-            rami = " OR ".join(
-                f"{col} ILIKE %s" for col in VenditeRepository.DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS
-            )
-            conditions.append(f"({rami})")
-            params.extend([f"%{termine}%"] * len(VenditeRepository.DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS))
-            colonne.extend(VenditeRepository.DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS)
+        # ── Ricerca libera (BB) ───────────────────────────────────────────
+        # Il BB scrive l'OR in UN solo gruppo parentesizzato: senza le
+        # parentesi l'OR si legherebbe all'ultima AND della catena e il filtro
+        # mese/stadio smetterebbe di valere per i rami successivi — una
+        # ricerca che allarga il perimetro invece di restringerlo.
+        # ⭐ Le COLONNE da portarsi dietro solo se il BB ha davvero aggiunto
+        #    una condizione (termine sopra soglia): «solo quando l'operatore ha
+        #    digitato qualcosa», come prima. Si dichiarano TUTTE quelle che il
+        #    repository sa cercare, non le sole accese: il catalogo si legge
+        #    dentro il BB, e un superinsieme non puo' mai mancarne una. Sono le
+        #    stesse cinque che la CTE `base` si portava dietro prima del BB.
+        prima = len(conditions)
+        add_ricerca_full_condition(
+            conditions, params, search, _RICERCA_DASH_COMPETENZA_GRUPPI, alias="g",
+        )
+        if len(conditions) > prima:
+            colonne.extend(_RICERCA_DASH_COMPETENZA_GRUPPI.espressioni("g").values())
         return conditions, params, colonne
 
     # Scopo: il predicato COMPLETO (base + filtri), com'era prima della
@@ -2385,7 +2435,7 @@ class VenditeRepository:
                 g.ultimo_lotto_pre_fiscale
             FROM vendite.vw_dash_competenza_gruppi g
             {where_clause}
-            """,
+            """,  # noqa: S608 — WHERE da _where_gruppi (clausole letterali + BB add_ricerca_full_condition), valori come parametri
             order_by=order_clause,
             params=params,
             limit=limit,
@@ -2751,7 +2801,7 @@ class VenditeRepository:
                                          x.registro_id ASC NULLS LAST),
                              '[]'::jsonb) FROM registri x),
                     (SELECT COUNT(*)::int FROM base)
-                """,
+                """,  # noqa: S608 — colonne da costante _ACCESSORI_COLONNE_AGGREGATI + _where_gruppi_filtri, WHERE letterali, valori come parametri
                 # ⛔ L'ordine segue i SEGNAPOSTO NEL TESTO, non la logica: la
                 # CTE `filtrato` sta prima di `riepilogo`, quindi i parametri
                 # dei filtri precedono la costante degli oneri. Invertirli non
@@ -2868,7 +2918,7 @@ class VenditeRepository:
                 e.n_commesse_fallite
             FROM vendite.vw_dash_competenza_errori e
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
 
         # ORDER BY server-side (stessa convenzione delle altre liste dash):
         # colonna dalla whitelist + direzione, NULLS LAST esplicito (le colonne
@@ -3111,7 +3161,7 @@ class VenditeRepository:
                 d.emittente_ragione_sociale
             FROM vendite.vw_dash_backlog_documenti d
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
 
         # ORDER BY server-side (corretto su TUTTE le pagine): colonna dalla
         # whitelist DASH_BACKLOG_SORT_COLUMNS + direzione ASC/DESC, tiebreak
@@ -3350,7 +3400,7 @@ class VenditeRepository:
                 {select_cols}
             FROM vendite.vw_fondi_fattura_da_decidere v
             {where_clause}
-        """
+        """  # noqa: S608 — colonne da costante _FONDI_DA_DECIDERE_COLONNE, WHERE letterale + BB scope emittente, valori come parametri
 
         # ORDER BY server-side (corretto su TUTTE le pagine). Default: le fatture
         # piu' recenti prima — l'elenco non e' una coda per anzianita', e' la
@@ -3448,20 +3498,21 @@ class VenditeRepository:
         max_rows: int | None = None,
     ) -> tuple[list[LottoFattureRow], int]:
         # ⚠️ DUE TETTI, e la differenza e' voluta: la PAGINA si ferma a
-        # `LIST_MAX_LIMIT` (200), l'EXPORT salta la paginazione e arriva al tetto
+        # `MAX_LIMIT`, l'EXPORT salta la paginazione e arriva al tetto
         # dell'esportazione. Senza `max_rows` un file di 3.000 righe uscirebbe
         # troncato a 200 senza dirlo — e un export troncato in silenzio somiglia
         # in tutto a un export completo.
-        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
-        safe_limit = max(1, min(int(max_rows or limit), tetto))
-        safe_offset = max(0, int(offset))
+        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else MAX_LIMIT
+        safe_limit, safe_offset = limiti_pagina(max_rows or limit, offset, tetto=tetto)
 
-        # Ordinamento: solo valori dalla whitelist entrano nella query.
-        sort_col = LOTTO_FATTURE_SORT_COLUMNS.get(sort_by, "fllf.fattura_id")
-        safe_dir = "DESC" if sort_dir.lower() == "desc" else "ASC"
-        order_clause = f"{sort_col} {safe_dir}"
-        if sort_by != "fattura_id":
-            order_clause += ", fllf.fattura_id ASC"
+        # Ordinamento: solo valori dalla whitelist entrano nella query — BB
+        # `sql_order_clause` (NULL come valore minimo; tiebreak `fattura_id`
+        # allineato alla direzione, e omesso quando e' gia' la colonna scelta).
+        order_clause = sql_order_clause(
+            sort_by, sort_dir,
+            colonne=LOTTO_FATTURE_SORT_COLUMNS, default="fllf.fattura_id",
+            colonne_desc=LOTTO_FATTURE_SORT_COLONNE_DATA, tiebreak="fllf.fattura_id",
+        )
 
         # WHERE obbligatorio su lotto_id; filtri opzionali aggiunti dinamicamente.
         conditions: list[str] = ["fllf.lotto_id = %s"]
@@ -3558,7 +3609,7 @@ class VenditeRepository:
             FROM vendite.fatturazione_lotti_fatture fllf
             {joins}
             {where_clause}
-        """
+        """  # noqa: S608 — JOIN letterali, WHERE letterale + BB scope emittente, valori come parametri
 
         data_sql = f"""
             SELECT
@@ -3631,7 +3682,7 @@ class VenditeRepository:
             {where_clause}
             ORDER BY {order_clause}
             LIMIT %s OFFSET %s
-        """
+        """  # noqa: S608 — JOIN/LATERAL letterali, ORDER BY da whitelist LOTTO_FATTURE_SORT_COLUMNS, valori come parametri
 
         with connection.cursor() as cursor:
             cursor.execute(count_sql, params)
@@ -3768,10 +3819,9 @@ class VenditeRepository:
         max_rows: int | None = None,
     ) -> tuple[list[LottoGruppoRow], int]:
         # Due tetti, come sulle fatture del lotto: la PAGINA si ferma a
-        # `LIST_MAX_LIMIT`, l'EXPORT salta la paginazione e arriva al suo.
-        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
-        safe_limit = max(1, min(int(max_rows or limit), tetto))
-        safe_offset = max(0, int(offset))
+        # `MAX_LIMIT`, l'EXPORT salta la paginazione e arriva al suo.
+        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else MAX_LIMIT
+        safe_limit, safe_offset = limiti_pagina(max_rows or limit, offset, tetto=tetto)
 
         lotto_conditions: list[str] = ["l.id = %s"]
         params: list[Any] = [lotto_id]
@@ -3792,10 +3842,15 @@ class VenditeRepository:
 
         # Ordinamento: solo valori dalla whitelist entrano nella query.
         sort_col = LOTTO_GRUPPI_SORT_COLUMNS.get(sort_by or "")
-        safe_dir = "DESC" if str(sort_dir).lower() == "desc" else "ASC"
         order_params: list[Any] = []
         if sort_col is not None:
-            order_clause = f"ORDER BY {sort_col} {safe_dir} NULLS LAST, gruppo_key ASC"
+            # Direzione dal BB `sql_order_direction` (NULL come valore minimo).
+            # ⚠️ `gruppo_key ASC` resta fisso: e' il criterio di raggruppamento
+            #    della tabella «Regola d'uso» del catalogo BB, non uno spareggio
+            #    tecnico da allineare.
+            order_clause = (
+                f"ORDER BY {sort_col} {sql_order_direction(sort_dir)}, gruppo_key ASC"
+            )
         else:
             # ⭐ DEFAULT: i falliti in cima. Non e' l'ordine alfabetico dello
             #    stato — che metterebbe `ERRORE` dopo `COMPLETED` — ma la
@@ -4165,6 +4220,15 @@ class VenditeRepository:
                 sdf.codice_interno           AS stato_codice_interno,
                 sdf.descrizione              AS stato_descrizione,
                 f.emittente_soggetto_ruolo_id,
+                -- ⭐ La PK dell'emittente VIVA, dalla colonna di testata (NOT
+                -- NULL) e non dallo snapshot: la chiede il cancello di
+                -- perimetro delle liste nel drawer (i documenti generati), e
+                -- in BOZZA lo snapshot puo' mancare — lo pretende solo
+                -- l'uscita dalla bozza. Dallo snapshot, su una bozza il dialog
+                -- dei documenti restava in attesa per sempre. Nessun effetto
+                -- sulle righe: `soggetto_ruolo_id` e' UNIQUE su
+                -- `emittenti_fiscali` (`uq_emittenti_fiscali_ruolo`).
+                ef_pk.id                     AS emittente_fiscale_pk,
                 -- ===== Intestazione EMITTENTE: dallo snapshot congelato =====
                 -- Chiavi piatte derivate dal jsonb per compatibilita' col
                 -- contratto esistente (drawer FE + template PDF v1). NULL se
@@ -4251,6 +4315,8 @@ class VenditeRepository:
                 ON sdf.id = f.stato_doc_fiscale_id
               LEFT JOIN config.valute val
                 ON val.id = f.valuta_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef_pk
+                ON ef_pk.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
              WHERE f.id = %s
         """
         # Parametri nell'ordine dei %s: subquery indirizzo fatturazione
@@ -4280,77 +4346,6 @@ class VenditeRepository:
             row["emittente_snapshot"] = jsonb_out(row.get("emittente_snapshot"))
             row["cliente_snapshot"] = jsonb_out(row.get("cliente_snapshot"))
         return row
-
-    # Scopo: Righe fattura con decodifiche articolo/uom/iva per il context
-    #        builder. Espone i nomi di CONTRATTO condivisi con ordini/DDT/
-    #        preventivi (`quantita`, `importo_riga`), non i nomi di colonna DB:
-    #        i template documento sono uniformi fra tipi documento.
-    #        `importo_riga` è mantenuto dal DB — trigger `a20_importo` su
-    #        `vendite.fatture_righe` (brief-fix-importi-riga-fattura-zero §4.1,
-    #        requisito D1): fino al 2026-07-28 nessuno lo scriveva e ogni
-    #        fattura valeva 0,00.
-    #        `imposta_riga`/`totale_riga` NON esistono più (§4.3, D1-ter):
-    #        l'imposta di riga non è un concetto del modello italiano e l'IVA è
-    #        governata per aggregato in `fatture_riepiloghi_iva`.
-    #        FONTE: `vendite.vw_fattura_righe_esposte`, NON la tabella. È la
-    #        rappresentazione unica del documento (regola R17): PDF, XML SDI e
-    #        portale devono mostrare lo stesso dettaglio, altrimenti due uscite
-    #        dello stesso documento raccontano cose diverse. La vista risolve i
-    #        kit — una riga `KIT_PADRE` con il totale, sotto i soli componenti
-    #        con `kit_esposto_in_fattura`; sulle fatture senza kit è un
-    #        passante. È l'unica regola che il DB non può presidiare da solo:
-    #        il presidio è questa query.
-    #        `tipo_riga` (NORMALE/KIT_PADRE/KIT_COMPONENTE) e `livello` (0/1)
-    #        servono al template per rendere la gerarchia; `id` è NULL sulle
-    #        righe KIT_PADRE, che non esistono in tabella.
-    #        Ordine per `ordinamento` e non per `riga_nr`: è la colonna che
-    #        tiene padre e componenti nella sequenza giusta.
-    def list_fattura_righe(self, fattura_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT
-                r.fatture_righe_id  AS id,
-                r.fattura_id,
-                r.tipo_riga,
-                r.livello,
-                r.riga_nr,
-                r.articolo_id,
-                a.codice            AS articolo_codice,
-                a.descrizione       AS articolo_descrizione,
-                r.descrizione,
-                r.uom_id,
-                um.codice           AS uom_codice,
-                r.qta               AS quantita,
-                r.prezzo_unitario,
-                r.sconto_percentuale,
-                r.iva_id,
-                iva.codice          AS iva_codice,
-                iva.descrizione     AS iva_descrizione,
-                iva.aliquota_iva    AS iva_aliquota,
-                r.iva_natura,
-                r.imponibile        AS importo_riga,
-                -- Legame riga↔riga della nota di credito: «una nota di credito
-                -- si legge accanto alla fattura RIGA PER RIGA» (§12.6). Il
-                -- puntatore sta su `fatture_righe`, che la vista di esposizione
-                -- non proietta: si prende dalla tabella, con la decodifica
-                -- MINIMA che serve a nominare la gemella (numero + riga_nr).
-                fr.riga_rettificata_id,
-                orig.riga_nr        AS riga_rettificata_nr,
-                forig.numero        AS riga_rettificata_fattura_numero,
-                forig.id            AS riga_rettificata_fattura_id
-              FROM vendite.vw_fattura_righe_esposte r
-              LEFT JOIN catalogo.articoli a      ON a.id  = r.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_id
-              LEFT JOIN config.iva iva           ON iva.id = r.iva_id
-              LEFT JOIN vendite.fatture_righe fr ON fr.id = r.fatture_righe_id
-              LEFT JOIN vendite.fatture_righe orig
-                     ON orig.id = fr.riga_rettificata_id
-              LEFT JOIN vendite.fatture forig    ON forig.id = orig.fattura_id
-             WHERE r.fattura_id = %s
-             ORDER BY r.ordinamento, r.livello, r.riga_nr
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [int(fattura_id)])
-            return rows_to_list(cursor)
 
     # Scopo: Il legame DOCUMENTO-a-documento della nota di credito
     #        (`vendite.fatture_rettifiche`), letto nei DUE versi: da una nota di
@@ -4395,7 +4390,7 @@ class VenditeRepository:
               LEFT JOIN config.nature_doc_fiscale ndf ON ndf.id = f.natura_doc_id
              WHERE fr.{col_filtro} = %s
              ORDER BY f.anno, f.numero
-        """
+        """  # noqa: S608 — colonne da dict costante _RETTIFICHE_VERSI, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [verso, int(fattura_id)])
             return rows_to_list(cursor)
@@ -4503,7 +4498,7 @@ class VenditeRepository:
         # solo dati sporchi da refactor (stesso pattern del repo note).
         if not re.fullmatch(r"[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?", target_table):
             raise ValueError(f"target_table non valida: {target_table!r}")
-        sql = f"SELECT uid::text FROM {target_table} WHERE id = %s"
+        sql = f"SELECT uid::text FROM {target_table} WHERE id = %s"  # noqa: S608 — tabella da config.sorgenti (regclass seedata) validata da regex identificatore, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [doc_id])
             row = cursor.fetchone()
@@ -4754,36 +4749,27 @@ class VenditeRepository:
     #        QUELLA spedizione ha toccato. Il secondo serve al pannello
     #        uniformato — dal DDT si vede sia lo stato della riga d'ordine sia
     #        quello della spedizione (rilievo in-app di Tid del 2026-08-19).
-    # ⚠️ Il legame DDT->riga d'ordine si legge da `ordini_righe_fulfillment`,
-    #        che e' la STESSA fonte da cui `vw_partite_merce` deriva la propria
-    #        `origine` (CTE `orig`). NON si passa dalla partita: sarebbe la
-    #        vista piu' costosa del sistema ri-valutata per rispondere a un
-    #        filtro — lo stesso errore gia' corretto su `_list_coda_su_partite`.
+    # ⭐ DAL 2026-09-21 LA CHIUSURA STA NELLA FUNZIONE (giro 2 di
+    #        brief-db-partita-merce-per-documento, D3): si legge
+    #        `fn_situazione_merce_ordine(p_ddt_ids, p_ordine_ids)` col solo
+    #        array del documento riempito, e il `WHERE` sul documento non c'e'
+    #        piu' — per DDT la funzione incorpora l'`EXISTS` sul fulfillment che
+    #        prima stava qui (stessa semantica: la situazione INTERA delle righe
+    #        d'ordine che quel DDT ha toccato, pgTAP test 5-6). Il legame
+    #        DDT->riga d'ordine resta `ordini_righe_fulfillment`, la stessa
+    #        fonte dell'`origine` della partita. «NON si passa dalla partita»
+    #        resta vero nel senso che conta: la funzione la chiede per ORDINE
+    #        (la chiusura), non ri-valuta la vista intera per un filtro.
+    #        La scelta dell'array e' il BB `sorgente_per_documento`.
     def list_situazione_merce_ordine(
         self,
         *,
         ordine_id: int | None = None,
         ddt_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        if (ordine_id is None) == (ddt_id is None):
-            raise ValueError(
-                "list_situazione_merce_ordine: passare ESATTAMENTE uno fra "
-                "ordine_id e ddt_id"
-            )
-        if ordine_id is not None:
-            condizione, param = "s.ordine_id = %s", int(ordine_id)
-        else:
-            assert ddt_id is not None
-            condizione, param = (
-                """EXISTS (
-                     SELECT 1
-                       FROM vendite.ordini_righe_fulfillment f
-                       JOIN vendite.ddt_righe dr_f ON dr_f.id = f.ddt_riga_id
-                      WHERE f.ordine_riga_id = s.ordine_riga_id
-                        AND dr_f.ddt_id = %s
-                   )""",
-                int(ddt_id),
-            )
+        sorgente, params = sorgente_per_documento(
+            "vendite.fn_situazione_merce_ordine", ddt_id=ddt_id, ordine_id=ordine_id
+        )
         sql = f"""
             SELECT
                 s.ordine_riga_id,
@@ -4819,39 +4805,41 @@ class VenditeRepository:
                 s.data_consegna_richiesta_cliente,
                 s.data_consegna_confermata,
                 s.giorni_ritardo
-              FROM vendite.vw_situazione_merce_ordine s
+              FROM {sorgente} s
               JOIN vendite.ordini_righe orr      ON orr.id = s.ordine_riga_id
               LEFT JOIN catalogo.articoli a      ON a.id   = s.articolo_id
               LEFT JOIN catalogo.unita_misura um ON um.id  = orr.uom_operativa_id
-             WHERE {condizione}
              ORDER BY s.ordine_id, s.riga_nr, s.ordine_riga_id
-        """
+        """  # noqa: S608 — `sorgente` e' il BB, con i parametri a parte
         with connection.cursor() as cursor:
-            cursor.execute(sql, [param])
+            cursor.execute(sql, params)
             return rows_to_list(cursor)
 
     # Scopo: Le PARTITE DI MERCE (livello 2 del pannello), da
-    #        `vw_partite_merce`. Grana = riga di DDT. Due filtri, una lettura
+    #        `fn_partite_merce`. Grana = riga di DDT. Due filtri, una lettura
     #        (richiesta BE-1): per DDT = «la situazione di QUESTA spedizione»,
     #        per ordine = tutte le spedizioni di quell'ordine.
-    # ⚠️ Esattamente uno dei due parametri va valorizzato: il chiamante e' il
-    #        service, e un filtro assente restituirebbe TUTTE le partite del
-    #        database — errore di programmazione, non input utente.
+    # ⭐ DAL 2026-09-21 LA CHIUSURA STA NELLA FUNZIONE (giro 1 di
+    #        brief-db-partita-merce-per-documento): la vista `vw_partite_merce`
+    #        e' la sola proiezione `fn(NULL, NULL)` — «tutte» — e qui si legge la
+    #        funzione col solo array del documento riempito, senza `WHERE` sul
+    #        documento: la funzione filtra gia' l'uscita sulla stessa colonna
+    #        proiettata (`ddt_id`, o `ordine_id` = riga minima). Per documento
+    #        non e' piu' «la vista piu' costosa del sistema»: la chiusura e'
+    #        O(righe del documento) sotto RLS, non O(tutte).
+    # ⚠️ Esattamente uno dei due parametri va valorizzato (guard nel BB
+    #        `sorgente_per_documento`): il chiamante e' il service, e un filtro
+    #        assente restituirebbe TUTTE le partite del database — errore di
+    #        programmazione, non input utente.
     def list_partite_merce(
         self,
         *,
         ddt_id: int | None = None,
         ordine_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        if (ddt_id is None) == (ordine_id is None):
-            raise ValueError(
-                "list_partite_merce: passare ESATTAMENTE uno fra ddt_id e ordine_id"
-            )
-        if ddt_id is not None:
-            condizione, param = "p.ddt_id = %s", int(ddt_id)
-        else:
-            assert ordine_id is not None
-            condizione, param = "p.ordine_id = %s", int(ordine_id)
+        sorgente, params = sorgente_per_documento(
+            "vendite.fn_partite_merce", ddt_id=ddt_id, ordine_id=ordine_id
+        )
         sql = f"""
             SELECT
                 p.ddt_riga_id,
@@ -4882,17 +4870,16 @@ class VenditeRepository:
                 p.stato,
                 p.e_riconsegna,
                 p.sospetto_duplicato_ordine
-              FROM vendite.vw_partite_merce p
+              FROM {sorgente} p
               JOIN vendite.ddt d                 ON d.id   = p.ddt_id
               JOIN vendite.ddt_righe dr          ON dr.id  = p.ddt_riga_id
               LEFT JOIN vendite.ordini o         ON o.id   = p.ordine_id
               LEFT JOIN catalogo.articoli a      ON a.id   = p.articolo_id
               LEFT JOIN catalogo.unita_misura um ON um.id  = dr.uom_operativa_id
-             WHERE {condizione}
              ORDER BY d.data, p.ddt_id, dr.riga_nr, p.ddt_riga_id
-        """
+        """  # noqa: S608 — `sorgente` e' il BB, con i parametri a parte
         with connection.cursor() as cursor:
-            cursor.execute(sql, [param])
+            cursor.execute(sql, params)
             return rows_to_list(cursor)
 
     # Scopo: Le due code di lavoro del documento (D-4: un round-trip solo, cosi'
@@ -4911,6 +4898,18 @@ class VenditeRepository:
     #        - lato ordine il legame e' il FULFILLMENT della riga di DDT resa,
     #          che e' la STESSA fonte da cui la partita deriva la sua origine
     #          (CTE `orig`): un criterio solo, non un terzo criterio.
+    # ⭐ DUE FORME, UNA PER CODA, E A SCEGLIERE NON E' QUESTO REPOSITORY (dal
+    #        2026-09-21, giro 2 del brief partita; sede unica dal 22-09, regola
+    #        del 2, ok Tid): la coda ACCREDITI ha la chiusura dentro
+    #        `fn_resi_da_accreditare` e si legge dal `FROM` senza predicato —
+    #        la funzione segue per ordine lo stesso `EXISTS` sul fulfillment
+    #        (§9.3.2: stesse righe, pgTAP test 7); la coda RI-CONSEGNE non
+    #        legge la partita, resta sulla vista e sul predicato. Quale coda ha
+    #        quale forma lo dice `FUNZIONE_PER_CODA` in `_coda_documento_filtro`,
+    #        e il BB `lettura_coda_per_documento` la applica — lo stesso che usa
+    #        `ResiRepository._list_coda`: le due schermate contano le STESSE
+    #        righe perche' leggono con la stessa forma, non perche' due wrapper
+    #        sono stati tenuti allineati a mano.
     def _list_coda_su_partite(
         self,
         vista: str,
@@ -4919,32 +4918,31 @@ class VenditeRepository:
         ddt_id: int | None,
         ordine_id: int | None,
     ) -> list[dict[str, Any]]:
-        # `vista` e `colonne` arrivano SOLO dai due wrapper qui sotto
-        # (letterali statici, nessun input utente).
-        #
-        # ⭐ Il predicato vive nel BB `_coda_documento_filtro` (estratto il
-        # 2026-08-18, regola del 2, ok Tid): lo consuma anche `ResiRepository`
-        # per filtrare le code di lavoro sul documento da cui si arriva (FE-2).
-        # Le due schermate devono contare le STESSE righe.
-        condizione, params = filtro_coda_per_documento(
-            ddt_id=ddt_id, ordine_id=ordine_id
-        )
-        # Guard di programmazione: i due wrapper passano sempre esattamente uno
-        # dei due id. Senza documento questa lettura non ha significato — non e'
-        # «tutte le code», e` un chiamante rotto.
-        assert condizione is not None
+        # `vista` e `colonne` arrivano SOLO dai due wrapper qui sotto (letterali
+        # statici, nessun input utente).
+        # Guard di programmazione: i wrapper passano sempre uno dei due id.
+        # Senza documento questa lettura non ha significato — non e' «tutte le
+        # code», e' un chiamante rotto (il BB, senza documento, risponderebbe
+        # la vista intera: qui quella risposta non e' una domanda).
+        if ddt_id is None and ordine_id is None:
+            raise ValueError(
+                "_list_coda_su_partite: serve un documento (ddt_id o ordine_id)"
+            )
+        lettura = lettura_coda_per_documento(vista, ddt_id=ddt_id, ordine_id=ordine_id)
+        where = f"WHERE {lettura.condizione}" if lettura.condizione is not None else ""
         sql = f"""
             SELECT {colonne}
-              FROM {vista} v
-             WHERE {condizione}
+              FROM {lettura.sorgente} v
+             {where}
              ORDER BY v.reso_id, v.resi_riga_id
-        """
+        """  # noqa: S608 — sorgente/predicato dal BB, parametri a parte
         with connection.cursor() as cursor:
-            cursor.execute(sql, params)
+            cursor.execute(sql, [*lettura.params_sorgente, *lettura.params_condizione])
             return rows_to_list(cursor)
 
     # Scopo: Coda «da accreditare» del documento. `etichetta` DOVUTA|FACOLTATIVA
-    #        arriva dalla vista: il pannello mostra la STESSA parola della coda.
+    #        arriva dalla coda (la funzione con la chiusura, per `FUNZIONE_PER_CODA`):
+    #        il pannello mostra la STESSA parola della coda di lavoro.
     def list_situazione_merce_accrediti(
         self, *, ddt_id: int | None = None, ordine_id: int | None = None
     ) -> list[dict[str, Any]]:
@@ -5021,8 +5019,8 @@ class VenditeRepository:
         limit: int = 50,
         offset: int = 0,
         escludi_ritirate: bool = True,
-        sort_by: str = "gravita",
-        sort_dir: str = "desc",
+        sort_by: str | None = None,
+        sort_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int, int, int]:
         return self._list_giornale(
             perimetro_sql="entity_type = %s AND entity_id = %s",
@@ -5059,8 +5057,8 @@ class VenditeRepository:
         offset: int = 0,
         escludi_ritirate: bool = True,
         escludi_info: bool = True,
-        sort_by: str = "gravita",
-        sort_dir: str = "desc",
+        sort_by: str | None = None,
+        sort_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int, int, int]:
         return self._list_giornale(
             perimetro_sql="""
@@ -5078,6 +5076,61 @@ class VenditeRepository:
             sort_by=sort_by,
             sort_dir=sort_dir,
         )
+
+    # Scopo: L'ERRORE VIVO di un'entita' — la riga ERROR piu' recente e non
+    #        ritirata, o `None`. E' la fonte del banner in testa al drawer della
+    #        fattura («chi apre una fattura in errore la apre per quello»).
+    #
+    # ⭐ UNA FONTE SUA, e non la prima riga della pagina della Storia (2026-09-27,
+    #    brief-db-liste-datatable-grezze §3.1): da quando la Storia e' la lista a
+    #    catalogo `vendite.giornale`, l'ordine della pagina lo decide il preset
+    #    (`quando desc`) o l'operatore — e un banner che legge «il primo ERROR
+    #    della pagina» dice «nessun errore» appena l'errore scivola a pagina 2,
+    #    o appena qualcuno ordina per `quando` crescente. Nessun errore, un
+    #    documento in errore che a video sembra sano.
+    # ⭐ Lo STESSO corpo dei tre lettori (`_list_giornale`, una pagina da una
+    #    riga), non una quarta query: la riga esce con la stessa decodifica
+    #    (`etichetta_key`) e la stessa regola sulle ritirate della Storia — il
+    #    banner e la scheda parlano dello stesso fatto con lo stesso nome.
+    # ⚠️ `gravita = 'ERROR'` esatto, e la gravita' NULL resta FUORI: e' il
+    #    segnale di un vincolo allargato (la vista lo dichiara), non un errore
+    #    del documento — la Storia la mostra col trattino, il banner rosso
+    #    direbbe una cosa che non e'. Stessa regola del banner di prima.
+    # Perimetro: sola lettura. ⚠️ Nessun cancello qui: la vista e'
+    #    `security_invoker`, e il chiamante (`get_fattura_dettaglio`) la chiede
+    #    solo DOPO la testata, che e' il cancello.
+    def get_giornale_errore_vivo(
+        self, *, entity_type: str, entity_id: int,
+    ) -> dict[str, Any] | None:
+        righe, _vive, _ritirate, _info = self._list_giornale(
+            perimetro_sql="entity_type = %s AND entity_id = %s AND gravita = 'ERROR'",
+            perimetro_params=[entity_type, int(entity_id)],
+            limit=1,
+            offset=0,
+            escludi_ritirate=True,
+            escludi_info=False,
+            sort_by="quando",
+            sort_dir="desc",
+            con_conteggi=False,
+            # Il banner non mostra di chi e' la riga: e' la fattura aperta.
+            con_entita_display=False,
+        )
+        return righe[0] if righe else None
+
+    # Scopo: i registri che il filtro `registro` del giornale trasversale puo'
+    #        nominare — i `codice_interno` di `config.registri_giornale`, TUTTI,
+    #        ritirati compresi (brief-db-registri-giornale-catalogo §8.4): le
+    #        righe vecchie del diario si leggono anche a registro ritirato, e un
+    #        deep-link scritto ieri non deve diventare un 400 domani.
+    # ⭐ Letto dal catalogo a ogni richiesta che porta il filtro, e non pinnato
+    #    in una costante con un presidio: una costante e' una sede in piu' (con
+    #    un test che la tiene allineata), il catalogo e' LA sede. Costo: una
+    #    `SELECT` da quattro righe, solo quando `registro` e' presente.
+    # ⚠️ Nessun cast a `attivo`: la tabella non ce l'ha (D3 del brief).
+    def registri_giornale_ammessi(self) -> frozenset[str]:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT codice_interno FROM config.registri_giornale")
+            return frozenset(row[0] for row in cursor.fetchall())
 
     # Scopo: il GIORNALE TRASVERSALE — «cosa e' andato storto, su tutto,
     #        nell'ultimo periodo»: la Storia di tutte le entita' insieme,
@@ -5099,7 +5152,11 @@ class VenditeRepository:
     #   `gravita`    sottoinsieme di `GIORNALE_GRAVITA`. ⚠️ Con `ERROR` si
     #                INCLUDE il `NULL` — la riga che dichiara un difetto (stessa
     #                regola del pannello lotto e del `rango_gravita`).
-    #   `registri`   sottoinsieme di `GIORNALE_REGISTRI`, `None` = tutti.
+    #   `registri`   `codice_interno` di `config.registri_giornale`, `None` =
+    #                tutti. ⛔ Li valida il SERVICE contro il catalogo
+    #                (`registri_giornale_ammessi`): qui viaggiano nei
+    #                params e basta, e un valore ignoto darebbe zero righe
+    #                — e' la ragione per cui il cancello sta a monte.
     #   `entity_type` codice di `config.tipi_entita`, esatto.
     #   `data_da`/`data_a` su `quando`, `[da, a + 1 giorno)`: il floor lo mette
     #                il frontend (e' consultazione, non coda di lavoro).
@@ -5128,14 +5185,12 @@ class VenditeRepository:
         solo_vive: bool = True,
         limit: int = 50,
         offset: int = 0,
-        sort_by: str = "quando",
-        sort_dir: str = "desc",
+        sort_by: str | None = None,
+        sort_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int, int, int]:
         gravita_valide = [g for g in gravita if g in GIORNALE_GRAVITA]
-        registri_validi = (
-            [r for r in registri if r in GIORNALE_REGISTRI] if registri is not None else None
-        )
-        righe, vive, ritirate, info_vive = self._list_giornale(
+        registri_validi = list(registri) if registri is not None else None
+        return self._list_giornale(
             perimetro_sql="""
                 (gravita = ANY(%s::text[]) OR (gravita IS NULL AND 'ERROR' = ANY(%s::text[])))
                 AND (%s::text[] IS NULL OR registro = ANY(%s::text[]))
@@ -5159,17 +5214,20 @@ class VenditeRepository:
             sort_by=sort_by,
             sort_dir=sort_dir,
         )
-        self._aggiungi_entita_display(righe)
-        return righe, vive, ritirate, info_vive
 
     # Scopo: `entita_display` sulle righe di UNA pagina — il codice del lotto,
     #        «serie/numero» del documento — risolto qui nel backend (memoria:
     #        liste API → display via JOIN, mai lookup client-side).
-    # ⭐ UNA query sulla pagina e NON un JOIN dentro `_list_giornale`: la' il
-    #    JOIN starebbe PRIMA di `LIMIT`, cioe' su tutto il perimetro (che con
-    #    un intervallo largo sono migliaia di righe per una pagina di 25), e
-    #    peserebbe anche sui due lettori per entita', che il display non lo
-    #    chiedono. Qui costa una lettura per chiave sulla pagina.
+    # ⭐ UNA query sulla pagina e NON un JOIN dentro la query di `_list_giornale`:
+    #    la' il JOIN starebbe PRIMA di `LIMIT`, cioe' su tutto il perimetro (che
+    #    con un intervallo largo sono migliaia di righe per una pagina di 25).
+    #    Qui costa una lettura per chiave sulla pagina.
+    # ⭐ La chiama `_list_giornale`, cioe' TUTTI E TRE i lettori (2026-09-27):
+    #    la Storia della fattura e del lotto sono la stessa lista a catalogo
+    #    del trasversale (`vendite.giornale`), e la colonna «Riferimento» legge
+    #    questo campo. Fino a quel giorno la chiamava il solo trasversale, e
+    #    sulle due Storie la colonna sarebbe uscita VUOTA senza nessun errore —
+    #    un campo dichiarato dal catalogo e trasportato da un lettore su tre.
     # ⚠️ I due JOIN attraversano tabelle in RLS: fuori scope darebbero `NULL` —
     #    ma fuori scope la riga del giornale NON c'e' (la vista e'
     #    `security_invoker`), quindi un `NULL` qui e' un'entita' cancellata, non
@@ -5235,15 +5293,16 @@ class VenditeRepository:
         offset: int,
         escludi_ritirate: bool,
         escludi_info: bool,
-        sort_by: str,
-        sort_dir: str,
+        sort_by: str | None,
+        sort_dir: str | None,
+        con_conteggi: bool = True,
+        con_entita_display: bool = True,
     ) -> tuple[list[dict[str, Any]], int, int, int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
-        # ⭐ L'ORDINE DI DEFAULT E' LA GRAVITA' (decisione di Tid, 2026-08-24
-        #    dopo la validazione in-app): la prima domanda davanti a un
-        #    documento e' «c'e' qualcosa che non va?», non «cosa e' successo per
-        #    primo». La cronologia resta a un clic, sulla colonna «quando».
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        # ⭐ L'ORDINE DI DEFAULT E' IL TEMPO, dal piu' recente
+        #    (`GIORNALE_ORDINE_DEFAULT`, dal 2026-09-27: e' il preset della lista
+        #    a catalogo, la stessa per i tre lettori). La gravita' resta a un
+        #    clic, sulla sua colonna.
         # ⛔ E l'ordinamento sta QUI e non nel client: la lista e' PAGINATA lato
         #    server, quindi ordinare a valle ordinerebbe la sola pagina
         #    visibile — «il piu' grave» diventerebbe «il piu' grave fra i primi
@@ -5286,11 +5345,15 @@ class VenditeRepository:
                 ), conteggi AS (
                     SELECT COUNT(*) FILTER (WHERE NOT ritirata) AS vive,
                            COUNT(*) FILTER (WHERE ritirata)     AS ritirate,
-                           -- ⚠️ Le INFO si contano SOLO fra le righe vive: una
-                           -- riga INFO gia' ritirata sarebbe contata due volte,
-                           -- e i due numeri a video non tornerebbero col totale.
+                           -- ⚠️ Le INFO si contano fra le righe che il filtro
+                           -- sulle ritirate LASCIA PASSARE (solo le vive, o anche
+                           -- le ritirate quando le si chiede): sono quelle che il
+                           -- filtro «info» toglie davvero. Contate sulle sole vive
+                           -- con le ritirate a video, il totale mostrato
+                           -- supererebbe le righe di tante INFO ritirate — e il
+                           -- paginatore avrebbe pagine finali vuote.
                            COUNT(*) FILTER (
-                               WHERE NOT ritirata AND rango_gravita = 1
+                               WHERE rango_gravita = 1 AND (NOT %s OR NOT ritirata)
                            ) AS info_vive
                       FROM tutte
                 )
@@ -5331,6 +5394,7 @@ class VenditeRepository:
                 """.format(perimetro_sql=perimetro_sql, order_clause=order_clause),  # noqa: S608
                 [
                     *perimetro_params,
+                    bool(escludi_ritirate),  # conteggio delle INFO (CTE)
                     bool(escludi_ritirate), bool(escludi_info),
                     safe_limit, safe_offset,
                 ],
@@ -5341,11 +5405,17 @@ class VenditeRepository:
         # caso «tutte ritirate» — o, sul lotto, «tutte INFO»: la CTE li avrebbe,
         # ma i filtri non lasciano passare nulla da cui prenderli. Si ripiega su
         # una domanda secca, con lo STESSO perimetro.
+        # ⚠️ `con_conteggi=False` salta il ripiego: e' il lettore che vuole UNA
+        #    riga e non un elenco (`get_giornale_errore_vivo`), dove i numeri non
+        #    li legge nessuno — e il caso senza righe e' quello di gran lunga piu'
+        #    frequente, cioe' una seconda query a ogni apertura per niente.
         if rows:
             vive, ritirate, info_vive = int(rows[0][12]), int(rows[0][13]), int(rows[0][14])
+        elif not con_conteggi:
+            vive, ritirate, info_vive = 0, 0, 0
         else:
             vive, ritirate, info_vive = self._conta_giornale(
-                perimetro_sql, perimetro_params,
+                perimetro_sql, perimetro_params, escludi_ritirate=escludi_ritirate,
             )
         risultato: list[dict[str, Any]] = [
             {
@@ -5386,27 +5456,33 @@ class VenditeRepository:
             }
             for row in rows
         ]
+        # ⚠️ Una query in piu' (le etichette «di chi e' la riga»): la salta chi
+        #    non la mostra (`get_giornale_errore_vivo`, a ogni dettaglio fattura).
+        if con_entita_display:
+            self._aggiungi_entita_display(risultato)
         return risultato, vive, ritirate, info_vive
 
     # Scopo: i conteggi del giornale quando la pagina non ha righe da cui
     #        leggerli — vedi il ripiego qui sopra. Stesso perimetro, per
     #        costruzione: riceve la stessa coppia SQL/parametri.
     def _conta_giornale(
-        self, perimetro_sql: str, perimetro_params: list[Any],
+        self, perimetro_sql: str, perimetro_params: list[Any], *, escludi_ritirate: bool,
     ) -> tuple[int, int, int]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT COUNT(*) FILTER (WHERE NOT COALESCE(disabilitato, false)),
                        COUNT(*) FILTER (WHERE COALESCE(disabilitato, false)),
+                       -- Le INFO come nella CTE di `_list_giornale`: fra le
+                       -- righe che il filtro sulle ritirate lascia passare.
                        COUNT(*) FILTER (
-                           WHERE NOT COALESCE(disabilitato, false)
-                             AND gravita = 'INFO'
+                           WHERE gravita = 'INFO'
+                             AND (NOT %s OR NOT COALESCE(disabilitato, false))
                        )
                   FROM script.vw_giornale_entita
                  WHERE {perimetro_sql}
                 """.format(perimetro_sql=perimetro_sql),  # noqa: S608
-                perimetro_params,
+                [bool(escludi_ritirate), *perimetro_params],
             )
             row = cursor.fetchone()
         if not row:

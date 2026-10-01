@@ -14,8 +14,13 @@ Indice test eseguiti:
 3) LogoutViewTests.test_logout_chiude_sessione
 4) LogoutViewTests.test_logout_token_invalido_idempotente
 5) LogoutViewTests.test_logout_token_scaduto_registra_logout
+5b) LogoutViewTests.test_logout_firma_estranea_non_revoca
+5c) LogoutViewTests.test_logout_token_altrui_non_revoca
+5d) LogoutViewTests.test_logout_access_token_non_revoca
+5e) LogoutViewTests.test_logout_senza_sid_non_revoca
 6) SessioniAttiveListViewTests.test_list_sessioni_success
 7) SessioniAttiveListViewTests.test_list_sessioni_empty
+7b) SessioniAttiveListViewTests.test_list_sessioni_con_ricerca_totale_attive
 8) SessioneRevocaViewTests.test_revoca_success
 9) SessioneRevocaViewTests.test_revoca_sessione_corrente
 10) SessioneRevocaViewTests.test_revoca_sessione_not_found
@@ -24,11 +29,15 @@ Indice test eseguiti:
 12) SessioniRevocaTutteViewTests.test_revoca_tutte_senza_remote
 12b) SessioniRevocaTutteViewTests.test_revoca_tutte_sessione_senza_token
 13) SessionAuditRepositoryTests.test_list_sessioni_attive
+14) SessionAuditRepositoryTests.test_paginata_esclude_la_corrente_nella_sql
+15) SessionAuditRepositoryTests.test_paginata_ordina_sulla_whitelist
+16) SessionAuditRepositoryTests.test_paginata_ordine_fuori_whitelist_ripiega
 """
 
 import json
 from datetime import datetime
 from unittest import TestCase
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
@@ -37,6 +46,9 @@ from apps.core.services.service_errors import ServiceError
 
 _LOGOUT_VIEW = "apps.core.api.logout_view"
 _SESSIONI_VIEW = "apps.core.api.sessioni_view"
+# Il giro sui token vive nel BB `revoca_token` (2026-09-26): i modelli e `jwt`
+# si sostituiscono dove li usa lui, non nella view.
+_REVOCA_TOKEN = "apps.core.services.revoca_token"
 _REPO_PATH = "apps.core.db.session_audit_repository.connection"
 
 
@@ -47,6 +59,7 @@ def _mock_request(user_id: int = 1, auth: dict | None = None) -> MagicMock:
     request.user.id = user_id
     request.user.is_authenticated = True
     request.auth = auth
+    request.query_params = {}
     request._request = MagicMock()
     request._request.META = {
         "REMOTE_ADDR": "127.0.0.1",
@@ -57,139 +70,181 @@ def _mock_request(user_id: int = 1, auth: dict | None = None) -> MagicMock:
 
 # --------------- LogoutView ---------------
 
+# Scopo: un JWT VERO, firmato con la chiave del backend come quelli emessi al
+#        login. ⭐ Nessun mock di `jwt`: la view ora verifica la firma, e un
+#        decode sostituito da un MagicMock proverebbe il mock, non la verifica.
+def _jwt(
+    *, user_id: int = 1, sid: str | None = "sid-abc-123",
+    tipo: str = "refresh", scaduto: bool = False,
+) -> str:
+    import time
+
+    from rest_framework_simplejwt.settings import api_settings
+    from rest_framework_simplejwt.state import token_backend
+
+    adesso = int(time.time())
+    payload = {
+        api_settings.TOKEN_TYPE_CLAIM: tipo,
+        api_settings.USER_ID_CLAIM: user_id,
+        "jti": f"jti-{user_id}-{sid}",
+        "iat": adesso - 7200,
+        "exp": adesso - 3600 if scaduto else adesso + 3600,
+    }
+    if sid is not None:
+        payload["sid"] = sid
+    return token_backend.encode(payload)
+
+
 class LogoutViewTests(TestCase):
 
-    # Scopo: Verifica che POST con refresh token valido → 204 + blacklist + evento LOGOUT con sid.
-    @patch(f"{_LOGOUT_VIEW}.session_audit_service")
-    @patch(f"{_LOGOUT_VIEW}.RefreshToken")
-    @patch(f"{_LOGOUT_VIEW}.jwt")
-    def test_logout_success(self, mock_jwt, MockRefreshToken, mock_audit):
+    @staticmethod
+    def _post(token: str | None, user_id: int = 1):
         from apps.core.api.logout_view import LogoutView
 
-        mock_jwt.decode.return_value = {"sid": "sid-abc-123"}
-        mock_token = MagicMock()
-        MockRefreshToken.return_value = mock_token
+        from apps.core.api.refresh_cookie import REFRESH_COOKIE_NAME
 
-        request = _mock_request()
-        request.data = {"refresh": "valid-refresh-token"}
+        # Il refresh arriva nel cookie HttpOnly (brief sicurezza §2).
+        request = _mock_request(user_id=user_id)
+        request.COOKIES = {} if token is None else {REFRESH_COOKIE_NAME: token}
+        return request, LogoutView().post(request)
 
-        view = LogoutView()
-        response = view.post(request)
+    # Scopo: Il cookie del refresh esce CANCELLATO dalla risposta (stesso path
+    #        con cui e' stato scritto, scadenza nel passato).
+    def _assert_cookie_cancellato(self, response) -> None:
+        from apps.core.api.refresh_cookie import REFRESH_COOKIE_NAME
+
+        cookie = response.cookies[REFRESH_COOKIE_NAME]
+        self.assertEqual(cookie.value, "")
+        self.assertEqual(cookie["path"], "/api/v1/")
+        self.assertEqual(int(cookie["max-age"]), 0)
+
+    # Scopo: refresh valido → 204, revoca della SESSIONE (tutti i token col suo
+    #        sid) ed evento LOGOUT con quel sid.
+    @patch(f"{_LOGOUT_VIEW}.session_audit_service")
+    @patch(f"{_LOGOUT_VIEW}.blocca_token_sessioni")
+    def test_logout_success(self, mock_blocca, mock_audit):
+        request, response = self._post(_jwt(sid="sid-abc-123"))
 
         self.assertEqual(response.status_code, 204)
-        mock_token.blacklist.assert_called_once()
+        self._assert_cookie_cancellato(response)
+        mock_blocca.assert_called_once()
+        user_id, vale_sid = mock_blocca.call_args[0]
+        self.assertEqual(user_id, 1)
+        self.assertTrue(vale_sid("sid-abc-123"))
+        self.assertFalse(vale_sid("sid-di-un-altra-sessione"))
         mock_audit.record_logout.assert_called_once_with(
-            user_id=1,
-            request=request._request,
-            jti="sid-abc-123",
+            user_id=1, request=request._request, jti="sid-abc-123",
         )
 
-    # Scopo: Verifica che POST senza refresh token → 400 E_LOGOUT_NO_TOKEN.
+    # Scopo: POST senza cookie di refresh → 400 E_LOGOUT_NO_TOKEN.
     def test_logout_no_token(self):
-        from apps.core.api.logout_view import LogoutView
-
-        request = _mock_request()
-        request.data = {}
-
-        view = LogoutView()
         with self.assertRaises(ServiceError) as ctx:
-            view.post(request)
-
+            self._post(None)
         self.assertEqual(ctx.exception.code, "E_LOGOUT_NO_TOKEN")
 
-    # Scopo: Verifica che POST con token invalido → 204 idempotente (no 500).
+    # Scopo: la sessione chiusa e' quella del token, per l'utente autenticato.
     @patch(f"{_LOGOUT_VIEW}.session_audit_service")
-    @patch(f"{_LOGOUT_VIEW}.RefreshToken")
-    @patch(f"{_LOGOUT_VIEW}.jwt")
-    def test_logout_token_invalido_idempotente(self, mock_jwt, MockRefreshToken, mock_audit):
-        from rest_framework_simplejwt.exceptions import TokenError
+    @patch(f"{_LOGOUT_VIEW}.blocca_token_sessioni")
+    def test_logout_chiude_sessione(self, mock_blocca, mock_audit):
+        self._post(_jwt(user_id=5, sid="sid-session-xyz"), user_id=5)
 
-        from apps.core.api.logout_view import LogoutView
-
-        # jwt.decode fallisce → sid vuoto → record_logout non chiamato
-        mock_jwt.decode.side_effect = Exception("Malformed token")
-        MockRefreshToken.side_effect = TokenError("Token is invalid or expired")
-
-        request = _mock_request()
-        request.data = {"refresh": "invalid-token-string"}
-
-        view = LogoutView()
-        response = view.post(request)
-
-        self.assertEqual(response.status_code, 204)
-        mock_audit.record_logout.assert_not_called()
-
-    # Scopo: Verifica che POST con token scaduto ma decodificabile → 204 + record_logout con sid.
-    @patch(f"{_LOGOUT_VIEW}.session_audit_service")
-    @patch(f"{_LOGOUT_VIEW}.RefreshToken")
-    @patch(f"{_LOGOUT_VIEW}.jwt")
-    def test_logout_token_scaduto_registra_logout(self, mock_jwt, MockRefreshToken, mock_audit):
-        from rest_framework_simplejwt.exceptions import TokenError
-
-        from apps.core.api.logout_view import LogoutView
-
-        # jwt.decode riesce (senza verifica scadenza) → sid estratto
-        mock_jwt.decode.return_value = {"sid": "sid-expired-456"}
-        # Ma SimpleJWT rifiuta il token → TokenError
-        MockRefreshToken.side_effect = TokenError("Token is expired")
-
-        request = _mock_request()
-        request.data = {"refresh": "expired-refresh-token"}
-
-        view = LogoutView()
-        response = view.post(request)
-
-        self.assertEqual(response.status_code, 204)
-        # record_logout viene chiamato anche con token scaduto
-        mock_audit.record_logout.assert_called_once_with(
-            user_id=1,
-            request=request._request,
-            jti="sid-expired-456",
-        )
-
-    # Scopo: Verifica che dopo logout, record_logout viene chiamato con sid,
-    # garantendo che la CTE escludera' la sessione con ultimo evento LOGOUT.
-    @patch(f"{_LOGOUT_VIEW}.session_audit_service")
-    @patch(f"{_LOGOUT_VIEW}.RefreshToken")
-    @patch(f"{_LOGOUT_VIEW}.jwt")
-    def test_logout_chiude_sessione(self, mock_jwt, MockRefreshToken, mock_audit):
-        from apps.core.api.logout_view import LogoutView
-
-        mock_jwt.decode.return_value = {"sid": "sid-session-xyz"}
-        mock_token = MagicMock()
-        MockRefreshToken.return_value = mock_token
-
-        request = _mock_request(user_id=5)
-        request.data = {"refresh": "refresh-token-xyz"}
-
-        view = LogoutView()
-        view.post(request)
-
-        # Verifica che record_logout e' stato chiamato con sid
+        self.assertEqual(mock_blocca.call_args[0][0], 5)
         call_kwargs = mock_audit.record_logout.call_args[1]
         self.assertEqual(call_kwargs["jti"], "sid-session-xyz")
         self.assertEqual(call_kwargs["user_id"], 5)
+
+    # Scopo: stringa malformata → 204 idempotente, nessuna revoca, nessun evento.
+    @patch(f"{_LOGOUT_VIEW}.session_audit_service")
+    @patch(f"{_LOGOUT_VIEW}.blocca_token_sessioni")
+    def test_logout_token_invalido_idempotente(self, mock_blocca, mock_audit):
+        _request, response = self._post("invalid-token-string")
+
+        self.assertEqual(response.status_code, 204)
+        # Anche senza niente da revocare il browser smette di portarlo.
+        self._assert_cookie_cancellato(response)
+        mock_blocca.assert_not_called()
+        mock_audit.record_logout.assert_not_called()
+
+    # Scopo: refresh SCADUTO ma nostro → la sessione si chiude lo stesso: il
+    #        successore emesso da una rotazione puo' essere ancora vivo.
+    @patch(f"{_LOGOUT_VIEW}.session_audit_service")
+    @patch(f"{_LOGOUT_VIEW}.blocca_token_sessioni")
+    def test_logout_token_scaduto_registra_logout(self, mock_blocca, mock_audit):
+        request, response = self._post(_jwt(sid="sid-expired-456", scaduto=True))
+
+        self.assertEqual(response.status_code, 204)
+        mock_blocca.assert_called_once()
+        mock_audit.record_logout.assert_called_once_with(
+            user_id=1, request=request._request, jti="sid-expired-456",
+        )
+
+    # Scopo: firma non nostra → nessuna revoca. Il sid deciderebbe QUALE
+    #        sessione si chiude: da un token non verificato lo sceglierebbe
+    #        chiunque.
+    @patch(f"{_LOGOUT_VIEW}.session_audit_service")
+    @patch(f"{_LOGOUT_VIEW}.blocca_token_sessioni")
+    def test_logout_firma_estranea_non_revoca(self, mock_blocca, mock_audit):
+        import jwt
+
+        falso = jwt.encode(
+            {"token_type": "refresh", "user_id": 1, "sid": "sid-abc-123"},
+            "una-chiave-che-non-e-la-nostra-lunga-abbastanza-per-hs256", algorithm="HS256",
+        )
+        _request, response = self._post(falso)
+
+        self.assertEqual(response.status_code, 204)
+        mock_blocca.assert_not_called()
+        mock_audit.record_logout.assert_not_called()
+
+    # Scopo: il refresh di UN ALTRO utente → nessuna revoca (guardia anti-scambio).
+    @patch(f"{_LOGOUT_VIEW}.session_audit_service")
+    @patch(f"{_LOGOUT_VIEW}.blocca_token_sessioni")
+    def test_logout_token_altrui_non_revoca(self, mock_blocca, mock_audit):
+        _request, response = self._post(_jwt(user_id=99), user_id=1)
+
+        self.assertEqual(response.status_code, 204)
+        mock_blocca.assert_not_called()
+        mock_audit.record_logout.assert_not_called()
+
+    # Scopo: un ACCESS token al posto del refresh → nessuna revoca.
+    @patch(f"{_LOGOUT_VIEW}.session_audit_service")
+    @patch(f"{_LOGOUT_VIEW}.blocca_token_sessioni")
+    def test_logout_access_token_non_revoca(self, mock_blocca, mock_audit):
+        _request, response = self._post(_jwt(tipo="access"))
+
+        self.assertEqual(response.status_code, 204)
+        mock_blocca.assert_not_called()
+
+    # Scopo: refresh nostro ma SENZA sid → nessuna revoca, nessun evento: non
+    #        c'e' una sessione, e l'autenticazione rifiuta ogni access token
+    #        senza sid (E_JWT_SENZA_SID).
+    @patch(f"{_LOGOUT_VIEW}.session_audit_service")
+    @patch(f"{_LOGOUT_VIEW}.blocca_token_sessioni")
+    def test_logout_senza_sid_non_revoca(self, mock_blocca, mock_audit):
+        _request, response = self._post(_jwt(sid=None))
+
+        self.assertEqual(response.status_code, 204)
+        mock_blocca.assert_not_called()
+        mock_audit.record_logout.assert_not_called()
 
 
 # --------------- SessioniAttiveListView ---------------
 
 class SessioniAttiveListViewTests(TestCase):
 
-    # Scopo: Verifica GET → 200 con lista sessioni (esclusa corrente tramite sid).
+    # Scopo: Verifica GET → 200 con envelope paginato; la sessione corrente la
+    #        esclude la SQL (`escludi_jti`), non la view dopo la pagina.
     @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
     @patch(f"{_SESSIONI_VIEW}.success_response")
     def test_list_sessioni_success(self, mock_resp, MockRepo):
         from apps.core.api.sessioni_view import SessioniAttiveListView
 
         mock_repo = MagicMock()
-        mock_repo.list_sessioni_attive.return_value = [
-            {"jti": "current-sid", "ultimo_evento": "LOGIN", "ip_address": "10.0.0.1",
-             "user_agent": "Firefox", "data_inizio": datetime(2026, 3, 9, 8, 0),
-             "data_ultimo_evento": datetime(2026, 3, 9, 10, 0)},
+        mock_repo.list_sessioni_attive_paginata.return_value = ([
             {"jti": "other-sid", "ultimo_evento": "LOGIN", "ip_address": "10.0.0.2",
              "user_agent": "Chrome", "data_inizio": datetime(2026, 3, 9, 7, 0),
              "data_ultimo_evento": datetime(2026, 3, 9, 9, 0)},
-        ]
+        ], 1)
         MockRepo.return_value = mock_repo
         mock_resp.return_value = MagicMock(status_code=200)
 
@@ -202,8 +257,18 @@ class SessioniAttiveListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         call_args = mock_resp.call_args[0][0]
         self.assertEqual(call_args["count"], 1)
-        self.assertEqual(len(call_args["sessioni"]), 1)
-        self.assertEqual(call_args["sessioni"][0]["jti"], "other-sid")
+        self.assertEqual(call_args["totale_attive"], 1)
+        self.assertEqual(call_args["page"], 1)
+        self.assertEqual(call_args["page_size"], 25)
+        self.assertEqual(call_args["results"][0]["jti"], "other-sid")
+        kwargs = mock_repo.list_sessioni_attive_paginata.call_args.kwargs
+        self.assertEqual(kwargs["escludi_jti"], "current-sid")
+        self.assertIsNone(kwargs["search"])
+        self.assertEqual(kwargs["order_by"], "data_ultimo_evento")
+        # ⚠️ Assente = None: il verso lo decide il repository (DESC sulle date).
+        self.assertIsNone(kwargs["order_dir"])
+        # Senza ricerca il totale delle attive E' il count: nessuna seconda lettura.
+        mock_repo.conta_sessioni_attive.assert_not_called()
 
     # Scopo: Verifica GET con nessuna sessione → 200 con lista vuota.
     @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
@@ -212,7 +277,7 @@ class SessioniAttiveListViewTests(TestCase):
         from apps.core.api.sessioni_view import SessioniAttiveListView
 
         mock_repo = MagicMock()
-        mock_repo.list_sessioni_attive.return_value = []
+        mock_repo.list_sessioni_attive_paginata.return_value = ([], 0)
         MockRepo.return_value = mock_repo
         mock_resp.return_value = MagicMock(status_code=200)
 
@@ -223,7 +288,39 @@ class SessioniAttiveListViewTests(TestCase):
 
         call_args = mock_resp.call_args[0][0]
         self.assertEqual(call_args["count"], 0)
-        self.assertEqual(call_args["sessioni"], [])
+        self.assertEqual(call_args["results"], [])
+        self.assertEqual(call_args["totale_attive"], 0)
+
+    # Scopo: ⭐ Con una ricerca `count` conta le TROVATE e `totale_attive` le
+    #        sessioni che esistono: il badge e «revoca tutte» parlano del secondo.
+    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
+    @patch(f"{_SESSIONI_VIEW}.success_response")
+    def test_list_sessioni_con_ricerca_totale_attive(self, mock_resp, MockRepo):
+        from apps.core.api.sessioni_view import SessioniAttiveListView
+
+        mock_repo = MagicMock()
+        mock_repo.list_sessioni_attive_paginata.return_value = ([{"jti": "a"}], 1)
+        mock_repo.conta_sessioni_attive.return_value = 3
+        MockRepo.return_value = mock_repo
+        mock_resp.return_value = MagicMock(status_code=200)
+
+        request = _mock_request(auth={"sid": "current-sid"})
+        request.query_params = {
+            "search": "firefox", "order_by": "ip_address", "order_dir": "asc",
+            "limit": "10", "offset": "10",
+        }
+
+        SessioniAttiveListView().get(request)
+
+        call_args = mock_resp.call_args[0][0]
+        self.assertEqual(call_args["count"], 1)
+        self.assertEqual(call_args["totale_attive"], 3)
+        self.assertEqual(call_args["page"], 2)
+        kwargs = mock_repo.list_sessioni_attive_paginata.call_args.kwargs
+        self.assertEqual(kwargs["search"], "firefox")
+        self.assertEqual((kwargs["order_by"], kwargs["order_dir"]), ("ip_address", "asc"))
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 10))
+        mock_repo.conta_sessioni_attive.assert_called_once_with(1, escludi_jti="current-sid")
 
 
 # --------------- SessioneRevocaView ---------------
@@ -232,9 +329,9 @@ class SessioneRevocaViewTests(TestCase):
 
     # Scopo: Verifica POST con sid valido → 204 + blacklist token associati + evento REVOCA.
     @patch(f"{_SESSIONI_VIEW}.session_audit_service")
-    @patch(f"{_SESSIONI_VIEW}.BlacklistedToken")
-    @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
-    @patch(f"{_SESSIONI_VIEW}.jwt")
+    @patch(f"{_REVOCA_TOKEN}.BlacklistedToken")
+    @patch(f"{_REVOCA_TOKEN}.OutstandingToken")
+    @patch(f"{_REVOCA_TOKEN}.jwt")
     def test_revoca_success(self, mock_jwt, MockOutstanding, MockBlacklisted, mock_audit):
         from apps.core.api.sessioni_view import SessioneRevocaView
 
@@ -252,7 +349,7 @@ class SessioneRevocaViewTests(TestCase):
         self.assertEqual(response.status_code, 204)
         MockOutstanding.objects.filter.assert_called_once_with(user_id=1)
         # ⚠️ `bulk_create` e non `get_or_create` per token: dal 2026-09-04 le
-        #    due view di revoca condividono `_blocca_token_sessioni`, che fa una
+        #    due view di revoca condividono `blocca_token_sessioni`, che fa una
         #    query per i gia' bloccati e una scrittura sola. La copia precedente
         #    faceva una SELECT per token — ~1400 sul database di sviluppo — e
         #    avvolgeva la scrittura nel `try` della decodifica, trasformando un
@@ -269,12 +366,12 @@ class SessioneRevocaViewTests(TestCase):
     #        E' l'idempotenza del verbo: un doppio click, o un secondo tentativo
     #        su una riga rimasta a video, non deve diventare «sessione non
     #        trovata». Presidia una regressione introdotta e corretta il
-    #        2026-09-04 nell'estrazione di `_blocca_token_sessioni`, che
+    #        2026-09-04 nell'estrazione di `blocca_token_sessioni`, che
     #        contava le SCRITTURE invece dei token corrispondenti.
     @patch(f"{_SESSIONI_VIEW}.session_audit_service")
-    @patch(f"{_SESSIONI_VIEW}.BlacklistedToken")
-    @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
-    @patch(f"{_SESSIONI_VIEW}.jwt")
+    @patch(f"{_REVOCA_TOKEN}.BlacklistedToken")
+    @patch(f"{_REVOCA_TOKEN}.OutstandingToken")
+    @patch(f"{_REVOCA_TOKEN}.jwt")
     def test_revoca_gia_revocata_resta_idempotente(
         self, mock_jwt, MockOutstanding, MockBlacklisted, mock_audit
     ):
@@ -310,8 +407,8 @@ class SessioneRevocaViewTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_SESSIONE_REVOCA_CORRENTE")
 
     # Scopo: Verifica POST con sid inesistente → 404 E_SESSIONE_NOT_FOUND.
-    @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
-    @patch(f"{_SESSIONI_VIEW}.jwt")
+    @patch(f"{_REVOCA_TOKEN}.OutstandingToken")
+    @patch(f"{_REVOCA_TOKEN}.jwt")
     def test_revoca_sessione_not_found(self, mock_jwt, MockOutstanding):
         from apps.core.api.sessioni_view import SessioneRevocaView
 
@@ -344,9 +441,9 @@ class SessioniRevocaTutteViewTests(TestCase):
     #    presidia, e i due perimetri non devono coincidere.
     @patch(f"{_SESSIONI_VIEW}.session_audit_service")
     @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
-    @patch(f"{_SESSIONI_VIEW}.BlacklistedToken")
-    @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
-    @patch(f"{_SESSIONI_VIEW}.jwt")
+    @patch(f"{_REVOCA_TOKEN}.BlacklistedToken")
+    @patch(f"{_REVOCA_TOKEN}.OutstandingToken")
+    @patch(f"{_REVOCA_TOKEN}.jwt")
     def test_revoca_tutte_success(
         self, mock_jwt, MockOutstanding, MockBlacklisted, MockRepo, mock_audit
     ):
@@ -397,9 +494,9 @@ class SessioniRevocaTutteViewTests(TestCase):
     #        nessuna riga di diario.
     @patch(f"{_SESSIONI_VIEW}.session_audit_service")
     @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
-    @patch(f"{_SESSIONI_VIEW}.BlacklistedToken")
-    @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
-    @patch(f"{_SESSIONI_VIEW}.jwt")
+    @patch(f"{_REVOCA_TOKEN}.BlacklistedToken")
+    @patch(f"{_REVOCA_TOKEN}.OutstandingToken")
+    @patch(f"{_REVOCA_TOKEN}.jwt")
     def test_revoca_tutte_senza_remote(
         self, mock_jwt, MockOutstanding, MockBlacklisted, MockRepo, mock_audit
     ):
@@ -427,9 +524,9 @@ class SessioniRevocaTutteViewTests(TestCase):
     #        dire che la sessione e' viva.
     @patch(f"{_SESSIONI_VIEW}.session_audit_service")
     @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
-    @patch(f"{_SESSIONI_VIEW}.BlacklistedToken")
-    @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
-    @patch(f"{_SESSIONI_VIEW}.jwt")
+    @patch(f"{_REVOCA_TOKEN}.BlacklistedToken")
+    @patch(f"{_REVOCA_TOKEN}.OutstandingToken")
+    @patch(f"{_REVOCA_TOKEN}.jwt")
     def test_revoca_tutte_sessione_senza_token(
         self, mock_jwt, MockOutstanding, MockBlacklisted, MockRepo, mock_audit
     ):
@@ -462,9 +559,16 @@ class SessionAuditRepositoryTests(TestCase):
         from apps.core.db.session_audit_repository import SessionAuditRepository
 
         mock_cursor = MagicMock()
+        # Colonne come quelle di psycopg (`.name`): le legge `row_to_dict`/`rows_to_list`.
         mock_cursor.description = [
-            ("jti",), ("ultimo_evento",), ("ip_address",),
-            ("user_agent",), ("data_inizio",), ("data_ultimo_evento",),
+            SimpleNamespace(name=c) for c in (
+                "jti",
+                "ultimo_evento",
+                "ip_address",
+                "user_agent",
+                "data_inizio",
+                "data_ultimo_evento",
+            )
         ]
         mock_cursor.fetchall.return_value = [
             ("sid-1", "LOGIN", "10.0.0.1", "Firefox/100",
@@ -487,3 +591,53 @@ class SessionAuditRepositoryTests(TestCase):
         mock_cursor.execute.assert_called_once()
         call_args = mock_cursor.execute.call_args[0]
         self.assertEqual(call_args[1], [1, 1])
+
+    # Scopo: ⛔ La sessione corrente si toglie nella SQL (`IS DISTINCT FROM`),
+    #        cosi' `COUNT(*) OVER ()` conta giusto; parametri nell'ordine della
+    #        CTE (utente due volte), poi il sid, poi LIMIT/OFFSET.
+    @patch("apps.core.db.session_audit_repository.fetch_paged_with_total")
+    def test_paginata_esclude_la_corrente_nella_sql(self, mock_fetch):
+        from apps.core.db.session_audit_repository import SessionAuditRepository
+
+        mock_fetch.return_value = ([], 0)
+        SessionAuditRepository().list_sessioni_attive_paginata(
+            7, escludi_jti="sid-corrente", limit=25, offset=50,
+        )
+
+        sql, params = mock_fetch.call_args.args
+        self.assertIn("r.jti IS DISTINCT FROM %s", sql)
+        self.assertIn("COUNT(*) OVER () AS total_count", sql)
+        self.assertEqual(params, [7, 7, "sid-corrente", 25, 50])
+        # Il conteggio di ripiego ha lo stesso FROM/WHERE, senza pagina.
+        kwargs = mock_fetch.call_args.kwargs
+        self.assertIn("r.jti IS DISTINCT FROM %s", kwargs["fallback_count_sql"])
+        self.assertEqual(kwargs["fallback_params"], [7, 7, "sid-corrente"])
+        self.assertEqual(kwargs["offset"], 50)
+        # Default: l'ultimo evento dal piu' recente, spareggio sul sid.
+        self.assertIn("ORDER BY r.data_insert DESC NULLS LAST, r.jti DESC", sql)
+
+    # Scopo: le chiavi della whitelist sono i `campo_sorgente`; una data senza
+    #        verso ordina DESC (`colonne_desc`).
+    @patch("apps.core.db.session_audit_repository.fetch_paged_with_total")
+    def test_paginata_ordina_sulla_whitelist(self, mock_fetch):
+        from apps.core.db.session_audit_repository import SessionAuditRepository
+
+        mock_fetch.return_value = ([], 0)
+        repo = SessionAuditRepository()
+        repo.list_sessioni_attive_paginata(1, escludi_jti=None, order_by="ip_address", order_dir="asc")
+        self.assertIn("ORDER BY r.ip_address ASC NULLS FIRST, r.jti ASC", mock_fetch.call_args.args[0])
+        repo.list_sessioni_attive_paginata(1, escludi_jti=None, order_by="data_inizio")
+        self.assertIn("ORDER BY pl.data_inizio DESC NULLS LAST, r.jti DESC", mock_fetch.call_args.args[0])
+
+    # Scopo: un `order_by` fuori whitelist ripiega sul default, mai SQL grezzo.
+    @patch("apps.core.db.session_audit_repository.fetch_paged_with_total")
+    def test_paginata_ordine_fuori_whitelist_ripiega(self, mock_fetch):
+        from apps.core.db.session_audit_repository import SessionAuditRepository
+
+        mock_fetch.return_value = ([], 0)
+        SessionAuditRepository().list_sessioni_attive_paginata(
+            1, escludi_jti=None, order_by="user_agent; DROP TABLE x", order_dir="asc",
+        )
+        sql = mock_fetch.call_args.args[0]
+        self.assertNotIn("DROP", sql)
+        self.assertIn("ORDER BY r.data_insert ASC NULLS FIRST, r.jti ASC", sql)

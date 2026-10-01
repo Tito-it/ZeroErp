@@ -33,7 +33,7 @@ import TabPanel from 'primevue/tabpanel'
 
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS } from '../../core/constants'
+import { READONLY_DOMAINS, MANAGE_ICONS } from '../../core/constants'
 import FondiFatturaDaDecidereTab from '../components/FondiFatturaDaDecidereTab.vue'
 
 const { t } = useI18n()
@@ -43,7 +43,7 @@ useReadonlyMode(READONLY_DOMAINS.VENDITE)
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">{{ t('vendite.tool_fatturazione.page_title') }}</h2>
         <small class="app-text-muted">
           {{ t('vendite.tool_fatturazione.page_description') }}
@@ -61,7 +61,7 @@ useReadonlyMode(READONLY_DOMAINS.VENDITE)
     <Tabs value="fondi-da-decidere" lazy>
       <TabList>
         <Tab value="fondi-da-decidere">
-          <i class="pi pi-wallet" />
+          <i :class="MANAGE_ICONS.FONDI" />
           {{ t('vendite.tool_fatturazione.tab_fondi_da_decidere') }}
         </Tab>
       </TabList>

@@ -13,7 +13,7 @@ WITH (security_invoker=on) AS
 WITH righe AS (
          SELECT dr.ddt_id,
             dr.id AS riga_id,
-            ((dr.quantita * COALESCE(dr.prezzo_unitario, src.src_prezzo_unitario)) * ((1)::numeric - (COALESCE(dr.sconto_percentuale, (0)::numeric) / 100.0))) AS valore_riga,
+            script.fn_imponibile_riga(dr.quantita, COALESCE(dr.prezzo_unitario, src.src_prezzo_unitario), dr.sconto_percentuale) AS valore_riga,
             (EXISTS ( SELECT 1
                    FROM vendite.commesse_attivita ca
                   WHERE (((ca.segment_key)::text = ((('DDT:'::text || (d2.uid)::text) || ':R:'::text) || (dr.id)::text)) AND ((ca.stato_emissione)::text = 'EMESSA'::text)))) AS transitata

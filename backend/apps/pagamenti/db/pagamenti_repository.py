@@ -27,6 +27,8 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     conta_con_perimetro,
     fetch_paged_with_total,
     sql_lateral_primo_motivo,
@@ -35,11 +37,13 @@ from apps.core.db._helpers import (
     rows_to_list,
     sql_order_direction,
     sql_tiebreak_direction,
+    utente_di_sessione,
 )
 from apps.core.db.emittente_scope_helpers import (
     add_emittente_scope_condition_risolta,
     fetch_emittenti_scope_ids,
 )
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.pagamenti.types import (
@@ -87,6 +91,48 @@ _TOTALI_LATERAL = """
     ) tot ON TRUE
 """
 
+# Cosa si PUO' cercare in ogni lista; cosa si cerca lo dice il catalogo
+# (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §5.3). Le
+# espressioni sono quelle che la `SELECT` proietta con quel nome: si cerca su
+# cio' che si mostra. ⚠️ Le liste su vista (`v.*`) usano l'alias `v` del BB.
+_RICERCA_DISTINTE = RicercaFull("pagamenti.distinte", {"codice": "c.codice"})
+# ⭐ Le due liste di righe (coda e distinta) proiettano la STESSA `_RIGA_COLONNE`
+#    sullo stesso `_RIGA_FROM`: sanno cercare le stesse colonne, e quali
+#    cercano lo decide il catalogo di ciascuna. Due mappe scritte a mano
+#    avrebbero due copie della stessa espressione, libere di separarsi.
+_RICERCA_RIGA: dict[str, str] = {
+    "riferimento_ente": "r.riferimento_ente",
+    "billing_account_descrizione": "srd.ragione_sociale_completa",
+    "billing_account_codice": "ba.codice",
+    "fattura_numero": "f.numero",
+    "fattura_numero_documento": "vendite.fn_numero_documento_fattura(f.numero, f.serie)",
+}
+_RICERCA_RIGHE_CODA = RicercaFull("pagamenti.righe", {
+    **_RICERCA_RIGA,
+    "contabile_codice": "c.codice",
+})
+_RICERCA_RIGHE_DISTINTA = RicercaFull("pagamenti.distinta_righe", _RICERCA_RIGA)
+_RICERCA_RATE_FUORI_CAPIENZA = RicercaFull(
+    "pagamenti.rate_fuori_capienza", ("fattura_numero", "numero_documento"),
+)
+_RICERCA_ECCEDENZE = RicercaFull("pagamenti.eccedenze", {
+    "cliente_ragione_sociale": "srd.ragione_sociale_completa",
+    "fattura_numero": "v.fattura_numero",
+})
+# ⭐ Le rate (passo 7 del brief, dopo il seed DB del 24-09): forma a TUPLA,
+#    perche' tutte e quattro sono colonne della STESSA vista
+#    (`vendite.vw_fatture_scadenze_lista`) e la lista la legge con DUE alias —
+#    `v` la pagina, `p` il perimetro di `solo_aperte`. La tupla prende l'alias
+#    dalla chiamata: una mappa lo cablerebbe, e il secondo ramo cercherebbe
+#    sulla relazione sbagliata. ⭐ `numero_documento` c'e' per decisione di Tid
+#    (23-09): si cerca ANCHE il documento, non solo il cliente.
+_RICERCA_RATE = RicercaFull("pagamenti.rate", (
+    "numero_documento",
+    "ragione_sociale_completa",
+    "ba_codice",
+    "id_fiscale_univoco_cf_piva",
+))
+
 _DISTINTA_SELECT = """
     SELECT
         c.id,
@@ -108,6 +154,12 @@ _DISTINTA_SELECT = """
         --    Il frontend la porta per spegnere «Registra» COL MOTIVO invece di
         --    lasciarlo finire in 409 — e non deduce niente dal nome dello stato.
         st.is_registrabile AS stato_is_registrabile,
+        -- ⭐ «Le righe di questa distinta si lavorano ancora?» sta nel CATALOGO
+        --    (D-1, brief-db-righe-distinta-annullata-fuori-dalle-code): CHIUSA e
+        --    ANNULLATA sono entrambe `is_final` ma opposte per le righe. Il
+        --    frontend spegne le azioni di riga da qui, e non ricalcola piu'
+        --    «finale e non registrata» con `data_conferma` presa in prestito.
+        st.righe_lavorabili AS stato_righe_lavorabili,
         -- ⭐ La riga «dove sono» del drawer (FE-9): la chiave i18n vive nel
         --    `meta` dello STATO, come negli otto domini che usano
         --    `DrawerActionsBar :info-key`. Il backend la TRASPORTA: un `CASE`
@@ -327,6 +379,12 @@ _RIGHE_DISTINTA_ATTIVE_SQL = f"""
 #    registrata si «abbina e registra» (la tardiva), sotto una aperta si
 #    abbina e basta: il frontend sceglie il verbo da un fatto, non ricalcola
 #    una regola.
+# ⭐ E porta la bandiera del CATALOGO `righe_lavorabili` (D-1, brief-db-righe-
+#    distinta-annullata-fuori-dalle-code §6): e' la risposta a «si lavora?»,
+#    la stessa che il guard legge per congelare. ⚠️ Sulla coda vale sempre
+#    true per costruzione (`list_righe_coda` filtra su di lei), ma la
+#    proiezione e' la RIGA della coda, non la coda: chi la legge non deve
+#    sapere da quale filtro e' passata.
 _RIGA_CODA_SELECT = f"""
     SELECT {_RIGA_COLONNE},
         c.codice          AS contabile_codice,
@@ -334,6 +392,7 @@ _RIGA_CODA_SELECT = f"""
         c.origine         AS contabile_origine,
         cst.codice_interno AS contabile_stato_codice_interno,
         cst.is_final       AS contabile_is_final,
+        cst.righe_lavorabili AS contabile_righe_lavorabili,
         (c.data_conferma IS NOT NULL) AS contabile_registrata
     {_RIGA_FROM}
       JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
@@ -640,7 +699,7 @@ _ENTE_INCASSO_SELECT = f"""
       LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srp
              ON srp.soggetto_ruolo_id = e.soggetto_ruolo_id
       {_UTILITY_DEL_CONTO_JOIN}
-"""
+"""  # noqa: S608 — _UTILITY_DEL_CONTO_JOIN costante di modulo
 
 # Le colonne aggiornabili di un canale. ⛔ `codice_interno` NON c'e': e' la
 # chiave stabile con cui il resto del sistema lo nomina, e cambiarla romperebbe
@@ -650,6 +709,13 @@ _COLONNE_ENTE_INCASSO_AGGIORNABILI = frozenset(
      "soggetto_ruolo_id", "bank_branch_id", "soggetto_ruolo_conto_bancario_id",
      "formato_flusso", "regole_match", "meta"}
 )
+# Le colonne con cui un canale NASCE. Oggi coincidono con le aggiornabili (anche
+# `codice_interno` resta fuori: il service non lo compila), ma e' una domanda
+# diversa e ha un nome suo — il giorno in cui divergono, divergono qui.
+# 🔴 Prima di questa costante l'INSERT componeva le colonne da `list(campi)`
+#    SENZA whitelist nel repository: l'«ultimo cancello» valeva per l'UPDATE e
+#    non per l'INSERT.
+_COLONNE_ENTE_INCASSO_INSERIBILI = _COLONNE_ENTE_INCASSO_AGGIORNABILI
 
 # Colonne ordinabili degli ATTI DI SISTEMAZIONE di una fattura (lista 61).
 # ⛔ Chiavata sui `campo_sorgente` FISICI, non sui codici logici: il frontend
@@ -712,8 +778,15 @@ ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
 # ⚠️ Idem per `validazione_blocco_dettaglio` e `righe_per_stato` (il dettaglio
 #    della distinta): il primo riempie la frase del «Porta a VALIDATA» spento,
 #    il secondo e' l'array che il dialog di validazione elenca.
+# ⚠️ `regole_match` (jsonb NOT NULL di `enti_incasso`) mancava fino al
+#    2026-09-26, e il difetto era muto: il dettaglio del canale la serviva come
+#    STRINGA (il driver restituisce jsonb come testo e `_shape` non la
+#    decodificava) mentre il contratto in ingresso la vuole oggetto; e l'UPDATE
+#    la scriveva senza `::jsonb`, mentre l'INSERT la castava con un'eccezione
+#    scritta a mano accanto a questa lista — due regole per la stessa colonna.
 _JSONB_COLS = (
     "meta", "elimina_blocco_dettaglio", "validazione_blocco_dettaglio", "righe_per_stato",
+    "regole_match",
 )
 
 # 🔴 Le colonne che questo repository accetta di aggiornare, e non e' una
@@ -779,13 +852,13 @@ class PagamentiRepository:
             ) q
             {order_clause}
             LIMIT %s OFFSET %s
-        """
+        """  # noqa: S608 — select_sql da costanti del modulo, order_clause da sql_order_clause su whitelist, valori come parametri
         # ⚠️ Il conteggio di ripiego serve SOLO a pagina oltre l'ultima: li' la
         # window function non ha righe su cui calcolare il totale e
         # risponderebbe zero. Senza, a chi e' rimasto su una pagina stantia di
         # una lista che si e' accorciata sotto di lui diremmo «nessun
         # risultato» — una cosa falsa, con l'aria di un dato.
-        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"
+        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"  # noqa: S608 — select_sql da costanti del modulo e frammenti letterali, valori come parametri
         return fetch_paged_with_total(
             data_sql,
             [*params, limit, offset],
@@ -811,7 +884,7 @@ class PagamentiRepository:
               FROM pagamenti.vendite_contabili_stati
              WHERE {_sql_stato_vivo()}
              ORDER BY ordine NULLS LAST, id
-        """
+        """  # noqa: S608 — _sql_stato_vivo(): frammento letterale
         with connection.cursor() as cursor:
             cursor.execute(sql)
             return rows_to_list(cursor)  # type: ignore[return-value]
@@ -826,7 +899,7 @@ class PagamentiRepository:
               FROM pagamenti.vendite_contabili_righe_stati
              WHERE {_sql_stato_vivo()}
              ORDER BY ordine NULLS LAST, id
-        """
+        """  # noqa: S608 — _sql_stato_vivo(): frammento letterale
         with connection.cursor() as cursor:
             cursor.execute(sql)
             return rows_to_list(cursor)  # type: ignore[return-value]
@@ -854,6 +927,7 @@ class PagamentiRepository:
         ente_incasso_id: int | None = None,
         data_da: date | None = None,
         data_a: date | None = None,
+        search: str | None = None,
         order_by: str,
         order_dir: str,
         limit: int,
@@ -881,6 +955,7 @@ class PagamentiRepository:
         if data_a is not None:
             conditions.append("c.data_contabile <= %s")
             params.append(data_a)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_DISTINTE)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         # ⚠️ La direzione la compone l'helper condiviso, e porta con se' la
@@ -933,7 +1008,7 @@ class PagamentiRepository:
               ) q
               {_LATERAL_VALIDAZIONE}
               {_RIGHE_PER_STATO_LATERAL}
-        """
+        """  # noqa: S608 — _DISTINTA_SELECT e LATERAL costanti di modulo, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
             rows = rows_to_list(cursor)
@@ -1002,29 +1077,34 @@ class PagamentiRepository:
             row = cursor.fetchone()
         return int(row[0])
 
-    # Scopo: Compone la clausola SET di un UPDATE parziale, verificando che
-    #        OGNI nome di colonna sia nella whitelist del suo oggetto.
-    # ⛔ Nessun nome arriva mai in SQL senza passare di qui.
+    # Scopo: Verifica che OGNI nome di colonna di una scrittura sia nella
+    #        whitelist del suo oggetto — UPDATE e INSERT, stesso cancello.
+    # ⚠️ Il BB fa lo stesso controllo (ValueError); questo resta davanti per
+    #    parlare col codice del modulo (`_E_CHIAMATA`), come ha sempre fatto.
     @staticmethod
-    def _set_clause(
+    def _verifica_colonne(
         campi: dict[str, Any], consentite: frozenset[str], metodo: str
-    ) -> tuple[str, list[Any]]:
+    ) -> None:
         fuori = sorted(c for c in campi if c not in consentite)
         ErrorManager.require(
             not fuori,
             code=_E_CHIAMATA,
-            message="Aggiornamento non ammesso su queste colonne.",
-            detail=f"Colonne non aggiornabili: {', '.join(fuori)}",
+            message="Scrittura non ammessa su queste colonne.",
+            detail=f"Colonne non ammesse: {', '.join(fuori)}",
             function_name=f"{_FN}.{metodo}",
         )
-        assegnazioni: list[str] = []
-        params: list[Any] = []
-        for colonna, valore in campi.items():
-            assegnazioni.append(
-                f"{colonna} = %s::jsonb" if colonna in _JSONB_COLS else f"{colonna} = %s"
-            )
-            params.append(valore)
-        return ", ".join(assegnazioni), params
+
+    # Scopo: Compone la clausola SET di un UPDATE parziale, verificando che
+    #        OGNI nome di colonna sia nella whitelist del suo oggetto.
+    # ⛔ Nessun nome arriva mai in SQL senza passare di qui.
+    # ⭐ La composizione e' il BB `sql_set_clause` (2026-09-26): le colonne di
+    #    `_JSONB_COLS` escono `::jsonb` col valore gia' serializzato dal service.
+    @classmethod
+    def _set_clause(
+        cls, campi: dict[str, Any], consentite: frozenset[str], metodo: str
+    ) -> tuple[str, list[Any]]:
+        cls._verifica_colonne(campi, consentite, metodo)
+        return sql_set_clause(campi, allowed=consentite, jsonb=_JSONB_COLS)
 
     # Scopo: Aggiorna i campi che una persona compila sulla testata.
     # ⛔ Lo stato NON passa di qui: cambiarlo e' un'azione, e la matrice delle
@@ -1042,7 +1122,7 @@ class PagamentiRepository:
             UPDATE pagamenti.vendite_contabili
                SET {set_clause}
              WHERE id = %s
-        """
+        """  # noqa: S608 — SET da _set_clause su whitelist _COLONNE_DISTINTA_AGGIORNABILI, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.rowcount
@@ -1107,6 +1187,7 @@ class PagamentiRepository:
         contabile_id: int,
         *,
         escludi_stato_codice: str | None = None,
+        search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
@@ -1121,14 +1202,18 @@ class PagamentiRepository:
             default_desc=True,
             colonne_desc=DISTINTA_RIGHE_SORT_COLONNE_DATA,
         )
-        select_sql = _RIGHE_DISTINTA_ATTIVE_SQL
+        # `_RIGHE_DISTINTA_ATTIVE_SQL` finisce col suo `WHERE`: le condizioni
+        # in piu' vi si attaccano in `AND`.
+        conditions: list[str] = []
         params: list[Any] = [int(contabile_id)]
         if escludi_stato_codice is not None:
             # ⚠️ `IS DISTINCT FROM` e non `<>`: `rs` e' in LEFT JOIN, e una riga
             #    con uno stato che non risolve a catalogo (NULL) deve restare
             #    a video, non sparire come se fosse scartata.
-            select_sql = f"{select_sql} AND rs.codice_interno IS DISTINCT FROM %s"
+            conditions.append("rs.codice_interno IS DISTINCT FROM %s")
             params.append(escludi_stato_codice)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_RIGHE_DISTINTA)
+        select_sql = " AND ".join([_RIGHE_DISTINTA_ATTIVE_SQL, *conditions])
         rows, total = self._lista_paginata(
             select_sql=select_sql,
             params=params,
@@ -1238,7 +1323,7 @@ class PagamentiRepository:
             UPDATE pagamenti.vendite_contabili_righe
                SET {set_clause}
              WHERE id = %s
-        """
+        """  # noqa: S608 — SET da _set_clause su whitelist _COLONNE_RIGA_AGGIORNABILI, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.rowcount
@@ -1348,7 +1433,7 @@ class PagamentiRepository:
                AND {_sql_stato_vivo("sd")}
                AND {_sql_stato_vivo("sa")}
              ORDER BY 1, 2, 3
-        """
+        """  # noqa: S608 — _sql_stato_vivo() con alias letterali
         distinta: list[tuple[str, str]] = []
         riga: list[tuple[str, str]] = []
         with connection.cursor() as cursor:
@@ -1518,8 +1603,12 @@ class PagamentiRepository:
     #    `vw_saldi_rate`; sul perimetro di un cliente regge.
     # ⛔ `fattura_numero` e' un confronto ESATTO, non un `ILIKE`: nel lookup 101
     #    porta anche 1010 e 2101, ed e' giusto la'; qui chi digita un numero
-    #    vuole QUEL documento (brief §8). `search` invece cerca il CLIENTE —
-    #    ragione sociale, codice BA, id fiscale — mai il numero.
+    #    nel filtro vuole QUEL documento (brief §8). ⚠️ `search` e' un'ALTRA
+    #    cosa, e dal 2026-09-24 cerca ANCHE il documento (decisione di Tid,
+    #    brief-be-ricerca-full-liste-residue §7): e' la ricerca libera, che
+    #    cade sulle colonne che il catalogo accende (`_RICERCA_RATE` ∩
+    #    `ui.fn_lista_colonne_ricerca_full`), e li' «101» porta anche la 1010
+    #    — come in ogni ricerca libera. Il filtro esatto resta com'e'.
     # ⚠️ Lo scope emittente applicativo si SOMMA alla RLS (api.md §Enforcement
     #    RLS), come sulla lista fatture da cui il lookup legge: `v.emittente_fiscale_id`
     #    e' la PK dell'emittente, convenzione `pk`.
@@ -1531,6 +1620,16 @@ class PagamentiRepository:
     #    e' piu' stretta — «solo le definitive, inviate a SDI» — ed e' un
     #    predicato di dominio che va in una sede sola a DB, non un secondo
     #    booleano qui (piano D19 §8).
+    # ⭐ IL DEFAULT E' `True` DAL 2026-09-23 (decisione di Tid), e il cambio non
+    #    e' cosmetico: e' un PERIMETRO di dominio, non un filtro dell'operatore.
+    #    Fino a quel giorno il default era `False` e la regola viveva nel
+    #    FRONTEND, che la mandava a ogni chiamata — cioe' una regola di dominio
+    #    scritta nella presentazione, e vera solo per il client che si ricordava
+    #    di dirla. ⚠️ Si vedeva da un sintomo piccolo: il picker contava «1
+    #    filtro attivo» su un filtro che l'operatore non poteva toccare.
+    #    ⇒ Chi vuole ANCHE le bozze lo chiede esplicitamente (`False`), e resta
+    #    una domanda legittima: la via d'uscita non e' stata tolta, e' stata
+    #    messa dalla parte giusta.
     def list_rate_paginata(
         self,
         *,
@@ -1541,7 +1640,7 @@ class PagamentiRepository:
         anno: int | None = None,
         search: str | None = None,
         solo_aperte: bool = False,
-        solo_numerate: bool = False,
+        solo_numerate: bool = True,
         data_scadenza_da: date | None = None,
         data_scadenza_a: date | None = None,
         natura_doc_codice: str | None = None,
@@ -1578,14 +1677,12 @@ class PagamentiRepository:
             if anno is not None:
                 conditions.append(f"{alias}.anno = %s")
                 params.append(anno)
-            if search and len(search) >= 3:
-                conditions.append(
-                    f"({alias}.ragione_sociale_completa ILIKE %s "
-                    f"OR {alias}.ba_codice ILIKE %s "
-                    f"OR {alias}.id_fiscale_univoco_cf_piva ILIKE %s)"
-                )
-                like = f"%{search}%"
-                params.extend([like, like, like])
+            # ⭐ Il BB DENTRO la funzione dell'alias, non fuori: pagina e
+            #    perimetro ricevono la stessa condizione sulla loro relazione,
+            #    e i due insiemi non possono divergere (brief §5.1). ⚠️ Con
+            #    `solo_aperte` il catalogo si legge due volte nella stessa
+            #    richiesta: e' il prezzo della sede unica, e una query leggera.
+            add_ricerca_full_condition(conditions, params, search, _RICERCA_RATE, alias=alias)
             if data_scadenza_da is not None:
                 conditions.append(f"{alias}.data_scadenza >= %s")
                 params.append(data_scadenza_da)
@@ -1627,7 +1724,7 @@ class PagamentiRepository:
             cond_p, params_p = _condizioni("p")
             where_p = ("WHERE " + " AND ".join(cond_p)) if cond_p else ""
             perimetro_sql = (
-                f"SELECT p.scadenza_id FROM vendite.vw_fatture_scadenze_lista p {where_p}"
+                f"SELECT p.scadenza_id FROM vendite.vw_fatture_scadenze_lista p {where_p}"  # noqa: S608 — where_p da frammenti letterali di _condizioni con alias letterale, valori come parametri
             )
             select_sql = f"""
                 SELECT v.*,
@@ -1691,6 +1788,7 @@ class PagamentiRepository:
         billing_account_id: int | None = None,
         data_da: date | None = None,
         data_a: date | None = None,
+        search: str | None = None,
         order_by: str,
         order_dir: str,
         limit: int,
@@ -1698,7 +1796,18 @@ class PagamentiRepository:
     ) -> tuple[list[RigaCodaRow], int]:
         self._guard_canale_sistema("list_righe_coda")
 
-        conditions = ["r.attivo IS TRUE", "rs.codice_interno = ANY(%s)"]
+        # ⭐ La coda e' una lista di LAVORO: cio' che non si lavora non ci sta.
+        #    Una riga DA_ABBINARE sotto una distinta ANNULLATA restava qui per
+        #    sempre, con ogni azione spenta (brief-db-righe-distinta-annullata-
+        #    fuori-dalle-code §1). La condizione e' la bandiera del catalogo,
+        #    non `NOT is_final`: sotto una CHIUSA le sospese si lavorano ancora
+        #    (la tardiva, D20-b). ⚠️ `IS TRUE`: con la LEFT JOIN, uno stato non
+        #    letto non si dice «lavorabile» (fail-closed, come il default).
+        conditions = [
+            "r.attivo IS TRUE",
+            "rs.codice_interno = ANY(%s)",
+            "cst.righe_lavorabili IS TRUE",
+        ]
         params: list[Any] = [list(stati)]
         if billing_account_id is not None:
             conditions.append("r.billing_account_id = %s")
@@ -1709,6 +1818,7 @@ class PagamentiRepository:
         if data_a is not None:
             conditions.append("c.data_contabile <= %s")
             params.append(data_a)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_RIGHE_CODA)
 
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -1739,6 +1849,7 @@ class PagamentiRepository:
         *,
         motivo: str | None = None,
         billing_account_id: int | None = None,
+        search: str | None = None,
         order_by: str,
         order_dir: str,
         limit: int,
@@ -1754,6 +1865,7 @@ class PagamentiRepository:
         if billing_account_id is not None:
             conditions.append("v.billing_account_id = %s")
             params.append(billing_account_id)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_RATE_FUORI_CAPIENZA)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         ordinamento = sql_order_clause(
@@ -1766,7 +1878,7 @@ class PagamentiRepository:
 
         return self._lista_paginata(
             select_sql=(
-                f"SELECT v.* FROM pagamenti.vw_rate_fuori_capienza v {where_clause}"
+                f"SELECT v.* FROM pagamenti.vw_rate_fuori_capienza v {where_clause}"  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_RATE_FUORI_CAPIENZA, valori come parametri
             ),
             params=params,
             order_clause=(
@@ -1853,23 +1965,16 @@ class PagamentiRepository:
     #    qui «non so chi sei» vale **no**.
     def emittente_nel_perimetro(self, emittente_soggetto_ruolo_id: int) -> bool:
         self._guard_canale_sistema("emittente_nel_perimetro")
+        # L'utente per cui la connessione agisce, dalla GUC delle policy RLS
+        # (BB `utente_di_sessione`: il nome della GUC e il suo tranello stanno
+        # li'). Senza utente non c'e' perimetro: si rifiuta.
+        auth_user_id = utente_di_sessione()
+        if auth_user_id is None:
+            return False
         with connection.cursor() as cursor:
-            # ⚠️ La GUC si chiama `app.current_user_id`, NON `app.auth_user_id`:
-            #    e' il nome che usano le policy RLS di questo schema, ed e' da
-            #    li' che si legge — mai dal nome che sembra giusto. Con il nome
-            #    sbagliato il `current_setting` risponde NULL e questa funzione
-            #    rifiuta TUTTO, compreso chi ha diritto: un difetto che i mock
-            #    non vedono, perche' i mock non hanno GUC.
-            cursor.execute(
-                "SELECT NULLIF(current_setting('app.current_user_id', true), '')::int"
-            )
-            row = cursor.fetchone()
-            auth_user_id = row[0] if row else None
-            if auth_user_id is None:
-                return False
             cursor.execute(
                 "SELECT COALESCE(script.fn_scope_ef_whitelist_via_sr(%s, %s), false)",
-                [int(auth_user_id), int(emittente_soggetto_ruolo_id)],
+                [auth_user_id, int(emittente_soggetto_ruolo_id)],
             )
             return bool(cursor.fetchone()[0])
 
@@ -1925,7 +2030,7 @@ class PagamentiRepository:
                AND (src.valido_dal IS NULL OR src.valido_dal <= CURRENT_DATE)
                AND COALESCE(src.valido_al, 'infinity'::date) >= CURRENT_DATE
              ORDER BY src.predefinito DESC, cb.iban
-        """
+        """  # noqa: S608 — _UTILITY_DEL_CONTO_JOIN costante di modulo, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(soggetto_ruolo_id)])
             return rows_to_list(cursor)
@@ -1934,21 +2039,19 @@ class PagamentiRepository:
     # ⚠️ Nessuna funzione madre: e' un `INSERT` su una tabella di
     #    configurazione, e i quattro guard (tipo/filiale, conto di incasso,
     #    coerenza PSP, scope emittente) parlano da soli.
+    # ⭐ Stesso cancello dell'UPDATE (`_verifica_colonne`) e stessa regola
+    #    jsonb (`_JSONB_COLS`), via il BB `execute_dynamic_insert`.
     def create_ente_incasso(self, campi: dict[str, Any]) -> int:
-        colonne = list(campi)
-        segnaposti = ", ".join(
-            "%s::jsonb" if c in _JSONB_COLS or c == "regole_match" else "%s"
-            for c in colonne
+        self._verifica_colonne(
+            campi, _COLONNE_ENTE_INCASSO_INSERIBILI, "create_ente_incasso"
         )
-        sql = f"""
-            INSERT INTO pagamenti.enti_incasso ({", ".join(colonne)})
-            VALUES ({segnaposti})
-            RETURNING id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [campi[c] for c in colonne])
-            row = cursor.fetchone()
-        return int(row[0])
+        riga = execute_dynamic_insert(
+            "pagamenti.enti_incasso",
+            campi,
+            allowed=_COLONNE_ENTE_INCASSO_INSERIBILI,
+            jsonb=_JSONB_COLS,
+        )
+        return int(riga["id"])
 
     # Scopo: Aggiorna un canale di incasso.
     def update_ente_incasso(self, ente_id: int, campi: dict[str, Any]) -> int:
@@ -1962,7 +2065,7 @@ class PagamentiRepository:
             UPDATE pagamenti.enti_incasso
                SET {set_clause}
              WHERE id = %s
-        """
+        """  # noqa: S608 — SET da _set_clause su whitelist _COLONNE_ENTE_INCASSO_AGGIORNABILI, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.rowcount
@@ -1982,6 +2085,7 @@ class PagamentiRepository:
         *,
         chi_e_in_credito: str | None = None,
         billing_account_id: int | None = None,
+        search: str | None = None,
         order_by: str,
         order_dir: str,
         limit: int,
@@ -1997,6 +2101,7 @@ class PagamentiRepository:
         if billing_account_id is not None:
             conditions.append("v.billing_account_id = %s")
             params.append(billing_account_id)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_ECCEDENZE)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         sort_col = ECCEDENZE_SORT_COLUMNS.get(order_by, "eccedenza_cliente")
@@ -2010,7 +2115,7 @@ class PagamentiRepository:
               LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
                      ON srd.soggetto_ruolo_id = v.cliente_soggetto_ruolo_id
               {where_clause}
-        """
+        """  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_ECCEDENZE, valori come parametri
         return self._lista_paginata(
             select_sql=select_sql,
             params=params,
@@ -2186,7 +2291,7 @@ class PagamentiRepository:
                    COUNT(*) OVER () AS total_count
              {_SISTEMAZIONI_FROM_WHERE}
              ORDER BY {ordinamento}{paginazione}
-        """  # noqa: S608
+        """
         return fetch_paged_with_total(
             data_sql,
             params,
@@ -2195,7 +2300,7 @@ class PagamentiRepository:
             #    divergono, e il giorno in cui divergono il totale parla di un
             #    insieme diverso da quello che si sta guardando.
             fallback_count_sql=(
-                f"SELECT count(*) {_SISTEMAZIONI_FROM_WHERE}"  # noqa: S608
+                f"SELECT count(*) {_SISTEMAZIONI_FROM_WHERE}"
             ),
             fallback_params=[int(fattura_id)],
             offset=offset,

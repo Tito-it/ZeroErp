@@ -20,11 +20,11 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 import { useLimitiPricing } from '../composables/useLimitiPricing'
 import { FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE } from '../constants'
-import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency, formatNumber } from '../../core/utils/format'
 import { statoContrattoSeverity } from '../../core/utils/severity'
-import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import {
   previewRigaComponenti,
   listRigaComponenti as listContrattoRigaComponenti,
@@ -35,7 +35,7 @@ import {
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerContextHeader from '../../core/components/DrawerContextHeader.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import { rowComponenti, hasBundleComponenti } from '../_shared/componenti/rowComponenti'
 import ComponentiCreateActionsPanel from '../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
@@ -44,6 +44,8 @@ import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
 import L2ErrorBanner from '../_shared/pricing/L2ErrorBanner.vue'
 import { useL2SaveFlow } from '../_shared/pricing/useL2SaveFlow'
 import Drawer from 'primevue/drawer'
+// DataTable grezza: sono le RIGHE del contratto (righeIniziali dal dettaglio del
+// padre + anteprima /righe-preview/), dettaglio del master — Gruppo B (Tid, 02-09).
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -54,8 +56,8 @@ import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-
-
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { USO_MISURA, misuraDefault, misureOpzioni } from '../../core/misurePagina'
 
 const { t } = useI18n()
 const store = useContrattiStore()
@@ -929,7 +931,7 @@ function buildRigaActions(data) {
       {
         key: 'escludi',
         label: t('vendite.contratti.azione_escludi'),
-        icon: 'pi pi-ban',
+        icon: MANAGE_ICONS.ESCLUDI,
         severity: 'warn',
         visible: !isReadonly.value && canVariarePrezzi.value,
         command: () => onEscludi(data),
@@ -941,7 +943,7 @@ function buildRigaActions(data) {
       {
         key: 'ripristina-listino',
         label: t('vendite.contratti.azione_ripristina_listino'),
-        icon: 'pi pi-replay',
+        icon: MANAGE_ICONS.RIPRISTINA_LISTINO,
         severity: 'secondary',
         visible: !isReadonly.value,
         command: () => onRipristina(data, TIPO_ECCEZIONE.OVERRIDE),
@@ -953,7 +955,7 @@ function buildRigaActions(data) {
       {
         key: 'ripristina-articolo',
         label: t('vendite.contratti.azione_ripristina_articolo'),
-        icon: 'pi pi-replay',
+        icon: MANAGE_ICONS.RIPRISTINA_LISTINO,
         severity: 'secondary',
         visible: !isReadonly.value,
         command: () => onRipristina(data, TIPO_ECCEZIONE.ESCLUSIONE),
@@ -1079,11 +1081,17 @@ function origineSeverity(origine) {
 
       <!-- === MASTER: toolbar + lista paginata === -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters">
-          <InputText v-model="filtroArticolo"
-            :placeholder="t('vendite.contratti.filtro_articolo_placeholder')"
-            style="min-width: 240px;" />
-        </div>
+        <!-- ⚠️ Nessuno `:store`: il filtro articolo e' CLIENT-SIDE su righe gia'
+             caricate, e `store` qui e' quello dei CONTRATTI — passarlo
+             accenderebbe il segno coi filtri di un'altra lista. Non serve: e' la
+             ricerca di questo elenco, quindi sta in `#sempre` e non c'e' nessun
+             filtro da portare nel drawer. -->
+        <FiltriLista>
+          <template #sempre>
+            <InputText v-model="filtroArticolo" class="app-filter-w-lg"
+              :placeholder="t('vendite.contratti.filtro_articolo_placeholder')" />
+          </template>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions" />
       </div>
 
@@ -1098,8 +1106,8 @@ function origineSeverity(origine) {
         class="app-datatable app-datatable--inner"
         striped-rows
         paginator
-        :rows="10"
-        :rows-per-page-options="[10, 25, 50]"
+        :rows="misuraDefault(USO_MISURA.COMPATTA)"
+        :rows-per-page-options="misureOpzioni()"
         paginator-position="top"
         sort-field="articolo_descrizione"
         :sort-order="1"
@@ -1115,7 +1123,7 @@ function origineSeverity(origine) {
         <Column style="width: 2.5rem;" :exportable="false">
           <template #body="{ data }">
             <Button v-if="hasBundleComponenti(data)"
-              :icon="isExpanded(data) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
+              :icon="isExpanded(data) ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND"
               text rounded size="small"
               v-tooltip.top="t('vendite.contratti.componenti_bundle_tooltip')"
               @click.stop="toggleExpansion(data)" />
@@ -1253,7 +1261,7 @@ function origineSeverity(origine) {
               :placeholder="t('vendite.contratti.select_fonte_quantita')"
               />
             <small v-if="fonteCorrente?.severity === 'warn'" class="contratti-fonte-uso-atipico">
-              <i class="pi pi-info-circle" /> {{ t('vendite.contratti.fonte_quantita_uso_atipico') }}
+              <i :class="STATUS_ICONS.INFO" /> {{ t('vendite.contratti.fonte_quantita_uso_atipico') }}
             </small>
           </div>
           <div class="form-field">

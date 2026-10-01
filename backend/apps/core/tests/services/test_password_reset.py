@@ -18,6 +18,7 @@ Indice test eseguiti:
 8) ConfirmTests.test_password_mismatch_raises
 9) ConfirmTests.test_empty_password_raises
 10) HelperTests.test_get_user_uo_id
+11) ConfirmViewTests.test_reset_riuscito_azzera_i_tentativi_nella_transazione
 """
 
 from unittest import TestCase
@@ -146,6 +147,52 @@ class ConfirmTests(TestCase):
         from apps.core.services.error_manager import ErrorManager
         with self.assertRaises(ServiceError):
             ErrorManager.require(bool(""), code="E_RESET_PASSWORD", message="Nuova password obbligatoria.")
+
+
+class ConfirmViewTests(TestCase):
+    """La view di conferma, non i suoi mock: l'azzeramento dei tentativi (D-2)."""
+
+    # Scopo: Reset riuscito → nuova password E tentativi azzerati su tutte le
+    # provenienze, dentro la stessa transazione (se l'azzeramento fallisce,
+    # il reset si annulla: niente password cambiata con il freno ancora su).
+    @patch("apps.core.api.throttling.PasswordResetRateThrottle.allow_request", return_value=True)
+    @patch("apps.core.api.password_reset_views.transaction")
+    @patch("apps.core.api.password_reset_views.apply_new_password")
+    @patch("apps.core.services.auth_helpers.validate_password")
+    @patch("apps.core.api.password_reset_views.validate_and_extract_token", return_value=(42, {}))
+    @patch(_USER_MODEL)
+    @patch(_EMAIL_SVC)
+    @patch(_AUTH_REPO)
+    @patch(_GET_IP, return_value="192.168.1.1")
+    @patch(_TOKEN_SVC)
+    def test_reset_riuscito_azzera_i_tentativi_nella_transazione(
+        self, mock_token, _ip, mock_repo, _email, MockUser, _validate_token,
+        _validate_pw, mock_apply, mock_tx, _thr,
+    ):
+        from rest_framework.test import APIRequestFactory
+
+        from apps.core.api.password_reset_views import PasswordResetConfirmView
+
+        user = MagicMock(id=42, email="m@x.it", first_name="M", username="m")
+        MockUser.objects.filter.return_value.first.return_value = user
+        mock_repo.get_unita_organizzativa_id.return_value = None
+        ordine = MagicMock()
+        mock_tx.atomic.return_value.__enter__.side_effect = lambda: ordine.entra()
+        mock_tx.atomic.return_value.__exit__.side_effect = lambda *a: ordine.esce()
+        mock_apply.side_effect = lambda *a, **k: ordine.apply()
+        mock_repo.azzera_tentativi_credenziale.side_effect = lambda *a: ordine.azzera()
+
+        request = APIRequestFactory().post(
+            "/api/v1/auth/password-reset-confirm/",
+            {"token": "tok", "new_password": "Nuova-2026!x", "new_password_confirm": "Nuova-2026!x"},
+            format="json",
+        )
+        response = PasswordResetConfirmView.as_view()(request)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        mock_repo.azzera_tentativi_credenziale.assert_called_once_with(42)
+        nomi = [c[0] for c in ordine.mock_calls]
+        self.assertEqual(nomi[:4], ["entra", "apply", "azzera", "esce"])
 
 
 class HelperTests(TestCase):

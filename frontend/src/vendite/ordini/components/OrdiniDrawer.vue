@@ -25,6 +25,7 @@ import {
   STATO_ORDINE,
   STATI_ORDINE_EVADIBILI,
 } from '../constants'
+import { AZIONE_PUSH_COMMESSA } from '../../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import { displayDate, toDateString } from '../../../core/utils/date'
@@ -73,7 +74,13 @@ const form = ref({})
 // senza, compilare la testata e poi salvare una RIGA (`@changed` → loadDetail)
 // la riportava com'era sul server, in silenzio. BB condiviso coi drawer
 // gemelli (difetto trovato sul DDT, 2026-08-17, identico qui).
-const { preserva: preservaForm, reset: resetFormPreserve } = useDrawerFormPreserve(form)
+const {
+  preserva: preservaForm,
+  reset: resetFormPreserve,
+  fissa: fissaForm,
+  modificato,
+  chiudiConConferma,
+} = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const detail = ref(null)
 const noteDrawerVisible = ref(false)
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_ordini_riepilogo_iva_dettaglio`).
@@ -115,6 +122,7 @@ provide(READONLY_KEY, isReadonly)
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Preventivi/Contratti (Fase 4.F2).
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
@@ -125,26 +133,12 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // DISABILITATO, non banner (Decisione D del brief catch-all DDT, applicata qui
 // per simmetria XOR: `fattura_da_ddt` e' la causa permanente speculare di
 // `fattura_da_ordine` — un banner sempre visibile sarebbe rumore perpetuo su
-// ogni ordine a trigger SPEDITO/CONSEGNATO). Entry sintetica nella stessa
-// shape delle azioni DB: il mapper condiviso la rende disabled+tooltip.
-const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
-const pushCommessaDisabledAction = computed(() => {
-  if (!hasDetail.value || canPushCommessa.value) return []
-  const reason = detail.value?.can_push_commessa_reason
-  const reasonKey = detail.value?.can_push_commessa_reason_key
-  if (!reason && !reasonKey) return []
-  return [{
-    key: 'push_commessa',
-    target_state: null,
-    label_key: 'vendite.ordini.azione_push_commessa',
-    severity: 'success',
-    icon: 'pi pi-arrow-right',
-    outlined: false,
-    enabled: false,
-    reason,
-    reason_key: reasonKey,
-  }]
-})
+// ogni ordine a trigger SPEDITO/CONSEGNATO). L'entry disabled la sintetizza il
+// BB (`azioneNegata`), condivisa con DdtDrawer.
+const pushCommessaDisabledAction = computed(() => caps.azioneNegata('can_push_commessa', {
+  ...AZIONE_PUSH_COMMESSA,
+  label_key: 'vendite.ordini.azione_push_commessa',
+}))
 
 // Campi bloccati lato UX. Una volta che l'ordine esiste (EDIT classico o CREATE
 // post auto-save), il cliente NON e' piu' modificabile: il BE deriva
@@ -183,7 +177,7 @@ const merceRef = ref(null)
 
 // Scopo: callback @evaso della dialog — generato un DDT dall'ordine: ricarica il
 // detail (lo stato ordine viene proiettato dal BE: CONFERMATO/PARZIALMENTE_EVASO/
-// EVASO) e le capability. La dialog ha gia' notificato il tab DDT.
+// EVASO) e le capability. Il tab DDT lo ha gia' avvisato il verbo `generaDdt` dello store.
 async function onEvaso() {
   await loadDetail()
   // L'evasione crea un DDT: nuovo arco ordine->DDT, quindi i chip dei
@@ -374,6 +368,8 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   form,
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
+  // Uscita con modifiche non salvate: prima si chiede (BB useDrawerFormPreserve).
+  confermaUscita: chiudiConConferma,
   messages: {
     bozzaCreata: t('vendite.ordini.bozza_creata'),
     abbandonoTitolo: t('vendite.ordini.abbandono_bozza_titolo'),
@@ -408,6 +404,10 @@ async function handleSave() {
       { successMessage: t('vendite.ordini.ordine_salvato') }
     )
     if (result !== null) {
+      // Salvato: la fotografia e' il form com'e' ora, PRIMA della ricarica —
+      // o `preserva` prenderebbe i valori appena salvati per «non salvati» e
+      // li rimetterebbe sopra quelli (eventualmente normalizzati) del server.
+      fissaForm()
       await loadDetail()
       emit('saved', result)
     }
@@ -593,6 +593,7 @@ const drawerActions = computed(() => {
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
+        :modificato="modificato"
         :title="t('vendite.ordini.ordine')"
         :icon="NAV_ICONS.ORDINI"
       />
@@ -620,14 +621,15 @@ const drawerActions = computed(() => {
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
+        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
           <template #suffix>
             <!-- Stampa conferma d'ordine: anteprima PDF on-demand
                  (ristampabile, §12.4(a)). BB EntityPdfButton riusato 1:1. -->
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.ORDINE_VENDITA"
               :entity-id="effectiveOrdineId"
-              :pdf="detail.pdf"
+              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+              :pdf="capabilities.pdf"
               i18n-prefix="vendite.ordini.pdf"
               :dialog-title="detail.numero
                 ? t('vendite.ordini.pdf.dialog_title', { numero: detail.numero })
@@ -678,11 +680,13 @@ const drawerActions = computed(() => {
           :doc-id="effectiveOrdineId"
           :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
           :istanza-utility-id="detail?.istanza_utility_id ?? null"
-          :readonly="!(canEditTestataEffective && !isReadonly)" />
+          :readonly="!(canEditTestataEffective && !isReadonly)"
+          :bordo="false" />
 
         <Divider />
         <OrdiniRigheTable
           :ordine-id="effectiveOrdineId"
+          :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
           :is-modificabile="canEditRighe && !isReadonly"
           @changed="loadDetail()"
           @form-aperto="(v) => { formRigaAperto = v }" />

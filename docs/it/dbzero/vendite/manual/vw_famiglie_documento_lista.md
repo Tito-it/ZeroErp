@@ -70,6 +70,7 @@ e una colonna vuota che porta ancora la sua intestazione.
 
 | Colonna | Che cos'è |
 | --- | --- |
+| `codice` | 🔄 rev 2026-09-24: il codice **modificabile** della famiglia, quello che l'elenco mostra e su cui si cerca (il codice interno resta la chiave di sistema). In coda alle colonne: la vista si può solo allungare, e tutti i lettori leggono per nome |
 | `tabella_documento` | schema e tabella in una cella sola: chi guarda l'elenco vuole sapere «dove», non due pezzi da unire |
 | `gestisce_serie` | derivata: vera quando la colonna della serie è dichiarata. ⭐ Il frontend deve decidere se **offrire** il campo serie, e quella è una domanda sì/no — il nome della colonna resta accanto, perché è quello che il controllo automatico verifica |
 | `n_registri` | ⭐ è il predicato che rende immutabile la struttura |

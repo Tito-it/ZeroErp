@@ -247,8 +247,7 @@ class PlafondFatturaService:
         for p in resolver.risolvi(imponibile=residuo, **argomenti):
             if not p.get("titolo_iva_id"):
                 return p
-        ErrorManager.require(
-            False,
+        ErrorManager.raise_error(
             code=_E_VALIDATION,
             message="Trattamento IVA non determinabile.",
             detail=(
@@ -260,7 +259,6 @@ class PlafondFatturaService:
             function_name=_FN,
             log_to_db=True,
         )
-        raise AssertionError("irraggiungibile")  # pragma: no cover
 
     # Scopo: scrive le due parti. La CAPOFILA resta la riga esistente e prende
     #        la quota coperta; la parte nuova prende il resto.

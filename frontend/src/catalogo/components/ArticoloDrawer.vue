@@ -1,7 +1,11 @@
 <script setup>
 // Scopo: Drawer crea/modifica articolo.
 //        Include combo conti contabili vendita/acquisto e auto-propose IVA da parameters.
-//        In edit: riepilogo UoM/BoM/Note con pulsante "Gestisci" che apre sub-drawer dedicato.
+//        In edit: riepilogo UoM/BoM/Note (e le sezioni contribuite: lotti) con pulsante "Gestisci" che apre sub-drawer dedicato.
+//        ⭐ I LOTTI di magazzino (2026-09-21): la sezione compare solo se l'articolo
+//        e' `gestito_a_magazzino` (un lotto ha senso su merce che movimenta); con
+//        `requires_lotto` lo DICE. Il drawer vive in `src/magazzino` (Q-1 del piano
+//        anagrafiche-fuori-dal-pannello-config: chi possiede il dato possiede il componente).
 //        Contenuto deferito a dopo l'animazione per evitare rimbalzi visivi.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -10,19 +14,22 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { listArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import IvaSelect from '../../core/components/IvaSelect.vue'
 import ContoContabileSelect from '../../core/components/ContoContabileSelect.vue'
 import ArticoloUomDrawer from './ArticoloUomDrawer.vue'
 import ArticoloBomDrawer from './ArticoloBomDrawer.vue'
 import ArticoloNoteDrawer from './ArticoloNoteDrawer.vue'
+import PuntoEstensione from '../../core/components/PuntoEstensione.vue'
+import { PUNTI_ESTENSIONE, precaricaPunto } from '../../core/estensioni'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -42,11 +49,18 @@ const props = defineProps({
   mode: { type: String, default: 'create' },
   articoloId: { type: [String, null], default: null }
 })
+
+// I contributi al punto si caricano ora, non quando il punto si monta.
+precaricaPunto(PUNTI_ESTENSIONE.ARTICOLO_DRAWER_SEZIONI)
+
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
+// Modifiche non salvate: fotografia all'apertura (anche in creazione) e
+// conferma se si chiude con modifiche (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 // Fase 5: lista campi immutabili dopo create. Arriva dal detail come metadata
 // (`detail.non_editable_fields`, fonte = `dbops.vw_non_editable_fields` + gap
@@ -170,6 +184,7 @@ async function loadDetail() {
     gestito_a_magazzino: data.gestito_a_magazzino || false,
     lead_time_giorni: data.lead_time_giorni ?? null,
   }
+  fissa()
   // Carica riepilogo in parallelo
   await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo()])
 }
@@ -197,6 +212,8 @@ watch(() => props.visible, async (v) => {
   } else {
     resetForm()
     await applyFormDefaults()
+    // Dopo i default: l'IVA proposta non e' una modifica dell'operatore.
+    fissa()
   }
 })
 
@@ -273,6 +290,10 @@ function close() {
   emit('cancelled')
 }
 
+// Chiusura per volonta' dell'utente: con modifiche non salvate chiede conferma.
+// Dopo il salvataggio riuscito resta `close()`, diretta.
+const chiudi = () => chiudiConConferma(close)
+
 // Fase 7: disattivazione/riattivazione come azione di dominio.
 // L'`attivo` non passa piu' da PATCH: pulsanti dedicati con conferma
 // e refresh detail al ritorno dall'API.
@@ -328,7 +349,7 @@ const drawerActions = computed(() => {
       key: 'disattiva',
       kind: 'state',
       label: t('catalogo.disattiva_articolo'),
-      icon: 'pi pi-ban',
+      icon: MANAGE_ICONS.DISATTIVA,
       severity: 'danger',
       outlined: true,
       visible: detail.value.attivo === true,
@@ -339,7 +360,7 @@ const drawerActions = computed(() => {
       key: 'riattiva',
       kind: 'state',
       label: t('catalogo.riattiva_articolo'),
-      icon: 'pi pi-check',
+      icon: MANAGE_ICONS.RIATTIVA,
       severity: 'success',
       visible: detail.value.attivo === false,
       hideWhenReadonly: true,
@@ -347,14 +368,15 @@ const drawerActions = computed(() => {
     },
   ]
 })
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.COMPLEX }" :dismissable="true"
     @after-show="onAfterShow">
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.articolo')" />
+      <DrawerTitle :modificato="modificato" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.articolo')" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -501,20 +523,20 @@ const drawerActions = computed(() => {
         <!-- Sezione: UoM riepilogo (edit mode) -->
         <template v-if="isEdit && detail">
           <div class="app-drawer-section"><h4>{{ t('catalogo.tab_uom') }}</h4></div>
-          <div class="riepilogo-section">
-            <div v-if="uomRiepilogo.length > 0" class="riepilogo-list">
-              <div v-for="u in uomRiepilogo" :key="u.id" class="riepilogo-item">
+          <div class="app-riepilogo-section">
+            <div v-if="uomRiepilogo.length > 0" class="app-riepilogo-list">
+              <div v-for="u in uomRiepilogo" :key="u.id" class="app-riepilogo-item">
                 <Tag v-if="u.is_base" :value="t('catalogo.tag_base')" severity="info" />
                 <strong>{{ u.uom_codice }}</strong>
-                <span class="riepilogo-detail">{{ u.uom_descrizione }}</span>
-                <span v-if="u.factor_to_base != null && u.factor_to_base !== 1" class="riepilogo-detail">
+                <span class="app-riepilogo-detail">{{ u.uom_descrizione }}</span>
+                <span v-if="u.factor_to_base != null && u.factor_to_base !== 1" class="app-riepilogo-detail">
                   ({{ t('catalogo.col_fattore') }}: {{ u.factor_to_base }})
                 </span>
               </div>
             </div>
-            <div v-else class="riepilogo-empty">{{ t('catalogo.nessuna_uom') }}</div>
+            <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessuna_uom') }}</div>
             <Button v-if="!isReadonly"
-              :label="t('catalogo.gestisci_uom')" icon="pi pi-box"
+              :label="t('catalogo.gestisci_uom')" :icon="MANAGE_ICONS.UOM"
               text size="small" class="app-action-btn app-escape mt-025"
               @click="uomDrawerVisible = true" />
           </div>
@@ -523,34 +545,44 @@ const drawerActions = computed(() => {
         <!-- Sezione: BoM riepilogo (edit mode, solo se composito) -->
         <template v-if="isEdit && detail && form.is_composito">
           <div class="app-drawer-section"><h4>{{ t('catalogo.tab_bom') }}</h4></div>
-          <div class="riepilogo-section">
-            <div v-if="bomRiepilogo.length > 0" class="riepilogo-list">
-              <div v-for="c in bomRiepilogo" :key="c.id" class="riepilogo-item">
+          <div class="app-riepilogo-section">
+            <div v-if="bomRiepilogo.length > 0" class="app-riepilogo-list">
+              <div v-for="c in bomRiepilogo" :key="c.id" class="app-riepilogo-item">
                 <strong>{{ c.componente_codice }}</strong>
-                <span class="riepilogo-detail">{{ c.componente_descrizione }}</span>
-                <span class="riepilogo-detail">(x{{ c.coeff_qta }})</span>
+                <span class="app-riepilogo-detail">{{ c.componente_descrizione }}</span>
+                <span class="app-riepilogo-detail">(x{{ c.coeff_qta }})</span>
               </div>
             </div>
-            <div v-else class="riepilogo-empty">{{ t('catalogo.nessun_componente') }}</div>
+            <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessun_componente') }}</div>
             <Button v-if="!isReadonly"
-              :label="t('catalogo.gestisci_bom')" icon="pi pi-sitemap"
+              :label="t('catalogo.gestisci_bom')" :icon="MANAGE_ICONS.BOM"
               text size="small" class="app-action-btn app-escape mt-025"
               @click="bomDrawerVisible = true" />
           </div>
         </template>
 
+        <!-- Sezioni contribuite da altri domini (oggi: i lotti di magazzino).
+             La scheda offre il punto, non sa chi ci contribuisce: ogni
+             contributo decide da se' se mostrarsi (core/estensioni.js). -->
+        <PuntoEstensione
+          v-if="isEdit && detail"
+          :punto="PUNTI_ESTENSIONE.ARTICOLO_DRAWER_SEZIONI"
+          :articolo-id="props.articoloId"
+          :articolo="form"
+        />
+
         <!-- Sezione: Note riepilogo (edit mode) -->
         <template v-if="isEdit && detail">
           <div class="app-drawer-section"><h4>{{ t('catalogo.tab_note') }}</h4></div>
-          <div class="riepilogo-section">
-            <div v-if="noteRiepilogo.length > 0" class="riepilogo-list">
-              <div v-for="n in noteRiepilogo" :key="n.id" class="riepilogo-item">
-                <span class="riepilogo-detail">{{ ((n.testo_md || n.testo) || '').substring(0, 80) }}{{ ((n.testo_md || n.testo) || '').length > 80 ? '...' : '' }}</span>
+          <div class="app-riepilogo-section">
+            <div v-if="noteRiepilogo.length > 0" class="app-riepilogo-list">
+              <div v-for="n in noteRiepilogo" :key="n.id" class="app-riepilogo-item">
+                <span class="app-riepilogo-detail">{{ ((n.testo_md || n.testo) || '').substring(0, 80) }}{{ ((n.testo_md || n.testo) || '').length > 80 ? '...' : '' }}</span>
               </div>
             </div>
-            <div v-else class="riepilogo-empty">{{ t('catalogo.nessuna_nota') }}</div>
+            <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessuna_nota') }}</div>
             <Button v-if="!isReadonly"
-              :label="t('catalogo.gestisci_note')" icon="pi pi-file-edit"
+              :label="t('catalogo.gestisci_note')" :icon="MANAGE_ICONS.NOTE"
               text size="small" class="app-action-btn app-escape mt-025"
               @click="noteDrawerVisible = true" />
           </div>
@@ -558,10 +590,10 @@ const drawerActions = computed(() => {
       </template>
 
       <div v-else class="app-loading">
-        <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem;"></i>
+        <i :class="STATUS_ICONS.CARICAMENTO" style="font-size: 1.5rem;"></i>
       </div>
 
-      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 
@@ -588,27 +620,3 @@ const drawerActions = computed(() => {
   />
 </template>
 
-<style scoped>
-.riepilogo-section {
-  margin-top: 0.5rem;
-}
-.riepilogo-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.riepilogo-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-}
-.riepilogo-detail {
-  color: var(--p-text-muted-color);
-  font-size: 0.8rem;
-}
-.riepilogo-empty {
-  color: var(--p-text-muted-color);
-  font-size: 0.85rem;
-}
-</style>

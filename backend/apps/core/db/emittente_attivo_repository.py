@@ -137,7 +137,13 @@ class EmittenteAttivoRepository:
     #        proposto è per costruzione accettato da `is_scelta_valida`.
     #        Nome e codice arrivano dal soggetto, coerenti con il resto
     #        dell'app (`brief-emittente-ragione-sociale-dal-soggetto`).
-    def list_selezionabili(self, auth_user_id: int) -> list[dict[str, Any]]:
+    #
+    #        `solo_id`: la sola voce di quell'emittente — i dati dell'emittente
+    #        ATTIVO per `/me/` (ruolo e nome) passano da qui, con lo stesso
+    #        criterio di scope, invece che da una seconda query.
+    def list_selezionabili(
+        self, auth_user_id: int, solo_id: int | None = None
+    ) -> list[dict[str, Any]]:
         with transaction.atomic():
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -147,15 +153,17 @@ class EmittenteAttivoRepository:
                     """
                     SELECT ef.id,
                            ef.codice,
-                           s.ragione_sociale_completa
+                           s.ragione_sociale_completa,
+                           ef.soggetto_ruolo_id
                       FROM anagrafiche.emittenti_fiscali ef
                       JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
                       JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
                      WHERE ef.attivo
                        AND script.fn_check_user_emittente_scope(%s, ef.id)
+                       AND (%s::bigint IS NULL OR ef.id = %s::bigint)
                      ORDER BY s.ragione_sociale_completa, ef.codice
                     """,
-                    [auth_user_id],
+                    [auth_user_id, solo_id, solo_id],
                 )
                 rows = cursor.fetchall()
         return [
@@ -163,6 +171,9 @@ class EmittenteAttivoRepository:
                 "emittente_fiscale_id": int(r[0]),
                 "codice": r[1],
                 "ragione_sociale": r[2],
+                # Il ruolo dell'emittente (`soggetti_ruoli.id`), NON la PK:
+                # e' la chiave dei listini (`emittente_soggetto_ruolo_id`).
+                "soggetto_ruolo_id": int(r[3]),
             }
             for r in rows
         ]

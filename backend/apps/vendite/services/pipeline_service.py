@@ -11,10 +11,17 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.db._helpers import order_dir_ammessa
 from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
-from apps.vendite.db.pipeline_repository import SdiPayloadRow, VenditePipelineRepository
+from apps.core.services.service_errors import E_VALIDATION_INPUT
+from apps.vendite.db.pipeline_repository import (
+    LOTTO_LISTE_PAGINA_MAX,
+    SdiPayloadRow,
+    VenditePipelineRepository,
+)
 from apps.vendite.services._fatturazione_job_helpers import JOB_TYPES_FATTURAZIONE_APP
 from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
@@ -295,7 +302,7 @@ def finestra_numerazione(
     scelti = [p for p in (lotto_id, competenza_mese, lotti_ids) if p is not None]
     ErrorManager.require(
         len(scelti) == 1,
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message=(
             "Indicare `lotto_id`, `competenza_mese` oppure `lotti`, "
             "esattamente uno."
@@ -489,7 +496,7 @@ def fn_list_lotto_segnalazioni(
     solo_attive: bool = True,
     solo_job_corrente: bool = False,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     order_by: str | None = None,
     order_dir: str = "desc",
     max_rows: int | None = None,
@@ -505,7 +512,7 @@ def fn_list_lotto_segnalazioni(
     )
     # ⚠️ L'export non ha una pagina da validare: salta la paginazione.
     ErrorManager.require(
-        bool(max_rows) or (page >= 1 and 1 <= page_size <= 500),
+        bool(max_rows) or (page >= 1 and 1 <= page_size <= LOTTO_LISTE_PAGINA_MAX),
         code="E_PIPELINE_VALIDATION",
         message="Parametri pipeline non validi.",
         detail=f"page={page} page_size={page_size} fuori dai limiti ammessi",
@@ -513,8 +520,11 @@ def fn_list_lotto_segnalazioni(
         function_name="vendite.pipeline_service.fn_list_lotto_segnalazioni",
         log_to_db=False,
     )
+    # ⛔ Il predicato unico `order_dir_ammessa` (2026-09-26), non un secondo
+    #    `in ("asc", "desc")`: la fn DB legge `lower(btrim(...))`, quindi
+    #    maiuscole, spazi e assenza (= il suo default `desc`) sono gia' suoi.
     ErrorManager.require(
-        order_dir.lower() in ("asc", "desc"),
+        order_dir_ammessa(order_dir),
         code="E_PIPELINE_VALIDATION",
         message="Parametri pipeline non validi.",
         detail=f"order_dir={order_dir!r} non ammesso",
@@ -682,11 +692,11 @@ def esiti_fatturazione(
         )
     ]
 
-    # (b) Giri del BATCH schedulato. limit=200 sui JOBNAME DISTINTI (il summary
+    # (b) Giri del BATCH schedulato. Una pagina piena (`MAX_LIMIT`) di JOBNAME DISTINTI (il summary
     # e' un GROUP BY jobname) gia' ristretti al prefisso di fatturazione: le
     # corsie sono 2, il cap e' largo per costruzione.
     summary, _ = MaintenanceRepository().list_job_summary(
-        limit=200,
+        limit=MAX_LIMIT,
         jobname_prefix=_JOBNAME_PREFISSO_FATTURAZIONE,
         meta_month_equals=(
             ("competenza", competenza_mese.replace(day=1).isoformat())
@@ -997,10 +1007,10 @@ def fn_get_lotto_task_runs(
         log_to_db=True,
     )
     ErrorManager.require(
-        bool(max_rows) or 1 <= int(page_size) <= 500,
+        bool(max_rows) or 1 <= int(page_size) <= LOTTO_LISTE_PAGINA_MAX,
         code="E_PIPELINE_VALIDATION",
         message="Parametri pipeline non validi.",
-        detail="page_size deve essere compreso tra 1 e 500",
+        detail=f"page_size deve essere compreso tra 1 e {LOTTO_LISTE_PAGINA_MAX}",
         context={"lotto_id": lotto_id, "page_size": page_size},
         function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
         log_to_db=True,
@@ -1014,8 +1024,11 @@ def fn_get_lotto_task_runs(
         function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
         log_to_db=True,
     )
+    # ⛔ Il predicato unico `order_dir_ammessa` (2026-09-26), non un secondo
+    #    `in ("asc", "desc")`: la fn DB legge `lower(btrim(...))`, quindi
+    #    maiuscole, spazi e assenza (= il suo default `desc`) sono gia' suoi.
     ErrorManager.require(
-        order_dir.lower() in ("asc", "desc"),
+        order_dir_ammessa(order_dir),
         code="E_PIPELINE_VALIDATION",
         message="Parametri pipeline non validi.",
         detail=f"order_dir={order_dir!r} non ammesso",

@@ -46,7 +46,7 @@ class GenerazioneRepository:
             {PraticheRepository.pratica_joins_sql()}
             WHERE p.flusso_origine_id = %s
             ORDER BY p.id
-        """
+        """  # noqa: S608 — proiezione/join dalle costanti di PraticheRepository, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
             return rows_to_list(cursor)
@@ -60,13 +60,11 @@ class GenerazioneRepository:
             code="E_INVALID_ID",
             message="flusso_id deve essere > 0",
         )
-        assert flusso_id > 0
         ErrorManager.require(
             regola_id > 0,
             code="E_INVALID_ID",
             message="regola_id deve essere > 0",
         )
-        assert regola_id > 0
 
         sql = """
             SELECT pratiche.fn_genera_pratica_da_flusso(%s, %s)

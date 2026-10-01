@@ -42,13 +42,6 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()
-        # Patch request_log middleware: SimpleTestCase non ammette DB queries.
-        self._req_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log",
-            return_value=None,
-        )
-        self._req_log_patcher.start()
-        self.addCleanup(self._req_log_patcher.stop)
 
     # 0. Senza JWT: 401.
     def test_genera_richiede_jwt(self) -> None:
@@ -111,15 +104,17 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
             "id": 10, "codice": "FATTURA", "attivo": True,
         }
         doc_svc_cls.return_value.list_documenti_per_sorgente.return_value = {
-            "items": [], "total": 0,
+            "results": [], "total_count": 0,
         }
 
         resp = self.client.get(f"{_BASE}42/documenti/")
 
         self.assertEqual(resp.status_code, 200)
         body = resp.json()["data"]
+        # Envelope di lista standard (`paginated_envelope`, 2026-09-27).
         self.assertEqual(body["page"], 1)
-        self.assertEqual(body["total"], 0)
+        self.assertEqual(body["count"], 0)
+        self.assertEqual(body["results"], [])
 
     # 3. La rotta emetti/ NON esiste per FATTURA (nessuna emissione da UI):
     #    la factory è stata istanziata senza emetti_call → 404.

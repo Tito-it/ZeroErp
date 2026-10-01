@@ -12,6 +12,7 @@ Approfondimento tabelle:
 Approfondimento funzioni:
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 > [script.fn_available_actions_ordine](/dbzero/script/funzioni/fn_available_actions_ordine)
+> [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) — i prezzi non autorizzati, Regola 5 (dal 2026-09-24)
 >
 Pattern correlato (domini gemelli):
 > [vendite.trgfn_contratti_guard_transizione_stato](/dbzero/vendite/funzioni/trgfn_contratti_guard_transizione_stato)
@@ -20,7 +21,7 @@ Pattern correlato (domini gemelli):
 
 ### 🎯 Scopo Principale
 
-(rev 2026-06-05)
+(rev 2026-09-24 — Regola 5, il prezzo non autorizzato; rev 2026-06-05)
 
 La trigger function **`vendite.trgfn_ordini_guard_transizione()`** è
 l'**enforcement DB-first del grafo transizioni** dell'ordine di vendita. È applicata dal
@@ -42,6 +43,9 @@ diretto possa forzare una transizione illegale.
 |---|--------|--------|
 | 1 | La coppia `(stato_da, stato_a)` deve esistere in `config.transizioni_stati_ordini` con `attivo=true` | `E_ORDINE_TRANSIZIONE_NON_AMMESSA` |
 | 2 | Precondizione `DRAFT → CONFERMATO`: l'ordine deve avere **almeno una riga** | `E_ORDINE_CONFERMA_SENZA_RIGHE` |
+| 3 | Verso `ANNULLATO`: i motivi di `script.fn_check_ordine_annullabile` (rev 2026-08-04) | primo motivo |
+| 4 | Verso `CONFERMATO`: i motivi di `script.fn_check_ordine_confermabile` — l'aliquota sulle righe che portano un prezzo (rev 2026-08-29) | primo motivo |
+| 5 | **Solo `DRAFT → CONFERMATO`**: nessun componente BoM attivo con il prezzo in attesa o rifiutato — [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) (rev 2026-09-24) | `E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO` |
 
 La **regola 2** è stata spostata da `ordini_service.py` (ex `E_ORD_NESSUNA_RIGA` inline)
 per coerenza DB-first: vale per ogni chiamante, non solo per `conferma()`.
@@ -69,17 +73,30 @@ DRAFT ──conferma──> CONFERMATO
 
 ---
 
-### Convivenza con il guard approvazione
+### Il prezzo non autorizzato: Regola 5 (rev 2026-09-24)
 
-Sulla stessa colonna (`BEFORE UPDATE OF stato_doc_ordine_id`, fase `_a10_`) opera anche
-`trgfn_ordini_guard_transizione_approvazione`
-(trigger `trg_ordini_a10_guard_transizione_approvazione_upd`, migration 20260512-20), che
-copre un **concern distinto**: blocca `CONFERMATO` se un componente BoM CASO A ha
-`stato_approvazione_prezzo = PENDING` o `prezzo_unitario IS NULL`.
+Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*. Un ordine
+con un componente BoM **attivo** in attesa di approvazione (`PENDING`) o **rifiutato**
+(`REJECTED`) non si conferma: la Regola 5 solleva il primo motivo di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati). La riga d'ordine
+lo stato di approvazione non lo porta, quindi contano i soli componenti.
 
-I due guard non si sovrappongono come regola. PostgreSQL li esegue in ordine alfabetico
-di nome trigger; entrambi sollevano in caso di violazione, quindi l'esito (operazione
-bloccata) è garantito a prescindere dall'ordine.
+⛔ **Solo dalla bozza.** La matrice fa rientrare l'ordine in `CONFERMATO` da `EVASO` e
+`PARZIALMENTE_EVASO`, in automatico, quando l'evasione torna indietro (un DDT annullato).
+Quel rientro non conferma niente di nuovo: un prezzo rimasto non autorizzato lo
+bloccherebbe, e con lui l'annullamento a valle. Per questo la regola **non** sta in
+`fn_check_ordine_confermabile`, che vale per ogni ingresso in `CONFERMATO`: l'aliquota
+(Regola 4) protegge il riepilogo IVA, che non sa da dove si arriva, e ha un perimetro
+diverso di proposito.
+
+Gli stessi motivi spengono «Conferma» in
+[`script.fn_available_actions_ordine`](/dbzero/script/funzioni/fn_available_actions_ordine),
+anche lì solo dalla bozza. (changeSet `20260924-29`, brief
+`brief-db-preventivi-congelamento-pricing`.)
+
+> Storia: il vecchio guard `trgfn_ordini_guard_transizione_approvazione` (trigger
+> `trg_ordini_a10_guard_transizione_approvazione_upd`, `20260512-19`/`-20`) bloccava
+> `CONFERMATO` con un componente `PENDING` o senza prezzo; è stato ritirato con il DROP
+> `20260512-28`. Dal ritiro al 2026-09-24 l'ordine non guardava il prezzo.
 
 ---
 
@@ -107,6 +124,8 @@ Gli errori sono sollevati via `script.fn_log_and_raise_error` (codici registrati
 |--------|----|--------|
 | `E_ORDINE_TRANSIZIONE_NON_AMMESSA` | 470 | Transizione assente o `attivo=false` in matrice |
 | `E_ORDINE_CONFERMA_SENZA_RIGHE` | 471 | `DRAFT → CONFERMATO` su ordine senza righe |
+| `E_DOC_PREZZO_PENDENTE` | — | `DRAFT → CONFERMATO` con un componente attivo col prezzo in attesa (Regola 5, dal 2026-09-24) |
+| `E_DOC_PREZZO_RIFIUTATO` | — | `DRAFT → CONFERMATO` con un componente attivo col prezzo rifiutato (Regola 5, dal 2026-09-24) |
 
 ---
 

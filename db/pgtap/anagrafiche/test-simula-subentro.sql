@@ -11,9 +11,8 @@
 --      * catasto clonato (id diverso, dati uguali)
 --      * link tabella ponte presente
 --
--- Prerequisiti:
---  - PDP: GAS-PDP-0002
---  - 2 soggetti reali (P.IVA sotto) o adattare
+-- Prerequisiti (rev 2026-09-23: PDP e soggetti si COSTRUISCONO, prima
+-- erano il PDP GAS-PDP-0002 e due partite IVA di questa macchina):
 --  - IVA codice=22
 --  - Stati cliente: AT, CH
 -- ------------------------------------------------------------
@@ -73,17 +72,20 @@ SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx;
 -- 0) Precondizioni
 -- =========================================================
 
--- 0.1) PDP GAS-PDP-0002
+-- 0.1) Il PDP GAS dello scenario
+-- ⛔ 2026-09-23: era il PDP «GAS-PDP-0002» di QUESTA macchina. Su un database
+--   ricostruito dai changelog non c'e', e la fixture moriva su «Non e' stato
+--   fornito un valore per pdp_id». Ora si COSTRUISCE, nuovo: niente clienti
+--   residui sopra (la ragione per cui le date sono nel 2085, vedi sopra, non
+--   c'e' piu' — le date restano dove sono, non danno fastidio).
 CREATE TEMP TABLE tmp_pdp AS
-SELECT id,
-       indirizzo_dettaglio_id,
-       utility_id AS utility_id
-FROM anagrafiche.pdp
-WHERE pdp = 'GAS-PDP-0002'
-LIMIT 1;
+SELECT p.pdp_id AS id,
+       p.indirizzo_dettaglio_id,
+       p.utility_id
+FROM dbops.fn_pgtap_crea_pdp('GAS') p;
 
 SELECT is((SELECT count(*)::int FROM tmp_pdp), 1,
-  'Esiste esattamente un PDP GAS-PDP-0002');
+  'Costruito un PDP GAS per lo scenario');
 
 -- 0.2) Stati cliente AT e CH
 CREATE TEMP TABLE tmp_stato_at AS
@@ -99,25 +101,28 @@ SELECT is((SELECT count(*)::int FROM tmp_stato_ch), 1,
   'Esiste stato_cliente CH');
 
 -- 0.3) Soggetti
+-- ⛔ 2026-09-23: erano due partite IVA di QUESTA macchina. Si costruiscono:
+--   due persone giuridiche, ciascuna col suo ruolo CL completo degli
+--   indirizzi di ruolo.
 CREATE TEMP TABLE tmp_soggetto_1 AS
-SELECT id FROM anagrafiche.soggetti WHERE partita_iva = '24551170426' LIMIT 1;
+SELECT dbops.fn_pgtap_crea_soggetto_pg('Subentro soggetto 1') AS id;
 
-SELECT is((SELECT count(*)::int FROM tmp_soggetto_1), 1,
-  'Trovato soggetto 1 (partita_iva=24551170426)');
+SELECT is((SELECT count(*)::int FROM tmp_soggetto_1 WHERE id IS NOT NULL), 1,
+  'Costruito il soggetto 1');
 
 CREATE TEMP TABLE tmp_soggetto_2 AS
-SELECT id FROM anagrafiche.soggetti WHERE partita_iva = '45807930719' LIMIT 1;
+SELECT dbops.fn_pgtap_crea_soggetto_pg('Subentro soggetto 2') AS id;
 
-SELECT is((SELECT count(*)::int FROM tmp_soggetto_2), 1,
-  'Trovato soggetto 2 (partita_iva=45807930719)');
+SELECT is((SELECT count(*)::int FROM tmp_soggetto_2 WHERE id IS NOT NULL), 1,
+  'Costruito il soggetto 2');
 
 -- 0.4) Ruolo cliente
 CREATE TEMP TABLE tmp_sr_1 AS
-SELECT script.fn_get_or_create_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
 FROM tmp_soggetto_1 s;
 
 CREATE TEMP TABLE tmp_sr_2 AS
-SELECT script.fn_get_or_create_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
 FROM tmp_soggetto_2 s;
 
 -- 0.5) IVA

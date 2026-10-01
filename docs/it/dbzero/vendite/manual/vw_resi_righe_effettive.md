@@ -11,7 +11,7 @@ Approfondimento tabelle:
 >
 Consumatori:
 >
-[vw_contatore_merce](vw_contatore_merce.md)
+[vw_partite_merce](vw_partite_merce.md)
 > [vw_resi_da_accreditare](vw_resi_da_accreditare.md)
 > Brief autorevole: `docs/it/dev/work-in-progress/brief-db-fatturazione-ddt-resi.md` §3b
 
@@ -79,7 +79,8 @@ WHERE ordine_riga_id = 12345 AND riapre_residuo IS TRUE;
 
 ### Note operative
 
-* **Chi la usa oggi**: `vw_contatore_merce` (addendo dei tenuti, tutti i tipi),
+* **Chi la usa oggi**: la partita di merce — `fn_partite_merce`, di cui
+  `vw_partite_merce` è la proiezione — (addendo dei tenuti, tutti i tipi),
   `fn_ordine_riga_qta_riconsegna` (solo `riapre_residuo`), il flip di stato del DDT in
   `fn_conferma_reso` / `fn_annulla_reso`.
 * ⚠️ **Una definizione resta deliberatamente fuori**: il guard anti-over-return

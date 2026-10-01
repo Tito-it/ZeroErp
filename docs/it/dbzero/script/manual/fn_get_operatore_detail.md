@@ -8,12 +8,13 @@ in `apps.amm_software.db.amm_software_repository.get_operatore_detail`,
 spostando in DB l'unica fonte di verità per il dettaglio operatore — in
 linea con la filosofia DB-first del progetto.
 
-Aggiunge **6 campi capability** che guidano la UX del drawer (azioni
-concesse / vietate / non applicabili) e ne riportano il motivo:
+Aggiunge i **campi capability** che guidano la UX del drawer (azioni
+concesse / vietate / non applicabili) e ne riportano il motivo come
+**codice macchina + chiave i18n** (dal 2026-09-27, `20260927-02`):
 
-* `can_invite` / `invite_reason`
-* `can_disable` / `disable_reason`
-* `can_demote_super_admin` / `demote_reason`
+* `can_invite` / `invite_reason` / `invite_reason_key`
+* `can_disable` / `disable_reason` / `disable_reason_key`
+* `can_demote_super_admin` / `demote_reason` / `demote_reason_key`
 
 > **Vedi anche**
 >
@@ -74,7 +75,8 @@ Tabella a riga singola (0 righe se `p_auth_user_id` non esiste o è `NULL`/≤0)
 | `ruolo_applicativo` | `TEXT` | `id.ruolo_applicativo::text` (enum `config.ruolo_applicativo`) |
 | `is_super_admin` | `BOOLEAN` | `script.fn_is_super_admin(au.id)` (GUC-aware) |
 | `invito_inviato_at` | `anagrafiche.identita_digitali.invito_inviato_at%TYPE` | `id.invito_inviato_at` |
-| `deve_cambiare_password` | `anagrafiche.identita_digitali.deve_cambiare_password%TYPE` | `id.deve_cambiare_password` |
+| `deve_cambiare_password` | `BOOLEAN` | `script.fn_get_deve_cambiare_password(au.id)`: il flag e' della **credenziale** (D-7, dal 2026-09-25) |
+| `veste_attiva` | `BOOLEAN` | `id.attivo`: lo stato della veste OPERATORE mostrata; `NULL` se non ce n'e' nessuna (dal 2026-09-25, `20260925-54`) |
 
 ### Override e perimetro
 
@@ -90,11 +92,23 @@ Tabella a riga singola (0 righe se `p_auth_user_id` non esiste o è `NULL`/≤0)
 | Colonna | Tipo | Logica |
 |---|---|---|
 | `can_invite` | `BOOLEAN` | `(fn_check_operatore_invitabile(au.id) ->> 'invitabile')::boolean` |
-| `invite_reason` | `TEXT` | `fn_check_operatore_invitabile(au.id) ->> 'motivo'` (NULL se invitabile) |
+| `invite_reason` | `TEXT` | `fn_check_operatore_invitabile(au.id) ->> 'reason'`: il codice del motivo (NULL se invitabile). Codici nel [manuale della check](/dbzero/script/funzioni/fn_check_operatore_invitabile) |
+| `invite_reason_key` | `TEXT` | `fn_check_operatore_invitabile(au.id) ->> 'reason_key'` |
 | `can_disable` | `BOOLEAN` | `NOT fn_check_ultimo_super_admin_attivo(au.id)` |
-| `disable_reason` | `TEXT` | Stringa it-IT con motivo lockout, NULL se concessa |
+| `disable_reason` | `TEXT` | `ULTIMO_SUPER_ADMIN`, NULL se concessa |
+| `disable_reason_key` | `TEXT` | `amministrazione.operatori.disabilita_reason.ultimo_super_admin`, NULL se concessa |
 | `can_demote_super_admin` | `BOOLEAN` o `NULL` | `NULL` se l'utente non è SA (azione **non applicabile**); altrimenti `NOT fn_check_ultimo_super_admin_attivo(au.id)` |
-| `demote_reason` | `TEXT` | NULL se non SA o se concessa; stringa it-IT con motivo lockout altrimenti |
+| `demote_reason` | `TEXT` | `ULTIMO_SUPER_ADMIN`; NULL se non SA o se concessa |
+| `demote_reason_key` | `TEXT` | `amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin`; NULL se non SA o se concessa |
+
+⭐ **Il motivo è un codice, non una frase** (dal 2026-09-27; brief
+blocco-login-per-credenziale §16). Il testo vive nei `locales` sotto la
+chiave, e il client la rende con un ripiego sul codice. Disable e demote
+hanno lo **stesso codice** (la condizione è una: sarebbe l'ultimo super admin
+attivo) ma **chiavi diverse**, perché la frase dice quale azione non si può
+fare. Fino a quel giorno i tre motivi erano frasi italiane composte nel DB.
+I nomi dei campi sono quelli già in servizio sul dettaglio operatore
+(`<verbo>_reason` + `<verbo>_reason_key`).
 
 > **Convenzione `NULL` su `can_demote_super_admin`**: distingue tra
 > "azione vietata" (`false` con motivo) e "azione non applicabile"
@@ -110,9 +124,20 @@ Tabella a riga singola (0 righe se `p_auth_user_id` non esiste o è `NULL`/≤0)
   [feedback_django_refs_in_liquibase](/dev/work-done/refactor-operatore-emittenti#7bis6)).
   Wrapping minimo: `BEGIN ... RETURN QUERY ... END`.
 * **Read-only**, nessun side effect.
-* `LEFT JOIN` su `identita_digitali`: utenti senza identità OPERATORE
-  vengono comunque ritornati (campi anagrafici a `NULL`), capability
-  comunque calcolate sull'`auth_user`.
+* **Una veste OPERATORE, non un JOIN** (dal 2026-09-25, `20260925-54`):
+  il modello ammette più vesti OPERATORE spente sulla stessa credenziale
+  (l'unicità vale solo fra le attive), e il `JOIN` di prima restituiva una
+  riga per veste. Si mostra quella **attiva** (al più una), altrimenti la
+  **spenta più recente** (`data_insert`, poi `id`). Con più vesti spente
+  l'invito non è offerto, e `invite_reason` dice perché (`PIU_VESTI_SPENTE`).
+* `veste_attiva` è lo stato di **quella** veste: né `attivo` (della risorsa
+  umana) né `is_active` (della credenziale, derivato da tutte le vesti) lo
+  dicono. ⛔ Non serve a ricavare il motivo del non invitabile: quello è
+  `invite_reason` (`VESTE_GIA_ATTIVA`), e dedurlo da `veste_attiva` sarebbe
+  una seconda copia della regola.
+* Utenti senza identità OPERATORE vengono comunque ritornati (campi
+  anagrafici a `NULL`, `veste_attiva` `NULL`), capability comunque calcolate
+  sull'`auth_user`.
 * **0 righe** se `p_auth_user_id` non esiste o è `NULL` / ≤0 (semantica
   lookup-by-id, coerente col Python originale; nessun raise).
 
@@ -191,9 +216,11 @@ SELECT can_disable, disable_reason,
        can_demote_super_admin, demote_reason
   FROM script.fn_get_operatore_detail(7);
 -- can_disable=false,
--- disable_reason='Ultimo SUPER_ADMIN attivo: disabilitarlo causerebbe il lockout del sistema',
+-- disable_reason='ULTIMO_SUPER_ADMIN',
 -- can_demote_super_admin=false,
--- demote_reason='Ultimo SUPER_ADMIN attivo: la rimozione del binding causerebbe il lockout del sistema'
+-- demote_reason='ULTIMO_SUPER_ADMIN'
+-- (con le chiavi amministrazione.operatori.disabilita_reason.ultimo_super_admin
+--  e amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin)
 
 -- Drawer su un operatore non-SA
 SELECT can_demote_super_admin, demote_reason

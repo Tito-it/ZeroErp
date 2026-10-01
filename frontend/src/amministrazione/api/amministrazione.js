@@ -20,6 +20,12 @@ export function createOperatore(payload) {
   return api.post(`${BASE}/operatori/`, payload)
 }
 
+// La credenziale che porta un'email, con username e vesti: i dati del dialog
+// di conferma del riuso (B-20). `data.credenziale` null = nessuna credenziale.
+export function getCredenzialePerEmail(email) {
+  return api.get(`${BASE}/operatori/credenziale-per-email/`, { params: { email } })
+}
+
 export function updateOperatore(authUserId, payload) {
   return api.patch(`${BASE}/operatori/${authUserId}/`, payload)
 }
@@ -104,12 +110,6 @@ export function getProcessiPresidi() {
   return api.get(`${BASE}/processi/presidi/`)
 }
 
-// Scopo: la SOLA testata dei presidi — {totale, con_righe, non_letti} — per il
-//        pallino della topbar (`usePresidiPolling`). Stesso giro del pannello
-//        senza le prime righe: lo legge ogni scheda aperta, a cadenza lenta.
-export function getPresidiConteggi() {
-  return api.get(`${BASE}/processi/presidi/conteggi/`)
-}
 
 // Scopo: dettaglio di un processo (bersagli dichiarati + identità tecniche).
 export function getProcesso(codice) {
@@ -193,8 +193,10 @@ export function exportErrorLogs(params = {}) {
 
 // --- Reparti e profili ---
 
-export function listReparti() {
-  return api.get(`${BASE}/reparti/`)
+// Scopo: la lista paginata dei reparti (`amm.reparti`): `params` porta ricerca,
+//        ordinamento e pagina.
+export function listReparti(params = {}) {
+  return api.get(`${BASE}/reparti/`, { params })
 }
 
 export function getProfiloReparto(uoId) {
@@ -263,8 +265,8 @@ export function listUnitaOrganizzative() {
 
 // Livelli EREDITATI dal profilo: cosa l'operatore avrebbe senza override.
 // ⛔ Non e' `reparti/<uo_id>/profilo/`, che legge il solo binding REPARTO: i
-//    bindings sono tre (AD_HOC prio 1, PORTALE e REPARTO prio 2) e i resolver
-//    prendono il primo per priorita'. Alimenta la colonna «ereditato».
+//    bindings sono tre (AD_HOC prio 1, REPARTO prio 2, PORTALE di veste prio 3)
+//    e i resolver prendono il primo per priorita'. Alimenta la colonna «ereditato».
 // ℹ️ Nessuna chiave `oggetti`: per un model l'ereditato e' il livello della sua
 //    AREA, che sta gia' in `aree`.
 export function getPermessiEreditati(authUserId) {
@@ -279,9 +281,6 @@ export function listAzioniProcesso() {
   return api.get(`${BASE}/lookup/azioni-processo/`)
 }
 
-export function listEmittentiFiscali() {
-  return api.get(`${BASE}/lookup/emittenti-fiscali/`)
-}
 
 // --- Setup status (refactor operatore-emittenti) ---
 
@@ -322,10 +321,3 @@ export function lookupAuditSources() {
   return api.get(`${BASE}/lookup/audit-sources/`)
 }
 
-// Lookup statico stati email log (5 codici fissi: SENT/PENDING/RETRY/FAILED/
-// SIMULATA — quest'ultimo dal 2026-09-11: stampata a video, non spedita).
-// Single source of truth lato BE in amm_software_service._EMAIL_LOG_STATI_VALIDI.
-// Restituisce lista nuda di { codice, descrizione, ordering }.
-export function lookupEmailLogStati() {
-  return api.get(`${BASE}/lookup/email-log-stati/`)
-}

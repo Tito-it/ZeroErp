@@ -91,19 +91,18 @@ Il campo `meta jsonb NOT NULL DEFAULT '{}'` porta i metadati letti da
 |--------|------|-------------|
 | `action_key` | `text` | Chiave semantica dell'azione (es. `conferma`, `annulla`) |
 | `label_key` | `text` | Chiave i18n per il label del bottone Vue (`$t(label_key)`) |
-| `severity` | `text` | Severity PrimeVue: `info` / `success` / `danger` |
-| `icon` | `text` | Classe PrimeIcons (es. `pi pi-check`, `pi pi-times`) |
+| _(icona e colore)_ | — | Non sono dati del DB: il frontend li sceglie dall'`action_key` (mappa verbo → aspetto in `core/`, icona e `severity`). Il colore è uscito dal `meta` il 2026-09-28 |
 | `requires_confirm` | `boolean` | `true` → dialog di conferma prima di eseguire |
 | `outlined` | `boolean` | `true` → bottone PrimeVue variante outlined (usato su `annulla`) |
 | `manuale` | `boolean` | `false` = transizione automatica (job/processo); esclusa dalla lista UI. Default: `true` |
 
 **Valori seed correnti (rev 2026-06-05):**
 
-| id | Transizione | action_key | severity | icon | requires_confirm | outlined | attivo |
-|----|-------------|-----------|----------|------|:---:|:---:|:---:|
-| 1 | DRAFT → CONFERMATO | `conferma` | `info` | `pi pi-check` | `true` | `false` | `true` |
-| 2 | DRAFT → ANNULLATO | `annulla` | `danger` | `pi pi-times` | `true` | `true` | `true` |
-| 3 | CONFERMATO → ANNULLATO | `annulla` | `danger` | `pi pi-times` | `true` | `true` | `false` |
+| id | Transizione | action_key | requires_confirm | outlined | attivo |
+|----|-------------|-----------|:---:|:---:|:---:|
+| 1 | DRAFT → CONFERMATO | `conferma` | `true` | `false` | `true` |
+| 2 | DRAFT → ANNULLATO | `annulla` | `true` | `true` | `true` |
+| 3 | CONFERMATO → ANNULLATO | `annulla` | `true` | `true` | `false` |
 
 > Differenza dagli ordini rispetto a contratti: nessuna azione con `requires_date`
 > (la cessazione programmata non esiste nel workflow ordine).
@@ -147,8 +146,7 @@ Il campo `meta jsonb NOT NULL DEFAULT '{}'` porta i metadati letti da
 -- Transizioni UI disponibili per un ordine nel suo stato corrente
 SELECT sa.codice AS stato_destinazione,
        t.meta->>'action_key' AS azione,
-       t.meta->>'label_key'  AS label_i18n,
-       t.meta->>'severity'   AS severity
+       t.meta->>'label_key'  AS label_i18n
   FROM config.transizioni_stati_ordini t
   JOIN config.stati_doc_ordini sa ON sa.id = t.stato_a_id
  WHERE t.stato_da_id = (

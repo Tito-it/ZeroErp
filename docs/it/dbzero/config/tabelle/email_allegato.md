@@ -36,5 +36,12 @@
 | ix_email_allegato_log_id | `CREATE INDEX ix_email_allegato_log_id ON config.email_allegato USING btree (email_log_id)` |
 | ix_email_allegato_outbox_id | `CREATE INDEX ix_email_allegato_outbox_id ON config.email_allegato USING btree (email_outbox_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_email_allegato_a10_guard_solo_bozza_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_email_allegato_guard_solo_bozza()` |
+| trg_email_allegato_a10_guard_solo_bozza_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION config.trgfn_email_allegato_guard_solo_bozza()` |
+| trg_email_allegato_a10_guard_solo_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_email_allegato_guard_solo_bozza()` |
+
 ---
 {% include-markdown "signature-core.md" %}

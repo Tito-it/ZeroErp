@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUARD — «CHI AGISCE E' LA CREDENZIALE STESSA»: script.fn_guard_utente_stesso
+#   Brief: brief-db-secondo-fattore-totp, sezione 3 (i verbi del device).
+#
+# ── ⭐ PERCHE' UN GUARD E NON QUATTRO IF ─────────────────────────────
+#   Registrare, confermare e rigenerare i codici del proprio device sono atti
+#   dell'utente stesso, e disabilitarlo anche (oltre al SUPER_ADMIN e alla
+#   sessione del migratore): quattro verbi, una domanda. Nasce gia' estratta
+#   (regola del 2 dentro lo stesso giro). Gemello di script.fn_guard_super_admin.
+#
+# ── ⚠️ CHI AGISCE ARRIVA COME PARAMETRO ─────────────────────────────
+#   Il chiamante legge app.current_user_id (linee-guida-sql §10.4) e lo passa:
+#   la funzione resta pura e provabile con input espliciti.
+#   Fail-closed: chi agisce NULL e' «no» (non c'e' un utente in sessione).
+#   Il rifiuto e' E_PERMESSO_NEGATO, lo stesso codice di fn_guard_super_admin
+#   e del backend.
+#
+# ⚠️ Protegge da un backend che sbaglia la GUC, non da uno manomesso: l'identita'
+# la dichiara il backend (limite §4.4 di brief-db-permesso-nel-verbo-di-scrittura).
+# INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260929-14-create-fn-guard-utente-stesso-mctit.yaml
+
+  - changeSet:
+      id: 20260929-14-create-fn-guard-utente-stesso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_guard_utente_stesso(p_utente, p_auth_user_id): solleva E_PERMESSO_NEGATO se chi
+        agisce (p_utente, letto dal chiamante da app.current_user_id) non e' la credenziale su cui
+        agisce; NULL = no (fail-closed). Gemello di fn_guard_super_admin. INVOKER. Brief:
+        brief-db-secondo-fattore-totp §3.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_guard_utente_stesso';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_guard_utente_stesso(
+                  p_utente       integer,
+                  p_auth_user_id integer
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: chiedere che chi agisce sia la credenziale su cui agisce,
+              --   nella prima riga di un verbo che tocca «le proprie» cose.
+              -- Uso: PERFORM script.fn_guard_utente_stesso(
+              --          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+              --          p_auth_user_id);
+              BEGIN
+                  -- NULL (nessun utente in sessione) vale no: fail-closed.
+                  IF p_utente IS NULL OR p_auth_user_id IS NULL
+                     OR p_utente <> p_auth_user_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_guard_utente_stesso', 'E_PERMESSO_NEGATO',
+                          jsonb_build_object('richiesto',    'UTENTE_STESSO',
+                                             'auth_user_id', p_auth_user_id,
+                                             'chi_agisce',   p_utente,
+                                             'senza_utente', p_utente IS NULL),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_guard_utente_stesso(integer, integer) IS
+                  'Guard dei verbi che toccano le cose PROPRIE di una credenziale (il device del secondo fattore: registrare, confermare, rigenerare i codici, disabilitare): chi agisce (p_utente, che il chiamante legge da app.current_user_id, linee-guida-sql §10.4) dev''essere la credenziale su cui agisce (p_auth_user_id). No -> E_PERMESSO_NEGATO (NON_PERMESSO, lo stesso codice del backend e di fn_guard_super_admin, di cui e'' il gemello), anche a utente NULL: fail-closed, con senza_utente nel contesto. Protegge da un backend che sbaglia la GUC, non da uno manomesso. INVOKER. Brief: brief-db-secondo-fattore-totp §3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_guard_utente_stesso(integer, integer);

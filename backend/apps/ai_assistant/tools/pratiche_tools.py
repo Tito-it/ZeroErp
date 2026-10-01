@@ -12,7 +12,15 @@ from __future__ import annotations
 from typing import Any
 
 from apps.ai_assistant.services.user_context import get_emittente_fiscale_id
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.pratiche.api.views import (
+    ApiPraticaDetail,
+    ApiPraticaFlussiList,
+    ApiPraticaNoteList,
+    ApiPraticaStato,
+    ApiPraticheList,
+)
+from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 
 
 class CercaPraticheTool(AITool):
@@ -36,7 +44,7 @@ class CercaPraticheTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "Ricerca libera su codice, descrizione o nominativo soggetto",
+                        "description": f"Ricerca libera su codice, descrizione o nominativo soggetto (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "stato": {
                         "type": "string",
@@ -60,8 +68,7 @@ class CercaPraticheTool(AITool):
                 },
                 "required": [],
             },
-            required_area="pratiche",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiPraticheList, "GET"),
             # Naviga alla lista pratiche con filtro search pre-impostato
             route_template={
                 "name": "pratiche-gestione",
@@ -87,7 +94,7 @@ class CercaPraticheTool(AITool):
         items, total = pratiche_service.cerca_pratiche(
             emittente_fiscale_id=get_emittente_fiscale_id(request),
             stato_codice_interno=params.get("stato"),
-            search=params.get("search"),
+            search=self.termine_ricerca(params),
             data_da=params.get("data_da"),
             data_a=params.get("data_a"),
             limit=self.safe_page_size(params),
@@ -123,8 +130,7 @@ class DettaglioPraticaTool(AITool):
                 },
                 "required": ["pratica_id"],
             },
-            required_area="pratiche",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiPraticaDetail, "GET"),
         )
 
     # Scopo: Recupera il dettaglio di una pratica dal repository.
@@ -174,8 +180,7 @@ class CercaFlussiPraticaTool(AITool):
                 },
                 "required": ["pratica_id"],
             },
-            required_area="pratiche",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiPraticaFlussiList, "GET"),
         )
 
     # Scopo: Elenca i flussi di una pratica dal repository.
@@ -237,9 +242,7 @@ class CreaPraticaTool(AITool):
                 },
                 "required": ["tipo_prestazione_id", "priorita_id"],
             },
-            required_area="pratiche",
-            required_level="TUTTO",
-            requires_confirmation=True,
+            endpoint=EndpointGemello(ApiPraticheList, "POST"),
         )
 
     # Scopo: Genera il sommario dell'operazione per la conferma utente.
@@ -303,12 +306,7 @@ class CambiaStatoPraticaTool(AITool):
                 },
                 "required": ["pratica_id", "nuovo_stato"],
             },
-            required_area="pratiche",
-            required_level="TUTTO",
-            requires_confirmation=True,
-            # Stessa granularita' fine dell'endpoint UI ApiPraticaStato
-            # (post_permission="cambia_stato_pratica").
-            required_action="cambia_stato_pratica",
+            endpoint=EndpointGemello(ApiPraticaStato, "POST"),
         )
 
     # Scopo: Genera il sommario del cambio stato per la conferma.
@@ -365,9 +363,7 @@ class AggiungiNotaPraticaTool(AITool):
                 },
                 "required": ["pratica_id", "tipo_nota", "contenuto"],
             },
-            required_area="pratiche",
-            required_level="TUTTO",
-            requires_confirmation=True,
+            endpoint=EndpointGemello(ApiPraticaNoteList, "POST"),
         )
 
     # Scopo: Genera il sommario della nota per la conferma.

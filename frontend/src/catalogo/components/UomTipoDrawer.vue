@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useUomTipiStore } from '../stores/uomTipi'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -34,9 +35,13 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({ codice: '', codice_interno: '', descrizione: '', attivo: true })
+// Modifiche non salvate: fotografia all'apertura (anche in creazione) e
+// conferma se si chiude con modifiche (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 function resetForm() {
   form.value = { codice: '', codice_interno: '', descrizione: '', attivo: true }
+  fissa()
 }
 
 async function loadDetail() {
@@ -49,6 +54,7 @@ async function loadDetail() {
     descrizione: data.descrizione || '',
     attivo: data.attivo ?? true
   }
+  fissa()
 }
 
 watch(
@@ -79,7 +85,7 @@ async function handleSave() {
       attivo: form.value.attivo,
     }
     const result = await execute(() => store.update(props.tipoId, payload), { successMessage: t('catalogo.uom_tipo_salvato') })
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   } else {
     const payload = {
       codice: form.value.codice?.trim(),
@@ -87,23 +93,26 @@ async function handleSave() {
       descrizione: form.value.descrizione?.trim(),
     }
     const result = await execute(() => store.create(payload), { successMessage: t('catalogo.uom_tipo_creato') })
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   }
 }
 
 function close() {
-  emit('update:visible', false)
-  emit('cancelled')
+  chiudiConConferma(() => {
+    emit('update:visible', false)
+    emit('cancelled')
+  })
 }
+const suVisibile = gestoreVisibile(emit, close)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.SIMPLE }" :dismissable="true"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.uom_tipo')" />
+      <DrawerTitle :modificato="modificato" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.uom_tipo')" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

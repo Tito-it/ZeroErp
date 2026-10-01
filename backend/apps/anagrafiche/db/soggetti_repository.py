@@ -13,13 +13,17 @@ import json
 from typing import Any
 
 from apps.core.db._helpers import (
+    pattern_contiene,
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
-    escape_ilike,
-    extract_paginated,
+    fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
+    soglia_ricerca,
 )
 from apps.core.db.parameter_repository import ParameterRepository
+from apps.core.db.sql_write_helpers import execute_dynamic_update, sql_set_clause
 
 from django.db import connection
 
@@ -43,6 +47,16 @@ _SOGGETTI_ORDER_COLS: dict[str, str] = {
     "tipo_descrizione": "tipo_descrizione",
     "data_insert": "s.data_insert",
 }
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⭐ L'id fiscale univoco e non CF e P.IVA separati (Tid, 2026-09-23): come
+#    fornitori, clienti ed emittenti. Fino al 2026-09-24 la ricerca era scritta
+#    a mano qui e cercava `codice_fiscale` e `partita_iva` nudi.
+#    Nessun termine si perde: la colonna GENERATED porta `cf || ' ' || piva`
+#    quando i due differiscono, altrimenti quello che c'e'.
+_RICERCA_SOGGETTI = RicercaFull(
+    "anagrafiche.soggetti", ("ragione_sociale_completa", "id_fiscale_univoco_cf_piva"),
+)
 
 # Scopo: clausola scope emittente sul ruolo CL (regola del 2: usata da
 #        list_soggetti, get_soggetto_ruoli e search_ruoli_lookup). Un ruolo CL
@@ -109,11 +123,34 @@ _ISTANZE_INFO_SELECT = """ist.n_istanze,
        CASE WHEN ist.n_istanze = 1 THEN ist._unica_id END AS istanza_unica_id,
        CASE WHEN ist.n_istanze = 1 THEN ist._unica_codice END AS istanza_unica_codice"""
 
-# Lunghezza minima della search bar soggetti (resolver). Esposto via
-# config-resolver al frontend per evitare cablato duplicato. Costante
-# applicativa: se serve parametrizzazione per emittente, promuovere a
-# config.parameters (chiave es. MIN_SEARCH_LENGTH_SOGGETTI).
-MIN_SEARCH_LENGTH_SOGGETTI = 3
+# ⛔ `MIN_SEARCH_LENGTH_SOGGETTI` non c'e' piu' (2026-09-26, brief-db-be-fe-
+#    ricerca-soglia-per-lista §6 b, decisione di Tid): la soglia del resolver
+#    soggetti e' quella del catalogo della lista che interroga — vedi
+#    `get_config_resolver`.
+
+
+# Whitelist delle colonne SCRIVIBILI dagli update (BB `sql_write_helpers`,
+# politica RIGIDA dal 2026-09-26: una colonna fuori lista e' `RuntimeError`).
+# ⚠️ Sono il perimetro del REPOSITORY, non il contratto dell'operatore: le
+#    chiavi del payload le valida prima `SoggettiService` (400), che parte da
+#    qui e puo' restringere.
+SOGGETTO_UPDATE_COLS: frozenset[str] = frozenset({
+    "cognome", "nome", "ragione_sociale", "codice_fiscale",
+    "partita_iva", "sesso", "data_nascita", "comune_id",
+    # I0/D8 (2026-08-29): regime fiscale della controparte.
+    "split_payment", "cliente_pa",
+})
+# Alias frontend → colonna DB accettati da `update_soggetto`.
+SOGGETTO_UPDATE_ALIAS: dict[str, str] = {"comune_nascita_id": "comune_id"}
+CONTATTO_UPDATE_COLS: frozenset[str] = frozenset({
+    "nominativo", "email", "telefono", "cellulare", "pec",
+    "tipo_contatto_id", "unita_organizzativa_id", "note",
+})
+INDIRIZZO_RUOLO_UPDATE_COLS: frozenset[str] = frozenset({
+    "tipo_indirizzo_id", "istanza_utility_id", "indirizzo_dettaglio_id",
+    "indirizzo_libero", "stato_id", "comune_id", "codice_postale_id",
+    "administrative_area", "locality", "sublocality", "postal_box",
+})
 
 
 class SoggettiRepository:
@@ -123,8 +160,8 @@ class SoggettiRepository:
     # Lista e dettaglio soggetti
     # =================================================================
 
-    # Scopo: Lista paginata soggetti con search su ragione_sociale_completa,
-    #        codice_fiscale, partita_iva. Filtro per tipo_soggetto_dettaglio_id.
+    # Scopo: Lista paginata soggetti con la ricerca libera del catalogo
+    #        (`_RICERCA_SOGGETTI`) e filtro per tipo_soggetto_dettaglio_id.
     def list_soggetti(
         self, *, search: str | None = None,
         tipo_soggetto_dettaglio_id: int | None = None,
@@ -138,9 +175,14 @@ class SoggettiRepository:
             default=_SOGGETTI_ORDER_COLS["ragione_sociale_completa"],
             tiebreak="s.id",
         )
-        # escape_ilike: senza, una search contenente %/_ agisce da wildcard
-        # (stesso fix dei lookup BA/istanze/soggetti-ruoli).
-        search_pattern = f"%{escape_ilike(search.strip())}%" if search and search.strip() else None
+        # ⚠️ I due parametri dello scope dei ruoli stanno nella SELECT (la
+        #    subquery dei badge), quindi PRIMA di quelli del WHERE.
+        params: list[Any] = [emittente_ids, emittente_ids]
+        conditions: list[str] = ["(%s::bigint IS NULL OR s.tipo_soggetto_dettaglio_id = %s)"]
+        params.extend([tipo_soggetto_dettaglio_id, tipo_soggetto_dettaglio_id])
+        # ⚠️ Sotto la soglia della lista (catalogo) il termine non filtra: fino al
+        #    2026-09-24 la ricerca scritta a mano filtrava da un carattere.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_SOGGETTI, alias="s")
         sql = f"""
             SELECT s.id, s.codice, s.ragione_sociale_completa, s.codice_fiscale,
                    s.partita_iva, s.id_fiscale_univoco_cf_piva,
@@ -162,24 +204,17 @@ class SoggettiRepository:
               FROM anagrafiche.soggetti s
               JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
-             WHERE (%s::text IS NULL OR (
-                       s.ragione_sociale_completa ILIKE %s
-                    OR s.codice_fiscale ILIKE %s
-                    OR s.partita_iva ILIKE %s
-                   ))
-               AND (%s::bigint IS NULL OR s.tipo_soggetto_dettaglio_id = %s)
+             WHERE {" AND ".join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        params = [
-            emittente_ids, emittente_ids,
-            search_pattern, search_pattern, search_pattern, search_pattern,
-            tipo_soggetto_dettaglio_id, tipo_soggetto_dettaglio_id,
-            limit, offset,
-        ]
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            results, total_count = extract_paginated(cursor)
+        params.extend([limit, offset])
+        # ⚠️ Nessun conteggio di ripiego scritto a parte: i parametri dello scope
+        #    stanno nella SELECT (prima di quelli del WHERE), e un conteggio
+        #    senza SELECT dovrebbe sapere quanti sono — un `params[2:]` che si
+        #    disallinea in silenzio al primo parametro in piu' dello scope. Il
+        #    BB rilegge la stessa query con `LIMIT 1 OFFSET 0`.
+        results, total_count = fetch_paged_with_total(sql, params, offset=offset)
         # Normalizza ruoli (jsonb_agg): psycopg in alcune configurazioni
         # ritorna jsonb come stringa anziche' lista. Garantiamo sempre list.
         for r in results:
@@ -369,13 +404,11 @@ class SoggettiRepository:
     # Scopo: Aggiorna campi modificabili di un soggetto.
     # Normalizza stringhe vuote a NULL per evitare conflitti con trigger
     # che controllano IS NOT NULL (es. partita_iva, codice_fiscale).
+    # ⛔ Dal 2026-09-26 la scrittura passa dal BB `execute_dynamic_update`, con
+    #    whitelist RIGIDA: una chiave fuori `SOGGETTO_UPDATE_COLS` (dopo l'alias)
+    #    e' `RuntimeError`, non piu' uno scarto silenzioso. Il contratto
+    #    dell'operatore lo valida PRIMA il service (400 `E_ANAG_VALIDAZIONE`).
     def update_soggetto(self, soggetto_id: str, data: dict[str, Any]) -> bool:
-        _ALLOWED = {
-            "cognome", "nome", "ragione_sociale", "codice_fiscale",
-            "partita_iva", "sesso", "data_nascita", "comune_id",
-            # I0/D8 (2026-08-29): regime fiscale della controparte.
-            "split_payment", "cliente_pa",
-        }
         # Campi dove stringa vuota deve diventare NULL.
         # ⚠️ `split_payment`/`cliente_pa` restano FUORI: sono `character(1)`
         #    NOT NULL con CHECK ('S','N'), quindi normalizzare a NULL
@@ -383,25 +416,21 @@ class SoggettiRepository:
         #    un errore piu' oscuro di quello che gia' c'e'. Il valore lo valida
         #    il service prima di arrivare qui.
         _NULLABLE = {"codice_fiscale", "partita_iva", "data_nascita", "comune_id"}
-        # Mapping alias frontend → colonna DB
-        _ALIAS = {"comune_nascita_id": "comune_id"}
-        mapped = {_ALIAS.get(k, k): v for k, v in data.items()}
+        # Copia con l'alias frontend → colonna DB applicato: `data` e' spesso
+        # `request.data`, e non si muta l'input del chiamante.
+        mapped = {SOGGETTO_UPDATE_ALIAS.get(k, k): v for k, v in data.items()}
         # Normalizza stringhe vuote a None per campi nullable
         for k in _NULLABLE:
-            if k in mapped and mapped[k] is not None:
-                val = mapped[k]
-                if isinstance(val, str) and not val.strip():
-                    mapped[k] = None
-        fields = [(k, v) for k, v in mapped.items() if k in _ALLOWED]
-        if not fields:
+            val = mapped.get(k)
+            if isinstance(val, str) and not val.strip():
+                mapped[k] = None
+        if not mapped:
             return False
-        set_clause = ", ".join([f"{f[0]} = %s" for f in fields])
-        values = [f[1] for f in fields]
-        values.append(soggetto_id)
-        sql = f"UPDATE anagrafiche.soggetti SET {set_clause} WHERE id = %s::uuid"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, values)
-            return cursor.rowcount > 0
+        # `id` e' uuid: il cast lo fa PostgreSQL sul literal del parametro.
+        return execute_dynamic_update(
+            "anagrafiche.soggetti", soggetto_id, mapped,  # type: ignore[arg-type]
+            allowed=SOGGETTO_UPDATE_COLS,
+        )
 
     # =================================================================
     # Contatti
@@ -451,18 +480,15 @@ class SoggettiRepository:
             return result
 
     # Scopo: Aggiorna un contatto esistente con verifica ownership soggetto o ruolo.
+    #        SET composto dal BB `sql_set_clause` (whitelist RIGIDA
+    #        `CONTATTO_UPDATE_COLS`, dal 2026-09-26): il WHERE di ownership lo
+    #        scrive il metodo, per questo non e' `execute_dynamic_update`.
     def update_contatto(self, contatto_id: int, data: dict[str, Any],
                         soggetto_id: str | None = None,
                         soggetto_ruolo_id: int | None = None) -> bool:
-        _ALLOWED = {
-            "nominativo", "email", "telefono", "cellulare", "pec",
-            "tipo_contatto_id", "unita_organizzativa_id", "note",
-        }
-        fields = [(k, v) for k, v in data.items() if k in _ALLOWED]
-        if not fields:
+        if not data:
             return False
-        set_clause = ", ".join([f"{f[0]} = %s" for f in fields])
-        values = [f[1] for f in fields]
+        set_clause, values = sql_set_clause(data, allowed=CONTATTO_UPDATE_COLS)
         values.append(contatto_id)
         where = "WHERE id = %s"
         if soggetto_id is not None:
@@ -471,7 +497,7 @@ class SoggettiRepository:
         if soggetto_ruolo_id is not None:
             where += " AND soggetto_ruolo_id = %s"
             values.append(soggetto_ruolo_id)
-        sql = f"UPDATE anagrafiche.contatti SET {set_clause} {where}"  # noqa: S608
+        sql = f"UPDATE anagrafiche.contatti SET {set_clause} {where}"  # noqa: S608 — SET da sql_set_clause (colonne in whitelist), WHERE letterale del metodo, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, values)
             return cursor.rowcount > 0
@@ -585,12 +611,7 @@ class SoggettiRepository:
             cursor.execute(sql, [soggetto_ruolo_id])
             return {row[0] for row in cursor.fetchall()}
 
-    # Campi ammessi per update indirizzi ruolo.
-    _IND_RUOLO_ALLOWED = {
-        "tipo_indirizzo_id", "istanza_utility_id", "indirizzo_dettaglio_id",
-        "indirizzo_libero", "stato_id", "comune_id", "codice_postale_id",
-        "administrative_area", "locality", "sublocality", "postal_box",
-    }
+    # Campi nullable dell'update indirizzi ruolo: stringa vuota -> NULL.
     _IND_RUOLO_NULLABLE = {
         "istanza_utility_id", "indirizzo_dettaglio_id", "indirizzo_libero",
         "stato_id", "comune_id", "codice_postale_id",
@@ -632,22 +653,26 @@ class SoggettiRepository:
             return result
 
     # Scopo: Aggiorna indirizzo ruolo con ownership check su soggetto_ruolo_id.
+    #        SET dal BB `sql_set_clause` (whitelist RIGIDA
+    #        `INDIRIZZO_RUOLO_UPDATE_COLS`, dal 2026-09-26); il WHERE di
+    #        ownership lo scrive il metodo.
     def update_indirizzo_ruolo(
         self, indirizzo_id: int, soggetto_ruolo_id: int,
         data: dict[str, Any],
     ) -> bool:
+        # Copia: `data` e' spesso `request.data`, non si muta l'input.
+        valori = dict(data)
         # Normalizza stringhe vuote a None per campi nullable
         for k in self._IND_RUOLO_NULLABLE:
-            if k in data and isinstance(data[k], str) and not data[k].strip():
-                data[k] = None
-        fields = [(k, v) for k, v in data.items() if k in self._IND_RUOLO_ALLOWED]
-        if not fields:
+            val = valori.get(k)
+            if isinstance(val, str) and not val.strip():
+                valori[k] = None
+        if not valori:
             return False
-        set_clause = ", ".join(f"{f[0]} = %s" for f in fields)
-        values: list[Any] = [f[1] for f in fields]
+        set_clause, values = sql_set_clause(valori, allowed=INDIRIZZO_RUOLO_UPDATE_COLS)
         values.extend([indirizzo_id, soggetto_ruolo_id])
         sql = (
-            f"UPDATE anagrafiche.indirizzi SET {set_clause} "  # noqa: S608
+            f"UPDATE anagrafiche.indirizzi SET {set_clause} "  # noqa: S608 — SET da sql_set_clause (colonne in whitelist), WHERE letterale, valori come parametri
             "WHERE id = %s AND soggetto_ruolo_id = %s"
         )
         with connection.cursor() as cursor:
@@ -710,7 +735,7 @@ class SoggettiRepository:
         emittente_ids: list[int] | None,
         limit: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        search_pattern = f"%{escape_ilike(q)}%"
+        search_pattern = pattern_contiene(q)
         # Filtro tipo_ruolo: esclude per definizione le righe "senza ruolo"
         # (secondo ramo della UNION gated su tipo_ruolo IS NULL).
         cte = f"""
@@ -907,6 +932,12 @@ class SoggettiRepository:
                AND (trna.valido_al IS NULL OR trna.valido_al >= CURRENT_DATE)
         """
         # 3. Tipi soggetto dettaglio filtrati per nature ammesse
+        # ⛔ `varchar[]`, non `bigint[]`: `config.tipi_soggetto.id` e' un codice
+        #    (`PF`, `PG`, `ENC`). Col cast a `bigint[]` la query falliva su OGNI
+        #    ruolo con la matrice delle nature valorizzata — cioe' tutti quelli
+        #    del seed — e i test unitari, con la connessione mockata, non lo
+        #    vedevano. Trovato il 2026-09-26 dal primo test sul DB vero
+        #    (`test_ricerca_full_db`, brief-db-be-fe-ricerca-soglia-per-lista §6 b).
         sql_dettaglio = """
             SELECT tsd.id, tsd.codice_interno, tsd.descrizione,
                    ts.id AS tipo_soggetto_id,
@@ -916,7 +947,7 @@ class SoggettiRepository:
                    tsd.dati_societari_policy
               FROM config.tipi_soggetto_dettaglio tsd
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
-             WHERE (%s::bigint[] IS NULL OR ts.id = ANY(%s))
+             WHERE (%s::varchar[] IS NULL OR ts.id = ANY(%s::varchar[]))
              ORDER BY tsd.codice_interno
         """
         with connection.cursor() as cursor:
@@ -933,6 +964,19 @@ class SoggettiRepository:
 
             cursor.execute(sql_dettaglio, [nature_ids, nature_ids])
             dettagli = rows_to_list(cursor)
+
+            # «Tutte le nature» si leggono dal dominio, l'enum di
+            # `tipi_soggetto.natura_soggetto`, nell'ordine in cui e' dichiarato.
+            # ⛔ Mai un elenco scritto qui: fino al 2026-09-26 era
+            #    `["PF", "PG", "ENTE"]`, una seconda sede dell'enum che una
+            #    natura nuova avrebbe lasciato indietro senza errore.
+            if nature:
+                nature_ammesse = [n["natura_soggetto"] for n in nature]
+            else:
+                cursor.execute(
+                    "SELECT unnest(enum_range(NULL::config.natura_soggetto_enum))::text"
+                )
+                nature_ammesse = [r[0] for r in cursor.fetchall()]
 
         # 4. Default tipo_soggetto_dettaglio per ruolo (codice_interno via
         # config.parameters, override gratuito per emittente). Usiamo
@@ -956,10 +1000,18 @@ class SoggettiRepository:
         return {
             "tipo_ruolo": ruolo["codice"],
             "tipo_ruolo_descrizione": ruolo["descrizione"],
-            "nature_ammesse": [n["natura_soggetto"] for n in nature] if nature else ["PF", "PG", "ENTE"],
+            "nature_ammesse": nature_ammesse,
             "tipi_soggetto_dettaglio": dettagli,
             "default_tipo_soggetto_dettaglio_id": default_id,
-            "min_search_length": MIN_SEARCH_LENGTH_SOGGETTI,
+            # ⭐ La soglia del catalogo della lista soggetti, non una costante:
+            #    il resolver cerca con `listSoggetti`, cioe' con QUESTA lista, e
+            #    il BB di ricerca filtra solo da `ricerca_min_caratteri` in su.
+            #    Una soglia sua sarebbe una seconda sede dello stesso fatto — e
+            #    se fosse piu' bassa di quella del catalogo, il resolver
+            #    manderebbe termini che il BB ignora, e proporrebbe come
+            #    suggerimenti i primi soggetti NON filtrati, senza errore.
+            #    Il codice lista viene dalla dichiarazione che la ricerca usa.
+            "min_search_length": soglia_ricerca(_RICERCA_SOGGETTI.lista_codice),
         }
 
     # Scopo: Recupera dati societari del soggetto (se esistono).

@@ -196,3 +196,6 @@ L'operatore preme «Fattura competenza»:
 [dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori),
 [dbops.coda_lavori_tipi](/dbzero/dbops/manual/coda_lavori_tipi) e
 [dbops.fn_accoda_lavoro](/dbzero/dbops/manual/fn_accoda_lavoro).*
+
+---
+{% include-markdown "signature-core.md" %}

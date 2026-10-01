@@ -60,22 +60,35 @@ SELECT
 
 -- =========================================================
 -- Setup: cliente con istanza, bank_branch
+--
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Cliente e filiale si PESCAVANO («il primo cliente con istanza», «la
+--   prima bank_branch»): su un database ricostruito (la CI) non c'e' ne'
+--   l'uno ne' l'altra — anagrafiche.bank_branches e' dato di MACCHINA — e
+--   il file restava con otto asserzioni rosse su dieci. Ora il cliente
+--   (soggetto -> ruolo CL -> istanza -> BA) viene da
+--   dbops.fn_pgtap_crea_cliente_ba e la filiale da
+--   dbops.fn_pgtap_crea_filiale_bancaria. Il ruolo e il soggetto sono
+--   nuovi: la «Pulizia» qui sotto sul ruolo e sul soggetto non trova
+--   niente, e resta per gli IBAN fissi di test.
+--   ⛔ Cio' che i builder scrivono si legge in un'istruzione SEPARATA.
 -- =========================================================
-CREATE TEMP TABLE tmp_g AS
-SELECT cl.soggetto_ruolo_id, sr.soggetto_id, cl.istanza_utility_id
-FROM anagrafiche.clienti cl
-JOIN anagrafiche.soggetti_ruoli sr ON sr.id = cl.soggetto_ruolo_id
-WHERE cl.istanza_utility_id IS NOT NULL
-ORDER BY cl.id LIMIT 1;
+CREATE TEMP TABLE tmp_cli_cb AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('conti istanza cascata');
 
-SELECT ok((SELECT count(*) FROM tmp_g) = 1, '1) Esiste almeno un cliente con istanza');
+CREATE TEMP TABLE tmp_g AS
+SELECT c.soggetto_ruolo_id, c.soggetto_id, c.istanza_utility_id
+FROM tmp_cli_cb c;
+
+SELECT ok((SELECT count(*) FROM tmp_g) = 1, '1) Cliente con istanza costruito');
 
 CREATE TEMP TABLE tmp_bb AS
-SELECT bb.id FROM anagrafiche.bank_branches bb ORDER BY bb.id LIMIT 1;
+SELECT bank_branch_id AS id
+  FROM dbops.fn_pgtap_crea_filiale_bancaria('conti istanza cascata');
 
 SELECT ok(
     (SELECT count(*) FROM tmp_bb) = 1,
-    '2) Bank_branch presente'
+    '2) Bank_branch costruita'
 );
 
 -- =========================================================

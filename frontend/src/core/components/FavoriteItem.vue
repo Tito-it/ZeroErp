@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNavigationStore } from '../../stores/navigation'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
+import { MANAGE_ICONS } from '../constants'
 
 const props = defineProps({
   domain: { type: String, required: true },
@@ -51,7 +52,7 @@ function onRemove() {
   >
     <i
       v-if="draggable && !collapsed"
-      class="pi pi-bars favorite-item__handle"
+      class="favorite-item__handle" :class="MANAGE_ICONS.TRASCINA"
       aria-hidden="true"
     ></i>
     <i class="favorite-item__icon" :class="favorite.icon" aria-hidden="true"></i>
@@ -69,7 +70,7 @@ function onRemove() {
       v-tooltip.top="t('nav.preferiti_rimuovi')"
       @click.stop="onRemove"
     >
-      <i class="pi pi-star-fill" aria-hidden="true"></i>
+      <i :class="MANAGE_ICONS.PREFERITO_ATTIVO" aria-hidden="true"></i>
     </button>
   </div>
 </template>
@@ -107,7 +108,7 @@ function onRemove() {
   border: 1px solid var(--app-card-border);
   border-radius: var(--app-card-radius);
   background: var(--app-card-bg);
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 
 .favorite-item--tile:hover {
@@ -130,7 +131,7 @@ function onRemove() {
 
 .favorite-item__handle {
   font-size: 0.75rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   opacity: 0.65;
 }
 
@@ -187,7 +188,7 @@ function onRemove() {
 }
 
 .favorite-item__domain {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-size: 0.75rem;
 }
 

@@ -1,15 +1,25 @@
-# Guida – Mandare in pensione una voce di catalogo (`obsoleto_dal`)
+# Guida — Mandare in pensione una voce di catalogo (`obsoleto_dal`)
 
-> (latest review 30-06-26)
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> Destinatari: analisti funzionali, sviluppatori database e backend
+> **Destinatari**: analisti funzionali, sviluppatori database e backend
 >
-> Vedi anche
+> **Vedi anche** — funzioni e trigger DB:
 >
-> * [Brief – Deprecabilità del catalogo](/dev/work-done/brief-db-deprecabilita-catalogo-vs-istanze)
-> * [Brief – Filtro lookup + guard `obsoleto_dal`](/dev/work-done/brief-db-obsoleto-dal-filtro-lookup-e-guard)
-> * [Linee guida SQL](/linee-guida-sql)
-> * [Guida – Configurazione delle pratiche](/guide/gestione-pratiche-configurazione)
+> * [dbops.fn_get_lookup_codici](/dbzero/dbops/funzioni/fn_get_lookup_codici) — il lookup generico, con l'asse `obsoleto_dal` (`p_includi_obsoleti`)
+> * [dbops.trgfn_child_requires_non_obsolete_parent](/dbzero/dbops/funzioni/trgfn_child_requires_non_obsolete_parent) — il guard che rifiuta le nuove istanze su una voce in pensione
+> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — il gemello sull'altro asse (`attivo`)
+>
+> **Vedi anche** — tabelle:
+>
+> * [pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione) · [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — i cataloghi con la colonna **e** il guard agganciato
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) · [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — le tabelle figlie protette
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Configurazione delle pratiche](/guide/gestione-pratiche-configurazione) — il catalogo su cui il pattern è nato
+> * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — gli altri ritiri che usano questo stesso asse
+> * [Linee guida SQL](/linee-guida-sql) — le regole generali su catalogo e istanze
 
 ---
 
@@ -31,10 +41,10 @@ rompere lo storico.
 
 Una voce di catalogo ha **due interruttori diversi**, che rispondono a due domande diverse:
 
-| Interruttore | Domanda a cui risponde | Quando lo usi |
-|---|---|---|
-| **`attivo`** | *"È una voce **valida**?"* | Spegnerlo significa *"questa voce non esiste più, per nessuno"*. Da non usare se qualcuno la sta già referenziando: rompe i dati esistenti. |
-| **`obsoleto_dal`** | *"È ancora **scegliibile per il nuovo**?"* | È quello giusto per "mandare in pensione": la voce resta valida per lo storico, ma sparisce dalle scelte per il nuovo. |
+| Interruttore       | Domanda a cui risponde                     | Quando lo usi                                                                                                                               |
+| ------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`attivo`**       | *"È una voce **valida**?"*                 | Spegnerlo significa *"questa voce non esiste più, per nessuno"*. Da non usare se qualcuno la sta già referenziando: rompe i dati esistenti. |
+| **`obsoleto_dal`** | *"È ancora **scegliibile per il nuovo**?"* | È quello giusto per "mandare in pensione": la voce resta valida per lo storico, ma sparisce dalle scelte per il nuovo.                      |
 
 > ⚠️ **L'errore classico** è usare `attivo = false` per "ritirare" una voce. Sembra funzionare,
 > ma i documenti che la usano filtrano per `attivo` → si rompono. E giustamente il database lo
@@ -44,27 +54,40 @@ Una voce di catalogo ha **due interruttori diversi**, che rispondono a due doman
 
 È semplicemente una **data**:
 
-| Valore | Significato |
-|---|---|
-| **vuoto** (NULL) | Voce pienamente selezionabile. |
-| **data futura** | **Ritiro programmato**: ancora selezionabile fino a quella data, poi non più. |
-| **data passata (o oggi)** | Voce **in pensione**: non più offerta per il nuovo. |
+| Valore                    | Significato                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| **vuoto** (NULL)          | Voce pienamente selezionabile.                                                |
+| **data futura**           | **Ritiro programmato**: ancora selezionabile fino a quella data, poi non più. |
+| **data passata (o oggi)** | Voce **in pensione**: non più offerta per il nuovo.                           |
 
 ---
 
-## Cosa fa il sistema, da solo
+## Cosa fa il sistema
 
-Una volta che una voce è "in pensione", scattano **due protezioni automatiche** — più una
-garanzia sullo storico:
+Una volta che una voce è "in pensione", valgono **tre regole**: una sul nuovo, una sul database,
+una sullo storico.
 
-1. **Le tendine la nascondono.** Le liste di scelta "per il nuovo" non la mostrano più. (Chi
-   consulta lo *storico* o *filtra* può invece ancora vederla: serve a ritrovare le pratiche
-   vecchie di quel tipo.)
-2. **Il database rifiuta di crearci sopra cose nuove.** Anche se qualcuno provasse a forzare la
-   creazione (via importazione, script, errore di programma), il database **blocca** con un
-   messaggio chiaro. È la rete di sicurezza: *la tendina nasconde, il database rifiuta*.
+1. **Le tendine possono nasconderla — e ognuna deve chiederlo.** L'asse `obsoleto_dal` vive nel
+   lookup generico, ma **una lista mostra la voce in pensione finché non chiede di escluderla**:
+   il valore di default è *mostra tutto*, perché le liste esistenti non devono cambiare
+   comportamento da sole. Chi vuole la "selezione per il nuovo" passa `includi_obsoleti = false`
+   (sul componente di selezione: `:includi-obsoleti="false"`).
+
+   > ⚠️ **Conseguenza operativa**: valorizzare `obsoleto_dal` **non fa sparire la voce
+   > dall'applicazione**. Finché quella tendina non è dichiarata "per il nuovo", l'operatore
+   > continua a vederla e a poterla scegliere. Se serve che sparisca, la tendina va adeguata.
+
+2. **Il database rifiuta di crearci sopra cose nuove — dove il guard è agganciato.** Anche se
+   qualcuno provasse a forzare la creazione (importazione, script, errore di programma), il
+   database **blocca** con un messaggio chiaro
+   (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`). È la rete di sicurezza: *la tendina nasconde, il
+   database rifiuta*. Ma il guard è **per relazione** (vedi *Dove è applicato*, in fondo):
+   su un catalogo senza guard, la colonna da sola non impedisce nulla.
+
 3. **Lo storico resta intatto.** Le pratiche e i documenti già creati su quella voce continuano
    a funzionare e ad avanzare normalmente. Niente viene cancellato o invalidato.
+   (Chi consulta lo *storico* o *filtra* continua a vedere la voce: serve a ritrovare le pratiche
+   vecchie di quel tipo.)
 
 ---
 
@@ -88,12 +111,8 @@ lavoro è minimo, perché le funzioni "cervello" esistono già.
 
 ### Passo 1 — Aggiungi la colonna al catalogo
 
-Una sola colonna sulla tabella di catalogo:
-
-```sql
-ALTER TABLE <schema>.<catalogo>
-  ADD COLUMN IF NOT EXISTS obsoleto_dal date NULL;
-```
+Una sola colonna sulla tabella di catalogo: una `date` NULL
+([istruzione](#area-tecnica-esempi)).
 
 ### Passo 2 — La selezione si adegua da sola
 
@@ -110,17 +129,14 @@ lascia il valore di default e li vede tutti.
 
 Per ogni tabella "figlia" che non deve accettare nuove righe su una voce in pensione, si aggancia
 **un trigger** alla funzione-guard generica già pronta
-[`dbops.trgfn_child_requires_non_obsolete_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_non_obsolete_parent):
+[`dbops.trgfn_child_requires_non_obsolete_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_non_obsolete_parent)
+([istruzione](#area-tecnica-esempi)). La funzione non ha firma: riceve i suoi argomenti dal
+`CREATE TRIGGER`, in quest'ordine — schema e nome del catalogo, la colonna-data del padre, la
+colonna FK del figlio e, se la FK non punta alla PK, la colonna referenziata.
 
-```sql
-CREATE TRIGGER trg_<figlio>_a10_<catalogo>_require_non_obsoleto_ins_upd
-  AFTER INSERT OR UPDATE OF <colonna_fk>
-  ON <schema>.<figlio>
-  FOR EACH ROW
-  EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent(
-    '<schema_catalogo>', '<catalogo>', 'obsoleto_dal', '<colonna_fk>', 'id'
-  );
-```
+Timing `AFTER INSERT OR UPDATE OF <colonna_fk>`: l'`UPDATE OF` fa scattare il controllo **solo
+quando cambia il riferimento al catalogo**, così gli avanzamenti di stato di un'istanza storica
+non vengono mai bloccati.
 
 **Una riga `CREATE TRIGGER` per relazione**, nient'altro: la logica vive tutta nella funzione
 condivisa. L'errore parlante (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`) è già registrato.
@@ -158,27 +174,95 @@ trigger, sullo stile del framework che già genera i controlli su `attivo`. Per 
 
 ---
 
-## Esempio reale già realizzato
+## Dove è applicato
 
-Il primo uso del pattern è sulle **pratiche**:
+**La colonna** è su undici cataloghi, in quattro schemi:
 
-* Cataloghi con `obsoleto_dal`: `pratiche.tipi_prestazione` e `pratiche.template_flussi`.
-* Guard agganciato su `pratiche.pratiche` (per il tipo) e `pratiche.flussi` (per il template).
-* Caso concreto: i vecchi tipi `PREVENTIVI_IMMEDIATA` / `PREVENTIVI_DIFFERITA`, confluiti nel
-  tipo unico `PREVENTIVI`, sono stati **messi in pensione** valorizzando `obsoleto_dal` — senza
-  cancellare nulla e senza toccare `attivo`. Le pratiche storiche di quei tipi restano valide.
+| Schema      | Cataloghi con `obsoleto_dal`                                                           |
+| ----------- | -------------------------------------------------------------------------------------- |
+| `pratiche`  | `tipi_prestazione`, `template_flussi`                                                  |
+| `config`    | `classi_errore`, `codici_errore`, `eventi_dominio`, `registri_giornale`, `tipi_entita` |
+| `dbops`     | `processi`, `presidi`                                                                  |
+| `pagamenti` | `vendite_contabili_stati`, `vendite_contabili_righe_stati`                             |
+
+**Il guard** è agganciato su due relazioni, entrambe nel dominio pratiche:
+
+| Figlio (istanza)    | FK                    | Padre (catalogo)            |
+| ------------------- | --------------------- | --------------------------- |
+| `pratiche.pratiche` | `tipo_prestazione_id` | `pratiche.tipi_prestazione` |
+| `pratiche.flussi`   | `template_flusso_id`  | `pratiche.template_flussi`  |
+
+> 💡 **Le due colonne non vanno lette insieme**: un catalogo può portare `obsoleto_dal` per
+> governare le proprie *viste e selezioni* (è il caso di `config.*` e `dbops.processi`, dove le
+> viste di presidio filtrano `obsoleto_dal IS NULL`) senza che nessuno debba essere bloccato
+> nella creazione di istanze. Il guard si aggiunge quando esiste una **tabella figlia** che non
+> deve più puntare lì.
+
+Il primo uso è sulle pratiche, ed è quello con entrambi i pezzi: i tipi
+`PREVENTIVI_IMMEDIATA` e `PREVENTIVI_DIFFERITA` sono **in pensione** — confluiti nel tipo unico
+`PREVENTIVI` — senza che sia stato cancellato nulla e senza aver toccato `attivo`; le pratiche
+storiche di quei tipi restano valide e avanzano.
 
 ---
 
 ## In sintesi
 
-| Vuoi… | Fai… |
-|---|---|
-| Ritirare una voce dal nuovo, tenendo lo storico | valorizza `obsoleto_dal` |
-| Programmare un ritiro futuro | `obsoleto_dal` = data futura |
-| Rimetterla in uso | svuota `obsoleto_dal` |
-| Eliminarla davvero (nessuno la usa) | è un altro discorso: `attivo` / cancellazione |
-| Applicare il pattern a un nuovo catalogo | colonna `obsoleto_dal` + un trigger per relazione |
+| Vuoi…                                           | Fai…                                                                                                                  |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Ritirare una voce dal nuovo, tenendo lo storico | valorizza `obsoleto_dal`                                                                                              |
+| Programmare un ritiro futuro                    | `obsoleto_dal` = data futura                                                                                          |
+| Rimetterla in uso                               | svuota `obsoleto_dal`                                                                                                 |
+| Eliminarla davvero (nessuno la usa)             | è un altro discorso: `attivo` / cancellazione                                                                         |
+| Applicare il pattern a un nuovo catalogo        | colonna `obsoleto_dal` + la tendina che chiede `includi_obsoleti = false` + (se c'è un figlio da proteggere) il guard |
+
+---
+
+## Area tecnica — esempi
+
+**Aggiungere la colonna al catalogo** — è l'unico intervento sulla tabella:
+
+```sql
+ALTER TABLE <schema>.<catalogo>
+  ADD COLUMN IF NOT EXISTS obsoleto_dal date NULL;
+```
+
+**Cablaggio reale del guard** — l'uno riga per relazione, con i cinque argomenti del caso
+pratiche:
+
+```sql
+CREATE TRIGGER trg_pratiche_a10_tipi_prestazione_require_non_obsoleto_ins_upd
+  AFTER INSERT OR UPDATE OF tipo_prestazione_id
+  ON pratiche.pratiche
+  FOR EACH ROW
+  EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent(
+    'pratiche', 'tipi_prestazione', 'obsoleto_dal', 'tipo_prestazione_id', 'id'
+  );
+```
+
+**Ritirare una voce / rimetterla in uso** — le due operazioni sui dati, una sola colonna:
+
+```sql
+-- ritiro immediato
+UPDATE pratiche.tipi_prestazione SET obsoleto_dal = CURRENT_DATE WHERE codice = '<codice>';
+
+-- ritiro programmato
+UPDATE pratiche.tipi_prestazione SET obsoleto_dal = DATE '2027-01-01' WHERE codice = '<codice>';
+
+-- ritorno in uso
+UPDATE pratiche.tipi_prestazione SET obsoleto_dal = NULL WHERE codice = '<codice>';
+```
+
+**Chi ha ancora istanze su una voce in pensione** — la lista delle istanze storiche, che il
+ritiro **non** tocca; serve a sapere quante ce ne sono prima di decidere:
+
+```sql
+SELECT p.tipo_prestazione_id, t.codice, t.obsoleto_dal, count(*) AS pratiche
+FROM pratiche.pratiche p
+JOIN pratiche.tipi_prestazione t ON t.id = p.tipo_prestazione_id
+WHERE t.obsoleto_dal IS NOT NULL AND t.obsoleto_dal <= CURRENT_DATE
+GROUP BY 1, 2, 3
+ORDER BY pratiche DESC;
+```
 
 ---
 

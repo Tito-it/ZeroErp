@@ -29,6 +29,7 @@ import logging
 from django.core.management.base import BaseCommand
 from django.db import connection
 
+from apps.core.db._helpers import rows_to_list
 from apps.core.db.email_repository import EmailRepository
 from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.coda_lavori.context import operator_identity_context
@@ -147,7 +148,7 @@ class Command(BaseCommand):
                     emittente_attivo_id=badge["emittente_fiscale_id"],
                 ):
                     parziale = self._esegui_giro(options)
-            except Exception as exc:  # noqa: BLE001 — isolamento per azienda voluto
+            except Exception as exc:  # isolamento per azienda voluto
                 logger.warning(
                     "send_pending_emails.azienda_fallita emittente=%s badge=%s errore=%s",
                     badge["emittente_codice"], badge["username"], exc, exc_info=True,
@@ -215,8 +216,7 @@ class Command(BaseCommand):
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [limit])
-            cols = [c.name for c in cursor.description]
-            rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+            rows = rows_to_list(cursor)
 
         count = len(rows)
         if dry_run:

@@ -448,6 +448,27 @@ if ! psql_admin -d "$CI_DB" -tAc \
       | sed -e '/^CREATE SCHEMA django;$/d' \
       | PGPASSWORD=secret psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U zeroerp -d "$CI_DB" \
           -X -q -v ON_ERROR_STOP=1 >/dev/null
+    # ⛔ Il dump porta con se' anche gli indici che su dev ha creato LIQUIBASE
+    #    sulle tabelle di Django (`ix_*`, 90_end con onFail CONTINUE). In CI non
+    #    esistono: Liquibase gira prima di `manage.py migrate`, il changeSet
+    #    salta e non si registra. Copiati, lo scratch aveva l'indice SENZA la
+    #    riga in databasechangelog, e un pgTAP che sceglie il ramo dal registro
+    #    finiva in ERRORE_FIXTURE (2026-09-26, test-credenziale-email-unica-v1:
+    #    ix_auth_user_email_lower_unique). Si tolgono: lo scratch torna com'e'
+    #    in CI.
+    PGPASSWORD=secret psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U zeroerp -d "$CI_DB" \
+        -X -q -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+DO $$
+DECLARE r record;
+BEGIN
+    FOR r IN SELECT i.relname FROM pg_class i
+               JOIN pg_namespace n ON n.oid = i.relnamespace
+              WHERE n.nspname = 'django' AND i.relkind = 'i' AND i.relname LIKE 'ix\_%'
+    LOOP
+        EXECUTE format('DROP INDEX django.%I', r.relname);
+    END LOOP;
+END $$;
+SQL
   else
     echo "⚠️  django.auth_user non c'e' nemmeno su $DEV_DB: niente da copiare." >&2
     echo "    Lancia 'manage.py migrate' dal server backend puntando a questo host." >&2

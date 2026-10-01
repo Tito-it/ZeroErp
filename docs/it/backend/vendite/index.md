@@ -25,7 +25,7 @@
 - [api_listini](manual/api_listini.md) — Esporre via HTTP la gestione completa dei listini vendite: anagrafica listino, versioni temporali e righe prezzo.
 - [api_lotti_list](manual/api_lotti_list.md) — Esporre via HTTP l'elenco paginato dei lotti di fatturazione con filtri opzionali e decodifica delle FK.
 - [api_lotto_fatture_list](manual/api_lotto_fatture_list.md) — Esporre via HTTP l'elenco paginato delle fatture appartenenti a un lotto, con decodifiche FK, filtri opzionali e ordinamento configurabile.
-- [api_lotto_giornale](manual/api_lotto_giornale.md) — Rispondere a una domanda sola: **«cosa è successo a questo lotto, in che ordine»** — il lotto **più le sue fatture**, limitato alle righe non-INFO. Elenco paginato e di sola lettura che alimenta la scheda **«Storia»** d…
+- [api_lotto_giornale](manual/api_lotto_giornale.md) — Rispondere a una domanda sola: **«cosa è successo a questo lotto, in che ordine»** — il lotto **più le sue fatture**; di default le sole righe non-INFO («solo problemi», filtro info). Elenco paginato e di sola lettura c…
 - [api_lotto_gruppi_list](manual/api_lotto_gruppi_list.md) — Esporre via HTTP i **documenti che un lotto ha preso in carico**, con l'esito di ciascuno — **compresi quelli che una fattura non sono mai diventati**.
 - [api_lotto_segnalazioni_summary](manual/api_lotto_segnalazioni_summary.md) — Esporre via HTTP il riepilogo segnalazioni attive di un lotto, con indicazione di blocco avanzamento step.
 - [api_lotto_task_runs](manual/api_lotto_task_runs.md) — Esporre via HTTP i task run runtime di un lotto per monitoraggio operativo e diagnostica pipeline.
@@ -40,6 +40,7 @@
 - [api_reset_lotto_draft](manual/api_reset_lotto_draft.md) — Esporre via HTTP il reset tecnico di un lotto MASSIVO in DRAFT.
 - [api_reset_lotto_fattura_draft](manual/api_reset_lotto_fattura_draft.md) — Esporre via HTTP il reset tecnico di una singola fattura in un lotto MASSIVO in DRAFT.
 - [api_resi](manual/api_resi.md) — Motore **resi di vendita su DDT**: il reso NASCE solo da un DDT **CONSEGNATO** (pannello nel drawer DDT), mai standalone. Clone strutturale ridotto di api_ddt.md: niente componenti BoM / PDF / push / note / riepilogo IV…
+- [api_righe_documento](manual/api_righe_documento.md) — Le righe di un documento di vendita come **lista configurabile**: una pagina con ricerca e ordinamento, e il suo export. Endpoint identici sui documenti, generati dal factory condiviso build_lista_figlia_views (apps/ui/…
 - [api_riporta_da_emettere](manual/api_riporta_da_emettere.md) — Rimette in coda di fatturazione un elenco di vendite.attivita_fatturabili **residue** — rimaste senza fattura dopo che il documento che le conteneva è stato eliminato — e riporta a NON_EMESSA le righe di commessa passat…
 - [api_run_commesse_push](manual/api_run_commesse_push.md) — Esporre via HTTP l'avvio dell'orchestratore push commesse, che sincronizza documenti sorgente (preventivi, ordini, contratti, DDT, consumi) verso commesse e commesse_attivita.
 - [api_run_lotto_pipeline](manual/api_run_lotto_pipeline.md) — Esporre via HTTP l'avvio della pipeline lotto vendite.

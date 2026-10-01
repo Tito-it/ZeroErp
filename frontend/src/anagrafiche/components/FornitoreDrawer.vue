@@ -9,18 +9,20 @@ import { useFornitoriStore } from '../stores/fornitori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useContattoForm } from '../../core/composables/useContattoForm'
-import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
+import { useContattoForm } from '../composables/useContattoForm'
+import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
+import { raccogliFormInline } from '../composables/raccogliFormInline'
 import { useCodiceField } from '../../core/composables/useCodiceField'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { statoFornitoreSeverity } from '../../core/utils/severity'
-import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
+import SoggettoResolver from './SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
-import SoggettoPreviewBadges from '../../core/components/SoggettoPreviewBadges.vue'
-import ContattoForm from '../../core/components/ContattoForm.vue'
-import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
+import SoggettoPreviewBadges from './SoggettoPreviewBadges.vue'
+import ContattoForm from './ContattoForm.vue'
+import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -66,6 +68,19 @@ const detail = ref(null)
 // SoggettoResolver (solo creazione)
 const resolverVisible = ref(false)
 const soggettoSelezionato = ref(null)
+
+// Modifiche non salvate (BB useDrawerFormPreserve): il form, il soggetto
+// scelto in creazione, e contatto e indirizzo inline (il Salva della creazione
+// li manda insieme al fornitore).
+// ⚠️ Senza condizione su `isEdit`: dopo la creazione il padre porta `mode` a
+//    'edit' a drawer aperto, e togliere le chiavi farebbe sembrare «modificato»
+//    un form appena salvato. In modifica i due form non si vedono e non cambiano.
+const formSalvato = computed(() => ({
+  ...form.value,
+  soggetto_id: soggettoSelezionato.value?.id ?? null,
+  ...raccogliFormInline({ contatto, indirizzo }),
+}))
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
 
 function defaultForm() {
   return {
@@ -128,6 +143,7 @@ watch(() => props.visible, async (val) => {
     // Carica matrice indirizzi obbligatori per ruolo FO
     indirizzo.loadMatriceRuolo(TIPO_RUOLO.FORNITORE)
   }
+  fissa()
 })
 
 // Scopo: Costruisce il payload dei campi editabili.
@@ -165,7 +181,8 @@ async function onSave() {
       () => store.update(props.fornitoreId, buildEditablePayload()),
       { successMessage: t('anagrafiche.fornitori.fornitore_salvato') }
     )
-    if (result !== null) emit('saved', result)
+    // Salvato: la fotografia e' il form di adesso (il parent decide se chiudere o riaprire in edit).
+    if (result !== null) { fissa(); emit('saved', result) }
   } else {
     // Validazione contatto inline (Fase 5): regola unificata via composable
     // useContattoForm.classify() — mirror della regola backend.
@@ -201,13 +218,17 @@ async function onSave() {
       () => store.create(payload),
       { successMessage: t('anagrafiche.fornitori.fornitore_creato') }
     )
-    if (result !== null) emit('saved', result)
+    // Salvato: la fotografia e' il form di adesso (il parent decide se chiudere o riaprire in edit).
+    if (result !== null) { fissa(); emit('saved', result) }
   }
 }
 
 const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
 
 const onClose = useDrawerClose(emit, 'cancelled')
+// Uscite dell'utente: prima chiedono conferma se ci sono modifiche non salvate.
+const chiudi = () => chiudiConConferma(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -216,11 +237,12 @@ const onClose = useDrawerClose(emit, 'cancelled')
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true"
-    @update:visible="val => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('anagrafiche.fornitori.fornitore')"
         :icon="NAV_ICONS.FORNITORI"
@@ -242,7 +264,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
               text size="small" class="mt-1" @click="clearSoggetto" />
           </div>
           <div v-else>
-            <Button :label="t('resolver.open')" icon="pi pi-search"
+            <Button :label="t('resolver.open')" :icon="MANAGE_ICONS.RICERCA"
               outlined @click="resolverVisible = true" />
           </div>
         </template>
@@ -431,7 +453,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         :entita-id-web="props.fornitoreId"
         :email-iniziale-web="detail?.pec_email || ''" />
 
-      <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="chiudi" />
     </div>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->

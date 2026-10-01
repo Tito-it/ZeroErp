@@ -1,6 +1,14 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il soggetto sono i CONTROLLI della primitiva
+--   magazzino.fn_scrivi_movimento, che dal 2026-09-24 l'app non esegue piu': la
+--   raggiunge solo dai verbi fn_posta_inventario / fn_posta_rettifica
+--   (brief-db-magazzino-verbi-con-permesso, P-4). Chiamarla coi parametri che il
+--   test sceglie e' cosa che solo uno scrittore privilegiato puo' fare: forma 3
+--   del criterio del runner, come i test del ledger del Lotto 2. Il contesto
+--   operatore resta impostato: il guard di scope e i controlli lo leggono.
 --
 -- Test: il VALORE (M-4, D-L2-c, C6, C7) — i tre significati del costo nella
 --   primitiva, la copia valore_giacenza, la ri-somma, le spie. Brief:
@@ -9,7 +17,8 @@
 -- ⚠️ Fixture COSTRUITA: due magazzini, un articolo, le sorgenti (una riga di
 --   inventario DRAFT per scrittura). La scrittura FUORI PORTA che fa
 --   comparire la divergenza ha il suo file owner
---   (test-valore-giacenza-divergenza-owner-v1): come app la porta e' chiusa.
+--   (test-valore-giacenza-divergenza-owner-v1). Da P-4 (2026-09-24) anche questo
+--   file gira come owner: l'app non esegue piu' la primitiva (marcatore in testa).
 --
 -- Elenco test (plan 10):
 --   1) entrata 5 a 10 EUR + entrata 5 a 20 EUR -> valore 150, media 15

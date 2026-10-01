@@ -18,7 +18,7 @@ import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/ut
 import { coerceJsonbToObject } from '../../../core/utils/meta'
 import { formatCurrency } from '../../../core/utils/format'
 import { PRICING_ACTIONS } from '../../constants'
-import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../../catalogo/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import PreventiviRigaComponentiPanel from './PreventiviRigaComponentiPanel.vue'
 import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCreateActionsPanel.vue'
@@ -32,7 +32,7 @@ import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
-import { DATE_FORMAT } from '../../../core/constants'
+import { DATE_FORMAT, MANAGE_ICONS } from '../../../core/constants'
 import { parseIsoDate, toDateString } from '../../../core/utils/date'
 
 const { t } = useI18n()
@@ -506,7 +506,7 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
           <Button
             v-if="canRipristinaPrezzoListino"
             v-tooltip.top="t('vendite.preventivi.azione_usa_prezzo_listino')"
-            icon="pi pi-undo"
+            :icon="MANAGE_ICONS.RIPRISTINA_LISTINO"
             text
             rounded
             size="small"

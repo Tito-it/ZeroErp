@@ -25,6 +25,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool,
@@ -39,6 +40,15 @@ from apps.vendite.api.indirizzi_documento_views import (
 )
 from apps.vendite.services import offerte_service
 from apps.vendite.services.offerte_service import OfferteService
+from apps.core.api.openapi_params import param_ricerca_full
+from apps.vendite.api._schema_da_contratto import schema_da_contratto
+from apps.vendite.api._componenti_schema import (
+    COMPONENTE_PATCH_REQUEST,
+    COMPONENTI_LIST_PARAMETERS,
+    COMPONENTI_LIST_RESPONSE,
+    PREVIEW_COMPONENTI_REQUEST,
+    PREVIEW_COMPONENTI_RESPONSE,
+)
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=6). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -49,48 +59,40 @@ _LISTA_CODICE_OFFERTE = "vendite.offerte"
 # Schemas inline per drf-spectacular
 # =================================================================
 
-
-_OFFERTA_CREATE_REQUEST = inline_serializer(
-    name="VenditeOffertaCreateReq",
-    fields={
-        # Step 5 atterrato 2026-05-25: `codice` generato dal trigger DB
-        # (BEFORE INSERT). Non va piu' nel payload — rifiutato come
-        # unknown_key dalla whitelist applicativa.
-        "emittente_fiscale_id": serializers.IntegerField(),
-        "billing_account_id": serializers.IntegerField(),
-        "istanza_utility_id": serializers.IntegerField(),
-        "utility_id": serializers.IntegerField(),
-        "listino_id": serializers.IntegerField(),
-        "listino_versione_id": serializers.IntegerField(required=False, allow_null=True),
-        "valore_variazione_globale": serializers.DecimalField(
-            max_digits=10, decimal_places=4, required=False, allow_null=True,
-        ),
-        "tipo_variazione_globale": serializers.CharField(required=False, allow_null=True),
-        "validita_dal": serializers.DateField(),
-        "validita_al": serializers.DateField(required=False, allow_null=True),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
+# ── Schemi OpenAPI dei corpi: le chiavi dal contratto del service ──────────
+_UTILITY_CREATE_REQUEST = schema_da_contratto(
+    "VenditeOffertaUtilityCreateReq", offerte_service.CREATE_KEYS_UTILITY,
+    obbligatorie=("istanza_utility_id", "utility_id"),
+)
+_UTILITY_PATCH_REQUEST = schema_da_contratto(
+    "VenditeOffertaUtilityPatchReq", offerte_service.UPDATE_KEYS_UTILITY,
+)
+# La classe, non l'istanza: una per uso (vedi views_contratti).
+_UTILITY_CREATE_CLS = type(_UTILITY_CREATE_REQUEST)
+_OFFERTA_CREATE_REQUEST = schema_da_contratto(
+    "VenditeOffertaCreateReq", offerte_service.CREATE_KEYS_OFFERTA,
+    obbligatorie=(
+        "emittente_fiscale_id", "billing_account_id", "istanza_utility_id",
+        "utility_id", "listino_id", "validita_dal",
+    ),
+    speciali={"utility": _UTILITY_CREATE_CLS(required=False, allow_null=True)},
+)
+_OFFERTA_PATCH_REQUEST = schema_da_contratto(
+    "VenditeOffertaPatchReq", offerte_service.UPDATE_KEYS_OFFERTA,
+    # La utility in modifica e' un upsert: si valida col contratto di creazione.
+    speciali={"utility": _UTILITY_CREATE_CLS(required=False, allow_null=True)},
+)
+_ECCEZIONE_CREATE_REQUEST = schema_da_contratto(
+    "VenditeOffertaEccezioneCreateReq", offerte_service.CREATE_KEYS_ECCEZIONE,
+    obbligatorie=("articolo_id", "tipo_eccezione", "fonte_quantita_attesa"),
+)
+_ECCEZIONE_PATCH_REQUEST = schema_da_contratto(
+    "VenditeOffertaEccezionePatchReq", offerte_service.UPDATE_KEYS_ECCEZIONE,
 )
 
 
-_OFFERTA_PATCH_REQUEST = inline_serializer(
-    name="VenditeOffertaPatchReq",
-    fields={
-        "emittente_fiscale_id": serializers.IntegerField(required=False),
-        "billing_account_id": serializers.IntegerField(required=False),
-        "istanza_utility_id": serializers.IntegerField(required=False),
-        "utility_id": serializers.IntegerField(required=False),
-        "listino_id": serializers.IntegerField(required=False),
-        "listino_versione_id": serializers.IntegerField(required=False, allow_null=True),
-        "valore_variazione_globale": serializers.DecimalField(
-            max_digits=10, decimal_places=4, required=False, allow_null=True,
-        ),
-        "tipo_variazione_globale": serializers.CharField(required=False, allow_null=True),
-        "validita_dal": serializers.DateField(required=False),
-        "validita_al": serializers.DateField(required=False, allow_null=True),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
-)
+
+
 
 
 _ESITO_REQUEST = inline_serializer(
@@ -110,100 +112,12 @@ _ANNULLA_REQUEST = inline_serializer(
 )
 
 
-_ECCEZIONE_CREATE_REQUEST = inline_serializer(
-    name="VenditeOffertaEccezioneCreateReq",
-    fields={
-        "articolo_id": serializers.UUIDField(),
-        "tipo_eccezione": serializers.ChoiceField(
-            choices=["OVERRIDE", "ESCLUSIONE", "AGGIUNTA"],
-        ),
-        "tipo_erogazione": serializers.CharField(required=False),
-        "fonte_quantita_attesa": serializers.CharField(),
-        "periodicita": serializers.CharField(required=False),
-        "generazione_canone": serializers.CharField(required=False),
-        "competenza_canone": serializers.CharField(required=False),
-        "prezzo_unitario": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "quantita": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "qta_operativa": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "factor_to_base": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False,
-        ),
-        "ordine": serializers.IntegerField(required=False),
-        "attivo": serializers.BooleanField(required=False),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
-)
 
 
-_ECCEZIONE_PATCH_REQUEST = inline_serializer(
-    name="VenditeOffertaEccezionePatchReq",
-    fields={
-        "tipo_erogazione": serializers.CharField(required=False),
-        "fonte_quantita_attesa": serializers.CharField(required=False),
-        "periodicita": serializers.CharField(required=False),
-        "generazione_canone": serializers.CharField(required=False),
-        "competenza_canone": serializers.CharField(required=False),
-        "prezzo_unitario": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "quantita": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "qta_operativa": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "factor_to_base": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False,
-        ),
-        "ordine": serializers.IntegerField(required=False),
-        "attivo": serializers.BooleanField(required=False),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
-)
 
 
-_UTILITY_CREATE_REQUEST = inline_serializer(
-    name="VenditeOffertaUtilityCreateReq",
-    fields={
-        "istanza_utility_id": serializers.IntegerField(),
-        "utility_id": serializers.IntegerField(),
-        "istanza_dati_precontrattuali_id": serializers.IntegerField(
-            required=False, allow_null=True,
-        ),
-        "tipo_utenza_id": serializers.IntegerField(required=False, allow_null=True),
-        "classe_utenza_id": serializers.IntegerField(required=False, allow_null=True),
-        "param_1_num": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "param_2_txt": serializers.CharField(required=False, allow_null=True),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
-)
 
 
-_UTILITY_PATCH_REQUEST = inline_serializer(
-    name="VenditeOffertaUtilityPatchReq",
-    fields={
-        "istanza_dati_precontrattuali_id": serializers.IntegerField(
-            required=False, allow_null=True,
-        ),
-        "tipo_utenza_id": serializers.IntegerField(required=False, allow_null=True),
-        "classe_utenza_id": serializers.IntegerField(required=False, allow_null=True),
-        "param_1_num": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "param_2_txt": serializers.CharField(required=False, allow_null=True),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
-)
 
 
 # =================================================================
@@ -213,14 +127,14 @@ _UTILITY_PATCH_REQUEST = inline_serializer(
 
 class ApiOfferteList(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
     is_search_endpoint = True
     lista_codice = "vendite.offerte"
 
     @extend_schema(
         operation_id="vendite_offerte_list",
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False,
-                             description="Ricerca su codice e ragione sociale BA (>=3 char)."),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="stato_codice_interno", type=str, required=False,
                              description="BOZZA | EMESSA | ACCETTATA | RIFIUTATA | ANNULLATA | SUPERATA"),
@@ -269,6 +183,7 @@ class ApiOfferteList(DomainAPIView):
             offset=p["offset"],
             order_by=p["order_by"],
             order_dir=p["order_dir"],
+            auth_user_id=get_scope_user_id(request),
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
@@ -300,6 +215,7 @@ class ApiOfferteExportView(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
     is_search_endpoint = True
     lista_codice = "vendite.offerte"
 
@@ -308,7 +224,7 @@ class ApiOfferteExportView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="stato_codice_interno", type=str, required=False),
             OpenApiParameter(name="utility_id", type=int, required=False),
@@ -354,9 +270,10 @@ class ApiOfferteExportView(DomainAPIView):
             offset=0,
             order_by=p["order_by"],
             order_dir=p["order_dir"],
+            # Stesso perimetro della lista: l'export e' la porta piu' larga.
+            auth_user_id=get_scope_user_id(request),
         )
         filtri_applicati = svc.resolve_filtri_export_label(
-            search=p["search"],
             stato_codice_interno=stato_codice_interno,
             billing_account_id=billing_account_id,
             utility_id=utility_id,
@@ -382,6 +299,7 @@ class ApiOfferteExportView(DomainAPIView):
 
 class ApiOffertaDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -404,7 +322,7 @@ class ApiOffertaDetail(DomainAPIView):
     # Scopo: Aggiorna testata offerta (solo in BOZZA, guard lato service).
     def patch(self, request: Request, offerta_id: int) -> JsonResponse:
         return success_response(
-            OfferteService().aggiorna_offerta(offerta_id, request.data or {})
+            OfferteService().aggiorna_offerta(offerta_id, corpo_oggetto(request))
         )
 
     @extend_schema(
@@ -435,6 +353,7 @@ class ApiOffertaDetail(DomainAPIView):
 
 class ApiOffertaRegistraEsito(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=_ESITO_REQUEST,
@@ -447,7 +366,7 @@ class ApiOffertaRegistraEsito(DomainAPIView):
     #        RIFIUTATA. Routing per esito gestito dal service (`registra_esito`);
     #        la view e' sottile per ridurre logica business in API layer.
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
-        body = request.data or {}
+        body = corpo_oggetto(request)
         return success_response(
             OfferteService().registra_esito(
                 offerta_id,
@@ -459,6 +378,7 @@ class ApiOffertaRegistraEsito(DomainAPIView):
 
 class ApiOffertaAnnulla(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=_ANNULLA_REQUEST,
@@ -470,7 +390,7 @@ class ApiOffertaAnnulla(DomainAPIView):
     # Scopo: BOZZA -> ANNULLATA. Motivazione obbligatoria. Annullamento
     #        post-EMESSA non ammesso (state machine DB).
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
-        body = request.data or {}
+        body = corpo_oggetto(request)
         motivazione = body.get("motivazione", "")
         return success_response(
             OfferteService().annulla(offerta_id, motivazione=motivazione)
@@ -484,6 +404,7 @@ class ApiOffertaAnnulla(DomainAPIView):
 
 class ApiOffertaCreaRevisione(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=None,
@@ -514,6 +435,7 @@ class ApiOffertaGeneraOrdine(DomainAPIView):
     """`POST /api/v1/vendite/offerte/<id>/genera-ordine/` (conversione §7.4)."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=None,
@@ -552,6 +474,7 @@ _PUSH_CONTRATTO_REQUEST = inline_serializer(
 
 class ApiOffertaPushContratto(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=_PUSH_CONTRATTO_REQUEST,
@@ -571,7 +494,7 @@ class ApiOffertaPushContratto(DomainAPIView):
     #        con E_CONTRATTO_OVERLAP_ESISTENTE (vedi
     #        ApiOffertaContrattoSovrapposto per il preview del conflitto).
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
-        body = request.data or {}
+        body = corpo_oggetto(request)
         pratica_id_raw = body.get("pratica_id")
         pratica_id: int | None = None
         if pratica_id_raw is not None:
@@ -602,6 +525,7 @@ class ApiOffertaPushContratto(DomainAPIView):
 
 class ApiOffertaContrattoSovrapposto(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -621,19 +545,56 @@ class ApiOffertaContrattoSovrapposto(DomainAPIView):
 
 class ApiOffertaRevisioni(DomainAPIView):
     area_funzionale = "vendite"
+    # Come la gemella `ApiPreventivoRevisioniList`: l'override d'OGGETTO
+    # dell'operatore conta anche qui (senza, si risale solo all'area). Stesso
+    # nome di modello delle note dell'offerta (`note_views`).
+    model_permission = ("vendite", "offerta_commerciale")
+    lista_codice = "vendite.offerta_revisioni"
+    # ⭐ Il tab vive DENTRO il drawer di un'offerta, che ha gia' il suo
+    #    emittente: la lista a catalogo e' `perimetro_emittente = t` e
+    #    `multi_emittente = f`, quindi senza questa riga chi vede piu'
+    #    emittenti (il super admin su «Tutti») riceverebbe
+    #    E_UI_LISTA_EMITTENTE_DA_SCEGLIERE a drawer gia' aperto. PK
+    #    (`emittenti_fiscali.id`), come `v.emittente_fiscale_id`.
+    lista_emittente_param = "emittente_fiscale_id"
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="emittente_fiscale_id", type=int, required=False,
+                description=(
+                    "Emittente del documento (PK). Lo legge SOLO il cancello di "
+                    "perimetro, per chi vede più emittenti: non filtra le righe "
+                    "(la catena è di un emittente solo) e non allarga niente — "
+                    "la visibilità resta allo scope e alla RLS."
+                ),
+            ),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False,
+                             description="revisione_numero (default) | data_emissione"),
+            OpenApiParameter(name="order_dir", type=str, required=False,
+                             description="asc | desc (assente: asc; desc sulle date)"),
+        ],
         responses={200: inline_serializer(
             name="VenditeOffertaRevisioniListResp",
-            fields={"data": serializers.ListField()},
+            fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Lista catena revisioni che condividono il root (rev.1) con
-    #        l'offerta passata. Output ordinato per `revisione_numero`.
-    #        Lettura libera in ogni stato.
+    # Scopo: Lista PAGINATA della catena revisioni che condividono la radice
+    #        (rev.1) con l'offerta passata, default `revisione_numero` ASC.
+    #        Mirror di `ApiPreventivoRevisioniList`. Lettura libera in ogni stato.
     def get(self, request: Request, offerta_id: int) -> JsonResponse:
-        del request
-        return success_response(OfferteService().list_revisioni(offerta_id))
+        qp = request.query_params
+        p = parse_list_params(qp, default_order="revisione_numero")
+        results, total = OfferteService().list_revisioni(
+            offerta_id,
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
 
 # =================================================================
@@ -643,6 +604,7 @@ class ApiOffertaRevisioni(DomainAPIView):
 
 class ApiOffertaEccezioni(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -668,7 +630,7 @@ class ApiOffertaEccezioni(DomainAPIView):
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         return success_response(
             OfferteService().crea_eccezione(
-                offerta_id, request.data or {},
+                offerta_id, corpo_oggetto(request),
                 auth_user_id=get_scope_user_id(request),
             )
         )
@@ -676,6 +638,7 @@ class ApiOffertaEccezioni(DomainAPIView):
 
 class ApiOffertaEccezioneDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=_ECCEZIONE_PATCH_REQUEST,
@@ -690,7 +653,7 @@ class ApiOffertaEccezioneDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             OfferteService().aggiorna_eccezione(
-                offerta_id, eccezione_id, request.data or {},
+                offerta_id, eccezione_id, corpo_oggetto(request),
                 auth_user_id=get_scope_user_id(request),
             )
         )
@@ -719,49 +682,6 @@ class ApiOffertaEccezioneDetail(DomainAPIView):
 #   PATCH/DELETE /eccezioni/<eid>/componenti/<cid>/  -> CRUD singolo
 
 
-_ECCEZIONE_PREVIEW_COMPONENTI_REQUEST = inline_serializer(
-    name="VenditeOffertaEccezionePreviewComponentiReq",
-    fields={
-        "articolo_id": serializers.UUIDField(),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "quantita": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=True,
-        ),
-    },
-)
-
-
-_ECCEZIONE_COMPONENTE_PATCH_REQUEST = inline_serializer(
-    name="VenditeOffertaEccezioneComponentePatchReq",
-    fields={
-        "prezzo_unitario": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=False, allow_null=True,
-        ),
-        "iva_id": serializers.IntegerField(required=False, allow_null=True),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "factor_to_base": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=False, allow_null=True,
-        ),
-        "qta_operativa": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=False, allow_null=True,
-        ),
-        "origine_prezzo": serializers.CharField(required=False, allow_null=True),
-        "prezzo_resolver_context": serializers.JSONField(
-            required=False, allow_null=True,
-        ),
-        "stato_approvazione_prezzo": serializers.CharField(
-            required=False, allow_null=True,
-        ),
-        "pratica_approvazione_prezzo_id": serializers.IntegerField(
-            required=False, allow_null=True,
-        ),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-        "ordine": serializers.IntegerField(required=False, allow_null=True),
-        "attivo": serializers.BooleanField(required=False),
-    },
-)
-
-
 class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
     """POST /api/v1/vendite/offerte/<id>/eccezioni/preview-componenti/
 
@@ -772,13 +692,11 @@ class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
-        request=_ECCEZIONE_PREVIEW_COMPONENTI_REQUEST,
-        responses={200: inline_serializer(
-            name="VenditeOffertaEccezionePreviewComponentiResp",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        request=PREVIEW_COMPONENTI_REQUEST,
+        responses={200: PREVIEW_COMPONENTI_RESPONSE},
     )
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         auth_user_id = get_scope_user_id(request)
@@ -807,21 +725,11 @@ class ApiOffertaEccezioneComponentiList(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="solo_attivi", type=bool, default=True,
-                description=(
-                    "Default true: solo componenti attivi. Se false include "
-                    "anche opzionali disattivati (EDIT panel)."
-                ),
-            ),
-        ],
-        responses={200: inline_serializer(
-            name="VenditeOffertaEccezioneComponentiListResp",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        parameters=COMPONENTI_LIST_PARAMETERS,
+        responses={200: COMPONENTI_LIST_RESPONSE},
     )
     def get(
         self, request: Request, offerta_id: int, eccezione_id: int,
@@ -844,9 +752,10 @@ class ApiOffertaEccezioneComponenteDetail(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
-        request=_ECCEZIONE_COMPONENTE_PATCH_REQUEST,
+        request=COMPONENTE_PATCH_REQUEST,
         responses={200: inline_serializer(
             name="VenditeOffertaEccezioneComponentePatchResp",
             fields={"data": serializers.DictField()},
@@ -858,7 +767,7 @@ class ApiOffertaEccezioneComponenteDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             OfferteService().update_componente_eccezione(
-                offerta_id, eccezione_id, componente_id, dict(request.data),
+                offerta_id, eccezione_id, componente_id, dict(corpo_oggetto(request)),
             )
         )
 
@@ -887,6 +796,7 @@ class ApiOffertaEccezioneComponenteDetail(DomainAPIView):
 
 class ApiOffertaUtility(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -909,12 +819,13 @@ class ApiOffertaUtility(DomainAPIView):
     # Scopo: Crea record utility 1:1 (UNIQUE offerta_id). Solo in BOZZA.
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         return success_response(
-            OfferteService().crea_utility(offerta_id, request.data or {})
+            OfferteService().crea_utility(offerta_id, corpo_oggetto(request))
         )
 
 
 class ApiOffertaUtilityDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=_UTILITY_PATCH_REQUEST,
@@ -930,7 +841,7 @@ class ApiOffertaUtilityDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             OfferteService().aggiorna_utility(
-                offerta_id, utility_id, request.data or {}
+                offerta_id, utility_id, corpo_oggetto(request)
             )
         )
 
@@ -945,6 +856,7 @@ _indirizzi_views = build_indirizzi_documento_views(
         offerta_id, payload),
     delete_call=lambda offerta_id, indirizzo_id: offerte_service.delete_indirizzo(
         offerta_id, indirizzo_id),
+    model_permission=("vendite", "offerta_commerciale"),
 )
 ApiOffertaIndirizzi = _indirizzi_views.lista
 ApiOffertaIndirizzoDetail = _indirizzi_views.detail

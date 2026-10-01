@@ -1,56 +1,59 @@
-# Guida – Gestione delle Istanze Utility e Collegamento con PDP & Clienti
+# Guida — Gestione delle Istanze Utility
 
-> (latest review 01-03-26)
+> **Ultimo aggiornamento**: 20 settembre 2026
 >
-> Destinatari: sviluppatori database, backend e analisti funzionali
+> **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
-> Vedi anche
+> **Vedi anche** — schemi DB:
 >
-> * [Glossario termini utility](/glossario/glossario-utility) — definizioni di PDP, istanza, billing account, ecc.
-> * [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici)
-> * [Guida Generazione di un Cliente](/guide/generazione-cliente)
-> * [Regole strutturali istanze (Modello 2025)](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — le regole strutturali del modello
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+> * [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari)
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
+> * [config.utilities](/dbzero/config/tabelle/utilities)
+>
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [anagrafiche.trgfn_clienti_sync_utility_from_ba](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_utility_from_ba) — il cliente eredita la utility dal billing account
+> * [anagrafiche.trgfn_clienti_sync_stato_pdp](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_stato_pdp) — lo stato del PDP segue il cliente
+> * [script.fn_check_utility_istanza_coerenza](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza) — il check riusabile sulla coppia istanza/utility
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Glossario termini utility](/glossario/glossario-utility) — PDP, istanza, billing account
+> * [Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici)
+> * [Generazione di un Cliente](/guide/generazione-cliente) — creazione manuale e da pratica
 
 ---
 
-## Cos'e un'istanza utility
+## Cos'è un'istanza utility
 
-L'**istanza utility** e l'entita centrale del modello Zero ERP per il settore utilities. Collega il **mondo fisico** (indirizzo, contatore) con il **mondo commerciale** (cliente, fatturazione).
+L'**istanza utility** è l'entità centrale del modello Zero ERP per il settore utilities. Collega il **mondo fisico** (indirizzo, contatore) con il **mondo commerciale** (cliente, fatturazione).
 
-In parole semplici: quando un servizio gas o energia viene associato a un civico per conto di una persona, nasce un'istanza. L'istanza rappresenta quel "ciclo di servizio" specifico — non e il cliente, non e il contatore, ma il legame tra i due.
+In parole semplici: quando un servizio gas o energia viene associato a un civico per conto di una persona, nasce un'istanza. L'istanza rappresenta quel "ciclo di servizio" specifico — non è il cliente, non è il contatore, ma il legame tra i due.
 
-L'istanza e progettata per essere:
+L'istanza è progettata per essere:
 
-* **Flessibile**: puo esistere prima di un PDP e prima di un contratto
+* **Flessibile**: può esistere prima di un PDP e prima di un contratto
 * **Coerente**: i vincoli del database impediscono configurazioni impossibili
-* **Stabile nel tempo**: ogni modifica viene storicizzata per tracciabilita
+* **Stabile nel tempo**: ogni modifica viene storicizzata per tracciabilità
 
-### Il nome dice "utility", ma il modello e generico
+### Il nome dice "utility", ma il modello è generico
 
-Il nome "istanze_utilities" riflette il dominio in cui e nata la struttura, ma in pratica l'istanza funziona come un **ponte trasparente** tra il soggetto e la fatturazione, indipendentemente dal tipo di business.
+Il nome "istanze_utilities" riflette il dominio in cui è nata la struttura, ma in pratica l'istanza funziona come un **ponte trasparente** tra il soggetto e la fatturazione, indipendentemente dal tipo di business.
 
 In un'azienda non-utility (commercio, servizi, gestione pompe funebri, logistica, ecc.) l'istanza viene generata in automatico come contenitore tecnico. L'utente non se ne accorge: non deve compilare PDP, catasto o dati specifici del settore energia. Semplicemente, il sistema crea l'istanza dietro le quinte per mantenere la catena soggetto → istanza → billing account → cliente.
 
-Perche e utile anche senza utility?
+Perché è utile anche senza utility?
 
-* **Fatturazione**: il billing account richiede un'istanza. L'istanza garantisce la tracciabilita del "dove e quando" anche in assenza di contatore
+* **Fatturazione**: il billing account richiede un'istanza. L'istanza garantisce la tracciabilità del "dove e quando" anche in assenza di contatore
 * **Storicizzazione**: ogni ciclo commerciale (attivazione → chiusura) resta registrato come istanza storica, utile per audit e reportistica
-* **Multi-servizio**: se in futuro l'azienda aggiunge un secondo tipo di servizio, la struttura e gia pronta senza modifiche
+* **Multi-servizio**: se in futuro l'azienda aggiunge un secondo tipo di servizio, la struttura è già pronta senza modifiche
 
-Le funzionalita specifiche delle utility — PDP (contatore), catasto, subentro, disdetta — sono **estensioni opzionali** che si attivano solo quando servono. La struttura di base non le impone e non penalizza chi non le usa.
-
----
-
-## Tabelle coinvolte
-
-* [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-* [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-* [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-* [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari)
-* [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-* [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)
-* [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-* [config.utilities](/dbzero/config/tabelle/utilities)
+Le funzionalità specifiche delle utility — PDP (contatore), catasto, subentro, disdetta — sono **estensioni opzionali** che si attivano solo quando servono. La struttura di base non le impone e non penalizza chi non le usa.
 
 ---
 
@@ -58,33 +61,33 @@ Le funzionalita specifiche delle utility — PDP (contatore), catasto, subentro,
 
 L'istanza unisce tre mondi:
 
-| Mondo | Cosa rappresenta | Collegamento |
-| --- | --- | --- |
-| Fisico | Indirizzo + eventuale PDP (contatore) | `indirizzo_dettaglio_id`, `pdp_id` |
-| Commerciale | Cliente e relativo ruolo | `clienti.istanza_utility_id` |
-| Amministrativo | Account di fatturazione | `billing_account.istanza_utility_id` |
+| Mondo          | Cosa rappresenta                      | Collegamento                         |
+| -------------- | ------------------------------------- | ------------------------------------ |
+| Fisico         | Indirizzo + eventuale PDP (contatore) | `indirizzo_dettaglio_id`, `pdp_id`   |
+| Commerciale    | Cliente e relativo ruolo              | `clienti.istanza_utility_id`         |
+| Amministrativo | Account di fatturazione               | `billing_account.istanza_utility_id` |
 
-Ogni flusso operativo del sistema passa per l'istanza, che diventa il "punto di verita" per lo stato del servizio, l'indirizzo di erogazione, il cliente attivo e il ciclo di vita tecnico-commerciale.
+Ogni flusso operativo del sistema passa per l'istanza, che diventa il "punto di verità" per lo stato del servizio, l'indirizzo di erogazione, il cliente attivo e il ciclo di vita tecnico-commerciale.
 
 ---
 
-## Perche l'istanza e legata al soggetto e non al ruolo
+## Perché l'istanza è legata al soggetto e non al ruolo
 
-Questa e una scelta progettuale importante che merita una spiegazione.
+Questa è una scelta progettuale importante che merita una spiegazione.
 
-La tabella `istanze_utilities` ha una FK diretta a `soggetti.id` (la persona), **non** a `soggetti_ruoli.id` (il ruolo CLIENTE). Il motivo e che **l'istanza nasce prima del contratto**:
+La tabella `istanze_utilities` ha una FK diretta a `soggetti.id` (la persona), **non** a `soggetti_ruoli.id` (il ruolo CLIENTE). Il motivo è che **l'istanza nasce prima del contratto**:
 
 1. In fase precontrattuale, il soggetto potrebbe non avere ancora il ruolo CLIENTE
-2. L'istanza identifica semplicemente "chi e associato a questo indirizzo/servizio"
+2. L'istanza identifica semplicemente "chi è associato a questo indirizzo/servizio"
 3. Il ruolo CLIENTE arriva dopo, con la specializzazione in `anagrafiche.clienti`
 
 In pratica:
 
-* `istanze_utilities.soggetto_id` → chi e la persona (FK a `soggetti`)
-* `clienti.soggetto_ruolo_id` → qual e il suo ruolo commerciale (FK a `soggetti_ruoli`)
+* `istanze_utilities.soggetto_id` → chi è la persona (FK a `soggetti`)
+* `clienti.soggetto_ruolo_id` → qual è il suo ruolo commerciale (FK a `soggetti_ruoli`)
 * `billing_account.soggetto_ruolo_id` → a quale ruolo fatturare (FK a `soggetti_ruoli`)
 
-L'istanza e "del servizio al civico per quel soggetto", non "del cliente". Il cliente e la specializzazione successiva.
+L'istanza è "del servizio al civico per quel soggetto", non "del cliente". Il cliente è la specializzazione successiva.
 
 ---
 
@@ -92,85 +95,85 @@ L'istanza e "del servizio al civico per quel soggetto", non "del cliente". Il cl
 
 ### Indirizzo
 
-Ogni istanza puo essere:
+Ogni istanza può essere:
 
 * **reale** (`fittizia = FALSE`): richiede un `indirizzo_dettaglio_id`
 * **fittizia** (`fittizia = TRUE`): indirizzo opzionale, per servizi che non richiedono un punto fisico
 
-Regola: se l'istanza e legata a un PDP, non puo essere fittizia.
+Regola: se l'istanza è legata a un PDP, non può essere fittizia.
 
 ### Utility
 
 Ogni istanza appartiene a una sola utility (GAS, ENERGIA, ecc.). Serve per filtri, validazioni e per identificare i PDP compatibili.
 
-**Nota importante:** la tabella `istanze_utilities` **non ha** una colonna `utility_id` diretta. La utility dell'istanza e un dato implicito, registrato nelle tabelle satellite:
+**Nota importante:** la tabella `istanze_utilities` **non ha** una colonna `utility_id` diretta. La utility dell'istanza è un dato implicito, registrato nelle tabelle satellite:
 
-| Tabella | Vincolo | Quando esiste |
-|---------|---------|---------------|
-| `istanze_dati_precontrattuali` | `UNIQUE(istanza_utility_id, utility_id)` | Fase precontrattuale (creazione da pratica) |
-| `billing_account` | `UNIQUE(istanza_utility_id, utility_id)` | Dopo creazione BA |
-| `clienti` | `UNIQUE(istanza_utility_id)` + `utility_id` | Dopo creazione cliente |
+| Tabella                        | Vincolo                                     | Quando esiste                               |
+| ------------------------------ | ------------------------------------------- | ------------------------------------------- |
+| `istanze_dati_precontrattuali` | `UNIQUE(istanza_utility_id, utility_id)`    | Fase precontrattuale (creazione da pratica) |
+| `billing_account`              | `UNIQUE(istanza_utility_id, utility_id)`    | Dopo creazione BA                           |
+| `clienti`                      | `UNIQUE(istanza_utility_id)` + `utility_id` | Dopo creazione cliente                      |
 
 Tutti e tre i vincoli UNIQUE garantiscono che **una istanza corrisponde a una sola utility**.
 
-**Ordine cronologico di disponibilita:**
+**Ordine cronologico di disponibilità:**
 
-1. **Pratica aperta** — `istanze_dati_precontrattuali` e il primo punto dove il legame istanza → utility viene registrato. Nella creazione da pratica (utility con `richiede_pdp = true`: GAS, IDRICO, ENERGIA) questo record **deve** essere creato subito insieme all'istanza, perche BA e cliente non esistono ancora
+1. **Pratica aperta** — `istanze_dati_precontrattuali` è il primo punto dove il legame istanza → utility viene registrato. Nella creazione da pratica (utility con `richiede_pdp = true`: GAS, IDRICO, ENERGIA) questo record **deve** essere creato subito insieme all'istanza, perché BA e cliente non esistono ancora
 2. **BA creato** — `billing_account.utility_id` disponibile
 3. **Cliente creato** — `clienti.utility_id` disponibile (sincronizzato dal BA via trigger `trgfn_clienti_sync_utility_from_ba`)
 
-Nella creazione immediata (utility con `richiede_pdp = false`) non c'e fase precontrattuale: BA e cliente vengono creati atomicamente dal `ClienteService`, e la utility e immediatamente disponibile da `billing_account` e `clienti`.
+Nella creazione immediata (utility con `richiede_pdp = false`) non c'è fase precontrattuale: BA e cliente vengono creati atomicamente dal `ClienteService`, e la utility è immediatamente disponibile da `billing_account` e `clienti`.
 
-**Perche e importante:** il sistema usa `istanza_utility_id` come differenziatore su indirizzi, conti bancari e contatti a livello ruolo (cascata istanza → generico ruolo → soggetto). In qualsiasi fase del ciclo di vita dell'istanza, la utility deve essere reperibile per la UI e per le funzioni di risoluzione. Se `istanze_dati_precontrattuali` non viene popolato nella fase precontrattuale, la utility resta ignota fino alla creazione del BA.
+**Perché è importante:** il sistema usa `istanza_utility_id` come differenziatore su indirizzi, conti bancari e contatti a livello ruolo (cascata istanza → generico ruolo → soggetto). In qualsiasi fase del ciclo di vita dell'istanza, la utility deve essere reperibile per la UI e per le funzioni di risoluzione. Se `istanze_dati_precontrattuali` non viene popolato nella fase precontrattuale, la utility resta ignota fino alla creazione del BA.
 
 ### Istanza e billing account: relazione 1:1 per utility (invariante)
 
 > **Invariante fondamentale — da tenere a mente ogni volta che si ragiona su
 > "quale istanza usa un documento".** Per una data utility, **un'istanza ha un
 > solo billing account e un billing account ha una sola istanza**: la relazione
-> BA ↔ istanza e' **1:1**.
+> BA ↔ istanza è **1:1**.
 
 Da cosa discende, a livello di modello:
 
-* `billing_account.istanza_utility_id` e' una **FK singola NOT NULL** → ogni BA
+* `billing_account.istanza_utility_id` è una **FK singola NOT NULL** → ogni BA
   punta a **esattamente una** istanza.
 * `billing_account` ha `UNIQUE (istanza_utility_id, utility_id)`
   (`uq_billing_instance_utility`) → per una data coppia (istanza, utility)
   esiste **al massimo un** BA.
 * Sommato a "1 istanza = 1 utility" (i tre UNIQUE dei satelliti, sezione
-  Utility), il risultato e' che **dato il BA, l'istanza e' univoca**: non c'e'
+  Utility), il risultato è che **dato il BA, l'istanza è univoca**: non c'è
   nulla da "scegliere".
 
-**Conseguenza pratica (il punto che ricapita spesso).** Un BA **non** puo' avere
-piu' istanze sulla stessa utility, quindi un documento che ha gia' un
-billing_account **non deve** — e non puo' utilmente — "scegliere" o memorizzare
+**Conseguenza pratica (il punto che ricapita spesso).** Un BA **non** può avere
+più istanze sulla stessa utility, quindi un documento che ha già un
+billing_account **non deve** — e non può utilmente — "scegliere" o memorizzare
 una propria istanza: la ricava in modo univoco dal BA. Questo spiega
 l'asimmetria voluta fra i documenti di vendita:
 
-| Documenti | Hanno `istanza_utility_id` sulla testata? | Perche' |
-| --- | --- | --- |
-| **Precontrattuali** (preventivi, offerte, contratti) | **Si'** | L'istanza si **sceglie direttamente** (senza filtro utility, eventualmente **prima** che esista un BA): va congelata sul documento |
-| **Esecutivi** (ordini, DDT, fatture) | **No** | Hanno **sempre** un BA (obbligatorio) → l'istanza e' gia' univoca: si legge da `ba.istanza_utility_id`, non si duplica sulla testata |
+| Documenti                                            | Hanno `istanza_utility_id` sulla testata? | Perché                                                                                                                             |
+| ---------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **Precontrattuali** (preventivi, offerte, contratti) | **Sì**                                    | L'istanza si **sceglie direttamente** (senza filtro utility, eventualmente **prima** che esista un BA): va congelata sul documento |
+| **Esecutivi** (ordini, DDT, fatture)                 | **No**                                    | Hanno **sempre** un BA (obbligatorio) → l'istanza è già univoca: si legge da `ba.istanza_utility_id`, non si duplica sulla testata |
 
 **Regola operativa**: se il documento ha (o richiede) un billing_account,
 l'istanza **viene dal BA** — non aggiungere colonne istanza a documenti
-BA-backed (duplicherebbero un dato gia' univoco, creando solo occasioni di
+BA-backed (duplicherebbero un dato già univoco, creando solo occasioni di
 disallineamento). Se invece il documento vive **prima** del BA
-(precontrattuale), l'istanza e' una scelta e va memorizzata sulla sua testata.
+(precontrattuale), l'istanza è una scelta e va memorizzata sulla sua testata.
 
 ### PDP (opzionale)
 
-L'istanza puo essere collegata a un punto di prelievo gia esistente:
+L'istanza può essere collegata a un punto di prelievo già esistente:
 
-* `pdp_id` puo essere NULL (istanza senza contatore)
+* `pdp_id` può essere NULL (istanza senza contatore)
 * Se `pdp_id` non e NULL → l'indirizzo dell'istanza deve coincidere con quello del PDP
-* Se `pdp_id` non e NULL → l'istanza non puo essere fittizia
+* Se `pdp_id` non e NULL → l'istanza non può essere fittizia
 
 ### Cliente associato
 
 L'istanza ospita **al massimo un cliente** (vincolo `uq_clienti_istanza_utility`, UNIQUE su `istanza_utility_id`). L'associazione avviene tramite `clienti.istanza_utility_id`. Il cliente assume utility, billing account e indirizzo dall'istanza (o derivazioni).
 
-Quando un cliente viene chiuso e un nuovo intestatario subentra, il sistema crea una **nuova istanza** per il nuovo cliente. L'istanza precedente resta come record storico, collegata alla nuova tramite `parent_istanza_id`. In questo modo la relazione istanza → cliente e sempre 1:1 (o 1:0 se l'istanza e precontrattuale).
+Quando un cliente viene chiuso e un nuovo intestatario subentra, il sistema crea una **nuova istanza** per il nuovo cliente. L'istanza precedente resta come record storico, collegata alla nuova tramite `parent_istanza_id`. In questo modo la relazione istanza → cliente è sempre 1:1 (o 1:0 se l'istanza è precontrattuale).
 
 ---
 
@@ -206,7 +209,7 @@ Il PDP ENERGIA di Mario Rossi non viene toccato.
 
 ## Collegamento istanze e PDP
 
-### Il PDP e un'entita fisica
+### Il PDP è un'entità fisica
 
 Il PDP rappresenta il contatore o allaccio a un indirizzo. Non cambia indirizzo, non cambia utility, e ha un proprio stato tecnico (ATTIVO, DISPONIBILE) indipendente dalle istanze.
 
@@ -216,8 +219,8 @@ Quando un'istanza viene collegata a un PDP:
 
 * Gli indirizzi devono coincidere
 * Le utility devono coincidere
-* L'istanza non puo essere fittizia
-* Il PDP deve essere in stato DISPONIBILE (se non ha gia un cliente attivo)
+* L'istanza non può essere fittizia
+* Il PDP deve essere in stato DISPONIBILE (se non ha già un cliente attivo)
 
 ### Aggiornamento automatico dello stato PDP
 
@@ -234,7 +237,7 @@ Gli altri stati cliente (sospeso, annullato, ecc.) non modificano lo stato del P
 
 * Per creare un cliente serve **sempre** un'istanza: `clienti.istanza_utility_id NOT NULL`
 * Il ciclo di vita del cliente dipende dall'istanza: cambio utility → nuova istanza; chiusura contratto → l'istanza diventa storica
-* La coerenza utility e mantenuta automaticamente: `clienti.utility_id = billing_account.utility_id = istanza.utility_id`
+* La coerenza utility è mantenuta automaticamente: `clienti.utility_id = billing_account.utility_id = istanza.utility_id`
 
 ---
 
@@ -250,11 +253,11 @@ Gli altri stati cliente (sospeso, annullato, ecc.) non modificano lo stato del P
 
 * Unico per `(indirizzo_dettaglio_id, utility_id)`
 * Stato tecnico indipendente dalle istanze
-* L'istanza non puo cambiare PDP senza chiusura tecnica
+* L'istanza non può cambiare PDP senza chiusura tecnica
 
 ### Sul cliente
 
-* Non puo essere creato senza istanza
+* Non può essere creato senza istanza
 * L'attivazione del cliente modifica lo stato del PDP
 * Il vincolo UNIQUE su `istanza_utility_id` garantisce un solo cliente per istanza, sia per istanze reali che fittizie
 * Il vincolo di esclusione `ex_clienti_no_overlap_stesso_pdp` (su `pdp_id, periodo`) aggiunge una seconda protezione: impedisce periodi sovrapposti sullo stesso PDP **tra istanze diverse**. Per le istanze fittizie (senza PDP) questa seconda protezione non scatta, ma non serve: il UNIQUE su istanza basta
@@ -265,8 +268,8 @@ Gli altri stati cliente (sospeso, annullato, ecc.) non modificano lo stato del P
 
 ### 1. Creazione dell'istanza precontrattuale
 
-* Puo essere fittizia
-* Puo non avere PDP
+* Può essere fittizia
+* Può non avere PDP
 * Serve per generare un billing account in anticipo
 
 ### 2. Associazione a un PDP
@@ -275,15 +278,15 @@ Condizioni minime: indirizzo reale, utility compatibile, PDP disponibile.
 
 ### 3. Creazione del cliente
 
-L'istanza deve essere completa (indirizzo + BA gia esistente). Il ruolo CLIENTE viene creato automaticamente se manca.
+L'istanza deve essere completa (indirizzo + BA già esistente). Il ruolo CLIENTE viene creato automaticamente se manca.
 
 ### 4. Attivazione del cliente
 
-Il PDP passa ad ATTIVO. L'istanza e pienamente in servizio.
+Il PDP passa ad ATTIVO. L'istanza è pienamente in servizio.
 
 ### 5. Chiusura del cliente
 
-Puo avvenire per **subentro** (un nuovo intestatario subentra) o per **disdetta** (il servizio si chiude senza sostituto). In entrambi i casi il PDP torna DISPONIBILE e l'istanza resta nel database come record storico.
+Può avvenire per **subentro** (un nuovo intestatario subentra) o per **disdetta** (il servizio si chiude senza sostituto). In entrambi i casi il PDP torna DISPONIBILE e l'istanza resta nel database come record storico.
 
 Per i dettagli su subentro e disdetta: [Guida Generazione Cliente – Appendici](/guide/generazione-cliente).
 
@@ -332,23 +335,21 @@ In questo caso l'istanza viene generata automaticamente come **contenitore tecni
 
 L'operatore non interagisce direttamente con l'istanza: il `ClienteService` la crea dietro le quinte come parte della transazione atomica di creazione cliente (istanza + billing account + cliente).
 
-Per le utility con `richiede_pdp = true` (GAS, Energia, Idrico), la creazione del cliente passa obbligatoriamente dal motore pratiche e l'istanza e sempre reale, con indirizzo e PDP obbligatori.
+Per le utility con `richiede_pdp = true` (GAS, Energia, Idrico), la creazione del cliente passa obbligatoriamente dal motore pratiche e l'istanza è sempre reale, con indirizzo e PDP obbligatori.
 
 Per i dettagli completi: [Guida Generazione Cliente — Creazione manuale vs creazione da pratica](/guide/generazione-cliente#creazione-manuale-vs-creazione-da-pratica).
 
 ---
 
-Le funzionalita descritte in questa guida sono basate sul modello strutturale introdotto nel 2025, che definisce formalmente l'identita dell'istanza, il vincolo 1 istanza = 1 cliente, e la gestione della catena di subentri tramite `parent_istanza_id`.
+Le funzionalità descritte in questa guida valgono per il **modello strutturale corrente**, che definisce formalmente l'identità dell'istanza, il vincolo 1 istanza = 1 cliente e la gestione della catena di subentri tramite `parent_istanza_id`.
 
 Per i dettagli completi e i vincoli formali: [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 
 ---
 
-## Strategia C — Ogni istanza dichiara la utility tramite un satellite (2026-05-01)
+## Ogni istanza dichiara la utility (strategia C)
 
-Dalla sessione di refactor preventivi del 2026-05-01 (brief preventivi rev2),
-ogni nuova `istanze_utilities` deve avere **almeno una riga satellite** che
-dichiari la utility associata, entro la transazione di creazione.
+Ogni nuova `istanze_utilities` deve avere **almeno una riga satellite** che dichiari la utility associata, entro la transazione di creazione.
 
 ### Le 3 fonti satellite ammesse
 
@@ -360,7 +361,7 @@ dichiari la utility associata, entro la transazione di creazione.
 
 Constraint trigger `DEFERRABLE INITIALLY DEFERRED`:
 [trg_istanze_utilities_z90_require_utility_dichiarata_ins](/dbzero/anagrafiche/tabelle/istanze_utilities).
-La validazione avviene al `COMMIT`, quindi e' lecito creare l'istanza prima
+La validazione avviene al `COMMIT`, quindi è lecito creare l'istanza prima
 del satellite all'interno della stessa transazione.
 
 In caso di violazione, viene sollevato `E_ISTANZA_UTILITY_SENZA_UTILITY`.
@@ -368,8 +369,8 @@ In caso di violazione, viene sollevato `E_ISTANZA_UTILITY_SENZA_UTILITY`.
 ### Funzione di check riusabile
 
 `script.fn_check_utility_istanza_coerenza(istanza_utility_id, utility_id)`
-e' un pure check (boolean) che verifica la coerenza della coppia rispetto
-alle stesse 3 fonti satellite. La lista delle fonti e' allineata al constraint
+è un pure check (boolean) che verifica la coerenza della coppia rispetto
+alle stesse 3 fonti satellite. La lista delle fonti è allineata al constraint
 trigger e va mantenuta in sync se cambia una delle due.
 
 Riusato da:
@@ -380,11 +381,10 @@ Riusato da:
 
 ### Nota sul retroattivo
 
-Il trigger e' `AFTER INSERT`: si applica solo alle nuove istanze. Le istanze
-storiche orfane (zero satelliti) non vengono toccate. Il backfill in
-`migrations_v2/80_data/changelog/20260501-16-backfill-istanze-dati-precontrattuali`
-crea la riga `istanze_dati_precontrattuali` per le istanze che hanno gia'
-un BA ma nessuna IDP. Le istanze totalmente orfane vanno valutate manualmente.
+Il trigger è `AFTER INSERT`: si applica solo alle nuove istanze. Le istanze
+storiche orfane (zero satelliti) non vengono toccate: per quelle che hanno già
+un BA ma nessuna riga precontrattuale esiste un backfill che la crea. Le istanze
+totalmente orfane vanno valutate manualmente.
 
 ---
 

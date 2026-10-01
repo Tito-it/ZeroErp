@@ -1,0 +1,150 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-5 — LA REGOLA IN UN POSTO SOLO: documenti.fn_guard_versione_contesto
+#   (p_template_versione_id bigint, p_versione_contesto integer) RETURNS void
+#   Brief: brief-db-documenti-versione-contesto-template.md §3, §4 (D-C2)
+#
+#   «Si stampa solo se la forma che la versione LEGGE e' la forma che i dati
+#   HANNO.» Tre chiamanti, una sede:
+#     - il backend, prima del render (niente PDF da buttare) — richiesta R-3, brief §10;
+#     - il trigger sull'INSERT di documenti_generati (-19/-20): una stampa
+#       incoerente non si registra, qualunque strada l'abbia prodotta;
+#     - la pubblicazione (-21): non si pubblica una versione che dichiara una
+#       forma che il builder non produce.
+#
+# ── ⭐ guard E NON check ─────────────────────────────────────────────────
+#   Il brief la chiamava fn_check_…: ma solleva, quindi per linee-guida-sql §5
+#   e' un guard. Nessun pulsante da accendere o spegnere a DB: la forma che il
+#   builder produce e' un fatto del CODICE (D-C1/§5 del brief), il DB la riceve
+#   come parametro e non potrebbe comporre da solo una capability.
+#
+# ── I RIFIUTI ───────────────────────────────────────────────────────────
+#   · forme diverse  -> E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA (CONFLITTO_STATO):
+#     rimedia chi amministra i template, pubblicando una versione che legga la
+#     forma di oggi. Nella frase: versione, nome del template, le due forme.
+#   · manca un dato che solo il chiamante fornisce (id versione non positivo,
+#     forma dei dati NULL) -> E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE
+#     (TECNICO): e' un chiamante rotto — un builder che non scrive
+#     _meta.context_version — non un dato da correggere.
+#   · versione inesistente (o fuori dal perimetro di chi legge: la funzione e'
+#     INVOKER, e sotto RLS le due cose coincidono) -> E_DOCUMENTI_VERSIONE_NOT_FOUND.
+#   ⛔ Nessun bersaglio: un template non e' fra i tipi di config.tipi_entita, e
+#   un gesto «vai al template» senza rotta sarebbe un vicolo cieco.
+#
+# INVOKER, plpgsql, VOLATILE (solleva e scrive il log degli errori).
+# Tipi ancorati con %TYPE in firma, DECLARE, COMMENT e DROP: la firma risolta
+#   e' (bigint, integer) — una fotografia al CREATE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260930-18-create-fn-guard-versione-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20260930-18-create-fn-guard-versione-contesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.fn_guard_versione_contesto(p_template_versione_id, p_versione_contesto): solleva
+        E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA se la forma dei dati dichiarata dalla versione di
+        template non e' quella dei dati; E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE se manca uno
+        dei due dati; E_DOCUMENTI_VERSIONE_NOT_FOUND se la versione non c'e'. La chiamano il backend
+        prima del render, il trigger su documenti_generati e la pubblicazione. Brief:
+        brief-db-documenti-versione-contesto-template §4.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: documenti
+            tableName: template_documenti_versioni
+            columnName: versione_contesto
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.fn_guard_versione_contesto(
+                  p_template_versione_id documenti.template_documenti_versioni.id%TYPE,
+                  p_versione_contesto    documenti.template_documenti_versioni.versione_contesto%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: rifiutare la stampa (o la pubblicazione) di una versione di
+              --   template che legge una forma dei dati diversa da quella dei dati.
+              --   p_versione_contesto = la forma che i dati HANNO: _meta.context_version
+              --   del contesto (stampa), la costante del builder (render, pubblicazione).
+              DECLARE
+                  v_versione        documenti.template_documenti_versioni.versione%TYPE;
+                  v_forma_template  documenti.template_documenti_versioni.versione_contesto%TYPE;
+                  v_template_nome   documenti.template_documenti.descrizione%TYPE;
+              BEGIN
+                  IF p_template_versione_id IS NULL OR p_template_versione_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_guard_versione_contesto',
+                          'E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE',
+                          jsonb_build_object('template_versione_id', p_template_versione_id,
+                                             'versione_contesto',    p_versione_contesto),
+                          NULL::uuid,
+                          'la versione del template');
+                  END IF;
+
+                  IF p_versione_contesto IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_guard_versione_contesto',
+                          'E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE',
+                          jsonb_build_object('template_versione_id', p_template_versione_id),
+                          NULL::uuid,
+                          'la forma dichiarata dai dati');
+                  END IF;
+
+                  SELECT v.versione, v.versione_contesto, t.descrizione
+                    INTO v_versione, v_forma_template, v_template_nome
+                    FROM documenti.template_documenti_versioni v
+                    JOIN documenti.template_documenti t ON t.id = v.template_documento_id
+                   WHERE v.id = p_template_versione_id;
+
+                  -- ⚠️ FOUND e non «v_versione IS NULL»: versione e' NOT NULL, ma la
+                  --    domanda e' «la riga c'e'?», e FOUND e' la risposta diretta.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_guard_versione_contesto',
+                          'E_DOCUMENTI_VERSIONE_NOT_FOUND',
+                          jsonb_build_object('template_versione_id', p_template_versione_id),
+                          NULL::uuid,
+                          p_template_versione_id::text);
+                  END IF;
+
+                  -- IS DISTINCT FROM: versione_contesto e' NOT NULL (20260930-16), ma un
+                  --   confronto nudo con un NULL passerebbe in silenzio.
+                  IF v_forma_template IS DISTINCT FROM p_versione_contesto THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_guard_versione_contesto',
+                          'E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA',
+                          jsonb_build_object('template_versione_id',        p_template_versione_id,
+                                             'versione_contesto_template',  v_forma_template,
+                                             'versione_contesto_dati',      p_versione_contesto),
+                          NULL::uuid,
+                          v_versione::text, v_template_nome,
+                          coalesce(v_forma_template::text, '?'), p_versione_contesto::text);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.fn_guard_versione_contesto(
+                  documenti.template_documenti_versioni.id%TYPE, documenti.template_documenti_versioni.versione_contesto%TYPE) IS
+                  'Il patto fra una versione di template e la forma dei dati che legge: solleva E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA (CONFLITTO_STATO) se template_documenti_versioni.versione_contesto non e'' p_versione_contesto, cioe'' la forma che i dati hanno (_meta.context_version del contesto, o la costante del builder). E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE (TECNICO) se il chiamante non passa la versione o la forma; E_DOCUMENTI_VERSIONE_NOT_FOUND se la versione non c''e'' (o non e'' nel perimetro di chi legge: INVOKER). La chiamano il backend prima del render, il trigger sull''INSERT di documenti.documenti_generati e documenti.fn_pubblica_template_documento_versione. Una BOZZA si controlla solo quando si pubblica o si stampa (D-C4). Brief: brief-db-documenti-versione-contesto-template.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS documenti.fn_guard_versione_contesto(
+                  documenti.template_documenti_versioni.id%TYPE, documenti.template_documenti_versioni.versione_contesto%TYPE);

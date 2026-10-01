@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 --
 -- Test F1-DB-T3: promo_articoli (overlay pricing v5 - STADIO 0).
--- Copre CHECK vincoli, EXCLUDE no-overlap, trigger set_validita.
+-- Copre CHECK vincoli, EXCLUDE no-overlap, colonna generata validita.
 --
 -- Elenco test (1..9):
 --   1) tipo_variazione = 'PERCENTUALE' con valore > 0 ammesso
@@ -11,10 +11,10 @@
 --   3) tipo_variazione = 'PREZZO_FISSO' con valore = 0 ammesso (prezzo assoluto)
 --   4) tipo_variazione = 'PERCENTUALE' con valore = 0 ammesso (chk_promo_articoli_valore rimosso 15-04-2026)
 --   5) tipo_variazione fuori dominio (es. 'SCONTO') -> fallisce
---   6) valido_al < valido_dal -> costruttore daterange fallisce (22000)
+--   6) valido_al < valido_dal -> guard comune delle date (E_DATA_AL_MINORE_DAL)
 --   7) codice UNIQUE: insert duplicato fallisce
 --   8) EXCLUDE no-overlap: stessa (articolo, uom) con periodo overlappato -> fallisce
---   9) Trigger set_validita popola validita daterange
+--   9) La colonna generata validita popola il daterange
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -96,16 +96,17 @@ SELECT throws_ok(
     'tipo_variazione fuori dominio viola chk_promo_articoli_tipo_variazione'
 );
 
--- 6) valido_al < valido_dal: daterange lo rifiuta prima di qualsiasi CHECK.
-SELECT throws_ok(
+-- 6) valido_al < valido_dal: parla il guard comune delle date (2026-09-23,
+--    brief-db-guard-date-validita). Prima rifiutava il costruttore del
+--    daterange della colonna generata, 22000, con una frase tecnica.
+SELECT throws_like(
     $$INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_DATE_BAD', 'Test date invertite', a.articolo_id, a.uom_id,
              'PERCENTUALE', 5, '2031-06-01', '2031-01-01'
         FROM tmp_ctx_articolo a$$,
-    '22000',
-    NULL,
-    'valido_al < valido_dal: daterange(valido_dal, valido_al) fallisce con 22000'
+    '%è inferiore alla data dal%',
+    'valido_al < valido_dal: parla il guard comune delle date (E_DATA_AL_MINORE_DAL)'
 );
 
 -- 7) codice UNIQUE
@@ -132,13 +133,13 @@ SELECT throws_ok(
     'EXCLUDE blocca overlap su (articolo, uom) attive'
 );
 
--- 9) Trigger set_validita.
+-- 9) Colonna generata validita.
 -- Il costruttore daterange('[]') normalizza a '[)' con +1 giorno sul superiore.
 SELECT is(
     (SELECT validita::text FROM vendite.promo_articoli
       WHERE codice = 'PGTAP_PROMO_PERC'),
     '[2030-01-01,2030-04-01)',
-    'Trigger set_validita sincronizza validita (daterange normalizzato [), +1gg su valido_al)'
+    'La colonna generata validita e'' sincronizzata (daterange normalizzato [), +1gg su valido_al)'
 );
 
 SELECT * FROM finish();

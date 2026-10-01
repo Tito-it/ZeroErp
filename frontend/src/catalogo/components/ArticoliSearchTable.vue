@@ -5,7 +5,7 @@
 //        personalizzazione per utente. Lista a ricerca obbligatoria: resta
 //        nascosta finche' non si e' cercato. Nessun export: il dominio non ha
 //        endpoint (lo scaffolding omette l'azione da se').
-import { ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useArticoliStore } from '../stores/articoli'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -23,10 +23,21 @@ import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
-import { buildBoolOptions } from '../../core/utils/options'
+import { buildAttivoOptions, buildBoolOptions } from '../../core/utils/options'
 import { labelOrCode } from '../../core/utils/i18nLabel'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import EstensioneDrawerHost from '../../core/components/EstensioneDrawerHost.vue'
+import { useAzioniEstese } from '../../core/composables/useAzioniEstese'
+import { PUNTI_ESTENSIONE } from '../../core/estensioni'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const emit = defineEmits(['new', 'row-click', 'manage-uom', 'manage-bom', 'manage-note'])
+
+// Le azioni di riga che altri domini contribuiscono all'articolo (oggi: i lotti
+// di magazzino), col drawer che aprono (core/estensioni.js).
+const {
+  voci: azioniEstese, aperto: drawerEsteso, impostaVisibile: visibileEsteso,
+} = useAzioniEstese(PUNTI_ESTENSIONE.ARTICOLO_AZIONI_RIGA)
 const { t, te } = useI18n()
 const store = useArticoliStore()
 const isBlocked = useInjectBlocked()
@@ -41,33 +52,32 @@ const {
   searchTableOptions: { defaultSortField: 'codice' },
 })
 
-const attivoFilter = ref(true)
-const compositoFilter = ref(null)
-const tipologiaFilter = ref(null)
-const gruppoFilter = ref(null)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
+const { value: tipologiaFilter, onChange: onTipologiaChange } = bindSelect('tipo_voce_id')
+const { value: compositoFilter, onChange: onCompositoChange } = bindSelect('is_composito')
+const { value: gruppoFilter, onChange: onGruppoChange } = bindSelect('gruppo_voce_id')
 
 const boolOptions = buildBoolOptions(t)
-const attivoOptions = [
-  { value: true, label: t('common.active') },
-  { value: false, label: t('common.inactive') },
-]
-
-function onAttivoChange() {
-  store.filters.attivo = attivoFilter.value
-  applyFilters()
-}
-function onCompositoChange() {
-  store.filters.is_composito = compositoFilter.value
-  applyFilters()
-}
-function onTipologiaChange() {
-  store.filters.tipo_voce_id = tipologiaFilter.value
-  applyFilters()
-}
-function onGruppoChange() {
-  store.filters.gruppo_voce_id = gruppoFilter.value
-  applyFilters()
-}
+// ⛔ «TUTTI» C'E', ED E' LA CORREZIONE DEL 2026-09-23 (rilievo in-app di Tid).
+//    Senza quella voce — e senza `show-clear` — questo filtro NON si poteva
+//    togliere: nasce a `Attivo` e le uniche due scelte erano `Attivo` e `Non
+//    attivo`, cioe' contava un'unita' nel segno dei filtri attivi su cui
+//    l'operatore non aveva nessun gesto.
+// ⚠️ Il backend lo ammette: la lista applica `attivo` solo se valorizzato
+//    (`qp_bool_optional` nella view, `if attivo is not None` nel repository),
+//    quindi «Tutti» mostra attivi e disattivati insieme.
+// ⭐ La terna sta nel BB `buildAttivoOptions` (regola del 2, ok Tid: era scritta
+//    a mano in cinque sedi): etichette di DOMINIO, non `Sì`/`No` di
+//    `buildBoolOptions` — qui il filtro e' lo STATO dell'articolo, le stesse
+//    parole che `AttivoTag` scrive nella colonna.
+const attivoOptions = buildAttivoOptions(t)
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -107,6 +117,7 @@ function buildRowActions(data) {
       icon: MANAGE_ICONS.NOTE,
       command: () => emit('manage-note', data),
     },
+    ...azioniEstese(data),
   ]
 }
 
@@ -124,17 +135,23 @@ onMounted(() => {
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText v-model="searchText" :placeholder="t('catalogo.search_placeholder')" />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t('catalogo.search_placeholder')" />
+        </template>
         <Select v-model="attivoFilter" :options="attivoOptions" option-label="label" option-value="value"
-          :placeholder="t('catalogo.filtro_attivo')" @change="onAttivoChange" style="width: 130px;" />
+          class="app-filter-w-sm"
+          :placeholder="t('catalogo.filtro_attivo')" @change="onAttivoChange" />
         <Select v-model="compositoFilter" :options="boolOptions" option-label="label" option-value="value"
-          :placeholder="t('catalogo.filtro_composito')" show-clear @change="onCompositoChange" style="width: 160px;" />
+          class="app-filter-w-sm"
+          :placeholder="t('catalogo.filtro_composito')" show-clear @change="onCompositoChange" />
         <LookupSelect v-model="tipologiaFilter" rel="vendite.articoli_tipologie"
-          :placeholder="t('catalogo.filtro_tipologia')" show-clear @change="onTipologiaChange" style="width: 150px;" />
+          class="app-filter-w-md"
+          :placeholder="t('catalogo.filtro_tipologia')" show-clear @change="onTipologiaChange" />
         <LookupSelect v-model="gruppoFilter" rel="vendite.articoli_gruppi"
-          :placeholder="t('catalogo.filtro_gruppo')" show-clear @change="onGruppoChange" style="width: 150px;" />
-      </div>
+          class="app-filter-w-md"
+          :placeholder="t('catalogo.filtro_gruppo')" show-clear @change="onGruppoChange" />
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />
@@ -176,11 +193,12 @@ onMounted(() => {
         <AttivoTag :active="data.attivo" />
       </template>
 
-      <template #actions="{ data, compact }">
-        <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
       </template>
     </ListaConfigurabile>
     </template>
+    <EstensioneDrawerHost :stato="drawerEsteso" @update:visible="visibileEsteso" />
   </div>
 </template>
 

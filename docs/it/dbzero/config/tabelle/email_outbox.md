@@ -38,12 +38,15 @@
 |------|------|---------|
 | CHECK | chk_email_outbox_ambito |  |
 | CHECK | chk_email_outbox_ambito_emittente |  |
+| CHECK | chk_email_outbox_operatore_creatore |  |
 | CHECK | chk_email_outbox_reparto_uo |  |
 | CHECK | chk_email_outbox_stato |  |
 | FOREIGN KEY | email_outbox_email_account_id_fkey | email_account_id |
 | FOREIGN KEY | email_outbox_email_template_id_fkey | email_template_id |
 | FOREIGN KEY | email_outbox_pratica_id_fkey | pratica_id |
 | FOREIGN KEY | email_outbox_unita_organizzativa_id_fkey | unita_organizzativa_id |
+| FOREIGN KEY | fk_config_email_outbox_auth_user | auth_user_id |
+| FOREIGN KEY | fk_config_email_outbox_creato_da_user | creato_da_user_id |
 | FOREIGN KEY | fk_email_outbox_email_log | email_log_id |
 | FOREIGN KEY | fk_email_outbox_emittente_fiscale | emittente_fiscale_id |
 | PRIMARY KEY | email_outbox_pkey | id |
@@ -65,14 +68,15 @@
 | trg_email_outbox_a10_email_template_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'email_template', 'attivo', 'email_template_id', 'id')` |
 | trg_email_outbox_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_email_outbox_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
+| trg_email_outbox_a10_guard_delete_solo_bozza_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza()` |
 | trg_email_outbox_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_email_outbox_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
-| trg_email_outbox_a10_unita_organizzative_require_attivo__7d7a72 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
 | trg_email_outbox_a10_unita_organizzative_require_attivo__7d7a72 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
-| trg_email_outbox_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_email_outbox_a10_unita_organizzative_require_attivo__7d7a72 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
 | trg_email_outbox_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_email_outbox_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_email_outbox_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_email_outbox_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_email_outbox_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

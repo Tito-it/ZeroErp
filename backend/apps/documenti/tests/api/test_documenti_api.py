@@ -13,7 +13,8 @@
 #   2. list_templates_propagates_filters_to_service
 #   3. detail_template_ok
 #   4. detail_template_404_when_service_raises_not_found
-#   5. versioni_list_ok
+#   5. versioni_list_ok (envelope standard + parametri di lista)
+#   5-bis. versioni_list_senza_ordine_lascia_decidere_il_repository
 #   6. versione_detail_ok
 #   7. post_template_201_happy_path
 #   8. post_template_validation_error_400
@@ -31,6 +32,9 @@
 #  20. asset_upload_happy_path_multipart
 #  21. asset_patch_metadati_happy_path
 #  22. asset_download_file_binary_happy_path
+#  22-bis. asset_miniatura_inline_con_etag_e_no_cache
+#  22-ter. asset_miniatura_304_quando_il_client_ha_lo_stesso_etag
+#  23. le liste nei drawer dichiarano codice e parametro dell'emittente
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -38,7 +42,7 @@ from __future__ import annotations
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
-from django.test import Client
+from django.test import Client, SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -92,12 +96,6 @@ class DocumentiApiSmokeTests(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        # Silenzia il middleware di log (non rilevante allo smoke API).
-        request_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log"
-        )
-        request_log_patcher.start()
-        self.addCleanup(request_log_patcher.stop)
 
     # 0. JWT assente -> 401.
     def test_list_templates_requires_jwt(self) -> None:
@@ -189,12 +187,46 @@ class DocumentiApiSmokeTests(JwtMockedApiTest):
     def test_versioni_list_ok(self, mocked_service_cls, _mock_auth) -> None:
         mocked_service_cls.return_value.list_versioni.return_value = {
             "results": [_VERSIONE_DETAIL],
+            "total_count": 1,
+        }
+        resp = self.client.get(
+            "/api/v1/documenti/templates/1/versioni/"
+            "?limit=10&offset=10&order_by=valido_al&order_dir=desc&search=fattura",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()["data"]
+        results = data["results"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["stato"], "PUBBLICATA")
+        # Envelope di lista standard (`paginated_envelope`): `count`, non
+        # `total_count` — e' cio' che legge lo store del frontend.
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["page"], 2)
+        self.assertEqual(data["page_size"], 10)
+        kwargs = mocked_service_cls.return_value.list_versioni.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "valido_al")
+        self.assertEqual(kwargs["order_dir"], "desc")
+        self.assertEqual(kwargs["search"], "fattura")
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 10))
+
+    # 5-bis. senza `order_by` decide il repository (`versione DESC`): la view
+    #        non inventa una chiave che arriverebbe senza verso.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(), None),
+    )
+    @patch("apps.documenti.api.views.TemplateService")
+    def test_versioni_list_senza_ordine_lascia_decidere_il_repository(
+        self, mocked_service_cls, _mock_auth,
+    ) -> None:
+        mocked_service_cls.return_value.list_versioni.return_value = {
+            "results": [], "total_count": 0,
         }
         resp = self.client.get("/api/v1/documenti/templates/1/versioni/")
         self.assertEqual(resp.status_code, 200)
-        results = resp.json()["data"]["results"]
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["stato"], "PUBBLICATA")
+        kwargs = mocked_service_cls.return_value.list_versioni.call_args.kwargs
+        self.assertFalse(kwargs["order_by"])
+        self.assertIsNone(kwargs["order_dir"])
 
     # 6. dettaglio versione (incluso payload html).
     @patch(
@@ -218,11 +250,6 @@ class DocumentiApiWriteTests(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        request_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log"
-        )
-        request_log_patcher.start()
-        self.addCleanup(request_log_patcher.stop)
 
     _CREATE_PAYLOAD = {
         "tipo_documento_output_id": 1,
@@ -337,11 +364,6 @@ class DocumentiApiVersioniWriteTests(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        request_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log"
-        )
-        request_log_patcher.start()
-        self.addCleanup(request_log_patcher.stop)
 
     _CREATE_VERSIONE_PAYLOAD = {
         "titolo": "v1 standard",
@@ -448,11 +470,6 @@ class DocumentiAssetApiTests(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        request_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log"
-        )
-        request_log_patcher.start()
-        self.addCleanup(request_log_patcher.stop)
 
     _ASSET_DETAIL = {
         "id": 50,
@@ -606,3 +623,94 @@ class DocumentiAssetApiTests(JwtMockedApiTest):
         self.assertIn('attachment; filename="logo.png"', resp["Content-Disposition"])
         self.assertEqual(resp["Content-Length"], "9")
         mocked_reader_cls.return_value.download_asset.assert_called_once()
+
+    # 22-bis. Miniatura: inline (niente attachment), ETag e `private,
+    #         no-cache` — il browser la riusa ma la rivalida sempre, cosi'
+    #         lo scope si ricontrolla a ogni richiesta.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(is_superuser=True), None),
+    )
+    @patch("apps.documenti.api.views.TemplateService")
+    def test_asset_miniatura_inline_con_etag_e_no_cache(
+        self, mocked_reader_cls, _mock_auth
+    ) -> None:
+        mocked_reader_cls.return_value.miniatura_asset.return_value = {
+            "etag": '"abc-128"', "file_bytes": b"PNGMINI", "mime_type": "image/png",
+        }
+
+        resp = self.client.get("/api/v1/documenti/asset/50/miniatura/")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, b"PNGMINI")
+        self.assertEqual(resp["Content-Type"], "image/png")
+        self.assertEqual(resp["ETag"], '"abc-128"')
+        self.assertEqual(resp["Cache-Control"], "private, no-cache")
+        self.assertNotIn("Content-Disposition", resp)
+        _, kwargs = mocked_reader_cls.return_value.miniatura_asset.call_args
+        self.assertEqual(kwargs["etag_noti"], [])
+
+    # 22-ter. Il client porta l'ETag che ha in cache: la view lo passa al
+    #         service (che controlla lo scope PRIMA) e risponde 304 vuoto.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(is_superuser=True), None),
+    )
+    @patch("apps.documenti.api.views.TemplateService")
+    def test_asset_miniatura_304_quando_il_client_ha_lo_stesso_etag(
+        self, mocked_reader_cls, _mock_auth
+    ) -> None:
+        mocked_reader_cls.return_value.miniatura_asset.return_value = {
+            "etag": '"abc-128"', "file_bytes": None, "mime_type": None,
+        }
+
+        resp = self.client.get(
+            "/api/v1/documenti/asset/50/miniatura/",
+            HTTP_IF_NONE_MATCH='"abc-128"',
+        )
+
+        self.assertEqual(resp.status_code, 304)
+        self.assertEqual(resp.content, b"")
+        self.assertEqual(resp["ETag"], '"abc-128"')
+        _, kwargs = mocked_reader_cls.return_value.miniatura_asset.call_args
+        self.assertEqual(kwargs["etag_noti"], ['"abc-128"'])
+
+
+class ListeNeiDrawerDichiaranoIlCancelloTests(SimpleTestCase):
+    """Le due liste che si aprono DENTRO un documento (brief-db-liste-
+    datatable-grezze righe 2 e 6) dichiarano il codice di catalogo e il
+    parametro con cui ricevono l'emittente gia' fissato.
+
+    ⚠️ Senza `lista_emittente_param` il cancello di perimetro rifiuterebbe
+    (422) il super admin su «Tutti» dentro un drawer gia' aperto: le due liste
+    a catalogo NON sono certificate multi-emittente.
+    """
+
+    # 23. la lista delle versioni e le SEI liste documenti della factory.
+    def test_liste_nei_drawer_dichiarano_codice_e_parametro(self) -> None:
+        from apps.documenti.api.views import ApiTemplateVersioniList
+        from apps.vendite.api import (
+            contratti_documenti_views,
+            ddt_documenti_views,
+            fatture_documenti_views,
+            offerte_documenti_views,
+            ordini_documenti_views,
+            preventivi_documenti_views,
+        )
+
+        self.assertEqual(ApiTemplateVersioniList.lista_codice, "documenti.template_versioni")
+        self.assertEqual(ApiTemplateVersioniList.lista_emittente_param, "emittente_fiscale_id")
+        # ⭐ Una sola lista per gli otto domini: il codice lo scrive la
+        #    factory, non il dominio (vedi `build_documenti_sorgente_views`).
+        for view in (
+            contratti_documenti_views.ApiContrattoDocumentiList,
+            ddt_documenti_views.ApiDdtDocumentiList,
+            fatture_documenti_views.ApiFatturaDocumentiList,
+            offerte_documenti_views.ApiOffertaDocumentiList,
+            ordini_documenti_views.ApiOrdineDocumentiList,
+            preventivi_documenti_views.ApiPreventivoDocumentiList,
+        ):
+            with self.subTest(view=view.__qualname__):
+                self.assertEqual(view.lista_codice, "documenti.documenti_sorgente")
+                self.assertEqual(view.lista_emittente_param, "emittente_fiscale_id")
+                self.assertTrue(view.is_search_endpoint)

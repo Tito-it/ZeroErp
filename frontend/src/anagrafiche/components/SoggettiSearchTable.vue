@@ -3,7 +3,7 @@
 // Scaffolding (useSearchTable + ref lista + export + pageActions + onConfigLoaded)
 // centralizzato in useListaConfigurabilePage (estrazione regola del 2,
 // 2026-06-02): qui restano filtri, slot e azioni di riga specifici.
-import { ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useSoggettiStore } from '../stores/soggetti'
@@ -26,6 +26,8 @@ import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
@@ -51,7 +53,14 @@ const {
 
 // Filtri custom (toolbar caller)
 const tipiSoggetto = useLookup(lookupTipiSoggettoDettaglio, { immediate: true })
-const tipoFilter = ref(null)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: tipoFilter, onChange: onTipoChange } = bindSelect('tipo_soggetto_dettaglio_id')
 
 // Params export: la lista che stai guardando, dalla sede unica dello store
 // (`paramsFiltro`: ricerca, filtri di dominio, ORDINAMENTO). ⚠️ Fino al
@@ -62,11 +71,6 @@ const tipoFilter = ref(null)
 // lista a video e' stata davvero interrogata.
 function buildExportParams(format) {
   return { formato: format, ...store.paramsFiltro() }
-}
-
-function onTipoChange() {
-  store.filters.tipo_soggetto_dettaglio_id = tipoFilter.value
-  applyFilters()
 }
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento Primevue).
@@ -131,13 +135,17 @@ onMounted(() => {
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText
-            v-model="searchText"
-            :placeholder="t('anagrafiche.soggetti.search_placeholder')"
-          />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('anagrafiche.soggetti.search_placeholder')"
+            />
+          </template>
           <Select
             v-model="tipoFilter"
+            class="app-filter-w-md"
             :options="tipiSoggetto.items.value"
             :loading="tipiSoggetto.loading.value"
             option-label="descrizione"
@@ -146,7 +154,7 @@ onMounted(() => {
             show-clear
             @change="onTipoChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -184,8 +192,8 @@ onMounted(() => {
           <TagList :items="data.ruoli || []" />
         </template>
 
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </ListaConfigurabile>
     </template>

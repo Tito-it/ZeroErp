@@ -67,3 +67,11 @@ databaseChangeLog:
               # brief-db-perimetro-emittente-cataloghi-globali. Sette liste a
               # `f`; tutte le altre `t`, che e' il default della colonna.
               - column: { name: perimetro_emittente, type: BOOLEAN }
+              # La soglia della ricerca libera (2026-09-25, colonna da
+              # 20260925-75): quanti caratteri servono perche' il termine
+              # filtri. `1` sulle quattordici liste di configurazione a codici
+              # corti (decisione di Tid del 2026-09-23), `3` — la soglia di
+              # progetto, default della colonna — su tutte le altre. Sede unica:
+              # la leggono il risolutore delle liste e il BB di ricerca del BE.
+              # Brief: brief-db-be-fe-ricerca-soglia-per-lista, sezione 4.2.
+              - column: { name: ricerca_min_caratteri, type: NUMERIC }

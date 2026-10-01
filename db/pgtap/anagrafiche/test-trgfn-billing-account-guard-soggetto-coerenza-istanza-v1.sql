@@ -84,49 +84,40 @@ SELECT is(
 
 -- ============================================================
 -- 4) Setup riferimenti: 2 soggetti diversi + ruoli + istanza s1
+--
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   I due soggetti si PESCAVANO («i primi due con un ruolo e un'istanza»):
+--   su un database ricostruito (la CI) non ce n'e' nessuno, il setup
+--   restava vuoto e il test 5 prendeva un 23502 (istanza NULL) invece del
+--   guard. Ora sono due clienti COSTRUITI con dbops.fn_pgtap_crea_cliente_ba
+--   (soggetto -> ruolo CL -> istanza -> BA): l'istanza e' del primo, il
+--   ruolo del secondo. ⛔ Cio' che il builder scrive si legge in
+--   un'istruzione SEPARATA.
+--   E il test 5 asserisce la FRASE del guard, non solo P0001: P0001 e' il
+--   codice di tutti gli errori di dominio, e un altro guard che sollevasse
+--   prima lo farebbe passare per la ragione sbagliata.
 -- ============================================================
+CREATE TEMP TABLE tmp_cli1 AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('coerenza istanza 1');
+
+CREATE TEMP TABLE tmp_cli2 AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('coerenza istanza 2');
+
 CREATE TEMP TABLE tmp_ba_refs AS
-WITH soggetti_distinti AS (
-  -- Pesca 2 soggetti distinti che abbiano almeno un soggetto_ruolo
-  -- e un'istanza con quel soggetto.
-  SELECT s.id AS soggetto_id
-    FROM anagrafiche.soggetti s
-    JOIN anagrafiche.soggetti_ruoli sr ON sr.soggetto_id = s.id
-    JOIN anagrafiche.istanze_utilities iu ON iu.soggetto_id = s.id
-   GROUP BY s.id
-   ORDER BY s.id
-   LIMIT 2
-)
 SELECT
-  (SELECT soggetto_id FROM soggetti_distinti ORDER BY soggetto_id LIMIT 1)        AS soggetto1_id,
-  (SELECT soggetto_id FROM soggetti_distinti ORDER BY soggetto_id DESC LIMIT 1)   AS soggetto2_id,
-  -- soggetto_ruolo per soggetto1
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
-    WHERE sr.soggetto_id = (SELECT soggetto_id FROM soggetti_distinti ORDER BY soggetto_id LIMIT 1)
-    ORDER BY sr.id LIMIT 1) AS soggetto1_ruolo_id,
-  -- soggetto_ruolo per soggetto2 (DIVERSO)
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
-    WHERE sr.soggetto_id = (SELECT soggetto_id FROM soggetti_distinti ORDER BY soggetto_id DESC LIMIT 1)
-    ORDER BY sr.id LIMIT 1) AS soggetto2_ruolo_id,
-  -- istanza ancorata al soggetto1, NON gia' usata da un BA su qualsiasi utility
-  -- (per UNIQUE (istanza_utility_id, utility_id) potremmo collidere; per
-  -- semplicita' usiamo una utility distinta da quella eventualmente gia'
-  -- presente sull'istanza).
-  (SELECT iu.id FROM anagrafiche.istanze_utilities iu
-    WHERE iu.soggetto_id = (SELECT soggetto_id FROM soggetti_distinti ORDER BY soggetto_id LIMIT 1)
-    ORDER BY iu.id LIMIT 1) AS istanza_id,
-  -- utility libera per quella istanza
+  c1.soggetto_id         AS soggetto1_id,
+  c2.soggetto_id         AS soggetto2_id,
+  c1.soggetto_ruolo_id   AS soggetto1_ruolo_id,
+  c2.soggetto_ruolo_id   AS soggetto2_ruolo_id,
+  c1.istanza_utility_id  AS istanza_id,
+  -- utility diversa da quella del BA gia' costruito sull'istanza 1: la
+  -- UNIQUE (istanza_utility_id, utility_id) resta fuori gioco.
   (SELECT u.id FROM config.utilities u
-    WHERE NOT EXISTS (
-      SELECT 1 FROM anagrafiche.billing_account ba
-       WHERE ba.istanza_utility_id = (SELECT iu.id FROM anagrafiche.istanze_utilities iu
-                                       WHERE iu.soggetto_id = (SELECT soggetto_id FROM soggetti_distinti ORDER BY soggetto_id LIMIT 1)
-                                       ORDER BY iu.id LIMIT 1)
-         AND ba.utility_id = u.id
-    )
+    WHERE u.id <> c1.utility_id
     ORDER BY u.id LIMIT 1) AS utility_id,
-  -- categoria cliente qualunque attiva
-  (SELECT cc.id FROM anagrafiche.categorie_clienti cc WHERE cc.attivo IS TRUE ORDER BY cc.id LIMIT 1) AS categoria_cliente_id;
+  (SELECT cc.id FROM anagrafiche.categorie_clienti cc
+    WHERE cc.codice_interno = 'STANDARD') AS categoria_cliente_id
+FROM tmp_cli1 c1, tmp_cli2 c2;
 
 -- Verifica setup: tutti i riferimenti popolati
 SELECT ok(
@@ -145,15 +136,14 @@ SELECT ok(
 -- ============================================================
 -- 5) INSERT BA con soggetto_ruolo NON coerente -> raise
 -- ============================================================
-SELECT throws_ok(
+SELECT throws_like(
   $$INSERT INTO anagrafiche.billing_account
       (istanza_utility_id, soggetto_ruolo_id, utility_id, categoria_cliente_id, codice)
     SELECT istanza_id, soggetto2_ruolo_id, utility_id, categoria_cliente_id,
            'PGTAP-BA-INCOERENTE-' || substr(md5(clock_timestamp()::text), 1, 8)
       FROM tmp_ba_refs$$,
-  'P0001',
-  NULL,
-  '5. INSERT BA con soggetto_ruolo di soggetto2 + istanza di soggetto1 -> P0001'
+  '%diverso da soggetto dell''istanza_utility%',
+  '5. INSERT BA con soggetto_ruolo di soggetto2 + istanza di soggetto1 -> E_BA_SOGGETTO_INCOERENTE_ISTANZA'
 );
 
 SELECT * FROM finish();

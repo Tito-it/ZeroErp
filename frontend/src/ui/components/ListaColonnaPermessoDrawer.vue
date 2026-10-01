@@ -14,9 +14,10 @@ import InputText from 'primevue/inputtext'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import { DRAWER_WIDTH, LIVELLO_ACCESSO } from '../../core/constants'
+import { DRAWER_WIDTH, LIVELLO_ACCESSO, MANAGE_ICONS } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
 import { useUiPermessoAdminStore } from '../stores/uiPermessoAdmin'
@@ -72,6 +73,9 @@ function defaultForm() {
 }
 
 const form = ref(defaultForm())
+// Modifiche non salvate: fotografia a form popolato, conferma alla chiusura
+// (BB useDrawerFormPreserve). Prima del watch immediate (TDZ).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 watch(
   () => [props.visible, props.recordData],
@@ -83,8 +87,11 @@ watch(
         profilo_accesso_id: data.profilo_accesso_id,
         livello_accesso: data.livello_accesso,
       }
+      fissa()
     } else {
       form.value = defaultForm()
+      // Il catalogo sotto non scrive nel form: la fotografia si fissa qui.
+      fissa()
       // Carica catalogo solo per il create (per il Select colonna).
       if (props.listaId != null) {
         loadingCatalogo.value = true
@@ -126,12 +133,14 @@ function onCancel() {
   emit('cancelled')
   emit('update:visible', false)
 }
+const chiudi = () => chiudiConConferma(onCancel)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="(v) => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :modal="true"
@@ -140,9 +149,10 @@ function onCancel() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('ui.admin.permesso')"
-        icon="pi pi-shield"
+        :icon="MANAGE_ICONS.PERMISSIONS"
       />
     </template>
 
@@ -220,7 +230,7 @@ function onCancel() {
       :loading="loading"
       :disabled="!canSave"
       @save="onSave"
-      @cancel="onCancel"
+      @cancel="chiudi"
     />
   </Drawer>
 </template>

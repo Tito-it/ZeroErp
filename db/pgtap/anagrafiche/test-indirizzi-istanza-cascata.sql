@@ -60,20 +60,29 @@ SELECT s.id FROM config.stradario s ORDER BY s.id LIMIT 1;
 
 -- Cliente di test (ruolo CLIENTE, ha istanza_utility_id)
 -- DOMFISC e FATT sono ammessi per tipo_ruolo CL
+--
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Il cliente si PESCAVA («il primo di anagrafiche.clienti con istanza»):
+--   su un database ricostruito (la CI) la tabella e' vuota, e il file
+--   restava con dieci asserzioni rosse su quattordici. Al test serve la
+--   terna (ruolo CL, soggetto, istanza), non la riga di clienti — il suo
+--   id non era usato da nessuna asserzione, e la colonna cliente_id esce.
+--   Ora la terna viene da dbops.fn_pgtap_crea_cliente_ba; ruolo e soggetto
+--   sono nuovi, quindi le DELETE di «pulizia» sul ruolo non trovano niente.
+--   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_cli_ind AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('indirizzi istanza cascata');
+
 CREATE TEMP TABLE tmp_ctx AS
 SELECT
-    cl.id              AS cliente_id,
-    cl.soggetto_ruolo_id,
-    sr.soggetto_id,
-    cl.istanza_utility_id
-FROM anagrafiche.clienti cl
-JOIN anagrafiche.soggetti_ruoli sr ON sr.id = cl.soggetto_ruolo_id
-WHERE cl.istanza_utility_id IS NOT NULL
-ORDER BY cl.id LIMIT 1;
+    c.soggetto_ruolo_id,
+    c.soggetto_id,
+    c.istanza_utility_id
+FROM tmp_cli_ind c;
 
 SELECT ok(
     (SELECT count(*) FROM tmp_ctx) = 1,
-    '1) Esiste almeno un cliente con istanza_utility_id'
+    '1) Cliente con istanza_utility_id costruito'
 );
 
 -- =========================================================
@@ -233,16 +242,23 @@ SELECT ok(
 -- =========================================================
 -- 9) fn_get_indirizzo con istanza: FATT istanza ha priorita
 -- =========================================================
+-- ⚠️ rev 2026-09-23 (20260923-49): si asserisce il TIPO per id, non il
+--   testo. La colonna tipo_indirizzo porta il CODICE (display, mutabile:
+--   'DOM-FISC'), il parametro e' il CODICE_INTERNO ('DOMFISC'): confrontare
+--   il testo misurerebbe un'etichetta. Il 10 era rosso per il difetto vero
+--   (fn_get_indirizzo confrontava codice con codice_interno e non trovava mai
+--   il DOMFISC di ruolo), corretto da 20260923-49.
 SELECT results_eq(
     $$
-    SELECT f.tipo_indirizzo
+    SELECT f.tipo_indirizzo_id, f.istanza_utility_id
     FROM script.fn_get_indirizzo(
         (SELECT soggetto_ruolo_id FROM tmp_ctx),
         'FATT',
         (SELECT istanza_utility_id FROM tmp_ctx)
     ) f
     $$,
-    $$VALUES ('FATT'::varchar)$$,
+    $$SELECT ti.id, (SELECT istanza_utility_id FROM tmp_ctx)
+        FROM config.tipi_indirizzi ti WHERE ti.codice_interno = 'FATT'$$,
     '9) fn_get_indirizzo con istanza: trova FATT per istanza specifica'
 );
 
@@ -251,14 +267,15 @@ SELECT results_eq(
 -- =========================================================
 SELECT results_eq(
     $$
-    SELECT f.tipo_indirizzo
+    SELECT f.tipo_indirizzo_id, f.istanza_utility_id
     FROM script.fn_get_indirizzo(
         (SELECT soggetto_ruolo_id FROM tmp_ctx),
         'DOMFISC'
     ) f
     $$,
-    $$VALUES ('DOMFISC'::varchar)$$,
-    '10) fn_get_indirizzo senza istanza: trova DOMFISC generico'
+    $$SELECT ti.id, NULL::bigint
+        FROM config.tipi_indirizzi ti WHERE ti.codice_interno = 'DOMFISC'$$,
+    '10) fn_get_indirizzo senza istanza: trova il DOMFISC generico del RUOLO'
 );
 
 -- =========================================================

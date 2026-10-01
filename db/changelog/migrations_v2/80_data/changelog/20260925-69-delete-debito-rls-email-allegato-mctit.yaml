@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-4 — config.email_allegato esce dal registro del debito perche' e' ARMATA.
+#   Brief: brief-db-email-visibilita-per-ambito §4 D-4
+#   La policy e l'accensione: 20260925-68.
+#
+# ── ⛔ PERCHE' UNA `DELETE` E NON SOLO LA RIGA TOLTA DAL CSV ──────────
+#   `loadUpdateData` aggiorna e inserisce, non cancella. Le due cose vanno
+#   insieme: il CSV perche' un database ricostruito da zero non la crei, questa
+#   `DELETE` perche' dove c'e' gia' se ne vada. Senza, la riga resterebbe
+#   come DEBITO_ESTINTO e il test 2 di
+#   db/pgtap/rls/test-rls-perimetro-scoperto.sql diventerebbe rosso.
+#
+# ⚠️ La guardia sull'`id` E sulle coordinate della tabella: cancellare per solo
+#   `id` sarebbe scommettere che nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260925-69-delete-debito-rls-email-allegato-mctit.yaml
+
+  - changeSet:
+      id: 20260925-69-delete-debito-rls-email-allegato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito la riga di config.email_allegato (id 60),
+        armata da 20260925-68. Senza, resterebbe come DEBITO_ESTINTO e il test 2
+        di db/pgtap/rls/test-rls-perimetro-scoperto.sql diventerebbe rosso.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate: sul solo id si
+              --   scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio = 'FIGLIA_DI_TABELLA_PROTETTA'
+                 AND (d.id, d.schema_tabella, d.nome_tabella) IN (
+                         (60, 'config', 'email_allegato'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Ha senso solo insieme al rollback di 20260925-68, che spegne
+              --   la RLS: senza, si dichiarerebbe scoperta una tabella armata.
+              INSERT INTO dbops.rls_perimetro_debito
+                  (id, criterio, schema_tabella, nome_tabella, ragione, data_registrazione)
+              VALUES
+                (60, 'FIGLIA_DI_TABELLA_PROTETTA', 'config', 'email_allegato',
+                 'Satellite di config.email_log e config.email_outbox, entrambe protette da una policy di AMBITO, via due FK nullable di cui una sola valorizzata per riga. Il perimetro qui non e'' l''emittente ma l''ambito, e la policy va scritta sullo stesso asse: due rami, uno per padre. Cantiere email.',
+                 DATE '2026-09-09');

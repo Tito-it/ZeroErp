@@ -30,8 +30,9 @@
 //    non si ricalcola nessuna regola.
 //
 // ⭐ «Permesso ⇒ nascondi, stato ⇒ disabilita col motivo»: in sola lettura
-//    NIENTE (e' un permesso); una riga gia' registrata, un foglio annullato,
-//    uno stato da cui non si abbina spengono la voce e DICONO perche'. Il
+//    NIENTE (e' un permesso); una riga gia' registrata, un foglio le cui
+//    righe non si lavorano piu' (l'annullato), uno stato da cui non si abbina
+//    spengono la voce e DICONO perche'. Il
 //    cestino lo spegne il DATABASE (`elimina_blocco_*`, la stessa check che
 //    il guard chiama per rifiutare) — qui si legge, con `bloccoMotivo`.
 //
@@ -60,9 +61,9 @@ export const MODO_ABBINA = Object.freeze({ ABBINA: 'abbina', REGISTRA: 'registra
 //    arrivato, non nostro» e conta nella quadratura; «elimina» toglie una riga
 //    digitata male. Il cestino e' di «Elimina», e basta.
 export const ICONA_TRANSIZIONE_RIGA = Object.freeze({
-  DA_ABBINARE: 'pi pi-link',
-  SOSPESA: 'pi pi-pause',
-  SCARTATA: 'pi pi-ban',
+  DA_ABBINARE: MANAGE_ICONS.ABBINA,
+  SOSPESA: MANAGE_ICONS.SOSPENDI,
+  SCARTATA: MANAGE_ICONS.DISATTIVA,
 })
 
 // ⭐ I VERBI delle transizioni, al posto di «Porta a <stato>» (FE-4): «Sospendi»,
@@ -85,8 +86,8 @@ export const VERBO_TRANSIZIONE_RIGA = Object.freeze({
 // @param {object} deps
 //   - statiRiga:        () => catalogo degli stati di riga (con `is_final`)
 //   - transizioniRiga:  () => `{ stato_da: [stato_a…] }` dalla matrice
-//   - testataDi:        (riga) => `{ finale, registrata }` — i fatti della
-//                       distinta della riga, letti dal backend
+//   - testataDi:        (riga) => `{ righeLavorabili, registrata }` — i
+//                       fatti della distinta della riga, letti dal backend
 //   - readonly:         () => bool — il readonly da PERMESSI
 //   - onAbbina:         (riga, modo) => apre il dialogo di abbinamento
 //   - ricarica:         () => ricarica la superficie dopo un gesto riuscito
@@ -173,18 +174,23 @@ export function useAzioniRigaContabile({
 
     const testata = testataDi(riga) || {}
     const rigaFinale = catalogoRiga(riga.stato_codice)?.is_final === true
-    // ⭐ Un foglio FINALE ma NON REGISTRATO (annullato) non ha piu' niente da
-    //    fare: «non e' mai successo». Sotto uno REGISTRATO invece le righe
-    //    rimaste indietro hanno un futuro (D20-b/c): sospese e scartate si
-    //    lavorano ancora, e la sospesa si abbina E registra.
-    const foglioSpento = testata.finale === true && testata.registrata !== true
+    // ⭐ «Le righe di questo foglio si lavorano ancora?» lo dice il CATALOGO
+    //    degli stati della distinta (`righe_lavorabili`, D-1 del brief
+    //    righe-distinta-annullata): false sull'annullata, che «non e' mai
+    //    successa»; true sulla chiusa, dove sospese e scartate hanno un futuro
+    //    (D20-b/c). E' la stessa bandiera con cui il guard le congela.
+    //    ⛔ Fino al 30/09 era `finale && !registrata`: uno stato mescolato a un
+    //    fatto della testata, e la risposta viveva solo qui.
+    //    ⚠️ `=== false`: una testata che non porta la bandiera non spegne
+    //    niente — il rifiuto vero resta quello del database.
+    const foglioSpento = testata.righeLavorabili === false
     // ⭐ Il motivo dice QUALE blocco e' scattato: «la riga e' gia' registrata»
     //    e «il foglio e' chiuso» si rimediano in due modi diversi, e una voce
     //    grigia senza spiegazione non si rimedia affatto.
     const motivoBlocco = rigaFinale
       ? t('pagamenti.righe.gia_registrata')
       : foglioSpento
-        ? t('pagamenti.distinte.foglio_chiuso')
+        ? t('pagamenti.distinte.foglio_annullato')
         : undefined
     const bloccata = motivoBlocco !== undefined
 

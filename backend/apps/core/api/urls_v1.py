@@ -45,6 +45,7 @@ from apps.core.api.email_views import (
     EmailAllegatoListView,
     EmailAllegatoUploadView,
     EmailLogOperatoreListView,
+    EmailLogStatiLookupView,
     EmailOutboxCancelView,
     EmailOutboxDetailView,
     EmailOutboxListView,
@@ -308,6 +309,7 @@ urlpatterns = [
     path("email/allegati/<int:allegato_id>/", EmailAllegatoDeleteView.as_view(), name="core-email-allegato-delete"),
     path("email/allegati/<int:allegato_id>/download/", EmailAllegatoDownloadView.as_view(), name="core-email-allegato-download"),
     path("email/log/", EmailLogOperatoreListView.as_view(), name="core-email-log-list"),
+    path("email/log/stati/", EmailLogStatiLookupView.as_view(), name="core-email-log-stati-lookup"),
     # --- Parametri di sistema ---
     path("parameters/defaults/", ParameterDefaultsView.as_view(), name="core-parameters-defaults"),
     path("parameters/settings/", ParameterSettingsView.as_view(), name="core-parameters-settings"),

@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-9 — L'ANTI-REPLAY: script.fn_totp_registra_uso(p_auth_user_id, p_passo)
+#   Brief: brief-db-secondo-fattore-totp, sezione 4 (RFC 6238 §5.2).
+#
+# ── ⭐ SUL PASSO, NON SUL CODICE ─────────────────────────────────────
+#   Il backend ha verificato il codice e sa di che PASSO e' (accetta anche il
+#   precedente, per l'orologio del telefono). Qui si accetta solo un passo
+#   SUCCESSIVO all'ultimo usato: lo stesso codice due volte, o il codice di un
+#   passo gia' superato, non passano. Rende monouso anche il token di sfida del
+#   login a due passi: per riusarlo serve un passo non ancora usato.
+#
+# ── ⭐ UNA ISTRUZIONE, A RIGA BLOCCATA ───────────────────────────────
+#   UPDATE … WHERE ultimo_passo_usato < p_passo: due richieste simultanee con
+#   lo stesso codice si mettono in fila sulla riga, la seconda rivaluta il
+#   WHERE sul valore appena scritto e non passa. Nessun SELECT prima.
+#
+# ── ⚠️ NESSUNO AGISCE: SI CHIAMA PRIMA DEL LOGIN ────────────────────
+#   Come script.fn_registra_tentativo_login: non da' niente a chi non ha gia'
+#   superato la password, e il backend la chiama solo dopo. Device assente o non
+#   confermato -> E_TOTP_DEVICE_ASSENTE; passo non successivo ->
+#   E_TOTP_PASSO_GIA_USATO.
+#   ⚠️ Un codice SBAGLIATO non arriva qui: la verifica e' del backend, che
+#   solleva E_TOTP_CODICE_NON_VALIDO e conta il tentativo fallito della
+#   credenziale (D-T2) con script.fn_registra_tentativo_login.
+#
+# SECURITY DEFINER del PROPRIETARIO, search_path bloccato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260929-19-create-fn-totp-registra-uso-mctit.yaml
+
+  - changeSet:
+      id: 20260929-19-create-fn-totp-registra-uso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_totp_registra_uso(p_auth_user_id, p_passo): anti-replay sul passo — accetta solo
+        un passo successivo all'ultimo usato e lo registra con ultimo_uso_at, in una istruzione a
+        riga bloccata. Passo non successivo -> E_TOTP_PASSO_GIA_USATO, device non attivo ->
+        E_TOTP_DEVICE_ASSENTE. Si chiama prima del login. SECURITY DEFINER del proprietario. Brief:
+        brief-db-secondo-fattore-totp §4.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            { schemaName: config, tableName: auth_totp_device, columnName: ultimo_passo_usato }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_registra_uso(
+                  p_auth_user_id integer,
+                  p_passo        config.auth_totp_device.ultimo_passo_usato%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: accettare il passo di un codice gia' verificato dal backend
+              --   solo se successivo all'ultimo usato, e registrarlo.
+              DECLARE
+                  v_device_id config.auth_totp_device.id%TYPE;
+              BEGIN
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0
+                     OR p_passo IS NULL OR p_passo < 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_registra_uso', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id, 'p_passo', p_passo),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_registra_uso',
+                                         'credenziale e passo (>= 0) obbligatori']);
+                  END IF;
+
+                  -- Confronto e scrittura insieme: la riga resta bloccata fino alla
+                  -- fine della transazione, e chi arriva dopo rivaluta il WHERE.
+                  UPDATE config.auth_totp_device d
+                     SET ultimo_passo_usato = p_passo,
+                         ultimo_uso_at      = now()
+                   WHERE d.auth_user_id = p_auth_user_id
+                     AND d.confermato
+                     AND d.ultimo_passo_usato < p_passo
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      IF EXISTS (SELECT 1 FROM config.auth_totp_device d
+                                  WHERE d.auth_user_id = p_auth_user_id AND d.confermato) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'script.fn_totp_registra_uso', 'E_TOTP_PASSO_GIA_USATO',
+                              jsonb_build_object('auth_user_id', p_auth_user_id, 'passo', p_passo),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]);
+                      END IF;
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_registra_uso', 'E_TOTP_DEVICE_ASSENTE',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_totp_registra_uso(integer, bigint) IS
+                  'Anti-replay del secondo fattore (RFC 6238 §5.2): il backend ha verificato il codice e ne passa il PASSO; si accetta solo un passo successivo all''ultimo usato e lo si registra con ultimo_uso_at, in UNA istruzione a riga bloccata (due richieste simultanee con lo stesso codice: una sola passa). Rende monouso anche il token di sfida del login a due passi. Passo non successivo -> E_TOTP_PASSO_GIA_USATO; device assente o non confermato -> E_TOTP_DEVICE_ASSENTE; id o passo rotti -> E_AUTH_CHIAMATA_NON_VALIDA. Nessuno agisce: si chiama prima del login, come fn_registra_tentativo_login, e il backend la chiama solo dopo la password. Un codice sbagliato non arriva qui (E_TOTP_CODICE_NON_VALIDO e il tentativo fallito sono del backend, D-T2). SECURITY DEFINER del PROPRIETARIO, search_path bloccato. Brief: brief-db-secondo-fattore-totp §4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_totp_registra_uso(integer, bigint);

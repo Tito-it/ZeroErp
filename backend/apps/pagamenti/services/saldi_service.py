@@ -181,9 +181,8 @@ def saldi_rate_documento(fattura_id: int) -> dict[str, Any]:
 #    lingua di `useSearchTable` e di `createListaStore`, e la lista e' montata
 #    su `<ListaConfigurabile>`. Le liste piu' vecchie del dominio sono
 #    page-based; la conversione la fa lo store, in un posto solo.
-# ⛔ `order_dir` arriva GREZZO dalla view (non dal bundle
-#    `parse_list_params`, che lo normalizza ad `asc`): senza verso esplicito
-#    decide il repository — e su una colonna DATA il verso naturale e' DESC.
+# ⛔ `order_dir` puo' arrivare `None` (assente): senza verso esplicito decide
+#    il repository — e su una colonna DATA il verso naturale e' DESC.
 # ⚠️ NESSUN criterio e' obbligatorio QUI: il picker lo pretende nel frontend
 #    (cliente o numero fattura, D19-c), lo scadenzario no — e' la stessa rotta.
 # ⚠️ `solo_aperte` e' SUPPORTATO dal 2026-09-17 (P-3 consegnata): «aperta» =
@@ -217,19 +216,16 @@ def list_rate(
     #    repository (il default a catalogo, `data_scadenza ASC`). Fuori
     #    whitelist e' un 400 col campo, non un 500 sul `ORDER BY`.
     order_by, order_dir = validate_order_params(
-        order_by, order_dir.lower() if order_dir else None,
+        order_by, order_dir,
         allowed_columns=RATE_SORT_COLUMNS,
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_rate",
         nullable=True,
     )
-    ErrorManager.require(
-        search is None or len(search) >= 3,
-        code=E_VALIDAZIONE,
-        message="La ricerca richiede almeno 3 caratteri.",
-        context={"field": "search"},
-        function_name=f"{_FN}.list_rate",
-    )
+    # ⛔ Nessun 400 sotto soglia (brief-db-be-fe-ricerca-soglia-per-lista §6 a,
+    #    Tid 2026-09-26): il termine corto lo ignora il BB di ricerca, sulla soglia che il catalogo della
+    #    lista dichiara — la stessa che il frontend legge per non mandarlo. Un
+    #    controllo qui sarebbe una seconda sede della stessa soglia.
     repository = PagamentiRepository()
     results, total = repository.list_rate_paginata(
         auth_user_id=auth_user_id,
@@ -239,7 +235,14 @@ def list_rate(
         anno=anno,
         search=search,
         solo_aperte=bool(solo_aperte),
-        solo_numerate=bool(solo_numerate),
+        # ⭐ `None` (parametro ASSENTE) significa «applica la regola», non
+        #    «falso»: `solo_numerate` e' un perimetro di dominio — la rata di una
+        #    bozza non e' un credito — e un perimetro che si accende solo quando
+        #    il client se lo ricorda non e' un perimetro. ⛔ Qui NON si usa
+        #    `bool(...)`, che mapperebbe l'assenza su `False` come per
+        #    `solo_aperte`: quello e' un filtro vero, questo no. Chi vuole anche
+        #    le bozze passa `False` esplicito.
+        solo_numerate=True if solo_numerate is None else bool(solo_numerate),
         data_scadenza_da=data_scadenza_da,
         data_scadenza_a=data_scadenza_a,
         natura_doc_codice=natura_doc_codice.upper() if natura_doc_codice else None,

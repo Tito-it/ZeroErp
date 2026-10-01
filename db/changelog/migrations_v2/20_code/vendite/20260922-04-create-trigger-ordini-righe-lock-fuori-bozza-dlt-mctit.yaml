@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL SECONDO ADOTTANTE — vendite.ordini_righe, SOLO la porta del DELETE
+#
+#   Il DELETE di una riga d'ordine fuori bozza era gia' rifiutato dal
+#   ramo 1 di trgfn_dlt_block_ordrig_ddtrig (trg_ordini_righe_a10_block_dlt).
+#   Quel ramo si ritira in 20260922-05; qui il BB ne prende il posto, in
+#   fascia _a05_, con lo stesso verdetto.
+#
+# ── ⛔ INSERT e UPDATE restano APERTI, ed e' una decisione, non una svista ─
+#   PROJECT_CONTEXT, voce «La promessa di consegna dopo la conferma»
+#   (Tid, 2026-09-14): le righe d'ordine si scrivono nel backend solo in
+#   DRAFT, ma data_consegna_confermata si decide ALLA CONFERMA e puo'
+#   cambiare dopo — «il DB non mette guard di stato di proposito: serve
+#   un verbo suo». Montare qui le tre porte chiuderebbe quella colonna
+#   prima che il verbo esista. Quando il verbo arrivera', la porta si
+#   allarga: e' un CREATE OR REPLACE TRIGGER, non un guard nuovo.
+#   Il pgTAP del BB pinna questo fatto (l'UPDATE di riga su un ordine
+#   confermato PASSA), cosi' un allargamento futuro sara' deliberato.
+#
+# Brief: brief-db-partita-merce-per-documento (D7, giro 5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260922-04-create-trigger-ordini-righe-lock-fuori-bozza-dlt-mctit.yaml
+
+  - changeSet:
+      id: 20260922-04-create-trigger-ordini-righe-lock-fuori-bozza-dlt
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ordini_righe: trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt sul BB
+        vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id'), SOLO DELETE:
+        INSERT/UPDATE restano aperti di proposito (data_consegna_confermata dopo la
+        conferma, PROJECT_CONTEXT).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_doc_righe_lock_fuori_bozza';
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'vendite.ordini_righe'::regclass
+                     AND tgname = 'trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt'
+                     AND NOT tgisinternal;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt
+                BEFORE DELETE ON vendite.ordini_righe
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt ON vendite.ordini_righe;

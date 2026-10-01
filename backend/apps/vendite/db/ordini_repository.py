@@ -19,17 +19,26 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
     row_to_dict,
     rows_to_list,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.core.db.sql_write_helpers import execute_dynamic_update
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
+from apps.vendite.db._righe_repo_mixin import (
+    COLONNE_RIGHE_COMMERCIALI,
+    RICERCA_RIGHE_COMMERCIALI,
+    RigheDocumentoRepositoryMixin,
+)
 
 
 # Scopo: Whitelist colonne ORDER BY per la lista ordini (SQL injection safe).
@@ -38,6 +47,16 @@ from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixi
 #        ('vendite.ordini') che il FE invia come sortField della DataTable.
 #        Nomi canonici del soggetto (lezione DEF-8). `serie`/`anno` non
 #        ordinabili (fuori dalla whitelist): la chiave logica e' `numero`.
+# Colonne che la ricerca libera SA cercare nella lista `vendite.ordini`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+_RICERCA_ORDINI = RicercaFull(
+    "vendite.ordini",
+    (
+        "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+    ),
+)
+
 _ORDER_COLS_ORDINI: dict[str, str] = {
     "numero": "v.numero",
     "anno": "v.anno",
@@ -60,7 +79,20 @@ _ORDER_COLS_ORDINI: dict[str, str] = {
 }
 
 
+# Le righe del documento come lista configurabile `vendite.ordine_righe` (BB
+# `RigheDocumentoRepositoryMixin`, brief-db-liste-righe-documento lotto A).
+# Le colonne gemelle sono dichiarate una volta nel BB; qui solo cio' che e'
+# di questo documento. `test_ricerca_full_seed` legge `_RICERCA_RIGHE`.
+_RICERCA_RIGHE = RicercaFull("vendite.ordine_righe", RICERCA_RIGHE_COMMERCIALI)
+_ORDER_COLS_RIGHE: dict[str, str] = {
+    **COLONNE_RIGHE_COMMERCIALI,
+    "data_consegna_confermata": "data_consegna_confermata",
+    "data_consegna_richiesta_cliente": "data_consegna_richiesta_cliente",
+}
+
+
 class OrdiniRepository(
+    RigheDocumentoRepositoryMixin,
     ComponentiRepositoryMixin,
     RiepilogoIvaRepositoryMixin,
     IndirizziDocumentoRepositoryMixin,
@@ -75,6 +107,16 @@ class OrdiniRepository(
     lettura del riepilogo IVA (vista derivata on-the-fly dalle righe attive,
     nessun trigger: a differenza dei preventivi non espone `id` tecnico).
     """
+
+    # Righe (BB `RigheDocumentoRepositoryMixin`): vista, chiave, ordine del
+    # documento, whitelist e ricerca della lista `vendite.ordine_righe`.
+    _righe_vista = "vendite.vw_ordini_righe_dettaglio"
+    _righe_tabella = "vendite.ordini_righe"
+    _righe_fk_documento = "ordine_id"
+    _righe_ordine_documento = "riga_nr"
+    _righe_ordinamento = _ORDER_COLS_RIGHE
+    _righe_ricerca = _RICERCA_RIGHE
+    _righe_colonne_desc = ("data_consegna_confermata", "data_consegna_richiesta_cliente")
 
     # Configurazione mixin componenti (tabella + FK riga padre).
     _componenti_table_name = "vendite.ordini_righe_componenti"
@@ -117,7 +159,7 @@ class OrdiniRepository(
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -133,10 +175,9 @@ class OrdiniRepository(
             #    DDT il 2026-09-02).
             default_desc=True,
         )
-        # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
+        # `max_limit`: lista cap `MAX_LIMIT` (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -158,14 +199,7 @@ class OrdiniRepository(
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        if search and len(search) >= 3:
-            # Ricerca estesa (decisione §8.5): numero + nomi canonici cliente.
-            conditions.append(
-                "(v.numero ILIKE %s OR v.ragione_sociale_completa ILIKE %s "
-                "OR v.ba_codice ILIKE %s OR v.id_fiscale_univoco_cf_piva ILIKE %s)"
-            )
-            like = f"%{search}%"
-            params.extend([like, like, like, like])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_ORDINI)
 
         # Scope emittente (defense-in-depth applicativa). La vista
         # `vw_ordini_lista` e' `security_invoker=on`: la RLS della tabella base
@@ -281,126 +315,6 @@ class OrdiniRepository(
     #  LETTURE — Righe
     # ══════════════════════════════════════════════════════════
 
-    # Scopo: Righe attive dell'ordine con decodifiche articolo/uom/iva e flag
-    #        `is_composito_caso_a` (per il chevron expander FE). Importo riga
-    #        calcolato (quantita * prezzo * (1 - sconto%)). Espone anche
-    #        l'avanzamento evasione per riga (fulfillment multi-DDT): qta evasa
-    #        e residuo in UNITA' OPERATIVA (fulfillment.qta_evasa e' in base;
-    #        quantita = qta_operativa * factor_to_base, ROUND 6 come
-    #        trgfn_qta_from_operativa). Alimenta il pannello "Genera DDT".
-    def list_righe(self, ordine_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT
-                r.id,
-                r.ordine_id,
-                r.riga_nr,
-                r.attivo,
-                r.articolo_id,
-                a.codice                AS articolo_codice,
-                a.descrizione           AS articolo_descrizione,
-                r.descrizione,
-                r.quantita,
-                r.qta_operativa,
-                r.factor_to_base,
-                r.uom_operativa_id,
-                um.codice               AS uom_codice,
-                r.prezzo_unitario,
-                r.sconto_percentuale,
-                r.iva_id,
-                iva.codice              AS iva_codice,
-                iva.descrizione         AS iva_descrizione,
-                iva.aliquota_iva        AS iva_aliquota,
-                ROUND(
-                    (r.quantita * COALESCE(r.prezzo_unitario, 0::numeric)) *
-                    (1::numeric - COALESCE(r.sconto_percentuale, 0::numeric) / 100::numeric),
-                    2
-                ) AS importo_riga,
-                ROUND(
-                    COALESCE(ful.qta_evasa_base, 0::numeric)
-                    / NULLIF(r.factor_to_base, 0::numeric),
-                    6
-                ) AS qta_evasa_operativa,
-                ROUND(
-                    GREATEST(
-                        r.quantita - COALESCE(ful.qta_evasa_base, 0::numeric),
-                        0::numeric
-                    ) / NULLIF(r.factor_to_base, 0::numeric),
-                    6
-                ) AS qta_residua_operativa,
-                r.meta,
-                r.data_insert,
-                r.data_update,
-                -- Le due date di consegna (brief-db-modifiche-certe-ciclo-vendita-
-                -- e-articolo, Blocco A): la RICHIESTA e' del cliente, la
-                -- CONFERMATA e' la nostra promessa (D-16: non marcato = nostro).
-                -- Proiezione ESPLICITA: una colonna che nessuno nomina non
-                -- esiste per il frontend.
-                r.data_consegna_richiesta_cliente,
-                r.data_consegna_confermata,
-                EXISTS (
-                    SELECT 1
-                      FROM vendite.ordini_righe_componenti rc
-                     WHERE rc.riga_ordine_id = r.id
-                       AND rc.attivo IS TRUE
-                ) AS is_composito_caso_a
-              FROM vendite.ordini_righe r
-              LEFT JOIN catalogo.articoli a    ON a.id   = r.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_operativa_id
-              LEFT JOIN config.iva iva         ON iva.id = r.iva_id
-              LEFT JOIN LATERAL (
-                  SELECT SUM(f.qta_evasa) AS qta_evasa_base
-                    FROM vendite.ordini_righe_fulfillment f
-                   WHERE f.ordine_riga_id = r.id
-              ) ful ON TRUE
-             WHERE r.ordine_id = %s
-               AND r.attivo IS TRUE
-             ORDER BY r.riga_nr, r.id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [ordine_id])
-            return rows_to_list(cursor)
-
-    # Scopo: Carica una singola riga via lookup mirato per id (stessa proiezione
-    #        di list_righe senza caricare l'intero elenco). Usato da aggiorna_riga.
-    def get_riga(self, riga_id: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT
-                r.id,
-                r.ordine_id,
-                r.riga_nr,
-                r.attivo,
-                r.articolo_id,
-                a.codice                AS articolo_codice,
-                a.descrizione           AS articolo_descrizione,
-                r.descrizione,
-                r.quantita,
-                r.qta_operativa,
-                r.factor_to_base,
-                r.uom_operativa_id,
-                um.codice               AS uom_codice,
-                r.prezzo_unitario,
-                r.sconto_percentuale,
-                r.iva_id,
-                iva.codice              AS iva_codice,
-                r.meta,
-                r.data_consegna_richiesta_cliente,
-                r.data_consegna_confermata,
-                EXISTS (
-                    SELECT 1
-                      FROM vendite.ordini_righe_componenti rc
-                     WHERE rc.riga_ordine_id = r.id
-                       AND rc.attivo IS TRUE
-                ) AS is_composito_caso_a
-              FROM vendite.ordini_righe r
-              LEFT JOIN catalogo.articoli a    ON a.id   = r.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_operativa_id
-              LEFT JOIN config.iva iva         ON iva.id = r.iva_id
-             WHERE r.id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [riga_id])
-            return row_to_dict(cursor)
-
     # Scopo: Load atomico di un componente con scope completo (componente →
     #        riga → ordine) in un'unica query JOIN, per i guard del service.
     def load_componente_with_scope(
@@ -410,7 +324,11 @@ class OrdiniRepository(
             SELECT c.id          AS componente_id,
                    c.riga_ordine_id,
                    r.ordine_id,
-                   sd.codice_interno AS stato_codice_interno
+                   sd.codice_interno AS stato_codice_interno,
+                   -- L'etichetta del rifiuto di stato («Ordine 2026/00012», o
+                   -- «Ordine #131» se NULL): senza, il guard delle righe in
+                   -- bozza ripiega sull'id anche su un ordine confermato.
+                   o.numero
               FROM vendite.ordini_righe_componenti c
               JOIN vendite.ordini_righe r ON r.id = c.riga_ordine_id
               JOIN vendite.ordini o       ON o.id = r.ordine_id
@@ -447,12 +365,17 @@ class OrdiniRepository(
         meta: dict[str, Any] | None = None,
         fatturazione_immediata: bool | None = None,
     ) -> dict[str, Any]:
-        cols: list[str] = ["soggetto_ruolo_id", "billing_account_id", "stato_doc_ordine_id"]
-        vals: list[Any] = [soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id]
-        # Colonne opzionali: omesse se None così i DEFAULT del DB (es.
-        # fatturazione_trigger ereditato da BA via trgfn_ordini_normalize,
-        # canale_origine='ADMIN') restano attivi.
-        optional: dict[str, Any] = {
+        # BB `execute_dynamic_insert`: i None si omettono (`skip_none`) così i
+        # DEFAULT del DB (es. fatturazione_trigger ereditato da BA via
+        # trgfn_ordini_normalize, canale_origine='ADMIN') restano attivi; le
+        # chiavi sono letterali del metodo (`allowed=None`).
+        # ⚠️ `billing_account_id` None prima si scriveva come NULL esplicito e
+        #    ora si omette: la colonna non ha DEFAULT, quindi il trigger BEFORE
+        #    INSERT vede NULL in entrambi i casi.
+        valori: dict[str, Any] = {
+            "soggetto_ruolo_id": soggetto_ruolo_id,
+            "billing_account_id": billing_account_id,
+            "stato_doc_ordine_id": stato_doc_ordine_id,
             "utility_id": utility_id,
             "emittente_fiscale_id": emittente_fiscale_id,
             "valuta_id": valuta_id,
@@ -464,24 +387,12 @@ class OrdiniRepository(
             # Corsia di instradamento (simmetria del flag): None = si lascia il
             # DEFAULT false del DB, cioe' corsia differita.
             "fatturazione_immediata": fatturazione_immediata,
+            "meta": meta or {},
         }
-        for col, val in optional.items():
-            if val is not None:
-                cols.append(col)
-                vals.append(val)
-        cols.append("meta")
-        placeholders = ["%s"] * (len(cols) - 1) + ["%s::jsonb"]
-        vals.append(json.dumps(meta or {}))
-        sql = (  # noqa: S608 — colonne whitelisted (chiavi statiche)
-            f"INSERT INTO vendite.ordini ({', '.join(cols)}) "
-            f"VALUES ({', '.join(placeholders)}) "
-            f"RETURNING id, uid::text AS uid, numero"
+        return execute_dynamic_insert(
+            "vendite.ordini", valori, allowed=None, skip_none=True,
+            returning="id, uid::text AS uid, numero",
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
 
     # Scopo: Valorizza la provenienza upstream (documento_origine) di un ordine
     #        appena creato dalla conversione preventivo/offerta → ordine. UPDATE
@@ -545,10 +456,28 @@ class OrdiniRepository(
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
+    # ⛔ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): una
+    #    chiave fuori lista e' `ValueError`, non uno scarto. E' l'elenco delle
+    #    colonne che QUESTO metodo scrive, non il contratto dell'operatore (che
+    #    sta nel service, `ordini_service.UPDATE_KEYS_ORDINE / UPDATE_KEYS_RIGA`): se il service ne aggiunge una, va aggiunta
+    #    qui — e dimenticarlo e' un errore che si vede, non un campo perso.
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "utility_id", "valuta_id", "modalita_pagamento_id",
+        "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
+        "data", "meta", "fatturazione_immediata",
+    })
+    RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
+        "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
+        "data_consegna_richiesta_cliente", "data_consegna_confermata",
+    })
+
     # Scopo: Aggiorna campi modificabili della testata ordine. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.
     def update_ordine(self, ordine_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.ordini", ordine_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.ordini", ordine_id, kwargs, allowed=self.TESTATA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Hard-delete ordine (flusso abbandono bozza). Guard di dominio
     #        (stato DRAFT, no DDT/fatture collegate) applicati nel service +
@@ -643,7 +572,9 @@ class OrdiniRepository(
 
     # Scopo: Aggiorna una riga ordine esistente. Campi jsonb (meta) ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.ordini_righe", riga_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.ordini_righe", riga_id, kwargs, allowed=self.RIGA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Elimina una riga ordine (HARD DELETE). La FK
     #        ordini_righe_componenti.riga_ordine_id ha ON DELETE CASCADE.

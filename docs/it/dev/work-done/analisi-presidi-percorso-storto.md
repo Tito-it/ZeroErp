@@ -7,8 +7,8 @@
 >
 > | | Esito | Dove continua |
 > | --- | --- | --- |
-> | **C1** stato previsto e mai scritto | 🔵 **brief aperto** | [brief-db-presidio-stati-mai-scritti.md](../work-in-progress/brief-db-presidio-stati-mai-scritti.md) — registro + vista che classifica + pgTAP + riga `CANCELLO` in `dbops.presidi`; la metà Python al BE |
-> | **C2** promessa all'interfaccia | 🔵 **brief aperto** | [brief-be-presidio-ui-action-e-canale-campi.md](../work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md) — coerenza `highlight_form_fields` ↔ canale `fields`, con la decisione di Tid del 09-09 come premessa |
+> | **C1** stato previsto e mai scritto | ✅ **chiuso lato DB il 21-09** | [brief-db-presidio-stati-mai-scritti.md](brief-db-presidio-stati-mai-scritti.md) — registro `dbops.stati_check_dichiarazioni` (40 righe, col `canale`), `vw_stati_check_scrittori` + `vw_stati_check_da_sanare` (`CANCELLO`, a zero), pgTAP a 14 test; il perimetro vero è 32 colonne, non 18. ✅ La metà Python (§6 del brief) è chiusa il 21-09 in coda a C2 (`backend/apps/core/tests/test_stati_check_scrittori_python.py`, §7 del brief C2) |
+> | **C2** promessa all'interfaccia | ✅ **chiuso il 22-09** | [brief-be-presidio-ui-action-e-canale-campi.md](brief-be-presidio-ui-action-e-canale-campi.md) — coerenza `highlight_form_fields` ↔ canale `fields`, con la decisione di Tid del 09-09 come premessa; vista `dbops.vw_punti_canale_campo` a `CANCELLO`, siti PL/pgSQL sanati in due giri (21-09 e 22-09), cancello BE a zero rossi |
 > | **C3** liste che non sanno dire perché | ✅ chiuso da solo | 20 liste su 77 col motivo (§3-quater); non serve un cancello |
 > | **C4** registri scritti e mai letti | ✅ chiuso | `event_log` ha i suoi lettori (§3-bis) |
 > | **C5** numero a mano | ⛔ escluso | si corregge quando si tocca il file |

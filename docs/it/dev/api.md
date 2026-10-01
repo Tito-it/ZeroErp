@@ -38,23 +38,23 @@ GET    /api/v1/{modulo}/{risorsa}/{id}/       → dettaglio
 PATCH  /api/v1/{modulo}/{risorsa}/{id}/       → aggiorna
 ```
 
-| | Esempio | Perche' |
-| --- | --- | --- |
-| OK | `POST /toponomastica/` | Il metodo POST dice "crea" |
-| NO | `POST /toponomastica/crea/` | Il verbo e' nel metodo HTTP, non nel path |
-| NO | `PATCH /toponomastica/5/aggiorna/` | Idem |
+|     | Esempio                            | Perche'                                   |
+| --- | ---------------------------------- | ----------------------------------------- |
+| OK  | `POST /toponomastica/`             | Il metodo POST dice "crea"                |
+| NO  | `POST /toponomastica/crea/`        | Il verbo e' nel metodo HTTP, non nel path |
+| NO  | `PATCH /toponomastica/5/aggiorna/` | Idem                                      |
 
 ### Azioni di dominio — verbo ammesso come ultimo segmento
 
 Operazioni non-CRUD (cambio stato, sospensione, esecuzione pipeline) usano un verbo
 breve come ultimo segmento. Il verbo nomina **cosa** e', non descrive *come* si fa.
 
-| | Esempio | Perche' |
-| --- | --- | --- |
-| OK | `POST /pratiche/3/stato/` | `stato` e' la sotto-risorsa che cambia |
-| OK | `POST /pratiche/3/sospendi/` | Azione atomica, nome diretto |
-| NO | `POST /pratiche/3/aggiorna-stato/` | Descrizione dell'azione, non nome della risorsa |
-| NO | `POST /pratiche/3/esegui-sospensione/` | Descrive l'azione invece di nominarla |
+|     | Esempio                                | Perche'                                         |
+| --- | -------------------------------------- | ----------------------------------------------- |
+| OK  | `POST /pratiche/3/stato/`              | `stato` e' la sotto-risorsa che cambia          |
+| OK  | `POST /pratiche/3/sospendi/`           | Azione atomica, nome diretto                    |
+| NO  | `POST /pratiche/3/aggiorna-stato/`     | Descrizione dell'azione, non nome della risorsa |
+| NO  | `POST /pratiche/3/esegui-sospensione/` | Descrive l'azione invece di nominarla           |
 
 ### Lookup — due pattern, una regola
 
@@ -67,12 +67,15 @@ GET /api/v1/core/lookup/codici/?rel=config.qualifiche
 GET /api/v1/core/lookup/codici/?rel=config.stati_pratiche&search=ape
 ```
 
-Un'unica API, parametro `rel` con whitelist (89 tabelle su 9 schemi, 2026-09-14).
+Un'unica API, parametro `rel` con whitelist (87 tabelle su 9 schemi, 2026-09-21 — ⚠️ una rel dichiarata qui deve **rispondere**: `config.stati` e `config.titoli_cortesia`, senza `codice`, erano ammesse ed erano un 500; il presidio `test_config_panel_registro_db` attraversa ogni riga del pannello config).
 Restituisce sempre `id, codice, codice_interno, descrizione, attivo, codice_stabile`
 con paginazione e search. Variante **specializzata** (config `_LOOKUP_SPECIALIZZATE`):
 stessa API e contratto + UNA colonna extra per relazione (es.
-`pratiche.tipi_prestazione` → `categoria`, `catalogo.unita_misura` → `tipo_uom_id`)
-— preferirla a un endpoint dedicato quando serve un solo campo in piu'.
+`pratiche.tipi_prestazione` → `categoria`, `catalogo.unita_misura` → `tipo_uom_id`,
+`config.registri_giornale` → `etichetta_key`) — preferirla a un endpoint
+dedicato quando serve un solo campo in piu'. ⚠️ Una tabella **senza `attivo`**
+si dichiara con `has_attivo: False` (2026-09-19): prima l'handler la
+avrebbe rifiutata con un 500, a rel dichiarata ammessa.
 Dettagli: `docs/it/backend/core/manual/api_lookup_codici.md`.
 
 **2. Lookup dedicato** — quando servono JOIN o campi extra non riducibili a `id, codice, descrizione`:
@@ -124,12 +127,12 @@ Max 20 codici per chiamata su `defaults/`.
 (`id, codice/codice_interno, descrizione`). Creare un lookup dedicato solo se
 servono colonne aggiuntive da JOIN o campi non standard.
 
-| Criterio | Lookup generico | Lookup dedicato |
-| --- | --- | --- |
-| Struttura | `id, codice, descrizione` | Campi custom, JOIN |
-| Endpoint | `GET /core/lookup/codici/?rel=...` | `GET /{risorsa}/lookup/` |
-| Paginazione | Si' | No (lista completa) |
-| Quando usare | Tabelle config standard | Province, regioni, stati, UO con gerarchia |
+| Criterio     | Lookup generico                    | Lookup dedicato                            |
+| ------------ | ---------------------------------- | ------------------------------------------ |
+| Struttura    | `id, codice, descrizione`          | Campi custom, JOIN                         |
+| Endpoint     | `GET /core/lookup/codici/?rel=...` | `GET /{risorsa}/lookup/`                   |
+| Paginazione  | Si'                                | No (lista completa)                        |
+| Quando usare | Tabelle config standard            | Province, regioni, stati, UO con gerarchia |
 
 #### ⛔ L'ENVELOPE DI UN LOOKUP — `{"results": [...]}`, non la lista nuda
 
@@ -197,6 +200,50 @@ apps/<dominio>/
     services/         # Test logica service
 ```
 
+* App per **dominio** (`vendite`, `anagrafiche`), non per dettaglio tecnico; se uno
+  schema DB coincide con un dominio stabile, la cartella dell'app si allinea allo
+  schema. Project config in `backend/zeroerp_backend/`.
+* Modelli ORM solo dove servono, altrimenti `managed = False`.
+
+### Nomi di repository e service
+
+Un'app può avere più repository e service. Il nome segue il **perimetro semantico**:
+
+| Tipo                       | Nome file                      | Contenuto                                                                                       |
+| -------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Generico schema            | `<schema>_repository.py`       | List, query, CRUD su entità dello schema senza logica specifica (es. `vendite_repository.py`)   |
+| Sottodominio specializzato | `<sottodominio>_repository.py` | Operazioni di un processo autonomo con logica propria (es. `pipeline_repository.py`)            |
+| Generico schema            | `<schema>_service.py`          | Facade per operazioni generiche (es. `vendite_service.py`)                                      |
+| Sottodominio specializzato | `<sottodominio>_service.py`    | Facade per il sottodominio (es. `pipeline_service.py`)                                          |
+
+* `<schema>` per ciò che non appartiene a un sottodominio: elenchi, ricerche,
+  lettura dello stato di un'entità.
+* Un file `<sottodominio>_*` **solo** quando il sottodominio ha logica orchestrata
+  autonoma (runner, executor, tracing, saga), non per singoli metodi.
+* Non si frammenta per entità: tre metodi su `fatture` e due su `lotti` stanno in
+  `vendite_repository.py`.
+
+### Convenzioni del codice Python
+
+* **Header di licenza** sui file nuovi: `templates/python-header.txt`, più un
+  breve commento iniziale sullo scopo del file. Lo presidia `scripts/check_license.py`
+  (pre-commit), che guarda i file **aggiunti**: il pregresso senza header è un
+  debito che cala per decisione, non per attrito.
+* Commento `# Scopo: ...` in italiano prima di ogni `def`/`async def`; più
+  dettagliato (obiettivo, perimetro, risultato atteso) per chi orchestra
+  pipeline, transazioni, dispatch di task o integrazioni esterne. Commenti brevi
+  nei blocchi non banali.
+* Dopo un `ErrorManager.require(... is not None ...)`, l'`assert`
+  corrispondente per il type checker.
+* Dopo `row = cursor.fetchone()`, un guard (`if not row`) o
+  `assert row is not None` prima di usare `row[...]`.
+* Nomi di metodo espliciti e di dominio (`run_pipeline`), mai generici (`run`).
+* Errori: helper centralizzato `apps/core/services/error_manager.py`; il mapping
+  `codice → HTTP status → ui_action` sta in `apps/core/services/error_policies.py`.
+* Niente `try/except Exception` generici nelle view di dominio: `ServiceError`
+  nei service e fallback al middleware `apps/core/middleware/api_exception_middleware.py`
+  (solo `/api/*`, disattivabile con `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED`).
+
 ---
 
 ## Base classes per view
@@ -235,21 +282,23 @@ class ShopCatalogoView(ShopAPIView):
     def get(self, request): ...
 ```
 
-| Base class | Auth | Permessi | Uso |
-| --- | --- | --- | --- |
-| `DomainAPIView` | JWT | `ZeroERPPermission` + `area_funzionale` | Endpoint di dominio |
-| `AdminAPIView` | JWT | `IsAdminZeroERP` (check binding `SUPER_ADMIN`) | Amm. Software |
-| `PortaleAPIView` | JWT | `PortaleBasePermission` (`ruolo_applicativo ∈ {CLIENTE_PORTALE, FORNITORE_PORTALE}`) | Portale clienti/fornitori |
-| `ShopAPIView` | JWT opzionale | `ShopBasePermission` (anonimo oppure `SHOP_CUSTOMER`) | Negozio online |
+| Base class       | Auth          | Permessi                                                                             | Uso                       |
+| ---------------- | ------------- | ------------------------------------------------------------------------------------ | ------------------------- |
+| `DomainAPIView`  | JWT           | `ZeroERPPermission` + `area_funzionale`                                              | Endpoint di dominio       |
+| `AdminAPIView`   | JWT           | `IsAdminZeroERP` (check binding `SUPER_ADMIN`)                                       | Amm. Software             |
+| `PortaleAPIView` | JWT           | `PortaleBasePermission` (`ruolo_applicativo ∈ {CLIENTE_PORTALE, FORNITORE_PORTALE}`) | Portale clienti/fornitori |
+| `ShopAPIView`    | JWT opzionale | `ShopBasePermission` (anonimo oppure `SHOP_CUSTOMER`)                                | Negozio online            |
 
 ### Attributi di classe
 
-| Attributo | Scopo | Obbligatorio |
-| --- | --- | --- |
-| `area_funzionale` | Schema DB dell'area (es. `"vendite"`, `"anagrafiche"`) | Si' su DomainAPIView |
-| `is_search_endpoint` | Abilita `SearchBurstRateThrottle` | No |
-| `post_permission` | Codename azione di processo (per comandi specifici) | No |
-| `skip_area_check` | Salta il check area — ammesso solo per endpoint cross-dominio (profilo, sessioni, lookup). ⛔ **Non convive con `area_funzionale`**: la catena lo legge **solo** se l'area non si risolve, quindi una view che dichiara entrambi ha lo skip **muto** e vince l'area in silenzio (trovato il 2026-09-12 su 15 view). ⚠️ E una view con lo skip che **scrive** (`post`/`patch`/`put`/`delete`) senza il `<metodo>_permission` è aperta a chiunque sia autenticato: lecito solo se agisce **su sé stessa**. Presidio: `core/tests/test_skip_area_check_registro.py` | No |
+| Attributo            | Scopo                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Obbligatorio         |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `area_funzionale`    | Schema DB dell'area (es. `"vendite"`, `"anagrafiche"`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Si' su DomainAPIView |
+| `is_search_endpoint` | Abilita `SearchBurstRateThrottle`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | No                   |
+| `post_permission`    | Codename azione di processo (per comandi specifici)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | No                   |
+| `<metodo>_accesso`   | Tipo di accesso (`view`/`add`/`change`/`delete`) che il metodo chiede al livello d'area, quando **non** è quello del suo verbo HTTP. Es. `post_accesso = "view"`: una lettura che viaggia in una POST (la domanda all'assistente AI). Stessa chiave di `<metodo>_permission`. ⛔ Un valore fuori dai quattro **nega** (non ricade sul verbo). Da qui si deriva anche «la chiamata scrive?» (`chiamata_in_scrittura`, catalogo BB) | No |
+| `oggetto_permesso_da_richiesta()` | Metodo, per quando l'**oggetto** dipende dalla richiesta (una tabella nel path): torna `(app_label, model_name)` e la catena chiede il livello su quell'oggetto, nell'area di `script.fn_area_di_oggetto`, al posto dell'area della classe; `None` ricade sull'area della classe. ⛔ Valutata sulla **sola classe** (i tool dell'assistente, `valuta_accesso_endpoint`) la richiesta non c'è, e la view **nega** (`OGGETTO_SENZA_RICHIESTA`). Unico uso: il pannello «Gestione tabelle» (`views_config_crud.py`, D-P7 del brief-db-pannello-config-verbo-generico, 2026-09-25) | No |
+| `skip_area_check`    | Salta il check area — ammesso solo per endpoint cross-dominio (profilo, sessioni, lookup). ⛔ **Non convive con `area_funzionale`**: la catena lo legge **solo** se l'area non si risolve, quindi una view che dichiara entrambi ha lo skip **muto** e vince l'area in silenzio (trovato il 2026-09-12 su 15 view). ⚠️ E una view con lo skip che **scrive** (`post`/`patch`/`put`/`delete`) senza il `<metodo>_permission` è aperta a chiunque sia autenticato: lecito solo se agisce **su sé stessa**. Presidio: `core/tests/test_skip_area_check_registro.py` | No                   |
 
 `PortaleAPIView` e `ShopAPIView` dichiarano `skip_area_check = True`
 implicitamente: il set di endpoint portale/shop e' ristretto e non passa
@@ -361,16 +410,16 @@ I filtri opzionali da query string si normalizzano con gli helper di
 `apps.core.api.payload_validators` (passati **per valore**, es.
 `qp_bool_optional(qp.get("attivo"), "attivo")`):
 
-| Funzione                            | Scopo                                                                                  |
-| ----------------------------------- | -------------------------------------------------------------------------------------- |
-| `qp_str(raw)`                       | stringa o `None` se assente/vuota (strip)                                               |
-| `qp_int(raw, default)`              | int con default; fallback silenzioso al default se non numerico                        |
-| `qp_int_strict(raw, name, default)` | int con default; **400** se presente ma non numerico                                   |
-| `qp_int_optional(raw, name)`        | int **opzionale strict**: `None` se assente/vuoto, **400** se non numerico             |
-| `qp_bool(raw, default=True)`        | bool con default (False solo su `0/false/no/n/off`)                                     |
-| `qp_bool_optional(raw, name)`       | bool **opzionale strict**: `None` se assente/vuoto, `True/False` sui token, **400** se non riconosciuto |
-| `qp_iso_date_optional(raw, name)`   | `date` **opzionale strict**: `None` se assente/vuoto, **400** se malformata             |
-| `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir/page` per liste **offset-based** |
+| Funzione                                                            | Scopo                                                                                                   |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `qp_str(raw)`                                                       | stringa o `None` se assente/vuota (strip)                                                               |
+| `qp_int(raw, default)`                                              | int con default; fallback silenzioso al default se non numerico                                         |
+| `qp_int_strict(raw, name, default)`                                 | int con default; **400** se presente ma non numerico                                                    |
+| `qp_int_optional(raw, name)`                                        | int **opzionale strict**: `None` se assente/vuoto, **400** se non numerico                              |
+| `qp_bool(raw, default=True)`                                        | bool con default (False solo su `0/false/no/n/off`)                                                     |
+| `qp_bool_optional(raw, name)`                                       | bool **opzionale strict**: `None` se assente/vuoto, `True/False` sui token, **400** se non riconosciuto |
+| `qp_iso_date_optional(raw, name)`                                   | `date` **opzionale strict**: `None` se assente/vuoto, **400** se malformata                             |
+| `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir/page` per liste **offset-based**                         |
 
 **Contratto degli helper `*_optional` (dal 2026-06-04):**
 
@@ -381,6 +430,40 @@ I filtri opzionali da query string si normalizzano con gli helper di
   bool accettavano il garbage come `True`/`False`).
 * token bool riconosciuti: `1/true/yes/y/on` → `True`, `0/false/no/n/off` → `False`.
 
+#### ⛔ Un PERIMETRO non è un filtro, e «assente» non vale `False`
+
+Un booleano di lista può essere due cose diverse, e vanno scritte diversamente:
+
+| | Chi decide | «assente» significa | Dove vive il default |
+| --- | --- | --- | --- |
+| **filtro** (`solo_aperte`) | l'operatore, da un widget | `False` — nessun filtro | nel client, che lo manda |
+| **perimetro** (`solo_numerate`) | il **dominio** | **applica la regola** | nel **service/repository**, `= True` |
+
+⭐ *La rata di un documento non numerato non è un credito su cui registrare un
+incasso*: è una regola del dominio, quindi vale per **ogni** client — non solo
+per quello che si ricorda di mandare il parametro. Un perimetro scritto nel
+frontend è una regola di business nella presentazione, e il fatto che oggi il
+client sia uno solo non la rende vera.
+
+Forma (decisione di Tid, 2026-09-23, `GET /pagamenti/rate/`):
+
+* la **view** resta sull'helper *strict* (`qp_bool_optional`): `?x=banana` deve
+  restare un **400**, non diventare `True` in silenzio. ⚠️ Per questo non si usa
+  `qp_bool(raw, default=True)`, che è indulgente — è la forma già in uso su
+  `solo_ultima_revisione`, e lì quel `banana` passa;
+* il **service** traduce l'assenza: `True if x is None else bool(x)`, con il
+  perché accanto. ⛔ Mai `bool(x)` secco, che mappa `None` su `False`;
+* il **repository** dichiara `x: bool = True`, così anche un chiamante interno
+  che non ne sa nulla ottiene la regola;
+* la **via d'uscita resta e si documenta** (`?x=false`): un perimetro senza
+  escape è un dato che manca, non una scelta.
+
+⚠️ **Il sintomo che lo fa emergere sta nel frontend**: un perimetro tenuto in
+`filterDefaults` è anche una *chiave di filtro*, quindi il segno dei filtri
+attivi lo conta — l'operatore legge «1 filtro attivo» e nel pannello non trova
+niente da toccare. *`filterDefaults` risponde a due domande — «cosa mando» e
+«cosa conto come filtro» — e per un perimetro le due risposte divergono.*
+
 > **Paginazione page-based** (`page`/`page_size`, alternativa a `limit`/`offset`):
 > validala nel service con
 > `validate_pagination(page, page_size, *, error_code, function_name)`
@@ -389,10 +472,21 @@ I filtri opzionali da query string si normalizzano con gli helper di
 
 ### Paginazione
 
-| Parametro   | Default | Max |
-| ----------- | ------- | --- |
-| `page`      | 1       | —   |
-| `page_size` | 50      | 200 |
+| Parametro                | Default                | Max                 |
+| ------------------------ | ---------------------- | ------------------- |
+| `page`                   | 1                      | —                   |
+| `page_size` / `limit`    | `DEFAULT_LIMIT` (25)   | `MAX_LIMIT` (200)   |
+
+⭐ **Una sede sola: `apps.core.api.constants`** (2026-09-28). Il default e'
+quello che l'operatore vede a video (la misura `PAGINA` del catalogo
+`ui.misure_pagina`, che frontend e preset leggono da li'), cosi' una chiamata
+senza `limit` risponde come la lista. ⚠️ `DEFAULT_LIMIT` resta un numero del
+backend: quanti record chiede al massimo una chiamata e' un tema vicino ma
+diverso dalle misure del paginatore (brief-db-misure-pagina-catalogo §6.5). Nei repository il clamp e' il BB `limiti_pagina(limit, offset,
+tetto=MAX_LIMIT)`. ⛔ Mai il numero scritto a mano, nemmeno nella descrizione
+OpenAPI (`f"... (default {DEFAULT_LIMIT}, max {MAX_LIMIT})"`): lo presidia
+`apps/core/tests/test_paginazione_fonte_unica.py`, con le eccezioni dichiarate
+(liste di eventi a 100, autocomplete, batch).
 
 Risposta paginata:
 
@@ -431,7 +525,14 @@ dalle righe che ritorna:
 * **paginato** → `COUNT(*) OVER ()` nella stessa query, tramite il building
   block `fetch_paged_with_total` (`apps/core/db/_helpers.py`), che fa pagina e
   totale in **una** valutazione e ha il fallback per il rientro su una pagina
-  stantia;
+  stantia. ⭐ Dal 2026-09-28 il ripiego c'e' **sempre**: se il chiamante non
+  passa un `fallback_count_sql` suo, il BB rilegge la stessa query con
+  `LIMIT 1 OFFSET 0` (serve che finisca con `LIMIT %s OFFSET %s` e abbia
+  parametri posizionali, e lo verifica a ogni chiamata). `offset` e'
+  obbligatorio. ⛔ Una `COUNT(*) OVER ()` letta a mano (`extract_paginated`,
+  `rows[0][n]`) oltre l'ultima pagina dice totale 0, e la lista a video non sa
+  tornare indietro (`useListaEmptyStateFetch` arretra da solo, ma solo su un
+  totale vero): si passa dal BB;
 * **non paginato** → una `SELECT count(*)` **sua**, con lo **stesso perimetro**
   della lista.
 
@@ -457,24 +558,31 @@ madre conta di più di quanto la lista consegna e fa scattare il guard su un
 troncamento che non esiste. ⇒ Si condivide il frammento `FROM`+`WHERE` fra le
 due query, non lo si riscrive.
 
-#### ⚠️ `parse_list_params` normalizza `order_dir` ad `"asc"`: non è mai `None`
+#### ⭐ `parse_list_params`: `order_dir` assente è `None`, e decide il repository
 
-`parse_list_params(qp)` fa `order_dir = qp.get("order_dir") or "asc"`. Quindi
-**annulla** il `default_desc=True` dei repository, che si accende solo su
-`None`.
+Dal **2026-09-26** `parse_list_params(qp)` restituisce `order_dir = None` quando
+il client non lo manda (o lo manda vuoto), e il valore ripulito dagli spazi
+quando c'è. **Non lo valida**: la direzione estranea la rifiuta chi ordina, con
+la regola unica `order_dir_ammessa` — il service (`validate_order_params`,
+`PayloadValidator.validate_order_by`) col codice del dominio, o il BB SQL
+(`sql_order_direction`) col 400 `E_VALIDATION_INPUT`.
 
-🔴 Il difetto che produce è muto: una lista che deve aprirsi dal più grave (o
-dal più recente) si apre al contrario, senza nessun errore. ⇒ Per le liste con
-un default DESC si passa il valore **grezzo**, che è il pattern già in uso in
-`pagamenti`:
+🔴 **Fino a quel giorno l'assenza diventava `"asc"`**, e il difetto era muto: il
+`default_desc` e le `colonne_desc` dei repository si accendono solo su `None`,
+quindi una lista che deve aprirsi dal più grave (o dal più recente) si apriva al
+contrario, senza errore. Il ripiego che questa sezione prescriveva — passare
+`qp_str(qp.get("order_dir"))` invece di `p["order_dir"]` — è stato **ritirato**
+dalle view che lo usavano solo per la direzione.
 
-```python
-p = parse_list_params(qp, default_order="eccedenza")
-dati = service.list_x(
-    limit=p["limit"], offset=p["offset"], order_by=p["order_by"],
-    order_dir=qp_str(qp.get("order_dir")),   # ⛔ non p["order_dir"]
-)
-```
+⚠️ **Un validatore di dominio che riceve `p["order_dir"]` deve ammettere
+l'assenza**: `validate_order_params(..., nullable=True)`. Senza, la lista
+risponde 400 a una richiesta senza verso (era il caso dei quattro validatori di
+catalogo e listini, allineati lo stesso giorno).
+
+⚠️ **`order_by` è un'altra storia, e resta**: il bundle ha un `default_order`
+(`"descrizione"` se non lo si passa) che per molte liste non è una colonna. Lì
+`order_by` si legge ancora grezzo (`qp_str(qp.get("order_by"))`), per quel
+motivo e non per la direzione.
 
 #### La whitelist di ordinamento si chiava sul `campo_sorgente` FISICO
 
@@ -500,7 +608,18 @@ una colonna — ed era successo due volte in pagamenti prima del BB.
 ### Ricerca e throttling
 
 * `is_search_endpoint = True` sulla view abilita `SearchBurstRateThrottle`
-* Ricerca testuale: parametro `search`, minimo 3 caratteri, operatore ILIKE
+* Ricerca testuale: parametro `search`, operatore ILIKE. ⭐ Sulle liste
+  configurabili la **soglia è della lista** (dal 2026-09-26): la dichiara il
+  catalogo (`ui.lista_definizione.ricerca_min_caratteri` — 1 sulle tabelle di
+  configurazione a codici corti, 3 sulle altre), il BB
+  `add_ricerca_full_condition` la legge da lì e sotto soglia il termine non
+  filtra; la stessa colonna arriva al frontend nella configurazione della lista
+  (chiave `ricerca_min_caratteri`). ⛔ Nessun repository e nessuna view la
+  scrivono a mano, e **nessuna lista a catalogo risponde 400** sotto soglia: il
+  termine corto semplicemente non filtra (decisione di Tid del 2026-09-26). Le
+  ricerche che non sono una lista a catalogo (ricerca universale, lookup)
+  restano alla soglia di progetto `RICERCA_MIN_CARATTERI` (3), col 400
+  `E_SEARCH_VALIDATION` di `require_min_search_length`
 * Vedi: `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md`
 
 ### ⭐ Capability di riga — come viaggia il motivo di un'azione spenta
@@ -517,28 +636,33 @@ una colonna — ed era successo due volte in pagamenti prima del BB.
 risposta deve portare **due cose**, non una: se dice solo *«non si può»*, il
 client ha un pulsante grigio che non spiega niente — indistinguibile da un bug.
 
-| Ruolo del campo | Tipo | Cosa porta |
-| --- | --- | --- |
-| il flag | bool | `false` = azione **da disabilitare**, non da nascondere |
-| il motivo | string \| null | codice **macchina** del primo motivo. `null` = ammesso |
-| la chiave | string \| null | **chiave i18n** del tooltip |
+| Ruolo del campo | Tipo           | Cosa porta                                              |
+| --------------- | -------------- | ------------------------------------------------------- |
+| il flag         | bool           | `false` = azione **da disabilitare**, non da nascondere |
+| il motivo       | string \| null | codice **macchina** del primo motivo. `null` = ammesso  |
+| la chiave       | string \| null | **chiave i18n** del tooltip                             |
 
 ⚠️ **Sui NOMI non c'è ancora una forma unica, e questa tabella non ne inventa
 una.** Le famiglie in servizio sono tre, e nessuna è il calco delle altre:
 
-| Superficie | Flag | Motivo | Chiave i18n |
-| --- | --- | --- | --- |
-| dettaglio documento | `can_push_commessa` | `can_push_commessa_reason` | `can_push_commessa_reason_key` |
-| riga `sveglie[]` del dettaglio processo (2026-09-15) | `can_esegui_ora` | `can_esegui_ora_reason` | `can_esegui_ora_reason_key` (+ `can_esegui_ora_dettaglio`, i parametri con nome della frase) |
-| riga mapping BA | `can_remove` | `rimozione_blocco_reason` | `rimozione_blocco_reason_key` |
-| righe reso · coda accrediti | — | `annullo_blocco_codice` · `blocco_codice` | — |
+| Superficie                                           | Flag                | Motivo                                    | Chiave i18n                                                                                  |
+| ---------------------------------------------------- | ------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------- |
+| dettaglio documento                                  | `can_push_commessa` | `can_push_commessa_reason`                | `can_push_commessa_reason_key`                                                               |
+| riga `sveglie[]` del dettaglio processo (2026-09-15) | `can_esegui_ora`    | `can_esegui_ora_reason`                   | `can_esegui_ora_reason_key` (+ `can_esegui_ora_dettaglio`, i parametri con nome della frase) |
+| riga mapping BA                                      | `can_remove`        | `rimozione_blocco_reason`                 | `rimozione_blocco_reason_key`                                                                |
+| righe reso · coda accrediti                          | —                   | `annullo_blocco_codice` · `blocco_codice` | —                                                                                            |
+| riga del piano d'inventario (magazzino, 2026-09-23)  | — (`esito = NON_POSTABILE`) | `posting_blocco_reason`         | `posting_blocco_reason_key`                                                                  |
+| dettaglio operatore (amm. software, 2026-09-27)      | `can_invite` · `can_disable` · `can_demote_super_admin` | `invite_reason` · `disable_reason` · `demote_reason` | `invite_reason_key` · `disable_reason_key` · `demote_reason_key` |
 
 ⭐ **Solo le prime due sono terne coerenti** (la famiglia 1): motivo e chiave
 si ricavano dal nome del flag, quindi chi ne legge uno sa già come si chiamano
 gli altri due — e il client le legge con un solo prefisso
 (`bloccoAttivo(riga, 'can_esegui_ora', 'can_esegui_ora')`). La terza ha il
 motivo che non discende dal flag; la quarta non ha flag **e** porta due nomi
-diversi per la stessa cosa su due superfici. ⚠️ Il predicato di «Esegui ora»
+diversi per la stessa cosa su due superfici. La quinta, il piano d'inventario,
+non ha flag perché l'esito della riga lo è già, e porta la coppia col nome del
+verbo che blocca (`posting_`). La sesta, il dettaglio operatore, ha il flag col verbo (`can_invite`) e la coppia col solo verbo (`invite_reason`, `invite_reason_key`): il motivo non discende dal flag, come nella terza, ma motivo e chiave sì fra loro — il client le legge con `bloccoMotivo` e il prefisso del verbo (`motivoBloccoRiga(t, te, dettaglio, 'invite')`). E la terna `can_registra` · `can_registra_reason`
+· `can_registra_reason_key` del documento interno di magazzino è della famiglia 1. ⚠️ Il predicato di «Esegui ora»
 sta in **Python** (`avvio_manuale.motivi_esegui_ora`) perché la whitelist è del
 deploy e il database non conosce le unit — ma la regola del trasporto vale
 uguale: lo stesso predicato serve capability, endpoint e handler.
@@ -571,10 +695,10 @@ il guard è cosa si *ammette*. Un client che non legge la capability prende il
 
 **Due forme, e non sono intercambiabili:**
 
-| | Azione di **documento** | Azione **per riga** |
-| --- | --- | --- |
-| dove sta | blob `available_actions[]` nel **dettaglio** | **colonne della riga** di lista |
-| esempio | `fn_available_actions_preventivo` | `can_remove` + `rimozione_blocco_reason` su `…/billing-account/` |
+|          | Azione di **documento**                      | Azione **per riga**                                              |
+| -------- | -------------------------------------------- | ---------------------------------------------------------------- |
+| dove sta | blob `capabilities` nel **dettaglio**        | **colonne della riga** di lista                                  |
+| esempio  | `fn_available_actions_preventivo`            | `can_remove` + `rimozione_blocco_reason` su `…/billing-account/` |
 
 ⛔ Una capability di dettaglio **non** risponde per una riga: il blob non sa
 niente delle righe. È l'errore in cui si cade per primo, perché la forma di
@@ -589,6 +713,68 @@ LEGGA.** Un campo dichiarato e mai letto sembra presidiato e non presidia niente
 nel 2026 il motivo di un pulsante spento non era **mai** stato reso a video,
 perché il frontend leggeva un nome di campo diverso da quello emesso — e niente
 falliva.
+⭐ Dal 2026-09-23 c'è anche un cancello, e legge il contratto dalla sorgente
+giusta: `npm run guard:capability` (`frontend/scripts/check-capability-contratto.mjs`)
+confronta ogni campo letto da un blob `capabilities.*` con le chiavi che le
+`script.fn_available_actions_*` (e `fn_capability_promo_articolo`) emettono,
+prese dalla **doc auto-generata** — anche i nomi passati al BB
+(`flag('can_x')`, `editFlag`).
+⭐ Dalla conversione alla forma annidata (sotto) **conta anche le letture
+piatte**: una chiave di primo livello del blob letta fuori da `capabilities`
+è rossa, salvo gli omonimi dichiarati col motivo in
+`frontend/scripts/capability-letture-piatte.json` — un registro che può solo
+calare.
+
+### ⛔ Il blob sta SOTTO `capabilities`, non fuso nel dettaglio
+
+> **Decisione di Tid, 2026-09-23.** Una capability di documento viaggia in una
+> chiave sua — `detail.capabilities.can_x` — e **non** si fonde nel dettaglio.
+
+**Perché, sul modello.** Il dettaglio dice **com'è fatto** il documento; la
+capability dice **che cosa ci si può fare adesso**. Sono due cose con due
+autori: la prima la scrivono le colonne, la seconda una funzione che legge lo
+stato e i guard. Fonderle in un dizionario solo perde quell'origine, e con essa
+la possibilità di dire chi ha scritto cosa.
+
+Tre conseguenze, ed è da queste che si riconosce il difetto:
+
+* ⛔ **il merge nasconde le collisioni**: il giorno in cui una testata avrà una
+  colonna che si chiama come un campo del blob, uno dei due vince **in
+  silenzio** — nessun errore, nessun lint, un valore diverso da quello che
+  qualcuno credeva di leggere;
+* ⛔ **il piatto invita a scriverci dentro**, e succede già: un service
+  *arricchisce* il blob in Python prima di fonderlo, sovrascrivendo campi che
+  il database aveva deciso. A quel punto «il backend trasporta, non deduce» è
+  già infranto, e non l'ha deciso nessuno: l'ha reso facile la forma;
+* ⛔ **il piatto non è presidiabile**: `detail.can_x` è indistinguibile da un
+  campo del dettaglio, quindi nessuna analisi statica può dire se quel nome è
+  un campo che il database emette davvero o un refuso.
+
+⚠️ **Non è una preferenza di stile ed è nata da un'asimmetria vera**: al
+2026-09-23 convivevano le due forme — commesse e magazzino annidate; DDT,
+resi, ordini, contratti, promo articoli, offerte, preventivi e lotto piatti —
+e **nessun documento diceva quale fosse quella giusta**. È la ragione per cui questa sezione esiste: una
+regola che non sta scritta non è una regola, e la divergenza non era colpa di
+chi l'ha scritta in un modo o nell'altro.
+
+✅ **Il frontend legge da un posto solo**: `useEntityCapabilities` è il BB che
+unifica la lettura; motivi, chiavi i18n e sotto-oggetti (`pdf`) si leggono dal
+suo `capabilities`, mai da `detail.x`.
+✅ **Il pregresso è convertito** (2026-09-23, tutti i dettagli in un giro, senza
+doppia lettura):
+[brief-be-fe-capability-annidata.md](work-done/brief-be-fe-capability-annidata.md).
+
+⚠️ **La chiave c'è sempre**: un dettaglio che ripiega quando la capability
+fallisce (offerte, lotto) consegna `capabilities: {}`, non la omette — la
+forma non dipende dall'esito, e il client cade spento (fail-closed).
+
+⛔ **Si trasporta tutto il blob, sotto-oggetti compresi.** Il blob ha chiavi di
+primo livello che non sembrano capability — `pdf` (`{mode, allow_allegati}`),
+`stato_info_key`, `stato_temporale`, `min_valido_*` — e sono quelle che una
+conversione dimentica: il 2026-09-23 i drawer passavano `detail.pdf` al
+pulsante PDF, e annidato il blob il pulsante avrebbe perso il `mode` senza
+nessun errore. Le chiavi di primo livello si leggono dal
+`RETURN jsonb_build_object(...)` della funzione nella doc auto-generata.
 
 ---
 
@@ -609,19 +795,28 @@ class ApiPraticaDetail(APIView):
 
 ### Quando usare `handle_post_json` vs `request.data`
 
-| Metodo | Protocollo | Motivo |
-| --- | --- | --- |
-| **POST** (create, azioni) | `handle_post_json` | Parsing JSON raw, supporto idempotency, error envelope uniforme |
-| **PATCH/PUT** (update, replace) | `request.data` diretto | DRF ha gia' parsato il body; `handle_post_json` chiama `json.loads()` su body raw che in PATCH puo' essere gia' consumato da DRF, causando errori nei test |
+| Metodo                          | Protocollo             | Motivo                                                                                                                                                     |
+| ------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **POST** (create, azioni)       | `handle_post_json`     | Parsing JSON raw, supporto idempotency, error envelope uniforme                                                                                            |
+| **PATCH/PUT** (update, replace) | `corpo_oggetto(request)` | DRF ha gia' parsato il body; `handle_post_json` chiama `json.loads()` su body raw che in PATCH puo' essere gia' consumato da DRF, causando errori nei test |
 
 Esempio PATCH corretto (pattern adottato):
 
 ```python
 class UtentiDetailView(AdminAPIView):
     def patch(self, request, auth_user_id):
-        result = AmmSoftwareService().update_utente(auth_user_id, request.data)
+        result = AmmSoftwareService().update_utente(auth_user_id, corpo_oggetto(request))
         return success_response(result)
 ```
+
+⛔ **Mai `request.data` grezzo** (F-9, 2026-09-27). Il JSON valido non è per
+forza un oggetto: con una lista `request.data` è quella lista, il primo
+`.get()` è un **500** e `dict(request.data)` su una lista di coppie la
+trasforma in un oggetto **in silenzio**. `corpo_oggetto` (in
+`payload_validators`) applica la stessa regola di `handle_post_json`
+(`oggetto_json`) e risponde 400 `E_VALIDATION_INPUT` nell'envelope, anche per
+il JSON illeggibile. Non si ripiega su `{}`: eseguirebbe la richiesta coi
+default.
 
 La view resta sottile (una riga). L'error handling e' garantito dal service
 (`ServiceError`) e dal middleware (`ApiExceptionMiddleware`), non serve il
@@ -662,17 +857,17 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
 }
 ```
 
-| Campo               | Sempre presente | Note                                                                |
-| ------------------- | --------------- | ------------------------------------------------------------------- |
-| `code`              | si`             | Codice errore strutturato (es. `E_PRATICA_NOT_FOUND`)               |
-| `message`           | si`             | Messaggio business-safe, visibile all'utente finale                 |
-| `detail`            | no              | Dettaglio tecnico aggiuntivo                                        |
-| `technical_message` | no              | Solo se `DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1` (mai in produzione) |
-| `retryable`         | no              | `true` se il client puo` riprovare la stessa richiesta              |
+| Campo               | Sempre presente | Note                                                                                                                                                   |
+| ------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `code`              | si`             | Codice errore strutturato (es. `E_PRATICA_NOT_FOUND`)                                                                                                  |
+| `message`           | si`             | Messaggio business-safe, visibile all'utente finale                                                                                                    |
+| `detail`            | no              | Dettaglio tecnico aggiuntivo                                                                                                                           |
+| `technical_message` | no              | Solo se `DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1` (mai in produzione)                                                                                    |
+| `retryable`         | no              | `true` se il client puo` riprovare la stessa richiesta                                                                                                 |
 | `ui_action`         | si`             | Come dovrebbe reagire la pagina. ⚠️ **Ramificato su un valore su sette**; gli altri sei li serve il default, e dal 2026-09-09 è dichiarato — vedi sotto |
-| `fields`            | no              | I **nomi** dei campi del form da correggere (`["partita_iva"]`)     |
-| `targets`           | no              | **Su quale cosa**: `[{type, id}]`, al massimo cinque                |
-| `hint`              | no              | L'**azione suggerita**: cosa può fare l'operatore adesso. ✅ Reso a video dal 2026-09-09, sotto il messaggio |
+| `fields`            | no              | I **nomi** dei campi del form da correggere (`["partita_iva"]`)                                                                                        |
+| `targets`           | no              | **Su quale cosa**: `[{type, id}]`, al massimo cinque                                                                                                   |
+| `hint`              | no              | L'**azione suggerita**: cosa può fare l'operatore adesso. ✅ Reso a video dal 2026-09-09, sotto il messaggio                                            |
 
 ⭐ **`fields` — dal 2026-08-08.** È l'informazione senza la quale
 `ui_action: highlight_form_fields` non è azionabile: diceva *«evidenzia il
@@ -734,6 +929,22 @@ diagnostica destinata a `dbops.error_log`: contiene anche `lotto_id`,
 client di evidenziare cose che sullo schermo non esistono. E il **valore** non
 esce mai: è il dato che l'operatore ha appena scritto.
 
+⭐ **La promessa e il canale sono presidiati insieme (dal 2026-09-21).**
+`ui_action = highlight_form_fields` è una promessa, `fields` è ciò che la
+mantiene, e i due viaggiano su binari diversi: un override che promette il
+campo con nessun punto di sollevamento che lo manda è un toast senza input
+rosso, e non fallisce niente. `apps/core/tests/test_ui_action_e_canale_campi.py`
+(presidio C2, opt-in `ZEROERP_TEST_DB_E2E=1`) incrocia il catalogo BE con i
+siti Python (AST) e con `dbops.vw_punti_canale_campo` per i siti PL/pgSQL:
+ogni codice `highlight_form_fields` deve avere **almeno un** sito che
+valorizza il canale (`context={"field": …}`/`fields=` in Python, `'campo'` o
+`'parametro'` nel context di `fn_log_and_raise_error`), salvo esenzione con la
+ragione nel test. ⚠️ Vale anche il verso opposto: `highlight_form_fields`
+promette un input **nella pagina in cui l'operatore si trova** — un id
+dall'URL, una query string, un header, un parametro di firma **non** lo sono,
+e lì la promessa è sbagliata, non il canale: l'override esce. Brief:
+`work-done/brief-be-presidio-ui-action-e-canale-campi.md`.
+
 ⭐ **`targets` — dal 2026-08-24.** È l'**altra metà** di `fields`, e la
 differenza vale la riga: `fields` dice quale campo correggere **dentro la
 pagina in cui l'operatore già si trova**; `targets` dice a quale **altra cosa**
@@ -764,14 +975,14 @@ e la traduzione decide cosa sopravvive.** Misurato il 2026-08-24: i punti sono
 **cinque** (più un sesto appiattimento che non produce un envelope), e **quattro
 su cinque** buttavano via la diagnostica strutturata.
 
-| | Dove | Prima del 2026-08-24 |
-| --- | --- | --- |
-| 1 | `ErrorTranslator._from_database_error` — il `DatabaseError` **nudo** al middleware | `hint` + `fields` ✅ |
-| 2 | `payload_helpers.translate_db_errors` — **46** punti di chiamata | il solo `hint` |
-| 3 | `ErrorManager.raise_from_database_error` — **9** punti | niente |
-| 4 | `pipeline_step_executor._run_per_fattura_task` | il solo `message_primary` |
-| 5 | `pratiche._raise_known_db_error` — **12** punti | il solo `hint` |
-| — | `pipeline_runner._drive_lotto_until_done` → `errore` del payload | ⚠️ **non è un envelope**: vedi sotto |
+|     | Dove                                                                               | Prima del 2026-08-24                |
+| --- | ---------------------------------------------------------------------------------- | ----------------------------------- |
+| 1   | `ErrorTranslator._from_database_error` — il `DatabaseError` **nudo** al middleware | `hint` + `fields` ✅                 |
+| 2   | `payload_helpers.translate_db_errors` — **46** punti di chiamata                   | il solo `hint`                      |
+| 3   | `ErrorManager.raise_from_database_error` — **9** punti                             | niente                              |
+| 4   | `pipeline_step_executor._run_per_fattura_task`                                     | il solo `message_primary`           |
+| 5   | `pratiche._raise_known_db_error` — **12** punti                                    | il solo `hint`                      |
+| —   | `pipeline_runner._drive_lotto_until_done` → `errore` del payload                   | ⚠️ **non è un envelope**: vedi sotto |
 
 ⚠️ **Il quinto è stato trovato DOPO gli altri quattro**, col roll-out del
 2026-08-24 — ed è la ragione per cui questo elenco va riletto invece che dato
@@ -833,11 +1044,11 @@ che nessuno mostra non ha comportamenti sbagliati — ne ha di invisibili.*
 
 **Da dove arriva `fields`, due strade:**
 
-| Origine | Contratto | Stato |
-|---|---|---|
-| errori nati in **Python** | `context={"field": <nome>}` nel `ServiceError` | ✅ attivo (42 codici) |
-| errori nati in **PL/pgSQL** | `RAISE … USING COLUMN = '<colonna>'` → `diag.column_name` | ✅ **attivo dal 2026-08-24.** ⚠️ Prima diceva *«il backend lo legge già; le funzioni non lo mandano ancora»*, ed erano **due affermazioni false**: le funzioni lo mandano dall'08/08 (il ripiego su `parametro` copre quasi tutti i punti di sollevamento), ed è il **backend** a perderlo — su tre delle quattro strade di traduzione |
-| **violazione NOT NULL** (23502) | `column_name` lo valorizza PostgreSQL da solo | ✅ attivo, senza che nessuno scriva niente |
+| Origine                         | Contratto                                                 | Stato                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| errori nati in **Python**       | `context={"field": <nome>}` nel `ServiceError`            | ✅ attivo (42 codici)                                                                                                                                                                                                                                                                                                                 |
+| errori nati in **PL/pgSQL**     | `RAISE … USING COLUMN = '<colonna>'` → `diag.column_name` | ✅ **attivo dal 2026-08-24.** ⚠️ Prima diceva *«il backend lo legge già; le funzioni non lo mandano ancora»*, ed erano **due affermazioni false**: le funzioni lo mandano dall'08/08 (il ripiego su `parametro` copre quasi tutti i punti di sollevamento), ed è il **backend** a perderlo — su tre delle quattro strade di traduzione |
+| **violazione NOT NULL** (23502) | `column_name` lo valorizza PostgreSQL da solo             | ✅ attivo, senza che nessuno scriva niente                                                                                                                                                                                                                                                                                            |
 
 ⭐ **Il canale del DB non è da inventare**: `COLUMN` è un campo strutturato del
 `RAISE`, come `CONSTRAINT` che dal 2026-08-05 porta già il codice errore. Non
@@ -889,6 +1100,13 @@ Endpoint schema:
 * `GET /api/schema/` — specifica OpenAPI 3.0 (JSON/YAML)
 * `GET /api/docs/` — Swagger UI
 
+Entrambe sono anonime (`AllowAny`: non c'e' un token da esibire) e per questo
+esistono **solo** con `API_DOCS_ENABLED` (env `DJANGO_API_DOCS_ENABLED`, default
+= `DEBUG`): altrove rispondono **404**, non 403. Il cancello e' request-time
+(`apps/core/api/api_docs_gate.py`), presidiato da
+`apps/core/tests/api/test_superficie_pubblica.py` insieme all'assenza
+dell'admin Django (`/admin/` → 404, `/` → 404).
+
 ---
 
 ## Routing
@@ -906,11 +1124,11 @@ flag **non compare in nessun file del backend** (analisi-software-per-dati-morti
 Il refactor multi-face auth (WIP `sviluppo-multi-face-auth.md`) introduce
 la distinzione formale tra namespace per tipo di consumatore:
 
-| Namespace | Base view | Chi accede | Stato |
-| --- | --- | --- | --- |
-| `/api/v1/<dominio>/` | `DomainAPIView` / `AdminAPIView` | Operatori interni (dipendenti, ruolo_applicativo=OPERATORE) | **Attivo** |
-| `/api/v1/portale/` | `PortaleAPIView` | Clienti e fornitori del portale | **Attivo** (auth+invito+attivazione, MVP dati Stage C) |
-| `/api/v1/shop/` | `ShopAPIView` | Negozio online (pubblico + SHOP_CUSTOMER) | **Attivo** (auth+invito+attivazione admin-driven; catalogo/checkout Stage D) |
+| Namespace            | Base view                        | Chi accede                                                  | Stato                                                                        |
+| -------------------- | -------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `/api/v1/<dominio>/` | `DomainAPIView` / `AdminAPIView` | Operatori interni (dipendenti, ruolo_applicativo=OPERATORE) | **Attivo**                                                                   |
+| `/api/v1/portale/`   | `PortaleAPIView`                 | Clienti e fornitori del portale                             | **Attivo** (auth+invito+attivazione, MVP dati Stage C)                       |
+| `/api/v1/shop/`      | `ShopAPIView`                    | Negozio online (pubblico + SHOP_CUSTOMER)                   | **Attivo** (auth+invito+attivazione admin-driven; catalogo/checkout Stage D) |
 
 Le base class `PortaleAPIView` / `ShopAPIView` sono in
 `apps/core/api/base_views.py`. Auth + flussi invito/attivazione dei
@@ -940,7 +1158,7 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Anagrafiche**: [api_soggetti.md](../backend/anagrafiche/manual/api_soggetti.md) | [api_clienti.md](../backend/anagrafiche/manual/api_clienti.md) | [api_indirizzi.md](../backend/anagrafiche/manual/api_indirizzi.md) | [api_indirizzi_ruolo.md](../backend/anagrafiche/manual/api_indirizzi_ruolo.md) | [api_contatti_ruolo.md](../backend/anagrafiche/manual/api_contatti_ruolo.md) | [api_conti_bancari_ruolo.md](../backend/anagrafiche/manual/api_conti_bancari_ruolo.md) | [api_geo_config.md](../backend/anagrafiche/manual/api_geo_config.md) | [api_fornitori.md](../backend/anagrafiche/manual/api_fornitori.md) | [api_categorie_clienti.md](../backend/anagrafiche/manual/api_categorie_clienti.md) | [api_categorie_clienti_listini.md](../backend/anagrafiche/manual/api_categorie_clienti_listini.md) | [api_emittenti_fiscali.md](../backend/anagrafiche/manual/api_emittenti_fiscali.md) | [api_risorse_umane_lookup.md](../backend/anagrafiche/manual/api_risorse_umane_lookup.md) — `GET /anagrafiche/risorse-umane/lookup/`, il picker delle persone interne (responsabile commessa): cross-dominio, legge la vista modello `vw_risorse_umane_dettaglio`
 * **Catalogo**: [api_catalogo.md](/backend/catalogo/manual/api_catalogo) — articoli (CRUD, lista `catalogo.articoli` id 26, UoM operative, BoM, note): oltre alla natura di vendita (*dove va* la riga) l'articolo dichiara **da dove arriva** — `modo_approvvigionamento_id` (lookup generico `rel=config.modi_approvvigionamento`, default `ACQUISTO`), `gestito_a_magazzino` (default `false`, fail-safe) e `lead_time_giorni` (nullable per modello). ⚠️ `ARTICOLI_DETAIL_COLUMNS` è una proiezione **per nome** da `vw_articoli_dettaglio`: una colonna nuova della vista non esce finché nessuno la nomina
 * **Auth**: [api_multi_veste_token.md](/backend/core/manual/api_multi_veste_token) | [auth_views_audit.md](/backend/core/manual/auth_views_audit) | [api_user_profile.md](/backend/core/manual/api_user_profile) | [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore) | [api_invito_portale_shop.md](/backend/core/manual/api_invito_portale_shop) | [api_logout.md](/backend/core/manual/api_logout)
-* **Email**: [api_email.md](/backend/core/manual/api_email)
+* **Email**: [api_email.md](/backend/core/manual/api_email) — dal 2026-09-26 la famiglia `/core/email/` ha una porta: `GET /core/email/log/` (+ `log/stati/`) e' aperta a **ogni operatore** (`skip_area_check`, sola lettura) e la consuma la voce frontend Strumenti › Email (voce senza `requireArea`; il dominio «Personale» del 2026-09-26 e' stato assorbito in Strumenti lo stesso giorno). Chi vede quale mail lo decide la RLS per ambito (`script.fn_scope_email_ambito`: SISTEMA al super admin, REPARTO al reparto, OPERATORE all'autore, sempre in AND con l'emittente), non la view. ⛔ Bozze e invio restano sotto l'area `config` finche' non esiste l'azione di processo `invia_email`
 * **Parametri**: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md)
 * **Core — Lookup tipi di entità**: [api_tipi_entita_lookup.md](../backend/core/manual/api_tipi_entita_lookup.md) — dal 2026-09-19 `GET /core/lookup/tipi-entita/`: il vocabolario **vivo** di `config.tipi_entita` con l'`etichetta_key` che il DB dichiara. ⛔ Lookup dedicato perché la tabella non ha `id`/`descrizione`. Nasce perché la tendina «Entità» del giornale trasversale si era ricopiata sette codici su nove: un vocabolario del DB si legge, non si specchia
 * **Vendite — Pricing v5**: [api_preventivi.md](/backend/vendite/manual/api_preventivi) | [api_listini.md](/backend/vendite/manual/api_listini) | [api_contratti.md](/backend/vendite/manual/api_contratti) | [api_promo_articoli.md](/backend/vendite/manual/api_promo_articoli) | [api_pricing.md](/backend/vendite/manual/api_pricing) | [api_approvazioni_prezzo.md](/backend/vendite/manual/api_approvazioni_prezzo) | [api_vendite_lookups.md](/backend/vendite/manual/api_vendite_lookups) | [api_vendite_form_defaults.md](/backend/vendite/manual/api_vendite_form_defaults) | [api_registri_numerazione.md](/backend/vendite/manual/api_registri_numerazione) | [api_famiglie_documento.md](/backend/vendite/manual/api_famiglie_documento) — il CRUD delle famiglie di documento (`/vendite/famiglie/`, `AdminAPIView`): la creazione passa dalla madre `fn_crea_famiglia_documento`, che provvede anche i registri; `colonna_billing_account` è **facoltativa** come `colonna_serie` (`NULL` = «questa famiglia non ha un billing account», la forma dell'ordine di acquisto)
@@ -960,13 +1178,15 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Vendite — Dashboard competenza (Lente 1)**: [api_dashboard_competenza.md](/backend/vendite/manual/api_dashboard_competenza) — funnel commessa→fattura per mese di competenza: aggregata 12 mesi × 4 stadi + breakdown stato fattura, drill-down attività, drill-down per commessa, **gruppi fatturabili** (`gruppi/` — l'unità dell'emissione mirata: documento sorgente oppure oneri di commessa, con riepilogo di perimetro nell'envelope; la `gruppo_key` è la stessa accettata da `fatturazione/run/`), errori vivi, e dal 2026-08-27 i **residui** (`residui/` + `residui/export/` — le attività che una fattura non ce l'hanno più e che nessun giro riprenderà da solo: è l'elenco su cui agisce «Riporta da emettere». ⛔ Non è un filtro di `attivita/`: lo stadio `EMESSA_NON_FATTURATA` contiene **quattro** situazioni e solo `RESIDUO` chiede un'azione — esporre un parametro per sceglierla darebbe l'illusione di poter allargare il perimetro del verbo, che invece lo decide il modello. ⚠️ Default `competenza_mese` **ASC** e non `valore` DESC come le liste sorelle: non è una lista di grandezze, è una **coda di recupero** — il residuo più vecchio è il più vicino al limite di emissione) (read-only su `vw_dash_competenza_*`)
 * **Vendite — Dashboard backlog (Lente 2)**: [api_dashboard_backlog.md](/backend/vendite/manual/api_dashboard_backlog) — non-collegati per anzianità + classe di azionabilità: contatori 🟠/🔵/🔴 + lista con motivo/azione (read-only su `vw_dash_backlog_*` + lookup `config.motivi_fermo`)
 * **Pagamenti — il giro degli incassi** (registrato qui il 2026-09-12: le 25 rotte erano in esercizio dal 2026-08-24 e nessuna pagina le nominava — `copertura_doc_api` dava l'area al **4%**): [api_pagamenti.md](/backend/pagamenti/manual/api_pagamenti) — una pagina sola per il dominio, come per la generazione documenti: la **distinta** (`distinte/`, `<id>/stato/`, e dal 2026-09-18 le righe come **lista configurabile** `distinte/<id>/righe/` + `export/` — lista `pagamenti.distinta_righe`, paginata, «la contabile in CSV/Excel»; fino a quel giorno viaggiavano dentro il dettaglio, su una `DataTable` grezza senza pagina né export), la **registrazione** (`anteprima-registrazione/`, `registra/` — una sola `SELECT` sulla madre, esito `NULLA_DA_POSTARE` che risale intatto — e la **correzione guidata** `correggi/`), l'**abbinamento** (`righe/<id>/abbina/` con la forzatura a due tempi: `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` è il primo codice con `ui_action = confirm_and_retry`), le due **code** (`righe/?coda=`), `rate/fuori-capienza/`, la **base dei saldi** a tre livelli (`rate/<id>/saldo/`, `fatture/<id>/saldo/`, `fatture/<id>/rate/` — sede unica, forma unica `residuo · in_lavorazione · incassato`; `escludi_riga_id` = «prima di sé» sulla rata dal 17/09 e sul documento dal 18/09, stesso parametro dichiarato una volta) e dal 2026-09-17 la sua **quarta lettura**, `rate/` — l'elenco paginato delle rate col saldo (lista `pagamenti.rate`), sorgente del **picker** della distinta e dello scadenzario: pagina prima, saldo dopo dal nucleo `fn_get_saldi_rate` con l'array degli id, numero fattura **esatto** (101 non porta 1010), «aperta» = `residuo <> 0`, e dal 18/09 `solo_numerate` — le rate delle **bozze** fuori, il picker lo passa sempre; e il verbo di collezione `distinte/<id>/righe/da-rate/` — **N rate scelte → N righe** con esito **PARZIALE per riga** via `run_fan_out`, ogni fallita col suo errore intero (`ui_action` compresa: il secondo tempo della capienza è per riga) —, le **sistemazioni** (`eccedenze/`, `sistemazioni/` + `conferma/`/`annulla/`, `fatture/<id>/sistemazioni/` + `export/`) e i **canali di incasso** (`enti-incasso/`, `conti-incasso/`). ⚠️ Le quattro rotte `fatture/<id>/…` hanno `skip_area_check`: le consuma il drawer fattura di `vendite`, che non può chiamare `pagamenti` lateralmente. 🔴 `registra/` e `correggi/` sono gated su `registra_distinta`, fail-closed finché l'azione non è assegnata a un profilo
+* **Magazzino — le anagrafiche** (2026-09-21, [piano](work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)): [api_anagrafiche_magazzino.md](/backend/magazzino/manual/api_anagrafiche_magazzino) — `GET/POST /magazzino/magazzini/` (+ `export/`, `<id>/` GET/PATCH), le ubicazioni **sotto il padre** `GET/POST /magazzino/magazzini/<id>/ubicazioni/` (+ `export/`, `<uid>/`), i lotti **per articolo** `GET/POST /magazzino/lotti/?articolo_id=` (+ `export/`, `<id>/`). Liste a catalogo 80-82; RLS sull'emittente del magazzino (404 no-leak, `E_MAG_*_NON_TROVAT*`), `lotti` senza perimetro (`perimetro_emittente = false`). Il documento interno, i lookup di riga e la consultazione hanno la loro pagina (riga sotto).
+* **Magazzino — il documento interno e la consultazione** (2026-09-25, [piano Lotto 2](work-done/piano-be-fe-magazzino-lotto-2-motore.md)): [api_magazzino.md](/backend/magazzino/manual/api_magazzino) — inventario e rettifica come **una famiglia** (`FamigliaDocumentoInterno`, rotte sotto `/magazzino/{inventari|rettifiche}/` dalla stessa factory): lista + `export/`, crea/dettaglio/`PATCH`/`DELETE`, `<id>/stato/`, **`<id>/registra/`** (il gesto irreversibile: `post_permission = registra_magazzino` **e** lo stesso controllo dentro il verbo a DB), righe (lista, `export/`, CRUD), e solo per l'inventario `<id>/piano/` (+ `export/`). Il dettaglio porta il blob `capabilities` di `fn_available_actions_<famiglia>` **intatto**, con la terna `can_registra*`. L'anteprima `righe/motivi/` è `fn_check_riga_magazzino` così com'è; tre lookup di riga dedicati (ubicazioni, lotti, seriali). Consultazione: `disponibilita/` (+ `articoli/`, `blocchi/`), `movimenti/` (con `inventario_id`/`rettifica_id` per il deep-link dal documento registrato). Liste a catalogo 70-77. Scritta il 2026-09-25: le rotte erano in esercizio dal 2026-09-18 senza una pagina che le nominasse.
 * **Documenti**: [api_documenti_templates.md](/backend/documenti/manual/api_documenti_templates) — read-only v1 motore documentale (lista/dettaglio template + versioni). Building block trasversali per view "per sorgente" (offerta/preventivo/contratto): [api_documenti_helpers.md](/backend/documenti/manual/api_documenti_helpers) — `resolve_contesto_documentale` + `extract_allegati` (2026-05-28). **Ristampa fedele** (2026-08-03): [api_ristampa_fedele.md](/backend/documenti/manual/api_ristampa_fedele) — `GET .../documenti/<id>/ristampa/` sui 6 domini sorgente: ri-renderizza il documento **com'era** (versione di template pinnata, anche OBSOLETA + `context_json` congelato), senza persistere nulla. È il terzo percorso, distinto dallo **scarica originale** (`file/`, richiede il file su storage: la persistenza è iniziata il 2026-07-21) e dal **genera nuovo documento** (`genera/`, modello e dati di oggi — che fino al 2026-08-03 si chiamava impropriamente «ristampa»). Fedeltà dichiarata in header `X-Ristampa-Pdf-Hash-Match`: byte diversi = fedele nel contenuto, non un errore.
 * **Core — Gestione code (tracciamento)**: [api_gestione_code.md](/backend/core/manual/api_gestione_code) — badge conteggi code + liveness worker (`tracciamento/code/conteggi/`), liste coda lavori/stampa (`tracciamento/coda-lavori/`, `tracciamento/coda-stampa/`, scope operatore, `?ambito=tutti` con `code_manage`), dettaglio job e azioni `annulla/`/`requeue/` (ownership scope-based BE, 404 no-leak). ⭐ Dal 2026-09-04 anche l'**archiviazione** — `archivia/` e `ripristina/` su **entrambe** le code, rotte di **collezione** (`{"ids": [...]}`, tetto 200, dedup) perché il gesto è di massa e il menu di riga manda un elenco di uno: toglie una riga dall'**elenco** senza toccarne lo **stato**, perché i conteggi del pannello «Esiti fatturazione» sono un `GROUP BY` sullo stato **senza filtro di visibilità** e qualunque cancellazione o annullamento li sposterebbe. ⛔ Gate **`code_manage`** e non l'ownership degli altri due verbi: l'effetto è **globale** (chi archivia toglie la riga anche all'amministratore), e un verbo globale in un modello di permessi per-proprietario non compone. ⛔ Il criterio «solo una riga non viva si archivia» sta nel **trigger** (`dbops.trgfn_coda_archiviazione`, una funzione per due code) più il `CHECK`: il backend traduce `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` (409) e passa, senza tenerne una copia — e nemmeno scrive `archiviato_il`/`archiviato_da`, che le deriva il trigger dalla GUC. ⚠️ Le liste nascondono le archiviate di default (`?archiviate=1` le chiede) e dichiarano **`archiviate_count`**: senza quel numero «coda pulita» e «tre righe messe via» si leggono uguali. ⛔ E la bandiera **non entra** nel `WHERE` di claim, drainer, reaper, `mark_*` e `count_*`: è la cosa che distingue l'archiviazione da un annullamento silenzioso. ⛔ **Esito PARZIALE via `run_fan_out`** (un savepoint per riga): il rifiuto è per riga, quindi venti archiviazioni buone non si perdono per una riga tornata al lavoro — chi consuma guarda `esito` e `falliti[]`, non lo status. È anche la ragione per cui non si fa un solo `UPDATE … WHERE id = ANY(…)` col predicato di stato: sarebbe la seconda copia di «riga viva». ⭐ **Dal 2026-09-06 la soglia di liveness del badge non è più un numero nel backend**: arriva dal *dichiarato di deploy* (`backend/deploy/sveglie.json`, campo `tolleranza_minuti`) via `apps.core.services.sveglie` — vedi [sveglie_processi.md](/backend/core/manual/sveglie_processi). Il valore a video non cambia (10 minuti per entrambi i drainer): cambia **chi lo dice**. Prima era `WORKER_ATTIVO_SOGLIA_MINUTI = 10` accanto a un commento che spiegava la scelta con l'`OnCalendar` scritto in un ALTRO file — cioè lo stesso fatto in due sedi che non si conoscevano, e la divergenza sarebbe stata **muta**: un pallino verde su un worker fermo. ⚠️ Il contratto della risposta per worker è `{last_run_at, attivo, in_corso, ultima_conclusa}` — dal 2026-09-14 senza `last_ok`, che era l'esito di una corsa accanto alla data di un'altra (dettaglio in [api_gestione_code.md](/backend/core/manual/api_gestione_code) §1)
-* **UI — Personalizzazioni liste (runtime)**: [api_ui_liste.md](/backend/ui/manual/api_ui_liste) — risoluzione configurazione lista, catalogo modale, UPSERT/DELETE preferenza utente. Meta-API trasversale (`skip_area_check=True`).
+* **UI — Personalizzazioni liste (runtime)**: [api_ui_liste.md](/backend/ui/manual/api_ui_liste) — risoluzione configurazione lista, catalogo modale, UPSERT/DELETE preferenza utente, e dal 2026-09-30 `GET /ui/misure-pagina/`: le misure «righe per pagina» e i due default dal catalogo DB `ui.misure_pagina`, per **tutti** i paginatori (il frontend le legge una volta per sessione). Meta-API trasversale (`skip_area_check=True`).
 * **UI — Personalizzazioni liste (admin Blocco F)**: [api_ui_admin_personalizzazioni.md](/backend/ui/manual/api_ui_admin_personalizzazioni) — Fase 1: CRUD preset (testata + composizione atomica) + UPSERT/DELETE permessi colonna; auth via azioni di processo `ui_preset_manage`/`ui_permesso_manage` o SUPER_ADMIN. Fase 2 (DEF-5b 2026-05-10): CRUD `ui.lista_definizione` + `ui.lista_colonna` SUPER_ADMIN-only via `AdminAPIView`.
-* **UI — Export liste (DEF-1, 2026-05-10)**: endpoint dedicato per dominio (`GET /api/v1/anagrafiche/clienti/export/?formato=csv|xlsx`, `GET /api/v1/anagrafiche/soggetti/export/?formato=csv|xlsx` dal 2026-05-11, `GET /api/v1/anagrafiche/fornitori/export/?formato=csv|xlsx` dal 2026-05-24, `GET /api/v1/vendite/contratti/export/?formato=csv|xlsx` dal 2026-06-02; estensione altre liste in DEF-8). Renderer puro generico `apps.ui.services.lista_export_service.ListaExportService` no-fetch: riceve righe + config colonne + filtri applicati, produce bytes CSV (BOM UTF-8 + header `#` JSON filtri) o XLSX (foglio "Dati" + foglio "Filtri applicati", styling header bold). Hard cap 10.000 righe, errori `E_UI_EXPORT_LIMIT_EXCEEDED` (422) / `E_UI_EXPORT_FORMAT_INVALID` (400) / `E_UI_EXPORT_FAILED` (500). Niente SQL dinamico sulla `vista_sql`: ogni dominio chiama il proprio repository esistente e delega al renderer. **Coda invariante estratta** (regola del 2, 2026-06-02) in `apps.ui.api.export_helpers.{parse_export_format,build_export_response}`: ogni view export mantiene solo il parsing dei propri filtri + la chiamata al service con `limit=EXPORT_MAX_ROWS+1`; validazione formato, guard limite, risoluzione colonne dalla config runtime, render e `HttpResponse` vivono nel building block. ⭐ **La view `…/export/` dichiara LO STESSO `lista_codice` della lista accanto** — e dal 2026-09-18 lo pretende un presidio che legge le coppie dalle rotte (`apps/core/tests/test_export_lista_codice_pari.py`, 28 coppie): due letterali uguali divergono al primo rename senza nessun errore, e il file avrebbe le colonne di un'altra lista. La forma che non diverge è `lista_codice = ApiLista.lista_codice` (`distinta_righe`, `sistemazioni_fattura`).
+* **UI — Export liste (DEF-1, 2026-05-10)**: endpoint dedicato per dominio (`GET /api/v1/anagrafiche/clienti/export/?formato=csv|xlsx`, `GET /api/v1/anagrafiche/soggetti/export/?formato=csv|xlsx` dal 2026-05-11, `GET /api/v1/anagrafiche/fornitori/export/?formato=csv|xlsx` dal 2026-05-24, `GET /api/v1/vendite/contratti/export/?formato=csv|xlsx` dal 2026-06-02; estensione altre liste in DEF-8). Renderer puro generico `apps.ui.services.lista_export_service.ListaExportService` no-fetch: riceve righe + config colonne + filtri applicati, produce bytes CSV (BOM UTF-8 + header `#` JSON filtri) o XLSX (foglio "Dati" + foglio "Filtri applicati", styling header bold). Hard cap 10.000 righe, errori `E_UI_EXPORT_LIMIT_EXCEEDED` (422) / `E_UI_EXPORT_FORMAT_INVALID` (400) / `E_UI_EXPORT_FAILED` (500). Niente SQL dinamico sulla `vista_sql`: ogni dominio chiama il proprio repository esistente e delega al renderer. **Coda invariante estratta** (regola del 2, 2026-06-02) in `apps.ui.api.export_helpers.{parse_export_format,build_export_response}`: ogni view export mantiene solo il parsing dei propri filtri + la chiamata al service con `limit=EXPORT_MAX_ROWS+1`; validazione formato, guard limite, risoluzione colonne dalla config runtime, render e `HttpResponse` vivono nel building block. ⭐ **La view `…/export/` dichiara LO STESSO `lista_codice` della lista accanto** — e dal 2026-09-18 lo pretende un presidio che legge le coppie dalle rotte (`apps/core/tests/test_export_lista_codice_pari.py`, 28 coppie): due letterali uguali divergono al primo rename senza nessun errore, e il file avrebbe le colonne di un'altra lista. La forma che non diverge è `lista_codice = ApiLista.lista_codice` (`distinta_righe`, `sistemazioni_fattura`). ⭐ **La ricerca libera nel file la dichiara il BB, non la view** (2026-09-29, regola del 2): `build_export_response` passa al renderer `filtri_export_con_ricerca(request, …)`, che legge `search` dalla richiesta e lo scrive come `"Ricerca"` **solo se ha filtrato davvero** (dopo lo `strip`, alla soglia della lista — `soglia_ricerca`, la stessa di `add_ricerca_full_condition`); le chiavi `search`/`Ricerca` eventualmente messe dal caller si tolgono, così non compare due volte. Le view dichiarano solo i **propri** filtri (i `resolve_filtri_export_label` non hanno più il parametro `search`). Prima la dichiaravano le view, a modo loro, e chi se ne dimenticava (righe distinta, righe inventario/rettifica, righe dei documenti di vendita) consegnava un file filtrato con `# Filtri applicati: {}`. ⚠️ Invariante: una lista con colonne `ricercabile_full` applica `search` anche nell'export — il file è la lista che l'operatore vede.
 
-* **AI Assistant** (registrato qui il 2026-09-09: l'app esisteva e questo elenco non la nominava): [api_ai_query.md](/backend/ai-assistant/manual/api_ai_query) | [api_ai_status.md](/backend/ai-assistant/manual/api_ai_status) | [ai_tool_registry.md](/backend/ai-assistant/manual/ai_tool_registry) — `POST /api/v1/ai-assistant/query/` (linguaggio naturale + function calling su 18 tool di dominio) e `GET .../status/`. ⛔ **Le rotte sono montate solo se `AI_ENABLED=1`**: a flag spento l'app non e' nemmeno in `INSTALLED_APPS`. ⭐ I tool non aggirano il perimetro: leggono con la connessione dell'utente (quindi RLS attiva) e ciascuno puo' dichiarare la propria azione di processo, speculare al `<action>_permission` dell'endpoint corrispondente. 🔴 **Difetto aperto al 2026-09-09**: `AIQueryView` dichiara `area_funzionale = "ai_assistant"`, che **non esiste in `config.aree_funzionali`** (13 righe a catalogo, quella non c'e'). `script.fn_resolve_livello_area` cade percio' sul default `BLOCCATO` ⇒ l'endpoint e' raggiungibile **solo da un `SUPER_ADMIN`**, e a nessun altro operatore il permesso puo' essere concesso, perche' non esiste la riga a cui appenderlo. Da sanare **prima** di accendere il flag: vedi `docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md` §3 D5.
+* **AI Assistant** (registrato qui il 2026-09-09: l'app esisteva e questo elenco non la nominava): [api_ai_query.md](/backend/ai-assistant/manual/api_ai_query) | [api_ai_status.md](/backend/ai-assistant/manual/api_ai_status) | [ai_tool_registry.md](/backend/ai-assistant/manual/ai_tool_registry) — `POST /api/v1/ai-assistant/query/` (linguaggio naturale + function calling su 18 tool di dominio) e `GET .../status/`. ⛔ **Le rotte sono montate solo se `AI_ENABLED=1`**: a flag spento l'app non e' nemmeno in `INSTALLED_APPS`. ⭐ L'assistente si concede per area come ogni dominio: `ai_assistant` e' a catalogo dal 2026-09-25 (riga 14 di `config.aree_funzionali`). `LETTURA` consulta, `TUTTO` anche agisce (i tool di scrittura, sempre con conferma), `BLOCCATO` non entra; vale sempre il piu' stretto fra questo livello e quello del dominio del tool. L'ingresso chiede `view` (`post_accesso = "view"`: una domanda e' una lettura), e `status/` dice in anticipo se l'utente e' dentro (`utilizzabile`), cosi' la topbar mostra la chat solo a lui. ⭐ I tool non aggirano niente: il permesso e se il tool scrive si **derivano** dal suo endpoint gemello (`valuta_accesso_endpoint`, `chiamata_in_scrittura`), leggono con la connessione dell'utente (RLS attiva), e ogni lettura — anche l'anteprima di una scrittura — gira in `transazione_sola_lettura`, quindi una scrittura li' dentro la ferma il DB (`25006`). Dettaglio in [brief-db-area-funzionale-assistente-ai](work-done/brief-db-area-funzionale-assistente-ai.md).
 
 Per i building block backend riutilizzabili (helpers, services, repository), consultare il [Catalogo Building Block Backend](backend/catalogo-building-block-backend.md).
 
@@ -974,36 +1194,78 @@ Per i building block backend riutilizzabili (helpers, services, repository), con
 
 ## Autenticazione e autorizzazione
 
-| Aspetto            | Dettaglio                                                                    |
-| ------------------ | ---------------------------------------------------------------------------- |
-| Protocollo         | JWT Bearer su tutti gli endpoint `/api/v1/*`                                 |
-| Token login        | 3 endpoint namespace-specific (admin/portale/shop), vedi sezione sotto       |
-| Token refresh      | 3 endpoint namespace-specific con guard cross-veste                          |
-| JWT claim custom   | `identita_id` + `ruolo_applicativo` + `sid` (session id stabile)             |
-| Permission class   | `ZeroERPPermission` — risoluzione centralizzata                              |
-| Superuser          | Bypass totale                                                                |
-| SUPER_ADMIN        | Bypass via `script.fn_is_super_admin` (filtro veste OPERATORE, §8.3.7)       |
-| DISABILITATO       | Rifiuto immediato su `ruolo_applicativo = DISABILITATO`                      |
-| Azione processo    | Verificata se la view dichiara `post_permission` / `get_permission`          |
-| CRUD standard      | Livello area/oggetto (`TUTTO`, `LETTURA`, `BLOCCATO`)                        |
-| Scope emittente    | Filtra i dati per emittente fiscale autorizzato (vedi sotto)                 |
+| Aspetto             | Dettaglio                                                               |
+| ------------------- | ----------------------------------------------------------------------- |
+| Protocollo          | JWT Bearer su tutti gli endpoint `/api/v1/*`                            |
+| Token login         | 3 endpoint namespace-specific (admin/portale/shop), vedi sezione sotto  |
+| Token refresh       | 3 endpoint namespace-specific con guard cross-veste                     |
+| Dove sta il refresh | ⛔ **Mai nel corpo**: cookie `HttpOnly` (dal 2026-09-28), vedi sotto     |
+| Durata access       | 10 minuti; il frontend lo tiene solo in memoria e lo rinnova dal cookie |
+| JWT claim custom    | `identita_id` + `ruolo_applicativo` + `sid` (session id stabile)        |
+| Permission class    | `ZeroERPPermission` — risoluzione centralizzata                         |
+| Superuser           | Bypass totale                                                           |
+| SUPER_ADMIN         | Bypass via `script.fn_is_super_admin` (filtro veste OPERATORE, §8.3.7)  |
+| DISABILITATO        | Rifiuto immediato su `ruolo_applicativo = DISABILITATO`                 |
+| Azione processo     | Verificata se la view dichiara `post_permission` / `get_permission`     |
+| CRUD standard       | Livello area/oggetto (`TUTTO`, `LETTURA`, `BLOCCATO`)                   |
+| Scope emittente     | Filtra i dati per emittente fiscale autorizzato (vedi sotto)            |
 
 ### Endpoint login/refresh multi-veste (§8.3 PR-B1)
 
 Post refactor multi-face auth, ogni namespace ha i propri endpoint di login
 e refresh che ammettono solo il subset di vesti che gli compete:
 
-| Path login | Path refresh | Vesti ammesse |
-| --- | --- | --- |
-| `POST /api/v1/admin/token/` | `POST /api/v1/admin/token/refresh/` | `OPERATORE` |
+| Path login                    | Path refresh                          | Vesti ammesse                          |
+| ----------------------------- | ------------------------------------- | -------------------------------------- |
+| `POST /api/v1/admin/token/`   | `POST /api/v1/admin/token/refresh/`   | `OPERATORE`                            |
 | `POST /api/v1/portale/token/` | `POST /api/v1/portale/token/refresh/` | `CLIENTE_PORTALE`, `FORNITORE_PORTALE` |
-| `POST /api/v1/shop/token/` | `POST /api/v1/shop/token/refresh/` | `SHOP_CUSTOMER` |
+| `POST /api/v1/shop/token/`    | `POST /api/v1/shop/token/refresh/`    | `SHOP_CUSTOMER`                        |
 
 Il vecchio path unificato `/api/v1/auth/token/` e' stato **rimosso senza
 alias** (breaking, grace 0). Client pre-refactor devono aggiornarsi.
 
+#### Il login a due passi (secondo fattore, dal 2026-10-01)
+
+Con il secondo fattore **attivo** sulla credenziale, il login risponde 200
+**senza** JWT e senza cookie:
+
+```json
+{ "two_factor_required": true, "sfida": "<firmata>", "scade_in_secondi": 300 }
+```
+
+Il secondo passo è `POST /api/v1/{admin|portale|shop}/token/secondo-fattore/`
+con `{"sfida", "codice"}` oppure `{"sfida", "codice_recupero"}`: risponde
+nell'envelope `{"data": {"access", "password_change_required"?,
+"codici_recupero_rimasti"?}}` e scrive il refresh nel cookie. Sfida scaduta, di
+un'altra porta o provenienza → 401 `E_TOTP_SFIDA_NON_VALIDA` (si riparte dalla
+password); codice sbagliato → 400 `E_TOTP_CODICE_NON_VALIDO`, e conta come una
+password sbagliata. Il successo sul freno si registra solo al secondo passo.
+Brief: [sicurezza](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis, T-2.
+
 Contratto HTTP completo, claim JWT, codici errore e guard cross-namespace:
 [api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md).
+
+### ⛔ Il refresh token viaggia nel cookie, mai nel corpo
+
+Dal 2026-09-28 ([brief sicurezza](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md)
+§2). Il refresh vale un giorno e rinnova la sessione: in `localStorage` o in un
+corpo JSON lo legge qualunque script giri nella pagina. Ora sta in un cookie
+che il JavaScript non vede, e l'access (10 minuti) vive solo nella memoria del
+frontend.
+
+| Aspetto | Regola |
+| --- | --- |
+| Cookie | `zeroerp_refresh`, `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/`, `Secure` fuori da DEBUG, durata = `REFRESH_TOKEN_LIFETIME` |
+| Chi lo scrive | login e refresh dei tre canali, cambio password, cambio emittente attivo: il refresh esce dal corpo e va nel `Set-Cookie` |
+| Chi lo legge | refresh, logout, cambio emittente attivo: dal cookie, il corpo non lo porta più |
+| Chi lo cancella | il logout, in ogni risposta |
+| Anti-CSRF | il refresh è l'unica rotta autenticata dal **solo** cookie, quindi pretende anche `X-Requested-With: XMLHttpRequest` (senza → 403 `E_PERMISSION_DENIED`). Logout e cambio emittente pretendono già il Bearer |
+| Sede | ⛔ **un** building block, `apps/core/api/refresh_cookie.py`: nome, attributi, lettura, scrittura e cancellazione. Un cookie scritto con un `Path` e cancellato con un altro non si cancella |
+
+⚠️ `Path=/api/v1/` e non il solo endpoint di refresh: il refresh serve anche a
+logout, cambio emittente e cambio password, che stanno altrove (decisione di
+Tid, 2026-09-28). Una view nuova che emette o consuma il refresh passa dal BB,
+non scrive `set_cookie` a mano.
 
 ### Identita utente: `ruolo_applicativo` e `SUPER_ADMIN`
 
@@ -1013,7 +1275,9 @@ stato sostituito dal refactor multi-face auth con:
 * `ruolo_applicativo` — categoria dell'identita' digitale
   (`OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`,
   `API_CLIENT`, `DISABILITATO`). Letto via
-  `PermissionResolver.get_ruolo_applicativo(user)` (GUC-first).
+  `PermissionResolver.get_ruolo_applicativo(user)` (GUC-first), che risponde
+  per la **sessione**: ⛔ mai per un altro utente (S-6). Di un altro si chiede
+  il fatto preciso, per esempio `has_veste_operatore_attiva(user)`.
 * `SUPER_ADMIN` — privilegio di bypass totale, bindato sulla singola
   identita' via `config.profili_accesso_bindings` (profilo id 9100).
   Letto via `PermissionResolver.is_super_admin(user)`.
@@ -1027,22 +1291,23 @@ il frontend legge `is_super_admin` (analisi-software-per-dati-morti §4).
 ### Propagazione identita' al DB (GUC)
 
 Al login e su ogni request JWT, `JwtAuditAuthentication` propaga
-5 GUC di sessione PostgreSQL per audit e RLS:
+6 GUC di sessione PostgreSQL per audit e RLS:
 
-| GUC | Valore |
-| --- | --- |
-| `app.jwt_user` | username Django |
-| `app.current_user_id` | `auth_user.id` |
-| `app.current_identita_id` | `identita_digitali.id` dell'identita attiva |
-| `app.ruolo_applicativo` | `OPERATORE` / `CLIENTE_PORTALE` / ... |
-| `app.soggetto_ruolo_id` | `soggetti_ruoli.id` dell'identita' |
+| GUC                        | Valore                                                                                 |
+| -------------------------- | -------------------------------------------------------------------------------------- |
+| `app.jwt_user`             | username Django                                                                        |
+| `app.current_user_id`      | `auth_user.id`                                                                         |
+| `app.current_identita_id`  | `identita_digitali.id` dell'identita attiva                                            |
+| `app.ruolo_applicativo`    | `OPERATORE` / `CLIENTE_PORTALE` / ...                                                  |
+| `app.soggetto_ruolo_id`    | `soggetti_ruoli.id` dell'identita'                                                     |
+| `app.current_emittente_id` | `emittenti_fiscali.id` dell'emittente in scope (vuoto se il token non ne dichiara uno) |
 
 Invariante "tutto o niente": i 3 GUC di identita' sono popolati insieme
 o restano stringa vuota. Vedi
 `docs/it/guide/risorse-umane-e-accessi.md` sezione GUC.
 
 **Reset per-richiesta (anti-leak).** `JwtAuditMiddleware.process_request`
-azzera i 5 GUC all'**inizio** di ogni richiesta `/api/`, **prima** che
+azzera i 6 GUC all'**inizio** di ogni richiesta `/api/`, **prima** che
 l'auth class li ripopoli e prima di qualunque query. È **incondizionato**
 (anche richieste anonime) e **fail-closed**: se il reset fallisce la
 richiesta NON viene servita (500 `E_GUC_RESET_FAILED`). Chiude il leak
@@ -1103,6 +1368,38 @@ a quel giorno cinque voci dell'inventario qui sopra dicevano «la testata ha la
 RLS, il figlio no»: corrette il 2026-09-12, e il fatto sta scritto **qui** e
 non più in cinque sedi.
 
+⭐ **E l'ordine si scrive con un BB, non a mano** (2026-09-21):
+`testata_o_not_found(getter, id, code=…, message=…, id_name=…, function_name=…)`
+in `apps/core/services/testata_guard.py`. Ogni service di documento lo avvolge
+nel proprio `_get_testata_or_raise(repo, id, *, op)` — nome uguale in ordini,
+DDT, preventivi e resi — e i satelliti (`list_righe`, `list_riepilogo_iva`,
+`list_revisioni`, `list_componenti_riga`) lo chiamano **prima** del repository.
+Per una **riga** nell'URL il gemello e' `riga_del_padre_o_not_found` (via
+`_get_riga_or_raise(repo, <doc>_id, riga_id, *, op)`): esiste **ed** e' di quel
+documento, o 404 — `/ordini/999/righe/24/` non apre la riga 24 di un altro ordine.
+⚠️ Il censimento di quel giorno aveva trovato **dieci** satelliti di `vendite`
+che passavano dritti al repository: sotto RLS rispondevano `200 []` a un padre
+fuori perimetro, indistinguibile da «nessuna riga». Un satellite nuovo che
+non legge la testata è lo stesso difetto, e non dà nessun errore.
+⭐ **E un pre-check Python di una regola che il DB fa rispettare usa il codice del DB**
+(2026-09-22, decisione B di Tid): «le righe si toccano solo in bozza» è
+`E_RIGA_DOC_NON_BOZZA` sia dal trigger `trgfn_doc_righe_lock_fuori_bozza` sia dai
+pre-check di ordini/DDT/preventivi/contratti/resi (BB `richiedi_righe_in_bozza`,
+frase a catalogo composta coi tre valori). Prima erano **cinque** codici
+(`E_DDT_STATO_TRANSIZIONE`, `E_ORD_STATO_TRANSIZIONE`,
+`E_PREV_STATO_NON_MODIFICABILE`, `E_CONTRATTO_NON_MODIFICABILE`,
+`E_RESO_STATO_TRANSIZIONE` — che restano alla **testata**), cioè lo stesso
+rifiuto con due nomi a seconda di chi lo diceva. Il pre-check è lecito — un 409 prima di
+scrivere, e l'unico cancello dove il DB non arriva ancora — ma la regola è **una**
+e ha un nome a catalogo: chiunque la sollevi la chiama così.
+
+⛔ **Il doppio filtro Python su OGNI endpoint non è la regola** — è esattamente
+il pattern che l'analisi RLS (§2.3) ha dichiarato fragile: la RLS è il
+cancello uniforme, il filtro applicativo sta sulle **liste di testata** (tutte
+quelle di `vendite` e `anagrafiche`, offerte comprese dal 21-09) e l'ordine di
+lettura sui satelliti. `pratiche` resta da allineare: brief
+`work-in-progress/brief-be-pratiche-perimetro-emittente-lato-python.md`.
+
 Vedi `docs/it/dev/work-done/analisi-attivazione-rls-operatori.md`.
 
 ---
@@ -1141,6 +1438,29 @@ Separazione logica, non fisica. Nei repository:
 Non creare sottodirectory `commands/` e `queries/`. La separazione
 nei commenti e nelle sezioni del file e' sufficiente.
 
+#### ⛔ Una GET non scrive, e lo garantisce il DB
+
+Dal 2026-09-25 ogni `GET`/`HEAD` delle API gira in una transazione di **sola
+lettura** (`SolaLetturaMiddleware`, ultimo della catena; il blocco e' il BB
+`transazione_sola_lettura`). Una scrittura tentata dalla view — anche dentro una
+funzione `SECURITY DEFINER` — fallisce, e arriva come **500
+`E_SCRITTURA_IN_LETTURA`** col nome della view nel log. Conseguenze per chi
+scrive codice:
+
+* un service chiamato da una `GET` non scrive **sulla connessione della
+  richiesta**: se deve farlo, la scrittura esce dalla `GET` (un'azione `POST`),
+  oppure la view lo **dichiara** con `scrittura_in_get = "<motivo>"`, e il
+  presidio `test_sola_lettura_rotte` la elenca per nome. Il motivo si scrive;
+  una dichiarazione senza motivo non vale;
+* niente `SELECT ... FOR UPDATE` in una `GET`: in sola lettura PostgreSQL lo
+  rifiuta;
+* niente `transazione_sola_lettura` dentro una `GET`: c'e' gia', e il BB
+  rifiuta di partire dentro una transazione aperta;
+* le GUC (`set_config`), il `tx_id` e il diario degli errori funzionano: non
+  sono scritture sulla connessione della richiesta.
+
+Contratto completo: [sola_lettura_middleware](../backend/core/manual/sola_lettura_middleware.md).
+
 ### Atomicità e composizione di scritture
 
 Un endpoint che modifica stato è **un'unità di lavoro atomica**. Quando l'operazione compone
@@ -1148,11 +1468,11 @@ Un endpoint che modifica stato è **un'unità di lavoro atomica**. Quando l'oper
 transazione — non lasciarle in autocommit una dietro l'altra (se la 2ª fallisce, la 1ª resta
 committata → stato parziale / orfani).
 
-| L'operazione... | Meccanismo |
-| --- | --- |
-| compone **solo** scritture/fn DB | **una sola `SELECT fn_madre(...)`** nel repository — atomica per costruzione (preferito, DB-first) |
-| richiede orchestrazione **Python** (lock, dispatch handler, control-flow) | **`with transaction.atomic()`** esplicito nel service |
-| ha un **side-effect esterno** (email/SMTP) | pattern **outbox/saga**, mai dentro la transazione |
+| L'operazione...                                                           | Meccanismo                                                                                         |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| compone **solo** scritture/fn DB                                          | **una sola `SELECT fn_madre(...)`** nel repository — atomica per costruzione (preferito, DB-first) |
+| richiede orchestrazione **Python** (lock, dispatch handler, control-flow) | **`with transaction.atomic()`** esplicito nel service                                              |
+| ha un **side-effect esterno** (email/SMTP)                                | pattern **outbox/saga**, mai dentro la transazione                                                 |
 
 > ⚠️ **Non affidarsi a `ATOMIC_REQUESTS`.** Sarebbe inefficace qui: `handle_post_json` **cattura**
 > l'eccezione e restituisce una `Response`, quindi non esce mai dalla view → il rollback a livello
@@ -1182,12 +1502,12 @@ verificabile, non sostituisce la disciplina in review.
 Tutti i codici errore seguono `E_{MODULO}_{TIPO}` e DEVONO essere registrati
 prima dell'uso. Il suffisso **suggerisce** la categoria:
 
-| Suffisso | HTTP tipico | Esempio |
-| --- | --- | --- |
-| `_VALIDATION` / `_VALIDAZIONE` | 400 | `E_ANAG_VALIDAZIONE` |
-| `_NOT_FOUND` | 404 | `E_PRATICA_NOT_FOUND` |
-| `_DUPLICATO` / `_IN_ESECUZIONE` | 409 | `E_ANAG_DUPLICATO` |
-| `_NEGATO` / `_DENIED` | 403 | `E_PERMESSO_NEGATO` |
+| Suffisso                        | HTTP tipico | Esempio               |
+| ------------------------------- | ----------- | --------------------- |
+| `_VALIDATION` / `_VALIDAZIONE`  | 400         | `E_ANAG_VALIDAZIONE`  |
+| `_NOT_FOUND`                    | 404         | `E_PRATICA_NOT_FOUND` |
+| `_DUPLICATO` / `_IN_ESECUZIONE` | 409         | `E_ANAG_DUPLICATO`    |
+| `_NEGATO` / `_DENIED`           | 403         | `E_PERMESSO_NEGATO`   |
 
 #### ⭐ Registrare un codice = dargli una **classe** (dal 2026-08-07)
 
@@ -1196,18 +1516,18 @@ voleva dire aggiungere una riga con `http_status`, `ui_action` e messaggio a un
 dizionario di 659 voci. Ora si dichiara **che cosa è** l'errore — la sua
 `classe` — e status e `ui_action` si **derivano**.
 
-| classe | HTTP | Quando |
-| --- | --- | --- |
-| `DATO_ERRATO` | 400 | la richiesta è malformata o il valore è sbagliato |
-| `CONFLITTO_STATO` | 409 | in conflitto con lo stato attuale della risorsa |
-| `NON_TROVATO` | 404 | la cosa indicata non esiste |
-| `TECNICO` | 500 | guasto o pezzo non configurato: l'operatore non può farci niente |
-| `NON_PERMESSO` | 403 | il diritto manca, e non dipende dallo stato |
-| `NON_ESEGUIBILE` | 422 | si capisce ma non si può eseguire |
-| `NON_DISPONIBILE` | 501 | funzione presente ma non servita (disattivata) |
-| `NON_AUTENTICATO` | 401 | non autenticato (≠ 403: autenticato ma senza diritto) |
-| `ERRORE_ESTERNO` | 502 | un provider esterno ha risposto male |
-| `AVVISO` | **nessuno** | non è un rifiuto: si scrive nel diario e non raggiunge mai il client |
+| classe            | HTTP        | Quando                                                               |
+| ----------------- | ----------- | -------------------------------------------------------------------- |
+| `DATO_ERRATO`     | 400         | la richiesta è malformata o il valore è sbagliato                    |
+| `CONFLITTO_STATO` | 409         | in conflitto con lo stato attuale della risorsa                      |
+| `NON_TROVATO`     | 404         | la cosa indicata non esiste                                          |
+| `TECNICO`         | 500         | guasto o pezzo non configurato: l'operatore non può farci niente     |
+| `NON_PERMESSO`    | 403         | il diritto manca, e non dipende dallo stato                          |
+| `NON_ESEGUIBILE`  | 422         | si capisce ma non si può eseguire                                    |
+| `NON_DISPONIBILE` | 501         | funzione presente ma non servita (disattivata)                       |
+| `NON_AUTENTICATO` | 401         | non autenticato (≠ 403: autenticato ma senza diritto)                |
+| `ERRORE_ESTERNO`  | 502         | un provider esterno ha risposto male                                 |
+| `AVVISO`          | **nessuno** | non è un rifiuto: si scrive nel diario e non raggiunge mai il client |
 
 Il vocabolario è lo stesso di `config.classi_errore`. **La mappa classe → HTTP
 resta lato backend**, ed è una scelta: è *trasporto*, non dominio — il database
@@ -1225,12 +1545,12 @@ senza che nessuno lo scriva.
 **Dove si mette cosa** — quattro moduli in `apps/core/services/`, separati per
 **quando cambiano** e non per contenuto:
 
-| Modulo | Cosa | Chi lo scrive |
-| --- | --- | --- |
-| `error_policies_generated.py` | `codice → classe`, **800 voci** (88 ritirate) | ⛔ **GENERATO** da `config.vw_codici_errore_identita` |
-| `error_policies.py` | `classe → (status, ui_action)` — 10 righe + la logica | a mano, quasi mai |
-| `error_ui_overrides.py` | le **176** `ui_action` fuori default, **coi loro perché** | a mano, quando cambia una scelta di UI |
-| `error_messages_fallback.py` | i messaggi **senza segnaposto** | a mano, per ora |
+| Modulo                        | Cosa                                                      | Chi lo scrive                                        |
+| ----------------------------- | --------------------------------------------------------- | ---------------------------------------------------- |
+| `error_policies_generated.py` | `codice → classe`, **800 voci** (88 ritirate)             | ⛔ **GENERATO** da `config.vw_codici_errore_identita` |
+| `error_policies.py`           | `classe → (status, ui_action)` — 10 righe + la logica     | a mano, quasi mai                                    |
+| `error_ui_overrides.py`       | le **176** `ui_action` fuori default, **coi loro perché** | a mano, quando cambia una scelta di UI               |
+| `error_messages_fallback.py`  | i messaggi **senza segnaposto**                           | a mano, per ora                                      |
 
 ⛔ **Il primo modulo non si modifica a mano.** Per dare una classe a un codice si
 cambia il **catalogo** e si rigenera:
@@ -1259,14 +1579,14 @@ buono»*. La domanda «questo codice si può usare?» si fa su `CODICI_RITIRATI`
 famiglie di condizione** su cui viene sollevato — lette dalla riga di guardia in
 `pg_proc`:
 
-| guardia | famiglia |
-| --- | --- |
-| `EXCEPTION WHEN …` | `ECCEZIONE` |
-| `IF NOT FOUND` | `NOT_FOUND` |
-| `IS NULL` / `<= 0` su un `p_*` | `PARAMETRO` |
-| `NOT IN (…)` | `ENUM` |
-| `x <> 'LETTERALE'` | `VALORE_ATTESO` — dal 2026-09-07 |
-| tutto il resto | `IGNOTO` — la misura dichiara di non saper leggere |
+| guardia                        | famiglia                                           |
+| ------------------------------ | -------------------------------------------------- |
+| `EXCEPTION WHEN …`             | `ECCEZIONE`                                        |
+| `IF NOT FOUND`                 | `NOT_FOUND`                                        |
+| `IS NULL` / `<= 0` su un `p_*` | `PARAMETRO`                                        |
+| `NOT IN (…)`                   | `ENUM`                                             |
+| `x <> 'LETTERALE'`             | `VALORE_ATTESO` — dal 2026-09-07                   |
+| tutto il resto                 | `IGNOTO` — la misura dichiara di non saper leggere |
 
 ⚠️ **L'ordine conta**: un `NOT IN` resta `ENUM`, e una guardia su un parametro
 nullo resta `PARAMETRO` anche se confronta un letterale.
@@ -1369,11 +1689,11 @@ La tabella sopra è una **convenzione di naming**, non una regola di mapping. Us
 per assegnare uno status è il modo più rapido di sbagliare, e non è un'ipotesi:
 assegnando 91 policy in un giorno (2026-08-06) **il nome ha mentito tre volte**.
 
-| Codice | Cosa suggerisce il nome | Cosa fa davvero il punto che solleva | Status |
-| --- | --- | --- | --- |
-| `E_SNAPSHOT_ID_NOT_FOUND` | 404 | `EXCEPTION WHEN OTHERS` nella storicizzazione: non manca un record, fallisce la lettura della chiave | **500** |
-| `E_DELETE_NOT_ALLOWED` | 409 (stato sfavorevole) | blocca **sempre**, sbloccabile solo da una GUC di sistema: è un diritto che manca | **403** |
-| `E_FULFILL_NOT_FOUND` | «manca un legame» | la riga indicata non esiste (`SELECT INTO` → NULL) | **404** |
+| Codice                    | Cosa suggerisce il nome | Cosa fa davvero il punto che solleva                                                                 | Status  |
+| ------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------- | ------- |
+| `E_SNAPSHOT_ID_NOT_FOUND` | 404                     | `EXCEPTION WHEN OTHERS` nella storicizzazione: non manca un record, fallisce la lettura della chiave | **500** |
+| `E_DELETE_NOT_ALLOWED`    | 409 (stato sfavorevole) | blocca **sempre**, sbloccabile solo da una GUC di sistema: è un diritto che manca                    | **403** |
+| `E_FULFILL_NOT_FOUND`     | «manca un legame»       | la riga indicata non esiste (`SELECT INTO` → NULL)                                                   | **404** |
 
 E in senso opposto: `E_PARAMETRO_INVALIDO` viene sollevato in due punti su un
 `IF NOT FOUND`, dove la verità è 404 — ma **non si corregge cambiando la sua
@@ -1445,27 +1765,27 @@ il registro ufficiale dei codici è quello IANA. Quando questo documento dice
 
 **Nostro** è invece tutto il resto, e conviene sapere dove passa il confine:
 
-| Cosa | Chi lo stabilisce |
-|---|---|
-| il significato di 400/403/404/409/500… | **RFC 9110** (standard) |
-| il nome dei codici (`E_MODULO_TIPO`) | noi |
-| quale codice mappa su quale status | **noi** — è la decisione di dominio |
-| il vocabolario `ui_action` | noi, non esiste nulla di standard |
+| Cosa                                   | Chi lo stabilisce                   |
+| -------------------------------------- | ----------------------------------- |
+| il significato di 400/403/404/409/500… | **RFC 9110** (standard)             |
+| il nome dei codici (`E_MODULO_TIPO`)   | noi                                 |
+| quale codice mappa su quale status     | **noi** — è la decisione di dominio |
+| il vocabolario `ui_action`             | noi, non esiste nulla di standard   |
 
 Censimento del dizionario al 2026-08-07, a registro del debito azzerato
 (**659 policy**):
 
-| Status | Quanti | Fonte | Quando |
-| --- | --- | --- | --- |
-| **400** Bad Request | 234 | RFC 9110 | la richiesta è malformata o il valore è sbagliato |
-| **409** Conflict | 224 | RFC 9110 | «conflitto con lo stato attuale della risorsa» — la definizione dello standard è **letteralmente** il nostro caso: transizioni non ammesse, immutabilità, duplicati |
-| **404** Not Found | 84 | RFC 9110 | la cosa indicata non esiste |
-| **500** | 63 | RFC 9110 | anomalia tecnica: l'operatore non può farci niente |
-| **403** Forbidden | 23 | RFC 9110 | il diritto manca, e non dipende dallo stato |
-| **422** Unprocessable Content | 22 | RFC 9110 §15.5.21 | sintassi valida, **semantica** no: il payload si capisce ma non si può eseguire |
-| **401** Unauthorized | 4 | RFC 9110 | non autenticato (≠ 403: autenticato ma senza diritto) |
-| **501** Not Implemented | 4 | RFC 9110 | funzione non implementata / disattivata |
-| **502** Bad Gateway | 1 | RFC 9110 | un provider esterno ha risposto male |
+| Status                        | Quanti | Fonte             | Quando                                                                                                                                                              |
+| ----------------------------- | ------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **400** Bad Request           | 234    | RFC 9110          | la richiesta è malformata o il valore è sbagliato                                                                                                                   |
+| **409** Conflict              | 224    | RFC 9110          | «conflitto con lo stato attuale della risorsa» — la definizione dello standard è **letteralmente** il nostro caso: transizioni non ammesse, immutabilità, duplicati |
+| **404** Not Found             | 84     | RFC 9110          | la cosa indicata non esiste                                                                                                                                         |
+| **500**                       | 63     | RFC 9110          | anomalia tecnica: l'operatore non può farci niente                                                                                                                  |
+| **403** Forbidden             | 23     | RFC 9110          | il diritto manca, e non dipende dallo stato                                                                                                                         |
+| **422** Unprocessable Content | 22     | RFC 9110 §15.5.21 | sintassi valida, **semantica** no: il payload si capisce ma non si può eseguire                                                                                     |
+| **401** Unauthorized          | 4      | RFC 9110          | non autenticato (≠ 403: autenticato ma senza diritto)                                                                                                               |
+| **501** Not Implemented       | 4      | RFC 9110          | funzione non implementata / disattivata                                                                                                                             |
+| **502** Bad Gateway           | 1      | RFC 9110          | un provider esterno ha risposto male                                                                                                                                |
 
 **Tutti e nove vengono da RFC 9110**: dopo l'audit non resta in uso nessuno
 status fuori dal nucleo HTTP.
@@ -1490,11 +1810,11 @@ cambia il contratto.
 volta sola» non è di per sé un difetto: il difetto è usare uno status per una
 cosa che lo standard non dice. Esito diverso per tutti e tre:
 
-| Era | Codice | Esito |
-| --- | --- | --- |
-| **423** Locked | `E_UTENTE_BLOCCATO` | → **403**. Il 423 di RFC 4918 è il lock WebDAV di una **risorsa**, non di un account; il gemello `E_USER_DISABILITATO` è già 403. ⚠️ E **non** 429, che sembrerebbe ovvio: `LoginView.resolveLoginError` intercetta il 429 **prima** di leggere il codice (throttle per IP) e il messaggio coi minuti rimanenti andrebbe perso |
-| **428** Precondition Required | `E_AI_CONFIRMATION_REQUIRED` | **ritirato**. Non lo sollevava nessuno: il flusso di conferma dei tool in scrittura restituisce **200 con `requires_confirmation` nel payload** — una conferma richiesta non è un errore HTTP. E il 428 (RFC 6585) significa «la richiesta deve essere condizionale», non «l'utente deve confermare» |
-| **502** Bad Gateway | `E_AI_PROVIDER_ERROR` | **resta**. Il backend chiama un provider esterno e ne riceve una risposta invalida: è letteralmente la definizione RFC del 502. Normalizzarlo a 500 perderebbe l'unica informazione che serve leggendo i log |
+| Era                           | Codice                       | Esito                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **423** Locked                | `E_UTENTE_BLOCCATO`          | → **403**. Il 423 di RFC 4918 è il lock WebDAV di una **risorsa**, non di un account; il gemello `E_USER_DISABILITATO` è già 403. ⚠️ E **non** 429, che sembrerebbe ovvio: `LoginView.resolveLoginError` intercetta il 429 **prima** di leggere il codice (throttle per IP) e il messaggio coi minuti rimanenti andrebbe perso |
+| **428** Precondition Required | `E_AI_CONFIRMATION_REQUIRED` | **ritirato**. Non lo sollevava nessuno: il flusso di conferma dei tool in scrittura restituisce **200 con `requires_confirmation` nel payload** — una conferma richiesta non è un errore HTTP. E il 428 (RFC 6585) significa «la richiesta deve essere condizionale», non «l'utente deve confermare»                          |
+| **502** Bad Gateway           | `E_AI_PROVIDER_ERROR`        | **resta**. Il backend chiama un provider esterno e ne riceve una risposta invalida: è letteralmente la definizione RFC del 502. Normalizzarlo a 500 perderebbe l'unica informazione che serve leggendo i log                                                                                                                  |
 
 > La lezione non è «meno status è meglio». È che **l'uniformità non è un valore
 > in sé**: due dei tre sono stati cambiati perché dicevano una cosa falsa, il
@@ -1631,11 +1951,11 @@ la lettura letterale dello standard. L'alternativa RFC-stretta sarebbe 422.
 Utile saperlo prima di discutere se un codice è 400 o 409. Gli unici
 status con un effetto globale sono:
 
-| Status | Effetto | Dove |
-| --- | --- | --- |
-| **401** | percorso di refresh del token | `src/core/api.js` |
-| **401 / 403** | il polling dei contatori si ferma | `useQueueCountsPolling` |
-| **>= 500** | toast «errore di sistema»: **stesso messaggio**, durata più lunga | `useApiHandler` + `useNotify.systemError` |
+| Status        | Effetto                                                           | Dove                                      |
+| ------------- | ----------------------------------------------------------------- | ----------------------------------------- |
+| **401**       | percorso di refresh del token                                     | `src/core/api.js`                         |
+| **401 / 403** | il polling dei contatori si ferma                                 | `useQueueCountsPolling`                   |
+| **>= 500**    | toast «errore di sistema»: **stesso messaggio**, durata più lunga | `useApiHandler` + `useNotify.systemError` |
 
 Quindi un 500 **non nasconde** il messaggio del database — né lato backend
 (`is_technical_code` è una lista chiusa di tre codici, non dipende dallo status)
@@ -1723,12 +2043,12 @@ testo). Non leggere `diag.constraint_name` a mano: prima del 2026-08-05 la stess
 estrazione era riscritta in **quattro** punti, ognuno col suo modo, ed è così che
 si sono sfilati. I quattro delegano tutti al modulo:
 
-| Punto | Cosa fa col codice |
-| --- | --- |
-| `ErrorTranslator._from_database_error` | lo usa come `ApiError.code` (→ policy → status) |
-| `payload_helpers.translate_db_errors` | lo usa al posto del `fallback_code` di dominio |
-| `ErrorManager.raise_from_database_error` | lo accetta **solo se dichiarato** nei `known_markers` del chiamante (`message` vs `fallback_message` dipendono da «riconosciuto o no») |
-| `pratiche_service._raise_known_db_error` | idem, filtrato sui codici del dominio |
+| Punto                                    | Cosa fa col codice                                                                                                                     |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `ErrorTranslator._from_database_error`   | lo usa come `ApiError.code` (→ policy → status)                                                                                        |
+| `payload_helpers.translate_db_errors`    | lo usa al posto del `fallback_code` di dominio                                                                                         |
+| `ErrorManager.raise_from_database_error` | lo usa **sempre**, con la **frase del DB** (`message_primary`); i `known_markers` e il `message` del chiamante restano il ripiego dei soli `RAISE` diretti senza campo. ⚠️ Fino al 2026-09-23 lo accettava solo se dichiarato, col `message` del chiamante: un guard comune (le date di validità, 25 tabelle) usciva come codice generico o come «Violazione vincolo contrattuale.» — brief-db-guard-date-validita §13 |
+| `pratiche_service._raise_known_db_error` | lo accetta se dichiarato dal dominio, con la frase del DB; un codice non dichiarato è **rilanciato nudo** e il middleware (riga 1) lo traduce allo stesso modo |
 
 Test: `apps/core/tests/services/test_db_error_fields.py` — 8 unitari sulla
 precedenza campo/testo e 3 end-to-end su DB reale (saltati se il DB non
@@ -1781,11 +2101,11 @@ L'unica eccezione vera mai arrivata — la famiglia `W_` dei warning — **non �
 finita nel registro: è stata allargata la convenzione** (`20260805-28`), ed era
 la scelta giusta. Le tre strade sono diverse:
 
-| Cosa arriva | Dove va | Perché |
-| --- | --- | --- |
-| una **famiglia** nuova con una semantica sua (`W_`) | si **allarga la regola** | una famiglia dentro un registro di eccezioni si perde |
-| un codice **ereditato** da fuori, già storto | **il registro** | è debito: ha una data e deve calare |
-| un codice **nuovo** nato storto | si **corregge prima del merge** | non è debito, è un difetto |
+| Cosa arriva                                         | Dove va                         | Perché                                                |
+| --------------------------------------------------- | ------------------------------- | ----------------------------------------------------- |
+| una **famiglia** nuova con una semantica sua (`W_`) | si **allarga la regola**        | una famiglia dentro un registro di eccezioni si perde |
+| un codice **ereditato** da fuori, già storto        | **il registro**                 | è debito: ha una data e deve calare                   |
+| un codice **nuovo** nato storto                     | si **corregge prima del merge** | non è debito, è un difetto                            |
 
 Per questo la tabella **non ha una colonna `motivo`** e non deve averla:
 risponderebbe a «perché questa eccezione è legittima», che è la domanda della
@@ -1808,33 +2128,35 @@ resta.
 
 **Eccezione — codici middleware-level.** Alcune risposte sono costruite
 direttamente da `JwtAuditMiddleware` (helper `_json_error`, stesso envelope)
-e **non** passano dall'exception handler / `error_policies.py`:
+e **non** passano dall'exception handler / `error_policies.py`. (Fino al
+2026-09-28 c'era anche `E_USER_DISABILITATO`, dal rifiuto in `process_view`:
+ritirato perché per i client Bearer non scattava mai — il rifiuto dei
+`DISABILITATO` è della catena di `ZeroERPPermission`.)
 
-| Codice | HTTP | Quando |
-| --- | --- | --- |
-| `E_USER_DISABILITATO` | 403 | utente con `ruolo_applicativo = DISABILITATO` (rifiuto early) |
-| `E_GUC_RESET_FAILED` | 500 | il reset GUC d'inizio richiesta è fallito (fail-closed, vedi §GUC) |
-| `E_DB_ROLE_UNSAFE` | 500 | la connessione del percorso richiesta è su un ruolo `BYPASSRLS` (guard fail-open RLS: `DB_USER` misconfigurato sul ruolo batch, o canale di sistema usato per errore nel web → richiesta rifiutata, fail-closed) |
+| Codice                | HTTP | Quando                                                                                                                                                                                                           |
+| --------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E_GUC_RESET_FAILED`  | 500  | il reset GUC d'inizio richiesta è fallito (fail-closed, vedi §GUC)                                                                                                                                               |
+| `E_DB_ROLE_UNSAFE`    | 500  | la connessione del percorso richiesta è su un ruolo `BYPASSRLS` (guard fail-open RLS: `DB_USER` misconfigurato sul ruolo batch, o canale di sistema usato per errore nel web → richiesta rifiutata, fail-closed) |
 
 #### Codici auth multi-veste (§8.3 PR-B1)
 
-| Codice | HTTP | UI action | Quando |
-| --- | --- | --- | --- |
-| `E_VESTE_NON_ATTIVA` | 403 | show_error_banner | Login o refresh su un namespace senza identita con la veste richiesta |
-| `E_JWT_SENZA_IDENTITA` | 401 | redirect_login | JWT senza claim `identita_id` (token pre-refactor multi-face) |
-| `E_IDENTITA_NON_ATTIVA` | 401 | redirect_login | Claim `identita_id` non corrisponde a identita attiva (revocata dopo emissione) |
+| Codice                  | HTTP | UI action         | Quando                                                                          |
+| ----------------------- | ---- | ----------------- | ------------------------------------------------------------------------------- |
+| `E_VESTE_NON_ATTIVA`    | 403  | show_error_banner | Login o refresh su un namespace senza identita con la veste richiesta           |
+| `E_JWT_SENZA_IDENTITA`  | 401  | redirect_login    | JWT senza claim `identita_id` (token pre-refactor multi-face)                   |
+| `E_IDENTITA_NON_ATTIVA` | 401  | redirect_login    | Claim `identita_id` non corrisponde a identita attiva (revocata dopo emissione) |
 
 Vedi [api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md)
 per il contratto completo.
 
 #### Codici invito/attivazione portale + shop (§8.4 PR-B2 + §13.7 B1)
 
-| Codice | HTTP | UI action | Quando |
-| --- | --- | --- | --- |
-| `E_INVITO_PORTALE` | 400 | show_error_banner | Errore admin durante invio/reinvio invito portale o shop (validazione, identita gia' attiva, veste non supportata) |
-| `E_ATTIVAZIONE_PORTALE` | 400 | show_error_banner | Errore consume token attivazione portale (token assente/scaduto, password mismatch, identita rimossa) |
-| `E_ATTIVAZIONE_SHOP` | 400 | show_error_banner | Errore consume token attivazione shop (simmetrico portale, B1 §13.7) |
-| `E_ATTIVAZIONE_SHOP_CROSS` | 400 | show_error_banner | Errore attivazione cross-veste shop dal profilo portale (veste non CLIENTE_PORTALE, identita gia' su altro auth_user, GUC vuota) |
+| Codice                     | HTTP | UI action         | Quando                                                                                                                           |
+| -------------------------- | ---- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `E_INVITO_PORTALE`         | 400  | show_error_banner | Errore admin durante invio/reinvio invito portale o shop (validazione, identita gia' attiva, veste non supportata)               |
+| `E_ATTIVAZIONE_PORTALE`    | 400  | show_error_banner | Errore consume token attivazione portale (token assente/scaduto, password mismatch, identita rimossa)                            |
+| `E_ATTIVAZIONE_SHOP`       | 400  | show_error_banner | Errore consume token attivazione shop (simmetrico portale, B1 §13.7)                                                             |
+| `E_ATTIVAZIONE_SHOP_CROSS` | 400  | show_error_banner | Errore attivazione cross-veste shop dal profilo portale (veste non CLIENTE_PORTALE, identita gia' su altro auth_user, GUC vuota) |
 
 Vedi [api_invito_portale_shop.md](../backend/core/manual/api_invito_portale_shop.md)
 per il contratto completo dei flussi invito + attivazione portale e shop.
@@ -1845,11 +2167,11 @@ Test progressivi insieme allo sviluppo, **tre livelli** — erano due fino al
 2026-09-09, quando ci si è accorti che il terzo esisteva già da mesi e nessun
 documento lo nominava:
 
-| Livello | Dove | Cosa | DB reale | In CI |
-| --- | --- | --- | --- | --- |
-| Unit test service / API | `apps/*/tests/services/`, `apps/*/tests/api/` | Validazione, dedup, not found, orchestrazione, envelope (repository mockati) | No | ✅ sempre |
-| **Guardrail su DB provvisto** | `apps/*/tests/db/` + i guardrail di `core` | La **giuntura**: che `diag.constraint_name` sopravviva a libpq, che ogni codice del DB abbia una policy, che i tipi di handler della coda esistano davvero | Sì | ✅ via `ZEROERP_TEST_DB_E2E=1` |
-| Smoke end-to-end | `backend/scripts/tests/smoke-*.py` | Percorsi HTTP reali, in `transaction.atomic()` + `set_rollback(True)` | Sì | ⛔ **mai**: la CI non li nomina |
+| Livello                       | Dove                                          | Cosa                                                                                                                                                       | DB reale | In CI                          |
+| ----------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------ |
+| Unit test service / API       | `apps/*/tests/services/`, `apps/*/tests/api/` | Validazione, dedup, not found, orchestrazione, envelope (repository mockati)                                                                               | No       | ✅ sempre                       |
+| **Guardrail su DB provvisto** | `apps/*/tests/db/` + i guardrail di `core`    | La **giuntura**: che `diag.constraint_name` sopravviva a libpq, che ogni codice del DB abbia una policy, che i tipi di handler della coda esistano davvero | Sì       | ✅ via `ZEROERP_TEST_DB_E2E=1`  |
+| Smoke end-to-end              | `backend/scripts/tests/smoke-*.py`            | Percorsi HTTP reali, in `transaction.atomic()` + `set_rollback(True)`                                                                                      | Sì       | ⛔ **mai**: la CI non li nomina |
 
 Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
 
@@ -1860,22 +2182,105 @@ l'unico che vede il pezzo in mezzo: i pgTAP coprono il lato DB, i test unitari c
 `diag` finto coprono il lato Python, e **nessuno dei due vede la giuntura**.
 
 ⛔ **Il terzo livello non lo esegue niente**, ed è il difetto che quel livello si
-porta dietro dal giorno in cui è nato: vedi `.codex/AGENTS.md` §«Gli smoke:
-nessuno li lancia». Il registro `baseline-smoke.tsv` ha due righe — cioè è nella
-condizione migliore per accendere un cancello, non nella peggiore.
+porta dietro dal giorno in cui è nato: vedi §«Gli smoke» qui sotto. Il registro
+`baseline-smoke.tsv` ha due righe — cioè è nella condizione migliore per
+accendere un cancello, non nella peggiore.
 
-⚠️ **`unittest.TestCase` e `SimpleTestCase` non sono equivalenti**: solo
-`SimpleTestCase` **impedisce** al codice sotto test di parlare col database
-(`DatabaseOperationForbidden`). `unittest.TestCase` glielo *permette*
-soltanto — quindi un mock dimenticato lì non fallisce: parla col DB di sviluppo.
+#### Convenzioni dei file di test
 
-✅ **E dal 2026-09-11 lo dice anche `.codex/AGENTS.md`**, che è il documento
-dove si va a cercarlo scrivendo un test. Fino a quel giorno §Regole test le
-offriva come **alternative equivalenti**, e questa riga lo segnalava — ⭐ *un
-documento che dice il vero su un difetto non si aggiorna, si rende falso
-chiudendolo*. Lì sta anche la misura datata (2026-09-11: **506** classi che non
-bloccano il database contro **202** che lo bloccano) e il caso in cui
-`unittest.TestCase` resta legittimo — un test che non tocca Django affatto.
+* Struttura per app: `apps/<schema>/tests/` con almeno `api/` e `services/`.
+* In testa a ogni file, un breve indice dei test (nome test/caso); negli smoke
+  bash (`backend/scripts/tests/smoke-test-*.sh`) un blocco `# Indice test (0..N):`
+  dopo l'header.
+* ⛔ Uno smoke bash nuovo, subito dopo `BASE_URL=`, include
+  `source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"`: parla con Gunicorn
+  diretto in HTTP, e fuori da `DEBUG` Django redirige in HTTPS (301). Il file si
+  dichiara HTTPS come Nginx, e come Nginx dichiara la **provenienza**
+  (`X-Forwarded-For: 127.0.0.1`): senza, il login risponde
+  `E_AUTH_CHIAMATA_NON_VALIDA` (freno sulla credenziale, fail-closed). Presidio:
+  `apps/core/tests/api/test_https_header.py`.
+  I test Django non ne hanno bisogno: il redirect lo spegne il runner.
+* Uno smoke bash che usa il refresh token (refresh, logout) include anche
+  `_smoke_refresh.sh`: il refresh non è più nel corpo del login ma nel cookie
+  `zeroerp_refresh`, e lo si legge dal `Set-Cookie` (`curl -D`) e ripresenta
+  con cookie e header anti-CSRF (`curl_refresh`).
+* Esecuzione: `./manage-test.sh apps.core.tests.api -v 2`. Smoke di docs/schema:
+  `apps/core/tests/api/test_diagnostics_api.py`.
+
+#### Test Django in CI: senza dipendere da un DB reale
+
+* ⛔ **`unittest.TestCase` e `SimpleTestCase` non sono equivalenti**: solo
+  `SimpleTestCase` **impedisce** al codice sotto test di parlare col database
+  (`DatabaseOperationForbidden`). `unittest.TestCase` glielo *permette*
+  soltanto — quindi un mock dimenticato lì non fallisce: parla col DB di
+  sviluppo, e il test resta verde raccontando una cosa che in CI non succede.
+  Per i test unitari con mock si usa `SimpleTestCase`; `unittest.TestCase`
+  resta legittimo solo dove il test non tocca Django affatto (una funzione
+  pura). Il pregresso che usa l'altra forma è un debito, non un modello.
+* ⚠️ **Nessun test dichiara un database** (`django.test.TestCase`,
+  `TransactionTestCase`, `databases = [...]`), quindi il runner stampa
+  «Skipping setup of unused database(s)» e la connessione resta quella
+  **configurata**, un DB con lo schema Liquibase completo. Ci si appoggiano i
+  test del secondo livello (`test_db_error_fields.py`, il guardrail dei codici).
+  **Il primo test che dichiarerà un database farà creare al runner un DB vuoto
+  per TUTTA la suite**, e quei test falliranno in una PR che non c'entra: non è
+  un divieto, ma vanno adeguati nello stesso commit.
+* **Ogni accesso al DB si mocka** (cursor, advisory lock, query dirette):
+
+  ```python
+  def setUp(self):
+      patcher = patch.object(MyClass, "_metodo_che_usa_db", return_value=valore)
+      self._mock = patcher.start()
+      self.addCleanup(patcher.stop)
+  ```
+
+* Ogni `APIView` su `/api/v1/` ha `@extend_schema` su ogni metodo HTTP pubblico,
+  con `request` (se il metodo ha un corpo) **e** `responses`: senza uno dei due
+  drf-spectacular non trova il serializer (`W002`) e l'endpoint esce vuoto
+  dallo schema. Lista e dettaglio (`/x/`, `/x/{id}/`) avrebbero lo stesso
+  `operationId` (`W001`): li separa l'hook `nomi_lista_dettaglio`
+  (`apps/core/api/openapi_extensions.py`) in `x_list` / `x_retrieve`, senza
+  toccare le view; le altre collisioni vogliono `operation_id=` esplicito.
+  Presidio dal 2026-09-26:
+  `apps/core/tests/test_schema_openapi_registro.py`, registro a cricchetto
+  `openapi_schema.baseline.json` — rosso su una view o un `operationId` nuovi,
+  rosso anche su una voce sanata e non tolta. ⚠️ Il `W002` è **per view**: una
+  view ancora nel registro non è protetta sugli altri metodi.
+* **Prova locale come la CI**:
+
+  ```bash
+  DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp_app DB_PASSWORD=secret-app \
+  DJANGO_SECRET_KEY=ci-placeholder DJANGO_FIELD_ENCRYPTION_KEYS="$(printf ci-placeholder-fernet-key-32byte | base64)" DJANGO_SECURE_HSTS_SECONDS=0 \
+  DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" DJANGO_DEBUG=0 DJANGO_TRUSTED_PROXY_COUNT=0 FRONTEND_URL=https://localhost \
+  .venv/bin/python manage.py test -v 2
+  ```
+
+  ⚠️ `DB_USER=zeroerp_app`, non `zeroerp`: l'owner salta la RLS, e un test
+  no-leak sul DB vero con lui va rosso. Presidio: `richiedi_ruolo_soggetto_a_rls`
+  in `apps/core/tests/db_e2e.py`.
+
+#### Gli smoke
+
+`backend/scripts/tests/smoke-*.py` parlano col database di sviluppo, ognuno in
+`transaction.atomic()` + `set_rollback(True)`: si possono lanciare senza lasciare
+niente. ⛔ Non li raccoglie il runner Django e non li esegue la CI, quindi
+vanno lanciati a mano:
+
+```bash
+scripts/smoke-baseline.sh                   # tutti, ~4 min
+scripts/smoke-baseline.sh fattura-scadenze  # solo quelli col nome dato
+scripts/smoke-baseline.sh --update          # rigenera il registro dei noti
+```
+
+Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, **nuovo** →
+`exit 1`, noto rientrato → segnalato. Registro:
+`backend/scripts/tests/baseline-smoke.tsv`, un debito che deve calare.
+
+* ⛔ **Il codice di uscita di uno smoke non dice la verità**: uno stampa «ESITO:
+  FALLITO» ed esce 0. Lo script classifica dall'**output**.
+* ⚠️ **Gli esiti sono tre**: oltre a verde e rosso c'è `SENZA_MATERIA` (una
+  precondizione assente, dichiarata con `raise SystemExit`). La copertura di quel
+  giro vale zero, non «parziale».
 
 ---
 

@@ -5,6 +5,7 @@
 //        resta del caller (slot scoped #badge con l'indice del mese).
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
+import { MANAGE_ICONS } from '../../constants'
 
 defineProps({
   anno: { type: Number, required: true },
@@ -23,7 +24,7 @@ const { t } = useI18n()
   <aside class="app-dash-mesi">
     <div class="app-dash-anno">
       <Button
-        icon="pi pi-chevron-left"
+        :icon="MANAGE_ICONS.PRECEDENTE"
         text
         rounded
         size="small"
@@ -33,7 +34,7 @@ const { t } = useI18n()
       />
       <span>{{ anno }}</span>
       <Button
-        icon="pi pi-chevron-right"
+        :icon="MANAGE_ICONS.SUCCESSIVO"
         text
         rounded
         size="small"

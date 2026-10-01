@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-3 (6 di 6) — script.fn_get_iva_override si RITIRA, non si ripara.
+#   Documento: valutazione-modello-di-dominio-db, voce V-3; decisione gia'
+#   scritta in brief-db-be-iva-risolutore-e-regime-cliente (R-4 e chiusura
+#   DB del 2026-08-30): «ancora rotta e ancora li' … va ritirata, non riparata».
+#
+# -- IL FATTO -------------------------------------------------------------------
+#   La funzione era entrata in questo giro per il suo RETURNS TABLE: le
+#   colonne `data_insert`/`data_update` erano `timestamp without time zone`
+#   mentre config.iva, da cui le proietta, le ha timestamptz — l'unico
+#   RETURNS TABLE senza fuso del progetto. La prova in transazione ritirata
+#   della riscrittura (20-09) ha detto un'altra cosa prima: il corpo legge
+#   `i.assoggettamento_iva` e `s.assoggettamento_override`, e NESSUNA delle
+#   due colonne esiste dal 2025-10-06 (20251006-01: gli assoggettamenti sono
+#   diventati un catalogo, config.iva.assoggettamento_id e
+#   config.iva_stati.assoggettamento_id_override). E' una funzione
+#   `LANGUAGE sql`: il parser la valida alla CREAZIONE, e da allora nessun
+#   presidio la ricompila — plpgsql_check guarda solo il plpgsql. E' viva nel
+#   catalogo e morta alla prima chiamata.
+#
+# -- PERCHE' RITIRARLA E NON RISCRIVERLA -----------------------------------------
+#   Zero chiamanti: nessuna funzione, vista o trigger (pg_proc, pg_depend),
+#   nessuna riga del backend, nessun pgTAP (grep, 20-09). Il lavoro che
+#   faceva — aliquota per stato con override — lo fa la funzione VIVA
+#   config.fn_get_aliquota_iva(iva_id, stato_id), gia' chiamata dalle
+#   vw_*_righe_iva_base (brief IVA, §D). Riscriverla sarebbe tenere due
+#   sedi per la stessa domanda, di cui una senza nessuno che la faccia.
+#
+# -- COSA SEGUE IL RITIRO --------------------------------------------------------
+#   Il manual della funzione si cancella (docs/it/dbzero/script/manual/
+#   fn_get_iva_override.md) e i due manual che la linkavano (config/manual/
+#   iva.md, iva_stati.md) smettono di farlo: la pagina autogen sparisce alla
+#   prossima rigenerazione della doc. Presidio: test 4 di
+#   db/pgtap/dbops/test-nessun-timestamp-senza-fuso-v1.sql (hasnt_function),
+#   perche' un DROP sotto preCondition puo' segnare senza fare, e un DROP
+#   nudo puo' comunque essere ricreato da un runOnChange dimenticato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260920-07-drop-fn-get-iva-override-rotta-e-senza-chiamanti-mctit.yaml
+
+  - changeSet:
+      id: 20260920-07-drop-fn-get-iva-override-rotta-e-senza-chiamanti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro di script.fn_get_iva_override: rotta dal 2025-10-06 (legge
+        config.iva.assoggettamento_iva e iva_stati.assoggettamento_override, che non
+        esistono), LANGUAGE sql quindi mai ricompilata da un presidio, zero chiamanti.
+        Era nel giro V-3 per il RETURNS TABLE senza fuso; la decisione «ritirare, non
+        riparare» e' del brief IVA (R-4, 30-08). La sede viva e' config.fn_get_aliquota_iva.
+        Documento: valutazione-modello-di-dominio-db, voce V-3 (6 di 6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Nessuna preCondition: il DROP IF EXISTS e' gia' idempotente, e un
+              -- guardiano potrebbe solo segnare «fatto» senza fare.
+              DROP FUNCTION IF EXISTS script.fn_get_iva_override(text, integer);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Non si ricrea: era rotta. Il corpo storico resta leggibile nella
+              -- storia git di docs/it/dbzero/script/funzioni/fn_get_iva_override.md.
+              SELECT 1;

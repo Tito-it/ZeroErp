@@ -9,24 +9,26 @@ import { useAuthStore } from '../../stores/auth'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useNotify } from '../../core/composables/useNotify'
 import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useContattoForm } from '../../core/composables/useContattoForm'
-import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
+import { useContattoForm } from '../composables/useContattoForm'
+import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
+import { raccogliFormInline } from '../composables/raccogliFormInline'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { listUtilitiesPerBillingAccount } from '../api/anagrafiche'
 import { lookupUtilitiesPerEmittente } from '../../core/apiCore'
-import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
-import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
+import SoggettoResolver from './SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
-import SoggettoPreviewBadges from '../../core/components/SoggettoPreviewBadges.vue'
-import ContattoForm from '../../core/components/ContattoForm.vue'
-import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
+import SoggettoPreviewBadges from './SoggettoPreviewBadges.vue'
+import ContattoForm from './ContattoForm.vue'
+import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -126,6 +128,19 @@ const detail = ref(null) // dati extra solo per visualizzazione
 // SoggettoResolver (solo creazione)
 const resolverVisible = ref(false)
 const soggettoSelezionato = ref(null)
+
+// Modifiche non salvate (BB useDrawerFormPreserve): il form, il soggetto
+// scelto in creazione, e contatto e indirizzo inline (il Salva della creazione
+// li manda insieme al cliente).
+// ⚠️ Senza condizione su `isEdit`: dopo la creazione il padre porta `mode` a
+//    'edit' a drawer aperto, e togliere le chiavi farebbe sembrare «modificato»
+//    un form appena salvato. In modifica i due form non si vedono e non cambiano.
+const formSalvato = computed(() => ({
+  ...form.value,
+  soggetto_id: soggettoSelezionato.value?.id ?? null,
+  ...raccogliFormInline({ contatto, indirizzo }),
+}))
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
 
 // Scopo: Valori default per un nuovo cliente.
 function defaultForm() {
@@ -267,6 +282,8 @@ watch(() => props.visible, async (val) => {
     }
     indirizzo.loadMatriceRuolo(TIPO_RUOLO.CLIENTE)
   }
+  // Fotografia dopo il popolamento completo (dettaglio o default + utility di default).
+  fissa()
   ready.value = true
 })
 
@@ -279,7 +296,9 @@ function buildEditablePayload() {
     servizio_da_fatturare: f.servizio_da_fatturare,
     garanzia_tipo: f.garanzia_tipo,
     garanzia_importo: f.garanzia_importo || 0,
-    stato_cliente_id: f.stato_cliente_id || null,
+    // ⛔ `stato_cliente_id` NON si manda (2026-09-26): lo stato cambia con la
+    //    sua azione, non dal form, e il backend lo scartava in silenzio. Da
+    //    quel giorno una chiave fuori contratto e' un 400.
   }
 }
 
@@ -291,7 +310,8 @@ async function onSave() {
       () => store.update(props.clienteId, buildEditablePayload()),
       { successMessage: t('anagrafiche.clienti.cliente_salvato') }
     )
-    if (result !== null) emit('saved', result)
+    // Salvato: la fotografia e' il form di adesso (il parent decide se chiudere o riaprire in edit).
+    if (result !== null) { fissa(); emit('saved', result) }
   } else {
     // Validazione contatto inline (Fase 5): regola unificata via composable
     // useContattoForm.classify() — mirror della regola backend.
@@ -326,18 +346,23 @@ async function onSave() {
       () => store.create(payload),
       { successMessage: t('anagrafiche.clienti.cliente_creato') }
     )
-    if (result !== null) emit('saved', result)
+    // Salvato: la fotografia e' il form di adesso (il parent decide se chiudere o riaprire in edit).
+    if (result !== null) { fissa(); emit('saved', result) }
   }
 }
 
-// canSave: in creazione richiede soggetto + utility, e non deve essere
-// admin globale (refactor operatore-emittenti Q6 — defense-in-depth UI:
-// il guard backend e il trigger DB sono comunque la difesa primaria).
+// canSave: in creazione richiede soggetto + utility, e una sessione che ha un
+// emittente su cui scrivere (`emittenteScritturaId`: l'emittente
+// dell'operatore, o quello scelto dal super admin). Stessa regola del DB
+// (`script.fn_check_user_can_create_ba`, rev 2026-08-04).
+// ⛔ Fino al 2026-09-26 guardava `isAdminGlobale`, scritto quando il super
+//    admin non poteva ancora scegliere un emittente: lo bloccava anche dopo
+//    la scelta, e anche in MODIFICA, che il DB non vieta.
 const canSave = computed(() => {
   if (!soggettoSelezionato.value || !form.value.utility_id) return false
   // F3-FE-04: categoria cliente obbligatoria in creazione (no default implicito).
   if (!isEdit.value && !form.value.ba_categoria_cliente_id) return false
-  if (auth.isAdminGlobale) return false
+  if (!isEdit.value && auth.emittenteScritturaId == null) return false
   return true
 })
 
@@ -359,6 +384,9 @@ const eventoStatoDetail = computed(() => {
 
 
 const onClose = useDrawerClose(emit, 'cancelled')
+// Uscite dell'utente: prima chiedono conferma se ci sono modifiche non salvate.
+const chiudi = () => chiudiConConferma(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -367,11 +395,12 @@ const onClose = useDrawerClose(emit, 'cancelled')
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     :dismissable="true"
-    @update:visible="val => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('anagrafiche.clienti.cliente')"
         :icon="NAV_ICONS.CLIENTI"
@@ -379,7 +408,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
     </template>
 
     <div v-if="!contenutoVisibile" class="app-loading">
-      <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem;"></i>
+      <i :class="STATUS_ICONS.CARICAMENTO" style="font-size: 1.5rem;"></i>
     </div>
     <div v-if="contenutoVisibile" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
@@ -396,7 +425,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
               text size="small" class="mt-1" @click="clearSoggetto" />
           </div>
           <div v-else>
-            <Button :label="t('resolver.open')" icon="pi pi-search"
+            <Button :label="t('resolver.open')" :icon="MANAGE_ICONS.RICERCA"
               outlined @click="resolverVisible = true" />
           </div>
         </template>
@@ -414,11 +443,11 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- === Servizio === -->
         <h4>{{ t('anagrafiche.clienti.section_servizio') }}</h4>
         <!-- Banner refactor operatore-emittenti (solo creazione) -->
-        <Message v-if="!isEdit && auth.isAdminGlobale" severity="warn" :closable="false" class="mt-05">
-          {{ t('anagrafiche.clienti.banner_admin_globale_no_create') }}
+        <Message v-if="!isEdit && auth.emittenteScritturaId == null" severity="warn" :closable="false" class="mt-05">
+          {{ t('anagrafiche.clienti.banner_scegli_emittente') }}
         </Message>
-        <Message v-else-if="!isEdit && auth.emittenteCorrente" severity="info" :closable="false" class="mt-05">
-          {{ t('anagrafiche.clienti.banner_emittente_corrente', { nome: auth.emittenteCorrente.ragioneSociale }) }}
+        <Message v-else-if="!isEdit && auth.emittenteScritturaNome" severity="info" :closable="false" class="mt-05">
+          {{ t('anagrafiche.clienti.banner_emittente_corrente', { nome: auth.emittenteScritturaNome }) }}
         </Message>
         <!-- Riga: utility + servizio_da_fatturare + stato (edit) -->
         <div class="cliente-servizio-row">
@@ -586,7 +615,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         :entita-id-web="props.clienteId"
         :email-iniziale-web="detail?.soggetto_email || ''" />
 
-      <FormFooter :loading="loading" :disabled="!isEdit && !canSave" @save="onSave" @cancel="onClose" />
+      <FormFooter :loading="loading" :disabled="!isEdit && !canSave" @save="onSave" @cancel="chiudi" />
     </div>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->

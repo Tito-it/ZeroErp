@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-7 (D-V1) — REGOLA DEL 2: il guard multi_emittente passa dal BB script.fn_is_proprietario_tabella
+#   Brief: brief-db-magazzino-verbi-con-permesso, sezione 4 (D-V1, precisazione 3) e P-7
+#
+# -- PERCHE' --------------------------------------------------------------------------------------
+#   Questo guard (20260818-17) e' stato la PRIMA copia della regola «scrive
+#   solo il proprietario della tabella»: proprietario letto da pg_class,
+#   pg_has_role(current_user, proprietario, 'USAGE'). La seconda sono i guard
+#   dei documenti interni di magazzino (20260925-38). Il BB e' nato in
+#   20260925-37; la copia si ritira nello STESSO giro, non «dopo».
+#
+# -- COSA CAMBIA ----------------------------------------------------------------------------------
+#   - Il proprietario non si cerca piu' per nome ('ui'.'lista_definizione'):
+#     il BB riceve TG_RELID, cioe' la tabella su cui il trigger e' montato.
+#   - Il contesto dell'errore perde 'owner_atteso' (era diagnostica; il
+#     proprietario si legge da pg_class). Restano 'current_user' e il resto.
+#   - Comportamento identico: la stessa domanda (pg_has_role USAGE), lo stesso
+#     codice (E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE), la stessa frase.
+#
+# -- CORPO DI PARTENZA ----------------------------------------------------------------------------
+#   Dalla doc auto-generata, verificata uguale a pg_get_functiondef su zeroerp e
+#   zeroerp_ci il 2026-09-25. Il rollback rimette quel corpo e quel COMMENT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260925-39-update-trgfn-lista-definizione-guard-multi-emittente-bb-mctit.yaml
+
+  - changeSet:
+      id: 20260925-39-update-trgfn-lista-definizione-guard-multi-emittente-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_lista_definizione_guard_multi_emittente passa dal building block
+        script.fn_is_proprietario_tabella(TG_RELID) invece di leggere da se' il proprietario da
+        pg_class: regola del 2, la copia si ritira nello stesso giro dell'estrazione.
+        Comportamento invariato. Brief: brief-db-magazzino-verbi-con-permesso, D-V1 / P-7.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_is_proprietario_tabella';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_lista_definizione_guard_multi_emittente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_tocca boolean;
+              BEGIN
+                  -- Cosa conta come «tocca il flag»:
+                  --   INSERT -> solo se nasce gia' acceso (un false esplicito e'
+                  --             il default e non dichiara niente);
+                  --   UPDATE -> qualunque cambio di valore.
+                  IF TG_OP = 'INSERT' THEN
+                      v_tocca := COALESCE(NEW.multi_emittente, false);
+                  ELSE
+                      v_tocca := NEW.multi_emittente IS DISTINCT FROM OLD.multi_emittente;
+                  END IF;
+
+                  IF NOT v_tocca THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Scrive solo il proprietario della tabella (o chi ne ha i privilegi):
+                  -- il migrate passa, l'applicazione no. La regola ha una sede sola,
+                  -- il building block; il proprietario lo legge lui, da pg_class.
+                  IF script.fn_is_proprietario_tabella(TG_RELID) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'ui',
+                      'trgfn_lista_definizione_guard_multi_emittente',
+                      'E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE',
+                      jsonb_build_object(
+                          'lista_codice', NEW.codice,
+                          'lista_id', NEW.id,
+                          'column', 'multi_emittente',
+                          'valore_richiesto', NEW.multi_emittente,
+                          'current_user', current_user,
+                          'detail', 'Il flag si dichiara nel seed lista_definizione.csv, mai da interfaccia'
+                      ),
+                      NULL::uuid,
+                      NEW.codice::text
+                  );
+
+                  RETURN NEW;  -- irraggiungibile: la riga sopra solleva
+              END
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_lista_definizione_guard_multi_emittente()
+              IS 'Strato 1 di P-2b (decisione Q1): il flag multi_emittente si scrive solo dal PROPRIETARIO della tabella — cioe'' dal migrate/seed — e mai dall''applicazione. E'' un trigger e non un permesso di colonna perche'' il giro dei grant runtime (90_end/ci_apply/20260205-41, runOnChange) ri-concede UPDATE a livello di TABELLA su tutto lo schema ui a ogni passata: una REVOKE sopravvivrebbe fino al successivo db-ci-apply su dev, e in CI nemmeno un istante. Nessuna GUC di override: la condizione e'' su chi sei, non c''e'' niente da accendere. Dal 2026-09-25 la domanda «chi esegue e'' il proprietario?» la fa il building block script.fn_is_proprietario_tabella(TG_RELID), che legge il proprietario da pg_class (regola del 2: la seconda copia erano i guard dei documenti interni di magazzino, brief-db-magazzino-verbi-con-permesso D-V1). ⚠️ Copre UNA colonna: il baratto accettato in Q1. Brief perimetro-emittente §11.5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_lista_definizione_guard_multi_emittente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_owner text;
+                  v_tocca boolean;
+              BEGIN
+                  -- Cosa conta come «tocca il flag»:
+                  --   INSERT -> solo se nasce gia' acceso (un false esplicito e'
+                  --             il default e non dichiara niente);
+                  --   UPDATE -> qualunque cambio di valore.
+                  IF TG_OP = 'INSERT' THEN
+                      v_tocca := COALESCE(NEW.multi_emittente, false);
+                  ELSE
+                      v_tocca := NEW.multi_emittente IS DISTINCT FROM OLD.multi_emittente;
+                  END IF;
+
+                  IF NOT v_tocca THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ⚠️ Il proprietario si LEGGE, non si scrive a mano: un nome di
+                  --   ruolo hardcoded sarebbe giusto su questa istanza e falso
+                  --   sulla prossima.
+                  SELECT pg_get_userbyid(c.relowner)
+                    INTO v_owner
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'ui' AND c.relname = 'lista_definizione';
+
+                  -- pg_has_role(..., 'USAGE') e' vero per il proprietario e per
+                  -- chi ne e' membro: il migrate passa, l'applicazione no.
+                  IF pg_has_role(current_user, v_owner, 'USAGE') THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'ui',
+                      'trgfn_lista_definizione_guard_multi_emittente',
+                      'E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE',
+                      jsonb_build_object(
+                          'lista_codice', NEW.codice,
+                          'lista_id', NEW.id,
+                          'column', 'multi_emittente',
+                          'valore_richiesto', NEW.multi_emittente,
+                          'current_user', current_user,
+                          'owner_atteso', v_owner,
+                          'detail', 'Il flag si dichiara nel seed lista_definizione.csv, mai da interfaccia'
+                      ),
+                      NULL::uuid,
+                      NEW.codice::text
+                  );
+
+                  RETURN NEW;  -- irraggiungibile: la riga sopra solleva
+              END
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_lista_definizione_guard_multi_emittente()
+              IS 'Strato 1 di P-2b (decisione Q1): il flag multi_emittente si scrive solo dal PROPRIETARIO della tabella — cioe'' dal migrate/seed — e mai dall''applicazione. E'' un trigger e non un permesso di colonna perche'' il giro dei grant runtime (90_end/ci_apply/20260205-41, runOnChange) ri-concede UPDATE a livello di TABELLA su tutto lo schema ui a ogni passata: una REVOKE sopravvivrebbe fino al successivo db-ci-apply su dev, e in CI nemmeno un istante. Nessuna GUC di override: la condizione e'' su chi sei, non c''e'' niente da accendere. Il ruolo proprietario si legge da pg_class, non e'' scritto a mano. ⚠️ Copre UNA colonna: il baratto accettato in Q1. Brief perimetro-emittente §11.5.';

@@ -18,17 +18,19 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { PAGINATION } from '../../core/constants'
-import { paramsPagina } from '../../core/utils/listParams'
+import { paramsPagina, paramsRicerca } from '../../core/utils/listParams'
 import { listDistinte } from '../api/pagamenti'
+import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 // Scopo: filtri dello store -> query param dell'endpoint.
-// Note: ⚠️ La `search` NON si inoltra: questa lista non ha ricerca testuale a
-//       contratto. Passarla sarebbe un parametro ignorato in silenzio —
-//       l'operatore digiterebbe e vedrebbe la lista intera, convinto di aver
-//       cercato. Per la stessa ragione il campo non e' montato nella pagina.
-function buildParams(f) {
+// Note: la `search` si inoltra con `paramsRicerca` (brief-be-ricerca-full-liste-
+//       residue §5.3): colonne dal catalogo, casella solo se `ricerca_full`.
+function buildParams(f, _termine, ricerca) {
   const p = paramsPagina(f)
+  // La ricerca libera con la regola comune (`paramsRicerca`: trim, soglia della
+  // lista — `ricerca` = `{ minCaratteri }`, passato dal BB di stato).
+  Object.assign(p, paramsRicerca(f, ricerca))
   if (f.stato) p.stato = f.stato
   if (f.origine) p.origine = f.origine
   if (f.centro_riscossione_id != null) p.centro_riscossione_id = f.centro_riscossione_id
@@ -41,7 +43,12 @@ function buildParams(f) {
 export const useDistinteStore = defineStore(
   'pagamenti-distinte',
   () => {
-    const filters = ref({
+    // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i valori
+    //    di partenza della lista E il contratto che `FiltriLista` legge per il segno
+    //    dei filtri attivi (`useContrattoFiltriLista`). ⛔ Due letterali divergono
+    //    al primo filtro aggiunto da una parte sola, e il segno si spegnerebbe su
+    //    una lista che filtra — senza nessun errore.
+    const FILTRI_DEFAULT = {
       // Vocabolari chiusi (null = tutti). ⛔ I valori NON si cablano nel
       // frontend: gli stati arrivano dal catalogo che il dettaglio porta con
       // se', e il filtro li offre da li'.
@@ -51,12 +58,16 @@ export const useDistinteStore = defineStore(
       ente_incasso_id: null,
       data_da: null,
       data_a: null,
-      // ⚠️ NON si inoltra al backend (questa lista non ha ricerca testuale), ma
-      // la chiave si DICHIARA: fa parte del contratto di `useSearchTable`, che
-      // la scrive su ricerca universale / deep-link `?search=` — e una chiave
-      // che nasce per assegnazione e' una chiave che nessuno ha deciso.
+    }
+
+    const filters = ref({
+      ...FILTRI_DEFAULT,
+      // La ricerca libera: la scrive `useSearchTable` (casella nel `#sempre`
+      // di `FiltriLista`, ricerca universale, deep-link `?search=`), la
+      // inoltra `buildParams` (`paramsRicerca`). Le colonne le decide il
+      // catalogo (brief-be-ricerca-full-liste-residue §5.3).
       search: '',
-      limit: PAGINATION.DEFAULT_ROWS,
+      limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
       // Il giorno piu' recente in cima: e' il default del backend, quindi la
       // lista non si riordina sotto gli occhi al primo caricamento.
@@ -64,15 +75,30 @@ export const useDistinteStore = defineStore(
       order_dir: 'desc',
     })
 
-    const { items, totalRecords, loading, hasSearched, fetchList } =
-      useListaEmptyStateFetch({
-        filters,
-        buildParams,
-        fetchPage: listDistinte,
-        alwaysFetch: true,
-      })
+    // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).
+    // ⛔ Non si elencano i suoi ref a mano: un ref nuovo del BB (com'e'
+    //    successo con `ricercaFull`, `ricercaMinCaratteri`,
+    //    `ricercaCambiaLaRichiesta`) arriverebbe solo agli store che lo
+    //    ricordano — e senza errore sugli altri.
+    const lista = useListaEmptyStateFetch({
+      filters,
+      buildParams,
+      fetchPage: listDistinte,
+      alwaysFetch: true,
+    })
+    const { fetchList } = lista
 
-    return { items, totalRecords, loading, hasSearched, filters, fetchList }
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li' («Pulisci filtri»).
+    const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+      filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+    })
+
+    return {
+      ...lista,
+      filters,
+      chiaviFiltro, filtriDefault, azzeraFiltri,
+    }
   },
   { userScoped: true },
 )

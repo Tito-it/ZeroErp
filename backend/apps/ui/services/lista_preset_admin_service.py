@@ -35,6 +35,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -58,7 +59,7 @@ _AMBITI_AMMESSI: frozenset[str] = frozenset(
 
 # Whitelist chiavi del payload create. Comprende immutabili (`lista_id`,
 # `ambito`, `profilo_accesso_id`, `emittente_fiscale_id`) + mutabili.
-_CREATE_KEYS: frozenset[str] = frozenset(
+CREATE_KEYS: frozenset[str] = frozenset(
     {
         "lista_id",
         "codice",
@@ -76,7 +77,7 @@ _CREATE_KEYS: frozenset[str] = frozenset(
 
 # Whitelist chiavi del payload update. Esclude gli immutabili. Per
 # cambiare ambito/refs si crea un nuovo preset.
-_UPDATE_KEYS: frozenset[str] = frozenset(
+UPDATE_KEYS: frozenset[str] = frozenset(
     {
         "codice",
         "descrizione",
@@ -90,7 +91,6 @@ _UPDATE_KEYS: frozenset[str] = frozenset(
 
 _MAX_CODICE_LEN = 80
 _MAX_DESCRIZIONE_LEN = 200
-_MAX_PAGINA_DIMENSIONE = 500
 
 # Mapping vincoli DB -> codice + messaggio applicativo. I nomi sono
 # allineati a 20260506-04 (CHECK + UNIQUE + partial UNIQUE).
@@ -156,14 +156,11 @@ class ListaPresetAdminService:
     # Scopo: Dettaglio singolo preset. 404 (E_UI_PRESET_NON_TROVATO) se
     #        l'id non esiste. Usato da get post-create / post-update.
     def get_preset(self, preset_id: int) -> dict[str, Any]:
-        result = self._repo.get_preset(preset_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_PRESET_NOT_FOUND,
-            message="Preset lista non trovato.",
-            detail=f"preset_id={preset_id}",
+        result = testata_o_not_found(
+            self._repo.get_preset, preset_id,
+            code=E_PRESET_NOT_FOUND, message="Preset lista non trovato.",
+            id_name="preset_id", function_name="lista_preset_admin_service.get_preset",
         )
-        assert result is not None
         return result
 
     # =================================================================
@@ -180,7 +177,7 @@ class ListaPresetAdminService:
     ) -> dict[str, Any]:
         self._v.validate_allowed_keys(
             payload,
-            allowed=_CREATE_KEYS,
+            allowed=CREATE_KEYS,
             message="Payload preset non valido.",
         )
         data = self._build_create_data(payload)
@@ -230,11 +227,10 @@ class ListaPresetAdminService:
                 message="Campi immutabili presenti in payload update.",
                 detail=f"campi non aggiornabili={intersect!r}",
             )
-            raise  # pragma: no cover
 
         self._v.validate_allowed_keys(
             payload,
-            allowed=_UPDATE_KEYS,
+            allowed=UPDATE_KEYS,
             message="Payload preset non valido.",
         )
         data = self._build_update_data(payload)
@@ -242,7 +238,7 @@ class ListaPresetAdminService:
             bool(data),
             code=E_PRESET_VALIDATION,
             message="Nessun campo aggiornabile presente nel payload.",
-            detail=f"allowed_keys={sorted(_UPDATE_KEYS)!r}",
+            detail=f"allowed_keys={sorted(UPDATE_KEYS)!r}",
         )
 
         try:
@@ -328,7 +324,6 @@ class ListaPresetAdminService:
                     message="Colonna duplicata nella composizione preset.",
                     detail=f"colonne[{idx}] colonna_id={row['colonna_id']} ripetuta",
                 )
-                raise  # pragma: no cover
             seen_colonne.add(row["colonna_id"])
             normalized.append(row)
 
@@ -397,14 +392,13 @@ class ListaPresetAdminService:
         attivo = self._v.optional_bool(payload, "attivo")
         data["attivo"] = bool(attivo) if attivo is not None else True
 
+        # pagina_dimensione: qui solo la FORMA (un intero). Quali misure sono
+        # ammesse lo dice il catalogo `ui.misure_pagina`, e lo fa rispettare
+        # il DB (guard + FK: `E_UI_MISURA_PAGINA_NON_AMMESSA`, 400 dal
+        # middleware). ⛔ Nessun tetto qui: era una seconda regola, diversa dal
+        # catalogo (ammetteva 37, che il paginatore non offre).
         pag_dim = self._v.optional_positive_int(payload, "pagina_dimensione")
         if pag_dim is not None:
-            ErrorManager.require(
-                pag_dim <= _MAX_PAGINA_DIMENSIONE,
-                code=E_PRESET_VALIDATION,
-                message="pagina_dimensione fuori range.",
-                detail=f"max={_MAX_PAGINA_DIMENSIONE}",
-            )
             data["pagina_dimensione"] = pag_dim
 
         if "ordinamento_default" in payload:
@@ -458,17 +452,11 @@ class ListaPresetAdminService:
             )
             data["attivo"] = bool(value)
         if "pagina_dimensione" in payload:
-            pag_dim = self._v.optional_positive_int(
+            # Solo la forma: l'ammissibilita' la decide il catalogo a DB
+            # (vedi `_build_create_data`). NULL = «il default».
+            data["pagina_dimensione"] = self._v.optional_positive_int(
                 payload, "pagina_dimensione"
             )
-            if pag_dim is not None:
-                ErrorManager.require(
-                    pag_dim <= _MAX_PAGINA_DIMENSIONE,
-                    code=E_PRESET_VALIDATION,
-                    message="pagina_dimensione fuori range.",
-                    detail=f"max={_MAX_PAGINA_DIMENSIONE}",
-                )
-            data["pagina_dimensione"] = pag_dim
         if "ordinamento_default" in payload:
             value = payload["ordinamento_default"]
             ErrorManager.require(

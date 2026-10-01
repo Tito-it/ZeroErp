@@ -67,8 +67,6 @@ script.fn_available_actions_offerta(
             "key": "emetti",
             "target_state": "EMESSA",          // null per azioni speciali (crea_revisione, push_contratto, genera_ordine)
             "label_key": "offerte.azione_emetti",
-            "severity": "success",
-            "icon": "pi pi-send",
             "requires_confirm": true,
             "requires_motivazione": false       // true per annulla e rifiuta
         }
@@ -145,8 +143,8 @@ Risultato per stato:
    `NOT FOUND` → `RETURN NULL`.
 2. **Transizioni manuali** — `jsonb_agg` su `config.stati_doc_offerte_transizioni`
    filtrata per `stato_da_id = v_stato_id AND attivo IS TRUE AND manuale IS NOT FALSE`.
-   I metadati UI (`label_key`, `severity`, `icon`, `requires_confirm`,
-   `requires_motivazione`) vengono letti da `t.meta`. Ordine: `sa.ordine`.
+   I metadati UI (`label_key`, `requires_confirm`,
+   `requires_motivazione`) vengono letti da `t.meta`; icona e colore li sceglie il frontend dal `key`. Ordine: `sa.ordine`.
    Filtro defense-in-depth: `AND t.meta ?? 'action_key' AND t.meta ?? 'label_key'`.
 3. **Presenza documenti** — due `EXISTS` calcolati una volta:
    - `v_has_contratto` = `EXISTS` contratto con `offerta_id = p_offerta_id`.
@@ -208,3 +206,34 @@ Risultato per stato:
   dal `key` (`crea_revisione`, `push_contratto` e `genera_ordine` usano routing
   speciale nel drawer; le transizioni standard usano l'endpoint generico
   cambio-stato).
+
+## Rev 2026-09-24 — «Emetti» e «Accetta» spenti finché un prezzo non è autorizzato
+
+Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*.
+Un'offerta con un'eccezione o un suo componente **attivi** in attesa di approvazione
+(`PENDING`) o **rifiutati** (`REJECTED`) non si emette e non si accetta.
+
+* Le azioni di stato passano alla forma dell'**array dei motivi**: `enabled`, `reason` e
+  `reason_key` discendono da una chiave **nuova**, `reasons`. `crea_revisione`, le push e
+  l'ordine non cambiano.
+* Verso `EMESSA`: prima il motivo del listino di prima (versione mancante o non attiva,
+  stessi `reason` e `reason_key`), poi i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati).
+* Verso `ACCETTATA`: i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati).
+* Il rientro automatico `SUPERATA → EMESSA` non è un'azione manuale e non compare qui.
+* È lo stesso building block che
+  [`vendite.trgfn_offerte_commerciali_guard_transizione`](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_guard_transizione)
+  usa per sollevare: pulsanti e database non possono dissentire.
+
+Motivi nuovi: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
+`common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
+(changeSet `20260924-28`, brief `brief-db-preventivi-congelamento-pricing`.)
+
+---
+
+### Rev 2026-09-24 (2) — «Crea revisione» spento con un prezzo in attesa
+
+(`20260924-37`.) L'azione `crea_revisione` resta proposta su `EMESSA`, ma è **spenta con il
+motivo** se l'offerta ha un prezzo in attesa —
+[script.fn_check_prezzi_in_attesa](/dbzero/script/funzioni/fn_check_prezzi_in_attesa), la
+stessa funzione con cui `fn_crea_revisione_offerta` rifiuta. `can_create_revisione` diventa
+**veritiero**.

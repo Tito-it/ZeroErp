@@ -43,7 +43,7 @@ import {
   formatQtaMerce as qta,
   sintesiSituazioneMerce,
 } from './situazioneMerceSintesi'
-import { MANAGE_ICONS } from '../../../core/constants'
+import { STATUS_ICONS } from '../../../core/constants'
 
 const props = defineProps({
   sezioni: { type: Object, required: true },
@@ -141,7 +141,7 @@ function ritardo(riga) {
 
 <template>
   <div v-if="loading && !loaded" class="app-loading">
-    <i class="pi pi-spin pi-spinner" />
+    <i :class="STATUS_ICONS.CARICAMENTO" />
   </div>
 
   <div v-else-if="!loaded" class="app-empty-state">
@@ -234,7 +234,7 @@ function ritardo(riga) {
               v-if="data.sospetto_duplicato_ordine"
               severity="warn"
               class="app-merce-badge"
-              :icon="MANAGE_ICONS.ERRORE"
+              :icon="STATUS_ICONS.ERRORE"
               :value="t('vendite.situazione_merce.sospetta')"
               v-tooltip.bottom="t('vendite.situazione_merce.sospetta_hint')"
             />
@@ -326,7 +326,7 @@ function ritardo(riga) {
         <Tag
           v-if="s.tuttoRegolare"
           severity="success"
-          icon="pi pi-check"
+          :icon="STATUS_ICONS.SI"
           :value="t('vendite.situazione_merce.tutto_regolare')"
         />
         <Tag

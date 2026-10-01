@@ -15,7 +15,12 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
+    fetch_paged_with_total,
     sql_order_clause,
     call_jsonb_fn,
     row_to_dict,
@@ -26,11 +31,15 @@ from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
+from apps.vendite.db._righe_repo_mixin import (
+    COLONNE_RIGHE_COMMERCIALI,
+    RICERCA_RIGHE_COMMERCIALI,
+    RigheDocumentoRepositoryMixin,
+)
 from apps.vendite.types import (
     PreventivoDetailRow,
     PreventivoListRow,
     PreventivoPraticaRow,
-    PreventivoRigaRow,
     PreventivoSmistamentoRow,
 )
 
@@ -42,6 +51,16 @@ from apps.vendite.types import (
 #        (`<ListaConfigurabile>` usa `:field="col.campo_sorgente"`). Nomi
 #        canonici del soggetto (no alias `ba_*` su cliente/id.fiscale, lezione
 #        DEF-8). `rev` volutamente ASSENTE: non ordinabile (decisione §7.3).
+# Colonne che la ricerca libera SA cercare nella lista `vendite.preventivi`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+_RICERCA_PREVENTIVI = RicercaFull(
+    "vendite.preventivi",
+    (
+        "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+    ),
+)
+
 _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "numero": "v.numero",
     "data": "v.data",
@@ -70,6 +89,33 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "fase": "v.fase",
 }
 
+# Scopo: whitelist ORDER BY del tab «Revisioni» del drawer preventivo (lista
+#        `vendite.preventivo_revisioni`, alias `v` su `vw_preventivi_lista`).
+# ⛔ COSTANTE NUOVA E SEPARATA da `_ORDER_COLS_PREVENTIVI`, di proposito: la
+#    lista principale NON ordina per `rev` (decisione §7.3 qui sopra) e questa
+#    invece parte proprio da li'. Allargare quella per servire questa avrebbe
+#    offerto alla lista principale una freccia che il suo catalogo non ha — e
+#    `test_liste_configurabili_seed` (test 2) l'avrebbe detta irraggiungibile.
+# ⚠️ Le chiavi sono i `campo_sorgente` del catalogo (lista 89): le colonne
+#    gemelle della lista offerte hanno gli STESSI codici ma campo_sorgente
+#    diversi (`rev`/`revisione_numero`, `data`/`data_emissione`), ed e' questo
+#    che il FE manda come `order_by`.
+# ⚠️ `numero` e `stato_descrizione` dal 2026-09-28 (brief-db-liste-datatable-
+#    grezze §9.1): colonne del nucleo rese ordinabili dal seed, GEMELLE di
+#    quelle della lista 90 — si cambiano insieme.
+PREVENTIVO_REVISIONI_ORDER_COLUMNS: dict[str, str] = {
+    "rev": "v.rev",
+    "numero": "v.numero",
+    "data": "v.data",
+    "stato_descrizione": "v.stato_descrizione",
+    "totale_documento": "v.totale_documento",
+}
+
+# Colonne DATA della whitelist qui sopra: senza `order_dir` ordinano DESC
+# (`sql_order_clause(colonne_desc=…)`, regola di Tid del 2026-09-02),
+# confrontate col seed da `test_liste_configurabili_seed` (test 10).
+PREVENTIVO_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data"})
+
 # Risoluzione "rev attiva" del legame ROOT preventivo↔pratica/flusso
 # (pratiche_sorgenti, sorgente PREVENTIVO, ruolo ROOT). Il link memorizza l'uid
 # della rev AGGANCIATA (`p_link`); da essa deriviamo numero+emittente e
@@ -91,7 +137,19 @@ _ROOT_PREVENTIVO_ATTIVO_FROM = """
 """
 
 
+# Le righe del documento come lista configurabile `vendite.preventivo_righe` (BB
+# `RigheDocumentoRepositoryMixin`, brief-db-liste-righe-documento lotto A).
+# Le colonne gemelle sono dichiarate una volta nel BB; qui solo cio' che e'
+# di questo documento. `test_ricerca_full_seed` legge `_RICERCA_RIGHE`.
+_RICERCA_RIGHE = RicercaFull("vendite.preventivo_righe", RICERCA_RIGHE_COMMERCIALI)
+_ORDER_COLS_RIGHE: dict[str, str] = {
+    **COLONNE_RIGHE_COMMERCIALI,
+    "data_consegna_richiesta_cliente": "data_consegna_richiesta_cliente",
+}
+
+
 class PreventiviRepository(
+    RigheDocumentoRepositoryMixin,
     ComponentiRepositoryMixin,
     RiepilogoIvaRepositoryMixin,
     IndirizziDocumentoRepositoryMixin,
@@ -106,6 +164,20 @@ class PreventiviRepository(
     lettura del riepilogo IVA (vista mantenuta dal trigger AFTER su
     preventivi_righe via fn_ricalcola_riepilogo_iva_preventivo).
     """
+
+    # Righe (BB `RigheDocumentoRepositoryMixin`): vista, chiave, ordine del
+    # documento, whitelist e ricerca della lista `vendite.preventivo_righe`.
+    _righe_vista = "vendite.vw_preventivi_righe_dettaglio"
+    _righe_tabella = "vendite.preventivi_righe"
+    # ⛔ `count_righe` (BB) non conta per stato di approvazione del prezzo:
+    #    quella domanda ha una sede sola, script.fn_check_prezzi_autorizzati, e
+    #    arriva nel blob delle capability (brief-db-preventivi-congelamento-
+    #    pricing §6.1).
+    _righe_fk_documento = "preventivo_id"
+    _righe_ordine_documento = "ordine"
+    _righe_ordinamento = _ORDER_COLS_RIGHE
+    _righe_ricerca = _RICERCA_RIGHE
+    _righe_colonne_desc = ("data_consegna_richiesta_cliente",)
 
     # Configurazione mixin componenti.
     _componenti_table_name = "vendite.preventivi_righe_componenti"
@@ -154,7 +226,7 @@ class PreventiviRepository(
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[PreventivoListRow], int]:
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -170,10 +242,9 @@ class PreventiviRepository(
             #    DDT il 2026-09-02).
             default_desc=True,
         )
-        # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
+        # `max_limit`: lista cap `MAX_LIMIT` (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -196,11 +267,9 @@ class PreventiviRepository(
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        if search and len(search) >= 3:
-            # Ricerca su numero e ragione sociale (nome canonico del soggetto).
-            conditions.append("(v.numero ILIKE %s OR v.ragione_sociale_completa ILIKE %s)")
-            like = f"%{search}%"
-            params.extend([like, like])
+        add_ricerca_full_condition(
+            conditions, params, search, _RICERCA_PREVENTIVI,
+        )
         # Filtro revisione attiva: di default mostra solo l'ultima revisione
         # "viva" per numero: `is_superata IS FALSE` — "non esiste una revisione
         # successiva che l'abbia rimpiazzata". Quando l'operatore vuole lo
@@ -370,153 +439,6 @@ class PreventiviRepository(
     #  LETTURE — Righe (via vista vw_preventivi_righe_dettaglio)
     # ══════════════════════════════════════════════════════════
 
-    # Scopo: Restituisce righe preventivo. Replica la proiezione di
-    # `vw_preventivi_righe_dettaglio` aggiungendo `stato_approvazione_prezzo`
-    # e `pratica_approvazione_prezzo_id` (Sprint E L3) che la vista NON
-    # espone — la vista DB e' di Sprint <E e va estesa col team DB. Finche'
-    # la patch DB non landa, leggiamo dalla tabella nativa con i medesimi
-    # LEFT JOIN per non perdere il tag UI "In approvazione" sulle righe PENDING.
-    # NB: importo_iva_riga e' rimosso (l'IVA per riga e' concettualmente
-    # errata, art. 21 DPR 633/72: IVA si calcola sull'aggregato per aliquota,
-    # vedi vendite.preventivi_riepiloghi_iva).
-    def list_righe(self, preventivo_id: int) -> list[PreventivoRigaRow]:
-        sql = """
-            SELECT
-                pr.id,
-                pr.preventivo_id,
-                pr.ordine,
-                pr.attivo,
-                pr.articolo_id,
-                a.codice                AS articolo_codice,
-                a.descrizione           AS articolo_descrizione,
-                pr.descrizione,
-                pr.quantita,
-                pr.qta_operativa,
-                pr.factor_to_base,
-                pr.uom_operativa_id,
-                um.codice               AS uom_codice,
-                pr.prezzo_unitario,
-                pr.sconto_percentuale,
-                pr.iva_id,
-                iva.codice              AS iva_codice,
-                iva.descrizione         AS iva_descrizione,
-                iva.aliquota_iva        AS iva_aliquota,
-                ROUND(
-                    (pr.quantita * pr.prezzo_unitario) *
-                    (1::numeric - COALESCE(pr.sconto_percentuale, 0::numeric) / 100::numeric),
-                    2
-                ) AS importo_riga,
-                (pr.quantita * pr.prezzo_unitario) *
-                    (1::numeric - COALESCE(pr.sconto_percentuale, 0::numeric) / 100::numeric)
-                    AS imponibile_riga_full,
-                pr.meta,
-                pr.data_insert,
-                pr.data_update,
-                -- Data di consegna RICHIESTA dal cliente (brief-db-modifiche-
-                -- certe-ciclo-vendita-e-articolo, Blocco A). Sul preventivo
-                -- solo la richiesta: non c'e' ancora niente da confermare. La
-                -- porta avanti `fn_push_preventivo_a_ordine`.
-                pr.data_consegna_richiesta_cliente,
-                -- Sprint E (autorizzazioni prezzi L3): flag + FK pratica
-                -- per il tag UI "In approvazione" su righe PENDING.
-                pr.stato_approvazione_prezzo,
-                pr.pratica_approvazione_prezzo_id,
-                -- Refactor componenti BoM CASO A 2026-05-11:
-                -- flag derivato per il FE (DataTable expander). Vero quando
-                -- la riga padre ha almeno un componente CASO A attivo nella
-                -- tabella parallela `preventivi_righe_componenti`. Permette
-                -- al FE di mostrare il chevron solo dove serve, senza N+1
-                -- fetch lato client.
-                EXISTS (
-                    SELECT 1
-                      FROM vendite.preventivi_righe_componenti prc
-                     WHERE prc.riga_preventivo_id = pr.id
-                       AND prc.attivo IS TRUE
-                ) AS is_composito_caso_a
-              FROM vendite.preventivi_righe pr
-              LEFT JOIN catalogo.articoli a   ON a.id   = pr.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = pr.uom_operativa_id
-              LEFT JOIN config.iva iva        ON iva.id = pr.iva_id
-             WHERE pr.preventivo_id = %s
-               AND pr.attivo IS TRUE
-             ORDER BY pr.ordine, pr.id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id])
-            return rows_to_list(cursor)
-
-    # Scopo: Conta righe attive per stato_approvazione_prezzo. Single SELECT
-    #        ottimizzata: serve a `get_preventivo` per derivare il flag
-    #        "frozen_for_pending/rejected_pricing" senza caricare l'intero
-    #        elenco righe (ognuna con N JOIN). Ritorna sempre tutte le chiavi
-    #        rilevanti — chiavi mancanti = 0.
-    def count_righe_per_stato_approvazione(
-        self, preventivo_id: int,
-    ) -> dict[str, int]:
-        sql = """
-            SELECT stato_approvazione_prezzo, COUNT(*) AS n
-              FROM vendite.preventivi_righe
-             WHERE preventivo_id = %s
-               AND attivo IS TRUE
-             GROUP BY stato_approvazione_prezzo
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id])
-            rows = cursor.fetchall()
-        out = {"PENDING": 0, "APPROVED": 0, "REJECTED": 0, "TOTAL": 0}
-        for stato, n in rows:
-            n = int(n)
-            out["TOTAL"] += n
-            if stato in out:
-                out[stato] = n
-        return out
-
-    # Scopo: Carica una singola riga preventivo via lookup mirato per id.
-    #        Replica la stessa proiezione di list_righe (denormalizzazioni
-    #        articolo/uom/iva + flag approvazione_prezzo) ma senza caricare
-    #        tutto l'elenco quando serve solo una riga (es. aggiorna_riga).
-    def get_riga(self, riga_id: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT
-                pr.id,
-                pr.preventivo_id,
-                pr.ordine,
-                pr.attivo,
-                pr.articolo_id,
-                a.codice                AS articolo_codice,
-                a.descrizione           AS articolo_descrizione,
-                pr.descrizione,
-                pr.quantita,
-                pr.qta_operativa,
-                pr.factor_to_base,
-                pr.uom_operativa_id,
-                um.codice               AS uom_codice,
-                pr.prezzo_unitario,
-                pr.sconto_percentuale,
-                pr.iva_id,
-                iva.codice              AS iva_codice,
-                iva.descrizione         AS iva_descrizione,
-                iva.aliquota_iva        AS iva_aliquota,
-                pr.meta,
-                pr.data_consegna_richiesta_cliente,
-                pr.stato_approvazione_prezzo,
-                pr.pratica_approvazione_prezzo_id,
-                EXISTS (
-                    SELECT 1
-                      FROM vendite.preventivi_righe_componenti prc
-                     WHERE prc.riga_preventivo_id = pr.id
-                       AND prc.attivo IS TRUE
-                ) AS is_composito_caso_a
-              FROM vendite.preventivi_righe pr
-              LEFT JOIN catalogo.articoli a   ON a.id   = pr.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = pr.uom_operativa_id
-              LEFT JOIN config.iva iva        ON iva.id = pr.iva_id
-             WHERE pr.id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [riga_id])
-            return row_to_dict(cursor)
-
     # Scopo: Stato corrente (codice_interno) del preventivo. Guard leggero
     #        pre-operazione (mirror ddt/ordini): mai il detail completo per
     #        leggere un solo campo.
@@ -600,6 +522,28 @@ class PreventiviRepository(
             assert result is not None
             return result
 
+    # ⛔ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): una
+    #    chiave fuori lista e' `ValueError`, non uno scarto. E' l'elenco delle
+    #    colonne che QUESTI metodi scrivono, non il contratto dell'operatore:
+    #    la testata la scrivono `preventivi_service.aggiorna_preventivo` (tupla
+    #    inline) e `cambia_stato` (fatturazione_immediata/competenza_mese
+    #    all'accettazione); la riga anche il workflow L3
+    #    (`approvazioni_prezzo_service`: stato_approvazione_prezzo,
+    #    pratica_approvazione_prezzo_id, meta). Chi aggiunge un campo a monte
+    #    lo aggiunge qui: dimenticarlo e' un errore che si vede.
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "billing_account_id", "istanza_utility_id",
+        "valuta_id", "termine_pagamento_id",
+        "validita_dal", "validita_al", "competenza_mese",
+        "fatturazione_immediata", "meta",
+    })
+    RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "descrizione", "qta_operativa", "uom_operativa_id",
+        "factor_to_base", "prezzo_unitario", "sconto_percentuale",
+        "ordine", "meta", "data_consegna_richiesta_cliente",
+        "stato_approvazione_prezzo", "pratica_approvazione_prezzo_id",
+    })
+
     # Scopo: Aggiorna campi modificabili della testata preventivo.
     # Accetta anche None per azzerare campi nullable.
     # Campi jsonb (meta) vengono serializzati con json.dumps e cast ::jsonb.
@@ -608,7 +552,10 @@ class PreventiviRepository(
         preventivo_id: int,
         **kwargs: Any,
     ) -> bool:
-        return execute_dynamic_update("vendite.preventivi", preventivo_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.preventivi", preventivo_id, kwargs,
+            allowed=self.TESTATA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Risolve l'id del preventivo agganciato come ROOT a una pratica
     #        (pratiche_sorgenti, sorgente PREVENTIVO). Unica fonte di verita' del
@@ -616,7 +563,7 @@ class PreventiviRepository(
     #        PREVENTIVAZIONE). Ritorna la rev ATTIVA del numero agganciato (segue
     #        la revisione viva), None se nessun ROOT preventivo.
     def get_preventivo_id_by_pratica_root(self, pratica_id: int) -> int | None:
-        sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.pratica_id = %s LIMIT 1"  # noqa: S608
+        sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.pratica_id = %s LIMIT 1"
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             row = cursor.fetchone()
@@ -629,7 +576,7 @@ class PreventiviRepository(
     #        flusso. L'indice unico parziale garantisce al piu' 1 riga. Ritorna la
     #        rev ATTIVA del numero agganciato (segue la revisione viva).
     def get_preventivo_id_by_flusso_root(self, flusso_id: int) -> int | None:
-        sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.flusso_id = %s LIMIT 1"  # noqa: S608
+        sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.flusso_id = %s LIMIT 1"
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
             row = cursor.fetchone()
@@ -732,29 +679,50 @@ class PreventiviRepository(
             assert result is not None
             return result
 
-    # Scopo: Lista catena revisioni che condividono lo stesso `numero` del
-    #        preventivo passato. Diverso dal modello offerte (catenate via
-    #        `revisione_padre_id`): qui le revisioni hanno tutte stesso
-    #        `numero` e si distinguono per la colonna `rev` (intero, 0 = prima).
-    #        Output ordinato per `rev` ASC. Legge dalla vista canonica
-    #        `vw_preventivi_lista` per avere `is_attiva` + i campi
-    #        denormalizzati gia' pronti per il FE (rev, data,
-    #        stato_codice_interno, stato_descrizione, totale_documento — i soli
-    #        consumati dal tab Revisioni) — la vista del filtro lista riusata.
-    def list_revisioni(self, preventivo_id: int) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT v.*
-                  FROM vendite.vw_preventivi_lista v
-                 WHERE v.numero = (
-                     SELECT numero FROM vendite.preventivi WHERE id = %s
-                 )
-                 ORDER BY v.rev ASC, v.id ASC
-                """,
-                [preventivo_id],
-            )
-            return rows_to_list(cursor)
+    # Scopo: Lista PAGINATA della catena revisioni che condividono lo stesso
+    #        `numero` del preventivo passato (lista `vendite.preventivo_revisioni`).
+    #        Diverso dal modello offerte (catenate via `revisione_padre_id`, con
+    #        la radice scritta sulla riga): qui le revisioni hanno tutte stesso
+    #        `numero` (UNIQUE (numero, rev)) e si distinguono per `rev` (0 =
+    #        prima). Legge la vista canonica `vw_preventivi_lista`: `is_attiva`,
+    #        `stato_descrizione`, `totale_documento` gia' pronti.
+    # ⛔ Fino al 2026-09-27 restituiva la catena INTERA senza LIMIT, e il tab la
+    #    mostrava in una DataTable grezza: nessun paginatore, nessun ordinamento,
+    #    nessuna scelta colonne (brief-db-liste-datatable-grezze §4 riga 7).
+    # ⚠️ Nessun filtro emittente, ed e' voluto: l'`emittente_fiscale_id` che il
+    #    tab manda lo legge SOLO il cancello di perimetro (la view lo dichiara
+    #    `lista_emittente_param`). Le righe sono di UN documento, quindi di un
+    #    emittente solo per costruzione; filtrarle ancora trasformerebbe un id
+    #    sbagliato in una lista VUOTA, cioe' in un «nessuna revisione» falso e
+    #    senza errore. La visibilita' resta alla RLS (vista `security_invoker`).
+    def list_revisioni(
+        self, preventivo_id: int, *,
+        limit: int = 25, offset: int = 0,
+        order_by: str | None = "rev", order_dir: str | None = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=PREVENTIVO_REVISIONI_ORDER_COLUMNS, default="v.rev", tiebreak="v.id",
+            colonne_desc=PREVENTIVO_REVISIONI_SORT_COLONNE_DATA,
+        )
+        params: list[Any] = [preventivo_id]
+        from_where = (
+            "FROM vendite.vw_preventivi_lista v "
+            "WHERE v.numero = (SELECT numero FROM vendite.preventivi WHERE id = %s)"
+        )
+        return fetch_paged_with_total(
+            f"""
+            SELECT v.*, COUNT(*) OVER () AS total_count
+            {from_where}
+            ORDER BY {ordinamento}
+            LIMIT %s OFFSET %s
+            """,  # ORDER BY da sql_order_clause su whitelist, WHERE da condizioni letterali, valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )
 
     # ══════════════════════════════════════════════════════════
     #  SCRITTURE — Righe
@@ -784,8 +752,8 @@ class PreventiviRepository(
     # del service `_load_componente_for_modification` (Fix #2 perf,
     # refactor-componenti.md §13). Ritorna `None` se il componente non
     # esiste; altrimenti dict con `{componente_id, riga_preventivo_id,
-    # preventivo_id, stato_codice_interno}` strettamente necessari ai
-    # check del service.
+    # preventivo_id, stato_codice_interno, numero}` strettamente necessari ai
+    # check del service (`numero` per l'etichetta di `richiedi_righe_in_bozza`).
     def load_componente_with_scope(
         self, componente_id: int,
     ) -> dict[str, Any] | None:
@@ -793,7 +761,11 @@ class PreventiviRepository(
             SELECT c.id          AS componente_id,
                    c.riga_preventivo_id,
                    r.preventivo_id,
-                   sdp.codice_interno AS stato_codice_interno
+                   sdp.codice_interno AS stato_codice_interno,
+                   -- L'etichetta del rifiuto di stato («Preventivo 2026/00012»,
+                   -- o «Preventivo #131» se NULL): senza, il guard delle righe
+                   -- in bozza ripiega sull'id anche su un preventivo emesso.
+                   p.numero
               FROM vendite.preventivi_righe_componenti c
               JOIN vendite.preventivi_righe r ON r.id = c.riga_preventivo_id
               JOIN vendite.preventivi p       ON p.id = r.preventivo_id
@@ -858,11 +830,14 @@ class PreventiviRepository(
     # Scopo: Aggiorna una riga preventivo esistente.
     # Campi jsonb (meta) vengono serializzati con json.dumps e cast ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.preventivi_righe", riga_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.preventivi_righe", riga_id, kwargs,
+            allowed=self.RIGA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Elimina una riga preventivo (HARD DELETE).
     # Pattern simmetrico a `contratti_repository.delete_riga`: l'eliminazione
-    # avviene solo in DRAFT (guard nel service `_STATI_RIGHE_MODIFICABILI`),
+    # avviene solo in DRAFT (guard nel service: BB `richiedi_righe_in_bozza`),
     # in cui la riga e' una bozza non ancora pushed in commessa. La FK
     # `preventivi_righe_componenti.riga_preventivo_id` ha ON DELETE CASCADE
     # (migration 20260511-06): il DB pulisce automaticamente i componenti

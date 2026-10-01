@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FAMIGLIA DI DOCUMENTO PRENDE IL SUO `codice` — passo 3 di 4: il pregresso
+#   Brief: brief-db-ricerca-full-colonne-da-accendere.md §3.5
+#
+#   Le famiglie che esistono gia' prendono `codice = codice_interno`: il
+#   valore che la lista mostrava. Backfill del pregresso: su un database da
+#   zero la tabella qui e' ancora vuota (il seed e' in 80_data) e l'UPDATE
+#   tocca zero righe.
+#
+# ⚠️ Separato dai vincoli (-06) di proposito: un UPDATE e un ALTER TABLE
+#   nella stessa transazione muoiono se l'UPDATE lascia eventi trigger in
+#   sospeso — qui oggi non ne lascia, ma il costo di separarli e' un file.
+#
+# ⚠️ L'UPDATE attraversa i guard `_a10_` della tabella: `guard_riferimenti`
+#   e' UPDATE OF su colonne che qui non cambiano, `guard_struttura` e
+#   `guard_disattivazione` escono sul no-op delle loro colonne, il lock
+#   guarda il solo codice_interno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260924-05-backfill-famiglie-documento-codice-mctit.yaml
+
+  - changeSet:
+      id: 20260924-05-backfill-famiglie-documento-codice
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Passo 3 di 4 del codice mutabile di vendite.famiglie_documento: le famiglie esistenti
+        prendono codice = codice_interno (backfill del pregresso; zero righe su un DB da zero).
+        Brief: brief-db-ricerca-full-colonne-da-accendere.md §3.5.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: famiglie_documento
+            columnName: codice
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE vendite.famiglie_documento
+                 SET codice = codice_interno
+               WHERE codice IS NULL
+                  OR btrim(codice) = '';

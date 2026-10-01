@@ -30,8 +30,30 @@ BEGIN
 -- NOTE:
 --  - Va idealmente posseduta da postgres e SECURITY DEFINER
 --    per poter cambiare owner ad altre funzioni.
+--  - RISERVATA al migratore (dal 2026-09-26): chi la esegue decide
+--    chi possiede le DEFINER di postgres. La guardia sta QUI e non
+--    nell'ACL: EXECUTE a PUBLIC resta, e con la guardia non compra
+--    niente. Brief: brief-db-registro-owner-e-sync-riservati-al-migratore.
 -- ------------------------------------------------------------
 
+    -- ⛔ session_user, NON current_user: dentro una SECURITY DEFINER
+    --    current_user e' il PROPRIETARIO (postgres, superuser) e la
+    --    guardia sarebbe sempre aperta. Limite dichiarato: session_user
+    --    e' il ruolo di LOGIN, un SET ROLE non lo cambia.
+    --    Passa chi e' membro del proprietario dello schema dbops (il
+    --    migratore, in ogni ambiente) e un superuser. Fail-closed.
+    -- ⛔ Il rifiuto e' un RAISE nudo (42501), fuori dal canale di log:
+    --    fn_log_error_only e fn_ensure_logconn sono fra le funzioni che
+    --    questa sync protegge.
+    --    La domanda sta in dbops.fn_sessione_del_migratore (estratta
+    --    il 2026-09-29, regola del 2: la chiede anche lo sblocco del
+    --    secondo fattore).
+    IF NOT dbops.fn_sessione_del_migratore() THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'insufficient_privilege',
+            MESSAGE = format('dbops.fn_sync_functions_owner: riservata a chi possiede lo schema dbops (il migratore) o a un superuser; sessione %s.', session_user),
+            HINT    = 'Si esegue dal migrate (90_end/20251123-04) o dalla provision-post. Il registro dbops.sec_functions_owner lo scrive solo il migratore.';
+    END IF;
 
     FOR r IN
         SELECT *
@@ -116,7 +138,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_sync_functions_owner()
-IS 'Allinea il proprietario delle funzioni elencate in dbops.sec_functions_owner al ruolo richiesto (ALTER FUNCTION ... OWNER TO). Eseguita dalla passata provision-post come postgres (90_end/20251123-12). SECURITY DEFINER di postgres: dal 2026-09-12 (D6) con search_path pinnato a pg_catalog, public, pg_temp — il pin sta nella definizione, un CREATE OR REPLACE che lo dimentica lo azzera.';
+IS 'Allinea il proprietario delle funzioni elencate in dbops.sec_functions_owner al ruolo richiesto (ALTER FUNCTION ... OWNER TO). Eseguita a ogni migrate (90_end/20251123-04) e dalla passata provision-post come postgres (90_end/20251123-12). SECURITY DEFINER di postgres: dal 2026-09-12 (D6) con search_path pinnato a pg_catalog, public, pg_temp — il pin sta nella definizione, un CREATE OR REPLACE che lo dimentica lo azzera. Dal 2026-09-26 RISERVATA AL MIGRATORE con una guardia nel corpo: la esegue solo chi è membro del proprietario dello schema dbops, o un superuser; gli altri ricevono 42501 (RAISE nudo, fuori dal canale di log che la sync protegge). La domanda la fa dbops.fn_sessione_del_migratore (dal 2026-09-29, regola del 2), che legge session_user perché dentro una DEFINER current_user è il proprietario: limite dichiarato, session_user è il ruolo di login e un SET ROLE non lo cambia. EXECUTE a PUBLIC resta per scelta: la difesa non è nell''ACL, che il loop dei grant riscrive e il cambio di proprietario rimappa. Il registro è in sola lettura per l''applicazione (90_end/20260926-12). Brief: brief-db-registro-owner-e-sync-riservati-al-migratore.';
 ```
 
 ---

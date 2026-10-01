@@ -35,6 +35,8 @@ from apps.vendite.api.views_contratti import (
     ApiContrattoRigaDetail,
     ApiContrattoRigaPreviewComponenti,
     ApiContrattoRigheList,
+    ApiContrattoRigheListaExportView,
+    ApiContrattoRigheListaView,
     ApiContrattoRighePreview,
     ApiContrattoUtility,
 )
@@ -79,6 +81,12 @@ urlpatterns = [
         ApiContrattoRigheList.as_view(),
         name="vendite-contratto-righe-list",
     ),
+    # La lista configurabile `vendite.contratto_righe` su un percorso suo, come
+    # i documenti gemelli: `…/righe/` resta righe persistite + creazione.
+    path("<int:contratto_id>/righe/lista/", ApiContrattoRigheListaView.as_view(),
+         name="vendite-contratto-righe-lista"),
+    path("<int:contratto_id>/righe/lista/export/", ApiContrattoRigheListaExportView.as_view(),
+         name="vendite-contratto-righe-lista-export"),
     path(
         "<int:contratto_id>/righe-preview/",
         ApiContrattoRighePreview.as_view(),

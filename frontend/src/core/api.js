@@ -1,7 +1,8 @@
 import axios from 'axios'
-import router from '../router'
+import { routerApp } from './routerApp'
 import { local, STORAGE_KEYS } from './storage'
 import { resolveCanaleLogin } from './constants'
+import { MOTIVO_USCITA, azzeraAccess, getAccessToken, rinnovaCoordinato } from './sessione'
 import i18n from './i18n'
 
 const api = axios.create({
@@ -12,9 +13,17 @@ const api = axios.create({
   }
 })
 
-// Interceptor request — aggiunge il token JWT e la lingua UI corrente
+// L'header che il backend pretende sul rinnovo, autenticato dal solo cookie:
+// un form o un link di un altro sito non può mandarlo (anti-CSRF). Il nome e
+// il valore sono quelli di `apps/core/api/refresh_cookie.py`; li confronta
+// `test_auth_views.test_nome_cookie_e_header_uguali_nei_tre_linguaggi`.
+const ANTI_CSRF_HEADER = 'X-Requested-With'
+const ANTI_CSRF_VALORE = 'XMLHttpRequest'
+
+// Interceptor request — aggiunge il token JWT (in memoria, `core/sessione`) e
+// la lingua UI corrente
 api.interceptors.request.use(config => {
-  const token = local.get(STORAGE_KEYS.ACCESS_TOKEN)
+  const token = getAccessToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -28,22 +37,27 @@ api.interceptors.request.use(config => {
   return config
 })
 
+// Scopo: rinnova l'access dal cookie HttpOnly del refresh (brief sicurezza
+//        §2, dal 2026-09-28). Il corpo è vuoto: il browser manda il cookie da
+//        solo (stesso origin), e il backend risponde col solo `access`, dopo
+//        aver ruotato il refresh nel cookie. QUANDO chiamarlo — una volta per
+//        scheda, una scheda alla volta — lo decide `rinnovaCoordinato`.
+//        L'endpoint è quello del canale di login (`LOGIN_CHANNEL`, che resta
+//        in localStorage: non è un segreto).
+export function rinnovaAccess() {
+  return rinnovaCoordinato(async () => {
+    const canale = resolveCanaleLogin(local.get(STORAGE_KEYS.LOGIN_CHANNEL))
+    const response = await api.post(canale.refreshPath, null, {
+      headers: { [ANTI_CSRF_HEADER]: ANTI_CSRF_VALORE }
+    })
+    return response.data.access
+  })
+}
+
 // Interceptor response — token refresh automatico + redirect login
 // Esclude login/refresh per admin|portale|shop: un 401 su queste rotte
 // NON deve riprovare un refresh (loop). Lista estensibile in un unico posto.
 const TOKEN_ENDPOINTS_RE = /\/(admin|portale|shop)\/token\//
-let isRefreshing = false
-let pendingRequests = []
-
-function onRefreshSuccess(newToken) {
-  pendingRequests.forEach(cb => cb(newToken))
-  pendingRequests = []
-}
-
-function onRefreshFailure(err) {
-  pendingRequests.forEach(cb => cb(null, err))
-  pendingRequests = []
-}
 
 api.interceptors.response.use(
   response => response,
@@ -72,49 +86,17 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    // Tenta il refresh del token
-    const refreshToken = local.get(STORAGE_KEYS.REFRESH_TOKEN)
-    if (!refreshToken) {
-      await redirectToLogin()
-      return Promise.reject(error)
-    }
-
-    if (isRefreshing) {
-      // Accoda la richiesta in attesa del refresh in corso
-      return new Promise((resolve, reject) => {
-        pendingRequests.push((newToken, err) => {
-          if (err) return reject(err)
-          originalRequest.headers.Authorization = `Bearer ${newToken}`
-          resolve(api(originalRequest))
-        })
-      })
-    }
-
+    // Rinnova e riprova. Le richieste che prendono 401 insieme aspettano la
+    // STESSA promise di rinnovo (`rinnovaCoordinato`): la vecchia coda
+    // `pendingRequests` era questo, scritto a mano.
     originalRequest._retry = true
-    isRefreshing = true
-
     try {
-      // §8.5.2: endpoint refresh risolto dinamicamente dal canale salvato.
-      // La store `auth` persiste `LOGIN_CHANNEL`; qui lo leggiamo da storage
-      // per evitare la dipendenza circolare api → store → api.
-      // Fallback ADMIN per sessioni pre-multi-face senza key persistita.
-      const canale = resolveCanaleLogin(local.get(STORAGE_KEYS.LOGIN_CHANNEL))
-      const response = await axios.post(
-        `${api.defaults.baseURL}${canale.refreshPath}`,
-        { refresh: refreshToken },
-        { headers: { 'Content-Type': 'application/json' } }
-      )
-      const newToken = response.data.access
-      local.set(STORAGE_KEYS.ACCESS_TOKEN, newToken)
-      originalRequest.headers.Authorization = `Bearer ${newToken}`
-      onRefreshSuccess(newToken)
+      const nuovo = await rinnovaAccess()
+      originalRequest.headers.Authorization = `Bearer ${nuovo}`
       return api(originalRequest)
     } catch (refreshError) {
-      onRefreshFailure(refreshError)
       await redirectToLogin()
       return Promise.reject(refreshError)
-    } finally {
-      isRefreshing = false
     }
   }
 )
@@ -123,10 +105,11 @@ api.interceptors.response.use(
 //
 // 🔴 IL PUNTO CHE MANCAVA, ed è la causa del difetto «resto sulla home vuota e
 //    al login ci arrivo solo ricaricando» (rilievo di Tid, 2026-09-04).
-//    Lo stato di autenticazione vive in DUE posti: `localStorage` e i ref dello
-//    store Pinia, che dal localStorage sono stati letti UNA volta sola alla
-//    creazione. Qui si ripuliva **solo il localStorage**, quindi lo store
-//    continuava a tenere in memoria i due token.
+//    Lo stato di autenticazione viveva in DUE posti: `localStorage` e i ref
+//    dello store Pinia, che dal localStorage erano stati letti UNA volta sola
+//    alla creazione. Qui si ripuliva **solo il localStorage**, quindi lo store
+//    continuava a tenere in memoria i due token. (Dal 2026-09-28 i token non
+//    stanno più in localStorage: l'access vive solo in `core/sessione`.)
 //    ⇒ `isAuthenticated` (che li legge dalla memoria e guarda solo la loro
 //    SCADENZA) restava **vero**: una sessione uccisa dal server — refresh
 //    blacklistato, identità revocata — ha token non ancora scaduti per data.
@@ -141,24 +124,26 @@ api.interceptors.response.use(
 // ⚠️ Import DINAMICO, e non è un vezzo: `stores/auth` importa `api`, quindi un
 //    import statico chiuderebbe il ciclo api → auth → api. Qui il modulo serve
 //    solo a runtime, quando entrambi sono già valutati.
-// ⚠️ Se l'import fallisse, si ripiega sulla vecchia pulizia del solo
-//    localStorage: meglio una sessione mezza chiusa che un'eccezione dentro un
+// ⚠️ Se l'import fallisse, si ripiega sul solo azzeramento dell'access in
+//    memoria: meglio una sessione mezza chiusa che un'eccezione dentro un
 //    interceptor, che si mangerebbe anche il redirect.
-async function redirectToLogin() {
+// Esportata: la usa anche lo store `auth` quando un'altra scheda chiude la
+// sessione (logout), per arrivare al login per la stessa strada, col suo
+// motivo (`MOTIVO_USCITA` in `core/sessione`).
+export async function redirectToLogin(motivo = MOTIVO_USCITA.SESSIONE_SCADUTA) {
   try {
     const { useAuthStore } = await import('../stores/auth')
     useAuthStore().clearTokens()
   } catch {
-    local.remove(STORAGE_KEYS.ACCESS_TOKEN)
-    local.remove(STORAGE_KEYS.REFRESH_TOKEN)
+    azzeraAccess()
   }
   // NB: LOGIN_CHANNEL non viene rimosso — conserva la preferenza utente
   // per il prossimo login manuale (stesso pattern di `clearTokens`).
   // Usa il router per evitare page reload; preserva la rotta per redirect post-login.
-  // `reason=session_expired` viene letto da LoginView per mostrare un messaggio
-  // esplicito invece di una pagina muta (UX: l'utente capisce che e' caduta
-  // la sessione e non sta avendo un bug).
-  const rottaCorrente = router.currentRoute?.value
+  // `reason=<motivo>` viene letto da LoginView per mostrare un messaggio
+  // esplicito invece di una pagina muta (UX: l'utente capisce perché è
+  // uscito e non pensa a un bug).
+  const rottaCorrente = routerApp().currentRoute?.value
   // ⚠️ Se si e' gia' sul login non si spinge una seconda navigazione: con piu'
   //    chiamate in volo che prendono 401 insieme, ognuna passerebbe di qui e
   //    vue-router respingerebbe le repliche come «navigazione ridondante» —
@@ -167,13 +152,13 @@ async function redirectToLogin() {
   if (rottaCorrente?.name === 'login') return
 
   const currentPath = rottaCorrente?.fullPath
-  const query = { reason: 'session_expired' }
+  const query = { reason: motivo }
   if (currentPath && currentPath !== '/login') {
     query.redirect = currentPath
   }
   // ⚠️ `catch` sul push: una navigazione respinta da un guard (o superata da
   //    un'altra) rifiuta la promise, e qui dentro nessuno la aspetta.
-  return router.push({ name: 'login', query }).catch(() => {})
+  return routerApp().push({ name: 'login', query }).catch(() => {})
 }
 
 export default api

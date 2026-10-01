@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — IL DB APPLICA UN LIVELLO SU UN OGGETTO: script.fn_guard_livello(...)
+#   Brief: brief-db-pannello-config-verbo-generico, sezione 3.2
+#   Modello: brief-db-permesso-nel-verbo-di-scrittura (D-2: la forma «livello» per le
+#   operazioni semplici; D-5: il verbo dichiara l'OGGETTO, non l'area)
+#
+# -- IL GEMELLO DI fn_guard_azione --------------------------------------------------------------
+#   Stessa forma: l'utente come parametro (il verbo lo legge da app.current_user_id
+#   con l'espressione delle policy, linee-guida-sql §10.4), la REGOLA altrove,
+#   risposta no -> E_PERMESSO_NEGATO, anche a utente NULL (fail-closed).
+#   La regola e' script.fn_resolve_livello_oggetto — la stessa del backend
+#   (PermissionResolver.get_livello_oggetto): gate di contesto, identita'
+#   OPERATORE attiva, super admin, override utente sull'oggetto, poi l'area.
+#   L'area la da' script.fn_area_di_oggetto (20260925-31): il verbo dichiara
+#   solo l'oggetto (D-5).
+#
+# -- ⛔ L'ORDINE DEI LIVELLI E' ROVESCIATO ---------------------------------------------------------
+#   L'enum config.livello_accesso e' dichiarato TUTTO, LETTURA, BLOCCATO: TUTTO e'
+#   il piu' BASSO. «Almeno il minimo» e' quindi `livello <= minimo`, e un rifiuto
+#   e' `livello > minimo`. Un confronto scritto «a occhio» (>=) concederebbe tutto
+#   a chi e' BLOCCATO. Il pgTAP lo pinna in tutti e due i versi.
+#
+# -- NULL ------------------------------------------------------------------------------------------
+#   Utente NULL, oggetto NULL o minimo NULL: rifiuto (fail-closed), con il motivo
+#   nel contesto. Un minimo BLOCCATO lascia passare chiunque: e' «nessun
+#   requisito», non un errore.
+#
+# -- I CODICI: RIUSATI -----------------------------------------------------------------------------
+#   E_PERMESSO_NEGATO (NON_PERMESSO, stesso codice e stessa frase del backend,
+#   nessun segnaposto -> VARIADIC vuoto esplicito).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-32-create-fn-guard-livello-mctit.yaml
+
+  - changeSet:
+      id: 20260925-32-create-fn-guard-livello
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_guard_livello(p_auth_user_id, p_app_label, p_model_name, p_livello_minimo): il
+        guard con cui un verbo applica un livello su un oggetto (D-2, D-5). Chiede a
+        script.fn_resolve_livello_oggetto con l'area di script.fn_area_di_oggetto e solleva
+        E_PERMESSO_NEGATO sotto il minimo, anche a utente NULL. INVOKER. Brief:
+        brief-db-pannello-config-verbo-generico, sezione 3.2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_area_di_oggetto';
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_resolve_livello_oggetto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_guard_livello(
+                  p_auth_user_id    config.user_override_oggetti.auth_user_id%TYPE,
+                  p_app_label       config.user_override_oggetti.app_label%TYPE,
+                  p_model_name      config.user_override_oggetti.model_name%TYPE,
+                  p_livello_minimo  config.user_override_oggetti.livello%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: applicare un livello minimo su un oggetto nella prima riga di un verbo
+              --   di scrittura. La regola la decide script.fn_resolve_livello_oggetto (la
+              --   stessa del backend), con l'area di script.fn_area_di_oggetto.
+              -- Uso: PERFORM script.fn_guard_livello(
+              --          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+              --          'magazzino', 'causali', 'TUTTO');
+              DECLARE
+                  v_area    config.aree_funzionali.schema_db%TYPE;
+                  v_livello config.user_override_oggetti.livello%TYPE;
+              BEGIN
+                  IF p_auth_user_id IS NOT NULL AND p_app_label IS NOT NULL
+                     AND p_model_name IS NOT NULL THEN
+                      v_area    := script.fn_area_di_oggetto(p_app_label, p_model_name);
+                      v_livello := script.fn_resolve_livello_oggetto(
+                                       p_auth_user_id, p_app_label, p_model_name, v_area);
+                  END IF;
+
+                  -- ⛔ L'enum e' TUTTO < LETTURA < BLOCCATO: sotto il minimo vuol dire
+                  --    livello > minimo. NULL da qualunque parte vale no (fail-closed).
+                  IF v_livello IS NULL OR p_livello_minimo IS NULL
+                     OR v_livello > p_livello_minimo THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_guard_livello', 'E_PERMESSO_NEGATO',
+                          jsonb_build_object('app_label',      p_app_label,
+                                             'model_name',     p_model_name,
+                                             'area',           v_area,
+                                             'livello',        v_livello,
+                                             'livello_minimo', p_livello_minimo,
+                                             'auth_user_id',   p_auth_user_id,
+                                             'senza_utente',   p_auth_user_id IS NULL),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_guard_livello(integer, character varying, character varying, config.livello_accesso) IS
+                  'Guard dei verbi di scrittura, forma «livello su un oggetto» (D-2, D-5 di '
+                  'brief-db-permesso-nel-verbo-di-scrittura; gemello di script.fn_guard_azione). Il '
+                  'verbo dichiara l''OGGETTO (app_label, model_name) e il livello minimo; l''area la '
+                  'ricava script.fn_area_di_oggetto e la regola la decide '
+                  'script.fn_resolve_livello_oggetto, la stessa del backend (gate di contesto, '
+                  'identita'' OPERATORE attiva, super admin, override utente sull''oggetto, poi '
+                  'l''area). Sotto il minimo -> E_PERMESSO_NEGATO (NON_PERMESSO, lo stesso codice del '
+                  'backend), anche a utente, oggetto o minimo NULL: fail-closed. ⛔ L''enum '
+                  'livello_accesso e'' ordinato TUTTO < LETTURA < BLOCCATO: il rifiuto e'' livello > '
+                  'minimo. INVOKER. Brief: brief-db-pannello-config-verbo-generico §3.2.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_guard_livello(integer, character varying, character varying, config.livello_accesso) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_guard_livello(integer, character varying, character varying, config.livello_accesso);

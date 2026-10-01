@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — L'EMAIL DELLA CREDENZIALE E' UNICA SENZA DISTINGUERE MAIUSCOLE (D-9, D-B5)
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 5.1
+#
+#   CREATE UNIQUE INDEX ix_auth_user_email_lower_unique
+#       ON django.auth_user (lower(email)) WHERE email <> ''
+#
+# ── PERCHE' ──────────────────────────────────────────────────────────
+#   L'email e' la chiave d'ingresso di portale e shop (D-9): due credenziali
+#   con la stessa email, a meno delle maiuscole, renderebbero ambiguo il login
+#   e il reset. ⚠️ «Email valorizzata» vuol dire email <> '', non IS NOT NULL:
+#   nel modello di Django la colonna e' NOT NULL e l'email mancante e' ''.
+#   Senza il filtro collidebbero tutte le credenziali senza email.
+#
+# ── ⛔ IL VECCHIO INDICE SI RITIRA NELLO STESSO CHANGESET ──────────────
+#   90_end/20260401-20 ha creato ix_auth_user_email_unique: unico su `email`
+#   DISTINGUENDO le maiuscole, stesso filtro. Il nuovo lo CONTIENE (lower
+#   uguali => email uguali a meno delle maiuscole): tenerli entrambi e' un
+#   secondo indice che costa una scrittura a ogni INSERT e non garantisce
+#   niente in piu'. Create e drop nella stessa transazione del changeSet: non
+#   c'e' un istante senza unicita'.
+#   ⚠️ Quel changeSet era onFail MARK_RAN: su un'installazione nuova l'indice
+#   NON e' mai nato (in CI e' MARK_RAN). Su dbdev c'e' (EXECUTED 2026-04-01);
+#   sullo scratch c'e' solo perche' ci-local.sh copia lo schema django da dev.
+#
+# ── ⭐ onFail: CONTINUE, NON MARK_RAN (D-B5) ─────────────────────────
+#   django.auth_user la crea `manage.py migrate`, che gira DOPO Liquibase. Con
+#   MARK_RAN (la forma delle FK verso Django) il changeSet si segnerebbe
+#   eseguito prima che la tabella esista e non ci si tornerebbe piu': su
+#   un'installazione nuova l'indice non nascerebbe mai. Per una FK di contorno
+#   e' un prezzo accettato; per l'unica garanzia di unicita' no. CONTINUE salta
+#   SENZA segnare e riprova al migrate successivo (precedenti: 90_end/ci_apply/
+#   20250627-31, i template di 80_data).
+#   ⚠️ Il prezzo che resta: in CI l'indice NON c'e' (Liquibase gira tutto prima
+#   di Django). Il pgTAP dell'indice salta con skip() motivato; la regola la
+#   tiene comunque script.fn_get_auth_user_id_for_email (20260925-40), che
+#   sulle email doppie solleva invece di sceglierne una.
+#
+# ── ⚠️ UNA SOLA preCondition: la tabella ──────────────────────────────
+#   Il brief chiedeva anche «l'indice non esiste ancora». Tolta: con
+#   onFail CONTINUE una preCondition FALSA non segna mai il changeSet, quindi
+#   su un database dove l'indice esistesse gia' il changeSet resterebbe
+#   pendente per sempre, ritentato a ogni migrate. L'idempotenza la danno i
+#   comandi (IF NOT EXISTS / IF EXISTS), non un guardiano.
+#
+# ⛔ Prima dell'apply: nessuna coppia di email uguali a meno delle maiuscole,
+#   o il CREATE fallisce (HALT, non CONTINUE: la preCondition e' passata).
+#   Verificato su dbdev il 2026-09-25: zero coppie (fatto datato). Se ne
+#   comparissero, si sistemano A MANO (brief §5.1), non con codice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260925-44-unique-auth-user-email-senza-maiuscole-mctit.yaml
+
+  - changeSet:
+      id: 20260925-44-unique-auth-user-email-senza-maiuscole
+      author: mctit
+      comment: >
+        Indice unico su lower(email) di django.auth_user, email <> '' (D-9, D-B5): l'email e' la
+        chiave d'ingresso di portale e shop. Ritira ix_auth_user_email_unique (20260401-20, che
+        distingueva le maiuscole: contenuto nel nuovo). onFail CONTINUE, non MARK_RAN: la tabella
+        la crea Django dopo Liquibase, e il changeSet deve riprovare al migrate successivo. Brief:
+        brief-db-blocco-login-per-credenziale §5.1.
+      preConditions:
+        - onFail: CONTINUE
+        - onError: HALT
+        - tableExists:
+            schemaName: django
+            tableName: auth_user
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Stessa espressione e stesso predicato di
+              -- script.fn_get_auth_user_id_for_email, che l'indice serve.
+              CREATE UNIQUE INDEX IF NOT EXISTS ix_auth_user_email_lower_unique
+                  ON django.auth_user (lower(email))
+                  WHERE email <> '';
+
+              -- Contenuto nel nuovo: si ritira (20260401-20).
+              DROP INDEX IF EXISTS django.ix_auth_user_email_unique;
+
+              COMMENT ON INDEX django.ix_auth_user_email_lower_unique IS
+                  'Email della credenziale unica SENZA distinguere maiuscole e minuscole, sulle sole email valorizzate (email <> '''': nel modello di Django l''email mancante e'' la stringa vuota). D-9 e D-B5 di brief-db-blocco-login-per-credenziale: l''email e'' la chiave d''ingresso di portale e shop. Nasce in 90_end con onFail CONTINUE (Django crea la tabella dopo Liquibase): in CI non esiste. Sostituisce ix_auth_user_email_unique (20260401-20), che distingueva le maiuscole. La stessa regola, in lettura: script.fn_get_auth_user_id_for_email.';

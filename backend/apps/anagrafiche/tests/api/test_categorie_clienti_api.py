@@ -38,17 +38,11 @@ _BASE = "/api/v1/anagrafiche/categorie-clienti/"
 
 
 class _BaseApiTest(JwtMockedApiTest):
-    """Base test con mute del RequestLogMiddleware (evita DatabaseOperationForbidden)."""
+    """Base test delle categorie clienti (gli effetti sul DB dei middleware li spegne `JwtMockedApiTest`)."""
 
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()
-        self._req_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log",
-            return_value=None,
-        )
-        self._req_log_patcher.start()
-        self.addCleanup(self._req_log_patcher.stop)
 
 
 class TestCategorieClientiGet(_BaseApiTest):

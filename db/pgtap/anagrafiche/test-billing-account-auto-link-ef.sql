@@ -10,7 +10,7 @@
 --  1) GUC app.current_user_id assente -> INSERT passa, nessun mapping
 --  2) Operatore con EF assegnato -> INSERT passa, mapping specifico creato
 --  3) Mapping non duplicato (idempotenza)
---  4) Admin globale + esistono emittenti -> INSERT bloccata
+--  4) Super admin senza emittente di lavoro + esistono emittenti -> INSERT bloccata
 --
 -- IMPORTANTE: questo file NON usa SAVEPOINT/ROLLBACK TO SAVEPOINT.
 -- pgTAP traccia lo stato dei test in una temp table interna; un
@@ -19,12 +19,40 @@
 -- "No tests run!". Tutto gira in una sola transazione e il ROLLBACK
 -- finale (BEGIN/ROLLBACK del file) ripulisce le manipolazioni.
 --
--- Per evitare collisioni con UNIQUE(istanza_utility_id, utility_id) si
--- selezionano fino a 4 BA template distinti, uno per test. Ogni test
--- "consuma" il proprio template (DELETE pre-INSERT). Se non ci sono
--- abbastanza template disponibili o le FK figlie bloccano la DELETE,
--- il singolo test passa come skip soft (assert su valore atteso).
+-- Per evitare collisioni con UNIQUE(istanza_utility_id, utility_id) ogni
+-- test ha la sua istanza utility NUOVA (quattro slot), costruita sulla
+-- terna di un cliente costruito.
 -- ------------------------------------------------------------
+
+-- ============================================================================
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Su un database ricostruito (la CI) il file era 3 verdi FINTI e 1 rosso:
+--   1. la terna (ruolo, utility, soggetto) si PESCAVA dal primo billing
+--      account esistente: da zero non ce n'e', i quattro slot restavano
+--      vuoti, e i test 1-3 finivano nello «skip soft» — che scriveva il
+--      valore ATTESO e passava senza aver inserito niente (verde per
+--      sottrazione);
+--   2. il test 4 inseriva da una tabella di slot vuota: zero righe, nessuna
+--      eccezione, rosso.
+--   E il test 4 aveva un secondo difetto, indipendente: «amministratore
+--   globale» lo otteneva SVUOTANDO la whitelist dell'operatore di contesto
+--   (con lo sportello allow_user_emittente_delete_override). Ma dopo P-2a
+--   (2026-08-18) un operatore senza whitelist non e' un admin globale: e'
+--   fail-closed. L'admin globale del modello e' il SUPER ADMIN, che nasce
+--   senza azienda — nessuna riga in user_emittenti_fiscali, ed e' questo che
+--   script.fn_check_user_can_create_ba legge.
+--   Ora: la terna viene da dbops.fn_pgtap_crea_cliente_ba, i rami «skip
+--   soft» sollevano (uno slot mancante e' un difetto della fixture, non un
+--   caso), e il test 4 agisce come un super admin costruito con
+--   dbops.fn_pgtap_crea_operatore_umano(..., p_super_admin := true).
+--
+-- rev 2026-09-26 (brief-db-messaggio-ba-senza-emittente).
+--   Il test 4 riconosceva il rifiuto dal TESTO ('%amministratore globale%'):
+--   riscritto il messaggio (id 358) sulla regola vera, il test sarebbe
+--   diventato rosso senza che il guard cambiasse. Ora legge il CODICE dal
+--   canale CONSTRAINT (contratto P0001 + CONSTRAINT = codice): la frase
+--   per l'operatore e' del catalogo, non del test.
+-- ============================================================================
 
 BEGIN;
 
@@ -46,7 +74,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(4);
 
 SET LOCAL zeroerp.allow_lock_columns_override = 'on';
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
 
 -- ============================================================
 -- Setup contesto
@@ -89,16 +116,12 @@ SELECT NULLIF(current_setting('app.current_user_id', true), '')::integer AS user
 --   ⭐ E' la premessa decaduta della suite: si smette di cancellare e si smette
 --   di collidere. Ogni slot ha la sua istanza, quindi la UNIQUE non e' mai in
 --   gioco e le tre asserzioni tornano a misurare l'auto-link.
+-- La terna (ruolo CL, utility, soggetto) viene da un cliente COSTRUITO: con
+-- il contesto aperto, senza terzo parametro (il legame lo scrive il trigger
+-- z90 verso l'emittente di chi agisce).
 CREATE TEMP TABLE tmp_link_seed AS
-SELECT ba.soggetto_ruolo_id, ba.utility_id, iu.soggetto_id
-  FROM anagrafiche.billing_account ba
-  JOIN anagrafiche.istanze_utilities iu ON iu.id = ba.istanza_utility_id
- WHERE ba.parent_account_id IS NULL
-   AND ba.soggetto_ruolo_id IS NOT NULL
-   AND ba.utility_id IS NOT NULL
-   AND iu.soggetto_id IS NOT NULL
- ORDER BY ba.id
- LIMIT 1;
+SELECT soggetto_ruolo_id, utility_id, soggetto_id
+  FROM dbops.fn_pgtap_crea_cliente_ba('auto-link EF');
 
 CREATE TEMP TABLE tmp_link_templates (
     slot               int,
@@ -113,7 +136,7 @@ DECLARE v_seed record; v_iu bigint; v_i int; v_sfx text;
 BEGIN
     SELECT * INTO v_seed FROM tmp_link_seed;
     IF v_seed IS NULL THEN
-        RETURN;                            -- niente terna valida: skip soft a valle
+        RAISE EXCEPTION 'Setup: il cliente costruito non ha dato la terna (ruolo, utility, soggetto)';
     END IF;
 
     -- ⭐ FINESTRA DIFFERITA: `trg_istanze_utilities_z90_require_utility_dichiarata_ins`
@@ -164,10 +187,7 @@ DECLARE
 BEGIN
     SELECT * INTO v_template FROM tmp_link_templates WHERE slot = 1;
     IF v_template IS NULL THEN
-        INSERT INTO tmp_link_results (test_name, setup_ok, mapping_count)
-        VALUES ('test1', false, 0);
-        RAISE NOTICE 'Test 1: skip soft (template slot 1 mancante)';
-        RETURN;
+        RAISE EXCEPTION 'Test 1: slot 1 mancante (difetto della fixture)';
     END IF;
 
     -- Nessuna DELETE del «template»: lo slot e' un'istanza NUOVA, la UNIQUE
@@ -223,12 +243,7 @@ BEGIN
     SELECT emittente_sr_id INTO v_expected_sr_id FROM tmp_link_ctx;
 
     IF v_template IS NULL THEN
-        -- Skip soft: salviamo direttamente il valore "atteso" in modo
-        -- che il successivo SELECT is(...) passi banalmente.
-        INSERT INTO tmp_link_results (test_name, setup_ok, mapped_sr_id)
-        VALUES ('test2', false, v_expected_sr_id);
-        RAISE NOTICE 'Test 2: skip soft (template slot 2 mancante)';
-        RETURN;
+        RAISE EXCEPTION 'Test 2: slot 2 mancante (difetto della fixture)';
     END IF;
 
     -- Nessuna DELETE del «template»: lo slot e' un'istanza NUOVA, la UNIQUE
@@ -276,10 +291,7 @@ DECLARE
 BEGIN
     SELECT * INTO v_template FROM tmp_link_templates WHERE slot = 3;
     IF v_template IS NULL THEN
-        INSERT INTO tmp_link_results (test_name, setup_ok, mapping_count)
-        VALUES ('test3', false, 1);
-        RAISE NOTICE 'Test 3: skip soft (template slot 3 mancante)';
-        RETURN;
+        RAISE EXCEPTION 'Test 3: slot 3 mancante (difetto della fixture)';
     END IF;
 
     -- Nessuna DELETE del «template»: lo slot e' un'istanza NUOVA, la UNIQUE
@@ -318,32 +330,45 @@ SELECT is(
 -- 4) Admin globale + esistono emittenti -> INSERT bloccata
 --    NB: il guard BEFORE solleva PRIMA del check NOT NULL,
 --    quindi l'INSERT minimal sarebbe sufficiente. Per maggiore
---    realismo usiamo comunque un template (slot 4 o fallback al 1).
+--    realismo usiamo comunque un template (slot 4).
 -- ============================================================
--- Amministratore globale = whitelist VUOTA (`fn_get_emittenti_scope_sr_ids`
--- risponde NULL, cioe' nessuna restrizione). Si svuota quella dell'operatore di
--- contesto, ed e' lecito qui perche' il file dichiara in testa
--- `zeroerp.allow_user_emittente_delete_override = 'on'`: e' lo sportello
--- previsto dal guard `trgfn_user_emittenti_fiscali_guard_delete`, non un
--- aggiramento.
-DELETE FROM config.user_emittenti_fiscali
-WHERE auth_user_id = (SELECT user_id FROM tmp_link_user);
+-- Amministratore globale = il SUPER ADMIN, che nasce senza azienda: nessuna
+-- riga in user_emittenti_fiscali. Emittenti attivi ce ne sono (quello del
+-- mondo). E non sta «dentro» un emittente: app.current_emittente_id vuoto,
+-- altrimenti il ramo 1 di fn_check_user_can_create_ba gli darebbe il diritto.
+-- ⛔ Il builder scrive; si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_link_sa AS
+SELECT auth_user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('auto-link admin globale', p_super_admin := true);
 
 SELECT set_config('app.current_user_id',
-                  (SELECT user_id::text FROM tmp_link_user),
+                  (SELECT auth_user_id::text FROM tmp_link_sa),
                   true);
+SELECT set_config('app.current_emittente_id', '', true);
 
-SELECT throws_like(
-    $$ INSERT INTO anagrafiche.billing_account (
+-- Il codice di dominio di un errore, letto dal canale CONSTRAINT
+-- (contratto P0001 + CONSTRAINT = codice). NULL se non solleva.
+CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE v_c text;
+BEGIN
+    EXECUTE p_sql;
+    RETURN NULL;
+EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
+    RETURN v_c;
+END $$;
+
+SELECT is(
+    pg_temp.codice_errore($$ INSERT INTO anagrafiche.billing_account (
            codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal
        )
        SELECT 'PGTAP-AUTOLINK-4-' || floor(random()*1e9)::text,
               istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal
          FROM tmp_link_templates
-         ORDER BY slot DESC
-         LIMIT 1 $$,
-    '%amministratore globale%',
-    'Admin globale + esistono emittenti -> INSERT bloccata (E_BA_ADMIN_GLOBALE_VIETATO)'
+        WHERE slot = 4 $$),
+    'E_BA_ADMIN_GLOBALE_VIETATO',
+    'Super admin senza emittente di lavoro + esistono emittenti -> INSERT bloccata (E_BA_ADMIN_GLOBALE_VIETATO)'
 );
 
 SELECT * FROM finish();

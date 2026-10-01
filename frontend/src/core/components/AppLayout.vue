@@ -1,6 +1,15 @@
 <script setup>
 // Scopo: layout principale dell'applicazione — sidebar morfica, topbar, content tabs, breadcrumb, split view.
 // Gestisce il layout responsive (desktop/tablet inline, mobile overlay drawer).
+//
+// ⭐ Il menu coi NOMI sul touch e' sempre il drawer (Tid, 2026-09-21). Il
+//    pattern «solo icone + tooltip» si regge sull'hover, che sul touch non
+//    esiste: fino a quel giorno il drawer mobile era compresso a sole icone
+//    (senza guadagnare spazio: e' un layer sopra il contenuto) e su tablet il
+//    rail era compresso a forza con un pulsante «espandi» che non faceva
+//    nulla. Ora: mobile → l'hamburger apre il drawer ESPANSO; tablet → il rail
+//    inline resta la scorciatoia e il suo pulsante «espandi» apre lo stesso
+//    drawer; desktop → nessun drawer, la sidebar si espande inline.
 import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import Drawer from 'primevue/drawer'
@@ -21,7 +30,8 @@ const tabs = useTabsStore()
 const router = useRouter()
 const { closeTab } = useConfirmCloseTab()
 
-const mobileMenuOpen = ref(false)
+// Drawer di navigazione espanso (mobile + tablet, vedi intestazione).
+const menuDrawerOpen = ref(false)
 
 // Ripristina tab da sessionStorage al primo caricamento
 onMounted(() => {
@@ -37,6 +47,13 @@ function navigateToActiveTab() {
 // Chiude lo split automaticamente se la finestra scende sotto la soglia desktop
 watch(() => ui.windowWidth, (w) => {
   if (w < BREAKPOINTS.DESKTOP_SPLIT && tabs.isSplit) tabs.closeSplit()
+})
+
+// Il drawer esiste solo sotto il desktop: se la finestra si allarga con il
+// drawer aperto lo stato non deve restare «aperto» in attesa del prossimo
+// restringimento.
+watch(() => ui.isDesktop, (desktop) => {
+  if (desktop) menuDrawerOpen.value = false
 })
 
 // Scorciatoie da tastiera globali
@@ -59,7 +76,12 @@ useKeyboardShortcuts([
   },
   {
     ...SHORTCUTS.TOGGLE_SIDEBAR,
-    action: () => ui.toggleSidebar()
+    // Sotto il desktop il gesto «apri/chiudi menu» e' il drawer: la
+    // preferenza inline su tablet e' ignorata dallo store e sarebbe un no-op.
+    action: () => {
+      if (ui.isDesktop) ui.toggleSidebar()
+      else menuDrawerOpen.value = !menuDrawerOpen.value
+    }
   },
   {
     ...SHORTCUTS.GO_HOME,
@@ -83,8 +105,8 @@ useKeyboardShortcuts([
   }
 ])
 
-function onMobileNavigate() {
-  mobileMenuOpen.value = false
+function onDrawerNavigate() {
+  menuDrawerOpen.value = false
 }
 </script>
 
@@ -96,28 +118,31 @@ function onMobileNavigate() {
       class="app-sidebar"
       :class="{ collapsed: ui.effectiveSidebarCollapsed }"
     >
-      <AppSidebar />
+      <AppSidebar @expand="menuDrawerOpen = true" />
     </aside>
 
-    <!-- Mobile: sidebar come drawer overlay, formato collassato (solo icone) -->
+    <!-- Mobile + tablet: il menu ESPANSO (icone + etichette) come drawer
+         overlay. Su mobile e' l'unica sidebar, su tablet affianca il rail
+         inline e si apre dal suo pulsante «espandi». Chiude su scelta di una
+         voce o tap sulla maschera. -->
     <Drawer
-      v-else
-      v-model:visible="mobileMenuOpen"
+      v-if="!ui.isDesktop"
+      v-model:visible="menuDrawerOpen"
       position="left"
       :showCloseIcon="false"
       :pt="{
-        root: { style: 'width: var(--app-sidebar-width-collapsed)' },
+        root: { style: 'width: var(--app-sidebar-mobile-width)' },
         header: { style: 'display: none' },
         content: { style: 'padding: 0' }
       }"
     >
-      <AppSidebar mobile @navigate="onMobileNavigate" />
+      <AppSidebar drawer @navigate="onDrawerNavigate" />
     </Drawer>
 
     <div class="app-main">
       <AppTopbar
         :show-hamburger="ui.isMobile"
-        @toggle-menu="mobileMenuOpen = !mobileMenuOpen"
+        @toggle-menu="menuDrawerOpen = !menuDrawerOpen"
       />
       <!-- Prima scelta dell'emittente di lavoro: bloccante, e solo per chi
            non ha mai scelto (impersonazione di scope). Vive nel layout perche'
@@ -209,7 +234,7 @@ function onMobileNavigate() {
   min-width: 0;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .app-layout {
     min-height: 0;
   }

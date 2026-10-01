@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 + P-5 — I due posting escono dal registro; le copie in vendite nascono riservate
+#   DROP magazzino.fn_posta_ddt, magazzino.fn_posta_reso
+#   REVOKE EXECUTE su vendite.fn_posta_ddt, vendite.fn_posta_reso FROM PUBLIC, zeroerp_app
+#   Brief: brief-db-magazzino-registro-anello-interno, sezione 3 (P-4, P-5)
+#
+# -- PERCHE' IN 90_end E NON IN 20_code -----------------------------------------------------------
+#   90_end/20260928-83 e 90_end/20260928-98 pretendono, nelle loro
+#   preConditions con onFail HALT, che magazzino.fn_posta_ddt e
+#   magazzino.fn_posta_reso ESISTANO. Su un database ricostruito da zero 90_end
+#   gira DOPO 20_code: un DROP in 20_code le farebbe fermare. Qui, con un nome
+#   che in includeAll viene dopo 20260928-98, le due postura vecchie sono gia'
+#   passate quando le funzioni se ne vanno. Su dev le due sono applicate da
+#   giorni e non ripartono.
+#   ⚠️ Prima del DROP i chiamanti puntano gia' allo schema nuovo
+#   (20_code/vendite/20261001-20, -21): nessuna funzione chiama piu' quelle del
+#   registro (plpgsql non registra le dipendenze: verificato sui corpi, e lo
+#   ripete dbops/test-riferimenti-morti-v1 con plpgsql_check).
+#
+# -- LA POSTURA, LE TRE SEDI (linee-guida-sql §11.8) -----------------------------------------------
+#   1. questo forward, per dbdev (che non rinasce da zero): una funzione nuova
+#      nasce con EXECUTE a PUBLIC (=X), la revoca va a PUBLIC e all'app insieme;
+#   2. il loop 90_end/ci_apply/20260205-41: in v_fn_riservate le voci
+#      magazzino.fn_posta_ddt / fn_posta_reso diventano vendite.fn_posta_ddt /
+#      fn_posta_reso;
+#   3. scripts/sql/provision_db_roles.sql, blocco «LA PORTA SULLE FUNZIONI».
+#   I pgTAP che le tengono allineate: magazzino/test-blocco-manuale-e-porta-lotto3-v1
+#   (12, 14) e magazzino/test-reso-carico-v1 (24).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261001-24-ritira-posting-dal-registro-e-postura-mctit.yaml
+
+  - changeSet:
+      id: 20261001-24-ritira-posting-dal-registro-e-postura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira magazzino.fn_posta_ddt e magazzino.fn_posta_reso (il posting sta in vendite, D-2)
+        e rende riservate vendite.fn_posta_ddt e vendite.fn_posta_reso (EXECUTE revocato a
+        PUBLIC e all'app: ci si arriva solo dai verbi). In 90_end perche' 20260928-83 e -98
+        pretendono le funzioni del registro esistenti. Resa stabile dal loop 20260205-41 e dal
+        provisioning. Brief: brief-db-magazzino-registro-anello-interno, sezione 3 (P-4, P-5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('vendite', 'fn_posta_ddt'),
+                                                ('vendite', 'fn_posta_reso'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- P-4: il registro non porta piu' i posting dei documenti di vendite.
+              DROP FUNCTION IF EXISTS magazzino.fn_posta_ddt(vendite.ddt.id%TYPE, text);
+              DROP FUNCTION IF EXISTS magazzino.fn_posta_reso(vendite.resi.id%TYPE);
+
+              -- P-5: i posting di vendite sono operazioni interne dei verbi. A PUBLIC
+              -- sempre (=X per default), all'app se il ruolo esiste.
+              REVOKE EXECUTE ON FUNCTION vendite.fn_posta_ddt(vendite.ddt.id%TYPE, text) FROM PUBLIC;
+              REVOKE EXECUTE ON FUNCTION vendite.fn_posta_reso(vendite.resi.id%TYPE) FROM PUBLIC;
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: revoca all''app saltata.';
+                      RETURN;
+                  END IF;
+                  REVOKE EXECUTE ON FUNCTION vendite.fn_posta_ddt(vendite.ddt.id%TYPE, text) FROM zeroerp_app;
+                  REVOKE EXECUTE ON FUNCTION vendite.fn_posta_reso(vendite.resi.id%TYPE) FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Riapre i posting di vendite all'app. ⚠️ Le funzioni del registro NON tornano da
+              -- qui: i loro corpi sono in 20_code/magazzino/20260928-74 e -94, e i chiamanti
+              -- vanno riportati prima (20261001-20, -21). Senza togliere le voci dal loop
+              -- 20260205-41 e dal provisioning, la passata ci_apply successiva richiude.
+              GRANT EXECUTE ON FUNCTION vendite.fn_posta_ddt(vendite.ddt.id%TYPE, text) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_posta_reso(vendite.resi.id%TYPE) TO zeroerp_app;

@@ -8,12 +8,26 @@
 > [vendite.fn_list_ordini_da_pushare](/dbzero/vendite/funzioni/fn_list_ordini_da_pushare)
 > [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
 > [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
+> [vendite.fn_ddt_push_diagnosi](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi) — **la fonte unica dell'eleggibilità**: questo lister ne deriva
+> [vendite.fn_partite_merce](/dbzero/vendite/funzioni/fn_partite_merce) — la partita, per documento
 
 ---
 ### 🎯 Scopo Principale
 `vendite.fn_list_ddt_da_pushare(...)` seleziona le righe DDT pronte per
 il push verso `commesse_attivita`, restituendo un payload completo per
 l'handler di acquisizione.
+
+⭐ **Non decide chi è eleggibile.** L'eleggibilità sta scritta in **un** posto,
+[`fn_ddt_push_diagnosi`](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi): questo
+lister ne **deriva** — `FROM fn_ddt_push_diagnosi(p_ddt_id) WHERE motivo IS
+NULL` — e aggiunge solo ciò che è suo: i filtri di chiamata (competenza, BA,
+limit) e la proiezione dei campi per la pipeline. Il BA, la riga d'ordine
+sorgente e la **dose** (`quantita_push`) li riceve dalla diagnosi, non li
+ricalcola. Le regole qui sotto descrivono *cosa* rende una riga eleggibile;
+*dove* sono scritte è la diagnosi, rank per rank.
+
+⛔ Un predicato di eleggibilità nuovo si aggiunge alla diagnosi come rank, non
+qui: qui non c'è più un posto dove metterlo.
 
 Supporta **due modalita`**:
 - **DDT da ordine**: fatturazione delegata dall'ordine via `fatturazione_trigger`
@@ -39,7 +53,11 @@ Supporta **due modalita`**:
 **Regole comuni:**
 
 * riga attiva (`attivo = TRUE`);
-* esclude segmenti gia` emessi in `commesse_attivita` (idempotenza batch);
+* esclude segmenti gia` instradati in `commesse_attivita` (`segment` diverso da
+  `LIBERA`: idempotenza batch);
+* la `quantita` proiettata e` la **dose** della diagnosi — `GREATEST(0,
+  LEAST(quantita della riga, differenza della partita))` — e una riga con dose
+  zero non esce (`DDT_CONTATORE`); `qta_operativa` scala in proporzione;
 * costruisce `segment_key` deterministica (`DDT:{uid}:R:{riga_id}`);
 * `prezzo_bloccato = TRUE` se prezzo_snapshot presente;
 * sorgente tipo: `DDT_VENDITA` da `config.sorgenti` (id=8);
@@ -146,4 +164,42 @@ Presidio a valle: dopo il push il flag non è più modificabile sul documento
 
 Brief: `brief-db-emissione-fattura-per-documento-sorgente` PARTE B (step B3).
 
+---
+
+### 🔄 rev 2026-09-21 — la partita si legge per documento (D14, quarta leva)
+
+ChangeSet `20260921-23`. Il lister leggeva `vw_partite_merce` in `JOIN`, e la
+vista calcola le partite di **tutti** i DDT anche quando `p_ddt_id` ne chiede
+uno — cioè a ogni apertura del drawer, dalla capability. Ora legge
+[`fn_partite_merce`](/dbzero/vendite/funzioni/fn_partite_merce) con il DDT
+chiesto come seme (`ARRAY[p_ddt_id]`): la **chiusura** del documento. Con
+`p_ddt_id NULL` (la lista del push, il cockpit) il seme è `NULL` = tutte,
+com'era. Stessi predicati, stesso contratto verso la pipeline, stessi numeri: la
+vista è la proiezione della stessa funzione.
+
+⚠️ Il seme è un `CASE` senza colonne: in piano custom si piega a un letterale,
+in piano generico (dalla sesta esecuzione plpgsql) la funzione lo riceve come
+parametro e i suoi rami in `UNION ALL` lo trattano da *One-Time Filter* — mai
+una scansione intera (brief `brief-db-partita-merce-per-documento` §2-bis.2).
+
+---
+
+### 🔄 rev 2026-09-21 — il lister deriva dalla diagnosi (D14, seconda leva, forma B2)
+
+ChangeSet `20260921-33` (con `20260921-32`, la diagnosi, e `20260921-34`, la
+capability). Fino a qui lister e diagnosi erano **due copie** della stessa
+regola, tenute uguali da un pgTAP che confrontava le righe vive — verde per
+sottrazione su un database da zero. Ora la `cand` del lister non ripete più
+nessun predicato: parte dalla diagnosi (`motivo IS NULL`), rimette in `JOIN`
+`ddt` / `ddt_righe` / `articoli` / `billing_account` / `ordini_righe` /
+`ordini` **per la proiezione** (per chiave, dai fatti che la diagnosi espone),
+e applica i soli filtri di chiamata. Contratto verso la pipeline invariato
+(firma, 31 campi, `ORDER BY`, `LIMIT`, il guard su `p_ddt_id <= 0`); stesse
+righe e stesse quantità per costruzione.
+
+Il presidio non è più un'equivalenza da tenere:
+`test-fn-available-actions-ddt-reason-catch-all-v1` costruisce l'eleggibile e
+lo legge a tre voci (diagnosi, lister, capability), e pinna la **forma** — il
+corpo del lister nomina la diagnosi e non `fn_partite_merce` né
+`fn_get_stato_push_segment`.
 {% include-markdown "signature-core.md" %}

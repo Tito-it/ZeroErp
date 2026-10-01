@@ -19,9 +19,11 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.vendite.services._pricing_gate_helpers import (
@@ -30,11 +32,13 @@ from apps.vendite.services._pricing_gate_helpers import (
     validate_componenti_overrides_authorization,
 )
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.services._smistamento_gate_helpers import (
     transiziona_a_evaso_se_smistato,
 )
 from apps.vendite.services._componenti_service_helpers import (
+    dati_patch_componente,
     normalize_componenti_attivazioni,
     normalize_componenti_overrides,
     resolve_emittente_sr_id_for_testata,
@@ -58,7 +62,6 @@ from apps.core.api.payload_validators import paginated_envelope
 # ── Costanti di validazione ──
 
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
-_STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 _STATI_FATTURABILI: frozenset[str] = frozenset({"ACCETTATO"})
 _STATI_GENERA_PRATICA: frozenset[str] = frozenset({"ACCETTATO"})
 _FN = "vendite.preventivi_service"
@@ -69,7 +72,67 @@ _FN = "vendite.preventivi_service"
 # Solo la FORMA si controlla qui (una data malformata e' un 400 col campo
 # acceso, non un 500 dal DB): nessun CHECK di dominio, per scelta (brief §2.3).
 _CHIAVE_DATA_CONSEGNA = "data_consegna_richiesta_cliente"
+
+# Scopo: il contratto dell'operatore sull'UPDATE di testata e di riga, come
+#        `_UPDATE_KEYS_*` di ddt/ordini/resi. Fino al 2026-09-26 erano due tuple
+#        INLINE nel ciclo, e chi cercava «la whitelist dei preventivi» per nome
+#        non la trovava. ⭐ Il presidio
+#        `test_whitelist_service_dentro_repository` le confronta con le
+#        colonne che il repository sa scrivere.
+# ⚠️ `utility_id` NON c'e': e' immutabile (`fn_available_actions_preventivo`
+#    la mette sempre in `non_editable_fields`). `iva_id` nemmeno (`I6`,
+#    2026-08-31: l'aliquota la decide il risolutore). `quantita` e' derivata
+#    dal trigger: la sorgente e' `qta_operativa`.
+UPDATE_KEYS_PREVENTIVO: frozenset[str] = frozenset({
+    "billing_account_id", "istanza_utility_id",
+    "valuta_id", "termine_pagamento_id",
+    "validita_dal", "validita_al", "competenza_mese",
+    "fatturazione_immediata", "meta",
+})
+UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
+    "descrizione", "qta_operativa", "uom_operativa_id",
+    "factor_to_base", "prezzo_unitario", "sconto_percentuale",
+    "ordine", "meta",
+})
+# Il contratto della CREAZIONE (testata e riga): le chiavi che `crea_preventivo`
+# e `gestisci_riga` leggono, ne' una di piu' ne' una di meno — e una chiave fuori
+# elenco viene SCARTATA in ingresso, come in ordini e DDT.
+# ⭐ Dichiarati il 2026-09-26: fino a quel giorno le chiavi si leggevano una per
+#    una e non stavano in nessun elenco, e lo schema OpenAPI scritto a mano
+#    pubblicava ancora `iva_id` (chiuso da `I6`, 2026-08-31) e `quantita` (la
+#    calcola il trigger da `qta_operativa`), che il service ignorava in silenzio.
+#    Lo schema ora si legge da qui (`vendite/api/_schema_da_contratto.py`).
+CREATE_KEYS_PREVENTIVO: frozenset[str] = frozenset({
+    "utility_id", "billing_account_id", "istanza_utility_id",
+    "emittente_fiscale_id", "valuta_id", "termine_pagamento_id",
+    "validita_dal", "validita_al", "competenza_mese",
+    "fatturazione_immediata", "meta",
+})
+CREATE_KEYS_RIGA: frozenset[str] = frozenset({
+    "articolo_id", "descrizione", "qta_operativa", "uom_operativa_id",
+    "factor_to_base", "prezzo_unitario", "sconto_percentuale", "ordine", "meta",
+    "data_consegna_richiesta_cliente", "richiesta_approvazione",
+    "componenti_overrides", "componenti_attivazioni",
+})
+# In MODIFICA riga, oltre a `UPDATE_KEYS_RIGA` (le colonne che il repository
+# scrive in blocco), `aggiorna_riga` legge a parte queste due: la data con il
+# suo validatore, la richiesta di approvazione per il gate L3.
+UPDATE_RIGA_LETTE_A_PARTE: frozenset[str] = frozenset({
+    "data_consegna_richiesta_cliente", "richiesta_approvazione",
+})
 _V_RIGA = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
+
+
+# Scopo: Carica la testata preventivo o solleva E_PREV_NOT_FOUND (BB core
+#        `testata_o_not_found`, stesso nome del helper di ordini e DDT).
+def _get_testata_or_raise(
+    repo: PreventiviRepository, preventivo_id: int, *, op: str,
+) -> dict[str, Any]:
+    return testata_o_not_found(
+        repo.get_preventivo, preventivo_id,
+        code="E_PREV_NOT_FOUND", message="Preventivo non trovato.",
+        id_name="preventivo_id", function_name=f"{_FN}.{op}",
+    )
 
 
 # Scopo: La data di consegna richiesta dal payload di riga: `None` se assente,
@@ -106,7 +169,7 @@ def list_preventivi_rows(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
     repo = PreventiviRepository()
     return repo.list_preventivi(
@@ -137,12 +200,12 @@ def list_preventivi(
     solo_ultima_revisione: bool = True,
     auth_user_id: int | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     order_by: str = "data",
     order_dir: str = "desc",
 ) -> dict[str, object]:
     ErrorManager.require(
-        page >= 1 and 1 <= page_size <= 200,
+        page >= 1 and 1 <= page_size <= MAX_LIMIT,
         code="E_PREV_VALIDAZIONE",
         message="Parametri paginazione non validi.",
         function_name=f"{_FN}.list_preventivi",
@@ -170,7 +233,6 @@ def list_preventivi(
 #        Gemello di ContrattiService.resolve_filtri_export_label.
 def resolve_filtri_export_label(
     *,
-    search: str | None = None,
     stato_codice: str | None = None,
     billing_account_id: int | None = None,
     utility_id: int | None = None,
@@ -179,8 +241,6 @@ def resolve_filtri_export_label(
     solo_ultima_revisione: bool = True,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    if search:
-        out["Ricerca"] = search
     if stato_codice:
         out["Stato"] = stato_codice
     if billing_account_id is not None:
@@ -204,77 +264,59 @@ def resolve_filtri_export_label(
 #        `righe_count` come summary leggero (badge UX). Le capability
 #        (available_actions, can_edit_*, can_push_commessa, can_create_revisione,
 #        non_editable_fields) sono calcolate da script.fn_available_actions_preventivo
-#        e spalmate nel detail per consumo diretto dal frontend.
+#        e viaggiano SOTTO `capabilities` (api.md §«Il blob sta SOTTO
+#        `capabilities`», 2026-09-23).
 def get_preventivo(preventivo_id: int) -> dict[str, object]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.get_preventivo",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="get_preventivo")
     indirizzi = repo.list_indirizzi(preventivo_id)
+    # ⭐ Il blob si consegna COM'E' (api.md §Capability: «il backend trasporta,
+    #    non deduce»). I prezzi non autorizzati — righe o componenti BoM attivi
+    #    PENDING o REJECTED — spengono «Emetti» e «Accetta» col loro motivo
+    #    dentro `available_actions[].reasons`, dallo stesso building block con
+    #    cui il guard di transizione solleva (script.fn_check_prezzi_autorizzati);
+    #    «Annulla» e la modifica in BOZZA restano accesi (D-2, D-3). Fino al
+    #    2026-09-24 qui c'era una riscrittura Python del blob che scriveva
+    #    un'altra regola: ritirata, brief-db-preventivi-congelamento-pricing §6.1.
     capabilities = repo.get_capabilities(preventivo_id)
-    # Summary leggero: count per stato_approvazione_prezzo + totale, single
-    # SELECT GROUP BY (no scan dell'elenco righe completo). Le righe vere
-    # passano dall'endpoint /righe/ autonomo, evitando payload pesanti su
-    # lista detail e mismatch coi totali ricalcolati dai trigger DB.
-    counts = repo.count_righe_per_stato_approvazione(preventivo_id)
-    righe_count = counts["TOTAL"]
-    # Sprint E (autorizzazioni prezzi L3): se almeno una riga e' in stato
-    # PENDING o REJECTED, il preventivo e' "congelato" — niente transizioni
-    # di avanzamento (Emetti/Accetta) e niente edit testata. Razionale:
-    #  - PENDING → richiesta in attesa di esito, non si puo' avanzare
-    #  - REJECTED → il responsabile ha rifiutato il prezzo: il prezzo
-    #    proposto e' invalidato, l'operatore deve correggere la riga
-    #    (modificarne il prezzo o eliminarla) prima di poter procedere.
-    #    L'edit della singola riga resta abilitato (can_edit_righe=true)
-    #    proprio per permettere la correzione: l'aggiorna_riga al nuovo
-    #    prezzo accettabile resetta automaticamente il flag REJECTED → null
-    #    e il preventivo torna lavorabile.
-    # Defense-in-depth: cambia_stato_preventivo solleva
-    # E_PREVENTIVO_RIGHE_PRICING_PENDENTI; qui filtriamo le capability
-    # spedite al FE per disabilitare i pulsanti a monte (UX).
-    pending_count = counts[STATO_APPROVAZIONE_PENDING]
-    rejected_count = counts[STATO_APPROVAZIONE_REJECTED]
-    if pending_count > 0 or rejected_count > 0:
-        capabilities = {
-            **capabilities,
-            "available_actions": [],
-            "can_edit_testata": False,
-            # can_edit_righe RESTA TRUE quando ci sono solo REJECTED:
-            # l'operatore deve poter correggere il prezzo o eliminare la
-            # riga rifiutata. Lo blocchiamo solo per PENDING (in attesa
-            # esito: defense-in-depth replica trgfn DB lato preventivi_righe).
-            "can_edit_righe": rejected_count > 0 and pending_count == 0,
-            "frozen_for_pending_pricing": pending_count > 0,
-            "frozen_for_rejected_pricing": rejected_count > 0,
-            "pending_pricing_count": pending_count,
-            "rejected_pricing_count": rejected_count,
-        }
-    else:
-        capabilities = {
-            **capabilities,
-            "frozen_for_pending_pricing": False,
-            "frozen_for_rejected_pricing": False,
-            "pending_pricing_count": 0,
-            "rejected_pricing_count": 0,
-        }
+    # Summary leggero: una COUNT sulle righe attive (no scan dell'elenco
+    # completo). Le righe vere passano dall'endpoint /righe/ autonomo.
+    righe_count = repo.count_righe(preventivo_id)
     return {
         **testata,
-        **capabilities,
+        "capabilities": capabilities,
         "indirizzi": indirizzi,
         "righe_count": righe_count,
     }
 
 
-# Scopo: Lista righe di un preventivo.
+# Scopo: Lista righe di un preventivo. Legge prima la testata: un preventivo
+#        fuori perimetro (o inesistente) e' un 404, non un pannello vuoto.
 def list_righe(preventivo_id: int) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
+    _get_testata_or_raise(repo, preventivo_id, op="list_righe")
     return repo.list_righe(preventivo_id)
+
+
+# Scopo: Una PAGINA delle righe del preventivo, per la lista configurabile
+#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina. Legge prima la
+#        testata come `list_righe`. Ritorna `(righe, totale)`.
+def list_righe_pagina(
+    preventivo_id: int,
+    *,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int,
+    offset: int = 0,
+    max_limit: int = MAX_LIMIT,
+) -> tuple[list[dict[str, Any]], int]:
+    repo = PreventiviRepository()
+    _get_testata_or_raise(repo, preventivo_id, op="list_righe_pagina")
+    return repo.list_righe_pagina(
+        preventivo_id, search=search, order_by=order_by, order_dir=order_dir,
+        limit=limit, offset=offset, max_limit=max_limit,
+    )
 
 
 # Scopo: Righe MERCE smistabili a ordine (natura destinazione_tipo='ORDINE' non
@@ -284,14 +326,7 @@ def list_righe(preventivo_id: int) -> list[dict[str, Any]]:
 #        quelle che lo smistamento copierebbe (stesso predicato del residuo).
 def list_righe_smistabili_ordine(preventivo_id: int) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.list_righe_smistabili_ordine",
-    )
+    _get_testata_or_raise(repo, preventivo_id, op="list_righe_smistabili_ordine")
     return repo.list_righe_smistabili_ordine(preventivo_id)
 
 
@@ -301,8 +336,10 @@ def list_righe_smistabili_ordine(preventivo_id: int) -> list[dict[str, Any]]:
 #        il service legge la vista denormalizzata, nessun ricalcolo Python.
 #        Usato dal FE per il pannello "Riepilogo IVA" del drawer preventivo
 #        e (futuro) come builder per fatture emesse dal preventivo.
+#        Legge prima la testata: fuori perimetro e' un 404.
 def list_riepilogo_iva(preventivo_id: int) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
+    _get_testata_or_raise(repo, preventivo_id, op="list_riepilogo_iva")
     return repo.list_riepilogo_iva(preventivo_id)
 
 
@@ -372,6 +409,7 @@ def delete_indirizzo(preventivo_id: int, indirizzo_id: int) -> dict[str, Any]:
 #    Specificarlo esplicito solo per admin globale (utente senza emittente
 #    assegnato che sceglie l'emittente del documento).
 def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
+    payload = {k: v for k, v in payload.items() if k in CREATE_KEYS_PREVENTIVO}
     repo = PreventiviRepository()
     ba_repo = BillingAccountRepository()
     iu_repo = IstanzeUtilityRepository()
@@ -419,6 +457,7 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
         coerente,
         code="E_PREV_UTILITY_ISTANZA_INCOERENTE",
         message="Utility non coerente con l'istanza selezionata.",
+        context={"field": "utility_id"},
         detail=(
             f"istanza_utility_id={istanza_utility_id} non e' dichiarata "
             f"per utility_id={utility_id} (no billing account, dati "
@@ -472,15 +511,7 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
 # in quei casi la "cancellazione" semantica e' cambia_stato → ANNULLATO.
 def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.elimina_preventivo",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="elimina_preventivo")
     # Eliminabili solo i preventivi nello stesso stato in cui sono modificabili
     # (BOZZA / DRAFT). Qualsiasi stato successivo (EMESSO/ACCETTATO/...) richiede
     # cambia_stato → ANNULLATO invece dell'hard-delete.
@@ -491,7 +522,7 @@ def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
         detail=f"stato={testata['stato_codice_interno']}",
         function_name=f"{_FN}.elimina_preventivo",
     )
-    righe_count = len(repo.list_righe(preventivo_id))
+    righe_count = repo.count_righe(preventivo_id)
     ErrorManager.require(
         righe_count == 0,
         code="E_PREV_STATO_NON_MODIFICABILE",
@@ -514,14 +545,7 @@ def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
 # Scopo: Aggiorna testata preventivo con guard su stato modificabile.
 def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.aggiorna_preventivo",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="aggiorna_preventivo")
     ErrorManager.require(
         testata["stato_codice_interno"] in _STATI_MODIFICABILI,
         code="E_PREV_STATO_NON_MODIFICABILE",
@@ -535,12 +559,7 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
     # include sempre utility_id) e quindi NON e' nella whitelist: per cambiarla
     # serve creare un nuovo preventivo.
     update_fields: dict[str, Any] = {}
-    for key in (
-        "billing_account_id", "istanza_utility_id",
-        "valuta_id", "termine_pagamento_id",
-        "validita_dal", "validita_al", "competenza_mese",
-        "fatturazione_immediata", "meta",
-    ):
+    for key in UPDATE_KEYS_PREVENTIVO:
         if key in payload:
             val = payload[key]
             update_fields[key] = empty_to_none(val) if isinstance(val, str) else val
@@ -581,15 +600,7 @@ def cambia_stato(
     # update dei 2 campi finche' il preventivo e' fatturabile (vedi
     # _STATI_FATTURABILI). Su altre transizioni i parametri sono ignorati.
     if nuovo_stato == "ACCETTATO":
-        testata = repo.get_preventivo(preventivo_id)
-        ErrorManager.require(
-            testata is not None,
-            code="E_PREV_NOT_FOUND",
-            message="Preventivo non trovato.",
-            detail=f"preventivo_id={preventivo_id}",
-            function_name=f"{_FN}.cambia_stato",
-        )
-        assert testata is not None
+        testata = _get_testata_or_raise(repo, preventivo_id, op="cambia_stato")
         stato_attuale = testata["stato_codice_interno"]
         # Solo EMESSO → ACCETTATO (e ACCETTATO no-op) richiedono i parametri.
         if stato_attuale in ("EMESSO", "ACCETTATO"):
@@ -739,9 +750,20 @@ def crea_revisione(preventivo_id: int) -> dict[str, Any]:
 #        `numero`, ordinate per `rev`). Mirror del pattern offerte
 #        `list_revisioni`; differenza chiave: preventivi sono catenate via
 #        `numero` non via `revisione_padre_id`.
-def list_revisioni(preventivo_id: int) -> list[dict[str, Any]]:
+#        Legge prima la testata: fuori perimetro e' un 404 (e non una lista
+#        vuota, che direbbe «nessuna revisione» di un documento che non c'e').
+#        Paginata dal 2026-09-27: ritorna (righe, totale) per `paginated_envelope`.
+def list_revisioni(
+    preventivo_id: int, *,
+    limit: int = 25, offset: int = 0,
+    order_by: str | None = None, order_dir: str | None = None,
+) -> tuple[list[dict[str, Any]], int]:
     repo = PreventiviRepository()
-    return repo.list_revisioni(preventivo_id)
+    _get_testata_or_raise(repo, preventivo_id, op="list_revisioni")
+    return repo.list_revisioni(
+        preventivo_id,
+        limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+    )
 
 
 # Scopo: Aggancia il preventivo come ROOT a una pratica (pratiche_sorgenti).
@@ -754,15 +776,7 @@ def collega_pratica(
     from apps.pratiche.db.pratiche_repository import PraticheRepository
 
     repo = PreventiviRepository()
-    prev = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        prev is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.collega_pratica",
-    )
-    assert prev is not None
+    prev = _get_testata_or_raise(repo, preventivo_id, op="collega_pratica")
     # Aggancio ROOT per-flusso: flusso_id ancora il documento al flusso d'origine
     # (brief-db-aggancio-documento-flusso). L'indice unico parziale impedisce un
     # secondo ROOT sullo stesso flusso; il trigger guard verifica che il flusso
@@ -856,20 +870,11 @@ def gestisci_riga(
     *,
     auth_user_id: int | None = None,
 ) -> dict[str, Any]:
+    payload = {k: v for k, v in payload.items() if k in CREATE_KEYS_RIGA}
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.gestisci_riga",
-    )
-    assert testata is not None
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Righe non modificabili nello stato corrente.",
-        detail=f"stato={testata['stato_codice_interno']}",
+    testata = _get_testata_or_raise(repo, preventivo_id, op="gestisci_riga")
+    richiedi_righe_in_bozza(
+        testata, documento="Preventivo", documento_id=preventivo_id, verbo="aggiungere",
         function_name=f"{_FN}.gestisci_riga",
     )
 
@@ -1093,18 +1098,9 @@ def aggiorna_riga(
     auth_user_id: int | None = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.aggiorna_riga",
-    )
-    assert testata is not None
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Righe non modificabili nello stato corrente.",
+    testata = _get_testata_or_raise(repo, preventivo_id, op="aggiorna_riga")
+    richiedi_righe_in_bozza(
+        testata, documento="Preventivo", documento_id=preventivo_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
 
@@ -1141,14 +1137,7 @@ def aggiorna_riga(
     # ⚠️ E non si ri-risolve in UPDATE, ed e' corretto: `articolo_id` non e' in
     #    questo elenco — l'articolo di una riga non si cambia — quindi non c'e'
     #    niente, qui, che possa spostare la risposta.
-    # ⚠️ Questa e' una TUPLA INLINE e non una `frozenset` come sugli altri due
-    #    domini: chi cerca «la whitelist di riga dei preventivi» per nome non la
-    #    trova.
-    for key in (
-        "descrizione", "qta_operativa", "uom_operativa_id",
-        "factor_to_base", "prezzo_unitario", "sconto_percentuale",
-        "ordine", "meta",
-    ):
+    for key in UPDATE_KEYS_RIGA:
         if key in payload:
             update_fields[key] = payload[key]
     # La data di consegna richiesta: presente nel payload -> si scrive (anche
@@ -1228,9 +1217,9 @@ def aggiorna_riga(
             # e il nuovo valore non richiede approvazione (resolver applicabile
             # o override entro L2). Se la riga era REJECTED/APPROVED il flag
             # era riferito al prezzo precedente — non e' piu' valido. Il reset
-            # sblocca il preventivo (vedi get_preventivo `frozen_for_pending_pricing`,
-            # esteso al match REJECTED) e permette di emettere senza che il
-            # vecchio rifiuto resti come blocco fantasma.
+            # sblocca il preventivo (un REJECTED blocca Emetti/Accetta a DB,
+            # script.fn_check_prezzi_autorizzati) e permette di emettere senza
+            # che il vecchio rifiuto resti come blocco fantasma.
             #
             # Cleanup denormalizzato meta: rimuoviamo `approvazione_rifiuto`
             # (motivazione precedente irrilevante post-correzione).
@@ -1510,14 +1499,7 @@ def suggerisci_prezzo_riga(
     )
 
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=function_name,
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="suggerisci_prezzo_riga")
     ErrorManager.require(
         testata.get("billing_account_id") is not None,
         code="E_PREV_VALIDAZIONE",
@@ -1582,18 +1564,9 @@ def suggerisci_prezzo_riga(
 # trigger UPDATE attivato).
 def elimina_riga(preventivo_id: int, riga_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.elimina_riga",
-    )
-    assert testata is not None
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Righe non eliminabili nello stato corrente.",
+    testata = _get_testata_or_raise(repo, preventivo_id, op="elimina_riga")
+    richiedi_righe_in_bozza(
+        testata, documento="Preventivo", documento_id=preventivo_id, verbo="togliere",
         function_name=f"{_FN}.elimina_riga",
     )
 
@@ -1640,14 +1613,7 @@ def preview_componenti_riga(
     auth_user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.preview_componenti_riga",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="preview_componenti_riga")
     data_riferimento_str = testata.get("data")
     ErrorManager.require(
         data_riferimento_str is not None,
@@ -1701,20 +1667,9 @@ def list_componenti_riga(
     preventivo_id: int, riga_id: int, *, solo_attivi: bool = True,
 ) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None,
-        code="E_PREV_RIGA_NOT_FOUND",
-        message="Riga preventivo non trovata.",
-        detail=f"riga_id={riga_id}",
-        function_name=f"{_FN}.list_componenti_riga",
-    )
-    assert riga is not None
-    ErrorManager.require(
-        riga.get("preventivo_id") == preventivo_id,
-        code="E_PREV_RIGA_NOT_FOUND",
-        message="Riga preventivo non trovata.",
-        detail=f"riga_id={riga_id} non appartiene a preventivo_id={preventivo_id}",
+    riga_del_padre_o_not_found(
+        repo.get_riga, riga_id, padre_id=preventivo_id, chiave_padre="preventivo_id",
+        code="E_PREV_RIGA_NOT_FOUND", message="Riga preventivo non trovata.",
         function_name=f"{_FN}.list_componenti_riga",
     )
     return repo.list_componenti_riga(riga_id, solo_attivi=solo_attivi)
@@ -1725,8 +1680,8 @@ def list_componenti_riga(
 #        preventivo modificabile in UN'unica query JOIN
 #        componente→riga→preventivo (Fix #2 perf, refactor-componenti.md).
 #        Solleva `E_PREV_COMPONENTE_NOT_FOUND` su componente inesistente
-#        o fuori scope, `E_PREV_STATO_NON_MODIFICABILE` se preventivo non
-#        in `_STATI_RIGHE_MODIFICABILI`.
+#        o fuori scope, `E_RIGA_DOC_NON_BOZZA` (BB `richiedi_righe_in_bozza`,
+#        col `verbo` del chiamante) se il preventivo non e' in bozza.
 #        Defense-in-depth: scope check sia su `riga_id` (anti-tampering
 #        URL) sia su `preventivo_id` via JOIN runtime.
 def _load_componente_for_modification(
@@ -1735,6 +1690,7 @@ def _load_componente_for_modification(
     preventivo_id: int,
     riga_id: int,
     componente_id: int,
+    verbo: Verbo,
     function_name: str,
 ) -> None:
     scope = repo.load_componente_with_scope(componente_id)
@@ -1775,12 +1731,8 @@ def _load_componente_for_modification(
 
     # Guard stato modificabile: il JOIN porta gia' lo stato — niente
     # round-trip extra a `get_preventivo`.
-    stato = str(scope.get("stato_codice_interno") or "")
-    ErrorManager.require(
-        stato in _STATI_RIGHE_MODIFICABILI,
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Componenti non modificabili nello stato corrente.",
-        detail=f"stato={stato}",
+    richiedi_righe_in_bozza(
+        scope, documento="Preventivo", documento_id=preventivo_id, verbo=verbo,
         function_name=function_name,
     )
 
@@ -1800,18 +1752,26 @@ def update_componente(
     componente_id: int,
     payload: dict[str, Any],
     *,
-    auth_user_id: int | None = None,  # noqa: ARG001 — riservato a L1/L2/L3 futuro
+    auth_user_id: int | None = None,  # riservato a L1/L2/L3 futuro
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
     _load_componente_for_modification(
         repo,
         preventivo_id=preventivo_id, riga_id=riga_id, componente_id=componente_id,
-        function_name=f"{_FN}.update_componente",
+        verbo="modificare", function_name=f"{_FN}.update_componente",
     )
 
-    # Solo campi della whitelist repo finiscono nell'UPDATE (defense-in-depth).
+    # ⛔ Contratto dell'OPERATORE (BB unico per i cinque documenti), non la
+    #    whitelist del repository: fino al 2026-09-26 qui si validava contro
+    #    `COMPONENTE_UPDATE_ALLOWED`, che contiene `stato_approvazione_prezzo`
+    #    — un operatore poteva approvarsi da solo un prezzo L3 PENDING.
+    #    `origine_prezzo` la deriva il server dal prezzo.
     # Il prezzo_unitario del padre verra' ricalcolato dal trigger DB.
-    updated = repo.update_componente(componente_id, **payload)
+    data = dati_patch_componente(
+        payload, function_name=f"{_FN}.update_componente",
+        error_code="E_PREV_VALIDAZIONE",
+    )
+    updated = repo.update_componente(componente_id, **data)
     ErrorManager.require(
         updated,
         code="E_PREV_COMPONENTE_NOT_FOUND",
@@ -1833,7 +1793,7 @@ def delete_componente(
     _load_componente_for_modification(
         repo,
         preventivo_id=preventivo_id, riga_id=riga_id, componente_id=componente_id,
-        function_name=f"{_FN}.delete_componente",
+        verbo="togliere", function_name=f"{_FN}.delete_componente",
     )
     deleted = repo.delete_componente(componente_id)
     # idempotenza: se gia' soft-deleted ritorna False — non e' errore qui.
@@ -1859,14 +1819,7 @@ def push_a_commessa(
     preventivo_id: int, righe_ids: list[int] | None = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.push_a_commessa",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="push_a_commessa")
     ErrorManager.require(
         testata["stato_codice_interno"] in _STATI_FATTURABILI,
         code="E_PREV_STATO_TRANSIZIONE",
@@ -1963,14 +1916,7 @@ def push_a_commessa(
 #        brief-db-smistamento-preventivi.md B). Una sola chiamata FE.
 def smistamento(preventivo_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.smistamento",
-    )
+    _get_testata_or_raise(repo, preventivo_id, op="smistamento")
     # `aggregato` e' None per preventivo senza righe attive (la vista GROUP BY
     # non produce la riga): si propaga cosi' com'e', senza fabbricare un
     # fallback che duplicherebbe lo schema della vista (drift garantito alla
@@ -2119,18 +2065,11 @@ def genera_pratica(
     descrizione: str | None = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
+    testata = _get_testata_or_raise(repo, preventivo_id, op="genera_pratica")
     # Guard "a buon mercato" sulla testata gia' letta (esistenza, stato, billing):
     # errori applicativi anticipati e chiari. La fn madre ri-guarda esistenza e
     # billing come difesa-in-profondita' (E_PREV_NOT_FOUND / E_PREV_VALIDAZIONE),
     # ma NON il guard di stato → resta qui.
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.genera_pratica",
-    )
-    assert testata is not None
     ErrorManager.require(
         testata["stato_codice_interno"] in _STATI_GENERA_PRATICA,
         code="E_PREV_PRATICA_STATO",

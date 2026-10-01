@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 """
 Indice test eseguiti:
-1) test_default_ordina_per_gravita_dal_piu_grave
+1) test_default_ordina_per_tempo_dal_piu_recente
 2) test_colonna_fuori_whitelist_ricade_sul_default
 3) test_dentro_la_gravita_il_tempo_resta_dal_piu_recente
 4) test_quando_ordina_col_tiebreak_allineato
@@ -18,7 +18,7 @@ Indice test eseguiti:
 
 from django.test import SimpleTestCase
 
-from apps.vendite.db.vendite_repository import _giornale_order_clause
+from apps.vendite.db.vendite_repository import GIORNALE_ORDINE_DEFAULT, _giornale_order_clause
 
 
 class GiornaleOrdinamentoTests(SimpleTestCase):
@@ -30,12 +30,16 @@ class GiornaleOrdinamentoTests(SimpleTestCase):
     posto — cioe' mai.
     """
 
-    # Scopo: ⭐ Il default e' la GRAVITA' (decisione di Tid, 2026-08-24, dopo la
-    # validazione in-app): davanti a un documento la prima domanda e' «c'e'
-    # qualcosa che non va?», non «cosa e' successo per primo».
-    def test_default_ordina_per_gravita_dal_piu_grave(self) -> None:
+    # Scopo: ⭐ Il default e' il TEMPO dal piu' recente — il preset della lista
+    # a catalogo `vendite.giornale`, che dal 2026-09-27 e' la stessa per il
+    # trasversale e per le due Storie (brief-db-liste-datatable-grezze §3.1).
+    # Fino a quel giorno la Storia partiva dalla gravita' (Tid, 2026-08-24): la
+    # domanda «c'e' qualcosa che non va?» ha ora il banner della fattura, con
+    # una fonte sua (`get_giornale_errore_vivo`).
+    def test_default_ordina_per_tempo_dal_piu_recente(self) -> None:
         clausola = _giornale_order_clause(None, None)
-        self.assertTrue(clausola.startswith("t.rango_gravita DESC"))
+        self.assertTrue(clausola.startswith("t.quando DESC"))
+        self.assertEqual(clausola, _giornale_order_clause(GIORNALE_ORDINE_DEFAULT, "desc"))
 
     # Scopo: ⚠️ Una colonna che non esiste non e' un errore da 400: e' una
     # preferenza che non si applica. Il ripiego e' il default, non un ORDER BY
@@ -43,7 +47,7 @@ class GiornaleOrdinamentoTests(SimpleTestCase):
     def test_colonna_fuori_whitelist_ricade_sul_default(self) -> None:
         self.assertEqual(
             _giornale_order_clause("cosa", "desc"),
-            _giornale_order_clause("gravita", "desc"),
+            _giornale_order_clause(GIORNALE_ORDINE_DEFAULT, "desc"),
         )
 
     # Scopo: 🔴 Il test che protegge la scelta meno ovvia. Dentro la stessa

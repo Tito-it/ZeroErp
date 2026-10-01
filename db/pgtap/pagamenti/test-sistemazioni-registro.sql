@@ -53,29 +53,40 @@ SELECT plan(12);
 CREATE TEMP TABLE tmp_costanti AS
 SELECT 'pgtap_sistemazioni_registro'::text AS test_scope;
 
--- ⚠️ ORDER BY ovunque: una fixture che scommette su quale riga esce non
---    verifica, e il giorno che ne esce un'altra il rosso accusa il codice.
+-- ⛔ LE TRE FATTURE SI COSTRUISCONO (2026-09-23). La fixture CERCAVA nella
+--   popolazione «un cliente che abbia almeno due fatture, e un altro cliente
+--   con almeno una»: su un database ricostruito `vendite.fatture` e' a zero e
+--   tutte le colonne uscivano NULL — otto asserzioni rosse che parlavano
+--   dell'assenza di dati, non del registro delle sistemazioni.
+-- ⭐ Costruirle dice anche una cosa in piu': la coppia e' la stessa PER
+--   COSTRUZIONE (terzo parametro del BB), non per una GROUP BY che spera di
+--   trovarla.
+CREATE TEMP TABLE tmp_fatt_a AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('sistemazioni registro A');
+
+CREATE TEMP TABLE tmp_fatt_b AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+                 'sistemazioni registro B', 'DRAFT',
+                 (SELECT billing_account_id FROM tmp_fatt_a));
+
+-- La terza e' di un ALTRO cliente: senza terzo parametro il BB ne costruisce
+-- uno nuovo, nella stessa azienda.
+CREATE TEMP TABLE tmp_fatt_altro AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('sistemazioni registro altro cliente');
+
+-- Gli importi: il registro delle sistemazioni lavora su fatture con un totale.
+UPDATE vendite.fatture SET totale_a_pagare = 100.00
+ WHERE id IN ((SELECT fattura_id FROM tmp_fatt_a),
+              (SELECT fattura_id FROM tmp_fatt_b),
+              (SELECT fattura_id FROM tmp_fatt_altro));
+
 CREATE TEMP TABLE tmp_ref AS
-WITH visibili AS (
-  SELECT f.id, f.emittente_soggetto_ruolo_id, f.billing_account_id,
-         ba.soggetto_ruolo_id AS cliente_sr
-    FROM vendite.fatture f
-    JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
-   WHERE f.totale_a_pagare IS NOT NULL AND f.totale_a_pagare > 0
-), coppia AS (
-  SELECT cliente_sr, emittente_soggetto_ruolo_id
-    FROM visibili GROUP BY 1, 2 HAVING count(*) >= 2
-   ORDER BY 1, 2 LIMIT 1
-)
-SELECT (SELECT v.id FROM visibili v JOIN coppia c USING (cliente_sr)
-         ORDER BY v.id LIMIT 1)                                   AS fattura_a,
-       (SELECT v.id FROM visibili v JOIN coppia c USING (cliente_sr)
-         ORDER BY v.id OFFSET 1 LIMIT 1)                          AS fattura_b,
-       (SELECT cliente_sr FROM coppia)                            AS cliente_sr,
-       (SELECT emittente_soggetto_ruolo_id FROM coppia)           AS emittente_sr,
-       (SELECT v.id FROM visibili v
-         WHERE v.cliente_sr <> (SELECT cliente_sr FROM coppia)
-         ORDER BY v.id LIMIT 1)                                   AS fattura_altro_cliente;
+SELECT a.fattura_id                    AS fattura_a,
+       b.fattura_id                    AS fattura_b,
+       a.cliente_soggetto_ruolo_id     AS cliente_sr,
+       a.emittente_soggetto_ruolo_id   AS emittente_sr,
+       x.fattura_id                    AS fattura_altro_cliente
+  FROM tmp_fatt_a a, tmp_fatt_b b, tmp_fatt_altro x;
 
 SELECT ok(
   (SELECT fattura_a IS NOT NULL AND fattura_b IS NOT NULL

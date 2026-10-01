@@ -3,8 +3,8 @@
 ## Scopo
 
 Override delle view SimpleJWT per agganciare: (a) l'audit login/refresh nella
-tabella `dbops.sessioni_utente`, (b) il controllo blocco utente per tentativi
-falliti, (c) il throttle IP, (d) il guard cross-namespace multi-veste (§8.3).
+tabella `dbops.sessioni_utente`, (b) lo stato della credenziale — blocco
+dell'admin, freno per provenienza, attesa crescente —, (c) il throttle IP, (d) il guard cross-namespace multi-veste (§8.3).
 
 Per il **contratto HTTP completo** dei 6 endpoint (3 login + 3 refresh, uno
 per namespace), i claim JWT custom e i codici errore → vedi
@@ -35,22 +35,57 @@ TokenRefreshView  (SimpleJWT)
 
 ### `AuditTokenObtainPairView` (base astratta)
 
-- **Astratta**: `serializer_class = None` + `assert` guard in `post()`.
-  Istanziarla direttamente → `AssertionError`. Le subclass DEVONO fornire
+- **Astratta**: `serializer_class = None` + guardia esplicita in `post()`:
+  usata senza subclass, il primo `post()` solleva `RuntimeError`. Le subclass DEVONO fornire
   un `serializer_class` sottoclasse di `MultiVesteTokenSerializer`.
-- **Throttle**: `LoginRateThrottle` (5 tentativi / 5 minuti per IP).
-- **Blocco utente**: prima del login chiama
-  `AuthRepository.check_blocco_login(auth_user_id)` che solleva errore DB
-  (`E_UTENTE_BLOCCATO`) se l'utente ha `bloccato_fino_a > now()`.
-- **Tentativi falliti**: dopo login fallito chiama
-  `registra_tentativo_login(successo=False)`. Eccezione: `VesteNonAttivaError`
-  (credenziali OK ma veste sbagliata) NON viene contato come tentativo.
-- **Audit login**: dopo login OK, popola le 5 GUC di sessione via
-  `set_jwt_gucs(username, user_id, identita_id, request)` (l'`identita_id`
-  e' estratto dal refresh appena emesso tramite `_extract_identita_id_from_refresh`),
-  poi chiama `session_audit_service.record_login(user_id, request, jti)`.
-- **Flag password_change_required**: se `AuthRepository.get_deve_cambiare_password(user.id)`
-  ritorna True, aggiunge `password_change_required: true` alla response.
+- **Throttle**: `LoginRateThrottle` (5 richieste / 5 minuti per IP) — contro
+  chi **inonda** l'endpoint, qualunque credenziale provi. ⚠️ E' una regola
+  diversa dal freno qui sotto, anche se i numeri si somigliano.
+- **Provenienza**: prima di tutto, l'IP fidato del chiamante
+  (`get_client_ip`). Se non si ricava, il login si rifiuta con
+  `E_AUTH_CHIAMATA_NON_VALIDA` (500) **prima** di cercare lo username: la
+  risposta non dice se l'utente esiste, e il DB non riceve mai una provenienza
+  `NULL`.
+- **Nome tentato**: lo username si legge **dal campo del serializer**
+  (`_nome_tentato`), cioè già normalizzato come lo vedrà `authenticate`
+  (spazi tolti, numeri convertiti). Con quel valore si cerca la credenziale
+  (`_find_user`, uguaglianza esatta come `ModelBackend`) e se ne calcola
+  l'impronta (`nome_tentato.digest_nome_tentato`, HMAC-SHA256 con chiave del
+  backend, 32 byte). ⛔ Fino al 2026-09-25 il lookup usava il valore grezzo:
+  con « tid» non trovava la credenziale e blocco, freno e attesa non si
+  controllavano, mentre `authenticate("tid")` faceva entrare. Un nome
+  assente, vuoto o non testuale non è un tentativo: il serializer risponde
+  400 senza guardare la password, e il DB non viene chiamato.
+- **Stato della credenziale** (contro chi **prova** una credenziale):
+  `AuthRepository.check_blocco_login(uid | None, nome_digest=, provenienza=)`
+  solleva dal DB, nell'ordine, `E_CREDENZIALE_BLOCCATA` (blocco dell'admin),
+  `E_UTENTE_BLOCCATO` (freno su questa provenienza), `E_LOGIN_ATTESA`
+  (attesa crescente) — tutti 403. ⭐ Si chiama **sempre**, anche per un nome
+  che non trova una credenziale (R-7): allora `uid` è `None` e il DB usa
+  l'impronta del nome come chiave (`config.nomi_tentati`), con gli stessi
+  numeri e le stesse frasi. Chi prova non capisce se il nome esiste. Modello:
+  [guida multi-face §3.1-bis](../../../guide/architettura-multi-face-auth.md)
+  e [fn_check_blocco_login](/dbzero/script/manual/fn_check_blocco_login).
+- **Esito**: `registra_tentativo_login(uid | None, nome_digest=, provenienza=, successo=)` —
+  fallimento: conta sulla coppia e sulla chiave (credenziale o nome);
+  successo: azzera la credenziale e la **sola** coppia da cui si e' entrati
+  (un successo ha sempre la credenziale). Eccezione:
+  `VesteNonAttivaError` (credenziali OK ma veste sbagliata) NON conta.
+  ⛔ Il fallimento si intercetta su `rest_framework.exceptions.AuthenticationFailed`
+  (quello che solleva il serializer), **non** sulla classe omonima di
+  SimpleJWT, che ne e' una sottoclasse: fino al 2026-09-25 l'import era
+  quello, e nessuna password sbagliata arrivata dall'API veniva contata.
+- **Audit login**: dopo login OK, popola le GUC di sessione via
+  `set_jwt_gucs(username=, user_id=, identita_id=, request=)` (l'`identita_id`
+  e' estratto dal refresh appena emesso tramite `_extract_identita_id_from_refresh`;
+  al login `emittente_attivo_id` non viene passato, quindi
+  `app.current_emittente_id` resta vuota durante la scrittura dell'audit),
+  poi chiama `session_audit_service.record_login(user_id=, request=, jti=)`.
+  Il valore passato come `jti` e' il claim `sid` del refresh (`_extract_claims`).
+- **Flag password_change_required**: se
+  `AuthRepository.get_deve_cambiare_password(user.id)` ritorna True (l'obbligo
+  e' della **credenziale**, vale su ogni porta), aggiunge
+  `password_change_required: true` alla response.
 
 ### Subclass login (Admin/Portale/Shop)
 
@@ -67,18 +102,39 @@ non ha la veste richiesta dal namespace → `VesteNonAttivaError` (403).
 
 ### `AuditTokenRefreshView` (base astratta)
 
-- **Astratta**: `expected_ruoli_applicativi = ()` + `assert` guard in `post()`.
-  Istanziarla direttamente → `AssertionError`.
-- **Guard cross-namespace**: estrae il claim `ruolo_applicativo` dal refresh
-  token via `_extract_ruolo_applicativo_from_refresh` (decode non-verificato
-  del payload JWT — firma gia' validata da SimpleJWT a monte) e rifiuta con
-  `VesteNonAttivaError` se non rientra in `expected_ruoli_applicativi`.
-- **Audit refresh**: dopo refresh OK, risolve lo username dal `user_id` del
-  claim (`_resolve_username`), popola le GUC e chiama
-  `session_audit_service.record_refresh`.
+- **Astratta**: `expected_ruoli_applicativi = ()` + guardia esplicita in
+  `post()`: usata senza subclass, il primo `post()` solleva `RuntimeError`.
+- **Refresh dal cookie**: il refresh non si legge dal corpo ma dal cookie
+  HttpOnly `zeroerp_refresh` (BB `refresh_cookie.py`, dal 2026-09-28). Prima
+  di tutto `richiedi_header_anti_csrf` pretende `X-Requested-With:
+  XMLHttpRequest` (403 `E_PERMISSION_DENIED`): e' l'unica richiesta
+  autenticata dal solo cookie. Poi `leggi_refresh_cookie`: senza cookie →
+  `InvalidToken` (401 `E_AUTHENTICATION_FAILED`).
+- **Guard cross-namespace**: legge il claim `ruolo_applicativo` da claim con
+  la **firma verificata** (`claims_refresh_firmati`, vedi la voce «Veste dal
+  token verificato») e rifiuta con `VesteNonAttivaError` (403) se il claim
+  manca o non rientra in `expected_ruoli_applicativi`. Il guard gira **prima**
+  di `_rinnova`, che ruoterebbe e metterebbe in blacklist il token: un refresh
+  del canale sbagliato non si brucia.
+- **`_rinnova`**: il corpo di `TokenViewBase.post` col refresh preso dal
+  cookie — stessa validazione (firma, scadenza, blacklist, rotazione) e stessa
+  traduzione di `TokenError` in `InvalidToken` (401). Il refresh ruotato esce
+  dal corpo e va nel `Set-Cookie` (`sposta_refresh_nel_cookie`).
+- **Veste dal token verificato** (E-8, chiuso 2026-09-28): prima del guard
+  cross-namespace i claim si leggono con la **firma verificata** (BB
+  `claims_refresh_firmati` di `refresh_cookie.py`, lo stesso del logout). Un
+  refresh illeggibile o non emesso da questo backend → 401; un refresh nostro
+  senza claim `ruolo_applicativo` o di un altro canale → 403
+  `E_VESTE_NON_ATTIVA`.
+- **Audit refresh**: dopo refresh OK, legge `user_id` e `sid` dal refresh in
+  entrata con decode non verificato (`_extract_claims`: il refresh e' gia'
+  blacklistato dalla rotation, `RefreshToken(...)` fallirebbe), risolve lo
+  username (`_resolve_username`), popola le GUC con `set_jwt_gucs` passando
+  `identita_id` **e** `emittente_attivo_id` presi dallo stesso refresh, poi
+  chiama `session_audit_service.record_refresh`.
 - **Claim preservation**: SimpleJWT con `ROTATE_REFRESH_TOKENS=True` ruota
   solo `jti/exp/iat`; i claim custom (`identita_id`, `ruolo_applicativo`,
-  `sid`) sono preservati nel nuovo refresh.
+  `sid`, `emittente_attivo_id` se presente) sono preservati nel nuovo refresh.
 
 ### Subclass refresh (Admin/Portale/Shop)
 
@@ -90,15 +146,21 @@ Differiscono dalla base SOLO per `expected_ruoli_applicativi`:
 
 ## Input
 
-Vedi [api_multi_veste_token.md](api_multi_veste_token.md) §Input. Tutti e 6
-gli endpoint accettano JSON body standard SimpleJWT (`username+password`
-per login, `refresh` per refresh).
+Vedi [api_multi_veste_token.md](api_multi_veste_token.md) §Input. I 3 login
+accettano il JSON body standard SimpleJWT (`username+password`); i 3 refresh
+hanno corpo vuoto, leggono il refresh dal cookie `zeroerp_refresh` e
+pretendono l'header `X-Requested-With: XMLHttpRequest`.
 
 ## Output
 
-Envelope SimpleJWT standard (`access` + `refresh` + eventuale
-`password_change_required` al login). Il JWT contiene i claim custom
-(`identita_id`, `ruolo_applicativo`, `sid`) documentati in
+Corpo `access` (+ eventuale `password_change_required` al login); il refresh
+non sta mai nel corpo ma nel `Set-Cookie` `zeroerp_refresh` (attributi in
+[api_multi_veste_token.md](api_multi_veste_token.md#cookie-di-refresh)). Al
+login lo sposta `sposta_refresh_nel_cookie` come **ultimo** passo di
+`AuditTokenObtainPairView.post`, dopo l'audit e le GUC che leggono ancora i
+claim dal refresh nel corpo. Il JWT contiene i claim custom
+(`identita_id`, `ruolo_applicativo`, `sid`, e `emittente_attivo_id` quando
+l'utente ha un emittente attivo) documentati in
 [api_multi_veste_token.md](api_multi_veste_token.md) §Claim JWT custom.
 
 **Effetto aggiuntivo**: INSERT in `dbops.sessioni_utente` (audit login/refresh).
@@ -110,8 +172,8 @@ Envelope SimpleJWT standard (`access` + `refresh` + eventuale
 - `VesteNonAttivaError` al login e' catturato prima di
   `AuthenticationFailed` per **non** incrementare tentativi falliti (no
   autoblock su errore "canale sbagliato").
-- `set_jwt_gucs` ritorna `False` se `identita_id` e' None o l'identita
-  non e' attiva: in quel caso viene loggato `security.{login,refresh}_guc_mancate`
+- `set_jwt_gucs` ritorna `False` se `identita_id` e' None, se l'identita
+  non e' attiva o se la query fallisce (`DatabaseError`): in quel caso viene loggato `security.{login,refresh}_guc_mancate`
   e l'audit procede con GUC vuote (user_insert='zeroerp_app').
 - Le 6 view concrete sono registrate in `zeroerp_backend/urls.py` con
   `permission_classes=[AllowAny]` (endpoint pubblici di autenticazione).
@@ -120,20 +182,30 @@ Envelope SimpleJWT standard (`access` + `refresh` + eventuale
 
 ## Dipendenze
 
-| Componente | Ruolo |
-| --- | --- |
-| `dbops.sessioni_utente` | INSERT via `session_audit_service` (login/refresh/logout) |
-| `anagrafiche.identita_digitali` | Source di `identita_id` + `ruolo_applicativo` iniettati nel JWT |
-| `script.fn_check_blocco_login` | Blocco utente per tentativi falliti |
-| `script.fn_registra_tentativo_login` | Incremento/reset contatore tentativi |
-| `MultiVesteTokenSerializer` | Iniezione claim custom + risoluzione veste |
-| `JwtAuditAuthentication` | Validazione claim + popolamento GUC a ogni request |
+| Componente                           | Ruolo                                                           |
+| ------------------------------------ | --------------------------------------------------------------- |
+| `dbops.sessioni_utente`              | INSERT via `session_audit_service` (login/refresh/logout)       |
+| `anagrafiche.identita_digitali`      | Source di `identita_id` + `ruolo_applicativo` iniettati nel JWT |
+| `script.fn_check_blocco_login`       | Blocco, freno per provenienza, attesa — prima della password    |
+| `script.fn_registra_tentativo_login` | Esito del tentativo per credenziale (o nome tentato) + provenienza |
+| `nome_tentato.digest_nome_tentato` / `etichetta_log` | Impronta del nome tentato (HMAC, la chiave non va al DB); come il tentativo compare nei log |
+| `script.fn_get_deve_cambiare_password` | Cambio password obbligatorio della credenziale                |
+| `MultiVesteTokenSerializer`          | Iniezione claim custom + risoluzione veste                      |
+| `JwtAuditAuthentication`             | Validazione claim + popolamento GUC a ogni request              |
 
 ## Test
 
 - `apps/core/tests/api/test_auth_views.py` — test behavior login/refresh,
   guard astratta, cross-namespace (Admin/Portale/Shop), no-tentativo su
-  `VesteNonAttivaError`, extract helpers.
+  `VesteNonAttivaError`, provenienza assente, extract helpers; nome
+  inesistente sulle stesse due chiamate e mai in chiaro nei log, nome con
+  spazi normalizzato come `authenticate`, nome assente senza chiamate al DB.
+- `apps/core/tests/db/test_login_credenziale_db.py` — ⭐ sul DB vero
+  (`ZEROERP_TEST_DB_E2E=1`): binding di `AuthRepository` e login vero dalla
+  view — 401 che contano, freno 403 solo dalla provenienza che sbaglia,
+  attesa coi secondi nel `message`, login riuscito; ⭐ la parità del nome
+  inesistente (stesse risposte di una credenziale vera) e il freno che non
+  si aggira con uno spazio davanti al nome.
 - `apps/core/tests/api/test_multi_veste_token_serializer.py` — test serializer,
   `VesteNonAttivaError`, claim injection.
 - `apps/core/tests/api/test_jwt_audit_authentication.py` — test authenticate

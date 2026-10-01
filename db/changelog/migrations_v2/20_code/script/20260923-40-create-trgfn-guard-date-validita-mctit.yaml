@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Building block: il guard della regola del PERIODO — `valido_al` non precede
+#   `valido_dal` — scritto una volta, per ogni tabella che porta la coppia.
+#
+# ── ⛔ IL DIFETTO ────────────────────────────────────────────────────
+#   Le tabelle con `valido_dal`/`valido_al` sono 25 (lettura di struttura del
+#   2026-09-23), e la stessa regola vi parla in TRE modi:
+#     - un guard di dominio scritto inline (tre tabelle);
+#     - il costruttore del daterange della colonna generata `validita`, che
+#       PostgreSQL calcola PRIMA dei CHECK: `22000`, «il limite inferiore
+#       dell'intervallo dev'essere minore o uguale…» — una frase tecnica
+#       (venti tabelle, e su undici il CHECK delle date c'e' ma non parla mai);
+#     - un CHECK, `23514` (due tabelle).
+#   L'operatore che sbaglia le date legge una cosa diversa a seconda di dove
+#   le sbaglia.
+#
+# ── ⭐ LA FORMA ──────────────────────────────────────────────────────
+#   Una funzione trigger generica, senza argomenti: le colonne si chiamano
+#   sempre `valido_dal` e `valido_al`. Si giudica solo quando le due date ci
+#   sono entrambe — la stessa semantica dei CHECK, che dove `valido_dal` e'
+#   nullable portano anche `valido_dal IS NULL OR …`.
+#   Montata BEFORE INSERT OR UPDATE OF valido_dal, valido_al: i BEFORE girano
+#   prima del calcolo delle colonne generate (linee-guida-sql §7b), quindi
+#   parla lei e non il daterange.
+#   ⚠️ NON la monta questo changeSet: la monta l'automazione DATE_VALIDITA
+#   (dbops.fn_run_automations_date_validita) sulla sola presenza della coppia,
+#   come il lock di codice_interno. Una tabella nuova con un periodo nasce
+#   presidiata senza che nessuno se ne ricordi.
+#
+# ── ⭐ IL CODICE ─────────────────────────────────────────────────────
+#   E_DATA_AL_MINORE_DAL: gia' registrato, classe DATO_ERRATO (la persona che
+#   ha scritto le date puo' rimediare), gia' usato da due delle tre copie
+#   inline che questo giro ritira. Nella frase le due DATE, mai i nomi delle
+#   colonne; il campo da accendere viaggia in `campo`.
+#
+# ⚠️ I CHECK sulle date RESTANO: sono la regola dichiarata e l'ultima difesa
+#   se il guard mancasse. Questo e' cio' che parla, quelli sono cio' che tiene.
+#
+# Brief: brief-db-guard-date-validita.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260923-40-create-trgfn-guard-date-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260923-40-create-trgfn-guard-date-validita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_guard_date_validita(): il guard generico della regola del
+        periodo (valido_al non precede valido_dal) con E_DATA_AL_MINORE_DAL e
+        campo valido_al. Lo monta l'automazione DATE_VALIDITA su ogni tabella
+        che porta la coppia di date.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_guard_date_validita()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: la regola del PERIODO — valido_al non precede
+              --   valido_dal — in un posto solo, per ogni tabella che porta la
+              --   coppia di date. Si giudica solo con entrambe le date presenti.
+              -- Montaggio: dbops.fn_run_automations_date_validita (regola
+              --   DATE_VALIDITA), BEFORE INSERT OR UPDATE OF valido_dal,
+              --   valido_al: prima del calcolo di `validita` generata, che
+              --   altrimenti rifiuterebbe con una frase tecnica (22000).
+              BEGIN
+                  IF NEW.valido_dal IS NOT NULL
+                     AND NEW.valido_al IS NOT NULL
+                     AND NEW.valido_al < NEW.valido_dal THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.trgfn_guard_date_validita',
+                          'E_DATA_AL_MINORE_DAL',
+                          jsonb_build_object(
+                              'campo',      'valido_al',
+                              'tabella',    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'valido_dal', NEW.valido_dal,
+                              'valido_al',  NEW.valido_al),
+                          NULL::uuid,
+                          NEW.valido_al::text,
+                          NEW.valido_dal::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_guard_date_validita()
+              IS 'Building block: il guard della regola del PERIODO — valido_al non precede valido_dal — per ogni tabella con la coppia di date. Solleva E_DATA_AL_MINORE_DAL (DATO_ERRATO) con campo valido_al, e giudica solo quando le due date ci sono entrambe (la semantica dei CHECK). ⭐ Lo monta l''automazione DATE_VALIDITA (dbops.fn_run_automations_date_validita) sulla sola presenza delle due colonne, BEFORE INSERT OR UPDATE OF valido_dal, valido_al: i BEFORE girano prima del calcolo di `validita` generata, che altrimenti rifiuterebbe per primo con la frase tecnica del daterange (22000). ⚠️ I CHECK sulle date restano: sono la regola dichiarata e l''ultima difesa. Brief: brief-db-guard-date-validita.md';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.trgfn_guard_date_validita();

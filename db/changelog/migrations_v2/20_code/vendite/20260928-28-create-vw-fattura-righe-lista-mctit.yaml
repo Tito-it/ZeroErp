@@ -1,0 +1,206 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE vendite.vw_fattura_righe_lista: le righe di una fattura come LISTA, per
+# la lista configurabile `vendite.fattura_righe` (5) e per l'endpoint righe che
+# il BE deve far nascere (oggi le righe arrivano solo dentro il dettaglio).
+#
+# -- IL PROBLEMA ------------------------------------------------------
+#   La sorgente delle righe e' vendite.vw_fattura_righe_esposte, la
+#   rappresentazione del documento per ogni uscita (PDF, SDI, portale). Ha due
+#   caratteristiche che una lista non regge:
+#     · il PADRE di un kit e' sintetico: fatture_righe_id NULL, nessuna chiave.
+#       Il drawer di oggi rinuncia alla data-key; paginazione, espansione ed
+#       export non possono;
+#     · e' GERARCHICA: i componenti esposti (livello 1) stanno sotto il padre
+#       grazie a `ordinamento, livello`. Una lista che ordina per un'altra
+#       colonna li stacca dal padre, e una pagina da 10 puo' tagliare un kit.
+#
+# -- LA FORMA, decisa da Tid il 2026-09-28 (D-8.3) --------------------------
+#   · la lista contiene SOLO il livello 0 (NORMALE, PARTE_PLAFOND, KIT_PADRE):
+#     ordinamento, paginazione e count lavorano sulle righe del documento, e un
+#     kit si muove intero;
+#   · i componenti esposti entrano nel padre come `componenti` jsonb (stessa
+#     idea di fn_contratto_righe_preview), piu' `componenti_numero`: il FE li
+#     apre nella riga di espansione;
+#   · `riga_key`: la PK per le righe vere ('R:<id>'); per il padre di un kit la
+#     tupla con cui la vista madre lo costruisce ('K:<fattura>:<md5>'), quindi
+#     deterministica e diversa per i due padri di un kit a due aliquote.
+#
+# -- ⭐ NESSUN CALCOLO RIFATTO ------------------------------------------------
+#   Si legge vw_fattura_righe_esposte e basta: la regola del kit (chi e' esposto,
+#   il totale sul padre, la quantita' media, il prezzo derivato) resta li', sede
+#   unica della rappresentazione. La finestra `kit` usa la stessa partizione con
+#   cui la vista madre lega i componenti al padre (fattura, kit, IVA, BA
+#   destinatario; NULL uguale a NULL come il suo IS NOT DISTINCT FROM).
+#   ⚠️ Limite ereditato, dichiarato: due padri con lo stesso (kit, IVA, BA) ma
+#   articolo o descrizione padre diversi riceverebbero gli stessi componenti —
+#   esattamente come nella vista madre, che li unisce sulle stesse quattro colonne.
+#
+# -- ALTRE SCELTE -----------------------------------------------------------
+#   · il legame riga-riga della nota di credito (riga_rettificata_*) come nel
+#     repository; il numero della fattura rettificata e' quello PARLANTE
+#     (vendite.fn_numero_documento_fattura), non il contatore nudo, ambiguo;
+#   · `quantita` = qta, `importo_riga` = imponibile: i nomi delle liste gemelle;
+#   · nessun ORDER BY: l'ordine lo chiede chi legge (ordine del documento:
+#     ordinamento, riga_nr, riga_key);
+#   · `security_invoker`: fatture_righe e' in RLS.
+#   ⚠️ Costo ereditato: il CTE `kit` della vista madre si calcola su TUTTI i
+#   kit (e' usato due volte, quindi materializzato, e il filtro per fattura non
+#   ci entra). Succede gia' oggi al repository che legge la vista madre; va in
+#   §8.12 del brief come debito, non si tocca qui.
+#
+# Cantiere: brief-db-liste-righe-documento §8.3 (D-8.3), §8.10 passo 7, §8.12
+# Verifica: db/pgtap/vendite/test-vw-fattura-righe-lista-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260928-28-create-vw-fattura-righe-lista-mctit.yaml
+
+  - changeSet:
+      id: 20260928-28-create-vw-fattura-righe-lista
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce vw_fattura_righe_lista, le righe di una fattura come lista: solo il primo
+        livello di vw_fattura_righe_esposte, una chiave per ogni riga (anche il padre di un
+        kit), i componenti esposti nel padre come jsonb. Nessun calcolo rifatto.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_numero_documento_fattura'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_fattura_righe_lista
+              WITH (security_invoker = true) AS
+              SELECT x.riga_key,
+                  x.fattura_id,
+                  x.tipo_riga,
+                  x.riga_nr,
+                  x.ordinamento,
+                  x.fatture_righe_id,
+                  x.articolo_id,
+                  x.articolo_codice,
+                  x.articolo_descrizione,
+                  x.descrizione,
+                  x.uom_id,
+                  x.uom_codice,
+                  x.qta AS quantita,
+                  x.prezzo_unitario,
+                  x.sconto_percentuale,
+                  x.iva_id,
+                  x.iva_codice,
+                  x.iva_descrizione,
+                  x.iva_aliquota,
+                  x.iva_natura,
+                  -- L'imponibile della riga come lo espone la fattura: il totale del kit sul
+                  -- padre, quello di ciascuna parte sulla riga spezzata dal plafond.
+                  x.imponibile AS importo_riga,
+                  x.dest_billing_account_id,
+                  x.riga_capofila_id,
+                  -- Legame riga-riga della nota di credito: la gemella si legge accanto.
+                  fr.riga_rettificata_id,
+                  orig.riga_nr AS riga_rettificata_nr,
+                  forig.id AS riga_rettificata_fattura_id,
+                  -- Il numero PARLANTE della fattura rettificata, dalla sede unica: il
+                  -- contatore nudo e' ambiguo (fattura 1 e nota di credito 1 nello stesso anno).
+                  vendite.fn_numero_documento_fattura(forig.numero, forig.serie) AS riga_rettificata_documento,
+                  -- I componenti ESPOSTI del kit, nel dettaglio della riga padre (D-8.3).
+                  x.componenti,
+                  x.componenti_numero
+                FROM (
+                      SELECT e.fattura_id,
+                          e.tipo_riga,
+                          e.riga_nr,
+                          e.ordinamento,
+                          e.livello,
+                          e.fatture_righe_id,
+                          e.articolo_id,
+                          a.codice AS articolo_codice,
+                          a.descrizione AS articolo_descrizione,
+                          e.descrizione,
+                          e.uom_id,
+                          um.codice AS uom_codice,
+                          e.qta,
+                          e.prezzo_unitario,
+                          e.sconto_percentuale,
+                          e.iva_id,
+                          iva.codice AS iva_codice,
+                          iva.descrizione AS iva_descrizione,
+                          iva.aliquota_iva AS iva_aliquota,
+                          e.iva_natura,
+                          e.imponibile,
+                          e.dest_billing_account_id,
+                          e.riga_capofila_id,
+                          -- ⭐ La chiave di riga. Le righe vere hanno la loro PK; il padre di un
+                          --   kit e' sintetico (fatture_righe_id NULL) e si identifica con la
+                          --   stessa tupla con cui la vista lo costruisce.
+                          CASE
+                              WHEN e.fatture_righe_id IS NOT NULL THEN 'R:' || e.fatture_righe_id::text
+                              ELSE 'K:' || e.fattura_id::text || ':' || md5(concat_ws('|',
+                                       e.kit_key, e.iva_id, e.dest_billing_account_id,
+                                       e.articolo_id, e.descrizione))
+                          END AS riga_key,
+                          (jsonb_agg(jsonb_build_object(
+                                  'fatture_righe_id', e.fatture_righe_id,
+                                  'riga_nr', e.riga_nr,
+                                  'articolo_id', e.articolo_id,
+                                  'articolo_codice', a.codice,
+                                  'descrizione', e.descrizione,
+                                  'quantita', e.qta,
+                                  'uom_codice', um.codice))
+                              FILTER (WHERE e.livello = 1) OVER kit) AS componenti,
+                          (count(*) FILTER (WHERE e.livello = 1) OVER kit)::integer AS componenti_numero
+                        FROM vendite.vw_fattura_righe_esposte e
+                        LEFT JOIN catalogo.articoli a ON a.id = e.articolo_id
+                        LEFT JOIN catalogo.unita_misura um ON um.id = e.uom_id
+                        LEFT JOIN config.iva iva ON iva.id = e.iva_id
+                      -- ⚠️ La partizione e' quella con cui la vista madre lega i componenti al
+                      --   padre: fattura, kit, IVA, BA destinatario (NULL uguale a NULL, come
+                      --   il suo IS NOT DISTINCT FROM). fattura_id in testa: il filtro per
+                      --   fattura scende sotto la finestra.
+                      WINDOW kit AS (PARTITION BY e.fattura_id, e.kit_key, e.iva_id, e.dest_billing_account_id
+                                     ORDER BY e.riga_nr, e.fatture_righe_id
+                                     ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+                     ) x
+                LEFT JOIN vendite.fatture_righe fr ON fr.id = x.fatture_righe_id
+                LEFT JOIN vendite.fatture_righe orig ON orig.id = fr.riga_rettificata_id
+                LEFT JOIN vendite.fatture forig ON forig.id = orig.fattura_id
+               WHERE x.livello = 0;
+
+              COMMENT ON VIEW vendite.vw_fattura_righe_lista IS
+                  'Le righe di una fattura come LISTA (brief-db-liste-righe-documento, D-8.3, 2026-09-28): '
+                  'SOLO il primo livello di vw_fattura_righe_esposte (NORMALE, PARTE_PLAFOND, KIT_PADRE), '
+                  'cosi'' ordinamento e paginazione lavorano sulle righe del documento e un kit si muove '
+                  'intero. riga_key identifica ogni riga: R:<id> per le righe vere, K:<fattura>:<md5> per '
+                  'il padre di un kit (che non ha PK), costruita sulla stessa tupla con cui la vista madre '
+                  'lo compone. I componenti ESPOSTI stanno nel padre (componenti jsonb, componenti_numero). '
+                  'Nessun calcolo rifatto: la rappresentazione resta di vw_fattura_righe_esposte. Il numero '
+                  'della fattura rettificata e'' quello parlante (fn_numero_documento_fattura). Nessun ORDER '
+                  'BY: l''ordine del documento e'' ordinamento, riga_nr, riga_key. security_invoker: '
+                  'fatture_righe e'' in RLS.';
+
+              -- ⚠️ Nessun GRANT qui: il SELECT a zeroerp_app lo da' il loop dei grant,
+              --    come per le altre viste di vendite.
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_fattura_righe_lista;

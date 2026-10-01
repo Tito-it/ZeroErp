@@ -164,7 +164,16 @@ def format_bool(value: Any) -> str:
 #        per casi specifici:
 #          - 'thousand'     : 1234.56 -> "1.234,56"
 #          - 'currency_eur' : 1234.56 -> "1.234,56 €"
-#          - 'percent_2'    : 0.1234 -> "12,34%" (assume frazione 0..1)
+#          - 'currency_eur_6': 12.5 -> "12,500000 €" (prezzi UNITARI: listini a
+#                             6 decimali, brief-db-liste-righe-documento)
+#          - 'percent_2'    : 12.34 -> "12,34 %" — il valore e' GIA' in
+#                             percentuale, come lo salva il modello
+#                             (`sconto_percentuale` = 10 per il 10%).
+#          ⛔ Fino al 2026-09-28 `percent_2` qui era una FRAZIONE (0.1234 ->
+#             12,34%) e a video no: lo stesso formato di catalogo diceva due
+#             cose, e uno sconto del 10 sarebbe uscito nel file come 1000%.
+#             Nessuna lista lo usava ancora; la sede del significato e' il
+#             frontend (`CellaConfigurabile`), decisione di Tid.
 def format_number(value: Any, *, formato: str | None = None) -> str:
     if value is None:
         return ""
@@ -176,9 +185,11 @@ def format_number(value: Any, *, formato: str | None = None) -> str:
         return str(value)
 
     if formato == "percent_2":
-        return _format_decimal(Decimal(str(value)) * 100, decimals=2) + "%"
+        return _format_decimal(value, decimals=2, thousands=True) + " %"
     if formato == "currency_eur":
         return _format_decimal(value, decimals=2, thousands=True) + f" {CURRENCY_SYMBOL}"
+    if formato == "currency_eur_6":
+        return _format_decimal(value, decimals=6, thousands=True) + f" {CURRENCY_SYMBOL}"
     if formato == "thousand":
         return _format_decimal(value, decimals=None, thousands=True)
     # Default: niente migliaia; rispetta i decimali presenti.

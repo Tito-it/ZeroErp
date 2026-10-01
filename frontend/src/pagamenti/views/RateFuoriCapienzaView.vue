@@ -6,9 +6,10 @@
 // Scopo: pagina delle RATE FUORI CAPIENZA — l'elenco che rende onesta la
 //        forzatura.
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import RateFuoriCapienzaSearchTable from '../components/RateFuoriCapienzaSearchTable.vue'
 
-useReadonlyMode('pagamenti')
+useReadonlyMode(READONLY_DOMAINS.PAGAMENTI)
 </script>
 
 <template>

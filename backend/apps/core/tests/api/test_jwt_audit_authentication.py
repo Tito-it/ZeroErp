@@ -22,6 +22,9 @@ Indice test eseguiti:
 10) test_token_senza_claim_emittente_non_solleva — token pre-cantiere restano validi
 11) test_jwt_senza_sid_claim_raise_401 — token senza `sid` → E_JWT_SENZA_SID
 12) test_jwt_sid_vuoto_raise_401 — `sid` stringa vuota = assente
+13) test_contesto_cache_permessi_da_emittente_effettivo — M-1: chiave L2 dalla GUC
+14) test_cancello_obblighi_riceve_view_e_utente — T-0: la view dal parser_context
+15) test_cancello_obblighi_non_parte_su_identita_spenta — prima il 401, poi l'obbligo
 """
 
 from unittest import TestCase
@@ -80,20 +83,28 @@ def _mock_request() -> MagicMock:
     return MagicMock(spec=[])
 
 
-def _mock_cursor_row(mock_conn, *, identita_count: int = 1) -> MagicMock:
+def _mock_cursor_row(
+    mock_conn, *, identita_count: int = 1, emittente_guc: str = ""
+) -> MagicMock:
     """Configura connection.cursor() come context manager e
-    fa ritornare 6 colonne da fetchone(), layout della query CTE di
+    fa ritornare 7 colonne da fetchone(), layout della query CTE di
     `set_jwt_gucs`:
-      idx 0..4 → risultati set_config (stringhe settate: jwt_user,
+      idx 0..5 → risultati set_config (stringhe settate: jwt_user,
                   current_user_id, current_identita_id, ruolo_applicativo,
-                  soggetto_ruolo_id). Valori simulati '' perche' il test
-                  non li legge — importa solo il numero di colonne.
-      idx 5   → COUNT(*) da id_row, usato dal codice per decidere
+                  soggetto_ruolo_id, current_emittente_id). Il codice legge
+                  la 5 (l'emittente EFFETTIVO, per il contesto della cache
+                  permessi); le altre valgono '' perche' nessuno le legge.
+      idx 6   → COUNT(*) da id_row, usato dal codice per decidere
                   `identita_trovata`.
     Se modifichi la query CTE (aggiungi/rimuovi GUC), aggiorna qui di
-    conseguenza oppure il test diventa silenziosamente permissivo."""
+    conseguenza oppure il test diventa silenziosamente permissivo.
+    ⚠️ Fino al 2026-09-24 le colonne simulate erano 6: il conteggio cadeva
+    sulla colonna dell'emittente, e non se ne accorgeva nessuno perche'
+    nessuno la leggeva."""
     mock_cursor = MagicMock()
-    mock_cursor.fetchone.return_value = ("", "", "", "", "", identita_count)
+    mock_cursor.fetchone.return_value = (
+        "", "", "", "", "", emittente_guc, identita_count,
+    )
     mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
     mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
     return mock_cursor
@@ -104,6 +115,12 @@ class JwtAuditAuthenticationTests(TestCase):
 
     def setUp(self) -> None:
         self.auth = JwtAuditAuthentication()
+        # Il cancello degli obblighi legge il DB: qui si prova l'autenticazione,
+        # il cancello ha i suoi test (test_cancello_obblighi). ⛔ Senza questo
+        # mock un `unittest.TestCase` parlerebbe col DB di sviluppo.
+        cancello = patch.object(JwtAuditAuthentication, "_verifica_obblighi", return_value=None)
+        self.mock_cancello = cancello.start()
+        self.addCleanup(cancello.stop)
 
     # Scopo: Auth fallita (super ritorna None) → ritorna None senza
     # toccare le GUC.
@@ -188,6 +205,26 @@ class JwtAuditAuthenticationTests(TestCase):
         # La rivalidazione «emittente ancora attivo» vive nella CTE, non nel
         # Python: e' cio' che chiude il caso del token con emittente spento.
         self.assertIn("ef.attivo = true", sql)
+
+    # 13) M-1 — il contesto della cache permessi e' (identita', emittente
+    #     EFFETTIVO): conta cio' che la GUC porta, non il claim. Un claim su un
+    #     emittente disattivato lascia la GUC vuota, e i permessi calcolati li'
+    #     sono quelli di «tutti»: devono stare in una voce diversa.
+    @patch(_CONN)
+    @patch(_PARENT_AUTH)
+    def test_contesto_cache_permessi_da_emittente_effettivo(self, mock_parent, mock_conn):
+        mock_parent.return_value = (
+            _mock_user(), _mock_token_with_identita(identita_id=7, emittente_attivo_id=32),
+        )
+        _mock_cursor_row(mock_conn, emittente_guc="32")
+        attivo = _mock_request()
+        self.auth.authenticate(attivo)
+        self.assertEqual(attivo._zeroerp_perms_contesto, "i7:e32")
+
+        _mock_cursor_row(mock_conn, emittente_guc="")
+        spento = _mock_request()
+        self.auth.authenticate(spento)
+        self.assertEqual(spento._zeroerp_perms_contesto, "i7:e-")
 
     # 10) Token PRE-impersonazione (nessun claim emittente): nessun errore,
     #     modalita' globale. I token gia' emessi restano validi a scadenza.
@@ -303,3 +340,31 @@ class JwtAuditAuthenticationTests(TestCase):
             self.auth.authenticate(_mock_request())
         self.assertEqual(ctx.exception.status_code, 401)
         self.assertEqual(ctx.exception.default_code, "E_IDENTITA_NON_ATTIVA")
+
+    # Scopo: T-0 (brief sicurezza §3.4-bis). Il cancello degli obblighi riceve
+    # la view che DRF mette nel `parser_context` e l'utente del token: e' cosi'
+    # che una view dichiara quali obblighi ammette.
+    @patch(_CONN)
+    @patch(_PARENT_AUTH)
+    def test_cancello_obblighi_riceve_view_e_utente(self, mock_parent, mock_conn):
+        mock_parent.return_value = (_mock_user(user_id=42), _mock_token_with_identita())
+        _mock_cursor_row(mock_conn, identita_count=1)
+        view = object()
+        request = MagicMock(spec=["parser_context"])
+        request.parser_context = {"view": view}
+
+        self.auth.authenticate(request)
+
+        self.mock_cancello.assert_called_once_with(view, 42)
+
+    # Scopo: Un token di una veste spenta e' un 401 prima di essere un
+    # obbligo: il cancello non parte, e il client riparte dal login.
+    @patch(_CONN)
+    @patch(_PARENT_AUTH)
+    def test_cancello_obblighi_non_parte_su_identita_spenta(self, mock_parent, mock_conn):
+        mock_parent.return_value = (_mock_user(), _mock_token_with_identita())
+        _mock_cursor_row(mock_conn, identita_count=0)
+
+        with self.assertRaises(IdentitaNonAttivaError):
+            self.auth.authenticate(_mock_request())
+        self.mock_cancello.assert_not_called()

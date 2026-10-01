@@ -3,7 +3,7 @@
 > Questo documento definisce le regole di progettazione e sviluppo dell'interfaccia utente di ZeroERP.
 > È vincolante per qualsiasi contributo al frontend. Le deroghe devono essere documentate e motivate.
 >
-> Aggiornato: 4 maggio 2026
+> Ultimo aggiornamento: 26 settembre 2026
 >
 > Vedi anche:
 >
@@ -21,9 +21,8 @@
 > ⚠️ **Perché la colonna «Versione» è sparita il 2026-09-09.** Lo stesso stack
 > era scritto in tre documenti — qui, in `.codex/AGENTS.md` e in
 > `.codex/PROJECT_CONTEXT.md` — e li diceva **tutti e tre diversi e tutti e tre
-> sbagliati**: `Pinia 3` contro un lock a **4.0.3**, `vue-i18n 10` contro
-> **11.4.10**, `Vite 7` contro **8.2.2**. Due salti di **major** passati senza
-> che nessuno dei tre se ne accorgesse. ⭐ Vale il precedente di Python
+> sbagliati** rispetto al lock: Pinia, vue-i18n e Vite erano indietro, e due
+> salti di **major** erano passati senza che nessuno dei tre se ne accorgesse. ⭐ Vale il precedente di Python
 > (`.python-version`): *un numero scritto in due posti ne ha sempre uno stantio,
 > e quello senza presidio è sempre il documento.*
 
@@ -38,6 +37,15 @@
 | vue-i18n   | Multilingua             |
 | Axios      | Client HTTP (⛔ importato in **un solo file**: `src/core/api.js`) |
 | Node.js    | Runtime di sviluppo (via nvm) |
+
+* **Build**: `./node_modules/.bin/vite build` (serve nvm per caricare Node).
+* **Dipendenze npm**: non se ne aggiungono senza conferma dell'utente.
+* **Header di licenza sui file nuovi** (decisione di Tid, 2026-08-26):
+  `templates/javascript-header.txt` per i `.js`, `templates/vue-header.txt` per
+  i `.vue`. Lo presidia `scripts/check_license.py` (pre-commit), che guarda i
+  file **aggiunti** e legge le prime 10 righe. In un `.vue` l'header va **prima
+  di `<script setup>`**, in commento HTML (l'unica forma valida in cima a un
+  Single File Component); lo `// Scopo: ...` resta dentro `<script setup>`.
 
 ---
 
@@ -57,8 +65,21 @@ src/
   magazzino/          ← dominio magazzino
   pagamenti/          ← dominio pagamenti
   contabilita/        ← dominio contabilita'
+  strumenti/          ← viste operative trasversali. Dominio SENZA `schemaDb`
+                        (dal 2026-09-26): le voci sono di aree diverse e
+                        ognuna porta la sua con `requireArea` — code di lavoro
+                        (`strumenti`), giornale eventi (`vendite`: vista e
+                        client restano in `vendite/`), email dell'operatore
+                        (nessuna: `skip_area_check` BE, la vede ogni operatore)
+  documenti/          ← MOTORE: generazione ed emissione dei documenti (PDF,
+                        scelta template), condivisa dai domini che stampano
+  config/             ← configurazione (tabelle, impostazioni, modelli documenti)
+  ui/                 ← personalizzazione delle liste (definizioni, colonne, preset)
+  portale/            ← portale esterno (attivazione, profilo)
+  shop/               ← shop esterno (attivazione)
   router/             ← definizione rotte
-  stores/             ← store Pinia globali (auth, ui, tabs, navigation, context)
+  stores/             ← store Pinia globali (auth, ui, tabs, navigation, context,
+                        ai, parameters)
   locales/            ← file i18n (it.json, en.json)
   assets/             ← stili globali (theme.css, main.css)
 ```
@@ -71,7 +92,13 @@ anagrafiche/
   stores/             ← store Pinia per il dominio
   views/              ← pagine intere (lista, dettaglio, tab)
   components/         ← componenti specifici del dominio
+  composables/        ← logica riusabile del dominio
+  iscrizioni.js       ← cio' che il dominio aggiunge ai registri di `core` e dei
+                        motori (facoltativo; lo carica `main.js` all'avvio)
 ```
+
+`pratiche/` e `documenti/` sono **motori**: ogni dominio li usa, e loro non
+nominano nessun dominio (§«Confini fra domini»).
 
 `core/` e' l'equivalente frontend di `dbops` e `script`: nessun dominio lo chiama esplicitamente, ma tutti dipendono da lui.
 
@@ -104,7 +131,7 @@ Le regole di consistenza sono:
 │          │  CONTENT TABS (tab aperti, multi-entita')    │
 │          ├──────────────────────────────────────────────┤
 │ SIDEBAR  │  BREADCRUMB                                  │
-│ (240px)  ├──────────────────────────────────────────────┤
+│          ├──────────────────────────────────────────────┤
 │          │                                              │
 │          │           AREA CONTENUTO                     │
 │          │                                              │
@@ -113,12 +140,17 @@ Le regole di consistenza sono:
 
 ### Sidebar sinistra
 
-- Sempre visibile, collassabile (56px collassata, 240px espansa)
+- Sempre visibile, collassabile (larghezze nei token `--app-sidebar-width` e
+  `--app-sidebar-width-collapsed` di `theme.css`)
 - Stato a tre fasi: HOME (domini L1) → DOMINIO (voci L2) → collassata (icone + tooltip)
 - Preferenza persistita in localStorage
 - Configurazione centralizzata in `core/navigation.js` — una sola fonte di verita'
 - Logo e nome applicazione in cima, logout e comprimi in fondo
-- Mobile (< 768px): overlay drawer invece di sidebar fissa
+- Mobile (< 768px): overlay drawer invece di sidebar fissa, **sempre espanso**
+  (icone + etichette, `--app-sidebar-mobile-width`)
+- Tablet (768–1023px): rail inline compresso a forza; il pulsante «espandi» in
+  fondo apre lo **stesso drawer** espanso. Motivo: sul touch non c'e' hover,
+  quindi niente tooltip — il menu coi nomi deve esistere come superficie
 
 ### Preferiti utente
 
@@ -183,7 +215,8 @@ logica di navigazione.
 ### Content Tabs
 
 - Barra tab sotto la topbar per navigazione multi-entita'
-- Massimo 10 tab aperti (configurabile in `constants.js`)
+- Massimo 10 tab aperti (`TABS.MAX_OPEN` in `constants.js`). ⭐ **Oltre il limite la decima si sostituisce** (Tid, 2026-09-30): le prime nove sono il tavolo di lavoro, l'ultima in fila è la scheda di passaggio. Una conferma **nomina** la scheda che si chiude, ed è **rossa** se quella ha modifiche non salvate, come la X di chiusura. «Annulla» lascia l'operatore dov'era. Fino a quel giorno l'undicesima era bloccata con un toast
+- ⛔ **Le schede le apre solo il guard del router** (`router.beforeEach`): sidebar, preferiti e widget fanno solo `router.push`. Un secondo punto che chiama `openTab` prima del push farebbe due conferme per un clic. La conferma la mostra `ContentTabs`, perché il guard non ha un componente in cui aprire una dialog: lo store custodisce la richiesta in attesa (`chiediSostituzione`) e ContentTabs risponde. Presidio: `stores/tabs.spec.js`
 - KeepAlive per preservare lo stato dei tab
 - Shortcut: Ctrl+W chiude tab, Ctrl+Tab prossimo, Ctrl+Shift+Tab precedente
 - Tab label derivata automaticamente da route meta via `resolveTabLabel()`
@@ -191,7 +224,7 @@ logica di navigazione.
 ### Area contenuto
 
 - Occupa tutto lo spazio rimanente (flex: 1)
-- Padding uniforme (`--app-content-padding: 1rem`)
+- Padding uniforme (token `--app-content-padding` di `theme.css`)
 - Il contenuto non scrolla — la DataTable gestisce il suo scroll interno
 
 ---
@@ -222,8 +255,8 @@ Ogni schermata di elenco segue questo schema fisso:
 > `primevue/datatable` in una view è l'ECCEZIONE, e va motivata.**
 
 ⚠️ **Questa regola non era scritta da nessuna parte fino al 2026-08-30**, e si
-vede nei numeri: i file con `DataTable` grezza erano scesi a **48** il 03-08 e
-sono **risaliti a 57** il 30-08. Nel frattempo questo stesso documento spiegava
+è visto: nel mese di agosto i file con `DataTable` grezza sono tornati a
+crescere. Nel frattempo questo stesso documento spiegava
 *come* configurare una `DataTable` (poco più sotto) senza dire prima di non
 scriverla: chi legge in buona fede trova le istruzioni per fare la cosa
 sbagliata.
@@ -248,8 +281,18 @@ nessun blocco.
 
 | Caso | Cosa si usa |
 | --- | --- |
-| **Righe di un documento** dentro il suo master (righe ordine, componenti BoM…) | `RigheMasterDetailTable` / `SearchDetailTable`, **non** il BB |
+| **Dettaglio espanso di un risultato** della ricerca universale | `SearchDetailTable` (`core/components/details/`), **non** il BB |
+| **Matrice slot/override** (la popolazione la decide il catalogo, l'operatore imposta l'override sulla riga) | `MatriceOverride`, **non** il BB |
 | Tabella di **anteprima** dentro un dialog, non paginata e non configurabile | `DataTable` grezza, con il motivo scritto in un commento sopra l'import |
+
+⛔ **Le righe di un documento NON sono un'eccezione, dal 2026-09-28** (decisione
+di Tid, brief-db-liste-righe-documento). Fino a quel giorno lo erano, e su tablet
+le 9-10 colonne di un preventivo uscivano in uno scroll orizzontale che col
+touch non si usa. Un documento ha un numero arbitrario di righe con molti
+attributi: e' una lista. `RigheMasterDetailTable` monta `<DrawerTabLista>` con
+la macchina del form `useFormInline`; chi ha ancora una `DataTable` di righe
+(BoM, fattura, contratto: lotti C e D) sta nel registro del debito, non fra le
+eccezioni.
 
 ⛔ **«È dentro un drawer» NON è un'eccezione, ed è l'errore che si fa più
 spesso.** Una lista su un tab di drawer — un'entità con endpoint suo,
@@ -261,12 +304,13 @@ le manca il paginator, non la natura. Si monta con
 [piano PrimeVue 5 §Gruppo B](../work-in-progress/piano-migrazione-primevue-5.md),
 riscritto il giorno in cui il secondo caso è emerso.
 
-🔴 **E un caso oggi non ha casa: la matrice slot/override** (la popolazione la
-decide il catalogo, l'operatore compila le celle in editing inline —
-`EmittenteFiscaleUtilitiesTab`, `OperatorePermessiTab`). Non è nessuna delle due
-eccezioni sopra, e resta `DataTable` grezza **con il debito dichiarato**, non con
-un'eccezione inventata. La scelta — estendere il BB con l'editing inline, o
-riconoscere la matrice come terza eccezione — è aperta e sta nello stesso §.
+⭐ **La matrice slot/override ha il suo building block: `MatriceOverride`**
+(regola del 2, estrazione approvata da Tid il 2026-09-05; primo consumatore
+`OperatorePermessiTab`). Non pagina per scelta di modello: la popolazione è
+limitata dal catalogo e la schermata esiste per farla vedere tutta. 🔴 Il
+pattern è nato sul tab Utilities degli emittenti
+(`EmittenteFiscaleUtilitiesTab`), che però monta ancora una `DataTable` grezza:
+debito dichiarato, non eccezione.
 
 ⛔ **Non sono eccezioni**: «è una lista piccola», «è solo per l'admin», «tanto
 non la guarda nessuno», «faccio prima». Una lista che nessuno guarda non è una
@@ -275,10 +319,15 @@ lista senza problemi: è una lista che nessuno ha ancora aperto.
 **Come si verifica**, prima di dire che una view è finita:
 
 ```bash
-grep -rl "from 'primevue/datatable'" frontend/src --include=*.vue | wc -l
+cd frontend && npm run guard:datatable
 ```
 
-Se il numero **sale** dopo il tuo lavoro, hai aggiunto una lista fuori standard.
+Il presidio (`scripts/check-datatable-baseline.mjs`) confronta gli import di
+`primevue/datatable` con il registro `scripts/datatable.baseline.json`, che
+**elenca i file**: se ne compare uno nuovo è rosso e lo nomina — hai aggiunto
+una lista fuori standard, o un'eccezione senza il commento che la motiva. È un
+cricchetto: rosso anche quando il numero **cala**, perché la baseline va
+abbassata nello stesso giro.
 
 ### Regole fisse
 
@@ -287,17 +336,480 @@ Se il numero **sale** dopo il tuo lavoro, hai aggiunto una lista fuori standard.
 > `DataTable` a mano: quella decisione la prende la regola zero.
 
 - **Paginazione SOPRA** la tabella (`paginatorPosition: 'top'`)
-- **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25 — e dal 2026-09-18 si dichiarano con l'opzione `limit` di `useListaStoreCore`/`createListaStore` (`limit: PAGINATION.COMPACT_ROWS`), non riscrivendo lo store a mano. Il caso che l'ha fatta nascere: la **lista dentro un dialog**, che è alta dieci righe (vedi §`AppDialog`, «Dialog con una lista dentro»).
-- **Indicatore pagina**: `1/5` con JumpToPageDropdown per salto diretto
+- **Righe per pagina**: ⭐ **misure e default stanno nel DATABASE** (catalogo `ui.misure_pagina`, dal 2026-09-30, decisioni di Tid del 29-09) e si leggono dal BB [`core/misurePagina.js`](../../../../frontend/src/core/misurePagina.js): `misureOpzioni()` per il selettore, `misuraDefault(USO_MISURA.PAGINA | USO_MISURA.COMPATTA)` per la partenza. Le carica il guard del router **una volta per sessione, attese**, prima di qualunque rotta sotto `AppLayout` per l'operatore (anche 404 e forbidden: le legge anche il layout); se la chiamata fallisce si apre la pagina «Avvio non riuscito», che sta **fuori** dal layout, ⛔ **senza ripiego** scritto nel FE (sarebbe una copia del catalogo). ⛔ Nessun numero di righe e nessun array di opzioni scritto in un componente o in uno store: fino al 2026-09-30 erano `PAGINATION` in `constants.js` più due array a mano, e un preset a 15 lasciava il selettore **vuoto** senza errore. Una lista standard parte dalla misura `PAGINA`, adattata al viewport da `useSearchTable` (la `COMPATTA` sotto `BREAKPOINTS.TABLET`, regola unica in `misuraPerViewport`). ⭐ **Dentro un drawer o un dialog la lista parte dalla `COMPATTA`** (decisione di Tid del 2026-09-28): lo dichiara lo store con l'**uso**, `misura: USO_MISURA.COMPATTA` in `useListaStoreCore`/`createListaStore`/`createCrudStore` (e in `usePagedDashFetch`) — ⛔ mai il numero: le opzioni di uno store si scrivono a livello di modulo, e un numero letto lì verrebbe letto **prima** che il guard carichi il catalogo (la vecchia opzione `limit` è ritirata e **solleva**). Il preset di sistema della lista lo dichiara a DB (`ui.lista_preset.pagina_dimensione`), che rifiuta una misura fuori catalogo (`E_UI_MISURA_PAGINA_NON_AMMESSA`).
+- **Indicatore pagina**: `1/5` con JumpToPageDropdown per salto diretto. ⭐ Su **tablet e schermo stretto** (`(hover: none), (max-width: 1023.98px)`) il JumpToPageDropdown è **nascosto** via CSS in `main.css` (2026-09-28): doppia la navigazione ◀ 1 2 3 ▶, e `1/5` resta visibile
 - **Font compatto** sul paginator (`0.8rem`)
 - **Azioni pagina/lista**: building block `PageActionsBar` — refresh, nuovo e azioni utility/secondarie con comportamento responsive unico
 - **Click riga** → apre drawer in edit (modifica = interazione principale)
 - **Colonna azioni** riservata alle **azioni secondarie** (apri sub-drawer, disattiva, ecc.) — mai mettere la modifica tra le azioni: e' il click riga. Vedi sotto "Colonna azioni di riga".
-- **Filtri** sopra la tabella nella toolbar, flex-wrap per responsive
+- **Filtri** sopra la tabella nella toolbar, dentro `<FiltriLista>` (vedi
+  §«Filtri della lista» qui sotto): in linea su desktop, in un drawer dal basso
+  in modalità compatta. Flex-wrap per il responsive della riga in linea
 - **Ricerca** con debounce 400ms (gestito da `useSearchTable`)
 - **DataTable** sempre con: `lazy`, `removable-sort`, `striped-rows`, `scrollable`, `scrollHeight="flex"`
 - **Scroll orizzontale** gestito globalmente da `.app-datatable` — non impostare `table-style="min-width: ..."` nelle singole liste salvo eccezioni documentate. Le soglie per 8/10/12 colonne partono dal root `.app-datatable`, così restano valide anche quando PrimeVue ricalcola il container scrollable dopo il caricamento dei record.
 - **Liste annidate** dentro drawer, expansion row o sub-pannelli devono aggiungere `app-datatable--inner` oltre a `app-datatable`: restano compatte e sono escluse dalle soglie larghezza delle liste principali. Esempio: righe preventivo e pannello componenti BoM.
+
+### Filtri della lista — `FiltriLista` (drawer dal basso in modalità compatta)
+
+> ✅ **Adozione COMPLETA dal 2026-09-23** (lotti L2 e L3 chiusi): nessuna view
+> scrive più `app-page-filters` a mano, nessuna coppia di date è scritta a mano,
+> nessuna larghezza di filtro sta in un tag. I tre registri di
+> `npm run guard:filtri` sono a **zero** e da qui in avanti dicono una cosa
+> sola: *una lista nuova fuori standard li fa risalire*.
+> Decisioni e cronaca: [brief-fe-filtri-lista-su-schermo-compatto.md](../work-done/brief-fe-filtri-lista-su-schermo-compatto.md).
+
+**La regola**: un filtro è **stato della lista**, non decorazione della view.
+Ne discende che *dove* i filtri si rendono — e il segno che sono attivi —
+appartengono al building block della lista, come il paginator, il ritiro delle
+colonne e le azioni di testata.
+
+```vue
+<FiltriLista :store="store" :inert="perimetroBloccato">
+  <template #sempre>
+    <InputText v-model="searchText" :placeholder="…" />
+  </template>
+  <LookupSelect … @change="onStatoChange" />
+  <FiltroPeriodo :periodo="periodo" />
+</FiltriLista>
+```
+
+⚠️ L'esempio **non** mostra due `<DatePicker>` con `@date-select`: quel
+cablaggio è il difetto che `<FiltroPeriodo>` esiste per togliere (§«Il periodo è
+UN filtro»).
+
+| Modalità | Resa |
+| --- | --- |
+| Desktop | `#sempre` + slot di default in linea, dentro `app-page-filters` |
+| Compatta (`< 1024px` **o** touch senza hover) | `#sempre` in linea + **icona filtro col segno**; al click lo **stesso** slot dentro un `Drawer position="bottom"`, su una griglia di **al massimo due filtri per riga** (§sotto), «Pulisci filtri» in fondo |
+
+⭐ **«Pulisci filtri» vive su entrambe le rese** (A3, Tid 2026-09-23): nel
+drawer compatto col nome per esteso, nella toolbar desktop come **icona sola col
+tooltip**, come ogni altro comando di quella riga. Compare quando c'è qualcosa da
+riportare al default — non quando c'è un segno: le due domande divergono da
+quando esistono i valori neutri.
+
+**Il segno ha tre stati**, e dal 2026-09-23 il **numero c'è sempre**: niente
+(niente sta restringendo) · **numero grigio** (qualcosa restringe, tutto al suo
+default) · **numero blu** (almeno uno diverso dal default). ⛔ Prima lo stato
+«tutto al default» era un **pallino senza numero**, e a video si leggeva
+«0 → 2» toccando **una** cosa sola: il filtro già attivo valeva zero un istante
+e uno quello dopo. *Il conteggio non è mai cambiato — era la forma a
+nasconderlo, e un segno che nasconde ciò che conta fa sembrare sbagliato un
+conto giusto.*
+
+**La ricerca non è un filtro** e resta **sempre** a video (slot `#sempre`): è il
+gesto principale di una lista, gli altri filtri la restringono.
+
+⭐ **Ma solo se la lista cerca** (Tid, 2026-09-23 — brief-be-ricerca-full-liste-residue
+§7-bis). La configurazione della lista porta `ricerca_full`: vero se il catalogo
+accende almeno una colonna in cui l'operatore può cercare. Lo scaffolding
+(`useListaConfigurabilePage`, quindi anche `useDrawerTabLista`) lo scrive in
+`store.ricercaFull`, e `<FiltriLista>` **non rende `#sempre`** quando è `false`.
+La chiave la dichiara **`useListaEmptyStateFetch`** (dal 2026-09-24), quindi la
+ha ogni store-lista, anche quelli scritti a mano: nessuno store la dichiara per
+conto suo. Nessuna view lo scrive a mano: la casella e il catalogo non possono più dire due
+cose diverse. ⚠️ Solo `false` la toglie — `null` («non si sa ancora») la lascia,
+così non lampeggia a ogni apertura. ⛔ Le caselle **senza lista a catalogo**
+(`ConfigTablePanel`, i drawer di BoM e righe del contratto) e la
+casella della dashboard gruppi, fuori da `FiltriLista`, restano come sono: non
+hanno un catalogo da leggere.
+
+**I filtri si applicano subito**, a ogni cambio, anche col drawer aperto:
+`useStoreFilterBindings` scrive diretto sullo store, che è la sede del filtro.
+
+#### ⛔ Un filtro si lega con un **binder**, mai con un `ref` che spinge e basta
+
+```js
+// ⛔ NO — spinge nello store e non torna indietro
+const attivoFilter = ref(true)
+function onAttivoChange() { store.filters.attivo = attivoFilter.value; applyFilters() }
+
+// ✅ SÌ — `bindSelect` porta con sé il `watch` store → widget
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
+```
+
+**Perché è una regola e non uno stile**: dal 2026-09-22 i filtri si possono
+cambiare **da fuori** il widget — «Pulisci filtri» del drawer compatto
+(`azzeraFiltri`), un deep-link `?search=` che azzera i default data, un reset.
+Un `ref` a senso unico resta a mostrare il valore di prima su una lista che non
+ce l'ha più: *la casella dice una cosa e l'elenco ne dice un'altra*, e
+**nessuno fallisce**. ⚠️ Si vede solo **sotto i 1024px**, perché è lì che vive
+il pulsante che pulisce.
+
+🔴 **Non era teorico**: i filtri a senso unico sono stati sanati il 2026-09-23. E la
+forma del difetto si vedeva dentro un file solo — `PraticheSearchTable` aveva
+il `watch` scritto a mano per **uno** dei quattro filtri e non per gli altri
+tre: non una policy, una dimenticanza. Presidio: il controllo 2-bis di
+`npm run guard:filtri` verifica che dietro un `:store` ci sia davvero il
+contratto; per il verso store → widget la difesa è questa regola.
+
+⭐ **Dove un binder non arriva, ci arriva un `computed` sullo store** — che è la
+stessa cosa detta meglio, perché lo stato non si copia affatto:
+`scadenza_mese` dei contratti (lo store tiene `YYYY-MM`, il widget una `Date`:
+è un punto che *traduce*) e i tre criteri di `RatePickerDialog`. ⛔ Ciò che non
+va bene è la **terza** forma: un `ref` che scrive nello store e non lo rilegge.
+⛔ Nessun pulsante «Applica»: vorrebbe una copia temporanea dei filtri accanto a
+quella vera, e quella copia diverge alla prima cosa che la tocca da fuori (un
+deep-link `?search=`, un `reset()`, un cambio di emittente).
+
+#### Il segno dei filtri attivi — tre stati
+
+| Stato dei filtri | Segno |
+| --- | --- |
+| Nessun filtro con valore | niente |
+| Filtri con valore, **tutti** al loro default | **numero grigio** = quanti filtri limitano la lista |
+| Almeno un filtro diverso dal default | **numero blu** = quanti filtri limitano la lista, **default compresi** |
+
+⭐ **Perché i default contano**: `data_da` a «oggi-60gg al primo del mese»
+restringe esattamente come un filtro scelto a mano — che nessuno l'abbia
+digitato non lo rende meno vero. Nel momento in cui i filtri non sono più
+sempre a video, una lista ristretta e una lista vuota si assomigliano, e
+l'operatore attribuisce il buco al sistema («il documento non c'è»).
+⚠️ Il colore esiste perché un segno **sempre** uguale smette di essere un
+segno: il grigio distingue «ristretta come nasce» dal blu «ristretta da te». Il
+numero, invece, c'è in entrambi i casi (§sopra: il pallino senza numero è
+ritirato il 2026-09-23).
+
+⛔ **Il grigio non copre i default risolti a RUNTIME, ed è deciso** (D9, Tid
+2026-09-22). I default sono il letterale `filterDefaults` dello store, cioè la
+fotografia scattata alla *nascita* della lista: un default che arriva dopo il
+mount — `UtilityPerRuoloSelect apply-default` — lì non c'è, quindi il numero
+esce **blu** e non grigio. **La regola è una sola: si contano sempre i filtri,
+default compresi.** L'eccezione non starebbe in piedi da sola — il caso gemello
+(l'operatore che *svuota* un filtro di default) vorrebbe la regola opposta, e il
+conteggio risponderebbe a due domande diverse a seconda di come il valore ci è
+arrivato. Il numero resta vero comunque: dice quante cose stanno restringendo
+l'elenco.
+
+⛔ **Il conteggio non si calcola nelle view.** Nasce in `useListaStoreCore`, che
+già conosce l'elenco dei filtri di quella lista (`filterDefaults`) e i loro
+valori di partenza (`filtriDiPartenza()`), e passa da una funzione pura con il
+suo `.spec.js` (`core/utils/segnoFiltri.js`). Una lista che «dimentica» di contare direbbe *«nessun filtro»
+mentre filtra*, senza nessun errore.
+
+#### Nel drawer: al massimo DUE filtri per riga
+
+```
+┌──────────────────────── Filtri ────────────────────────┐
+│ [ Servizi                                     ▼ ]      │  ← combo: riga intera
+│ [ Data da   📅 ]  [ Data a   📅 ]                       │  ← il periodo: sempre in coppia
+│ [ ◉ Mostra non attivi                          ]       │  ← interruttore: riga intera
+│ Pulisci filtri                                         │
+└────────────────────────────────────────────────────────┘
+        ↑ drawer ≥ 27rem: anche le combo si affiancano, due per riga
+```
+
+**Regola (Tid, 2026-09-22): su una riga non stanno più di due elementi.** Tre
+filtri in fila su un telefono sono tre filtri illeggibili, e un tablet non è una
+ragione per cambiare la forma della maschera. La griglia ha **due colonne,
+sempre**.
+
+**Il periodo sta su una riga sola, e non per via del layout.** `data_da`/`data_a`
+**non sono due filtri**, sono *un* filtro con due estremi: si montano con il
+building block del periodo (§sotto), che è **una** cella della griglia e si
+divide in due. Spezzarli su due righe rompe la cosa che l'operatore legge come
+una.
+
+**Tutto il resto prende la riga intera finché due non ci stanno LEGGIBILI.** La
+soglia è una `@container` (min-width 27rem = 2 × `--app-filtro-min-combo` + gap),
+non una `@media`: dipende dalla larghezza del **drawer**, non della finestra.
+⛔ L'interruttore (`FiltroToggle`) prende la riga intera **anche** sopra la
+soglia: la sua etichetta sta fuori dal controllo e non sa degradare in ellissi.
+⭐ Il filtro che a mezza riga non si legge nemmeno lì ha una leva dichiarata,
+`class="app-filtro-largo"`, valida solo dentro il drawer. ⚠️ È una leva, non un
+default: se la mettessero tutti, la griglia tornerebbe una pila.
+
+#### Il periodo è UN filtro — `bindPeriodo` + `<FiltroPeriodo>`
+
+```vue
+<script setup>
+const { bindPeriodo } = useStoreFilterBindings(store, applyFilters)
+const periodo = bindPeriodo()                                  // 'data_da' / 'data_a'
+// con un floor su un solo estremo (contratti):
+// const periodo = bindPeriodo('data_da', 'data_a', { clearToDa: defaultFiltroDataDa })
+</script>
+
+<FiltroPeriodo :periodo="periodo" />
+```
+
+⛔ **Due `<DatePicker>` scritti a mano nei filtri sono fuori standard** e li
+conta `npm run guard:filtri` (registro `coppie_date_a_mano`, a zero dal
+2026-09-23: una coppia nuova lo fa risalire). Un DatePicker **solo** resta legittimo: è un filtro a sé («scadenza
+mese» dei contratti), non un periodo.
+
+⭐ **La ragione meno visibile per cui il BB esiste è il verso degli eventi.**
+Nelle liste che scrivevano la coppia a mano il cablaggio era
+**divergente**: `@date-select` + `@clear-click` in quasi tutte,
+`@update:modelValue` nei contratti. Non sono equivalenti — col primo una data
+**digitata** nella casella non applica il filtro: l'operatore vede la data che
+ha scritto e una lista che non l'ha ricevuta, senza nessun errore. Il BB usa
+`@update:model-value`, che copre calendario, digitazione e svuotamento.
+
+⚠️ **`bindPeriodo` espone `setDa`/`setA`, non i ref nudi**: il componente legge
+`periodo.da.value` e *chiede* il cambio. Un `v-model` su un ref che arriva in
+una prop scrive in casa d'altri — funziona e nasconde chi possiede lo stato
+(lo respinge `vue/no-mutating-props`).
+#### ⛔ Un intervallo invertito non è un periodo
+
+> **`da > a` non può esistere** (Tid, 2026-09-22). Non è una validazione di
+> comodo: `da > a` descrive un insieme vuoto, e una lista che torna vuota per
+> questo **non lo dice a nessuno** — l'operatore legge «non ci sono documenti»
+> invece di «hai chiesto un intervallo che non esiste».
+
+**Il meccanismo: l'estremo che tocchi vince, l'altro si apre.** Chi sposta `da`
+oltre `a` sta dicendo dove comincia la finestra; il vecchio `a` non descrive più
+niente, quindi **si svuota** — e un estremo vuoto è «aperto da quella parte»,
+che è un periodo legittimo. Simmetrico nei due versi
+(`feedback_normalize_guard_simmetrico`), e in **una sola fetch**.
+
+| Strada | Perché no |
+| --- | --- |
+| `min-date`/`max-date` incrociati | trappola d'uso: legando un estremo all'altro, spostare la finestra *in avanti* diventa impossibile finché non tocchi prima l'altra data |
+| scambiare i due estremi | inventa un periodo che nessuno ha chiesto, e in silenzio |
+| rifiutare con un avviso | un filtro non è un form: blocca un gesto che ha una lettura ovvia |
+
+⚠️ La correzione porta l'altro estremo a `null`, **mai al suo `clearTo`**: il
+floor è la risposta al gesto «svuoto io», e qui il gesto è un altro — per
+giunta un floor può essere a sua volta invertito rispetto alla data appena
+scelta, e si tornerebbe al punto di partenza.
+⚠️ **Il guard vive in `bindPeriodo`**: una coppia di date scritta a mano non
+ce l'ha, ed è una delle ragioni per cui il quinto controllo di
+`npm run guard:filtri` la respinge (registro a zero dal 2026-09-23).
+Presidio: `useStoreFilterBindings.spec.js` (senza la correzione, i casi
+dell'intervallo invertito vanno rossi).
+
+#### Quanto si può stringere una combo con le descrizioni
+
+> **Il minimo riguarda la lettura di ciò che è GIÀ scelto, non la scelta.**
+
+È la domanda che sembra senza risposta («quanto stretta può stare una combo che
+mostra descrizioni?») e ne ha una precisa, che sta nel comportamento di PrimeVue:
+
+* il **pannello** delle opzioni riceve `min-width` = larghezza del trigger
+  (`alignOverlay`), e le opzioni hanno `white-space: nowrap` ⇒ **il pannello
+  cresce col contenuto**: un trigger stretto non taglia le descrizioni, e la
+  scelta si legge per intero;
+* il **valore selezionato** degrada in **ellissi** (`.p-select-label` ce l'ha
+  nel tema) ⇒ stringere non rompe niente, rende solo meno riconoscibile ciò che
+  è attivo.
+
+⇒ Il pavimento è quindi una soglia di **riconoscibilità**, e si dichiara una
+volta: `--app-filtro-unita: 8rem` ≈ 13 caratteri al font della toolbar — cioè
+`31/12/2026` intero più l'icona, e per una combo il punto in cui
+«Energia el…» si legge ancora e «Ene…» no.
+✅ **Il testo intero sta nel `title`** (A4 del brief, 2026-09-24): PrimeVue non
+lo fa da sé, e fino a quel giorno una selezione troncata non si rileggeva senza
+riaprire il pannello. Lo fanno le due combo `md` dei filtri — `LookupSelect` e
+`UtilityPerRuoloSelect` — con il BB `etichettaSelezionata`, come fa
+`.app-lista-cella` per le celle: il `title` dice **ciò che si legge a video**
+(anche `descrizione (codice)` con `show-code`), e senza selezione l'attributo
+non c'è. ⚠️ Serve solo al desktop: su touch non c'è hover. ⛔ Le `Select` con
+opzioni scritte in pagina (`sm`) non lo portano, e non per dimenticanza: le
+loro etichette sono corte per costruzione, lo stesso criterio che le fa `sm`.
+
+#### Come si verifica
+
+```bash
+cd frontend && npm run guard:filtri
+```
+
+**Sette** controlli, e due nature diverse: i file che scrivono i filtri a mano,
+le larghezze inline e le **coppie di date scritte a mano** sono **cricchetti**
+(rossi se crescono **e** se calano senza riscrivere il registro con
+`--baseline`); «ogni `<FiltriLista>` ha `:store` o `:segno`», «dietro quel
+`:store` c'è davvero il contratto» (2-bis), «la ricerca sta in `#sempre`» e
+«`app-page-toolbar-start` non contiene filtri» sono **cancelli a zero**.
+
+⭐ **Il 2-bis esiste perché il 2 non basta** (2026-09-23): quello guarda che
+l'attributo sia *scritto*, non che dietro ci sia qualcosa — uno store a mano
+senza `useContrattoFiltriLista` lo supera e lascia il segno spento identico. Il
+componente lo grida in console, ma una console la guarda chi apre quella lista,
+non la CI.
+⚠️ **E il buco che resta è dichiarato**: quando il `:store` non si risolve a una
+sorgente leggibile (lo store arriva come **prop**: `DrawerTabLista`,
+`CodaFiltriToolbar`) il file finisce fra i «non verificabili»
+e viene **stampato**. Un cancello che tace su ciò che non sa guardare fa credere
+di averlo guardato.
+
+⭐ **Il cancello guarda anche i tab-lista di drawer** (`<DrawerTabLista>`, che
+gira i propri slot a `FiltriLista`): i nomi là sono `#filtri-sempre` e
+`#filtri`, e senza questa riga le liste dentro un drawer — cioè le
+più difficili da guardare a video — sarebbero fuori dal presidio.
+⚠️ **E legge la sola sezione `<template>`**, perché le intestazioni di questi
+componenti *nominano* i tag di cui parlano: leggendo il file intero, un
+`<DrawerTabLista>` scritto in un commento diventava un tag senza attributi —
+quindi «senza `:store`» — e la ricerca della chiusura inghiottiva mezzo file.
+⭐ I due cancelli guardano proprio ciò che **da desktop non si vede**: là i due
+slot si rendono uno accanto all'altro e il segno non serve a niente — il difetto
+compare solo sotto i 1024px, dove nessuno sta guardando mentre scrive il codice.
+Gira in CI dentro `npm run guards`.
+
+#### La zona sinistra della toolbar che filtri NON porta — `app-page-toolbar-start`
+
+Una toolbar di lista ha due zone: a sinistra i filtri, a destra le azioni.
+Quando a sinistra non ci sono filtri — il **titolo** di una pagina, un pulsante
+«torna alla lista» — la classe è `app-page-toolbar-start`, **non**
+`app-page-filters`.
+
+⛔ **Non è un alias di comodo, ed è presidiato**: `app-page-filters` significa
+«gruppo filtri», e il registro di `npm run guard:filtri` la conta come debito da
+portare in `<FiltriLista>`. Diversi blocchi la usavano per un `<h2>`; avvolgerli nel
+building block avrebbe mandato il titolo della pagina dentro il drawer dal basso,
+dietro un'icona a forma di imbuto. ⚠️ Il verso opposto è un **cancello a zero**:
+un filtro messo in `app-page-toolbar-start` non scende nel drawer e non conta nel
+segno, e **da desktop la resa è identica** — il controllo guarda il contenuto,
+non il nome.
+
+⭐ E una toolbar **senza** zona sinistra non ha bisogno di niente: le azioni
+restano a destra per regola di foglio
+(`.app-page-toolbar > .app-page-actions:first-child`). Fino al 2026-09-23 lo
+faceva uno spaziatore scritto nel markup — `<div class="app-page-filters" />`
+— cioè un gruppo filtri senza filtri: *la spaziatura è del foglio,
+non del markup.*
+
+#### Una lista dentro un drawer — gli slot di `DrawerTabLista`
+
+Un tab-lista di drawer non scrive `<FiltriLista>`: lo monta il contenitore, e il
+caller riempie **due** slot, che sono i due del building block.
+
+```vue
+<DrawerTabLista :store="store" codice="magazzino.ubicazioni" …>
+  <template #filtri-sempre>              <!-- la ricerca: sempre a video -->
+    <InputText v-model="searchText" class="app-filter-w-lg" … />
+  </template>
+  <template #filtri>                     <!-- gli altri: nel drawer in compatta -->
+    <FiltroToggle v-model="mostraNonAttive" … />
+  </template>
+</DrawerTabLista>
+```
+
+⚠️ **`:store` serve anche qui**: è da lì che arriva il segno dei filtri attivi.
+⛔ E i due slot si dichiarano **condizionati** (`<template v-if="…" #filtri>`),
+non condizionando il widget dentro: uno slot che esiste e rende il vuoto accende
+comunque l'icona a imbuto su un drawer senza niente dentro.
+
+#### ⛔ Il valore che NON restringe si dichiara (`filtriNeutri`)
+
+```js
+filterDefaults: { solo_ultima_revisione: true, … },
+// «mostra storico» scrive `false`, che DEVE viaggiare (il BE è `default=True`)
+// ma è lo stato più largo possibile: non deve contare nel segno.
+filtriNeutri: { solo_ultima_revisione: false },
+```
+
+Il segno conta un filtro quando **restringe**. Sapeva riconoscere un solo
+«tutto» — l'assenza (`null`/`''`) — e per la maggior parte dei filtri basta.
+Non per quelli il cui «tutto» è un valore **vero**:
+
+| Filtro | Neutro | Perché non può essere `null` |
+| --- | --- | --- |
+| `solo_ultima_revisione` (offerte, preventivi) | `false` | il BE è `qp_bool(..., default=True)`: **assente significa `true`** |
+| `ambito` (code di lavoro) | `'tutti'` | il parametro parte **solo** a «tutti»: sul filo il verso è rovesciato |
+| `ampiezza` (task del lotto) | `'TUTTI'` | è una `ref`, non va sul filo (→ `neutro` in `useContrattoFiltriLocali`) |
+| `archiviate` (code), `annullati` (lotti), `scartate` (righe distinta) | `true` | acceso **chiede in più**: il parametro parte e l'elenco diventa il più largo |
+
+⛔ **Senza, il numero SALE quando l'operatore ALLARGA la lista.**
+
+> ⭐ **La regola che li trova tutti, e va guardata prima del valore:**
+> **un interruttore «mostra anche X» ha SEMPRE un valore neutro, ed è quello
+> acceso.** Spento nasconde qualcosa — restringe, e conta a ragione; acceso apre
+> l'elenco al massimo che quella lista sappia mostrare.
+> ⚠️ Il dominio lo dichiara già: un interruttore che **allarga** porta il
+> conteggio di ciò che nasconde (`archiviate_count`, `scartate_count`,
+> `annullati_count`), uno che **restringe** («solo negativa», «solo interne»)
+> non ha niente da contare. Se il `count` c'è, il neutro esiste.
+> 🔴 Scritta il 2026-09-23 **dopo** che il primo censimento, fatto filtro per
+> filtro, ne aveva mancati più della metà — uno nello store che stava
+> modificando (brief §11.10).
+
+⛔ **Non si deriva e non si indovina**: `archiviate: false` — l'interruttore
+**spento** — nasconde le righe archiviate, quindi conta a ragione. È lo stesso
+filtro del neutro qui sopra, guardato dall'altro verso: è conoscenza del
+**filtro**, come `paramNames` e `gateKeys`.
+⭐ **E se il neutro può essere `null`, si usa quello**: su `pratiche` il BE legge
+«falso» e «assente» allo stesso modo, quindi il rimedio non è dichiarare il
+neutro ma **smettere di mandare il parametro** (default `null`, `bindToggle`
+senza `off`).
+⛔ **Un interruttore non è un filtro se ACCENDE un altro filtro**: nel drawer BoM
+«tutte le versioni» spegne `valido_al`, e dichiararlo come chiave a sé contava
+**2** per una restrizione sola e **1** su un elenco intero. Lì la chiave è una,
+e il legame vive nel `computed` scrivibile — come `data_da`/`data_a` sono un
+periodo e non due date.
+⚠️ **Niente cancello, ed è dichiarato**: un controllo statico non può sapere se
+un valore restringe — boccerebbe `archiviate: false`. Il presidio è la spec di
+`segnoFiltri` (i casi sui neutri) e la regola qui sopra, che si applica
+leggendo il `count`.
+
+#### ⛔ Un filtro che l'operatore non può togliere è un difetto
+
+Se un filtro nasce valorizzato, ci dev'essere un gesto per riportarlo a «tutti»:
+la terna dal BB **`buildAttivoOptions(t)`** (o `buildBoolOptions(t)`, che è la
+stessa con `Sì`/`No`), `show-clear`, oppure — forma migliore per i booleani —
+`bindToggle('attivo', { on: null, off: true })`, dove accendere «mostra non
+attivi» porta il filtro a `null` e **lo fa smettere di contare**.
+⛔ **La terna non si riscrive a mano**, ed è la lezione del 2026-09-23: era
+copiata in **più** sedi e ne bastava una senza la voce «tutti» per avere un
+filtro che non si spegne. Due di quelle copie scrivevano già nella tendina una
+parola diversa da quella della loro stessa colonna.
+⚠️ Senza, il segno conta un'unità su cui non c'è nessuna azione possibile.
+Trovato il 2026-09-23 su `/catalogo/articoli` (nessun «Tutti») e, peggio, sulle
+**conversioni UoM**, dove il filtro `attivo: true` non aveva **nessun widget**:
+la lista era ristretta e non lo diceva a nessuno.
+🟡 Restano per scelta i **floor data** con `clearTo` (contratti, code di
+lavoro): non si tolgono, ma restringono davvero.
+
+⭐ **E c'è una terza risposta, che non è un widget: non era un filtro.** Se il
+valore non lo decide l'operatore ma il **dominio** — «la rata di una bozza non è
+un credito» — allora non va in `filterDefaults` affatto: è un **perimetro**, e la
+sua sede è il backend (api.md §«Un PERIMETRO non è un filtro»). ⛔ Tenerlo qui fa
+due danni insieme: il segno conta un'unità su cui non c'è nessun gesto, **e** la
+regola di dominio vale solo per il client che si ricorda di mandarla.
+⇒ La domanda è una: *«se domani un altro client chiamasse lo stesso endpoint,
+questa regola dovrebbe valere anche per lui?»* Se sì, non è un filtro.
+Successo reale: `solo_numerate` del picker delle rate, spostato nel backend il
+2026-09-23 (decisione di Tid).
+
+#### Le larghezze dei filtri stanno in una classe, non nel tag
+
+```vue
+<DatePicker class="app-filter-w-sm" />   <!-- ✅ -->
+<DatePicker style="width: 150px;" />     <!-- ⛔ -->
+```
+
+Tre taglie, dichiarate in `theme.css` come multipli dell'unità del filtro:
+`app-filter-w-sm` (10rem: date, stati, codici brevi), `app-filter-w-md` (13rem:
+combo con descrizioni), `app-filter-w-lg` (16rem: ricerca, lookup ricchi).
+🔵 Valgono per la toolbar **in linea**; nel drawer la larghezza la decide la
+griglia (§sotto). ✅ Al 2026-09-23 **nessun tag porta più un numero**, e
+`npm run guard:filtri` tiene il registro a zero — in `px` come in `rem`, e
+anche sull'`input-style` di un `InputNumber`: l'unità non cambia il difetto, e
+un criterio che ne guarda una sola è cieco sull'altra.
+
+**Come si sceglie la taglia** (§A1 del brief, decisa convertendo tutte le
+liste): `lg` alla **ricerca** e ai **lookup ricchi** (articolo, billing account,
+comune); `md` alle **combo con descrizioni** che vengono da un catalogo
+(`LookupSelect` su un `rel`, `UtilityPerRuoloSelect`); `sm` alle **date**, agli
+**stati** e alle liste di opzioni **scritte in pagina** (`attivo`, `sì/no`,
+`super admin`), che portano etichette corte.
+
+Una larghezza scritta nel tag **vince su qualunque foglio di stile**: nel drawer
+dal basso, dove ogni filtro deve occupare la riga intera, resta quella. Non dà
+nessun errore — si vede solo guardando il telefono.
+⭐ Vale anche su desktop: al 2026-09-22 i filtri portavano larghezze inline con
+decine di valori distinti (150px, 160px, 120px, 200px, 220px, 260px…), cioè lo
+stesso filtro largo in modo diverso da una schermata all'altra.
+Non era una scelta: era una sedimentazione — e con le tre taglie è finita.
+
+⭐ **Un involucro non spegne le regole del drawer** (corretto il 2026-09-23): le
+regole della griglia — la taglia che si annulla, l'interruttore e il periodo che
+prendono la riga intera — parlano del **filtro**, non della forma del markup che
+lo avvolge. Erano scritte come figli **diretti** (`>`), quindi un filtro dentro
+un `<div class="form-field">` con la sua etichetta — markup legittimo, e nel
+repo ce n'è — le perdeva in silenzio: la taglia sopravviveva dentro la cella e
+l'interruttore restava a mezza riga. Ora sono descendant + `:has()`.
+⚠️ Si vedeva **solo sotto i 1024px**.
 
 ### Ritiro dinamico colonne — `useResponsiveColumns` (responsive, ResizeObserver)
 
@@ -351,8 +863,8 @@ codice.
 ⚠️ **L'unica larghezza che il catalogo non conosce è quella dei pulsanti inline
 della colonna azioni**, e la dichiara il chiamante: prop `azioni-inline`
 (default 4). Fino a quel giorno era una costante — 130px, «~3-4 pulsanti» —
-che copriva **tre** pulsanti (2rem + 0.25rem di gap): Soggetti, Fornitori e
-CommessaGestione ne hanno quattro, Clienti sei, e la differenza usciva dal
+che copriva **tre** pulsanti (2rem + 0.25rem di gap): diverse liste ne hanno
+di più, e la differenza usciva dal
 contenitore senza che il packing lo sapesse. Un numero più basso del vero non
 taglia niente, ma riporta la scrollbar: chi aggiunge una quinta azione di riga
 alza la prop.
@@ -387,7 +899,7 @@ e' gestita dal click sulla riga del DataTable.
 | Desktop `hover` + viewport `>=1024px` | Inline | Pulsanti icon-only con tooltip, un click = una azione |
 | Tablet / touch / viewport `<1024px` | Compact | Kebab `⋮` che apre un menu popup con label esplicite |
 
-Lo switch e' realizzato da `@media (hover: none), (max-width: 1024px)` in `main.css`
+Lo switch e' realizzato da `@media (hover: none), (max-width: 1023.98px)` in `main.css`
 sulle classi `.app-row-actions-inline` / `.app-row-actions-compact`. Il componente
 renderizza entrambe le varianti, il CSS ne mostra una sola. Il breakpoint `hover: none`
 intercetta esplicitamente i dispositivi touch (es. iPad Pro) indipendentemente dalla
@@ -426,13 +938,34 @@ function buildRowActions(data) {
 </script>
 
 <template>
-  <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-    <template #body="{ data }">
+  <ListaConfigurabile codice="dominio.entita" …>
+    <template #actions="{ data }">
       <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
     </template>
-  </Column>
+  </ListaConfigurabile>
 </template>
 ```
+
+⭐ **Il kebab sotto spazio stretto arriva da sé** (2026-09-29): quando il
+packing responsive della lista ritira la colonna azioni a kebab ne conta la
+larghezza compatta (56px), e la cella azioni di `ListaConfigurabile`
+(`CellaAzioniRiga`, BB `useAzioniRigaCompatte`) consegna quella decisione a
+`RowActionsMenu` via provide/inject. Fino a quel giorno il caller doveva girare
+lo scope `compact` a `:force-compact`: quattordici liste non lo facevano — anche
+l'esempio qui sopra lo ometteva nel commento del BB — e su desktop rendevano i
+pulsanti inline, più larghi del conto; la differenza usciva come **scrollbar
+orizzontale**, senza errori (righe della distinta contabile). Lo scope
+`compact` resta, per chi nella cella rende altro; `:force-compact` passato a
+mano vince sempre. ⛔ **Dentro la cella azioni non si scrive
+`:force-compact="compact"`**: le 40 copie che lo facevano sono state ritirate
+nello stesso giro (regola del 2) — ripeterlo è una seconda sede della stessa
+decisione. ⚠️ Fuori da una `ListaConfigurabile` (DataTable grezza,
+tabelle di dashboard) non c'è provider: lì, se serve, `:force-compact` si passa
+esplicito.
+
+Nelle sole eccezioni con `DataTable` grezza (§«Regola zero della lista») la
+stessa chiamata sta dentro
+`<Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">`.
 
 **Formato azione:**
 
@@ -514,11 +1047,15 @@ dell'azione, l'helper restituisce la classe corretta.
 | Severity | Inline (desktop) | Popup (tablet/touch) | Uso tipico |
 | --- | --- | --- | --- |
 | `undefined` | Blu (`app-manage-btn`) | Blu (`app-menu-item-manage`) | Default: apri sub-drawer, clona, gestisci |
-| `'primary'` | Verde (`app-action-btn`) | Verde (`app-menu-item-action`) | State transition positiva (attiva, approva) |
+| `'primary'` | Blu (`app-action-btn`) | Blu (`app-menu-item-action`) | State transition positiva (attiva, approva) |
 | `'warn'` | Arancio (PrimeVue `severity="warn"`) | Arancio (`app-menu-item-warn`) | Cautela (chiudi, blocca, scade) |
 | `'danger'` | Rosso (`app-delete-btn`) | Rosso (`app-menu-item-danger`) | Distruttivo (elimina, disattiva) |
 | `'info'` | Blu (`app-manage-btn`) | Blu (`app-menu-item-manage`) | Sinonimo di default |
-| `'success'` | Verde | Verde (`app-menu-item-action`) | Sinonimo di primary |
+| `'success'` | Blu | Blu (`app-menu-item-action`) | Sinonimo di primary |
+
+ℹ️ `app-action-btn` e `app-menu-item-action` hanno classi proprie ma **lo stesso
+colore** di `app-manage-btn`: blu dal 2026-08-27 (decisione di Tid), sede unica
+`--app-btn-action-*` in `theme.css`.
 
 Le voci `:disabled` ricadono sul colore muted PrimeVue (`--app-btn-disabled-color`)
 sovrascrivendo la severity — evita di mostrare "vivace" un'azione non cliccabile.
@@ -570,25 +1107,67 @@ di `useSearchTable`, fetch paginata, guardia empty-state, `hasSearched`,
 ordinamento) vivono in **`useListaStoreCore`** — via `createCrudStore` (lista +
 CRUD), `createListaStore` (sola lista, anche col padre nel path) o chiamato
 direttamente dentro il `defineStore` quando lo store è quasi tutto dominio.
-Fino a quel giorno **venti** store tenevano la propria copia del blocco qui
+Fino a quel giorno molti store tenevano la propria copia del blocco qui
 sotto, ognuna con la sua piccola differenza (un `'ASC'` maiuscolo, un ripiego
 diverso, una ricerca a qualunque lunghezza): la casa di quelle differenze sono
 le opzioni del core (`ricercaCorta`, `orderDirDefault`, `paramNames`), non un
 `fetchList` riscritto. Le liste che partono vuote dichiarano `gateKeys`.
 
 Il blocco che segue è **la regola che il BB applica**, lasciato qui perché si
-legga cosa fa — non un modello da copiare in uno store:
+legga cosa fa — non un modello da copiare in uno store.
+
+⛔ **La soglia della ricerca non si scrive sul posto** (dal 2026-09-24, regola del
+2): il termine si manda con **`paramsRicerca(f)`** e il «sto ancora digitando»
+si chiede a **`termineCorto(termine)`**, entrambi in `core/utils/listParams.js`,
+con la **soglia della lista**. Prima lo stesso `trim` + `>= 3` stava copiato in più store.
+
+⭐ **La soglia è un fatto della lista** (dal 2026-09-26,
+[brief-db-be-fe-ricerca-soglia-per-lista](../work-done/brief-db-be-fe-ricerca-soglia-per-lista.md)):
+arriva nella configurazione (`ricerca_min_caratteri`, la stessa colonna con cui
+il backend decide se filtrare), `onConfigLoaded` la scrive in
+`store.ricercaMinCaratteri` (dichiarata da `useListaEmptyStateFetch`), e il BB
+la passa a `buildParams` come terzo argomento. Uno store scritto a mano la gira
+a `paramsRicerca`:
+
+```js
+function buildParams(f, _termine, ricerca) {
+  const p = paramsPagina(f)
+  Object.assign(p, paramsRicerca(f, ricerca))  // soglia della lista
+  // ... filtri di dominio ...
+  return p
+}
+```
+
+⛔ Nessun numero nel codice della lista: `RICERCA.MIN_CARATTERI` è il ripiego
+finché la configurazione non è arrivata (`null`).
+
+⭐ **Un tasto che non cambia la richiesta non ricarica** (dal 2026-09-26). Il
+watcher della casella chiede allo store `ricercaCambiaLaRichiesta(termine)`
+(BB `useListaEmptyStateFetch`): se il `search` che partirebbe è quello
+dell'ultima richiesta partita — termine sotto soglia, o uguale dopo il `trim` —
+lo store si allinea e basta, senza fetch e senza tornare a pagina 1. Senza,
+sulle liste col filtro data di default (preventivi, offerte, ordini) «a» e «ab»
+ricaricavano la stessa lista senza `search`.
+
+⛔ **Uno store scritto a mano sul BB ne espone lo stato INTERO** (dal 2026-09-26,
+regola del 2): `const lista = useListaEmptyStateFetch({...})`, si destruttura
+solo ciò che lo store usa dentro, e il `return` comincia con `...lista`. Prima
+ogni store elencava a mano i ref del BB, e a ogni ref nuovo (`ricercaFull`,
+`ricercaMinCaratteri`, `ricercaCambiaLaRichiesta`) andavano ricopiati in tutti:
+metà non erano allineati, e a quelli la lista ricaricava a ogni tasto
+senza errore. Presidio: `npm run guard:lista-stato`.
 
 ```js
 const hasSearched = ref(false)
 
 async function fetchList() {
   const f = filters.value
-  const searchTerm = (f.search || '').trim()
+  const searchTerm = termineRicerca(f)
   const hasFilters = f.filtro_1 != null || f.filtro_2 != null // adattare ai filtri reali
 
-  // Search con meno di 3 caratteri e nessun filtro attivo → ignora
-  if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) return
+  // Search sotto la soglia della lista e nessun filtro attivo → ignora
+  const ricerca = { minCaratteri: ricercaMinCaratteri.value }
+  if (termineCorto(searchTerm, ricerca) && !hasFilters) return
   // Primo caricamento senza filtri → resta vuoto
   if (!searchTerm && !hasFilters && !hasSearched.value) return
   // Search svuotata senza filtri → torna a stato vuoto
@@ -601,8 +1180,7 @@ async function fetchList() {
 
   loading.value = true
   try {
-    const params = {}
-    if (searchTerm.length >= 3) params.search = searchTerm
+    const params = { ...paramsRicerca(f, ricerca) }
     // ... costruzione params ...
     const res = await listEntita(params)
     items.value = res.data.data.results
@@ -613,20 +1191,26 @@ async function fetchList() {
   }
 }
 
-// Esporre hasSearched nel return
+// In uno store sul BB: `return { ...lista, filters, ... }` (vedi sopra)
 return { items, totalRecords, loading, hasSearched, filters, fetchList, ... }
 ```
 
-**2. SearchTable — placeholder + fetch condizionale:**
+**2. SearchTable — placeholder + fetch condizionale** (modello reale:
+`anagrafiche/components/FornitoriSearchTable.vue`):
 
 ```vue
 <script setup>
 import { onMounted } from 'vue'
 import SearchHint from '../../core/components/SearchHint.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 
-const { searchText, ... } = useSearchTable(store, { ... })
+const {
+  searchText, listaRef, paginatorProps, tablePage, onPage, onSort, onConfigLoaded,
+  mostraLista, mostraSearchHint, ...
+} = useListaConfigurabilePage(store, { ... })
 
-useTabFreshness(store, 'entita')
+useTabFreshness(store, TAB_ENTITIES.ENTITA)
 // La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
 onMounted(() => {
   if (searchText.value) {
@@ -637,13 +1221,15 @@ onMounted(() => {
 
 <template>
   <!-- Placeholder: nessuna ricerca effettuata -->
-  <SearchHint v-if="!store.hasSearched && !store.loading" />
+  <SearchHint v-if="mostraSearchHint" />
 
-  <DataTable v-show="store.hasSearched || store.loading" ...>
-    ...
-  </DataTable>
+  <ListaConfigurabile ref="listaRef" v-show="mostraLista" codice="dominio.entita" …
+    @config-loaded="onConfigLoaded" />
 </template>
 ```
+
+`mostraSearchHint`/`mostraLista` li calcola lo scaffolding a partire da
+`store.hasSearched` e `store.loading`: la view non riscrive la condizione.
 
 **Regole:**
 
@@ -659,7 +1245,9 @@ onMounted(() => {
 
 Ogni SearchTable che mostra dati con data di apertura/creazione deve avere il filtro data:
 
-- **Due DatePicker**: "Dal" (`data_da`) e "Al" (`data_a`) nella toolbar filtri
+- **Un periodo** "Dal" (`data_da`) – "Al" (`data_a`) nella toolbar filtri,
+  montato con `<FiltroPeriodo>` (§«Il periodo è UN filtro»), mai con due
+  `<DatePicker>` scritti a mano
 - **Default `data_da` solo frontend**: **oggi - 60 giorni, riportato al primo
   giorno del mese risultante** (es. oggi `15-08-2026` -> `01-06-2026`).
   Il calcolo NON si riscrive nello store: si chiama
@@ -671,9 +1259,9 @@ Ogni SearchTable che mostra dati con data di apertura/creazione deve avere il fi
 - Il tiebreaker `id` nell'ORDER BY garantisce paginazione deterministica
 
 Il default temporale e' una scelta UX, non una regola backend. Va impostato nello
-store/componente solo quando il filtro e' visibile nella toolbar tramite DatePicker:
+store/componente solo quando il filtro e' visibile nella toolbar (`<FiltroPeriodo>`):
 l'operatore deve poter vedere, modificare o cancellare il valore che limita la lista.
-Se una lista non espone i DatePicker `data_da`/`data_a`, non deve inviare `data_da`
+Se una lista non espone il periodo `data_da`/`data_a`, non deve inviare `data_da`
 di default e il backend non deve inventarlo.
 
 **Perche' allineato al primo del mese** e non "oggi - 60 giorni" secco: cosi' il
@@ -685,7 +1273,7 @@ operativo.
 > **Storico**: fino al 2026-08-01 il default era il 1° gennaio dell'anno-1. Era
 > troppo largo: su liste popolate significava scorrere fino a due anni di
 > documenti per arrivare a quelli di ieri. La formula viveva **copiata a mano in
-> 8 punti**; ora e' una funzione sola.
+> più punti**; ora e' una funzione sola.
 
 **Implementazione nello store** — si importa, non si ricalcola:
 
@@ -705,13 +1293,25 @@ lavoro), la variante e' `defaultFiltroDataDa()`. Le due condividono la formula:
 cambiare i 60 giorni e' una riga in `core/utils/date`
 (`LISTE_FILTRO_DATA_GIORNI`).
 
-**Implementazione nella SearchTable:**
+**Implementazione nella SearchTable** — ⛔ **non due `<DatePicker>`**: il
+periodo è UN filtro con due estremi, e si monta col suo building block (§«Il
+periodo è UN filtro»).
 
-```html
-<DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
-  date-format="dd/mm/yy" show-icon show-button-bar style="width: 150px;"
-  @date-select="onDataDaChange" @clear-click="onDataDaChange" />
+```vue
+<script setup>
+const { bindPeriodo } = useStoreFilterBindings(store, applyFilters)
+const periodo = bindPeriodo()                    // 'data_da' / 'data_a'
+</script>
+
+<FiltroPeriodo :periodo="periodo" />
 ```
+
+⚠️ **Fino al 2026-09-23 questo paragrafo mostrava esattamente la forma
+sbagliata** — due `DatePicker` con `@date-select` + `@clear-click` e
+`style="width: 150px"` — cioè le istruzioni per riprodurre due difetti muti: una
+data **digitata** che non applica il filtro, e una larghezza nel tag che vince
+sul drawer. È la stessa lezione della «regola zero della lista»: *chi legge in
+buona fede trova le istruzioni per fare la cosa sbagliata.*
 
 Le chiavi i18n `common.data_da` ("Dal") e `common.data_a` ("Al") sono condivise da tutte le liste.
 
@@ -720,12 +1320,12 @@ Le chiavi i18n `common.data_da` ("Dal") e `common.data_a` ("Al") sono condivise 
 Un filtro acceso/spento nella toolbar di una lista («Mostra storico», «Solo
 interne», «Solo negativa», «Mostra annullati») è il BB `FiltroToggle`:
 `[switch] Etichetta`. ⛔ Non un `ToggleSwitch` + `<label>` scritti in pagina:
-il 2026-09-18 erano **cinque** copie in quattro file, con lo stile inline
+il 2026-09-18 erano più copie, con lo stile inline
 ricopiato e un id inventato a mano per non collidere fra due schede — il root
 del BB è un `<label>`, e non ha bisogno di nessun id.
 
 Il **legame con lo store** non si scrive nel componente:
-`useStoreFilterBindings.bindToggle(storeKey, { on, off })`. Le stesse cinque
+`useStoreFilterBindings.bindToggle(storeKey, { on, off })`. Quelle stesse
 copie avevano **tre** forme del legame (un `ref` + handler, un `computed`
 invertito, un `computed` che scrive `true | null`): `on`/`off` sono i due
 valori che lo store porta, e coprono tutte e tre.
@@ -750,12 +1350,10 @@ plurale: la chiave i18n è una. Un interruttore che **restringe** non ha niente
 da contare e non passa `count`.
 
 > Fino al 2026-09-18 il BB si chiamava `ToggleNascoste` e copriva il solo
-> caso col conteggio: le cinque copie senza conteggio erano lo stesso
+> caso col conteggio: le copie senza conteggio erano lo stesso
 > componente, e si è ritirato nel giro che le ha assorbite.
 
-Consumer: `LottiListView`, `CodaFiltriToolbar` (col conteggio);
-`OfferteSearchTable`, `PreventiviList`, `PraticheSearchTable`,
-`DisponibilitaSearchTable`. Dettaglio nel
+Esempio di consumatore: `LottiListView` (col conteggio). Dettaglio nel
 [catalogo](catalogo-building-block-frontend.md).
 
 ### Filtro con lookup ricco — `bindLookup`
@@ -783,12 +1381,15 @@ Per shortcut che NON devono attivarsi dentro input/textarea/select (evita confli
 
 ```js
 import { useKeyboardShortcuts } from '../composables/useKeyboardShortcuts'
+import { SHORTCUTS } from '../constants'
 useKeyboardShortcuts([
-  { key: 'F5', ctrl: false, action: () => reload() },
+  { ...SHORTCUTS.SEARCH, action: () => ui.openSearchDrawer() },
 ])
 ```
 
-Usato da: `useSearchTable` (F5 ricarica lista).
+Le combinazioni si dichiarano in `SHORTCUTS` (`core/constants.js`), non nel
+chiamante. Usato da: `AppLayout` (ricerca universale, schede, sidebar, home,
+split, assistente AI).
 
 **2. Listener diretto `window.addEventListener('keydown')` — per shortcut che devono funzionare SEMPRE**
 
@@ -805,7 +1406,7 @@ onMounted(() => window.addEventListener('keydown', onKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 ```
 
-Usato da: `FormFooter` (Ctrl+S salva).
+Usato da: `FormFooter` (Ctrl+S salva) e `useSearchTable` (F5 ricarica lista).
 
 **Shortcut attive:**
 
@@ -814,11 +1415,15 @@ Usato da: `FormFooter` (Ctrl+S salva).
 | `F5` | Lista (DataTable) | Ricarica lista senza reload browser | `useSearchTable` |
 | `Ctrl+S` | Drawer (qualsiasi) | Salva — rispetta disabled/loading/readonly | `FormFooter` |
 | `Esc` | Drawer PrimeVue | Chiude drawer (nativo PrimeVue `dismissable`) | Drawer |
-| `Ctrl+K` | Globale | Apre ricerca universale | `AppTopbar` |
+| `Ctrl+K` | Globale (fuori dai campi di input) | Apre ricerca universale | `AppLayout` (`SHORTCUTS.SEARCH`) |
+| `Ctrl+W` / `Ctrl+Tab` / `Ctrl+Shift+Tab` | Globale (fuori dai campi di input) | Chiude / scheda successiva / precedente | `AppLayout` |
+| `Ctrl+B`, `Ctrl+Home`, `Ctrl+.` … | Globale (fuori dai campi di input) | Sidebar, home, assistente AI — elenco completo in `SHORTCUTS` | `AppLayout` |
 
 **Regole:**
 - `useKeyboardShortcuts` per shortcut che NON devono interferire con la digitazione
-- Listener diretto per shortcut che devono funzionare SEMPRE (Ctrl+S, Ctrl+K)
+- Listener diretto per shortcut che devono funzionare SEMPRE, anche dentro un
+  campo (Ctrl+S, F5). ⚠️ Ctrl+K **non** è fra queste: passa da
+  `useKeyboardShortcuts`, quindi dentro un input non si attiva
 - Sempre `e.preventDefault()` per evitare l'azione default del browser
 - Sempre cleanup in `onUnmounted`
 
@@ -835,7 +1440,7 @@ Usato da: `FormFooter` (Ctrl+S salva).
 | `app-page-action`          | Pulsanti azione primaria/utility generati da `PageActionsBar` | Responsive gestito dal building block |
 | `app-page-actions-desktop` | Interno `PageActionsBar`          | Wrapper azioni utility inline desktop                                      |
 | `app-page-actions-compact` | Interno `PageActionsBar`          | Wrapper kebab popup su touch/tablet/mobile                                 |
-| `app-col-actions`          | `<Column>` azioni di riga         | Larghezza auto su desktop, 60px su tablet/touch (media query `<=1024px`)   |
+| `app-col-actions`          | `<Column>` azioni di riga         | Larghezza auto su desktop, 60px su tablet/touch (media query `<1024px`)    |
 | `app-row-actions-inline`   | Interno `RowActionsMenu`          | Wrapper pulsanti inline — visibile solo con hover + viewport `>=1024px`    |
 | `app-row-actions-compact`  | Interno `RowActionsMenu`          | Wrapper kebab + menu popup — visibile su touch o viewport `<1024px`        |
 | `app-menu-item-manage`     | Voce `Menu` PrimeVue              | Colore blu — default popup `RowActionsMenu`                                |
@@ -879,8 +1484,12 @@ const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
 ```
 
 ```html
-<DataTable v-bind="paginatorProps" lazy @page="onPage" @sort="onSort" ...>
+<ListaConfigurabile codice="dominio.entita" :paginator-options="paginatorProps"
+  @page="onPage" @sort="onSort" ... />
 ```
+
+Nelle liste configurabili lo si riceve già da `useListaConfigurabilePage`, che
+lo chiama dentro di sé.
 
 Nessun componente lista deve implementare onPage/onSort/debounce manualmente.
 
@@ -898,7 +1507,7 @@ paginator li legge, non li ricalcola.
 
 1. `paginatorOptions.rows` / `.first` del **caller** — lo stato vero;
 2. `config.pagina_dimensione` — il preset a catalogo, finché il caller non ha uno stato suo;
-3. `PAGINATION.DEFAULT_ROWS`.
+3. la misura `PAGINA` del catalogo (`misuraDefault(USO_MISURA.PAGINA)`).
 
 ⛔ **Fino al 2026-08-28 il caller non era nella cascata**: `rows` veniva dalla
 sola config e **sovrascriveva** quello che il caller dichiarava. La scelta
@@ -917,12 +1526,12 @@ tornava a disegnarsi con i 25 del catalogo. Poi PrimeVue calcolava l'offset del
 
 ⚠️ **Il difetto si nasconde dove i numeri combaciano.** Sulla Lente 1 saltavano
 **tre liste su quattro**: gli `errori` hanno `pagina_dimensione = 10` a catalogo,
-uguale a `PAGINATION.COMPACT_ROWS`, quindi lì i due numeri coincidevano per caso
+uguale alla misura compatta di allora, quindi lì i due numeri coincidevano per caso
 e non succedeva niente. Sembrava il problema di una lista sola.
 
 ⚠️ **Conseguenza da conoscere**: con la cascata, `pagina_dimensione` del preset
 vale come **valore iniziale** solo per le liste il cui caller si allinea alla
-config (`@config-loaded`, che **46 consumatori su 51** agganciano). Per le altre
+config (`@config-loaded`, che quasi tutti i consumatori agganciano). Per le altre
 il preset resta dichiarato e non applicato — è una divergenza aperta, non un
 difetto di questa regola.
 
@@ -1037,7 +1646,7 @@ form dettaglio sotto — tutto nello stesso drawer, zero drawer annidati.
 8. **UoM**: filtrate per articolo via `listArticoloUom(articoloId)`, pre-seleziona la UoM base. Placeholder "Seleziona prima l'articolo" se nessun articolo scelto
 9. **Salva/Annulla**: sempre in basso dopo il form. Salva crea o aggiorna, chiude form, emette `changed`. Annulla chiude form e deseleziona riga
 10. **Elimina**: icona cestino sulla riga (`@click.stop` per non triggerare selezione). Se stavo editando quella riga, chiude il form
-11. **`formMode`**: ref con 3 stati: `null` (nessun form), `'create'`, `'edit'`. Governa visibilita' e comportamento
+11. **`formMode`**: 3 stati, `null` (nessun form), `'create'`, `'edit'`. Governa visibilita' e comportamento. ⛔ **Non si scrive a mano**: la macchina del form e' il BB `useFormInline` (2026-09-28, regola del 2 — era in dieci sedi, unificate con l'ok di Tid), che da' anche «Nuova riga» spenta a form aperto (`azioneNuovaRiga`), il click che apre solo se le righe si scrivono (`apriRiga`) e la **chiusura del form al cambio di documento**
 12. **Pulsante Chiudi del drawer (obbligatorio)**: in fondo al drawer, in modalita' lista, deve essere presente un `<FormFooter close-only>` con la sola voce "Chiudi". Quando si entra in form mode (Nuovo/Modifica riga), **il footer scompare** (`v-if="!formMode"`): il form ha gia' Annulla/Salva, e il footer del drawer duplicherebbe l'azione e spingerebbe il form sotto il fold. Vale per qualunque drawer di sub-entita' con lista (BoM, righe contratto, indirizzi, contatti, conti, ecc.). La X in alto resta come escape rapido (semantica diversa: dismiss vs completion). Vedi sezione "Componente `FormFooter`"
 
 ### Riferimento implementativo
@@ -1046,8 +1655,16 @@ Primo caso: `ContrattoRigheDrawer.vue` (righe contratto pricing v5).
 
 ### Come applicare a una nuova sub-entita'
 
-1. Copiare la struttura di `ContrattoRigheDrawer.vue` come base
-2. Adattare le colonne DataTable e i campi del form
+⛔ **Non si copia un drawer esistente.** Fino al 2026-09-28 questo passo diceva
+«copiare la struttura di `ContrattoRigheDrawer.vue`», e la macchina del form si
+è ritrovata scritta in dieci posti (verifica critica del brief
+`brief-db-liste-righe-documento`, §5 L1). La macchina è il BB
+`useFormInline`; la lista è `useDrawerTabLista` + `<DrawerTabLista>`
+(per le righe di vendita, `RigheMasterDetailTable`, che dal 2026-09-28 monta
+gli stessi due BB).
+
+1. Montare la lista e la macchina dai BB qui sopra
+2. Scrivere i campi del form di riga
 3. Passare le props contesto dal parent (numero/codice, cliente, stato, date)
 4. Collegare le API CRUD (add/update/delete) allo store o direttamente
 5. Mantenere `data-key="id"` + paginazione a 10 + `PageActionsBar` + `@click.stop` sul cestino
@@ -1068,10 +1685,10 @@ Quando una pagina contiene piu' sezioni correlate (es. Gestione Geografica con 6
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Regole (PrimeVue 4 — `Tabs`)
+### Regole (`Tabs`)
 
 > I componenti da usare sono `Tabs`, `TabList`, `Tab`, `TabPanels`, `TabPanel`.
-> `TabView` (l'API di PrimeVue 3) è **eliminato dal repo** — migrazione
+> `TabView` (l'API della generazione precedente di PrimeVue) è **eliminato dal repo** — migrazione
 > completata il 2026-07-22, zero residui: se lo trovi in un esempio, l'esempio è
 > vecchio.
 > ⚠️ La versione di PrimeVue in uso si legge in `frontend/package.json`, non qui:
@@ -1099,7 +1716,7 @@ Quando una pagina contiene piu' sezioni correlate (es. Gestione Geografica con 6
   mai indici numerici: sono ciò che rende il tab attivo deep-linkabile
 - ⚠️ **Tab condizionali** (`v-if` su permesso/modo): il `value` iniziale va
   **calcolato sul primo tab effettivamente reso**, non fissato al primo in ordine.
-  `TabView` v3 attivava da sé il primo pannello presente; `Tabs` v4 no — un
+  `TabView` attivava da sé il primo pannello presente; `Tabs` no — un
   `value="preset"` fisso lascia la pagina **senza alcun pannello** per chi non ha
   quel tab. Vedi `GestionePersonalizzazioniListeView.vue`.
 - ⚠️ **Tab dentro un drawer**: il tab attivo va riportato al primo a ogni
@@ -1120,10 +1737,10 @@ Riferimenti corretti: `ResiView.vue`, `CodeLavoroView.vue`, `IndirizziView.vue`.
 intercettati** (e non lo erano nemmeno con `TabView`). Lì l'altezza la gestisce il
 corpo del drawer — non serve CSS aggiuntivo, e non va aggiunto CSS scoped.
 
-### Residui PrimeVue 3 — nessuno
+### Residui dell'API precedente di PrimeVue — nessuno
 
-Migrazione completata il **2026-07-22**: `TabView` → `Tabs` (7 view) e
-`InputSwitch` → `ToggleSwitch` (3 componenti). `Dropdown`/`Calendar`/
+Migrazione completata il **2026-07-22**: `TabView` → `Tabs` e
+`InputSwitch` → `ToggleSwitch`. `Dropdown`/`Calendar`/
 `OverlayPanel`/`Sidebar` erano già migrati. La catena CSS gemella `.p-tabview` è
 stata rimossa da `main.css` insieme all'ultimo uso.
 
@@ -1149,13 +1766,17 @@ grep -c "p-tabview" frontend/src/assets/main.css
 
 ### Larghezze standard (da `constants.js`)
 
-| Tipo     | Larghezza | Esempio                            |
-| -------- | --------- | ---------------------------------- |
-| SIMPLE   | 480px     | Toponomastica, lookup, config      |
-| STANDARD | 640px     | Indirizzi, anagrafiche             |
-| COMPLEX  | 800px     | Pratiche, contratti                |
-| WIDE     | 960px     | Ricerca universale, form complessi |
-| XLARGE   | 1360px    | Matrici parametri-per-entita'      |
+| Tipo      | Larghezza | Esempio                                                     |
+| --------- | --------- | ----------------------------------------------------------- |
+| SIMPLE    | 480px     | Toponomastica, lookup, config                               |
+| STANDARD  | 640px     | Indirizzi, anagrafiche, catalogo                            |
+| COMPLEX   | 800px     | Pratiche, contratti                                         |
+| WIDE      | 960px     | Ricerca universale, liste con dettaglio                     |
+| WIDE_PLUS | 1100px    | Master-detail con sub-tabella in expansion (righe + componenti BoM) |
+| XLARGE    | 1360px    | Matrici parametri-per-entita' (utility, slot/override), liste a molte colonne dentro un drawer |
+
+La sede è `DRAWER_WIDTH` in `core/constants.js`: se questa tabella e il codice
+dissentono, vale il codice.
 
 Le `DRAWER_WIDTH` sono **richieste massime**: il drawer non eccede mai il
 viewport. Sotto la larghezza richiesta (es. mobile/tablet) il drawer riempie
@@ -1233,10 +1854,10 @@ Regola di visibilita': **nascondere il close-only quando il drawer e' in form mo
 * il form ha gia' Annulla/Salva: il footer "Chiudi" duplicherebbe l'azione
 * senza `v-if`, il "Chiudi" spinge il form sotto il fold
 
-Pattern di riferimento: `ContrattoRigheDrawer.vue`, `ArticoloBomDrawer.vue`, `CatalogoNoteDrawer.vue`, `ArticoloUomDrawer.vue`, `UomConversioniDrawer.vue`, `ContiBancariDrawer.vue`, `ContattiSoggettoDrawer.vue`, `IndirizziSoggettoDrawer.vue`, `VersioneDrawer.vue`.
+Pattern di riferimento: `ContrattoRigheDrawer.vue` (o il BB `NoteDrawer.vue`).
 
 Handler standard di chiusura: usare il composable `useDrawerClose(emit)` da
-`core/composables/useDrawerClose.js` (centralizza il pattern, evita 20+
+`core/composables/useDrawerClose.js` (centralizza il pattern, evita le
 copie identiche). Per drawer che notificano il parent della chiusura con
 un evento secondario (es. `cancelled` in pratiche/anagrafiche, `annullato`
 in `SoggettoResolver`), passare il nome come secondo argomento:
@@ -1284,7 +1905,7 @@ Cosa centralizza:
 | ⛔ **Niente X in alto** (`closable: false`) | Il footer di un dialog è **sempre visibile** (`max-height: 90%`, footer in coda): ogni dialog ha già Annulla o Chiudi, e la X era un doppione con una semantica sua (chiude senza `cancel`). Nel **drawer** la X resta, per la ragione opposta — il footer di un form lungo sta sotto il fold (§`FormFooter`) |
 | ⭐ **`header` obbligatorio** (prop `required`) | Un `Dialog` PrimeVue senza titolo rende comunque la riga di testa, e con `justify-content: space-between` l'unico figlio — le azioni — finiva **a sinistra**: era la «X a sinistra» vista in-app, non un secondo chrome. Il titolo è un fatto dell'azione, non un ornamento |
 | **ESC = Annulla**, e **si spegne mentre lavora** (`closeOnEscape && !loading`) | La direzione sicura resta aperta da tastiera; a salvataggio in volo il dialog non si chiude sotto la risposta. Era riscritto a mano in due dialog (`ExportDialog`, `AttivaVersioneDialog`): ora lo fa il BB |
-| ⭐ **ESC chiude SOLO il dialog in cima**, mai il drawer sotto | In PrimeVue 4 `Dialog` e `Drawer` hanno ciascuno un listener `keydown` su `document` e si chiudono per conto proprio: un ESC in un dialog aperto da un drawer chiudeva **entrambi** (rilievo di Tid, 2026-09-18). Il BB gestisce ESC **sulla propria radice** (`pt.root.onKeydown`, prima di `document` nella risalita) e tiene spento il listener di PrimeVue; `core/utils/escapeSoloInCima` — installato in `main.js` **prima** di ogni Drawer — ingoia l'ESC che sfugge alla radice quando c'è un dialog aperto. Il dialog vede l'ESC **per primo** (fase capture) e lo cede solo a un campo con la **tendina aperta** — segnale ARIA `aria-expanded="true"` sul controllo a fuoco (AutoComplete della lookup, Select, DatePicker): lì l'ESC chiude la tendina, il dialog resta. ⛔ Non `defaultPrevented`: l'AutoComplete di PrimeVue 4 lo fa **sempre**, anche a tendina chiusa — con quel criterio ESC in «Abbina fattura» non chiudeva niente (rilievo di Tid, stesso giorno). Stessa forma sulla `ConfirmDialog` in `App.vue`. ⏳ Due **drawer** impilati si chiudono ancora insieme: chrome del drawer, fuori da questa regola |
+| ⭐ **ESC chiude SOLO il dialog in cima**, mai il drawer sotto | In PrimeVue `Dialog` e `Drawer` hanno ciascuno un listener `keydown` su `document` e si chiudono per conto proprio: un ESC in un dialog aperto da un drawer chiudeva **entrambi** (rilievo di Tid, 2026-09-18). Il BB gestisce ESC **sulla propria radice** (`pt.root.onKeydown`, prima di `document` nella risalita) e tiene spento il listener di PrimeVue; `core/utils/escapeSoloInCima` — installato in `main.js` **prima** di ogni Drawer — ingoia l'ESC che sfugge alla radice quando c'è un dialog aperto. Il dialog vede l'ESC **per primo** (fase capture) e lo cede solo a un campo con la **tendina aperta** — segnale ARIA `aria-expanded="true"` sul controllo a fuoco (AutoComplete della lookup, Select, DatePicker): lì l'ESC chiude la tendina, il dialog resta. ⛔ Non `defaultPrevented`: l'AutoComplete di PrimeVue lo fa **sempre**, anche a tendina chiusa — con quel criterio ESC in «Abbina fattura» non chiudeva niente (rilievo di Tid, stesso giorno). Stessa forma sulla `ConfirmDialog` in `App.vue`. ⏳ Due **drawer** impilati si chiudono ancora insieme: chrome del drawer, fuori da questa regola |
 | **Click fuori non chiude** (`dismissableMask: false`) | Terza via d'uscita accidentale, stessa ragione della X |
 | **Un footer c'è sempre** | Nessuna prop `hide-footer`: senza X, un dialog senza footer non avrebbe **nessuna** uscita visibile. Il caso speciale (wizard, terzo bottone) è lo slot `#footer`, che il chrome lo mantiene |
 
@@ -1292,7 +1913,7 @@ Cosa centralizza:
 oggi è `EmittenteAttivoDialog` (`:close-on-escape="false"`: la scelta
 dell'emittente non è rimandabile con un tasto). ⛔ Non si rimette `:closable` per
 un dialog «che ce l'aveva»: il default è la regola, e un cambio di layout deve
-restare **una riga in `DIALOG_CHROME`**, non un giro su 48 file.
+restare **una riga in `DIALOG_CHROME`**, non un giro su tutti i file di dialog.
 
 ```html
 <!-- Dialog standard: conferma/form -->
@@ -1346,7 +1967,7 @@ sta cercando (rilievo di Tid sul picker delle rate).
 
 **Regola**: il blocco lista porta la classe **`app-dialog-lista`** (altezza
 **definita**, token `--app-dialog-lista-h` in `theme.css`, ~dieci righe) e lo
-store nasce a **dieci righe per pagina** (`limit: PAGINATION.COMPACT_ROWS`).
+store nasce alla misura **compatta** (`misura: USO_MISURA.COMPATTA`, dieci righe al 2026-09-30).
 Così la pagina vuota e la pagina piena sono alte uguali, il dialog si apre già
 alto e non si muove più; una pagina più lunga scorre **dentro** la tabella
 (`scroll-height="flex"`, che è esattamente il caso per cui esiste), non
@@ -1396,27 +2017,75 @@ accanto. A video si vedono **due bordi** sul lato destro, e nessun errore
 
 ### Principio
 
-Ogni sotto-area che potrebbe essere usata in piu' di un contesto deve essere un **componente autonomo** in `core/components/`. I componenti specifici di un solo dominio stanno in `<dominio>/components/`.
+Ogni sotto-area che potrebbe essere usata in piu' di un contesto deve essere un **componente autonomo**. Dove vive lo decide **di che cosa parla**, non quanti la usano: un pezzo generico (layout, form, UI) sta in `core/components/`; un pezzo che parla di un'entita' sta nel dominio di quell'entita', e gli altri domini lo importano secondo §«Confini fra domini».
 
 ### Dove collocare un componente
 
 | Criterio | Collocazione | Esempio |
 | --- | --- | --- |
-| Entita' config condivisa (tabelle `config.*`) usata o potenzialmente usabile da 2+ domini | `core/components/` | ToponomasticaSearchTable, ComuniSearchTable, ProvinceDrawer |
-| Componente di layout, form o UI generico | `core/components/` | PageActionsBar, FormFooter, SoggettoForm |
-| Logica specifica di un solo dominio | `<dominio>/components/` | IndirizzoDrawer (via nuova + stradario), UtentePermessiTab |
+| Componente di layout, form o UI **generico** (non parla di un'entita' di dominio) | `core/components/` | PageActionsBar, FormFooter, TagList, EntityFormDrawer |
+| Componente che parla di un'**entita' di dominio**, anche se lo usano piu' domini | `<dominio dell'entita'>/components/` | SoggettoForm, ComuneDrawer (anagrafiche), ArticoloLookup (catalogo), FatturaLookup (vendite) |
+| Pezzo che un dominio A VALLE aggiunge alla schermata di un'entita' A MONTE | il dominio a valle, **iscritto** a un punto di estensione | la sezione Lotti della scheda articolo (magazzino) |
 
-**Eccezione documentata**: i componenti geografici (toponomastica, comuni, province, regioni, stati)
-stanno in `core/components/` anche se importano stores da `anagrafiche/stores/`.
-Questo perche' sono entita' config condivise che il backend serve da `anagrafiche` per
-organizzazione, ma concettualmente sono cross-dominio (qualsiasi modulo potrebbe aver bisogno
-di un filtro per comune o provincia). L'alternativa — duplicarli per dominio — violerebbe
-il principio di riuso.
+### Confini fra domini — chi puo' importare chi
+
+> Decisione di Tid, 2026-09-26 ([analisi](../work-done/analisi-fe-regole-standard-violate-dal-codice.md) R-1/R-2).
+> Sostituisce la regola «un dominio importa solo da `core/`» e l'eccezione dei
+> componenti geografici.
+
+🔴 **Perché la regola vecchia era sbagliata.** «Un dominio non importa un
+altro dominio» contraddiceva il modello: pagamenti *deve* cercare le fatture,
+vendite *deve* scegliere un articolo. Per rispettarla, i pezzi finivano in
+`core/` — e allora era `core/` a importare i domini: `SoggettoForm` e i
+componenti geografici importavano `anagrafiche`, `FatturaLookup` importava
+vendite, il motore delle pratiche nominava i drawer di vendite, e il registro
+«tipo → drawer» che `core/bersagli.js` legge stava dentro `vendite/`. La regola
+produceva la violazione che voleva impedire.
+
+**La regola, sul modello — il verso delle FK:**
+
+1. **Un dominio importa un altro dominio solo se le sue tabelle puntano a
+   un'entità di quello.** `vendite.contratti` punta a `billing_account`:
+   vendite può usare i componenti di anagrafiche. `magazzino.lotti` punta a
+   `catalogo.articoli`: magazzino può usare `ArticoloLookup`. Si guarda
+   l'**entità**, non lo schema: fra schemi le FK vanno in tutti e due i versi
+   (`anagrafiche.soggetti_titoli_iva_ambiti` punta agli articoli).
+2. **Il verso opposto passa da un punto di estensione.** La scheda articolo
+   non importa magazzino: offre il punto `ARTICOLO_DRAWER_SEZIONI`, e
+   magazzino ci contribuisce la sezione Lotti dal suo `iscrizioni.js`. Così
+   per i contratti nella lista clienti, gli accessi web nell'anteprima del
+   soggetto, il saldo nel drawer della fattura
+   ([`core/estensioni.js`](../../../../frontend/src/core/estensioni.js)).
+3. **I motori (`pratiche`, `documenti`) li usano tutti e non nominano
+   nessuno.** Il motore possiede il registro; il dominio si iscrive
+   (`iscriviAttivitaUi`, `iscriviDrawerEntita`…). È lo specchio del backend,
+   dove vendite iscrive i suoi handler in `HANDLER_MAP` da `apps.py:ready()`.
+4. **`core/` non importa mai un dominio.** Ciò che un dominio aggiunge a
+   `core` si iscrive ([`core/registri.js`](../../../../frontend/src/core/registri.js),
+   [`core/drawerEntita.js`](../../../../frontend/src/core/drawerEntita.js)); una
+   funzione API che serve a tutti (la lookup degli emittenti, la testata dei
+   presidi) sta in `core/api/`, anche se l'endpoint lo serve un'app di dominio.
+   ⛔ **Nemmeno dalla porta di servizio del router**: `router/index.js` è la
+   radice dell'app e nomina tutti i domini (view e vocabolari), quindi
+   `core/` e gli store globali non ne importano il modulo. Chi deve navigare
+   fuori da un setup (l'interceptor HTTP, un bersaglio, l'assistente) usa
+   `routerApp()` di [`core/routerApp.js`](../../../../frontend/src/core/routerApp.js),
+   a cui `main.js` consegna l'istanza prima del mount; dentro un componente,
+   `useRouter()`.
+
+`main.js` carica ogni `<dominio>/iscrizioni.js` con `import.meta.glob`, prima
+del mount, senza nominarne nessuno: un dominio nuovo — acquisti — si aggiunge
+scrivendo il proprio file, senza toccare i motori.
+
+Presidio: `npm run guards` → `check-confini-domini.mjs`. L'elenco degli archi
+ammessi porta accanto la FK che li giustifica. ⛔ Un arco non si aggiunge per
+far passare il guard: se la FK non c'è, quello che serve è un punto di
+estensione.
 
 ### Checklist prima di creare un componente
 
 1. **Esiste gia'?** — controllare `core/components/` e `core/composables/`
-2. **Servira' altrove?** — se si', collocare in `core/`; se no, in `<dominio>/components/`
+2. **Di che cosa parla?** — se e' generico, in `core/`; se parla di un'entita', nel dominio di quell'entita' (anche se lo useranno altri domini: §«Confini fra domini»)
 3. **Props minimali** — esporre solo cio' che varia tra i contesti
 4. **Emits chiari** — `@saved`, `@changed`, `@row-click`, `@new`, `update:modelValue`
 
@@ -1502,6 +2171,28 @@ const pageActions = computed(() => [
 
 ## Azioni Drawer — `DrawerActionsBar`
 
+> ✅ **Tre presidi dal 2026-09-23**, e coprono tre cose diverse:
+> `DrawerActionsBar.spec.js` monta il componente **vero** e prova ciò
+> che nessuna funzione pura può vedere — fra l'altro che il tooltip del motivo
+> sta sull'**involucro** e non sul `<Button disabled>`, che è il difetto del
+> 2026-08-27 rimasto senza presidio per mesi;
+> `useDrawerActions.spec.js` (casi provati **per mutazione**) fissa il
+> contratto del mapper — quale pulsante nasce, se è acceso, che cosa dice
+> quando è spento — e vale per tutti i drawer che ci passano;
+> `npm run guard:capability` verifica che ogni campo letto da un blob
+> `capabilities.*` sia un campo che una `script.fn_available_actions_*`
+> **emette davvero**, leggendo il contratto dalla doc auto-generata — e dal
+> 2026-09-23 conta le **letture piatte** (una chiave del blob letta fuori da
+> `capabilities`, anche con le parentesi o per destrutturazione), ammettendo
+> solo gli omonimi dichiarati in `scripts/capability-letture-piatte.json`.
+> Un flag **negato con un motivo** che non è un'azione di stato (es.
+> `can_push_commessa`) diventa un pulsante spento col tooltip via
+> `useEntityCapabilities().azioneNegata(flag, forma)`, mai con un'entry
+> composta a mano nel drawer.
+> ⚠️ Nessuno dei due guarda la **resa a video**: quella la presidia
+> `DrawerActionsBar.spec.js`, che monta il componente (`@vue/test-utils` +
+> `jsdom`, nel progetto dal 2026-09-23 — vedi §Test).
+
 Le azioni di processo dei drawer entita' (cambio stato data-driven, apertura
 sub-drawer "gestisci righe/note", PDF, export) si renderizzano tramite il
 building block **`DrawerActionsBar`** (`src/core/components/DrawerActionsBar.vue`)
@@ -1518,7 +2209,7 @@ contesto drawer: niente azione "+ Nuovo", supporto badge counter sui pulsanti
 | Desktop `hover` + viewport `>=1024px` | `primary` + `state` + `manage` inline con label, `secondary` nel kebab `⋮` desktop |
 | Tablet / touch / viewport `<1024px` | Solo `primary` inline; `state`+`manage`+`secondary` tutti dentro lo stesso kebab `⋮` compact |
 
-Lo switch e' realizzato da `@media (hover: none), (max-width: 1024px)` in `main.css`
+Lo switch e' realizzato da `@media (hover: none), (max-width: 1023.98px)` in `main.css`
 sulle classi `.app-drawer-actions-desktop` / `.app-drawer-actions-compact`, stesso
 breakpoint di `RowActionsMenu` e `PageActionsBar`.
 
@@ -1783,7 +2474,7 @@ Un booleano nuovo in lista è una riga di CSV, non un componente.
 
 ⭐ **E dal 2026-09-18 vale anche per la NATURA di un documento fiscale**
 (`formato = natura_doc` → `NaturaDocTag sempre`): lo stesso slot era scritto in
-quattro liste. ⚠️ È il primo formato che legge **due** campi della riga — la
+più liste. ⚠️ È il primo formato che legge **due** campi della riga — la
 descrizione (il `campo_sorgente`) e la gemella `natura_doc_codice_interno` —
 e la gemella è presidiata: `test_lista_proiezione_campo_sorgente` pretende che
 ogni lista che dichiara il formato la proietti. La regola generale: *se una
@@ -1930,7 +2621,7 @@ async function onConfermaCessazione() {
   <DatePicker :model-value="parseIsoDate(form.valido_al)"
     @update:model-value="form.valido_al = toIsoDate($event)"
     :disabled="detail?.stato_codice === 'CESSATO'"
-    date-format="dd/mm/yy" show-icon class="w-full" />
+    date-format="dd/mm/yy" show-icon />
 </div>
 ```
 
@@ -1995,7 +2686,7 @@ Lato DB serve **defense-in-depth** per chiudere il cerchio (analogo a listini-ve
 
 1. **Trigger guard** BEFORE UPDATE OF `stato_doc_xxx_id`: ammette transizione a stato terminale (CESSATO/CHIUSA) **solo se** `valido_al IS NOT NULL AND valido_al < CURRENT_DATE`. Nome: `trgfn_<tabella>_a10_guard_transizione_stato`.
 2. **Job pgAgent notturno**: UPDATE → CESSATO/CHIUSA quando `valido_al < CURRENT_DATE`. L'UPDATE passa il guard per costruzione. Funzione incapsulante: `<schema>.fn_<tabella>_close_scadute()`.
-3. Brief al team DB (vedere `brief-db-contratti-cessazione-data-driven.md`, `brief-db-listini-stato-chiusa-sync.md`).
+3. Brief al team DB (vedere [brief-db-contratti-cessazione-data-driven.md](../work-done/brief-db-contratti-cessazione-data-driven.md); il gemello `brief-db-listini-stato-chiusa-sync.md` non è più nel repo).
 
 ### Esempi nel codice
 
@@ -2015,18 +2706,50 @@ Lato DB serve **defense-in-depth** per chiudere il cerchio (analogo a listini-ve
 
 ## Responsive
 
-| Breakpoint | Dispositivo | Comportamento                                                                       |
-| ---------- | ----------- | ----------------------------------------------------------------------------------- |
-| >= 1024px  | Desktop     | Layout completo: sidebar inline, tutti i filtri visibili, azioni di riga inline     |
-| 768-1023px | Tablet      | Pulsanti azione solo icona + tooltip, filtri flex-wrap, azioni di riga in kebab `⋮` |
-| < 768px    | Mobile      | Sidebar overlay, padding ridotto, azioni di riga in kebab `⋮`                       |
+| Breakpoint | Dispositivo | Comportamento                                                                                                      |
+| ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| >= 1024px  | Desktop     | Layout completo: sidebar inline, tutti i filtri visibili, azioni di riga inline                                    |
+| 768-1023px | Tablet      | Pulsanti azione solo icona + tooltip, **filtri nel drawer dal basso** (`FiltriLista`), azioni di riga in kebab `⋮` |
+| < 768px    | Mobile      | Sidebar overlay, padding ridotto, **filtri nel drawer dal basso**, azioni di riga in kebab `⋮`                     |
 
-Le classi responsive sono in `main.css` — nessun `@media` nei componenti scoped.
+**Due tipi di soglia, e non si confondono** (decisione Tid, 2026-09-26):
+
+| Dipende da | Si scrive | Soglie | Dove |
+| --- | --- | --- | --- |
+| la **finestra** (sidebar, topbar, layout di pagina) | `@media` | **solo** quelle di `BREAKPOINTS`, in forma canonica: `max-width: <B − 0.02>px` («sotto B», perché `BREAKPOINTS.X` si legge `< X`) e `min-width: <B>px` | anche nel componente scoped |
+| il **riquadro** in cui il contenuto vive (drawer, dialog) | `@container` | libere, scritte accanto alla regola | `main.css` o componente |
+
+Il riquadro è il contenuto di ogni drawer (`.p-drawer-content`) e di ogni
+`AppDialog` (classe `app-riquadro`, passata via `pt`): hanno una larghezza
+fissa (`DRAWER_WIDTH` / `DIALOG_WIDTH`) e per questo possono portare la
+containment senza collassare. Una griglia di form si stringe perché si
+stringe il drawer, non la finestra.
+
+Presidio: `npm run guards` → `check-media-soglie.mjs` legge `BREAKPOINTS` da
+`constants.js` e rifiuta ogni larghezza di `@media` che non ne sia una. Le
+query senza larghezza (`hover`, `pointer`, `prefers-reduced-motion`) sono
+libere. 🔴 Fino al 2026-09-26 la regola era «nessun `@media` nei componenti»,
+e il difetto vero le passava accanto: `max-width: 1024px` e `768px` in cinque
+componenti, contro `1023.98px` e `767.98px` del resto — alla finestra larga
+esattamente 1024px la topbar si credeva tablet e la pagina desktop.
 Il breakpoint mobile e' gestito dallo store `ui.js` (`isMobile`, `isTablet`).
 
 Le azioni di riga (`RowActionsMenu`) usano in aggiunta `@media (hover: none)` per
 intercettare i dispositivi touch indipendentemente dalla larghezza del viewport
 (es. iPad Pro in landscape rende comunque il kebab perche' manca l'hover).
+
+> ✅ **Una sola definizione di «modalità compatta» — `ui.isCompatto`, dal
+> 2026-09-22** ([brief](../work-done/brief-fe-filtri-lista-su-schermo-compatto.md) §3.3):
+> larghezza sotto `BREAKPOINTS.TABLET` **oppure** `matchMedia('(hover: none)')`.
+> La legge chi cambia **forma** e non solo dimensione — oggi `FiltriLista`.
+> ⛔ **La larghezza da sola non basta**: un iPad Pro in orizzontale è largo
+> 1366px e non ha hover, quindi `isDesktop` direbbe «desktop» mentre le azioni
+> di riga si sono già compresse — una schermata mezza compatta e mezza no.
+> ⚠️ Il `@media (hover: none), (max-width: 1023.98px)` di `main.css` (azioni di
+> riga, barra azioni) **cita** la stessa soglia e non ne inventa una seconda:
+> `1023.98px` perché `BREAKPOINTS.TABLET` si legge come `< 1024` — un
+> `max-width: 1024px` includerebbe 1024, cioè farebbe divergere le due sedi
+> esattamente sul confine.
 
 ---
 
@@ -2070,7 +2793,7 @@ Qualsiasi azione irreversibile richiede un **dialog di conferma** centrato:
   applica già le icone standard (`acceptIcon`/`rejectIcon`) e il colore danger
   (`confirmDelete`, o `confirmAction({ danger: true })`) in **un solo punto**
   (`richiedi`): le tre funzioni pubbliche aggiungono solo ciò che le distingue.
-  ⚠️ `closable` **non è un'opzione di `confirm.require`** (PrimeVue 4 non la
+  ⚠️ `closable` **non è un'opzione di `confirm.require`** (PrimeVue non la
   inoltra al `Dialog`): sta sul tag `<ConfirmDialog>` in `App.vue`, letto da
   `DIALOG_CHROME` — è l'unico pezzo di chrome che non può vivere nel composable
 
@@ -2088,12 +2811,19 @@ conferma (`useConfirmAction`) o è un form/azione con corpo (`AppDialog`).
 
 ## Notifiche
 
-| Tipo               | Componente | Posizione      | Durata                         |
-| ------------------ | ---------- | -------------- | ------------------------------ |
-| Successo           | Toast      | Alto a destra  | 3 secondi                      |
-| Errore operativo   | Toast      | Alto a destra  | 5 secondi (chiusura manuale)   |
-| Errore validazione | Inline     | Sotto il campo | Fino a correzione              |
-| Errore di sistema  | Toast      | Alto a destra  | Persistente (chiusura manuale) |
+| Tipo                             | Componente | Posizione      | Durata (`TOAST_DURATION`)                  |
+| -------------------------------- | ---------- | -------------- | ------------------------------------------ |
+| Successo                         | Toast      | Alto a destra  | 3 secondi (`SUCCESS`)                      |
+| Informativo                      | Toast      | Alto a destra  | 3 secondi (`INFO`)                         |
+| Avviso                           | Toast      | Alto a destra  | 4 secondi (`WARN`)                         |
+| Errore operativo                 | Toast      | Alto a destra  | 5 secondi (`ERROR`)                        |
+| Errore operativo con soluzione   | Toast      | Alto a destra  | 9 secondi (`ERROR_CON_SOLUZIONE`)          |
+| Errore con azioni (pulsanti)     | Toast      | Alto a destra  | Persistente, chiusura manuale (`AZIONI`)   |
+| Errore validazione               | Inline     | Sotto il campo | Fino a correzione                          |
+| Errore di sistema                | Toast      | Alto a destra  | Persistente, chiusura manuale (`SYSTEM_ERROR`) |
+
+Le durate vivono in `TOAST_DURATION` (`core/constants.js`): se questa tabella e
+il codice dissentono, vale il codice.
 
 Gestiti da `useNotify()` — mai usare `useToast()` direttamente.
 Testo sempre in italiano, chiaro e specifico — mai "Errore" o "OK".
@@ -2184,6 +2914,14 @@ subordinato a questa sezione.
 
 I componenti usano **solo** `--app-*`. Mai `var(--p-*)` direttamente.
 
+Un `--p-*` usato in piu' punti per la stessa cosa e' un **token non ancora nato**:
+il token prende il nome del **significato** (accento, attenzione, dato ereditato
+dal soggetto, pannello nello split — vedi il catalogo BB, «Variabili tema»), non
+della tinta. ⚠️ Al 2026-09-26 restano circa 60 `var(--p-*)` nei componenti
+(`primary-700/500/50`, `yellow-*`, `blue-*`, `surface-200/400`,
+`border-radius-sm`…) senza un significato ancora nominato: e' lavoro aperto
+(PROJECT_CONTEXT, «Aperto»), e il guard arrivera' quando saranno a zero.
+
 ### `theme.css` — personalizzazione visiva
 
 Unico punto di personalizzazione: sidebar, topbar, contenuto, card, drawer, AI widget, transizioni, tipografia.
@@ -2193,7 +2931,7 @@ Importato prima di `main.css` in `main.js`.
 
 | Token | Punta a | Per |
 | --- | --- | --- |
-| `--app-font-family` | stack di sistema sans-serif | il `body` (🔴 fino al 17/09 `main.css` scriveva `var(--p-font-family)`, che PrimeVue 4 **non definisce**: dichiarazione invalida, font di default del browser) |
+| `--app-font-family` | stack di sistema sans-serif | il `body` (🔴 fino al 17/09 `main.css` scriveva `var(--p-font-family)`, che PrimeVue **non definisce**: dichiarazione invalida, font di default del browser) |
 | `--app-surface-bg` | `--p-content-background` | la superficie di un contenuto (ex `--surface-0`) |
 | `--app-hover-bg` | `--p-content-hover-background` | riga o voce sotto il mouse (ex `--surface-hover`) |
 | `--app-highlight-bg` | `--p-highlight-background` | voce selezionata (ex `--highlight-bg`) |
@@ -2202,11 +2940,11 @@ Importato prima di `main.css` in `main.js`.
 | `--app-focus-ring` | `--p-focus-ring-color` | l'anello di fuoco |
 | `--app-space-sm` | `0.5rem` | gap e padding piccoli |
 
-⛔ **I nomi di PrimeVue 3 non esistono più** (`--surface-*`, `--text-color`,
+⛔ **I nomi della generazione precedente di PrimeVue non esistono più** (`--surface-*`, `--text-color`,
 `--highlight-bg`, `--p-info-color`, `--p-font-family`): un `var()` su un nome
 assente **annulla l'intera dichiarazione**, non solo il colore — un
-`border: 1px solid var(--surface-border)` è un bordo che non c'è. Il
-17/09 erano 60, tutti negli `<style>` di `pratiche` e in pochi altri: sanati
+`border: 1px solid var(--surface-border)` è un bordo che non c'è. Quelli
+trovati il 17/09, quasi tutti negli `<style>` di `pratiche`, sono stati sanati
 (catalogo BB, riga `ml-05`). Per i colori semantici (info, warn, danger,
 success) i token sono `--app-severity-*`.
 
@@ -2228,7 +2966,7 @@ I token `--app-severity-*` sono il colore con cui l'interfaccia dice **quanto è
 grave**, nello stesso vocabolario dei `Tag :severity` di PrimeVue: `danger`,
 `warn`, `info`, `success`, `secondary`, più `--app-severity-fill` (quanta tinta
 prende uno sfondo acceso ma non invadente). Il BB che li consuma è
-[`SelectButtonGravita`](../../../frontend/src/core/components/SelectButtonGravita.vue).
+[`SelectButtonGravita`](../../../../frontend/src/core/components/SelectButtonGravita.vue).
 
 ⚠️ **`warn` è GIALLO e non arancio**, e non è una preferenza estetica: su una
 resa **tenue** — un pallino, un chip non selezionato, un bordo — l'arancio si
@@ -2262,17 +3000,17 @@ in `:root:not(.p-dark)` (light).
 | `form-grid`          | Contenitore campi form (flex column, gap)                 |
 | `form-field`         | Coppia label + input (flex column, gap ridotto)           |
 | `form-grid-2col`     | Griglia 2 colonne responsive (1 col < 480px)              |
-| `form-field-wide`    | Il campo a **tutta riga** dentro una griglia a 2/3 colonne (`grid-column: 1 / -1`). ⚠️ Scritta in cinque template dal 2026-05, definita solo dal 17/09 |
+| `form-field-wide`    | Il campo a **tutta riga** dentro una griglia a 2/3 colonne (`grid-column: 1 / -1`). ⚠️ Usata nei template dal 2026-05, definita solo dal 17/09 |
 | `app-tab-content`    | Wrapper contenuto tab per flex height                     |
-| `app-text-muted`     | Testo sottotono (`--app-text-muted`): hint sotto i campi, note. ⛔ Non `text-color-secondary`: PrimeFlex non è installato, e fino al 17/09 nemmeno questa regola esisteva — 135 siti di testo «sottotono» erano testo normale |
+| `app-text-muted`     | Testo sottotono (`--app-text-muted`): hint sotto i campi, note. ⛔ Non `text-color-secondary`: PrimeFlex non è installato, e fino al 17/09 nemmeno questa regola esisteva — il testo «sottotono» era testo normale |
 | `font-bold`          | `font-weight: 600` (globale dal 17/09; prima viveva in uno `<style scoped>` e altrove non faceva niente) |
-| `app-mono`           | `font-family: monospace` per un identificativo tecnico (codice, `tx_id`, IBAN). Globale dal 19/09: prima era scritta in 15 `<style scoped>`, tre come `.font-mono` di PrimeFlex |
-| `mt-025`/`mt-05`/`mt-1` · `ml-05`/`mr-05` | Le sole utility di spaziatura. ⛔ `mt-3`, `mb-3`, `w-full`, `flex`, `gap-2`… sono PrimeFlex: non esistono qui e sono state tolte da ~115 template il 17/09 |
+| `app-mono`           | `font-family: monospace` per un identificativo tecnico (codice, `tx_id`, IBAN). Globale dal 19/09: prima era riscritta in più `<style scoped>`, e in qualche punto come `.font-mono` di PrimeFlex |
+| `mt-025`/`mt-05`/`mt-1` · `ml-05`/`mr-05` | Le sole utility di spaziatura. ⛔ `mt-3`, `mb-3`, `w-full`, `flex`, `gap-2`… sono PrimeFlex: non esistono qui e sono state tolte dai template il 17/09 |
 
 ⭐ **Una classe che non sta in nessun foglio non fa niente, e non lo dice.**
 Prima di dire che una view è finita, il censimento delle classi statiche non
 definite deve restare a **zero** (dal 2026-09-17, dopo tre passate: utility
-PrimeFlex, variabili CSS di PrimeVue 3, identificatori orfani):
+PrimeFlex, variabili CSS della generazione precedente di PrimeVue, identificatori orfani):
 `python3 scripts/check_classi_morte.py` (dalla root del repo; stampa l'elenco
 e esce 1 se ne trova).
 
@@ -2282,7 +3020,7 @@ SOLLEVA.** Il compilatore lo traduce in `_ctx.<nome>` = `undefined`, la build
 è verde, e `undefined.QUALCOSA` esplode nel render della prima riga che entra
 in quel ramo — Vue svuota il sottoalbero e a video resta una lista bianca,
 senza un errore per l'operatore. Successo il 2026-09-17 su `LottiLista.vue`:
-`MANAGE_ICONS.ERRORE` senza import, dal 09/09; la scheda «Lotti del mese» si
+`MANAGE_ICONS.ERRORE` (oggi `STATUS_ICONS.ERRORE`) senza import, dal 09/09; la scheda «Lotti del mese» si
 rendeva e la scheda «Recuperi» no, perché solo lì c'era un lotto con
 `ha_errori_gravi`, e l'etichetta accanto contava correttamente le righe che la
 tabella non mostrava. Presidio: `vue/no-undef-properties` in `eslint.config.js`
@@ -2293,7 +3031,7 @@ Chiudi, Salva) collassano automaticamente a icon-only via la classe
 `app-form-footer-btn` (stessa logica di `.app-page-action`; ⚠️ fino al 17/09
 questa riga scriveva `app-drawer-footer-btn`, che non esiste). Il componente
 imposta `v-tooltip.top` con la label per garantire l'accessibilita'. La
-modifica e' centralizzata in [`FormFooter.vue`](../../../frontend/src/core/components/FormFooter.vue):
+modifica e' centralizzata in [`FormFooter.vue`](../../../../frontend/src/core/components/FormFooter.vue):
 qualsiasi pulsante Annulla/Salva sparso fuori dal componente NON eredita
 questo comportamento — pattern utile per individuare drawer non standard.
 
@@ -2304,11 +3042,10 @@ Nessun componente deve definire colori o hover per pulsanti riga — usare sempr
 
 | Classe | Colore | Scopo |
 | --- | --- | --- |
-| `app-action-btn` | Verde (primary) | Azioni generiche nei form ("Aggiungi", "Gestisci" nei drawer) |
+| `app-action-btn` | Blu (`--app-btn-action-*`, dal 2026-08-27) | Azioni generiche nei form ("Aggiungi", "Gestisci" nei drawer) |
 | `app-manage-btn` | Blu (info) | Pulsanti "Gestisci" nelle colonne DataTable (apre sub-drawer) |
-| `app-edit-btn` | Verde (primary) | Matita modifica riga (DataTable e card) |
 | `app-delete-btn` | Rosso | Cestino elimina riga (DataTable e card) |
-| `app-reload-btn` | Verde | Refresh lista nella toolbar |
+| `app-reload-btn` | Blu (`--app-btn-action-*`, dal 2026-08-27) | Refresh lista nella toolbar |
 
 I pulsanti strutturali (Nuovo, Salva, Annulla) sono centralizzati tramite **componenti Vue**:
 
@@ -2318,23 +3055,60 @@ I pulsanti strutturali (Nuovo, Salva, Annulla) sono centralizzati tramite **comp
 | `NewButton` | Pulsante "Nuovo" specializzato legacy/non-toolbar |
 | `FormFooter` | Footer Salva/Annulla nei drawer — Ctrl+S, readonly-aware |
 
-### Centralizzazione icone azioni riga (`constants.js`)
+### Icone: un nome di significato, in un punto solo
 
-Le icone dei pulsanti nelle colonne DataTable sono centralizzate nella costante `MANAGE_ICONS`
-in `src/core/constants.js`. Ogni lista che ha pulsanti per aprire sub-drawer (contatti, indirizzi,
-conti bancari, UoM, BoM, note, conversioni) o azioni trasversali standard (es. elimina) deve usare
-`:icon="MANAGE_ICONS.XXX"`, mai stringhe hardcoded. Il colore resta responsabilita' della classe
-CSS standard (`app-manage-btn`, `app-delete-btn`, ecc.) applicata dal pulsante o da `RowActionsMenu`
-in base alla `severity`.
+⛔ **Nessuna icona PrimeIcons si scrive a mano** (`'pi pi-...'`, `icon="pi pi-..."`,
+`class="pi pi-..."`) fuori da `src/core/constants.js` e `src/core/navigation.js`
+(censimento icone per significato, approvato da Tid il 2026-09-27). Il presidio è
+[`src/core/icone.spec.js`](../../../../frontend/src/core/icone.spec.js). Fa due
+controlli:
+
+- fallisce se un letterale compare altrove;
+- fallisce se una costante punta a un glifo che PrimeIcons non ha. Una classe
+  inesistente non dà errore: l'icona semplicemente non c'è.
+
+**Il nome dice il significato, non il disegno**: `STAMPA`, `SOSPENDI`, `RIPROVA`,
+non `PRINT`, `PAUSE`, `REPLAY`. Due regole ne discendono:
+
+- **due gesti diversi non portano lo stesso segno**. Esempi: `FILTRI` e `RICERCA`;
+  `CORREZIONE` e `RIATTIVA`; `BLOCCATO` (fermo) e `VIETATO`/`CLOSE` (lucchetto);
+- **lo stesso significato porta un segno solo**. Tutti i «sblocca» sono `SBLOCCA`,
+  tutti gli «aggiungi» sono `ADD`.
+
+Una voce che **porta** a una cosa con un'icona sua ripete l'icona della cosa
+(`FATTURE`, `SOGGETTO`, `NAV_ICONS.PRATICHE`). Il generico `VAI_A` è solo un
+ripiego.
+
+| Gruppo | File | Che cosa |
+| --- | --- | --- |
+| `MANAGE_ICONS` | `constants.js` | **gesti** (azioni di riga, pulsanti, barre) e concetti di dominio senza voce di menu |
+| `STATUS_ICONS` | `constants.js` | **stati ed esiti**, spie che non si cliccano: `VUOTO`, `TUTTO_OK`, `ERRORE`, `ATTESA`, `INFO`, `SI`/`NO`, `BLOCCATO`, `CARICAMENTO`, `VIETATO`, `NON_TROVATO`… |
+| `RECAPITO_ICONS` | `constants.js` | icone di **campo** di una scheda (email, telefono, PEC, BIC) |
+| `NAV_ICONS` | `navigation.js` | le **porte** dell'app (voci di menu, domini), con il nome della voce |
+| `TIPO_RUOLO_ICONS` | `navigation.js` | il tipo di ruolo del soggetto; le chiavi sono i codici che arrivano dal BE |
 
 ```html
 <!-- Pattern standard -->
 <Button :icon="MANAGE_ICONS.CONTATTI" text rounded size="small" class="app-manage-btn"
   v-tooltip.bottom="t('contatto.gestisci_contatti')" @click.stop="emit('contatti', data)" />
+<!-- Classe statica + icona: la classe resta statica, l'icona va in :class -->
+<i class="percorso-handler" :class="STATUS_ICONS.AUTOMATICO" />
 ```
 
-Per aggiungere una nuova icona gestione: inserire la chiave in `MANAGE_ICONS` e usarla nel componente.
-Per cambiare il colore di tutte le icone gestione: modificare `.app-manage-btn` in `main.css`.
+**Icona nuova**:
+
+1. Si cerca il **significato** fra le chiavi e i loro commenti, non il disegno.
+2. Se il significato manca, si aggiunge una chiave nel gruppo giusto. Il commento
+   dice che cosa significa e da quale chiave vicina si distingue (`⛔ Non ...`).
+3. Il glifo non dev'essere già usato da un'altra chiave con un significato diverso.
+
+⚠️ **Le icone che arrivano dal DB** (`meta.icon` delle azioni disponibili dei
+documenti) oggi sono glifi, non significati. Sono l'unica eccezione dichiarata nel
+test, in attesa del brief DB.
+
+Il colore resta responsabilita' della classe CSS standard (`app-manage-btn`,
+`app-delete-btn`, ecc.). Per cambiare il colore di tutte le icone gestione si
+modifica `.app-manage-btn` in `main.css`.
 
 #### Pattern toggle dinamico: `EXPAND` / `COLLAPSE`
 
@@ -2342,6 +3116,15 @@ Per accordion, expansion row di DataTable, tree e qualsiasi azione che apre/chiu
 contenuto, usare la coppia dinamica `MANAGE_ICONS.EXPAND` (`pi pi-chevron-down`,
 stato collassato — invita ad aprire) e `MANAGE_ICONS.COLLAPSE` (`pi pi-chevron-up`,
 stato espanso — invita a chiudere). Standard PrimeVue/Material allineato.
+
+**Eccezione — expansion row di DataTable** (2026-09-27): il toggler di riga
+PrimeVue usa `chevron-right` (chiusa) / `chevron-down` (aperta). Il toggle
+«espandi tutte» della lista usa la **stessa** coppia, `MANAGE_ICONS.ROW_EXPAND` /
+`MANAGE_ICONS.ROW_COLLAPSE`, così riga e lista portano lo stesso segno. Stessa
+coppia per i gruppi annidati della sidebar e per i toggler di riga scritti a mano
+nei drawer (`isExpanded(data) ? ROW_COLLAPSE : ROW_EXPAND`). ⛔ Mai il glifo
+`pi pi-chevron-*` cablato per un toggle di espansione.
+`EXPAND`/`COLLAPSE` restano per accordion, pannelli e tree.
 
 ⛔ **Su una `<ListaConfigurabile>` il toggle «espandi tutte» NON si scrive in
 pagina** (2026-09-18): è l'azione standard di `useListaAzioni`, accanto a
@@ -2363,7 +3146,9 @@ le superfici che non sono liste configurabili. I listini avevano il proprio
 // In azione di riga (RowActionsMenu) — toggle di una singola riga
 {
   key: 'toggle-row',
-  label: expanded[row.id] ? t('common.nascondi') : t('common.mostra'),
+  // ⚠️ `common.*` non ha una coppia per la singola riga: le chiavi sono di
+  //    dominio (es. `pratiche.percorso_comprimi` / `pratiche.percorso_espandi`)
+  label: expanded[row.id] ? t('<dominio>.comprimi_riga') : t('<dominio>.espandi_riga'),
   icon: expanded[row.id] ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
   command: () => toggle(row),
 }
@@ -2400,7 +3185,7 @@ distinzione si gioca sul **chrome, non sulla tinta**.
 | Hit-area (padding/box) | sì | **no** — inline nel flusso |
 | Hover | sì | **no** |
 | `cursor` | `pointer` | `default` |
-| Colore | **semantico saturo** via classe `app-*-btn` (verde azione / blu gestisci / rosso distruttivo / arancio cautela) | `--app-text-muted` |
+| Colore | **semantico saturo** via classe `app-*-btn` (blu azione e gestisci / rosso distruttivo / arancio cautela) | `--app-text-muted` |
 
 **Regole**:
 
@@ -2472,8 +3257,8 @@ l'altra.
 ⚠️ **E vale nei due versi**: una costante in `MANAGE_ICONS` che è rimasta con un
 consumatore solo va **riportata sul posto**, non tenuta per simmetria.
 
-**Perimetro, come fatto datato** (misurato il 2026-09-02, e non è la ragione
-della regola — che reggerebbe identica con altri numeri):
+**Come si misura il perimetro** (la misura trova i candidati, non decide la
+regola — che reggerebbe identica con qualunque numero):
 
 ```bash
 cd frontend
@@ -2483,11 +3268,9 @@ grep -rho 'class="pi pi-[a-z0-9-]*"' src --include=*.vue | sort | uniq -c | sort
 grep -rho 'MANAGE_ICONS\.[A-Z_]*' src --include=*.vue --include=*.js | wc -l
 ```
 
-Al 2026-09-02: **117** occorrenze `class="pi pi-…"` su **53 icone distinte**, di
-cui **26 usate una volta sola** — quelle non sono candidate per costruzione. Il
-perimetro da guardare sono le **27 ripetute**, e solo quelle in cui la
-ripetizione è davvero lo stesso senso. Sull'intera superficie (`class=`, `icon=`,
-stringhe) le occorrenze sono 553 e **267 passano già** da `MANAGE_ICONS`.
+Le icone usate una volta sola non sono candidate per costruzione; il perimetro
+da guardare sono le **ripetute**, e solo quelle in cui la ripetizione è davvero
+lo stesso senso.
 
 ⛔ **Non è una campagna da fare in un colpo.** Si consuma come l'inventario delle
 liste: quando si tocca un file per altri motivi, e partendo dai sensi più
@@ -2508,7 +3291,12 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
 - **`::before` = base documento** (`pi-file` `\e958`) → il **marcatore di
   famiglia/area**: "questo è un documento vendite" (mai un glifo generico che
   potrebbe significare altro).
-- **`::after` = overlay del TIPO** → il **differenziatore**, un badge d'angolo:
+- **`::after` = overlay del TIPO** → il **differenziatore**, grande, dentro
+  l'angolo in basso a destra del foglio, che è **aperto** come quello di
+  `pi-file-edit` (Tid 2026-09-27; lo si ottiene ritagliando `pi-file` con
+  `clip-path`, perché il font non ha un foglio aperto senza simbolo proprio).
+  ⭐ Misure di base e simbolo in **una regola sola** per tutta la famiglia, in
+  `main.css`: ogni documento dichiara solo il `content` del suo `::after`.
 
 | Entità | Overlay | Glifo |
 | --- | --- | --- |
@@ -2527,15 +3315,22 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
   valore → il pezzo comune domina la lettura e le icone si assomigliano. Il
   pezzo che varia (l'overlay) è quello che deve distinguere; l'**euro resta solo
   su Fattura**, dove finalmente significa qualcosa di specifico.
+  ⚠️ La regola vale **dentro la famiglia documento** (base `\e958`): su un'altra
+  base l'euro è un altro segno. Listini e approvazioni prezzo lo portano come
+  «prezzo», su basi proprie, e non collidono. La Fattura ha la base foglio
+  **dal 2026-09-26** (decisione Tid): prima usava la ricevuta `\ea06`, la
+  stessa di Clienti, e usciva dalla sua famiglia.
 - **Due elementi, non tre.** Base (famiglia) + overlay (tipo). Non aggiungere un
   terzo marcatore "area": la base È già l'area → sarebbe solo ingombrante.
 - **Niente collisioni di dominio/azione**: l'icona del dominio Vendite è il
   carrello **intero** (`pi-shopping-cart` pieno) → l'ordine usa il carrello come
   **badge** su documento, non collide. Mai `pi-replay`/`pi-refresh` per i Resi
   (si leggono come "ricarica").
-- Nuova entità vendite: aggiungere `.app-nav-icon-<entita>` (base `\e958` +
-  overlay-tipo) in `main.css` e la chiave in `NAV_ICONS`, mai una PrimeIcon
-  singola generica.
+- Nuova entità vendite: aggiungere `.app-nav-icon-<entita>` ai due selettori
+  della regola di famiglia in `main.css`, più il suo `::after` con il solo
+  `content` dell'overlay-tipo, e la chiave in `NAV_ICONS`. Mai una PrimeIcon
+  singola generica. `icone.spec.js` fallisce se una classe composta delle
+  costanti non ha le sue regole in `main.css`.
 
 ### Regole CSS per i componenti
 
@@ -2552,19 +3347,50 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
 
 ### Autenticazione JWT
 
-| Meccanismo      | Dove              | Descrizione                               |
-| --------------- | ----------------- | ----------------------------------------- |
-| Route guard     | `router/index.js` | Tutte le rotte protette di default        |
-| Token refresh   | `core/api.js`     | Interceptor su 401, retry automatico      |
-| Accodamento     | `core/api.js`     | Richieste durante refresh accodate        |
-| Protezione loop | `core/api.js`     | Chiamate a `/token/` escluse dal refresh  |
-| Redirect        | `LoginView`       | Rotta originale salvata in `?redirect=`   |
-| Logout          | `stores/auth.js`  | `clearTokens()` pulisce tutta la sessione |
+⛔ **Nessun token in `localStorage`** (dal 2026-09-28, [brief sicurezza](../work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §2).
+Il **refresh** sta in un cookie `HttpOnly` che il JavaScript non vede: lo
+scrivono e lo leggono il backend e il browser. L'**access** (10 minuti) vive solo
+in memoria, in `core/sessione.js`. Al ricaricamento della pagina l'access non
+c'è mai: la sessione si ritrova rinnovando dal cookie.
+
+| Meccanismo            | Dove                                   | Descrizione                                                                           |
+| --------------------- | -------------------------------------- | ------------------------------------------------------------------------------------- |
+| Access in memoria     | `core/sessione.js`                     | Unica sede dell'access; reattivo (`accessTokenRef`)                                   |
+| Route guard           | `router/index.js`                      | Rotte protette di default; `auth.ripristinaSessione()` prima di ogni rotta            |
+| Rinnovo               | `core/api.js` `rinnovaAccess`          | Corpo vuoto + header `X-Requested-With`; il cookie lo porta il browser                |
+| Una scheda alla volta | `core/sessione.js` `rinnovaCoordinato` | Lock del browser + `BroadcastChannel`: rinnova una scheda, le altre ricevono l'access |
+| Accodamento           | `core/sessione.js`                     | Chiamate concorrenti della stessa scheda aspettano la stessa promise                  |
+| Protezione loop       | `core/api.js`                          | Chiamate a `/token/` escluse dal rinnovo                                              |
+| Redirect              | `LoginView`                            | Rotta originale salvata in `?redirect=`                                               |
+| Motivo del ritorno    | `core/sessione.js` `MOTIVO_USCITA`     | `?reason=`: sessione scaduta o logout da un'altra scheda, ognuno con la sua frase     |
+| Logout                | `stores/auth.js`                       | Backend cancella il cookie; `clearTokens()` pulisce; le altre schede escono           |
+
+⭐ **Più schede.** Ogni rinnovo ruota il refresh e mette in blacklist il
+precedente: due schede che rinnovano insieme presenterebbero lo stesso cookie,
+e la seconda verrebbe buttata fuori. Il rinnovo gira quindi dentro un lock
+(`navigator.locks`): una scheda alla volta, e il cookie (condiviso) è già
+quello ruotato da chi è uscito dal lock. L'access nuovo si annuncia sul canale
+`zeroerp-sessione`. Gli altri due eventi — **logout** (tutte le schede escono)
+e **sessione nuova** (login o cambio emittente in un'altra scheda: questa
+riparte dal boot) — li gestisce lo store `auth`. ⛔ Nessun altro modulo chiama
+l'endpoint di refresh: passa da `rinnovaAccess`, altrimenti il coordinamento ha
+un buco.
 
 ### Regole di sicurezza
 
-- Mai accedere a `localStorage` direttamente — usare `useAuthStore()`
-- Mai `window.location` per redirect — usare il router
+- Mai accedere a `localStorage` direttamente — passa da `core/storage.js`; e
+  ⛔ mai un token lì dentro
+- Mai `window.location` per redirect — usare il router. ⭐ **Una sola eccezione
+  dichiarata, e non è un redirect**: l'azione `ripartiDalBoot` di
+  `stores/auth.js` fa `window.location.assign(...)` per **ripartire dal boot**.
+  La usano due casi con la stessa esigenza: `cambiaEmittenteAttivo` (cambiare
+  emittente cambia ciò che si vede ovunque) e l'apertura di una **sessione
+  nuova in un'altra scheda** (login o cambio emittente: il cookie ora è di
+  un'altra sessione). L'applicazione tiene stato in cache fuori dagli store
+  (KeepAlive delle viste, cache di modulo dei lookup): solo un ricaricamento
+  completo garantisce che non restino a video dati della sessione precedente.
+  Un terzo caso passa dalla stessa azione, non scrive un secondo
+  `window.location`
 - Mai esporre dati sensibili in log, template o attributi HTML
 - Mai costruire URL con interpolazione da input utente — usare parametri Axios
 
@@ -2575,8 +3401,8 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
 I componenti **non gestiscono errori manualmente**. Il composable `useApiHandler` intercetta, estrae il messaggio dall'envelope backend e mostra il toast.
 
 ```js
-// Caricamento (toast solo su errore)
-const data = await execute(() => api.get('/endpoint/', { params }))
+// Caricamento (toast solo su errore) — la funzione viene dal modulo api/
+const data = await execute(() => listConfigRecords(rel, params))
 
 // Salvataggio (toast su successo e errore)
 const result = await execute(
@@ -2585,7 +3411,7 @@ const result = await execute(
 )
 
 // Polling silenzioso (nessun toast)
-const status = await execute(() => api.get('/status/'), { silent: true })
+const sessioni = await execute(() => listSessioni(), { silent: true })
 ```
 
 ### ⭐ Campi in errore dal backend — `campiErrati` (dal 2026-08-08)
@@ -2616,13 +3442,12 @@ doveva cercarselo da solo nel form.
 | nessun messaggio sotto il campo | il testo sta gia' nel toast; ripeterlo sotto l'input e' rumore. Il bordo rosso dice *dove*, il toast dice *cosa* |
 | il nome e' quello del **payload API**, non del `v-model` | se il form rinomina un campo, il legame va scritto a mano — `:invalid="campiErrati.includes('nome_api')"` |
 
-**È lo standard, non un caso isolato**: dal 2026-08-08 lo legano **38 componenti
-con 136 binding**. La regola per un drawer nuovo: se un campo del form ha lo
+**È lo standard, non un caso isolato**: dal 2026-08-08 i drawer lo legano. La regola per un drawer nuovo: se un campo del form ha lo
 stesso nome della chiave che mandi nel payload, legalo — costa una riga e il
 giorno in cui il service comincia a rifiutarlo l'operatore vede dove.
 
 ⚠️ **Non si lega tutto**: la lista dei nomi che il backend può davvero mandare è
-finita (**122**, misurati sui `context={"field": …}` e sulle chiavi passate ai
+finita (si ricava dai `context={"field": …}` e dalle chiavi passate ai
 validator). Legare un campo fuori da quella lista non fa danno ma non fa niente:
 è una riga che non decide.
 
@@ -2652,7 +3477,7 @@ gesto:      [ Apri Fattura 820 ]
 cosa da ricopiare a mano in un campo di ricerca.
 
 **Non c'è niente da scrivere nei componenti.** Il gesto lo compone
-`useApiHandler` e lo consegna al toast: i **122** file che usano `execute` lo
+`useApiHandler` e lo consegna al toast: tutti i file che usano `execute` lo
 hanno già.
 
 ```js
@@ -2740,7 +3565,7 @@ dichiarato** (decisione di Tid, 2026-09-09): `highlight_form_fields` lo serve
 `campiErrati`, `redirect_login` lo serve lo **status 401** in `core/api.js`, e i
 restanti quattro li serve il **toast** — che ora porta anche la soluzione e, dove
 c'è un bersaglio, il gesto. ⚠️ Prima di dare un comportamento al settimo vanno
-rilette le **176 righe di override**, decise quando nessuno poteva verificarle a
+rilette le righe di override, decise quando nessuno poteva verificarle a
 video. Tabella completa: [api.md §Cosa cambia davvero lo status](../api.md).
 
 ---
@@ -2765,10 +3590,10 @@ Il provider va chiamato nella View (parent della SearchTable e dei drawer). I fi
 
 ```js
 // Livello area (classico)
-useReadonlyMode('anagrafiche')
+useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE)
 
 // Livello oggetto (permessi v2) — richiede model_permission sulla view BE
-useReadonlyMode('anagrafiche', 'cliente')
+useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.CLIENTE)
 ```
 
 Semantica di `isReadonly` / `isBlocked` dopo la risoluzione:
@@ -2817,11 +3642,14 @@ import { useInjectBlocked } from '@/core/composables/useReadonlyMode'
 import { MANAGE_ICONS } from '@/core/constants'
 import { computed } from 'vue'
 
+import FiltriLista from '@/core/components/FiltriLista.vue'
+import ListaConfigurabile from '@/core/components/ListaConfigurabile.vue'
+import { useListaConfigurabilePage } from '@/core/composables/useListaConfigurabilePage'
+
 const isBlocked = useInjectBlocked()
-const pageActions = computed(() => [
-  { key: 'reload', kind: 'utility', label: t('common.reload_list'), icon: MANAGE_ICONS.RELOAD, command: reload },
-  { key: 'new', kind: 'primary', label: t('common.new'), tooltip: t('...'), icon: MANAGE_ICONS.ADD, hideWhenReadonly: true, command: () => emit('new') },
-])
+// `pageActions` standard (ricarica, nuovo con `hideWhenReadonly`, …) li compone lo scaffolding
+const { searchText, pageActions, perimetroBloccato, listaRef, ... } =
+  useListaConfigurabilePage(store, { onNew: () => emit('new'), newTooltipKey: '...' })
 </script>
 
 <template>
@@ -2831,27 +3659,32 @@ const pageActions = computed(() => [
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters">
-          <!-- input search, filtri -->
-        </div>
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText v-model="searchText" class="app-filter-w-lg" :placeholder="t('...')" />
+          </template>
+          <!-- altri filtri, legati con un binder -->
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ReadonlyBadge />
           </template>
         </PageActionsBar>
       </div>
-      <DataTable ... />
+      <ListaConfigurabile ref="listaRef" codice="dominio.entita" ... />
     </template>
   </div>
 </template>
 ```
+
+Modello reale completo: `anagrafiche/components/FornitoriSearchTable.vue`.
 
 **Regole operative liste**:
 
 - ❌ **mai** `<Button icon="pi pi-refresh" ...>` inline — sempre `PageActionsBar`
 - ❌ **mai** badge testuale "Sola lettura" custom — sempre `<ReadonlyBadge />`
 - ✅ Ordine standard: `PageActionsBar` con `ReadonlyBadge` nello slot `suffix`
-- ✅ `AccessoBloccatoPanel` sostituisce toolbar + DataTable (variante A, schermata protect). **Non** tenere toolbar visibile disabilitata.
+- ✅ `AccessoBloccatoPanel` sostituisce toolbar + lista (variante A, schermata protect). **Non** tenere toolbar visibile disabilitata.
 - ✅ Refresh resta visibile in LETTURA; le azioni con `hideWhenReadonly` si nascondono; `ReadonlyBadge` si mostra solo su `isReadonly && !isBlocked`
 
 ### Stato permessi → UI della lista
@@ -2884,7 +3717,7 @@ A differenza del BLOCCATO di area (dove il route guard impedisce la navigazione)
   <div class="app-tab-content">
     <AccessoBloccatoPanel v-if="isBlocked" />
     <template v-else>
-      <!-- toolbar + DataTable normali -->
+      <!-- toolbar + lista normali -->
     </template>
   </div>
 </template>
@@ -2902,9 +3735,20 @@ A differenza del BLOCCATO di area (dove il route guard impedisce la navigazione)
 `DrawerTitle` include **automaticamente** il badge readonly via inject. Zero codice aggiuntivo per lo sviluppatore:
 
 ```vue
-<Drawer :visible="visible" @update:visible="...">
+<script setup>
+// Modifiche non salvate (BB useDrawerFormPreserve): fotografia a form pronto,
+// conferma su ogni uscita, «Modifica» arancio nel titolo.
+const { fissa, modificato, chiudiConConferma } =
+  useDrawerFormPreserve(form, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(onClose)
+// X, ESC e clic fuori escono come l'Annulla: lo STESSO `chiudi`.
+const suVisibile = gestoreVisibile(emit, chiudi)
+</script>
+
+<Drawer :visible="visible" @update:visible="suVisibile">
   <template #header>
     <DrawerTitle
+      :modificato="modificato"
       :action="isEdit ? t('common.edit') : t('common.new')"
       :title="t('...')"
       icon="pi pi-briefcase"
@@ -2916,10 +3760,18 @@ A differenza del BLOCCATO di area (dove il route guard impedisce la navigazione)
     <!-- form normale, disabled si propaga via .app-readonly -->
   </div>
 
-  <FormFooter @save="onSave" @cancel="onCancel" />
+  <FormFooter @save="onSave" @cancel="chiudi" />
   <!-- pulsante Salva nascosto automaticamente se readonly -->
 </Drawer>
 ```
+
+⛔ **Una via d'uscita sola** (2026-09-26): X, ESC, clic fuori e Annulla passano
+dallo **stesso** `chiudi`, cablato con `gestoreVisibile(emit, chiudi)` — mai un
+gestore `@update:visible` scritto a mano. Con due gestori la X e l'Annulla
+finivano per emettere eventi diversi. La chiusura **dopo un salvataggio
+riuscito** resta diretta (niente conferma: non c'è niente da perdere). Più form
+nello stesso drawer, ciascuno col suo Salva → `unisciFotografie(...)`, una
+domanda sola. Dettaglio: catalogo BB, voce `useDrawerFormPreserve`.
 
 **Regole operative drawer**:
 
@@ -2935,17 +3787,18 @@ Un drawer puo' comportarsi in due modi rispetto ai permessi livello oggetto:
 
 | Tipo | Dichiara scope proprio | Quando usare | Esempio |
 | --- | --- | --- | --- |
-| **Autonomo** | `useReadonlyMode('schema', 'model')` al setup | Il model e' catalogato in `config.area_model_overrides` (l'admin puo' bloccarlo singolarmente) | `ContiBancariDrawer` → `('anagrafiche', 'conto_bancario')` |
+| **Autonomo** | `useReadonlyMode(READONLY_DOMAINS.X, READONLY_MODELS.Y)` al setup | Il model e' catalogato in `config.area_model_overrides` (l'admin puo' bloccarlo singolarmente) | `ContiBancariDrawer` → `(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.CONTO_BANCARIO)` |
 | **Figlio puro** | solo `useInjectReadonly()` | Il model non e' nel catalogo, si eredita il readonly del parent | `IndirizzoDrawer`, `ContoBancarioForm` |
 
 **Drawer autonomo — template**:
 
 ```js
-// ContiBancariDrawer.vue
+// anagrafiche/components/ContiBancariDrawer.vue
 import { useReadonlyMode, useInjectBlocked } from '@/core/composables/useReadonlyMode'
+import { READONLY_DOMAINS, READONLY_MODELS } from '@/core/constants'
 
 // Dichiara scope proprio (l'OR interno rispetta anche eredita' dal parent)
-const { isReadonly } = useReadonlyMode('anagrafiche', 'conto_bancario')
+const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.CONTO_BANCARIO)
 const isBlocked = useInjectBlocked()
 ```
 
@@ -3111,14 +3964,13 @@ Come F12/F3 sui formati protect AS/400, i **pulsanti di chiusura** restano attiv
 ```
 
 `app-escape` la porta il pulsante Annulla/Chiudi di `FormFooter` e la si mette su
-ogni pannello-azione legittimo dentro un contenitore protect
-([[feedback_app_escape_pannelli_processo]]).
+ogni pannello-azione legittimo dentro un contenitore protect.
 
 ⚠️ **La X del drawer NON ha bisogno di una regola** (verificato 2026-09-18):
 `app-readonly` sta sul wrapper del **contenuto** (`app-drawer-content`), e la
 testa del `Drawer` — con la sua X — è **fuori** da quel wrapper. Fino a quel
 giorno qui stavano due selettori in più, `.p-drawer-close` e `.p-dialog-close`,
-che in PrimeVue 4 non esistono (le classi sono `p-drawer-close-button` /
+che in PrimeVue non esistono (le classi sono `p-drawer-close-button` /
 `p-dialog-close-button`): CSS morto che descriveva un meccanismo mai attivo. Il
 dialog una X non ce l'ha più (§`AppDialog`, «Chrome»).
 
@@ -3161,7 +4013,7 @@ import { READONLY_DOMAINS, READONLY_MODELS, TAB_ENTITIES } from '@/core/constant
 
 | Enum | Scopo | Esempi |
 | --- | --- | --- |
-| `READONLY_DOMAINS` | Area (schema DB) passata come **primo arg** a `useReadonlyMode` | `VENDITE`, `ANAGRAFICHE`, `CATALOGO`, `AMM_SOFTWARE`, `CONFIG`, `PRATICHE` |
+| `READONLY_DOMAINS` | Area (schema DB) passata come **primo arg** a `useReadonlyMode` | `AMM_SOFTWARE`, `ANAGRAFICHE`, `CATALOGO`, `CONFIG`, `DOCUMENTI`, `MAGAZZINO`, `PAGAMENTI`, `PRATICHE`, `STRUMENTI`, `VENDITE` (elenco completo al 2026-09-26; `PAGAMENTI` e' entrato quel giorno, prima le view di pagamenti passavano la stringa) |
 | `READONLY_MODELS` | Model specifico (permessi v2) come **secondo arg** opzionale a `useReadonlyMode` | `CONTRATTO`, `CLIENTE`, `FORNITORE`, `ARTICOLO`, `UNITA_MISURA`, `CONTO_BANCARIO`, `SOGGETTO`, `PROMO_ARTICOLO` |
 | `TAB_ENTITIES` | Chiave cross-tab per `emitDataChanged` + `useTabFreshness` / `onDataChanged` | `CONTRATTO`, `PRATICA`, `ARTICOLO`, `FORNITORE`, `PREVENTIVO`, `PROMO_ARTICOLI`, ... |
 
@@ -3179,7 +4031,7 @@ emitDataChanged(TAB_ENTITIES.CONTRATTO, id)
 useTabFreshness(store, TAB_ENTITIES.CONTRATTO)
 ```
 
-Il primo (literal) **funziona** ma non è mai accettato in PR di nuovo codice: il pattern enum è la **fonte di verità** sparsa in ~125 call site.
+Il primo (literal) **funziona** ma non è mai accettato in PR di nuovo codice: il pattern enum è la **fonte di verità** per tutti i call site.
 
 ### Consumer cross-tab: due pattern
 
@@ -3219,6 +4071,29 @@ async function update(id, payload) {
 ```
 
 Entità **read-only** (es. log immutabili): non emettono mai, e nessun consumer deve ascoltarle.
+
+⭐ **Un verbo che fa nascere un'altra entità avvisa le DUE entità, dallo store del
+verbo.** Generare un DDT da un ordine scrive sull'ordine (residui, stato) *e* crea
+il DDT; lo smistamento di un preventivo scrive sul preventivo *e* crea l'ordine.
+L'azione dello store che chiama l'endpoint emette per entrambe:
+
+```js
+// store ordini
+async function generaDdt(ordineId, righe = null) {
+  const res = await generaDdtFromOrdine(ordineId, righe)
+  emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
+  if (res.data.data?.ddt_id) emitDataChanged(TAB_ENTITIES.DDT, res.data.data.ddt_id)
+  return res.data.data
+}
+```
+
+⛔ Mai l'emissione nella dialog o nel drawer che ha lanciato il verbo: un'altra
+superficie che chiama lo stesso endpoint (un flusso di pratica, un'azione di
+massa) non avviserebbe nessuno, e la lista dell'entità nata resterebbe ferma
+senza errori. Fino al 2026-09-26 facevano così `OrdineEvasioneDialog` e
+`PreventiviDrawer` (smistamento); `generaRiconsegna` dello store resi era già
+nella forma giusta. Il `changed` del drawer resta: è il contratto verso chi lo
+ha aperto, non l'avviso alle liste.
 
 ### Factory `createCrudStore`
 
@@ -3310,7 +4185,7 @@ export const useMyStore = defineStore('my-store', () => {
 | Quando serve `clearUserState()` esplicito | Quando basta lo snapshot |
 | --- | --- |
 | Lo state contiene Map / Set / Date / function (non JSON-serializable) | State con primitives, oggetti/array piani |
-| Lo store legge da localStorage all'init (snapshot fotografa già i dati utente) | State puro in-memory |
+| Lo store legge da localStorage all'init (snapshot fotografa già i dati utente); per `auth` vale per l'access in memoria di `core/sessione`, che lo snapshot non azzera | State puro in-memory |
 | Servono side-effect aggiuntivi (chiudere BroadcastChannel, abortire fetch in volo) | Nessun side-effect |
 
 ### Pattern composable user-scoped (cache module-level)
@@ -3379,7 +4254,7 @@ Internamente delega a `useParametersStore`: cache, single-flight, invalidation, 
 
 #### Convenzione codice_interno per parametri FK-surrogata
 
-I parametri che referenziano tabelle di catalogo dotate di `codice_interno` (UNIQUE + immutabile via `script.trgfn_lock_columns`) stoccano il `codice_interno`, non l'id. La risoluzione codice→id è applicativa e va fatta lato FE incrociando il valore con la lookup della tabella target. Esempio: `DEFAULT_UTILITY` (codice_interno di `config.utilities`) risolto da [`useUtilityDefaultId`](../../../frontend/src/core/composables/useUtilityDefaultId.js).
+I parametri che referenziano tabelle di catalogo dotate di `codice_interno` (UNIQUE + immutabile via `script.trgfn_lock_columns`) stoccano il `codice_interno`, non l'id. La risoluzione codice→id è applicativa e va fatta lato FE incrociando il valore con la lookup della tabella target. Esempio: `DEFAULT_UTILITY` (codice_interno di `config.utilities`) risolto da [`useUtilityDefaultId`](../../../../frontend/src/core/composables/useUtilityDefaultId.js).
 
 Vedi anche `linee-guida-sql §6b` per il principio generale e il framework DB `config.parameter_fk_surrogate`.
 
@@ -3441,25 +4316,83 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 
 ---
 
+## Test — le tre altezze, e come si sceglie
+
+> ⭐ **Dal 2026-09-23 si montano i componenti** (`@vue/test-utils` + `jsdom`,
+> ok di Tid). Fino a quel giorno il frontend provava solo funzioni pure: quel
+> confine ha presentato il conto tre volte in una settimana — rate, filtri di
+> lista, barra del drawer di magazzino — e i filtri ne hanno pagati **due
+> difetti in un giorno**, entrambi invisibili a qualunque funzione pura.
+
+| Altezza | Ambiente | Vede | Costo |
+| --- | --- | --- | --- |
+| **funzione pura** (composable, utility) | node — il **default** | logica, calcoli, contratti di dato | il più basso: si scrive sempre per primo |
+| **componente montato** (`// @vitest-environment jsdom`) | jsdom | che cosa **esiste** nel DOM: quali pulsanti, acceso/spento, dove sta un attributo | medio: vuole l'impalcatura, e parte più lento |
+| **a video** | un browser vero, cioè una persona | come è **disegnato**: media query, ingombri, il telefono | il più alto, e non si automatizza oggi |
+
+**La regola di scelta**: si scende di un'altezza solo quando quella sopra non
+può vedere il difetto. ⛔ Un componente montato per provare un `if` che sta in
+un composable è un test lento che prova la cosa sbagliata.
+
+### Come si monta
+
+```js
+// @vitest-environment jsdom        ← in cima al file, prima di tutto
+import { monta } from '../../../test/montaggio'
+
+const w = monta(Componente, { prop: 'x' }, { provide: { [CHIAVE]: ref(true) } })
+expect(w.findAll('button').map(b => b.text())).toContain('Conferma')
+```
+
+* **`frontend/test/montaggio.js`** è l'impalcatura: installa i plugin che
+  `main.js` installa sull'app vera (Pinia, PrimeVue + i suoi servizi, i18n,
+  la direttiva tooltip) e colma le lacune di jsdom (`matchMedia`). Vive
+  **fuori da `src/`**: non è codice applicativo e non deve finire in un bundle.
+* ⛔ **Il DOM non si accende globalmente**: chi ne ha bisogno lo dichiara in
+  testa al proprio file. Accenderlo per tutti rallenterebbe i test puri — che
+  sono la maggioranza — e nasconderebbe **quali** file toccano il DOM.
+* ⭐ **Si monta il componente vero, si fingono solo i suoi contorni** (un'API,
+  la config che arriva dal server). Un test che stubba ciò che deve provare
+  prova lo stub.
+* **`t` rende la chiave, non la frase**: le asserzioni parlano di *chiavi*
+  i18n. Le frasi vivono nei `locales`, si riscrivono quando cambia il tono, e
+  un test che le pinna diventa rosso per una virgola.
+* ⚠️ **Le media query non si provano**: jsdom non calcola il CSS. La variante
+  compatta sotto i 1024px resta materia di collaudo a video, e va detto invece
+  che sottinteso.
+
+### ⛔ Un test verde al primo colpo si prova per mutazione
+
+Si rompe di proposito il codice sotto esame e si guarda se il test **diventa
+rosso**. Un test che resta verde su un codice rotto non presidia niente.
+
+🔴 **Non è teoria: è già servito due volte lo stesso giorno.** Sul mapper delle
+azioni, quattro mutazioni su cinque venivano viste e la quinta no — il ramo
+«motivo senza `reason_key`» non era coperto, e un dominio che perdesse la
+chiave avrebbe mostrato un **tooltip vuoto** su un pulsante spento, cioè il
+caso peggiore. Il test è nato da lì.
+
 ## Regole per il developer
 
-1. Ogni componente e' autonomo — logica nei composables di `core/`
-2. Chiamate API passano da `useApiHandler` — mai `api.get/post` nei componenti
+1. Ogni componente e' autonomo — logica nei composables (di `core/` se generici, del dominio se parlano di un'entita')
+2. Un componente non parla HTTP: l'URL di un endpoint vive in un modulo `api/` (del dominio o `core/api/`) o dietro uno store, e il componente chiama quella funzione dentro `execute` di `useApiHandler`. Mai `import api` in un `.vue` (presidio: `npm run guards` → `check-api-componenti.mjs`). ⚠️ Le pagine pubbliche della famiglia login (reset e cambio password) mostrano l'errore **nella card** e non in un toast: lì il `try/catch` resta, ma la chiamata passa comunque dal modulo `core/api/password.js`
 3. Toast via `useNotify()` — mai `useToast()` direttamente
 4. Dialog conferma via `useConfirmAction()` — mai `useConfirm()` direttamente; **sempre con `header`** (il nome dell'azione)
 5. Drawer usano PrimeVue `Drawer` + `FormFooter` — mai pulsanti inline
 6. Testi visibili via `$t()` — mai stringhe hardcoded
+6-bis. Un test si scrive all'**altezza più bassa** che vede il difetto (§Test), e se passa al primo colpo si prova **per mutazione**
 7. Nessun `console.log` in produzione
-8. Componenti di dominio non importano da altri domini — solo da `core/`
+8. Un dominio importa un altro dominio solo nel verso delle FK; il verso opposto passa da un punto di estensione, e `core/` non importa mai un dominio (§«Confini fra domini»; presidio `check-confini-domini.mjs`)
 9. Larghezze drawer da `constants.js` — mai hardcoded
 10. Navigazione da `navigation.js` — mai duplicata
 11. Paginazione/sort/search da `useSearchTable` — mai implementata manualmente
-12. Inter-tab freshness da `useTabFreshness` — mai `useTabEvents` direttamente
+12. Inter-tab freshness di una lista da `useTabFreshness` — mai un `onDataChanged` scritto a mano accanto a uno store-lista. `useTabEvents` diretto solo per **emettere** (nello store, §«Producer cross-tab») o per il **Pattern B** (view senza store-lista standard, §«Consumer cross-tab»)
 13. Stato drawer da `useDrawerState` — mai `ref(false)` + `ref('create')` separati
 14. CSS layout da `main.css` — mai `<style scoped>` per layout form/pagina
 15. Sola lettura da classe `.app-readonly` sul container — mai componenti duplicati
 16. Azioni processo via `action` su `PageActionsBar`/`FormFooter` — mai `v-if` manuali per permessi
 17. `ConfirmDialog` solo globale in `App.vue` — mai dentro Drawer (interferenza overlay)
+18-bis. Un campo letto da un blob `capabilities.*` deve essere un campo che il database emette: il contratto si legge dalla doc auto-generata, non da un elenco ricopiato (presidio: `npm run guards` → `check-capability-contratto.mjs`). ⛔ Un refuso lì non rompe niente — lascia un pulsante spento che sembra una regola. ⛔ E il blob si legge **sotto `capabilities`** (via `useEntityCapabilities` o `capabilities.x`), mai `detail.can_x` / `detail.pdf`: la forma piatta è chiusa (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23) e lo stesso guard la conta
 18. Dialog modali solo `AppDialog`, con `header`, **senza X** e senza `:closable` sul tag — il chrome è `DIALOG_CHROME`, un cambio di layout è una riga lì (presidio: `npm run guards` → `check-dialog-chrome.mjs`)
 
 ---
@@ -3467,66 +4400,119 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 ## Catalogo componenti e composable riutilizzabili
 
 > Prima di creare un nuovo componente o composable, verificare se esiste gia' in questo catalogo.
-> I componenti in `core/` sono cross-dominio e non devono importare da domini specifici.
+> I componenti in `core/` sono generici e non importano mai un dominio (§«Confini fra domini», presidio `check-confini-domini.mjs`).
 
 ### Componenti UI (`core/components/`)
 
 #### Layout e navigazione
 
-| Componente | Scopo | Usato da |
+| Componente | Scopo | Esempio d'uso |
 | --- | --- | --- |
-| `AppLayout` | Layout principale: sidebar + topbar + content area | root |
+| `AppLayout` | Layout principale: sidebar + topbar + content area | router (layout radice) |
 | `AppTopbar` | Topbar: azienda, titolo area, ricerca, sessioni, data | AppLayout |
 | `AppSidebar` | Contenitore sidebar (logo + stato morfic) | AppLayout |
-| `AppToolbar` | Toolbar meta-driven con tab e azioni | View con tab |
 | `AppBreadcrumb` | Breadcrumb derivato da route meta | AppLayout |
 | `ContentTabs` | Barra tab multi-entita con KeepAlive | AppLayout |
 | `SidebarHome` | Sidebar stato HOME (lista domini L1) | AppSidebar |
 | `SidebarDomain` | Sidebar stato DOMINIO (voci L2 + preferiti) | AppSidebar |
-| `SidebarItem` | Voce sidebar riutilizzabile (icona + label) | SidebarHome, SidebarDomain |
-| `LogoBrand` | Logo ZeroERP riutilizzabile | AppSidebar, LoginView |
-| `StatusPage` | Template pagina stato (errore, placeholder) | ErrorView, PlaceholderView |
-| `SearchDrawer` | Ricerca universale soggetti per ruolo con row expansion | AppLayout (Ctrl+K) |
-| `SessioniAttivePanel` | Pannello sessioni attive in topbar | AppTopbar |
+| `SidebarItem` | Voce sidebar riutilizzabile (icona + label) | SidebarHome |
+| `LogoBrand` | Logo ZeroERP riutilizzabile | AppSidebar |
+| `StatusPage` | Template pagina stato (errore, placeholder) | ErrorView |
+| `SearchDrawer` | Ricerca universale soggetti per ruolo con row expansion | AppTopbar (Ctrl+K da AppLayout) |
+| `SessioniAttivePanel` | Pannello sessioni attive in topbar | HomeView |
 
 #### Infrastruttura drawer e liste
 
-| Componente | Scopo | Props chiave | Usato da |
+| Componente | Scopo | Props chiave | Esempio d'uso |
 | --- | --- | --- | --- |
-| `DrawerTitle` | Titolo standard drawer: azione sx + entita' centrata + badge readonly auto | `action`, `title`, `icon` | Tutti i drawer |
-| `FormFooter` | Footer drawer con Annulla/Salva, auto-hide Salva in readonly | `loading`, `disabled`, `action`, `closeOnly` | Tutti i drawer |
-| `PageActionsBar` | Barra azioni pagina/lista responsive. Gestisce azione primaria, utility inline desktop e kebab su touch/tablet/mobile | `actions`, `disabled`, `menuTooltip` | Tutte le SearchTable, liste config e sub-liste |
-| `NewButton` | Pulsante specializzato legacy/non-toolbar. Nelle liste usare `PageActionsBar` | `tooltip`, `action` | Casi puntuali fuori toolbar lista |
-| `ReloadButton` | Pulsante specializzato legacy/non-toolbar. Nelle liste usare `PageActionsBar` | — | Casi puntuali fuori toolbar lista |
-| `ReadonlyBadge` | Badge grigio "Sola lettura", auto-visibile se `isReadonly && !isBlocked`, responsive (icona-only su mobile) | — | Toolbar liste + `DrawerTitle` |
-| `AccessoBloccatoPanel` | Pannello sostitutivo "Accesso negato a questo elenco" per BLOCCATO oggetto | — | SearchTable con `v-if="isBlocked"` |
-| `RowActionsMenu` | Azioni di riga responsive: pulsanti inline su desktop, kebab `⋮` su tablet/touch. Se riceve `row` disabilita le azioni operative su record inattivi (`attivo=false` / `is_active=false`) salvo `allowWhenInactive` | `actions`, `row`, `tooltip`, `disabled`, `disableWhenInactive` | Tutte le SearchTable con azioni secondarie |
-| `PaginationInfo` | Info paginazione (es. "1-50 di 1234") | `pagination` | SearchTable |
-| `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | Ruoli in lista soggetti |
-| `AppDrawer` | Drawer generico con header + footer + slot body | `title`, `width` | Utility wrapper |
+| `DrawerTitle` | Titolo standard drawer: azione sx + entita' centrata + badge readonly auto | `action`, `title`, `icon` | OperatoreDrawer |
+| `FormFooter` | Footer drawer con Annulla/Salva, auto-hide Salva in readonly | `loading`, `disabled`, `action`, `closeOnly` | OperatoreDrawer |
+| `PageActionsBar` | Barra azioni pagina/lista responsive. Gestisce azione primaria, utility inline desktop e kebab su touch/tablet/mobile | `actions`, `disabled`, `menuTooltip` | FornitoriSearchTable |
+| `NewButton` | Pulsante specializzato legacy/non-toolbar. Nelle liste usare `PageActionsBar` | `tooltip`, `action` | TemplateVersioniSection |
+| `ReadonlyBadge` | Badge grigio "Sola lettura", auto-visibile se `isReadonly && !isBlocked`, responsive (icona-only su mobile) | — | FornitoriSearchTable |
+| `AccessoBloccatoPanel` | Pannello sostitutivo "Accesso negato a questo elenco" per BLOCCATO oggetto | — | FornitoriSearchTable |
+| `RowActionsMenu` | Azioni di riga responsive: pulsanti inline su desktop, kebab `⋮` su tablet/touch. Se riceve `row` disabilita le azioni operative su record inattivi (`attivo=false` / `is_active=false`) salvo `allowWhenInactive` | `actions`, `row`, `tooltip`, `disabled`, `disableWhenInactive` | FornitoriSearchTable |
+| `FiltriLista` | I FILTRI di una lista: in linea su desktop, in un drawer dal basso sotto i 1024px (o su un touch senza hover), con il segno di quanti ne sono attivi e «Pulisci filtri». Due slot: `#sempre` (la ricerca) e il default (gli altri filtri). ⚠️ I filtri dentro si legano con un **binder**, non con un `ref` a senso unico (§«Un filtro si lega con un binder») | `store` \| `segno`, `inert`, `titolo` | FornitoriSearchTable |
+| `FiltroPeriodo` | Il PERIODO come UN filtro: i due estremi `data_da`/`data_a` resi insieme, una cella sola nella griglia del drawer | `periodo` (da `bindPeriodo`), `placeholderDa/A` | AuditLogView |
+| `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | SoggettiSearchTable |
+| `AppDrawer` | Drawer generico con header + footer + slot body | `title`, `width` | CanaleIncassoDrawer |
 
 #### Building block form
 
-| Componente | Scopo | Props chiave | Usato da |
+| Componente | Scopo | Props chiave | Esempio d'uso |
 | --- | --- | --- | --- |
-| `SoggettoForm` | Form universale PF/PG/ENTE con genera CF e validazione | `form`, `tipiSoggetto`, `isPF`, `showPartitaIva` | SoggettoDrawer, UtenteDrawer |
+| `AuthUserForm` | Form credenziali operatore | `form`, `isEdit` | OperatoreDrawer |
+
+### Composable (`core/composables/`)
+
+#### Infrastruttura liste e drawer
+
+| Composable | Scopo | Esempio d'uso |
+| --- | --- | --- |
+| `useSearchTable` | Paginazione, sort, search debounce, applyFilters per DataTable lazy | useListaConfigurabilePage |
+| `useDrawerState` | Stato drawer: visible, mode, itemId, itemData, openCreate(), editRow(), close() | EmittentiFiscaliListView |
+| `useTabFreshness` | Refresh automatico lista su evento `dataChanged` | FornitoriSearchTable |
+| `useTabEvents` | Event bus inter-tab per invalidazione dati | store `contratti` (emit); RepartiProfiloView (listen, Pattern B) |
+| `useApiHandler` | Execute con loading, toast successo, gestione errori | DefinizioneEditorView |
+| `useNotify` | Toast PrimeVue centralizzato — MAI importare useToast direttamente | useApiHandler |
+| `useConfirmAction` | Dialogo conferma azione distruttiva | DefinizioneEditorView |
+| `useConfirmCloseTab` | Conferma chiusura tab con modifiche non salvate | ContentTabs |
+| `useKeyboardShortcuts` | Shortcut globali: Ctrl+K ricerca, Ctrl+W chiudi tab, Ctrl+Tab naviga | AppLayout |
+| `usePagination` | Paginazione server-side locale (fuori da `useSearchTable`) | SearchDrawer |
+| `useContrattoFiltriLista` | Il contratto che una lista offre ai suoi filtri: `chiaviFiltro`, `filtriDefault` (copia **profonda** e congelata), `filtriNeutri` e `azzeraFiltri`. Lo consuma `useListaStoreCore`, e lo adottano in tre righe gli store scritti a mano | useListaStoreCore |
+| `useContrattoFiltriLocali` | Lo stesso contratto per una superficie **senza store-lista**: si dichiara `{ chiave: { rif, default } }` e tornano `segno` + `azzeraFiltri()`. Il default si **dichiara** (non si fotografa dal `ref`) e può essere una **funzione** quando si ricalcola («oggi») | DashboardBacklogView |
+| `useStoreFilterBindings` | Il legame widget ↔ `store.filters`: `bindSelect`, `bindDate`, `bindPeriodo`, `bindToggle`, `bindLookup` | FornitoriSearchTable |
+
+#### Lookup e autocomplete
+
+| Composable | Scopo | Esempio d'uso |
+| --- | --- | --- |
+| `useLookup` | Caricamento lazy/eager di dati lookup con cache | OperatoriListView |
+| `useLookupCodici` | Lookup **generico** di un `rel` nella cache condivisa: chiave (`<rel>` / `<rel>::no-obsoleti`) e fetch composte in un posto — mai scritte a mano (2026-09-19) | LookupSelect |
+| `useLookupEtichettato` | Lookup del catalogo con l'**etichetta dichiarata dal DB** (`etichetta_key`, resa con `labelOrCode`): `etichetta(codice)` per le colonne + `opzioni` con la voce «tutti» — **non** un `LookupSelect`, che rende `descrizione` (2026-09-19, regola del 2) | GiornaleListView |
+| `useServerAutocomplete` | Autocomplete con ricerca server debounce 300ms | ComuneAutocomplete |
+
+#### Modalita sola lettura e azioni processo
+
+| Composable | Scopo | Esempio d'uso |
+| --- | --- | --- |
+| `useReadonlyMode` | Provider: derive isReadonly da permessi area + provide | CategorieClientiListView |
+| `useInjectReadonly` | Consumer: inject isReadonly dal provider padre | FormFooter |
+| `useActionPermission` | Verifica se un'azione processo e' abilitata (computed reattivo) | LottiListView |
+
+**Nota**: per i casi standard, usare `action` su `PageActionsBar`/`FormFooter` invece del composable diretto.
+
+#### Ricerca universale
+
+| Composable | Scopo | Esempio d'uso |
+| --- | --- | --- |
+| `useSearchDetail` | Fetch dettaglio soggetto per row expansion (livello 2) | SearchDetailTable |
+
+### Building block di anagrafiche (`anagrafiche/components/`, `anagrafiche/composables/`)
+
+Soggetto, indirizzi, contatti, conti bancari e geografia: fino al 2026-09-26 stavano in `core/`, che per usarli importava `anagrafiche` (frontend-standards §«Confini fra domini»). Gli altri domini li importano quando le loro tabelle puntano a quelle entita' (vendite, magazzino, pagamenti, pratiche, amministrazione).
+
+#### Form
+
+| Componente | Scopo | Props chiave | Esempio d'uso |
+| --- | --- | --- | --- |
+| `SoggettoForm` | Form universale PF/PG/ENTE con genera CF e validazione | `form`, `tipiSoggetto`, `isPF`, `showPartitaIva` | SoggettoDrawer |
 | `ContattoForm` | Form contatto (nominativo, email, tel, pec, tipo, UO) | `form`, `tipiContatto`, `unitaOrganizzative` | ContattiSoggettoDrawer |
-| `IndirizzoSoggettoForm` | Form indirizzo con barra multi-tipo, via_obj, check duplicato | composable props | IndirizziSoggettoDrawer |
+| `IndirizzoSoggettoForm` | Form indirizzo con barra multi-tipo, via_obj, check duplicato | composable props | SoggettoDrawer |
 | `DatiSocietariForm` | Form dati societari (FG, REA, capitale, FE) | `form`, `formeGiuridiche`, `provinceLookup` | SoggettoDrawer |
 | `ContoBancarioForm` | Form conto bancario: IBAN autocomplete, filiale, uso, date, flags | `form`, `usiDisponibili` | ContiBancariDrawer |
-| `AuthUserForm` | Form credenziali operatore | `form`, `isEdit` | UtenteDrawer |
 
-#### Autocomplete
+#### Autocomplete geografici
 
-| Componente | Scopo | Props chiave | Usato da |
+| Componente | Scopo | Props chiave | Esempio d'uso |
 | --- | --- | --- | --- |
-| `ComuneAutocomplete` | Autocomplete comune con ricerca server + initialItem | `modelValue`, `initialItem` | IndirizzoDrawer, IndirizzoSoggettoForm |
-| `StradarioAutocomplete` | Autocomplete stradario filtrato per comune | `modelValue`, `comuneId` | IndirizzoDrawer, IndirizzoSoggettoForm |
+| `ComuneAutocomplete` | Autocomplete comune con ricerca server + initialItem | `modelValue`, `initialItem` | IndirizzoDrawer |
+| `StradarioAutocomplete` | Autocomplete stradario filtrato per comune | `modelValue`, `comuneId` | IndirizzoDrawer |
 | `StradarioGeneraleAutocomplete` | Autocomplete vie su stradario_generale (tutta Italia) | `modelValue` | IndirizzoDrawer (via nuova) |
 
 #### Drawer dominio (gestione soggetto)
 
-| Componente | Scopo | Usato da |
+| Componente | Scopo | Esempio d'uso |
 | --- | --- | --- |
 | `IndirizziSoggettoDrawer` | Gestione indirizzi soggetto: multi-tipo, replace, auto-clone, addressNotFound | SoggettoDrawer |
 | `ContattiSoggettoDrawer` | Gestione contatti soggetto: lista, CRUD, validazione email/PEC | SoggettoDrawer |
@@ -3534,7 +4520,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 
 #### Drawer e SearchTable geografici
 
-| Componente | Scopo | Usato da |
+| Componente | Scopo | Esempio d'uso |
 | --- | --- | --- |
 | `ComuneDrawer` + `ComuniSearchTable` | CRUD comuni | IndirizziView |
 | `ProvinceDrawer` + `ProvinceSearchTable` | CRUD province | IndirizziView |
@@ -3542,84 +4528,42 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | `StatiDrawer` + `StatiSearchTable` | CRUD stati | IndirizziView |
 | `ToponomasticaDrawer` + `ToponomasticaSearchTable` | CRUD toponomastica | IndirizziView |
 | `CodiciPostaliDrawer` + `CodiciPostaliSearchTable` | CRUD codici postali | IndirizziView |
-| `ConfigTablePanel` + `GenericConfigDrawer` | CRUD generico 67 tabelle config | ConfigView |
-
-### Composable (`core/composables/`)
-
-#### Infrastruttura liste e drawer
-
-| Composable | Scopo | Usato da |
-| --- | --- | --- |
-| `useSearchTable` | Paginazione, sort, search debounce, applyFilters per DataTable lazy | Tutte le SearchTable |
-| `useDrawerState` | Stato drawer: visible, mode, itemId, itemData, openCreate(), editRow(), close() | Tutte le View con drawer |
-| `useTabFreshness` | Refresh automatico lista su evento `dataChanged` | Tutte le SearchTable |
-| `useTabEvents` | Event bus inter-tab per invalidazione dati | Store (emit), SearchTable (listen) |
-| `useTabLabel` | Risoluzione label tab da route meta | ContentTabs |
-| `useApiHandler` | Execute con loading, toast successo, gestione errori | Tutti i drawer |
-| `useNotify` | Toast PrimeVue centralizzato — MAI importare useToast direttamente | useApiHandler |
-| `useConfirmAction` | Dialogo conferma azione distruttiva | UtenteDrawer, delete |
-| `useConfirmCloseTab` | Conferma chiusura tab con modifiche non salvate | ContentTabs |
-| `useDirtyState` | Traccia modifiche non salvate (form dirty) | ContentTabs |
-| `useLoading` | Stato loading generico (ref + toggle) | Componenti vari |
-| `useKeyboardShortcuts` | Shortcut globali: Ctrl+K ricerca, Ctrl+W chiudi tab, Ctrl+Tab naviga | AppLayout |
-| `usePagination` | Paginazione server-side (usato internamente da useSearchTable) | useSearchTable |
-
-#### Lookup e autocomplete
-
-| Composable | Scopo | Usato da |
-| --- | --- | --- |
-| `useLookup` | Caricamento lazy/eager di dati lookup con cache | Form con select/dropdown |
-| `useServerAutocomplete` | Autocomplete con ricerca server debounce 300ms | ComuneAutocomplete, StradarioAutocomplete, StradarioGeneraleAutocomplete |
+| `ConfigTablePanel` + `GenericConfigDrawer` | CRUD generico dei vocabolari della lista a DB `config.tabelle_gestibili` (`pannello`; metadata-driven: etichette i18n, FK→lookup, date) | ConfigView |
 
 #### Building block dominio — soggetti e contatti
 
-| Composable | Scopo | Usato da |
+| Composable | Scopo | Esempio d'uso |
 | --- | --- | --- |
-| `useSoggettoForm` | Stato form soggetto PF/PG/ENTE, matrice indirizzi, validazione | SoggettoDrawer, UtenteDrawer |
+| `useSoggettoForm` | Stato form soggetto PF/PG/ENTE, matrice indirizzi, validazione | SoggettoDrawer |
 | `useContattoForm` | Stato form contatto con validazione email/PEC | ContattiSoggettoDrawer |
 | `useContoBancarioForm` | Stato form conto bancario: IBAN autocomplete, filiale, uso, payload create/update | ContiBancariDrawer |
 | `useDatiSocietariForm` | Stato form dati societari con policy forma giuridica | SoggettoDrawer |
-| `useAuthUser` | Stato form credenziali + permessi operatore | UtenteDrawer |
+| `useAuthUser` | Stato form credenziali + permessi operatore | OperatoreDrawer |
 
 #### Building block dominio — indirizzi (gerarchia)
 
-| Composable | Scopo | Usato da |
+| Composable | Scopo | Esempio d'uso |
 | --- | --- | --- |
-| `useIndirizzoBase` | Composable condiviso: comune, via (via_obj unificato), CAP auto-set, civico, check duplicato, addressNotFound | IndirizzoDrawer, useIndirizzoSoggettoForm |
-| `useIndirizzoSoggettoForm` | Estende useIndirizzoBase: multi-tipo, libera, auto-clone, toPayloadArray | IndirizziSoggettoDrawer |
+| `useIndirizzoBase` | Composable condiviso: comune, via (via_obj unificato), CAP auto-set, civico, check duplicato, addressNotFound | IndirizzoDrawer |
+| `useIndirizzoSoggettoForm` | Estende useIndirizzoBase: multi-tipo, libera, auto-clone, toPayloadArray | SoggettoDrawer |
 | `useIndirizzoMultiTipo` | Barra tag tipo indirizzo con snapshot/restore per cambio tipo | useIndirizzoSoggettoForm |
 | `useIndirizzoDuplicato` | Check duplicato indirizzo via API con exact_match + indirizzoWarnings | useIndirizzoBase |
 
-#### Modalita sola lettura e azioni processo
-
-| Composable | Scopo | Usato da |
-| --- | --- | --- |
-| `useReadonlyMode` | Provider: derive isReadonly da permessi area + provide | View (SoggettiView, IndirizziView, ConfigTablePanel) |
-| `useInjectReadonly` | Consumer: inject isReadonly dal provider padre | PageActionsBar, FormFooter, tutti i Drawer |
-| `useActionPermission` | Verifica se un'azione processo e' abilitata (computed reattivo) | Componenti dominio con logica condizionale avanzata |
-
-**Nota**: per i casi standard, usare `action` su `PageActionsBar`/`FormFooter` invece del composable diretto.
-
-#### Ricerca universale
-
-| Composable | Scopo | Usato da |
-| --- | --- | --- |
-| `useSearchDetail` | Fetch dettaglio soggetto per row expansion (livello 2) | SearchDrawer |
-
 ### Utility (`core/utils/`)
 
-| Utility | Scopo | Usato da |
+| Utility | Scopo | Esempio d'uso |
 | --- | --- | --- |
-| `date.js` → `toDateString(d)` | Converte Date/string in 'YYYY-MM-DD' (ora locale, no bug UTC) | SoggettoForm, SoggettoDrawer |
+| `date.js` → `toDateString(d)` | Converte Date/string in 'YYYY-MM-DD' (ora locale, no bug UTC) | TemplateVersioniSection |
+| `segnoFiltri.js` → `segnoFiltri(filtri, chiavi, defaults, neutri)` | Il segno dei filtri attivi in una funzione pura → `{stato, conteggio, modificato}`: niente / numero grigio (solo default) / numero blu. ⭐ `modificato` esce perché «niente restringe» e «c'è qualcosa da riportare al default» sono due domande diverse, e i valori neutri le hanno separate: la seconda è ciò che tiene vivo «Pulisci filtri» | `FiltriLista` |
+| `clonaFiltri.js` → `clonaValore` / `clonaFiltri` / `congelaProfondo` | Stacca un valore di filtro dal letterale che lo dichiara. ⛔ Lo spread e `Object.freeze` sono di **primo livello**: un default ad array resterebbe condiviso per riferimento, e il primo `push` del widget sposterebbe il metro insieme alla cosa misurata | `useContrattoFiltriLista` |
 
 ### Costanti (`core/constants.js`)
 
 | Costante | Scopo |
 | --- | --- |
-| `DRAWER_WIDTH` | Larghezze drawer: SIMPLE, STANDARD, COMPLEX, WIDE |
+| `DRAWER_WIDTH` | Larghezze drawer: SIMPLE, STANDARD, COMPLEX, WIDE, WIDE_PLUS, XLARGE (§«Larghezze standard») |
 | `DATE_FORMAT` | Formato data PrimeVue DatePicker (`dd/mm/yy`) |
-| `TOAST_DURATION` | Durata toast: SUCCESS, ERROR, SYSTEM_ERROR |
-| `PAGINATION` | Default righe e opzioni righe/pagina |
+| `TOAST_DURATION` | Durata toast: SUCCESS, INFO, WARN, ERROR, ERROR_CON_SOLUZIONE, SYSTEM_ERROR, AZIONI (§«Notifiche») |
 | `TABS` | Max tab aperti |
 | `BREAKPOINTS` | Breakpoint responsive (MOBILE, TABLET) |
 | `SHORTCUTS` | Shortcut tastiera (Ctrl+K, Ctrl+Tab, ecc.) |
@@ -3631,7 +4575,12 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | `.app-page` | Layout pagina full-height |
 | `.app-tab-content` | Contenuto tab full-height |
 | `.app-page-toolbar` | Toolbar con filtri + bottone nuovo |
-| `.app-page-filters` | Container filtri nella toolbar |
+| `.app-page-filters` | Container filtri nella toolbar — lo rende `FiltriLista`, non si scrive a mano |
+| `.app-page-toolbar-start` | Zona sinistra della toolbar che filtri NON porta (titolo, pulsante «torna»). ⛔ Cancello a zero: un filtro qui dentro è un difetto |
+| `.app-filter-w-sm\|md\|lg` | Le tre taglie di un filtro in linea (10 / 13 / 16rem) — al posto della larghezza nel tag |
+| `.app-filtro-largo` | Leva per il filtro che a mezza riga non si legge: riga intera dentro il drawer |
+| `.app-filtro-periodo` | I due estremi del periodo affiancati (`FiltroPeriodo`) |
+| `.app-filtro-toggle` | Interruttore di filtro in linea (`FiltroToggle`) |
 | `.app-datatable` | Stile DataTable (stripe, padding, paginator compatto) |
 | `.app-drawer-content` | Layout contenuto drawer (flex column, gap) |
 | `.app-drawer-section` | Separatore sezione nel drawer (h4 + border) |
@@ -3649,16 +4598,16 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 
 ### Backend — Utility riutilizzabili
 
-| Modulo | Scopo | Usato da |
+| Modulo | Scopo | Esempio d'uso |
 | --- | --- | --- |
 | `anagrafiche/services/_validators.py` | `require_str`, `optional_str`, `create_with_dedup`, `update_with_dedup` | Tutti i service anagrafiche |
 | `anagrafiche/services/cf_validator_it.py` | Validazione congruenza CF + generazione CF (con omocodia) | SoggettiService |
-| `core/utils/date.js` | `toDateString()` — conversione date frontend→backend | SoggettoForm, SoggettoDrawer |
+| `core/utils/date.js` | `toDateString()` — conversione date frontend→backend | TemplateVersioniSection |
 | `core/api/endpoint_helpers.py` | `handle_post_json` — wrapper POST con parsing + error handling | Tutte le view |
 | `core/api/payload_validators.py` | `optional_int`, `optional_bool`, `paginated_envelope`, `parse_list_params` | Tutte le view |
 | `core/services/error_manager.py` | `ErrorManager.require`, `ServiceError` | Tutti i service |
 
 ---
 
-*ZeroERP Frontend Standards — rev. 9 (25 marzo 2026)*
+*ZeroERP Frontend Standards — ultimo aggiornamento 26 settembre 2026*
 *Sviluppo Concentrico — anello esterno, radici nell'infrastruttura*

@@ -46,33 +46,37 @@ class SearchRepository:
         # (brief-db-perimetro-emittente-liste-e-gerarchia-ba §11.6, BE-1)
         pg_emittente_ids = emittente_ids
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT row_to_json(r) AS row_data
-                  FROM script.fn_search_soggetti_universale(
-                           p_search_term   := %s,
-                           p_tipo_ruolo_id := %s,
-                           p_emittente_ids := %s,
-                           p_limit         := %s,
-                           p_offset        := %s,
-                           p_order_by      := %s,
-                           p_order_dir     := %s
-                       ) r
-                """,
-                [
-                    search_term,
-                    tipo_ruolo_id,
-                    pg_emittente_ids,
-                    limit,
-                    offset,
-                    order_by,
-                    order_dir,
-                ],
-            )
-            rows = cursor.fetchall()
+        def _pagina(lim: int, off: int) -> list[tuple[Any, ...]]:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT row_to_json(r) AS row_data
+                      FROM script.fn_search_soggetti_universale(
+                               p_search_term   := %s,
+                               p_tipo_ruolo_id := %s,
+                               p_emittente_ids := %s,
+                               p_limit         := %s,
+                               p_offset        := %s,
+                               p_order_by      := %s,
+                               p_order_dir     := %s
+                           ) r
+                    """,
+                    [search_term, tipo_ruolo_id, pg_emittente_ids,
+                     lim, off, order_by, order_dir],
+                )
+                return cursor.fetchall()
 
+        rows = _pagina(limit, offset)
         if not rows:
+            # ⚠️ Pagina oltre l'ultima: il totale lo porta ogni riga
+            #    (`COUNT(*) OVER()` nella funzione), e qui non ce n'e' nessuna.
+            #    Si rilegge la PRIMA riga per il totale vero (stessa regola di
+            #    `fetch_paged_with_total`, che qui non si puo' usare: la
+            #    paginazione la fa la funzione a DB).
+            if offset > 0:
+                prima = _pagina(1, 0)
+                if prima:
+                    return [], int(jsonb_out(prima[0][0]).get("total_count") or 0)
             return [], 0
 
         results: list[dict[str, Any]] = []

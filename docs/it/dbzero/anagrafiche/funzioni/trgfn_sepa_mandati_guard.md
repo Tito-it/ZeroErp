@@ -46,6 +46,7 @@ BEGIN
                         'trgfn_sepa_mandati_guard',
                         'E_DATA_ERRATA',
                         jsonb_build_object(
+                          'campo', 'data_attivazione',
                           'tabella','pagamenti.sepa_mandati',
                           'stato', NEW.stato,
                           'data_attivazione', NEW.data_attivazione

@@ -10,6 +10,7 @@ import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { cloneVersione } from '../api/listini'
 import { getVersioneCloneDefaults } from '../api/formDefaults'
 import { toDateString, displayDate, addDaysToToday } from '../../core/utils/date'
@@ -40,6 +41,10 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'cloned'])
 
 const form = ref({})
+// Modifiche non salvate: fotografia dopo i default BE, chiudere con
+// modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
 
 function emptyForm() {
   // Form iniziale prima della risposta BE. Sovrascritto da loadDefaults sotto.
@@ -71,6 +76,7 @@ watch(() => props.visible, async (v) => {
   if (!v) return
   form.value = emptyForm()
   await loadDefaults()
+  fissa()
 })
 
 const canSave = computed(() =>
@@ -110,15 +116,16 @@ async function handleSave() {
 function close() {
   emit('update:visible', false)
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.STANDARD }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="t('vendite.listini.clona')" :title="t('vendite.listini.clona_versione')" :icon="MANAGE_ICONS.CLONE" />
+      <DrawerTitle :modificato="modificato" :action="t('vendite.listini.clona')" :title="t('vendite.listini.clona_versione')" :icon="MANAGE_ICONS.CLONE" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -156,7 +163,7 @@ function close() {
         {{ t('vendite.listini.warning_retroattivo') }}
       </Message>
 
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 </template>

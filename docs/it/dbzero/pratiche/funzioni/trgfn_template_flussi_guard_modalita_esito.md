@@ -28,6 +28,7 @@ BEGIN
       'pratiche.trgfn_template_flussi_guard_modalita_esito',
       'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO',
       jsonb_build_object(
+        'campo', 'esito_default',
         'template_flusso_id', NEW.id,
         'codice',             NEW.codice,
         'modalita_esito',     NEW.modalita_esito
@@ -46,6 +47,7 @@ BEGIN
       'pratiche.trgfn_template_flussi_guard_modalita_esito',
       'E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA',
       jsonb_build_object(
+        'campo', 'direzione',
         'template_flusso_id', NEW.id,
         'codice',             NEW.codice,
         'direzione',          NEW.direzione
@@ -64,6 +66,7 @@ BEGIN
       'pratiche.trgfn_template_flussi_guard_modalita_esito',
       'E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO',
       jsonb_build_object(
+        'campo', 'esito_default',
         'template_flusso_id', NEW.id,
         'codice',             NEW.codice,
         'esito_default',      NEW.esito_default
@@ -90,6 +93,7 @@ BEGIN
       'pratiche.trgfn_template_flussi_guard_modalita_esito',
       'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO',
       jsonb_build_object(
+        'campo', 'esito_default',
         'template_flusso_id', NEW.id,
         'codice',             NEW.codice,
         'modalita_esito',     NEW.modalita_esito,

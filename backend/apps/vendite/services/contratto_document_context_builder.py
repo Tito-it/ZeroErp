@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.documenti.services.context_builders._number_formatting import (
     formatta_campi,
@@ -46,6 +46,8 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti CONTRATTO."""
 
     CODE = "CONTRATTO"
+    # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
+    CONTEXT_VERSION = 2
 
     # Tipi indirizzo ammessi nell'ambito CONTRATTI
     # (`config.tipi_indirizzi_allowed`). Dichiarati qui e non letti a runtime:
@@ -76,14 +78,11 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
     ) -> dict[str, Any]:
         self._v.guard_positive_int(sorgente_id, field="sorgente_id")
 
-        testata = self._repo.get_contratto(sorgente_id)
-        ErrorManager.require(
-            testata is not None,
-            code=E_NOT_FOUND,
-            message="Contratto non trovato per generazione documento.",
-            detail=f"contratto_id={sorgente_id}",
+        testata = testata_o_not_found(
+            self._repo.get_contratto, sorgente_id,
+            code=E_NOT_FOUND, message="Contratto non trovato per generazione documento.",
+            id_name="contratto_id", function_name="ContrattoDocumentContextBuilder.build",
         )
-        assert testata is not None
 
         righe_contratto = self._repo.list_righe(sorgente_id)
         utility = self._repo.get_utility(sorgente_id)
@@ -116,7 +115,7 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
                 "locale": locale,
                 "auth_user_id": auth_user_id,
                 # v2 (2026-08-05): aggiunto il blocco `indirizzi`.
-                "context_version": 2,
+                "context_version": self.CONTEXT_VERSION,
                 "context_code": self.CODE,
                 "righe_source": (
                     "PREVIEW_LISTINO"

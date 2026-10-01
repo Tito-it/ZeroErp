@@ -22,30 +22,39 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
+    colonne_identita,
     row_to_dict,
     rows_to_list,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._righe_repo_mixin import RigheListaMixin
 
 
-# Mappa colonna -> tipo, usata per placeholder/cast jsonb e adattamento param.
-# Solo le colonne che richiedono trattamento speciale devono comparire qui
-# (il resto usa '%s' semplice e valore Python passato cosi' com'e').
-_COLUMN_TYPES: dict[str, str] = {"meta": "jsonb"}
-
-
-# Scopo: Restituisce placeholder e value adattati al tipo colonna.
-def _ph_and_val(col: str, value: Any) -> tuple[str, Any]:
-    col_type = _COLUMN_TYPES.get(col)
-    if col_type is None:
-        return "%s", value
-    return sql_placeholder(col_type), to_write_param(value, col_type)
+# Colonne jsonb delle tabelle scritte qui (testata, righe, utility): dichiarate
+# al BB `execute_dynamic_insert`/`execute_dynamic_update`, cosi' una STRINGA che
+# vi arrivasse e' letta come testo JSON (regola Tid 2026-09-26), non come uno
+# scalare stringa jsonb.
+# ⭐ 2026-09-26: qui viveva `_ph_and_val`, e cinque metodi ricomponevano a mano
+#    il loro INSERT/UPDATE (copia gemella di `offerte_repository`), ritirati a
+#    favore del BB core. Il loro `if col in data` SCARTAVA IN SILENZIO le chiavi
+#    fuori lista: ora e' `RuntimeError` nel BB, e il contratto dell'operatore lo
+#    fa rispettare il service (mapper espliciti + `validate_allowed_keys`).
+_JSONB_COLS: tuple[str, ...] = ("meta",)
+# ⚠️ Il padre (`contratto_id`) delle INSERT figlie arriva dal PATH e si mette
+#    per ULTIMO nel dict (`{**data, "contratto_id": ...}`): se `data` lo
+#    portasse, vince il path — mai una riga scritta sotto un altro padre. Che
+#    `data` non lo porti lo garantisce il service (`_FORBIDDEN_RIGA_CREATE`
+#    lo rifiuta, e i mapper non lo producono).
 
 
 # Scopo: Whitelist colonne ORDER BY per la lista contratti (SQL injection safe).
@@ -54,6 +63,16 @@ def _ph_and_val(col: str, value: Any) -> tuple[str, Any]:
 #        (`ui.lista_colonna` di 'vendite.contratti') che il FE invia come
 #        sortField della DataTable. Niente alias `ba_*` su cliente/id_fiscale
 #        (nomi canonici del soggetto, lezione DEF-8).
+# Colonne che la ricerca libera SA cercare nella lista `vendite.contratti`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+_RICERCA_CONTRATTI = RicercaFull(
+    "vendite.contratti",
+    (
+        "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+    ),
+)
+
 _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "numero": "v.numero",
     "data": "v.data",
@@ -333,7 +352,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         offset: int = 0,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -349,10 +368,9 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             #    DDT il 2026-09-02).
             default_desc=True,
         )
-        # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
+        # `max_limit`: lista cap `MAX_LIMIT` (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -399,10 +417,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             )
             primo_mese = f"{scadenza_mese}-01"
             params.extend([primo_mese, primo_mese])
-        if search:
-            conditions.append("(v.numero ILIKE %s OR v.ragione_sociale_completa ILIKE %s)")
-            like = f"%{search.strip()}%"
-            params.extend([like, like])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_CONTRATTI)
 
         # Scope emittente (defense-in-depth applicativa). La vista
         # `vw_contratti_lista` e' `security_invoker=on`: la RLS della tabella
@@ -456,7 +471,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
                 SELECT {_SELECT_COLS_CONTRATTO}
                   {_FROM_JOINS_CONTRATTO}
                  WHERE c.id = %s
-                """,  # noqa: S608
+                """,
                 [contratto_id],
             )
             return row_to_dict(cursor)
@@ -730,14 +745,15 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     #        lock_columns). stato_doc_contratto_id si aggiorna via
     #        update_stato() per leggibilita'.
     # Colonne scrivibili dalla PATCH di testata: ULTIMO dei tre anelli della
-    # catena `_UPDATE_KEYS_TESTATA` → `_build_update_data_testata` → qui. Se una
-    # colonna manca in uno qualsiasi dei tre, l'UPDATE non la scrive e nessuno
-    # se ne accorge — e' il difetto costato un giro su `fatturazione_immediata`
-    # (2026-07-27). Promossa da locale a costante di classe per renderla
-    # ISPEZIONABILE dal guardrail `ContrattiCatenaUpdateTests`, che confronta i
-    # tre anelli fra loro: senza un punto di accesso, il terzo anello non era
-    # verificabile da un test.
-    _UPDATE_WRITE_COLS: tuple[str, ...] = (
+    # catena `UPDATE_KEYS_TESTATA` → `_build_update_data_testata` → qui. Fino
+    # al 2026-09-26 una colonna mancante in uno dei tre non veniva scritta e
+    # nessuno se ne accorgeva — e' il difetto costato un giro su
+    # `fatturazione_immediata` (2026-07-27); da quel giorno il BB rifiuta
+    # (`RuntimeError`) la chiave che il mapper produce e qui manca. Promossa da
+    # locale a costante di classe per renderla ISPEZIONABILE dal guardrail
+    # `ContrattiCatenaUpdateTests`, che confronta i tre anelli fra loro: senza
+    # un punto di accesso, il terzo anello non era verificabile da un test.
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
         "ambito",
         "valido_dal",
         "valido_al",
@@ -758,27 +774,13 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "codice_cup",
         "codice_commessa",
         "meta",
-    )
+    })
 
     def update_contratto(self, contratto_id: int, data: dict[str, Any]) -> bool:
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in self._UPDATE_WRITE_COLS:
-            if col in data:
-                ph, val = _ph_and_val(col, data[col])
-                set_parts.append(f"{col} = {ph}")
-                vals.append(val)
-        if not set_parts:
-            return False
-        vals.append(contratto_id)
-        sql = f"""
-            UPDATE vendite.contratti
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "vendite.contratti", contratto_id, data,
+            allowed=self.TESTATA_UPDATE_COLUMNS, jsonb=_JSONB_COLS,
+        )
 
     # Scopo: Cambia lo stato documentale del contratto. Il fail-fast e' a DB,
     #        su due trigger di `vendite.contratti`:
@@ -851,7 +853,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
                   {_FROM_JOINS_RIGA}
                  WHERE r.contratto_id = %s
                  ORDER BY r.ordine ASC, r.id ASC
-                """,  # noqa: S608
+                """,
                 [contratto_id],
             )
             return rows_to_list(cursor)
@@ -886,10 +888,36 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
                 SELECT {_SELECT_COLS_RIGA}
                   {_FROM_JOINS_RIGA}
                  WHERE r.id = %s
-                """,  # noqa: S608
+                """,
                 [riga_id],
             )
             return row_to_dict(cursor)
+
+    # Colonne scrivibili riga in create (`contratto_id` escluso: arriva
+    # dall'URL e lo aggiunge `create_riga`).
+    RIGA_CREATE_COLUMNS: frozenset[str] = frozenset({
+        "articolo_id",
+        "tipo_eccezione",
+        "tipo_erogazione",
+        "fonte_quantita_attesa",
+        "periodicita",
+        "generazione_canone",
+        "competenza_canone",
+        "prezzo_unitario",
+        "quantita",
+        "qta_operativa",
+        "uom_operativa_id",
+        "factor_to_base",
+        "ordine",
+        "attivo",
+        "meta",
+        # Workflow L3 approvazione prezzo (simmetria preventivi_righe,
+        # migrations DB 20260518-01/02). Popolati solo dal flusso L3
+        # (gestisci_riga con richiesta_approvazione=True che viola L2):
+        # nei flussi normali restano NULL.
+        "stato_approvazione_prezzo",
+        "pratica_approvazione_prezzo_id",
+    })
 
     # Scopo: Inserisce una riga contratto come eccezione tipizzata
     #        (refactor modalita 2026-05-15). `tipo_eccezione` NOT NULL nello
@@ -898,90 +926,44 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     #        trgfn_contratti_righe_guard_aggiunta_fuori_listino blocca
     #        AGGIUNTA su articoli presenti nel listino di riferimento.
     def create_riga(self, contratto_id: int, data: dict[str, Any]) -> int:
-        write_cols = (
-            "articolo_id",
-            "tipo_eccezione",
-            "tipo_erogazione",
-            "fonte_quantita_attesa",
-            "periodicita",
-            "generazione_canone",
-            "competenza_canone",
-            "prezzo_unitario",
-            "quantita",
-            "qta_operativa",
-            "uom_operativa_id",
-            "factor_to_base",
-            "ordine",
-            "attivo",
-            "meta",
-            # Workflow L3 approvazione prezzo (simmetria preventivi_righe,
-            # migrations DB 20260518-01/02). Popolati solo dal flusso L3
-            # (gestisci_riga con richiesta_approvazione=True che viola L2):
-            # nei flussi normali restano NULL.
-            "stato_approvazione_prezzo",
-            "pratica_approvazione_prezzo_id",
+        riga = execute_dynamic_insert(
+            "vendite.contratti_righe",
+            {**data, "contratto_id": contratto_id},
+            allowed={"contratto_id", *self.RIGA_CREATE_COLUMNS},
+            jsonb=_JSONB_COLS,
         )
-        cols = ["contratto_id"]
-        vals: list[Any] = [contratto_id]
-        placeholders: list[str] = ["%s"]
-        for col in write_cols:
-            if col in data:
-                ph, val = _ph_and_val(col, data[col])
-                cols.append(col)
-                placeholders.append(ph)
-                vals.append(val)
-        sql = f"""
-            INSERT INTO vendite.contratti_righe ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        return int(riga["id"])
+
+    # Colonne scrivibili riga in update: `articolo_id`/`tipo_eccezione`
+    # immutabili (cambio tipo = DELETE + INSERT).
+    RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "tipo_erogazione",
+        "fonte_quantita_attesa",
+        "periodicita",
+        "generazione_canone",
+        "competenza_canone",
+        "prezzo_unitario",
+        "quantita",
+        "qta_operativa",
+        "uom_operativa_id",
+        "factor_to_base",
+        "ordine",
+        "attivo",
+        "meta",
+        # Workflow L3: la transizione PENDING -> APPROVED/REJECTED e
+        # l'aggancio della pratica passano da qui (allowlist trigger
+        # `trgfn_contratti_righe_guard_pending` ammette workflow + meta
+        # + audit, blocca ogni altra modifica struttura su righe PENDING).
+        "stato_approvazione_prezzo",
+        "pratica_approvazione_prezzo_id",
+    })
 
     # Scopo: Aggiorna una riga contratto sui soli campi forniti.
     def update_riga(self, riga_id: int, data: dict[str, Any]) -> bool:
-        write_cols = (
-            "tipo_erogazione",
-            "fonte_quantita_attesa",
-            "periodicita",
-            "generazione_canone",
-            "competenza_canone",
-            "prezzo_unitario",
-            "quantita",
-            "qta_operativa",
-            "uom_operativa_id",
-            "factor_to_base",
-            "ordine",
-            "attivo",
-            "meta",
-            # Workflow L3: la transizione PENDING -> APPROVED/REJECTED e
-            # l'aggancio della pratica passano da qui (allowlist trigger
-            # `trgfn_contratti_righe_guard_pending` ammette workflow + meta
-            # + audit, blocca ogni altra modifica struttura su righe PENDING).
-            "stato_approvazione_prezzo",
-            "pratica_approvazione_prezzo_id",
+        return execute_dynamic_update(
+            "vendite.contratti_righe", riga_id, data,
+            allowed=self.RIGA_UPDATE_COLUMNS, jsonb=_JSONB_COLS,
         )
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in write_cols:
-            if col in data:
-                ph, val = _ph_and_val(col, data[col])
-                set_parts.append(f"{col} = {ph}")
-                vals.append(val)
-        if not set_parts:
-            return False
-        vals.append(riga_id)
-        sql = f"""
-            UPDATE vendite.contratti_righe
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
 
     # Scopo: Cancella una riga contratto (hard delete). Il trigger
     #        prevent_deactivate_if_children blocca se ci sono note_contratto
@@ -1052,7 +1034,11 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             SELECT c.id          AS componente_id,
                    c.riga_contratto_id,
                    r.contratto_id,
-                   sd.codice_interno AS stato_codice_interno
+                   sd.codice_interno AS stato_codice_interno,
+                   -- L'etichetta del rifiuto di stato («Contratto 2026/00012»,
+                   -- o «Contratto #131» se NULL): senza, il guard delle righe
+                   -- in bozza ripiega sull'id anche su un contratto attivo.
+                   co.numero
               FROM vendite.contratti_righe_componenti c
               JOIN vendite.contratti_righe r ON r.id = c.riga_contratto_id
               JOIN vendite.contratti co      ON co.id = r.contratto_id
@@ -1188,72 +1174,50 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
                 SELECT {_SELECT_COLS_UTILITY}
                   {_FROM_JOINS_UTILITY}
                  WHERE cu.contratto_id = %s
-                """,  # noqa: S608
+                """,
                 [contratto_id],
             )
             return row_to_dict(cursor)
 
     # Scopo: Inserisce la riga utility (1:1). Trigger guard tipo/classe
     #        valida coerenza con ambito del contratto.
+    # Colonne scrivibili utility: in create anche `istanza_utility_id`/
+    # `utility_id` (derivati dalla testata dal service), immutabili in update.
+    UTILITY_CREATE_COLUMNS: frozenset[str] = frozenset({
+        "istanza_utility_id",
+        "utility_id",
+        "istanza_dati_precontrattuali_id",
+        "tipo_utenza_id",
+        "classe_utenza_id",
+        "param_1_num",
+        "param_2_txt",
+        "meta",
+    })
+
+    UTILITY_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "istanza_dati_precontrattuali_id",
+        "tipo_utenza_id",
+        "classe_utenza_id",
+        "param_1_num",
+        "param_2_txt",
+        "meta",
+    })
+
     def create_utility(self, contratto_id: int, data: dict[str, Any]) -> int:
-        write_cols = (
-            "istanza_utility_id",
-            "utility_id",
-            "istanza_dati_precontrattuali_id",
-            "tipo_utenza_id",
-            "classe_utenza_id",
-            "param_1_num",
-            "param_2_txt",
-            "meta",
+        riga = execute_dynamic_insert(
+            "vendite.contratti_utilities",
+            {**data, "contratto_id": contratto_id},
+            allowed={"contratto_id", *self.UTILITY_CREATE_COLUMNS},
+            jsonb=_JSONB_COLS,
         )
-        cols = ["contratto_id"]
-        vals: list[Any] = [contratto_id]
-        placeholders: list[str] = ["%s"]
-        for col in write_cols:
-            if col in data:
-                ph, val = _ph_and_val(col, data[col])
-                cols.append(col)
-                placeholders.append(ph)
-                vals.append(val)
-        sql = f"""
-            INSERT INTO vendite.contratti_utilities ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna la riga utility sul solo subset mutabile.
     def update_utility(self, utility_row_id: int, data: dict[str, Any]) -> bool:
-        write_cols = (
-            "istanza_dati_precontrattuali_id",
-            "tipo_utenza_id",
-            "classe_utenza_id",
-            "param_1_num",
-            "param_2_txt",
-            "meta",
+        return execute_dynamic_update(
+            "vendite.contratti_utilities", utility_row_id, data,
+            allowed=self.UTILITY_UPDATE_COLUMNS, jsonb=_JSONB_COLS,
         )
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in write_cols:
-            if col in data:
-                ph, val = _ph_and_val(col, data[col])
-                set_parts.append(f"{col} = {ph}")
-                vals.append(val)
-        if not set_parts:
-            return False
-        vals.append(utility_row_id)
-        sql = f"""
-            UPDATE vendite.contratti_utilities
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
 
     # =================================================================
     # Lookup tecnici usati dal service
@@ -1301,3 +1265,48 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             )
             row = cursor.fetchone()
             return None if row is None else str(row[0])
+
+
+# =================================================================
+# Righe del contratto come LISTA CONFIGURABILE (`vendite.contratto_righe`, 103)
+# =================================================================
+
+# Whitelist ORDER BY: i `campo_sorgente` `ordinabile = t` della lista 103, che
+# la funzione espone con lo stesso nome (identita').
+# ⚠️ `prezzo_forzato` e' `override_prezzo` della funzione: il prezzo scritto a
+#    mano sull'eccezione (D-8.4 del brief-db-liste-righe-documento).
+_ORDER_COLS_RIGHE_CONTRATTO: dict[str, str] = colonne_identita(
+    "articolo_codice", "articolo_descrizione", "qta_operativa", "prezzo_finale",
+    "override_prezzo", "uom_codice", "tipo_erogazione", "prezzo_listino", "origine",
+)
+# Le `ricercabile_full = t` del seed. `test_ricerca_full_seed` legge questa costante.
+_RICERCA_RIGHE_CONTRATTO = RicercaFull(
+    "vendite.contratto_righe", ("articolo_codice", "articolo_descrizione"),
+)
+
+
+class ContrattoRigheListaRepository(RigheListaMixin):
+    """Le righe OPERATIVE di un contratto come lista paginata (BB
+    `RigheListaMixin`), per le due forme — con listino (righe del listino con
+    l'overlay delle eccezioni, piu' le aggiunte) e senza (le sole aggiunte).
+
+    ⭐ La sorgente e' la FUNZIONE `vendite.fn_contratto_righe_preview`, non una
+    vista: la lista 103 ha `vista_sql` NULL. Porta la chiave di riga
+    (`riga_key`), i verbi ammessi (`azioni`) e il motivo che spegne «Escludi»
+    (`escludi_blocco_codice`): il backend li trasporta, non li deduce.
+
+    ⚠️ L'ordine di partenza e' il codice articolo: le righe del listino non hanno
+    un numero di riga (§8.13.5 del brief). La chiave `riga_key` fa da spareggio,
+    e distingue le righe dello stesso articolo in due unita' di misura.
+    ⚠️ Nessun filtro `attivo`: la funzione legge gia' le sole eccezioni attive.
+    ⚠️ La lettura completa del BB (`list_righe`) non ha consumatori: anteprima
+    prezzi, conteggio del dettaglio e contesto di stampa leggono
+    `ContrattiRepository.list_righe_preview`, nell'ordine della funzione.
+    """
+
+    _righe_funzione = "vendite.fn_contratto_righe_preview"
+    _righe_ordine_documento = "articolo_codice"
+    _righe_chiave = "riga_key"
+    _righe_solo_attive = False
+    _righe_ordinamento = _ORDER_COLS_RIGHE_CONTRATTO
+    _righe_ricerca = _RICERCA_RIGHE_CONTRATTO

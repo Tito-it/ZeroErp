@@ -17,7 +17,7 @@ Da qui in avanti la precondizione è **una sola** e la UI la legge invece di ris
 
 * `available_actions` — i verbi di **stato** sono letti in modo **data-driven** da
   `config.stati_doc_fiscale_transizioni`, dal `meta` (`action_key`, `label_key`,
-  `severity`, `icon`, `requires_confirm`, `outlined`, `manuale`):
+  `requires_confirm`, `outlined`, `manuale`):
 
   | Transizione | `action_key` |
   | --- | --- |
@@ -69,7 +69,9 @@ metà. Vedi `risposta-db-azioni-lista-lotto.md` §5.
 ### Output (jsonb)
 
 * `available_actions` — array di
-  `{ key, target_state, label_key, severity, icon, requires_confirm, outlined, enabled, reasons }`
+  `{ key, target_state, label_key, requires_confirm, outlined, enabled, reasons }`.
+  Icona e colore non arrivano dal DB: il frontend li sceglie dal `key` (l'icona dal
+  2026-09-27, il colore `severity` dal 2026-09-28).
 * `can_change_state` — bool (solo transizioni abilitate)
 * `stato_codice` — `config.stati_doc_fiscale.codice_interno` del lotto
 * `tipo_lotto` — `MASSIVO` | `GIORNALIERO`

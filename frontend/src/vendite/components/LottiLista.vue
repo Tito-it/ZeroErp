@@ -26,7 +26,7 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 //    `_ctx.MANAGE_ICONS` = undefined, e `undefined.ERRORE` sollevava nel render
 //    della PRIMA riga con `ha_errori_gravi` — lista bianca, senza un errore a
 //    video, e solo nelle schede che avevano un lotto in ERRORE (i «Recuperi»).
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { statoLottoSeverity } from '../../core/utils/severity'
 
 // Scopo: il rapporto `completati/presi` degli ESITI di un lotto, o `null`
@@ -56,7 +56,7 @@ defineProps({
   buildRowActions: { type: Function, required: true },
   azioniDisabled: { type: Boolean, default: false },
   emptyKey: { type: String, default: 'vendite.lotti.nessun_lotto' },
-  emptyIcon: { type: String, default: 'pi pi-server' },
+  emptyIcon: { type: String, default: MANAGE_ICONS.LOTTO },
   // ⭐ SELEZIONE (numerazione su selezione). Il chiamante la governa: qui il
   //    componente rende solo le caselle, perché la selezione VIVE ATTRAVERSO LE
   //    DUE SCHEDE — un lotto di competenza precedente, spuntato nei «recuperi»,
@@ -146,7 +146,7 @@ onMounted(() => emit('lista-pronta', listaRef.value))
         <strong>{{ data.codice }}</strong>
         <i
           v-if="inGiro(data.id)"
-          class="pi pi-spin pi-spinner app-spinner-in-corso"
+          class="app-spinner-in-corso" :class="STATUS_ICONS.CARICAMENTO"
           v-tooltip.right="t('vendite.lotti.lotto_in_giro_tooltip')"
           :aria-label="t('vendite.lotti.lotto_in_giro_tooltip')"
         />
@@ -195,7 +195,7 @@ onMounted(() => emit('lista-pronta', listaRef.value))
         <Tag :value="data.stato_lotto" :severity="statoLottoSeverity(data.stato_lotto)" />
         <i
           v-if="data.ha_errori_gravi"
-          :class="[MANAGE_ICONS.ERRORE, 'app-lotto-spia-errore']"
+          :class="[STATUS_ICONS.ERRORE, 'app-lotto-spia-errore']"
           v-tooltip.top="t('vendite.lotti.spia_errori_gravi')"
         />
       </span>
@@ -220,12 +220,11 @@ onMounted(() => emit('lista-pronta', listaRef.value))
          rilancia step, rendi definitive, ristampa, annulla, riporta in
          lavorazione. Le voci proposte dipendono dallo stato della riga; il
          verdetto vero (e il motivo di un rifiuto) arriva dal DB al click. -->
-    <template #actions="{ data, compact }">
+    <template #actions="{ data }">
       <RowActionsMenu
         :row="data"
         :actions="buildRowActions(data)"
         :disabled="azioniDisabled"
-        :force-compact="compact"
       />
     </template>
 

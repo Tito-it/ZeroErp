@@ -8,9 +8,23 @@ L'admin invia un invito email partendo dal cliente o fornitore
 anagrafico; l'utente clicca il link e attiva la propria veste — il flow
 distingue automaticamente:
 
-- **INVITO** (email nuova): l'utente sceglie la password al primo accesso
-- **CROSS** (email gia' nota come operatore o altra veste): one-click,
-  password preesistente invariata
+- **INVITO** (l'utente non ha ancora una password vera: email nuova, o
+  invitato che non ha mai attivato): l'utente sceglie la password
+- **CROSS** (l'utente ha gia' una password vera: operatore o altra veste
+  attivata): one-click, password preesistente invariata
+
+Il discriminante e' la **credenziale**, non «l'utente esiste gia'»
+(`AuthRepository.auth_user_ha_password`): un `auth_user` creato da un invito
+nasce col segnaposto `!`, password non utilizzabile, e lo resta finche' l'invito
+non si attiva. ⛔ In **entrambi** i flussi l'identita' nasce `attivo=false` e si
+attiva solo al consumo del token. ⭐ La credenziale decide anche **all'attivazione**
+(`richiede_password`): se nel frattempo ha una password vera, un token INVITO vale
+come un clic e quella password non si sovrascrive.
+
+⭐ **Una strada per tutte le vesti** (2026-09-25, L-3): emissione, reinvio, email e
+attivazione sono il building block `apps/core/services/invito_veste.py`, lo stesso
+dell'operatore ([api_invito_operatore.md](api_invito_operatore.md)); fra le vesti
+cambia solo la **porta** (`PORTA_PORTALE`, `PORTA_SHOP`).
 
 Esiste anche un endpoint **autenticato cross-veste** che consente a un
 `CLIENTE_PORTALE` gia' loggato di aggiungersi la veste `SHOP_CUSTOMER`
@@ -20,11 +34,14 @@ sullo stesso `auth_user`, senza email/token.
 
 | Building block | Note |
 | --- | --- |
-| `InvitoPortaleService` (gestisce tutte e 3 le vesti) | Mappa `_VESTE_CONFIG` per token tipi + template + link path + scadenza |
+| `InvitoPortaleService` (gestisce tutte e 3 le vesti) | Parte della veste: entità → `soggetto_ruolo_id`, credenziale e veste spenta |
+| `InvitoVeste` · `attiva_veste` · `PORTA_PORTALE` / `PORTA_SHOP` | Building block unico (`apps/core/services/invito_veste.py`): token, reinvio, email, attivazione; la porta porta tipi token, template, link, codici |
 | `TokenService` | Token monouso tipo `INVITO_PORTALE` / `ATTIVAZIONE_PORTALE_CROSS` / `INVITO_SHOP` / `ATTIVAZIONE_SHOP_CROSS`, scadenza 72h |
 | `EmailDispatchService` | Template `INVITO_PORTALE` (clienti/fornitori) e `INVITO_SHOP` (shop customer) |
 | `apply_new_password` | Set password + reset flag `deve_cambiare_password` in transazione |
-| `PortaleRepository.riattiva_identita` | UPDATE `attivo=true` su `identita_digitali` |
+| `AuthRepository.auth_user_ha_password` | Discriminante dei due flussi: l'`auth_user` ha una password utilizzabile? |
+| `AuthRepository.attiva_identita` | UPDATE `attivo=true` su `identita_digitali` al consumo del token (entrambi i flussi), col guard su credenziale e porta |
+| `PortaleRepository.find_auth_user_by_email` | `script.fn_get_auth_user_id_for_email`: la credenziale dell'email senza maiuscole (P-2); email doppie → `E_CREDENZIALE_EMAIL_AMBIGUA` |
 | `PermissionResolver.get_ruolo_applicativo` | Filtro veste corrente per `ProfileActivateShopView` |
 | GUC `app.soggetto_ruolo_id` | Letto da `ProfileActivateShopView` per legare la nuova identita allo stesso `soggetto_ruolo` del portale corrente |
 
@@ -35,7 +52,9 @@ sullo stesso `auth_user`, senza email/token.
 ### POST `/api/v1/anagrafiche/clienti/{cliente_id}/invita-portale/`
 
 Invita il cliente come `CLIENTE_PORTALE`. Auth: JWT operatore con livello
-area `anagrafiche` ≥ `LETTURA`.
+area `anagrafiche` = `TUTTO` (POST senza `post_permission`: vale
+`METHOD_REQUIRES['POST'] = 'add'`). Lo stesso vale per tutti gli inviti e le
+disattivazioni qui sotto.
 
 **Body**:
 
@@ -46,8 +65,20 @@ area `anagrafiche` ≥ `LETTURA`.
 }
 ```
 
-`reinvio=true`: invalida i token portale precedenti per quell'auth_user
-e genera il nuovo invito.
+Ogni invito, con `reinvio` `true` o `false`, invalida i token pendenti **della
+veste** (i due tipi della porta, con quell'`identita_id` nel meta) nella stessa
+transazione del nuovo: vale un link solo. ⭐ Per veste e non per credenziale:
+cliente e fornitore portale della stessa persona condividono i tipi, e
+l'invito dell'uno non spegne quello dell'altro (fino al 2026-09-25 lo spegneva:
+la creazione del token invalidava per tipo e credenziale).
+
+Il reinvio a chi non ha mai attivato resta nel flow **INVITO** (token con scelta
+della password): l'`auth_user` esiste, ma la sua password non e' ancora
+utilizzabile. ⚠️ Fino al 2026-09-24 il primo invito creava l'identita' gia'
+`attivo=true` con una password temporanea, e il flusso si sceglieva da «l'utente
+e' stato appena creato»: il reinvio cadeva nel CROSS ed era rifiutato con
+`E_INVITO_PORTALE` («ha gia' accesso»), cioe' **impossibile** (M-3 della
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 **Semantica transazionale del reinvio (fix analisi-fix-transazioni #17, 2026-07-08).**
 L'invalidazione dei token precedenti e la ri-emissione identita/token avvengono nella
@@ -73,9 +104,18 @@ lo shop aveva ancora l'invalidazione fuori-atomic).
 }
 ```
 
-`is_cross=true` quando l'email matcha un `auth_user` gia' esistente:
-nessun nuovo `auth_user` creato, viene aggiunta una **2a identita**
-`attivo=false` in attesa di attivazione cross.
+`inviato` e' l'esito **dell'email** (dal 2026-09-28, F-3 dell'
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)):
+`false` se non e' partita. La chiamata non fallisce — veste e token ci sono, l'invito si
+recupera col reinvio — ma `invito_inviato_at` non si aggiorna e il fallimento si logga.
+Stesso contratto per le tre vesti (la strada e' una: `InvitoVeste.spedisci`).
+
+`is_cross=true` quando l'`auth_user` ha gia' una password vera: viene aggiunta
+una **2a identita** in attesa di attivazione cross. `nuovo_utente` dice solo se
+l'`auth_user` e' stato creato ora. In **tutti** i casi l'identita' e'
+`attivo=false`, `deve_cambiare_password=false`, e nessuna password viene scritta:
+la accende il consumo del token (e nel flow INVITO l'utente sceglie la password
+nello stesso gesto).
 
 ---
 
@@ -116,6 +156,8 @@ anagrafiche ≥ LETTURA.
       "stato": "ATTIVO",
       "identita_id": 500,
       "auth_user_id": 10,
+      "username": "mario.rossi",
+      "email": "mario.rossi@example.com",
       "invito_inviato_at": "2026-04-20T14:30:00Z",
       "token_scade_at": null
     },
@@ -123,6 +165,8 @@ anagrafiche ≥ LETTURA.
       "stato": "NESSUNO",
       "identita_id": null,
       "auth_user_id": null,
+      "username": null,
+      "email": null,
       "invito_inviato_at": null,
       "token_scade_at": null
     }
@@ -130,17 +174,27 @@ anagrafiche ≥ LETTURA.
 }
 ```
 
-`stato` ∈ `{NESSUNO, PENDING, ATTIVO, DISATTIVO}`:
+`stato` ∈ `{NESSUNO, PENDING, NON_SPEDITO, ATTIVO, DISATTIVO}`:
 
 | Stato | Significato |
 | --- | --- |
 | `NESSUNO` | identita non esiste (mai invitato) |
-| `PENDING` | identita `attivo=false` + token non consumato non scaduto |
+| `PENDING` | identita `attivo=false` + token non consumato non scaduto, **e** l'email d'invito e' partita dopo la sua emissione (`invito_inviato_at >= data_insert` del token) |
+| `NON_SPEDITO` | come `PENDING`, ma l'email di quel token **non e' partita** (`invito_inviato_at` nullo o precedente al token): la persona non ha il link, si reinvia |
 | `ATTIVO` | identita `attivo=true` |
 | `DISATTIVO` | identita `attivo=false`, nessun token pending (revocata o invito scaduto) |
 
-`token_scade_at` valorizzato solo per `PENDING` — usato dalla UI per
-mostrare "scade tra N ore".
+`token_scade_at` e' la scadenza piu' lontana fra i token vivi della veste (invito
++ cross) — usato dalla UI per mostrare "scade tra N ore". E' valorizzato ogni
+volta che un token vivo esiste, quindi anche su `ATTIVO`.
+
+Dopo un invito, in entrambi i flussi, la veste e' **`PENDING`** fino
+all'attivazione — **`NON_SPEDITO`** se l'email non e' partita (dal 2026-09-28, F-3
+dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md):
+prima un link pendente bastava a dire «invito inviato»). La regola e' la funzione
+pura `stato_veste` di `portale_repository.py`. ⚠️ Fino al 2026-09-24 l'invito con email nuova creava l'identita'
+gia' attiva, e quel cliente risultava `ATTIVO` prima di aver scelto la password
+(M-3).
 
 ---
 
@@ -166,7 +220,7 @@ Simmetrico al precedente ma per fornitori: restituisce solo il blocco
 - `POST /api/v1/anagrafiche/fornitori/{fornitore_id}/disattiva-portale/`
 
 Soft-revoke veste non-operatore. Imposta `identita.attivo=false` e
-invalida i token pendenti (invito + cross) dell'auth_user. **Idempotente**:
+invalida i token pendenti (invito + cross) **della veste**. **Idempotente**:
 se la veste e' gia' disattiva o non esiste, la chiamata succede senza
 errore (`disattivato=false`, stato ritornato coerente).
 
@@ -199,17 +253,17 @@ errore (`disattivato=false`, stato ritornato coerente).
 
 **Riattivazione**: non c'e' un endpoint "riattiva" dedicato per evitare
 ambiguita. Per rimettere in linea un accesso disattivato, l'admin
-**rinvia un invito** (flow INVITO o CROSS a seconda dello stato
-auth_user): il service riattiva automaticamente l'identita esistente se
-compatibile (vedi `PortaleRepository.riattiva_identita`).
+**rinvia un invito**: flow CROSS se l'utente ha una password vera (aveva gia'
+attivato), INVITO se non l'ha mai scelta. L'identita' esistente resta disattivata
+e la riattiva il consumo del token nuovo (`AuthRepository.attiva_identita`).
 
 ---
 
 ## Endpoint pubblici (attivazione)
 
 I 4 endpoint seguenti **non richiedono JWT** (`AllowAny`,
-`authentication_classes = []`). Sono throttled tramite
-`PasswordResetRateThrottle`.
+`authentication_classes = []`). I due `conferma` sono throttled tramite
+`PasswordResetRateThrottle`; i due `validate` non hanno throttling dedicato.
 
 ### Portale
 
@@ -231,7 +285,8 @@ usa per decidere quale UI mostrare (form password vs conferma one-click).
 ```
 
 `token_type` ∈ `{"INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"}`.
-`requires_password=true` solo per `INVITO_PORTALE` (email nuova).
+`requires_password=true` solo per `INVITO_PORTALE` **e** credenziale ancora senza
+password vera, decisa al momento della verifica (`richiede_password`).
 
 **Response (token invalido/scaduto/usato)** — risposta generica per
 evitare enumeration:
@@ -343,6 +398,9 @@ credenziali del portale (stesso `auth_user`).
 | Codice | HTTP | Quando |
 | --- | --- | --- |
 | `E_INVITO_PORTALE` | 400 | Validazione lato admin (email assente, cliente/fornitore inesistente, identita gia' attiva, identita gia' su altro auth_user, veste non supportata) |
+
+⚠️ Difetto noto (E-4): «cliente/fornitore inesistente» esce 400 con
+`E_INVITO_PORTALE`, non 404 — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 | `E_ATTIVAZIONE_PORTALE` | 400 | Token portale assente/invalido/scaduto, password mismatch, meta senza identita_id, riga identita rimossa tra invio e conferma |
 | `E_ATTIVAZIONE_SHOP` | 400 | Stesso perimetro di `E_ATTIVAZIONE_PORTALE` per i 2 endpoint shop |
 | `E_ATTIVAZIONE_SHOP_CROSS` | 400 | Cross-veste self-service: ruolo non CLIENTE_PORTALE, GUC vuota, identita su altro auth_user |
@@ -361,36 +419,36 @@ credenziali del portale (stesso `auth_user`).
 I 4 tipi sono **mutuamente esclusivi**: lo stesso `token_hash` non puo'
 esistere su 2 tipi grazie al `UNIQUE (token_hash)` su
 `config.token_monouso`. Il caller della validate non deve sapere il tipo
-in anticipo: `_resolve_token_in(token, tipi)` itera su un insieme
-ammesso.
+in anticipo: `risolvi_token(porta, token)` prova i due tipi della porta.
 
 ---
 
-## Mappa `_VESTE_CONFIG` (single source of truth)
+## Le porte (`PortaInvito`)
 
-In [invito_portale_service.py](../../../../backend/apps/portale/services/invito_portale_service.py)
-una mappa `dict[str, _VesteConfig]` (TypedDict) parametrizza il flow
-comune `_invia_invito_common` su 5 dimensioni:
+In [invito_veste.py](../../../../../backend/apps/core/services/invito_veste.py)
+ogni porta dice cio' che distingue un invito dall'altro:
 
-| Campo | CLIENTE_PORTALE | FORNITORE_PORTALE | SHOP_CUSTOMER |
-| --- | --- | --- | --- |
-| `token_invito` | `INVITO_PORTALE` | `INVITO_PORTALE` | `INVITO_SHOP` |
-| `token_cross` | `ATTIVAZIONE_PORTALE_CROSS` | `ATTIVAZIONE_PORTALE_CROSS` | `ATTIVAZIONE_SHOP_CROSS` |
-| `template` | `INVITO_PORTALE` | `INVITO_PORTALE` | `INVITO_SHOP` |
-| `link_path` | `/attivazione-portale` | `/attivazione-portale` | `/attivazione-shop` |
-| `scadenza_ore` | 72 | 72 | 72 |
+| Campo | `PORTA_PORTALE` (CLIENTE_ e FORNITORE_PORTALE) | `PORTA_SHOP` (SHOP_CUSTOMER) |
+| --- | --- | --- |
+| `token_invito` | `INVITO_PORTALE` | `INVITO_SHOP` |
+| `token_cross` | `ATTIVAZIONE_PORTALE_CROSS` | `ATTIVAZIONE_SHOP_CROSS` |
+| `template` | `INVITO_PORTALE` | `INVITO_SHOP` |
+| `link_path` | `/attivazione-portale` | `/attivazione-shop` |
+| `codice_invito` / `codice_attivazione` | `E_INVITO_PORTALE` / `E_ATTIVAZIONE_PORTALE` | `E_INVITO_PORTALE` / `E_ATTIVAZIONE_SHOP` |
+| `scadenza_ore` | 72 | 72 |
 
-**Aggiungere una nuova veste** = aggiungere una nuova entry alla mappa
-piu' il nuovo tipo token nel `SHOP_ATTIVAZIONE_TOKEN_TIPI` (o
-equivalente). Nessun'altra modifica al service necessaria.
+**Aggiungere una veste** = un ruolo in una porta esistente, o una porta nuova
+(con le sue due view, sottoclassi di `AttivazioneVesteValidateView` /
+`AttivazioneVesteView`).
 
 ---
 
 ## Test di riferimento
 
-- **Service unit**: [test_invito_portale_service.py](../../../../backend/apps/portale/tests/services/test_invito_portale_service.py) — 14 test (11 portale + 3 shop)
-- **API portale**: [test_attivazione_portale_view.py](../../../../backend/apps/portale/tests/api/test_attivazione_portale_view.py) — 15 test (12 attivazione + 3 ProfileActivateShop)
-- **API shop**: [test_attivazione_shop_view.py](../../../../backend/apps/shop/tests/api/test_attivazione_shop_view.py) — 6 test (3 validate + 3 conferma)
+- **Service unit**: [test_invito_portale_service.py](../../../../../backend/apps/portale/tests/services/test_invito_portale_service.py)
+- **Building block**: [test_invito_veste.py](../../../../../backend/apps/core/tests/services/test_invito_veste.py) — emissione, reinvio, email, attivazione, verifica
+- **API portale**: [test_attivazione_portale_view.py](../../../../../backend/apps/portale/tests/api/test_attivazione_portale_view.py) — cablaggio sulla porta e `ProfileActivateShop`
+- **API shop**: [test_attivazione_shop_view.py](../../../../../backend/apps/shop/tests/api/test_attivazione_shop_view.py) — cablaggio sulla porta
 
 ---
 
@@ -398,7 +456,7 @@ equivalente). Nessun'altra modifica al service necessaria.
 
 Il template email `INVITO_SHOP` deve essere seedato in
 `config.email_template`. Proposta SQL idempotente disponibile in
-[backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql](../../../../backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql)
+[backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql](../../../../../backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql)
 — da applicare su `dev/db-tid` aggiungendo la riga al file CSV
 `email_template.csv` (changelog `runOnChange` + UPSERT).
 

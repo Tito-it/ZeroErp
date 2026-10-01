@@ -17,9 +17,8 @@ import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
-import { lookupCodici } from '../../core/apiCore'
-import { READONLY_DOMAINS } from '../../core/constants'
+import { useLookupCodici } from '../../core/composables/useLookupCodici'
+import { MANAGE_ICONS, READONLY_DOMAINS, READONLY_MODELS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { useAuthStore } from '../../stores/auth'
 import { usePraticheStore } from '../stores/pratiche'
@@ -30,10 +29,12 @@ const { t } = useI18n()
 const router = useRouter()
 const store = usePraticheStore()
 const auth = useAuthStore()
-const { isReadonly, isBlocked } = useReadonlyMode(READONLY_DOMAINS.PRATICHE)
+// Permessi: area `pratiche` + oggetto `pratica`, come le rotte `pratiche/…` del
+// BE, coda lavoro compresa (brief-db-be-fe-catalogo-oggetti-permessi §3.3, D-6).
+const { isReadonly, isBlocked } = useReadonlyMode(READONLY_DOMAINS.PRATICHE, READONLY_MODELS.PRATICA)
 
-// Solo l'operatore con emittente 1-a-1 ha una coda lavoro (stesso gate di
-// MieAttivitaPanel): admin globale/portali → niente colonna Continua.
+// Solo l'operatore con emittente 1-a-1 ha una coda lavoro: admin
+// globale/portali → niente colonna Continua.
 const isOperatore = computed(() => !!auth.emittenteCorrente?.id)
 
 // Colonne visibili: Comincia richiede il permesso di creare (non readonly),
@@ -45,24 +46,23 @@ const showContinua = computed(() => isOperatore.value)
 const soloConsultazione = computed(() => !showComincia.value && !showContinua.value)
 
 // Tile "Comincia": tipi prestazione attivi non obsoleti (selezione per il
-// nuovo). STESSA chiave cache e fetch della LookupSelect del PraticaDrawer
-// (`rel` + `::no-obsoleti`): tra home e drawer non si paga alcun round-trip
-// aggiuntivo (useGlobalLookup, cache modulo-level condivisa).
-const { items: tipiItems, loading: tipiLoading } = useGlobalLookup(
-  'pratiche.tipi_prestazione::no-obsoleti',
-  () => lookupCodici('pratiche.tipi_prestazione', { page_size: 200, includi_obsoleti: false }),
-  { immediate: true },
+// nuovo). STESSA entry di cache della LookupSelect del PraticaDrawer, per
+// costruzione (`useLookupCodici`, stesso `rel` + stesso insieme): tra home e
+// drawer non si paga alcun round-trip aggiuntivo.
+const { items: tipiItems, loading: tipiLoading } = useLookupCodici(
+  'pratiche.tipi_prestazione',
+  { includiObsoleti: false, immediate: true },
 )
 
 // Icona per categoria: mapping FE (decisione brief §2.5 — l'icona e'
-// presentazione, non dato), valori dalle costanti centralizzate NAV_ICONS
+// presentazione, non dato), valori dalle costanti centralizzate (NAV_ICONS, MANAGE_ICONS)
 // (mai literal 'pi pi-*': il retheming resta un cambio in un punto solo).
 const CATEGORIA_ICONS = {
-  COMMERCIALE: NAV_ICONS.VENDITE,
-  VENDITE: NAV_ICONS.TAGS,
+  COMMERCIALE: MANAGE_ICONS.COMMERCIALE,
+  VENDITE: NAV_ICONS.VENDITE,
 }
 function tileIcon(categoria) {
-  return CATEGORIA_ICONS[categoria] || NAV_ICONS.FOLDER_OPEN
+  return CATEGORIA_ICONS[categoria] || NAV_ICONS.GESTIONE_PRATICHE
 }
 
 // Raggruppamento per categoria (anti "muro di bottoni"): categorie con nome in
@@ -128,7 +128,7 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
         </h1>
         <Button
           :label="t('pratiche.home_tutte_le_pratiche')"
-          :icon="NAV_ICONS.FOLDER_OPEN"
+          :icon="NAV_ICONS.GESTIONE_PRATICHE"
           text
           @click="goTutteLePratiche"
         />
@@ -143,7 +143,7 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
       <div v-else class="home-cols">
         <section v-if="showComincia" class="home-col">
           <header class="home-col-head">
-            <i class="pi pi-plus-circle" />
+            <i :class="MANAGE_ICONS.ADD" />
             <div>
               <h2>{{ t('pratiche.home_comincia_titolo') }}</h2>
               <p>{{ t('pratiche.home_comincia_sottotitolo') }}</p>
@@ -151,7 +151,7 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
           </header>
 
           <div v-if="tipiLoading" class="home-loading">
-            <i class="pi pi-spin pi-spinner" />
+            <i :class="STATUS_ICONS.CARICAMENTO" />
           </div>
           <div v-else-if="!gruppi.length" class="home-empty">
             {{ t('pratiche.home_nessun_tipo') }}
@@ -177,7 +177,7 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
 
         <section v-if="showContinua" class="home-col">
           <header class="home-col-head">
-            <i class="pi pi-briefcase" />
+            <i :class="NAV_ICONS.PRATICHE" />
             <div>
               <h2>{{ t('pratiche.home_continua_titolo') }}</h2>
               <p>{{ t('pratiche.home_continua_sottotitolo') }}</p>
@@ -341,7 +341,7 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
 }
 
 /* Tablet/mobile: colonne impilate, scrolla la pagina */
-@media (max-width: 1023px) {
+@media (max-width: 1023.98px) {
   .pratiche-home {
     overflow-y: auto;
   }

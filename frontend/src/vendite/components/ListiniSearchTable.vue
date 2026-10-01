@@ -19,7 +19,7 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
-import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../core/constants'
 import { PRICING_ACTIONS } from '../constants'
 import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
@@ -44,6 +44,9 @@ import { useAuthStore } from '../../stores/auth'
 import AlertScadenzeWidget from './AlertScadenzeWidget.vue'
 import AttivaVersioneDialog from './AttivaVersioneDialog.vue'
 import ChiudiVersioneDialog from './ChiudiVersioneDialog.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import { buildAttivoOptions } from '../../core/utils/options'
 
 const emit = defineEmits([
   'new',
@@ -76,8 +79,16 @@ const {
   extraActions: () => extraPageActions.value,
 })
 
-const utilityFilter = ref(null)
-const tipologiaFilter = ref(null)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
+const { value: tipologiaFilter, onChange: onTipologiaChange } = bindSelect('tipologia_id')
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
 
 // Lookup tipologie listino per il filtro (non filtrato per utility: lista
 // completa delle tipologie attive). Cache globale condivisa: ogni re-mount
@@ -88,12 +99,12 @@ const tipologiaLookup = useGlobalLookup(
   { immediate: true }
 )
 
-const attivoFilter = ref(true)
-const attivoOptions = [
-  { value: null, label: t('amministrazione.stato_all') },
-  { value: true, label: t('amministrazione.stato_attivo') },
-  { value: false, label: t('amministrazione.stato_inattivo') }
-]
+// ⭐ Dal BB (regola del 2, ok Tid 2026-09-23): la terna era scritta a mano qui
+//    con le chiavi di `amministrazione`, cioe' un componente di `vendite` che
+//    leggeva il vocabolario di un altro dominio. ⛔ E la tendina diceva
+//    «Inattivo» mentre la colonna qui sotto, resa da `AttivoTag`, diceva «Non
+//    attivo»: due parole per lo stesso stato nella stessa schermata.
+const attivoOptions = buildAttivoOptions(t)
 
 // Stato espansione righe (usato come v-model:expandedRows di PrimeVue).
 // Ogni volta che la lista listini viene ricaricata, espandiamo tutte le righe
@@ -103,21 +114,6 @@ const attivoOptions = [
 //    `<ListaConfigurabile>` e quindi dallo stesso watch qui sotto. Questa era
 //    la prima copia; ritirata alla seconda (regola del 2).
 const expandedRows = ref({})
-
-function onUtilityChange() {
-  store.filters.utility_id = utilityFilter.value
-  applyFilters()
-}
-
-function onTipologiaChange() {
-  store.filters.tipologia_id = tipologiaFilter.value
-  applyFilters()
-}
-
-function onAttivoChange() {
-  store.filters.attivo = attivoFilter.value
-  applyFilters()
-}
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -216,7 +212,7 @@ const extraPageActions = computed(() => [
     key: 'test-prezzo',
     kind: 'utility',
     label: t('vendite.listini.test_prezzo'),
-    icon: 'pi pi-calculator',
+    icon: MANAGE_ICONS.TEST_PREZZO,
     severity: 'info',
     // Strumento diagnostico: oltre al SUPER_ADMIN (bypass) lo apriamo a chi
     // puo' fare override manuale del prezzo (azione `prezzo_override_manuale`).
@@ -314,20 +310,24 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText v-model="searchText" :placeholder="t('vendite.listini.search_placeholder')" style="width: 320px;" />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t('vendite.listini.search_placeholder')" />
+        </template>
         <UtilityPerRuoloSelect v-model="utilityFilter"
+          class="app-filter-w-md"
           :placeholder="t('vendite.listini.filtro_utility')" :show-clear="true"
           apply-default
-          @change="onUtilityChange" style="width: 200px;" />
+          @change="onUtilityChange" />
         <Select v-model="tipologiaFilter" :options="tipologiaLookup.items.value"
           option-label="descrizione" option-value="id"
           :placeholder="t('vendite.listini.filtro_tipologia')" :show-clear="true"
           :loading="tipologiaLookup.loading.value"
-          @change="onTipologiaChange" class="app-filter-select" />
+          @change="onTipologiaChange" class="app-filter-select app-filter-w-md" />
         <Select v-model="attivoFilter" :options="attivoOptions" option-label="label" option-value="value"
-          :placeholder="t('vendite.listini.col_attivo')" @change="onAttivoChange" style="width: 120px;" />
-      </div>
+          class="app-filter-w-sm"
+          :placeholder="t('vendite.listini.col_attivo')" @change="onAttivoChange" />
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #prefix>
           <AlertScadenzeWidget />
@@ -365,15 +365,14 @@ onMounted(() => store.fetchList())
         <AttivoTag :active="data.attivo" />
       </template>
 
-      <template #actions="{ data, compact }">
-        <RowActionsMenu :row="data" :actions="buildListinoActions(data)" :force-compact="compact" />
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildListinoActions(data)" />
       </template>
 
       <template #row-expansion="{ data: listino }">
         <div class="app-row-expansion">
           <div class="app-row-expansion__header">
             <span class="app-row-expansion__title">
-              <i class="pi pi-arrow-turn-down-right"></i>
               <i :class="MANAGE_ICONS.VERSIONI"></i>
               {{ t('vendite.listini.tab_versioni') }} ({{ store.versioniByListino[listino.id]?.length ?? 0 }})
             </span>
@@ -383,10 +382,10 @@ onMounted(() => store.fetchList())
           </div>
 
           <div v-if="!store.versioniByListino[listino.id]" class="app-loading">
-            <i class="pi pi-spin pi-spinner" />
+            <i :class="STATUS_ICONS.CARICAMENTO" />
           </div>
           <div v-else-if="store.versioniByListino[listino.id].length === 0" class="app-empty-state">
-            <i class="pi pi-history" />
+            <i :class="MANAGE_ICONS.VERSIONI" />
             <p>{{ t('vendite.listini.nessuna_versione_inline') }}</p>
           </div>
           <DataTable v-else

@@ -12,8 +12,8 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
-from apps.core.db._helpers import LIST_MAX_LIMIT
 
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
@@ -40,11 +40,11 @@ from apps.core.services.tracciamento_service import (
 
 
 # Scopo: page_size (page-based) da query string con default e cap standard
-#        LIST_MAX_LIMIT. Helper
+#        MAX_LIMIT. Helper
 #        LOCALE: solo le liste di tracciamento usano la convenzione page/page_size
 #        a livello view (le liste offset-based usano core.parse_list_params).
-def _parse_page_size(qp, default: int) -> int:
-    return min(qp_int(qp.get("page_size"), default), LIST_MAX_LIMIT)
+def _parse_page_size(qp) -> int:
+    return min(qp_int(qp.get("page_size"), DEFAULT_LIMIT), MAX_LIMIT)
 
 
 # ---- Parametri OpenAPI comuni riusabili ----
@@ -55,7 +55,7 @@ _PAGE_PARAM = OpenApiParameter(
 )
 _PAGE_SIZE_PARAM = OpenApiParameter(
     name="page_size", type=int, location=OpenApiParameter.QUERY,
-    required=False, description="Dimensione pagina (default 50, max 200).",
+    required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
 )
 _ATTIVO_ONLY_PARAM = OpenApiParameter(
     name="attivo_only", type=bool, location=OpenApiParameter.QUERY,
@@ -155,7 +155,7 @@ class ApiAuditLog(DomainAPIView):
             date_to=qp_str(qp.get("date_to")),
             search=qp_str(qp.get("search")),
             page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp, 50),
+            page_size=_parse_page_size(qp),
         )
         return success_response(data)
 
@@ -197,7 +197,7 @@ class ApiDominiTask(DomainAPIView):
             attivo_only=qp_bool(qp.get("attivo_only")),
             search=qp_str(qp.get("search")),
             page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp, 50),
+            page_size=_parse_page_size(qp),
         )
         return success_response(data)
 
@@ -248,7 +248,7 @@ class ApiTaskRegistry(DomainAPIView):
             attivo_only=qp_bool(qp.get("attivo_only")),
             search=qp_str(qp.get("search")),
             page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp, 100),
+            page_size=_parse_page_size(qp),
         )
         return success_response(data)
 
@@ -303,7 +303,7 @@ class ApiTaskImplementations(DomainAPIView):
             dominio_codice=raw_dominio.upper() if raw_dominio else None,
             attivo_only=qp_bool(qp.get("attivo_only")),
             page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp, 100),
+            page_size=_parse_page_size(qp),
         )
         return success_response(data)
 
@@ -372,7 +372,7 @@ class ApiJobRuns(DomainAPIView):
             date_to=qp_str(qp.get("date_to")),
             search=qp_str(qp.get("search")),
             page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp, 50),
+            page_size=_parse_page_size(qp),
         )
         return success_response(data)
 
@@ -411,7 +411,7 @@ class ApiJobSummary(DomainAPIView):
         qp = request.query_params
         data = fn_list_job_summary(
             page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp, 50),
+            page_size=_parse_page_size(qp),
         )
         return success_response(data)
 
@@ -448,7 +448,7 @@ _DATA_A_PARAM = OpenApiParameter(
 )
 _LIMIT_PARAM = OpenApiParameter(
     name="limit", type=int, location=OpenApiParameter.QUERY,
-    required=False, description="Righe per pagina (default 50, max 200).",
+    required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
 )
 _OFFSET_PARAM = OpenApiParameter(
     name="offset", type=int, location=OpenApiParameter.QUERY,
@@ -498,7 +498,7 @@ _LISTA_CODE_RESPONSE = inline_serializer(
 
 # Scopo: Parsing comune dei parametri condivisi dalle due liste code:
 #        ambito (miei/tutti), stato (upper), intervallo date, solo_vivi,
-#        limit (cap LIST_MAX_LIMIT, fonte unica coi repo)/offset. Ritorna un
+#        limit (cap MAX_LIMIT, fonte unica coi repo)/offset. Ritorna un
 #        dict di kwargs per il service.
 def _parse_code_list_params(qp) -> dict:
     ambito = (qp_str_upper(qp.get("ambito")) or "MIEI")
@@ -513,7 +513,7 @@ def _parse_code_list_params(qp) -> dict:
         "includi_archiviate": (
             qp_bool_optional(qp.get("archiviate"), "archiviate") or False
         ),
-        "limit": min(qp_int(qp.get("limit"), 50), LIST_MAX_LIMIT),
+        "limit": min(qp_int(qp.get("limit"), DEFAULT_LIMIT), MAX_LIMIT),
         "offset": qp_int(qp.get("offset"), 0),
         # Whitelist e default vivono nel service (differiscono per coda):
         # qui solo il pass-through delle stringhe grezze.

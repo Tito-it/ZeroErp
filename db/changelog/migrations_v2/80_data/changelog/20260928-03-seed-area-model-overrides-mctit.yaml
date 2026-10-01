@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SEED DEL CATALOGO DEGLI OGGETTI — mirror loadUpdateData di un CSV
+#   Brief: brief-db-be-fe-catalogo-oggetti-permessi.md §3.1 punti 1, 2, 3, 4
+#
+# -- PERCHE' UN CSV (D-3, Tid 2026-09-27) --------------------------------------------------------
+#   Il catalogo era SQL dentro due YAML (`20260410-11`, `20260418-01`: INSERT ... ON
+#   CONFLICT DO NOTHING in runOnChange), che nessun test fuori dal DB sa leggere, e che
+#   non sapeva togliere una riga (DO NOTHING) ne' cambiarne una. Il presidio della D-3 —
+#   un test Django che confronta catalogo e porte (model_permission, READONLY_MODELS) —
+#   legge questo file. I due YAML sono cancellati nello stesso giro (una tabella, UN
+#   CSV: linee-guida-sql §11.2); le loro righe in databasechangelog restano orfane.
+#
+# -- COSA DICE IL CSV (2026-09-28) ---------------------------------------------------------------
+#   - i 12 oggetti di prima, MENO anagrafiche.billing_account (D-5: un pezzo del
+#     cliente, senza schermate proprie; esce dal DB con 20260928-04);
+#   - PIU' vendite.offerta_commerciale e catalogo.uom_tipi (caso B, D-1): tutte e
+#     quattro le porte li chiedono gia' — il BE su ogni loro rotta (l'offerta dal
+#     2026-09-27, presidio test_catalogo_oggetti_rotte; uom_tipi le sue due), il FE
+#     in READONLY_MODELS, il pannello config con la stessa chiave di
+#     tabelle_gestibili. Gli altri del caso B (ordine, ddt, contratto, reso) NON
+#     entrano: il BE chiede ancora l'area sulle loro rotte principali, e un BLOCCATO
+#     a catalogo nasconderebbe i pulsanti lasciando aperta l'API (§1, «terzo caso»).
+#     Entrano il giorno in cui il BE li applica;
+#   - PIU' le 10 righe riservate (D-4), riprese dalla blacklist del backend
+#     (_MODEL_OVERRIDE_RISERVATI, letta il 2026-09-28): il kernel dei permessi. Area =
+#     il loro schema, quindi fn_area_di_oggetto risponde come prima.
+#
+# ⚠️ La chiave del mirror e' la chiave NATURALE (app_label, model_name), non l'id
+#   (identity): §11.2, una riga nata senza id non e' raggiungibile per id da un CSV
+#   che vale ovunque. Gli id non stanno nel file.
+# ⚠️ area_id sono gli id FISSI di config.aree_funzionali (CSV aree_funzionali.csv).
+# ⚠️ loadUpdateData non cancella: una riga tolta dal CSV esce con un DELETE a parte.
+# ⚠️ Seed di CATALOGO: nessuna FK verso anagrafiche.*, nessun `context`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260928-03-seed-area-model-overrides-mctit.yaml
+
+  - changeSet:
+      id: 20260928-03-seed-area-model-overrides
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed config.area_model_overrides dal CSV (mirror loadUpdateData, chiave naturale):
+        catalogo degli oggetti personalizzabili e dei riservati. Sostituisce i seed SQL
+        20260410-11 e 20260418-01. Brief: brief-db-be-fe-catalogo-oggetti-permessi.md §3.1.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: area_model_overrides
+            columnName: riservato
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/area_model_overrides.csv
+            tableName: area_model_overrides
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "app_label,model_name"
+            columns:
+              - column: { name: app_label,  type: STRING }
+              - column: { name: model_name, type: STRING }
+              - column: { name: area_id,    type: NUMERIC }
+              - column: { name: riservato,  type: BOOLEAN }
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 1;

@@ -13,7 +13,7 @@
 | valid_to | timestamp with time zone | YES |  |
 | data_insert | timestamp with time zone | YES | now() |
 | user_insert | text | YES | CURRENT_USER |
-| indirizzo_id | integer | YES |  |
+| indirizzi_id | integer | YES |  |
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | NO |  |
 | tx_id | uuid | YES |  |

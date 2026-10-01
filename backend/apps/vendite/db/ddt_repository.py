@@ -21,23 +21,42 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
     row_to_dict,
     rows_to_list,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.core.db.sql_write_helpers import execute_dynamic_update
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
+from apps.vendite.db._righe_repo_mixin import (
+    COLONNE_RIGHE_COMMERCIALI,
+    RICERCA_RIGHE_COMMERCIALI,
+    RigheDocumentoRepositoryMixin,
+)
 
 
 # Scopo: Whitelist colonne ORDER BY per la lista DDT (SQL injection safe). Le
 #        chiavi sono i `campo_sorgente` del catalogo liste ('vendite.ddt') che il
 #        FE invia come sortField; i valori sono le colonne reali di
 #        `vendite.vw_ddt_lista` (alias `v`).
+# Colonne che la ricerca libera SA cercare nella lista `vendite.ddt`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+_RICERCA_DDT = RicercaFull(
+    "vendite.ddt",
+    (
+        "numero", "destinatario_denominazione", "ba_codice", "id_fiscale_univoco_cf_piva",
+    ),
+)
+
 _ORDER_COLS_DDT: dict[str, str] = {
     "numero": "v.numero",
     "anno": "v.anno",
@@ -56,7 +75,18 @@ _ORDER_COLS_DDT: dict[str, str] = {
 }
 
 
+# Le righe del documento come lista configurabile `vendite.ddt_righe` (BB
+# `RigheDocumentoRepositoryMixin`, brief-db-liste-righe-documento lotto A).
+# Le colonne gemelle sono dichiarate una volta nel BB; qui solo cio' che e'
+# di questo documento. `test_ricerca_full_seed` legge `_RICERCA_RIGHE`.
+_RICERCA_RIGHE = RicercaFull("vendite.ddt_righe", RICERCA_RIGHE_COMMERCIALI)
+_ORDER_COLS_RIGHE: dict[str, str] = {
+    **COLONNE_RIGHE_COMMERCIALI,
+}
+
+
 class DdtRepository(
+    RigheDocumentoRepositoryMixin,
     ComponentiRepositoryMixin,
     RiepilogoIvaRepositoryMixin,
     IndirizziDocumentoRepositoryMixin,
@@ -73,6 +103,16 @@ class DdtRepository(
     on-the-fly dalle righe attive valorizzate: le righe con prezzo NULL — DDT
     solo di trasporto — restano fuori dal riepilogo per filtro in vista).
     """
+
+    # Righe (BB `RigheDocumentoRepositoryMixin`): vista, chiave, ordine del
+    # documento, whitelist e ricerca della lista `vendite.ddt_righe`.
+    _righe_vista = "vendite.vw_ddt_righe_dettaglio"
+    _righe_tabella = "vendite.ddt_righe"
+    _righe_fk_documento = "ddt_id"
+    _righe_ordine_documento = "riga_nr"
+    _righe_ordinamento = _ORDER_COLS_RIGHE
+    _righe_ricerca = _RICERCA_RIGHE
+    _righe_colonne_desc = ()
 
     # Configurazione mixin componenti (tabella + FK riga padre).
     _componenti_table_name = "vendite.ddt_righe_componenti"
@@ -117,7 +157,7 @@ class DdtRepository(
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         # NULL = valore MINIMO (lo mette `sql_order_clause`): il `numero` e' NULL
         # su tutte le bozze (lo assegna il trigger a EMESSO) e i default
@@ -136,12 +176,11 @@ class DdtRepository(
             #    DDT il 2026-09-02).
             default_desc=True,
         )
-        # `max_limit`: la lista pagina (cap 200, gia' imposto da
+        # `max_limit`: la lista pagina (cap `MAX_LIMIT`, gia' imposto da
         # parse_list_params), l'export chiede fino a EXPORT_MAX_ROWS+1 per
         # intercettare l'overflow SENZA troncare in silenzio (il guard di
         # build_export_response usa la COUNT reale).
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -163,14 +202,7 @@ class DdtRepository(
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        if search and len(search) >= 3:
-            # Ricerca estesa: numero + destinatario + codice BA + id fiscale.
-            conditions.append(
-                "(v.numero ILIKE %s OR v.destinatario_denominazione ILIKE %s "
-                "OR v.ba_codice ILIKE %s OR v.id_fiscale_univoco_cf_piva ILIKE %s)"
-            )
-            like = f"%{search}%"
-            params.extend([like, like, like, like])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_DDT)
 
         # Scope emittente (defense-in-depth applicativa, mirror ordini). La
         # vista `vw_ddt_lista` e' `security_invoker=on` e `vendite.ddt` ha la
@@ -294,116 +326,6 @@ class DdtRepository(
     #  LETTURE — Righe
     # ══════════════════════════════════════════════════════════
 
-    # Scopo: Conteggio righe attive del DDT (per `righe_count` del detail):
-    #        evita di materializzare l'intero elenco solo per contarlo.
-    def count_righe(self, ddt_id: int) -> int:
-        sql = (
-            "SELECT COUNT(*) FROM vendite.ddt_righe "
-            "WHERE ddt_id = %s AND attivo IS TRUE"
-        )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [ddt_id])
-            row = cursor.fetchone()
-            return int(row[0]) if row else 0
-
-    # Scopo: Righe attive del DDT con decodifiche articolo/uom/iva e flag
-    #        `is_composito_caso_a` (chevron expander FE). Importo riga calcolato
-    #        (quantita * prezzo * (1 - sconto%)).
-    def list_righe(self, ddt_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT
-                r.id,
-                r.ddt_id,
-                r.riga_nr,
-                r.attivo,
-                r.articolo_id,
-                a.codice                AS articolo_codice,
-                a.descrizione           AS articolo_descrizione,
-                r.descrizione,
-                r.quantita,
-                r.qta_operativa,
-                r.factor_to_base,
-                r.uom_operativa_id,
-                um.codice               AS uom_codice,
-                r.prezzo_unitario,
-                r.sconto_percentuale,
-                r.iva_id,
-                iva.codice              AS iva_codice,
-                iva.descrizione         AS iva_descrizione,
-                iva.aliquota_iva        AS iva_aliquota,
-                -- ⛔ NIENTE `COALESCE(r.prezzo_unitario, 0)` (V-2 del
-                -- brief-ddt-righe-senza-prezzo): con lo zero, una riga senza
-                -- prezzo mostrava importo 0,00 — indistinguibile da una riga
-                -- che vale davvero zero, e il totale del documento tornava
-                -- «giusto» sommando quel che non c'e'. Ora `importo_riga` esce
-                -- NULL, e il FE ha di che distinguere (DEC-6).
-                -- ⚠️ Lo sconto tiene il suo COALESCE: sconto assente vuol dire
-                -- sconto zero, e li' lo zero e' il fatto.
-                ROUND(
-                    (r.quantita * r.prezzo_unitario) *
-                    (1::numeric - COALESCE(r.sconto_percentuale, 0::numeric) / 100::numeric),
-                    2
-                ) AS importo_riga,
-                r.meta,
-                r.data_insert,
-                r.data_update,
-                EXISTS (
-                    SELECT 1
-                      FROM vendite.ddt_righe_componenti rc
-                     WHERE rc.riga_ddt_id = r.id
-                       AND rc.attivo IS TRUE
-                ) AS is_composito_caso_a
-              FROM vendite.ddt_righe r
-              LEFT JOIN catalogo.articoli a    ON a.id   = r.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_operativa_id
-              LEFT JOIN config.iva iva         ON iva.id = r.iva_id
-             WHERE r.ddt_id = %s
-               AND r.attivo IS TRUE
-             ORDER BY r.riga_nr, r.id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [ddt_id])
-            return rows_to_list(cursor)
-
-    # Scopo: Carica una singola riga via lookup mirato per id (stessa proiezione
-    #        di list_righe senza caricare l'intero elenco). Usato da aggiorna_riga.
-    def get_riga(self, riga_id: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT
-                r.id,
-                r.ddt_id,
-                r.riga_nr,
-                r.attivo,
-                r.articolo_id,
-                a.codice                AS articolo_codice,
-                a.descrizione           AS articolo_descrizione,
-                r.descrizione,
-                r.quantita,
-                r.qta_operativa,
-                r.factor_to_base,
-                r.uom_operativa_id,
-                um.codice               AS uom_codice,
-                r.prezzo_unitario,
-                r.sconto_percentuale,
-                r.iva_id,
-                iva.codice              AS iva_codice,
-                r.meta,
-                EXISTS (
-                    SELECT 1
-                      FROM vendite.ddt_righe_componenti rc
-                     WHERE rc.riga_ddt_id = r.id
-                       AND rc.attivo IS TRUE
-                ) AS is_composito_caso_a
-              FROM vendite.ddt_righe r
-              LEFT JOIN catalogo.articoli a    ON a.id   = r.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_operativa_id
-              LEFT JOIN config.iva iva         ON iva.id = r.iva_id
-             WHERE r.id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [riga_id])
-            return row_to_dict(cursor)
-
     # Scopo: Load atomico di un componente con scope completo (componente →
     #        riga → ddt) in un'unica query JOIN, per i guard del service.
     def load_componente_with_scope(
@@ -413,7 +335,11 @@ class DdtRepository(
             SELECT c.id          AS componente_id,
                    c.riga_ddt_id,
                    r.ddt_id,
-                   sd.codice_interno AS stato_codice_interno
+                   sd.codice_interno AS stato_codice_interno,
+                   -- L'etichetta del rifiuto di stato («DDT 2026/00012», o
+                   -- «DDT #131» se NULL): senza, il guard delle righe in
+                   -- bozza ripiega sull'id anche su un DDT emesso.
+                   d.numero
               FROM vendite.ddt_righe_componenti c
               JOIN vendite.ddt_righe r ON r.id = c.riga_ddt_id
               JOIN vendite.ddt d       ON d.id = r.ddt_id
@@ -462,10 +388,12 @@ class DdtRepository(
         meta: dict[str, Any] | None = None,
         fatturazione_immediata: bool | None = None,
     ) -> dict[str, Any]:
-        cols: list[str] = ["destinatario_soggetto_ruolo_id", "stato_doc_ddt_id"]
-        vals: list[Any] = [destinatario_soggetto_ruolo_id, stato_doc_ddt_id]
-        # Colonne opzionali: omesse se None così i DEFAULT del DB restano attivi.
-        optional: dict[str, Any] = {
+        # BB `execute_dynamic_insert`: i None si omettono (`skip_none`) così i
+        # DEFAULT del DB restano attivi; le chiavi sono letterali del metodo
+        # (`allowed=None`). `meta` e' un dict -> `::jsonb` dal BB.
+        valori: dict[str, Any] = {
+            "destinatario_soggetto_ruolo_id": destinatario_soggetto_ruolo_id,
+            "stato_doc_ddt_id": stato_doc_ddt_id,
             "billing_account_id": billing_account_id,
             "emittente_fiscale_id": emittente_fiscale_id,
             "utility_id": utility_id,
@@ -485,29 +413,36 @@ class DdtRepository(
             "data": data,
             # Corsia di instradamento: None = DEFAULT false del DB (differita).
             "fatturazione_immediata": fatturazione_immediata,
+            "meta": meta or {},
         }
-        for col, val in optional.items():
-            if val is not None:
-                cols.append(col)
-                vals.append(val)
-        cols.append("meta")
-        placeholders = ["%s"] * (len(cols) - 1) + ["%s::jsonb"]
-        vals.append(json.dumps(meta or {}))
-        sql = (  # noqa: S608 — colonne whitelisted (chiavi statiche)
-            f"INSERT INTO vendite.ddt ({', '.join(cols)}) "
-            f"VALUES ({', '.join(placeholders)}) "
-            f"RETURNING id, uid::text AS uid, numero"
+        return execute_dynamic_insert(
+            "vendite.ddt", valori, allowed=None, skip_none=True,
+            returning="id, uid::text AS uid, numero",
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+
+    # ⛔ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): una
+    #    chiave fuori lista e' `ValueError`, non uno scarto. E' l'elenco delle
+    #    colonne che QUESTO metodo scrive, non il contratto dell'operatore (che
+    #    sta nel service, `ddt_service.UPDATE_KEYS_DDT / UPDATE_KEYS_RIGA`): se il service ne aggiunge una, va aggiunta
+    #    qui — e dimenticarlo e' un errore che si vede, non un campo perso.
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "utility_id", "valuta_id", "mittente_soggetto_ruolo_id",
+        "vettore_soggetto_ruolo_id", "causale_trasporto_id", "aspetto_bene_id",
+        "modalita_addebito_trasporto_id", "num_colli", "peso_lordo", "peso_netto",
+        "volume", "targa", "autista", "tracking_code", "data", "meta",
+        "fatturazione_immediata",
+    })
+    RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
+        "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
+    })
 
     # Scopo: Aggiorna campi modificabili della testata DDT. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.
     def update_ddt(self, ddt_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.ddt", ddt_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.ddt", ddt_id, kwargs, allowed=self.TESTATA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Hard-delete DDT (flusso abbandono bozza). Guard di dominio (stato
     #        DRAFT, no righe/fulfillment collegati) applicati nel service +
@@ -593,7 +528,9 @@ class DdtRepository(
 
     # Scopo: Aggiorna una riga DDT esistente. Campi jsonb (meta) ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.ddt_righe", riga_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.ddt_righe", riga_id, kwargs, allowed=self.RIGA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Elimina una riga DDT (HARD DELETE). La FK
     #        ddt_righe_componenti.riga_ddt_id ha ON DELETE CASCADE. Il trigger DB

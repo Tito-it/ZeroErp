@@ -12,7 +12,15 @@
 #        - clone_versione (SELECT source + INSERT nuova BOZZA con override)
 #        - pubblica_versione (transizione atomica BOZZA -> PUBBLICATA con
 #          valido_dal NOT NULL guard; EXCLUDE GiST DB blocca overlap con
-#          altre PUBBLICATE attive — errore parlante via mapper)
+#          altre PUBBLICATE attive — errore parlante via mapper; la forma
+#          dei dati del builder del template passa al verbo DB, che rifiuta
+#          una versione che ne legge un'altra)
+#
+#        `versione_contesto` = la forma dei dati che la versione dichiara di
+#        leggere (brief-db-documenti-versione-contesto-template): obbligatoria
+#        in create, modificabile solo in BOZZA, copiata dal clone. Una BOZZA
+#        puo' dichiarare una forma che il builder non produce ancora (D-C4):
+#        e' cosi' che si prepara la versione successiva.
 #
 #        Scope emittente derivato dal template (404 unificato no leak).
 #        Validazione payload via PayloadValidator + map_integrity_error
@@ -34,6 +42,7 @@ from apps.core.services.payload_helpers import (
     map_integrity_error,
 )
 from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.services.context_builders import get_builder_del_template
 from apps.documenti.services.template_service import TemplateService
 
 # Codici errore registrati in apps.core.services.error_policies.
@@ -65,6 +74,7 @@ _CREATE_KEYS: frozenset[str] = frozenset({
     "margin_left_mm",
     "valido_dal",
     "valido_al",
+    "versione_contesto",
     "context_schema",
     "meta",
     "attivo",
@@ -141,6 +151,11 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "chk_template_documenti_versioni_valido_dal_pubblicata": (
         E_VALIDATION,
         "Una versione PUBBLICATA deve avere valido_dal valorizzato.",
+    ),
+    "chk_template_documenti_versioni_versione_contesto_pos": (
+        E_VALIDATION,
+        "La forma dei dati letta dalla versione deve essere un intero positivo.",
+        "versione_contesto",
     ),
 }
 
@@ -284,7 +299,6 @@ class TemplateVersioniAdminService:
                 message="Solo versioni in stato BOZZA possono essere eliminate.",
                 detail=f"stato_corrente={existing['stato']!r}",
             )
-            raise  # unreachable
 
         try:
             deleted = self._repo.delete_versione(versione_id)
@@ -349,6 +363,9 @@ class TemplateVersioniAdminService:
             "margin_left_mm": source["margin_left_mm"],
             "valido_dal": None,  # default: clone parte senza date,
             "valido_al": None,   # le date nuove si fissano alla pubblicazione
+            # La forma letta si copia: il corpo e' lo stesso, quindi legge le
+            # stesse chiavi. Per prepararne una nuova (D-C4) si cambia in BOZZA.
+            "versione_contesto": source["versione_contesto"],
             "context_schema": source.get("context_schema") or {},
             "meta": source.get("meta") or {},
             "attivo": True,
@@ -362,18 +379,9 @@ class TemplateVersioniAdminService:
             new_data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
         if "valido_al" in payload:
             new_data["valido_al"] = self._v.optional_date(payload, "valido_al")
-        # Cross-field guard sulle date override.
-        if new_data.get("valido_dal") and new_data.get("valido_al"):
-            if new_data["valido_al"] < new_data["valido_dal"]:
-                ErrorManager.raise_error(
-                    code=E_VALIDATION,
-                    message="valido_al non puo' essere antecedente a valido_dal.",
-                    detail=(
-                        f"valido_dal={new_data['valido_dal']} "
-                        f"valido_al={new_data['valido_al']}"
-                    ),
-                )
-                raise  # unreachable
+        # L'ordine delle date lo giudica il DB: guard comune
+        # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
+        # `valido_al` (dal 2026-09-23).
         if "attivo" in payload:
             v = self._v.optional_bool(payload, "attivo")
             ErrorManager.require(
@@ -433,7 +441,6 @@ class TemplateVersioniAdminService:
                 message="Solo versioni in stato BOZZA possono essere pubblicate.",
                 detail=f"stato_corrente={existing['stato']!r}",
             )
-            raise  # unreachable
 
         self._v.validate_allowed_keys(
             payload,
@@ -445,18 +452,23 @@ class TemplateVersioniAdminService:
         if "valido_al" in payload:
             valido_al = self._v.optional_date(payload, "valido_al")
 
-        if valido_al is not None and valido_al < valido_dal:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="valido_al non puo' essere antecedente a valido_dal.",
-                detail=f"valido_dal={valido_dal} valido_al={valido_al}",
-            )
-            raise  # unreachable
+        # L'ordine delle date lo giudica il DB: guard comune
+        # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
+        # `valido_al` (dal 2026-09-23).
+
+        # La forma dei dati che il builder del template produce oggi: il verbo
+        # DB pubblica solo una versione che dichiara di leggere quella (409
+        # E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). Un builder assente o non
+        # registrato e' E_DOCUMENTI_VALIDATION dal registry (lo stesso rifiuto
+        # della generazione): senza builder non c'e' forma con cui confrontare.
+        template = self._reader.get_template(user, template_id)
+        forma_builder = get_builder_del_template(template).CONTEXT_VERSION
 
         with transaction.atomic():
             try:
                 published = self._repo.pubblica_versione(
                     versione_id, valido_dal=valido_dal, valido_al=valido_al,
+                    versione_contesto=forma_builder,
                 )
             except IntegrityError as exc:
                 map_integrity_error(
@@ -489,10 +501,10 @@ class TemplateVersioniAdminService:
                 message="Versione non modificabile: stato non BOZZA.",
                 detail=f"stato_corrente={versione['stato']!r}",
             )
-            raise  # unreachable
 
     # Scopo: Compone il dict da passare al repository per create.
-    #        Campi obbligatori: titolo, html_template, render_engine_id.
+    #        Campi obbligatori: titolo, html_template, render_engine_id,
+    #        versione_contesto.
     #        Tutti gli altri seguono i default DDL/DB.
     def _build_create_data(self, payload: dict[str, Any]) -> dict[str, Any]:
         data: dict[str, Any] = {}
@@ -503,6 +515,11 @@ class TemplateVersioniAdminService:
         )
         data["render_engine_id"] = self._v.require_positive_int(
             payload, "render_engine_id"
+        )
+        # ⛔ Nessun default: la forma la dichiara chi scrive la versione (il
+        #    DB non ne ha, e un default sarebbe una forma dichiarata da nessuno).
+        data["versione_contesto"] = self._v.require_positive_int(
+            payload, "versione_contesto"
         )
         self._fill_optional_versione_fields(data, payload)
         # In create `attivo` ha default applicativo True (no ErrorManager guard).
@@ -527,6 +544,10 @@ class TemplateVersioniAdminService:
         if "render_engine_id" in payload:
             data["render_engine_id"] = self._v.require_positive_int(
                 payload, "render_engine_id"
+            )
+        if "versione_contesto" in payload:
+            data["versione_contesto"] = self._v.require_positive_int(
+                payload, "versione_contesto"
             )
         self._fill_optional_versione_fields(data, payload)
         if "attivo" in payload:
@@ -585,16 +606,9 @@ class TemplateVersioniAdminService:
             data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
         if "valido_al" in payload:
             data["valido_al"] = self._v.optional_date(payload, "valido_al")
-        # Difesa cross-field: se entrambe presenti e valido_al < valido_dal,
-        # errore parlante (DDL non ha CHECK su questa relazione).
-        if data.get("valido_dal") and data.get("valido_al"):
-            if data["valido_al"] < data["valido_dal"]:
-                ErrorManager.raise_error(
-                    code=E_VALIDATION,
-                    message="valido_al non puo' essere antecedente a valido_dal.",
-                    detail=f"valido_dal={data['valido_dal']} valido_al={data['valido_al']}",
-                )
-                raise  # unreachable
+        # L'ordine delle date lo giudica il DB: guard comune
+        # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
+        # `valido_al` (dal 2026-09-23).
         if "context_schema" in payload:
             cs = payload["context_schema"]
             if cs is not None and not isinstance(cs, dict):
@@ -602,7 +616,6 @@ class TemplateVersioniAdminService:
                     code=E_VALIDATION,
                     message="context_schema deve essere un oggetto JSON.",
                 )
-                raise  # unreachable
             if cs is not None:
                 data["context_schema"] = cs
         if "meta" in payload:
@@ -621,7 +634,6 @@ class TemplateVersioniAdminService:
                 message=f"Valore '{field}' non valido.",
                 detail=f"ammessi={sorted(whitelist)!r} ricevuto={value!r}",
             )
-            raise  # unreachable
 
 
 def _coerce_non_negative_number(value: Any, *, field: str) -> int | float:
@@ -655,4 +667,3 @@ def _raise_invalid_margin(field: str, value: Any) -> None:
         message=f"Margine '{field}' non valido.",
         detail=f"atteso numero non negativo, ricevuto {value!r}",
     )
-    raise  # unreachable

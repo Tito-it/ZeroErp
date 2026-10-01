@@ -30,6 +30,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import AdminAPIView, DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
@@ -39,6 +40,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.services.famiglie_service import FamiglieDocumentoService
+from apps.core.api.openapi_params import param_ricerca_full
 
 # Il codice della lista a catalogo. ⚠️ Vive in una costante perche' lo leggono
 # in tre: la lista, l'export e — indirettamente — il presidio di copertura.
@@ -62,10 +64,7 @@ _PARAMETRI_FILTRO = [
         required=False,
         description="Derivato da `colonna_serie IS NOT NULL`, non una colonna.",
     ),
-    OpenApiParameter(
-        name="search", type=str, location=OpenApiParameter.QUERY, required=False,
-        description="Ricerca su codice interno, descrizione, prefisso di default.",
-    ),
+    param_ricerca_full(),
     OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY,
                      required=False,
                      description="Whitelist; fuori whitelist → ordine di default."),
@@ -200,9 +199,10 @@ class ApiFamiglieExport(AdminAPIView):
             # ⚠️ Solo i filtri DAVVERO applicati: `filtri` porta `None` per
             #    quelli non passati, e un metadato «attivo: None» dentro il file
             #    dice a chi lo rilegge che un filtro c'era, quando non c'era.
+            #    La ricerca libera la dichiara il BB (`filtri_export_con_ricerca`).
             filtri_applicati={
                 k: v
-                for k, v in {"search": p["search"], **filtri}.items()
+                for k, v in filtri.items()
                 if v is not None and v != ""
             },
             fmt=fmt,
@@ -227,6 +227,8 @@ class ApiFamigliaDetail(AdminAPIView):
     @extend_schema(
         operation_id="vendite_famiglie_update",
         request=inline_serializer(name="VenditeFamigliaUpdateReq", fields={
+            # Il codice dell'operatore (dal 2026-09-24): mutabile e unico; vuoto -> 400.
+            "codice": serializers.CharField(required=False),
             "descrizione": serializers.CharField(required=False),
             "schema_tabella": serializers.CharField(required=False),
             "nome_tabella": serializers.CharField(required=False),
@@ -247,7 +249,7 @@ class ApiFamigliaDetail(AdminAPIView):
     #    dei registri e' il guard `..._guard_struttura` — non un secondo elenco
     #    scritto qui.
     def patch(self, request: Request, famiglia_id: int) -> JsonResponse:
-        payload = dict(request.data or {})
+        payload = dict(corpo_oggetto(request))
         return success_response(
             FamiglieDocumentoService().update_famiglia(famiglia_id, payload),
         )
@@ -274,7 +276,7 @@ class ApiFamigliaAttivo(AdminAPIView):
     #        l'azione che il guard di disattivazione presidia, e riaccenderla e'
     #        cio' che si fa al posto di crearne un'altra sulla stessa tabella.
     def post(self, request: Request, famiglia_id: int) -> JsonResponse:
-        payload = request.data or {}
+        payload = corpo_oggetto(request)
         attivo = payload.get("attivo")
         ErrorManager.require(
             isinstance(attivo, bool),

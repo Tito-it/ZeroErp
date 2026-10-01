@@ -23,6 +23,7 @@ Indice test:
 
 from decimal import Decimal
 from unittest import TestCase
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
@@ -126,10 +127,15 @@ class ApprovaRifiutaTests(TestCase):
         # riga) e il nome FK e' aliasato `AS documento_id`. Il test mock
         # riflette la nuova firma.
         mock_cursor = MagicMock()
+        # Colonne come quelle di psycopg (`.name`): le legge `row_to_dict`/`rows_to_list`.
         mock_cursor.description = [
-            ("id",), ("documento_id",),
-            ("stato_approvazione_prezzo",), ("pratica_approvazione_prezzo_id",),
-            ("meta",),
+            SimpleNamespace(name=c) for c in (
+                "id",
+                "documento_id",
+                "stato_approvazione_prezzo",
+                "pratica_approvazione_prezzo_id",
+                "meta",
+            )
         ]
         mock_cursor.fetchone.return_value = (
             riga_id, 1, stato, pratica_id, meta or {},

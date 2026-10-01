@@ -33,7 +33,7 @@
 frontend/src/
 ├── core/                           # Moduli condivisi cross-dominio
 │   ├── components/                 # 40+ componenti UI condivisi
-│   │   ├── App*.vue                # Layout: AppLayout, AppTopbar, AppSidebar, AppToolbar, AppBreadcrumb, AppDrawer
+│   │   ├── App*.vue                # Layout: AppLayout, AppTopbar, AppSidebar, AppBreadcrumb, AppDrawer
 │   │   ├── Sidebar*.vue            # SidebarHome, SidebarDomain, SidebarItem
 │   │   ├── Content*.vue            # ContentTabs
 │   │   ├── Search*.vue             # SearchDrawer
@@ -41,14 +41,13 @@ frontend/src/
 │   │   ├── *Autocomplete.vue       # ComuneAutocomplete, StradarioAutocomplete, StradarioGeneraleAutocomplete
 │   │   ├── *Drawer.vue             # Drawer geografici: ComuneDrawer, ProvinceDrawer, RegioniDrawer, StatiDrawer, ToponomasticaDrawer, CodiciPostaliDrawer
 │   │   ├── *SearchTable.vue        # SearchTable geografiche: ComuniSearchTable, ProvinceSearchTable, RegioniSearchTable, StatiSearchTable, ToponomasticaSearchTable, CodiciPostaliSearchTable
-│   │   ├── GenericConfigDrawer.vue # Drawer generico per 67 tabelle config
+│   │   ├── GenericConfigDrawer.vue # Drawer generico per i 65 vocabolari del pannello config
 │   │   ├── ConfigTablePanel.vue    # Pannello config con tab dinamici
 │   │   ├── IndirizziSoggettoDrawer.vue  # Gestione indirizzi soggetto (multi-tipo, replace, auto-clone)
 │   │   ├── ContattiSoggettoDrawer.vue   # Gestione contatti soggetto
 │   │   ├── FormFooter.vue        # Footer drawer con auto-hide readonly
 │   │   ├── DrawerTitle.vue         # Titolo drawer
 │   │   ├── NewButton.vue           # Pulsante Nuovo con auto-hide readonly
-│   │   ├── PaginationInfo.vue      # Info paginazione
 │   │   ├── TagList.vue             # Lista tag
 │   │   ├── LogoBrand.vue           # Logo riutilizzabile
 │   │   └── StatusPage.vue          # Template pagina stato

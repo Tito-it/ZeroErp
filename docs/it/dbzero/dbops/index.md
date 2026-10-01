@@ -10,6 +10,7 @@
 - [automation_overrides_cols](tabelle/automation_overrides_cols.md) — (latest review 10-01-26) Centralizzare le **eccezioni di naming delle colonne** usate dagli automatismi (audit, soft‑delete, storico, ecc.). Quando il tuo schema usa nomi diversi dagli standard (es. `attivo` → `is_enabled`, `data_update` → `modified_at`), qui definisci l’override **per tabella**.
 - [automation_rules_tbl](tabelle/automation_rules_tbl.md) — **(latest review 13-01-26)** Configurare **regole di automazione** per generare/applicare trigger e vincoli in modo dichiarativo. Ogni riga descrive **cosa** applicare (*rule_type*), **dove** (*target_schema/target_table*), **quando** (*exec_mode*), **come chiamarlo** (*name_template*), **come verificare l'esistenza** (*existence_strategy*), e **con quali parametri** (*params*).
 - [automation_scope](tabelle/automation_scope.md) — (latest review 10-01-26) Definire **l’elenco degli schemi** su cui gli orchestratori di automazione devono operare. Funziona come una **allow‑list**: se presente e popolata, limita l’esecuzione alle sole voci elencate.
+- [automazione_attivo_eccezioni](tabelle/automazione_attivo_eccezioni.md)
 - [automazione_chiusura_scadenze](tabelle/automazione_chiusura_scadenze.md) — (latest review 26-04-2026)
 - [automazione_guard_utility_tipo_ruolo](tabelle/automazione_guard_utility_tipo_ruolo.md) — La tabella **`dbops.automazione_guard_utility_tipo_ruolo`** configura le tabelle su cui applicare automaticamente il trigger di guardia **utility -> tipo_ruolo**.
 - [automazione_overlap](tabelle/automazione_overlap.md) — (latest review 19-01-26) La tabella **`dbops.automazione_overlap`** centralizza la configurazione del controllo **anti-overlap temporale** tramite vincoli `EXCLUDE USING gist` sulle tabelle versionate.
@@ -33,6 +34,7 @@
 - [rls_perimetro_debito](tabelle/rls_perimetro_debito.md) — (latest review 09-09-2026)
 - [sec_functions_owner](tabelle/sec_functions_owner.md) — * **Centralizzare l'elenco delle funzioni "sensibili"** che richiedono owner dedicato. * **Garantire automaticamente la corretta assegnazione dei permessi**, tramite `dbops.fn_sync_functions_owner()`. * **Prevenire errori operativi o di sicurezza** derivanti da modifiche accidentali o ripristini non controllati. * Supportare la procedura di *hardening post-deploy*, mantenendo coerenza anche in CI, dopo migrazioni o clonazioni del database.
 - [sessioni_utente](tabelle/sessioni_utente.md) — (latest review 05-03-2026)
+- [stati_check_dichiarazioni](tabelle/stati_check_dichiarazioni.md) — (latest review 21-09-2026)
 - [storico_scope_policy](tabelle/storico_scope_policy.md) — (latest review 11-09-2026)
 - [transaction_ids](tabelle/transaction_ids.md) — (latest review 10-01-26) La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.
 
@@ -74,17 +76,27 @@
 - [fn_grant_storico_shadows](funzioni/fn_grant_storico_shadows.md)
 - [fn_guardiano_digest](funzioni/fn_guardiano_digest.md) — (latest review 11-09-2026)
 - [fn_list_indices](funzioni/fn_list_indices.md) — (rev 2026-08-21)
+- [fn_lock_columns_divergenze](funzioni/fn_lock_columns_divergenze.md) — (latest review 26-09-26)
 - [fn_migrate_add_indirizzo_normalizzato](funzioni/fn_migrate_add_indirizzo_normalizzato.md)
 - [fn_name_from_template](funzioni/fn_name_from_template.md) — La funzione **`fn_name_from_template`** genera in modo consistente un **nome normalizzato** (per trigger, constraint, indici, ecc.) a partire da un **template testuale** con *placeholder* e da un set di parametri (schema, tabella, parent/child, nome FK, operazione).
 - [fn_non_editable_fields](funzioni/fn_non_editable_fields.md)
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md) — (rev 2026-08-21)
 - [fn_pgtap_cf_libero](funzioni/fn_pgtap_cf_libero.md) — (rev 2026-08-21)
+- [fn_pgtap_concedi_azione](funzioni/fn_pgtap_concedi_azione.md) — (scritta il 2026-09-24)
 - [fn_pgtap_crea_articolo](funzioni/fn_pgtap_crea_articolo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_pgtap_crea_cliente_ba](funzioni/fn_pgtap_crea_cliente_ba.md)
+- [fn_pgtap_crea_ddt](funzioni/fn_pgtap_crea_ddt.md)
 - [fn_pgtap_crea_emittente](funzioni/fn_pgtap_crea_emittente.md)
 - [fn_pgtap_crea_emittente_operatore](funzioni/fn_pgtap_crea_emittente_operatore.md)
+- [fn_pgtap_crea_fattura](funzioni/fn_pgtap_crea_fattura.md) — (rev 2026-09-23 — D7, lotto 1)
+- [fn_pgtap_crea_filiale_bancaria](funzioni/fn_pgtap_crea_filiale_bancaria.md) — (rev 2026-09-23 — D7, lotto 1)
+- [fn_pgtap_crea_gestore](funzioni/fn_pgtap_crea_gestore.md) — (rev 2026-09-23 — D7, lotto 2)
 - [fn_pgtap_crea_indirizzo_dettaglio](funzioni/fn_pgtap_crea_indirizzo_dettaglio.md)
+- [fn_pgtap_crea_listino](funzioni/fn_pgtap_crea_listino.md) — (rev 2026-09-23 — D7, lotto 2)
 - [fn_pgtap_crea_magazzino](funzioni/fn_pgtap_crea_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_pgtap_crea_mondo_cliente](funzioni/fn_pgtap_crea_mondo_cliente.md) — (rev 2026-09-22 — D7, il giro del building block)
+- [fn_pgtap_crea_operatore_umano](funzioni/fn_pgtap_crea_operatore_umano.md)
+- [fn_pgtap_crea_pdp](funzioni/fn_pgtap_crea_pdp.md)
 - [fn_pgtap_crea_roster_processo](funzioni/fn_pgtap_crea_roster_processo.md)
 - [fn_pgtap_crea_soggetto_pg](funzioni/fn_pgtap_crea_soggetto_pg.md) — (rev 2026-08-21)
 - [fn_pgtap_crea_soggetto_ruolo](funzioni/fn_pgtap_crea_soggetto_ruolo.md) — (rev 2026-08-21)
@@ -93,14 +105,15 @@
 - [fn_purge_cleanup_expired](funzioni/fn_purge_cleanup_expired.md) — (latest review 07-02-26) La funzione **`dbops.fn_purge_cleanup_expired`** elimina i record con **`cleanup_at` scaduto** usando una strategia a **batch**, per ridurre lock e impatti sulle tabelle più grandi.
 - [fn_rename_triggers_by_order](funzioni/fn_rename_triggers_by_order.md)
 - [fn_resolve_scope](funzioni/fn_resolve_scope.md) — (latest review 10-01-26) La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista effettiva di schemi da considerare come *ambito* per l’esecuzione delle automazioni. Serve a normalizzare e centralizzare la logica di determinazione dell’ambito operativo, evitando duplicazioni e incoerenze.
+- [fn_ritira_attivo_eccezioni](funzioni/fn_ritira_attivo_eccezioni.md)
 - [fn_run_automations](funzioni/fn_run_automations.md) — (latest review 07-02-26) La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, lock colonne, gestione flag attivo, cleanup) sugli schemi e tabelle nell'ambito.
 - [fn_run_automations_attivo](funzioni/fn_run_automations_attivo.md) — *(latest review 13‑11‑2026)* La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico e coerente le **regole di gestione del campo `attivo`** (soft‑delete / stato di validità) **sulle relazioni di chiave esterna**, creando e riconciliando **trigger di BLOCCO sul padre** e **trigger REQUIRE sul figlio**.
 - [fn_run_automations_audit_update](funzioni/fn_run_automations_audit_update.md) — (latest review 25-12-25) La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico (o simula) la **regola di aggiornamento audit** sulle tabelle nell'ambito, creando – dove mancante secondo le policy – un **trigger BEFORE UPDATE** che aggiorna `data_update` e `user_update` tramite la funzione `script.trgfn_audit_data_user_generic()`.
 - [fn_run_automations_cleanup](funzioni/fn_run_automations_cleanup.md) — (latest review 07-02-26) La funzione **`dbops.fn_run_automations_cleanup(p_exec_mode, p_schemas, p_dry_run)`** è l’orchestratore del framework di cleanup basato su `cleanup_at`.
+- [fn_run_automations_date_validita](funzioni/fn_run_automations_date_validita.md)
 - [fn_run_automations_delete_block](funzioni/fn_run_automations_delete_block.md) — (latest review 23-01-26) La funzione **`dbops.fn_run_automations_delete_block(p_exec_mode, p_schemas, p_dry_run)`** applica (o simula) i trigger **DELETE_BLOCK** sulle tabelle configurate in `dbops.automation_delete_block`, con bypass via GUC.
-- [fn_run_automations_drop_lock_trg](funzioni/fn_run_automations_drop_lock_trg.md) — La funzione **`dbops.fn_run_automations_drop_lock_trg(p_exec_mode, p_schemas, p_dry_run)`** elimina i trigger **LOCK_COLUMNS** obsoleti, quando **non esistono colonne da bloccare** (`codice_interno` assente e nessuna colonna extra attiva in `automation_lock_columns`).
-- [fn_run_automations_lock_columns](funzioni/fn_run_automations_lock_columns.md) — (latest review 10-01-26) La funzione **`dbops.fn_run_automations_lock_columns(p_exec_mode, p_schemas, p_dry_run)`** automatizza la creazione (o la simulazione) dei trigger **LOCK_COLUMNS** sulle tabelle nell'ambito, bloccando la modifica delle colonne critiche tramite `script.trgfn_lock_columns`.
-- [fn_run_automations_storico](funzioni/fn_run_automations_storico.md) — (latest review 26-12-25) La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_run)`** automatizza la creazione (o la simulazione) del **trigger unico di storicizzazione** `BEFORE UPDATE OR DELETE` per le tabelle applicative, delegando la logica alla funzione `script.trgfn_storico_generic`. È uno dei moduli orchestrati da `fn_run_automations`.
+- [fn_run_automations_lock_columns](funzioni/fn_run_automations_lock_columns.md) — (latest review 26-09-26)
+- [fn_run_automations_storico](funzioni/fn_run_automations_storico.md) — (latest review 25-09-26) La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_run)`** automatizza la creazione (o la simulazione) del **trigger unico di storicizzazione** `BEFORE UPDATE OR DELETE` per le tabelle applicative, delegando la logica alla funzione `script.trgfn_storico_generic`. È uno dei moduli orchestrati da `fn_run_automations`.
 - [fn_run_automations_storico_provision](funzioni/fn_run_automations_storico_provision.md) — (latest review 26-12-25) La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas, p_dry_run)`** automatizza il **provisioning delle tabelle nello schema `storico`** per tutte le tabelle applicative che adottano la colonna di storicizzazione (es. `storicizza`). Per ogni tabella nell'ambito, verifica prerequisiti e demanda la creazione/adeguamento dell’omologa tabella storico a `fn_ensure_storico_table` (con eventuale indice GIN opzionale).
 - [fn_run_automations_tx_id](funzioni/fn_run_automations_tx_id.md) — (latest review 26-12-25) La funzione **`dbops.fn_run_automations_tx_id(p_exec_mode, p_schemas, p_dry_run)`** automatizza la creazione (o la simulazione) del **trigger di gestione `tx_id`** (`BEFORE INSERT OR UPDATE`) sulle tabelle applicative che possiedono una colonna `tx_id uuid`. Il trigger invoca `dbops.trgfn_tx_id_managed()` per generare/propagare l’ID di transazione.
 - [fn_schema_in_scope](funzioni/fn_schema_in_scope.md) — (latest review 10-01-26) La funzione **`dbops.fn_schema_in_scope(p_rule_target, p_schemas)`** è un **helper booleano** utilizzato dalle automazioni per verificare se uno schema specificato da una regola (`p_rule_target`) appartiene all’insieme di schemi effettivamente nell’ambito (`p_schemas`).
@@ -109,6 +122,7 @@
 - [fn_seed_automazione_guard_utility_tipo_ruolo](funzioni/fn_seed_automazione_guard_utility_tipo_ruolo.md) — La funzione **`dbops.fn_seed_automazione_guard_utility_tipo_ruolo(p_schemas)`** popola la tabella di configurazione automazione individuando in modo automatico le tabelle candidate.
 - [fn_seed_automazione_overlap](funzioni/fn_seed_automazione_overlap.md) — (latest review 19-01-26) La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorna) `dbops.automazione_overlap` rilevando automaticamente le tabelle con periodo di validita (`valido_dal/valido_al` o `valid_from/valid_to`) e valutando se risultano versionate.
 - [fn_seed_fk_index_policy](funzioni/fn_seed_fk_index_policy.md) — (latest review 27-07-26)
+- [fn_sessione_del_migratore](funzioni/fn_sessione_del_migratore.md) — (scritta il 29-09-2026)
 - [fn_set_gucs_conn](funzioni/fn_set_gucs_conn.md) — (latest review 29-12-25) La funzione `dbops.fn_set_gucs_conn` serve a impostare in modo centralizzato le **GUC (Grand Unified Configuration)** custom di PostgreSQL per la **connessione corrente**. Queste variabili sono usate da trigger, funzioni e policy RLS per conoscere l’utente applicativo e il contesto di esecuzione (es. sessione Django, gruppi, tenant).
 - [fn_sorgenti_orfane](funzioni/fn_sorgenti_orfane.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_sorgenti_orfane_perimetro](funzioni/fn_sorgenti_orfane_perimetro.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
@@ -119,6 +133,7 @@
 - [fn_storico_risolvi_scope](funzioni/fn_storico_risolvi_scope.md) — (latest review 11-09-2026)
 - [fn_sync_functions_owner](funzioni/fn_sync_functions_owner.md) — * **Applicare automaticamente la policy di sicurezza** definita in `dbops.sec_functions_owner`. * **Rilevare e correggere** owner incoerenti di funzioni critiche. * Rendere ripetibile e idempotente il processo di *hardening* dopo:
 - [fn_table_in_scope](funzioni/fn_table_in_scope.md) — (latest review 10-01-26) La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di filtro tabellare** che determina se una specifica tabella appartiene all'ambito di automazione, basandosi sulle regole definite in `dbops.automation_scope`. In questo modo, le automazioni possono applicarsi solo alle tabelle consentite.
+- [fn_trigger_argomenti](funzioni/fn_trigger_argomenti.md) — (latest review 26-09-26)
 - [fn_trigger_exists_block_by_args](funzioni/fn_trigger_exists_block_by_args.md) — (last review 31-12-25) La funzione **`dbops.fn_trigger_exists_block_by_args(p_parent_rel, p_child_schema, p_child_table, p_fk_col)`** verifica l’esistenza di un **trigger di blocco** basato sulla funzione `trgfn_prevent_deactivate_if_children`, applicato ad una tabella padre per impedire la disattivazione se esistono righe figlio attive.
 - [fn_trigger_exists_by_function](funzioni/fn_trigger_exists_by_function.md) — (latest review 10-01-26) La funzione **`dbops.fn_trigger_exists_by_function(p_rel, p_fn_schema, p_fn_name)`** verifica l’esistenza di un trigger su una tabella specifica, identificandolo in base alla **funzione associata**. È pensata come utility per le automazioni, per evitare la duplicazione di trigger già creati.
 - [fn_trigger_exists_by_name](funzioni/fn_trigger_exists_by_name.md) — (latest review 10-01-26) La funzione **`dbops.fn_trigger_exists_by_name(p_rel, p_trigger_name)`** verifica l’esistenza di un **trigger non interno** su una tabella specifica **in base al nome** del trigger.
@@ -140,18 +155,23 @@
 - [vw_coda_lavori_da_guardare](views/vw_coda_lavori_da_guardare.md) — (latest review 05-09-2026)
 - [vw_codici_errore_da_dichiarare](views/vw_codici_errore_da_dichiarare.md) — (rev 2026-08-21)
 - [vw_codici_errore_forme_condizione](views/vw_codici_errore_forme_condizione.md) — (rev 2026-09-07)
+- [vw_ddt_emessi_senza_scarico](views/vw_ddt_emessi_senza_scarico.md)
 - [vw_diag_v_clienti_links](views/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
 - [vw_duplicate_indexes](views/vw_duplicate_indexes.md) — (latest review 27-07-26)
 - [vw_email_da_guardare](views/vw_email_da_guardare.md) — (latest review 11-09-2026)
 - [vw_emittenti_non_serviti](views/vw_emittenti_non_serviti.md) — (latest review 04-09-2026)
+- [vw_emittenti_regime_non_confermato](views/vw_emittenti_regime_non_confermato.md)
 - [vw_eventi_non_dichiarati](views/vw_eventi_non_dichiarati.md)
 - [vw_fatture_stampa_coda_da_guardare](views/vw_fatture_stampa_coda_da_guardare.md) — (latest review 11-09-2026)
 - [vw_fk_con_indice_missing_policy](views/vw_fk_con_indice_missing_policy.md) — (latest review 27-07-26)
 - [vw_fk_senza_indice](views/vw_fk_senza_indice.md) — (latest review 27-07-26)
 - [vw_function_list](views/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
+- [vw_funzioni_check_codici](views/vw_funzioni_check_codici.md) — (latest review 21-09-2026)
 - [vw_indici_ridondanti_prefisso](views/vw_indici_ridondanti_prefisso.md) — (latest review 27-07-26)
 - [vw_liste_multi_emittente_non_certificate](views/vw_liste_multi_emittente_non_certificate.md) — (latest review 18-08-26)
+- [vw_lotti_chiusi_con_errori_da_guardare](views/vw_lotti_chiusi_con_errori_da_guardare.md)
 - [vw_lotti_fermi_da_guardare](views/vw_lotti_fermi_da_guardare.md) — (latest review 19-09-2026)
+- [vw_magazzino_dipendenze_inverse](views/vw_magazzino_dipendenze_inverse.md) — (latest review 01-10-2026)
 - [vw_magazzino_movimenti_senza_costo](views/vw_magazzino_movimenti_senza_costo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_magazzino_valore_giacenza_divergente](views/vw_magazzino_valore_giacenza_divergente.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_non_editable_fields](views/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
@@ -165,11 +185,15 @@
 - [vw_processi_programmazione](views/vw_processi_programmazione.md) — (latest review 07-09-2026)
 - [vw_processi_programmazione_da_guardare](views/vw_processi_programmazione_da_guardare.md) — (latest review 07-09-2026)
 - [vw_processi_roster](views/vw_processi_roster.md) — (latest review 05-09-2026)
+- [vw_punti_canale_campo](views/vw_punti_canale_campo.md) — (latest review 22-09-2026)
 - [vw_punti_primo_motivo](views/vw_punti_primo_motivo.md)
+- [vw_resi_confermati_senza_carico](views/vw_resi_confermati_senza_carico.md)
 - [vw_riferimenti_morti_da_sanare](views/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)
 - [vw_riferimenti_morti_rientrati](views/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
 - [vw_rls_perimetro_scoperto](views/vw_rls_perimetro_scoperto.md) — (latest review 09-09-2026)
 - [vw_run_senza_attore](views/vw_run_senza_attore.md) — (latest review 04-09-2026)
 - [vw_sorgenti_orfane](views/vw_sorgenti_orfane.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [vw_stati_check_da_sanare](views/vw_stati_check_da_sanare.md) — (latest review 21-09-2026)
+- [vw_stati_check_scrittori](views/vw_stati_check_scrittori.md) — (latest review 21-09-2026)
 - [vw_storico_scope_da_dichiarare](views/vw_storico_scope_da_dichiarare.md) — (latest review 12-09-2026)
 - [vw_trigger_functions](views/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:

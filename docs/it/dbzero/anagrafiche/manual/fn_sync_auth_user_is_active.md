@@ -9,7 +9,6 @@ Architettura di riferimento:
 **Approfondimento tabelle:**
 >
 [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
-> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
 > [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
 > [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
 >
@@ -34,9 +33,9 @@ diverso da DISABILITATO, in finestra temporale, con soggetto parent attivo).
 
 ### Parametri di input
 
-| Parametro        | Tipo      | Descrizione                            |
-|------------------|-----------|----------------------------------------|
-| `p_auth_user_id` | `integer` | ID dell'utente Django. NOT NULL, > 0.  |
+| Parametro        | Tipo      | Descrizione                           |
+| ---------------- | --------- | ------------------------------------- |
+| `p_auth_user_id` | `integer` | ID dell'utente Django. NOT NULL, > 0. |
 
 Il parametro è dichiarato con `%TYPE` della colonna
 `anagrafiche.identita_digitali.auth_user_id`.
@@ -114,12 +113,10 @@ metodi Python senza toccare il codice chiamante.
 
 #### Trigger DB
 
-* `anagrafiche.trgfn_risorse_umane_auth_user_sync_active` — passa
-  `NEW.auth_user_id` (aggiornato in §4.5 F2).
 * `anagrafiche.trgfn_risorse_umane_sync_auth_user_active` — risolve
-  `auth_user_id` dal bridge RUA prima di chiamare (aggiornato in §4.5 F2).
-* `anagrafiche.trgfn_identita_digitali_sync_auth_user_active` — nuovo:
-  passa `NEW.auth_user_id` (§4.5 F4).
+  l'`auth_user_id` dalle identità collegate alla risorsa prima di chiamare.
+* `anagrafiche.trgfn_identita_digitali_sync_auth_user_active` — passa
+  `NEW.auth_user_id`.
 
 #### Funzione batch
 

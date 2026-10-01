@@ -61,8 +61,10 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 Il flusso utente innesca la transizione via `/emetti/` (conferma + generazione
 documento, vedi sezione Emetti); `/conferma/` resta come API di sola transizione,
 riusata internamente da `emetti`. La transizione è **autoritativa lato DB** (trigger
-`trgfn_ordini_guard_transizione_approvazione` sull'UPDATE di
-`stato_doc_ordine_id`): il service applica solo il guard applicativo «origine
+`trgfn_ordini_guard_transizione` sull'UPDATE di `stato_doc_ordine_id`; dal
+2026-09-24 la sua Regola 5 rifiuta `DRAFT → CONFERMATO` con componenti BoM attivi
+a prezzo `PENDING` o `REJECTED` — `E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`,
+building block `script.fn_check_prezzi_autorizzati`): il service applica solo il guard applicativo «origine
 DRAFT + almeno una riga». I codici `E_ORDINE_*` sollevati dai trigger sono
 **estratti dal MESSAGE** via regex (`_DB_ERROR_CODE_RE`) e propagati come
 `ServiceError.code` originale (routing UI specifico), con fallback
@@ -119,12 +121,14 @@ Ritorna `{id, uid, numero}`.
 ### Detail `GET /api/v1/vendite/ordini/<id>/`
 
 Testata (dalla vista + `meta`/`storicizza`) + capability **data-driven** da
-`script.fn_available_actions_ordine` (matrice `config.transizioni_stati_ordini`):
+`script.fn_available_actions_ordine` (matrice `config.transizioni_stati_ordini`),
+nella chiave `capabilities`, non fuse nella testata (dal 2026-09-23, [api.md §«Il blob sta SOTTO `capabilities`»](../../../dev/api.md)):
 `available_actions[]` (azioni di stato con `key`/`target_state`/`label_key`/
-`severity`/`icon`/`requires_confirm` — incl. `conferma`, `annulla`, e
-`push_commessa` come azione applicativa), `can_edit_testata`, `can_edit_righe`,
+`requires_confirm` — incl. `conferma`, `annulla`, e
+`push_commessa` come azione applicativa; icona e colore li sceglie il frontend
+dal `key`), `can_edit_testata`, `can_edit_righe`,
 `can_push_commessa` (+ `can_push_commessa_reason`/`_reason_key`),
-`non_editable_fields`, `stato_codice`, più `righe_count`. *(`can_conferma` non è
+`non_editable_fields`, `stato_codice`, `pdf`; sulla testata `righe_count`. *(`can_conferma` non è
 più un flag: la conferma è un'entry di `available_actions`.)* 404
 (`E_ORD_NOT_FOUND`) se inesistente o fuori scope (RLS).
 
@@ -282,7 +286,8 @@ La response espone `commesse_ids` (commesse toccate dal push), oltre a
 
 | Metodo / Path | Scopo |
 | --- | --- |
-| `GET /<id>/righe/` | Lista righe attive (decodifiche articolo/uom/iva + `importo_riga` + `is_composito_caso_a`) |
+| `GET /<id>/righe/` | TUTTE le righe attive, nell'ordine del documento, dalla vista `vw_ordini_righe_dettaglio` (decodifiche, `importo_riga`, evaso e residuo, `is_composito_caso_a`) |
+| `GET /<id>/righe/lista/` (+ `export/`) | La lista configurabile, BB condiviso: [api_righe_documento.md](api_righe_documento.md) |
 | `POST /<id>/righe/` | Aggiunge una riga (solo DRAFT). `riga_nr` autoassegnato. Pricing auto-fill via `PricingService` se prezzo assente e articolo non composito; per articolo composito init componenti BoM con override prezzi opzionali (`componenti_overrides`, vedi sotto) |
 | `PATCH /<id>/righe/<riga_id>/` | Aggiorna riga (solo DRAFT). `request.data` |
 | `DELETE /<id>/righe/<riga_id>/` | Hard-delete riga (solo DRAFT) |
@@ -352,7 +357,7 @@ documentale avviene nel passaggio `DRAFT → CONFERMATO` via `POST /<id>/emetti/
 | `POST /<id>/emetti/` | **Emissione**: conferma + genera PDF + allegati, atomica (vedi sezione Emetti) |
 | `POST /<id>/documenti/genera/` | Genera e persiste un PDF (`documenti_generati` + evento `GENERATO`). Body opzionale: `template_documento_id`, `tipo_documento_output_id` |
 | `POST /<id>/documenti/anteprima/` | Anteprima PDF temporanea (no persist, no evento). Risposta binaria `application/pdf` inline |
-| `GET /<id>/documenti/` | Lista paginata documenti generati per l'ordine (scope emittente, `page`/`page_size`) |
+| `GET /<id>/documenti/` | Lista a catalogo `documenti.documenti_sorgente` dei documenti generati per l'ordine (`limit`/`offset`/`order_by`/`order_dir`/`search`, `emittente_fiscale_id` per il cancello di perimetro — contratto in [api_documenti_per_sorgente](../../documenti/manual/api_documenti_per_sorgente.md) §3.4) |
 | `GET /<id>/documenti/<documento_id>/file/` | Download PDF principale + evento `SCARICATO` |
 | `GET/POST /<id>/documenti/<documento_id>/allegati/` | Lista file (principale + allegati) / append allegati (multipart) |
 | `GET /<id>/documenti/<documento_id>/file/<file_id>/` | Download di uno specifico file (principale o allegato) + evento `SCARICATO` |
@@ -413,7 +418,8 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | `E_ORD_NOT_FOUND` | 404 | ordine/riga/componente inesistente o fuori scope |
 | `E_ORD_VALIDAZIONE` | 400 | payload non valido (cliente mancante, campi vuoti, `billing_account_id` non numerico, ecc.) |
 | `E_ORD_CLIENTE_IMMUTABILE` | 400 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (guard BE + lock-columns DB) |
-| `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato (modifica fuori DRAFT; delete bozza con righe → annullare) |
+| `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato sulla **testata** (modifica fuori DRAFT; delete bozza con righe → annullare) |
+| `E_RIGA_DOC_NON_BOZZA` | 409 | righe e componenti si aggiungono/modificano/tolgono solo in bozza — dal 2026-09-22 è il codice del BB a DB `trgfn_doc_righe_lock_fuori_bozza` (sugli ordini montato sul solo DELETE) e il pre-check BE lo usa uguale (`richiedi_righe_in_bozza`), con la frase a catalogo |
 | `E_ORD_NESSUNA_RIGA` | 409 | conferma/push senza righe eleggibili (guard applicativo `conferma()`) |
 | `E_ORD_OFFERTA_GIA_CONVERTITA` | 409 | conversione offerta→ordine già avvenuta (univocità 1:1): guard BE fail-fast + rete UNIQUE parziale `uq_ordini_v_documento_origine_offerta` (via `map_integrity_error`) |
 | `E_ORDINE_TRANSIZIONE_NON_AMMESSA` | varia | trigger guard: transizione di stato non presente/attiva in `config.transizioni_stati_ordini` (es. `cambia-stato` verso uno stato non ammesso) |
@@ -451,7 +457,8 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
 - Trigger testata: `trgfn_ordini_gen_numero`, `trgfn_ordini_normalize`,
   `script.trgfn_default_emittente_fiscale` (dal 2026-09-15 al posto di
   `trgfn_ordini_default_emittente`), `trgfn_ordini_guard_emittente_ba`,
-  `trgfn_ordini_guard_transizione_approvazione`, lock numero, immutabilità
+  `trgfn_ordini_guard_transizione` (la vecchia
+  `trgfn_ordini_guard_transizione_approvazione` è ritirata dal `20260512-28`), lock numero, immutabilità
   `canale_origine`.
 - Modello esteso: `agente_soggetto_ruolo_id` (`20260603-12`),
   `documento_origine_tipo`/`_id` (`20260603-13`), fix `chk_ordini_v_r_qta_pos`

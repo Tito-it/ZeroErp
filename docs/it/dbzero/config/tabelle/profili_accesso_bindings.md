@@ -46,12 +46,10 @@
 | trg_profili_accesso_bindings_a10_guard_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza()` |
 | trg_profili_accesso_bindings_a10_guard_ultimo_super_admin_upd_d | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_profili_accesso_bindings_guard_ultimo_super_admin()` |
 | trg_profili_accesso_bindings_a10_guard_ultimo_super_admin_upd_d | AFTER | DELETE | `EXECUTE FUNCTION config.trgfn_profili_accesso_bindings_guard_ultimo_super_admin()` |
-| trg_profili_accesso_bindings_a10_identita_digitali_requi_880a4c | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'identita_digitali', 'attivo', 'identita_digitale_id', 'id')` |
-| trg_profili_accesso_bindings_a10_identita_digitali_requi_880a4c | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'identita_digitali', 'attivo', 'identita_digitale_id', 'id')` |
-| trg_profili_accesso_bindings_a10_profili_accesso_require_2ec6bd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'profili_accesso', 'attivo', 'profilo_accesso_id', 'id')` |
 | trg_profili_accesso_bindings_a10_profili_accesso_require_2ec6bd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'profili_accesso', 'attivo', 'profilo_accesso_id', 'id')` |
-| trg_profili_accesso_bindings_a10_unita_organizzative_req_b93e21 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
+| trg_profili_accesso_bindings_a10_profili_accesso_require_2ec6bd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'profili_accesso', 'attivo', 'profilo_accesso_id', 'id')` |
 | trg_profili_accesso_bindings_a10_unita_organizzative_req_b93e21 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
+| trg_profili_accesso_bindings_a10_unita_organizzative_req_b93e21 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
 | trg_profili_accesso_bindings_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_profili_accesso_bindings_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_profili_accesso_bindings_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

@@ -8,8 +8,8 @@
 //      e l'utente cambia entita' (chiude/riapre il drawer su un id diverso)
 //      prima che la prima risposta arrivi → le due Promise possono risolversi
 //      in ordine inverso al lancio e la risposta "stantia" sovrascrive lo
-//      stato fresco. Consumer: OffertaDrawer, PreventiviDrawer (via
-//      `useRevisioniTab`).
+//      stato fresco. Consumer: OffertaDrawer, PreventiviDrawer (fetch del
+//      dettaglio; le revisioni passano dal guard dello store-lista).
 //   2. Switch rapido di contesto su lookup/preview/list: cambio articolo o
 //      cambio riga espansa mentre una fetch lenta e' ancora in volo. Consumer:
 //      `useRigaComponenti` (lista componenti BoM), `useArticoloUomOptions`

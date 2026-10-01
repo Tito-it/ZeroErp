@@ -23,6 +23,8 @@ DECLARE
     v_codice_da config.stati_doc_ddt.codice_interno%TYPE;
     v_codice_a  config.stati_doc_ddt.codice_interno%TYPE;
     v_ammessa   boolean := false;
+    v_guc          text;
+    v_dentro_verbo boolean;
 BEGIN
     -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
     IF NEW.stato_doc_ddt_id IS NOT DISTINCT FROM OLD.stato_doc_ddt_id THEN
@@ -84,12 +86,52 @@ BEGIN
         );
     END IF;
 
+    -- Regola 3 — LA PORTA DEL REGISTRO (rev 2026-09-28,
+    --   brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-e affinata da Tid).
+    --   I passaggi che toccano il registro di magazzino — l'emissione, l'annullo
+    --   di una bolla emessa, la consegna di una bolla di trasferimento — di una
+    --   bolla che muove merce davvero (vendite.fn_ddt_muove_merce, sulla riga
+    --   NUOVA: causale e magazzino possono cambiare nello stesso UPDATE) si fanno
+    --   solo dal verbo vendite.fn_cambia_stato_ddt, che nella stessa transazione
+    --   scrive i movimenti. Due condizioni, come la porta POSTED dei documenti
+    --   interni (D-V1): la GUC transazionale porta NEW.id E chi esegue e' il
+    --   proprietario della tabella (un verbo DEFINER, non l'app che accende la
+    --   GUC da se').
+    --   ⚠️ Sulle bolle che NON muovono merce l'UPDATE diretto resta ammesso: e' la
+    --   porta del registro, non ancora quella del permesso su tutta la bolla.
+    IF ((v_codice_da = 'DRAFT'  AND v_codice_a = 'EMESSO')
+        OR (v_codice_da = 'EMESSO' AND v_codice_a = 'ANNULLATO')
+        OR (v_codice_a = 'CONSEGNATO' AND vendite.fn_ddt_causale_magazzino(NEW) = 'TRASF_OUT'))
+       AND vendite.fn_ddt_muove_merce(NEW) THEN
+        v_guc          := current_setting('zeroerp.ddt_cambio_stato', true);
+        v_dentro_verbo := script.fn_is_proprietario_tabella(TG_RELID);
+        IF v_guc IS DISTINCT FROM NEW.id::text OR NOT v_dentro_verbo THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                TG_NAME::text,
+                'E_DDT_STATO_SOLO_DA_VERBO',
+                jsonb_build_object(
+                    'ddt_id',       NEW.id,
+                    'numero',       NEW.numero,
+                    'stato_da',     v_codice_da,
+                    'stato_a',      v_codice_a,
+                    'guc_valore',   v_guc,
+                    'dentro_verbo', v_dentro_verbo,
+                    'db_user',      current_user
+                ),
+                NEW.tx_id,
+                coalesce(NEW.numero, NEW.id::text),
+                coalesce(v_codice_a, 'NULL')
+            );
+        END IF;
+    END IF;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione()
-IS 'Trigger function: enforcement grafo transizioni stato DDT letto da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Regola 2: DRAFT->EMESSO richiede almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE) — verdetto delegato a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt). Mirror di trgfn_ordini_guard_transizione. rev 2026-07-19 (brief-db-guard-righe-avanzamento-stato Rev 2).';
+IS 'Trigger function: enforcement grafo transizioni stato DDT letto da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Regola 2: DRAFT->EMESSO richiede almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE) — verdetto delegato a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt). Mirror di trgfn_ordini_guard_transizione. rev 2026-07-19 (brief-db-guard-righe-avanzamento-stato Rev 2). rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-e): Regola 3, la PORTA DEL REGISTRO. DRAFT->EMESSO, EMESSO->ANNULLATO e ->CONSEGNATO di una bolla di trasferimento, su una bolla che muove merce (vendite.fn_ddt_muove_merce sulla riga NUOVA), passano solo dal verbo vendite.fn_cambia_stato_ddt: GUC transazionale zeroerp.ddt_cambio_stato = NEW.id E chi esegue e'' il proprietario della tabella (script.fn_is_proprietario_tabella), altrimenti E_DDT_STATO_SOLO_DA_VERBO. Le bolle che non muovono merce restano all''UPDATE diretto.';
 ```
 
 ---

@@ -30,11 +30,17 @@
 #   4) EMISSIONI DB - chiavi emesse dalle funzioni (label_key/reason_key)
 #                    e assenti dai locales: e' la classe di difetto che ha
 #                    colpito offerte e ordini, invisibile dal solo frontend.
-#                    Due sorgenti, non una: il corpo delle funzioni nella doc
-#                    auto-gen E il `meta` jsonb dei seed transizioni_stati_*.
+#                    Tre sorgenti, non una: il corpo delle funzioni nella doc
+#                    auto-gen, il `meta` jsonb dei seed transizioni_stati_* E,
+#                    dal 2026-09-19, la COLONNA `etichetta_key` dei CSV di
+#                    seed (i vocabolari etichettati riga per riga:
+#                    tipi_entita, eventi_dominio, registri_giornale).
 #                    Il difetto offerte di maggio viveva per meta' nel CSV
 #                    (addendum-db-stati-doc-offerte-transizioni-label-key):
 #                    guardare solo le funzioni ne intercetterebbe una meta'.
+#                    ⚠️ La terza sorgente era un buco fino al 19-09: le
+#                    chiavi di `tipi_entita` ed `eventi_dominio` erano nei
+#                    locales perche' scritte a mano, non perche' presidiate.
 #   5) DUPLICATE   - chiavi definite DUE VOLTE nello stesso oggetto (2026-08-26).
 #                    In JSON e' lecito e ogni parser tiene l'ULTIMA: la prima e'
 #                    morta, senza errori e senza test rossi.
@@ -181,10 +187,16 @@ def spoglia_commenti(testo):
 
 
 def walk_src():
-    """File sorgente FE, esclusi i locales stessi."""
+    """File sorgente FE, esclusi i locales stessi e i test."""
     for dirpath, dirnames, filenames in os.walk(SRC):
         dirnames[:] = [d for d in dirnames if d not in ("locales", "node_modules")]
         for f in filenames:
+            # ⚠️ Gli spec non vanno nel bundle, e le loro chiavi sono FIXTURE:
+            #    un test del ripiego fail-visible cita apposta una chiave che
+            #    non esiste (`useDrawerActions.spec.js`). Leggerli qui farebbe
+            #    del guard un cancello rosso su un comportamento voluto.
+            if f.endswith((".spec.js", ".test.js")):
+                continue
             if f.endswith((".vue", ".js")):
                 yield os.path.join(dirpath, f)
 
@@ -282,6 +294,36 @@ def main():
                 for m in RE_SEED_KEY.finditer(testo):
                     db_keys.setdefault(m.group(1), set()).add(rel)
 
+    # ⭐ Quarta sorgente (2026-09-19): la colonna `etichetta_key` dei CSV di
+    # seed — i vocabolari che il DB etichetta riga per riga (`config.tipi_entita`,
+    # `config.eventi_dominio`, `config.registri_giornale`) e che il frontend
+    # rende con `labelOrCode`. ⛔ Non e' JSON dentro una cella, quindi
+    # `RE_SEED_KEY` non la vedeva: le chiavi delle prime due sono nei locales
+    # perche' qualcuno le ha scritte a mano, e la prossima riga di catalogo
+    # sarebbe rimasta senza testo in silenzio — il codice macchina a video, con
+    # il guard verde (brief-db-registri-giornale-catalogo §4.2/§8.4). Stessa
+    # classe di buco delle intestazioni di colonna (`etichetta_i18n_key`).
+    # ⚠️ TUTTE le righe, ritirate comprese (`obsoleto_dal`): una riga vecchia
+    # del diario porta ancora la sua chiave, e va letta.
+    # ⚠️ Solo la colonna che si chiama ESATTAMENTE `etichetta_key`: quella del
+    # catalogo liste (`etichetta_i18n_key`) ha la sua sorgente qui sotto, con
+    # la sua regola (`attivo`).
+    if os.path.isdir(SEED):
+        for dirpath, _dirs, files in os.walk(SEED):
+            for f in sorted(files):
+                if not f.endswith(".csv"):
+                    continue
+                path = os.path.join(dirpath, f)
+                with open(path, newline="", encoding="utf-8") as fh:
+                    lettore = csv.DictReader(fh)
+                    if "etichetta_key" not in (lettore.fieldnames or ()):
+                        continue
+                    rel = os.path.relpath(path, ROOT)
+                    for riga in lettore:
+                        chiave = (riga.get("etichetta_key") or "").strip()
+                        if chiave and chiave.upper() != "NULL":
+                            db_keys.setdefault(chiave, set()).add(rel)
+
     # ⭐ Terza sorgente: le INTESTAZIONI DI COLONNA del catalogo liste
     # (`ui.lista_colonna.etichetta_i18n_key`). Non sono scritte nel frontend
     # (nessun `t('...')` da grepare) e non sono JSON dentro un `meta`, quindi
@@ -362,6 +404,8 @@ def main():
         print("    la colonna ripiega sull'etichetta italiana del seed, in silenzio.")
         for k, dove in colonne_rotte[:20]:
             print(f"    {k}")
+            for d in sorted(dove)[:2]:
+                print(f"       {d}")
         if len(colonne_rotte) > 20:
             print(f"    ... e altre {len(colonne_rotte) - 20}")
     else:

@@ -70,12 +70,13 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_documenti_generati_a10_block_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_block_delete()` |
-| trg_documenti_generati_a10_check_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()` |
 | trg_documenti_generati_a10_check_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()` |
+| trg_documenti_generati_a10_check_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()` |
 | trg_documenti_generati_a10_emittenti_fiscali_require_att_e49311 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_documenti_generati_a10_emittenti_fiscali_require_att_e49311 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
-| trg_documenti_generati_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_documenti_generati_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
+| trg_documenti_generati_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
+| trg_documenti_generati_a10_guard_versione_contesto_ins | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_guard_versione_contesto()` |
 | trg_documenti_generati_a10_protect_snapshot_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_protect_snapshot()` |
 | trg_documenti_generati_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_documenti_generati_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |

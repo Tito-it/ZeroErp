@@ -14,8 +14,9 @@
 
 **Matrice** delle transizioni ammesse tra stati del reso, mirror di `transizioni_stati_ddt`. È
 insieme il **grafo** validato dal guard (`trgfn_resi_guard_transizione`) e la **fonte metadati UI**
-(`meta.ui`: `action_key`, `label_key`, `severity`, `icon`, `requires_confirm`, `outlined`,
-`manuale`) per le azioni data-driven.
+(`meta.ui`: `action_key`, `label_key`, `requires_confirm`, `outlined`, `manuale`) per le
+azioni data-driven. Icona e colore (`severity`) non stanno nel `meta`: il frontend li
+sceglie dall'`action_key`.
 
 ### Seed (tutte manuali)
 

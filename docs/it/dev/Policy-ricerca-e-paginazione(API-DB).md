@@ -1,92 +1,121 @@
 # Zero ERP – Policy Ricerca e Paginazione (API/DB)
 
-> **Obiettivo:** evitare risposte “a valanga” (migliaia/milioni di righe) che appesantiscono rete/UI e degradano il DB.
+> **Ultimo aggiornamento**: 26 settembre 2026
 >
-> **Principio:** *UI = paginazione + filtri*; *export = canale dedicato*.
+> **Destinatari**: chi scrive un endpoint di lista, di ricerca o di export (backend) e chi
+> lo mostra a video (frontend).
+>
+> **Vedi anche** — dove sta il meccanismo (i numeri e le funzioni si leggono **lì**):
+>
+> * [api.md](api.md) §«Paginazione» — parametri, tetti, forma della risposta, il `count` indipendente
+> * [api.md](api.md) §«Ricerca e throttling» — la soglia di ricerca e `is_search_endpoint`
+> * [api.md](api.md) §«Endpoint attivi», voce «UI — Export liste» — l'export CSV/XLSX
+> * [catalogo BB backend](backend/catalogo-building-block-backend.md) §«Ordinamento SQL — direzione e tiebreak»
+> * [API pagination (core)](../backend/core/manual/api_pagination.md) — `validate_pagination` e le classi DRF
+> * [frontend-standards](frontend/frontend-standards.md) — `<ListaConfigurabile>`, che consuma tutto questo
 
 ---
 
-## 1) Liste con crescita temporale (fatture, letture, movimenti, log, …)
+Questa pagina dice **quali regole valgono e perché**. I valori (tetto di pagina,
+soglia di ricerca, tetto dell'export, frequenza del throttling) non si ricopiano
+qui: stanno nel codice e nei documenti elencati sopra. *Un numero scritto in due
+posti ne ha sempre uno stantio.*
 
-### Regole
+## Il principio
 
-* **Filtro temporale di default** (per utente/ruolo), es.: ultimi **24–36 mesi**.
-* Paginazione **obbligatoria** (mai “tutto”).
-* **Max page size** fisso (es. 200/500) e non superabile da client.
-* Sorting deterministico (es. `data DESC, id DESC`).
-
-### Note UX
-
-* Preferenze salvabili per utente (anno/periodo), così l’operatore non “subisce” il default.
-
----
-
-## 2) Ricerche anagrafiche / descrittive (es. ragione sociale)
-
-### 2.1 Regola “Smart default”
-
-* Ricerca **prefix** di default (es. `term%`) quando applicabile.
-* Ricerca **contains** (es. `%term%`) ammessa solo se:
-
-  * lunghezza termine ≥ **3** caratteri (configurabile)
-  * paginazione obbligatoria + max page size
-
-### 2.2 Protezioni lato API (DRF)
-
-* **Min length** per `contains`/`icontains` (es. 3):
-
-  * se `term` troppo corto → errore controllato o richiesta di raffinamento.
-* **Rate limiting/throttling** sugli endpoint di search.
-* **Hard cap** risultati navigabili (es. “result window” massima 10.000): oltre, richiedere filtri o export.
-* Separare endpoint:
-
-  * `GET /soggetti` (lista paginata, leggera)
-  * `GET /soggetti/{id}` (dettaglio)
-  * `GET /search/soggetti?term=...` (search dedicata)
-
-### 2.3 Strategie DB (PostgreSQL)
-
-* Per ricerche `ILIKE '%term%'` su campi testuali: usare **pg_trgm** + indice GIN.
-* Valutare **FTS** (tsvector) per ricerche “a parole” con ranking (opzionale/fase 2).
-
-> Esempio già adottato (ottimo):
-> indice trigram su `anagrafiche.soggetti.ragione_sociale_completa`.
+Una lista a video non consegna mai «tutto»: consegna **una pagina**, filtrata e
+in un ordine stabile. Chi vuole tutto usa l'**export**, che ha un canale suo e un
+tetto suo. Lo scopo è che nessuna richiesta — neanche una ricerca di una lettera
+— possa produrre un carico imprevedibile sulla rete, sul browser o sul database.
 
 ---
 
-## 3) Paginazione consigliata (API)
+## 1) Paginazione — obbligatoria, con un tetto deciso dal server
 
-* **Cursor pagination** consigliata per liste grandi e/o in continuo aggiornamento.
-* **Offset pagination** ammessa solo per liste piccole/medie o casi specifici.
+* Ogni lista a video è paginata. Due forme in uso: `page`/`page_size` e
+  `limit`/`offset` (api.md §«Paginazione»).
+* Il **tetto di pagina lo decide il server**, il client non lo supera.
+* Il `count` della risposta è calcolato **indipendentemente** dalle righe
+  consegnate, con lo stesso perimetro della lista (api.md, «Il `count` non si
+  deriva MAI dalle righe»). `<ListaConfigurabile>` se ne serve per accorgersi di
+  una lista troncata senza dirlo.
+* La forma in uso è a **offset**: la lista configurabile mostra il totale e il
+  numero di pagine, che una paginazione a cursore non sa dare. Le classi DRF
+  `StandardCursorPagination` / `StandardPageNumberPagination` esistono in
+  `apps/core/api/pagination.py`, ma nessuna view le usa (le usa solo l'esempio
+  `apps/core/api/examples/domain_search_example.py`). Se una lista avrà bisogno
+  del cursore (un registro che cresce mentre lo si scorre), va deciso **per
+  quella lista**, perché cambia il contratto verso il frontend.
 
----
+⚠️ **Fuori tetto, le due forme rispondono in modo diverso.** `validate_pagination`
+(page-based) **rifiuta** un `page_size` fuori dai limiti. `parse_list_params`
+(offset-based) invece lo **riduce in silenzio** (`min(limit, max_limit)`), e
+alcuni repository fanno lo stesso a mano. Vale la regola del rifiuto: il client
+che chiede 500 righe e ne riceve 200 senza un segnale crede di averle tutte. La
+riduzione silenziosa è un **debito dichiarato**, non una seconda regola.
 
-## 4) Export massivi
+## 2) Ordinamento — sempre deterministico
 
-* Nessun export “tirando tutte le pagine”.
-* Endpoint dedicato (asincrono):
+* Ogni `ORDER BY` di lista termina con uno **spareggio univoco** (`id`), nello
+  stesso verso della colonna scelta: senza, due pagine consecutive possono
+  ripetere una riga o perderne una. Il building block è `sql_order_clause`
+  (catalogo BB backend §«Ordinamento SQL»), che applica anche la regola «le date
+  si leggono dalla più recente».
+* L'operatore può ordinare solo per le colonne in **whitelist**, chiavata sul
+  `campo_sorgente` fisico: si ordina la colonna che si vede (api.md, «La
+  whitelist di ordinamento si chiava sul `campo_sorgente` FISICO»).
 
-  * `POST /exports/...` con filtri
-  * creazione job
-  * download quando pronto
+## 3) Ricerca testuale
 
----
+* **La forma è «contiene»**: `ILIKE '%termine%'`, in OR sulle colonne della
+  lista. Non c'è una ricerca «per inizio parola» di default.
+* ⛔ **Il pattern si costruisce solo con il BB `pattern_contiene`**
+  (`apps/core/db/_helpers.py`), che neutralizza `%` e `_` scritti dall'utente.
+  Un `f"%{termine}%"` scritto a mano non dà errore: fa da jolly e restituisce
+  righe in più.
+* **Un termine troppo corto non genera carico.** La soglia minima dipende da
+  dove si cerca:
+  * **liste configurabili**: la soglia è **della lista**, dichiarata a catalogo
+    (`ui.lista_definizione.ricerca_min_caratteri`) e letta dal building block
+    `add_ricerca_full_condition`. Sotto la soglia il termine **non filtra** e non
+    c'è errore;
+  * **ricerche dedicate e lookup** (la ricerca universale `GET /api/v1/search/`,
+    i lookup): soglia di progetto `RICERCA_MIN_CARATTERI`, e sotto soglia un
+    `400 E_SEARCH_VALIDATION`.
+* **Throttling**: una view di ricerca o di lista si dichiara con
+  `is_search_endpoint = True` e da lì la conta `SearchBurstRateThrottle`. La
+  frequenza si configura con `DJANGO_API_SEARCH_THROTTLE_RATE`. Il throttle sta
+  nei default DRF, ma **conta solo le view che si dichiarano**: una view senza
+  il flag non ha limite.
+* **Dal lato DB**: una ricerca «contiene» su una tabella che cresce la regge un
+  indice trigram (`pg_trgm` + GIN). Quali colonne lo hanno si legge dalla doc
+  auto-generata della tabella (per esempio
+  [anagrafiche.soggetti](../dbzero/anagrafiche/tabelle/soggetti.md): ragione
+  sociale, codice, identificativo fiscale). La ricerca a parole con ranking (FTS)
+  non è in uso.
 
-## 5) Regola di stop (anti-coglione 😄)
+## 4) Export — un canale suo, mai «tutte le pagine»
 
-* Query con `term` troppo corto (es. `"a"`, `"%a%"`) **non devono** poter generare carichi imprevedibili.
-* Se la ricerca è troppo generica:
+* Nessun client ricostruisce un export scorrendo le pagine della lista.
+* Ogni lista esportabile ha la sua rotta `…/export/?formato=csv|xlsx` accanto,
+  con **lo stesso `lista_codice`** e gli stessi filtri: il file ha le colonne che
+  l'operatore vede.
+* L'export è **sincrono, con un tetto di righe**: sopra il tetto la risposta è
+  un errore che chiede di restringere i filtri (`E_UI_EXPORT_LIMIT_EXCEEDED`),
+  non un file troncato.
+* L'export **asincrono** (job + download quando pronto) non esiste: è rinviato
+  finché un caso non lo chiede (nota nel renderer
+  `apps/ui/services/lista_export_service.py`).
 
-  * chiedere raffinamento (min length / filtri)
-  * oppure fornire risultati limitati + avviso
+## 5) Regole senza un meccanismo — dichiarate
 
----
+Due regole restano valide ma **nessun codice le applica ancora**. Le scrivo
+qui perché nessuno le dia per fatte.
 
-## 6) Checklist implementativa (minima)
-
-* [ ] Max page size fissato a livello DRF
-* [ ] Min length su ricerche `contains`
-* [ ] Cursor pagination per liste grandi
-* [ ] Default temporale su archivi time-growing
-* [ ] Throttling sugli endpoint search
-* [ ] Export asincrono via job
+* **Filtro temporale di default** sulle liste che crescono col tempo (fatture,
+  movimenti, log): non c'è un meccanismo generico che le apra su un periodo. La
+  paginazione limita la risposta, ma non il lavoro del database per contare e
+  ordinare tutto lo storico.
+* **Tetto sulla finestra navigabile** («oltre N righe filtra o esporta»): non
+  esiste. Una pagina lontanissima si può chiedere, e il tetto c'è solo
+  sull'export.

@@ -50,10 +50,27 @@ SELECT plan(18);
 -- 0. Raccolta riferimenti
 -- ============================================================
 
+-- ⛔ L'UTENTE SI COSTRUISCE (2026-09-23). Prendere «il primo utente attivo»
+--   funzionava finche' quel posto era occupato da un utente qualunque: su un
+--   database ricostruito il primo attivo e' l'operatore TECNICO del contesto,
+--   che una riga in `config.user_emittenti_fiscali` ce l'ha gia' — e il caso
+--   16, che vuole inserirne una, moriva su `uq_user_emittenti_fiscali_auth_user`
+--   invece di misurare l'INSERT. Il soggetto di questo file sono le tabelle di
+--   override: l'utente giusto e' uno NUOVO, senza override e senza emittente.
+CREATE TEMP TABLE tmp_uo_user AS
+WITH ins AS (
+    INSERT INTO django.auth_user (
+        username, password, is_active, is_staff, is_superuser,
+        first_name, last_name, email, date_joined)
+    VALUES ('_pgtap_uo_' || substr(md5(clock_timestamp()::text), 1, 8),
+            '!', TRUE, FALSE, FALSE, '', '', '', now())
+    RETURNING id
+)
+SELECT id AS user_id FROM ins;
+
 CREATE TEMP TABLE tmp_refs_uo AS
 SELECT
-    (SELECT id FROM django.auth_user
-     WHERE is_active = true ORDER BY id LIMIT 1)       AS user_id,
+    (SELECT user_id FROM tmp_uo_user)                   AS user_id,
     (SELECT id FROM config.aree_funzionali
      WHERE codice = 'vendite')                          AS area_vendite_id,
     (SELECT id FROM config.aree_funzionali
@@ -134,6 +151,12 @@ SELECT is(
 --   ⭐ La garanzia non si e' indebolita, si e' spostata piu' in basso: dal
 --   vincolo di tabella al tipo della colonna. L'etichetta ora dice questo,
 --   perche' «CHECK» mandava a cercare un vincolo che non c'e' piu'.
+--   ⭐ 2026-09-23 (brief-db-guard-date-validita): a rifiutare e' ora il
+--   GUARD COMUNE delle date (script.trgfn_guard_date_validita, montato
+--   dall'automazione DATE_VALIDITA). E' un BEFORE ROW, e i BEFORE girano
+--   prima del calcolo della colonna generata: l'operatore legge
+--   E_DATA_AL_MINORE_DAL invece della frase tecnica del daterange. Il
+--   daterange resta sotto, come il CHECK: sono l'ultima difesa.
 SELECT throws_ok(
     format(
         $$INSERT INTO config.user_override_aree
@@ -148,7 +171,7 @@ SELECT throws_ok(
 );
 
 -- CHECK valido_dal <= valido_al (usa area_acquisti_id per evitare UQ)
-SELECT throws_ok(
+SELECT throws_like(
     format(
         $$INSERT INTO config.user_override_aree
               (auth_user_id, area_id, livello, valido_dal, valido_al)
@@ -157,9 +180,8 @@ SELECT throws_ok(
         (SELECT user_id FROM tmp_refs_uo),
         (SELECT area_acquisti_id FROM tmp_refs_uo)
     ),
-    '22000',
-    NULL,
-    'user_override_aree: validita rovesciata rifiutata dal TIPO range (22000)'
+    '%è inferiore alla data dal%',
+    'user_override_aree: validita rovesciata, parla il guard comune delle date (E_DATA_AL_MINORE_DAL)'
 );
 
 -- ============================================================
@@ -193,6 +215,8 @@ SELECT ok(
 --   ⭐ La garanzia non si e' indebolita, si e' spostata piu' in basso: dal
 --   vincolo di tabella al tipo della colonna. L'etichetta ora dice questo,
 --   perche' «CHECK» mandava a cercare un vincolo che non c'e' piu'.
+--   ⭐ 2026-09-23: ora a parlare e' il guard comune delle date (vedi la nota
+--   sulla prima delle tre asserzioni).
 SELECT throws_ok(
     format(
         $$INSERT INTO config.user_override_oggetti
@@ -206,18 +230,20 @@ SELECT throws_ok(
 );
 
 -- CHECK valido_dal <= valido_al (usa model_name diverso per evitare UQ)
-SELECT throws_ok(
+-- ⚠️ Un oggetto A CATALOGO ('preventivo'; fino al 2026-09-28 'lotto', che non c'e'):
+--   con 'lotto' il test passava solo perche' il guard BEFORE ROW delle date scatta
+--   prima della FK composita del catalogo (D-4) — verde per l'ordine dei controlli.
+SELECT throws_like(
     format(
         $$INSERT INTO config.user_override_oggetti
               (auth_user_id, app_label, model_name, livello, valido_dal, valido_al)
-          VALUES (%s, 'vendite', 'lotto',
+          VALUES (%s, 'vendite', 'preventivo',
                   'LETTURA'::config.livello_accesso,
                   '2026-03-01'::date, '2026-02-01'::date)$$,
         (SELECT user_id FROM tmp_refs_uo)
     ),
-    '22000',
-    NULL,
-    'user_override_oggetti: validita rovesciata rifiutata dal TIPO range (22000)'
+    '%è inferiore alla data dal%',
+    'user_override_oggetti: validita rovesciata, parla il guard comune delle date (E_DATA_AL_MINORE_DAL)'
 );
 
 -- ============================================================
@@ -256,6 +282,8 @@ SELECT is(
 --   ⭐ La garanzia non si e' indebolita, si e' spostata piu' in basso: dal
 --   vincolo di tabella al tipo della colonna. L'etichetta ora dice questo,
 --   perche' «CHECK» mandava a cercare un vincolo che non c'e' piu'.
+--   ⭐ 2026-09-23: ora a parlare e' il guard comune delle date (vedi la nota
+--   sulla prima delle tre asserzioni).
 SELECT throws_ok(
     format(
         $$INSERT INTO config.user_override_azioni
@@ -270,7 +298,7 @@ SELECT throws_ok(
 );
 
 -- CHECK valido_dal <= valido_al (usa azione_id_2 per evitare UQ)
-SELECT throws_ok(
+SELECT throws_like(
     format(
         $$INSERT INTO config.user_override_azioni
               (auth_user_id, azione_id, abilitata, valido_dal, valido_al)
@@ -279,9 +307,8 @@ SELECT throws_ok(
         (SELECT user_id FROM tmp_refs_uo),
         (SELECT azione_id_2 FROM tmp_refs_uo)
     ),
-    '22000',
-    NULL,
-    'user_override_azioni: validita rovesciata rifiutata dal TIPO range (22000)'
+    '%è inferiore alla data dal%',
+    'user_override_azioni: validita rovesciata, parla il guard comune delle date (E_DATA_AL_MINORE_DAL)'
 );
 
 -- ============================================================

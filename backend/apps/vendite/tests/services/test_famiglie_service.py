@@ -22,6 +22,12 @@ Indice test eseguiti:
  8) get_famiglia_inesistente_e_404
  9) set_attivo_legge_una_volta_sola
 10) update_su_famiglia_inesistente_e_404
+11) update_codice_arriva_al_repository
+12) update_codice_vuoto_e_400_col_campo
+13) duplicato_codice_in_modifica_accende_codice
+14) duplicato_codice_in_creazione_accende_codice_interno
+15) codice_in_creazione_rifiutato
+15-bis) attivo_in_modifica_rifiutato
 """
 
 from unittest import TestCase
@@ -217,3 +223,67 @@ class FamiglieLetturaEVerbiTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             FamiglieDocumentoService().update_famiglia(99, {"descrizione": "x"})
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+
+class FamiglieCodiceTests(TestCase):
+    """Il `codice` dell'operatore (2026-09-24): mutabile dal CRUD, unico."""
+
+    # 11.
+    @patch.object(_REPO, "get_famiglia", return_value=_famiglia(codice="FT"))
+    @patch.object(_REPO, "update_famiglia", return_value=1)
+    def test_update_codice_arriva_al_repository(self, mock_upd, _get):
+        FamiglieDocumentoService().update_famiglia(3, {"codice": "FT"})
+        self.assertEqual(mock_upd.call_args.args[1], {"codice": "FT"})
+
+    # 12. Si cambia, non si svuota: col campo acceso, non un vincolo generico.
+    @patch.object(_REPO, "update_famiglia")
+    def test_update_codice_vuoto_e_400_col_campo(self, mock_upd):
+        with self.assertRaises(ServiceError) as ctx:
+            FamiglieDocumentoService().update_famiglia(3, {"codice": "  "})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "codice")
+        mock_upd.assert_not_called()
+
+    # 13.
+    @patch.object(_REPO, "update_famiglia",
+                  side_effect=_integrity("uq_famiglie_documento_codice"))
+    def test_duplicato_codice_in_modifica_accende_codice(self, _upd):
+        with self.assertRaises(ServiceError) as ctx:
+            FamiglieDocumentoService().update_famiglia(3, {"codice": "FT"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_DUPLICATO")
+        self.assertEqual(ctx.exception.context.get("field"), "codice")
+
+    # 14. ⚠️ In creazione il codice nasce dal `codice_interno` (trigger): il
+    #     campo da correggere e' quello, e non va confuso col vincolo del
+    #     `codice_interno` (il nome del primo e' prefisso del secondo).
+    @patch.object(_REPO, "crea_famiglia",
+                  side_effect=_integrity("uq_famiglie_documento_codice"))
+    def test_duplicato_codice_in_creazione_accende_codice_interno(self, _crea):
+        with self.assertRaises(ServiceError) as ctx:
+            FamiglieDocumentoService().crea_famiglia(dict(_CREATE_MINIMO))
+        self.assertEqual(ctx.exception.code, "E_VENDITE_DUPLICATO")
+        self.assertEqual(ctx.exception.context.get("field"), "codice_interno")
+        self.assertIn("codice di un'altra", ctx.exception.message)
+
+    # 15. ⛔ Un client che in creazione manda anche `codice` (non e' in
+    #     `_CAMPI_CREATE`: alla nascita lo copia il trigger) e' RIFIUTATO con
+    #     400, prima del database (2026-09-26). Fino a quel giorno il repository
+    #     lo scartava in silenzio, e questo test verificava solo che l'errore di
+    #     duplicato non finisse sul campo ignorato.
+    @patch.object(_REPO, "crea_famiglia")
+    def test_codice_in_creazione_rifiutato(self, crea):
+        with self.assertRaises(ServiceError) as ctx:
+            FamiglieDocumentoService().crea_famiglia({**_CREATE_MINIMO, "codice": "FT"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("unknown_keys"), ["codice"])
+        crea.assert_not_called()
+
+    # 15-bis. ⛔ Stessa regola in modifica: `attivo` ha il suo verbo, e spedito
+    #     nel PATCH e' un 400 — non un «salvato» senza aver scritto niente.
+    @patch.object(_REPO, "update_famiglia")
+    def test_attivo_in_modifica_rifiutato(self, update):
+        with self.assertRaises(ServiceError) as ctx:
+            FamiglieDocumentoService().update_famiglia(3, {"descrizione": "X", "attivo": False})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("unknown_keys"), ["attivo"])
+        update.assert_not_called()

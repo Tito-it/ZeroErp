@@ -90,9 +90,12 @@ export function generaOrdineFromOfferta(id) {
   return api.post(`${BASE}/${id}/genera-ordine/`, {})
 }
 
-// Catena revisioni che condividono il root. Lettura libera in ogni stato.
-export function listRevisioniOfferta(id) {
-  return api.get(`${BASE}/${id}/revisioni/`)
+// Catena revisioni che condividono la radice, PAGINATA (lista a catalogo
+// `vendite.offerta_revisioni`): `params` porta pagina, ordinamento e
+// `emittente_fiscale_id` del documento (lo legge il cancello di perimetro).
+// Lettura libera in ogni stato.
+export function listRevisioniOfferta(id, params = {}) {
+  return api.get(`${BASE}/${id}/revisioni/`, { params })
 }
 
 // --- Push a contratto ---
@@ -170,7 +173,9 @@ export function listEccezioneComponenti(offertaId, eccezioneId, { soloAttivi = t
   )
 }
 
-// PATCH singolo componente (prezzo override, IVA, origine, ecc.).
+// PATCH singolo componente: `prezzo_unitario`, `attivo`, `meta` e basta
+// (`COMPONENTE_PATCH_OPERATORE` del backend). L'origine del prezzo la scrive
+// il server; IVA e campi del workflow L3 sono un 400.
 export function updateEccezioneComponente(offertaId, eccezioneId, componenteId, payload) {
   return api.patch(
     `${BASE}/${offertaId}/eccezioni/${eccezioneId}/componenti/${componenteId}/`,

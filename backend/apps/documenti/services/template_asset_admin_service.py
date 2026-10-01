@@ -206,7 +206,6 @@ class TemplateAssetAdminService:
                 code=E_VALIDATION,
                 message="File asset vuoto.",
             )
-            raise  # unreachable
         max_mb = self._params.get_parameter_int("documenti_asset_upload_max_mb")
         max_bytes = max_mb * 1024 * 1024
         if size > max_bytes:
@@ -215,7 +214,6 @@ class TemplateAssetAdminService:
                 message=f"File asset troppo grande. Limite: {max_mb} MB.",
                 detail=f"size_bytes={size} max_bytes={max_bytes}",
             )
-            raise  # unreachable
 
         # 4) sha256 + storage_key stabile.
         sha = hashlib.sha256(file_bytes).hexdigest()
@@ -314,7 +312,6 @@ class TemplateAssetAdminService:
                 message="Campi non aggiornabili presenti nel payload.",
                 detail=f"campi_immutabili={intersect!r}",
             )
-            raise  # unreachable
 
         self._v.validate_allowed_keys(
             payload,
@@ -361,14 +358,12 @@ class TemplateAssetAdminService:
                 message="asset_tipo_id non valido.",
                 detail=f"asset_tipo_id={asset_tipo_id}",
             )
-            raise  # unreachable
         if not row["attivo"]:
             ErrorManager.raise_error(
                 code=E_VALIDATION,
                 message="Tipo asset non attivo.",
                 detail=f"asset_tipo_id={asset_tipo_id}",
             )
-            raise  # unreachable
         return row["codice_interno"]
 
     # Scopo: Verifica MIME contro whitelist per il tipo. ALTRO e qualsiasi
@@ -381,14 +376,12 @@ class TemplateAssetAdminService:
                 message=f"Tipo asset '{codice_tipo}' non ammesso per upload.",
                 detail=f"tipi_ammessi={sorted(_MIME_WHITELIST_PER_TIPO.keys())!r}",
             )
-            raise  # unreachable
         if mime not in whitelist:
             ErrorManager.raise_error(
                 code=E_VALIDATION,
                 message=f"MIME '{mime}' non valido per tipo asset '{codice_tipo}'.",
                 detail=f"mime_ammessi={sorted(whitelist)!r}",
             )
-            raise  # unreachable
 
     # Scopo: Verifica che `emittente_fiscale_id` sia nello scope dell'utente.
     #        Helper centralizzato in `apps.documenti.services._scope` per
@@ -420,7 +413,6 @@ class TemplateAssetAdminService:
                 code=E_VALIDATION,
                 message="file_name vuoto.",
             )
-            raise  # unreachable
         # Solo basename (no path traversal).
         safe = os.path.basename(file_name).strip()
         if not safe:
@@ -429,7 +421,6 @@ class TemplateAssetAdminService:
                 message="file_name non valido.",
                 detail=f"file_name={file_name!r}",
             )
-            raise  # unreachable
         if len(safe) > _MAX_FILE_NAME_LEN:
             safe = safe[:_MAX_FILE_NAME_LEN]
         return safe
@@ -459,7 +450,9 @@ class TemplateAssetAdminService:
             data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
         if "valido_al" in payload:
             data["valido_al"] = self._v.optional_date(payload, "valido_al")
-        self._guard_date_range(data)
+        # L'ordine delle date lo giudica il DB: guard comune
+        # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
+        # `valido_al` (dal 2026-09-23).
         if "attivo" in payload:
             v = self._v.optional_bool(payload, "attivo")
             data["attivo"] = bool(v) if v is not None else True
@@ -480,7 +473,9 @@ class TemplateAssetAdminService:
             data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
         if "valido_al" in payload:
             data["valido_al"] = self._v.optional_date(payload, "valido_al")
-        self._guard_date_range(data)
+        # L'ordine delle date lo giudica il DB: guard comune
+        # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
+        # `valido_al` (dal 2026-09-23).
         if "attivo" in payload:
             v = self._v.optional_bool(payload, "attivo")
             ErrorManager.require(
@@ -496,20 +491,3 @@ class TemplateAssetAdminService:
                 data["meta"] = m
         return data
 
-    # Scopo: Defense cross-field per coppia valido_dal/valido_al.
-    #        Il DDL non ha CHECK constraint su asset.valido_al >= valido_dal:
-    #        senza il guard service, un range invertito produrrebbe un
-    #        daterange empty (validita := empty) con UX confusa. Bloccare
-    #        a monte con messaggio parlante.
-    def _guard_date_range(self, data: dict[str, Any]) -> None:
-        if data.get("valido_dal") and data.get("valido_al"):
-            if data["valido_al"] < data["valido_dal"]:
-                ErrorManager.raise_error(
-                    code=E_VALIDATION,
-                    message="valido_al non puo' essere antecedente a valido_dal.",
-                    detail=(
-                        f"valido_dal={data['valido_dal']} "
-                        f"valido_al={data['valido_al']}"
-                    ),
-                )
-                raise  # unreachable

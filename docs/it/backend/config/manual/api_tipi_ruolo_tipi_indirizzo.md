@@ -207,5 +207,5 @@ Validazione payload e traduzione vincoli DB delegate al building block
   Route: `/amm-software/matrice-indirizzi-ruoli`.
   Voce navigazione: "Matrice Indirizzi/Ruoli" con icona `pi pi-map`.
 - I lookup `config.tipi_ruoli` e `config.tipi_indirizzi` sono gia' presenti
-  nella whitelist `_REL_CONSENTITE` di `dbops_repository.py`, quindi i Select
+  nella lista del lookup generico (`config.tabelle_gestibili`), quindi i Select
   del drawer riusano `LookupSelect` (BB esistente).

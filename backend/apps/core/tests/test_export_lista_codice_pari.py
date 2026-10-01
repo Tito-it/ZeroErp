@@ -33,7 +33,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from django.test import SimpleTestCase
-from django.urls import URLPattern, URLResolver, get_resolver
+
+from apps.core.api.rotte import rotte_servite
 
 _SUFFISSO_EXPORT = "export/"
 
@@ -52,21 +53,15 @@ class _Coppia:
     export: type
 
 
-# Scopo: percorso completo -> classe di view, per ogni rotta dell'URLconf.
+# Scopo: percorso completo -> classe di view, per ogni rotta dell'URLconf
+#        (anche quelle montate a condizione). Il cammino e' il BB
+#        `apps.core.api.rotte` (estratto il 2026-09-25, regola del 2).
 def _rotte() -> dict[str, type]:
-    def _cammina(patterns: list, prefisso: str) -> dict[str, type]:
-        trovate: dict[str, type] = {}
-        for pattern in patterns:
-            percorso = prefisso + str(pattern.pattern)
-            if isinstance(pattern, URLResolver):
-                trovate.update(_cammina(pattern.url_patterns, percorso))
-            elif isinstance(pattern, URLPattern):
-                cls = getattr(pattern.callback, "view_class", None) or getattr(pattern.callback, "cls", None)
-                if cls is not None:
-                    trovate[percorso] = cls
-        return trovate
-
-    return _cammina(get_resolver().url_patterns, "")
+    return {
+        r.percorso: r.view
+        for r in rotte_servite(anche_condizionali=True)
+        if r.view is not None
+    }
 
 
 # Scopo: le coppie (liste, export) — ogni rotta che finisce in `export/`

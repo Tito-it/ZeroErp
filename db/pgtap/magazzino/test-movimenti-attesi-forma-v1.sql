@@ -1,6 +1,15 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il soggetto sono i VINCOLI e i guard di magazzino.movimenti_attesi,
+--   che dal 2026-09-28 l'app non scrive piu': la tabella e' in sola lettura e i blocchi
+--   li aprono e li liberano i verbi fn_apri_blocco / fn_libera_blocco
+--   (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-j). Scrivere righe che i verbi non
+--   producono (attesi con sorgente, in entrata, stati fuori vocabolario) per provare i
+--   CHECK e' cosa che solo uno scrittore privilegiato puo' fare: forma 3 del criterio
+--   del runner, come i test del ledger. Il contesto operatore resta impostato: i guard
+--   lo leggono.
 --
 -- Test: magazzino.movimenti_attesi nella forma decisa dal Lotto 1 — la
 --   rinomina di reservations e' completa e le regole della tabella reggono
@@ -17,7 +26,7 @@
 --   (indirizzi_dettaglio e' dato di macchina: su un DB da zero non ce n'e'), un
 --   magazzino con quell'emittente, un inventario con una riga come sorgente.
 --
--- Elenco test (plan 14):
+-- Elenco test (plan 15):
 --   La rinomina e' di tutto:
 --    1) nessun vincolo, indice, sequenza o trigger della tabella — ne' trigger
 --       sui padri — nomina piu' `reservations`
@@ -42,12 +51,15 @@
 --   L'ancora (M-6):
 --   14) magazzino_id NOT NULL, dal catalogo (⚠️ non per INSERT: sotto RLS la
 --       policy scatta prima del vincolo e uscirebbe 42501, non 23502)
+--   Il lettore (rev 2026-09-28, dal test 3 di test-vw-disponibilita-v1):
+--   15) un atteso in ENTRATA aperto non e' un blocco: vw_disponibilita non lo conta
+--       (il caso lo ammette la tabella e non lo produce nessun verbo: si costruisce qui)
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(15);
 
 -- ============================================================
 -- 1..2 La rinomina
@@ -222,6 +234,17 @@ SELECT throws_ok(
 --   NULL e' struttura e si legge dove sta.
 SELECT col_not_null('magazzino', 'movimenti_attesi', 'magazzino_id',
     '14) magazzino_id NOT NULL — e'' l''ancora del perimetro (M-6)');
+
+-- ============================================================
+-- 15 Il lettore: un atteso in entrata non e' un blocco
+-- ============================================================
+-- A questo punto su (mag, art) restano: il -10 del soggetto, CHIUSO dal test 12,
+-- e il +5 con documento del test 9, APERTO. Nessun movimento a registro. Se
+-- vw_disponibilita contasse il +5 come blocco, comparirebbe una riga.
+SELECT is(
+    (SELECT count(*) FROM magazzino.vw_disponibilita d JOIN _fix f ON d.magazzino_id = f.mag AND d.articolo_id = f.art),
+    0::bigint,
+    '15) un atteso in ENTRATA aperto non e'' un blocco: vw_disponibilita non ne fa una riga');
 
 SELECT * FROM finish();
 ROLLBACK;

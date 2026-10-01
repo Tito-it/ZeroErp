@@ -10,10 +10,12 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     optional_int,
     paginated_envelope,
     parse_list_params,
@@ -21,9 +23,10 @@ from apps.core.api.payload_validators import (
     qp_int_strict,
     qp_str,
 )
+from apps.core.api.openapi_params import descrizione_order_by, param_ricerca_full
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
-from apps.pratiche.db.pratiche_repository import PraticheRepository
+from apps.pratiche.db.pratiche_repository import FLUSSI_ORDER_COLS, PraticheRepository
 from apps.pratiche.services import generazione_service, pratiche_service
 
 
@@ -38,6 +41,7 @@ _get_flusso_verificato = pratiche_service.verifica_flusso_pratica
 
 class ApiPraticheList(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     is_search_endpoint = True
     lista_codice = "pratiche.pratiche"
 
@@ -52,7 +56,7 @@ class ApiPraticheList(DomainAPIView):
             OpenApiParameter(name="solo_interne", type=bool, required=False, description="Lente contesto: solo pratiche interne, senza soggetto (esclusiva con ruolo/istanza)."),
             OpenApiParameter(name="priorita_id", type=int, required=False, description="Filtro priorita' pratica."),
             OpenApiParameter(name="risorsa_umana_id", type=int, required=False, description="Filtro operatore assegnato."),
-            OpenApiParameter(name="limit", type=int, required=False, description="Righe per pagina (default 50, max 200)."),
+            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
             OpenApiParameter(name="offset", type=int, required=False, description="Offset paginazione (default 0)."),
         ],
         responses={200: inline_serializer(
@@ -75,7 +79,7 @@ class ApiPraticheList(DomainAPIView):
             message="emittente_fiscale_id obbligatorio",
         )
 
-        p = parse_list_params(qp, default_order="data_insert", default_limit=50)
+        p = parse_list_params(qp, default_order="data_insert")
         stato = qp_str(qp.get("stato"))
         tipo_prestazione_id = optional_int({"v": qp.get("tipo_prestazione_id")}, "v")
         soggetto_id = qp_str(qp.get("soggetto_id"))
@@ -162,6 +166,7 @@ class ApiPraticheList(DomainAPIView):
 
 class ApiPraticaDetail(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="PraticaDetailResponse",
@@ -281,9 +286,10 @@ class ApiPraticaAssegnazione(DomainAPIView):
 
 class ApiPraticaGiornale(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="limit", type=int, required=False, description="Righe per pagina (default 100, max 200)."),
+            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default 100, max {MAX_LIMIT})."),
             OpenApiParameter(name="offset", type=int, required=False, description="Offset paginazione (default 0)."),
         ],
         responses={200: inline_serializer(
@@ -315,6 +321,7 @@ class ApiPraticaGiornale(DomainAPIView):
 
 class ApiPraticaPercorso(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -334,21 +341,62 @@ class ApiPraticaPercorso(DomainAPIView):
 
 class ApiPraticaFlussiList(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
+    is_search_endpoint = True
+    lista_codice = "pratiche.flussi"
+    # ⭐ Il tab «Flussi» vive DENTRO il drawer di una pratica, e una pratica ha
+    #    UN emittente: e' la richiesta a fissarlo (`emittente_fiscale_id`, la
+    #    PK — lo stesso nome del filtro della lista pratiche). Senza questa
+    #    riga il cancello rifiuterebbe (422) chi ha piu' emittenti nello scope,
+    #    chiedendogli di scegliere l'emittente di una pratica gia' aperta: la
+    #    lista NON e' certificata `multi_emittente` (nessuna colonna dice di
+    #    quale emittente e' la riga) — brief-db-liste-datatable-grezze §4.1.
+    # ⚠️ Il parametro scioglie SOLO l'ambiguita' della schermata: le righe le
+    #    decide la pratica nel path, sotto la sua RLS. Non e' un filtro.
+    lista_emittente_param = "emittente_fiscale_id"
+
     @extend_schema(
+        parameters=[
+            param_ricerca_full(),
+            OpenApiParameter(
+                name="emittente_fiscale_id", type=int, required=False,
+                description=(
+                    "Emittente (PK) della pratica aperta: scioglie il cancello di "
+                    "perimetro per chi ha piu' emittenti nello scope. Non filtra."
+                ),
+            ),
+            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(
+                name="order_by", type=str, required=False,
+                description=descrizione_order_by(FLUSSI_ORDER_COLS, "Default: sequenza."),
+            ),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
         responses={200: inline_serializer(
             name="PraticaFlussiListResponse",
             fields={
                 "data": inline_serializer(name="PraticaFlussiListData", fields={
+                    "count": serializers.IntegerField(),
                     "results": serializers.ListField(child=serializers.DictField()),
                 }),
             },
         )},
     )
-    # Scopo: Restituisce via GET i flussi di una pratica.
+    # Scopo: la lista `pratiche.flussi` di una pratica — paginata, ordinabile
+    #        sulla whitelist, con la ricerca del catalogo. L'ordine di partenza
+    #        e' la posizione del flusso nella pratica (`sequenza`).
     def get(self, request: Request, pratica_id: int) -> JsonResponse:
-        repo = PraticheRepository()
-        flussi = repo.list_flussi(pratica_id)
-        return success_response({"results": flussi})
+        p = parse_list_params(request.query_params, default_order="sequenza")
+        results, total = PraticheRepository().list_flussi_pagina(
+            pratica_id,
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=inline_serializer(
@@ -394,6 +442,7 @@ class ApiPraticaFlussiList(DomainAPIView):
 
 class ApiPraticaFlussoDetail(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoDetailResponse",
@@ -422,6 +471,7 @@ class ApiFlussoPratica(DomainAPIView):
     """
 
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -475,6 +525,7 @@ class ApiPraticaFlussoStato(DomainAPIView):
                     "esito" in payload and payload["esito"],
                     code="E_FLUSSO_VALIDATION",
                     message="esito obbligatorio per completamento flusso",
+                    context={"field": "esito"},
                 )
                 # L'esito arriva dall'operatore: gli esiti di ramo (calcolati
                 # dal dominio, es. bivio SMISTAMENTO, is_verdetto=false) non
@@ -540,6 +591,7 @@ class ApiPraticaFlussoStato(DomainAPIView):
 
 class ApiPraticaFlussoPrerequisiti(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoPrerequisitiResponse",
@@ -565,6 +617,7 @@ class ApiPraticaFlussoPrerequisiti(DomainAPIView):
 
 class ApiPraticaFlussoCanali(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoCanaliResponse",
@@ -595,6 +648,7 @@ class ApiPraticaFlussoCanali(DomainAPIView):
 
 class ApiPraticaFlussoRegoleGenerazione(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoRegoleGenerazioneResponse",
@@ -650,6 +704,7 @@ class ApiPraticaFlussoGenera(DomainAPIView):
 
 class ApiPraticaFlussoPraticheGenerate(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoPraticheGenerateResponse",
@@ -820,6 +875,7 @@ class ApiPraticaFlussoRiattiva(DomainAPIView):
 
 class ApiPraticaSospensioni(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="PraticaSospensioniResponse",
@@ -840,6 +896,7 @@ class ApiPraticaSospensioni(DomainAPIView):
 
 class ApiPraticaCalcoliTempo(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="PraticaCalcoliTempoResponse",
@@ -866,6 +923,7 @@ class ApiPraticaCalcoliTempo(DomainAPIView):
 class ApiPraticaNoteList(DomainAPIView):
     """GET lista note pratica, POST crea nota."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -903,6 +961,7 @@ class ApiPraticaNoteList(DomainAPIView):
 class ApiPraticaNotaDetail(DomainAPIView):
     """PATCH aggiorna nota, DELETE elimina nota."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         request=inline_serializer(name="PraticaNotaUpdateReq", fields={
@@ -918,7 +977,7 @@ class ApiPraticaNotaDetail(DomainAPIView):
         pratiche_service.aggiorna_nota_pratica(
             nota_id=nota_id,
             pratica_id=pratica_id,
-            contenuto=str(request.data.get("contenuto", "")),
+            contenuto=str(corpo_oggetto(request).get("contenuto", "")),
         )
         return success_response({"updated": True})
 
@@ -942,6 +1001,7 @@ class ApiPraticaNotaDetail(DomainAPIView):
 class ApiPraticaAllegatiList(DomainAPIView):
     """GET lista allegati pratica, POST crea record allegato."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -985,6 +1045,7 @@ class ApiPraticaAllegatiList(DomainAPIView):
 class ApiPraticaAllegatoDetail(DomainAPIView):
     """DELETE elimina allegato (allegati immutabili — no PATCH)."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -1006,6 +1067,7 @@ class ApiPraticaAllegatoDetail(DomainAPIView):
 class ApiCodaLavoro(DomainAPIView):
     """GET coda lavoro dell'operatore corrente su tre livelli."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         parameters=[
@@ -1050,6 +1112,7 @@ class ApiCodaLavoro(DomainAPIView):
 class ApiPrendiInCarico(DomainAPIView):
     """POST prendi in carico un flusso DA_ESEGUIRE."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         request=inline_serializer(

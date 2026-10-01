@@ -58,8 +58,8 @@ La funzione applica quattro regole principali:
 
 * `DELETE` sempre bloccato: una riga BoM non deve essere eliminata.
 * `UPDATE` dei campi di struttura bloccato.
-* `UPDATE` del solo `valido_al` ammesso, con controllo che non sia precedente a
-  `OLD.valido_dal`.
+* `UPDATE` di `valido_al` ammesso: è la chiusura della riga. Che non preceda
+  `valido_dal` lo verifica il guard comune delle date (sotto), non questa funzione.
 * `UPDATE` di campi non strutturali ammesso, inclusi `attivo`, `note`, `meta` e
   campi di audit.
 
@@ -80,8 +80,8 @@ Sono considerati parte della struttura della BoM e quindi non modificabili:
 | `valido_dal` | Cambia l'inizio della validita' storica. |
 | `validita` | Cambia il range derivato della validita'. |
 
-`validita` e' incluso come controllo di difesa anche se viene ricalcolato dal
-trigger dedicato a partire da `valido_dal` e `valido_al`.
+`validita` e' una colonna generata da `valido_dal` e `valido_al`: PostgreSQL ne
+rifiuta la scrittura diretta prima che il trigger giri.
 
 ---
 
@@ -90,7 +90,7 @@ trigger dedicato a partire da `valido_dal` e `valido_al`.
 | Operazione | Esito |
 |------------|-------|
 | Inserimento nuova riga BoM | Non gestito da questa funzione; resta consentito se passa gli altri vincoli. |
-| Chiusura riga con `UPDATE valido_al = ...` | Consentita se `valido_al` non e' precedente a `OLD.valido_dal`. |
+| Chiusura riga con `UPDATE valido_al = ...` | Consentita da questa funzione; l'ordine delle date lo giudica il guard comune. |
 | Aggiornamento di `attivo`, `note`, `meta` | Consentito. |
 | Aggiornamento campi audit (`user_update`, `data_update`, `tx_id`) | Consentito. |
 
@@ -102,10 +102,12 @@ trigger dedicato a partire da `valido_dal` e `valido_al`.
 |------------|--------|
 | `DELETE` della riga | `E_BOM_MODIFICA_VIETATA` |
 | Modifica di un campo strutturale | `E_BOM_MODIFICA_VIETATA` |
-| `valido_al < OLD.valido_dal` | `E_BOM_VALIDO_AL_INVALIDO` |
 
-Il caso `valido_al = valido_dal` resta coperto dal check tecnico
-`chk_articoli_componenti_valid_dates`.
+L'ordine delle date (`valido_al` non precede `valido_dal`) **non** lo giudica
+questo trigger: ha una sede sola, il guard comune `script.trgfn_guard_date_validita`,
+montato dall'automazione `DATE_VALIDITA` su ogni tabella con la coppia di date
+(errore `E_DATA_AL_MINORE_DAL`, campo `valido_al`). Il caso `valido_al = valido_dal`
+è un periodo di un giorno, ed è ammesso.
 
 ---
 
@@ -114,7 +116,6 @@ Il caso `valido_al = valido_dal` resta coperto dal check tecnico
 | Codice | Quando viene sollevato | Hint operativo |
 |--------|------------------------|----------------|
 | `E_BOM_MODIFICA_VIETATA` | `DELETE` o modifica di campi strutturali. | Chiudere la riga impostando `valido_al` e inserire una nuova riga. |
-| `E_BOM_VALIDO_AL_INVALIDO` | `valido_al` precedente a `OLD.valido_dal`. | Usare una data di chiusura coerente con l'inizio validita'. |
 
 ---
 

@@ -60,38 +60,33 @@ SELECT is(
 );
 
 -- =========================================================
--- 1) Recupero un PDP esistente per GAS con indirizzo valorizzato
+-- 1) Un PDP GAS con indirizzo, COSTRUITO
 -- =========================================================
+-- ⛔ 2026-09-23: il PDP era «il primo GAS con un indirizzo» e il soggetto
+--   quello con codice 'TST-PR-001', entrambi dati di QUESTA macchina: su un
+--   database ricostruito dai changelog non ci sono, e il file moriva sulle
+--   precondizioni (7 asserzioni rosse). Ora si COSTRUISCONO.
 CREATE TEMP TABLE tmp_pdp_test AS
-SELECT p.id,
+SELECT p.pdp_id AS id,
        p.indirizzo_dettaglio_id
-FROM anagrafiche.pdp p
-JOIN tmp_utility_gas u
-  ON p.utility_id = u.id
-WHERE p.indirizzo_dettaglio_id IS NOT NULL
-LIMIT 1;
+FROM dbops.fn_pgtap_crea_pdp('GAS') p;
 
 SELECT is(
-    (SELECT count(*)::int FROM tmp_pdp_test),
+    (SELECT count(*)::int FROM tmp_pdp_test WHERE indirizzo_dettaglio_id IS NOT NULL),
     1,
-    'Trovato almeno un PDP GAS con indirizzo_dettaglio_id valorizzato'
+    'Costruito un PDP GAS con indirizzo_dettaglio_id valorizzato'
 );
 
 -- =========================================================
--- 2) Recupero un soggetto esistente (qualsiasi)
---    (si assume che il DB di test abbia almeno un soggetto)
+-- 2) Un soggetto, COSTRUITO
 -- =========================================================
 CREATE TEMP TABLE tmp_soggetto_test AS
-SELECT id
-FROM anagrafiche.soggetti
-where codice = 'TST-PR-001'
-ORDER BY data_insert
-LIMIT 1;
+SELECT dbops.fn_pgtap_crea_soggetto_pg('Istanza da PDP') AS id;
 
 SELECT is(
-    (SELECT count(*)::int FROM tmp_soggetto_test),
+    (SELECT count(*)::int FROM tmp_soggetto_test WHERE id IS NOT NULL),
     1,
-    'Trovato almeno un soggetto da usare per l’istanza_utility'
+    'Costruito il soggetto da usare per l’istanza_utility'
 );
 
 -- =========================================================

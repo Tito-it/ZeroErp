@@ -18,12 +18,15 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
+// DataTable grezza: è il piano rate del documento (`dettaglio.scadenze`, prop del
+// padre), mostrato per intero in un popover — righe del master, non una lista.
 import DataTable from 'primevue/datatable'
 import Popover from 'primevue/popover'
 
 import { sintesiScadenze } from '../composables/useScadenzeSintesi'
 import { displayDate } from '../utils/date'
 import { formatCurrency } from '../utils/format'
+import { MANAGE_ICONS } from '../constants'
 
 const { t } = useI18n()
 
@@ -75,7 +78,7 @@ function toggle(event) {
         type="button"
         text
         size="small"
-        icon="pi pi-list"
+        :icon="MANAGE_ICONS.LIST"
         icon-pos="right"
         :label="`${vista.indice}/${vista.count}`"
         :aria-label="t('common.scadenze_vedi_tutte')"

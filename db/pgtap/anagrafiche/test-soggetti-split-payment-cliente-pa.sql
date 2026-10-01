@@ -50,6 +50,16 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   il test muore nella fixture — cioe' non verifica niente, che e' il modo
 --   peggiore di fallire. Sta quindi subito dopo la coppia, e comunque PRIMA
 --   delle asserzioni che scrivono.
+--   ⛔ E LA FINESTRA SI DICHIARA: la riga di contesto qui sopra esce con i
+--   vincoli IMMEDIATE (rev 20260921-18, come ogni helper pgTAP). Fino al
+--   21-09 lo faceva solo sul database da zero, dove costruisce il mondo —
+--   e li' questo file sarebbe morto all'INSERT del soggetto su «Il soggetto
+--   non ha contatti validi» (provato sullo scratch forzando quel ramo; in CI
+--   lo mascherava un altro file che committa un operatore prima di questo).
+--   Contare sulla finestra di DEFAULT e' contare su cio' che nessuno ha
+--   promesso: la si riapre, e il file dice da se' cosa vuole.
+SET CONSTRAINTS ALL DEFERRED;
+
 SELECT plan(5);
 
 SELECT col_not_null('anagrafiche', 'soggetti', 'split_payment',

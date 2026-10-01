@@ -79,6 +79,13 @@
 #     · righe:   `lavorata`        — false su IMPORTATA e DA_ABBINARE, true sugli
 #                                     altri: «qualcuno ha guardato questa riga?»
 #     · testata: `is_registrabile` — true SOLO su VALIDATA: «da qui si registra?»
+#
+# ── ⭐ REV 2026-09-30 — `righe_lavorabili` sulla testata (D-1) ──────────
+#   brief-db-righe-distinta-annullata-fuori-dalle-code §3, §4.1. Stessa via:
+#   colonna in coda al CSV principale e qui come `- column:`. Nasce in
+#   00_schema (20260930-30), e la preCondition qui sotto la pretende.
+#     · testata: `righe_lavorabili` — false SOLO su ANNULLATA: «le righe di
+#                                     questa distinta si lavorano ancora?»
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -100,6 +107,8 @@ databaseChangeLog:
         SOSPESA) e la bandiera richiede_abbinamento di D14-a. Rev 2026-09-18: porta
         anche `lavorata` (righe, D20-a) e `is_registrabile` (testata, D20-d), nate in
         00_schema 20260918-34/-35 — brief-db-validata-e-registrazione-tardiva.
+        Rev 2026-09-30: porta `righe_lavorabili` (testata, D-1), nata in 00_schema
+        20260930-30 — brief-db-righe-distinta-annullata-fuori-dalle-code.
       preConditions:
         - onFail: HALT
         - and:
@@ -123,6 +132,10 @@ databaseChangeLog:
                 schemaName: pagamenti
                 tableName: vendite_contabili_stati
                 columnName: is_registrabile
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_stati
+                columnName: righe_lavorabili
       changes:
         # ── 1) Il catalogo della DISTINTA ────────────────────────────────
         #   Nessuno stato ritirato: obsoleto_dal e' vuota su tutte e cinque le
@@ -151,6 +164,8 @@ databaseChangeLog:
               - column: { name: obsoleto_dal,   type: DATE }
               # ⭐ 2026-09-18 (D20-d): true solo su VALIDATA.
               - column: { name: is_registrabile, type: BOOLEAN }
+              # ⭐ 2026-09-30 (D-1): false solo su ANNULLATA.
+              - column: { name: righe_lavorabili, type: BOOLEAN }
               - column: { name: data_insert,    type: STRING }
               - column: { name: user_insert,    type: STRING }
               - column: { name: data_update,    type: STRING }

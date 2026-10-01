@@ -19,8 +19,8 @@ Indice test eseguiti (classe :: metodo):
 ResiServiceGuardsTests
  1) test_get_reso_not_found              — E_RESO_NOT_FOUND se testata None
  2) test_aggiorna_reso_stato_non_draft   — E_RESO_STATO_TRANSIZIONE se != DRAFT
- 3) test_gestisci_riga_stato_non_draft   — E_RESO_STATO_TRANSIZIONE se != DRAFT
- 4) test_elimina_riga_stato_non_draft    — E_RESO_STATO_TRANSIZIONE se != DRAFT
+ 3) test_gestisci_riga_stato_non_draft   — E_RIGA_DOC_NON_BOZZA se != DRAFT (il codice del DB, BB richiedi_righe_in_bozza)
+ 4) test_elimina_riga_stato_non_draft    — E_RIGA_DOC_NON_BOZZA se != DRAFT
 
 ResiCreaTests
  5) test_crea_reso_ok                    — sorgente per codice + uid DDT + DRAFT
@@ -105,6 +105,10 @@ ResiAnnulloAccreditoTests (B2-bis / D-NC-11)
 48) test_annullo_codice_dominio_dalla_madre      — E_ACCREDITO_ANNULLO_NON_AMMESSO
 49) test_annullo_no_atomic_extra                 — atomicita' nella fn madre
 50) test_annullo_motivo_non_stringa_rifiutato    — nessun tipo strano al driver
+
+ResiSatellitiTestataTests (2026-09-21, «leggi prima la testata»)
+51) test_list_righe_reso_non_trovato_e_404       — E_RESO_NOT_FOUND, repo righe non chiamato
+52) test_list_righe_con_testata_delega_al_repo    — caso felice: delega invariata
 """
 
 from contextlib import nullcontext
@@ -144,7 +148,9 @@ _SNAPSHOT_RIGA = {
 
 
 class ResiServiceGuardsTests(SimpleTestCase):
-    """Guard di stato (E_RESO_STATO_TRANSIZIONE) e not-found (E_RESO_NOT_FOUND)."""
+    """Guard di stato (E_RESO_STATO_TRANSIZIONE sulla testata, E_RIGA_DOC_NON_BOZZA
+    sulle righe — il codice del BB a DB, anche se su resi_righe non e' ancora
+    montato) e not-found (E_RESO_NOT_FOUND)."""
 
     @patch(_REPO)
     def test_get_reso_not_found(self, repo_cls) -> None:
@@ -152,6 +158,28 @@ class ResiServiceGuardsTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             resi_service.get_reso(99)
         self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
+
+    # Scopo: il blob di fn_available_actions_reso viaggia intatto SOTTO
+    #        `capabilities`, e nessuna sua chiave sale nella testata (api.md
+    #        §«Il blob sta SOTTO `capabilities`», 2026-09-23). Fino a quel
+    #        giorno nessun test del reso guardava la forma del dettaglio.
+    @patch(_REPO)
+    def test_get_reso_capabilities_annidate(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_reso.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        repo.get_capabilities.return_value = {
+            "available_actions": [{"key": "conferma", "target_state": "CONFERMATO"}],
+            "can_edit_testata": True,
+            "can_edit_righe": True,
+            "non_editable_fields": ["ddt_id"],
+            "stato_codice": "DRAFT",
+        }
+        repo.count_righe.return_value = 2
+        out = resi_service.get_reso(7)
+        self.assertEqual(out["capabilities"], repo.get_capabilities.return_value)
+        for chiave in repo.get_capabilities.return_value:
+            self.assertNotIn(chiave, out)
+        self.assertEqual(out["righe_count"], 2)
 
     @patch(_REPO)
     def test_aggiorna_reso_stato_non_draft(self, repo_cls) -> None:
@@ -166,20 +194,29 @@ class ResiServiceGuardsTests(SimpleTestCase):
     def test_gestisci_riga_stato_non_draft(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_e_ddt_origine.return_value = {
-            **_RESO_DRAFT, "stato_codice_interno": "CONFERMATO",
+            **_RESO_DRAFT, "stato_codice_interno": "CONFERMATO", "numero": "2026/00005",
         }
         with self.assertRaises(ServiceError) as cm:
             resi_service.gestisci_riga(7, {"ddt_riga_id": 11})
-        self.assertEqual(cm.exception.code, "E_RESO_STATO_TRANSIZIONE")
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertEqual(
+            cm.exception.message,
+            "Reso 2026/00005 non e' piu' in bozza (stato CONFERMATO): le sue righe "
+            "si possono aggiungere solo finche' e' in bozza.",
+        )
         repo.create_riga.assert_not_called()
 
     @patch(_REPO)
     def test_elimina_riga_stato_non_draft(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "ANNULLATO"
+        repo.get_stato_e_ddt_origine.return_value = {
+            **_RESO_DRAFT, "stato_codice_interno": "ANNULLATO",
+        }
         with self.assertRaises(ServiceError) as cm:
             resi_service.elimina_riga(7, 3)
-        self.assertEqual(cm.exception.code, "E_RESO_STATO_TRANSIZIONE")
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        # Senza `numero` l'etichetta ripiega su `#id`.
+        self.assertTrue(cm.exception.message.startswith("Reso #7 non e' piu' in bozza (stato ANNULLATO)"))
         repo.delete_riga.assert_not_called()
 
 
@@ -393,7 +430,7 @@ class ResiRigheTests(SimpleTestCase):
     @patch(_REPO)
     def test_aggiorna_riga_ok(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_e_ddt_origine.return_value = dict(_RESO_DRAFT)
         repo.get_riga.return_value = {"id": 3, "reso_id": 7}
         out = resi_service.aggiorna_riga(
             7, 3, {"qta_operativa": "2", "articolo_id": "hack"},
@@ -407,7 +444,7 @@ class ResiRigheTests(SimpleTestCase):
     @patch(_REPO)
     def test_aggiorna_riga_estranea(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_e_ddt_origine.return_value = dict(_RESO_DRAFT)
         repo.get_riga.return_value = {"id": 3, "reso_id": 999}
         with self.assertRaises(ServiceError) as cm:
             resi_service.aggiorna_riga(7, 3, {"qta_operativa": "2"})
@@ -1067,3 +1104,29 @@ class ResiDbErrorsTests(SimpleTestCase):
                     "alla quantita' consegnata residua",
                 )
         self.assertEqual(cm.exception.code, "E_RESO_QTA_SUPERA_CONSEGNATO")
+
+
+# Scopo: Le righe «leggono prima la testata» (2026-09-21, allineamento a
+#        api.md §Scope emittente): un reso fuori perimetro RLS — `None` dal
+#        repository, come un id inesistente — e' un 404, non un 200 vuoto.
+#
+# Indice:
+# 51) test_list_righe_reso_non_trovato_e_404
+# 52) test_list_righe_con_testata_delega_al_repo
+class ResiSatellitiTestataTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_list_righe_reso_non_trovato_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_reso.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.list_righe(99)
+        self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
+        repo.list_righe.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_righe_con_testata_delega_al_repo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_reso.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        repo.list_righe.return_value = [{"id": 31}]
+        self.assertEqual(resi_service.list_righe(7), [{"id": 31}])
+        repo.list_righe.assert_called_once_with(7)

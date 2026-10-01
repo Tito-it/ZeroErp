@@ -13,7 +13,7 @@ WITH (security_invoker=on) AS
 WITH righe AS (
          SELECT sr.preventivo_id,
             sr.riga_id,
-            ((COALESCE(sr.quantita, (0)::numeric) * sr.prezzo_unitario) * ((1)::numeric - (COALESCE(pr.sconto_percentuale, (0)::numeric) / 100.0))) AS valore_riga,
+            script.fn_imponibile_riga(COALESCE(sr.quantita, (0)::numeric), sr.prezzo_unitario, pr.sconto_percentuale) AS valore_riga,
             (sr.stato_smistamento <> 'RESIDUA'::text) AS transitata
            FROM (vendite.vw_preventivi_smistamento_righe sr
              JOIN vendite.preventivi_righe pr ON ((pr.id = sr.riga_id)))

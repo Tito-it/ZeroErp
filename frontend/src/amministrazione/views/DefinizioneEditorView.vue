@@ -26,7 +26,8 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useReadonlyMode, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
-import { MANAGE_ICONS, READONLY_DOMAINS, STATO_DEFINIZIONE } from '../../core/constants'
+import { useFormInline } from '../../core/composables/useFormInline'
+import { MANAGE_ICONS, READONLY_DOMAINS, STATO_DEFINIZIONE, STATUS_ICONS } from '../../core/constants'
 import { updateStep, deleteStep, forkDefinizione } from '../api/definizioniWorkflow'
 import { useDefinizioneEditorStore } from '../stores/definizioneEditor'
 import DefinizioneStepForm from '../components/DefinizioneStepForm.vue'
@@ -119,7 +120,7 @@ function onAllinea() {
 
 async function loadDettaglio() {
   selectedStep.value = null
-  formMode.value = null
+  chiudiForm()
   if (!defId.value) return
   try {
     await store.load(defId.value)
@@ -131,9 +132,12 @@ async function loadDettaglio() {
 }
 
 // --- Editing step (FE-3.2, anello BE 3). Solo con editor editabile. ---
-// formMode: null (nessun form) | 'create' | 'edit'. stepInForm = step editato.
-const formMode = ref(null)
-const stepInForm = ref(null)
+// La macchina del form (null | 'create' | 'edit', e lo step in modifica) e' il
+// BB core `useFormInline` (sede unica, ok Tid 2026-09-28). Il padre e' la
+// definizione: aprirne un'altra chiude il form.
+const {
+  formMode, rigaInModifica: stepInForm, nuovaRiga: onNuovoStep, apriRiga, chiudiForm,
+} = useFormInline({ padre: () => defId.value })
 
 // Ordine stabile per il riordino ▲▼ (la DataTable ordina per sequenza in view).
 const stepsOrdinati = computed(() => [...store.steps].sort((a, b) => a.sequenza - b.sequenza))
@@ -141,18 +145,10 @@ const nextSequenza = computed(
   () => store.steps.reduce((m, s) => Math.max(m, s.sequenza ?? 0), 0) + 10,
 )
 
-function onNuovoStep() {
-  stepInForm.value = null
-  formMode.value = 'create'
-}
+// Modificare uno step lo seleziona anche nel dettaglio.
 function onEditStep(step) {
-  stepInForm.value = step
+  apriRiga(step)
   selectedStep.value = step
-  formMode.value = 'edit'
-}
-function chiudiForm() {
-  formMode.value = null
-  stepInForm.value = null
 }
 
 // Ricarica il dettaglio e riseleziona lo step per id. Default-param (non `??`)
@@ -254,7 +250,7 @@ watch(defId, loadDettaglio)
 <template>
   <div class="app-page definizione-editor">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <Button
           :label="t('amministrazione.definizioni_workflow.ed_torna_lista')"
           :icon="MANAGE_ICONS.BACK"
@@ -345,14 +341,14 @@ watch(defId, loadDettaglio)
         <Column field="descrizione" :header="t('amministrazione.definizioni_workflow.ed_col_descrizione')" style="min-width: 200px;" />
         <Column :header="t('amministrazione.definizioni_workflow.ed_col_obbligatorio')" style="width: 70px;">
           <template #body="{ data }">
-            <i v-if="data.obbligatorio" class="pi pi-check editor-bool-yes" />
+            <i v-if="data.obbligatorio" class="editor-bool-yes" :class="STATUS_ICONS.SI" />
           </template>
         </Column>
         <Column field="direzione" :header="t('amministrazione.definizioni_workflow.ed_col_direzione')" style="width: 110px;" />
         <Column field="modalita_esito" :header="t('amministrazione.definizioni_workflow.ed_col_modalita_esito')" style="width: 130px;" />
         <Column :header="t('amministrazione.definizioni_workflow.ed_col_attivo')" style="width: 70px;">
           <template #body="{ data }">
-            <i v-if="data.attivo" class="pi pi-check editor-bool-yes" />
+            <i v-if="data.attivo" class="editor-bool-yes" :class="STATUS_ICONS.SI" />
           </template>
         </Column>
         <Column v-if="!editorReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">

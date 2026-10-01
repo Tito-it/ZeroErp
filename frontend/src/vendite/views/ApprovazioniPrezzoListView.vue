@@ -23,7 +23,7 @@ import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useNotify } from '../../core/composables/useNotify'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { coerceJsonbToObject } from '../../core/utils/meta'
 import { prioritaPraticaSeverity } from '../../core/utils/severity'
@@ -56,7 +56,7 @@ async function safeFetch() {
 
 const {
   onPage, onSort, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
+  listaRef, dirty, onConfigLoaded, pageActions,
 } = useListaConfigurabilePage(store, { onReload: safeFetch })
 
 // Primo caricamento al mount. La freshness al rientro tab (KeepAlive) —
@@ -206,7 +206,11 @@ function buildRowActions(data) {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
+      <!-- ⛔ NIENTE `:inert` qui: questa lista non ha filtri, e il blocco
+           porta il TITOLO della pagina. Inertizzare un titolo lo toglie
+           anche agli screen reader proprio quando la pagina spiega perche'
+           non si vede niente (cancello di perimetro emittente). -->
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">{{ t('vendite.approvazioni_prezzo.page_title') }}</h2>
         <small class="app-text-muted">{{ t('vendite.approvazioni_prezzo.page_description') }}</small>
       </div>
@@ -241,17 +245,17 @@ function buildRowActions(data) {
           :severity="prioritaPraticaSeverity(data.priorita_codice_interno)" />
       </template>
 
-      <template #actions="{ data, compact }">
-        <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
       </template>
 
       <template #empty>
         <div v-if="listError" class="app-empty-state app-empty-state-error">
-          <i class="pi pi-lock" />
+          <i :class="STATUS_ICONS.VIETATO" />
           <p>{{ listError }}</p>
         </div>
         <div v-else-if="store.hasSearched" class="app-empty-state">
-          <i class="pi pi-check-circle" />
+          <i :class="STATUS_ICONS.TUTTO_OK" />
           <p>{{ t('vendite.approvazioni_prezzo.nessuna_richiesta') }}</p>
         </div>
       </template>

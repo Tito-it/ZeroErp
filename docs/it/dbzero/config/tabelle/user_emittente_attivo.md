@@ -21,6 +21,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_config_user_emittente_attivo_auth_user | auth_user_id |
 | FOREIGN KEY | fk_user_emittente_attivo_emittente | emittente_fiscale_id |
 | PRIMARY KEY | pk_user_emittente_attivo | id |
 | UNIQUE | uq_user_emittente_attivo_auth_user | auth_user_id |

@@ -17,6 +17,10 @@ AS $function$
 --   prezzo_unitario IS NULL (pending valorizzazione).
 --   rev 2026-07-19: valutazione delegata a
 --   script.fn_check_ddt_emittibile — single source con la capability.
+--   rev 2026-09-24: i motivi del prezzo non autorizzato sono ora
+--   E_DOC_PREZZO_PENDENTE ed E_DOC_PREZZO_RIFIUTATO (building block
+--   script.fn_check_prezzi_autorizzati), non piu' E_COMPONENTE_PREZZO_PENDENTE
+--   (brief-db-preventivi-congelamento-pricing, D-6).
 DECLARE
     v_stato_codice config.stati_doc_ddt.codice_interno%TYPE;
     v_motivo       jsonb;
@@ -32,13 +36,22 @@ BEGIN
     FOR v_motivo IN
         SELECT jsonb_array_elements(script.fn_check_ddt_emittibile(NEW))
     LOOP
-        IF v_motivo->>'codice' = 'E_COMPONENTE_PREZZO_PENDENTE' THEN
+        -- ⚠️ rev 2026-09-24: i due motivi del prezzo non autorizzato. La
+        --   frase porta il CONTEGGIO, che la check emette in `valori`; la
+        --   riga e il componente viaggiano nel contesto, per chi diagnostica.
+        IF v_motivo->>'codice' = 'E_DOC_PREZZO_PENDENTE' THEN
             PERFORM script.fn_log_and_raise_error(
-                'database', TG_NAME, 'E_COMPONENTE_PREZZO_PENDENTE',
-                jsonb_build_object('ddt_id', NEW.id,
-                    'hint', 'Componente BoM CASO A in attesa di approvazione prezzo. '
-                         || 'Attendi esito su tutti i componenti prima di emettere.'),
-                NULL::uuid, NEW.id::text
+                'database', TG_NAME, 'E_DOC_PREZZO_PENDENTE',
+                jsonb_build_object('ddt_id', NEW.id)
+                    || COALESCE(v_motivo->'dettaglio', '{}'::jsonb),
+                NEW.tx_id, v_motivo->'valori'->>0
+            );
+        ELSIF v_motivo->>'codice' = 'E_DOC_PREZZO_RIFIUTATO' THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', TG_NAME, 'E_DOC_PREZZO_RIFIUTATO',
+                jsonb_build_object('ddt_id', NEW.id)
+                    || COALESCE(v_motivo->'dettaglio', '{}'::jsonb),
+                NEW.tx_id, v_motivo->'valori'->>0
             );
         ELSIF v_motivo->>'codice' = 'E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE' THEN
             PERFORM script.fn_log_and_raise_error(
@@ -56,7 +69,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()
-IS 'Blocca la transizione a EMESSO di un DDT con componenti BoM CASO A in approvazione prezzo PENDING (E_COMPONENTE_PREZZO_PENDENTE) o con prezzo non valorizzato (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore invariati.';
+IS 'Blocca la transizione a EMESSO di un DDT con componenti BoM CASO A in approvazione prezzo PENDING (E_COMPONENTE_PREZZO_PENDENTE) o con prezzo non valorizzato (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore invariati. rev 2026-09-24: il prezzo non autorizzato dei componenti solleva E_DOC_PREZZO_PENDENTE o E_DOC_PREZZO_RIFIUTATO — i motivi del building block script.fn_check_prezzi_autorizzati, che fn_check_ddt_emittibile chiede quando la causale vende — con il conteggio nella frase e riga/componente nel contesto. Prima E_COMPONENTE_PREZZO_PENDENTE, solo sul PENDING. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-6).';
 ```
 
 ---

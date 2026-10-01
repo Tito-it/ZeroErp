@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-be-presidio-ui-action-e-canale-campi §4 — IL RUBINETTO SI RIMONTA
+# SOPRA LA RISALITA CONDIVISA (20260921-40), a output identico.
+#
+# ── COSA CAMBIA, E COSA NO ──────────────────────────────────────────
+#   Il MARCATORE dei punti resta QUI, byte per byte: `fn_log_and_raise_error
+#   \s*\([^;]*->> 'codice'` — e' la sede del rubinetto (t.6-7 del pgTAP:
+#   ne' troppo largo ne' troppo stretto), e non si sposta. Cambia solo la
+#   risalita punto -> check -> codici, che ora si LEGGE da
+#   dbops.vw_funzioni_check_codici invece di essere derivata qui: e' la stessa
+#   che serve al presidio C2, e una sede sola non puo' dissentire da se'.
+#   Colonne, nomi e tipi: identici (CREATE OR REPLACE VIEW lo pretende).
+#
+# ── ⚠️ DUE DIFFERENZE, E SONO CORREZIONI ────────────────────────────
+#   1. le fn_check_* si cercano nel sorgente SENZA commenti (la lezione del
+#      rubinetto t.5, 18-09: un presidio sul testo si accende sulla prosa);
+#   2. nessun doppione per (punto, check, codice): la vecchia derivazione dava
+#      due righe a vendite.fn_riporta_attivita_da_emettere /
+#      E_ATTIVITA_IN_LAVORAZIONE (la check lo nomina in m4 e m5).
+#   Verificato in transazione ritirata il 21-09: 16 legami DISTINTI prima, 16
+#   dopo, stessi (funzione, check, codice); i tre lettori (rubinetto, scanner
+#   dell'arita' ramo B, check_messaggio_vs_condizione) contano DISTINCT o usano
+#   EXISTS — nessuno cambia esito.
+#
+# ── ⚠️ security_invoker VA RISPECIFICATO, e il COMMENT si riemette ──
+#   CREATE OR REPLACE VIEW azzera la reloption. Il COMMENT sopravvive al
+#   REPLACE ma va aggiornato: dice dove vive la risalita.
+#
+# Presidio: db/pgtap/script/test-rubinetto-primo-motivo-v1.sql (t.2-7,
+#   invariati) — la canarina t.7 ora attraversa anche la -40.
+# Dipendenze: 20260921-40.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260921-41-update-vw-punti-primo-motivo-su-risalita-condivisa-mctit.yaml
+
+  - changeSet:
+      id: 20260921-41-update-vw-punti-primo-motivo-su-risalita-condivisa
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_punti_primo_motivo legge la risalita punto -> check -> codici
+        da dbops.vw_funzioni_check_codici invece di derivarla in proprio.
+        Marcatore dei punti, colonne e semantica invariati; via i doppioni e
+        le check nominate solo nei commenti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'dbops' AND viewname = 'vw_punti_primo_motivo'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'dbops' AND viewname = 'vw_funzioni_check_codici'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_punti_primo_motivo
+              WITH (security_invoker=true) AS
+              WITH punti AS (
+                  -- Un PUNTO: una funzione plpgsql che passa a
+                  -- fn_log_and_raise_error un codice LETTO da un motivo
+                  -- (`->> 'codice'`) invece che scritto come letterale.
+                  -- ⛔ Il marcatore e' la sede del rubinetto e non si tocca.
+                  SELECT (n.nspname)::text AS sch, (p.proname)::text AS fn
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])
+                     AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+                     AND p.prosrc ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''
+                     -- L'helper e' la SEDE della coda, non un suo residuo.
+                     AND NOT (n.nspname = 'script' AND p.proname = 'fn_raise_primo_motivo_se_presente')
+              )
+              SELECT pt.sch,
+                     pt.fn,
+                     ((pt.sch || '.'::text) || pt.fn) AS funzione,
+                     k.check_schema,
+                     k.check_funzione,
+                     k.check_emette_valori,
+                     -- NULL se il punto non si lega a nessuna check, o se la
+                     -- check non nomina codici: e' il ramo cieco, e COMPARE.
+                     k.codice
+                FROM punti pt
+                LEFT JOIN dbops.vw_funzioni_check_codici k
+                       ON k.sch = pt.sch AND k.fn = pt.fn;
+
+              COMMENT ON VIEW dbops.vw_punti_primo_motivo IS
+              'I punti che sollevano il codice del PRIMO MOTIVO di una script.fn_check_* (linee-guida-sql §12.5.2) A MANO — `fn_log_and_raise_error(... ->> ''codice''` — legati alla check da cui il motivo viene e ai codici che quella nomina. Una riga per (punto, check, codice). E'' il RUBINETTO: i chiamanti di script.fn_raise_primo_motivo_se_presente (i bonificati) NON ci stanno, per costruzione.
+              ⭐ DAL 2026-09-21 LA RISALITA punto->check->codici si LEGGE da dbops.vw_funzioni_check_codici (sede unica, condivisa col presidio C2 dbops.vw_punti_canale_campo); qui resta il solo marcatore dei punti. Prima viveva in una vista temporanea dentro db/pgtap/script/test-rubinetto-primo-motivo-v1.sql, poi in questa vista — e la seconda lettrice l''avrebbe ricopiata.
+              COME SI USA. (A) il perimetro dell''helper: SELECT sch, fn, count(check_funzione) AS check_trovate, coalesce(bool_or(check_emette_valori), false) AS in_perimetro FROM dbops.vw_punti_primo_motivo GROUP BY 1,2; (B) i codici che un punto puo'' sollevare: SELECT DISTINCT funzione, codice FROM dbops.vw_punti_primo_motivo WHERE codice IS NOT NULL.
+              ⭐ PESSIMISTA DI PROPOSITO: i codici sono l''UNIONE di quelli nominati da TUTTE le check citate nel corpo, perche'' la vista legge il testo e non sa quale ramo sia stato preso. Un presidio che scegliesse il ramo ottimista assolverebbe il caso che deve segnalare; un falso positivo qui costa una riga in piu'' nel VARIADIC, non un rifiuto sbagliato.
+              ⚠️ RAMO CIECO — un punto con check_funzione NULL non e'' «a posto»: e'' un sito che la lettura non sa legare alla sua check, e va visto. E'' il test 3 di test-rubinetto-primo-motivo-v1.sql.
+              ⛔ NON serve a dbops.vw_codici_errore_forme_condizione: quella classifica la forma della GUARDIA, e sopra questi punti la guardia e'' sempre «IF jsonb_array_length(v_motivi) > 0», che non dice niente. Li'' si classifica dove il codice e'' NOMINATO (changeSet 20260908-35).
+              ⚠️ E'' un''euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (V-0); risalita condivisa: brief-be-presidio-ui-action-e-canale-campi §4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_punti_primo_motivo
+              WITH (security_invoker=true) AS
+              WITH punti AS (
+                  SELECT (n.nspname)::text AS sch, (p.proname)::text AS fn,
+                         p.oid, p.prosrc
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])
+                     AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+                     AND p.prosrc ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''
+                     AND NOT (n.nspname = 'script' AND p.proname = 'fn_raise_primo_motivo_se_presente')
+              ), legami AS (
+                  SELECT DISTINCT pt.sch, pt.fn, m[1] AS csch, m[2] AS cfn
+                    FROM punti pt
+                    CROSS JOIN LATERAL regexp_matches(pt.prosrc, '(\w+)\.(fn_check_\w+)\s*\(', 'g') m
+              ), check_viste AS (
+                  SELECT l.sch, l.fn, l.csch, l.cfn,
+                         (c.prosrc ~ '''valori''') AS emette_valori,
+                         c.prosrc AS csrc
+                    FROM legami l
+                    JOIN pg_namespace cn ON cn.nspname = l.csch
+                    JOIN pg_proc c ON c.proname = l.cfn AND c.pronamespace = cn.oid
+              )
+              SELECT pt.sch,
+                     pt.fn,
+                     ((pt.sch || '.'::text) || pt.fn) AS funzione,
+                     cv.csch AS check_schema,
+                     cv.cfn  AS check_funzione,
+                     cv.emette_valori AS check_emette_valori,
+                     (mc.m)[1] AS codice
+                FROM punti pt
+                LEFT JOIN check_viste cv ON cv.sch = pt.sch AND cv.fn = pt.fn
+                LEFT JOIN LATERAL regexp_matches(cv.csrc, '''codice''\s*,\s*''(E_[A-Z0-9_]+)''', 'g') mc(m) ON true;
+
+              COMMENT ON VIEW dbops.vw_punti_primo_motivo IS
+              'I punti che sollevano il codice del PRIMO MOTIVO di una script.fn_check_* (linee-guida-sql §12.5.2), legati alla check da cui il motivo viene e ai codici che quella nomina. Una riga per (punto, check, codice).
+              SEDE UNICA della risalita punto->check: prima viveva in una vista temporanea dentro db/pgtap/script/test-rubinetto-primo-motivo-v1.sql, quindi ogni altro presidio che ne avesse bisogno se la sarebbe ricopiata — ed e'' cosi'' che due presidi sullo stesso fatto cominciano a dissentire.
+              COME SI USA. (A) il perimetro dell''helper: SELECT sch, fn, count(check_funzione) AS check_trovate, coalesce(bool_or(check_emette_valori), false) AS in_perimetro FROM dbops.vw_punti_primo_motivo GROUP BY 1,2; (B) i codici che un punto puo'' sollevare: SELECT DISTINCT funzione, codice FROM dbops.vw_punti_primo_motivo WHERE codice IS NOT NULL.
+              ⭐ PESSIMISTA DI PROPOSITO, ed e'' la scelta portante: i codici sono l''UNIONE di quelli nominati da TUTTE le check citate nel corpo, perche'' la vista legge il testo e non sa quale ramo sia stato preso. Un presidio che scegliesse il ramo ottimista assolverebbe il caso che deve segnalare; e un falso positivo qui costa una riga in piu'' nel VARIADIC, non un rifiuto sbagliato.
+              ⚠️ RAMO CIECO — un punto con check_funzione NULL non e'' «a posto»: e'' un sito che la lettura non sa legare alla sua check, e va visto. E'' il test 3 di test-rubinetto-primo-motivo-v1.sql.
+              ⛔ NON serve a dbops.vw_codici_errore_forme_condizione: quella classifica la forma della GUARDIA, e sopra questi punti la guardia e'' sempre «IF jsonb_array_length(v_motivi) > 0», che non dice niente. Li'' si classifica dove il codice e'' NOMINATO (changeSet 20260908-35).
+              ⚠️ E'' un''euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md, passo V-0.';

@@ -1,29 +1,62 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: script.fn_available_actions_ddt — decomposizione del catch-all
---       DDT_NON_PUSHABILE nelle 7 cause (fonte unica fn_ddt_push_diagnosi).
--- Brief: brief-db-ddt-reason-push-catch-all §3 (changeset 20260719-15/16)
+-- Test: script.fn_available_actions_ddt — il push a commessa letto da UNA
+--       fonte (vendite.fn_ddt_push_diagnosi): flag, precedenza sul segmento,
+--       decomposizione del catch-all DDT_NON_PUSHABILE nelle sue cause.
+-- Brief: brief-db-ddt-reason-push-catch-all §3 (changeset 20260719-15/16);
+--        rev 2026-09-21 — brief-db-partita-merce-per-documento §10 (D4, forma
+--        B2; changeSet 20260921-32/-33/-34).
 -- ------------------------------------------------------------
--- Indice test (1..7):
---   1) EQUIVALENZA (garanzia fonte unica): l'insieme delle righe con
---      diagnosi motivo NULL coincide con l'output del lister. Se divergono
---      i predicati si sono sdoppiati -> rosso. ⚠️ Gira DOPO le fixture
---      (spostato il 2026-08-18): prima confrontava solo i dati vivi.
---   2) DDT_FATTURA_DA_ORDINE: ordine CONFERMATO, DDT CONSEGNATO (il rilievo
---      originale DDT0000326) -> reason FATTURA_DA_ORDINE, non piu' il falso
---      «dev'essere spedito o consegnato».
---   3) DDT_MERCE_IN_VIAGGIO: ordine SPEDITO, DDT EMESSO (prima del trigger)
---      -> reason MERCE_IN_VIAGGIO (l'unico caso in cui lo stato e' vero).
---   4) DDT_SOLO_TRASPORTO: causale non fatturabile (CONTO_LAVORO) -> reason
---      SOLO_TRASPORTO (non e' questione di stato).
---   8) COERENZA rank <-> motivo (rinumerazione del 2026-08-18)
---   5) generico ANNULLATO: DDT annullato -> DDT_NON_PUSHABILE (generico),
---      NON la frase sullo stato.
---   6) PRECEDENZA a due livelli: DDT ANNULLATO con ordine CONFERMATO -> due
---      cause (annullato rank1 doc, XOR rank6 riga) -> vince il documento
---      (generico), non FATTURA_DA_ORDINE.
---   7) NAMESPACE: ogni reason_key emessa sta sotto vendite.ddt.push_commessa_reason.*
+-- Indice test (plan 16):
+--   1) ⭐ ELEGGIBILE, costruito: la diagnosi dice motivo NULL, dose 10,
+--      segment LIBERA e il BA del cliente costruito
+--   2) ...e il lister porta QUELLA riga con quantita 10 (deriva dalla diagnosi)
+--   3) ...e la capability dice can_push_commessa = true, reason e key NULL
+--   4) DDT_FATTURA_DA_ORDINE: ordine CONFERMATO, DDT CONSEGNATO (il rilievo
+--      originale DDT0000326) -> reason FATTURA_DA_ORDINE
+--   5) DDT_MERCE_IN_VIAGGIO: ordine SPEDITO, DDT EMESSO (prima del trigger)
+--   6) DDT_SOLO_TRASPORTO: causale non fatturabile (CONTO_LAVORO)
+--   7) generico ANNULLATO: DDT annullato -> DDT_NON_PUSHABILE, non una frase
+--      sullo stato
+--   8) PRECEDENZA a due livelli: ANNULLATO (rank 1, documento) + ordine
+--      CONFERMATO (rank 6, riga) -> vince il documento (generico)
+--   9) ⭐ DDT_GIA_INVIATO: riga eleggibile con un'attivita' NON_EMESSA sul suo
+--      segmento (ALLOCATA) -> can_push false, reason GIA_INVIATO; il lister
+--      non la porta piu'
+--  10) ⭐ DDT_GIA_FATTURATO: attivita' EMESSA sul segmento -> GIA_FATTURATO
+--  11) ⭐ PRECEDENZA del segmento sul documento: DDT ANNULLATO con una riga
+--      ALLOCATA dice GIA_INVIATO, non il generico — e' l'ordine di prima
+--      (i due EXISTS venivano PRIMA della diagnosi) e B2 lo conserva
+--  12) NAMESPACE: ogni reason_key emessa sta sotto vendite.ddt.push_commessa_reason.*
+--  13) COERENZA rank <-> motivo su TUTTE le righe: nessun rank senza etichetta
+--  14) COERENZA delle colonne nuove: motivo NULL => (segment LIBERA e dose > 0
+--      e BA presente); ROUTED / SENZA_BA / CONTATORE coerenti con segment, BA, dose
+--  15) ⭐ pin di forma di D4: il lister nomina la diagnosi e NON
+--      fn_partite_merce ne' fn_get_stato_push_segment (nessun predicato suo);
+--      la capability NON nomina il lister ne' il classificatore (una lettura);
+--      la diagnosi e' BEGIN ATOMIC e non SECURITY DEFINER
+--  17) ⭐ DDT_SENZA_BA COSTRUITO: un DDT senza ordine dietro e senza billing
+--      account (la colonna e' NULLABLE) -> rank 3, motivo DDT_SENZA_BA,
+--      billing_account_id NULL, capability spenta. Fino al 2026-09-22 il
+--      ramo non era esercitato da nessuna riga viva (54 su 54 hanno un BA
+--      visibile): la clausola SENZA_BA del test 14 era vera A VUOTO, e il
+--      giro 7 riscrive proprio la lettura dei BA
+--  16) scope: chi non vede il DDT ha zero righe di diagnosi e capability NULL
+--      (⚠️ rosso da owner, che salta la RLS: gira come app; ULTIMO, cambia
+--      il contesto)
+--
+-- Scopo:
+--  - fino al 2026-09-21 il test 1 confrontava lister e diagnosi (EXCEPT nei
+--    due versi): due copie della stessa regola tenute uguali da un pgTAP —
+--    verde per sottrazione su un database da zero. Con la forma B2 il lister
+--    DERIVA dalla diagnosi e quel confronto e' la stessa query: al suo posto
+--    ci sono casi COSTRUITI (1-3, 9-11) e un pin di FORMA (15).
+--  - ⭐ il mondo (cliente, articolo) e' COSTRUITO dai builder di dbops, non
+--    pescato: la fixture «un BA a caso» moriva sullo scratch zeroerp_ci
+--    (baseline-rossi-ci, ERRORE_FIXTURE — la malattia D7).
+--  - ⛔ un predicato di eleggibilita' nuovo si aggiunge alla diagnosi come
+--    rank e qui come caso costruito: nel lister non c'e' piu' un posto.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -43,37 +76,72 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(17);
 
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
+-- ⛔ Niente `SET LOCAL app.current_user_id = '1'` dopo la riga di contesto:
+--    l'operatore lo sceglie (o lo COSTRUISCE, su un database vuoto)
+--    fn_pgtap_set_contesto_operatore, e l'utente 1 in CI non esiste (D7).
 
 -- ============================================================
--- Riferimenti + helper mk_caso (adattato da test-fn-list-ddt-da-pushare-orfano)
+-- Il mondo si COSTRUISCE, non si cerca (guida pgTAP). Ordine obbligato:
+-- PRIMA il contesto (la riga in testa), POI il cliente — il legame BA ->
+-- emittente lo scrive il trigger z90 verso l'emittente di chi agisce, lo
+-- stesso che risponde fn_pgtap_emittente_operatore. L'articolo NON gestito
+-- a magazzino: il ciclo DDT non tocca il ledger.
 -- ============================================================
+CREATE TEMP TABLE tmp_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('pgtap_reason_catchall');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='ANNULLATO' AND s.attivo LIMIT 1)  AS stato_ddt_annullato_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1)     AS causale_vendita_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='CONTO_LAVORO' LIMIT 1) AS causale_no_fatt_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
+  c.billing_account_id,
+  c.utility_id,
+  c.istanza_utility_id,
+  c.soggetto_ruolo_id,
+  script.fn_pgtap_emittente_operatore()                                                                AS emittente_fiscale_id,
+  dbops.fn_pgtap_crea_articolo('PGT-RCA-ART', false)                                                   AS articolo_id,
+  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)              AS uom_id,
+  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                             AS valuta_id,
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                         AS iva_id,
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
+  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO'     AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_emesso_id,
+  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO'    AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_spedito_id,
+  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_consegnato_id,
+  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='ANNULLATO'  AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_annullato_id,
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo ORDER BY s.id LIMIT 1)           AS sorgente_root_id,
+  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                           AS tipo_doc_fiscale_id,
+  (SELECT c2.id FROM config.causali_trasporto c2 WHERE c2.codice='VENDITA'     ORDER BY c2.id LIMIT 1)                AS causale_vendita_id,
+  (SELECT c2.id FROM config.causali_trasporto c2 WHERE c2.codice='CONTO_LAVORO' ORDER BY c2.id LIMIT 1)               AS causale_no_fatt_id,
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                   AS tipo_ind_con_id
+FROM tmp_cli c;
 
--- Crea ordine + DDT con trigger e stato finale parametrici + causale scelta.
+-- Commessa + ROOT: servono alle attivita' fatturabili dei casi 9-11.
+CREATE TEMP TABLE tmp_com AS
+SELECT vendite.fn_get_or_create_commessa(
+  p_billing_account_id     => (SELECT billing_account_id FROM tmp_refs),
+  p_utility_id             => (SELECT utility_id FROM tmp_refs),
+  p_tipo_commessa          => 'AUTO',
+  p_policy_fatturazione    => 'DA_DOCUMENTO',
+  p_fatturazione_immediata => false,
+  p_priorita_operativa     => 'NORMALE',
+  p_competenza_dal         => DATE '2026-07-01',
+  p_competenza_al          => DATE '2026-07-31',
+  p_meta                   => jsonb_build_object('test_scope','pgtap_reason_catchall'),
+  p_force_new              => true) AS commessa_id;
+
+SELECT vendite.fn_link_commessa_sorgente(
+  p_commessa_id      => (SELECT commessa_id FROM tmp_com),
+  p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
+  p_sorgente_uid     => (SELECT commessa_id FROM tmp_com)::text,
+  p_sorgente_riga    => 1,
+  p_meta             => '{}'::jsonb);
+
+-- ============================================================
+-- Helper
+-- ============================================================
+
+-- Ordine (trigger p_trigger) + DDT (qta 10) portato a p_stato_finale con la
+-- causale p_causale. Ritorna il DDT; la sua riga si legge con rca_riga().
 CREATE OR REPLACE FUNCTION pg_temp.mk_caso(p_trigger varchar, p_stato_finale bigint, p_causale bigint)
 RETURNS bigint AS $$
 DECLARE r RECORD; v_ord bigint; v_ddt bigint;
@@ -85,6 +153,7 @@ BEGIN
           DATE '2026-07-15', p_trigger, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_reason_catchall'))
   RETURNING id INTO v_ord;
+  -- trgfn_ordini_normalize eredita il trigger dal BA su INSERT: va rimesso.
   UPDATE vendite.ordini SET fatturazione_trigger = p_trigger WHERE id = v_ord;
   INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
     qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
@@ -106,102 +175,278 @@ BEGIN
   RETURN v_ddt;
 END $$ LANGUAGE plpgsql;
 
--- Fixtures
+-- La riga (unica) di un DDT costruito qui.
+CREATE OR REPLACE FUNCTION pg_temp.rca_riga(p_ddt bigint) RETURNS bigint AS $$
+  SELECT dr.id FROM vendite.ddt_righe dr WHERE dr.ddt_id = p_ddt ORDER BY dr.id LIMIT 1;
+$$ LANGUAGE sql;
+
+-- La segment_key di quella riga, come la compone il lister.
+CREATE OR REPLACE FUNCTION pg_temp.rca_segment(p_ddt bigint) RETURNS varchar AS $$
+  SELECT ('DDT:' || d.uid::text || ':R:' || pg_temp.rca_riga(p_ddt)::text)::varchar
+    FROM vendite.ddt d WHERE d.id = p_ddt;
+$$ LANGUAGE sql;
+
+-- Un'attivita' NORMALE, APPROVATA e NON_EMESSA sul segmento: la riga diventa
+-- ALLOCATA agli occhi di fn_get_stato_push_segment. Chi la vuole EMESSA
+-- chiama poi rca_emit().
+CREATE OR REPLACE FUNCTION pg_temp.mk_af(p_segment varchar, p_qta numeric)
+RETURNS void AS $$
+DECLARE r RECORD;
+BEGIN
+  SELECT * INTO r FROM tmp_refs;
+  PERFORM vendite.fn_upsert_commessa_attivita(
+    p_commessa_id => (SELECT commessa_id FROM tmp_com),
+    p_segment_key => p_segment, p_articolo_id => r.articolo_id,
+    p_istanza_utility_id => r.istanza_utility_id, p_data_attivita => DATE '2026-07-15',
+    p_uom_id => r.uom_id, p_quantita => p_qta,
+    p_competenza_mese => DATE '2026-07-01',
+    p_competenza_dal => DATE '2026-07-01', p_competenza_al => DATE '2026-07-31',
+    p_prezzo_snapshot => 25, p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
+    p_tipo_variazione_applicata => NULL, p_valore_variazione_applicata => NULL,
+    p_promo_id => NULL, p_contratto_id => NULL,
+    p_categoria_cliente_id_snapshot => NULL, p_classe_utenza_id_snapshot => NULL,
+    p_tipo_doc_fiscale_id => r.tipo_doc_fiscale_id, p_valuta_id => r.valuta_id,
+    p_stato_approvazione => 'APPROVATA', p_stato_emissione => 'NON_EMESSA',
+    p_tipo_movimento => 'NORMALE');
+END $$ LANGUAGE plpgsql;
+
+-- Emette TUTTE le attivita' approvate e non emesse della commessa: va
+-- chiamata PRIMA di costruire le ALLOCATA (9 e 11), o le emetterebbe.
+CREATE OR REPLACE FUNCTION pg_temp.rca_emit() RETURNS void AS $$
+  SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com), true, false);
+$$ LANGUAGE sql;
+
+-- I tre campi del push del blob, in una stringa confrontabile.
+CREATE OR REPLACE FUNCTION pg_temp.rca_push(p_ddt bigint) RETURNS text AS $$
+  SELECT (b->>'can_push_commessa') || '|' || COALESCE(b->>'can_push_commessa_reason', '-')
+         || '|' || COALESCE(b->>'can_push_commessa_reason_key', '-')
+    FROM script.fn_available_actions_ddt(p_ddt) b;
+$$ LANGUAGE sql;
+
+-- ============================================================
+-- Fixture
+-- ============================================================
 CREATE TEMP TABLE f AS SELECT
-  pg_temp.mk_caso('CONFERMATO', (SELECT stato_ddt_consegnato_id FROM tmp_refs), (SELECT causale_vendita_id FROM tmp_refs))  AS d_fattura_ordine,
-  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_emesso_id FROM tmp_refs),     (SELECT causale_vendita_id FROM tmp_refs))  AS d_in_viaggio,
-  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_spedito_id FROM tmp_refs),    (SELECT causale_no_fatt_id FROM tmp_refs))  AS d_solo_trasporto,
-  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs))  AS d_annullato,
-  pg_temp.mk_caso('CONFERMATO', (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs))  AS d_prec;
+  pg_temp.mk_caso('CONFERMATO', (SELECT stato_ddt_consegnato_id FROM tmp_refs), (SELECT causale_vendita_id FROM tmp_refs)) AS d_fattura_ordine,
+  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_emesso_id FROM tmp_refs),     (SELECT causale_vendita_id FROM tmp_refs)) AS d_in_viaggio,
+  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_spedito_id FROM tmp_refs),    (SELECT causale_no_fatt_id FROM tmp_refs)) AS d_solo_trasporto,
+  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs)) AS d_annullato,
+  pg_temp.mk_caso('CONFERMATO', (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs)) AS d_prec,
+  -- ⭐ i casi nuovi del 21-09: trigger CONSEGNATO + DDT CONSEGNATO + VENDITA
+  --    = eleggibile (e' il caso A di test-fn-list-ddt-da-pushare-contatore-v1)
+  pg_temp.mk_caso('CONSEGNATO', (SELECT stato_ddt_consegnato_id FROM tmp_refs), (SELECT causale_vendita_id FROM tmp_refs)) AS d_ok,
+  pg_temp.mk_caso('CONSEGNATO', (SELECT stato_ddt_consegnato_id FROM tmp_refs), (SELECT causale_vendita_id FROM tmp_refs)) AS d_alloc,
+  pg_temp.mk_caso('CONSEGNATO', (SELECT stato_ddt_consegnato_id FROM tmp_refs), (SELECT causale_vendita_id FROM tmp_refs)) AS d_emessa,
+  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs)) AS d_prec_alloc;
+
+-- EMESSA prima, poi le ALLOCATA (rca_emit emette tutto cio' che trova).
+SELECT pg_temp.mk_af(pg_temp.rca_segment(d_emessa), 10) FROM f;
+SELECT pg_temp.rca_emit();
+SELECT pg_temp.mk_af(pg_temp.rca_segment(d_alloc), 10) FROM f;
+SELECT pg_temp.mk_af(pg_temp.rca_segment(d_prec_alloc), 10) FROM f;
 
 -- ============================================================
--- TEST 1) EQUIVALENZA fonte unica
---
--- 🔴 SPOSTATO QUI il 2026-08-18 (§23.2 brief-design-partita-merce-
---    generalizzata). Stava PRIMA del `CREATE TEMP TABLE f`, e sembrava
---    girare dopo gli `INSERT` — che pero' sono dentro il CORPO di
---    `pg_temp.mk_caso`, cioe' testo che non esegue nulla finche' qualcuno
---    non chiama la funzione. Le fixture nascono QUI.
---    ⚠️ Il confronto girava quindi sui soli dati vivi, ed era verde perche'
---    nessuna riga attraversava la divergenza fra diagnosi e lister — non
---    perche' la divergenza non ci fosse. L'intestazione diceva
---    «indipendente dai dati»: vero della forma, falso della copertura.
+-- 1-3) ⭐ L'ELEGGIBILE, costruito: la fonte, chi ne deriva, chi la legge.
+--      Prima del 21-09 qui c'era un EXCEPT lister/diagnosi sulle righe vive:
+--      verde perche' nessuna riga attraversava la divergenza, non perche' la
+--      divergenza non ci fosse.
 -- ============================================================
-SELECT ok(
-  NOT EXISTS (
-    SELECT g.riga_id FROM vendite.fn_ddt_push_diagnosi() g WHERE g.motivo IS NULL
-    EXCEPT SELECT riga_id FROM vendite.fn_list_ddt_da_pushare()
-  )
-  AND NOT EXISTS (
-    SELECT riga_id FROM vendite.fn_list_ddt_da_pushare()
-    EXCEPT SELECT g.riga_id FROM vendite.fn_ddt_push_diagnosi() g WHERE g.motivo IS NULL
-  ),
-  '1) EQUIVALENZA: righe eleggibili (diagnosi motivo NULL) == output lister'
-);
+SELECT is(
+  (SELECT COALESCE(g.motivo, 'NULL') || '|' || (g.quantita_push = 10)::text || '|' || g.segment
+          || '|' || (g.billing_account_id = (SELECT billing_account_id FROM tmp_refs))::text
+     FROM vendite.fn_ddt_push_diagnosi((SELECT d_ok FROM f)) g
+    WHERE g.riga_id = pg_temp.rca_riga((SELECT d_ok FROM f))),
+  'NULL|true|LIBERA|true',
+  '1) eleggibile costruito: la diagnosi dice motivo NULL, dose 10, segment LIBERA, il BA del cliente');
 
--- 2) FATTURA_DA_ORDINE (il rilievo originale)
+SELECT is(
+  (SELECT quantita FROM vendite.fn_list_ddt_da_pushare(NULL, NULL, NULL, (SELECT d_ok FROM f))
+    WHERE riga_id = pg_temp.rca_riga((SELECT d_ok FROM f))),
+  10::numeric,
+  '2) ...e il lister, che ne deriva, porta quella riga con quantita 10');
+
+SELECT is(
+  (SELECT pg_temp.rca_push(d_ok) FROM f),
+  'true|-|-',
+  '3) ...e la capability dice can_push_commessa = true, senza reason ne'' key');
+
+-- ============================================================
+-- 4-8) Le cause del catch-all (invariate dal 2026-07-19)
+-- ============================================================
 SELECT is(
   (SELECT script.fn_available_actions_ddt(d_fattura_ordine)->>'can_push_commessa_reason' FROM f),
   'DDT_FATTURA_DA_ORDINE',
-  '2) ordine CONFERMATO + DDT CONSEGNATO -> DDT_FATTURA_DA_ORDINE (era il falso «spedito o consegnato»)'
-);
+  '4) ordine CONFERMATO + DDT CONSEGNATO -> DDT_FATTURA_DA_ORDINE (era il falso «spedito o consegnato»)');
 
--- 3) MERCE_IN_VIAGGIO
 SELECT is(
   (SELECT script.fn_available_actions_ddt(d_in_viaggio)->>'can_push_commessa_reason' FROM f),
   'DDT_MERCE_IN_VIAGGIO',
-  '3) ordine SPEDITO + DDT EMESSO (pre-trigger) -> DDT_MERCE_IN_VIAGGIO'
-);
+  '5) ordine SPEDITO + DDT EMESSO (pre-trigger) -> DDT_MERCE_IN_VIAGGIO');
 
--- 4) SOLO_TRASPORTO
 SELECT is(
   (SELECT script.fn_available_actions_ddt(d_solo_trasporto)->>'can_push_commessa_reason' FROM f),
   'DDT_SOLO_TRASPORTO',
-  '4) causale non fatturabile (CONTO_LAVORO) -> DDT_SOLO_TRASPORTO'
-);
+  '6) causale non fatturabile (CONTO_LAVORO) -> DDT_SOLO_TRASPORTO');
 
--- 5) generico ANNULLATO
 SELECT is(
   (SELECT script.fn_available_actions_ddt(d_annullato)->>'can_push_commessa_reason' FROM f),
   'DDT_NON_PUSHABILE',
-  '5) DDT ANNULLATO -> generico DDT_NON_PUSHABILE (non la frase sullo stato)'
-);
+  '7) DDT ANNULLATO -> generico DDT_NON_PUSHABILE (non la frase sullo stato)');
 
--- 6) PRECEDENZA a due livelli: documento (annullato) vince su riga (XOR)
 SELECT is(
   (SELECT script.fn_available_actions_ddt(d_prec)->>'can_push_commessa_reason' FROM f),
   'DDT_NON_PUSHABILE',
-  '6) ANNULLATO + ordine CONFERMATO: vince il documento (generico), non FATTURA_DA_ORDINE'
-);
+  '8) ANNULLATO + ordine CONFERMATO: vince il documento (generico), non FATTURA_DA_ORDINE');
 
--- 7) NAMESPACE i18n
+-- ============================================================
+-- 9-11) ⭐ Il segmento: GIA_INVIATO / GIA_FATTURATO e la loro precedenza.
+--       Prima del 21-09 erano due EXISTS della capability su ddt_righe, mai
+--       costruiti da un pgTAP; ora si leggono dalla colonna `segment` della
+--       diagnosi, e la precedenza (PRIMA del motivo) deve restare quella.
+-- ============================================================
+SELECT is(
+  (SELECT pg_temp.rca_push(d_alloc) FROM f)
+    || '#' || (SELECT count(*) FROM vendite.fn_list_ddt_da_pushare(NULL, NULL, NULL, (SELECT d_alloc FROM f)))::text,
+  'false|DDT_GIA_INVIATO|vendite.ddt.push_commessa_reason.gia_inviato#0',
+  '9) riga instradata e non emessa (ALLOCATA): GIA_INVIATO, e il lister non la porta');
+
+SELECT is(
+  (SELECT pg_temp.rca_push(d_emessa) FROM f),
+  'false|DDT_GIA_FATTURATO|vendite.ddt.push_commessa_reason.gia_fatturato',
+  '10) riga fatturata (EMESSA): GIA_FATTURATO');
+
+SELECT is(
+  (SELECT pg_temp.rca_push(d_prec_alloc) FROM f),
+  'false|DDT_GIA_INVIATO|vendite.ddt.push_commessa_reason.gia_inviato',
+  '11) DDT ANNULLATO con una riga ALLOCATA: il segmento vince sul documento (GIA_INVIATO, come prima)');
+
+-- ============================================================
+-- 12) NAMESPACE i18n su tutte le reason_key emesse dalle fixture
+-- ============================================================
 SELECT ok(
-  (SELECT bool_and(k LIKE 'vendite.ddt.push_commessa_reason.%')
-     FROM (VALUES ('d_fattura_ordine'),('d_in_viaggio'),('d_solo_trasporto'),('d_annullato')) s(col)
+  (SELECT bool_and(k LIKE 'vendite.ddt.push_commessa_reason.%') AND count(*) = 8
+     FROM (SELECT unnest(ARRAY[d_fattura_ordine, d_in_viaggio, d_solo_trasporto, d_annullato,
+                              d_prec, d_alloc, d_emessa, d_prec_alloc]) AS d FROM f) s
      CROSS JOIN LATERAL (
-       SELECT script.fn_available_actions_ddt(
-         CASE s.col WHEN 'd_fattura_ordine' THEN (SELECT d_fattura_ordine FROM f)
-                    WHEN 'd_in_viaggio' THEN (SELECT d_in_viaggio FROM f)
-                    WHEN 'd_solo_trasporto' THEN (SELECT d_solo_trasporto FROM f)
-                    ELSE (SELECT d_annullato FROM f) END
-       )->>'can_push_commessa_reason_key' AS k
-     ) q
+       SELECT script.fn_available_actions_ddt(s.d)->>'can_push_commessa_reason_key' AS k) q
     WHERE k IS NOT NULL),
-  '7) tutte le reason_key sotto vendite.ddt.push_commessa_reason.*'
-);
+  '12) le otto reason_key stanno tutte sotto vendite.ddt.push_commessa_reason.*');
 
--- 8) COERENZA INTERNA rank <-> motivo
---    ⚠️ Le rank sono state rinumerate da 7 a 11 il 2026-08-18 per far stare
---    i motivi della partita PRIMA di DDT_CONTATORE. Un `CASE` che dimentica
---    un ramo non fallisce: restituisce NULL — e per questa funzione un
---    motivo NULL significa «eleggibile», cioe' il contrario del vero.
+-- ============================================================
+-- 13-14) COERENZA interna della diagnosi, su TUTTE le righe (vive + costruite)
+-- ============================================================
+--    ⚠️ Un `CASE` che dimentica un ramo non fallisce: restituisce NULL — e per
+--    questa funzione un motivo NULL significa «eleggibile», il contrario del vero.
 SELECT ok(
   NOT EXISTS (
     SELECT 1 FROM vendite.fn_ddt_push_diagnosi() g
      WHERE (g.motivo_rank IS NULL) <> (g.motivo IS NULL)
   ),
-  '8) rank e motivo sono valorizzati insieme: nessun rank senza etichetta'
-);
+  '13) rank e motivo sono valorizzati insieme: nessun rank senza etichetta');
+
+--    Le colonne nuove sono i valori che le rank 3, 4 e 11 hanno giudicato: se
+--    divergessero, lister e capability leggerebbero una cosa e la diagnosi
+--    ne avrebbe deciso un'altra.
+--    (Un solo verso: una riga LIBERA con dose e BA puo' essere esclusa da
+--    un'altra rank — annullato, in viaggio, fattura da ordine.)
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM vendite.fn_ddt_push_diagnosi() g
+     WHERE (g.motivo IS NULL
+            AND NOT (g.segment = 'LIBERA' AND g.quantita_push > 0 AND g.billing_account_id IS NOT NULL))
+        OR (g.motivo = 'DDT_ROUTED'    AND g.segment = 'LIBERA')
+        OR (g.motivo = 'DDT_SENZA_BA'  AND g.billing_account_id IS NOT NULL)
+        OR (g.motivo = 'DDT_CONTATORE' AND g.quantita_push > 0)
+  ),
+  '14) motivo NULL => segment LIBERA, dose > 0, BA presente; ROUTED / SENZA_BA / CONTATORE coerenti con segment, BA e dose');
+
+-- ============================================================
+-- 15) ⭐ Pin di FORMA di D4 (come il test 2 della chiusura pinna D1): si legge
+--     il corpo SENZA i commenti — la storia nelle intestazioni nomina tutto.
+-- ============================================================
+SELECT ok(
+  (SELECT regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_ddt_push_diagnosi'
+      AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') !~ 'fn_partite_merce'
+      AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') !~ 'fn_get_stato_push_segment'
+     FROM pg_proc p WHERE p.oid = 'vendite.fn_list_ddt_da_pushare'::regproc)
+  AND
+  (SELECT regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_ddt_push_diagnosi'
+      AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') !~ 'fn_list_ddt_da_pushare'
+      AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') !~ 'fn_get_stato_push_segment'
+     FROM pg_proc p WHERE p.oid = 'script.fn_available_actions_ddt'::regproc)
+  AND
+  (SELECT p.prosqlbody IS NOT NULL AND NOT p.prosecdef
+     FROM pg_proc p WHERE p.oid = 'vendite.fn_ddt_push_diagnosi'::regproc),
+  '15) forma D4: il lister deriva dalla diagnosi senza predicati suoi; la capability legge solo la diagnosi; la diagnosi e'' BEGIN ATOMIC e non DEFINER');
+
+-- ============================================================
+-- 17) ⭐ Il ramo della rank 3, COSTRUITO.
+--     `vendite.ddt.billing_account_id` e' NULLABLE e una riga senza
+--     fulfillment non ha un ordine da cui ereditarlo: COALESCE(NULL, NULL)
+--     = NULL, ed e' la rank 3. Le rank che vengono prima non scattano —
+--     il documento non e' abortito ne' RESO (1) e la causale e' VENDITA,
+--     fatturabile (2).
+--     ⚠️ Perche' COSTRUITO e non letto: su dbdev nessuna delle 54 righe
+--     attive cade in DDT_SENZA_BA, quindi la clausola `motivo =
+--     'DDT_SENZA_BA' AND billing_account_id IS NOT NULL` del test 14 e'
+--     vera perche' non ha soggetti, non perche' la regola tenga.
+--     ⛔ L'altra meta' della rank 3 — «il BA esiste ma chi legge non lo
+--     vede» — NON si costruisce da un documento, ed e' una proprieta' del
+--     modello, non una lacuna del test: `trgfn_<doc>_guard_emittente_ba`
+--     vieta a un documento di portare il BA di un'altra azienda, quindi
+--     un DDT visibile con un BA invisibile non e' uno stato raggiungibile.
+--     Resta una cintura fail-closed: la diagnosi legge i billing account
+--     come INVOKER (test 15 pinna che non e' DEFINER), quindi un BA fuori
+--     scope non entra e la riga esce SENZA_BA.
+-- ============================================================
+CREATE TEMP TABLE tmp_noba AS
+WITH ins AS (
+  INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data,
+      billing_account_id, valuta_id, causale_trasporto_id, emittente_fiscale_id,
+      storicizza, meta)
+  SELECT r.soggetto_ruolo_id,
+         (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='DRAFT' LIMIT 1),
+         DATE '2026-09-01', NULL, r.valuta_id, r.causale_vendita_id, r.emittente_fiscale_id,
+         false, jsonb_build_object('test_scope','pgtap_reason_catchall')
+    FROM tmp_refs r
+  RETURNING id)
+SELECT id AS ddt_id FROM ins;
+
+INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT n.ddt_id, 1, r.articolo_id, 'Riga senza BA', 5, 5, 20, r.iva_id, true, false,
+       jsonb_build_object('test_scope','pgtap_reason_catchall')
+  FROM tmp_noba n, tmp_refs r;
+
+INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+SELECT n.ddt_id, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb
+  FROM tmp_noba n, tmp_refs r
+ON CONFLICT DO NOTHING;
+
+UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs)
+ WHERE id = (SELECT ddt_id FROM tmp_noba);
+
+SELECT results_eq(
+  $q$SELECT g.motivo_rank, g.motivo, g.billing_account_id, pg_temp.rca_push(n.ddt_id)
+       FROM tmp_noba n, vendite.fn_ddt_push_diagnosi(n.ddt_id) g$q$,
+  $q$VALUES (3, 'DDT_SENZA_BA', NULL::bigint,
+             'false|DDT_NON_PUSHABILE|vendite.ddt.push_commessa_reason.non_pushabile')$q$,
+  '17) DDT senza ordine e senza billing account: rank 3 DDT_SENZA_BA, BA NULL, capability spenta');
+
+-- ============================================================
+-- 16) Scope: chi non vede il documento non vede niente.
+-- ⚠️ Il cancello e' `app.ruolo_applicativo`: con la veste OPERATORE e un
+--    utente senza whitelist la RLS non fa vedere il DDT; la diagnosi
+--    (INVOKER) risponde ZERO righe e la capability NULL (documento non
+--    trovato), non un blob con dei «no». Ultimo test: cambia il contesto.
+-- ============================================================
+SELECT set_config('app.current_user_id', '999999999', true);
+
+SELECT is(
+  (SELECT count(*) FROM vendite.fn_ddt_push_diagnosi((SELECT d_ok FROM f)))::text
+    || '|' || COALESCE((SELECT script.fn_available_actions_ddt(d_ok)::text FROM f), 'NULL'),
+  '0|NULL',
+  '16) scope che non vede il DDT: zero righe di diagnosi e capability NULL');
 
 SELECT * FROM finish();
 ROLLBACK;

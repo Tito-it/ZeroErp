@@ -168,8 +168,9 @@ class ComponentiRepositoryMixin:
             return row_to_dict(cursor)
 
     # Scopo: Update componente (prezzo, origine, stato approvazione, meta).
-    # Whitelist colonne anti-injection (`COMPONENTE_UPDATE_ALLOWED`).
-    # Campi struttura immutabili silenziosamente ignorati (defense-in-depth).
+    # Whitelist colonne RIGIDA (`COMPONENTE_UPDATE_ALLOWED`): dal 2026-09-26
+    # una chiave fuori lista (campi struttura compresi) e' `ValueError` del BB,
+    # non piu' uno scarto silenzioso — i service la rifiutano prima con un 400.
     def update_componente(self, componente_id: int, **kwargs: Any) -> bool:
         return execute_dynamic_update(
             self._componenti_table_name, componente_id, kwargs,
@@ -180,8 +181,8 @@ class ComponentiRepositoryMixin:
     # ricalcolo padre lo esclude dalla SUM (filtro `attivo`). Idempotente:
     # se gia' soft-deleted ritorna False senza errore.
     def delete_componente(self, componente_id: int) -> bool:
-        sql = (  # noqa: S608 — `_componenti_table_name` whitelisted
-            f"UPDATE {self._componenti_table_name} "
+        sql = (
+            f"UPDATE {self._componenti_table_name} "  # noqa: S608 — tabella da attributo di classe letterale della sottoclasse
             f"SET attivo = FALSE WHERE id = %s AND attivo = TRUE"
         )
         with connection.cursor() as cursor:
@@ -198,8 +199,8 @@ class ComponentiRepositoryMixin:
     # (preventivi+contratti) e la FK `ON DELETE CASCADE` su
     # `*_righe_componenti.riga_<sorgente>_id` pulisce automaticamente lato DB.
     def purge_componenti_riga(self, riga_id: int) -> int:
-        sql = (  # noqa: S608 — attributi di classe whitelisted
-            f"DELETE FROM {self._componenti_table_name} "
+        sql = (
+            f"DELETE FROM {self._componenti_table_name} "  # noqa: S608 — tabella/FK da attributi di classe letterali della sottoclasse
             f"WHERE {self._componenti_fk_riga} = %s"
         )
         with connection.cursor() as cursor:

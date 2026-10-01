@@ -5,9 +5,65 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from apps.core.api.request_parsers import parse_iso_date
+from rest_framework.exceptions import ParseError
+
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.request_parsers import oggetto_json, parse_iso_date
+from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
 # Validator centralizzati payload API (riusabili cross-domain).
+
+
+# ------------------------------------------------------------------
+# Corpo della richiesta (POST/PUT/PATCH DRF)
+# ------------------------------------------------------------------
+
+
+# Scopo: ⭐ Il corpo della richiesta come OGGETTO, o un 400 nell'envelope. Il
+#        JSON valido non e' per forza un oggetto: con una lista (o un numero)
+#        `request.data` e' quella lista, e il primo `.get()` diventava un 500
+#        (F-9, 2026-09-27: logout, refresh del token, override permessi…),
+#        mentre `dict(request.data)` su una lista di coppie la trasformava in
+#        un oggetto, in silenzio.
+# ⭐ La regola «e' un oggetto?» e' `oggetto_json`, la stessa di
+#    `handle_post_json`: qui si traduce il suo rifiuto nel codice del catalogo.
+#    Anche il JSON illeggibile (`ParseError` di DRF) passa di qui, e non esce
+#    piu' nel formato DRF.
+# ⛔ Non `{}` al posto del corpo sbagliato: un client che manda una lista ha
+#    sbagliato la richiesta, e un oggetto vuoto la farebbe eseguire coi
+#    default, in silenzio.
+# Un form (`QueryDict`) e' un dict: passa com'e'.
+_MESSAGGIO_CORPO = {
+    "invalid_json": "Il corpo della richiesta non e' un JSON valido.",
+    "invalid_payload": "Il corpo della richiesta deve essere un oggetto JSON.",
+}
+
+
+def corpo_oggetto(request: Any) -> dict[str, Any]:
+    try:
+        return oggetto_json(request.data)
+    except (ParseError, ValueError) as exc:
+        motivo = "invalid_json" if isinstance(exc, ParseError) else str(exc)
+        raise ServiceError(
+            code=E_VALIDATION_INPUT,
+            message=_MESSAGGIO_CORPO.get(motivo, _MESSAGGIO_CORPO["invalid_payload"]),
+            context={"motivo": motivo},
+        ) from exc
+
+
+# Scopo: ⭐ Una password dal corpo COSI' COM'E' digitata: assente = "", un
+#        valore che non e' testo = `ValueError` (400 E_VALIDATION_INPUT).
+# ⛔ Niente `strip` (S-5, 2026-09-27): si salva e si verifica quella digitata,
+#    come fa il login (`SidTokenObtainPairSerializer`). E niente `str(...)`: un
+#    numero non e' una password, e arrivava ai validatori di Django come 500.
+# Le regole della nuova password stanno in `auth_helpers.valida_nuova_password`.
+def password_digitata(payload: dict[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"{key}_invalid")
+    return value
 
 
 # ------------------------------------------------------------------
@@ -56,7 +112,7 @@ def qp_int_strict(raw: str | None, name: str, default: int) -> int:
     try:
         return int(raw.strip())
     except (ValueError, AttributeError):
-        raise ValueError(f"{name}_invalid")
+        raise ValueError(f"{name}_invalid") from None
 
 
 # Scopo: Parametro intero OPZIONALE da query string: None se assente o vuoto;
@@ -119,15 +175,25 @@ def parse_list_params(
     qp,
     *,
     default_order: str = "descrizione",
-    default_limit: int = 25,
-    max_limit: int = 200,
+    default_limit: int = DEFAULT_LIMIT,
+    max_limit: int = MAX_LIMIT,
 ) -> dict:
     search = qp_str(qp.get("search"))
-    limit = min(qp_int(qp.get("limit"), default_limit), max_limit)
-    offset = qp_int(qp.get("offset"), 0)
+    # ⚠️ Il limite sta fra 1 e `max_limit`, l'offset non e' negativo: i
+    #    repository li riportano gia' nei limiti, ma l'envelope si calcola da
+    #    QUESTI valori — con `limit=0` usciva `page_size: 0` accanto a una
+    #    pagina di righe, cioe' un paginatore che non torna.
+    limit = max(1, min(qp_int(qp.get("limit"), default_limit), max_limit))
+    offset = max(0, qp_int(qp.get("offset"), 0))
     order_by = qp.get("order_by") or default_order
-    order_dir = qp.get("order_dir") or "asc"
-    page = (offset // limit) + 1 if limit > 0 else 1
+    # ⛔ Assente = `None`, NON "asc" (2026-09-26). Il ripiego su "asc"
+    #    annullava il default dei repository (`default_desc`, `colonne_desc`),
+    #    che si accende solo su `None`: le liste che nascono dal piu' recente
+    #    si aprivano al contrario, senza errore, e ogni view che lo sapeva
+    #    rileggeva la direzione grezza dalla query string. La direzione si
+    #    VALIDA a valle (`order_dir_ammessa`, nel service o nel BB SQL).
+    order_dir = qp_str(qp.get("order_dir"))
+    page = (offset // limit) + 1
     return {
         "search": search,
         "limit": limit,

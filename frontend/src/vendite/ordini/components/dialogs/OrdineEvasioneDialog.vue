@@ -22,13 +22,12 @@ import AppDialog from '../../../../core/components/AppDialog.vue'
 import { useApiHandler } from '../../../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../../../core/composables/useConfirmAction'
 import { useNotify } from '../../../../core/composables/useNotify'
-import { useTabEvents } from '../../../../core/composables/useTabEvents'
 import { useRigheSelezioneQta } from '../../../_shared/righe/useRigheSelezioneQta'
 import { useOrdiniStore } from '../../stores/ordini'
-import { generaDdtFromOrdine } from '../../api/ordiniApi'
-import { TAB_ENTITIES } from '../../../../core/constants'
 import { formatNumber } from '../../../../core/utils/format'
 import Checkbox from 'primevue/checkbox'
+// DataTable grezza: sono le RIGHE dell'ordine (store.loadRighe) su cui si sceglie
+// cosa evadere, nel dialog d'azione — dettaglio del documento, non una lista.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
@@ -38,7 +37,6 @@ const store = useOrdiniStore()
 const { execute, loading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const notify = useNotify()
-const { emitDataChanged } = useTabEvents()
 
 const props = defineProps({
   visible: { type: Boolean, required: true },
@@ -124,13 +122,12 @@ function onGenera() {
     }),
     onAccept: async () => {
       const result = await execute(
-        () => generaDdtFromOrdine(props.ordineId, payloadRighe),
+        () => store.generaDdt(props.ordineId, payloadRighe),
       )
       if (result === null) return
       const ddtId = result?.ddt_id ?? null
       // Il DDT nasce in DRAFT: il numero e' assegnato solo all'emissione.
       notify.success(t('vendite.ordini.ddt_generato'))
-      if (ddtId) emitDataChanged(TAB_ENTITIES.DDT, ddtId)
       emit('evaso', { ddtId })
       // Chiusura come per il crea-reso: l'azione e' conclusa e il lavoro
       // prosegue sul DDT. Un'evasione parziale si riprende riaprendo la

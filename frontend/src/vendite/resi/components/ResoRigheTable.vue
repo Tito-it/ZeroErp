@@ -1,13 +1,14 @@
 <script setup>
 // Scopo: righe reso master-detail inline. Thin wrapper su
 //        `core/components/RigheMasterDetailTable.vue` (B10, regola del 2):
-//        la macchina a stati vive nel BB, qui restano colonne e form di riga.
-//        Post-conferma le righe per ri-consegna espongono lo stato copertura
-//        derivato (Tag) + quantita' residua. Clone ridotto di DdtRigheTable.
+//        la lista, la macchina del form e le azioni vivono nel BB; qui restano
+//        le celle speciali (quota accreditata, stato della ri-consegna), le
+//        azioni di dominio e il form di riga.
+//        ⭐ Le colonne vengono dal catalogo (`vendite.reso_righe`, lista 100)
+//        dal 2026-09-28 (brief-db-liste-righe-documento).
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
-import Column from 'primevue/column'
 
 import RigheMasterDetailTable from '../../../core/components/RigheMasterDetailTable.vue'
 import { useActionPermission } from '../../../core/composables/useActionPermission'
@@ -17,14 +18,21 @@ import { formatNumber } from '../../../core/utils/format'
 import { statoRiconsegnaSeverity } from '../../../core/utils/severity'
 import { AZIONE_ACCREDITA_RESO } from '../constants'
 import { useResiStore } from '../stores/resi'
+import { useResoRigheStore } from '../stores/resoRighe'
+import { exportRigheLista } from '../api/resiApi'
 import AccreditoAnnullaDialog from './dialogs/AccreditoAnnullaDialog.vue'
 import ResoRigaForm from './ResoRigaForm.vue'
 
 const { t, te } = useI18n()
 const store = useResiStore()
+// La lista delle righe: uno store per istanza del drawer.
+const righe = useResoRigheStore()
 
 defineProps({
   resoId: { type: Number, required: true },
+  // L'emittente del reso (PK): lasciapassare del cancello di perimetro della
+  // lista, per chi vede piu' emittenti. Arriva col dettaglio.
+  emittenteFiscaleId: { type: Number, default: null },
   // DDT di origine del reso: serve al form riga per proporre le righe DDT
   // con residuo rendibile.
   ddtOrigineId: { type: [Number, null], default: null },
@@ -102,8 +110,11 @@ function azioniRiga(riga) {
 <template>
   <RigheMasterDetailTable
     ref="tableRef"
+    codice="vendite.reso_righe"
+    :store="righe"
     :parent-id="resoId"
-    :rows-loader="(id) => store.loadRighe(id)"
+    :emittente-fiscale-id="emittenteFiscaleId"
+    :export-fn="exportRigheLista"
     :delete-action="(id, rigaId) => store.eliminaRiga(id, rigaId)"
     :is-modificabile="isModificabile"
     :extra-row-actions="azioniRiga"
@@ -113,40 +124,21 @@ function azioniRiga(riga) {
     deleted-message-key="vendite.resi.riga_eliminata"
     new-label-key="vendite.resi.nuova_riga"
     edit-label-key="vendite.resi.modifica_riga"
-    sort-field="riga_nr"
     @changed="emit('changed')"
     @form-aperto="emit('form-aperto', $event)"
   >
-    <template #columns>
-      <Column field="articolo_codice" :header="t('vendite.resi.riga_articolo')" sortable style="width: 120px;" />
-      <Column field="descrizione" :header="t('vendite.resi.riga_descrizione')" sortable />
-      <Column field="qta_operativa" :header="t('vendite.resi.riga_quantita')" sortable style="width: 100px;">
-        <template #body="{ data }">{{ formatNumber(data.qta_operativa) }}</template>
-      </Column>
-      <Column field="uom_codice" :header="t('vendite.resi.riga_uom')" style="width: 70px;" />
-      <Column field="tipo_reso_descrizione" :header="t('vendite.resi.riga_tipo')" sortable style="width: 160px;" />
-      <Column field="motivo" :header="t('vendite.resi.riga_motivo')" />
-      <!-- Quota gia' accreditata: si mostra solo dove c'e' (una riga per
-           ri-consegna non ha accrediti), ed e' il dato da cui dipende l'azione
-           di annullo — mostrarlo rende visibile PERCHE' l'azione c'e'. -->
-      <Column field="gia_accreditato" :header="t('vendite.resi.riga_gia_accreditato')"
-        style="width: 120px;">
-        <template #body="{ data }">
-          <span v-if="Number(data.gia_accreditato) > 0">
-            {{ formatNumber(data.gia_accreditato) }}
-          </span>
-          <span v-else>—</span>
-        </template>
-      </Column>
-
-      <!-- Copertura ri-consegna: solo per righe con riapre_residuo (derivata). -->
-      <Column field="stato_riconsegna" :header="t('vendite.resi.riga_stato_riconsegna')" style="width: 140px;">
-        <template #body="{ data }">
-          <Tag v-if="data.stato_riconsegna"
-            :value="t(`vendite.resi.riconsegna_stato.${data.stato_riconsegna}`)"
-            :severity="statoRiconsegnaSeverity(data.stato_riconsegna)" />
-        </template>
-      </Column>
+    <!-- Quota gia' accreditata: si mostra solo dove c'e' (una riga per
+         ri-consegna non ha accrediti), ed e' il dato da cui dipende l'azione
+         di annullo — mostrarlo rende visibile PERCHE' l'azione c'e'. -->
+    <template #cell-gia_accreditato="{ data }">
+      <span v-if="Number(data.gia_accreditato) > 0">{{ formatNumber(data.gia_accreditato) }}</span>
+      <span v-else>—</span>
+    </template>
+    <!-- Copertura ri-consegna: solo per righe con riapre_residuo (derivata). -->
+    <template #cell-stato_riconsegna="{ data }">
+      <Tag v-if="data.stato_riconsegna"
+        :value="t(`vendite.resi.riconsegna_stato.${data.stato_riconsegna}`)"
+        :severity="statoRiconsegnaSeverity(data.stato_riconsegna)" />
     </template>
 
     <template #form="{ riga, onSaved, onCancel }">

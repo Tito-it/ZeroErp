@@ -11,7 +11,7 @@
 --   Struttura:
 --   1)  Trigger freeze_listino_versione presente su contratti
 --   2)  Trigger lock_post_attivazione presente su contratti
---   3)  Trigger lock_post_attivazione presente su contratti_righe
+--   3)  Il BB delle righe (trg_contratti_righe_a05_doc_righe_lock_fuori_bozza) presente su contratti_righe (rev 22-09)
 --
 --   Freeze versione e guard negoziato puro:
 --   4)  DRAFT→ATTIVO senza listino + nessuna AGGIUNTA -> errore E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE
@@ -187,7 +187,10 @@ SELECT ok(
 );
 
 -- ============================================================
--- 3) Trigger lock_post_attivazione presente su contratti_righe
+-- 3) Il BB delle righe e' montato su contratti_righe
+--    rev 2026-09-22: trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt e la
+--    sua funzione sono ritirati (20260922-06); la regola «righe solo in bozza» e'
+--    il building block vendite.trgfn_doc_righe_lock_fuori_bozza, fascia _a05_.
 -- ============================================================
 SELECT ok(
     EXISTS (
@@ -196,9 +199,9 @@ SELECT ok(
           JOIN pg_namespace ns ON ns.oid = c.relnamespace
          WHERE ns.nspname = 'vendite'
            AND c.relname  = 'contratti_righe'
-           AND t.tgname   = 'trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt'
+           AND t.tgname   = 'trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt'
     ),
-    '3) Trigger trg_contratti_righe_a10_lock_post_attivazione presente su contratti_righe'
+    '3) Trigger trg_contratti_righe_a05_doc_righe_lock_fuori_bozza presente su contratti_righe'
 );
 
 -- ============================================================
@@ -285,7 +288,7 @@ SELECT throws_ok(
        WHERE ca.numero = 'PGTAP_S23_ATT' AND a.rn = 2$$,
     'P0001',
     NULL,
-    '10) INSERT riga su contratto ATTIVO -> bloccato E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE'
+    '10) INSERT riga su contratto ATTIVO -> bloccato E_RIGA_DOC_NON_BOZZA (BB, dal 22-09)'
 );
 
 -- ============================================================

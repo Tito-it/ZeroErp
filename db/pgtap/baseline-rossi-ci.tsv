@@ -66,7 +66,6 @@ db/pgtap/documenti/test-documenti-generati.sql	ERRORE_FIXTURE
 db/pgtap/documenti/test-documenti-template-asset.sql	ASSERZIONE
 db/pgtap/documenti/test-documenti-template-documenti.sql	ASSERZIONE
 db/pgtap/documenti/test-documenti-template-versioni.sql	ERRORE_FIXTURE
-db/pgtap/maintenance/test-job-run-registrazione.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-contabili-origine-e-quadratura.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-enti-incasso-conto-incasso.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-enti-incasso-psp.sql	ERRORE_FIXTURE
@@ -340,7 +339,6 @@ db/pgtap/vendite/test-trgfn-preventivi-default-emittente-e-guard-coerenza.sql	AS
 db/pgtap/vendite/test-trigger-af-commessa-aware-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-uscita-documento-dal-giro-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-af-merce-per-riga-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-vw-contatore-merce-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-dash-aperto-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-dash-backlog-resi-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-dash-backlog-v1.sql	ERRORE_FIXTURE

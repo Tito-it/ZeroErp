@@ -1,10 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: fn_list_ddt_da_pushare proietta la DIFFERENZA del contatore
---       (vw_contatore_merce), non piu' dr.quantita grezza — step 3,
---       brief-db-fatturazione-ddt-resi §3a/§9-3. Chiude la doppia fatturazione.
--- (changeset 20260717-12)
+-- Test: fn_list_ddt_da_pushare proietta la DIFFERENZA del conto della merce,
+--       non piu' dr.quantita grezza — step 3, brief-db-fatturazione-ddt-resi
+--       §3a/§9-3. Chiude la doppia fatturazione.
+-- (changeset 20260717-12; dal 20260921-23 la differenza viene da
+--  fn_partite_merce col DDT come seme, attraverso fn_ddt_push_diagnosi —
+--  vw_contatore_merce, che la dava fino ad allora, e' ritirata dal 20260922-08)
 -- ------------------------------------------------------------
 -- Indice test (1..5):
 --   1) A: order 10, consegnato, nessun reso -> lister proietta 10 (nessuna riduzione)
@@ -42,6 +44,14 @@ SELECT plan(7);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
+
+-- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
+-- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+-- l'operatore di fixture non ha azioni, si concede qui.
+DO $az$ BEGIN
+    PERFORM dbops.fn_pgtap_concedi_azione(
+        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
+END $az$;
 
 -- ============================================================
 -- Riferimenti + helper

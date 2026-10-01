@@ -11,9 +11,9 @@
 | id | bigint | NO |  |
 | parameter_id | bigint | NO |  |
 | overridden_value | text | NO |  |
-| data_insert | timestamp without time zone | NO | now() |
+| data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp without time zone | NO | now() |
+| data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | session_key | text | YES |  |
 | function_name | text | YES |  |

@@ -31,6 +31,13 @@ Indice test eseguiti:
 15) test_il_test_connessione_non_risponde_OK_a_chi_non_puo_spedire
 16) test_il_rilancio_non_ritenta_contro_un_account_non_configurato
 17) test_smtp_non_configurato_riconosce_i_tre_host
+
+⭐ AutoreEAllegatiTests — la mail che non e' di sistema, e i suoi file
+   (brief-db-email-visibilita-per-ambito D-5 e §8.4.2, 2026-09-25).
+18) test_send_raw_scrive_autore_ed_emittente_sul_log
+19) test_la_mail_parte_con_gli_allegati
+20) test_un_allegato_che_non_si_legge_ferma_l_invio
+21) test_il_rilancio_rilegge_gli_allegati_dal_log
 """
 
 from unittest import TestCase
@@ -371,3 +378,94 @@ class SmtpNonConfiguratoTests(TestCase):
         self.assertTrue(smtp_non_configurato({"smtp_host": None}))
         self.assertTrue(smtp_non_configurato({"smtp_host": f"  {SMTP_PLACEHOLDER_HOST} "}))
         self.assertFalse(smtp_non_configurato({"smtp_host": "smtp.gmail.com"}))
+
+
+class AutoreEAllegatiTests(TestCase):
+
+    _ACCOUNT_SMTP = {
+        "id": 1, "codice": "AZ", "smtp_host": "smtp.azienda.test",
+        "smtp_port": 587, "smtp_use_tls": False, "smtp_use_ssl": False,
+        "smtp_username": "u", "smtp_password_encrypted": "cifrata",
+        "email_from": "da@azienda.test", "email_reply_to": None,
+    }
+
+    # Scopo: invia con SMTP finto e torna il messaggio consegnato al server.
+    def _spedisci(self, service, allegati):
+        with patch("apps.core.services.email_service.crypto_service.decrypt", return_value="pw"), \
+                patch("apps.core.services.email_service.smtplib.SMTP") as smtp:
+            esito = service._send_smtp(
+                self._ACCOUNT_SMTP, "a@cliente.test", None, "Offerta",
+                "<p>x</p>", "x", 99, "OPERATORE", allegati,
+            )
+        inviati = smtp.return_value.sendmail.call_args_list
+        return esito, (inviati[0][0][2] if inviati else None)
+
+    # 18. ⛔ Fuori da SISTEMA il log vuole l'azienda E l'autore: senza, il
+    #     database rifiuta la riga (`chk_email_log_ambito_emittente`,
+    #     `chk_email_log_operatore_creatore`). Fino al 2026-09-25 non arrivava
+    #     nessuna delle due.
+    @patch(_SETTINGS)
+    @patch(_REPO)
+    def test_send_raw_scrive_autore_ed_emittente_sul_log(self, MockRepo, mock_settings):
+        mock_settings.DEBUG = True
+        repo = MockRepo.return_value
+        repo.insert_log.return_value = 5
+        EmailDispatchService().send_raw(
+            account=_account(""), destinatario="a@b.test", oggetto="o",
+            corpo_html="<p>x</p>", ambito="OPERATORE",
+            emittente_fiscale_id=7, creato_da_user_id=42,
+        )
+        kwargs = repo.insert_log.call_args.kwargs
+        self.assertEqual(kwargs["emittente_fiscale_id"], 7)
+        self.assertEqual(kwargs["creato_da_user_id"], 42)
+
+    # 19. ⛔ Fino al 2026-09-25 la mail partiva SENZA gli allegati salvati.
+    @patch(_REPO)
+    def test_la_mail_parte_con_gli_allegati(self, MockRepo):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as radice, \
+                patch("apps.core.services.email_allegati_storage.radice_allegati", return_value=radice):
+            Path(radice, "a.pdf").write_bytes(b"%PDF-contenuto")
+            esito, messaggio = self._spedisci(
+                EmailDispatchService(),
+                [{"nome_file": "offerta.pdf", "mime_type": "application/pdf", "file_path": "a.pdf"}],
+            )
+        self.assertTrue(esito)
+        self.assertIn("multipart/mixed", messaggio)
+        self.assertIn('filename="offerta.pdf"', messaggio)
+        self.assertIn("application/pdf", messaggio)
+
+    # 20. Un allegato che non si legge: la mail NON parte senza, e il log lo dice.
+    @patch(_REPO)
+    def test_un_allegato_che_non_si_legge_ferma_l_invio(self, MockRepo):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as radice, \
+                patch("apps.core.services.email_allegati_storage.radice_allegati", return_value=radice):
+            esito, messaggio = self._spedisci(
+                EmailDispatchService(),
+                [{"nome_file": "sparito.pdf", "mime_type": "application/pdf", "file_path": "sparito.pdf"}],
+            )
+        self.assertFalse(esito)
+        self.assertIsNone(messaggio, "la mail e' partita senza l'allegato promesso")
+        self.assertEqual(MockRepo.return_value.update_log_stato.call_args[0][1], "FAILED")
+
+    # 21. Il rilancio di una mail fallita: gli allegati sono gia' agganciati al
+    #     LOG, e da li' si rileggono.
+    @patch(_SETTINGS)
+    @patch(_REPO)
+    def test_il_rilancio_rilegge_gli_allegati_dal_log(self, MockRepo, mock_settings):
+        mock_settings.DEBUG = False
+        repo = MockRepo.return_value
+        allegati = [{"nome_file": "a.pdf", "mime_type": "application/pdf", "file_path": "a.pdf"}]
+        repo.list_allegati_by_log.return_value = allegati
+        service = EmailDispatchService()
+        with patch.object(service, "_send_smtp", return_value=True) as smtp:
+            service.retry_log_entry(
+                99, self._ACCOUNT_SMTP,
+                {"ambito": "OPERATORE", "destinatario": "d@x.it", "oggetto": "o"},
+            )
+        repo.list_allegati_by_log.assert_called_once_with(99)
+        self.assertEqual(smtp.call_args[0][-1], allegati)

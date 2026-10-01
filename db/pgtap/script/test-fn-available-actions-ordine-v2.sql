@@ -68,8 +68,10 @@ SELECT
     ORDER BY ba.id LIMIT 1)                          AS push_ba_id,
   (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
     ORDER BY sr.id LIMIT 1)                          AS soggetto_ruolo_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  -- ⛔ L'emittente NON si pesca, si DERIVA (2026-09-23, guida pgTAP §5): con
+  --   una sola azienda a catalogo «il primo attivo» e quello di chi agisce
+  --   coincidevano per caso, su un database ricostruito no.
+  script.fn_pgtap_emittente_operatore()  AS emittente_fiscale_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE
       AND COALESCE(a.is_composito, FALSE) IS FALSE

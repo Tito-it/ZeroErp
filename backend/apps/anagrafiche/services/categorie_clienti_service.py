@@ -22,6 +22,7 @@ from apps.anagrafiche.db.categorie_clienti_repository import (
     CategorieClientiRepository,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -101,7 +102,7 @@ class CategorieClientiService:
         order_by: str = "ordinamento",
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI)
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI, order_dir=order_dir)
         return self._repo.list_categorie(
             search=search,
             attivo=attivo,
@@ -115,14 +116,11 @@ class CategorieClientiService:
     # Scopo: Dettaglio singola categoria; solleva not found se assente.
     def get_categoria(self, record_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(record_id, field="record_id")
-        result = self._repo.get_categoria(record_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_ANAG_NOT_FOUND,
-            message="Categoria cliente non trovata.",
-            context={"record_id": record_id},
+        result = testata_o_not_found(
+            self._repo.get_categoria, record_id,
+            code=E_ANAG_NOT_FOUND, message="Categoria cliente non trovata.",
+            id_name="record_id", function_name="categorie_clienti_service.get_categoria",
         )
-        assert result is not None
         return result
 
     # =================================================================

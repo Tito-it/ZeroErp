@@ -27,14 +27,14 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_int
+from apps.core.api.refresh_cookie import handle_post_json_con_refresh, leggi_refresh_cookie
 from apps.core.api.success_responses import success_response
 from apps.core.services.auth_constants import JWT_CLAIM_EMITTENTE_ATTIVO_ID
 from apps.core.services.emittente_attivo_service import EmittenteAttivoService
 from apps.core.services.service_errors import ServiceError
 
-E_EMITTENTE_ATTIVO_TOKEN = "E_EMITTENTE_ATTIVO_TOKEN"
+E_EMITTENTE_ATTIVO_TOKEN = "E_EMITTENTE_ATTIVO_TOKEN"  # noqa: S105 — codice errore, non un segreto
 
 
 class EmittenteAttivoView(DomainAPIView):
@@ -81,9 +81,10 @@ class EmittenteAttivoView(DomainAPIView):
             "Imposta l'emittente dentro cui lavorare. `emittente_fiscale_id` "
             "null = «Tutti gli emittenti» (modalità di sola lettura: senza "
             "emittente attivo il DB non può valorizzare i documenti). "
-            "Richiede il refresh token corrente e ne restituisce una coppia "
-            "nuova con il claim aggiornato: il client deve sostituire "
-            "entrambi i token e ricaricare lo stato applicativo."
+            "Legge il refresh token corrente dal cookie HttpOnly e lo "
+            "riscrive nel cookie con il claim aggiornato; il corpo porta "
+            "l'access nuovo. Il client deve sostituire l'access e "
+            "ricaricare lo stato applicativo."
         ),
         request=inline_serializer(
             name="EmittenteAttivoRequest",
@@ -91,7 +92,6 @@ class EmittenteAttivoView(DomainAPIView):
                 "emittente_fiscale_id": serializers.IntegerField(
                     required=False, allow_null=True,
                 ),
-                "refresh": serializers.CharField(),
             },
         ),
         responses={200: dict},
@@ -107,8 +107,10 @@ class EmittenteAttivoView(DomainAPIView):
     #        envelope uniformi. Niente `require_idempotency_key`: l'operazione
     #        è idempotente per costruzione (UPSERT della preferenza + claim
     #        riscritto), come per gli altri endpoint della famiglia token.
+    # ⭐ Il refresh viaggia nel cookie HttpOnly, in entrata e in uscita (brief
+    #    sicurezza §2, 2026-09-28): il corpo porta il solo `access`.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, object]) -> tuple[dict[str, object], str]:
             # Stringa vuota = assente (stesso contratto dei filtri opzionali);
             # garbage → ValueError → 400 `invalid_payload` di handle_post_json,
             # non un `int()` che esplode in 500.
@@ -120,11 +122,12 @@ class EmittenteAttivoView(DomainAPIView):
 
             attivo = EmittenteAttivoService().imposta(request.user.id, emittente_id)
 
-            refresh_str = payload.get("refresh")
-            if not refresh_str or not isinstance(refresh_str, str):
+            refresh_str = leggi_refresh_cookie(request)
+            if refresh_str is None:
                 raise ServiceError(
                     code=E_EMITTENTE_ATTIVO_TOKEN,
                     message="Refresh token richiesto per applicare il cambio emittente.",
+                    detail="Nessun cookie di refresh nella richiesta.",
                 )
             try:
                 refresh = RefreshToken(refresh_str)
@@ -136,7 +139,7 @@ class EmittenteAttivoView(DomainAPIView):
                 ) from exc
 
             # Guard anti-scambio: il refresh presentato deve essere dell'utente
-            # autenticato. L'access token dice chi sei, il refresh nel body è un
+            # autenticato. L'access token dice chi sei, il refresh nel cookie è un
             # dato in ingresso — senza questo confronto si potrebbe far riemettere
             # a un token altrui il claim scelto qui.
             if int(refresh.get("user_id", 0)) != int(request.user.id):
@@ -171,8 +174,8 @@ class EmittenteAttivoView(DomainAPIView):
                     request.user.id, attivo,
                     user=request.user, con_perimetro=False,
                 ),
-                "refresh": str(refresh),
                 "access": str(refresh.access_token),
-            }
+            }, str(refresh)
 
-        return handle_post_json(request, handler=_handler)
+        return handle_post_json_con_refresh(request, _handler)
+

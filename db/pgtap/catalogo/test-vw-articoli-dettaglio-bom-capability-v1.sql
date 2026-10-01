@@ -66,18 +66,15 @@ SELECT bag_has(
 -- =========================================================
 -- Setup fixture: ART_TEST_BASE + ART_TEST_FALLBACK
 -- =========================================================
+-- ⛔ Gli articoli si COSTRUISCONO (2026-09-23). Fino a oggi questo file
+--   pescava `ART_TEST_BASE` / `ART_TEST_FALLBACK`, che non stanno in nessun
+--   changelog: sono due righe messe a mano su questa macchina (UUID …101 e
+--   …102). Su un database ricostruito non esistono, e il file moriva nella
+--   fixture — copertura zero, non parziale.
 CREATE TEMP TABLE _t_ctx AS
 SELECT
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE')     AS art_a,
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_FALLBACK') AS art_b;
-
-DO $pgtap$
-BEGIN
-    IF (SELECT art_a IS NULL OR art_b IS NULL FROM _t_ctx) THEN
-        RAISE EXCEPTION 'Seed articoli ART_TEST_BASE / ART_TEST_FALLBACK mancanti.';
-    END IF;
-END
-$pgtap$;
+    dbops.fn_pgtap_crea_articolo('PGT-BOMDETT-A') AS art_a,
+    dbops.fn_pgtap_crea_articolo('PGT-BOMDETT-B') AS art_b;
 
 -- =========================================================
 -- Scenario A) ART_TEST_BASE composito non solo componente -> CAN

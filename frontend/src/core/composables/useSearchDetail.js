@@ -2,7 +2,7 @@
 // Usato da ClienteDetail, FornitoreDetail e GenericDetail per evitare duplicazione.
 
 import { ref, watch } from 'vue'
-import api from '../api'
+import { dettaglioRicercaSoggetto } from '../api/ricerca'
 import { useApiHandler } from './useApiHandler'
 
 // Scopo: gestisce il caricamento lazy del dettaglio soggetto per tipo ruolo
@@ -15,7 +15,7 @@ export function useSearchDetail(props) {
     if (!props.row?.soggetto_id) return
     const params = { tipo_ruolo_id: props.row.tipo_ruolo_id }
     const data = await execute(
-      () => api.get(`/core/search/${props.row.soggetto_id}/detail/`, { params }),
+      () => dettaglioRicercaSoggetto(props.row.soggetto_id, params),
       { silent: true }
     )
     if (data?.righe) {

@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-10 — IL CODICE DI RECUPERO E' MONOUSO: script.fn_totp_consuma_recovery
+#   Brief: brief-db-secondo-fattore-totp, sezione 3.
+#
+# ── ⭐ UNA ISTRUZIONE, A RIGA BLOCCATA ───────────────────────────────
+#   UPDATE … SET recovery_codes_hash = recovery_codes_hash - hash WHERE il
+#   mazzo lo contiene: due login con lo stesso codice si mettono in fila sulla
+#   riga, e il secondo rivaluta il WHERE su un mazzo che non lo contiene piu'.
+#   Restituisce QUANTI codici restano: il backend avvisa quando stanno finendo.
+#
+# ── ⚠️ jsonb_exists, NON L'OPERATORE `?` ────────────────────────────
+#   `?` in un changeSet va scritto `??` (JDBC lo legge come segnaposto): la
+#   funzione che c'e' dietro l'operatore dice la stessa cosa senza trappole.
+#   L'operatore `-` su un array toglie le stringhe uguali: per questo il mazzo
+#   nasce senza doppioni (script.fn_check_totp_recovery_hash).
+#
+# ── ⚠️ NESSUNO AGISCE: SI CHIAMA PRIMA DEL LOGIN ────────────────────
+#   Come fn_totp_registra_uso: il backend la chiama solo dopo la password, con
+#   l'HASH del codice digitato (il DB non vede mai i codici in chiaro).
+#   Hash assente -> E_TOTP_RECOVERY_NON_VALIDO; device assente o non
+#   confermato -> E_TOTP_DEVICE_ASSENTE.
+#
+# SECURITY DEFINER del PROPRIETARIO, search_path bloccato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260929-20-create-fn-totp-consuma-recovery-mctit.yaml
+
+  - changeSet:
+      id: 20260929-20-create-fn-totp-consuma-recovery
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_totp_consuma_recovery(p_auth_user_id, p_codice_hash) -> integer: toglie l'hash dal
+        mazzo dei codici di recupero e restituisce quanti ne restano, in una istruzione a riga
+        bloccata (monouso anche con due login simultanei). Hash assente ->
+        E_TOTP_RECOVERY_NON_VALIDO, device non attivo -> E_TOTP_DEVICE_ASSENTE. Si chiama prima del
+        login. SECURITY DEFINER del proprietario. Brief: brief-db-secondo-fattore-totp §3.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            { schemaName: config, tableName: auth_totp_device, columnName: ultimo_passo_usato }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_consuma_recovery(
+                  p_auth_user_id integer,
+                  -- Esplicito: e' un ELEMENTO di recovery_codes_hash (jsonb), non una colonna.
+                  p_codice_hash  text
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: consumare un codice di recupero (monouso) e dire quanti ne
+              --   restano.
+              DECLARE
+                  -- Esplicito: un conteggio calcolato, non una colonna.
+                  v_rimasti integer;
+              BEGIN
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0
+                     OR p_codice_hash IS NULL OR btrim(p_codice_hash) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_consuma_recovery', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id,
+                                             'hash_vuoto', p_codice_hash IS NULL OR btrim(p_codice_hash) = ''),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_consuma_recovery',
+                                         'credenziale e hash del codice obbligatori']);
+                  END IF;
+
+                  UPDATE config.auth_totp_device d
+                     SET recovery_codes_hash = d.recovery_codes_hash - p_codice_hash,
+                         ultimo_uso_at       = now()
+                   WHERE d.auth_user_id = p_auth_user_id
+                     AND d.confermato
+                     AND jsonb_exists(d.recovery_codes_hash, p_codice_hash)
+                  RETURNING jsonb_array_length(d.recovery_codes_hash) INTO v_rimasti;
+
+                  IF v_rimasti IS NULL THEN
+                      IF EXISTS (SELECT 1 FROM config.auth_totp_device d
+                                  WHERE d.auth_user_id = p_auth_user_id AND d.confermato) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'script.fn_totp_consuma_recovery', 'E_TOTP_RECOVERY_NON_VALIDO',
+                              jsonb_build_object('auth_user_id', p_auth_user_id),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]);
+                      END IF;
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_consuma_recovery', 'E_TOTP_DEVICE_ASSENTE',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  RETURN v_rimasti;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_totp_consuma_recovery(integer, text) IS
+                  'Consuma un codice di recupero del secondo fattore (monouso): toglie l''HASH (lo calcola il backend dal codice digitato) dal mazzo e restituisce quanti codici restano, in UNA istruzione a riga bloccata — due login con lo stesso codice, uno solo passa. Hash assente -> E_TOTP_RECOVERY_NON_VALIDO; device assente o non confermato -> E_TOTP_DEVICE_ASSENTE; id o hash vuoti -> E_AUTH_CHIAMATA_NON_VALIDA. Nessuno agisce: si chiama prima del login e il backend la chiama solo dopo la password. SECURITY DEFINER del PROPRIETARIO, search_path bloccato. Brief: brief-db-secondo-fattore-totp §3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_totp_consuma_recovery(integer, text);

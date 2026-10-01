@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-7 (D-V1, strada A) — IL BUILDING BLOCK: script.fn_is_proprietario_tabella(p_tabella regclass)
+#   Brief: brief-db-magazzino-verbi-con-permesso, sezione 4 (D-V1) e P-7
+#   Modello: brief-db-permesso-nel-verbo-di-scrittura (§4.2: chi scrive su una
+#   tabella chiusa gira come proprietario)
+#
+# -- LA DOMANDA --------------------------------------------------------------------------------
+#   «Chi sta eseguendo questa istruzione e' il proprietario della tabella?»
+#   Dentro un verbo SECURITY DEFINER la risposta e' si' (current_user e' il
+#   proprietario della funzione, che e' il proprietario delle tabelle); per
+#   l'applicazione che scrive da se' e' no. E' il modo in cui un guard sa di
+#   essere attraversato da un verbo, e non da un UPDATE diretto dell'app.
+#
+# -- REGOLA DEL 2 --------------------------------------------------------------------------------
+#   La prima copia e' ui.trgfn_lista_definizione_guard_multi_emittente
+#   (20260818-17): proprietario letto da pg_class, pg_has_role(current_user,
+#   proprietario, 'USAGE'). La seconda sarebbero i due guard dei documenti
+#   interni di magazzino (20260925-38). Si estrae qui, e la copia di ui passa
+#   dal BB nello stesso giro (20260925-39).
+#
+# -- LA FORMA ------------------------------------------------------------------------------------
+#   - pg_has_role(..., 'USAGE') e non l'uguaglianza dei nomi: e' vero per il
+#     proprietario, per chi ne eredita i privilegi e per un superuser. Il
+#     migrate e i verbi passano, l'applicazione no (zeroerp_app non e' membro del
+#     proprietario: letto il 2026-09-25 su zeroerp e zeroerp_ci).
+#   - Il proprietario si LEGGE da pg_class, non si scrive: su dbdev e' titodb,
+#     sullo scratch zeroerp, in CI chi migra.
+#   - ⛔ SECURITY INVOKER, obbligatorio: una DEFINER vedrebbe come current_user
+#     il proprio proprietario e risponderebbe si' a chiunque. Il pgTAP lo presidia.
+#   - Tabella NULL o inesistente -> false (fail-closed): e' una check, non solleva.
+#   - Il parametro e' regclass: un trigger passa TG_RELID, che e' l'oid e non
+#     dipende dal search_path (i verbi girano con search_path bloccato).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-37-create-fn-is-proprietario-tabella-mctit.yaml
+
+  - changeSet:
+      id: 20260925-37-create-fn-is-proprietario-tabella
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_is_proprietario_tabella(p_tabella regclass): true se chi esegue (current_user) e'
+        il proprietario della tabella o ne ha i privilegi (pg_has_role USAGE). E' come un guard
+        riconosce di essere attraversato da un verbo DEFINER e non da una scrittura diretta
+        dell'app. INVOKER, STABLE; NULL o tabella inesistente -> false. Regola del 2: prima copia
+        in ui.trgfn_lista_definizione_guard_multi_emittente. Brief:
+        brief-db-magazzino-verbi-con-permesso, D-V1 / P-7.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_is_proprietario_tabella(p_tabella regclass)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              PARALLEL SAFE
+              SECURITY INVOKER
+              AS $function$
+                  -- Scopo: dire se chi esegue e' il proprietario della tabella (o ne ha i
+                  --   privilegi). Il proprietario si legge da pg_class, mai scritto a mano.
+                  --   Nessuna riga (NULL, tabella inesistente) -> false: fail-closed.
+                  SELECT COALESCE(
+                             (SELECT pg_catalog.pg_has_role(current_user, c.relowner, 'USAGE')
+                                FROM pg_catalog.pg_class c
+                               WHERE c.oid = p_tabella),
+                             false);
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_is_proprietario_tabella(regclass) IS
+                  'Check pura (non solleva): true se chi esegue l''istruzione (current_user) e'' il '
+                  'proprietario della tabella o ne ha i privilegi (pg_has_role USAGE: anche un '
+                  'superuser). Il proprietario si legge da pg_class, non si scrive a mano. E'' il '
+                  'modo in cui un guard riconosce di essere attraversato da un verbo SECURITY DEFINER '
+                  '(modello «una scrittura = un verbo», brief-db-permesso-nel-verbo-di-scrittura) e '
+                  'non da una scrittura diretta dell''applicazione. Tabella NULL o inesistente -> '
+                  'false (fail-closed). SECURITY INVOKER per costruzione: una DEFINER vedrebbe il '
+                  'proprio proprietario e direbbe si'' a chiunque. Un trigger passa TG_RELID. '
+                  'Consumatori: i due guard dei documenti interni di magazzino (porta POSTED, righe '
+                  'in CONFIRM) e ui.trgfn_lista_definizione_guard_multi_emittente. Brief: '
+                  'brief-db-magazzino-verbi-con-permesso, D-V1 / P-7.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_is_proprietario_tabella(regclass) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_is_proprietario_tabella(regclass);

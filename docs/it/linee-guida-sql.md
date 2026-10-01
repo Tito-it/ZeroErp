@@ -153,6 +153,10 @@ Mescolare i nomi a caso:
 
   Diventa impossibile capire dal nome se la funzione lancia o verifica soltanto.
 
+**Parametri ID numerici:** guard di validazione esplicita, errore se `NULL` o
+`<= 0`. Non si normalizza in silenzio (un `COALESCE` o un `GREATEST` che
+trasforma un id rotto in un valore plausibile nasconde il chiamante sbagliato).
+
 **Che cosa passare a `fn_log_and_raise_error`** — tre canali, tre destinatari
 diversi, e confonderli è il difetto più facile da non vedere:
 
@@ -468,11 +472,19 @@ usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.m
 Standardizzare i campi di auditing:
 
 ```sql
-data_insert    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE
-user_insert    TEXT      NOT NULL DEFAULT CURRENT_USER
-data_update    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE
-user_update    TEXT      NOT NULL DEFAULT CURRENT_USER
+data_insert    TIMESTAMPTZ NOT NULL DEFAULT now()
+user_insert    TEXT        NOT NULL DEFAULT CURRENT_USER
+data_update    TIMESTAMPTZ NOT NULL DEFAULT now()
+user_update    TEXT        NOT NULL DEFAULT CURRENT_USER
 ```
+
+⛔ **`TIMESTAMPTZ`, mai `TIMESTAMP` nudo.** Fino al 2026-09-20 questo blocco
+scriveva `TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE`, che
+non è SQL valido e — letto per la parte che compila — dichiara `timestamp
+without time zone`: l'orario **locale della sessione** che scrive, senza
+memoria del fuso. È esattamente il DDL con cui sono nate le 22 colonne dello
+schema `ui` (`data_insert TIMESTAMP NOT NULL DEFAULT now()`) sanate da
+`20260920-02`. Regola e cancello in §11.10.
 
 ⚠️ **`data_`, non `date_`.** Fino al 2026-07-31 questo blocco scriveva
 `date_insert` (e la riga sotto `date_update`), mentre la seconda colonna era
@@ -522,6 +534,14 @@ validita   daterange GENERATED ALWAYS AS (
   ```
 
   **Motivazione**: `daterange(d, NULL, '[]')` produce `upper_inf=true` (testo: `[d,)`), mentre la STORED con COALESCE produce `upper_inf=false, upper='infinity'::date` (testo: `[d,infinity]`). L'operatore `@>` confronta le rappresentazioni interne: `[d,infinity] @> [d,)` restituisce **false** anche se semanticamente equivalenti. Applicare COALESCE garantisce rappresentazioni identiche e `@>` corretto.
+* ⭐ **La regola del periodo (`valido_al` non precede `valido_dal`) ha una sede
+  sola, e non si scrive a mano.** La monta l'automazione `DATE_VALIDITA` su ogni
+  tabella che porta le due colonne, per la sola presenza delle colonne:
+  [automazione DB §4.7](/guide/automazione-db). Serve perché la colonna generata
+  si calcola **prima** dei `CHECK`: senza il guard, le date invertite le
+  rifiuterebbe il costruttore del `daterange` con una frase tecnica (`22000`), e
+  il `CHECK` sulle date non parlerebbe mai. ⛔ Un guard di tabella che ricontrolli
+  l'ordine delle due date è una **copia**: si toglie.
 * Per tabelle con colonne sorgente diverse (es. `data_inizio`/`data_fine`): colonna STORED con espressione adattata
 * Per `TIMESTAMPTZ` usare `tstzrange` con bounds `[)` e colonna STORED adattata
 
@@ -669,7 +689,7 @@ Quando una tabella ha **sia** una colonna `stato` (ciclo vita gestionale: es. `B
 4. **Sync stato -> data**: il framework parametrico **`dbops.fn_apply_chiusura_scadenze()`** + job pgAgent unico **`chiusura_scadenze_daily`** (00:05) esegue l'UPDATE massivo `stato = terminale` per le righe scadute (`valido_al < CURRENT_DATE`) su tutte le tabelle configurate. L'UPDATE attraversa il guard trigger e lo soddisfa per costruzione. Vedi sotto "Framework dbops.automazione_chiusura_scadenze".
 5. **Niente trigger di sync `valido_al` -> `stato`** e nessuna colonna generata: lo stato **non e'** derivato in tempo reale dalla data (es. l'utente puo' programmare `valido_al` futuro e lo stato resta ATTIVA finche' il job non scatta). La sincronizzazione e' asincrona e "cosmetica".
 6. **INSERT**: non vincolare l'INSERT con la matrice transizioni (per permettere seed/import con stati diretti). Il guard scatta solo su UPDATE OF stato.
-7. **Semantica `valido_al`**: ultimo giorno **incluso** (convenzione `script.trgfn_set_validita`, bounds <code>[]</code> canonicalizzati a <code>[)</code>). Esempio: `valido_al = 2026-04-26` → la riga e' operativamente valida fino al 2026-04-26 23:59:59, scade dal 2026-04-27. Conseguenza: la query `valido_al < CURRENT_DATE` chiude **dal giorno successivo** a `valido_al` — schedule 00:05 cattura al primo momento utile dopo il cambio data.
+7. **Semantica `valido_al`**: ultimo giorno **incluso** (convenzione della colonna generata `validita`, §7b: bounds <code>[]</code> canonicalizzati a <code>[)</code>). Esempio: `valido_al = 2026-04-26` → la riga e' operativamente valida fino al 2026-04-26 23:59:59, scade dal 2026-04-27. Conseguenza: la query `valido_al < CURRENT_DATE` chiude **dal giorno successivo** a `valido_al` — schedule 00:05 cattura al primo momento utile dopo il cambio data.
 
 #### Framework `dbops.automazione_chiusura_scadenze` (post 26-04-2026)
 
@@ -977,6 +997,41 @@ Preferire:
 
 * colonne normalizzate
 * predicati compatibili con la forma dell’indice
+
+---
+
+### 8.5-bis ⛔ Sotto una policy RLS entra nell'indice solo una clausola leakproof
+
+Vale per **ogni** tabella con `ROW LEVEL SECURITY`, cioè per quasi tutto
+`vendite` e `anagrafiche`. Il planner mette in un `Index Cond` solo le clausole
+di cui si fida — quelle i cui operatori e funzioni sono dichiarati `leakproof`
+in `pg_proc` — perché una clausola valutata **prima** della policy potrebbe far
+trapelare, da un errore o da un tempo, righe che l'operatore non deve vedere.
+Tutto il resto viene valutato **dopo** la policy, come `Filter`: la lettura è la
+tabella intera, con la policy pagata riga per riga.
+
+| Clausola | Sotto una policy |
+| --- | --- |
+| `col = x`, `col = ANY(arr)`, `col < x` (operatori del btree) | ✅ `Index Cond` |
+| `col ~>=~ lo AND col ~<~ hi` (operatori del pattern, a byte) | ✅ `Index Cond` — con `lo`/`hi` **variabili già calcolate** |
+| `col LIKE 'k%'` — anche a costante | ⛔ mai (`textlike` non è leakproof); senza policy il planner lo riscrive nel range e usa l'indice, quindi **la prova da owner mente** |
+| `col ~<~ (k \|\| '$')` con `k` colonna di un'altra tabella | ⛔ la concatenazione è leaky: la clausola non sale |
+| `OR` con dentro una funzione leaky | ⛔ spegne i percorsi indicizzati parametrizzati per intero |
+| `f(col) = x` su un indice di espressione con `f` leaky (`split_part`, `lower`…) | ⛔ |
+
+⭐ Il prefisso, quindi, si scrive **come lo scriverebbe il planner** —
+`col ~>=~ 'k#' AND col ~<~ 'k$'` (`$` è il byte dopo `#`) — con i bordi in una
+CTE `MATERIALIZED` (o sul parametro della funzione), e l'indice in
+`text_pattern_ops` / `varchar_pattern_ops` (§8.3, la collation `it_IT` non
+conosce `~>=~`). Precedente e prova come app: `vendite.fn_af_merce_per_riga` e
+`script.fn_get_stato_push_segment` (2026-09-21, D14 giro 4).
+
+⚠️ La prova va fatta **come applicazione** (`zeroerp_app`), non da owner — e si
+può fare senza applicare nulla: una `TEMP TABLE` con `FORCE ROW LEVEL SECURITY`
+e una policy che chiama una funzione plpgsql riproduce esattamente il criterio
+del planner. ⚠️ Con `force_generic_plan` la forma set-based può preferire la
+scansione (stima di 100 chiavi da `unnest($1)` × 0,5 % per range): nella forma
+reale la plancache tiene i piani custom finché il generico costa di più.
 
 ---
 
@@ -1872,11 +1927,14 @@ stesso build**, dalla passata `ci_apply` che segue quella che l'ha applicato.
 > una riga di REVOKE»*, ed era una riga che il loop avrebbe cancellato.
 
 ⭐ **Il rimedio, per una tabella intera, è dichiararla nel loop.** In testa al
-blocco ci sono due elenchi: `v_registri_append_only` (tabelle a cui l'app riceve
+blocco ci sono gli elenchi: `v_registri_append_only` (tabelle a cui l'app riceve
 solo `SELECT, INSERT`, e a cui `UPDATE, DELETE` vengono **revocati** a ogni
-passata) e `v_fn_riservate` (funzioni a cui l'`EXECUTE` è revocato **a PUBLIC e
-all'app**). Il presidio sta nell'unico posto che avrebbe potuto annullarlo, e
-si dichiara come dato — non come un secondo file che rincorre il primo.
+passata), `v_tabelle_sola_lettura_app` (solo `SELECT`: scrive una porta del
+proprietario — una DEFINER, un seed, il migratore), `v_tabelle_senza_delete` e
+`v_schemi_senza_delete` (tutto tranne `DELETE`), e `v_fn_riservate` (funzioni a
+cui l'`EXECUTE` è revocato **a PUBLIC e all'app**). Il presidio sta nell'unico
+posto che avrebbe potuto annullarlo, e si dichiara come dato — non come un
+secondo file che rincorre il primo.
 
 ⚠️ **Servono comunque TRE sedi, non due** — fino al 2026-09-18 questa riga
 diceva «due file», e la terza era scritta solo nell'intestazione del loop
@@ -1900,6 +1958,18 @@ al solo `zeroerp_app` non toglie niente: si revoca `FROM PUBLIC, zeroerp_app`
 insieme. Il proprietario esegue sempre; i grant espliciti (ruoli batch, dal
 provisioning) restano. ⚠️ Un `DROP` + `CREATE` riporterebbe `=X`: lo vede il
 pgTAP di postura, non il migrate.
+
+⛔ **Eccezione: una `SECURITY DEFINER` di `postgres` non si chiude con l'ACL.**
+Un privilegio dato al migratore mentre la possiede in prestito non sopravvive
+alla restituzione (`ALTER … OWNER` rimappa le voci del vecchio proprietario), e
+in `v_fn_riservate` servirebbe anche un `GRANT` esplicito al migratore di CI. La
+funzione si difende **nel corpo**: una guardia in testa che legge il chiamante
+da **`session_user`** — dentro una DEFINER `current_user` è il proprietario, e
+una guardia su di lui è sempre aperta — e solleva `42501` nudo. `EXECUTE` a
+PUBLIC resta, e il pgTAP di postura lo **dichiara** `true`. Caso unico al
+2026-09-26: `dbops.fn_sync_functions_owner` (brief
+registro-owner-e-sync-riservati-al-migratore, presidio
+`db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql`).
 
 ⭐ **La postura si asserisce con `has_table_privilege(ruolo, …)` e
 `has_function_privilege(ruolo, …)`**, mai con `information_schema.role_table_grants`,
@@ -2008,6 +2078,51 @@ già provisionati. Presidio:
 (INSERT/UPDATE/DELETE) quanto il sì. ⚠️ Corollario: un `ERRORE_FIXTURE` in
 baseline con «permesso negato» va **letto**, non registrato — è quasi sempre
 questa regola.
+
+---
+
+### 11.10 ⛔ `TIMESTAMP` nudo è senza fuso: si scrive `timestamptz`, sempre
+
+Presidiato da `scripts/guardrail_timestamp_senza_fuso.py` in CI (changeSet con
+data ≥ `20260920`, sola sezione `changes`, istruzioni `DROP` esenti) e, sul
+database vivo, da `db/pgtap/dbops/test-nessun-timestamp-senza-fuso-v1.sql`.
+
+In PostgreSQL `TIMESTAMP` è `timestamp without time zone`: la colonna memorizza
+l'orario **locale della sessione che scrive**, senza il fuso. E in questo
+progetto le sessioni sono **due**: il backend Django connette con `SET TIME
+ZONE 'UTC'` (`USE_TZ = True`, nessun `TIME_ZONE` nel `DATABASES`), psql,
+Liquibase e pgAgent con `TimeZone = Europe/Rome`. Lo stesso `now()` scritto in
+quella colonna da due sessioni vale **due istanti diversi**, e la riga non
+ricorda quale — misurato il 2026-09-20 sulle shadow `storico`, dove la stessa
+riga porta anche un `valid_from` `timestamptz`: le righe di `zeroerp_app` erano
+avanti di +1h d'inverno e +2h d'estate, quelle di `titodb` coincidevano.
+
+> Il 2026-09-20 la valutazione del modello di dominio (voce V-3) ha contato
+> **671** `timestamptz` e **4** senza fuso nel dominio — ma **22** senza fuso e
+> **zero** con nello schema `ui`, **8** shadow di `storico` nate prima del
+> generatore, due funzioni `as_of` con `p_as_of timestamp` e un `RETURNS TABLE`
+> senza fuso. Sanate da `20260920-02` … `-07`; una di esse (`fn_get_iva_override`)
+> era anche **rotta** e senza chiamanti, ed è stata ritirata.
+
+⚠️ **Il difetto nasce nel DDL** — `data_insert TIMESTAMP NOT NULL DEFAULT
+now()` — e per mesi lo suggeriva questo stesso documento (§7, corretto). Un
+`DEFAULT now()` non protegge: `now()` è `timestamptz` e viene **convertito**
+alla scrittura. Vale per tutte e tre le sedi di un tipo: colonna, parametro di
+funzione, colonna di `RETURNS TABLE`; e in un `DECLARE` la forma giusta è
+`%TYPE` sulla colonna, che non può divergere.
+
+⚠️ **Convertire una colonna esistente non è un cast**: `ALTER COLUMN … TYPE
+timestamptz` senza `USING` legge i valori col fuso della sessione **che migra**,
+cioè di chi lancia il comando. Si dichiara l'orologio con cui le righe sono
+state scritte — `USING col AT TIME ZONE 'UTC'` dove scrive solo il backend,
+`'Europe/Rome'` dove scrivono seed e sessioni DB, un `CASE` sul ruolo
+(`user_insert = 'zeroerp_app'`) dove scrivono entrambi — come fanno
+`20260920-02/-03/-04`.
+
+⭐ Se il valore è un **giorno** e non un istante, il tipo è `date`, non un
+`timestamp` «tanto il fuso non conta». Le esclusioni si **dichiarano** in testa
+al changeSet (`# timestamp-senza-fuso: ammesso — <perché>`) e il cancello le
+stampa come debito; non si spiegano solo in prosa.
 
 ---
 

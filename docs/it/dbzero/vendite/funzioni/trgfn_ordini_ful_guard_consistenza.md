@@ -35,7 +35,7 @@ AS $function$
     IF NEW.qta_evasa IS NULL OR NEW.qta_evasa <= 0 THEN
       PERFORM script.fn_log_and_raise_error(
         'database','trgfn_ordini_ful_guard_consistenza','E_QTA_NON_POSITIVA',
-        jsonb_build_object('qta_evasa', NEW.qta_evasa),
+        jsonb_build_object('campo', 'qta_evasa', 'qta_evasa', NEW.qta_evasa),
         NULL::uuid,
         NEW.qta_evasa::text
       );

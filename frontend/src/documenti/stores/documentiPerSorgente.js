@@ -2,58 +2,33 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
-// Scopo: Store Pinia per la lista documenti generati di una sorgente
-//        (Tranche M). Lo stato della lista e' "scoped" alla coppia
-//        (sorgenteCode, sorgenteId) attualmente aperta dal drawer:
-//        cambiando sorgente il caller chiama `setSorgente(...)` per
-//        ripartire pulito. Cosi' il pulsante/lista resta riusabile da
-//        contesti diversi senza perdere l'isolamento.
+// Scopo: Store Pinia delle AZIONI sui documenti generati di una sorgente
+//        (Tranche M): genera, anteprima, download, file e allegati, ristampa
+//        fedele. Il caller imposta la coppia (sorgenteCode, sorgenteId) con
+//        `setSorgente(...)` prima di ogni azione.
 //
-//        `userScoped: true`: la lista contiene PDF/numeri progressivi
-//        legati a una sorgente specifica visibile all'utente, non deve
-//        leakare al cambio account.
+// ⭐ La LISTA non sta piu' qui (2026-09-27): e' la lista configurabile
+//    `documenti.documenti_sorgente`, con uno store per sorgente sul core
+//    (`documentiSorgenteLista`). Qui teneva `items`/`fetchList` scritti a mano,
+//    senza paginazione: la lista si fermava ai primi 50 documenti senza dirlo.
+//
+//        `userScoped: true`: la sorgente aperta e' dell'utente, non deve
+//        restare al cambio account.
 // ------------------------------------------------------------
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useTabEvents } from '../../core/composables/useTabEvents'
-import {
-  contrattoDocumenti,
-  ddtDocumenti,
-  fattureDocumenti,
-  offertaDocumenti,
-  ordineDocumenti,
-  preventivoDocumenti,
-} from '../api/documentiPerSorgente'
-import { SORGENTE_CODES } from '../constants'
+import { SORGENTE_CLIENT_MAP } from '../api/documentiPerSorgente'
 
 const STORE_NAME = 'documenti-per-sorgente'
 const EMIT_KEY = 'documenti_per_sorgente'
-
-// Scopo: Mappa codice sorgente -> client API. Quando un nuovo dominio
-//        sorgente entrera' nel motore documentale, basta aggiungere
-//        l'entry qui (es. CONTRATTO -> contrattoDocumenti) per
-//        riutilizzare lo store senza modifiche al componente FE.
-const SORGENTE_CLIENT_MAP = {
-  [SORGENTE_CODES.PREVENTIVO]: preventivoDocumenti,
-  [SORGENTE_CODES.CONTRATTO]: contrattoDocumenti,
-  [SORGENTE_CODES.OFFERTA_COMMERCIALE]: offertaDocumenti,
-  [SORGENTE_CODES.ORDINE_VENDITA]: ordineDocumenti,
-  [SORGENTE_CODES.DDT]: ddtDocumenti,
-  [SORGENTE_CODES.FATTURA]: fattureDocumenti,
-}
 
 export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {
   const { emitDataChanged } = useTabEvents()
 
   const sorgenteCode = ref(null)
   const sorgenteId = ref(null)
-  const fv = useFetchVersion()
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-  const lastError = ref(null)
 
   // Scopo: Risolve il client API a partire dal codice sorgente attuale.
   //        Solleva error sincrono se il codice non e' mappato (bug FE).
@@ -65,64 +40,21 @@ export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {
     return client
   }
 
-  // Scopo: Imposta la sorgente corrente. Idempotente: se cambia la
-  //        coppia, azzera la lista per non mostrare dati di un'altra
-  //        sorgente residui.
+  // Scopo: Imposta la sorgente su cui agiscono le azioni seguenti.
   function setSorgente(code, id) {
-    if (sorgenteCode.value !== code || sorgenteId.value !== id) {
-      // Invalidate PRIMA del clear: una fetch della sorgente precedente ancora
-      // in volo resterebbe "corrente" fino alla prossima fetchList e
-      // ripopolerebbe la lista appena azzerata. Spinner spento qui, perche' la
-      // fetch invalidata non lo spegne piu' (finally gated su isCurrent).
-      fv.invalidate()
-      sorgenteCode.value = code
-      sorgenteId.value = id
-      items.value = []
-      totalRecords.value = 0
-      lastError.value = null
-      loading.value = false
-    }
+    sorgenteCode.value = code
+    sorgenteId.value = id
   }
 
-  // Scopo: Lista documenti generati per la sorgente corrente.
-  // ⚠️ Guardia anti-race (2026-08-10). Questa lista NON passa dal BB
-  // `useListaEmptyStateFetch` — prende `params` dal chiamante e ha un envelope
-  // suo (`total_count`, non `paginated_envelope`) — ma soffre lo stesso difetto:
-  // otto chiamanti, e cambiando sorgente due fetch possono essere in volo
-  // insieme. Senza guardia vince l'ultima ARRIVATA, cioe' si vedono i documenti
-  // della sorgente sbagliata.
-  async function fetchList(params = {}) {
-    if (!sorgenteCode.value || !sorgenteId.value) return
-    const tag = fv.tag()
-    loading.value = true
-    lastError.value = null
-    try {
-      const res = await getClient().list(sorgenteId.value, params)
-      if (!fv.isCurrent(tag)) return
-      // L'envelope di list (Tranche K view): `success_response({...result, page, page_size})`.
-      // Il `result` contiene `results`, `total_count`. Niente `paginated_envelope`.
-      const data = res.data.data
-      items.value = data.results || []
-      totalRecords.value = data.total_count ?? items.value.length
-    } catch (err) {
-      // Stesso guard del ramo success: l'errore di una richiesta stantia non
-      // riguarda il contesto corrente — ne' il banner (`lastError`) ne' il
-      // toast del chiamante vecchio (niente re-throw).
-      if (!fv.isCurrent(tag)) return
-      lastError.value = err
-      throw err
-    } finally {
-      if (fv.isCurrent(tag)) loading.value = false
-    }
-  }
-
-  // Scopo: Genera nuovo documento. Refresh lista in coda + emit event.
+  // Scopo: Genera nuovo documento + emit event.
+  // ⚠️ Non ricarica piu' la lista: la lista ha il suo store
+  //    (`documentiSorgenteLista`), e chi la mostra la ricarica dal proprio
+  //    scaffolding.
   async function genera(payload = {}) {
     if (!sorgenteId.value) throw new Error('Sorgente non impostata')
     const res = await getClient().genera(sorgenteId.value, payload)
     const generated = res.data.data
     emitDataChanged(EMIT_KEY, generated.id)
-    await fetchList()
     return generated
   }
 
@@ -196,8 +128,8 @@ export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {
   }
 
   return {
-    sorgenteCode, sorgenteId, items, totalRecords, loading, lastError,
-    setSorgente, fetchList, genera, anteprima, download,
+    sorgenteCode, sorgenteId,
+    setSorgente, genera, anteprima, download,
     listFiles, aggiungiAllegati, downloadFile, ristampaFedele,
   }
 }, { userScoped: true })

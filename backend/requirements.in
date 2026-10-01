@@ -38,6 +38,13 @@ packaging>=26.0
 # senza alzarlo qui un pip-compile futuro potrebbe risolvere di nuovo a una 49.x.
 cryptography>=50.0.0
 
+# Secondo fattore (TOTP, RFC 6238) e il QR code della configurazione, generato
+# nel backend come SVG: il frontend non aggiunge librerie (decisione di Tid del
+# 2026-09-28, brief-be-fe-sicurezza-header-token-mfa §3.4). `segno` non ha
+# dipendenze; `pyotp` nemmeno.
+pyotp>=2.10
+segno>=1.6
+
 # Sanitizzazione HTML (preview template email — Fase 6 amm-software)
 bleach>=6.2
 
@@ -59,6 +66,12 @@ openpyxl>=3.1
 #    nel Dockerfile dal 2026-09-13, e va installato anche sulle macchine di
 #    sviluppo (`apt install libharfbuzz-subset0`), o l'avviso resta li'.
 weasyprint>=68,<71
+
+# Miniature degli asset documentali (`GET documenti/asset/<id>/miniatura/`).
+# Gia' installata come dipendenza di WeasyPrint: dichiarata qui dal 2026-10-01
+# (ok Tid) perche' ora il codice la importa direttamente, e una dipendenza
+# usata ma non dichiarata sparirebbe in silenzio al primo cambio di WeasyPrint.
+pillow>=12,<13
 
 # Template engine documenti (Jinja2 stile, Decisione 4 sviluppo-documenti).
 # StrictUndefined per fail-fast su variabili context mancanti nel render.

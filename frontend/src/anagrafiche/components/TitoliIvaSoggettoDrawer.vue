@@ -167,6 +167,7 @@ const onClose = useDrawerClose(emit)
       <DrawerTabLista
         ref="listaRef"
         codice="anagrafiche.soggetto_titoli_iva"
+        :store="store"
         :rows="store.items"
         :total="store.totalRecords"
         :loading="store.loading"
@@ -203,11 +204,10 @@ const onClose = useDrawerClose(emit)
             :value="t('anagrafiche.titoli_iva.tag_ambito_incompleto')" severity="warn" />
           <Tag v-else :value="t('common.attivo')" severity="success" />
         </template>
-        <template #actions="{ data, compact }">
+        <template #actions="{ data }">
           <RowActionsMenu
             :row="data"
-            :actions="buildRowActions(data)"
-            :force-compact="compact" />
+            :actions="buildRowActions(data)" />
         </template>
       </DrawerTabLista>
 

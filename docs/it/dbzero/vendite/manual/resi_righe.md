@@ -31,4 +31,13 @@ DDT sorgente ed è tipizzata come *a credito* o *per ri-consegna*.
   (`E_RESO_QTA_SUPERA_CONSEGNATO`). «Non si rende più di quanto consegnato».
 - **Aggancio ri-consegna**: NON è una colonna qui, ma la tabella-ponte `resi_righe_riconsegne`
   (ri-spedizione parziale/multipla; stato ri-consegna **derivato** dalla copertura).
-- Righe editabili solo con testata in DRAFT (enforcement applicativo BE via `can_edit_righe`).
+- **Righe solo in bozza** (dal 2026-09-29): si aggiungono, modificano e tolgono finché il reso è
+  in `DRAFT`, come le righe di bolle e contratti — building block
+  [trgfn_doc_righe_lock_fuori_bozza](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza),
+  `E_RIGA_DOC_NON_BOZZA`. Prima lo garantiva solo il backend. Serve perché la conferma **carica**
+  la merce: una riga cambiata dopo farebbe dire al reso una cosa e al magazzino un'altra. Un reso
+  confermato si corregge annullandolo e facendone uno nuovo.
+- **Che cosa rientra fisicamente** non sta sulla riga ma nei suoi rientri
+  ([vendite.resi_righe_rientri](/dbzero/vendite/tabelle/resi_righe_rientri)): la riga è l'unità
+  commerciale (tipo di reso, quantità, credito), il rientro quella fisica (quale lotto o seriale,
+  dove).

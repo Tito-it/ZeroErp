@@ -46,10 +46,16 @@ BEGIN
     -- stato, quindi una sigla fissa farebbe collidere la seconda
     -- chiamata con la prima — lo stesso motivo per cui esistono
     -- fn_pgtap_piva_libera e la sigla PGTRnnnn dell'emittente.
-    SELECT 'PGTAPBA' || lpad((COALESCE(max(substring(b.codice from 8)::bigint), 0) + 1)::text, 5, '0')
+    -- ⛔ Il massimo si legge dalle ISTANZE, non dai BA (rev
+    --   20260923-07): billing_account e' in RLS, e sotto un
+    --   operatore mostra solo i BA della SUA azienda. Con due
+    --   aziende nella stessa transazione il secondo ripartiva da
+    --   PGTAPBA00001. istanze_utilities in RLS non e', e il
+    --   builder le scrive sempre con lo stesso codice del BA.
+    SELECT 'PGTAPBA' || lpad((COALESCE(max(substring(iu.codice from 8)::bigint), 0) + 1)::text, 5, '0')
       INTO v_codice
-      FROM anagrafiche.billing_account b
-     WHERE b.codice ~ '^PGTAPBA[0-9]{5}$';
+      FROM anagrafiche.istanze_utilities iu
+     WHERE iu.codice ~ '^PGTAPBA[0-9]{5}$';
     v_codice := COALESCE(v_codice, 'PGTAPBA00001');
 
     v_soggetto_id := dbops.fn_pgtap_crea_soggetto_pg(
@@ -151,7 +157,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_cliente_ba(p_etichetta text, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint)
-IS 'Fixture pgTAP: crea la catena minima di un cliente fatturabile (soggetto -> ruolo CL -> istanza utility -> billing account). Il terzo parametro, opzionale, e'' il soggetto_ruolo dell''EMITTENTE a cui legare il billing account in anagrafiche.emittenti_fiscali_billing_account: serve alle testate con billing_account_id NOT NULL (contratti, offerte_commerciali), il cui guard confronta l''emittente del documento con anagrafiche.fn_get_emittente_fiscale_pk(ba). ⚠️ Senza legame quella funzione non fallisce: ricade sull''emittente di DEFAULT, cioe'' risponde un''altra azienda. ⭐ Rev 20260912-38: usabile anche come zeroerp_app CON un operatore in sessione — l''INSERT del BA non fa piu'' RETURNING (sotto la RLS la riga non ancora mappata non si vede) e il legame lo lascia scrivere al trigger z90 verso l''emittente di chi agisce, verificando che coincida con quello chiesto. Da owner: costruire il cliente PRIMA di aprire il contesto, o il trigger e il terzo parametro si scontrano. Brief: brief-db-perimetro-emittente-righe-documento.md';
+IS 'Fixture pgTAP: crea la catena minima di un cliente fatturabile (soggetto -> ruolo CL -> istanza utility -> billing account). Il terzo parametro, opzionale, e'' il soggetto_ruolo dell''EMITTENTE a cui legare il billing account in anagrafiche.emittenti_fiscali_billing_account: serve alle testate con billing_account_id NOT NULL (contratti, offerte_commerciali), il cui guard confronta l''emittente del documento con anagrafiche.fn_get_emittente_fiscale_pk(ba). ⚠️ Senza legame quella funzione non fallisce: ricade sull''emittente di DEFAULT, cioe'' risponde un''altra azienda. ⭐ Rev 20260912-38: usabile anche come zeroerp_app CON un operatore in sessione — l''INSERT del BA non fa piu'' RETURNING (sotto la RLS la riga non ancora mappata non si vede) e il legame lo lascia scrivere al trigger z90 verso l''emittente di chi agisce, verificando che coincida con quello chiesto. Da owner: costruire il cliente PRIMA di aprire il contesto, o il trigger e il terzo parametro si scontrano. ⛔ Rev 20260923-07: il codice libero PGTAPBAnnnnn si calcola sulle istanze (fuori RLS), non sui BA — sotto la RLS il massimo dei BA e'' quello dell''azienda di chi agisce, e il cliente di una seconda azienda nella stessa transazione ripartiva da PGTAPBA00001. Brief: brief-db-perimetro-emittente-righe-documento.md, brief-db-fixture-che-costruiscono-giro-2.md';
 ```
 
 ---

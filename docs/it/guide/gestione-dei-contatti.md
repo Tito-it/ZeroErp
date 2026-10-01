@@ -1,16 +1,30 @@
-# Guida – Gestione dei Contatti
+# Guida — Gestione dei Contatti
 
-> (latest review 25-03-26)
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> Destinatari: sviluppatori database, backend, integratori e analisti funzionali
+> **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
-> Questa guida si affianca alla guida gestione indirizzi come riferimento completo per la modellazione e l'utilizzo dei contatti nel sistema.
+> **Vedi anche** — schemi DB:
 >
-> Vedi anche
+> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti) — i contatti del soggetto, del ruolo e dell'istanza
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — il soggetto, che punta al suo contatto predefinito
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — le istanze di servizio
+> * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti) — le categorie di contatto
+> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — reparti e uffici, gerarchici
+> * [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia) — gli appellativi (Sig., Dott., …)
 >
-> * [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici)
-> * [Guida Gestione degli Indirizzi](/guide/gestione-degli-indirizzi)
-> * [Guida Generazione di un Cliente](/guide/generazione-cliente)
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [script.fn_get_contatti](/dbzero/script/funzioni/fn_get_contatti) — un contatto per tipo, con la catena di fallback
+> * [script.fn_get_contatto_default](/dbzero/script/funzioni/fn_get_contatto_default) — zero o un contatto: il predefinito
+> * [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto) — chi governa il default di contesto
+> * [anagrafiche.trgfn_soggetti_guard_soggetto_contatti](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_soggetto_contatti) — il guard che pretende almeno un contatto valido
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Soggetti e Ruoli](/guide/soggetti-e-ruoli-anagrafici) — il modello soggetto/ruolo che questa guida dà per noto
+> * [Gestione degli Indirizzi](/guide/gestione-degli-indirizzi) — l'altro modello con policy master/fallback
+> * [Generazione di un Cliente](/guide/generazione-cliente) — il flusso completo, contatto incluso
 
 ---
 
@@ -33,22 +47,6 @@ Questa gerarchia permette al sistema di risolvere automaticamente il contatto pi
 * Come vengono gestiti i contatti default e i trigger associati
 * Le funzioni di lettura e il meccanismo di fallback
 * Le regole di dominio e le best practice
-
----
-
-## Tabelle coinvolte
-
-**Anagrafiche:**
-
-* [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti) — contatti del soggetto, del ruolo e della utility
-* [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — il soggetto (contiene `default_contatto_id`)
-
-**Configurazione:**
-
-* [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti) — categorie di contatto (opzionale)
-* [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — reparti/uffici (opzionale, gerarchico)
-* [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia) — titoli di cortesia (Sig., Dott., ecc.)
-* [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — istanze di servizio
 
 ---
 
@@ -112,11 +110,11 @@ Da un punto di vista tecnico:
 
 Il contesto determina a quale livello il contatto e operativo. Non viene specificato esplicitamente dall'utente: il trigger lo calcola automaticamente in base ai campi valorizzati.
 
-| Contesto   | Significato                                 | Condizione                                                |
-| ---------- | ------------------------------------------- | --------------------------------------------------------- |
-| `soggetto` | Contatto generale del soggetto              | `soggetto_ruolo_id` e `istanza_utility_id` entrambi NULL  |
-| `ruolo`    | Contatto specifico di un ruolo              | `soggetto_ruolo_id` valorizzato, `istanza_utility_id` NULL |
-| `istanza`  | Contatto per un'istanza di servizio         | `soggetto_ruolo_id` e `istanza_utility_id` valorizzati    |
+| Contesto   | Significato                         | Condizione                                                 |
+| ---------- | ----------------------------------- | ---------------------------------------------------------- |
+| `soggetto` | Contatto generale del soggetto      | `soggetto_ruolo_id` e `istanza_utility_id` entrambi NULL   |
+| `ruolo`    | Contatto specifico di un ruolo      | `soggetto_ruolo_id` valorizzato, `istanza_utility_id` NULL |
+| `istanza`  | Contatto per un'istanza di servizio | `soggetto_ruolo_id` e `istanza_utility_id` valorizzati     |
 
 L'esistenza di contatti a piu livelli permette al sistema di risolvere **fallback intelligenti**: se non esiste un contatto specifico per il ruolo, si usa quello del soggetto.
 
@@ -140,7 +138,9 @@ La tabella `config.unita_organizzative` supporta una struttura gerarchica (`pare
 
 **Tipo contatto** (`tipo_contatto_id`) — la **categoria** del contatto. Classifica il contatto in base alla sua funzione, non in base al reparto.
 
-Entrambi i campi sono **opzionali** (nullable). Un contatto puo esistere senza essere classificato per reparto ne per categoria.
+⚠️ **I due campi non hanno lo stesso peso.** `tipo_contatto_id` è **obbligatorio**: ogni contatto
+ha un tipo. `unita_organizzativa_id` è **opzionale**: un contatto può esistere senza essere
+collocato in un reparto.
 
 #### Perche non usare tipi "EMAIL / TELEFONO / PEC"?
 
@@ -177,20 +177,15 @@ I contesti sono **indipendenti**: un soggetto puo avere un default a livello sog
 
 Da un punto di vista tecnico, la logica del trigger:
 
-```plpgsql
--- 1. Azzeramento contesto
-NEW.default_context := NULL;
-
--- 2. Determinazione contesto
-ctx := CASE
-  WHEN NEW.istanza_utility_id IS NOT NULL THEN 'istanza'
-  WHEN NEW.soggetto_ruolo_id  IS NOT NULL THEN 'ruolo'
-  ELSE 'soggetto'
-END;
-
--- 3. Se is_default = TRUE: reset degli altri default dello stesso contesto
--- 4. Se nessun default esiste: auto-promozione
--- 5. Se contesto = 'soggetto': aggiorna soggetti.default_contatto_id
+```text
+1. Azzera NEW.default_context
+2. Determina il contesto dai campi valorizzati:
+     istanza_utility_id presente  → 'istanza'
+     altrimenti soggetto_ruolo_id → 'ruolo'
+     altrimenti                   → 'soggetto'
+3. Se is_default = TRUE: toglie il flag agli altri default dello stesso contesto
+4. Se nel contesto non esiste nessun default: promuove il contatto corrente
+5. Se il contesto è 'soggetto': aggiorna soggetti.default_contatto_id
 ```
 
 ### Guard sull'integrita dei contatti
@@ -203,14 +198,18 @@ Se la verifica fallisce, la transazione viene rifiutata con errore `E_SOGGETTO_N
 
 **Cosa non copre:** una DELETE diretta sull'ultimo contatto di un soggetto gia esistente non attiva il guard, perche l'evento e sulla tabella `contatti`, non su `soggetti`. In quel caso il soggetto resterebbe senza contatti validi. Attualmente la protezione su questo scenario non e implementata a livello DB: la prevenzione e affidata al livello applicativo (backend/API).
 
-### Riepilogo trigger sulla tabella contatti
+### Riepilogo delle funzioni eseguite sui contatti
 
-| Trigger | Timing | Evento | Cosa fa |
-| --- | --- | --- | --- |
-| `trgfn_contatti_set_default_contatto` | BEFORE | INSERT/UPDATE | Gestione default per contesto |
-| `trgfn_audit_data_user_generic` | BEFORE | INSERT/UPDATE | Aggiorna `data_update`, `user_update` |
-| `trgfn_tx_id_managed` | BEFORE | INSERT/UPDATE | Genera `tx_id` per tracciabilita |
-| `trgfn_child_requires_active_parent` | AFTER | INSERT/UPDATE | Verifica che soggetto e unita organizzativa siano attivi |
+| Funzione                                          | Timing | Evento        | Cosa fa                                                                         |
+| ------------------------------------------------- | ------ | ------------- | ------------------------------------------------------------------------------- |
+| `anagrafiche.trgfn_contatti_set_default_contatto` | BEFORE | INSERT/UPDATE | Gestione del default per contesto                                               |
+| `script.trgfn_audit_data_user_generic`            | BEFORE | INSERT/UPDATE | Aggiorna `data_update`, `user_update`                                           |
+| `dbops.trgfn_tx_id_managed`                       | BEFORE | INSERT/UPDATE | Genera il `tx_id` per la tracciabilità                                          |
+| `dbops.trgfn_child_requires_active_parent`        | AFTER  | INSERT/UPDATE | Verifica che soggetto e unità organizzativa siano attivi (due trigger distinti) |
+
+I nomi dei trigger sono `trg_contatti_*`; l'elenco vivo — con i nomi esatti e i parametri passati a
+ciascuna funzione — è nella scheda della tabella:
+[anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti).
 
 ---
 
@@ -226,13 +225,13 @@ Restituisce il contatto **piu rilevante per ogni tipo contatto** (`tipo_contatto
 
 A parita di priorita, preferisce il contatto marcato `is_default = TRUE`.
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-| --- | --- | :---: | --- |
-| `p_soggetto_id` | UUID | si | Il soggetto di riferimento |
-| `p_soggetto_ruolo_id` | BIGINT | no | Filtra per ruolo |
-| `p_istanza_utility_id` | BIGINT | no | Filtra per istanza di servizio |
-| `p_tipo_contatto_id` | INTEGER | no | Filtra per tipo contatto |
-| `p_unita_organizzativa_id` | INTEGER | no | Filtra per unita organizzativa |
+| Parametro                  | Tipo    | Obbligatorio | Descrizione                    |
+| -------------------------- | ------- | :----------: | ------------------------------ |
+| `p_soggetto_id`            | UUID    |      si      | Il soggetto di riferimento     |
+| `p_soggetto_ruolo_id`      | BIGINT  |      no      | Filtra per ruolo               |
+| `p_istanza_utility_id`     | BIGINT  |      no      | Filtra per istanza di servizio |
+| `p_tipo_contatto_id`       | INTEGER |      no      | Filtra per tipo contatto       |
+| `p_unita_organizzativa_id` | INTEGER |      no      | Filtra per unita organizzativa |
 
 La funzione e il punto d'ingresso consigliato quando serve una **mappa strutturata** dei contatti di un soggetto.
 
@@ -270,83 +269,12 @@ La funzione `fn_get_contatti` applica una catena di fallback automatica a 3 live
 
 ---
 
-## Esempi pratici
-
-### Caso 1 — Contatto globale del soggetto
-
-Inserimento del contatto principale per un'azienda, senza specificare ruolo ne utility:
-
-```sql
-INSERT INTO anagrafiche.contatti (
-  soggetto_id,
-  unita_organizzativa_id,
-  nominativo,
-  email,
-  telefono,
-  is_default
-) VALUES (
-  'UUID-SOGGETTO',
-  1,               -- Amministrazione
-  'Mario Rossi',
-  'info@acme.it',
-  '0212345678',
-  TRUE
-);
-```
-
-Essendo il primo contatto, il trigger lo promuove a default nel contesto `soggetto` e aggiorna `soggetti.default_contatto_id`.
-
-### Caso 2 — Contatto specifico per ruolo
-
-Un referente tecnico legato al ruolo CLIENTE dello stesso soggetto:
-
-```sql
-INSERT INTO anagrafiche.contatti (
-  soggetto_id,
-  soggetto_ruolo_id,
-  unita_organizzativa_id,
-  nominativo,
-  email,
-  is_default
-) VALUES (
-  'UUID-SOGGETTO',
-  10,              -- ruolo CLIENTE
-  2,               -- Tecnico
-  'Luca Bianchi',
-  'tecnico@acme.it',
-  TRUE
-);
-```
-
-Il contesto sara `ruolo`. Questo contatto non interferisce con il default del contesto `soggetto`.
-
-### Caso 3 — Recupero contatto default
-
-```sql
--- Contatto default del ruolo (se esiste), altrimenti del soggetto
-SELECT *
-FROM script.fn_get_contatto_default(
-  'UUID-SOGGETTO',
-  10  -- ruolo
-);
-```
-
-### Caso 4 — Mappa contatti per tipo
-
-```sql
--- Un contatto per ogni tipo, con la priorita migliore
-SELECT tipo_contatto_id, nominativo, email, telefono
-FROM script.fn_get_contatti('UUID-SOGGETTO');
-```
-
----
-
 ## Best practice
 
 * Usare `fn_get_contatto_default` quando serve un singolo riferimento; `fn_get_contatti` quando serve l'elenco completo per tipo
 * Non gestire manualmente `is_default` e `default_context` — sono responsabilita del trigger
 * Specificare `unita_organizzativa_id` per classificare il contatto per reparto quando il dato e disponibile
-* `tipo_contatto_id` e opzionale: usarlo per classificare il contatto per categoria quando serve
+* `tipo_contatto_id` è **obbligatorio**: scegliere il tipo giusto fa parte dell'inserimento, non è un extra da aggiungere se si ha tempo. `unita_organizzativa_id` invece è opzionale
 * Non creare tipi contatto per canale (EMAIL, TELEFONO, PEC) — i canali sono gia colonne dedicate
 * Agire sempre tramite le funzioni `fn_get_*` per il recupero, non via query dirette sulla tabella
 * Inserire soggetto e contatti nella stessa transazione: il guard e DEFERRED e verifica al COMMIT
@@ -446,14 +374,72 @@ erDiagram
 
 ---
 
-## Note finali
+## Area tecnica — esempi
 
-Questa guida assume come gia compreso il modello soggetto/ruolo descritto nella [guida soggetti e ruoli](/guide/soggetti-e-ruoli-anagrafici).
+**Un contatto del soggetto** — nessun ruolo e nessuna istanza: il contesto sarà `soggetto`. Essendo
+il primo, il trigger lo promuove a predefinito e aggiorna `soggetti.default_contatto_id`:
 
-Per approfondire:
+```sql
+INSERT INTO anagrafiche.contatti (
+  soggetto_id,
+  tipo_contatto_id,
+  unita_organizzativa_id,
+  nominativo,
+  email,
+  telefono,
+  is_default
+) VALUES (
+  'UUID-SOGGETTO',
+  1,               -- tipo contatto (obbligatorio)
+  1,               -- unità organizzativa: Amministrazione
+  'Mario Rossi',
+  'info@acme.it',
+  '0212345678',
+  TRUE
+);
+```
 
-* [Guida Gestione degli Indirizzi](/guide/gestione-degli-indirizzi) — modello indirizzi con policy master/fallback
-* [Guida Generazione di un Cliente](/guide/generazione-cliente) — il flusso completo di creazione cliente, incluso contatto
+**Un contatto di ruolo** — stesso soggetto, ma con `soggetto_ruolo_id` valorizzato e nessuna
+istanza: il contesto è `ruolo`, e **non** interferisce col default del contesto `soggetto`:
+
+```sql
+INSERT INTO anagrafiche.contatti (
+  soggetto_id,
+  soggetto_ruolo_id,
+  tipo_contatto_id,
+  unita_organizzativa_id,
+  nominativo,
+  email,
+  is_default
+) VALUES (
+  'UUID-SOGGETTO',
+  10,              -- ruolo CLIENTE
+  1,               -- tipo contatto
+  2,               -- unità organizzativa: Tecnico
+  'Luca Bianchi',
+  'tecnico@acme.it',
+  TRUE
+);
+```
+
+**Il contatto predefinito da usare in un documento o in una comunicazione** — zero o un record:
+se esiste un contatto del ruolo lo preferisce, altrimenti ricade sul soggetto:
+
+```sql
+SELECT *
+FROM script.fn_get_contatto_default(
+  'UUID-SOGGETTO',
+  10  -- ruolo
+);
+```
+
+**La mappa completa dei contatti** — un contatto per tipo, già risolto per specificità
+(istanza → ruolo → soggetto):
+
+```sql
+SELECT tipo_contatto_id, nominativo, email, telefono
+FROM script.fn_get_contatti('UUID-SOGGETTO');
+```
 
 ---
 

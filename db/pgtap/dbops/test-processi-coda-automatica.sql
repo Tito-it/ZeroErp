@@ -46,6 +46,18 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ `SET CONSTRAINTS ALL IMMEDIATE` sta DOPO la fixture della fabbrica: quella
 --   crea il soggetto in un'istruzione e il suo contatto in quella dopo, e il
 --   guard sui contatti e' DIFFERITO. In testa scatterebbe a meta' strada.
+--   ⛔ E LA FINESTRA SI DICHIARA: la riga di contesto qui sopra esce con i
+--   vincoli IMMEDIATE quando COSTRUISCE il mondo (rev 20260921-18, come ogni
+--   helper pgTAP) — cioe' sul database da zero. Li' questo file moriva nel
+--   test 5 su «Il soggetto non ha contatti validi» (scratch `zeroerp_ci`,
+--   2026-09-22: rosso che la CI non conosceva; provato in transazione
+--   ritirata nei due modi — IMMEDIATE rifiutato, DEFERRED servito). Su dev un
+--   operatore c'e' sempre, il ramo non si percorre e la finestra di DEFAULT
+--   mascherava il difetto: terzo file con la forma di
+--   anagrafiche/create-cliente e test-soggetti-split-payment-cliente-pa.
+--   Contare sulla finestra di DEFAULT e' contare su cio' che nessuno ha
+--   promesso: la si riapre, e il file dice da se' cosa vuole.
+SET CONSTRAINTS ALL DEFERRED;
 
 SELECT plan(6);
 

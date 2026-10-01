@@ -8,7 +8,10 @@
 #         2. risolve template applicabile (override esplicito via id, oppure
 #            `is_default=true` per (sorgente_tipo, emittente, output));
 #         3. carica versione PUBBLICATA attiva (`validita @> CURRENT_DATE`);
-#         4. risolve context_builder via registry (whitelist Decisione 18+74);
+#         4. risolve context_builder via registry (`get_builder_del_template`,
+#            whitelist Decisione 18+74)
+#            e chiede al DB se la versione legge la forma dei dati del
+#            builder (`documenti.fn_guard_versione_contesto`, 2026-09-30);
 #         5. richiede al builder il context (responsabilita' del dominio
 #            sorgente: sicurezza, scope, lookup);
 #         6. invoca render_service.render_pdf -> bytes (engine WEASYPRINT v1);
@@ -45,17 +48,27 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.parameter_service import ParameterService
-from apps.core.services.payload_helpers import PayloadValidator, map_integrity_error
+from apps.core.services.payload_helpers import (
+    PayloadValidator,
+    map_integrity_error,
+    translate_db_errors,
+)
 from apps.documenti.db.documenti_repository import DocumentiRepository
 from apps.documenti.services._scope import (
     guard_emittente_in_scope,
     guard_user_authenticated,
     resolve_emittente_scope,
 )
-from apps.documenti.services.context_builders.registry import get_builder
-from apps.documenti.services.render_service import render_pdf
-from apps.documenti.services.storage import DocumentStorage, get_storage
+from apps.documenti.services.context_builders.base import DocumentContextBuilder
+from apps.documenti.services.context_builders.registry import get_builder_del_template
+from apps.documenti.services.render_service import RisolviAsset, render_pdf
+from apps.documenti.services.storage import (
+    DocumentStorage,
+    get_storage,
+    leggi_da_storage,
+)
 from apps.documenti.services.template_service import TemplateService
 
 logger = logging.getLogger(__name__)
@@ -66,6 +79,7 @@ E_VALIDATION = "E_DOCUMENTI_VALIDATION"
 E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 E_RENDER_FAILED = "E_DOCUMENTI_RENDER_FAILED"
 E_STORAGE_FAILED = "E_DOCUMENTI_STORAGE_FAILED"
+E_VERSIONE_CONTESTO_NON_VERIFICABILE = "E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE"
 
 # Codice del tipo file usato in v1 (seed `tipi_file_documento` Fase A).
 # Memoria feedback_no_hardcoded_ids: lookup per codice, non ID numerici.
@@ -231,7 +245,6 @@ class DocumentGenerationService:
                     f"emittente_template={template['emittente_fiscale_id']}"
                 ),
             )
-            raise  # unreachable
         if template["sorgente_tipo_id"] != sorgente_tipo_id:
             ErrorManager.raise_error(
                 code=E_VALIDATION,
@@ -241,24 +254,35 @@ class DocumentGenerationService:
                     f"sorgente_tipo_template={template['sorgente_tipo_id']}"
                 ),
             )
-            raise  # unreachable
 
         # 3) carica versione PUBBLICATA attiva
         versione = self._resolve_versione_pubblicata(template["id"])
 
-        # 4+5) risolve builder + costruisce context
+        # 4) risolve il builder e chiede al DB se la versione legge la forma
+        #    dei dati che il builder produce: PRIMA di costruire il contesto e
+        #    di renderizzare, perche' un rifiuto dopo (il trigger sull'INSERT
+        #    della stampa) lascerebbe un PDF da buttare.
+        builder = get_builder_del_template(template)
+        self._guard_versione_contesto(versione, builder)
+
+        # 5) costruisce il context
         context = self._build_context_for_sorgente(
-            user, template, sorgente_id, locale=locale,
+            user, builder, sorgente_id, locale=locale,
         )
 
         # 6) render PDF (fuori transazione: render fail = niente record DB)
-        pdf_bytes = render_pdf(template_versione=versione, context=context)
+        pdf_bytes = render_pdf(
+            template_versione=versione,
+            context=context,
+            risolvi_asset=self._risolutore_asset(
+                emittente_fiscale_id, solo_validi=True,
+            ),
+        )
         if not pdf_bytes:
             ErrorManager.raise_error(
                 code=E_RENDER_FAILED,
                 message="Render ha restituito output PDF vuoto.",
             )
-            raise  # unreachable
 
         # 7) compute hashes + nome_file + progressivo + storage_key.
         #    Il context viene normalizzato JSON-safe una sola volta:
@@ -468,25 +492,32 @@ class DocumentGenerationService:
                 code=E_VALIDATION,
                 message="Template non coerente con l'emittente richiesto.",
             )
-            raise  # unreachable
         if template["sorgente_tipo_id"] != sorgente_tipo_id:
             ErrorManager.raise_error(
                 code=E_VALIDATION,
                 message="Template non coerente con il tipo sorgente richiesto.",
             )
-            raise  # unreachable
 
         versione = self._resolve_versione_pubblicata(template["id"])
+        # Anche l'anteprima: una versione che legge un'altra forma darebbe a
+        # video un documento incompleto, senza nessun errore.
+        builder = get_builder_del_template(template)
+        self._guard_versione_contesto(versione, builder)
         context = self._build_context_for_sorgente(
-            user, template, sorgente_id, locale=locale,
+            user, builder, sorgente_id, locale=locale,
         )
-        pdf_bytes = render_pdf(template_versione=versione, context=context)
+        pdf_bytes = render_pdf(
+            template_versione=versione,
+            context=context,
+            risolvi_asset=self._risolutore_asset(
+                emittente_fiscale_id, solo_validi=True,
+            ),
+        )
         if not pdf_bytes:
             ErrorManager.raise_error(
                 code=E_RENDER_FAILED,
                 message="Render anteprima ha restituito output PDF vuoto.",
             )
-            raise  # unreachable
 
         nome_file = self._format_nome_file(template, context)
         return {
@@ -510,6 +541,9 @@ class DocumentGenerationService:
         sorgente_riga: int | None = None,
         limit: int = 50,
         offset: int = 0,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(sorgente_tipo_id, field="sorgente_tipo_id")
         self._v.guard_non_empty_string(sorgente_uid, field="sorgente_uid")
@@ -525,6 +559,9 @@ class DocumentGenerationService:
             emittente_ids_scope=scope,
             limit=limit,
             offset=offset,
+            search=search,
+            order_by=order_by,
+            order_dir=order_dir,
         )
         return {"results": rows, "total_count": total}
 
@@ -533,7 +570,7 @@ class DocumentGenerationService:
     #         1. guard id + auth + scope;
     #         2. lookup `documenti_generati` (404 unificato no leak);
     #         3. lookup file principale (404 se mai persistito);
-    #         4. read storage tramite `storage.read(build_storage_uri(key))`;
+    #         4. read storage tramite `leggi_da_storage(storage, key)`;
     #         5. emit evento `SCARICATO/OK` in transazione separata
     #            (non bloccare il download se l'INSERT log fallisce: il
     #            file e' la priorita');
@@ -568,17 +605,11 @@ class DocumentGenerationService:
         )
         assert file_row is not None
 
-        storage = self._storage_factory()
-        storage_uri = storage.build_storage_uri(file_row["storage_key"])
-        try:
-            pdf_bytes = storage.read(storage_uri)
-        except Exception:
-            ErrorManager.raise_error(
-                code=E_STORAGE_FAILED,
-                message="Errore lettura file documento dallo storage.",
-                detail=f"documento_id={documento_id}",
-            )
-            raise  # unreachable
+        pdf_bytes = leggi_da_storage(
+            self._storage_factory(), file_row["storage_key"],
+            message="Errore lettura file documento dallo storage.",
+            detail=f"documento_id={documento_id}",
+        )
 
         # Emit evento SCARICATO in tx separata: il download e' la priorita'.
         # Se il log fallisce (es. tx rollback per FK race) il file e' gia'
@@ -698,14 +729,25 @@ class DocumentGenerationService:
         )
         assert isinstance(context, dict)
 
-        # 4) render con gli ingredienti di allora.
-        pdf_bytes = render_pdf(template_versione=versione, context=context)
+        # 4) render con gli ingredienti di allora. Nessun controllo della forma
+        #    dei dati: la coppia versione/contesto l'ha gia' verificata il
+        #    trigger sull'INSERT della stampa, e nessuna delle due e' cambiata.
+        #    Gli asset sono quelli dell'emittente del documento, anche se oggi
+        #    scaduti o disattivati: sono immutabili e non si cancellano, quindi
+        #    il `codice_interno` scritto nella versione indica il file di allora
+        #    (decisione Tid 2026-10-01).
+        pdf_bytes = render_pdf(
+            template_versione=versione,
+            context=context,
+            risolvi_asset=self._risolutore_asset(
+                int(documento["emittente_fiscale_id"]), solo_validi=False,
+            ),
+        )
         if not pdf_bytes:
             ErrorManager.raise_error(
                 code=E_RENDER_FAILED,
                 message="Ristampa fedele ha restituito output PDF vuoto.",
             )
-            raise  # unreachable
 
         # 5) verifica di fedelta'. Il template_hash ricalcolato sulla versione
         #    caricata deve coincidere con quello congelato: se diverge, la
@@ -911,17 +953,11 @@ class DocumentGenerationService:
         )
         assert file_row is not None
 
-        storage = self._storage_factory()
-        storage_uri = storage.build_storage_uri(file_row["storage_key"])
-        try:
-            file_bytes = storage.read(storage_uri)
-        except Exception:
-            ErrorManager.raise_error(
-                code=E_STORAGE_FAILED,
-                message="Errore lettura file documento dallo storage.",
-                detail=f"documento_id={documento_id} file_id={file_id}",
-            )
-            raise  # unreachable
+        file_bytes = leggi_da_storage(
+            self._storage_factory(), file_row["storage_key"],
+            message="Errore lettura file documento dallo storage.",
+            detail=f"documento_id={documento_id} file_id={file_id}",
+        )
 
         try:
             with transaction.atomic():
@@ -1137,27 +1173,39 @@ class DocumentGenerationService:
         assert row is not None
         return row
 
-    # Scopo: Risolve il context_builder via registry e invoca
-    #        `build_context(sorgente_id)`. Se `context_builder_code` del
-    #        template non e' registrato lato backend (whitelist Decisione
-    #        18+74) il registry solleva E_DOCUMENTI_VALIDATION.
+    # Scopo: Il patto versione/forma dei dati, chiesto al DB prima del render
+    #        (R-3 di brief-db-documenti-versione-contesto-template): la
+    #        versione deve leggere `CONTEXT_VERSION` del builder, da cui esce
+    #        anche `_meta.context_version`. La regola e' della funzione DB, qui
+    #        si traduce solo il rifiuto: 409 E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA
+    #        con la frase a catalogo, che nomina versione, template e le due
+    #        forme. Stesso ServiceError anche per il worker della coda di
+    #        stampa, che scrive il motivo sulla riga.
+    def _guard_versione_contesto(
+        self, versione: dict[str, Any], builder: DocumentContextBuilder,
+    ) -> None:
+        with translate_db_errors(
+            context={
+                "template_versione_id": versione["id"],
+                "versione_contesto": builder.CONTEXT_VERSION,
+                "context_code": builder.CODE,
+            },
+            fallback_code=E_VERSIONE_CONTESTO_NON_VERIFICABILE,
+            fallback_message=USER_MESSAGE_FALLBACK[E_VERSIONE_CONTESTO_NON_VERIFICABILE],
+        ):
+            self._repo.guard_versione_contesto(
+                versione["id"], builder.CONTEXT_VERSION,
+            )
+
+    # Scopo: Invoca `build_context(sorgente_id)` sul builder gia' risolto.
     def _build_context_for_sorgente(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
-        template: dict[str, Any],
+        builder: DocumentContextBuilder,
         sorgente_id: int,
         *,
         locale: str,
     ) -> dict[str, Any]:
-        code = template.get("context_builder_code") or ""
-        if not code:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="Template senza context_builder_code configurato.",
-                detail=f"template_id={template['id']}",
-            )
-            raise  # unreachable
-        builder = get_builder(code)
         return builder.build_context(
             sorgente_id,
             auth_user_id=getattr(user, "id", None),
@@ -1187,7 +1235,6 @@ class DocumentGenerationService:
                 ),
                 detail=f"missing={exc!r}",
             )
-            raise  # unreachable
 
     # Scopo: Titolo applicativo del documento generato. v1: descrizione
     #        del template (sempre valorizzata) come fallback codice.
@@ -1204,6 +1251,64 @@ class DocumentGenerationService:
     # Scopo: SHA256 hex su bytes.
     def _sha256_bytes(self, data: bytes) -> str:
         return hashlib.sha256(data).hexdigest()
+
+    # Scopo: Il risolutore degli asset di UN render (contratto `RisolviAsset`
+    #        di `render_service`): `asset:<codice_interno>` -> (contenuto,
+    #        mime_type), letto dallo storage dentro il perimetro di UN
+    #        emittente, quello del template. Nessun livello globale e nessun
+    #        ripiego (§4.3 del brief, Tid 2026-10-01): un asset che non c'e' e'
+    #        E_DOCUMENTI_RENDER_FAILED, perche' un logo generico al suo posto
+    #        darebbe un PDF sbagliato senza errore.
+    #        ⭐ Si crea per render (factory): la cache dei file letti e' stato,
+    #        e non si condivide fra due render.
+    #        ⚠️ L'impronta del file letto si confronta con `sha256` della riga:
+    #        la riga e' immutabile a DB, il file sul disco no, e la ristampa
+    #        fedele si regge proprio su "stesso codice_interno, stessi byte".
+    def _risolutore_asset(
+        self, emittente_fiscale_id: int, *, solo_validi: bool,
+    ) -> RisolviAsset:
+        letti: dict[str, tuple[bytes, str]] = {}
+
+        def risolvi(codice_interno: str) -> tuple[bytes, str]:
+            if codice_interno in letti:
+                return letti[codice_interno]
+            asset = self._repo.get_asset_per_render(
+                emittente_fiscale_id, codice_interno, solo_validi=solo_validi,
+            )
+            ErrorManager.require(
+                asset is not None,
+                code=E_RENDER_FAILED,
+                message=(
+                    "Il template richiama un asset che l'emittente non ha"
+                    + (" attivo e valido oggi." if solo_validi else ".")
+                ),
+                detail=(
+                    f"asset:{codice_interno} "
+                    f"emittente_fiscale_id={emittente_fiscale_id}"
+                ),
+            )
+            assert asset is not None
+            # ⚠️ Un errore di IO va tradotto QUI (`leggi_da_storage`): dal
+            #    fetcher di WeasyPrint un'eccezione qualunque uscirebbe come
+            #    «risorsa non ammessa», e si cercherebbe l'errore nel template.
+            contenuto = leggi_da_storage(
+                self._storage_factory(), asset["storage_key"],
+                message="Errore lettura asset documentale dallo storage.",
+                detail=f"asset_id={asset['id']} asset:{codice_interno}",
+            )
+            ErrorManager.require(
+                self._sha256_bytes(contenuto) == asset["sha256"],
+                code=E_STORAGE_FAILED,
+                message=(
+                    "Il file dell'asset sullo storage non corrisponde "
+                    "all'impronta registrata."
+                ),
+                detail=f"asset_id={asset['id']} asset:{codice_interno}",
+            )
+            letti[codice_interno] = (contenuto, asset["mime_type"])
+            return letti[codice_interno]
+
+        return risolvi
 
     # Scopo: Serializzazione JSON canonica del context (sort_keys + default=str
     #        per oggetti non-serializzabili come Decimal/date). Il risultato
@@ -1268,7 +1373,6 @@ class DocumentGenerationService:
                     message="Allegato vuoto o non leggibile.",
                     detail=f"allegato_index={idx} file_name={name!r}",
                 )
-                raise  # unreachable
             if mime not in _MIME_WHITELIST_ALLEGATO:
                 ErrorManager.raise_error(
                     code=E_VALIDATION,
@@ -1278,7 +1382,6 @@ class DocumentGenerationService:
                     ),
                     detail=f"allegato_index={idx} mime={mime!r}",
                 )
-                raise  # unreachable
             size = len(file_bytes)
             if size > max_bytes:
                 ErrorManager.raise_error(
@@ -1286,7 +1389,6 @@ class DocumentGenerationService:
                     message=f"Allegato troppo grande. Limite: {max_mb} MB.",
                     detail=f"allegato_index={idx} size_bytes={size} max_bytes={max_bytes}",
                 )
-                raise  # unreachable
             file_bytes_immutable = bytes(file_bytes)
             sha = self._sha256_bytes(file_bytes_immutable)
             ext = self._resolve_extension_allegato(name, mime)

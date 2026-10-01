@@ -14,15 +14,19 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from django.contrib.auth.hashers import make_password
-from django.db import DatabaseError
+from django.db import DatabaseError, transaction
 
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.parameter_service import ParameterService
+from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
+from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.amm_software.constants import DEFAULT_SESSO
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
+from apps.amm_software.types import CredenzialePerEmailRow
 
 E_AMM_VALIDAZIONE = "E_AMM_VALIDAZIONE"
 E_AMM_NOT_FOUND = "E_AMM_OPERATORE_NOT_FOUND"
@@ -88,29 +92,6 @@ _EMITTENTE_FORM_DEFAULTS_CODES: tuple[str, ...] = (
 # quando la fonte diventera' DB-driven.
 _EMITTENTE_NON_EDITABLE_FIELDS: tuple[str, ...] = ("codice", "soggetto_id")
 
-# Fase 5 — Lookup statico stati email log.
-# Single source of truth lato Python: l'enum e' un set chiuso (PENDING, SENT,
-# FAILED, RETRY) gestito dal `EmailDispatchService`/log writer, non c'e' una
-# tabella DB di config. Pattern simmetrico ai rounding modes Fase 3.
-# Ordering "default-first": SENT come stato finale piu' frequente.
-_EMAIL_LOG_STATI_VALIDI: frozenset[str] = frozenset(
-    {"SENT", "PENDING", "RETRY", "FAILED", "SIMULATA"}
-)
-
-_EMAIL_LOG_STATI_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
-    ("SENT",    "Inviata",                                  1),
-    ("PENDING", "In attesa di invio",                       2),
-    ("RETRY",   "Tentativo successivo programmato",         3),
-    ("FAILED",  "Invio fallito",                            4),
-    # ⭐ `SIMULATA` (2026-09-11): la mail e' stata STAMPATA a video invece che
-    #    spedita — sviluppo senza SMTP. E' terminale e VOLUTA, e per questo non
-    #    e' `FAILED`; e non e' `SENT` perche' non e' arrivata a nessuno.
-    #    ⚠️ La frase dice l'esito, non il canale: chi legge il giornale chiede
-    #    «e' arrivata?», non «da quale strada e' uscita» (brief §7.1).
-    ("SIMULATA", "Simulata — non spedita",                   5),
-)
-
-
 # Scopo: Cast best-effort di un valore parameter (sempre str per BE) a bool.
 # `'true'`/`'false'` case-insensitive -> bool. Altro (None, '', stringhe non
 # parsabili) -> False (default-safe per `bollo_auto`: il form parte con flag
@@ -150,7 +131,7 @@ def _run_or_raise_super_admin_guard(repo_call: Callable[[], None]) -> None:
         if _E_PROFILO_ULTIMO_SUPER_ADMIN in msg:
             raise ServiceError(
                 code=_E_PROFILO_ULTIMO_SUPER_ADMIN,
-                message="Impossibile rimuovere l'ultimo super admin attivo.",
+                message=ErrorPolicyRegistry.resolve(_E_PROFILO_ULTIMO_SUPER_ADMIN).user_message,
                 detail=msg,
             ) from exc
         # Fase 5: il refactor DB di Fase 2 ha sostituito `RAISE EXCEPTION 22023`
@@ -181,28 +162,43 @@ class AmmSoftwareService:
     # Scopo: Crea operatore completo. Due flussi:
     # Flusso A (soggetto_id assente): crea soggetto PF nuovo — cognome/nome/CF obbligatori.
     # Flusso B (soggetto_id presente): associa soggetto esistente — dati persona non richiesti.
-    # In entrambi: username, email, password, qualifica obbligatori.
-    # Contract pubblico Fase 7 multi-face: `is_super_admin?: bool` (default
-    # false). L'operatore viene sempre creato con `attivo=true` (la
-    # disabilitazione e' un comando dedicato).
+    # In entrambi: username, email, qualifica obbligatori.
+    # Contract pubblico Fase 7 multi-face: `is_super_admin?: bool` (default false).
+    # ⛔ Regola unica dell'invito (L-3, analisi §4.2): la veste OPERATORE nasce
+    # SPENTA e la accende l'attivazione dell'invito; la password non la
+    # sceglie l'admin — una credenziale nuova nasce col segnaposto non
+    # utilizzabile e la persona la sceglie attivando. Se l'email e' gia' di
+    # una credenziale (D-6) la si riusa: la risposta lo dice
+    # (`credenziale_riusata`, `username` effettivo) perche' il pannello lo
+    # mostri all'admin. ⛔ Il riuso vuole il consenso (`20260925-51`): la
+    # prima chiamata va SENZA `riusa_auth_user_id`; sul 409
+    # `E_CREDENZIALE_DA_CONFERMARE` il pannello mostra la credenziale trovata e,
+    # confermato, rimanda con il suo id. Il service non lo deduce: lo passa.
     def create_operatore(self, payload: dict) -> dict[str, Any]:
         ErrorManager.require(
             "ruolo_sistema" not in payload,
             code=E_AMM_VALIDAZIONE,
             message="Campo 'ruolo_sistema' non ammesso: usa is_super_admin.",
         )
+        # Rifiuto esplicito, non silenzio: un client che la manda ancora
+        # crederebbe che valga.
+        ErrorManager.require(
+            "password" not in payload,
+            code=E_AMM_VALIDAZIONE,
+            message="Campo 'password' non ammesso: la sceglie l'operatore attivando l'invito.",
+            context={"field": "password"},
+        )
         soggetto_id = (payload.get("soggetto_id") or "").strip() or None
         username = (payload.get("username") or "").strip()
         email = (payload.get("email") or "").strip()
-        password = payload.get("password") or ""
         raw_qualifica = payload.get("qualifica_id")
 
         # Guard UUID soggetto_id (flusso B)
         if soggetto_id:
             try:
                 uuid_mod.UUID(soggetto_id)
-            except (ValueError, AttributeError):
-                ErrorManager.require(False, code=E_AMM_VALIDAZIONE, message="UUID soggetto non valido.")
+            except (ValueError, AttributeError) as exc:
+                ErrorManager.raise_error(code=E_AMM_VALIDAZIONE, message="UUID soggetto non valido.", context={"field": "soggetto_id"}, cause=exc)
 
         # Guard qualifica_id numerico
         try:
@@ -211,10 +207,9 @@ class AmmSoftwareService:
             qualifica_id = None
 
         # Validazione comune (entrambi i flussi)
-        ErrorManager.require(bool(username), code=E_AMM_VALIDAZIONE, message="Username obbligatorio.")
-        ErrorManager.require(bool(email), code=E_AMM_VALIDAZIONE, message="Email obbligatoria.")
-        ErrorManager.require(bool(password), code=E_AMM_VALIDAZIONE, message="Password obbligatoria.")
-        ErrorManager.require(qualifica_id is not None and qualifica_id > 0, code=E_AMM_VALIDAZIONE, message="Qualifica obbligatoria.")
+        ErrorManager.require(bool(username), code=E_AMM_VALIDAZIONE, message="Username obbligatorio.", context={"field": "username"})
+        ErrorManager.require(bool(email), code=E_AMM_VALIDAZIONE, message="Email obbligatoria.", context={"field": "email"})
+        ErrorManager.require(qualifica_id is not None and qualifica_id > 0, code=E_AMM_VALIDAZIONE, message="Qualifica obbligatoria.", context={"field": "qualifica_id"})
 
         # Validazione flusso A: dati persona obbligatori solo se soggetto nuovo
         cognome = (payload.get("cognome") or "").strip()
@@ -222,9 +217,9 @@ class AmmSoftwareService:
         codice_fiscale = (payload.get("codice_fiscale") or "").strip()
 
         if not soggetto_id:
-            ErrorManager.require(bool(cognome), code=E_AMM_VALIDAZIONE, message="Cognome obbligatorio per soggetto nuovo.")
-            ErrorManager.require(bool(nome), code=E_AMM_VALIDAZIONE, message="Nome obbligatorio per soggetto nuovo.")
-            ErrorManager.require(bool(codice_fiscale), code=E_AMM_VALIDAZIONE, message="Codice fiscale obbligatorio per soggetto nuovo.")
+            ErrorManager.require(bool(cognome), code=E_AMM_VALIDAZIONE, message="Cognome obbligatorio per soggetto nuovo.", context={"field": "cognome"})
+            ErrorManager.require(bool(nome), code=E_AMM_VALIDAZIONE, message="Nome obbligatorio per soggetto nuovo.", context={"field": "nome"})
+            ErrorManager.require(bool(codice_fiscale), code=E_AMM_VALIDAZIONE, message="Codice fiscale obbligatorio per soggetto nuovo.", context={"field": "codice_fiscale"})
 
         # Contract Fase 7: il caller passa `is_super_admin` (default False).
         # Il caller non puo' creare DISABILITATI via questo endpoint: la
@@ -232,27 +227,29 @@ class AmmSoftwareService:
         # l'enum legacy della fn DB e' incapsulata nel repository.
         is_super_admin = bool(payload.get("is_super_admin"))
 
-        auth_user_id = self._repo.crea_operatore(
+        creato = self._repo.crea_operatore(
             soggetto_id=soggetto_id,
             cognome=cognome or None,
             nome=nome or None,
             codice_fiscale=codice_fiscale or None,
             username=username,
             email=email,
-            password_hash=make_password(password),
+            # Segnaposto non utilizzabile: la password la sceglie la persona.
+            password_hash=make_password(None),
             qualifica_id=qualifica_id,  # type: ignore[arg-type]
             unita_organizzativa_id=int(payload["unita_organizzativa_id"]) if payload.get("unita_organizzativa_id") else None,
             data_nascita=payload.get("data_nascita"),
             sesso=payload.get("sesso", DEFAULT_SESSO),
             is_super_admin=is_super_admin,
-            attivo=True,
             valido_dal=payload.get("valido_dal"),
             valido_al=payload.get("valido_al"),
             comune_nascita_id=optional_int(payload, "comune_nascita_id"),
             indirizzo_resid_dettaglio_id=optional_int(payload, "indirizzo_resid_dettaglio_id"),
             indirizzo_domfisc_dettaglio_id=optional_int(payload, "indirizzo_domfisc_dettaglio_id"),
+            riusa_auth_user_id=optional_int(payload, "riusa_auth_user_id"),
         )
-        return self._repo.get_operatore_detail(auth_user_id) or {}
+        dettaglio = self._repo.get_operatore_detail(creato["auth_user_id"]) or {}
+        return {**dettaglio, "credenziale_riusata": creato["credenziale_riusata"]}
 
     # Scopo: Dettaglio operatore con validazione esistenza.
     def get_operatore(self, auth_user_id: int) -> dict[str, Any]:
@@ -300,18 +297,36 @@ class AmmSoftwareService:
     # `E_PROFILO_ULTIMO_SUPER_ADMIN`.
     def disabilita_operatore(self, auth_user_id: int) -> dict[str, Any]:
         operatore = self.get_operatore(auth_user_id)
+        # ⛔ `disable_reason` e' un CODICE (`ULTIMO_SUPER_ADMIN`, §16 del
+        #    brief blocco-login), non una spiegazione: non si ricopia nel
+        #    `detail`. Viaggia nel contesto, per il log. Il messaggio e'
+        #    quello del catalogo, come nella traduzione del trigger: preview e
+        #    autorita' dicono la stessa frase.
         if operatore.get("can_disable") is False:
             raise ServiceError(
                 code=_E_PROFILO_ULTIMO_SUPER_ADMIN,
-                message="Impossibile rimuovere l'ultimo super admin attivo.",
-                detail=operatore.get("disable_reason")
-                or "Deve esistere almeno un super admin attivo nel sistema.",
+                message=ErrorPolicyRegistry.resolve(_E_PROFILO_ULTIMO_SUPER_ADMIN).user_message,
+                detail="Deve esistere almeno un super admin attivo nel sistema.",
+                context={
+                    "auth_user_id": auth_user_id,
+                    "reason": operatore.get("disable_reason"),
+                },
             )
-        _run_or_raise_super_admin_guard(
-            lambda: self._repo.disabilita_operatore(auth_user_id)
-        )
-        invalidate_user(auth_user_id)
-        _blacklist_user_tokens(auth_user_id)
+        # ⛔ Disattivazione e revoca delle sessioni in UNA transazione
+        #    (2026-09-26): la disattivazione prima committava da sola, e una
+        #    revoca fallita dopo lasciava l'operatore disattivato con le
+        #    sessioni vive — il contrario di cio' che questo commento
+        #    prometteva. Ora una revoca fallita PROPAGA e annulla anche la
+        #    disattivazione: l'amministratore riprova su uno stato intero.
+        # ⚠️ La cache dei permessi si invalida a COMMIT avvenuto: invalidata
+        #    prima, una richiesta concorrente la ricaricherebbe dallo stato
+        #    ancora attivo.
+        with transaction.atomic():
+            _run_or_raise_super_admin_guard(
+                lambda: self._repo.disabilita_operatore(auth_user_id)
+            )
+            blocca_token_sessioni(auth_user_id)
+            transaction.on_commit(lambda: invalidate_user(auth_user_id))
         return self._repo.get_operatore_detail(auth_user_id) or {}
 
     # Scopo: Riattiva operatore disabilitato, invalida cache.
@@ -392,6 +407,13 @@ class AmmSoftwareService:
         # ritorna jsonb ma non lo proiettiamo: single source of truth = fn_get).
         return self._repo.get_user_emittenti_scope(auth_user_id) or {}
 
+    # Scopo: La credenziale di un'email (username e vesti) per il dialog di
+    #        conferma del riuso: il pannello la mostra sul 409
+    #        E_CREDENZIALE_DA_CONFERMARE e, confermato, rimanda la creazione
+    #        con il suo `auth_user_id`. None = l'email non ha credenziale.
+    def get_credenziale_per_email(self, email: str | None) -> CredenzialePerEmailRow | None:
+        return self._repo.get_credenziale_per_email(email)
+
     # Scopo: Lista operatori con filtri.
     def list_operatori(self, **params) -> tuple[list, int]:
         return self._repo.list_operatori(**params)
@@ -408,8 +430,13 @@ class AmmSoftwareService:
     #        Valida che ogni app_label+model_name esista nel catalogo
     #        area_model_overrides E sia override-abile (capability `can_override`
     #        — Fase 8). I model riservati al kernel permessi sono rifiutati
-    #        anche se registrati in catalogo (defense-in-depth: il FE filtra
-    #        gia' le opzioni, ma una request crafted bypassa il dropdown).
+    #        anche se registrati in catalogo.
+    # ⭐ Il controllo qui serve al MESSAGGIO (nomina l'oggetto e il perche');
+    #    il rifiuto vero e' del DB, la FK composita
+    #    `fk_user_override_oggetti_catalogo` (D-4, `20260928-02`), che vale
+    #    anche per una scrittura che non passa da qui. Se il catalogo cambia fra
+    #    la lettura e la scrittura, la FK risponde col suo 23503: tradotto nello
+    #    stesso `E_AMM_VALIDAZIONE`, non un 500.
     def put_override_oggetti(self, auth_user_id: int, items: list) -> list:
         if items:
             catalog = self._repo.list_model_overrides()
@@ -423,15 +450,26 @@ class AmmSoftwareService:
                 key = (item.get("app_label"), item.get("model_name"))
                 ErrorManager.require(
                     key[0] and key[1] and key in registered,
-                    code="E_AMM_VALIDAZIONE",
+                    code=E_AMM_VALIDAZIONE,
                     message=f"Model {key[0]}.{key[1]} non registrato nel catalogo override.",
                 )
                 ErrorManager.require(
                     key in overridable,
-                    code="E_AMM_VALIDAZIONE",
+                    code=E_AMM_VALIDAZIONE,
                     message=f"Model {key[0]}.{key[1]} riservato: override non ammesso.",
                 )
-        self._repo.put_override_oggetti(auth_user_id, items)
+        with translate_db_errors(
+            context={"op": "amm_software.put_override_oggetti"},
+            fallback_code=E_AMM_VALIDAZIONE,
+            fallback_message="Override oggetti non salvati.",
+            fk_constraints={
+                "fk_user_override_oggetti_catalogo": (
+                    E_AMM_VALIDAZIONE,
+                    "Oggetto non a catalogo o riservato: override non ammesso.",
+                ),
+            },
+        ):
+            self._repo.put_override_oggetti(auth_user_id, items)
         invalidate_user(auth_user_id)
         return self._repo.get_override_oggetti(auth_user_id)
 
@@ -463,9 +501,9 @@ class AmmSoftwareService:
             "change_scope_reason": row.get("change_scope_reason"),
         }
 
-    # Scopo: Lista reparti.
-    def list_reparti(self) -> list:
-        return self._repo.list_reparti()
+    # Scopo: Lista paginata dei reparti (`amm.reparti`): (righe, totale).
+    def list_reparti(self, **params) -> tuple[list, int]:
+        return self._repo.list_reparti(**params)
 
     # Scopo: Profilo reparto.
     def get_profilo_reparto(self, uo_id: int) -> dict:
@@ -634,31 +672,4 @@ class AmmSoftwareService:
         assert result is not None
         return result
 
-    # Scopo: Lookup statico stati email log (Fase 5).
-    #        Single source of truth in `_EMAIL_LOG_STATI_DESCRIZIONI`. Niente
-    #        DB: enum chiuso (5 valori, `SIMULATA` dal 2026-09-11) gestito dal
-    #        log writer. Pattern simmetrico ai rounding modes Fase 3.
-    # ⚠️ La lista NON viene ordinata: esce nell'ordine in cui la tupla e'
-    #    dichiarata, ed e' `test_list_email_log_stati_ok` a pretendere che
-    #    quell'ordine coincida col campo `ordering`.
-    def list_email_log_stati(self) -> list[dict[str, object]]:
-        return [
-            {"codice": codice, "descrizione": descrizione, "ordering": ordering}
-            for codice, descrizione, ordering in _EMAIL_LOG_STATI_DESCRIZIONI
-        ]
 
-
-# Scopo: Invalida token JWT operatore via blacklist SimpleJWT (best-effort).
-def _blacklist_user_tokens(auth_user_id: int) -> None:
-    try:
-        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
-        tokens = OutstandingToken.objects.filter(user_id=auth_user_id)
-        for token in tokens:
-            try:
-                from rest_framework_simplejwt.tokens import RefreshToken
-                rt = RefreshToken(token.token)
-                rt.blacklist()
-            except Exception:
-                pass
-    except ImportError:
-        pass

@@ -4,9 +4,10 @@
 // Doc: JavaScript
 // Scopo: Client API del dominio MAGAZZINO — le rotte di `/api/v1/magazzino/`:
 //        il documento interno (inventari e rettifiche, STESSA forma sotto due
-//        segmenti), l'anteprima dei motivi di riga, i tre lookup di riga e la
-//        consultazione (disponibilita', movimenti).
-// Note: Piano: docs/it/dev/work-in-progress/piano-be-fe-magazzino-lotto-2-motore.md
+//        segmenti), l'anteprima dei motivi di riga, i tre lookup di riga, le
+//        tre ANAGRAFICHE (magazzini, ubicazioni, lotti) e la consultazione
+//        (disponibilita', movimenti).
+// Note: Piano: docs/it/dev/work-done/piano-be-fe-magazzino-lotto-2-motore.md
 //       ⭐ Le rotte del documento interno prendono la FAMIGLIA come primo
 //       argomento (`'inventari'` | `'rettifiche'`, da `FAMIGLIA` di
 //       `vocabolari.js`): il backend le monta da una sola factory sotto
@@ -40,8 +41,9 @@ function base(famiglia) {
 // ══════════════════════════════════════════════════════════════
 
 // Elenco paginato delle testate. Filtri: `magazzino_id`, `stato`, `data_da`/
-// `data_a` (il floor standard lo applica lo store), `search` (min 3, su
-// descrizione e magazzino). Senza ordinamento: `data DESC, id DESC`.
+// `data_a` (il floor standard lo applica lo store), `search` (min 3, sotto:
+// 400; le colonne le accende il catalogo della lista). Senza ordinamento:
+// `data DESC, id DESC`.
 export function listDocumenti(famiglia, params = {}) {
   return api.get(`${base(famiglia)}/`, { params })
 }
@@ -63,9 +65,13 @@ export function creaDocumento(famiglia, payload) {
 }
 
 // Dettaglio: testata + magazzino (`magazzino_codice`, `_descrizione`,
-// `magazzino_usa_ubicazioni`) + `righe_count` + `stato_info_key` e, per
-// l'inventario, `piano_riepilogo`. ⏳ R-1: `capabilities` arrivera' da
-// `fn_available_actions_*`; finche' non c'e', la chiave MANCA — non si finge.
+// `magazzino_usa_ubicazioni`) + `righe_count` e, per l'inventario,
+// `piano_riepilogo`. ⭐ E le `capabilities` (R-1, dal 2026-09-23; la nota di
+// stato sta SOLO li'): `available_actions[]` (le transizioni che il guard ammette),
+// `can_registra` + `_reason` + `_reason_key`, `can_edit_testata`/`_righe`,
+// `can_delete`, `stato_info_key`. Il blob viene da
+// `script.fn_available_actions_<famiglia>` e il backend lo trasporta intatto:
+// il drawer ci disegna la barra senza sapere le regole che ci stanno dietro.
 export function getDocumento(famiglia, docId) {
   return api.get(`${base(famiglia)}/${docId}/`)
 }
@@ -103,6 +109,9 @@ export function registraDocumento(famiglia, docId) {
 // ══════════════════════════════════════════════════════════════
 
 // Le righe di UNA testata, paginate (lista `magazzino.<famiglia>_righe`).
+// Filtro `search` (colonne dal catalogo; sotto 3 caratteri non filtra): la
+// casella sta nel `#filtri-sempre` del drawer del documento e compare solo se
+// il catalogo accende almeno una colonna (`ricerca_full`).
 // Senza ordinamento: `id ASC`, l'ordine di digitazione.
 export function listRighe(famiglia, docId, params = {}) {
   return api.get(`${base(famiglia)}/${docId}/righe/`, { params })
@@ -185,7 +194,8 @@ export function lookupAssets(articoloId, magazzinoId) {
 // La disponibilita' per (articolo, magazzino) — `vw_disponibilita`, lista
 // `magazzino.disponibilita`. Filtri: `magazzino_id`, `articolo_id`,
 // `solo_negativa` (disponibile < 0: le promesse non piu' mantenibili, D-L2-d),
-// `solo_con_giacenza`, `search` (min 3, su codice e descrizione articolo).
+// `solo_con_giacenza`, `search` (min 3, sotto: 400; le colonne le accende il
+// catalogo della lista).
 // ⚠️ La vista e' `security_invoker`: si legge con la connessione dell'utente.
 export function listDisponibilita(params = {}) {
   return api.get(`${BASE}/disponibilita/`, { params })
@@ -217,7 +227,9 @@ export function listBlocchi(articoloId, magazzinoId) {
 // costruzione. Filtri: `magazzino_id`, `articolo_id`, `causale_id`, `data_da`/
 // `data_a` (su `data_mov`), `sorgente_tipo` (`config.sorgenti.codice_interno`),
 // e i due deep-link dal documento POSTED: `inventario_id` / `rettifica_id`
-// (i movimenti nati dalle righe di QUEL documento). Senza ordinamento:
+// (i movimenti nati dalle righe di QUEL documento), `search` (colonne dal
+// catalogo; sotto 3 caratteri non filtra — la casella compare solo se il
+// catalogo accende almeno una colonna, `ricerca_full`). Senza ordinamento:
 // `data_mov DESC, id DESC`.
 export function listMovimenti(params = {}) {
   return api.get(`${BASE}/movimenti/`, { params })
@@ -225,4 +237,97 @@ export function listMovimenti(params = {}) {
 
 export function exportMovimenti(params = {}) {
   return api.get(`${BASE}/movimenti/export/`, { params, responseType: 'blob' })
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  Le anagrafiche: magazzini, ubicazioni (figlie), lotti (dell'articolo)
+//  Piano: piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config §4-6.
+//  ⚠️ Nessuna azione di dominio: disattivare e' un PATCH `{attivo: false}`,
+//  e il DB decide (`block_deact`).
+// ══════════════════════════════════════════════════════════════
+
+// I magazzini del perimetro — lista `magazzino.magazzini`. Filtri: `search`
+// (min 3, sotto: 400; colonne dal catalogo), `attivo` (assente = tutti). Senza ordinamento:
+// `codice`.
+export function listMagazzini(params = {}) {
+  return api.get(`${BASE}/magazzini/`, { params })
+}
+
+export function exportMagazzini(params = {}) {
+  return api.get(`${BASE}/magazzini/export/`, { params, responseType: 'blob' })
+}
+
+// Dettaglio: la riga della lista (emittente e indirizzo decodificati,
+// `ubicazioni_count`).
+export function getMagazzino(magazzinoId) {
+  return api.get(`${BASE}/magazzini/${magazzinoId}/`)
+}
+
+// ⭐ Crea: `codice`, `descrizione`, `indirizzo_dettaglio_id` (obbligatori),
+//    `usa_ubicazioni`, `predefinito`. ⛔ NON `emittente_fiscale_id`: lo mette il
+//    DB dall'emittente della sessione.
+export function creaMagazzino(payload) {
+  return api.post(`${BASE}/magazzini/`, payload, idem())
+}
+
+// PATCH per DELTA: solo le chiavi che cambiano — il lock su `codice` scatta
+// solo se il codice viaggia, il guard su `usa_ubicazioni` solo se lo si tocca.
+export function aggiornaMagazzino(magazzinoId, payload) {
+  return api.patch(`${BASE}/magazzini/${magazzinoId}/`, payload)
+}
+
+// Le ubicazioni di UN magazzino — lista `magazzino.ubicazioni`. Filtri:
+// `search` (min 3, sotto: 400; colonne dal catalogo), `attivo`, `parent_id`.
+// Senza ordinamento: `codice`.
+export function listUbicazioni(magazzinoId, params = {}) {
+  return api.get(`${BASE}/magazzini/${magazzinoId}/ubicazioni/`, { params })
+}
+
+export function exportUbicazioni(magazzinoId, params = {}) {
+  return api.get(`${BASE}/magazzini/${magazzinoId}/ubicazioni/export/`, { params, responseType: 'blob' })
+}
+
+export function getUbicazione(magazzinoId, ubicazioneId) {
+  return api.get(`${BASE}/magazzini/${magazzinoId}/ubicazioni/${ubicazioneId}/`)
+}
+
+// Crea nel magazzino del path: `codice`, `tipo_id` (obbligatori), `parent_id`
+// (dello stesso magazzino, senza cicli: lo decide il DB), `descrizione`,
+// `area`/`corsia`/`scaffale`/`piano`/`posizione`.
+export function creaUbicazione(magazzinoId, payload) {
+  return api.post(`${BASE}/magazzini/${magazzinoId}/ubicazioni/`, payload, idem())
+}
+
+// PATCH per delta. ⛔ Non `magazzino_id`: un'ubicazione nasce nel suo magazzino.
+export function aggiornaUbicazione(magazzinoId, ubicazioneId, payload) {
+  return api.patch(`${BASE}/magazzini/${magazzinoId}/ubicazioni/${ubicazioneId}/`, payload)
+}
+
+// I lotti di UN articolo — lista `magazzino.lotti`. `articolo_id` OBBLIGATORIO
+// (uuid): un elenco di tutti i lotti di tutti gli articoli non e' una domanda
+// di nessuno. Filtri: `search` (min 3, sotto: 400; colonne dal catalogo),
+// `attivo`. Senza ordinamento:
+// `data_arrivo DESC`.
+export function listLotti(params = {}) {
+  return api.get(`${BASE}/lotti/`, { params })
+}
+
+export function exportLotti(params = {}) {
+  return api.get(`${BASE}/lotti/export/`, { params, responseType: 'blob' })
+}
+
+export function getLotto(lottoId) {
+  return api.get(`${BASE}/lotti/${lottoId}/`)
+}
+
+// Crea: `articolo_id`, `codice`, `data_arrivo` (obbligatori), `data_scadenza`
+// (>= arrivo: lo dice il CHECK, il BE traduce).
+export function creaLotto(payload) {
+  return api.post(`${BASE}/lotti/`, payload, idem())
+}
+
+// PATCH per delta. ⛔ Non `articolo_id`: un lotto nasce del suo articolo.
+export function aggiornaLotto(lottoId, payload) {
+  return api.patch(`${BASE}/lotti/${lottoId}/`, payload)
 }

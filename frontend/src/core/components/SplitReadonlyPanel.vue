@@ -9,8 +9,10 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '../../stores/tabs'
 import { READONLY_KEY, BLOCKED_KEY } from '../composables/useReadonlyMode'
+import { resolveTabDisplayLabel } from '../navigation'
+import { MANAGE_ICONS } from '../constants'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const router = useRouter()
 const tabs = useTabsStore()
 
@@ -28,6 +30,10 @@ const pinnedComponent = computed(() => {
   return match?.components?.default || null
 })
 
+// Etichetta ricalcolata come nella barra delle tab: la `label` salvata puo'
+// essere la chiave i18n grezza (tab aperta prima del caricamento dei messaggi).
+const pinnedLabel = computed(() => resolveTabDisplayLabel(tabs.pinnedTab, t, te))
+
 function handleSwap() {
   tabs.swapPanels()
   if (tabs.activeTab) router.push(tabs.activeTab.path)
@@ -39,7 +45,7 @@ function handleSwap() {
     <!-- Header pannello secondario -->
     <div class="split-panel-header">
       <i v-if="tabs.pinnedTab?.icon" :class="tabs.pinnedTab.icon" class="split-panel-icon"></i>
-      <span class="split-panel-label">{{ tabs.pinnedTab?.label }}</span>
+      <span class="split-panel-label">{{ pinnedLabel }}</span>
       <span class="split-readonly-badge">{{ t('tabs.split_readonly') }}</span>
       <div class="split-panel-actions">
         <button
@@ -47,14 +53,14 @@ function handleSwap() {
           @click="handleSwap"
           v-tooltip.top="t('tabs.split_swap')"
         >
-          <i class="pi pi-arrows-h"></i>
+          <i :class="MANAGE_ICONS.SCAMBIA"></i>
         </button>
         <button
           class="split-panel-btn"
           @click="tabs.closeSplit()"
           v-tooltip.top="t('tabs.split_close')"
         >
-          <i class="pi pi-times"></i>
+          <i :class="MANAGE_ICONS.CANCEL"></i>
         </button>
       </div>
     </div>
@@ -104,8 +110,8 @@ function handleSwap() {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  background: color-mix(in srgb, var(--p-orange-400) 15%, transparent);
-  color: var(--p-orange-500);
+  background: color-mix(in srgb, var(--app-split-color) 15%, transparent);
+  color: var(--app-split-color);
   padding: 0.15rem 0.45rem;
   border-radius: 3px;
   white-space: nowrap;

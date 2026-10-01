@@ -12,12 +12,18 @@ from datetime import datetime, timezone
 from typing import Any
 
 from django.http import JsonResponse
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers
+
+from apps.core.api.schema_da_contratto import schema_da_contratto
+from apps.core.api.schema_email import TIPI_EMAIL
 from rest_framework.request import Request
 
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     optional_int,
     paginated_envelope,
     parse_list_params,
@@ -27,10 +33,58 @@ from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_service import EmailDispatchService, smtp_non_configurato
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.html_sanitizer_service import sanitize_email_html
+from apps.core.services.payload_helpers import PayloadValidator
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 
 E_EMAIL_ADMIN = "E_EMAIL_ADMIN"
+
+# Chiavi ammesse nella PATCH di un account email: il contratto dell'operatore.
+# `smtp_password` e' la password IN CHIARO (la cifra il repository); `meta`
+# (esito dell'ultimo test) la scrive solo l'endpoint di test.
+_ACCOUNT_PATCH_KEYS: frozenset[str] = frozenset({
+    "codice", "descrizione", "smtp_host", "smtp_port", "smtp_use_tls",
+    "smtp_use_ssl", "smtp_username", "smtp_password", "email_from",
+    "email_reply_to", "unita_organizzativa_id", "attivo",
+})
+
+# Le chiavi che la PATCH di un template email sa scrivere (2026-09-26, stessa
+# regola dell'account): una chiave fuori lista e' un 400, non uno scarto.
+_TEMPLATE_PATCH_KEYS: frozenset[str] = frozenset({
+    "codice", "oggetto", "corpo_html", "corpo_testo", "lingua", "attivo",
+    "unita_organizzativa_id", "tipo_prestazione_id", "variabili_disponibili",
+})
+
+# In CREAZIONE le chiavi sono le stesse della PATCH (i gestori leggono
+# esattamente quelle), e fuori contratto e' un 400 come nella PATCH.
+# ⭐ Dichiarato il 2026-09-26: prima la creazione leggeva le chiavi una per una
+#    e ignorava in silenzio le altre, mentre la PATCH accanto le rifiutava.
+_ACCOUNT_CREATE_KEYS: frozenset[str] = _ACCOUNT_PATCH_KEYS
+_TEMPLATE_CREATE_KEYS: frozenset[str] = _TEMPLATE_PATCH_KEYS
+
+# ── Schemi OpenAPI dei corpi: le chiavi dal contratto ────────────────────
+_ACCOUNT_CREATE_REQUEST = schema_da_contratto(
+    "AmmEmailAccountCreateReq", _ACCOUNT_CREATE_KEYS, tipi=TIPI_EMAIL,
+    obbligatorie=("codice", "descrizione", "email_from"),
+)
+_ACCOUNT_PATCH_REQUEST = schema_da_contratto(
+    "AmmEmailAccountPatchReq", _ACCOUNT_PATCH_KEYS, tipi=TIPI_EMAIL,
+)
+_TEMPLATE_CREATE_REQUEST = schema_da_contratto(
+    "AmmEmailTemplateCreateReq", _TEMPLATE_CREATE_KEYS, tipi=TIPI_EMAIL,
+    obbligatorie=("codice", "oggetto", "corpo_html"),
+)
+_TEMPLATE_PATCH_REQUEST = schema_da_contratto(
+    "AmmEmailTemplatePatchReq", _TEMPLATE_PATCH_KEYS, tipi=TIPI_EMAIL,
+)
+
+
+# L'anteprima di un template: le variabili con cui renderlo (facoltative).
+_PREVIEW_REQUEST = inline_serializer(
+    name="AmmEmailTemplatePreviewReq",
+    fields={"variabili": serializers.DictField(required=False, allow_null=True)},
+)
+
 
 
 # Scopo: Deriva la capability di test connessione di un account email.
@@ -98,7 +152,7 @@ class EmailAccountListView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
@@ -122,10 +176,13 @@ class EmailAccountListView(AdminAPIView):
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_ACCOUNT_CREATE_REQUEST, responses={200: dict})
     # Scopo: Crea un nuovo account email SMTP.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+                payload, allowed=_ACCOUNT_CREATE_KEYS, message="Campi dell'account non ammessi.",
+            )
             codice = (payload.get("codice") or "").strip().upper()
             ErrorManager.require(bool(codice), code=E_EMAIL_ADMIN, message="Codice obbligatorio.")
 
@@ -171,14 +228,21 @@ class EmailAccountDetailView(AdminAPIView):
         assert result is not None
         return success_response(_enrich_account_with_capability(result))
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_ACCOUNT_PATCH_REQUEST, responses={200: dict})
     # Scopo: Aggiorna parzialmente un account email.
+    # ⛔ Dal 2026-09-26 una chiave fuori `_ACCOUNT_PATCH_KEYS` e' un 400
+    #    `E_EMAIL_ADMIN`, non piu' uno scarto silenzioso (un PATCH che «riesce»
+    #    senza aver scritto il campo). Il drawer admin (`EmailAccountDrawer`)
+    #    manda solo queste chiavi — verificato quel giorno.
     def patch(self, request: Request, account_id: int) -> JsonResponse:
-        data = request.data
+        data = corpo_oggetto(request)
         repo = EmailRepository()
         ErrorManager.require(
             repo.get_account(account_id) is not None,
             code=E_EMAIL_ADMIN, message="Account non trovato.",
+        )
+        PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+            data, allowed=_ACCOUNT_PATCH_KEYS, message="Campi dell'account non modificabili.",
         )
 
         update_fields: dict[str, Any] = {}
@@ -221,7 +285,7 @@ class EmailAccountTestView(AdminAPIView):
     Cosi' il FE puo' aggiornare in-place la riga senza una GET extra.
     """
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=None, responses={200: dict})
     # Scopo: Verifica connessione SMTP senza inviare email. Persiste l'esito
     #        in meta jsonb e ritorna risultato + capability aggiornate.
     def post(self, request: Request, account_id: int) -> JsonResponse:
@@ -264,7 +328,7 @@ class EmailTemplateListView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="codice", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
@@ -293,10 +357,13 @@ class EmailTemplateListView(AdminAPIView):
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_TEMPLATE_CREATE_REQUEST, responses={200: dict})
     # Scopo: Crea un nuovo template email.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+                payload, allowed=_TEMPLATE_CREATE_KEYS, message="Campi del template non ammessi.",
+            )
             codice = (payload.get("codice") or "").strip().upper()
             ErrorManager.require(bool(codice), code=E_EMAIL_ADMIN, message="Codice obbligatorio.")
 
@@ -334,14 +401,20 @@ class EmailTemplateDetailView(AdminAPIView):
         ErrorManager.require(result is not None, code=E_EMAIL_ADMIN, message="Template non trovato.")
         return success_response(result or {})
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_TEMPLATE_PATCH_REQUEST, responses={200: dict})
     # Scopo: Aggiorna parzialmente un template email.
+    # ⛔ Dal 2026-09-26 una chiave fuori `_TEMPLATE_PATCH_KEYS` e' un 400
+    #    `E_EMAIL_ADMIN`, non uno scarto silenzioso. `EmailTemplateDrawer`
+    #    manda `oggetto`, `corpo_html`, `corpo_testo` — verificato quel giorno.
     def patch(self, request: Request, template_id: int) -> JsonResponse:
-        data = request.data
+        data = corpo_oggetto(request)
         repo = EmailRepository()
         ErrorManager.require(
             repo.get_template(template_id) is not None,
             code=E_EMAIL_ADMIN, message="Template non trovato.",
+        )
+        PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+            data, allowed=_TEMPLATE_PATCH_KEYS, message="Campi del template non modificabili.",
         )
 
         update_fields: dict[str, Any] = {}
@@ -381,7 +454,7 @@ class EmailTemplatePreviewView(AdminAPIView):
     sandbox (defense-in-depth — Fase 6 amm-software).
     """
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_PREVIEW_REQUEST, responses={200: dict})
     # Scopo: Renderizza un template con variabili di esempio e sanifica
     #        l'HTML risultante prima di restituirlo al client.
     def post(self, request: Request, template_id: int) -> JsonResponse:
@@ -416,7 +489,7 @@ class EmailLogListView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="stato", type=str, required=False),
             OpenApiParameter(name="ambito", type=str, required=False),
             OpenApiParameter(name="pratica_id", type=int, required=False),
@@ -449,10 +522,9 @@ class EmailLogListView(AdminAPIView):
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
-            # `parse_list_params` default 'asc'; per i log il default e' DESC
-            # (il piu' recente in testa), quindi lo si forza solo quando
-            # l'operatore non ha scelto.
-            order_dir=qp.get("order_dir") or "desc",
+            # Assente = `None`: il default DESC dei log (il piu' recente in
+            # testa) lo applica `EmailRepository.list_logs`, in una sede sola.
+            order_dir=p["order_dir"],
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 

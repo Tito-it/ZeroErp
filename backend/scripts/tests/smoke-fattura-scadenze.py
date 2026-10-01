@@ -364,7 +364,7 @@ with transaction.atomic():
         # 5) il campo che il contesto PDF legge gia': se manca, la stampa non
         #    puo' dire con che modalita' si paga la rata.
         metas = [coerce_jsonb_dict(r[3]) for r in rate]
-        mancanti = [r[0] for r, m in zip(rate, metas) if not m.get("modalita_codice")]
+        mancanti = [r[0] for r, m in zip(rate, metas, strict=True) if not m.get("modalita_codice")]
         check("5) meta.modalita_codice popolato su ogni rata",
               not mancanti and len(rate) > 0,
               f"rate senza modalita_codice: {mancanti}" if mancanti else

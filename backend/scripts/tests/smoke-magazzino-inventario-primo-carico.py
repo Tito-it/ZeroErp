@@ -63,6 +63,9 @@ def rifiuto(fn) -> str | None:
 _MONDO = (
     "CREATE TEMP TABLE _mondo AS SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m",
     "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    # I verbi di registrazione chiedono l'azione (`script.fn_guard_azione`):
+    # la si concede all'operatore del mondo (brief-db-magazzino-verbi-con-permesso §6).
+    "SELECT dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _mondo), 'registra_magazzino')",
     "CREATE TEMP TABLE _mag AS SELECT dbops.fn_pgtap_crea_magazzino('SMK-MAG-A', false) AS mag_a,"
     " dbops.fn_pgtap_crea_magazzino('SMK-MAG-U', true) AS mag_u",
     "CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('SMK-ART-1') AS art,"
@@ -149,7 +152,7 @@ with transaction.atomic():
           rifiuto(lambda: ms.elimina_documento("inventari", d["id"])) == "E_MAG_DOCUMENTO_NON_ELIMINABILE"
           and rifiuto(lambda: ms.aggiorna_riga("inventari", d["id"], riga["id"], {"qta_contata": 1})) == "E_MAG_DOCUMENTO_RIGHE_CONGELATE"
           and rifiuto(lambda: ms.cambia_stato_documento("inventari", d["id"], {"stato": "DRAFT"})) == "E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA"
-          and rifiuto(lambda: ms.cambia_stato_documento("inventari", d["id"], {"stato": "POSTED"})) == "E_VALIDATION_INPUT")
+          and rifiuto(lambda: ms.cambia_stato_documento("inventari", d["id"], {"stato": "POSTED"})) == "E_MAGAZZINO_VALIDATION")
     # 11
     with connection.cursor() as cur:
         cur.execute("CREATE TEMP TABLE _mondo2 AS SELECT x.* FROM dbops.fn_pgtap_crea_emittente_operatore('B2') x")

@@ -26,6 +26,7 @@
 //    stessa della tendina, del form e del picker.
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 
@@ -40,6 +41,8 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useEtichettePagamenti } from '../etichette'
 import { useRateFuoriCapienzaStore } from '../stores/rateFuoriCapienza'
+import { STATUS_ICONS } from '../../core/constants'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click'])
 // ⚠️ `te` serve a decodificare fail-visible: un motivo che il database aggiunge
@@ -49,7 +52,7 @@ const store = useRateFuoriCapienzaStore()
 const isBlocked = useInjectBlocked()
 
 const {
-  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   searchTableOptions: { defaultSortField: 'data_scadenza', defaultSortOrder: 'desc' },
@@ -83,18 +86,28 @@ onMounted(() => store.fetchList())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <!-- La ricerca: colonne dal catalogo (`ricerca_full`: senza colonne
+               accese la casella non si rende), sotto 3 caratteri il termine
+               non filtra. -->
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
           <Select
             v-model="motivoFilter"
+            class="app-filter-w-md"
             :options="opzioniMotivo"
             option-label="label"
             option-value="value"
             :placeholder="t('pagamenti.rate_fuori_capienza.filtro_motivo')"
             show-clear
-            style="width: 230px;"
             @update:model-value="onMotivoChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -148,7 +161,7 @@ onMounted(() => store.fetchList())
 
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-check-circle" />
+            <i :class="STATUS_ICONS.TUTTO_OK" />
             <p>{{ t('pagamenti.rate_fuori_capienza.nessuna_rata') }}</p>
           </div>
         </template>

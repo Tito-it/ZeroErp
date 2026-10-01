@@ -15,7 +15,10 @@ from typing import Any
 
 from django.db import transaction
 
-from apps.anagrafiche.db.fornitori_repository import FornitoriRepository
+from apps.anagrafiche.db.fornitori_repository import (
+    FORNITORE_UPDATE_ALLOWED,
+    FornitoriRepository,
+)
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
@@ -29,6 +32,17 @@ from apps.anagrafiche.services._validators import (
 from apps.anagrafiche.services.contatti_service import crea_contatto_inline_se_valido
 from apps.core.api.payload_validators import optional_uuid
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
+
+
+# Contratto della PATCH, validato QUI con 400 `E_ANAG_VALIDAZIONE` (2026-09-26):
+# dal passaggio al BB `execute_dynamic_update` il repository rifiuta con
+# `RuntimeError` (500) ogni colonna fuori whitelist — fino a quel giorno la
+# scartava in silenzio. Parte dalle colonne scrivibili del repository.
+_UPDATE_FORNITORE_KEYS: frozenset[str] = FORNITORE_UPDATE_ALLOWED
+
+# Validator stateless del dominio (solo il codice errore): condivisibile.
+_V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
 
 class FornitoriService:
@@ -59,12 +73,9 @@ class FornitoriService:
     def resolve_filtri_export_label(
         self,
         *,
-        search: str | None = None,
         stato_fornitore_id: int | None = None,
     ) -> dict[str, Any]:
         out: dict[str, Any] = {}
-        if search:
-            out["Ricerca"] = search
         if stato_fornitore_id is not None:
             desc = self._repo.get_stato_fornitore_descrizione(
                 stato_fornitore_id,
@@ -82,6 +93,9 @@ class FornitoriService:
 
     # Scopo: Aggiorna campi editabili di un fornitore (pagamento, fiscale, FE, rating, note).
     def update_fornitore(self, fornitore_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_UPDATE_FORNITORE_KEYS, message="Payload fornitore non valido.",
+        )
         # Verifica che il fornitore esista
         self.get_fornitore(fornitore_id)
         updated = self._repo.update_fornitore(fornitore_id, payload)

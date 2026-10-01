@@ -77,9 +77,18 @@ LIMIT 1;
 --   FK di `email_account`, nominando una tabella che non c'entrava.
 --   ⇒ Il rimedio non e' indebolire la policy ne' saltare la riga: e' dichiarare
 --   che questa fixture e' una scrittura da OWNER (marcatore in testa).
-DELETE FROM config.email_log
+--
+-- ⛔ 2026-09-25 — I FIGLI SI STACCANO, NON SI CANCELLANO. Dal changeSet
+--   `20260925-74` una mail spedita non si elimina (la regola «solo in bozza»,
+--   E_DELETE_DOC_NON_BOZZA), e il DELETE qui sotto moriva su ogni database con
+--   una mail di sistema gia' partita. Al test serve un account SENZA figli, non
+--   figli cancellati: `email_account_id` e' nullable su entrambe le tabelle, e
+--   staccarli non tocca la storia di nessuna mail.
+UPDATE config.email_log
+   SET email_account_id = NULL
  WHERE email_account_id IN (SELECT id FROM config.email_account WHERE codice_interno = 'SISTEMA');
-DELETE FROM config.email_outbox
+UPDATE config.email_outbox
+   SET email_account_id = NULL
  WHERE email_account_id IN (SELECT id FROM config.email_account WHERE codice_interno = 'SISTEMA');
 DELETE FROM config.email_account
  WHERE codice_interno IN ('SISTEMA', 'REPARTO_TEST');

@@ -16,6 +16,7 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['edit-override', 'remove-override', 'remove-emittente-override'])
 const { t } = useI18n()
@@ -76,9 +77,15 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
-        <InputText v-model="store.searchText" :placeholder="t('config.impostazioni.search_placeholder')" />
-      </div>
+      <!-- ⚠️ Nessuno `:store`: questa lista non ha FILTRI, solo la ricerca — che
+           per D2 non e' un filtro. Senza slot di default il building block non
+           rende ne' l'imbuto ne' il drawer. -->
+      <FiltriLista>
+        <template #sempre>
+          <InputText v-model="store.searchText" class="app-filter-w-lg"
+            :placeholder="t('config.impostazioni.search_placeholder')" />
+        </template>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ReadonlyBadge />
@@ -158,7 +165,7 @@ onMounted(() => store.fetchList())
 </template>
 
 <style scoped>
-.text-muted { color: var(--p-text-muted-color); }
+.text-muted { color: var(--app-text-muted); }
 .parameter-resolved {
   display: inline-flex;
   align-items: center;
@@ -172,6 +179,6 @@ onMounted(() => store.fetchList())
 .app-empty-state {
   padding: 2rem;
   text-align: center;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 </style>

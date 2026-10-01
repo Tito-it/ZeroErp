@@ -14,7 +14,15 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import sql_order_clause, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
+    row_to_dict,
+    rows_to_list,
+    sql_order_clause,
+)
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 
 
 # Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
@@ -45,6 +53,18 @@ _SELECT_COLS = """
 """
 
 
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+_RICERCA = RicercaFull("anagrafiche.categorie_clienti", ("codice", "descrizione"))
+
+
+# Colonne DDL scrivibili (whitelist RIGIDA dei BB di scrittura, 2026-09-26).
+# user_* e data_* sono gestite dal DB; `codice` solo in create (immutabile).
+_CREATE_COLS: frozenset[str] = frozenset({
+    "codice", "descrizione", "partecipa_promo", "ordinamento", "meta", "attivo",
+})
+_UPDATE_COLS: frozenset[str] = _CREATE_COLS - {"codice"}
+
+
 class CategorieClientiRepository:
     """Accesso DB a anagrafiche.categorie_clienti."""
 
@@ -71,8 +91,7 @@ class CategorieClientiRepository:
             default=_ORDER_COLS["ordinamento"],
             tiebreak="cc.id",
         )
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -83,12 +102,9 @@ class CategorieClientiRepository:
         if partecipa_promo is not None:
             conditions.append("cc.partecipa_promo = %s")
             params.append(partecipa_promo)
-        if search:
-            conditions.append(
-                "(cc.codice ILIKE %s OR cc.descrizione ILIKE %s)"
-            )
-            like = f"%{search.strip()}%"
-            params.extend([like, like])
+        # Soglia della ricerca: la dichiara il catalogo della lista
+        # (`ricerca_min_caratteri`), non questo modulo.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA, alias="cc")
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -140,53 +156,30 @@ class CategorieClientiRepository:
 
     # Scopo: Inserisce una nuova categoria cliente usando solo colonne whitelisted.
     #        Eventuali violazioni UNIQUE/CHECK vengono propagate al service.
+    #        BB `execute_dynamic_insert` (2026-09-26): whitelist RIGIDA
+    #        `_CREATE_COLS` (prima una chiave fuori lista era scartata in
+    #        silenzio; le chiavi le valida il service), `meta` dict -> `::jsonb`.
+    #        None scrive NULL (`skip_none` spento): chi vuole il default DB non
+    #        manda la chiave, come prima.
     def create_categoria(self, data: dict[str, Any]) -> int:
-        # Colonne DDL ammesse in create. user_* e data_* sono gestite dal DB.
-        write_cols = ("codice", "descrizione", "partecipa_promo", "ordinamento", "meta", "attivo")
-        cols: list[str] = []
-        vals: list[Any] = []
-        for col in write_cols:
-            if col in data:
-                cols.append(col)
-                vals.append(data[col])
+        valori = dict(data)
         # `codice_interno` e' la chiave logica IMMUTABILE (NOT NULL, lockata,
         # nessun default DB): non e' esposta dall'API CRUD e qui il `codice` e'
         # gia' immutabile, quindi i due coincidono. Va valorizzata = codice alla
         # create, altrimenti l'INSERT viola NOT NULL (colonna aggiunta dal DB
         # in 20260629-06, vedi analisi-hardcoded-codice.md §4 #3).
-        if "codice" in data:
-            cols.append("codice_interno")
-            vals.append(data["codice"])
-        placeholders = ["%s"] * len(cols)
-        sql = f"""
-            INSERT INTO anagrafiche.categorie_clienti ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        if "codice" in valori:
+            valori["codice_interno"] = valori["codice"]
+        riga = execute_dynamic_insert(
+            "anagrafiche.categorie_clienti", valori,
+            allowed=_CREATE_COLS | {"codice_interno"},
+        )
+        return int(riga["id"])
 
     # Scopo: Aggiorna una categoria sui soli campi forniti nel payload.
     #        Il codice e' immutabile a livello service, non a livello repository.
+    #        BB `execute_dynamic_update` (2026-09-26), whitelist RIGIDA `_UPDATE_COLS`.
     def update_categoria(self, record_id: int, data: dict[str, Any]) -> bool:
-        write_cols = ("descrizione", "partecipa_promo", "ordinamento", "meta", "attivo")
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in write_cols:
-            if col in data:
-                set_parts.append(f"{col} = %s")
-                vals.append(data[col])
-        if not set_parts:
-            return False
-        vals.append(record_id)
-        sql = f"""
-            UPDATE anagrafiche.categorie_clienti
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "anagrafiche.categorie_clienti", record_id, data, allowed=_UPDATE_COLS,
+        )

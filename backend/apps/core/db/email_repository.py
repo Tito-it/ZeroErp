@@ -26,13 +26,16 @@ def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
 
 from apps.core.services.email_constants import AMBITO_SISTEMA
 from apps.core.db._helpers import (
+    fetch_paged_with_total,
+    RicercaFull,
+    add_ricerca_full_condition,
     fetchone_scalar,
     jsonb_out,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
+    sql_order_clause,
 )
-from apps.core.db.sql_write_helpers import execute_dynamic_update
+from apps.core.db.sql_write_helpers import execute_dynamic_update, sql_set_clause
 from apps.core.services import crypto_service
 
 
@@ -76,20 +79,27 @@ EMAIL_LOG_ORDER_COLUMNS: dict[str, str] = {
 }
 
 
-# Scopo: risolve la clausola ORDER BY dalla whitelist, con fallback esplicito.
-#        Il tiebreaker sull'id lo aggiunge il chiamante: e' l'unica cosa che
-#        cambia fra le tre liste (`ea.id`, `et.id`, `el.id`). La direzione passa
-#        da `sql_order_direction` (convenzione di casa: NULL come valore
-#        minimo), non da un if riscritto qui.
-def _email_order_clause(
-    order_by: str | None,
-    order_dir: str | None,
-    *,
-    colonne: dict[str, str],
-    default: str,
-) -> str:
-    colonna = colonne.get(order_by or "", default)
-    return f"{colonna} {sql_order_direction(order_dir)}"
+# Cosa si PUO' cercare nelle tre liste email; cosa si cerca lo dice il catalogo
+# della lista (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue
+# §2), letto a ogni ricerca. Colonne semplici della tabella nel `FROM` (alias
+# `ea`, `et`, `el`), proiettate con lo stesso nome: forma a tupla.
+# ⭐ Soglie (brief §6): account e template sono tabelle di CONFIGURAZIONE e
+#    cercano da un carattere (Tid, 2026-09-23); il log e' un registro, non
+#    configurazione, e resta alla soglia di progetto (sotto soglia il termine
+#    non filtra — prima del 2026-09-24 filtrava da un carattere). Le soglie le
+#    dichiara il catalogo di ciascuna lista (`ricerca_min_caratteri`).
+_RICERCA_EMAIL_ACCOUNT = RicercaFull("config.email_account", ("codice", "descrizione", "email_from"))
+_RICERCA_EMAIL_TEMPLATE = RicercaFull("config.email_template", ("codice", "oggetto"))
+_RICERCA_EMAIL_LOG = RicercaFull("config.email_log", ("destinatario", "oggetto"))
+
+
+# ⛔ Le tre liste ordinano col BB `sql_order_clause` (2026-09-26, regola del
+#    2): qui c'era `_email_order_clause`, una sua copia locale con lo spareggio
+#    scritto a mano in ogni query e FISSO (`el.id DESC` anche ordinando ASC) —
+#    il difetto che il BB corregge dal 2026-08-03. Le date dei log aprono DESC
+#    (`colonne_desc`, regola «le date hanno sempre default DESC»): quali sono
+#    le date lo dice il catalogo, e `test_liste_configurabili_seed` lo presidia.
+_EMAIL_LOG_COLONNE_DATA: frozenset[str] = frozenset({"data_insert"})
 
 
 class EmailRepository:
@@ -115,15 +125,14 @@ class EmailRepository:
 
         if attivo_only:
             conditions.append("ea.attivo IS TRUE")
-        if search:
-            conditions.append("(ea.codice ILIKE %s OR ea.descrizione ILIKE %s OR ea.email_from ILIKE %s)")
-            like = f"%{search}%"
-            params.extend([like, like, like])
+        add_ricerca_full_condition(
+            conditions, params, search, _RICERCA_EMAIL_ACCOUNT, alias="ea",
+        )
 
         where = " AND ".join(conditions) if conditions else "TRUE"
-        order_clause = _email_order_clause(
+        order_clause = sql_order_clause(
             order_by, order_dir,
-            colonne=EMAIL_ACCOUNT_ORDER_COLUMNS, default="ea.codice",
+            colonne=EMAIL_ACCOUNT_ORDER_COLUMNS, default="ea.codice", tiebreak="ea.id",
         )
         sql = f"""
             SELECT ea.id, ea.codice, ea.descrizione,
@@ -136,19 +145,11 @@ class EmailRepository:
               FROM config.email_account ea
               LEFT JOIN config.unita_organizzative uo ON uo.id = ea.unita_organizzativa_id
              WHERE {where}
-             ORDER BY {order_clause}, ea.id
+             ORDER BY {order_clause}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = rows_to_list(cursor)
-
-        total = rows[0]["total_count"] if rows else 0
-        for r in rows:
-            r.pop("total_count", None)
-        return rows, total
+        return fetch_paged_with_total(sql, params, offset=offset)
 
     # Scopo: Dettaglio singolo account per ID con password crittografata (uso interno service).
     def get_account_with_password(self, account_id: int) -> dict[str, Any] | None:
@@ -236,35 +237,31 @@ class EmailRepository:
         "smtp_username", "email_from", "email_reply_to", "attivo",
     })
 
-    # Scopo: Aggiorna un account email. Se smtp_password fornita, la ri-crittografa.
+    # Scopo: Aggiorna un account email (BB `execute_dynamic_update`, dal
+    #        2026-09-26). Se smtp_password fornita, la ri-crittografa: la
+    #        password in chiaro NON passa dal BB (lo strip la cambierebbe), ci
+    #        passa il cifrato, che non ha spazi ai bordi.
+    #        ⛔ Whitelist RIGIDA: una chiave fuori `_ACCOUNT_UPDATE_COLS` e'
+    #        RuntimeError (fino a quel giorno veniva scartata in silenzio). La
+    #        PATCH admin compone i kwargs da una lista letterale di campi.
+    #        `smtp_password_encrypted` NON e' un kwarg ammesso: la scrive solo
+    #        questo metodo, dalla password in chiaro.
     def update_account(self, account_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-
-        # Gestione speciale: password in chiaro → crittografata
-        if "smtp_password" in kwargs:
-            raw_pw = kwargs.pop("smtp_password")
-            if raw_pw:
-                fields.append("smtp_password_encrypted = %s")
-                params.append(crypto_service.encrypt(raw_pw))
-
-        for col, val in kwargs.items():
-            if col not in self._ACCOUNT_UPDATE_COLS:
-                continue
-            if isinstance(val, str):
-                val = val.strip()
-            fields.append(f"{col} = %s")
-            params.append(val)
-
-        if not fields:
-            return False
-
-        fields.append("data_update = now()")
-        params.append(account_id)
-        sql = f"UPDATE config.email_account SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        raw_pw = kwargs.pop("smtp_password", None)
+        values: dict[str, Any] = dict(kwargs)
+        allowed: frozenset[str] = self._ACCOUNT_UPDATE_COLS
+        if raw_pw:
+            if "smtp_password_encrypted" in values:
+                raise RuntimeError(
+                    "update_account: smtp_password_encrypted non e' un kwarg ammesso"
+                )
+            values["smtp_password_encrypted"] = crypto_service.encrypt(raw_pw)
+            allowed = allowed | {"smtp_password_encrypted"}
+        return execute_dynamic_update(
+            "config.email_account", account_id, values,
+            allowed=allowed,
+            extra_set="data_update = now()",
+        )
 
     # Scopo: Elimina un account email per ID.
     def delete_account(self, account_id: int) -> bool:
@@ -333,20 +330,18 @@ class EmailRepository:
         if codice:
             conditions.append("et.codice = %s")
             params.append(codice)
-        if search:
-            conditions.append("(et.codice ILIKE %s OR et.oggetto ILIKE %s)")
-            like = f"%{search}%"
-            params.extend([like, like])
+        add_ricerca_full_condition(
+            conditions, params, search, _RICERCA_EMAIL_TEMPLATE, alias="et",
+        )
 
         where = " AND ".join(conditions) if conditions else "TRUE"
         # Default storico a due chiavi (`codice, lingua`): un template esiste in
         # piu' lingue, e separarle a video renderebbe la lista illeggibile.
-        order_clause = _email_order_clause(
+        order_clause = sql_order_clause(
             order_by, order_dir,
-            colonne=EMAIL_TEMPLATE_ORDER_COLUMNS, default="et.codice",
+            colonne=EMAIL_TEMPLATE_ORDER_COLUMNS,
+            default_clause="et.codice ASC, et.lingua ASC", tiebreak="et.id",
         )
-        if not order_by:
-            order_clause = "et.codice ASC, et.lingua ASC"
         sql = f"""
             SELECT et.id, et.codice,
                    et.unita_organizzativa_id,
@@ -359,18 +354,12 @@ class EmailRepository:
               FROM config.email_template et
               LEFT JOIN config.unita_organizzative uo ON uo.id = et.unita_organizzativa_id
              WHERE {where}
-             ORDER BY {order_clause}, et.id
+             ORDER BY {order_clause}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = rows_to_list(cursor)
-
-        total = rows[0]["total_count"] if rows else 0
+        rows, total = fetch_paged_with_total(sql, params, offset=offset)
         for r in rows:
-            r.pop("total_count", None)
             _parse_jsonb_field(r, "variabili_disponibili")
         return rows, total
 
@@ -492,6 +481,22 @@ class EmailRepository:
         pratica_id: int | None = None,
         auth_user_id: int | None = None,
         contesto_json: dict[str, Any] | None = None,
+        # ⭐ Le due colonne che reggono la visibilita' di una mail che non e' di
+        #    sistema (brief-db-email-visibilita-per-ambito, D-5):
+        #    - `emittente_fiscale_id`: l'azienda. Obbligatoria fuori da
+        #      `SISTEMA` (`chk_email_log_ambito_emittente`, dal 2026-09-05) —
+        #      e fino al 2026-09-25 questo INSERT NON la scriveva: ogni mail
+        #      `OPERATORE`/`REPARTO` sul log veniva rifiutata;
+        #    - `creato_da_user_id`: CHI L'HA SCRITTA, obbligatorio per
+        #      `OPERATORE` (`chk_email_log_operatore_creatore`). ⛔ Non e'
+        #      `auth_user_id`, che e' l'utente DI CUI la mail parla. Dalla bozza
+        #      si copia il suo autore; in un invio diretto e' chi fa la
+        #      richiesta. ⛔ Non un DEFAULT dal GUC: un super admin che spedisce
+        #      la bozza di un altro ne diventerebbe l'autore.
+        #    Sulla porta di sistema non passano: una mail `SISTEMA` non ha ne'
+        #    azienda ne' autore.
+        emittente_fiscale_id: int | None = None,
+        creato_da_user_id: int | None = None,
     ) -> int:
         # ⛔ LE EMAIL DI SISTEMA PASSANO DA UNA PORTA LORO, e non e' una
         #    preferenza di stile: dal 2026-09-05 `config.email_log` ha la RLS
@@ -538,15 +543,17 @@ class EmailRepository:
                 (email_account_id, email_template_id, destinatario, destinatari_cc,
                  oggetto, corpo_inviato_html, corpo_inviato_testo,
                  stato, ambito, unita_organizzativa_id, pratica_id,
-                 auth_user_id, contesto_json)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                 auth_user_id, contesto_json, emittente_fiscale_id,
+                 creato_da_user_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
             RETURNING id
         """
         params = [
             email_account_id, email_template_id, destinatario, destinatari_cc,
             oggetto, corpo_inviato_html, corpo_inviato_testo,
             stato, ambito, unita_organizzativa_id, pratica_id,
-            auth_user_id, json.dumps(contesto_json or {}),
+            auth_user_id, json.dumps(contesto_json or {}), emittente_fiscale_id,
+            creato_da_user_id,
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
@@ -555,7 +562,7 @@ class EmailRepository:
     # Scopo: Aggiorna stato di un record log email (SENT, FAILED, RETRY,
     #        SIMULATA). ⚠️ L'elenco autorevole e' il `CHECK`
     #        `chk_email_log_stato`, specchiato in
-    #        `amm_software_service._EMAIL_LOG_STATI_VALIDI`: qui si dice
+    #        `email_constants.STATI_EMAIL_LOG`: qui si dice
     #        cosa passa di qua, non cosa e' ammesso.
     #
     # ⛔ `ambito` NON ha un default, e serve a scegliere la porta — non a
@@ -633,16 +640,14 @@ class EmailRepository:
         if data_a:
             conditions.append("el.data_insert < (%s::date + INTERVAL '1 day')")
             params.append(data_a)
-        if search:
-            conditions.append("(el.destinatario ILIKE %s OR el.oggetto ILIKE %s)")
-            like = f"%{search}%"
-            params.extend([like, like])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_EMAIL_LOG, alias="el")
 
         where = " AND ".join(conditions) if conditions else "TRUE"
         # Default `data_insert DESC`: un log si legge dal piu' recente.
-        order_clause = _email_order_clause(
-            order_by or "data_insert", order_dir or "desc",
-            colonne=EMAIL_LOG_ORDER_COLUMNS, default="el.data_insert",
+        order_clause = sql_order_clause(
+            order_by, order_dir,
+            colonne=EMAIL_LOG_ORDER_COLUMNS, default="el.data_insert", default_desc=True,
+            colonne_desc=_EMAIL_LOG_COLONNE_DATA, tiebreak="el.id",
         )
         # `emittente_ragione_sociale` e' la colonna 872 del catalogo (lista
         # `config.email_log`, D-4 del brief perimetro-emittente-cataloghi-
@@ -672,19 +677,11 @@ class EmailRepository:
               LEFT JOIN anagrafiche.soggetti s_ef
                      ON s_ef.id = sr_ef.soggetto_id
              WHERE {where}
-             ORDER BY {order_clause}, el.id DESC
+             ORDER BY {order_clause}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = rows_to_list(cursor)
-
-        total = rows[0]["total_count"] if rows else 0
-        for r in rows:
-            r.pop("total_count", None)
-        return rows, total
+        return fetch_paged_with_total(sql, params, offset=offset)
 
     # Scopo: Aggiorna email_log_id dopo invio da outbox.
     def update_log_outbox_link(self, log_id: int, email_outbox_id: int) -> None:
@@ -767,6 +764,7 @@ class EmailRepository:
                    eo.stato, eo.ambito,
                    eo.unita_organizzativa_id, eo.pratica_id,
                    eo.auth_user_id, eo.creato_da_user_id,
+                   eo.emittente_fiscale_id,
                    eo.email_account_id, eo.email_template_id,
                    eo.email_log_id, eo.inviato_at,
                    eo.contesto_json, eo.data_insert,
@@ -783,10 +781,14 @@ class EmailRepository:
         return result
 
     # Scopo: Lista bozze outbox con filtri e paginazione.
+    # ⛔ Chi vede quali bozze NON si filtra qui: lo decide la RLS
+    #    (`rls_email_outbox_ambito` → `script.fn_scope_email_ambito`). Fino al
+    #    2026-09-25 c'era un parametro `creato_da_user_id` che la view usava
+    #    come perimetro — una seconda sede della regola, e sbagliata: nascondeva
+    #    ai colleghi le bozze di REPARTO che il modello da' a loro.
     def list_outbox(
         self,
         *,
-        creato_da_user_id: int | None = None,
         unita_organizzativa_id: int | None = None,
         stato: str | None = None,
         pratica_id: int | None = None,
@@ -796,9 +798,6 @@ class EmailRepository:
         conditions: list[str] = []
         params: list[Any] = []
 
-        if creato_da_user_id is not None:
-            conditions.append("eo.creato_da_user_id = %s")
-            params.append(creato_da_user_id)
         if unita_organizzativa_id is not None:
             conditions.append("eo.unita_organizzativa_id = %s")
             params.append(unita_organizzativa_id)
@@ -823,36 +822,35 @@ class EmailRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = rows_to_list(cursor)
-
-        total = rows[0]["total_count"] if rows else 0
-        for r in rows:
-            r.pop("total_count", None)
-        return rows, total
+        return fetch_paged_with_total(sql, params, offset=offset)
 
     _OUTBOX_UPDATE_COLS = frozenset({
         "oggetto", "corpo_html", "corpo_testo", "destinatario", "destinatari_cc",
     })
 
-    # Scopo: Aggiorna campi editabili di una bozza DRAFT.
+    # Scopo: Aggiorna campi editabili di una bozza DRAFT (BB `sql_set_clause`,
+    #        dal 2026-09-26: il WHERE porta anche `stato = 'DRAFT'`, quindi non
+    #        e' il per-id di `execute_dynamic_update`). Stringhe strip, None
+    #        scrive NULL, niente da aggiornare -> False senza SQL.
+    #        ⭐ `destinatari_cc` e' `text[]`: il cast array del BB passa la list
+    #        cosi' com'e' e psycopg la adatta ad array (senza, il BB l'avrebbe
+    #        serializzata in JSON).
+    #        ⛔ Whitelist RIGIDA: una chiave fuori `_OUTBOX_UPDATE_COLS` e'
+    #        RuntimeError (fino a quel giorno veniva scartata in silenzio). Il
+    #        service (`EmailOutboxService.update_draft`) rifiuta prima le chiavi
+    #        estranee del client con un 400.
     def update_outbox(self, outbox_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if col not in self._OUTBOX_UPDATE_COLS:
-                continue
-            if isinstance(val, str):
-                val = val.strip()
-            fields.append(f"{col} = %s")
-            params.append(val)
-        if not fields:
+        if not kwargs:
             return False
-        fields.append("data_update = now()")
+        clausola, params = sql_set_clause(
+            kwargs, allowed=self._OUTBOX_UPDATE_COLS,
+            casts={"destinatari_cc": "text[]"},
+        )
         params.append(outbox_id)
-        sql = f"UPDATE config.email_outbox SET {', '.join(fields)} WHERE id = %s AND stato = 'DRAFT'"  # noqa: S608
+        sql = (
+            f"UPDATE config.email_outbox SET {clausola}, data_update = now() "  # noqa: S608 — clausola composta da sql_set_clause (colonne whitelisted, valori come parametri)
+            "WHERE id = %s AND stato = 'DRAFT'"
+        )
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.rowcount > 0
@@ -938,17 +936,35 @@ class EmailRepository:
             cursor.execute(sql, [allegato_id])
             return row_to_dict(cursor)
 
-    # Scopo: Elimina un allegato per ID. Ritorna il file_path per pulizia storage.
+    # Scopo: Elimina un allegato per ID. Ritorna il file_path per pulizia storage
+    #        (None se la riga non c'e' o e' fuori dal perimetro RLS).
+    # ⭐ Un solo statement, come `delete_allegati_by_outbox`: il path che si
+    #    ritorna e' quello della riga davvero cancellata.
     def delete_allegato(self, allegato_id: int) -> str | None:
-        sql = "SELECT file_path FROM config.email_allegato WHERE id = %s"
+        sql = """
+            DELETE FROM config.email_allegato
+             WHERE id = %s
+            RETURNING file_path
+        """
         with connection.cursor() as cursor:
             cursor.execute(sql, [allegato_id])
             row = cursor.fetchone()
-            if not row:
-                return None
-            file_path = row[0]
-            cursor.execute("DELETE FROM config.email_allegato WHERE id = %s", [allegato_id])
-            return file_path
+            return row[0] if row else None
+
+    # Scopo: Elimina tutti gli allegati di una bozza. Ritorna i `file_path`
+    #        per la pulizia dello storage, che il chiamante fa DOPO il commit.
+    # ⚠️ Il database lo ammette solo a bozza DRAFT
+    #    (`config.trgfn_email_allegato_guard_solo_bozza`): chi annulla una
+    #    bozza toglie le righe PRIMA di scrivere `CANCELLED`.
+    def delete_allegati_by_outbox(self, outbox_id: int) -> list[str]:
+        sql = """
+            DELETE FROM config.email_allegato
+             WHERE email_outbox_id = %s
+            RETURNING file_path
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [outbox_id])
+            return [r[0] for r in cursor.fetchall()]
 
     # Scopo: Copia allegati da outbox a log dopo invio.
     def copy_allegati_to_log(self, outbox_id: int, log_id: int) -> int:

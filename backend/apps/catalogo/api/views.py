@@ -32,6 +32,7 @@ from apps.catalogo.services.catalogo_service import (
     fn_get_articolo,
     fn_get_unita_misura,
     fn_list_componenti,
+    fn_list_componenti_pagina,
     fn_list_articoli,
     fn_list_note_articolo,
     fn_list_uom_operative,
@@ -55,6 +56,7 @@ from apps.catalogo.services.catalogo_service import (
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool,
@@ -66,12 +68,15 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
+from apps.core.api.openapi_params import param_ricerca_full
+from apps.catalogo.db.catalogo_bom_repository import COMPONENTI_SORT_COLUMNS
+from apps.ui.api.lista_figlia_views import build_lista_figlia_views
 
 
 # Scopo: Definisce in un solo punto i campi write articolo per schema API.
 # for_create=True abilita codice e uom_id come obbligatori (NOT NULL DDL).
 # for_create=False (PATCH) li esclude entrambi: sono immutabili dopo create
-# (lock_columns DDL trg_articoli_a10_protect_codice_upd / _protect_uom_id_upd).
+# (lock di colonna a DB su catalogo.articoli, `E_CODICE_NON_MODIFICABILE`).
 def _articolo_write_fields(*, for_create: bool) -> dict[str, serializers.Field]:
     fields: dict[str, serializers.Field] = {
         "descrizione": serializers.CharField(required=False),
@@ -203,7 +208,7 @@ class ApiArticoliList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_composito", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="tipo_voce_id", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -225,7 +230,9 @@ class ApiArticoliList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp, default_order="descrizione")
-        require_min_search_length(p["search"], field_name="search")
+        # Colonne e soglia le decide il catalogo della lista (BB nel
+        # repository). ⛔ Nessun 400 sotto soglia (brief-db-be-fe-ricerca-
+        # soglia-per-lista §6 a, Tid 2026-09-26).
 
         results, total = fn_list_articoli(
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
@@ -285,7 +292,7 @@ class ApiArticoloDetail(DomainAPIView):
     )
     # Scopo: Aggiorna un articolo sui soli campi presenti, con codice immutabile.
     def patch(self, request: Request, articolo_id: UUID) -> JsonResponse:
-        return success_response(fn_update_articolo(articolo_id, request.data))
+        return success_response(fn_update_articolo(articolo_id, corpo_oggetto(request)))
 
 
 class ApiArticoloDisattiva(DomainAPIView):
@@ -421,7 +428,7 @@ class ApiArticoloUomDetail(DomainAPIView):
     )
     # Scopo: Aggiorna una UoM operativa dell'articolo.
     def patch(self, request: Request, articolo_id: UUID, uom_op_id: int) -> JsonResponse:
-        return success_response(fn_update_uom_operativa(articolo_id, uom_op_id, request.data))
+        return success_response(fn_update_uom_operativa(articolo_id, uom_op_id, corpo_oggetto(request)))
 
     @extend_schema(
         responses={
@@ -468,6 +475,57 @@ class ApiArticoloComponentiList(DomainAPIView):
         return handle_post_json(request, handler=lambda payload: fn_create_componente(articolo_id, payload))
 
 
+# ── La distinta come lista configurabile `catalogo.articolo_componenti` ──
+# (brief-db-liste-righe-documento, lotto C, 2026-09-28). Pagina ed export dal
+# factory condiviso `build_lista_figlia_views` (regola del 2 fra domini: e'
+# la stessa coppia delle righe dei documenti di vendita).
+# ⭐ SU UN PERCORSO SUO, `…/componenti/lista/`, e non su `…/componenti/`: il
+#    cancello di perimetro (`lista_codice`) scatta su ogni metodo della view
+#    che lo dichiara, e `…/componenti/` serve anche il POST di creazione.
+#    `GET …/componenti/` resta la lettura completa.
+# ⚠️ Nessun `lista_emittente_param`: la distinta non ha un emittente suo (e'
+#    «per azienda», D-8.2, come `catalogo.articoli`), quindi chi vede piu'
+#    emittenti lo sceglie come per la lista degli articoli.
+
+
+# Scopo: il filtro proprio della distinta, «in vigore al» (None: tutte le
+#        versioni). Lo leggono pagina ed export dalla stessa funzione.
+def _filtri_componenti(qp) -> dict[str, object]:
+    return {"valido_al": qp_iso_date_optional(qp.get("valido_al"), "valido_al")}
+
+
+_ComponentiLista, _ComponentiListaExport = build_lista_figlia_views(
+    schema_prefix="CatalogoArticoloComponenti",
+    operation_id="catalogo_articoli_componenti_lista",
+    area_funzionale="catalogo",
+    url_kwarg="articolo_id",
+    model_permission=("catalogo", "articolo"),
+    pagina_call=lambda articolo_id, **kw: fn_list_componenti_pagina(articolo_id, **kw),
+    colonne_ordinabili=COMPONENTI_SORT_COLUMNS,
+    ordine_assente="valido_dal DESC.",
+    filtri=_filtri_componenti,
+    parametri_filtri=[
+        OpenApiParameter(
+            name="valido_al", type=str, required=False,
+            description=(
+                "Data (YYYY-MM-DD): solo le righe in vigore a quella data o dopo "
+                "(senza fine, o con fine da quel giorno). Assente: tutte le versioni."
+            ),
+        ),
+    ],
+)
+
+
+# ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
+#    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
+class ApiArticoloComponentiLista(_ComponentiLista):
+    lista_codice = "catalogo.articolo_componenti"
+
+
+class ApiArticoloComponentiListaExport(_ComponentiListaExport):
+    lista_codice = "catalogo.articolo_componenti"
+
+
 class ApiArticoloComponenteDetail(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")
@@ -483,7 +541,7 @@ class ApiArticoloComponenteDetail(DomainAPIView):
     )
     # Scopo: Aggiorna un componente BoM dell'articolo.
     def patch(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        return success_response(fn_update_componente(articolo_id, comp_id, request.data))
+        return success_response(fn_update_componente(articolo_id, comp_id, corpo_oggetto(request)))
 
     @extend_schema(
         responses={
@@ -548,7 +606,7 @@ class ApiNotaDetail(DomainAPIView):
     )
     # Scopo: Aggiorna una nota catalogo esistente.
     def patch(self, request: Request, nota_id: int) -> JsonResponse:
-        return success_response(fn_update_nota(nota_id, request.data))
+        return success_response(fn_update_nota(nota_id, corpo_oggetto(request)))
 
     @extend_schema(
         responses={
@@ -608,6 +666,18 @@ class ApiArticoliLookup(DomainAPIView):
             OpenApiParameter(name="is_composito", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_solo_componente", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(
+                name="gestito_a_magazzino",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Solo articoli gestiti a magazzino (o solo quelli che non "
+                    "lo sono, se false). Assente = nessun filtro. Lo passa il "
+                    "picker di riga di inventari e rettifiche: un articolo non "
+                    "gestito si salva, ma il piano lo marca NON_POSTABILE."
+                ),
+            ),
+            OpenApiParameter(
                 name="escludi_destinazione",
                 type=str,
                 location=OpenApiParameter.QUERY,
@@ -658,6 +728,7 @@ class ApiArticoliLookup(DomainAPIView):
             attivo=qp_bool(qp.get("attivo"), True),
             is_composito=qp_bool_optional(request.query_params.get("is_composito"), "is_composito"),
             is_solo_componente=qp_bool_optional(request.query_params.get("is_solo_componente"), "is_solo_componente"),
+            gestito_a_magazzino=qp_bool_optional(qp.get("gestito_a_magazzino"), "gestito_a_magazzino"),
             escludi_destinazione_tipi=escludi_destinazione_tipi,
             # Gli articoli-onere sono pochi (uno per causale) e si presentano
             # come tendina, non come autocomplete: il filtro vive senza `search`.
@@ -681,7 +752,7 @@ class ApiUomTipiList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -695,8 +766,9 @@ class ApiUomTipiList(DomainAPIView):
     )
     # Scopo: Restituisce lista paginata tipologie UoM.
     def get(self, request: Request) -> JsonResponse:
+        # Tabella di configurazione: niente 400 sotto soglia (Tid, 2026-09-23 —
+        # brief-be-ricerca-full-liste-residue §6); la soglia e' del catalogo.
         p = parse_list_params(request.query_params, default_order="descrizione")
-        require_min_search_length(p["search"], field_name="search")
         results, total = fn_list_uom_tipi(
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             search=p["search"],
@@ -756,7 +828,7 @@ class ApiUomTipoDetail(DomainAPIView):
     )
     # Scopo: Aggiorna una tipologia UoM.
     def patch(self, request: Request, tipo_id: int) -> JsonResponse:
-        return success_response(fn_update_uom_tipo(tipo_id, request.data))
+        return success_response(fn_update_uom_tipo(tipo_id, corpo_oggetto(request)))
 
 
 # --- CRUD Unita' di Misura ---
@@ -770,7 +842,7 @@ class ApiUnitaMisuraList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -784,8 +856,9 @@ class ApiUnitaMisuraList(DomainAPIView):
     )
     # Scopo: Restituisce lista paginata unita' di misura.
     def get(self, request: Request) -> JsonResponse:
+        # Tabella di configurazione a codici corti (`KG`, `PZ`): la soglia la
+        # dichiara il catalogo, niente 400 sotto soglia (Tid, 2026-09-23).
         p = parse_list_params(request.query_params, default_order="codice")
-        require_min_search_length(p["search"], field_name="search")
         results, total = fn_list_unita_misura(
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             search=p["search"],
@@ -848,7 +921,7 @@ class ApiUnitaMisuraDetail(DomainAPIView):
     )
     # Scopo: Aggiorna una unita' di misura.
     def patch(self, request: Request, uom_id: int) -> JsonResponse:
-        return success_response(fn_update_unita_misura(uom_id, request.data))
+        return success_response(fn_update_unita_misura(uom_id, corpo_oggetto(request)))
 
 
 class ApiUnitaMisuraDisattiva(DomainAPIView):
@@ -879,7 +952,7 @@ class ApiConversioniList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, required=False, description="Filtro attivo (null=tutti)"),
             OpenApiParameter(name="uom_id", type=int, required=False, description="Filtra conversioni per UoM (from o to)"),
             OpenApiParameter(name="limit", type=int, required=False),
@@ -962,7 +1035,7 @@ class ApiConversioneDetail(DomainAPIView):
     )
     # Scopo: Aggiorna una conversione UoM.
     def patch(self, request: Request, conv_id: int) -> JsonResponse:
-        return success_response(fn_update_conversione(conv_id, request.data))
+        return success_response(fn_update_conversione(conv_id, corpo_oggetto(request)))
 
 
 # =================================================================

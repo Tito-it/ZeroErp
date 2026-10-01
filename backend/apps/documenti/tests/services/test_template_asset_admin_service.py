@@ -11,7 +11,7 @@
 #          MIME whitelist per ciascun codice_interno (LOGO/IMMAGINE/FIRMA/
 #          PDF/CSS/ALTRO), tipo asset inesistente o non attivo, dedup via
 #          IntegrityError uq_template_asset_emittente_sha256 mappata a
-#          messaggio applicativo, _guard_date_range valido_al < valido_dal,
+#          messaggio applicativo, valido_al < valido_dal delegato al DB,
 #          storage_key derivata `assets/<emittente>/<sha>.<ext>`, sequenza
 #          INSERT -> write -> commit, cleanup STORAGE_ORPHAN su commit
 #          fallito post-write (best-effort, non maschera l'eccezione);
@@ -19,7 +19,7 @@
 #          rifiuto immutabili file (storage_key/sha256/file_size/mime/file_name)
 #          e anag (codice/codice_interno/asset_tipo_id/emittente_fiscale_id)
 #          PRIMA di altre validazioni, validate_allowed_keys, payload
-#          vuoto post-validate, _guard_date_range, attivo=None rifiutato,
+#          vuoto post-validate, ordine date delegato al DB, attivo=None rifiutato,
 #          IntegrityError mappata, repo False -> NOT_FOUND.
 #
 # Indice test (0..N):
@@ -38,7 +38,7 @@
 #  12. upload_mime_ammesso_per_ogni_tipo_whitelisted
 #  13. upload_file_name_vuoto_raises
 #  14. upload_dedup_sha256_integrity_error_mapped
-#  15. upload_guard_date_range_valido_al_prima_di_dal_raises
+#  15. upload_delega_ordine_date_al_db
 #  16. upload_storage_orphan_cleanup_on_commit_fail
 #  17. upload_storage_write_fail_no_cleanup_atomic_rollback
 #  18. update_happy_path_via_reader_fresh
@@ -47,7 +47,7 @@
 #  21. update_immutable_anag_field_rejected_before_other_validation
 #  22. update_payload_extra_key_raises
 #  23. update_empty_payload_raises
-#  24. update_guard_date_range_valido_al_prima_di_dal_raises
+#  24. update_delega_ordine_date_al_db
 #  25. update_attivo_none_rifiutato
 #  26. update_unique_violation_mapped
 #  27. update_repo_false_raises_not_found
@@ -386,27 +386,31 @@ class TemplateAssetAdminServiceUploadPayloadTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.create_asset.assert_not_called()
 
-    # 15. _guard_date_range cross-field: valido_al < valido_dal -> rifiutato.
+    # 15. valido_al < valido_dal NON lo giudica il service: arriva al DB, dove
+    #     il guard comune delle date risponde E_DATA_AL_MINORE_DAL col campo
+    #     (provato sul DB vero in apps/core/tests/db/test_date_validita_guard_comune_db).
     @patch(
         "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
-    def test_upload_guard_date_range_valido_al_prima_di_dal_raises(
-        self, _mock_scope
-    ) -> None:
+    def test_upload_delega_ordine_date_al_db(self, _mock_scope) -> None:
         svc, repo, _, _, _ = _service_with_mocks(
-            repo_methods={"get_tipo_asset": _tipo_asset_row("LOGO")},
+            repo_methods={"create_asset": 99, "get_tipo_asset": _tipo_asset_row("LOGO")},
+            reader_methods={"get_asset": {"id": 99}},
+            storage_methods={"write": "file:///var/documenti/assets/11/abc.png"},
         )
         payload = dict(_VALID_UPLOAD_METADATI)
         payload["valido_dal"] = date(2026, 6, 1)
         payload["valido_al"] = date(2026, 5, 1)
-        with self.assertRaises(ServiceError) as ctx:
+        with _patch_transaction_atomic_noop():
             svc.upload_asset(
                 _make_user(), payload, _FILE_BYTES_PNG, _MIME_PNG, _FNAME_PNG,
             )
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        self.assertIn("valido_al", ctx.exception.message)
-        repo.create_asset.assert_not_called()
+        data = repo.create_asset.call_args.args[0]
+        self.assertEqual(
+            (data["valido_dal"], data["valido_al"]),
+            (date(2026, 6, 1), date(2026, 5, 1)),
+        )
 
 
 class TemplateAssetAdminServiceUploadTipoAssetTests(SimpleTestCase):
@@ -725,25 +729,22 @@ class TemplateAssetAdminServiceUpdateTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.update_asset_metadati.assert_not_called()
 
-    # 24. _guard_date_range in update -> rifiutato.
-    def test_update_guard_date_range_valido_al_prima_di_dal_raises(
-        self,
-    ) -> None:
+    # 24. In update l'ordine delle date lo giudica il DB (come il 15).
+    def test_update_delega_ordine_date_al_db(self) -> None:
         svc, repo, _, _, _ = _service_with_mocks(
+            repo_methods={"update_asset_metadati": True},
             reader_methods={"get_asset": {"id": 42}},
         )
-        with self.assertRaises(ServiceError) as ctx:
-            svc.update_asset_metadati(
-                _make_user(),
-                42,
-                {
-                    "valido_dal": date(2026, 6, 1),
-                    "valido_al": date(2026, 5, 1),
-                },
-            )
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        self.assertIn("valido_al", ctx.exception.message)
-        repo.update_asset_metadati.assert_not_called()
+        svc.update_asset_metadati(
+            _make_user(),
+            42,
+            {"valido_dal": date(2026, 6, 1), "valido_al": date(2026, 5, 1)},
+        )
+        data = repo.update_asset_metadati.call_args.args[1]
+        self.assertEqual(
+            (data["valido_dal"], data["valido_al"]),
+            (date(2026, 6, 1), date(2026, 5, 1)),
+        )
 
     # 25. attivo=None esplicito -> rifiutato (non ammesso NULL).
     def test_update_attivo_none_rifiutato(self) -> None:

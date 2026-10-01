@@ -24,16 +24,18 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.db import DatabaseError, transaction
+from django.db import transaction
 from django.utils import timezone
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.capability_blob import capabilities_o_vuoto
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
@@ -52,6 +54,7 @@ from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_PENDING,
 )
 from apps.vendite.services._componenti_service_helpers import (
+    dati_patch_componente,
     normalize_componenti_overrides,
     resolve_emittente_sr_id_for_testata,
 )
@@ -210,7 +213,7 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 # `trgfn_offerte_commerciali_gen_codice` (BEFORE INSERT). Il campo `codice` NON
 # va piu' nel payload: se inviato si rifiuta come unknown_key (defense-in-depth
 # applicativo; il trigger DB e' la garanzia ultima).
-_CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
+CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
     "emittente_fiscale_id",
     "billing_account_id",
     "istanza_utility_id",
@@ -240,7 +243,7 @@ _CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
 # Whitelist payload update offerta (testata). Sub-set di create (immutabili:
 # codice/uid/stato_doc_offerta_id/revisione_numero/revisione_padre_id e
 # tutti i campi audit/timestamp di transizione).
-_UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
+UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
     "emittente_fiscale_id",
     "billing_account_id",
     "istanza_utility_id",
@@ -269,7 +272,7 @@ _UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
 _TIPI_ECCEZIONE_CON_GATE: frozenset[str] = frozenset({"OVERRIDE", "AGGIUNTA"})
 
 
-_CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
+CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
     "articolo_id",
     "tipo_eccezione",
     "tipo_erogazione",
@@ -296,15 +299,15 @@ _CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
 # `componenti_overrides` non re-spedito in update (la BoM e' contratto
 # immutabile post-init); la modifica prezzi componente passa via endpoint
 # CRUD dedicato `PATCH .../componenti/<cid>/`.
-_UPDATE_KEYS_ECCEZIONE: frozenset[str] = frozenset(
-    _CREATE_KEYS_ECCEZIONE - {
+UPDATE_KEYS_ECCEZIONE: frozenset[str] = frozenset(
+    CREATE_KEYS_ECCEZIONE - {
         "articolo_id", "tipo_eccezione", "componenti_overrides",
     }
 )
 
 
 # Whitelist payload utility (create).
-_CREATE_KEYS_UTILITY: frozenset[str] = frozenset({
+CREATE_KEYS_UTILITY: frozenset[str] = frozenset({
     "istanza_utility_id",
     "utility_id",
     "istanza_dati_precontrattuali_id",
@@ -317,8 +320,8 @@ _CREATE_KEYS_UTILITY: frozenset[str] = frozenset({
 
 
 # Whitelist payload utility (update): istanza_utility_id/utility_id immutabili.
-_UPDATE_KEYS_UTILITY: frozenset[str] = frozenset(
-    _CREATE_KEYS_UTILITY - {"istanza_utility_id", "utility_id"}
+UPDATE_KEYS_UTILITY: frozenset[str] = frozenset(
+    CREATE_KEYS_UTILITY - {"istanza_utility_id", "utility_id"}
 )
 
 
@@ -379,21 +382,13 @@ class OfferteService:
         offset: int = 0,
         order_by: str = "data_insert",
         order_dir: str = "desc",
+        auth_user_id: int | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        self._v.validate_order_by(order_by, allowed=_ORDER_BY_OFFERTE)
-        # `search` vuoto/whitespace-only -> trattato come "no filter" (coerente
-        # con come la UI passa il campo: stringa vuota = filtro non applicato).
-        # Solo se l'utente fornisce una stringa non vuota richiediamo >=3 char.
-        search_norm = search.strip() if isinstance(search, str) else None
-        if search_norm:
-            ErrorManager.require(
-                len(search_norm) >= 3,
-                code=E_VENDITE_VALIDATION,
-                message="Ricerca testuale: minimo 3 caratteri.",
-                context={"search_len": len(search_norm)},
-            )
-        else:
-            search_norm = None
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_OFFERTE, order_dir=order_dir)
+        # ⭐ La soglia del termine (vuoto o sotto 3 caratteri → non filtra) la
+        #    applica il BB `add_ricerca_full_condition` nel repository, uguale
+        #    per tutte le liste. Fino al 2026-09-23 qui era un 400: il frontend
+        #    manda il termine a ogni tasto, e i primi due erano un errore.
         filters: dict[str, Any] = {
             "billing_account_id": billing_account_id,
             "stato_codice_interno": stato_codice_interno,
@@ -401,8 +396,12 @@ class OfferteService:
             "listino_id": listino_id,
             "validita_dal_min": validita_dal_min,
             "validita_dal_max": validita_dal_max,
-            "search": search_norm,
+            "search": search,
             "solo_ultima_revisione": solo_ultima_revisione,
+            # Scope emittente: `None` = nessuna restrizione (superuser a
+            # livello API); entra nei filtri cosi' righe e conteggio hanno lo
+            # stesso perimetro.
+            "auth_user_id": auth_user_id,
         }
         rows = self._repo.list_offerte(
             **filters,
@@ -420,7 +419,6 @@ class OfferteService:
     def resolve_filtri_export_label(
         self,
         *,
-        search: str | None = None,
         stato_codice_interno: str | None = None,
         billing_account_id: int | None = None,
         utility_id: int | None = None,
@@ -430,8 +428,6 @@ class OfferteService:
         solo_ultima_revisione: bool = True,
     ) -> dict[str, Any]:
         out: dict[str, Any] = {}
-        if search:
-            out["Ricerca"] = search
         if stato_codice_interno:
             out["Stato"] = stato_codice_interno
         if billing_account_id is not None:
@@ -449,19 +445,33 @@ class OfferteService:
             out["Storico revisioni"] = "incluso"
         return out
 
+    # Scopo: Carica la testata offerta o solleva E_VENDITE_NOT_FOUND (BB core
+    #        `testata_o_not_found`: qui solo codice e messaggio del dominio).
+    #        `getter` ammette il lettore leggero `get_stato_codice`, dove al
+    #        chiamante basta sapere che l'offerta esiste.
+    def _get_offerta_or_raise(
+        self, offerta_id: int, *, op: str,
+        getter: Callable[[int], Any] | None = None,
+    ) -> Any:
+        return testata_o_not_found(
+            getter or self._repo.get_offerta, offerta_id,
+            code=E_VENDITE_NOT_FOUND, message="Offerta non trovata.",
+            id_name="offerta_id", function_name=f"offerte_service.{op}",
+        )
+
     # Scopo: Dettaglio offerta + eccezioni + utility 1:1 + blob capability
     #        (refactor data-driven 2026-05-26). Lo stato della macchina e
     #        le azioni ammesse arrivano da `script.fn_available_actions_offerta`,
     #        cosi' il drawer Vue NON ricalcola nulla lato client (pattern
-    #        coerente con contratti/preventivi/promo). Il merge applica
-    #        l'unione delle chiavi del jsonb in testa al dict di ritorno:
-    #        eventuali collisioni di nome con i display fields sono evitate
-    #        per costruzione (la fn ritorna `stato_codice`, lo SELECT ritorna
-    #        `stato_codice_interno` + `stato_descrizione`).
+    #        coerente con contratti/preventivi/promo). Il blob viaggia
+    #        intatto SOTTO `capabilities`, non fuso nella testata (api.md
+    #        §«Il blob sta SOTTO `capabilities`», 2026-09-23): il merge
+    #        nasconde le collisioni invece di evitarle.
     #
     #        Graceful fallback (2026-05-26 post bug fn DB `??` JSONB):
     #        se la fn capability solleva DatabaseError, logghiamo warning e
-    #        ritorniamo il dettaglio senza blob. Il FE cade in readonly
+    #        ritorniamo il dettaglio con `capabilities` VUOTO (la chiave c'e'
+    #        sempre: la forma non dipende dall'esito). Il FE cade in readonly
     #        conservativo (canEditTestata=false), ma l'operatore vede
     #        comunque l'offerta — niente errore E_DATABASE criptico al
     #        client per un problema diagnostico del DB. Pattern coerente
@@ -469,27 +479,13 @@ class OfferteService:
     #        impedire la lettura dell'entita'".
     def get_offerta(self, offerta_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        row = self._repo.get_offerta(offerta_id)
-        ErrorManager.require(
-            row is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
-        assert row is not None
+        row = self._get_offerta_or_raise(offerta_id, op="get_offerta")
         row["eccezioni"] = self._repo.list_eccezioni(offerta_id)
         row["utility"] = self._repo.get_utility(offerta_id)
-        try:
-            row.update(self._repo.get_available_actions(offerta_id))
-        except DatabaseError as exc:
-            # Capability layer rotto (es. fn DB inesistente o con SQL
-            # invalido). Detail comunque consistente: il FE legge senza
-            # `available_actions[]`/`can_*` e cade in readonly conservativo.
-            logger.warning(
-                "fn_available_actions_offerta fallita per offerta_id=%s: %s. "
-                "Detail ritornato senza blob capability (drawer readonly).",
-                offerta_id, exc,
-            )
+        row["capabilities"] = capabilities_o_vuoto(
+            lambda: self._repo.get_available_actions(offerta_id),
+            funzione="fn_available_actions_offerta", entita_id=offerta_id, logger=logger,
+        )
         return row
 
     # =================================================================
@@ -501,7 +497,7 @@ class OfferteService:
     #        atterrato 2026-05-25): non va nel payload (rifiutato dalla
     #        whitelist). Lo stato BOZZA si risolve via lookup `codice_interno`.
     def crea_offerta(self, payload: dict[str, Any]) -> dict[str, Any]:
-        self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_OFFERTA)
+        self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_OFFERTA)
         # Validazioni applicative minime (il DB rifinisce gli invarianti via
         # CHECK chk_offerte_*).
         for required in (
@@ -538,9 +534,11 @@ class OfferteService:
             message="Stato BOZZA non configurato in config.stati_doc_offerte.",
         )
         assert stato_bozza_id is not None
-        data: dict[str, Any] = {k: v for k, v in payload.items() if k != "utility"}
+        data: dict[str, Any] = self._con_meta_normalizzato(
+            {k: v for k, v in payload.items() if k != "utility"},
+        )
         data["stato_doc_offerta_id"] = stato_bozza_id
-        # `codice` NON in payload (vedi nota _CREATE_KEYS_OFFERTA): il trigger
+        # `codice` NON in payload (vedi nota CREATE_KEYS_OFFERTA): il trigger
         # BEFORE INSERT genera OFC-NNNNNNN via `script.fn_generate_codice`.
         # `revisione_numero` ha default DB = 1.
         with self._db_errors({"billing_account_id": payload.get("billing_account_id")}):
@@ -574,7 +572,8 @@ class OfferteService:
         merged = dict(utility_payload)
         merged.setdefault("istanza_utility_id", offerta_payload.get("istanza_utility_id"))
         merged.setdefault("utility_id", offerta_payload.get("utility_id"))
-        self._v.validate_allowed_keys(merged, allowed=_CREATE_KEYS_UTILITY)
+        self._v.validate_allowed_keys(merged, allowed=CREATE_KEYS_UTILITY)
+        merged = self._con_meta_normalizzato(merged)
         for required in ("istanza_utility_id", "utility_id"):
             ErrorManager.require(
                 merged.get(required) is not None,
@@ -598,7 +597,7 @@ class OfferteService:
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_OFFERTA)
+        self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_OFFERTA)
         self._guard_payload_non_vuoto(payload, op="aggiorna_offerta")
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         # Split testata vs utility prima del repo. La testata non ha la
@@ -611,7 +610,9 @@ class OfferteService:
                 message="Campo 'utility' deve essere oggetto.",
                 context={"got": type(utility_payload).__name__},
             )
-        testata_payload = {k: v for k, v in payload.items() if k != "utility"}
+        testata_payload = self._con_meta_normalizzato(
+            {k: v for k, v in payload.items() if k != "utility"},
+        )
         # Guard: payload "vuoto" dopo aver estratto utility non e' un no-op
         # (l'upsert utility e' un side-effect valido).
         if not testata_payload and utility_payload is None:
@@ -628,7 +629,7 @@ class OfferteService:
     # Scopo: Upsert del record utility 1:1 contestualmente al PATCH testata.
     #        Distingue create (nessuna utility ancora) da update (utility
     #        esistente) tramite lookup; entrambi i rami applicano la stessa
-    #        whitelist (`_CREATE_KEYS_UTILITY` per create, `_UPDATE_KEYS_UTILITY`
+    #        whitelist (`CREATE_KEYS_UTILITY` per create, `UPDATE_KEYS_UTILITY`
     #        per update — istanza_utility_id/utility_id immutabili dopo
     #        la creazione del record).
     def _upsert_utility_inline(
@@ -641,9 +642,15 @@ class OfferteService:
             assert offerta is not None
             self._add_utility_inline(offerta_id, offerta, utility_payload)
             return
-        # Update: filtra il payload sulla whitelist update (immutabili gli id).
-        update_keys = set(utility_payload.keys()) & _UPDATE_KEYS_UTILITY
-        update_payload = {k: utility_payload[k] for k in update_keys}
+        # Update: gli id (`istanza_utility_id`/`utility_id`) sono immutabili e
+        # il sotto-oggetto del form li riporta: si tolgono. ⛔ Ma una chiave
+        # SCONOSCIUTA si rifiuta (400), come nel ramo create: fino al
+        # 2026-09-26 l'intersezione con la whitelist la scartava in silenzio —
+        # un salvataggio «riuscito» senza aver scritto il campo.
+        self._v.validate_allowed_keys(utility_payload, allowed=CREATE_KEYS_UTILITY)
+        update_payload = self._con_meta_normalizzato({
+            k: v for k, v in utility_payload.items() if k in UPDATE_KEYS_UTILITY
+        })
         if not update_payload:
             return
         self._repo.update_utility(int(existing["id"]), update_payload)
@@ -865,26 +872,25 @@ class OfferteService:
         self, offerta_id: int
     ) -> dict[str, Any] | None:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        ErrorManager.require(
-            self._repo.get_stato_codice(offerta_id) is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
+        self._get_offerta_or_raise(offerta_id, op="get_contratto_sovrapposto", getter=self._repo.get_stato_codice)
         return self._repo.get_contratto_sovrapposto(offerta_id)
 
-    # Scopo: Ritorna la catena di revisioni che condivide il root (rev.1)
-    #        con l'offerta passata. Lettura libera in ogni stato.
-    def list_revisioni(self, offerta_id: int) -> list[dict[str, Any]]:
+    # Scopo: Ritorna una PAGINA della catena di revisioni che condivide la
+    #        radice (rev.1) con l'offerta passata, col totale per
+    #        `paginated_envelope`. Lettura libera in ogni stato.
+    def list_revisioni(
+        self, offerta_id: int, *,
+        limit: int = 25, offset: int = 0,
+        order_by: str | None = None, order_dir: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        # 404 esplicito se l'offerta non esiste.
-        ErrorManager.require(
-            self._repo.get_stato_codice(offerta_id) is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
+        # 404 esplicito se l'offerta non esiste (o e' fuori perimetro): una
+        # lista vuota direbbe «nessuna revisione» di un documento che non c'e'.
+        self._get_offerta_or_raise(offerta_id, op="list_revisioni", getter=self._repo.get_stato_codice)
+        return self._repo.list_revisioni(
+            offerta_id,
+            limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
         )
-        return self._repo.list_revisioni(offerta_id)
 
     # Scopo: BOZZA -> ANNULLATA (ritiro interno prima dell'emissione).
     #        Motivazione obbligatoria. Pattern simmetrico al contratto
@@ -908,12 +914,7 @@ class OfferteService:
     def list_eccezioni(self, offerta_id: int) -> list[dict[str, Any]]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         # Verifica esistenza offerta per 404 esplicito.
-        ErrorManager.require(
-            self._repo.get_stato_codice(offerta_id) is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
+        self._get_offerta_or_raise(offerta_id, op="list_eccezioni", getter=self._repo.get_stato_codice)
         return self._repo.list_eccezioni(offerta_id)
 
     # Scopo: Crea un'eccezione. Solo in stato BOZZA.
@@ -925,7 +926,8 @@ class OfferteService:
         auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_ECCEZIONE)
+        self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_ECCEZIONE)
+        payload = self._con_meta_normalizzato(payload)
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         for required in ("articolo_id", "tipo_eccezione", "fonte_quantita_attesa"):
             ErrorManager.require(
@@ -1068,7 +1070,8 @@ class OfferteService:
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
-        self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_ECCEZIONE)
+        self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_ECCEZIONE)
+        payload = self._con_meta_normalizzato(payload)
         # Flag opt-in workflow L3 (estratto prima del guard non-vuoto: non e' un
         # campo di update di per se').
         richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
@@ -1196,14 +1199,7 @@ class OfferteService:
         auth_user_id: int | None = None,
     ) -> list[dict[str, Any]]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        testata = self._repo.get_offerta(offerta_id)
-        ErrorManager.require(
-            testata is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
-        assert testata is not None
+        testata = self._get_offerta_or_raise(offerta_id, op="preview_componenti_eccezione")
         emittente_sr_id = self._resolve_emittente_sr_id_for_offerta(
             offerta_id=offerta_id,
             testata=testata,
@@ -1294,6 +1290,15 @@ class OfferteService:
         self._load_componente_for_modification(
             offerta_id=offerta_id, eccezione_id=eccezione_id,
             componente_id=componente_id,
+        )
+        # ⛔ Contratto dell'OPERATORE (BB unico per i cinque documenti), non
+        #    la whitelist del repository: fino al 2026-09-26 qui si validava
+        #    contro `COMPONENTE_UPDATE_ALLOWED`, che contiene
+        #    `stato_approvazione_prezzo` — un operatore poteva approvarsi da
+        #    solo un prezzo L3 PENDING. `origine_prezzo` la deriva il server.
+        payload = dati_patch_componente(
+            payload,
+            function_name="offerte_service.update_componente_eccezione",
         )
         with self._db_errors(
             {"componente_id": componente_id, "eccezione_id": eccezione_id},
@@ -1389,12 +1394,7 @@ class OfferteService:
     # Scopo: Legge il record utility 1:1 di un'offerta (read libero).
     def get_utility(self, offerta_id: int) -> dict[str, Any] | None:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        ErrorManager.require(
-            self._repo.get_stato_codice(offerta_id) is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
+        self._get_offerta_or_raise(offerta_id, op="get_utility", getter=self._repo.get_stato_codice)
         return self._repo.get_utility(offerta_id)
 
     # Scopo: Crea il record utility 1:1. UNIQUE su offerta_id: doppio create
@@ -1403,7 +1403,8 @@ class OfferteService:
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_UTILITY)
+        self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_UTILITY)
+        payload = self._con_meta_normalizzato(payload)
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         for required in ("istanza_utility_id", "utility_id"):
             ErrorManager.require(
@@ -1426,7 +1427,8 @@ class OfferteService:
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(utility_id, field="utility_id")
-        self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_UTILITY)
+        self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_UTILITY)
+        payload = self._con_meta_normalizzato(payload)
         self._guard_payload_non_vuoto(payload, op="aggiorna_utility")
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         existing = self._repo.get_utility(offerta_id)
@@ -1452,6 +1454,24 @@ class OfferteService:
     #        comunque `get_offerta(...)` — l'operatore vedrebbe un "successo"
     #        ingannevole sul tasto Salva quando in realta' non e' stato
     #        scritto nulla.
+    # Scopo: Normalizza `meta` (se presente) con il BB `optional_meta`:
+    #        oggetto JSON (dict, o stringa che ne contiene uno) -> dict,
+    #        `null` -> `{}`, qualunque altra cosa -> 400 E_VENDITE_VALIDATION.
+    #        Ritorna una COPIA del payload (il chiamante non vede la mutazione).
+    # ⭐ 2026-09-26, migrazione delle scritture sul BB core. Fino a quel giorno
+    #    il `meta` del client arrivava al repository COSI' COM'ERA e
+    #    `to_write_param` lo passava a `json.dumps`: una stringa diventava uno
+    #    SCALARE stringa jsonb, un numero un numero — su una colonna che il
+    #    modello vuole oggetto (`NOT NULL DEFAULT '{}'` su tutte e tre le
+    #    tabelle), e che il gate prezzo rilegge come dict. E `null` arrivava
+    #    come NULL contro il NOT NULL (errore DB generico). Ora la regola e'
+    #    quella di contratti/promo: un oggetto o un 400 parlante, `null` =
+    #    reset a `{}`.
+    def _con_meta_normalizzato(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if "meta" not in payload:
+            return payload
+        return {**payload, "meta": self._v.optional_meta(payload)}
+
     def _guard_payload_non_vuoto(
         self, payload: dict[str, Any], *, op: str
     ) -> None:
@@ -1468,14 +1488,7 @@ class OfferteService:
     def _assert_stato_corrente(
         self, offerta_id: int, *, expected: set[str] | frozenset[str]
     ) -> str:
-        stato = self._repo.get_stato_codice(offerta_id)
-        ErrorManager.require(
-            stato is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
-        assert stato is not None
+        stato = self._get_offerta_or_raise(offerta_id, op="_assert_stato_corrente", getter=self._repo.get_stato_codice)
         ErrorManager.require(
             stato in expected,
             code=E_VENDITE_VALIDATION,
@@ -1549,14 +1562,11 @@ def _load_offerta_context_for_pricing(
 ) -> dict[str, Any]:
     if repo is None:
         repo = OfferteRepository()
-    testata = repo.get_offerta(offerta_id)
-    ErrorManager.require(
-        testata is not None,
-        code=E_VENDITE_NOT_FOUND,
-        message="Offerta non trovata.",
-        function_name=function_name,
+    testata = testata_o_not_found(
+        repo.get_offerta, offerta_id,
+        code=E_VENDITE_NOT_FOUND, message="Offerta non trovata.",
+        id_name="offerta_id", function_name=function_name,
     )
-    assert testata is not None
 
     ba_id_raw = testata.get("billing_account_id")
     ErrorManager.require(

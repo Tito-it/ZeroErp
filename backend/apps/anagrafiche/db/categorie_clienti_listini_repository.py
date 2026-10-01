@@ -16,7 +16,15 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import sql_order_clause, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
+    row_to_dict,
+    rows_to_list,
+    sql_order_clause,
+)
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 
 
 # Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
@@ -86,6 +94,23 @@ _SELECT_COLS = """
 """
 
 
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# Mappa `campo_sorgente → espressione`: i nomi del catalogo sono nomi di USCITA
+# di `_SELECT_COLS`, e ogni valore e' la stessa espressione che la SELECT
+# proietta con quel nome (si cerca su cio' che si mostra).
+# ⭐ Le due descrizioni sono colonne del catalogo dal 2026-09-24 (brief DB
+#    §3.2-bis): prima la ricerca le cercava senza che il catalogo lo dicesse.
+_RICERCA_MATRICE = RicercaFull(
+    "anagrafiche.categorie_clienti_listini",
+    {
+        "categoria_codice": "cc.codice",
+        "categoria_descrizione": "cc.descrizione",
+        "listino_codice": "l.codice",
+        "listino_descrizione": "l.descrizione",
+    },
+)
+
+
 _FROM_JOINS = """
     FROM anagrafiche.categorie_clienti_listini m
     JOIN anagrafiche.categorie_clienti cc ON cc.id = m.categoria_cliente_id
@@ -96,6 +121,17 @@ _FROM_JOINS = """
     LEFT JOIN config.classi_utenze clu ON clu.id = m.classe_utenza_id
     JOIN vendite.listini l ON l.id = m.listino_id
 """
+
+
+# Colonne scrivibili (whitelist RIGIDA dei BB di scrittura, 2026-09-26).
+# In update mancano le 4 dimensioni della riga: sono immutabili.
+_UPDATE_COLS: frozenset[str] = frozenset({
+    "listino_id", "tipo_variazione", "valore_variazione",
+    "valido_dal", "valido_al", "meta", "attivo",
+})
+_CREATE_COLS: frozenset[str] = _UPDATE_COLS | {
+    "categoria_cliente_id", "utility_id", "emittente_soggetto_ruolo_id", "classe_utenza_id",
+}
 
 
 class CategorieClientiListiniRepository:
@@ -129,8 +165,7 @@ class CategorieClientiListiniRepository:
             default=_ORDER_COLS["valido_dal"],
             tiebreak="m.id",
         )
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -154,13 +189,14 @@ class CategorieClientiListiniRepository:
             # La colonna validita e' daterange calcolata da trigger.
             conditions.append("m.validita @> %s::date")
             params.append(valid_at)
-        if search:
-            conditions.append(
-                "(cc.codice ILIKE %s OR cc.descrizione ILIKE %s "
-                "OR l.codice ILIKE %s OR l.descrizione ILIKE %s)"
-            )
-            like = f"%{search.strip()}%"
-            params.extend([like, like, like, like])
+        # ⭐ Una condizione sola per pagina e conteggio (`where_clause` qui
+        #    sotto): i due insiemi non possono divergere.
+        # ⭐ Matrice di configurazione, gemella di `tipi_ruolo_tipi_indirizzo`
+        #    e `categorie_clienti` (Tid, 2026-09-24): la soglia la dichiara il
+        #    catalogo (`ricerca_min_caratteri`). Fino ad allora la ricerca
+        #    scritta a mano non escapava `%`/`_` (e un termine di soli spazi
+        #    diventava `%%`).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_MATRICE)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -170,7 +206,7 @@ class CategorieClientiListiniRepository:
                 SELECT COUNT(*)
                   {_FROM_JOINS}
                 {where_clause}
-                """,  # noqa: S608
+                """,
                 params,
             )
             row = cursor.fetchone()
@@ -185,7 +221,7 @@ class CategorieClientiListiniRepository:
                 {where_clause}
                  ORDER BY {ordinamento}
                  LIMIT %s OFFSET %s
-                """,  # noqa: S608
+                """,
                 params + [safe_limit, safe_offset],
             )
             results = rows_to_list(cursor)
@@ -200,7 +236,7 @@ class CategorieClientiListiniRepository:
                 SELECT {_SELECT_COLS}
                   {_FROM_JOINS}
                  WHERE m.id = %s
-                """,  # noqa: S608
+                """,
                 [record_id],
             )
             return row_to_dict(cursor)
@@ -212,66 +248,21 @@ class CategorieClientiListiniRepository:
     # Scopo: Inserisce una nuova riga di matrice usando solo colonne
     #        whitelisted. `validita` NON e' scrivibile: e' STORED generated
     #        column (PG 18) calcolata automaticamente da valido_dal/valido_al.
+    #        BB `execute_dynamic_insert` (2026-09-26): whitelist RIGIDA
+    #        `_CREATE_COLS`, `meta` dict -> `::jsonb`, None scrive NULL.
     def create_matrice(self, data: dict[str, Any]) -> int:
-        write_cols = (
-            "categoria_cliente_id",
-            "utility_id",
-            "emittente_soggetto_ruolo_id",
-            "classe_utenza_id",
-            "listino_id",
-            "tipo_variazione",
-            "valore_variazione",
-            "valido_dal",
-            "valido_al",
-            "meta",
-            "attivo",
+        riga = execute_dynamic_insert(
+            "anagrafiche.categorie_clienti_listini", data, allowed=_CREATE_COLS,
         )
-        cols: list[str] = []
-        vals: list[Any] = []
-        for col in write_cols:
-            if col in data:
-                cols.append(col)
-                vals.append(data[col])
-        placeholders = ["%s"] * len(cols)
-        sql = f"""
-            INSERT INTO anagrafiche.categorie_clienti_listini ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna una riga matrice sui soli campi forniti. Le 4+1 FK
     #        dimensionali (categoria, utility, emittente, classe_utenza)
     #        sono immutabili lato service (non arrivano nel payload di
-    #        update). Qui il repository accetta qualsiasi whitelisted.
+    #        update) e FUORI da `_UPDATE_COLS`: se arrivassero qui sarebbe
+    #        `RuntimeError` (BB `execute_dynamic_update`, 2026-09-26).
     def update_matrice(self, record_id: int, data: dict[str, Any]) -> bool:
-        write_cols = (
-            "listino_id",
-            "tipo_variazione",
-            "valore_variazione",
-            "valido_dal",
-            "valido_al",
-            "meta",
-            "attivo",
+        return execute_dynamic_update(
+            "anagrafiche.categorie_clienti_listini", record_id, data,
+            allowed=_UPDATE_COLS,
         )
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in write_cols:
-            if col in data:
-                set_parts.append(f"{col} = %s")
-                vals.append(data[col])
-        if not set_parts:
-            return False
-        vals.append(record_id)
-        sql = f"""
-            UPDATE anagrafiche.categorie_clienti_listini
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0

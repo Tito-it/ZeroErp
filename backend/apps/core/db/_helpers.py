@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
 from collections.abc import Collection, Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 
-# Cap standard del page size delle liste API (fonte unica: repo clampano e le
-# view lo dichiarano — mai lo stesso 200 ripetuto inline in più file).
-LIST_MAX_LIMIT = 200
+
+logger = logging.getLogger(__name__)
 
 
 def iso_or_none(value: Any) -> str | None:
@@ -62,13 +66,13 @@ def row_to_dict(cursor) -> dict[str, Any] | None:
     if row is None:
         return None
     cols = [c.name for c in cursor.description]
-    return dict(zip(cols, row))
+    return dict(zip(cols, row, strict=True))
 
 
 def rows_to_list(cursor) -> list[dict[str, Any]]:
     """Converte tutte le righe (fetchall) in lista di dict."""
     cols = [c.name for c in cursor.description]
-    return [dict(zip(cols, row)) for row in cursor.fetchall()]
+    return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
 
 def coerce_jsonb_dict(value: Any) -> dict[str, Any]:
@@ -114,6 +118,237 @@ def escape_ilike(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+# Scopo: il pattern «contiene» di una ricerca `ILIKE`: termine ripulito dagli
+#        spazi, metacaratteri escapati, `%` ai due lati. `None` se il termine e'
+#        assente o vuoto — il chiamante lo usa col suo `%s::text IS NULL OR`.
+# ⛔ E' l'UNICO modo di costruire il pattern. Fino al 2026-09-26 la riga
+#    `f"%{search.strip()}%"` era scritta a mano in 18 punti e `escape_ilike`
+#    in 5: nei 18 un `%` o un `_` scritti dall'utente facevano da jolly
+#    («50%» trovava ogni riga che contiene 50, «A_1» anche «AB1»). Un difetto che non da'
+#    errore, da' solo righe in piu'.
+def pattern_contiene(termine: str | None) -> str | None:
+    if termine is None:
+        return None
+    pulito = termine.strip()
+    if not pulito:
+        return None
+    return f"%{escape_ilike(pulito)}%"
+
+
+# Soglia di progetto delle ricerche che NON sono una lista a catalogo: il 400
+# di `require_min_search_length` (ricerca universale, lookup), i tool
+# dell'assistente. ⛔ Non il resolver soggetti: cerca con la lista
+# `anagrafiche.soggetti`, e ne usa la soglia a catalogo (§6 b del brief sotto).
+# ⛔ Non e' la soglia delle liste configurabili: quella e' un fatto della LISTA
+#    (`ui.lista_definizione.ricerca_min_caratteri`, brief-db-be-fe-ricerca-
+#    soglia-per-lista) e il BB `add_ricerca_full_condition` la legge dal
+#    catalogo (`soglia_ricerca`). Un numero scritto qui per le liste sarebbe la
+#    seconda sede dello stesso fatto — com'era fino al 2026-09-26, con
+#    quattordici `min_caratteri=1` nei repository e nessuno nel frontend.
+RICERCA_MIN_CARATTERI = 3
+
+_NOME_COLONNA = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+@dataclass(frozen=True)
+class RicercaFull:
+    """Cosa si PUO' cercare in una lista configurabile: la dichiarazione del repository.
+
+    `lista_codice` e' il codice della lista a catalogo (`ui.lista_definizione`),
+    `colonne` le colonne che il repository SA cercare in quella query:
+
+    - **tupla** di `campo_sorgente` quando sono colonne semplici della relazione
+      nel `FROM` (`("numero", "ba_codice")` → `v.numero`, `v.ba_codice`, con
+      l'alias passato al BB);
+    - **mappa** `campo_sorgente → espressione SQL` quando il nome del catalogo
+      e' un nome di USCITA (`{"ba_codice": "ba.codice"}`): stessa forma delle
+      whitelist di ordinamento. ⭐ Il valore e' la stessa espressione che la
+      `SELECT` proietta con quel nome: si cerca su cio' che si mostra.
+
+    ⭐ Codice lista e colonne stanno in UNA dichiarazione apposta: una chiamata
+    non puo' cosi' passare le colonne di una lista col codice di un'altra.
+
+    ⚠️ La validazione e' qui e non nel BB: un nome sbagliato esplode
+    all'IMPORT del modulo, non al primo operatore che cerca.
+    """
+
+    lista_codice: str
+    colonne: tuple[str, ...] | Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        if not self.lista_codice:
+            raise RuntimeError("RicercaFull: lista_codice vuoto")
+        # ⚠️ `("numero")` e' una STRINGA, non una tupla: iterata darebbe una
+        #    colonna per lettera, tutte valide per il controllo dei nomi.
+        if isinstance(self.colonne, str):
+            raise RuntimeError(
+                f"RicercaFull {self.lista_codice}: colonne e' una stringa, serve una tupla o una mappa"
+            )
+        # Congelata su una copia: validata qui, non deve poter cambiare dopo
+        # (una mappa del modulo modificata a runtime salterebbe il controllo).
+        congelate = (
+            MappingProxyType(dict(self.colonne)) if isinstance(self.colonne, Mapping)
+            else tuple(self.colonne)
+        )
+        object.__setattr__(self, "colonne", congelate)
+        if not self.colonne:
+            raise RuntimeError(f"RicercaFull {self.lista_codice}: nessuna colonna di ricerca")
+        for nome in self.colonne:
+            # Chiavi scritte nel codice, non input utente: il controllo
+            # trasforma un errore di dichiarazione in un errore chiaro.
+            if not _NOME_COLONNA.match(nome):
+                raise RuntimeError(f"RicercaFull {self.lista_codice}: colonna non valida {nome!r}")
+        if isinstance(self.colonne, Mapping):
+            for nome, espressione in self.colonne.items():
+                if not str(espressione).strip():
+                    raise RuntimeError(f"RicercaFull {self.lista_codice}: espressione vuota per {nome!r}")
+
+    # Scopo: `campo_sorgente → espressione SQL`, con l'alias per la forma a tupla.
+    def espressioni(self, alias: str) -> dict[str, str]:
+        if isinstance(self.colonne, Mapping):
+            return dict(self.colonne)
+        return {c: f"{alias}.{c}" for c in self.colonne}
+
+
+# Scopo: le colonne in cui l'utente CORRENTE puo' cercare in una lista, lette
+#        dal catalogo a ogni ricerca e gia' filtrate dai permessi di colonna
+#        (una `BLOCCATO` non esce; utente e veste dalle GUC di sessione).
+# ⚠️ `SELECT … FROM`, non `SELECT ui.fn_…(…)`: la seconda forma restituisce
+#    ogni riga come una tupla in un campo solo (brief-db-ricerca-full-colonne-
+#    permessi §6). Lista assente o spenta → `E_UI_LISTA_NON_TROVATA`, che si
+#    propaga: e' un errore di dichiarazione nel repository, non un ripiego.
+# ⭐ Pubblica dal 2026-09-23: la legge anche la configurazione risolta della
+#    lista (`ui_service.get_lista_config`, chiave `ricerca_full`), perche' la
+#    casella di ricerca si mostra solo se c'e' dove cercare (Tid). Una sola sede
+#    della lettura: il BB e la configurazione non possono dire cose diverse.
+def colonne_ricerca_accese(lista_codice: str) -> list[str]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT campo_sorgente FROM ui.fn_lista_colonne_ricerca_full(%s)",
+            [lista_codice],
+        )
+        return [r[0] for r in cursor.fetchall()]
+
+
+# Scopo: la soglia della ricerca libera di una lista: sotto questo numero di
+#        caratteri (dopo lo `strip`) il termine non filtra. E' un fatto della
+#        LISTA — una tabella di configurazione a codici corti cerca da uno, un
+#        archivio che cresce da tre — e sta nel catalogo accanto alle colonne
+#        (decisione di Tid del 2026-09-24).
+# ⭐ Una fonte, due lettori: questa e la configurazione della schermata (chiave
+#    `ricerca_min_caratteri` di `ui.fn_resolve_lista_config`), da cui il
+#    frontend decide se mandare il termine. Tutte e due leggono la riga dal BB
+#    DB `ui.fn_lista_da_codice`.
+# ⚠️ `SELECT … FROM`: `SELECT ui.fn_lista_da_codice(…)` da' la riga intera come
+#    una tupla in un campo solo. Colonna NOT NULL: nessun ripiego qui — lista
+#    assente o spenta e' `E_UI_LISTA_NON_TROVATA`, come per le colonne.
+def soglia_ricerca(lista_codice: str) -> int:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT ricerca_min_caratteri FROM ui.fn_lista_da_codice(%s)",
+            [lista_codice],
+        )
+        return int(fetchone_scalar(cursor))
+
+
+# Scopo: l'utente per cui la connessione sta agendo: la GUC `app.current_user_id`
+#        che `JwtAuditAuthentication` imposta per la RLS. `None` se vuota (fuori
+#        da una richiesta autenticata, o su un canale che non l'ha dichiarata).
+# ⚠️ Il nome e' `app.current_user_id`, NON `app.auth_user_id`: e' quello delle
+#    policy RLS. Col nome sbagliato `current_setting(…, true)` risponde NULL e
+#    chi legge conclude «nessun utente» — un difetto che i mock non vedono,
+#    perche' i mock non hanno GUC.
+# ⭐ Regola del 2 (2026-09-24, brief-be-ricerca-full-liste-residue §12): la
+#    leggevano `pagamenti_repository.emittente_nel_perimetro` e la guardia di
+#    contesto di `ui_service.get_lista_config_per_video`.
+def utente_di_sessione() -> int | None:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT NULLIF(current_setting('app.current_user_id', true), '')::int")
+        row = cursor.fetchone()
+    return int(row[0]) if row and row[0] is not None else None
+
+
+def add_ricerca_full_condition(
+    conditions: list[str],
+    params: list[Any],
+    termine: str | None,
+    ricerca: RicercaFull,
+    *,
+    alias: str = "v",
+) -> None:
+    """La ricerca libera di una lista: un OR di `ILIKE` sulle colonne accese.
+
+    Aggiunge a `conditions`/`params` la condizione
+    `((v.a)::text ILIKE %s OR (v.b)::text ILIKE %s ...)` col termine escapato
+    (`escape_ilike`) e racchiuso fra `%`. Termine vuoto → non aggiunge niente
+    e il catalogo non si legge: aprire una lista senza cercare non costa niente
+    in piu'. Termine piu' corto della soglia della lista (`soglia_ricerca`,
+    dopo lo `strip`) → non aggiunge niente, e le colonne non si leggono.
+
+    ⭐ **La soglia e' della lista, non di chi chiama** (brief-db-be-fe-ricerca-
+    soglia-per-lista): la legge il catalogo, come le colonne, e la stessa
+    colonna arriva al frontend nella configurazione della lista. Fino al
+    2026-09-26 era un argomento `min_caratteri`, passato a 1 da quattordici
+    repository e ignorato dal frontend: «KG» sulle unita' di misura partiva
+    senza `search`, e la lista restava intera.
+
+    ⭐ **Due sedi, due domande** (brief-be-ricerca-full-liste-residue §2):
+    cosa si PUO' cercare lo dice il codice (`ricerca`, la dichiarazione del
+    repository); cosa si CERCA adesso, per questo utente, lo dice il catalogo
+    (`ui.fn_lista_colonne_ricerca_full`), letto a ogni ricerca. La ricerca
+    cade sull'intersezione:
+
+    - l'amministratore spegne una colonna → sparisce subito dalla ricerca;
+    - la accende e il repository la conosce → entra subito;
+    - la accende e il repository NON la conosce → ignorata, con un `warning`
+      che la nomina. ⛔ Mai SQL costruito da un nome di catalogo: il trigger
+      a10 valida il `campo_sorgente` solo sulle liste con `vista_sql`, e in
+      meta' delle liste il nome del catalogo e' un nome di uscita che nel
+      `WHERE` non esiste;
+    - nessuna colonna accesa e un termine valido → **`FALSE`**: una ricerca
+      che non ha dove cercare non trova niente (decisione di Tid del
+      2026-09-23). Tornare tutta la lista direbbe all'operatore che ogni riga
+      corrisponde al termine.
+
+    Regola del 2 (2026-09-23): la stessa condizione era scritta a mano in otto
+    repository di vendite, e le copie si erano gia' separate (Preventivi,
+    Offerte e Contratti non trovavano codice BA e id fiscale). Presidio:
+    `apps/core/tests/test_ricerca_full_seed` (la dichiarazione copre il seed)
+    e `tests/db/test_ricerca_full_db` (la condizione parte sul DB vero).
+
+    ⭐ `::text` su ogni espressione: il catalogo dice `string` anche dove la
+    vista espone un intero (`vw_fatture_lista.numero`), e un `ILIKE` su un
+    intero e' un errore di PostgreSQL. Su una colonna gia' testo non costa.
+    """
+    # ⚠️ PRIMA della soglia: controllato solo a termine valido, un alias
+    #    sbagliato passerebbe ogni lista aperta senza ricerca e salterebbe al
+    #    primo operatore che cerca.
+    if not _NOME_COLONNA.match(alias):
+        raise RuntimeError(f"add_ricerca_full_condition: alias non valido {alias!r}")
+    # Il termine di soli spazi e' un termine vuoto: non vale una lettura.
+    termine = (termine or "").strip()
+    if not termine:
+        return
+    if len(termine) < soglia_ricerca(ricerca.lista_codice):
+        return
+    espressioni = ricerca.espressioni(alias)
+    accese = set(colonne_ricerca_accese(ricerca.lista_codice))
+    ignote = sorted(accese - espressioni.keys())
+    if ignote:
+        logger.warning(
+            "ricerca_full.colonne_accese_non_dichiarate lista=%s colonne=%s",
+            ricerca.lista_codice, ignote,
+        )
+    attive = [e for c, e in espressioni.items() if c in accese]
+    if not attive:
+        conditions.append("FALSE")
+        return
+    conditions.append(
+        "(" + " OR ".join(f"({e})::text ILIKE %s" for e in attive) + ")"
+    )
+    params.extend([pattern_contiene(termine)] * len(attive))
+
+
 def fetchone_scalar(cursor) -> Any:
     """Ritorna il primo valore della riga corrente (fetchone), riga garantita.
 
@@ -146,7 +381,7 @@ def call_jsonb_fn(fn_name: str, *args: Any) -> dict[str, Any]:
         )
     """
     placeholders = ", ".join(["%s"] * len(args))
-    sql = f"SELECT {fn_name}({placeholders}) AS payload"  # noqa: S608
+    sql = f"SELECT {fn_name}({placeholders}) AS payload"
     with connection.cursor() as cursor:
         cursor.execute(sql, list(args))
         row = cursor.fetchone()
@@ -231,10 +466,47 @@ def sql_order_direction(
 
     `default_desc=True` per le liste che ordinano dal piu' recente quando il
     chiamante non specifica nulla.
+
+    ⛔ **Una direzione INDICATA e non riconosciuta e' `ValueError`, non ASC**
+    (decisione Tid 2026-09-26). Fino a quel giorno `giu`, `discendente` o
+    `DESC NULLS LAST` diventavano ASC in silenzio: la lista rispondeva 200,
+    ordinata al contrario di cio' che era stato chiesto, e nessuno lo vedeva.
+    Il predicato e' `order_dir_ammessa`: assente (None, vuota, soli spazi) =
+    il default; `asc`/`desc` con maiuscole e spazi qualsiasi = quella; il
+    resto e' rifiutato.
+
+    ⭐ Il messaggio e' il token `order_dir_invalid`, la convenzione dei
+    parametri di query (`qp_int_optional` & C. in `payload_validators`): su un
+    percorso `/api/` l'eccezione sale a `ApiExceptionMiddleware`, che la
+    traduce in **400 `E_VALIDATION_INPUT`** — lo stesso 400 di `?page=abc`.
+    Chi vuole il codice del proprio dominio valida prima, nel service
+    (`list_helpers.validate_order_params`, `PayloadValidator.validate_order_by`).
     """
-    fallback = "desc" if default_desc else "asc"
-    is_desc = (order_dir or fallback).strip().lower() == "desc"
+    if not order_dir_ammessa(order_dir):
+        raise ValueError("order_dir_invalid")
+    indicata = (order_dir or "").strip().lower()
+    is_desc = (indicata or ("desc" if default_desc else "asc")) == "desc"
     return "DESC NULLS LAST" if is_desc else "ASC NULLS FIRST"
+
+
+_ORDER_DIR_AMMESSE = frozenset({"asc", "desc"})
+
+
+def order_dir_ammessa(order_dir: str | None) -> bool:
+    """`True` se `order_dir` e' ASSENTE o e' una direzione riconosciuta.
+
+    Assente = None, stringa vuota o soli spazi: prende il default di chi
+    ordina. Riconosciuta = `asc`/`desc`, maiuscole e spazi ai lati ammessi.
+
+    ⭐ **E' la sede UNICA della regola**, e ha due lettori che devono dire la
+    stessa cosa: `sql_order_direction` (che rifiuta con `ValueError`) e
+    `PayloadValidator.validate_order_by` (che rifiuta con il codice di
+    dominio del service). Due copie dell'insieme `{asc, desc}` divergerebbero
+    sulle maiuscole alla prima modifica, e allora il service lascerebbe
+    passare cio' che il repository rifiuta — o viceversa.
+    """
+    indicata = (order_dir or "").strip().lower()
+    return not indicata or indicata in _ORDER_DIR_AMMESSE
 
 
 def sql_tiebreak_direction(direction: str) -> str:
@@ -269,8 +541,22 @@ def sql_tiebreak_direction(direction: str) -> str:
     **Non si applica ai criteri GERARCHICI**, che non sono spareggi tecnici ma
     ordine logico e restano fissi: le righe di uno stesso reso vanno lette nel
     loro ordine naturale anche quando la lista e' ordinata al contrario.
+
+    ⛔ **Una clausola che non comincia con `ASC` o `DESC` e' `RuntimeError`**
+    (2026-09-26, stessa decisione di `sql_order_direction`): prima tutto cio'
+    che non cominciava per `DESC` diventava ASC. Qui l'argomento non viene
+    mai dall'utente — e' l'uscita del BB fratello o un letterale del codice —
+    quindi un valore estraneo e' un errore di programmazione, e va detto.
+    ⚠️ `RuntimeError` e non `ValueError`: `ErrorTranslator` traduce ogni
+    `ValueError` in un 400 `E_VALIDATION_INPUT` loggato senza stack, cioe'
+    «dato errato» a un client che non ha sbagliato niente. `RuntimeError`
+    diventa `E_GENERICO`, 500 col traceback. `ValueError` resta alla sola
+    direzione di `sql_order_direction`, che viene dall'utente.
     """
-    return "DESC" if direction.strip().upper().startswith("DESC") else "ASC"
+    verso = direction.strip().split(maxsplit=1)[0].upper() if direction.strip() else ""
+    if verso not in ("ASC", "DESC"):
+        raise RuntimeError(f"sql_tiebreak_direction: direzione non riconosciuta {direction!r}")
+    return verso
 
 
 def colonne_identita(*colonne: str) -> dict[str, str]:
@@ -303,6 +589,7 @@ def sql_order_clause(
     default_clause: str | None = None,
     default_desc: bool = False,
     colonne_desc: Collection[str] = (),
+    rifiuta_fuori_whitelist: bool = False,
 ) -> str:
     """Il corpo di un `ORDER BY` di lista: colonna, direzione e spareggio.
 
@@ -354,9 +641,34 @@ def sql_order_clause(
     `ORDER BY s.id ASC, s.id ASC` — la colonna e il suo stesso spareggio. Non
     sbaglia il risultato, ma e' una clausola che dice due volte la stessa cosa
     e nasconde alla lettura qual e' l'ordinamento vero.
+
+    ⛔ **`rifiuta_fuori_whitelist=True`: un valore INDICATO e sbagliato e'
+    `RuntimeError`, non il default** (estensione 2026-09-26, regola del 2 — il
+    blocco «whitelist + raise + direzione» era ricopiato in coda lavori e coda
+    stampa, e scritto a mano in listini). Per i repository il cui service ha
+    GIA' validato `order_by`/`order_dir`: li' un valore fuori lista e' un
+    errore di programmazione, e ripiegare sul default lo nasconderebbe dietro
+    una lista ordinata in un altro modo. Un `order_by` NON indicato (None o
+    vuoto) prende ancora il default. Default False: i consumatori storici
+    ripiegano sul default come prima. ⚠️ `RuntimeError` (500 col traceback),
+    non `ValueError` (400 senza stack): vedi `sql_tiebreak_direction`. Verificato
+    il 2026-09-26 che ogni consumatore del flag valida la colonna a monte con
+    lo stesso insieme della mappa: il 500 non puo' nascere da un input.
+
+    ⭐ **Dal 2026-09-26 il parametro riguarda la sola COLONNA.** La direzione
+    la rifiuta sempre `sql_order_direction`, su qualunque ramo e con qualunque
+    valore del flag: una direzione estranea non ha un «ripiego» legittimo.
+    La colonna invece si': un `order_by` fuori whitelist che prende il default
+    e' il contratto di molte liste i cui service non validano la colonna
+    (`parse_list_params` ha un suo `default_order`, che non e' detto stia
+    nella whitelist del repository), e renderlo errore ovunque cambierebbe
+    quel contratto. Il flag resta quindi
+    la scelta PER LISTA fra «ripiega» e «rifiuta» sulla colonna.
     """
+    if rifiuta_fuori_whitelist and order_by and order_by not in colonne:
+        raise RuntimeError(f"order_by non in whitelist: {order_by!r}")
     if (default is None) == (default_clause is None):
-        raise ValueError(
+        raise RuntimeError(
             "sql_order_clause: si passa `default` (una colonna) OPPURE "
             "`default_clause` (una clausola completa), mai entrambi ne' nessuno"
         )
@@ -457,7 +769,7 @@ def sql_lateral_primo_motivo(check_sql: str, alias: str) -> str:
            ORDER BY motivo.ord
            LIMIT 1
       ) {alias} ON TRUE
-"""
+"""  # noqa: S608 — check_sql/alias da costanti di modulo dei chiamanti, mai da input
 
 
 def conta_con_perimetro(
@@ -488,42 +800,85 @@ def conta_con_perimetro(
     where = " AND ".join(conditions)
     with connection.cursor() as cursor:
         cursor.execute(
-            f"SELECT COUNT(*)::int {from_sql} WHERE {where}",  # noqa: S608
+            f"SELECT COUNT(*)::int {from_sql} WHERE {where}",
             list(params),
         )
         return int(fetchone_scalar(cursor))
 
 
+# Scopo: limite e offset di una pagina, riportati nei limiti: il limite fra 1 e
+#        `tetto`, l'offset non negativo. Ritorna `(limite, offset)`.
+# ⭐ Regola del 2 (2026-09-28): la coppia `safe_limit = max(1, min(int(limit),
+#    200))` / `safe_offset = max(0, int(offset))` era scritta 41 volte, e il
+#    tetto come numero in ognuna. `tetto` e' diverso da `MAX_LIMIT` solo per
+#    l'export, che ha il suo.
+def limiti_pagina(limit: Any, offset: Any, *, tetto: int = MAX_LIMIT) -> tuple[int, int]:
+    return max(1, min(int(limit), tetto)), max(0, int(offset))
+
+
+# `LIMIT %s OFFSET %s` in coda alla query: la forma che il ripiego sa rileggere.
+_CODA_LIMIT_OFFSET = re.compile(r"LIMIT\s+%s\s+OFFSET\s+%s\s*;?\s*$", re.IGNORECASE)
+
+
 def fetch_paged_with_total(
     data_sql: str,
-    params: list[Any],
+    params: list[Any] | dict[str, Any],
     *,
+    offset: int,
     fallback_count_sql: str | None = None,
-    fallback_params: list[Any] | None = None,
-    offset: int = 0,
+    fallback_params: list[Any] | dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Esegue una query paginata in UNA valutazione (COUNT(*) OVER()).
 
     `data_sql` DEVE proiettare `COUNT(*) OVER () AS total_count` e portare
     LIMIT/OFFSET nei propri `params`. Ritorna (righe dict, totale).
+    `params` posizionali (lista) o con nome (dict, `%(nome)s`): quello che
+    accetta `cursor.execute`.
 
-    Fallback pagina-oltre-l'ultima: con `offset > 0` e 0 righe la window
-    function non puo' dire il totale — se `fallback_count_sql` e' fornita
-    viene eseguita SOLO in quel caso (raro), cosi' il chiamante non dichiara
-    "0 risultati" a un utente rimasto su una pagina stantia di una lista che
-    si e' accorciata sotto di lui (es. code di lavoro che si auto-svuotano).
-    Senza fallback il totale e' 0 (comportamento dei siti storici).
+    Pagina oltre l'ultima: con `offset > 0` e 0 righe la window function non
+    puo' dire il totale (non c'e' una riga che lo porti). Solo in quel caso
+    (raro: una riga eliminata, una coda che si svuota sotto l'operatore) il
+    totale si chiede di nuovo, in uno dei due modi:
+
+    - `fallback_count_sql` + `fallback_params`, se il chiamante ne ha uno piu'
+      leggero (stesso FROM/WHERE, senza le colonne calcolate);
+    - altrimenti **la stessa query con `LIMIT 1 OFFSET 0`**: la prima riga
+      porta la `COUNT(*) OVER ()` di tutto il risultato. Nessun FROM/WHERE da
+      ricopiare, quindi nessuna seconda copia che diverga. Richiede che la
+      query finisca con `LIMIT %s OFFSET %s` e che i due siano gli ultimi
+      parametri posizionali; con i parametri con nome il conteggio va dato.
+
+    ⛔ Fino al 2026-09-28 il ripiego era facoltativo e ~25 liste non lo
+    avevano: oltre l'ultima pagina il totale usciva 0, e il frontend
+    (`useListaStoreCore`, che ora arretra da solo) non sapeva dove tornare.
+    `offset` e' obbligatorio per lo stesso motivo: senza, il ripiego non
+    scatta mai.
 
     Regola del 2 (2026-07-18): unifica il pattern COUNT-OVER inline dei
-    repository core con la variante fallback nata per le code resi.
+    repository con la variante fallback nata per le code resi.
     """
+    rilettura = None
+    if fallback_count_sql is None:
+        # ⛔ Si verifica SEMPRE, non solo quando serve: una query che non sa
+        #    rileggersi deve rompersi al primo test, non al primo operatore
+        #    rimasto su una pagina stantia.
+        if not isinstance(params, list) or not _CODA_LIMIT_OFFSET.search(data_sql):
+            raise ValueError(
+                "fetch_paged_with_total: senza `fallback_count_sql` la query deve "
+                "finire con `LIMIT %s OFFSET %s` e avere parametri posizionali"
+            )
+        rilettura = (data_sql, [*params[:-2], 1, 0])
     with connection.cursor() as cursor:
         cursor.execute(data_sql, params)
         results, total_count = extract_paginated(cursor)
-        if not results and offset > 0 and fallback_count_sql is not None:
-            cursor.execute(fallback_count_sql, fallback_params or [])
-            row = cursor.fetchone()
-            total_count = row[0] if row else 0
+        if not results and offset > 0:
+            if rilettura is not None:
+                cursor.execute(*rilettura)
+                _, total_count = extract_paginated(cursor)
+            else:
+                cursor.execute(fallback_count_sql, fallback_params or [])
+                row = cursor.fetchone()
+                total_count = row[0] if row else 0
     return results, total_count
 
 
@@ -580,7 +935,7 @@ def query_paged_view(
     params: list[Any],
     limit: int,
     offset: int,
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[tuple], int]:
     """Query paginata su vista/union costosa in UNA valutazione, con CLAMP.
 
@@ -600,8 +955,7 @@ def query_paged_view(
     Promozione a BB core (regola del 2, 2026-07-18) da
     `VenditeRepository._query_paged_view` (estratto 2026-07-07, ok Tid).
     """
-    safe_limit = max(1, min(int(limit), max_limit))
-    safe_offset = max(0, int(offset))
+    safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
     # MATERIALIZED esplicito: la CTE e' referenziata due volte (righe +
     # count del clamp) e deve essere valutata una volta sola.
     sql = f"""

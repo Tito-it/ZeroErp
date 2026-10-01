@@ -4,16 +4,18 @@
 // Il payload unificato va al backend che scompone e crea in transazione.
 // I trigger DEFERRED verificano al COMMIT (contatti, indirizzi, dati societari).
 
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useSoggettoForm } from '../../core/composables/useSoggettoForm'
-import { useContattoForm } from '../../core/composables/useContattoForm'
-import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
-import { useDatiSocietariForm } from '../../core/composables/useDatiSocietariForm'
+import { useSoggettoForm } from '../composables/useSoggettoForm'
+import { useContattoForm } from '../composables/useContattoForm'
+import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
+import { useDatiSocietariForm } from '../composables/useDatiSocietariForm'
+import { raccogliFormInline } from '../composables/raccogliFormInline'
 import { useLookup } from '../../core/composables/useLookup'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { lookupFormeGiuridiche } from '../../core/apiCore'
@@ -21,15 +23,15 @@ import { lookupProvince } from '../api/anagrafiche'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { toDateString } from '../../core/utils/date'
-import SoggettoForm from '../../core/components/SoggettoForm.vue'
-import ContattoForm from '../../core/components/ContattoForm.vue'
-import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
-import DatiSocietariForm from '../../core/components/DatiSocietariForm.vue'
+import SoggettoForm from './SoggettoForm.vue'
+import ContattoForm from './ContattoForm.vue'
+import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
+import DatiSocietariForm from './DatiSocietariForm.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
-import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
-import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
+import IndirizziSoggettoDrawer from './IndirizziSoggettoDrawer.vue'
+import ContattiSoggettoDrawer from './ContattiSoggettoDrawer.vue'
+import ContiBancariDrawer from './ContiBancariDrawer.vue'
 import TitoliIvaSoggettoDrawer from './TitoliIvaSoggettoDrawer.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
@@ -103,6 +105,24 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'saved-with-data'])
 
+// Modifiche non salvate (BB useDrawerFormPreserve) sul form del soggetto, che
+// vive nel composable, e in creazione su cio' che il Salva manda con lui:
+// contatto, indirizzo e (se la sezione e' visibile) dati societari inline.
+// ⚠️ `props.mode` e non `isEdit`: `isEdit` e' dichiarato piu' sotto, e il BB
+//    puo' leggere il computed gia' alla sua creazione (TDZ).
+const formSoggetto = computed(() => (props.mode === 'edit'
+  ? soggetto.form
+  : {
+      ...soggetto.form,
+      ...raccogliFormInline({
+        contatto,
+        indirizzo,
+        datiSocietari: soggetto.showDatiSocietari.value ? datiSocietari : null,
+      }),
+    }))
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSoggetto, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
+
 const isEdit = computed(() => props.mode === 'edit')
 
 // Carica forme giuridiche filtrate al cambio tipo soggetto.
@@ -152,12 +172,6 @@ watch(
     contatto.form.nominativo = _buildNominativo()
   }
 )
-
-// Auto-select tipo contatto default (primo della lista, tipicamente "Principale")
-watch(() => contatto.tipiContatto.items.value, (items) => {
-  if (isEdit.value || contatto.form.tipo_contatto_id) return
-  if (items.length > 0) contatto.form.tipo_contatto_id = items[0].id
-})
 
 // Imposta matrice indirizzi nel composable quando cambia tipo soggetto
 watch(() => soggetto.matriceIndirizzi.value, (matrice) => {
@@ -291,9 +305,20 @@ watch(() => props.visible, async (val) => {
       soggetto.form.tipo_soggetto_dettaglio_id = props.tipoDefaultId
     }
   }
-
-  // Carica lookup contatto (lazy, non blocca)
-  contatto.tipiContatto.load()
+  // Lookup contatto e, in creazione, il tipo di default (il primo della lista,
+  // tipicamente «Principale»). ⚠️ PRIMA della fotografia: e' un valore del
+  // codice, non dell'operatore — scritto dopo, il drawer nasceva «modificato».
+  // E a ogni apertura: il lookup e' in cache, e un watch sulla lista non
+  // scattava piu' dalla seconda creazione in poi.
+  try { await contatto.tipiContatto.load() } catch { /* best-effort: resta da scegliere */ }
+  const tipi = contatto.tipiContatto.items.value
+  if (!isEdit.value && !contatto.form.tipo_contatto_id && tipi.length > 0) {
+    contatto.form.tipo_contatto_id = tipi[0].id
+  }
+  // Dopo il nextTick: i watch del form (nominativo, matrice indirizzi) hanno
+  // gia' scritto le loro derivazioni, e la fotografia le include.
+  await nextTick()
+  fissa()
 })
 
 // Scopo: Validazione aggregata di tutti i building block.
@@ -394,18 +419,19 @@ async function handleSave() {
     }
   }
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('anagrafiche.soggetti.soggetto')" :icon="NAV_ICONS.ANAGRAFICHE" />
+      <DrawerTitle :modificato="modificato" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('anagrafiche.soggetti.soggetto')" :icon="NAV_ICONS.ANAGRAFICHE" />
     </template>
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Sezione: Dati soggetto -->
@@ -442,20 +468,20 @@ async function handleSave() {
         <div class="app-drawer-section">
           <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
         </div>
-        <div class="riepilogo-section">
-          <div v-if="contattiRiepilogo.length > 0" class="riepilogo-list">
-            <div v-for="c in contattiRiepilogo" :key="c.id" class="riepilogo-item">
+        <div class="app-riepilogo-section">
+          <div v-if="contattiRiepilogo.length > 0" class="app-riepilogo-list">
+            <div v-for="c in contattiRiepilogo" :key="c.id" class="app-riepilogo-item">
               <strong>{{ c.nominativo }}</strong>
-              <span v-if="c.email" class="riepilogo-detail">{{ c.email }}</span>
-              <span v-if="c.telefono" class="riepilogo-detail">{{ c.telefono }}</span>
+              <span v-if="c.email" class="app-riepilogo-detail">{{ c.email }}</span>
+              <span v-if="c.telefono" class="app-riepilogo-detail">{{ c.telefono }}</span>
             </div>
           </div>
-          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
             {{ t('anagrafiche.contatto.nessun_contatto') }}
           </div>
           <Button
             :label="t('anagrafiche.contatto.gestisci_contatti')"
-            icon="pi pi-users"
+            :icon="MANAGE_ICONS.CONTATTI"
             text
             size="small"
             class="app-action-btn app-escape mt-025"
@@ -536,18 +562,18 @@ async function handleSave() {
           <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
         </div>
         <div>
-          <div v-if="indirizziRiepilogo.length > 0" class="indirizzi-riepilogo-list">
-            <div v-for="ind in indirizziRiepilogo" :key="ind.id" class="indirizzi-riepilogo-item">
+          <div v-if="indirizziRiepilogo.length > 0" class="app-riepilogo-list">
+            <div v-for="ind in indirizziRiepilogo" :key="ind.id" class="app-riepilogo-item">
               <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
-              <span class="indirizzi-riepilogo-text">{{ ind.indirizzo_display }}</span>
+              <span>{{ ind.indirizzo_display }}</span>
             </div>
           </div>
-          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
             {{ t('anagrafiche.indirizzo_soggetto.nessun_indirizzo') }}
           </div>
           <Button
             :label="t('anagrafiche.indirizzo_soggetto.gestisci_indirizzi')"
-            icon="pi pi-map-marker"
+            :icon="MANAGE_ICONS.INDIRIZZI"
             text
             size="small"
             class="app-action-btn app-escape mt-025"
@@ -561,20 +587,20 @@ async function handleSave() {
         <div class="app-drawer-section">
           <h4>{{ t('anagrafiche.conti_bancari.titolo') }}</h4>
         </div>
-        <div class="riepilogo-section">
-          <div v-if="contiBancariRiepilogo.length > 0" class="riepilogo-list">
-            <div v-for="cb in contiBancariRiepilogo" :key="cb.id" class="riepilogo-item">
+        <div class="app-riepilogo-section">
+          <div v-if="contiBancariRiepilogo.length > 0" class="app-riepilogo-list">
+            <div v-for="cb in contiBancariRiepilogo" :key="cb.id" class="app-riepilogo-item">
               <Tag :value="cb.uso" severity="info" />
-              <span class="riepilogo-detail app-mono">{{ cb.iban }}</span>
-              <span v-if="cb.filiale_nome" class="riepilogo-detail">{{ cb.filiale_nome }}</span>
+              <span class="app-riepilogo-detail app-mono">{{ cb.iban }}</span>
+              <span v-if="cb.filiale_nome" class="app-riepilogo-detail">{{ cb.filiale_nome }}</span>
             </div>
           </div>
-          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
             {{ t('anagrafiche.conti_bancari.nessun_conto') }}
           </div>
           <Button
             :label="t('anagrafiche.conti_bancari.gestisci_conti')"
-            icon="pi pi-wallet"
+            :icon="MANAGE_ICONS.CONTI_BANCARI"
             text
             size="small"
             class="app-action-btn app-escape mt-025"
@@ -592,17 +618,17 @@ async function handleSave() {
         <div class="app-drawer-section">
           <h4>{{ t('anagrafiche.titoli_iva.titolo_lista') }}</h4>
         </div>
-        <div class="riepilogo-section">
-          <div v-if="titoliIvaRiepilogo.length > 0" class="riepilogo-list">
-            <div v-for="ti in titoliIvaRiepilogo" :key="ti.id" class="riepilogo-item">
+        <div class="app-riepilogo-section">
+          <div v-if="titoliIvaRiepilogo.length > 0" class="app-riepilogo-list">
+            <div v-for="ti in titoliIvaRiepilogo" :key="ti.id" class="app-riepilogo-item">
               <Tag :value="ti.tipo_descrizione" :severity="ti.attivo ? 'info' : 'secondary'" />
-              <span class="riepilogo-detail">{{ ti.emittente_ragione_sociale }}</span>
-              <span v-if="ti.residuo != null" class="riepilogo-detail">
+              <span class="app-riepilogo-detail">{{ ti.emittente_ragione_sociale }}</span>
+              <span v-if="ti.residuo != null" class="app-riepilogo-detail">
                 {{ t('anagrafiche.titoli_iva.col_residuo') }}: {{ ti.residuo }}
               </span>
             </div>
           </div>
-          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
             {{ t('anagrafiche.titoli_iva.lista_vuota') }}
           </div>
           <Button
@@ -625,7 +651,7 @@ async function handleSave() {
           <Tag v-for="r in ruoliAssegnati" :key="r.tipo_ruolo_id"
                :value="r.ruolo_descrizione" severity="info" />
         </div>
-        <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+        <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
           {{ t('anagrafiche.soggetti.nessun_ruolo') }}
         </div>
       </template>
@@ -634,7 +660,7 @@ async function handleSave() {
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"
-        @cancel="emit('update:visible', false)"
+        @cancel="chiudi"
       />
     </div>
   </Drawer>
@@ -680,34 +706,5 @@ async function handleSave() {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-.indirizzi-riepilogo-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-.indirizzi-riepilogo-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-}
-.indirizzi-riepilogo-text {
-  color: var(--p-text-color);
-}
-.riepilogo-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.riepilogo-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-}
-.riepilogo-detail {
-  color: var(--p-text-muted-color);
-  font-size: 0.8rem;
 }
 </style>

@@ -10,13 +10,12 @@ Approfondimento tabelle:
 Viste collegate:
 >
 [vw_partite_merce](vw_partite_merce.md)
-> [vw_contatore_merce](vw_contatore_merce.md)
 > [vw_af_merce_per_riga](vw_af_merce_per_riga.md)
 > Brief autorevole: `docs/it/dev/work-done/brief-design-partita-merce-generalizzata.md` §20.4
 
 ---
 ### 🎯 Scopo Principale
-(rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
+(rev 2026-09-21 — la vista è la proiezione di `fn_situazione_merce_ordine` · rev 2026-09-13 — le date e il ritardo · rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
 
 Risponde a **«come sta questa riga d'ordine?»** in una riga sola: quanto è
 uscito, quanto è tornato, quanto è stato fatturato, quanto resta da spedire, e
@@ -28,10 +27,18 @@ raccoglie.
 
 ---
 
-### Perché non basta il contatore
+### Perché non bastava il contatore — e perché ora è questa l'unica lettura
 
-Esiste già un aggregato per riga d'ordine, [vw_contatore_merce](vw_contatore_merce.md).
-Non serve a questo scopo, per tre motivi:
+Fino al 22 settembre 2026 esisteva un secondo aggregato per riga d'ordine,
+`vw_contatore_merce`: il **contatore grezzo** — `tenuti − fatturati`, mai vuoto —
+che dosava il push dei DDT alla fatturazione. **È stato ritirato** (decisione D6
+del brief D14): dal giro 1 della partita per documento il lister dosa dalla
+partita stessa ([`fn_partite_merce`](/dbzero/vendite/funzioni/fn_partite_merce),
+col DDT come seme), nessuna macchina lo leggeva più, e ogni colonna nuova della
+partita gli costava un `DROP` a cascata. Questa vista è quindi **l'unica
+lettura per riga d'ordine**, per una persona come per una macchina. I tre
+motivi per cui il contatore non serviva a *questo* scopo restano scritti,
+perché dicono cosa questa vista deve continuare a fare:
 
 | | |
 |---|---|
@@ -39,8 +46,10 @@ Non serve a questo scopo, per tre motivi:
 | **Appiattisce i «non si applica»** | il suo saldo non è mai vuoto — apposta, perché alimenta la fatturazione — quindi su un conto visione direbbe «N da fatturare» |
 | **Non traduce il saldo** | non ha la colonna che dice *cosa fare*: sarebbe il consumatore a doverla rifare, e due traduzioni divergono |
 
-⛔ **E il contatore non si tocca**: alimenta il calcolo delle quantità che
-finiscono in fattura. Questa vista gli sta **accanto**.
+⭐ Le quantità che finiscono in fattura le dosa la **partita**
+([`vw_partite_merce`](vw_partite_merce.md), grana = riga di DDT), letta dal
+lister per documento: questa vista **non** è sul percorso della fatturazione,
+e può restare parlante senza rischiare di cambiare un numero in fattura.
 
 ---
 
@@ -55,7 +64,7 @@ Sembra un dettaglio contabile e cambia quello che l'operatore legge:
 ```text
 ordine 10 · spediti 4 · fatturati 10 alla conferma
 
-il contatore ......  saldo −6      →  si legge «6 da accreditare»   ✗
+il contatore (ritirato)  saldo −6  →  si leggeva «6 da accreditare»  ✗
 questa vista .....  saldo  0      →  «tutto in pari»
                     fatturato in anticipo 6 · da spedire 6
 ```
@@ -229,7 +238,8 @@ WHERE stato = 'NON_IMPEGNATA';
 * `security_invoker=on`: la vista è letta con i permessi di chi interroga. ⚠️ Chi
   la modifica con `CREATE OR REPLACE` **deve ri-specificare la reloption**: non è
   visibile in `pg_get_viewdef` e verrebbe azzerata in silenzio.
-* Test: `db/pgtap/vendite/test-vw-situazione-merce-ordine-v1.sql`.
+* Test: `db/pgtap/vendite/test-vw-situazione-merce-ordine-v1.sql`;
+  `test-fn-situazione-merce-ordine-chiusura-v1.sql` (rev 2026-09-21).
 
 ### 🔄 rev 2026-09-13 — le due date della riga e il ritardo
 
@@ -255,6 +265,35 @@ Tre colonne in coda (`20260913-18`): `data_consegna_richiesta_cliente`,
   documento.
 
 Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 5.2.
+
+---
+
+### 🔄 rev 2026-09-21 — l'aggregato sta nella funzione, la vista ne è la proiezione (D14, giro 2 — D3)
+
+ChangeSet `20260921-26` (la funzione) e `20260921-27` (la vista). Brief:
+`work-done/brief-db-partita-merce-per-documento.md`, decisione D3 di
+Tid. **Niente cambia nel risultato**: stesse 21 colonne, stessi tipi, stesse
+righe, stessi numeri. Cambia **dove sta l'aggregato** e **chi lo paga**.
+
+**L'aggregato sta in [`fn_situazione_merce_ordine(p_ddt_ids, p_ordine_ids)`](fn_situazione_merce_ordine.md)**,
+e questa vista è `fn_situazione_merce_ordine(NULL, NULL)`: un corpo solo. Il
+backend legge questa vista **sempre per documento** — un ordine, o un DDT — e
+la vista, che non ha un parametro, sommava le partite di **tutti** gli ordini
+per poi scartare. Con la funzione paga le righe d'ordine chieste: quelle
+dell'ordine, o quelle che il DDT ha toccato — con la loro situazione **intera**,
+non la sola partita di quella spedizione. ⏳ La riga di SQL nel repository è la
+richiesta BE del brief; finché resta sulla vista risponde giusto e paga tutto.
+
+⚠️ **La vista proietta le colonne per nome, con `ordinato::numeric(18,6)`**:
+un `RETURNS TABLE` perde la scala, e un `SELECT * FROM fn()` sarebbe passato
+cambiando il contratto in silenzio. Il pgTAP della chiusura pinna i tipi.
+
+Presidi: `test-fn-situazione-merce-ordine-chiusura-v1` (nuovo, 12 test a casi
+costruiti: l'ordine su tre DDT chiesto dal DDT di mezzo, la riga mai spedita e
+l'ordine in bozza, la riga `MULTIPLA`, la ri-consegna) +
+`rls/test-rls-viste-security-invoker`, il cui criterio attraversa le funzioni
+`BEGIN ATOMIC` anche a due anelli (vista → questa funzione →
+`fn_partite_merce` → tabelle). I due di sempre non cambiano.
 
 ---
 

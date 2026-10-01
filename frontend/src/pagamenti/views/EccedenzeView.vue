@@ -12,11 +12,12 @@
 //    sanarla vorrebbe dire muovere denaro senza che nessuno l'abbia deciso.
 import { ref } from 'vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import EccedenzeSearchTable from '../components/EccedenzeSearchTable.vue'
 import SistemazioneDrawer from '../components/SistemazioneDrawer.vue'
 import { useEccedenzeStore } from '../stores/eccedenze'
 
-useReadonlyMode('pagamenti')
+useReadonlyMode(READONLY_DOMAINS.PAGAMENTI)
 
 const store = useEccedenzeStore()
 const drawerVisible = ref(false)

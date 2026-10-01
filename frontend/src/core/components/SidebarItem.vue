@@ -2,7 +2,7 @@
 // Scopo: voce sidebar riutilizzabile — icona + label + tooltip quando collapsed.
 // Usato da SidebarHome e SidebarDomain per evitare duplicazione template.
 // Possiede i propri stili (non dipende da :deep nel parent).
-// Inietta lo stato collapsed dal parent (AppSidebar) per supportare mobile drawer.
+// Inietta lo stato collapsed dal parent (AppSidebar): nel drawer e' sempre espanso.
 import { inject, ref } from 'vue'
 
 const isCollapsed = inject('sidebarCollapsed', ref(false))

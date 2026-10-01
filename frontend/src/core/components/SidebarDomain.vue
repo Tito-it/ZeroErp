@@ -5,17 +5,16 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { computed, inject, ref } from 'vue'
 import { useNavigationStore } from '../../stores/navigation'
-import { useTabsStore } from '../../stores/tabs'
 import { useNotify } from '../composables/useNotify'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { NAV_ICONS, resolveNavigationLabel } from '../navigation'
+import { MANAGE_ICONS } from '../constants'
 import SidebarItem from './SidebarItem.vue'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const nav = useNavigationStore()
-const tabs = useTabsStore()
 const notify = useNotify()
 const { isMenuItemAllowed } = useNavigationFavorites()
 const isCollapsed = inject('sidebarCollapsed', ref(false))
@@ -58,15 +57,8 @@ function handleBackHome() {
 }
 
 function handleLeafClick(item) {
-  // Apre la tab (o attiva quella esistente) — se limite raggiunto, blocca navigazione
-  const opened = tabs.openTab({
-    path: item.to,
-    label: itemLabel(item),
-    domain: nav.currentDomain,
-    menuKey: item.key,
-    icon: item.icon
-  })
-  if (!opened) return
+  // La scheda la apre il guard del router (unico punto, anche per la
+  // sostituzione oltre il limite): qui si naviga e basta.
   router.push(item.to)
   emit('navigate')
 }
@@ -126,14 +118,14 @@ function handleToggleFavorite(item) {
         </span>
         <i
           v-if="!isCollapsed && hasChildren(item)"
-          class="pi group-chevron"
-          :class="isGroupOpen(item) ? 'pi-chevron-down' : 'pi-chevron-right'"
+          class="group-chevron"
+          :class="isGroupOpen(item) ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND"
         ></i>
         <!-- Stella preferito -->
         <i
           v-else-if="!isCollapsed"
-          class="pi favorite-star"
-          :class="nav.isFavoriteOfDomain(nav.currentDomain, item.to) ? 'pi-star-fill' : 'pi-star'"
+          class="favorite-star"
+          :class="nav.isFavoriteOfDomain(nav.currentDomain, item.to) ? [MANAGE_ICONS.PREFERITO_ATTIVO, 'favorite-star-attiva'] : MANAGE_ICONS.PREFERITI"
           @click.stop="handleToggleFavorite(item)"
           v-tooltip.right="nav.isFavoriteOfDomain(nav.currentDomain, item.to) ? t('nav.remove_favorite') : t('nav.set_favorite')"
         ></i>
@@ -153,8 +145,8 @@ function handleToggleFavorite(item) {
             {{ itemLabel(child) }}
           </span>
           <i
-            class="pi favorite-star"
-            :class="nav.isFavoriteOfDomain(nav.currentDomain, child.to) ? 'pi-star-fill' : 'pi-star'"
+            class="favorite-star"
+            :class="nav.isFavoriteOfDomain(nav.currentDomain, child.to) ? [MANAGE_ICONS.PREFERITO_ATTIVO, 'favorite-star-attiva'] : MANAGE_ICONS.PREFERITI"
             @click.stop="handleToggleFavorite(child)"
             v-tooltip.right="nav.isFavoriteOfDomain(nav.currentDomain, child.to) ? t('nav.remove_favorite') : t('nav.set_favorite')"
           ></i>
@@ -175,7 +167,7 @@ function handleToggleFavorite(item) {
   padding: 0.4rem 0.75rem;
   font-size: var(--app-font-size-sm);
   font-weight: 600;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
@@ -190,7 +182,7 @@ function handleToggleFavorite(item) {
 
 .favorite-star {
   font-size: 0.75rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   opacity: 0;
   transition: opacity var(--app-transition-fast), color var(--app-transition-fast);
   cursor: pointer;
@@ -205,14 +197,16 @@ function handleToggleFavorite(item) {
   color: var(--p-yellow-400);
 }
 
-.favorite-star.pi-star-fill {
+/* Classe di stato, non il glifo: se `PREFERITO_ATTIVO` cambia disegno la
+   stella accesa resta accesa. */
+.favorite-star.favorite-star-attiva {
   opacity: 1;
   color: var(--p-yellow-400);
 }
 
 .group-chevron {
   font-size: 0.75rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 
 .sidebar-submenu {
@@ -227,10 +221,10 @@ function handleToggleFavorite(item) {
 }
 
 .back-home {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 
 .back-home:hover {
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 </style>

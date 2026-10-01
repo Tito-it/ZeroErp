@@ -20,9 +20,9 @@
 | ordinamento_default | jsonb | YES |  |
 | filtri_default | jsonb | YES |  |
 | attivo | boolean | NO | true |
-| data_insert | timestamp without time zone | NO | now() |
+| data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying | NO |  |
-| data_update | timestamp without time zone | YES |  |
+| data_update | timestamp with time zone | YES |  |
 | user_update | character varying | YES |  |
 
 ## 🔒 Vincoli
@@ -31,6 +31,7 @@
 | CHECK | chk_ui_lista_preset_ambito_refs |  |
 | FOREIGN KEY | fk_lista_preset_emittenti_fiscali | emittente_fiscale_id |
 | FOREIGN KEY | fk_lista_preset_lista_definizione | lista_id |
+| FOREIGN KEY | fk_lista_preset_misure_pagina | pagina_dimensione |
 | FOREIGN KEY | fk_lista_preset_profili_accesso | profilo_accesso_id |
 | PRIMARY KEY | lista_preset_pkey | id |
 | UNIQUE | uq_ui_lista_preset_lista_codice | lista_id, codice |
@@ -44,6 +45,12 @@
 | lista_preset_pkey | `CREATE UNIQUE INDEX lista_preset_pkey ON ui.lista_preset USING btree (id)` |
 | uq_ui_lista_preset_default | `CREATE UNIQUE INDEX uq_ui_lista_preset_default ON ui.lista_preset USING btree (lista_id, ambito, COALESCE(profilo_accesso_id, 0), COALESCE(emittente_fiscale_id, (0)::bigint)) WHERE (is_default = true)` |
 | uq_ui_lista_preset_lista_codice | `CREATE UNIQUE INDEX uq_ui_lista_preset_lista_codice ON ui.lista_preset USING btree (lista_id, codice)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_ui_lista_preset_a10_guard_pagina_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_preset_guard_pagina_dimensione()` |
+| trg_ui_lista_preset_a10_guard_pagina_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_preset_guard_pagina_dimensione()` |
 
 ---
 {% include-markdown "signature-core.md" %}

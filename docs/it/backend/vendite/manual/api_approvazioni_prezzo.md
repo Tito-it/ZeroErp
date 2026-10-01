@@ -9,7 +9,7 @@ dedicata.
 
 Riferimento concettuale:
 [sviluppo-listini-v5.md](/dev/work-done/sviluppo-listini-v5) §14.6
-e guida operativa [gestione-listini.md §6.1](/guide/gestione-listini#61-l3-workflow-approvazione-out-of-policy-sprint-e).
+e guida operativa [gestione-listini.md §6.2](/guide/gestione-listini#62-l3-workflow-approvazione-out-of-policy).
 
 ## Contesto
 
@@ -31,7 +31,7 @@ Il workflow è composto da:
 
 **Trigger DB di guardia** (defense-in-depth):
 
-- `trgfn_preventivi_guard_transizione_approvazione`: blocca transizione preventivo → ACCETTATO se esistono righe PENDING (`E_PREVENTIVO_RIGHE_PRICING_PENDENTI`)
+- `script.fn_check_prezzi_autorizzati` (building block, dal 2026-09-24): un prezzo **non autorizzato** — riga o componente BoM attivo in `PENDING` o `REJECTED` — non lascia uscire il documento dalla bozza né lo lascia accettare (`E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`). Vale per preventivi, contratti, offerte, ordini e DDT; lo leggono sia i guard di transizione sia le `fn_available_actions_*`, quindi il pulsante spento e il rifiuto non divergono. **Annulla resta sempre acceso**. Sul preventivo: Regola 2 (`fn_check_preventivo_emettibile`, verso EMESSO) e Regola 3 (`trgfn_preventivi_guard_transizione`, verso ACCETTATO)
 - `trgfn_preventivi_righe_guard_pending`: allowlist su righe PENDING (ammessi solo `stato_approvazione_prezzo`, `pratica_approvazione_prezzo_id`, `meta`); modifica struttura -> `E_RIGA_PREZZO_PENDENTE`
 
 ## Sorgenti e routing (preventivo / contratto / offerta)
@@ -44,11 +44,11 @@ Gli endpoint approva/rifiuta sono **distinti per sorgente** perché `riga_id`
 appartiene a tabelle/sequence indipendenti; il service fa dispatch via parametro
 `sorgente` (`_SORGENTE_CONFIG`, niente if-chain).
 
-| `sorgente` | Tabella riga | Path approva / rifiuta | Chiave meta riga |
-|---|---|---|---|
-| `preventivo` | `vendite.preventivi_righe` | `/api/v1/vendite/righe/{riga_id}/{approva,rifiuta}-prezzo/` | `riga_preventivo_id` |
-| `contratto` | `vendite.contratti_righe` | `/api/v1/vendite/righe-contratto/{riga_id}/{approva,rifiuta}-prezzo/` | `riga_contratto_id` |
-| `offerta` | `vendite.offerte_commerciali_eccezioni` | `/api/v1/vendite/eccezioni-offerta/{riga_id}/{approva,rifiuta}-prezzo/` | `riga_offerta_id` |
+| `sorgente`   | Tabella riga                            | Path approva / rifiuta                                                  | Chiave meta riga     |
+| ------------ | --------------------------------------- | ----------------------------------------------------------------------- | -------------------- |
+| `preventivo` | `vendite.preventivi_righe`              | `/api/v1/vendite/righe/{riga_id}/{approva,rifiuta}-prezzo/`             | `riga_preventivo_id` |
+| `contratto`  | `vendite.contratti_righe`               | `/api/v1/vendite/righe-contratto/{riga_id}/{approva,rifiuta}-prezzo/`   | `riga_contratto_id`  |
+| `offerta`    | `vendite.offerte_commerciali_eccezioni` | `/api/v1/vendite/eccezioni-offerta/{riga_id}/{approva,rifiuta}-prezzo/` | `riga_offerta_id`    |
 
 Tutti gli endpoint hanno stesso `post_permission = "approva_prezzo_override"`,
 stesso shape body/risposta, stessi codici errore. La coda (`§3`) restituisce per
@@ -172,11 +172,11 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
   - `emittente_fiscale_id` derivato da `PermissionResolver.get_emittente_for_user` (operatore singolo emittente)
 - **Capability per item (Fase 5.B1)**: ogni item della coda ha `can_approve`/`can_reject`/`action_reason` **e `sorgente`** (`preventivo`/`contratto`/`offerta`, per il routing endpoint lato FE). Permesso utente calcolato 1 volta (azione `approva_prezzo_override`); per-item la verifica della chiave riga corretta per la sorgente (`riga_preventivo_id`/`riga_contratto_id`/`riga_offerta_id`, fallback legacy `riga_id`). Codici stabili `action_reason` esposti come costanti modulo BE (`ACTION_REASON_PERMESSO_MANCANTE`, `ACTION_REASON_RIGA_NON_LINKATA`):
 
-| `action_reason` | Quando | Effetto FE |
-| --- | --- | --- |
-| `null` | Tutto OK: utente HA permesso + riga linkata | Bottoni Approva/Rifiuta abilitati |
-| `PERMESSO_MANCANTE` | Utente senza azione `approva_prezzo_override` (e non superuser) | Bottoni disabilitati + tooltip i18n `approvazioni_prezzo.reason_permesso_mancante` |
-| `RIGA_NON_LINKATA` | `meta.riga_preventivo_id` assente (pratica legacy o crash post-create_riga) | Bottoni disabilitati + tooltip i18n `approvazioni_prezzo.reason_riga_non_linkata` |
+| `action_reason`     | Quando                                                                      | Effetto FE                                                                         |
+| ------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `null`              | Tutto OK: utente HA permesso + riga linkata                                 | Bottoni Approva/Rifiuta abilitati                                                  |
+| `PERMESSO_MANCANTE` | Utente senza azione `approva_prezzo_override` (e non superuser)             | Bottoni disabilitati + tooltip i18n `approvazioni_prezzo.reason_permesso_mancante` |
+| `RIGA_NON_LINKATA`  | `meta.riga_preventivo_id` assente (pratica legacy o crash post-create_riga) | Bottoni disabilitati + tooltip i18n `approvazioni_prezzo.reason_riga_non_linkata`  |
 
 - Errori:
   - `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403) — utente non autenticato
@@ -186,17 +186,18 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
 
 ## Codici errore (sintesi)
 
-| Codice | HTTP | Contesto |
-|---|---|---|
-| `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` | 409 | Trigger DB su transizione preventivo → ACCETTATO con righe PENDING |
-| `E_RIGA_PREZZO_PENDENTE` | 409 | Trigger DB su modifica struttura riga PENDING |
-| `E_APPROVAZIONE_PREZZO_NON_AMMESSA` | 409 | Service: riga non PENDING, senza pratica, oppure approver senza emittente |
-| `E_PRICING_OVERRIDE_NON_AUTORIZZATO` | 403 | Auth: utente non autenticato o senza `approva_prezzo_override` |
+| Codice                                | HTTP | Contesto                                                                  |
+| ------------------------------------- | ---- | ------------------------------------------------------------------------- |
+| `E_DOC_PREZZO_PENDENTE`               | 409  | Guard DB: documento verso emissione/accettazione con prezzi PENDING       |
+| `E_DOC_PREZZO_RIFIUTATO`              | 409  | Guard DB: documento verso emissione/accettazione con prezzi REJECTED      |
+| `E_RIGA_PREZZO_PENDENTE`              | 409  | Trigger DB su modifica struttura riga PENDING                             |
+| `E_APPROVAZIONE_PREZZO_NON_AMMESSA`   | 409  | Service: riga non PENDING, senza pratica, oppure approver senza emittente |
+| `E_PRICING_OVERRIDE_NON_AUTORIZZATO`  | 403  | Auth: utente non autenticato o senza `approva_prezzo_override`            |
 
 ## Riferimenti
 
 - Pattern richiesta dal preventivo: vedi `api_preventivi.md` §8 (aggiungi riga) e §9 (aggiorna riga)
 - Service backend: `apps/vendite/services/approvazioni_prezzo_service.py`
 - Building block: [catalogo-building-block-backend](../../../dev/backend/catalogo-building-block-backend) sezione `approvazioni_prezzo_service.*`
-- Guida utente: [gestione-listini §6.1](/guide/gestione-listini#61-l3-workflow-approvazione-out-of-policy-sprint-e)
+- Guida utente: [gestione-listini §6.2](/guide/gestione-listini#62-l3-workflow-approvazione-out-of-policy)
 - ChangeSet DB: `20260422-03..07` + seed CSV `azioni_processo` id 10 + `tipi_prestazione` id 9001 + `messaggi_errore` 389/390

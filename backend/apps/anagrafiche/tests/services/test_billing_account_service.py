@@ -15,7 +15,7 @@ Indice test eseguiti:
  5) test_search_lookup_limit_cap — limit > 50 capped a 50
  6) test_search_lookup_limit_default — limit None o <=0 usa default 20
  7) test_search_lookup_utility_filter_passed — utility_id passato al repo
- 8) test_search_lookup_emittente_scope_passed — scope emittente propagato
+ 8) test_search_lookup_emittente_scope_passed — scope emittente risolto dall'utente (soggetto-ruolo) e propagato
  9) test_search_lookup_solo_validi_default — default true
 10) test_search_lookup_no_results — zero risultati
 11) test_get_lookup_by_id_ok — restore BA esistente
@@ -31,11 +31,13 @@ Indice test eseguiti:
 """
 
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
 
 _REPO = "apps.anagrafiche.services.billing_account_service.BillingAccountRepository"
+_RESOLVER = "apps.anagrafiche.services.billing_account_service.PermissionResolver"
+_USER = MagicMock(id=1)
 
 _FAKE_ROW = {
     "id": 123,
@@ -59,13 +61,19 @@ _FAKE_ROW = {
 class TestBillingAccountSearchLookup(TestCase):
     """Test search_lookup — validazioni + propagazione parametri."""
 
+    def setUp(self) -> None:
+        patcher = patch(_RESOLVER)
+        self.mock_resolver = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.mock_resolver.get_emittenti_sr_ids.return_value = None
+
     @patch(_REPO)
     def test_search_lookup_ok(self, mock_repo):
         """Ricerca valida con risultati."""
         repo = mock_repo.return_value
         repo.search_lookup.return_value = ([_FAKE_ROW], 1)
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
-        result = BillingAccountService().search_lookup(q="Rossi")
+        result = BillingAccountService().search_lookup(user=_USER, q="Rossi")
         self.assertEqual(result["total_count"], 1)
         self.assertEqual(len(result["results"]), 1)
         self.assertEqual(result["results"][0]["id"], 123)
@@ -76,7 +84,7 @@ class TestBillingAccountSearchLookup(TestCase):
         """q < 2 char solleva E_ANAG_VALIDAZIONE senza chiamare il repo."""
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
         with self.assertRaises(ServiceError) as ctx:
-            BillingAccountService().search_lookup(q="R")
+            BillingAccountService().search_lookup(user=_USER, q="R")
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.search_lookup.assert_not_called()
 
@@ -85,7 +93,7 @@ class TestBillingAccountSearchLookup(TestCase):
         """q vuota solleva E_ANAG_VALIDAZIONE."""
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
         with self.assertRaises(ServiceError):
-            BillingAccountService().search_lookup(q="")
+            BillingAccountService().search_lookup(user=_USER, q="")
         mock_repo.return_value.search_lookup.assert_not_called()
 
     @patch(_REPO)
@@ -94,7 +102,7 @@ class TestBillingAccountSearchLookup(TestCase):
         repo = mock_repo.return_value
         repo.search_lookup.return_value = ([], 0)
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
-        BillingAccountService().search_lookup(q="  BA  ")
+        BillingAccountService().search_lookup(user=_USER, q="  BA  ")
         # Verifica che al repo sia passato il trimmed "BA".
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["q"], "BA")
@@ -105,7 +113,7 @@ class TestBillingAccountSearchLookup(TestCase):
         repo = mock_repo.return_value
         repo.search_lookup.return_value = ([], 0)
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
-        result = BillingAccountService().search_lookup(q="Rossi", limit=200)
+        result = BillingAccountService().search_lookup(user=_USER, q="Rossi", limit=200)
         self.assertEqual(result["limit"], 50)
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["limit"], 50)
@@ -116,9 +124,9 @@ class TestBillingAccountSearchLookup(TestCase):
         repo = mock_repo.return_value
         repo.search_lookup.return_value = ([], 0)
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
-        result_zero = BillingAccountService().search_lookup(q="Rossi", limit=0)
+        result_zero = BillingAccountService().search_lookup(user=_USER, q="Rossi", limit=0)
         self.assertEqual(result_zero["limit"], 20)
-        result_none = BillingAccountService().search_lookup(q="Rossi", limit=None)  # type: ignore[arg-type]
+        result_none = BillingAccountService().search_lookup(user=_USER, q="Rossi", limit=None)  # type: ignore[arg-type]
         self.assertEqual(result_none["limit"], 20)
 
     @patch(_REPO)
@@ -127,17 +135,23 @@ class TestBillingAccountSearchLookup(TestCase):
         repo = mock_repo.return_value
         repo.search_lookup.return_value = ([], 0)
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
-        BillingAccountService().search_lookup(q="Rossi", utility_id=7)
+        BillingAccountService().search_lookup(user=_USER, q="Rossi", utility_id=7)
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["utility_id"], 7)
 
     @patch(_REPO)
     def test_search_lookup_emittente_scope_passed(self, mock_repo):
-        """emittente_ids viene propagato al repository."""
+        """Lo scope emittente lo risolve il service dall'utente, coi
+        soggetto_ruolo_id (non le PK: la query confronta col soggetto-ruolo
+        dell'emittente), e lo propaga al repository."""
         repo = mock_repo.return_value
         repo.search_lookup.return_value = ([], 0)
+        self.mock_resolver.get_emittenti_sr_ids.return_value = [10, 20]
+        self.mock_resolver.get_emittenti_pk_ids.return_value = [1, 2]
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
-        BillingAccountService().search_lookup(q="Rossi", emittente_ids=[10, 20])
+        BillingAccountService().search_lookup(user=_USER, q="Rossi")
+        self.mock_resolver.get_emittenti_sr_ids.assert_called_once()
+        self.assertIs(self.mock_resolver.get_emittenti_sr_ids.call_args.args[0], _USER)
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["emittente_ids"], [10, 20])
 
@@ -147,7 +161,7 @@ class TestBillingAccountSearchLookup(TestCase):
         repo = mock_repo.return_value
         repo.search_lookup.return_value = ([], 0)
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
-        BillingAccountService().search_lookup(q="Rossi")
+        BillingAccountService().search_lookup(user=_USER, q="Rossi")
         _, kwargs = repo.search_lookup.call_args
         self.assertIs(kwargs["solo_validi"], True)
 
@@ -157,7 +171,7 @@ class TestBillingAccountSearchLookup(TestCase):
         repo = mock_repo.return_value
         repo.search_lookup.return_value = ([], 0)
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
-        result = BillingAccountService().search_lookup(q="NoMatch")
+        result = BillingAccountService().search_lookup(user=_USER, q="NoMatch")
         self.assertEqual(result["results"], [])
         self.assertEqual(result["total_count"], 0)
 

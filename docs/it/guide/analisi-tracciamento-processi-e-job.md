@@ -1,33 +1,47 @@
-# Guida – Tracciamento Processi e Job
+# Guida — Tracciamento processi e job
 
-> (latest review 06-09-2026)
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> Destinatari: sviluppatori database, backend e analisti funzionali
+> **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
-> Questa guida descrive l'infrastruttura attuale per il tracciamento dei processi e dei job
-> in Zero ERP: cosa esiste, come e organizzato, e come si estende a nuovi domini.
+> **Vedi anche** — schemi DB:
 >
-> Vedi anche
+> * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log) — registro operazioni generiche
+> * [dbops.processi](/dbzero/dbops/tabelle/processi) — catalogo dei processi automatici: chi gira, dichiarato da chi lo lancia
+> * [dbops.domini_task](/dbzero/dbops/tabelle/domini_task) — catalogo dei domini (es. FATTURAZIONE, ATTIVITA_FATTURABILI)
+> * [dbops.pipeline_task_registry](/dbzero/dbops/tabelle/pipeline_task_registry) — catalogo task per dominio
+> * [dbops.pipeline_task_registry_impl](/dbzero/dbops/tabelle/pipeline_task_registry_impl) — implementazioni dei task (handler, varianti)
+> * [vendite.fatturazione_pipeline_task_policy](/dbzero/vendite/tabelle/fatturazione_pipeline_task_policy) — policy di esecuzione per task
+> * [vendite.fatturazione_lotti_task_runs](/dbzero/vendite/tabelle/fatturazione_lotti_task_runs) — esecuzioni runtime per lotto
+> * [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — log esecuzioni job schedulati (pgAgent + cron/command)
 >
-> * [Guida Sistema di Audit Logging](/guide/messaggi-audit) — il registro delle operazioni
-> * [Guida Messaggi di Errore e Generazione Log](/guide/Messaggi-di-Errore-e-Generazione-Log) — error logging e routing di dominio
-> * [Guida Framework di Automazione DB](/guide/automazione-db) — automazioni dichiarative e audit
-> * [Guida Gestione delle code di lavoro](/guide/gestione-code-di-lavoro) — job asincroni su richiesta; il worker che li drena si registra qui in `job_run_log`
-> * [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — **chi** compare nel giornale, e perché prima non ci compariva nessuno
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log) — wrapper standard dei job pgAgent
+> * [script.fn_job_run_start](/dbzero/script/funzioni/fn_job_run_start) — apertura del verbale per i job headless
+> * [script.fn_job_run_end](/dbzero/script/funzioni/fn_job_run_end) — chiusura del verbale e rilascio del lock
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Sistema di Audit Logging](/guide/messaggi-audit) — il registro delle operazioni
+> * [Messaggi di Errore e Generazione Log](/guide/Messaggi-di-Errore-e-Generazione-Log) — error logging e routing di dominio
+> * [Framework di Automazione DB](/guide/automazione-db) — automazioni dichiarative e audit
+> * [Gestione delle code di lavoro](/guide/gestione-code-di-lavoro) — job asincroni su richiesta; il worker che li drena si registra qui in `job_run_log`
+> * [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — **chi** compare nel giornale delle esecuzioni, e per conto di chi
 > * [PostgreSQL: pgAgent](/postgresql/pgAgent) — lo scheduler integrato
 
 ---
 
 ## Introduzione
 
-In Zero ERP convivono processi di natura diversa: automazioni schedulati via pgAgent, pipeline di fatturazione orchestrate da Django, operazioni batch di manutenzione. Ognuno ha bisogno di registrare cosa ha fatto, quanto ha impiegato e se ha avuto successo.
+In Zero ERP convivono processi di natura diversa: manutenzione schedulata via pgAgent, pipeline di fatturazione orchestrate da Django, operazioni batch headless. Ognuno ha bisogno di registrare cosa ha fatto, quanto ha impiegato e se ha avuto successo.
 
 Il sistema di tracciamento e organizzato su **tre livelli**, ciascuno con un ruolo preciso:
 
 * **Audit log** (`dbops.audit_log`) — traccia le operazioni generiche: automazioni, deploy, processi batch. E il livello trasversale, usato da qualsiasi componente
 * **Job run log** (`maintenance.job_run_log`) — traccia le esecuzioni dei **job schedulati**: pgAgent (lato DB) *e* job headless cron/command (management command Django, es. `run_fatturazione_batch`). Un record per ogni esecuzione con `origine`, esito, durata, dettaglio errori e `meta`
-    * ⭐ **Dal 06-09-2026 dice anche CHI**: quale lavoro (nome a registro) e con quale identità. Chi non lo dice finisce in [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore).
-    * ⛔ **E prima un fallimento non lasciava traccia.** La riga «è andata male» veniva scritta e poi annullata insieme all'errore: nessun job dell'orologio è mai riuscito a lasciarne una. Oggi il verbale viaggia su una linea separata e sopravvive. Il racconto: [I lavori automatici — capitolo 6](/guide/processi-automatici-classe-e-identita).
+  * **Dice anche chi**: quale lavoro (nome a registro) e con quale identità. Un run che non lo dice finisce in [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore).
+  * **Un fallimento deve lasciare traccia**: la riga «è andata male» scritta dentro la stessa transazione dell'errore verrebbe annullata insieme all'errore, quindi il verbale viaggia su una linea separata e sopravvive al rollback.
 * **Task registry e task runs** (`dbops` + `vendite`) — traccia l'esecuzione dei task all'interno delle pipeline applicative, con stato, tentativi e policy di resume
 
 Questi tre livelli non si sostituiscono: si affiancano. Un job pgAgent puo produrre record sia in `job_run_log` (per il job schedulato) sia in `audit_log` (per le automazioni che esegue), e un errore grave viene catturato anche in `error_log`.
@@ -39,29 +53,6 @@ Questi tre livelli non si sostituiscono: si affiancano. Un job pgAgent puo produ
 * Il tracciamento runtime delle pipeline (esecuzione, tentativi, policy)
 * I job schedulati e l'integrazione con pgAgent
 * Il rapporto tra i vari sistemi di logging
-
----
-
-## Tabelle coinvolte
-
-**Tracciamento operazioni (trasversale):**
-
-* [dbops.audit_log](/dbzero/dbops/tabelle/audit_log) — registro operazioni generiche
-
-**Task registry (multi-dominio):**
-
-* [dbops.domini_task](/dbzero/dbops/tabelle/domini_task) — catalogo dei domini (es. FATTURAZIONE, ATTIVITA_FATTURABILI)
-* [dbops.pipeline_task_registry](/dbzero/dbops/tabelle/pipeline_task_registry) — catalogo task per dominio
-* [dbops.pipeline_task_registry_impl](/dbzero/dbops/tabelle/pipeline_task_registry_impl) — implementazioni dei task (handler, varianti)
-
-**Task runtime (vendite — pipeline fatturazione):**
-
-* [vendite.fatturazione_pipeline_task_policy](/dbzero/vendite/tabelle/fatturazione_pipeline_task_policy) — policy di esecuzione per task
-* [vendite.fatturazione_lotti_task_runs](/dbzero/vendite/tabelle/fatturazione_lotti_task_runs) — esecuzioni runtime per lotto
-
-**Job schedulati:**
-
-* [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — log esecuzioni job schedulati (pgAgent + cron/command)
 
 ---
 
@@ -112,13 +103,13 @@ Definisce i domini applicativi. Ogni dominio e un perimetro logico che raggruppa
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Descrizione |
-| --- | --- | --- |
-| `id` | BIGINT, PK | Chiave primaria |
-| `codice` | TEXT, UNIQUE | Codice dominio (es. `FATTURAZIONE`, `ATTIVITA_FATTURABILI`) |
-| `descrizione` | TEXT | Descrizione funzionale |
-| `attivo` | BOOLEAN | Flag attivo/disattivo |
-| `meta` | JSONB | Estensione libera |
+| Colonna       | Tipo         | Descrizione                                                 |
+| ------------- | ------------ | ----------------------------------------------------------- |
+| `id`          | BIGINT, PK   | Chiave primaria                                             |
+| `codice`      | TEXT, UNIQUE | Codice dominio (es. `FATTURAZIONE`, `ATTIVITA_FATTURABILI`) |
+| `descrizione` | TEXT         | Descrizione funzionale                                      |
+| `attivo`      | BOOLEAN      | Flag attivo/disattivo                                       |
+| `meta`        | JSONB        | Estensione libera                                           |
 
 > Documentazione dettagliata: [dbops.domini_task](/dbzero/dbops/tabelle/domini_task)
 
@@ -128,14 +119,14 @@ Catalogo dei task per dominio. Ogni task ha un codice univoco all'interno del pr
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Descrizione |
-| --- | --- | --- |
-| `id` | BIGINT, PK | Chiave primaria |
-| `dominio_id` | BIGINT, FK | Riferimento a `domini_task` |
-| `task_code` | TEXT | Codice task (UNIQUE per dominio) |
-| `descrizione` | TEXT | Descrizione funzionale |
-| `attivo` | BOOLEAN | Flag attivo/disattivo |
-| `meta` | JSONB | Estensione libera |
+| Colonna       | Tipo       | Descrizione                      |
+| ------------- | ---------- | -------------------------------- |
+| `id`          | BIGINT, PK | Chiave primaria                  |
+| `dominio_id`  | BIGINT, FK | Riferimento a `domini_task`      |
+| `task_code`   | TEXT       | Codice task (UNIQUE per dominio) |
+| `descrizione` | TEXT       | Descrizione funzionale           |
+| `attivo`      | BOOLEAN    | Flag attivo/disattivo            |
+| `meta`        | JSONB      | Estensione libera                |
 
 Vincolo: `UNIQUE (dominio_id, task_code)` — impedisce task duplicati nello stesso dominio.
 
@@ -149,15 +140,15 @@ Questa tabella e la chiave del modello di dispatch **controllato**: nessun impor
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Descrizione |
-| --- | --- | --- |
-| `id` | BIGINT, PK | Chiave primaria |
-| `task_registry_id` | BIGINT, FK | Riferimento a `pipeline_task_registry` |
-| `implementation_key` | TEXT | Identificativo variante (es. `default`, `v2`) |
-| `handler_code` | TEXT | Codice handler logico (mappato dal Python) |
-| `is_default` | BOOLEAN | Flag implementazione default (un solo default per task) |
-| `attivo` | BOOLEAN | Flag attivo/disattivo |
-| `meta` | JSONB | Estensione libera |
+| Colonna              | Tipo       | Descrizione                                             |
+| -------------------- | ---------- | ------------------------------------------------------- |
+| `id`                 | BIGINT, PK | Chiave primaria                                         |
+| `task_registry_id`   | BIGINT, FK | Riferimento a `pipeline_task_registry`                  |
+| `implementation_key` | TEXT       | Identificativo variante (es. `default`, `v2`)           |
+| `handler_code`       | TEXT       | Codice handler logico (mappato dal Python)              |
+| `is_default`         | BOOLEAN    | Flag implementazione default (un solo default per task) |
+| `attivo`             | BOOLEAN    | Flag attivo/disattivo                                   |
+| `meta`               | JSONB      | Estensione libera                                       |
 
 Vincoli:
 
@@ -180,15 +171,15 @@ Definisce le regole di esecuzione per ogni task all'interno di una pipeline: se 
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Descrizione |
-| --- | --- | --- |
-| `id` | BIGINT, PK | Chiave primaria |
-| `pipeline_id` | BIGINT, FK | Riferimento a `fatturazione_pipeline` |
-| `task_code` | VARCHAR | Codice task |
-| `annullabile` | BOOLEAN | Se il task e cancellabile (default: true) |
-| `resume_mode` | VARCHAR | Strategia recovery: `RESET_STEP`, `RESUME_TASK` (`RESUME_STEP` ritirato il 2026-09-12: era trattato come `RESUME_TASK`; la ripresa a livello di step è dell'orchestratore) |
-| `attivo` | BOOLEAN | Policy attiva/inattiva |
-| `meta` | JSONB | Estensione |
+| Colonna       | Tipo       | Descrizione                                                                                                                                             |
+| ------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | BIGINT, PK | Chiave primaria                                                                                                                                         |
+| `pipeline_id` | BIGINT, FK | Riferimento a `fatturazione_pipeline`                                                                                                                   |
+| `task_code`   | VARCHAR    | Codice task                                                                                                                                             |
+| `annullabile` | BOOLEAN    | Se il task e cancellabile (default: true)                                                                                                               |
+| `resume_mode` | VARCHAR    | Strategia di ripresa dopo un errore: `RESET_STEP` o `RESUME_TASK`. La ripresa a livello di *step* non è una policy del task: la governa l'orchestratore |
+| `attivo`      | BOOLEAN    | Policy attiva/inattiva                                                                                                                                  |
+| `meta`        | JSONB      | Estensione                                                                                                                                              |
 
 Vincolo: `UNIQUE (pipeline_id, task_code)`.
 
@@ -202,21 +193,21 @@ Il campo `tentativo` permette di gestire retry deterministici: ogni nuovo tentat
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Descrizione |
-| --- | --- | --- |
-| `id` | BIGINT, PK | Chiave primaria |
-| `lotto_id` | BIGINT, FK | Lotto in elaborazione |
-| `pipeline_id` | BIGINT, FK | Pipeline di contesto |
-| `stato_doc_fiscale_id` | INTEGER, FK | Fase del processo |
-| `task_code` | VARCHAR | Task in esecuzione |
-| `fase` | VARCHAR | Sotto-fase (opzionale) |
-| `tentativo` | SMALLINT | Numero tentativo (default: 1) |
-| `task_stato` | VARCHAR | Stato: `IN_ESECUZIONE`, `COMPLETATO`, `ERRORE`, `ANNULLATO` |
-| `started_at` | TIMESTAMPTZ | Inizio esecuzione |
-| `ended_at` | TIMESTAMPTZ | Fine esecuzione |
-| `error_code` | VARCHAR | Codice errore (se fallito) |
-| `error_message` | TEXT | Messaggio errore |
-| `meta` | JSONB | Metadati runtime (progresso, metriche) |
+| Colonna                | Tipo        | Descrizione                                                 |
+| ---------------------- | ----------- | ----------------------------------------------------------- |
+| `id`                   | BIGINT, PK  | Chiave primaria                                             |
+| `lotto_id`             | BIGINT, FK  | Lotto in elaborazione                                       |
+| `pipeline_id`          | BIGINT, FK  | Pipeline di contesto                                        |
+| `stato_doc_fiscale_id` | INTEGER, FK | Fase del processo                                           |
+| `task_code`            | VARCHAR     | Task in esecuzione                                          |
+| `fase`                 | VARCHAR     | Sotto-fase (opzionale)                                      |
+| `tentativo`            | SMALLINT    | Numero tentativo (default: 1)                               |
+| `task_stato`           | VARCHAR     | Stato: `IN_ESECUZIONE`, `COMPLETATO`, `ERRORE`, `ANNULLATO` |
+| `started_at`           | TIMESTAMPTZ | Inizio esecuzione                                           |
+| `ended_at`             | TIMESTAMPTZ | Fine esecuzione                                             |
+| `error_code`           | VARCHAR     | Codice errore (se fallito)                                  |
+| `error_message`        | TEXT        | Messaggio errore                                            |
+| `meta`                 | JSONB       | Metadati runtime (progresso, metriche)                      |
 
 Vincoli:
 
@@ -230,7 +221,7 @@ Vincoli:
 ### 3. Job schedulati: pgAgent e job headless (cron/command)
 
 I job schedulati via pgAgent sono processi periodici gestiti dallo scheduler PostgreSQL: pulizia log, applicazione indici FK, storicizzazione, aggiornamento audit.
-⚠️ **Questo elenco è oggi la sola natura ammessa dentro l'orologio**: manutenzione del sistema. Un lavoro che tocca i dati di un'azienda non viene più eseguito lì — l'orologio lo mette in coda ([perché](/guide/processi-automatici-classe-e-identita)). Ogni job ha il proprio wrapper nel schema `maintenance` e registra le esecuzioni in `job_run_log`.
+⚠️ **Questo elenco è la sola natura ammessa dentro l'orologio**: manutenzione del sistema. Un lavoro che tocca i dati di un'azienda non viene eseguito lì — l'orologio lo mette in coda ([perché](/guide/processi-automatici-classe-e-identita)). Ogni job ha il proprio wrapper nello schema `maintenance` e registra le esecuzioni in `job_run_log`.
 
 `job_run_log` è però **generica**: oltre a pgAgent accoglie anche i **job headless cron/command** (management command Django via systemd, es. `run_fatturazione_batch`). La colonna `origine` (`PGAGENT` / `CRON` / `COMMAND`) distingue la sorgente; la colonna `meta` (jsonb) porta un riepilogo *generico* del run. Il dettaglio di dominio resta nei rispettivi schemi (es. `vendite.*` per la fatturazione), correlato via `run_uuid`.
 
@@ -240,22 +231,24 @@ Un record per ogni esecuzione di un job schedulato. La struttura e piatta e semp
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Descrizione |
-| --- | --- | --- |
-| `id` | BIGSERIAL, PK | Chiave primaria |
-| `jobname` | TEXT | Identificativo del job (es. `apply_storicizza_weekly`) |
-| `stepname` | TEXT | Step del job |
-| `started_at` | TIMESTAMPTZ | Inizio (default: `clock_timestamp()`) |
-| `ended_at` | TIMESTAMPTZ | Fine |
-| `ok` | BOOLEAN | Successo si/no |
-| `rows_affected` | BIGINT | Righe coinvolte |
-| `message` | TEXT | Messaggio esito |
-| `error_code` | TEXT | SQLSTATE se errore |
-| `error_detail` | TEXT | Dettaglio errore (DETAIL + HINT + CONTEXT) |
-| `agent_host` | TEXT | Host di origine |
-| `run_uuid` | UUID | Correlatore di sessione (default: `uuidv7()`); aggancia i record di dominio del run |
-| `origine` | VARCHAR(16) | `PGAGENT` (default) / `CRON` / `COMMAND` — CHECK `chk_job_run_log_origine` |
-| `meta` | JSONB | Riepilogo **generico** del run (es. conteggi per esito); default `{}` |
+| Colonna           | Tipo          | Descrizione                                                                                                                                             |
+| ----------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`              | BIGSERIAL, PK | Chiave primaria                                                                                                                                         |
+| `jobname`         | TEXT          | Identificativo del job (es. `apply_storicizza_weekly`)                                                                                                  |
+| `stepname`        | TEXT          | Step del job                                                                                                                                            |
+| `started_at`      | TIMESTAMPTZ   | Inizio (default: `clock_timestamp()`)                                                                                                                   |
+| `ended_at`        | TIMESTAMPTZ   | Fine                                                                                                                                                    |
+| `ok`              | BOOLEAN       | Successo si/no                                                                                                                                          |
+| `rows_affected`   | BIGINT        | Righe coinvolte                                                                                                                                         |
+| `message`         | TEXT          | Messaggio esito                                                                                                                                         |
+| `error_code`      | TEXT          | SQLSTATE se errore                                                                                                                                      |
+| `error_detail`    | TEXT          | Dettaglio errore (DETAIL + HINT + CONTEXT)                                                                                                              |
+| `agent_host`      | TEXT          | Host di origine                                                                                                                                         |
+| `run_uuid`        | UUID          | Correlatore di sessione (default: `uuidv7()`); aggancia i record di dominio del run                                                                     |
+| `origine`         | VARCHAR(16)   | `PGAGENT` (default) / `CRON` / `COMMAND` — CHECK `chk_job_run_log_origine`                                                                              |
+| `processo_codice` | TEXT, FK      | Quale processo dichiara il run — FK a [dbops.processi](/dbzero/dbops/tabelle/processi); CHECK `chk_job_run_log_processo_dichiarato`                     |
+| `auth_user_id`    | INTEGER       | L'utente **tecnico** con cui gira il processo, quando ne ha uno (non è l'operatore che ha chiesto un singolo lavoro: quello sta in `coda_lavori.scope`) |
+| `meta`            | JSONB         | Riepilogo **generico** del run (es. conteggi per esito); default `{}`                                                                                   |
 
 > Documentazione dettagliata: [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log)
 
@@ -266,6 +259,7 @@ La funzione wrapper standard per i job pgAgent. Gestisce:
 * Advisory lock (evita esecuzioni parallele)
 * Logging automatico su `job_run_log` con esito e durata
 * Cattura errori con SQLSTATE e contesto
+* La dichiarazione del processo: il codice arriva da `p_processo_codice` o, se assente, si **deriva dal `jobname`** (per convenzione le due stringhe coincidono); un `jobname` che non corrisponde a nessun processo resta senza attore e finisce in [dbops.vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore)
 
 Ogni job schedulato ha una procedura dedicata (es. `proc_automations_storico_job`, `proc_automations_cleanup_job`) che internamente usa `fn_run_and_log` per la parte di logging.
 
@@ -273,7 +267,7 @@ Ogni job schedulato ha una procedura dedicata (es. `proc_automations_storico_job
 
 `fn_run_and_log` avvolge un blocco **SQL** e non è adatta a un corpo job in **Python** (management command). Per i job headless cron/command si usano due funzioni che spezzano start/end attorno al corpo applicativo:
 
-* [`script.fn_job_run_start(jobname, origine, stepname, lock_key, agent_host)`](/dbzero/script/funzioni/fn_job_run_start) → `(id, run_uuid, acquired)`: apre la riga; advisory lock di sessione opzionale per `lock_key` (anti-overlap fra run dello stesso job, cross-connessione). Se il lock è occupato ritorna `acquired=false` con riga *skip* già loggata.
+* [`script.fn_job_run_start(jobname, origine, stepname, lock_key, agent_host, processo_codice, auth_user_id)`](/dbzero/script/funzioni/fn_job_run_start) → `(id, run_uuid, acquired)`: apre la riga; advisory lock di sessione opzionale per `lock_key` (anti-overlap fra run dello stesso job, cross-connessione). Se il lock è occupato ritorna `acquired=false` con riga *skip* già loggata.
 * [`script.fn_job_run_end(id, ok, message, rows, error_code, error_detail, meta, lock_key)`](/dbzero/script/funzioni/fn_job_run_end): chiude la riga e rilascia il lock.
 
 Entrambe sono `SECURITY DEFINER` (i ruoli batch headless `zeroerp_batch_<job>` hanno solo `EXECUTE`, **nessun DML diretto** su `job_run_log`) con `search_path` fisso e `EXECUTE` revocato da PUBLIC. Lato BE le avvolge il context manager `registered_job` (vedi `apps/core/services/job_run.py`).
@@ -338,28 +332,7 @@ Per concretizzare come i tre livelli interagiscono, questo e il flusso di una pi
 
 Quando si aggiunge un nuovo dominio (es. `PRATICHE`), il pattern e:
 
-**1. Registrare il dominio e i task (una tantum):**
-
-```sql
--- Dominio
-INSERT INTO dbops.domini_task (codice, descrizione)
-VALUES ('PRATICHE', 'Gestione pratiche');
-
--- Task
-INSERT INTO dbops.pipeline_task_registry (dominio_id, task_code, descrizione)
-VALUES
-  ((SELECT id FROM dbops.domini_task WHERE codice = 'PRATICHE'),
-   'assegna_pratica', 'Assegnazione pratica a operatore'),
-  ((SELECT id FROM dbops.domini_task WHERE codice = 'PRATICHE'),
-   'valida_documenti', 'Validazione documenti allegati');
-
--- Implementazione default
-INSERT INTO dbops.pipeline_task_registry_impl
-  (task_registry_id, implementation_key, handler_code, is_default)
-SELECT id, 'default', 'pratiche_assegna_v1', true
-FROM dbops.pipeline_task_registry
-WHERE task_code = 'assegna_pratica';
-```
+**1. Registrare il dominio e i task (una tantum):** tre `INSERT` nell'ordine dominio → task → implementazione default ([esempio](#area-tecnica-esempi)).
 
 **2. Creare le tabelle di runtime nel dominio** (seguendo lo schema di vendite):
 
@@ -374,13 +347,13 @@ WHERE task_code = 'assegna_pratica';
 
 ## Rapporto tra i sistemi di logging
 
-| Sistema | Cosa traccia | Persistenza | Ambito |
-| --- | --- | --- | --- |
-| `dbops.audit_log` | Operazioni (successi, skip, errori) | In-transazione o dblink | Trasversale |
-| `dbops.error_log` | Errori con codice e contesto | Sempre dblink | Trasversale |
-| `maintenance.job_run_log` | Esecuzioni job schedulati (pgAgent + cron/command, vedi `origine`) | In-transazione | Job schedulati |
-| `vendite.fatturazione_lotti_task_runs` | Esecuzioni task pipeline | In-transazione | Dominio vendite |
-| `vendite.fatturazione_lotti_log` | Log di dominio (fasi, esiti) | In-transazione | Dominio vendite |
+| Sistema                                | Cosa traccia                                                       | Persistenza             | Ambito          |
+| -------------------------------------- | ------------------------------------------------------------------ | ----------------------- | --------------- |
+| `dbops.audit_log`                      | Operazioni (successi, skip, errori)                                | In-transazione o dblink | Trasversale     |
+| `dbops.error_log`                      | Errori con codice e contesto                                       | Sempre dblink           | Trasversale     |
+| `maintenance.job_run_log`              | Esecuzioni job schedulati (pgAgent + cron/command, vedi `origine`) | In-transazione          | Job schedulati  |
+| `vendite.fatturazione_lotti_task_runs` | Esecuzioni task pipeline                                           | In-transazione          | Dominio vendite |
+| `vendite.fatturazione_lotti_log`       | Log di dominio (fasi, esiti)                                       | In-transazione          | Dominio vendite |
 
 Un errore durante una pipeline produce record in **tre** sistemi:
 
@@ -474,14 +447,69 @@ erDiagram
 
 ---
 
-## Note finali
+## Area tecnica — esempi
 
-Questa guida copre l'infrastruttura di tracciamento processi e job nello stato attuale. Per i singoli sistemi di logging:
+**Registrare un nuovo dominio con i suoi task** — l'ordine conta: il task cerca il
+`dominio_id` per codice, e l'implementazione cerca il task per `task_code`.
 
-* [Guida Sistema di Audit Logging](/guide/messaggi-audit) — `dbops.audit_log` in dettaglio
-* [Guida Messaggi di Errore](/guide/Messaggi-di-Errore-e-Generazione-Log) — `dbops.error_log` e routing di dominio
-* [Guida Framework di Automazione DB](/guide/automazione-db) — le automazioni dichiarative
-* [PostgreSQL: pgAgent](/postgresql/pgAgent) — lo scheduler e i concetti di job/schedule/step
+```sql
+-- Dominio
+INSERT INTO dbops.domini_task (codice, descrizione)
+VALUES ('PRATICHE', 'Gestione pratiche');
+
+-- Task
+INSERT INTO dbops.pipeline_task_registry (dominio_id, task_code, descrizione)
+VALUES
+  ((SELECT id FROM dbops.domini_task WHERE codice = 'PRATICHE'),
+   'assegna_pratica', 'Assegnazione pratica a operatore'),
+  ((SELECT id FROM dbops.domini_task WHERE codice = 'PRATICHE'),
+   'valida_documenti', 'Validazione documenti allegati');
+
+-- Implementazione default
+INSERT INTO dbops.pipeline_task_registry_impl
+  (task_registry_id, implementation_key, handler_code, is_default)
+SELECT id, 'default', 'pratiche_assegna_v1', true
+FROM dbops.pipeline_task_registry
+WHERE task_code = 'assegna_pratica';
+```
+
+**Aprire e chiudere il verbale di un job headless** — i due estremi di un corpo
+Python, con l'advisory lock per l'anti-overlap:
+
+```sql
+-- in apertura
+SELECT * FROM script.fn_job_run_start(
+  p_jobname  => 'run_fatturazione_batch:immediata',
+  p_origine  => 'CRON',
+  p_lock_key => 'run_fatturazione_batch:immediata'
+);
+
+-- in chiusura
+SELECT script.fn_job_run_end(
+  p_id    => 123,
+  p_ok    => true,
+  p_message => 'done',
+  p_meta  => '{"emittenti": 4, "falliti": 0}'::jsonb,
+  p_lock_key => 'run_fatturazione_batch:immediata'
+);
+```
+
+**Interrogare il giornale delle esecuzioni** — l'ultima corsa per processo, con
+l'attore che si è dichiarato:
+
+```sql
+SELECT DISTINCT ON (processo_codice)
+       processo_codice, jobname, origine, ok, started_at, ended_at
+FROM maintenance.job_run_log
+WHERE processo_codice IS NOT NULL
+ORDER BY processo_codice, started_at DESC;
+```
+
+**I lavori che non si sono dichiarati** — deve restare vuota:
+
+```sql
+SELECT * FROM dbops.vw_run_senza_attore;
+```
 
 ---
 

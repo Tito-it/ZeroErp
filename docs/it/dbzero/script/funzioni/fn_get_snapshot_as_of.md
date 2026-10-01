@@ -2,46 +2,41 @@
 # ⚙️ Funzione `fn_get_snapshot_as_of`
 
 ```sql
-CREATE FUNCTION fn_get_snapshot_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp without time zone)
+CREATE FUNCTION fn_get_snapshot_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp with time zone)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_get_snapshot_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp without time zone)
+CREATE OR REPLACE FUNCTION script.fn_get_snapshot_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp with time zone)
  RETURNS jsonb
  LANGUAGE plpgsql
 AS $function$
  DECLARE
    v_snapshot    JSONB;
-  -- v_pk_col      TEXT;
    v_pk_type     TEXT;
    v_id_col      TEXT := 'id';                   -- colonna PK originaria
    v_hist_schema TEXT := 'storico';
    v_hist_table  TEXT := p_table;
    v_full_table  TEXT := format('%I.%I', v_hist_schema, v_hist_table);
-   v_converted_as_of timestamptz;
  BEGIN
    -- -----------------------------------------------------
-   -- Input      
+   -- Input
    -- p_schema: schema della tabella originaria
-   -- p_table: nome della tabella originaria (e storica)         
+   -- p_table: nome della tabella originaria (e storica)
    -- p_id: PK del record originario, passato come TEXT
    -- p_fk_col: nome della colonna FK in storico (es. 'soggetto_id')
-   -- p_as_of: data/ora di validità desiderata       
+   -- p_as_of: istante di validita' desiderato (timestamptz, rev 20260920-05:
+   --          prima era timestamp e il corpo lo castava col fuso di sessione)
    -- Output
    -- v_snapshot: JSONB del record al momento p_as_of
    -- Se non esiste, restituisce NULL
-   -- Se non trova il record, solleva un'eccezione     
-   -- Altrimenti viene restittuito il JSONB del record o dalla tabella originaria
-   -- o dalla tabella storica, se esiste.      
+   -- Se non trova il record, solleva un'eccezione
+   -- Altrimenti viene restituito il JSONB del record o dalla tabella originaria
+   -- o dalla tabella storica, se esiste.
    -- -----------------------------------------------------
-    --  Converti il parametro in timestamptz una volta per tutte
-     -- Questo gestisce automaticamente la conversione da timestamp a timestamptz
-     v_converted_as_of := p_as_of::timestamptz;
 
    -- Verifica che esista la tabella di storico
-   
     SELECT format_type(a.atttypid, a.atttypmod)
      INTO v_pk_type
      FROM pg_attribute a
@@ -81,7 +76,7 @@ AS $function$
       v_hist_schema, v_hist_table, p_fk_col, v_pk_type
      )
      INTO v_snapshot
-     USING p_id,  v_converted_as_of;
+     USING p_id, p_as_of;
    EXCEPTION WHEN OTHERS THEN
      PERFORM script.fn_log_and_raise_error(
        'database',
@@ -96,10 +91,10 @@ AS $function$
          'SQLSTATE', SQLSTATE
        ),
        NULL::uuid,
-        p_schema, p_table, SQLSTATE  
+        p_schema, p_table, SQLSTATE
      );
    END;
-   
+
    IF v_snapshot IS NOT NULL THEN
      RETURN v_snapshot;
    END IF;
@@ -133,7 +128,7 @@ AS $function$
          'SQLSTATE', SQLSTATE
        ),
        NULL::uuid,
-       p_schema, p_table, SQLSTATE  
+       p_schema, p_table, SQLSTATE
      );
    END;
 
@@ -141,10 +136,14 @@ AS $function$
  END;
  $function$
 
-COMMENT ON FUNCTION script.fn_get_snapshot_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp without time zone)
+COMMENT ON FUNCTION script.fn_get_snapshot_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp with time zone)
 IS 'Restituisce il JSONB di un record al momento p_as_of: 1) dallo storico se esiste,
     2) altrimenti serializza la riga corrente. In caso di errore nelle query, chiama
-    fn_log_and_raise_error con dettagli contestuali.';
+    fn_log_and_raise_error con dettagli contestuali. ⭐ rev 2026-09-20 (20260920-05):
+    p_as_of e'' timestamptz — prima era timestamp e il corpo lo castava col TimeZone
+    della sessione chiamante, cosi'' la stessa domanda fatta dal backend (UTC) e da
+    psql (Europe/Rome) leggeva due istanti diversi. Documento
+    valutazione-modello-di-dominio-db, V-3.';
 ```
 
 ---

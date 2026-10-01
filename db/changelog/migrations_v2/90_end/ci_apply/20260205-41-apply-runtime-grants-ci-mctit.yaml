@@ -62,6 +62,91 @@
 #   Il changeSet che agisce subito su dev è `90_end/20260918-15`; la terza
 #   sede è il blocco «POSTURA DICHIARATA» di `provision_db_roles.sql`; il
 #   pgTAP che pinna l'esito è `db/pgtap/magazzino/test-porta-ledger-v1.sql`.
+#   ⭐ Dal 2026-09-24 la porta si chiude anche sulle FUNZIONI: la primitiva e il
+#   ricalcolo entrano in `v_fn_riservate` (brief-db-magazzino-verbi-con-permesso,
+#   P-4). Il forward su dev è `90_end/20260924-42`, la terza sede lo stesso blocco
+#   del provisioning, lo stesso pgTAP pinna l'esito (test 17-18).
+#
+# ── ⭐ LA PORTA DELLO STATO DELLA CREDENZIALE (dal 2026-09-25) ──────────────
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 2.2
+#   `config.credenziali` e `config.credenziali_provenienze` entrano in
+#   `v_tabelle_sola_lettura_app`: tentativi, freni, blocco dell'admin e cambio
+#   password obbligatorio li scrivono solo le funzioni DEFINER del proprietario.
+#   Il SELECT resta: lo legge fn_check_almeno_un_super_admin_attivo (sql) dai
+#   trigger INVOKER anti-lockout. Forward su dev: `90_end/20260925-24`; terza
+#   sede lo stesso blocco del provisioning; pgTAP
+#   `db/pgtap/config/test-credenziali-porta-v1.sql`.
+#   ⭐ Dal 2026-09-25 anche le gemelle del NOME TENTATO (R-7, sezione 13):
+#   `config.nomi_tentati` e `config.nomi_tentati_provenienze`, stessa porta.
+#
+# ── ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25) ─────────────
+#   Brief: brief-db-pannello-config-verbo-generico, sezione 3.5
+#   `magazzino.causali` e `config.tabelle_gestibili` entrano in
+#   `v_tabelle_sola_lettura_app`: le causali le scrive il verbo generico
+#   config.fn_pannello_scrivi (livello TUTTO sull'oggetto), la lista la scrive
+#   solo il seed (e' una porta: il verbo scrive come proprietario su ogni tabella
+#   che vi compare). Forward su dev: `90_end/20260925-34`; terza sede il blocco
+#   del provisioning; pgTAP `db/pgtap/config/test-pannello-porta-v1.sql`.
+#   Forward su dev `90_end/20260925-62`, stesso blocco del provisioning, stesso
+#   pgTAP.
+#   ⭐ Dal 2026-09-28 anche `config.aree_funzionali` (D-P9, strada A): e' uscita
+#   dal pannello (D-P8) e la possiede il CSV, mirror `80_data/20260228-17`; nome e
+#   ordine si cambiano li'. Forward su dev `90_end/20260928-30`, stesso blocco del
+#   provisioning, stesso pgTAP (10-11).
+#
+# ── ⭐ IL REGISTRO DEGLI OWNER (dal 2026-09-26) ─────────────────────────────
+#   Brief: brief-db-registro-owner-e-sync-riservati-al-migratore, sezione 2.2
+#   `dbops.sec_functions_owner` entra in `v_tabelle_sola_lettura_app`: chi lo
+#   scrive sceglie il proprietario delle DEFINER di postgres, e lo scrive solo
+#   il migratore. ⚠️ La sync `dbops.fn_sync_functions_owner` NON entra in
+#   `v_fn_riservate`, per scelta (D-3): e' di postgres, e l'ACL non la difende
+#   (il cambio di proprietario rimappa le voci, questo loop le riscrive). La
+#   difesa sta nel suo corpo (20_code/dbops/20260926-11). Forward su dev
+#   `90_end/20260926-12`; terza sede il blocco del provisioning; pgTAP
+#   `db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql`.
+#
+# ── ⭐ IL LOTTO 3 DI MAGAZZINO (dal 2026-09-28) ─────────────────────────────
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 4 (P-12)
+#   `magazzino.movimenti_attesi` passa da `v_tabelle_senza_delete` a
+#   `v_tabelle_sola_lettura_app`: i blocchi li aprono e li liberano i verbi
+#   fn_apri_blocco / fn_libera_blocco (D-L3-j). In `v_fn_riservate` le due
+#   operazioni interne, `magazzino.fn_posta_ddt` e
+#   `magazzino.fn_storna_movimenti_sorgente`: ci si arriva solo dai verbi.
+#   Forward su dev `90_end/20260928-83`; terza sede il blocco del provisioning;
+#   pgTAP `db/pgtap/magazzino/test-blocco-manuale-e-porta-lotto3-v1.sql`.
+#
+# ── ⭐ IL LOTTO 3-BIS DI MAGAZZINO (dal 2026-09-28) ─────────────────────────
+#   Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 4 (P-11)
+#   In `v_fn_riservate` il posting del reso, `magazzino.fn_posta_reso`: ci si
+#   arriva solo dal verbo vendite.fn_conferma_reso (DEFINER). I due verbi del
+#   reso (fn_conferma_reso, fn_annulla_reso) restano concessi all'app come
+#   ogni funzione. Forward su dev `90_end/20260928-98`; terza sede il blocco
+#   del provisioning; pgTAP `db/pgtap/magazzino/test-reso-carico-v1.sql`.
+#
+# ── ⭐ I POSTING ESCONO DAL REGISTRO (dal 2026-10-01) ────────────────────────
+#   Brief: brief-db-magazzino-registro-anello-interno, sezione 3 (P-5)
+#   Il registro di magazzino e' un servizio dell'anello 2 (D-1) e non legge le
+#   tabelle dei documenti: i posting della bolla e del reso passano in vendite
+#   (D-2). In `v_fn_riservate` le voci `magazzino.fn_posta_ddt` /
+#   `magazzino.fn_posta_reso` diventano `vendite.fn_posta_ddt` /
+#   `vendite.fn_posta_reso`. Forward su dev `90_end/20261001-24` (che ritira
+#   anche le due del registro); terza sede il blocco del provisioning; pgTAP
+#   `test-blocco-manuale-e-porta-lotto3-v1` e `test-reso-carico-v1`.
+#
+# ── ⭐ IL DEVICE DEL SECONDO FATTORE (dal 2026-09-29) ───────────────────────
+#   Brief: brief-db-secondo-fattore-totp, sezione 3
+#   `config.auth_totp_device` entra in `v_tabelle_sola_lettura_app`: anti-replay
+#   sul passo e monouso dei codici di recupero li fanno rispettare i verbi
+#   DEFINER script.fn_totp_*. Il SELECT resta per fn_get_totp_device (INVOKER).
+#   Forward su dev `90_end/20260929-24`; terza sede il blocco del provisioning;
+#   pgTAP `db/pgtap/config/test-totp-porta-v1.sql`.
+#
+# ── ⭐ IL CATALOGO DELLE MISURE DI PAGINA (dal 2026-09-30) ──────────────────
+#   Brief: brief-db-misure-pagina-catalogo, sezione 2
+#   `ui.misure_pagina` entra in `v_tabelle_sola_lettura_app`: lo possiede il
+#   CSV, come `config.aree_funzionali`. Forward su dev `90_end/20260930-13`;
+#   terza sede il blocco del provisioning; pgTAP
+#   `db/pgtap/ui/test-misure-pagina-v1.sql`.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -106,9 +191,23 @@ databaseChangeLog:
                 --   sessione dell'audit (begin/end) è un UPDATE del registro.
                 --   L'app usa fn_audit_log_once. Voci `schema.funzione`, tutti
                 --   gli overload; la revoca va anche a PUBLIC, che ha `=X`.
+                --   ⭐ Dal 2026-09-24 anche la primitiva del ledger di magazzino e il
+                --   ricalcolo del valore: l'app li raggiunge SOLO dai verbi
+                --   (fn_posta_inventario, fn_posta_rettifica, DEFINER), che applicano
+                --   registra_magazzino. Brief: brief-db-magazzino-verbi-con-permesso §2.3.
                 v_fn_riservate text[] := ARRAY[
                   'dbops.fn_audit_begin',
-                  'dbops.fn_audit_end'
+                  'dbops.fn_audit_end',
+                  'magazzino.fn_scrivi_movimento',
+                  'magazzino.fn_ricalcola_valore_giacenza',
+                  -- ⭐ Dal 2026-09-28 (Lotto 3): lo storno; l'app ci arriva solo dai verbi.
+                  'magazzino.fn_storna_movimenti_sorgente',
+                  -- ⭐ Dal 2026-10-01 i posting della bolla e del reso stanno in vendite
+                  --   (erano magazzino.fn_posta_ddt / fn_posta_reso dal 28-09): l'app ci
+                  --   arriva solo da vendite.fn_cambia_stato_ddt e vendite.fn_conferma_reso.
+                  --   Brief: brief-db-magazzino-registro-anello-interno (P-5).
+                  'vendite.fn_posta_ddt',
+                  'vendite.fn_posta_reso'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la
@@ -118,21 +217,53 @@ databaseChangeLog:
                 v_schemi_senza_delete text[] := ARRAY[
                   'storico'
                 ];
-                -- ⭐ Tabelle in SOLA LETTURA per l'applicazione: il ledger di
+                -- ⭐ Tabelle in SOLA LETTURA per l'applicazione: l'app legge, scrive
+                --   solo una porta del proprietario (una DEFINER, un seed, il
+                --   migratore). Nata il 2026-09-18 per il ledger di
                 --   magazzino e la sua copia del valore. Scrive solo la primitiva
                 --   DEFINER (magazzino.fn_scrivi_movimento) e il ricalcolo: è la
                 --   porta di D-L2-b. Voci `schema.tabella`.
                 --   Brief: brief-db-magazzino-lotto-2-motore, sezione 4.1.
+                --   ⭐ Dal 2026-09-25 anche lo stato della CREDENZIALE: scrivono solo
+                --   le funzioni DEFINER del login e dei verbi di blocco; il SELECT resta
+                --   per fn_check_almeno_un_super_admin_attivo (sql, chiamata da trigger
+                --   INVOKER). Brief: brief-db-blocco-login-per-credenziale §2.2.
                 v_tabelle_sola_lettura_app text[] := ARRAY[
                   'magazzino.movimenti',
-                  'magazzino.valore_giacenza'
+                  'magazzino.valore_giacenza',
+                  'config.credenziali',
+                  'config.credenziali_provenienze',
+                  'config.nomi_tentati',
+                  'config.nomi_tentati_provenienze',
+                  -- ⭐ Dal 2026-09-25 il PANNELLO: le causali di magazzino le scrive
+                  --   il verbo config.fn_pannello_scrivi, e la lista delle tabelle
+                  --   gestibili e' una porta (brief-db-pannello-config-verbo-generico §3.5).
+                  'magazzino.causali',
+                  'config.tabelle_gestibili',
+                  -- ⭐ Dal 2026-09-28 il catalogo delle AREE: lo possiede il CSV
+                  --   (D-P9, brief-db-pannello-config-verbo-generico §4.2).
+                  'config.aree_funzionali',
+                  -- ⭐ Dal 2026-09-26 il REGISTRO DEGLI OWNER: chi lo scrive sceglie
+                  --   il proprietario delle DEFINER di postgres. Lo scrive solo il
+                  --   migratore; la sync ha la sua guardia nel corpo
+                  --   (brief-db-registro-owner-e-sync-riservati-al-migratore §2.2).
+                  'dbops.sec_functions_owner',
+                  -- ⭐ Dal 2026-09-28 (Lotto 3, D-L3-j): i blocchi di magazzino li
+                  --   aprono e li liberano i verbi fn_apri_blocco / fn_libera_blocco.
+                  'magazzino.movimenti_attesi',
+                  -- ⭐ Dal 2026-09-29 il DEVICE DEL SECONDO FATTORE: lo scrivono solo
+                  --   i verbi script.fn_totp_* (brief-db-secondo-fattore-totp §3).
+                  'config.auth_totp_device',
+                  -- ⭐ Dal 2026-09-30 il CATALOGO DELLE MISURE DI PAGINA: lo possiede il
+                  --   CSV (brief-db-misure-pagina-catalogo §2).
+                  'ui.misure_pagina'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude
                 --   (APERTA -> CHIUSA, D-L1-b), non si cancella.
-                v_tabelle_senza_delete text[] := ARRAY[
-                  'magazzino.movimenti_attesi'
-                ];
+                --   ⚠️ Dal 2026-09-28 l'elenco e' VUOTO: movimenti_attesi e' passata in
+                --   sola lettura (Lotto 3, D-L3-j). La lista resta, per la prossima.
+                v_tabelle_senza_delete text[] := ARRAY[]::text[];
                 v_schemas text[] := ARRAY[
                   'acquisti',
                   'anagrafiche',

@@ -39,6 +39,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
+# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
 USERNAME="${SMOKE_USER:-tid}"
 PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
 
@@ -483,7 +485,7 @@ fi
 echo ""
 echo "========================================="
 echo -e " Risultato: ${GREEN}$PASS OK${NC} / ${RED}$FAIL FAIL${NC}"
-echo "=========================================
+echo "========================================="
 echo ""
 
 if [[ $FAIL -gt 0 ]]; then

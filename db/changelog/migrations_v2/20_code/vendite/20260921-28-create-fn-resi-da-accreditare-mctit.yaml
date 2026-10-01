@@ -1,0 +1,360 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 — LA CODA ACCREDITI PER DOCUMENTO (quarta leva, giro 2 — D3)
+#   brief-db-partita-merce-per-documento §2.2, §7 «Giro 2»; decisione D3 di
+#   Tid del 2026-09-21: «prima possibile, non un residuo».
+#
+# ── IL DIFETTO ─────────────────────────────────────────────────────────
+#
+#   vendite.vw_resi_da_accreditare e' la coda accrediti: la CTE `acc` legge
+#   vw_partite_merce INTERA (le partite in negativo), `eff` legge
+#   vw_resi_righe_effettive INTERA e chiama fn_resi_riga_accreditato_partita
+#   per OGNI riga di reso confermata del database. La leggono per UNA riga il
+#   verbo «accredita» (fn_accredita_riga_reso, `WHERE resi_riga_id = p`) e il
+#   guard del ponte (fn_resi_riga_tetti_accredito, SECURITY DEFINER, chiamata
+#   da trgfn_resi_accrediti_guard a ogni INSERT sul ponte); per un documento il
+#   backend (list_situazione_merce_accrediti, ResiRepository.list_da_accreditare
+#   con ddt_id/ordine_id). Ognuno paga la coda di tutti — e il guard la paga
+#   per ogni riga di ponte scritta.
+#
+#   ⚠️ Censimento dal catalogo (pg_proc.prosrc, 21-09): il brief nominava «sei
+#   funzioni per riga di reso»; quattro di quelle nominano le viste solo nei
+#   COMMENTI e script.fn_check_accredito_annullabile non le tocca. I lettori
+#   veri sono DUE, entrambi attraverso questa coda: sono i changeSet -30 e -31.
+#
+# ── LA FORMA (D1: un corpo) ────────────────────────────────────────────
+#
+#   La coda passa in vendite.fn_resi_da_accreditare(p_ddt_ids, p_ordine_ids) —
+#   gli stessi due semi, nello stesso ordine, di fn_partite_merce — e la vista
+#   ne diventa la proiezione senza filtro (20260921-29). Con un seme:
+#     * S = le righe di DDT della coda chiesta: per DDT la colonna `ddt_id`;
+#       per ordine un fulfillment della riga di DDT resa verso l'ordine.
+#       ⭐ E' LO STESSO predicato del building block del backend
+#       `_coda_documento_filtro.filtro_coda_per_documento`, riga per riga:
+#       la coda ha `ddt_id` ma NON ha `ordine_id`, e il legame all'ordine
+#       passa dal fulfillment (la fonte da cui la partita deriva `orig`).
+#       ⛔ NON e' l'uscita per ordine di fn_partite_merce (`ordine_id`
+#       proiettato = riga MINIMA): una riga di DDT che evade DUE ordini sta
+#       nella coda di ENTRAMBI, come il backend la filtra oggi. Le due
+#       semantiche «per ordine» sono diverse perche' le due letture lo sono;
+#       il pgTAP costruisce la riga MULTIPLA per distinguerle.
+#     * `acc` = fn_partite_merce(<i DDT di S>, NULL): un soprainsieme di S,
+#       che il JOIN con `eff` riporta a S;
+#     * `eff` = le righe di reso effettive con ddt_riga_id ∈ S: TUTTE le
+#       sorelle della stessa riga di DDT, quindi la finestra della greedy
+#       (`PARTITION BY ddt_riga_id ORDER BY resi_riga_id`) e' intera; e
+#       fn_resi_riga_accreditato_partita e' chiamata solo su quelle.
+#   L'USCITA e' `ddt_riga_id ∈ S` per costruzione (eff ristretta): non serve
+#   un filtro finale.
+#
+#   ⛔ `BEGIN ATOMIC` e rami in UNION ALL come nel giro 1 (§2-bis.2, §2-bis.3);
+#   sulla partita il ramo TUTTI chiama fn_partite_merce(NULL, NULL) con due
+#   letterali (inlinata, le stesse scansioni della vista) e il ramo ristretto
+#   col seme CALCOLATO (sub-select → Function Scan, non inlinata: il planner
+#   rifiuta un argomento con sub-select; regge in piano generico, provato;
+#   e a regime sta in plancache: dalla sesta chiamata della sessione ~2 ms
+#   invece dei ~10 di planning di una SRF inlinata, misurato da owner).
+#   `COALESCE(array_agg, '{}')`: un seme che non trova righe non deve diventare
+#   «tutte».
+#
+# ── COSA NON CAMBIA ────────────────────────────────────────────────────
+#
+#   Le 27 colonne, i tipi e i numeri: dalla rev 2026-08-25 (20260825-24) della
+#   vista, ricopiata con le sole sorgenti sostituite. Fatto datato (dbdev,
+#   owner, 21-09): EXCEPT ALL a zero nei due versi fra fn(NULL,NULL) e la vista,
+#   fra fn(ARRAY[d]) e la vista WHERE ddt_id = d per OGNI DDT in coda, fra
+#   fn(NULL, ARRAY[o]) e la vista col predicato del BB per OGNI ordine.
+#
+# Presidio: db/pgtap/vendite/test-fn-resi-da-accreditare-chiusura-v1.sql
+#   (casi COSTRUITI: due resi sulla stessa partita con capienza parziale — le
+#   sorelle —, riga MULTIPLA nella coda di entrambi gli ordini, il verbo e il
+#   guard attraverso la funzione, scope).
+# Dipendenze: 20260921-21 (fn_partite_merce), 20260825-24 (la forma della
+#   vista che qui si ricopia).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260921-28-create-fn-resi-da-accreditare-mctit.yaml
+
+  - changeSet:
+      id: 20260921-28-create-fn-resi-da-accreditare
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 giro 2 (D3): vendite.fn_resi_da_accreditare(p_ddt_ids, p_ordine_ids),
+        BEGIN ATOMIC, la coda accrediti ristretta alle righe di DDT dei documenti
+        chiesti (S: ddt_id per DDT, fulfillment verso l'ordine per ordine — lo
+        stesso predicato del BB backend filtro_coda_per_documento); partite da
+        fn_partite_merce(<DDT di S>, NULL), sorelle intere. Entrambi NULL = tutte.
+        Rami in UNION ALL. Stesse 27 colonne e stessi numeri della vista
+        (20260825-24), che nel 20260921-29 ne diventa la proiezione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_resi_righe_effettive
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_partite_merce'
+                     AND pronamespace = 'vendite'::regnamespace
+                     AND prosqlbody IS NOT NULL
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_resi_da_accreditare'
+                     AND pronamespace = 'vendite'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resi_da_accreditare(
+                  -- ⚠️ Array espliciti: `colonna%TYPE[]` non esiste in PostgreSQL.
+                  --    Gli elementi sono vendite.ddt.id e vendite.ordini.id (bigint).
+                  --    Stesso ordine dei semi di fn_partite_merce.
+                  p_ddt_ids    bigint[] DEFAULT NULL,
+                  p_ordine_ids bigint[] DEFAULT NULL)
+              -- Ancorate le colonne PROIETTATE da una tabella (i typmod dei varchar
+              -- cadono: la vista li ricasta per nome); tipi espliciti, con la ragione,
+              -- per cio' che e' CALCOLATO.
+              RETURNS TABLE(
+                  resi_riga_id                   vendite.resi_righe.id%TYPE,
+                  reso_id                        vendite.resi.id%TYPE,
+                  reso_uid                       vendite.resi.uid%TYPE,
+                  reso_numero                    vendite.resi.numero%TYPE,
+                  data                           vendite.resi.data%TYPE,
+                  emittente_fiscale_id           vendite.resi.emittente_fiscale_id%TYPE,
+                  billing_account_id             vendite.resi.billing_account_id%TYPE,
+                  ba_codice                      anagrafiche.billing_account.codice%TYPE,
+                  destinatario_soggetto_ruolo_id vendite.resi.destinatario_soggetto_ruolo_id%TYPE,
+                  destinatario_denominazione     anagrafiche.soggetti.ragione_sociale_completa%TYPE,
+                  articolo_id                    vendite.resi_righe.articolo_id%TYPE,
+                  descrizione                    vendite.resi_righe.descrizione%TYPE,
+                  quantita                       vendite.resi_righe.quantita%TYPE,
+                  qta_operativa                  vendite.resi_righe.qta_operativa%TYPE,
+                  uom_operativa_id               vendite.resi_righe.uom_operativa_id%TYPE,
+                  motivo                         vendite.resi_righe.motivo%TYPE,
+                  ddt_riga_id                    vendite.resi_righe.ddt_riga_id%TYPE,
+                  ddt_id                         vendite.ddt_righe.ddt_id%TYPE,
+                  ddt_numero                     vendite.ddt.numero%TYPE,
+                  ordine_riga_id                 vendite.resi_righe.ordine_riga_id%TYPE,
+                  tenuti                         numeric,   -- saldo della partita (da fn_partite_merce)
+                  fatturati                      numeric,   -- idem
+                  accredito_dovuto               numeric,   -- quota greedy della partita (calcolata)
+                  etichetta                      character varying,   -- vocabolario calcolato: DOVUTA / FACOLTATIVA
+                  gia_accreditato                numeric,   -- somma per gruppo (fn_resi_riga_accreditato_partita)
+                  blocco_codice                  character varying,   -- vocabolario calcolato
+                  annullo_blocco_codice          character varying)   -- reason del primo motivo (calcolato)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+              -- ══════════════════════════════════════════════════════════════════════
+              -- LA CODA ACCREDITI, PER DOCUMENTO (D14, giro 2 — D3, 2026-09-21).
+              --
+              -- Il corpo e' UNO: vendite.vw_resi_da_accreditare e' la proiezione di
+              -- fn_resi_da_accreditare(NULL, NULL). Il verbo «accredita», il guard del
+              -- ponte e il backend per documento chiamano la funzione con un seme e
+              -- pagano la coda di quel documento, non quella di tutti.
+              --
+              -- I SEMI, nello stesso ordine di fn_partite_merce. S = le righe di DDT
+              -- della coda chiesta: per p_ddt_ids la colonna ddt_id; per p_ordine_ids un
+              -- fulfillment della riga di DDT resa verso l'ordine. ⭐ E' lo STESSO
+              -- predicato del BB backend filtro_coda_per_documento (la coda non ha
+              -- `ordine_id`; il legame all'ordine e' il fulfillment, la fonte di `orig`).
+              -- ⛔ NON e' l'uscita per ordine di fn_partite_merce (`ordine_id` = riga
+              -- minima): una riga di DDT che evade DUE ordini sta nella coda di
+              -- ENTRAMBI. Entrambi NULL = TUTTA la coda (la vista). Un array VUOTO
+              -- semina zero righe. Con entrambi valorizzati l'uscita e' l'unione.
+              --
+              -- LA CHIUSURA. `acc` = fn_partite_merce(<i DDT di S>, NULL): tutte le
+              -- partite di quei DDT, soprainsieme di S. `eff` = le righe di reso
+              -- effettive con ddt_riga_id ∈ S: TUTTE le sorelle della stessa riga di
+              -- DDT, quindi la finestra della greedy (PARTITION BY ddt_riga_id ORDER BY
+              -- resi_riga_id) e' intera — senza una sorella, la seconda riga di reso si
+              -- prenderebbe la quota gia' presa dalla prima. L'uscita e' ddt_riga_id ∈ S
+              -- per costruzione (eff ristretta, JOIN con acc).
+              --
+              -- LA FORMA DEI DUE MODI: rami in UNION ALL, mai `p IS NULL OR …`
+              -- (brief §2-bis.2); `tutti` = (p_ddt_ids IS NULL AND p_ordine_ids IS NULL)
+              -- e' un One-Time Filter. Sulla partita il ramo TUTTI chiama la funzione
+              -- con due letterali (inlinata: le stesse scansioni della vista); il ramo
+              -- ristretto col seme CALCOLATO non si inlina (sub-select fra gli argomenti
+              -- → Function Scan), e regge in piano generico.
+              -- ══════════════════════════════════════════════════════════════════════
+              WITH righe_in AS MATERIALIZED (
+                  -- S. Con un array NULL `= ANY` non trova niente: in modo TUTTI e' vuota.
+                  SELECT dr.id AS ddt_riga_id, dr.ddt_id
+                    FROM vendite.ddt_righe dr
+                   WHERE dr.ddt_id = ANY (p_ddt_ids)
+                  UNION
+                  SELECT dr.id, dr.ddt_id
+                    FROM vendite.ordini_righe orr
+                    JOIN vendite.ordini_righe_fulfillment f ON f.ordine_riga_id = orr.id
+                    JOIN vendite.ddt_righe dr ON dr.id = f.ddt_riga_id
+                   WHERE orr.ordine_id = ANY (p_ordine_ids)
+              ),
+              -- ══ DA QUI IN GIU' E' LA VISTA (rev 2026-08-25, 20260825-24), con le sole
+              --    sorgenti sostituite dai set qui sopra. ══
+              acc AS (
+                  -- Le partite in NEGATIVO (accredito dovuto): tutte, o quelle dei DDT di S.
+                  -- ⚠️ COALESCE a '{}': array_agg su zero righe e' NULL, e (NULL, NULL)
+                  --    sarebbe «tutte».
+                  SELECT p.ddt_riga_id,
+                         p.tenuti,
+                         p.fatturato AS fatturati,
+                         - p.differenza AS accredito_partita
+                    FROM vendite.fn_partite_merce(NULL::bigint[], NULL::bigint[]) p
+                   WHERE p.differenza < 0::numeric
+                     AND (p_ddt_ids IS NULL AND p_ordine_ids IS NULL)
+                  UNION ALL
+                  SELECT p.ddt_riga_id,
+                         p.tenuti,
+                         p.fatturato,
+                         - p.differenza
+                    FROM vendite.fn_partite_merce(
+                             (SELECT COALESCE(array_agg(DISTINCT s.ddt_id), '{}'::bigint[]) FROM righe_in s),
+                             NULL::bigint[]) p
+                   WHERE p.differenza < 0::numeric
+                     AND NOT (p_ddt_ids IS NULL AND p_ordine_ids IS NULL)
+              ), eff AS (
+                  -- Le righe di reso EFFETTIVE (reso CONFERMATO, riga attiva): tutte, o
+                  -- quelle delle righe di DDT di S — con TUTTE le sorelle.
+                  SELECT e.resi_riga_id,
+                         e.reso_id,
+                         e.ddt_riga_id,
+                         e.ordine_riga_id,
+                         e.riapre_residuo,
+                         e.quantita,
+                         vendite.fn_resi_riga_accreditato_partita(e.resi_riga_id) AS gia_accreditato
+                    FROM vendite.vw_resi_righe_effettive e
+                    JOIN righe_in s ON s.ddt_riga_id = e.ddt_riga_id
+                   WHERE NOT (p_ddt_ids IS NULL AND p_ordine_ids IS NULL)
+                  UNION ALL
+                  SELECT e.resi_riga_id,
+                         e.reso_id,
+                         e.ddt_riga_id,
+                         e.ordine_riga_id,
+                         e.riapre_residuo,
+                         e.quantita,
+                         vendite.fn_resi_riga_accreditato_partita(e.resi_riga_id)
+                    FROM vendite.vw_resi_righe_effettive e
+                   WHERE (p_ddt_ids IS NULL AND p_ordine_ids IS NULL)
+              ), dist AS (
+                  -- La greedy per resi_riga_id sulla quantita' ANCORA accreditabile (N9).
+                  SELECT e.resi_riga_id,
+                         e.reso_id,
+                         e.ddt_riga_id,
+                         e.ordine_riga_id,
+                         e.riapre_residuo,
+                         e.quantita AS qta_resa,
+                         e.gia_accreditato,
+                         a.tenuti,
+                         a.fatturati,
+                         GREATEST(0::numeric,
+                                  LEAST(GREATEST(0::numeric, e.quantita - e.gia_accreditato),
+                                        a.accredito_partita
+                                        - COALESCE(sum(GREATEST(0::numeric, e.quantita - e.gia_accreditato))
+                                                     OVER (PARTITION BY e.ddt_riga_id
+                                                           ORDER BY e.resi_riga_id
+                                                           ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),
+                                                   0::numeric))) AS accredito_dovuto
+                    FROM eff e
+                    JOIN acc a ON a.ddt_riga_id = e.ddt_riga_id
+              )
+              SELECT x.resi_riga_id,
+                     r.id AS reso_id,
+                     r.uid AS reso_uid,
+                     r.numero AS reso_numero,
+                     r.data,
+                     r.emittente_fiscale_id,
+                     r.billing_account_id,
+                     ba.codice AS ba_codice,
+                     r.destinatario_soggetto_ruolo_id,
+                     s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                     rr.articolo_id,
+                     rr.descrizione,
+                     rr.quantita,
+                     rr.qta_operativa,
+                     rr.uom_operativa_id,
+                     rr.motivo,
+                     x.ddt_riga_id,
+                     dr.ddt_id,
+                     d.numero AS ddt_numero,
+                     x.ordine_riga_id,
+                     x.tenuti,
+                     x.fatturati,
+                     x.accredito_dovuto,
+                     CASE
+                         WHEN x.riapre_residuo AND vendite.fn_resi_riga_residuo_riconsegna(x.resi_riga_id) > 0::numeric THEN 'FACOLTATIVA'::text
+                         ELSE 'DOVUTA'::text
+                     END::character varying AS etichetta,
+                     x.gia_accreditato,
+                     CASE
+                         WHEN x.gia_accreditato > 0::numeric THEN 'GIA_ACCREDITATO'::text
+                         ELSE NULL::text
+                     END::character varying AS blocco_codice,
+                     ((script.fn_check_accredito_annullabile(x.resi_riga_id) -> 0) ->> 'reason'::text)::character varying AS annullo_blocco_codice
+                FROM dist x
+                JOIN vendite.resi_righe rr ON rr.id = x.resi_riga_id
+                JOIN vendite.resi r ON r.id = x.reso_id
+                JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = r.destinatario_soggetto_ruolo_id
+                JOIN anagrafiche.soggetti s_dest ON s_dest.id = sr_dest.soggetto_id
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+                JOIN vendite.ddt_righe dr ON dr.id = x.ddt_riga_id
+                JOIN vendite.ddt d ON d.id = dr.ddt_id
+               WHERE x.accredito_dovuto > 0::numeric;
+              END;
+        # ⛔ Il COMMENT sta in un change SUO: pgjdbc esegue un `BEGIN ATOMIC … END;`
+        #    solo se sta da solo nel testo (giro 1, provato col jar di Liquibase).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_resi_da_accreditare(bigint[], bigint[]) IS
+                'LA CODA ACCREDITI, PER DOCUMENTO (D14 giro 2 — D3, 2026-09-21): la stessa '
+                'coda di vendite.vw_resi_da_accreditare — che ne e'' la proiezione senza filtro, '
+                'fn(NULL, NULL) — ristretta alle righe di DDT dei documenti chiesti. Semi, nello '
+                'stesso ordine di fn_partite_merce: p_ddt_ids (la colonna ddt_id) e p_ordine_ids '
+                '(un fulfillment della riga di DDT resa verso l''ordine): S e'' lo STESSO '
+                'predicato del BB backend _coda_documento_filtro.filtro_coda_per_documento, e '
+                'NON l''uscita per ordine di fn_partite_merce (ordine_id = riga minima): una riga '
+                'di DDT che evade due ordini sta nella coda di entrambi. Entrambi NULL = tutta; '
+                'array VUOTO = zero righe; entrambi valorizzati = unione. La chiusura: le partite '
+                'da fn_partite_merce(<i DDT di S>, NULL) (soprainsieme, riportato a S dal JOIN); '
+                'le righe di reso effettive con ddt_riga_id in S — TUTTE le sorelle, quindi la '
+                'greedy per resi_riga_id e'' intera — e fn_resi_riga_accreditato_partita solo su '
+                'quelle. BEGIN ATOMIC: dipendenze in pg_depend, catena RLS leggibile dal presidio '
+                'security_invoker attraverso fn_partite_merce. Due modi in UNION ALL, mai `p IS '
+                'NULL OR`; sulla partita il ramo TUTTI (due letterali) resta inlinato, identico '
+                'alla vista, il ramo col seme calcolato e'' un Function Scan che regge in piano '
+                'generico. INVOKER: la RLS resta di chi legge — dentro fn_resi_riga_tetti_accredito '
+                '(DEFINER) gira come l''owner, sopra la RLS, com''era la vista. Chiamanti per '
+                'documento: fn_accredita_riga_reso (ARRAY[ddt della riga]), '
+                'fn_resi_riga_tetti_accredito (idem), BE list_situazione_merce_accrediti e '
+                'ResiRepository.list_da_accreditare con ddt_id/ordine_id (richiesta BE nel '
+                'brief). Brief: brief-db-partita-merce-per-documento §7 giro 2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Solo finche' 20260921-29 non ha fatto della vista la proiezione
+              --    di questa funzione: dopo, il DROP cascaderebbe sulla vista e su
+              --    vw_dash_backlog_documenti.
+              DROP FUNCTION IF EXISTS vendite.fn_resi_da_accreditare(bigint[], bigint[]);

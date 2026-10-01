@@ -3,17 +3,20 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Repository per entita' geografiche config:
-#        toponomastica, comuni, province, regioni, stati.
+#        toponomastica, comuni, codici postali, province, regioni, stati.
 #        Accesso DB-first via cursor.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     dynamic_update,
-    extract_paginated,
+    fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
     colonne_identita,
@@ -34,8 +37,134 @@ _TOPONOMASTICA_ORDER_COLS = colonne_identita("descrizione", "attivo")
 _COMUNI_ORDER_COLS = colonne_identita("descrizione", "provincia_sigla", "regione_descrizione")
 _PROVINCE_ORDER_COLS = colonne_identita("descrizione", "sigla", "regione_descrizione")
 _REGIONI_ORDER_COLS = colonne_identita("descrizione", "stato_descrizione")
-_STATI_ORDER_COLS = colonne_identita("descrizione", "codice_iso2", "continente")
-_CODICI_POSTALI_ORDER_COLS = colonne_identita("codice", "comune_descrizione")
+# ⚠️ `codice_iso3` e' entrato il 2026-09-27 (brief-db-liste-datatable-grezze
+#    §4.1 riga 9): il seed lo dichiara `ordinabile = t` e fino a quel giorno la
+#    freccia ISO3 ripiegava in silenzio sull'ordine di default.
+# ⚠️ `sigla_stato` (stati) e `provincia_sigla` (CAP) sono entrate il 2026-09-28
+#    (§9 dello stesso brief): la prima e' una colonna del nucleo resa
+#    ordinabile dal seed, la seconda la provincia che distingue due comuni
+#    omonimi nella lista CAP (`vw_codici_postali_lista`, NULL se il comune non
+#    ha provincia: ordina come il valore minimo).
+_STATI_ORDER_COLS = colonne_identita(
+    "descrizione", "sigla_stato", "codice_iso2", "codice_iso3", "continente",
+)
+_CODICI_POSTALI_ORDER_COLS = colonne_identita("codice", "comune_descrizione", "provincia_sigla")
+
+# Cosa si PUO' cercare nelle sei liste geografiche; cosa si cerca, e da quanti
+# caratteri, lo dice il catalogo (`add_ricerca_full_condition`, liste 91-96).
+# ⭐ Forma a tupla: le sei leggono UNA relazione (la tabella, o la vista di
+#    lista `config.vw_*_lista`) in cui il `campo_sorgente` E' la colonna —
+#    come per l'ordinamento, nessuna traduzione. Si dichiarano tutte le colonne
+#    TESTO che la lista mostra, non solo quelle accese oggi dal seed: e' una
+#    capacita' che l'amministratore puo' accendere senza toccare il codice.
+# ⛔ Fino al 2026-09-27 le ricerche erano scritte a mano, sei copie con sei
+#    elenchi di colonne e nessuna soglia: il catalogo spegneva una colonna e
+#    la lista continuava a cercarci.
+_RICERCA_TOPONOMASTICA = RicercaFull("config.toponomastica", ("descrizione",))
+_RICERCA_COMUNI = RicercaFull("config.comuni", (
+    "descrizione", "provincia_sigla", "provincia_descrizione", "regione_descrizione",
+))
+_RICERCA_CODICI_POSTALI = RicercaFull("config.codici_postali", ("codice", "comune_descrizione"))
+_RICERCA_PROVINCE = RicercaFull("config.province", ("sigla", "descrizione", "regione_descrizione"))
+_RICERCA_REGIONI = RicercaFull("config.regioni", ("descrizione", "stato_descrizione"))
+_RICERCA_STATI = RicercaFull("config.stati", (
+    "descrizione", "codice_iso2", "codice_iso3", "sigla_stato", "continente",
+))
+
+
+# Scopo: COSA si legge di un'entita' geografica: la relazione (la tabella, o
+#        la vista di lista `config.vw_*_lista`) e le colonne della riga.
+# ⭐ Regola del 2 (2026-09-28): la stessa proiezione era scritta due o tre
+#    volte per entita' — nella lista, nel dettaglio e nel `RETURNING` della
+#    create — e il dettaglio di province e regioni rifaceva a mano il JOIN
+#    della vista. Lista, dettaglio e riga restituita dalla create leggono ora
+#    la stessa sorgente: una colonna aggiunta alla vista si aggiunge qui, una
+#    volta, e la riga da cui si apre il drawer e' quella che il drawer legge.
+# ⛔ `relazione` e `colonne` sono letterali di questo modulo, mai input: e' la
+#    ragione per cui le f-string di `_lista_geo` e `_dettaglio_geo` sono ammesse.
+@dataclass(frozen=True)
+class _SorgenteGeo:
+    relazione: str
+    colonne: tuple[str, ...]
+
+    # Scopo: la lista delle colonne per la SELECT, con l'alias se dato.
+    def proiezione(self, alias: str | None = None) -> str:
+        prefisso = f"{alias}." if alias else ""
+        return ", ".join(prefisso + c for c in self.colonne)
+
+
+_TOPONOMASTICA = _SorgenteGeo("config.toponomastica", ("id", "descrizione", "attivo"))
+_COMUNI = _SorgenteGeo("config.vw_comuni_lista", (
+    "id", "descrizione", "provincia_id", "provincia_sigla",
+    "provincia_descrizione", "regione_id", "regione_descrizione",
+))
+_CODICI_POSTALI = _SorgenteGeo("config.vw_codici_postali_lista", (
+    "id", "codice", "comune_id", "comune_descrizione", "provincia_id", "provincia_sigla",
+))
+_PROVINCE = _SorgenteGeo("config.vw_province_lista", (
+    "id", "descrizione", "sigla", "regione_id", "regione_descrizione",
+))
+_REGIONI = _SorgenteGeo("config.vw_regioni_lista", (
+    "id", "descrizione", "stato_id", "stato_descrizione",
+))
+_STATI = _SorgenteGeo("config.stati", (
+    "id", "descrizione", "sigla_stato", "codice_iso2", "codice_iso3",
+    "codice_telefonico", "continente",
+))
+
+
+# Scopo: la riga di un'entita' geografica per id, dalla sua sorgente.
+def _dettaglio_geo(sorgente: _SorgenteGeo, pk: int) -> dict[str, Any] | None:
+    sql = f"SELECT {sorgente.proiezione()} FROM {sorgente.relazione} WHERE id = %s"  # noqa: S608 — sorgente letterale del modulo, l'id come parametro
+    with connection.cursor() as cursor:
+        cursor.execute(sql, [pk])
+        return row_to_dict(cursor)
+
+
+# Scopo: esegue un INSERT ... RETURNING id e restituisce la riga appena creata
+#        riletta dalla sorgente, cioe' come la mostrano lista e dettaglio.
+# ⛔ Fino al 2026-09-28 la create restituiva il suo `RETURNING`: i campi della
+#    tabella senza le descrizioni dei JOIN (un CAP senza comune ne' provincia,
+#    una provincia senza regione), cioe' una riga piu' povera del dettaglio.
+def _crea_geo(sorgente: _SorgenteGeo, sql_insert: str, params: list[Any]) -> dict[str, Any]:
+    with connection.cursor() as cursor:
+        cursor.execute(sql_insert, params)
+        creato = row_to_dict(cursor)
+    assert creato is not None
+    riga = _dettaglio_geo(sorgente, creato["id"])
+    assert riga is not None
+    return riga
+
+
+# Scopo: la lettura paginata comune alle sei liste: UNA relazione (alias `v`),
+#        i filtri gia' composti dal chiamante, la ricerca dal catalogo, il
+#        totale nella stessa valutazione (`fetch_paged_with_total`) con il
+#        conteggio di ripiego sulla pagina oltre l'ultima.
+# ⭐ Regola del 2: le sei query differivano solo per relazione, proiezione e
+#    filtro — la forma (WHERE, ORDER BY, LIMIT, conteggio) era la stessa,
+#    scritta sei volte.
+def _lista_geo(
+    *, sorgente: _SorgenteGeo, ricerca: RicercaFull, search: str | None,
+    ordinamento: str, limit: int, offset: int,
+    conditions: list[str] | None = None, params: list[Any] | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    conditions = list(conditions or [])
+    params = list(params or [])
+    add_ricerca_full_condition(conditions, params, search, ricerca)
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    from_where = f"FROM {sorgente.relazione} v {where_clause}"
+    return fetch_paged_with_total(
+        f"""
+        SELECT {sorgente.proiezione("v")}, COUNT(*) OVER () AS total_count
+          {from_where}
+         ORDER BY {ordinamento}
+         LIMIT %s OFFSET %s
+        """,  # sorgente letterale del modulo, ORDER BY da sql_order_clause su whitelist, WHERE da condizioni letterali + add_ricerca_full_condition, valori come parametri
+        params + [limit, offset],
+        fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+        fallback_params=params,
+        offset=offset,
+    )
 
 
 class GeoRepository:
@@ -56,33 +185,23 @@ class GeoRepository:
             default="descrizione",
             tiebreak="id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        sql = f"""
-            SELECT id, descrizione, attivo, COUNT(*) OVER () AS total_count
-              FROM config.toponomastica
-             WHERE (%s::text IS NULL OR descrizione ILIKE %s)
-             ORDER BY {ordinamento}
-             LIMIT %s OFFSET %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [search_pattern, search_pattern, limit, offset])
-            return extract_paginated(cursor)
+        return _lista_geo(
+            sorgente=_TOPONOMASTICA,
+            ricerca=_RICERCA_TOPONOMASTICA, search=search,
+            ordinamento=ordinamento, limit=limit, offset=offset,
+        )
 
     # Scopo: Dettaglio singolo toponomastica.
     def get_toponomastica(self, pk: int) -> dict[str, Any] | None:
-        return self._get_by_id("config.toponomastica", pk, "id, descrizione, attivo")
+        return _dettaglio_geo(_TOPONOMASTICA, pk)
 
     # Scopo: Crea tipo strada.
     def create_toponomastica(self, *, descrizione: str) -> dict[str, Any]:
-        sql = """
-            INSERT INTO config.toponomastica (descrizione) VALUES (%s)
-            RETURNING id, descrizione, attivo
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [descrizione.strip()])
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+        return _crea_geo(
+            _TOPONOMASTICA,
+            "INSERT INTO config.toponomastica (descrizione) VALUES (%s) RETURNING id",
+            [descrizione.strip()],
+        )
 
     # Scopo: Aggiorna tipo strada.
     def update_toponomastica(self, toponomastica_id: int, *, descrizione: str | None = None,
@@ -95,6 +214,11 @@ class GeoRepository:
     # =================================================================
 
     # Scopo: Lista paginata comuni con provincia e regione.
+    # ⭐ Legge la vista di lista `config.vw_comuni_lista` (§6.3 del brief
+    #    liste-datatable-grezze): la proiezione e' la stessa contro cui il
+    #    trigger del catalogo valida i `campo_sorgente`. Fino al 2026-09-27 i
+    #    JOIN stavano qui, e la sigla della provincia usciva con gli spazi in
+    #    coda (`character(n)`); la vista la da' con TRIM.
     def list_comuni(
         self, *, search: str | None = None, limit: int = 25, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
@@ -103,73 +227,45 @@ class GeoRepository:
             order_by, order_dir,
             colonne=_COMUNI_ORDER_COLS,
             default="descrizione",
-            tiebreak="c.id",
+            tiebreak="id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        sql = f"""
-            SELECT c.id, c.descrizione,
-                   p.sigla AS provincia_sigla,
-                   p.descrizione AS provincia_descrizione,
-                   r.descrizione AS regione_descrizione,
-                   COUNT(*) OVER () AS total_count
-              FROM config.comuni c
-              LEFT JOIN config.province p ON p.id = c.provincia_id
-              LEFT JOIN config.regioni r ON r.id = p.regione_id
-             WHERE (%s::text IS NULL OR c.descrizione ILIKE %s)
-             ORDER BY {ordinamento}
-             LIMIT %s OFFSET %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [search_pattern, search_pattern, limit, offset])
-            return extract_paginated(cursor)
+        return _lista_geo(
+            sorgente=_COMUNI,
+            ricerca=_RICERCA_COMUNI, search=search,
+            ordinamento=ordinamento, limit=limit, offset=offset,
+        )
 
-    # Scopo: Dettaglio singolo provincia.
+    # Scopo: Dettaglio singolo provincia (la vista di lista: TRIM compreso).
     def get_provincia(self, pk: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT p.id, TRIM(p.descrizione) AS descrizione, TRIM(p.sigla) AS sigla,
-                   p.regione_id, r.descrizione AS regione_descrizione
-              FROM config.province p
-              LEFT JOIN config.regioni r ON r.id = p.regione_id
-             WHERE p.id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [pk])
-            return row_to_dict(cursor)
+        return _dettaglio_geo(_PROVINCE, pk)
 
-    # Scopo: Dettaglio singolo regione.
+    # Scopo: Dettaglio singolo regione (la vista di lista).
+    # ⚠️ La vista fa `JOIN` sullo stato dove il vecchio dettaglio faceva
+    #    `LEFT JOIN`: e' la stessa cosa, `regioni.stato_id` e' NOT NULL.
     def get_regione(self, pk: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT r.id, r.descrizione, r.stato_id, s.descrizione AS stato_descrizione
-              FROM config.regioni r
-              LEFT JOIN config.stati s ON s.id = r.stato_id
-             WHERE r.id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [pk])
-            return row_to_dict(cursor)
+        return _dettaglio_geo(_REGIONI, pk)
 
     # Scopo: Dettaglio singolo stato.
     def get_stato(self, pk: int) -> dict[str, Any] | None:
-        return self._get_by_id("config.stati", pk,
-            "id, descrizione, sigla_stato, codice_iso2, codice_iso3, codice_telefonico, continente")
+        return _dettaglio_geo(_STATI, pk)
 
     # Scopo: Crea comune.
     def create_comune(self, *, descrizione: str, provincia_id: int | None = None) -> dict[str, Any]:
-        sql = """
-            INSERT INTO config.comuni (descrizione, provincia_id) VALUES (%s, %s)
-            RETURNING id, descrizione, provincia_id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [descrizione.strip(), provincia_id])
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+        return _crea_geo(
+            _COMUNI,
+            "INSERT INTO config.comuni (descrizione, provincia_id) VALUES (%s, %s) RETURNING id",
+            [descrizione.strip(), provincia_id],
+        )
 
     # =================================================================
     # Codici Postali (CAP)
     # =================================================================
 
     # Scopo: Lista paginata codici postali con comune.
+    # ⭐ Legge `config.vw_codici_postali_lista` (§6.3 del brief liste-datatable-
+    #    grezze), non piu' il suo JOIN.
+    # ⭐ Porta la sigla della provincia del comune (§9.2-9.3): due comuni
+    #    omonimi in province diverse non escono piu' identici.
     def list_codici_postali(
         self, *, search: str | None = None, comune_id: int | None = None,
         limit: int = 25, offset: int = 0,
@@ -179,50 +275,33 @@ class GeoRepository:
             order_by, order_dir,
             colonne=_CODICI_POSTALI_ORDER_COLS,
             default="codice",
-            tiebreak="cp.id",
+            tiebreak="id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        sql = f"""
-            SELECT cp.id, cp.codice, cp.comune_id,
-                   c.descrizione AS comune_descrizione,
-                   COUNT(*) OVER () AS total_count
-              FROM config.codici_postali cp
-              JOIN config.comuni c ON c.id = cp.comune_id
-             WHERE (%s::text IS NULL OR cp.codice ILIKE %s OR c.descrizione ILIKE %s)
-               AND (%s::integer IS NULL OR cp.comune_id = %s)
-             ORDER BY {ordinamento}
-             LIMIT %s OFFSET %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                search_pattern, search_pattern, search_pattern,
-                comune_id, comune_id, limit, offset,
-            ])
-            return extract_paginated(cursor)
+        conditions: list[str] = []
+        params: list[Any] = []
+        if comune_id is not None:
+            conditions.append("v.comune_id = %s")
+            params.append(comune_id)
+        return _lista_geo(
+            sorgente=_CODICI_POSTALI,
+            ricerca=_RICERCA_CODICI_POSTALI, search=search,
+            ordinamento=ordinamento, limit=limit, offset=offset,
+            conditions=conditions, params=params,
+        )
 
     # Scopo: Dettaglio singolo codice postale.
+    # ⭐ Legge la stessa sorgente della lista (§9.3): il dettaglio porta la
+    #    provincia come la riga da cui si apre.
     def get_codice_postale(self, pk: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT cp.id, cp.codice, cp.comune_id, c.descrizione AS comune_descrizione
-              FROM config.codici_postali cp
-              JOIN config.comuni c ON c.id = cp.comune_id
-             WHERE cp.id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [pk])
-            return row_to_dict(cursor)
+        return _dettaglio_geo(_CODICI_POSTALI, pk)
 
     # Scopo: Crea codice postale.
     def create_codice_postale(self, *, codice: str, comune_id: int) -> dict[str, Any]:
-        sql = """
-            INSERT INTO config.codici_postali (codice, comune_id) VALUES (%s, %s)
-            RETURNING id, codice, comune_id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [codice.strip(), comune_id])
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+        return _crea_geo(
+            _CODICI_POSTALI,
+            "INSERT INTO config.codici_postali (codice, comune_id) VALUES (%s, %s) RETURNING id",
+            [codice.strip(), comune_id],
+        )
 
     # Scopo: Aggiorna codice postale.
     def update_codice_postale(self, pk: int, *, codice: str | None = None,
@@ -235,6 +314,9 @@ class GeoRepository:
     # =================================================================
 
     # Scopo: Lista paginata province.
+    # ⭐ Legge `config.vw_province_lista` (§6.3 del brief liste-datatable-
+    #    grezze): descrizione e sigla escono gia' con TRIM, e la ricerca le
+    #    confronta cosi' come si vedono.
     def list_province_paginated(
         self, *, search: str | None = None, regione_id: int | None = None,
         limit: int = 25, offset: int = 0,
@@ -244,26 +326,19 @@ class GeoRepository:
             order_by, order_dir,
             colonne=_PROVINCE_ORDER_COLS,
             default="descrizione",
-            tiebreak="p.id",
+            tiebreak="id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        sql = f"""
-            SELECT p.id, TRIM(p.descrizione) AS descrizione, TRIM(p.sigla) AS sigla,
-                   p.regione_id, r.descrizione AS regione_descrizione,
-                   COUNT(*) OVER () AS total_count
-              FROM config.province p
-              LEFT JOIN config.regioni r ON r.id = p.regione_id
-             WHERE (%s::text IS NULL OR p.descrizione ILIKE %s OR p.sigla ILIKE %s)
-               AND (%s::integer IS NULL OR p.regione_id = %s)
-             ORDER BY {ordinamento}
-             LIMIT %s OFFSET %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                search_pattern, search_pattern, search_pattern,
-                regione_id, regione_id, limit, offset,
-            ])
-            return extract_paginated(cursor)
+        conditions: list[str] = []
+        params: list[Any] = []
+        if regione_id is not None:
+            conditions.append("v.regione_id = %s")
+            params.append(regione_id)
+        return _lista_geo(
+            sorgente=_PROVINCE,
+            ricerca=_RICERCA_PROVINCE, search=search,
+            ordinamento=ordinamento, limit=limit, offset=offset,
+            conditions=conditions, params=params,
+        )
 
     # Scopo: Lista province per dropdown.
     def list_province(self) -> list[dict[str, Any]]:
@@ -280,15 +355,11 @@ class GeoRepository:
     # Scopo: Crea provincia.
     def create_provincia(self, *, descrizione: str, sigla: str,
                          regione_id: int | None = None) -> dict[str, Any]:
-        sql = """
-            INSERT INTO config.province (descrizione, sigla, regione_id) VALUES (%s, %s, %s)
-            RETURNING id, TRIM(descrizione) AS descrizione, TRIM(sigla) AS sigla, regione_id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [descrizione.strip(), sigla.strip().upper(), regione_id])
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+        return _crea_geo(
+            _PROVINCE,
+            "INSERT INTO config.province (descrizione, sigla, regione_id) VALUES (%s, %s, %s) RETURNING id",
+            [descrizione.strip(), sigla.strip().upper(), regione_id],
+        )
 
     # Scopo: Aggiorna provincia.
     def update_provincia(self, provincia_id: int, *, descrizione: str | None = None,
@@ -303,6 +374,9 @@ class GeoRepository:
     # =================================================================
 
     # Scopo: Lista paginata regioni.
+    # ⭐ Legge `config.vw_regioni_lista` (§6.3 del brief liste-datatable-
+    #    grezze). ⚠️ La vista fa `JOIN` e non `LEFT JOIN` sullo stato: e' la
+    #    stessa cosa, `regioni.stato_id` e' NOT NULL.
     def list_regioni(
         self, *, search: str | None = None, stato_id: int | None = None,
         limit: int = 25, offset: int = 0,
@@ -312,25 +386,19 @@ class GeoRepository:
             order_by, order_dir,
             colonne=_REGIONI_ORDER_COLS,
             default="descrizione",
-            tiebreak="r.id",
+            tiebreak="id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        sql = f"""
-            SELECT r.id, r.descrizione, r.stato_id, s.descrizione AS stato_descrizione,
-                   COUNT(*) OVER () AS total_count
-              FROM config.regioni r
-              LEFT JOIN config.stati s ON s.id = r.stato_id
-             WHERE (%s::text IS NULL OR r.descrizione ILIKE %s)
-               AND (%s::integer IS NULL OR r.stato_id = %s)
-             ORDER BY {ordinamento}
-             LIMIT %s OFFSET %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                search_pattern, search_pattern,
-                stato_id, stato_id, limit, offset,
-            ])
-            return extract_paginated(cursor)
+        conditions: list[str] = []
+        params: list[Any] = []
+        if stato_id is not None:
+            conditions.append("v.stato_id = %s")
+            params.append(stato_id)
+        return _lista_geo(
+            sorgente=_REGIONI,
+            ricerca=_RICERCA_REGIONI, search=search,
+            ordinamento=ordinamento, limit=limit, offset=offset,
+            conditions=conditions, params=params,
+        )
 
     # Scopo: Lista regioni per dropdown.
     def list_regioni_lookup(self, stato_id: int | None = None) -> list[dict[str, Any]]:
@@ -345,15 +413,11 @@ class GeoRepository:
 
     # Scopo: Crea regione.
     def create_regione(self, *, descrizione: str, stato_id: int | None = None) -> dict[str, Any]:
-        sql = """
-            INSERT INTO config.regioni (descrizione, stato_id) VALUES (%s, %s)
-            RETURNING id, descrizione, stato_id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [descrizione.strip(), stato_id])
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+        return _crea_geo(
+            _REGIONI,
+            "INSERT INTO config.regioni (descrizione, stato_id) VALUES (%s, %s) RETURNING id",
+            [descrizione.strip(), stato_id],
+        )
 
     # Scopo: Aggiorna regione.
     def update_regione(self, regione_id: int, *, descrizione: str | None = None,
@@ -376,23 +440,11 @@ class GeoRepository:
             default="descrizione",
             tiebreak="id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        sql = f"""
-            SELECT id, descrizione, sigla_stato, codice_iso2, codice_iso3,
-                   codice_telefonico, continente,
-                   COUNT(*) OVER () AS total_count
-              FROM config.stati
-             WHERE (%s::text IS NULL OR descrizione ILIKE %s
-                    OR codice_iso2 ILIKE %s OR codice_iso3 ILIKE %s)
-             ORDER BY {ordinamento}
-             LIMIT %s OFFSET %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                search_pattern, search_pattern, search_pattern, search_pattern,
-                limit, offset,
-            ])
-            return extract_paginated(cursor)
+        return _lista_geo(
+            sorgente=_STATI,
+            ricerca=_RICERCA_STATI, search=search,
+            ordinamento=ordinamento, limit=limit, offset=offset,
+        )
 
     # Scopo: Lista stati per dropdown.
     def list_stati_lookup(self) -> list[dict[str, Any]]:
@@ -409,21 +461,16 @@ class GeoRepository:
             INSERT INTO config.stati (descrizione, codice_iso2, codice_iso3,
                                       sigla_stato, codice_telefonico, continente)
             VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING id, descrizione, codice_iso2, codice_iso3, sigla_stato,
-                      codice_telefonico, continente
+            RETURNING id
         """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                descrizione.strip(),
-                codice_iso2.strip().upper() if codice_iso2 else None,
-                codice_iso3.strip().upper() if codice_iso3 else None,
-                sigla_stato.strip().upper() if sigla_stato else None,
-                codice_telefonico.strip() if codice_telefonico else None,
-                continente.strip() if continente else None,
-            ])
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+        return _crea_geo(_STATI, sql, [
+            descrizione.strip(),
+            codice_iso2.strip().upper() if codice_iso2 else None,
+            codice_iso3.strip().upper() if codice_iso3 else None,
+            sigla_stato.strip().upper() if sigla_stato else None,
+            codice_telefonico.strip() if codice_telefonico else None,
+            continente.strip() if continente else None,
+        ])
 
     # Scopo: Aggiorna stato.
     def update_stato(self, stato_id: int, *, descrizione: str | None = None,
@@ -437,15 +484,4 @@ class GeoRepository:
                               sigla_stato=sigla_stato.strip().upper() if sigla_stato else sigla_stato,
                               codice_telefonico=codice_telefonico,
                               continente=continente)
-
-    # =================================================================
-    # Helper interni
-    # =================================================================
-
-    # Scopo: GET singolo record per id (helper generico per entita' semplici).
-    def _get_by_id(self, table: str, pk: int, columns: str) -> dict[str, Any] | None:
-        sql = f"SELECT {columns} FROM {table} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [pk])
-            return row_to_dict(cursor)
 

@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.documenti.services.context_builders._number_formatting import (
     format_importo,
@@ -62,6 +62,8 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti ORDINE_VENDITA (conferma d'ordine)."""
 
     CODE = "ORDINE_VENDITA"
+    # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
+    CONTEXT_VERSION = 2
 
     # Tipi indirizzo ammessi nell'ambito ORDINI (`config.tipi_indirizzi_allowed`).
     # Dichiarati qui e non letti a runtime: il context deve essere
@@ -92,14 +94,11 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
     ) -> dict[str, Any]:
         self._v.guard_positive_int(sorgente_id, field="sorgente_id")
 
-        testata = self._repo.get_ordine(sorgente_id)
-        ErrorManager.require(
-            testata is not None,
-            code=E_NOT_FOUND,
-            message="Ordine non trovato per generazione documento.",
-            detail=f"ordine_id={sorgente_id}",
+        testata = testata_o_not_found(
+            self._repo.get_ordine, sorgente_id,
+            code=E_NOT_FOUND, message="Ordine non trovato per generazione documento.",
+            id_name="ordine_id", function_name="OrdineDocumentContextBuilder.build",
         )
-        assert testata is not None
 
         # Numeri pronti per la stampa (2026-08-04): vedi `_number_formatting`.
         # Le quantita' evase/residue sono misure quanto quella ordinata: se
@@ -145,7 +144,7 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
                 "locale": locale,
                 "auth_user_id": auth_user_id,
                 # v2 (2026-08-05): aggiunto il blocco `indirizzi`.
-                "context_version": 2,
+                "context_version": self.CONTEXT_VERSION,
                 "context_code": self.CODE,
             },
         }

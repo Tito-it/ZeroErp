@@ -6,6 +6,7 @@
 //        corrente resta del caller (slot #badge).
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
+import { MANAGE_ICONS } from '../../constants'
 
 defineProps({
   anno: { type: Number, required: true },
@@ -21,7 +22,7 @@ const { t } = useI18n()
 <template>
   <div class="app-dash-stepper">
     <Button
-      icon="pi pi-chevron-left"
+      :icon="MANAGE_ICONS.PRECEDENTE"
       text
       rounded
       size="small"
@@ -33,7 +34,7 @@ const { t } = useI18n()
       <slot name="badge" />
     </span>
     <Button
-      icon="pi pi-chevron-right"
+      :icon="MANAGE_ICONS.SUCCESSIVO"
       text
       rounded
       size="small"

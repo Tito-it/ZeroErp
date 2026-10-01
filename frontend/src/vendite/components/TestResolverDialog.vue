@@ -7,11 +7,11 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
-import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { extractApiError } from '../../core/utils/apiError'
 import { resolvePrezzoV5, diagnoseConfigurazionePricing } from '../api/listini'
 import { pricingOrigineSeverity } from '../../core/utils/severity'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -20,7 +20,7 @@ import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
-import { DATE_FORMAT } from '../../core/constants'
+import { DATE_FORMAT, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 
 const { t } = useI18n()
@@ -52,6 +52,16 @@ const errorMsg = ref(null)
 // on-demand quando l'admin vuole vedere il path applicato anche in successo).
 const diagnose = ref(null)
 const diagnoseLoading = ref(false)
+
+// Scopo: la spia di uno stadio della diagnosi, in un punto per i tre stadi.
+// ⛔ Il «non applicabile» e' neutro, non rosso: lo stadio non si pone per quel
+//    contesto, non e' fallito (`STATUS_ICONS.NON_APPLICABILE`).
+function spiaStadio(applicabile) {
+  return {
+    class: applicabile ? STATUS_ICONS.OK : STATUS_ICONS.NON_APPLICABILE,
+    style: `color: var(${applicabile ? '--app-success-color' : '--app-text-muted'}); margin-right: 0.4rem;`,
+  }
+}
 
 const utilityLockedByBa = computed(() => !!form.value.ba_obj?.utility_id)
 
@@ -251,7 +261,7 @@ function close() {
     </div>
 
     <div style="display: flex; justify-content: center; margin: 1rem 0;">
-      <Button :label="t('vendite.listini.esegui_test')" icon="pi pi-search" @click="doTest"
+      <Button :label="t('vendite.listini.esegui_test')" :icon="MANAGE_ICONS.TEST_PREZZO" @click="doTest"
         :loading="loading" :disabled="!canTest" />
     </div>
 
@@ -329,7 +339,7 @@ function close() {
 
       <!-- BA + categoria (radice) -->
       <div class="form-field" style="margin-bottom: 0.5rem;">
-        <i class="pi pi-check-circle" style="color: var(--p-green-500); margin-right: 0.4rem;"></i>
+        <i :class="STATUS_ICONS.OK" style="color: var(--app-success-color); margin-right: 0.4rem;"></i>
         <strong>{{ t('vendite.listini.diagnose_ba') }}</strong>:
         <span v-if="diagnose.ba.categoria_codice">
           {{ t('vendite.listini.diagnose_categoria') }}
@@ -342,8 +352,7 @@ function close() {
 
       <!-- Stadio 0 PROMO -->
       <div class="form-field" style="margin-bottom: 0.5rem;">
-        <i :class="diagnose.stadio_0_promo.applicabile ? 'pi pi-check-circle' : 'pi pi-times-circle'"
-          :style="`color: var(${diagnose.stadio_0_promo.applicabile ? '--p-green-500' : '--p-red-500'}); margin-right: 0.4rem;`"></i>
+        <i v-bind="spiaStadio(diagnose.stadio_0_promo.applicabile)"></i>
         <strong>{{ t('vendite.listini.diagnose_stadio_0') }}</strong>
         <span v-if="diagnose.stadio_0_promo.applicabile">
           — <strong>{{ diagnose.stadio_0_promo.promo_codice }}</strong>
@@ -354,8 +363,7 @@ function close() {
 
       <!-- Stadio 1 CONTRATTO -->
       <div class="form-field" style="margin-bottom: 0.5rem;">
-        <i :class="diagnose.stadio_1_contratto.applicabile ? 'pi pi-check-circle' : 'pi pi-times-circle'"
-          :style="`color: var(${diagnose.stadio_1_contratto.applicabile ? '--p-green-500' : '--p-red-500'}); margin-right: 0.4rem;`"></i>
+        <i v-bind="spiaStadio(diagnose.stadio_1_contratto.applicabile)"></i>
         <strong>{{ t('vendite.listini.diagnose_stadio_1') }}</strong>
         <span v-if="diagnose.stadio_1_contratto.contratto_attivo">
           — <strong>{{ diagnose.stadio_1_contratto.contratto_numero }}</strong>
@@ -369,8 +377,7 @@ function close() {
 
       <!-- Stadio 2 CATEGORIA → MATRICE -->
       <div class="form-field" style="margin-bottom: 0.5rem;">
-        <i :class="diagnose.stadio_2_categoria.applicabile ? 'pi pi-check-circle' : 'pi pi-times-circle'"
-          :style="`color: var(${diagnose.stadio_2_categoria.applicabile ? '--p-green-500' : '--p-red-500'}); margin-right: 0.4rem;`"></i>
+        <i v-bind="spiaStadio(diagnose.stadio_2_categoria.applicabile)"></i>
         <strong>{{ t('vendite.listini.diagnose_stadio_2') }}</strong>
         <span v-if="diagnose.stadio_2_categoria.applicabile">
           — <strong>{{ diagnose.stadio_2_categoria.matrice_listino_codice }}</strong>

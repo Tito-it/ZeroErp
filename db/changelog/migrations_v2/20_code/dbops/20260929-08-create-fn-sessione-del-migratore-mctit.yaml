@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB — «QUESTA SESSIONE E' DEL MIGRATORE?»: dbops.fn_sessione_del_migratore()
+#   Brief: brief-db-secondo-fattore-totp, sezione 3 (il caso senza via
+#   d'uscita; decisione di Tid del 2026-09-29: lo sblocco lo fa la sessione di
+#   chi amministra il database, non un comando dell'applicazione).
+#
+# ── ⭐ REGOLA DEL 2 ──────────────────────────────────────────────────
+#   La domanda nasce il 2026-09-26 nel corpo di dbops.fn_sync_functions_owner
+#   (20260926-11). La seconda occorrenza e' script.fn_totp_disabilita_device
+#   (20260929-22): si estrae qui, e la copia della sync si ritira nello stesso
+#   giro (20260929-09).
+#
+# ── ⛔ session_user, NON current_user ─────────────────────────────────
+#   Dentro una SECURITY DEFINER current_user e' il PROPRIETARIO, e la domanda
+#   sarebbe sempre «si'». Limite dichiarato: session_user e' il ruolo di
+#   LOGIN, un SET ROLE non lo cambia (una sessione aperta dal migratore che fa
+#   SET ROLE zeroerp_app passa lo stesso). PostgreSQL non espone l'invocante di
+#   una DEFINER: un'alternativa senza questo limite non esiste.
+#   Passa chi e' MEMBRO del proprietario dello schema dbops — il migratore in
+#   ogni ambiente — e un superuser. Il criterio e' la proprieta' dello schema,
+#   non un nome di ruolo: nessun nome vale in tutti gli ambienti.
+#
+# ── ⚠️ FAIL-CLOSED E NESSUN RAISE ───────────────────────────────────
+#   Risponde, non solleva: chi la chiama decide come rifiutare. La sync rifiuta
+#   con un RAISE nudo (e' fra le funzioni che proteggono il canale di log),
+#   i verbi del TOTP col catalogo. Una risposta NULL diventa false.
+#   LANGUAGE sql, STABLE, INVOKER, nomi di catalogo qualificati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260929-08-create-fn-sessione-del-migratore-mctit.yaml
+
+  - changeSet:
+      id: 20260929-08-create-fn-sessione-del-migratore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_sessione_del_migratore(): true se il ruolo di LOGIN (session_user) e' membro del
+        proprietario dello schema dbops (il migratore) o un superuser. Estratta dal corpo di
+        dbops.fn_sync_functions_owner alla seconda occorrenza (script.fn_totp_disabilita_device).
+        Fail-closed, non solleva. Brief: brief-db-secondo-fattore-totp §3.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'fn_sessione_del_migratore';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_sessione_del_migratore()
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Scopo: dire se la sessione e' di chi amministra il database
+                  --   (il migratore o un superuser), letto dal ruolo di LOGIN.
+                  -- ⛔ session_user: dentro una DEFINER current_user e' il
+                  --    proprietario. Fail-closed: NULL vale false.
+                  SELECT COALESCE(
+                             pg_catalog.pg_has_role(
+                                 session_user,
+                                 (SELECT n.nspowner FROM pg_catalog.pg_namespace n WHERE n.nspname = 'dbops'),
+                                 'MEMBER')
+                          OR (SELECT a.rolsuper FROM pg_catalog.pg_roles a WHERE a.rolname = session_user),
+                             false);
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_sessione_del_migratore() IS
+                  'La sessione e'' di chi amministra il database? true se il ruolo di LOGIN (session_user) e'' membro del proprietario dello schema dbops — il migratore, in ogni ambiente — o un superuser. session_user e non current_user perche'' dentro una SECURITY DEFINER current_user e'' il proprietario; limite dichiarato: un SET ROLE non cambia session_user. Fail-closed (NULL = false), non solleva: rifiuta il chiamante. La chiamano dbops.fn_sync_functions_owner (RAISE nudo, canale di log protetto) e script.fn_totp_disabilita_device (lo sblocco del secondo fattore dal server). Estratta il 2026-09-29 (regola del 2). INVOKER, STABLE. Brief: brief-db-secondo-fattore-totp §3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ La sync la chiama da 20260929-09: rollback di quello prima.
+              DROP FUNCTION IF EXISTS dbops.fn_sessione_del_migratore();

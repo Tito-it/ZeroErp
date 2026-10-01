@@ -18,7 +18,7 @@ import { useUiStore } from '../../stores/ui'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { useDashboardConfig } from '../composables/useDashboardConfig'
 import { useWidgetNavigation } from '../composables/useWidgetNavigation'
-import { MANAGE_ICONS } from '../constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
 import FavoriteItem from '../components/FavoriteItem.vue'
 import SessioniAttivePanel from '../components/SessioniAttivePanel.vue'
 import KpiCard from '../components/dash/KpiCard.vue'
@@ -143,7 +143,7 @@ function onFavoriteDragEnd() {
     <section class="favorites-panel" v-if="visibleFavorites.length > 0">
       <div class="favorites-panel__header">
         <h3 class="favorites-panel__title">
-          <i class="pi pi-star" aria-hidden="true"></i>
+          <i :class="MANAGE_ICONS.PREFERITI" aria-hidden="true"></i>
           <span>{{ t('nav.preferiti') }}</span>
           <Badge :value="visibleFavorites.length" severity="info" />
         </h3>
@@ -176,7 +176,7 @@ function onFavoriteDragEnd() {
 
     <section v-else class="favorites-panel">
       <div class="app-empty-state">
-        <i class="pi pi-star" aria-hidden="true"></i>
+        <i :class="MANAGE_ICONS.PREFERITI" aria-hidden="true"></i>
         <span>{{ t('nav.preferiti_empty_hint') }}</span>
       </div>
     </section>
@@ -214,7 +214,7 @@ function onFavoriteDragEnd() {
       <!-- Empty-state onesto, differenziato: invitare a "scegliere le card"
            chi non ne ha nessuna disponibile sarebbe una bugia. -->
       <div v-else class="app-empty-state">
-        <i class="pi pi-th-large" aria-hidden="true"></i>
+        <i :class="STATUS_ICONS.VUOTO" aria-hidden="true"></i>
         <span>{{ poolVuoto ? t('home.kpi_empty_nessuna_disponibile') : t('home.kpi_empty_hint') }}</span>
       </div>
     </section>
@@ -245,7 +245,7 @@ function onFavoriteDragEnd() {
 .home-view h2 {
   margin-bottom: 1.5rem;
   font-weight: 600;
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 
 .favorites-panel {
@@ -268,7 +268,7 @@ function onFavoriteDragEnd() {
   margin: 0;
   font-size: var(--app-font-size-base);
   font-weight: 600;
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 
 .favorites-panel__title i {
@@ -311,14 +311,14 @@ function onFavoriteDragEnd() {
 }
 
 /* Tablet landscape */
-@media (max-width: 1024px) {
+@media (max-width: 1023.98px) {
   .favorites-grid {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   }
 }
 
 /* Tablet portrait / mobile */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .favorites-grid {
     grid-template-columns: repeat(2, 1fr);
   }

@@ -1,8 +1,8 @@
 id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_dato,formato,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,filtrabile,ordinabile,esportabile,ricercabile_full,sensibile,attivo,data_insert,user_insert,etichetta_i18n_key,priorita
 1,1,ragione_sociale,Ragione Sociale,Ragione sociale completa del soggetto,ragione_sociale_completa,identificatore,string,,220,10,left,Anagrafica,1,t,t,t,t,f,t,2026-05-07 00:00:00,mctit,anagrafiche.clienti.col_ragione_sociale,50
 2,1,ba_codice,Cd. Account,Codice del billing account,ba_codice,informazione,string,,130,20,left,Anagrafica,1,t,t,t,t,f,t,2026-05-07 00:00:00,mctit,anagrafiche.clienti.col_ba_codice,50
-3,1,soggetto_codice,Cd. Soggetto,Codice anagrafico del soggetto,soggetto_codice,informazione,string,,120,30,left,Anagrafica,1,t,t,t,f,f,t,2026-05-07 00:00:00,mctit,anagrafiche.clienti.col_cd_soggetto,50
-4,1,id_fiscale,Id. Fiscale,Identificativo fiscale univoco (CF o P.IVA) — colonna unica per disegno,id_fiscale_univoco_cf_piva,informazione,string,,150,40,left,Anagrafica,1,t,t,t,f,f,t,2026-05-07 00:00:00,mctit,anagrafiche.clienti.col_id_fiscale,50
+3,1,soggetto_codice,Cd. Soggetto,Codice anagrafico del soggetto,soggetto_codice,informazione,string,,120,30,left,Anagrafica,1,t,t,t,t,f,t,2026-05-07 00:00:00,mctit,anagrafiche.clienti.col_cd_soggetto,50
+4,1,id_fiscale,Id. Fiscale,Identificativo fiscale univoco (CF o P.IVA) — colonna unica per disegno,id_fiscale_univoco_cf_piva,informazione,string,,150,40,left,Anagrafica,1,t,t,t,t,f,t,2026-05-07 00:00:00,mctit,anagrafiche.clienti.col_id_fiscale,50
 5,1,partita_iva,Partita IVA,Partita IVA del soggetto,partita_iva,informazione,string,,130,50,left,Anagrafica,1,t,t,t,f,f,f,2026-05-07 00:00:00,mctit,,50
 6,1,utility,Utility,Tipo di servizio/commodity,utility_descrizione,informazione,string,,130,60,left,Contratto,2,t,t,t,f,f,t,2026-05-07 00:00:00,mctit,anagrafiche.clienti.col_utility,50
 7,1,stato,Stato,Stato corrente del cliente,stato_descrizione,informazione,string,,110,70,center,Contratto,2,t,t,t,f,f,t,2026-05-07 00:00:00,mctit,anagrafiche.clienti.col_stato,50
@@ -15,7 +15,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 14,1,sosp_riatt,Sosp./Riatt.,Data sospensione o riattivazione (colonna calcolata FE),,informazione,string,,130,105,center,Date ciclo vita,3,f,f,f,f,f,t,2026-05-08 00:00:00,mctit,anagrafiche.clienti.col_sosp_riatt,50
 15,2,codice,Codice,Codice interno del soggetto,codice,identificatore,string,,130,10,left,Anagrafica,1,t,t,t,f,f,t,2026-05-22 00:00:00,mctit,config_panel.col_codice,50
 16,2,ragione_sociale_completa,Ragione Sociale,Ragione sociale completa del soggetto,ragione_sociale_completa,informazione,string,,180,20,left,Anagrafica,1,t,t,t,t,f,t,2026-05-22 00:00:00,mctit,anagrafiche.soggetti.col_ragione_sociale,50
-17,2,id_fiscale,Id. Fiscale,Identificativo fiscale univoco (CF o P.IVA) — colonna unica per disegno,id_fiscale_univoco_cf_piva,informazione,string,,170,30,left,Anagrafica,1,t,t,t,f,f,t,2026-05-22 00:00:00,mctit,common.id_fiscale,50
+17,2,id_fiscale,Id. Fiscale,Identificativo fiscale univoco (CF o P.IVA) — colonna unica per disegno,id_fiscale_univoco_cf_piva,informazione,string,,170,30,left,Anagrafica,1,t,t,t,t,f,t,2026-05-22 00:00:00,mctit,common.id_fiscale,50
 18,2,tipo_descrizione,Tipo,Tipo soggetto (persona fisica / giuridica / ecc.),tipo_descrizione,informazione,string,,100,40,left,Anagrafica,1,t,t,t,f,f,t,2026-05-22 00:00:00,mctit,anagrafiche.soggetti.col_tipo,50
 19,2,ruoli,Ruoli,Ruoli assegnati al soggetto (es. CLIENTE FORNITORE),ruoli,informazione,string,,240,50,left,Anagrafica,1,f,f,t,f,f,t,2026-05-22 00:00:00,mctit,anagrafiche.soggetti.col_ruoli,50
 20,2,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-05-22 00:00:00,mctit,common.col_azioni,50
@@ -26,8 +26,8 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 25,3,stato,Stato,Stato corrente del fornitore,stato_descrizione,informazione,string,,110,50,left,dati,10,t,t,t,f,f,t,2026-05-24 00:00:00,mctit,anagrafiche.fornitori.col_stato,50
 26,3,data_insert,Creazione,Data di inserimento del fornitore,data_insert,informazione,date,date_short,110,60,center,dati,10,t,t,t,f,f,t,2026-05-24 00:00:00,mctit,anagrafiche.fornitori.col_data_insert,50
 27,3,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-05-24 00:00:00,mctit,common.col_azioni,50
-28,3,codice_fiscale,Codice fiscale,Campo grezzo del soggetto — a video vale id_fiscale (col. 23),codice_fiscale,informazione,string,,140,70,left,extra,20,t,f,t,t,f,f,2026-05-24 00:00:00,mctit,common.codice_fiscale,50
-29,3,partita_iva,Partita IVA,Campo grezzo del soggetto — a video vale id_fiscale (col. 23),partita_iva,informazione,string,,140,80,left,extra,20,t,f,t,t,f,f,2026-05-24 00:00:00,mctit,common.partita_iva,50
+28,3,codice_fiscale,Codice fiscale,Campo grezzo del soggetto — a video vale id_fiscale (col. 23),codice_fiscale,informazione,string,,140,70,left,extra,20,t,f,t,f,f,f,2026-05-24 00:00:00,mctit,common.codice_fiscale,50
+29,3,partita_iva,Partita IVA,Campo grezzo del soggetto — a video vale id_fiscale (col. 23),partita_iva,informazione,string,,140,80,left,extra,20,t,f,t,f,f,f,2026-05-24 00:00:00,mctit,common.partita_iva,50
 30,3,pec_email,PEC,Indirizzo PEC del fornitore,pec_email,informazione,string,,220,90,left,extra,20,f,f,t,f,f,t,2026-05-24 00:00:00,mctit,anagrafiche.fornitori.col_pec_email,50
 31,3,canale_fe,Canale FE,Canale di fatturazione elettronica,canale_fe,informazione,string,,100,100,left,extra,20,t,f,t,f,f,t,2026-05-24 00:00:00,mctit,anagrafiche.fornitori.col_canale_fe,50
 32,3,split_payment,Split payment,Fornitore soggetto a split payment,split_payment,informazione,boolean,yesno,110,110,center,extra,20,t,f,t,f,f,t,2026-05-24 00:00:00,mctit,anagrafiche.fornitori.col_split_payment,50
@@ -154,7 +154,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 153,9,id_fiscale,Id. Fiscale,Identificativo fiscale del destinatario,id_fiscale_univoco_cf_piva,informazione,string,,140,50,left,Destinatario,2,t,t,t,t,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_id_fiscale,55
 154,9,ba_codice,Cd. Account,Codice del billing account,ba_codice,informazione,string,,120,60,left,Destinatario,2,t,t,t,t,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_ba_codice,30
 155,9,stato,Stato,Stato corrente del reso,stato_descrizione,informazione,string,,130,70,center,Stato,3,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_stato,90
-156,9,ddt_origine_numero,DDT origine,Numero del DDT di origine,ddt_origine_numero,informazione,string,,130,80,left,Origine,4,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_ddt_origine,65
+156,9,ddt_origine_numero,DDT origine,Numero del DDT di origine,ddt_origine_numero,informazione,string,,130,80,left,Origine,4,t,t,t,t,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_ddt_origine,65
 157,9,valuta,Valuta,Codice valuta del reso,valuta_codice,informazione,string,,90,90,left,Importi,5,t,f,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_valuta,15
 158,9,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale,emittente_ragione_sociale,informazione,string,,120,100,left,Emittente,6,t,f,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_emittente,12
 159,9,data_insert,Creazione,Data di inserimento del reso,data_insert,informazione,datetime,datetime_short,150,110,center,Audit,7,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_data_insert,5
@@ -260,7 +260,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 259,17,data_insert,Data inserimento,Data e ora di creazione della pratica,data_insert,informazione,datetime,datetime_short,150,100,center,Audit,7,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_insert,10
 260,18,codice,Codice,Codice dell emittente fiscale,codice,identificatore,string,,140,10,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_codice,100
 262,18,ragione_sociale,Ragione sociale,Ragione sociale del soggetto emittente,ragione_sociale_completa,informazione,string,,260,30,left,Soggetto,2,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_ragione_sociale,90
-263,18,partita_iva,Partita IVA,Partita IVA dell emittente fiscale,partita_iva,informazione,string,,150,40,left,Soggetto,2,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_piva,75
+263,18,partita_iva,Partita IVA,Partita IVA dell emittente fiscale,partita_iva,informazione,string,,150,40,left,Soggetto,2,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_piva,75
 264,18,attivo,Stato,Emittente attivo o disattivato,attivo,informazione,boolean,yesno,110,50,center,Stato,3,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_attivo,60
 265,18,valuta,Valuta,Valuta di fatturazione dell emittente,valuta_iso,informazione,string,,90,60,left,Configurazione,4,f,f,t,f,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_valuta,30
 266,18,regime_fiscale,Regime fiscale,Codice del regime fiscale (RF),regime_fiscale_rf,informazione,string,,130,70,left,Configurazione,4,f,f,t,f,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_regime_fiscale,25
@@ -273,7 +273,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 273,19,data_insert,Data inserimento,Data e ora di creazione del mapping,data_insert,informazione,datetime,datetime_short,150,50,center,Audit,3,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_insert,10
 274,19,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-07-31 00:00:00,mctit,common.col_azioni,100
 275,20,codice,Codice,Codice del tipo di unita di misura,codice,identificatore,string,,150,10,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_codice,100
-276,20,codice_interno,Codice interno,Codice interno usato dalla logica di dominio,codice_interno,informazione,string,,180,20,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_codice_interno,80
+276,20,codice_interno,Codice interno,Codice interno usato dalla logica di dominio,codice_interno,informazione,string,,180,20,left,Identificazione,1,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.col_codice_interno,80
 277,20,descrizione,Descrizione,Descrizione del tipo di unita di misura,descrizione,informazione,string,,300,30,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_descrizione,95
 278,20,attivo,Attivo,Tipo attivo o disattivato,attivo,informazione,boolean,yesno,110,40,center,Stato,2,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.col_attivo,60
 279,20,data_insert,Data inserimento,Data e ora di creazione del tipo,data_insert,informazione,datetime,datetime_short,150,50,center,Audit,3,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_insert,10
@@ -295,31 +295,31 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 295,22,attivo,Attivo,Conversione attiva o disattivata,attivo,informazione,boolean,yesno,110,60,center,Stato,3,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.col_attivo,50
 296,22,valido_dal,Valido dal,Inizio validita della conversione,valido_dal,informazione,date,date_short,120,52,center,Validita,2,f,t,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_valido_dal,40
 297,22,valido_al,Valido al,Fine validita della conversione — vuoto significa senza scadenza,valido_al,informazione,date,date_short,120,54,center,Validita,2,f,t,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_valido_al,35
-298,23,codice,Codice,Codice della promozione,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.promo_articoli.col_codice,50
-299,23,descrizione,Descrizione,Descrizione della promozione,descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.promo_articoli.col_descrizione,50
-300,23,articolo_codice,Articolo,Codice dell articolo in promozione,articolo_codice,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.promo_articoli.col_articolo,50
+298,23,codice,Codice,Codice della promozione,codice,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,vendite.promo_articoli.col_codice,50
+299,23,descrizione,Descrizione,Descrizione della promozione,descrizione,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,vendite.promo_articoli.col_descrizione,50
+300,23,articolo_codice,Articolo,Codice dell articolo in promozione,articolo_codice,informazione,string,,,30,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,vendite.promo_articoli.col_articolo,50
 301,23,uom_codice,UoM,Unita di misura a cui si applica la promozione,uom_codice,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.promo_articoli.col_uom,50
 302,23,tipo_variazione,Variazione,Tipo di variazione applicata dalla promozione,tipo_variazione,informazione,string,,,50,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.promo_articoli.col_variazione,50
 303,23,valido_dal,Valido dal,Inizio validita della promozione,valido_dal,informazione,date,date_short,,60,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.promo_articoli.col_valido_dal,50
 304,23,valido_al,Valido al,Fine validita della promozione — vuoto significa senza scadenza,valido_al,informazione,date,date_short,,70,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.promo_articoli.col_valido_al,50
 305,23,attivo,Attivo,Promozione attiva o disattivata,attivo,informazione,boolean,,,80,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,common.attivo,50
-306,24,codice,Codice,Codice del template documento,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.col_codice,50
-307,24,descrizione,Descrizione,Descrizione del template,descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.col_descrizione,50
+306,24,codice,Codice,Codice del template documento,codice,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.col_codice,50
+307,24,descrizione,Descrizione,Descrizione del template,descrizione,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.col_descrizione,50
 308,24,tipo_documento_output_descrizione,Tipo output,Tipo di documento prodotto dal template,tipo_documento_output_descrizione,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.col_tipo_output,50
 309,24,sorgente_tipo_descrizione,Sorgente,Tipo di documento sorgente a cui il template si applica,sorgente_tipo_descrizione,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.col_sorgente,50
 310,24,emittente_ragione_sociale,Emittente fiscale,Emittente fiscale proprietario del template,emittente_ragione_sociale,informazione,string,,,50,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.col_emittente,50
 311,24,is_default,Default,Template usato quando non ne esiste uno piu specifico,is_default,informazione,boolean,,,60,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.col_is_default,50
 312,24,attivo,Attivo,Template attivo o disattivato,attivo,informazione,boolean,,,70,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,common.attivo,50
-313,25,codice,Codice,Codice dell asset,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.asset.col_codice,50
-314,25,descrizione,Descrizione,Descrizione dell asset,descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.asset.col_descrizione,50
+313,25,codice,Codice,Codice dell asset,codice,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.asset.col_codice,50
+314,25,descrizione,Descrizione,Descrizione dell asset,descrizione,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.asset.col_descrizione,50
 315,25,asset_tipo_descrizione,Tipo,Tipo di asset del template,asset_tipo_descrizione,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.asset.col_tipo,50
 316,25,mime_type,MIME,Tipo MIME del file caricato,mime_type,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.asset.col_mime,50
-317,25,file_name,Nome file,Nome del file caricato,file_name,informazione,string,,,50,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.asset.col_file_name,50
+317,25,file_name,Nome file,Nome del file caricato,file_name,informazione,string,,,50,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.asset.col_file_name,50
 318,25,file_size_bytes,Dimensione,Dimensione del file in byte,file_size_bytes,informazione,numeric,,,60,right,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.asset.col_size,50
 319,25,emittente_ragione_sociale,Emittente fiscale,Emittente fiscale proprietario dell asset,emittente_ragione_sociale,informazione,string,,,70,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,config.modelli_documenti.col_emittente,50
 320,25,attivo,Attivo,Asset attivo o disattivato,attivo,informazione,boolean,,,80,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,common.attivo,50
-321,26,codice,Codice,Codice dell articolo,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_codice,50
-322,26,descrizione,Descrizione,Descrizione dell articolo,descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_descrizione,50
+321,26,codice,Codice,Codice dell articolo,codice,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,catalogo.col_codice,50
+322,26,descrizione,Descrizione,Descrizione dell articolo,descrizione,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,catalogo.col_descrizione,50
 323,26,uom_codice,UoM,Unita di misura base dell articolo,uom_codice,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_uom,50
 324,26,tipologia_descrizione,Tipologia,Tipologia di listino a cui l articolo appartiene,tipologia_descrizione,informazione,string,,,40,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_tipologia,50
 325,26,gruppo_descrizione,Gruppo,Gruppo merceologico dell articolo,gruppo_descrizione,informazione,string,,,50,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_gruppo,50
@@ -327,15 +327,15 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 327,26,is_solo_componente,Componente,Articolo utilizzabile solo come componente di distinta,is_solo_componente,informazione,boolean,yesno,,70,center,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_solo_comp,50
 328,26,attivo,Attivo,Articolo attivo o disattivato,attivo,informazione,boolean,,,80,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_attivo,50
 329,26,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-08-01 00:00:00,mctit,common.col_azioni,50
-330,27,codice,Codice,Codice del listino,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.listini.col_codice,50
-331,27,descrizione,Descrizione,Descrizione del listino,descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.listini.col_descrizione,50
+330,27,codice,Codice,Codice del listino,codice,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,vendite.listini.col_codice,50
+331,27,descrizione,Descrizione,Descrizione del listino,descrizione,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,vendite.listini.col_descrizione,50
 332,27,utility_descrizione,Utility,Utility a cui il listino si applica,utility_descrizione,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.listini.col_utility,50
 333,27,tipologia_descrizione,Tipologia,Tipologia del listino,tipologia_descrizione,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.listini.col_tipologia,50
 334,27,versioni_count,Versioni,Numero di versioni del listino,versioni_count,informazione,numeric,,,50,right,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.listini.col_versioni,50
 335,27,attivo,Attivo,Listino attivo o disattivato,attivo,informazione,boolean,,,60,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.listini.col_attivo,50
 336,27,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-08-01 00:00:00,mctit,common.col_azioni,50
-337,28,soggetto_cognome,Nome,Cognome e nome dell operatore,soggetto_cognome,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_nome,50
-338,28,username,Username,Nome utente di accesso,username,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_username,50
+337,28,soggetto_cognome,Nome,Cognome e nome dell operatore,soggetto_cognome,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_nome,50
+338,28,username,Username,Nome utente di accesso,username,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_username,50
 339,28,unita_organizzativa_nome,Reparto,Unita organizzativa di appartenenza,unita_organizzativa_nome,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_reparto,50
 340,28,emittenti_descrizione,Emittente fiscale,Emittenti fiscali su cui l operatore ha visibilita,emittenti_descrizione,informazione,string,,,40,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.field_emittente,50
 341,28,ruolo,Ruolo,Ruolo applicativo — colonna composta lato frontend,,informazione,string,,,50,left,,,f,f,f,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_ruolo,50
@@ -343,21 +343,21 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 343,28,valido_al,Valido fino al,Fine validita dell identita — vuoto significa senza scadenza,valido_al,informazione,date,date_short,,70,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_valido_al,50
 344,28,is_active,Stato,Identita attiva o disattivata,is_active,informazione,boolean,,,80,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_stato,50
 345,28,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-08-01 00:00:00,mctit,common.col_azioni,50
-346,29,codice,Codice,Codice dell account di posta,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_codice,50
-347,29,descrizione,Descrizione,Descrizione dell account,descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_descrizione,50
+346,29,codice,Codice,Codice dell account di posta,codice,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_codice,50
+347,29,descrizione,Descrizione,Descrizione dell account,descrizione,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_descrizione,50
 348,29,smtp_host,Host SMTP,Server SMTP usato per l invio,smtp_host,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_smtp_host,50
-349,29,email_from,Email mittente,Indirizzo che compare come mittente,email_from,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_from,50
+349,29,email_from,Email mittente,Indirizzo che compare come mittente,email_from,informazione,string,,,40,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_from,50
 350,29,unita_organizzativa_descrizione,Unita organizzativa,Unita organizzativa proprietaria dell account,unita_organizzativa_descrizione,informazione,string,,,50,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_uo,50
 351,29,attivo,Attivo,Account attivo o disattivato,attivo,informazione,boolean,,,60,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_attivo,50
-352,30,codice,Codice,Codice del template,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_codice,50
-353,30,oggetto,Oggetto,Oggetto della mail generata,oggetto,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_oggetto,50
+352,30,codice,Codice,Codice del template,codice,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_codice,50
+353,30,oggetto,Oggetto,Oggetto della mail generata,oggetto,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_oggetto,50
 354,30,lingua,Lingua,Lingua del template,lingua,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_lingua,50
 355,30,unita_organizzativa_descrizione,Unita organizzativa,Unita organizzativa proprietaria del template,unita_organizzativa_descrizione,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_uo,50
 356,30,variabili_disponibili,Variabili disponibili,Segnaposto utilizzabili nel corpo del template,variabili_disponibili,informazione,string,,,50,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_variabili,50
 357,30,attivo,Attivo,Template attivo o disattivato,attivo,informazione,boolean,,,60,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_attivo,50
 358,31,data_insert,Inviato il,Data e ora di registrazione dell invio,data_insert,identificatore,datetime,datetime_short,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_inviato_at,50
-359,31,destinatario,Destinatario,Indirizzo di destinazione,destinatario,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_destinatario,50
-360,31,oggetto,Oggetto,Oggetto della mail inviata,oggetto,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_oggetto,50
+359,31,destinatario,Destinatario,Indirizzo di destinazione,destinatario,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_destinatario,50
+360,31,oggetto,Oggetto,Oggetto della mail inviata,oggetto,informazione,string,,,30,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_oggetto,50
 361,31,template_codice,Template,Template usato per comporre la mail,template_codice,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_template,50
 362,31,account_codice,Account,Account di posta che ha eseguito l invio,account_codice,informazione,string,,,50,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_account,50
 363,31,errore,Errore,Messaggio di errore dell ultimo tentativo fallito,errore,informazione,string,,,60,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_errore,50
@@ -366,11 +366,11 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 366,32,tabella,Tabella,Sorgente di audit — tabella storicizzata di origine,tabella,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.audit_col_tipo,50
 367,32,tipo_operazione,Operazione,Tipo di operazione registrata,tipo_operazione,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.audit_col_operazione,50
 368,32,user_modifica,Utente,Utente che ha eseguito la modifica,user_modifica,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.audit_col_chi,50
-369,33,categoria_codice,Categoria,Categoria cliente a cui il listino si applica,categoria_codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_categoria,50
+369,33,categoria_codice,Categoria,Categoria cliente a cui il listino si applica,categoria_codice,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_categoria,50
 370,33,utility_codice,Utility,Utility di riferimento,utility_codice,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_utility,50
 371,33,emittente_ragione_sociale,Emittente,Emittente fiscale a cui la riga appartiene,emittente_ragione_sociale,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_emittente,50
 372,33,classe_utenza_codice,Classe utenza,Classe di utenza a cui il listino si applica,classe_utenza_codice,informazione,string,,,40,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_classe_utenza,50
-373,33,listino_codice,Listino,Listino associato alla categoria,listino_codice,informazione,string,,,50,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_listino,50
+373,33,listino_codice,Listino,Listino associato alla categoria,listino_codice,informazione,string,,,50,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_listino,50
 374,33,tipo_variazione,Variazione,Tipo di variazione applicata al listino,tipo_variazione,informazione,string,,,60,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_variazione,50
 375,33,valido_dal,Valido dal,Inizio validita dell associazione,valido_dal,informazione,date,date_short,,70,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_valido_dal,50
 376,33,valido_al,Valido al,Fine validita — vuoto significa senza scadenza,valido_al,informazione,date,date_short,,80,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_valido_al,50
@@ -398,8 +398,8 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 398,36,descrizione,Descrizione,,descrizione,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-02 00:00:00,mctit,vendite.approvazioni_prezzo.col_descrizione,70
 399,36,priorita,Priorita',,priorita_descrizione,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-02 00:00:00,mctit,vendite.approvazioni_prezzo.col_priorita,60
 400,36,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-08-02 00:00:00,mctit,common.col_azioni,100
-401,37,articolo_codice,Articolo,,articolo_codice,identificatore,string,,160,10,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.listini.col_articolo,100
-402,37,articolo_descrizione,Descrizione,,articolo_descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,catalogo.col_descrizione,90
+401,37,articolo_codice,Articolo,,articolo_codice,identificatore,string,,160,10,left,,,t,t,t,t,f,t,2026-08-03 00:00:00,mctit,vendite.listini.col_articolo,100
+402,37,articolo_descrizione,Descrizione,,articolo_descrizione,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-08-03 00:00:00,mctit,catalogo.col_descrizione,90
 403,37,uom,UoM,,uom_codice,informazione,string,,70,30,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,catalogo.col_uom,40
 404,37,prezzo,Prezzo,,prezzo,informazione,numeric,,140,40,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.listini.col_prezzo,80
 405,37,iva_aliquota,IVA,,iva_aliquota,informazione,numeric,,70,50,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.listini.col_iva,30
@@ -440,10 +440,10 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 440,41,error_code,Codice errore,,error_code,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_codice_errore,85
 441,41,messaggio,Messaggio,,messaggio,informazione,string,,,50,left,,,t,f,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_messaggio,50
 442,41,data_evento,Data,,data_evento,informazione,datetime,datetime_short,,60,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_data_evento,95
-443,42,riferimento,Gruppo,,riferimento,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_gruppo,100
+443,42,riferimento,Gruppo,,riferimento,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_gruppo,100
 444,42,tipo_gruppo,Tipo,,tipo_gruppo,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_tipo_gruppo,70
-445,42,cliente_display,Cliente,,cliente_display,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_cliente,90
-446,42,commessa_codice,Commessa,,commessa_codice,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_commessa,85
+445,42,cliente_display,Cliente,,cliente_display,informazione,string,,,30,left,,,t,t,t,t,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_cliente,90
+446,42,commessa_codice,Commessa,,commessa_codice,informazione,string,,,40,left,,,t,t,t,t,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_commessa,85
 447,42,n_attivita,N. attivita,,n_attivita,informazione,numeric,,,50,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_n_attivita,60
 448,42,valore,Valore,,valore,informazione,numeric,currency_eur,,60,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_valore,95
 449,42,data_attivita_max,Periodo,,data_attivita_max,informazione,date,date_short,,70,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_periodo,65
@@ -473,8 +473,8 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 473,44,fattura_sorgente_id,Id fattura,Serve al frontend per aprire il documento,fattura_sorgente_id,informazione,numeric,,100,150,right,,,f,f,f,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_fattura_sorgente_id,10
 474,44,fondo_source_id,Id atto,,fondo_source_id,informazione,numeric,,100,160,right,,,f,f,f,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_fondo_source_id,10
 475,38,fatturata_il,Fatturata il,"Quando la riga e' stata portata in fattura: la nascita della riga di fattura, non l'ultimo aggiornamento",fatturata_il,informazione,datetime,datetime_short,150,80,center,,,f,t,t,f,f,t,2026-08-16 00:00:00,mctit,vendite.commesse.col_fatturata_il,65
-476,42,ba_codice_fatturazione,Codice BA,,ba_codice_fatturazione,informazione,string,,,80,left,,,t,t,t,f,f,t,2026-08-17 00:00:00,mctit,vendite.dashboard_competenza.col_ba_codice_fatturazione,40
-477,42,id_fiscale,Id fiscale,,id_fiscale,informazione,string,,,90,left,,,t,t,t,f,f,t,2026-08-17 00:00:00,mctit,vendite.dashboard_competenza.col_id_fiscale,35
+476,42,ba_codice_fatturazione,Codice BA,,ba_codice_fatturazione,informazione,string,,,80,left,,,t,t,t,t,f,t,2026-08-17 00:00:00,mctit,vendite.dashboard_competenza.col_ba_codice_fatturazione,40
+477,42,id_fiscale,Id fiscale,,id_fiscale,informazione,string,,,90,left,,,t,t,t,t,f,t,2026-08-17 00:00:00,mctit,vendite.dashboard_competenza.col_id_fiscale,35
 478,42,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale,emittente_ragione_sociale,informazione,string,,,100,left,,,t,t,t,f,f,t,2026-08-18 00:00:00,mctit,vendite.dashboard_competenza.col_emittente,30
 479,39,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale,emittente_ragione_sociale,informazione,string,,,100,left,,,t,t,t,f,f,t,2026-08-18 00:00:00,mctit,vendite.situazione_aperta.col_emittente,30
 480,40,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale,emittente_ragione_sociale,informazione,string,,,110,left,,,t,t,t,f,f,t,2026-08-18 00:00:00,mctit,vendite.dashboard_backlog.col_emittente,30
@@ -627,7 +627,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 627,54,serie_default,Serie,Serie di default del contatore,serie_default,informazione,string,,110,80,left,Forma del numero,2,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_serie_default,20
 628,54,attivo,Attivo,Registro attivo o disattivato,attivo,informazione,boolean,,90,90,center,Stato,3,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_attivo,60
 629,54,data_insert,Creazione,Data di inserimento del registro,data_insert,informazione,datetime,datetime_short,150,100,center,Audit,11,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_data_insert,5
-630,55,codice_interno,Codice,"Codice interno della famiglia, immutabile: e il bersaglio della FK dei registri",codice_interno,identificatore,string,,150,10,left,Identificazione,1,t,t,t,t,f,t,2026-09-01 00:00:00,mctit,vendite.famiglie_documento.col_codice_interno,100
+630,55,codice_interno,Codice interno,"Codice interno della famiglia, immutabile: e il bersaglio della FK dei registri",codice_interno,identificatore,string,,150,10,left,Identificazione,1,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.famiglie_documento.col_codice_interno,100
 631,55,descrizione,Descrizione,"Nome della famiglia a video",descrizione,identificatore,string,,220,20,left,Identificazione,1,t,t,t,t,f,t,2026-09-01 00:00:00,mctit,vendite.famiglie_documento.col_descrizione,95
 632,55,tabella_documento,Tabella,"Dove stanno i documenti di questa famiglia",tabella_documento,informazione,string,,190,30,left,Dove vive il documento,2,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.famiglie_documento.col_tabella_documento,80
 633,55,colonna_numero,Colonna del numero,"Come si chiama la colonna che porta il numero",colonna_numero,informazione,string,,150,40,left,Dove vive il documento,2,f,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.famiglie_documento.col_colonna_numero,60
@@ -884,7 +884,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 884,78,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-09-19 00:00:00,mctit,common.col_azioni,100
 885,79,quando,Quando,Istante dell evento (per i giri: l avvio),quando,identificatore,datetime,datetime_short,140,10,left,,,t,t,t,f,f,t,2026-09-19 00:00:00,mctit,vendite.giornale.col_quando,100
 886,79,gravita,Gravita,INFO / WARN / ERROR; vuota = un vincolo si e allargato e la mappa e rimasta indietro (pesa come ERROR),gravita,informazione,string,,100,20,left,,,t,t,t,f,f,t,2026-09-19 00:00:00,mctit,vendite.giornale.col_gravita,95
-887,79,registro,Registro,"Da quale registro viene la riga (EVENT_LOG, LOTTO_LOG, TASK_RUN, FATTURA_LOG)",registro,informazione,string,,120,30,left,,,t,f,t,f,f,t,2026-09-19 00:00:00,mctit,vendite.giornale.col_registro,60
+887,79,registro,Registro,"Da quale registro viene la riga. Il vocabolario sta in config.registri_giornale (codice_interno); la sua etichetta_key porta il testo a video",registro,informazione,string,,120,30,left,,,t,f,t,f,f,t,2026-09-19 00:00:00,mctit,vendite.giornale.col_registro,60
 888,79,entity_type,Entita,Il tipo di cosa a cui e successo (config.tipi_entita) — etichetta dalla chiave i18n dichiarata dal DB,entity_type,informazione,string,,110,40,left,,,t,f,t,f,f,t,2026-09-19 00:00:00,mctit,vendite.giornale.col_entita,90
 889,79,entita_display,Riferimento,Il codice del lotto o il numero del documento — risolto dal backend sulla pagina,entita_display,informazione,string,,150,50,left,,,f,f,t,f,f,t,2026-09-19 00:00:00,mctit,vendite.giornale.col_riferimento,85
 890,79,cosa,Cosa,Il fatto: il codice evento tradotto dal catalogo (EVENT_LOG) o la frase del registro,cosa,informazione,string,,360,60,left,,,f,f,t,f,f,t,2026-09-19 00:00:00,mctit,vendite.giornale.col_cosa,80
@@ -892,3 +892,185 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 892,79,tx_id,Transazione,UUID di transazione: il ponte verso il registro degli errori tecnici,tx_id,informazione,string,,150,80,left,,,t,f,t,f,f,t,2026-09-19 00:00:00,mctit,vendite.giornale.col_tx_id,20
 893,79,correlation_id,Correlazione,Il filo di un giro (EVENT_LOG e TASK_RUN); vuoto sugli altri registri per costruzione,correlation_id,informazione,string,,150,90,left,,,t,f,t,f,f,t,2026-09-19 00:00:00,mctit,vendite.giornale.col_correlation_id,10
 894,79,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-09-19 00:00:00,mctit,common.col_azioni,100
+895,80,codice,Codice,Il codice del magazzino: si sceglie alla nascita e non si cambia (lock a DB),codice,identificatore,string,,120,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_codice,100
+896,80,descrizione,Descrizione,,descrizione,informazione,string,,240,20,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_descrizione,95
+897,80,emittente_codice,Emittente,L'emittente fiscale proprietario: e' il perimetro RLS del dominio,emittente_codice,informazione,string,,110,30,left,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_emittente_codice,80
+898,80,emittente_ragione_sociale,Emittente fiscale,,emittente_ragione_sociale,informazione,string,,200,40,left,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_emittente_ragione_sociale,40
+899,80,indirizzo_normalizzato,Indirizzo,L'indirizzo del deposito (un indirizzo del soggetto emittente),indirizzo_normalizzato,informazione,string,,260,50,left,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_indirizzo_normalizzato,85
+900,80,usa_ubicazioni,Ubicazioni,Il magazzino e' organizzato per ubicazioni: ogni movimento ne nomina una,usa_ubicazioni,informazione,boolean,yesno,100,60,center,Configurazione,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_usa_ubicazioni,75
+901,80,ubicazioni_count,N. ubicazioni,Le ubicazioni attive del magazzino,ubicazioni_count,informazione,numeric,,100,70,right,Configurazione,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_ubicazioni_count,60
+902,80,predefinito,Predefinito,Il magazzino proposto per primo,predefinito,informazione,boolean,yesno,100,80,center,Configurazione,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_predefinito,70
+903,80,attivo,Attivo,,attivo,informazione,boolean,yesno,90,90,center,Stato,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_attivo,90
+904,80,data_insert,Creato il,,data_insert,informazione,datetime,datetime_short,140,100,center,Audit,4,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_data_insert,30
+905,80,user_insert,Creato da,,user_insert,informazione,string,,120,110,left,Audit,4,f,f,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_user_insert,25
+906,80,id,Id,Identificativo tecnico,id,informazione,numeric,,80,120,right,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_id,10
+907,80,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-21 00:00:00,mctit,common.col_azioni,100
+908,81,codice,Codice,"Il codice dell'ubicazione, univoco nel magazzino",codice,identificatore,string,,120,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_codice,100
+909,81,descrizione,Descrizione,,descrizione,informazione,string,,220,20,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_descrizione,90
+910,81,tipo_codice,Tipo,PICK · STORAGE · STAGING · IN_TRANSIT …,tipo_codice,informazione,string,,110,30,left,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_tipo_codice,85
+911,81,tipo_descrizione,Descrizione tipo,,tipo_descrizione,informazione,string,,180,40,left,Identificazione,1,f,f,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_tipo_descrizione,40
+912,81,parent_codice,Padre,"L'ubicazione che la contiene (area → corsia → scaffale …), dello stesso magazzino",parent_codice,informazione,string,,120,50,left,Gerarchia,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_parent_codice,80
+913,81,area,Area,,area,informazione,string,,90,60,left,Posizione,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_area,70
+914,81,corsia,Corsia,,corsia,informazione,string,,90,70,left,Posizione,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_corsia,69
+915,81,scaffale,Scaffale,,scaffale,informazione,string,,90,80,left,Posizione,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_scaffale,68
+916,81,piano,Piano,,piano,informazione,string,,80,90,left,Posizione,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_piano,67
+917,81,posizione,Posizione,,posizione,informazione,string,,90,100,left,Posizione,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_posizione,66
+918,81,attivo,Attiva,,attivo,informazione,boolean,yesno,90,110,center,Stato,4,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_attivo,88
+919,81,data_insert,Creata il,,data_insert,informazione,datetime,datetime_short,140,120,center,Audit,5,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_data_insert,30
+920,81,id,Id,Identificativo tecnico,id,informazione,numeric,,80,130,right,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_id,10
+921,81,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-21 00:00:00,mctit,common.col_azioni,100
+922,82,codice,Lotto,"Il codice della partita, univoco per articolo",codice,identificatore,string,,140,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_codice,100
+923,82,data_arrivo,Arrivo,La data da cui si conta la rotazione (FIFO),data_arrivo,informazione,date,date_short,110,20,center,Date,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_data_arrivo,95
+924,82,data_scadenza,Scadenza,Vuota = non scade,data_scadenza,informazione,date,date_short,110,30,center,Date,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_data_scadenza,90
+925,82,attivo,Attivo,,attivo,informazione,boolean,yesno,90,40,center,Stato,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_attivo,85
+926,82,data_insert,Creato il,,data_insert,informazione,datetime,datetime_short,140,50,center,Audit,4,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_data_insert,30
+927,82,user_insert,Creato da,,user_insert,informazione,string,,120,60,left,Audit,4,f,f,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_user_insert,25
+928,82,id,Id,Identificativo tecnico,id,informazione,numeric,,80,70,right,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_id,10
+929,82,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-21 00:00:00,mctit,common.col_azioni,100
+930,18,id_fiscale,Id. Fiscale,Identificativo fiscale univoco del soggetto emittente (partita IVA o codice fiscale),id_fiscale_univoco_cf_piva,informazione,string,,170,35,left,Soggetto,2,f,f,t,t,f,t,2026-09-24 00:00:00,mctit,common.id_fiscale,80
+931,68,id_fiscale,Id. Fiscale,Identificativo fiscale univoco del cliente (partita IVA o codice fiscale),id_fiscale_univoco_cf_piva,informazione,string,,170,35,left,Cliente,3,f,f,t,t,f,t,2026-09-24 00:00:00,mctit,common.id_fiscale,40
+932,23,articolo_descrizione,Descrizione articolo,Descrizione dell articolo in promozione,articolo_descrizione,informazione,string,,,35,left,,,f,t,t,t,f,t,2026-09-24 00:00:00,mctit,vendite.promo_articoli.col_articolo_descrizione,50
+933,33,categoria_descrizione,Descrizione categoria,Descrizione della categoria cliente,categoria_descrizione,informazione,string,,,15,left,,,f,t,t,t,f,t,2026-09-24 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_categoria_descrizione,50
+934,33,listino_descrizione,Descrizione listino,Descrizione del listino,listino_descrizione,informazione,string,,,55,left,,,f,t,t,t,f,t,2026-09-24 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_listino_descrizione,50
+935,28,email,Email,Indirizzo email dell operatore,email,informazione,string,,,25,left,,,f,f,t,t,f,t,2026-09-24 00:00:00,mctit,common.email,50
+936,28,soggetto_nome,Nome proprio,Nome proprio dell operatore,soggetto_nome,informazione,string,,,15,left,,,f,f,t,t,f,t,2026-09-24 00:00:00,mctit,amministrazione.col_soggetto_nome,50
+937,28,soggetto_ragione_sociale,Ragione sociale,Ragione sociale completa del soggetto collegato all operatore,soggetto_ragione_sociale,informazione,string,,,16,left,,,f,f,t,t,f,t,2026-09-24 00:00:00,mctit,common.ragione_sociale,50
+938,55,codice,Codice,"Codice della famiglia, modificabile: e quello che si mostra e si cerca",codice,identificatore,string,,150,5,left,Identificazione,1,f,f,t,t,f,t,2026-09-24 00:00:00,mctit,vendite.famiglie_documento.col_codice,100
+939,26,data_insert,Data inserimento,Data e ora di creazione dell articolo,data_insert,informazione,datetime,datetime_short,150,90,center,Audit,1,f,t,t,f,f,t,2026-09-26 00:00:00,mctit,common.data_insert,10
+940,26,data_update,Data aggiornamento,Data e ora dell ultima modifica dell articolo,data_update,informazione,datetime,datetime_short,150,95,center,Audit,1,f,t,t,f,f,t,2026-09-26 00:00:00,mctit,common.data_update,5
+941,83,dispositivo,Dispositivo,Browser e sistema ricavati dallo user agent; in export la stringa grezza,user_agent,identificatore,string,,200,10,left,,,f,f,t,t,f,t,2026-09-27 00:00:00,mctit,sessions.device,100
+942,83,ip_address,Indirizzo IP,Indirizzo dell'ultimo evento della sessione; vuoto se non rilevato,ip_address,informazione,string,,140,20,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,sessions.ip_address,60
+943,83,data_ultimo_evento,Ultimo accesso,Ultimo login o rinnovo del token; a video come tempo trascorso,data_ultimo_evento,informazione,datetime,datetime_short,150,30,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,sessions.last_access,90
+944,83,data_inizio,Inizio sessione,Primo login della sessione; vuota se quell'evento non e' piu' nel registro,data_inizio,informazione,datetime,datetime_short,150,40,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,sessions.col_data_inizio,30
+945,83,azioni,Azioni,,,azione,string,,100,999,center,,,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,common.col_azioni,100
+946,84,progressivo_sorgente,N.,Numero progressivo del documento nella sua sorgente (1 = il primo emesso),progressivo_sorgente,identificatore,numeric,,80,10,right,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_progressivo,100
+947,84,generato_at,Generato il,Istante di generazione del documento,generato_at,informazione,datetime,datetime_short,150,20,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_generato_at,90
+948,84,titolo,Titolo,,titolo,informazione,string,,260,30,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_titolo,80
+949,84,nome_file,Nome file,Nome del file PDF prodotto,nome_file,informazione,string,,200,40,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_nome_file,40
+950,84,stato,Stato,GENERATO · ARCHIVIATO · ANNULLATO,stato,informazione,string,,120,50,center,,,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_stato,85
+951,84,originale,Originale,Il file originale e' conservato? No = documento anteriore alla conservazione dei file: si usa la ristampa fedele,has_file_principale,informazione,boolean,yesno,110,60,center,,,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_originale,60
+952,84,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,common.col_azioni,100
+953,85,sequenza,#,Posizione del flusso nella pratica,sequenza,identificatore,numeric,,60,10,right,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_col_seq,100
+954,85,template_flusso,Template,Il passo del percorso da cui nasce il flusso,template_flusso_descrizione,informazione,string,,200,20,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_col_template,95
+955,85,stato,Stato,Stato corrente del flusso (catalogo config.stati_flussi_pratiche),stato_descrizione,informazione,string,,130,30,center,Stato,2,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.col_stato,92
+956,85,esito,Esito,Esito registrato alla chiusura (catalogo config.esiti_flussi_pratiche); vuoto finche' il flusso e' aperto,esito_descrizione,informazione,string,,140,40,left,Stato,2,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_col_esito,70
+957,85,data_scadenza,Scadenza,Vuota = nessuna scadenza,data_scadenza,informazione,date,date_short,110,50,center,Stato,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.col_data_scadenza,80
+958,85,note_esito,Note esito,,note_esito,informazione,string,,240,60,left,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_note_esito,20
+959,85,risorsa_umana,Operatore,Operatore a cui e' assegnato lo step; vuoto = non assegnato,risorsa_umana_display,informazione,string,,180,70,left,Assegnazione,3,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_assegnatario,40
+960,85,unita_organizzativa,Reparto,Reparto a cui e' assegnato lo step,unita_organizzativa_descrizione,informazione,string,,150,80,left,Assegnazione,3,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_reparto,35
+961,85,data_insert,Data inserimento,Quando il flusso e' stato creato,data_insert,informazione,datetime,datetime_short,150,90,center,Audit,4,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,common.data_insert,10
+962,86,emittente_codice,Codice,Codice dell'emittente fiscale,emittente_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,amministrazione.matrice_utilities_ruoli.usage_col_codice,100
+963,86,emittente_descrizione,Ragione sociale,Ragione sociale del soggetto dell'emittente fiscale,emittente_descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,amministrazione.matrice_utilities_ruoli.usage_col_ragione_sociale,95
+964,86,emittente_attivo,Attivo,Emittente fiscale attivo,emittente_attivo,informazione,boolean,yesno,100,30,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,common.attivo,60
+965,86,override_attivo,Override attivo,Parametri dell'emittente per la utility attivi o disattivati,override_attivo,informazione,boolean,yesno,120,40,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,amministrazione.matrice_utilities_ruoli.usage_col_override_attivo,50
+966,87,descrizione,Reparto,Nome del reparto (unita' organizzativa),descrizione,identificatore,string,,260,10,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,amministrazione.col_reparto,100
+967,87,codice,Codice,Codice del reparto,codice,informazione,string,,140,20,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,amministrazione.col_codice_reparto,40
+968,87,profilo_aree_count,Profilo,Profilo di accesso configurato: aree presenti nel profilo del reparto,profilo_aree_count,informazione,numeric,,140,30,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,amministrazione.col_profilo,80
+969,87,operatori_count,Operatori,Operatori attivi assegnati al reparto,operatori_count,informazione,numeric,number,110,40,right,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,amministrazione.col_operatori,70
+970,88,versione,N.,Numero progressivo della versione nel template,versione,identificatore,numeric,,70,10,right,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,config.modelli_documenti.versioni.col_versione,100
+971,88,titolo,Titolo,Titolo della versione,titolo,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,config.modelli_documenti.versioni.col_titolo,95
+972,88,stato,Stato,BOZZA / PUBBLICATA / OBSOLETA,stato,informazione,string,,120,30,center,,,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,config.modelli_documenti.versioni.col_stato,90
+973,88,valido_dal,Valido dal,Obbligatoria sulle versioni pubblicate,valido_dal,informazione,date,date_short,110,40,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,config.modelli_documenti.versioni.col_valido_dal,70
+974,88,valido_al,Valido al,Vuota = senza scadenza,valido_al,informazione,date,date_short,110,50,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,config.modelli_documenti.versioni.col_valido_al,60
+975,88,attivo,Attivo,Versione attiva o disattivata,attivo,informazione,boolean,yesno,90,60,center,,,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,common.attivo,50
+976,88,data_update,Data aggiornamento,Data e ora dell'ultima modifica della versione,data_update,informazione,datetime,datetime_short,150,70,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,common.data_update,10
+977,88,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,common.col_azioni,100
+978,89,rev,Rev,Numero di revisione,rev,identificatore,numeric,,70,10,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_rev,100
+979,89,numero,Numero,Numero o codice del documento della revisione,numero,informazione,string,,140,20,left,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_numero,40
+980,89,data,Data,Data del documento: del preventivo o di emissione dell offerta (vuota in bozza),data,informazione,date,date_short,110,30,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_data,80
+981,89,stato,Stato,Stato della revisione,stato_descrizione,informazione,string,,130,40,center,Stato,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_stato,90
+982,89,attiva,Attiva,Revisione viva: non superata da una successiva e non abortita,is_attiva,informazione,boolean,yesno,90,50,center,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_attiva,70
+983,89,totale,Totale,Totale del documento,totale_documento,informazione,numeric,currency_eur,130,60,right,Importi,3,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_totale,75
+984,89,stato_codice_interno,Cod. Stato,Codice interno dello stato per la severita del Tag FE,stato_codice_interno,informazione,string,,80,130,left,Stato,2,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,,5
+985,90,rev,Rev,Numero di revisione,revisione_numero,identificatore,numeric,,70,10,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_rev,100
+986,90,numero,Numero,Numero o codice del documento della revisione,codice,informazione,string,,140,20,left,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_numero,40
+987,90,data,Data,Data del documento: del preventivo o di emissione dell offerta (vuota in bozza),data_emissione,informazione,date,date_short,110,30,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_data,80
+988,90,stato,Stato,Stato della revisione,stato_descrizione,informazione,string,,130,40,center,Stato,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_stato,90
+989,90,attiva,Attiva,Revisione viva: non superata da una successiva e non abortita,is_attiva,informazione,boolean,yesno,90,50,center,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_attiva,70
+990,90,stato_codice_interno,Cod. Stato,Codice interno dello stato per la severita del Tag FE,stato_codice_interno,informazione,string,,80,130,left,Stato,2,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,,5
+991,91,descrizione,Descrizione,Nome della regione,descrizione,identificatore,string,,240,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_descrizione,100
+992,91,stato,Stato,Lo stato (nazione) a cui appartiene la regione,stato_descrizione,informazione,string,,200,20,left,Territorio,2,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_stato,85
+993,92,sigla,Sigla,Sigla automobilistica della provincia,sigla,identificatore,string,,90,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_sigla,100
+994,92,descrizione,Descrizione,Nome della provincia,descrizione,identificatore,string,,240,20,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_descrizione,95
+995,92,regione,Regione,La regione a cui appartiene la provincia,regione_descrizione,informazione,string,,200,30,left,Territorio,2,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_regione,85
+996,93,descrizione,Descrizione,Nome dello stato,descrizione,identificatore,string,,240,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_descrizione,100
+997,93,codice_iso2,ISO2,Codice ISO 3166-1 alpha-2,codice_iso2,informazione,string,,80,20,left,Codici,2,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_iso2,90
+998,93,codice_iso3,ISO3,Codice ISO 3166-1 alpha-3,codice_iso3,informazione,string,,80,30,left,Codici,2,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_iso3,70
+999,93,continente,Continente,Il continente dello stato,continente,informazione,string,,160,40,left,Territorio,3,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_continente,60
+1000,93,sigla_stato,Sigla,Sigla dello stato,sigla_stato,informazione,string,,90,50,left,Codici,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_sigla,30
+1001,93,codice_telefonico,Prefisso tel.,Prefisso telefonico internazionale,codice_telefonico,informazione,string,,110,60,left,Codici,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_telefono,20
+1002,94,descrizione,Comune,Nome del comune,descrizione,identificatore,string,,260,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_comune,100
+1003,94,provincia_sigla,Provincia,Sigla della provincia del comune,provincia_sigla,informazione,string,,100,20,left,Territorio,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_provincia,85
+1004,94,provincia,Nome provincia,Nome esteso della provincia del comune,provincia_descrizione,informazione,string,,200,25,left,Territorio,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_provincia_nome,30
+1005,94,regione,Regione,La regione del comune,regione_descrizione,informazione,string,,200,30,left,Territorio,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_regione,60
+1006,95,codice,CAP,Codice di avviamento postale,codice,identificatore,string,,100,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_cap,100
+1007,95,comune,Comune,Il comune servito dal CAP,comune_descrizione,informazione,string,,260,20,left,Territorio,2,t,t,t,t,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_comune,90
+1008,96,descrizione,Descrizione,Tipo di strada (via o piazza o altro),descrizione,identificatore,string,,260,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_descrizione,100
+1009,96,attivo,Stato,Tipo di strada attivo o disattivato,attivo,informazione,boolean,yesno,100,20,center,Stato,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_attivo,60
+1010,95,provincia_sigla,Provincia,Sigla della provincia del comune servito dal CAP,provincia_sigla,informazione,string,,100,30,left,Territorio,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_provincia,85
+1011,97,articolo_codice,Articolo,,articolo_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_articolo,100
+1012,97,descrizione,Descrizione,,descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_descrizione,95
+1013,97,qta_operativa,Quantita',,qta_operativa,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_quantita,90
+1014,97,importo_riga,Importo,,importo_riga,informazione,numeric,currency_eur,120,70,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_importo,85
+1015,97,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur_6,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_prezzo,70
+1016,97,uom_codice,Unita' di misura,,uom_codice,informazione,string,,100,40,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_uom,60
+1017,97,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,percent_2,90,60,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_sconto,40
+1018,97,data_consegna,Consegna richiesta dal cliente,,data_consegna_richiesta_cliente,informazione,date,date_short,120,90,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_data_consegna_richiesta_cliente,35
+1019,97,iva,IVA,,iva_descrizione,informazione,string,,140,80,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_iva,30
+1020,97,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
+1021,98,articolo_codice,Articolo,,articolo_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_articolo,100
+1022,98,descrizione,Descrizione,,descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_descrizione,95
+1023,98,qta_operativa,Quantita',,qta_operativa,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_quantita,90
+1024,98,importo_riga,Importo,,importo_riga,informazione,numeric,currency_eur,120,70,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_importo,85
+1025,98,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur_6,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_prezzo,70
+1026,98,uom_codice,Unita' di misura,,uom_codice,informazione,string,,100,40,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_uom,60
+1027,98,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,percent_2,90,60,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_sconto,40
+1028,98,data_consegna,Consegna confermata,,data_consegna_confermata,informazione,date,date_short,120,90,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_data_consegna_confermata,35
+1029,98,iva,IVA,,iva_descrizione,informazione,string,,140,80,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_iva,30
+1030,98,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
+1031,99,articolo_codice,Articolo,,articolo_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_articolo,100
+1032,99,descrizione,Descrizione,,descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_descrizione,95
+1033,99,qta_operativa,Quantita',,qta_operativa,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_quantita,90
+1034,99,importo_riga,Importo,,importo_riga,informazione,numeric,currency_eur,120,70,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_importo,85
+1035,99,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur_6,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_prezzo,70
+1036,99,uom_codice,Unita' di misura,,uom_codice,informazione,string,,100,40,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_uom,60
+1037,99,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,percent_2,90,60,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_sconto,40
+1038,99,iva,IVA,,iva_descrizione,informazione,string,,140,80,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_iva,30
+1039,99,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
+1040,100,articolo_codice,Articolo,,articolo_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_articolo,100
+1041,100,descrizione,Descrizione,,descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_descrizione,95
+1042,100,qta_operativa,Q.ta' resa,,qta_operativa,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_quantita,90
+1043,100,stato_riconsegna,Ri-consegna,,stato_riconsegna,informazione,string,,130,40,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_stato_riconsegna,80
+1044,100,tipo_reso,Tipo reso,,tipo_reso_descrizione,informazione,string,,150,50,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_tipo,70
+1045,100,uom_codice,UoM,,uom_codice,informazione,string,,100,60,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_uom,60
+1046,100,gia_accreditato,Gia' accreditato,,gia_accreditato,informazione,numeric,number,120,70,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_gia_accreditato,50
+1047,100,motivo,Motivo,,motivo,informazione,string,,220,80,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_motivo,40
+1048,100,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
+1049,101,componente_codice,Codice,,componente_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,catalogo.col_codice,100
+1050,101,componente_descrizione,Descrizione,,componente_descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,catalogo.col_descrizione,95
+1051,101,coeff_qta,Coeff. Qta',,coeff_qta,informazione,numeric,number,110,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,catalogo.col_coeff_qta,90
+1052,101,valido_dal,Valido Dal,,valido_dal,informazione,date,date_short,120,40,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,catalogo.field_valido_dal,65
+1053,101,valido_al,Valido Al,,valido_al,informazione,date,date_short,120,50,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,catalogo.field_valido_al,60
+1054,101,esposto_in_fattura,In fattura,,esposto_in_fattura,informazione,boolean,yesno,110,60,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,catalogo.col_esposto_fattura,40
+1055,101,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
+1056,102,riga_nr,N.,,riga_nr,identificatore,numeric,,70,10,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_riga,100
+1057,102,descrizione,Descrizione,,descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_descrizione,95
+1058,102,quantita,Qta',,quantita,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_qta,90
+1059,102,importo_riga,Imponibile,,importo_riga,informazione,numeric,currency_eur,120,70,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_imponibile,85
+1060,102,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur_6,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_prezzo,70
+1061,102,uom_codice,UdM,,uom_codice,informazione,string,,100,40,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_uom,60
+1062,102,articolo_codice,Articolo,,articolo_codice,informazione,string,,140,15,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,catalogo.articolo,50
+1063,102,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,percent_2,90,60,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_sconto,40
+1064,102,iva,IVA,,iva_descrizione,informazione,string,,140,80,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_iva,30
+1065,102,riga_rettificata,Rettifica riga,,riga_rettificata_documento,informazione,string,,150,100,left,,,f,f,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_rettifica_riga,20
+1066,103,articolo_codice,Articolo,,articolo_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_articolo,100
+1067,103,descrizione,Descrizione,,articolo_descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_descrizione,95
+1068,103,qta_operativa,Qta,,qta_operativa,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_qta,90
+1069,103,prezzo_finale,Prezzo finale,,prezzo_finale,informazione,numeric,currency_eur_6,120,40,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_prezzo_finale,85
+1070,103,prezzo_forzato,Prezzo forzato,,override_prezzo,informazione,numeric,currency_eur_6,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_prezzo_forzato,70
+1071,103,uom_codice,UoM,,uom_codice,informazione,string,,100,60,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_uom,60
+1072,103,tipo_erogazione,Tipo,,tipo_erogazione,informazione,string,,110,70,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_tipo_erogazione,45
+1073,103,prezzo_listino,Prezzo listino,,prezzo_listino,informazione,numeric,currency_eur_6,120,80,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_prezzo_listino,35
+1074,103,origine,Origine,,origine,informazione,string,,110,90,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_origine,30
+1075,103,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
+1076,98,data_consegna_richiesta_cliente,Consegna richiesta dal cliente,,data_consegna_richiesta_cliente,informazione,date,date_short,120,95,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_data_consegna_richiesta_cliente,33

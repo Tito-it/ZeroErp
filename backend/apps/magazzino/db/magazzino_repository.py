@@ -27,18 +27,28 @@
 #       ⚠️ Le SQL interpolano SOLO identificatori dalla configurazione della
 #       famiglia (`db/famiglie.py`, validati da regex all'import) e dalle
 #       whitelist di ordinamento; i VALORI viaggiano nei `params`.
+#
+#       ⭐ 2026-09-26: testate e righe si scrivono coi BB core
+#       (`execute_dynamic_insert` / `execute_dynamic_update` /
+#       `sql_set_clause`). ⛔ Whitelist RIGIDA: una colonna fuori da
+#       `_COLONNE_TESTATA_AGGIORNABILI` / `_colonne_riga` (o `descrizione` su
+#       una famiglia che non la ha) e' `RuntimeError`, non piu' uno scarto
+#       silenzioso — il contratto dell'operatore lo chiude il service
+#       (`validate_allowed_keys`, 400) prima di arrivare qui.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
-import json
 from datetime import date
 from typing import Any
 
 from django.db import connection
 
 from apps.core.db._helpers import (
-    fetch_paged_with_total,
+    pattern_contiene,
+    RicercaFull,
+    add_ricerca_full_condition,
+    call_jsonb_fn,
     fetchone_scalar,
     jsonb_out,
     rows_to_list,
@@ -47,9 +57,13 @@ from apps.core.db._helpers import (
     sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.core.services.error_manager import ErrorManager
-from apps.core.services.system_context import connection_role_bypasses_rls
-from apps.magazzino.db.famiglie import INVENTARI, RETTIFICHE, FamigliaDocumentoInterno
+from apps.core.db.sql_write_helpers import (
+    execute_dynamic_insert,
+    execute_dynamic_update,
+    sql_set_clause,
+)
+from apps.magazzino.db._helpers import guard_canale_sistema, lista_paginata, meta_mai_null
+from apps.magazzino.db.famiglie import FAMIGLIE, INVENTARI, RETTIFICHE, FamigliaDocumentoInterno
 from apps.magazzino.types import (
     BloccoRow,
     DisponibilitaArticoloRow,
@@ -64,10 +78,8 @@ from apps.magazzino.types import (
 
 _FN = "magazzino.magazzino_repository"
 
-# Il guard di parametro del dominio, gia' a catalogo (TECNICO): e' il codice
-# dei soli guard strutturali di questo modulo, che un operatore non puo'
-# causare compilando qualcosa.
-_E_CHIAMATA = "E_MAG_CHIAMATA_NON_VALIDA"
+# Il guard di parametro del dominio (`E_MAG_CHIAMATA_NON_VALIDA`, TECNICO)
+# vive in `db/_helpers.py` dal 2026-09-21, col guard che lo solleva.
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -227,7 +239,7 @@ def _documento_select(f: FamigliaDocumentoInterno) -> str:
             t.meta, t.data_insert, t.user_insert, t.data_update, t.user_update
           FROM {f.tabella} t
           {_MAGAZZINO_JOIN.format(alias='t')}
-    """
+    """  # noqa: S608 — tabelle/colonne dal registro frozen FAMIGLIE (famiglie.py), frammenti costanti del modulo
 
 
 # Scopo: la SELECT delle righe di una famiglia, decodificate.
@@ -247,7 +259,7 @@ def _righe_select(f: FamigliaDocumentoInterno) -> str:
             r.meta, r.data_insert, r.user_insert, r.data_update
           FROM {f.tabella_righe} r
           {_DECODIFICA_POSIZIONE_JOIN.format(alias='r')}
-    """
+    """  # noqa: S608 — tabelle/colonne dal registro frozen FAMIGLIE (famiglie.py), frammenti costanti del modulo
 
 
 # ⭐ `chiave_riga`: la CHIAVE STABILE di una riga che non ha un `id` — il piano
@@ -267,7 +279,44 @@ _PIANO_SELECT = f"""
         p.esito, p.posting_blocco_reason, p.posting_blocco_reason_key
       FROM magazzino.fn_inventario_piano(%s) p
       {_DECODIFICA_POSIZIONE_JOIN.format(alias='p')}
-"""
+"""  # noqa: S608 — frammenti costanti del modulo (_DECODIFICA_POSIZIONE_*), valori come parametri
+
+# Cosa si PUO' cercare in ogni lista; cosa si cerca lo dice il catalogo
+# (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §2).
+# ⭐ Mappe `campo_sorgente → espressione`: il valore e' la STESSA espressione che
+#    la `SELECT` proietta con quel nome — si cerca su cio' che si mostra.
+# ⭐ Testate e righe: una dichiarazione per famiglia, DERIVATA dal registro
+#    `FAMIGLIE` coi flag che la famiglia gia' porta (`ha_descrizione`,
+#    `con_motivo`) — le stesse che decidono la `SELECT`. ⛔ Non una voce scritta
+#    a mano per famiglia: una terza famiglia «e' una riga in `famiglie.py`»
+#    (il contratto del registro), e una mappa cablata le darebbe un `KeyError`
+#    su ogni apertura di lista, anche senza cercare.
+_RICERCA_ARTICOLO: dict[str, str] = {
+    "articolo_codice": "a.codice",
+    "articolo_descrizione": "a.descrizione",
+}
+_RICERCA_DOCUMENTI: dict[str, RicercaFull] = {
+    f.lista_codice: RicercaFull(f.lista_codice, {
+        "magazzino_codice": "m.codice",
+        "magazzino_descrizione": "m.descrizione",
+        **({"descrizione": "t.descrizione"} if f.ha_descrizione else {}),
+    })
+    for f in FAMIGLIE.values()
+}
+_RICERCA_RIGHE: dict[str, RicercaFull] = {
+    f.lista_righe_codice: RicercaFull(f.lista_righe_codice, {
+        **_RICERCA_ARTICOLO,
+        **({"motivo": "r.motivo"} if f.con_motivo else {}),
+    })
+    for f in FAMIGLIE.values()
+}
+_RICERCA_PIANO = RicercaFull("magazzino.inventario_piano", _RICERCA_ARTICOLO)
+_RICERCA_MOVIMENTI = RicercaFull("magazzino.movimenti", _RICERCA_ARTICOLO)
+_RICERCA_DISPONIBILITA = RicercaFull("magazzino.disponibilita", {
+    **_RICERCA_ARTICOLO,
+    "magazzino_codice": "m.codice",
+})
+_RICERCA_DISPONIBILITA_ARTICOLI = RicercaFull("magazzino.disponibilita_articoli", _RICERCA_ARTICOLO)
 
 _DISPONIBILITA_SELECT = f"""
     SELECT
@@ -283,7 +332,7 @@ _DISPONIBILITA_SELECT = f"""
       FROM magazzino.vw_disponibilita d
       JOIN catalogo.articoli a ON a.id = d.articolo_id
       {_MAGAZZINO_JOIN.format(alias='d')}
-"""
+"""  # noqa: S608 — frammenti costanti del modulo (_MAGAZZINO_*)
 
 _DISPONIBILITA_ARTICOLI_SELECT = """
     SELECT
@@ -339,12 +388,14 @@ _MOVIMENTI_SELECT = f"""
       {_MAGAZZINO_JOIN.format(alias='mv')}
       JOIN magazzino.causali c ON c.id = mv.causale_id
       LEFT JOIN config.sorgenti sg ON sg.id = mv.sorgente_tipo_id
-"""
+"""  # noqa: S608 — frammenti costanti del modulo (_DECODIFICA_POSIZIONE_*, _MAGAZZINO_*)
 
 # Le colonne di testata che il PATCH puo' toccare. ⛔ `magazzino_id` NO: si
 # sceglie alla nascita (R-4 lo difendera' a DB). `descrizione` solo sulla
 # famiglia che ce l'ha — lo decide il service dalla config.
 _COLONNE_TESTATA_AGGIORNABILI = frozenset({"data", "descrizione", "meta"})
+# Le colonne jsonb scritte dal dominio (`meta`, NOT NULL: `meta_mai_null`).
+_JSONB_COLS = ("meta",)
 
 # Le colonne di riga che si scrivono (create e PATCH). La quantita' e il
 # motivo variano per famiglia e li aggiunge `_colonne_riga`.
@@ -364,55 +415,9 @@ class MagazzinoRepository:
     """Accesso dati dello schema `magazzino`."""
 
     # ══════════════════════════════════════════════════════════════
-    #  Guard strutturale + lista paginata
+    #  Guard strutturale + lista paginata: `db/_helpers.py` (condivisi con
+    #  `anagrafiche_magazzino_repository` dal 2026-09-21)
     # ══════════════════════════════════════════════════════════════
-
-    # Scopo: Impedisce che una lettura di perimetro giri su un ruolo BYPASSRLS.
-    # Contesto: le policy di `magazzino` sono il cancello di queste liste (piu'
-    #        lo scope applicativo che si somma). Su un ruolo che le scavalca la
-    #        lista non fallirebbe: mostrerebbe la merce di TUTTI gli emittenti.
-    @staticmethod
-    def _guard_canale_sistema(metodo: str) -> None:
-        ErrorManager.require(
-            not connection_role_bypasses_rls(),
-            code=_E_CHIAMATA,
-            message="Operazione non disponibile dal canale di sistema.",
-            detail=(
-                "Le tabelle di magazzino sono protette da RLS: lette da un "
-                "ruolo BYPASSRLS perderebbero il perimetro emittente. Usare "
-                "la connessione dell'utente della richiesta."
-            ),
-            function_name=f"{_FN}.{metodo}",
-        )
-
-    # Scopo: Esegue una lista paginata: pagina + totale in UNA valutazione
-    #        (`COUNT(*) OVER ()`), e il conteggio di ripiego sulla pagina stantia.
-    # ⚠️ `order_clause` si compone dalle WHITELIST e MAI da input utente: qui
-    #    dentro finisce in una stringa SQL.
-    @staticmethod
-    def _lista_paginata(
-        *,
-        select_sql: str,
-        params: list[Any],
-        order_clause: str,
-        limit: int,
-        offset: int,
-    ) -> tuple[list[dict[str, Any]], int]:
-        data_sql = f"""
-            SELECT *, COUNT(*) OVER () AS total_count FROM (
-                {select_sql}
-            ) q
-            ORDER BY {order_clause}
-            LIMIT %s OFFSET %s
-        """
-        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"
-        return fetch_paged_with_total(
-            data_sql,
-            [*params, limit, offset],
-            fallback_count_sql=count_sql,
-            fallback_params=list(params),
-            offset=offset,
-        )
 
     # Scopo: Decodifica i jsonb della riga (il driver li consegna come `str`).
     @staticmethod
@@ -462,7 +467,7 @@ class MagazzinoRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[DocumentoInternoRow], int]:
-        self._guard_canale_sistema("list_documenti")
+        guard_canale_sistema(f"{_FN}.list_documenti")
         conditions: list[str] = []
         params: list[Any] = []
         add_emittente_scope_condition(
@@ -480,14 +485,7 @@ class MagazzinoRepository:
         if data_a is not None:
             conditions.append("t.data <= %s")
             params.append(data_a)
-        # La ricerca libera: la descrizione (dove c'e') e il codice del
-        # magazzino — i due testi che una testata porta.
-        if search:
-            campi = ["m.codice", "m.descrizione"]
-            if f.ha_descrizione:
-                campi.append("t.descrizione")
-            conditions.append("(" + " OR ".join(f"{c} ILIKE %s" for c in campi) + ")")
-            params.extend([f"%{search}%"] * len(campi))
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_DOCUMENTI[f.lista_codice])
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         ordinamento = sql_order_clause(
@@ -498,7 +496,7 @@ class MagazzinoRepository:
             default_desc=True,
             colonne_desc=DOCUMENTI_SORT_COLONNE_DATA,
         )
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"{_documento_select(f)} {where}",
             params=params,
             order_clause=ordinamento,
@@ -516,6 +514,21 @@ class MagazzinoRepository:
             cursor.execute(sql, [int(doc_id)])
             rows = rows_to_list(cursor)
         return self._shape(rows[0]) if rows else None  # type: ignore[return-value]
+
+    # Scopo: La capability del documento per il dettaglio API: quali azioni di
+    #        stato proporre, se «Registra» e' acceso e — se no — il primo
+    #        motivo, che cosa e' ancora modificabile, la nota dello stato
+    #        chiuso. Wrapper sull'involucro della famiglia
+    #        (`script.fn_available_actions_inventario` / `_rettifica`).
+    # ⛔ Blob OPACO: il backend TRASPORTA, non deduce (api.md §Capability). Le
+    #    azioni vengono dalla matrice che il guard fa rispettare e la terna di
+    #    «registra» dal primo motivo della check che le madri del posting
+    #    chiamano: ricalcolarle qui sarebbe la seconda sede di due regole.
+    # ⚠️ `{}` se la funzione torna NULL (documento fuori perimetro RLS o
+    #    inesistente): il 404 no-leak lo da' il service sulla TESTATA, letta
+    #    prima — una capability non solleva.
+    def get_capabilities(self, f: FamigliaDocumentoInterno, doc_id: int) -> dict[str, Any]:
+        return call_jsonb_fn(f.fn_capability, int(doc_id))
 
     # Scopo: Il riepilogo del piano di un inventario: quanti esiti di ogni
     #        specie, in una lettura sola (`count(*) FILTER`).
@@ -545,16 +558,21 @@ class MagazzinoRepository:
         self,
         inventario_id: int,
         *,
+        search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[PianoRigaRow], int]:
+        conditions: list[str] = []
+        params: list[Any] = [int(inventario_id)]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_PIANO)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         colonna = PIANO_SORT_COLUMNS.get(order_by or "", "articolo_codice")
         direzione = sql_order_direction(order_dir)
-        rows, total = self._lista_paginata(
-            select_sql=_PIANO_SELECT,
-            params=[int(inventario_id)],
+        rows, total = lista_paginata(
+            select_sql=f"{_PIANO_SELECT} {where}",
+            params=params,
             order_clause=(
                 f"{colonna} {direzione}, articolo_id, ubicazione_id, lotto_id, asset_id"
             ),
@@ -578,51 +596,29 @@ class MagazzinoRepository:
         descrizione: str | None,
         meta: dict[str, Any] | None,
     ) -> int:
-        colonne = ["magazzino_id", "meta"]
-        valori: list[Any] = [int(magazzino_id), json.dumps(meta or {})]
-        segnaposto = ["%s", "%s::jsonb"]
-        if data is not None:
-            colonne.append("data")
-            valori.append(data)
-            segnaposto.append("%s")
-        if f.ha_descrizione and descrizione is not None:
-            colonne.append("descrizione")
-            valori.append(descrizione)
-            segnaposto.append("%s")
-        sql = (
-            f"INSERT INTO {f.tabella} ({', '.join(colonne)}) "
-            f"VALUES ({', '.join(segnaposto)}) RETURNING id"
-        )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, valori)
-            return int(fetchone_scalar(cursor))
+        # Chiavi LETTERALI (`allowed=None`). `skip_none`: `data` assente lascia
+        # il DEFAULT del DB (oggi), `descrizione` assente resta NULL; `meta`
+        # viaggia sempre (`{}` se None, la colonna e' NOT NULL).
+        valori: dict[str, Any] = {"magazzino_id": int(magazzino_id), "meta": meta or {}, "data": data}
+        if f.ha_descrizione:
+            valori["descrizione"] = descrizione
+        riga = execute_dynamic_insert(f.tabella, valori, allowed=None, skip_none=True, jsonb=_JSONB_COLS)
+        return int(riga["id"])
 
     # Scopo: Aggiorna i campi di testata che una persona compila.
     # ⚠️ `None` AZZERA il campo nullable (la semantica dei documenti): `data`
-    #    e' NOT NULL e il service non la manda a `None`.
+    #    e' NOT NULL e il service non la manda a `None`; `meta` None vale `{}`.
+    # ⛔ `descrizione` su una famiglia senza la colonna (rettifica) e' fuori
+    #    whitelist: `RuntimeError`, non piu' scartata (il service non la ammette).
     def update_documento(
         self, f: FamigliaDocumentoInterno, doc_id: int, campi: dict[str, Any]
-    ) -> int:
-        set_parts: list[str] = []
-        params: list[Any] = []
-        for col, val in campi.items():
-            if col not in _COLONNE_TESTATA_AGGIORNABILI:
-                continue
-            if col == "descrizione" and not f.ha_descrizione:
-                continue
-            if col == "meta":
-                set_parts.append("meta = %s::jsonb")
-                params.append(json.dumps(val or {}))
-            else:
-                set_parts.append(f"{col} = %s")
-                params.append(val)
-        if not set_parts:
-            return 0
-        params.append(int(doc_id))
-        sql = f"UPDATE {f.tabella} SET {', '.join(set_parts)} WHERE id = %s"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount
+    ) -> bool:
+        ammesse = _COLONNE_TESTATA_AGGIORNABILI
+        if not f.ha_descrizione:
+            ammesse = ammesse - {"descrizione"}
+        return execute_dynamic_update(
+            f.tabella, int(doc_id), meta_mai_null(campi), allowed=ammesse, jsonb=_JSONB_COLS,
+        )
 
     # Scopo: Chiede al database il cambio di stato: `UPDATE … SET <stato>` e il
     #        guard decide (`E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`, la porta
@@ -630,7 +626,7 @@ class MagazzinoRepository:
     def set_stato_documento(
         self, f: FamigliaDocumentoInterno, doc_id: int, stato: str
     ) -> int:
-        sql = f"UPDATE {f.tabella} SET {f.col_stato} = %s WHERE id = %s"
+        sql = f"UPDATE {f.tabella} SET {f.col_stato} = %s WHERE id = %s"  # noqa: S608 — tabella e colonna di stato dal registro FAMIGLIE, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [stato, int(doc_id)])
             return cursor.rowcount
@@ -638,7 +634,7 @@ class MagazzinoRepository:
     # Scopo: Elimina una testata. Il DB decide (`E_MAG_DOCUMENTO_NON_ELIMINABILE`
     #        fuori da `DRAFT`); le righe cascano.
     def delete_documento(self, f: FamigliaDocumentoInterno, doc_id: int) -> int:
-        sql = f"DELETE FROM {f.tabella} WHERE id = %s"
+        sql = f"DELETE FROM {f.tabella} WHERE id = %s"  # noqa: S608 — tabella dal registro FAMIGLIE, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(doc_id)])
             return cursor.rowcount
@@ -649,7 +645,7 @@ class MagazzinoRepository:
     def posta_documento(
         self, f: FamigliaDocumentoInterno, doc_id: int
     ) -> list[MovimentoPostato]:
-        sql = f"SELECT movimento_id, riga_id, qta FROM {f.fn_posta}(%s)"
+        sql = f"SELECT movimento_id, riga_id, qta FROM {f.fn_posta}(%s)"  # noqa: S608 — funzione di posting dal registro FAMIGLIE, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(doc_id)])
             return rows_to_list(cursor)  # type: ignore[return-value]
@@ -664,6 +660,7 @@ class MagazzinoRepository:
         f: FamigliaDocumentoInterno,
         doc_id: int,
         *,
+        search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
@@ -675,9 +672,12 @@ class MagazzinoRepository:
             default="id",
             tiebreak="id",
         )
-        rows, total = self._lista_paginata(
-            select_sql=f"{_righe_select(f)} WHERE r.{f.fk_riga} = %s",
-            params=[int(doc_id)],
+        conditions: list[str] = [f"r.{f.fk_riga} = %s"]
+        params: list[Any] = [int(doc_id)]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_RIGHE[f.lista_righe_codice])
+        rows, total = lista_paginata(
+            select_sql=f"{_righe_select(f)} WHERE {' AND '.join(conditions)}",
+            params=params,
             order_clause=ordinamento,
             limit=limit,
             offset=offset,
@@ -701,60 +701,36 @@ class MagazzinoRepository:
     def create_riga(
         self, f: FamigliaDocumentoInterno, doc_id: int, campi: dict[str, Any]
     ) -> int:
-        ammesse = _colonne_riga(f)
-        colonne = [f.fk_riga]
-        valori: list[Any] = [int(doc_id)]
-        segnaposto = ["%s"]
-        for col, val in campi.items():
-            if col not in ammesse:
-                continue
-            colonne.append(col)
-            if col == "meta":
-                valori.append(json.dumps(val or {}))
-                segnaposto.append("%s::jsonb")
-            else:
-                valori.append(val)
-                segnaposto.append("%s")
-        sql = (
-            f"INSERT INTO {f.tabella_righe} ({', '.join(colonne)}) "
-            f"VALUES ({', '.join(segnaposto)}) RETURNING id"
+        # La FK verso la testata viene dall'argomento e VINCE sul payload.
+        riga = execute_dynamic_insert(
+            f.tabella_righe,
+            meta_mai_null({**campi, f.fk_riga: int(doc_id)}),
+            allowed=_colonne_riga(f) | {f.fk_riga},
+            jsonb=_JSONB_COLS,
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, valori)
-            return int(fetchone_scalar(cursor))
+        return int(riga["id"])
 
     # Scopo: Aggiorna una riga della testata indicata. `None` azzera un campo
-    #        nullable (togliere il lotto, l'ubicazione, il costo).
+    #        nullable (togliere il lotto, l'ubicazione, il costo). Legata alla
+    #        SUA testata nella `WHERE`: per questo il SET dal BB e il WHERE qui.
     def update_riga(
         self, f: FamigliaDocumentoInterno, doc_id: int, riga_id: int, campi: dict[str, Any]
-    ) -> int:
-        ammesse = _colonne_riga(f)
-        set_parts: list[str] = []
-        params: list[Any] = []
-        for col, val in campi.items():
-            if col not in ammesse:
-                continue
-            if col == "meta":
-                set_parts.append("meta = %s::jsonb")
-                params.append(json.dumps(val or {}))
-            else:
-                set_parts.append(f"{col} = %s")
-                params.append(val)
-        if not set_parts:
-            return 0
-        params.extend([int(riga_id), int(doc_id)])
+    ) -> bool:
+        if not campi:
+            return False
+        set_sql, params = sql_set_clause(meta_mai_null(campi), allowed=_colonne_riga(f), jsonb=_JSONB_COLS)
         sql = (
-            f"UPDATE {f.tabella_righe} SET {', '.join(set_parts)} "
+            f"UPDATE {f.tabella_righe} SET {set_sql} "  # noqa: S608 — tabella/FK dal registro FAMIGLIE, SET da sql_set_clause (colonne verificate sulla whitelist _colonne_riga), valori come parametri
             f"WHERE id = %s AND {f.fk_riga} = %s"
         )
         with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount
+            cursor.execute(sql, [*params, int(riga_id), int(doc_id)])
+            return cursor.rowcount > 0
 
     # Scopo: Elimina una riga della testata indicata (il guard di famiglia
     #        decide se lo stato lo ammette).
     def delete_riga(self, f: FamigliaDocumentoInterno, doc_id: int, riga_id: int) -> int:
-        sql = f"DELETE FROM {f.tabella_righe} WHERE id = %s AND {f.fk_riga} = %s"
+        sql = f"DELETE FROM {f.tabella_righe} WHERE id = %s AND {f.fk_riga} = %s"  # noqa: S608 — tabella e FK dal registro FAMIGLIE, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(riga_id), int(doc_id)])
             return cursor.rowcount
@@ -803,15 +779,18 @@ class MagazzinoRepository:
     def lookup_lotti(self, articolo_id: str, search: str | None) -> list[dict[str, Any]]:
         conditions = ["l.articolo_id = %s::uuid", "l.attivo IS TRUE"]
         params: list[Any] = [str(articolo_id)]
-        if search:
+        # La guardia legge il PATTERN, non il termine grezzo: «  » e' un
+        # termine assente, e con `if search:` diventava `ILIKE NULL` (zero righe).
+        pattern = pattern_contiene(search)
+        if pattern is not None:
             conditions.append("l.codice ILIKE %s")
-            params.append(f"%{search}%")
+            params.append(pattern)
         sql = f"""
             SELECT l.id, l.codice, l.data_arrivo, l.data_scadenza
               FROM magazzino.lotti l
              WHERE {' AND '.join(conditions)}
              ORDER BY l.data_arrivo DESC, l.codice, l.id
-        """
+        """  # noqa: S608 — WHERE da condizioni letterali, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return rows_to_list(cursor)
@@ -857,7 +836,7 @@ class MagazzinoRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[DisponibilitaRow], int]:
-        self._guard_canale_sistema("list_disponibilita")
+        guard_canale_sistema(f"{_FN}.list_disponibilita")
         conditions: list[str] = []
         params: list[Any] = []
         add_emittente_scope_condition(
@@ -873,15 +852,13 @@ class MagazzinoRepository:
             conditions.append("d.disponibile < 0")
         if solo_con_giacenza:
             conditions.append("d.giacenza <> 0")
-        if search:
-            conditions.append("(a.codice ILIKE %s OR a.descrizione ILIKE %s)")
-            params.extend([f"%{search}%"] * 2)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_DISPONIBILITA)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         colonna = DISPONIBILITA_SORT_COLUMNS.get(order_by or "", "articolo_codice")
         direzione = sql_order_direction(order_dir)
         spareggio = sql_tiebreak_direction(direzione)
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"{_DISPONIBILITA_SELECT} {where}",
             params=params,
             order_clause=f"{colonna} {direzione}, articolo_id {spareggio}, magazzino_id {spareggio}",
@@ -908,7 +885,7 @@ class MagazzinoRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[DisponibilitaArticoloRow], int]:
-        self._guard_canale_sistema("list_disponibilita_articoli")
+        guard_canale_sistema(f"{_FN}.list_disponibilita_articoli")
         conditions: list[str] = []
         params: list[Any] = []
         if articolo_id is not None:
@@ -918,9 +895,7 @@ class MagazzinoRepository:
             conditions.append("d.disponibile < 0")
         if solo_con_giacenza:
             conditions.append("d.giacenza <> 0")
-        if search:
-            conditions.append("(a.codice ILIKE %s OR a.descrizione ILIKE %s)")
-            params.extend([f"%{search}%"] * 2)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_DISPONIBILITA_ARTICOLI)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -928,7 +903,7 @@ class MagazzinoRepository:
             default="articolo_codice",
             tiebreak="articolo_id",
         )
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"{_DISPONIBILITA_ARTICOLI_SELECT} {where}",
             params=params,
             order_clause=ordinamento,
@@ -961,12 +936,13 @@ class MagazzinoRepository:
         data_a: date | None = None,
         sorgente_codice_interno: str | None = None,
         documento_sorgente: tuple[FamigliaDocumentoInterno, int] | None = None,
+        search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[MovimentoRow], int]:
-        self._guard_canale_sistema("list_movimenti")
+        guard_canale_sistema(f"{_FN}.list_movimenti")
         conditions: list[str] = []
         params: list[Any] = []
         add_emittente_scope_condition(
@@ -996,9 +972,10 @@ class MagazzinoRepository:
                 f"""sg.codice_interno = %s AND EXISTS (
                     SELECT 1 FROM {f.tabella_righe} r
                      WHERE r.id = mv.sorgente_riga AND r.{f.fk_riga} = %s
-                )"""
+                )"""  # noqa: S608 — tabella righe e FK dal registro FAMIGLIE, valori come parametri
             )
             params.extend([f.sorgente_codice_interno, int(doc_id)])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_MOVIMENTI)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         ordinamento = sql_order_clause(
@@ -1009,7 +986,7 @@ class MagazzinoRepository:
             default_desc=True,
             colonne_desc=MOVIMENTI_SORT_COLONNE_DATA,
         )
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"{_MOVIMENTI_SELECT} {where}",
             params=params,
             order_clause=ordinamento,

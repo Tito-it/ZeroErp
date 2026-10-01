@@ -21,13 +21,14 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useLookup } from '../../core/composables/useLookup'
 import { READONLY_DOMAINS, MANAGE_ICONS, STATO_DEFINIZIONE } from '../../core/constants'
-import { listEmittentiFiscali } from '../api/amministrazione'
+import { listEmittentiFiscali } from '../../core/apiCore'
 import {
   forkDefinizione,
   nuovaVersioneDefinizione,
   pubblicaDefinizione,
 } from '../api/definizioniWorkflow'
 import { useDefinizioniWorkflowStore } from '../stores/definizioniWorkflow'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -153,7 +154,7 @@ function buildRowActions(data) {
     {
       key: 'pubblica',
       label: t('amministrazione.definizioni_workflow.azione_pubblica'),
-      icon: 'pi pi-check',
+      icon: MANAGE_ICONS.PUBLISH,
       severity: 'primary',
       visible: data.stato === STATO_DEFINIZIONE.BOZZA,
       command: () => onPubblica(data),
@@ -171,15 +172,16 @@ onActivated(() => store.load())
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <FiltriLista :store="store">
         <LookupSelect
           v-model="store.filters.tipo_prestazione_id"
+          class="app-filter-w-md"
           rel="pratiche.tipi_prestazione"
           :placeholder="t('amministrazione.definizioni_workflow.filtro_tipo')"
           show-clear
           @change="onFiltroTipoChange"
         />
-      </div>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions" />
     </div>
 

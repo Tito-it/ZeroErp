@@ -1,12 +1,6 @@
 # Guida — Gestione Offerte commerciali
 
-> **Ultima revisione**: 8 giugno 2026 — modello completo: eccezioni "delta del
-> listino" simmetriche ai contratti, componenti BoM (`offerte_commerciali_eccezioni_componenti`),
-> stato `ANNULLATA` + `motivazione_rifiuto`, azioni data-driven via
-> `fn_available_actions_offerta`, push a contratto idempotente, valuta da resolver,
-> **generazione ordine da offerta ACCETTATA** (azione `genera_ordine`) e **mutua
-> esclusività contratto/ordine** (un'offerta accettata genera al massimo *uno* tra
-> contratto e ordine, in modo permanente).
+> **Ultimo aggiornamento**: 20 settembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -46,15 +40,15 @@ e cosa diventa quando le accetta?"*
 
 Caratteristiche di base:
 
-- è intestata a un **billing account** (cliente), a una **istanza utility** e a una
+* è intestata a un **billing account** (cliente), a una **istanza utility** e a una
   **utility** (Gas, Energia, Idrico, ecc.)
-- parte **sempre da un listino di riferimento** (`listino_id` obbligatorio), con
+* parte **sempre da un listino di riferimento** (`listino_id` obbligatorio), con
   un'eventuale **variazione globale** (sconto o maggiorazione su tutto il listino)
-- può contenere **eccezioni puntuali** per singoli articoli (prezzi personalizzati,
+* può contenere **eccezioni puntuali** per singoli articoli (prezzi personalizzati,
   esclusioni, articoli fuori listino) — esattamente come un contratto
-- ha un **ciclo di vita** con stati da bozza a emessa, fino all'accettazione o al
+* ha un **ciclo di vita** con stati da bozza a emessa, fino all'accettazione o al
   rifiuto, e supporta **revisioni**
-- quando **accettata**, può prendere **una** di due strade alternative (mai
+* quando **accettata**, può prendere **una** di due strade alternative (mai
   entrambe): essere **spinta in un contratto** (push a contratto) — nasce un
   contratto in DRAFT che eredita 1:1 le condizioni, per la fornitura ricorrente —
   oppure **generare un ordine** one-shot (azione `genera_ordine`), per una vendita
@@ -83,12 +77,12 @@ non sull'offerta — così la generazione è idempotente (vedi §8).
 
 Entrambi sono proposte al cliente, ma rispondono a esigenze diverse:
 
-| | **Preventivo** (`PRV-*`) | **Offerta commerciale** (`OFC-*`) |
-|---|---|---|
-| Cosa propone | Una transazione puntuale: articoli + quantità + prezzi, *adesso* | Condizioni quadro: listino + variazione + eccezioni |
-| Forma delle righe | Righe da ordinare (ogni riga è una voce con prezzo) | Eccezioni "delta del listino" (OVERRIDE / ESCLUSIONE / AGGIUNTA) |
-| Cosa genera l'accettazione | Una **commessa** → fattura una tantum | Un **contratto** in DRAFT (ricorrente) **oppure** un **ordine** one-shot — XOR |
-| "Fotografia" congelata | Prezzo riga-per-riga | Versione del listino (`listino_versione_id`) |
+|                            | **Preventivo** (`PRV-*`)                                         | **Offerta commerciale** (`OFC-*`)                                              |
+| -------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Cosa propone               | Una transazione puntuale: articoli + quantità + prezzi, *adesso* | Condizioni quadro: listino + variazione + eccezioni                            |
+| Forma delle righe          | Righe da ordinare (ogni riga è una voce con prezzo)              | Eccezioni "delta del listino" (OVERRIDE / ESCLUSIONE / AGGIUNTA)               |
+| Cosa genera l'accettazione | Una **commessa** → fattura una tantum                            | Un **contratto** in DRAFT (ricorrente) **oppure** un **ordine** one-shot — XOR |
+| "Fotografia" congelata     | Prezzo riga-per-riga                                             | Versione del listino (`listino_versione_id`)                                   |
 
 In breve: il preventivo è una proposta di **vendita puntuale**, l'offerta è una
 proposta di **relazione duratura**. Per questo l'offerta è strutturalmente gemella
@@ -108,19 +102,19 @@ del contratto, non del preventivo.
 
 Contiene il contesto commerciale e i parametri di pricing:
 
-- **chi** (`billing_account_id`, `istanza_utility_id`)
-- **per cosa** (`utility_id`)
-- **chi emette** (`emittente_fiscale_id`) — copiato 1:1 nel contratto generato
-- **listino** (`listino_id` obbligatorio, `listino_versione_id` nullable — fissato
+* **chi** (`billing_account_id`, `istanza_utility_id`)
+* **per cosa** (`utility_id`)
+* **chi emette** (`emittente_fiscale_id`) — copiato 1:1 nel contratto generato
+* **listino** (`listino_id` obbligatorio, `listino_versione_id` nullable — fissato
   all'emissione)
-- **variazione globale** (`tipo_variazione_globale`, `valore_variazione_globale`) — opzionale
-- **quando** (`validita_dal`, `validita_al` nullable = senza scadenza)
-- **valuta** (`valuta_id`) — riempita di default dal resolver (vedi §9)
-- **stato** corrente (`stato_doc_offerta_id`)
-- **revisione** (`revisione_numero`, `revisione_padre_id` — vedi §4)
-- **date evento** (`data_emissione`, `data_accettazione`, `data_rifiuto`,
+* **variazione globale** (`tipo_variazione_globale`, `valore_variazione_globale`) — opzionale
+* **quando** (`validita_dal`, `validita_al` nullable = senza scadenza)
+* **valuta** (`valuta_id`) — riempita di default dal resolver (vedi §9)
+* **stato** corrente (`stato_doc_offerta_id`)
+* **revisione** (`revisione_numero`, `revisione_padre_id` — vedi §4)
+* **date evento** (`data_emissione`, `data_accettazione`, `data_rifiuto`,
   `data_annullamento`) — popolate dai trigger di transizione
-- **`motivazione_rifiuto`** — testo libero, valorizzato alla chiusura negativa
+* **`motivazione_rifiuto`** — testo libero, valorizzato alla chiusura negativa
   (RIFIUTATA o ANNULLATA)
 
 ### 2.2 Eccezioni `offerte_commerciali_eccezioni`
@@ -129,17 +123,17 @@ Come nei contratti, le righe **non** sono "articoli da ordinare", ma **eccezioni
 al listino** — modificatori puntuali. Il campo `tipo_eccezione` (ENUM NOT NULL)
 qualifica il tipo:
 
-| `tipo_eccezione` | Significato | `prezzo_unitario` |
-|---|---|---|
-| `OVERRIDE` | Prezzo personalizzato per articolo **presente nel listino** | NOT NULL |
-| `ESCLUSIONE` | Articolo del listino **non disponibile** per questo cliente | NULL |
-| `AGGIUNTA` | Articolo **non presente nel listino**, aggiunto all'offerta | NOT NULL |
+| `tipo_eccezione` | Significato                                                 | `prezzo_unitario` |
+| ---------------- | ----------------------------------------------------------- | ----------------- |
+| `OVERRIDE`       | Prezzo personalizzato per articolo **presente nel listino** | NOT NULL          |
+| `ESCLUSIONE`     | Articolo del listino **non disponibile** per questo cliente | NULL              |
+| `AGGIUNTA`       | Articolo **non presente nel listino**, aggiunto all'offerta | NOT NULL          |
 
 Constraint principali:
 
-- al massimo una riga OVERRIDE/ESCLUSIONE per `(offerta, articolo)` (unique parziale)
-- al massimo una riga AGGIUNTA per `(offerta, articolo)` (unique parziale separato)
-- CHECK di coerenza prezzo per tipo: `prezzo_unitario` obbligatorio se OVERRIDE o
+* al massimo una riga OVERRIDE/ESCLUSIONE per `(offerta, articolo)` (unique parziale)
+* al massimo una riga AGGIUNTA per `(offerta, articolo)` (unique parziale separato)
+* CHECK di coerenza prezzo per tipo: `prezzo_unitario` obbligatorio se OVERRIDE o
   AGGIUNTA, NULL se ESCLUSIONE
 
 Per gli **articoli compositi** (distinta base): un'eccezione ESCLUSIONE **non genera
@@ -158,11 +152,9 @@ converte da sé nell'unità base (stesso meccanismo di preventivi e contratti �
 vuota: arriverà dal consumo effettivo, non da un valore fisso. Quando invece è
 *fissa* la quantità è obbligatoria.
 
-> **Allineamento 2026-05-31**: l'offerta ora converte la quantità e imposta il
-> default della fonte **esattamente come il contratto**. In passato non lo faceva, e
-> al momento di trasformare un'offerta accettata in contratto le righe a quantità
-> fissa venivano rifiutate (mancava il dato di quantità operativa). Ora la
-> trasformazione (push) è coerente e non si blocca.
+> L'offerta converte la quantità e imposta il default della fonte **esattamente
+> come il contratto**: senza questa coerenza, al push le righe a quantità fissa
+> verrebbero rifiutate, perché mancherebbe il dato di quantità operativa.
 
 ### 2.3 Componenti BoM `offerte_commerciali_eccezioni_componenti`
 
@@ -173,9 +165,9 @@ inserita a mano. La struttura è lo specchio di `contratti_righe_componenti`.
 
 I componenti portano, oltre al prezzo e alla quantità:
 
-- `coeff_qta_snapshot` — il coefficiente BoM congelato al momento della creazione
-- `origine_prezzo` e `prezzo_resolver_context` — da dove viene il prezzo (audit)
-- `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` — l'eventuale
+* `coeff_qta_snapshot` — il coefficiente BoM congelato al momento della creazione
+* `origine_prezzo` e `prezzo_resolver_context` — da dove viene il prezzo (audit)
+* `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` — l'eventuale
   approvazione L3 (vedi §6), che viene **trasportata 1:1 nel contratto** al push
 
 La composizione (quali componenti, in che quantità relative) è **immutabile**: si
@@ -197,14 +189,14 @@ copiati nel contratto al push.
 Gli stati sono governati da `config.stati_doc_offerte` e le transizioni ammesse da
 `config.stati_doc_offerte_transizioni`:
 
-| Stato | Significato | Modificabile? | Terminale? |
-|---|---|---|---|
-| `BOZZA` | In preparazione | Sì: testata, eccezioni, utility | No |
-| `EMESSA` | Inviata al cliente, in attesa di risposta | No | No |
-| `ACCETTATA` | Accettata dal cliente — pronta per il push a contratto | No | No |
-| `RIFIUTATA` | Rifiutata dal cliente (il "no" del cliente) | No | Sì |
-| `ANNULLATA` | Ritirata da noi prima dell'emissione | No | Sì |
-| `SUPERATA` | Sostituita da una revisione successiva | No | Sì |
+| Stato       | Significato                                            | Modificabile?                   | Terminale? |
+| ----------- | ------------------------------------------------------ | ------------------------------- | ---------- |
+| `BOZZA`     | In preparazione                                        | Sì: testata, eccezioni, utility | No         |
+| `EMESSA`    | Inviata al cliente, in attesa di risposta              | No                              | No         |
+| `ACCETTATA` | Accettata dal cliente — pronta per il push a contratto | No                              | No         |
+| `RIFIUTATA` | Rifiutata dal cliente (il "no" del cliente)            | No                              | Sì         |
+| `ANNULLATA` | Ritirata da noi prima dell'emissione                   | No                              | Sì         |
+| `SUPERATA`  | Sostituita da una revisione successiva                 | No                              | Sì         |
 
 Le transizioni permesse:
 
@@ -218,9 +210,9 @@ EMESSA  → SUPERATA     (automatica) quando nasce la revisione successiva
 
 Due transizioni sono **volutamente vietate** per non confondere la semantica:
 
-- `BOZZA → RIFIUTATA`: il rifiuto è il "no" del cliente, e un cliente può rifiutare
+* `BOZZA → RIFIUTATA`: il rifiuto è il "no" del cliente, e un cliente può rifiutare
   solo qualcosa che gli è stato emesso. Una bozza si **annulla**, non si rifiuta.
-- `EMESSA → ANNULLATA`: una volta emessa, una correzione si fa con una **revisione**
+* `EMESSA → ANNULLATA`: una volta emessa, una correzione si fa con una **revisione**
   (che porta la precedente a SUPERATA), non con un annullamento.
 
 La distinzione **RIFIUTATA vs ANNULLATA** è quindi semantica: rifiuto = no del
@@ -274,11 +266,11 @@ di vedere anche lo storico.
 Offerte e preventivi gestiscono le revisioni in **due modi diversi**. Vale la
 pena conoscerli perché il comportamento visibile cambia.
 
-| Aspetto | **Offerte** | **Preventivi** |
-|---|---|---|
-| Cosa succede alla versione precedente quando nasce la revisione | passa **subito a SUPERATA** (stato chiuso e definitivo, imposto in automatico) | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente |
-| Se abbandono/annullo la revisione appena iniziata | la precedente **resta chiusa** (SUPERATA): non torna indietro. Per riprovare si fa una nuova revisione | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo |
-| Come nasce il concetto di "versione valida" | dallo **stato** (SUPERATA/ANNULLATA = non valida) | da un **calcolo** (`is_attiva`), non da uno stato dedicato |
+| Aspetto                                                         | **Offerte**                                                                                            | **Preventivi**                                                                                        |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Cosa succede alla versione precedente quando nasce la revisione | passa **subito a SUPERATA** (stato chiuso e definitivo, imposto in automatico)                         | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente    |
+| Se abbandono/annullo la revisione appena iniziata               | la precedente **resta chiusa** (SUPERATA): non torna indietro. Per riprovare si fa una nuova revisione | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo |
+| Come nasce il concetto di "versione valida"                     | dallo **stato** (SUPERATA/ANNULLATA = non valida)                                                      | da un **calcolo** (`is_attiva`), non da uno stato dedicato                                            |
 
 Il motivo della differenza: un'offerta è un **documento a sé** per ogni revisione
 (OFC-… diversi in catena), quindi chiudere la precedente non crea problemi —
@@ -326,10 +318,10 @@ proposta in lavorazione, il contratto è un impegno.
 
 ### 5.3 Cosa può modificare l'operatore
 
-- ✅ **prezzi unitari** dei componenti, con controlli di autorizzazione
-- ✅ **IVA** del componente (coerente col padre)
-- ❌ **non** può aggiungere o rimuovere componenti dalla composizione
-- ❌ **non** può cambiare il coefficiente di quantità (snapshot immutabile)
+* ✅ **prezzi unitari** dei componenti, con controlli di autorizzazione
+* ✅ **IVA** del componente (coerente col padre)
+* ❌ **non** può aggiungere o rimuovere componenti dalla composizione
+* ❌ **non** può cambiare il coefficiente di quantità (snapshot immutabile)
 
 ---
 
@@ -343,11 +335,11 @@ finale per quell'articolo e **non** riceve la variazione globale.
 Quando l'operatore inserisce un prezzo personalizzato, passa per i tre gate di
 autorizzazione:
 
-- **L1 — Permesso**: senza il permesso di variare i prezzi, i campi di
+* **L1 — Permesso**: senza il permesso di variare i prezzi, i campi di
   override/variazione sono disabilitati e il backend rifiuta.
-- **L2 — Soglia**: il delta rispetto al prezzo suggerito non può eccedere le soglie
+* **L2 — Soglia**: il delta rispetto al prezzo suggerito non può eccedere le soglie
   configurate (cascata user → categoria_cliente → group → emittente → default).
-- **L3 — Escalation**: oltre la soglia, l'operatore richiede l'approvazione al
+* **L3 — Escalation**: oltre la soglia, l'operatore richiede l'approvazione al
   superiore tramite una pratica `APPROVAZIONE_PREZZO`; il prezzo resta `PENDING`
   finché approvato.
 
@@ -366,23 +358,23 @@ Le azioni eseguibili in ogni momento sono calcolate dal database da
 
 La funzione combina due fonti:
 
-- le **transizioni manuali** lette dalla configurazione
+* le **transizioni manuali** lette dalla configurazione
   (`config.stati_doc_offerte_transizioni`): `emetti`, `annulla`, `accetta`, `rifiuta`
-- tre azioni **speciali**: `crea_revisione` (solo da EMESSA), `push_contratto` e
+* tre azioni **speciali**: `crea_revisione` (solo da EMESSA), `push_contratto` e
   `genera_ordine` (entrambe solo da ACCETTATA e **mutuamente esclusive**: ciascuna
   è disponibile solo se dall'offerta non è stato ancora generato né un contratto né
   un ordine — vedi §8.bis)
 
 Per ogni azione la funzione restituisce i metadati per l'interfaccia (chiave di
-dispatch, stato target, etichetta i18n, icona, se serve conferma, se serve una
-motivazione) e una serie di flag di capability:
+dispatch, stato target, etichetta i18n, se serve conferma, se serve una
+motivazione; l'icona la sceglie l'interfaccia dalla chiave dell'azione) e una serie di flag di capability:
 
-| Flag | Vero quando |
-|---|---|
-| `can_edit_testata` / `can_edit_eccezioni` / `can_edit_utility` | l'offerta è in BOZZA |
-| `can_create_revisione` | l'offerta è EMESSA |
-| `can_push_contratto` | l'offerta è ACCETTATA **e** non esiste già né un contratto né un ordine generati dall'offerta (XOR) |
-| `can_genera_ordine` | l'offerta è ACCETTATA **e** non esiste già né un contratto né un ordine generati dall'offerta (XOR) |
+| Flag                                                                      | Vero quando                                                                                                   |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `can_edit_testata` / `can_edit_eccezioni` / `can_edit_utility`            | l'offerta è in BOZZA                                                                                          |
+| `can_create_revisione`                                                    | l'offerta è EMESSA                                                                                            |
+| `can_push_contratto`                                                      | l'offerta è ACCETTATA **e** non esiste già né un contratto né un ordine generati dall'offerta (XOR)           |
+| `can_genera_ordine`                                                       | l'offerta è ACCETTATA **e** non esiste già né un contratto né un ordine generati dall'offerta (XOR)           |
 | `can_push_contratto_reason` / `can_genera_ordine_reason` (+`_reason_key`) | (se l'azione non è possibile) il motivo, es. `OFFERTA_CONTRATTO_GIA_GENERATO` o `OFFERTA_ORDINE_GIA_GENERATO` |
 
 ---
@@ -404,14 +396,14 @@ che opera in transazione atomica.
 
 ### 8.2 Cosa viene copiato 1:1
 
-- **Testata** → contratto DRAFT: billing account, istanza/utility, listino e
+* **Testata** → contratto DRAFT: billing account, istanza/utility, listino e
   versione fissata, variazione globale, date di validità, emittente fiscale, valuta,
   metadati. Il nuovo contratto registra `offerta_id` come riferimento alla sorgente.
-- **Eccezioni** → `contratti_righe`: articolo, tipo eccezione, prezzo, quantità,
+* **Eccezioni** → `contratti_righe`: articolo, tipo eccezione, prezzo, quantità,
   parametri di fornitura, e — per ogni eccezione composita — i **componenti BoM**,
   con lo stato di approvazione prezzo trasportato (§6).
-- **Utility** → `contratti_utilities`: tutti i campi di fornitura.
-- **Pratica** (opzionale): se passata, l'offerta e il contratto vengono collegati
+* **Utility** → `contratti_utilities`: tutti i campi di fornitura.
+* **Pratica** (opzionale): se passata, l'offerta e il contratto vengono collegati
   alla pratica come sorgenti.
 
 Il contratto nasce in **DRAFT**: il push non lo attiva. Da lì segue il proprio ciclo
@@ -542,18 +534,18 @@ gestore → valuta predefinita del gestore*. Se nessuna valuta è risolvibile, s
 
 Codici sollevati dal dominio offerte (registrati in `config.messaggi_errore`):
 
-| Codice | Quando |
-|---|---|
-| `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO` | Emissione (BOZZA→EMESSA) con `listino_versione_id` non valorizzato |
-| `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA` | Emissione con versione listino non in stato ATTIVA |
-| `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` | Transizione di stato non prevista in configurazione |
-| `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO` | "Crea revisione" da uno stato diverso da EMESSA |
-| `E_OFFERTA_PUSH_STATO_NON_AMMESSO` | Push a contratto da uno stato diverso da ACCETTATA |
-| `E_OFFERTA_CONTRATTO_GIA_GENERATO` | Push a contratto già generato (idempotenza) **oppure** tentativo di generare un ordine quando l'offerta ha già un contratto (mutua esclusività XOR) |
-| `E_OFFERTA_ORDINE_GIA_GENERATO` | Push a contratto quando l'offerta ha già generato un ordine (mutua esclusività XOR) |
-| `E_ORD_OFFERTA_GIA_CONVERTITA` | Secondo tentativo di generare un ordine dalla stessa offerta (univocità 1:1 offerta→ordine) |
-| `E_DOC_COMPOSITO_BOM_VUOTA` | Articolo composito senza componenti validi alla data |
-| `E_CONFIG_MANCANTE` | Configurazione mancante (valuta non risolvibile, stato/sorgente assenti) |
+| Codice                                            | Quando                                                                                                                                              |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`      | Emissione (BOZZA→EMESSA) con `listino_versione_id` non valorizzato                                                                                  |
+| `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA` | Emissione con versione listino non in stato ATTIVA                                                                                                  |
+| `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`               | Transizione di stato non prevista in configurazione                                                                                                 |
+| `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`           | "Crea revisione" da uno stato diverso da EMESSA                                                                                                     |
+| `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                | Push a contratto da uno stato diverso da ACCETTATA                                                                                                  |
+| `E_OFFERTA_CONTRATTO_GIA_GENERATO`                | Push a contratto già generato (idempotenza) **oppure** tentativo di generare un ordine quando l'offerta ha già un contratto (mutua esclusività XOR) |
+| `E_OFFERTA_ORDINE_GIA_GENERATO`                   | Push a contratto quando l'offerta ha già generato un ordine (mutua esclusività XOR)                                                                 |
+| `E_ORD_OFFERTA_GIA_CONVERTITA`                    | Secondo tentativo di generare un ordine dalla stessa offerta (univocità 1:1 offerta→ordine)                                                         |
+| `E_DOC_COMPOSITO_BOM_VUOTA`                       | Articolo composito senza componenti validi alla data                                                                                                |
+| `E_CONFIG_MANCANTE`                               | Configurazione mancante (valuta non risolvibile, stato/sorgente assenti)                                                                            |
 
 ---
 
@@ -596,21 +588,24 @@ controlli equivalenti solo per dare messaggi parlanti prima del roundtrip.
 
 ## 14. Glossario rapido
 
-| Termine | Significato |
-|---|---|
-| **Offerta commerciale** | Proposta di condizioni quadro a un cliente. Stati BOZZA → EMESSA → ACCETTATA → (push) contratto; oppure RIFIUTATA / ANNULLATA / SUPERATA |
-| **Push a contratto** | Generazione del contratto DRAFT dall'offerta ACCETTATA, idempotente, con copia 1:1 di eccezioni, componenti e utility |
-| **Genera ordine** | Generazione di un ordine di vendita one-shot DRAFT dall'offerta ACCETTATA (righe espanse, prezzi negoziati), **alternativa** al push a contratto |
-| **XOR contratto/ordine** | Da un'offerta ACCETTATA si genera al massimo *uno* tra contratto e ordine; la prima generazione disabilita l'altra in modo permanente |
-| **OVERRIDE / ESCLUSIONE / AGGIUNTA** | I tre tipi di eccezione al listino (prezzo personalizzato / articolo non disponibile / articolo fuori listino) |
-| **SUPERATA** | Stato terminale automatico: l'offerta è stata sostituita da una revisione successiva |
-| **ANNULLATA** | Ritiro interno prima dell'emissione (≠ RIFIUTATA, che è il "no" del cliente) |
-| **is_attiva** | Predicato derivato dalla vista: lo stato non è SUPERATA né ANNULLATA |
-| **Versione listino fissata** | `listino_versione_id` congelato all'emissione: l'offerta propone i prezzi di quella versione |
-| **L1/L2/L3** | Livelli di autorizzazione pricing: Permesso / Soglia / Workflow approvazione |
+| Termine                              | Significato                                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Offerta commerciale**              | Proposta di condizioni quadro a un cliente. Stati BOZZA → EMESSA → ACCETTATA → (push) contratto; oppure RIFIUTATA / ANNULLATA / SUPERATA         |
+| **Push a contratto**                 | Generazione del contratto DRAFT dall'offerta ACCETTATA, idempotente, con copia 1:1 di eccezioni, componenti e utility                            |
+| **Genera ordine**                    | Generazione di un ordine di vendita one-shot DRAFT dall'offerta ACCETTATA (righe espanse, prezzi negoziati), **alternativa** al push a contratto |
+| **XOR contratto/ordine**             | Da un'offerta ACCETTATA si genera al massimo *uno* tra contratto e ordine; la prima generazione disabilita l'altra in modo permanente            |
+| **OVERRIDE / ESCLUSIONE / AGGIUNTA** | I tre tipi di eccezione al listino (prezzo personalizzato / articolo non disponibile / articolo fuori listino)                                   |
+| **SUPERATA**                         | Stato terminale automatico: l'offerta è stata sostituita da una revisione successiva                                                             |
+| **ANNULLATA**                        | Ritiro interno prima dell'emissione (≠ RIFIUTATA, che è il "no" del cliente)                                                                     |
+| **is_attiva**                        | Predicato derivato dalla vista: lo stato non è SUPERATA né ANNULLATA                                                                             |
+| **Versione listino fissata**         | `listino_versione_id` congelato all'emissione: l'offerta propone i prezzi di quella versione                                                     |
+| **L1/L2/L3**                         | Livelli di autorizzazione pricing: Permesso / Soglia / Workflow approvazione                                                                     |
 
 ---
 
 *Per il dettaglio tecnico delle API REST, formati payload e codici errore vedi la
 documentazione backend di dominio. Le decisioni di modello sono raccolte negli
 addendum di sviluppo (`dev/work-done/addendum-db-offerta-commerciale.md` e correlati).*
+
+---
+{% include-markdown "signature-core.md" %}

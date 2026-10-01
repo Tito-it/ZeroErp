@@ -1,0 +1,199 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ COMPLETATO SI GUADAGNA: il database lo rifiuta su un lotto fermo o annullato.
+#   Brief: brief-db-annullamento-chiude-la-vita §9.3 (decisione di Tid, 2026-09-23).
+#
+# ── 🔴 IL FATTO ───────────────────────────────────────────────────
+#   LTF-0010972, 2026-09-12: il rilancio delle 11:19:31 ha scritto
+#   ERRORE -> IN_ESECUZIONE -> COMPLETATO nella stessa transazione, con i suoi
+#   due soli documenti ancora in ERRORE (esiti 1921-1922, E_PULL_COMMESSA).
+#   Il verdetto del runner non contava ancora gli esiti: li ha aggiunti il
+#   commit 72f4be589 alle 16:15 dello stesso giorno. Il difetto del runner e'
+#   chiuso; questo changeSet chiude quello del MODELLO: a DB niente impediva
+#   quella scrittura.
+#
+# ── ⭐ PERCHE' UN TRIGGER, E NON IL GUARD DI fn_set_fatturazione_lotto_stato ──
+#   Il brief (prima stesura) diceva «nella funzione». Sarebbe stato un guard
+#   MUTO: il runner non la chiama. `set_lotto_job_stato` in
+#   pipeline_repository.py scrive `stato_lotto` con un UPDATE diretto e una
+#   sua copia della matrice degli stati (che diverge da quella della
+#   funzione su COMPLETATO -> ERRORE). Nessuna funzione DB viva scrive
+#   COMPLETATO; la funzione la chiamano solo due pgTAP. ⇒ La regola sta
+#   sull'unica cosa che tutti gli scrittori attraversano: la colonna.
+#
+# ── LE DUE DOMANDE ───────────────────────────────────────────────
+#   1. IL LOTTO E' FERMO? Lo dice la sede unica
+#      (vendite.vw_lotti_segnalazioni_summary, D-1 di Tid del 18-09): qui si
+#      LEGGE `fermo`, non si ricalcola nessun addendo. Il runner fa la stessa
+#      domanda alla stessa sede prima di scrivere, quindi in esercizio questo
+#      ramo non scatta mai: e' il cancello contro un chiamante che diverge —
+#      un altro percorso, un runner regredito — cioe' esattamente il 12-09.
+#   2. IL LOTTO E' ABORTITO? Dal 20260923-31 l'annullo chiude gli esiti
+#      (ESCLUSO), quindi su un annullato `fermo` torna falso e la domanda 1
+#      lo lascerebbe passare. Ma «la corsa e' finita bene» di un giro annullato
+#      e' la falsificazione che il 20260907-08 ha tolto dall'annullo
+#      (brief-db-esito-gruppo-lotto §24.3). Il runner rifiuta gia' i giri su
+#      un lotto ANNULLATA; qui lo dice il modello. Si legge il FLAG
+#      (config.stati_doc_fiscale.is_abortito), non un elenco di stati.
+#
+# ── ⚠️ COSA NON FA, E VA DETTO ────────────────────────────────────
+#   * Non chiude la porta dell'ESITO: un documento marcato ERRORE su un lotto
+#     GIA' COMPLETATO (fn_segna_esito_gruppo_lotto non guarda lo stato del
+#     lotto) produce la stessa contraddizione senza attraversare questa
+#     colonna. E' quella che vendite.vw_lotti_chiusi_con_gruppi_in_errore
+#     continua a sorvegliare — e il motivo per cui resta un presidio ZERO.
+#   * Solo UPDATE: un lotto che NASCE COMPLETATO non ha esiti ne' critiche,
+#     quindi non puo' essere fermo. E' anche la forma con cui i pgTAP
+#     costruiscono la contraddizione (test-lotti-gruppi-esito, casi 11-12).
+#   * Nessun bypass di manutenzione: nessuna madre legittima scrive
+#     COMPLETATO su un lotto fermo o annullato.
+#
+# ── ⚠️ RLS ────────────────────────────────────────────────────────
+#   Il trigger e' INVOKER e la sede e' security_invoker: legge sotto la veste
+#   di chi scrive. Chi puo' fare UPDATE sul lotto lo vede (la policy filtra
+#   anche l'UPDATE), e le righe figlie che la sede conta sono dello stesso
+#   emittente. Se la riga della sede non c'e' (lotto fuori perimetro) il
+#   ramo 1 non scatta: non puo' capitare a chi sta scrivendo quel lotto.
+#
+# ── NOME ─────────────────────────────────────────────────────────
+#   trg_fatturazione_lotti_a10_guard_completato_upd: `_a10_` e' la fase dei
+#   guard; fra i BEFORE UPDATE della tabella parla dopo gen_codice e prima di
+#   guard_emittente_scope e guard_stato (ordine alfabetico), che guardano
+#   altre colonne. `UPDATE OF stato_lotto`: non scatta su nient'altro.
+#
+# Codice: E_LOTTO_COMPLETATO_NON_GUADAGNATO (TECNICO) — codici_errore.csv e
+#   messaggi_errore.csv, stesso giro. Nessun operatore lo provoca: e' un
+#   chiamante rotto.
+# Verifica: db/pgtap/vendite/test-annullamento-chiude-la-vita-v1.sql
+#           db/pgtap/vendite/test-lotti-attivita-stato-esecuzione-v2.sql (9-11)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260923-30-create-trgfn-fatturazione-lotti-guard-completato-mctit.yaml
+
+  - changeSet:
+      id: 20260923-30-create-trgfn-fatturazione-lotti-guard-completato
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.trgfn_fatturazione_lotti_guard_completato + trigger BEFORE UPDATE OF
+        stato_lotto: la transizione verso COMPLETATO si rifiuta se la sede unica
+        (vw_lotti_segnalazioni_summary) dice il lotto fermo, o se il suo stato
+        fiscale e' abortito. Sulla colonna e non in fn_set_fatturazione_lotto_stato,
+        che il runner non chiama. Codice E_LOTTO_COMPLETATO_NON_GUADAGNATO (TECNICO).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_lotti_segnalazioni_summary
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_fiscale
+                columnName: is_abortito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatturazione_lotti_guard_completato()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: COMPLETATO («la corsa e' finita bene») si scrive solo su
+              --        un lotto che se l'e' guadagnato: non fermo, non abortito.
+              -- Uso:   BEFORE UPDATE OF stato_lotto FOR EACH ROW.
+              DECLARE
+                  v_fermo        vendite.vw_lotti_segnalazioni_summary.fermo%TYPE;
+                  v_fermo_motivo vendite.vw_lotti_segnalazioni_summary.fermo_motivo%TYPE;
+                  v_is_abortito  config.stati_doc_fiscale.is_abortito%TYPE;
+              BEGIN
+                  -- Solo l'ARRIVO su COMPLETATO: restarci, o andare altrove, non
+                  -- e' affare di questo guard.
+                  IF NEW.stato_lotto IS DISTINCT FROM 'COMPLETATO'
+                     OR OLD.stato_lotto IS NOT DISTINCT FROM NEW.stato_lotto THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ── 1) ABORTITO ─────────────────────────────────────
+                  -- Il flag, non un elenco di stati. NEW e non OLD: e' lo stato
+                  -- con cui la riga uscira' da questo UPDATE.
+                  -- ⚠️ Stato nullo o non risolvibile -> non abortito: il ramo
+                  --    tace, e decide il ramo 2.
+                  SELECT s.is_abortito
+                    INTO v_is_abortito
+                    FROM config.stati_doc_fiscale s
+                   WHERE s.id = NEW.stato_doc_fiscale_id;
+
+                  IF v_is_abortito IS TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_fatturazione_lotti_guard_completato',
+                          'E_LOTTO_COMPLETATO_NON_GUADAGNATO',
+                          jsonb_build_object('lotto_id', NEW.id,
+                                             'da', OLD.stato_lotto,
+                                             'motivo', 'ABORTITO'),
+                          NULL::uuid,
+                          NEW.codice,
+                          'e'' annullato');
+                  END IF;
+
+                  -- ── 2) FERMO ────────────────────────────────────────
+                  -- ⭐ Si LEGGE la sede unica: nessun addendo ricalcolato qui. Un
+                  --   addendo nuovo del verdetto vale da solo anche per questo guard.
+                  -- ⚠️ La sede legge le righe FIGLIE (esiti, segnalazioni, ponte),
+                  --   non la colonna che questo UPDATE sta cambiando: in BEFORE ROW
+                  --   la tabella ha ancora OLD, e qui non importa.
+                  SELECT s.fermo, s.fermo_motivo
+                    INTO v_fermo, v_fermo_motivo
+                    FROM vendite.vw_lotti_segnalazioni_summary s
+                   WHERE s.lotto_id = NEW.id;
+
+                  IF v_fermo IS TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_fatturazione_lotti_guard_completato',
+                          'E_LOTTO_COMPLETATO_NON_GUADAGNATO',
+                          jsonb_build_object('lotto_id', NEW.id,
+                                             'da', OLD.stato_lotto,
+                                             'motivo', 'FERMO',
+                                             'fermo_motivo', v_fermo_motivo),
+                          NULL::uuid,
+                          NEW.codice,
+                          CASE v_fermo_motivo
+                              WHEN 'CRITICHE'          THEN 'ha segnalazioni critiche aperte'
+                              WHEN 'FATTURE_IN_ERRORE' THEN 'ha fatture in errore'
+                              WHEN 'ESITI_IN_ERRORE'   THEN 'ha documenti in errore'
+                              ELSE 'risulta fermo'
+                          END);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fatturazione_lotti_guard_completato()
+              IS 'Guard BEFORE UPDATE OF stato_lotto su vendite.fatturazione_lotti: COMPLETATO si rifiuta (E_LOTTO_COMPLETATO_NON_GUADAGNATO, TECNICO) se lo stato fiscale del lotto e'' abortito (config.stati_doc_fiscale.is_abortito, letto da NEW) o se la sede unica vendite.vw_lotti_segnalazioni_summary lo dice fermo — letto, non ricalcolato. ⭐ Sulla COLONNA e non in fn_set_fatturazione_lotto_stato: il runner scrive stato_lotto con un UPDATE diretto e quella funzione non la chiama nessuno. Nasce da LTF-0010972 (2026-09-12): un rilancio ha scritto COMPLETATO con due documenti ancora in ERRORE. ⚠️ Non chiude la porta dell''esito (ERRORE scritto su un lotto gia'' COMPLETATO): quella la sorveglia vw_lotti_chiusi_con_gruppi_in_errore. Solo UPDATE: un lotto che nasce COMPLETATO non ha righe figlie. Brief: brief-db-annullamento-chiude-la-vita §9.3.';
+
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_a10_guard_completato_upd
+                  ON vendite.fatturazione_lotti;
+
+              CREATE TRIGGER trg_fatturazione_lotti_a10_guard_completato_upd
+                  BEFORE UPDATE OF stato_lotto
+                  ON vendite.fatturazione_lotti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fatturazione_lotti_guard_completato();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_a10_guard_completato_upd
+                  ON vendite.fatturazione_lotti;
+              DROP FUNCTION IF EXISTS vendite.trgfn_fatturazione_lotti_guard_completato();

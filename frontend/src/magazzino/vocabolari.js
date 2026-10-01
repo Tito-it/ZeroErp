@@ -140,3 +140,22 @@ export const TAB_DISPONIBILITA = Object.freeze({
   MAGAZZINI: 'magazzini',
   ARTICOLI: 'articoli',
 })
+
+// Le anagrafiche di magazzino (piano anagrafiche-fuori-dal-pannello-config):
+// il `rel` del lookup generico dei magazzini — lo montano i picker del
+// documento interno e lo invalida lo store dei magazzini a ogni scrittura — e
+// la chiave di cache del lookup delle ubicazioni DI UN magazzino (endpoint
+// dedicato, filtrato sul padre: una chiave per magazzino, o il primo montato
+// vincerebbe in silenzio sugli altri).
+export const LOOKUP_REL_MAGAZZINI = 'magazzino.magazzini'
+export function chiaveLookupUbicazioni(magazzinoId) {
+  return `magazzino.ubicazioni.${magazzinoId}`
+}
+
+// L'azione di processo che autorizza il VERBO IRREVERSIBILE (R-3 del brief
+// 2-bis, a catalogo dal 2026-09-23): una sola per la famiglia, perche' il
+// verbo e' lo stesso su inventari e rettifiche.
+// ⚠️ Qui serve solo a NASCONDERE il pulsante a chi non ce l'ha: il cancello
+//    vero e' il backend (`post_permission` su `.../registra/`), e resta
+//    fail-closed finche' un profilo non porta l'azione.
+export const AZIONE_REGISTRA_MAGAZZINO = 'registra_magazzino'

@@ -1,6 +1,6 @@
 // Scopo: gestione content tabs tipo browser — apertura, chiusura, stato dirty, persistenza, split view
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, toRaw } from 'vue'
 import { TABS } from '../core/constants'
 import { session, STORAGE_KEYS } from '../core/storage'
 import { DOMAIN_MENUS, resolveTabIcon } from '../core/navigation'
@@ -15,8 +15,21 @@ export const useTabsStore = defineStore('tabs', () => {
   const tabs = ref([])
   const activeTabId = ref(null)
 
-  // Flag reattivo: segnala ai componenti che il limite tab e' stato raggiunto
-  const tabLimitReached = ref(false)
+  // ⭐ OLTRE IL LIMITE LA DECIMA SI SOSTITUISCE (Tid, 2026-09-30): le prime
+  //    MAX_OPEN - 1 schede sono il tavolo di lavoro, l'ultima in fila e' la
+  //    scheda di passaggio. Fino a quel giorno l'undicesima era bloccata con un
+  //    toast, e l'operatore doveva cercare cosa chiudere e ripetere il clic.
+  //    La domanda la pone il guard del router (l'unico che apre le schede);
+  //    la conferma la mostra ContentTabs, perche' il guard non ha un
+  //    componente in cui aprire una dialog: qui sta solo la richiesta in
+  //    attesa, `{ tab, rispondi }`.
+  const richiestaSostituzione = ref(null)
+
+  // Chi ha modifiche non salvate, per tab: path → insieme delle sorgenti
+  // (drawer) sporche. Una tab e' sporca finche' ALMENO UNA sua sorgente lo e':
+  // con un flag solo, il primo drawer che salva lo abbasserebbe anche per
+  // l'altro ancora aperto con le sue modifiche.
+  const sorgentiSporche = new Map()
 
   // --- Split view state ---
   const pinnedTabId = ref(null)
@@ -72,11 +85,9 @@ export const useTabsStore = defineStore('tabs', () => {
       if (changed) persistTabs()
       return existing
     }
-    // Limite massimo tab — blocca apertura e segnala al componente
-    if (tabs.value.length >= TABS.MAX_OPEN) {
-      tabLimitReached.value = true
-      return null
-    }
+    // ⛔ Oltre il limite non si apre: chi arriva qui senza essere passato da
+    //    `schedaDaSostituire` + `sostituisci` ha saltato la conferma.
+    if (tabs.value.length >= TABS.MAX_OPEN) return null
     const tab = {
       id: generateId(),
       path,
@@ -94,6 +105,36 @@ export const useTabsStore = defineStore('tabs', () => {
     return tab
   }
 
+  // Scopo: la scheda che l'apertura di `path` sostituirebbe — l'ultima in
+  //        fila — o null se non serve sostituire niente (la scheda c'e' gia',
+  //        o c'e' ancora posto).
+  function schedaDaSostituire(path) {
+    if (tabs.value.some(t => t.path === path)) return null
+    if (tabs.value.length < TABS.MAX_OPEN) return null
+    return tabs.value[tabs.value.length - 1]
+  }
+
+  // Scopo: chiede conferma della sostituzione a chi mostra la dialog
+  //        (ContentTabs) e risponde true/false. Una richiesta ancora aperta
+  //        quando ne arriva un'altra e' una navigazione abbandonata: risponde
+  //        false, o la sua promessa resterebbe appesa per sempre.
+  function chiediSostituzione(tab) {
+    richiestaSostituzione.value?.rispondi(false)
+    return new Promise((resolve) => {
+      const richiesta = {
+        tab,
+        rispondi: (ok) => {
+          // ⚠️ `toRaw`: il ref custodisce un PROXY reattivo, e `===` con
+          //    l'oggetto originale e' sempre falso — la richiesta non si
+          //    svuoterebbe mai.
+          if (toRaw(richiestaSostituzione.value) === richiesta) richiestaSostituzione.value = null
+          resolve(ok === true)
+        },
+      }
+      richiestaSostituzione.value = richiesta
+    })
+  }
+
   // Rimuove una tab per id (senza conferma dirty — la conferma la gestisce il componente)
   function removeTab(tabId) {
     const idx = tabs.value.findIndex(t => t.id === tabId)
@@ -102,6 +143,7 @@ export const useTabsStore = defineStore('tabs', () => {
     if (pinnedTabId.value === tabId) {
       pinnedTabId.value = null
     }
+    sorgentiSporche.delete(tabs.value[idx].path)
     tabs.value.splice(idx, 1)
     // Se era la tab attiva, attiva la piu' vicina
     if (activeTabId.value === tabId) {
@@ -133,10 +175,18 @@ export const useTabsStore = defineStore('tabs', () => {
     activeTabId.value = tabs.value[prev].id
   }
 
-  // Imposta flag dirty su una tab
-  function setDirty(path, isDirty) {
+  // Scopo: una sorgente (un drawer, via `useDrawerFormPreserve`) dice se ha
+  //        modifiche non salvate; il flag `dirty` della tab ne e' la somma.
+  //        Lo leggono il pallino di ContentTabs, la conferma di chiusura
+  //        (`useConfirmCloseTab`) e l'avviso del cambio emittente.
+  function segnalaModifiche(path, sorgente, sporca) {
+    const insieme = sorgentiSporche.get(path) ?? new Set()
+    if (sporca) insieme.add(sorgente)
+    else insieme.delete(sorgente)
+    if (insieme.size) sorgentiSporche.set(path, insieme)
+    else sorgentiSporche.delete(path)
     const tab = tabs.value.find(t => t.path === path)
-    if (tab) tab.dirty = isDirty
+    if (tab) tab.dirty = insieme.size > 0
   }
 
   // Aggiorna la label di una tab
@@ -265,6 +315,7 @@ export const useTabsStore = defineStore('tabs', () => {
 
   // Chiudi tutte le tab (usato per logout)
   function closeAll() {
+    sorgentiSporche.clear()
     tabs.value = []
     activeTabId.value = null
     pinnedTabId.value = null
@@ -275,7 +326,10 @@ export const useTabsStore = defineStore('tabs', () => {
     tabs,
     activeTabId,
     activeTab,
-    tabLimitReached,
+    // Sostituzione oltre il limite
+    richiestaSostituzione,
+    schedaDaSostituire,
+    chiediSostituzione,
     // Split view
     pinnedTab,
     isSplit,
@@ -289,7 +343,7 @@ export const useTabsStore = defineStore('tabs', () => {
     activateTab,
     activateNextTab,
     activatePrevTab,
-    setDirty,
+    segnalaModifiche,
     updateLabel,
     setContextAware,
     findByPath,

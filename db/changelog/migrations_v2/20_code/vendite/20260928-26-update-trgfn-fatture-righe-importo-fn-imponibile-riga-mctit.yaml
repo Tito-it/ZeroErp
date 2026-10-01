@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_fatture_righe_importo: l'imponibile pieno dalla sede unica.
+#
+# Il trigger che scrive `fatture_righe.imponibile_riga` calcolava
+# qta x prezzo x (1 - sconto/100) a mano e lo passava a script.fn_arrotonda_importo.
+# Ora passa script.fn_imponibile_riga: l'imponibile pieno ha la sua sede, e
+# l'ARROTONDAMENTO configurato per articolo (decimali e metodo, ripiego 2 /
+# HALF_UP) resta esattamente dov'era — e' la politica del documento fiscale,
+# non della formula.
+#
+# ⚠️ Documento fiscale: il valore scritto non cambia (stessa espressione,
+#   stesso arrotondamento). Il congelamento oltre la soglia non c'entra: il
+#   trigger scatta solo su INSERT/UPDATE della riga, e l'UPDATE di una riga
+#   congelata e' gia' rifiutato a monte.
+#   Il DECLARE e' quello vivo, gia' ancorato a
+#   vendite.articolo_regole_fatturazione. `SECURITY INVOKER` reso esplicito
+#   (linee-guida-sql §5b), senza cambio di comportamento. Il COMMENT resta.
+#   ⚠️ E' la funzione di un trigger generato altrove: qui si riscrive solo la
+#   FUNZIONE, nessun DDL sul trigger (linee-guida-sql §11.5).
+#
+# Base: corpo vivo dalla doc auto-gen (identico a prosrc sullo scratch il
+#   2026-09-28), patchato da script con la sostituzione contata.
+# Cantiere: brief-db-liste-righe-documento §8.8 (D-8.8), §8.10 passo 3
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260928-26-update-trgfn-fatture-righe-importo-fn-imponibile-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260928-26-update-trgfn-fatture-righe-importo-fn-imponibile-riga
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_fatture_righe_importo: l'imponibile pieno da script.fn_imponibile_riga, poi
+        l'arrotondamento configurato come prima. Stesso valore scritto; SECURITY INVOKER esplicito.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_imponibile_riga'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_righe_importo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: l'importo di riga esiste sempre ed e' coerente con
+              --        quantita', prezzo e sconto della riga stessa.
+              -- Uso:   BEFORE INSERT OR UPDATE FOR EACH ROW (fase a20)
+              -- brief-fix-importi-riga-fattura-zero §4.1 (D1).
+              --
+              -- Il difetto che chiude: la colonna esisteva dal principio ma
+              -- NESSUNO la scriveva — ne' fn_generate_fatture_righe, ne' il
+              -- repository Python, ne' un trigger — e ogni fattura del sistema
+              -- valeva 0,00 EUR.
+              DECLARE
+                  v_decimali vendite.articolo_regole_fatturazione.arrotondamento_importi_dec%TYPE;
+                  v_metodo   vendite.articolo_regole_fatturazione.metodo_arrotondamento_importi%TYPE;
+              BEGIN
+                  -- Regole dell'articolo con FALLBACK ai default: LEFT JOIN da
+                  -- una riga-base cosi' si ottiene SEMPRE una riga. Un SELECT
+                  -- diretto darebbe zero righe quando l'articolo non ha regole,
+                  -- e i COALESCE non servirebbero a nulla (stesso pattern di
+                  -- vendite.fn_group_attivita_fatturabili).
+                  SELECT COALESCE(r.arrotondamento_importi_dec, 2),
+                         COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP')
+                    INTO v_decimali, v_metodo
+                    FROM (SELECT 1) base
+                    LEFT JOIN vendite.articolo_regole_fatturazione r
+                           ON r.articolo_id = NEW.articolo_id;
+
+                  -- La regola di arrotondamento vive in un punto solo.
+                  -- rev 2026-09-28 (brief-db-liste-righe-documento, D-8.8): l'imponibile
+                  --   pieno viene dalla sede unica, l'arrotondamento resta configurato.
+                  NEW.imponibile_riga := script.fn_arrotonda_importo(
+                      script.fn_imponibile_riga(NEW.qta, NEW.prezzo_unitario, NEW.sconto_percentuale),
+                      v_decimali,
+                      v_metodo
+                  );
+
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino: il corpo vivo prima di questo changeSet (20260728-09).
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_righe_importo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: l'importo di riga esiste sempre ed e' coerente con
+              --        quantita', prezzo e sconto della riga stessa.
+              -- Uso:   BEFORE INSERT OR UPDATE FOR EACH ROW (fase a20)
+              -- brief-fix-importi-riga-fattura-zero §4.1 (D1).
+              --
+              -- Il difetto che chiude: la colonna esisteva dal principio ma
+              -- NESSUNO la scriveva — ne' fn_generate_fatture_righe, ne' il
+              -- repository Python, ne' un trigger — e ogni fattura del sistema
+              -- valeva 0,00 EUR.
+              DECLARE
+                  v_decimali vendite.articolo_regole_fatturazione.arrotondamento_importi_dec%TYPE;
+                  v_metodo   vendite.articolo_regole_fatturazione.metodo_arrotondamento_importi%TYPE;
+              BEGIN
+                  -- Regole dell'articolo con FALLBACK ai default: LEFT JOIN da
+                  -- una riga-base cosi' si ottiene SEMPRE una riga. Un SELECT
+                  -- diretto darebbe zero righe quando l'articolo non ha regole,
+                  -- e i COALESCE non servirebbero a nulla (stesso pattern di
+                  -- vendite.fn_group_attivita_fatturabili).
+                  SELECT COALESCE(r.arrotondamento_importi_dec, 2),
+                         COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP')
+                    INTO v_decimali, v_metodo
+                    FROM (SELECT 1) base
+                    LEFT JOIN vendite.articolo_regole_fatturazione r
+                           ON r.articolo_id = NEW.articolo_id;
+
+                  -- La regola di arrotondamento vive in un punto solo.
+                  NEW.imponibile_riga := script.fn_arrotonda_importo(
+                      NEW.qta
+                        * NEW.prezzo_unitario
+                        * (1 - COALESCE(NEW.sconto_percentuale, 0) / 100),
+                      v_decimali,
+                      v_metodo
+                  );
+
+                  RETURN NEW;
+              END;
+              $function$;

@@ -29,7 +29,7 @@ classe_utenza, listino) si popolano dai rispettivi lookup specifici.
 
 | Parametro | Tipo | Descrizione |
 |---|---|---|
-| `search` | string | Ricerca su `categoria.codice`, `categoria.descrizione`, `listino.codice`, `listino.descrizione` (ILIKE) |
+| `search` | string | Ricerca libera sulle colonne che il catalogo della lista `anagrafiche.categorie_clienti_listini` accende per l'operatore (le decide il catalogo, non il codice: `ricerca_full` nella configurazione della lista). Da un carattere, senza 400: matrice di configurazione (Tid, 2026-09-24). |
 | `attivo` | bool | `true`/`false`/assente |
 | `categoria_cliente_id` | int | Filtro dimensionale |
 | `utility_id` | int | Filtro dimensionale |
@@ -179,7 +179,7 @@ con cache modulo-level via `useGlobalLookup('anag.categorie_listini_tipi_variazi
 | `fk_categ_cli_listini_listino` | FK | `E_ANAG_FK` — "Listino inesistente." |
 | `chk_categ_cli_listini_tipo_variazione` | CHECK | `E_ANAG_VALIDAZIONE` — enum invalido. Anticipato lato service. |
 | `chk_categ_cli_listini_variazione_coerente` | CHECK | `E_ANAG_VALIDAZIONE` — coppia tipo/valore incoerente. Anticipato lato service. |
-| `chk_categ_cli_listini_valido_al_ge_dal` | CHECK | `E_ANAG_VALIDAZIONE` — `valido_al < valido_dal`. Anticipato lato service. |
+| guard comune delle date (`trg_categorie_clienti_listini_a10_date_validita_ins_upd`) | TRIGGER | `E_DATA_AL_MINORE_DAL` (400, campo `valido_al`) — `valido_al < valido_dal`. Il service non lo anticipa (dal 2026-09-23). |
 | `ex_categ_cli_listini_no_overlap` | EXCLUDE gist | `E_ANAG_MATRICE_OVERLAP` — due righe attive si sovrappongono sulla stessa quadrupla (categoria, utility, emittente, classe_utenza con sentinel `-1` per NULL) nello stesso periodo. |
 
 ### Immutabilita' dimensioni in `PATCH`
@@ -194,8 +194,7 @@ esplicita per evitare perdite di audit storico.
 
 ### Campo `validita` (daterange)
 
-La colonna `validita` e' generata automaticamente dal trigger
-`trg_categorie_clienti_listini_a20_set_validita_ins_upd` a partire da
+La colonna `validita` e' una colonna **generata** dal database a partire da
 `valido_dal`/`valido_al`. Non e' scrivibile via API ne' esposta in output:
 il contratto espone `valido_dal`/`valido_al` che sono semanticamente
 equivalenti per gli amministratori.
@@ -204,7 +203,8 @@ equivalenti per gli amministratori.
 
 * Tabella: `anagrafiche.categorie_clienti_listini` (creata da
   `20260414-07-create-categorie-clienti-listini-mctit.yaml`).
-* Funzione trigger: `script.trgfn_set_validita()` (condivisa cross-schema).
+* Ordine delle date: guard comune `script.trgfn_guard_date_validita`
+  (automazione `DATE_VALIDITA`), che risponde `E_DATA_AL_MINORE_DAL`.
 * Extension: `btree_gist` (baseline).
 * FK verso: `anagrafiche.categorie_clienti`, `config.utilities`,
   `anagrafiche.soggetti_ruoli`, `config.classi_utenze`, `vendite.listini`.

@@ -7,7 +7,7 @@
 > [vendite.vw_resi_da_riconsegnare](/dbzero/vendite/views/vw_resi_da_riconsegnare) (gemella)
 >
 > Fonti del conto:
-> [vw_contatore_merce](vw_contatore_merce.md) ·
+> [vw_partite_merce](vw_partite_merce.md) ·
 > [vw_resi_righe_effettive](vw_resi_righe_effettive.md)
 >
 > Consumatore: [vw_dash_backlog_documenti](vw_dash_backlog_documenti.md)
@@ -17,7 +17,7 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-17 — agganciata alla partita di merce; rev 2026-07-26 etichetta reso-aware;
+(rev 2026-09-21 — la vista è la proiezione di `fn_resi_da_accreditare`; rev 2026-08-17 — agganciata alla partita di merce; rev 2026-07-26 etichetta reso-aware;
 rev 2026-07-18 forma cambiata)
 
 > ⭐ **Dal 2026-08-17 la coda si aggancia alla PARTITA DI MERCE**
@@ -55,8 +55,9 @@ una slice successiva; qui la coda dice *cosa è successo* («fatturata per 10, t
 
 ### Regole chiave
 
-**Popolazione = il conto, non il tipo.** Entra chi ha `vw_contatore_merce.differenza < 0`,
-cioè `fatturati > tenuti`:
+**Popolazione = il conto, non il tipo.** Entra chi ha la partita
+([`vw_partite_merce`](vw_partite_merce.md)) con `differenza < 0`, cioè
+`fatturati > tenuti`:
 
 ```text
 accredito_dovuto = fatturati − tenuti      (esposto in colonna)
@@ -97,8 +98,8 @@ altrimenti                                                    ->  DOVUTA
 È l'ultimo pezzo che rende **visibile** la chiusura: chi lavora la coda «dovute» prima non
 vedeva mai quelle righe.
 
-⚠️ **L'IMPORTO NON CAMBIA.** `accredito_dovuto` viene dal contatore
-([`vw_contatore_merce`](/dbzero/vendite/views/vw_contatore_merce)), che le rinunce **non
+⚠️ **L'IMPORTO NON CAMBIA.** `accredito_dovuto` viene dal conto della partita
+([`vw_partite_merce`](/dbzero/vendite/views/vw_partite_merce)), che le rinunce **non
 toccano** per scelta di progetto. Una rinuncia cambia l'etichetta, non il numero: se dopo
 una chiusura l'importo cambiasse — o la riga uscisse dalla coda — sarebbe il sintomo che la
 sottrazione delle rinunce è finita nella vista sbagliata.
@@ -142,7 +143,8 @@ ORDER BY data;
   ancora — si promuove con una cella di seed quando esisterà la NC.
 * **`security_invoker=on`** + RLS sulla base; espone `emittente_fiscale_id` per il filtro
   applicativo BE. ⚠️ Ri-specificarla a ogni `CREATE OR REPLACE`.
-* Test: `db/pgtap/vendite/test-vw-resi-da-accreditare-contatore-v1.sql`.
+* Test: `db/pgtap/vendite/test-vw-resi-da-accreditare-contatore-v1.sql`;
+  `test-fn-resi-da-accreditare-chiusura-v1.sql` (rev 2026-09-21).
 
 ---
 
@@ -194,6 +196,42 @@ alla generazione della fattura. La finestra temporale che il brief descriveva al
 per costruzione**: quando l'accredito della partita è minore della quantità resa,
 la riga viene accreditata per meno di quanto ha reso e può tornare in coda per il
 residuo.
+
+---
+
+### 🔄 rev 2026-09-21 — la coda sta nella funzione, la vista ne è la proiezione (D14, giro 2 — D3)
+
+ChangeSet `20260921-28` (la funzione), `-29` (la vista), `-30` e `-31` (i due
+verbi). Brief: `work-done/brief-db-partita-merce-per-documento.md`,
+decisione D3 di Tid. **Niente cambia nel risultato**: stesse 27 colonne, stessi
+tipi, stesse righe, stessi numeri. Cambia **dove sta la coda** e **chi la paga**.
+
+**La coda sta in [`fn_resi_da_accreditare(p_ddt_ids, p_ordine_ids)`](fn_resi_da_accreditare.md)**,
+e questa vista è `fn_resi_da_accreditare(NULL, NULL)`: un corpo solo. Chi la
+leggeva per **una riga** — il verbo «accredita» e il guard del ponte, a ogni
+riga scritta — pagava la coda di **tutti** i resi: le partite di tutti, i resi
+di tutti, `fn_resi_riga_accreditato_partita` per ogni riga confermata del
+database. Ora chiamano la funzione col DDT della riga resa e pagano la coda di
+quel documento. ⏳ Il backend per documento (`list_situazione_merce_accrediti`,
+`list_da_accreditare` con `ddt_id`/`ordine_id`) è la richiesta BE del brief.
+Chi legge **tutta** la coda — la lista configurabile, il backlog — continua a
+leggere la vista, che costa quanto prima.
+
+⭐ **Il seme per ordine segue il predicato del backend** (un fulfillment della
+riga di DDT resa verso l'ordine), non l'`ordine_id` proiettato della partita:
+una riga di DDT che evade due ordini sta nella coda di **entrambi**, com'è
+sempre stato dal building block `filtro_coda_per_documento`.
+
+⚠️ **La vista proietta le colonne per nome, coi cinque `varchar` ricastati**
+(`reso_numero` 32, `ba_codice` 30, `descrizione` e `motivo` 255, `ddt_numero`
+20): un `RETURNS TABLE` perde i typmod, e un `SELECT *` sarebbe passato
+cambiando il contratto in silenzio. Il pgTAP della chiusura li pinna.
+
+Presidi: `test-fn-resi-da-accreditare-chiusura-v1` (nuovo, 12 test a casi
+costruiti: le sorelle con capienza parziale, la riga `MULTIPLA` nella coda di
+entrambi gli ordini, il verbo e il guard attraverso la funzione) +
+`rls/test-rls-viste-security-invoker` (attraversa le due funzioni). I test di
+sempre — questa vista, i verbi, il backlog — non cambiano.
 
 ---
 

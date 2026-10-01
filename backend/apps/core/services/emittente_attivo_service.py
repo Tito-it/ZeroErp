@@ -166,6 +166,18 @@ class EmittenteAttivoService:
             "puo_scegliere": puo_scegliere,
             "deve_scegliere": attivo_da_claim is None and mai_scelto,
         }
+        # Chi e' l'emittente ATTIVO: nome e RUOLO (`soggetti_ruoli.id`).
+        # Servono al FE per scrivere dentro l'emittente scelto dal super admin
+        # — un listino si lega al ruolo dell'emittente, non alla sua PK — e per
+        # dire all'operatore dove sta creando. Prima il FE li aveva solo per
+        # l'emittente di PERMESSO (`emittente` di /me/), cioe' mai per il
+        # super admin: il listino gli restava non creabile anche dopo la
+        # scelta (2026-09-26). Chiavi additive; assenti in modalita' globale.
+        if attivo_da_claim is not None:
+            voci = self._repo.list_selezionabili(auth_user_id, solo_id=attivo_da_claim)
+            if voci:
+                descrizione["ragione_sociale"] = voci[0]["ragione_sociale"]
+                descrizione["soggetto_ruolo_id"] = voci[0]["soggetto_ruolo_id"]
         # Perimetro EFFETTIVO della sessione: sta guardando piu' di un
         # emittente? Alimenta le etichette di perimetro su contatori e ricerca
         # (P-2c): «Da fatturare: 240.000 € — tutti gli emittenti» e'

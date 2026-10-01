@@ -34,9 +34,12 @@ BEGIN
     --      STORED generated: PostgreSQL rifiuta scritture dirette
     --      prima che il trigger venga eseguito; in BEFORE trigger
     --      NEW.validita e' NULL e non puo' essere usata per check.
-    --   3. UPDATE di solo valido_al ammesso + check
-    --      NEW.valido_al >= OLD.valido_dal -> altrimenti
-    --      E_BOM_VALIDO_AL_INVALIDO.
+    --   3. UPDATE di valido_al ammesso (chiusura della riga).
+    --      L'ordine delle date NON si giudica qui: lo giudica il
+    --      guard comune script.trgfn_guard_date_validita, montato
+    --      dall'automazione DATE_VALIDITA su ogni tabella con la
+    --      coppia valido_dal/valido_al (rev 20260924-01: ritirato
+    --      il ramo E_BOM_VALIDO_AL_INVALIDO, che ne era una copia).
     --   4. UPDATE di campi note/meta/attivo + audit
     --      (user_update/data_update/tx_id) -> ammesso.
     -- =========================================================
@@ -85,31 +88,6 @@ BEGIN
                 VARIADIC ARRAY[]::text[]
             );
         END IF;
-
-        -- Check coerenza range su UPDATE valido_al.
-        -- chk_articoli_componenti_valid_dates copre
-        -- "valido_al > valido_dal"; qui intercettiamo
-        -- valido_al < valido_dal con error code custom
-        -- UI-friendly. Il caso valido_al = valido_dal
-        -- resta a carico del CHECK (errore tecnico).
-        IF NEW.valido_al IS DISTINCT FROM OLD.valido_al
-           AND NEW.valido_al IS NOT NULL
-           AND NEW.valido_al < OLD.valido_dal
-        THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database',
-                TG_NAME,
-                'E_BOM_VALIDO_AL_INVALIDO',
-                jsonb_build_object(
-                    'valido_al',   NEW.valido_al,
-                    'valido_dal',  OLD.valido_dal,
-                    'riga_id',     OLD.id
-                ),
-                NULL::uuid,
-                NEW.valido_al::text,
-                OLD.valido_dal::text
-            );
-        END IF;
     END IF;
 
     RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
@@ -117,7 +95,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()
-IS 'Trigger function: blocca DELETE e UPDATE dei campi di struttura di catalogo.articoli_componenti (BoM immutabile, pattern chiudi+inserisci). Ammette UPDATE di valido_al (con check >=valido_dal), attivo, note, meta, audit. validita e'' STORED generated: scritture dirette rifiutate da PG. Error code: E_BOM_MODIFICA_VIETATA (387), E_BOM_VALIDO_AL_INVALIDO (388). rev 2026-05-14.';
+IS 'Trigger function: blocca DELETE e UPDATE dei campi di struttura di catalogo.articoli_componenti (BoM immutabile, pattern chiudi+inserisci). Ammette UPDATE di valido_al (chiusura), attivo, note, meta, audit. validita e'' STORED generated: scritture dirette rifiutate da PG. Error code: E_BOM_MODIFICA_VIETATA (387). Rev 20260924-01: l''ordine delle date (valido_al non precede valido_dal) non e'' piu'' qui: ha una sede sola, script.trgfn_guard_date_validita (automazione DATE_VALIDITA); E_BOM_VALIDO_AL_INVALIDO ritirato.';
 ```
 
 ---

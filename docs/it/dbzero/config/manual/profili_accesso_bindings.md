@@ -76,6 +76,17 @@ Permette di **sospendere** un binding senza cancellarlo. Utile durante
 riorganizzazioni o test di configurazione. Se `attivo = false` il binding
 non partecipa alla risoluzione del profilo.
 
+⭐ **Il binding non segue la veste** (dal 2026-09-25): `attivo` del binding e
+`attivo` dell'identità sono due domande diverse — *cosa si può fare dentro* e
+*se la porta è aperta* — e l'automazione ATTIVO non le lega più (la FK
+`identita_digitale_id` è un'eccezione dichiarata in
+[`dbops.automazione_attivo_eccezioni`](/dbzero/dbops/manual/automazione_attivo_eccezioni)).
+Un binding attivo può quindi stare su una veste spenta: è l'operatore che
+aspetta di accettare l'invito (la veste OPERATORE nasce spenta), o quello
+disattivato, che al reinvito ritrova i suoi profili. Chi risolve i permessi
+chiede **entrambe** le cose (`fn_is_super_admin`,
+`fn_get_profili_accesso_applicabili`, i check anti-lockout).
+
 ---
 
 ### Uso nella catena di risoluzione

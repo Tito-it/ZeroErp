@@ -5,85 +5,54 @@
 //        sort e search sono server-side (endpoint allineato alle due sorelle
 //        UoM il 2026-08-01). Nessuna colonna azioni: il catalogo non la
 //        prevede, la riga si apre col click.
-import { onMounted } from 'vue'
+// ⭐ La pagina e' `<ListaPaginaSemplice>` (2026-09-27, regola del 2, ok Tid):
+//    qui restano solo cio' che distingue questa lista — filtri, celle, testi.
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConversioniUomStore } from '../stores/conversioniUom'
-import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
-import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import InputText from 'primevue/inputtext'
-import AttivoTag from '../../core/components/AttivoTag.vue'
-import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
-import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
-import PageActionsBar from '../../core/components/PageActionsBar.vue'
-import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
-import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
-import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import ListaPaginaSemplice from '../../core/components/ListaPaginaSemplice.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { TAB_ENTITIES } from '../../core/constants'
+import AttivoTag from '../../core/components/AttivoTag.vue'
+import FiltroToggle from '../../core/components/FiltroToggle.vue'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useConversioniUomStore()
-const isBlocked = useInjectBlocked()
-const {
-  searchText, onPage, onSort, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
-} = useListaConfigurabilePage(store, {
-  newTooltipKey: 'catalogo.nuova_conversione',
-  onNew: () => emit('new'),
-  // `valido_al` DESC: regola di dominio sulle liste con date di validita'
-  // (vedi lo store, che porta la stessa scelta e il perche' della direzione).
-  searchTableOptions: { defaultSortField: 'valido_al', defaultSortOrder: 'desc' },
-})
-
-// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
-function onRowClick(data) { emit('row-click', data) }
-
-useTabFreshness(store, TAB_ENTITIES.CONVERSIONI_UOM)
-onMounted(() => store.fetchList())
+// `applyFilters` lo possiede la pagina (legge la casella di ricerca): lo si
+// chiede pigro, al cambio del filtro.
+const pagina = ref(null)
+const { bindToggle } = useStoreFilterBindings(store, () => pagina.value.applyFilters())
+const { value: mostraNonAttive, onChange: onMostraNonAttiveChange } = bindToggle(
+  'attivo', { on: null, off: true },
+)
 </script>
 
 <template>
-  <div class="app-tab-content">
-    <AccessoBloccatoPanel v-if="isBlocked" />
-
-    <template v-else>
-    <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText v-model="searchText" :placeholder="t('catalogo.conv_search_placeholder')" />
-      </div>
-      <PageActionsBar :actions="pageActions">
-        <template #suffix>
-          <ListaConfigStatusTag :dirty="dirty" />
-          <ReadonlyBadge />
-        </template>
-      </PageActionsBar>
-    </div>
-
-    <ListaConfigurabile
-      ref="listaRef"
-      codice="catalogo.conversioni_uom"
-      :rows="store.items"
-      :total="store.totalRecords"
-      :loading="store.loading"
-      :paginator-options="paginatorProps"
-      :page="tablePage"
-      :sort-field="paginatorProps.sortField"
-      :sort-order="paginatorProps.sortOrder"
-      @page="onPage"
-      @sort="onSort"
-      @row-click="onRowClick"
-      @config-loaded="onConfigLoaded"
-    >
-      <template #cell-fattore="{ data }">
-        <span class="app-mono">{{ data.fattore }}</span>
-      </template>
-      <template #cell-attivo="{ data }">
-        <AttivoTag :active="data.attivo" />
-      </template>
-    </ListaConfigurabile>
+  <ListaPaginaSemplice
+    ref="pagina"
+    :store="store"
+    codice="catalogo.conversioni_uom"
+    :tab-entity="TAB_ENTITIES.CONVERSIONI_UOM"
+    :search-placeholder="t('catalogo.conv_search_placeholder')"
+    new-tooltip-key="catalogo.nuova_conversione"
+    default-sort-field="valido_al"
+    default-sort-order="desc"
+    @row-click="(riga) => emit('row-click', riga)"
+    @new="emit('new')"
+  >
+    <template #filtri>
+      <FiltroToggle
+        v-model="mostraNonAttive"
+        :label="t('catalogo.conv_mostra_non_attive')"
+        @change="onMostraNonAttiveChange"
+      />
     </template>
-  </div>
+    <template #cell-fattore="{ data }">
+      <span class="app-mono">{{ data.fattore }}</span>
+    </template>
+    <template #cell-attivo="{ data }">
+      <AttivoTag :active="data.attivo" />
+    </template>
+  </ListaPaginaSemplice>
 </template>
-
-<style scoped>
-</style>

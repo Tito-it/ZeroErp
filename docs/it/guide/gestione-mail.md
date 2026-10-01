@@ -362,7 +362,7 @@ usa l'account SMTP originale (quello con cui l'email era stata preparata).
 ## Sicurezza
 
 * **Filtro nel database** su bozze e registro invii: l'ambito e l'azienda non sono più solo una regola applicativa — vedi [Ambito e visibilità](#ambito-e-visibilita)
-* **Password SMTP crittografata** con Fernet (chiave derivata da `SECRET_KEY`) — mai in chiaro in DB o API
+* **Password SMTP crittografata** con Fernet (chiavi `DJANGO_FIELD_ENCRYPTION_KEYS`, separate dalla `SECRET_KEY`) — mai in chiaro in DB o API
 * **Ownership check** su tutte le operazioni outbox e allegati — fail-closed se nessun outbox padre
 * **Path traversal guard** su download allegati
 * **Whitelist colonne** aggiornabili nei metodi UPDATE del repository
@@ -410,7 +410,7 @@ pratiche ZeroErp via API bidirezionale.
 | `EMAIL_ATTACHMENTS_ROOT` | `{BASE_DIR}/email_attachments` | Root storage allegati |
 | `EMAIL_ATTACHMENT_MAX_SIZE_MB` | `10` | Dimensione massima allegato in MB |
 | `EMAIL_ATTACHMENT_MAX_COUNT` | `10` | Numero massimo allegati per email |
-| `FRONTEND_URL` | `http://localhost:5173` | Base URL per link nelle email (reset, invito, attivazione) |
+| `FRONTEND_URL` | obbligatoria, nessun default (l'ingresso Nginx, es. `https://backend-dev.tailXXXX.ts.net`) | Base URL per link nelle email (reset, invito, attivazione) |
 
 ---
 
@@ -457,3 +457,6 @@ pratiche ZeroErp via API bidirezionale.
 | `apps/amm_software/api/email_views.py` | API admin (account, template, log) |
 | `apps/core/api/email_views.py` | API operatore (outbox, allegati, log) |
 | `apps/core/management/commands/send_pending_emails.py` | Command coda email |
+
+---
+{% include-markdown "signature-core.md" %}

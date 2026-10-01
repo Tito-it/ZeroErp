@@ -16,11 +16,21 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
     row_to_dict,
     rows_to_list,
 )
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
+
+
+# Colonne jsonb di `vendite.promo_articoli`, dichiarate al BB: una stringa li'
+# e' testo JSON (regola Tid 2026-09-26). Il service manda sempre un dict
+# (`optional_meta`).
+_JSONB_COLS: tuple[str, ...] = ("meta",)
 
 
 # Whitelist colonne ammesse per ORDER BY (SQL injection safe).
@@ -40,6 +50,24 @@ _ORDER_COLS: dict[str, str] = {
     "data_insert": "p.data_insert",
     "data_update": "p.data_update",
 }
+
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⭐ Forma a MAPPA: `articolo_*` sono nomi di USCITA della `_SELECT_COLS`, e il
+#    valore e' la STESSA espressione che la SELECT proietta con quel nome — si
+#    cerca su cio' che si mostra. `articolo_descrizione` e' la colonna nuova a
+#    catalogo (brief-db-ricerca-full-colonne-da-accendere §3.2-bis, Tid).
+# ⛔ Il `codice_interno` dell'articolo NON si cerca (Tid, 2026-09-23): e' la
+#    chiave del sistema, non il codice dell'operatore.
+_RICERCA_PROMO = RicercaFull(
+    "vendite.promo_articoli",
+    {
+        "codice": "p.codice",
+        "descrizione": "p.descrizione",
+        "articolo_codice": "a.codice",
+        "articolo_descrizione": "a.descrizione",
+    },
+)
 
 
 _SELECT_COLS = """
@@ -100,8 +128,7 @@ class PromoArticoliRepository:
             default=_ORDER_COLS["valido_dal"],
             tiebreak="p.id",
         )
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -121,13 +148,10 @@ class PromoArticoliRepository:
         if valid_at is not None:
             conditions.append("p.validita @> %s::date")
             params.append(valid_at)
-        if search:
-            conditions.append(
-                "(p.codice ILIKE %s OR p.descrizione ILIKE %s "
-                "OR a.codice ILIKE %s OR a.descrizione ILIKE %s)"
-            )
-            like = f"%{search.strip()}%"
-            params.extend([like, like, like, like])
+        # ⚠️ Una condizione sola per conteggio e pagina (stessi `conditions`).
+        #    Lista non di configurazione: soglia di default del BB, sotto la
+        #    quale il termine si ignora (brief §6).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_PROMO)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -137,7 +161,7 @@ class PromoArticoliRepository:
                 SELECT COUNT(*)
                   {_FROM_JOINS}
                 {where_clause}
-                """,  # noqa: S608
+                """,
                 params,
             )
             row = cursor.fetchone()
@@ -151,7 +175,7 @@ class PromoArticoliRepository:
                 {where_clause}
                  ORDER BY {ordinamento}
                  LIMIT %s OFFSET %s
-                """,  # noqa: S608
+                """,
                 params + [safe_limit, safe_offset],
             )
             results = rows_to_list(cursor)
@@ -166,7 +190,7 @@ class PromoArticoliRepository:
                 SELECT {_SELECT_COLS}
                   {_FROM_JOINS}
                  WHERE p.id = %s
-                """,  # noqa: S608
+                """,
                 [record_id],
             )
             return row_to_dict(cursor)
@@ -186,68 +210,52 @@ class PromoArticoliRepository:
     # Mutazioni
     # =================================================================
 
-    # Scopo: Inserisce una nuova promo usando colonne whitelisted.
-    #        `validita` NON scrivibile: trigger la calcola da valido_dal/al.
-    def create_promo(self, data: dict[str, Any]) -> int:
-        write_cols = (
-            "codice",
-            "descrizione",
-            "articolo_id",
-            "uom_id",
-            "tipo_variazione",
-            "valore_variazione",
-            "valido_dal",
-            "valido_al",
-            "meta",
-            "attivo",
-        )
-        cols: list[str] = []
-        vals: list[Any] = []
-        placeholders: list[str] = []
-        for col in write_cols:
-            if col in data:
-                cols.append(col)
-                # articolo_id e' uuid, serve cast esplicito.
-                placeholders.append("%s::uuid" if col == "articolo_id" else "%s")
-                vals.append(data[col])
-        sql = f"""
-            INSERT INTO vendite.promo_articoli ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+    # Colonne scrivibili in create. `validita` NON c'e': la calcola il trigger
+    # da valido_dal/al.
+    # ⭐ 2026-09-26: la composizione a mano (`write_cols` + `if col in data`)
+    #    e' ritirata a favore del BB core. Il filtro SCARTAVA IN SILENZIO le
+    #    chiavi fuori lista: ora e' `RuntimeError`, e il contratto
+    #    dell'operatore lo tiene il service (mapper espliciti
+    #    `_build_create_data`/`_build_update_data` dopo `validate_allowed_keys`).
+    CREATE_COLUMNS: frozenset[str] = frozenset({
+        "codice",
+        "descrizione",
+        "articolo_id",
+        "uom_id",
+        "tipo_variazione",
+        "valore_variazione",
+        "valido_dal",
+        "valido_al",
+        "meta",
+        "attivo",
+    })
 
-    # Scopo: Aggiorna una promo sui soli campi forniti. `codice`, `articolo_id`,
-    #        `uom_id` sono immutabili lato service. Il repo non impone: consente
-    #        al service di scegliere la policy.
-    def update_promo(self, record_id: int, data: dict[str, Any]) -> bool:
-        write_cols = (
-            "descrizione",
-            "tipo_variazione",
-            "valore_variazione",
-            "valido_dal",
-            "valido_al",
-            "meta",
-            "attivo",
+    # Colonne scrivibili in update: `codice`, `articolo_id`, `uom_id` assenti
+    # (immutabili). La policy per stato della promo (iniziata = campi
+    # ristretti) resta del service.
+    UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "descrizione",
+        "tipo_variazione",
+        "valore_variazione",
+        "valido_dal",
+        "valido_al",
+        "meta",
+        "attivo",
+    })
+
+    # Scopo: Inserisce una nuova promo sulle colonne whitelisted.
+    #        `articolo_id` e' uuid: cast esplicito come prima della migrazione.
+    def create_promo(self, data: dict[str, Any]) -> int:
+        riga = execute_dynamic_insert(
+            "vendite.promo_articoli", data,
+            allowed=self.CREATE_COLUMNS, jsonb=_JSONB_COLS,
+            casts={"articolo_id": "uuid"},
         )
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in write_cols:
-            if col in data:
-                set_parts.append(f"{col} = %s")
-                vals.append(data[col])
-        if not set_parts:
-            return False
-        vals.append(record_id)
-        sql = f"""
-            UPDATE vendite.promo_articoli
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
+        return int(riga["id"])
+
+    # Scopo: Aggiorna una promo sui soli campi forniti.
+    def update_promo(self, record_id: int, data: dict[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "vendite.promo_articoli", record_id, data,
+            allowed=self.UPDATE_COLUMNS, jsonb=_JSONB_COLS,
+        )

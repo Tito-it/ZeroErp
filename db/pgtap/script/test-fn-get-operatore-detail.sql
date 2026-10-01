@@ -11,18 +11,42 @@
 --   (gia' coperta in produzione) -> qui si verificano solo le capability.
 --
 -- Strategia:
---   Riusa il pattern mk_admin/disable_other_sa di
---   test-fn-check-ultimo-super-admin-attivo.sql (ogni file pgTAP ha
---   il proprio pg_temp namespace). Stato accumulato tra i casi
---   (no SAVEPOINT) e rolled-back a fine file.
+--   I super admin si COSTRUISCONO con
+--   dbops.fn_pgtap_crea_operatore_umano(..., p_super_admin := true);
+--   pg_temp.disable_other_sa riduce a un solo SA per i casi 2 e 3.
+--   Stato accumulato tra i casi (no SAVEPOINT) e rolled-back a fine
+--   file.
 --
--- Indice test (1..4):
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Il file dava un binding SA a mano a un'identita' OPERATORE
+--   «vergine» pescata (pg_temp.mk_admin, copia di quello di
+--   test-fn-check-ultimo-super-admin-attivo), e contava sui SA
+--   preesistenti per il caso multi-SA. Su un database ricostruito
+--   (la CI) i SA sono zero e l'operatore del mondo un binding ce l'ha:
+--   il caso 1 rispondeva false e il setup del caso 4 moriva («nessuna
+--   identita OPERATORE vergine»). Ora i SA nascono dal percorso di
+--   produzione, e i casi non dipendono da chi c'era prima.
+--   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
+--
+-- Indice test (1..7):
 --   1. Multi super-admin -> can_disable=true sull'auth_user SA target
---   2. Single super-admin -> can_disable=false + disable_reason valorizzata
+--   2. Single super-admin -> can_disable=false + ULTIMO_SUPER_ADMIN e la
+--      chiave del disabilita
 --   3. Demote bloccato (single SA) -> can_demote_super_admin=false
---                                       + demote_reason valorizzata
---   4. Invite con last_login -> can_invite=false + invite_reason
---                                contiene 'login'
+--      + ULTIMO_SUPER_ADMIN e la chiave del demote (diversa da quella del 2)
+--   4. Invite su veste gia' ATTIVA -> can_invite=false + VESTE_GIA_ATTIVA
+--                                e la sua chiave (rev 2026-09-25: la regola
+--                                unica dell'invito, D-8 — last_login non
+--                                decide piu'; 20260925-43)
+--   5. veste_attiva = true per la veste accesa (rev 20260925-54, R-9)
+--   6. ⭐ veste attiva + una copia spenta: UNA riga, e mostra l'attiva
+--   7. ⭐ due vesti spente: UNA riga, veste_attiva=false, e l'invito non e'
+--      offerto (motivo di fn_check_operatore_invitabile, rev -53)
+--
+-- ⭐ Rev 20260927-02 (brief-db-blocco-login-per-credenziale §16): i motivi
+--   sono CODICI con la chiave i18n (*_reason + *_reason_key), non frasi. I
+--   casi pinnano la coppia; prima pinnavano parole delle frasi (ILIKE).
+--   Casi 1 e 4 anche i NULL: ammessa => motivo e chiave vuoti.
 --
 -- Niente SAVEPOINT (azzera il counter pgTAP).
 -- ------------------------------------------------------------
@@ -44,44 +68,11 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(4);
+SELECT plan(7);
 
 -- =========================================================
--- Helper: aggiunge un binding SA su un'identita OPERATORE vergine
--- =========================================================
-CREATE OR REPLACE FUNCTION pg_temp.mk_admin(OUT id_id bigint, OUT au_id integer, OUT bind_id bigint)
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    SELECT id.id, id.auth_user_id INTO id_id, au_id
-      FROM anagrafiche.identita_digitali id
-     WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-       AND id.attivo = true
-       AND NOT EXISTS (
-           SELECT 1
-             FROM config.profili_accesso_bindings pab
-            WHERE pab.identita_digitale_id = id.id
-       )
-     ORDER BY id.id
-     LIMIT 1;
-
-    IF id_id IS NULL THEN
-        RAISE EXCEPTION 'Setup impossibile: nessuna identita OPERATORE vergine disponibile';
-    END IF;
-
-    INSERT INTO config.profili_accesso_bindings
-        (profilo_accesso_id, identita_digitale_id, attivo)
-    VALUES (
-        (SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
-        id_id,
-        true
-    )
-    RETURNING id INTO bind_id;
-END
-$$;
-
--- =========================================================
--- Helper: disattiva tutti i binding SA attivi tranne quello passato
+-- Helper: disattiva tutti i binding SA attivi tranne quello passato.
+--   Il profilo SA si riconosce dal TIPO, non dal codice.
 -- =========================================================
 CREATE OR REPLACE FUNCTION pg_temp.disable_other_sa(p_keep_bind_id bigint)
 RETURNS int
@@ -96,7 +87,7 @@ BEGIN
           FROM config.profili_accesso_bindings pab
           JOIN config.profili_accesso          pa
             ON pa.id = pab.profilo_accesso_id
-         WHERE pa.codice = 'SUPER_ADMIN'
+         WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
            AND pab.attivo = true
            AND pab.id <> p_keep_bind_id
     LOOP
@@ -110,16 +101,32 @@ END
 $$;
 
 -- =========================================================
--- 1) Multi super-admin: aggiungo 1 SA ad-hoc -> >=2 SA in totale.
---    can_disable=true sul nuovo SA.
+-- 1) Multi super-admin: se ne costruiscono DUE -> >=2 SA comunque
+--    stia il database. can_disable=true sul primo.
 -- =========================================================
-CREATE TEMP TABLE _t_c1 AS SELECT * FROM pg_temp.mk_admin();
+CREATE TEMP TABLE _t_sa1 AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('detail SA 1', p_super_admin := true);
+
+CREATE TEMP TABLE _t_sa2 AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('detail SA 2', p_super_admin := true);
+
+-- Il binding SA del primo: e' quello che il caso 2 lascia attivo.
+CREATE TEMP TABLE _t_c1 AS
+SELECT t.identita_id AS id_id, t.auth_user_id AS au_id, pab.id AS bind_id
+  FROM _t_sa1 t
+  JOIN config.profili_accesso_bindings pab
+    ON pab.identita_digitale_id = t.identita_id
+   AND pab.attivo
+  JOIN config.profili_accesso pa
+    ON pa.id = pab.profilo_accesso_id
+   AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso;
 
 SELECT is(
-    (SELECT can_disable
+    (SELECT can_disable || '|' || (disable_reason IS NULL AND disable_reason_key IS NULL
+                                   AND demote_reason IS NULL AND demote_reason_key IS NULL)
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c1))),
-    true,
-    '1. Multi super-admin: can_disable=true (esiste un altro SA, no lockout)'
+    'true|true',
+    '1. Multi super-admin: can_disable=true, motivi e chiavi di disable/demote NULL'
 );
 
 -- =========================================================
@@ -129,10 +136,10 @@ SELECT is(
 SELECT pg_temp.disable_other_sa((SELECT bind_id FROM _t_c1));
 
 SELECT is(
-    (SELECT (NOT can_disable) AND disable_reason ILIKE '%lockout%'
+    (SELECT can_disable || '|' || disable_reason || '|' || disable_reason_key
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c1))),
-    true,
-    '2. Single super-admin: can_disable=false + disable_reason cita lockout'
+    'false|ULTIMO_SUPER_ADMIN|amministrazione.operatori.disabilita_reason.ultimo_super_admin',
+    '2. Single super-admin: can_disable=false, ULTIMO_SUPER_ADMIN + chiave del disabilita'
 );
 
 -- =========================================================
@@ -141,36 +148,93 @@ SELECT is(
 --    demote_reason valorizzata (e diversa da disable_reason).
 -- =========================================================
 SELECT is(
-    (SELECT (can_demote_super_admin = false)
-            AND demote_reason ILIKE '%binding%'
+    (SELECT can_demote_super_admin || '|' || demote_reason || '|' || demote_reason_key
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c1))),
-    true,
-    '3. Demote bloccato: can_demote_super_admin=false + demote_reason cita "binding"'
+    'false|ULTIMO_SUPER_ADMIN|amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin',
+    '3. Demote bloccato: can_demote_super_admin=false, ULTIMO_SUPER_ADMIN + chiave del demote'
 );
 
 -- =========================================================
--- 4) Invite con last_login: forzo last_login NOT NULL su un user
---    che altrimenti sarebbe invitabile. can_invite=false e
---    invite_reason cita 'login'.
+-- 4) Invite su veste gia' ATTIVA: can_invite=false e invite_reason
+--    cita 'attiva'.
 --
---    Strategia: aggiungo un altro SA ad-hoc (cosi' non e' "ultimo"
---    ed evito interazioni con lo scenario 2/3). Su quell'auth_user
---    setto last_login=now() -> non invitabile.
+--    ⭐ Rev 2026-09-25 (brief-db-blocco-login-per-credenziale §12,
+--    20260925-43): fino a quel giorno il caso era «last_login NOT NULL
+--    -> non invitabile». Con la regola unica dell'invito (D-8) si invita
+--    chi ha la veste SPENTA, e last_login non decide piu': il rifiuto
+--    viene dalla veste gia' attiva, che il builder accende. L'UPDATE di
+--    last_login resta, a dire che anche con un accesso registrato il
+--    motivo e' la veste, non il login.
+--
+--    Strategia: costruisco un altro SA (cosi' non e' "ultimo"
+--    ed evito interazioni con lo scenario 2/3).
 -- =========================================================
-CREATE TEMP TABLE _t_c4 AS SELECT * FROM pg_temp.mk_admin();
+CREATE TEMP TABLE _t_c4 AS
+SELECT auth_user_id AS au_id, identita_id AS id_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('detail SA invito', p_super_admin := true);
 
--- Forzo email valorizzata + last_login != NULL: cosi' fn_check_operatore_invitabile
--- supera tutti i guard precedenti e fallisce specificatamente sul last_login.
+-- Email valorizzata + last_login != NULL: il rifiuto deve arrivare dalla
+-- veste attiva, non dal login.
 UPDATE django.auth_user
    SET email      = COALESCE(NULLIF(email, ''), 'pgtap+invite@example.com'),
        last_login = now()
  WHERE id = (SELECT au_id FROM _t_c4);
 
 SELECT is(
-    (SELECT (NOT can_invite) AND invite_reason ILIKE '%login%'
+    (SELECT can_invite || '|' || invite_reason || '|' || invite_reason_key
+       FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c4))),
+    'false|VESTE_GIA_ATTIVA|amministrazione.operatori.invito_reason.veste_gia_attiva',
+    '4. Invite su veste gia'' attiva: can_invite=false, VESTE_GIA_ATTIVA + chiave'
+);
+
+-- =========================================================
+-- 5-7) La veste mostrata e il suo stato (rev 20260925-54, R-9).
+--   Il modello ammette piu' vesti OPERATORE spente sulla stessa
+--   credenziale (l'unique vale solo WHERE attivo): prima il JOIN
+--   nudo dava una riga per veste. Le copie spente si fabbricano qui.
+-- =========================================================
+SELECT is(
+    (SELECT veste_attiva
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c4))),
     true,
-    '4. Invite con last_login: can_invite=false + invite_reason cita "login"'
+    '5. veste_attiva = true per la veste OPERATORE accesa'
+);
+
+INSERT INTO anagrafiche.identita_digitali
+       (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo, valido_dal)
+SELECT idg.soggetto_ruolo_id, idg.auth_user_id, idg.ruolo_applicativo, false, idg.valido_dal
+  FROM anagrafiche.identita_digitali idg
+ WHERE idg.id = (SELECT id_id FROM _t_c4);
+
+SELECT is(
+    (SELECT count(*) || '|' || bool_and(veste_attiva)
+       FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c4))),
+    '1|true',
+    '6. veste attiva + una spenta: UNA riga, e mostra quella attiva'
+);
+
+-- Un operatore non SA con la veste spenta, e una seconda veste spenta.
+CREATE TEMP TABLE _t_c7 AS
+SELECT auth_user_id AS au_id, identita_id AS id_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('detail due spente', p_super_admin := false);
+
+UPDATE anagrafiche.identita_digitali
+   SET attivo = false
+ WHERE id = (SELECT id_id FROM _t_c7);
+
+INSERT INTO anagrafiche.identita_digitali
+       (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo, valido_dal)
+SELECT idg.soggetto_ruolo_id, idg.auth_user_id, idg.ruolo_applicativo, false, idg.valido_dal
+  FROM anagrafiche.identita_digitali idg
+ WHERE idg.id = (SELECT id_id FROM _t_c7);
+
+SELECT is(
+    (SELECT count(*) || '|' || bool_and(NOT veste_attiva)
+                     || '|' || bool_and(NOT can_invite)
+                     || '|' || string_agg(invite_reason || '|' || invite_reason_key, ',')
+       FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c7))),
+    '1|true|true|PIU_VESTI_SPENTE|amministrazione.operatori.invito_reason.piu_vesti_spente',
+    '7. due vesti spente: UNA riga, veste_attiva=false, invito non offerto (PIU_VESTI_SPENTE)'
 );
 
 SELECT * FROM finish();

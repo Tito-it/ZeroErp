@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-3 (coda) — storico.parameters.data_insert: la NONA shadow senza fuso, che
+#   dbdev non mostrava. Documento: valutazione-modello-di-dominio-db, voce V-3.
+#
+# -- IL FATTO -------------------------------------------------------------------
+#   Il 20-09 il censimento su dbdev contava 8 shadow con data_insert senza
+#   fuso (20260920-03). Sul database ricostruito da zero (replica CI,
+#   zeroerp_ci) il presidio dbops/test-nessun-timestamp-senza-fuso-v1 ne ha
+#   trovata una nona: storico.parameters, nata `timestamp` da
+#   20250729-11-create-seq-and-table-storico_parameters (storia vecchia). Su
+#   dbdev quella colonna e' `timestamptz` da un ALTER a mano mai finito nel
+#   changelog: e' il caso «dbdev non nasce da zero» — il censimento sul DB di
+#   sviluppo era una fotografia, e il presidio sul DB da zero e' il criterio.
+#
+# -- PERCHE' UN DO E NON UN ALTER NUDO ------------------------------------------
+#   Le due macchine partono da tipi DIVERSI. Su zeroerp_ci la colonna e'
+#   naive e va convertita col fuso di chi ha scritto (CASE sul ruolo, come
+#   -03). Su dbdev e' GIA' timestamptz: un `USING data_insert AT TIME ZONE
+#   'Europe/Rome'` su un timestamptz lo SPOGLIEREBBE del fuso e poi lo
+#   rivestirebbe col fuso della sessione che migra — un ALTER «idempotente»
+#   che sposta i valori di un'ora. Il corpo legge il tipo vivo da pg_attribute
+#   e converte SOLO se naive; su dbdev non fa niente, e lo dice con un NOTICE.
+#   Non e' una preCondition MARK_RAN (che segna senza fare): il changeSet
+#   ESEGUE su entrambe, e il presidio pgTAP garantisce l'esito, non il
+#   changelog.
+#
+# -- CHE COSA NON CAMBIA -------------------------------------------------------
+#   DEFAULT now(), valid_from/valid_to gia' timestamptz. Zero righe su
+#   zeroerp_ci; su dbdev le righe sono gia' giuste. Nessun dipendente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/storico/20260921-01-alter-storico-parameters-data-insert-a-timestamptz-se-naive-mctit.yaml
+
+  - changeSet:
+      id: 20260921-01-alter-storico-parameters-data-insert-a-timestamptz-se-naive
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        storico.parameters.data_insert: nona shadow senza fuso, visibile solo sul DB da
+        zero (su dbdev era gia' timestamptz da un ALTER a mano). Converte SOLO se il tipo
+        vivo e' naive — un USING AT TIME ZONE su un timestamptz sposterebbe i valori —
+        col CASE sul ruolo scrittore di 20260920-03. Trovata dal presidio
+        dbops/test-nessun-timestamp-senza-fuso-v1 sulla replica CI il 21-09.
+        Documento: valutazione-modello-di-dominio-db, voce V-3.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: storico
+            tableName: parameters
+            columnName: data_insert
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $do$
+              BEGIN
+                  -- ⚠️ Il tipo si legge dal catalogo VIVO: le due macchine partono
+                  --   da tipi diversi (vedi intestazione).
+                  IF EXISTS (
+                      SELECT 1
+                        FROM pg_attribute a
+                        JOIN pg_class c     ON c.oid = a.attrelid
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'storico'
+                         AND c.relname = 'parameters'
+                         AND a.attname = 'data_insert'
+                         AND NOT a.attisdropped
+                         AND a.atttypid = 'timestamp'::regtype
+                  ) THEN
+                      ALTER TABLE storico.parameters
+                          ALTER COLUMN data_insert TYPE timestamptz
+                          USING CASE WHEN user_insert = 'zeroerp_app'
+                                     THEN data_insert AT TIME ZONE 'UTC'
+                                     ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+                      RAISE NOTICE '20260921-01: storico.parameters.data_insert convertita da timestamp a timestamptz';
+                  ELSE
+                      RAISE NOTICE '20260921-01: storico.parameters.data_insert era gia'' timestamptz, nessuna conversione';
+                  END IF;
+              END
+              $do$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Non si torna indietro: su dbdev la colonna era gia' timestamptz
+              -- prima di questo changeSet, e il tipo senza fuso e' il difetto.
+              SELECT 1;

@@ -1,0 +1,205 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_situazione_merce_ordine.md" %}
+# ⚙️ Funzione `fn_situazione_merce_ordine`
+
+```sql
+CREATE FUNCTION fn_situazione_merce_ordine(p_ddt_ids bigint[], p_ordine_ids bigint[])
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_situazione_merce_ordine(p_ddt_ids bigint[] DEFAULT NULL::bigint[], p_ordine_ids bigint[] DEFAULT NULL::bigint[])
+ RETURNS TABLE(ordine_riga_id bigint, ordine_id bigint, riga_nr integer, articolo_id uuid, ordinato numeric, consegnato numeric, reso numeric, in_riconsegna numeric, tenuti numeric, fatturato_merce numeric, fatturato_da_ordine numeric, fatturato numeric, fatturato_anticipato numeric, da_spedire numeric, partite_merce integer, misurabile boolean, differenza numeric, stato character varying, data_consegna_richiesta_cliente date, data_consegna_confermata date, giorni_ritardo integer)
+ LANGUAGE sql
+ STABLE
+BEGIN ATOMIC
+ WITH ordini_in AS MATERIALIZED (
+          SELECT o_1.ordine_id
+            FROM unnest(fn_situazione_merce_ordine.p_ordine_ids) o_1(ordine_id)
+         UNION
+          SELECT orr_1.ordine_id
+            FROM ((vendite.ddt_righe dr
+              JOIN vendite.ordini_righe_fulfillment f_1 ON ((f_1.ddt_riga_id = dr.id)))
+              JOIN vendite.ordini_righe orr_1 ON ((orr_1.id = f_1.ordine_riga_id)))
+           WHERE (dr.ddt_id = ANY (fn_situazione_merce_ordine.p_ddt_ids))
+         ), righe_toccate AS MATERIALIZED (
+          SELECT DISTINCT f_1.ordine_riga_id
+            FROM (vendite.ddt_righe dr
+              JOIN vendite.ordini_righe_fulfillment f_1 ON ((f_1.ddt_riga_id = dr.id)))
+           WHERE (dr.ddt_id = ANY (fn_situazione_merce_ordine.p_ddt_ids))
+         ), orr_semi AS MATERIALIZED (
+          SELECT orr_1.id,
+             orr_1.ordine_id,
+             orr_1.riga_nr,
+             orr_1.articolo_id,
+             orr_1.quantita,
+             orr_1.data_consegna_richiesta_cliente,
+             orr_1.data_consegna_confermata
+            FROM vendite.ordini_righe orr_1
+           WHERE ((orr_1.attivo IS TRUE) AND (orr_1.ordine_id = ANY (fn_situazione_merce_ordine.p_ordine_ids)))
+         UNION
+          SELECT orr_1.id,
+             orr_1.ordine_id,
+             orr_1.riga_nr,
+             orr_1.articolo_id,
+             orr_1.quantita,
+             orr_1.data_consegna_richiesta_cliente,
+             orr_1.data_consegna_confermata
+            FROM (vendite.ordini_righe orr_1
+              JOIN righe_toccate t ON ((t.ordine_riga_id = orr_1.id)))
+           WHERE (orr_1.attivo IS TRUE)
+         ), orr_in AS MATERIALIZED (
+          SELECT s.id,
+             s.ordine_id,
+             s.riga_nr,
+             s.articolo_id,
+             s.quantita,
+             s.data_consegna_richiesta_cliente,
+             s.data_consegna_confermata
+            FROM orr_semi s
+           WHERE (NOT ((fn_situazione_merce_ordine.p_ddt_ids IS NULL) AND (fn_situazione_merce_ordine.p_ordine_ids IS NULL)))
+         UNION ALL
+          SELECT orr_1.id,
+             orr_1.ordine_id,
+             orr_1.riga_nr,
+             orr_1.articolo_id,
+             orr_1.quantita,
+             orr_1.data_consegna_richiesta_cliente,
+             orr_1.data_consegna_confermata
+            FROM vendite.ordini_righe orr_1
+           WHERE ((orr_1.attivo IS TRUE) AND ((fn_situazione_merce_ordine.p_ddt_ids IS NULL) AND (fn_situazione_merce_ordine.p_ordine_ids IS NULL)))
+         ), pm_src AS (
+          SELECT p.ordine_riga_id,
+             p.consegnato,
+             p.reso,
+             p.in_riconsegna,
+             p.tenuti,
+             p.fatturato_merce,
+             p.fatturato_da_ordine,
+             p.differenza,
+             p.misurabile,
+             p.origine,
+             p.e_riconsegna
+            FROM vendite.fn_partite_merce(NULL::bigint[], NULL::bigint[]) p(ddt_riga_id, ddt_id, ddt_uid, articolo_id, is_composito, ordine_riga_id, ordine_id, origine, fatturabile, consegnato, reso, in_riconsegna, tenuti, fatturato_merce, fatturato_da_ordine, fatturato, misurabile, differenza, stato, e_riconsegna, sospetto_duplicato_ordine, rettificato, riconsegna_quota_nuova)
+           WHERE ((fn_situazione_merce_ordine.p_ddt_ids IS NULL) AND (fn_situazione_merce_ordine.p_ordine_ids IS NULL))
+         UNION ALL
+          SELECT p.ordine_riga_id,
+             p.consegnato,
+             p.reso,
+             p.in_riconsegna,
+             p.tenuti,
+             p.fatturato_merce,
+             p.fatturato_da_ordine,
+             p.differenza,
+             p.misurabile,
+             p.origine,
+             p.e_riconsegna
+            FROM vendite.fn_partite_merce(NULL::bigint[], ( SELECT COALESCE(array_agg(oi.ordine_id), '{}'::bigint[]) AS "coalesce"
+                    FROM ordini_in oi)) p(ddt_riga_id, ddt_id, ddt_uid, articolo_id, is_composito, ordine_riga_id, ordine_id, origine, fatturabile, consegnato, reso, in_riconsegna, tenuti, fatturato_merce, fatturato_da_ordine, fatturato, misurabile, differenza, stato, e_riconsegna, sospetto_duplicato_ordine, rettificato, riconsegna_quota_nuova)
+           WHERE (NOT ((fn_situazione_merce_ordine.p_ddt_ids IS NULL) AND (fn_situazione_merce_ordine.p_ordine_ids IS NULL)))
+         ), soglia AS (
+          SELECT s.ordine AS ordine_confermato
+            FROM config.stati_doc_ordini s
+           WHERE ((s.codice_interno)::text = 'CONFERMATO'::text)
+         ), pm AS (
+          SELECT p.ordine_riga_id,
+             (count(*))::integer AS partite_merce,
+             sum(p.consegnato) AS consegnato,
+             sum(p.reso) AS reso,
+             sum(p.in_riconsegna) AS in_riconsegna,
+             sum(p.tenuti) AS tenuti,
+             sum(p.fatturato_merce) AS fatturato_merce,
+             sum(p.fatturato_da_ordine) AS fatturato_da_ordine,
+             sum(p.differenza) AS differenza,
+             bool_and(p.misurabile) AS misurabile,
+             bool_or(((p.origine)::text = 'MULTIPLA'::text)) AS ha_origine_multipla,
+             (count(*) FILTER (WHERE (p.differenza IS NOT NULL)))::integer AS partite_con_conto
+            FROM pm_src p
+           WHERE ((p.ordine_riga_id IS NOT NULL) AND (NOT p.e_riconsegna))
+           GROUP BY p.ordine_riga_id
+         ), ord AS (
+          SELECT f_1.riga_id AS ordine_riga_id,
+             f_1.quantita,
+             f_1.misurabile
+            FROM vendite.fn_af_merce_per_riga(( SELECT COALESCE(array_agg((((('ORD:'::text || (o_k.uid)::text) || ':R:'::text) || (x.id)::text))::character varying), '{}'::character varying[]) AS "coalesce"
+                    FROM (orr_in x
+                      JOIN vendite.ordini o_k ON ((o_k.id = x.ordine_id))))) f_1(corsia, riga_id, tipo_movimento, quantita, misurabile, da_componenti, voci)
+           WHERE (((f_1.corsia)::text = 'ORD'::text) AND ((f_1.tipo_movimento)::text = 'NORMALE'::text) AND (NOT ((fn_situazione_merce_ordine.p_ddt_ids IS NULL) AND (fn_situazione_merce_ordine.p_ordine_ids IS NULL))))
+         UNION ALL
+          SELECT f_1.riga_id,
+             f_1.quantita,
+             f_1.misurabile
+            FROM vendite.fn_af_merce_per_riga(NULL::character varying[]) f_1(corsia, riga_id, tipo_movimento, quantita, misurabile, da_componenti, voci)
+           WHERE (((f_1.corsia)::text = 'ORD'::text) AND ((f_1.tipo_movimento)::text = 'NORMALE'::text) AND ((fn_situazione_merce_ordine.p_ddt_ids IS NULL) AND (fn_situazione_merce_ordine.p_ordine_ids IS NULL)))
+         ), ful AS (
+          SELECT f_1.ordine_riga_id,
+             sum(f_1.qta_evasa) AS evaso
+            FROM (vendite.ordini_righe_fulfillment f_1
+              JOIN orr_in x ON ((x.id = f_1.ordine_riga_id)))
+           WHERE (NOT ((fn_situazione_merce_ordine.p_ddt_ids IS NULL) AND (fn_situazione_merce_ordine.p_ordine_ids IS NULL)))
+           GROUP BY f_1.ordine_riga_id
+         UNION ALL
+          SELECT f_1.ordine_riga_id,
+             sum(f_1.qta_evasa) AS evaso
+            FROM vendite.ordini_righe_fulfillment f_1
+           WHERE ((fn_situazione_merce_ordine.p_ddt_ids IS NULL) AND (fn_situazione_merce_ordine.p_ordine_ids IS NULL))
+           GROUP BY f_1.ordine_riga_id
+         )
+  SELECT orr.id AS ordine_riga_id,
+     orr.ordine_id,
+     orr.riga_nr,
+     orr.articolo_id,
+     orr.quantita AS ordinato,
+     COALESCE(pm.consegnato, (0)::numeric) AS consegnato,
+     COALESCE(pm.reso, (0)::numeric) AS reso,
+     COALESCE(pm.in_riconsegna, (0)::numeric) AS in_riconsegna,
+     COALESCE(pm.tenuti, (0)::numeric) AS tenuti,
+     COALESCE(pm.fatturato_merce, (0)::numeric) AS fatturato_merce,
+     COALESCE(pm.fatturato_da_ordine, (0)::numeric) AS fatturato_da_ordine,
+     (COALESCE(pm.fatturato_merce, (0)::numeric) + COALESCE(pm.fatturato_da_ordine, (0)::numeric)) AS fatturato,
+     GREATEST((0)::numeric, (COALESCE(o.quantita, (0)::numeric) - COALESCE(pm.fatturato_da_ordine, (0)::numeric))) AS fatturato_anticipato,
+     ds.da_spedire,
+     COALESCE(pm.partite_merce, 0) AS partite_merce,
+     v.misurabile,
+         CASE
+             WHEN v.misurabile THEN pm.differenza
+             ELSE NULL::numeric
+         END AS differenza,
+     (
+         CASE
+             WHEN ((COALESCE(pm.partite_merce, 0) = 0) AND (NOT imp.impegnata)) THEN 'NON_IMPEGNATA'::text
+             WHEN (COALESCE(pm.partite_merce, 0) = 0) THEN 'NON_SPEDITA'::text
+             WHEN (NOT v.misurabile) THEN 'NON_MISURABILE'::text
+             WHEN (pm.differenza IS NULL) THEN 'NON_FATTURABILE'::text
+             WHEN (pm.differenza > (0)::numeric) THEN 'DA_FATTURARE'::text
+             WHEN (pm.differenza < (0)::numeric) THEN 'DA_ACCREDITARE'::text
+             ELSE 'PAREGGIATA'::text
+         END)::character varying AS stato,
+     orr.data_consegna_richiesta_cliente,
+     orr.data_consegna_confermata,
+         CASE
+             WHEN ((ds.da_spedire > (0)::numeric) AND (COALESCE(orr.data_consegna_confermata, orr.data_consegna_richiesta_cliente) IS NOT NULL)) THEN GREATEST(0, (CURRENT_DATE - COALESCE(orr.data_consegna_confermata, orr.data_consegna_richiesta_cliente)))
+             ELSE NULL::integer
+         END AS giorni_ritardo
+    FROM (((((((((orr_in orr
+      JOIN vendite.ordini o_rls ON ((o_rls.id = orr.ordine_id)))
+      JOIN config.stati_doc_ordini sdo ON ((sdo.id = o_rls.stato_doc_ordine_id)))
+      CROSS JOIN soglia sg)
+      LEFT JOIN pm ON ((pm.ordine_riga_id = orr.id)))
+      LEFT JOIN ord o ON ((o.ordine_riga_id = orr.id)))
+      LEFT JOIN ful f ON ((f.ordine_riga_id = orr.id)))
+      CROSS JOIN LATERAL ( SELECT (COALESCE(pm.misurabile, true) AND COALESCE(o.misurabile, true) AND (NOT COALESCE(pm.ha_origine_multipla, false))) AS misurabile) v)
+      CROSS JOIN LATERAL ( SELECT ((COALESCE((sdo.ordine)::integer, '-1'::integer) >= sg.ordine_confermato) AND (NOT sdo.is_abortito)) AS impegnata) imp)
+      CROSS JOIN LATERAL ( SELECT
+                 CASE
+                     WHEN imp.impegnata THEN GREATEST((0)::numeric, ((orr.quantita - COALESCE(f.evaso, (0)::numeric)) + vendite.fn_ordine_riga_qta_riconsegna(orr.id)))
+                     ELSE NULL::numeric
+                 END AS da_spedire) ds);
+END
+
+COMMENT ON FUNCTION vendite.fn_situazione_merce_ordine(p_ddt_ids bigint[], p_ordine_ids bigint[])
+IS 'LA SITUAZIONE MERCE PER RIGA D''ORDINE, PER DOCUMENTO (D14 giro 2 — D3, 2026-09-21): lo stesso aggregato parlante di vendite.vw_situazione_merce_ordine — che ne e'' la proiezione senza filtro, fn(NULL, NULL) — ristretto alle righe d''ordine chieste. Semi, nello stesso ordine di fn_partite_merce: p_ddt_ids (i DDT: le righe d''ordine che hanno TOCCATO via fulfillment, con la loro situazione INTERA, non la sola partita di quel DDT) e p_ordine_ids (gli ordini: tutte le loro righe attive); entrambi NULL = tutte; un array VUOTO semina zero righe; entrambi valorizzati = unione. Le partite si chiedono a fn_partite_merce(NULL, <ordini della chiusura>): l''aggregato di una riga d''ordine e'' completo per costruzione, perche'' la partita esce sotto `ordine_id` della riga minima e l''ordine porta tutte le sue righe. `ful` sulle righe dell''uscita; `ord` (corsia ORD di fn_af_merce_per_riga) PER CHIAVE dal giro 4 (D5, 2026-09-21): una chiave ORD per riga in uscita, chiave BASE (i suffissi #CMP li risolve la funzione). BEGIN ATOMIC: dipendenze in pg_depend, catena RLS leggibile dal presidio security_invoker attraverso fn_partite_merce. I due modi sono rami in UNION ALL, mai `p IS NULL OR`; sulla partita anche perche'' il seme calcolato (sub-select) non si inlina — Function Scan, che regge in piano generico — mentre il ramo TUTTI con due letterali resta inlinato, identico alla vista. COALESCE(array_agg, ''{}''): un DDT senza fulfillment non deve diventare «tutte». INVOKER: la RLS resta di chi legge. Chiamanti per documento: BE list_situazione_merce_ordine (per ordine ARRAY[%s] nel secondo seme, per DDT nel primo). Brief: brief-db-partita-merce-per-documento §7 giro 2.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

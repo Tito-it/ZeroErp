@@ -2,36 +2,49 @@
 // Scopo: Sub-drawer lista contratti di un cliente specifico (billing_account_id).
 //        Accessibile dalla lista Clienti. Permette nuovo contratto con BA
 //        pre-compilato, apertura dettaglio in edit, e gestione righe diretta.
-import { ref, computed, watch } from 'vue'
+//
+// ⭐ PORTATO SULLO STANDARD IL 2026-09-26 (piano PrimeVue 5, Gruppo A: era
+//    fermo per «decisione 4», ma l'endpoint dei contratti e' gia' paginato e
+//    filtra gia' per cliente). E' la lista `vendite.contratti` filtrata sul
+//    conto di fatturazione: `useDrawerTabLista` + `<DrawerTabLista>`, col suo
+//    store (`contrattiCliente`). Prima era una `DataTable` grezza su `limit: 50`
+//    con il filtro di stato fatto sul client: oltre il 50° contratto le righe
+//    sparivano senza avviso, e il filtro guardava solo quelle 50.
+// ⚠️ Stesso `codice` della schermata Contratti: stesse colonne e stesse
+//    preferenze dell'operatore. Le celle speciali (stato, lineage) sono il BB
+//    `ContrattoCella`, condiviso con `ContrattiSearchTable`.
+import { ref, computed } from 'vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
+import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useFetchVersion } from '../../core/composables/useFetchVersion'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useContrattiStore } from '../stores/contratti'
-import { listContratti } from '../api/contratti'
+import { useContrattiClienteStore } from '../stores/contrattiCliente'
+import { exportContratti } from '../api/contratti'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { displayDate } from '../../core/utils/date'
-import { statoContrattoSeverity } from '../../core/utils/severity'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import ContrattoCella, { CELLE_CONTRATTO } from './ContrattoCella.vue'
 import ContrattoDrawer from './ContrattoDrawer.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import Drawer from 'primevue/drawer'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 
-
-
 const { t } = useI18n()
-const store = useContrattiStore()
+// Lo store della schermata Contratti serve solo al dettaglio (righe): la
+// LISTA del drawer ha il suo store.
+const storeContratti = useContrattiStore()
+const store = useContrattiClienteStore()
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -49,23 +62,24 @@ const props = defineProps({
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible'])
 
-const items = ref([])
-const loading = ref(false)
-const statoFilter = ref(null)
-
-const filteredItems = computed(() => {
-  if (!statoFilter.value) return items.value
-  return items.value.filter(i => i.stato_doc_contratto_id === statoFilter.value)
-})
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: fetchList,
-  },
-  {
+// ⚠️ `parentId` porta l'id SOLO a drawer aperto: il `null` alla chiusura
+//    chiama `store.reset()`, o i contratti del cliente precedente
+//    lampeggerebbero sotto il prossimo.
+// ⚠️ Il «Nuovo» entra da `extraActions` e non da `onNew`: ha una CONDIZIONE
+//    (conto cessato o chiuso → spento col motivo), che `onNew` non sa dire.
+const {
+  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
+  exportDialogVisible, exportLoading, onExportConfirm, reloadAll,
+} = useDrawerTabLista(store, {
+  parentId: () => (props.visible ? props.billingAccountId : null),
+  parentField: 'billingAccountId',
+  exportFn: (params) => exportContratti({ ...params, billing_account_id: props.billingAccountId }),
+  getExportParams: (formato) => ({ formato, ...store.paramsFiltro() }),
+  // Nessun `searchTableOptions`: l'ordinamento di partenza (`valido_dal`
+  // DESC) lo dichiara lo store, e una seconda copia qui divergerebbe in
+  // silenzio — quella di prima diceva `valido_dal` senza verso, cioe' ASC.
+  extraActions: () => [{
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
@@ -74,8 +88,13 @@ const pageActions = computed(() => [
     disabled: !props.canCreate,
     hideWhenReadonly: true,
     command: onNew,
-  },
-])
+  }],
+})
+
+// Filtro di stato: va al SERVER (`stato_doc_contratto_id`), come nella lista
+// Contratti — non piu' sulle sole righe della pagina.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_doc_contratto_id')
 
 const nestedDrawer = useDrawerState()
 
@@ -93,35 +112,9 @@ const righeDrawer = ref({
   statoDescrizione: '',
 })
 
-const fv = useFetchVersion()
-
-async function fetchList() {
-  if (!props.billingAccountId) return
-  const v = fv.tag()
-  loading.value = true
-  try {
-    const res = await listContratti({
-      billing_account_id: props.billingAccountId,
-      limit: 50,
-      order_by: 'valido_dal',
-      order_dir: 'desc',
-    })
-    if (!fv.isCurrent(v)) return
-    items.value = res.data?.data?.results || []
-  } catch {
-    if (fv.isCurrent(v)) items.value = []
-  } finally {
-    if (fv.isCurrent(v)) loading.value = false
-  }
-}
-
-watch(() => props.visible, (val) => {
-  if (!val) { fv.invalidate(); items.value = []; statoFilter.value = null; return }
-  fetchList()
-})
-
-function onRowClick(event) {
-  nestedDrawer.editRow(event.data, 'id')
+// ⚠️ Il BB emette la RIGA, non l'evento PrimeVue (guard liste-configurabili).
+function onRowClick(riga) {
+  nestedDrawer.editRow(riga, 'id')
 }
 
 function onNew() {
@@ -129,9 +122,9 @@ function onNew() {
   nestedDrawer.openCreate()
 }
 
-async function onNestedSaved() {
+function onNestedSaved() {
   nestedDrawer.close()
-  await fetchList()
+  reloadAll()
 }
 
 // Scopo: azioni di riga nel drawer contratti del BA (solo "gestisci righe").
@@ -148,7 +141,7 @@ function buildRowActions(data) {
 
 // Gestione righe — carica dettaglio per avere righe + contesto
 async function onOpenRighe(data) {
-  const detail = await store.fetchDetail(data.id)
+  const detail = await storeContratti.fetchDetail(data.id)
   if (!detail) return
   const modalita = !detail.listino_id ? 'C' : detail.tipo_variazione_globale ? 'A' : 'B'
   righeDrawer.value = {
@@ -167,7 +160,7 @@ async function onOpenRighe(data) {
 
 async function onRigheChanged() {
   if (!righeDrawer.value.contrattoId) return
-  const detail = await store.fetchDetail(righeDrawer.value.contrattoId)
+  const detail = await storeContratti.fetchDetail(righeDrawer.value.contrattoId)
   if (detail) righeDrawer.value.righe = detail.righe || []
 }
 
@@ -178,12 +171,13 @@ const billingAccountPrefill = computed(() => (
 ))
 
 const onClose = useDrawerClose(emit)
+const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
   <Drawer
     :visible="props.visible"
-    @update:visible="val => emit('update:visible', val)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
     :dismissable="true"
@@ -204,71 +198,61 @@ const onClose = useDrawerClose(emit)
         <Tag v-if="billingAccountUtility" :value="billingAccountUtility" severity="info" class="ml-05" />
       </div>
 
-      <div class="app-page-toolbar">
-        <div class="app-page-filters">
-          <LookupSelect
-            v-model="statoFilter"
-            rel="config.stati_doc_contratti"
-            :placeholder="t('vendite.contratti.filtro_stato')"
-            show-clear
-          />
-        </div>
-        <PageActionsBar :actions="pageActions" />
-      </div>
-
       <Message v-if="!canCreate && disabledCreateReason" severity="warn" :closable="false" size="small">
         {{ disabledCreateReason }}
       </Message>
 
-      <DataTable
-        :value="filteredItems"
-        :loading="loading"
-        striped-rows
-        class="app-datatable"
-        data-key="id"
-        paginator
-        :rows="10"
-        :rows-per-page-options="[10, 25]"
-        paginator-position="top"
-        sort-field="valido_dal"
-        :sort-order="-1"
+      <DrawerTabLista
+        ref="listaRef"
+        codice="vendite.contratti"
+        :store="store"
+        :rows="store.items"
+        :total="store.totalRecords"
+        :loading="store.loading"
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
+        :page-actions="pageActions"
+        :dirty="dirty"
+        :perimetro-bloccato="perimetroBloccato"
+        @page="onPage"
+        @sort="onSort"
         @row-click="onRowClick"
-        selection-mode="single"
+        @config-loaded="onConfigLoaded"
       >
-        <template #empty>
-          <div class="app-empty-state">
-            <i class="pi pi-file" style="font-size: 2rem;"></i>
-            <div>{{ t('vendite.contratti.nessun_contratto_ba') }}</div>
-          </div>
+        <template #filtri>
+          <LookupSelect
+            v-model="statoFilter"
+            class="app-filter-w-md"
+            rel="config.stati_doc_contratti"
+            :placeholder="t('vendite.contratti.filtro_stato')"
+            show-clear
+            @change="onStatoChange"
+          />
         </template>
-        <Column field="numero" :header="t('vendite.contratti.col_numero')" sortable style="width: 130px;" />
-        <Column field="ambito" :header="t('vendite.contratti.col_ambito')" sortable style="width: 110px;" />
-        <Column field="categoria_cliente_snapshot_codice" :header="t('vendite.contratti.col_categoria_cliente')" sortable style="width: 100px;">
-          <template #body="{ data }">{{ data.categoria_cliente_snapshot_codice || '—' }}</template>
-        </Column>
-        <Column field="listino_codice" :header="t('vendite.contratti.col_listino')" sortable style="width: 150px;">
-          <template #body="{ data }">{{ data.listino_codice || '—' }}</template>
-        </Column>
-        <Column field="valido_dal" :header="t('vendite.contratti.col_valido_dal')" sortable style="width: 100px;">
-          <template #body="{ data }">{{ displayDate(data.valido_dal) }}</template>
-        </Column>
-        <Column field="valido_al" :header="t('vendite.contratti.col_valido_al')" sortable style="width: 100px;">
-          <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
-        </Column>
-        <Column field="stato_descrizione" :header="t('vendite.contratti.col_stato')" sortable style="width: 100px;">
-          <template #body="{ data }">
-            <Tag :value="data.stato_descrizione" :severity="statoContrattoSeverity(data.stato_codice_interno)" />
-          </template>
-        </Column>
-        <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-          <template #body="{ data }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-          </template>
-        </Column>
-      </DataTable>
+        <!-- La frase del dominio al posto dell'empty-state generico, e solo se
+             la lettura e' riuscita: con `erroreCaricamento` la lista e' vuota
+             per un'altra ragione. -->
+        <template #empty>
+          <span v-if="!store.erroreCaricamento">{{ t('vendite.contratti.nessun_contratto_ba') }}</span>
+        </template>
+        <template v-for="c in CELLE_CONTRATTO" :key="c" #[`cell-${c}`]="{ data }">
+          <ContrattoCella :colonna="c" :data="data" />
+        </template>
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+        </template>
+      </DrawerTabLista>
 
       <FormFooter close-only @cancel="onClose" />
     </div>
+
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @export="onExportConfirm"
+    />
 
     <!-- Drawer contratto annidato -->
     <ContrattoDrawer

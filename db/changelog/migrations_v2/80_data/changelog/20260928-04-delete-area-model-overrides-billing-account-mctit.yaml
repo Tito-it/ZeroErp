@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.billing_account ESCE DAL CATALOGO DEGLI OGGETTI (D-5)
+#   Brief: brief-db-be-fe-catalogo-oggetti-permessi.md §3.1 punto 2 (Tid 2026-09-27)
+#
+#   Il billing account si crea e si modifica dentro la scheda cliente, che chiede
+#   l'oggetto `cliente`: un override sul BA non ha effetto su nessuna rotta, quindi
+#   mente per costruzione. Il permesso e' sempre `cliente`.
+#
+#   loadUpdateData non cancella (linee-guida-sql §11.2): la riga tolta dal CSV
+#   (20260928-03) esce con questo DELETE forward-only, dopo il mirror. Gli override
+#   su quell'oggetto sono gia' usciti in 00_schema (20260928-02), prima della FK.
+#   Su un database nuovo la riga non nasce piu' (i seed SQL sono ritirati): il
+#   DELETE tocca zero righe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260928-04-delete-area-model-overrides-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20260928-04-delete-area-model-overrides-billing-account
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie ('anagrafiche', 'billing_account') da config.area_model_overrides (D-5: il
+        permesso e' sempre cliente). Brief: brief-db-be-fe-catalogo-oggetti-permessi.md §3.1.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: area_model_overrides
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.area_model_overrides
+               WHERE app_label = 'anagrafiche' AND model_name = 'billing_account';
+      rollback:
+        - sql:
+            sql: |
+              SELECT 1;

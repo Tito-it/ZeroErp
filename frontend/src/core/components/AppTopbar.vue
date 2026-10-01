@@ -4,7 +4,7 @@
 // lingua + dark mode), logout. Su mobile mostra hamburger per aprire il
 // drawer sidebar; ricerca+AI inline scompaiono e si promuovono come prime
 // voci nello stesso kebab utente — un solo kebab per tutto.
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import Badge from 'primevue/badge'
@@ -17,7 +17,7 @@ import { useContextStore } from '../../stores/context'
 import { DOMAINS, NAV_ICONS } from '../navigation'
 import { getAIStatus } from '../api/ai-api'
 import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
-import { MANAGE_ICONS } from '../constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
 import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
 import CodeLavoroDrawer from './CodeLavoroDrawer.vue'
@@ -33,6 +33,14 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const ui = useUiStore()
+
+// ⚠️ La ricerca si MONTA alla prima apertura, non con la topbar: legge le
+//    misure di pagina (BB `core/misurePagina`) quando nasce, e la topbar sta
+//    anche su pagine dove le misure non ci sono — la 404 o la forbidden di una
+//    veste che non e' l'operatore, per cui il guard non le carica. Dopo la
+//    prima apertura resta montata (la chiusura anima e lo stato si conserva).
+const ricercaMontata = ref(false)
+watch(() => ui.searchDrawerVisible, (aperta) => { if (aperta) ricercaMontata.value = true }, { immediate: true })
 const context = useContextStore()
 
 defineProps({
@@ -169,7 +177,7 @@ const favoritesSubmenu = computed(() => {
   if (visibleFavorites.value.length === 0) {
     return [{
       label: t('nav.preferiti_empty_short'),
-      icon: 'pi pi-info-circle',
+      icon: STATUS_ICONS.INFO,
       disabled: true,
       class: TOPBAR_MENU_CLASS,
     }]
@@ -192,14 +200,14 @@ const userKebabItems = computed(() => {
   if (ui.isMobile) {
     items.push({
       label: t('context.tooltip_search'),
-      icon: 'pi pi-search',
+      icon: MANAGE_ICONS.RICERCA,
       class: TOPBAR_MENU_CLASS,
       command: () => ui.openSearchDrawer(),
     })
     if (codeDisponibile.value) {
       items.push({
         label: t('strumenti.code.badge_tooltip'),
-        icon: 'pi pi-inbox',
+        icon: NAV_ICONS.CODE_LAVORO,
         class: TOPBAR_MENU_CLASS,
         command: () => ui.openCodeDrawer(),
       })
@@ -215,7 +223,7 @@ const userKebabItems = computed(() => {
     if (ui.aiAvailable) {
       items.push({
         label: t('ai.title'),
-        icon: 'pi pi-microchip-ai',
+        icon: NAV_ICONS.ASSISTENTE_AI,
         class: TOPBAR_MENU_CLASS,
         command: () => ui.toggleAiDrawer(),
       })
@@ -223,19 +231,19 @@ const userKebabItems = computed(() => {
   }
   items.push({
     label: t('nav.preferiti'),
-    icon: 'pi pi-star',
+    icon: MANAGE_ICONS.PREFERITI,
     class: TOPBAR_MENU_CLASS,
     items: favoritesSubmenu.value,
   })
   items.push({
     label: `${t('common.language')} · ${languageLabel.value}`,
-    icon: 'pi pi-globe',
+    icon: MANAGE_ICONS.LINGUA,
     class: TOPBAR_MENU_CLASS,
     command: () => toggleLanguage(),
   })
   items.push({
     label: ui.isDark ? t('common.light_mode') : t('common.dark_mode'),
-    icon: ui.isDark ? 'pi pi-sun' : 'pi pi-moon',
+    icon: ui.isDark ? MANAGE_ICONS.TEMA_CHIARO : MANAGE_ICONS.TEMA_SCURO,
     class: TOPBAR_MENU_CLASS,
     command: () => ui.toggleDarkMode(),
   })
@@ -244,11 +252,15 @@ const userKebabItems = computed(() => {
 
 // Scopo: Verifica disponibilita' AI al mount (best-effort, non blocca).
 //        Solo se l'utente e' autenticato, per evitare 401 inutili.
+// ⭐ Si legge `utilizzabile`, non `enabled`: l'AI puo' essere accesa e l'area
+//    `ai_assistant` BLOCCATA per questo utente, e allora la chat
+//    risponderebbe 403 alla prima domanda. Lo decide il backend con la stessa
+//    regola di `/query/` (Tid, 2026-09-25).
 onMounted(async () => {
   if (!auth.isAuthenticated) return
   try {
     const response = await getAIStatus()
-    ui.aiAvailable = response.data?.data?.enabled === true
+    ui.aiAvailable = response.data?.data?.utilizzabile === true
   } catch {
     ui.aiAvailable = false
   }
@@ -261,15 +273,32 @@ onMounted(async () => {
       <!-- Hamburger su mobile -->
       <Button
         v-if="showHamburger"
-        icon="pi pi-bars"
+        :icon="MANAGE_ICONS.MENU"
         text
         rounded
         size="small"
         class="topbar-hamburger"
         @click="emit('toggle-menu')"
       />
-      <i v-else class="pi pi-building"></i>
+      <i v-else class="topbar-emittente-icon" :class="MANAGE_ICONS.BUILDING"></i>
       <EmittenteAttivoSelect />
+
+      <!-- Operatore: badge SUPER_ADMIN o iniziali, subito dopo l'emittente.
+           ⭐ Decisione di Tid, 2026-09-21: la topbar si legge a tre blocchi —
+           sinistra = CHI (emittente + operatore che lo sta usando, la coppia
+           «sistema + utente» in testa allo schermo AS/400), centro = DOVE
+           (l'area), destra = COSA (contesto, data, strumenti, uscita). Fino a
+           quel giorno il badge stava a destra tra il chip contesto e la data,
+           cioe' tra cose che non descrivono l'identita'. -->
+      <Chip v-if="auth.isSuperAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
+        <template #default>
+          <i class="admin-chip-icon" :class="MANAGE_ICONS.SUPER_ADMIN" />
+          <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
+        </template>
+      </Chip>
+      <span v-else class="user-initials-badge" v-tooltip.bottom="auth.displayName">
+        {{ userInitials }}
+      </span>
     </div>
 
     <div class="topbar-center">
@@ -294,17 +323,6 @@ onMounted(async () => {
         </template>
       </Chip>
 
-      <!-- Badge SUPER_ADMIN o iniziali utente -->
-      <Chip v-if="auth.isSuperAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
-        <template #default>
-          <i class="pi pi-shield admin-chip-icon" />
-          <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
-        </template>
-      </Chip>
-      <span v-else class="user-initials-badge" v-tooltip.bottom="auth.displayName">
-        {{ userInitials }}
-      </span>
-
       <span class="topbar-date">{{ formattedDate }}</span>
 
       <!-- Gruppo azioni inline — dark mode e lingua sono nel kebab utente
@@ -322,7 +340,7 @@ onMounted(async () => {
             : t('strumenti.code.badge_tooltip')"
           @click="ui.openCodeDrawer()"
         >
-          <i class="pi pi-inbox" :class="{ 'topbar-code-icon-warn': workerOk === false }"></i>
+          <i :class="[NAV_ICONS.CODE_LAVORO, { 'topbar-code-icon-warn': workerOk === false }]"></i>
           <Badge
             v-if="lavoriVivi > 0"
             :value="lavoriVivi"
@@ -365,7 +383,7 @@ onMounted(async () => {
           v-tooltip.bottom="t('context.tooltip_search')"
           @click="ui.openSearchDrawer()"
         >
-          <i class="pi pi-search"></i>
+          <i :class="MANAGE_ICONS.RICERCA"></i>
         </button>
 
         <!-- Pulsante assistente AI — visibile solo se AI disponibile -->
@@ -375,7 +393,7 @@ onMounted(async () => {
           v-tooltip.bottom="`${t('ai.title')} (Ctrl+.)`"
           @click="ui.toggleAiDrawer()"
         >
-          <i class="pi pi-microchip-ai"></i>
+          <i :class="NAV_ICONS.ASSISTENTE_AI"></i>
         </button>
       </div>
 
@@ -398,20 +416,26 @@ onMounted(async () => {
         v-tooltip.bottom="t('auth.logout')"
         @click="handleLogout"
       >
-        <i class="pi pi-sign-out"></i>
+        <i :class="MANAGE_ICONS.LOGOUT"></i>
       </button>
     </div>
   </header>
 
-  <SearchDrawer v-model:visible="ui.searchDrawerVisible" />
+  <SearchDrawer v-if="ricercaMontata" v-model:visible="ui.searchDrawerVisible" />
   <AiAssistantDrawer v-model:visible="ui.aiDrawerVisible" />
   <CodeLavoroDrawer v-model:visible="ui.codeDrawerVisible" />
 </template>
 
 <style scoped>
+/* Tre colonne: ali UGUALI e titolo al centro per costruzione. ⛔ `1fr` nudo
+   non basta: un item di grid ha `min-width: auto`, quindi a schermo stretto
+   l'ala destra (chip, data, pulsanti) si allargava oltre il suo 1fr, la
+   sinistra cedeva e il titolo scivolava fino ad appiccicarsi all'emittente.
+   Con `minmax(0, 1fr)` ogni ala tronca il PROPRIO contenuto invece di rubare
+   spazio all'altra (Tid, 2026-09-21). */
 .app-topbar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   height: var(--app-topbar-height);
   min-height: var(--app-topbar-height);
@@ -434,6 +458,18 @@ onMounted(async () => {
   color: var(--app-icon-color);
 }
 
+/* La combo emittente e' del figlio (scoped): qui si impone solo che si
+   stringa con l'ala invece di tenere i suoi 16rem e spingere fuori il resto.
+   Il badge operatore invece non cede mai: e' gia' al minimo. */
+.topbar-left :deep(.topbar-emittente-select) {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.topbar-left .admin-chip,
+.topbar-left .user-initials-badge {
+  flex: none;
+}
+
 .topbar-hamburger {
   color: var(--app-topbar-breadcrumb-color);
 }
@@ -448,18 +484,23 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 0;
 }
 
 .topbar-area-title {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  min-width: 0;
   font-size: var(--app-font-size-base);
   font-weight: 500;
   color: var(--app-topbar-breadcrumb-active-color);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .topbar-area-icon {
+  flex: none;
   font-size: 0.95em;
   opacity: 0.85;
 }
@@ -492,7 +533,7 @@ onMounted(async () => {
   width: 1.85rem;
   height: 1.85rem;
   font-size: 0.95rem;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   background: transparent;
   border: none;
   border-radius: 6px;
@@ -514,7 +555,7 @@ onMounted(async () => {
 .context-chip-icon {
   margin-right: 0.35rem;
   font-size: 0.8rem;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
 }
 
 .context-chip-label {
@@ -523,27 +564,27 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
 }
 
 /* Badge admin */
 .admin-chip {
   cursor: default;
   font-size: var(--app-font-size-sm);
-  background: color-mix(in srgb, var(--p-orange-500) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--p-orange-500) 30%, transparent);
+  background: color-mix(in srgb, var(--app-warning-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-warning-color) 30%, transparent);
   padding: 0.15rem 0.5rem;
 }
 
-.admin-chip-icon {
+.topbar-left .admin-chip-icon {
   font-size: 0.8rem;
-  color: var(--p-orange-500);
+  color: var(--app-warning-color);
 }
 
 .admin-chip-label {
   margin-left: 0.3rem;
   font-weight: 600;
-  color: var(--p-orange-500);
+  color: var(--app-warning-color);
 }
 
 /* Contatori ambientali della topbar (badge code, pallino presidi): stessa
@@ -571,7 +612,7 @@ onMounted(async () => {
   right: -6px;
 }
 .topbar-code-icon-warn {
-  color: var(--p-red-500);
+  color: var(--app-severity-danger);
 }
 
 /* Logout — override hover rosso (usa topbar-icon-btn come base) */
@@ -599,13 +640,13 @@ onMounted(async () => {
 }
 
 /* Mobile — nasconde data, azienda, azioni inline; mostra solo il kebab */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .topbar-company,
   .topbar-date {
     display: none;
   }
 
-  .topbar-left i.pi-building {
+  .topbar-emittente-icon {
     display: none;
   }
 
@@ -629,7 +670,7 @@ onMounted(async () => {
 }
 
 /* Tablet — il nome azienda si tronca con ellipsis */
-@media (max-width: 1024px) and (min-width: 768px) {
+@media (max-width: 1023.98px) and (min-width: 768px) {
   .topbar-company {
     max-width: 120px;
   }

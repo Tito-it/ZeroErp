@@ -10,23 +10,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
-import jwt
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.response import Response
 from apps.core.api.base_views import DomainAPIView
-from rest_framework_simplejwt.token_blacklist.models import (
-    BlacklistedToken,
-    OutstandingToken,
-)
+from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.payload_validators import paginated_envelope, parse_list_params
 
 from apps.core.api.success_responses import success_response
 from apps.core.db.session_audit_repository import SessionAuditRepository
 from apps.core.services import session_audit_service
 from apps.core.services.auth_constants import JWT_CLAIM_SID
+from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.core.services.service_errors import ServiceError
 
 
@@ -36,66 +32,29 @@ def _get_current_sid(request: Request) -> str | None:
     return str(auth.get(JWT_CLAIM_SID, "")) if auth else None
 
 
-# Scopo: blocca i token JWT delle sessioni scelte da `vale_sid`, e ritorna
-#        quanti token le APPARTENGONO — non quanti ne ha scritti adesso.
-#
-# ⛔ La differenza fra i due conteggi e' l'IDEMPOTENZA, e la prima stesura di
-#    questo helper l'aveva persa: contando le sole scritture, revocare una
-#    sessione i cui token erano gia' tutti bloccati tornava zero, e il
-#    chiamante rispondeva «sessione non trovata» a un gesto che aveva gia'
-#    funzionato (un doppio click bastava). Chi chiede «questa sessione
-#    esiste?» non sta chiedendo «ho scritto qualcosa?».
-#
-# ⭐ Estratto il 2026-09-04: le due view di revoca facevano lo STESSO giro —
-#    scorri gli `OutstandingToken` dell'utente, decodifica, guarda il `sid`,
-#    blacklista — con due difetti diversi ciascuna, che e' il modo in cui due
-#    copie si presentano quando le trovi.
-#
-# ⛔ Il `try` copre SOLO la decodifica. Nella copia della revoca singola
-#    avvolgeva anche la scrittura: un errore di `get_or_create` veniva
-#    inghiottito, `found` restava falso e l'operatore leggeva «sessione non
-#    trovata» su una sessione che c'era — un guasto travestito da 404.
-#
-# ⚠️ Una query per i token gia' bloccati e una `bulk_create`, non una
-#    `get_or_create` per token: sul database di sviluppo l'utente ha ~1400
-#    token storici, e la forma per-token erano ~1400 SELECT per revocarne uno.
-#
-# ⚠️ `vale_sid` riceve sempre una stringa (mai `None`): il claim assente arriva
-#    qui come `""` e i chiamanti non devono ripetere il controllo.
-def _blocca_token_sessioni(user_id: int, vale_sid: Callable[[str], bool]) -> int:
-    gia_bloccati = set(
-        BlacklistedToken.objects.filter(token__user_id=user_id).values_list(
-            "token_id", flat=True
-        )
-    )
-    da_bloccare: list[BlacklistedToken] = []
-    corrispondenti = 0
-    for ot in OutstandingToken.objects.filter(user_id=user_id):
-        try:
-            payload = jwt.decode(
-                ot.token, options={"verify_exp": False, "verify_signature": False}
-            )
-        except Exception:
-            continue
-        if not vale_sid(str(payload.get(JWT_CLAIM_SID, "") or "")):
-            continue
-        corrispondenti += 1
-        # Gia' bloccato: conta come «esiste», non come «da scrivere».
-        if ot.id not in gia_bloccati:
-            da_bloccare.append(BlacklistedToken(token=ot))
-
-    if da_bloccare:
-        BlacklistedToken.objects.bulk_create(da_bloccare, ignore_conflicts=True)
-    return corrispondenti
-
-
 class SessioniAttiveListView(DomainAPIView):
-    """Lista sessioni attive dell'utente corrente, escludendo quella corrente."""
+    """Lista sessioni attive dell'utente corrente, escludendo quella corrente.
+
+    E' la lista a catalogo `core.sessioni_attive` (lista 83): envelope
+    paginato standard, ordinamento sulla whitelist del repository, ricerca
+    libera sulle colonne che il catalogo accende.
+    ⛔ Nessun `lista_codice`: la lista e' GLOBALE (`perimetro_emittente =
+    false`) — sono le sessioni dell'utente collegato, non dati di un'azienda —
+    e il suo posto e' `_ESENZIONI` di `test_perimetro_emittente_copertura`.
+    """
 
     skip_area_check = True
+    is_search_endpoint = True
 
     @extend_schema(
         summary="Lista altre sessioni attive utente",
+        parameters=[
+            param_ricerca_full(),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
         responses={
             200: inline_serializer(
                 name="SessioniAttiveResponse",
@@ -103,11 +62,20 @@ class SessioniAttiveListView(DomainAPIView):
                     "data": inline_serializer(
                         name="SessioniAttiveData",
                         fields={
-                            "sessioni": serializers.ListField(
-                                help_text="Lista sessioni attive (esclusa la corrente)."
+                            "results": serializers.ListField(
+                                help_text="Pagina di sessioni attive (esclusa la corrente)."
                             ),
                             "count": serializers.IntegerField(
-                                help_text="Numero sessioni restituite."
+                                help_text="Sessioni che rispondono alla ricerca (tutte le pagine)."
+                            ),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "totale_attive": serializers.IntegerField(
+                                help_text=(
+                                    "Altre sessioni attive a prescindere dalla ricerca: "
+                                    "quelle che «revoca tutte» chiude."
+                                )
                             ),
                         },
                     ),
@@ -115,14 +83,33 @@ class SessioniAttiveListView(DomainAPIView):
             )
         },
     )
-    # Scopo: Lista le sessioni attive dell'utente corrente, escludendo quella corrente.
-    # Il frontend mostra il pannello solo se la lista non e' vuota.
+    # Scopo: Lista paginata delle sessioni attive dell'utente corrente, esclusa
+    #        la corrente. Il frontend mostra il pannello solo se ce n'e' almeno una.
+    # ⭐ `totale_attive` accanto a `count`, e non e' un doppione: `count` conta
+    #    le righe TROVATE, `totale_attive` le sessioni che esistono. Il badge
+    #    del pannello e la conferma di «revoca tutte» parlano del secondo — una
+    #    ricerca che trova una sessione su tre non deve far dire al dialog
+    #    «revocherai 1 sessione» mentre ne revoca tre. Senza ricerca coincidono,
+    #    e la seconda lettura non si fa.
     def get(self, request: Request) -> Response:
+        p = parse_list_params(request.query_params, default_order="data_ultimo_evento")
         repo = SessionAuditRepository()
-        sessioni = repo.list_sessioni_attive(request.user.id)
         current_sid = _get_current_sid(request)
-        altre = [s for s in sessioni if s["jti"] != current_sid]
-        return success_response({"sessioni": altre, "count": len(altre)})
+        results, total = repo.list_sessioni_attive_paginata(
+            request.user.id,
+            escludi_jti=current_sid,
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        envelope = paginated_envelope(results, total, p["page"], p["limit"])
+        envelope["totale_attive"] = (
+            repo.conta_sessioni_attive(request.user.id, escludi_jti=current_sid)
+            if p["search"] else total
+        )
+        return success_response(envelope)
 
 
 class SessioneRevocaView(DomainAPIView):
@@ -130,7 +117,7 @@ class SessioneRevocaView(DomainAPIView):
 
     skip_area_check = True
 
-    @extend_schema(summary="Revoca sessione specifica", responses={204: None})
+    @extend_schema(request=None, summary="Revoca sessione specifica", responses={204: None})
     # Scopo: Revoca una sessione per sid — blacklista tutti i token JWT associati.
     def post(self, request: Request, jti: str) -> Response:
         sid = jti  # il parametro URL si chiama jti ma ora contiene un sid
@@ -147,7 +134,7 @@ class SessioneRevocaView(DomainAPIView):
         # ⚠️ Zero token con quel sid = la sessione non esiste. Se invece i suoi
         #    token c'erano ed erano gia' bloccati, la risposta resta 204: una
         #    revoca ripetuta e' idempotente, non un errore.
-        if _blocca_token_sessioni(request.user.id, lambda s: s == sid) == 0:
+        if blocca_token_sessioni(request.user.id, lambda s: s == sid) == 0:
             raise ServiceError(
                 code="E_SESSIONE_NOT_FOUND",
                 message="Sessione non trovata o gia' revocata.",
@@ -166,6 +153,7 @@ class SessioniRevocaTutteView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
+        request=None,
         summary="Revoca tutte le altre sessioni",
         responses={200: inline_serializer(
             name="SessioniRevocaTutteResponse",
@@ -220,7 +208,7 @@ class SessioniRevocaTutteView(DomainAPIView):
         }
 
         # Tutti i token che non sono della sessione corrente.
-        _blocca_token_sessioni(
+        blocca_token_sessioni(
             request.user.id, lambda s: bool(s) and s != current_sid
         )
 

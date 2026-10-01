@@ -106,11 +106,18 @@ ORDER BY data_riferimento;
 ### Note operative
 
 * **La quantità non è qui**: questa vista misura il *valore fermo* di un documento. Quanti
-  pezzi siano davvero da fatturare lo dice [vw_contatore_merce](vw_contatore_merce.md), ed è
-  quello che il lister proietta.
+  pezzi siano davvero da fatturare lo dice la partita di merce
+  ([vw_partite_merce](vw_partite_merce.md)), ed è quello che il lister proietta.
 * `security_invoker=on` — la famiglia dash è sotto scope emittente. ⚠️ Ri-specificarla a ogni
   `CREATE OR REPLACE`: non è visibile in `pg_get_viewdef` e verrebbe azzerata in silenzio.
 * Test: `db/pgtap/vendite/test-vw-dash-fatturazione-ddt-v1.sql`.
+
+---
+
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+L'imponibile di riga (`valore_riga`, col prezzo che ripiega su quello della riga d'ordine: una scelta della vista, passata come argomento) non è più scritto qui: viene da [script.fn_imponibile_riga](/dbzero/script/funzioni/fn_imponibile_riga), la sede unica della formula (`20260928-24`). Stesso valore — provato su una griglia di 252 casi e sui dati di dev — ma una regola sola: prezzo o quantità assenti danno **nessun valore**, mai zero; sconto assente è nessuno sconto; l'arrotondamento resta a chi consuma.
 
 ---
 

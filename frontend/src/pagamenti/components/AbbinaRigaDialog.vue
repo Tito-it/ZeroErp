@@ -50,10 +50,11 @@ import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 
 import AppDialog from '../../core/components/AppDialog.vue'
-import FatturaLookup from '../../core/components/FatturaLookup.vue'
+import FatturaLookup from '../../vendite/components/FatturaLookup.vue'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { displayDate } from '../../core/utils/date'
-import { abbinaRiga, registraRigaTardiva } from '../api/pagamenti'
+import { MANAGE_ICONS } from '../../core/constants'
+import { abbinaRiga, forzaturaConMotivo, registraRigaTardiva } from '../api/pagamenti'
 import { formatCurrency } from '../../core/utils/format'
 import { MODO_ABBINA } from '../composables/useAzioniRigaContabile'
 import RataSelect from './RataSelect.vue'
@@ -160,7 +161,7 @@ async function onAbbina() {
 
 // Scopo: secondo tentativo — con la forzatura e il suo motivo.
 async function onConferma() {
-  const esito = await conferma(motivoForzatura.value.trim() || null)
+  const esito = await conferma(forzaturaConMotivo(motivoForzatura.value.trim() || null))
   if (esito !== null) chiudiConEsito()
 }
 
@@ -249,14 +250,14 @@ function chiudiConEsito() {
           text
           size="small"
           :label="t('common.cancel')"
-          icon="pi pi-arrow-left"
+          :icon="MANAGE_ICONS.BACK"
           @click="annulla"
         />
         <Button
           size="small"
           severity="warn"
           :label="t('pagamenti.abbina.forza')"
-          icon="pi pi-check"
+          :icon="MANAGE_ICONS.CONFIRM"
           :loading="loading"
           @click="onConferma"
         />

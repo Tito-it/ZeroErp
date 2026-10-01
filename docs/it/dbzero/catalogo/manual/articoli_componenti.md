@@ -84,7 +84,7 @@ A partire dal trigger `trg_articoli_componenti_a10_block_update_struct_upd_dlt` 
 
 * **DELETE**: sempre bloccato (errore `E_BOM_MODIFICA_VIETATA` id 387). Non si elimina una riga BoM: si chiude.
 * **UPDATE** dei campi `coeff_qta`, `componente_id`, `obbligatorio`, `esposto_in_fattura`, `partecipa_qta`, `determina_qta_padre`, `valido_dal`, `validita`: bloccato (`E_BOM_MODIFICA_VIETATA`).
-* **UPDATE** di `valido_al`: ammesso, con check `NEW.valido_al >= OLD.valido_dal` (`E_BOM_VALIDO_AL_INVALIDO` id 388 in caso di range invalido). È l'unico modo per chiudere una riga.
+* **UPDATE** di `valido_al`: ammesso. È l'unico modo per chiudere una riga. Che non preceda `valido_dal` lo verifica il guard comune delle date, `script.trgfn_guard_date_validita` (`E_DATA_AL_MINORE_DAL`), come su ogni tabella con la coppia di date.
 * **UPDATE** di `note_*`, `meta`, `attivo`, e dei campi audit: ammesso (non sono campi di struttura).
 
 **Pattern operativo "chiudi+inserisci nuova versione"**: per evolvere una BoM, l'admin chiude la riga corrente (UPDATE `valido_al = oggi`) e inserisce una nuova riga con `valido_dal` successivo. L'exclusion constraint daterange esistente garantisce non-overlap. Vedi [guida gestione listini §5.3](/guide/gestione-listini#53-immutabilita-della-bom-pattern-chiudi-nuova-versione).

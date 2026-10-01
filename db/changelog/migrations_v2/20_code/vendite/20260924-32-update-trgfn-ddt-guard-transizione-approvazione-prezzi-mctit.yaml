@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il guard dell'emissione DDT solleva i due motivi del prezzo non autorizzato.
+#
+# vendite.trgfn_ddt_guard_transizione_approvazione smista i motivi di
+# script.fn_check_ddt_emittibile per codice: il ramo E_COMPONENTE_PREZZO_PENDENTE
+# lascia il posto a E_DOC_PREZZO_PENDENTE ed E_DOC_PREZZO_RIFIUTATO, i codici del
+# building block (-20, -31). Il ramo della valorizzazione non cambia.
+#
+# ⚠️ Codice LETTERALE confrontato col motivo, come gli altri rami del LOOP: non
+# e' un sito dell'helper del primo motivo (il LOOP sceglie QUALE motivo e' suo,
+# gli altri li solleva un altro dei quattro guard di emissione).
+#
+# Corpo preso dalla doc auto-gen (identico al vivo su zeroerp_ci, 2026-09-24).
+# Brief: brief-db-preventivi-congelamento-pricing.md (D-1, D-6)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260924-32-update-trgfn-ddt-guard-transizione-approvazione-prezzi-mctit.yaml
+
+  - changeSet:
+      id: 20260924-32-update-trgfn-ddt-guard-transizione-approvazione-prezzi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_ddt_guard_transizione_approvazione: solleva E_DOC_PREZZO_PENDENTE
+        / E_DOC_PREZZO_RIFIUTATO al posto di E_COMPONENTE_PREZZO_PENDENTE.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: blocca la transizione a EMESSO di un DDT con componenti
+              --   BoM CASO A in workflow approvazione prezzo (PENDING) o con
+              --   prezzo_unitario IS NULL (pending valorizzazione).
+              --   rev 2026-07-19: valutazione delegata a
+              --   script.fn_check_ddt_emittibile — single source con la capability.
+              --   rev 2026-09-24: i motivi del prezzo non autorizzato sono ora
+              --   E_DOC_PREZZO_PENDENTE ed E_DOC_PREZZO_RIFIUTATO (building block
+              --   script.fn_check_prezzi_autorizzati), non piu' E_COMPONENTE_PREZZO_PENDENTE
+              --   (brief-db-preventivi-congelamento-pricing, D-6).
+              DECLARE
+                  v_stato_codice config.stati_doc_ddt.codice_interno%TYPE;
+                  v_motivo       jsonb;
+              BEGIN
+                  SELECT sdd.codice_interno INTO v_stato_codice
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = NEW.stato_doc_ddt_id;
+
+                  IF v_stato_codice IS DISTINCT FROM 'EMESSO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  FOR v_motivo IN
+                      SELECT jsonb_array_elements(script.fn_check_ddt_emittibile(NEW))
+                  LOOP
+                      -- ⚠️ rev 2026-09-24: i due motivi del prezzo non autorizzato. La
+                      --   frase porta il CONTEGGIO, che la check emette in `valori`; la
+                      --   riga e il componente viaggiano nel contesto, per chi diagnostica.
+                      IF v_motivo->>'codice' = 'E_DOC_PREZZO_PENDENTE' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_DOC_PREZZO_PENDENTE',
+                              jsonb_build_object('ddt_id', NEW.id)
+                                  || COALESCE(v_motivo->'dettaglio', '{}'::jsonb),
+                              NEW.tx_id, v_motivo->'valori'->>0
+                          );
+                      ELSIF v_motivo->>'codice' = 'E_DOC_PREZZO_RIFIUTATO' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_DOC_PREZZO_RIFIUTATO',
+                              jsonb_build_object('ddt_id', NEW.id)
+                                  || COALESCE(v_motivo->'dettaglio', '{}'::jsonb),
+                              NEW.tx_id, v_motivo->'valori'->>0
+                          );
+                      ELSIF v_motivo->>'codice' = 'E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE',
+                              jsonb_build_object('ddt_id', NEW.id,
+                                  'hint', 'Uno o piu'' componenti BoM CASO A hanno prezzo non valorizzato. '
+                                       || 'Valorizzare tutti i prezzi prima di emettere il DDT.'),
+                              NULL::uuid, NEW.id::text
+                          );
+                      END IF;
+                  END LOOP;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()
+              IS 'Blocca la transizione a EMESSO di un DDT con componenti BoM CASO A in approvazione prezzo PENDING (E_COMPONENTE_PREZZO_PENDENTE) o con prezzo non valorizzato (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore invariati. rev 2026-09-24: il prezzo non autorizzato dei componenti solleva E_DOC_PREZZO_PENDENTE o E_DOC_PREZZO_RIFIUTATO — i motivi del building block script.fn_check_prezzi_autorizzati, che fn_check_ddt_emittibile chiede quando la causale vende — con il conteggio nella frase e riga/componente nel contesto. Prima E_COMPONENTE_PREZZO_PENDENTE, solo sul PENDING. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-6).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Manovra di emergenza: il corpo precedente e' nella doc auto-gen alla
+              --   revisione 2026-07-19 e si riapplica a mano, insieme a -31.
+              SELECT 1;

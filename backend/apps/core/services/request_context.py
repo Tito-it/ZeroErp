@@ -39,15 +39,45 @@ def get_idempotency_key() -> str | None:
 
 # --------------- HTTP request helpers ---------------
 
+import ipaddress
+
+from django.conf import settings
 from django.http import HttpRequest
 
 
-# Scopo: Estrae l'IP del client dalla request, gestendo proxy (X-Forwarded-For).
+# Scopo: Estrae l'IP del client dalla request, fidandosi solo dei proxy dichiarati.
+# ⭐ E' l'UNICA sede della regola «quale hop e' fidato» (audit, log richieste,
+# throttle, freno del login): `settings.TRUSTED_PROXY_COUNT` = N.
+#   - N = 0 → `REMOTE_ADDR`; `X-Forwarded-For` ignorato (lo scrive il client);
+#   - N > 0 → l'N-esimo valore di `X-Forwarded-For` DA DESTRA: ogni proxy
+#     (Nginx: `$proxy_add_x_forwarded_for`) accoda l'indirizzo da cui riceve,
+#     quindi solo gli ultimi N valori sono stati scritti da un proxy fidato.
+#     ⛔ Mai il primo: e' quello che il client dichiara, e lo cambia a piacere.
+# Ritorna una stringa valida per `inet`, oppure None se l'IP non si ricava
+# (header assente o con meno di N valori — la richiesta non e' passata dalla
+# catena dichiarata —, valore malformato). None non si sostituisce con un
+# ripiego: chi ne fa una chiave di sicurezza deve rifiutare, non indovinare.
 def get_client_ip(request: HttpRequest) -> str | None:
+    proxy_fidati = settings.TRUSTED_PROXY_COUNT
+    if proxy_fidati == 0:
+        return _normalizza_ip(request.META.get("REMOTE_ADDR"))
     xff = request.META.get("HTTP_X_FORWARDED_FOR")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
+    if not xff:
+        return None
+    valori = xff.split(",")
+    if len(valori) < proxy_fidati:
+        return None
+    return _normalizza_ip(valori[-proxy_fidati])
+
+
+# Scopo: Valida un indirizzo IP (v4/v6) e lo riporta in forma canonica; None se non lo e'.
+def _normalizza_ip(valore: str | None) -> str | None:
+    if not valore:
+        return None
+    try:
+        return str(ipaddress.ip_address(valore.strip()))
+    except ValueError:
+        return None
 
 
 # Scopo: Estrae lo User-Agent dalla request, troncato a 500 caratteri.

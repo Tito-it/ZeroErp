@@ -48,7 +48,13 @@ Come per `email_log`, ogni bozza ha un `ambito` (SISTEMA, REPARTO, OPERATORE) ch
 
 * **SISTEMA**: solo admin -- per email di infrastruttura
 * **REPARTO**: operatori dell'unita' organizzativa -- per comunicazioni del reparto. Richiede `unita_organizzativa_id` NOT NULL (CHECK constraint)
-* **OPERATORE**: solo chi l'ha creata -- per comunicazioni personali
+* **OPERATORE**: solo chi l'ha creata -- per comunicazioni personali. Richiede `creato_da_user_id` NOT NULL (CHECK constraint)
+
+La regola è la stessa di `email_log`, applicata dal database (policy `rls_email_outbox_ambito`, funzione [`script.fn_scope_email_ambito`](/dbzero/script/funzioni/fn_scope_email_ambito)). Vale per leggere, modificare e spedire:
+
+* il proprietario della bozza è **`creato_da_user_id`**, cioè chi l'ha preparata. `auth_user_id` è l'utente di cui la mail parla, e all'invio si copia sul log;
+* «admin» è il super admin; sulle bozze `REPARTO` e `OPERATORE` l'azienda deve essere anche nel perimetro di chi guarda;
+* nessun processo automatico legge le bozze: qui non c'è l'eccezione per `send_pending_emails` che c'è sul log.
 
 ---
 
@@ -74,5 +80,7 @@ Questa relazione bidirezionale permette di navigare in entrambe le direzioni: da
 * CHECK: `stato IN ('DRAFT', 'READY', 'SENT', 'CANCELLED', 'SIMULATA')` -- `SIMULATA` dal 2026-09-11
 * CHECK: `ambito IN ('SISTEMA', 'REPARTO', 'OPERATORE')`
 * CHECK: se `ambito = 'REPARTO'` allora `unita_organizzativa_id IS NOT NULL`
+* CHECK: se `ambito = 'OPERATORE'` allora `creato_da_user_id IS NOT NULL`
+* Una bozza si **elimina** solo in `DRAFT`. Spedita, simulata, in partenza o annullata resta al suo posto: si annulla, non si cancella
 * FK NO ACTION su account, template, reparto, pratica
 * FK SET NULL su `email_log_id` (cross-reference)

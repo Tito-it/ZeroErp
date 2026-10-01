@@ -111,11 +111,7 @@ anagrafiche.identita_digitali
     attivo                BOOLEAN
     valido_dal            DATE
     valido_al             DATE       NULLABLE
-    deve_cambiare_password BOOLEAN
     invito_inviato_at     TIMESTAMPTZ NULLABLE
-    tentativi_falliti     SMALLINT   (lockout per veste)
-    bloccato_fino_a       TIMESTAMPTZ NULLABLE
-    totp_obbligatorio     BOOLEAN
     storicizza            BOOLEAN
     data_insert/update, user_insert/update   (audit standard)
     UNIQUE (auth_user_id, ruolo_applicativo) WHERE attivo = true
@@ -135,11 +131,81 @@ anagrafiche.identita_digitali
   stesso tempo, riferite allo stesso `auth_user` o a `auth_user` diversi.
 - `ruolo_applicativo` dice **in quale veste** l'utente si logga; la veste e'
   scelta dal canale/namespace di login, non da un toggle runtime.
-- Lo **stato di lockout** (`tentativi_falliti`, `bloccato_fino_a`) e' per-identita:
-  un lockout sul portale non blocca lo shop dello stesso user, perche' i flussi
-  di login sono indipendenti.
-- **TOTP** e' per-identita: un dipendente puo' avere TOTP obbligatorio come
-  `OPERATORE` e non come `SHOP_CUSTOMER`.
+- ⭐ **Una persona, una credenziale.** L'email della credenziale e' unica,
+  senza distinguere maiuscole e minuscole (`script.fn_get_auth_user_id_for_email`
+  e' l'unica lettura per email). Creare un operatore su un'email che ha gia'
+  una credenziale **riusa quella** — nome utente e password restano i suoi —
+  ma non in silenzio: il DB chiede la conferma
+  (`E_CREDENZIALE_DA_CONFERMARE`, il messaggio nomina lo username trovato)
+  e la creazione si ripete dichiarando l'id della credenziale confermata
+  (`riusa_auth_user_id`): un id e non un sì, così una credenziale cambiata
+  nel frattempo ferma di nuovo; se la
+  credenziale e' di un'altra persona fisica il riuso e' rifiutato
+  (`E_CREDENZIALE_ALTRA_PERSONA`: l'email e' sbagliata).
+- ⭐ **La veste nasce spenta** e la accende solo l'**attivazione** dell'invito:
+  nessuno entra da una porta prima di averla accettata. Se la credenziale ha
+  gia' una password, l'attivazione e' un clic; altrimenti chiede di sceglierla.
+- ⭐ **Porta e profili sono due domande.** La veste attiva dice se la porta e'
+  aperta; il binding in `config.profili_accesso_bindings` dice cosa si puo'
+  fare dentro. Un profilo (anche SUPER_ADMIN) si assegna a una veste spenta,
+  e spegnere una veste non chiede di togliere prima i profili: li ritrova alla
+  riaccensione. Chi legge i permessi chiede entrambe le cose (`fn_is_super_admin`,
+  `fn_get_profili_accesso_applicabili`); l'ultimo SUPER_ADMIN attivo lo
+  protegge `E_PROFILO_ULTIMO_SUPER_ADMIN`.
+- ⛔ **La veste non porta stato della password.** Tentativi falliti, blocco,
+  cambio password obbligatorio e (quando ci sara') l'obbligo di TOTP sono della
+  **credenziale**: la password e' una sola e vale per tutte le porte, quindi chi
+  la prova la sta provando per tutte. Vedi §3.1-bis.
+
+### 3.1-bis La credenziale: tentativi, freno, blocco
+
+Lo stato della credenziale sta in `config.credenziali` (1:1 con `auth_user`,
+la riga nasce alla prima scrittura: assente = nessuno stato) e
+`config.credenziali_provenienze`. L'app non le scrive: passa dalle funzioni
+del DB. Al login valgono **tre regole**, verificate nell'ordine, prima di
+guardare la password:
+
+| Regola | Chi la fa scattare | Cosa colpisce | Codice |
+| --- | --- | --- | --- |
+| **Blocco** | un SUPER_ADMIN, con un verbo e un motivo | la credenziale su tutte le porte; non scade, e il reset password non lo toglie | `E_CREDENZIALE_BLOCCATA` |
+| **Freno sulla provenienza** | automatico, dopo N password sbagliate di fila dalla stessa provenienza | la coppia credenziale + provenienza, per qualche minuto: chi attacca da una macchina non chiude fuori il titolare, che entra dalla sua | `E_UTENTE_BLOCCATO` |
+| **Attesa crescente** | automatico, oltre un tetto di password sbagliate di fila da qualunque provenienza | la credenziale, che **rallenta** (secondi, con un massimo) ma non si chiude | `E_LOGIN_ATTESA` |
+
+Tutti e tre sono `403`, non `429`: il `429` e' il throttle per IP, e il login
+del frontend lo intercetta prima di leggere il codice.
+
+- La **provenienza** e' l'IP del chiamante come lo ricava il backend dietro i
+  proxy dichiarati (`get_client_ip`, setting `TRUSTED_PROXY_COUNT`): un valore
+  scritto dal client non conta. Se non si ricava, il login si rifiuta.
+- Un **accesso riuscito** azzera la credenziale e toglie il freno della sola
+  provenienza da cui si e' entrati; un **reset password riuscito** azzera tutti
+  i freni (chi possiede l'email ha superato la prova che il freno protegge),
+  ma non il blocco.
+- Password giusta sulla porta sbagliata (`E_VESTE_NON_ATTIVA`) non conta come
+  tentativo fallito.
+- ⭐ **Un nome che non esiste si comporta come uno che esiste.** Freno e
+  attesa valgono anche per un nome che non trova nessuna credenziale, con gli
+  stessi numeri e le stesse risposte: la chiave è il **nome tentato**
+  (`config.nomi_tentati`, `config.nomi_tentati_provenienze`), e dopo N
+  tentativi arriva lo stesso `E_UTENTE_BLOCCATO`. Così chi prova non impara
+  se il nome esiste. Il nome **non entra in chiaro** né nel DB né nei log:
+  il backend ne passa un'impronta (HMAC con una chiave che il DB non ha),
+  perché chi digita la password nel campo del nome la lascerebbe lì. Il
+  blocco dell'admin resta solo delle credenziali, e il suo messaggio rivela
+  che il nome c'è: è accettato, al titolare serve sapere a chi rivolgersi.
+- Il nome si confronta **come lo confronta l'autenticazione**: spazi in testa
+  e in coda tolti, maiuscole distinte. Una normalizzazione diversa per il
+  controllo farebbe sfuggire il nome al freno.
+- ⚠️ **Due regole diverse, anche se i numeri si somigliano.** Il throttle
+  `LoginRateThrottle` (5 richieste ogni 5 minuti per IP, qualunque credenziale)
+  ferma chi **inonda** l'endpoint; il freno per provenienza (N password
+  sbagliate sulla stessa credenziale) ferma chi **prova** una credenziale. Il
+  primo non sa quale credenziale si prova, il secondo non conta le richieste.
+- Il **cambio password obbligatorio** e' della credenziale: lo accende solo il
+  verbo dedicato (`script.fn_imposta_deve_cambiare_password`), lo spegne
+  qualunque nuova password (cambio, reset, attivazione). ⛔ L'invito **non**
+  lo accende e non tocca la password: la credenziale puo' essere di una
+  persona che ha gia' un'altra veste, e la sua password vale anche li'.
 
 ### 3.2 Il vincolo "persona fisica pura" si sposta
 
@@ -508,10 +574,20 @@ e' coerente.
 origine. Il refresh non cambia identita — se un user vuole loggare con altra
 veste, deve fare nuovo login sul namespace corrispondente.
 
-**Impatto sul logout:** il logout invalida il refresh token della veste corrente
-(via `token_blacklist` SimpleJWT). Le altre identita dello stesso `auth_user`
-restano loggate nei rispettivi canali (se hanno JWT attivi in altre sessioni
-browser/device).
+Dal 2026-09-28 il refresh non viaggia mai nel corpo JSON: sta nel cookie
+HttpOnly `zeroerp_refresh` (`SameSite=Strict`, `Path=/api/v1/`, durata del
+refresh), scritto da login, refresh, cambio password e cambio emittente
+attivo; l'endpoint di refresh pretende anche l'header anti-CSRF
+`X-Requested-With: XMLHttpRequest`. L'access token (10 minuti) resta nel
+corpo e il frontend lo tiene solo in memoria. Contratto completo in
+[api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md#cookie-di-refresh).
+Il cookie ha un nome e un path unici: nello stesso browser ne esiste uno solo,
+e un login su un altro canale lo sostituisce.
+
+**Impatto sul logout:** il logout revoca la sessione del refresh presentato nel
+cookie (tutti i token col suo `sid`, via `token_blacklist` SimpleJWT) e
+cancella il cookie. Le altre identita dello stesso `auth_user` restano loggate
+nei rispettivi canali (se hanno JWT attivi in altre sessioni browser/device).
 
 ---
 
@@ -529,7 +605,7 @@ Simmetrico al flusso operatori ([Risorse umane §Invito operatore](/guide/risors
 
 Riusa tutto l'impianto esistente: [token_monouso](/dbzero/config/tabelle/token_monouso),
 [fn_sync_auth_user_is_active](/guide/risorse-umane-e-accessi#sync-auth_user-is_active) (generalizzata),
-middleware `PasswordChangeRequiredMiddleware`.
+il cancello degli obblighi (`apps/core/api/cancello_obblighi.py`) per il cambio password obbligato.
 
 ### 8.2 Self-service (shop)
 

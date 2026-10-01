@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I TESTI DI anagrafiche.trgfn_billing_account_guard_admin_globale RACCONTANO LA REGOLA VERA
+#   Brief: brief-db-messaggio-ba-senza-emittente
+#
+# -- IL DIFETTO ----------------------------------------------------------------------------------
+#   Dalla rev 2026-08-04 script.fn_check_user_can_create_ba lascia creare un
+#   billing account anche a chi non ha righe in config.user_emittenti_fiscali,
+#   purche' lavori DENTRO un emittente (app.current_emittente_id valorizzato e
+#   nel suo perimetro, verificato da fn_check_user_emittente_scope). Il divieto
+#   vero e': nessun emittente su cui scrivere. Il COMMENT e il 'detail' del
+#   contesto dicevano ancora «vieta agli admin globali (utenti senza riga in
+#   user_emittenti_fiscali)», cioe' la regola del 2026-04-08.
+#
+# -- COSA CAMBIA ---------------------------------------------------------------------------------
+#   Solo testi: il COMMENT ON FUNCTION e la chiave 'detail' del contesto
+#   passato a fn_log_and_raise_error. Il messaggio per l'operatore sta nel
+#   CSV (messaggi_errore.csv, id 358), riscritto nello stesso giro.
+#
+# -- COSA NON CAMBIA -----------------------------------------------------------------------------
+#   La logica (skip senza app.current_user_id, delega a
+#   fn_check_user_can_create_ba), il codice E_BA_ADMIN_GLOBALE_VIETATO (il nome
+#   resta: lo usano apps/anagrafiche/error_codes.py e clienti_service.py), i
+#   valori della frase, il trigger trg_billing_account_a10_guard_admin_globale_ins
+#   (la firma non cambia, il trigger continua a puntare alla funzione).
+#
+# -- CORPO DI PARTENZA ---------------------------------------------------------------------------
+#   Dalla doc auto-generata (docs/it/dbzero/anagrafiche/funzioni/), unico
+#   changeSet precedente: 20260408-14. Il rollback rimette quel corpo e quel COMMENT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260926-12-update-trgfn-billing-account-guard-admin-globale-testi-mctit.yaml
+
+  - changeSet:
+      id: 20260926-12-update-trgfn-billing-account-guard-admin-globale-testi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Riallinea COMMENT e 'detail' del guard a10 sui billing account alla regola vera
+        (rev 2026-08-04 di fn_check_user_can_create_ba): si rifiuta chi non ha un emittente
+        su cui scrivere, cioe' ne' riga in user_emittenti_fiscali ne' app.current_emittente_id
+        valido, quando esistono emittenti attivi. Logica invariata.
+        Brief: brief-db-messaggio-ba-senza-emittente.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'trgfn_billing_account_guard_admin_globale';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_user_id integer;
+                  v_can_create boolean;
+              BEGIN
+                  -- Lettura GUC app.current_user_id (settato dal middleware Django).
+                  -- Il secondo parametro 'true' di current_setting evita errore se
+                  -- il GUC non e' definito (ritorna NULL).
+                  BEGIN
+                      v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  EXCEPTION WHEN OTHERS THEN
+                      v_user_id := NULL;
+                  END;
+
+                  -- Bootstrap / seed / job senza utente: non bloccare.
+                  -- Le INSERT applicative passano sempre da middleware quindi
+                  -- il GUC c'e'. L'unico scenario senza GUC sono i seed di
+                  -- migrazione e le manutenzioni manuali.
+                  IF v_user_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- La regola sta in fn_check_user_can_create_ba (rev 2026-08-04):
+                  -- serve un emittente su cui scrivere, cioe' una riga in
+                  -- user_emittenti_fiscali oppure app.current_emittente_id valido
+                  -- per l'utente; senza, passa solo un'istanza a zero emittenti attivi.
+                  v_can_create := script.fn_check_user_can_create_ba(v_user_id);
+
+                  IF v_can_create IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_BA_ADMIN_GLOBALE_VIETATO',
+                          jsonb_build_object(
+                              'detail', 'Nessun emittente fiscale su cui scrivere (ne'' riga in user_emittenti_fiscali ne'' app.current_emittente_id valido) ed esistono emittenti attivi: billing account non creabile',
+                              'auth_user_id', v_user_id,
+                              'codice_ba', NEW.codice
+                          ),
+                          NULL::uuid,
+                          coalesce(NEW.codice, '')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
+              IS 'Guard BEFORE INSERT su billing_account: rifiuta la creazione quando l''utente non ha un emittente fiscale su cui scrivere, cioe'' ne'' una riga in config.user_emittenti_fiscali ne'' un app.current_emittente_id valido per lui (tipicamente il super admin in «Tutti gli emittenti»), ed esistono emittenti fiscali attivi. La regola e'' delegata a script.fn_check_user_can_create_ba (rev 2026-08-04). Skip se GUC app.current_user_id non impostato (seed/bootstrap). Solleva E_BA_ADMIN_GLOBALE_VIETATO (il nome del codice resta per compatibilita'').';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_user_id integer;
+                  v_can_create boolean;
+              BEGIN
+                  -- Lettura GUC app.current_user_id (settato dal middleware Django).
+                  -- Il secondo parametro 'true' di current_setting evita errore se
+                  -- il GUC non e' definito (ritorna NULL).
+                  BEGIN
+                      v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  EXCEPTION WHEN OTHERS THEN
+                      v_user_id := NULL;
+                  END;
+
+                  -- Bootstrap / seed / job senza utente: non bloccare.
+                  -- Le INSERT applicative passano sempre da middleware quindi
+                  -- il GUC c'e'. L'unico scenario senza GUC sono i seed di
+                  -- migrazione e le manutenzioni manuali.
+                  IF v_user_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_can_create := script.fn_check_user_can_create_ba(v_user_id);
+
+                  IF v_can_create IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_BA_ADMIN_GLOBALE_VIETATO',
+                          jsonb_build_object(
+                              'detail', 'Admin globale non puo'' creare billing account quando esistono emittenti fiscali',
+                              'auth_user_id', v_user_id,
+                              'codice_ba', NEW.codice
+                          ),
+                          NULL::uuid,
+                          coalesce(NEW.codice, '')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
+              IS 'Guard BEFORE INSERT su billing_account: vieta agli admin globali (utenti senza riga in user_emittenti_fiscali) di creare BA quando esistono emittenti fiscali attivi. Skip se GUC app.current_user_id non impostato (seed/bootstrap). Solleva E_BA_ADMIN_GLOBALE_VIETATO.';

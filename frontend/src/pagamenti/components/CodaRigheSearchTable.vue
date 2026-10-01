@@ -25,8 +25,8 @@
 import { computed, onActivated, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
-import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
 
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -38,13 +38,15 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useInjectBlocked, useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
-import { DATE_FORMAT } from '../../core/constants'
 import { statoRigaContabileSeverity } from '../../core/utils/severity'
 import { MODO_ABBINA, useAzioniRigaContabile } from '../composables/useAzioniRigaContabile'
 import { useEtichettePagamenti } from '../etichette'
 import { useCodaRigheStore } from '../stores/codaRighe'
+import { STATUS_ICONS } from '../../core/constants'
 import { CODE, ROTTA_PER_CODA } from '../vocabolari'
 import AbbinaRigaDialog from './AbbinaRigaDialog.vue'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const props = defineProps({
   // La coda che questa porta apre. ⚠️ Arriva dalla ROTTA, non da uno stato
@@ -65,15 +67,15 @@ const rigaDaAbbinare = ref(null)
 const modoAbbina = ref(MODO_ABBINA.ABBINA)
 
 const {
-  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   searchTableOptions: { defaultSortField: 'data_pagamento', defaultSortOrder: 'desc' },
 })
 
-const { bindDate } = useStoreFilterBindings(store, applyFilters)
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
+const { bindPeriodo } = useStoreFilterBindings(store, applyFilters)
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 
 const { opzioniCoda: costruisciOpzioniCoda } = useEtichettePagamenti()
 
@@ -103,14 +105,16 @@ const codaCorrente = computed({
 function onRowClick(data) { emit('row-click', data) }
 
 // ── azioni di riga ────────────────────────────────────────────────
-// I fatti della testata arrivano SULLA RIGA (BE-4: `contabile_is_final`,
+// I fatti della testata arrivano SULLA RIGA (BE-4: `contabile_righe_lavorabili`,
 // `contabile_registrata`), perche' qui ogni riga viene da una distinta
-// diversa e non c'e' un dettaglio da cui leggerli.
+// diversa e non c'e' un dettaglio da cui leggerli. ⚠️ La coda seleziona gia'
+// le sole righe lavorabili: la bandiera si passa lo stesso, perche' la regola
+// del kebab non deve dipendere dal filtro da cui la riga e' passata.
 const { buildRowActions } = useAzioniRigaContabile({
   statiRiga: () => store.statiRiga,
   transizioniRiga: () => store.transizioniRiga,
   testataDi: (riga) => ({
-    finale: riga.contabile_is_final === true,
+    righeLavorabili: riga.contabile_righe_lavorabili,
     registrata: riga.contabile_registrata === true,
   }),
   readonly: () => isReadonly.value,
@@ -156,25 +160,26 @@ onActivated(() => sincronizzaConLaRotta())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <!-- La ricerca: colonne dal catalogo (`ricerca_full`: senza colonne
+               accese la casella non si rende), sotto 3 caratteri il termine
+               non filtra. -->
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
           <Select
             v-model="codaCorrente"
+            class="app-filter-w-md"
             :options="opzioniCoda"
             option-label="label"
             option-value="value"
-            style="width: 190px;"
           />
-          <DatePicker
-            v-model="dataDaFilter" :placeholder="t('common.data_da')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataDaChange" @clear-click="onDataDaChange"
-          />
-          <DatePicker
-            v-model="dataAFilter" :placeholder="t('common.data_a')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataAChange" @clear-click="onDataAChange"
-          />
-        </div>
+          <FiltroPeriodo :periodo="periodo" />
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -234,7 +239,7 @@ onActivated(() => sincronizzaConLaRotta())
 
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-check-circle" />
+            <i :class="STATUS_ICONS.TUTTO_OK" />
             <p>{{ t('pagamenti.righe.coda_vuota') }}</p>
           </div>
         </template>

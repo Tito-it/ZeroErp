@@ -122,14 +122,14 @@ class ErrorCodesDbPolicyGuardrail(TestCase):
                 )
 
             cur.execute(
-                f"SELECT codice, da_trigger, n_funzioni, funzioni FROM {_VISTA}"  # noqa: S608
+                f"SELECT codice, da_trigger, n_funzioni, funzioni FROM {_VISTA}"
             )
             cls.vista = {
                 r[0]: {"da_trigger": r[1], "n_funzioni": r[2], "funzioni": r[3]}
                 for r in cur.fetchall()
             }
 
-            cur.execute(f"SELECT codice, da_trigger FROM {_REGISTRO}")  # noqa: S608
+            cur.execute(f"SELECT codice, da_trigger FROM {_REGISTRO}")
             cls.registro = {r[0]: r[1] for r in cur.fetchall()}
 
     # Scopo: verso 1 — il 142esimo codice. Un codice che una funzione PL/pgSQL

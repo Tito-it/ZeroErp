@@ -19,7 +19,8 @@ Richiesta **BE-1** del brief
 [brief-design-situazione-merce-ordine](../../../dev/work-done/brief-design-situazione-merce-ordine.md).
 
 ⭐ **Il fatto che ha generato il cantiere**: il conto della merce esisteva a DB
-(`vw_contatore_merce`) ma *«non è mai stato mostrato a una persona»* — serviva
+(allora `vw_contatore_merce`, ritirata il 22-09-2026: oggi la partita,
+`vw_partite_merce`) ma *«non è mai stato mostrato a una persona»* — serviva
 solo alle macchine. Ricostruire la storia di una riga d'ordine richiedeva
 **cinque schermate**. Questo endpoint la restituisce in una chiamata.
 

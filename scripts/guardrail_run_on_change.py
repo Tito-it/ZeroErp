@@ -2,7 +2,7 @@
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Guardrail CI — `runOnChange` vietato in 00_schema e 20_code
-#   Regola: .codex/AGENTS.md §Liquibase v2 Workflow
+#   Regola: docs/it/linee-guida-sql.md §11.1 (indice in .codex/AGENTS.md §Database e Liquibase)
 #           docs/it/linee-guida-sql.md §11.1
 #
 # COSA PRESIDIA, in una riga:
@@ -187,7 +187,7 @@ def main() -> int:
         "    vale niente. Con runOnChange:false il checksum torna vincolante e il\n"
         "    migrate fallisce. Deve essere `validCheckSums:` con `- ANY`.\n"
         "\n"
-        "Regola: .codex/AGENTS.md §Liquibase v2 Workflow · linee-guida-sql.md §11.1\n"
+        "Regola: docs/it/linee-guida-sql.md §11.1 (indice in .codex/AGENTS.md §Database e Liquibase)\n"
         "Resta lecito in 80_data (mirror CSV), 85_pgagent, 90_end.",
         file=sys.stderr,
     )

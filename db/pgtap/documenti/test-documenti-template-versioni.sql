@@ -7,9 +7,9 @@
 --   - guard A2 (delete block PUBBLICATA/OBSOLETA/usata)
 --   - daterange validita auto-calcolata da trigger
 -- ------------------------------------------------------------
--- Indice test (1..9):
+-- Indice test (1..11):
 --  1) Setup: emittente fiscale disponibile, template di base creato
---  2) Validita' calcolata automaticamente da script.trgfn_set_validita
+--  2) Validita' calcolata automaticamente (colonna generata)
 --  3) Anti-overlap: due PUBBLICATA attive con range sovrapposti bloccate
 --  4) Anti-overlap: range disgiunto ammesso
 --  5) Guard A1: UPDATE html_template su PUBBLICATA bloccato
@@ -17,6 +17,10 @@
 --  7) Guard A1: UPDATE meta (campo non protetto) ammesso anche su PUBBLICATA
 --  8) Guard A2: DELETE su PUBBLICATA bloccato
 --  9) Guard A2: DELETE su BOZZA non usata ammesso
+-- 10) Guard A1: UPDATE versione_contesto su PUBBLICATA bloccato (20260930-17)
+-- 11) versione_contesto si cambia su una BOZZA (D-C4)
+--     (10-11 girano prima di 8-9: il 9 cancella la BOZZA che serve all'11)
+-- Brief versione_contesto: brief-db-documenti-versione-contesto-template.md
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -36,7 +40,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(9);
+SELECT plan(11);
 
 -- ============================================================
 -- Setup contesto + template di base
@@ -77,19 +81,19 @@ SELECT ok(
 -- ============================================================
 INSERT INTO documenti.template_documenti_versioni (
   template_documento_id, versione, stato, titolo, html_template,
-  render_engine_id, valido_dal, valido_al
+  render_engine_id, valido_dal, valido_al, versione_contesto
 )
 SELECT (SELECT id FROM tmp_tdv_template),
        1, 'BOZZA', 'v1', '<html>v1</html>',
        (SELECT render_id FROM tmp_tdv_ctx),
-       DATE '2026-01-01', DATE '2026-06-30';
+       DATE '2026-01-01', DATE '2026-06-30', 1;
 
 SELECT is(
   (SELECT validita FROM documenti.template_documenti_versioni
     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
       AND versione = 1),
   daterange(DATE '2026-01-01', DATE '2026-06-30', '[]'),
-  'Validita auto-calcolata correttamente da script.trgfn_set_validita'
+  'Validita auto-calcolata correttamente (colonna generata)'
 );
 
 -- ============================================================
@@ -103,12 +107,12 @@ UPDATE documenti.template_documenti_versioni
 -- 3) Anti-overlap: una seconda v2 PUBBLICATA con range sovrapposto deve fallire
 INSERT INTO documenti.template_documenti_versioni (
   template_documento_id, versione, stato, titolo, html_template,
-  render_engine_id, valido_dal, valido_al
+  render_engine_id, valido_dal, valido_al, versione_contesto
 )
 SELECT (SELECT id FROM tmp_tdv_template),
        2, 'BOZZA', 'v2', '<html>v2</html>',
        (SELECT render_id FROM tmp_tdv_ctx),
-       DATE '2026-04-01', DATE '2026-09-30';
+       DATE '2026-04-01', DATE '2026-09-30', 1;
 
 SELECT throws_ok(
   $$UPDATE documenti.template_documenti_versioni
@@ -123,12 +127,12 @@ SELECT throws_ok(
 -- 4) Anti-overlap: range disgiunto ammesso
 INSERT INTO documenti.template_documenti_versioni (
   template_documento_id, versione, stato, titolo, html_template,
-  render_engine_id, valido_dal, valido_al
+  render_engine_id, valido_dal, valido_al, versione_contesto
 )
 SELECT (SELECT id FROM tmp_tdv_template),
        3, 'BOZZA', 'v3', '<html>v3</html>',
        (SELECT render_id FROM tmp_tdv_ctx),
-       DATE '2026-07-01', DATE '2026-12-31';
+       DATE '2026-07-01', DATE '2026-12-31', 1;
 
 UPDATE documenti.template_documenti_versioni
    SET stato = 'PUBBLICATA'
@@ -180,6 +184,37 @@ SELECT is(
       AND versione = 1),
   'true',
   'A1: UPDATE meta (non protetto) ammesso anche su PUBBLICATA'
+);
+
+-- ============================================================
+-- 10-11) La forma dei dati dichiarata (versione_contesto, 20260930-17)
+-- ============================================================
+-- ⚠️ Prima del test 8/9: il 9 cancella la v2, che qui serve come BOZZA.
+-- 10) Su una PUBBLICATA la forma non si cambia: aggirerebbe il controllo fatto
+--     alla pubblicazione. throws_like sulla frase del Guard A1, non un NULL
+--     generico: il rifiuto deve venire da lui, non da un CHECK.
+SELECT throws_like(
+  $$UPDATE documenti.template_documenti_versioni
+       SET versione_contesto = 2
+     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+       AND versione = 1$$,
+  '%versione pubblicata%non puo''%modificata%',
+  'A1: UPDATE versione_contesto su PUBBLICATA bloccato (20260930-17)'
+);
+
+-- 11) Su una BOZZA si': e' cosi' che si prepara la versione per la forma
+--     successiva (D-C4), anche una forma che il builder non produce ancora.
+UPDATE documenti.template_documenti_versioni
+   SET versione_contesto = 7
+ WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+   AND versione = 2;
+
+SELECT is(
+  (SELECT versione_contesto FROM documenti.template_documenti_versioni
+    WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+      AND versione = 2),
+  7,
+  'D-C4: su una BOZZA versione_contesto si cambia, anche verso una forma non ancora prodotta'
 );
 
 -- ============================================================

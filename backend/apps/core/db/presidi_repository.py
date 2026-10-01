@@ -279,7 +279,7 @@ class PresidiRepository:
                     self.prime_righe(riga, limite=righe_per_presidio)
                     if (con_righe and conteggio) else []
                 )
-            except Exception as exc:  # noqa: BLE001 — isolamento per presidio
+            except Exception as exc:  # isolamento per presidio
                 # ⚠️ Solo se e' inutilizzabile: questo giro sta dentro una
                 #    richiesta web, e chiudere una connessione sana e' un
                 #    effetto collaterale che non ci si aspetta da una lettura.

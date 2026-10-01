@@ -23,7 +23,8 @@ BEGIN
     --
     -- Parametri obbligatori:
     --   p_username:      username univoco
-    --   p_email:         email univoca
+    --   p_email:         email univoca, SENZA distinguere
+    --                    maiuscole e minuscole (D-9, rev 20260925-41)
     --   p_password_hash: hash password Django
     --
     -- Parametri opzionali:
@@ -34,8 +35,9 @@ BEGIN
     --   auth_user.id dell'utente creato
     --
     -- Riusabile da:
-    --   fn_crea_operatore, fn_crea_admin, qualsiasi flusso
-    --   che necessiti di un utente Django.
+    --   fn_crea_operatore_v2 (solo quando la credenziale
+    --   dell'email non esiste: altrimenti la riusa, D-6),
+    --   qualsiasi flusso che necessiti di un utente Django.
     -- =========================================================
 
     -- =============================================================
@@ -82,7 +84,11 @@ BEGIN
         );
     END IF;
 
-    IF EXISTS (SELECT 1 FROM django.auth_user WHERE email = TRIM(p_email)) THEN
+    -- ⭐ Rev 20260925-41: la regola «questa email ha gia' una
+    --   credenziale» sta in UN posto, senza distinguere maiuscole e
+    --   minuscole (D-9). Era `email = TRIM(p_email)`: Mario@x.it e
+    --   mario@x.it passavano come due persone.
+    IF script.fn_get_auth_user_id_for_email(p_email) IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_crea_auth_user',
             'E_ADMIN_EMAIL_DUPLICATA',
@@ -114,7 +120,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_auth_user(p_username text, p_email text, p_password_hash text, p_first_name text, p_last_name text)
-IS 'Building block: crea auth_user (Django) con guard unicita'' username/email. Obbligatori: p_username, p_email, p_password_hash (DEFAULT NULL, guard nel body). Ritorna auth_user.id. Riusabile da orchestratori (operatore, admin, ecc.).';
+IS 'Building block: crea auth_user (Django) con guard unicita'' username/email. Obbligatori: p_username, p_email, p_password_hash (DEFAULT NULL, guard nel body). Ritorna auth_user.id. ⭐ Rev 20260925-41: l''email duplicata si riconosce SENZA distinguere maiuscole e minuscole (D-9 di brief-db-blocco-login-per-credenziale), chiedendo a script.fn_get_auth_user_id_for_email, la sede unica della regola; il codice resta E_ADMIN_EMAIL_DUPLICATA (senza il guard la collisione arriverebbe dall''indice unico come 23505 anonimo). Chiamata dalla madre fn_crea_operatore_v2 solo quando l''email non ha ancora una credenziale (altrimenti la riusa, D-6).';
 ```
 
 ---

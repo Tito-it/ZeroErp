@@ -32,6 +32,7 @@ from django.test import SimpleTestCase
 from rest_framework.request import Request
 
 from apps.core.api.emittente_attivo_views import EmittenteAttivoView
+from apps.core.api.refresh_cookie import REFRESH_COOKIE_NAME
 from apps.core.services.auth_constants import JWT_CLAIM_EMITTENTE_ATTIVO_ID
 
 _SERVICE = "apps.core.api.emittente_attivo_views.EmittenteAttivoService"
@@ -55,11 +56,14 @@ def _errore(response):
 #        `spec=Request` non è un vezzo: `parse_json_body` (dentro
 #        `handle_post_json`) legge `request.data` SOLO se la request è una
 #        DRF Request — senza spec cadrebbe sul ramo `request.body`.
-def _request(payload: dict | None = None) -> MagicMock:
+#        Il refresh arriva nel cookie HttpOnly (brief sicurezza §2), non nel
+#        payload.
+def _request(payload: dict | None = None, *, refresh: str | None = None) -> MagicMock:
     request = MagicMock(spec=Request)
     request.user = MagicMock()
     request.user.id = _UTENTE
     request.data = payload if payload is not None else {}
+    request.COOKIES = {REFRESH_COOKIE_NAME: refresh} if refresh else {}
     return request
 
 
@@ -89,7 +93,7 @@ class EmittenteAttivoViewTests(SimpleTestCase):
         self.assertEqual(_corpo(response)["opzioni"][0]["emittente_fiscale_id"], 32)
         MockService.return_value.opzioni.assert_called_once_with(_UTENTE)
 
-    # 1. POST senza refresh token: rifiuto parlante. Senza token non si può
+    # 1. POST senza cookie di refresh: rifiuto parlante. Senza token non si può
     #    riemettere il claim, e salvare soltanto lascerebbe la sessione a
     #    lavorare dove non deve. `handle_post_json` traduce il ServiceError
     #    nell'envelope d'errore (policy E_EMITTENTE_ATTIVO_TOKEN → 400).
@@ -102,7 +106,7 @@ class EmittenteAttivoViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(_errore(response)["code"], "E_EMITTENTE_ATTIVO_TOKEN")
 
-    # 2. Guard anti-scambio: il refresh nel body deve appartenere all'utente
+    # 2. Guard anti-scambio: il refresh nel cookie deve appartenere all'utente
     #    autenticato. L'access token dice CHI sei, il refresh è un dato in
     #    ingresso: senza confronto si farebbe riemettere a un token altrui il
     #    claim scelto qui.
@@ -114,13 +118,14 @@ class EmittenteAttivoViewTests(SimpleTestCase):
         MockService.return_value.imposta.return_value = 32
         MockRefresh.return_value = _refresh_token(user_id=_UTENTE + 1)
         response = EmittenteAttivoView().post(
-            _request({"emittente_fiscale_id": 32, "refresh": "tok"})
+            _request({"emittente_fiscale_id": 32}, refresh="tok")
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(_errore(response)["code"], "E_EMITTENTE_ATTIVO_TOKEN")
 
-    # 3. Percorso felice: claim aggiornato sul refresh + token nuovi in
-    #    risposta. Senza i token la combo cambierebbe e i dati no.
+    # 3. Percorso felice: claim aggiornato sul refresh, access nuovo nel
+    #    corpo e refresh nuovo nel COOKIE (mai nel corpo). Senza i token la
+    #    combo cambierebbe e i dati no.
     @patch(_REFRESH)
     @patch(_SERVICE)
     def test_post_imposta_emittente_e_riemette_il_claim(
@@ -132,14 +137,16 @@ class EmittenteAttivoViewTests(SimpleTestCase):
         MockRefresh.return_value = token
 
         response = EmittenteAttivoView().post(
-            _request({"emittente_fiscale_id": 32, "refresh": "tok"})
+            _request({"emittente_fiscale_id": 32}, refresh="tok")
         )
 
         MockService.return_value.imposta.assert_called_once_with(_UTENTE, 32)
         self.assertEqual(token.payload[JWT_CLAIM_EMITTENTE_ATTIVO_ID], 32)
         corpo = _corpo(response)
         self.assertIn("access", corpo)
-        self.assertIn("refresh", corpo)
+        self.assertNotIn("refresh", corpo)
+        self.assertEqual(response.cookies[REFRESH_COOKIE_NAME].value, str(token))
+        self.assertTrue(response.cookies[REFRESH_COOKIE_NAME]["httponly"])
 
     # 4. «Tutti gli emittenti»: il claim va RIMOSSO, non messo a null —
     #    l'assenza è la convenzione con cui set_jwt_gucs lascia la GUC vuota,
@@ -152,7 +159,7 @@ class EmittenteAttivoViewTests(SimpleTestCase):
         token = _refresh_token()
         MockRefresh.return_value = token
 
-        EmittenteAttivoView().post(_request({"emittente_fiscale_id": None, "refresh": "tok"}))
+        EmittenteAttivoView().post(_request({"emittente_fiscale_id": None}, refresh="tok"))
 
         MockService.return_value.imposta.assert_called_once_with(_UTENTE, None)
         self.assertNotIn(JWT_CLAIM_EMITTENTE_ATTIVO_ID, token.payload)
@@ -164,7 +171,7 @@ class EmittenteAttivoViewTests(SimpleTestCase):
     @patch(_SERVICE)
     def test_post_emittente_non_numerico_rifiuta_400(self, MockService) -> None:
         response = EmittenteAttivoView().post(
-            _request({"emittente_fiscale_id": "abc", "refresh": "tok"})
+            _request({"emittente_fiscale_id": "abc"}, refresh="tok")
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(_errore(response), "invalid_payload")

@@ -30,7 +30,7 @@ BEGIN
     IF NEW.qta IS NULL OR NEW.qta <= 0 THEN
       PERFORM script.fn_log_and_raise_error(
         'database','trgfn_resi_riconsegne_guard','E_QTA_NON_POSITIVA',
-        jsonb_build_object('qta', NEW.qta), NEW.tx_id, NEW.qta::text);
+        jsonb_build_object('campo', 'qta', 'qta', NEW.qta), NEW.tx_id, NEW.qta::text);
     END IF;
 
     -- 1) Lock riga reso + gruppo riconsegne + gruppo rinunce

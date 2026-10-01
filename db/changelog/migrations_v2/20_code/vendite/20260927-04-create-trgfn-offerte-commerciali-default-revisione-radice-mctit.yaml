@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CATENA DELLE REVISIONI DI UN'OFFERTA PRENDE UN NOME — passo 2 di 4
+#   Brief: brief-db-liste-datatable-grezze.md §3.2
+#
+#   Il trigger BEFORE INSERT che deriva `revisione_radice_id`:
+#     - rev.1 (`revisione_padre_id` NULL) -> la radice e' la riga stessa. In un
+#       BEFORE INSERT NEW.id e' gia' valorizzato: il default della colonna
+#       (sequence) si applica prima dei trigger BEFORE ROW;
+#     - revisione successiva -> la radice del padre.
+#   ⭐ La regola sta QUI e non in fn_crea_revisione_offerta: una riga nasce
+#   anche da un INSERT diretto (il backend che crea un'offerta, i pgTAP), e la
+#   radice deve valere per tutte. La madre non la nomina.
+#   ⛔ Un valore passato dal chiamante non conta: la colonna e' derivata, e
+#   lasciarla scrivere farebbe della catena un'opinione del chiamante.
+#
+#   ⚠️ Il padre si legge SOTTO RLS (SECURITY INVOKER, come ogni trigger della
+#   tabella). Un padre che l'utente non vede, o che non esiste, e' un errore
+#   dichiarato (E_OFFERTA_REVISIONE_PADRE_NON_TROVATO) e non un 23502 sul NOT
+#   NULL che nomina la colonna. Senza bersaglio: la riga non e' raggiungibile
+#   dal lettore (linee-guida-sql §5, «solo dove il lettore puo' arrivare»).
+#
+#   Nome del trigger: `_a10_default_…_ins`, come i due `default_*` gia' sulla
+#   tabella. Fra i BEFORE INSERT nessuno legge la radice, quindi l'ordine
+#   alfabetico qui non e' portante.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260927-04-create-trgfn-offerte-commerciali-default-revisione-radice-mctit.yaml
+
+  - changeSet:
+      id: 20260927-04-create-trgfn-offerte-commerciali-default-revisione-radice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Passo 2 di 4 della catena delle revisioni di vendite.offerte_commerciali: trigger BEFORE
+        INSERT che deriva revisione_radice_id (se' stessa sulla rev.1, la radice del padre
+        altrimenti). Brief: brief-db-liste-datatable-grezze.md §3.2.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: offerte_commerciali
+            columnName: revisione_radice_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_default_revisione_radice()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: derivare revisione_radice_id, l'identita' della catena delle
+              --   revisioni: l'id della rev.1 su se' stessa, la radice del padre su
+              --   ogni revisione successiva. Il valore passato dal chiamante non conta.
+              -- Regole:
+              --   - NEW.id e' gia' valorizzato (default di sequence, applicato prima
+              --     dei trigger BEFORE ROW);
+              --   - il padre si legge sotto RLS: se non si vede (o non esiste) la
+              --     revisione non nasce, con un errore dichiarato.
+              -- Brief: brief-db-liste-datatable-grezze §3.2 (2026-09-27).
+              DECLARE
+                  v_radice_id vendite.offerte_commerciali.revisione_radice_id%TYPE;
+              BEGIN
+                  IF NEW.revisione_padre_id IS NULL THEN
+                      NEW.revisione_radice_id := NEW.id;
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT oc.revisione_radice_id
+                    INTO v_radice_id
+                    FROM vendite.offerte_commerciali oc
+                   WHERE oc.id = NEW.revisione_padre_id;
+
+                  IF v_radice_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_OFFERTA_REVISIONE_PADRE_NON_TROVATO',
+                          jsonb_build_object('revisione_padre_id', NEW.revisione_padre_id),
+                          NEW.tx_id,
+                          VARIADIC ARRAY[]::text[]
+                      );
+                  END IF;
+
+                  NEW.revisione_radice_id := v_radice_id;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_default_revisione_radice() IS
+                  'BEFORE INSERT su offerte_commerciali: deriva revisione_radice_id (l''id della rev.1 '
+                  'su se'' stessa; la radice del padre sulle revisioni successive). Il valore passato dal '
+                  'chiamante non conta. Padre non visibile o inesistente: E_OFFERTA_REVISIONE_PADRE_NON_TROVATO. '
+                  'Brief: brief-db-liste-datatable-grezze §3.2 (2026-09-27).';
+
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a10_default_revisione_radice_ins
+                  ON vendite.offerte_commerciali;
+
+              CREATE TRIGGER trg_offerte_commerciali_a10_default_revisione_radice_ins
+              BEFORE INSERT ON vendite.offerte_commerciali
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_default_revisione_radice();
+
+              COMMENT ON TRIGGER trg_offerte_commerciali_a10_default_revisione_radice_ins
+                  ON vendite.offerte_commerciali IS
+                  'Deriva revisione_radice_id alla nascita della riga. L''immutabilita'' dopo la nascita '
+                  'sta nel registro dei lock (automation_lock_columns). Brief: '
+                  'brief-db-liste-datatable-grezze §3.2 (2026-09-27).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a10_default_revisione_radice_ins
+                  ON vendite.offerte_commerciali;
+              DROP FUNCTION IF EXISTS vendite.trgfn_offerte_commerciali_default_revisione_radice();

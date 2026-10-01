@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Documento interno di trasferimento tra magazzini
+> Il trasferimento INTERNO di merce (D-L2-g): dentro lo stesso magazzino, fra due ubicazioni, oppure fra due magazzini dello stesso emittente, senza trasporto. Il trasferimento con trasporto e' la bolla con causale TRASFERIMENTO (vendite.ddt). Stessa famiglia di inventari e rettifiche: DRAFT -&gt; CONFIRM -&gt; POSTED, CANCEL; POSTED lo scrive solo magazzino.fn_posta_trasferimento. Dal 2026-09-28 lo stesso magazzino in partenza e in arrivo e' ammesso (via chk_mag_trasferimenti_da_a_distinti): allora ogni riga deve andare da un'ubicazione a un'altra, motivo della check di registrazione.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -28,7 +28,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_mag_trasferimenti_da_a_distinti |  |
 | CHECK | chk_mag_trasferimenti_sorgente_chiave |  |
 | CHECK | chk_mag_trasferimenti_stato |  |
 | FOREIGN KEY | fk_mag_trasf_sorgente_tipo | sorgente_tipo_id |
@@ -52,6 +51,8 @@
 | trg_trasferimenti_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
 | trg_trasferimenti_a10_guard_stesso_emittente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()` |
 | trg_trasferimenti_a10_guard_stesso_emittente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()` |
+| trg_trasferimenti_a10_guard_transizione_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_guard_transizione('stato_trasferimento', 'zeroerp.magazzino_posting_trasferimento')` |
+| trg_trasferimenti_a10_guard_transizione_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_guard_transizione('stato_trasferimento', 'zeroerp.magazzino_posting_trasferimento')` |
 | trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_trasferimenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

@@ -110,6 +110,16 @@ SELECT
     WHERE s.codice = 'EMESSO' AND s.attivo IS TRUE
     LIMIT 1
   ) AS stato_ddt_emesso_id,
+  -- rev 2026-09-22: i DDT nascono in DRAFT e si SPEDISCONO nel verso vero
+  -- (righe, indirizzo CON, EMESSO, SPEDITO): il BB delle righe
+  -- (trgfn_doc_righe_lock_fuori_bozza) non ammette piu' una riga in un
+  -- documento nato fuori bozza.
+  (SELECT s.id
+     FROM config.stati_doc_ddt s
+    WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE
+    LIMIT 1
+  ) AS stato_ddt_draft_id,
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON') AS tipo_ind_con_id,
   -- Causale di trasporto: dal 2026-07-18 (step 5b, DL-28) il lister fa un INNER
   -- JOIN su config.causali_trasporto con fatturabile IS TRUE, e VENDITA e' la
   -- sola fatturabile. Senza causale il DDT non e' piu' eleggibile al push.
@@ -129,6 +139,19 @@ SELECT
     WHERE s.codice = 'ORDINE_VENDITA' AND s.attivo IS TRUE
     LIMIT 1
   ) AS sorgente_ordine_tipo_id;
+
+-- Porta un DDT nato in DRAFT fino a SPEDITO nel verso vero: indirizzo CON,
+-- poi le transizioni contigue (EMESSO, SPEDITO). rev 2026-09-22.
+CREATE OR REPLACE FUNCTION pg_temp.spedisci(p_ddt bigint)
+RETURNS void AS $$
+DECLARE r RECORD;
+BEGIN
+  SELECT * INTO r FROM tmp_refs_ddt;
+  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+  VALUES (p_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
+  UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_emesso_id  WHERE id = p_ddt;
+  UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_spedito_id WHERE id = p_ddt;
+END $$ LANGUAGE plpgsql;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL
@@ -199,7 +222,7 @@ WITH ins AS (
   )
   SELECT
     r.soggetto_ruolo_id,
-    r.stato_ddt_spedito_id, DATE '2026-07-05',
+    r.stato_ddt_draft_id, DATE '2026-07-05',
     r.sorgente_ordine_tipo_id,
     (SELECT uid FROM tmp_ordine_a),
     r.causale_vendita_id,
@@ -237,6 +260,8 @@ SELECT
   10.000000,
   false,
   jsonb_build_object('test_scope', 'pgtap_fn_list_ddt');
+
+SELECT pg_temp.spedisci((SELECT id FROM tmp_ddt_a));
 
 -- ============================================================
 -- Test 3: Caso A restituito
@@ -329,7 +354,7 @@ WITH ins AS (
   )
   SELECT
     r.soggetto_ruolo_id,
-    r.stato_ddt_spedito_id, DATE '2026-07-10',
+    r.stato_ddt_draft_id, DATE '2026-07-10',
     r.sorgente_ordine_tipo_id,
     (SELECT uid FROM tmp_ordine_conf),
     r.causale_vendita_id,
@@ -366,6 +391,8 @@ SELECT
   false,
   jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf');
 
+SELECT pg_temp.spedisci((SELECT id FROM tmp_ddt_conf));
+
 SELECT ok(
   NOT EXISTS (
     SELECT 1
@@ -390,7 +417,7 @@ WITH ins AS (
   )
   SELECT
     r.soggetto_ruolo_id,
-    r.stato_ddt_spedito_id, DATE '2026-07-15',
+    r.stato_ddt_draft_id, DATE '2026-07-15',
     r.billing_account_id, r.valuta_id,
     r.causale_vendita_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'autonomo')
@@ -403,17 +430,20 @@ CREATE TEMP TABLE tmp_ddt_b_riga AS
 WITH ins AS (
   INSERT INTO vendite.ddt_righe (
     ddt_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, attivo,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
     storicizza, meta
   )
   SELECT
     d.id, 1, r.articolo_id, 'Riga DDT autonomo',
-    8.000000, 8.000000, 45.000000, true,
+    -- iva_id: il gate di emissione rifiuta «un prezzo senza aliquota» (rev 22-09)
+    8.000000, 8.000000, 45.000000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'autonomo')
   FROM tmp_ddt_b d, tmp_refs_ddt r
   RETURNING id
 )
 SELECT * FROM ins;
+
+SELECT pg_temp.spedisci((SELECT id FROM tmp_ddt_b));
 
 -- ============================================================
 -- Test 7: Caso B restituito
@@ -452,7 +482,7 @@ WITH ins AS (
   )
   SELECT
     r.soggetto_ruolo_id,
-    r.stato_ddt_spedito_id, DATE '2026-07-20',
+    r.stato_ddt_draft_id, DATE '2026-07-20',
     -- Senza BA il default emittente non ha nulla da cui derivare (e il guard
     -- emittente<->BA salta): va passato esplicito, la colonna e' NOT NULL.
     r.emittente_fiscale_id,
@@ -468,14 +498,18 @@ SELECT * FROM ins;
 
 INSERT INTO vendite.ddt_righe (
   ddt_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, attivo,
+  qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
   storicizza, meta
 )
 SELECT
   d.id, 1, r.articolo_id, 'Riga DDT senza BA',
-  3.000000, 3.000000, true,
+  -- prezzo e iva: il gate di emissione vuole un prezzo risolvibile su causale
+  -- fatturabile (rev 22-09). L'esclusione dal push resta per il BA assente.
+  3.000000, 3.000000, 5.000000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
   false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'no_ba')
 FROM tmp_ddt_no_ba d, tmp_refs_ddt r;
+
+SELECT pg_temp.spedisci((SELECT id FROM tmp_ddt_no_ba));
 
 SELECT ok(
   NOT EXISTS (

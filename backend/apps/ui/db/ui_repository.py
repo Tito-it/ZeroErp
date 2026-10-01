@@ -16,7 +16,12 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import jsonb_out, rows_to_list
+from apps.core.db._helpers import (
+    colonne_ricerca_accese,
+    jsonb_out,
+    rows_to_list,
+    utente_di_sessione,
+)
 
 
 # Espressione SQL pura per leggere la GUC `app.ruolo_applicativo` con
@@ -66,9 +71,8 @@ def fetch_preset_base_snapshot(
     emittente_fiscale_id: int | None,
 ) -> tuple[int | None, Any | None]:
     fk_column = _PRESET_SNAPSHOT_TABLES.get(preset_table)
-    assert fk_column is not None, (
-        f"tabella preset non in whitelist: {preset_table}"
-    )
+    if fk_column is None:
+        raise ValueError(f"tabella preset non in whitelist: {preset_table}")
 
     # 1. preset di ruolo (priorita ASC)
     with connection.cursor() as cursor:
@@ -87,7 +91,7 @@ def fetch_preset_base_snapshot(
                AND p.attivo      = TRUE
              ORDER BY pa.priorita ASC
              LIMIT 1
-            """,
+            """,  # noqa: S608 — tabella/FK da whitelist _PRESET_SNAPSHOT_TABLES, GUC letterale, valori come parametri
             [auth_user_id, entity_id],
         )
         row = cursor.fetchone()
@@ -107,7 +111,7 @@ def fetch_preset_base_snapshot(
                    AND is_default           = TRUE
                    AND attivo               = TRUE
                  LIMIT 1
-                """,
+                """,  # noqa: S608 — tabella/FK da whitelist _PRESET_SNAPSHOT_TABLES, valori come parametri
                 [entity_id, emittente_fiscale_id],
             )
             row = cursor.fetchone()
@@ -125,7 +129,7 @@ def fetch_preset_base_snapshot(
                AND is_default  = TRUE
                AND attivo      = TRUE
              LIMIT 1
-            """,
+            """,  # noqa: S608 — tabella/FK da whitelist _PRESET_SNAPSHOT_TABLES, valori come parametri
             [entity_id],
         )
         row = cursor.fetchone()
@@ -178,6 +182,33 @@ class UiRepository:
         #    quindi valeva la pena verificarlo prima di toglierla.
         return jsonb_out(row[0])
 
+    # Scopo: le misure «righe per pagina» ammesse e i due default, per TUTTI i
+    #        paginatori dell'applicazione. Wrapper 1:1 di
+    #        `ui.fn_get_misure_pagina()`: `{misure, default_compatta,
+    #        default_pagina}`. Se un default manca a catalogo la fn solleva
+    #        `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` (TECNICO): mai un NULL.
+    def get_misure_pagina(self) -> dict[str, Any]:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT ui.fn_get_misure_pagina()")
+            row = cursor.fetchone()
+        # La fn e' un SELECT senza FROM: una riga c'e' sempre.
+        assert row is not None
+        return jsonb_out(row[0])
+
+    # Scopo: la lista ha, per l'utente CORRENTE, almeno una colonna in cui la
+    #        ricerca libera cerca? Legge la stessa sede del BB di ricerca
+    #        (`colonne_ricerca_accese`, cioe' `ui.fn_lista_colonne_ricerca_full`,
+    #        gia' filtrata dai permessi di colonna): la casella a video e la
+    #        ricerca non possono dire cose diverse.
+    def ha_ricerca_full(self, lista_codice: str) -> bool:
+        return bool(colonne_ricerca_accese(lista_codice))
+
+    # Scopo: l'utente del contesto di sessione (GUC `app.current_user_id`), cioe'
+    #        quello per cui `ha_ricerca_full` e la ricerca vera rispondono. Lo
+    #        legge la guardia di `UiService.get_lista_config_per_video`.
+    def utente_di_sessione(self) -> int | None:
+        return utente_di_sessione()
+
     # Scopo: Restituisce la `lista_definizione.id` data il codice. None se
     #        inesistente o non attivo. Usato dai service per distinguere
     #        404 (lista) da preferenze orfane prima di toccare la fn.
@@ -199,6 +230,10 @@ class UiRepository:
     #        Filtra colonne `attivo=TRUE`. Non applica permessi: il
     #        service applica filtro BLOCCATO sulla base del profilo utente
     #        (delegato a fn_resolve_lista_config — qui restiamo grezzi).
+    #        ⛔ Non e' la sede delle colonne di RICERCA: `ricercabile_full` letto
+    #        da qui cercherebbe anche le colonne BLOCCATE. Quella lettura, gia'
+    #        filtrata dai permessi, e' `ui.fn_lista_colonne_ricerca_full`, via il
+    #        BB `add_ricerca_full_condition` (apps/core/db/_helpers.py).
     def list_colonne_by_codice(
         self, lista_codice: str,
     ) -> list[dict[str, Any]]:

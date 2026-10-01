@@ -10,15 +10,22 @@
 //       e se lo dimentica qualcuno al terzo codice — e li' l'operatore resta
 //       BLOCCATO su un caso che il dominio dichiara ammesso.
 //
-//       Il giro, lato database (`E_RIGA_CONTABILE_CAPIENZA_SUPERATA`):
-//         1° tentativo, senza `forzata`  -> RIFIUTATO, con la ragione e i numeri
-//         2° tentativo, con `forzata`    -> ACCETTATO, e resta scritto sulla riga
+//       Il giro, lato database:
+//         1° tentativo, senza la dichiarazione -> RIFIUTATO, con la ragione
+//         2° tentativo, con la dichiarazione   -> ACCETTATO
+//       La DICHIARAZIONE e' del dominio, e la passa il chiamante a `conferma`:
+//         - pagamenti (`E_RIGA_CONTABILE_CAPIENZA_SUPERATA`): `forzata` + motivo
+//           (`forzaturaConMotivo`), che resta scritto sulla riga;
+//         - amministrazione (`E_CREDENZIALE_DA_CONFERMARE`, dal 2026-09-27):
+//           `riusa_auth_user_id`, l'id della credenziale che l'admin ha visto.
+//       ⭐ Generalizzato il 2026-09-27 (regola del 2, ok Tid): prima `conferma`
+//       riceveva il solo motivo e componeva lei `{forzata, motivo_forzatura}`,
+//       cioe' parlava la lingua dei pagamenti.
 //
 //       ⛔ NON e' un pattern proponi/approva: nessun permesso, nessun secondo
-//       operatore, un tempo solo. E la forzatura resta un FATTO sulla riga —
-//       e' quello che l'elenco delle rate fuori capienza legge per esistere.
-//       ⚠️ Il primo tentativo si manda SEMPRE senza forzatura: forzare al primo
-//       colpo «per semplificare» significa nascondere invece di registrare.
+//       operatore, un tempo solo.
+//       ⚠️ Il primo tentativo si manda SEMPRE senza dichiarazione: dichiarare al
+//       primo colpo «per semplificare» significa nascondere invece di chiedere.
 // ------------------------------------------------------------
 
 import { ref } from 'vue'
@@ -36,12 +43,17 @@ export const CONFERMA_E_RIPETI = 'confirm_and_retry'
 //   const { esegui, richiestaConferma, conferma, annulla } = useForzaturaConfermata()
 //   await esegui((extra) => abbinaRiga(id, { ...payload, ...extra }),
 //                { successMessage: t('...') })
-//   // se `richiestaConferma` si valorizza, il chiamante mostra un dialog con
-//   // `richiestaConferma.messaggio` e chiede il MOTIVO, poi `conferma(motivo)`.
+//   // se `richiestaConferma` si valorizza, il chiamante mostra la domanda con
+//   // `richiestaConferma.messaggio`, raccoglie cio' che serve e ripete con la
+//   // dichiarazione: `conferma(forzaturaConMotivo(motivo))`.
 export function useForzaturaConfermata() {
   const { execute, loading, azioneUi, messaggioErrore, campiErrati } = useApiHandler()
 
   // La domanda in sospeso: `{ messaggio }` oppure `null`.
+  // ⭐ Contratto: ogni domanda del database e' un oggetto NUOVO, anche con lo
+  //    stesso messaggio. Il chiamante lo confronta per identita' per sapere se,
+  //    dopo `conferma`, il database ha chiesto di NUOVO (dati cambiati: si
+  //    rilegge) o se la domanda e' ancora quella di prima (errore vero).
   // ⭐ Il messaggio e' quello del DATABASE, e porta gia' i numeri: non si
   //    riscrive nel frontend una frase che il catalogo compone meglio, e che
   //    per giunta e' multilingua.
@@ -77,22 +89,25 @@ export function useForzaturaConfermata() {
     return null
   }
 
-  // Scopo: secondo tentativo, con la forzatura e il suo MOTIVO.
-  // Note: ⛔ Il motivo non e' un ornamento: e' cio' che l'elenco delle rate
-  //       fuori capienza mostra a chi dovra' sistemare l'eccedenza. Un motivo
-  //       vuoto rende quell'elenco un elenco di numeri senza storia.
-  //       ⚠️ Qui il toast di errore torna normale: se il secondo tentativo
-  //       fallisce, non e' piu' una domanda.
-  async function conferma(motivo) {
+  // Scopo: secondo tentativo, con la DICHIARAZIONE (`dichiarazione` si
+  //        aggiunge al payload: `forzaturaConMotivo(motivo)` nei pagamenti,
+  //        `{ riusa_auth_user_id }` nella creazione dell'operatore).
+  // Note: ⚠️ Qui il toast di errore torna normale, SALVO un nuovo rifiuto
+  //       confermabile: se nel frattempo il dato e' cambiato (un'altra
+  //       credenziale sulla stessa email) il database fa di nuovo la domanda,
+  //       e la domanda si ripropone invece di diventare un banner rosso.
+  async function conferma(dichiarazione) {
     if (!inSospeso) return null
     const { chiamata, opts } = inSospeso
     const esito = await execute(
-      () => chiamata({ forzata: true, motivo_forzatura: motivo }),
-      opts,
+      () => chiamata(dichiarazione),
+      { ...opts, azioniGestite: [CONFERMA_E_RIPETI] },
     )
     if (esito !== null) {
       richiestaConferma.value = null
       inSospeso = null
+    } else if (azioneUi.value === CONFERMA_E_RIPETI) {
+      richiestaConferma.value = { messaggio: messaggioErrore.value }
     }
     return esito
   }

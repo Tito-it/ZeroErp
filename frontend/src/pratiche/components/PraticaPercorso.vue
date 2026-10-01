@@ -20,7 +20,8 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { statoFlussoSeverity, faseSorgenteSeverity } from '../../core/utils/severity'
-import { RAMO_STEP, STATO_FLUSSO } from '../../core/constants'
+import { MANAGE_ICONS, RAMO_STEP, STATO_FLUSSO, STATUS_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useInjectTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { getUiActivity } from '../uiActivityRegistry'
 import Tag from 'primevue/tag'
@@ -183,7 +184,7 @@ function isRamoChiuso(step) {
     <div v-if="!praticaId" class="percorso-empty" />
 
     <div v-else-if="loading" class="percorso-loading">
-      <i class="pi pi-spin pi-spinner" />
+      <i :class="STATUS_ICONS.CARICAMENTO" />
     </div>
 
     <template v-else>
@@ -197,7 +198,7 @@ function isRamoChiuso(step) {
           <!-- FATTI: passi conclusi, compatti, con esito umano -->
           <div v-if="fatti.length" class="rac-fatti">
             <div v-for="step in fatti" :key="step.template_flusso_id" class="rac-fatto" :class="{ 'is-selected': isSelected(step) }">
-              <i class="pi pi-check-circle rac-fatto-icon" />
+              <i class="rac-fatto-icon" :class="STATUS_ICONS.OK" />
               <span class="rac-fatto-title">{{ stepTitolo(step) }}</span>
               <span v-if="step.esito_descrizione" class="rac-fatto-esito">· {{ step.esito_descrizione }}</span>
               <!-- Documento del passo ancora VIVO dopo la chiusura del passo
@@ -217,7 +218,7 @@ function isRamoChiuso(step) {
                 :title="t('pratiche.percorso_ripeti_hint')"
                 @click="onRipeti(step)"
               >
-                <i class="pi pi-replay" /> {{ t('pratiche.percorso_ripeti') }}
+                <i :class="MANAGE_ICONS.RIPROVA" /> {{ t('pratiche.percorso_ripeti') }}
               </span>
             </div>
           </div>
@@ -261,7 +262,7 @@ function isRamoChiuso(step) {
               <Button
                 v-if="!attivita && canActGenerico(step)"
                 :label="step.flusso_id ? t('pratiche.percorso_apri') : t('pratiche.percorso_crea')"
-                :icon="step.flusso_id ? 'pi pi-folder-open' : 'pi pi-plus-circle'"
+                :icon="step.flusso_id ? NAV_ICONS.PRATICHE : MANAGE_ICONS.ADD"
                 size="small"
                 :disabled="busy"
                 @click="onClick(step)"
@@ -269,7 +270,7 @@ function isRamoChiuso(step) {
               <Button
                 v-else-if="attivita && step.flusso_id"
                 :label="t('pratiche.percorso_apri')"
-                icon="pi pi-folder-open"
+                :icon="NAV_ICONS.PRATICHE"
                 size="small"
                 text
                 :disabled="busy"
@@ -282,10 +283,10 @@ function isRamoChiuso(step) {
                 :title="t('pratiche.percorso_ripeti_hint')"
                 @click="onRipeti(step)"
               >
-                <i class="pi pi-replay" /> {{ t('pratiche.percorso_ripeti') }}
+                <i :class="MANAGE_ICONS.RIPROVA" /> {{ t('pratiche.percorso_ripeti') }}
               </span>
               <span v-if="!attivita && !canActGenerico(step)" class="rac-locked">
-                <i class="pi pi-lock" /> {{ t('pratiche.percorso_non_disponibile') }}
+                <i :class="STATUS_ICONS.BLOCCATO" /> {{ t('pratiche.percorso_non_disponibile') }}
               </span>
             </div>
           </div>
@@ -320,7 +321,7 @@ function isRamoChiuso(step) {
               {{ step.template_flusso_codice }}
               <i
                 v-if="step.has_handler"
-                class="pi pi-bolt percorso-handler"
+                class="percorso-handler" :class="STATUS_ICONS.AUTOMATICO"
                 :title="t('pratiche.percorso_handler')"
               />
             </div>
@@ -339,15 +340,15 @@ function isRamoChiuso(step) {
               doc: UNKNOWN (no resolver)
             </div>
             <div v-if="isRamoChiuso(step)" class="percorso-step-action percorso-ramo-chiuso">
-              <i class="pi pi-ban" :title="t('pratiche.percorso_ramo_chiuso_hint')" />
+              <i :class="STATUS_ICONS.ESCLUSO" :title="t('pratiche.percorso_ramo_chiuso_hint')" />
               {{ t('pratiche.percorso_ramo_chiuso') }}
             </div>
             <div v-else-if="!canActGenerico(step)" class="percorso-step-action">
-              <i class="pi pi-lock" :title="t('pratiche.percorso_non_disponibile')" />
+              <i :class="STATUS_ICONS.BLOCCATO" :title="t('pratiche.percorso_non_disponibile')" />
               {{ t('pratiche.percorso_non_disponibile') }}
             </div>
             <div v-else class="percorso-step-action">
-              <i :class="step.flusso_id ? 'pi pi-folder-open' : 'pi pi-plus-circle'" />
+              <i :class="step.flusso_id ? NAV_ICONS.PRATICHE : MANAGE_ICONS.ADD" />
               {{ step.flusso_id ? t('pratiche.percorso_apri') : t('pratiche.percorso_crea') }}
               <span
                 v-if="canRipeti(step)"
@@ -355,7 +356,7 @@ function isRamoChiuso(step) {
                 :title="t('pratiche.percorso_ripeti_hint')"
                 @click.stop="onRipeti(step)"
               >
-                <i class="pi pi-replay" /> {{ t('pratiche.percorso_ripeti') }}
+                <i :class="MANAGE_ICONS.RIPROVA" /> {{ t('pratiche.percorso_ripeti') }}
               </span>
             </div>
             <div
@@ -367,7 +368,7 @@ function isRamoChiuso(step) {
               <i :class="uiActivityFor(step).icon" /> {{ t(uiActivityFor(step).label) }}
             </div>
           </div>
-          <i v-if="i < percorso.length - 1" class="pi pi-angle-right percorso-arrow" />
+          <i v-if="i < percorso.length - 1" class="percorso-arrow" :class="MANAGE_ICONS.SUCCESSIVO" />
         </template>
       </div>
     </template>
@@ -451,7 +452,7 @@ function isRamoChiuso(step) {
 /* Step evidenziato dal deep-link della coda home: accento a sinistra + fondo. */
 .rac-fatto.is-selected {
   background: var(--app-hover-bg);
-  border-left: 3px solid var(--p-primary-color);
+  border-left: 3px solid var(--app-accent-color);
   border-radius: 4px;
   padding: 0.15rem 0.4rem;
   margin-left: -0.4rem;
@@ -480,7 +481,7 @@ function isRamoChiuso(step) {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   font-weight: 600;
   cursor: pointer;
 }
@@ -492,14 +493,14 @@ function isRamoChiuso(step) {
   flex-direction: column;
   gap: 0.4rem;
   padding: 0.75rem;
-  border: 1px solid var(--p-primary-color);
+  border: 1px solid var(--app-accent-color);
   border-radius: 8px;
   background: var(--app-surface-bg);
 }
 
 /* Card ADESSO evidenziata dal deep-link della coda home: anello d'accento. */
 .rac-adesso.is-selected {
-  box-shadow: 0 0 0 2px var(--p-primary-color);
+  box-shadow: 0 0 0 2px var(--app-accent-color);
 }
 
 .rac-adesso-head {
@@ -513,7 +514,7 @@ function isRamoChiuso(step) {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
 }
 
 .rac-adesso-title {
@@ -572,7 +573,7 @@ function isRamoChiuso(step) {
 
 .percorso-step:hover {
   background: var(--app-hover-bg);
-  border-color: var(--p-primary-color);
+  border-color: var(--app-accent-color);
 }
 
 .percorso-step-done { opacity: 0.8; }
@@ -582,8 +583,8 @@ function isRamoChiuso(step) {
 .percorso-step-disabled:hover { background: var(--app-surface-bg); border-color: var(--app-border-color); }
 .percorso-step-ramo-chiuso { opacity: 0.5; border-style: dotted; }
 .percorso-step.is-selected {
-  border-color: var(--p-primary-color);
-  box-shadow: 0 0 0 2px var(--p-primary-color);
+  border-color: var(--app-accent-color);
+  box-shadow: 0 0 0 2px var(--app-accent-color);
 }
 
 .percorso-step-top {
@@ -618,7 +619,7 @@ function isRamoChiuso(step) {
 .percorso-step-action {
   margin-top: auto;
   font-size: 0.74rem;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   display: flex;
   align-items: center;
   gap: 0.25rem;

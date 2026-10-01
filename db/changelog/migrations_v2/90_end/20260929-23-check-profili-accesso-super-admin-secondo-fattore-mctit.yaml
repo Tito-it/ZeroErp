@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 (seconda meta') — IL SUPER_ADMIN HA SEMPRE IL SECONDO FATTORE
+#   Brief: brief-db-secondo-fattore-totp, sezione 2.2 (D-T1).
+#
+# ── ⭐ IL VINCOLO ────────────────────────────────────────────────────
+#   CHECK (tipo <> 'SUPER_ADMIN' OR richiede_secondo_fattore): sul profilo del
+#   super admin il segno non si spegne. La regola sta nella tabella, non nella
+#   funzione che risponde: chi amministra i profili non puo' scriverla male.
+#
+# ── ⛔ PERCHE' IN 90_end E NON IN 00_schema ──────────────────────────
+#   Su un database ricostruito da zero Liquibase esegue 00_schema -> 20_code ->
+#   80_data -> 90_end. La colonna nasce in 00_schema (20260929-06) con default
+#   false; poi 80_data/20260419-04 (gia' mergiato) inserisce il profilo 9100
+#   SENZA la colonna, e solo il mirror 80_data/20260806-18 gli scrive true dal
+#   CSV. Un CHECK nato in 00_schema fermerebbe il migrate su quell'INSERT.
+#   Qui il seed l'ha gia' scritto: il vincolo nasce su dati che lo rispettano.
+#   Su dev l'ordine e' lo stesso (il CSV cambiato risveglia il mirror).
+#   ⚠️ Se l'ALTER fallisse, la causa e' un profilo SUPER_ADMIN fuori dal CSV
+#   senza il segno: va sistemato il dato, non tolto il vincolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260929-23-check-profili-accesso-super-admin-secondo-fattore-mctit.yaml
+
+  - changeSet:
+      id: 20260929-23-check-profili-accesso-super-admin-secondo-fattore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK chk_profili_accesso_super_admin_secondo_fattore su config.profili_accesso: il profilo
+        SUPER_ADMIN ha sempre richiede_secondo_fattore (D-T1). In 90_end perche' da zero il profilo
+        9100 nasce in 80_data senza la colonna e il segno arriva dal mirror del CSV. Brief:
+        brief-db-secondo-fattore-totp §2.2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                { schemaName: config, tableName: profili_accesso, columnName: richiede_secondo_fattore }
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE c.conrelid = 'config.profili_accesso'::regclass
+                     AND c.conname = 'chk_profili_accesso_super_admin_secondo_fattore';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.profili_accesso
+                  ADD CONSTRAINT chk_profili_accesso_super_admin_secondo_fattore
+                  CHECK (tipo <> 'SUPER_ADMIN'::config.tipo_profilo_accesso OR richiede_secondo_fattore);
+
+              COMMENT ON CONSTRAINT chk_profili_accesso_super_admin_secondo_fattore
+                  ON config.profili_accesso IS
+                  'Il profilo SUPER_ADMIN ha sempre il secondo fattore (D-T1 di brief-db-secondo-fattore-totp): il segno richiede_secondo_fattore non si spegne. Nato in 90_end perche'' da zero il profilo 9100 arriva in 80_data senza la colonna, e il segno lo scrive il mirror del CSV.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.profili_accesso
+                  DROP CONSTRAINT IF EXISTS chk_profili_accesso_super_admin_secondo_fattore;

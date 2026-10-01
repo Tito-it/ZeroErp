@@ -9,6 +9,8 @@ import { applicaVariazionePercentuale } from '../api/listini'
 import { MANAGE_ICONS } from '../../core/constants'
 import AppDialog from '../../core/components/AppDialog.vue'
 import InputNumber from 'primevue/inputnumber'
+// DataTable grezza: anteprima dry_run delle righe che la variazione toccherebbe,
+// dentro il dialog di conferma — non paginata, non configurabile.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
@@ -147,7 +149,7 @@ function backToInput() {
         <Button :label="t('common.cancel')" :icon="MANAGE_ICONS.CANCEL"
           severity="secondary" class="app-escape app-form-footer-btn"
           v-tooltip.top="t('common.cancel')" @click="onHide" />
-        <Button :label="t('vendite.listini.variazione_pct_preview')" icon="pi pi-eye"
+        <Button :label="t('vendite.listini.variazione_pct_preview')" :icon="MANAGE_ICONS.ANTEPRIMA"
           class="app-form-footer-btn" v-tooltip.top="t('vendite.listini.variazione_pct_preview')"
           :disabled="!canPreview" :loading="loading" @click="loadPreview" />
       </div>

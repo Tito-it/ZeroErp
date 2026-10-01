@@ -1,95 +1,103 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (C) 2026 Tid (Michele Carlo Titini)
+-->
 <script setup>
-// Scopo: Lista documenti generati per una sorgente specifica
-//        (Tranche M building block riusabile). Visualizza la
-//        timeline (ORDER BY `generato_at DESC` lato BE) con azioni
-//        per riga: Scarica PDF (RowActionsMenu).
+// Scopo: Lista dei documenti generati per una sorgente specifica (Tranche M,
+//        building block riusabile): la timeline dei PDF emessi — il piu'
+//        recente in cima — con le azioni per riga (scarica originale,
+//        ristampa fedele, aggiungi allegati) e il dettaglio inline dei file.
+//
+// ⭐ DAL 2026-09-27 E' LA LISTA CONFIGURABILE `documenti.documenti_sorgente`
+//    (84), montata con lo scaffolding dei tab-lista (`useDrawerTabLista` +
+//    `<DrawerTabLista>`). Era una `DataTable` grezza su uno store scritto a
+//    mano che non mandava `page_size`: il backend ne dava 50 e la lista si
+//    fermava li' SENZA DIRLO — nessun paginatore, nessun conteggio. Ora ha
+//    pagine, ordinamento, ricerca, «Personalizza colonne» ed «Espandi tutte».
+//
+// ⭐ IL PADRE E' LA SORGENTE, l'emittente e' quello del documento. La lista a
+//    catalogo non e' certificata multi-emittente: senza `emittenteFiscaleId`
+//    il super admin su «Tutti» vedrebbe il pannello «scegli un emittente»
+//    dentro il dialog di un documento che gli sta gia' dicendo da quale
+//    emittente viene. Il chiamante lo passa dalla riga o dal dettaglio che ha
+//    in mano.
 //
 //        v1: niente azioni di stato (ARCHIVIA/ANNULLA) ne' eliminazione
 //        (trigger DB block_delete su documenti_generati).
-//
-//        Riusabile da qualsiasi caller che imposti la coppia
-//        (sorgenteCode, sorgenteId) sullo store. Il caller e' anche
-//        responsabile di chiamare `fetchList` al cambio di sorgente.
-import { computed, ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDocumentiPerSorgenteStore } from '../stores/documentiPerSorgente'
+import { useDocumentiSorgenteListaStore } from '../stores/documentiSorgenteLista'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useNotify } from '../../core/composables/useNotify'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
-import Tag from 'primevue/tag'
-import Button from 'primevue/button'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import DocumentoEmissioneDialog from './DocumentoEmissioneDialog.vue'
+import DocumentoFileElenco from './DocumentoFileElenco.vue'
+import InputText from 'primevue/inputtext'
+import Tag from 'primevue/tag'
 import { downloadBlob } from '../../core/utils/download'
-import { formatSize } from '../../core/utils/format'
-import { displayTimestamp } from '../../core/utils/date'
 import { MANAGE_ICONS } from '../../core/constants'
 
 const props = defineProps({
+  // ⚠️ Letto UNA volta, alla creazione: sceglie lo store della sorgente
+  //    (`useDocumentiSorgenteListaStore`). Ogni chiamante lo passa costante.
   sorgenteCode: { type: String, required: true },
   sorgenteId: { type: [Number, null], required: true },
-  // Se true, fetch automatico al mount/cambio props.
-  autoFetch: { type: Boolean, default: true },
-  // Se true, quando la lista e' vuota mostra solo il messaggio empty.
-  hideHeaderWhenEmpty: { type: Boolean, default: false },
+  // L'emittente del documento sorgente (PK `emittenti_fiscali`), gia'
+  // fissato dal contesto che apre la lista. ⛔ Obbligatorio nei fatti: un
+  // documento l'emittente ce l'ha sempre, e senza la lista NON legge (resta in
+  // caricamento — il padre composto di `useListaStoreCore`). `null` e' solo
+  // «il dettaglio non e' ancora arrivato».
+  emittenteFiscaleId: { type: [Number, null], default: null },
   // Se true, abilita l'azione di riga "Aggiungi allegati" (append di file
   // secondari al documento generato). Il caller la attiva quando lo stato
   // della sorgente lo consente (es. offerta in EMESSA).
   allowAllegati: { type: Boolean, default: false },
-  // Se true, dopo il fetchList iniziale espande tutte le righe e carica
-  // i file (principale + allegati) per ognuna. Usato dal dialog dedicato
+  // Se true, a ogni pagina caricata apre il dettaglio di tutte le righe
+  // (principale + allegati). Usato dal dialog dedicato
   // `PdfDocumentiSorgenteDialog`: in modalita' picker ha senso mostrare
-  // subito il contenuto completo. Default off per i drawer (anagrafiche/
-  // preventivi/contratti) dove la lista e' compatta e l'expand on-demand
-  // mantiene la UI snella.
+  // subito il contenuto completo.
   defaultExpanded: { type: Boolean, default: false },
 })
 
 const { t } = useI18n()
-const store = useDocumentiPerSorgenteStore()
 const notify = useNotify()
+const store = useDocumentiSorgenteListaStore(props.sorgenteCode)
+const azioni = useDocumentiPerSorgenteStore()
+
+const {
+  searchText, onPage, onSort, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
+} = useDrawerTabLista(store, {
+  // Il padre composto: la sorgente e l'emittente del documento. ⚠️ Finche'
+  //    l'emittente manca la lista non legge e resta in caricamento.
+  parentId: {
+    sorgenteId: () => props.sorgenteId,
+    emittenteId: () => props.emittenteFiscaleId,
+  },
+  searchTableOptions: { defaultSortField: 'generato_at', defaultSortOrder: 'desc' },
+})
 
 // Stato dialog append allegati (modalita' non-advances-state).
 const allegatiDialogVisible = ref(false)
 const allegatiDocId = ref(null)
 const allegatiLoading = ref(false)
+// Versione dei file per documento: incrementata dopo un append, fa rileggere
+// il dettaglio gia' aperto (`DocumentoFileElenco`, prop `versione`).
+const versioneFile = ref({})
 
-// Expansion riga: lista file (principale + allegati) per documento.
-// Lazy fetch on row expand; cache su filesPerDoc.
-const expandedRows = ref({})
-const filesPerDoc = ref({})
-const filesLoading = ref({})
-
+// Scopo: con `defaultExpanded`, apre il dettaglio di tutte le righe di OGNI
+//        pagina caricata. ⚠️ Dopo `nextTick`: `espandiTutte` legge le righe
+//        dalla prop della lista, che arriva un giro dopo lo store.
 watch(
-  () => [props.sorgenteCode, props.sorgenteId],
-  async ([code, id]) => {
-    if (!code || !id) return
-    store.setSorgente(code, id)
-    if (props.autoFetch) {
-      try { await store.fetchList() } catch { /* errore gia' gestito dallo store */ }
-    }
-    if (props.defaultExpanded) {
-      expandAllRows()
-    }
+  () => store.items,
+  async (righe) => {
+    if (!props.defaultExpanded || !righe?.length) return
+    await nextTick()
+    listaRef.value?.espandiTutte?.()
   },
-  { immediate: true },
 )
-
-// Scopo: espande tutte le righe attualmente caricate e fa il fetch dei
-//        file di ciascuna (lazy: salta se gia' in cache). Invocato post-
-//        fetchList quando defaultExpanded=true.
-function expandAllRows() {
-  const items = store.items || []
-  if (!items.length) return
-  const expanded = {}
-  for (const row of items) {
-    if (row?.id != null) expanded[row.id] = true
-  }
-  expandedRows.value = expanded
-  for (const row of items) {
-    if (row?.id != null) loadFiles(row.id)
-  }
-}
 
 // Scopo: Severity stato applicativo documento (DDL CHECK chiuso v1).
 function statoSeverity(stato) {
@@ -99,16 +107,20 @@ function statoSeverity(stato) {
   return 'secondary'
 }
 
-const isEmpty = computed(() => !store.loading && (store.items?.length ?? 0) === 0)
-const showListChrome = computed(() => !isEmpty.value || !props.hideHeaderWhenEmpty)
+// Presenza del file originale: la persistenza dei file e' iniziata il
+// 2026-07-21, e per i documenti anteriori non c'e'. `!== false` e non un
+// truthy-check: un backend che non mandasse il campo non deve spegnere il
+// download di tutti.
+function haFile(row) {
+  return row.has_file_principale !== false
+}
 
 // Scopo: le azioni di riga distinguono i TRE percorsi, che prima si
 //        confondevano in uno solo (brief ristampa-fedele §5.2):
 //         1. «Scarica originale» — il file prodotto allora, byte per byte.
-//            Disponibile SOLO se il file esiste: la persistenza dei file e'
-//            iniziata il 2026-07-21, e per i documenti anteriori l'azione
-//            e' DISABILITATA CON LA RAGIONE invece di fallire con un 404
-//            generico (§5.2.2).
+//            Disponibile SOLO se il file esiste: per i documenti anteriori
+//            alla persistenza l'azione e' DISABILITATA CON LA RAGIONE invece
+//            di fallire con un 404 generico (§5.2.2).
 //         2. «Ristampa fedele» — ri-renderizza l'originale dalla versione di
 //            template di allora e dal contesto congelato. E' l'unico percorso
 //            possibile sui documenti senza file, e la verifica di un file
@@ -118,21 +130,21 @@ const showListChrome = computed(() => !isEmpty.value || !props.hideHeaderWhenEmp
 //        della sorgente (pulsante di emissione), non di un documento gia'
 //        generato. Tenerlo fuori da questo menu e' parte del chiarimento.
 function buildRowActions(row) {
-  const haFile = row.has_file_principale !== false
+  const conFile = haFile(row)
   const actions = [
     {
       key: 'download',
       label: t('documenti.lista.action_download'),
       icon: MANAGE_ICONS.DOWNLOAD,
       severity: 'primary',
-      disabled: !haFile,
-      tooltip: haFile ? '' : t('documenti.lista.download_non_disponibile'),
+      disabled: !conFile,
+      tooltip: conFile ? '' : t('documenti.lista.download_non_disponibile'),
       command: () => onDownload(row.id),
     },
     {
       key: 'ristampa',
       label: t('documenti.lista.action_ristampa_fedele'),
-      icon: 'pi pi-history',
+      icon: MANAGE_ICONS.STAMPA,
       tooltip: t('documenti.lista.ristampa_fedele_hint'),
       command: () => onRistampaFedele(row.id),
     },
@@ -141,7 +153,7 @@ function buildRowActions(row) {
     actions.push({
       key: 'allegati',
       label: t('documenti.lista.action_aggiungi_allegati'),
-      icon: 'pi pi-paperclip',
+      icon: MANAGE_ICONS.ALLEGATI,
       command: () => openAllegati(row.id),
     })
   }
@@ -161,13 +173,12 @@ async function onAllegatiConferma(payload) {
   const docId = allegatiDocId.value
   allegatiLoading.value = true
   try {
-    store.setSorgente(props.sorgenteCode, props.sorgenteId)
-    await store.aggiungiAllegati(docId, files)
+    azioni.setSorgente(props.sorgenteCode, props.sorgenteId)
+    await azioni.aggiungiAllegati(docId, files)
     notify.success(t('documenti.allegati.aggiunti_ok'))
     allegatiDialogVisible.value = false
-    // Auto-espandi la riga e ricarica i file per mostrare il nuovo allegato.
-    expandedRows.value[docId] = true
-    await loadFiles(docId, { force: true })
+    // Il dettaglio della riga, se aperto, rilegge i file e mostra il nuovo.
+    versioneFile.value[docId] = (versioneFile.value[docId] ?? 0) + 1
   } catch (err) {
     notify.error(t('documenti.allegati.errore'))
     console.error('aggiungiAllegati', err)
@@ -178,7 +189,8 @@ async function onAllegatiConferma(payload) {
 
 async function onDownload(documentoId) {
   try {
-    const { blob, fileName } = await store.download(documentoId)
+    azioni.setSorgente(props.sorgenteCode, props.sorgenteId)
+    const { blob, fileName } = await azioni.download(documentoId)
     downloadBlob(blob, fileName)
   } catch (err) {
     notify.error(t('documenti.genera_pdf.download_error'))
@@ -194,7 +206,8 @@ async function onDownload(documentoId) {
 //        verificabile, che e' diverso da "diverso".
 async function onRistampaFedele(documentoId) {
   try {
-    const { blob, fileName, pdfHashMatch } = await store.ristampaFedele(documentoId)
+    azioni.setSorgente(props.sorgenteCode, props.sorgenteId)
+    const { blob, fileName, pdfHashMatch } = await azioni.ristampaFedele(documentoId)
     downloadBlob(blob, fileName)
     if (pdfHashMatch === false) {
       notify.warn(t('documenti.lista.ristampa_fedele_contenuto'))
@@ -206,45 +219,6 @@ async function onRistampaFedele(documentoId) {
     console.error('ristampaFedele', err)
   }
 }
-
-// Scopo: lazy fetch dei file del documento all'espansione della riga.
-//        Cache per documentoId; invalidata dopo upload allegati per
-//        rifletter immediatamente il nuovo file. Mutazione diretta delle
-//        chiavi su ref di tipo `ref({})`: Vue 3 traccia gia' le mutazioni
-//        sulle proprieta' (no bisogno di spread per reattivita').
-async function loadFiles(documentoId, { force = false } = {}) {
-  if (!force && filesPerDoc.value[documentoId] !== undefined) return
-  filesLoading.value[documentoId] = true
-  try {
-    store.setSorgente(props.sorgenteCode, props.sorgenteId)
-    const data = await store.listFiles(documentoId)
-    filesPerDoc.value[documentoId] = data?.results || []
-  } catch (err) {
-    console.error('listFiles', err)
-    filesPerDoc.value[documentoId] = []
-  } finally {
-    filesLoading.value[documentoId] = false
-  }
-}
-
-function onRowExpand(event) {
-  loadFiles(event.data.id)
-}
-
-async function onDownloadFile(documentoId, fileId) {
-  try {
-    store.setSorgente(props.sorgenteCode, props.sorgenteId)
-    const { blob, fileName } = await store.downloadFile(documentoId, fileId)
-    downloadBlob(blob, fileName)
-  } catch (err) {
-    notify.error(t('documenti.genera_pdf.download_error'))
-    console.error('downloadFile', err)
-  }
-}
-
-async function reload() {
-  try { await store.fetchList() } catch { /* gia' gestito */ }
-}
 </script>
 
 <template>
@@ -254,100 +228,73 @@ async function reload() {
        in permesso LETTURA, quindi l'escape e' incondizionato. Evita che ogni
        caller debba ricordarsi il wrapper (regola del 2: ContrattoDrawer lo
        aveva, PreventiviDrawer no e la lista risultava non cliccabile). -->
-  <div class="documenti-sorgente-list app-escape">
-    <div v-if="showListChrome" class="section-header">
-      <h4>{{ t('documenti.lista.title') }}</h4>
-      <Button
-        :icon="MANAGE_ICONS.RELOAD"
-        text
-        size="small"
-        :loading="store.loading"
-        @click="reload"
-        :tooltip="t('common.refresh')"
-      />
-    </div>
-
-    <DataTable
-      v-if="showListChrome"
-      :value="store.items"
+  <div class="app-escape">
+    <DrawerTabLista
+      ref="listaRef"
+      codice="documenti.documenti_sorgente"
+      :emittente-esplicito="emittenteFiscaleId"
+      :store="store"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      striped-rows
-      class="app-datatable"
-      data-key="id"
-      v-model:expandedRows="expandedRows"
-      @row-expand="onRowExpand"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      :page-actions="pageActions"
+      :dirty="dirty"
+      :perimetro-bloccato="perimetroBloccato"
+      @page="onPage"
+      @sort="onSort"
+      @config-loaded="onConfigLoaded"
     >
-      <Column expander style="width: 36px;" />
-      <Column field="progressivo_sorgente" :header="t('documenti.lista.col_progressivo')" style="width: 80px;" />
-      <Column field="generato_at" :header="t('documenti.lista.col_generato_at')" style="width: 180px;">
-        <template #body="{ data }">
-          {{ displayTimestamp(data.generato_at) }}
-        </template>
-      </Column>
-      <Column field="titolo" :header="t('documenti.lista.col_titolo')" />
-      <Column field="nome_file" :header="t('documenti.lista.col_nome_file')" style="width: 200px;" />
-      <Column field="stato" :header="t('documenti.lista.col_stato')" style="width: 120px;">
-        <template #body="{ data }">
-          <Tag :value="data.stato" :severity="statoSeverity(data.stato)" />
-        </template>
-      </Column>
+      <template #filtri-sempre>
+        <InputText
+          v-model="searchText"
+          class="app-filter-w-lg"
+          :placeholder="t('documenti.lista.search_placeholder')"
+        />
+      </template>
+
+      <!-- La frase del dominio al posto dell'empty-state generico, e solo se
+           la lettura e' riuscita: con `erroreCaricamento` la lista e' vuota
+           per un'altra ragione. -->
+      <template #empty>
+        <span v-if="!store.erroreCaricamento">{{ t('documenti.lista.empty') }}</span>
+      </template>
+
+      <template #cell-stato="{ data }">
+        <Tag :value="data.stato" :severity="statoSeverity(data.stato)" />
+      </template>
+
       <!-- Presenza del file originale: dice a colpo d'occhio quali documenti
            si possono scaricare com'erano e quali vanno ri-renderizzati. Non
            e' un difetto del documento (la persistenza e' iniziata dopo), per
            questo e' `secondary` e non `danger`. -->
-      <Column :header="t('documenti.lista.col_originale')" style="width: 110px;">
-        <template #body="{ data }">
-          <Tag
-            :value="data.has_file_principale !== false
-              ? t('documenti.lista.originale_presente')
-              : t('documenti.lista.originale_assente')"
-            :severity="data.has_file_principale !== false ? 'success' : 'secondary'"
-          />
-        </template>
-      </Column>
-      <Column :header="''" class="app-col-actions" style="width: 80px;">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
-
-      <!-- Expansion: lista file del documento (principale + allegati),
-           con badge tipo e download per id. -->
-      <template #expansion="{ data }">
-        <div class="documenti-sorgente-list__files">
-          <div v-if="filesLoading[data.id]" class="app-text-muted">
-            {{ t('documenti.allegati.files_loading') }}
-          </div>
-          <ul v-else-if="filesPerDoc[data.id]?.length" class="documenti-sorgente-list__file-list">
-            <li v-for="f in filesPerDoc[data.id]" :key="f.id" class="documenti-sorgente-list__file">
-              <Tag
-                :value="f.is_principale
-                  ? t('documenti.allegati.tipo_principale')
-                  : t('documenti.allegati.tipo_allegato')"
-                :severity="f.is_principale ? 'info' : 'secondary'"
-              />
-              <span class="documenti-sorgente-list__file-name">{{ f.file_name }}</span>
-              <span class="documenti-sorgente-list__file-size">{{ formatSize(f.file_size_bytes) }}</span>
-              <Button
-                :icon="MANAGE_ICONS.DOWNLOAD"
-                text
-                rounded
-                size="small"
-                v-tooltip.top="t('documenti.lista.action_download')"
-                @click="onDownloadFile(data.id, f.id)"
-              />
-            </li>
-          </ul>
-          <div v-else class="app-text-muted">
-            {{ t('documenti.allegati.files_empty') }}
-          </div>
-        </div>
+      <template #cell-originale="{ data }">
+        <Tag
+          :value="haFile(data)
+            ? t('documenti.lista.originale_presente')
+            : t('documenti.lista.originale_assente')"
+          :severity="haFile(data) ? 'success' : 'secondary'"
+        />
       </template>
-    </DataTable>
 
-    <div v-if="isEmpty" class="app-text-muted text-center mt-1">
-      {{ t('documenti.lista.empty') }}
-    </div>
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+      </template>
+
+      <!-- Dettaglio inline: i file del documento (principale + allegati),
+           letti quando la riga si apre. -->
+      <template #row-expansion="{ data }">
+        <DocumentoFileElenco
+          :sorgente-code="sorgenteCode"
+          :sorgente-id="sorgenteId"
+          :documento-id="data.id"
+          :versione="versioneFile[data.id] ?? 0"
+        />
+      </template>
+    </DrawerTabLista>
 
     <!-- Append allegati a un documento gia' generato (modalita' append). -->
     <DocumentoEmissioneDialog
@@ -363,41 +310,3 @@ async function reload() {
     />
   </div>
 </template>
-
-<style scoped>
-.documenti-sorgente-list .section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-.documenti-sorgente-list__files {
-  padding: 0.5rem 1rem;
-}
-.documenti-sorgente-list__file-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.documenti-sorgente-list__file {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--app-border-color);
-  border-radius: var(--app-border-radius);
-}
-.documenti-sorgente-list__file-name {
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.documenti-sorgente-list__file-size {
-  color: var(--p-text-muted-color);
-  font-size: 0.85rem;
-}
-</style>

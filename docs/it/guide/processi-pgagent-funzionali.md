@@ -164,3 +164,6 @@ Per il resto, un job notturno e' appropriato quando:
 Se la coerenza deve essere **immediata** (es. un flag che il resolver legge davvero), il pattern corretto e' **trigger sincrono** o **colonna generata**, non job notturno.
 
 Se la logica e' **event-driven** (reagisce a un INSERT/UPDATE specifico), usare trigger o pipeline task, non scheduled job.
+
+---
+{% include-markdown "signature-core.md" %}

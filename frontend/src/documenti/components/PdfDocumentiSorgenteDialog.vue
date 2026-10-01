@@ -6,8 +6,9 @@
 //        (azione di riga "PDF") e da chi serva un picker rapido senza
 //        aprire il drawer del preventivo.
 //
-//        Il building block sottostante e' `DocumentiGeneratiSorgenteList`,
-//        che fa fetch automatico al cambio props (`autoFetch=true`).
+//        Il building block sottostante e' `DocumentiGeneratiSorgenteList`
+//        (lista configurabile `documenti.documenti_sorgente`), che legge al
+//        cambio sorgente.
 //        Qui passa `defaultExpanded=true`: in modalita' dialog dedicato
 //        ha senso mostrare subito principale + allegati senza dover
 //        espandere riga per riga (UX picker).
@@ -21,6 +22,11 @@ defineProps({
   visible: { type: Boolean, default: false },
   sorgenteCode: { type: String, required: true },
   sorgenteId: { type: [Number, null], required: true },
+  // L'emittente del documento sorgente (PK `emittenti_fiscali`): la lista lo
+  // gira al cancello di perimetro, perche' il super admin su «Tutti» non debba
+  // scegliere l'emittente di un documento che glielo sta gia' dicendo. Il
+  // chiamante lo prende dalla riga o dal dettaglio (`emittente_fiscale_id`).
+  emittenteFiscaleId: { type: [Number, null], default: null },
   // Titolo personalizzabile dal caller (default: "Documenti generati").
   // Tipico uso: "Preventivo P-0001 — Documenti".
   title: { type: String, default: '' },
@@ -43,6 +49,7 @@ const emit = defineEmits(['update:visible'])
       v-if="visible && sorgenteId != null"
       :sorgente-code="sorgenteCode"
       :sorgente-id="sorgenteId"
+      :emittente-fiscale-id="emittenteFiscaleId"
       :allow-allegati="allowAllegati"
       default-expanded
     />

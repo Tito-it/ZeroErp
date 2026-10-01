@@ -34,9 +34,9 @@ binding a tre vie (reparto, identità singola, ruolo applicativo), più gli
 finestre di validità, default `BLOCCATO` — vive **nelle funzioni SQL**; qui non
 ne esiste una copia.
 
-Tutti i metodi accettano un dict `cache` opzionale (`request._zeroerp_perms_cache`
-quando disponibile): chiave stabile per metodo + argomenti, `None` non
-memorizzato.
+I metodi che interrogano l'utente accettano un dict `cache` opzionale
+(`request._zeroerp_perms_cache` quando disponibile): chiave stabile per metodo +
+argomenti; il risultato viene memorizzato sempre, `None` compreso.
 
 ## Costanti
 
@@ -53,7 +53,8 @@ LIVELLO_MAP = {
 | Metodo | Delega a | Ritorna | Cache key |
 | --- | --- | --- | --- |
 | `is_super_admin(user, cache=None)` | `script.fn_is_super_admin` | `bool` — binding `SUPER_ADMIN` attivo **sulla veste OPERATORE** (una identità portale/shop con lo stesso binding non attiva il bypass); fail-closed su identità inattiva o fuori finestra | `is_super_admin` |
-| `get_ruolo_applicativo(user, cache=None)` | GUC `app.ruolo_applicativo` (propagata da `JwtAuditAuthentication`), fallback `identita_digitali` attiva | `str \| None` — `OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, `API_CLIENT`, `DISABILITATO` | `ruolo_applicativo` |
+| `get_ruolo_applicativo(user, cache=None)` | GUC `app.ruolo_applicativo` (propagata da `JwtAuditAuthentication`), fallback su una qualsiasi `identita_digitali` attiva dell'utente (`LIMIT 1` senza ordinamento) ⛔ Risponde per la **sessione**, non per `user`: `user` dev'essere l'utente della richiesta (S-6). | `str \| None` — `OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, `API_CLIENT`, `DISABILITATO` | `ruolo_applicativo` |
+| `has_veste_operatore_attiva(user, cache=None)` | `script.fn_has_identita_attiva(user, 'OPERATORE')` | `bool` — veste OPERATORE attiva e nella finestra: il passo 1 della catena area/oggetto. Risponde per `user`, qualunque sia la sessione: è la domanda da fare su un **altro** utente (permessi-effettivi) | `veste_operatore_attiva` |
 | `get_livello_area(user, area_schema_db, *, cache=None)` | `script.fn_resolve_livello_area` | `"TUTTO" \| "LETTURA" \| "BLOCCATO"` (default `BLOCCATO`) | `area:{schema_db}` |
 | `get_livello_oggetto(user, app_label, model_name, area_schema_db, *, cache=None)` | `script.fn_resolve_livello_oggetto` | livello del singolo model, con ripiego sull'area | `oggetto:{app_label}.{model_name}` |
 | `check_azione(user, permission_codename, *, cache=None)` | `script.fn_check_azione_processo` | `bool` | `azione:{codename}` |
@@ -85,10 +86,17 @@ chiamanti — è stato **tolto il 2026-09-12** (analisi-software-per-dati-morti
   seconda sede della regola, e le due si sfilano in silenzio.
 - **Fail-closed per costruzione**: riga assente → `BLOCCATO` / `False` /
   `[]`, mai un permesso concesso per mancanza di un dato.
-- **La cache è per richiesta, non per processo**: vive in
-  `request._zeroerp_perms_cache` e muore con la richiesta. La cache **Redis**
-  dei permessi è un altro oggetto (`permissions_cache.md`), invalidata dai
-  writer (profili, override, reparto).
+- **La cache L1 vive in `request._zeroerp_perms_cache`, ma non muore con la
+  richiesta**: le permission class di `apps/core/api/permissions.py` la
+  pre-caricano da Redis e la salvano su Redis (chiave per utente **e contesto di
+  sessione** — identita' ed emittente effettivo —, TTL `PERMISSIONS_CACHE_TTL`), vedi
+  [permissions_cache.md](permissions_cache.md). ⭐ Il contesto sta nella chiave perche'
+  i valori di `ruolo_applicativo`, `is_super_admin`, `area:*`, `azione:*` ed
+  `emittenti_*` li calcolano funzioni che leggono le GUC di veste ed emittente attivo.
+  L'invalidazione Redis la fanno i writer (profili, override, reparto).
+- ⚠️ Difetto noto (S-4): il ripiego di `get_ruolo_applicativo` senza GUC prende
+  un'identita attiva qualsiasi: per un utente con piu' vesti il risultato non e'
+  deterministico. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 - **I mock non provano il contratto DB.** Un test con `connection` finta prova
   la traduzione del risultato, non che la funzione esista o che la firma leghi:
   il contratto cross-veste di `fn_is_super_admin` è provato dai pgTAP in
@@ -106,6 +114,7 @@ chiamanti — è stato **tolto il 2026-09-12** (analisi-software-per-dati-morti
 | `script.fn_get_uo_id_for_user` | unità organizzativa (`identita_digitali` → `soggetti_ruoli` → `risorse_umane`) |
 | `script.fn_get_profili_accesso_applicabili` | profili applicabili all'identità |
 | `anagrafiche.identita_digitali` | fallback di `get_ruolo_applicativo` senza GUC |
+| `script.fn_has_identita_attiva` | veste OPERATORE del consultato (`has_veste_operatore_attiva`) |
 | `config.area_model_overrides` · `config.aree_funzionali` · `config.profili_accesso_aree` | catalogo aree/model |
 
 ## Note di migrazione

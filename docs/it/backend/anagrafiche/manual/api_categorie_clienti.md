@@ -36,8 +36,8 @@ utente non admin riceve `403 Forbidden`.
 ## Lookup generico — preferire dove possibile
 
 Per dropdown / selezioni "scegli categoria" nelle UI NON creare endpoint dedicati:
-la tabella `anagrafiche.categorie_clienti` e` registrata nella whitelist
-`_REL_CONSENTITE` di `apps/core/db/dbops_repository.py` e accessibile via:
+la tabella `anagrafiche.categorie_clienti` e` nella lista del lookup generico
+(`config.tabelle_gestibili`, colonna `lookup`) e accessibile via:
 
 ```text
 GET /api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti

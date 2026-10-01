@@ -13,14 +13,17 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.amm_software.constants import DEFAULT_LIMIT, MAX_LIMIT
 
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import descrizione_order_by
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     optional_int,
     optional_uuid,
+    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int,
@@ -29,6 +32,7 @@ from apps.core.api.payload_validators import (
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
+from apps.amm_software.db.amm_software_repository import REPARTI_ORDER_COLUMNS
 from apps.amm_software.services.amm_software_service import AmmSoftwareService
 from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS
 from apps.core.services.coda_lavori.scope import scope_operatore_da_request
@@ -58,7 +62,7 @@ class OperatoriListView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="is_super_admin", type=bool, required=False),
             OpenApiParameter(name="unita_organizzativa_id", type=int, required=False),
             OpenApiParameter(name="is_active", type=bool, required=False),
@@ -81,7 +85,7 @@ class OperatoriListView(AdminAPIView):
             is_super_admin=is_super_admin,
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             is_active=is_active,
-            limit=min(optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT, MAX_LIMIT),
+            limit=optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT,  # clamp nel repository
             offset=optional_int({"v": qp.get("offset")}, "v") or 0,
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
@@ -93,7 +97,14 @@ class OperatoriListView(AdminAPIView):
         description=(
             "Due flussi: se soggetto_id presente, associa soggetto esistente "
             "(cognome/nome/CF non richiesti). Se assente, crea soggetto PF nuovo "
-            "(cognome/nome/CF obbligatori)."
+            "(cognome/nome/CF obbligatori). La veste operatore nasce spenta: la "
+            "accende l'attivazione dell'invito, dove la persona sceglie la "
+            "password (`password` non e' ammesso). Se l'email e' gia' di una "
+            "credenziale, la si riusa: `credenziale_riusata` e `username` "
+            "nella risposta lo dicono. Il riuso vuole il consenso: senza "
+            "`riusa_auth_user_id` (o con un altro id) risponde 409 "
+            "`E_CREDENZIALE_DA_CONFERMARE`; si rimanda con l'id della "
+            "credenziale confermata."
         ),
         request=inline_serializer(name="OperatoriCreateReq", fields={
             "soggetto_id": serializers.CharField(required=False, help_text="UUID soggetto esistente (flusso B). Se assente, crea nuovo (flusso A)."),
@@ -102,16 +113,48 @@ class OperatoriListView(AdminAPIView):
             "codice_fiscale": serializers.CharField(required=False, help_text="Obbligatorio solo flusso A."),
             "username": serializers.CharField(),
             "email": serializers.CharField(),
-            "password": serializers.CharField(),
             "qualifica_id": serializers.IntegerField(),
             "is_super_admin": serializers.BooleanField(required=False),
             "unita_organizzativa_id": serializers.IntegerField(required=False),
+            "riusa_auth_user_id": serializers.IntegerField(required=False, help_text="Consenso al riuso: l'id della credenziale gia' esistente per l'email, confermato dall'admin."),
         }),
         responses={200: inline_serializer(name="OperatoriCreateResp", fields={"data": serializers.DictField()})},
     )
     # Scopo: Crea operatore. Flusso A (soggetto nuovo) o B (soggetto esistente).
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=AmmSoftwareService().create_operatore)
+
+
+class CredenzialePerEmailView(AdminAPIView):
+    """GET la credenziale che porta un'email: i dati del dialog di conferma del riuso."""
+
+    @extend_schema(
+        summary="Credenziale di un'email (dialog del consenso al riuso)",
+        description=(
+            "La credenziale che porta l'email, con username e vesti: e' cio' "
+            "che il pannello mostra all'admin sul 409 "
+            "`E_CREDENZIALE_DA_CONFERMARE` della creazione. Confermato, la "
+            "creazione si rimanda con `riusa_auth_user_id` = `auth_user_id` "
+            "letto qui. `data.credenziale` e' null se l'email non ha "
+            "credenziale (anche assente o vuota). Legge `script.fn_get_credenziale_per_email`, la "
+            "stessa lettura del rifiuto."
+        ),
+        parameters=[OpenApiParameter(
+            name="email", type=str, required=False,
+            description="L'email del modulo di creazione. Assente o vuota = nessuna credenziale (null, nessun 400).",
+        )],
+        responses={200: inline_serializer(name="CredenzialePerEmailResp", fields={
+            "data": inline_serializer(name="CredenzialePerEmailData", fields={
+                "credenziale": serializers.DictField(allow_null=True),
+            }),
+        })},
+    )
+    # Scopo: Legge la credenziale di un'email; None se non ne ha.
+    def get(self, request: Request) -> JsonResponse:
+        email = qp_str(request.query_params.get("email"))
+        return success_response(
+            {"credenziale": AmmSoftwareService().get_credenziale_per_email(email)}
+        )
 
 
 class OperatoriDetailView(AdminAPIView):
@@ -136,14 +179,14 @@ class OperatoriDetailView(AdminAPIView):
         responses={200: inline_serializer(name="OperatorePatchResp", fields={"data": serializers.DictField()})},
     )
     def patch(self, request: Request, auth_user_id: int) -> JsonResponse:
-        result = AmmSoftwareService().update_operatore(auth_user_id, request.data)
+        result = AmmSoftwareService().update_operatore(auth_user_id, corpo_oggetto(request))
         return success_response(result)
 
 
 class OperatoriDisabilitaView(AdminAPIView):
     """POST disabilita operatore."""
 
-    @extend_schema(responses={200: inline_serializer(name="OperatoreDisabilitaResp", fields={"data": serializers.DictField()})})
+    @extend_schema(request=None, responses={200: inline_serializer(name="OperatoreDisabilitaResp", fields={"data": serializers.DictField()})})
     def post(self, request: Request, auth_user_id: int) -> JsonResponse:
         return success_response(AmmSoftwareService().disabilita_operatore(auth_user_id))
 
@@ -151,7 +194,7 @@ class OperatoriDisabilitaView(AdminAPIView):
 class OperatoriRiattivaView(AdminAPIView):
     """POST riattiva operatore disabilitato."""
 
-    @extend_schema(responses={200: inline_serializer(name="OperatoreRiattivaResp", fields={"data": serializers.DictField()})})
+    @extend_schema(request=None, responses={200: inline_serializer(name="OperatoreRiattivaResp", fields={"data": serializers.DictField()})})
     def post(self, request: Request, auth_user_id: int) -> JsonResponse:
         return success_response(AmmSoftwareService().riattiva_operatore(auth_user_id))
 
@@ -173,7 +216,7 @@ class OverrideAreeView(AdminAPIView):
         responses={200: inline_serializer(name="OverrideAreePutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_aree(auth_user_id, request.data.get("items", []))
+        results = AmmSoftwareService().put_override_aree(auth_user_id, corpo_oggetto(request).get("items", []))
         return success_response({"results": results})
 
 
@@ -189,7 +232,7 @@ class OverrideAzioniView(AdminAPIView):
         responses={200: inline_serializer(name="OverrideAzioniPutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_azioni(auth_user_id, request.data.get("items", []))
+        results = AmmSoftwareService().put_override_azioni(auth_user_id, corpo_oggetto(request).get("items", []))
         return success_response({"results": results})
 
 
@@ -207,7 +250,7 @@ class OverrideOggettiView(AdminAPIView):
     )
     # Scopo: Sostituisce override oggetti di un operatore.
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_oggetti(auth_user_id, request.data.get("items", []))
+        results = AmmSoftwareService().put_override_oggetti(auth_user_id, corpo_oggetto(request).get("items", []))
         return success_response({"results": results})
 
 
@@ -257,7 +300,7 @@ class EmittentiScopeView(AdminAPIView):
         responses={200: inline_serializer(name="EmittentiScopePutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        result = AmmSoftwareService().put_emittenti_scope(auth_user_id, request.data)
+        result = AmmSoftwareService().put_emittenti_scope(auth_user_id, corpo_oggetto(request))
         return success_response(result)
 
 
@@ -267,11 +310,40 @@ class EmittentiScopeView(AdminAPIView):
 
 
 class RepartiListView(AdminAPIView):
-    """GET lista reparti."""
+    """GET lista reparti (`amm.reparti`, lista 87): envelope paginato standard.
 
-    @extend_schema(responses={200: inline_serializer(name="RepartiListResp", fields={"data": serializers.DictField()})})
+    ⛔ Nessun `lista_codice`: su `AdminAPIView` il cancello di perimetro non
+    c'e', e la lista e' GLOBALE (`config.unita_organizzative`,
+    `perimetro_emittente = false`) — l'esenzione sta in
+    `test_perimetro_emittente_copertura._ESENZIONI`.
+    """
+
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            param_ricerca_full(),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(
+                name="order_by", type=str, required=False,
+                description=descrizione_order_by(REPARTI_ORDER_COLUMNS, "Default: descrizione."),
+            ),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={200: inline_serializer(name="RepartiListResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Lista paginata dei reparti attivi con profilo e operatori.
     def get(self, request: Request) -> JsonResponse:
-        return success_response({"results": AmmSoftwareService().list_reparti()})
+        p = parse_list_params(request.query_params, default_order="descrizione")
+        results, total = AmmSoftwareService().list_reparti(
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
 
 class PermessiEreditatiView(AdminAPIView):
@@ -283,8 +355,10 @@ class PermessiEreditatiView(AdminAPIView):
     perche' da quel momento non segue piu' il reparto quando il reparto cambia.
 
     ⛔ Non e' `reparti/<uo_id>/profilo/`: quello legge il solo binding REPARTO,
-    mentre i bindings sono tre (AD_HOC prio 1, PORTALE e REPARTO prio 2) e i
-    resolver prendono il primo per priorita'.
+    mentre i bindings sono tre (AD_HOC prio 1, REPARTO prio 2, PORTALE di
+    veste prio 3) e i resolver prendono il primo per priorita'. Il calcolo sta
+    a DB (`script.fn_get_permessi_ereditati_aree` / `..._azioni`), la stessa
+    funzione che i resolver chiamano.
     """
 
     @extend_schema(
@@ -313,8 +387,9 @@ class RepartoProfiloView(AdminAPIView):
         responses={200: inline_serializer(name="RepartoProfiloPutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, uo_id: int) -> JsonResponse:
+        corpo = corpo_oggetto(request)
         result = AmmSoftwareService().put_profilo_reparto(
-            uo_id, request.data.get("aree", []), request.data.get("azioni", []),
+            uo_id, corpo.get("aree", []), corpo.get("azioni", []),
         )
         return success_response(result)
 
@@ -341,7 +416,7 @@ class ProcessiListView(AdminAPIView):
             OpenApiParameter(name="classe", type=str, required=False),
             OpenApiParameter(name="canale", type=str, required=False),
             OpenApiParameter(name="attivo", type=bool, required=False),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
@@ -362,8 +437,6 @@ class ProcessiListView(AdminAPIView):
             limit=qp_int(qp.get("limit"), DEFAULT_LIMIT),
             offset=qp_int(qp.get("offset"), 0),
             order_by=qp_str(qp.get("order_by")),
-            # ⚠️ Il valore GREZZO: `parse_list_params` normalizzerebbe a "asc" e
-            #    annullerebbe il default del repository.
             order_dir=qp_str(qp.get("order_dir")),
         ))
 
@@ -605,7 +678,7 @@ class AuditLogView(AdminAPIView):
             tabella=qp.get("tabella") or None,
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
-            limit=min(optional_int({"v": qp.get("limit")}, "v") or 50, 200),
+            limit=optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT,  # clamp nel repository
             offset=optional_int({"v": qp.get("offset")}, "v") or 0,
         )
         return success_response({"count": total_count, "results": events})
@@ -688,9 +761,7 @@ class ErrorLogListView(AdminAPIView):
     # Scopo: Restituisce via GET l'elenco paginato degli errori tecnici col
     #        catalogo dei messaggi (codice, classe, frase, causa, soluzione) e
     #        il `context` com'e'.
-    # ⛔ `order_dir` GREZZO e non dal bundle: `parse_list_params` normalizza
-    #    l'assenza ad `asc`, e il ripiego DESC della data non verrebbe mai
-    #    raggiunto (api.md §parse_list_params).
+    # ⭐ `order_dir` assente = `None`: decide il ripiego DESC della data.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(
@@ -702,7 +773,7 @@ class ErrorLogListView(AdminAPIView):
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
-            order_dir=qp_str(qp.get("order_dir")),
+            order_dir=p["order_dir"],
         ))
 
 
@@ -942,27 +1013,3 @@ class AuditSourcesLookupView(AdminAPIView):
         return success_response(AmmSoftwareService().list_audit_sources())
 
 
-class EmailLogStatiLookupView(AdminAPIView):
-    """GET lookup statico stati email log (Fase 5).
-
-    Single source of truth in `amm_software_service._EMAIL_LOG_STATI_VALIDI`
-    + `_EMAIL_LOG_STATI_DESCRIZIONI`. Niente DB: 5 codici fissi
-    (SENT/PENDING/RETRY/FAILED/SIMULATA) gestiti dal `EmailDispatchService`.
-    Pattern simmetrico a `EmittenteRoundingModesLookupView`.
-    ⚠️ Questa docstring finisce nello schema OpenAPI: e' la descrizione che
-    legge chi consuma la rotta, quindi il numero va tenuto col vocabolario.
-    """
-
-    @extend_schema(
-        responses={200: inline_serializer(
-            name="AmmEmailLogStatiLookupResp",
-            fields={
-                "data": serializers.ListField(child=serializers.DictField()),
-                "meta": serializers.DictField(required=False),
-            },
-        )},
-    )
-    # Scopo: Restituisce la lista statica degli stati email log.
-    def get(self, request: Request) -> JsonResponse:
-        del request
-        return success_response(AmmSoftwareService().list_email_log_stati())

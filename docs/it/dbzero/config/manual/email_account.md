@@ -30,7 +30,7 @@ L'account determina il mittente (`email_from`), il reply-to e tutti i parametri 
 
 ### Sicurezza
 
-* La password SMTP e' salvata **crittografata** con Fernet (chiave derivata da `Django SECRET_KEY`). Non viene mai esposta in chiaro nelle API ne' nei log.
+* La password SMTP e' salvata **crittografata** con Fernet (chiavi `DJANGO_FIELD_ENCRYPTION_KEYS` del backend, separate dalla `SECRET_KEY`). Non viene mai esposta in chiaro nelle API ne' nei log.
 * I campi `smtp_use_tls` e `smtp_use_ssl` sono mutuamente esclusivi (CHECK constraint). TLS (STARTTLS, porta 587) e' il default; SSL diretto e' per porta 465.
 
 ---

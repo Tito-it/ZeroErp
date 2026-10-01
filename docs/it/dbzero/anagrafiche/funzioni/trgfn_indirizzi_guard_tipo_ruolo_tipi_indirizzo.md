@@ -63,8 +63,10 @@ IF NOT EXISTS (
      'trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',
      'E_TIPO_INDIRIZZO_NON_PERMESSO',
      jsonb_build_object(
-     'E_TIPO_INDIRIZZO_NON_PERMESSO ' , NEW.tipo_indirizzo_id , 
-       v_tipo_ruolo_id, NEW.soggetto_ruolo_id), 
+            'campo',             'tipo_indirizzo_id',
+            'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+            'tipo_ruolo_id',     v_tipo_ruolo_id,
+            'soggetto_ruolo_id', NEW.soggetto_ruolo_id), 
       new.tx_id,
      NEW.tipo_indirizzo_id::text ,         
        v_tipo_ruolo_id::text, NEW.soggetto_ruolo_id::text);         

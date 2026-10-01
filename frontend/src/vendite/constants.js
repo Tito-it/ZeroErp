@@ -3,6 +3,8 @@
 // (BE) e con i seed DB (`config.stati_doc_preventivi`,
 // `config.azioni_processo`).
 
+import { aspettoAzione } from '../core/aspettoAzioni'
+
 // Stati di workflow approvazione prezzo applicabili al campo
 // `vendite.preventivi_righe.stato_approvazione_prezzo` (ENUM nativo
 // `config.stato_approvazione_prezzo`).
@@ -101,6 +103,16 @@ export const PRICING_ACTIONS = Object.freeze({
   APPROVE: 'approva_prezzo_override',
 })
 
+// Azione «Invia a commessa» quando il blob la NEGA (`can_push_commessa` false
+// + motivo): la forma del pulsante, uguale per DDT e ordine — cambia solo la
+// `label_key` del dominio. Si passa a `useEntityCapabilities().azioneNegata`.
+// ⭐ Icona e colore dalla mappa del verbo: negato o no, e' lo stesso pulsante.
+export const AZIONE_PUSH_COMMESSA = Object.freeze({
+  key: 'push_commessa',
+  severity: aspettoAzione('push_commessa').severity,
+  icon: aspettoAzione('push_commessa').icona,
+})
+
 // Codici stato preventivo (`config.stati_doc_preventivi.codice_interno`).
 // NB: 'Bozza' e' la descrizione it-IT, il codice tecnico stabile e' DRAFT.
 // EVASO e' lo stato terminale post-push commessa: transizione automatica
@@ -155,21 +167,6 @@ export const STATO_CONTRATTO = Object.freeze({
 // preventivo target. Coerente col BE
 // `_approvazioni_prezzo_constants.META_KEY_RIGA_PREVENTIVO_ID`.
 export const META_KEY_RIGA_PREVENTIVO_ID = 'riga_preventivo_id'
-
-// Codici origine prezzo del pricing resolver v5 (6 valori, modello unificato
-// componenti BoM 2026-05-13). Allineato al CHECK DB su
-// `vendite.preventivi_righe_componenti.origine_prezzo` e su
-// `vendite.preventivi_righe.origine_prezzo` (quando esteso).
-// `LISTINO_BUNDLE`: nuovo STADIO 0 del resolver bundle-aware — prezzo
-// componente in contesto padre composito, vince su CATEGORIA standalone.
-export const ORIGINE_PREZZO = Object.freeze({
-  PROMO: 'PROMO',
-  CONTRATTO_OVERRIDE: 'CONTRATTO_OVERRIDE',
-  CONTRATTO_LISTINO: 'CONTRATTO_LISTINO',
-  CATEGORIA: 'CATEGORIA',
-  LISTINO_BUNDLE: 'LISTINO_BUNDLE',
-  MANUALE: 'MANUALE',
-})
 
 // Tipi eccezione su `vendite.contratti_righe.tipo_eccezione` (ENUM nativo
 // `vendite.tipo_eccezione_contratto`). Refactor modalita 2026-05-15.

@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# maintenance.proc_automations_lock_columns_job: il giro notturno monta anche
+#   il guard delle date di validita' (automazione DATE_VALIDITA, 20260923-41).
+#
+#   Decisione di Tid del 2026-09-23 (brief §8.4): una PARTE del job del lock e
+#   non un job suo — stessa natura, un guard che nasce dalla struttura della
+#   tabella, e un job in meno da sorvegliare in dbops.processi.
+#   ⚠️ Il giro principale e' il changeSet runAlways di 90_end (20260923-47),
+#   che copre le tabelle a ogni migrate: il job e' la rete di sicurezza per cio'
+#   che nasce fra due migrate, come per il lock.
+#
+# Corpo dalla doc auto-gen (= vivo su dbdev e su zeroerp_ci, stesso md5 del
+# prosrc il 2026-09-23, rev 20260209-06) piu' la riga del modulo nuovo.
+# Brief: brief-db-guard-date-validita.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20260923-46-update-proc-automations-lock-columns-job-date-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260923-46-update-proc-automations-lock-columns-job-date-validita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.proc_automations_lock_columns_job: il giro notturno chiama
+        anche dbops.fn_run_automations_date_validita, dopo il lock e il cleanup
+        dei suoi trigger obsoleti.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_automations_lock_columns_job()
+               LANGUAGE plpgsql
+              AS $procedure$
+                BEGIN
+                  -- rev 20260923-46: anche il guard delle date di validita'
+                  --   (automazione DATE_VALIDITA), stessa famiglia del lock.
+                  PERFORM maintenance.fn_run_and_log(
+                    p_jobname  := 'automations_lock_columns',
+                    p_stepname := 'run_automations_lock_columns',
+                    p_sql      := 'SELECT dbops.fn_run_automations_lock_columns(''SCHEDULED'', NULL, false); ' ||
+                                 'SELECT dbops.fn_run_automations_drop_lock_trg(''SCHEDULED'', NULL, false); ' ||
+                                 'SELECT dbops.fn_run_automations_date_validita(''SCHEDULED'', NULL, false);',
+                    p_lock_key := hashtext('automations_lock_columns')
+                  );
+                END;
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_lock_columns_job()
+              IS 'Job wrapper per chiamare fn_run_automations_lock_columns e cleanup trigger LOCK_COLUMNS obsoleti. Rev 20260923-46: monta anche il guard delle date di validita'' (dbops.fn_run_automations_date_validita, automazione DATE_VALIDITA), stessa famiglia del lock.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' nella doc auto-gen alla revisione prima di
+              -- questa (20260209-06). Non si riscrive un corpo stantio.
+              SELECT 1;

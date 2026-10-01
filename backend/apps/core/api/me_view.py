@@ -13,6 +13,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.cancello_obblighi import TUTTI_GLI_OBBLIGHI
 
 from apps.core.api.success_responses import success_response
 from apps.core.db.auth_repository import AuthRepository
@@ -28,6 +29,9 @@ class UserProfileView(DomainAPIView):
     """Profilo utente corrente — dati soggetto, risorse umane, emittente."""
 
     skip_area_check = True
+    # Il profilo e' dove il frontend legge gli obblighi pendenti: deve
+    # rispondere anche quando ce n'e' uno (cancello_obblighi).
+    obblighi_ammessi = TUTTI_GLI_OBBLIGHI
 
     @extend_schema(
         summary="Profilo utente corrente",

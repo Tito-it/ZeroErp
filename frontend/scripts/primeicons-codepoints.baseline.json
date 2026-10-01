@@ -20,8 +20,11 @@
   "e91f": [
     "arrow-circle-left"
   ],
-  "ea06": [
-    "receipt"
+  "e97d": [
+    "briefcase"
+  ],
+  "e920": [
+    "arrow-circle-right"
   ],
   "e9bd": [
     "euro"
@@ -35,16 +38,19 @@
   "e90a": [
     "check-circle"
   ],
+  "ea06": [
+    "receipt"
+  ],
   "e939": [
     "user"
   ],
   "e9cf": [
     "building"
   ],
-  "e9d9": [
-    "box"
-  ],
   "e9be": [
     "percentage"
+  ],
+  "e9d9": [
+    "box"
   ]
 }

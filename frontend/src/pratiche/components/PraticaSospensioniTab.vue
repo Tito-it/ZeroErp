@@ -11,6 +11,7 @@ import { useI18n } from 'vue-i18n'
 import { fetchSospensioni } from '../api/pratiche-api'
 import { displayTimestamp } from '../../core/utils/date'
 import Tag from 'primevue/tag'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 
 const { t } = useI18n()
 
@@ -60,7 +61,7 @@ watch(() => props.praticaId, (id) => {
 <template>
   <div>
     <div v-if="loading" class="text-center app-text-muted p-3">
-      <i class="pi pi-spin pi-spinner"></i>
+      <i :class="STATUS_ICONS.CARICAMENTO"></i>
     </div>
 
     <div v-else-if="sospensioni.length === 0" class="text-center app-text-muted p-3">
@@ -68,9 +69,9 @@ watch(() => props.praticaId, (id) => {
     </div>
 
     <div v-else class="sospensioni-list">
-      <div v-for="s in sospensioni" :key="s.id" class="sospensione-entry">
+      <div v-for="s in sospensioni" :key="s.id" class="app-voce-registro">
         <div class="sospensione-header">
-          <i class="pi pi-pause sospensione-icon"></i>
+          <i class="sospensione-icon" :class="MANAGE_ICONS.SOSPENDI"></i>
           <Tag
             :value="isAttiva(s) ? t('pratiche.sosp_in_corso') : t('pratiche.sosp_conclusa')"
             :severity="isAttiva(s) ? 'warn' : 'success'"
@@ -107,12 +108,6 @@ watch(() => props.praticaId, (id) => {
   gap: 0.5rem;
 }
 
-.sospensione-entry {
-  padding: 0.5rem 0.75rem;
-  border-left: 3px solid var(--app-toolbar-border);
-  border-radius: 0 4px 4px 0;
-  background: color-mix(in srgb, var(--p-surface-700) 20%, transparent);
-}
 
 .sospensione-header {
   display: flex;
@@ -159,6 +154,6 @@ watch(() => props.praticaId, (id) => {
 .sospensione-motivo {
   margin-top: 0.25rem;
   font-size: var(--app-font-size-sm);
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 </style>

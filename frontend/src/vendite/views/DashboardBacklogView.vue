@@ -23,14 +23,14 @@ import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
-import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { classeBacklogSeverity } from '../../core/utils/severity'
-import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
-import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
+import DocumentoDrawerHost from '../../core/components/DocumentoDrawerHost.vue'
+import { useDocumentoDrawer } from '../../core/composables/useDocumentoDrawer'
 import {
   buildApriDocumentoAction,
   DASH_AREE,
@@ -39,6 +39,9 @@ import {
   dashMotivoLabel,
 } from '../dashboardAree'
 import { useDashboardBacklogStore } from '../stores/dashboardBacklog'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
+import { misureOpzioni } from '../../core/misurePagina'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -74,7 +77,7 @@ const documentiPaginatorOptions = computed(() => ({
   totalRecords: documentiCount.value,
   rows: documentiPageSize.value,
   first: (documentiPage.value - 1) * documentiPageSize.value,
-  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+  rowsPerPageOptions: misureOpzioni(),
 }))
 
 // Scopo: allinea una volta la dimensione pagina a quella risolta dal BE.
@@ -222,6 +225,30 @@ function onRitardoChange() {
   loadDocumenti()
 }
 
+// Scopo: il contratto dei filtri della barra — chi sono, che default hanno, il
+//        segno che mostrano e «Pulisci filtri». UNA sede: chiave, `rif` e
+//        default sulla stessa riga.
+// ⛔ Il default si DICHIARA e non si fotografa dal `ref`: questi due filtri
+//    vivono nello store `userScoped` del cruscotto, che SOPRAVVIVE al
+//    componente — al secondo montaggio una fotografia avrebbe preso il filtro
+//    lasciato dall'operatore come se fosse il default.
+// ⚠️ I due nascono entrambi a `null`, quindi qui il numero grigio non compare
+//    mai: o non filtrano, o sono stati scelti a mano (numero blu).
+// ⛔ Non c'e' la CLASSE: quella si sceglie dalle card, che restano sempre a
+//    video — il segno esiste per cio' che in modalita' compatta non si vede piu'.
+const {
+  segno: segnoFiltriCruscotto,
+  azzeraFiltri: pulisciFiltri,
+} = useContrattoFiltriLocali({
+  ritardo_giorni: { rif: ritardoGiorni, default: null },
+  area: { rif: areaSelezionata, default: null },
+}, {
+  onAzzera: () => {
+    store.resetDocumenti()
+    loadDocumenti()
+  },
+})
+
 // Scopo: paginazione DataTable documenti (lazy, paginator top; calcolo
 //        pagina nel BB usePagedDashFetch).
 function onDocumentiPage(event) {
@@ -316,7 +343,7 @@ onActivated(() => {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">{{ t('vendite.dashboard_backlog.page_title') }}</h2>
         <small class="app-text-muted">{{ t('vendite.dashboard_backlog.page_description') }}</small>
       </div>
@@ -375,7 +402,7 @@ onActivated(() => {
             {{ t('vendite.dashboard_backlog.unita_ferme', { n: card.unitaFerme }) }}
           </span>
           <span v-if="card.anzianitaMax > 0" class="app-dash-ritardo">
-            <i class="pi pi-clock" />
+            <i :class="STATUS_ICONS.IN_RITARDO" />
             {{ t('vendite.dashboard_backlog.anzianita_max', { n: card.anzianitaMax }) }}
           </span>
         </div>
@@ -410,31 +437,38 @@ onActivated(() => {
           <h4 class="app-dash-fermi-title">
             {{ t('vendite.dashboard_backlog.lista_titolo') }}
           </h4>
-          <div class="app-page-filters">
+          <!-- ⚠️ `:segno` e non `:store`: un cruscotto non ha uno store-LISTA —
+               i suoi filtri sono ref sciolte, non un oggetto `filters` con i
+               propri default. E' il ripiego dichiarato dal brief per le
+               superfici senza store, e resta l'unica sede del conteggio.
+               ⛔ `classeSelezionata` NON ci entra: si sceglie dalle card, che
+               sono sempre a video — il segno esiste per cio' che, in modalita'
+               compatta, non si vede piu'. -->
+          <FiltriLista :segno="segnoFiltriCruscotto" @pulisci="pulisciFiltri">
             <label class="app-dash-filter-toggle">
               <span>{{ t('vendite.dashboard_backlog.filtro_ritardo_label') }}</span>
               <Select
                 v-model="ritardoGiorni"
+                class="app-filter-w-sm"
                 :options="ritardoOptions"
                 option-label="label"
                 option-value="value"
                 :placeholder="t('vendite.dashboard_backlog.ritardo_tutti')"
                 size="small"
-                style="width: 150px;"
                 @change="onRitardoChange"
               />
             </label>
             <Select
               v-model="areaSelezionata"
+              class="app-filter-w-md"
               :options="areaOptions"
               option-label="label"
               option-value="value"
               :placeholder="t('vendite.dashboard_backlog.filtro_area_tutte')"
               size="small"
-              style="width: 200px;"
               @change="onAreaChange"
             />
-          </div>
+          </FiltriLista>
         </div>
         <ListaConfigurabile
           v-if="documentiCount > 0 || documentiLoading"
@@ -488,8 +522,8 @@ onActivated(() => {
             <Tag :value="data.stato_codice ?? '—'" :severity="statoSeverity(data)" />
           </template>
 
-          <template #actions="{ data, compact }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+          <template #actions="{ data }">
+            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
           </template>
         </ListaConfigurabile>
         <DashEmptyState

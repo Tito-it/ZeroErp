@@ -55,8 +55,8 @@ from django.test import SimpleTestCase
 from apps.core.services.service_errors import ServiceError
 from apps.ui.db.ui_admin_repository import UiAdminRepository
 from apps.ui.services.lista_definizione_admin_service import (
-    _CREATE_KEYS,
-    _UPDATE_KEYS,
+    CREATE_KEYS,
+    UPDATE_KEYS,
     E_DEFINIZIONE_IN_USE,
     E_DEFINIZIONE_NOT_FOUND,
     E_DEFINIZIONE_VALIDATION,
@@ -394,14 +394,14 @@ class ListaDefinizioneMultiEmittenteFuoriScritturaTests(SimpleTestCase):
     _MOTIVO = (
         "`multi_emittente` si accende SOLO dal seed lista_definizione.csv: "
         "e' una capacita' del software, non una preferenza. Vedi il commento "
-        "accanto a _CREATE_KEYS e il trigger DB "
+        "accanto a CREATE_KEYS e il trigger DB "
         "ui.trgfn_lista_definizione_guard_multi_emittente."
     )
 
     # 19) Le due whitelist del payload.
     def test_multi_emittente_fuori_dalle_whitelist(self) -> None:
-        self.assertNotIn("multi_emittente", _CREATE_KEYS, self._MOTIVO)
-        self.assertNotIn("multi_emittente", _UPDATE_KEYS, self._MOTIVO)
+        self.assertNotIn("multi_emittente", CREATE_KEYS, self._MOTIVO)
+        self.assertNotIn("multi_emittente", UPDATE_KEYS, self._MOTIVO)
 
     # 20) Il COMPORTAMENTO, non solo la struttura: un payload che lo contiene
     #     viene rifiutato, e il repository non viene nemmeno chiamato.
@@ -468,14 +468,18 @@ class ListaDefinizioneMultiEmittenteFuoriScritturaTests(SimpleTestCase):
         )
         self.assertNotIn("multi_emittente", sql, self._MOTIVO)
 
+    # ⛔ Dal 2026-09-26 la whitelist del BB `execute_dynamic_update` e'
+    #    RIGIDA: `multi_emittente` non e' piu' «non nominato», e' RIFIUTATO
+    #    (RuntimeError) e nessuna query parte. Presidio piu' forte di prima.
     def test_repository_update_non_nomina_multi_emittente(self) -> None:
-        sql = self._sql_di(
-            lambda repo: repo.update_definizione(
-                7, {"descrizione": "Lotti", "multi_emittente": True},
-                user_update="tester",
-            ),
-        )
-        self.assertNotIn("multi_emittente", sql, self._MOTIVO)
+        with patch("apps.core.db.sql_write_helpers.connection") as mock_conn:
+            with self.assertRaises(RuntimeError) as ctx:
+                UiAdminRepository().update_definizione(
+                    7, {"descrizione": "Lotti", "multi_emittente": True},
+                    user_update="tester",
+                )
+            mock_conn.cursor.assert_not_called()
+        self.assertIn("multi_emittente", str(ctx.exception), self._MOTIVO)
 
     # Scopo: esegue una scrittura del repository con la connessione mockata e
     #        restituisce l'SQL che ha provato a eseguire.
@@ -484,8 +488,13 @@ class ListaDefinizioneMultiEmittenteFuoriScritturaTests(SimpleTestCase):
     #        IndexError incomprensibile il giorno in cui il repository passa il
     #        parametro per nome — e un IndexError non dice a nessuno che cosa
     #        stava presidiando.
+    # ⚠️ Si patcha la connessione di ENTRAMBI i moduli: l'INSERT e' nel
+    #        repository, l'UPDATE passa dal BB `execute_dynamic_update`
+    #        (`apps.core.db.sql_write_helpers`). Patchare solo il repository
+    #        farebbe arrivare l'UPDATE al DB vero (o a nessuno).
     def _sql_di(self, azione, *, fetchone=None) -> str:
-        with patch("apps.ui.db.ui_admin_repository.connection") as mock_conn:
+        with patch("apps.ui.db.ui_admin_repository.connection") as mock_conn, \
+             patch("apps.core.db.sql_write_helpers.connection", mock_conn):
             cursor = MagicMock()
             cursor.fetchone.return_value = fetchone
             cursor.rowcount = 1

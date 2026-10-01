@@ -30,6 +30,8 @@ from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
@@ -73,6 +75,9 @@ _ORDER_COLS_PROCESSI: dict[str, str] = {
     "attivo": "p.attivo",
     "ultimo_run": "ur.ultimo_run",
 }
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+_RICERCA_PROCESSI = RicercaFull("amm.processi", ("codice", "descrizione"))
 
 # ⛔ LA TUPLA DEI PRESIDI NON STA PIU' QUI (2026-09-10), ed e' il punto del
 #    cantiere «un destinatario per i presidi». Erano dieci nomi scritti a mano,
@@ -233,9 +238,9 @@ class ProcessiRepository:
         if attivo is not None:
             conditions.append("p.attivo = %s")
             params.append(attivo)
-        if search:
-            conditions.append("(p.codice ILIKE %s OR p.descrizione ILIKE %s)")
-            params.extend([f"%{search}%"] * 2)
+        # Soglia della ricerca: la dichiara il catalogo della lista
+        # (`ricerca_min_caratteri`), non questo modulo.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_PROCESSI, alias="p")
 
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -251,6 +256,7 @@ class ProcessiRepository:
         #    nella SELECT, cioe' PRIMA delle condizioni del WHERE. L'ordine dei
         #    segnaposto e' posizionale, e sbagliarlo non da' errore di sintassi
         #    — da' un filtro applicato al valore sbagliato.
+        where_params = params
         params = [*_params_vuole_identita(), *params]
         data_sql = f"""
             SELECT p.id,
@@ -285,7 +291,15 @@ class ProcessiRepository:
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        return fetch_paged_with_total(data_sql, params + [limit, offset])
+        return fetch_paged_with_total(
+            data_sql, params + [limit, offset],
+            # Stesso FROM/WHERE della pagina, senza il mirror della SELECT.
+            fallback_count_sql=(
+                f"SELECT COUNT(*) FROM dbops.processi p WHERE {' AND '.join(conditions)}"  # noqa: S608
+            ),
+            fallback_params=where_params,
+            offset=offset,
+        )
 
     # Scopo: I contratti di liveness dei processi chiesti, per codice. Chi non e'
     #        a catalogo NON compare nel dict — e' contratto: «non lo conosco» e
@@ -397,4 +411,11 @@ class ProcessiRepository:
              ORDER BY j.started_at DESC, j.id DESC
              LIMIT %s OFFSET %s
         """
-        return fetch_paged_with_total(data_sql, [codice, limit, offset])
+        return fetch_paged_with_total(
+            data_sql, [codice, limit, offset],
+            fallback_count_sql=(
+                "SELECT COUNT(*) FROM maintenance.job_run_log j WHERE j.processo_codice = %s"
+            ),
+            fallback_params=[codice],
+            offset=offset,
+        )

@@ -19,7 +19,7 @@ La tabella **`ui.lista_preset`** contiene le **configurazioni predefinite per le
 
 * **Configurazione multi-livello**: un preset può essere di sistema (default globale), di emittente fiscale (override per società) o di ruolo (override per profilo di accesso). La cascata di risoluzione è gestita da `fn_resolve_lista_config`.
 * **Preset di default**: il flag `is_default = TRUE` indica quale preset applicare automaticamente per un dato livello. Il UNIQUE INDEX parziale su `is_default = TRUE` garantisce un unico preset di default per combinazione `(lista, ambito, profilo, emittente)`.
-* **Configurazione completa**: il preset non definisce solo le colonne (in `lista_preset_colonna`) ma anche ordinamento di default (`ordinamento_default` JSONB), filtri preimpostati (`filtri_default` JSONB) e dimensione pagina (`pagina_dimensione`).
+* **Configurazione completa**: il preset non definisce solo le colonne (in `lista_preset_colonna`) ma anche ordinamento di default (`ordinamento_default` JSONB), filtri preimpostati (`filtri_default` JSONB) e dimensione pagina (`pagina_dimensione`: una misura del catalogo [ui.misure_pagina](/dbzero/ui/tabelle/misure_pagina), o vuota per il default; una misura fuori catalogo viene rifiutata).
 
 ---
 

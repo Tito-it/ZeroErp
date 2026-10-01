@@ -1,21 +1,25 @@
 <script setup>
 // Scopo: Sub-drawer per gestione UoM operative articolo.
-// Pattern: formMode state machine (null=lista DataTable, 'new'=aggiungi, 'edit'=modifica).
+// Pattern: formMode (null=lista DataTable, 'create'=aggiungi, 'edit'=modifica),
+// dal BB core `useFormInline` (sede unica, ok Tid 2026-09-28): qui restano i
+// verbi che ci aggiungono il form della UoM. Fino a quel giorno «aggiungi» era 'new'.
 // Campi completi: is_base, factor_to_base, flags vendita/acquisto/logistica,
 // qty_step, max_decimals, rounding_mode, forbid_fraction, require_lot, gtin,
 // valido_dal/al, attivo.
 
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useFormInline } from '../../core/composables/useFormInline'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import { listArticoloUom, createArticoloUom, updateArticoloUom, deleteArticoloUom } from '../api/catalogo'
 import { toDateString } from '../../core/utils/date'
-import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -32,8 +36,6 @@ import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 import DatePicker from 'primevue/datepicker'
-
-
 
 const { t, te } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -52,9 +54,17 @@ const emit = defineEmits(['update:visible', 'saved'])
 
 const uomList = ref([])
 const listLoading = ref(false)
-const formMode = ref(null)
-const editId = ref(null)
+// ⚠️ Il click apre la modifica solo in scrittura: il getter e' letto al click.
+const {
+  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({ puoModificare: () => !isReadonly.value })
 const form = ref({})
+
+// Modifiche non salvate del form inline (nuova/modifica UoM): la fotografia
+// vive finche' il form e' aperto, e si azzera da sola quando torna la lista.
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, {
+  visibile: () => props.visible && formAperto.value,
+})
 
 // Fase 5: campi immutabili dopo create per UoM operativa (envelope-level
 // dalla lista, fonte = `dbops.vw_non_editable_fields` + gap Python).
@@ -134,21 +144,22 @@ watch(() => props.visible, async (val) => {
   // con fallback hardcoded mentre la fetch e' ancora in volo". `useParameterDefaults`
   // e' error-safe (silent fail), `loadDefaults` resta no-op se gia' caricato.
   await loadDefaults()
-  formMode.value = null
-  editId.value = null
+  chiudiForm()
   form.value = defaultForm()
   loadUom()
 })
 
 function onStartNew() {
-  formMode.value = 'new'
-  editId.value = null
+  nuovaRiga()
   form.value = defaultForm()
+  // Dopo il giro di watch: `is_base` e' riscritto da `factor_to_base`.
+  nextTick(fissa)
 }
 
 function onStartEdit(row) {
-  formMode.value = 'edit'
-  editId.value = row.id
+  apriRiga(row)
+  // In sola lettura il BB non apre: niente form da popolare.
+  if (!formAperto.value) return
   form.value = {
     uom_id: row.uom_id,
     is_base: row.is_base || false,
@@ -166,13 +177,17 @@ function onStartEdit(row) {
     valido_al: row.valido_al ? new Date(row.valido_al + 'T00:00:00') : null,
     attivo: row.attivo ?? true,
   }
+  // Dopo il giro di watch: `is_base` e' riscritto da `factor_to_base`.
+  nextTick(fissa)
 }
 
 function onCancelForm() {
-  formMode.value = null
-  editId.value = null
+  chiudiForm()
   form.value = defaultForm()
 }
+
+// Annulla del form inline: con modifiche chiede conferma.
+const annullaForm = () => chiudiConConferma(onCancelForm)
 
 const canSaveForm = computed(() => {
   return form.value.uom_id != null && form.value.factor_to_base > 0
@@ -198,9 +213,10 @@ async function onSaveForm() {
     attivo: f.attivo,
   }
 
-  if (formMode.value === 'edit' && editId.value) {
+  const editId = rigaInModifica.value?.id
+  if (formMode.value === 'edit' && editId) {
     const result = await execute(
-      () => updateArticoloUom(props.articoloId, editId.value, payload),
+      () => updateArticoloUom(props.articoloId, editId, payload),
       { successMessage: t('catalogo.uom_salvata') }
     )
     if (result === null) return
@@ -213,8 +229,7 @@ async function onSaveForm() {
     if (result === null) return
   }
 
-  formMode.value = null
-  editId.value = null
+  chiudiForm()
   form.value = defaultForm()
   await loadUom()
   emit('saved')
@@ -267,45 +282,48 @@ function buildRigaActions(row) {
 // Toolbar pagina: pulsante "Nuovo" prima della lista (pattern standard
 // frontend-standards "Azioni Pagina — PageActionsBar"). Nascosto in readonly
 // via prop hideWhenReadonly.
+// ⚠️ A form aperto «Nuovo» sparisce (regola del BB), non si spegne: era
+//    l'unica delle dieci sedi a tenerlo a video disabilitato.
 const pageActions = computed(() => [
-  {
+  azioneNuovaRiga({
     key: 'new-uom',
-    kind: 'primary',
     label: t('common.new'),
     tooltip: t('catalogo.nuova_uom_operativa'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    disabled: formMode.value !== null,
     command: onStartNew,
-  },
+  }),
 ])
 
 // Click riga DataTable → entra in modifica (modifica = interazione principale,
 // non azione del menu). Pattern master-detail inline.
 function onRowSelect(event) {
-  if (isReadonly.value || formMode.value !== null) return
+  if (formAperto.value) return
   onStartEdit(event.data)
 }
 
 // Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
 const onClose = useDrawerClose(emit)
+
+// Chiusura del drawer per volonta' dell'utente (X/ESC/clic fuori/Chiudi):
+// con il form inline modificato chiede conferma.
+const chiudi = () => chiudiConConferma(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_uom')" :icon="MANAGE_ICONS.UOM" />
+      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_uom')" :icon="MANAGE_ICONS.UOM" :modificato="modificato" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div v-if="listLoading" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
+        <i :class="STATUS_ICONS.CARICAMENTO" />
       </div>
 
       <template v-if="!listLoading && !formMode">
@@ -313,12 +331,11 @@ const onClose = useDrawerClose(emit)
              "Nuovo" prima della lista. Pattern frontend-standards lista
              "PageActionsBar". -->
         <div class="app-page-toolbar">
-          <div class="app-page-filters"></div>
           <PageActionsBar :actions="pageActions" />
         </div>
 
         <div v-if="uomList.length === 0" class="app-empty-state">
-          <i class="pi pi-box" />
+          <i :class="MANAGE_ICONS.UOM" />
           <p>{{ t('catalogo.nessuna_uom') }}</p>
         </div>
 
@@ -361,7 +378,7 @@ const onClose = useDrawerClose(emit)
         </DataTable>
       </template>
 
-      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
 
       <template v-if="formMode">
         <div class="app-drawer-section">
@@ -474,7 +491,7 @@ const onClose = useDrawerClose(emit)
           :loading="loading"
           :disabled="!canSaveForm"
           @save="onSaveForm"
-          @cancel="onCancelForm"
+          @cancel="annullaForm"
         />
       </template>
     </div>

@@ -105,19 +105,30 @@ Questo garantisce che la **UoM principale** dell'articolo sia sempre disponibile
 
 ---
 
-### Lock di `uom_id` su UPDATE
+### Lock di `codice` e `uom_id` su UPDATE
 
-Il campo `uom_id` di `catalogo.articoli` è bloccato in UPDATE dal trigger
-**`trg_articoli_a10_protect_uom_id_upd`** (riusa `script.trgfn_lock_columns`).
-La UoM principale è considerata **anagrafica** e non può essere cambiata dopo
-la creazione dell'articolo.
+`codice` e `uom_id` di `catalogo.articoli` sono bloccati in UPDATE da **un solo**
+trigger, `trg_articoli_a10_lock_columns_upd`, che riusa `script.trgfn_lock_columns`.
+Il codice è l'identità dell'articolo e la UoM principale è **anagrafica**: nessuno
+dei due si cambia dopo la creazione.
 
-* **Codice errore**: `CODICE_NON_MODIFICABILE` (messaggio generico parametrico sul nome colonna)
-* **Pattern**: identico a `trg_articoli_a10_protect_codice_upd` già presente sulla stessa tabella per `codice`
+* **Codice errore**: `E_CODICE_NON_MODIFICABILE` (messaggio parametrico sul nome della colonna)
 * **Override manutenzione**: `SET LOCAL zeroerp.allow_lock_columns_override = 'on';` consente la modifica nei contesti di migrazione/manutenzione
 * **Per cambiare la UoM principale**: creare un nuovo articolo (l'articolo storico resta intatto)
 
-Il lock è registrato anche in `dbops.automation_lock_columns` per coerenza con l'inventario centrale dei lock attivi.
+⚠️ **Fino al 22-09-2026 i trigger erano DUE e scritti a mano**
+(`trg_articoli_a10_protect_codice_upd`, `trg_articoli_a10_protect_uom_id_upd`):
+sollevavano `CODICE_NON_MODIFICABILE`, ritirato il 2026-08-05, e — pur usando la
+stessa funzione dell'automazione — `codice` non era nel registro
+[dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns),
+cioè erano oggetti che *sembravano* governati dall'automazione e non lo erano.
+Dal 23-09 il registro li dichiara entrambi e il trigger lo **genera l'automazione**:
+uno solo, con tutte le colonne. Brief: `brief-db-codici-ritirati-negli-argomenti-dei-trigger`.
+
+⛔ **Il nome non si cita come contratto**: lo decide il template dell'automazione.
+Chi deve verificare il lock lo cerca per **funzione e argomenti**, come fa
+`db/pgtap/catalogo/test-articoli-seed-uom-base-lock.sql` (test 3) — che infatti era
+diventato rosso pinnando il nome vecchio.
 
 ---
 

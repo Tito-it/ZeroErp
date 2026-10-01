@@ -40,6 +40,10 @@ Indice test eseguiti:
 28) repository_create_contratto_usa_cast_jsonb_per_meta (regressione review)
 29) get_contratto_righe_count_usa_preview_per_modalita_ab
 30) get_contratto_righe_count_usa_righe_persistite_per_modalita_c
+31) create/update/delete_riga_rifiutata_su_contratto_attivo — E_RIGA_DOC_NON_BOZZA (il codice del DB sulle stesse righe, BB richiedi_righe_in_bozza; frase a catalogo, verbo)
+32) create/update_utility_rifiutata_su_contratto_attivo — E_CONTRATTO_NON_MODIFICABILE (la utility non e' una riga)
+33) update_componente_contratto_attivo — E_RIGA_DOC_NON_BOZZA, etichetta dal `numero` dello scope
+33b) update_componente_campi_del_workflow_rifiutati — niente auto-approvazione L3 dal client
 """
 
 from datetime import date, timedelta
@@ -138,13 +142,19 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(result["righe_count"], 2)
 
     # Scopo: Verifica che get_contratto includa nel detail il blob capabilities
-    #        ritornato da script.fn_available_actions_contratto (Fase 1.B2).
+    #        ritornato da script.fn_available_actions_contratto (Fase 1.B2),
+    #        SOTTO `capabilities` (api.md §«Il blob sta SOTTO `capabilities`»).
+    #        ⚠️ Il blob porta `stato_codice_interno`, che la testata ha gia':
+    #        fuso, vinceva il blob in silenzio. Qui i due valori DIFFERISCONO
+    #        apposta, e la testata deve restare la sua.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_get_contratto_include_capabilities(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_contratto.return_value = _testata_default()
+        testata = _testata_default()
+        testata["stato_codice_interno"] = "DRAFT"
+        repo.get_contratto.return_value = testata
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
         repo.list_righe_preview.return_value = []
@@ -153,7 +163,6 @@ class ContrattiServiceTests(TestCase):
             "available_actions": [{
                 "key": "cessa", "target_state": "CESSATO",
                 "label_key": "contratti.azione_cessa",
-                "severity": "danger", "icon": "pi pi-stop",
                 "requires_confirm": True, "requires_date": True,
                 "default_date": "2026-04-30", "min_date": "2026-04-25",
             }],
@@ -165,13 +174,18 @@ class ContrattiServiceTests(TestCase):
 
         result = ContrattiService().get_contratto(1)
 
-        self.assertEqual(result["can_change_state"], True)
-        self.assertEqual(result["can_edit_righe"], False)
-        self.assertEqual(len(result["available_actions"]), 1)
-        action = result["available_actions"][0]
+        caps = result["capabilities"]
+        self.assertEqual(caps, repo.get_capabilities.return_value)
+        self.assertEqual(caps["can_change_state"], True)
+        self.assertEqual(caps["can_edit_righe"], False)
+        self.assertEqual(len(caps["available_actions"]), 1)
+        action = caps["available_actions"][0]
         self.assertEqual(action["key"], "cessa")
         self.assertEqual(action["default_date"], "2026-04-30")
-        self.assertIn("billing_account_id", result["non_editable_fields"])
+        self.assertIn("billing_account_id", caps["non_editable_fields"])
+        self.assertNotIn("can_change_state", result)
+        self.assertNotIn("available_actions", result)
+        self.assertEqual(result["stato_codice_interno"], "DRAFT")
         repo.get_capabilities.assert_called_once_with(1)
 
     # Scopo: in modalita' A/B il conteggio righe del detail usa la preview
@@ -723,7 +737,9 @@ class ContrattiServiceTests(TestCase):
             ContrattiService().update_contratto(1, {"valido_al": "2026-12-31"})
         self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
 
-    # Scopo: contratto ATTIVO -> create_riga rifiutato.
+    # Scopo: contratto ATTIVO -> create_riga rifiutato col codice del DB
+    #        (E_RIGA_DOC_NON_BOZZA: lo stesso di trgfn_doc_righe_lock_fuori_bozza
+    #        su contratti_righe), frase a catalogo con l'etichetta dal numero.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_riga_rifiutata_su_contratto_attivo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
@@ -741,7 +757,13 @@ class ContrattiServiceTests(TestCase):
                 "prezzo_unitario": "10",
                 "qta_operativa": "1",
             })
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertEqual(
+            ctx.exception.message,
+            "Contratto CNT0000001 non e' piu' in bozza (stato ATTIVO): le sue "
+            "righe si possono aggiungere solo finche' e' in bozza.",
+        )
+        self.assertEqual(ctx.exception.context["operazione"], "INSERT")
 
     # Scopo: contratto ATTIVO -> update_riga rifiutato (risale dal contratto
     #        della riga via get_riga).
@@ -758,7 +780,8 @@ class ContrattiServiceTests(TestCase):
 
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().update_riga(99, {"prezzo_unitario": "20"})
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertIn(" modificare ", ctx.exception.message)
 
     # Scopo: contratto ATTIVO -> delete_riga rifiutato.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
@@ -774,7 +797,26 @@ class ContrattiServiceTests(TestCase):
 
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().delete_riga(99)
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertIn(" togliere ", ctx.exception.message)
+
+    # Scopo: contratto ATTIVO -> create_utility rifiutato: la utility NON e' una
+    #        riga, resta E_CONTRATTO_NON_MODIFICABILE (lo stesso guard di
+    #        update_utility — fino al 22-09 era una copia inline).
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_utility_rifiutata_su_contratto_attivo(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = {
+            **_testata_default(),
+            "stato_codice_interno": "ATTIVO",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().create_utility(1, {"istanza_utility_id": 20, "utility_id": 3})
         self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
+        repo.create_utility.assert_not_called()
 
     # Scopo: contratto ATTIVO -> update_utility rifiutato.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
@@ -913,10 +955,12 @@ class ContrattiServiceTests(TestCase):
         repo.update_contratto.assert_not_called()
         repo.update_stato.assert_called_once_with(1, 9)
 
-    # Scopo: cambia_stato con valido_al < valido_dal -> errore parlante
-    #        (anti CHK constraint DB generico).
+    # Scopo: cambia_stato con valido_al < valido_dal NON lo giudica il
+    #        service: la data arriva al DB, dove il guard comune delle date
+    #        risponde E_DATA_AL_MINORE_DAL col campo `valido_al` (provato sul
+    #        DB vero in apps/core/tests/db/test_date_validita_guard_comune_db).
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_valido_al_anteriore_a_valido_dal_rifiutato(self, repo_cls):
+    def test_cambia_stato_delega_ordine_date_al_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -926,14 +970,10 @@ class ContrattiServiceTests(TestCase):
             "valido_dal": date(2026, 6, 1),
         }
 
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().cambia_stato(
-                1, codice_interno="CESSATO", valido_al=date(2026, 1, 1),
-            )
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertIn("valido_dal", ctx.exception.detail)
-        repo.update_contratto.assert_not_called()
-        repo.update_stato.assert_not_called()
+        ContrattiService().cambia_stato(
+            1, codice_interno="CESSATO", valido_al=date(2026, 1, 1),
+        )
+        repo.update_contratto.assert_called_once_with(1, {"valido_al": date(2026, 1, 1)})
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_update_contratto_campi_vuoto_fallisce(self, repo_cls):
@@ -1994,6 +2034,88 @@ class ContrattiServiceComponentiTests(TestCase):
         repo.list_componenti_riga.assert_called_once_with(5, solo_attivi=False)
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_componente_contratto_attivo(self, repo_cls):
+        """Contratto ATTIVO -> E_RIGA_DOC_NON_BOZZA; l'etichetta prende
+        `numero` dallo scope del JOIN (senza, «Contratto #1» su un contratto
+        attivo, che il numero ce l'ha sempre)."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 5,
+            "contratto_id": 1,
+            "stato_codice_interno": "ATTIVO",
+            "numero": "CNT0000001",
+        }
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_componente_riga(
+                1, 5, 100, {"prezzo_unitario": "10"},
+            )
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertTrue(ctx.exception.message.startswith("Contratto CNT0000001 non e' piu' in bozza (stato ATTIVO)"))
+        repo.update_componente.assert_not_called()
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_componente_chiave_fuori_whitelist_400(self, repo_cls):
+        """Chiave fuori `COMPONENTE_UPDATE_ALLOWED` -> 400 che la nomina,
+        repository non chiamato. ⛔ Fino al 2026-09-26 il mixin la scartava
+        in silenzio e la PATCH «riusciva»."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 5,
+            "contratto_id": 1,
+            "stato_codice_interno": "DRAFT",
+            "numero": None,
+        }
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_componente_riga(
+                1, 5, 100, {"prezzo_unitario": "10", "riga_contratto_id": 9},
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context["unknown_keys"], ["riga_contratto_id"])
+        repo.update_componente.assert_not_called()
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_componente_campi_del_workflow_rifiutati(self, repo_cls):
+        """⛔ L'operatore NON puo' approvarsi un prezzo L3. Fino al 2026-09-26
+        la PATCH validava contro la whitelist del REPOSITORY, che contiene
+        `stato_approvazione_prezzo`: `{"stato_approvazione_prezzo": "APPROVED"}`
+        su un componente PENDING passava anche il guard DB. Stesso rifiuto per
+        la pratica e per un'origine dichiarata dal client. ⚠️ Sono chiavi che
+        il repository AMMETTE: e' il caso che distingue il codice vecchio dal
+        nuovo, a differenza delle chiavi di struttura."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 5,
+            "contratto_id": 1,
+            "stato_codice_interno": "DRAFT",
+            "numero": None,
+        }
+        repo_cls.return_value = repo
+
+        for payload in (
+            {"stato_approvazione_prezzo": "APPROVED"},
+            {"pratica_approvazione_prezzo_id": 7},
+            {"prezzo_unitario": "1.00", "origine_prezzo": "CONTRATTO_LISTINO"},
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ServiceError) as ctx:
+                    ContrattiService().update_componente_riga(1, 5, 100, payload)
+                self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        repo.update_componente.assert_not_called()
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_update_componente_anti_tampering_riga(self, repo_cls):
         """riga_id URL non matcha riga reale → E_VENDITE_NOT_FOUND."""
         from apps.vendite.services.contratti_service import ContrattiService
@@ -3024,9 +3146,9 @@ class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
         return set(re.findall(r"'([a-z0-9_]+)'", match.group(1)))
 
     def test_whitelist_be_e_db_combaciano(self) -> None:
-        from apps.vendite.services.contratti_service import _CREATE_KEYS_TESTATA
+        from apps.vendite.services.contratti_service import CREATE_KEYS_TESTATA
 
-        be = set(_CREATE_KEYS_TESTATA) - self._NON_COLONNE
+        be = set(CREATE_KEYS_TESTATA) - self._NON_COLONNE
         db = self._whitelist_db("v_testata_allowed")
 
         # Chiavi che il BE accetta e la fn madre NON conosce: sono quelle che
@@ -3046,7 +3168,7 @@ class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
             non_esposte, [],
             f"vendite.fn_create_contratto accetta chiavi che il BE non espone: "
             f"{non_esposte}. Se è voluto, escluderle esplicitamente qui con il "
-            f"motivo; altrimenti aggiungerle a _CREATE_KEYS_TESTATA.",
+            f"motivo; altrimenti aggiungerle a CREATE_KEYS_TESTATA.",
         )
 
     # La sotto-entità utility ha la STESSA struttura fail-open della testata
@@ -3055,9 +3177,9 @@ class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
     # Presidiata qui, non perché sia già successo ma perché è lo stesso identico
     # meccanismo che è già costato un giro sulla testata.
     def test_whitelist_utility_be_e_db_combaciano(self) -> None:
-        from apps.vendite.services.contratti_service import _UTILITY_CREATE_KEYS
+        from apps.vendite.services.contratti_service import UTILITY_CREATE_KEYS
 
-        be = set(_UTILITY_CREATE_KEYS) | self._UTILITY_INIETTATE
+        be = set(UTILITY_CREATE_KEYS) | self._UTILITY_INIETTATE
         db = self._whitelist_db("v_util_allowed")
 
         scartate = sorted(be - db)
@@ -3079,7 +3201,7 @@ class ContrattiCatenaUpdateTests(TestCase):
 
     Il difetto del 2026-07-27 non è nato sulla create ma qui. La catena è:
 
-        _UPDATE_KEYS_TESTATA  →  _build_update_data_testata  →  _UPDATE_WRITE_COLS
+        UPDATE_KEYS_TESTATA  →  _build_update_data_testata  →  TESTATA_UPDATE_COLUMNS
         (cosa si accetta)        (cosa si mappa)                (cosa si scrive)
 
     Basta che una colonna manchi in **uno solo** dei tre e l'UPDATE non la
@@ -3098,7 +3220,7 @@ class ContrattiCatenaUpdateTests(TestCase):
     """
 
     # Valore valido per ogni chiave della whitelist. Il dizionario È parte del
-    # guardrail: aggiungere una chiave a `_UPDATE_KEYS_TESTATA` senza aggiungere
+    # guardrail: aggiungere una chiave a `UPDATE_KEYS_TESTATA` senza aggiungere
     # qui un campione fa fallire il primo test — che è il momento in cui serve
     # fermarsi a pensare se il mapper la gestisce.
     _CAMPIONI: dict[str, object] = {
@@ -3130,7 +3252,7 @@ class ContrattiCatenaUpdateTests(TestCase):
     # 0) ⭐ L'invariante su cui si regge il FRONTEND, e che nessuno vedeva.
     #    `ContrattoDrawer.buildPayload()` costruisce il payload della PATCH, e
     #    `handleSave` lo SPREADA dentro il payload di CREATE. La create BE
-    #    (`validate_allowed_keys` su `_CREATE_KEYS_TESTATA`) RIFIUTA l'intero
+    #    (`validate_allowed_keys` su `CREATE_KEYS_TESTATA`) RIFIUTA l'intero
     #    payload se contiene una chiave che non ammette — non la ignora.
     #    Quindi ogni chiave accettata in UPDATE dev'essere accettata anche in
     #    CREATE, oppure il drawer deve cancellarla esplicitamente prima di
@@ -3139,7 +3261,7 @@ class ContrattiCatenaUpdateTests(TestCase):
     #    Era dichiarata UNA SOLA: i tre riferimenti dell'atto (I8/D9), che la
     #    whitelist della fn madre `vendite.fn_create_contratto` non conosceva.
     #    Il changeSet `20260831-24` li ha ammessi, quindi sono entrati in
-    #    `_CREATE_KEYS_TESTATA` (slice S3-b) e il `v-if` nel drawer e' caduto.
+    #    `CREATE_KEYS_TESTATA` (slice S3-b) e il `v-if` nel drawer e' caduto.
     #    ⭐ Il segnalibro ha fatto il suo mestiere: e' diventato rosso il giorno
     #    in cui l'eccezione ha smesso di servire, invece di restare verde su una
     #    deroga sopravvissuta alla sua ragione.
@@ -3149,28 +3271,28 @@ class ContrattiCatenaUpdateTests(TestCase):
     #    dichiarando l'eccezione, che e' il gesto che la rende visibile.
     def test_update_keys_accettate_anche_in_create(self) -> None:
         from apps.vendite.services.contratti_service import (
-            _CREATE_KEYS_TESTATA,
-            _UPDATE_KEYS_TESTATA,
+            CREATE_KEYS_TESTATA,
+            UPDATE_KEYS_TESTATA,
         )
 
-        solo_update = sorted(set(_UPDATE_KEYS_TESTATA) - set(_CREATE_KEYS_TESTATA))
+        solo_update = sorted(set(UPDATE_KEYS_TESTATA) - set(CREATE_KEYS_TESTATA))
         self.assertEqual(
             solo_update, [],
             "Chiavi accettate in UPDATE ma non in CREATE. Il drawer spreda il "
             "payload della PATCH dentro quello della create, e la create "
-            "rifiuta le chiavi ignote: o si aggiungono a _CREATE_KEYS_TESTATA, "
+            "rifiuta le chiavi ignote: o si aggiungono a CREATE_KEYS_TESTATA, "
             "o `ContrattoDrawer.buildPayload` deve escluderle esplicitamente.",
         )
 
     # 1) Ogni chiave accettata ha un campione: è il gancio che costringe a
     #    passare di qui quando si allarga la whitelist.
     def test_ogni_chiave_accettata_ha_un_campione(self) -> None:
-        from apps.vendite.services.contratti_service import _UPDATE_KEYS_TESTATA
+        from apps.vendite.services.contratti_service import UPDATE_KEYS_TESTATA
 
-        senza_campione = sorted(set(_UPDATE_KEYS_TESTATA) - set(self._CAMPIONI))
+        senza_campione = sorted(set(UPDATE_KEYS_TESTATA) - set(self._CAMPIONI))
         self.assertEqual(
             senza_campione, [],
-            f"Chiavi in _UPDATE_KEYS_TESTATA senza campione in questo test: "
+            f"Chiavi in UPDATE_KEYS_TESTATA senza campione in questo test: "
             f"{senza_campione}. Aggiungerne uno valido e verificare che "
             f"_build_update_data_testata le legga davvero.",
         )
@@ -3181,7 +3303,7 @@ class ContrattiCatenaUpdateTests(TestCase):
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_ogni_chiave_attraversa_il_mapper(self, repo_cls, listini_cls) -> None:
         from apps.vendite.services.contratti_service import (
-            _UPDATE_KEYS_TESTATA,
+            UPDATE_KEYS_TESTATA,
             ContrattiService,
         )
 
@@ -3193,7 +3315,7 @@ class ContrattiCatenaUpdateTests(TestCase):
         repo.count_eccezioni_bloccanti.return_value = {}
         listini_cls.return_value.has_versione_attiva.return_value = True
 
-        for chiave in sorted(_UPDATE_KEYS_TESTATA):
+        for chiave in sorted(UPDATE_KEYS_TESTATA):
             with self.subTest(chiave=chiave):
                 repo.get_contratto.return_value = _testata_default()
                 payload: dict[str, object] = {chiave: self._CAMPIONI[chiave]}
@@ -3211,21 +3333,22 @@ class ContrattiCatenaUpdateTests(TestCase):
                 data = repo.update_contratto.call_args.args[1]
                 self.assertIn(
                     chiave, data,
-                    f"'{chiave}' è accettata da _UPDATE_KEYS_TESTATA ma "
+                    f"'{chiave}' è accettata da UPDATE_KEYS_TESTATA ma "
                     f"_build_update_data_testata NON la legge: l'UPDATE la "
                     f"ignorerebbe in silenzio (difetto 2026-07-27).",
                 )
 
     # 3) Anello 1 ↔ 3: ciò che si accetta è esattamente ciò che si sa scrivere.
-    #    Una colonna nella whitelist ma non in _UPDATE_WRITE_COLS verrebbe
-    #    mappata e poi scartata dal repository — stesso silenzio, un anello più
-    #    in là.
+    #    Una colonna nella whitelist ma non in TESTATA_UPDATE_COLUMNS verrebbe
+    #    mappata e poi rifiutata dal repository (`RuntimeError` del BB, 500 dal
+    #    2026-09-26; fino ad allora era scartata in silenzio): l'errore c'e', ma
+    #    lo deve trovare questo test e non l'operatore.
     def test_whitelist_e_colonne_scrivibili_combaciano(self) -> None:
         from apps.vendite.db.contratti_repository import ContrattiRepository
-        from apps.vendite.services.contratti_service import _UPDATE_KEYS_TESTATA
+        from apps.vendite.services.contratti_service import UPDATE_KEYS_TESTATA
 
-        accettate = set(_UPDATE_KEYS_TESTATA)
-        scrivibili = set(ContrattiRepository._UPDATE_WRITE_COLS)
+        accettate = set(UPDATE_KEYS_TESTATA)
+        scrivibili = set(ContrattiRepository.TESTATA_UPDATE_COLUMNS)
 
         self.assertEqual(
             sorted(accettate - scrivibili), [],

@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from apps.core.services.error_manager import ErrorManager
 
@@ -34,6 +34,10 @@ _REGISTRY: dict[str, "DocumentContextBuilder"] = {}
 #        Chiamato all'import del modulo del builder concreto.
 #        Idempotente: una seconda registrazione con lo stesso CODE rimpiazza
 #        silenziosamente (utile per test che reinizializzano il registry).
+#        ⛔ Un builder senza la forma dei dati (`CONTEXT_VERSION` intero >= 1)
+#        non si registra: la forma decide se una versione di template puo'
+#        stampare, e una forma assente e' una forma dichiarata da nessuno
+#        (brief-db-documenti-versione-contesto-template §8.1).
 def register_builder(builder: "DocumentContextBuilder") -> None:
     if not builder.CODE:
         ErrorManager.raise_error(
@@ -41,7 +45,13 @@ def register_builder(builder: "DocumentContextBuilder") -> None:
             message="DocumentContextBuilder senza CODE non registrabile.",
             detail=f"class={type(builder).__name__}",
         )
-        raise  # unreachable, per type checker
+    forma = builder.CONTEXT_VERSION
+    if isinstance(forma, bool) or not isinstance(forma, int) or forma < 1:
+        ErrorManager.raise_error(
+            code="E_DOCUMENTI_VALIDATION",
+            message="DocumentContextBuilder senza CONTEXT_VERSION non registrabile.",
+            detail=f"class={type(builder).__name__} CONTEXT_VERSION={forma!r}",
+        )
     _REGISTRY[builder.CODE] = builder
 
 
@@ -58,6 +68,32 @@ def get_builder(code: str) -> "DocumentContextBuilder":
     )
     assert builder is not None
     return builder
+
+
+# Scopo: Il builder di un TEMPLATE (`template_documenti.context_builder_code`):
+#        chi genera e chi pubblica una versione lo risolvono qui, con lo stesso
+#        rifiuto (E_DOCUMENTI_VALIDATION) per un codice vuoto e per uno non
+#        registrato. Regola del 2 (2026-09-30): generazione e pubblicazione
+#        lo scrivevano ognuna a modo suo, e il codice vuoto rispondeva con due
+#        frasi diverse.
+def get_builder_del_template(template: dict[str, Any]) -> "DocumentContextBuilder":
+    code = template.get("context_builder_code") or ""
+    ErrorManager.require(
+        bool(code),
+        code="E_DOCUMENTI_VALIDATION",
+        message="Template senza context_builder_code configurato.",
+        detail=f"template_id={template.get('id')}",
+    )
+    return get_builder(code)
+
+
+# Scopo: La forma dei dati che il builder `code` produce oggi, o None se il
+#        codice non e' registrato. Per chi deve MOSTRARE la forma (il
+#        dettaglio del template), non per chi deve stampare o pubblicare:
+#        quelli passano da `get_builder`, che su un codice ignoto solleva.
+def versione_contesto_registrata(code: str | None) -> int | None:
+    builder = _REGISTRY.get(code or "")
+    return builder.CONTEXT_VERSION if builder is not None else None
 
 
 # Scopo: Ritorna l'elenco dei codici registrati. Usato dai test e dalla

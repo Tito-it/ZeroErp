@@ -95,7 +95,7 @@ Authorization: Bearer {access_token}
 | Campo | Tipo | Obbligatorio | Note |
 | --- | --- | :---: | --- |
 | `old_password` | string | Si | Password corrente |
-| `new_password` | string | Si | Deve superare i 4 validators Django |
+| `new_password` | string | Si | Deve superare i 5 validators configurati |
 | `new_password_confirm` | string | Si | Deve coincidere con `new_password` |
 
 #### Validazioni
@@ -105,33 +105,56 @@ Authorization: Bearer {access_token}
 3. `new_password == new_password_confirm`
 4. `new_password != old_password` (deve essere diversa)
 5. `old_password` corretta (check hash Django)
-6. `new_password` passa i 4 validators Django:
+6. `new_password` passa i 5 validators di `AUTH_PASSWORD_VALIDATORS`:
    - `UserAttributeSimilarityValidator` — non simile a username/email
    - `MinimumLengthValidator` — lunghezza minima
    - `CommonPasswordValidator` — non nella lista password comuni
    - `NumericPasswordValidator` — non solo numeri
+   - `apps.core.password_validators.ComplexityValidator` — complessita' minima
 
-#### Azioni (atomiche)
+I tre campi **non** vengono ripuliti dagli spazi: si verifica e si salva la password digitata, come fa il login (S-5, 2026-09-27).
 
-1. `user.set_password(new_password)` + `user.save()`
-2. Reset flag `deve_cambiare_password = false`
-3. Blacklist tutti i refresh token precedenti dell'utente
-4. Genera nuova coppia JWT (access + refresh)
-5. Audit: evento login con nuovo sid/jti
+#### Azioni
+
+1. Rilegge l'identita' della veste del JWT corrente (`identita_id` del claim): se nel
+   frattempo e' stata revocata, 401 `E_IDENTITA_NON_ATTIVA` **prima** di toccare la
+   password
+2. `user.set_password(new_password)` + `user.save()`, spegnimento dell'obbligo
+   di cambio password della **credenziale** (uno solo per tutte le vesti),
+   blacklist di tutti i refresh
+   token precedenti dell'utente (atomiche, `apply_new_password`)
+3. Riapre la sessione **nella stessa veste** con la catena del login,
+   `emetti_refresh_veste` (`multi_veste_token_serializer.py`): `sid` nuovo,
+   `identita_id`, `ruolo_applicativo` e, per un operatore, l'emittente attivo risolto
+   come al login. La sessione e' nuova perche' la blacklist ha appena chiuso le altre
+4. Audit: evento LOGIN con il `sid` della sessione nuova
+
+> ⚠️ Fino al 2026-09-24 la coppia si emetteva con `RefreshToken.for_user(user)`, senza i
+> claim della veste: il frontend la installava e la richiesta successiva usciva 401
+> `E_JWT_SENZA_IDENTITA` — proprio nel cambio obbligatorio al primo accesso — e l'audit
+> registrava il `jti` al posto del `sid` (M-2 della [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 #### Output (successo)
+
+```http
+HTTP/1.1 200 OK
+Set-Cookie: zeroerp_refresh=eyJ...; HttpOnly; Max-Age=86400; Path=/api/v1/; SameSite=Strict; Secure
+```
 
 ```json
 {
   "data": {
-    "access": "eyJ...",
-    "refresh": "eyJ..."
+    "access": "eyJ..."
   },
   "meta": { "request_id": "..." }
 }
 ```
 
-Il frontend deve aggiornare i token nello store con quelli nuovi.
+Il corpo porta solo l'`access` della sessione nuova; il suo refresh sta nel
+`Set-Cookie` (`zeroerp_refresh`, attributi in
+[api_multi_veste_token.md](api_multi_veste_token.md#cookie-di-refresh)),
+scritto solo se la risposta e' 200. Il frontend sostituisce l'access in
+memoria; il cookie lo aggiorna il browser.
 
 #### Errori
 
@@ -139,10 +162,18 @@ Il frontend deve aggiornare i token nello store con quelli nuovi.
 | --- | --- | --- |
 | `E_CHANGE_PASSWORD` | 400 | Validazione fallita (password vuota, mismatch, troppo semplice, ecc.) |
 | `E_CHANGE_PASSWORD` | 400 | Password attuale non corretta |
+| `E_IDENTITA_NON_ATTIVA` | 401 | La veste della sessione non e' piu' attiva: la password non cambia |
 
 ---
 
 ## Flag `deve_cambiare_password` — Flusso completo
+
+⭐ **Il flag e' della credenziale, non della veste** (dal 2026-09-25): la
+password e' una sola, quindi l'obbligo di cambiarla vale su ogni porta. Sede:
+`config.credenziali`, letta e scritta **solo** da
+`fn_get_deve_cambiare_password` / `fn_imposta_deve_cambiare_password` (riga
+assente = `false`). Lo accende l'invito operatore; lo spegne qualunque nuova
+password (cambio, reset, attivazione).
 
 ### 1. Login
 
@@ -152,32 +183,33 @@ Se attivo, la response include:
 ```json
 {
   "access": "eyJ...",
-  "refresh": "eyJ...",
   "password_change_required": true
 }
 ```
 
-Il token JWT viene comunque rilasciato (serve per chiamare `/change-password/`).
+(il refresh, come sempre, nel `Set-Cookie`). Il token JWT viene comunque rilasciato (serve per chiamare `/change-password/`).
 
-### 2. Middleware blocco
+### 2. Cancello degli obblighi
 
-`PasswordChangeRequiredMiddleware` intercetta TUTTE le richieste `/api/v1/*` e blocca
-con 403 se il flag e' attivo. Endpoint consentiti:
+Il blocco lo fa il **cancello degli obblighi** (`apps/core/api/cancello_obblighi.py`), che
+`JwtAuditAuthentication` chiama a ogni richiesta col Bearer, **dopo** l'autenticazione DRF:
+e' il solo punto che conosce l'utente del token e che ogni view attraversa. Se la credenziale
+ha `deve_cambiare_password`, passano solo le view che dichiarano l'obbligo in
+`obblighi_ammessi`:
 
 - `POST /api/v1/auth/change-password/`
 - `POST /api/v1/auth/logout/`
 - `GET /api/v1/core/me/`
 
-Qualsiasi altro endpoint ritorna:
+Qualsiasi altro endpoint ritorna 403 `E_CAMBIO_PASSWORD_RICHIESTO` (a catalogo, classe
+`NON_PERMESSO`). Il superuser **non** e' esentato. Se il DB non risponde la richiesta fallisce
+con `E_DATABASE` (fail-closed), mai un «nessun obbligo».
 
-```json
-{
-  "error": {
-    "code": "E_CAMBIO_PASSWORD_RICHIESTO",
-    "message": "Devi cambiare la password prima di procedere."
-  }
-}
-```
+Lo stesso cancello ospita l'obbligo del secondo fattore (`E_TOTP_CONFIGURAZIONE_RICHIESTA`), che
+entra in vigore coi suoi endpoint di configurazione (lotto T-3 di
+[brief-be-fe-sicurezza-header-token-mfa](../../../dev/work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md)).
+Fino al 2026-09-30 il blocco era `PasswordChangeRequiredMiddleware`, che guardava
+`request.user` in `process_view`, prima dell'autenticazione DRF: per un Bearer non scattava mai.
 
 ### 3. Cambio password
 
@@ -190,32 +222,15 @@ Con i nuovi token, tutte le API sono di nuovo accessibili.
 
 ---
 
-## Middleware — Comportamento in caso di errore DB
-
-Se la query per il flag fallisce (DB irraggiungibile), il middleware **blocca per sicurezza**
-(fail-closed) ritornando 503:
-
-```json
-{
-  "error": {
-    "code": "E_CAMBIO_PASSWORD_CHECK_FALLITO",
-    "message": "Impossibile verificare lo stato delle credenziali. Riprova."
-  }
-}
-```
-
-Superuser bypassa completamente il middleware.
-
----
-
 ## Dipendenze DB
 
 | Oggetto | Scopo |
 | --- | --- |
 | `config.token_monouso` | Tabella token con hash SHA-256, scadenza, consumo |
 | `config.fn_cleanup_token_scaduti(giorni)` | Job pulizia periodica |
-| `anagrafiche.identita_digitali.deve_cambiare_password` | Flag cambio password (⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1)) |
-| `script.fn_get_user_profile()` | Include `deve_cambiare_password` nel JSONB profilo |
+| `config.credenziali.deve_cambiare_password` | Flag cambio password della credenziale (fino al 2026-09-25 stava su ogni riga di `identita_digitali`) |
+| `script.fn_get_deve_cambiare_password` / `fn_imposta_deve_cambiare_password` | Unica lettura e scrittura del flag |
+| `script.fn_get_user_profile()` | Include `deve_cambiare_password` nel JSONB profilo (letto dalla credenziale) |
 
 ## File Python
 
@@ -224,8 +239,8 @@ Superuser bypassa completamente il middleware.
 | `apps/core/db/token_repository.py` | Repository: create, find_valid, consume, invalidate_all |
 | `apps/core/services/token_service.py` | Service: hash, generate, validate, consume |
 | `apps/core/api/change_password_view.py` | Endpoint POST /auth/change-password/ |
-| `apps/core/middleware/password_change_middleware.py` | Blocco navigazione se flag attivo |
-| `apps/core/db/auth_repository.py` | +get/set deve_cambiare_password |
+| `apps/core/api/cancello_obblighi.py` | Blocco navigazione se flag attivo (cancello degli obblighi, dopo l'autenticazione DRF) |
+| `apps/core/db/auth_repository.py` | `get/set_deve_cambiare_password(auth_user_id)` — della credenziale, senza veste |
 | `apps/core/api/auth_views.py` | +flag password_change_required nella response login |
 
 ## Ordine middleware
@@ -236,10 +251,10 @@ SessionMiddleware
 CommonMiddleware
 RequestContextMiddleware
 ApiExceptionMiddleware
+UserLanguageMiddleware
 CsrfViewMiddleware
 AuthenticationMiddleware
-JwtAuditMiddleware              ← autentica utente, carica permessi
-PasswordChangeRequiredMiddleware ← blocca se deve cambiare password
+JwtAuditMiddleware              ← reset GUC, guard BYPASSRLS (non autentica)
 RequestLogMiddleware
 MessageMiddleware
 XFrameOptionsMiddleware

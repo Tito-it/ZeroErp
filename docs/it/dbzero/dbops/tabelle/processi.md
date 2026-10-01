@@ -24,6 +24,9 @@
 | jobname_pgagent | text | YES |  |
 | tolleranza_minuti | integer | YES |  |
 | segno_di_vita | text | NO | 'GIORNALE'::text |
+| ci_ordine | integer | YES |  |
+| ci_procedura | text | YES |  |
+| ci_esclusione | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -31,17 +34,20 @@
 | CHECK | chk_processi_canale |  |
 | CHECK | chk_processi_classe |  |
 | CHECK | chk_processi_contratto_solo_command |  |
+| CHECK | chk_processi_convergenza_ci |  |
 | CHECK | chk_processi_jobname_pgagent_non_vuoto |  |
 | CHECK | chk_processi_segno_di_vita |  |
 | CHECK | chk_processi_sessione_senza_tolleranza |  |
 | CHECK | chk_processi_tolleranza_positiva |  |
 | PRIMARY KEY | pk_processi | id |
+| UNIQUE | uq_processi_ci_ordine | ci_ordine |
 | UNIQUE | uq_processi_codice | codice |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_processi | `CREATE UNIQUE INDEX pk_processi ON dbops.processi USING btree (id)` |
+| uq_processi_ci_ordine | `CREATE UNIQUE INDEX uq_processi_ci_ordine ON dbops.processi USING btree (ci_ordine)` |
 | uq_processi_codice | `CREATE UNIQUE INDEX uq_processi_codice ON dbops.processi USING btree (codice)` |
 | uq_processi_jobname_pgagent | `CREATE UNIQUE INDEX uq_processi_jobname_pgagent ON dbops.processi USING btree (jobname_pgagent) WHERE (jobname_pgagent IS NOT NULL)` |
 

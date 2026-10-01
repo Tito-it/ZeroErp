@@ -404,6 +404,10 @@ class LottoListRow(TypedDict):
     area_geografica_id: int | None
     area_geografica_descrizione: str | None
     emittente_soggetto_ruolo_id: int | None
+    # La PK dell'emittente (2026-09-27): il lasciapassare del cancello di
+    # perimetro per le liste aperte dal drawer del lotto, che lo chiedono come
+    # `emittente_fiscale_id`. ⚠️ Non e' `emittente_soggetto_ruolo_id`.
+    emittente_fiscale_id: int | None
     data_insert: str | None
     user_insert: str
     # Ragione sociale dell'emittente (P-4, Fase E). ⚠️ La ragione sociale e non
@@ -803,34 +807,6 @@ class PreventivoDetailRow(TypedDict):
     user_update: str | None
 
 
-class PreventivoRigaRow(TypedDict):
-    id: int
-    preventivo_id: int
-    articolo_id: str
-    codice_articolo: str
-    descrizione_articolo: str
-    descrizione: str | None
-    quantita: str | None
-    qta_operativa: str | None
-    uom_operativa_id: int | None
-    codice_uom: str | None
-    factor_to_base: str | None
-    prezzo_unitario: str | None
-    sconto_percentuale: str | None
-    iva_id: int | None
-    codice_iva: str | None
-    aliquota_iva: str | None
-    ordine: int | None
-    attivo: bool
-    importo_riga: str | None
-    importo_iva_riga: str | None
-    meta: dict[str, Any]
-    is_composito_caso_a: bool
-    # Data di consegna richiesta dal cliente (Blocco A del brief modifiche
-    # certe): sul preventivo c'e' solo la richiesta, la conferma nasce sull'ordine.
-    data_consegna_richiesta_cliente: str | None
-
-
 class PreventivoRigaComponenteRow(TypedDict):
     id: int
     riga_preventivo_id: int
@@ -997,9 +973,10 @@ class OffertaRow(TypedDict):
     # Il FE consuma questi campi con `useEntityCapabilities` +
     # `mapAvailableActionsToDrawerActions` senza ricalcolare la state
     # machine: la verita' della transizione vive solo in DB.
-    # `available_actions` e' lista di dict opachi (chiave/label_key/severity/
-    # icon/target_state/requires_confirm/requires_motivazione) — Any per non
-    # vincolare il TypedDict a una sotto-shape che il BE puo' arricchire.
+    # `available_actions` e' lista di dict opachi (key/target_state/label_key/
+    # requires_confirm/requires_motivazione) — Any per non vincolare il
+    # TypedDict a una sotto-shape che il BE puo' arricchire. Icona e colore
+    # non viaggiano: li sceglie il frontend dal `key` (`core/aspettoAzioni.js`).
     available_actions: list[dict[str, Any]]
     can_change_state: bool
     can_edit_testata: bool

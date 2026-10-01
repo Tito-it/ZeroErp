@@ -16,7 +16,8 @@
 --   7) espone riapre_residuo decodificato dal tipo (credito -> false)
 --   8) filtro STATO: riga di reso DRAFT -> ASSENTE
 --   9) filtro ATTIVO (il nuovo canonico dello step 2): riga di reso CONFERMATO
---      ma disattivata -> ASSENTE
+--      ma disattivata -> ASSENTE (dal 2026-09-29 la riga si spegne in bozza:
+--      fuori bozza le righe del reso sono congelate, D-3b-h)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -37,9 +38,18 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(9);
 
--- Le madri sono SECURITY INVOKER: il pgTAP gira come owner.
+-- Dal 2026-09-28 conferma e annullo del reso sono verbi SECURITY DEFINER col
+-- perimetro nella WHERE e il permesso conferma_reso (Lotto 3-bis, D-3b-f).
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
+
+-- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
+-- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+-- l'operatore di fixture non ha azioni, si concede qui.
+DO $az$ BEGIN
+    PERFORM dbops.fn_pgtap_concedi_azione(
+        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
+END $az$;
 
 -- ============================================================
 -- 1) La vista esiste
@@ -201,9 +211,15 @@ SELECT ok(
 
 -- ============================================================
 -- 9) Filtro ATTIVO (nuovo canonico step 2): reso CONFERMATO ma riga disattivata
---    -> ASSENTE. Reso C: 1 pz confermato, poi la riga disattivata a mano
---    (UPDATE diretto: pgTAP gira come owner, oltre i guard di servizio).
---    Totale non-annullati sulla riga DDT = 3(A)+2(B bozza)+1(C) = 6 < 10 -> il
+--    -> ASSENTE. Reso C: due righe da 1 pz; la seconda si spegne IN BOZZA, poi
+--    il reso si conferma (la prima resta attiva: un reso senza righe attive
+--    non si conferma).
+--    ⚠️ Rev 2026-09-29 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-h):
+--    prima la riga si spegneva DOPO la conferma, con un UPDATE diretto. Ora le
+--    righe di un reso confermato sono congelate (BB
+--    trgfn_doc_righe_lock_fuori_bozza), e quel caso non esiste piu'; il filtro
+--    si prova con la sola forma che il modello ammette.
+--    Totale non-annullati sulla riga DDT = 3(A)+2(B bozza)+1+1(C) = 7 < 10 -> il
 --    guard over-return non blocca l'inserimento di C.
 -- ============================================================
 CREATE TEMP TABLE tmp_reso_c AS
@@ -224,9 +240,16 @@ WITH ins AS (
          (SELECT tipo_credito_id FROM tmp_refs), false
   FROM tmp_ddt_riga dr RETURNING id)
 SELECT * FROM ins;
-SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_c));
--- Disattiva la riga a mano (dopo la conferma).
+-- La riga che resta attiva (riga 2), poi la riga 1 spenta in bozza.
+INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
+  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
+SELECT (SELECT id FROM tmp_reso_c), 2, dr.id,
+       (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
+       dr.articolo_id, dr.descrizione, 1, dr.uom_operativa_id, dr.factor_to_base,
+       (SELECT tipo_credito_id FROM tmp_refs), false
+FROM tmp_ddt_riga dr;
 UPDATE vendite.resi_righe SET attivo = false WHERE id=(SELECT id FROM tmp_reso_c_riga);
+SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_c));
 
 SELECT ok(
   NOT EXISTS (SELECT 1 FROM vendite.vw_resi_righe_effettive e

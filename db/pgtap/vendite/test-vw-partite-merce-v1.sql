@@ -52,6 +52,14 @@ SELECT plan(11);
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
 
+-- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
+-- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+-- l'operatore di fixture non ha azioni, si concede qui.
+DO $az$ BEGIN
+    PERFORM dbops.fn_pgtap_concedi_azione(
+        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
+END $az$;
+
 -- ============================================================
 -- 1-3) Struttura della vista
 -- ============================================================
@@ -134,10 +142,14 @@ SELECT
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')      AS tipo_ind_con_id;
 
 -- Helper: ordine -> DDT. `p_consegna` false lascia il DDT in BOZZA (serve al 6).
-CREATE OR REPLACE FUNCTION pg_temp.mk_partita(p_qta numeric, p_causale bigint, p_consegna boolean)
+-- `p_riga_manuale` (rev 2026-09-22): la riga aggiunta A MANO entra PRIMA delle
+-- transizioni — il BB trgfn_doc_righe_lock_fuori_bozza non ammette righe in un
+-- DDT fuori bozza — e il suo id esce in `riga_manuale_id`.
+CREATE OR REPLACE FUNCTION pg_temp.mk_partita(p_qta numeric, p_causale bigint, p_consegna boolean,
+                                              p_riga_manuale numeric DEFAULT NULL)
 RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint,
-              ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_ord_uid uuid; v_orr bigint; v_ddt bigint; v_ddt_uid uuid; v_ddtr bigint;
+              ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint, riga_manuale_id bigint) AS $$
+DECLARE r RECORD; v_ord bigint; v_ord_uid uuid; v_orr bigint; v_ddt bigint; v_ddt_uid uuid; v_ddtr bigint; v_man bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
@@ -155,6 +167,9 @@ BEGIN
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
   UPDATE vendite.ddt SET causale_trasporto_id = p_causale WHERE id = v_ddt;
+  IF p_riga_manuale IS NOT NULL THEN
+    v_man := pg_temp.mk_riga_manuale(v_ddt, p_riga_manuale);
+  END IF;
   IF p_consegna THEN
     -- Le transizioni si fanno una alla volta: il guard sulle transizioni
     -- ammette solo passi contigui.
@@ -164,11 +179,13 @@ BEGIN
   END IF;
   SELECT d.uid INTO v_ddt_uid FROM vendite.ddt d WHERE d.id = v_ddt;
   SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
-  RETURN QUERY SELECT v_ord, v_ord_uid, v_orr, v_ddt, v_ddt_uid, v_ddtr;
+  RETURN QUERY SELECT v_ord, v_ord_uid, v_orr, v_ddt, v_ddt_uid, v_ddtr, v_man;
 END $$ LANGUAGE plpgsql;
 
 -- Helper: aggiunge una riga A MANO a un DDT esistente. Nessun fulfillment:
 -- e' esattamente la riga che oggi non appartiene a nessuna partita.
+-- ⚠️ Solo su un DDT in BOZZA (rev 2026-09-22): lo chiama mk_partita prima
+--   delle transizioni.
 CREATE OR REPLACE FUNCTION pg_temp.mk_riga_manuale(p_ddt bigint, p_qta numeric)
 RETURNS bigint AS $$
 DECLARE r RECORD; v_id bigint;
@@ -248,11 +265,11 @@ END $$ LANGUAGE plpgsql;
 
 -- P1 — ordine 10, consegnato, fatturato sulla CORSIA ORD, poi reso 4.
 --      Serve al 10): la capienza dell'allocazione.
-CREATE TEMP TABLE tmp_p1 AS SELECT * FROM pg_temp.mk_partita(10, (SELECT causale_vendita_id FROM tmp_refs), true);
+CREATE TEMP TABLE tmp_p1 AS SELECT * FROM pg_temp.mk_partita(10, (SELECT causale_vendita_id FROM tmp_refs), true, 6);
 
 -- P2 — riga aggiunta A MANO sul DDT di P1 (spedizione mista), fatturata sulla
 --      corsia DDT, poi resa 2. Serve al 4) e al 5).
-CREATE TEMP TABLE tmp_p2 AS SELECT pg_temp.mk_riga_manuale((SELECT ddt_id FROM tmp_p1), 6) AS ddt_riga_id;
+CREATE TEMP TABLE tmp_p2 AS SELECT riga_manuale_id AS ddt_riga_id FROM tmp_p1;
 
 -- P3 — ordine 5, DDT lasciato in BOZZA. Serve al 6) e, come destinazione della
 --      ri-consegna, al 7).

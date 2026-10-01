@@ -1,0 +1,1002 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-be-presidio-ui-action-e-canale-campi §4-ter.2 — I 9 A: SANATURA DEL
+# CANALE `campo` in `anagrafiche` (giro 2, dopo i 30 A di 20260921-43…-49).
+#
+# ── ⛔ IL DIFETTO ────────────────────────────────────────────────────
+#   Questi codici promettono a catalogo `ui_action = highlight_form_fields`
+#   («evidenzia il campo del form»), ma il campo lo accende un ALTRO canale:
+#   la COLUMN che script.fn_log_and_raise_error legge dal context — chiave
+#   `campo`, ripiego `parametro`. Qui il context non la portava (o portava il
+#   nome della colonna come CHIAVE, nel posto che l'helper non legge):
+#   dbops.vw_punti_canale_campo li dava NESSUNO / CHIAVE_NON_LETTA. A video:
+#   un toast e nessun campo rosso. Il test del brief
+#   (apps/core/tests/test_ui_action_e_canale_campi.py, verso 1) e' ROSSO su
+#   questi codici di proposito — niente _DEBITO, niente esenzioni di comodo —
+#   e questo changeSet lo fa tornare verde.
+#
+#   ⭐ Perche' non erano nei 37 del 21-09: la misura del §3-bis li aveva
+#   messi nel bucket «forse» (un 'campo' in UN'ALTRA chiamata dello stesso
+#   corpo, non attribuibile). La vista attribuisce, e il test li ha trovati
+#   la sera stessa. La lista a mano era corta di 12: 9 A qui, 3 B al BE.
+#
+# ── ⭐ LA CORREZIONE: una coppia in piu', NIENTE ALTRO ─────────────
+#   `'campo', '<colonna>'` come prima coppia del jsonb_build_object della
+#   chiamata che nomina il codice. Guard, messaggio, VARIADIC, tx_id:
+#   intatti. Il nome e' quello dell'INPUT che l'operatore ha davanti — una
+#   CHIAVE DEL PAYLOAD nel Python che chiama (api.md §Envelope): un id
+#   dall'URL o un parametro di firma NON lo e' (strada B, l'override esce
+#   dal lato BE).
+#
+# ── I CODICI, E IL CAMPO SCELTO (tabella A/B del §4-ter.2, ok di Tid) ──
+#   anagrafiche.fn_crea_risorsa_umana_v2
+#     E_ADMIN_UO_NON_TROVATA -> unita_organizzativa_id (chiave del payload RU;
+#       l'override stesso dice «scegline un'altra»)
+#   anagrafiche.trgfn_billing_account_guard_normalize
+#     E_PARENT_SELF -> parent_account_id. ⚠️ La vista diceva CHIAVE_NON_LETTA
+#       su `codice`, ma l'input sbagliato e' il PARENT (clienti_service): il
+#       nome in mano non era quello giusto — la coppia si AGGIUNGE, `codice`
+#       resta nel context come prima.
+#     E_DATA_FINE_NON_MAGGIORE_DI_INIZIO -> valido_al («modificare la data
+#       finale», dice la soluzione a catalogo; `valido_dal` era la chiave non
+#       letta, ma il campo da correggere e' la fine).
+#   anagrafiche.trgfn_soggetti_conti_bancari_guard,
+#   anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard
+#     E_DATA_AL_MINORE_DAL -> valido_al (era CHIAVE_NON_LETTA: la colonna come
+#       chiave). ⚠️ vendite.fn_get_or_create_commessa solleva lo stesso codice
+#       e resta SENZA: la chiamano i source handler della pipeline, non un form.
+#
+# ── %TYPE (feedback_type_anche_in_firma_e_returns_table) ───────────
+#   fn_crea_risorsa_umana_v2: la firma era GIA' ancorata in 20260429-12 e il
+#   corpo vivo (pg_get_functiondef) l'aveva sciolta — ripristinata identica,
+#   `p_auth_user_id integer` esplicito (django.*, mai %TYPE). Nei due guard
+#   dei conti bancari `v_attivo` si ancora a conti_bancari.attivo. Firme
+#   byte-identiche al vivo (regtype verificato): nessun overload.
+#
+# ── ORIGINE DEL CORPO, E IL CANCELLO SUL CORPO STANTIO ─────────────
+#   Corpo VIVO (pg_get_functiondef, 22-09) per ogni funzione; il diff e' la
+#   sola inserzione + l'ancoraggio %TYPE (generatore a sostituzioni
+#   dichiarate, una occorrenza ciascuna). La preCondition ancora l'md5 di
+#   prosrc a quello letto: se qualcun altro tocca la stessa funzione prima
+#   dell'apply il migrate si FERMA invece di disfargli il lavoro (memoria
+#   2026-09-09). Il ripristino torna al corpo vivo di prima.
+#
+# Presidio: db/pgtap/dbops/test-punti-canale-campo-v1.sql (t.1: la lista
+#   pinnata cresce dei 9) + backend apps/core/tests/test_ui_action_e_canale_campi.py
+#   (il CANCELLO; la sua riga in dbops.presidi entra con questo giro).
+# Dipendenze: nessuna (la vista -42 li LEGGE, non serve all'apply).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260922-11-update-guard-anagrafiche-canale-campo-9a-mctit.yaml
+
+  - changeSet:
+      id: 20260922-11-update-guard-anagrafiche-canale-campo-9a
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Canale campo, i 9 A del §4-ter.2 in anagrafiche: anagrafiche.fn_crea_risorsa_umana_v2, anagrafiche.trgfn_billing_account_guard_normalize, anagrafiche.trgfn_soggetti_conti_bancari_guard, anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard —
+        'campo', '<colonna>' nel context delle chiamate che nominano i
+        codici highlight_form_fields ancora vuoti. Solo la coppia in piu'
+        (+ %TYPE in firma/DECLARE); corpo vivo, md5 ancorato in preCondition.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            anagrafiche: il corpo di una funzione da sanare non e' quello letto il
+            22-09 (md5 diverso): qualcuno l'ha toccata dopo. Rileggere il
+            vivo e rigenerare questo changeSet, non applicarlo.
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_crea_risorsa_umana_v2'
+                     AND md5(p.prosrc) = '7f6ae0a25d75951301116baab9dcdac9'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_billing_account_guard_normalize'
+                     AND md5(p.prosrc) = '410137c5eb007845152c0fa13a60c074'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_soggetti_conti_bancari_guard'
+                     AND md5(p.prosrc) = '6461dbe93f952dae5f4a4734ba174e3b'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_soggetti_ruoli_conti_bancari_guard'
+                     AND md5(p.prosrc) = 'f32d1f2138b880e42468860bc3c0e583'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(
+                  p_soggetto_id            anagrafiche.soggetti.id%TYPE                       DEFAULT NULL,
+                  p_qualifica_id           config.qualifiche.id%TYPE                          DEFAULT NULL,
+                  p_unita_organizzativa_id config.unita_organizzative.id%TYPE                 DEFAULT NULL,
+                  p_valido_dal             anagrafiche.risorse_umane.valido_dal%TYPE          DEFAULT CURRENT_DATE,
+                  p_valido_al              anagrafiche.risorse_umane.valido_al%TYPE           DEFAULT NULL,
+                  -- p_auth_user_id rappresenta django.auth_user.id: tipo esplicito,
+                  -- niente %TYPE su django.* (in CI Liquibase gira PRIMA delle migrazioni Django).
+                  p_auth_user_id           integer                                            DEFAULT NULL,
+                  -- p_is_super_admin e' un interruttore del chiamante, non il riflesso di una colonna.
+                  p_is_super_admin         boolean                                            DEFAULT false,
+                  p_attivo                 anagrafiche.identita_digitali.attivo%TYPE          DEFAULT true
+              )
+               RETURNS anagrafiche.risorse_umane.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sr_id        anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_ru_id        anagrafiche.risorse_umane.id%TYPE;
+                  v_identita_id  anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo (v2 multi-face native, Chunk A Fase 7 2026-04-29):
+                  --   Crea risorsa_umana + identita_digitali OPERATORE
+                  --   (+ binding SUPER_ADMIN se p_is_super_admin=true).
+                  --   Niente piu' enum legacy ruolo_sistema; il chiamante
+                  --   esprime direttamente "is super admin?" + "attiva?".
+                  --
+                  -- Body identico a v1 salvo:
+                  --   Step 3: identita_digitali.attivo = p_attivo
+                  --           (era hardcoded true in v1).
+                  --   Step 4: IF p_is_super_admin invece di
+                  --           IF p_ruolo_sistema='ADMIN'.
+                  -- =========================================================
+
+                  -- Validazione parametri obbligatori
+                  IF p_soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_soggetto_id'),
+                          NULL::uuid, 'Soggetto obbligatorio.'
+                      );
+                  END IF;
+
+                  IF p_qualifica_id IS NULL OR p_qualifica_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_qualifica_id'),
+                          NULL::uuid, 'Qualifica obbligatoria.'
+                      );
+                  END IF;
+
+                  -- Guard prerequisiti
+                  IF NOT EXISTS (
+                      SELECT 1 FROM config.qualifiche
+                       WHERE id = p_qualifica_id AND attivo = true
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('qualifica_id', p_qualifica_id),
+                          NULL::uuid, 'Qualifica non trovata o non attiva.'
+                      );
+                  END IF;
+
+                  IF p_unita_organizzativa_id IS NOT NULL THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM config.unita_organizzative
+                           WHERE id = p_unita_organizzativa_id AND attivo = true
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_ADMIN_UO_NON_TROVATA',
+                              jsonb_build_object('campo', 'unita_organizzativa_id', 'unita_organizzativa_id', p_unita_organizzativa_id),
+                              NULL::uuid,
+                              'Unita'' organizzativa non trovata o non attiva.'
+                          );
+                      END IF;
+                  END IF;
+
+                  IF p_auth_user_id IS NOT NULL THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM django.auth_user WHERE id = p_auth_user_id
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_ADMIN_VALIDAZIONE',
+                              jsonb_build_object('auth_user_id', p_auth_user_id),
+                              NULL::uuid, 'auth_user non trovato.'
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Step 1: soggetto_ruolo RIS_UMANA
+                  SELECT script.fn_get_or_create_soggetto_ruolo(
+                      p_soggetto_id, 'RIS_UMANA'
+                  ) INTO v_sr_id;
+
+                  -- Step 2: risorsa umana
+                  INSERT INTO anagrafiche.risorse_umane (
+                      soggetto_ruolo_id, soggetto_id, qualifica_id,
+                      unita_organizzativa_id, valido_dal, valido_al, attivo
+                  )
+                  VALUES (
+                      v_sr_id, p_soggetto_id, p_qualifica_id,
+                      p_unita_organizzativa_id, p_valido_dal, p_valido_al, true
+                  )
+                  RETURNING id INTO v_ru_id;
+
+                  -- Step 3: identita_digitali OPERATORE.
+                  -- Differenza vs v1: attivo = p_attivo (default true).
+                  IF p_auth_user_id IS NOT NULL THEN
+                      INSERT INTO anagrafiche.identita_digitali (
+                          soggetto_ruolo_id,
+                          auth_user_id,
+                          ruolo_applicativo,
+                          attivo,
+                          valido_dal,
+                          valido_al
+                      )
+                      VALUES (
+                          v_sr_id,
+                          p_auth_user_id,
+                          'OPERATORE'::config.ruolo_applicativo,
+                          p_attivo,
+                          COALESCE(p_valido_dal, CURRENT_DATE),
+                          p_valido_al
+                      )
+                      RETURNING id INTO v_identita_id;
+
+                      -- Step 4: binding SUPER_ADMIN se richiesto.
+                      -- Differenza vs v1: predicato boolean diretto invece
+                      -- di confronto con enum legacy.
+                      IF p_is_super_admin THEN
+                          INSERT INTO config.profili_accesso_bindings (
+                              profilo_accesso_id,
+                              identita_digitale_id,
+                              attivo
+                          )
+                          VALUES (
+                              9100,
+                              v_identita_id,
+                              true
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN v_ru_id;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- ⚠️ Ancorate alle colonne (AGENTS.md, linee-guida-sql §5b).
+                --   Le due preesistenti erano `text` nudo: corrette qui, non
+                --   e' un cambio di comportamento.
+                v_cf_child   anagrafiche.soggetti.id_fiscale_univoco_cf_piva%TYPE;
+                v_cf_parent  anagrafiche.soggetti.id_fiscale_univoco_cf_piva%TYPE;
+                v_sog_child  anagrafiche.soggetti.id%TYPE;
+                v_sog_parent anagrafiche.soggetti.id%TYPE;
+              BEGIN
+                ------------------------------------------------------------------
+                -- 1) NORMALIZE (pulizie/derive)
+                ------------------------------------------------------------------
+                -- (Riservato per future normalizzazioni)
+
+                ------------------------------------------------------------------
+                -- 2) GUARD (validazioni di business con errori)
+                ------------------------------------------------------------------
+
+                -- 2.0) Parent: vieta self-reference
+                IF NEW.parent_account_id IS NOT NULL AND NEW.parent_account_id = NEW.id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', TG_NAME, 'E_PARENT_SELF',
+                    jsonb_build_object('campo', 'parent_account_id', 'codice', NEW.codice, 'parent_account_id', NEW.parent_account_id),
+                    NULL::uuid, NEW.parent_account_id::text
+                  );
+                END IF;
+
+                -- 2.1) Se c'e parent, valido_dal e' obbligatorio
+                IF NEW.parent_account_id IS NOT NULL AND NEW.valido_dal IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', TG_NAME, 'E_VALORE_MANCANTE',
+                    jsonb_build_object('codice', NEW.codice, 'campo', 'valido_dal'),
+                    NULL::uuid, 'valido_dal'
+                  );
+                END IF;
+
+                -- 2.2) Coerenza del SOGGETTO FISCALE fra parent e child.
+                --
+                --   Rev 2026-08-18 (P-3, brief §4 e §11.1). Prima confrontava
+                --   solo il codice fiscale con IS DISTINCT FROM, e aveva due
+                --   buchi che si sommavano:
+                --
+                --   a) `NULL IS DISTINCT FROM NULL` e' FALSO -> due BA
+                --      entrambi senza CF passavano anche se di soggetti
+                --      DIVERSI. Il classico NULL in una chiave;
+                --   b) la SELECT sul padre passa dalle policy RLS (questa
+                --      funzione e' SECURITY INVOKER): un padre di un altro
+                --      emittente non viene trovato, v_cf_parent restava NULL
+                --      e il guard sollevava E_ID_FISCALI_DIVERSI su due CF
+                --      IDENTICI — un messaggio che nomina la causa sbagliata.
+                --
+                --   Ora: il padre non trovato ha il suo codice; e quando il
+                --   codice fiscale non e' utilizzabile come prova si ripiega
+                --   sul SOGGETTO, che c'e' sempre.
+                IF NEW.parent_account_id IS NOT NULL THEN
+                  SELECT s.id, s.id_fiscale_univoco_cf_piva
+                    INTO v_sog_child, v_cf_child
+                    FROM anagrafiche.istanze_utilities iu
+                    JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                  WHERE iu.id = NEW.istanza_utility_id;
+
+                  SELECT s2.id, s2.id_fiscale_univoco_cf_piva
+                    INTO v_sog_parent, v_cf_parent
+                    FROM anagrafiche.billing_account ba
+                    JOIN anagrafiche.istanze_utilities iu2 ON iu2.id = ba.istanza_utility_id
+                    JOIN anagrafiche.soggetti s2 ON s2.id = iu2.soggetto_id
+                  WHERE ba.id = NEW.parent_account_id;
+
+                  -- ⚠️ FOUND si riferisce all'ULTIMA SELECT INTO, che e' quella
+                  --   sul padre: e' il test preciso, e va fatto subito — una
+                  --   SELECT INTO a vuoto AZZERA le variabili, quindi piu' in
+                  --   basso «NULL» non direbbe piu' se il padre manca o se e'
+                  --   il suo CF a mancare.
+                  IF NOT FOUND THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_PARENT_NON_RAGGIUNGIBILE',
+                      jsonb_build_object(
+                        'codice', NEW.codice,
+                        'parent_account_id', NEW.parent_account_id,
+                        'campo',  'parent_account_id',
+                        'detail', 'parent inesistente oppure fuori dal perimetro RLS di chi scrive'
+                      ),
+                      NULL::uuid,
+                      NEW.parent_account_id::text
+                    );
+                  END IF;
+
+                  IF v_cf_child IS NULL OR v_cf_parent IS NULL THEN
+                    -- Il codice fiscale non e' utilizzabile come prova di
+                    -- identita': si confronta il soggetto. Due BA dello STESSO
+                    -- soggetto senza CF restano legittimi — ed e' il motivo per
+                    -- cui qui non si rifiuta e basta.
+                    IF v_sog_child IS DISTINCT FROM v_sog_parent THEN
+                      PERFORM script.fn_log_and_raise_error(
+                        'database', TG_NAME, 'E_PARENT_SOGGETTO_DIVERSO',
+                        jsonb_build_object(
+                          'codice', NEW.codice,
+                          'parent_account_id', NEW.parent_account_id,
+                          'campo',  'parent_account_id',
+                          'soggetto_id', v_sog_child,
+                          'parent_soggetto_id', v_sog_parent
+                        ),
+                        NULL::uuid,
+                        NEW.parent_account_id::text
+                      );
+                    END IF;
+                  ELSIF v_cf_child IS DISTINCT FROM v_cf_parent THEN
+                    -- Entrambi i CF presenti e diversi: il caso storico.
+                    -- ⚠️ Due soggetti DIVERSI con lo stesso CF continuano a
+                    --   passare, ed e' voluto: quella e' identita' fiscale, che
+                    --   e' cio' che il guard presidia.
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_ID_FISCALI_DIVERSI',
+                      jsonb_build_object(
+                        'codice', NEW.codice,
+                        'parent_account_id', NEW.parent_account_id,
+                        'campo',  'parent_account_id',
+                        'id_fiscale_univoco_cf_piva', v_cf_child,
+                        'parent_id_fiscale_univoco_cf_piva', v_cf_parent
+                      ),
+                      NULL::uuid,
+                      NEW.parent_account_id::text, v_cf_child, v_cf_parent
+                    );
+                  END IF;
+                END IF;
+
+                -- 2.3) Coerenza date validita
+                IF NEW.valido_al IS NOT NULL THEN
+                  IF NEW.valido_dal IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_VALORE_MANCANTE',
+                      jsonb_build_object('codice', NEW.codice, 'column', 'valido_al_requires_valido_dal'),
+                      NULL::uuid, 'valido_al'
+                    );
+                  ELSIF NEW.valido_al < NEW.valido_dal THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_DATA_FINE_NON_MAGGIORE_DI_INIZIO',
+                      jsonb_build_object('campo', 'valido_al', 'valido_dal', NEW.valido_dal, 'valido_al', NEW.valido_al),
+                      NULL::uuid, NEW.valido_al::text, NEW.valido_dal::text
+                    );
+                  END IF;
+                END IF;
+
+                -- 2.4) Guard dissociazione parent: blocca la rimozione di parent_account_id
+                --      quando esistono attivita_fatturabili non ancora fatturate sul BA figlio.
+                --      Questo previene la corruzione della catena di fatturazione:
+                --        fatture.billing_account_id (padre) → fatture_righe.dest_billing_account_id (figlio)
+                IF TG_OP = 'UPDATE'
+                   AND OLD.parent_account_id IS NOT NULL
+                   AND NEW.parent_account_id IS NULL
+                THEN
+                  IF EXISTS (
+                    SELECT 1
+                      FROM vendite.attivita_fatturabili af
+                     WHERE af.billing_account_id = NEW.id
+                       AND af.fatturato IS FALSE
+                  ) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_DISSOCIAZIONE_PARENT_CON_ATTIVITA',
+                      jsonb_build_object(
+                        'billing_account_id', NEW.id,
+                        'codice', NEW.codice,
+                        'ex_parent_account_id', OLD.parent_account_id,
+                        'detail', 'Impossibile rimuovere parent_account_id: esistono attivita non fatturate collegate a questo billing account'
+                      ),
+                      NULL::uuid,
+                      NEW.id::text, OLD.parent_account_id::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_conti_bancari_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard su anagrafiche.soggetti_conti_bancari.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F4+F5):
+              --   - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+              --   - SQLERRM fuori da un blocco EXCEPTION non e' risolvibile.
+              --   - NEW.data_al / NEW.data_dal non sono colonne di questa
+              --     tabella: sono valido_al / valido_dal, le stesse gia' usate
+              --     nell'IF che governa il ramo.
+              DECLARE
+                v_attivo anagrafiche.conti_bancari.attivo%TYPE;
+              BEGIN
+                -- Evita legami a conti_bancari disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                 WHERE id = NEW.conto_bancario_id;
+                IF v_attivo IS NOT TRUE THEN
+
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_soggetti_conti_bancari_guard',
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'campo', 'conto_bancario_id',
+                                        'tabella','anagrafiche.conti_bancari',
+                                        'conto_bancario_id',  NEW.conto_bancario_id::text
+                                      ) , NULL::uuid, NEW.conto_bancario_id::text
+                                    );
+
+                END IF;
+
+                -- Coerenza validità già controllata da CHECK, ma forziamo normalizzazione date
+                IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
+                   AND NEW.valido_al < NEW.valido_dal THEN
+
+                    PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_soggetti_conti_bancari_guard',
+                                      'E_DATA_AL_MINORE_DAL',
+                                      jsonb_build_object(
+                                        'campo', 'valido_al',
+                                        'tabella','anagrafiche.soggetti_conti_bancari',
+                                        'valido_al',  NEW.valido_al::text,
+                                        'valido_dal',  NEW.valido_dal::text
+                                      ) , NULL::uuid, NEW.valido_al::text, NEW.valido_dal::text
+                                    );
+                END IF;
+
+
+                RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard su anagrafiche.soggetti_ruoli_conti_bancari.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F4):
+              --   - TGNAME -> TG_NAME (la variabile speciale ha l'underscore;
+              --     senza, plpgsql la risolve come colonna e non la trova).
+              --   - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+              DECLARE
+                v_attivo anagrafiche.conti_bancari.attivo%TYPE;
+              BEGIN
+                -- Evita legami a conti disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                WHERE id = NEW.conto_bancario_id;
+                IF v_attivo IS NOT TRUE THEN
+
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      TG_NAME,
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'campo', 'conto_bancario_id',
+                                        'tabella','soggetti_ruoli_conti_bancari',
+                                        'conto_bancario_id',  NEW.conto_bancario_id::text
+                                      ) ,
+                                       NEW.tx_id::uuid,
+                                       NEW.conto_bancario_id::text
+                                    );
+                END IF;
+
+                -- Coerenza date
+                IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
+                  AND NEW.valido_al < NEW.valido_dal THEN
+
+                      PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      TG_NAME,
+                                      'E_DATA_AL_MINORE_DAL',
+                                      jsonb_build_object(
+                                        'campo', 'valido_al',
+                                        'tabella','anagrafiche.soggetti_ruoli_conti_bancari',
+                                        'valido_al',  NEW.valido_al::text,
+                                        'valido_dal',  NEW.valido_dal::text
+                                      ) ,
+                                      NEW.tx_id::uuid,
+                                      NEW.valido_al::text, NEW.valido_dal::text
+                                    );
+                END IF;
+                RETURN NEW;
+              END
+              $function$
+              ;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id uuid DEFAULT NULL::uuid, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_valido_dal date DEFAULT CURRENT_DATE, p_valido_al date DEFAULT NULL::date, p_auth_user_id integer DEFAULT NULL::integer, p_is_super_admin boolean DEFAULT false, p_attivo boolean DEFAULT true)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sr_id        anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_ru_id        anagrafiche.risorse_umane.id%TYPE;
+                  v_identita_id  anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo (v2 multi-face native, Chunk A Fase 7 2026-04-29):
+                  --   Crea risorsa_umana + identita_digitali OPERATORE
+                  --   (+ binding SUPER_ADMIN se p_is_super_admin=true).
+                  --   Niente piu' enum legacy ruolo_sistema; il chiamante
+                  --   esprime direttamente "is super admin?" + "attiva?".
+                  --
+                  -- Body identico a v1 salvo:
+                  --   Step 3: identita_digitali.attivo = p_attivo
+                  --           (era hardcoded true in v1).
+                  --   Step 4: IF p_is_super_admin invece di
+                  --           IF p_ruolo_sistema='ADMIN'.
+                  -- =========================================================
+
+                  -- Validazione parametri obbligatori
+                  IF p_soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_soggetto_id'),
+                          NULL::uuid, 'Soggetto obbligatorio.'
+                      );
+                  END IF;
+
+                  IF p_qualifica_id IS NULL OR p_qualifica_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_qualifica_id'),
+                          NULL::uuid, 'Qualifica obbligatoria.'
+                      );
+                  END IF;
+
+                  -- Guard prerequisiti
+                  IF NOT EXISTS (
+                      SELECT 1 FROM config.qualifiche
+                       WHERE id = p_qualifica_id AND attivo = true
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('qualifica_id', p_qualifica_id),
+                          NULL::uuid, 'Qualifica non trovata o non attiva.'
+                      );
+                  END IF;
+
+                  IF p_unita_organizzativa_id IS NOT NULL THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM config.unita_organizzative
+                           WHERE id = p_unita_organizzativa_id AND attivo = true
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_ADMIN_UO_NON_TROVATA',
+                              jsonb_build_object('unita_organizzativa_id', p_unita_organizzativa_id),
+                              NULL::uuid,
+                              'Unita'' organizzativa non trovata o non attiva.'
+                          );
+                      END IF;
+                  END IF;
+
+                  IF p_auth_user_id IS NOT NULL THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM django.auth_user WHERE id = p_auth_user_id
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_ADMIN_VALIDAZIONE',
+                              jsonb_build_object('auth_user_id', p_auth_user_id),
+                              NULL::uuid, 'auth_user non trovato.'
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Step 1: soggetto_ruolo RIS_UMANA
+                  SELECT script.fn_get_or_create_soggetto_ruolo(
+                      p_soggetto_id, 'RIS_UMANA'
+                  ) INTO v_sr_id;
+
+                  -- Step 2: risorsa umana
+                  INSERT INTO anagrafiche.risorse_umane (
+                      soggetto_ruolo_id, soggetto_id, qualifica_id,
+                      unita_organizzativa_id, valido_dal, valido_al, attivo
+                  )
+                  VALUES (
+                      v_sr_id, p_soggetto_id, p_qualifica_id,
+                      p_unita_organizzativa_id, p_valido_dal, p_valido_al, true
+                  )
+                  RETURNING id INTO v_ru_id;
+
+                  -- Step 3: identita_digitali OPERATORE.
+                  -- Differenza vs v1: attivo = p_attivo (default true).
+                  IF p_auth_user_id IS NOT NULL THEN
+                      INSERT INTO anagrafiche.identita_digitali (
+                          soggetto_ruolo_id,
+                          auth_user_id,
+                          ruolo_applicativo,
+                          attivo,
+                          valido_dal,
+                          valido_al
+                      )
+                      VALUES (
+                          v_sr_id,
+                          p_auth_user_id,
+                          'OPERATORE'::config.ruolo_applicativo,
+                          p_attivo,
+                          COALESCE(p_valido_dal, CURRENT_DATE),
+                          p_valido_al
+                      )
+                      RETURNING id INTO v_identita_id;
+
+                      -- Step 4: binding SUPER_ADMIN se richiesto.
+                      -- Differenza vs v1: predicato boolean diretto invece
+                      -- di confronto con enum legacy.
+                      IF p_is_super_admin THEN
+                          INSERT INTO config.profili_accesso_bindings (
+                              profilo_accesso_id,
+                              identita_digitale_id,
+                              attivo
+                          )
+                          VALUES (
+                              9100,
+                              v_identita_id,
+                              true
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN v_ru_id;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- ⚠️ Ancorate alle colonne (AGENTS.md, linee-guida-sql §5b).
+                --   Le due preesistenti erano `text` nudo: corrette qui, non
+                --   e' un cambio di comportamento.
+                v_cf_child   anagrafiche.soggetti.id_fiscale_univoco_cf_piva%TYPE;
+                v_cf_parent  anagrafiche.soggetti.id_fiscale_univoco_cf_piva%TYPE;
+                v_sog_child  anagrafiche.soggetti.id%TYPE;
+                v_sog_parent anagrafiche.soggetti.id%TYPE;
+              BEGIN
+                ------------------------------------------------------------------
+                -- 1) NORMALIZE (pulizie/derive)
+                ------------------------------------------------------------------
+                -- (Riservato per future normalizzazioni)
+
+                ------------------------------------------------------------------
+                -- 2) GUARD (validazioni di business con errori)
+                ------------------------------------------------------------------
+
+                -- 2.0) Parent: vieta self-reference
+                IF NEW.parent_account_id IS NOT NULL AND NEW.parent_account_id = NEW.id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', TG_NAME, 'E_PARENT_SELF',
+                    jsonb_build_object('codice', NEW.codice, 'parent_account_id', NEW.parent_account_id),
+                    NULL::uuid, NEW.parent_account_id::text
+                  );
+                END IF;
+
+                -- 2.1) Se c'e parent, valido_dal e' obbligatorio
+                IF NEW.parent_account_id IS NOT NULL AND NEW.valido_dal IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', TG_NAME, 'E_VALORE_MANCANTE',
+                    jsonb_build_object('codice', NEW.codice, 'campo', 'valido_dal'),
+                    NULL::uuid, 'valido_dal'
+                  );
+                END IF;
+
+                -- 2.2) Coerenza del SOGGETTO FISCALE fra parent e child.
+                --
+                --   Rev 2026-08-18 (P-3, brief §4 e §11.1). Prima confrontava
+                --   solo il codice fiscale con IS DISTINCT FROM, e aveva due
+                --   buchi che si sommavano:
+                --
+                --   a) `NULL IS DISTINCT FROM NULL` e' FALSO -> due BA
+                --      entrambi senza CF passavano anche se di soggetti
+                --      DIVERSI. Il classico NULL in una chiave;
+                --   b) la SELECT sul padre passa dalle policy RLS (questa
+                --      funzione e' SECURITY INVOKER): un padre di un altro
+                --      emittente non viene trovato, v_cf_parent restava NULL
+                --      e il guard sollevava E_ID_FISCALI_DIVERSI su due CF
+                --      IDENTICI — un messaggio che nomina la causa sbagliata.
+                --
+                --   Ora: il padre non trovato ha il suo codice; e quando il
+                --   codice fiscale non e' utilizzabile come prova si ripiega
+                --   sul SOGGETTO, che c'e' sempre.
+                IF NEW.parent_account_id IS NOT NULL THEN
+                  SELECT s.id, s.id_fiscale_univoco_cf_piva
+                    INTO v_sog_child, v_cf_child
+                    FROM anagrafiche.istanze_utilities iu
+                    JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                  WHERE iu.id = NEW.istanza_utility_id;
+
+                  SELECT s2.id, s2.id_fiscale_univoco_cf_piva
+                    INTO v_sog_parent, v_cf_parent
+                    FROM anagrafiche.billing_account ba
+                    JOIN anagrafiche.istanze_utilities iu2 ON iu2.id = ba.istanza_utility_id
+                    JOIN anagrafiche.soggetti s2 ON s2.id = iu2.soggetto_id
+                  WHERE ba.id = NEW.parent_account_id;
+
+                  -- ⚠️ FOUND si riferisce all'ULTIMA SELECT INTO, che e' quella
+                  --   sul padre: e' il test preciso, e va fatto subito — una
+                  --   SELECT INTO a vuoto AZZERA le variabili, quindi piu' in
+                  --   basso «NULL» non direbbe piu' se il padre manca o se e'
+                  --   il suo CF a mancare.
+                  IF NOT FOUND THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_PARENT_NON_RAGGIUNGIBILE',
+                      jsonb_build_object(
+                        'codice', NEW.codice,
+                        'parent_account_id', NEW.parent_account_id,
+                        'campo',  'parent_account_id',
+                        'detail', 'parent inesistente oppure fuori dal perimetro RLS di chi scrive'
+                      ),
+                      NULL::uuid,
+                      NEW.parent_account_id::text
+                    );
+                  END IF;
+
+                  IF v_cf_child IS NULL OR v_cf_parent IS NULL THEN
+                    -- Il codice fiscale non e' utilizzabile come prova di
+                    -- identita': si confronta il soggetto. Due BA dello STESSO
+                    -- soggetto senza CF restano legittimi — ed e' il motivo per
+                    -- cui qui non si rifiuta e basta.
+                    IF v_sog_child IS DISTINCT FROM v_sog_parent THEN
+                      PERFORM script.fn_log_and_raise_error(
+                        'database', TG_NAME, 'E_PARENT_SOGGETTO_DIVERSO',
+                        jsonb_build_object(
+                          'codice', NEW.codice,
+                          'parent_account_id', NEW.parent_account_id,
+                          'campo',  'parent_account_id',
+                          'soggetto_id', v_sog_child,
+                          'parent_soggetto_id', v_sog_parent
+                        ),
+                        NULL::uuid,
+                        NEW.parent_account_id::text
+                      );
+                    END IF;
+                  ELSIF v_cf_child IS DISTINCT FROM v_cf_parent THEN
+                    -- Entrambi i CF presenti e diversi: il caso storico.
+                    -- ⚠️ Due soggetti DIVERSI con lo stesso CF continuano a
+                    --   passare, ed e' voluto: quella e' identita' fiscale, che
+                    --   e' cio' che il guard presidia.
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_ID_FISCALI_DIVERSI',
+                      jsonb_build_object(
+                        'codice', NEW.codice,
+                        'parent_account_id', NEW.parent_account_id,
+                        'campo',  'parent_account_id',
+                        'id_fiscale_univoco_cf_piva', v_cf_child,
+                        'parent_id_fiscale_univoco_cf_piva', v_cf_parent
+                      ),
+                      NULL::uuid,
+                      NEW.parent_account_id::text, v_cf_child, v_cf_parent
+                    );
+                  END IF;
+                END IF;
+
+                -- 2.3) Coerenza date validita
+                IF NEW.valido_al IS NOT NULL THEN
+                  IF NEW.valido_dal IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_VALORE_MANCANTE',
+                      jsonb_build_object('codice', NEW.codice, 'column', 'valido_al_requires_valido_dal'),
+                      NULL::uuid, 'valido_al'
+                    );
+                  ELSIF NEW.valido_al < NEW.valido_dal THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_DATA_FINE_NON_MAGGIORE_DI_INIZIO',
+                      jsonb_build_object('valido_dal', NEW.valido_dal, 'valido_al', NEW.valido_al),
+                      NULL::uuid, NEW.valido_al::text, NEW.valido_dal::text
+                    );
+                  END IF;
+                END IF;
+
+                -- 2.4) Guard dissociazione parent: blocca la rimozione di parent_account_id
+                --      quando esistono attivita_fatturabili non ancora fatturate sul BA figlio.
+                --      Questo previene la corruzione della catena di fatturazione:
+                --        fatture.billing_account_id (padre) → fatture_righe.dest_billing_account_id (figlio)
+                IF TG_OP = 'UPDATE'
+                   AND OLD.parent_account_id IS NOT NULL
+                   AND NEW.parent_account_id IS NULL
+                THEN
+                  IF EXISTS (
+                    SELECT 1
+                      FROM vendite.attivita_fatturabili af
+                     WHERE af.billing_account_id = NEW.id
+                       AND af.fatturato IS FALSE
+                  ) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_DISSOCIAZIONE_PARENT_CON_ATTIVITA',
+                      jsonb_build_object(
+                        'billing_account_id', NEW.id,
+                        'codice', NEW.codice,
+                        'ex_parent_account_id', OLD.parent_account_id,
+                        'detail', 'Impossibile rimuovere parent_account_id: esistono attivita non fatturate collegate a questo billing account'
+                      ),
+                      NULL::uuid,
+                      NEW.id::text, OLD.parent_account_id::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_conti_bancari_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard su anagrafiche.soggetti_conti_bancari.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F4+F5):
+              --   - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+              --   - SQLERRM fuori da un blocco EXCEPTION non e' risolvibile.
+              --   - NEW.data_al / NEW.data_dal non sono colonne di questa
+              --     tabella: sono valido_al / valido_dal, le stesse gia' usate
+              --     nell'IF che governa il ramo.
+              DECLARE
+                v_attivo boolean;
+              BEGIN
+                -- Evita legami a conti_bancari disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                 WHERE id = NEW.conto_bancario_id;
+                IF v_attivo IS NOT TRUE THEN
+
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_soggetti_conti_bancari_guard',
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'campo', 'conto_bancario_id',
+                                        'tabella','anagrafiche.conti_bancari',
+                                        'conto_bancario_id',  NEW.conto_bancario_id::text
+                                      ) , NULL::uuid, NEW.conto_bancario_id::text
+                                    );
+
+                END IF;
+
+                -- Coerenza validità già controllata da CHECK, ma forziamo normalizzazione date
+                IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
+                   AND NEW.valido_al < NEW.valido_dal THEN
+
+                    PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_soggetti_conti_bancari_guard',
+                                      'E_DATA_AL_MINORE_DAL',
+                                      jsonb_build_object(
+                                        'tabella','anagrafiche.soggetti_conti_bancari',
+                                        'valido_al',  NEW.valido_al::text,
+                                        'valido_dal',  NEW.valido_dal::text
+                                      ) , NULL::uuid, NEW.valido_al::text, NEW.valido_dal::text
+                                    );
+                END IF;
+
+
+                RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard su anagrafiche.soggetti_ruoli_conti_bancari.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F4):
+              --   - TGNAME -> TG_NAME (la variabile speciale ha l'underscore;
+              --     senza, plpgsql la risolve come colonna e non la trova).
+              --   - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+              DECLARE
+                v_attivo boolean;
+              BEGIN
+                -- Evita legami a conti disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                WHERE id = NEW.conto_bancario_id;
+                IF v_attivo IS NOT TRUE THEN
+
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      TG_NAME,
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'campo', 'conto_bancario_id',
+                                        'tabella','soggetti_ruoli_conti_bancari',
+                                        'conto_bancario_id',  NEW.conto_bancario_id::text
+                                      ) ,
+                                       NEW.tx_id::uuid,
+                                       NEW.conto_bancario_id::text
+                                    );
+                END IF;
+
+                -- Coerenza date
+                IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
+                  AND NEW.valido_al < NEW.valido_dal THEN
+
+                      PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      TG_NAME,
+                                      'E_DATA_AL_MINORE_DAL',
+                                      jsonb_build_object(
+                                        'tabella','anagrafiche.soggetti_ruoli_conti_bancari',
+                                        'valido_al',  NEW.valido_al::text,
+                                        'valido_dal',  NEW.valido_dal::text
+                                      ) ,
+                                      NEW.tx_id::uuid,
+                                      NEW.valido_al::text, NEW.valido_dal::text
+                                    );
+                END IF;
+                RETURN NEW;
+              END
+              $function$
+              ;

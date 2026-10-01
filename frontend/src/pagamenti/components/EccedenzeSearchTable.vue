@@ -16,6 +16,7 @@
 //    l'abbia deciso.
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 
@@ -31,6 +32,8 @@ import { useEtichettePagamenti } from '../etichette'
 import { formatCurrency } from '../../core/utils/format'
 import { SEVERITY_CHI_E_IN_CREDITO } from '../vocabolari'
 import { useEccedenzeStore } from '../stores/eccedenze'
+import { STATUS_ICONS } from '../../core/constants'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click'])
 const { t } = useI18n()
@@ -38,7 +41,7 @@ const store = useEccedenzeStore()
 const isBlocked = useInjectBlocked()
 
 const {
-  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   searchTableOptions: { defaultSortField: 'eccedenza_cliente', defaultSortOrder: 'desc' },
@@ -74,18 +77,28 @@ onMounted(() => store.fetchList())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <!-- La ricerca: colonne dal catalogo (`ricerca_full`: senza colonne
+               accese la casella non si rende), sotto 3 caratteri il termine
+               non filtra. -->
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
           <Select
             v-model="creditoFilter"
+            class="app-filter-w-md"
             :options="opzioniCredito"
             option-label="label"
             option-value="value"
             :placeholder="t('pagamenti.eccedenze.filtro_credito')"
             show-clear
-            style="width: 220px;"
             @update:model-value="onCreditoChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -140,7 +153,7 @@ onMounted(() => store.fetchList())
 
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-check-circle" />
+            <i :class="STATUS_ICONS.TUTTO_OK" />
             <p>{{ t('pagamenti.eccedenze.nessuna_eccedenza') }}</p>
           </div>
         </template>

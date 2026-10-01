@@ -5,6 +5,7 @@
 **Consumatori (push-list, eleggibile ⇔ LIBERA):**
 >
 • [vendite.fn_list_ordini_da_pushare](/dbzero/vendite/funzioni/fn_list_ordini_da_pushare)
+> • [vendite.fn_ddt_push_diagnosi](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi) — per il DDT lo legge lei (rank 4 e colonna `segment`), e il lister ne deriva
 > • [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare)
 > • [vendite.fn_list_contratti_da_pushare](/dbzero/vendite/funzioni/fn_list_contratti_da_pushare)
 >
@@ -27,9 +28,13 @@ dalle push-list) e ritorna:
 | `ALLOCATA` | attività presenti, non tutte fatturate — pushata, in attesa di billing. **ANNULLATA inclusa** (decisione preventivi 2026-06-28: instradata = esclusa; il ri-push è un flusso da progettare a parte) |
 | `EMESSA` | attività presenti e **tutte** fatturate |
 
-Il match è `uguaglianza OR LIKE '<key>#CMP:%'`: vede anche le attività dei
-**componenti BoM**, il cui suffisso `#CMP:<componente_id>` è appeso dal BE
-esattamente alla segment_key della riga (`commesse_source_handlers.py`).
+Il match è «la chiave esatta, o la chiave con un suffisso `#CMP:` / `#RET:`»:
+vede anche le attività dei **componenti BoM**, il cui suffisso `#CMP:<componente_id>`
+è appeso dal BE esattamente alla segment_key della riga
+(`commesse_source_handlers.py`), e le **rettifiche** (`#RET:<n>`, rev 2026-08-18).
+Dal 2026-09-21 il predicato non è più scritto con `LIKE` ma come **range a byte**
+sugli operatori del pattern — vedi la revisione in fondo: sotto la policy RLS un
+`LIKE` non usa mai l'indice.
 
 ### Perché esiste
 
@@ -50,9 +55,13 @@ semantica si tocca un posto solo.
 - `fn_list_consumi_da_pushare` NON la usa: la sua chiave è un prefisso
   per-documento (`CONS:<uid>:%`), già corretto; lì il fix è stato solo
   rimuovere il filtro su `stato_emissione`.
-- ⚠️ Performance: il ramo `LIKE '...#CMP:%'` non usa il btree standard su
-  `segment_key` (collazione non-C). Costo già accettato dal precedente
-  preventivi; se il batch rallenta, la cura è un indice `varchar_pattern_ops`.
+- ⚠️ Performance: fino al 2026-09-21 i due rami `LIKE '...#CMP:%'` / `'...#RET:%'`
+  erano una scansione intera di `commesse_attivita` **sotto la policy RLS**, a
+  ogni chiamata — e la diagnosi del DDT la chiama per ogni riga attiva. La cura
+  non era «solo» l'indice `varchar_pattern_ops` che questa riga prometteva:
+  vedi la revisione del 2026-09-21.
+- `BEGIN ATOMIC` (dal 2026-09-21): le dipendenze stanno in `pg_depend`; una
+  rinomina di `commesse_attivita` viene rifiutata.
 
 ### Dipendenze DB
 
@@ -104,3 +113,53 @@ sarebbe **solo** la cintura XOR sullo stato del documento d'ordine.
 `RETTIFICA` erano zero, quindi nessun segmento conteneva `#RET:` e il
 classificatore rispondeva esattamente come prima su ogni riga esistente. È una
 cintura che entra in funzione il giorno in cui serve.
+
+---
+
+### 🔄 rev 2026-09-21 — il range leakproof: l'indice serve solo se la clausola sale sopra la policy
+
+Brief: `brief-db-partita-merce-per-documento` §11 (**D14 giro 4, D8**).
+
+Il classificatore è chiamato **per ogni riga attiva** di un DDT dalla diagnosi
+(`fn_ddt_push_diagnosi`, colonna `segment`), e dal giro 3 la lista del push
+senza documento eredita quel costo: 54 righe × 7,6 ms erano 400 dei 663 ms del
+cockpit (fatto datato, dbdev come app, 21-09 sera). La causa sul modello:
+`commesse_attivita` è sotto RLS, e con i due `LIKE` la lettura era la tabella
+intera con la policy valutata **riga per riga**.
+
+⛔ **E l'indice da solo non l'avrebbe curata.** Provato come `zeroerp_app` su una
+tabella con `FORCE ROW LEVEL SECURITY` e una policy non leakproof: sotto una
+policy PostgreSQL mette in un indice **solo clausole leakproof** — una clausola
+valutata prima della policy potrebbe far trapelare righe invisibili — e `LIKE`
+(`textlike`) non lo è. Nemmeno a costante diventa `Index Cond`; senza policy il
+planner lo riscrive nel range e usa l'indice, ed è per questo che la prova da
+owner mente.
+
+La forma che regge è quella che il planner farebbe da solo se potesse, **scritta a
+mano** con gli operatori del pattern, che confrontano i byte e sono leakproof:
+
+```text
+segment_key = k
+OR (segment_key ~>=~ k || '#CMP:'  AND  segment_key ~<~ k || '#CMP;')
+OR (segment_key ~>=~ k || '#RET:'  AND  segment_key ~<~ k || '#RET;')
+```
+
+`;` è il byte dopo `:`, quindi `[k#CMP:, k#CMP;)` è **esattamente** «comincia per
+`k#CMP:`». Con l'indice `ix_commesse_attivita_segment_key` in `varchar_pattern_ops`
+(ricreato nello stesso giro) è un `BitmapOr` di tre `Index Cond` sopra la policy,
+in piano generico e custom.
+
+**Semantica identica** per le chiavi che il classificatore riceve (uuid, cifre,
+`:`): il range è un prefisso a byte, il `LIKE` un prefisso a caratteri con `_`/`%`
+jolly, e nessuna chiave li contiene. Il vicino numerico (`:R:1` non vede `:R:12`)
+e il suffisso ignoto (`#FOO` → `LIBERA`, come prima) sono i casi costruiti dal
+presidio.
+
+⛔ **Un `LIKE` qui dentro non deve tornare**: il presidio
+`db/pgtap/script/test-fn-get-stato-push-segment-v1.sql` pinna la forma (il corpo
+deparsato non contiene `LIKE` né `~~`) oltre ai tre valori con e senza suffissi.
+
+⚠️ Resta aperta **D8(b)** del brief: una forma set-based (una scansione per
+documento invece di una chiamata per riga, con questa scalare come proiezione)
+per la lista senza documento — si decide sulla misura dopo l'apply.
+

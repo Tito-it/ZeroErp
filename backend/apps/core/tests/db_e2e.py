@@ -75,7 +75,7 @@ def richiedi_db_provvisto(sonda: str = SONDA_SCHEMA_LIQUIBASE) -> None:
 
     try:
         connection.ensure_connection()
-    except Exception as exc:  # noqa: BLE001 — qualunque errore = DB non usabile
+    except Exception as exc:  # qualunque errore = DB non usabile
         raise unittest.SkipTest(f"DB non raggiungibile: {exc}") from exc
 
     # ⚠️ Raggiungibile != provvisto: un database c'e', ma potrebbe essere quello
@@ -197,6 +197,39 @@ def apri_contesto_operatore(cur) -> int:
     return int(riga[0])
 
 
+# Scopo: apre la transazione di un test sul DB vero e ne REGISTRA l'annullo,
+#        che gira sempre: a test finito, fallito, saltato — e anche quando a
+#        interrompersi e' il `setUp` stesso. Da chiamare come prima istruzione
+#        del `setUp`, prima di qualunque cosa possa sollevare.
+#
+# ⭐ ESTRATTO IL 2026-10-01 (regola del 2, ok di Tid): la coppia «`atomic` in
+#    `setUp`, `set_rollback` + `__exit__` in `tearDown`» stava in sei classi di
+#    cinque file — `test_login_credenziale_db`, `test_token_veste_db`,
+#    `test_obblighi_e_secondo_fattore_db`, `test_pannello_verbo_db` (due) e
+#    `amm_software/.../test_override_oggetti_catalogo_db`.
+#
+# 🔴 PERCHE' `addCleanup` E NON `tearDown`, ed e' il difetto che le sei copie
+#    avevano tutte. Se il `setUp` si interrompe, `unittest` NON chiama
+#    `tearDown`: chiama solo i cleanup gia' registrati. Con l'annullo in
+#    `tearDown`, uno `SkipTest` sollevato dopo l'`atomic` — per esempio da
+#    `apri_contesto_operatore` su un database senza utenti, cioe' quello che la
+#    CI ricostruisce da zero — lasciava la transazione APERTA sulla connessione
+#    condivisa. Da li' in poi ogni test cadeva su «c'e' gia' una transazione
+#    aperta» o «current transaction is aborted»: 274 rossi il 2026-10-01, quasi
+#    tutti in test che col DB non c'entravano, e nessuno che indicasse la causa.
+def apri_transazione_annullata(test: unittest.TestCase) -> None:
+    from django.db import transaction
+
+    blocco = transaction.atomic()
+    blocco.__enter__()
+
+    def _annulla() -> None:
+        transaction.set_rollback(True)
+        blocco.__exit__(None, None, None)
+
+    test.addCleanup(_annulla)
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  I VOCABOLARI SPECCHIATI — Python contro il CHECK che li possiede
 # ══════════════════════════════════════════════════════════════════════
@@ -256,3 +289,50 @@ def valori_check(tabella: str, conname: str) -> set[str]:
     valori = set(_CHECK_LITERAL_RE.findall(blocco.group(1)))
     assert valori, f"CHECK {conname} senza letterali interpretabili: {definizione}"
     return valori
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  LA RICERCA LIBERA — ogni colonna accesa trova la sua riga
+# ══════════════════════════════════════════════════════════════════════
+#
+# ⭐ Regola del 2 (ok di Tid, 2026-09-23): nato nel test delle anagrafiche di
+#    magazzino, alla seconda lista che voleva la stessa prova. E' la prova di
+#    brief-be-ricerca-full-liste-residue §5.4 p.3, resa permanente: i test di
+#    servizio mockano il repository e non vedono la SQL, `EXPLAIN` dice che la
+#    SQL parte ma non che TROVA.
+#
+# ⚠️ Le colonne si leggono dal CATALOGO per l'operatore corrente
+#    (`ui.fn_lista_colonne_ricerca_full`), non dal test: una colonna accesa
+#    domani senza un valore qui fa rosso, invece di restare non provata.
+
+# Scopo: per ogni colonna che il catalogo accende nella lista, `cerca(valore)`
+#        deve restituire la riga `riga_id`; un termine che non c'e' da nessuna
+#        parte non restituisce niente.
+# Param: `valori` = `campo_sorgente -> termine` che sta in quella colonna della
+#        riga; `cerca(termine)` torna le righe della lista (dict); `chiave` e' il
+#        campo della riga che porta l'id.
+# ⚠️ Va chiamata DENTRO la transazione del contesto: senza, il catalogo si legge
+#    senza operatore e i permessi di colonna non si applicano.
+def verifica_ricerca_colonna_per_colonna(
+    test: unittest.TestCase,
+    cur,
+    lista: str,
+    riga_id: object,
+    valori: dict[str, str],
+    cerca,
+    *,
+    chiave: str = "id",
+) -> None:
+    cur.execute("SELECT campo_sorgente FROM ui.fn_lista_colonne_ricerca_full(%s)", [lista])
+    accese = {r[0] for r in cur.fetchall()}
+    test.assertTrue(accese, f"{lista}: nessuna colonna accesa per l'operatore")
+    test.assertFalse(
+        accese - valori.keys(),
+        f"{lista}: colonne accese senza un valore da cercare: {sorted(accese - valori.keys())}",
+    )
+    for col in sorted(accese):
+        with test.subTest(lista=lista, colonna=col):
+            ids = [r[chiave] for r in cerca(valori[col])]
+            test.assertIn(riga_id, ids)
+    with test.subTest(lista=lista, colonna=None):
+        test.assertEqual(list(cerca("zzznessunoqui")), [])

@@ -13,7 +13,7 @@
 //        Convenzione valore firmato (negativo = sconto) allineata al resolver
 //        DB: ammessi valori negativi, rifiutato 0 per PERCENTUALE/VALORE_FISSO.
 //        PREZZO_FISSO accetta solo >= 0 (prezzo assoluto sostitutivo).
-import { ref, watch, computed, provide } from 'vue'
+import { ref, watch, computed, provide, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePromoArticoliStore } from '../stores/promoArticoli'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -23,12 +23,13 @@ import { useParameterDefaults } from '../../core/composables/useParameterDefault
 import { DRAWER_WIDTH } from '../../core/constants'
 import { addDaysToToday, parseIsoDate, toDateString } from '../../core/utils/date'
 import { paramBool, paramInt } from '../../core/utils/parameterCast'
-import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -59,7 +60,8 @@ const isEdit = computed(() => props.mode === 'edit')
 // feedback_content_ready_after_show, applicato 2026-05-22).
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
-// Capability dal detail backend (Fase 1.B3: script.fn_capability_promo_articolo).
+// Capability dal detail backend (Fase 1.B3: script.fn_capability_promo_articolo),
+// lette da `detail.capabilities` via il BB:
 //   - stato_temporale: FUTURA | INIZIATA | SCADUTA (data-driven puro)
 //   - can_update + can_update_reason: editabilita' globale
 //   - min_valido_dal / min_valido_al: vincoli minDate (Date | null)
@@ -68,12 +70,13 @@ const detail = ref(null)
 // Composable centralizzato (Fase 4.F2): editFlag custom can_update; in create
 // il drawer usa default true (no detail) — wrappato in canUpdate computed sotto.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_update' })
-const statoTemporale = computed(() => detail.value?.stato_temporale || null)
+const capabilities = caps.capabilities
+const statoTemporale = computed(() => capabilities.value.stato_temporale || null)
 // In create detail=null -> can_update non e' valutato dal BE; lasciamo true.
 const canUpdate = computed(() => !isEdit.value || caps.canEdit.value)
-const canUpdateReason = computed(() => detail.value?.can_update_reason || null)
-const minValidoDalDetail = computed(() => parseIsoDate(detail.value?.min_valido_dal))
-const minValidoAlDetail = computed(() => parseIsoDate(detail.value?.min_valido_al))
+const canUpdateReason = computed(() => capabilities.value.can_update_reason || null)
+const minValidoDalDetail = computed(() => parseIsoDate(capabilities.value.min_valido_dal))
+const minValidoAlDetail = computed(() => parseIsoDate(capabilities.value.min_valido_al))
 
 // Helper: campo bloccato. In create niente locked (detail assente, l'utente
 // puo' valorizzare tutto); in edit applica isLocked del composable.
@@ -141,6 +144,9 @@ const form = ref({
   valido_al: null,
   attivo: true
 })
+// Modifiche non salvate: fotografia a form popolato (creazione o modifica),
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 function resetForm() {
   form.value = {
@@ -187,8 +193,8 @@ async function loadDetail() {
   if (!props.recordId) return
   const data = await store.fetchDetail(props.recordId)
   if (!data) return
-  // Detail completo (include il blob capabilities spalmato dal backend:
-  // stato_temporale, can_update[+reason], min_valido_*, non_editable_fields).
+  // Detail completo (include il blob `capabilities`: stato_temporale,
+  // can_update[+reason], min_valido_*, non_editable_fields).
   detail.value = data
   form.value = {
     codice: data.codice ?? '',
@@ -222,10 +228,14 @@ watch(
     // valido_dal/attivo dai default seedati.
     await loadParamDefaults()
     if (isEdit.value) {
-      loadDetail()
+      await loadDetail()
     } else {
       resetForm()
     }
+    // Dopo il nextTick: il watch su articolo_obj qui sotto puo' ancora
+    // scrivere uom_id, e la fotografia deve vedere il form com'e' davvero.
+    await nextTick()
+    fissa()
   }
 )
 
@@ -300,19 +310,28 @@ async function handleSave() {
         : t('vendite.promo_articoli.created')
     }
   )
-  if (result !== null) emit('saved', result)
+  if (result !== null) {
+    // Salvato: il parent chiude dopo aver ricaricato la lista, e nel
+    // frattempo il drawer non deve dirsi «modificato».
+    fissa()
+    emit('saved', result)
+  }
 }
 
 function close() {
   emit('update:visible', false)
   emit('cancelled')
 }
+
+// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
+const chiudi = () => chiudiConConferma(close)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="v => emit('update:visible', v)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
@@ -320,6 +339,7 @@ function close() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('vendite.promo_articoli.drawer_title')"
       />
@@ -466,7 +486,7 @@ function close() {
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"
-        @cancel="close"
+        @cancel="chiudi"
       />
       </template>
     </div>

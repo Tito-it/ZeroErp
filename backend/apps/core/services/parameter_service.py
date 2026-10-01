@@ -17,6 +17,22 @@ from apps.core.db.parameter_repository import ParameterRepository
 from apps.core.services.error_manager import ErrorManager
 
 
+# Scopo: L'esito di un upsert di override: l'id, oppure 404
+#        `E_PARAMETER_NOT_FOUND` se il parametro non esiste (il repository torna
+#        None). Una sede per i tre livelli.
+# ⛔ Fino al 2026-09-28 un codice inesistente arrivava all'INSERT con
+#    `parameter_id` NULL: violazione NOT NULL, cioe' `E_DATABASE` 400 col
+#    messaggio tecnico nascosto (E-9 dell'analisi difetti doc API core).
+def _parametro_esistente(override_id: int | None, parameter_code: str) -> int:
+    ErrorManager.require(
+        override_id is not None,
+        code="E_PARAMETER_NOT_FOUND",
+        message=f"Parametro '{parameter_code}' non trovato.",
+    )
+    assert override_id is not None
+    return override_id
+
+
 class ParameterService:
     """Facade per parametri di sistema con risoluzione override."""
 
@@ -70,7 +86,6 @@ class ParameterService:
                 message=f"Parametro '{code}' non convertibile a intero.",
                 detail=f"Valore attuale: '{value}'",
             )
-            raise  # unreachable, per type checker
 
     # Scopo: Risolve un singolo parametro e lo converte a Decimal.
     #        Utile per parametri numerici non-id (percentuali, soglie, limiti).
@@ -98,7 +113,6 @@ class ParameterService:
                 message=f"Parametro '{code}' non convertibile a decimale.",
                 detail=f"Valore attuale: '{value}'",
             )
-            raise  # unreachable, per type checker
 
     # Scopo: Risolve N parametri in un colpo con override utente.
     #        Restituisce dizionario {code: valore}. I parametri non trovati
@@ -152,7 +166,10 @@ class ParameterService:
             code="E_PARAMETER_VALIDATION",
             message="ID utente obbligatorio.",
         )
-        return self._repo.upsert_user_override(parameter_code, django_user_id, value)
+        return _parametro_esistente(
+            self._repo.upsert_user_override(parameter_code, django_user_id, value),
+            parameter_code,
+        )
 
     # Scopo: Rimuove un override personale dell'utente.
     def delete_user_override(
@@ -191,8 +208,11 @@ class ParameterService:
             code="E_PARAMETER_VALIDATION",
             message="ID emittente fiscale obbligatorio.",
         )
-        return self._repo.upsert_emittente_override(
-            parameter_code, emittente_fiscale_id, value,
+        return _parametro_esistente(
+            self._repo.upsert_emittente_override(
+                parameter_code, emittente_fiscale_id, value,
+            ),
+            parameter_code,
         )
 
     # Scopo: Rimuove un override a livello emittente.
@@ -240,8 +260,11 @@ class ParameterService:
             code="E_PARAMETER_VALIDATION",
             message="ID categoria cliente obbligatorio.",
         )
-        return self._repo.upsert_categoria_cliente_override(
-            parameter_code, categoria_cliente_id, value,
+        return _parametro_esistente(
+            self._repo.upsert_categoria_cliente_override(
+                parameter_code, categoria_cliente_id, value,
+            ),
+            parameter_code,
         )
 
     # Scopo: Rimuove un override a livello categoria_cliente.

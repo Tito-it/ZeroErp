@@ -27,7 +27,7 @@
 --   4.  Catalogo grezzo 3b: conferma is(2)
 --   5.  Preset di sistema -> pagina_dimensione=10
 --   6.  Preset di profilo -> pagina_dimensione=50 (prevale su sistema)
---   7.  Preferenza utente -> pagina_dimensione=99 (prevale su tutto)
+--   7.  Preferenza utente -> pagina_dimensione=100 (prevale su tutto; 99 fino al 2026-09-30, fuori dal catalogo delle misure)
 --   8.  Colonna sensibile con grant LETTURA -> esportabile=false
 --   9.  Colonna identificatore con visibile:false -> normalizzata a true
 --   10. Nuova colonna nel catalogo non in preferenza -> colonne_nuove=1
@@ -210,13 +210,18 @@ CREATE TEMP TABLE _t_au AS WITH ins AS (
 )
 SELECT id AS auth_user_id
 FROM ins;
--- billing account per il soggetto_ruolo (necessario per CLIENTE_PORTALE)
+-- ⛔ Il cliente si COSTRUISCE (2026-09-23). Fino a oggi questa fixture pescava
+--   un `billing_account` esistente: su un database ricostruito non ce n'e'
+--   nessuno, la temp table restava VUOTA, l'INSERT dell'identita' inseriva
+--   zero righe e il binding finiva con `identita_digitale_id` NULL — da cui
+--   l'errore «binding non coerente col tipo del profilo», che nominava il
+--   profilo e non la causa. Il BB costruisce azienda, operatore e cliente
+--   nell'ordine giusto e riusa l'azienda del contesto gia' aperto.
+CREATE TEMP TABLE _t_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('lista config');
+
 CREATE TEMP TABLE _t_sr AS
-SELECT ba.soggetto_ruolo_id AS sr_id
-FROM anagrafiche.billing_account ba
-WHERE ba.soggetto_ruolo_id IS NOT NULL
-ORDER BY ba.id
-LIMIT 1;
+SELECT cliente_soggetto_ruolo_id AS sr_id FROM _t_mondo;
 -- Identita CLIENTE_PORTALE
 CREATE TEMP TABLE _t_id AS WITH ins AS (
     INSERT INTO anagrafiche.identita_digitali (
@@ -499,7 +504,7 @@ SELECT (
         'filtri',
         '{}'::jsonb,
         'pagina_dimensione',
-        99
+        100  -- una misura del catalogo ui.misure_pagina (dal 2026-09-30: 99 lo rifiuta il guard)
     ),
     now();
 SELECT is(
@@ -518,8 +523,8 @@ SELECT is(
                     )->>'pagina_dimensione'
                 )::INTEGER
         ),
-        99,
-        '6. Preferenza utente (pagina_dim=99) prevale su preset profilo (50) e sistema (10)'
+        100,
+        '6. Preferenza utente (pagina_dim=100) prevale su preset profilo (50) e sistema (10)'
     );
 -- =========================================================
 -- 7. Colonna sensibile con grant LETTURA -> presente, esportabile=false
@@ -733,7 +738,9 @@ FROM script.fn_get_profili_accesso_applicabili(
 WHERE priorita > 1
 LIMIT 1;
 
--- Crea preset per il profilo prio>1 con pagina=77 sulla lista di test.
+-- Crea preset per il profilo prio>1 con pagina=25 sulla lista di test
+-- (77 fino al 2026-09-30: fuori dal catalogo ui.misure_pagina, oggi lo rifiuta il
+-- guard; serve solo una misura DIVERSA da 50).
 -- Se non esiste nessun profilo prio>1, il INSERT produce 0 righe
 -- e il test verifica comunque che AD_HOC (prio=1) dia pagina=50.
 INSERT INTO ui.lista_preset (
@@ -753,7 +760,7 @@ SELECT l.lista_id,
     'ruolo',
     p.profilo_accesso_id,
     TRUE,
-    77,
+    25,
     TRUE,
     '_pgtap'
 FROM _t_lista l
@@ -789,7 +796,7 @@ SELECT is(
                 )::INTEGER
         ),
         50,
-        '11. DB-3: AD_HOC (prio=1, pagina=50) prevale su profilo prio>1 (pagina=77)'
+        '11. DB-3: AD_HOC (prio=1, pagina=50) prevale su profilo prio>1 (pagina=25)'
     );
 -- =========================================================
 -- 12. DB-4: GUC app.ruolo_applicativo filtra la veste corrente

@@ -1,0 +1,270 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RISALITA SEGUE UNA CHECK CHE DELEGA A UN'ALTRA CHECK
+#   dbops.vw_funzioni_check_codici
+#   Brief: brief-db-ricerca-full-colonne-da-accendere.md §7 (il rosso del
+#   presidio C2 del 2026-09-24); presidio: brief-be-presidio-ui-action-e-canale-campi §4
+#
+# ── IL ROSSO ─────────────────────────────────────────────────────
+#   db/pgtap/dbops/test-punti-canale-campo-v1.sql, test 2 («nessun ramo
+#   cieco»), dopo 20260924-33…-35:
+#     have: vendite.fn_crea_revisione_offerta, vendite.fn_crea_revisione_preventivo
+#   Le due madri sollevano il primo motivo di script.fn_check_prezzi_in_attesa,
+#   e quella check NON nomina motivi suoi: FILTRA quelli di un'altra,
+#     SELECT … FROM jsonb_array_elements(script.fn_check_prezzi_autorizzati(…))
+#      WHERE m.motivo ->> 'codice' = 'E_DOC_PREZZO_PENDENTE'
+#   ed e' la forma GIUSTA: il predicato del prezzo in attesa vive in un posto
+#   solo. La risalita invece si fermava a UN livello (funzione -> fn_check_*
+#   del corpo -> `'codice', 'E_…'` di QUELLA check): il legame usciva con
+#   codice NULL, cioe' un ramo cieco. Difetto del presidio, non delle madri.
+#
+# ── COSA CAMBIA ──────────────────────────────────────────────────
+#   1. `checks` diventa una CHIUSURA: oltre alle fn_check_* nominate dalle
+#      funzioni plpgsql, anche quelle nominate nel corpo di un'altra check
+#      (una check LANGUAGE sql che delega non sta in `funzioni`, e la sua
+#      delegata altrimenti non entrerebbe);
+#   2. i codici di una check sono i SUOI motivi (come prima) UNITI a quelli
+#      delle check a cui DELEGA, a qualunque profondita'. ⛔ Delegare non e'
+#      «nominare»: una check delega quando RESTITUISCE i motivi dell'altra —
+#      `v_motivi := v_motivi || x.fn_check_…(…)`, `v_m := x.fn_check_…(…)`
+#      per rilanciarli, `jsonb_agg(…)` sugli elementi per filtrarli. Una
+#      check che la CONSUMA (count, EXISTS, jsonb_array_length, IF) emette un
+#      motivo suo e non eredita niente. ⚠️ La prima stesura di questo file
+#      trattava ogni chiamata come delega, e il rubinetto
+#      (test-rubinetto-primo-motivo-v1 t.2) ha messo in perimetro due punti
+#      di fn_check_preventivo_annullabile, che i motivi di
+#      fn_check_sorgente_chiudibile li CONTA soltanto — provato in
+#      transazione annullata il 2026-09-24, corretto prima dell'apply;
+#   3. ⭐ IL FILTRO: se nell'ISTRUZIONE della delega il codice e'
+#      confrontato con dei letterali — `->> 'codice' = 'E_X'` o `IN ('E_X', …)`
+#      — si eredita SOLO quelli. fn_check_prezzi_in_attesa eredita
+#      E_DOC_PREZZO_PENDENTE e non E_DOC_PREZZO_RIFIUTATO, che e' esattamente
+#      cio' che restituisce. Senza filtro scritto, si eredita tutto;
+#   4. `check_emette_valori` si propaga: una check che delega restituisce i
+#      motivi della delegata, `valori` compresi (lo legge il perimetro del
+#      rubinetto, vw_punti_primo_motivo);
+#   5. una riga per (funzione, check, codice) resta vera: un codice che
+#      arriva da piu' strade si aggrega — n_motivi sommato, motivo_chiave
+#      PESSIMISTA come prima (c'e' solo se tutte le strade la portano).
+#
+# ── ⚠️ I LIMITI, DICHIARATI ──────────────────────────────────────
+#   * Euristica sulla forma scritta, come tutta la vista. Un filtro in forma
+#     di esclusione (`<>`, `NOT IN`) non e' riconosciuto: la check eredita
+#     TUTTI i codici della delegata — l'errore sta dal lato di un legame in
+#     piu', mai di un ramo cieco;
+#   * l'istruzione di una delega va dalla chiamata al primo `;`: un filtro
+#     scritto prima della chiamata, nella stessa istruzione, non si vede;
+#   * una forma di delega diversa dalle tre (la chiamata passata come
+#     argomento a un'altra funzione, per esempio) e' letta come consumo:
+#     quella check tornerebbe ramo cieco, e il presidio C2 lo direbbe.
+#
+# ── LE COLONNE NON CAMBIANO ──────────────────────────────────────
+#   Stesse nove, stesso ordine: CREATE OR REPLACE basta, e le due viste che
+#   la leggono (vw_punti_primo_motivo, vw_punti_canale_campo) restano come
+#   sono. security_invoker ripetuto (si azzera a ogni REPLACE). COMMENT
+#   riscritto, GRANT conservato dal REPLACE.
+#
+# Corpo di partenza: doc auto-generata (docs/it/dbzero/dbops/views/
+#   vw_funzioni_check_codici.md), unica revisione 20260921-40.
+# Presidio: test-punti-canale-campo-v1 t.2 (tornato verde) e t.15 (caso
+#   COSTRUITO: delega con filtro).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260924-08-update-vw-funzioni-check-codici-delega-mctit.yaml
+
+  - changeSet:
+      id: 20260924-08-update-vw-funzioni-check-codici-delega
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        dbops.vw_funzioni_check_codici segue la DELEGA fra check: una fn_check_* che
+        restituisce i motivi di un'altra fn_check_* (filtrandoli, come
+        script.fn_check_prezzi_in_attesa con fn_check_prezzi_autorizzati) eredita i codici della
+        delegata, ristretti ai letterali del filtro `->> ''codice'' = / IN (…)` se ce n'e'' uno.
+        Chiude il ramo cieco del presidio C2 sulle due madri di revisione (20260924-34/-35).
+        Colonne invariate: i due lettori restano come sono.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: dbops
+            viewName: vw_funzioni_check_codici
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_funzioni_check_codici
+              WITH (security_invoker=true) AS
+              WITH RECURSIVE funzioni AS MATERIALIZED (
+                  -- Ogni funzione plpgsql viva, sorgente SENZA commenti di
+                  -- riga e di blocco: una check nominata nella prosa non e'
+                  -- un legame.
+                  SELECT p.oid,
+                         n.nspname::text AS sch,
+                         p.proname::text AS fn,
+                         n.nspname::text || '.' || p.proname::text AS funzione,
+                         regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/', '', 'g'),
+                                        '--[^\n]*', '', 'g') AS sorgente
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])
+                     AND p.prolang = (SELECT pg_language.oid FROM pg_language
+                                       WHERE pg_language.lanname = 'plpgsql')
+              ), legami AS (
+                  SELECT DISTINCT f.oid, f.sch, f.fn, f.funzione,
+                         m.m[1] AS csch,
+                         m.m[2] AS cfn
+                    FROM funzioni f
+                    CROSS JOIN LATERAL regexp_matches(f.sorgente, '(\w+)\.(fn_check_\w+)\s*\(', 'g') m(m)
+              ), check_nomi (csch, cfn) AS (
+                  -- ⭐ CHIUSURA: le check nominate dalle funzioni, e quelle
+                  --   nominate nel corpo di un'altra check (a qualunque
+                  --   profondita'). UNION, non UNION ALL: un ciclo di deleghe
+                  --   non fa girare la ricorsione all'infinito.
+                  SELECT l.csch, l.cfn FROM legami l
+                  UNION
+                  SELECT d.m[1], d.m[2]
+                    FROM check_nomi cn
+                    JOIN pg_namespace ns ON ns.nspname = cn.csch
+                    JOIN pg_proc p ON p.proname = cn.cfn AND p.pronamespace = ns.oid
+                    CROSS JOIN LATERAL regexp_matches(
+                        regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/', '', 'g'), '--[^\n]*', '', 'g'),
+                        '(\w+)\.(fn_check_\w+)\s*\(', 'g') d(m)
+              ), checks AS MATERIALIZED (
+                  SELECT DISTINCT c.oid AS check_oid,
+                         cn.csch,
+                         cn.cfn,
+                         (c.prosrc ~ '''valori''') AS emette_valori,
+                         regexp_replace(regexp_replace(c.prosrc, '/\*.*?\*/', '', 'g'),
+                                        '--[^\n]*', '', 'g') AS csrc
+                    FROM check_nomi cn
+                    JOIN pg_namespace ns ON ns.nspname = cn.csch
+                    JOIN pg_proc c ON c.proname = cn.cfn AND c.pronamespace = ns.oid
+              ), deleghe AS (
+                  -- ⭐ DELEGA, non semplice chiamata. Una check DELEGA a
+                  --   un'altra quando ne RESTITUISCE i motivi:
+                  --     v_motivi := v_motivi || x.fn_check_…(…)   (li accoda)
+                  --     v_m := x.fn_check_…(…)                    (li prende per rilanciarli)
+                  --     jsonb_agg(…) … jsonb_array_elements(x.fn_check_…(…)) … WHERE …
+                  --                                               (li filtra)
+                  --   ⛔ Una check che la CONSUMA — count(*), EXISTS,
+                  --   jsonb_array_length, un IF — emette un motivo SUO (gia'
+                  --   in motivi_propri) e non eredita niente: e' il caso di
+                  --   fn_check_preventivo_annullabile, che CONTA i motivi di
+                  --   fn_check_sorgente_chiudibile.
+                  --   `resto` = l'istruzione dalla chiamata al primo `;`: il
+                  --   filtro si cerca li', non in tutto il corpo.
+                  SELECT DISTINCT c.check_oid, d.check_oid AS delegata_oid, x.resto
+                    FROM checks c
+                    CROSS JOIN LATERAL (
+                        SELECT m.m[1] AS dsch, m.m[2] AS dfn, m.m[3] AS resto
+                          FROM regexp_matches(c.csrc,
+                                 '(?:\|\||:=)\s*(\w+)\.(fn_check_\w+)\s*\(([^;]*)', 'g') m(m)
+                        UNION ALL
+                        SELECT m.m[1], m.m[2], m.m[3]
+                          FROM regexp_matches(c.csrc,
+                                 'jsonb_agg\s*\([^;]*?jsonb_array_elements\s*\(\s*(\w+)\.(fn_check_\w+)\s*\(([^;]*)', 'g') m(m)
+                    ) x
+                    JOIN checks d ON d.csch = x.dsch AND d.cfn = x.dfn
+                   WHERE d.check_oid <> c.check_oid
+              ), filtri AS (
+                  -- ⭐ I letterali con cui la delega confronta il codice, nella
+                  --   SUA istruzione: `->> 'codice' = 'E_X'` o `IN ('E_X', …)`.
+                  --   ⚠️ `<>` / NOT IN non sono riconosciuti: senza filtro si
+                  --   eredita tutto (un legame in piu', mai un ramo cieco).
+                  SELECT DISTINCT dl.check_oid, dl.delegata_oid, l.m[1] AS codice
+                    FROM deleghe dl
+                    CROSS JOIN LATERAL regexp_matches(
+                        dl.resto,
+                        '->>\s*''codice''\s*(?:=\s*''E_[A-Z0-9_]+''|IN\s*\([^)]*\))', 'g') f(m)
+                    CROSS JOIN LATERAL regexp_matches(f.m[1], '''(E_[A-Z0-9_]+)''', 'g') l(m)
+              ), motivi AS (
+                  -- Il sorgente si SPEZZA sulle occorrenze di `'codice',`: ogni
+                  -- pezzo e' un motivo, tagliato al primo `;` (la finestra).
+                  SELECT c.check_oid,
+                         (regexp_match(s.pz, '^''(E_[A-Z0-9_]+)'''))[1] AS codice,
+                         split_part(s.pz, ';', 1) AS finestra
+                    FROM checks c
+                    CROSS JOIN LATERAL regexp_split_to_table(c.csrc, '''codice''\s*,\s*')
+                         WITH ORDINALITY s(pz, k)
+                   WHERE s.k > 1
+              ), motivi_propri AS (
+                  SELECT m.check_oid,
+                         m.codice,
+                         count(*)::integer AS n_motivi,
+                         CASE
+                             WHEN bool_and(m.finestra ~ '''campo''\s*,') THEN 'campo'
+                             WHEN bool_and(m.finestra ~ '''(campo|parametro)''\s*,') THEN 'parametro'
+                             ELSE NULL
+                         END AS motivo_chiave
+                    FROM motivi m
+                   WHERE m.codice IS NOT NULL
+                   GROUP BY m.check_oid, m.codice
+              ), codici_rec (check_oid, codice, n_motivi, motivo_chiave) AS (
+                  -- I motivi propri, poi quelli ereditati risalendo le deleghe.
+                  -- Il filtro vale per la check che delega: se ne ha uno,
+                  -- passano solo i codici che nomina.
+                  SELECT mp.check_oid, mp.codice, mp.n_motivi, mp.motivo_chiave
+                    FROM motivi_propri mp
+                  UNION
+                  SELECT dl.check_oid, cr.codice, cr.n_motivi, cr.motivo_chiave
+                    FROM deleghe dl
+                    JOIN codici_rec cr ON cr.check_oid = dl.delegata_oid
+                   WHERE NOT EXISTS (SELECT 1 FROM filtri f
+                                      WHERE f.check_oid = dl.check_oid
+                                        AND f.delegata_oid = dl.delegata_oid)
+                      OR EXISTS (SELECT 1 FROM filtri f
+                                  WHERE f.check_oid = dl.check_oid
+                                    AND f.delegata_oid = dl.delegata_oid
+                                    AND f.codice = cr.codice)
+              ), motivi_per_codice AS (
+                  -- Una riga per (check, codice) anche quando il codice arriva
+                  -- da piu' strade: n_motivi sommato, motivo_chiave pessimista.
+                  SELECT cr.check_oid,
+                         cr.codice,
+                         sum(cr.n_motivi)::integer AS n_motivi,
+                         CASE
+                             WHEN bool_and(cr.motivo_chiave IS NOT DISTINCT FROM 'campo') THEN 'campo'
+                             WHEN bool_and(cr.motivo_chiave IN ('campo', 'parametro')) THEN 'parametro'
+                             ELSE NULL
+                         END AS motivo_chiave
+                    FROM codici_rec cr
+                   GROUP BY cr.check_oid, cr.codice
+              ), valori_rec (check_oid) AS (
+                  -- Emette `valori` se lo fa lei o una check a cui delega.
+                  SELECT c.check_oid FROM checks c WHERE c.emette_valori
+                  UNION
+                  SELECT dl.check_oid
+                    FROM deleghe dl
+                    JOIN valori_rec v ON v.check_oid = dl.delegata_oid
+              )
+              SELECT l.sch,
+                     l.fn,
+                     l.funzione,
+                     l.csch AS check_schema,
+                     l.cfn  AS check_funzione,
+                     EXISTS (SELECT 1 FROM valori_rec v WHERE v.check_oid = c.check_oid)
+                            AS check_emette_valori,
+                     m.codice,
+                     m.n_motivi,
+                     m.motivo_chiave
+                FROM legami l
+                JOIN checks c ON c.csch = l.csch AND c.cfn = l.cfn
+                LEFT JOIN motivi_per_codice m ON m.check_oid = c.check_oid;
+
+              COMMENT ON VIEW dbops.vw_funzioni_check_codici IS
+              'SEDE UNICA della risalita «funzione plpgsql -> fn_check_* nominate nel corpo -> codici che quelle nominano come motivo». Una riga per (funzione, check, codice); codice NULL se la check non nomina motivi (il legame compare lo stesso). motivo_chiave = ''campo''/''parametro'' se il MOTIVO che nomina il codice porta la chiave del canale nel suo dettaglio (che fn_raise_primo_motivo_se_presente fonde nel context) — PESSIMISTA: solo se tutti i motivi di quel codice la portano; n_motivi = quante volte la check lo nomina.
+              ⭐ rev 2026-09-24 (20260924-08) — LA DELEGA: una check che RESTITUISCE i motivi di un''altra fn_check_* (v_motivi || x.fn_check_…, v_m := x.fn_check_…, jsonb_agg sugli elementi) ne EREDITA i codici, a qualunque profondita''; una che la CONSUMA (count, EXISTS, IF) no — emette un motivo suo. Se nell''istruzione della delega il codice e'' confrontato con dei letterali (`->> ''codice'' = ''E_X''` o `IN (…)`) eredita SOLO quelli: script.fn_check_prezzi_in_attesa eredita da fn_check_prezzi_autorizzati il solo E_DOC_PREZZO_PENDENTE. Anche check_emette_valori si propaga. Prima la risalita si fermava a un livello, e le due madri di revisione (20260924-34/-35) uscivano come ramo cieco nel presidio C2. ⚠️ `<>` / NOT IN non sono riconosciuti come filtro: si eredita tutto — un legame in piu'', mai un ramo cieco.
+              LETTORI: dbops.vw_punti_primo_motivo (il rubinetto: i soli punti che sollevano il primo motivo a mano) e dbops.vw_punti_canale_campo (il presidio C2: tutti i siti, bonificati compresi). Prima la risalita viveva dentro la sola vw_punti_primo_motivo, e la seconda l''avrebbe ricopiata.
+              ⚠️ Le fn_check_* si cercano nel sorgente SENZA commenti; una riga per (funzione, check, codice) — un codice che arriva da piu'' strade si aggrega. ⚠️ La finestra di un motivo NON e'' «fino al ;»: le check a CTE costruiscono piu'' motivi in uno statement, quindi il sorgente si spezza sulle occorrenze di ''codice'',. ⚠️ Euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: brief-be-presidio-ui-action-e-canale-campi §4.';

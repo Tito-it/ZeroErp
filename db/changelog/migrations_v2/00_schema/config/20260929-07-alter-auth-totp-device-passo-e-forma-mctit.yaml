@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 — LA FORMA DEL DEVICE TOTP: anti-replay sul PASSO, uno stato solo
+#   Brief: brief-db-secondo-fattore-totp, sezioni 3 e 4.
+#
+# ── ⭐ ANTI-REPLAY SUL PASSO, NON SUL CODICE (RFC 6238 §5.2) ─────────
+#   `ultimo_codice_usato varchar` confrontava il TESTO: ma lo stesso numero di
+#   sei cifre torna legittimamente in un passo diverso, e il codice di un passo
+#   gia' superato non va accettato anche se il testo e' nuovo. Quello che conta
+#   e' il PASSO (floor(unix_time / periodo)): si accetta solo un passo
+#   successivo all'ultimo usato. Il verbo e' script.fn_totp_registra_uso
+#   (20260929-19), che confronta e scrive in una istruzione, a riga bloccata.
+#
+# ── ⭐ UNO STATO SOLO: via `abilitato` ───────────────────────────────
+#   I verbi producono due soli stati: registrato e non confermato (setup in
+#   corso) e confermato (in uso). Disabilitare CANCELLA la riga (D-T3: segreto
+#   e codici spariscono). `abilitato` accanto a `confermato` diceva la stessa
+#   cosa: il modello ammetteva due combinazioni che nessun verbo produce, e chi
+#   legge doveva scegliere a quale credere. Resta `confermato`.
+#
+# ── ⚠️ SENZA MIGRAZIONE DI DATI ─────────────────────────────────────
+#   Il sistema non e' in produzione e la tabella non ha mai avuto scrittori
+#   (nessun riferimento in backend/, nessuna funzione): le colonne si tolgono.
+#   Se una riga violasse i CHECK nuovi l'ALTER si ferma, e va bene cosi'.
+#
+# ── ⚠️ LA RIGA LA SCRIVONO SOLO I VERBI ─────────────────────────────
+#   script.fn_totp_* (20260929-15 → -22); all'app solo SELECT dal 90_end/
+#   20260929-24. La verifica del codice e' del backend (il DB non vede mai il
+#   segreto in chiaro): il DB custodisce lo stato e fa rispettare le regole.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260929-07-alter-auth-totp-device-passo-e-forma-mctit.yaml
+
+  - changeSet:
+      id: 20260929-07-alter-auth-totp-device-passo-e-forma
+      author: mctit
+      failOnError: true
+      comment: >
+        config.auth_totp_device: ultimo_codice_usato (testo) -> ultimo_passo_usato bigint
+        (anti-replay sul passo, RFC 6238 §5.2); via abilitato, doppione di confermato (la
+        disabilitazione cancella la riga); CHECK sul passo, sul confermato con passo, sulla forma
+        dei codici di recupero e sul segreto non vuoto. Brief: brief-db-secondo-fattore-totp §3-4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: auth_totp_device }
+            - columnExists:
+                { schemaName: config, tableName: auth_totp_device, columnName: ultimo_codice_usato }
+            - not:
+                - columnExists:
+                    { schemaName: config, tableName: auth_totp_device, columnName: ultimo_passo_usato }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.auth_totp_device
+                  DROP COLUMN ultimo_codice_usato,
+                  DROP COLUMN abilitato,
+                  ADD COLUMN ultimo_passo_usato bigint,
+                  -- Il passo e' un contatore di intervalli dall'epoca Unix.
+                  ADD CONSTRAINT chk_auth_totp_device_passo
+                      CHECK (ultimo_passo_usato >= 0),
+                  -- Confermare vuol dire aver accettato un primo codice: il suo
+                  -- passo e' registrato, e da li' parte l'anti-replay.
+                  ADD CONSTRAINT chk_auth_totp_device_confermato_passo
+                      CHECK (NOT confermato OR ultimo_passo_usato IS NOT NULL),
+                  -- I codici di recupero sono un array di hash (stringhe).
+                  ADD CONSTRAINT chk_auth_totp_device_recovery_array
+                      CHECK (jsonb_typeof(recovery_codes_hash) = 'array'),
+                  ADD CONSTRAINT chk_auth_totp_device_segreto
+                      CHECK (btrim(secret_encrypted) <> '');
+
+              COMMENT ON TABLE config.auth_totp_device IS
+                  'Device del secondo fattore (TOTP) di una CREDENZIALE: 1:1 con django.auth_user. Due stati: registrato e non confermato (setup in corso) e confermato (in uso); disabilitare cancella la riga (D-T3). Il segreto lo cifra il backend (DJANGO_FIELD_ENCRYPTION_KEYS) e il DB non lo vede mai in chiaro: la verifica del codice e'' del backend, il DB custodisce lo stato e fa rispettare le regole (monouso dei codici di recupero, anti-replay sul passo, chi puo'' cosa). Scrivono solo i verbi script.fn_totp_* (SECURITY DEFINER), all''app solo SELECT; si legge con script.fn_get_totp_device. Niente storico, niente RLS (letta prima del login). Brief: brief-db-secondo-fattore-totp.';
+              COMMENT ON COLUMN config.auth_totp_device.auth_user_id IS
+                  'La credenziale: django.auth_user.id. Un device per credenziale (UNIQUE). FK in 90_end (20260921-02), perche'' in CI Liquibase gira prima di manage.py migrate.';
+              COMMENT ON COLUMN config.auth_totp_device.secret_encrypted IS
+                  'Segreto TOTP cifrato dal backend (MultiFernet su DJANGO_FIELD_ENCRYPTION_KEYS). Mai in chiaro: il DB lo custodisce e lo restituisce al backend (script.fn_get_totp_device), che verifica i codici.';
+              COMMENT ON COLUMN config.auth_totp_device.confermato IS
+                  'false = registrato, setup in corso (script.fn_totp_registra_device); true = il backend ha verificato il primo codice (script.fn_totp_conferma_device) e il device e'' in uso. Unico stato: disabilitare cancella la riga.';
+              COMMENT ON COLUMN config.auth_totp_device.recovery_codes_hash IS
+                  'Array jsonb degli HASH dei codici di recupero (li calcola il backend; i codici in chiaro si mostrano una volta sola). Monouso: script.fn_totp_consuma_recovery toglie l''hash usato in una istruzione, a riga bloccata.';
+              COMMENT ON COLUMN config.auth_totp_device.ultimo_passo_usato IS
+                  'Anti-replay (RFC 6238 §5.2): il PASSO (floor(unix_time / periodo)) dell''ultimo codice accettato. Si accetta solo un passo successivo (script.fn_totp_registra_uso). NULL finche'' il device non e'' confermato.';
+              COMMENT ON COLUMN config.auth_totp_device.ultimo_uso_at IS
+                  'Quando e'' stato accettato l''ultimo codice (o consumato l''ultimo codice di recupero).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.auth_totp_device
+                  DROP CONSTRAINT IF EXISTS chk_auth_totp_device_segreto,
+                  DROP CONSTRAINT IF EXISTS chk_auth_totp_device_recovery_array,
+                  DROP CONSTRAINT IF EXISTS chk_auth_totp_device_confermato_passo,
+                  DROP CONSTRAINT IF EXISTS chk_auth_totp_device_passo,
+                  DROP COLUMN IF EXISTS ultimo_passo_usato,
+                  ADD COLUMN abilitato boolean NOT NULL DEFAULT false,
+                  ADD COLUMN ultimo_codice_usato character varying(10);

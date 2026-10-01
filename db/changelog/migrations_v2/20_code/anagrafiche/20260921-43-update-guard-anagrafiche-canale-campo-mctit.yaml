@@ -1,0 +1,922 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-be-presidio-ui-action-e-canale-campi §4 — SANATURA DEL CANALE `campo`
+# nei guard di `anagrafiche` (la strada A del §4-bis, codice per codice).
+#
+# ── ⛔ IL DIFETTO ────────────────────────────────────────────────────
+#   Questi codici promettono a catalogo `ui_action = highlight_form_fields`
+#   («evidenzia il campo del form»), ma il campo lo accende un ALTRO canale:
+#   la COLUMN che script.fn_log_and_raise_error legge dal context — chiave
+#   `campo`, ripiego `parametro`. Qui il context non la portava: il nome
+#   della colonna c'era, ma come CHIAVE (`'quantita', NEW.quantita`), nel
+#   posto che l'helper non legge (dbops.vw_punti_canale_campo:
+#   CHIAVE_NON_LETTA / NESSUNO). A video: un toast e nessun campo rosso.
+#   La promessa era vuota, e nessun test lo vedeva.
+#
+# ── ⭐ LA CORREZIONE: una coppia in piu', NIENTE ALTRO ─────────────
+#   `'campo', '<colonna>'` come prima coppia del jsonb_build_object della
+#   chiamata che nomina il codice. Firma, guard, messaggio, VARIADIC,
+#   tx_id: intatti. Il nome e' quello dell'INPUT che l'operatore ha davanti
+#   (regola di api.md §Envelope: un id dall'URL o un parametro di firma NON
+#   lo e' — quelli restano senza campo e sono la strada B, l'override esce
+#   dal lato BE).
+#
+# ── I CODICI, E IL CAMPO SCELTO (strada A) ──────────────────────────
+#   E_BA_SOGGETTO_INCOERENTE_ISTANZA  -> istanza_utility_id (l'istanza scelta
+#     sul BA appartiene a un altro soggetto: si corregge l'istanza)
+#   E_CONTO_BANCARIO (2 guard)        -> conto_bancario_id (il conto scelto
+#     non e' valido/attivo per il soggetto o il ruolo)
+#   E_DATA_ERRATA                     -> data_attivazione (obbligatoria con
+#     stato ATTIVO sul mandato SEPA)
+#   E_FORMA_GIURIDICA_PAESE           -> forma_giuridica_id (di un altro paese)
+#   E_RISORSA_UMANA_SOGGETTO_MISMATCH -> soggetto_ruolo_id (il ruolo scelto
+#     e' di un altro soggetto)
+#   E_TIPO_INDIRIZZO_NON_PERMESSO     -> tipo_indirizzo_id. ⚠️ QUI IL CONTEXT
+#     ERA ROTTO: `jsonb_build_object('E_TIPO_INDIRIZZO_NON_PERMESSO ',
+#     NEW.tipo_indirizzo_id, v_tipo_ruolo_id, NEW.soggetto_ruolo_id)` — il
+#     codice come chiave, un intero come seconda chiave. Si riscrive con le
+#     tre coppie nominate + 'campo'. E' l'unica riscrittura oltre l'inserzione.
+#
+# ── ORIGINE DEL CORPO, E IL CANCELLO SUL CORPO STANTIO ─────────────
+#   Corpo VIVO (pg_get_functiondef, 21-09) per ogni funzione; il diff e' la
+#   sola inserzione (verificato per riga dal generatore). La preCondition
+#   ancora l'md5 di prosrc a quello letto: se qualcun altro tocca la stessa
+#   funzione prima dell'apply, il migrate si FERMA invece di disfargli il
+#   lavoro in silenzio (memoria: due changeSet dello stesso giorno sulla
+#   stessa funzione, 2026-09-09). dbdev e zeroerp_ci portano lo stesso md5
+#   (verificato 21-09), quindi la CI da zero passa.
+#   Il ripristino torna al corpo vivo di prima.
+#
+# Presidio: db/pgtap/dbops/test-punti-canale-campo-v1.sql (t.1: i codici di
+#   questa lista non sono piu' CHIAVE_NON_LETTA/NESSUNO) + i pgTAP dei guard
+#   (invariati: il context in piu' non cambia nessun throws_ok).
+# Dipendenze: nessuna (la vista -42 li LEGGE, non serve all'apply).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260921-43-update-guard-anagrafiche-canale-campo-mctit.yaml
+
+  - changeSet:
+      id: 20260921-43-update-guard-anagrafiche-canale-campo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Canale campo nei guard di anagrafiche: anagrafiche.trgfn_billing
+        _account_guard_soggetto_coerenza_istanza,
+        anagrafiche.trgfn_dati_societari_guard_forma_giuridica,
+        anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo,
+        anagrafiche.trgfn_risorse_umane_guard_ruolo,
+        anagrafiche.trgfn_sepa_mandati_guard,
+        anagrafiche.trgfn_soggetti_conti_bancari_guard,
+        anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard — 'campo',
+        '<colonna>' nel context delle chiamate che nominano
+        E_BA_SOGGETTO_INCOERENTE_ISTANZA, E_CONTO_BANCARIO,
+        E_DATA_ERRATA, E_FORMA_GIURIDICA_PAESE,
+        E_RISORSA_UMANA_SOGGETTO_MISMATCH,
+        E_TIPO_INDIRIZZO_NON_PERMESSO. Solo la coppia in piu'; corpo
+        vivo, md5 ancorato in preCondition.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            anagrafiche: il corpo di una funzione da sanare non e' quello letto il
+            21-09 (md5 diverso): qualcuno l'ha toccata dopo. Rileggere il
+            vivo e rigenerare questo changeSet, non applicarlo.
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_billing_account_guard_soggetto_coerenza_istanza'
+                     AND md5(p.prosrc) = '3a58d1001cd46c81b9938398655f966a'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_dati_societari_guard_forma_giuridica'
+                     AND md5(p.prosrc) = '36507ecb09b95e5bb76ea50d77a97cb7'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo'
+                     AND md5(p.prosrc) = '07baead2af2ed8d41491dd7dd0dbdfc2'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_risorse_umane_guard_ruolo'
+                     AND md5(p.prosrc) = 'e8b275dda89b6c818557dd93565d4877'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_sepa_mandati_guard'
+                     AND md5(p.prosrc) = 'b8edceea58bc359ca2589f3e6ed55902'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_soggetti_conti_bancari_guard'
+                     AND md5(p.prosrc) = 'cb5a83a3ac0cb62def21e7835f913ce2'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_soggetti_ruoli_conti_bancari_guard'
+                     AND md5(p.prosrc) = '033b4db76136e245adf6f85a21eee204'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: garantire la coerenza modello "1 soggetto per istanza".
+              -- Verifica che il soggetto raggiunto via NEW.soggetto_ruolo_id
+              -- coincida con il soggetto dell'istanza ancorata in
+              -- NEW.istanza_utility_id. Raise se differiscono.
+              -- Allinea il vincolo DB al modello documentato in
+              -- istanze_utilities §7.3 ("il cliente vive dentro l'istanza").
+              DECLARE
+                  v_soggetto_ruolo  anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_soggetto_istanza anagrafiche.istanze_utilities.soggetto_id%TYPE;
+              BEGIN
+                  SELECT sr.soggetto_id
+                    INTO v_soggetto_ruolo
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                  SELECT iu.soggetto_id
+                    INTO v_soggetto_istanza
+                    FROM anagrafiche.istanze_utilities iu
+                   WHERE iu.id = NEW.istanza_utility_id;
+
+                  -- Difensivo: se uno dei due lookup non risolve, le FK
+                  -- esistenti gestiranno l'errore strutturale. Qui il
+                  -- guard si limita al confronto quando entrambi sono
+                  -- popolati (caso normale grazie ai NOT NULL).
+                  IF v_soggetto_ruolo IS NOT NULL
+                     AND v_soggetto_istanza IS NOT NULL
+                     AND v_soggetto_ruolo IS DISTINCT FROM v_soggetto_istanza
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_BA_SOGGETTO_INCOERENTE_ISTANZA',
+                          jsonb_build_object(
+                              'campo', 'istanza_utility_id',
+                              'billing_account_id',  NEW.id,
+                              'codice',              NEW.codice,
+                              'istanza_utility_id',  NEW.istanza_utility_id,
+                              'soggetto_ruolo_id',   NEW.soggetto_ruolo_id,
+                              'ba_soggetto_id',      v_soggetto_ruolo,
+                              'istanza_soggetto_id', v_soggetto_istanza
+                          ),
+                          NEW.tx_id,
+                          NEW.codice,
+                          v_soggetto_ruolo::text,
+                          v_soggetto_istanza::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_soggetto_stato_id anagrafiche.soggetti.stato_id%TYPE;
+                v_forma_stato_id    config.forme_giuridiche.stato_id%TYPE;
+              BEGIN
+
+                -- Recupera paese del soggetto
+                SELECT s.stato_id
+                  INTO v_soggetto_stato_id
+                FROM anagrafiche.soggetti s
+                WHERE s.id = NEW.soggetto_id;
+
+                -- Recupera paese della forma giuridica
+                SELECT fg.stato_id
+                  INTO v_forma_stato_id
+                FROM config.forme_giuridiche fg
+                WHERE fg.id = NEW.forma_giuridica_id;
+
+                -- Se uno dei due è NULL, non possiamo validare in modo deterministico
+                --IF v_soggetto_stato_id IS NULL OR v_forma_stato_id IS NULL THEN
+                --  RETURN NEW;
+                --END IF;
+
+                -- Coerenza paese: deve combaciare
+                IF v_soggetto_stato_id <> v_forma_stato_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_dati_societari_guard_forma_giuridica',
+                    'E_FORMA_GIURIDICA_PAESE',
+                    jsonb_build_object(
+                      'campo', 'forma_giuridica_id',
+                      'tabella', 'anagrafiche.dati_societari',
+                      'soggetto_id', NEW.soggetto_id::text,
+                      'forma_giuridica_id', NEW.forma_giuridica_id::text,
+                      'soggetto_stato_id', v_soggetto_stato_id::text,
+                      'forma_stato_id', v_forma_stato_id::text
+                    ),
+
+                    NEW.tx_id::uuid,
+                    NEW.forma_giuridica_id::text,
+                    NEW.soggetto_id::text
+
+                  );
+
+                  -- Fallback safety (nel caso fn_log_and_raise_error non faccia RAISE)
+                  --RAISE EXCEPTION 'Forma giuridica non coerente con il paese del soggetto'
+                    --USING ERRCODE = '23514';
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+              v_tipo_ruolo_id  integer;
+              v_has_matrix     boolean;
+              v_today          date := current_date;
+              BEGIN
+              -- Gestione DELETE: nessun controllo
+              IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+              END IF;
+
+              -- Se mancano i riferimenti chiave, non faccio nulla
+              IF NEW.soggetto_ruolo_id IS NULL
+              OR NEW.tipo_indirizzo_id IS NULL THEN
+                      RETURN NEW;
+              END IF;
+
+              -- Recupero tipo_ruolo dal soggetto_ruolo
+              SELECT sr.tipo_ruolo_id
+              INTO v_tipo_ruolo_id
+              FROM anagrafiche.soggetti_ruoli sr
+              WHERE sr.id = NEW.soggetto_ruolo_id;
+
+
+              -- Verifico se ESISTE almeno una riga di matrice per questo tipo_ruolo
+              SELECT EXISTS (
+                      SELECT 1
+                      FROM config.tipi_ruolo_tipi_indirizzo m
+                      WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
+              ) INTO v_has_matrix;
+
+              -- Caso A: nessuna matrice definita → indirizzi liberi
+              IF NOT v_has_matrix THEN
+                      RETURN NEW;
+              END IF;
+
+              -- Caso B: matrice definita → accetto solo tipi previsti, attivi e validi
+              IF NOT EXISTS (
+                      SELECT 1
+                      FROM config.tipi_ruolo_tipi_indirizzo m
+                      WHERE m.tipo_ruolo_id      = v_tipo_ruolo_id
+                      AND m.tipo_indirizzo_id  = NEW.tipo_indirizzo_id
+                      AND m.attivo             = TRUE
+                      AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                      AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+              ) THEN
+                      -- In alternativa qui puoi integrare dbops.fn_log_and_raise_error(...)
+                      PERFORM script.fn_log_and_raise_error(
+                   'database',
+                   'trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',
+                   'E_TIPO_INDIRIZZO_NON_PERMESSO',
+                   jsonb_build_object(
+                          'campo',             'tipo_indirizzo_id',
+                          'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                          'tipo_ruolo_id',     v_tipo_ruolo_id,
+                          'soggetto_ruolo_id', NEW.soggetto_ruolo_id), 
+                    new.tx_id,
+                   NEW.tipo_indirizzo_id::text ,         
+                     v_tipo_ruolo_id::text, NEW.soggetto_ruolo_id::text);         
+
+              END IF;
+
+              RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_soggetto_id uuid;
+              BEGIN
+                  -- FUNCTION: 
+                  --   Ogni volta che inserisco/aggiorno in fornitori, gestisco la
+                  --   verifica della riga corrispondente in soggetti_ruoli.
+                  --   alimentando poi in NEW.soggetto_ruolo_id il record finale.
+
+                  -- Sostituisco NEW.soggetto_ruolo_id con l'ID vero (esistente),
+                  -- delegando completamente alla funzione generica:
+                  NEW.soggetto_ruolo_id := script.fn_guard_soggetto_ruolo(
+                                          p_soggetto_id       := NULL,
+                                          p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
+                                          p_cd_int_ruolo      := 'RIS_UMANA'
+                                          );
+
+                  SELECT sr.soggetto_id
+                    INTO v_soggetto_id
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                  IF v_soggetto_id IS DISTINCT FROM NEW.soggetto_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_RISORSA_UMANA_SOGGETTO_MISMATCH',
+                          jsonb_build_object(
+                              'campo', 'soggetto_ruolo_id',
+                              'table', TG_TABLE_NAME,
+                              'soggetto_id', NEW.soggetto_id,
+                              'soggetto_id_ruolo', v_soggetto_id
+                          ),
+                          NULL::uuid,
+                          NEW.soggetto_ruolo_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+
+                /*
+                  Guard trigger per pagamenti.sepa_mandati.
+
+                  Responsabilità
+                  --------------
+                  1) Validazione di coerenza stato/dati:
+                    - se NEW.stato = 'ATTIVO' allora NEW.data_attivazione deve essere valorizzata.
+                    - in caso contrario genera errore applicativo (vincolo logico / check-like).
+
+                  2) Normalizzazione campi testuali (pre-insert / pre-update):
+                    - UMR: rimuove tutti gli spazi (whitespace) per garantire confronto e univocità consistenti.
+                    - IBAN snapshot: rimuove whitespace e forza uppercase (standard IBAN).
+
+                  Note tecniche
+                  ------------
+                  - Trigger tipicamente da usare BEFORE INSERT OR UPDATE, così può modificare NEW.
+
+                  rev 2026-08-04 (bonifica riferimenti morti, F4):
+                    - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+                    - SQLERRM fuori da un blocco EXCEPTION non e' una variabile
+                      risolvibile: plpgsql la cerca come colonna e fallisce.
+                    - il contesto riportava 'data_attivazione' = 0 letterale.
+                */
+
+
+                -- Stato ATTIVO richiede data_attivazione
+                IF NEW.stato = 'ATTIVO' AND NEW.data_attivazione IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_sepa_mandati_guard',
+                                      'E_DATA_ERRATA',
+                                      jsonb_build_object(
+                                        'campo', 'data_attivazione',
+                                        'tabella','pagamenti.sepa_mandati',
+                                        'stato', NEW.stato,
+                                        'data_attivazione', NEW.data_attivazione
+                                      ) , NULL::uuid, 'data attivazione per stato ATTIVO'
+                                    );
+                END IF;
+
+                -- Normalizzazione UMR e IBAN snapshot
+                IF NEW.umr IS NOT NULL THEN
+                  NEW.umr := regexp_replace(NEW.umr, '\s+', '', 'g');
+                END IF;
+                IF NEW.iban_snapshot IS NOT NULL THEN
+                  NEW.iban_snapshot := upper(regexp_replace(NEW.iban_snapshot, '\s+', '', 'g'));
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_conti_bancari_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard su anagrafiche.soggetti_conti_bancari.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F4+F5):
+              --   - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+              --   - SQLERRM fuori da un blocco EXCEPTION non e' risolvibile.
+              --   - NEW.data_al / NEW.data_dal non sono colonne di questa
+              --     tabella: sono valido_al / valido_dal, le stesse gia' usate
+              --     nell'IF che governa il ramo.
+              DECLARE
+                v_attivo boolean;
+              BEGIN
+                -- Evita legami a conti_bancari disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                 WHERE id = NEW.conto_bancario_id;
+                IF v_attivo IS NOT TRUE THEN
+
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_soggetti_conti_bancari_guard',
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'campo', 'conto_bancario_id',
+                                        'tabella','anagrafiche.conti_bancari',
+                                        'conto_bancario_id',  NEW.conto_bancario_id::text
+                                      ) , NULL::uuid, NEW.conto_bancario_id::text
+                                    );
+
+                END IF;
+
+                -- Coerenza validità già controllata da CHECK, ma forziamo normalizzazione date
+                IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
+                   AND NEW.valido_al < NEW.valido_dal THEN
+
+                    PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_soggetti_conti_bancari_guard',
+                                      'E_DATA_AL_MINORE_DAL',
+                                      jsonb_build_object(
+                                        'tabella','anagrafiche.soggetti_conti_bancari',
+                                        'valido_al',  NEW.valido_al::text,
+                                        'valido_dal',  NEW.valido_dal::text
+                                      ) , NULL::uuid, NEW.valido_al::text, NEW.valido_dal::text
+                                    );
+                END IF;
+
+
+                RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard su anagrafiche.soggetti_ruoli_conti_bancari.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F4):
+              --   - TGNAME -> TG_NAME (la variabile speciale ha l'underscore;
+              --     senza, plpgsql la risolve come colonna e non la trova).
+              --   - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+              DECLARE
+                v_attivo boolean;
+              BEGIN
+                -- Evita legami a conti disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                WHERE id = NEW.conto_bancario_id;
+                IF v_attivo IS NOT TRUE THEN
+
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      TG_NAME,
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'campo', 'conto_bancario_id',
+                                        'tabella','soggetti_ruoli_conti_bancari',
+                                        'conto_bancario_id',  NEW.conto_bancario_id::text
+                                      ) ,
+                                       NEW.tx_id::uuid,
+                                       NEW.conto_bancario_id::text
+                                    );
+                END IF;
+
+                -- Coerenza date
+                IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
+                  AND NEW.valido_al < NEW.valido_dal THEN
+
+                      PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      TG_NAME,
+                                      'E_DATA_AL_MINORE_DAL',
+                                      jsonb_build_object(
+                                        'tabella','anagrafiche.soggetti_ruoli_conti_bancari',
+                                        'valido_al',  NEW.valido_al::text,
+                                        'valido_dal',  NEW.valido_dal::text
+                                      ) ,
+                                      NEW.tx_id::uuid,
+                                      NEW.valido_al::text, NEW.valido_dal::text
+                                    );
+                END IF;
+                RETURN NEW;
+              END
+              $function$
+              ;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: garantire la coerenza modello "1 soggetto per istanza".
+              -- Verifica che il soggetto raggiunto via NEW.soggetto_ruolo_id
+              -- coincida con il soggetto dell'istanza ancorata in
+              -- NEW.istanza_utility_id. Raise se differiscono.
+              -- Allinea il vincolo DB al modello documentato in
+              -- istanze_utilities §7.3 ("il cliente vive dentro l'istanza").
+              DECLARE
+                  v_soggetto_ruolo  anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_soggetto_istanza anagrafiche.istanze_utilities.soggetto_id%TYPE;
+              BEGIN
+                  SELECT sr.soggetto_id
+                    INTO v_soggetto_ruolo
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                  SELECT iu.soggetto_id
+                    INTO v_soggetto_istanza
+                    FROM anagrafiche.istanze_utilities iu
+                   WHERE iu.id = NEW.istanza_utility_id;
+
+                  -- Difensivo: se uno dei due lookup non risolve, le FK
+                  -- esistenti gestiranno l'errore strutturale. Qui il
+                  -- guard si limita al confronto quando entrambi sono
+                  -- popolati (caso normale grazie ai NOT NULL).
+                  IF v_soggetto_ruolo IS NOT NULL
+                     AND v_soggetto_istanza IS NOT NULL
+                     AND v_soggetto_ruolo IS DISTINCT FROM v_soggetto_istanza
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_BA_SOGGETTO_INCOERENTE_ISTANZA',
+                          jsonb_build_object(
+                              'billing_account_id',  NEW.id,
+                              'codice',              NEW.codice,
+                              'istanza_utility_id',  NEW.istanza_utility_id,
+                              'soggetto_ruolo_id',   NEW.soggetto_ruolo_id,
+                              'ba_soggetto_id',      v_soggetto_ruolo,
+                              'istanza_soggetto_id', v_soggetto_istanza
+                          ),
+                          NEW.tx_id,
+                          NEW.codice,
+                          v_soggetto_ruolo::text,
+                          v_soggetto_istanza::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_soggetto_stato_id anagrafiche.soggetti.stato_id%TYPE;
+                v_forma_stato_id    config.forme_giuridiche.stato_id%TYPE;
+              BEGIN
+
+                -- Recupera paese del soggetto
+                SELECT s.stato_id
+                  INTO v_soggetto_stato_id
+                FROM anagrafiche.soggetti s
+                WHERE s.id = NEW.soggetto_id;
+
+                -- Recupera paese della forma giuridica
+                SELECT fg.stato_id
+                  INTO v_forma_stato_id
+                FROM config.forme_giuridiche fg
+                WHERE fg.id = NEW.forma_giuridica_id;
+
+                -- Se uno dei due è NULL, non possiamo validare in modo deterministico
+                --IF v_soggetto_stato_id IS NULL OR v_forma_stato_id IS NULL THEN
+                --  RETURN NEW;
+                --END IF;
+
+                -- Coerenza paese: deve combaciare
+                IF v_soggetto_stato_id <> v_forma_stato_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_dati_societari_guard_forma_giuridica',
+                    'E_FORMA_GIURIDICA_PAESE',
+                    jsonb_build_object(
+                      'tabella', 'anagrafiche.dati_societari',
+                      'soggetto_id', NEW.soggetto_id::text,
+                      'forma_giuridica_id', NEW.forma_giuridica_id::text,
+                      'soggetto_stato_id', v_soggetto_stato_id::text,
+                      'forma_stato_id', v_forma_stato_id::text
+                    ),
+
+                    NEW.tx_id::uuid,
+                    NEW.forma_giuridica_id::text,
+                    NEW.soggetto_id::text
+
+                  );
+
+                  -- Fallback safety (nel caso fn_log_and_raise_error non faccia RAISE)
+                  --RAISE EXCEPTION 'Forma giuridica non coerente con il paese del soggetto'
+                    --USING ERRCODE = '23514';
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+              v_tipo_ruolo_id  integer;
+              v_has_matrix     boolean;
+              v_today          date := current_date;
+              BEGIN
+              -- Gestione DELETE: nessun controllo
+              IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+              END IF;
+
+              -- Se mancano i riferimenti chiave, non faccio nulla
+              IF NEW.soggetto_ruolo_id IS NULL
+              OR NEW.tipo_indirizzo_id IS NULL THEN
+                      RETURN NEW;
+              END IF;
+
+              -- Recupero tipo_ruolo dal soggetto_ruolo
+              SELECT sr.tipo_ruolo_id
+              INTO v_tipo_ruolo_id
+              FROM anagrafiche.soggetti_ruoli sr
+              WHERE sr.id = NEW.soggetto_ruolo_id;
+
+
+              -- Verifico se ESISTE almeno una riga di matrice per questo tipo_ruolo
+              SELECT EXISTS (
+                      SELECT 1
+                      FROM config.tipi_ruolo_tipi_indirizzo m
+                      WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
+              ) INTO v_has_matrix;
+
+              -- Caso A: nessuna matrice definita → indirizzi liberi
+              IF NOT v_has_matrix THEN
+                      RETURN NEW;
+              END IF;
+
+              -- Caso B: matrice definita → accetto solo tipi previsti, attivi e validi
+              IF NOT EXISTS (
+                      SELECT 1
+                      FROM config.tipi_ruolo_tipi_indirizzo m
+                      WHERE m.tipo_ruolo_id      = v_tipo_ruolo_id
+                      AND m.tipo_indirizzo_id  = NEW.tipo_indirizzo_id
+                      AND m.attivo             = TRUE
+                      AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                      AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+              ) THEN
+                      -- In alternativa qui puoi integrare dbops.fn_log_and_raise_error(...)
+                      PERFORM script.fn_log_and_raise_error(
+                   'database',
+                   'trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',
+                   'E_TIPO_INDIRIZZO_NON_PERMESSO',
+                   jsonb_build_object(
+                   'E_TIPO_INDIRIZZO_NON_PERMESSO ' , NEW.tipo_indirizzo_id , 
+                     v_tipo_ruolo_id, NEW.soggetto_ruolo_id), 
+                    new.tx_id,
+                   NEW.tipo_indirizzo_id::text ,         
+                     v_tipo_ruolo_id::text, NEW.soggetto_ruolo_id::text);         
+
+              END IF;
+
+              RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_soggetto_id uuid;
+              BEGIN
+                  -- FUNCTION: 
+                  --   Ogni volta che inserisco/aggiorno in fornitori, gestisco la
+                  --   verifica della riga corrispondente in soggetti_ruoli.
+                  --   alimentando poi in NEW.soggetto_ruolo_id il record finale.
+
+                  -- Sostituisco NEW.soggetto_ruolo_id con l'ID vero (esistente),
+                  -- delegando completamente alla funzione generica:
+                  NEW.soggetto_ruolo_id := script.fn_guard_soggetto_ruolo(
+                                          p_soggetto_id       := NULL,
+                                          p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
+                                          p_cd_int_ruolo      := 'RIS_UMANA'
+                                          );
+
+                  SELECT sr.soggetto_id
+                    INTO v_soggetto_id
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                  IF v_soggetto_id IS DISTINCT FROM NEW.soggetto_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_RISORSA_UMANA_SOGGETTO_MISMATCH',
+                          jsonb_build_object(
+                              'table', TG_TABLE_NAME,
+                              'soggetto_id', NEW.soggetto_id,
+                              'soggetto_id_ruolo', v_soggetto_id
+                          ),
+                          NULL::uuid,
+                          NEW.soggetto_ruolo_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+
+                /*
+                  Guard trigger per pagamenti.sepa_mandati.
+
+                  Responsabilità
+                  --------------
+                  1) Validazione di coerenza stato/dati:
+                    - se NEW.stato = 'ATTIVO' allora NEW.data_attivazione deve essere valorizzata.
+                    - in caso contrario genera errore applicativo (vincolo logico / check-like).
+
+                  2) Normalizzazione campi testuali (pre-insert / pre-update):
+                    - UMR: rimuove tutti gli spazi (whitespace) per garantire confronto e univocità consistenti.
+                    - IBAN snapshot: rimuove whitespace e forza uppercase (standard IBAN).
+
+                  Note tecniche
+                  ------------
+                  - Trigger tipicamente da usare BEFORE INSERT OR UPDATE, così può modificare NEW.
+
+                  rev 2026-08-04 (bonifica riferimenti morti, F4):
+                    - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+                    - SQLERRM fuori da un blocco EXCEPTION non e' una variabile
+                      risolvibile: plpgsql la cerca come colonna e fallisce.
+                    - il contesto riportava 'data_attivazione' = 0 letterale.
+                */
+
+
+                -- Stato ATTIVO richiede data_attivazione
+                IF NEW.stato = 'ATTIVO' AND NEW.data_attivazione IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_sepa_mandati_guard',
+                                      'E_DATA_ERRATA',
+                                      jsonb_build_object(
+                                        'tabella','pagamenti.sepa_mandati',
+                                        'stato', NEW.stato,
+                                        'data_attivazione', NEW.data_attivazione
+                                      ) , NULL::uuid, 'data attivazione per stato ATTIVO'
+                                    );
+                END IF;
+
+                -- Normalizzazione UMR e IBAN snapshot
+                IF NEW.umr IS NOT NULL THEN
+                  NEW.umr := regexp_replace(NEW.umr, '\s+', '', 'g');
+                END IF;
+                IF NEW.iban_snapshot IS NOT NULL THEN
+                  NEW.iban_snapshot := upper(regexp_replace(NEW.iban_snapshot, '\s+', '', 'g'));
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_conti_bancari_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard su anagrafiche.soggetti_conti_bancari.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F4+F5):
+              --   - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+              --   - SQLERRM fuori da un blocco EXCEPTION non e' risolvibile.
+              --   - NEW.data_al / NEW.data_dal non sono colonne di questa
+              --     tabella: sono valido_al / valido_dal, le stesse gia' usate
+              --     nell'IF che governa il ramo.
+              DECLARE
+                v_attivo boolean;
+              BEGIN
+                -- Evita legami a conti_bancari disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                 WHERE id = NEW.conto_bancario_id;
+                IF v_attivo IS NOT TRUE THEN
+
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_soggetti_conti_bancari_guard',
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'tabella','anagrafiche.conti_bancari',
+                                        'conto_bancario_id',  NEW.conto_bancario_id::text
+                                      ) , NULL::uuid, NEW.conto_bancario_id::text
+                                    );
+
+                END IF;
+
+                -- Coerenza validità già controllata da CHECK, ma forziamo normalizzazione date
+                IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
+                   AND NEW.valido_al < NEW.valido_dal THEN
+
+                    PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_soggetti_conti_bancari_guard',
+                                      'E_DATA_AL_MINORE_DAL',
+                                      jsonb_build_object(
+                                        'tabella','anagrafiche.soggetti_conti_bancari',
+                                        'valido_al',  NEW.valido_al::text,
+                                        'valido_dal',  NEW.valido_dal::text
+                                      ) , NULL::uuid, NEW.valido_al::text, NEW.valido_dal::text
+                                    );
+                END IF;
+
+
+                RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard su anagrafiche.soggetti_ruoli_conti_bancari.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F4):
+              --   - TGNAME -> TG_NAME (la variabile speciale ha l'underscore;
+              --     senza, plpgsql la risolve come colonna e non la trova).
+              --   - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+              DECLARE
+                v_attivo boolean;
+              BEGIN
+                -- Evita legami a conti disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                WHERE id = NEW.conto_bancario_id;
+                IF v_attivo IS NOT TRUE THEN
+
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      TG_NAME,
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'tabella','soggetti_ruoli_conti_bancari',
+                                        'conto_bancario_id',  NEW.conto_bancario_id::text
+                                      ) ,
+                                       NEW.tx_id::uuid,
+                                       NEW.conto_bancario_id::text
+                                    );
+                END IF;
+
+                -- Coerenza date
+                IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
+                  AND NEW.valido_al < NEW.valido_dal THEN
+
+                      PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      TG_NAME,
+                                      'E_DATA_AL_MINORE_DAL',
+                                      jsonb_build_object(
+                                        'tabella','anagrafiche.soggetti_ruoli_conti_bancari',
+                                        'valido_al',  NEW.valido_al::text,
+                                        'valido_dal',  NEW.valido_dal::text
+                                      ) ,
+                                      NEW.tx_id::uuid,
+                                      NEW.valido_al::text, NEW.valido_dal::text
+                                    );
+                END IF;
+                RETURN NEW;
+              END
+              $function$
+              ;

@@ -22,15 +22,19 @@ export function buildFilterSuperAdminOptions(t) {
   ]
 }
 
-// Scopo: Opzioni filtro stato operatore per toolbar. Tri-state
-// null/true/false mappato direttamente su is_active del BE.
-export function buildFilterStatoOptions(t) {
-  return [
-    { label: t('amministrazione.stato_all'), value: null },
-    { label: t('amministrazione.stato_attivo'), value: true },
-    { label: t('amministrazione.stato_inattivo'), value: false }
-  ]
-}
+// ⛔ `buildFilterStatoOptions` E' STATA RITIRATA il 2026-09-23 (regola del 2,
+//    ok Tid): era la terna «tutti / attivo / non attivo» — la stessa che
+//    `EmittentiFiscaliListView`, `FamiglieDocumentoListView`,
+//    `ListiniSearchTable` e `ArticoliSearchTable` si scrivevano a mano — con le
+//    chiavi di questo dominio invece di quelle di `common`. Adesso la sede e'
+//    una: `core/utils/options.js` → `buildAttivoOptions(t)`, accanto al gemello
+//    `buildBoolOptions` che la stessa terna la produce con `Sì`/`No`.
+// ⭐ Non e' stata lasciata come alias: *quando emerge un BB generico i duplicati
+//    si ritirano subito* — un alias e' una seconda sede che aspetta solo di
+//    divergere.
+// ⚠️ `buildFilterSuperAdminOptions` qui sopra RESTA: e' tri-state uguale nella
+//    forma, ma le sue etichette sono una domanda di dominio («solo SUPER_ADMIN
+//    / escludili»), non lo stato `attivo` del modello.
 
 // Scopo: Costruisce le opzioni livello accesso per Select.
 export function buildLivelloOptions(t) {
@@ -57,31 +61,9 @@ export function buildLivelloOptions(t) {
 export const ROUNDING_DECIMALI_RANGE = { MIN: 0, MAX: 6 }
 
 // --- Email log stati ---
-// Fase 5 (LANDED): l'enum + le opzioni filtro arrivano dal lookup BE
-// /amm-software/lookup/email-log-stati/. Vedi EmailLogStatoSelect.vue
-// (wrapper riusabile cached con useGlobalLookup('amm.email_log_stati')).
-// Single source of truth lato BE: amm_software_service._EMAIL_LOG_STATI_VALIDI.
-//
-// `getEmailLogStatoSeverity` resta lato FE (puro mapping CSS, presentation).
-// ⛔ IL RIPIEGO SU 'info' NON E' UNA RETE, ed e' costato una riga di lavoro nel
-//    2026-09-11: 'info' e' anche la severity di PENDING, quindi uno stato nuovo
-//    non «cade su un default neutro» — esce IDENTICO a «in lavorazione».
-//    Su `SIMULATA` sarebbe stato il colmo: il valore nasce apposta per non dire
-//    «consegnata», e a video avrebbe detto «in corso».
-// ⇒ Ogni stato TERMINALE vuole il suo ramo. Il ripiego resta per non rompersi
-//    su un codice ignoto, ma va letto per quello che e': l'ultima spiaggia.
-
-// Scopo: Restituisce la severity PrimeVue per uno stato email log (puro CSS).
-export function getEmailLogStatoSeverity(stato) {
-  if (stato === 'SENT') return 'success'
-  if (stato === 'FAILED') return 'danger'
-  if (stato === 'RETRY') return 'warn'
-  // ⭐ SIMULATA: stampata a video, non spedita. Terminale e VOLUTA — quindi non
-  //    rossa (non e' un guasto) e non verde (non e' arrivata a nessuno).
-  //    Grigia, come la convenzione del progetto vuole per cio' che e' inerte.
-  if (stato === 'SIMULATA') return 'secondary'
-  return 'info' // PENDING o codice non riconosciuto
-}
+// ⭐ Dal 2026-09-26 in `core`: il select (`core/components/EmailLogStatoSelect`,
+// lookup /core/email/log/stati/) e il colore (`core/utils/severity.js`,
+// `statoEmailLogSeverity`). Li usano il log dell'admin e quello dell'operatore.
 
 // --- Severity mapping riusabili ---
 

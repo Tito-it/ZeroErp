@@ -19,13 +19,11 @@
 //    dichiarato nel registro): nessun drawer sa aprirsi su una scheda, e
 //    «Apri» porta al drawer dove la Storia e' una scheda — un pulsante che
 //    facesse la stessa cosa con un altro nome sarebbe una promessa vuota.
-import { computed, onActivated } from 'vue'
+import { onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
-import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
-import Tag from 'primevue/tag'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
@@ -36,52 +34,60 @@ import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
-import { lookupTipiEntita } from '../../core/apiCore'
+import { useLookupEtichettato } from '../../core/composables/useLookupEtichettato'
 import { useAuthStore } from '../../stores/auth'
 import { azioniDaBersagli } from '../../core/bersaglioGesto'
 import { useGiornaleStore, GRAVITA_SOLO_ERRORI, GRAVITA_CON_AVVISI } from '../stores/giornale'
 import { exportGiornale } from '../api/giornale'
-import { labelOrCode } from '../../core/utils/i18nLabel'
-import { gravitaGiornaleSeverity } from '../../core/utils/severity'
-import { DATE_FORMAT, READONLY_DOMAINS } from '../../core/constants'
+import GiornaleCella from '../_shared/giornale/GiornaleCella.vue'
+import {
+  CAMPO_CODICE_REGISTRO,
+  GIORNALE_CELLE,
+  SORGENTE_REGISTRI,
+  SORGENTE_TIPI_ENTITA,
+} from '../_shared/giornale/giornaleCelle'
+import { READONLY_DOMAINS } from '../../core/constants'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.VENDITE)
 const store = useGiornaleStore()
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
-// I quattro registri che la vista cuce. ⚠️ SECONDA SEDE dichiarata, non un
-// modello: il vocabolario vive nei rami `UNION ALL` di `vw_giornale_entita`
-// e nella costante `GIORNALE_REGISTRI` del backend (che valida: un valore
-// nuovo qui senza il suo ramo la' e' un 400, non un buco). La casa giusta e'
-// un catalogo `config.registri_giornale` letto dal lookup generico — brief
-// DB `brief-db-registri-giornale-catalogo.md` (2026-09-19): quando arriva,
-// questa costante sparisce come `TIPI_ENTITA`.
-const REGISTRI = ['EVENT_LOG', 'LOTTO_LOG', 'TASK_RUN', 'FATTURA_LOG']
-
-// ⭐ I tipi di entita' si LEGGONO da `config.tipi_entita` (lookup dedicato,
-//    cache condivisa per chiave): fino al 19-09 erano sette codici ricopiati a
-//    mano, e il catalogo ne aveva gia' nove. L'etichetta e' la chiave i18n che
-//    il DB dichiara riga per riga (`etichetta_key`), con ripiego sul codice.
-const { items: tipiEntita } = useGlobalLookup('config.tipi_entita', lookupTipiEntita, { immediate: true })
-// Etichetta di un codice gia' in riga: dalla stessa lista (chiave dichiarata
-// dal DB), o il codice grezzo se il tipo non e' fra i vivi — fail-visible.
-function etichettaEntita(codice) {
-  const riga = (tipiEntita.value || []).find((r) => r.codice === codice)
-  return riga ? labelOrCode(t, te, riga.etichetta_key, codice) : codice
-}
-
-const registroOptions = [
-  { value: null, label: t('vendite.giornale.filtro_registro_tutti') },
-  ...REGISTRI.map((r) => ({ value: r, label: r })),
-]
-const entitaOptions = computed(() => [
-  { value: null, label: t('vendite.giornale.filtro_entita_tutte') },
-  ...(tipiEntita.value || []).map((r) => ({ value: r.codice, label: labelOrCode(t, te, r.etichetta_key, r.codice) })),
-])
+// ⭐ I due vocabolari delle tendine si LEGGONO dal catalogo, e portano ciascuno
+//    l'`etichetta_key` che il DB dichiara riga per riga — resa dal BB
+//    `useLookupEtichettato` (ripiego fail-visible sul codice), che da' anche
+//    l'etichetta di un codice gia' in riga per le colonne:
+//    · i tipi di entita' da `config.tipi_entita` (lookup dedicato — la tabella
+//      non ha `id`/`descrizione`): fino al 19-09 erano sette codici ricopiati a
+//      mano, e il catalogo ne aveva gia' nove;
+//    · i registri da `config.registri_giornale` (lookup generico, specializzato
+//      con `etichetta_key`): fino al 19-09 erano un array qui, una costante nel
+//      backend e quattro letterali nella vista — tre sedi che non si
+//      conoscevano — e la tendina mostrava `EVENT_LOG` grezzo. Il quinto
+//      registro e' una riga di CSV (+ il suo ramo nella vista): qui non cambia
+//      niente. Brief: `work-done/brief-db-registri-giornale-catalogo.md`.
+//    ⚠️ Registri: solo i VIVI (`includi_obsoleti: false`, come `obsoleto_dal IS
+//       NULL` del lookup gemello) — un registro ritirato non ha piu' ramo nella
+//       vista (il pgTAP del catalogo lo pretende), e in tendina sarebbe una
+//       scelta vuota. La cache e' la stessa entry di un `<LookupSelect rel>`
+//       sullo stesso insieme, per costruzione (`useLookupCodici`). Il valore
+//       e' `codice_interno`, la chiave stabile che il backend valida.
+// ⭐ Dal 2026-09-27 le due SORGENTI e le celle stanno in `_shared/giornale`
+//    (`giornaleCelle`, `GiornaleCella`): la stessa lista si monta anche nella
+//    Storia di fattura e lotto, e tendine e celle devono leggere la stessa
+//    entry di cache. Qui restano le sole tendine.
+const { opzioni: entitaOptions } = useLookupEtichettato(
+  SORGENTE_TIPI_ENTITA,
+  { tutti: () => t('vendite.giornale.filtro_entita_tutte') },
+)
+const { opzioni: registroOptions } = useLookupEtichettato(
+  SORGENTE_REGISTRI,
+  { campoCodice: CAMPO_CODICE_REGISTRO, tutti: () => t('vendite.giornale.filtro_registro_tutti') },
+)
 
 const {
   onPage, onSort, applyFilters, paginatorProps, tablePage,
@@ -99,7 +105,7 @@ const {
   },
 })
 
-const { bindSelect, bindDate, bindToggle } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindToggle, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 // Acceso = i soli ERROR (col NULL, che il backend include); spento = anche
 // gli avvisi. Un interruttore che RESTRINGE: niente conteggio.
 const { value: soloErrori, onChange: onSoloErroriChange } = bindToggle('gravita', {
@@ -107,8 +113,8 @@ const { value: soloErrori, onChange: onSoloErroriChange } = bindToggle('gravita'
 })
 const { value: registroFilter, onChange: onRegistroChange } = bindSelect('registro')
 const { value: entitaFilter, onChange: onEntitaChange } = bindSelect('entity_type')
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 
 // Il filo (tx_id o correlation_id): testo con debounce, `Enter` applica subito.
 const applicaFilo = useDebouncedAction(applyFilters, { detailed: true })
@@ -162,7 +168,7 @@ onActivated(applicaDeepLink)
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
+      <FiltriLista :store="store" :inert="perimetroBloccato">
         <FiltroToggle
           v-model="soloErrori"
           :label="t('vendite.giornale.filtro_solo_errori')"
@@ -171,50 +177,31 @@ onActivated(applicaDeepLink)
         />
         <Select
           v-model="registroFilter"
+          class="app-filter-w-md"
           :options="registroOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('vendite.giornale.col_registro')"
-          style="width: 170px;"
           @change="onRegistroChange"
         />
         <Select
           v-model="entitaFilter"
+          class="app-filter-w-md"
           :options="entitaOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('vendite.giornale.col_entita')"
-          style="width: 170px;"
           @change="onEntitaChange"
         />
         <InputText
+          class="app-filter-w-lg"
           :model-value="store.filters.filo ?? ''"
           :placeholder="t('vendite.giornale.filtro_filo')"
-          style="width: 290px;"
           @update:model-value="onFiloInput"
           @keyup.enter="applicaFilo.flush()"
         />
-        <DatePicker
-          v-model="dataDaFilter"
-          :placeholder="t('common.data_da')"
-          :date-format="DATE_FORMAT"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataDaChange"
-          @clear-click="onDataDaChange"
-        />
-        <DatePicker
-          v-model="dataAFilter"
-          :placeholder="t('common.data_a')"
-          :date-format="DATE_FORMAT"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataAChange"
-          @clear-click="onDataAChange"
-        />
-      </div>
+        <FiltroPeriodo :periodo="periodo" />
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />
@@ -242,29 +229,12 @@ onActivated(applicaDeepLink)
       @sort="onSort"
       @config-loaded="onConfigLoaded"
     >
-      <!-- `quando` non ha slot: il seed dichiara `datetime_short`. -->
-      <!-- ⚠️ NULL resta distinguibile — trattino e colore neutro: e' il segnale
-           di un vincolo allargato, non un dato mancante. -->
-      <template #cell-gravita="{ data }">
-        <Tag :value="data.gravita ?? '—'" :severity="gravitaGiornaleSeverity(data.gravita)" />
-      </template>
-      <template #cell-registro="{ data }">
-        <span class="app-drawer-header-muted">{{ data.registro }}</span>
-      </template>
-      <template #cell-entity_type="{ data }">
-        <Tag :value="etichettaEntita(data.entity_type)" severity="secondary" />
-      </template>
-      <!-- ⭐ Il FATTO, tradotto quando il catalogo lo dichiara (`etichetta_key`
-           da `config.eventi_dominio`, solo EVENT_LOG); altrove `cosa` e' gia'
-           una frase. Ripiego fail-visible sul codice grezzo. -->
-      <template #cell-cosa="{ data }">
-        <span>{{ labelOrCode(t, te, data.etichetta_key, data.cosa) }}</span>
-      </template>
-      <template #cell-tx_id="{ data }">
-        <span class="app-mono app-giornale-mono">{{ data.tx_id }}</span>
-      </template>
-      <template #cell-correlation_id="{ data }">
-        <span class="app-mono app-giornale-mono">{{ data.correlation_id }}</span>
+      <!-- ⭐ Le celle con una resa propria vengono dal componente CONDIVISO con la
+           Storia di fattura e lotto (`GiornaleCella`, regola del 2): la stessa
+           riga si legge uguale nelle due schermate. `quando` non ha slot: il
+           seed dichiara `datetime_short`. -->
+      <template v-for="codice in GIORNALE_CELLE" :key="codice" #[`cell-${codice}`]="{ data }">
+        <GiornaleCella :codice="codice" :riga="data" />
       </template>
       <template #actions="{ data }">
         <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
@@ -278,9 +248,3 @@ onActivated(applicaDeepLink)
     />
   </div>
 </template>
-
-<style scoped>
-.app-giornale-mono {
-  font-size: 0.85em;
-}
-</style>

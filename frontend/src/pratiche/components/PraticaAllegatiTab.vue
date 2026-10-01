@@ -8,7 +8,7 @@ import { fetchAllegati, deleteAllegato } from '../api/pratiche-api'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { displayTimestamp } from '../../core/utils/date'
 import { formatSize } from '../../core/utils/format'
 import Tag from 'primevue/tag'
@@ -56,13 +56,13 @@ watch(() => props.praticaId, (id) => {
   <div>
     <!-- Placeholder upload (futuro) -->
     <div v-if="!isReadonly" class="allegati-placeholder">
-      <i class="pi pi-cloud-upload allegati-placeholder-icon"></i>
+      <i class="allegati-placeholder-icon" :class="MANAGE_ICONS.ALLEGATI"></i>
       <span class="app-text-muted">{{ t('pratiche.allegati_upload_futuro') }}</span>
     </div>
 
     <!-- Lista allegati -->
     <div v-if="loading" class="text-center app-text-muted p-3">
-      <i class="pi pi-spin pi-spinner"></i>
+      <i :class="STATUS_ICONS.CARICAMENTO"></i>
     </div>
 
     <div v-else-if="allegati.length === 0" class="text-center app-text-muted p-3">
@@ -70,9 +70,9 @@ watch(() => props.praticaId, (id) => {
     </div>
 
     <div v-else class="allegati-list">
-      <div v-for="a in allegati" :key="a.id" class="allegato-entry">
+      <div v-for="a in allegati" :key="a.id" class="app-voce-registro">
         <div class="allegato-header">
-          <i class="pi pi-file allegato-icon"></i>
+          <i class="allegato-icon" :class="MANAGE_ICONS.ALLEGATI"></i>
           <span class="allegato-nome">{{ a.nome_file }}</span>
           <Tag :value="a.tipo_allegato_descrizione || a.tipo_allegato_codice" severity="secondary" />
           <span v-if="a.dimensione" class="allegato-size">{{ formatSize(a.dimensione) }}</span>
@@ -109,12 +109,6 @@ watch(() => props.praticaId, (id) => {
   gap: 0.4rem;
 }
 
-.allegato-entry {
-  padding: 0.4rem 0.75rem;
-  border-left: 3px solid var(--app-toolbar-border);
-  border-radius: 0 4px 4px 0;
-  background: color-mix(in srgb, var(--p-surface-700) 20%, transparent);
-}
 
 .allegato-header {
   display: flex;

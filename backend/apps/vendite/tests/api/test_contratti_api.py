@@ -69,12 +69,6 @@ class _BaseApiTest(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        self._req_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log",
-            return_value=None,
-        )
-        self._req_log_patcher.start()
-        self.addCleanup(self._req_log_patcher.stop)
 
 
 class TestList(_BaseApiTest):
@@ -211,16 +205,24 @@ class TestDocumentiContratto(_BaseApiTest):
             "total_count": 1,
         }
 
-        resp = self.client.get(_BASE + "7/documenti/?page=2&page_size=10")
+        # Contratto di lista standard (lista `documenti.documenti_sorgente`,
+        # 2026-09-27): `limit`/`offset` + ordinamento + ricerca, envelope
+        # `paginated_envelope` con `count`.
+        resp = self.client.get(
+            _BASE + "7/documenti/?limit=10&offset=10&order_by=titolo&order_dir=asc&search=contr",
+        )
 
         self.assertEqual(resp.status_code, 200)
         body = resp.json()["data"]
         self.assertEqual(body["page"], 2)
         self.assertEqual(body["page_size"], 10)
-        self.assertEqual(body["total_count"], 1)
+        self.assertEqual(body["count"], 1)
         kwargs = svc_cls.return_value.list_documenti_per_sorgente.call_args.kwargs
         self.assertEqual(kwargs["sorgente_tipo_id"], 4)
         self.assertEqual(kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000007")
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 10))
+        self.assertEqual((kwargs["order_by"], kwargs["order_dir"]), ("titolo", "asc"))
+        self.assertEqual(kwargs["search"], "contr")
 
 
 class TestPost(_BaseApiTest):

@@ -41,37 +41,6 @@
 --   CI, dove il database e' ricostruito da zero.
 -- ------------------------------------------------------------
 
--- =========================================================
--- Cleanup iniziale (idempotente, FUORI dalla transazione)
--- =========================================================
-DO $$
-BEGIN
-    DELETE FROM vendite.ddt_indirizzi di
-     WHERE di.ddt_id IN (SELECT d.id FROM vendite.ddt d
-                          WHERE d.meta ->> 'test_scope' = 'pgtap_ba_storia_ddt');
-    DELETE FROM vendite.ddt_righe dr
-     WHERE dr.ddt_id IN (SELECT d.id FROM vendite.ddt d
-                          WHERE d.meta ->> 'test_scope' = 'pgtap_ba_storia_ddt');
-    DELETE FROM vendite.ddt d
-     WHERE d.meta ->> 'test_scope' = 'pgtap_ba_storia_ddt';
-
-    DELETE FROM anagrafiche.emittenti_fiscali_billing_account efba
-     WHERE efba.billing_account_id IN (
-         SELECT ba.id FROM anagrafiche.billing_account ba
-          WHERE ba.istanza_utility_id IN (
-              SELECT iu.id FROM anagrafiche.istanze_utilities iu
-               WHERE iu.codice LIKE 'TST-BA-DDT-%'));
-
-    DELETE FROM anagrafiche.billing_account ba
-     WHERE ba.istanza_utility_id IN (
-         SELECT iu.id FROM anagrafiche.istanze_utilities iu
-          WHERE iu.codice LIKE 'TST-BA-DDT-%');
-
-    DELETE FROM anagrafiche.istanze_utilities iu
-     WHERE iu.codice LIKE 'TST-BA-DDT-%';
-END;
-$$;
-
 BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
@@ -81,24 +50,32 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(7);
 
 -- =========================================================
--- 0) Riferimenti — ogni scelta col suo ORDER BY
+-- 0) Il mondo si COSTRUISCE — i cataloghi si scelgono, col loro ORDER BY
 -- =========================================================
--- ⚠️ Un LIMIT 1 senza ORDER BY non verifica: scommette.
+-- ⛔ 2026-09-23: soggetto, ruolo e utility venivano PESCATI da «un billing
+--   account esistente», e l'articolo da «l'ultimo articolo attivo». Su un
+--   database ricostruito dai changelog i billing account sono zero: la fixture
+--   moriva sul NOT NULL di `istanze_utilities.soggetto_id`.
+-- ⭐ Il cliente del mondo e' gia' il caso del test (punto 1): un BA appena
+--   nato, legato dal trigger z90 all'emittente di chi agisce. Il contesto e'
+--   aperto dalla riga sopra, quindi il BB riusa l'azienda dell'operatore.
+CREATE TEMP TABLE tmp_bsd_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('BA storia DDT');
+
 CREATE TEMP TABLE tmp_bsd_refs AS
 SELECT
-    iu_ref.soggetto_id,
-    ba_ref.soggetto_ruolo_id,
-    ba_ref.utility_id,
-    (SELECT cc.id FROM anagrafiche.categorie_clienti cc
-      WHERE cc.codice_interno = 'STANDARD')                  AS categoria_cliente_id,
-    script.fn_pgtap_emittente_operatore()                    AS emittente_fiscale_id,
-    script.fn_pgtap_emittente_sr_operatore()                 AS emittente_sr_ok,
-    (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
-      WHERE sr.id <> script.fn_pgtap_emittente_sr_operatore()
-      ORDER BY sr.id LIMIT 1)                                AS emittente_sr_altro,
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-      ORDER BY a.data_insert DESC NULLS LAST, a.id DESC LIMIT 1)          AS articolo_id,
+    m.cliente_soggetto_ruolo_id                              AS soggetto_ruolo_id,
+    m.emittente_fiscale_id,
+    m.emittente_soggetto_ruolo_id                            AS emittente_sr_ok,
+    -- ⭐ L'«altro» emittente e' un emittente VERO, costruito: prima era «un
+    --   soggetto_ruolo qualunque diverso da quello dell'operatore».
+    (SELECT e.soggetto_ruolo_id
+       FROM dbops.fn_pgtap_crea_emittente() e)               AS emittente_sr_altro,
+    -- ⚠️ `gestito_a_magazzino = false`: il caso del file e' la NUMERAZIONE del
+    --   DDT, non il suo movimento. Un articolo gestito porterebbe dentro il
+    --   magazzino — disponibilita', ubicazioni — che qui non e' in esame.
+    dbops.fn_pgtap_crea_articolo('PGTAP-BSD-' || m.billing_account_id,
+                                 p_gestito := false)          AS articolo_id,
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
     (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
     (SELECT s.id FROM config.stati_doc_ddt s
@@ -115,50 +92,13 @@ SELECT
       WHERE c.codice = 'VENDITA' ORDER BY c.id LIMIT 1)                   AS causale_vendita_id,
     (SELECT ti.id FROM config.tipi_indirizzi ti
       WHERE ti.codice_interno = 'CON' ORDER BY ti.id LIMIT 1)             AS tipo_ind_con_id
-  FROM anagrafiche.billing_account ba_ref
-  JOIN anagrafiche.istanze_utilities iu_ref ON iu_ref.id = ba_ref.istanza_utility_id
- WHERE ba_ref.utility_id IS NOT NULL
- ORDER BY ba_ref.id
- LIMIT 1;
+  FROM tmp_bsd_mondo m;
 
 -- =========================================================
 -- 1) Fixture: un billing account NUOVO, quindi senza storia
 -- =========================================================
-CREATE TEMP TABLE tmp_bsd_ids (billing_account_id bigint);
-
-DO $$
-DECLARE
-    v_istanza_id bigint;
-    v_ba_id      bigint;
-    r            record;
-BEGIN
-    SELECT * INTO r FROM tmp_bsd_refs;
-
-    -- ⭐ FINESTRA DIFFERITA: un'istanza utility e' una SAGA — un constraint
-    --   trigger DEFERRABLE pretende almeno un satellite al COMMIT, e il
-    --   preambolo obbligatorio lo farebbe scattare sul PRIMO insert.
-    SET CONSTRAINTS ALL DEFERRED;
-
-    INSERT INTO anagrafiche.istanze_utilities (soggetto_id, fittizia, codice)
-    VALUES (r.soggetto_id, true, 'TST-BA-DDT-IU-01')
-    RETURNING id INTO v_istanza_id;
-
-    -- ⭐ Il mapping verso l'emittente NON si scrive a mano: lo crea
-    --   anagrafiche.trgfn_billing_account_link_ef, che aggancia il BA
-    --   all'emittente dell'OPERATORE corrente — cioe' il percorso reale.
-    INSERT INTO anagrafiche.billing_account (
-        istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
-        categoria_cliente_id
-    ) VALUES (
-        v_istanza_id, r.soggetto_ruolo_id, r.utility_id, CURRENT_DATE,
-        r.categoria_cliente_id
-    ) RETURNING id INTO v_ba_id;
-
-    SET CONSTRAINTS ALL IMMEDIATE;
-
-    INSERT INTO tmp_bsd_ids VALUES (v_ba_id);
-END;
-$$;
+CREATE TEMP TABLE tmp_bsd_ids AS
+SELECT m.billing_account_id FROM tmp_bsd_mondo m;
 
 SELECT is(
     (SELECT anagrafiche.fn_ba_ha_storia_emittente(t.billing_account_id)

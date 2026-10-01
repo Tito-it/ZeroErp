@@ -29,7 +29,7 @@
 #    12. format_number_int_no_thousands
 #    13. format_number_thousand_format
 #    14. format_number_currency_eur
-#    15. format_number_percent_2
+#    15. format_number_percent_2 (+ currency_eur_6)
 #    16. format_number_decimal_separator_italiano
 #   format_for_export (dispatcher)
 #    17. dispatcher_tipo_dato_date
@@ -198,10 +198,20 @@ class FormatNumberTests(SimpleTestCase):
         )
 
     def test_format_number_percent_2(self) -> None:
-        # 0.1234 e' la frazione 0..1 -> 12,34%
+        # Il valore e' GIA' in percentuale (come `sconto_percentuale`), e il
+        # testo e' quello a video (`CellaConfigurabile`): 12,34 -> «12,34 %».
+        # ⛔ Fino al 2026-09-28 era una frazione, e 10 usciva «1000,00%».
         self.assertEqual(
-            format_number(Decimal("0.1234"), formato="percent_2"),
-            "12,34%",
+            format_number(Decimal("12.34"), formato="percent_2"),
+            "12,34 %",
+        )
+        self.assertEqual(format_number(Decimal("10"), formato="percent_2"), "10,00 %")
+
+    def test_format_number_currency_eur_6(self) -> None:
+        # Il prezzo UNITARIO a 6 decimali dei listini (non l'importo).
+        self.assertEqual(
+            format_number(Decimal("1234.5"), formato="currency_eur_6"),
+            "1.234,500000 €",
         )
 
     def test_format_number_decimal_separator_italiano(self) -> None:

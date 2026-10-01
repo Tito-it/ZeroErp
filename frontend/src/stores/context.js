@@ -1,16 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-
-// Mappa tipo ruolo -> icona PrimeIcons
-const TIPO_RUOLO_ICONS = {
-  CLIENTE: 'pi pi-user',
-  FORNITORE: 'pi pi-truck',
-  VENDITORE: 'pi pi-briefcase',
-  DISTRIB: 'pi pi-share-alt',
-  RESELLER: 'pi pi-shop',
-  VETTORE: 'pi pi-car',
-  BANK: 'pi pi-building-columns'
-}
+// Icona del tipo ruolo: la mappa vive accanto a NAV_ICONS (censimento icone
+// §3.1d), qui si legge soltanto.
+import { resolveTipoRuoloIcon } from '../core/navigation'
 
 // Mappa tipo ruolo -> severity chip PrimeVue
 const TIPO_RUOLO_SEVERITY = {
@@ -41,7 +33,7 @@ export const useContextStore = defineStore('context', () => {
   const contextLabel = computed(() => label.value || '')
 
   const contextIcon = computed(() => {
-    return TIPO_RUOLO_ICONS[tipoRuoloCodice.value] || 'pi pi-user'
+    return resolveTipoRuoloIcon(tipoRuoloCodice.value)
   })
 
   const contextSeverity = computed(() => {

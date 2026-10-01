@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# M-8 — IL GUARD DELLE PREFERENZE: ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione
+#   Brief: brief-db-misure-pagina-catalogo, sezione 2 (regola 2).
+#
+#   La misura che una persona salva per una lista sta nel jsonb
+#   configurazione ->> 'pagina_dimensione', dove una FK non arriva: il guard
+#   passa il valore com'e' scritto a ui.fn_guard_misura_pagina. Chiave assente
+#   o null: il default.
+#   Il trigger nasce in 20_code/ui/20260930-09 (le preferenze non hanno seed).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260930-08-create-trgfn-ui-lista-preferenza-utente-guard-pagina-dimensione-mctit.yaml
+
+  - changeSet:
+      id: 20260930-08-create-trgfn-ui-lista-preferenza-utente-guard-pagina-dimensione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione: la misura salvata nel jsonb della
+        preferenza utente deve stare nel catalogo ui.misure_pagina (ui.fn_guard_misura_pagina). Brief:
+        brief-db-misure-pagina-catalogo §2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_guard_misura_pagina';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: la misura «righe per pagina» salvata nella preferenza e' del
+              --   catalogo (chiave assente o null: il default).
+              BEGIN
+                  PERFORM ui.fn_guard_misura_pagina(NEW.configurazione -> 'pagina_dimensione');
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione() IS
+                  'Guard di ui.lista_preferenza_utente: configurazione -> ''pagina_dimensione'' deve essere una misura del catalogo ui.misure_pagina (chiave assente o null = il default). Una FK sul jsonb non arriva: chiede a ui.fn_guard_misura_pagina, col valore com''e'' scritto (anche un non-numero si rifiuta col codice di catalogo). Brief: brief-db-misure-pagina-catalogo §2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione();

@@ -391,3 +391,33 @@ riparte **dopo** il seed della distinta. Da allora il cancello pretende che le
 Liquibase vale per tutti i seed `runOnChange` con `dbms:`: un cancello su
 quanto c'è *oggi* in una tabella di catalogo è una mina che scoppia alla
 riga dopo, non un presidio.
+
+### 🔄 rev 2026-09-24 — la famiglia ha un **codice che si può cambiare**
+
+Fino a questo giorno la famiglia aveva un solo codice, quello **interno**: la
+chiave che il sistema usa per riconoscerla e a cui si agganciano i registri, e
+che per questo non si cambia mai. L'elenco delle famiglie mostrava e cercava
+quello — ma il codice interno è del programma, non di chi lavora
+(`brief-db-ricerca-full-colonne-da-accendere` §3.5).
+
+Da oggi la famiglia ha anche un **`codice`** suo, come le altre tabelle di
+catalogo che distinguono i due (vedi le linee guida SQL, §6c):
+
+| | codice interno | codice |
+| --- | --- | --- |
+| a chi serve | al programma: regole, registri, seed | a chi guarda l'elenco e cerca |
+| si cambia? | ⛔ mai | ✅ sì |
+| unico? | sì | sì — due famiglie con lo stesso codice sarebbero indistinguibili a video |
+
+⭐ **Quando nasce una famiglia, i due codici coincidono.** Se chi la crea non
+indica il codice — oggi non lo indica nessuno: né la procedura di creazione né
+la maschera del programma — vale il codice interno. Poi il codice è libero.
+Solo alla nascita, però: cancellarlo più tardi, o lasciarlo vuoto, è rifiutato,
+perché riempirlo in silenzio nasconderebbe l'errore invece di segnalarlo.
+
+⚠️ Per le sei famiglie del catalogo il codice lo scrive il seed
+(`famiglie_documento.csv`), e il seed viene riletto a ogni aggiornamento del
+database, come la descrizione: su quelle righe il valore lo decide il file.
+
+L'elenco delle famiglie ora **mostra e cerca il codice**; il codice interno
+resta a disposizione come colonna nascosta.

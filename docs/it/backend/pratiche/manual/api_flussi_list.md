@@ -6,7 +6,7 @@ Esporre via HTTP la lista e la creazione dei flussi di una pratica.
 
 ## Contesto
 
-GET restituisce i flussi ordinati per sequenza dal repository. POST delega a `pratiche_service.crea_flusso` che risolve lo stato iniziale DA_ESEGUIRE. Il trigger DB `trgfn_flussi_guard_prerequisiti` valida automaticamente i prerequisiti all'INSERT.
+GET e' la lista a catalogo `pratiche.flussi` (`lista_codice` della view `ApiPraticaFlussiList`): paginata, ordinabile e ricercabile, servita da `PraticheRepository.list_flussi_pagina`. POST delega a `pratiche_service.crea_flusso` che risolve lo stato iniziale DA_ESEGUIRE. Il trigger DB `trgfn_flussi_guard_prerequisiti` valida automaticamente i prerequisiti all'INSERT.
 
 ## Input
 
@@ -15,12 +15,28 @@ GET restituisce i flussi ordinati per sequenza dal repository. POST delega a `pr
 - Metodo: `GET`
 - Path canonico: `/api/v1/pratiche/<pratica_id>/flussi/`
 - Header sicurezza: `Authorization: Bearer <access_token>`
+- Parametri di query (contratto di lista standard, lista a catalogo `pratiche.flussi`):
+
+| Parametro | Tipo | Descrizione |
+|---|---|---|
+| `search` | string | Ricerca libera sulle colonne accese a catalogo (`template_flusso_descrizione`); sotto la soglia della lista non filtra |
+| `limit` / `offset` | integer | Paginazione (default 25, massimo 200) |
+| `order_by` | string | Whitelist `FLUSSI_ORDER_COLS`: `sequenza`, `template_flusso_descrizione`, `stato_descrizione`, `esito_descrizione`, `data_scadenza`, `risorsa_umana_display`, `unita_organizzativa_descrizione`, `data_insert`; fuori whitelist = default |
+| `order_dir` | string | `asc` / `desc`; assente = ASC, DESC sulle date (`data_scadenza`, `data_insert`) |
+| `emittente_fiscale_id` | integer | Emittente (PK) della pratica aperta — `lista_emittente_param` della view: scioglie il cancello di perimetro per chi ha piu' emittenti nello scope. **Non filtra**: le righe le decide la pratica del path, sotto la sua RLS |
+
+Senza ordinamento: `sequenza` ASC, spareggio su `id`.
 
 ### POST — Creazione flusso
 
 - Metodo: `POST`
 - Path canonico: `/api/v1/pratiche/<pratica_id>/flussi/`
 - Header: `Content-Type: application/json`, `Authorization: Bearer <access_token>`
+- Query: `emittente_fiscale_id` (integer, opzionale) — stesso parametro del GET.
+  Il cancello di perimetro della lista vale per **ogni metodo** della rotta e
+  legge solo la query: il FE lo passa anche in creazione
+  (`pratiche-api.js::createFlusso(praticaId, payload, params)`), altrimenti chi
+  vede piu' emittenti (il super admin su «Tutti») prende 422.
 - Body:
   - `template_flusso_id` (int, **obbligatorio**, > 0) — template flusso del
     percorso. Ogni flusso e' template-driven (workflow v2): il vecchio "flusso
@@ -38,6 +54,10 @@ GET restituisce i flussi ordinati per sequenza dal repository. POST delega a `pr
 ```json
 {
   "data": {
+    "count": 1,
+    "page": 1,
+    "page_size": 25,
+    "total_pages": 1,
     "results": [
       {
         "id": 5,
@@ -70,6 +90,9 @@ GET restituisce i flussi ordinati per sequenza dal repository. POST delega a `pr
 }
 ```
 
+- `422` (GET e POST): `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` — cancello di
+  perimetro della lista: l'utente ha piu' emittenti nello scope e la richiesta
+  non porta `emittente_fiscale_id` in query.
 - `400`: `pratica_id` non valido (`E_INVALID_ID`), JSON non valido
 - `409`: **prerequisiti non soddisfatti** (`PRATICHE_PREREQUISITI_NON_SODDISFATTI`,
   catalogo DB id 300): il flusso non e' ancora eseguibile, mancano i prerequisiti
@@ -87,7 +110,11 @@ GET restituisce i flussi ordinati per sequenza dal repository. POST delega a `pr
 
 ## Regole
 
-- GET: ordinamento `sequenza ASC, id ASC`.
+- GET (dal 2026-09-27): lista a catalogo `pratiche.flussi` con envelope
+  paginato (`count`/`page`/`page_size`/`total_pages`/`results`); default
+  `sequenza ASC, id ASC` (la posizione del flusso nella pratica). Il conteggio
+  usa lo stesso FROM+JOIN della pagina: il JOIN su `pratiche.pratiche` (con
+  RLS) resta anche nel `COUNT`, perche' `pratiche.flussi` non ha RLS propria.
 - GET (2026-06-15): ogni riga espone, oltre ai display fields, il contesto
   data-driven per la UI: `template_azione_ui_key` (catalogo `pratiche.azioni_ui` —
   attività/drawer di dominio apribile dal flusso; `null` se nessuna) e il contesto

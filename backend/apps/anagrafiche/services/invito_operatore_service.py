@@ -2,192 +2,144 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Servizio invito operatore al primo accesso.
-#        Genera password temporanea, imposta flag cambio password,
-#        crea token invito, invia email con link di attivazione.
+# Scopo: Servizio invito della veste OPERATORE. Qui resta solo cio' che e'
+#        dell'operatore: il check d'invitabilita' del DB e la veste da
+#        invitare. Emissione del token, reinvio, email e attivazione sono il
+#        building block unico `apps.core.services.invito_veste` (L-3, regola
+#        del 2): la stessa strada di portale e shop.
+#        ⛔ Dal 2026-09-25 l'invito NON sovrascrive piu' la password (A-1) e
+#        non accende la veste (A-3): la credenziale puo' essere di una persona
+#        che e' anche cliente del portale, e la veste la accende solo
+#        l'attivazione.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 import logging
-import secrets
 from typing import Any
 
-from django.conf import settings
-from django.contrib.auth.hashers import make_password
-from django.db import connection, transaction
+from django.db import connection
 
 from apps.core.db._helpers import jsonb_out
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
-from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.token_service import TokenService
+from apps.core.services.error_policies import ErrorPolicyRegistry
+from apps.core.services.invito_veste import PORTA_OPERATORE, InvitoVeste, maschera_email
 
 logger = logging.getLogger("security")
 
-E_INVITO = "E_INVITO_OPERATORE"
-_INVITO_TOKEN_TIPO = "INVITO_OPERATORE"
-_INVITO_SCADENZA_ORE = 72
-_TEMPLATE_INVITO = "INVITO_OPERATORE"
+E_INVITO = PORTA_OPERATORE.codice_invito
 
 
 class InvitoOperatoreService:
-    """Gestione invito operatore: verifica, genera, invia, reinvia."""
+    """Invito della veste operatore: verifica, emette, spedisce, reinvia."""
 
     def __init__(self) -> None:
         self._auth_repo = AuthRepository()
-        self._token_service = TokenService()
-        self._email_service = EmailDispatchService()
+        self._invito = InvitoVeste(auth_repo=self._auth_repo)
 
-    # Scopo: Verifica se un operatore e' invitabile, genera token e invia email.
-    #        Imposta password temporanea e flag deve_cambiare_password.
-    #        Obiettivo: l'operatore riceve un link e al primo accesso sceglie la password.
-    def invia_invito(self, auth_user_id: int, invitato_da_user_id: int) -> dict[str, Any]:
-        # 1. Verifica invitabilita' via funzione PG
+    # Scopo: Invia (o reinvia) l'invito della veste OPERATORE spenta.
+    # L'invitabilita' la decide il DB (`fn_check_operatore_invitabile`: veste
+    # spenta, nella finestra, email presente — D-8); la veste da invitare e'
+    # l'unica OPERATORE spenta della credenziale. I token pendenti della veste
+    # si invalidano sempre nella transazione del nuovo (BB, A-4): `reinvio`
+    # serve solo al log.
+    # ⛔ Il rifiuto NON compone il testo col motivo (§16 del brief
+    # blocco-login, 2026-09-27): il DB manda `reason` (codice macchina) e
+    # `reason_key` (chiave i18n), non una frase. Il messaggio e' quello del
+    # catalogo; codice e chiave viaggiano nel contesto, per il log. A video il
+    # perche' lo dice gia' il drawer, dalla stessa check (`invite_reason*`).
+    def invia_invito(
+        self, auth_user_id: int, invitato_da_user_id: int, *, reinvio: bool = False
+    ) -> dict[str, Any]:
         check = self._check_invitabile(auth_user_id)
         ErrorManager.require(
             check.get("invitabile", False),
             code=E_INVITO,
-            message=check.get("motivo", "Operatore non invitabile."),
+            message=ErrorPolicyRegistry.resolve(E_INVITO).user_message,
+            context={
+                "auth_user_id": auth_user_id,
+                "reason": check.get("reason"),
+                "reason_key": check.get("reason_key"),
+            },
         )
         email = check["email"]
+        identita_id = self._veste_da_invitare(auth_user_id)
 
-        # Risolve l'identita OPERATORE dell'auth_user (post modello 1:N
-        # §8.4.1: `set_deve_cambiare_password`/`set_invito_inviato_at`
-        # richiedono identita_id esplicito per puntare la veste corretta
-        # invece di colpire la "prima attiva trovata"). L'invito operatore
-        # assume invariante 1 sola identita OPERATORE per auth_user,
-        # garantita dall'unique partial su (auth_user, ruolo_applicativo)
-        # nelle migration 20260420-*.
-        identita = self._auth_repo.find_identita_attiva_for_ruoli(
-            auth_user_id, (RUOLO_APPLICATIVO_OPERATORE,)
+        emissione = self._invito.emetti(
+            PORTA_OPERATORE,
+            auth_user_id=auth_user_id,
+            identita_id=identita_id,
+            ruolo_applicativo=RUOLO_APPLICATIVO_OPERATORE,
+            invitato_da_user_id=invitato_da_user_id,
         )
-        ErrorManager.require(
-            identita is not None,
-            code=E_INVITO,
-            message="Identita operatore non trovata o non attiva.",
+
+        nomi = self._auth_repo.get_nomi_credenziale(auth_user_id) or {}
+        # ⭐ `inviato` e' l'esito della MAIL, non della chiamata (F-3): il
+        #    token c'e' comunque, e il client con `false` dice di reinviare.
+        inviato = self._invito.spedisci(
+            PORTA_OPERATORE,
+            emissione,
+            auth_user_id=auth_user_id,
+            identita_id=identita_id,
+            destinatario=email,
+            invitato_da_user_id=invitato_da_user_id,
+            # Il nome utente (D-9): il template lo scrive, e senza valore il
+            # motore lascerebbe il segnaposto letterale «{{username}}».
+            variabili={
+                "nome": nomi.get("first_name", ""),
+                "cognome": nomi.get("last_name", ""),
+                "username": nomi.get("username", ""),
+            },
+            # Reparto dell'operatore: sceglie la casella mittente.
+            unita_organizzativa_id=self._auth_repo.get_unita_organizzativa_id(auth_user_id),
         )
-        assert identita is not None
-        identita_id = int(identita["id"])
 
-        # 2-4. Operazioni atomiche: password + flag + token
-        with transaction.atomic():
-            # 2. Imposta password temporanea casuale (non comunicata all'operatore)
-            temp_password = secrets.token_urlsafe(16)
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE django.auth_user SET password = %s WHERE id = %s",
-                    [make_password(temp_password), auth_user_id],
-                )
-
-            # 3. Imposta flag deve_cambiare_password sull'identita OPERATORE
-            self._auth_repo.set_deve_cambiare_password(
-                auth_user_id, True, identita_id=identita_id
-            )
-
-            # 4. Genera token invito
-            token_plain = self._token_service.create(
-                tipo=_INVITO_TOKEN_TIPO,
-                auth_user_id=auth_user_id,
-                scadenza_ore=_INVITO_SCADENZA_ORE,
-                meta={
-                    "invitato_da_user_id": invitato_da_user_id,
-                    "identita_id": identita_id,
-                },
-            )
-
-        # 5. Risolvi reparto per account email mittente
-        uo_id = self._auth_repo.get_unita_organizzativa_id(auth_user_id)
-
-        # 6. Costruisci link frontend
-        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
-        link = f"{frontend_url}/attivazione/{token_plain}"
-
-        # 7. Recupera nome invitante
-        invitato_da_nome = self._get_user_display_name(invitato_da_user_id)
-
-        # 8. Recupera nome operatore
-        operatore_nome = self._get_user_names(auth_user_id)
-
-        # 9. Invia email (non blocca il flusso se fallisce — il token e' gia' valido)
-        try:
-            self._email_service.send_email(
-                codice_template=_TEMPLATE_INVITO,
-                destinatario=email,
-                variabili={
-                    "nome": operatore_nome.get("first_name", ""),
-                    "cognome": operatore_nome.get("last_name", ""),
-                    "azienda": "ZeroErp",
-                    "link": link,
-                    "scadenza_ore": str(_INVITO_SCADENZA_ORE),
-                    "invitato_da": invitato_da_nome,
-                },
-                unita_organizzativa_id=uo_id,
-                ambito="SISTEMA",
-                auth_user_id=auth_user_id,
-            )
-        except Exception:
-            logger.exception("Errore invio email invito per user_id=%s — token valido, invito recuperabile", auth_user_id)
-
-        # 10. Aggiorna timestamp invito sull'identita OPERATORE specifica
-        invito_updated = self._auth_repo.set_invito_inviato_at(
-            auth_user_id, identita_id=identita_id
+        logger.info(
+            "security.invito_inviato user_id=%s identita_id=%s da=%s reinvio=%s is_cross=%s inviato=%s",
+            auth_user_id, identita_id, invitato_da_user_id, reinvio, emissione.is_cross, inviato,
         )
-        if not invito_updated:
-            logger.warning(
-                "Timestamp invito non aggiornato per user_id=%s identita_id=%s — riga non trovata",
-                auth_user_id, identita_id,
-            )
+        return {"inviato": inviato, "email": maschera_email(email), "is_cross": emissione.is_cross}
 
-        logger.info("security.invito_inviato user_id=%s email=%s da=%s", auth_user_id, email, invitato_da_user_id)
-
-        # Maschera email per la response
-        masked = self._mask_email(email)
-        return {"inviato": True, "email": masked}
-
-    # Scopo: Reinvia invito invalidando token precedenti.
+    # Scopo: Reinvia l'invito: la stessa strada (i token pendenti della veste
+    # si invalidano DENTRO la transazione del nuovo; prima era una scrittura
+    # separata, e se l'emissione falliva la persona restava senza link, A-4).
     def reinvia_invito(self, auth_user_id: int, invitato_da_user_id: int) -> dict[str, Any]:
-        self._token_service.invalidate_all(_INVITO_TOKEN_TIPO, auth_user_id)
-        return self.invia_invito(auth_user_id, invitato_da_user_id)
+        return self.invia_invito(auth_user_id, invitato_da_user_id, reinvio=True)
 
-    # Scopo: Chiama fn_check_operatore_invitabile e ritorna il risultato JSONB.
+    # Scopo: La veste OPERATORE spenta da invitare. Il check del DB ha gia'
+    # escluso quella attiva; il modello ammette piu' vesti spente sullo stesso
+    # ruolo (l'unique vale solo WHERE attivo), e sceglierne una a caso
+    # deciderebbe per la prima che capita: con piu' di una si rifiuta.
+    def _veste_da_invitare(self, auth_user_id: int) -> int:
+        spente = [
+            v for v in self._auth_repo.find_identita_per_ruolo(
+                auth_user_id, RUOLO_APPLICATIVO_OPERATORE
+            )
+            if not v["attivo"]
+        ]
+        ErrorManager.require(
+            len(spente) == 1,
+            code=E_INVITO,
+            message=(
+                "Identita operatore da invitare non trovata."
+                if not spente else
+                "Piu' identita operatore spente sulla stessa credenziale: "
+                "richiede intervento manuale."
+            ),
+            context={"auth_user_id": auth_user_id, "vesti_spente": len(spente)},
+        )
+        return int(spente[0]["id"])
+
+    # Scopo: Chiama fn_check_operatore_invitabile e ritorna il risultato JSONB
+    # `{invitabile, reason, reason_key, email}` (dal `20260927-01`).
+    # Il ripiego ha la stessa forma: non invitabile, senza un motivo del DB da
+    # riportare (nessun codice inventato qui).
     def _check_invitabile(self, auth_user_id: int) -> dict[str, Any]:
-        sql = "SELECT script.fn_check_operatore_invitabile(%s)"
         with connection.cursor() as cursor:
-            cursor.execute(sql, [auth_user_id])
+            cursor.execute("SELECT script.fn_check_operatore_invitabile(%s)", [auth_user_id])
             row = cursor.fetchone()
             if row and row[0]:
                 return jsonb_out(row[0])
-        return {"invitabile": False, "motivo": "Errore verifica invitabilita'."}
-
-    # Scopo: Recupera nome visualizzabile di un utente.
-    def _get_user_display_name(self, auth_user_id: int) -> str:
-        sql = "SELECT first_name, last_name, username FROM django.auth_user WHERE id = %s"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [auth_user_id])
-            row = cursor.fetchone()
-            if row:
-                name = f"{row[0]} {row[1]}".strip()
-                return name if name else row[2]
-        return "Amministratore"
-
-    # Scopo: Recupera first_name e last_name di un utente.
-    def _get_user_names(self, auth_user_id: int) -> dict[str, str]:
-        sql = "SELECT first_name, last_name FROM django.auth_user WHERE id = %s"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [auth_user_id])
-            row = cursor.fetchone()
-            if row:
-                return {"first_name": row[0] or "", "last_name": row[1] or ""}
-        return {"first_name": "", "last_name": ""}
-
-    # Scopo: Maschera email per la response (es. "m***@azienda.it").
-    @staticmethod
-    def _mask_email(email: str) -> str:
-        if not email or "@" not in email:
-            return "***"
-        local, domain = email.split("@", 1)
-        if len(local) <= 1:
-            return f"*@{domain}"
-        return f"{local[0]}***@{domain}"
+        return {"invitabile": False, "reason": None, "reason_key": None, "email": None}

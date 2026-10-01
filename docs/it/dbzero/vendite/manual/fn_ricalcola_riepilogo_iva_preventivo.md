@@ -52,8 +52,12 @@ vendite.fn_ricalcola_riepilogo_iva_preventivo(
 4. **CTE `righe`**: imponibile_riga **full precision** = `qta * prezzo *
    (1 - COALESCE(sconto%, 0)/100)`, niente ROUND. Filtra `attivo IS TRUE` e
    `quantita > 0`.
-5. **INSERT aggregato**, group by `iva_id` (preventivi non hanno
-   natura/esigibilita/split, quei campi sono `NULL`):
+5. **INSERT aggregato**, group by `iva_id`. `natura_id` resta `NULL`;
+   `esigibilita` e `split_payment` (dal 2026-10-01, D-4 di
+   `brief-db-esigibilita-iva-per-cassa-emittente`) escono per codice IVA da
+   [script.fn_esigibilita_iva_documento](/dbzero/script/funzioni/fn_esigibilita_iva_documento)
+   con emittente e cliente del preventivo: la stessa regola delle righe di
+   fattura. Senza cliente la coppia esce `NULL`/`NULL`:
 
    ```sql
    imponibile      = ROUND(SUM(imponibile_riga), 2)
@@ -122,6 +126,13 @@ END$$;
 * **Performance**: 1 SELECT chain + 1 DELETE + 1 INSERT con CTE. O(n) sulle righe del preventivo. Costo trascurabile.
 * **No SECURITY DEFINER**: la fn non eleva privilegi, viene eseguita con i
   diritti del caller. Le tabelle target sono accessibili al ruolo applicativo.
+
+---
+
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+L'imponibile di riga della CTE `righe` non è più scritto qui: viene da [script.fn_imponibile_riga](/dbzero/script/funzioni/fn_imponibile_riga), la sede unica della formula (`20260928-25`). Stesso valore — provato su una griglia di 252 casi e sui dati di dev — ma una regola sola: prezzo o quantità assenti danno **nessun valore**, mai zero; sconto assente è nessuno sconto; l'arrotondamento resta a chi consuma. La firma è di nuovo ancorata (`%TYPE`) e `SECURITY INVOKER` è esplicito.
 
 ---
 

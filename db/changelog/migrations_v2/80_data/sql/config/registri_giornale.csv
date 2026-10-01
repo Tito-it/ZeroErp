@@ -1,0 +1,5 @@
+id,codice_interno,codice,descrizione,etichetta_key,sorgente,obsoleto_dal
+1,EVENT_LOG,EVENT_LOG,"Eventi di dominio: i momenti della pipeline (avvio, passo, fine, errore)",config.registri_giornale.event_log,vendite.event_log,NULL
+2,LOTTO_LOG,LOTTO_LOG,"Segnalazioni del lotto di fatturazione, fase per fase",config.registri_giornale.lotto_log,vendite.fatturazione_lotti_log,NULL
+3,TASK_RUN,TASK_RUN,"Tentativi dei task di pipeline, con il loro esito",config.registri_giornale.task_run,vendite.fatturazione_lotti_task_runs,NULL
+4,FATTURA_LOG,FATTURA_LOG,"Segnalazioni sulla singola fattura",config.registri_giornale.fattura_log,vendite.fatture_log,NULL

@@ -25,7 +25,7 @@
 //    Se il resolver si sdoppiasse, lo stesso errore direbbe due cose diverse a
 //    seconda di come e' arrivato — e nessuno se ne accorgerebbe, perche' le tre
 //    strade non si incontrano mai.
-import { DOCUMENTO_DRAWERS, DOCUMENTO_DRAWER_TIPI } from '../vendite/_shared/documenti/documentoDrawers'
+import { DOCUMENTO_DRAWER_TIPI, drawerEntita } from './drawerEntita'
 import { MANAGE_ICONS, READONLY_DOMAINS } from './constants'
 import { NAV_ICONS } from './navigation'
 
@@ -53,7 +53,7 @@ import { NAV_ICONS } from './navigation'
 //              che una superficie pubblica indirizzera' cosi' quella riga
 //              cambia con un seed — senza toccare nessuna funzione. Scritto
 //              perche' registri un fatto verificato invece di una supposizione.
-//   `drawer`   chiave del registry `DOCUMENTO_DRAWERS` (il caso normale: un
+//   `drawer`   chiave del registro dei drawer (`drawerEntita`) (il caso normale: un
 //              documento si apre, non si "visita").
 //   `rotta`    per le entita' che hanno una pagina: `queryKey` per un
 //              deep-link `?open=<id>`, `param` per una rotta con `:id`.
@@ -61,7 +61,7 @@ import { NAV_ICONS } from './navigation'
 //              della navigazione invece di scriverlo qui: il pulsante deve
 //              portare lo stesso segno della voce di menu che apre la stessa
 //              entita', o chi ha cliccato non la riconosce quando ci arriva.
-//              ⛔ Prima era UNA sola per tutti — `pi pi-external-link`, cioe'
+//              ⛔ Prima era UNA sola per tutti — il `MANAGE_ICONS.VAI_A` di oggi, cioe'
 //              «un collegamento» — che dice come ci si va e non DOVE si va
 //              (rilievo di Tid, 2026-09-08). In un kebab con due voci era il
 //              segno identico su due destinazioni diverse.
@@ -157,7 +157,7 @@ const DESTINAZIONI = Object.freeze({
     richiedeAdmin: true,
     etichettaKey: 'config.tipi_entita.definizione_workflow',
     // La voce «Definizioni workflow» del menu amm-software porta questo segno.
-    icona: NAV_ICONS.SITEMAP,
+    icona: NAV_ICONS.DEFINIZIONI_WORKFLOW,
   },
   // ⛔ UN SOLO TIPO DEL CATALOGO NON E' QUI, e non e' una svista: `TASK_RUN`.
   //    Nessuna schermata mostra un giro per id — sta a catalogo perche' serve
@@ -248,7 +248,7 @@ function raggiungibile(destinazione, authStore) {
   // click non farebbe niente — che è la forma peggiore del vicolo cieco,
   // perché sembra rotto il software e non la destinazione.
   if (!destinazione.drawer && !destinazione.rotta) return false
-  if (destinazione.drawer && !DOCUMENTO_DRAWERS[destinazione.drawer]) return false
+  if (destinazione.drawer && !drawerEntita(destinazione.drawer)) return false
   // ⚠️ Le due regole di accesso sono DIVERSE e vanno guardate come le guarda il
   // route guard: `amm-software` su `isSuperAdmin`, tutto il resto sull'area.
   if (destinazione.richiedeAdmin && !authStore?.isSuperAdmin) return false

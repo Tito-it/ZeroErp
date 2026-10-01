@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.anagrafiche.api.views_soggetti import SoggettiDetailView, SoggettiView
+from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 
 
 class CercaSoggettiTool(AITool):
@@ -31,7 +33,10 @@ class CercaSoggettiTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "Ricerca libera su ragione sociale, cognome, nome, codice fiscale o partita IVA",
+                        # ⚠️ Le colonne le decide il catalogo della lista
+                        #    `anagrafiche.soggetti` (dal 2026-09-24 sul BB): qui
+                        #    si nominano solo per orientare il modello.
+                        "description": f"Ricerca libera su ragione sociale (cognome e nome per le persone fisiche) o identificativo fiscale unico, che porta codice fiscale e partita IVA (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "natura": {
                         "type": "string",
@@ -45,8 +50,7 @@ class CercaSoggettiTool(AITool):
                 },
                 "required": [],
             },
-            required_area="anagrafiche",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(SoggettiView, "GET"),
             # Naviga alla lista soggetti con filtro search pre-impostato
             route_template={
                 "name": "anagrafiche-soggetti",
@@ -61,7 +65,7 @@ class CercaSoggettiTool(AITool):
         svc = SoggettiService()
 
         items, total = svc.list_soggetti(
-            search=params.get("search"),
+            search=self.termine_ricerca(params),
             limit=self.safe_page_size(params),
             offset=0,
             order_by="ragione_sociale_completa",
@@ -105,8 +109,7 @@ class DettaglioSoggettoTool(AITool):
                 },
                 "required": ["soggetto_id"],
             },
-            required_area="anagrafiche",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(SoggettiDetailView, "GET"),
         )
 
     # Scopo: Recupera il dettaglio completo di un soggetto.

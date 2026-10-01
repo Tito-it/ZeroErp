@@ -13,10 +13,10 @@ import Popover from 'primevue/popover'
 import { useTabsStore } from '../../stores/tabs'
 import { useContextStore } from '../../stores/context'
 import { useUiStore } from '../../stores/ui'
+import { useConfirmAction } from '../composables/useConfirmAction'
 import { useConfirmCloseTab } from '../composables/useConfirmCloseTab'
-import { useNotify } from '../composables/useNotify'
-import { BREAKPOINTS, TABS } from '../constants'
-import { resolveNavigationLabel } from '../navigation'
+import { BREAKPOINTS, MANAGE_ICONS, TABS } from '../constants'
+import { resolveTabDisplayLabel } from '../navigation'
 
 const { t, te } = useI18n()
 const router = useRouter()
@@ -24,14 +24,27 @@ const tabs = useTabsStore()
 const context = useContextStore()
 const ui = useUiStore()
 const { closeTab } = useConfirmCloseTab()
-const { warn } = useNotify()
+const { confirmAction } = useConfirmAction()
 
-// Mostra toast quando il limite tab viene raggiunto
-watch(() => tabs.tabLimitReached, (reached) => {
-  if (reached) {
-    warn(t('notifications.tab_limit_reached'))
-    tabs.tabLimitReached = false
-  }
+// ⭐ La conferma della sostituzione oltre il limite (la chiede il guard del
+//    router, vedi `stores/tabs`). La dialog NOMINA la scheda: «l'ultima» fa
+//    cercare quale sia. ⚠️ Con modifiche non salvate e' rossa e lo dice,
+//    come la X di chiusura (`useConfirmCloseTab`): sostituire e' chiudere.
+watch(() => tabs.richiestaSostituzione, (richiesta) => {
+  if (!richiesta) return
+  const nome = tabLabel(richiesta.tab)
+  const sporca = richiesta.tab.dirty === true
+  confirmAction({
+    header: t('tabs.sostituisci.titolo'),
+    message: sporca
+      ? t('tabs.sostituisci.messaggio_modifiche', { nome })
+      : t('tabs.sostituisci.messaggio', { nome }),
+    danger: sporca,
+    acceptLabel: t('tabs.sostituisci.conferma'),
+    acceptIcon: MANAGE_ICONS.CONFIRM,
+    onAccept: () => richiesta.rispondi(true),
+    onReject: () => richiesta.rispondi(false),
+  })
 })
 
 // Schede rimanenti — visibile quando <= 5
@@ -46,8 +59,7 @@ const remainingClass = computed(() => {
 const splitPopover = ref(null)
 
 function tabLabel(tab) {
-  if (tab.customLabel) return tab.label
-  return resolveNavigationLabel(tab, t, te) || tab.label
+  return resolveTabDisplayLabel(tab, t, te)
 }
 
 const mobileTabOptions = computed(() =>
@@ -122,7 +134,7 @@ function handlePinTab(tab) {
         >
           <i v-if="tab.icon" :class="tab.icon" class="tab-icon"></i>
           <!-- Indicatore tab pinnata -->
-          <i v-if="tabs.isSplit && tabs.pinnedTab?.id === tab.id" class="pi pi-thumbtack tab-pin-icon"></i>
+          <i v-if="tabs.isSplit && tabs.pinnedTab?.id === tab.id" class="tab-pin-icon" :class="MANAGE_ICONS.TAB_FISSATA"></i>
           <!-- Il titolo e' l'unica parte della tab che si restringe: quando e'
                troncato il nome intero sta nel tooltip. Il delay evita che il
                tooltip compaia a ogni passaggio per cliccare una tab. -->
@@ -131,7 +143,7 @@ function handlePinTab(tab) {
             v-tooltip.top="{ value: tabLabel(tab), showDelay: 600 }"
           >{{ tabLabel(tab) }}</span>
           <!-- Indicatore dirty -->
-          <span v-if="tab.dirty" class="tab-dirty-dot" v-tooltip.top="t('tabs.close_confirm_title')"></span>
+          <span v-if="tab.dirty" class="tab-dirty-dot" v-tooltip.top="t('common.modifiche_non_salvate.indicatore')"></span>
           <!-- Indicatore contesto attivo -->
           <span
             v-else-if="tab.contextAware && context.hasContext"
@@ -140,7 +152,8 @@ function handlePinTab(tab) {
           ></span>
           <!-- Pulsante chiusura -->
           <i
-            class="pi pi-times tab-close"
+            class="tab-close"
+            :class="MANAGE_ICONS.CANCEL"
             @click="handleCloseTab(tab, $event)"
             v-tooltip.top="t('tabs.close')"
           ></i>
@@ -164,7 +177,7 @@ function handlePinTab(tab) {
           @click="toggleSplitPopover"
           v-tooltip.top="tabs.isSplit ? t('tabs.split_close') : t('tabs.split_open')"
         >
-          <i :class="tabs.isSplit ? 'pi pi-times' : 'pi pi-objects-column'"></i>
+          <i :class="tabs.isSplit ? MANAGE_ICONS.CANCEL : MANAGE_ICONS.AFFIANCA"></i>
         </button>
 
         <!-- Popover con lista tab da affiancare -->
@@ -276,7 +289,7 @@ function handlePinTab(tab) {
 
 .content-tab.active {
   color: var(--app-topbar-breadcrumb-active-color);
-  border-bottom-color: var(--p-primary-color);
+  border-bottom-color: var(--app-accent-color);
 }
 
 .tab-icon {
@@ -290,7 +303,7 @@ function handlePinTab(tab) {
 
 /* Separatore verticale verde tra tab */
 .content-tab + .content-tab {
-  border-left: 1px solid color-mix(in srgb, var(--p-primary-color) 35%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--app-accent-color) 35%, transparent);
 }
 
 /* Il titolo: tetto a 150px come prima, e `min-width: 0` perche' possa cedere
@@ -307,7 +320,7 @@ function handlePinTab(tab) {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--p-orange-400);
+  background: var(--app-warning-color);
 }
 
 .tab-context-dot {
@@ -336,12 +349,12 @@ function handlePinTab(tab) {
 
 /* Tab pinnata nello split */
 .content-tab.pinned {
-  border-bottom-color: var(--p-orange-400);
+  border-bottom-color: var(--app-split-color);
 }
 
 .tab-pin-icon {
   font-size: 0.6rem;
-  color: var(--p-orange-400);
+  color: var(--app-split-color);
 }
 
 /* Contatore schede rimanenti */
@@ -366,12 +379,12 @@ function handlePinTab(tab) {
 
 .tab-remaining.remaining-orange {
   color: #fff;
-  background: var(--p-orange-500);
+  background: var(--app-warning-color);
 }
 
 .tab-remaining.remaining-red {
   color: #fff;
-  background: var(--p-red-500);
+  background: var(--app-severity-danger);
 }
 
 /* Bottone Affianca / Chiudi split — icona verde, sfondo neutro (come app-action-btn) */
@@ -383,7 +396,7 @@ function handlePinTab(tab) {
   height: 1.85rem;
   margin: auto 0.4rem;
   font-size: 0.95rem;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   background: transparent;
   border: none;
   border-radius: 6px;

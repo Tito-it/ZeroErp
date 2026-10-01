@@ -16,7 +16,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import escape_ilike, row_to_dict, rows_to_list
+from apps.core.db._helpers import row_to_dict, rows_to_list, pattern_contiene
 
 # Scopo: Clausole WHERE condivise tra query count e query data del lookup
 # istanze. Mantenere allineate le due query: qualsiasi nuovo filtro va aggiunto qui.
@@ -43,7 +43,8 @@ from apps.core.db._helpers import escape_ilike, row_to_dict, rows_to_list
 #   visibili solo ad admin globale / superuser.
 _LOOKUP_WHERE = """
     WHERE (
-            iu.codice ILIKE %s
+            %s::text IS NULL
+         OR iu.codice ILIKE %s
          OR s.ragione_sociale_completa ILIKE %s
          OR vid.indirizzo_normalizzato ILIKE %s
           )
@@ -145,17 +146,22 @@ class IstanzeUtilityRepository:
         limit: int,
     ) -> tuple[list[dict[str, Any]], int]:
         # Pattern ILIKE su 3 colonne (codice, ragione sociale, indirizzo).
-        search_pattern = f"%{escape_ilike(q)}%"
+        # ⛔ `None` quando q e' vuota (ammessa col perimetro, vedi il service):
+        #    senza la guardia `%s::text IS NULL` del WHERE diventerebbe
+        #    `ILIKE NULL`, cioe' ZERO righe — la tendina del drawer pratiche
+        #    vuota con un 200 (2026-09-26, era `%%` = tutte prima di
+        #    `pattern_contiene`).
+        search_pattern = pattern_contiene(q)
 
         # Scope emittente: lista sr_ids autorizzati, None = bypass (superuser/admin globale).
         scope_array = emittente_ids if emittente_ids is not None else None
 
         # Parametri condivisi tra count e data query (stessa clausola WHERE).
         # Layout (post refactor con fn_check_utility_istanza_coerenza):
-        #   3 ILIKE + 2 utility_id (cast IS NULL + fn arg) + 2 soggetto
-        #   + 2 soggetto_ruolo + 2 scope
+        #   guardia + 3 ILIKE + 2 utility_id (cast IS NULL + fn arg)
+        #   + 2 soggetto + 2 soggetto_ruolo + 2 scope
         where_params = [
-            search_pattern, search_pattern, search_pattern,
+            search_pattern, search_pattern, search_pattern, search_pattern,
             utility_id, utility_id,
             soggetto_id, soggetto_id,
             soggetto_ruolo_id, soggetto_ruolo_id,
@@ -166,7 +172,7 @@ class IstanzeUtilityRepository:
             SELECT COUNT(*)
             {_LOOKUP_FROM}
             {_LOOKUP_WHERE}
-        """  # noqa: S608
+        """
 
         data_sql = f"""
             SELECT
@@ -177,7 +183,7 @@ class IstanzeUtilityRepository:
                       iu.codice ASC,
                       iu.id ASC
              LIMIT %s
-        """  # noqa: S608
+        """
 
         with connection.cursor() as cursor:
             cursor.execute(count_sql, where_params)
@@ -211,7 +217,7 @@ class IstanzeUtilityRepository:
             {_LOOKUP_SELECT_COLUMNS}
             {_LOOKUP_FROM}
              WHERE iu.id = %s
-        """  # noqa: S608
+        """
         with connection.cursor() as cursor:
             cursor.execute(sql, [istanza_utility_id])
             row = row_to_dict(cursor)

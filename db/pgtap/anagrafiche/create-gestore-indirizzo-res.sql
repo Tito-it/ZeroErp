@@ -7,8 +7,8 @@
 --       e associazione in anagrafiche.indirizzi
 --
 -- Scenario:
---   - Legge automaticamente il primo Gestore da anagrafiche.gestori
---     (via anagrafiche.soggetti_ruoli + anagrafiche.soggetti)
+--   - Prende il Gestore dell'installazione, o lo costruisce se non c'e'
+--     (dbops.fn_pgtap_crea_gestore)
 --   - Recupera il tipo indirizzo 'SEDEOP' da config.tipi_indirizzi
 --   - Crea un indirizzo_dettaglio dedicato (indirizzo normalizzato di test)
 --   - Crea un indirizzo di sede operativa per il Gestore in anagrafiche.indirizzi
@@ -27,9 +27,14 @@
 -- Ora: BEGIN ... ROLLBACK e le tre pulizie spariscono — il ROLLBACK e' la
 -- garanzia. Qui non serve l'helper dei soggetti: il test non ne crea, legge il
 -- gestore che c'e'.
--- ⚠️ Legge MIN(id) da anagrafiche.gestori, cioe' «il primo che capita». Regge
--- perche' il gestore e' un singleton globale — ma se un giorno ne esistessero
--- due, questo test sceglierebbe a caso.
+-- rev 2026-09-23 — il gestore si costruisce (brief-db-fixture-che-costruiscono-
+-- giro-2, lotto 2). Il file leggeva MIN(id) da anagrafiche.gestori, che e' dato
+-- di MACCHINA: su un database ricostruito (la CI) e' vuota, e il file moriva al
+-- test 1 con cinque asserzioni su otto rosse. Ora il gestore lo da'
+-- dbops.fn_pgtap_crea_gestore(): lo PRENDE se c'e' (dbdev: nessuna scrittura),
+-- lo COSTRUISCE se non c'e'. Costruito, ha SEDELEG e FATT come ogni GE (sono
+-- gli obbligatori, il guard differito li pretende): il punto 2 qui sotto vale
+-- anche per lui.
 --
 -- ⚠️ E il tipo indirizzo e' passato da RES a SEDEOP. Non e' cosmesi, sono due
 -- fatti in fila che il test non controllava:
@@ -79,10 +84,11 @@ SELECT
     NULL::text                        AS piano_test,
     NULL::text                        AS palazzina_test;
 
--- 0) Il Gestore che si usera' nel test (il primo per id). Stava piu' su,
---    dentro la regione della vecchia pulizia d'ingresso, ed e' rientrato qui.
+-- 0) Il Gestore che si usera' nel test: preso o costruito.
+--    ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA: il JOIN
+--    su soggetti sta nella temp table sotto, non qui.
 CREATE TEMP TABLE tmp_first_gestore AS
-SELECT MIN(id) AS gestore_id FROM anagrafiche.gestori;
+SELECT gestore_id FROM dbops.fn_pgtap_crea_gestore('indirizzo SEDEOP');
 
 -- ---------------------------------------------------------
 -- 1) Recupero del Gestore (con soggetto e stato/comune)
@@ -102,10 +108,10 @@ JOIN anagrafiche.soggetti_ruoli sr
 JOIN anagrafiche.soggetti s
   ON s.id = sr.soggetto_id;
 
--- Test 1: esiste almeno un Gestore
+-- Test 1: il Gestore c'e' (preso o costruito) e si legge col suo soggetto
 SELECT ok(
     (SELECT count(*) FROM tmp_gestore) = 1,
-    'Esiste almeno un Gestore in anagrafiche.gestori (letto il primo disponibile)'
+    'Il Gestore dell''installazione c''e'' (preso o costruito) e si legge col suo soggetto'
 );
 
 -- ---------------------------------------------------------

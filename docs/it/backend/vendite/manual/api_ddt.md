@@ -37,7 +37,8 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
   lo slot Consegna viene valorizzato best-effort dall'indirizzo di RUOLO del
   cliente (CON, fallback FATT); mai bloccante.
 - Detail `GET /api/v1/vendite/ddt/<id>/` — testata + capabilities data-driven
-  (`fn_available_actions_ddt`).
+  (`fn_available_actions_ddt`) nella chiave `capabilities`, non fuse nella
+  testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
 - Update `PATCH /api/v1/vendite/ddt/<id>/` — solo DRAFT; cliente immutabile.
 - Delete `DELETE /api/v1/vendite/ddt/<id>/` — hard delete solo DRAFT
   (pattern abbandono bozza).
@@ -58,6 +59,7 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
   `{stato_codice}` (matrice `config.transizioni_stati_ddt`).
 - Push `POST /api/v1/vendite/ddt/<id>/push/` — push singolo a commessa
   (sorgente `DDT_VENDITA`, fatturazione differita).
+- Lista configurabile delle righe `GET /<id>/righe/lista/` (+ `export/`): BB condiviso, vedi [api_righe_documento.md](api_righe_documento.md).
 - Righe `GET/POST /<id>/righe/`, `PATCH/DELETE /<id>/righe/<riga_id>/` — solo
   DRAFT; `prezzo_unitario`/`iva_id` nullable (DDT anche solo di trasporto).
   ⭐ **Il DDT è l'unico documento dove il prezzo mancante non è un errore**:
@@ -138,7 +140,11 @@ Riferimento: `docs/it/dev/work-done/brief-ddt-righe-senza-prezzo.md`.
 
 ## Codici errore principali
 
-`E_DDT_NOT_FOUND` (404), `E_DDT_VALIDAZIONE` (400), `E_DDT_STATO_TRANSIZIONE`,
+`E_DDT_NOT_FOUND` (404), `E_DDT_VALIDAZIONE` (400), `E_DDT_STATO_TRANSIZIONE`
+(409, la testata), `E_RIGA_DOC_NON_BOZZA` (409: righe e componenti solo in
+bozza — dal 2026-09-22 lo stesso codice del BB a DB
+`trgfn_doc_righe_lock_fuori_bozza`, che il pre-check BE `richiedi_righe_in_bozza`
+solleva con la frase a catalogo),
 `E_STATO_DDT_TRANSIZIONE_NON_VALIDA` (matrice), `E_QTA_SUPERA_RESIDUO`
 (evasione), `E_INDIRIZZO_DOC_OBBLIGATORIO` (emissione senza CON),
 `E_TIPO_INDIRIZZO` (whitelist), `E_INDIRIZZO_SNAPSHOT_NOT_FOUND` (404).

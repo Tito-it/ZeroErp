@@ -660,3 +660,6 @@ tutte le misure e le strade scartate:
   — la forma del numero sul registro
 * [brief-be-fe-crud-registri-di-numerazione](../dev/work-done/brief-be-fe-crud-registri-di-numerazione.md)
   — la maschera e le regole di modifica
+
+---
+{% include-markdown "signature-core.md" %}

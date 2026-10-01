@@ -58,9 +58,11 @@ DECLARE
     v_iva2           config.iva.id%TYPE;
     v_org2           varchar(16);
     v_due_parti      boolean := false;
-    -- il contorno del composito, uguale su tutte le parti
-    v_esigibilita    vendite.fatture_righe.esigibilita%TYPE;
-    v_split          vendite.fatture_righe.split_payment%TYPE;
+    -- il contorno del composito: le PARTI della regola di esigibilita'
+    --   (rev 2026-10-01). La coppia esigibilita/split non e' piu' uguale
+    --   su tutte le parti: dipende anche dalla natura di ciascuna.
+    v_per_cassa      config.regimi_fiscali.iva_per_cassa%TYPE;
+    v_piva_sogg      anagrafiche.soggetti.partita_iva%TYPE;
 BEGIN
     -- ══ GUARD DI INVOCAZIONE ═══════════════════════════════════
     -- ⚠️ TECNICI: non li produce una persona che compila un form,
@@ -123,17 +125,26 @@ BEGIN
 
     -- ══ IL CONTORNO DEL COMPOSITO ══════════════════════════════
     -- Lo stato dell'emittente serve all'override di aliquota per
-    -- stato; split e esigibilita' vengono dal SOGGETTO (D8).
+    -- stato; split e esigibilita' vengono dal SOGGETTO (D8) e, dal
+    -- 2026-10-01, anche dal REGIME dell'emittente (IVA per cassa).
     IF p_emittente_fiscale_id IS NOT NULL THEN
         SELECT s.stato_id INTO v_stato_emitt
           FROM anagrafiche.emittenti_fiscali ef
           JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
           JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
          WHERE ef.id = p_emittente_fiscale_id;
+
+        -- ⚠️ Una query sua e non un JOIN in quella sopra: un emittente
+        --   senza soggetto risolto non deve perdere il regime, e
+        --   viceversa.
+        SELECT rf.iva_per_cassa INTO v_per_cassa
+          FROM anagrafiche.emittenti_fiscali ef
+          JOIN config.regimi_fiscali rf ON rf.codice_interno = ef.regime_fiscale_rf
+         WHERE ef.id = p_emittente_fiscale_id;
     END IF;
 
     IF p_soggetto_id IS NOT NULL THEN
-        SELECT s.split_payment INTO v_split_sogg
+        SELECT s.split_payment, s.partita_iva INTO v_split_sogg, v_piva_sogg
           FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id;
     END IF;
 
@@ -141,34 +152,19 @@ BEGIN
     --   cambia l'aliquota, cambia CHI VERSA l'imposta (D4). Non
     --   entra nella scelta del codice, ma esce nel composito
     --   perche' chi costruisce la riga di fattura ha bisogno di un
-    --   oggetto solo (D18). 'S' = scissione, 'I' = immediata.
-    -- ⛔ LA COPPIA DICE «NON LO SO» QUANDO NON LO SA (D32), e
-    --    questa e' la SECONDA revisione della stessa riga.
-    --
-    --    `20260829-49` lasciava `v_split` a NULL su soggetto ignoto
-    --    mentre l'esigibilita', dallo stesso valore, usciva 'I':
-    --    due campi in disaccordo sulla stessa riga.
-    --    `20260829-52` li ha allineati, ma VERSO IL VALORE, con una
-    --    motivazione FALSA — «esigibilita non ammette il nullo».
-    --    ⛔ `vendite.fatture_righe.esigibilita` e' NULLABILE, e non
-    --    ha nemmeno un CHECK: quella frase non era stata letta dal
-    --    catalogo. Il verso giusto e' l'altro.
-    --
-    -- ⭐ Perche' l'altro: senza il soggetto il regime di scissione
-    --    NON E' STATO DETERMINATO. Rispondere «immediata, non
-    --    scissa» e' un'AFFERMAZIONE su un documento che potrebbe
-    --    essere verso una PA — la stessa specie di difetto del
-    --    campo vuoto che il template afferma. Ed e' la disciplina
-    --    che questa funzione segue gia' altrove: «non lo so» si
-    --    DICE (origine = 'ASSENTE'), non si tace.
-    -- ℹ️ Sul percorso vero (I5) il soggetto c'e' sempre, quindi il
-    --    nullo esce solo nelle anteprime — dove e' la risposta
-    --    esatta.
-    v_split       := CASE WHEN v_split_sogg IS NULL THEN NULL
-                          ELSE (v_split_sogg = 'S') END;
-    v_esigibilita := CASE WHEN v_split IS NULL THEN NULL
-                          WHEN v_split      THEN 'S'
-                          ELSE 'I' END;
+    --   oggetto solo (D18).
+    -- ⭐ rev 2026-10-01: la coppia esigibilita/split non si calcola
+    --   piu' qui. La regola e' UNA, script.fn_esigibilita_iva, la
+    --   stessa del trigger di riga della fattura: prima erano due
+    --   copie che coincidevano solo perche' guardavano il solo
+    --   cliente. Si chiama PER PARTE nel RETURN QUERY, perche' con
+    --   l'IVA per cassa la risposta dipende dalla natura del codice,
+    --   e le due parti di una riga spezzata dal plafond hanno codici
+    --   diversi (brief esigibilita-iva-per-cassa, sezione 8.5).
+    -- ⛔ La disciplina D32 resta, e ora vive nella regola: senza il
+    --   soggetto la coppia esce NULL/NULL, «non lo so», non
+    --   «immediata, non scissa». Senza emittente il regime non e'
+    --   noto: fuori dalla scissione l'esigibilita' esce NULL.
 
     -- ══ STADIO B — UN TITOLO CHE LA SOSTITUISCE, SU QUESTA RIGA ═
     IF p_soggetto_id IS NOT NULL AND p_emittente_fiscale_id IS NOT NULL THEN
@@ -290,21 +286,23 @@ BEGIN
                 THEN config.fn_get_aliquota_iva(p.iva, v_stato_emitt) END,
            n.codice,
            n.is_reverse_charge,
-           v_esigibilita,
-           v_split,
+           e.esigibilita,
+           e.split_payment,
            i.descrizione,
            p.org,
            p.tit
       FROM parti p
       LEFT JOIN config.iva i        ON i.id = p.iva
       LEFT JOIN config.iva_natura n ON n.id = i.natura_iva_id
+      LEFT JOIN LATERAL script.fn_esigibilita_iva(
+                 v_per_cassa, v_split_sogg, v_piva_sogg, p.iva) e ON true
      WHERE p.ord = 1 OR v_due_parti
      ORDER BY p.ord;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_iva_riga_it(p_articolo_id uuid, p_data_riferimento date, p_imponibile numeric, p_billing_account_id bigint, p_utility_id integer, p_soggetto_id uuid, p_emittente_fiscale_id bigint)
-IS 'La logica ITALIANA del risolutore IVA di riga (I2 di brief-db-be-iva-risolutore-e-regime-cliente). Chi chiama passa dal guscio vendite.fn_resolve_iva_riga, che smista per paese (D21): qui c''e'' la regola italiana e basta, e il giorno che ne serve un''altra nasce una _xx accanto senza toccare il guscio. ⭐ DUE STADI che non competono (D6/D7): A stabilisce quale aliquota compete alla MERCE, B verifica se un TITOLO del soggetto la sostituisce — B non vince su A, sostituisce il risultato di A dopo che A ha risposto. STADIO A a due livelli: l''articolo, e l''uso della fornitura SOLO dove l''articolo tace (D17) — catalogo.articoli.iva_id e'' nullable, quindi l''articolo puo'' dichiarare di non avere un''opinione, mentre config.tipi_utenze.iva_id non ha modo di dire su quali merci vale e applicato per primo si prenderebbe ogni riga della fornitura, cauzioni comprese. ⛔ I bundle restano fuori (D16): l''aliquota accanto al prezzo esiste solo sui componenti, e la portano gia'' le *_righe_componenti del documento. STADIO B si valuta PER RIGA (D12), con specificita'' articolo > categoria > tutto e GRUPPO_VOCE/TIPO_VOCE nella stessa banda; a parita'' si solleva E_IVA_TITOLI_AMBIGUI invece di scegliere (D13). ⭐ RITORNA UN COMPOSITO (D18) e non un numerico: le operazioni non imponibili hanno tutte aliquota zero ma non sono la stessa cosa, e la fattura elettronica pretende che si dica QUALE zero — quindi accanto alla quota escono codice, aliquota, natura, inversione contabile, esigibilita'', split payment e riferimento normativo. ⚠️ esigibilita e split_payment sono TRASPORTATI e NON usati nella scelta del codice: e'' cio'' che tiene insieme D4 (la scissione non cambia l''aliquota, cambia chi versa) e D18 (chi costruisce la riga di fattura vuole un oggetto solo). ⚠️ Il riferimento normativo e'' config.iva.descrizione (D24): nessuna colonna nuova, perche'' config.iva e'' gia'' piu'' fine della natura — EC, VG e VF condividono natura 10 e differiscono solo per l''articolo citato, quindi il riferimento e'' l''identita'' della riga. ⭐ E RITORNA UNA RIPARTIZIONE (P2): il plafond puo'' finire a meta'' riga, e l''ORDINE delle righe e'' il contratto — prima la quota coperta dal titolo, poi il resto. ⚠️ STABLE: NON consuma, la ripartizione e'' una proiezione sul residuo (D14); il consumo lo fa anagrafiche.fn_consuma_plafond_titolo_iva alla DEFINITIVA, e per questo esce titolo_iva_id. ⚠️ La data e'' un parametro e mai CURRENT_DATE. ⛔ Il congelamento (D15) non si controlla qui: e'' una proprieta'' del documento, contratto dei chiamanti. ⚠️ Il CASE attorno a config.fn_get_aliquota_iva e'' la guardia che §R-3 ha insegnato: quella funzione solleva su un id nullo e un COALESCE non farebbe in tempo a difendere. ⚠️ SECURITY INVOKER (decisione di Tid): chi chiama deve avere un contesto che vede i titoli — l''applicazione passa l''emittente del documento, i ruoli batch hanno BYPASSRLS; un chiamante senza contesto legge zero titoli e ottiene l''aliquota ordinaria in silenzio, e qui il costo e'' un''imposta applicata dove non andava. ⛔ rev 2026-08-29 bis (D31): split_payment usciva NULL ogni volta che il soggetto non era noto, mentre esigibilita nello stesso composito usciva ''I'' - due risposte alla stessa domanda che dissentivano sulla stessa riga. Ora il flag e'' (v_split_sogg = ''S'') IS TRUE, cioe'' entrambe dicono «non scissa» quando il soggetto non e'' noto. Non si allinea verso il nullo perche'' fatture_righe.esigibilita non lo ammette. Trovato dal caso 6 di test-fn-resolve-iva-riga. ⛔ rev 2026-08-29 ter (D32): la revisione bis aveva allineato la coppia esigibilita/split VERSO IL VALORE, con una motivazione falsa - «esigibilita non ammette il nullo». vendite.fatture_righe.esigibilita e'' NULLABILE e non ha nemmeno un CHECK: quella frase non era stata letta dal catalogo. Il verso giusto e'' l''altro: senza il soggetto il regime di scissione non e'' stato determinato, e rispondere «immediata, non scissa» e'' un''AFFERMAZIONE su un documento che potrebbe essere verso una PA. Ora entrambi i campi escono NULL quando il soggetto non e'' noto - la stessa disciplina di origine = ''ASSENTE''. Sul percorso vero (I5) il soggetto c''e'' sempre.';
+IS 'La logica ITALIANA del risolutore IVA di riga (I2 di brief-db-be-iva-risolutore-e-regime-cliente). Chi chiama passa dal guscio vendite.fn_resolve_iva_riga, che smista per paese (D21): qui c''e'' la regola italiana e basta, e il giorno che ne serve un''altra nasce una _xx accanto senza toccare il guscio. ⭐ DUE STADI che non competono (D6/D7): A stabilisce quale aliquota compete alla MERCE, B verifica se un TITOLO del soggetto la sostituisce — B non vince su A, sostituisce il risultato di A dopo che A ha risposto. STADIO A a due livelli: l''articolo, e l''uso della fornitura SOLO dove l''articolo tace (D17) — catalogo.articoli.iva_id e'' nullable, quindi l''articolo puo'' dichiarare di non avere un''opinione, mentre config.tipi_utenze.iva_id non ha modo di dire su quali merci vale e applicato per primo si prenderebbe ogni riga della fornitura, cauzioni comprese. ⛔ I bundle restano fuori (D16): l''aliquota accanto al prezzo esiste solo sui componenti, e la portano gia'' le *_righe_componenti del documento. STADIO B si valuta PER RIGA (D12), con specificita'' articolo > categoria > tutto e GRUPPO_VOCE/TIPO_VOCE nella stessa banda; a parita'' si solleva E_IVA_TITOLI_AMBIGUI invece di scegliere (D13). ⭐ RITORNA UN COMPOSITO (D18) e non un numerico: le operazioni non imponibili hanno tutte aliquota zero ma non sono la stessa cosa, e la fattura elettronica pretende che si dica QUALE zero — quindi accanto alla quota escono codice, aliquota, natura, inversione contabile, esigibilita'', split payment e riferimento normativo. ⚠️ esigibilita e split_payment sono TRASPORTATI e NON usati nella scelta del codice: e'' cio'' che tiene insieme D4 (la scissione non cambia l''aliquota, cambia chi versa) e D18 (chi costruisce la riga di fattura vuole un oggetto solo). ⚠️ Il riferimento normativo e'' config.iva.descrizione (D24): nessuna colonna nuova, perche'' config.iva e'' gia'' piu'' fine della natura — EC, VG e VF condividono natura 10 e differiscono solo per l''articolo citato, quindi il riferimento e'' l''identita'' della riga. ⭐ E RITORNA UNA RIPARTIZIONE (P2): il plafond puo'' finire a meta'' riga, e l''ORDINE delle righe e'' il contratto — prima la quota coperta dal titolo, poi il resto. ⚠️ STABLE: NON consuma, la ripartizione e'' una proiezione sul residuo (D14); il consumo lo fa anagrafiche.fn_consuma_plafond_titolo_iva alla DEFINITIVA, e per questo esce titolo_iva_id. ⚠️ La data e'' un parametro e mai CURRENT_DATE. ⛔ Il congelamento (D15) non si controlla qui: e'' una proprieta'' del documento, contratto dei chiamanti. ⚠️ Il CASE attorno a config.fn_get_aliquota_iva e'' la guardia che §R-3 ha insegnato: quella funzione solleva su un id nullo e un COALESCE non farebbe in tempo a difendere. ⚠️ SECURITY INVOKER (decisione di Tid): chi chiama deve avere un contesto che vede i titoli — l''applicazione passa l''emittente del documento, i ruoli batch hanno BYPASSRLS; un chiamante senza contesto legge zero titoli e ottiene l''aliquota ordinaria in silenzio, e qui il costo e'' un''imposta applicata dove non andava. ⛔ rev 2026-08-29 bis (D31): split_payment usciva NULL ogni volta che il soggetto non era noto, mentre esigibilita nello stesso composito usciva ''I'' - due risposte alla stessa domanda che dissentivano sulla stessa riga. Ora il flag e'' (v_split_sogg = ''S'') IS TRUE, cioe'' entrambe dicono «non scissa» quando il soggetto non e'' noto. Non si allinea verso il nullo perche'' fatture_righe.esigibilita non lo ammette. Trovato dal caso 6 di test-fn-resolve-iva-riga. ⛔ rev 2026-08-29 ter (D32): la revisione bis aveva allineato la coppia esigibilita/split VERSO IL VALORE, con una motivazione falsa - «esigibilita non ammette il nullo». vendite.fatture_righe.esigibilita e'' NULLABILE e non ha nemmeno un CHECK: quella frase non era stata letta dal catalogo. Il verso giusto e'' l''altro: senza il soggetto il regime di scissione non e'' stato determinato, e rispondere «immediata, non scissa» e'' un''AFFERMAZIONE su un documento che potrebbe essere verso una PA. Ora entrambi i campi escono NULL quando il soggetto non e'' noto - la stessa disciplina di origine = ''ASSENTE''. Sul percorso vero (I5) il soggetto c''e'' sempre. ⭐ rev 2026-10-01 (brief-db-esigibilita-iva-per-cassa-emittente, sezione 8.5): la coppia esigibilita/split_payment esce da script.fn_esigibilita_iva, la regola unica condivisa col trigger di riga della fattura, chiamata PER PARTE perche'' con l''IVA per cassa dipende anche dalla natura del codice (inversione contabile). Entrano il regime dell''emittente (config.regimi_fiscali.iva_per_cassa), scissione e partita IVA del soggetto. Senza soggetto: NULL/NULL; senza emittente, fuori dalla scissione: esigibilita NULL (regime non noto).';
 ```
 
 ---

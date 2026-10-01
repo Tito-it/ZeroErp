@@ -12,15 +12,17 @@ from __future__ import annotations
 
 from collections.abc import Collection
 
+from apps.core.api.constants import MAX_LIMIT
+from apps.core.db._helpers import order_dir_ammessa
 from apps.core.services.error_manager import ErrorManager
 
-_ORDER_DIR_VALIDI = frozenset({"asc", "desc"})
 
-
-# Scopo: Valida order_by contro una whitelist di colonne e order_dir contro
-#        {asc, desc}. Il chiamante passa la propria whitelist (`allowed_columns`)
-#        e il proprio `error_code` di dominio. Solleva ServiceError (loggato a DB)
-#        sul primo parametro non valido; ritorna la coppia validata.
+# Scopo: Valida order_by contro una whitelist di colonne e order_dir col
+#        predicato unico `order_dir_ammessa`. Il chiamante passa la propria
+#        whitelist (`allowed_columns`) e il proprio `error_code` di dominio.
+#        Solleva ServiceError (loggato a DB) sul primo parametro non valido;
+#        ritorna la coppia validata, con `order_dir` NORMALIZZATO (`asc`/`desc`
+#        minuscolo, `None` se assente).
 #
 #        NB: DISTINTO da `apps.core.api.search_validators.validate_order_params`,
 #        che ha semantica diversa (normalizza maiuscole, ritorna tupla opzionale,
@@ -45,11 +47,20 @@ def validate_order_params(
     #    `dict[chiave esposta -> colonna SQL]`, e `in`/`sorted()` su un dict
     #    guardano le chiavi — che sono proprio i valori ammessi. L'annotazione
     #    stretta era l'unica cosa che diceva «questo BB non fa per te».
-    # ⛔ Il confronto di `order_dir` resta CASE-SENSITIVE com'era: i tredici
-    #    chiamanti che c'erano prima si comportano identici, e chi accetta
-    #    `ASC` normalizza prima di chiamare (lo fa il wrapper di vendite).
-    #    Rilassarlo qui sarebbe stato un cambio di contratto silenzioso per
-    #    tutti, introdotto di straforo da un refactoring.
+    # ⛔ La DIREZIONE la giudica `order_dir_ammessa`, la stessa regola di
+    #    `sql_order_direction` e di `PayloadValidator.validate_order_by`
+    #    (decisione Tid 2026-09-26). Fino a quel giorno qui c'era una seconda
+    #    regola, case-sensitive: `DESC` era un 400 sulle liste validate qui e
+    #    passava su tutte le altre, e meta' dei chiamanti rimediava con un
+    #    `.lower()` scritto a mano prima della chiamata. Ora maiuscole e spazi
+    #    ai lati sono ammessi ovunque, e un valore estraneo e' rifiutato
+    #    ovunque — qui col codice del dominio.
+    # ⭐ Il valore ritorna NORMALIZZATO: diversi chiamanti passano la coppia
+    #    ritornata a una funzione DB o a un repository, e la forma canonica
+    #    toglie a valle ogni dubbio sulle maiuscole.
+    # ⚠️ `nullable` resta la regola sulla PRESENZA, che e' del chiamante: senza,
+    #    una direzione assente (None, vuota, soli spazi) e' un 400 come prima.
+    #    Con, torna `None` e l'ordine lo decide il default del repository.
     ErrorManager.require(
         (nullable and order_by is None) or order_by in allowed_columns,
         code=error_code,
@@ -59,8 +70,9 @@ def validate_order_params(
         function_name=function_name,
         log_to_db=True,
     )
+    direzione = (order_dir or "").strip().lower() or None
     ErrorManager.require(
-        (nullable and order_dir is None) or order_dir in _ORDER_DIR_VALIDI,
+        order_dir_ammessa(order_dir) and (nullable or direzione is not None),
         code=error_code,
         message="Parametri ordinamento non validi.",
         detail="order_dir deve essere 'asc' o 'desc'",
@@ -68,7 +80,7 @@ def validate_order_params(
         function_name=function_name,
         log_to_db=True,
     )
-    return order_by, order_dir
+    return order_by, direzione
 
 
 # Scopo: Valida un parametro enum contro la whitelist del chiamante (aree,
@@ -102,7 +114,7 @@ def validate_enum_param(
 
 
 # Scopo: Valida i parametri di paginazione page-based (page >= 1,
-#        1 <= page_size <= 200) e ritorna l'offset calcolato `(page-1)*page_size`.
+#        1 <= page_size <= MAX_LIMIT) e ritorna l'offset calcolato `(page-1)*page_size`.
 #        `error_code`/`function_name` parametrici. Speculare a `validate_order_params`.
 #        NB: convenzione PAGE-based; per le liste offset-based esiste già
 #        `parse_list_params` (apps/core/api/payload_validators.py).
@@ -123,10 +135,10 @@ def validate_pagination(
         log_to_db=True,
     )
     ErrorManager.require(
-        1 <= page_size <= 200,
+        1 <= page_size <= MAX_LIMIT,
         code=error_code,
         message="Parametri paginazione non validi.",
-        detail="page_size deve essere compreso tra 1 e 200",
+        detail=f"page_size deve essere compreso tra 1 e {MAX_LIMIT}",
         context={"page_size": page_size},
         function_name=function_name,
         log_to_db=True,

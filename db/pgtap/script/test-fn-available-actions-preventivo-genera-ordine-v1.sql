@@ -33,26 +33,40 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(4);
 
+-- ============================================================================
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Il billing account si PESCAVA («il primo BA con utility, istanza e
+--   ruolo»): su un database ricostruito (la CI) non ce n'e' nessuno, e il file
+--   moriva al primo INSERT del preventivo (istanza_utility_id NULL) con zero
+--   asserzioni eseguite. E l'articolo si pescava dal catalogo e gli si
+--   CAMBIAVA la natura: un articolo di qualcun altro, modificato.
+--   Ora il cliente viene da dbops.fn_pgtap_crea_mondo_cliente (con il
+--   contesto gia' aperto riusa l'azienda di chi agisce: il BA e' legato a
+--   quell'emittente) e l'articolo da dbops.fn_pgtap_crea_articolo, con codice
+--   unico per corsa. ⛔ Cio' che i builder scrivono si legge in
+--   un'istruzione SEPARATA.
+-- ============================================================================
+CREATE TEMP TABLE tmp_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('cap genera ordine');
+
+CREATE TEMP TABLE tmp_art AS
+SELECT dbops.fn_pgtap_crea_articolo(
+         ('PGT-CAP-ORD-' || substring(md5(clock_timestamp()::text) from 1 for 12))::varchar
+       ) AS articolo_id;
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id,
+  (SELECT billing_account_id FROM tmp_mondo) AS billing_account_id,
+  (SELECT utility_id FROM tmp_mondo) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_mondo) AS istanza_utility_id,
+  (SELECT articolo_id FROM tmp_art) AS articolo_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_draft_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  -- ⛔ L'emittente NON si pesca, si DERIVA (2026-09-23, guida pgTAP §5).
+  script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE') AS natura_merce_id;
 

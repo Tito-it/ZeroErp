@@ -1,54 +1,6 @@
 # Guida — Cruscotti fatturazione (le tre lenti)
 
-> **Ultima revisione**: 28 agosto 2026 — ✅ **il registro della riga adesso si
-> apre**: dal kebab, voce «Registro della riga», con chi/quando/**perché** per
-> ogni evento (§7.7). Prima quegli eventi il database li scriveva e nessuna
-> schermata li leggeva: la §7.7 prometteva un registro che non si poteva aprire. ⭐ E **«Rendi definitive» ha lasciato
-> questo cruscotto**: sta su **Vendite → Lotti**, e sulla card `Fatturate` resta
-> il **rimando** «Vai ai lotti», col filtro già messo (§7.1 e §7.5). Un verbo sta
-> dove sta l'elenco del suo oggetto — qui accanto c'erano le commesse, non i
-> lotti. ⚠️ Le regole di comportamento non cambiano: cambia **dove si preme**.
-> ⛔ E **la §7.7 parlava di «chiudere» un
-> documento: il gesto è **ANNULLARE**, e nient'altro.** Evadere o completare non
-> ritira niente. ⭐ E **due chiarimenti nati dal collaudo**,
-> e da un dubbio vero davanti alla schermata (§3.1): **«emessa» non vuol dire
-> «fattura emessa»** — dice che il lavoro è stato preso in carico dalla
-> fatturazione — e il **lotto di provenienza può portarti alla fattura di un
-> ALTRO cliente**, numerata e definitiva, che col tuo residuo non c'entra.
-> Revisione precedente (27 agosto): ✅ **il pulsante c'è.** «Riporta da
-> emettere» è a video sulla card `Emesse non fatturate`, con la sua lista e la
-> selezione delle righe (§7.1 e §3.1). Nasce la **§7.7**: annullare un documento
-> adesso **ritira** il lavoro che aveva spinto in commessa, ed è un comportamento
-> da sapere **prima**. ⚠️ E le situazioni dentro quella casella sono **quattro**,
-> non tre: la quarta è un'anomalia, e la §3.1 dice cosa farne.
-> La card dice **«di cui N da recuperare»**, e il verbo **ricontrolla le righe
-> spuntate** prima di agire — se l'elenco era invecchiato lo dice e lo ricarica
-> invece di fallire in blocco (§7.1).
-> Revisione precedente (26 agosto, sera): la **§3.1** si aggiorna: dentro
-> «Emesse non fatturate» le situazioni chiedono rimedi opposti; il database
-> adesso le distingue una per una, la card **si spezza in due numeri** e i soli
-> residui hanno una lista propria.
-> Revisione precedente (26 agosto, mattina): 🔴 **avvertenza sull'«Elimina dal
-> lotto»** in §7.6: il verbo **non rimette in coda** il lavoro della fattura
-> cancellata (difetto aperto, misurato). Nuova **§3.1**: le quattro caselle del
-> funnel **non sono quattro passaggi**, e «Emesse non fatturate» è la casella
-> dei **residui** (con un caso reale misurato). ⚠️ Corrette due affermazioni
-> false: «Rendi definitive» sta sulla card **`Fatturate`** (§7.1), e dalle righe
-> già fatturate **non** si arriva al lotto (§7.5). ⚠️ *Entrambe si sono a loro
-> volta invecchiate il 26 agosto: vedi la revisione in cima.* Aggiunti il verbo di riga
-> «Fattura questo» e la **data del documento** che ogni verbo ora chiede.
-> Revisione precedente (22 agosto): «Rendi definitive» **può rifiutare**
-> (§7.1) e nasce la §7.6 sulle **vie d'uscita**: riportare un lotto in
-> lavorazione, togliere una singola fattura, annullare il lotto. Revisione
-> precedente (9 agosto): entrano **DDT e resi**, le aree del §2.1
-> passano da quattro a sette (⚠️ prima ne mancavano tre), nuova **§4.1** sui
-> motivi di fermo di DDT e resi, il **valore al residuo** degli ordini in §5.1 e
-> la **§8 «La coda accrediti»** — ⭐ riscritta il **2026-08-21**, da quando
-> l'accredito si emette davvero. Revisione precedente (22 luglio): §7
-> «Gestire la fatturazione» — dalla Lente 1 si **agisce** (approva → fattura →
-> rendi definitive), col perché la numerazione resta un passo separato. Prima
-> ancora (8 luglio): Situazione aperta v2 (serbatoio pre-commessa), donut per
-> fase, filtro "aperti da oltre N giorni" solo-lista.
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori vendite/amministrazione,
 > sviluppatori backend/frontend.
@@ -80,11 +32,11 @@ ancora aperto verso la fatturazione — da **tre angolazioni** complementari. No
 sono tre report ridondanti: ognuna risponde a una domanda che le altre non
 risolvono.
 
-| Lente | Rotta | Domanda a cui risponde | Taglio | Misura |
-| --- | --- | --- | --- | --- |
-| **Competenza** | `/vendite/dashboard-competenza` | *Cosa va fatturato per questo mese, e quanto è coperto?* | per **mese di competenza** (funnel commessa → fattura) | euro |
-| **Backlog** | `/vendite/dashboard-backlog` | *Cosa è fermo, da quanto, e cosa serve per sbloccarlo?* | per **anzianità + azionabilità** (solo il non-verde) | euro / conteggi |
-| **Situazione aperta** | `/vendite/situazione-aperta` | *Dove sono tutti gli aperti, in che fase?* | per **fase** (fotografia, senza asse temporale) | euro / conteggi |
+| Lente                 | Rotta                           | Domanda a cui risponde                                   | Taglio                                                 | Misura          |
+| --------------------- | ------------------------------- | -------------------------------------------------------- | ------------------------------------------------------ | --------------- |
+| **Competenza**        | `/vendite/dashboard-competenza` | *Cosa va fatturato per questo mese, e quanto è coperto?* | per **mese di competenza** (funnel commessa → fattura) | euro            |
+| **Backlog**           | `/vendite/dashboard-backlog`    | *Cosa è fermo, da quanto, e cosa serve per sbloccarlo?*  | per **anzianità + azionabilità** (solo il non-verde)   | euro / conteggi |
+| **Situazione aperta** | `/vendite/situazione-aperta`    | *Dove sono tutti gli aperti, in che fase?*               | per **fase** (fotografia, senza asse temporale)        | euro / conteggi |
 
 Regola pratica: **Competenza** guarda *nel tempo*, **Backlog** guarda *cosa fare
 ora*, **Situazione aperta** guarda *dove siamo*.
@@ -110,10 +62,10 @@ dell'ordine ma alla spedizione o alla consegna (vedi §4.1).
 A queste se ne aggiungono **due che compaiono solo nel Backlog**, perché non
 sono lavoro "in attesa" ma lavoro *fermo*:
 
-| Area | Dove compare | Perché |
-| --- | --- | --- |
-| `COMMESSE` | solo Backlog | la commessa è il **traguardo** del serbatoio, non un documento che lo aspetta. Se però si blocca (attività non approvate o non emesse) è arretrato, e va in coda di lavoro |
-| `RESI` | solo Backlog | il reso è un flusso **inverso**: non alimenta la commessa, la corregge. Metterlo nel serbatoio significherebbe contarlo due volte, perché il reso riapre da sé il residuo dell'ordine |
+| Area       | Dove compare | Perché                                                                                                                                                                                |
+| ---------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `COMMESSE` | solo Backlog | la commessa è il **traguardo** del serbatoio, non un documento che lo aspetta. Se però si blocca (attività non approvate o non emesse) è arretrato, e va in coda di lavoro            |
+| `RESI`     | solo Backlog | il reso è un flusso **inverso**: non alimenta la commessa, la corregge. Metterlo nel serbatoio significherebbe contarlo due volte, perché il reso riapre da sé il residuo dell'ordine |
 
 Le attività fatturabili e le fatture stanno *a valle*: le guarda la Lente
 Competenza.
@@ -124,12 +76,12 @@ Ogni documento, qualunque sia il suo stato specifico di area, viene proiettato s
 un vocabolario **comune di fasi** (da `config.stati_doc_*.fase`), nell'ordine
 della maturità verso la commessa:
 
-| Fase | Significato | Colore |
-| --- | --- | --- |
-| `APERTO` | in lavorazione interna (bozza) | grigio |
-| `IN_ATTESA` | palla al cliente (emesso, attende risposta) | azzurro |
-| `IN_CORSO` | avanzato, non ancora concluso | arancio |
-| `CHIUSO` | concluso (accettato/evaso o rifiutato/annullato) | verde |
+| Fase        | Significato                                      | Colore  |
+| ----------- | ------------------------------------------------ | ------- |
+| `APERTO`    | in lavorazione interna (bozza)                   | grigio  |
+| `IN_ATTESA` | palla al cliente (emesso, attende risposta)      | azzurro |
+| `IN_CORSO`  | avanzato, non ancora concluso                    | arancio |
+| `CHIUSO`    | concluso (accettato/evaso o rifiutato/annullato) | verde   |
 
 La proiezione a fase comune è ciò che permette di **confrontare aree diverse**
 sulla stessa scala.
@@ -184,12 +136,12 @@ fattura, mese per mese di competenza. Per il mese selezionato mostra:
 alimentano: sembrano un percorso a quattro tappe, ma il percorso vero ne usa
 **due**.
 
-| Casella | Cosa contiene davvero |
-| --- | --- |
-| **Da approvare** | lavoro registrato, non ancora dichiarato buono per la fattura |
-| **Da emettere** | lavoro buono, non ancora in fattura — **è da qui che parte il lotto** |
+| Casella                  | Cosa contiene davvero                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| **Da approvare**         | lavoro registrato, non ancora dichiarato buono per la fattura                                                             |
+| **Da emettere**          | lavoro buono, non ancora in fattura — **è da qui che parte il lotto**                                                     |
 | **Emesse non fatturate** | lavoro **in transito o rimasto a metà**: non è un passaggio. Ci convivono quattro situazioni, e solo una chiede un'azione |
-| **Fatturate** | lavoro finito dentro una fattura, numerata o no |
+| **Fatturate**            | lavoro finito dentro una fattura, numerata o no                                                                           |
 
 Il verbo **Fattura adesso** prende il lavoro e ne fa le righe di fattura **in un
 solo passo**: un'attività salta da `Da emettere` dritta a `Fatturate`. Nessuno
@@ -198,12 +150,12 @@ transita da `Emesse non fatturate`.
 ⚠️ **Quella casella non conta una cosa sola, e conviene saperlo prima di
 guardarla.** Ci convivono **quattro** situazioni che chiedono rimedi **opposti**:
 
-| Cosa ci trovi | Che cos'è | Cosa devi fare |
-| --- | --- | --- |
-| lavoro **che aspetta il suo lotto** | **transito normale**: succede quando l'emissione e la fatturazione sono due gesti separati, ed è il caso di chi emette in modo mirato e fattura dopo | ⏳ niente: il prossimo giro lo prende da sé |
-| lavoro **dentro un giro ancora in corso** | il lotto lo sta lavorando **adesso** | ⏳ niente: si aspetta che il lotto finisca |
-| ⭐ lavoro **rimasto senza la sua fattura** | **il residuo**: la fattura c'era ed è stata eliminata | ✅ **«Riporta da emettere»** |
-| 🟠 riga di commessa **senza nessuna attività da fatturare** | **anomalia**: la riga risulta emessa ma non esiste niente da mettere in fattura | ⛔ il verbo **non si può proporre** (non c'è niente su cui agire): va segnalata |
+| Cosa ci trovi                                              | Che cos'è                                                                                                                                            | Cosa devi fare                                                                 |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| lavoro **che aspetta il suo lotto**                        | **transito normale**: succede quando l'emissione e la fatturazione sono due gesti separati, ed è il caso di chi emette in modo mirato e fattura dopo | ⏳ niente: il prossimo giro lo prende da sé                                     |
+| lavoro **dentro un giro ancora in corso**                  | il lotto lo sta lavorando **adesso**                                                                                                                 | ⏳ niente: si aspetta che il lotto finisca                                      |
+| ⭐ lavoro **rimasto senza la sua fattura**                  | **il residuo**: la fattura c'era ed è stata eliminata                                                                                                | ✅ **«Riporta da emettere»**                                                    |
+| 🟠 riga di commessa **senza nessuna attività da fatturare** | **anomalia**: la riga risulta emessa ma non esiste niente da mettere in fattura                                                                      | ⛔ il verbo **non si può proporre** (non c'è niente su cui agire): va segnalata |
 
 **È il terzo caso la spia**, e per un motivo preciso: quel lavoro risulta già
 emesso, quindi **nessun giro futuro lo riprenderà**. Resterebbe invisibile per
@@ -228,32 +180,27 @@ sempre, se non ci fosse quel contatore.
 > davvero dentro una fattura viva **viene rifiutata**, con un messaggio che ti
 > porta ad aprire quella fattura.
 
-> ⚠️ Una versione precedente di questa pagina diceva *«se in quella casella c'è
-> un numero, qualcosa si è rotto»*. Era vero **solo** perché *Fattura adesso* fa
-> emissione e fatturazione in un passo unico — cioè era una proprietà di quel
-> verbo, non della casella. Chi emette in modo mirato ci vede passare lavoro
-> perfettamente sano.
+> ⚠️ **Un numero in quella casella non è di per sé un allarme.** *Fattura adesso*
+> fa emissione e fatturazione in un passo unico, quindi da lì non ci passa mai
+> nulla — ma quella è una proprietà del verbo, non della casella: chi emette in
+> modo mirato ci vede passare lavoro perfettamente sano. Quello che è un allarme
+> è **il numero dei residui**.
 
-✅ **La causa è chiusa dal 26 agosto 2026**: eliminare una fattura da un lotto
-adesso rimette in coda il suo lavoro (§7.6), quindi da quella strada non se ne
-creano più.
+**Eliminare una fattura da un lotto rimette in coda il suo lavoro** (§7.6): da quella strada non si creano residui.
 
-⭐ **E da lì in poi la casella si legge in chiaro.** Dal 26 agosto 2026 il
-database distingue le quattro situazioni una per una, quindi la card **si spezza
-in due numeri** — quello che chiede un'azione e quello che chiede solo di
-aspettare — e l'elenco dei soli **residui** ha una lista sua, con il lotto da cui
-ciascuno proviene. Sulla card lo dice una riga sotto il totale: **«di cui N da
-recuperare»** con il loro valore, oppure **«nessuno da recuperare»** quando il
-lavoro fermo lì è tutto in transito legittimo. ⚠️ Vale la pena ricordare che *«un numero in quella casella»*
-di per sé non è più un allarme: **è il numero dei residui a esserlo.**
+⭐ **La casella si legge in chiaro.** Il database distingue le quattro situazioni
+una per una, quindi la card **si spezza in due numeri** — quello che chiede
+un'azione e quello che chiede solo di aspettare — e l'elenco dei soli **residui**
+ha una lista sua, con il lotto da cui ciascuno proviene. Sulla card lo dice una
+riga sotto il totale: **«di cui N da recuperare»** con il loro valore, oppure
+**«nessuno da recuperare»** quando il lavoro fermo lì è tutto in transito
+legittimo.
 
-✅ **E dal 27 agosto 2026 il pulsante c'è.** Cliccando la card si apre l'elenco
-dei soli residui: si spuntano le righe da recuperare e si preme **«Riporta da
-emettere»** (§7.1). ℹ️ Al 26 agosto 2026 la casella conteneva **5 attività di
-luglio per 5.019 €**, orfane di una fattura eliminata dopo un errore di
-numerazione: sono il primo caso reale su cui il verbo va provato.
+✅ **E dalla card si recupera.** Cliccando la card si apre l'elenco dei soli
+residui: si spuntano le righe da recuperare e si preme **«Riporta da emettere»**
+(§7.1).
 
-**Quando usarla**: a fine/inizio mese, per capire quanto del competenza è stato
+**Quando usarla**: a fine/inizio mese, per capire quanto della competenza è stato
 fatturato e cosa manca per chiudere il mese.
 
 ---
@@ -283,13 +230,13 @@ nell'elenco ma non chiedono niente. Vale la pena sapere quali, perché la
 differenza fra «non c'è niente da fare» e «non c'è niente che *tu* possa fare»
 non è la stessa cosa.
 
-| Cosa leggi a schermo | Colore | Cosa significa davvero |
-| --- | --- | --- |
-| *Fatturazione a carico del DDT (spedizione/consegna)* | 🟢 | L'ordine **non è fermo**: per quella vendita non è lui a fatturare, ma il DDT. Nessuna azione |
-| *Merce in viaggio, fatturazione non ancora dovuta* | 🟢 | Il DDT è partito ma non ha ancora raggiunto lo stato che fa scattare la fattura. Si aspetta, e basta |
-| *Push a commessa non eseguito* / *parziale* | 🟠 | Il DDT **ha superato** quello stato e la fattura non è partita: è in ritardo. Da sbloccare |
-| *Ri-consegna da generare* | 🟠 | Il cliente ha reso della merce che va rispedita, e finché non la rispedisci la fatturazione resta bloccata. Azione tua |
-| *Merce resa già fatturata — accredito in attesa* | 🟠 | Il cliente ha reso merce **già fatturata**: gli è dovuto un accredito. ⭐ **Era verde** finché l'azione non esisteva; dal 2026-08 l'accredito si emette (vedi §8) e il motivo è passato a *Da recuperare*, con l'azione suggerita «Emetti la nota di credito dalla coda accrediti» |
+| Cosa leggi a schermo                                  | Colore | Cosa significa davvero                                                                                                                                                                |
+| ----------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| *Fatturazione a carico del DDT (spedizione/consegna)* | 🟢      | L'ordine **non è fermo**: per quella vendita non è lui a fatturare, ma il DDT. Nessuna azione                                                                                         |
+| *Merce in viaggio, fatturazione non ancora dovuta*    | 🟢      | Il DDT è partito ma non ha ancora raggiunto lo stato che fa scattare la fattura. Si aspetta, e basta                                                                                  |
+| *Push a commessa non eseguito* / *parziale*           | 🟠      | Il DDT **ha superato** quello stato e la fattura non è partita: è in ritardo. Da sbloccare                                                                                            |
+| *Ri-consegna da generare*                             | 🟠      | Il cliente ha reso della merce che va rispedita, e finché non la rispedisci la fatturazione resta bloccata. Azione tua                                                                |
+| *Merce resa già fatturata — accredito in attesa*      | 🟠      | Il cliente ha reso merce **già fatturata**: gli è dovuto un accredito, che si emette dalla coda accrediti (§8). L'azione suggerita è «Emetti la nota di credito dalla coda accrediti» |
 
 Due domande che nascono guardando l'elenco:
 
@@ -399,35 +346,34 @@ Si procede da sinistra a destra nel funnel. I verbi di massa agiscono
 sull'**intero mese** selezionato e chiedono sempre conferma, mostrando quante
 attività coinvolgono.
 
-| Verbo | Card | Cosa fa | Serve il permesso |
-| --- | --- | --- | --- |
-| **Approva** | `Da approvare` | Rende le attività **emettibili**: dice che quel lavoro è buono per essere fatturato | Approvazione attività commessa |
-| **Fattura adesso** | `Da emettere` | Crea le fatture del mese e le porta fino a **EMESSA**. Si ferma lì: **non numera** | Generazione fatture/lotti |
-| **Fattura questo** | riga dell'elenco `Da emettere` | Lo stesso verbo, ma **su un documento solo** (o su quelli selezionati) invece che su tutto il mese | Generazione fatture/lotti |
-| **Rendi definitive** | ➡️ **non è più qui**: sta su **Vendite → Lotti**. Sulla card `Fatturate` resta il **rimando** «Vai ai lotti (N)», che ci porta col filtro già messo | **Numera** le fatture (atto fiscale) e le manda in stampa | Numerazione fatture/lotti (dedicato) |
-| ⭐ **Riporta da emettere** | righe dell'elenco `Emesse non fatturate` | Rimette **il lavoro selezionato** fra quello da emettere: torna disponibile per il prossimo giro. Nessun lotto viene rigenerato, nessuna fattura ricreata | Riporta da emettere (dedicato) |
+| Verbo                     | Card                                                                                                                            | Cosa fa                                                                                                                                                   | Serve il permesso                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| **Approva**               | `Da approvare`                                                                                                                  | Rende le attività **emettibili**: dice che quel lavoro è buono per essere fatturato                                                                       | Approvazione attività commessa       |
+| **Fattura adesso**        | `Da emettere`                                                                                                                   | Crea le fatture del mese e le porta fino a **EMESSA**. Si ferma lì: **non numera**                                                                        | Generazione fatture/lotti            |
+| **Fattura questo**        | riga dell'elenco `Da emettere`                                                                                                  | Lo stesso verbo, ma **su un documento solo** (o su quelli selezionati) invece che su tutto il mese                                                        | Generazione fatture/lotti            |
+| **Rendi definitive**      | ➡️ **sta su Vendite → Lotti**. Sulla card `Fatturate` resta il **rimando** «Vai ai lotti (N)», che ci porta col filtro già messo | **Numera** le fatture (atto fiscale) e le manda in stampa                                                                                                 | Numerazione fatture/lotti (dedicato) |
+| ⭐ **Riporta da emettere** | righe dell'elenco `Emesse non fatturate`                                                                                        | Rimette **il lavoro selezionato** fra quello da emettere: torna disponibile per il prossimo giro. Nessun lotto viene rigenerato, nessuna fattura ricreata | Riporta da emettere (dedicato)       |
 
-⭐ **«Rendi definitive» ha lasciato questo cruscotto** (agosto 2026), e la
-ragione è la stessa che vale per ogni verbo di questa guida: **un verbo sta dove
-sta l'elenco del suo oggetto.** Numerare agisce sui **lotti**, e qui accanto
-c'era un elenco di **commesse**: per sapere cosa si stava per rendere definitivo
-bisognava andarsene da un'altra parte.
+⭐ **Perché questo verbo non è qui.** Vale per tutti i verbi della guida, ed è la
+ragione per cui «Rendi definitive» sta altrove: **un verbo sta dove sta l'elenco
+del suo oggetto.** Numerare agisce sui **lotti**, e qui accanto c'è un elenco di
+**commesse**: per sapere cosa si sta per rendere definitivo bisognerebbe
+andarsene da un'altra parte.
 
-Adesso vive su **Vendite → Lotti**, dove quell'elenco esiste — e dove si può
-anche scegliere **quali** numerare invece di prendere tutto il mese.
+Vive su **Vendite → Lotti**, dove quell'elenco esiste — e dove si può anche
+scegliere **quali** numerare invece di prendere tutto il mese.
 
-| Dove | Cosa c'è |
-| --- | --- |
+| Dove                   | Cosa c'è                                                                                                                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | card `Fatturate` (qui) | ➡️ il **rimando** «Vai ai lotti (N)», che porta con sé il **filtro** — competenza del mese e stato `EMESSA`. ⛔ Un collegamento all'elenco nudo sarebbe stato un passo indietro |
-| **Vendite → Lotti** | il verbo, in due forme: **«Rendi definitivi i selezionati»** (si spuntano i lotti) e **«Rendi definitivo il mese»** |
+| **Vendite → Lotti**    | il verbo, in due forme: **«Rendi definitivi i selezionati»** (si spuntano i lotti) e **«Rendi definitivo il mese»**                                                           |
 
 ⚠️ **Il rimando compare solo se c'è qualcosa da numerare** e se hai il permesso:
 a mese tutto definitivo non c'è nulla da raggiungere, e il pulsante tace.
 
-ℹ️ Questa guida, fino al 28 agosto 2026, diceva che il verbo stava sulla card
-`Fatturate`. Era vero fino al 26 agosto — poi il verbo si è spostato e la frase
-è rimasta indietro. **Le regole di comportamento qui sotto valgono ancora tutte**:
-cambia *dove si preme*, non *cosa succede*.
+⚠️ **Cambia *dove si preme*, non *cosa succede*.** Quando l'azione vive su un'altra
+schermata, le regole di comportamento di questa guida valgono lo stesso: il verbo
+si chiama allo stesso modo e produce lo stesso effetto.
 
 ⭐ **«Riporta da emettere» agisce sulle RIGHE spuntate, non sul mese.** È
 l'unico verbo di questo cruscotto che non lavora sull'intero mese, e la ragione è
@@ -457,7 +403,7 @@ Quattro dettagli che non sono ovvi:
   giugno viene preso anche quello. È voluto: evita che il non fatturato si sedimenti.
 - **Approvare non fattura niente.** Approvare significa solo «questo lavoro è
   corretto». La fattura nasce col verbo successivo.
-- **«Rendi definitive» può dire di no**, e da agosto 2026 lo dice. Prima di
+- **«Rendi definitive» può dire di no.** Prima di
   consumare il numero fiscale il sistema controlla che il documento **stia in
   piedi da solo**: che i totali siano stati calcolati, che il riepilogo IVA ci
   sia e quadri con la testata, e che le rate esistano e sommino esattamente al
@@ -467,7 +413,7 @@ Quattro dettagli che non sono ovvi:
   in anagrafica o in commessa — e si riporta il lotto in lavorazione (§7.6).
   L'elenco puntuale dei controlli è in
   [Fatturazione — non si numera un documento incoerente](/guide/fatturazione).
-- **Ogni verbo chiede prima la data del documento** (da agosto 2026), e la
+- **Ogni verbo chiede prima la data del documento**, e la
   domanda non è la stessa nei due casi:
   - quando si **crea** (`Fattura adesso`, `Fattura questo`) la data è
     **facoltativa**: lasciarla vuota non vuol dire «oggi», vuol dire «decide il
@@ -501,11 +447,11 @@ controlli sono finiti.**
 
 Buona parte del lavoro avviene **senza che nessuno prema niente**:
 
-| Chi | Quando | Cosa |
-| --- | --- | --- |
-| **Processo notturno** | ogni notte | esegue il giro di fatturazione automatico; per la corsia **giornaliera** arriva **fino alla numerazione** |
-| **Processi di servizio** | ogni minuto | prendono in carico i lavori avviati dalla dashboard e producono i **PDF** delle fatture numerate |
-| **Operatore** | quando serve | **anticipa** il giro senza aspettare la notte, **numera** la fatturazione massiva, **sblocca** ciò che si è fermato |
+| Chi                      | Quando       | Cosa                                                                                                                |
+| ------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------- |
+| **Processo notturno**    | ogni notte   | esegue il giro di fatturazione automatico; per la corsia **giornaliera** arriva **fino alla numerazione**           |
+| **Processi di servizio** | ogni minuto  | prendono in carico i lavori avviati dalla dashboard e producono i **PDF** delle fatture numerate                    |
+| **Operatore**            | quando serve | **anticipa** il giro senza aspettare la notte, **numera** la fatturazione massiva, **sblocca** ciò che si è fermato |
 
 Quindi i verbi della dashboard **non sostituiscono** il processo automatico: lo
 anticipano quando serve chiudere il mese senza attendere, e coprono i casi che il
@@ -538,11 +484,9 @@ cercare a mano nell'elenco dei lotti.
 riga offre la sola «Apri commessa», e l'elenco non porta né il numero di fattura
 né il codice del lotto.
 
-✅ **Ma dalla card sì**, da agosto 2026: il pulsante **«Vai ai lotti (N)»** porta
-all'elenco dei lotti **già filtrato** su competenza e stato `EMESSA` — cioè
-esattamente quelli da numerare (§7.1). Il collegamento che questa guida
-prometteva e che non esisteva adesso c'è; quello che manca ancora è l'aggancio
-**dalla singola riga**.
+✅ **Ma dalla card sì**: il pulsante **«Vai ai lotti (N)»** porta all'elenco dei
+lotti **già filtrato** su competenza e stato `EMESSA` — cioè esattamente quelli
+da numerare (§7.1). Quello che manca è l'aggancio **dalla singola riga**.
 
 ### 7.6 Tornare indietro: le tre vie d'uscita
 
@@ -551,28 +495,23 @@ tre, non uno, e la differenza fra loro è cosa resta in piedi dopo. Si trovano
 nel **drawer del lotto** e nel menu della riga nell'elenco dei lotti — al lotto
 si arriva anche dal pannello errori della Lente 1 (§7.5).
 
-| Verbo | Su cosa agisce | Cosa resta dopo |
-| --- | --- | --- |
-| **Riporta in lavorazione** | tutto il lotto, da EMESSA (o da bozza) | Il lotto **resta aperto** e torna in bozza: le sue fatture vengono eliminate, le righe di commessa tornano «da emettere» e al giro successivo le fatture si **rigenerano** |
-| **Elimina dal lotto** | **una** fattura | Solo quella fattura sparisce; il lotto e le altre fatture proseguono. Le sue righe **tornano «da emettere»** e rientrano nel giro successivo; quelle delle altre fatture **non vengono toccate** |
-| **Annulla lotto** | tutto il lotto, solo se è ancora in **bozza** | Il lotto è **chiuso e non si riapre**: le righe tornano libere e servirà un lotto nuovo |
+| Verbo                      | Su cosa agisce                                | Cosa resta dopo                                                                                                                                                                                  |
+| -------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Riporta in lavorazione** | tutto il lotto, da EMESSA (o da bozza)        | Il lotto **resta aperto** e torna in bozza: le sue fatture vengono eliminate, le righe di commessa tornano «da emettere» e al giro successivo le fatture si **rigenerano**                       |
+| **Elimina dal lotto**      | **una** fattura                               | Solo quella fattura sparisce; il lotto e le altre fatture proseguono. Le sue righe **tornano «da emettere»** e rientrano nel giro successivo; quelle delle altre fatture **non vengono toccate** |
+| **Annulla lotto**          | tutto il lotto, solo se è ancora in **bozza** | Il lotto è **chiuso e non si riapre**: le righe tornano libere e servirà un lotto nuovo                                                                                                          |
 
 **La regola per scegliere**: se il lavoro va rifatto, *Riporta in lavorazione*;
 se il problema è un documento solo, *Elimina dal lotto*; *Annulla lotto* è per
 un giro partito per sbaglio, che non deve produrre nulla.
 
-> ✅ **Corretto il 26 agosto 2026.** Fino a quella data *Elimina dal lotto*
-> cancellava la fattura ma **non rimetteva in coda il lavoro che conteneva**:
-> quel lavoro restava marcato come già fatturato e nessun giro successivo lo
-> riprendeva. L'avvertenza che consigliava di usare *Riporta in lavorazione*
-> sull'intero lotto **non serve più**: le due strade adesso rimettono in coda
-> allo stesso modo, e la scelta fra loro torna a essere quella descritta qui
-> sopra — tutto il lotto, oppure un documento solo.
+> ⚠️ **Le due strade rimettono in coda allo stesso modo** — tutto il lotto, oppure
+> un documento solo — e la scelta fra loro è quella descritta qui sopra.
 >
-> ✅ **E il lascito adesso si recupera.** Le attività rimaste indietro *prima*
-> della correzione non si sbloccano da sole: si contano nella casella *Emesse non
-> fatturate* della Lente 1 (§3.1), e da lì il verbo **«Riporta da emettere»**
-> (§7.1) le rimette in coda. È il gesto per cui quella casella ha una lista.
+> ⚠️ **Le attività rimaste indietro non si sbloccano da sole.** Si contano nella
+> casella *Emesse non fatturate* della Lente 1 (§3.1), e da lì il verbo **«Riporta
+> da emettere»** (§7.1) le rimette in coda: è il gesto per cui quella casella ha
+> una lista.
 
 Tre avvertenze, tutte pagate sul campo:
 
@@ -592,28 +531,28 @@ Tre avvertenze, tutte pagate sul campo:
   rigenerata al giro successivo. Vale la pena leggere gli avvisi, non darli per
   puliti.
 
-### 7.7 **Annullare** un documento adesso ritira il lavoro che aveva spinto
+### 7.7 **Annullare** un documento ritira il lavoro che aveva spinto
 
-⚠️ **Da sapere prima, non da scoprire dopo.** Dal 26 agosto 2026 **annullare** un
-documento — preventivo, ordine, DDT, contratto — **non ferma solo i passaggi
-futuri**: ritira anche le righe di commessa che quel documento aveva già prodotto
-e che nessuno ha ancora emesso. Quelle righe passano ad **ANNULLATA**.
+⚠️ **Da sapere prima, non da scoprire dopo.** **Annullare** un documento —
+preventivo, ordine, DDT, contratto — **non ferma solo i passaggi futuri**: ritira
+anche le righe di commessa che quel documento aveva già prodotto e che nessuno ha
+ancora emesso. Quelle righe passano ad **ANNULLATA**.
 
 > ⛔ **È l'ANNULLAMENTO, e nient'altro.** *Evadere*, *completare* o *chiudere* un
 > documento in qualunque altro modo **non ritira niente**: quel lavoro resta
 > fatturabile, ed è giusto così — è arrivato in fondo, non è stato disdetto.
 > Il ritiro è legato all'atto che dice «questo documento non vale più».
 
-⭐ **Perché.** Prima, annullare un ordine impediva i passaggi successivi ma
-lasciava fatturabile ciò che era già passato in commessa: il lavoro restava lì e
-prima o poi finiva in una fattura che nessuno si aspettava più. L'annullamento di
-un documento adesso è un'operazione **che arriva fino in fondo**.
+⭐ **Perché si arriva fino in fondo.** Fermarsi ai passaggi successivi lascerebbe
+fatturabile ciò che è già passato in commessa: quel lavoro resterebbe lì, e prima
+o poi finirebbe in una fattura che nessuno si aspetta più. L'annullamento di un
+documento è quindi un'operazione **che non si ferma a metà**.
 
-| Stato della riga di commessa | Cosa succede **annullando** il documento |
-| --- | --- |
-| non ancora emessa | ⭐ **viene ritirata**: passa ad `ANNULLATA` |
-| ⛔ già **emessa** | **il documento non si annulla affatto**, e il messaggio dice perché |
-| già annullata | non si tocca |
+| Stato della riga di commessa | Cosa succede **annullando** il documento                            |
+| ---------------------------- | ------------------------------------------------------------------- |
+| non ancora emessa            | ⭐ **viene ritirata**: passa ad `ANNULLATA`                          |
+| ⛔ già **emessa**             | **il documento non si annulla affatto**, e il messaggio dice perché |
+| già annullata                | non si tocca                                                        |
 
 ⛔ **Il rifiuto sulle righe già emesse non è un capriccio**: quel lavoro è *in
 volo* verso una fattura, e ritirarlo lascerebbe un'attività orfana per strada —
@@ -640,9 +579,6 @@ documento che l'ha causato.
 > ℹ️ Il registro non riguarda solo i ritiri: raccoglie tutto ciò che è successo a
 > quella riga — oneri aggiunti, annullamenti a mano, riporti «da emettere»,
 > accrediti. È la risposta a «perché questa riga è così».
-> ⚠️ Fino al 28 agosto 2026 quegli eventi il database li scriveva e **nessuna
-> schermata li leggeva**: questa pagina prometteva un registro che non si poteva
-> aprire. La promessa adesso è mantenuta.
 
 ### 7.8 Cosa non si fa ancora da qui
 
@@ -665,11 +601,11 @@ Il sistema, per ogni partita di merce, tiene un conto solo: quanto il cliente ha
 **tenuto** (consegnato, meno reso, più ri-consegnato) contro quanto gli è stato
 **fatturato**. La differenza dice tutto:
 
-| Il conto | Cosa vuol dire |
-| --- | --- |
-| tenuto **più** di quanto fatturato | manca una fattura per la differenza |
+| Il conto                            | Cosa vuol dire                                                  |
+| ----------------------------------- | --------------------------------------------------------------- |
+| tenuto **più** di quanto fatturato  | manca una fattura per la differenza                             |
 | tenuto **meno** di quanto fatturato | gli è dovuto un **accredito**: è ciò che finisce in questa coda |
-| pari | niente da fare |
+| pari                                | niente da fare                                                  |
 
 Non ci sono regole diverse per i diversi tipi di reso: c'è un conto, e il segno
 decide. Un reso conta solo da quando è **confermato** — finché è in bozza non
@@ -677,19 +613,18 @@ sposta niente.
 
 ### 8.2 Le due etichette
 
-| Etichetta | Quando compare |
-| --- | --- |
-| **Accredito dovuto** | la merce è tornata indietro e lì resta: il cliente ha pagato qualcosa che non ha. È arretrato vero |
+| Etichetta                                          | Quando compare                                                                                                                                                             |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Accredito dovuto**                               | la merce è tornata indietro e lì resta: il cliente ha pagato qualcosa che non ha. È arretrato vero                                                                         |
 | **Accredito facoltativo — merce da ri-consegnare** | la merce tornerà al cliente. Puoi accreditare e poi rifatturare, oppure lasciar correre e rispedire: **il conto torna in entrambi i casi**. È una scelta, non un arretrato |
 
 La scelta sulla seconda non si congela al momento del reso: resta aperta fino
 alla ri-spedizione. Per questo le facoltative restano visibili in coda invece di
 sparire.
 
-### 8.3 Cosa si fa oggi da qui
+### 8.3 Cosa si fa da qui
 
-⭐ **Si accredita** (aggiornato 2026-08-21 — questa sezione diceva «niente», ed
-era vero fino a metà agosto).
+⭐ **Si accredita da qui.**
 
 Dalla riga della coda, o dal drawer del reso, si registra l'**accredito** della
 riga: la merce resa esce dalla coda e nasce una riga di **rettifica** sulla
@@ -697,9 +632,9 @@ commessa del cliente. Da lì l'accredito segue la strada normale della
 fatturazione — al giro successivo diventa una **nota di credito**, un documento
 separato dalla fattura, con il legame riga↔riga verso ciò che corregge.
 
-| Verbo | Dove | Cosa fa |
-| --- | --- | --- |
-| **Accredita** | riga della coda · drawer del reso | registra l'accredito dovuto: la riga esce dalla coda, la rettifica entra in commessa |
+| Verbo                   | Dove                                   | Cosa fa                                                                                                                                         |
+| ----------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Accredita**           | riga della coda · drawer del reso      | registra l'accredito dovuto: la riga esce dalla coda, la rettifica entra in commessa                                                            |
 | **Annulla l'accredito** | drawer del reso (riga già accreditata) | il caso «ho cliccato la riga sbagliata»: toglie la rettifica, l'accredito torna dovuto. Richiede un **motivo**, ed è l'unica traccia del perché |
 
 ⚠️ **«Annulla l'accredito» e «annulla il documento» non sono la stessa cosa**, e
@@ -713,7 +648,7 @@ pulsante resta acceso ma spiega il perché. Prima si annulla l'accredito.
 
 📌 Il funzionamento tecnico (natura del documento, legame di riga, guardia sulla
 numerazione) sta nella
-[guida tecnica alla fatturazione](fatturazione.md#il-documento-che-torna-indietro-la-nota-di-credito).
+[guida tecnica alla fatturazione](/guide/fatturazione#il-documento-che-torna-indietro-la-nota-di-credito).
 
 ---
 
@@ -727,13 +662,16 @@ numerazione) sta nella
   l'identità utente (vedi §2.5).
 - **Misura mista**: decisa dal backend nel payload (valore assente = area a
   conteggi, non una whitelist statica nel frontend) — vedi §2.3.
-- **DDT, resi e coda accrediti**: il disegno e le decisioni stanno nei brief di
-  sviluppo `brief-db-fatturazione-ddt-resi.md` e
-  `brief-be-fe-ddt-resi-dashboard.md` (work-done). In particolare: la
-  popolazione ristretta dei DDT (solo quelli con un ruolo di fatturazione), il
-  valore al residuo degli ordini e la forma a contatore della coda accrediti.
+- **DDT, resi e coda accrediti**: il disegno sta nella guida
+  [Fatturazione](/guide/fatturazione). Qui restano le tre scelte che si vedono a
+  schermo: la popolazione ristretta dei DDT (solo quelli con un ruolo di
+  fatturazione), il valore al residuo degli ordini e la forma a contatore della
+  coda accrediti.
 - **Revisione attiva**: i cruscotti considerano solo la revisione attiva di
   preventivi e offerte (vedi §2.4).
 - **Fotografia vs azione**: le card della Situazione aperta non sono filtrate dal
   ritardo (restano una fotografia completa); la soglia "aperti da oltre N giorni"
   agisce solo sulla lista di drill-down.
+
+---
+{% include-markdown "signature-core.md" %}

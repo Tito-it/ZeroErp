@@ -36,6 +36,7 @@ from apps.anagrafiche.db.categorie_clienti_listini_repository import (
     CategorieClientiListiniRepository,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.non_editable_fields_helper import (
     compute_non_editable_fields,
 )
@@ -141,26 +142,34 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     ),
 }
 
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+# ⭐ Il terzo elemento e' il CAMPO del form (chiave del payload, `_CREATE_KEYS`):
+#    arriva al client in `error.fields` e accende il picker della FK violata
+#    (presidio C2, brief-be-presidio-ui-action-e-canale-campi §3-ter).
+_FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_categ_cli_listini_categoria": (
         E_ANAG_FK,
         "Categoria cliente inesistente.",
+        "categoria_cliente_id",
     ),
     "fk_categ_cli_listini_utility": (
         E_ANAG_FK,
         "Utility inesistente.",
+        "utility_id",
     ),
     "fk_categ_cli_listini_emittente": (
         E_ANAG_FK,
         "Emittente (soggetto_ruolo) inesistente.",
+        "emittente_soggetto_ruolo_id",
     ),
     "fk_categ_cli_listini_classe_utenza": (
         E_ANAG_FK,
         "Classe utenza inesistente.",
+        "classe_utenza_id",
     ),
     "fk_categ_cli_listini_listino": (
         E_ANAG_FK,
         "Listino inesistente.",
+        "listino_id",
     ),
 }
 
@@ -192,7 +201,7 @@ class CategorieClientiListiniService:
         order_by: str = "valido_dal",
         order_dir: str = "desc",
     ) -> tuple[list[dict[str, Any]], int]:
-        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI)
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI, order_dir=order_dir)
         return self._repo.list_matrice(
             search=search,
             attivo=attivo,
@@ -212,14 +221,11 @@ class CategorieClientiListiniService:
     #        usa la lista per disabilitare i Select dimensionali in edit.
     def get_matrice(self, record_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(record_id, field="record_id")
-        result = self._repo.get_matrice(record_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_ANAG_NOT_FOUND,
-            message="Riga matrice categoria/listino non trovata.",
-            context={"record_id": record_id},
+        result = testata_o_not_found(
+            self._repo.get_matrice, record_id,
+            code=E_ANAG_NOT_FOUND, message="Riga matrice categoria/listino non trovata.",
+            id_name="record_id", function_name="categorie_clienti_listini_service.get_matrice",
         )
-        assert result is not None
         result["non_editable_fields"] = self.get_non_editable_fields()
         return result
 
@@ -345,16 +351,9 @@ class CategorieClientiListiniService:
         valido_al = self._v.optional_date(payload, "valido_al", message=_MESSAGE)
         if "valido_al" in payload:
             data["valido_al"] = valido_al
-        # Coerenza range: se entrambe presenti, valido_al >= valido_dal.
-        # Il DB ha anche il check, ma anticipiamo il messaggio parlante.
-        if valido_al is not None:
-            ErrorManager.require(
-                valido_al >= data["valido_dal"],
-                code=E_ANAG_VALIDAZIONE,
-                message=_MESSAGE,
-                detail="valido_al deve essere >= valido_dal.",
-                context={"valido_dal": data["valido_dal"], "valido_al": valido_al},
-            )
+        # L'ordine delle date (valido_al non precede valido_dal) lo giudica il
+        # DB: guard comune `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL
+        # col campo `valido_al` (dal 2026-09-23). Non si ripete qui.
 
         tipo, valore = self._extract_variazione_pair(payload)
         if tipo is not None or "tipo_variazione" in payload:
@@ -384,16 +383,9 @@ class CategorieClientiListiniService:
             data["valido_al"] = self._v.optional_date(
                 payload, "valido_al", message=_MESSAGE
             )
-        # Coerenza date post-merge (best-effort: se la PATCH ne tocca solo
-        # una, l'altra resta a DB e il check lo fa il DB).
-        if "valido_dal" in data and data.get("valido_al") is not None:
-            ErrorManager.require(
-                data["valido_al"] >= data["valido_dal"],
-                code=E_ANAG_VALIDAZIONE,
-                message=_MESSAGE,
-                detail="valido_al deve essere >= valido_dal.",
-                context={"valido_dal": data["valido_dal"], "valido_al": data["valido_al"]},
-            )
+        # L'ordine delle date (valido_al non precede valido_dal) lo giudica il
+        # DB: guard comune `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL
+        # col campo `valido_al` (dal 2026-09-23). Non si ripete qui.
 
         if "tipo_variazione" in payload or "valore_variazione" in payload:
             tipo, valore = self._extract_variazione_pair(payload)

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, NoReturn
 from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError, transaction
@@ -69,23 +69,29 @@ _V = PayloadValidator(
 
 
 # Scopo: Valida ordinamento lista listini contro whitelist locale.
-def _validate_order(order_by: str, order_dir: str, function_name: str) -> tuple[str, str]:
+def _validate_order(order_by: str, order_dir: str | None, function_name: str) -> tuple[str, str | None]:
     return validate_order_params(
         order_by,
         order_dir,
         allowed_columns=_ORDER_BY_VALIDI,
         error_code="E_VENDITE_VALIDATION",
+        # `nullable`: direzione assente -> `None` e decide il default del
+        # repository (`parse_list_params` non inventa piu' "asc", 2026-09-26).
+        nullable=True,
         function_name=function_name,
     )
 
 
 # Scopo: Valida ordinamento lista righe listino contro whitelist locale.
-def _validate_righe_order(order_by: str, order_dir: str, function_name: str) -> tuple[str, str]:
+def _validate_righe_order(order_by: str, order_dir: str | None, function_name: str) -> tuple[str, str | None]:
     return validate_order_params(
         order_by,
         order_dir,
         allowed_columns=_RIGHE_ORDER_BY_VALIDI,
         error_code="E_VENDITE_VALIDATION",
+        # `nullable`: direzione assente -> `None` e decide il default del
+        # repository (`parse_list_params` non inventa piu' "asc", 2026-09-26).
+        nullable=True,
         function_name=function_name,
     )
 
@@ -447,7 +453,7 @@ def _get_riga_or_raise(
 #        E_VENDITE_PROMO_OVERLAP / E_VENDITE_CONTRATTO_OVERLAP), temporal FK
 #        coerenza BoM (PG18) → E_LISTINO_RIGA_COMP_BOM_INCOERENTE (400,
 #        sostituisce guard 6 trigger rimosso con migration 20260514-13).
-def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entity: str) -> None:
+def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entity: str) -> NoReturn:
     map_integrity_error(
         exc,
         unique_constraints={
@@ -2066,7 +2072,6 @@ def fn_save_bundle(
         _translate_integrity_error(
             exc, function_name=function_name, entity="bundle",
         )
-        raise AssertionError("unreachable")  # pragma: no cover
     except DatabaseError as exc:
         # P0001 dai trigger DB su `listini_righe_componenti`
         # (immutabilita' versione ATTIVA/CHIUSA, guard coerenza BoM).

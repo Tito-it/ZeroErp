@@ -171,11 +171,11 @@ Il parametro è **facoltativo su tutti e tre i verbi**, e assente non vuol dire
 politica del registro (`vendite.registri_fatturazione.politica_data_documento`:
 `OGGI` oppure `FINE_MESE_COMPETENZA`) nel momento in cui la testata nasce.
 
-| verbo | cosa fa `data_documento` |
-| --- | --- |
-| `fatturazione/run/` (BE-1) | è scritta sui **lotti che il giro crea**, come i `gruppi`: alla creazione, non su un lotto indicato per id |
-| `fatturazione/numera/` (BE-2) | **una data per l'intero atto**: vale per tutti i lotti che quel giro numera, non una per lotto |
-| `lotti/<id>/numera/` (BE-2) | vale per quel lotto |
+| verbo                         | cosa fa `data_documento`                                                                                   |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `fatturazione/run/` (BE-1)    | è scritta sui **lotti che il giro crea**, come i `gruppi`: alla creazione, non su un lotto indicato per id |
+| `fatturazione/numera/` (BE-2) | **una data per l'intero atto**: vale per tutti i lotti che quel giro numera, non una per lotto             |
+| `lotti/<id>/numera/` (BE-2)   | vale per quel lotto                                                                                        |
 
 ⛔ **Sui due verbi di numerazione la data si applica PRIMA di numerare**, via
 `vendite.fn_imposta_data_documento_lotto`, che in un atto solo scrive la data sul
@@ -298,7 +298,7 @@ stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
   autorizzati ordinati.
 - **Identità operatore catturata** all'accodamento (`auth_user_id`, `username`,
   `identita_id`, `emittente_ids`, `scope_key`): il worker la ripropone per intero
-  (5 GUC via `set_jwt_gucs`) così la RLS risolve **come nel web**. Un job
+  (6 GUC via `set_jwt_gucs`) così la RLS risolve **come nel web**. Un job
   OPERATORE senza identità completa → fail-loud.
 - **Gate fiscale I-7**: numerazione (atto fiscale) sempre dietro permesso
   `numera_fatture_lotti`, distinto da `genera_fatture_lotti`; la ristampa è gated
@@ -320,19 +320,19 @@ stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
 
 ## Codici errore
 
-| Codice | HTTP | Quando |
-| --- | --- | --- |
-| `E_VALIDATION_INPUT` | 400 | `competenza_mese` assente o identità operatore non risolta dal token |
-| `E_JOB_NON_TROVATO` | 404 | polling di un job inesistente o di altro scope |
-| `E_LOTTO_NON_TROVATO` | 404 | lotto fuori scope/inesistente (numera/ristampa singolo) |
-| `E_LOTTO_NON_NUMERABILE` | 409 | «Rendi definitive» su lotto non EMESSA |
-| `E_LOTTO_NON_RISTAMPABILE` | 409 | ristampa massiva su lotto non DEFINITIVA |
-| `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | POST senza header `Idempotency-Key` |
-| `E_FATTURA_RETTIFICATA_SENZA_NUMERO` (**937**) | 409 | numerazione di un documento che rettifica righe di una fattura **senza numero** (o non visibile: il guard è fail-closed sulla RLS) |
-| `E_FATTURA_NON_NUMERABILE_INCOERENTE` (**574**) | 409 | documento incoerente — totali, riepiloghi IVA o piano rate (sei condizioni, vedi la [guida](../../../guide/fatturazione.md)) |
-| `E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO` | 400 | la data del documento è anteriore all'ultimo numero già emesso sul sezionale. Sollevato dal **cancello** (`fn_get_next_progressivo`, sotto l'advisory lock) e, in anticipo, da `fn_imposta_data_documento_lotto`. `ui_action` **`highlight_form_fields`** e non il banner di default: il DB manda `column_name = data_documento`, cioè nomina il campo che l'operatore ha davanti |
-| `E_FATTURA_DATA_NON_MODIFICABILE` | 409 | si è tentato di cambiare la data di una fattura **già numerata** (trigger `trg_fatture_a10_guard_data_numerata_upd`) |
-| `E_TASK_FATTURA` | 400 | fallimento su singola fattura **che il database non ha nominato** (errore Python, guasto tecnico). Se il codice di dominio c'è, arriva quello |
+| Codice                                          | HTTP | Quando                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E_VALIDATION_INPUT`                            | 400  | `competenza_mese` assente o identità operatore non risolta dal token                                                                                                                                                                                                                                                                                                              |
+| `E_JOB_NON_TROVATO`                             | 404  | polling di un job inesistente o di altro scope                                                                                                                                                                                                                                                                                                                                    |
+| `E_LOTTO_NON_TROVATO`                           | 404  | lotto fuori scope/inesistente (numera/ristampa singolo)                                                                                                                                                                                                                                                                                                                           |
+| `E_LOTTO_NON_NUMERABILE`                        | 409  | «Rendi definitive» su lotto non EMESSA                                                                                                                                                                                                                                                                                                                                            |
+| `E_LOTTO_NON_RISTAMPABILE`                      | 409  | ristampa massiva su lotto non DEFINITIVA                                                                                                                                                                                                                                                                                                                                          |
+| `E_IDEMPOTENCY_KEY_REQUIRED`                    | 400  | POST senza header `Idempotency-Key`                                                                                                                                                                                                                                                                                                                                               |
+| `E_FATTURA_RETTIFICATA_SENZA_NUMERO` (**937**)  | 409  | numerazione di un documento che rettifica righe di una fattura **senza numero** (o non visibile: il guard è fail-closed sulla RLS)                                                                                                                                                                                                                                                |
+| `E_FATTURA_NON_NUMERABILE_INCOERENTE` (**574**) | 409  | documento incoerente — totali, riepiloghi IVA o piano rate (sei condizioni, vedi la [guida](../../../guide/fatturazione.md))                                                                                                                                                                                                                                                      |
+| `E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO`        | 400  | la data del documento è anteriore all'ultimo numero già emesso sul sezionale. Sollevato dal **cancello** (`fn_get_next_progressivo`, sotto l'advisory lock) e, in anticipo, da `fn_imposta_data_documento_lotto`. `ui_action` **`highlight_form_fields`** e non il banner di default: il DB manda `column_name = data_documento`, cioè nomina il campo che l'operatore ha davanti |
+| `E_FATTURA_DATA_NON_MODIFICABILE`               | 409  | si è tentato di cambiare la data di una fattura **già numerata** (trigger `trg_fatture_a10_guard_data_numerata_upd`)                                                                                                                                                                                                                                                              |
+| `E_TASK_FATTURA`                                | 400  | fallimento su singola fattura **che il database non ha nominato** (errore Python, guasto tecnico). Se il codice di dominio c'è, arriva quello                                                                                                                                                                                                                                     |
 
 ## Dipendenze DB
 

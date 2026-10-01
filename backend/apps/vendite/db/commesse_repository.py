@@ -13,7 +13,7 @@ from typing import Any
 
 from django.db import connection, transaction
 
-from apps.core.db._helpers import call_jsonb_fn, row_to_dict
+from apps.core.db._helpers import call_jsonb_fn, row_to_dict, limiti_pagina
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db._event_log_repo_mixin import EventLogRepositoryMixin
@@ -176,7 +176,7 @@ TIPO_MOVIMENTO_VALUES: frozenset[str] = frozenset(
 )
 
 # Il tetto della lista attivita': quello che la fn DB applica da se' su
-# `p_limit`. Il tetto di PAGINA (200) NON sta qui — vive nel service, dove e'
+# `p_limit`. Il tetto di PAGINA (`MAX_LIMIT`) NON sta qui — vive nel service, dove e'
 # un errore parlante invece di un troncamento muto.
 _ATTIVITA_EXPORT_MAX_ROWS = 10_000
 
@@ -1493,7 +1493,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                  ORDER BY l.data_insert DESC, l.id DESC
                  LIMIT %s OFFSET %s
                 """,  # noqa: S608 - idem
-                [*params, max(1, min(int(limit), _REGISTRO_QUERY_MAX_ROWS)), max(0, int(offset))],
+                [*params, *limiti_pagina(limit, offset, tetto=_REGISTRO_QUERY_MAX_ROWS)],
             )
             eventi: list[CommessaRegistroEventoRow] = []
             for r in cursor.fetchall():
@@ -1649,7 +1649,7 @@ class CommesseRepository(EventLogRepositoryMixin):
 
         order_by/order_dir passano alla fn DB (whitelist ATTIVITA_SORT_COLUMNS,
         validata a monte dal service); None = ordine storico ca.id.
-        Restituisce {"count": <total_righe_filtrate>, "rows": [dict, ...]}.
+        Restituisce {"count": <total_righe_filtrate>, "results": [dict, ...]}.
         """
         # `max_rows` = percorso EXPORT: salta la paginazione, come i `fetch`
         # dei cruscotti (`build_dash_export_response`). Senza, il file uscirebbe
@@ -1664,8 +1664,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         # ⭐ Il guard sul limite vero e' a monte (`build_export_response`) e
         # confronta il `count` ESATTO, non le righe estratte: quindi il clamp
         # della fn non puo' far passare per completo un export che non lo e'.
-        safe_limit = max(1, min(int(max_rows or limit), _ATTIVITA_EXPORT_MAX_ROWS))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(max_rows or limit, offset, tetto=_ATTIVITA_EXPORT_MAX_ROWS)
 
         # Parametri WHERE condivisi tra count e data query.
         where_params: list = [commessa_id]
@@ -1693,7 +1692,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         with connection.cursor() as cursor:
             # Total count (stessi filtri, senza LIMIT/OFFSET).
             cursor.execute(
-                f"SELECT COUNT(*) FROM vendite.commesse_attivita ca WHERE {where_sql}",
+                f"SELECT COUNT(*) FROM vendite.commesse_attivita ca WHERE {where_sql}",  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
                 where_params,
             )
             count_row = cursor.fetchone()
@@ -1735,7 +1734,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                 row_dict[col] = val
             rows.append(row_dict)
 
-        return {"count": total_count, "rows": rows}
+        return {"count": total_count, "results": rows}
 
     # --- Gruppo 4: Push log ---
 

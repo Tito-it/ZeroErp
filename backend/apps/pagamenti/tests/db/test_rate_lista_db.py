@@ -27,9 +27,10 @@ Indice test eseguiti:
 2) RateListaDbTests.test_i_saldi_arrivano_per_ogni_rata_della_pagina
 3) RateListaDbTests.test_solo_aperte_toglie_la_rata_esaurita
 4) RateListaDbTests.test_ogni_ordinamento_della_whitelist_esegue
-5) RateListaDbTests.test_la_ricerca_libera_trova_il_cliente_non_il_numero
-5-bis) RateListaDbTests.test_solo_numerate_toglie_la_bozza_in_entrambi_i_rami
+5) RateListaDbTests.test_la_ricerca_libera_trova_il_cliente_e_il_documento
+5-bis) RateListaDbTests.test_la_bozza_esce_dal_perimetro_in_entrambi_i_rami
 6) RigheDaRateDbTests.test_parziale_poi_il_secondo_tempo_per_riga
+7) RicercaListeDbTests.test_la_ricerca_trova_ogni_colonna_accesa
 """
 from __future__ import annotations
 
@@ -39,9 +40,9 @@ from decimal import Decimal
 from django.db import connection, transaction
 
 from apps.core.services.error_policies import ErrorPolicyRegistry
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import richiedi_db_provvisto, verifica_ricerca_colonna_per_colonna
 from apps.pagamenti.db.pagamenti_repository import RATE_SORT_COLUMNS, PagamentiRepository
-from apps.pagamenti.services import pagamenti_service, saldi_service
+from apps.pagamenti.services import pagamenti_service, saldi_service, sistemazioni_service
 
 # Il mondo: azienda con operatore (PRIMA del contesto), poi il contesto, poi
 # un cliente fatturabile e due fatture numerate nella stessa serie — 101 e
@@ -251,31 +252,61 @@ class RateListaDbTests(_MondoRateDbTests):
             return True
         self.assertTrue(self._nel_mondo(_prova))
 
-    # Scopo: la ricerca libera cerca il CLIENTE (ragione sociale, BA, id
-    #        fiscale), non il numero: «101» come `search` non trova per numero.
-    def test_la_ricerca_libera_trova_il_cliente_non_il_numero(self):
+    # Scopo: la ricerca libera cerca il CLIENTE **e il documento** (Tid,
+    #        2026-09-23, brief-be-ricerca-full-liste-residue §7) — e resta una
+    #        cosa DIVERSA dal filtro esatto `fattura_numero`: «101» come
+    #        `search` porta la 101 E la 1010 (e' un `ILIKE`), «101» come
+    #        `fattura_numero` porta la sola 101 (test 1).
+    # ⭐ Provata nei DUE rami, perche' il BB sta dentro `_condizioni(alias)`:
+    #    con `solo_aperte` la ricerca cade anche sul PERIMETRO (`p`) del
+    #    nucleo, e la 1010 — saldata — esce anche se il termine la trova.
+    # ⚠️ Fino al 24-09 questo test fissava il contrario («mai il numero»):
+    #    rovesciato col passaggio della lista al catalogo.
+    def test_la_ricerca_libera_trova_il_cliente_e_il_documento(self):
         def _prova(cur, rate, ba_id):
             cur.execute(
                 "SELECT ba.codice FROM anagrafiche.billing_account ba WHERE ba.id = %s", [ba_id]
             )
             row = cur.fetchone()
             assert row is not None
+
+            # Scopo: gli id delle rate che la ricerca porta, nel cliente del mondo.
+            def _ids(termine: str, **filtri) -> set[int]:
+                esito = saldi_service.list_rate(
+                    auth_user_id=None, limit=50, billing_account_id=ba_id,
+                    search=termine, **filtri,
+                )
+                return {int(r["scadenza_id"]) for r in esito["results"]}
+
             per_ba = saldi_service.list_rate(auth_user_id=None, limit=50, search=str(row[0]))
-            per_numero = saldi_service.list_rate(
-                auth_user_id=None, limit=50, billing_account_id=ba_id, search="1010",
+            return (
+                rate,
+                per_ba["count"],
+                _ids("101"),
+                _ids("1010"),
+                _ids("101", solo_aperte=True),
+                _ids("1010", solo_aperte=True),
             )
-            return per_ba["count"], per_numero["count"]
-        per_ba, per_numero = self._nel_mondo(_prova)
+        rate, per_ba, per_101, per_1010, aperte_101, aperte_1010 = self._nel_mondo(_prova)
         self.assertEqual(per_ba, 2)
-        self.assertEqual(per_numero, 0)
+        self.assertEqual(per_101, {rate[1], rate[2]})
+        self.assertEqual(per_1010, {rate[2]})
+        self.assertEqual(aperte_101, {rate[1]})
+        self.assertEqual(aperte_1010, set())
 
 
-    # Scopo: ⛔ `solo_numerate` toglie la rata della BOZZA (rilievo di Tid,
-    #        18/09) — e la toglie in ENTRAMBI i rami, perche' il predicato sta
-    #        nella funzione dell'alias: senza `solo_aperte` restano le due
-    #        numerate; con `solo_aperte` resta la sola 101 (la 1010 e' saldata
-    #        e la bozza non e' numerata). Senza il filtro la bozza c'e': la
-    #        vista la porta apposta (P-2, «una rata su una bozza compare»).
+    # Scopo: ⛔ La rata della BOZZA resta fuori DA SOLA (rilievo di Tid, 18/09;
+    #        perimetro dal 23/09) — e resta fuori in ENTRAMBI i rami, perche' il
+    #        predicato sta nella funzione dell'alias: senza `solo_aperte`
+    #        restano le due numerate; con `solo_aperte` resta la sola 101 (la
+    #        1010 e' saldata e la bozza non e' numerata).
+    # ⭐ IL CASO CHE CONTA E' IL PRIMO, e dal 23/09 dice il contrario di prima:
+    #        chiamando SENZA dire niente la bozza NON c'e'. E' la decisione di
+    #        Tid — `solo_numerate` e' un perimetro di dominio, non un filtro che
+    #        il client deve ricordarsi di mandare. Per vederla si chiede
+    #        `solo_numerate=False`, e allora c'e': la vista la porta apposta
+    #        (P-2, «una rata su una bozza compare»), quindi il perimetro e' una
+    #        scelta del backend e non un'assenza di dati.
     # ⚠️ La bozza si COSTRUISCE qui e non nella fixture condivisa: gli altri
     #    test contano DUE rate per il cliente, e una terza nella fixture li
     #    farebbe raccontare un'altra storia.
@@ -318,18 +349,25 @@ class RateListaDbTests(_MondoRateDbTests):
                 )
                 return esito["count"], {int(r["scadenza_id"]) for r in esito["results"]}
 
-            return bozza, _ids(), _ids(solo_numerate=True), _ids(solo_aperte=True, solo_numerate=True)
+            return (
+                bozza,
+                _ids(solo_numerate=False),
+                _ids(),
+                _ids(solo_aperte=True),
+            )
 
-        bozza, senza, numerate, numerate_aperte = self._nel_mondo(_prova)
-        # Senza il filtro la bozza c'e', ed e' senza numero.
-        self.assertEqual(senza[0], 3)
-        self.assertIn(bozza, senza[1])
-        # Col filtro restano le due numerate (ramo senza `solo_aperte`)...
-        self.assertEqual(numerate[0], 2)
-        self.assertNotIn(bozza, numerate[1])
-        # ...e nel ramo del perimetro resta la sola 101.
-        self.assertEqual(numerate_aperte[0], 1)
-        self.assertNotIn(bozza, numerate_aperte[1])
+        bozza, con_bozze, perimetro, perimetro_aperte = self._nel_mondo(_prova)
+        # Chiedendo ESPLICITAMENTE anche le bozze, la bozza c'e' (ed e' senza
+        # numero): il perimetro e' una scelta, non un dato che manca.
+        self.assertEqual(con_bozze[0], 3)
+        self.assertIn(bozza, con_bozze[1])
+        # Senza dire niente vale la regola: restano le due numerate.
+        self.assertEqual(perimetro[0], 2)
+        self.assertNotIn(bozza, perimetro[1])
+        # ...e nel ramo di `solo_aperte` resta la sola 101, senza che il
+        # perimetro vada ripetuto: il predicato e' nella funzione dell'alias.
+        self.assertEqual(perimetro_aperte[0], 1)
+        self.assertNotIn(bozza, perimetro_aperte[1])
 
 
 class RigheDaRateDbTests(_MondoRateDbTests):
@@ -416,3 +454,158 @@ class RigheDaRateDbTests(_MondoRateDbTests):
         self.assertEqual((righe[0][1], righe[0][2]), (Decimal("300.00"), False))
         self.assertEqual((righe[1][1], righe[1][2], righe[1][3]),
                          (Decimal("50.00"), True, "pagato due volte"))
+
+
+# Il pagamento OLTRE il dovuto, sulla 101: 900 su una rata da 400, forzato col
+# motivo e registrato. La rata esce dalla banda (fuori capienza, SOVRA_INCASSATA)
+# e la fattura resta in credito (eccedenza). Piu' una riga SOSPESA in una
+# distinta in bozza, per la coda.
+_FIXTURE_RICERCA: tuple[str, ...] = (
+    """
+    CREATE TEMP TABLE _dist_extra AS
+    SELECT pagamenti.fn_get_or_create_vendite_contabile(
+        p_centro_riscossione_id => (SELECT centro_banca_id FROM _refs),
+        p_data_contabile        => current_date,
+        p_data_registrazione    => current_date,
+        p_codice_stato_interno  => 'BOZZA',
+        p_meta                  => '{"test_scope": "be_ricerca_rate"}'::jsonb,
+        p_origine               => 'MANUALE'
+      ) AS contabile_id
+    """,
+    """
+    INSERT INTO pagamenti.vendite_contabili_righe
+        (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
+         billing_account_id, scadenza_id, stato_id, forzata, motivo_forzatura, meta)
+    SELECT d.contabile_id, 'BE_RICERCA_OLTRE', current_date, 900.00,
+           r.fattura_id, x.billing_account_id, r.scadenza_id, x.stato_abbinata_id,
+           TRUE, 'pagato doppio', '{"test_scope": "be_ricerca_rate"}'::jsonb
+      FROM _dist_extra d, _refs x, _rate r
+     WHERE r.n = 1
+    """,
+    """
+    UPDATE pagamenti.vendite_contabili c
+       SET stato_id = (SELECT stato_validata_id FROM _refs)
+     WHERE c.id = (SELECT contabile_id FROM _dist_extra)
+    """,
+    """
+    SELECT * FROM pagamenti.fn_posta_contabile((SELECT contabile_id FROM _dist_extra))
+    """,
+    """
+    CREATE TEMP TABLE _dist_coda AS
+    SELECT pagamenti.fn_get_or_create_vendite_contabile(
+        p_centro_riscossione_id => (SELECT centro_banca_id FROM _refs),
+        p_data_contabile        => current_date,
+        p_data_registrazione    => current_date,
+        p_codice_stato_interno  => 'BOZZA',
+        p_meta                  => '{"test_scope": "be_ricerca_coda"}'::jsonb,
+        p_origine               => 'MANUALE'
+      ) AS contabile_id
+    """,
+    """
+    CREATE TEMP TABLE _riga_coda AS
+    WITH ins AS (
+        INSERT INTO pagamenti.vendite_contabili_righe
+            (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
+             billing_account_id, scadenza_id, stato_id, motivo_sospeso, meta)
+        SELECT d.contabile_id, 'BE_RICERCA_CODA', current_date, 10.00,
+               r.fattura_id, x.billing_account_id, r.scadenza_id,
+               (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s
+                 WHERE s.codice_interno = 'SOSPESA' ORDER BY s.id LIMIT 1),
+               'da verificare', '{"test_scope": "be_ricerca_coda"}'::jsonb
+          FROM _dist_coda d, _refs x, _rate r
+         WHERE r.n = 1
+        RETURNING id
+    )
+    SELECT id AS riga_id FROM ins
+    """,
+)
+
+
+class RicercaListeDbTests(_MondoRateDbTests):
+    """La ricerca libera delle sei liste di pagamenti (brief-be-ricerca-full-
+    liste-residue §5.3, e `pagamenti.rate` dal passo 7): per ogni colonna che
+    il CATALOGO accende, il valore di una riga costruita la trova
+    (`verifica_ricerca_colonna_per_colonna`). Le liste non hanno `vista_sql`:
+    questo e' il loro esercizio sul DB vero (`test_ricerca_full_db` lo
+    nomina)."""
+
+    def test_la_ricerca_trova_ogni_colonna_accesa(self):
+        def _prova(cur, rate, ba_id):
+            for passo in _FIXTURE_RICERCA:
+                cur.execute(passo)
+            cur.execute("SELECT contabile_id FROM _dist")
+            dist = int(cur.fetchone()[0])
+            cur.execute("SELECT codice FROM pagamenti.vendite_contabili WHERE id = %s", [dist])
+            dist_codice = cur.fetchone()[0]
+            cur.execute("SELECT id FROM pagamenti.vendite_contabili_righe WHERE contabile_id = %s", [dist])
+            riga_1010 = int(cur.fetchone()[0])
+            cur.execute("SELECT riga_id FROM _riga_coda")
+            riga_coda = int(cur.fetchone()[0])
+            cur.execute(
+                "SELECT c.codice FROM pagamenti.vendite_contabili c WHERE c.id = (SELECT contabile_id FROM _dist_coda)"
+            )
+            coda_codice = cur.fetchone()[0]
+            cur.execute(
+                "SELECT ba.codice, s.ragione_sociale_completa "
+                "  FROM anagrafiche.billing_account ba "
+                "  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id "
+                "  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id WHERE ba.id = %s",
+                [ba_id],
+            )
+            ba_codice, cliente = cur.fetchone()
+            cur.execute("SELECT fattura_id FROM _rate WHERE n = 1")
+            fattura_101 = int(cur.fetchone()[0])
+
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.distinte", dist, {"codice": dist_codice},
+                lambda t: pagamenti_service.list_distinte(search=t, page_size=200)["results"],
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.distinta_righe", riga_1010,
+                {"riferimento_ente": "BE_LISTA_RATE_1010", "billing_account_descrizione": cliente,
+                 "fattura_numero_documento": "1010 - A", "billing_account_codice": ba_codice},
+                lambda t: pagamenti_service.list_righe(dist, search=t, limit=200)["results"],
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.righe", riga_coda,
+                {"riferimento_ente": "BE_RICERCA_CODA", "billing_account_descrizione": cliente,
+                 "fattura_numero": "101", "contabile_codice": coda_codice},
+                lambda t: pagamenti_service.list_coda_righe(search=t, page_size=200)["results"],
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.rate_fuori_capienza", rate[1],
+                {"fattura_numero": "101", "numero_documento": "101 - A"},
+                lambda t: pagamenti_service.list_rate_fuori_capienza(search=t, page_size=200)["results"],
+                chiave="scadenza_id",
+            )
+            # ⭐ Le rate (dal 24-09 sul catalogo): i valori si leggono dalla
+            #    VISTA che la lista mostra, sulla rata della 101 costruita qui —
+            #    si cerca su cio' che si mostra. ⚠️ Un valore NULL non sarebbe
+            #    una prova (un `ILIKE` su NULL non trova niente e il rosso
+            #    direbbe «ricerca rotta» per una fixture vuota): si pretende.
+            cur.execute(
+                "SELECT numero_documento, ragione_sociale_completa, ba_codice, "
+                "       id_fiscale_univoco_cf_piva "
+                "  FROM vendite.vw_fatture_scadenze_lista WHERE scadenza_id = %s",
+                [rate[1]],
+            )
+            valori_rata = dict(zip(
+                ("numero_documento", "ragione_sociale_completa", "ba_codice",
+                 "id_fiscale_univoco_cf_piva"),
+                cur.fetchone(), strict=True,
+            ))
+            self.assertTrue(all(valori_rata.values()), f"rata della 101 senza un valore: {valori_rata}")
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.rate", rate[1], valori_rata,
+                lambda t: saldi_service.list_rate(
+                    auth_user_id=None, search=t, limit=200,
+                )["results"],
+                chiave="scadenza_id",
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.eccedenze", fattura_101,
+                {"cliente_ragione_sociale": cliente, "fattura_numero": "101"},
+                lambda t: sistemazioni_service.list_eccedenze(search=t, page_size=200)["results"],
+                chiave="fattura_id",
+            )
+        self._nel_mondo(_prova)

@@ -79,6 +79,10 @@ Indice test eseguiti:
 48) test_preview_componenti_riga_utility_mancante — utility NULL → 422 (no fallback 0)
 49) test_preview_componenti_riga_emittente_non_risolvibile — admin globale + no emittente → 422
 50) test_preview_componenti_riga_usa_emittente_preventivo — precedenza emittente preventivo
+51) test_list_righe_preventivo_non_trovato_e_404 — «leggi prima la testata» (2026-09-21): E_PREV_NOT_FOUND
+52) test_list_riepilogo_iva_preventivo_non_trovato_e_404 — idem sul riepilogo IVA
+53) test_list_revisioni_preventivo_non_trovato_e_404 — idem sulle revisioni
+54) test_list_righe_con_testata_delega_al_repo — caso felice: delega invariata
 
 TestNormalizeComponentiOverrides:
 - test_none_ritorna_none, test_dict_vuoto_ritorna_none
@@ -100,6 +104,8 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from django.test import SimpleTestCase
+
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_attivazioni,
@@ -111,7 +117,7 @@ from apps.vendite.services._componenti_service_helpers import (
 # fissando `error_code='E_PREV_VALIDAZIONE'` (semantica dominio preventivi).
 # Evitano di replicare `error_code=...` sui ~15 callsite mantenendo la
 # storica firma `(payload, *, function_name)` dei test pre-Fase H.
-def _normalize_componenti_overrides(  # noqa: D401 — test helper
+def _normalize_componenti_overrides(  # test helper
     overrides: Any, *, function_name: str,
 ) -> dict[str, str] | None:
     return normalize_componenti_overrides(
@@ -335,7 +341,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "DRAFT",
         }
-        self.mock_repo.list_righe.return_value = []
+        self.mock_repo.count_righe.return_value = 0
         self.mock_repo.list_pratiche.return_value = []
         self.mock_repo.delete_preventivo.return_value = True
 
@@ -373,7 +379,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "DRAFT",
         }
-        self.mock_repo.list_righe.return_value = [{"id": 10}]
+        self.mock_repo.count_righe.return_value = 1
         with self.assertRaises(ServiceError) as ctx:
             elimina_preventivo(1)
         self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
@@ -668,7 +674,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "DRAFT",
         }
-        self.mock_repo.list_righe.return_value = []
+        self.mock_repo.count_righe.return_value = 0
         self.mock_repo.list_pratiche.return_value = [{"id": 50}]
         with self.assertRaises(ServiceError) as ctx:
             elimina_preventivo(1)
@@ -786,7 +792,7 @@ class TestPreventiviService(unittest.TestCase):
         self.assertIn("descrizione", campi)          # il test ha davvero morso
         self.assertNotIn("iva_id", campi)
 
-    # Scopo: Verifica guard riga su stato EMESSO.
+    # Scopo: Verifica guard riga su stato EMESSO: il codice e' quello del DB, E_RIGA_DOC_NON_BOZZA.
     def test_gestisci_riga_stato_non_modificabile(self):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
@@ -795,7 +801,7 @@ class TestPreventiviService(unittest.TestCase):
         }
         with self.assertRaises(ServiceError) as ctx:
             gestisci_riga(1, {"articolo_id": "uuid-art-1"})
-        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
 
     # Scopo: padre composito con payload senza prezzo_unitario → BE usa
     # placeholder 0 (sara' sovrascritto dal trigger DB _z90_ricalcola_padre
@@ -1296,11 +1302,59 @@ class TestPreventiviService(unittest.TestCase):
         }
         self.mock_repo.update_componente.return_value = True
 
-        result = update_componente(
-            1, 10, 50, {"prezzo_unitario": "150.00", "origine_prezzo": "MANUALE"},
-        )
+        result = update_componente(1, 10, 50, {"prezzo_unitario": "150.00"})
         self.assertEqual(result["componente_id"], 50)
-        self.mock_repo.update_componente.assert_called_once()
+        # `origine_prezzo` la scrive il server: un prezzo dell'operatore e'
+        # MANUALE per definizione (contratto PATCH, 2026-09-26).
+        self.mock_repo.update_componente.assert_called_once_with(
+            50, prezzo_unitario="150.00", origine_prezzo="MANUALE",
+        )
+
+    # Scopo: ⛔ l'operatore NON puo' approvarsi un prezzo L3. Fino al 2026-09-26
+    #        la PATCH validava contro la whitelist del repository, che contiene
+    #        `stato_approvazione_prezzo`: `{"stato_approvazione_prezzo":
+    #        "APPROVED"}` su un componente PENDING passava anche il guard DB.
+    #        Stesso rifiuto per la pratica e per un'origine dichiarata dal client.
+    def test_update_componente_campi_del_workflow_rifiutati(self):
+        from apps.core.services.service_errors import ServiceError
+        from apps.vendite.services.preventivi_service import update_componente
+
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 1,
+            "stato_codice_interno": "DRAFT",
+        }
+        for payload in (
+            {"stato_approvazione_prezzo": "APPROVED"},
+            {"pratica_approvazione_prezzo_id": 7},
+            {"prezzo_unitario": "1.00", "origine_prezzo": "CONTRATTO_LISTINO"},
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ServiceError) as ctx:
+                    update_componente(1, 10, 50, payload)
+                self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.update_componente.assert_not_called()
+
+    # Scopo: chiave fuori `COMPONENTE_UPDATE_ALLOWED` -> 400 che la nomina,
+    #        repository non chiamato. ⛔ Fino al 2026-09-26 il mixin la
+    #        scartava in silenzio e la PATCH «riusciva».
+    def test_update_componente_chiave_fuori_whitelist_400(self):
+        from apps.vendite.services.preventivi_service import update_componente
+
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 1,
+            "stato_codice_interno": "DRAFT",
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            update_componente(
+                1, 10, 50, {"prezzo_unitario": "150.00", "coeff_qta_snapshot": 2},
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.assertEqual(ctx.exception.context["unknown_keys"], ["coeff_qta_snapshot"])
+        self.mock_repo.update_componente.assert_not_called()
 
     # Scopo: componente inesistente -> 404.
     def test_update_componente_not_found(self):
@@ -1342,7 +1396,7 @@ class TestPreventiviService(unittest.TestCase):
             update_componente(1, 10, 50, {"prezzo_unitario": "100"})
         self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")
 
-    # Scopo: guard stato preventivo non modificabile.
+    # Scopo: guard stato preventivo non modificabile sui componenti (E_RIGA_DOC_NON_BOZZA, come le righe).
     def test_update_componente_stato_non_modificabile(self):
         from apps.vendite.services.preventivi_service import update_componente
 
@@ -1354,7 +1408,7 @@ class TestPreventiviService(unittest.TestCase):
         }
         with self.assertRaises(ServiceError) as ctx:
             update_componente(1, 10, 50, {"prezzo_unitario": "100"})
-        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
 
     # Scopo: soft delete componente in BOZZA.
     def test_delete_componente_ok(self):
@@ -1726,17 +1780,14 @@ class TestPreventiviService(unittest.TestCase):
             "stato_codice": "ACCETTATO", "stato_codice_interno": "ACCETTATO",
             "billing_account_id": 10, "utility_id": 3,
         }
-        # get_preventivo ora usa count_righe_per_stato_approvazione per
-        # derivare righe_count + freeze pricing senza caricare l'elenco.
-        self.mock_repo.count_righe_per_stato_approvazione.return_value = {
-            "PENDING": 0, "APPROVED": 0, "REJECTED": 0, "TOTAL": 2,
-        }
+        # righe_count da una COUNT sulle righe attive, senza caricare l'elenco.
+        self.mock_repo.count_righe.return_value = 2
         self.mock_repo.list_indirizzi.return_value = []
         self.mock_repo.get_capabilities.return_value = {
             "stato_codice": "ACCETTATO",
             "available_actions": [{"key": "annulla", "target_state": "ANNULLATO",
                                     "label_key": "preventivi.azione_annulla",
-                                    "severity": "danger", "icon": "pi pi-times",
+                                    "severity": "danger",
                                     "requires_confirm": True}],
             "can_edit_testata": False,
             "can_edit_righe": False,
@@ -1748,15 +1799,21 @@ class TestPreventiviService(unittest.TestCase):
 
         result = get_preventivo(42)
 
-        # Testata + capability + summary leggero. NO `righe` embeddate.
+        # Testata + capability (SOTTO `capabilities`, api.md §«Il blob sta
+        # SOTTO `capabilities`») + summary leggero. NO `righe` embeddate.
         self.assertEqual(result["id"], 42)
-        self.assertEqual(result["can_edit_testata"], False)
-        self.assertEqual(result["can_edit_righe"], False)
-        self.assertEqual(result["can_create_revisione"], True)
-        self.assertEqual(result["can_push_commessa"], True)
-        self.assertEqual(len(result["available_actions"]), 1)
-        self.assertEqual(result["available_actions"][0]["key"], "annulla")
-        self.assertIn("billing_account_id", result["non_editable_fields"])
+        caps = result["capabilities"]
+        self.assertEqual(caps, self.mock_repo.get_capabilities.return_value)
+        self.assertEqual(caps["can_edit_testata"], False)
+        self.assertEqual(caps["can_edit_righe"], False)
+        self.assertEqual(caps["can_create_revisione"], True)
+        self.assertEqual(caps["can_push_commessa"], True)
+        self.assertEqual(len(caps["available_actions"]), 1)
+        self.assertEqual(caps["available_actions"][0]["key"], "annulla")
+        self.assertIn("billing_account_id", caps["non_editable_fields"])
+        for chiave in ("available_actions", "can_edit_testata", "can_push_commessa",
+                       "non_editable_fields"):
+            self.assertNotIn(chiave, result)
         # Fase 3.F6: detail non include `righe` ma solo `righe_count` (summary).
         self.assertNotIn("righe", result)
         self.assertEqual(result["righe_count"], 2)
@@ -2355,78 +2412,88 @@ class TestPreventiviService(unittest.TestCase):
         self.assertIsNone(call["quantita"])
 
     # ===========================================================
-    # Sprint E (autorizzazioni prezzi L3): freeze preventivo
-    # quando ci sono righe PENDING o REJECTED.
+    # Prezzi non autorizzati: il blob si consegna COM'E'.
+    # Fino al 2026-09-24 get_preventivo riscriveva available_actions e
+    # can_edit_* in Python quando c'erano righe PENDING/REJECTED; la regola
+    # ora sta a DB (script.fn_check_prezzi_autorizzati, letto da guard e
+    # capability) — brief-db-preventivi-congelamento-pricing §6.1.
     # ===========================================================
 
-    def _setup_get_preventivo_mocks(self, counts):
-        """Helper per i 4 test sotto: mock minimi per get_preventivo() che
-        prende testata + indirizzi + capabilities + count righe per stato."""
+    # Scopo: DRAFT con un prezzo in attesa e uno rifiutato, come lo emette
+    #        fn_available_actions_preventivo: «Emetti» spento coi due motivi,
+    #        «Annulla» acceso (D-2), testata e righe modificabili (D-3).
+    def _blob_draft_prezzi_non_autorizzati(self):
+        motivi = [
+            {"codice": "E_DOC_PREZZO_PENDENTE", "reason": "PREZZO_PENDENTE",
+             "reason_key": "common.azione_reason.prezzo_pendente",
+             "dettaglio": {"n_prezzi": 1, "riga_id": 7, "componente_id": None},
+             "valori": ["1"]},
+            {"codice": "E_DOC_PREZZO_RIFIUTATO", "reason": "PREZZO_RIFIUTATO",
+             "reason_key": "common.azione_reason.prezzo_rifiutato",
+             "dettaglio": {"n_prezzi": 2, "riga_id": 8, "componente_id": None},
+             "valori": ["2"]},
+        ]
+        return {
+            "stato_codice": "DRAFT",
+            "available_actions": [
+                {"key": "emetti", "target_state": "EMESSO", "enabled": False,
+                 "reason": "PREZZO_PENDENTE",
+                 "reason_key": "common.azione_reason.prezzo_pendente",
+                 "reasons": motivi},
+                {"key": "annulla", "target_state": "ANNULLATO", "enabled": True,
+                 "reason": None, "reason_key": None, "reasons": []},
+            ],
+            "can_edit_testata": True,
+            "can_edit_righe": True,
+            "non_editable_fields": [],
+        }
+
+    def test_get_preventivo_consegna_il_blob_senza_riscriverlo(self):
+        """Prezzi PENDING e REJECTED: il BE non tocca il blob — azioni,
+        motivi e flag di modifica sono quelli del database."""
+        from apps.vendite.services.preventivi_service import get_preventivo
         self.mock_repo.get_preventivo.return_value = {
             "id": 42, "uid": "abc", "numero": "P-0042",
             "stato_codice": "DRAFT", "stato_codice_interno": "DRAFT",
             "billing_account_id": 10, "utility_id": 3,
         }
         self.mock_repo.list_indirizzi.return_value = []
-        self.mock_repo.get_capabilities.return_value = {
-            "stato_codice": "DRAFT",
-            "available_actions": [{"key": "emetti", "target_state": "EMESSO"}],
-            "can_edit_testata": True,
-            "can_edit_righe": True,
-            "non_editable_fields": [],
+        self.mock_repo.count_righe.return_value = 5
+        blob = self._blob_draft_prezzi_non_autorizzati()
+        self.mock_repo.get_capabilities.return_value = blob
+
+        out = get_preventivo(42)
+        caps = out["capabilities"]
+
+        self.assertEqual(caps, self._blob_draft_prezzi_non_autorizzati())
+        azioni = {a["key"]: a for a in caps["available_actions"]}
+        self.assertFalse(azioni["emetti"]["enabled"])
+        self.assertEqual(azioni["emetti"]["reason_key"], "common.azione_reason.prezzo_pendente")
+        self.assertTrue(azioni["annulla"]["enabled"])
+        self.assertTrue(caps["can_edit_testata"])
+        self.assertTrue(caps["can_edit_righe"])
+        self.assertEqual(out["righe_count"], 5)
+
+    def test_get_preventivo_non_emette_riepiloghi_del_congelamento(self):
+        """I quattro riepiloghi Python (frozen_for_*, *_pricing_count) sono
+        ritirati: contavano solo le righe, il database conta anche i
+        componenti attivi. Il perche' (col conteggio) sta nelle `reasons`
+        delle azioni del blob."""
+        from apps.vendite.services.preventivi_service import get_preventivo
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 42, "stato_codice_interno": "DRAFT",
+            "billing_account_id": 10, "utility_id": 3,
         }
-        self.mock_repo.count_righe_per_stato_approvazione.return_value = counts
+        self.mock_repo.list_indirizzi.return_value = []
+        self.mock_repo.count_righe.return_value = 5
+        self.mock_repo.get_capabilities.return_value = self._blob_draft_prezzi_non_autorizzati()
 
-    def test_get_preventivo_frozen_pending_blocca_tutto(self):
-        """Riga PENDING → can_edit_testata + can_edit_righe = false, no actions."""
-        from apps.vendite.services.preventivi_service import get_preventivo
-        self._setup_get_preventivo_mocks(
-            {"PENDING": 1, "APPROVED": 0, "REJECTED": 0, "TOTAL": 5},
-        )
         out = get_preventivo(42)
-        self.assertEqual(out["available_actions"], [])
-        self.assertFalse(out["can_edit_testata"])
-        self.assertFalse(out["can_edit_righe"])
-        self.assertTrue(out["frozen_for_pending_pricing"])
-        self.assertFalse(out["frozen_for_rejected_pricing"])
-        self.assertEqual(out["pending_pricing_count"], 1)
-        self.assertEqual(out["rejected_pricing_count"], 0)
 
-    def test_get_preventivo_frozen_rejected_only_lascia_edit_righe(self):
-        """Solo REJECTED → operatore deve poter correggere la riga,
-        quindi can_edit_righe=true (testata bloccata, no transitions)."""
-        from apps.vendite.services.preventivi_service import get_preventivo
-        self._setup_get_preventivo_mocks(
-            {"PENDING": 0, "APPROVED": 0, "REJECTED": 2, "TOTAL": 4},
-        )
-        out = get_preventivo(42)
-        self.assertEqual(out["available_actions"], [])
-        self.assertFalse(out["can_edit_testata"])
-        self.assertTrue(out["can_edit_righe"])  # ← chiave del fix
-        self.assertFalse(out["frozen_for_pending_pricing"])
-        self.assertTrue(out["frozen_for_rejected_pricing"])
-
-    def test_get_preventivo_frozen_mixed_pending_vince(self):
-        """PENDING + REJECTED → can_edit_righe=false (PENDING ha priorita')."""
-        from apps.vendite.services.preventivi_service import get_preventivo
-        self._setup_get_preventivo_mocks(
-            {"PENDING": 1, "APPROVED": 0, "REJECTED": 1, "TOTAL": 6},
-        )
-        out = get_preventivo(42)
-        self.assertFalse(out["can_edit_righe"])
-
-    def test_get_preventivo_no_freeze_quando_solo_approved(self):
-        """APPROVED non congela: il prezzo override e' stato approvato."""
-        from apps.vendite.services.preventivi_service import get_preventivo
-        self._setup_get_preventivo_mocks(
-            {"PENDING": 0, "APPROVED": 3, "REJECTED": 0, "TOTAL": 3},
-        )
-        out = get_preventivo(42)
-        # Capabilities originali preservate (no override BE).
-        self.assertTrue(out["can_edit_testata"])
-        self.assertEqual(len(out["available_actions"]), 1)
-        self.assertFalse(out["frozen_for_pending_pricing"])
-        self.assertFalse(out["frozen_for_rejected_pricing"])
+        for chiave in ("frozen_for_pending_pricing", "frozen_for_rejected_pricing",
+                       "pending_pricing_count", "rejected_pricing_count"):
+            self.assertNotIn(chiave, out)
+            self.assertNotIn(chiave, out["capabilities"])
 
     # ===========================================================
     # aggiorna_riga: auto-reset stato approvazione su correzione
@@ -2760,7 +2827,9 @@ class TestCoerceMetaToDict(unittest.TestCase):
 class TestPreventiviRepository(unittest.TestCase):
     # Scopo: Verifica che la lettura righe escluda le righe soft-delete
     #        (`attivo=false`), evitando che la UI mostri righe gia' eliminate.
-    @patch("apps.vendite.db.preventivi_repository.connection")
+    # ⚠️ La query nasce nel BB `RigheDocumentoRepositoryMixin` (2026-09-28):
+    #    la connessione si sostituisce la', non nel modulo del repository.
+    @patch("apps.vendite.db._righe_repo_mixin.connection")
     def test_repository_list_righe_filtra_solo_attive(self, mock_connection):
         from apps.vendite.db.preventivi_repository import PreventiviRepository
 
@@ -2850,3 +2919,56 @@ class TestPreventiviRigaDataConsegna(unittest.TestCase):
         self.assertNotIn(
             "data_consegna_richiesta_cliente", self.mock_repo.update_riga.call_args.kwargs,
         )
+
+
+# Scopo: I satelliti «leggono prima la testata» (2026-09-21, allineamento a
+#        api.md §Scope emittente): un preventivo fuori perimetro RLS — `None`
+#        dal repository, come un id inesistente — e' un 404, non un 200 vuoto.
+#
+# Indice:
+# 51) test_list_righe_preventivo_non_trovato_e_404
+# 52) test_list_riepilogo_iva_preventivo_non_trovato_e_404
+# 53) test_list_revisioni_preventivo_non_trovato_e_404
+# 54) test_list_righe_con_testata_delega_al_repo
+class PreventiviSatellitiTestataTests(SimpleTestCase):
+    def setUp(self):
+        self.repo_patcher = patch(
+            "apps.vendite.services.preventivi_service.PreventiviRepository"
+        )
+        self.mock_repo = self.repo_patcher.start().return_value
+        self.addCleanup(self.repo_patcher.stop)
+
+    def test_list_righe_preventivo_non_trovato_e_404(self):
+        from apps.vendite.services.preventivi_service import list_righe
+
+        self.mock_repo.get_preventivo.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            list_righe(99)
+        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+        self.mock_repo.list_righe.assert_not_called()
+
+    def test_list_riepilogo_iva_preventivo_non_trovato_e_404(self):
+        from apps.vendite.services.preventivi_service import list_riepilogo_iva
+
+        self.mock_repo.get_preventivo.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            list_riepilogo_iva(99)
+        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+        self.mock_repo.list_riepilogo_iva.assert_not_called()
+
+    def test_list_revisioni_preventivo_non_trovato_e_404(self):
+        from apps.vendite.services.preventivi_service import list_revisioni
+
+        self.mock_repo.get_preventivo.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            list_revisioni(99)
+        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+        self.mock_repo.list_revisioni.assert_not_called()
+
+    def test_list_righe_con_testata_delega_al_repo(self):
+        from apps.vendite.services.preventivi_service import list_righe
+
+        self.mock_repo.get_preventivo.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        self.mock_repo.list_righe.return_value = [{"id": 31}]
+        self.assertEqual(list_righe(7), [{"id": 31}])
+        self.mock_repo.list_righe.assert_called_once_with(7)

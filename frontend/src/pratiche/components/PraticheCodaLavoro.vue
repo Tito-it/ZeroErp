@@ -5,7 +5,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { statoFlussoSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { CODA_LAVORO_LIVELLI, CODA_LAVORO_PRENDIBILI } from '../codaLavoroLivelli'
 import Tag from 'primevue/tag'
 import Badge from 'primevue/badge'
@@ -21,8 +21,8 @@ const props = defineProps({
 
 const emit = defineEmits(['select-flusso', 'prendi-in-carico'])
 
-// Raggruppamento per livello dalla config condivisa (ordine + severity coerenti
-// coi contatori di MieAttivitaPanel). LIBERO = policy reparto-first caso C
+// Raggruppamento per livello dalla config dei livelli (ordine + severity).
+// LIBERO = policy reparto-first caso C
 // (flusso senza reparto/skill mostrato all'operatore della pratica).
 const sezioni = computed(() =>
   CODA_LAVORO_LIVELLI
@@ -55,7 +55,7 @@ function onPrendiInCarico(item, event) {
     </div>
 
     <div v-if="loading" class="coda-lavoro-loading">
-      <i class="pi pi-spin pi-spinner" />
+      <i :class="STATUS_ICONS.CARICAMENTO" />
     </div>
 
     <div v-else-if="!items.length" class="coda-lavoro-empty">

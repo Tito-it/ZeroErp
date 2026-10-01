@@ -19,7 +19,14 @@ La tabella `config.email_allegato` traccia i **file allegati** alle email. I fil
 
 1. **Pre-invio**: l'allegato e' associato a una bozza (`email_outbox_id`). L'operatore puo' aggiungere o rimuovere allegati dal dialog "Componi email".
 2. **Post-invio**: l'allegato viene copiato sul record di log (`email_log_id`) per consultazione storica. Il file fisico resta lo stesso.
-3. **Cancellazione bozza**: se la bozza viene annullata (CANCELLED), gli allegati vengono eliminati in cascata (ON DELETE CASCADE su outbox) e i file fisici rimossi dal cleanup.
+3. **Solo in bozza**: un allegato si aggiunge, modifica o toglie solo finché la sua bozza è `DRAFT`. Dopo l'invio fa parte di ciò che è stato spedito, e il database rifiuta qualunque modifica. L'unica scrittura ammessa fuori dalla bozza è l'aggancio al log al momento dell'invio. Se l'invio fallisce, la bozza torna `DRAFT` e gli allegati tornano modificabili.
+4. **Eliminazione della bozza**: una bozza si elimina solo in `DRAFT`, e i suoi allegati la seguono (ON DELETE CASCADE). Una mail spedita o annullata non si elimina: resta, con i suoi allegati.
+
+---
+
+### Chi vede un allegato
+
+Un allegato si vede se si vede la sua email: la bozza (`email_outbox_id`) **o** il log (`email_log_id`). Dopo l'invio l'allegato è legato a entrambe. La regola dell'ambito resta quella delle due tabelle madri, e il database la applica passando da loro (policy `rls_email_allegato_ambito`). Un allegato senza nessuna delle due non lo vede nessuno, e non si può scrivere.
 
 ---
 

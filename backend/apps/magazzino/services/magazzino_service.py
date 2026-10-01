@@ -38,7 +38,7 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     make_db_errors_translator,
 )
-from apps.magazzino.db.famiglie import FAMIGLIE, FamigliaDocumentoInterno
+from apps.magazzino.db.famiglie import FAMIGLIE, INVENTARI, FamigliaDocumentoInterno
 from apps.magazzino.db.magazzino_repository import (
     DOCUMENTI_SORT_COLUMNS,
     PIANO_SORT_COLUMNS,
@@ -63,6 +63,11 @@ _FN = "magazzino.magazzino_service"
 # La testata che non c'e' — o che il perimetro non lascia vedere, e i due
 # restano volutamente indistinguibili (404 no-leak). A catalogo, NON_TROVATO.
 E_DOCUMENTO_NON_TROVATO = "E_MAG_DOCUMENTO_NON_TROVATO"
+# E la RIGA che non c'e': a catalogo dal 2026-09-23 (R-7 del brief 2-bis).
+# ⭐ La risposta a chi guarda non cambia — 404 identico nei due casi — ma il
+# codice dice QUALE delle due cose manca. Prima rispondeva quello della
+# testata con una frase scritta qui: codice e frase dicevano due cose diverse.
+E_RIGA_NON_TROVATA = "E_MAG_DOCUMENTO_RIGA_NON_TROVATA"
 
 # ⭐ Il VOCABOLARIO degli stati, specchio DICHIARATO del `CHECK`
 # (`chk_mag_inventari_stato` / `chk_mag_rettifiche_stato`): lo pinna
@@ -79,10 +84,28 @@ _PAYLOAD = PayloadValidator(validation_code=E_VALIDAZIONE, function_name=_FN)
 # Traduzione degli errori del database. ⚠️ I guard di `magazzino` sollevano
 # codici registrati con la loro frase: passano INTATTI. Qui si traducono le
 # violazioni di VINCOLO, dove il database parla il linguaggio dei nomi.
-# ⏳ R-2: `uq_mag_inventari_righe_posizione` → `E_MAG_INVENTARIO_RIGA_
-#    POSIZIONE_DUPLICATA` (campo `articolo_id`) quando il codice sara' a
-#    catalogo. Finche' non c'e', il 23505 cade sul ripiego qui sotto — un
-#    400 col messaggio del vincolo, non un codice coniato dal BE.
+# ⭐ R-2, dal 2026-09-23: il `23505` di `uq_mag_inventari_righe_posizione`
+#    (UNIQUE NULLS NOT DISTINCT su inventario, articolo, ubicazione, lotto,
+#    asset) ha il suo codice a catalogo. Due letture della stessa posizione
+#    non sono due fatti: sono la stessa riga scritta due volte, e il piano non
+#    saprebbe quale delle due e' il conteggio.
+# ⛔ Le RETTIFICHE non ce l'hanno, e non e' una dimenticanza: due delta dati
+#    sulla stessa posizione sono due correzioni, non due letture (C14). Il
+#    vincolo a DB non esiste, quindi qui non c'e' una riga da scrivere.
+# ⚠️ Il NOME del vincolo ha una sede sola, la famiglia (`guard_riga_uniq`):
+#    ricopiarlo qui farebbe di una rinomina a DB un 23505 che cade in silenzio
+#    sul ripiego generico.
+_UNIQUE_CONSTRAINTS: dict[str, tuple] = {
+    vincolo: (
+        "E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA",
+        "L'articolo e' gia' contato in questa posizione dell'inventario.",
+        # Il campo che si accende nel form: chi rimedia e' chi compila la riga,
+        # e l'articolo e' il dato che identifica la lettura doppia.
+        "articolo_id",
+    )
+    for vincolo in (INVENTARI.guard_riga_uniq,)
+    if vincolo
+}
 _FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_mag_inventari_magazzino": (E_VALIDAZIONE, "Magazzino non valido.", "magazzino_id"),
     "fk_mag_rettifiche_magazzino": (E_VALIDAZIONE, "Magazzino non valido.", "magazzino_id"),
@@ -120,6 +143,7 @@ _db_errors = make_db_errors_translator(
     fn_prefix=_FN,
     fallback_code=E_VALIDAZIONE,
     fallback_message="Violazione di vincolo sul documento di magazzino.",
+    unique_constraints=_UNIQUE_CONSTRAINTS,
     fk_constraints=_FK_CONSTRAINTS,
     check_constraints=_CHECK_CONSTRAINTS,
 )
@@ -152,18 +176,19 @@ def _documento_o_404(
     return documento
 
 
-# Scopo: Legge la riga DELLA testata o solleva il 404. ⚠️ Stesso codice della
-#        testata: la coppia (documento, riga) e' la risorsa dell'URL, e una
-#        riga di un altro documento «non c'e'» allo stesso modo. 📮 Un codice
-#        suo (`E_MAG_DOCUMENTO_RIGA_NON_TROVATA`) e' un candidato per il DB.
+# Scopo: Legge la riga DELLA testata o solleva il 404: la coppia (documento,
+#        riga) e' la risorsa dell'URL, e una riga di un altro documento «non
+#        c'e'» — stessa risposta, stesso no-leak. ⭐ Codice SUO dal 2026-09-23
+#        (R-7): la frase la porta il catalogo, qui resta l'etichetta tecnica
+#        che finisce nel log (stampo dei tre 404 di `anagrafiche_magazzino`).
 def _riga_o_404(
     repository: MagazzinoRepository, f: FamigliaDocumentoInterno, doc_id: int, riga_id: int
 ) -> RigaDocumentoInternoRow:
     riga = repository.get_riga(f, doc_id, riga_id)
     ErrorManager.require(
         riga is not None,
-        code=E_DOCUMENTO_NON_TROVATO,
-        message="Riga non trovata nel documento.",
+        code=E_RIGA_NON_TROVATA,
+        message="Riga non trovata.",
         detail=f"{f.singolare}_id={doc_id} riga_id={riga_id}",
         function_name=_FN,
     )
@@ -236,18 +261,25 @@ def list_documenti(
     return _risposta(results, total)
 
 
-# Scopo: Il dettaglio: testata + magazzino + `righe_count`, e per l'inventario
-#        il riepilogo del piano. 404 no-leak PRIMA di ogni satellite.
-# ⏳ R-1: `capabilities` (le azioni di stato, la terna di `registra`) e
-#    `stato_info_key` arriveranno da `fn_available_actions_*`. Finche' non
-#    c'e', `capabilities` NON SI FINGE: la chiave manca e il drawer non monta
-#    la barra — un blob inventato qui sarebbe la seconda sede della matrice.
+# Scopo: Il dettaglio: testata + magazzino + `righe_count` + le `capabilities`,
+#        e per l'inventario il riepilogo del piano. 404 no-leak PRIMA di ogni
+#        satellite (api.md: «leggi prima la testata»).
+# ⭐ R-1, dal 2026-09-23: `capabilities` e `stato_info_key` vengono dal blob di
+#    `script.fn_available_actions_<famiglia>`, e il BE lo TRASPORTA intatto. Le
+#    azioni le decide la matrice che il guard fa rispettare
+#    (`magazzino.fn_documento_interno_transizioni`), la terna di «registra» il
+#    primo motivo della check che le due `fn_posta_*` chiamano
+#    (`script.fn_check_documento_interno_registrabile`): una regola, una sede,
+#    due lettori. ⛔ Nessun `dict` di stati qui: sarebbe la matrice riscritta.
+# ⛔ `stato_info_key` sta SOLO nel blob: fino al 2026-09-23 era copiato anche
+#    in cima al documento, cioe' una lettura piatta con due sedi (api.md §«Il
+#    blob sta SOTTO `capabilities`»). Il FE lo legge da `capabilities`.
 def get_documento(codice_famiglia: str, doc_id: int) -> dict[str, Any]:
     f = famiglia(codice_famiglia)
     repository = MagazzinoRepository()
     documento: dict[str, Any] = dict(_documento_o_404(repository, f, doc_id))
     documento["famiglia"] = f.codice
-    documento["stato_info_key"] = None
+    documento["capabilities"] = repository.get_capabilities(f, doc_id)
     if f.ha_piano:
         documento["piano_riepilogo"] = repository.piano_riepilogo(doc_id)
     return documento
@@ -365,6 +397,7 @@ def list_piano(
     codice_famiglia: str,
     doc_id: int,
     *,
+    search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     limit: int,
@@ -384,7 +417,7 @@ def list_piano(
     repository = MagazzinoRepository()
     _documento_o_404(repository, f, doc_id)
     results, total = repository.list_piano(
-        doc_id, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
+        doc_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
     return _risposta(results, total)
 
@@ -398,6 +431,7 @@ def list_righe(
     codice_famiglia: str,
     doc_id: int,
     *,
+    search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     limit: int,
@@ -411,7 +445,7 @@ def list_righe(
     repository = MagazzinoRepository()
     _documento_o_404(repository, f, doc_id)
     results, total = repository.list_righe(
-        f, doc_id, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
+        f, doc_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
     return _risposta(results, total)
 

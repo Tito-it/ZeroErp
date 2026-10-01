@@ -28,8 +28,8 @@
 --   14) fn_link testo non-uuid per PREVENTIVO -> P0001 (E_SORG_FORMATO)
 --   15) fn_link uuid inesistente per ORDINE_VENDITA (target CON colonna uid)
 --       -> P0001 (E_SORG_NORM_NON_RISOLTA)
---   16) fn_link uuid di un ordine REALE libero -> normalizzato a id::text
---       (skip se nessun ordine libero disponibile)
+--   16) fn_link uuid di un ordine COSTRUITO (libero per costruzione) ->
+--       normalizzato a id::text
 --   17) censimento commesse_sorgenti: 0 righe non canoniche
 --   18) censimento pratiche_sorgenti: 0 righe non canoniche
 -- ------------------------------------------------------------
@@ -55,21 +55,27 @@ SELECT plan(18);
 
 -- ============================================================
 -- Fixture: riferimenti (BA con emittente fiscale) + tipi sorgente
+--
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Il BA si PESCAVA («il primo con utility, istanza ed emittente»): su un
+--   database ricostruito (la CI) non ce n'e' nessuno e il file moriva alla
+--   prima commessa (p_billing_account_id NULL). E il test 16 pescava «un
+--   ordine reale libero», con skip se non c'era: da zero saltava SEMPRE.
+--   Ora il cliente viene da dbops.fn_pgtap_crea_mondo_cliente (con il
+--   contesto aperto riusa l'azienda di chi agisce, e il BA e' legato a quel
+--   emittente), e l'ordine del test 16 si costruisce: e' libero per
+--   costruzione, lo skip sparisce. ⛔ Cio' che il builder scrive si legge in
+--   un'istruzione SEPARATA.
 -- ============================================================
+CREATE TEMP TABLE tmp_guard_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('guard sorgente polimorfa');
+
 CREATE TEMP TABLE tmp_guard_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id) FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS emittente_soggetto_ruolo_id,
+  (SELECT billing_account_id FROM tmp_guard_mondo) AS billing_account_id,
+  (SELECT utility_id FROM tmp_guard_mondo) AS utility_id,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(m.billing_account_id)
+     FROM tmp_guard_mondo m) AS emittente_soggetto_ruolo_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA' AND s.attivo LIMIT 1)       AS src_commessa,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo LIMIT 1)     AS src_preventivo,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA' AND s.attivo LIMIT 1) AS src_ordine;
@@ -298,42 +304,43 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- 16) fn_link con uuid di un ordine REALE non ancora linkato ->
---     normalizzato a id::text (traduzione riuscita). Data-dependent:
---     skip se il DB non ha ordini liberi.
+-- 16) fn_link con uuid di un ordine COSTRUITO (quindi non ancora
+--     linkato) -> normalizzato a id::text (traduzione riuscita).
+--     L'ordine e' del cliente del mondo, in DRAFT, sull'emittente di chi
+--     agisce.
 -- ============================================================
 CREATE TEMP TABLE tmp_ordine_libero AS
-SELECT o.id, o.uid
-  FROM vendite.ordini o
- WHERE NOT EXISTS (
-         SELECT 1 FROM vendite.commesse_sorgenti cs
-          WHERE cs.sorgente_tipo_id = (SELECT src_ordine FROM tmp_guard_refs)
-            AND cs.sorgente_uid IN (o.id::text, o.uid::text))
- ORDER BY o.id
- LIMIT 1;
+WITH ins AS (
+  INSERT INTO vendite.ordini (
+      soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
+      stato_doc_ordine_id, valuta_id, data, storicizza
+  )
+  SELECT m.cliente_soggetto_ruolo_id, m.billing_account_id,
+         script.fn_pgtap_emittente_operatore(),
+         (SELECT so.id FROM config.stati_doc_ordini so
+           WHERE so.codice_interno = 'DRAFT' AND so.attivo),
+         (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
+         DATE '2026-07-15', false
+    FROM tmp_guard_mondo m
+  RETURNING id, uid
+)
+SELECT id, uid FROM ins;
 
--- Due passi anche qui (visibilita' per command id); la fn viene chiamata
--- solo se esiste un ordine libero (CASE lazy).
+-- Due passi anche qui (visibilita' per command id).
 CREATE TEMP TABLE tmp_guard_link16 AS
-SELECT CASE WHEN EXISTS (SELECT 1 FROM tmp_ordine_libero)
-  THEN vendite.fn_link_commessa_sorgente(
+SELECT vendite.fn_link_commessa_sorgente(
     p_commessa_id => (SELECT commessa_host FROM tmp_guard_commesse),
     p_sorgente_tipo_id => (SELECT src_ordine FROM tmp_guard_refs),
     p_sorgente_uid => (SELECT uid::text FROM tmp_ordine_libero),
     p_sorgente_riga => NULL,
-    p_meta => '{}'::jsonb)
-  ELSE NULL
-END AS link_id;
+    p_meta => '{}'::jsonb) AS link_id;
 
-SELECT CASE WHEN EXISTS (SELECT 1 FROM tmp_ordine_libero)
-  THEN is(
+SELECT is(
     (SELECT cs.sorgente_uid
        FROM vendite.commesse_sorgenti cs
       WHERE cs.id = (SELECT link_id FROM tmp_guard_link16)),
     (SELECT id::text FROM tmp_ordine_libero),
-    '16) fn_link uuid di ordine reale -> normalizzato a id::text')
-  ELSE skip('16) nessun ordine libero nel DB: skip traduzione uuid->id', 1)
-END;
+    '16) fn_link uuid di un ordine costruito -> normalizzato a id::text');
 
 -- ============================================================
 -- 17..18) censimento: tutte le righe vive rispettano la convenzione

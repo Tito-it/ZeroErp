@@ -36,7 +36,7 @@ possono più divergere: al prossimo vincolo aggiunto, si aggiunge QUI e basta.
 | 3 | dati riga | `E_DDT_PREZZO_NON_RISOLVIBILE` (545) | causale **fatturabile** e almeno una riga attiva senza prezzo risolvibile (proprio o ereditato dall'ordine via fulfillment) |
 | **3-bis** | **valore riga** | **`E_DDT_RIGA_IVA_MANCANTE`** (1009) | ⭐ **rev 2026-08-28**: una riga attiva che porta un **prezzo** e non ha `iva_id`. ⚠️ **Non** condizionato alla causale — vedi il riquadro qui sotto |
 | 4 | testata | `E_INDIRIZZO_DOC_OBBLIGATORIO` | mancano indirizzi marcati obbligatori per l'ambito DDT |
-| 5 | componenti | `E_COMPONENTE_PREZZO_PENDENTE` / `E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE` | ⚠️ **solo se la causale è fatturabile** (rev 2026-08-19): componenti BoM CASO A in approvazione o senza prezzo |
+| 5 | componenti | `E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO` / `E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE` | ⚠️ **solo se la causale è fatturabile** (rev 2026-08-19): componenti BoM CASO A attivi con il prezzo in attesa o rifiutato (dal building block [`fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati), rev 2026-09-24), o senza prezzo |
 
 > ## ⭐ Rev 2026-08-28 — chi porta un prezzo porta anche l'aliquota
 >
@@ -122,6 +122,31 @@ possono più divergere: al prossimo vincolo aggiunto, si aggiunge QUI e basta.
 >
 > ⭐ È la regola del punto 3 applicata un livello più sotto: **padre e figli
 > obbediscono alla stessa dichiarazione**, la causale.
+
+> ## Rev 2026-09-24 — il prezzo non autorizzato dal building block
+>
+> Il punto 5 non scrive più da sé la domanda *«c'è un componente col prezzo in
+> attesa?»*: la chiede a
+> [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati),
+> la sede unica della regola *«un prezzo che nessuno ha autorizzato non esce dalla
+> bozza»*, comune a preventivi, contratti, offerte, ordini e DDT.
+>
+> Cosa cambia per il DDT:
+>
+> * conta anche il prezzo **rifiutato** (`REJECTED`), non solo quello in attesa;
+> * contano solo i componenti **attivi** di righe attive: un componente spento
+>   resterebbe rifiutato per sempre e bloccherebbe il documento senza rimedio;
+> * il motivo cambia codice: `E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`
+>   (reason `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`) invece di
+>   `E_COMPONENTE_PREZZO_PENDENTE` (reason `COMPONENTI_PREZZO_PENDENTE`).
+>   `E_COMPONENTE_PREZZO_PENDENTE` resta il codice del guard **per riga** dei
+>   componenti ([`trgfn_ddt_righe_componenti_guard_pending`](/dbzero/vendite/funzioni/trgfn_ddt_righe_componenti_guard_pending)).
+>
+> La **politica** resta qui: la domanda si fa solo se la causale vende. Il motivo
+> «componente senza prezzo» (`E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE`) non cambia.
+> Il guard che solleva i due codici nuovi è
+> [`trgfn_ddt_guard_transizione_approvazione`](/dbzero/vendite/funzioni/trgfn_ddt_guard_transizione_approvazione),
+> aggiornato nello stesso giro (changeSet `20260924-31` e `-32`).
 
 ### Regole
 

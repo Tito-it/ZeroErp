@@ -90,6 +90,7 @@ DECLARE
       'script.trgfn_qta_from_operativa',
       'E_QTA_MISSING',
       jsonb_build_object(
+        'campo', 'qta_operativa',
         'schema', TG_TABLE_SCHEMA,
         'table',  TG_TABLE_NAME,
         'qualified_table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
@@ -116,7 +117,7 @@ DECLARE
     PERFORM script.fn_log_and_raise_error(
       'application','script.trgfn_qta_from_operativa',
       'E_UOM_MISSING',
-      jsonb_build_object('articolo_id', NEW.articolo_id),
+      jsonb_build_object('campo', 'uom_operativa_id', 'articolo_id', NEW.articolo_id),
       NULL::uuid,
       'articolo_id', COALESCE(NEW.articolo_id::text, 'NULL')
     );
@@ -156,6 +157,7 @@ DECLARE
       'database','script.trgfn_qta_from_operativa',
       'E_QTA_OPERATIVA_NON_INTERA',
       jsonb_build_object(
+        'campo', 'qta_operativa',
         'articolo_id', NEW.articolo_id,
         'uom_operativa_id', NEW.uom_operativa_id,
         'qta_operativa', NEW.qta_operativa
@@ -172,6 +174,7 @@ DECLARE
         'database','script.trgfn_qta_from_operativa',
         'E_QTA_OPER_STEP_INVALIDO',
         jsonb_build_object(
+          'campo', 'qta_operativa',
           'articolo_id', NEW.articolo_id,
           'uom_operativa_id', NEW.uom_operativa_id,
           'qta_operativa', NEW.qta_operativa,

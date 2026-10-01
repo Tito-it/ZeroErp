@@ -13,6 +13,8 @@
 #   2. list_documenti_per_sorgente_filtra_sorgente_riga_valorizzata
 #   3. list_documenti_per_sorgente_applica_scope_anyarray
 #   4. list_documenti_per_sorgente_paginazione_cap_200_e_order
+#   4-bis. list_documenti_per_sorgente_ordina_dalla_whitelist
+#   4-ter. list_documenti_per_sorgente_passa_la_ricerca_al_bb
 #   5. get_documento_generato_returns_row_or_none
 #   6. get_documento_generato_with_scope_passes_anyarray
 #   7. get_documento_generato_file_principale_filtra_is_principale_e_limit_1
@@ -96,7 +98,12 @@ class GetSorgenteTipoIdByCodiceTests(TestCase):
 
 
 class ListDocumentiPerSorgenteTests(TestCase):
-    """list_documenti_per_sorgente: branching + scope + paginazione."""
+    """list_documenti_per_sorgente: branching + scope + paginazione + ordine.
+
+    ⭐ Dal 2026-09-27 pagina e totale escono da UNA query (`COUNT(*) OVER ()`,
+    BB `fetch_paged_with_total`): la prima `execute` e' la pagina, e il
+    conteggio separato parte solo sulla pagina oltre l'ultima.
+    """
 
     def _default_args(self, **overrides: Any) -> dict[str, Any]:
         defaults: dict[str, Any] = {
@@ -115,31 +122,24 @@ class ListDocumentiPerSorgenteTests(TestCase):
     def test_list_documenti_per_sorgente_filtra_sorgente_riga_null(
         self, mocked_factory
     ) -> None:
-        cursor = _mk_cursor(
-            fetchone_results=[(0,), None],
-            descriptions=[[], _columns("id")],
-            fetchall_results=[[], []],
-        )
+        cursor = _mk_cursor()
         mocked_factory.return_value = cursor
 
         DocumentiRepository().list_documenti_per_sorgente(**self._default_args())
 
-        count_sql, count_params = cursor.execute.call_args_list[0].args
-        self.assertIn("d.sorgente_tipo_id = %s", count_sql)
-        self.assertIn("d.sorgente_uid = %s", count_sql)
-        self.assertIn("d.sorgente_riga IS NULL", count_sql)
-        self.assertEqual(count_params, [10, "uid-100"])
+        sql, params = cursor.execute.call_args_list[0].args
+        self.assertIn("d.sorgente_tipo_id = %s", sql)
+        self.assertIn("d.sorgente_uid = %s", sql)
+        self.assertIn("d.sorgente_riga IS NULL", sql)
+        self.assertIn("COUNT(*) OVER () AS total_count", sql)
+        self.assertEqual(params, [10, "uid-100", 50, 0])
 
     # 2. sorgente_riga valorizzata -> WHERE include `=`.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_list_documenti_per_sorgente_filtra_sorgente_riga_valorizzata(
         self, mocked_factory
     ) -> None:
-        cursor = _mk_cursor(
-            fetchone_results=[(0,), None],
-            descriptions=[[], _columns("id")],
-            fetchall_results=[[], []],
-        )
+        cursor = _mk_cursor()
         mocked_factory.return_value = cursor
 
         DocumentiRepository().list_documenti_per_sorgente(
@@ -147,18 +147,14 @@ class ListDocumentiPerSorgenteTests(TestCase):
         )
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("d.sorgente_riga = %s", sql)
-        self.assertEqual(params, [10, "uid-100", 3])
+        self.assertEqual(params[:3], [10, "uid-100", 3])
 
     # 3. scope -> WHERE include `ANY(%s)` con lista params.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_list_documenti_per_sorgente_applica_scope_anyarray(
         self, mocked_factory
     ) -> None:
-        cursor = _mk_cursor(
-            fetchone_results=[(0,), None],
-            descriptions=[[], _columns("id")],
-            fetchall_results=[[], []],
-        )
+        cursor = _mk_cursor()
         mocked_factory.return_value = cursor
 
         DocumentiRepository().list_documenti_per_sorgente(
@@ -166,27 +162,79 @@ class ListDocumentiPerSorgenteTests(TestCase):
         )
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("d.emittente_fiscale_id = ANY(%s)", sql)
-        self.assertEqual(params, [10, "uid-100", [11, 22]])
+        self.assertEqual(params[:3], [10, "uid-100", [11, 22]])
 
-    # 4. paginazione: cap 200, offset preservato, ORDER BY generato_at DESC.
+    # 4. paginazione: cap 200, offset preservato, ORDER BY di partenza
+    #    `generato_at DESC, id DESC` (la timeline: il piu' recente in cima).
+    #    Pagina oltre l'ultima (0 righe, offset > 0) -> ripiego COUNT con lo
+    #    stesso WHERE.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_list_documenti_per_sorgente_paginazione_cap_200_e_order(
         self, mocked_factory
     ) -> None:
-        cursor = _mk_cursor(
-            fetchone_results=[(0,), None],
-            descriptions=[[], _columns("id")],
-            fetchall_results=[[], []],
-        )
+        cursor = _mk_cursor(fetchone_results=[None, (7,)])
         mocked_factory.return_value = cursor
 
-        DocumentiRepository().list_documenti_per_sorgente(
+        _, totale = DocumentiRepository().list_documenti_per_sorgente(
             **self._default_args(limit=999, offset=20),
         )
 
-        data_sql, data_params = cursor.execute.call_args_list[1].args
+        data_sql, data_params = cursor.execute.call_args_list[0].args
         self.assertEqual(data_params[-2:], [200, 20])
-        self.assertIn("ORDER BY d.generato_at DESC, d.id DESC", data_sql)
+        self.assertIn("ORDER BY d.generato_at DESC NULLS LAST, d.id DESC", data_sql)
+        count_sql, count_params = cursor.execute.call_args_list[1].args
+        self.assertIn("SELECT COUNT(*) FROM documenti.documenti_generati d", count_sql)
+        self.assertEqual(count_params, [10, "uid-100"])
+        self.assertEqual(totale, 7)
+
+    # 4-bis. `order_by` dalla whitelist (chiave = campo_sorgente del catalogo);
+    #        una colonna DATA senza verso ripiega DESC; fuori whitelist ->
+    #        ordinamento di partenza.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_list_documenti_per_sorgente_ordina_dalla_whitelist(
+        self, mocked_factory
+    ) -> None:
+        casi = [
+            (("titolo", "asc"), "ORDER BY d.titolo ASC NULLS FIRST, d.id ASC"),
+            (("progressivo_sorgente", "desc"), "ORDER BY d.progressivo_sorgente DESC NULLS LAST, d.id DESC"),
+            (("generato_at", None), "ORDER BY d.generato_at DESC NULLS LAST, d.id DESC"),
+            (("has_file_principale", "asc"), "ORDER BY d.generato_at ASC NULLS FIRST, d.id ASC"),
+        ]
+        for (order_by, order_dir), atteso in casi:
+            with self.subTest(order_by=order_by, order_dir=order_dir):
+                cursor = _mk_cursor()
+                mocked_factory.return_value = cursor
+                DocumentiRepository().list_documenti_per_sorgente(
+                    **self._default_args(order_by=order_by, order_dir=order_dir),
+                )
+                sql, _ = cursor.execute.call_args_list[0].args
+                self.assertIn(atteso, sql)
+
+    # 4-ter. ricerca: la condizione del BB (`add_ricerca_full_condition`) sulle
+    #        colonne accese dal catalogo, dentro lo stesso WHERE della pagina.
+    @patch("apps.documenti.db.documenti_repository.add_ricerca_full_condition")
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_list_documenti_per_sorgente_passa_la_ricerca_al_bb(
+        self, mocked_factory, mocked_ricerca
+    ) -> None:
+        cursor = _mk_cursor()
+        mocked_factory.return_value = cursor
+
+        def _aggiungi(conditions, params, termine, ricerca, *, alias):
+            conditions.append("(d.titolo)::text ILIKE %s")
+            params.append(f"%{termine}%")
+
+        mocked_ricerca.side_effect = _aggiungi
+        DocumentiRepository().list_documenti_per_sorgente(
+            **self._default_args(search="offerta"),
+        )
+        _, _, termine, ricerca = mocked_ricerca.call_args.args
+        self.assertEqual(termine, "offerta")
+        self.assertEqual(ricerca.lista_codice, "documenti.documenti_sorgente")
+        self.assertEqual(mocked_ricerca.call_args.kwargs, {"alias": "d"})
+        sql, params = cursor.execute.call_args_list[0].args
+        self.assertIn("(d.titolo)::text ILIKE %s", sql)
+        self.assertEqual(params, [10, "uid-100", "%offerta%", 50, 0])
 
 
 class GetDocumentoGeneratoTests(TestCase):

@@ -18,7 +18,7 @@ immediata. Se la regola cambia, cambia in un solo posto e il FE si
 allinea aggiornando solo l'UX (la validazione resta enforced dal BE).
 
 KEEP IN SYNC: le costanti _TRACKED_FIELDS e _REQUIRED_FIELDS sono
-duplicate in frontend/src/core/composables/useContattoForm.js
+duplicate in frontend/src/anagrafiche/composables/useContattoForm.js
 (TRACKED_FIELDS, REQUIRED_FIELDS). Se cambi qui aggiorna anche la'.
 """
 
@@ -103,10 +103,14 @@ def crea_contatto_inline_se_valido(
 ) -> None:
     contatto_status = classify_contatto_payload(contatto_data)
     if contatto_status == "PARTIAL":
+        missing = missing_required_fields(contatto_data)
         raise ServiceError(
             code=E_CONTATTO_INCOMPLETO,
             message="Contatto incompleto: completa o svuota tutti i campi.",
-            context={"missing": missing_required_fields(contatto_data)},
+            context={"missing": missing},
+            # I campi mancanti SONO i campi da accendere: `fields` e' il canale
+            # per piu' di uno (presidio C2, §3-ter).
+            fields=tuple(missing),
         )
     if contatto_status == "VALID":
         assert contatto_data is not None  # type narrowing per il checker

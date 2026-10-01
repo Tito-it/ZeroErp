@@ -60,29 +60,33 @@ SELECT plan(26);
 -- 0. Setup: raccolta riferimenti da dati esistenti
 -- ============================================================
 
--- Contesto: primo operatore con identita' attiva e risorsa umana attiva,
--- dalla madre identita_digitali (12-09-2026: la vista risorse_umane_auth_user
--- e' stata ritirata; `rau.id` era l'id dell'identita', `rau.attivo` il suo).
--- 🔴 `ruolo_sistema` RIMOSSA il 2026-08-18: la colonna non esiste piu'
---   (cutover multi-face-auth, 90_end/20260429-19a e -20). Test 16 tolto sotto.
+-- ⛔ 2026-09-23: il contesto era «il primo operatore con identita' attiva e
+--   risorsa umana attiva», PESCATO. Su un database ricostruito dai changelog
+--   non ce n'e' nessuno — l'operatore della riga di contesto e' un utente
+--   TECNICO, senza risorsa umana — e la fixture moriva su
+--   «p_soggetto_ruolo_id obbligatorio». Ora l'operatore UMANO si costruisce,
+--   dal percorso di produzione (fn_crea_operatore_v2, via il builder).
+-- ⚠️ In DUE istruzioni, e non per stile: un JOIN nella stessa istruzione del
+--   builder legge risorse_umane con la snapshot di PRIMA che il builder la
+--   scrivesse, e la temp table nasce vuota.
+CREATE TEMP TABLE tmp_operatore_umano AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('profilo utente');
+
 CREATE TEMP TABLE tmp_profile_ctx AS
 SELECT
-    i.auth_user_id    AS user_id,
-    i.id              AS identita_id,
-    ru.id             AS risorsa_umana_id,
-    ru.soggetto_ruolo_id,
-    ru.soggetto_id,
+    ou.auth_user_id       AS user_id,
+    ou.identita_id,
+    ou.risorsa_umana_id,
+    ou.soggetto_ruolo_id,
+    ou.soggetto_id,
     ru.qualifica_id,
     ru.unita_organizzativa_id
-FROM anagrafiche.identita_digitali i
-JOIN anagrafiche.risorse_umane ru ON ru.soggetto_ruolo_id = i.soggetto_ruolo_id
-WHERE i.ruolo_applicativo = 'OPERATORE'
-  AND i.attivo = true
-  AND ru.attivo = true
-ORDER BY i.id
-LIMIT 1;
+FROM tmp_operatore_umano ou
+JOIN anagrafiche.risorse_umane ru ON ru.id = ou.risorsa_umana_id;
 
--- Contesto emittente: primo emittente fiscale attivo (per test dati societari)
+-- Contesto emittente: l'azienda di CHI AGISCE, derivata e non pescata
+-- («il primo emittente attivo» coincide con lei solo finche' l'installazione
+-- ne ha una). Ha dati societari per costruzione: e' una persona giuridica.
 CREATE TEMP TABLE tmp_emittente_ctx AS
 SELECT
     ef.id                AS emittente_id,
@@ -90,9 +94,7 @@ SELECT
     sr.soggetto_id       AS ef_soggetto_id
 FROM anagrafiche.emittenti_fiscali ef
 JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
-WHERE ef.attivo = true
-ORDER BY ef.id
-LIMIT 1;
+WHERE ef.id = script.fn_pgtap_emittente_operatore();
 
 -- ============================================================
 -- A. fn_get_soggetto_dati_by_ruolo — caso PF (risorsa umana)
@@ -202,17 +204,12 @@ SELECT isnt(
 );
 
 -- 12) Soggetto senza dati societari → has_dati_societari = false
--- Trova un soggetto_ruolo il cui soggetto NON ha record in dati_societari
+-- ⭐ La persona fisica dell'operatore costruito: dati societari non ne ha per
+--   costruzione. Prima si PESCAVA «un soggetto_ruolo il cui soggetto non ha
+--   dati societari», cioe' si misurava la popolazione invece del caso.
 SELECT is(
     (SELECT has_dati_societari FROM script.fn_get_soggetto_dati_by_ruolo(
-        (SELECT sr.id
-           FROM anagrafiche.soggetti_ruoli sr
-           JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
-          WHERE NOT EXISTS (
-                  SELECT 1 FROM anagrafiche.dati_societari ds
-                   WHERE ds.soggetto_id = s.id
-                )
-          ORDER BY sr.id LIMIT 1)
+        (SELECT soggetto_ruolo_id FROM tmp_profile_ctx)
     )),
     false,
     'fn_get_soggetto_dati_by_ruolo: soggetto senza dati societari → has_dati_societari = false'

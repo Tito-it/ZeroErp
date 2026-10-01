@@ -21,9 +21,10 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import Badge from 'primevue/badge'
 import Tag from 'primevue/tag'
 import FormFooter from '../FormFooter.vue'
-import { DRAWER_WIDTH } from '../../constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../constants'
 import { useConfirmAction } from '../../composables/useConfirmAction'
 import { useDrawerContentReady } from '../../composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../composables/useDrawerFormPreserve'
 
 
 
@@ -53,12 +54,23 @@ const { t, te } = useI18n()
 // scartare modifiche di una sessione precedente.
 const localWidget = ref([])
 
+// Modifiche non salvate: si confronta cio' che il Salva manda (codice e
+// visibilita', nell'ordine dell'elenco), non `ordine`, che il riordino
+// rinumera 1..N — spostare e rimettere a posto non e' una modifica.
+// Prima del watch immediate che chiama `fissa()` (TDZ).
+const widgetDaSalvare = computed(() =>
+  localWidget.value.map(w => ({ codice: w.codice, visibile: Boolean(w.visibile) })),
+)
+const { fissa, chiudiConConferma } =
+  useDrawerFormPreserve(widgetDaSalvare, { visibile: () => props.visible })
+
 watch(
   () => [props.visible, props.config],
   ([open]) => {
     if (open && Array.isArray(props.config?.widget)) {
       localWidget.value = JSON.parse(JSON.stringify(props.config.widget))
         .sort((a, b) => (a.ordine ?? 0) - (b.ordine ?? 0))
+      fissa()
     }
   },
   { immediate: true },
@@ -111,7 +123,7 @@ function onSave() {
 }
 
 function onCancel() {
-  emit('update:visible', false)
+  chiudiConConferma(() => emit('update:visible', false))
 }
 
 function onReset() {
@@ -124,6 +136,7 @@ function onReset() {
     },
   })
 }
+const suVisibile = gestoreVisibile(emit, onCancel)
 </script>
 
 <template>
@@ -131,7 +144,7 @@ function onReset() {
     :visible="visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
@@ -175,7 +188,7 @@ function onReset() {
         <span class="dash-config-row-label">{{ labelDi(widget) }}</span>
         <div class="dash-config-row-actions">
           <Button
-            icon="pi pi-chevron-up"
+            :icon="MANAGE_ICONS.SPOSTA_SU"
             text
             rounded
             :disabled="idx === 0"
@@ -183,7 +196,7 @@ function onReset() {
             @click="move(widget.codice, 'up')"
           />
           <Button
-            icon="pi pi-chevron-down"
+            :icon="MANAGE_ICONS.SPOSTA_GIU"
             text
             rounded
             :disabled="idx === localWidget.length - 1"
@@ -198,7 +211,7 @@ function onReset() {
       <div class="dash-config-footer">
         <Button
           :label="t('home.personalizza_reset')"
-          icon="pi pi-refresh"
+          :icon="MANAGE_ICONS.RIPRISTINA_DEFAULT"
           severity="secondary"
           text
           :disabled="loading"
@@ -257,7 +270,11 @@ function onReset() {
 /* Footer a 3 pulsanti (reset + annulla + salva): su drawer stretto o
    schermo piccolo deve andare a capo, mai farsi tagliare. `flex-wrap`
    + `margin-left:auto` che si annulla quando si va a capo. */
+/* Il footer del drawer (`.p-drawer-footer`) e' FRATELLO del contenuto, non
+   suo figlio: non sta dentro il riquadro, e la `@container` qui sotto si
+   misura sul footer stesso. */
 .dash-config-footer {
+  container-type: inline-size;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -269,7 +286,7 @@ function onReset() {
   margin-left: auto;
 }
 
-@media (max-width: 560px) {
+@container (max-width: 559.98px) {
   .dash-config-footer-right {
     margin-left: 0;
     width: 100%;

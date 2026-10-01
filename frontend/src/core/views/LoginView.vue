@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
 import { CANALE_LOGIN } from '../constants'
+import { FRASE_MOTIVO_USCITA } from '../sessione'
 // ChannelSelector importato ma non montato: l'UI attuale e' per soli
 // operatori interni (canale ADMIN forzato). Importazione conservata per
 // riuso futuro (pagine dedicate portale/shop).
@@ -31,39 +32,59 @@ const loading = ref(false)
 // `E_VESTE_NON_ATTIVA` (§8.3.2) e' il caso "account valido ma senza
 // accesso al canale richiesto": mostriamo un messaggio dedicato e
 // generico (niente enumeration di quali canali sono attivi).
+// `E_CREDENZIALE_BLOCCATA`: blocco deciso dall'amministratore, vale su
+// tutte le porte e non scade da solo (config.credenziali).
 const ERROR_CODE_MAP = {
   E_UTENTE_DISABILITATO: 'auth.account_disabled',
   E_UTENTE_NON_ATTIVO: 'auth.account_not_active',
   E_UTENTE_SCADUTO: 'auth.account_expired',
-  E_VESTE_NON_ATTIVA: 'auth.veste_non_attiva'
+  E_VESTE_NON_ATTIVA: 'auth.veste_non_attiva',
+  E_CREDENZIALE_BLOCCATA: 'auth.credential_locked'
+}
+
+// Rifiuti per cui si mostra la frase del DB (`message`), perche' porta un
+// dato che la chiave i18n non ha; la chiave e' il ripiego se manca.
+// `E_LOGIN_ATTESA` porta i secondi da aspettare; `E_UTENTE_BLOCCATO` (il
+// freno sulla sola coppia credenziale + provenienza) i minuti, dal
+// `20260925-52` — prima era una frase chiusa e stava in ERROR_CODE_MAP.
+// ⛔ Non `detail`: per questi codici porta la CAUSA del catalogo («Dopo molti
+// tentativi…»), senza il numero. Verificato sull'envelope vero, 2026-09-25
+// (test_login_credenziale_db).
+const MESSAGGIO_DB_CON_DATO = {
+  E_LOGIN_ATTESA: 'auth.login_wait',
+  E_UTENTE_BLOCCATO: 'auth.account_locked'
 }
 
 function resolveLoginError(err) {
   const status = err?.response?.status
-  // Throttle IP: troppi tentativi
+  // Throttle IP: troppe richieste all'endpoint, qualunque credenziale.
+  // ⚠️ Per questo i rifiuti della credenziale sono 403 e non 429: qui il 429
+  // si intercetta PRIMA di leggere il codice.
   if (status === 429) return t('auth.too_many_attempts')
   const data = err?.response?.data
   const code = data?.error?.code
-  // Blocco per utente: mostra minuti rimanenti dal messaggio DB
-  if (code === 'E_UTENTE_BLOCCATO') {
-    const msg = data?.error?.detail || data?.error?.message || ''
-    return msg || t('auth.account_locked')
-  }
+  const ripiego = code && MESSAGGIO_DB_CON_DATO[code]
+  if (ripiego) return data?.error?.message || t(ripiego)
   const i18nKey = code && ERROR_CODE_MAP[code]
   if (i18nKey) return t(i18nKey)
-  // Token request fallito (401) → credenziali errate; altrimenti generico
-  if (!status || status === 401) return t('auth.login_error')
+  // Token request fallito (401) → credenziali errate
+  if (status === 401) return t('auth.login_error')
+  // Guasto (es. provenienza non ricavabile, E_AUTH_CHIAMATA_NON_VALIDA) o
+  // nessuna risposta (rete, server spento): non e' ne' una password
+  // sbagliata ne' un «accesso negato», e dirlo manderebbe a cercare la cosa
+  // sbagliata
+  if (!status || status >= 500) return t('auth.login_technical_error')
   return t('auth.access_denied')
 }
 
-// Pre-popolazione errorMessage in base a `reason` query (es. session_expired
-// passato da api.js → redirectToLogin quando il refresh fallisce o da router
-// guard quando i token sono scaduti). Mantiene UX coerente: l'utente vede
-// subito perche' e' tornato sul login.
+// Pre-popolazione errorMessage in base a `reason` query: il motivo per cui
+// l'applicazione ha riportato al login (`MOTIVO_USCITA` in `core/sessione`:
+// rinnovo fallito, logout da un'altra scheda). Mantiene UX coerente: l'utente
+// vede subito perche' e' tornato sul login. Motivo sconosciuto: nessuna frase.
 onMounted(() => {
-  const reason = route.query.reason
-  if (reason === 'session_expired') {
-    errorMessage.value = t('auth.session_expired')
+  const chiave = FRASE_MOTIVO_USCITA[route.query.reason]
+  if (chiave) {
+    errorMessage.value = t(chiave)
   }
 })
 
@@ -111,6 +132,12 @@ async function handleLogin() {
              componente con v-model="canale". -->
         <!-- <ChannelSelector v-model="canale" :disabled="loading" /> -->
 
+        <!-- Errore SOPRA i campi, fuori dal flusso (login-error--sopra): nel
+             flusso spingeva in basso pulsante e «Password dimenticata». -->
+        <div v-if="errorMessage" class="login-error login-error--sopra" role="alert">
+          {{ errorMessage }}
+        </div>
+
         <div class="field">
           <InputText
             id="username"
@@ -135,10 +162,6 @@ async function handleLogin() {
             autocomplete="current-password"
             fluid
           />
-        </div>
-
-        <div v-if="errorMessage" class="login-error">
-          {{ errorMessage }}
         </div>
 
         <Button

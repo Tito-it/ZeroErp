@@ -53,6 +53,7 @@ BEGIN
             TG_NAME,
             'E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE',
             jsonb_build_object(
+                'campo', 'articolo_id',
                 'articolo_id', NEW.articolo_id,
                 'articolo_tipologia_id', v_articolo_tipologia_id,
                 'listino_versione_id', NEW.listino_versione_id,

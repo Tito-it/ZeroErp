@@ -85,6 +85,7 @@ BEGIN
                     TG_NAME,
                     'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
                     jsonb_build_object(
+                        'campo', 'unita_organizzativa_id',
                         'table', TG_TABLE_NAME,
                         'profilo_accesso_id', NEW.profilo_accesso_id,
                         'tipo_profilo', v_tipo_profilo,
@@ -103,6 +104,7 @@ BEGIN
                     TG_NAME,
                     'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
                     jsonb_build_object(
+                        'campo', 'ruolo_applicativo',
                         'table', TG_TABLE_NAME,
                         'profilo_accesso_id', NEW.profilo_accesso_id,
                         'tipo_profilo', v_tipo_profilo,
@@ -121,6 +123,7 @@ BEGIN
                     TG_NAME,
                     'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
                     jsonb_build_object(
+                        'campo', 'identita_digitale_id',
                         'table', TG_TABLE_NAME,
                         'profilo_accesso_id', NEW.profilo_accesso_id,
                         'tipo_profilo', v_tipo_profilo,
@@ -143,6 +146,7 @@ BEGIN
                     TG_NAME,
                     'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
                     jsonb_build_object(
+                        'campo', 'identita_digitale_id',
                         'table', TG_TABLE_NAME,
                         'profilo_accesso_id', NEW.profilo_accesso_id,
                         'tipo_profilo', v_tipo_profilo,

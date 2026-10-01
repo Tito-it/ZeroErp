@@ -90,3 +90,10 @@ Da qui un nucleo che non solleva affatto, invece di un guscio che ingoia.
 > pensione. Con la categoria a `NULL` la ricerca sulla matrice non trova righe e
 > si esce con l'esito `E_CATEGORIA_LISTINO_NON_MAPPATA`: un codice vivo, il cui
 > messaggio nomina la tabella giusta.
+
+---
+
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+La versione del listino in vigore alla data di riferimento (contratto senza versione fissata, listino della categoria) non è più scelta qui: la dice [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore) (`20260928-41`). Per ogni data la versione in vigore è **al più una**, per costruzione (nessuna sovrapposizione fra versioni ATTIVE e CHIUSE, date di una CHIUSA bloccate), quindi «la prima» e «tutte le valide» sono la stessa cosa. Stesso esito, provato sui dati di dev. La firma è di nuovo ancorata (`%TYPE`, da `20260819-07`: l'ultimo YAML l'aveva sciolta) e `SECURITY INVOKER` è esplicito.

@@ -54,6 +54,7 @@ from django.test import Client, override_settings
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.api.constants import DEFAULT_LIMIT
 
 
 @override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
@@ -214,7 +215,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         mocked_list.return_value = {
             "commessa_id": 1,
             "count": 0,
-            "rows": [],
+            "results": [],
         }
         response = self.client.get("/api/v1/vendite/commesse/1/attivita/?limit=20&offset=0")
         self.assertEqual(response.status_code, 200)
@@ -237,14 +238,14 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.fn_list_commessa_attivita")
     def test_get_commessa_attivita_con_filtri(self, mocked_list, _mock_auth):
-        mocked_list.return_value = {"commessa_id": 1, "count": 0, "rows": []}
+        mocked_list.return_value = {"commessa_id": 1, "count": 0, "results": []}
         response = self.client.get(
             "/api/v1/vendite/commesse/1/attivita/?stato_emissione=NON_EMESSA&stato_approvazione=APPROVATA&competenza_mese=2026-02-01"
         )
         self.assertEqual(response.status_code, 200)
         mocked_list.assert_called_once_with(
             commessa_id=1, stato_emissione="NON_EMESSA", stato_approvazione="APPROVATA",
-            competenza_mese="2026-02-01", limit=50, offset=0,
+            competenza_mese="2026-02-01", limit=DEFAULT_LIMIT, offset=0,
             order_by=None, order_dir=None,
             tipo_movimento=None,
         )
@@ -253,14 +254,14 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.fn_list_commessa_attivita")
     def test_get_commessa_attivita_con_ordinamento(self, mocked_list, _mock_auth):
-        mocked_list.return_value = {"commessa_id": 1, "count": 0, "rows": []}
+        mocked_list.return_value = {"commessa_id": 1, "count": 0, "results": []}
         response = self.client.get(
             "/api/v1/vendite/commesse/1/attivita/?order_by=data_attivita&order_dir=desc"
         )
         self.assertEqual(response.status_code, 200)
         mocked_list.assert_called_once_with(
             commessa_id=1, stato_emissione=None, stato_approvazione=None,
-            competenza_mese=None, limit=50, offset=0,
+            competenza_mese=None, limit=DEFAULT_LIMIT, offset=0,
             order_by="data_attivita", order_dir="desc",
             tipo_movimento=None,
         )

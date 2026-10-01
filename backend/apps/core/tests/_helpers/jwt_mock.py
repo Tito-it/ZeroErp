@@ -3,8 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Base class per test API che usano Django test client +
-#        SimpleTestCase. Mocka il side effect `_set_gucs` di
-#        JwtAuditAuthentication per evitare cursor.execute (vietato
+#        SimpleTestCase. Mocka i side effect sul DB di ogni chiamata: `_set_gucs` di
+#        JwtAuditAuthentication, il log delle richieste e la lingua, per evitare cursor.execute (vietato
 #        in SimpleTestCase via DatabaseOperationForbidden).
 #
 #        I test esistenti continuano a mockare
@@ -54,6 +54,53 @@ class JwtMockedApiTest(SimpleTestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+
+        # Il log delle richieste (`RequestLogMiddleware._insert_log`): e' il
+        # SECONDO effetto sul database di ogni chiamata `/api/*`, dopo i GUC.
+        # ⚠️ Non fallisce il test: il middleware cattura l'errore e lo LOGGA,
+        #    quindi senza questo mock ogni chiamata stampava un traceback
+        #    `DatabaseOperationForbidden` nell'output della suite, a decine per
+        #    file. ⭐ Sede unica dal 2026-09-29: era ricopiato nel `setUp` di
+        #    quindici classi figlie, e le altre facevano rumore (regola del 2).
+        #    Il middleware ha i suoi test in
+        #    `apps/core/tests/middleware/test_request_log_middleware.py`.
+        log_patcher = patch(
+            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log",
+            return_value=None,
+        )
+        log_patcher.start()
+        self.addCleanup(log_patcher.stop)
+
+        # La lingua dell'operatore sulla connessione (`UserLanguageMiddleware`,
+        # GUC `myapp.user_language`): il TERZO effetto sul database, stesso
+        # caso del log — catturato e loggato con il traceback, mai rosso.
+        # Spento a monte, il middleware non marca la richiesta e il reset in
+        # `process_response` non parte. Test suoi in
+        # `apps/core/tests/middleware/test_user_language_middleware.py`.
+        lingua_patcher = patch(
+            "apps.core.middleware.user_language_middleware.UserLanguageMiddleware.process_request",
+            return_value=None,
+        )
+        lingua_patcher.start()
+        self.addCleanup(lingua_patcher.stop)
+
+        # Gli obblighi della credenziale (`cancello_obblighi`, T-0 del brief
+        # sicurezza): il QUARTO effetto sul database, a ogni richiesta col
+        # Bearer che arriva in fondo all'autenticazione. ⭐ Come per lo scope
+        # qui sotto, si mocka la LETTURA dei fatti («nessun obbligo»), non il
+        # cancello: il suo codice gira in ogni test API. I test del cancello
+        # sovrascrivono questo mock (`apps/core/tests/api/test_cancello_obblighi.py`).
+        obblighi_patcher = patch(
+            "apps.core.db.auth_repository.AuthRepository.get_fatti_obblighi",
+            return_value={
+                "deve_cambiare_password": False,
+                "totp_obbligatorio": False,
+                "totp_motivo": None,
+                "totp_stato": "ASSENTE",
+            },
+        )
+        obblighi_patcher.start()
+        self.addCleanup(obblighi_patcher.stop)
 
         # Scope emittente dell'utente finto: UN emittente, cioe' l'operatore
         # configurato — lo scenario normale.

@@ -11,6 +11,25 @@
 > risposta non è scritta, un'API di servizio e una funzione finita senza porta si
 > leggono uguali. Qui c'è la risposta per ciascuno (§1) e il piano per l'unica
 > che cambia qualcosa a video (§2).
+>
+> **Stato al 2026-09-25** (dettaglio in §3):
+>
+> * ✅ **§1 la decisione**: chiusa il 2026-09-11.
+> * ✅ **§2.4 il docstring**: corretto nello stesso giorno (`f6ff0d398`).
+> * ⛔ **§2.3 la schermata**: **non iniziata**. Zero file in `frontend/src`
+>   chiamano `/core/email/`.
+> * ✅ **Scelta (a) di Tid, 2026-09-25** (§3.2): gli operatori vedono le mail
+>   del loro perimetro, a partire dalla sola lista.
+> * ✅ **Il prerequisito è chiuso** (§3.3): dal 2026-09-25 la RLS applica gli
+>   ambiti `REPARTO`/`OPERATORE` su log, bozze e allegati, e dal 2026-09-26 il
+>   backend non ne tiene più una copia
+>   ([brief-db-email-visibilita-per-ambito.md](../work-done/brief-db-email-visibilita-per-ambito.md) §9).
+> * ✅ **§2.3 passi 1-4 fatti il 2026-09-26**: la lista del log è aperta a ogni
+>   operatore (skip d'area, decisione di Tid) nel dominio frontend
+>   Strumenti, voce «Email» senza `requireArea` (era il dominio «Personale», assorbito
+>   in Strumenti lo stesso giorno). Dettaglio nel brief §9.6.
+> * ⏸ **§2.3 passo 5 — l'outbox**: resta sotto `config`, e aspetta l'azione di
+>   processo `invia_email` (D15).
 
 ---
 
@@ -86,6 +105,7 @@ corregge la frase (§2.4), non si aggiunge il filtro: aggiungerlo sarebbe una
 | Service | ✅ `EmailOutboxService` (`prepare_draft` · `add_attachment` · `confirm_and_send` · cancel), `EmailDispatchService` |
 | Repository | ✅ `EmailRepository` |
 | Scope dei dati | ✅ RLS su `config.email_log` — **non** da riscrivere lato applicativo |
+| Chi entra | ⚠️ **dal 2026-09-12 solo chi ha l'area `config`** (LETTURA per leggere, TUTTO per spedire) — §3.1 |
 | Configurazione di lista | ✅ `ui.lista_definizione` id **31** (`config.email_log`), già a catalogo dal 2026-08-01 |
 | **Schermata** | ⛔ **zero** |
 
@@ -149,6 +169,89 @@ La schermata dell'operatore **riusa** il codice lista `config.email_log`.
 
 ---
 
-*Piano BE/FE, 2026-09-11. Le risposte del §1 sono decisioni prese con Tid quel
-giorno; il §2 è il cantiere che ne discende. Stato in
+## 3. Stato al 2026-09-25
+
+### 3.1 Cosa è fatto, cosa no, cosa è cambiato sotto
+
+| Voce | Stato | Dove |
+| --- | --- | --- |
+| §1 — la risposta per le tredici rotte | ✅ chiusa 2026-09-11 | `migliorie-generali-BE-FE-…` D7 (la decisione) |
+| §2.4 — docstring di `EmailLogOperatoreListView` | ✅ corretto 2026-09-11, con il blocco «⛔ lo scope non sta qui» sopra la classe | `core/api/email_views.py` |
+| §2.3 passi 1-4 — client, store, view, rotta/menu | ✅ **fatti** 2026-09-26. ⚠️ Due scostamenti dal piano: la voce non è in un dominio d'area ma nel dominio Strumenti, voce senza `requireArea` (come lo skip; il dominio porta il cancello sulle voci, non su di sé), e la view non è una copia di quella admin ma il BB `EmailLogLista` che le serve entrambe | `core/api/email.js`, `strumenti/views/EmailLogView.vue`, `core/components/EmailLogLista.vue` |
+| §2.3 passo 5 — outbox | ⛔ non iniziato (per piano, dopo la lista) | — |
+| §2.4 — `/core/email/` in `api.md` | ✅ 2026-09-26, con la schermata | `api.md` §Endpoint attivi |
+| §2.5 — ritiro `job-summary`, `manual-lookup` | ⏸ non deciso: entrambe le rotte sono ancora registrate | `core/api/urls_v1.py`, `anagrafiche/api/urls.py` |
+| §1 #10 — `rettifica-controllata` (N6) | ⏸ cantiere suo, non questo | — |
+
+⛔ **Il fatto nuovo, successivo al piano**: con D15 (2026-09-12, `26a3c53f8`)
+tutte e dieci le view di `/core/email/` hanno perso `skip_area_check`, che era
+**muto**, e dichiarano l'area `config`. L'intestazione di `email_views.py`
+dice che per tua decisione *non è un'API per tutti gli operatori*. Se un
+giorno dovrà aprirsi oltre `config`, l'ordine è: prima un'azione di processo
+a catalogo (`invia_email`), poi la schermata, **poi** lo skip. Mai il
+contrario.
+
+Le due schermate a confronto, oggi:
+
+| | Schermata admin (esiste) | Schermata operatore (§2, da fare) |
+| --- | --- | --- |
+| Endpoint | `/amm-software/email-log/` | `/core/email/log/` |
+| Chi entra | **solo super admin** (`AdminAPIView`) | chi ha l'area **`config`**, in LETTURA |
+| Cosa vede | tutto | solo gli emittenti del proprio scope (RLS) |
+
+⇒ La premessa del §1 (*«l'operatore non vede le proprie mail;
+l'amministratore sì»*) era scritta con lo skip ancora dichiarato. Oggi la
+schermata del §2 servirebbe a **chi ha `config` senza essere super admin**,
+non all'operatore qualunque.
+
+### 3.2 La decisione — ✅ (a), Tid 2026-09-25
+
+La domanda che decide: *un operatore che non amministra deve poter controllare
+se e quando è partita una mail?* Risposta di Tid: **sì**. Si parte dalla sola
+lista.
+
+* **(a) Aprire la porta.** ← **scelta** La schermata si fa, per gli operatori che non
+  hanno `config`.
+  * **La lista** (sola lettura): serve decidere **chi** la vede, cioè sotto
+    quale area o quale permesso. Lo scope sui dati lo tiene già la RLS.
+  * **L'outbox** (spedire): prima serve l'azione di processo `invia_email` a
+    catalogo (brief al team DB), poi la schermata, poi l'apertura.
+* **(b) Chiudere la porta.** Si riconosce che dopo D15 le mail sono una
+  funzione di configurazione: il super admin ha già la sua schermata, e
+  §2.3 non si fa. D7-schermata si chiude con questa motivazione; le dieci
+  rotte `/core/email/` passano da *persona* a *servizio* nel §1, o diventano
+  candidate al ritiro.
+
+### 3.3 ⛔ Il prerequisito che la (a) ha fatto emergere
+
+Il modello di `config.email_log` e `config.email_outbox` dichiara tre ambiti di
+visibilità:
+
+* `SISTEMA`: solo admin;
+* `REPARTO`: solo il reparto;
+* `OPERATORE`: solo chi l'ha creata.
+
+Le due policy RLS applicano solo il primo. Per gli altri due guardano **solo
+l'emittente**.
+
+Finché al log entrava solo chi ha `config`, il buco non era raggiungibile. Con
+la (a) sì: un operatore leggerebbe le mail `OPERATORE` di un collega dello
+stesso emittente. Sull'outbox potrebbe anche **spedirne** la bozza.
+
+⇒ ⛔ La correzione **non** va nella view: sarebbe la seconda sede del §1.1. Va
+nelle policy:
+[brief-db-email-visibilita-per-ambito.md](../work-done/brief-db-email-visibilita-per-ambito.md)
+(decisioni D-1 → D-4 ✅ prese da Tid il 2026-09-25; il lavoro è del team DB). Il §2.3 riparte quando quel brief è chiuso.
+✅ **Chiuso**: DB il 2026-09-25, BE il 2026-09-26 (brief §9, che ha trovato anche
+un difetto preesistente: l'`INSERT` del log non scriveva l'emittente, quindi
+nessuna bozza non di sistema si poteva spedire).
+Allora resta una scelta BE: la sola **lista** può uscire dall'area `config`,
+perché il perimetro lo porta tutto la RLS; l'**outbox** resta sotto `config`
+fino all'azione `invia_email` (D15).
+
+---
+
+*Piano BE/FE, 2026-09-11; stato aggiornato il 2026-09-25. Le risposte del §1
+sono decisioni prese con Tid quel giorno; il §2 è il cantiere che ne discende;
+il §3 registra ciò che è cambiato dopo (D15). Stato in
 `migliorie-generali-BE-FE-da-test-valutazione.md` §3 D7.*

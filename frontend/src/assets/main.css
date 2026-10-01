@@ -64,6 +64,53 @@ a {
   min-width: 0;
 }
 
+/* ⭐ LA ZONA SINISTRA DELLA TOOLBAR QUANDO NON SONO FILTRI (2026-09-23, ok Tid).
+ * Stesse regole di `.app-page-filters`, nome diverso — e il nome e' tutta la
+ * ragione: `app-page-filters` significa «gruppo filtri», e il registro di
+ * `check-filtri-lista.mjs` la conta come debito da portare in `<FiltriLista>`.
+ * ⛔ Nove blocchi la scrivevano per cose che filtri non sono: il titolo `<h2>`
+ *    di una pagina (approvazioni prezzo, cruscotto competenza, tool
+ *    fatturazione, code di lavoro), il `<h4>` delle righe di un documento, il
+ *    pulsante «torna alla lista» dell'editor di definizioni. Avvolgerli in
+ *    `<FiltriLista>` avrebbe mandato il titolo della pagina dentro il drawer
+ *    dal basso, dietro un'icona a forma di imbuto.
+ * ⚠️ Non e' un alias di comodo: chi ci mette un filtro dentro sta scrivendo un
+ *    gruppo filtri, e il posto di quel filtro e' `<FiltriLista>`. */
+.app-page-toolbar-start {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Una riga «testo + gesto» dentro un avviso (`Message`): etichetta e pulsante
+ * in linea, allineati al centro. ⛔ Prima del 2026-09-23 riusava
+ * `app-page-filters`, cioe' la classe del GRUPPO FILTRI, per ottenere un flex —
+ * e il registro di `check-filtri-lista.mjs` la contava fra i blocchi da portare
+ * in `<FiltriLista>`, dove quel testo non c'entra niente. */
+.app-msg-riga {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Una toolbar SENZA zona sinistra: le azioni restano a destra.
+ * ⭐ Prima del 2026-09-23 lo faceva uno SPAZIATORE scritto nel markup —
+ *    `<div class="app-page-filters" />`, tredici volte — cioe' un gruppo filtri
+ *    senza filtri, messo li' per spingere: la spaziatura e' del foglio, non del
+ *    markup, e quei tredici tag finivano nel registro dei filtri da convertire
+ *    senza avere niente da convertire.
+ * ⚠️ `:first-child` e non `:only-child`: la barra azioni porta con se' i propri
+ *    `#suffix` (stato lista, badge sola lettura), quindi figlia unica non lo e'
+ *    quasi mai — cio' che conta e' che PRIMA di lei non ci sia nessuna zona
+ *    sinistra a spingerla. */
+.app-page-toolbar > .app-page-actions:first-child {
+  margin-left: auto;
+}
+
 /* Filtro Select standard nella toolbar filtri — width uniforme per
  * allineare i filtri delle SearchTable senza style inline. */
 .app-filter-select {
@@ -91,6 +138,316 @@ a {
   color: var(--p-text-muted-color);
   font-weight: 400;
   white-space: nowrap;
+}
+
+/* ===== Filtri della lista — building block `FiltriLista` =====
+ * Decisione di Tid del 2026-09-22 (brief
+ * `work-done/brief-fe-filtri-lista-su-schermo-compatto.md`).
+ *
+ * In modalita' COMPATTA (`ui.isCompatto`: sotto i 1024px oppure senza hover) i
+ * filtri escono dalla toolbar ed entrano in un drawer dal basso; restano in
+ * barra la RICERCA (slot `#sempre`) e l'icona che apre il drawer, col segno di
+ * quanti filtri sono attivi.
+ * ⛔ Qui NON c'e' nessuna @media: la soglia e' una sola e vive in `ui.js`
+ *    (`isCompatto`). Riscriverla in CSS sarebbe la seconda sede che il
+ *    building block esiste per togliere.
+ */
+.app-page-filters--compatta {
+  flex-wrap: nowrap;
+}
+
+/* La ricerca prende lo spazio che resta, l'icona filtro no: su 360px la barra
+ * deve restare una riga sola. `min-width: 0` perche' un flex item non scende
+ * sotto il proprio contenuto senza. */
+.app-page-filters--compatta > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ⚠️ Il figlio diretto e' l'involucro `OverlayBadge`, NON il pulsante: il
+ *    badge vive dentro quell'involucro (`position: relative` del tema) e se
+ *    l'involucro si allargasse col `flex: 1` di sopra, il segno finirebbe
+ *    lontano dall'icona. La regola nomina entrambi perche' la barra resti una
+ *    riga sola anche il giorno che il segno non serve piu'. */
+.app-page-filters--compatta > .p-overlaybadge,
+.app-page-filters--compatta > .app-filtri-btn {
+  flex: 0 0 auto;
+}
+
+/* Il pulsante che apre il drawer: stessi colori degli altri pulsanti di
+ * toolbar (`.app-reload-btn`), cosi' non sembra un'altra famiglia. */
+.app-filtri-btn.p-button {
+  color: var(--app-btn-action-color);
+}
+
+.app-filtri-btn.p-button:hover:not(:disabled) {
+  color: var(--app-btn-action-hover-color);
+  background: var(--app-btn-action-hover-bg);
+}
+
+/* Con dei filtri attivi l'icona e' accesa anche senza guardare il badge: il
+ * badge dice QUANTI, il colore dice CHE CE NE SONO. */
+.app-filtri-btn--attivo.p-button {
+  color: var(--p-primary-color);
+}
+
+/* Segno dei filtri attivi (un NUMERO, grigio o blu — dal 2026-09-23 il pallino
+ * non si rende piu'): la POSIZIONE la mette `OverlayBadge` di PrimeVue —
+ * `translate(50%, -50%)` piu' l'outline di contrasto, nel tema. Qui resta solo
+ * lo stato «nessun segno», che col numero sempre presente e' l'unico modo di
+ * non mostrare uno zero.
+ * ⛔ La prima stesura posizionava il badge a mano (`position: absolute` +
+ *    translate) E lo infilava nel default slot del `Button`: quello slot
+ *    SOSTITUISCE il rendering interno del pulsante, quindi l'icona del filtro
+ *    non veniva resa affatto e il badge — solo contenuto rimasto — sporgeva
+ *    mezzo fuori. Nessun errore da nessuna parte: trovato guardando, in-app
+ *    (Tid, 2026-09-22). */
+.app-filtri-senza-segno .p-badge {
+  display: none;
+}
+
+/* ⛔ IL SEGNO NON PUO' SPORGERE DAL PULSANTE, e non e' una preferenza: la
+ *    toolbar e' la PRIMA riga di `.app-tab-content` / `.app-page`, che hanno
+ *    `overflow: hidden` (ci sta appesa l'altezza della tabella). Tutto cio' che
+ *    esce SOPRA quella riga e' invisibile per costruzione, in ogni lista.
+ *    Il tema di `OverlayBadge` lo trasla di `translate(50%, -50%)` — giusto in
+ *    generale, tagliato qui.
+ *    ⭐ Si annulla la TRASLAZIONE, non il posizionamento: `inset` resta quello
+ *    del tema, quindi il segno sta nell'angolo in alto a destra del pulsante,
+ *    dentro il suo box. Zero coordinate scritte a mano.
+ *
+ * ⛔ TRE CLASSI, E SERVONO — stessa trappola dell'altezza del drawer, pagata
+ *    due volte nello stesso giorno (Tid, 2026-09-22: «meta' fuori», poi
+ *    «troppo grande e viene tagliato ancora»). Il tema dichiara
+ *    `.p-overlaybadge .p-badge { transform: translate(50%, -50%) }`: DUE classi,
+ *    la stessa specificita' di `.app-filtri-segno .p-badge` — e gli stili di
+ *    PrimeVue sono iniettati a runtime, quindi a parita' vincono loro e il mio
+ *    override non entrava in vigore.
+ *    ⭐ La regola generale, e vale per ogni override di questo foglio: *per
+ *    sostituire una regola del tema serve UNA CLASSE IN PIU', non un
+ *    `!important`.*
+ *
+ * ⚠️ Le dimensioni del NUMERO sono derivate dall'icona (1rem = la meta' del
+ *    pulsante da 2rem), non scelte a occhio: il badge del tema e' pensato per
+ *    una topbar e su un pulsante-icona di toolbar copre il glifo.
+ * ⛔ QUI NON C'E' PIU' UN `:not(.p-badge-dot)`, e la ragione e' che il pallino
+ *    NON SI RENDE PIU' (2026-09-23): `FiltriLista` passa sempre un numero a
+ *    `:value`, quindi `Badge` non entra mai nello stato «dot». Una regola che
+ *    protegge uno stato che non esiste piu' non e' innocua: e' la prossima che
+ *    qualcuno legge come descrizione di cio' che succede.
+ *    🔴 La lezione che quel `:not()` aveva pagato resta, e vale per ogni
+ *    variante chiesta al tema: il difetto visto in-app da Tid il 2026-09-22 —
+ *    «se tolgo i filtri rimane un pallino vuoto che copre l'icona» — non stava
+ *    in questo foglio ma in un `size="small"` sul componente. Nel tema
+ *    `.p-badge-dot` (0.5rem) e `.p-badge-sm` (1.25rem) hanno la STESSA
+ *    specificita' e `sm` e' dichiarata DOPO, quindi vinceva lei.
+ *    ⭐ A parita' vince l'ULTIMA dichiarata, e dentro il tema non decido io
+ *    quale sia: un `:not()` che protegge un elemento dalle MIE misure non lo
+ *    protegge da quelle che il tema si applica da solo. Li' si smette di
+ *    CHIEDERE la variante, non si aggiunge un override piu' forte. */
+.p-overlaybadge.app-filtri-segno .p-badge {
+  transform: none;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.2rem;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
+/* ⛔ TRE CLASSI, E SERVONO TUTTE: il tema dichiara
+ *    `.p-drawer-bottom .p-drawer { height: 10rem }`, che ha la STESSA
+ *    specificita' di `.app-filtri-drawer.p-drawer` — e gli stili di PrimeVue
+ *    sono iniettati a runtime, quindi arrivano DOPO questo foglio e vincono a
+ *    parita'. Effetto: il drawer dei filtri si apriva alto 10rem, coi filtri
+ *    tagliati (Tid, 2026-09-22: «non si apre completamente»).
+ *    ⚠️ Non e' un `!important`: e' la specificita' giusta per la regola che si
+ *    sta sostituendo. Un `!important` avrebbe coperto anche il caso in cui il
+ *    tema, domani, dica una cosa piu' sensata.
+ * L'altezza la decide il CONTENUTO fino a quattro quinti di schermo, poi
+ * scorre: un'altezza cablata sarebbe giusta per la lista con due filtri e
+ * sbagliata per quella con otto. */
+.p-drawer-bottom .p-drawer.app-filtri-drawer {
+  height: auto;
+  max-height: 80vh;
+  border-top-left-radius: var(--p-border-radius-lg, 0.75rem);
+  border-top-right-radius: var(--p-border-radius-lg, 0.75rem);
+}
+
+/* ⭐ IL MOVIMENTO. Il tema anima ogni drawer in `0.5s`: su un pannello laterale
+ * alto quanto lo schermo e' giusto, su un foglio che sale dal basso di poche
+ * righe e' il doppio del necessario — si legge come un'interfaccia lenta, non
+ * come un movimento morbido (Tid, 2026-09-22: «sembra molto meccanico, non e'
+ * fluido»). La curva resta quella del tema: cambia la durata, non il carattere.
+ * ⚠️ L'altra meta' del difetto NON era qui ed era la piu' grossa: i filtri si
+ * montavano a fine animazione (`useDrawerContentReady`), quindi il pannello
+ * saliva vuoto e il contenuto compariva di scatto. Vedi il commento in
+ * `FiltriLista.vue`. */
+.p-drawer-bottom .p-drawer.app-filtri-drawer.p-drawer-enter-active,
+.p-drawer-bottom .p-drawer.app-filtri-drawer.p-drawer-leave-active {
+  animation-duration: 0.3s;
+}
+
+/* ⭐ I FILTRI NEL DRAWER: AL MASSIMO DUE PER RIGA (decisione di Tid,
+ * 2026-09-22 — «al massimo su una riga non possono esserci piu' di 2
+ * elementi»). La griglia ha due colonne, sempre: tre filtri in fila su un
+ * telefono sono tre filtri illeggibili, e un tablet non e' una ragione per
+ * cambiare la forma della maschera.
+ *
+ * ⭐ E LA COPPIA DI DATE STA SU UNA RIGA, SEMPRE. La ragione non e' che «le
+ * date sono strette»: e' che `data_da`/`data_a` **non sono due filtri**, sono
+ * UN filtro con due estremi — un periodo. Spezzarli su due righe rompe la cosa
+ * che l'operatore legge come una. ⭐ La coppia si riconosce dal MODELLO — il
+ * building block `FiltroPeriodo`, consegnato il 2026-09-22 — non piu' dal
+ * widget; la regola su `.p-datepicker` qui sotto e' il solo ripiego di
+ * transizione per le liste non ancora convertite.
+ *
+ * ⛔ TUTTO IL RESTO PRENDE LA RIGA INTERA finche' due non ci stanno LEGGIBILI:
+ * una combo con le descrizioni stretta a meta' di un telefono e' il difetto
+ * che Tid ha segnalato subito dopo («la combo servizi e' troppo piccola»). La
+ * soglia e' una `@container`, non una `@media`: dipende dalla larghezza del
+ * DRAWER, non della finestra — e il drawer e' larghezza piena, ma il giorno che
+ * non lo fosse la regola continuerebbe a valere.
+ *   27rem = 2 x 13rem (`--app-filtro-min-combo`, il pavimento di una combo
+ *   leggibile) + il gap. ⚠️ Il numero e' scritto qui perche' una `@container`
+ *   non accetta `var()`: la derivazione sta in questa riga, non in un ricordo.
+ */
+.app-filtri-drawer__corpo {
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem var(--app-space-sm);
+  align-items: start;
+  padding: 0.25rem 0 0.5rem;
+}
+
+.app-filtri-drawer__corpo > * {
+  grid-column: span 2;
+  min-width: 0;
+}
+
+/* ⭐ IL PERIODO (`FiltroPeriodo`) e' UNA cella che si prende la riga e si divide
+ * in due: i suoi estremi sono affiancati a qualunque larghezza, e restano
+ * affiancati anche sopra la soglia — non si separano mai, perche' non sono due
+ * filtri.
+ * ⛔ `:has()` accanto al figlio diretto, ed e' la correzione del 2026-09-23: la
+ *    regola parla del FILTRO, non della forma del markup che lo avvolge. Un
+ *    filtro dentro un `<div class="form-field">` con la sua etichetta — che e'
+ *    markup legittimo, e nel repo ce n'e' — non e' figlio diretto della griglia,
+ *    quindi con il solo `>` la regola si spegneva in silenzio. */
+.app-filtri-drawer__corpo > .app-filtro-periodo,
+.app-filtri-drawer__corpo > :has(.app-filtro-periodo) {
+  grid-column: span 2;
+}
+
+/* ⛔ QUI C'ERA UNA REGOLA DI TRANSIZIONE SUI `.p-datepicker`, ED E' STATA TOLTA
+ * il 2026-09-23: metteva a MEZZA riga ogni DatePicker figlio diretto della
+ * griglia, per riconoscere dal WIDGET le coppie di date che non erano ancora
+ * passate a `<FiltroPeriodo>`. La sua stessa intestazione diceva «a zero, questa
+ * regola si toglie», e il registro del cancello e' a zero.
+ * ⚠️ E non era piu' inerte: le uniche due date rimaste figlie dirette sono
+ *    DatePicker SOLI e legittimi («scadenza mese» dei contratti, «valido al» del
+ *    drawer BoM), che la regola stringeva a meta' riga anche sotto la soglia —
+ *    cioe' il difetto che «tutto il resto prende la riga intera finche' due non
+ *    ci stanno leggibili» esiste per evitare.
+ * ⭐ La lezione: una regola scritta «finche'» va tolta quando il «finche'»
+ *    scade, o smette di essere transitoria e diventa un difetto stabile. */
+
+@container (min-width: 27rem) {
+  /* Qui due filtri ci stanno leggibili: si affiancano tutti. */
+  .app-filtri-drawer__corpo > * {
+    grid-column: span 1;
+  }
+
+  /* ⛔ `:has()` accanto al figlio diretto, stessa ragione del periodo: un
+   * interruttore di filtro prende la riga intera perche' e' UN INTERRUTTORE,
+   * non perche' qualcuno si e' ricordato di non avvolgerlo. Nel repo la toolbar
+   * delle code di lavoro lo tiene dentro un `<div class="form-field">`, e con il
+   * solo `>` restava a mezza riga — invisibile da desktop. */
+  .app-filtri-drawer__corpo > .app-filtro-toggle,
+  .app-filtri-drawer__corpo > .app-filtro-largo,
+  .app-filtri-drawer__corpo > :has(.app-filtro-toggle),
+  .app-filtri-drawer__corpo > :has(.app-filtro-largo) {
+    grid-column: span 2;
+  }
+}
+
+/* `app-filtro-largo` e' la leva DICHIARATA per il filtro che a MEZZA riga non
+ * si legge nemmeno dove le combo si affiancano — un lookup ricco a due righe,
+ * una descrizione che non sopporta l'ellissi. La mette il chiamante sul
+ * singolo widget e vale solo dentro il drawer: in linea resta la sua taglia
+ * `app-filter-w-*`.
+ * ⚠️ E' una leva, non un default: se la mettessero tutti, la griglia
+ *    tornerebbe la pila di prima. */
+
+/* ⛔ NEL DRAWER LA LARGHEZZA LA DECIDE LA GRIGLIA, non la taglia del filtro:
+ *    una `app-filter-w-lg` da 16rem in una cella da mezza riga la farebbe
+ *    sbordare. Selettore con una classe in piu' del posto dove le taglie sono
+ *    dichiarate, cosi' vince per specificita' e non per ordine nel foglio
+ *    (stessa lezione del badge e dell'altezza del drawer).
+ * ⚠️ Una larghezza scritta INLINE nel tag (`style="width: 150px"`) vince
+ *    comunque su tutto questo: e' il debito del lotto L3, presidiato dal
+ *    registro di `check-filtri-lista.mjs`. Qui niente `!important` — una regola
+ *    che combatte il markup nasconde il difetto invece di toglierlo. */
+/* ⚠️ DISCENDENTE e non figlio diretto (2026-09-23): la taglia sta sul WIDGET,
+ *    e il widget puo' stare dentro un involucro (`<div class="form-field">` con
+ *    l'etichetta, un `<label>`). Col solo `>` la taglia sopravviveva dentro
+ *    l'involucro e il filtro sbordava dalla sua cella — e si vedeva solo
+ *    sotto i 1024px. La specificita' resta la stessa (due classi), quindi
+ *    continua a vincere su `.app-filter-w-*`. */
+.app-filtri-drawer__corpo [class*="app-filter-w-"] {
+  width: auto;
+}
+
+/* I due estremi del periodo: affiancati, e dentro il drawer si dividono la
+ * riga in parti uguali (la taglia `app-filter-w-sm` che portano vale in linea).
+ * `min-width: 0` perche' un DatePicker non scenda sotto il proprio contenuto e
+ * faccia sbordare la coppia. */
+.app-filtro-periodo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-space-sm);
+}
+
+.app-filtri-drawer__corpo .app-filtro-periodo {
+  display: flex;
+}
+
+.app-filtri-drawer__corpo .app-filtro-periodo > * {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+}
+
+/* Le tre taglie del filtro nella toolbar IN LINEA (desktop), al posto delle
+ * larghezze scritte nei tag. Sono la sede unica: cambiare una taglia qui
+ * riallinea tutte le liste. */
+.app-filter-w-sm {
+  width: var(--app-filter-w-sm);
+}
+
+.app-filter-w-md {
+  width: var(--app-filter-w-md);
+}
+
+.app-filter-w-lg {
+  width: var(--app-filter-w-lg);
+}
+
+/* ⚠️ UN `InputNumber` E' UN INVOLUCRO CON UN `<input>` DENTRO, e la taglia sul
+ * primo non arriva al secondo: l'input tiene la propria larghezza intrinseca e
+ * SBORDA dall'involucro — a video il bordo del numero finiva addosso al campo
+ * accanto e si vedevano due bordi (rilievo di Tid, 2026-09-18, sul picker delle
+ * rate). Prima si rimediava con `input-style="width: 9rem"` sul singolo tag,
+ * cioe' con una larghezza scritta nel markup: qui la regola vale per tutte le
+ * taglie e per chiunque le usi. */
+.p-inputnumber[class*="app-filter-w-"] > .p-inputnumber-input {
+  width: 100%;
+}
+
+.app-filtri-drawer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 /* Gruppo azioni toolbar (azioni pagina/lista) */
@@ -181,10 +538,56 @@ a {
   padding-bottom: 0.25rem;
   border-bottom: 1px solid var(--app-drawer-section-border);
 }
+/* Titolo di sezione SENZA la linea: quando la sezione segue gia' un
+   separatore (il `<Divider>` che chiude la testata di un documento), la linea
+   del titolo sarebbe una seconda riga orizzontale a pochi pixel dalla prima. */
+.app-drawer-section--senza-bordo {
+  border-bottom: none;
+}
 .app-drawer-section h4 {
   margin: 0;
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+/* ===== Riepilogo di una sotto-entita' nel drawer padre =====
+ * Sotto un `app-drawer-section` («UoM (3)», «Contatti», «Ubicazioni (N)»):
+ * la lista compatta delle prime righe, il dettaglio sottotono accanto al
+ * nome, la frase «nessuno» e il pulsante «Gestisci» che apre il drawer
+ * autonomo. Regola del 2 (2026-09-21, ok Tid): era `<style scoped>` in
+ * ArticoloDrawer, SoggettoDrawer e MagazzinoDrawer, e le copie erano GIA'
+ * divergenti — in SoggettoDrawer `.riepilogo-section` non aveva nessuna
+ * regola e la lista degli indirizzi aveva un gap suo.
+ * Uso:
+ *   <div class="app-drawer-section"><h4>…</h4></div>
+ *   <div class="app-riepilogo-section">
+ *     <div v-if="righe.length" class="app-riepilogo-list">
+ *       <div class="app-riepilogo-item"><strong>…</strong><span class="app-riepilogo-detail">…</span></div>
+ *     </div>
+ *     <div v-else class="app-riepilogo-empty">…</div>
+ *     <Button class="app-action-btn app-escape mt-025" … />
+ *   </div> */
+.app-riepilogo-section {
+  margin-top: 0.5rem;
+}
+.app-riepilogo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.app-riepilogo-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.app-riepilogo-detail {
+  color: var(--app-text-muted);
+  font-size: 0.8rem;
+}
+.app-riepilogo-empty {
+  color: var(--app-text-muted);
+  font-size: 0.85rem;
 }
 
 /* ===== Header informativo drawer (DrawerEntityHeader) =====
@@ -565,6 +968,19 @@ a {
   padding: 0 0.25rem;
 }
 
+/* Tablet e schermo stretto: via il salto pagina (JumpToPageDropdown). Doppia
+ * la navigazione ◀ 1 2 3 ▶ che resta, e il `1/N` accanto dice gia' dove si e'.
+ * ⭐ Nascosto in CSS e non tolto dal `paginatorTemplate`: il template vive in
+ *    due sedi (ListaConfigurabile + useSearchTable) e non conosce il device.
+ * ⭐ `(hover: none)` prende il tablet anche in orizzontale (>= 1024px), che
+ *    la sola soglia `BREAKPOINTS.TABLET` lascerebbe fuori: stessa condizione
+ *    del kebab azioni riga (vedi `.app-row-actions-*` piu' giu'). */
+@media (hover: none), (max-width: 1023.98px) {
+  .app-datatable .p-paginator .p-paginator-jtp-dropdown {
+    display: none;
+  }
+}
+
 .app-datatable .p-datatable-tbody > tr:hover {
   background: var(--app-table-hover-bg);
 }
@@ -679,20 +1095,6 @@ a {
   color: var(--p-text-muted-color);
 }
 
-/* Pulsante modifica riga — icona matita.
- * Colori via --app-btn-edit-* in theme.css.
- * Uso: <Button icon="pi pi-pencil" text rounded size="small" class="app-edit-btn" /> */
-.app-edit-btn.p-button {
-  color: var(--app-btn-edit-color);
-}
-.app-edit-btn.p-button:hover:not(:disabled) {
-  color: var(--app-btn-edit-hover-color);
-  background: var(--app-btn-edit-hover-bg);
-}
-.app-edit-btn.p-button:disabled {
-  color: var(--app-btn-disabled-color);
-}
-
 /* Pulsante elimina riga — icona cestino.
  * Colori via --app-btn-delete-* in theme.css.
  * Uso: <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small" class="app-delete-btn" /> */
@@ -709,8 +1111,7 @@ a {
 
 /* Pulsante "Genera PDF" / azione PDF (motore documentale).
  * Colori via --app-btn-pdf-* in theme.css. Stesso aspetto del cestino
- * (rosso PDF) ma classe semantica distinta: usata da `GeneraPdfButton`
- * e da pulsanti download PDF nelle toolbar/lista documenti generati.
+ * (rosso PDF) ma classe semantica distinta: usata dai pulsanti download PDF nelle toolbar/lista documenti generati.
  * Uso: <Button icon="pi pi-file-pdf" text rounded size="small" class="app-pdf-btn" /> */
 .app-pdf-btn.p-button {
   color: var(--app-btn-pdf-color);
@@ -777,7 +1178,15 @@ a {
 .app-row-actions-inline.app-row-actions-inline--off { display: none; }
 .app-row-actions-compact.app-row-actions-compact--on { display: inline-flex; }
 
-@media (hover: none), (max-width: 1024px) {
+/* ⚠️ `1023.98px`, NON `1024px`: la soglia e' UNA e vive in
+ * `BREAKPOINTS.TABLET` (`core/constants.js`), che `layoutMode` e `isCompatto`
+ * leggono come `< 1024` — cioe' 1024 e' DESKTOP, com'e' scritto anche nella
+ * tabella Responsive di `frontend-standards.md`. Un `max-width: 1024px`
+ * INCLUDE 1024: a quella larghezza esatta le azioni di riga si comprimevano
+ * mentre i filtri restavano in linea, cioe' la mezza schermata compatta che
+ * `isCompatto` esiste per non avere — un pixel, ma dalla parte sbagliata della
+ * sola soglia che questo progetto dichiara. */
+@media (hover: none), (max-width: 1023.98px) {
   .app-row-actions-inline { display: none; }
   .app-row-actions-compact { display: inline-flex; }
   .app-page-actions-desktop { display: none; }
@@ -921,18 +1330,37 @@ a {
 }
 
 /* Variante 3 colonne per campi corti (CIG, CUP, commessa).
- * Collassa a 1 colonna su schermi stretti (< 480px). */
+ * Collassa a 1 colonna quando il RIQUADRO che la contiene e' sotto i 25rem.
+ *   25rem (400px) sta SOTTO la larghezza utile del riquadro piu' stretto:
+ *   `DRAWER_WIDTH.SIMPLE` / `DIALOG_WIDTH.sm` = 480px meno il padding del
+ *   contenuto (2 x 1.25rem) = 440px. Una soglia a 480px li farebbe collassare
+ *   SEMPRE, anche a finestra piena — ed e' il difetto corretto il 2026-09-26.
+ *   ⚠️ Il numero e' scritto qui perche' una `@container` non accetta `var()`. */
 .form-grid-3col {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 0.75rem;
 }
 
-@media (max-width: 479px) {
+@container (max-width: 25rem) {
   .form-grid-2col,
   .form-grid-3col {
     grid-template-columns: 1fr;
   }
+}
+
+/* ===== I riquadri — dove si misurano le soglie dei form =====
+ * Una griglia di form si stringe perche' si stringe il DRAWER o la DIALOG in
+ * cui vive, non la finestra: le sue soglie sono `@container` (decisione Tid,
+ * 2026-09-26). Il contenitore e' il contenuto del drawer e quello di
+ * `AppDialog` (classe `app-riquadro` passata via `pt`): tutti e due hanno una
+ * larghezza fissata da `DRAWER_WIDTH` / `DIALOG_WIDTH`, e per questo possono
+ * portare la containment in larghezza senza collassare.
+ * ⚠️ Mai `app-riquadro` su un elemento largo quanto il suo contenuto: la
+ * containment gli toglie la larghezza intrinseca. */
+.p-drawer-content,
+.app-riquadro {
+  container-type: inline-size;
 }
 
 /* Riga inline per affiancare campi form (es. sesso + data nascita).
@@ -943,7 +1371,7 @@ a {
   align-items: flex-start;
 }
 
-@media (max-width: 479px) {
+@container (max-width: 25rem) {
   .form-row-inline {
     flex-direction: column;
   }
@@ -1029,8 +1457,9 @@ a {
  * scorre per lui, e il tetto e' il `max-height: 90%` del `Dialog`.
  *
  * Il numero sta in theme.css (`--app-dialog-lista-h`, ~dieci righe): e' il
- * passo con cui una lista in dialog nasce (`limit: PAGINATION.COMPACT_ROWS`
- * nello store), cosi' la pagina di default entra intera senza barra.
+ * passo con cui una lista in dialog nasce (`misura: USO_MISURA.COMPATTA`
+ * nello store, la COMPATTA del catalogo DB), cosi' la pagina di default entra
+ * intera senza barra.
  * `flex: none`: dentro una colonna flex l'altezza definita non si deve
  * ripartire — e' l'ambiguita' che ha gia' fatto sparire il blocco lista delle
  * dashboard (vedi `.app-dash-fermi`). */
@@ -1069,9 +1498,15 @@ a {
  * tab (es. drawer offerta tab "Revisioni", drawer pratica chiusa tutte le tab).
  * `.p-tab` e' l'unica API in uso (Tabs/Tab): il selettore gemello della
  * vecchia API v3 e' stato rimosso con la migrazione a `Tabs`. */
+/* ⭐ Il pulsante che APRE una riga (2026-09-28, brief-db-liste-righe-documento):
+ * sotto i 1024px le colonne che non entrano si ritirano nella riga di
+ * espansione, e un documento non modificabile e' proprio quello che si apre per
+ * leggerlo. Senza questa riga, su tablet, le colonne ritirate di un ordine
+ * confermato non si leggerebbero da nessuna parte. */
 .app-readonly .app-page-filters,
 .app-readonly .p-paginator,
 .app-readonly .p-datatable-thead,
+.app-readonly .p-datatable-row-toggle-button,
 .app-readonly .p-tab {
   pointer-events: auto;
   opacity: 1;
@@ -1157,90 +1592,87 @@ a {
   font-size: 0.46rem;
 }
 
-.app-nav-icon-preventivi::before {
-  content: "\e958";
+/* Famiglia dei documenti di vendita (frontend-standards §«Iconografia di
+   dominio»). Le misure stanno QUI, una volta sola: ogni documento dichiara
+   solo il simbolo del suo tipo (`content` del suo `::after`).
+   ⭐ Tid 2026-09-27: foglio con l'angolo in basso a destra APERTO, come quello
+   di `pi-file-edit` (MANAGE_ICONS.NOTE), e il simbolo del tipo, grande, dentro
+   l'apertura. Il font non ha un foglio «aperto» senza simbolo proprio: lo si
+   ricava da `pi-file` ritagliando l'angolo, cosi' il simbolo non si
+   sovrappone al tratto del foglio. */
+.app-nav-icon-preventivi::before,
+.app-nav-icon-offerte::before,
+.app-nav-icon-ordini::before,
+.app-nav-icon-ddt::before,
+.app-nav-icon-resi::before,
+.app-nav-icon-contratti::before,
+.app-nav-icon-fatture::before {
+  content: "\e958"; /* pi-file — base: la famiglia documento */
   top: 0.02rem;
-  left: 0.18rem;
-  font-size: 0.92rem;
+  left: 0.12rem;
+  font-size: 0.86rem;
+  clip-path: polygon(0 0, 100% 0, 100% 37%, 40% 37%, 40% 100%, 0 100%);
+}
+
+.app-nav-icon-preventivi::after,
+.app-nav-icon-offerte::after,
+.app-nav-icon-ordini::after,
+.app-nav-icon-ddt::after,
+.app-nav-icon-resi::after,
+.app-nav-icon-contratti::after,
+.app-nav-icon-fatture::after {
+  left: 0.52rem;
+  top: 0.4rem;
+  font-size: 0.74rem;
 }
 
 .app-nav-icon-preventivi::after {
   content: "\e942"; /* pi-pencil — overlay-tipo: bozza/proposta */
-  left: 0.74rem;
-  top: -0.04rem;
-  font-size: 0.5rem;
-}
-
-.app-nav-icon-contratti::before {
-  content: "\e958"; /* pi-file — base documento (famiglia vendite) */
-  top: 0.02rem;
-  left: 0.16rem;
-  font-size: 0.92rem;
 }
 
 .app-nav-icon-contratti::after {
   content: "\ea02"; /* pi-verified — overlay-tipo: accordo vincolante */
-  left: 0.74rem;
-  top: -0.04rem;
-  font-size: 0.5rem;
-}
-
-.app-nav-icon-ddt::before {
-  content: "\e958";
-  top: 0.02rem;
-  left: 0.12rem;
-  font-size: 0.86rem;
 }
 
 .app-nav-icon-ddt::after {
-  content: "\ea00";
-  left: 0.62rem;
-  top: 0.45rem;
-  font-size: 0.48rem;
+  content: "\ea00"; /* pi-truck — overlay-tipo: il trasporto */
 }
 
 /* Iconografia vendite (convenzione, vedi frontend-standards): base documento
    (marcatore di famiglia/area) + overlay del TIPO (differenziatore), al posto
    dell'euro condiviso. Ordini: badge carrello -> non collide col dominio
    (carrello pieno). Resi: badge freccia-ritorno -> non e' piu' un refresh. */
-.app-nav-icon-ordini::before {
-  content: "\e958";
-  top: 0.02rem;
-  left: 0.12rem;
-  font-size: 0.86rem;
-}
 .app-nav-icon-ordini::after {
   content: "\e980"; /* pi-shopping-cart */
-  left: 0.6rem;
-  top: 0.45rem;
-  font-size: 0.5rem;
 }
 
-.app-nav-icon-resi::before {
-  content: "\e958";
+.app-nav-icon-resi::after {
+  content: "\e91f"; /* pi-arrow-circle-left */
+}
+
+/* Invia a commessa (MANAGE_ICONS.INVIA_A_COMMESSA, Tid 2026-09-27): la
+   valigetta della commessa (base) + la freccia verso valle (overlay). E' un
+   GESTO, non il posto: «apri commessa» porta la valigetta nuda
+   (MANAGE_ICONS.COMMESSA). Specchio di `resi`, che porta la freccia indietro. */
+.app-nav-icon-invia-commessa::before {
+  content: "\e97d"; /* pi-briefcase */
   top: 0.02rem;
   left: 0.12rem;
   font-size: 0.86rem;
 }
-.app-nav-icon-resi::after {
-  content: "\e91f"; /* pi-arrow-circle-left */
-  left: 0.6rem;
-  top: 0.45rem;
-  font-size: 0.5rem;
+.app-nav-icon-invia-commessa::after {
+  content: "\e920"; /* pi-arrow-circle-right */
+  left: 0.66rem;
+  top: 0.46rem;
+  font-size: 0.64rem;
 }
 
-.app-nav-icon-fatture::before {
-  content: "\ea06";
-  top: 0.02rem;
-  left: 0.16rem;
-  font-size: 0.92rem;
-}
-
+/* Fattura = documento (base famiglia vendite, pi-file \e958) + overlay TIPO
+   euro. Fino al 2026-09-26 la base era la ricevuta (\ea06), la stessa di
+   Clienti: decisione Tid (R-10), la fattura e' un documento di vendita come
+   gli altri e il suo differenziatore e' l'euro. */
 .app-nav-icon-fatture::after {
   content: "\e9bd";
-  left: 0.75rem;
-  top: -0.04rem;
-  font-size: 0.5rem;
 }
 
 .app-nav-icon-listini::before {
@@ -1260,24 +1692,15 @@ a {
 /* Offerte = documento (base famiglia vendite, pi-file \e958) + overlay TIPO
    tag (pi-tag \e95e): l'offerta commerciale. Vedi frontend-standards,
    "Iconografia di dominio: base documento + overlay-tipo". */
-.app-nav-icon-offerte::before {
-  content: "\e958";
-  top: 0.02rem;
-  left: 0.16rem;
-  font-size: 0.92rem;
-}
-
 .app-nav-icon-offerte::after {
   content: "\e95e"; /* pi-tag */
-  left: 0.74rem;
-  top: -0.04rem;
-  font-size: 0.5rem;
 }
 
 /* Approvazioni prezzo = check-circle (pi-check-circle \e90a) + euro
    sovrapposto in alto a destra (pi-euro \e9bd). Semantica: "approva il
-   prezzo". Allineata al pattern preventivi/contratti/listini/fatture
-   che usano tutti l'overlay euro per le entita' vendite a valore. */
+   prezzo". L'euro qui significa PREZZO, come sui listini: base diversa dal
+   foglio dei documenti, quindi non collide con la Fattura (frontend-standards,
+   "Iconografia di dominio"). */
 .app-nav-icon-approvazioni-prezzo::before {
   content: "\e90a";
   top: 0.02rem;
@@ -1326,28 +1749,9 @@ a {
   font-size: 0.55rem;
 }
 
-/* UoM operativa = box (pi-box \e9d9) + ingranaggio sovrapposto (pi-cog \e94a).
-   Distingue le unita' di misura operative dall'icona "articolo" base
-   (pi-box semplice usato come NAV_ICONS.CATALOGO). Semantica:
-   "quanta cosa, con conversione operativa". */
-.app-nav-icon-uom::before {
-  content: "\e9d9";
-  top: 0.04rem;
-  left: 0.14rem;
-  font-size: 0.92rem;
-}
-
-.app-nav-icon-uom::after {
-  content: "\e94a";
-  left: 0.72rem;
-  top: -0.05rem;
-  font-size: 0.7rem;
-}
-
 /* Promo articoli = percentuale (pi-percentage \e9be) + box sovrapposto in
-   alto a destra (pi-box \e9d9). Stessa logica di UoM ma con ruoli invertiti:
-   l'oggetto principale e' la promo (%) e il dettaglio e' l'articolo a cui si
-   applica. Semantica: "sconto sull'articolo". */
+   alto a destra (pi-box \e9d9): l'oggetto principale e' la promo (%) e il
+   dettaglio e' l'articolo a cui si applica. Semantica: "sconto sull'articolo". */
 .app-nav-icon-promo-articoli::before {
   content: "\e9be";
   top: 0.04rem;
@@ -1621,7 +2025,7 @@ a {
   justify-content: flex-end;
 }
 
-@media (max-width: 900px) {
+@container (max-width: 899.98px) {
   .app-righe-scelte__riga {
     grid-template-columns: 1fr auto;
   }
@@ -1748,7 +2152,13 @@ a {
   color: var(--p-primary-color);
 }
 
-@media (max-width: 1023px) {
+/* ⚠️ `1023.98px` e non `1023px`: e' la stessa soglia di `BREAKPOINTS.TABLET`
+ * (`core/constants.js`, letta come `< 1024`) gia' usata dal blocco compatto piu'
+ * su. Le due grafie coincidono sui pixel interi e divergono con lo zoom, e
+ * questo foglio ne portava TRE per la stessa soglia — allineate il 2026-09-23.
+ * ⛔ Il numero resta scritto qui perche' un `@media` non accetta `var()`: la
+ * sede di verita' e' `BREAKPOINTS.TABLET`, questa riga la cita. */
+@media (max-width: 1023.98px) {
   .app-page-action .p-button-label {
     display: none;
   }
@@ -2480,7 +2890,7 @@ a {
   text-transform: capitalize;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .app-dash-layout {
     flex-direction: column;
   }
@@ -2574,4 +2984,24 @@ a {
  * fra «cos'è successo» e «cosa fare». Stessa ragione di ErroreRigaInfo. */
 .app-giornale-cosa {
   white-space: pre-line;
+}
+
+/* Badge dell'ANTEPRIMA del soggetto: indirizzi, contatti, conti e i badge
+ * che altri domini contribuiscono (accessi web). Globale perche' i badge
+ * contribuiti vivono in un altro componente: scoped, non si somiglierebbero. */
+.app-badge-anteprima {
+  font-size: 1.05rem;
+}
+
+/* Voce di un registro: una nota, un allegato, una sospensione, un evento di
+ * giornale. Filetto a sinistra e fondo tenue, lo stesso segno ovunque una
+ * scheda elenca le voci di una storia. Era scritta identica in quattro
+ * `<style scoped>` (GiornaleEventi e tre tab di pratica), con un
+ * `--p-surface-700` che in light mode non ha un corrispettivo: da qui il token
+ * `--app-voce-registro-bg`, con il suo valore per ciascun tema. */
+.app-voce-registro {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--app-toolbar-border);
+  border-radius: 0 4px 4px 0;
+  background: var(--app-voce-registro-bg);
 }

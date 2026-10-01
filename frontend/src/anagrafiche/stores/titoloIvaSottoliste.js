@@ -12,46 +12,27 @@
 // nessuna scelta delle colonne, e per il registro nemmeno un limite — cresce a
 // ogni fattura. Ora leggono i loro endpoint, che sono sempre esistiti.
 //
-// ⛔ IL PADRE E' UNA COPPIA DI ID, non uno solo, e la chiave e' una STRINGA
-//    COMPOSTA (`soggettoId|titoloId`). Due ragioni, e la seconda e' un difetto
-//    evitato:
-//      1. l'endpoint e' annidato due volte (`/soggetti/{s}/titoli-iva/{t}/...`),
-//         e il building block conosce UN solo `parentField`;
-//      2. `useDrawerTabLista` mette un `watch` sul valore del padre. Un OGGETTO
-//         `{soggettoId, titoloId}` sarebbe nuovo a ogni render — identita'
-//         diversa, stesso contenuto — e il watch rifarebbe la fetch a ogni
-//         ridisegno, senza che niente segnali il giro a vuoto. Una stringa e'
-//         un primitivo: cambia solo quando cambia davvero.
-//
-// ⚠️ Il separatore e' `|` e non `/`: un id di soggetto e' un UUID e un id di
-//    titolo un intero, quindi nessuno dei due puo' contenerlo — la `split` non
-//    ha casi limite.
+// ⭐ IL PADRE E' UNA COPPIA DI ID — l'endpoint e' annidato due volte
+//    (`/soggetti/{s}/titoli-iva/{t}/...`) — ed e' il PADRE COMPOSTO del core
+//    (`parentField: ['soggettoId', 'titoloId']`, 2026-09-27): le due parti
+//    arrivano alla `fetchPage` nell'ordine del path, e il drawer le passa a
+//    `useDrawerTabLista` una per una. ⚠️ Fino a quel giorno era una chiave-
+//    stringa `soggettoId|titoloId` con la sua `sciogli`, e da qui la forma si
+//    era ricopiata in altri tre store: il perche' della chiave (un oggetto nel
+//    `watch` rifarebbe la fetch a ogni render) ora lo scioglie il watch
+//    multi-sorgente del BB.
+// ⚠️ Nessun `emittenteParam`: le due view non dichiarano
+//    `lista_emittente_param`, il perimetro vale come sul padre.
 import { createListaStore } from '../../core/stores/createListaStore'
 import { listTitoloIvaAmbiti, listTitoloIvaMovimenti } from '../api/anagrafiche'
+import { storePerIstanza } from '../../core/stores/storePerIstanza'
 
-const SEP = '|'
-
-// Scopo: la chiave del padre, nella forma che le due fetch sanno sciogliere.
-//        Esportata perche' la compone il drawer: se la componesse a mano,
-//        drawer e store userebbero due separatori diversi il giorno che uno
-//        cambia.
-export function chiaveTitolo(soggettoId, titoloId) {
-  return `${soggettoId}${SEP}${titoloId}`
-}
-
-function sciogli(chiave) {
-  const [soggettoId, titoloId] = String(chiave).split(SEP)
-  return [soggettoId, Number(titoloId)]
-}
-
-export const useTitoloIvaAmbitiStore = createListaStore(
-  'anagrafiche-titolo-iva-ambiti',
+// ⭐ Uno store per ISTANZA del drawer (`storePerIstanza`, 2026-09-27): due
+//    drawer dello stesso tipo vivi insieme non si scrivono addosso la lista.
+export const useTitoloIvaAmbitiStore = storePerIstanza('anagrafiche-titolo-iva-ambiti', (id) => createListaStore(id,
   {
-    fetchPage: (chiave, params) => {
-      const [soggettoId, titoloId] = sciogli(chiave)
-      return listTitoloIvaAmbiti(soggettoId, titoloId, params)
-    },
-    parentField: 'chiaveTitolo',
+    fetchPage: listTitoloIvaAmbiti,
+    parentField: ['soggettoId', 'titoloId'],
     // Il titolo e' gia' scelto quando la sezione compare.
     startsEmpty: false,
     // ⛔ Nessun ordinamento di partenza: a catalogo NESSUNA colonna della 64 e'
@@ -59,16 +40,12 @@ export const useTitoloIvaAmbitiStore = createListaStore(
     //    Chiederne uno significherebbe chiedere al server una cosa che scarta.
     orderDir: null,
   },
-)
+))
 
-export const useTitoloIvaMovimentiStore = createListaStore(
-  'anagrafiche-titolo-iva-movimenti',
+export const useTitoloIvaMovimentiStore = storePerIstanza('anagrafiche-titolo-iva-movimenti', (id) => createListaStore(id,
   {
-    fetchPage: (chiave, params) => {
-      const [soggettoId, titoloId] = sciogli(chiave)
-      return listTitoloIvaMovimenti(soggettoId, titoloId, params)
-    },
-    parentField: 'chiaveTitolo',
+    fetchPage: listTitoloIvaMovimenti,
+    parentField: ['soggettoId', 'titoloId'],
     startsEmpty: false,
     // ⛔ Nessun ordinamento di partenza, ed e' voluto: senza indicazioni il
     //    backend serve il piu' RECENTE per primo, che e' come si legge un
@@ -76,4 +53,4 @@ export const useTitoloIvaMovimentiStore = createListaStore(
     //    nessuno l'abbia chiesto.
     orderDir: null,
   },
-)
+))

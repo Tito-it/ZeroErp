@@ -27,6 +27,7 @@ import { useEntityCapabilities } from '../../../core/composables/useEntityCapabi
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { statoDdtSeverity } from '../../../core/utils/severity'
 import { STATO_DDT } from '../constants'
+import { AZIONE_PUSH_COMMESSA } from '../../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import { displayDate, toDateString } from '../../../core/utils/date'
@@ -75,7 +76,13 @@ const form = ref({})
 // (BB condiviso con ordini e preventivi). ⚠️ Dichiarato qui, sopra `resetForm`
 // e i watch che lo toccano: in questo progetto una var usata da un watch
 // immediate e dichiarata dopo ha già prodotto una TDZ silenziosa.
-const { preserva: preservaForm, reset: resetFormPreserve } = useDrawerFormPreserve(form)
+const {
+  preserva: preservaForm,
+  reset: resetFormPreserve,
+  fissa: fissaForm,
+  modificato,
+  chiudiConConferma,
+} = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const detail = ref(null)
 
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_ddt_riepilogo_iva_dettaglio`).
@@ -160,6 +167,7 @@ const showResoAction = computed(
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Ordini/Preventivi/Contratti.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
@@ -169,27 +177,12 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // can_push_commessa_reason/_key. Presentazione = tooltip su pulsante
 // DISABILITATO, non banner (Decisione D, brief-db-ddt-reason-push-catch-all §3):
 // molte cause sono PERMANENTI — fattura_da_ordine e' il caso default — e un
-// banner sempre visibile sarebbe rumore perpetuo. Si sintetizza quindi lato FE
-// l'entry disabled nella stessa shape che emette il DB per le azioni di stato:
-// il mapper condiviso la rende gia' disabled+tooltip (fail-visible labelOrCode).
-const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
-const pushCommessaDisabledAction = computed(() => {
-  if (!hasDetail.value || canPushCommessa.value) return []
-  const reason = detail.value?.can_push_commessa_reason
-  const reasonKey = detail.value?.can_push_commessa_reason_key
-  if (!reason && !reasonKey) return []
-  return [{
-    key: 'push_commessa',
-    target_state: null,
-    label_key: 'vendite.ddt.azione_push_commessa',
-    severity: 'success',
-    icon: 'pi pi-arrow-right',
-    outlined: false,
-    enabled: false,
-    reason,
-    reason_key: reasonKey,
-  }]
-})
+// banner sempre visibile sarebbe rumore perpetuo. L'entry disabled la
+// sintetizza il BB (`azioneNegata`), condivisa con OrdiniDrawer.
+const pushCommessaDisabledAction = computed(() => caps.azioneNegata('can_push_commessa', {
+  ...AZIONE_PUSH_COMMESSA,
+  label_key: 'vendite.ddt.azione_push_commessa',
+}))
 
 // Campi bloccati lato UX. Una volta che il DDT esiste, il cliente NON e' piu'
 // modificabile: il BE deriva il destinatario_soggetto_ruolo dal billing_account
@@ -407,6 +400,8 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   form,
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
+  // Uscita con modifiche non salvate: prima si chiede (BB useDrawerFormPreserve).
+  confermaUscita: chiudiConConferma,
   messages: {
     bozzaCreata: t('vendite.ddt.bozza_creata'),
     abbandonoTitolo: t('vendite.ddt.abbandono_bozza_titolo'),
@@ -429,6 +424,10 @@ async function handleSave() {
       { successMessage: t('vendite.ddt.ddt_salvato') },
     )
     if (result !== null) {
+      // Salvato: la fotografia e' il form com'e' ora, PRIMA della ricarica —
+      // o `preserva` prenderebbe i valori appena salvati per «non salvati» e
+      // li rimetterebbe sopra quelli (eventualmente normalizzati) del server.
+      fissaForm()
       await loadDetail()
       emit('saved', result)
     }
@@ -604,6 +603,7 @@ const drawerActions = computed(() => {
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
+        :modificato="modificato"
         :title="t('vendite.ddt.ddt')"
         :icon="NAV_ICONS.DDT"
       />
@@ -632,14 +632,15 @@ const drawerActions = computed(() => {
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
+        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
           <template #suffix>
             <!-- Stampa DDT accompagnatorio: anteprima in bozza, gestione
                  documenti generati post-emissione. BB EntityPdfButton 1:1. -->
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.DDT"
               :entity-id="effectiveDdtId"
-              :pdf="detail.pdf"
+              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+              :pdf="capabilities.pdf"
               i18n-prefix="vendite.ddt.pdf"
               :dialog-title="detail.numero
                 ? t('vendite.ddt.pdf.dialog_title', { numero: detail.numero })
@@ -690,11 +691,13 @@ const drawerActions = computed(() => {
           :soggetto-ruolo-id="detail?.destinatario_soggetto_ruolo_id ?? null"
           :istanza-utility-id="detail?.istanza_utility_id ?? null"
           :readonly="!(canEditTestataEffective && !isReadonly)"
-          @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }" />
+          @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }"
+          :bordo="false" />
 
         <Divider />
         <DdtRigheTable
           :ddt-id="effectiveDdtId"
+          :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
           :is-modificabile="canEditRighe && !isReadonly"
           :causale-fatturabile="causaleFatturabile"
           @changed="loadDetail()"

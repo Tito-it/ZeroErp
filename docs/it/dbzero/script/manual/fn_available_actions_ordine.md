@@ -53,8 +53,6 @@ script.fn_available_actions_ordine(
             "key": "conferma",
             "target_state": "CONFERMATO",
             "label_key": "vendite.ordini.azione_conferma",
-            "severity": "info",
-            "icon": "pi pi-check",
             "requires_confirm": true,
             "outlined": false
         }
@@ -98,8 +96,6 @@ piano `piano-db-fix-orfano-push-ordine-confermato.md`):
     "key": "push_commessa",
     "target_state": null,            // non cambia stato
     "label_key": "vendite.ordini.azione_push_commessa",
-    "severity": "success",
-    "icon": "pi pi-arrow-right",
     "requires_confirm": true,
     "outlined": false
 }
@@ -147,7 +143,8 @@ da DRAFT è bloccata tutta la testata, allineata a `_UPDATE_KEYS_ORDINE` di
    `stato_id`, `codice_interno`. `NOT FOUND` → `RETURN NULL`.
 2. **Transizioni manuali** — `jsonb_agg` su `config.transizioni_stati_ordini` filtrata per
    `stato_da_id = v_stato_id AND attivo IS TRUE AND manuale IS NOT FALSE`. Metadati UI
-   (`label_key`, `severity`, `icon`, `requires_confirm`, `outlined`) da `t.meta`. Ordine:
+   (`label_key`, `requires_confirm`, `outlined`) da `t.meta`; icona e colore li sceglie
+   il frontend dal `key`. Ordine:
    `sa.ordine`. Guard defense-in-depth: `AND t.meta ? 'action_key' AND t.meta ? 'label_key'`.
 3. **`can_change_state`** — `jsonb_array_length(v_actions) > 0` calcolato **qui**, prima di
    appendere `push_commessa`.
@@ -185,3 +182,22 @@ da DRAFT è bloccata tutta la testata, allineata a `_UPDATE_KEYS_ORDINE` di
   transizione all'esecuzione è garantita dal guard
   [`trgfn_ordini_guard_transizione`](/dbzero/vendite/funzioni/trgfn_ordini_guard_transizione),
   che legge la **stessa** matrice.
+
+## Rev 2026-09-24 — «Conferma» spento finché un prezzo non è autorizzato
+
+Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*. Un
+ordine con un componente BoM **attivo** in attesa di approvazione (`PENDING`) o
+**rifiutato** (`REJECTED`) non si conferma.
+
+* **Dalla bozza**, i motivi dell'azione verso `CONFERMATO` sommano a quelli di
+  [`script.fn_check_ordine_confermabile`](/dbzero/script/funzioni/fn_check_ordine_confermabile)
+  i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati). `enabled`, `reason` e `reason_key` discendono dallo stesso array.
+* **Solo dalla bozza**, come la Regola 5 di
+  [`vendite.trgfn_ordini_guard_transizione`](/dbzero/vendite/funzioni/trgfn_ordini_guard_transizione)
+  che li solleva: il rientro in `CONFERMATO` da `EVASO` / `PARZIALMENTE_EVASO` è automatico
+  e non conferma niente di nuovo. Per questo il prezzo **non** sta in
+  `fn_check_ordine_confermabile`, che vale per ogni ingresso in `CONFERMATO`.
+
+Motivi nuovi: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
+`common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
+(changeSet `20260924-30`, brief `brief-db-preventivi-congelamento-pricing`.)

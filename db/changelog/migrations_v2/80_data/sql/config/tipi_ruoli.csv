@@ -1,13 +1,13 @@
-id,codice,descrizione,codice_interno,data_insert,user_insert,data_update,user_update,ricerca_visibile
-11,BANK,Istituti di credito,BANK_B,2025-11-24 17:59:35.076541+01,titodb,2026-02-13 11:03:40.859153+01,titodb,true
-1,CLIENTE,Cliente,CL,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,true
-2,FORNITORE,Fornitore,FO,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,true
-3,GESTORE,Gestore,GE,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,false
-8,RESELLER,Reseller,RE,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,true
-7,EMITT_FISC,Emittente fiscale,EF,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,false
-5,DISTRIB,Distributore,DI,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,true
-14,RIS_UMANA,Risorsa umana,RIS_UMANA,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,false
-9,VETTORE,Vettore,VT,2025-11-21 16:57:34.735213+01,titodb,2026-02-13 11:03:40.859153+01,titodb,true
-4,VENDITORE,Venditore,VE,2025-04-05 21:01:33.884337+02,postgres,2026-02-13 11:03:40.859153+01,titodb,true
-15,PSP,Payment service provider,PSP,2026-02-13 10:30:00+01,titodb,2026-02-13 10:30:00+01,titodb,false
-16,PROC_AUTO,Processo automatico,PROC_AUTO,2026-09-04 00:00:00+02,titodb,2026-09-04 00:00:00+02,titodb,false
+id,codice,descrizione,codice_interno,data_insert,user_insert,data_update,user_update,ricerca_visibile,entita_tabella,entita_colonna_codice
+11,BANK,Istituti di credito,BANK_B,2025-11-24 17:59:35.076541+01,titodb,2026-02-13 11:03:40.859153+01,titodb,true,anagrafiche.bank_branches,bank_code
+1,CLIENTE,Cliente,CL,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,true,anagrafiche.vw_clienti_codice_ba,NULL
+2,FORNITORE,Fornitore,FO,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,true,anagrafiche.fornitori,NULL
+3,GESTORE,Gestore,GE,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,false,NULL,NULL
+8,RESELLER,Reseller,RE,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,true,NULL,NULL
+7,EMITT_FISC,Emittente fiscale,EF,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,false,anagrafiche.emittenti_fiscali,NULL
+5,DISTRIB,Distributore,DI,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,true,NULL,NULL
+14,RIS_UMANA,Risorsa umana,RIS_UMANA,2025-04-20 11:19:51.92703+02,postgres,2026-02-13 11:03:40.859153+01,titodb,false,NULL,NULL
+9,VETTORE,Vettore,VT,2025-11-21 16:57:34.735213+01,titodb,2026-02-13 11:03:40.859153+01,titodb,true,anagrafiche.vettori,NULL
+4,VENDITORE,Venditore,VE,2025-04-05 21:01:33.884337+02,postgres,2026-02-13 11:03:40.859153+01,titodb,true,NULL,NULL
+15,PSP,Payment service provider,PSP,2026-02-13 10:30:00+01,titodb,2026-02-13 10:30:00+01,titodb,false,NULL,NULL
+16,PROC_AUTO,Processo automatico,PROC_AUTO,2026-09-04 00:00:00+02,titodb,2026-09-04 00:00:00+02,titodb,false,NULL,NULL

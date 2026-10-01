@@ -63,7 +63,7 @@ Perche' non uno dei quattro che c'erano gia':
 
 ⚠️ **E la seconda sede non e' aggirabile**: `EmailRepository.update_log_stato` instrada su quella funzione **ogni** chiusura di ambito `SISTEMA` — digest dei presidi e reset password — perche' la row level security rifiuta l'`UPDATE` diretto. Un valore aggiunto al solo `CHECK` resterebbe irraggiungibile proprio per quelle righe.
 
-⇒ Lo presidia `db/pgtap/config/test-fn-email-sistema.sql`, test 9. Il mirror lato backend (`_EMAIL_LOG_STATI_VALIDI`) ha un presidio suo, `test_email_log_stati_guardrail`.
+⇒ Lo presidia `db/pgtap/config/test-fn-email-sistema.sql`, test 9. Il mirror lato backend (`email_constants.STATI_EMAIL_LOG`) ha un presidio suo, `core/tests/db/test_email_log_stati_guardrail.py`.
 
 ---
 
@@ -78,6 +78,16 @@ Ogni email ha un `ambito` che determina chi puo' consultarla:
 | `OPERATORE` | Solo l'operatore che l'ha creata + admin                   |
 
 Le email con `pratica_id` valorizzato sono inoltre visibili dalla scheda pratica, indipendentemente dall'ambito.
+
+**Chi applica la regola.** La applica il database, con la policy `rls_email_log_ambito`. La regola sta in una funzione sola, [`script.fn_scope_email_ambito`](/dbzero/script/funzioni/fn_scope_email_ambito), la stessa delle bozze:
+
+* «admin» è il **super admin**;
+* «chi l'ha creata» è la colonna **`creato_da_user_id`**. ⚠️ Non è `auth_user_id`, che è l'utente di cui la mail *parla*: l'operatore invitato, l'utente del reset password;
+* sulle mail `REPARTO` e `OPERATORE` l'azienda (`emittente_fiscale_id`) deve essere anche nel perimetro di chi guarda: una mail di un'azienda che non si ha più in carico non si vede, nemmeno se la si è scritta;
+* il processo che spedisce la posta (`send_pending_emails`) vede le mail di ogni ambito, perché deve ritentarle. Sulle mail `REPARTO` e `OPERATORE` vede solo quelle delle aziende che segue;
+* una mail `REPARTO` deve indicare il reparto e una `OPERATORE` il suo autore: lo impongono due vincoli. Senza quella colonna la mail non la vedrebbe nessuno.
+
+⚠️ La regola della scheda pratica, qui sopra, **non è ancora applicata** dal database: si scriverà insieme alla scheda pratica.
 
 ---
 

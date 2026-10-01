@@ -4,18 +4,39 @@
 //        testata + form inline editabile per creazione/modifica
 //        (memoria feedback_master_detail_inline).
 //
+// ⭐ DAL 2026-09-27 LA LISTA E' `documenti.template_versioni` (88), montata con
+//    lo scaffolding dei tab-lista (`useDrawerTabLista` + `<DrawerTabLista>`):
+//    pagine, ordinamento, ricerca sul titolo, «Personalizza colonne». Era una
+//    `DataTable` grezza senza paginazione.
+// ⏳ DEBITO DICHIARATO (brief-db-liste-datatable-grezze §4 riga 6): il form
+//    della versione resta SOTTO la lista, al posto della lista, invece di un
+//    drawer autonomo della versione (`feedback_drawer_autonomi`). Non e' di
+//    questo giro: la conversione tocca la lista, non il master-detail.
+//
 //        Comandi versione (RowActionsMenu):
 //         - Pubblica  (solo BOZZA, dialog DatePicker valido_dal/al)
 //         - Clona     (qualunque stato, crea nuova BOZZA)
 //         - Elimina   (solo BOZZA, confirm dialog)
 //
 //        Editor HTML/CSS/markdown: textarea base. v1 senza editor
-//        visuale (Decisione 9 esplicita: fuori scope).
-import { computed, ref, watch } from 'vue'
+//        visuale (Decisione 9 esplicita: fuori scope). Accanto, gli asset
+//        dell'emittente che il render accetta (`TemplateAssetRiferimenti`,
+//        2026-10-01): un clic inserisce `asset:<codice_interno>` al cursore.
+//
+// ⭐ LA FORMA DEI DATI (2026-09-30, brief-db-documenti-versione-contesto-
+//    template): ogni versione dichiara la forma che legge
+//    (`versione_contesto`, obbligatoria, modificabile solo in BOZZA). La forma
+//    che il sistema produce oggi la dice il backend nel dettaglio del template
+//    (`versione_contesto_builder`): qui si MOSTRA e precompila la nuova
+//    versione, non si confronta — chi rifiuta pubblicazione e stampa e' il
+//    database, con la sua frase.
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateVersioniStore } from '../stores/templateVersioni'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 // `useConfirmAction` espone `confirmAction` (signature object con
 // `onAccept` callback). Memoria feedback_useconfirmaction_destructuring:
 // usare destructured + nome callback `onAccept` (non `accept`) per
@@ -27,8 +48,7 @@ import {
   PAGE_FORMATS,
   PAGE_ORIENTATIONS,
 } from '../constants/documentiVersioniWhitelists'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
@@ -41,11 +61,19 @@ import Button from 'primevue/button'
 import AppDialog from '../../core/components/AppDialog.vue'
 import Message from 'primevue/message'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import TemplateAssetRiferimenti from './TemplateAssetRiferimenti.vue'
 
 const props = defineProps({
   templateId: { type: Number, required: true },
+  // L'emittente del template (PK `emittenti_fiscali`, NOT NULL a modello):
+  // la lista lo gira al cancello di perimetro, perche' il super admin su
+  // «Tutti» non debba scegliere l'emittente del template che ha gia' aperto.
+  emittenteFiscaleId: { type: [Number, null], default: null },
+  // La forma dei dati che il builder del template produce oggi
+  // (`versione_contesto_builder` del dettaglio). `null` = builder non
+  // registrato, o dettaglio non ancora letto.
+  versioneContestoBuilder: { type: [Number, null], default: null },
   readonly: { type: Boolean, default: false },
 })
 
@@ -82,6 +110,34 @@ const isNew = computed(() => editing.value && editingVersioneId.value === null)
 watch(editing, (v) => emit('form-aperto', v))
 
 const form = ref(emptyForm())
+// Modifiche non salvate del form versione. La sezione vive solo dentro il
+// drawer aperto (il Drawer la smonta alla chiusura): basta il form aperto.
+// `modificato` e `chiudiConConferma` vanno al drawer padre, che possiede la
+// chiusura (X/ESC/clic fuori).
+const { fissa, modificato, chiudiConConferma } =
+  useDrawerFormPreserve(form, { visibile: () => editing.value })
+defineExpose({ modificato, chiudiConConferma })
+
+// Le textarea in cui il pannello degli asset inserisce un riferimento.
+const htmlTextarea = ref(null)
+const cssTextarea = ref(null)
+const TEXTAREA_PER_CAMPO = { html_template: htmlTextarea, css_template: cssTextarea }
+
+// Scopo: Inserisce il riferimento di un asset nel campo scelto, al posto
+//        della selezione (o al cursore), e rimette il cursore dopo il testo
+//        inserito. Senza un cursore noto (campo mai toccato) va in coda.
+async function inserisciRiferimento({ campo, testo }) {
+  const el = TEXTAREA_PER_CAMPO[campo]?.value?.$el
+  const valore = form.value[campo] ?? ''
+  const inizio = el?.selectionStart ?? valore.length
+  const fine = el?.selectionEnd ?? valore.length
+  form.value[campo] = valore.slice(0, inizio) + testo + valore.slice(fine)
+  await nextTick()
+  if (el) {
+    el.focus()
+    el.setSelectionRange(inizio + testo.length, inizio + testo.length)
+  }
+}
 function emptyForm() {
   return {
     titolo: '',
@@ -90,6 +146,9 @@ function emptyForm() {
     css_template: '',
     markdown_template: '',
     render_engine_id: null,
+    // Precompilata con la forma di oggi: e' una proposta a video, l'operatore
+    // la vede e la conferma col salvataggio (il backend non ha default).
+    versione_contesto: props.versioneContestoBuilder,
     page_format: 'A4',
     page_orientation: 'PORTRAIT',
     margin_top_mm: 15,
@@ -106,14 +165,39 @@ function emptyForm() {
 const pubblicaDialog = ref(false)
 const pubblicaTargetId = ref(null)
 const pubblicaForm = ref({ valido_dal: null, valido_al: null })
+// La forma letta dalla versione che si sta pubblicando, per mostrarla accanto
+// a quella del sistema nel dialog.
+const pubblicaFormaVersione = ref(null)
 
-watch(() => props.templateId, (id) => {
-  closeForm()
-  store.fetchList(id)
-}, { immediate: true })
+// Il padre e' il template: al cambio, lo scaffolding scrive l'id nello store,
+// azzera pagina e ricerca e ricarica. Il «Nuovo» sta nella barra della lista,
+// spento in sola lettura e mentre il form e' aperto.
+const {
+  searchText, onPage, onSort, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato, reloadAll,
+} = useDrawerTabLista(store, {
+  // Il padre composto: il template e il suo emittente (vedi lo store).
+  parentId: {
+    templateId: () => props.templateId,
+    emittenteId: () => props.emittenteFiscaleId,
+  },
+  searchTableOptions: { defaultSortField: 'versione', defaultSortOrder: 'desc' },
+  extraActions: () => [{
+    key: 'new-versione',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('config.modelli_documenti.versioni.new'),
+    icon: MANAGE_ICONS.ADD,
+    visible: !props.readonly && !editing.value,
+    command: openCreate,
+  }],
+})
+
+// Al cambio template il form aperto sul template precedente si chiude.
+watch(() => props.templateId, () => closeForm())
 
 async function reload() {
-  await store.fetchList(props.templateId)
+  await reloadAll()
 }
 
 function statoSeverity(stato) {
@@ -157,6 +241,7 @@ async function openCreate() {
   editingVersioneId.value = null
   form.value = emptyForm()
   editing.value = true
+  fissa()
 }
 
 async function openEdit(row) {
@@ -170,6 +255,7 @@ async function openEdit(row) {
     css_template: data.css_template ?? '',
     markdown_template: data.markdown_template ?? '',
     render_engine_id: data.render_engine_id ?? null,
+    versione_contesto: data.versione_contesto ?? null,
     page_format: data.page_format ?? 'A4',
     page_orientation: data.page_orientation ?? 'PORTRAIT',
     margin_top_mm: data.margin_top_mm ?? 15,
@@ -183,6 +269,7 @@ async function openEdit(row) {
     attivo: data.attivo ?? true,
   }
   editing.value = true
+  fissa()
 }
 
 function closeForm() {
@@ -202,6 +289,7 @@ const canSaveForm = computed(() => {
   const f = form.value
   if (!f.titolo?.trim()) return false
   if (!f.render_engine_id) return false
+  if (!f.versione_contesto) return false
   return true
 })
 
@@ -214,6 +302,7 @@ async function saveForm() {
     css_template: f.css_template || null,
     markdown_template: f.markdown_template || null,
     render_engine_id: f.render_engine_id,
+    versione_contesto: f.versione_contesto,
     page_format: f.page_format,
     page_orientation: f.page_orientation,
     margin_top_mm: toNumberOrNull(f.margin_top_mm),
@@ -265,6 +354,7 @@ function confirmDeleteVersione(row) {
 
 function openPubblicaDialog(row) {
   pubblicaTargetId.value = row.id
+  pubblicaFormaVersione.value = row.versione_contesto ?? null
   pubblicaForm.value = {
     valido_dal: parseIsoDate(row.valido_dal) || new Date(),
     valido_al: parseIsoDate(row.valido_al),
@@ -293,47 +383,49 @@ async function confirmPubblica() {
   <div class="template-versioni-section">
     <div class="section-header">
       <h3>{{ t('config.modelli_documenti.versioni.title') }}</h3>
-      <NewButton
-        v-if="!props.readonly && !editing"
-        :tooltip="t('config.modelli_documenti.versioni.new')"
-        @click="openCreate"
-      />
     </div>
 
-    <DataTable
-      v-if="!editing"
-      :value="store.items"
+    <!-- `v-show` e non `v-if`: col form aperto la lista si nasconde ma resta
+         montata — configurazione, pagina e ricerca non si rileggono a ogni
+         apertura del form. -->
+    <DrawerTabLista
+      v-show="!editing"
+      ref="listaRef"
+      codice="documenti.template_versioni"
+      :emittente-esplicito="emittenteFiscaleId"
+      :store="store"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      striped-rows
-      class="app-datatable"
-      data-key="id"
-      @row-click="(ev) => openEdit(ev.data)"
-      selection-mode="single"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      :page-actions="pageActions"
+      :dirty="dirty"
+      :perimetro-bloccato="perimetroBloccato"
+      @page="onPage"
+      @sort="onSort"
+      @row-click="openEdit"
+      @config-loaded="onConfigLoaded"
     >
-      <!-- Colonne compatte: pochi caratteri per versione (es. "v12"),
-           date in formato breve, stato/attivo come Tag.
-           La colonna azioni ha width esplicita per restare sempre visibile
-           senza spingere lo scroll orizzontale (memoria layout standard). -->
-      <Column field="versione" :header="t('config.modelli_documenti.versioni.col_versione')" style="width: 60px;" />
-      <Column field="titolo" :header="t('config.modelli_documenti.versioni.col_titolo')" />
-      <Column field="stato" :header="t('config.modelli_documenti.versioni.col_stato')" style="width: 110px;">
-        <template #body="{ data }">
-          <Tag :value="data.stato" :severity="statoSeverity(data.stato)" />
-        </template>
-      </Column>
-      <Column field="valido_dal" :header="t('config.modelli_documenti.versioni.col_valido_dal')" style="width: 100px;" />
-      <Column field="valido_al" :header="t('config.modelli_documenti.versioni.col_valido_al')" style="width: 100px;" />
-      <Column field="attivo" :header="t('common.attivo')" style="width: 80px;">
-        <template #body="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
-      </Column>
-      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" style="width: 64px;">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
-    </DataTable>
+      <template #filtri-sempre>
+        <InputText
+          v-model="searchText"
+          class="app-filter-w-lg"
+          :placeholder="t('config.modelli_documenti.versioni.search_placeholder')"
+        />
+      </template>
+      <template #cell-stato="{ data }">
+        <Tag :value="data.stato" :severity="statoSeverity(data.stato)" />
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
+      </template>
+      <template v-if="!props.readonly" #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+      </template>
+    </DrawerTabLista>
 
     <div v-if="editing" class="form-grid mt-1">
       <Message severity="info" :closable="false">
@@ -357,6 +449,21 @@ async function confirmPubblica() {
         />
       </div>
       <div class="form-field">
+        <label>{{ t('config.modelli_documenti.versioni.field_versione_contesto') }} *</label>
+        <InputNumber v-model="form.versione_contesto" :disabled="props.readonly"
+          :min="1" :use-grouping="false"
+          :invalid="campiErrati.includes('versione_contesto')"
+        />
+        <small v-if="props.versioneContestoBuilder" class="app-text-muted">
+          {{ t('config.modelli_documenti.versioni.versione_contesto_hint', {
+            forma: props.versioneContestoBuilder,
+          }) }}
+        </small>
+        <small v-else class="app-text-muted">
+          {{ t('config.modelli_documenti.versioni.versione_contesto_builder_assente') }}
+        </small>
+      </div>
+      <div class="form-field">
         <label>{{ t('config.modelli_documenti.versioni.field_formato') }}</label>
         <Select
           v-model="form.formato_template"
@@ -369,14 +476,21 @@ async function confirmPubblica() {
       </div>
       <div class="form-field form-field-wide">
         <label>{{ t('config.modelli_documenti.versioni.field_html') }}</label>
-        <Textarea v-model="form.html_template" :disabled="props.readonly" rows="10" auto-resize
+        <Textarea ref="htmlTextarea" v-model="form.html_template" :disabled="props.readonly" rows="10" auto-resize
           :invalid="campiErrati.includes('html_template')"
         />
       </div>
       <div class="form-field form-field-wide">
         <label>{{ t('config.modelli_documenti.versioni.field_css') }}</label>
-        <Textarea v-model="form.css_template" :disabled="props.readonly" rows="6" auto-resize
+        <Textarea ref="cssTextarea" v-model="form.css_template" :disabled="props.readonly" rows="6" auto-resize
           :invalid="campiErrati.includes('css_template')"
+        />
+      </div>
+      <div class="form-field form-field-wide">
+        <TemplateAssetRiferimenti
+          :emittente-fiscale-id="props.emittenteFiscaleId"
+          :readonly="props.readonly"
+          @inserisci="inserisciRiferimento"
         />
       </div>
       <div class="form-field form-field-wide">
@@ -435,7 +549,7 @@ async function confirmPubblica() {
         <Button
           :label="t('common.cancel')"
           severity="secondary"
-          @click="closeForm"
+          @click="chiudiConConferma(closeForm)"
           :disabled="loading"
         />
         <Button
@@ -460,6 +574,13 @@ async function confirmPubblica() {
       <div class="form-grid">
         <Message severity="warn" :closable="false">
           {{ t('config.modelli_documenti.versioni.publish_hint') }}
+        </Message>
+        <Message v-if="pubblicaFormaVersione && props.versioneContestoBuilder"
+          severity="info" :closable="false">
+          {{ t('config.modelli_documenti.versioni.publish_forma', {
+            versione: pubblicaFormaVersione,
+            builder: props.versioneContestoBuilder,
+          }) }}
         </Message>
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.versioni.field_valido_dal') }} *</label>

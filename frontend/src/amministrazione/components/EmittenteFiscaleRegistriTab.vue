@@ -30,7 +30,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { useRegistriNumerazioneStore } from '../stores/registriNumerazione'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
@@ -178,6 +178,7 @@ function motivoForma(data) {
       codice="vendite.registri_numerazione"
       :emittente-esplicito="emittenteSoggettoRuoloId"
       :help-text="t('amministrazione.registri_numerazione.help')"
+      :store="store"
       :rows="store.items"
       :total="store.totalRecords"
       :loading="store.loading"
@@ -192,12 +193,14 @@ function motivoForma(data) {
       @sort="onSort"
       @config-loaded="onConfigLoaded"
     >
-      <template #filtri>
+      <template #filtri-sempre>
         <InputText
           v-model="searchText"
+          class="app-filter-w-lg"
           :placeholder="t('amministrazione.registri_numerazione.filtro_placeholder')"
-          style="width: 260px;"
         />
+      </template>
+      <template #filtri>
         <!-- ⚠️ IL PLACEHOLDER PORTA L'ETICHETTA DEL DEFAULT, e non e' cosmetica:
              il valore di partenza e' `null` = TUTTI, e per PrimeVue `null` e'
              «niente selezionato» — la combo usciva VUOTA su un filtro che era
@@ -211,7 +214,7 @@ function motivoForma(data) {
           :placeholder="t('amministrazione.stato_all')"
           option-label="label"
           option-value="value"
-          style="width: 170px;"
+          class="app-filter-w-sm"
           @update:model-value="applicaFiltroStato"
         />
       </template>
@@ -241,7 +244,7 @@ function motivoForma(data) {
         <i
           v-if="data.forma_blocco_reason"
           v-tooltip.top="motivoForma(data)"
-          class="pi pi-lock app-forma-bloccata"
+          class="app-forma-bloccata" :class="STATUS_ICONS.BLOCCATO"
         />
       </template>
       <template #cell-attivo="{ data }">
@@ -253,11 +256,10 @@ function motivoForma(data) {
       </template>
       <!-- v-if sul TEMPLATE dello slot: senza slot `actions` la colonna non si
            monta affatto, che è il comportamento voluto in sola lettura. -->
-      <template v-if="!isReadonly" #actions="{ data, compact }">
+      <template v-if="!isReadonly" #actions="{ data }">
         <RowActionsMenu
           :row="data"
           :actions="buildRowActions(data)"
-          :force-compact="compact"
         />
       </template>
 

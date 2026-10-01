@@ -1,57 +1,86 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (C) 2026 Tid (Michele Carlo Titini)
+-->
 <script setup>
-import { ref, onMounted, onActivated } from 'vue'
+// Scopo: pannello della home «altre sessioni attive» dell'operatore collegato:
+//        `<ListaConfigurabile codice="core.sessioni_attive">` (colonne, ordine,
+//        personalizzazione dal catalogo), revoca di una sessione o di tutte.
+//
+// ⭐ Dal 2026-09-27 e' una lista a catalogo (brief-db-liste-datatable-grezze
+//    riga 1): fino a quel giorno una `DataTable` grezza su tutte le sessioni
+//    in una volta, con la corrente tolta in Python DOPO la lettura. Ora pagina
+//    il backend, e la corrente la toglie la SQL — cosi' il conteggio e' giusto.
+// ⭐ Il pannello si mostra, il badge conta e «revoca tutte» conferma su
+//    `store.totaleAttive` (le sessioni che ESISTONO), non su `totalRecords`
+//    (quelle che la ricerca TROVA): una ricerca senza risultati non deve far
+//    sparire il pannello con dentro la casella che l'ha svuotato.
+// ⛔ Su una lettura fallita la lista NON si azzera (il core tiene l'ultimo
+//    dato noto e alza `erroreCaricamento`): azzerarla farebbe sparire il
+//    pannello, cioe' direbbe «non hai altre sessioni attive» quando la verita'
+//    e' «non lo so». Su un pannello di sicurezza e' la bugia peggiore.
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useConfirmAction } from '../composables/useConfirmAction'
-import { useNotify } from '../composables/useNotify'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
+import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
-import api from '../api'
+import Message from 'primevue/message'
+import ListaConfigurabile from './ListaConfigurabile.vue'
+import ListaConfigStatusTag from './ListaConfigStatusTag.vue'
+import PageActionsBar from './PageActionsBar.vue'
+import FiltriLista from './FiltriLista.vue'
+import RowActionsMenu from './RowActionsMenu.vue'
+import { useConfirmAction } from '../composables/useConfirmAction'
+import { useNotify } from '../composables/useNotify'
+import { useApiHandler } from '../composables/useApiHandler'
+import { useListaConfigurabilePage } from '../composables/useListaConfigurabilePage'
+import { MANAGE_ICONS } from '../constants'
+import { useSessioniAttiveStore } from '../stores/sessioniAttive'
+import { revocaSessione as apiRevocaSessione, revocaTutteSessioni as apiRevocaTutte } from '../api/sessioni'
 
 const { t } = useI18n()
 const { confirmAction } = useConfirmAction()
 const notify = useNotify()
+const { execute } = useApiHandler()
+const store = useSessioniAttiveStore()
 
-const sessioni = ref([])
-const loading = ref(false)
+// Niente «Nuovo» ne' export: le sessioni nascono dal login, e l'elenco e' di
+// consultazione con la sola revoca. Restano ricarica e personalizza.
+const {
+  searchText, paginatorProps, onPage, onSort, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  // Allineato al preset `sessioni_attive_default` (`data_ultimo_evento desc`).
+  // Pannello della home, non lista di rotta: niente ricerca universale ne' F5.
+  searchTableOptions: {
+    defaultSortField: 'data_ultimo_evento', defaultSortOrder: 'desc', incorporata: true,
+  },
+})
+
 // ⚠️ La revoca non e' istantanea (blacklist di N token + diario): senza uno
 //    stato a video l'operatore preme, non vede niente e conclude che il
 //    pulsante non funziona — che e' esattamente quello che e' successo.
 const azioneInCorso = ref(false)
 const expanded = ref(false)
 
-async function fetchSessioni() {
-  loading.value = true
-  try {
-    const response = await api.get('/core/me/sessioni/')
-    sessioni.value = response.data.data.sessioni || []
-  } catch {
-    // ⛔ NON si azzera la lista: `sessioni = []` fa sparire tutto il pannello
-    //    (`v-if="sessioni.length > 0"`), cioe' dice «non hai altre sessioni
-    //    attive» quando la verita' e' «non lo so, la lettura e' fallita». Su un
-    //    pannello di sicurezza e' la bugia peggiore: si tiene l'ultimo dato
-    //    noto e non si afferma niente di nuovo.
-  } finally {
-    loading.value = false
-  }
-}
-
+// «Dispositivo» e' lo user agent grezzo a catalogo (`campo_sorgente =
+// user_agent`, e la ricerca cerca li'): a video browser / sistema.
 function parseUserAgent(ua) {
   if (!ua) return '—'
   // Browser
-  let browser = 'Sconosciuto'
+  let browser = t('sessions.unknown_browser')
   if (ua.includes('Firefox/')) browser = 'Firefox'
   else if (ua.includes('Edg/')) browser = 'Edge'
   else if (ua.includes('Chrome/')) browser = 'Chrome'
   else if (ua.includes('Safari/')) browser = 'Safari'
-  // OS
+  // OS — ⚠️ i mobili PRIMA dei desktop: lo user agent Android contiene
+  // «Linux», quello iPhone/iPad «like Mac OS X».
   let os = ''
   if (ua.includes('Windows')) os = 'Windows'
-  else if (ua.includes('Mac OS')) os = 'macOS'
-  else if (ua.includes('Linux')) os = 'Linux'
   else if (ua.includes('Android')) os = 'Android'
   else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS'
+  else if (ua.includes('Mac OS')) os = 'macOS'
+  else if (ua.includes('Linux')) os = 'Linux'
   return os ? `${browser} / ${os}` : browser
 }
 
@@ -70,6 +99,20 @@ function timeAgo(dateStr) {
   return t('sessions.days_ago', { n: diffDays })
 }
 
+// Scopo: l'unica azione di riga, la revoca — spenta mentre un'altra e' in corso.
+function buildRowActions(data) {
+  return [
+    {
+      key: 'revoca',
+      label: t('sessions.revoke'),
+      icon: MANAGE_ICONS.REVOCA,
+      severity: 'danger',
+      disabled: azioneInCorso.value,
+      command: () => confermaRevoca(data),
+    },
+  ]
+}
+
 function confermaRevoca(sessione) {
   const device = parseUserAgent(sessione.user_agent)
   const ip = sessione.ip_address || '—'
@@ -82,10 +125,12 @@ function confermaRevoca(sessione) {
   })
 }
 
+// ⚠️ Il numero e' quello delle sessioni ATTIVE, non delle trovate: «revoca
+//    tutte» le revoca tutte, qualunque cosa ci sia nella casella di ricerca.
 function confermaRevocaTutte() {
   confirmAction({
     header: t('sessions.revoke_all_confirm_title'),
-    message: t('sessions.revoke_all_confirm_message', { count: sessioni.value.length }),
+    message: t('sessions.revoke_all_confirm_message', { count: store.totaleAttive }),
     acceptLabel: t('sessions.revoke_all'),
     danger: true,
     onAccept: revocaTutteSessioni,
@@ -95,11 +140,11 @@ function confermaRevocaTutte() {
 async function revocaSessione(jti) {
   azioneInCorso.value = true
   try {
-    await api.post(`/core/me/sessioni/${jti}/revoca/`)
+    // L'errore lo mostra `execute` con il messaggio del backend.
+    const esito = await execute(() => apiRevocaSessione(jti))
+    if (esito === null) return
     notify.success(t('sessions.revoke_success'))
-    await fetchSessioni()
-  } catch {
-    notify.error()
+    await store.fetchList()
   } finally {
     azioneInCorso.value = false
   }
@@ -116,36 +161,34 @@ async function revocaSessione(jti) {
 async function revocaTutteSessioni() {
   azioneInCorso.value = true
   try {
-    const res = await api.post('/core/me/sessioni/revoca-tutte/')
-    const revocate = res.data?.data?.revoked ?? 0
+    const esito = await execute(() => apiRevocaTutte())
+    if (esito === null) return
+    const revocate = esito.revoked ?? 0
     notify.success(t('sessions.revoke_all_success', { count: revocate }))
-    await fetchSessioni()
-  } catch {
-    notify.error()
+    await store.fetchList()
   } finally {
     azioneInCorso.value = false
   }
 }
 
-// ⚠️ `onActivated` oltre a `onMounted`: la home vive sotto KeepAlive, quindi
-//    tornandoci il componente non si rimonta e l'elenco resterebbe quello
-//    dell'ultimo mount — su un pannello di sessioni attive, vecchio di ore.
-onMounted(fetchSessioni)
-onActivated(fetchSessioni)
+// ⚠️ Solo `onMounted`: il rientro sotto KeepAlive (la home ci vive) lo
+//    rinfresca gia' `useSearchTable` dentro lo scaffolding, sulla pagina
+//    corrente. Il pannello chiuso legge lo stesso: il badge deve contare.
+onMounted(() => { store.fetchList() })
 </script>
 
 <template>
-  <div v-if="sessioni.length > 0" class="sessioni-panel">
+  <div v-if="store.totaleAttive > 0" class="sessioni-panel">
     <div class="sessioni-header">
       <h3 class="sessioni-title">
-        <i class="pi pi-shield"></i>
+        <i :class="MANAGE_ICONS.SESSIONI"></i>
         <span>{{ t('sessions.other_active_title') }}</span>
-        <Badge :value="sessioni.length" severity="warn" />
+        <Badge :value="store.totaleAttive" severity="warn" />
       </h3>
       <div class="sessioni-actions">
         <Button
           :label="t('sessions.revoke_all')"
-          icon="pi pi-times"
+          :icon="MANAGE_ICONS.REVOCA"
           severity="danger"
           text
           size="small"
@@ -154,7 +197,7 @@ onActivated(fetchSessioni)
           @click="confermaRevocaTutte"
         />
         <Button
-          :icon="expanded ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"
+          :icon="expanded ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND"
           text
           rounded
           size="small"
@@ -164,36 +207,59 @@ onActivated(fetchSessioni)
         />
       </div>
     </div>
-    <DataTable v-if="expanded" :value="sessioni" size="small" stripedRows class="app-datatable">
-      <Column :header="t('sessions.device')">
-        <template #body="{ data }">
+    <template v-if="expanded">
+      <div class="app-page-toolbar">
+        <FiltriLista :store="store">
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
+        </FiltriLista>
+        <PageActionsBar :actions="pageActions">
+          <template #suffix>
+            <ListaConfigStatusTag :dirty="dirty" />
+          </template>
+        </PageActionsBar>
+      </div>
+      <!-- «Non so» non e' «nessuna sessione»: una lettura fallita lascia a
+           video l'ultimo dato noto, e lo dice. -->
+      <Message v-if="store.erroreCaricamento" severity="warn" :closable="false" size="small">
+        {{ t('sessions.load_error') }}
+      </Message>
+      <ListaConfigurabile
+        ref="listaRef"
+        codice="core.sessioni_attive"
+        data-key="jti"
+        :rows="store.items"
+        :total="store.totalRecords"
+        :loading="store.loading"
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
+        :azioni-inline="1"
+        @page="onPage"
+        @sort="onSort"
+        @config-loaded="onConfigLoaded"
+      >
+        <template #cell-dispositivo="{ data }">
           {{ parseUserAgent(data.user_agent) }}
         </template>
-      </Column>
-      <Column :header="t('sessions.ip_address')">
-        <template #body="{ data }">
-          {{ data.ip_address || '—' }}
-        </template>
-      </Column>
-      <Column :header="t('sessions.last_access')">
-        <template #body="{ data }">
+        <!-- A video il tempo trascorso («2 ore fa»): e' la domanda del
+             pannello, «questa sessione e' viva?». L'export porta la data. -->
+        <template #cell-data_ultimo_evento="{ data }">
           {{ timeAgo(data.data_ultimo_evento) }}
         </template>
-      </Column>
-      <Column :header="t('sessions.action')" style="width: 100px; text-align: center;">
-        <template #body="{ data }">
-          <Button
-            :label="t('sessions.revoke')"
-            icon="pi pi-times"
-            severity="danger"
-            size="small"
-            text
-            :disabled="azioneInCorso"
-            @click="confermaRevoca(data)"
-          />
+        <!-- ⛔ Lo slot del kebab si chiama `#actions`: col nome sbagliato la
+             colonna non viene resa affatto, e senza errori. -->
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
-      </Column>
-    </DataTable>
+      </ListaConfigurabile>
+    </template>
   </div>
 </template>
 
@@ -202,8 +268,6 @@ onActivated(fetchSessioni)
   width: 100%;
   margin-bottom: 1.5rem;
 }
-
-/* Font e padding DataTable ereditati da .app-datatable (main.css) */
 
 .sessioni-header {
   display: flex;
@@ -225,11 +289,11 @@ onActivated(fetchSessioni)
   gap: 0.5rem;
   font-size: var(--app-font-size-base);
   font-weight: 600;
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   margin: 0;
 }
 
 .sessioni-title i {
-  color: var(--p-orange-400);
+  color: var(--app-warning-color);
 }
 </style>

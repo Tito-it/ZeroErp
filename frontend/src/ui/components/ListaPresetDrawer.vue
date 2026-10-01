@@ -22,8 +22,11 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { USO_MISURA, misuraDefault, misureOpzioni } from '../../core/misurePagina'
+import { NAV_ICONS } from '../../core/navigation'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
 
@@ -75,6 +78,9 @@ function defaultForm() {
 }
 
 const form = ref(defaultForm())
+// Modifiche non salvate: fotografia a form popolato, conferma alla chiusura
+// (BB useDrawerFormPreserve). Prima del watch immediate (TDZ).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 // Watch su props.recordData per pre-popolare il form in edit. Usa la
 // risposta admin che include gia' tutti i campi.
@@ -96,6 +102,7 @@ watch(
     } else {
       form.value = defaultForm()
     }
+    fissa()
   },
   { immediate: true },
 )
@@ -128,9 +135,9 @@ function buildPayload() {
     is_default: form.value.is_default,
     attivo: form.value.attivo,
   }
-  if (form.value.pagina_dimensione != null) {
-    payload.pagina_dimensione = form.value.pagina_dimensione
-  }
+  // Sempre, anche NULL: in modifica e' il modo di tornare al default. Prima si
+  // mandava solo se valorizzata, e una misura tolta a video restava a DB.
+  payload.pagina_dimensione = form.value.pagina_dimensione ?? null
   if (!isEdit.value) {
     // Campi immutabili: solo in create.
     payload.ambito = form.value.ambito
@@ -167,12 +174,14 @@ function onCancel() {
   emit('cancelled')
   emit('update:visible', false)
 }
+const chiudi = () => chiudiConConferma(onCancel)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="(v) => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :modal="true"
@@ -181,9 +190,10 @@ function onCancel() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('ui.admin.preset')"
-        icon="pi pi-th-large"
+        :icon="NAV_ICONS.PERSONALIZZAZIONI_LISTE"
       />
     </template>
 
@@ -201,11 +211,15 @@ function onCancel() {
           </div>
           <div class="form-field">
             <label>{{ t('ui.admin.preset_pagina_dimensione') }}</label>
-            <InputNumber
+            <!-- ⭐ Le misure del catalogo DB (`ui.misure_pagina`), non un numero
+                 libero: fino al 2026-09-30 era un InputNumber 1-500, che faceva
+                 scrivere misure che il paginatore non offre. Vuoto = «il
+                 default» (NULL a DB). -->
+            <Select
               v-model="form.pagina_dimensione"
-              :min="1"
-              :max="500"
-              show-buttons
+              :options="misureOpzioni()"
+              :placeholder="t('ui.admin.preset_pagina_dimensione_default', { misura: misuraDefault(USO_MISURA.PAGINA) })"
+              show-clear
               :invalid="campiErrati.includes('pagina_dimensione')"
             />
           </div>
@@ -295,7 +309,7 @@ function onCancel() {
       :loading="loading"
       :disabled="!canSave"
       @save="onSave"
-      @cancel="onCancel"
+      @cancel="chiudi"
     />
   </Drawer>
 </template>

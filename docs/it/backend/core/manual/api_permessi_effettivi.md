@@ -8,14 +8,15 @@ consentite e lo stato del profilo reparto.
 
 ## Contesto
 
-View in `apps/core/api/views.py`:
-- `ApiPermessiEffettivi` — logica base
-- `ApiPermessiEffettivi` — versione protetta JWT
+View `ApiPermessiEffettivi` in `apps/core/api/views.py` (`DomainAPIView`,
+`skip_area_check = True`).
 
-L'endpoint utilizza `PermissionResolver` per risolvere la catena completa
-(ruolo_sistema → override utente → profilo reparto → BLOCCATO) su ogni area funzionale
-attiva in `config.aree_funzionali`. Serve a rendere trasparente la risoluzione permessi
-per diagnostica e onboarding.
+La risoluzione e' tutta delegata al DB tramite `PermissionResolver`:
+`script.fn_resolve_livello_area` per l'area (catena: veste OPERATORE attiva →
+super admin = `TUTTO` → override utente → profili applicabili → `BLOCCATO`) e
+`script.fn_resolve_livello_oggetto` per ogni model configurabile dell'area. Si
+iterano le aree attive di `config.aree_funzionali`. Serve a rendere trasparente la
+risoluzione permessi per diagnostica e onboarding.
 
 ## Endpoint
 
@@ -23,7 +24,7 @@ per diagnostica e onboarding.
 GET /api/v1/core/users/{user_id}/permessi-effettivi/
 ```
 
-Richiede autenticazione JWT.
+Richiede autenticazione JWT (`JwtAuditAuthentication`).
 
 ## Input
 
@@ -40,7 +41,9 @@ Path parameter:
   "data": {
     "user_id": 1,
     "username": "mario.rossi",
-    "ruolo_sistema": "OPERATIVO",
+    "is_super_admin": false,
+    "veste_operatore_attiva": true,
+    "is_active": true,
     "unita_organizzativa_id": 10,
     "aree": [
       {
@@ -49,7 +52,10 @@ Path parameter:
         "descrizione": "Vendite",
         "livello": "TUTTO",
         "azioni_consentite": ["add", "change", "delete", "view"],
-        "has_profilo_reparto": true
+        "has_profilo_reparto": true,
+        "modelli": [
+          {"app_label": "vendite", "model_name": "contratto", "livello": "LETTURA"}
+        ]
       },
       {
         "codice": "ACQUISTI",
@@ -57,7 +63,8 @@ Path parameter:
         "descrizione": "Acquisti",
         "livello": "BLOCCATO",
         "azioni_consentite": [],
-        "has_profilo_reparto": false
+        "has_profilo_reparto": false,
+        "modelli": []
       }
     ],
     "emittenti_ids": [1, 3, 5]
@@ -68,39 +75,58 @@ Path parameter:
 
 Campi risposta:
 
-| Campo                   | Tipo          | Note                                                      |
-|-------------------------|---------------|-----------------------------------------------------------|
-| `user_id`               | int           | ID utente consultato                                      |
-| `username`              | string        | Username Django                                           |
-| `ruolo_sistema`         | string\|null  | `ADMIN`, `OPERATIVO`, `DISABILITATO` o `null` (no bridge) |
-| `unita_organizzativa_id`| int\|null     | Reparto dell'utente (da `risorse_umane`)                  |
-| `aree`                  | array         | Livello effettivo per ogni area funzionale attiva         |
-| `aree[].codice`         | string        | Codice area (es. `VENDITE`)                               |
-| `aree[].schema_db`      | string        | Schema DB corrispondente                                  |
-| `aree[].livello`        | string        | `TUTTO`, `LETTURA` o `BLOCCATO`                           |
-| `aree[].azioni_consentite` | array      | Azioni CRUD consentite dal livello                        |
-| `aree[].has_profilo_reparto` | bool     | `true` se il reparto ha un profilo per questa area        |
-| `emittenti_ids`         | array\|null   | ID emittenti autorizzati, `null` = nessuna restrizione    |
+| Campo                          | Tipo          | Note                                                      |
+|--------------------------------|---------------|-----------------------------------------------------------|
+| `user_id`                      | int           | ID utente consultato                                      |
+| `username`                     | string        | Username Django                                           |
+| `is_super_admin`               | bool          | Binding SUPER_ADMIN attivo sulla veste OPERATORE (`script.fn_is_super_admin`) |
+| `veste_operatore_attiva`       | bool          | Il consultato ha una veste OPERATORE attiva e nella finestra (`script.fn_has_identita_attiva`). `false` ⇒ ogni area `BLOCCATO` |
+| `is_active`                    | bool          | `auth_user.is_active`: puo' fare login o no               |
+| `unita_organizzativa_id`       | int\|null     | Reparto (`script.fn_get_uo_id_for_user`); null per non operatori o senza risorsa umana attiva |
+| `aree`                         | array         | Livello effettivo per ogni area funzionale attiva         |
+| `aree[].codice`                | string        | Codice area (es. `VENDITE`)                               |
+| `aree[].schema_db`             | string        | Schema DB corrispondente                                  |
+| `aree[].descrizione`           | string        | Descrizione area                                          |
+| `aree[].livello`               | string        | `TUTTO`, `LETTURA` o `BLOCCATO`                           |
+| `aree[].azioni_consentite`     | array         | Azioni CRUD consentite dal livello, ordinate              |
+| `aree[].has_profilo_reparto`   | bool          | `true` se almeno un profilo applicabile (AD_HOC, REPARTO, PORTALE) configura l'area |
+| `aree[].modelli`               | array         | Un elemento per ogni model configurabile dell'area (`config.area_model_overrides`) |
+| `aree[].modelli[].app_label`   | string        | App Django del model                                      |
+| `aree[].modelli[].model_name`  | string        | Nome del model                                            |
+| `aree[].modelli[].livello`     | string        | Livello oggetto risolto (`TUTTO`, `LETTURA`, `BLOCCATO`)  |
+| `emittenti_ids`                | array\|null   | PK `emittenti_fiscali.id` autorizzate; `null` = nessuna restrizione (super admin); `[]` = nessun accesso (nessuna veste OPERATORE attiva) |
 
 ## Regole
 
-- Solo utenti con `ruolo_sistema = ADMIN` o `is_superuser = True` possono consultare i permessi
-  di **altri** utenti. Un utente OPERATIVO puo' consultare solo i propri.
-- Se `user_id` non esiste, restituisce errore `E_CORE_VALIDATION` (400).
+- Solo superuser Django o utenti con binding SUPER_ADMIN possono consultare i permessi
+  di **altri** utenti; tutti gli altri possono consultare solo i propri.
 - Se l'utente non ha il permesso di consultare altri, restituisce `E_PERMESSO_NEGATO` (403).
-- Per utenti `ADMIN`: tutte le aree risultano `TUTTO`.
-- Per utenti `DISABILITATO`: tutte le aree risultano `BLOCCATO`.
-- `has_profilo_reparto = false` con `livello = BLOCCATO` indica che il reparto non ha ancora
-  un profilo configurato (diverso da un profilo che imposta esplicitamente BLOCCATO).
+- Se `user_id` non esiste, restituisce `E_CORE_VALIDATION` (400).
+  > ⚠️ Difetto noto (E-4): un «non trovato» che esce 400 — vedi
+  > [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+- Utente senza veste OPERATORE attiva: tutte le aree risultano `BLOCCATO`.
+- Super admin: tutte le aree risultano `TUTTO`.
+- `has_profilo_reparto = false` con `livello = BLOCCATO` indica che nessun profilo
+  applicabile configura l'area (diverso da un profilo che imposta esplicitamente
+  BLOCCATO). Il nome del campo resta per compatibilita' col frontend.
+- ⭐ **Livelli e super admin sono della veste OPERATORE.** Le altre vesti
+  (portale, shop) non hanno livelli d'area: le governa la porta. Per questo la
+  risposta non porta «il» ruolo applicativo del consultato — una credenziale puo'
+  averne piu' d'uno — ma il fatto da cui i livelli dipendono,
+  `veste_operatore_attiva`.
+- ⛔ Fino al 2026-09-27 c'era `ruolo_applicativo`, letto dalla GUC della
+  sessione: per un altro utente riportava la veste di **chi guarda** (sempre
+  OPERATORE), anche per un cliente del portale (S-6, chiuso).
 - `emittenti_ids = null` significa nessuna restrizione ambito emittente (l'utente vede tutto).
 
 ## Dipendenze DB
 
 - `config.aree_funzionali` — iterazione aree attive
-- `anagrafiche.identita_digitali` — identita' e `ruolo_applicativo` (⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1); `ruolo_sistema` e' caduto in Fase 7)
-- `anagrafiche.risorse_umane` — unita_organizzativa_id
-- `config.user_override_aree` — override individuali area
-- `config.profili_reparto_aree` — profili reparto ereditati
+- `anagrafiche.identita_digitali` — veste OPERATORE del consultato (`script.fn_has_identita_attiva`)
+- `anagrafiche.risorse_umane` — unita_organizzativa_id (via `script.fn_get_uo_id_for_user`)
+- `config.user_override_aree` / `config.user_override_oggetti` — override individuali area e oggetto
+- `config.profili_accesso`, `config.profili_accesso_aree`, `config.profili_accesso_bindings` — profili applicabili
+- `config.area_model_overrides` — model configurabili per area (`modelli[]`)
 - `config.user_emittenti_fiscali` — ambito emittente fiscale
 
 ## Codici errore
@@ -108,5 +134,5 @@ Campi risposta:
 | Codice              | HTTP | Causa                                        |
 |---------------------|------|----------------------------------------------|
 | `E_PERMESSO_NEGATO` | 403  | Utente non autorizzato a consultare altri     |
-| `E_CORE_VALIDATION` | 400  | `user_id` non trovato                        |
+| `E_CORE_VALIDATION` | 400  | `user_id` non trovato (difetto E-4)          |
 | `E_GENERICO`        | 500  | Errore imprevisto                            |

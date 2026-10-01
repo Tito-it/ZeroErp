@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
 import { lookupCodici } from '../../core/apiCore'
@@ -16,6 +17,7 @@ import { getUiActivity } from '../uiActivityRegistry'
 import { getCompletionDialog } from '../flussoCompletionRegistry'
 import { getDomainCompletion } from '../flussoDomainCompletionRegistry'
 import { DRAWER_WIDTH, STATO_FLUSSO, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -43,6 +45,11 @@ const emit = defineEmits(['update:visible', 'saved', 'open-attivita'])
 
 const esito = ref(null)
 const noteEsito = ref('')
+
+// Modifiche non salvate: il form esito e' spezzato su due ref, si raccolgono.
+const formEsito = computed(() => ({ esito: esito.value, note_esito: noteEsito.value }))
+const { fissa, modificato, chiudiConConferma } =
+  useDrawerFormPreserve(formEsito, { visibile: () => props.visible })
 
 // GUIDA (D4): step PROJECTION-DRIVEN = attende il verdetto di un documento
 // (`template_attende_sorgente_tipo_id` non-null, esposto dal BE). Per questi
@@ -178,6 +185,7 @@ watch(() => props.visible, (val) => {
   if (val) {
     esito.value = null
     noteEsito.value = ''
+    fissa()
     // Pre-seleziona l'esito_default (CONTESTUALE) SOLO se presente fra le
     // opzioni selezionabili caricate: un default fuori lista sarebbe un
     // valore invisibile a video ma inviato al BE (stessa classe di bug del
@@ -189,7 +197,12 @@ watch(() => props.visible, (val) => {
       .then(() => {
         const def = esitoDefault.value
         if (esito.value == null && def && esitiOptions.value.some(o => o.value === def)) {
+          // La preselezione e' del codice, non dell'operatore: la fotografia
+          // la include — ma solo se l'operatore non ha gia' scritto le note
+          // (fissare ora le assorbirebbe come «salvate»).
+          const intatto = !modificato.value
           esito.value = def
+          if (intatto) fissa()
         }
       })
       .catch(() => { /* errore gia' in errorRef del lookup */ })
@@ -212,7 +225,7 @@ const drawerActions = computed(() => {
       label: modalita.value === 'AUTOMATICO'
         ? t('pratiche.flusso_avvia_e_completa')
         : t('pratiche.flusso_avvia'),
-      icon: modalita.value === 'AUTOMATICO' ? 'pi pi-check' : 'pi pi-play',
+      icon: modalita.value === 'AUTOMATICO' ? MANAGE_ICONS.ESEGUI : MANAGE_ICONS.PLAY,
       severity: 'info',
       visible: !effectiveReadonly.value
         && stato.value === STATO_FLUSSO.DA_ESEGUIRE
@@ -368,6 +381,8 @@ async function onDomainComplete() {
 }
 
 const onClose = useDrawerClose(emit)
+const chiudi = () => chiudiConConferma(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -375,14 +390,15 @@ const onClose = useDrawerClose(emit)
     :visible="props.visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @update:visible="val => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
         :action="t('pratiche.flusso_esecuzione')"
+        :modificato="modificato"
         :title="flusso?.template_flusso_descrizione || t('pratiche.flusso_generico')"
-        icon="pi pi-briefcase"
+        :icon="NAV_ICONS.PRATICHE"
       />
     </template>
 
@@ -499,16 +515,16 @@ const onClose = useDrawerClose(emit)
         :loading="loading"
         :disabled="!esito"
         @save="onCompleta"
-        @cancel="onClose"
+        @cancel="chiudi"
       />
       <FormFooter
         v-else-if="showDomainComplete"
         :loading="loading"
         :save-label="t(domainCompletion.label)"
         @save="onDomainComplete"
-        @cancel="onClose"
+        @cancel="chiudi"
       />
-      <FormFooter v-else close-only @cancel="onClose" />
+      <FormFooter v-else close-only @cancel="chiudi" />
       </template>
     </div>
 

@@ -15,17 +15,19 @@
 | vista_sql | character varying | YES |  |
 | note | text | YES |  |
 | attivo | boolean | NO | true |
-| data_insert | timestamp without time zone | NO | now() |
+| data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying | NO |  |
-| data_update | timestamp without time zone | YES |  |
+| data_update | timestamp with time zone | YES |  |
 | user_update | character varying | YES |  |
 | multi_emittente | boolean | NO | false |
 | perimetro_emittente | boolean | NO | true |
+| ricerca_min_caratteri | smallint | NO | 3 |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ui_lista_definizione_perimetro_coerente |  |
+| CHECK | chk_ui_lista_definizione_ricerca_min_caratteri |  |
 | PRIMARY KEY | lista_definizione_pkey | id |
 | UNIQUE | uq_ui_lista_definizione_codice | codice |
 

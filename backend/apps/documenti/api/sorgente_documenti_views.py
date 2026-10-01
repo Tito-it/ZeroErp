@@ -22,7 +22,7 @@
 #        (prima transizione di stato, poi genera_documento con savepoint
 #        annidato: se il render fallisce lo stato rollbacka), envelope
 #        success_response, Content-Disposition inline (anteprima) vs
-#        attachment (download), paginazione lista cap 200, defense-in-depth
+#        attachment (download), lista col contratto standard (cap 200), defense-in-depth
 #        `resolve_contesto` su ogni endpoint nested (tampering URL -> 404).
 # ------------------------------------------------------------
 
@@ -41,7 +41,13 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import optional_int, qp_int
+from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.payload_validators import (
+    corpo_oggetto,
+    optional_int,
+    paginated_envelope,
+    parse_list_params,
+)
 from apps.core.api.success_responses import success_response
 from apps.documenti.api.contesto_helpers import resolve_contesto_documentale
 from apps.documenti.api.multipart_helpers import extract_allegati
@@ -69,6 +75,13 @@ from apps.documenti.api.multipart_helpers import extract_allegati
 #                             emetti_call is None.
 #         - emetti_post_permission: azione di processo per emetti (opzionale,
 #                             es. "cambia_stato_preventivi")
+#         - area_funzionale:  area delle view (default "vendite")
+#         - model_permission: oggetto del catalogo permessi della sorgente
+#                             (es. ("vendite", "preventivo")): i documenti sono
+#                             una parte dell'oggetto, e ne chiedono il livello
+#                             (brief-db-be-fe-catalogo-oggetti-permessi §3.2).
+#                             None = solo l'area. Si applica a tutte le view in
+#                             UN punto (fine della factory), come l'area.
 def build_documenti_sorgente_views(
     *,
     schema_prefix: str,
@@ -81,6 +94,7 @@ def build_documenti_sorgente_views(
     emetti_response_key: str | None = None,
     emetti_post_permission: str | None = None,
     area_funzionale: str = "vendite",
+    model_permission: tuple[str, str] | None = None,
 ) -> SimpleNamespace:
 
     # Scopo: Risolve il contesto comune (entity + sorgente_tipo_id) con i
@@ -126,7 +140,7 @@ def build_documenti_sorgente_views(
         #        rollback dell'atomic esterno: stato invariato, niente record
         #        documentale orfano.
         def post(self, request: Request, sorgente_id: int) -> JsonResponse:
-            payload = request.data if isinstance(request.data, dict) else {}
+            payload = corpo_oggetto(request)
             template_id = optional_int(payload, "template_documento_id")
             tipo_output_id = optional_int(payload, "tipo_documento_output_id")
             allegati = extract_allegati(request)
@@ -151,7 +165,6 @@ def build_documenti_sorgente_views(
             })
 
     Emetti.__doc__ = f"`POST .../<sorgente_id>/emetti/` (multipart) — {schema_prefix}."
-    Emetti.area_funzionale = area_funzionale
     if emetti_post_permission is not None:
         Emetti.post_permission = emetti_post_permission
     # Sorgenti senza emissione manuale (FATTURA): la view emetti non viene
@@ -206,7 +219,6 @@ def build_documenti_sorgente_views(
             return handle_post_json(request, handler=_execute)
 
     DocumentoGenera.__doc__ = f"`POST .../documenti/genera/` — {schema_prefix}."
-    DocumentoGenera.area_funzionale = area_funzionale
 
     class DocumentoAnteprima(DomainAPIView):
         @extend_schema(
@@ -224,7 +236,7 @@ def build_documenti_sorgente_views(
         #        `application/pdf` inline (il browser decide se aprire).
         def post(self, request: Request, sorgente_id: int) -> HttpResponse:
             # Manuale (no `handle_post_json`): la risposta e' binaria, non JSON.
-            payload = request.data if isinstance(request.data, dict) else {}
+            payload = corpo_oggetto(request)
             entity, sorgente_tipo_id = _resolve_contesto(sorgente_id)
             template_id = optional_int(payload, "template_documento_id")
             tipo_output_id = optional_int(payload, "tipo_documento_output_id")
@@ -248,13 +260,44 @@ def build_documenti_sorgente_views(
             return response
 
     DocumentoAnteprima.__doc__ = f"`POST .../documenti/anteprima/` — {schema_prefix}."
-    DocumentoAnteprima.area_funzionale = area_funzionale
 
     class DocumentiList(DomainAPIView):
+        is_search_endpoint = True
+        # ⭐ Il codice e' SCRITTO QUI, nella classe della factory, e non passato
+        #    come parametro: gli otto domini sorgente servono tutti la STESSA
+        #    lista (`documenti.documenti_sorgente`, 84) — stesse colonne, stessa
+        #    whitelist, stessa query — e un parametro permetterebbe a un dominio
+        #    di dichiararne un'altra. Scritto come letterale nel corpo della
+        #    classe, e' anche cio' che `test_perimetro_emittente_copertura` sa
+        #    leggere (`ast` visita le classi annidate nella funzione): niente
+        #    sottoclassi per dominio, niente eccezione dichiarata al presidio.
+        lista_codice = "documenti.documenti_sorgente"
+        # ⭐ La lista si apre DENTRO il contesto di un documento (drawer o
+        #    dialog della sorgente), che dice gia' da quale emittente viene: la
+        #    lista a catalogo non e' certificata multi-emittente (`multi_emittente
+        #    = f`) e senza questa riga il cancello chiederebbe al super admin su
+        #    «Tutti» di scegliere l'emittente del documento che ha davanti.
+        # ⚠️ Il parametro NON filtra: le righe le fissa la sorgente nel path, e
+        #    per modello i documenti di una sorgente sono di un emittente solo.
+        #    Farne un filtro trasformerebbe un id della famiglia sbagliata in
+        #    una lista vuota, cioe' in «questo documento non ha PDF».
+        lista_emittente_param = "emittente_fiscale_id"
+
         @extend_schema(
             parameters=[
-                OpenApiParameter(name="page", type=int, required=False),
-                OpenApiParameter(name="page_size", type=int, required=False),
+                param_ricerca_full(),
+                OpenApiParameter(
+                    name="emittente_fiscale_id", type=int, required=False,
+                    description=(
+                        "L'emittente del documento sorgente, gia' fissato dal "
+                        "contesto che apre la lista: scioglie il cancello di "
+                        "perimetro, non filtra."
+                    ),
+                ),
+                OpenApiParameter(name="limit", type=int, required=False),
+                OpenApiParameter(name="offset", type=int, required=False),
+                OpenApiParameter(name="order_by", type=str, required=False),
+                OpenApiParameter(name="order_dir", type=str, required=False),
             ],
             responses={200: inline_serializer(
                 name=f"{schema_prefix}DocumentiListResponse",
@@ -262,28 +305,31 @@ def build_documenti_sorgente_views(
             )},
         )
         # Scopo: Lista paginata documenti generati per la sorgente (render
-        #        history), ordinata per `generato_at DESC` lato service.
+        #        history), col contratto di lista standard: `limit`/`offset`,
+        #        `order_by`/`order_dir` sulla whitelist del repository, `search`
+        #        dal catalogo, envelope `paginated_envelope` (`count`).
+        # ⛔ Fino al 2026-09-27 parlava `page`/`page_size` con default 50 e
+        #    rispondeva `total_count`: il frontend non mandava `page_size`, e
+        #    la lista si fermava ai primi 50 documenti SENZA dirlo (nessun
+        #    paginatore a video). Ora e' `parse_list_params` come ogni lista.
         def get(self, request: Request, sorgente_id: int) -> JsonResponse:
             entity, sorgente_tipo_id = _resolve_contesto(sorgente_id)
-            qp = request.query_params
-            page = max(1, qp_int(qp.get("page"), 1))
-            page_size = max(1, min(qp_int(qp.get("page_size"), 50), 200))
-            offset = (page - 1) * page_size
+            p = parse_list_params(request.query_params, default_order="generato_at")
             result = doc_service().list_documenti_per_sorgente(
                 request.user,
                 sorgente_tipo_id=sorgente_tipo_id,
                 sorgente_uid=str(entity["uid"]),
-                limit=page_size,
-                offset=offset,
+                search=p["search"],
+                order_by=p["order_by"],
+                order_dir=p["order_dir"],
+                limit=p["limit"],
+                offset=p["offset"],
             )
-            return success_response({
-                **result,
-                "page": page,
-                "page_size": page_size,
-            })
+            return success_response(paginated_envelope(
+                result["results"], result["total_count"], p["page"], p["limit"],
+            ))
 
     DocumentiList.__doc__ = f"`GET .../documenti/` — {schema_prefix}."
-    DocumentiList.area_funzionale = area_funzionale
 
     class DocumentoAllegati(DomainAPIView):
         # POST = upload multipart degli allegati su documento esistente.
@@ -335,7 +381,6 @@ def build_documenti_sorgente_views(
             return success_response(result)
 
     DocumentoAllegati.__doc__ = f"`GET/POST .../documenti/<documento_id>/allegati/` — {schema_prefix}."
-    DocumentoAllegati.area_funzionale = area_funzionale
 
     class DocumentoFile(DomainAPIView):
         @extend_schema(responses={200: bytes})
@@ -363,7 +408,6 @@ def build_documenti_sorgente_views(
             return response
 
     DocumentoFile.__doc__ = f"`GET .../documenti/<documento_id>/file/` — {schema_prefix}."
-    DocumentoFile.area_funzionale = area_funzionale
 
     class DocumentoFileDownload(DomainAPIView):
         @extend_schema(responses={200: bytes})
@@ -391,7 +435,6 @@ def build_documenti_sorgente_views(
             return response
 
     DocumentoFileDownload.__doc__ = f"`GET .../documenti/<documento_id>/file/<file_id>/` — {schema_prefix}."
-    DocumentoFileDownload.area_funzionale = area_funzionale
 
     class DocumentoRistampaFedele(DomainAPIView):
         @extend_schema(
@@ -448,7 +491,17 @@ def build_documenti_sorgente_views(
     DocumentoRistampaFedele.__doc__ = (
         f"`GET .../documenti/<documento_id>/ristampa/` — {schema_prefix}."
     )
-    DocumentoRistampaFedele.area_funzionale = area_funzionale
+
+    # Permesso: area e oggetto in un punto solo, per tutte le view costruite
+    # (anche Emetti, dove pero' decide `post_permission` quando c'e').
+    for view_cls in (
+        Emetti, DocumentoGenera, DocumentoAnteprima, DocumentiList,
+        DocumentoAllegati, DocumentoFile, DocumentoFileDownload,
+        DocumentoRistampaFedele,
+    ):
+        view_cls.area_funzionale = area_funzionale
+        if model_permission is not None:
+            view_cls.model_permission = model_permission
 
     return SimpleNamespace(
         emetti=emetti_view,

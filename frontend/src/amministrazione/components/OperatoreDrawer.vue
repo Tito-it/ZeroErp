@@ -8,23 +8,29 @@ import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
-import { listUnitaOrganizzative, invitaOperatore, reinviaInvito } from '../api/amministrazione'
+import { listUnitaOrganizzative, invitaOperatore, reinviaInvito, getCredenzialePerEmail } from '../api/amministrazione'
 import { TIPO_RUOLO_CODICE } from '../constants'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { displayDate } from '../../core/utils/date'
+import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
 import { useNotify } from '../../core/composables/useNotify'
+import { useEsitoInvito } from '../../core/composables/useEsitoInvito'
+import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
+import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
+import { etichettaRuoloApplicativo } from '../../core/utils/i18nLabel'
+import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import AuthUserForm from '../../core/components/AuthUserForm.vue'
 import OperatorePermessiTab from './OperatorePermessiTab.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
+import AppDialog from '../../core/components/AppDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -36,18 +42,37 @@ import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
 import TabPanels from 'primevue/tabpanels'
 import Button from 'primevue/button'
+import Message from 'primevue/message'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useOperatoriStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const notify = useNotify()
+const { notificaEsitoInvito } = useEsitoInvito()
 const injectedReadonly = useInjectReadonly()
 
-// Building block: auth user (solo creazione)
-const auth = useAuthUser()
+// ⭐ La creazione e' un gesto a DUE TEMPI quando l'email e' gia' di una
+// credenziale (F-4, brief-db-credenziale-per-email §3): il DB rifiuta il primo
+// tentativo (`E_CREDENZIALE_DA_CONFERMARE`, `ui_action = confirm_and_retry`) e
+// accetta il secondo che DICHIARA l'id della credenziale vista. Il BB
+// riconosce il comportamento, non il codice. ⛔ Il primo tentativo parte
+// sempre senza `riusa_auth_user_id`: dichiararlo d'ufficio sarebbe un riuso
+// silenzioso, cioe' il difetto che il `20260925-51` ha chiuso.
+const creazione = useForzaturaConfermata()
+const { richiestaConferma } = creazione
+// La credenziale letta per il dialog: {auth_user_id, username, vesti}.
+const credenzialeDaConfermare = ref(null)
+// L'email del tentativo in corso (non reattiva: non serve alla resa).
+let emailInDomanda = null
+const dialogRiusoVisibile = computed(() =>
+  richiestaConferma.value !== null && credenzialeDaConfermare.value !== null)
+
+// Building block: auth user (solo creazione). Senza password: la sceglie
+// l'operatore attivando l'invito (regola unica, L-3).
+const auth = useAuthUser({ conPassword: false })
 
 // SoggettoResolver: sotto-drawer per cerca/crea soggetto (solo creazione)
 const resolverVisible = ref(false)
@@ -78,11 +103,34 @@ const isReadonly = computed(() => props.readonly || injectedReadonly.value)
 const invitaLoading = ref(false)
 const emailEditInvalid = ref(false)
 
-// Scopo: Mostra pulsante invito se operatore non ha mai fatto login.
-const canInvite = computed(() => {
-  const u = store.currentOperatore
-  return isEdit.value && u && !u.last_login && u.is_active
-})
+// Scopo: Mostra il pulsante invito quando il DB dice che l'operatore e'
+// invitabile (`can_invite` di fn_get_operatore_detail: veste spenta, nella
+// finestra, email presente). ⛔ Non ricopiare qui la regola: fino al
+// 2026-09-25 era `!last_login && is_active`, e con la veste che nasce spenta
+// (`is_active` falso) il pulsante non compariva mai.
+const canInvite = computed(() => isEdit.value && store.currentOperatore?.can_invite === true)
+// Scopo: Perche' l'invito non si puo' mandare: il motivo del DB
+// (`invite_reason` codice + `invite_reason_key`, §16 del brief blocco-login),
+// reso dal BB `bloccoMotivo` (chiave mancante ⇒ si vede il codice).
+// ⛔ Nessun ramo su `veste_attiva`: dedurne «accesso gia' attivo» era una
+// seconda copia della regola, giusta solo per l'ordine dei motivi del DB.
+// Scopo: La frase del motivo di un verbo, '' quando l'azione e' ammessa.
+function motivoSeBloccato(bloccato, prefisso) {
+  return bloccato ? motivoBloccoRiga(t, te, store.currentOperatore, prefisso) : ''
+}
+const inviteReason = computed(() =>
+  motivoSeBloccato(isEdit.value && !!store.currentOperatore && !canInvite.value, 'invite'))
+// Scopo: Spegnere l'accesso e togliere il super admin all'ultimo SUPER_ADMIN
+// attivo: il DB li rifiuta (trigger), il dettaglio lo dice prima
+// (`can_disable`, `can_demote_super_admin`). Stato ⇒ controllo spento col
+// motivo. `can_demote_super_admin` NULL = azione non applicabile: acceso
+// (`bloccoAttivo` guarda il flag `=== false`).
+const disableBloccato = computed(() =>
+  isEdit.value && bloccoAttivo(store.currentOperatore, 'disable', 'can_disable'))
+const demoteBloccato = computed(() =>
+  isEdit.value && bloccoAttivo(store.currentOperatore, 'demote', 'can_demote_super_admin'))
+const disableReason = computed(() => motivoSeBloccato(disableBloccato.value, 'disable'))
+const demoteReason = computed(() => motivoSeBloccato(demoteBloccato.value, 'demote'))
 const hasBeenInvited = computed(() => !!store.currentOperatore?.invito_inviato_at)
 
 // Multi-face auth Stage B: il vecchio radio ruolo_sistema (ADMIN/OPERATIVO/
@@ -107,6 +155,24 @@ const INITIAL_FORM = Object.freeze({
 })
 
 const form = ref({ ...INITIAL_FORM })
+// Modifiche non salvate: fotografia all'apertura, e chiudere con modifiche
+// chiede conferma (BB useDrawerFormPreserve). In creazione username/email
+// stanno in `auth.form` e il soggetto in `soggettoSelezionato`: il confronto
+// li raccoglie accanto al form (chiavi proprie, `form` ha gia' email/soggetto_id).
+const formSalvato = computed(() => ({
+  ...form.value,
+  auth_username: auth.form.username,
+  auth_email: auth.form.email,
+  soggetto_selezionato_id: soggettoSelezionato.value?.id ?? null
+}))
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
+
+// Tab Permessi: ha i suoi Salva e la sua fotografia (espone `modificato` e
+// `chiudiConConferma`). Chiudere il drawer chiede conferma se UNO dei due ha
+// modifiche, con un solo dialog.
+const permessiTab = ref(null)
+const tutto = unisciFotografie({ modificato, chiudiConConferma }, () => permessiTab.value)
+const modificatoTutto = tutto.modificato
 
 // Scopo: Reset form a valori iniziali.
 function resetForm() {
@@ -119,6 +185,10 @@ function resetForm() {
 
 // Carica dati quando il drawer si apre
 watch(() => props.visible, async (val) => {
+  // La domanda di riuso vive col drawer: si chiude con lui (il dialog e'
+  // teleportato nel body, e resterebbe a video sopra un drawer chiuso) e non
+  // sopravvive a una riapertura, dove l'email potrebbe essere un'altra.
+  onAnnullaRiuso()
   if (!val) return
   emailEditInvalid.value = false
   activeTab.value = 'dati'
@@ -143,11 +213,14 @@ watch(() => props.visible, async (val) => {
         soggetto_id: u.soggetto_id || null,
         ragione_sociale: u.ragione_sociale_completa || null,
         codice_fiscale: u.codice_fiscale || null,
-        emittenti_descrizione: u.emittenti_descrizione || ''
+        emittenti_descrizione: u.emittenti_descrizione || '',
+        last_login: u.last_login || null
       }
+      fissa()
     }
   } else {
     resetForm()
+    fissa()
   }
 })
 
@@ -201,6 +274,7 @@ async function onSave() {
       { successMessage: t('notifications.save_success') }
     )
     if (result !== null) {
+      fissa()
       emit('saved')
     }
   } else {
@@ -223,20 +297,74 @@ async function onSave() {
       nome: sogg?.nome || null,
       email: auth.form.email,
       username: auth.form.username,
-      password: auth.form.password,
       is_super_admin: form.value.is_super_admin,
       qualifica_id: form.value.qualifica_id,
       unita_organizzativa_id: form.value.unita_organizzativa_id
     }
-    const result = await execute(
-      () => store.create(payload),
+    // L'email della domanda e' quella del PAYLOAD che si ripetera', non quella
+    // del form al momento del dialog: dialog e ripetizione parlano della stessa.
+    emailInDomanda = payload.email
+    const result = await creazione.esegui(
+      (dichiarazione) => store.create({ ...payload, ...dichiarazione }),
       { successMessage: t('amministrazione.operatore_creato') }
     )
-    if (result !== null) {
-      emit('saved')
-    }
+    await dopoTentativoCreazione(result)
   }
 }
+
+// Scopo: Esito di un tentativo di creazione (primo o confermato). Creato ->
+//        chiude; domanda del DB -> legge la credenziale e apre il dialog. Anche
+//        dopo la conferma: se la credenziale e' cambiata nel frattempo, il DB
+//        chiede di nuovo e il dialog si ripropone coi dati NUOVI.
+async function dopoTentativoCreazione(result, domandaPrecedente = null) {
+  if (result !== null) {
+    credenzialeDaConfermare.value = null
+    // Email gia' di una credenziale (D-6): la persona entrera' col suo
+    // username e la sua password, e l'admin deve saperlo.
+    if (result.credenziale_riusata) {
+      notify.warn(t('amministrazione.credenziale_riusata', { username: result.username }))
+    }
+    fissa()
+    emit('saved')
+  } else if (richiestaConferma.value !== null && richiestaConferma.value !== domandaPrecedente) {
+    // Solo una domanda NUOVA del DB si rilegge: dopo un errore vero alla
+    // conferma la domanda resta quella di prima, e il dialog anche.
+    await leggiCredenzialeDaConfermare()
+  }
+}
+
+// Scopo: Legge la credenziale dell'email (B-20) per il dialog: la STESSA
+//        lettura del rifiuto del DB (`fn_get_credenziale_per_email`), quindi
+//        dialog e rifiuto dicono la stessa cosa.
+async function leggiCredenzialeDaConfermare() {
+  credenzialeDaConfermare.value = null
+  const dati = await execute(() => getCredenzialePerEmail(emailInDomanda))
+  credenzialeDaConfermare.value = dati?.credenziale ?? null
+  if (credenzialeDaConfermare.value === null) {
+    // Lettura fallita (toast gia' mostrato) o credenziale sparita nel frattempo:
+    // non c'e' niente da confermare, si chiude la domanda.
+    if (dati !== null) notify.warn(t('amministrazione.riuso_credenziale_sparita'))
+    creazione.annulla()
+  }
+}
+
+// Scopo: L'admin conferma il riuso: si ripete la creazione DICHIARANDO l'id
+//        della credenziale che ha visto nel dialog.
+async function onConfermaRiuso() {
+  const domanda = richiestaConferma.value
+  const result = await creazione.conferma({
+    riusa_auth_user_id: credenzialeDaConfermare.value.auth_user_id,
+  })
+  await dopoTentativoCreazione(result, domanda)
+}
+
+// Scopo: L'admin rinuncia: la domanda si chiude, il form resta com'e' (puo'
+// correggere l'email e salvare di nuovo).
+function onAnnullaRiuso() {
+  creazione.annulla()
+  credenzialeDaConfermare.value = null
+}
+
 
 // Tab attivo. Riportato a 'dati' a ogni apertura del drawer: il tab
 // 'permessi' esiste solo in modifica, quindi riaprendo in creazione un
@@ -261,8 +389,6 @@ const canSaveCreate = computed(() =>
   !!soggettoSelezionato.value
   && !!auth.form.username.trim()
   && isEmailValid(auth.form.email)
-  && !!auth.form.password
-  && auth.passwordMatch.value
   && !!form.value.qualifica_id
 )
 
@@ -288,7 +414,8 @@ function onInvita() {
         const msg = data?.email
           ? t('amministrazione.invito_inviato') + ` (${data.email})`
           : t('amministrazione.invito_inviato')
-        notify.success(msg)
+        // `inviato: false` = link creato, email non partita: avviso (F-3).
+        notificaEsitoInvito(data, msg)
         // Ricarica dettaglio per aggiornare invito_inviato_at
         await store.fetchDetail(props.authUserId)
       } catch (err) {
@@ -301,7 +428,9 @@ function onInvita() {
   })
 }
 
-const onClose = useDrawerClose(emit, 'cancelled')
+const chiudiDiretto = useDrawerClose(emit, 'cancelled')
+const onClose = () => tutto.chiudiConConferma(chiudiDiretto)
+const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
@@ -309,11 +438,11 @@ const onClose = useDrawerClose(emit, 'cancelled')
     :visible="props.visible"
     position="right"
     :style="{ width: larghezzaDrawer }"
-    @update:visible="val => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amministrazione.operatore')" :icon="NAV_ICONS.OPERATORE" />
+      <DrawerTitle :modificato="modificatoTutto" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amministrazione.operatore')" :icon="NAV_ICONS.OPERATORE" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -346,7 +475,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
               text size="small" class="mt-1" @click="clearSoggetto" />
           </div>
           <div v-else>
-            <Button :label="`${t('resolver.open')} *`" icon="pi pi-search"
+            <Button :label="`${t('resolver.open')} *`" :icon="MANAGE_ICONS.RICERCA"
               outlined @click="resolverVisible = true" />
           </div>
         </template>
@@ -356,8 +485,9 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <h4>{{ t('amministrazione.section_accesso') }}</h4>
           <AuthUserForm
             :form="auth.form"
-            :password-match="auth.passwordMatch.value"
+            :show-password="false"
           />
+          <small class="app-field-hint">{{ t('amministrazione.password_da_invito') }}</small>
         </template>
 
         <!-- === Sezione Dati anagrafici + Collocazione === -->
@@ -405,16 +535,19 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <template v-if="isEdit">
             <div class="form-field">
               <div class="operatore-toggle-row">
-                <ToggleSwitch v-model="form.is_super_admin" input-id="tg-super-admin" />
+                <ToggleSwitch v-model="form.is_super_admin" input-id="tg-super-admin"
+                  :disabled="demoteBloccato" />
                 <label for="tg-super-admin" class="operatore-toggle-label">
                   <span>{{ t('amministrazione.is_super_admin.label') }}</span>
                   <small class="operatore-toggle-help">{{ t('amministrazione.is_super_admin.help') }}</small>
                 </label>
               </div>
+              <small v-if="demoteReason" class="app-field-hint">{{ demoteReason }}</small>
             </div>
             <div class="form-field">
               <div class="operatore-toggle-row">
                 <ToggleSwitch v-model="form.attivo" input-id="tg-attivo"
+                  :disabled="disableBloccato"
                   :invalid="campiErrati.includes('attivo')"
                 />
                 <label for="tg-attivo" class="operatore-toggle-label">
@@ -422,6 +555,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
                   <small class="operatore-toggle-help">{{ t('amministrazione.accesso_attivo.help') }}</small>
                 </label>
               </div>
+              <small v-if="disableReason" class="app-field-hint">{{ disableReason }}</small>
             </div>
           </template>
 
@@ -453,8 +587,12 @@ const onClose = useDrawerClose(emit, 'cancelled')
               :placeholder="t('amministrazione.select_reparto')" />
           </div>
 
-          <!-- Validita' (solo modifica, sola lettura informativa) -->
+          <!-- Validita' e ultimo accesso (solo modifica, sola lettura informativa) -->
           <template v-if="isEdit">
+            <div class="form-field">
+              <label>{{ t('amministrazione.field_ultimo_accesso') }}</label>
+              <InputText :model-value="form.last_login ? displayTimestamp(form.last_login) : t('amministrazione.mai_entrato')" disabled />
+            </div>
             <div class="form-grid-2col">
               <div class="form-field">
                 <label>{{ t('amministrazione.field_valido_dal') }}</label>
@@ -468,11 +606,12 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </template>
         </div>
 
-        <!-- Invito operatore (solo modifica, mai loggato) -->
+        <!-- Invito operatore (solo modifica, quando il DB lo ammette) -->
+        <small v-if="inviteReason" class="app-field-hint">{{ inviteReason }}</small>
         <div v-if="canInvite">
           <Button
             :label="hasBeenInvited ? t('amministrazione.reinvia_invito') : t('amministrazione.invita_operatore')"
-            icon="pi pi-envelope"
+            :icon="MANAGE_ICONS.INVITA"
             :loading="invitaLoading"
             outlined size="small"
             @click="onInvita" />
@@ -480,17 +619,52 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
         <!-- Footer Salva/Annulla -->
         <div>
-          <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+          <FormFooter :loading="loading || creazione.loading.value" :disabled="!canSave" @save="onSave" @cancel="onClose" />
         </div>
       </TabPanel>
 
       <!-- Tab Permessi: solo modifica -->
       <TabPanel v-if="isEdit" value="permessi">
-        <OperatorePermessiTab :auth-user-id="props.authUserId" :readonly="isReadonly" />
+        <OperatorePermessiTab ref="permessiTab" :auth-user-id="props.authUserId" :readonly="isReadonly" :visible="props.visible" />
       </TabPanel>
       </TabPanels>
     </Tabs>
     </div>
+
+    <!-- Il consenso al riuso della credenziale (F-4): la domanda del DB, e cio'
+         che l'admin sta per collegare. Conferma = si dichiara l'id letto. -->
+    <AppDialog
+      v-if="!isEdit"
+      :visible="dialogRiusoVisibile"
+      :header="t('amministrazione.riuso_titolo')"
+      width="md"
+      :loading="creazione.loading.value"
+      :save-label="t('amministrazione.riuso_conferma')"
+      @save="onConfermaRiuso"
+      @cancel="onAnnullaRiuso"
+    >
+      <template v-if="credenzialeDaConfermare">
+        <!-- La frase del DB: nomina gia' email e username, e' multilingua. -->
+        <Message severity="warn" :closable="false">{{ richiestaConferma?.messaggio }}</Message>
+        <div class="form-field mt-1">
+          <label>{{ t('amministrazione.riuso_username') }}</label>
+          <strong>{{ credenzialeDaConfermare.username }}</strong>
+        </div>
+        <div class="form-field">
+          <label>{{ t('amministrazione.riuso_vesti') }}</label>
+          <ul v-if="credenzialeDaConfermare.vesti.length" class="riuso-vesti">
+            <li v-for="(veste, i) in credenzialeDaConfermare.vesti" :key="i">
+              {{ etichettaRuoloApplicativo(t, te, veste.ruolo_applicativo) }}<template v-if="veste.soggetto"> — {{ veste.soggetto }}</template>
+              <span class="app-text-muted">
+                ({{ veste.attivo ? t('amministrazione.riuso_veste_attiva') : t('amministrazione.riuso_veste_spenta') }})
+              </span>
+            </li>
+          </ul>
+          <span v-else class="app-text-muted">{{ t('amministrazione.riuso_nessuna_veste') }}</span>
+        </div>
+        <small class="app-field-hint">{{ t('amministrazione.riuso_spiegazione') }}</small>
+      </template>
+    </AppDialog>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->
     <SoggettoResolver
@@ -518,9 +692,13 @@ const onClose = useDrawerClose(emit, 'cancelled')
   line-height: 1.2;
   cursor: pointer;
 }
+.riuso-vesti {
+  margin: 0;
+  padding-left: 1.2rem;
+}
 .operatore-toggle-help {
   font-size: 0.78rem;
-  color: var(--app-text-muted, var(--p-text-muted-color));
+  color: var(--app-text-muted);
 }
 </style>
 

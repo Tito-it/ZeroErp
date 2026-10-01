@@ -23,7 +23,7 @@ class ExampleSearchEndpoint(APIView):
     # Scopo: Gestisce la richiesta HTTP GET del relativo endpoint API.
     def get(self, request: Request) -> Response:
         term = request.query_params.get("term")
-        require_min_search_length(term, min_length=3, field_name="term")
+        require_min_search_length(term, field_name="term")
 
         # Placeholder: sostituire con query reale/paginata.
         results = [

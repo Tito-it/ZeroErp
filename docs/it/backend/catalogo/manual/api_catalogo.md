@@ -61,7 +61,7 @@ Tutte le risposte usano l'envelope standard:
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `search` | string | No | Ricerca su `codice` e `descrizione` |
+| `search` | string | No | Ricerca libera: le colonne le decide il catalogo della lista `catalogo.articoli`. Sotto 3 caratteri: `400` `E_SEARCH_VALIDATION` |
 | `attivo` | bool | No | Filtro attivo/disattivo |
 | `is_composito` | bool | No | Filtro articoli composti |
 | `voce_utility` | bool | No | Filtro articoli utility |
@@ -305,7 +305,7 @@ di prima.
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `search` | string | No | Ricerca su `codice` e `descrizione` |
+| `search` | string | No | Ricerca su `codice` e `descrizione` (la lookup non e' una lista: niente catalogo). `%` e `_` sono caratteri, non jolly; spazi ai bordi ignorati. Sotto 3 caratteri: `400` `E_SEARCH_VALIDATION` |
 | `voce_utility` | bool | No | Filtro utility |
 | `attivo` | bool | No | Default API `true` |
 | `is_composito` | bool | No | Filtro composti |
@@ -524,6 +524,30 @@ chiudibile finche' `valido_al IS NULL`):
 
 Su righe non chiudibili i 3 campi data sono `null` (autodocumentante: il
 FE non puo' aprire dialog su `null`).
+
+### 4.1-bis La distinta come lista configurabile (lotto C, 2026-09-28)
+
+| | |
+|---|---|
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/componenti/lista/` (+ `export/?formato=csv\|xlsx`) |
+| **Lista a catalogo** | `catalogo.articolo_componenti` (lista 101) |
+| **Sorgente** | `catalogo.vw_articoli_componenti_dettaglio` — la stessa di §4.1, sede unica della capability di chiusura |
+
+Envelope paginato standard. Parametri (facoltativi): `valido_al` (data
+`YYYY-MM-DD`: le righe **in vigore a quella data o dopo** — senza fine, o con la
+fine da quel giorno; assente = tutte le versioni; malformata = `400`),
+`search` (codice e descrizione del componente, dal catalogo), `order_by` /
+`order_dir` (whitelist `COMPONENTI_SORT_COLUMNS`; assente: `valido_dal` DESC;
+`valido_al` vuoto si ordina come «infinito»; le date partono DESC), `limit` /
+`offset`.
+
+⭐ **Percorso suo** e non `…/componenti/`: il cancello di perimetro emittente
+(`lista_codice`) scatta su ogni metodo della view che lo dichiara, e
+`…/componenti/` serve anche la creazione (§4.2). La distinta è «per azienda»
+(D-8.2): nessun `emittente_fiscale_id` in query, chi vede più emittenti lo
+sceglie come per la lista degli articoli. `GET …/componenti/` (§4.1) resta la
+lettura completa (il riepilogo nel drawer dell'articolo).
 
 ### 4.2 Crea componente
 
@@ -785,7 +809,10 @@ permesso di **livello oggetto** sui rispettivi modelli.
 ## Regole trasversali
 
 - Tutti gli endpoint richiedono JWT.
-- Gli endpoint search/lista con `search` applicano `require_min_search_length(...)`.
+- La ricerca libera delle liste (`search`) cade sulle colonne che il catalogo
+  della lista accende. Soglia: articoli e lookup articoli `400` sotto 3 caratteri
+  (`require_min_search_length`); tipologie UoM, unita` di misura e conversioni
+  sono tabelle di configurazione e cercano da un carattere.
 - Tutte le response detail e gli envelope lista UoM operativa includono
   `non_editable_fields: string[]` (Fase 5) — il FE pilota i `:disabled`
   da questa lista invece di cablare regole. Source: vista
@@ -804,9 +831,9 @@ permesso di **livello oggetto** sui rispettivi modelli.
 ### Codici errore (400 VALIDATION)
 
 - `E_CATALOGO_VALIDATION` (catch-all dominio)
-- `E_BOM_VALIDO_AL_INVALIDO` (Fase 3 — propagato dal trigger
-  `trgfn_articoli_componenti_block_modifica_struttura` quando
-  `chiudi_al < valido_dal`)
+- `E_DATA_AL_MINORE_DAL` (propagato dal guard comune delle date
+  `script.trgfn_guard_date_validita` quando `chiudi_al < valido_dal`;
+  fino al 2026-09-24 rispondeva `E_BOM_VALIDO_AL_INVALIDO`, ora ritirato)
 - `E_BOM_PRODOTTO_MISMATCH` (Fase 3 — la riga sorgente non appartiene
   all'articolo target: FE stale)
 

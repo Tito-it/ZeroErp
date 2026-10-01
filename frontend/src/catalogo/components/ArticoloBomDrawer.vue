@@ -1,11 +1,25 @@
 <script setup>
 // Scopo: Sub-drawer per gestione distinta base (BoM) articolo.
-// Layout: toolbar (filtro+reload) + lista paginata 10 righe + form inserimento.
+// Layout: la distinta come LISTA CONFIGURABILE `catalogo.articolo_componenti`
+// (lista 101: colonne dal catalogo, ritiro nella riga espandibile,
+// personalizzazione, ricerca, export) + form inline sotto la lista.
+//
+// ⭐ DAL 2026-09-28 E' UNA LISTA STANDARD (brief-db-liste-righe-documento,
+//    lotto C). Prima era una `DataTable` grezza con filtri LOCALI sulle righe
+//    gia' caricate: su tablet le colonne uscivano in uno scroll orizzontale,
+//    e con la paginazione il filtro avrebbe filtrato la sola pagina. Ora
+//    ricerca e «in vigore al» sono parametri dell'endpoint
+//    (`…/componenti/lista/`), e la macchina del form e' il BB `useFormInline`
+//    (sede unica): il cambio di articolo chiude il form, «Nuovo» sparisce a
+//    form aperto.
+//
 // Pattern immutabilità (sviluppo-listini-v5 §14.4 / DEC-4):
 //   - i campi struttura (componente, coeff_qta, esposto_in_fattura, ecc.)
 //     non sono modificabili in place: trigger DB E_BOM_MODIFICA_VIETATA li
 //     blocca. Per cambiare valori si usa "chiudi riga" + nuovo "Aggiungi
 //     componente" con i nuovi parametri (operazioni esplicite, intenzionali).
+//     Per questo il click su una riga apre il form in SOLA LETTURA (il modo
+//     `edit` del BB e' qui la consultazione).
 //   - "Duplica versione" (workflow 2 step, dal 2026-05-10): step 1 chiude la
 //     sorgente con PATCH valido_al (stessa via di "Chiudi riga"), step 2
 //     apre il form add pre-compilato dai valori della sorgente con
@@ -19,42 +33,43 @@
 //     unica via via dialog dedicato dal kebab "Chiudi riga" (pattern
 //     simmetrico a ChiudiVersioneDialog dei listini, vedi
 //     feedback_stato_terminale_con_data).
-// Standard sub-drawer: paginazione 10 righe, PageActionsBar + F5, filtro
-// client-side articolo, sort default articolo_descrizione.
 
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
+import { useFormInline } from '../../core/composables/useFormInline'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import {
-  listArticoloComponenti, createArticoloComponente,
+  createArticoloComponente,
   updateArticoloComponente,
+  exportArticoloComponentiLista,
   makeComponenteNotesApi,
 } from '../api/catalogo'
+import { useArticoloComponentiStore } from '../stores/articoloComponenti'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
-import { displayDate, toDateString } from '../../core/utils/date'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import { addDaysToToday, displayDate, parseIsoDate, toDateString } from '../../core/utils/date'
+import ArticoloLookup from './ArticoloLookup.vue'
 import NoteDrawer from '../../core/components/NoteDrawer.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import FiltroToggle from '../../core/components/FiltroToggle.vue'
 import Drawer from 'primevue/drawer'
 import AppDialog from '../../core/components/AppDialog.vue'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Message from 'primevue/message'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
-import Checkbox from 'primevue/checkbox'
-
-
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -71,8 +86,7 @@ const props = defineProps({
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved'])
 
-const componentiList = ref([])
-const listLoading = ref(false)
+const store = useArticoloComponentiStore()
 
 // Defaults BoM via config.parameters (override per emittente).
 // Pre-fetch al setup; la watch su `props.visible` await-a comunque per
@@ -88,72 +102,76 @@ const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults([
 ])
 loadDefaults()
 
-// Filtro client-side articolo (codice + descrizione, case-insensitive).
-// Coerente con il pattern ContrattoRigheDrawer: la lista BoM è tipicamente
-// sotto le 50-100 righe per articolo, niente bisogno di filtro server-side.
-const filtroArticolo = ref('')
-const filtroValiditaTutto = ref(false)
-const filtroValiditaData = ref(new Date())
-
-const componentiView = computed(() => {
-  const filtro = (filtroArticolo.value || '').trim().toLowerCase()
-  const dataFiltro = filtroValiditaData.value ? toDateString(filtroValiditaData.value) : null
-
-  return componentiList.value.filter(r => {
-    if (!filtroValiditaTutto.value && dataFiltro) {
-      const validoAl = r.valido_al || null
-      if (validoAl && validoAl < dataFiltro) return false
-    }
-    if (!filtro) return true
-    const codice = (r.componente_codice || '').toLowerCase()
-    const desc = (r.componente_descrizione || '').toLowerCase()
-    return codice.includes(filtro) || desc.includes(filtro)
-  })
+// La macchina del form (BB `useFormInline`): `create` = nuovo componente (anche
+// la nuova versione del Duplica), `edit` = la riga aperta in SOLA LETTURA.
+// ⭐ Il padre porta anche la visibilita': chiudere il drawer, o aprire un
+//    altro articolo, chiude il form.
+const {
+  formMode, rigaInModifica, formAperto,
+  nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({
+  padre: () => (props.visible ? props.articoloId : null),
+  puoModificare: () => !isReadonly.value,
 })
+const isFormReadonly = computed(() => formMode.value === 'edit')
 
 // Form inserimento nuovo componente
 const form = ref({})
 const componenteObj = ref(null)
-const adding = ref(false)
-const viewing = ref(false)
-const isFormOpen = computed(() => adding.value || viewing.value)
-const isFormReadonly = computed(() => viewing.value)
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: loadComponenti,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('catalogo.aggiungi_componente'),
-    icon: MANAGE_ICONS.ADD,
-    disabled: isFormOpen.value,
-    command: startAdd,
-  },
-])
+// Modifiche non salvate del form inline «nuovo componente» (anche la nuova
+// versione del Duplica). Il dettaglio in sola lettura non ha niente da
+// salvare: resta fuori.
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, {
+  visibile: () => props.visible && formMode.value === 'create',
+})
+
+// ⚠️ `parentId` porta l'id SOLO a drawer aperto: il `null` alla chiusura
+//    chiama `store.reset()`, o la distinta dell'articolo precedente
+//    lampeggerebbe sotto la prossima.
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
+  exportDialogVisible, exportLoading, onExportConfirm, reloadAll,
+} = useDrawerTabLista(store, {
+  parentId: () => (props.visible ? props.articoloId : null),
+  parentField: 'articoloId',
+  // L'export segue la lista a video: filtro di validita', ricerca, ordinamento.
+  exportFn: (params) => exportArticoloComponentiLista(props.articoloId, params),
+  getExportParams: (formato) => ({ formato, ...store.paramsExport() }),
+  // «Nuovo» fra le azioni della lista: sparisce a form aperto (BB).
+  // ⚠️ Arrow lazy: la legge il computed delle azioni, non il setup.
+  extraActions: () => [
+    azioneNuovaRiga({
+      key: 'new',
+      label: t('common.new'),
+      tooltip: t('catalogo.aggiungi_componente'),
+      command: startAdd,
+    }),
+  ],
+})
+
+// ⭐ IL FILTRO «IN VIGORE AL» E' UNO, con il suo interruttore: la data e
+//    «tutte le versioni» sono lo stesso filtro `valido_al` dello store (null =
+//    tutte). Scrivere una data spegne l'interruttore; svuotarla torna a oggi,
+//    perche' «nessuna data» e' l'interruttore, non la casella.
+const oggi = () => addDaysToToday(0)
+const { bindDate } = useStoreFilterBindings(store, applyFilters)
+const { value: dataValida, onChange: onDataValidaChange } = bindDate('valido_al', { clearTo: oggi })
+const tutteLeVersioni = computed({
+  get: () => store.filters.valido_al == null,
+  set: (acceso) => { store.filters.valido_al = acceso ? null : toDateString(oggi()) },
+})
 
 // Dialog chiusura riga (pattern simmetrico a ChiudiVersioneDialog).
 // L'admin sceglie data di chiusura (oggi = immediata, futura = programmata).
 // Min-date e default-date arrivano DAL BE come capability di riga
 // (`data_min_chiusura`, `data_default_chiusura` su vw_articoli_componenti_dettaglio,
-// Fase 2 refactor catalogo). Niente ricalcolo lato FE: single source of truth DB.
+// sede unica dal 2026-09-28). Niente ricalcolo lato FE.
 const chiudiDialogVisible = ref(false)
 const chiudiDialogRow = ref(null)
 const chiudiDialogData = ref(null)
-const chiudiDialogMinDate = computed(() => parseDate(chiudiDialogRow.value?.data_min_chiusura))
-const chiudiDialogIsImmediata = computed(() => {
-  if (!chiudiDialogData.value) return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const sel = new Date(chiudiDialogData.value)
-  sel.setHours(0, 0, 0, 0)
-  return sel.getTime() === today.getTime()
-})
+const chiudiDialogMinDate = computed(() => parseIsoDate(chiudiDialogRow.value?.data_min_chiusura))
+const chiudiDialogIsImmediata = computed(() => isOggi(chiudiDialogData.value))
 
 // Dialog "Duplica versione": l'admin sceglie chiudi_al, alla conferma il
 // BE chiude SOLO la sorgente (PATCH valido_al, stessa path di "Chiudi
@@ -161,31 +179,18 @@ const chiudiDialogIsImmediata = computed(() => {
 // "Aggiungi componente" pre-compilato dai valori della sorgente, con
 // `valido_dal = chiudi_al + 1`. L'utente puo' modificare i campi prima
 // di salvare, e il save fa l'INSERT della nuova versione.
-// Vantaggio: niente DB function dedicata, tutto su endpoint esistenti
-// (PATCH valido_al + POST create), e l'utente puo' personalizzare i
-// valori della nuova versione senza scontrarsi col trigger
-// E_BOM_MODIFICA_VIETATA (l'INSERT porta gia' i valori finali).
-// Min-date dialog: BE espone `data_min_chiusura` su vw_articoli_componenti_dettaglio
-// (= valido_dal della sorgente).
+// Min-date dialog: BE espone `data_min_chiusura` (= valido_dal della sorgente).
 const duplicaDialogVisible = ref(false)
 const duplicaDialogRow = ref(null)
 const duplicaDialogChiudiAl = ref(null)
 // Stato del flow duplica post-chiusura: se != null, il form add e' stato
 // aperto pre-compilato dalla sorgente (titolo + banner dedicato).
 const duplicaFlowSource = ref(null)
-const duplicaDialogMinDate = computed(() => parseDate(duplicaDialogRow.value?.data_min_chiusura))
-const duplicaDialogIsImmediata = computed(() => {
-  if (!duplicaDialogChiudiAl.value) return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const sel = new Date(duplicaDialogChiudiAl.value)
-  sel.setHours(0, 0, 0, 0)
-  return sel.getTime() === today.getTime()
-})
+const duplicaDialogMinDate = computed(() => parseIsoDate(duplicaDialogRow.value?.data_min_chiusura))
+const duplicaDialogIsImmediata = computed(() => isOggi(duplicaDialogChiudiAl.value))
 
-// Sub-drawer note per componente. Refactor 2026-05-21 (Fase 2.B):
-// passa dal vecchio CatalogoNoteDrawer ad-hoc al BB partizionato NoteDrawer
-// + makeComponenteNotesApi. apiClient reattivo a `noteCompId` cosi' il
+// Sub-drawer note per componente (BB partizionato NoteDrawer +
+// makeComponenteNotesApi). apiClient reattivo a `noteCompId` cosi' il
 // dereffato di useNote intercetta il cambio padre senza ricreare il drawer.
 const noteDrawerVisible = ref(false)
 const noteCompId = ref(null)
@@ -218,89 +223,18 @@ function defaultForm() {
   }
 }
 
-// Scopo: reset stato del form add. Comune a cancel, save-success
-// e apertura drawer: evita duplicazione delle reassegnazioni.
-// Resetta anche lo stato del flow duplica: se l'utente annulla il form
-// pre-compilato, il banner/title torna allo stato "Aggiungi componente".
-function resetFormState() {
-  adding.value = false
-  viewing.value = false
-  form.value = defaultForm()
-  componenteObj.value = null
-  duplicaFlowSource.value = null
-}
+// I flag booleani della riga, nell'ordine del form. ⚠️ `labelKey` LETTERALE e
+// completa: e' la forma che `scripts/check_i18n_keys.py` sa verificare.
+const FLAG_COMPONENTE = [
+  { campo: 'obbligatorio', labelKey: 'catalogo.field_obbligatorio' },
+  { campo: 'partecipa_qta', labelKey: 'catalogo.field_partecipa_qta' },
+  { campo: 'determina_qta_padre', labelKey: 'catalogo.field_determina_qta_padre' },
+  { campo: 'esposto_in_fattura', labelKey: 'catalogo.field_esposto_fattura' },
+]
 
-// Scopo: Converte stringa ISO date in Date object per DatePicker.
-function parseDate(val) {
-  if (!val) return null
-  if (val instanceof Date) return val
-  const d = new Date(val)
-  return isNaN(d.getTime()) ? null : d
-}
-
-// Scopo: Carica lista componenti dell'articolo.
-async function loadComponenti() {
-  if (!props.articoloId) return
-  listLoading.value = true
-  try {
-    const res = await listArticoloComponenti(props.articoloId)
-    const payload = res.data?.data
-    componentiList.value = payload?.results || payload || []
-  } catch {
-    componentiList.value = []
-  } finally {
-    listLoading.value = false
-  }
-}
-
-watch(() => props.visible, async (val) => {
-  if (!val) return
-  // Attendi i parameters prima di resettare il form (race-fix simmetrico
-  // a ArticoloUomDrawer): evita form costruito con fallback hardcoded
-  // mentre la fetch dei defaults e' ancora in volo.
-  await loadDefaults()
-  resetFormState()
-  filtroArticolo.value = ''
-  filtroValiditaTutto.value = false
-  filtroValiditaData.value = new Date()
-  loadComponenti()
-})
-
-// Shortcut F5: ricarica la lista senza reload del browser. Coerente con il
-// pattern useSearchTable e con gli altri sub-drawer (ContrattoRigheDrawer).
-// Attivo solo quando il drawer è visibile (il drawer è persistente: register
-// in onMounted, deregister in onUnmounted, no leak su mount/unmount parent).
-function onKeydown(e) {
-  if (e.key === 'F5' && props.visible) {
-    e.preventDefault()
-    loadComponenti()
-  }
-}
-onMounted(() => { window.addEventListener('keydown', onKeydown) })
-onUnmounted(() => { window.removeEventListener('keydown', onKeydown) })
-
-// Scopo: Callback quando l'utente seleziona un articolo dal lookup.
-function onComponenteSelect(item) {
-  componenteObj.value = item
-  form.value.componente_id = item?.id || null
-}
-
-function startAdd() {
-  resetFormState()
-  adding.value = true
-}
-
-function cancelAdd() {
-  resetFormState()
-}
-
-// Scopo: apre la riga BoM nello stesso form, ma in sola lettura.
-// Le righe sono immutabili: il click riga serve solo a consultare i campi
-// non presenti nella lista compatta.
-function openReadonlyDetail(row) {
-  adding.value = false
-  viewing.value = true
-  duplicaFlowSource.value = null
+// Scopo: i valori di una riga nel form (dettaglio in sola lettura e
+//        precompilazione del Duplica). Una sede per la mappatura riga → form.
+function formDaRiga(row, { validoDal, validoAl }) {
   form.value = {
     componente_id: row.componente_id,
     coeff_qta: row.coeff_qta,
@@ -308,8 +242,8 @@ function openReadonlyDetail(row) {
     obbligatorio: row.obbligatorio,
     determina_qta_padre: row.determina_qta_padre,
     esposto_in_fattura: row.esposto_in_fattura,
-    valido_dal: parseDate(row.valido_dal),
-    valido_al: parseDate(row.valido_al),
+    valido_dal: validoDal,
+    valido_al: validoAl,
   }
   componenteObj.value = {
     id: row.componente_id,
@@ -318,19 +252,65 @@ function openReadonlyDetail(row) {
   }
 }
 
-function closeReadonlyDetail() {
-  resetFormState()
+// Scopo: la data scelta e' oggi? (chiusura immediata contro programmata)
+function isOggi(val) {
+  if (!val) return false
+  const sel = new Date(val)
+  sel.setHours(0, 0, 0, 0)
+  return sel.getTime() === oggi().getTime()
 }
 
+watch(() => props.visible, async (val) => {
+  if (!val) return
+  // Attendi i parameters prima di resettare il form (race-fix simmetrico
+  // a ArticoloUomDrawer): evita form costruito con fallback hardcoded
+  // mentre la fetch dei defaults e' ancora in volo.
+  await loadDefaults()
+  form.value = defaultForm()
+  componenteObj.value = null
+  duplicaFlowSource.value = null
+})
+
+// La riga aperta in sola lettura: il form la mostra com'e'.
+watch(rigaInModifica, (row) => {
+  if (!row) return
+  duplicaFlowSource.value = null
+  formDaRiga(row, { validoDal: parseIsoDate(row.valido_dal), validoAl: parseIsoDate(row.valido_al) })
+})
+
+// Scopo: Callback quando l'utente seleziona un articolo dal lookup.
+function onComponenteSelect(item) {
+  componenteObj.value = item
+  form.value.componente_id = item?.id || null
+}
+
+// Scopo: «Nuovo»: il form vuoto coi default dei parametri. E' il `command` di
+//        `azioneNuovaRiga`: fa di piu' (azzera, fotografa), e per aprire chiama
+//        il verbo del BB.
+function startAdd() {
+  form.value = defaultForm()
+  componenteObj.value = null
+  duplicaFlowSource.value = null
+  nuovaRiga()
+  fissa()
+}
+
+// Annulla del form inline: con modifiche chiede conferma.
+const annullaAdd = () => chiudiConConferma(chiudiForm)
+
+// Clic su una riga col form aperto: il dettaglio prende il posto del form,
+// quindi con modifiche chiede conferma come l'Annulla.
+const onRowClick = (row) => chiudiConConferma(() => apriRiga(row))
+
 // Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
-// Nasconde il footer in modalita' adding per non duplicarlo con Annulla/Salva
-// del form e non spingere il form sotto al fold.
 const onClose = useDrawerClose(emit)
 
-// Scopo: apre il dialog "Duplica versione". L'operazione di chiusura+apertura
-// e' atomica lato DB (Fase 3, fn_duplica_componente_versione): il FE non
-// ricompone il flusso, manda solo `chiudi_al` e ricarica.
-// Default `chiudi_al = oggi` -> chiusura immediata, nuova riga apre domani.
+// Chiusura del drawer per volonta' dell'utente (X/ESC/clic fuori/Chiudi):
+// con il form inline modificato chiede conferma.
+const chiudi = () => chiudiConConferma(onClose)
+
+// Scopo: apre il dialog "Duplica versione". Default `chiudi_al = oggi` ->
+// chiusura immediata, nuova riga apre domani.
 function onDuplicaVersione(row) {
   duplicaDialogRow.value = row
   duplicaDialogChiudiAl.value = new Date()
@@ -365,7 +345,7 @@ async function confermaDuplicaVersione() {
   )
   if (result === null) return
   annullaDuplicaVersione()
-  await loadComponenti()
+  reloadAll()
   emit('saved')
 
   // Apre il form add pre-compilato. valido_dal default = chiudi_al + 1
@@ -374,26 +354,13 @@ async function confermaDuplicaVersione() {
   const nextDay = new Date(chiudiAlDate)
   nextDay.setDate(nextDay.getDate() + 1)
 
+  nuovaRiga()
+  formDaRiga(sourceRow, { validoDal: nextDay, validoAl: null })
   duplicaFlowSource.value = {
     chiudi_al: chiudiAlIso,
     componente_codice: sourceRow.componente_codice,
   }
-  adding.value = true
-  form.value = {
-    componente_id: sourceRow.componente_id,
-    coeff_qta: sourceRow.coeff_qta,
-    partecipa_qta: sourceRow.partecipa_qta,
-    obbligatorio: sourceRow.obbligatorio,
-    determina_qta_padre: sourceRow.determina_qta_padre,
-    esposto_in_fattura: sourceRow.esposto_in_fattura,
-    valido_dal: nextDay,
-    valido_al: null,
-  }
-  componenteObj.value = {
-    id: sourceRow.componente_id,
-    codice: sourceRow.componente_codice,
-    descrizione: sourceRow.componente_descrizione,
-  }
+  fissa()
 }
 
 const canSaveForm = computed(() => {
@@ -417,21 +384,19 @@ async function onSaveNew() {
     { successMessage: t('catalogo.componente_aggiunto') }
   )
   if (result === null) return
-  resetFormState()
-  await loadComponenti()
+  chiudiForm()
+  duplicaFlowSource.value = null
+  reloadAll()
   emit('saved')
 }
 
-// Scopo: apre il dialog di chiusura riga BoM con DatePicker. Pattern
-// simmetrico a ChiudiVersioneDialog (listini-versioni): l'admin sceglie la
-// data, default oggi (chiusura immediata), futura ammessa (chiusura
-// programmata). Min-date e default-date arrivano dal BE come capability di
-// riga (`data_min_chiusura`, `data_default_chiusura` da
-// `vw_articoli_componenti_dettaglio` Fase 2): niente ricalcolo client-side.
+// Scopo: apre il dialog di chiusura riga BoM con DatePicker. Default oggi
+// (chiusura immediata), futura ammessa (chiusura programmata). Min-date e
+// default-date dalla capability di riga della vista.
 // Il delete BoM resta bloccato dal trigger DB E_BOM_MODIFICA_VIETATA.
 function onChiudiRiga(row) {
   chiudiDialogRow.value = row
-  chiudiDialogData.value = parseDate(row.data_default_chiusura) || new Date()
+  chiudiDialogData.value = parseIsoDate(row.data_default_chiusura) || new Date()
   chiudiDialogVisible.value = true
 }
 
@@ -451,16 +416,16 @@ async function confermaChiusura() {
   )
   if (result !== null) {
     annullaChiusura()
-    await loadComponenti()
+    reloadAll()
     emit('saved')
   }
 }
 
 // Scopo: azioni di riga del componente BoM (note + duplica + chiudi).
-// Nascoste in readonly. La voce "elimina" non esiste più: la BoM è
-// immutabile (DEC-4), il pattern è "chiudi+inserisci nuova versione".
-// `chiudi-riga` e' visibile solo se la capability del BE lo permette
-// (`puo_chiudersi=true`, ovvero riga ancora aperta — `valido_al IS NULL`).
+// Nascoste in readonly. La voce "elimina" non esiste: la BoM è immutabile
+// (DEC-4), il pattern è "chiudi+inserisci nuova versione".
+// `duplica` e `chiudi` seguono la capability della vista (`puo_chiudersi`:
+// riga ancora aperta, `valido_al IS NULL`).
 function buildRigaActions(row) {
   return [
     {
@@ -474,267 +439,203 @@ function buildRigaActions(row) {
       label: t('catalogo.duplica_come_nuova_versione'),
       icon: MANAGE_ICONS.CLONE,
       // Solo righe aperte si possono duplicare (BE solleva
-      // E_BOM_SORGENTE_GIA_CHIUSA su righe chiuse). Stesso check truthy
-      // di chiudi-riga e dell'inline edit valido_al.
+      // E_BOM_SORGENTE_GIA_CHIUSA su righe chiuse).
       visible: !!row.puo_chiudersi,
-      command: () => onDuplicaVersione(row),
+      // Il Duplica riscrive il form «nuovo componente»: se e' aperto e
+      // modificato, prima si chiede (e prima della PATCH di chiusura).
+      command: () => chiudiConConferma(() => onDuplicaVersione(row)),
     },
     {
       key: 'chiudi-riga',
       label: t('catalogo.chiudi_riga'),
       icon: MANAGE_ICONS.CLOSE_DATE,
       severity: 'danger',
-      // Truthy check: coerente con il template inline edit `data.puo_chiudersi`
-      // e col pattern progetto (es. `is_base`, `attivo`). Se la migration BE
-      // non e' applicata e il campo manca, l'azione sparisce — comportamento
-      // corretto (riga non chiudibile per default in assenza di info).
       visible: !!row.puo_chiudersi,
       command: () => onChiudiRiga(row),
     },
   ]
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_bom')" :icon="MANAGE_ICONS.BOM" />
+      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_bom')" :icon="MANAGE_ICONS.BOM" :modificato="modificato" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div v-if="listLoading" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
-      </div>
+      <!-- Hint immutabilità (defense-in-depth UX): spiega il pattern
+           chiudi+inserisci che sostituisce l'edit in place. -->
+      <Message
+        v-if="!isReadonly && store.totalRecords > 0"
+        severity="info"
+        :closable="false"
+        class="mt-025"
+      >
+        {{ t('catalogo.bom_immutabile_hint') }}
+      </Message>
 
-      <template v-if="!listLoading">
-        <!-- Hint immutabilità (defense-in-depth UX): spiega il pattern
-             chiudi+inserisci che sostituisce l'edit in place. -->
+      <!-- ⛔ «Non sono riuscito a leggere» non e' «non ce ne sono». -->
+      <Message v-if="store.erroreCaricamento" severity="warn" :closable="false" size="small">
+        {{ t('common.righe_non_lette') }}
+      </Message>
+
+      <DrawerTabLista
+        ref="listaRef"
+        codice="catalogo.articolo_componenti"
+        :store="store"
+        :rows="store.items"
+        :total="store.totalRecords"
+        :loading="store.loading"
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
+        :page-actions="pageActions"
+        :dirty="dirty"
+        :perimetro-bloccato="perimetroBloccato"
+        @page="onPage"
+        @sort="onSort"
+        @row-click="onRowClick"
+        @config-loaded="onConfigLoaded"
+      >
+        <!-- La ricerca: colonne dal catalogo (codice e descrizione del
+             componente). L'export porta la stessa `search`. -->
+        <template #filtri-sempre>
+          <InputText v-model="searchText" class="app-filter-w-lg"
+            :placeholder="t('catalogo.filtro_componente_placeholder')" />
+        </template>
+        <template #filtri>
+          <DatePicker
+            :model-value="dataValida"
+            class="app-filter-w-sm"
+            :date-format="DATE_FORMAT"
+            show-icon
+            show-button-bar
+            :disabled="tutteLeVersioni"
+            :placeholder="t('catalogo.filtro_bom_validi_al')"
+            @update:model-value="(v) => { dataValida = v; onDataValidaChange() }"
+          />
+          <FiltroToggle
+            v-model="tutteLeVersioni"
+            :label="t('catalogo.filtro_bom_tutto')"
+            @change="applyFilters"
+          />
+        </template>
+        <template #empty>
+          <span v-if="!store.erroreCaricamento">{{ t('catalogo.nessun_componente') }}</span>
+        </template>
+        <template v-if="!isReadonly" #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
+        </template>
+      </DrawerTabLista>
+
+      <!-- Form sotto la lista: nuovo componente (anche la nuova versione del
+           Duplica, con titolo e banner suoi) o la riga in sola lettura. -->
+      <template v-if="!isReadonly && formAperto">
+        <div class="app-drawer-section">
+          <h4>
+            {{
+              isFormReadonly
+                ? t('catalogo.dettaglio_componente')
+                : (duplicaFlowSource ? t('catalogo.nuova_versione_componente') : t('catalogo.nuovo_componente'))
+            }}
+          </h4>
+        </div>
         <Message
-          v-if="!isReadonly && componentiList.length > 0"
-          severity="info"
+          v-if="duplicaFlowSource"
+          severity="warn"
           :closable="false"
           class="mt-025"
         >
-          {{ t('catalogo.bom_immutabile_hint') }}
+          {{ t('catalogo.nuova_versione_hint', {
+            codice: duplicaFlowSource.componente_codice,
+            data: displayDate(duplicaFlowSource.chiudi_al),
+          }) }}
         </Message>
-
-        <!-- Toolbar standard sub-drawer: filtro + reload + nuovo. Visibile
-             sempre (anche con lista vuota) per esporre il pulsante "Aggiungi
-             componente" come azione primaria — pattern allineato a
-             ContrattoRigheDrawer. Filtro nascosto se non c'e' nulla da filtrare. -->
-        <div v-if="!isReadonly" class="app-page-toolbar">
-          <div class="app-page-filters">
-            <InputText v-if="componentiList.length > 0"
-              v-model="filtroArticolo"
-              :placeholder="t('catalogo.filtro_componente_placeholder')"
-              style="min-width: 240px;" />
-            <DatePicker
-              v-if="componentiList.length > 0"
-              v-model="filtroValiditaData"
-              :date-format="DATE_FORMAT"
-              show-icon
-              show-button-bar
-              :disabled="filtroValiditaTutto"
-              :placeholder="t('catalogo.filtro_bom_validi_al')"
-              style="width: 160px;"
+        <div class="form-grid" :class="{ 'app-readonly': isFormReadonly }">
+          <div class="form-field">
+            <label>{{ t('catalogo.field_componente') }} *</label>
+            <ArticoloLookup
+              :model-value="componenteObj"
+              :placeholder="t('catalogo.search_componente')"
+              :disabled="isFormReadonly"
+              :filtri="{ compositi: 'escludi' }"
+              @select="onComponenteSelect"
             />
-            <div v-if="componentiList.length > 0">
-              <Checkbox v-model="filtroValiditaTutto" input-id="bom-filter-all" binary />
-              <label for="bom-filter-all">{{ t('catalogo.filtro_bom_tutto') }}</label>
-            </div>
           </div>
-          <PageActionsBar :actions="pageActions" />
+          <div class="form-field">
+            <label>{{ t('catalogo.field_coeff_qta') }} *</label>
+            <InputNumber v-model="form.coeff_qta" :min="0" :min-fraction-digits="2"
+              :max-fraction-digits="6" :disabled="isFormReadonly"
+              :invalid="campiErrati.includes('coeff_qta')"
+            />
+          </div>
         </div>
-
-        <!-- Lista componenti (sempre visibile) -->
-        <div v-if="componentiList.length === 0 && !adding" class="app-empty-state">
-          <i class="pi pi-sitemap" />
-          <p>{{ t('catalogo.nessun_componente') }}</p>
+        <div class="form-grid-2col mt-05" :class="{ 'app-readonly': isFormReadonly }">
+          <div class="form-field">
+            <label>{{ t('catalogo.field_valido_dal') }}</label>
+            <DatePicker v-model="form.valido_dal" :date-format="DATE_FORMAT"
+              show-icon show-button-bar :disabled="isFormReadonly"
+              :invalid="campiErrati.includes('valido_dal')"
+            />
+          </div>
+          <div class="form-field">
+            <label>{{ t('catalogo.field_valido_al') }}</label>
+            <DatePicker v-model="form.valido_al" :date-format="DATE_FORMAT"
+              show-icon show-button-bar :disabled="isFormReadonly"
+              :invalid="campiErrati.includes('valido_al')"
+            />
+          </div>
         </div>
-
-        <DataTable
-          v-if="componentiList.length > 0"
-          :value="componentiView"
-          class="app-datatable"
-          striped-rows
-          paginator
-          :rows="10"
-          :rows-per-page-options="[10, 25, 50]"
-          paginator-position="top"
-          sort-field="componente_descrizione"
-          :sort-order="1"
-          removable-sort
-          data-key="id"
-          @row-click="event => openReadonlyDetail(event.data)"
-        >
-          <Column field="componente_codice" :header="t('catalogo.col_codice')" sortable style="width: 110px;">
-            <template #body="{ data }">
-              <span class="bom-codice-truncate" :title="data.componente_codice">{{ data.componente_codice }}</span>
-            </template>
-          </Column>
-          <Column field="componente_descrizione" :header="t('catalogo.col_descrizione')" sortable style="width: 220px;" />
-          <Column field="coeff_qta" :header="t('catalogo.col_coeff_qta')" style="width: 70px;" sortable />
-          <Column field="esposto_in_fattura" :header="t('catalogo.col_esposto_fattura')" style="width: 80px;">
-            <template #body="{ data }">
-              <i :class="data.esposto_in_fattura ? 'pi pi-check' : 'pi pi-minus app-text-muted'" />
-            </template>
-          </Column>
-          <Column field="valido_al" :header="t('catalogo.field_valido_al')" style="width: 130px;" sortable>
-            <template #body="{ data }">
-              {{ displayDate(data.valido_al) || '—' }}
-            </template>
-          </Column>
-          <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-            <template #body="{ data }">
-              <span @click.stop>
-                <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
-              </span>
-            </template>
-          </Column>
-        </DataTable>
-
-        <!-- Form inserimento nuovo componente. Pulsante di apertura ora
-             nella toolbar in alto (PageActionsBar); qui solo il form quando
-             adding=true. Quando `duplicaFlowSource` e' valorizzato il form
-             arriva pre-compilato dai valori della sorgente chiusa: titolo +
-             banner cambiano per chiarire all'utente che sta inserendo la
-             nuova versione successiva alla riga appena chiusa. -->
-        <template v-if="!isReadonly">
-          <template v-if="isFormOpen">
-            <div class="app-drawer-section">
-              <h4>
-                {{
-                  isFormReadonly
-                    ? t('catalogo.dettaglio_componente')
-                    : (duplicaFlowSource ? t('catalogo.nuova_versione_componente') : t('catalogo.nuovo_componente'))
-                }}
-              </h4>
-            </div>
-            <Message
-              v-if="duplicaFlowSource"
-              severity="warn"
-              :closable="false"
-              class="mt-025"
-            >
-              {{ t('catalogo.nuova_versione_hint', {
-                codice: duplicaFlowSource.componente_codice,
-                data: displayDate(duplicaFlowSource.chiudi_al),
-              }) }}
-            </Message>
-            <div class="form-grid" :class="{ 'app-readonly': isFormReadonly }">
-              <div class="form-field">
-                <label>{{ t('catalogo.field_componente') }} *</label>
-                <ArticoloLookup
-                  :model-value="componenteObj"
-                  :placeholder="t('catalogo.search_componente')"
-                  :disabled="isFormReadonly"
-                  :filtri="{ compositi: 'escludi' }"
-                  @select="onComponenteSelect"
-                />
-              </div>
-              <div class="form-field">
-                <label>{{ t('catalogo.field_coeff_qta') }} *</label>
-                <InputNumber v-model="form.coeff_qta" :min="0" :min-fraction-digits="2"
-                  :max-fraction-digits="6" :disabled="isFormReadonly"
-                  :invalid="campiErrati.includes('coeff_qta')"
-                />
-              </div>
-            </div>
-            <div class="form-grid-2col mt-05" :class="{ 'app-readonly': isFormReadonly }">
-              <div class="form-field">
-                <label>{{ t('catalogo.field_valido_dal') }}</label>
-                <DatePicker v-model="form.valido_dal" :date-format="DATE_FORMAT"
-                  show-icon show-button-bar :disabled="isFormReadonly"
-                  :invalid="campiErrati.includes('valido_dal')"
-                />
-              </div>
-              <div class="form-field">
-                <label>{{ t('catalogo.field_valido_al') }}</label>
-                <DatePicker v-model="form.valido_al" :date-format="DATE_FORMAT"
-                  show-icon show-button-bar :disabled="isFormReadonly"
-                  :invalid="campiErrati.includes('valido_al')"
-                />
-              </div>
-            </div>
-            <div class="form-grid-2col mt-05" :class="{ 'app-readonly': isFormReadonly }">
-              <div class="form-field">
-                <label>{{ t('catalogo.field_obbligatorio') }}</label>
-                <span
-                  v-if="isFormReadonly"
-                  class="bom-readonly-switch"
-                  :class="{ 'bom-readonly-switch--on': form.obbligatorio }"
-                >
-                  <span class="bom-readonly-switch__knob" />
-                  <span>{{ form.obbligatorio ? t('common.yes') : t('common.no') }}</span>
-                </span>
-                <ToggleSwitch v-else v-model="form.obbligatorio"
-                  :invalid="campiErrati.includes('obbligatorio')"
-                />
-              </div>
-              <div class="form-field">
-                <label>{{ t('catalogo.field_partecipa_qta') }}</label>
-                <span
-                  v-if="isFormReadonly"
-                  class="bom-readonly-switch"
-                  :class="{ 'bom-readonly-switch--on': form.partecipa_qta }"
-                >
-                  <span class="bom-readonly-switch__knob" />
-                  <span>{{ form.partecipa_qta ? t('common.yes') : t('common.no') }}</span>
-                </span>
-                <ToggleSwitch v-else v-model="form.partecipa_qta" />
-              </div>
-            </div>
-            <div class="form-grid-2col mt-05" :class="{ 'app-readonly': isFormReadonly }">
-              <div class="form-field">
-                <label>{{ t('catalogo.field_determina_qta_padre') }}</label>
-                <span
-                  v-if="isFormReadonly"
-                  class="bom-readonly-switch"
-                  :class="{ 'bom-readonly-switch--on': form.determina_qta_padre }"
-                >
-                  <span class="bom-readonly-switch__knob" />
-                  <span>{{ form.determina_qta_padre ? t('common.yes') : t('common.no') }}</span>
-                </span>
-                <ToggleSwitch v-else v-model="form.determina_qta_padre" />
-              </div>
-              <div class="form-field">
-                <label>{{ t('catalogo.field_esposto_fattura') }}</label>
-                <span
-                  v-if="isFormReadonly"
-                  class="bom-readonly-switch"
-                  :class="{ 'bom-readonly-switch--on': form.esposto_in_fattura }"
-                >
-                  <span class="bom-readonly-switch__knob" />
-                  <span>{{ form.esposto_in_fattura ? t('common.yes') : t('common.no') }}</span>
-                </span>
-                <ToggleSwitch v-else v-model="form.esposto_in_fattura" />
-              </div>
-            </div>
-            <FormFooter
+        <!-- I quattro flag della riga: in sola lettura uno switch disegnato
+             (il ToggleSwitch disabilitato non si legge), altrimenti il widget. -->
+        <div class="form-grid-2col mt-05" :class="{ 'app-readonly': isFormReadonly }">
+          <div v-for="flag in FLAG_COMPONENTE" :key="flag.campo" class="form-field">
+            <label>{{ t(flag.labelKey) }}</label>
+            <span
               v-if="isFormReadonly"
-              close-only
-              @cancel="closeReadonlyDetail"
+              class="bom-readonly-switch"
+              :class="{ 'bom-readonly-switch--on': form[flag.campo] }"
+            >
+              <span class="bom-readonly-switch__knob" />
+              <span>{{ form[flag.campo] ? t('common.yes') : t('common.no') }}</span>
+            </span>
+            <ToggleSwitch v-else v-model="form[flag.campo]"
+              :invalid="campiErrati.includes(flag.campo)"
             />
-            <FormFooter
-              v-else
-              :loading="loading"
-              :disabled="!canSaveForm"
-              @save="onSaveNew"
-              @cancel="cancelAdd"
-            />
-          </template>
-        </template>
+          </div>
+        </div>
+        <FormFooter
+          v-if="isFormReadonly"
+          close-only
+          @cancel="chiudiForm"
+        />
+        <FormFooter
+          v-else
+          :loading="loading"
+          :disabled="!canSaveForm"
+          @save="onSaveNew"
+          @cancel="annullaAdd"
+        />
       </template>
 
-      <FormFooter v-if="!isFormOpen" close-only @cancel="onClose" />
+      <FormFooter v-if="!formAperto" close-only @cancel="chiudi" />
     </div>
   </Drawer>
+
+  <ExportDialog
+    v-model:visible="exportDialogVisible"
+    :loading="exportLoading"
+    @export="onExportConfirm"
+  />
 
   <NoteDrawer
     v-if="noteApiClient"
@@ -742,7 +643,7 @@ function buildRigaActions(row) {
     @update:visible="v => noteDrawerVisible = v"
     :api-client="noteApiClient"
     :title="t('catalogo.tab_note')"
-    @saved="loadComponenti"
+    @saved="reloadAll"
   />
 
   <!-- Dialog chiusura riga BoM. Pattern simmetrico a ChiudiVersioneDialog
@@ -831,16 +732,6 @@ function buildRigaActions(row) {
 </template>
 
 <style scoped>
-/* Solo il codice componente (identificatore) tronca con ellipsis. La
-   descrizione wrappa per parole in modo naturale: su drawer stretto
-   la cella cresce in altezza invece di sovrapporsi. */
-.bom-codice-truncate {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .bom-readonly-switch {
   position: relative;
   display: inline-flex;
@@ -874,13 +765,13 @@ function buildRigaActions(row) {
 }
 
 .bom-readonly-switch--on {
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   font-weight: 600;
 }
 
 .bom-readonly-switch--on::before {
-  border-color: var(--p-primary-color);
-  background: var(--p-primary-color);
+  border-color: var(--app-accent-color);
+  background: var(--app-accent-color);
 }
 
 .bom-readonly-switch--on .bom-readonly-switch__knob {

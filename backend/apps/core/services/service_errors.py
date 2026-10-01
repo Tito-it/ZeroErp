@@ -12,6 +12,13 @@ from apps.core.services.db_error_fields import Bersaglio
 
 # Modello errore applicativo unico riusabile da tutti i servizi Django.
 
+# Scopo: ⭐ Il codice del dato in ingresso non valido (tipo, forma, chiave
+#        fuori contratto), in un posto solo. E' anche quello in cui
+#        `ErrorTranslator` traduce un `ValueError`/`TypeError` arrivato nudo.
+# ⛔ Non ridefinirlo nei moduli, e non scriverlo come stringa: fino al
+#    2026-09-27 stava in due costanti locali e in una dozzina di letterali.
+E_VALIDATION_INPUT = "E_VALIDATION_INPUT"
+
 
 class ServiceError(Exception):
     """Errore applicativo standard con metadati utili per API/UI."""

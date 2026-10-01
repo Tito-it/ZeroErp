@@ -11,7 +11,7 @@
 # 1. test_crea_pratica_registered_with_confirmation
 # 2. test_cambia_stato_registered_with_confirmation
 # 3. test_aggiungi_nota_registered_with_confirmation
-# 4. test_write_tools_require_tutto
+# 4. test_write_tools_hanno_gemello_di_scrittura
 # 5. test_preview_returns_summary
 # 6. test_confirmation_flow
 
@@ -41,7 +41,6 @@ class TestFase4ToolRegistration(unittest.TestCase):
         tool = tool_registry.get_tool_by_name("crea_pratica")
         self.assertIsNotNone(tool)
         self.assertTrue(tool.requires_confirmation)
-        self.assertEqual(tool.required_level, "TUTTO")
 
     # Scopo: cambia_stato_pratica deve essere registrato con conferma.
     def test_cambia_stato_registered_with_confirmation(self):
@@ -55,11 +54,15 @@ class TestFase4ToolRegistration(unittest.TestCase):
         self.assertIsNotNone(tool)
         self.assertTrue(tool.requires_confirmation)
 
-    # Scopo: Tutti i tool in scrittura devono richiedere TUTTO.
-    def test_write_tools_require_tutto(self):
+    # Scopo: I tool in scrittura hanno per gemello un endpoint di SCRITTURA:
+    #        e' da li' che il loro permesso chiede `TUTTO` (o l'azione di
+    #        processo). Un gemello `GET` farebbe scrivere un operatore in
+    #        sola lettura — il difetto che il vecchio `required_level` scritto
+    #        a mano non sapeva impedire.
+    def test_write_tools_hanno_gemello_di_scrittura(self):
         for name in ["crea_pratica", "cambia_stato_pratica", "aggiungi_nota_pratica"]:
             tool = tool_registry.get_tool_by_name(name)
-            self.assertEqual(tool.required_level, "TUTTO", f"{name} deve richiedere TUTTO")
+            self.assertEqual(tool.endpoint.metodo, "POST", name)
 
     # Scopo: preview deve restituire summary e details.
     def test_preview_returns_summary(self):

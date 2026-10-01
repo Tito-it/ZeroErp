@@ -25,6 +25,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, transaction
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
@@ -205,7 +206,7 @@ def pr_run_commesse_push(
                         commessa_id=commessa_id,
                         righe_ids=attivita_per_commessa.get(commessa_id, []),
                     )
-            except Exception as exc:  # noqa: BLE001 — best-effort, report-driven
+            except Exception as exc:  # best-effort, report-driven
                 # Una sola composizione del messaggio: finisce sia nel report
                 # (con le coordinate davanti) sia nel payload dell'evento. Due
                 # `f"{type(exc).__name__}: {exc}"` scritti a mano avrebbero
@@ -252,11 +253,17 @@ def pr_run_commesse_push(
                 #    quella "semplificazione" il gate vedeva un `entity_type`
                 #    invece di due.
                 #
-                # ⚠️ La lambda non ha argomenti di default e non ne ha bisogno:
-                #    il telaio la invoca SUBITO, prima che il giro successivo
-                #    rileghi `commessa_id`.
-                diagnostica_best_effort(
-                    lambda: repo.log_event(
+                # ⭐ Le variabili del ciclo si LEGANO come argomenti di default
+                #    (ruff B023, dal 2026-09-28). Il telaio oggi invoca la
+                #    funzione subito, ma una funzione che legge la variabile del
+                #    ciclo e' giusta solo finche' nessuno la rimanda: legata,
+                #    lo e' per costruzione, qualunque cosa faccia il telaio.
+                def _diario(
+                    commessa_id: int = commessa_id,
+                    tipo_doc_mancante_qui: bool = tipo_doc_mancante_qui,
+                    errore: str = errore,
+                ) -> None:
+                    repo.log_event(
                         entity_type="COMMESSA",
                         entity_id=commessa_id,
                         event_code="EMITTIBILITA_FALLITA",
@@ -266,7 +273,10 @@ def pr_run_commesse_push(
                             "tipo_doc_mancante": tipo_doc_mancante_qui,
                             "errore": errore,
                         },
-                    ),
+                    )
+
+                diagnostica_best_effort(
+                    _diario,
                     contesto={"commessa_id": commessa_id},
                     function_name="vendite.commesse_service.pr_run_commesse_push",
                 )
@@ -760,7 +770,10 @@ def approva_attivita_competenza(
 _ONERE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("E_ONERE_IMPORTO_NON_VALIDO", ("E_ONERE_IMPORTO_NON_VALIDO",)),
     ("E_ONERE_ARTICOLO_MANCANTE", ("E_ONERE_ARTICOLO_MANCANTE",)),
-    ("E_ONERE_CAUSALE_NON_VALIDA", ("E_ONERE_CAUSALE_NON_VALIDA",)),
+    # ⛔ `E_ONERE_CAUSALE_NON_VALIDA` NON e' piu' qui (2026-09-21): nessuna funzione
+    #    viva lo solleva (pg_proc a zero occorrenze) e un marker per un codice
+    #    che nessuno manda e' una promessa vuota. Ritiro a catalogo chiesto al
+    #    team DB (brief-be-presidio-ui-action-e-canale-campi §3-bis.2, dec. 7).
     ("E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO", (_ERR_TIPO_DOC_MANCANTE,)),
     # Guard race progressivo segment_key (DB 557, brief-db-race-segment-key-
     # onere): senza questo marker il codice cadrebbe sul fallback
@@ -993,10 +1006,10 @@ def fn_list_commessa_attivita(
     # proposito piu' righe di una pagina, e la sua misura la governa
     # `build_export_response` col `count` esatto.
     ErrorManager.require(
-        max_rows is not None or 1 <= int(limit) <= 200,
+        max_rows is not None or 1 <= int(limit) <= MAX_LIMIT,
         code="E_COMMESSA_VALIDATION",
         message="Parametri non validi.",
-        detail="limit deve essere compreso tra 1 e 200",
+        detail=f"limit deve essere compreso tra 1 e {MAX_LIMIT}",
         context={"commessa_id": commessa_id, "limit": limit},
         function_name="vendite.commesse_service.fn_list_commessa_attivita",
         log_to_db=True,
@@ -1004,14 +1017,18 @@ def fn_list_commessa_attivita(
     # Ordinamento validato PRIMA di toccare il DB (un parametro sbagliato non
     # deve costare un round-trip): whitelist ATTIVITA_SORT_COLUMNS, specchio
     # della mappa chiusa dentro la fn. None = ordine storico ca.id.
-    if order_by is not None:
-        order_by, order_dir = validate_order_params(
-            order_by,
-            (order_dir or "asc").lower(),
-            allowed_columns=ATTIVITA_SORT_COLUMNS,
-            error_code="E_COMMESSA_VALIDATION",
-            function_name="vendite.commesse_service.fn_list_commessa_attivita",
-        )
+    # ⚠️ Si valida SEMPRE, non solo con la colonna (2026-09-26): la direzione
+    #    va giudicata anche sul ramo «ordine storico», che la ignora — prima
+    #    `?order_dir=giu` senza `order_by` arrivava muto alla fn. `nullable`
+    #    ammette l'assenza di entrambi, come prima il ramo saltato.
+    order_by, order_dir = validate_order_params(
+        order_by,
+        order_dir,
+        allowed_columns=ATTIVITA_SORT_COLUMNS,
+        error_code="E_COMMESSA_VALIDATION",
+        function_name="vendite.commesse_service.fn_list_commessa_attivita",
+        nullable=True,
+    )
     # Filtro movimento: vocabolario chiuso, validato PRIMA del round-trip come
     # l'ordinamento. ⚠️ Vuoto e None sono la STESSA cosa — «tutti i movimenti» —
     # e non un valore da validare: un filtro azzerato dal frontend arriva come
@@ -1521,7 +1538,7 @@ def _assert_annullabile(
 # repository): questo risponde 400 e DICE il limite, quello clampa in silenzio
 # — due regole diverse, e la seconda esiste solo perche' un chiamante interno
 # non possa chiedere tutto il log di una commessa grande.
-_REGISTRO_MAX_LIMIT = 200
+_REGISTRO_MAX_LIMIT = MAX_LIMIT
 
 
 # Scopo: Il REGISTRO di una commessa — gli eventi scritti dal database sulle sue

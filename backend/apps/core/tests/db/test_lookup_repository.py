@@ -140,9 +140,13 @@ class TestListMatriceIndirizzi(TestCase):
 
 
 class TestSearchComuni(TestCase):
-    """Test LookupRepository.search_comuni()."""
+    """Test LookupRepository.search_comuni().
 
-    @patch("apps.core.db.lookup_repository.connection")
+    ⚠️ Dal 2026-09-28 la pagina passa da `fetch_paged_with_total`: si
+    sostituisce la `connection` del BB, non quella del repository.
+    """
+
+    @patch("apps.core.db._helpers.connection")
     def test_search_comuni_with_search(self, mock_conn):
         """Ricerca ILIKE su denominazione comune con risultati."""
         cols = ["id", "descrizione", "provincia_sigla", "total_count"]
@@ -168,7 +172,7 @@ class TestSearchComuni(TestCase):
         self.assertEqual(results[0]["descrizione"], "ROMA")
         self.assertEqual(results[0]["provincia_sigla"], "RM")
 
-    @patch("apps.core.db.lookup_repository.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_search_comuni_no_search(self, mock_conn):
         """Nessun filtro — ritorna primi N comuni."""
         cols = ["id", "descrizione", "provincia_sigla", "total_count"]
@@ -187,7 +191,7 @@ class TestSearchComuni(TestCase):
         self.assertIsNone(params[0])
         self.assertEqual(count, 50)
 
-    @patch("apps.core.db.lookup_repository.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_search_comuni_empty(self, mock_conn):
         """Nessun risultato — tupla ([], 0)."""
         mock_cursor = MagicMock()
@@ -202,7 +206,7 @@ class TestSearchComuni(TestCase):
         self.assertEqual(results, [])
         self.assertEqual(count, 0)
 
-    @patch("apps.core.db.lookup_repository.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_search_comuni_pagination(self, mock_conn):
         """Verifica che limit e offset vengano passati al SQL."""
         cols = ["id", "descrizione", "provincia_sigla", "total_count"]

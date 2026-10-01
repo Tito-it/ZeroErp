@@ -20,8 +20,13 @@
 --  9) Seed aree_funzionali: tutti gli 11 codici attesi
 -- 10) Seed aree_funzionali: schema_db = codice per tutte
 -- 11) Seed aree_funzionali: ordinamento positivo
--- 12) UQ codice: duplicato bloccato
--- 13) UQ schema_db: duplicato bloccato
+-- 12) UQ codice: vincolo UNIQUE presente
+-- 13) UQ schema_db: vincolo UNIQUE presente
+--     ⚠️ Fino al 2026-09-28 12-13 provavano un INSERT duplicato. Da quel giorno
+--     l'app non scrive config.aree_funzionali (D-P9, 90_end/20260928-30): come app
+--     l'INSERT darebbe 42501 prima di arrivare alla UNIQUE. La tabella la scrive
+--     solo il seed, quindi si controlla il vincolo sul catalogo, non il
+--     comportamento di una scrittura che l'applicazione non fa.
 -- 14) Tabella config.azioni_processo esiste
 -- 15) Seed azioni_processo: 8 righe attive
 -- 16) Seed: genera_fatture_lotti marcata pericolosa
@@ -160,22 +165,15 @@ SELECT ok(
     'Seed aree_funzionali: ordinamento positivo per TUTTE le righe (invariante, non conteggio)'
 );
 
-SELECT throws_ok(
-    $$INSERT INTO config.aree_funzionali
-          (codice, codice_interno, descrizione, schema_db, ordinamento)
-      VALUES ('anagrafiche', 'pgtap_dup_ci', 'Test', 'pgtap_dup_schema', 999)$$,
-    '23505',
-    NULL,
-    'UQ codice: duplicato bloccato'
+-- ⚠️ Il catalogo e non un INSERT: l'app non scrive la tabella (D-P9, 20260928-30).
+SELECT col_is_unique(
+    'config', 'aree_funzionali', ARRAY['codice'],
+    'UQ codice: vincolo UNIQUE presente'
 );
 
-SELECT throws_ok(
-    $$INSERT INTO config.aree_funzionali
-          (codice, codice_interno, descrizione, schema_db, ordinamento)
-      VALUES ('pgtap_dup_codice', 'pgtap_dup_ci2', 'Test', 'anagrafiche', 999)$$,
-    '23505',
-    NULL,
-    'UQ schema_db: duplicato bloccato'
+SELECT col_is_unique(
+    'config', 'aree_funzionali', ARRAY['schema_db'],
+    'UQ schema_db: vincolo UNIQUE presente (la chiave dei permessi)'
 );
 
 -- ============================================================

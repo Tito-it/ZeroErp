@@ -38,6 +38,8 @@ La tabella **`ui.lista_preferenza_utente`** memorizza la **preferenza personale 
 
 > I codici colonna referenziano `lista_colonna.codice` (stringa), non l'`id` numerico. Questo protegge da cambi di ID e permette di ignorare silenziosamente colonne disattivate nel catalogo.
 
+> `pagina_dimensione` (dal 30-09-2026) deve essere una misura del catalogo [ui.misure_pagina](/dbzero/ui/tabelle/misure_pagina), o mancare (vale il default). Una misura fuori catalogo — o un valore che non è un numero intero — viene rifiutata al salvataggio (`trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd`). Una preferenza salvata prima con una misura non più ammessa non rompe niente: la lista risponde il default.
+
 ---
 
 ### Colonne chiave

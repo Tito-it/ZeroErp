@@ -12,22 +12,19 @@ import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
-import { useRevisioniTab } from '../../../core/composables/useRevisioniTab'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
 import { STATO_PREVENTIVO } from '../../constants'
 import { addDaysToToday, displayDate, toDateString } from '../../../core/utils/date'
-import { formatCurrency } from '../../../core/utils/format'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
-import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
-import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
@@ -37,6 +34,8 @@ import { mapAvailableActionsToDrawerActions } from '../../../core/composables/us
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import PreventiviForm from './PreventiviForm.vue'
+import RevisioniTab from '../../_shared/revisioni/RevisioniTab.vue'
+import { usePreventivoRevisioniStore } from '../stores/preventivoRevisioni'
 import PreventiviRigheTable from './PreventiviRigheTable.vue'
 import PreventiviSmistamentoDialog from './dialogs/PreventiviSmistamentoDialog.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
@@ -56,14 +55,11 @@ import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 
 const { t, te } = useI18n()
 const store = usePreventiviStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
-const { emitDataChanged } = useTabEvents()
 
 const props = defineProps({
   visible: Boolean,
@@ -156,7 +152,13 @@ const form = ref({})
 // senza, compilare la testata e poi salvare una RIGA (`@changed` → loadDetail)
 // la riportava com'era sul server, in silenzio. BB condiviso coi drawer
 // gemelli (difetto trovato sul DDT, 2026-08-17, identico qui).
-const { preserva: preservaForm, reset: resetFormPreserve } = useDrawerFormPreserve(form)
+const {
+  preserva: preservaForm,
+  reset: resetFormPreserve,
+  fissa: fissaForm,
+  modificato,
+  chiudiConConferma,
+} = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const detail = ref(null)
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_preventivi_riepilogo_iva_dettaglio`).
 // Auto-popolato a ogni loadDetail e ogni `@changed` delle righe (regola fiscale
@@ -205,6 +207,7 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 // Composable centralizzato (Fase 4.F2): availableActions/canEdit/flag/isLocked/
 // nonEditableFields uniformi a Contratti/Promo. Qui editFlag = can_edit_testata.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 // In CREATE non c'e' detail BE: il drawer e' editabile per default (gated solo
@@ -216,11 +219,11 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // FE non lo legge piu' — l'azione `crea_revisione` arriva ora data-driven in
 // `available_actions` (post brief DB 2026-05-28, mirror offerte).
 const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
-const pushCommessaReasonKey = computed(() => detail.value?.can_push_commessa_reason_key || null)
+const pushCommessaReasonKey = computed(() => capabilities.value.can_push_commessa_reason_key || null)
 // Ramo gemello dello smistamento: `genera_ordine` ha la sua reason, che finora
 // nessuno mostrava (il banner sotto copriva solo il ramo commessa).
 const canGeneraOrdine = computed(() => caps.flag('can_genera_ordine'))
-const generaOrdineReasonKey = computed(() => detail.value?.can_genera_ordine_reason_key || null)
+const generaOrdineReasonKey = computed(() => capabilities.value.can_genera_ordine_reason_key || null)
 // Pannello Smistamento visibile da ACCETTATO in poi (EVASO = consuntivo):
 // prima dell'accettazione non c'e' nulla da smistare e il pannello sarebbe
 // solo rumore (tutte RESIDUA, azioni rifiutate dal BE).
@@ -235,7 +238,7 @@ const showSmistamento = computed(() => {
 // il dettaglio righe; un cambio sarebbe un nuovo preventivo, non una modifica
 // della testata. utility_id era gia' immutabile via metadata BE.
 const nonEditableFields = computed(() => {
-  const base = detail.value?.non_editable_fields || []
+  const base = capabilities.value.non_editable_fields || []
   // Post auto-save bozza / EDIT: cambiare BA o istanza sarebbe un altro
   // preventivo, non una modifica → entrambi bloccati. utility_id è già
   // immutabile via metadata BE.
@@ -333,18 +336,18 @@ watch(() => form.value.validita_dal, (nuovaDal) => {
 // parallelo al detail; assente in CREATE (nessun preventivo ancora salvato).
 const contestoPricing = ref(null)
 
-// Tab "Testata | Revisioni" — state + load con guard di race incapsulati nel
-// building block `useRevisioniTab` (regola del 2, estratto da
-// PreventiviDrawer + OffertaDrawer). `activeTab`, `revisioni`,
-// `loadRevisioni`, `reset` arrivano da li'.
-const revisioniTab = useRevisioniTab({
-  load: (id) => store.loadRevisioni(id),
-})
-const { activeTab, revisioni } = revisioniTab
+// Tab "Testata | Revisioni". Il tab attivo torna a "Testata" a ogni apertura
+// (vedi il watch su `visible`). La catena delle revisioni e' la lista a
+// catalogo `vendite.preventivo_revisioni`, montata da `RevisioniTab` (BB
+// condiviso con OffertaDrawer, che dal 2026-09-27 ritira `useRevisioniTab`):
+// store SUO, padre = preventivo + emittente, ricarica al cambio preventivo e
+// reset a drawer chiuso (`documentoId` null) — lo fa `useDrawerTabLista`.
+const activeTab = ref('testata')
+const revisioniStore = usePreventivoRevisioniStore()
 
 // Guard di race anti-stale per `getContestoPricing` (fetch fire-and-forget
-// in `loadDetail`). Stesso pattern di `revisioniTab`: una risposta arrivata
-// dopo cambio entita' o chiusura drawer viene scartata.
+// in `loadDetail`): una risposta arrivata dopo cambio entita' o chiusura
+// drawer viene scartata.
 const contestoFv = useFetchVersion()
 
 function resetForm() {
@@ -381,9 +384,12 @@ async function loadDetail(id = null) {
       contestoPricing.value = null
       console.warn('contesto pricing fetch failed', err?.response?.data || err)
     })
-  // Carica la catena revisioni (tab Revisioni). Guard di versione interno a
-  // `revisioniTab` (useFetchVersion). Mirror OffertaDrawer.
-  revisioniTab.loadRevisioni(targetId)
+  // La catena revisioni NON si carica qui: la carica `RevisioniTab` quando
+  // cambia il preventivo. Ricaricare il dettaglio dopo un'azione di stato
+  // (emetti, accetta, nuova revisione...) cambia pero' lo stato delle righe
+  // della catena: la si rilegge — solo se il tab e' gia' agganciato a
+  // QUESTO preventivo (il perche' sta su `rileggiSeAgganciato`).
+  revisioniStore.rileggiSeAgganciato(targetId)
   // Sospende il watch di ricalcolo finche' non scarica entrambi i campi data:
   // assegnando form.value il watch fires su validita_dal e sovrascriverebbe
   // validita_al persistita.
@@ -481,15 +487,20 @@ watch(() => props.visible, async (v) => {
     // in volo (revisioni + contesto pricing): una risposta stantia che
     // arrivasse dopo la chiusura non deve popolare lo stato del prossimo
     // preventivo aperto.
-    revisioniTab.reset()
+    activeTab.value = 'testata'
     contestoFv.invalidate()
+    // ⚠️ Le revisioni a mano, e non da `RevisioniTab`: il Drawer smonta il
+    //    contenuto nello stesso giro in cui si chiude, e il `documentoId` null
+    //    non arriva mai al tab. Senza, il contatore «Revisioni (N)» della
+    //    prossima apertura parte dal documento precedente.
+    revisioniStore.reset()
     return
   }
   // Reset tab attivo sempre, EDIT o CREATE: senza questo, riaprendo il drawer
   // su un altro preventivo il tab restava quello dell'apertura precedente
   // (es. chiudo su "Revisioni", riapro su un nuovo preventivo → si vedeva
   // "Revisioni" invece di "Testata"). Mirror OffertaDrawer.
-  revisioniTab.reset()
+  activeTab.value = 'testata'
   contestoFv.invalidate()
   // Reset stato "edit-evolved" a OGNI apertura: questo drawer e' montato una
   // sola volta come attivita' dinamica nella dashboard pratiche e riusato tra
@@ -564,6 +575,8 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   form,
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
+  // Uscita con modifiche non salvate: prima si chiede (BB useDrawerFormPreserve).
+  confermaUscita: chiudiConConferma,
   messages: {
     bozzaCreata: t('vendite.preventivi.bozza_creata'),
     abbandonoTitolo: t('vendite.preventivi.abbandono_bozza_titolo'),
@@ -639,6 +652,10 @@ async function handleSave() {
       { successMessage: t('vendite.preventivi.preventivo_salvato') }
     )
     if (result !== null) {
+      // Salvato: la fotografia e' il form com'e' ora, PRIMA della ricarica —
+      // o `preserva` prenderebbe i valori appena salvati per «non salvati» e
+      // li rimetterebbe sopra quelli (eventualmente normalizzati) del server.
+      fissaForm()
       await loadDetail()
       emit('saved', result)
     }
@@ -669,7 +686,7 @@ async function handleSave() {
   }
 }
 
-// --- Azioni stato (data-driven da detail.available_actions) ---
+// --- Azioni stato (data-driven da capabilities.available_actions) ---
 
 // Scopo: handler unico bottone azione. Usa requires_confirm dai metadata
 //        per decidere se mostrare il dialog di conferma. La label nel
@@ -804,14 +821,13 @@ function onNuovaRevisione() {
 // automatica ACCETTATO → EVASO e le capability si vedono solo dopo il reload),
 // i chip dei collegamenti (lo smistamento crea gli archi preventivo→ordine e
 // preventivo→commessa: senza reload il chip comparirebbe solo alla riapertura
-// del drawer) e, se il ramo merce ha creato un ordine, notifica il tab ordini.
-async function onSmistato({ ordineId } = {}) {
-  if (ordineId) emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
+// del drawer). Le liste in ascolto (ordini, preventivi) le avvisa lo store nel
+// verbo `generaOrdine`, non questo drawer.
+async function onSmistato() {
   await loadDetail()
   collegamentiRef.value?.reload()
-  // ⭐ `emitDataChanged` avvisa la tab ORDINI, che e' un'ALTRA lista. Anche il
-  // preventivo pero' e' cambiato — ed e' la lista che sta dietro a questo
-  // drawer: senza `changed` restava indietro proprio la piu' vicina.
+  // `changed` resta il contratto del drawer verso CHI LO HA APERTO, che non e'
+  // per forza una lista in ascolto dell'evento (es. l'host dei flussi pratica).
   emit('changed')
 }
 
@@ -854,7 +870,7 @@ const drawerActions = computed(() => {
       key: 'smistamento',
       kind: 'manage',
       label: t('vendite.preventivi.section_smistamento'),
-      icon: MANAGE_ICONS.SEND,
+      icon: MANAGE_ICONS.INVIA_A_COMMESSA,
       command: () => { smistamentoDialogVisible.value = true },
     })
   }
@@ -877,6 +893,7 @@ const drawerActions = computed(() => {
     <template #header>
       <DrawerTitle
         :action="(isEdit || hasDetail) ? t('common.edit') : t('common.new')"
+        :modificato="modificato"
         :title="t('vendite.preventivi.preventivo')"
         :icon="NAV_ICONS.PREVENTIVI"
       />
@@ -894,7 +911,7 @@ const drawerActions = computed(() => {
       <template v-if="hasDetail">
         <DrawerEntityHeader>
           <Tag :value="`${detail.numero} rev.${detail.rev}`" severity="secondary" />
-          <Tag v-if="isSuperseded" :value="t('vendite.preventivi.tag_superseded')" severity="warn" icon="pi pi-history" />
+          <Tag v-if="isSuperseded" :value="t('vendite.preventivi.tag_superseded')" severity="warn" :icon="STATUS_ICONS.SUPERATO" />
           <span v-if="detail.data" class="app-drawer-header-muted font-bold">
             {{ displayDate(detail.data) }}
           </span>
@@ -905,7 +922,7 @@ const drawerActions = computed(() => {
                 listino: contestoPricing.listino_codice,
               })"
               severity="info"
-              icon="pi pi-file-edit"
+              :icon="MANAGE_ICONS.CONTRATTI"
               v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_contratto_tooltip')"
             />
           </template>
@@ -916,7 +933,7 @@ const drawerActions = computed(() => {
                 categoria: contestoPricing.categoria_cliente_codice,
               })"
               severity="info"
-              icon="pi pi-tag"
+              :icon="NAV_ICONS.CATEGORIE_CLIENTI"
               v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_categoria_tooltip')"
             />
           </template>
@@ -924,7 +941,7 @@ const drawerActions = computed(() => {
             <Tag
               :value="t('vendite.preventivi.contesto_pricing_none')"
               severity="warn"
-              :icon="MANAGE_ICONS.ERRORE"
+              :icon="STATUS_ICONS.ERRORE"
               v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_none_tooltip')"
             />
           </template>
@@ -944,12 +961,13 @@ const drawerActions = computed(() => {
                - ACCETTATO/EVASO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
              Resta componente dedicato dentro #suffix (stateful), non rappresentabile
              come azione `command: () => void`. -->
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
+        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
           <template #suffix>
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.PREVENTIVO"
               :entity-id="effectivePreventivoId"
-              :pdf="detail.pdf"
+              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+              :pdf="capabilities.pdf"
               i18n-prefix="vendite.preventivi.pdf"
               :dialog-title="detail.numero
                 ? t('vendite.preventivi.pdf.dialog_title', { numero: detail.numero })
@@ -976,19 +994,6 @@ const drawerActions = computed(() => {
         {{ t('vendite.preventivi.banner_revisione_superseded') }}
       </Message>
 
-      <!-- Sprint E (autorizzazioni prezzi L3): preventivo "congelato" se ha
-           righe PENDING (in attesa esito) o REJECTED (da correggere). I 2
-           messaggi sono distinti per dare azioni diverse all'operatore:
-           - PENDING → "attendi esito"
-           - REJECTED → "correggi la riga o eliminala". -->
-      <Message v-if="hasDetail && detail.frozen_for_pending_pricing"
-        severity="warn" :closable="false" class="mt-1">
-        {{ t('vendite.preventivi.banner_frozen_pending_pricing', { count: detail.pending_pricing_count }) }}
-      </Message>
-      <Message v-if="hasDetail && detail.frozen_for_rejected_pricing"
-        severity="error" :closable="false" class="mt-1">
-        {{ t('vendite.preventivi.banner_frozen_rejected_pricing', { count: detail.rejected_pricing_count }) }}
-      </Message>
       <!-- Area banner informativi non bloccanti: tenere qui i messaggi di
            contesto del preventivo, evitando banner sparsi in fondo al drawer. -->
       <Message v-if="hasDetail && detail.ba_ha_contratto_attivo === false"
@@ -1015,7 +1020,7 @@ const drawerActions = computed(() => {
           <Tab value="testata">{{ t('vendite.preventivi.tab_testata') }}</Tab>
           <Tab value="revisioni" :disabled="!isEdit">
             {{ t('vendite.preventivi.tab_revisioni') }}
-            <span v-if="isEdit && revisioni.length">({{ revisioni.length }})</span>
+            <span v-if="isEdit && revisioniStore.totalRecords">({{ revisioniStore.totalRecords }})</span>
           </Tab>
         </TabList>
 
@@ -1039,11 +1044,13 @@ const drawerActions = computed(() => {
                 :doc-id="effectivePreventivoId"
                 :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
                 :istanza-utility-id="detail?.istanza_utility_id ?? null"
-                :readonly="!(canEditTestataEffective && !isReadonly)" />
+                :readonly="!(canEditTestataEffective && !isReadonly)"
+                :bordo="false" />
 
               <Divider />
               <PreventiviRigheTable
                 :preventivo-id="effectivePreventivoId"
+                :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
                 :billing-account-id="form.billing_account_id"
                 :is-modificabile="canEditRighe && !isReadonly"
                 @changed="loadDetail()"
@@ -1069,44 +1076,18 @@ const drawerActions = computed(() => {
 
           <!-- ====================== TAB REVISIONI ====================== -->
           <TabPanel value="revisioni">
-            <p class="app-text-muted mt-1">
-              {{ t('vendite.preventivi.revisioni_intro') }}
-            </p>
-            <div v-if="!revisioni.length" class="app-empty-state">
-              <i class="pi pi-history" style="font-size: 2rem;" />
-              <div>{{ t('vendite.preventivi.revisioni_empty') }}</div>
-            </div>
-            <DataTable
-              v-else
-              :value="revisioni"
-              striped-rows
-              class="app-datatable app-datatable--inner"
-              data-key="id"
-            >
-              <Column field="rev"
-                :header="t('vendite.preventivi.col_rev')"
-                style="width: 70px;" />
-              <Column field="data"
-                :header="t('vendite.preventivi.col_data')"
-                style="width: 130px;">
-                <template #body="{ data }">{{ displayDate(data.data) }}</template>
-              </Column>
-              <Column field="stato_codice_interno"
-                :header="t('vendite.preventivi.col_stato')"
-                style="width: 140px;">
-                <template #body="{ data }">
-                  <Tag
-                    :value="data.stato_descrizione"
-                    :severity="statoPreventiveSeverity(data.stato_codice_interno)"
-                  />
-                </template>
-              </Column>
-              <Column field="totale_documento"
-                :header="t('vendite.preventivi.col_totale')"
-                style="width: 130px;">
-                <template #body="{ data }">{{ formatCurrency(data.totale_documento) }}</template>
-              </Column>
-            </DataTable>
+            <!-- Lista a catalogo `vendite.preventivo_revisioni` (colonne
+                 gemelle di quelle dell'offerta). Montata solo in EDIT: in
+                 CREATE il tab e' spento e non c'e' una catena da leggere. -->
+            <RevisioniTab
+              v-if="isEdit"
+              codice="vendite.preventivo_revisioni"
+              :store="revisioniStore"
+              :documento-id="visible ? effectivePreventivoId : null"
+              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+              :severity="statoPreventiveSeverity"
+              :intro="t('vendite.preventivi.revisioni_intro')"
+              :vuoto="t('vendite.preventivi.revisioni_empty')" />
           </TabPanel>
         </TabPanels>
       </Tabs>

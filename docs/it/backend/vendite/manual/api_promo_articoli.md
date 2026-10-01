@@ -24,7 +24,7 @@ primo stadio se la categoria del BA ha `partecipa_promo = TRUE`. L'EXCLUDE
 
 | Parametro | Tipo | Descrizione |
 |---|---|---|
-| `search` | string | ILIKE su `codice`/`descrizione` promo + `codice`/`descrizione` articolo |
+| `search` | string | Ricerca libera: le colonne le decide il catalogo della lista `vendite.promo_articoli` (`ricerca_full` nella configurazione). Sotto 3 caratteri il termine si ignora (nessun `400`) |
 | `attivo` | bool | `true`/`false`/assente |
 | `articolo_id` | UUID | Filtro articolo |
 | `uom_id` | int | Filtro unita' di misura |
@@ -73,14 +73,13 @@ nuova.
 | `fk_promo_articoli_articolo` | FK | `E_VENDITE_FK` — "Articolo inesistente." |
 | `fk_promo_articoli_uom` | FK | `E_VENDITE_FK` — "Unita' di misura inesistente." |
 | `chk_promo_articoli_tipo_variazione` | CHECK | `E_VENDITE_VALIDATION` — enum ammesso solo `{PERCENTUALE, VALORE_FISSO, PREZZO_FISSO}` (anticipato service). |
-| `chk_promo_articoli_date` | CHECK | `E_VENDITE_VALIDATION` — `valido_al >= valido_dal`. |
+| guard comune delle date (`trg_promo_articoli_a10_date_validita_ins_upd`) | TRIGGER | `E_DATA_AL_MINORE_DAL` (400, campo `valido_al`) — `valido_al < valido_dal`. Il service non lo anticipa (dal 2026-09-23). |
 | `chk_promo_articoli_valore` | CHECK | `E_VENDITE_VALIDATION` — `PERCENTUALE`/`VALORE_FISSO` richiedono `valore > 0`; `PREZZO_FISSO` richiede `>= 0` (anticipato service). |
 | `ex_promo_articoli_no_overlap` | EXCLUDE gist | `E_VENDITE_PROMO_OVERLAP` — due righe attive si sovrappongono su `(articolo, uom)` nello stesso periodo. |
 
 ### Campo `validita` (daterange)
 
-Generato dal trigger `trg_promo_articoli_a20_set_validita_ins_upd` da
-`valido_dal`/`valido_al`. Non scrivibile via API; il contratto espone
+Colonna **generata** dal database da `valido_dal`/`valido_al`. Non scrivibile via API; il contratto espone
 `valido_dal`/`valido_al`.
 
 ## Endpoint
@@ -94,8 +93,8 @@ Generato dal trigger `trg_promo_articoli_a20_set_validita_ins_upd` da
 
 ### Capabilities nel detail (Fase 1.B3 refactor frontend vendite)
 
-Il dettaglio espone capability data-driven da `script.fn_capability_promo_articolo`,
-spalmate top-level nel payload. Modello **data-driven puro**: nessun stato
+Il dettaglio espone capability data-driven da `script.fn_capability_promo_articolo`
+nella chiave `capabilities`, non fuse nella testata (dal 2026-09-23, [api.md §«Il blob sta SOTTO `capabilities`»](../../../dev/api.md)). Modello **data-driven puro**: nessun stato
 persistito, nessuna `available_actions` (le promo non hanno transizioni manuali).
 
 | Campo | Tipo | Significato |
@@ -114,7 +113,8 @@ disabilita i campi proattivamente, il trigger DB e' la difesa finale.
 
 * Tabella: `vendite.promo_articoli` (migrazione `20260414-13`)
 * FK verso: `catalogo.articoli`, `catalogo.unita_misura`
-* Trigger: `script.trgfn_set_validita()` (condivisa)
+* Ordine delle date: guard comune `script.trgfn_guard_date_validita`
+  (automazione `DATE_VALIDITA`), che risponde `E_DATA_AL_MINORE_DAL`
 * Extension: `btree_gist`
 
 Validazione payload e traduzione vincoli DB delegate al building block

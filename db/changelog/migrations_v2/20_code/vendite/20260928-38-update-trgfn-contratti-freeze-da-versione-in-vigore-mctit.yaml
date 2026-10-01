@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_contratti_freeze_listino_versione: la versione in vigore dalla sede unica.
+#
+# All'attivazione del contratto si fissa la versione del listino in vigore
+# oggi. La sceglieva con ORDER BY stato = 'ATTIVA' DESC LIMIT 1: ora la chiede a
+# vendite.fn_listino_versione_in_vigore, che per costruzione ne ha al piu' una.
+#
+# -- COME -------------------------------------------------------------
+#   · la FIRMA viene dall'ultimo YAML che la ha ancorata (nessuno: funzione di trigger senza parametri, DECLARE gia' ancorato nel corpo): la doc
+#     auto-gen scioglie i %TYPE. `SECURITY INVOKER` reso esplicito
+#     (linee-guida-sql §5b), senza cambio di comportamento;
+#   · il CORPO e' quello vivo (prosrc sullo scratch, 2026-09-28), patchato da
+#     script con la sostituzione contata: nessun'altra riga toccata. Il COMMENT
+#     resta sull'oggetto.
+# Cantiere: brief-db-liste-righe-documento §8.15, passo d)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260928-38-update-trgfn-contratti-freeze-da-versione-in-vigore-mctit.yaml
+
+  - changeSet:
+      id: 20260928-38-update-trgfn-contratti-freeze-da-versione-in-vigore
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il congelamento della versione all'attivazione del contratto la chiede a
+        vendite.fn_listino_versione_in_vigore. Stesso esito.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_listino_versione_in_vigore'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_freeze_listino_versione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+
+              -- Scopo: al momento dell'attivazione (DRAFT→ATTIVO), fissa la versione
+              --   listino e verifica la coerenza del negoziato puro.
+              -- A) listino_id IS NULL: verifica almeno una AGGIUNTA con prezzo.
+              --    Errore: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (451).
+              -- B) listino_id NOT NULL + listino_versione_id IS NULL: fissa versione
+              --    operativa (stato IN ('ATTIVA','CHIUSA')) a CURRENT_DATE.
+              --    FIX Bug A: BOZZA esclusa dal lookup — non viene mai congelata.
+              --    Se non trovata: attivazione consentita con versione NULL (warning UI, §4.4).
+              -- C) listino_versione_id già valorizzato: nessuna azione.
+              -- Esce senza effetti su qualsiasi transizione diversa da DRAFT→ATTIVO.
+              DECLARE
+                  v_codice_da   config.stati_doc_contratti.codice_interno%TYPE;
+                  v_codice_a    config.stati_doc_contratti.codice_interno%TYPE;
+                  v_versione_id vendite.listini_versioni.id%TYPE;
+              BEGIN
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_contratto_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_contratto_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_contratti
+                   WHERE id IN (OLD.stato_doc_contratto_id, NEW.stato_doc_contratto_id);
+
+                  -- Attivo solo su DRAFT→ATTIVO
+                  IF v_codice_da <> 'DRAFT' OR v_codice_a <> 'ATTIVO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF NEW.listino_id IS NULL THEN
+                      -- Negoziato puro: almeno una AGGIUNTA con prezzo valorizzato
+                      IF NOT EXISTS (
+                          SELECT 1
+                            FROM vendite.contratti_righe cr
+                           WHERE cr.contratto_id = NEW.id
+                             AND cr.tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                             AND cr.prezzo_unitario IS NOT NULL
+                             AND cr.attivo = TRUE
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              TG_NAME::text,
+                              'E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE',
+                              jsonb_build_object('contratto_id', NEW.id, 'numero', NEW.numero),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- Con listino: fissa versione operativa snapshot se non già valorizzata.
+                  -- stato IN ('ATTIVA','CHIUSA'): BOZZA non è operativa, mai snapshot.
+                  IF NEW.listino_versione_id IS NULL THEN
+                      -- rev 2026-09-28: la sede unica (brief-db-liste-righe-documento §8.15).
+              v_versione_id := vendite.fn_listino_versione_in_vigore(NEW.listino_id, CURRENT_DATE);
+
+                      -- Se trovata: fissa snapshot. Se non trovata (§4.4): attivazione
+                      -- consentita con listino_versione_id NULL (UI mostrerà warning).
+                      IF v_versione_id IS NOT NULL THEN
+                          NEW.listino_versione_id := v_versione_id;
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino: il corpo vivo prima di questo changeSet.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_freeze_listino_versione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+
+              -- Scopo: al momento dell'attivazione (DRAFT→ATTIVO), fissa la versione
+              --   listino e verifica la coerenza del negoziato puro.
+              -- A) listino_id IS NULL: verifica almeno una AGGIUNTA con prezzo.
+              --    Errore: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (451).
+              -- B) listino_id NOT NULL + listino_versione_id IS NULL: fissa versione
+              --    operativa (stato IN ('ATTIVA','CHIUSA')) a CURRENT_DATE.
+              --    FIX Bug A: BOZZA esclusa dal lookup — non viene mai congelata.
+              --    Se non trovata: attivazione consentita con versione NULL (warning UI, §4.4).
+              -- C) listino_versione_id già valorizzato: nessuna azione.
+              -- Esce senza effetti su qualsiasi transizione diversa da DRAFT→ATTIVO.
+              DECLARE
+                  v_codice_da   config.stati_doc_contratti.codice_interno%TYPE;
+                  v_codice_a    config.stati_doc_contratti.codice_interno%TYPE;
+                  v_versione_id vendite.listini_versioni.id%TYPE;
+              BEGIN
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_contratto_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_contratto_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_contratti
+                   WHERE id IN (OLD.stato_doc_contratto_id, NEW.stato_doc_contratto_id);
+
+                  -- Attivo solo su DRAFT→ATTIVO
+                  IF v_codice_da <> 'DRAFT' OR v_codice_a <> 'ATTIVO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF NEW.listino_id IS NULL THEN
+                      -- Negoziato puro: almeno una AGGIUNTA con prezzo valorizzato
+                      IF NOT EXISTS (
+                          SELECT 1
+                            FROM vendite.contratti_righe cr
+                           WHERE cr.contratto_id = NEW.id
+                             AND cr.tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                             AND cr.prezzo_unitario IS NOT NULL
+                             AND cr.attivo = TRUE
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              TG_NAME::text,
+                              'E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE',
+                              jsonb_build_object('contratto_id', NEW.id, 'numero', NEW.numero),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- Con listino: fissa versione operativa snapshot se non già valorizzata.
+                  -- stato IN ('ATTIVA','CHIUSA'): BOZZA non è operativa, mai snapshot.
+                  IF NEW.listino_versione_id IS NULL THEN
+                      SELECT lv.id
+                        INTO v_versione_id
+                        FROM vendite.listini_versioni lv
+                       WHERE lv.listino_id = NEW.listino_id
+                         AND lv.attivo     = TRUE
+                         AND lv.stato      IN ('ATTIVA', 'CHIUSA')
+                         AND lv.validita  @> CURRENT_DATE
+                       ORDER BY (lv.stato = 'ATTIVA') DESC
+                       LIMIT 1;
+
+                      -- Se trovata: fissa snapshot. Se non trovata (§4.4): attivazione
+                      -- consentita con listino_versione_id NULL (UI mostrerà warning).
+                      IF v_versione_id IS NOT NULL THEN
+                          NEW.listino_versione_id := v_versione_id;
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;

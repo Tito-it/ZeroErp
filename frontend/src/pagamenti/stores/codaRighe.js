@@ -21,14 +21,17 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { PAGINATION } from '../../core/constants'
-import { paramsPagina } from '../../core/utils/listParams'
+import { paramsPagina, paramsRicerca } from '../../core/utils/listParams'
 import { CODE } from '../vocabolari'
 import { listCodaRighe } from '../api/pagamenti'
+import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
-
-function buildParams(f) {
+function buildParams(f, _termine, ricerca) {
   const p = paramsPagina(f)
+  // La ricerca libera con la regola comune (`paramsRicerca`: trim, soglia della
+  // lista — `ricerca` = `{ minCaratteri }`, passato dal BB di stato).
+  Object.assign(p, paramsRicerca(f, ricerca))
   // ⚠️ Sempre inviata: senza, il backend non saprebbe quale coda serve.
   p.coda = f.coda || CODE.DA_ABBINARE
   if (f.billing_account_id != null) p.billing_account_id = f.billing_account_id
@@ -40,17 +43,26 @@ function buildParams(f) {
 export const useCodaRigheStore = defineStore(
   'pagamenti-coda-righe',
   () => {
-    const filters = ref({
+    // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i valori
+    //    di partenza della lista E il contratto che `FiltriLista` legge per il segno
+    //    dei filtri attivi (`useContrattoFiltriLista`). ⛔ Due letterali divergono
+    //    al primo filtro aggiunto da una parte sola, e il segno si spegnerebbe su
+    //    una lista che filtra — senza nessun errore.
+    const FILTRI_DEFAULT = {
       coda: CODE.DA_ABBINARE,
       billing_account_id: null,
       data_da: null,
       data_a: null,
-      // ⚠️ NON si inoltra al backend (questa lista non ha ricerca testuale), ma
-      // la chiave si DICHIARA: fa parte del contratto di `useSearchTable`, che
-      // la scrive su ricerca universale / deep-link `?search=` — e una chiave
-      // che nasce per assegnazione e' una chiave che nessuno ha deciso.
+    }
+
+    const filters = ref({
+      ...FILTRI_DEFAULT,
+      // La ricerca libera: la scrive `useSearchTable` (casella nel `#sempre`
+      // di `FiltriLista`, ricerca universale, deep-link `?search=`), la
+      // inoltra `buildParams` (`paramsRicerca`). Le colonne le decide il
+      // catalogo (brief-be-ricerca-full-liste-residue §5.3).
       search: '',
-      limit: PAGINATION.DEFAULT_ROWS,
+      limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
       order_by: 'data_pagamento',
       order_dir: 'desc',
@@ -65,19 +77,30 @@ export const useCodaRigheStore = defineStore(
     const statiRiga = ref([])
     const transizioniRiga = ref({})
 
-    const { items, totalRecords, loading, hasSearched, fetchList } =
-      useListaEmptyStateFetch({
-        filters,
-        buildParams,
-        fetchPage: listCodaRighe,
-        alwaysFetch: true,
-        // Dopo il guard di versione: una risposta scartata perche' stantia non
-        // riscrive il catalogo sotto quella piu' recente.
-        onPayload: (payload) => {
-          statiRiga.value = payload.stati_riga ?? []
-          transizioniRiga.value = payload.transizioni_riga ?? {}
-        },
-      })
+    // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).
+    // ⛔ Non si elencano i suoi ref a mano: un ref nuovo del BB (com'e'
+    //    successo con `ricercaFull`, `ricercaMinCaratteri`,
+    //    `ricercaCambiaLaRichiesta`) arriverebbe solo agli store che lo
+    //    ricordano — e senza errore sugli altri.
+    const lista = useListaEmptyStateFetch({
+      filters,
+      buildParams,
+      fetchPage: listCodaRighe,
+      alwaysFetch: true,
+      // Dopo il guard di versione: una risposta scartata perche' stantia non
+      // riscrive il catalogo sotto quella piu' recente.
+      onPayload: (payload) => {
+        statiRiga.value = payload.stati_riga ?? []
+        transizioniRiga.value = payload.transizioni_riga ?? {}
+      },
+    })
+    const { fetchList } = lista
+
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li' («Pulisci filtri»).
+    const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+      filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+    })
 
     // Scopo: la voce di menu sceglie la coda e ricarica.
     // Note: ⚠️ Azzera l'offset: restare a pagina 3 passando da una coda
@@ -90,8 +113,10 @@ export const useCodaRigheStore = defineStore(
     }
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList, apriCoda,
+      ...lista,
+      filters, apriCoda,
       statiRiga, transizioniRiga,
+      chiaviFiltro, filtriDefault, azzeraFiltri,
     }
   },
   { userScoped: true },

@@ -42,12 +42,15 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
-    extract_paginated,
+    fetch_paged_with_total,
     jsonb_out,
     row_to_dict,
     rows_to_list,
 )
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 
 _VISTA = "vendite.vw_famiglie_documento_lista"
 
@@ -79,11 +82,20 @@ _ORDER_COLS: dict[str, str] = {
 }
 _ORDER_DEFAULT = "codice_interno"
 
-# Colonne su cui cade la ricerca libera.
-# ⚠️ Stesso patto della whitelist di ordinamento: sono le `ricercabile_full = t`
-#    del catalogo. Cercare su una colonna che il catalogo non dichiara
-#    ricercabile darebbe risultati che l'operatore non sa spiegare.
-_RICERCA_COLS: tuple[str, ...] = ("codice_interno", "descrizione", "prefisso_default")
+# Colonne che la ricerca libera SA cercare nella lista `vendite.famiglie_documento`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+# ⭐ `codice` e non `codice_interno` (Tid, 2026-09-23; changeSet DB
+#    `20260924-03…-07`, brief-db-ricerca-full-colonne-da-accendere §3.5): il
+#    `codice_interno` e' la chiave immutabile del sistema — quella su cui si
+#    agganciano i registri — e non il codice dell'operatore. Il catalogo accende
+#    `codice` (riga 938) e spegne `codice_interno` (riga 630).
+# ⭐ La proiezione non si tocca: `SELECT v.*` porta gia' `codice`, che la vista
+#    espone in coda.
+_RICERCA = RicercaFull(
+    "vendite.famiglie_documento",
+    ("codice", "descrizione", "prefisso_default"),
+)
 
 # Colonne jsonb: il backend Django per psycopg 3 le consegna come `str`.
 _COLONNE_JSONB: tuple[str, ...] = (
@@ -137,7 +149,13 @@ _CAMPI_CREATE: tuple[str, ...] = (
 #    verrebbe respinto dal NOT NULL con un messaggio generico, su un campo che
 #    l'operatore non ha mai visto. In CREATE resta, perche' e' un parametro
 #    della madre e ha il suo default.
+# ⭐ `codice` c'e' dal 2026-09-24 (Tid): e' il codice dell'OPERATORE — mutabile,
+#    `UNIQUE`, `NOT NULL` — accanto al `codice_interno` immutabile su cui si
+#    agganciano i registri (changeSet `20260924-03…-07`). ⚠️ In CREATE non c'e':
+#    la madre non ha il parametro, e alla nascita il trigger
+#    `trg_famiglie_documento_a10_default_codice_ins` lo copia dal `codice_interno`.
 _CAMPI_UPDATE: tuple[str, ...] = (
+    "codice",
     "descrizione",
     "schema_tabella",
     "nome_tabella",
@@ -184,27 +202,25 @@ class FamiglieDocumentoRepository:
             default=_ORDER_COLS[_ORDER_DEFAULT],
             tiebreak="v.id",
         )
-        pattern = f"%{search.strip()}%" if search and search.strip() else None
-        ricerca = " OR ".join(f"v.{c} ILIKE %s" for c in _RICERCA_COLS)
+        conditions = [
+            "(%s::boolean IS NULL OR v.attivo = %s)",
+            "(%s::boolean IS NULL OR v.gestisce_serie = %s)",
+        ]
+        params: list[Any] = [attivo, attivo, gestisce_serie, gestisce_serie]
+        # ⭐ Una lista di configurazione, dove prefissi e codici di uno o due
+        #    caratteri sono normali e vanno trovati: la soglia la dichiara il
+        #    catalogo della lista (`ricerca_min_caratteri`), non questo modulo.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA)
         sql = f"""
             SELECT v.*,
                    COUNT(*) OVER () AS total_count
               FROM {_VISTA} v
-             WHERE (%s::boolean IS NULL OR v.attivo = %s)
-               AND (%s::boolean IS NULL OR v.gestisce_serie = %s)
-               AND (%s::text IS NULL OR ({ricerca}))
+             WHERE {" AND ".join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        params: list[Any] = [
-            attivo, attivo,
-            gestisce_serie, gestisce_serie,
-            pattern, *[pattern] * len(_RICERCA_COLS),
-            limit, offset,
-        ]
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            righe, totale = extract_paginated(cursor)
+        params.extend([limit, offset])
+        righe, totale = fetch_paged_with_total(sql, params, offset=offset)
         return _decodifica_jsonb(righe), totale
 
     # Scopo: il dettaglio di una famiglia. `None` se non esiste.
@@ -337,19 +353,23 @@ class FamiglieDocumentoRepository:
 
     # Scopo: aggiorna le colonne ammesse. Ritorna le righe toccate, cosi' il
     #        service distingue «non esiste» da «fatto».
+    # ⭐ BB core `execute_dynamic_update` (2026-09-26). Whitelist RIGIDA: una
+    #    chiave fuori `_CAMPI_UPDATE` e' `RuntimeError`, non piu' uno scarto
+    #    silenzioso — il 400 lo da' il service (`_verifica_chiavi`).
+    # ⛔ `prefisso_default` NON si strippa (`letterali`): e' il prefisso che i
+    #    registri della famiglia ereditano, cioe' un pezzo del numero stampato,
+    #    e uno spazio ai bordi li' e' contenuto. Le altre stringhe si strippano.
+    # ⚠️ Il BB ritorna un bool (`rowcount > 0`): per id l'UPDATE tocca al piu'
+    #    una riga, quindi 1/0 e' la stessa informazione di prima.
     def update_famiglia(self, famiglia_id: int, dati: dict[str, Any]) -> int:
-        colonne = [c for c in _CAMPI_UPDATE if c in dati]
-        if not colonne:
-            return 0
-        set_sql = ", ".join(f"{c} = %s" for c in colonne)
-        sql = f"""
-            UPDATE vendite.famiglie_documento
-               SET {set_sql}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [*[dati[c] for c in colonne], famiglia_id])
-            return cursor.rowcount
+        toccata = execute_dynamic_update(
+            "vendite.famiglie_documento",
+            famiglia_id,
+            dati,
+            allowed=_CAMPI_UPDATE,
+            letterali=("prefisso_default",),
+        )
+        return int(toccata)
 
     # Scopo: accende o spegne la famiglia — un verbo suo, non un PATCH generico.
     # ⛔ Qui non si ricontrolla se e' spegnibile: a rifiutare e'

@@ -7,7 +7,7 @@
 // Button Nuovo -> apre OperatoreDrawer in modalita' crea.
 // Nessun export: il dominio non ha endpoint (lo scaffolding omette l'azione da
 // se', non ricevendo `exportFn`).
-import { ref, onMounted, onActivated } from 'vue'
+import { onMounted, onActivated } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -17,7 +17,8 @@ import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative } from '../api/amministrazione'
 import { useSetupStatus } from '../composables/useSetupStatus'
-import { buildFilterSuperAdminOptions, buildFilterStatoOptions } from '../constants'
+import { buildFilterSuperAdminOptions } from '../constants'
+import { buildAttivoOptions } from '../../core/utils/options'
 import { RUOLO_APPLICATIVO, READONLY_DOMAINS, TAB_ENTITIES, MANAGE_ICONS } from '../../core/constants'
 import OperatoreDrawer from '../components/OperatoreDrawer.vue'
 import OperatorePermessiDrawer from '../components/OperatorePermessiDrawer.vue'
@@ -31,8 +32,11 @@ import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import Badge from 'primevue/badge'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import { etichettaRuoloApplicativo } from '../../core/utils/i18nLabel'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useOperatoriStore()
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
 const drawer = useDrawerState()
@@ -49,9 +53,6 @@ useTabFreshness(store, TAB_ENTITIES.OPERATORE)
 // DISABILITATO) e' scomposto in:
 //   - superAdminFilter: toggle Sì/No/Tutti sul binding SUPER_ADMIN
 //   - activeFilter: stato attivo identita' (ex "DISABILITATO")
-const superAdminFilter = ref(null)
-const uoFilter = ref(null)
-const activeFilter = ref(null)
 
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
@@ -63,8 +64,21 @@ const {
   searchTableOptions: { defaultSortField: 'soggetto_cognome' },
 })
 
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: superAdminFilter, onChange: onSuperAdminChange } = bindSelect('is_super_admin')
+const { value: uoFilter, onChange: onUoChange } = bindSelect('unita_organizzativa_id')
+const { value: activeFilter, onChange: onActiveChange } = bindSelect('is_active')
+
 const superAdminOptions = buildFilterSuperAdminOptions(t)
-const activeOptions = buildFilterStatoOptions(t)
+// ⭐ Dal BB di core (regola del 2, ok Tid 2026-09-23): `buildFilterStatoOptions`
+//    era la quinta copia della stessa terna, ed e' stata ritirata.
+const activeOptions = buildAttivoOptions(t)
 
 // La LISTA al mount: il rientro sotto `<KeepAlive>` lo rinfresca gia' lo
 // scaffolding (`useListaConfigurabilePage` → `useSearchTable`, che salta la
@@ -94,13 +108,6 @@ function onDrawerSavedWithStatus() {
   loadSetupStatus(true)
 }
 
-function applyExtraFilters() {
-  store.filters.is_super_admin = superAdminFilter.value
-  store.filters.unita_organizzativa_id = uoFilter.value
-  store.filters.is_active = activeFilter.value
-  applyFilters()
-}
-
 function activeBadgeSeverity(active) {
   return active ? 'success' : 'danger'
 }
@@ -108,13 +115,10 @@ function activeBadgeSeverity(active) {
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { drawer.editRow(data, 'auth_user_id') }
 
-// i18n label per ruolo applicativo: chiave auth.ruolo_applicativo.<VALORE>
-// con fallback sul valore grezzo.
+// Scopo: Il badge del ruolo applicativo (BB `etichettaRuoloApplicativo`);
+//        senza ruolo il trattino.
 function ruoloAppLabel(ruoloApp) {
-  if (!ruoloApp) return '—'
-  const key = `auth.ruolo_applicativo.${ruoloApp}`
-  const translated = t(key)
-  return translated === key ? ruoloApp : translated
+  return etichettaRuoloApplicativo(t, te, ruoloApp) || '—'
 }
 
 // Scopo: azioni di riga operatore (apertura drawer permessi), nascoste in readonly.
@@ -141,36 +145,42 @@ function buildRowActions(data) {
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('amministrazione.search_placeholder')"
-        />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('amministrazione.search_placeholder')"
+          />
+        </template>
         <Select
           v-model="superAdminFilter"
+          class="app-filter-w-sm"
           :options="superAdminOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.filter_super_admin')"
-          @change="applyExtraFilters"
+          @change="onSuperAdminChange"
         />
         <Select
           v-model="uoFilter"
+          class="app-filter-w-md"
           :options="[{ descrizione: t('amministrazione.reparto_all'), id: null }, ...unitaOrg.items.value]"
           option-label="descrizione"
           option-value="id"
           :placeholder="t('amministrazione.filter_reparto')"
-          @change="applyExtraFilters"
+          @change="onUoChange"
         />
         <Select
           v-model="activeFilter"
+          class="app-filter-w-sm"
           :options="activeOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.filter_stato')"
-          @change="applyExtraFilters"
+          @change="onActiveChange"
         />
-      </div>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />
@@ -218,8 +228,8 @@ function buildRowActions(data) {
         />
       </template>
 
-      <template v-if="!isReadonly" #actions="{ data, compact }">
-        <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+      <template v-if="!isReadonly" #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
       </template>
     </ListaConfigurabile>
     </template>

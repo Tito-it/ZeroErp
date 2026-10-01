@@ -3,7 +3,10 @@
 // Consumato da wrapper di dominio thin (PreventivoNoteDrawer, ContrattoNoteDrawer,
 // ecc.) che istanziano l'apiClient con `makeNotesApi(basePath)`.
 //
-// Pattern formMode: null = lista, 'new' = crea, 'edit' = aggiorna.
+// Pattern formMode: null = lista, 'create' = crea, 'edit' = aggiorna. La
+// macchina e' il BB core `useFormInline` (sede unica, ok Tid 2026-09-28);
+// qui restano i verbi che ci aggiungono il form della nota. Fino a quel
+// giorno «crea» era 'new'.
 // Default applicativi minimi: anchor_tipo e posizione sono governati dal BE
 // (BE deriva da target_riga_id: DOCUMENTO/HEADER vs RIGA/AFTER). Stile via
 // `LookupSelect rel="config.note_stili"`.
@@ -24,8 +27,10 @@ import ToggleSwitch from 'primevue/toggleswitch'
 
 import { fetchParameterDefaults, lookupCodici } from '../apiCore'
 import { useApiHandler } from '../composables/useApiHandler'
+import { useFormInline } from '../composables/useFormInline'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useDrawerClose } from '../composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../composables/useDrawerFormPreserve'
 import { useNote } from '../composables/useNote'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import LookupSelect from './LookupSelect.vue'
@@ -33,8 +38,6 @@ import DrawerTitle from './DrawerTitle.vue'
 import FormFooter from './FormFooter.vue'
 import PageActionsBar from './PageActionsBar.vue'
 import { useDrawerContentReady } from '../composables/useDrawerContentReady'
-
-
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -72,9 +75,16 @@ const { notes, total, loading: listLoading, loadAll, remove } = useNote({
 // le note per documento sono poche decine — niente paginazione UX nella v1.
 const PAGE_SIZE_DEFAULT = 200
 
-const formMode = ref(null)
-const editId = ref(null)
+// ⚠️ Il click apre la modifica solo in scrittura: il getter e' letto al click.
+const {
+  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({ puoModificare: () => !isReadonly.value })
 const form = ref(defaultForm())
+// Modifiche non salvate del form inline (nuova/modifica nota): la fotografia
+// vive finche' il form e' aperto, e si azzera da sola quando torna la lista.
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, {
+  visibile: () => props.visible && formAperto.value,
+})
 const canSelectRiga = computed(() =>
   props.supportsRiga && props.righeOptions.length > 0,
 )
@@ -82,15 +92,13 @@ const notesTableKey = computed(() =>
   notes.value.map(n => n.id).join('|') || 'empty',
 )
 const pageActions = computed(() => [
-  {
+  azioneNuovaRiga({
     key: 'new',
-    kind: 'primary',
     label: t('common.new'),
     tooltip: t('note.aggiungi'),
-    icon: MANAGE_ICONS.ADD,
-    visible: !isReadonly.value && !formMode.value,
+    visible: () => !isReadonly.value,
     command: onStartNew,
-  },
+  }),
 ])
 
 function defaultForm() {
@@ -136,8 +144,7 @@ watch(
   [() => props.visible, () => props.apiClient],
   async ([visible]) => {
     if (!visible) return
-    formMode.value = null
-    editId.value = null
+    chiudiForm()
     form.value = defaultForm()
     await loadAll({ page_size: PAGE_SIZE_DEFAULT })
   },
@@ -145,21 +152,26 @@ watch(
 )
 
 async function onStartNew() {
-  formMode.value = 'new'
-  editId.value = null
+  nuovaRiga()
   form.value = defaultForm()
+  fissa()
   // Pre-fill lingua dal parametro sistema (best-effort, errori silenti).
   // L'utente puo' cambiare la selezione; il BE applica comunque il
   // fallback in save se id_lingua e' null.
   const linguaId = await resolveDefaultLinguaId()
-  if (linguaId != null && formMode.value === 'new') {
+  if (linguaId != null && formMode.value === 'create') {
+    // Il default arriva dopo: rientra nella fotografia solo se l'utente non
+    // ha ancora toccato niente (altrimenti fisseremmo anche le sue modifiche).
+    const intatto = !modificato.value
     form.value.id_lingua = linguaId
+    if (intatto) fissa()
   }
 }
 
 function onStartEdit(n) {
-  formMode.value = 'edit'
-  editId.value = n.id
+  apriRiga(n)
+  // In sola lettura il BB non apre: niente form da popolare.
+  if (!formAperto.value) return
   form.value = {
     testo_md: n.testo_md || n.testo || '',
     id_stile: n.id_stile ?? null,
@@ -168,18 +180,21 @@ function onStartEdit(n) {
     visibile: n.visibile !== false,
     solo_stampa: n.solo_stampa === true,
   }
+  fissa()
 }
 
 function onRowClick(event) {
-  if (formMode.value || isReadonly.value) return
+  if (formAperto.value) return
   onStartEdit(event.data)
 }
 
 function onCancelForm() {
-  formMode.value = null
-  editId.value = null
+  chiudiForm()
   form.value = defaultForm()
 }
+
+// Annulla del form inline: con modifiche chiede conferma.
+const annullaForm = () => chiudiConConferma(onCancelForm)
 
 const canSaveForm = computed(() => {
   const txt = (form.value.testo_md || '').trim()
@@ -187,6 +202,10 @@ const canSaveForm = computed(() => {
 })
 
 const onClose = useDrawerClose(emit)
+
+// Chiusura del drawer per volonta' dell'utente (X/ESC/clic fuori/Chiudi):
+// con il form inline modificato chiede conferma.
+const chiudi = () => chiudiConConferma(onClose)
 
 // Scopo: persistenza form. Patch in edit, create in new. Re-fetch lista al successo.
 async function onSaveForm() {
@@ -203,18 +222,18 @@ async function onSaveForm() {
     payload.id_lingua = form.value.id_lingua
   }
   // target_riga_id solo in create (BE lo rifiuta in PATCH).
-  if (formMode.value === 'new' && form.value.target_riga_id != null) {
+  if (formMode.value === 'create' && form.value.target_riga_id != null) {
     payload.target_riga_id = form.value.target_riga_id
   }
-  const toCall = formMode.value === 'edit' && editId.value
-    ? () => props.apiClient.updateNota(editId.value, payload)
+  const editId = rigaInModifica.value?.id
+  const toCall = formMode.value === 'edit' && editId
+    ? () => props.apiClient.updateNota(editId, payload)
     : () => props.apiClient.createNota(payload)
   const result = await execute(toCall, {
     successMessage: t('note.saved'),
   })
   if (result === null) return
-  formMode.value = null
-  editId.value = null
+  chiudiForm()
   form.value = defaultForm()
   await loadAll({ page_size: PAGE_SIZE_DEFAULT })
   // `total` è già aggiornato dal loadAll qui sopra.
@@ -236,12 +255,13 @@ function rigaLabel(n) {
   const found = props.righeOptions.find(opt => opt.value === n.target_riga_id)
   return found ? found.label : `#${n.target_riga_id}`
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
     @after-show="onAfterShow"
@@ -250,13 +270,13 @@ function rigaLabel(n) {
       <DrawerTitle
         :action="t('common.edit')"
         :title="title || t('note.titolo_default')"
-        icon="pi pi-file-edit"
+        :icon="MANAGE_ICONS.NOTE"
+        :modificato="modificato"
       />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div v-if="!formMode" class="app-page-toolbar">
-        <div class="app-page-filters"></div>
         <PageActionsBar :actions="pageActions" />
       </div>
 
@@ -273,7 +293,7 @@ function rigaLabel(n) {
       >
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-file-edit" />
+            <i :class="MANAGE_ICONS.NOTE" />
             <p>{{ t('note.empty') }}</p>
           </div>
         </template>
@@ -317,7 +337,7 @@ function rigaLabel(n) {
         </Column>
       </DataTable>
 
-      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
 
       <template v-if="formMode">
         <div class="app-drawer-section">
@@ -386,7 +406,7 @@ function rigaLabel(n) {
           :loading="saveLoading"
           :disabled="!canSaveForm"
           @save="onSaveForm"
-          @cancel="onCancelForm"
+          @cancel="annullaForm"
         />
       </template>
     </div>
@@ -396,12 +416,12 @@ function rigaLabel(n) {
 <style scoped>
 .nota-card-testo {
   font-size: 0.85rem;
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   white-space: pre-wrap;
   word-break: break-word;
 }
 .text-muted {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 .form-field-inline {
   flex-direction: row;

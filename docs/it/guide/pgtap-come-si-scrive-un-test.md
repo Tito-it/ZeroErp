@@ -45,6 +45,16 @@ quella dopo, in testa fa scattare il vincolo a metà strada. Si sposta dopo
 l'ultima coppia — e comunque **prima** di ogni cleanup, o scatta su righe già
 cancellate.
 
+⛔ **E se la sposti, la finestra la dichiari**: subito dopo la riga di contesto,
+`SET CONSTRAINTS ALL DEFERRED;`. La finestra differita «di default» non è una
+promessa di nessuno: su un database vuoto la riga di contesto **costruisce** il
+mondo ed esce con i vincoli IMMEDIATE, come ogni helper (sotto, §«Il mondo si
+costruisce»). Un file che fra il contesto e il proprio `SET CONSTRAINTS ALL
+IMMEDIATE` costruisce una saga contando sul default è **verde su dev e rosso in
+CI** — e lo è solo quando è il primo della corsa, che è il modo peggiore di
+esserlo: `anagrafiche/create-cliente` il 2026-09-21, «due volte in due giorni»
+senza riprodursi da solo.
+
 ### Se una di queste non ci può stare
 
 Si **dichiara**, non si spiega e basta:
@@ -91,11 +101,18 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 
 | Serve | Helper |
 | --- | --- |
+| **il mondo di un test di dominio**: azienda + operatore + contesto aperto + un cliente fatturabile legato a quell'azienda | `dbops.fn_pgtap_crea_mondo_cliente('<etichetta>')` |
+| **una fattura** del mondo (registro coerente, coppia emittente/utility configurata, stato scelto alla nascita) | `dbops.fn_pgtap_crea_fattura('<etichetta>'[, '<stato>'[, <ba_id>]])` |
+| una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')` |
+| il **gestore** dell'installazione (lo prende se c'è, lo costruisce se non c'è) | `dbops.fn_pgtap_crea_gestore('<etichetta>')` |
 | un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |
+| un **operatore umano** — persona fisica, risorsa umana, identità — **senza azienda**, volendo super admin | `dbops.fn_pgtap_crea_operatore_umano('<etichetta>'[, p_super_admin := true])` |
+| un **punto di prelievo** nuovo, su un indirizzo suo | `dbops.fn_pgtap_crea_pdp(['<utility>'])` |
+| un **listino** con una versione ATTIVA, dell'azienda di chi agisce (contesto aperto prima) | `dbops.fn_pgtap_crea_listino(<utility_id>[, '<etichetta>'[, valido_dal[, valido_al]]])` |
 | l'utente tecnico di un processo, a roster | `dbops.fn_pgtap_crea_roster_processo('<processo>')` |
 | un cliente fatturabile (soggetto → CL → istanza → BA) | `dbops.fn_pgtap_crea_cliente_ba('<etichetta>'[, utility, emittente_sr])` |
 | un soggetto con un ruolo e basta (CL, FO, BANK_B…) | `dbops.fn_pgtap_crea_soggetto_pg(...)` + `fn_pgtap_crea_soggetto_ruolo(..., 'CL')` |
-| un super admin | un'azienda come sopra + un binding al profilo `SUPER_ADMIN` sulla sua identità |
+| un **super admin** (senza azienda, come in produzione) | `dbops.fn_pgtap_crea_operatore_umano('<etichetta>', p_super_admin := true)` — sotto, §«Un super admin non ha un'azienda» |
 
 ⛔ **Ordine obbligato: prima il mondo, poi `fn_pgtap_set_contesto_operatore(<auth_user_id>)`.**
 Con un operatore già in sessione il legame BA → emittente lo scrive **anche**
@@ -105,13 +122,88 @@ con il terzo parametro; come `zeroerp_app` si apre il contesto e si chiama
 `fn_pgtap_crea_cliente_ba` **senza** terzo parametro (dalla rev `20260912-38` il
 legame lo lascia al trigger, verso l'emittente di chi agisce).
 
+⭐ **La riga di contesto del template lo fa da sola, se serve.** Da
+`20260920-01`, `script.fn_pgtap_set_contesto_operatore()` senza argomento —
+quando non trova nessun operatore, cioè su un database vuoto — costruisce
+azienda + operatore e apre il contesto su quello. Un file che vuole solo «un
+operatore su un emittente» non ha altro da fare. Il builder si chiama a mano
+quando servono gli **id** del mondo (l'emittente per un registro, il soggetto
+ruolo, **due** aziende) o quando il soggetto del test è l'operatore umano.
+
+⭐ **E la composizione ha un helper suo** (rev `20260922-17`): quando a un file
+servono *insieme* l'azienda, il contesto e un cliente fatturabile — il caso di
+gran lunga più frequente — `dbops.fn_pgtap_crea_mondo_cliente('<etichetta>')` li
+costruisce nell'ordine giusto e ne torna tutte le chiavi in una riga. Senza
+contesto costruisce e lo apre; **con un contesto già aperto riusa l'azienda di
+chi agisce**, e non è un risparmio: un'azienda nuova lascerebbe il cliente legato
+a quella vecchia, invisibile sotto RLS. ⛔ Non comprende registro, articolo né i
+cataloghi di `80_data`: entra ciò che ha una **trappola d'ordine**, non ciò che
+serve spesso.
+
+⭐ **Una FATTURA e' una catena, non un INSERT** (rev `20260923-04`): il cliente
+va legato all'azienda di chi agisce, la coppia (emittente, utility) va
+configurata, il registro dipende da quell'azienda e la valuta si risolve lungo
+la catena «cliente → azienda → gestore». `dbops.fn_pgtap_crea_fattura()` li mette
+tutti e quattro; lo **stato si sceglie alla nascita** (la testata ha un guard di
+transizione), e il **terzo parametro** e' il billing account di una fattura gia'
+costruita, per la seconda dello stesso cliente. ⛔ Righe, scadenze, contabili e
+movimenti restano al test: sono il suo caso.
+
+⚠️ **Un super admin non ha un'azienda.** È multi-emittente per modello, e non è
+un dettaglio: un billing account senza legame ricade sull'emittente di **chi
+agisce** prima che sul gestore globale, quindi un super admin costruito come
+utente tecnico (che un'azienda ce l'ha sempre) sposta il ripiego. E toglierla
+dopo non si può. Si costruisce con `fn_pgtap_crea_operatore_umano(…,
+p_super_admin := true)`, che passa dalla madre di produzione e nasce senza.
+
+⛔ **Ciò che un builder scrive si legge in un'istruzione SEPARATA.** Un `JOIN`
+sulla tabella che il builder ha appena scritto, o una funzione `STABLE`, nella
+**stessa istruzione** della chiamata vede la snapshot di prima: la temp table
+nasce vuota, o il super admin risulta non esserlo.
+
+⚠️ E `anagrafiche.bank_branches` e' **dato di macchina**, non seed: da zero e'
+vuota, e un conto bancario ci sbatte sul NOT NULL. La filiale si costruisce con
+`dbops.fn_pgtap_crea_filiale_bancaria()`.
+
 ⚠️ Gli helper escono con i vincoli **IMMEDIATE**: un file che li vuole
 differiti fino a un punto suo (`pgtap-differiti`, «fattura + atto») li riapre
 con `SET CONSTRAINTS ALL DEFERRED` subito dopo.
 
+⛔ **E la riga di contesto, quando costruisce, è un helper.** Senza argomento su
+un database vuoto chiama il builder, e ne eredita il contratto: esce IMMEDIATE.
+Con argomento, o dove un operatore esiste (dbdev), **non tocca i vincoli** — e
+non può fare altrimenti: il modo di una transazione non si legge né si
+ripristina, e un setter di contesto che chiudesse i vincoli pendenti li
+chiuderebbe *nei panni del nuovo attore* (la trappola RLS di
+`rls/test-rls-listini-ef-whitelist-write`). Quindi il contratto è asimmetrico
+per costruzione, e la regola per i file è una sola: **dopo la riga di contesto
+non si conta sulla finestra differita di default** — se la si vuole, si
+dichiara con `SET CONSTRAINTS ALL DEFERRED`. È ciò che il primo file della suite
+(`anagrafiche/create-cliente`) non faceva: verde su dev, rosso in CI il
+2026-09-21, e da solo mai — il secondo file committa un operatore in autocommit
+e da lì in poi nessuno percorre più il ramo che costruisce.
+
 ⚠️ E i **rami `skip` spariscono**: con il mondo costruito la precondizione c'è
 sempre, e un `CASE WHEN EXISTS(...) THEN ok(...) ELSE skip(...)` diventa un
 `ok(...)`. Un test che *può* saltare, su un database vuoto salta.
+
+### ⚠️ «Libera» vuol dire «libera ADESSO»
+
+`dbops.fn_pgtap_piva_libera()` e `dbops.fn_pgtap_cf_libero()` rispondono **la prima
+non ancora usata in questo istante**. Non sono generatori: finché nessuno scrive
+quel soggetto, la chiamata successiva risponde **lo stesso numero** — anche in
+un'altra istruzione (misurato il 2026-09-23).
+
+⇒ Due conseguenze, e sono state due rossi veri:
+
+1. chiederne **due in una volta** per due soggetti diversi dà due volte lo stesso
+   valore, e il secondo INSERT muore su `uq_soggetto_idstato_id_fiscale_univoco`;
+2. precalcolarla **prima** di costruire il mondo è peggio: la riga di contesto,
+   quando costruisce azienda e operatore, prende proprio quella — e il soggetto del
+   test collide con il soggetto dell'azienda.
+
+⭐ La regola è una: **la si chiede quando serve, dopo che il mondo esiste**, e una
+per volta. In un file a più casi, ogni caso chiede la sua.
 
 ### `LIMIT 1` senza `ORDER BY` non verifica, scommette
 
@@ -295,3 +387,6 @@ Per questo l'ordine di efficacia è: **template → cancello → guida**, e ques
 pagina è l'ultimo dei tre. Serve per ciò che non si automatizza: *da chi difende
 questo guard? cosa vorrebbe dire davvero questa asserzione?* Il resto lo devono
 fare il template che copi e il cancello che ti ferma.
+
+---
+{% include-markdown "signature-core.md" %}

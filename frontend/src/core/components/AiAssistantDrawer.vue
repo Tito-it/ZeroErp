@@ -8,6 +8,8 @@ import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import ProgressSpinner from 'primevue/progressspinner'
 import { useAiStore } from '../../stores/ai'
+import { MANAGE_ICONS } from '../constants'
+import { NAV_ICONS } from '../navigation'
 
 const { t } = useI18n()
 
@@ -87,18 +89,18 @@ watch(() => messages.value.length, () => {
       <!-- Header -->
       <div class="ai-widget-header" @click="toggleMinimize">
         <div class="ai-widget-header-left">
-          <i class="pi pi-microchip-ai"></i>
+          <i :class="NAV_ICONS.ASSISTENTE_AI"></i>
           <span>{{ t('ai.title') }}</span>
         </div>
         <div class="ai-widget-header-actions">
           <button class="ai-widget-header-btn" @click.stop="handleClear" v-tooltip.top="t('ai.clear')">
-            <i class="pi pi-refresh"></i>
+            <i :class="MANAGE_ICONS.SVUOTA"></i>
           </button>
           <button class="ai-widget-header-btn" @click.stop="toggleMinimize">
-            <i :class="minimized ? 'pi pi-window-maximize' : 'pi pi-window-minimize'"></i>
+            <i :class="minimized ? MANAGE_ICONS.FINESTRA_ESPANDI : MANAGE_ICONS.FINESTRA_RIDUCI"></i>
           </button>
           <button class="ai-widget-header-btn" @click.stop="handleClose">
-            <i class="pi pi-times"></i>
+            <i :class="MANAGE_ICONS.CANCEL"></i>
           </button>
         </div>
       </div>
@@ -109,7 +111,7 @@ watch(() => messages.value.length, () => {
         <div ref="messagesContainer" class="ai-messages">
           <!-- Messaggio di benvenuto se conversazione vuota -->
           <div v-if="messages.length === 0" class="ai-welcome">
-            <i class="pi pi-microchip-ai ai-welcome-icon"></i>
+            <i class="ai-welcome-icon" :class="NAV_ICONS.ASSISTENTE_AI"></i>
             <p>{{ t('ai.welcome') }}</p>
           </div>
 
@@ -121,7 +123,7 @@ watch(() => messages.value.length, () => {
           >
             <!-- Icona ruolo -->
             <div class="ai-message-avatar">
-              <i :class="msg.role === 'user' ? 'pi pi-user' : 'pi pi-microchip-ai'"></i>
+              <i :class="msg.role === 'user' ? NAV_ICONS.OPERATORE : NAV_ICONS.ASSISTENTE_AI"></i>
             </div>
 
             <!-- Contenuto messaggio -->
@@ -142,7 +144,7 @@ watch(() => messages.value.length, () => {
                   class="ai-action-link"
                   @click="executeAction(action)"
                 >
-                  <i class="pi pi-external-link"></i>
+                  <i :class="MANAGE_ICONS.VAI_A"></i>
                   {{ action.label }}
                 </button>
               </div>
@@ -167,7 +169,7 @@ watch(() => messages.value.length, () => {
 
               <!-- Indicatore tool usati -->
               <div v-if="msg.toolsUsed && msg.toolsUsed.length > 0" class="ai-message-tools">
-                <i class="pi pi-cog"></i>
+                <i :class="MANAGE_ICONS.STRUMENTI_AI"></i>
                 <span>{{ msg.toolsUsed.join(', ') }}</span>
               </div>
             </div>
@@ -176,7 +178,7 @@ watch(() => messages.value.length, () => {
           <!-- Indicatore caricamento -->
           <div v-if="loading" class="ai-message ai-message-assistant">
             <div class="ai-message-avatar">
-              <i class="pi pi-microchip-ai"></i>
+              <i :class="NAV_ICONS.ASSISTENTE_AI"></i>
             </div>
             <div class="ai-message-body ai-message-loading">
               <ProgressSpinner
@@ -198,7 +200,7 @@ watch(() => messages.value.length, () => {
             @keydown="handleKeydown"
           />
           <Button
-            icon="pi pi-send"
+            :icon="MANAGE_ICONS.SEND"
             rounded
             size="small"
             :disabled="loading || !inputText.trim()"
@@ -251,7 +253,7 @@ watch(() => messages.value.length, () => {
   gap: 0.5rem;
   font-size: var(--app-font-size-sm);
   font-weight: 600;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
 }
 
 .ai-widget-header-left i {
@@ -271,7 +273,7 @@ watch(() => messages.value.length, () => {
   width: 1.5rem;
   height: 1.5rem;
   font-size: 0.75rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   background: transparent;
   border: none;
   border-radius: 4px;
@@ -280,7 +282,7 @@ watch(() => messages.value.length, () => {
 }
 
 .ai-widget-header-btn:hover {
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   background: var(--app-ai-border);
 }
 
@@ -304,7 +306,7 @@ watch(() => messages.value.length, () => {
   justify-content: center;
   flex: 1;
   gap: 0.5rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   text-align: center;
   padding: 1.5rem 1rem;
   font-size: var(--app-font-size-sm);
@@ -312,7 +314,7 @@ watch(() => messages.value.length, () => {
 
 .ai-welcome-icon {
   font-size: 1.5rem;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   opacity: 0.4;
 }
 
@@ -345,7 +347,7 @@ watch(() => messages.value.length, () => {
 }
 
 .ai-message-assistant .ai-message-avatar {
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   border: 1px solid var(--app-ai-avatar-assistant-border);
 }
 
@@ -359,12 +361,12 @@ watch(() => messages.value.length, () => {
 
 .ai-message-user .ai-message-body {
   border: 1px solid var(--app-ai-msg-user-border);
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 
 .ai-message-assistant .ai-message-body {
   border: 1px solid var(--app-ai-msg-assistant-border);
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 
 .ai-message-text {
@@ -373,7 +375,7 @@ watch(() => messages.value.length, () => {
 }
 
 .ai-message-error {
-  color: var(--p-red-500);
+  color: var(--app-severity-danger);
   font-style: italic;
 }
 
@@ -381,7 +383,7 @@ watch(() => messages.value.length, () => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-style: italic;
 }
 
@@ -401,7 +403,7 @@ watch(() => messages.value.length, () => {
   gap: 0.3rem;
   padding: 0.15rem 0;
   font-size: var(--app-font-size-sm);
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   background: none;
   border: none;
   cursor: pointer;
@@ -425,7 +427,7 @@ watch(() => messages.value.length, () => {
   gap: 0.25rem;
   margin-top: 0.25rem;
   font-size: 0.65rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 
 .ai-message-tools i {
@@ -489,7 +491,7 @@ watch(() => messages.value.length, () => {
 }
 
 /* Mobile — widget a schermo pieno */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .ai-widget {
     bottom: 0;
     right: 0;

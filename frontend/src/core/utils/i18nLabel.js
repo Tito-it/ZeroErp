@@ -7,8 +7,25 @@
 //        `te(key) ? t(key) : code` sparsi in dashboard/pratiche/catalogo.
 //        t/te vengono iniettati dal chiamante (useI18n del componente) per
 //        restare reattivi al cambio locale.
-export function labelOrCode(t, te, key, fallback) {
-  return te(key) ? t(key) : fallback
+//        `params` (opzionale, 2026-09-24): i parametri della frase — lista
+//        per i segnaposto posizionali `{0}`, oggetto per quelli con nome.
+//        Omesso = `t(key)` come prima.
+export function labelOrCode(t, te, key, fallback, params) {
+  if (!te(key)) return fallback
+  return params === undefined ? t(key) : t(key, params)
+}
+
+// Scopo: L'etichetta di un RUOLO APPLICATIVO (la veste: OPERATORE,
+//        CLIENTE_PORTALE, ...), dalla chiave `auth.ruolo_applicativo.<CODICE>`;
+//        chiave mancante ⇒ il codice (fail-visible, `labelOrCode`); codice
+//        assente ⇒ '' (il segnaposto a video lo sceglie il chiamante).
+//        Estratto 2026-09-27 (regola del 2, ok Tid): la regola era scritta tre
+//        volte — lista operatori, profilo del portale, dialog del riuso — e le
+//        copie gia' divergevano (il profilo non ripiegava sul codice e avrebbe
+//        mostrato il path della chiave).
+export function etichettaRuoloApplicativo(t, te, codice) {
+  if (!codice) return ''
+  return labelOrCode(t, te, `auth.ruolo_applicativo.${codice}`, codice)
 }
 
 // Scopo: ⭐ L'INTESTAZIONE DI UNA COLONNA DI LISTA, tradotta. Il catalogo

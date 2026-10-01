@@ -161,7 +161,7 @@ class QueueDrainEngine:
                 # (envelope API) — semantica diversa da «il motore ritenti».
                 terminale_forzato=bool(exc.context.get(CONTEXT_KEY_TERMINALE)),
             )
-        except Exception as exc:  # noqa: BLE001 — resilienza per-riga voluta
+        except Exception as exc:  # resilienza per-riga voluta
             # Eccezione non prevista: nessuna dichiarazione, quindi si assume
             # transitoria e valgono i tentativi (comportamento storico).
             return self._registra_errore(

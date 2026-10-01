@@ -39,30 +39,29 @@ SELECT plan(8);
 
 -- ============================================================
 -- Riferimenti minimi per creare preventivi in pgTAP
+--
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Istanza e utility si PESCAVANO dal primo billing account: su un
+--   database ricostruito (la CI) non ce n'e' nessuno, e il file moriva al
+--   primo INSERT (istanza_utility_id NULL) con zero asserzioni. Ora il
+--   cliente viene da dbops.fn_pgtap_crea_mondo_cliente, che con il
+--   contesto gia' aperto riusa l'azienda di chi agisce. Istanza e utility
+--   escono dalla STESSA riga (prima erano due sotto-select indipendenti).
+--   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
 -- ============================================================
+CREATE TEMP TABLE tmp_mondo_aa AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('cap preventivo');
+
 CREATE TEMP TABLE tmp_refs_aa AS
 SELECT
-  (SELECT ba.istanza_utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS istanza_utility_id,
-  (SELECT ba.utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_mondo_aa) AS istanza_utility_id,
+  (SELECT utility_id FROM tmp_mondo_aa) AS utility_id,
   (SELECT v.id
      FROM config.valute v
     ORDER BY v.id LIMIT 1
   ) AS valuta_id,
-  (SELECT ef.id
-     FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1
-  ) AS emittente_fiscale_id,
+  -- ⛔ L'emittente NON si pesca, si DERIVA (2026-09-23, guida pgTAP §5).
+  script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
   (SELECT s.id
      FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE

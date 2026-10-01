@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Convalida di chk_processi_convergenza_ci, nato NOT VALID in
+#   00_schema/dbops/20260926-08. Brief: brief-db-job-notturni-in-ci
+#
+#   Sta in 90_end perche' deve girare DOPO il CSV di 80_data, che porta i
+#   valori di ci_ordine / ci_procedura / ci_esclusione sulle righe che su
+#   dbdev esistevano gia'. Se una riga con un job pgAgent non dichiara ne' la
+#   posizione ne' l'esclusione, la convalida fallisce e la migrazione si ferma:
+#   e' il presidio «fuori apposta, non dimenticato» detto al momento giusto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260926-09-validate-chk-processi-convergenza-ci-mctit.yaml
+
+  - changeSet:
+      id: 20260926-09-validate-chk-processi-convergenza-ci
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        VALIDATE CONSTRAINT chk_processi_convergenza_ci, dopo che il CSV dei
+        processi ha portato le colonne di convergenza.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conrelid = 'dbops.processi'::regclass
+                 AND conname = 'chk_processi_convergenza_ci'
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: ALTER TABLE dbops.processi VALIDATE CONSTRAINT chk_processi_convergenza_ci;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Un vincolo convalidato non torna NOT VALID: il rollback e' un
+              -- no-op dichiarato (lo toglie il rollback di 20260926-08).
+              SELECT 1;

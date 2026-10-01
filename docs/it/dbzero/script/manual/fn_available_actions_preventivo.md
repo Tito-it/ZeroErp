@@ -46,8 +46,6 @@ script.fn_available_actions_preventivo(
             "key": "emetti",                       // chiave semantica
             "target_state": "EMESSO",              // codice_interno stato destinazione
             "label_key": "preventivi.azione_emetti", // chiave i18n per il label bottone
-            "severity": "info",                    // severity PrimeVue
-            "icon": "pi pi-send",                  // classe PrimeIcons
             "requires_confirm": false              // se true → dialog conferma
         }
     ],
@@ -135,13 +133,13 @@ fatturazione, push commessa).
    per ottenere `stato_id` e `codice_interno`. `NOT FOUND` → `RETURN NULL`.
 2. **Transizioni manuali** — `jsonb_agg` su `config.transizioni_stati_preventivi`
    filtrata per `stato_da_id = v_stato_id AND attivo IS TRUE AND manuale IS NOT FALSE`.
-   I metadati UI (`label_key`, `severity`, `icon`, `requires_confirm`) vengono
-   letti direttamente da `t.meta`. Ordine: `sa.ordine` (ordine stati config).
+   I metadati UI (`label_key`, `requires_confirm`) vengono
+   letti direttamente da `t.meta`; icona e colore li sceglie il frontend dal `key`. Ordine: `sa.ordine` (ordine stati config).
 3. **Azioni speciali hardcoded** — aggiunte in coda a `v_actions` (pattern
    `fn_available_actions_offerta`, rev 28-05-2026):
-   - `crea_revisione` se `v_stato_cod = 'EMESSO'`: `target_state null`, `icon pi pi-clone`.
-   - `push_commessa` se `v_can_push` (ACCETTATO + residuo servizi): `icon pi pi-arrow-right`.
-   - `genera_ordine` se `v_can_ordine` (ACCETTATO + residuo merce): `icon pi pi-shopping-cart`.
+   - `crea_revisione` se `v_stato_cod = 'EMESSO'`: `target_state null`.
+   - `push_commessa` se `v_can_push` (ACCETTATO + residuo servizi).
+   - `genera_ordine` se `v_can_ordine` (ACCETTATO + residuo merce).
    Il FE distingue queste azioni dal `key` e usa routing speciale nel drawer.
 4. **Capability derivate**:
    - `can_edit_testata / can_edit_righe = (stato = 'DRAFT')`
@@ -185,3 +183,37 @@ fatturazione, push commessa).
   punto perché siamo già nella branch `manuale IS TRUE` (COALESCE sopra),
   quindi le transizioni automatiche (es. EMESSO→SCADUTO con `manuale=false`)
   sono già escluse prima di questo check.
+
+## Rev 2026-09-24 — «Accetta» spento finché un prezzo non è autorizzato
+
+Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*. Un
+preventivo con una riga o un componente BoM **attivi** in attesa di approvazione
+(`PENDING`) o **rifiutati** (`REJECTED`) non si emette e non si accetta.
+
+* Sulle azioni verso `ACCETTATO` la funzione somma i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati), nello stesso array
+  `reasons` da cui discendono `enabled`, `reason` e `reason_key`. È lo stesso building block
+  che la Regola 3 di [`vendite.trgfn_preventivi_guard_transizione`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione)
+  usa per sollevare: «Accetta» e database non possono dissentire.
+* Verso `EMESSO` i motivi arrivano già da
+  [`script.fn_check_preventivo_emettibile`](/dbzero/script/funzioni/fn_check_preventivo_emettibile),
+  che dalla stessa data li contiene (MOTIVO 2).
+* **Annulla non cambia**: è la via d'uscita dell'operatore.
+* `can_edit_testata` / `can_edit_righe` restano quelli di prima (`DRAFT`): il blocco sta
+  sulla sola riga in attesa, dal suo guard per riga.
+
+Motivi possibili: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
+`common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
+
+⭐ Con questo il backend può togliere la sua riscrittura di `available_actions` e
+`can_edit_*` in `preventivi_service.get_preventivo` (richiesta al team backend, brief
+`brief-db-preventivi-congelamento-pricing` §6). (changeSet `20260924-23`.)
+
+---
+
+### Rev 2026-09-24 (2) — «Crea revisione» spento con un prezzo in attesa
+
+(`20260924-36`.) L'azione `crea_revisione` resta proposta su `EMESSO`, ma è **spenta con il
+motivo** (`enabled`, `reason`, `reason_key`, `reasons`) se il preventivo ha un prezzo in
+attesa — [script.fn_check_prezzi_in_attesa](/dbzero/script/funzioni/fn_check_prezzi_in_attesa),
+la stessa funzione con cui `fn_crea_revisione_preventivo` rifiuta. `can_create_revisione`
+diventa **veritiero**: vero solo se la revisione si può davvero creare.

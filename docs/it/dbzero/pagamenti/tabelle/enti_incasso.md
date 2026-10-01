@@ -54,7 +54,7 @@
 | trg_enti_incasso_a10_centri_riscossione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'centri_riscossione', 'attivo', 'centro_riscossione_id', 'id')` |
 | trg_enti_incasso_a10_guard_conto_incasso_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_enti_incasso_guard_conto_incasso()` |
 | trg_enti_incasso_a10_guard_conto_incasso_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_enti_incasso_guard_conto_incasso()` |
-| trg_enti_incasso_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+| trg_enti_incasso_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_enti_incasso_a10_vendite_contabili_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'vendite_contabili', 'ente_incasso_id', 'id', 'attivo')` |
 | trg_enti_incasso_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_enti_incasso_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

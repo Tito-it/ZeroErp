@@ -20,7 +20,8 @@
 //                 :transform="r => r.data.data" value-field="codice" show-code />
 import { computed } from 'vue'
 import { useGlobalLookup } from '../composables/useGlobalLookup'
-import { lookupCodici } from '../apiCore'
+import { LOOKUP_CODICI_PAGE_SIZE, useLookupCodici } from '../composables/useLookupCodici'
+import { etichettaVoce } from '../utils/etichettaSelezionata'
 import Select from 'primevue/select'
 
 const props = defineProps({
@@ -47,7 +48,14 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
   filterField: { type: String, default: '' },
   filterValue: { type: [Number, String, Boolean], default: null },
-  pageSize: { type: Number, default: 200 },
+  // La voce da NON proporre (per `valueField`): il picker del PADRE di una
+  // gerarchia non offre l'entita' stessa (2026-09-21, ubicazioni). ⛔ Va qui,
+  // a valle della cache, e NON nel `transform`: `useGlobalLookup` registra il
+  // primo transform per chiave e non lo sovrascrive, quindi un filtro «senza
+  // me» dentro il transform resterebbe scritto nella cache condivisa — la
+  // seconda entita' aperta non vedrebbe la prima fra i padri possibili.
+  excludeValue: { type: [Number, String], default: null },
+  pageSize: { type: Number, default: LOOKUP_CODICI_PAGE_SIZE },
   // Prepend di una voce "Tutti" (value=null) — per i Select usati come filtro
   // lista (es. stato email log). Etichetta da `allLabel`.
   includeAllOption: { type: Boolean, default: false },
@@ -68,24 +76,27 @@ const emit = defineEmits(['update:modelValue', 'change'])
 // Cache globale per-chiave: tutte le istanze con la stessa chiave condividono
 // la stessa fetch (evita N chiamate duplicate nei form con piu' dropdown).
 // Chiave = `rel` nel modo storico, `lookupKey` (fallback `rel`) col fetcher.
-// In modalita' `rel`, se si escludono gli obsoleti la chiave cache deve
-// differire da quella di default (stesso `rel` con set diverso → niente
-// collisione nella cache globale condivisa).
-const relCacheKey = props.includiObsoleti ? props.rel : `${props.rel}::no-obsoleti`
-const lookupKeyResolved = props.fetcher ? (props.lookupKey || props.rel) : relCacheKey
-const fetchFn = props.fetcher
-  ? props.fetcher
-  : () => lookupCodici(props.rel, {
-      page_size: props.pageSize,
-      ...(props.includiObsoleti ? {} : { includi_obsoleti: false }),
-    })
+// In modalita' `rel` chiave e fetch le compone `useLookupCodici` (con gli
+// obsoleti esclusi la chiave e' un'altra: stesso `rel`, insieme diverso), cosi'
+// una preselezione o una home che leggono lo stesso insieme condividono
+// l'entry per costruzione, non per aver ricopiato la stringa.
 const lookupOptions = { immediate: true }
 if (props.transform) lookupOptions.transform = props.transform
-const lookup = useGlobalLookup(lookupKeyResolved, fetchFn, lookupOptions)
+const lookup = props.fetcher
+  ? useGlobalLookup(props.lookupKey || props.rel, props.fetcher, lookupOptions)
+  : useLookupCodici(props.rel, {
+      includiObsoleti: props.includiObsoleti,
+      pageSize: props.pageSize,
+      ...lookupOptions,
+    })
 
 const filteredItems = computed(() => {
-  if (!props.filterField || props.filterValue == null) return lookup.items.value
-  return lookup.items.value.filter(item => item?.[props.filterField] === props.filterValue)
+  let items = lookup.items.value
+  if (props.excludeValue != null) {
+    items = items.filter(item => item?.[props.valueField] !== props.excludeValue)
+  }
+  if (!props.filterField || props.filterValue == null) return items
+  return items.filter(item => item?.[props.filterField] === props.filterValue)
 })
 
 // Opzioni renderizzate: con includeAllOption prepende la voce "Tutti"
@@ -116,6 +127,15 @@ const selectedItem = computed(() =>
   visibleOptions.value.find(i => i[props.valueField] === props.modelValue) || null
 )
 
+// Il testo intero del valore nel `title`: la combo stretta (taglia `md` dei
+// filtri) lo taglia coi puntini. Stesso testo di `formatOption`, cioe' cio' che
+// si legge a video. Nessuna selezione ⇒ niente attributo. (A4, 2026-09-24)
+// ⛔ NON MODIFICARE (decisione di Tid, 2026-09-24): il `title` deriva da
+//    `selectedItem`, la voce selezionata si cerca UNA volta sola. Non passare
+//    a `etichettaSelezionata(visibleOptions, ...)`: rifarebbe la stessa
+//    ricerca, e due ricerche dello stesso valore prima o poi divergono.
+const titolo = computed(() => etichettaVoce(selectedItem.value, formatOption))
+
 function onChange(event) {
   emit('update:modelValue', event.value)
   emit('change', event.value)
@@ -134,6 +154,7 @@ function onChange(event) {
     :showClear="showClear"
     :filter="filter"
     :disabled="disabled"
+    :title="titolo"
     @change="onChange"
   >
     <template v-if="showCode" #option="{ option }">

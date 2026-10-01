@@ -1,0 +1,116 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I job notturni STRUTTURALI eseguiti anche dove pgAgent non c'e': in ordine,
+#   dal catalogo dbops.processi. Brief: brief-db-job-notturni-in-ci, D1
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   In CI 85_pgagent e' MARK_RAN: i job non esistono, e cio' che solo la loro
+#   procedura fa non girava mai (il 26-09: OVERLAP, CLEANUP, la storicizzazione
+#   di default, e fino a quel giorno la chiamata a drop_lock_trg nel job del
+#   lock). Qui si fa CALL delle STESSE procedure che pgAgent chiama di notte:
+#   il loro corpo non si ricopia, e la CI esercita quello che gira in esercizio.
+#
+# ── L'ELENCO NON STA QUI ────────────────────────────────────────────
+#   Quali procedure e in che ordine lo dice dbops.processi (ci_ordine,
+#   ci_procedura), seminato dal CSV di 80_data. Un job strutturale nuovo si
+#   aggiunge li', con una riga; il pgTAP dbops/test-processi-convergenza-ci
+#   va rosso se un job pgAgent non dichiara ne' posizione ne' esclusione.
+#   ⚠️ 20250627-31 resta com'e' (mergiato, e unico a esercitare il modo 'CI'):
+#   le sue chiamate e queste sono idempotenti, la seconda passata non trova
+#   niente da fare.
+#
+# ── ⭐ UN SALTO NON E' UN SUCCESSO ──────────────────────────────────
+#   maintenance.fn_run_and_log salta il giro se l'advisory lock del job e' gia'
+#   preso, e scrive una riga ok = true «skip: another run in progress». Dopo
+#   ogni CALL si pretende una riga di QUESTO giro, ok, e non di salto; se
+#   manca, la migrazione si ferma nominando il processo. Un errore della
+#   procedura invece arriva da solo: fn_run_and_log lo rilancia (rev R-12).
+#
+# runAlways, contesto ci_apply: in CI e' la seconda invocazione di Liquibase,
+# su dev lo ripassa `make db-ci-apply`. Nessuna procedura fa COMMIT, quindi le
+# CALL stanno nella transazione del changeSet (verificato il 2026-09-26).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/ci_apply/20260926-10-run-processi-strutturali-in-ordine-mctit.yaml
+
+  - changeSet:
+      id: 20260926-10-run-processi-strutturali-in-ordine
+      author: mctit
+      context: ci_apply
+      runAlways: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        CALL, in ordine di dbops.processi.ci_ordine, delle procedure dei job
+        pgAgent strutturali (ci_procedura); dopo ognuna pretende in
+        maintenance.job_run_log una riga ok di questo giro che non sia un salto.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'dbops' AND table_name = 'processi'
+                 AND column_name = 'ci_ordine'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $strutturali$
+              DECLARE
+                  r      record;
+                  v_proc regprocedure;
+                  v_t0   timestamptz;
+                  v_n    integer := 0;
+              BEGIN
+                  FOR r IN
+                      SELECT p.codice, p.ci_ordine, p.ci_procedura
+                        FROM dbops.processi p
+                       WHERE p.ci_ordine IS NOT NULL
+                         AND p.attivo
+                       ORDER BY p.ci_ordine
+                  LOOP
+                      v_proc := to_regprocedure(r.ci_procedura);
+                      IF v_proc IS NULL THEN
+                          RAISE EXCEPTION 'PROCESSI_CI: la procedura % del processo % non esiste',
+                                r.ci_procedura, r.codice;
+                      END IF;
+
+                      v_t0 := clock_timestamp();
+                      EXECUTE format('CALL %s', v_proc::text);
+
+                      IF NOT EXISTS (
+                          SELECT 1
+                            FROM maintenance.job_run_log l
+                           WHERE l.jobname = r.codice
+                             AND l.started_at >= v_t0
+                             AND l.ok
+                             AND l.message IS DISTINCT FROM 'skip: another run in progress')
+                      THEN
+                          RAISE EXCEPTION 'PROCESSI_CI: % (%) non ha lasciato una riga riuscita in maintenance.job_run_log: saltato, oppure la procedura non registra sotto il codice del processo',
+                                r.codice, r.ci_procedura;
+                      END IF;
+
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  RAISE NOTICE 'PROCESSI_CI: % job strutturali eseguiti in ordine.', v_n;
+              END
+              $strutturali$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Le procedure convergono verso i registri: non c'e' uno stato
+              -- precedente da ripristinare. Il rollback e' un no-op dichiarato.
+              SELECT 1;

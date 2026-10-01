@@ -3,8 +3,8 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: insert e vincoli FK su anagrafiche.istanze_dati_precontrattuali
---       usando utility_id = 2 (GAS), una istanza_utility esistente
---       e una classe_utenza esistente.
+--       usando utility_id = 2 (GAS), una istanza_utility COSTRUITA
+--       e una classe_utenza del seed di catalogo.
 -- ------------------------------------------------------------
 
 -- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
@@ -56,6 +56,10 @@ SELECT is(
 );
 
 -- 0.2: Esiste almeno una classe_utenza
+-- ⚠️ rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2):
+--   config.classi_utenze e' CATALOGO, ma il suo CSV nessuno lo caricava: da
+--   zero la tabella era vuota e il file moriva qui. Il seed nasce con
+--   20260923-52 (tipi_utenze) e 20260923-53 (classi_utenze).
 CREATE TEMP TABLE tmp_classe_utenza AS
 SELECT id AS classe_utenza_id
 FROM config.classi_utenze
@@ -68,16 +72,27 @@ SELECT is(
     'Esiste almeno una classe_utenza'
 );
 
--- 0.3: Seleziona una istanza_utility senza record già presente per utility_id=2
+-- 0.3: Una istanza_utility senza record per utility_id=2
+-- ⚠️ rev 2026-09-23: l'istanza si PESCAVA («la prima senza dati GAS»): su
+--   un database ricostruito non ce n'e' nessuna. Ora viene da un cliente
+--   COSTRUITO con dbops.fn_pgtap_crea_cliente_ba, sull'utility di default
+--   (non GAS): l'istanza nasce senza dati precontrattuali GAS per
+--   costruzione. ⛔ Cio' che il builder scrive si legge in un'istruzione
+--   SEPARATA.
+CREATE TEMP TABLE tmp_cli_idp AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'dati precontrattuali',
+    (SELECT u.id FROM config.utilities u
+      WHERE u.id <> (SELECT utility_id FROM tmp_costanti_idp)
+      ORDER BY u.id LIMIT 1));
+
 CREATE TEMP TABLE tmp_istanza_utility AS
-SELECT iu.id AS istanza_utility_id
-FROM anagrafiche.istanze_utilities iu
-LEFT JOIN anagrafiche.istanze_dati_precontrattuali idp
-  ON idp.istanza_utility_id = iu.id
- AND idp.utility_id = (SELECT utility_id FROM tmp_costanti_idp)
-WHERE idp.id IS NULL
-ORDER BY iu.id
-LIMIT 1;
+SELECT c.istanza_utility_id
+FROM tmp_cli_idp c
+WHERE NOT EXISTS (
+    SELECT 1 FROM anagrafiche.istanze_dati_precontrattuali idp
+     WHERE idp.istanza_utility_id = c.istanza_utility_id
+       AND idp.utility_id = (SELECT utility_id FROM tmp_costanti_idp));
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_istanza_utility),

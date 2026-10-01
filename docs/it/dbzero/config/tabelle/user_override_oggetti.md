@@ -26,11 +26,14 @@
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | validita | daterange | NO |  |
+| riservato | boolean | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_user_override_oggetti_validita |  |
+| FOREIGN KEY | fk_config_user_override_oggetti_auth_user | auth_user_id |
+| FOREIGN KEY | fk_user_override_oggetti_catalogo | app_label, model_name, riservato |
 | PRIMARY KEY | pk_user_override_oggetti | id |
 | UNIQUE | uq_user_override_oggetti_user_app_model | auth_user_id, app_label, model_name |
 
@@ -43,10 +46,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_user_override_oggetti_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
+| trg_user_override_oggetti_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_user_override_oggetti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_user_override_oggetti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_user_override_oggetti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_user_override_oggetti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_user_override_oggetti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_user_override_oggetti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('user_override_oggetti_id')` |
 | trg_user_override_oggetti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('user_override_oggetti_id')` |
 

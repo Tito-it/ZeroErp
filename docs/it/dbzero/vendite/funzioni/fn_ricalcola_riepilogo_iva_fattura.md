@@ -98,6 +98,34 @@ BEGIN
        AND r.aliquota_iva IS DISTINCT FROM
            config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id);
 
+    -- ⭐ rev 2026-10-01 (D-8 di brief-db-esigibilita-iva-per-cassa-
+    --    emittente): anche ESIGIBILITA' e SCISSIONE si riallineano
+    --    prima di essere aggregate, per la stessa ragione dell'aliquota
+    --    (D30). La riga le deriva quando viene scritta; il regime
+    --    dell'emittente, la scissione o la partita IVA del cliente
+    --    possono cambiare dopo, e il riepilogo RAGGRUPPA per
+    --    (iva, natura, esigibilita, split). Il regime e' quello che la
+    --    testata stampa: vendite.fn_esigibilita_iva_fattura legge lo
+    --    snapshot dell'intestazione, se c'e'. Cosi' il ricalcolo del
+    --    passo EMESSA della pipeline, l'ultimo prima del congelamento,
+    --    lascia righe e testata sullo stesso regime.
+    -- ⚠️ CTE + `IS DISTINCT FROM` per lo stesso motivo dell'UPDATE qui
+    --    sopra: si tocca solo la riga che cambia davvero. Il trigger di
+    --    riga ricalcola la stessa coppia dalla stessa funzione.
+    WITH derivata AS (
+        SELECT r.id, e.esigibilita, e.split_payment
+          FROM vendite.fatture_righe r
+          CROSS JOIN LATERAL vendite.fn_esigibilita_iva_fattura(r.fattura_id, r.iva_id) e
+         WHERE r.fattura_id = p_fattura_id
+    )
+    UPDATE vendite.fatture_righe r
+       SET esigibilita   = d.esigibilita,
+           split_payment = d.split_payment
+      FROM derivata d
+     WHERE r.id = d.id
+       AND (   r.esigibilita   IS DISTINCT FROM d.esigibilita
+            OR r.split_payment IS DISTINCT FROM d.split_payment);
+
     -- ⚠️ E l'aggregazione continua a chiamare il catalogo invece di
     --    leggere `r.aliquota_iva`, che dopo la UPDATE qui sopra porta
     --    lo stesso identico valore. Non e' una svista: su una riga
@@ -145,7 +173,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id bigint)
-IS 'Ricalcola i riepiloghi IVA di una fattura (DELETE + INSERT per fattura_id), raggruppando le righe per codice IVA/natura/esigibilita/split, e scrive l''aliquota sul riepilogo accanto a imponibile e imposta. ⭐ rev 2026-08-29 bis (D30 del brief IVA): PRIMA di aggregare, la funzione RIALLINEA vendite.fatture_righe.aliquota_iva al catalogo di adesso. La revisione precedente leggeva l''aliquota dalla riga con un COALESCE, per «preservare l''aliquota di allora»: era sbagliato, e il motivo e'' scritto sette righe piu'' su nella funzione stessa. Questa funzione, per costruzione, vede SOLO documenti NON congelati - il guard su congela_fiscale rifiuta gli altri - quindi quel COALESCE non poteva mai proteggere un documento emesso: agiva solo sulle bozze, cioe'' esattamente dove il catalogo di adesso e'' la risposta giusta. E produceva la divergenza che il commento di trgfn_fatture_righe_guard_normalize dichiara inaccettabile: quel trigger riscrive l''aliquota della riga a OGNI scrittura, quindi con il COALESCE riga e riepilogo dello stesso documento potevano portare aliquote diverse, e nessuno se ne sarebbe accorto finche'' non quadrava un totale. Il test pgTAP test-ricalcola-riepiloghi-iva («Override iva_stati applicato») lo ha smentito in un giorno. ⭐ La regola vera: lo snapshot dell''aliquota diventa una FOTOGRAFIA quando il documento smette di essere scritto, non perche'' qualcuno smette di leggerlo. Le colonne aggiunte da 20260829-39 servono a chi rigenera un documento GIA'' CONGELATO - un percorso che oggi non esiste, perche'' questa funzione lo rifiuta - e quel percorso, il giorno che nascera'', dovra'' leggere la riga e non il catalogo. ⚠️ Il riallineamento e'' guardato da IS DISTINCT FROM: senza, ogni ricalcolo toccherebbe tutte le righe e genererebbe una riga di storico per ognuna. ⚠️ E l''aggregazione continua a chiamare config.fn_get_aliquota_iva invece di leggere r.aliquota_iva, che dopo il riallineamento porta lo stesso valore: su una riga SENZA codice IVA la funzione SOLLEVA mentre la colonna sarebbe NULL e diventerebbe uno zero muto - trasformare un errore in uno zero su una funzione fiscale non si fa di contrabbando dentro un altro lavoro (difetto §R-3, si chiude dove vive). ⚠️ L''aliquota e'' aggregata con MAX perche'' il gruppo non la comprende e non puo'': lo impedisce uq_fatture_r_iva_key, l''unica sulla tabella; dentro un gruppo il valore e'' uno solo per costruzione, ma se divergesse MAX lo collassa - caso COLLASSATO, non risolto, residuo dichiarato nel brief. ⚠️ La formula di imponibile, imposta e arrotondamento e'' IDENTICA a quella del 2026-08-02, parentesi e arrotondamenti compresi: nessun documento si sposta di un centesimo. ⭐ rev 2026-08-29 (D15): la soglia di congelamento si legge da config.stati_doc_fiscale.congela_fiscale, e il COALESCE(v_congela_fiscale, true) e'' fail-closed. 📌 Strascico noto: il codice sollevato resta E_PARAMETRO_INVALIDO, mentre «documento congelato» e'' un conflitto di stato. rev 2026-08-02: l''esistenza si misura con NOT FOUND (stato_doc_fiscale_id e'' nullabile).';
+IS 'Ricalcola i riepiloghi IVA di una fattura (DELETE + INSERT per fattura_id), raggruppando le righe per codice IVA/natura/esigibilita/split, e scrive l''aliquota sul riepilogo accanto a imponibile e imposta. ⭐ rev 2026-08-29 bis (D30 del brief IVA): PRIMA di aggregare, la funzione RIALLINEA vendite.fatture_righe.aliquota_iva al catalogo di adesso. La revisione precedente leggeva l''aliquota dalla riga con un COALESCE, per «preservare l''aliquota di allora»: era sbagliato, e il motivo e'' scritto sette righe piu'' su nella funzione stessa. Questa funzione, per costruzione, vede SOLO documenti NON congelati - il guard su congela_fiscale rifiuta gli altri - quindi quel COALESCE non poteva mai proteggere un documento emesso: agiva solo sulle bozze, cioe'' esattamente dove il catalogo di adesso e'' la risposta giusta. E produceva la divergenza che il commento di trgfn_fatture_righe_guard_normalize dichiara inaccettabile: quel trigger riscrive l''aliquota della riga a OGNI scrittura, quindi con il COALESCE riga e riepilogo dello stesso documento potevano portare aliquote diverse, e nessuno se ne sarebbe accorto finche'' non quadrava un totale. Il test pgTAP test-ricalcola-riepiloghi-iva («Override iva_stati applicato») lo ha smentito in un giorno. ⭐ La regola vera: lo snapshot dell''aliquota diventa una FOTOGRAFIA quando il documento smette di essere scritto, non perche'' qualcuno smette di leggerlo. Le colonne aggiunte da 20260829-39 servono a chi rigenera un documento GIA'' CONGELATO - un percorso che oggi non esiste, perche'' questa funzione lo rifiuta - e quel percorso, il giorno che nascera'', dovra'' leggere la riga e non il catalogo. ⚠️ Il riallineamento e'' guardato da IS DISTINCT FROM: senza, ogni ricalcolo toccherebbe tutte le righe e genererebbe una riga di storico per ognuna. ⚠️ E l''aggregazione continua a chiamare config.fn_get_aliquota_iva invece di leggere r.aliquota_iva, che dopo il riallineamento porta lo stesso valore: su una riga SENZA codice IVA la funzione SOLLEVA mentre la colonna sarebbe NULL e diventerebbe uno zero muto - trasformare un errore in uno zero su una funzione fiscale non si fa di contrabbando dentro un altro lavoro (difetto §R-3, si chiude dove vive). ⚠️ L''aliquota e'' aggregata con MAX perche'' il gruppo non la comprende e non puo'': lo impedisce uq_fatture_r_iva_key, l''unica sulla tabella; dentro un gruppo il valore e'' uno solo per costruzione, ma se divergesse MAX lo collassa - caso COLLASSATO, non risolto, residuo dichiarato nel brief. ⚠️ La formula di imponibile, imposta e arrotondamento e'' IDENTICA a quella del 2026-08-02, parentesi e arrotondamenti compresi: nessun documento si sposta di un centesimo. ⭐ rev 2026-08-29 (D15): la soglia di congelamento si legge da config.stati_doc_fiscale.congela_fiscale, e il COALESCE(v_congela_fiscale, true) e'' fail-closed. 📌 Strascico noto: il codice sollevato resta E_PARAMETRO_INVALIDO, mentre «documento congelato» e'' un conflitto di stato. rev 2026-08-02: l''esistenza si misura con NOT FOUND (stato_doc_fiscale_id e'' nullabile). ⭐ rev 2026-10-01 (D-8 di brief-db-esigibilita-iva-per-cassa-emittente): prima di aggregare riallinea anche esigibilita e split_payment delle righe, da vendite.fn_esigibilita_iva_fattura (regime congelato nello snapshot dell''intestazione se c''e'', cliente vivo), solo dove cambiano. E'' il passo che, nella pipeline, lascia righe e testata sullo stesso regime prima del congelamento.';
 ```
 
 ---

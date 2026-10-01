@@ -31,11 +31,17 @@ from apps.vendite.services import vendite_service
 #                          "OrdinePassaggiResponse")
 #         - url_kwarg:     nome del kwarg URL del documento (es. "ordine_id")
 #         - tipo_codice:   codice_interno config.sorgenti del dominio
+#         - model_permission: oggetto del catalogo permessi del documento
+#                          (es. ("vendite", "preventivo")): la view e' una
+#                          parte dell'oggetto e ne chiede il livello
+#                          (brief-db-be-fe-catalogo-oggetti-permessi §3.2).
+#                          None = solo l'area.
 def build_passaggi_view(
     *,
     schema_prefix: str,
     url_kwarg: str,
     tipo_codice: str,
+    model_permission: tuple[str, str] | None = None,
 ) -> type[DomainAPIView]:
     class _PassaggiView(DomainAPIView):
         area_funzionale = "vendite"
@@ -78,6 +84,8 @@ def build_passaggi_view(
     """
     _PassaggiView.__name__ = f"Api{schema_prefix}Passaggi"
     _PassaggiView.__qualname__ = _PassaggiView.__name__
+    if model_permission is not None:
+        _PassaggiView.model_permission = model_permission
     return _PassaggiView
 
 
@@ -87,36 +95,42 @@ ApiPreventivoPassaggi = build_passaggi_view(
     schema_prefix="Preventivo",
     url_kwarg="preventivo_id",
     tipo_codice="PREVENTIVO",
+    model_permission=("vendite", "preventivo"),
 )
 
 ApiOffertaPassaggi = build_passaggi_view(
     schema_prefix="Offerta",
     url_kwarg="offerta_id",
     tipo_codice="OFFERTA_COMMERCIALE",
+    model_permission=("vendite", "offerta_commerciale"),
 )
 
 ApiOrdinePassaggi = build_passaggi_view(
     schema_prefix="Ordine",
     url_kwarg="ordine_id",
     tipo_codice="ORDINE_VENDITA",
+    model_permission=("vendite", "ordine"),
 )
 
 ApiContrattoPassaggi = build_passaggi_view(
     schema_prefix="Contratto",
     url_kwarg="contratto_id",
     tipo_codice="CONTRATTO",
+    model_permission=("vendite", "contratto"),
 )
 
 ApiDdtPassaggi = build_passaggi_view(
     schema_prefix="Ddt",
     url_kwarg="ddt_id",
     tipo_codice="DDT_VENDITA",
+    model_permission=("vendite", "ddt"),
 )
 
 ApiResoPassaggi = build_passaggi_view(
     schema_prefix="Reso",
     url_kwarg="reso_id",
     tipo_codice="RESO_VENDITA",
+    model_permission=("vendite", "reso"),
 )
 
 # Fattura (2026-08-21): la decisione Q4 la teneva fuori come «capolinea senza
@@ -130,6 +144,7 @@ ApiFatturaPassaggi = build_passaggi_view(
     schema_prefix="Fattura",
     url_kwarg="fattura_id",
     tipo_codice="FATTURA",
+    model_permission=("vendite", "fattura"),
 )
 
 # Commessa (Fase C, genealogia inversa): la commessa non ha lista/CRUD propria

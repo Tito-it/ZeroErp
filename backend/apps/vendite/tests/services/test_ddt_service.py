@@ -19,8 +19,9 @@ DdtServiceGuardsTests
  1) test_get_ddt_not_found                 — E_DDT_NOT_FOUND se testata None
  2) test_cambia_stato_ddt_not_found        — E_DDT_NOT_FOUND se stato None (guard leggero)
  3) test_aggiorna_ddt_stato_non_draft      — E_DDT_STATO_TRANSIZIONE se != DRAFT
- 4) test_gestisci_riga_stato_non_draft     — E_DDT_STATO_TRANSIZIONE se != DRAFT
- 5) test_elimina_riga_stato_non_draft      — E_DDT_STATO_TRANSIZIONE se != DRAFT
+ 4) test_gestisci_riga_stato_non_draft     — E_RIGA_DOC_NON_BOZZA se != DRAFT (il codice del DB, frase a catalogo)
+ 5) test_elimina_riga_stato_non_draft      — E_RIGA_DOC_NON_BOZZA se != DRAFT
+ 5b) test_update_componente_stato_non_draft — E_RIGA_DOC_NON_BOZZA; l'etichetta prende `numero` dallo scope del componente
 
 DdtCreaTests
  6) test_crea_ddt_deriva_destinatario_da_ba — deriva destinatario dal BA + DRAFT
@@ -57,6 +58,12 @@ DdtDbErrorsTests
 22) test_integrity_error_fk_mappato          — E_VENDITE_FK
 23) test_integrity_error_fallback            — E_VENDITE_VALIDATION
 24) test_database_error_trigger_code_estratto — E_STATO_DDT_TRANSIZIONE_NON_VALIDA
+
+DdtSatellitiTestataTests (2026-09-21, «leggi prima la testata»)
+25) test_list_righe_ddt_non_trovato_e_404        — E_DDT_NOT_FOUND, repo righe non chiamato
+26) test_list_riepilogo_iva_ddt_non_trovato_e_404 — idem sul riepilogo IVA
+27) test_list_componenti_riga_di_altro_ddt_e_404 — riga di un altro DDT: id incrociato → 404
+28) test_list_righe_con_testata_delega_al_repo    — caso felice: delega invariata
 """
 
 from contextlib import nullcontext
@@ -78,7 +85,9 @@ _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
 
 
 class DdtServiceGuardsTests(SimpleTestCase):
-    """Guard di stato (E_DDT_STATO_TRANSIZIONE) e not-found (E_DDT_NOT_FOUND)."""
+    """Guard di stato (E_DDT_STATO_TRANSIZIONE sulla testata, E_RIGA_DOC_NON_BOZZA
+    sulle righe — lo stesso codice del BB a DB, decisione B del 2026-09-22) e
+    not-found (E_DDT_NOT_FOUND)."""
 
     @patch(_REPO)
     def test_get_ddt_not_found(self, repo_cls) -> None:
@@ -86,6 +95,28 @@ class DdtServiceGuardsTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             ddt_service.get_ddt(99)
         self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+
+    # Scopo: il blob di fn_available_actions_ddt viaggia intatto SOTTO
+    #        `capabilities`, e nessuna sua chiave sale nella testata (api.md
+    #        §«Il blob sta SOTTO `capabilities`», 2026-09-23). Fino a quel
+    #        giorno nessun test del DDT guardava la forma del dettaglio.
+    @patch(_REPO)
+    def test_get_ddt_capabilities_annidate(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        repo.get_capabilities.return_value = {
+            "available_actions": [{"key": "emetti", "target_state": "EMESSO"}],
+            "can_edit_testata": True,
+            "can_push_commessa": False,
+            "can_push_commessa_reason_key": "vendite.ddt.push_commessa_reason.x",
+            "stato_codice": "DRAFT",
+        }
+        repo.count_righe.return_value = 3
+        out = ddt_service.get_ddt(7)
+        self.assertEqual(out["capabilities"], repo.get_capabilities.return_value)
+        for chiave in repo.get_capabilities.return_value:
+            self.assertNotIn(chiave, out)
+        self.assertEqual(out["righe_count"], 3)
 
     @patch(_REPO)
     def test_cambia_stato_ddt_not_found(self, repo_cls) -> None:
@@ -109,10 +140,16 @@ class DdtServiceGuardsTests(SimpleTestCase):
     @patch(_REPO)
     def test_gestisci_riga_stato_non_draft(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ddt.return_value = {"stato_codice_interno": "EMESSO"}
+        repo.get_ddt.return_value = {"numero": "2026/00007", "stato_codice_interno": "EMESSO"}
         with self.assertRaises(ServiceError) as cm:
             ddt_service.gestisci_riga(7, {"articolo_id": "ART1"})
-        self.assertEqual(cm.exception.code, "E_DDT_STATO_TRANSIZIONE")
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        # La frase e' quella del catalogo, coi tre valori: etichetta, stato, verbo.
+        self.assertEqual(
+            cm.exception.message,
+            "DDT 2026/00007 non e' piu' in bozza (stato EMESSO): le sue righe si "
+            "possono aggiungere solo finche' e' in bozza.",
+        )
         repo.create_riga.assert_not_called()
 
     @patch(_REPO)
@@ -121,8 +158,29 @@ class DdtServiceGuardsTests(SimpleTestCase):
         repo.get_ddt.return_value = {"stato_codice_interno": "SPEDITO"}
         with self.assertRaises(ServiceError) as cm:
             ddt_service.elimina_riga(7, 3)
-        self.assertEqual(cm.exception.code, "E_DDT_STATO_TRANSIZIONE")
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        # Senza `numero` (bozza mai numerata, o lettura che non lo porta)
+        # l'etichetta ripiega su `#id`, come `fn_get_stato_testata_documento`.
+        self.assertTrue(cm.exception.message.startswith("DDT #7 non e' piu' in bozza (stato SPEDITO)"))
+        self.assertIn("togliere", cm.exception.message)
         repo.delete_riga.assert_not_called()
+
+    @patch(_REPO)
+    def test_update_componente_stato_non_draft(self, repo_cls) -> None:
+        # Sui componenti la testata e' lo scope del JOIN, non `get_ddt`: deve
+        # portare `numero`, o l'etichetta ripiega su `#id` proprio su un DDT
+        # emesso, che il numero ce l'ha sempre — e nessun errore lo direbbe.
+        repo = repo_cls.return_value
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 50, "riga_ddt_id": 3, "ddt_id": 7,
+            "stato_codice_interno": "EMESSO", "numero": "2026/00007",
+        }
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.update_componente(7, 3, 50, {"prezzo_unitario": "1"})
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertTrue(cm.exception.message.startswith("DDT 2026/00007 non e' piu' in bozza (stato EMESSO)"))
+        self.assertEqual(cm.exception.context["operazione"], "UPDATE")
+        repo.update_componente.assert_not_called()
 
 
 class DdtCreaTests(SimpleTestCase):
@@ -230,7 +288,7 @@ class DdtAggiornaTests(SimpleTestCase):
     @patch(_REPO)
     def test_aggiorna_ddt_ba_invariato_tollerato(self, repo_cls) -> None:
         # BA reinviato invariato dal form: tollerato ma escluso dall'UPDATE
-        # (non in whitelist _UPDATE_KEYS_DDT). Aggiorna solo gli altri campi.
+        # (non in whitelist UPDATE_KEYS_DDT). Aggiorna solo gli altri campi.
         # Lettura singola: guard stato + confronto BA dalla stessa testata.
         repo = repo_cls.return_value
         repo.get_ddt.return_value = {
@@ -262,7 +320,7 @@ class DdtEliminaTests(SimpleTestCase):
     def test_elimina_ddt_con_righe_rifiutato(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1}]
+        repo.count_righe.return_value = 1
         with self.assertRaises(ServiceError) as cm:
             ddt_service.elimina_ddt(7)
         self.assertEqual(cm.exception.code, "E_DDT_STATO_TRANSIZIONE")
@@ -272,7 +330,7 @@ class DdtEliminaTests(SimpleTestCase):
     def test_elimina_ddt_bozza_orfana_ok(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = []
+        repo.count_righe.return_value = 0
         repo.delete_ddt.return_value = True
         out = ddt_service.elimina_ddt(7)
         self.assertTrue(out["deleted"])
@@ -580,12 +638,12 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         })
 
         # ⭐ E' la WHITELIST il cancello vero: `iva_id` non e' in
-        #    `_CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
+        #    `CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
         #    asserzione morde ANCHE se qualcuno rimettesse la chiave, perche'
         #    allora `payload_iva_id` tornerebbe 999.
         self.assertIsNone(self.iva.call_args.kwargs["payload_iva_id"])
-        self.assertNotIn("iva_id", ddt_service._CREATE_KEYS_RIGA)
-        self.assertNotIn("iva_id", ddt_service._UPDATE_KEYS_RIGA)
+        self.assertNotIn("iva_id", ddt_service.CREATE_KEYS_RIGA)
+        self.assertNotIn("iva_id", ddt_service.UPDATE_KEYS_RIGA)
         self.assertEqual(repo.create_riga.call_args.kwargs["iva_id"], 9)
 
 
@@ -693,3 +751,49 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         ddt_service.aggiorna_riga(7, 31, {"prezzo_unitario": ""})
 
         self.assertIsNone(repo.update_riga.call_args.kwargs["prezzo_unitario"])
+
+
+# Scopo: I satelliti «leggono prima la testata» (2026-09-21, allineamento a
+#        api.md §Scope emittente): un DDT fuori perimetro RLS — `None` dal
+#        repository, come un id inesistente — e' un 404, non un 200 vuoto.
+#
+# Indice:
+# 25) test_list_righe_ddt_non_trovato_e_404
+# 26) test_list_riepilogo_iva_ddt_non_trovato_e_404
+# 27) test_list_componenti_riga_di_altro_ddt_e_404
+# 28) test_list_righe_con_testata_delega_al_repo
+class DdtSatellitiTestataTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_list_righe_ddt_non_trovato_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.list_righe(99)
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.list_righe.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_riepilogo_iva_ddt_non_trovato_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.list_riepilogo_iva(99)
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.list_riepilogo_iva.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_componenti_riga_di_altro_ddt_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 31, "ddt_id": 8}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.list_componenti_riga(7, 31)
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.list_componenti_riga.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_righe_con_testata_delega_al_repo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        repo.list_righe.return_value = [{"id": 31}]
+        self.assertEqual(ddt_service.list_righe(7), [{"id": 31}])
+        repo.list_righe.assert_called_once_with(7)

@@ -36,7 +36,7 @@ export function invitaClienteShop(clienteId, { email, reinvio = false } = {}) {
 
 // Scopo: Legge lo stato aggregato delle vesti non-operatore del cliente
 // (portale + shop). Ritorna `{ portale: {...stato}, shop: {...stato} }`
-// con `stato ∈ {NESSUNO, PENDING, DISATTIVO, ATTIVO}`. Usato dal
+// con `stato ∈ {NESSUNO, PENDING, NON_SPEDITO, DISATTIVO, ATTIVO}`. Usato dal
 // PortaleAccessoPanel per renderizzare stato corrente + abilitare/
 // nascondere i pulsanti azione.
 export function getStatoAccessiCliente(clienteId) {

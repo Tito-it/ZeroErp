@@ -25,6 +25,7 @@
 //    (frontend-standards §«Dialog con una lista dentro»).
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 
@@ -33,6 +34,7 @@ import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
+import { STATUS_ICONS } from '../../core/constants'
 import { esitoPianoSeverity } from '../../core/utils/severity'
 import { exportPiano } from '../api/magazzino'
 import { useEtichetteMagazzino } from '../etichette'
@@ -55,7 +57,7 @@ const store = useInventarioPianoStore()
 //    quello che dice allo scaffolding di azzerare lo store — il piano del
 //    documento precedente non lampeggia sotto il prossimo.
 const {
-  onPage, onSort, paginatorProps, tablePage,
+  searchText, onPage, onSort, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
   exportDialogVisible, exportLoading, onExportConfirm,
 } = useDrawerTabLista(store, {
@@ -110,6 +112,7 @@ const haNonPostabili = computed(() => Number(props.riepilogo?.n_non_postabili ??
       class="app-dialog-lista"
       codice="magazzino.inventario_piano"
       data-key="chiave_riga"
+      :store="store"
       :rows="store.items"
       :total="store.totalRecords"
       :loading="store.loading"
@@ -124,9 +127,19 @@ const haNonPostabili = computed(() => Number(props.riepilogo?.n_non_postabili ??
       @sort="onSort"
       @config-loaded="onConfigLoaded"
     >
+      <!-- La ricerca: colonne dal catalogo (`ricerca_full`), sotto 3 caratteri
+           il termine non filtra; l'export porta la stessa `search`. -->
+      <template #filtri-sempre>
+        <InputText
+          v-model="searchText"
+          class="app-filter-w-lg"
+          :placeholder="t('common.search')"
+        />
+      </template>
+
       <template #empty>
         <div v-if="!store.erroreCaricamento" class="app-empty-state">
-          <i class="pi pi-list" />
+          <i :class="STATUS_ICONS.VUOTO" />
           <p>{{ t('magazzino.piano.nessuna_riga') }}</p>
         </div>
       </template>

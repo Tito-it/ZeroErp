@@ -10,7 +10,30 @@
 from __future__ import annotations
 
 import abc
+from dataclasses import dataclass
 from typing import Any
+
+from apps.core.db._helpers import RICERCA_MIN_CARATTERI
+
+
+# Scopo: L'endpoint della UI che fa la stessa cosa di un tool: la classe della
+#        view e il metodo HTTP. Da qui si DERIVA il permesso del tool
+#        (`apps.core.api.permissions.valuta_accesso_endpoint`), con la stessa
+#        regola che `ZeroERPPermission` applica alla UI.
+# ⛔ Il permesso non si dichiara sul tool (brief-db-area-funzionale-assistente-ai
+#    §5.2). Fino al 2026-09-24 ogni tool scriveva a mano `required_area`,
+#    `required_level`, `required_action`: una seconda copia della regola, che
+#    gia' divergeva dalla UI — il cambio stato pratica chiedeva area `TUTTO`
+#    dove l'endpoint chiede solo l'azione, l'elenco operatori un'area che non
+#    esiste. E un tool che scrive, dichiarato `LETTURA` per svista, avrebbe
+#    scritto per un operatore in sola lettura.
+# ⚠️ Il gemello e' l'endpoint che chiama lo STESSO service con lo stesso
+#    significato, non uno che «somiglia». Lo verifica
+#    `test_tool_endpoint_gemello`: la view esiste e implementa il metodo.
+@dataclass(frozen=True)
+class EndpointGemello:
+    view: type
+    metodo: str
 
 
 class AITool(abc.ABC):
@@ -27,24 +50,34 @@ class AITool(abc.ABC):
         name: str,
         description: str,
         input_schema: dict[str, Any],
-        required_area: str | None,
-        required_level: str = "LETTURA",
+        endpoint: EndpointGemello,
         route_template: dict[str, Any] | None = None,
-        requires_confirmation: bool = False,
-        required_action: str | None = None,
     ) -> None:
         self.name = name
         self.description = description
         self.input_schema = input_schema
-        self.required_area = required_area
-        self.required_level = required_level
+        self.endpoint = endpoint
         self.route_template = route_template
-        self.requires_confirmation = requires_confirmation
-        # Azione di processo fine (codename) richiesta, speculare al
-        # `<action>_permission` dell'endpoint UI corrispondente. Se valorizzata,
-        # il filtro/ri-check verifica anche check_azione → l'AI ha la STESSA
-        # granularita' (area + azione fine) della UI. None = solo area-level.
-        self.required_action = required_action
+
+    # Scopo: Il tool scrive? Si DERIVA dal gemello (`chiamata_in_scrittura`),
+    #        con la stessa regola che decide il tipo di accesso della UI.
+    # ⛔ Non si dichiara (brief-db-area-funzionale-assistente-ai §5.3 punto 2).
+    #    Fino al 2026-09-25 era `requires_confirmation=True` scritto a mano sui
+    #    tre tool di scrittura: un tool che scrive con il flag dimenticato
+    #    avrebbe scritto senza conferma, senza sola lettura a DB e col solo
+    #    livello `LETTURA` sull'assistente.
+    @property
+    def scrive(self) -> bool:
+        from apps.core.api.permissions import chiamata_in_scrittura
+
+        return chiamata_in_scrittura(self.endpoint.view, method=self.endpoint.metodo)
+
+    # Scopo: Il tool chiede conferma prima di eseguire: se e solo se scrive.
+    #        Nome del contratto col frontend (`requires_confirmation` nel
+    #        payload della preview), non una seconda regola.
+    @property
+    def requires_confirmation(self) -> bool:
+        return self.scrive
 
     # Scopo: Esegue il tool con i parametri forniti dall'LLM.
     #        Ogni sottoclasse deve implementare questo metodo.
@@ -119,6 +152,36 @@ class AITool(abc.ABC):
                 f"Per meno risultati chiedine 1, non 0.",
             )
         return min(valore, max_size)
+
+    # Scopo: Il termine di ricerca libera che l'LLM ha chiesto, pronto per il
+    #        service della lista: `None` se assente o vuoto, altrimenti il
+    #        termine senza spazi ai bordi.
+    # 🔴 SOTTO LA SOGLIA E' UN ERRORE, non un filtro ignorato (Tid,
+    #    2026-09-24). Le liste che cercano col BB `add_ricerca_full_condition`
+    #    IGNORANO un termine corto: a video va bene, perche' la casella
+    #    manda il termine a ogni tasto e l'operatore vede la lista intera. Un
+    #    modello invece riceverebbe TUTTE le righe credendole filtrate, e le
+    #    riporterebbe all'utente come risultato della ricerca. Il messaggio
+    #    nomina il dato e la soglia: un errore azionabile il modello lo
+    #    corregge al giro dopo (stesso criterio di `safe_page_size`).
+    # ⭐ La soglia e' quella del BB (`RICERCA_MIN_CARATTERI`), non un 3 scritto
+    #    qui: il giorno che cambia, strumenti e liste cambiano insieme.
+    @staticmethod
+    def termine_ricerca(params: dict[str, Any]) -> str | None:
+        grezzo = params.get("search")
+        if grezzo is None:
+            return None
+        if not isinstance(grezzo, str):
+            raise ValueError(f"search deve essere un testo: ricevuto {grezzo!r}.")
+        termine = grezzo.strip()
+        if not termine:
+            return None
+        if len(termine) < RICERCA_MIN_CARATTERI:
+            raise ValueError(
+                f"search deve avere almeno {RICERCA_MIN_CARATTERI} caratteri: "
+                f"ricevuto {termine!r}. Allunga il termine o togli il filtro.",
+            )
+        return termine
 
     # Scopo: Semplifica una lista di risultati estraendo solo i campi specificati.
     #        field_map: {nome_output: nome_input} o {nome: nome} se uguale.

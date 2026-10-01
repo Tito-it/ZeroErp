@@ -99,7 +99,7 @@ class ApiDefinizioneNuovaVersione(AdminAPIView):
     """`POST /pratiche/definizioni/<id>/nuova-versione/` — nuova versione BOZZA
     dello stesso scope (per editare una PUBBLICATA senza toccarla)."""
 
-    @extend_schema(responses={200: inline_serializer(
+    @extend_schema(request=None, responses={200: inline_serializer(
         name="PraticheDefinizioneNuovaVersioneResp",
         fields={"data": serializers.DictField()},
     )})
@@ -113,7 +113,7 @@ class ApiDefinizionePubblica(AdminAPIView):
     """`POST /pratiche/definizioni/<id>/pubblica/` — pubblica una BOZZA (→ PUBBLICATA;
     la precedente dello scope → RITIRATA)."""
 
-    @extend_schema(responses={200: inline_serializer(
+    @extend_schema(request=None, responses={200: inline_serializer(
         name="PraticheDefinizionePubblicaResp",
         fields={"data": serializers.DictField()},
     )})

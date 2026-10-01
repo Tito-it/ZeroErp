@@ -3,14 +3,17 @@
 import { useDrawerState } from '../../../core/composables/useDrawerState'
 import { useDrawerSavedListRefresh } from '../../../core/composables/useDrawerSavedListRefresh'
 import { useReadonlyMode } from '../../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS } from '../../../core/constants'
+import { READONLY_DOMAINS, READONLY_MODELS } from '../../../core/constants'
 import { usePreventiviStore } from '../stores/preventivi'
 import PreventiviList from '../components/PreventiviList.vue'
 import PreventiviDrawer from '../components/PreventiviDrawer.vue'
 
 const drawer = useDrawerState()
 const store = usePreventiviStore()
-useReadonlyMode(READONLY_DOMAINS.VENDITE)
+// Permessi: area `vendite` + oggetto `preventivo`, lo stesso che il BE chiede
+// su tutte le rotte `vendite/preventivi/…` (brief-db-be-fe-catalogo-oggetti-
+// permessi §3.3): un override sul preventivo dice la stessa cosa a video e all'API.
+useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.PREVENTIVO)
 
 // Su 'saved': aggiorna lista + chiude drawer.
 // La transizione CREATE → "edit-evolved" (auto-save bozza con righe inline) e'

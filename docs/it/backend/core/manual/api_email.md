@@ -16,8 +16,13 @@ Il sistema email e' un building block trasversale (Anello 0) usato da:
 
 Due modalita' di invio:
 
-- **Console mode** (DEBUG + host SMTP vuoto): email loggata nel terminale Django + `email_log`
-- **SMTP reale**: connessione SMTP per-account, con retry automatico
+- **Console mode** (sempre con `DEBUG` attivo, **qualunque** sia l'host dell'account): email
+  loggata nel terminale Django + `email_log` con stato `SIMULATA`
+- **SMTP reale** (fuori da `DEBUG`, host configurato): connessione SMTP per-account, con retry
+  automatico
+
+Fuori da `DEBUG`, un account con host vuoto o `smtp.example.com` **non spedisce**: l'invio
+viene registrato come non riuscito, col motivo (`canale_invio` in `email_service.py`).
 
 Ogni reparto (`config.unita_organizzative`) puo' avere il proprio account SMTP e template
 personalizzati. Fallback automatico all'account/template di sistema (codice `SISTEMA`).
@@ -67,9 +72,11 @@ GET /api/v1/amm-software/email-accounts/
 
 | Parametro | Tipo | Obbligatorio | Default | Note |
 | --- | --- | :---: | --- | --- |
-| `search` | string | No | — | ILIKE su codice, descrizione, email_from |
+| `search` | string | No | — | Ricerca libera: le colonne le decide il catalogo della lista `config.email_account`. Da un carattere (tabella di configurazione) |
 | `limit` | int | No | 50 | Max 200 |
 | `offset` | int | No | 0 | — |
+| `order_by` | string | No | `codice` | Colonna di ordinamento |
+| `order_dir` | string | No | `asc` | `asc` / `desc` |
 
 Risposta:
 
@@ -77,6 +84,9 @@ Risposta:
 {
   "data": {
     "count": 2,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1,
     "results": [
       {
         "id": 1,
@@ -99,7 +109,7 @@ Risposta:
 ```
 
 > **Nota sicurezza**: la password SMTP non e' mai esposta nelle API. E' salvata
-> crittografata con Fernet (chiave derivata da `SECRET_KEY`).
+> crittografata con Fernet (chiavi `DJANGO_FIELD_ENCRYPTION_KEYS`, separate dalla `SECRET_KEY`).
 
 ### Crea account
 
@@ -147,10 +157,11 @@ POST /api/v1/amm-software/email-accounts/{id}/test/
 
 Body vuoto. Tenta login SMTP senza inviare email.
 
-⚠️ **Dal 2026-09-11 non risponde piu' OK a un account che non puo' spedire.** Host
-vuoto o `smtp.example.com`: in `DEBUG` e' console mode e il test torna successo
-(non c'e' niente da provare); **fuori** da `DEBUG` torna **`success: false`** con
-il motivo — prima rispondeva OK, ed e' il verde che ha ingannato una persona.
+⚠️ **Non risponde OK a un account che non puo' spedire.** In `DEBUG` e' sempre
+console mode e il test torna successo **per qualunque account** (non c'e' niente
+da provare, e nemmeno un host reale viene contattato). **Fuori** da `DEBUG`, con
+host vuoto o `smtp.example.com`, torna **`success: false`** con il motivo — prima
+rispondeva OK, ed e' il verde che ha ingannato una persona.
 
 L'esito viene **persistito** in `config.email_account.meta` (chiavi
 `last_test_outcome`, `last_test_at`, `last_test_message`) e ritornato nella
@@ -231,10 +242,14 @@ GET /api/v1/amm-software/email-templates/
 
 | Parametro | Tipo | Obbligatorio | Default | Note |
 | --- | --- | :---: | --- | --- |
-| `search` | string | No | — | ILIKE su codice, oggetto |
+| `search` | string | No | — | Ricerca libera: le colonne le decide il catalogo della lista `config.email_template`. Da un carattere (tabella di configurazione) |
 | `codice` | string | No | — | Filtro esatto per codice |
 | `limit` | int | No | 50 | Max 200 |
 | `offset` | int | No | 0 | — |
+| `order_by` | string | No | codice + lingua | Colonna di ordinamento |
+| `order_dir` | string | No | `asc` | `asc` / `desc` |
+
+Risposta paginata come la lista account (`count`, `page`, `page_size`, `total_pages`, `results`).
 
 ### Crea template
 
@@ -307,7 +322,11 @@ GET /api/v1/amm-software/email-log/{id}/
 ```
 
 Admin vede tutti gli ambiti. Filtri: `search`, `stato`, `ambito`, `pratica_id`,
-`unita_organizzativa_id`, `limit`, `offset`.
+`unita_organizzativa_id`, `data_da`/`data_a` (`YYYY-MM-DD`), `limit`, `offset`,
+`order_by` (default `data_insert`), `order_dir` (default `desc`). Risposta paginata
+come le altre liste admin. `search`: le colonne le decide il catalogo della lista
+`config.email_log`; sotto 3 caratteri il termine non filtra (e' un registro, non
+configurazione — fino al 2026-09-24 filtrava da un carattere).
 
 Il dettaglio include `corpo_inviato_html` e `corpo_inviato_testo` (corpo esattamente
 come inviato, anche se la bozza e' stata modificata prima dell'invio).
@@ -317,7 +336,9 @@ come inviato, anche se la bozza e' stata modificata prima dell'invio).
 ## Endpoint Operatore — Outbox (Bozze Email)
 
 Base path: `/api/v1/core/`
-Autenticazione: JWT (`DomainAPIView`, `skip_area_check=True`)
+Autenticazione: JWT (`DomainAPIView`), area funzionale **`config`**: livello `LETTURA`
+per le letture, `TUTTO` per preparare, modificare, spedire e gestire allegati. Nessuna
+view dichiara `skip_area_check`: non e' un'API aperta a ogni operatore.
 
 ### Prepara bozza
 
@@ -336,9 +357,16 @@ Risolve template e account, renderizza variabili, crea bozza DRAFT editabile.
 | `unita_organizzativa_id` | int | No | Per risoluzione account/template |
 | `tipo_prestazione_id` | int | No | Per specializzazione template |
 | `lingua` | string | No | Default `it` |
-| `ambito` | string | No | `SISTEMA`/`REPARTO`/`OPERATORE` (default `SISTEMA`) |
+| `ambito` | string | **Si** | `SISTEMA`/`REPARTO`/`OPERATORE` — **nessun default** |
 | `pratica_id` | int | No | Collegamento a pratica |
 | `auth_user_id` | int | No | Operatore destinatario |
+
+Regole sull'`ambito` (`E_EMAIL_OP`, 400):
+
+- assente o fuori elenco → rifiutato: chi crea una bozza dichiara di che cosa e';
+- diverso da `SISTEMA` → serve un'azienda attiva nel token: la bozza prende
+  l'emittente **attivo** di chi la crea (per `SISTEMA` resta vuoto);
+- `REPARTO` → `unita_organizzativa_id` obbligatorio.
 
 Risposta: bozza completa con oggetto/corpo pre-compilati (editabili dal frontend).
 
@@ -348,7 +376,11 @@ Risposta: bozza completa con oggetto/corpo pre-compilati (editabili dal frontend
 GET /api/v1/core/email/outbox/
 ```
 
-L'operatore vede solo le proprie bozze. Superuser vede tutte.
+Il perimetro **non** e' un filtro della view: lo applica la RLS (§Ambito e
+visibilita'). Una bozza `REPARTO` la vedono i colleghi del reparto, una
+`OPERATORE` solo il suo autore. ⚠️ Fino al 2026-09-25 la view filtrava per
+`creato_da_user_id` = chi chiede: era una seconda sede della regola, e
+nascondeva ai colleghi le bozze di reparto.
 Filtri: `stato`, `pratica_id`, `limit`, `offset`.
 
 ### Dettaglio / Modifica bozza
@@ -361,8 +393,13 @@ PATCH /api/v1/core/email/outbox/{id}/
 GET include lista allegati. PATCH accetta: `oggetto`, `corpo_html`, `corpo_testo`,
 `destinatari_cc`, `destinatario`. Solo bozze DRAFT sono modificabili.
 
-**Ownership check**: solo il creatore della bozza (o superuser) puo' accedere.
-
+**Chi puo' accedere** lo decide la RLS, in lettura e in scrittura (§Ambito e
+visibilita'): una bozza fuori perimetro non si legge, quindi esce come
+inesistente. Dal 2026-09-25 non c'e' piu' un controllo di proprieta' nella view.
+Bozza o allegato inesistente (o fuori perimetro) escono con `E_EMAIL_OP` —
+HTTP **400**, non 404.
+⚠️ Difetto noto (E-4): «non trovato» e «negato» escono come dato errato — vedi
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 ### Conferma e invia
 
 ```http
@@ -373,6 +410,20 @@ Transizione: DRAFT → READY → **SENT** (SMTP riuscito), → **DRAFT** (SMTP f
 l'operatore puo' riprovare) oppure → **SIMULATA** (console mode: la mail e' stata
 mostrata, non spedita — dal 2026-09-11). Crea record in `email_log` con corpo dalla
 bozza (non dal template originale). Copia allegati su `email_log_id`.
+
+La riga di `email_log` porta l'**azienda** (`emittente_fiscale_id`) e l'**autore**
+(`creato_da_user_id`) **della bozza**, non di chi preme «invia»: un super admin
+che spedisce la bozza di un altro non ne diventa l'autore (D-5 di
+brief-db-email-visibilita-per-ambito). Sono le due colonne su cui la RLS del log
+decide chi rivede la mail. ⚠️ Fino al 2026-09-25 l'`INSERT` del log non scriveva
+nessuna delle due: ogni invio di una bozza non di sistema veniva rifiutato dal
+database.
+
+La mail parte **con i suoi allegati** (messaggio `multipart/mixed`). Un file che
+non si legge dallo storage fa fallire l'invio (`FAILED`, col motivo nel log):
+una mail non parte senza l'allegato promesso. ⚠️ Fino al 2026-09-25 gli allegati
+si salvavano e si agganciavano al log, ma la mail partiva senza. Il rilancio di
+una mail fallita (`send_pending_emails`) rilegge gli allegati dal log.
 
 Lo stato dell'invio e' nel log (`SENT`, `FAILED`, `SIMULATA`); lo stato outbox dice
 se l'operatore deve agire (DRAFT = da riprovare, SENT = completato).
@@ -390,13 +441,23 @@ nessun stato ibrido con log linkato e allegati mancanti. Un outbox rimasto `READ
 progettare per NON ri-inviare (lo SMTP e' gia' partito): recupero idempotente, non
 re-send.
 
+L'account di invio si risolve **prima** di portare la bozza a `READY`: se nessun
+account si risolve la chiamata fallisce con `E_OUTBOX` e la bozza **resta `DRAFT`**,
+quindi si puo' riprovare o annullare. Fino al 2026-09-28 l'ordine era inverso e la
+bozza restava `READY`, ne' rinviabile ne' annullabile (F-1 dell'
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+
 ### Annulla bozza
 
 ```http
 POST /api/v1/core/email/outbox/{id}/cancel/
 ```
 
-Transizione: DRAFT → CANCELLED. Elimina allegati fisici da storage.
+Transizione: DRAFT → CANCELLED. Toglie gli allegati: le righe di
+`config.email_allegato` **prima** di scrivere `CANCELLED`, nella stessa
+transazione (dopo, il database non le lascia piu' toccare), e i file dallo
+storage **dopo** il commit. ⚠️ Fino al 2026-09-25 si cancellavano i soli file, e
+le righe restavano a puntare a file inesistenti.
 
 ---
 
@@ -419,6 +480,10 @@ Campo: `file` (multipart). Validazioni:
 
 Storage: `{EMAIL_ATTACHMENTS_ROOT}/{anno}/{mese}/{uuid}.{ext}`
 
+Solo su una bozza `DRAFT`: altrimenti `E_EMAIL_ALLEGATO_NON_BOZZA` (409), il
+codice con cui la stessa regola la rifiuta il database — il controllo sta anche
+qui perche' il file si scrive su disco **prima** dell'`INSERT`.
+
 ### Lista allegati
 
 ```http
@@ -431,7 +496,12 @@ GET /api/v1/core/email/outbox/{id}/allegati/list/
 DELETE /api/v1/core/email/allegati/{allegato_id}/
 ```
 
-Elimina file fisico + record DB.
+Elimina file fisico + record DB. Solo su una bozza `DRAFT`: lo applica il
+**database** (`config.trgfn_email_allegato_guard_solo_bozza`), che su una mail
+spedita, in partenza o annullata — o su un allegato che sta solo nel log —
+risponde `E_EMAIL_ALLEGATO_NON_BOZZA` (409) prima che il file venga toccato.
+✅ Chiude il difetto F-2 (2026-09-25): all'invio la **stessa** riga viene legata
+al log, e toglierla da una mail spedita la cancellava dalla sua storia.
 
 ### Download allegato
 
@@ -440,7 +510,7 @@ GET /api/v1/core/email/allegati/{allegato_id}/download/
 ```
 
 Ritorna `FileResponse` con `Content-Disposition: attachment`. Guard anti-path-traversal
-su `file_path`.
+su `file_path` (BB `percorso_allegato`, lo stesso dell'invio SMTP).
 
 ---
 
@@ -450,8 +520,33 @@ su `file_path`.
 GET /api/v1/core/email/log/
 ```
 
-L'operatore vede le email del proprio ambito. Filtri: `search`, `stato`,
-`pratica_id`, `limit`, `offset`.
+Il perimetro **non** e' un filtro della view: lo applica la RLS su
+`config.email_log` per **ambito** ed **emittente** (§Ambito e visibilita'); in piu'
+il processo `send_pending_emails` vede le mail del suo perimetro, per poterle
+ritentare.
+Filtri: `search`, `stato`, `pratica_id`, `data_da`/`data_a` (`YYYY-MM-DD`), `limit`,
+`offset`. `search` e' la ricerca della lista `config.email_log` (stessa query): le
+colonne le decide il suo catalogo, e sotto 3 caratteri il termine non filtra.
+
+**Chi entra** (dal 2026-09-26, decisione di Tid): **ogni operatore** —
+`skip_area_check`, nessuna `area_funzionale`. Chi vede quale mail lo decide la
+RLS per ambito (sopra), e un livello d'area in piu' sarebbe una seconda regola
+accanto a quella del modello. ⛔ Vale per questa sola lettura: le bozze e
+l'invio restano sotto `config` finche' non esiste l'azione di processo
+`invia_email`.
+
+### Stati del log (lookup)
+
+```http
+GET /api/v1/core/email/log/stati/
+```
+
+Il vocabolario del filtro `stato`, stessa porta della lista. Risposta
+`{"data": {"results": [{codice, descrizione, ordering}, ...]}}`, nell'ordine
+dichiarato (`SENT` per primo). Sede: `email_constants.STATI_EMAIL_LOG_DESCRIZIONI`,
+confrontata col `CHECK` `chk_email_log_stato` da
+`core/tests/db/test_email_log_stati_guardrail.py`. ⚠️ Fino al 2026-09-26 stava
+in `/amm-software/lookup/email-log-stati/` (solo super admin).
 
 ---
 
@@ -461,8 +556,8 @@ L'operatore vede le email del proprio ambito. Filtri: `search`, `stato`,
 Richiesta invio email (unita_organizzativa_id = 42)
   → fn_resolve_email_account(42)
   → 1. Account specifico del reparto 42 (attivo)
-  → 2. Account di sistema (codice = 'SISTEMA', attivo)
-  → NULL se nessuno trovato → errore E_EMAIL
+  → 2. Account di sistema (codice_interno = 'SISTEMA', attivo)
+  → NULL se nessuno trovato → errore E_EMAIL (E_OUTBOX nel flusso bozze)
 ```
 
 ## Risoluzione Template — Catena di Fallback (5 livelli)
@@ -475,7 +570,7 @@ Richiesta template (codice='INVITO', uo_id=42, tipo_prest_id=7, lingua='en')
   → 3. Sistema + tipo 7 + lingua 'en'
   → 4. Sistema + lingua 'en' (senza tipo)
   → 5. Sistema + lingua 'it' (fallback finale)
-  → NULL se nessuno trovato → errore E_EMAIL
+  → NULL se nessuno trovato → errore E_EMAIL (E_OUTBOX nel flusso bozze)
 ```
 
 ## Rendering Variabili
@@ -490,38 +585,52 @@ Ogni email (outbox e log) ha un campo `ambito`:
 
 | Ambito | Significato | Visibilita' |
 | --- | --- | --- |
-| `SISTEMA` | Email infrastrutturali (inviti, reset) | Solo ADMIN |
-| `REPARTO` | Email del reparto (comunicazioni a clienti/fornitori) | Operatori dell'unita' organizzativa + ADMIN |
-| `OPERATORE` | Email personale dell'operatore | Solo il creatore + ADMIN |
+| `SISTEMA` | Email infrastrutturali (inviti, reset) | Solo super admin |
+| `REPARTO` | Email del reparto (comunicazioni a clienti/fornitori) | Operatori dell'unita' organizzativa + super admin |
+| `OPERATORE` | Email personale dell'operatore | Solo l'autore (`creato_da_user_id`) + super admin |
 
-Email con `pratica_id` sono visibili anche dalla scheda pratica.
+⭐ **La regola la applica il database, dal 2026-09-25**: le policy RLS di
+`config.email_log`, `config.email_outbox` e `config.email_allegato` passano tutte
+da `script.fn_scope_email_ambito`, in lettura e in scrittura. Su `REPARTO` e
+`OPERATORE` l'emittente della mail deve essere anche nel perimetro di chi guarda
+(`AND`). Gli allegati si vedono se si vede la bozza o il log a cui appartengono.
+Il backend non ne tiene una copia. Brief:
+[brief-db-email-visibilita-per-ambito](../../../dev/work-done/brief-db-email-visibilita-per-ambito.md).
+
+⚠️ `auth_user_id` **non** e' l'autore: e' l'utente **di cui la mail parla**
+(l'operatore invitato, l'utente del reset password).
+
+Email con `pratica_id` sono visibili anche dalla scheda pratica: ⏸ **regola del
+modello non ancora applicata**, rimandata al cantiere della scheda pratica (D-3).
 
 ## Management Command
 
 ```bash
-# Processa email in coda (PENDING/RETRY)
+# Processa email in coda
 python manage.py send_pending_emails
 
 # Preview senza invio
 python manage.py send_pending_emails --dry-run
 
-# Limita a 10 email
+# Limita a 10 email (default 50)
 python manage.py send_pending_emails --limit 10
 ```
 
-Schedulabile come cron job (pgAgent o crontab). Per ogni email in coda, usa
-l'`email_account_id` originale (non risolve da zero).
+Che cosa sia «in coda» lo dice la vista `config.vw_email_in_coda`: le `PENDING`
+sempre, piu' le `RETRY`/`FAILED` che hanno ancora tentativi e il cui prossimo
+tentativo e' dovuto. Il command lo sveglia un timer systemd (`backend/deploy/sveglie.json`).
+Per ogni email in coda, usa l'`email_account_id` originale (non risolve da zero).
 
 ## Sicurezza
 
-- Password SMTP crittografata con Fernet (chiave derivata da `SECRET_KEY`) — mai in chiaro in DB o API
+- Password SMTP crittografata con Fernet (chiavi `DJANGO_FIELD_ENCRYPTION_KEYS`, separate dalla `SECRET_KEY`) — mai in chiaro in DB o API
 - Guard su password NULL: `decrypt()` e `test_connection` gestiscono account senza password configurata
 - Ownership check su tutte le operazioni outbox e allegati (fail-closed se nessun outbox padre)
 - Path traversal guard su download allegati (`normpath` + `startswith`)
 - Whitelist colonne aggiornabili nei metodi UPDATE del repository (previene SQL injection da kwargs)
 - MIME type whitelist per upload allegati
 - Template rendering sicuro: solo sostituzione `{{chiave}}`, nessuna esecuzione codice
-- Outbox: stato riflette esito reale (SENT su successo, DRAFT su fallimento SMTP)
+- Outbox: stato riflette esito reale (SENT su successo, SIMULATA in console mode, DRAFT su fallimento SMTP)
 - SMTP catch specifico: `(SMTPException, OSError, ValueError)` — errori di programmazione non mascherati
 - Connessione SMTP chiusa in `finally` (no connection leak)
 
@@ -542,6 +651,7 @@ l'`email_account_id` originale (non risolve da zero).
 | `apps/core/db/email_repository.py` | Repository: CRUD 5 tabelle + fn_resolve |
 | `apps/core/services/email_service.py` | EmailDispatchService: resolve, render, send |
 | `apps/core/services/email_outbox_service.py` | EmailOutboxService: bozze, allegati |
+| `apps/core/services/email_allegati_storage.py` | Radice e percorso degli allegati su disco (guard path traversal) |
 | `apps/amm_software/api/email_views.py` | API admin (account, template, log) |
 | `apps/core/api/email_views.py` | API operatore (outbox, allegati, log) |
 | `apps/core/management/commands/send_pending_emails.py` | Command coda email |

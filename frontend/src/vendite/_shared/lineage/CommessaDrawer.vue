@@ -13,12 +13,13 @@ import Tag from 'primevue/tag'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import PraticaDrawer from '../../../pratiche/components/PraticaDrawer.vue'
-import { DRAWER_WIDTH } from '../../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../../core/constants'
 import { statoCommessaSeverity } from '../../../core/utils/severity'
-import DocumentoDrawerHost from '../documenti/DocumentoDrawerHost.vue'
-import { useDocumentoDrawer } from '../documenti/useDocumentoDrawer'
+import DocumentoDrawerHost from '../../../core/components/DocumentoDrawerHost.vue'
+import { useDocumentoDrawer } from '../../../core/composables/useDocumentoDrawer'
 import LineagePassaggiContenuto from './LineagePassaggiContenuto.vue'
 import { useDocumentoPassaggi } from './useDocumentoPassaggi'
+import { gestoreVisibile } from '../../../core/composables/useDrawerFormPreserve'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -55,17 +56,18 @@ function apriDocumento(row) {
 function onClose() {
   emit('update:visible', false)
 }
+const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="(v) => { if (!v) onClose() }"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true">
     <template #header>
-      <DrawerTitle :title="t('vendite.lineage.commessa_titolo')" icon="pi pi-sitemap" />
+      <DrawerTitle :title="t('vendite.lineage.commessa_titolo')" :icon="MANAGE_ICONS.COMMESSA" />
     </template>
 
     <div class="app-drawer-content">

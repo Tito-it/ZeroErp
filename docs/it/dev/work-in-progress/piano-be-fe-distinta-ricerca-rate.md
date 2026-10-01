@@ -48,7 +48,7 @@
 
 | Fatto | Dove | Cosa ne discende |
 | --- | --- | --- |
-| Il lookup rende `numero` grezzo + ragione sociale; il footer «mostrate N di M» c'è | [FatturaLookup.vue:62-67](../../../../frontend/src/core/components/FatturaLookup.vue#L62-L67), `#option` | tre consumatori (`AbbinaRigaDialog`, `SistemazioneDrawer`, `DistintaRigaForm`) migliorano toccando **un** file |
+| Il lookup rende `numero` grezzo + ragione sociale; il footer «mostrate N di M» c'è | [FatturaLookup.vue:62-67](../../../../frontend/src/vendite/components/FatturaLookup.vue#L62-L67), `#option` | tre consumatori (`AbbinaRigaDialog`, `SistemazioneDrawer`, `DistintaRigaForm`) migliorano toccando **un** file |
 | La lista fatture passa `v.*` della vista: la rev P-1 arriva al FE senza BE | [fatture_repository.py:172-178](../../../../backend/apps/vendite/db/fatture_repository.py#L172-L178) | A è **solo FE** |
 | La ricerca libera fa `numero::text ILIKE %s`: 101 porta anche 1010 e 2101 | [fatture_repository.py:149-158](../../../../backend/apps/vendite/db/fatture_repository.py#L149-L158) | giusto nel lookup; nel picker il numero è **esatto** |
 | La riga contabile porta `fattura_numero/anno/serie`, `scadenza_numero_rata`, `scadenza_data`, BA — i JOIN su `fatture` e `fatture_scadenze` esistono | [pagamenti_repository.py:154-200](../../../../backend/apps/pagamenti/db/pagamenti_repository.py#L154-L200) | B lato BE = cinque colonne e un JOIN |

@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-7 — IL SETUP COMINCIA QUI: script.fn_totp_registra_device
+#   Brief: brief-db-secondo-fattore-totp, sezione 3.
+#
+# ── ⭐ COSA FA ───────────────────────────────────────────────────────
+#   Crea il device NON confermato con il segreto (cifrato dal backend) e gli
+#   hash dei codici di recupero. Un device non confermato che ci fosse gia' si
+#   SOSTITUISCE (il setup ricomincia: nuovo QR, nuovi codici). Su un device
+#   confermato solleva E_TOTP_DEVICE_GIA_ATTIVO: va prima disabilitato, e
+#   disabilitare e' un atto a se' (script.fn_totp_disabilita_device).
+#
+# ── ⭐ UNA ISTRUZIONE, NESSUNA FINESTRA ──────────────────────────────
+#   L'upsert sostituisce solo WHERE NOT confermato: se una conferma arriva fra
+#   la domanda e la scrittura, l'ON CONFLICT non tocca la riga, RETURNING non
+#   restituisce niente e il verbo solleva. Nessun controllo separato prima.
+#
+# ── ⚠️ CHI AGISCE: L'UTENTE STESSO ──────────────────────────────────
+#   script.fn_guard_utente_stesso (20260929-14). Chi ha l'obbligo e nessun
+#   device arriva al setup gia' autenticato con la password: la GUC c'e'.
+#
+# SECURITY DEFINER del PROPRIETARIO (all'app solo SELECT, 90_end/20260929-24),
+# search_path bloccato. L'esistenza della credenziale si controlla qui: la FK
+# verso django.auth_user in CI non esiste (90_end, MARK_RAN).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260929-17-create-fn-totp-registra-device-mctit.yaml
+
+  - changeSet:
+      id: 20260929-17-create-fn-totp-registra-device
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_totp_registra_device(p_auth_user_id, p_secret_encrypted, p_recovery_codes_hash):
+        crea il device non confermato, o sostituisce quello non confermato; su un device confermato
+        E_TOTP_DEVICE_GIA_ATTIVO. Chi agisce: l'utente stesso. Una istruzione. SECURITY DEFINER del
+        proprietario. Brief: brief-db-secondo-fattore-totp §3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                { schemaName: config, tableName: auth_totp_device, columnName: ultimo_passo_usato }
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('fn_guard_utente_stesso', 'fn_check_totp_recovery_hash');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_registra_device(
+                  p_auth_user_id        integer,
+                  p_secret_encrypted    config.auth_totp_device.secret_encrypted%TYPE,
+                  p_recovery_codes_hash config.auth_totp_device.recovery_codes_hash%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: registrare il device del secondo fattore, non confermato;
+              --   sostituisce un setup a meta', non un device in uso.
+              DECLARE
+                  v_device_id config.auth_totp_device.id%TYPE;
+              BEGIN
+                  -- Prima riga: chi agisce e' la credenziale stessa.
+                  PERFORM script.fn_guard_utente_stesso(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      p_auth_user_id);
+
+                  IF p_auth_user_id <= 0
+                     OR p_secret_encrypted IS NULL OR btrim(p_secret_encrypted) = ''
+                     OR NOT script.fn_check_totp_recovery_hash(p_recovery_codes_hash) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_registra_device', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id,
+                                             'segreto_vuoto', p_secret_encrypted IS NULL
+                                                              OR btrim(p_secret_encrypted) = '',
+                                             'recovery_tipo', jsonb_typeof(p_recovery_codes_hash)),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_registra_device',
+                                         'segreto e codici di recupero (array non vuoto di hash distinti) obbligatori']);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_registra_device', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- Una istruzione: nasce, o sostituisce un setup a meta'. Un
+                  -- device confermato non si tocca (WHERE) e RETURNING resta vuoto.
+                  INSERT INTO config.auth_totp_device AS d
+                         (auth_user_id, secret_encrypted, recovery_codes_hash, confermato)
+                  VALUES (p_auth_user_id, p_secret_encrypted, p_recovery_codes_hash, false)
+                  ON CONFLICT (auth_user_id) DO UPDATE
+                     SET secret_encrypted    = EXCLUDED.secret_encrypted,
+                         recovery_codes_hash = EXCLUDED.recovery_codes_hash,
+                         ultimo_passo_usato  = NULL,
+                         ultimo_uso_at       = NULL
+                   WHERE NOT d.confermato
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_registra_device', 'E_TOTP_DEVICE_GIA_ATTIVO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_totp_registra_device(integer, character varying, jsonb) IS
+                  'Registra il device del secondo fattore (TOTP) di una credenziale, NON confermato: segreto cifrato dal backend e hash dei codici di recupero (script.fn_check_totp_recovery_hash: array non vuoto di stringhe distinte). Sostituisce un device non confermato (il setup ricomincia); su un device confermato -> E_TOTP_DEVICE_GIA_ATTIVO (va prima disabilitato). Una istruzione (upsert con WHERE NOT confermato): nessuna finestra fra domanda e scrittura. Chi agisce: la credenziale stessa (script.fn_guard_utente_stesso). Forma sbagliata -> E_AUTH_CHIAMATA_NON_VALIDA; credenziale inesistente -> E_CREDENZIALE_NON_TROVATA. SECURITY DEFINER del PROPRIETARIO, search_path bloccato: all''app solo SELECT. Brief: brief-db-secondo-fattore-totp §3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_totp_registra_device(integer, character varying, jsonb);

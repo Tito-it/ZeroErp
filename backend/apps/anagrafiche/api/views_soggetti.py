@@ -15,7 +15,9 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     optional_int,
     paginated_envelope,
     parse_list_params,
@@ -47,7 +49,7 @@ class SoggettiView(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="tipo_soggetto_dettaglio_id", type=int, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
@@ -124,7 +126,7 @@ class SoggettiDetailView(DomainAPIView):
     )
     # Scopo: Aggiorna campi soggetto.
     def patch(self, request: Request, soggetto_id: str) -> JsonResponse:
-        result = SoggettiService().update_soggetto(soggetto_id, request.data)
+        result = SoggettiService().update_soggetto(soggetto_id, corpo_oggetto(request))
         return success_response(result)
 
 
@@ -178,7 +180,7 @@ class SoggettiContattiDetailView(DomainAPIView):
     )
     # Scopo: Aggiorna contatto con verifica ownership soggetto.
     def patch(self, request: Request, soggetto_id: str, contatto_id: int) -> JsonResponse:
-        result = SoggettiService().update_contatto(contatto_id, request.data, soggetto_id=soggetto_id)
+        result = SoggettiService().update_contatto(contatto_id, corpo_oggetto(request), soggetto_id=soggetto_id)
         return success_response(result)
 
     @extend_schema(
@@ -454,7 +456,7 @@ class SoggettiExportView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="tipo_soggetto_dettaglio_id", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
             OpenApiParameter(name="order_dir", type=str, required=False),
@@ -495,7 +497,6 @@ class SoggettiExportView(DomainAPIView):
             order_dir=p["order_dir"],
         )
         filtri_applicati = svc.resolve_filtri_export_label(
-            search=p["search"],
             tipo_soggetto_dettaglio_id=tipo_id,
         )
         return build_export_response(

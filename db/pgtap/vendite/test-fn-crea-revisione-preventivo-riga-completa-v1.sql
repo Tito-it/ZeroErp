@@ -24,10 +24,23 @@
 --   LE MARCHE DI APPROVAZIONE PREZZO — percorso reale, fn_crea_revisione_preventivo
 --    3) la rev N+1 nasce (rev 1) con le tre righe
 --    4) ⭐ la riga APPROVED porta stato e pratica identici sulla rev N+1
---    5) ⭐ la riga PENDING porta stato e pratica identici sulla rev N+1
+--    5) ⭐ la riga REJECTED porta stato e pratica identici sulla rev N+1
 --    6) la riga senza marca resta senza marca: la revisione non inventa un'approvazione
 --    7) la rev N conserva le sue marche: la revisione COPIA, non sposta
---    8) la riga PENDING della rev N+1 e' PROTETTA: cambiare il prezzo e' rifiutato dal guard
+--    8) la marca REJECTED copiata fa il suo mestiere: la rev N+1 non si emette
+--       (script.fn_check_prezzi_autorizzati la segnala con E_DOC_PREZZO_RIFIUTATO)
+--
+-- 🔄 rev 2026-09-24 — LA RIGA IN ATTESA NON C'E' PIU', ED E' IL MODELLO.
+--   Da 20260924-34 (decisione di Tid, brief-db-preventivi-congelamento-pricing
+--   §10) una revisione NON SI CREA finche' un prezzo e' in attesa: la riga
+--   PENDING ricopiata sulla rev N+1 — che i test 5 e 8 pinnavano — non puo'
+--   piu' nascere. La fixture l'aveva, e la madre l'ha rifiutata: il file
+--   moriva nella fixture con E_DOC_PREZZO_PENDENTE (0 asserzioni utili).
+--   Tenerla sarebbe stato un test che pinna un comportamento ritirato.
+--   ⇒ la seconda riga marcata e' ora REJECTED, il caso che il modello ammette
+--   e che si ricopia 1:1 («azzerarlo farebbe passare un prezzo rifiutato»).
+--   Il rifiuto della revisione con un prezzo in attesa ha gia' la sua sede:
+--   test-fn-check-prezzi-autorizzati-v1, test 40 e 44 — qui non si ricopia.
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ IL TEST 1 E' IL PRESIDIO CHE MANCAVA. Non prova un valore: prova che
@@ -59,9 +72,8 @@
 --   test-fn-crea-revisione-preventivo, che pesca dalla popolazione ed e'
 --   ERRORE_FIXTURE in baseline-rossi-ci.tsv.
 --
--- ⚠️ La riga PENDING si INSERISCE gia' PENDING: il guard
---   trgfn_righe_guard_pending e' BEFORE UPDATE, non INSERT. E' la stessa forma
---   di test-preventivi-approvazione-prezzo.
+-- ⚠️ Le righe marcate si INSERISCONO gia' marcate (APPROVED, REJECTED): e'
+--   la stessa forma di test-preventivi-approvazione-prezzo.
 --
 -- ⚠️ I vincoli restano IMMEDIATE dalla riga di preambolo: gli helper della
 --   fixture aprono e richiudono da soli la loro finestra differita.
@@ -164,7 +176,7 @@ SELECT x.tag,
            NULL, NULL, NULL, NULL,
            'pgTAP revisione riga completa — ' || x.tag,
            jsonb_build_object('test_scope', 'pgtap_revisione_riga_completa')) AS pratica_id
-  FROM _mondo m, (VALUES ('approvata'), ('pendente')) AS x(tag);
+  FROM _mondo m, (VALUES ('approvata'), ('rifiutata')) AS x(tag);
 
 -- Preventivo EMESSO: la revisione nasce solo da li'.
 CREATE TEMP TABLE _preventivo AS
@@ -184,7 +196,7 @@ WITH p AS (
 )
 SELECT id AS preventivo_id FROM p;
 
--- Tre righe: APPROVED con la sua pratica, PENDING con la sua, e una senza
+-- Tre righe: APPROVED con la sua pratica, REJECTED con la sua, e una senza
 -- marca. La terza e' il gemello che prova che la revisione non inventa.
 -- ⚠️ iva_id esplicito: un trigger di riga chiede l'aliquota.
 CREATE TEMP TABLE _righe_prev AS
@@ -198,7 +210,7 @@ WITH r AS (
       FROM _preventivo p, _articolo a,
            (SELECT i.id AS iva_id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) i,
            (VALUES (1, 'APPROVED', 'approvata'),
-                   (2, 'PENDING',  'pendente'),
+                   (2, 'REJECTED', 'rifiutata'),
                    (3, NULL,       NULL)) AS x(ordine, stato, tag)
     RETURNING id, ordine, stato_approvazione_prezzo, pratica_approvazione_prezzo_id
 )
@@ -232,8 +244,8 @@ SELECT is(
 
 SELECT is(
     (SELECT r.stato_approvazione_prezzo::text || '|' || r.pratica_approvazione_prezzo_id::text FROM _righe_rev r WHERE r.ordine = 2),
-    'PENDING|' || (SELECT pratica_id::text FROM _pratiche WHERE tag = 'pendente'),
-    '5) la riga PENDING porta stato e pratica IDENTICI sulla rev N+1: una richiesta in attesa resta in attesa'
+    'REJECTED|' || (SELECT pratica_id::text FROM _pratiche WHERE tag = 'rifiutata'),
+    '5) la riga REJECTED porta stato e pratica IDENTICI sulla rev N+1: un prezzo rifiutato resta rifiutato'
 );
 
 SELECT is(
@@ -253,20 +265,19 @@ SELECT is(
 );
 
 -- ============================================================
--- LA MARCA COPIATA FA IL SUO MESTIERE: la riga PENDING della rev N+1 e' congelata
+-- LA MARCA COPIATA FA IL SUO MESTIERE: la rev N+1 col prezzo rifiutato non si emette
 -- ============================================================
--- E' il motivo per cui si copia: senza marca il prezzo fuori policy sarebbe
--- stato modificabile liberamente sulla rev N+1. Il guard e' BEFORE UPDATE
--- (trgfn_righe_guard_pending), e parla con E_RIGA_PREZZO_PENDENTE.
-PREPARE cambia_prezzo_pending AS
-UPDATE vendite.preventivi_righe
-   SET prezzo_unitario = 999
- WHERE id = (SELECT riga_rev_id FROM _righe_rev WHERE ordine = 2);
-
-SELECT throws_like(
-    'cambia_prezzo_pending',
-    '%in attesa di approvazione prezzo%',
-    '8) la riga PENDING della rev N+1 e'' protetta dal guard: cambiare il prezzo e'' rifiutato (E_RIGA_PREZZO_PENDENTE)'
+-- E' il motivo per cui il REJECTED si copia: azzerato, il prezzo rifiutato
+-- tornerebbe un prezzo qualunque e la rev N+1 si emetterebbe. Si legge la
+-- CHECK (la stessa che il guard di emissione e la capability chiamano), non
+-- si tenta l'emissione: qui si prova la marca, non la transizione.
+SELECT is(
+    (SELECT string_agg(DISTINCT m ->> 'codice', ',')
+       FROM jsonb_array_elements(
+                script.fn_check_prezzi_autorizzati('vendite.preventivi'::regclass,
+                                                   (SELECT nuovo_preventivo_id FROM _rev))) m),
+    'E_DOC_PREZZO_RIFIUTATO',
+    '8) la marca REJECTED copiata fa il suo mestiere: la rev N+1 non si emette (E_DOC_PREZZO_RIFIUTATO)'
 );
 
 SELECT * FROM finish();

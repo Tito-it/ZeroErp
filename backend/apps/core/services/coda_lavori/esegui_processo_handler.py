@@ -99,7 +99,7 @@ from apps.core.services.job_run import (
     ENV_JOB_ORIGINE,
     ORIGINE_COMMAND,
 )
-from apps.core.services.service_errors import ServiceError
+from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 from apps.core.services.sveglie import RUN_COMMAND, Sveglia, sveglia_di_processo
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ logger = logging.getLogger(__name__)
 # Codici RIUSATI, perche' la condizione e' la stessa di dove sono nati
 # (brief §9.1): payload che non risolve nel dichiarato, wrapper assente, scope
 # senza l'attore.
-E_PAYLOAD = "E_VALIDATION_INPUT"
+E_PAYLOAD = E_VALIDATION_INPUT
 E_CONFIG_MANCANTE = "E_CONFIG_MANCANTE"
 
 # Quanto output del comando si tiene nel lavoro: le ULTIME righe, cappate. La

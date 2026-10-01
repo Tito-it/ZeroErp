@@ -1,0 +1,8 @@
+{
+  "_leggimi": [
+    "Registro a cricchetto dei rilievi drf-spectacular, presidiato da test_schema_openapi_registro.py.",
+    "Si TOGLIE una riga quando la voce e' sanata; non se ne AGGIUNGONO. 2026-09-26: da 73 view + 54 operationId a ZERO lo stesso giorno. Il registro resta, vuoto: una voce nuova e' rossa."
+  ],
+  "senza_serializer": [],
+  "operation_id_in_collisione": []
+}

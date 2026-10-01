@@ -40,7 +40,8 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
   `numero` NULL fino a CONFERMATO (trigger). BA/destinatario/utility/valuta/
   emittente ereditati dal DDT sorgente (**CONSEGNATO**, guard DB).
 - Detail `GET /<id>/` — testata + capabilities data-driven
-  (`fn_available_actions_reso`).
+  (`fn_available_actions_reso`) nella chiave `capabilities`, non fuse nella
+  testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
 - Update `PATCH /<id>/` — solo DRAFT (data/meta). Delete `DELETE /<id>/` — hard
   delete solo DRAFT + 0 righe (abbandono bozza).
 
@@ -57,6 +58,7 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
 
 ### Righe
 
+- Lista configurabile delle righe `GET /<id>/righe/lista/` (+ `export/`): BB condiviso, vedi [api_righe_documento.md](api_righe_documento.md).
 - `GET/POST /<id>/righe/`, `PATCH/DELETE /<id>/righe/<riga_id>/` — scrittura
   solo DRAFT. Articolo/UoM/factor sono **snapshot** dalla riga DDT sorgente.
 - ⭐ **`gia_accreditato`** (2026-08-18) — quanti pezzi della riga sono già stati
@@ -184,7 +186,12 @@ credito» promette un documento che poi non si trova.
 `E_RESO_NOT_FOUND` (404), `E_RESO_DDT_NON_CONSEGNATO` (create su DDT non
 consegnato), `E_RESO_QTA_SUPERA_CONSEGNATO` (over-return), `E_RESO_ANNULLO_CON_RICONSEGNE`,
 `E_RESO_VALIDAZIONE` (400: payload del verbo, filtri coda, etichetta fuori
-whitelist), `E_UI_EXPORT_FORMAT_INVALID` (400), `E_UI_EXPORT_LIMIT_EXCEEDED` (422).
+whitelist), `E_RESO_STATO_TRANSIZIONE` (409: la **testata** fuori bozza),
+`E_RIGA_DOC_NON_BOZZA` (409: righe aggiunte/modificate/tolte fuori bozza — dal
+2026-09-22 il pre-check BE `richiedi_righe_in_bozza` usa il codice del BB a DB
+`trgfn_doc_righe_lock_fuori_bozza`, che su `resi_righe` **non è ancora
+montato**: il lettore `fn_get_stato_testata_documento` non conosce `RESO`),
+`E_UI_EXPORT_FORMAT_INVALID` (400), `E_UI_EXPORT_LIMIT_EXCEEDED` (422).
 
 **Accredito** — sollevati dalle madri DB e tradotti dal service; nel massivo
 arrivano **per riga** dentro `falliti`, non come envelope di errore:

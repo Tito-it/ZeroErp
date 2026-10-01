@@ -12,7 +12,7 @@
 //
 //        Dropdown lookup standard:
 //          - tipi_documento_output, sorgenti, render_engine via LookupSelect
-//            (whitelist `_REL_CONSENTITE` Tranche A);
+//            (lista del lookup `config.tabelle_gestibili`);
 //          - context_builder_code via dropdown hardcoded (whitelist
 //            applicativa Decisione 18+74).
 //        Emittente fiscale: gestito da `useEmittenteFiscaleField`. Per
@@ -24,6 +24,7 @@ import { useI18n } from 'vue-i18n'
 import { useTemplateDocumentiStore } from '../stores/templateDocumenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { DRAWER_WIDTH } from '../../core/constants'
@@ -90,8 +91,21 @@ const isSelectedBuilderUnregistered = computed(() =>
 // del drawer template (i suoi pulsanti non salvano la versione e creano
 // confusione). Stesso pattern di PreventiviDrawer/PreventiviRigheTable.
 const formVersioneAperto = ref(false)
+// L'emittente del template LETTO (non quello del form): e' il padre della
+// lista delle versioni. Il form, riaprendo un altro template, tiene i valori
+// del precedente finche' il dettaglio non arriva — la lista partirebbe col
+// padre vecchio e ripartirebbe da capo un attimo dopo. `null` = in attesa.
+const emittenteLetto = ref(null)
+// La forma dei dati che il builder del template produce oggi, LETTA dal
+// dettaglio (`versione_contesto_builder`, un fatto del backend): la sezione
+// versioni la mostra e ne precompila la nuova versione. `null` = in attesa, o
+// builder non registrato.
+const versioneContestoBuilder = ref(null)
 
 const form = ref(emptyForm())
+// Modifiche non salvate della testata: fotografia a form popolato, conferma
+// alla chiusura (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 function emptyForm() {
   return {
     codice: '',
@@ -115,6 +129,8 @@ async function loadDetail() {
   if (!effectiveId.value) return
   const data = await store.fetchDetail(effectiveId.value)
   if (!data) return
+  emittenteLetto.value = data.emittente_fiscale_id ?? null
+  versioneContestoBuilder.value = data.versione_contesto_builder ?? null
   form.value = {
     codice: data.codice ?? '',
     codice_interno: data.codice_interno ?? '',
@@ -129,6 +145,7 @@ async function loadDetail() {
     is_default: data.is_default ?? false,
     attivo: data.attivo ?? true,
   }
+  fissa()
 }
 
 watch(
@@ -137,6 +154,8 @@ watch(
     if (!visible) return
     localMode.value = mode
     createdId.value = null
+    emittenteLetto.value = null
+    versioneContestoBuilder.value = null
     if (mode === 'edit') {
       loadDetail()
     } else {
@@ -146,6 +165,7 @@ watch(
       // operatore standard. EmittenteFiscaleField si occupa del
       // lazy load del lookup admin quando reso.
       form.value.emittente_fiscale_id = defaultEmittenteId.value
+      fissa()
     }
   },
 )
@@ -182,7 +202,11 @@ async function handleSave() {
       () => store.update(effectiveId.value, payload),
       { successMessage: t('config.modelli_documenti.saved') },
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) {
+      // Resta aperto senza ricaricare: la fotografia diventa il salvato.
+      fissa()
+      emit('saved', result)
+    }
   } else {
     const payload = {
       codice: f.codice.trim(),
@@ -205,7 +229,12 @@ async function handleSave() {
       // per consentire la gestione versioni. La lista padre viene aggiornata
       // tramite emit 'saved'.
       createdId.value = result.id
+      // Il template appena salvato ha l'emittente scelto nel form: e' il
+      // padre della lista delle versioni, che senza resterebbe in attesa.
+      emittenteLetto.value = result.emittente_fiscale_id ?? payload.emittente_fiscale_id ?? null
+      versioneContestoBuilder.value = result.versione_contesto_builder ?? null
       localMode.value = 'edit'
+      fissa()
       emit('saved', result)
     }
   }
@@ -215,12 +244,19 @@ function close() {
   emit('update:visible', false)
   emit('cancelled')
 }
+// Il form inline delle versioni (sezione figlia) ha la sua fotografia: la
+// chiusura chiede conferma se UNO dei due e' modificato, con un dialog solo.
+const versioniRef = ref(null)
+const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
+  unisciFotografie({ modificato, chiudiConConferma }, () => versioniRef.value)
+const chiudi = () => chiudiTutto(close)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="v => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     :dismissable="true"
@@ -228,6 +264,7 @@ function close() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificatoTutto"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('config.modelli_documenti.drawer_title')"
       />
@@ -356,7 +393,10 @@ function close() {
       <template v-if="isEdit && effectiveId">
         <Divider />
         <TemplateVersioniSection
+          ref="versioniRef"
           :template-id="effectiveId"
+          :emittente-fiscale-id="emittenteLetto"
+          :versione-contesto-builder="versioneContestoBuilder"
           :readonly="isReadOnlyEffective"
           @form-aperto="(v) => { formVersioneAperto = v }"
         />
@@ -370,7 +410,7 @@ function close() {
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"
-        @cancel="close"
+        @cancel="chiudi"
       />
     </template>
   </Drawer>

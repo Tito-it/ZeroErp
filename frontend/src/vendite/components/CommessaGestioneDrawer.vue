@@ -43,13 +43,13 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { useSelezioneToggle } from '../../core/composables/useSelezioneToggle'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
-import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { lookupRisorseUmane } from '../../core/apiCore'
-import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
+import { DRAWER_WIDTH } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
-import { DOCUMENTO_DRAWER_TIPI } from '../_shared/documenti/documentoDrawers'
-import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
+import DocumentoDrawerHost from '../../core/components/DocumentoDrawerHost.vue'
+import { DOCUMENTO_DRAWER_TIPI } from '../../core/drawerEntita'
+import { useDocumentoDrawer } from '../../core/composables/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
 import {
   STATO_APPROVAZIONE_ATTIVITA,
@@ -78,7 +78,8 @@ import {
   variazionePrezzoAttivita,
 } from '../api/commesse'
 import { lookupArticoli } from '../../catalogo/api/catalogo'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
+import { useListaDrawerPaginata } from '../../core/composables/useListaDrawerPaginata'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -130,16 +131,7 @@ const canEditRighe = computed(() => capabilities.value.can_edit_righe === true)
 
 // ------------------------------------------------------------------ stato
 const stato = ref(null)
-const righe = ref([])
-const righePage = ref(1)
-const righePageSize = ref(PAGINATION.DEFAULT_ROWS)
-const righeLoading = ref(false)
 const selected = ref([])
-// Ordinamento server-side: l'ORDER BY vive dentro fn_list_commessa_attivita
-// (whitelist chiusa) — ordinare la pagina a valle risponderebbe sbagliato.
-// null = ordine storico per id (removable-sort riporta qui).
-const righeSortBy = ref(null)
-const righeSortDir = ref(1)
 // Filtro stato emissione applicato alla lista: parte dalla prop (card di
 // provenienza) ed e' modificabile a video. null = tutte.
 const filtroStatoEmissione = ref(props.statoEmissione)
@@ -147,11 +139,27 @@ const filtroStatoEmissione = ref(props.statoEmissione)
 // Non arriva da nessuna prop: nasce sempre vuoto, perche' nessuna card di
 // provenienza parla di movimenti.
 const filtroTipoMovimento = ref(null)
-// Totale FILTRATO, dal `count` della risposta lista. Non si usa
-// `stato.total_attivita` (contatore di testata, sempre su TUTTE le righe):
-// con un filtro attivo il paginator direbbe 4 righe mostrandone 1, e la
-// seconda pagina sarebbe vuota.
-const righeTotale = ref(0)
+
+// ⭐ La lista delle righe: pagina, ordinamento, dimensione pagina e preset dal
+//    BB delle liste in drawer (regola del 2, 2026-09-30) — la stessa macchina
+//    era scritta qui a mano, e aveva gia' preso una strada sua (partiva dalla
+//    misura di pagina, non da quella compatta di un drawer). Il drawer tiene
+//    solo cio' che e' suo: i due filtri e la selezione.
+// ⚠️ L'ordinamento e' server-side: l'ORDER BY vive dentro
+//    fn_list_commessa_attivita (whitelist chiusa), `null` = ordine storico per
+//    id (removable-sort riporta qui).
+// ⚠️ Il totale e' il `count` FILTRATO della risposta, non
+//    `stato.total_attivita` (contatore di testata, sempre su TUTTE le righe):
+//    con un filtro attivo il paginatore direbbe 4 righe mostrandone 1.
+const lista = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
+  listCommessaAttivita(props.commessaId, {
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+    ...(sortBy ? { order_by: sortBy, order_dir: sortDir } : {}),
+    ...(filtroStatoEmissione.value ? { stato_emissione: filtroStatoEmissione.value } : {}),
+    ...(filtroTipoMovimento.value ? { tipo_movimento: filtroTipoMovimento.value } : {}),
+  }))
+const righe = lista.righe
 
 const capabilities = computed(() => stato.value?.capabilities ?? {})
 
@@ -175,7 +183,7 @@ const righeApprovabili = computed(() =>
   ),
 )
 // ⛔ La terna «in pagina», non `toggleAll`/`anySelected`. Questa lista e'
-//    paginata LATO SERVER (`loadRighe` a ogni cambio pagina) e `onRighePage`
+//    paginata LATO SERVER (una fetch a ogni cambio pagina) e il BB della lista
 //    NON azzera la selezione: si compone attraverso le pagine, di proposito.
 //    Fino al 2026-08-27 qui c'era `toggleAll`, che SOSTITUISCE la selezione con
 //    la pagina corrente — spuntare «tutte» a pagina 2 buttava via quanto
@@ -197,41 +205,10 @@ async function loadStato() {
   return true
 }
 
-// Scopo: carica la pagina corrente delle righe (limit/offset; totale dal
-//        contatore di testata total_attivita — la lista non espone il totale).
-async function loadRighe() {
-  righeLoading.value = true
-  try {
-    const params = {
-      limit: righePageSize.value,
-      offset: (righePage.value - 1) * righePageSize.value,
-    }
-    if (righeSortBy.value) {
-      params.order_by = righeSortBy.value
-      params.order_dir = righeSortDir.value === -1 ? 'desc' : 'asc'
-    }
-    if (filtroStatoEmissione.value) {
-      params.stato_emissione = filtroStatoEmissione.value
-    }
-    if (filtroTipoMovimento.value) {
-      params.tipo_movimento = filtroTipoMovimento.value
-    }
-    const res = await listCommessaAttivita(props.commessaId, params)
-    righe.value = res.data?.data?.rows ?? []
-    // `count` e' il totale gia' filtrato (stessa WHERE della pagina).
-    righeTotale.value = res.data?.data?.count ?? 0
-  } catch (err) {
-    // Fail-visible: una tabella vuota per errore non deve sembrare "no righe".
-    notify.error(extractApiError(err, t('common.error')))
-  } finally {
-    righeLoading.value = false
-  }
-}
-
 // Scopo: ricarica completa post-azione (testata + righe, selezione azzerata).
 async function reloadAll() {
   selected.value = []
-  if (await loadStato()) await loadRighe()
+  if (await loadStato()) await lista.carica()
 }
 
 // ------------------------------------------------------------------ testata leggibile
@@ -249,7 +226,17 @@ const testataSaving = ref(false)
 //    per cui `useDrawerFormPreserve` esiste. La baseline si azzera all'apertura
 //    (sotto, nel watch su `visible`/`commessaId`), o il non-salvato della
 //    commessa precedente finirebbe su quella nuova.
-const { preserva: preservaTestata, reset: resetTestata } = useDrawerFormPreserve(testataForm)
+// Il form e' «sporco» solo se differisce da cio' che il server ha detto: il
+// pulsante Salva si accende su una modifica vera, non sull'apertura. La
+// risposta e' quella della fotografia del BB, che la dice anche alla tab.
+const {
+  preserva: preservaTestata,
+  reset: resetTestata,
+  modificato: testataDirty,
+  chiudiConConferma,
+} = useDrawerFormPreserve(testataForm, { visibile: () => props.visible })
+// Uscita (X, ESC, clic fuori, Chiudi) con la testata non salvata: prima si chiede.
+const onChiudi = () => chiudiConConferma(onClose)
 
 // Scopo: allinea il form alla testata caricata (a ogni `loadStato`),
 //        ripristinando cio' che l'operatore aveva cambiato e non salvato.
@@ -260,16 +247,6 @@ watch(stato, (s) => {
     responsabile_risorsa_umana_id: s?.responsabile_risorsa_umana_id ?? null,
   }
   applica()
-})
-
-// Il form e' «sporco» solo se differisce da cio' che il server ha detto: il
-// pulsante Salva si accende su una modifica vera, non sull'apertura.
-const testataDirty = computed(() => {
-  const s = stato.value
-  if (!s) return false
-  const descrizione = (testataForm.value.descrizione || '').trim() || null
-  return descrizione !== (s.descrizione ?? null)
-    || (testataForm.value.responsabile_risorsa_umana_id ?? null) !== (s.responsabile_risorsa_umana_id ?? null)
 })
 
 // Le risorse umane ATTIVE (lookup cross-dominio, cache condivisa per chiave).
@@ -340,11 +317,7 @@ watch(
     // Baseline del form di testata azzerata PRIMA che `stato` cambi: il
     // non-salvato di un'altra commessa non deve sopravvivere alla riapertura.
     resetTestata()
-    righe.value = []
-    righeTotale.value = 0
-    righePage.value = 1
-    righeSortBy.value = null
-    righeSortDir.value = 1
+    lista.reset()
     // Il filtro torna al default del chiamante a ogni apertura: riaprendo la
     // stessa commessa da una card diversa deve valere la card nuova, non
     // quella di prima.
@@ -389,39 +362,11 @@ const {
     formato,
     ...(filtroStatoEmissione.value ? { stato_emissione: filtroStatoEmissione.value } : {}),
     ...(filtroTipoMovimento.value ? { tipo_movimento: filtroTipoMovimento.value } : {}),
-    ...(righeSortBy.value
-      ? { order_by: righeSortBy.value, order_dir: righeSortDir.value === -1 ? 'desc' : 'asc' }
+    ...(lista.sortField.value
+      ? { order_by: lista.sortField.value, order_dir: lista.sortOrder.value === -1 ? 'desc' : 'asc' }
       : {}),
   }),
 })
-
-// Prop paginator per il BB: qui non c'e' useSearchTable (il drawer non e' una
-// pagina lista), quindi la compone il drawer con lo stato che gia' possiede.
-const righePaginatorOptions = computed(() => ({
-  totalRecords: righeTotale.value,
-  rows: righePageSize.value,
-  first: (righePage.value - 1) * righePageSize.value,
-  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
-}))
-
-// Scopo: allinea la dimensione pagina a quella risolta dal BE (una volta).
-const configAllineata = ref(false)
-function onConfigLoaded(config) {
-  if (configAllineata.value) return
-  configAllineata.value = true
-  const nuovoLimit = config?.pagina_dimensione
-  if (nuovoLimit && nuovoLimit !== righePageSize.value) {
-    righePageSize.value = nuovoLimit
-    righePage.value = 1
-    loadRighe()
-  }
-}
-
-function onRighePage(event) {
-  righePage.value = Math.floor(event.first / event.rows) + 1
-  righePageSize.value = event.rows
-  loadRighe()
-}
 
 // Opzioni del filtro stato emissione: i tre valori del dominio + «tutte»
 // (null). Derivate dalla costante, non riscritte a mano.
@@ -447,18 +392,9 @@ const opzioniTipoMovimento = computed(() => [
 //        apparterrebbe a un insieme di righe diverso) e si azzera la
 //        selezione, che potrebbe contenere righe ora fuori filtro.
 function onFiltroStatoChange() {
-  righePage.value = 1
+  lista.page.value = 1
   selected.value = []
-  loadRighe()
-}
-
-// Scopo: ordinamento server-side; cambio criterio riparte da pagina 1.
-//        sortField null (removable-sort al terzo click) = ordine storico.
-function onRigheSort(event) {
-  righeSortBy.value = event.sortField ?? null
-  righeSortDir.value = event.sortOrder ?? 1
-  righePage.value = 1
-  loadRighe()
+  lista.carica()
 }
 
 // ------------------------------------------------------------------ approva (A-1)
@@ -640,7 +576,7 @@ function buildRowNavActions(row) {
     {
       key: 'registro',
       label: t('vendite.commesse.azione_registro'),
-      icon: 'pi pi-history',
+      icon: MANAGE_ICONS.GIORNALE,
       command: () => apriRegistroRiga(row.id),
     },
     // Documento di ORIGINE: stesso BB del Backlog fatturazione, stessa
@@ -698,7 +634,7 @@ function buildRowActions(row) {
     {
       key: 'riallinea',
       label: t('vendite.commesse.azione_riallinea'),
-      icon: 'pi pi-sync',
+      icon: MANAGE_ICONS.RIALLINEA,
       visible: prezzoOk && !row.prezzo_bloccato,
       command: () => riallinea(row, false),
     },
@@ -707,7 +643,7 @@ function buildRowActions(row) {
       // si sblocca (con motivo). Specchio del guard BE E-BE-1.
       key: 'variazione',
       label: t('vendite.commesse.azione_variazione'),
-      icon: 'pi pi-pencil',
+      icon: MANAGE_ICONS.EDIT,
       visible: prezzoOk && !row.prezzo_bloccato,
       command: () => {
         variazioneRiga.value = row
@@ -717,12 +653,12 @@ function buildRowActions(row) {
       },
     },
     {
-      // Icona-azione (chiave) distinta dai lucchetti-STATO della colonna prezzo
-      // (pi-lock chiuso = bloccato): il bottone inline icon-only non deve
+      // Icona-azione (chiave, `SBLOCCA`) distinta dalla spia-STATO della colonna
+      // prezzo (`STATUS_ICONS.BLOCCATO`): il bottone inline icon-only non deve
       // leggersi come uno stato «aperto».
       key: 'sblocca',
       label: t('vendite.commesse.azione_sblocca'),
-      icon: 'pi pi-key',
+      icon: MANAGE_ICONS.SBLOCCA,
       visible: prezzoOk && row.prezzo_bloccato === true,
       command: () => sblocca(row),
     },
@@ -737,7 +673,7 @@ function buildRowActions(row) {
       // di distanza e di tutt'altra portata.
       key: 'annulla-riga',
       label: t('vendite.commesse.azione_annulla_riga'),
-      icon: 'pi pi-ban',
+      icon: MANAGE_ICONS.ANNULLA,
       severity: 'danger',
       // ⚠️ `sourceless` NON basta piu' a dire «manuale»: dal cantiere note di
       // credito anche una RETTIFICA nasce senza sorgente (`fn_accredita_riga_
@@ -861,7 +797,7 @@ const drawerActions = computed(() => [
     key: 'aggiungi-onere',
     kind: 'primary',
     label: t('vendite.commesse.onere_azione'),
-    icon: 'pi pi-plus-circle',
+    icon: MANAGE_ICONS.ADD,
     tooltip: t('vendite.commesse.onere_tooltip'),
     action: 'carica_voce_manuale',
     hideWhenReadonly: true,
@@ -869,6 +805,7 @@ const drawerActions = computed(() => [
   },
   ...stateActions.value,
 ])
+const suVisibile = gestoreVisibile(emit, onChiudi)
 </script>
 
 <template>
@@ -877,11 +814,11 @@ const drawerActions = computed(() => [
     position="right"
     :style="{ width: DRAWER_WIDTH.XLARGE }"
     :dismissable="true"
-    @update:visible="(v) => { if (!v) onClose() }"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :title="t('vendite.commesse.gestione_titolo')" icon="pi pi-briefcase" />
+      <DrawerTitle :title="t('vendite.commesse.gestione_titolo')" :icon="MANAGE_ICONS.COMMESSA" />
     <!-- Il REGISTRO della riga: sola lettura, quindi FUORI dai dialog di azione e
          senza `app-escape`. Si apre dal kebab, anche a commessa in readonly. -->
     <CommessaRegistroDialog
@@ -961,7 +898,7 @@ const drawerActions = computed(() => [
             </div>
           </div>
           <div v-if="!isReadonly" class="app-commessa-testata-azioni">
-            <Button :label="t('vendite.commesse.testata_salva')" icon="pi pi-check" size="small"
+            <Button :label="t('vendite.commesse.testata_salva')" :icon="MANAGE_ICONS.CONFIRM" size="small"
               :loading="testataSaving" :disabled="!testataDirty || loading"
               @click="salvaTestata" />
           </div>
@@ -1029,14 +966,14 @@ const drawerActions = computed(() => [
           <div v-if="canApprova && (stato?.total_non_approvate ?? 0) > 0" style="display: flex; gap: 0.5rem;">
             <Button
               :label="t('vendite.commesse.approva_selezionate', { n: selectedIds.length })"
-              icon="pi pi-check"
+              :icon="MANAGE_ICONS.APPROVE"
               size="small"
               :disabled="loading || selectedIds.length === 0"
               @click="approva(selectedIds)"
             />
             <Button
               :label="t('vendite.commesse.approva_tutte')"
-              icon="pi pi-check-circle"
+              :icon="MANAGE_ICONS.APPROVE"
               size="small"
               outlined
               :disabled="loading || (stato?.total_non_approvate ?? 0) === 0"
@@ -1049,16 +986,16 @@ const drawerActions = computed(() => [
           ref="listaRef"
           codice="vendite.commesse_attivita"
           data-key="id"
-          :rows="righe"
-          :total="righeTotale"
-          :loading="righeLoading"
-          :paginator-options="righePaginatorOptions"
-          :page="righePage"
-          :sort-field="righeSortBy"
-          :sort-order="righeSortDir"
-          @page="onRighePage"
-          @sort="onRigheSort"
-          @config-loaded="onConfigLoaded"
+          :rows="lista.righe.value"
+          :total="lista.totale.value"
+          :loading="lista.loading.value"
+          :paginator-options="lista.paginatorOptions.value"
+          :page="lista.page.value"
+          :sort-field="lista.sortField.value"
+          :sort-order="lista.sortOrder.value"
+          @page="lista.onPage"
+          @sort="lista.onSort"
+          @config-loaded="lista.onConfigLoaded"
         >
           <!-- Checkbox custom (pattern useSelezioneToggle): solo approvabili.
                Colonna di CHROME del BB, non a catalogo. -->
@@ -1092,12 +1029,12 @@ const drawerActions = computed(() => [
               {{ data.prezzo_snapshot != null ? formatCurrency(Number(data.prezzo_snapshot)) : '—' }}
               <i
                 v-if="data.prezzo_bloccato"
-                class="pi pi-lock"
+                :class="STATUS_ICONS.BLOCCATO"
                 v-tooltip.bottom="t('vendite.commesse.prezzo_bloccato')"
               />
               <i
                 v-if="data.prezzo_da_riallineare"
-                :class="[MANAGE_ICONS.ERRORE, 'app-dash-ritardo']"
+                :class="[STATUS_ICONS.ERRORE, 'app-dash-ritardo']"
                 v-tooltip.bottom="t('vendite.commesse.prezzo_da_riallineare')"
               />
             </span>
@@ -1114,14 +1051,14 @@ const drawerActions = computed(() => [
                fattura) che non modificano nulla. Nasconderla in readonly
                toglierebbe la sola strada per arrivare al documento proprio a
                chi sta ispezionando. -->
-          <template #actions="{ data, compact }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+          <template #actions="{ data }">
+            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
           </template>
         </ListaConfigurabile>
 
       </template>
 
-      <FormFooter close-only @cancel="onClose" />
+      <FormFooter close-only @cancel="onChiudi" />
     </div>
 
     <!-- Dialog N7 — variazione prezzo eccezionale (prezzo + motivo). -->

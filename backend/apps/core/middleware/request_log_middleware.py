@@ -159,6 +159,9 @@ def _extract_error_code(response: HttpResponse) -> str | None:
         error = body.get("error", {})
         if isinstance(error, dict):
             return error.get("code")
-    except Exception:
+    # Corpo non JSON (ValueError, anche per UnicodeDecodeError), JSON che non
+    # e' un oggetto o response in streaming senza `.content` (AttributeError):
+    # la risposta non porta un codice errore, e non e' un guasto.
+    except (ValueError, AttributeError):
         pass
     return None

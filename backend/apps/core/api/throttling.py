@@ -8,10 +8,30 @@ from __future__ import annotations
 
 from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle
 
+from apps.core.services.request_context import get_client_ip
+
 # Throttling DRF: limita endpoint sensibili.
 
+# Chiave comune delle richieste di cui l'IP non si ricava: condividono UN
+# contatore (fail-closed), invece di sfuggire al limite.
+_IDENT_IP_SCONOSCIUTO = "ip-sconosciuto"
 
-class _CustomRateAnonThrottle(AnonRateThrottle):
+
+class _ClientIpIdentMixin:
+    """L'IP del throttle viene dal BB `get_client_ip`, non da DRF.
+
+    ⛔ `SimpleRateThrottle.get_ident` di DRF legge `X-Forwarded-For` per conto
+    suo (con `NUM_PROXIES` non impostato usa l'header INTERO, scritto dal
+    client): chi cambia l'header a ogni richiesta avrebbe un contatore nuovo
+    ogni volta. La regola dell'hop fidato sta in un solo posto.
+    """
+
+    # Scopo: Identifica il chiamante con l'IP fidato del BB `get_client_ip`.
+    def get_ident(self, request):
+        return get_client_ip(request) or _IDENT_IP_SCONOSCIUTO
+
+
+class _CustomRateAnonThrottle(_ClientIpIdentMixin, AnonRateThrottle):
     """Base con parsing rate custom (supporta minuti "Nm" e ore "Nh")."""
 
     # Scopo: Parsing custom per rate con minuti/ore (es. "5/5m", "3/1h").
@@ -42,7 +62,7 @@ class PasswordResetRateThrottle(_CustomRateAnonThrottle):
     rate = "3/15m"
 
 
-class SearchBurstRateThrottle(SimpleRateThrottle):
+class SearchBurstRateThrottle(_ClientIpIdentMixin, SimpleRateThrottle):
     scope = "search_burst"
 
     # Scopo: Recupera `cache_key` dal contesto applicativo o dal database.

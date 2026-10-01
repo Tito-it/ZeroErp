@@ -49,9 +49,11 @@ import { ref } from 'vue'
 
 import { useListaStoreCore } from '../../core/composables/useListaStoreCore'
 import { listRigheDistinta } from '../api/pagamenti'
+import { storePerIstanza } from '../../core/stores/storePerIstanza'
 
-export const useDistintaRigheStore = defineStore(
-  'pagamenti-distinta-righe',
+// ⭐ Uno store per ISTANZA del drawer (`storePerIstanza`, 2026-09-27): due
+//    drawer dello stesso tipo vivi insieme non si scrivono addosso la lista.
+export const useDistintaRigheStore = storePerIstanza('pagamenti-distinta-righe', (id) => defineStore(id,
   () => {
     // Quante scartate il perimetro corrente sta NASCONDENDO. A interruttore
     // acceso vale 0: non c'e' niente di nascosto.
@@ -65,6 +67,12 @@ export const useDistintaRigheStore = defineStore(
       startsEmpty: false,
       orderDir: null,
       filterDefaults: { scartate: null },
+      // ⛔ `true` NON RESTRINGE, e va dichiarato (2026-09-23): acceso,
+      //    l'interruttore CHIEDE le scartate, cioe' apre l'elenco a tutte le
+      //    righe della distinta. Senza questa riga il segno contava un filtro
+      //    attivo proprio nello stato piu' largo — lo stesso verso sbagliato di
+      //    «mostra archiviate» sulle code e di «mostra annullati» sui lotti.
+      filtriNeutri: { scartate: true },
       onPayload: (payload) => { scartateCount.value = payload.scartate_count ?? 0 },
     })
 
@@ -79,4 +87,4 @@ export const useDistintaRigheStore = defineStore(
     return { ...base, reset, scartateCount }
   },
   { userScoped: true },
-)
+))

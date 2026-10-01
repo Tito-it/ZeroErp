@@ -30,7 +30,7 @@ ui.fn_resolve_dashboard_config(
 
 **0. Risoluzione dashboard_id** — lookup `ui.dashboard_definizione` per codice. Errore `E_UI_DASHBOARD_NON_TROVATA` se non trovata o non attiva.
 
-**1. Profili applicabili + mappe permessi** — chiama `script.fn_get_profili_accesso_applicabili(p_auth_user_id, <veste GUC>)` per l'array profili della cascata ruolo, e risolve **una sola volta** le due mappe aggregate del filtro permessi:
+**1. Profili applicabili + mappe permessi** — chiama `script.fn_get_profili_accesso_applicabili(p_auth_user_id, <veste>)` — la veste la dà [`ui.fn_veste_corrente`](/dbzero/ui/funzioni/fn_veste_corrente) (`NULL` = tutte) — per l'array profili della cascata ruolo, e risolve **una sola volta** le due mappe aggregate del filtro permessi:
   - `script.fn_get_user_permissions_map(p_auth_user_id)` → `{ schema_db: livello }`
   - `script.fn_get_user_actions_map(p_auth_user_id)` → `{ permission_codename: bool }`
 

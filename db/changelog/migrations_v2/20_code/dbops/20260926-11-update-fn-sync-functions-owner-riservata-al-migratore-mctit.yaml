@@ -1,0 +1,316 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_sync_functions_owner: RISERVATA AL MIGRATORE — la guardia sta nel corpo.
+#   Brief: brief-db-registro-owner-e-sync-riservati-al-migratore.md §2.1, §2.3
+#   (D6 di migliorie-generali-da-test-valutazione, il pezzo che restava).
+#
+# ── 🔴 IL DIFETTO ─────────────────────────────────────────────────────
+#   Chi puo' scrivere dbops.sec_functions_owner ED eseguire la sync decide chi
+#   possiede le DEFINER di postgres. `zeroerp_app` aveva le due porte: SIUD sul
+#   registro e EXECUTE sulla sync, entrambi dal loop dei grant 20260205-41 ⇒
+#   `UPDATE … SET required_owner = 'zeroerp_app'` + `SELECT
+#   dbops.fn_sync_functions_owner()` e le sei funzioni indurite passavano
+#   all'app (DoS del canale di log, `ALTER FUNCTION … SET` su una DEFINER che
+#   poi torna a postgres). Il registro si chiude in 90_end/20260926-12; qui si
+#   chiude la sync.
+#
+# ── ⭐ PERCHE' NEL CORPO E NON CON L'ACL (D-3 del brief) ──────────────────
+#   1. la funzione e' di postgres: un privilegio dato al migratore mentre la
+#      possiede in prestito non sopravvive alla restituzione (ALTER … OWNER
+#      rimappa le voci ACL del vecchio proprietario sul nuovo);
+#   2. il loop 20260205-41 e provision_db_roles.sql rifanno GRANT EXECUTE ON
+#      ALL FUNCTIONS a ogni passata: servirebbero tre sedi e un GRANT esplicito
+#      al migratore di CI (il runAlways 90_end/20251123-04 gira come lui);
+#   3. il ruolo batch ha il suo EXECUTE dal provisioning, fuori dai changeSet.
+#   ⇒ EXECUTE a PUBLIC RESTA: con la guardia in testa non compra niente.
+#
+# ── ⛔ TRAPPOLA 1: dentro una DEFINER `current_user` e' il PROPRIETARIO ────
+#   cioe' postgres, superuser: `pg_has_role(current_user, …)` sarebbe una
+#   guardia sempre aperta. Il chiamante si legge da `session_user`. Limite
+#   dichiarato (nel COMMENT e nel pgTAP): e' il ruolo di LOGIN, e una sessione
+#   aperta dal migratore che fa `SET ROLE zeroerp_app` passerebbe. PostgreSQL
+#   non espone «l'invocante» di una DEFINER: un'alternativa senza il limite
+#   non esiste (una facciata INVOKER riporterebbe il problema sul nucleo).
+#   Chi passa: chi e' MEMBRO del proprietario dello schema `dbops` — il
+#   migratore in ogni ambiente (titodb su dbdev, zeroerp in CI) — e un
+#   superuser (la provision-post come postgres). Il criterio e' la proprieta'
+#   dello schema, non un nome di ruolo: nessun nome vale in entrambi.
+#   ⚠️ Fail-closed: se la domanda non ha risposta (NULL) la guardia rifiuta.
+#
+# ── ⛔ TRAPPOLA 2: il rifiuto NON passa dal canale di log (D-1 del brief) ──
+#   RAISE nudo con ERRCODE insufficient_privilege (42501), non
+#   script.fn_log_and_raise_error: e' lo stesso esito che l'app riceve su una
+#   funzione revocata (fn_audit_begin), e il canale di log (fn_log_error_only,
+#   fn_ensure_logconn) e' fra le funzioni che il registro protegge. Nessun
+#   operatore lo vede: nessuno in backend/ chiama la sync. Niente codice a
+#   catalogo.
+#
+# ── ⭐ IL GIRO DELLA COPIA DI SERVIZIO, come 20260912-41 ───────────────────
+#   La sync e' di postgres e non si presta a se' stessa: una seconda DEFINER
+#   di postgres (la copia `_boot`, dalla definizione VIVA) fa il prestito e la
+#   restituzione. La guardia non rompe il giro: ai passi 2 e 6 chiama il
+#   migratore, che possiede `dbops`. Da zero (CI: la sync non e' ancora di
+#   postgres) ogni passaggio di owner e' un no-op con WARNING, il CREATE OR
+#   REPLACE e' dell'owner, e la provision-post indurisce dopo.
+#
+# Corpo dalla doc auto-gen (= vivo, 20260912-41) + la guardia; search_path
+# IDENTICO (test-security-definer-search-path-v1, test 3, pretende quella forma).
+# Presidio: db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql (come app)
+# e db/pgtap/dbops/test-sec-functions-owner-migratore-passa-v1.sql (come owner).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260926-11-update-fn-sync-functions-owner-riservata-al-migratore-mctit.yaml
+
+  - changeSet:
+      id: 20260926-11-update-fn-sync-functions-owner-riservata-al-migratore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_sync_functions_owner: guardia in testa al corpo — la esegue solo chi
+        possiede lo schema dbops (il migratore) o un superuser, letto da session_user
+        (dentro una DEFINER current_user e' il proprietario). Rifiuto 42501 nudo, fuori
+        dal canale di log. Sostituita dal migratore con la copia di servizio, come
+        20260912-41. Brief: brief-db-registro-owner-e-sync-riservati-al-migratore §2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_sync_functions_owner'
+                 AND pg_catalog.pg_get_function_identity_arguments(p.oid) = '';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ========================================================
+              -- 1) LA COPIA DI SERVIZIO, dalla definizione VIVA (vedi testata)
+              -- ========================================================
+              DO $boot$
+              DECLARE
+                  v_def text;
+              BEGIN
+                  v_def := pg_get_functiondef('dbops.fn_sync_functions_owner()'::regprocedure);
+                  v_def := replace(v_def,
+                                   'FUNCTION dbops.fn_sync_functions_owner()',
+                                   'FUNCTION dbops.fn_sync_functions_owner_boot()');
+                  EXECUTE v_def;
+              END
+              $boot$;
+
+              -- 2) la copia passa a postgres attraverso la sync VIVA
+              INSERT INTO dbops.sec_functions_owner
+                  (id, schema_name, function_name, arg_types, required_owner, note)
+              SELECT max(s.id) + 1, 'dbops', 'fn_sync_functions_owner_boot', '', 'postgres',
+                     'temporanea: 20260926-11'
+                FROM dbops.sec_functions_owner s;
+
+              SELECT dbops.fn_sync_functions_owner();
+
+              -- 3) prestito dell'ORIGINALE al migratore, attraverso la COPIA
+              INSERT INTO dbops.sec_functions_owner
+                  (id, schema_name, function_name, arg_types, required_owner, note)
+              SELECT max(s.id) + 1, 'dbops', 'fn_sync_functions_owner', '', current_user,
+                     'temporanea: 20260926-11'
+                FROM dbops.sec_functions_owner s;
+
+              SELECT dbops.fn_sync_functions_owner_boot();
+
+              -- Il prestito non solleva mai (la sync degrada a WARNING): se non e'
+              -- riuscito lo si dice qui, non trecento righe piu' in la' come un
+              -- generico «bisogna essere proprietari». Da zero (CI) l'originale e'
+              -- gia' del migratore: il controllo passa uguale.
+              DO $prestito$
+              BEGIN
+                  IF (SELECT pg_catalog.pg_get_userbyid(p.proowner)
+                        FROM pg_catalog.pg_proc p
+                       WHERE p.oid = 'dbops.fn_sync_functions_owner()'::regprocedure)
+                     IS DISTINCT FROM current_user THEN
+                      RAISE EXCEPTION USING
+                          ERRCODE = 'insufficient_privilege',
+                          MESSAGE = format('20260926-11: il prestito di dbops.fn_sync_functions_owner() a %s non e'' riuscito (vedi i WARNING della copia di servizio).', current_user);
+                  END IF;
+              END
+              $prestito$;
+
+              -- 4) l'originale, con la guardia in testa
+              CREATE OR REPLACE FUNCTION dbops.fn_sync_functions_owner()
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  r              dbops.sec_functions_owner%ROWTYPE;
+                  v_regproc      regprocedure;
+                  v_owner_oid    oid;
+                  v_owner_name   text;
+                  v_required_oid oid;
+              BEGIN
+
+              -- ------------------------------------------------------------
+              -- dbops.fn_sync_functions_owner()
+              -- Sincronizza l'owner delle funzioni "sensibili" in base alla
+              -- tabella dbops.sec_functions_owner.
+              --
+              -- NOTE:
+              --  - Va idealmente posseduta da postgres e SECURITY DEFINER
+              --    per poter cambiare owner ad altre funzioni.
+              --  - RISERVATA al migratore (dal 2026-09-26): chi la esegue decide
+              --    chi possiede le DEFINER di postgres. La guardia sta QUI e non
+              --    nell'ACL: EXECUTE a PUBLIC resta, e con la guardia non compra
+              --    niente. Brief: brief-db-registro-owner-e-sync-riservati-al-migratore.
+              -- ------------------------------------------------------------
+
+                  -- ⛔ session_user, NON current_user: dentro una SECURITY DEFINER
+                  --    current_user e' il PROPRIETARIO (postgres, superuser) e la
+                  --    guardia sarebbe sempre aperta. Limite dichiarato: session_user
+                  --    e' il ruolo di LOGIN, un SET ROLE non lo cambia.
+                  --    Passa chi e' membro del proprietario dello schema dbops (il
+                  --    migratore, in ogni ambiente) e un superuser. Fail-closed:
+                  --    una risposta NULL rifiuta.
+                  -- ⛔ Il rifiuto e' un RAISE nudo (42501), fuori dal canale di log:
+                  --    fn_log_error_only e fn_ensure_logconn sono fra le funzioni che
+                  --    questa sync protegge.
+                  IF NOT COALESCE(
+                         pg_catalog.pg_has_role(
+                             session_user,
+                             (SELECT n.nspowner FROM pg_catalog.pg_namespace n WHERE n.nspname = 'dbops'),
+                             'MEMBER')
+                      OR (SELECT a.rolsuper FROM pg_catalog.pg_roles a WHERE a.rolname = session_user),
+                         false)
+                  THEN
+                      RAISE EXCEPTION USING
+                          ERRCODE = 'insufficient_privilege',
+                          MESSAGE = format('dbops.fn_sync_functions_owner: riservata a chi possiede lo schema dbops (il migratore) o a un superuser; sessione %s.', session_user),
+                          HINT    = 'Si esegue dal migrate (90_end/20251123-04) o dalla provision-post. Il registro dbops.sec_functions_owner lo scrive solo il migratore.';
+                  END IF;
+
+                  FOR r IN
+                      SELECT *
+                      FROM dbops.sec_functions_owner
+                      ORDER BY schema_name, function_name, arg_types
+                  LOOP
+                      -- Costruisco la signature per to_regprocedure:
+                      -- se arg_types = '' → nessun argomento
+                      IF r.arg_types = '' THEN
+                          v_regproc := to_regprocedure(
+                              format('%I.%I()',
+                                  r.schema_name,
+                                  r.function_name)
+                          );
+                      ELSE
+                          v_regproc := to_regprocedure(
+                              format('%I.%I(%s)',
+                                  r.schema_name,
+                                  r.function_name,
+                                  r.arg_types)
+                          );
+                      END IF;
+
+                      IF v_regproc IS NULL THEN
+                          RAISE WARNING
+                              'fn_sync_functions_owner: funzione non trovata: %.%(%).',
+                              r.schema_name, r.function_name, r.arg_types;
+                          CONTINUE;
+                      END IF;
+
+                      -- Owner corrente
+                      SELECT p.proowner, pg_get_userbyid(p.proowner)
+                      INTO v_owner_oid, v_owner_name
+                      FROM pg_proc p
+                      WHERE p.oid = v_regproc;
+
+                      -- Owner richiesto
+                      SELECT oid
+                      INTO v_required_oid
+                      FROM pg_roles
+                      WHERE rolname = r.required_owner;
+
+                      IF v_required_oid IS NULL THEN
+                          RAISE WARNING
+                              'fn_sync_functions_owner: ruolo richiesto "%" non esiste (%.%(%)).',
+                              r.required_owner, r.schema_name, r.function_name, r.arg_types;
+                          CONTINUE;
+                      END IF;
+
+                      -- Se già coincide → niente da fare
+                      IF v_owner_oid = v_required_oid THEN
+                          CONTINUE;
+                      END IF;
+
+                      -- TENTO ALTER FUNCTION OWNER TO ...
+                      BEGIN
+                          EXECUTE format(
+                              'ALTER FUNCTION %s OWNER TO %I',
+                              v_regproc,
+                              r.required_owner
+                          );
+
+                          RAISE NOTICE
+                              'fn_sync_functions_owner: cambiato owner funzione %.%(%): % -> %.',
+                              r.schema_name, r.function_name, r.arg_types,
+                              v_owner_name, r.required_owner;
+
+                      EXCEPTION
+                          WHEN insufficient_privilege THEN
+                              RAISE WARNING
+                                  'fn_sync_functions_owner: privilegi insufficienti per ALTER FUNCTION %.%(%): owner attuale %, richiesto %.',
+                                  r.schema_name, r.function_name, r.arg_types,
+                                  v_owner_name, r.required_owner;
+                          WHEN others THEN
+                              RAISE WARNING
+                                  'fn_sync_functions_owner: errore inatteso su funzione %.%(%): % %.',
+                                  r.schema_name, r.function_name, r.arg_types,
+                                  SQLSTATE, SQLERRM;
+                      END;
+                  END LOOP;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_sync_functions_owner()
+              IS 'Allinea il proprietario delle funzioni elencate in dbops.sec_functions_owner al ruolo richiesto (ALTER FUNCTION ... OWNER TO). Eseguita a ogni migrate (90_end/20251123-04) e dalla passata provision-post come postgres (90_end/20251123-12). SECURITY DEFINER di postgres: dal 2026-09-12 (D6) con search_path pinnato a pg_catalog, public, pg_temp — il pin sta nella definizione, un CREATE OR REPLACE che lo dimentica lo azzera. Dal 2026-09-26 RISERVATA AL MIGRATORE con una guardia nel corpo: la esegue solo chi è membro del proprietario dello schema dbops, o un superuser; gli altri ricevono 42501 (RAISE nudo, fuori dal canale di log che la sync protegge). Il chiamante si legge da session_user, perché dentro una DEFINER current_user è il proprietario: limite dichiarato, session_user è il ruolo di login e un SET ROLE non lo cambia. EXECUTE a PUBLIC resta per scelta: la difesa non è nell''ACL, che il loop dei grant riscrive e il cambio di proprietario rimappa. Il registro è in sola lettura per l''applicazione (90_end/20260926-12). Brief: brief-db-registro-owner-e-sync-riservati-al-migratore.';
+
+              -- 5) restituzione dell'originale a postgres, attraverso la COPIA
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = 'postgres'
+               WHERE schema_name = 'dbops' AND function_name = 'fn_sync_functions_owner'
+                 AND arg_types = '' AND note = 'temporanea: 20260926-11';
+
+              SELECT dbops.fn_sync_functions_owner_boot();
+
+              -- 6) l'ORIGINALE (di nuovo di postgres, e con la guardia) riprende la
+              --    copia al migratore, che la droppa; via le righe temporanee.
+              --    La guardia lascia passare: chi chiama e' il migratore, che
+              --    possiede dbops — ed e' la prima prova che non si chiude fuori.
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = current_user
+               WHERE schema_name = 'dbops' AND function_name = 'fn_sync_functions_owner_boot'
+                 AND note = 'temporanea: 20260926-11';
+
+              SELECT dbops.fn_sync_functions_owner();
+
+              DROP FUNCTION dbops.fn_sync_functions_owner_boot();
+
+              DELETE FROM dbops.sec_functions_owner
+               WHERE note = 'temporanea: 20260926-11';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente (senza guardia) e' nella doc auto-gen alla
+              -- revisione prima di questa (20260912-41). Non si riscrive un corpo
+              -- stantio.
+              SELECT 1;

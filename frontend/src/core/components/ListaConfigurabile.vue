@@ -55,6 +55,7 @@
 //       <Tag :value="data.stato_descrizione" :severity="statoClienteSeverity(data.stato_codice)" />
 //     </template>
 //     <template #actions="{ data }">
+//       <!-- il kebab sotto spazio stretto arriva da se' (`CellaAzioniRiga`) -->
 //       <RowActionsMenu :row="data" :actions="buildActions(data)" />
 //     </template>
 //   </ListaConfigurabile>
@@ -90,7 +91,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
 import Button from 'primevue/button'
-import { PAGINATION } from '../constants'
+import { MANAGE_ICONS } from '../constants'
 import { etichettaColonna } from '../utils/i18nLabel'
 import { useListaConfig } from '../composables/useListaConfig'
 import {
@@ -99,8 +100,10 @@ import {
   DEFAULT_COL_WIDTH,
   DEFAULT_ACTIONS_INLINE_COUNT,
 } from '../composables/useResponsiveColumns'
+import CellaAzioniRiga from './CellaAzioniRiga.vue'
 import CellaConfigurabile, { testoCella } from './CellaConfigurabile.vue'
 import ListaColonneModal from './ListaColonneModal.vue'
+import { USO_MISURA, misuraDefault, misureOpzioni } from '../misurePagina'
 
 // Default paginator allineato al pattern lista standard
 // (paginatorPosition=top, JumpToPageDropdown 1/N, font compatto).
@@ -120,7 +123,7 @@ const _DEFAULT_PAGINATOR_OPTIONS = Object.freeze({
     'FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink ' +
     'RowsPerPageDropdown JumpToPageDropdown CurrentPageReport',
   currentPageReportTemplate: '{currentPage}/{totalPages}',
-  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+  rowsPerPageOptions: misureOpzioni(),
 })
 
 // Ordine dei NULL nell'ordinamento LOCALE (modalita' non paginata).
@@ -530,7 +533,7 @@ function comprimiTutte() {
 //   1. quello che il CALLER dichiara (`paginatorOptions.rows`) — e' lo stato con
 //      cui ha appena fatto la fetch, quindi e' l'unica verita';
 //   2. la config BE (preferenza/preset) — vale finche' il caller non ne ha uno;
-//   3. `PAGINATION.DEFAULT_ROWS`.
+//   3. la misura di pagina del catalogo (`misuraDefault(USO_MISURA.PAGINA)`).
 //
 // ⛔ FINO AL 2026-08-28 IL CALLER NON ERA NELLA CASCATA, e la paginazione
 //    SALTAVA. `pageSize` era una computed sulla SOLA config, quindi la scelta
@@ -545,7 +548,7 @@ function comprimiTutte() {
 const pageSize = computed(
   () => props.paginatorOptions?.rows
     ?? config.value?.pagina_dimensione
-    ?? PAGINATION.DEFAULT_ROWS,
+    ?? misuraDefault(USO_MISURA.PAGINA),
 )
 // Offset 0-based del paginator, con la stessa cascata e per la stessa ragione:
 // se il caller dichiara `first`, quello E' la posizione — ricalcolarla qui da
@@ -763,7 +766,7 @@ defineExpose({
             severity="info"
             size="small"
             :label="t('lista_config.preset_aggiornato_vedi_novita')"
-            icon="pi pi-eye"
+            :icon="MANAGE_ICONS.NOVITA"
             :disabled="configLoading"
             @click="onSeePresetUpdate"
           />
@@ -901,8 +904,14 @@ defineExpose({
         :exportable="false"
         class="app-col-actions"
       >
+        <!-- ⭐ `CellaAzioniRiga` consegna `actionsCompact` a `RowActionsMenu`
+             da se' (`useAzioniRigaCompatte`): il caller non deve piu' girare
+             lo scope `compact`, e dimenticarlo non da' piu' la scrollbar.
+             Lo scope resta, per i caller che rendono altro. -->
         <template #body="{ data }">
-          <slot name="actions" :data="data" :compact="actionsCompact" />
+          <CellaAzioniRiga :compact="actionsCompact">
+            <slot name="actions" :data="data" :compact="actionsCompact" />
+          </CellaAzioniRiga>
         </template>
       </Column>
 

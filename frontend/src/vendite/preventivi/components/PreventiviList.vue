@@ -14,9 +14,8 @@ import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { exportPreventivi } from '../api/preventiviApi'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
 import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
-import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import InputText from 'primevue/inputtext'
-import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
@@ -34,6 +33,8 @@ import FiltroToggle from '../../../core/components/FiltroToggle.vue'
 import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
+import FiltroPeriodo from '../../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -53,11 +54,11 @@ const {
 })
 
 // --- Filtri custom (toolbar caller) — binding store via BB (B14) ---
-const { bindSelect, bindDate, bindToggle } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindToggle, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato')
 const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 // Toggle «mostra storico revisioni»: la NEGAZIONE del filtro dello store —
 // acceso ⇔ `solo_ultima_revisione = false`, spento ⇔ `true` (il default).
 // `bindToggle` con i due valori dichiarati: il widget resta un booleano.
@@ -137,30 +138,29 @@ onMounted(() => store.fetchList())
       <!-- Toolbar UNICA esterna (pattern lista standard): filtri a sinistra,
            PageActionsBar a destra. -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText v-model="searchText" :placeholder="t('vendite.preventivi.search_placeholder')" style="width: 260px;" />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t('vendite.preventivi.search_placeholder')"  />
+          </template>
           <LookupSelect v-model="statoFilter" rel="config.stati_doc_preventivi" value-field="codice_interno"
-            :placeholder="t('vendite.preventivi.filtro_stato')" show-clear @change="onStatoChange" style="width: 160px;" />
+            class="app-filter-w-md"
+            :placeholder="t('vendite.preventivi.filtro_stato')" show-clear @change="onStatoChange"  />
           <UtilityPerRuoloSelect
             v-model="utilityFilter"
+            class="app-filter-w-md"
             :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
             :placeholder="t('vendite.preventivi.filtro_utility')"
             show-clear
             apply-default
             @change="onUtilityChange"
           />
-          <DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataDaChange" @clear-click="onDataDaChange" />
-          <DatePicker v-model="dataAlFilter" :placeholder="t('common.data_a')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataAlChange" @clear-click="onDataAlChange" />
+          <FiltroPeriodo :periodo="periodo" />
           <FiltroToggle
             v-model="mostraStorico"
             :label="t('vendite.preventivi.filtro_mostra_storico')"
             @change="onMostraStoricoChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
@@ -203,8 +203,8 @@ onMounted(() => store.fetchList())
             :fase="data.frontiera_fase" :n-attivi="data.n_discendenti_attivi" />
         </template>
 
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </ListaConfigurabile>
     </template>
@@ -221,6 +221,7 @@ onMounted(() => store.fetchList())
       v-model:visible="pdfDialogVisible"
       sorgente-code="PREVENTIVO"
       :sorgente-id="pdfDialogPreventivo?.id ?? null"
+      :emittente-fiscale-id="pdfDialogPreventivo?.emittente_fiscale_id ?? null"
       :title="pdfDialogPreventivo
         ? t('vendite.preventivi.pdf.dialog_title', { numero: pdfDialogPreventivo.numero })
         : ''"

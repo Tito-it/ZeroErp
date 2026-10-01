@@ -65,7 +65,7 @@ applicabili, uno per riga, con indicazione di priorità.
 | Colonna | Semantica |
 |---------|-----------|
 | `profilo_accesso_id` | FK a `config.profili_accesso.id` |
-| `priorita` | `1` = AD_HOC (override personale); `2` = REPARTO / PORTALE (default di gruppo) |
+| `priorita` | `1` = AD_HOC (override personale); `2` = REPARTO (default dell'unità organizzativa); `3` = PORTALE (default della veste). Dal 25-09-2026: prima REPARTO e PORTALE valevano entrambi `2` |
 
 ---
 
@@ -85,16 +85,7 @@ Filtri:
 - `profili_accesso_bindings.attivo = true`
 - `profili_accesso.attivo = true` e `tipo = 'AD_HOC'`
 
-#### 2. `PORTALE` (priorità 2)
-
-Binding per `ruolo_applicativo` dell'identità dell'utente. Rappresenta il
-**default** per un tipo di portale (`CLIENTE_PORTALE_STANDARD`,
-`FORNITORE_PORTALE_STANDARD`, `SHOP_CUSTOMER_STANDARD`).
-
-Filtri uguali al ramo AD_HOC, con `tipo = 'PORTALE'` e `JOIN` su
-`pab.ruolo_applicativo = id.ruolo_applicativo`.
-
-#### 3. `REPARTO` (priorità 2)
+#### 2. `REPARTO` (priorità 2)
 
 Binding per `unita_organizzativa_id` dell'operatore interno, risolta via
 `risorse_umane.soggetto_ruolo_id = identita_digitali.soggetto_ruolo_id` →
@@ -103,6 +94,23 @@ Binding per `unita_organizzativa_id` dell'operatore interno, risolta via
 Filtri aggiuntivi:
 - `ruolo_applicativo = 'OPERATORE'` (solo operatori)
 - `risorse_umane.attivo = true`
+
+#### 3. `PORTALE` (priorità 3)
+
+Binding per `ruolo_applicativo` dell'identità dell'utente. Rappresenta il
+**default** di una veste: i preset di portale e shop
+(`CLIENTE_PORTALE_STANDARD`, `FORNITORE_PORTALE_STANDARD`,
+`SHOP_CUSTOMER_STANDARD`) e, volendo, un profilo base per tutti gli
+operatori (binding sulla veste `OPERATORE`, che il guard di coerenza ammette).
+
+Filtri uguali al ramo AD_HOC, con `tipo = 'PORTALE'` e `JOIN` su
+`pab.ruolo_applicativo = id.ruolo_applicativo`.
+
+⭐ **Perché 3 e non 2** (decisione D-3 di Tid, 25-09-2026,
+`brief-db-pgtap-permessi-ereditati`): sotto la veste `OPERATORE` un PORTALE
+di veste e il REPARTO possono coesistere, e a pari priorità lo spareggio
+sceglieva a caso. Vale la regola della guida dei permessi (§3): il più
+specifico vince, e l'unità organizzativa è più specifica della veste.
 
 ---
 
@@ -131,38 +139,33 @@ SELECT script.fn_get_profili_accesso_applicabili(
 );
 ```
 
-**Stato corrente (04-05-2026):** i 4 resolver chiamanti
+**Stato corrente (25-09-2026):** i 4 resolver da operatore
 (`fn_resolve_livello_area`, `fn_check_azione_processo`,
-`fn_get_user_permissions_map`, `fn_get_user_actions_map`) **NON** passano
-ancora il parametro — continuano a funzionare in modalita' default
-(tutte le vesti). Il pass-through del GUC `app.ruolo_applicativo` e'
-rinviato al primo momento in cui il BE tocca i chiamanti, per evitare
-cambio comportamento globale senza coordinamento. Fino a quel momento
-l'isolamento veste e' garantito da (a) permission class per namespace,
-(b) `fn_is_super_admin` filtrato OPERATORE.
+`fn_get_user_permissions_map`, `fn_get_user_actions_map`) non chiamano più
+questa funzione: leggono l'ereditato da
+`script.fn_get_permessi_ereditati_aree` / `_azioni`, che la chiamano con
+`'OPERATORE'` (D-1 di `brief-db-pgtap-permessi-ereditati`). Fino al 25-09
+passavano `NULL`, e un operatore che era anche cliente shop o portale
+riceveva nei permessi da operatore il profilo di quell'altra veste.
+Chiamano ancora con `NULL`: `PermissionResolver.has_profilo_applicabile_per_area`
+del backend (da rileggere, §5 del brief).
 
 ---
 
 ### Regola di selezione nelle funzioni resolver
 
-Le funzioni che usano questo helper applicano il pattern:
-
-```sql
-SELECT <livello|abilitata>
-  FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
-  JOIN config.profili_accesso_aree paa  -- o profili_accesso_azioni
-    ON paa.profilo_accesso_id = h.profilo_accesso_id
- WHERE paa.area_id = <area_target>
- ORDER BY h.priorita
- LIMIT 1;
-```
-
-`ORDER BY h.priorita LIMIT 1` garantisce che:
+Lo spareggio «per ogni area/azione vince il profilo di priorità più bassa»
+ha **una sede sola** dal 25-09-2026: `script.fn_get_permessi_ereditati_aree`
+e `script.fn_get_permessi_ereditati_azioni`. I resolver e il pannello
+permessi del backend la leggono, non la riscrivono (lo presidia
+`db/pgtap/script/test-fn-get-permessi-ereditati-v1.sql`, test 4).
 
 * Se esiste un profilo AD_HOC che definisce l'area/azione → vince (priorità 1).
-* Altrimenti si pesca dal profilo REPARTO/PORTALE (priorità 2).
+* Altrimenti il REPARTO (priorità 2), poi il PORTALE di veste (priorità 3).
 
-Se non esiste neppure quello, il resolver ritorna `BLOCCATO` / `false`.
+Sotto una sola veste ogni priorità ha al massimo un profilo (indici unici dei
+binding, di `risorse_umane` e di `identita_digitali`), quindi lo spareggio è
+determinato. Se non c'è nessun profilo, il resolver ritorna `BLOCCATO` / `false`.
 
 ---
 

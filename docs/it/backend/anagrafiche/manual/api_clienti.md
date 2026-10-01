@@ -41,7 +41,7 @@ via `parse_list_params`.
 
 | Query param | Tipo | Note |
 | --- | --- | --- |
-| `search` | str | ILIKE su ragione sociale / CF / P.IVA / codice BA / codice soggetto (min 3 char) |
+| `search` | str | Ricerca libera sulle colonne che il catalogo della lista `anagrafiche.clienti` accende per l'operatore (le decide il catalogo, non il codice: `ricerca_full` nella configurazione della lista). Sotto 3 caratteri non filtra (nessun 400). Vale anche per l'export |
 | `utility_id` | int | Filtra per utility |
 | `stato_cliente_id` | int | Filtra per stato cliente |
 | `limit`/`offset`/`order_by`/`order_dir` | — | Paginazione/ordinamento standard |
@@ -105,7 +105,7 @@ una scelta che non aveva effetto.
 | --- | --- | --- |
 | `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id`/`utility_id`/`ba_categoria_cliente_id` mancanti; utility con PDP in creazione manuale |
 | `E_ANAG_NOT_FOUND` | 404 | `istanza_utility_id`/`billing_account_id` pre-esistenti non trovati |
-| `E_BA_ADMIN_GLOBALE_VIETATO` | 403 | Admin globale che crea BA con emittenti fiscali presenti (operare come operatore di un emittente) |
+| `E_BA_ADMIN_GLOBALE_VIETATO` | 403 | Creazione BA senza un emittente fiscale di lavoro (super admin in «Tutti gli emittenti») con emittenti presenti: scegliere l'emittente in alto |
 | `E_ANAG_DUPLICATO` | 409 | Esiste già un cliente per l'istanza (`uq_clienti_istanza_utility`) |
 
 Risposta `200`: `{ id, istanza_utility_id, billing_account_id, soggetto_ruolo_id }`.

@@ -42,7 +42,7 @@ def fetch_emittenti_scope_ids(
 ) -> list[int] | None:
     fn = _SCOPE_FN_BY_CONVENTION[convention]
     with connection.cursor() as cursor:
-        cursor.execute(f"SELECT {fn}(%s)", [auth_user_id])  # noqa: S608 — fn da whitelist
+        cursor.execute(f"SELECT {fn}(%s)", [auth_user_id])  # fn da whitelist
         row = cursor.fetchone()
     if row and row[0] is not None:
         return list(row[0])
@@ -75,7 +75,7 @@ def add_emittente_scope_condition_risolta(
         raise ValueError(f"colonna scope non valida: {column!r}")
     if scope_ids is None:
         return
-    conditions.append(f"{column} = ANY(%s)")  # noqa: S608 — colonna da whitelist regex
+    conditions.append(f"{column} = ANY(%s)")  # colonna da whitelist regex
     params.append(scope_ids)
 
 

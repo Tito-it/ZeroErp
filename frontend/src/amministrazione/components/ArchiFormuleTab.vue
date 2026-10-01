@@ -55,7 +55,7 @@ const form = reactive({
   attivo: true,
 })
 watch(
-  [() => coll.formMode.value, () => coll.rowInForm.value?.id],
+  [() => coll.formMode.value, () => coll.rigaInModifica.value?.id],
   () => {
     if (coll.formMode.value === 'create') {
       Object.assign(form, {
@@ -68,7 +68,7 @@ watch(
         attivo: true,
       })
     } else if (coll.formMode.value === 'edit') {
-      const r = coll.rowInForm.value
+      const r = coll.rigaInModifica.value
       Object.assign(form, {
         template_flusso_da_id: r?.template_flusso_da_id ?? null,
         template_flusso_a_id: r?.template_flusso_a_id ?? null,

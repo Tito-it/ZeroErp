@@ -10,7 +10,7 @@
 --  3) ⭐ zero punti NON CLASSIFICATI — un presidio che non sa leggere un sito
 --        deve diventare ROSSO, non saltarlo
 --  4) il debito FUORI perimetro non cresce (soglia 6, puo' solo calare)
---  5) le diciannove funzioni bonificate CHIAMANO davvero l'helper (una
+--  5) le venticinque funzioni bonificate CHIAMANO davvero l'helper (una
 --        chiamata, non una menzione: i commenti sono fuori dal conteggio)
 --  6) ⚠️ il marcatore non e' troppo LARGO: un codice LETTERALE resta fuori
 --  7) ⭐⭐ la canarina: il marcatore non e' troppo STRETTO
@@ -154,7 +154,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    20,
+    30,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -174,7 +174,47 @@ SELECT is(
     --   pagamenti.trgfn_vendite_contabili_guard_validazione (20260918-37,
     --   D20-a, brief-db-validata-e-registrazione-tardiva), che entrando in
     --   VALIDATA solleva il primo motivo di script.fn_check_contabile_validabile.
-    'le venti funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-09-22: da 20 a 21. Un sito NUOVO, e nasce da una bonifica vera:
+    --   magazzino.fn_posta_rettifica (20260922-21, R-1 del Lotto 2-bis) non
+    --   controllava piu' stato e righe nel proprio corpo — li chiede a
+    --   script.fn_check_documento_interno_registrabile, la STESSA funzione da cui
+    --   la capability del drawer accende «Registra», e ne solleva il primo motivo.
+    --   La gemella fn_posta_inventario era gia' nel conto dal 18-09 (chiamava
+    --   l'helper sul motivo di riga) e non si muove: si conta la FUNZIONE, non le
+    --   chiamate.
+    -- ⭐ 2026-09-24: da 21 a 23. Due siti NUOVI nati sull'helper col building
+    --   block dei prezzi non autorizzati (brief-db-preventivi-congelamento-
+    --   pricing): vendite.trgfn_contratti_guard_transizione_stato (20260924-25,
+    --   verso ATTIVO) e vendite.trgfn_offerte_commerciali_guard_transizione
+    --   (20260924-27, verso EMESSA e ACCETTATA), che sollevano il primo motivo di
+    --   script.fn_check_prezzi_autorizzati. Il contratto sostituisce un codice
+    --   letterale (E_COMPONENTE_PREZZO_PENDENTE), l'offerta un controllo che non
+    --   c'era. Le altre due chiamate nuove dello stesso giro — Regola 3 di
+    --   trgfn_preventivi_guard_transizione (-22) e Regola 5 di
+    --   trgfn_ordini_guard_transizione (-29) — stanno in funzioni gia' nel conto:
+    --   si conta la FUNZIONE, non le chiamate.
+    -- ⭐ 2026-09-24 (sera): da 23 a 25. Due siti NUOVI nati sull'helper: le
+    --   madri delle revisioni vendite.fn_crea_revisione_preventivo (20260924-34)
+    --   e vendite.fn_crea_revisione_offerta (20260924-35), che rifiutano una
+    --   revisione col primo motivo di script.fn_check_prezzi_in_attesa (§10 del
+    --   brief-db-preventivi-congelamento-pricing).
+    -- ⭐ 2026-09-28: da 25 a 26. Un sito NUOVO, e nasce da un'estrazione:
+    --   vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle
+    --   (20260928-31) non contiene piu' il predicato del figlio di bundle — lo
+    --   chiede a script.fn_check_esclusione_articolo_contratto (20260928-29), la
+    --   stessa funzione con cui fn_contratto_righe_preview spegne «Escludi», e ne
+    --   solleva il primo motivo (brief-db-liste-righe-documento §8.13).
+    -- ⭐ 2026-09-28 (Lotto 3 di magazzino): da 26 a 29. Tre siti NUOVI nati
+    --   sull'helper (brief-db-magazzino-lotto-3-scarico-da-ddt):
+    --   vendite.fn_cambia_stato_ddt (20260928-75, primo motivo di
+    --   script.fn_check_ddt_merce all'emissione), magazzino.fn_posta_trasferimento
+    --   (20260928-79, di script.fn_check_documento_interno_registrabile) e
+    --   magazzino.fn_apri_blocco (20260928-80, di script.fn_check_riga_magazzino).
+    -- ⭐ 2026-09-28 (Lotto 3-bis di magazzino): da 29 a 30. Un sito NUOVO:
+    --   vendite.fn_conferma_reso (20260928-95), che alla conferma di un reso che
+    --   fa rientrare merce solleva il primo motivo di script.fn_check_reso_merce
+    --   (brief-db-magazzino-lotto-3-bis-carico-da-reso).
+    'le trenta funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

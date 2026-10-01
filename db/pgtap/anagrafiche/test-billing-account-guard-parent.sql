@@ -13,8 +13,9 @@
 --   4) Attivita fatturata → rimozione parent_account_id → OK
 --   5) BA figlio senza attivita → rimozione parent_account_id → OK
 --
--- Nota: usa un soggetto esistente dal DB per evitare la complessita
---       di creare soggetto + contatto + indirizzi dai guard obbligatori.
+-- Nota: il soggetto e' il cliente costruito da dbops.fn_pgtap_crea_mondo_cliente
+--       (2026-09-23): prima lo si pescava «per evitare la complessita' di
+--       creare soggetto + contatto + indirizzi», che ora e' del builder.
 -- ------------------------------------------------------------
 
 -- =========================================================
@@ -113,18 +114,26 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(7);
 
 -- =========================================================
--- 0) Precondizioni: recupera riferimenti esistenti dal DB
+-- 0) Precondizioni: il cliente si COSTRUISCE, i cataloghi si scelgono
 -- =========================================================
+-- ⛔ 2026-09-23: soggetto, ruolo e utility venivano PESCATI da «un billing
+--   account senza padre», e l'articolo da «l'ultimo inserito». Su un database
+--   ricostruito dai changelog i billing account sono zero: la fixture moriva
+--   sul NOT NULL di `istanze_utilities.soggetto_id`. Il soggetto del mondo e'
+--   un cliente vero dell'azienda di chi agisce (contesto aperto sopra: il BB
+--   riusa la sua azienda), e le tre istanze qui sotto sono sue.
+CREATE TEMP TABLE tmp_mondo_guard_parent AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('guard parent');
+
 CREATE TEMP TABLE tmp_refs_guard_parent AS
 SELECT
-    iu_ref.soggetto_id,
-    ba_ref.soggetto_ruolo_id,
-    ba_ref.utility_id,
-    (SELECT a.id
-       FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE
-      ORDER BY a.data_insert DESC NULLS LAST
-      LIMIT 1) AS articolo_id,
+    m.cliente_soggetto_id       AS soggetto_id,
+    m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
+    m.utility_id,
+    -- ⚠️ Non gestito a magazzino: il caso e' il guard del parent, non il
+    --   movimento dell'articolo.
+    dbops.fn_pgtap_crea_articolo('PGTAP-GPAR-' || m.billing_account_id,
+                                 p_gestito := false) AS articolo_id,
     (SELECT u.id
        FROM catalogo.unita_misura u
       WHERE u.attivo IS TRUE
@@ -139,12 +148,7 @@ SELECT
        FROM config.valute v
       ORDER BY v.id
       LIMIT 1) AS valuta_id
-FROM anagrafiche.billing_account ba_ref
-JOIN anagrafiche.istanze_utilities iu_ref ON iu_ref.id = ba_ref.istanza_utility_id
-WHERE ba_ref.parent_account_id IS NULL
-  AND ba_ref.utility_id IS NOT NULL
-ORDER BY ba_ref.id
-LIMIT 1;
+FROM tmp_mondo_guard_parent m;
 
 SELECT ok(
     (SELECT soggetto_id IS NOT NULL

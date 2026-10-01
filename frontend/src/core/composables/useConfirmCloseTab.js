@@ -25,9 +25,9 @@ export function useConfirmCloseTab() {
 
     if (tab.dirty) {
       confirmAction({
-        header: t('tabs.close_confirm_title'),
-        message: t('tabs.close_confirm_message'),
-        acceptLabel: t('tabs.close_confirm_accept'),
+        header: t('common.modifiche_non_salvate.titolo'),
+        message: t('common.modifiche_non_salvate.messaggio'),
+        acceptLabel: t('common.modifiche_non_salvate.chiudi'),
         onAccept: () => closeTabAndNavigate(tab),
       })
       return

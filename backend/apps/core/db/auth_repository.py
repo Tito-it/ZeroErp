@@ -5,8 +5,13 @@
 # Scopo: Building block repository per auth_user (Django).
 # Chiama anagrafiche.fn_crea_auth_user per creare un utente
 # Django con guard unicita' username/email.
-# Gestisce anche il blocco login per tentativi falliti
-# (fn_check_blocco_login, fn_registra_tentativo_login).
+# Gestisce anche lo stato della credenziale (config.credenziali, P-1 del
+# brief-db-blocco-login-per-credenziale): freno sui tentativi falliti per
+# credenziale + provenienza, attesa crescente, cambio password obbligatorio.
+# Per un nome che non trova una credenziale lo stesso freno vale sul nome
+# tentato (config.nomi_tentati, R-7 §13): la chiave la sceglie il DB.
+# ⛔ Nessun SQL diretto su quelle tabelle (chiuse all'app in scrittura): solo
+# le funzioni del DB, che sono la sede unica di «riga assente = niente stato».
 # Riusabile da qualsiasi dominio che necessiti un utente Django.
 # ------------------------------------------------------------
 
@@ -15,9 +20,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from django.contrib.auth.hashers import is_password_usable
 from django.db import connection
 
-from apps.core.db._helpers import fetchone_scalar, jsonb_out
+from apps.core.db._helpers import fetchone_scalar, jsonb_out, row_to_dict, rows_to_list
 
 
 class AuthRepository:
@@ -48,28 +54,49 @@ class AuthRepository:
             cursor.execute(sql, params)
             return fetchone_scalar(cursor)
 
-    # Scopo: Verifica se l'utente e' bloccato per tentativi falliti.
-    # Lancia errore DB (E_UTENTE_BLOCCATO) se blocco attivo.
-    # Se blocco scaduto, lo resetta automaticamente.
-    def check_blocco_login(self, auth_user_id: int) -> None:
+    # Scopo: Dice se il nome tentato puo' provare ad entrare da questa provenienza.
+    # Solleva dal DB, nell'ordine: E_CREDENZIALE_BLOCCATA (blocco dell'admin),
+    # E_UTENTE_BLOCCATO (freno su questa provenienza), E_LOGIN_ATTESA (attesa
+    # crescente). La chiave la sceglie il DB (R-7, brief §13.1): la credenziale
+    # se `auth_user_id` c'e', altrimenti l'impronta del nome — quindi si chiama
+    # SEMPRE, anche per un nome che non trova niente. `nome_digest` = 32 byte
+    # (`nome_tentato.digest_nome_tentato`), obbligatorio anche con la
+    # credenziale; `provenienza` = IP fidato del chiamante (`get_client_ip`),
+    # obbligatorio: il DB rifiuta NULL.
+    def check_blocco_login(
+        self, auth_user_id: int | None, *, nome_digest: bytes, provenienza: str,
+    ) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT script.fn_check_blocco_login(%s)",
-                [auth_user_id],
+                "SELECT script.fn_check_blocco_login(%s, %s::bytea, %s::inet)",
+                [auth_user_id, nome_digest, provenienza],
             )
 
-    # Scopo: Registra esito tentativo login (successo/fallimento).
-    # Se fallimento supera soglia, imposta blocco temporaneo.
-    # Ritorna { bloccato, minuti_rimanenti, tentativi }.
-    def registra_tentativo_login(self, auth_user_id: int, *, successo: bool) -> dict:
+    # Scopo: Registra l'esito di un tentativo di login per chiave + provenienza.
+    # Successo → azzera la credenziale e la SOLA coppia da cui si e' entrati
+    # (un successo senza credenziale e' una chiamata non valida).
+    # Fallimento → conta sulla coppia (freno) e sulla chiave (attesa): la
+    # credenziale se c'e', altrimenti il nome tentato, con gli stessi numeri.
+    # Ritorna { bloccato, minuti_rimanenti, tentativi, attesa_secondi }.
+    def registra_tentativo_login(
+        self,
+        auth_user_id: int | None,
+        *,
+        nome_digest: bytes,
+        provenienza: str,
+        successo: bool,
+    ) -> dict:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT script.fn_registra_tentativo_login(%s, %s)",
-                [auth_user_id, successo],
+                "SELECT script.fn_registra_tentativo_login(%s, %s::bytea, %s::inet, %s)",
+                [auth_user_id, nome_digest, provenienza, successo],
             )
             row = cursor.fetchone()
             if not row or not row[0]:
-                return {"bloccato": False, "minuti_rimanenti": 0, "tentativi": 0}
+                return {
+                    "bloccato": False, "minuti_rimanenti": 0,
+                    "tentativi": 0, "attesa_secondi": 0,
+                }
             # ⛔ `jsonb_out` e NON `coerce_jsonb_dict`, ed e' una scelta di
             #    SICUREZZA. Questo esito decide se un account e' bloccato, e il
             #    chiamante lo legge con `result.get("bloccato")`: il ripiego a
@@ -79,43 +106,49 @@ class AuthRepository:
             #    esplodere: il login si rifiuta, che e' il verso giusto.
             return jsonb_out(row[0])
 
-    # Scopo: Legge il flag deve_cambiare_password dell'identita digitale
-    # puntata dal JWT della sessione corrente (post modello 1:N §8.4.1).
-    # `identita_id` kw-only opzionale:
-    # - valorizzato: filtra sulla veste specifica (caso tipico: flussi
-    #   autenticati che hanno il claim nel JWT). Pattern "puntare la
-    #   veste specifica" allineato a `set_jwt_gucs` §8.3.4 e
-    #   `get_identita_dettaglio` §8.3.6. Il filtro auth_user_id resta come
-    #   guard anti-tampering.
-    # - None: fallback legacy pre-1:N (prende la prima identita attiva).
-    #   Accettabile solo per flussi non autenticati o cross-veste
-    #   dell'auth_user (es. check middleware in contesti senza JWT
-    #   validato). Da evitare nei nuovi caller.
-    def get_deve_cambiare_password(
-        self, auth_user_id: int, *, identita_id: int | None = None
-    ) -> bool:
-        if identita_id is not None:
-            sql = """
-                SELECT deve_cambiare_password
-                  FROM anagrafiche.identita_digitali
-                 WHERE id = %s
-                   AND auth_user_id = %s
-                   AND attivo = true
-            """
-            params: list[Any] = [identita_id, auth_user_id]
-        else:
-            sql = """
-                SELECT deve_cambiare_password
-                  FROM anagrafiche.identita_digitali
-                 WHERE auth_user_id = %s
-                   AND attivo = true
-                 LIMIT 1
-            """
-            params = [auth_user_id]
+    # Scopo: Azzera i tentativi falliti della credenziale su TUTTE le provenienze
+    # (D-2): lo chiama il reset password riuscito. Non tocca il blocco
+    # dell'admin (D-B3) ne' il cambio password obbligatorio. L'accesso
+    # riuscito non passa di qui: lo fa `registra_tentativo_login(successo=True)`
+    # sulla sola coppia da cui si e' entrati.
+    def azzera_tentativi_credenziale(self, auth_user_id: int) -> None:
         with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            row = cursor.fetchone()
-            return bool(row[0]) if row else False
+            cursor.execute(
+                "SELECT script.fn_azzera_tentativi_credenziale(%s)",
+                [auth_user_id],
+            )
+
+    # Scopo: Legge l'obbligo di cambio password della CREDENZIALE (D-7):
+    # la password e' una sola, per tutte le vesti. Riga assente = False,
+    # e quel default vive solo nella funzione del DB.
+    def get_deve_cambiare_password(self, auth_user_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT script.fn_get_deve_cambiare_password(%s)",
+                [auth_user_id],
+            )
+            return bool(fetchone_scalar(cursor))
+
+    # Scopo: I fatti che servono al cancello degli obblighi (brief sicurezza
+    # §3.4-bis, T-0), in UNA andata e ritorno perche' il cancello gira a ogni
+    # richiesta col Bearer: il cambio password obbligatorio, l'obbligo del
+    # secondo fattore col suo motivo, lo stato del device. Le tre funzioni
+    # rispondono sempre con una riga, anche a riga assente: il significato
+    # dell'assenza resta loro. Il segreto del device NON si legge qui.
+    def get_fatti_obblighi(self, auth_user_id: int) -> dict[str, Any]:
+        sql = """
+            SELECT script.fn_get_deve_cambiare_password(%(id)s) AS deve_cambiare_password,
+                   o.obbligatorio                               AS totp_obbligatorio,
+                   o.motivo                                     AS totp_motivo,
+                   d.stato                                      AS totp_stato
+              FROM script.fn_totp_obbligatorio(%(id)s) o
+             CROSS JOIN script.fn_get_totp_device(%(id)s) d
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, {"id": auth_user_id})
+            row = row_to_dict(cursor)
+        assert row is not None
+        return row
 
     # Scopo: Recupera unita_organizzativa_id dell'operatore via helper DB
     # script.fn_get_uo_id_for_user (post multi-face §13.3.7).
@@ -189,11 +222,7 @@ class AuthRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id, list(ruoli_applicativi)])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # Scopo: Ritorna i dettagli di una singola identita digitale per
     # l'auth_user specificato. Post modello 1:N: /me/ (§8.3.6) usa questo
@@ -221,44 +250,87 @@ class AuthRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [identita_id, auth_user_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
-    # Scopo: Imposta il flag deve_cambiare_password. Due semantiche in base
-    # a `identita_id` kw-only (post modello 1:N §8.4.1):
-    # - `identita_id` valorizzato: aggiorna SOLO la veste specifica.
-    #   Usato da invito operatore/portale (§8.4.1), cambio password
-    #   autenticato (flag resettato per la veste corrente), attivazione
-    #   invito (flag resettato per la veste appena attivata). Il filtro
-    #   auth_user_id resta come guard anti-tampering. Non filtra su
-    #   `attivo=true`: durante l'invito cross-veste l'identita e'
-    #   `attivo=false` al momento del set flag.
-    # - `identita_id` None: aggiorna TUTTE le identita attive dell'utente.
-    #   Semantica "globale": usata dal password reset self-service
-    #   (l'utente ha dimenticato la password, al reset rientra su tutte
-    #   le vesti attive senza dover cambiare password di nuovo).
-    def set_deve_cambiare_password(
-        self, auth_user_id: int, valore: bool, *, identita_id: int | None = None
-    ) -> bool:
-        if identita_id is not None:
-            sql = """
-                UPDATE anagrafiche.identita_digitali
-                   SET deve_cambiare_password = %s, data_update = now()
-                 WHERE id = %s
-                   AND auth_user_id = %s
-            """
-            params: list[Any] = [valore, identita_id, auth_user_id]
-        else:
-            sql = """
-                UPDATE anagrafiche.identita_digitali
-                   SET deve_cambiare_password = %s, data_update = now()
-                 WHERE auth_user_id = %s
-                   AND attivo = true
-            """
-            params = [valore, auth_user_id]
+    # Scopo: Le vesti di una credenziale per un ruolo, attive o spente, in
+    # ordine di id. Serve all'invito, che lavora su una veste SPENTA (regola
+    # unica: la veste nasce spenta e la accende l'attivazione). Una lista, non
+    # «la prima»: il modello ammette piu' vesti spente sullo stesso ruolo
+    # (l'unique vale solo WHERE attivo), e decide il chiamante cosa farne.
+    def find_identita_per_ruolo(
+        self, auth_user_id: int, ruolo_applicativo: str
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT id,
+                   soggetto_ruolo_id,
+                   ruolo_applicativo::text AS ruolo_applicativo,
+                   attivo
+              FROM anagrafiche.identita_digitali
+             WHERE auth_user_id = %s
+               AND ruolo_applicativo::text = %s
+             ORDER BY id
+        """
         with connection.cursor() as cursor:
-            cursor.execute(sql, params)
+            cursor.execute(sql, [auth_user_id, ruolo_applicativo])
+            return rows_to_list(cursor)
+
+    # Scopo: Nome, cognome e username di una credenziale (stringhe, mai None),
+    # per le variabili delle email d'invito. None se la credenziale non esiste.
+    def get_nomi_credenziale(self, auth_user_id: int) -> dict[str, str] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT first_name, last_name, username FROM django.auth_user WHERE id = %s",
+                [auth_user_id],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {"first_name": row[0] or "", "last_name": row[1] or "", "username": row[2] or ""}
+
+    # Scopo: Dice se la credenziale ha una password VERA, cioe' scelta dalla
+    # persona (attivando un invito, col reset, col cambio). E' il
+    # discriminante dei due flussi d'invito, uguale per ogni veste: senza →
+    # la persona la sceglie all'attivazione; con → attiva con un clic. Una
+    # credenziale nata da un invito o dalla creazione dell'operatore ha il
+    # segnaposto non utilizzabile, e lo tiene finche' non si attiva.
+    def auth_user_ha_password(self, auth_user_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT password FROM django.auth_user WHERE id = %s",
+                [auth_user_id],
+            )
+            row = cursor.fetchone()
+        return bool(row) and is_password_usable(row[0])
+
+    # Scopo: Accende la veste di un invito, al consumo del token. Il filtro su
+    # credenziale e ruolo e' il guard: l'`identita_id` viene dal meta del
+    # token, e una veste di un'altra credenziale o di un'altra porta non si
+    # accende da qui. Ritorna False se nessuna riga corrisponde (veste
+    # rimossa, o token che non le appartiene): il chiamante annulla.
+    def attiva_identita(
+        self,
+        identita_id: int,
+        *,
+        auth_user_id: int,
+        ruoli_applicativi: Sequence[str],
+    ) -> bool:
+        sql = """
+            UPDATE anagrafiche.identita_digitali
+               SET attivo = true, data_update = now()
+             WHERE id = %s
+               AND auth_user_id = %s
+               AND ruolo_applicativo::text = ANY(%s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [identita_id, auth_user_id, list(ruoli_applicativi)])
             return cursor.rowcount > 0
+
+    # Scopo: Imposta l'obbligo di cambio password della CREDENZIALE (D-7).
+    # Chiamanti: cambio/reset/attivazione (False).
+    # Credenziale inesistente → E_CREDENZIALE_NON_TROVATA dal DB.
+    def set_deve_cambiare_password(self, auth_user_id: int, valore: bool) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT script.fn_imposta_deve_cambiare_password(%s, %s)",
+                [auth_user_id, valore],
+            )

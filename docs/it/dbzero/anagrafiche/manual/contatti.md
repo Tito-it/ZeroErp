@@ -48,7 +48,8 @@ In questo modo è possibile definire:
 
 * **Separare reparto e categoria**
   Il reparto/ufficio e' indicato da `unita_organizzativa_id`, mentre `tipo_contatto_id`
-  identifica la categoria del contatto (opzionale). Questo evita di usare `tipi_contatti` come reparto.
+  identifica la categoria del contatto ed e' **obbligatoria**: ogni contatto ha un tipo.
+  Questo evita di usare `tipi_contatti` come reparto.
 
 ---
 

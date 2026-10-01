@@ -19,6 +19,7 @@ from apps.config.db.tipi_ruolo_tipi_indirizzo_repository import (
     TipiRuoloTipiIndirizzoRepository,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.non_editable_fields_helper import (
     compute_non_editable_fields,
 )
@@ -42,7 +43,9 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         "Esiste gia' una riga matrice per questa coppia tipo ruolo/tipo indirizzo.",
     ),
 }
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+# Il terzo elemento e' il campo del form (presidio C2, §3-ter): la voce composta
+# «tipo ruolo O tipo indirizzo» resta a due, non ha UN campo.
+_FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo": (
         E_CONFIG_MATRICE_FK,
         "Tipo ruolo o tipo indirizzo inesistente.",
@@ -50,6 +53,7 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "fk_tipi_ruolo_tipi_indirizzo_fallback_tipo": (
         E_CONFIG_MATRICE_FK,
         "Tipo indirizzo fallback inesistente.",
+        "fallback_tipo_indirizzo_id",
     ),
 }
 
@@ -107,7 +111,7 @@ class TipiRuoloTipiIndirizzoService:
         order_by: str = "tipo_ruolo_descrizione",
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI)
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI, order_dir=order_dir)
         return self._repo.list_matrice(
             search=search,
             attivo=attivo,
@@ -126,14 +130,11 @@ class TipiRuoloTipiIndirizzoService:
     #        dei tipi indirizzo candidati come fallback.
     def get_matrice(self, record_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(record_id, field="record_id")
-        result = self._repo.get_matrice(record_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_CONFIG_MATRICE_NOT_FOUND,
-            message="Riga matrice indirizzi/ruoli non trovata.",
-            context={"record_id": record_id},
+        result = testata_o_not_found(
+            self._repo.get_matrice, record_id,
+            code=E_CONFIG_MATRICE_NOT_FOUND, message="Riga matrice indirizzi/ruoli non trovata.",
+            id_name="record_id", function_name="tipi_ruolo_tipi_indirizzo_service.get_matrice",
         )
-        assert result is not None
         result["non_editable_fields"] = self.get_non_editable_fields()
         result["fallback_options"] = self._compute_fallback_options(
             tipo_ruolo_id=result["tipo_ruolo_id"],

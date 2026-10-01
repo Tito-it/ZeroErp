@@ -9,7 +9,7 @@ import { useI18n } from 'vue-i18n'
 import { useIndirizziStore } from '../stores/indirizzi'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import ComuneAutocomplete from '../../core/components/ComuneAutocomplete.vue'
+import ComuneAutocomplete from './ComuneAutocomplete.vue'
 import InputText from 'primevue/inputtext'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
@@ -20,6 +20,7 @@ import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { TAB_ENTITIES } from '../../core/constants'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
@@ -63,16 +64,20 @@ function onRowClick(data) {
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('indirizzi.search_indirizzo')"
-        />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('indirizzi.search_indirizzo')"
+          />
+        </template>
         <ComuneAutocomplete
+          class="app-filter-w-lg"
           :model-value="comuneFilter"
           @update:model-value="onComuneChange"
         />
-      </div>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

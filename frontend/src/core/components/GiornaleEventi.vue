@@ -31,6 +31,7 @@
 //    non sparire. Un evento nuovo a DB deve **vedersi**, anche brutto.
 import Tag from 'primevue/tag'
 import { displayDate, displayTime } from '../utils/date'
+import { STATUS_ICONS } from '../constants'
 
 const props = defineProps({
   eventi: { type: Array, default: () => [] },
@@ -56,12 +57,12 @@ function codice(ev) {
 <template>
   <div>
     <div v-if="props.loading" class="app-giornale-stato">
-      <i class="pi pi-spin pi-spinner" />
+      <i :class="STATUS_ICONS.CARICAMENTO" />
     </div>
 
     <!-- Non caricato: si tace, non si afferma che non è successo niente. -->
     <div v-else-if="!props.caricato" class="app-giornale-stato">
-      <i class="pi pi-inbox" />
+      <i :class="STATUS_ICONS.VUOTO" />
       <p v-if="props.testoPlaceholder">{{ props.testoPlaceholder }}</p>
     </div>
 
@@ -70,7 +71,7 @@ function codice(ev) {
     </div>
 
     <div v-else class="app-giornale-lista">
-      <div v-for="ev in props.eventi" :key="ev.id" class="app-giornale-voce">
+      <div v-for="ev in props.eventi" :key="ev.id" class="app-voce-registro">
         <div class="app-giornale-testata">
           <i :class="props.stile(codice(ev)).icon" class="app-giornale-icona" />
           <Tag
@@ -97,7 +98,7 @@ function codice(ev) {
 <style scoped>
 .app-giornale-stato {
   text-align: center;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   padding: 0.75rem;
 }
 
@@ -107,12 +108,6 @@ function codice(ev) {
   gap: 0.5rem;
 }
 
-.app-giornale-voce {
-  padding: 0.5rem 0.75rem;
-  border-left: 3px solid var(--app-toolbar-border);
-  border-radius: 0 4px 4px 0;
-  background: color-mix(in srgb, var(--p-surface-700) 20%, transparent);
-}
 
 .app-giornale-testata {
   display: flex;
@@ -150,7 +145,7 @@ function codice(ev) {
 .app-giornale-dettaglio {
   margin-top: 0.25rem;
   font-size: var(--app-font-size-sm);
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   padding-left: 1.3rem;
 }
 </style>

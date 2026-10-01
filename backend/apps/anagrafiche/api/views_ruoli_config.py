@@ -23,7 +23,7 @@ from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 class RuoliConfigResolverView(DomainAPIView):
     """GET configurazione resolver per tipo ruolo."""
 
-    # Lookup cross-dominio: lo consuma `core/components/SoggettoResolver.vue`,
+    # Lookup cross-dominio: lo consuma `anagrafiche/components/SoggettoResolver.vue`,
     # cioe' i drawer di TUTTI i domini che scelgono o creano un soggetto. Stessa
     # famiglia di `SoggettiRuoliLookupView` (skip + JWT, niente area): e' sola
     # lettura di configurazione, senza dati di soggetti.
@@ -72,7 +72,9 @@ class RuoliConfigResolverView(DomainAPIView):
                             "min_search_length": serializers.IntegerField(
                                 help_text=(
                                     "Lunghezza minima della search per attivare la "
-                                    "lookup soggetti. Default 3."
+                                    "lookup soggetti: la soglia della lista "
+                                    "`anagrafiche.soggetti` a catalogo "
+                                    "(`ricerca_min_caratteri`), che la ricerca usa."
                                 ),
                             ),
                         },

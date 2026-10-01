@@ -34,7 +34,7 @@ BEGIN
   IF NEW.parent_account_id IS NOT NULL AND NEW.parent_account_id = NEW.id THEN
     PERFORM script.fn_log_and_raise_error(
       'database', TG_NAME, 'E_PARENT_SELF',
-      jsonb_build_object('codice', NEW.codice, 'parent_account_id', NEW.parent_account_id),
+      jsonb_build_object('campo', 'parent_account_id', 'codice', NEW.codice, 'parent_account_id', NEW.parent_account_id),
       NULL::uuid, NEW.parent_account_id::text
     );
   END IF;
@@ -139,20 +139,18 @@ BEGIN
   END IF;
 
   -- 2.3) Coerenza date validita
-  IF NEW.valido_al IS NOT NULL THEN
-    IF NEW.valido_dal IS NULL THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database', TG_NAME, 'E_VALORE_MANCANTE',
-        jsonb_build_object('codice', NEW.codice, 'column', 'valido_al_requires_valido_dal'),
-        NULL::uuid, 'valido_al'
-      );
-    ELSIF NEW.valido_al < NEW.valido_dal THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database', TG_NAME, 'E_DATA_FINE_NON_MAGGIORE_DI_INIZIO',
-        jsonb_build_object('valido_dal', NEW.valido_dal, 'valido_al', NEW.valido_al),
-        NULL::uuid, NEW.valido_al::text, NEW.valido_dal::text
-      );
-    END IF;
+  --   rev 20260923-43: resta solo «valido_al richiede valido_dal», che e' una
+  --   regola di QUESTA tabella (qui valido_dal e' nullable). L'ordine delle
+  --   due date ha una sede sola: script.trgfn_guard_date_validita, montata
+  --   dall'automazione DATE_VALIDITA. Il ramo tolto sollevava
+  --   E_DATA_FINE_NON_MAGGIORE_DI_INIZIO, la cui frase («minore uguale»)
+  --   diceva una regola piu' stretta di quella che applicava (solo <).
+  IF NEW.valido_al IS NOT NULL AND NEW.valido_dal IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database', TG_NAME, 'E_VALORE_MANCANTE',
+      jsonb_build_object('codice', NEW.codice, 'column', 'valido_al_requires_valido_dal'),
+      NULL::uuid, 'valido_al'
+    );
   END IF;
 
   -- 2.4) Guard dissociazione parent: blocca la rimozione di parent_account_id
@@ -198,7 +196,8 @@ SECURITY INVOKER) ha ora un codice suo, E_PARENT_NON_RAGGIUNGIBILE, invece
 di cadere su E_ID_FISCALI_DIVERSI con i due CF identici. E quando almeno un
 codice fiscale manca, il confronto ripiega sul SOGGETTO
 (E_PARENT_SOGGETTO_DIVERSO): chiude il fail-open di NULL IS DISTINCT FROM
-NULL senza rifiutare due BA dello stesso soggetto privo di CF.';
+NULL senza rifiutare due BA dello stesso soggetto privo di CF.
+Rev 20260923-43: l''ordine delle date (valido_al non precede valido_dal) non e'' piu'' qui: ha una sede sola, script.trgfn_guard_date_validita (automazione DATE_VALIDITA). Resta la regola propria di questa tabella: valido_al richiede valido_dal.';
 ```
 
 ---

@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ I LOTTI GIA' ANNULLATI DIVENTANO VUOTI COME QUELLI CHE SI ANNULLANO DA OGGI.
+#   Brief: brief-db-annullamento-chiude-la-vita §9.5 — decisione di Tid del
+#   2026-09-23, strada A («si allineano»).
+#
+# ── COSA FA ──────────────────────────────────────────────────────
+#   Sui lotti il cui stato fiscale e' ABORTITO (config.stati_doc_fiscale.
+#   is_abortito — il flag, non un elenco di stati), ogni esito non ancora
+#   ESCLUSO passa a ESCLUSO con il motivo dell'annullo, e il giornale del lotto
+#   riceve la sua riga `I`. E' ESATTAMENTE cio' che fn_annulla_lotto_da_draft
+#   fa da 20260923-31: la correzione ripete il verbo, non inventa uno stato.
+#
+# ── ⭐ PERCHE' QUI NON VALE L'OBIEZIONE DEL 07-09 ──────────────────
+#   Il 07-09 Tid ha rifiutato di correggere stato_lotto sugli undici lotti
+#   falsificati: sarebbe servito un UPDATE che la macchina a stati vieta
+#   (COMPLETATO -> ERRORE), cioe' la stessa scorciatoia appena tolta
+#   dall'annullo. Qui nessuna regola viene aggirata: ERRORE/COMPLETED/PENDING ->
+#   ESCLUSO e' la transizione che il verbo dell'uscita fa ogni giorno, e passa
+#   per lo stesso trigger (trgfn_fatturazione_lotti_esiti_uscita).
+#   ⛔ stato_lotto NON si tocca: la decisione del 07-09 resta.
+#
+# ── ⚠️ IL TIMBRO E' QUELLO DELL'ALLINEAMENTO, NON DELL'ANNULLO ────────
+#   uscita_quando e uscita_da li scrive il trigger: l'istante di questo
+#   changeSet e il ruolo che migra, non il giorno dell'annullo (il trigger non
+#   accetta date dal chiamante, ed e' giusto). Il motivo lo dice: «allineato dal
+#   changeSet 20260923-34». Il giorno vero dell'annullo sta nello storico del
+#   lotto.
+#
+# ── SU UN DATABASE NUOVO ─────────────────────────────────────────
+#   Nessun lotto annullato: il blocco esce subito. Idempotente: al secondo giro
+#   non trova esiti da chiudere.
+#
+# ── UNA TANTUM ───────────────────────────────────────────────────
+#   runOnChange: false. Non c'e' una popolazione che cresce da inseguire: da
+#   20260923-31 ogni annullo chiude i propri esiti da se'.
+#   (memoria: una bonifica runOnChange:false fotografa un minuto — qui il
+#   minuto basta, perche' la sorgente del difetto e' gia' chiusa.)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260923-34-allinea-esiti-lotti-annullati-mctit.yaml
+
+  - changeSet:
+      id: 20260923-34-allinea-esiti-lotti-annullati
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lotti gia' annullati (stato fiscale is_abortito): ogni esito non ancora
+        ESCLUSO passa a ESCLUSO con uscita_motivo «Annullo del lotto <codice> —
+        allineato dal changeSet 20260923-34», e una riga I di giornale per lotto.
+        Ripete cio' che fn_annulla_lotto_da_draft fa da 20260923-31. stato_lotto
+        non si tocca. Idempotente; su un database nuovo non fa niente.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_esiti
+                columnName: uscita_motivo
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_fiscale
+                columnName: is_abortito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $ALLINEA$
+              DECLARE
+                  v_lotto   RECORD;
+                  v_motivo  vendite.fatturazione_lotti_esiti.uscita_motivo%TYPE;
+                  v_chiusi  integer;
+                  v_lotti   integer := 0;
+                  v_totale  integer := 0;
+              BEGIN
+                  -- Un lotto alla volta: il motivo porta il SUO codice, e il
+                  -- giornale riceve la SUA riga, come fa l'annullo.
+                  FOR v_lotto IN
+                      SELECT l.id, l.codice, l.stato_doc_fiscale_id
+                        FROM vendite.fatturazione_lotti l
+                        JOIN config.stati_doc_fiscale s ON s.id = l.stato_doc_fiscale_id
+                       WHERE s.is_abortito IS TRUE
+                         AND EXISTS (SELECT 1
+                                       FROM vendite.fatturazione_lotti_esiti e
+                                      WHERE e.lotto_id = l.id
+                                        AND e.stato_esecuzione <> 'ESCLUSO')
+                       ORDER BY l.id
+                  LOOP
+                      v_motivo := format('Annullo del lotto %s — allineato dal changeSet 20260923-34',
+                                         v_lotto.codice);
+
+                      UPDATE vendite.fatturazione_lotti_esiti e
+                         SET stato_esecuzione = 'ESCLUSO',
+                             uscita_motivo    = v_motivo
+                       WHERE e.lotto_id = v_lotto.id
+                         AND e.stato_esecuzione <> 'ESCLUSO';
+                      GET DIAGNOSTICS v_chiusi = ROW_COUNT;
+
+                      PERFORM vendite.fn_log_pipeline_fase(
+                          v_lotto.id,
+                          v_lotto.stato_doc_fiscale_id,
+                          'ANNULLO_LOTTO',
+                          'I'::char,
+                          format('%s: %s documenti usciti dal giro', v_motivo, v_chiusi),
+                          jsonb_build_object('esiti_chiusi',  v_chiusi,
+                                             'uscita_motivo', v_motivo,
+                                             'allineamento',  '20260923-34'));
+
+                      v_lotti  := v_lotti + 1;
+                      v_totale := v_totale + v_chiusi;
+                  END LOOP;
+
+                  RAISE NOTICE 'Allineamento esiti dei lotti annullati: % lotti, % esiti chiusi',
+                      v_lotti, v_totale;
+              END
+              $ALLINEA$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ESCLUSO e' terminale (trgfn_fatturazione_lotti_esiti_uscita): non si
+              -- torna indietro, ne' qui ne' altrove. Lo stato precedente di ogni
+              -- esito e' nello storico.
+              SELECT 1;

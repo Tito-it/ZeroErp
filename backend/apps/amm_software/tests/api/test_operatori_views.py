@@ -23,12 +23,16 @@ Indice test eseguiti:
 13) test_disabilita_success — POST disabilita operatore
 14) test_disabilita_invalidates_cache — POST disabilita invalida cache
 15) test_disabilita_not_found — POST disabilita operatore inesistente -> errore
+16) test_credenziale_per_email_trovata — GET credenziale-per-email con credenziale
+17) test_credenziale_per_email_assente — GET su email senza credenziale -> credenziale null
+18) test_credenziale_per_email_solo_admin — OPERATIVO non puo' leggerla
 """
 
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.amm_software.api.views import (
+    CredenzialePerEmailView,
     OperatoriDetailView,
     OperatoriDisabilitaView,
     OperatoriListView,
@@ -88,7 +92,6 @@ def _operativo_request() -> MagicMock:
     request.query_params = {}
     # Simula assenza cache per-request
     del request._zeroerp_perms_cache
-    del request._zeroerp_perms_cache_loaded_from_redis
     return request
 
 
@@ -287,7 +290,7 @@ class TestOperatoriPatchView(TestCase):
 
 class TestOperatoriDisabilitaView(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service._blacklist_user_tokens")
+    @patch("apps.amm_software.services.amm_software_service.blocca_token_sessioni")
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_disabilita_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock, mock_blacklist: MagicMock) -> None:
@@ -303,7 +306,7 @@ class TestOperatoriDisabilitaView(TestCase):
         self.assertEqual(response.status_code, 200)
         repo_instance.disabilita_operatore.assert_called_once_with(1)
 
-    @patch("apps.amm_software.services.amm_software_service._blacklist_user_tokens")
+    @patch("apps.amm_software.services.amm_software_service.blocca_token_sessioni")
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_disabilita_invalidates_cache(self, MockRepo: MagicMock, mock_invalidate: MagicMock, mock_blacklist: MagicMock) -> None:
@@ -330,3 +333,50 @@ class TestOperatoriDisabilitaView(TestCase):
         from apps.core.services.service_errors import ServiceError
         with self.assertRaises(ServiceError):
             view.post(_admin_request(method="POST"), auth_user_id=999)
+
+
+# B-20 (brief-db-credenziale-per-email §3): i dati del dialog di conferma del
+# riuso. Il binding con la funzione del DB lo prova il test sul DB vero
+# (`core/tests/db/test_login_credenziale_db`, consenso in due tempi).
+class TestCredenzialePerEmailView(TestCase):
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    def test_credenziale_per_email_trovata(self, MockRepo: MagicMock) -> None:
+        """Scopo: la credenziale arriva intera, e l'email passa com'e' (ripulita) al DB."""
+        credenziale = {
+            "auth_user_id": 42, "username": "mario.rossi",
+            "vesti": [{"ruolo_applicativo": "CLIENTE_PORTALE", "attivo": True, "soggetto": "Rossi Srl"}],
+        }
+        MockRepo.return_value.get_credenziale_per_email.return_value = credenziale
+
+        view = CredenzialePerEmailView()
+        response = view.get(_admin_request(query_params={"email": "  Mario.Rossi@example.com "}))
+
+        self.assertEqual(response.status_code, 200)
+        import json
+        self.assertEqual(json.loads(response.content)["data"], {"credenziale": credenziale})
+        MockRepo.return_value.get_credenziale_per_email.assert_called_once_with("Mario.Rossi@example.com")
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    def test_credenziale_per_email_assente(self, MockRepo: MagicMock) -> None:
+        """Scopo: email senza credenziale (o vuota) -> `credenziale` null, non un errore."""
+        MockRepo.return_value.get_credenziale_per_email.return_value = None
+
+        view = CredenzialePerEmailView()
+        response = view.get(_admin_request(query_params={"email": ""}))
+
+        self.assertEqual(response.status_code, 200)
+        import json
+        self.assertEqual(json.loads(response.content)["data"], {"credenziale": None})
+        # Vuota -> None: la regola «email vuota = nessuna» la applica il DB.
+        MockRepo.return_value.get_credenziale_per_email.assert_called_once_with(None)
+
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.api.permissions.PermissionResolver.is_super_admin", return_value=False)
+    def test_credenziale_per_email_solo_admin(
+        self, _mock_admin: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock,
+    ) -> None:
+        """Scopo: dice se un'email ha un accesso: solo SUPER_ADMIN (nessun guard a DB)."""
+        from apps.core.api.permissions import IsAdminZeroERP
+        self.assertFalse(IsAdminZeroERP().has_permission(_operativo_request(), CredenzialePerEmailView()))

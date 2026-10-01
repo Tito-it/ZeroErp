@@ -26,11 +26,17 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    colonne_identita,
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
     rows_to_list,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.vendite.db._righe_repo_mixin import RigheListaMixin
 
 # Scopo: whitelist ORDER BY della lista fatture. Le chiavi sono i
 #        `campo_sorgente` del catalogo `vendite.fatture` — quelli che il FE
@@ -40,6 +46,17 @@ from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 # ⚠️ `valuta_codice` e `azioni` restano fuori di proposito: il seed li dichiara
 #    NON ordinabili, e offrire qui una capacità che il catalogo non espone
 #    sarebbe irraggiungibile — il presidio dei seed la segnala.
+# Colonne che la ricerca libera SA cercare nella lista `vendite.fatture`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+# ⚠️ `numero` e' un intero nella vista: il cast a testo lo fa il BB.
+_RICERCA_FATTURE = RicercaFull(
+    "vendite.fatture",
+    (
+        "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+    ),
+)
+
 _ORDER_COLS_FATTURE: dict[str, str] = {
     "numero": "v.numero",
     "serie": "v.serie",
@@ -66,8 +83,44 @@ _ORDER_COLS_FATTURE: dict[str, str] = {
 }
 
 
-class FattureRepository:
-    """Letture della lista fatture dalla vista canonica."""
+# ── Le righe di UNA fattura come lista configurabile `vendite.fattura_righe`
+#    (lista 102, brief-db-liste-righe-documento lotto C, 2026-09-28) ──
+# ⭐ La sorgente e' `vw_fattura_righe_lista`: il SOLO primo livello della
+#    rappresentazione del documento (`vw_fattura_righe_esposte`), con i
+#    componenti esposti di un kit DENTRO il padre (`componenti` jsonb). Cosi'
+#    paginazione e ordinamento spostano un kit intero, e un ordinamento per
+#    importo non stacca i componenti dal loro padre (D-8.3).
+# Le colonne `ordinabile = t` del seed (`riga_rettificata` no: e' composta).
+# `test_liste_configurabili_seed` e `gen_seed_lista.py` leggono questa costante.
+_ORDER_COLS_RIGHE_FATTURA: dict[str, str] = colonne_identita(
+    "riga_nr", "articolo_codice", "descrizione", "quantita", "uom_codice",
+    "prezzo_unitario", "sconto_percentuale", "importo_riga", "iva_descrizione",
+)
+# Le `ricercabile_full = t` del seed. `test_ricerca_full_seed` legge questa costante.
+_RICERCA_RIGHE_FATTURA = RicercaFull("vendite.fattura_righe", ("descrizione", "articolo_codice"))
+
+
+class FattureRepository(RigheListaMixin):
+    """Letture della lista fatture dalla vista canonica, e delle righe di una
+    fattura (BB `RigheListaMixin`)."""
+
+    # Righe: la vista di lista, la chiave calcolata e l'ordine del documento.
+    # ⚠️ `riga_key` e non `id`: il padre di un kit non esiste in tabella e non
+    #    ha un id. ⚠️ Nessun filtro `attivo`: la vista non lo ha — le righe di
+    #    una fattura non si disattivano, si rettificano con una nota di credito.
+    # ⭐ L'ordine del documento e' `ordinamento, riga_nr`: `ordinamento` tiene
+    #    la capofila accanto alle sue parti di plafond, `riga_nr` le mette in fila.
+    _righe_vista = "vendite.vw_fattura_righe_lista"
+    _righe_fk_documento = "fattura_id"
+    _righe_ordine_documento = "ordinamento"
+    _righe_ordine_documento_extra = ("riga_nr",)
+    _righe_chiave = "riga_key"
+    # I componenti esposti di un kit: una LISTA per chi la legge (drawer,
+    # note di riga, contesto di stampa), non il testo del jsonb.
+    _righe_jsonb = ("componenti",)
+    _righe_solo_attive = False
+    _righe_ordinamento = _ORDER_COLS_RIGHE_FATTURA
+    _righe_ricerca = _RICERCA_RIGHE_FATTURA
 
     # Scopo: elenco fatture paginato, filtrato e ordinato.
     #
@@ -93,7 +146,7 @@ class FattureRepository:
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         # NULL = valore MINIMO (lo mette `sql_order_clause`): `numero` è NULL su
         # tutte le fatture non ancora numerate, e i default PostgreSQL le
@@ -107,8 +160,7 @@ class FattureRepository:
         )
         # La pagina si ferma al cap; l'export chiede di più per poter RILEVARE
         # il superamento invece di troncare in silenzio.
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -146,17 +198,7 @@ class FattureRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        if search and len(search) >= 3:
-            # Ricerca estesa: numero + cliente + codice BA + id fiscale — gli
-            # stessi quattro campi delle sorelle, così cercare "Rossi" o una
-            # partita IVA funziona uguale su ogni documento.
-            # ⚠️ `numero` è un intero: il cast a testo serve all'ILIKE.
-            conditions.append(
-                "(v.numero::text ILIKE %s OR v.ragione_sociale_completa ILIKE %s "
-                "OR v.ba_codice ILIKE %s OR v.id_fiscale_univoco_cf_piva ILIKE %s)"
-            )
-            like = f"%{search}%"
-            params.extend([like, like, like, like])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_FATTURE)
 
         add_emittente_scope_condition(
             conditions, params,

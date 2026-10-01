@@ -60,6 +60,7 @@ DECLARE
     v_fuori          text;
     v_pagati         text;
     v_ritirati_vivi  text;
+    v_registro_lock  text;
     v_warning_sollevati text;
     -- ⚠️ Deve restare IDENTICO al CHECK chk_messaggi_errore_codici_legacy_non_conforme
     --    (20260805-06, allargato da 20260805-28). Se i due divergono, il registro
@@ -243,17 +244,36 @@ BEGIN
     -- cieco del §4-bis della guida sui presidi: un'etichetta rassicurante e'
     -- piu' pericolosa di un errore, perche' nessuno la ricontrolla.
     --
-    -- ⚠️ LIMITE NOTO, da conoscere prima di fidarsi del verde: vede solo i
-    -- letterali nei corpi plpgsql. NON vede (a) i codici passati per
-    -- espressione — ma quelli escono dai `fn_check_*`, che ritornano codici
-    -- `E_*` e quindi non ritirabili per questa strada — e (b) i codici sollevati
-    -- dal **Python**: questo e' uno script SQL, `backend/` non lo puo' leggere.
-    -- Per quelli il presidio e' il test `test_error_codes_declared_guardrail`
-    -- lato BE.
+    -- ── ⛔ DUE SUPERFICI, E LA SECONDA E' STATA CIECA PER 49 GIORNI ──
+    --
+    -- Un codice puo' arrivare a chi solleva in due modi, e fino al 2026-09-23
+    -- questo controllo ne guardava UNO:
+    --
+    --   1. LETTERALE NEL CORPO — `p.prosrc`. E' la forma normale.
+    --   2. ARGOMENTO DI UN TRIGGER — `pg_trigger.tgargs`. Quando la funzione di
+    --      trigger e' GENERICA (script.trgfn_lock_columns, e non e' l'unica),
+    --      il codice non sta in nessun corpo: e' scritto nel CREATE TRIGGER e
+    --      arriva come TG_ARGV. In `pg_proc` non c'e'.
+    --
+    -- ⚠️ Non e' teoria. Il 2026-08-05 il changeSet 20260805-26 ritiro'
+    -- CODICE_NON_MODIFICABILE censendo i call site «da pg_proc e non a memoria»
+    -- — e corresse il generatore, ma non i trigger gia' generati. Il 2026-09-23
+    -- erano **69 trigger su 68 tabelle in 8 schemi** a sollevare un codice
+    -- ritirato, con questo controllo VERDE, perche' nessuna funzione plpgsql lo
+    -- nominava piu' nel corpo. Bonificati da 90_end/20260923-02; il ramo (2)
+    -- qui sotto e' il rubinetto, e senza di lui la stessa cosa si rifa'.
+    --
+    -- ⚠️ LIMITE CHE RESTA, da conoscere prima di fidarsi del verde: NON vede
+    -- (a) i codici passati per espressione — ma quelli escono dai `fn_check_*`,
+    -- che ritornano codici `E_*` e quindi non ritirabili per questa strada — e
+    -- (b) i codici sollevati dal **Python**: questo e' uno script SQL,
+    -- `backend/` non lo puo' leggere. Per quelli il presidio e' il test
+    -- `test_error_codes_declared_guardrail` lato BE.
     SELECT string_agg(x.riga, E'\n  ' ORDER BY x.riga)
       INTO v_ritirati_vivi
       FROM (
-        SELECT DISTINCT ce.codice || '  <-  ' || n.nspname || '.' || p.proname AS riga
+        -- (1) il letterale nel corpo di una funzione plpgsql
+        SELECT DISTINCT ce.codice || '  <-  corpo di ' || n.nspname || '.' || p.proname AS riga
           FROM config.codici_errore ce
           JOIN pg_proc p
             ON p.prosrc LIKE '%' || quote_literal(ce.codice) || '%'
@@ -263,6 +283,27 @@ BEGIN
            AND ce.obsoleto_dal <= CURRENT_DATE
            AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
            AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+
+        UNION ALL
+
+        -- (2) l'argomento di un trigger su una funzione GENERICA: il codice non
+        --     e' in nessun corpo, e' in pg_trigger.tgargs. Gli argomenti li
+        --     legge dbops.fn_trigger_argomenti (dal 2026-09-26, building block:
+        --     prima qui c'era una decodifica sua con encode(...,'escape')), e si
+        --     confronta per UGUAGLIANZA — non con un LIKE, che su
+        --     CODICE_NON_MODIFICABILE aggancerebbe anche E_CODICE_NON_MODIFICABILE,
+        --     cioe' il codice VIVO.
+        SELECT DISTINCT ce.codice || '  <-  trigger ' || tn.nspname || '.'
+               || tc.relname || '.' || t.tgname AS riga
+          FROM config.codici_errore ce
+          JOIN pg_trigger t
+            ON NOT t.tgisinternal
+           AND ce.codice = ANY (dbops.fn_trigger_argomenti(t.tgargs))
+          JOIN pg_class tc     ON tc.oid = t.tgrelid
+          JOIN pg_namespace tn ON tn.oid = tc.relnamespace
+         WHERE ce.obsoleto_dal IS NOT NULL
+           AND ce.obsoleto_dal <= CURRENT_DATE
+           AND tn.nspname NOT IN ('pg_catalog', 'information_schema')
       ) x;
 
     IF v_ritirati_vivi IS NOT NULL THEN
@@ -274,7 +315,13 @@ BEGIN
           '20_code, sostituendo il codice con quello nuovo `E_*`), poi si valorizza '
           'obsoleto_dal nel CSV config/codici_errore.csv. Se il codice serve ancora, va '
           'rimessa a NULL la data: ritirarlo e continuare a usarlo e'' la forma peggiore '
-          'di debito, perche'' sembra pagato.', v_ritirati_vivi;
+          'di debito, perche'' sembra pagato.\n'
+          '⚠️ Se la riga dice «trigger», il call site NON e'' in un corpo: il codice sta '
+          'negli argomenti del CREATE TRIGGER, e per una funzione generica come '
+          'script.trgfn_lock_columns quegli argomenti li calcola l''automazione dal suo '
+          'registro: quel trigger non si riscrive a mano. Si corregge la riga del '
+          'registro (dbops.automation_lock_columns) e si droppa il trigger perche'' '
+          'l''automazione lo rifaccia — stampo: 90_end/20260923-02.', v_ritirati_vivi;
     END IF;
 
     -- ── (E) un codice di WARNING non si solleva, si logga ───────────
@@ -394,9 +441,61 @@ BEGIN
           'jsonb_build_object(''tipo'', ''FATTURA'', ''id'', v_id::text))).', v_mittenti;
     END IF;
 
-    RAISE NOTICE 'OK — un solo mittente sui canali CONSTRAINT, COLUMN e DATATYPE, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% attive), nessun codice ritirato ancora sollevato (% ritirati), nessun warning sollevato come errore.',
+    -- ── (H) il registro dei lock nomina solo codici VIVI ───────────
+    --
+    -- ⭐ E' il RUBINETTO del difetto che (D) ramo (2) trova a valle. Una riga di
+    -- dbops.automation_lock_columns e' un call site DIFFERITO: il codice non
+    -- solleva niente finche' l'automazione non genera il trigger, e da quel
+    -- momento lo solleva per sempre. Se la riga nomina un codice sbagliato, il
+    -- difetto nasce in silenzio e si manifesta mesi dopo, alla prima
+    -- rigenerazione — cioe' quando nessuno lo sta piu' guardando.
+    --
+    -- ⚠️ Misurato il 2026-09-23, prima della bonifica: su 38 righe, **25**
+    -- nominavano un codice RITIRATO (CODICE_NON_MODIFICABILE) e **1** un codice
+    -- che a catalogo NON ESISTE (EMITTENTE_NON_MODIFICABILE, sfuggito alla
+    -- stessa rinomina del 2026-08-05: il vivo e' E_EMITTENTE_NON_MODIFICABILE).
+    -- Quella riga era innocua solo perche' il suo trigger non era mai stato
+    -- rigenerato: armata, avrebbe risposto «[MESSAGGIO NON DEFINITO]».
+    --
+    -- ⛔ Non e' una FK, ed e' una scelta: il registro e' un CSV di 80_data e il
+    -- catalogo dei codici pure, una FK fra due mirror li legherebbe nell'ordine
+    -- di caricamento. Qui il controllo e' a valle, dove costa niente.
+    SELECT string_agg(x.riga, E'\n  ' ORDER BY x.riga)
+      INTO v_registro_lock
+      FROM (
+        SELECT l.target_schema || '.' || l.target_table || '.' || l.column_name
+               || '  ->  ' || l.error_code || '  ('
+               || CASE WHEN ce.codice IS NULL THEN 'non esiste a catalogo'
+                       ELSE 'ritirato il ' || ce.obsoleto_dal::text END
+               || CASE WHEN l.enabled THEN ', attiva' ELSE ', spenta' END || ')' AS riga
+          FROM dbops.automation_lock_columns l
+          LEFT JOIN config.codici_errore ce ON ce.codice = l.error_code
+         WHERE l.error_code IS NOT NULL
+           AND (ce.codice IS NULL
+                OR (ce.obsoleto_dal IS NOT NULL AND ce.obsoleto_dal <= CURRENT_DATE))
+      ) x;
+
+    IF v_registro_lock IS NOT NULL THEN
+        RAISE EXCEPTION
+          E'Il registro dei lock nomina codici non vivi:\n  %\n\n'
+          'Ogni riga di dbops.automation_lock_columns e'' un call site differito: '
+          'l''automazione scrive quel codice negli argomenti del trigger che genera, e da '
+          'li'' in poi il lock lo solleva. Un codice assente dal catalogo produce '
+          '«[MESSAGGIO NON DEFINITO: ...]» a video; uno ritirato rimette in servizio un '
+          'debito dichiarato pagato.\n'
+          'Si corregge la riga nel CSV '
+          'db/changelog/migrations_v2/80_data/sql/dbops/automation_lock_columns.csv '
+          '(mirror runOnChange: si ricarica da solo). ⚠️ E il CSV da solo NON basta se il '
+          'trigger esiste gia'': l''automazione crea solo se manca, non confronta gli '
+          'argomenti — va droppato perche'' venga rifatto (stampo: 90_end/20260923-02).',
+          v_registro_lock;
+    END IF;
+
+    RAISE NOTICE 'OK — un solo mittente sui canali CONSTRAINT, COLUMN e DATATYPE, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% attive), nessun codice ritirato ancora sollevato (% ritirati) ne'' nei corpi ne'' negli argomenti dei % trigger, nessuna delle % righe del registro dei lock nomina un codice non vivo, nessun warning sollevato come errore.',
         (SELECT count(*) FROM dbops.messaggi_errore_codici_legacy),
         (SELECT count(*) FROM config.codici_errore
-          WHERE obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE);
+          WHERE obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE),
+        (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal),
+        (SELECT count(*) FROM dbops.automation_lock_columns);
 END
 $guardrail$;

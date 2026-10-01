@@ -72,17 +72,20 @@ function fileVue(dir) {
 
 // ⭐ I COMPONENTI CHE SONO LO STANDARD NON SONO IL DEBITO (2026-09-10).
 //    `ListaConfigurabile` la `DataTable` DEVE importarla: e' il building block
-//    che incarna la regola. Le altre due sono le eccezioni che la regola zero
-//    NOMINA di suo pugno (`.codex/AGENTS.md`: «le righe di un documento dentro
-//    il suo master → RigheMasterDetailTable / SearchDetailTable»).
+//    che incarna la regola. L'altra e' l'eccezione che la regola zero NOMINA
+//    di suo pugno (il dettaglio espanso della ricerca → SearchDetailTable).
+//    ⭐ `RigheMasterDetailTable` e' uscita da qui il 2026-09-28: dal lotto B di
+//    brief-db-liste-righe-documento monta `<DrawerTabLista>`, e le righe di un
+//    documento non sono piu' un'eccezione alla regola zero.
 // ⛔ Contarle come debito faceva dire al registro una cosa diversa da quella che
 //    sembrava: 48 «liste fuori standard» di cui tre erano lo standard. Un
 //    registro si legge per il numero, e un numero che comprende la soluzione
 //    insieme al problema non si puo' usare per decidere niente.
 // ⚠️ L'elenco e' DICHIARATO e non derivato — un criterio automatico («sta in
 //    core/components») esenterebbe anche i BB che il debito ce l'hanno davvero
-//    (`GeoSearchTable`, che serve liste ancora da portare su
-//    `<ListaConfigurabile>`, resta contato apposta). In cambio l'esenzione e'
+//    (`GeoSearchTable`, che serviva liste ancora da portare su
+//    `<ListaConfigurabile>`, e' rimasto contato finche' e' esistito: ritirato
+//    il 2026-09-27, brief-db-liste-datatable-grezze riga 9). In cambio l'esenzione e'
 //    VERIFICATA sotto: un file dichiarato qui che non esiste piu', o che ha
 //    smesso di importare `DataTable`, ferma il guard invece di restare a
 //    coprire il vuoto.

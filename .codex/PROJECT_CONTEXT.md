@@ -63,7 +63,7 @@ ZeroErp/
 │   │   ├── ui/               # Liste configurabili: la configurazione è DATO, non DDL
 │   │   ├── vendite/          # App più attiva — pipeline fatturazione
 │   │   ├── acquisti/         # 🔵 PROSSIMO CANTIERE (Tid, 2026-09-11) — modello a DB, comportamento da scrivere
-│   │   ├── magazzino/        # 🔵 PROSSIMO CANTIERE (idem) — modello a DB curato, 0 test
+│   │   ├── magazzino/        # 🔵 CANTIERE APERTO (idem) — Lotto 2: primo carico da video (BE/FE 23-09), collaudo a video di Tid
 │   │   ├── storico/          # ⚠️ scheletro (13 file, 26 righe, 0 test) — nessuna decisione presa
 │   │   └── contabilita/      # ⛔ scheletro vuoto — schema DB vuoto, fuori perimetro per decisione
 │   ├── requirements.in       # Dipendenze dirette (editare qui)
@@ -191,9 +191,10 @@ Le due app **non sono scheletri congelati: sono il prossimo cantiere**, e la
 decisione è stata presa il 2026-09-11 rispondendo alla voce D11 di
 [migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md).
 
-Oggi hanno un **modello DB curato e zero comportamento applicativo**: 26 tabelle
-e 71 CHECK su `magazzino`, 9 tabelle e 42 FK su `acquisti`, 13 file Python e 0
-test per ciascuna.
+Al 2026-09-11 avevano un **modello DB curato e zero comportamento applicativo**:
+26 tabelle e 71 CHECK su `magazzino`, 9 tabelle e 42 FK su `acquisti`, 13 file
+Python e 0 test per ciascuna. ⚠️ Da allora `magazzino` ha il comportamento dei
+Lotti 1 e 2 (paragrafi sotto); `acquisti` è ancora a quel punto.
 
 ⭐ **Cosa comporta, ed è la ragione per cui sta scritto qui e non in un piano:**
 ogni decisione che si prende lavorando su `vendite` — envelope, capability di
@@ -234,10 +235,17 @@ mergiato il 15-09 (PR #1593), le richieste BE/FE chiuse lo stesso giorno
 `_REL_CONSENTITE`/`CONFIG_TABLES`), CI verde. Il **Lotto 2** («il motore»: primitiva DEFINER + porta sul
 ledger, check di disponibilità condivisa, inventario e rettifica,
 `vw_disponibilita`, orfani, presidio di prontezza, `requires_lotto` in UI) ha
-il suo brief dal **17-09** — `work-in-progress/brief-db-magazzino-lotto-2-motore.md`,
-✅ **quattordici D-L2 tutte decise da Tid il 17-09** (fra cui `magazzini.usa_ubicazioni`, `trasferimenti` = trasferimento interno, via `COUNTING`), 🔵 **nessun changeSet: si parte da P-0** — e parte da
+il suo brief dal **17-09** — `work-done/brief-db-magazzino-lotto-2-motore.md`,
+✅ **quattordici D-L2 tutte decise da Tid il 17-09** (fra cui `magazzini.usa_ubicazioni`, `trasferimenti` = trasferimento interno, via `COUNTING`), ✅ **CONSEGNATO il 22-09 e ARCHIVIATO il 24-09**, dopo che la porta è stata completata coi verbi (paragrafo sotto) — era partito da
 `analisi-db-magazzino-carico-e-scarico.md` §8 e dalle sei lezioni in coda a §5
-del brief del Lotto 1. Il prerequisito deciso da Tid il 15-09 —
+del brief del Lotto 1. ✅ **Il lato BE/FE del Lotto 2 è consegnato a codice il
+23-09** (`work-done/piano-be-fe-magazzino-lotto-2-motore.md`): inventario e
+rettifica come **una** famiglia parametrica (lista, drawer, righe, piano,
+«Registra» dalla capability), disponibilità e registro dei movimenti; le richieste
+del piano al DB (R-1 … R-7) sono in `work-done/brief-db-magazzino-lotto-2-bis-be-fe.md`.
+Pagina API `docs/it/backend/magazzino/manual/api_magazzino.md` (25-09). ⏳ Resta il
+**collaudo a video** di Tid (`work-in-progress/collaudo-in-app-magazzino-inventario-e-rettifica.md`):
+il frontend non è mai stato aperto in-app. Il prerequisito deciso da Tid il 15-09 —
 `brief-db-emittente-di-default-un-bb-solo.md`, l'emittente di default come
 **building block unico** in `script`, montato su `magazzini`/`assets` e **al
 posto delle quattro copie di vendite**, ritirate nello stesso giro — è
@@ -248,7 +256,135 @@ commit `e98cf2469` + PR #1598, BE allineato con `E_EMITTENTE_NON_RISOLTO`).
 emerge un BB generico, i duplicati esistenti si ritirano subito — non c'è
 produzione, non c'è niente da aspettare.*
 
+⭐ **I domini nuovi nascono con il permesso applicato dal DB** (decisioni D-1 →
+D-5 di Tid, 2026-09-24, in `work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md`).
+Fino a quel giorno il DB **calcolava** i permessi ma li **applicava** solo il
+backend. Il modello è «una scrittura = un verbo»: una funzione DB che nella prima
+riga chiama un guard — `script.fn_guard_azione` (azione di processo),
+`script.fn_guard_livello` (livello sull'oggetto) o `script.fn_guard_super_admin`
+(gestione accessi) — e l'app che perde la scrittura diretta sulle tabelle che il
+verbo protegge. Il modello è descritto nella guida
+`architettura-permessi-e-autorizzazioni.md` §7.4-7.5. `magazzino` e `acquisti` nascono così; gli altri domini ci passano
+quando un cantiere tocca le loro scritture, senza data. ✅ **Primo caso chiuso il
+2026-09-24** (`work-done/brief-db-magazzino-verbi-con-permesso.md`,
+`20260924-38` → `-42`): `fn_posta_inventario` e `fn_posta_rettifica` applicano
+`registra_magazzino`, l'app non esegue più la primitiva del registro. Il limite è
+scritto: il modello protegge da un backend che **sbaglia**, non da uno
+**manomesso** (l'identità la dichiara il backend).
+
+✅ **Il Lotto 3 di magazzino — la merce esce con la bolla — e' applicato lato DB
+il 2026-09-28** (`work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md`,
+`20260928-60` → `-83`, pgTAP verdi col runner). Undici decisioni di Tid: il
+magazzino sulla **testata** della bolla, i **prelievi** in tabella figlia come
+sorgente del movimento, il verbo `vendite.fn_cambia_stato_ddt` (azione
+`emetti_ddt`) con la **porta del registro** sui soli passaggi che muovono merce,
+la bolla di trasferimento che carica l'arrivo al `CONSEGNATO`, il trasferimento
+interno (`fn_posta_trasferimento`), i verbi del blocco manuale (azione
+`blocca_merce`, `movimenti_attesi` in sola lettura per l'app). ⏳ Restano le
+richieste a BE/FE (brief §6: senza R-1 il backend non emette una bolla che muove
+merce), la CI da zero e il **Lotto 3-bis** (carico da reso cliente, `work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`), ✅ **applicato lato DB il 2026-09-29** (`20260928-84 → -98`, `20260929-01 → -04`, pgTAP verdi col runner): la conferma del reso è un verbo (azione `conferma_reso`) che fa rientrare la merce dai **rientri**, che puntano al prelievo d'origine, al costo dell'uscita; l'annullo storna; le righe del reso si toccano solo in bozza. Del 3-bis restano le richieste a BE/FE (R-1…R-5). ✅ **Secondo caso, il pannello di configurazione, chiuso il 2026-09-28** (D-3,
+`work-done/brief-db-pannello-config-verbo-generico.md`): scrive col verbo
+generico `config.fn_pannello_scrivi` sull'oggetto di ogni tabella, la lista è
+`config.tabelle_gestibili` (niente più `REL_CONSENTITE` nel BE né
+`config-tables.js` nel FE), `magazzino.causali` è chiusa all'app. Anche
+`config.aree_funzionali` è in sola lettura per l'app (D-P9, `20260928-30`): nome e
+ordine si cambiano nel CSV.
+
 ### Aperto — Media priorità
+- ⏳ **«Annulla» e «Porta a Bozza» sulle distinte non manuali: spenti col motivo**
+  (DB poi BE/FE, ereditata il 2026-09-30 dalla chiusura di
+  `work-done/brief-db-righe-distinta-annullata-fuori-dalle-code.md`, R-3 + D-6 §11.3-§11.4,
+  D-6 approvata da Tid). Oggi le due voci si propongono accese su una GENERATA
+  e finiscono in 409 (`E_CONTABILE_ANNULLO_NON_MANUALE`,
+  `E_CONTABILE_RIAPERTURA_NON_MANUALE`): le regole vivono solo nel corpo del
+  guard `trgfn_vendite_contabili_guard_validazione` e non c'è una check da
+  leggere. ⏳ Al team DB: `script.fn_check_contabile_transizione` + il guard che
+  la chiama (P-9 … P-12). Poi il BE espone `transizioni_blocco` e il drawer spegne
+  le voci col motivo.
+- 🟡 **Colori PrimeVue ancora scritti nei componenti** (FE, registrato il
+  2026-09-26 alla chiusura di `work-done/analisi-fe-regole-standard-violate-dal-codice.md`
+  R-3): circa 60 `var(--p-*)` — `primary-700/500/50`, `yellow-*`, `blue-*`,
+  `surface-200/400`, `border-radius-sm`… — che non hanno ancora un token
+  `--app-*` perché il loro **significato** non è nominato. Si decide caso per
+  caso cosa dicono (il nome è il significato, non la tinta), poi un guard che
+  tenga lo zero. Regola: frontend-standards § «Stili CSS».
+- ❓ **Le FK verso `django.auth_user` non nascono su un'installazione nuova**
+  (DB, domanda di forma per Tid, ereditata il 2026-09-27 dalla chiusura di
+  `work-done/brief-db-blocco-login-per-credenziale.md`, §11.5): con
+  `onFail: MARK_RAN` il changeSet del «ponte django» si segna quando Liquibase
+  gira prima di `manage.py migrate` (la tabella non esiste ancora) e non si
+  riprova più. In CI nessuna FK del ponte esiste e
+  `config/test-fk-auth-user-ponte-django-v1` salta. L'indice sull'email (D-B5 di
+  quel brief) usa invece `onFail: CONTINUE`, che salta senza segnare e riprova al
+  migrate successivo. Da decidere se portare a `CONTINUE` tutte le FK del ponte
+  (le 18 storiche e `20260925-22`/`-23`): è un cambio della forma di casa, del
+  team DB.
+- 🔴 **Il tetto d'area dei permessi non esiste** (BE + DB, difetto di
+  modello, senza decisione; registrato il 2026-09-25 dall'analisi
+  `work-in-progress/analisi-ui-permessi-operatore.md` §3, perché non si perda
+  con la sua chiusura): un'area `BLOCCATO` **non** blocca le sue azioni di
+  processo — `core/api/permissions.py` risponde con la sola
+  `check_azione` e non consulta l'area — e un override oggetto può essere
+  **più permissivo** della sua area (`fn_resolve_livello_oggetto` sostituisce,
+  non limita: «il più specifico vince», dichiarato nella guida di
+  architettura §3). Passare a «l'area è un tetto» è un cambio di semantica, da
+  fare a DB e BE, mai solo a video. Le domande da decidere sono in §6
+  dell'analisi (vale anche sul profilo? limite o cancellazione degli override
+  sottostanti?). Non è della v3 dei permessi, che è dormiente
+- **Il `codice` delle sei famiglie di documento di seed si perde al migrate**
+  (DB, ereditata il 2026-09-24 dalla chiusura di
+  `work-done/brief-be-ricerca-full-liste-residue.md`, §13.5): dal 24-09 il
+  `codice` dell'operatore si modifica dal CRUD, ma il mirror del CSV
+  `vendite.famiglie_documento` lo riscrive a ogni migrate, come già la
+  `descrizione`. Una modifica dal CRUD dura fino al migrate successivo. Da
+  decidere col team DB se il mirror debba smettere di riscrivere le colonne che
+  l'operatore può cambiare
+- **Righe di listino: la gamba dei compositi bundle non è provata sul DB**
+  (BE, stessa origine, §13.3 g): la ricerca libera di `vendite.listini_righe`
+  è una condizione sola sulla CTE `unione`, ma
+  `vendite/tests/db/test_ricerca_liste_db` costruisce solo la riga standalone
+  (la fixture di una BoM con prezzo bundle è pesante). Su quella gamba la
+  ricerca non ha un rosso che la presidi
+- **Il giornale trasversale filtra la data nel fuso della connessione (UTC)**
+  (BE, stessa origine, §10): `vendite_repository.list_giornale_trasversale`
+  scrive `quando >= %s::date`, quindi un evento fra mezzanotte e le 2 ora
+  italiana finisce sotto il giorno prima, e
+  `test_il_giornale_mostra_solo_l_emittente_di_chi_legge` va rosso se gira in
+  quella fascia. Da decidere se e dove aprirlo
+- **La matrice di `stato_lotto` in due sedi che dissentono** (BE + DB,
+  ereditata il 2026-09-23 dalla chiusura di
+  `work-done/brief-db-annullamento-chiude-la-vita.md`, §9.3): il BE ammette
+  `COMPLETATO → ERRORE`, `vendite.fn_set_fatturazione_lotto_stato` no — e
+  quella funzione è di fatto **morta**, il runner scrive `stato_lotto` con un
+  `UPDATE` diretto (è per questo che la guardia su `COMPLETATO` sta su un
+  trigger della colonna). Da decidere quale sia la sede unica della matrice e
+  ritirare l'altra. Cantiere a sé
+- **La porta dell'esito ancora aperta** (DB, stessa origine, §9.9): un
+  documento marcato `ERRORE` su un lotto **già** `COMPLETATO` produce la
+  contraddizione «COMPLETATO con documenti in errore» senza toccare
+  `stato_lotto`, quindi la guardia del trigger non la vede. Oggi la sorveglia
+  il presidio a catalogo `dbops.vw_lotti_chiusi_con_errori_da_guardare` (deve
+  restare vuoto); chiuderla a DB è una decisione a sé, di Tid
+- **`zeroerp_log` in CI non ha `USAGE` su `dbops`: ogni test Django lavora con
+  `tx_id = uuid_nil`** (DB+CI, ereditata il 2026-09-19 dalla chiusura di
+  `work-done/brief-db-privilegio-app-job-run-log.md`, §5). La sede del
+  privilegio esiste — `scripts/sql/provision_dblink_log_channel.sql` — ma la CI
+  non la esegue: il changeSet che la incarna (`90_end/20260205-42`) è
+  `context: disabled`, il bootstrap di `ci-validate.yaml` crea il ruolo e il
+  DSN senza concedergli niente su `dbops`, e `90_end/20260905-38` gli dà
+  `maintenance`, non `dbops`. Su dev il grant c'è, a mano (§11.9, stessa
+  forma). Effetto: `fn_get_or_create_session_tx_id` ripiega su `uuid_nil`
+  (progettato apposta, non fa fallire nulla), quindi ogni asserzione sul
+  `tx_id` reale in CI è verde per sottrazione e l'audit non correla. Fatto
+  datato: 16 114 righe `permission denied for schema dbops` nel log Postgres
+  della corsa verde `35451924195`. Due strade, **decisione a Tid**: un passo
+  in `ci-validate.yaml` che lancia `provision_dblink_log_channel.sql` dopo il
+  bootstrap, oppure un changeSet `90_end` gemello di `20260905-38` per
+  `dbops`. Tocca il workflow, condiviso BE/DB. In coda allo stesso brief due
+  code minori: `maintenance.test_pgagent_log` con `zeroerp_app=r` a mano su
+  dev e senza lettore (§3.3, `REVOKE` + pin nel pgTAP, o un lettore da
+  trovare) e `check_db_role_access.sql` che esclude `maintenance` per intero
+  (§3.4, da verificare)
 - **La distinta del fondo fattura fuori lotto** (DB, ereditata il 2026-09-17
   dalla chiusura di `work-done/brief-db-distinta-numerata-sul-registro.md`,
   §4-bis.19): `fn_sync_contabili_fondo_fattura` passa `p_lotto_id = NULL` se la
@@ -302,7 +438,15 @@ produzione, non c'è niente da aspettare.*
   presentazione, e il buco (la rata di una bozza è abbinabile per vie diverse
   dal picker) è **dichiarato**, non dimenticato: si chiude nel cantiere SDI
   con la regola intera «definitiva e inviata», in una sede, letta da lista e
-  guard
+  guard. ⚠️ **Aggiornamento 2026-09-23 (Tid), che NON cambia la decisione**:
+  `solo_numerate` era scritto nel **frontend** (nei `filterDefaults` del picker)
+  e da quel giorno il suo default vive nel **backend**
+  (`saldi_service.list_rate` / `list_rate_paginata`, `= True`; l'assenza del
+  parametro significa «applica la regola»). ⭐ Resta **presentazione, non
+  cancello** — il guard della riga non chiede ancora lo stato del documento e il
+  buco dichiarato è intatto: cambia solo che la regola non dipende più dal client
+  che si ricorda di mandarla. Regola generale in
+  [api.md §«Un PERIMETRO non è un filtro»](../docs/it/dev/api.md)
 - **«Riavvia» un servizio dall'interfaccia** (DB + deploy + BE, **decisione
   D1 di Tid**; ereditata il 2026-09-18 dalla chiusura di
   `work-done/analisi-riavvio-processi-da-interfaccia.md`): «Esegui ora» è in
@@ -328,15 +472,24 @@ produzione, non c'è niente da aspettare.*
   vista (le tabelle lo hanno o lo raggiungono) + la colonna a catalogo. Il
   collaudo in-app dell'osservabilità (`work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md`,
   scritto il 19-09, **da eseguire**) lo dichiara al §3.15
-- **Il catalogo dei registri del giornale** (DB, brief scritto il
-  2026-09-19: `work-in-progress/brief-db-registri-giornale-catalogo.md`,
-  decisione di Tid dello stesso giorno): i quattro registri che
-  `script.vw_giornale_entita` cuce vivono come letterali nei rami `UNION ALL`,
-  in una costante BE e in un array FE, e nessuna sede porta l'etichetta — la
-  tendina «Registro» mostra `EVENT_LOG` grezzo. Richiesta: `config.registri_giornale`
-  nella forma del lookup generico + pgTAP che lega vista e catalogo nei due
-  versi. Il BE aspetta; la tendina gemella «Entità» è già sul catalogo
-  (`GET /core/lookup/tipi-entita/`, stesso giorno)
+- ✅ **Il catalogo dei registri del giornale — CHIUSO il 2026-09-19** su DB,
+  BE e FE (`work-done/brief-db-registri-giornale-catalogo.md`): le tre sedi
+  che non si conoscevano (letterali della vista, costante BE, array FE) sono
+  **una**, `config.registri_giornale`, legata alla vista dal pgTAP nei due
+  versi; il filtro `registro` del giornale trasversale si valida leggendo il
+  catalogo (`registri_giornale_ammessi`, niente costante), la tendina e la
+  colonna «Registro» portano l'etichetta dal lookup specializzato
+  (`etichetta_key`), e `check_i18n_keys.py` legge la colonna `etichetta_key`
+  dei CSV. **Due cose ereditate**, nel brief §5.1: (a) l'handler delle
+  specializzate scriveva `t.attivo` fisso — ora `has_attivo`, e
+  `test_lookup_specializzate` attraversa **tutte** le rel sul DB provvisto;
+  (b) ✅ regola del 2 applicata (ok Tid): le due tendine del giornale
+  («Entità», «Registro») passano dal BB `useLookupEtichettato` — lookup del
+  catalogo con l'etichetta dichiarata dal DB, `etichetta(codice)` + `opzioni`;
+  e dalla rilettura critica `useLookupCodici` (chiave `<rel>[::no-obsoleti]`
+  + fetch del lookup generico composte in un posto, 7 siti). ⚠️ Restano
+  dichiarati i siti che chiamano `lookupCodici(rel)` senza `page_size`
+  (pagina 50: tendina troncabile in silenzio) — da rivedere uno per uno
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare
@@ -350,7 +503,18 @@ produzione, non c'è niente da aspettare.*
   `work-done/refactor-prezzi.md` §4.7, residuo differito dal 2026-06-01): dal
   2026-09-14 (`20260914-14`) riguarda anche i **preventivi** — la rev N+1
   ricopia `stato_approvazione_prezzo` e la pratica 1:1, e una riga `PENDING`
-  può trovarsi con la pratica già chiusa sulla rev N
+  può trovarsi con la pratica già chiusa sulla rev N. ⚠️ **Dal 2026-09-24 il
+  debito morde prima**: un prezzo non autorizzato blocca già l'**emissione**
+  (building block `script.fn_check_prezzi_autorizzati`, cinque documenti di
+  vendita), non più la sola accettazione — la revisione con quella riga non si
+  emette, e resta solo l'annullamento. ✅ **Deciso da Tid lo stesso giorno**
+  (§10 di `work-done/brief-db-preventivi-congelamento-pricing.md`,
+  `20260924-33…-37`, applicati il 24-09 con test verdi; collaudo a video da
+  eseguire in `work-in-progress/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`):
+  una revisione **non si crea** finché un
+  prezzo è in attesa, quindi la riga in attesa ricopiata non può più nascere;
+  approvato e rifiutato si ricopiano come prima. Resta del BE il ciclo di vita
+  della pratica su una rev superata (il suo `meta` nomina la riga della rev N)
 
 **Residui della roadmap fatturazione** (archiviata il 2026-09-12 in
 `docs/it/dev/work-done/fatturazione-roadmap.md`, dove sta il *perché* di

@@ -17,9 +17,9 @@ Indice test eseguiti:
 2) RateListaTests.test_ordinamento_fuori_whitelist_rifiutato
 3) RateListaTests.test_senza_ordinamento_decide_il_repository
 4) RateListaTests.test_direzione_normalizzata_in_minuscolo
-5) RateListaTests.test_ricerca_corta_rifiutata
+5) RateListaTests.test_ricerca_corta_non_e_un_errore
 6) RateListaTests.test_solo_aperte_arriva_come_booleano
-6-bis) RateListaTests.test_solo_numerate_arriva_come_booleano
+6-bis) RateListaTests.test_solo_numerate_e_un_perimetro_non_un_filtro
 7) RateListaTests.test_i_criteri_passano_intatti
 8) RateListaTests.test_natura_normalizzata_in_maiuscolo
 9) WhitelistTests.test_i_saldi_non_sono_ordinabili
@@ -91,13 +91,13 @@ class RateListaTests(SimpleTestCase):
         kwargs = self.repo.list_rate_paginata.call_args.kwargs
         self.assertEqual(kwargs["order_dir"], "desc")
 
-    # Scopo: la ricerca libera sotto i tre caratteri e' un 400 col campo, non
-    #        una lista non filtrata che sembra un risultato.
-    def test_ricerca_corta_rifiutata(self):
-        with self.assertRaises(ServiceError) as ctx:
-            saldi_service.list_rate(auth_user_id=5, limit=25, search="ro")
-        self.assertEqual(ctx.exception.code, "E_PAGAMENTI_VALIDATION")
-        self.assertEqual(ctx.exception.context.get("field"), "search")
+    # Scopo: la ricerca libera corta NON e' un errore: arriva al repository, e
+    #        sotto la soglia del catalogo della lista la ignora il BB di ricerca
+    #        (brief-db-be-fe-ricerca-soglia-per-lista §6 a, Tid 2026-09-26 —
+    #        fino ad allora qui era un 400).
+    def test_ricerca_corta_non_e_un_errore(self):
+        saldi_service.list_rate(auth_user_id=5, limit=25, search="ro")
+        self.assertEqual(self.repo.list_rate_paginata.call_args.kwargs["search"], "ro")
 
     # Scopo: `solo_aperte` e' SUPPORTATO (P-3 c'e'): al repository arriva un
     #        booleano, e `None` vale `False` — nessun 400 «non supportato».
@@ -107,12 +107,22 @@ class RateListaTests(SimpleTestCase):
         saldi_service.list_rate(auth_user_id=5, limit=25, solo_aperte=True)
         self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_aperte"], True)
 
-    # Scopo: `solo_numerate` (rilievo di Tid, 18/09) segue la stessa forma di
-    #        `solo_aperte`: al repository arriva un booleano, `None` vale
-    #        `False`. Il predicato (`numero IS NOT NULL`) si prova sul DB
-    #        provvisto, costruendo la bozza.
-    def test_solo_numerate_arriva_come_booleano(self):
+    # Scopo: ⛔ `solo_numerate` NON segue la forma di `solo_aperte`, ed e' il
+    #        test che tiene fermo il perche' (decisione di Tid, 23/09). E' un
+    #        PERIMETRO di dominio — la rata di una bozza non e' un credito —
+    #        quindi «assente» significa APPLICA LA REGOLA, non «falso»:
+    #        `None` -> `True`. `solo_aperte`, che e' un filtro vero, resta
+    #        `None` -> `False` (il test qui sopra).
+    # ⚠️ Fino al 23/09 la regola la mandava il FRONTEND a ogni chiamata, cioe'
+    #        era vera solo per il client che se la ricordava; questo test
+    #        pinnava quel mondo (`None` -> `False`). Il predicato
+    #        (`numero IS NOT NULL`) si prova sul DB provvisto, costruendo la
+    #        bozza.
+    def test_solo_numerate_e_un_perimetro_non_un_filtro(self):
         saldi_service.list_rate(auth_user_id=5, limit=25, solo_numerate=None)
+        self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_numerate"], True)
+        # La via d'uscita esiste, ma va CHIESTA.
+        saldi_service.list_rate(auth_user_id=5, limit=25, solo_numerate=False)
         self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_numerate"], False)
         saldi_service.list_rate(auth_user_id=5, limit=25, solo_numerate=True)
         self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_numerate"], True)

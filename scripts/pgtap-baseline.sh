@@ -290,6 +290,13 @@ echo
 
 CORRENTE=$(mktemp)
 PRIMO_ROSSO=$(mktemp)
+# ⭐ Il MOTIVO di ogni ERRORE_FIXTURE (la prima riga «ERRORE:/ERROR:» del suo
+#   output), file per file. Fino al 2026-09-21 si conservava per intero solo il
+#   PRIMO rosso, e solo per il cancello «rossi tutti»: un ERRORE_FIXTURE che
+#   compariva in una corsa e non si riproduceva da solo (anagrafiche/
+#   create-cliente, due volte in due giorni) non lasciava NIENTE da leggere.
+#   L'etichetta dice che il file non ha misurato; il motivo dice perche'.
+MOTIVI=$(mktemp)
 trap 'rm -f "$CORRENTE" "$PRIMO_ROSSO"' EXIT
 
 n=0
@@ -355,6 +362,8 @@ while IFS= read -r f; do
     causa="SORGENTE_POLIMORFA"
   elif echo "$out" | grep -qE "(ERRORE|ERROR):"; then
     causa="ERRORE_FIXTURE"
+    printf 'db/pgtap/%s\t%s\n' "$rel" \
+      "$(echo "$out" | grep -m1 -E "(ERRORE|ERROR):" | sed -E 's/^psql:[^:]*:[0-9]+: //' | cut -c1-200)" >> "$MOTIVI"
   else
     causa="ASSERZIONE"
   fi
@@ -446,7 +455,7 @@ fi
 # Confronto sulla sola colonna file: la causa e' informativa, non identitaria
 # (lo stesso file puo' cambiare causa restando rosso — non e' una regressione).
 NOTI=$(mktemp); ATTUALI=$(mktemp)
-trap 'rm -f "$CORRENTE" "$NOTI" "$ATTUALI"' EXIT
+trap 'rm -f "$CORRENTE" "$NOTI" "$ATTUALI" "$MOTIVI"' EXIT
 if [ ${#SCHEMI[@]} -eq 0 ]; then
   baseline_righe | cut -f1 | sort > "$NOTI"
 else
@@ -501,6 +510,9 @@ if [ -n "$NUOVI" ]; then
     [ -z "$nf" ] && continue
     causa=$(grep -F "$nf"$'\t' "$CORRENTE" | cut -f2)
     printf '   %-62s %s\n' "$nf" "$causa"
+    # ⭐ Un ERRORE_FIXTURE si LEGGE: la riga d'errore sta qui, non va cercata.
+    motivo=$(grep -F "$nf"$'\t' "$MOTIVI" | cut -f2)
+    [ -n "$motivo" ] && printf '   %-62s   ↳ %s\n' "" "$motivo"
   done <<< "$NUOVI"
   echo
   if [ "$(basename "$BASELINE")" = "baseline-rossi-ci.tsv" ] \

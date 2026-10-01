@@ -85,13 +85,12 @@ manuali (imposto dal CHECK `ck_transizioni_stati_comm_meta_ui`).
 |--------|------|:---:|---|
 | `action_key` | `text` | Sì (manuale) | Chiave semantica dell'azione letta dal FE |
 | `label_key` | `text` | Sì (manuale) | Chiave i18n per il label del bottone |
-| `severity` | `text` | No | Severity PrimeVue: `info` / `success` / `danger` |
-| `icon` | `text` | No | Classe PrimeIcons |
+| _(icona e colore)_ | — | — | Non sono dati del DB: il frontend li sceglie dall'`action_key` (mappa verbo → aspetto in `core/`, icona e `severity`). Il colore è uscito dal `meta` il 2026-09-28 |
 | `requires_confirm` | `boolean` | No | `true` → dialog di conferma prima di eseguire |
 | `manuale` | `boolean` | No | `false` = transizione automatica/di processo, esclusa dalla lista UI. Default: `true` |
 
 **Stato attuale del seed**: tutte le 11 righe hanno `meta = {"manuale": false}`. I metadati UI
-(action_key/label_key/severity) sono rinviati a quando esisterà una UI commesse /
+(action_key/label_key) sono rinviati a quando esisterà una UI commesse /
 `fn_available_actions_commessa`; `manuale=false` soddisfa il CHECK e marca le transizioni
 come di processo. All'introduzione della UI, arricchire il `meta` delle transizioni manuali.
 

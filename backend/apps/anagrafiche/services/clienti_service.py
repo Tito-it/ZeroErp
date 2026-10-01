@@ -15,7 +15,10 @@ from typing import Any
 
 from django.db import transaction
 
-from apps.anagrafiche.db.clienti_repository import ClientiRepository
+from apps.anagrafiche.db.clienti_repository import (
+    CLIENTE_UPDATE_ALLOWED,
+    ClientiRepository,
+)
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
@@ -27,6 +30,20 @@ from apps.anagrafiche.services.contatti_service import crea_contatto_inline_se_v
 from apps.core.services.service_errors import ServiceError
 from apps.core.api.payload_validators import optional_int, optional_uuid
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
+
+
+# Contratto della PATCH del cliente, validato QUI con 400 `E_ANAG_VALIDAZIONE`
+# (2026-09-26): i campi editabili del repository piu' la categoria del BA, che
+# ha il suo canale nella stessa fn madre.
+# ⛔ Fino a quel giorno una chiave estranea veniva SCARTATA IN SILENZIO dal
+#    repository: la PATCH rispondeva «salvato» senza aver scritto il campo. Ora
+#    il repository la rifiuta con `RuntimeError` (500) — e il client non deve
+#    mai arrivarci: il rifiuto educato e' questo.
+_UPDATE_CLIENTE_KEYS: frozenset[str] = CLIENTE_UPDATE_ALLOWED | {"ba_categoria_cliente_id"}
+
+# Validator stateless del dominio (solo il codice errore): condivisibile.
+_V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
 
 class ClientiService:
@@ -72,13 +89,10 @@ class ClientiService:
     def resolve_filtri_export_label(
         self,
         *,
-        search: str | None = None,
         utility_id: int | None = None,
         stato_cliente_id: int | None = None,
     ) -> dict[str, Any]:
         out: dict[str, Any] = {}
-        if search:
-            out["Ricerca"] = search
         if utility_id is not None:
             desc = self._repo.get_utility_descrizione(utility_id)
             out["Utility"] = desc or f"id={utility_id}"
@@ -103,6 +117,10 @@ class ClientiService:
     #        UPDATE separati in autocommit: il fallimento del secondo lasciava la
     #        categoria BA committata su uno stato parziale.
     def update_cliente(self, cliente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        if isinstance(payload, dict):
+            _V.validate_allowed_keys(
+                payload, allowed=_UPDATE_CLIENTE_KEYS, message="Payload cliente non valido.",
+            )
         # Guard esistenza + scope (RLS): 404 pulito E_ANAG_NOT_FOUND se il
         # cliente non esiste o e' fuori dallo scope emittente dell'operatore.
         self.get_cliente(cliente_id)
@@ -122,7 +140,7 @@ class ClientiService:
             )
 
         # Campi editabili del cliente = payload meno la categoria BA (che ha un
-        # canale dedicato). La whitelist effettiva e' applicata dal repository.
+        # canale dedicato). Le chiavi sono gia' nel contratto (sopra).
         cliente_fields = (
             {k: v for k, v in payload.items() if k != "ba_categoria_cliente_id"}
             if isinstance(payload, dict)
@@ -151,8 +169,11 @@ class ClientiService:
     # =================================================================
 
     # Scopo: Guard applicativo refactor operatore-emittenti (Q6).
-    #        Blocca la creazione BA per admin globale quando esistono
-    #        emittenti fiscali nel sistema. Difesa "early reject" per
+    #        Blocca la creazione BA quando la sessione non lavora dentro un
+    #        emittente fiscale (super admin in «Tutti gli emittenti») ed
+    #        esistono emittenti nel sistema (regola della rev 2026-08-04 di
+    #        `fn_check_user_can_create_ba`). Il codice conserva il nome
+    #        storico `…ADMIN_GLOBALE…`. Difesa "early reject" per
     #        dare un errore pulito (E_BA_ADMIN_GLOBALE_VIETATO, 403)
     #        invece di un fallimento generico del trigger DB.
     #        Defense-in-depth: il trigger
@@ -167,9 +188,9 @@ class ClientiService:
             raise ServiceError(
                 code=E_BA_ADMIN_GLOBALE_VIETATO,
                 message=(
-                    "Un amministratore globale non puo' creare billing "
-                    "account quando esistono emittenti fiscali. Operare "
-                    "come operatore di un emittente specifico."
+                    "Per creare un cliente serve un emittente fiscale su cui "
+                    "lavorare: scegli l'emittente in alto (con «Tutti gli "
+                    "emittenti» non si sa a quale associarlo)."
                 ),
             )
 

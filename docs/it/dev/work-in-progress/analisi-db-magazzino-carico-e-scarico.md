@@ -11,9 +11,23 @@
 > guardava la sorgente polimorfa, una la simmetria degli acquisti, una la
 > produzione.
 >
-> **Stato:** 🔵 **APERTO — ANALISI INCOMPLETA, e lo dichiara.** Le §2 → §8 sono il
-> consolidamento di quanto già scritto e verificato; la **§9 elenca ciò che manca**
-> e va scritto in un secondo giro. ⛔ Nessun changeSet, niente applicato.
+> **Stato al 2026-09-26:** 🟡 **analisi COMPLETA (M-1 → M-9 chiuse) e in gran
+> parte COSTRUITA; restano i lotti 3 → 5.** Costruiti:
+> [Lotto 1](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md) (DDL, RLS,
+> 15-09), [Lotto 1-bis](../work-done/brief-db-emittente-di-default-un-bb-solo.md)
+> (17-09), [Lotto 2](../work-done/brief-db-magazzino-lotto-2-motore.md) (primitiva,
+> inventario, rettifica, disponibilità, orfani, prontezza — DB 18-09, archiviato
+> 24-09), [2-bis BE/FE](../work-done/brief-db-magazzino-lotto-2-bis-be-fe.md) (23-09)
+> e i [verbi con permesso](../work-done/brief-db-magazzino-verbi-con-permesso.md)
+> (24/25-09). ⏳ Il **collaudo a video** di inventario e rettifica è di Tid
+> ([collaudo](collaudo-in-app-magazzino-inventario-e-rettifica.md)).
+> ⚠️ **Le §0 → §7 raccontano la struttura del 02-09 al presente**: il
+> ragionamento è la sede delle decisioni e resta valido, ma dove dicono «oggi» si
+> legge «il 02-09». Lo stato vero, voce per voce, è la colonna «Realizzato» di
+> **§9**; la sequenza dei lotti è in **§8**.
+>
+> *Stato fino al 17-09, per la storia:* 🔵 APERTO — ANALISI INCOMPLETA; le §2 → §8
+> erano il consolidamento, la §9 elencava ciò che mancava; nessun changeSet.
 >
 > ✅ **2026-09-14 — le decisioni che questo documento PRESUPPONE sono prese**
 > (D-1, D-4, D-6, D-7, D-8 dell'[analisi aggancio
@@ -39,6 +53,11 @@
 ---
 
 ## 0. In due parole, senza tecnicismi
+
+> ⚠️ **Fotografia del 2026-09-02.** Oggi il registro **ha** chi ci scrive (la
+> primitiva `magazzino.fn_scrivi_movimento`, raggiunta solo dai verbi di
+> inventario e rettifica), il verso è presidiato da un guard e le causali che
+> mancavano ci sono (16 in tutto). Vedi §9.
 
 Un magazzino fa due cose: **fa entrare** merce e **la fa uscire**. Ogni volta
 scrive una riga in un registro — quanto, di che articolo, quando, e per quale
@@ -129,7 +148,10 @@ legge il DDL conta tre presidi, e i presidi sono zero.
 
 ✅ **DECISO (Tid, 2026-09-14 — D-8 dell'analisi aggancio): l'ambito si ritira,
 con i tre flag.** `ambito_causale_id`, la tabella `ambito_causale`,
-`richiede_odl`, `contabilizza_cdc` e `abilita_billing` **escono** nel Lotto 1.
+`richiede_odl`, `contabilizza_cdc` e `abilita_billing` **escono** nel Lotto 1
+(✅ **uscite**: `20260915-02`, `-03`; oggi le causali sono **16** — le dieci del §2,
+`CARICO_RESO_VEN`, `SCARICO_RESO_ACQ`, `ODL_VERSAMENTO_PF`, `INV_INIZIALE`,
+`STORNO_POS`, `STORNO_NEG`).
 La ragione è in §5-bis: la primitiva è guidata da due cataloghi e nessuna di
 queste colonne è fra i suoi controlli. Le **quattro causali mancanti** entrano
 nello stesso lotto come righe di seed, più le **due dello storno** (§7-quinquies,
@@ -247,6 +269,14 @@ esattamente come il trasferimento fra magazzini: due movimenti firmati, tenuti
 insieme dallo stesso `transfer_uid`. Non serve niente di nuovo — è la forma che il
 trasferimento usa già.
 
+> ⚠️ *Corretto il 2026-09-26*: «non serve niente di nuovo» vale per il **ledger**,
+> non per il documento. Lo spostamento fra ubicazioni ha bisogno di un documento
+> (sotto D-6 ogni movimento ne ha uno): per D-L2-g è `magazzino.trasferimenti`
+> come trasferimento **interno**, che deve prendere `ubicazione_id_da`/`_a` sulle
+> righe e allargare `chk_mag_trasferimenti_da_a_distinti` a «magazzini **o**
+> ubicazioni diversi» — Lotto 3. E vale solo sui magazzini con
+> `usa_ubicazioni = true` (D-L2-m).
+
 ⭐ **E toglie dal catalogo un valore che nessuno usava e che il modello non sapeva
 scrivere**, cioè una terza istanza della classe «esiste e non è armata» che questi
 documenti inseguono da due giorni. ⚠️ Un valore ammesso da un CHECK e inesprimibile
@@ -258,6 +288,14 @@ previsto.
 ---
 
 ## 5. Chi scrive un movimento: nessuno
+
+> ⚠️ **Fotografia del 2026-09-02.** Dal 18-09 scrive **una** funzione,
+> `magazzino.fn_scrivi_movimento` (DEFINER del proprietario, con `REVOKE` di
+> scrittura all'app su `movimenti` e `valore_giacenza`); dal 24-09 l'app non la
+> esegue più nemmeno e passa dai verbi `fn_posta_inventario` /
+> `fn_posta_rettifica`, che nella prima riga chiamano `script.fn_guard_azione`
+> su `registra_magazzino`. Il perimetro RLS di `magazzino` esiste dal 15-09
+> (`20260915-16`). La sezione resta come il **perché** di §5-bis.
 
 ⚠️ **`magazzino.movimenti` non è scritto da nessuna parte.** Verificato: lo schema
 ha **due** funzioni in tutto — `fn_get_magazzino_note` e `trgfn_magazzini_normalize`
@@ -557,10 +595,14 @@ non parziale — e va scritto `NULLS NOT DISTINCT`, perché `asset_id`, `lotto_i
 `ubicazione_id` restano nullable e due NULL in un indice unico sono **distinti**:
 senza quella clausola l'anti-doppio non scatterebbe proprio sui movimenti senza
 lotto né seriale, cioè i più comuni (è la trappola dell'[analisi aggancio §5](analisi-db-magazzino-aggancio-documento-e-produzione.md)).
-📌 **Un affinamento proposto nel brief, da confermare (D-L1-c)**: il «verbo» potrebbe
-essere **la causale stessa** — `TRASF_OUT`/`TRASF_IN` distinguono già le due righe
+✅ **Affinamento confermato da Tid il 2026-09-15 (D-L1-c)** — e da allora la
+riga «Colonna nuova: `operazione_verbo`» della tabella sopra **non vale più**: il «verbo» è
+**la causale stessa** — `TRASF_OUT`/`TRASF_IN` distinguono già le due righe
 del trasferimento, e uno storno ha una causale sua — senza una colonna
-`operazione_verbo`, che sarebbe un vocabolario parallelo alle causali.
+`operazione_verbo`, che sarebbe un vocabolario parallelo alle causali. Il vincolo
+costruito è `uq_mag_movimenti_identita` su `(sorgente_tipo_id, sorgente_riga,
+sorgente_uid, causale_id, asset_id, lotto_id, ubicazione_id)` `NULLS NOT DISTINCT`
+(`20260915-05`), col `COMMENT` sull'operazione-per-tranche.
 | `uq_mag_movimenti_docref` | ⛔ si **toglie** |
 | `transfer_uid` | resta, e fa il lavoro **opposto**: raggruppa i due movimenti di un trasferimento (il suo indice è **non** unico, apposta). Una dice «questi vanno insieme», l'altra «questo esiste una volta sola» |
 
@@ -688,14 +730,19 @@ la produzione non ha bisogno di niente di nuovo.
   ⭐ **Lo scrittore estraneo non si ferma con un vincolo: si ferma con i
   permessi.** «In `magazzino.movimenti` non scrive nessuno se non attraverso la
   funzione» è una regola di `GRANT` e di `SECURITY DEFINER`, e va nel perimetro
-  RLS/permessi di `magazzino`, che **non esiste** (§5).
+  RLS/permessi di `magazzino`, che **non esiste** (§5) — *esiste dal 15-09, e la
+  porta di scrittura dal 18-09 (vedi la nota in testa a §5)*.
 * ⛔ **Non è un sostituto della macchina a stati**: che un DDT vada in `EMESSO`
   una volta sola resta compito del guard di transizione.
 
 ### Quel che resta da fissare, ed è piccolo
 
-* il **nome** e il vocabolario del verbo (`operazione_verbo`): CHECK a valori
-  chiusi, oppure lookup — la seconda se i verbi dovranno portare attributi;
+> ✅ *Fissato nel Lotto 1*: il verbo è la causale (D-L1-c), e lo scope è globale
+> con la ragione nel `COMMENT`.
+
+* ~~il **nome** e il vocabolario del verbo (`operazione_verbo`): CHECK a valori
+  chiusi, oppure lookup — la seconda se i verbi dovranno portare attributi;~~
+  superato da D-L1-c;
 * lo **scope dell'unicità**: **globale**, e va scritto come **dipendenza, non
   come preferenza**. ⭐ È globale *perché la terna contiene già la sorgente*,
   quindi il magazzino non aggiunge identità. ⚠️ Il giorno in cui una chiave non
@@ -712,6 +759,11 @@ la produzione non ha bisogno di niente di nuovo.
 ---
 
 ## 7. La lettura: giacenza e disponibilità
+
+> ⚠️ **Fotografia del 2026-09-02.** Oggi le viste sono sette — `vw_giacenza`,
+> `vw_giacenza_ubicazione`, `vw_giacenza_valorizzata`, `vw_costo_medio`,
+> `vw_costo_medio_globale`, `vw_disponibilita`, `vw_disponibilita_articolo` — e
+> `costo_medio` si chiama `valore_giacenza` e la aggiorna la primitiva.
 
 Scrivere è metà del lavoro; l'altra metà è **rileggere**, e lì i difetti di §4 si
 manifestano.
@@ -961,7 +1013,7 @@ difetto che questi documenti contestano tre volte: il doppio modello del §2,
 | --- | --- | --- |
 | 1 | **il ciclo degli stati**, oggi `planned → picked → fulfilled → cancelled` | ⛔ **`picked` è un concetto di sola uscita** (preso dallo scaffale). In entrata l'equivalente è «arrivato, non ancora caricato» — il `RICEVUTO → VERIFICATO → CARICATO` che l'[analisi acquisto](analisi-simmetria-ordini-acquisto.md) ha già nominato. È il primo punto in cui il generico perde pezzi |
 | 2 | **`uq_mag_reservations_docref`** | stessa specie dell'indice della §6: dice *una riga per riga di documento*, ed è falso con due magazzini, due tranche o due date |
-| 3 | **`chk_mag_res_qta_pos`** (`qta > 0`) | ✅ **cade**: con la decisione A della §4 anche gli attesi sono firmati, e un CHECK che impone il positivo impedirebbe il verso di entrata. ⭐ Ne discende la formula unica `sum(movimenti.qta) + sum(movimenti_attesi.qta)` |
+| 3 | **`chk_mag_res_qta_pos`** (`qta > 0`) | ✅ **cade**: con la decisione A della §4 anche gli attesi sono firmati, e un CHECK che impone il positivo impedirebbe il verso di entrata. ~~⭐ Ne discende la formula unica `sum(movimenti.qta) + sum(movimenti_attesi.qta)`~~ — *ritirata il 04-09 (vedi §4): la formula è in «La formula di disponibile»* |
 | 4 | **`data_prevista`** | resta, ma solo per le righe **senza documento**: dove c'è un documento la data è la sua, o le due divergono |
 
 ⚠️ **E «rinominare la tabella» vuol dire rinominare TUTTO**, non solo la tabella:
@@ -1456,6 +1508,9 @@ banale con `vw_giacenza`) **o ritirata**.
 
 ### ⚠️ Residui minori, da fare nello stesso giro
 
+> ✅ *Fatti nel Lotto 1*: `fk_mag_valore_giacenza_articolo`, il `COMMENT` su
+> `movimenti.costo_unitario`, e `vw_giacenza_valorizzata` rifatta come join.
+
 * `costo_medio` ha il vincolo verso il magazzino ma **non verso l'articolo**: può
   puntare a un articolo che non esiste. La FK va aggiunta con la rinomina (e con la
   sua riga in `dbops.fk_index_policy`).
@@ -1658,7 +1713,10 @@ E si incastra da sola con il resto:
   dell'originale: `SCARICO_VEN` ha segno −1 e lo specchio è +1. ⇒ Due causali
   generiche, `STORNO_POS` (+1) e `STORNO_NEG` (−1), sullo stampo di `RETT_POS`/
   `RETT_NEG`; il *che cosa* è stornato lo dice il legame alla riga originale, non
-  la causale. Proposta nel brief (D-L1-d), da confermare.
+  la causale. ✅ Confermata (D-L1-d) e seminata il 15-09; la primitiva impone
+  che lo storno erediti la sorgente e il costo dell'originale
+  (`E_MAG_STORNO_INCOERENTE`, `20260918-18`). ⏳ La **utility** che genera lo
+  specchio non esiste ancora: Lotto 3.
 
 ### ✅ Al costo ORIGINALE, non alla media di oggi
 
@@ -2048,9 +2106,9 @@ la data dell'ordine e una categoria nata per i listini.
 
 | # | Passo | Perché in questo punto |
 | --- | --- | --- |
-| 1 | ✅ **Il verso è deciso** (§4: sta nella quantità). Resta da **scrivere il guard** su `movimenti` e `movimenti_attesi`, e da chiudere il residuo dello `0` | è la cosa che, sbagliata, falsa ogni numero a valle — e correggerla dopo vuol dire ricalcolare tutto. ⛔ Il guard va **prima** della prima riga, non dopo: senza, la prima convenzione che entra diventa quella vera |
-| 2 | **Inventario iniziale** come primo carico | è la sorgente più semplice: **non ha un documento a monte**, quindi collauda il registro senza dipendere da nessuna catena |
-| 3 | **Scarico da bolla di vendita** come primo consumo | il primo caso con un documento vero dietro, su una catena che esiste già ed è collaudata |
+| 1 | ✅ **Il verso è deciso** (§4: sta nella quantità) ✅ **e costruito** nel Lotto 1: guard `trgfn_movimenti_guard_verso` su `movimenti` e `movimenti_attesi`, `segno IN (-1, 1)` | è la cosa che, sbagliata, falsa ogni numero a valle — e correggerla dopo vuol dire ricalcolare tutto. ⛔ Il guard va **prima** della prima riga, non dopo: senza, la prima convenzione che entra diventa quella vera |
+| 2 | ✅ **Inventario iniziale** come primo carico — costruito nel Lotto 2 (`INV_INIZIALE` dedotta dallo stato del registro), con la rettifica; ⏳ collaudo a video | è la sorgente più semplice: **non ha un documento a monte**, quindi collauda il registro senza dipendere da nessuna catena |
+| 3 | ⏳ **Scarico da bolla di vendita** come primo consumo — Lotto 3, senza brief | il primo caso con un documento vero dietro, su una catena che esiste già ed è collaudata |
 | 4 | **Acquisti** come seconda sorgente | entra su un registro già provato, e porta con sé la sua decisione (D-7) |
 | 5 | **Produzione** come terza | ⭐ se i punti sopra sono stati decisi bene, è *una sorgente in più e un set di causali*, non una riscrittura |
 
@@ -2064,7 +2122,8 @@ la data dell'ordine e una categoria nata per i listini.
 > true`, altrimenti `'NESSUNO_MARCATO'`; iscritta in `presidi.csv` con natura
 > `ZERO`, `colonna_stato = stato`, `stato_atteso = 'MARCATI'` — lo zero
 > suona, il pieno tace; ⛔ non una natura nuova per un caso solo. ⭐ **Va
-> scritto col passo 2** (inventario iniziale): è il momento in cui i primi
+> scritto col passo 2** (✅ *scritto nel Lotto 2*: `dbops.vw_articoli_a_magazzino_prontezza`,
+> in `presidi.csv` con cadenza settimanale, D-L2-k) (inventario iniziale): è il momento in cui i primi
 > articoli vengono marcati e la primitiva M-2 comincia a leggere la colonna —
 > prima, sarebbe un allarme che suona per mesi senza che nessuno possa agire,
 > e un presidio così viene spento. Il brief lo teneva per sé *«perché non si
@@ -2091,16 +2150,18 @@ prova niente: la prova l'ha fatta la decisione.
 >
 > | Lotto | Cosa | Brief |
 > | --- | --- | --- |
-> | **1 — DB, terreno vuoto** | tutto il DDL deciso da M-1 → M-9 e da D-1/D-4/D-6/D-7/D-8, **più il perimetro RLS di M-6** (riquadro di §7-sexies) e i pgTAP strutturali | [brief-db-magazzino-lotto-1-terreno-vuoto](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md) |
-> | **1-bis — DB, prerequisito del 2** (15-09) | l'**emittente di default** come building block unico (`script.trgfn_default_emittente_fiscale`), montato su `magazzini`/`assets` **e** al posto delle quattro copie di vendite, che si ritirano nello stesso giro (decisione di Tid: *«che aspettiamo, la produzione, per fare questi refactor?»*). Senza, il primo magazzino creato dal pannello muore con `23502` | [brief-db-emittente-di-default-un-bb-solo](../work-done/brief-db-emittente-di-default-un-bb-solo.md) |
-> | **2 — DB, motore** | la primitiva (M-2), la `fn_check` di disponibilità separata, l'operazione **inventario iniziale** (passo 2) **e la rettifica** (la seconda operazione senza documento commerciale, D-6), la vista di disponibilità (M-3, senza le colonne che aspettano il satellite D-17), la vista degli orfani (D-9), il presidio di prontezza su `gestito_a_magazzino`, i pgTAP di comportamento (M-7), **la porta** (`zeroerp_app` in sola lettura sul ledger, primitiva DEFINER del proprietario). ⚠️ Con `requires_lotto` esposto in vista/BE/drawer **senza** il lock BoM di `requires_serial` (Lotto 1 §4.3) | [brief-db-magazzino-lotto-2-motore](brief-db-magazzino-lotto-2-motore.md) — 🔵 **scritto il 17-09**, dodici D-L2 da confermare, nessun changeSet |
-> | **3** | scarico da DDT di vendita (passo 3): aggancio a `EMESSO`, utility di storno (M-8), posting del **trasferimento** e apertura/rilascio del **blocco manuale** — ⚠️ il trasferimento aspetta una D di Tid: lo spostamento fra ubicazioni dello stesso magazzino (§4, coppia OUT/IN) **non ha un documento** — `trasferimenti` vieta `from = to` e le sue righe non portano un'ubicazione (Lotto 2 §3, D-L2-g) | — |
+> | **1 — DB, terreno vuoto** ✅ *chiuso 15-09, PR #1593* | tutto il DDL deciso da M-1 → M-9 e da D-1/D-4/D-6/D-7/D-8, **più il perimetro RLS di M-6** (riquadro di §7-sexies) e i pgTAP strutturali | [brief-db-magazzino-lotto-1-terreno-vuoto](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md) |
+> | **1-bis — DB, prerequisito del 2** (15-09) ✅ *chiuso 17-09, PR #1598* | l'**emittente di default** come building block unico (`script.trgfn_default_emittente_fiscale`), montato su `magazzini`/`assets` **e** al posto delle quattro copie di vendite, che si ritirano nello stesso giro (decisione di Tid: *«che aspettiamo, la produzione, per fare questi refactor?»*). Senza, il primo magazzino creato dal pannello muore con `23502` | [brief-db-emittente-di-default-un-bb-solo](../work-done/brief-db-emittente-di-default-un-bb-solo.md) |
+> | **2 — DB, motore** | la primitiva (M-2), la `fn_check` di disponibilità separata, l'operazione **inventario iniziale** (passo 2) **e la rettifica** (la seconda operazione senza documento commerciale, D-6), la vista di disponibilità (M-3, senza le colonne che aspettano il satellite D-17), la vista degli orfani (D-9), il presidio di prontezza su `gestito_a_magazzino`, i pgTAP di comportamento (M-7), **la porta** (`zeroerp_app` in sola lettura sul ledger, primitiva DEFINER del proprietario). ⚠️ Con `requires_lotto` esposto in vista/BE/drawer **senza** il lock BoM di `requires_serial` (Lotto 1 §4.3) | [brief-db-magazzino-lotto-2-motore](../work-done/brief-db-magazzino-lotto-2-motore.md) — ✅ **quattordici D-L2 decise il 17-09**, DB applicato il 18-09 (22 changeSet, PR #1605), consegnato il 22-09, archiviato il 24-09. Seguito da [2-bis BE/FE](../work-done/brief-db-magazzino-lotto-2-bis-be-fe.md) (23-09) e dai [verbi con permesso](../work-done/brief-db-magazzino-verbi-con-permesso.md) (24/25-09). ⏳ Collaudo a video di Tid |
+> | **3** | scarico da DDT di vendita (passo 3): aggancio a `EMESSO`, con **`magazzino_id` sul DDT** (D di disegno da prendere), filtro degli articoli non gestiti e conversione UoM; utility di storno (M-8); posting del **trasferimento** — ✅ la D è presa (D-L2-g, 17-09): `magazzino.trasferimenti` è il trasferimento **interno** (prende `ubicazione_id_da`/`_a` sulle righe e il CHECK allargato), quello con trasporto è il DDT con causale `TRASFERIMENTO`; apertura/rilascio del **blocco manuale**, come verbi con `fn_guard_azione` | [brief-db-magazzino-lotto-3-scarico-da-ddt](brief-db-magazzino-lotto-3-scarico-da-ddt.md) — ✅ **lato DB applicato e verde** (28-09): undici D di Tid, changeSet `20260928-60 → -83`, pgTAP verdi col runner; restano le richieste a BE/FE (brief §6) e la CI da zero. ⚠️ Il **carico da reso cliente** esce in un **3-bis** subito dopo (D-L3-i) |
+> | **3-bis** | carico da **reso cliente** (`CARICO_RESO_VEN`, sorgente `RESO_VENDITA_RIGA`): il reso impara il magazzino di rientro e i suoi prelievi — seconda occorrenza del satellite dei prelievi, regola del 2 (D-L3-i) | [brief-db-magazzino-lotto-3-bis-carico-da-reso](brief-db-magazzino-lotto-3-bis-carico-da-reso.md) — ✅ **lato DB applicato e verde** (29-09): otto D di Tid, changeSet `20260928-84 → -98` e `20260929-01 → -04`; il rientro **punta al prelievo d'origine** (non è la seconda occorrenza dei prelievi, che resta il Lotto 4); restano le richieste a BE/FE e la CI da zero |
+> | **eventi asset** | `ASSET_INSTALL`/`ASSET_RIENTRO`, `is_installazione_asset`, `assets.stato_id`: il pezzo lascia il magazzino e cambia stato — un documento in più (D-L2-l) | — |
 > | **4** | ricezione acquisti = Lotto 3 dell'[analisi acquisti §10](analisi-simmetria-ordini-acquisto.md) | — |
 > | **5** | produzione (passo 5) — serve **D-5** e la §7 dell'analisi commessa | — |
 
 ⚠️ **E una nota sul passo 5**, per non lasciare in piedi una rassicurazione
 sbagliata: *«la produzione sarà una sorgente in più, non una riscrittura»* è vero
-**solo se D-4 e D-6 vengono decise adesso**. Se il vincolo di §5 resta com'è, la
+**solo se D-4 e D-6 vengono decise adesso** (✅ *decise il 14-09 e costruite nel Lotto 1: `uq_mag_movimenti_docref` non esiste più*). Se il vincolo di §5 resta com'è, la
 produzione — che preleva e versa **in più riprese**, quindi molti movimenti per
 una sola riga di ordine — quel vincolo lo riscrive. E il «nuovo set di causali»
 in buona parte **c'è già** (§6): quello che manca è l'ordine di lavoro, non le
@@ -2121,11 +2182,29 @@ causali.
 | **M-2** | ✅ **CHIUSA il 2026-09-02 — §5-bis**, con una **correzione in giornata**: due livelli (primitiva + operazioni), primitiva **guidata dalle causali**, blocco su `(magazzino, articolo)` **solo in uscita**, ⛔ nessuna domanda nella scrittura. 🔴 Corretto che la primitiva guarda **fisico meno blocchi espliciti altrui**, non «solo il fisico», e che il controllo è una **funzione separata** chiamata dai due momenti. ⚠️ Resta legata alla **D-1** solo per la firma dell'origine | — |
 | **M-3** | ✅ **CHIUSA il 2026-09-02 — §7-bis, «La formula di disponibile»**: `disponibile = giacenza − blocchi espliciti`, la **stessa** formula che la primitiva controlla; «posso prometterla» è una **proiezione con le date**, non un numero; il conteggio è **guidato da `config.sorgenti`**, non da query scritte a mano | — |
 | **M-4** | ✅ **CHIUSA il 2026-09-02 — §7-ter**: il trasferimento **muove il valore**; **CMP** unico metodo e `fifo` fuori dal vincolo (il metodo non è della causale); l'accumulatore tiene **solo il valore** e si chiamerà **`valore_giacenza`**; media **ricalcolabile** con vista di presidio. ⚠️ Restano da fare: la FK mancante su `articolo_id` e il `COMMENT` su `costo_unitario`, che significa due cose opposte nei due versi | — |
-| **M-5** | ✅ **CHIUSA il 2026-09-02 — §7-quater**: il **lotto diventa una tabella** (con data d'arrivo, che rende calcolabile il FIFO fisico); per i seriali la verità è il **registro** e `movimenti.seriale` diventa `asset_id`; **decide l'articolo** e le due colonne sulle causali si ritirano (⚠️ manca `articoli.requires_lotto`); `|qta| = 1` con un seriale; **giacenza per ubicazione** in perimetro. ⭐⭐ Emerso che il modello a coppie rende ridondanti `magazzino_id_dest`, `ubicazione_id_from/_to` e `richiede_magazzino_dest` | ⚠️ *14-09*: **va propagata alle righe delle testate** — `inventari_righe`, `rettifiche_righe`, `trasferimenti_righe` portano `lotto`/`seriale` come testo, e sotto D-6 il movimento nasce da quelle righe: senza `lotto_id`/`asset_id` lì, l'operazione non ha niente da passare alla primitiva (Lotto 1) | — |
-| **M-6** | ✅ **CHIUSA il 2026-09-02 — §7-sexies**: `emittente_fiscale_id` sta sul **magazzino**, e il perimetro **si eredita** via `magazzino_id` (⛔ niente colonna copiata sui movimenti; ⛔ l'articolo non prende l'emittente). ⚠️ `magazzino_id` deve diventare **obbligatorio** su `movimenti_attesi` e `assets`, oggi nullable. **Solo `OPERATORE`**; il portale è servito da una **vista dedicata** («disponibile per consegna immediata»), non dal registro. ⭐⭐ E l'aggregato **non è mai parziale**, merito dell'ancora sul magazzino. 📌 Resta il **codice**, nessuna decisione. ⚠️ *14-09*: il codice va nel **Lotto 1**, con l'ancora — il presidio `vw_rls_perimetro_scoperto` non ammette una FK verso una tabella protetta senza policy (§7-sexies, riquadro); e `ENABLE` senza `FORCE`, come tutto il progetto | — |
+| **M-5** | ✅ **CHIUSA il 2026-09-02 — §7-quater**: il **lotto diventa una tabella** (con data d'arrivo, che rende calcolabile il FIFO fisico); per i seriali la verità è il **registro** e `movimenti.seriale` diventa `asset_id`; **decide l'articolo** e le due colonne sulle causali si ritirano (⚠️ manca `articoli.requires_lotto`); `abs(qta) = 1` con un seriale; **giacenza per ubicazione** in perimetro. ⭐⭐ Emerso che il modello a coppie rende ridondanti `magazzino_id_dest`, `ubicazione_id_from/_to` e `richiede_magazzino_dest` | ⚠️ *14-09*: **va propagata alle righe delle testate** — `inventari_righe`, `rettifiche_righe`, `trasferimenti_righe` portano `lotto`/`seriale` come testo, e sotto D-6 il movimento nasce da quelle righe: senza `lotto_id`/`asset_id` lì, l'operazione non ha niente da passare alla primitiva (Lotto 1) |
+| **M-6** | ✅ **CHIUSA il 2026-09-02 — §7-sexies**: `emittente_fiscale_id` sta sul **magazzino**, e il perimetro **si eredita** via `magazzino_id` (⛔ niente colonna copiata sui movimenti; ⛔ l'articolo non prende l'emittente). ⚠️ `magazzino_id` deve diventare **obbligatorio** su `movimenti_attesi` ~~e `assets`~~ (*su `assets` no: corretto il 04-09 in §7-sexies, l'asset prende un emittente proprio*), oggi nullable. **Solo `OPERATORE`**; il portale è servito da una **vista dedicata** («disponibile per consegna immediata»), non dal registro. ⭐⭐ E l'aggregato **non è mai parziale**, merito dell'ancora sul magazzino. 📌 Resta il **codice**, nessuna decisione. ⚠️ *14-09*: il codice va nel **Lotto 1**, con l'ancora — il presidio `vw_rls_perimetro_scoperto` non ammette una FK verso una tabella protetta senza policy (§7-sexies, riquadro); e `ENABLE` senza `FORCE`, come tutto il progetto | — |
 | **M-7** | **La copertura pgTAP**: il dominio ha **un solo file** (`test-movimenti-vincoli-v1.sql`, 21-08) | ⚠️ **Dipende da M-6**: in questo progetto i test girano **come l'applicazione, con RLS attiva** — scriverli prima che il perimetro esista significa scriverli due volte |
-| **M-8** | ✅ **CHIUSA il 2026-09-02 — §7-quinquies**: si corregge con una **riga opposta**, generata da una **utility** che legge l'originale (⭐ così lo storno non può divergere dal movimento che corregge), al **costo originale** e non alla media di oggi; `movimenti.attivo` **si ritira**. ⭐⭐ Lo storno doppio è impedito **gratis** dall'identità di §6 |
+| **M-8** | ✅ **CHIUSA il 2026-09-02 — §7-quinquies**: si corregge con una **riga opposta**, generata da una **utility** che legge l'originale (⭐ così lo storno non può divergere dal movimento che corregge), al **costo originale** e non alla media di oggi; `movimenti.attivo` **si ritira**. ⭐⭐ Lo storno doppio è impedito **gratis** dall'identità di §6 | — |
 | **M-9** | ✅ **CHIUSA il 2026-09-02 — §7-septies, come «non necessaria»**: era il prerequisito dell'avviso sull'impegno derivato, e quell'avviso abbiamo deciso di non farlo ⇒ **non ha più un consumatore**. 📌 Scritto che cosa la fa **tornare**, che **forma** avrà (elenco ordinato di criteri per emittente, ⛔ non un motore) e il dato che **mancherebbe** (una priorità sul cliente) | — |
+
+### ✅ Realizzato — stato al 2026-09-26
+
+> Verificato sulla doc auto-generata (`docs/it/dbzero/magazzino/`, `dbzero/dbops/`),
+> sui CSV di `80_data` e sui brief chiusi. La tabella sopra resta com'era scritta:
+> le righe «restano da fare» sono storia, lo stato è qui.
+
+| # | Che cosa esiste oggi | Che cosa resta, e dove |
+| --- | --- | --- |
+| **M-1** | guard `magazzino.trgfn_movimenti_guard_verso` (`trg_movimenti_a10_…`, `trg_movimenti_attesi_a10_…`, `E_MAG_MOVIMENTO_VERSO_INCOERENTE`); `chk_magazzino_causali_segno` = `segno IN (-1, 1)`; `COMMENT` su `vw_giacenza`; su `movimenti_attesi` `chk_mag_movimenti_attesi_qta_non_zero` al posto di `qta > 0` (`20260915-02`, `-13`, `-17`) | — |
+| **M-2** | primitiva `magazzino.fn_scrivi_movimento` (DEFINER del proprietario); controlli `script.fn_check_disponibilita_uscita` (pura, INVOKER) e `script.fn_check_riga_magazzino`; lock advisory a due argomenti su (magazzino, articolo) solo in uscita; porta = `REVOKE` di scrittura all'app su `movimenti`/`valore_giacenza` + guard BB `trgfn_guard_emittente_scope` (D-L2-b). ➕ Non previsti qui: `qta` in UoM base (D-L1-a), esonero dei blocchi per `is_rettifica` (D-L2-d), `magazzini.usa_ubicazioni` (D-L2-m). Dal 24-09 l'app esegue solo `fn_posta_inventario`/`fn_posta_rettifica` (DEFINER, `fn_guard_azione(…, 'registra_magazzino')`) | il controllo **alla conferma del DDT** (Lotto 3). ⚠️ La riga «valorizza o no ← `causali`» di §5-bis è superata: valorizzano tutte, e il costo si decide dalla **struttura** del movimento (D-L2-c) |
+| **M-3** | `vw_disponibilita` (articolo × magazzino) e `vw_disponibilita_articolo`: `giacenza`, `bloccata` (firmata), `disponibile = giacenza + bloccata`, `n_blocchi` (D-L2-j, `20260918-24`); `movimenti_attesi` con `soggetto_ruolo_id` + `nota`, stati `APERTA`/`CHIUSA` (D-L1-b) | impegnata / potenziale / in arrivo e la proiezione con le date aspettano il satellite **D-17** di acquisti e il Lotto 3; i verbi per aprire e liberare un blocco manuale sono del Lotto 3 |
+| **M-4** | `valore_giacenza` (solo valore, `20260915-08`) con FK all'articolo; `COMMENT` su `costo_unitario`; `fn_ricalcola_valore_giacenza` (ri-somma); presidi `dbops.vw_magazzino_valore_giacenza_divergente` e `vw_magazzino_movimenti_senza_costo`; ➕ `costo_unitario` su righe di inventario e rettifica (D-L2-c) | — |
+| **M-5** | `magazzino.lotti` (`data_arrivo NOT NULL`); `articoli.requires_lotto`; `movimenti.asset_id`/`lotto_id` con `abs(qta) = 1` sul seriale; una sola `ubicazione_id`; ritirate `magazzino_id_dest`, `ubicazione_id_from/_to`, `richiede_lotto`/`_seriale`/`_magazzino_dest`; propagata alle righe delle testate; `vw_giacenza_ubicazione` | — |
+| **M-6** | RLS su 23 tabelle via `script.fn_scope_ef_whitelist_via_magazzino` (`ENABLE` senza `FORCE`, `20260915-16`); `magazzini.emittente_fiscale_id NOT NULL`, `assets.emittente_fiscale_id` proprio; `movimenti_attesi.magazzino_id NOT NULL`; default dell'emittente dal BB `script.trgfn_default_emittente_fiscale` (Lotto 1-bis) | la vista per il **portale** («disponibile per consegna immediata»): nessun lotto assegnato |
+| **M-7** | una ventina di file pgTAP: 17 in `db/pgtap/magazzino/` (il v1 dei vincoli è diventato `test-movimenti-vincoli-v2.sql`), più `rls/test-rls-magazzino-perimetro-v1`, `dbops/test-sorgenti-orfane-v1`, `dbops/test-articoli-a-magazzino-prontezza-v1` | cresce coi lotti |
+| **M-8** | `STORNO_POS`/`STORNO_NEG`; `storno_di_movimento_id` con `uq_mag_movimenti_storno_di`; `movimenti.attivo` ritirato; ramo storno nella primitiva (sorgente e costo dell'originale, `E_MAG_STORNO_INCOERENTE`) | la **utility** che genera lo specchio: Lotto 3 |
+| **M-9** | chiusa come non necessaria | — |
 
 ---
 
@@ -2149,6 +2228,15 @@ DOCUMENTO che lo causa e le decisioni di dominio.*
 * Doc auto-generata dello schema: [`docs/it/dbzero/magazzino/`](/dbzero/magazzino/)
 * Convenzione della sorgente polimorfa: [sorgente-polimorfa.md](../../guide/sorgente-polimorfa.md)
 * Stato del dominio nella mappa: [mappa-concentrica.md](../../mappa-concentrica.md) § Anello 3
+* Dove le decisioni sono diventate codice:
+  [Lotto 1](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md),
+  [Lotto 1-bis](../work-done/brief-db-emittente-di-default-un-bb-solo.md),
+  [Lotto 2](../work-done/brief-db-magazzino-lotto-2-motore.md),
+  [2-bis BE/FE](../work-done/brief-db-magazzino-lotto-2-bis-be-fe.md),
+  [anagrafiche, guard ubicazioni e codici](../work-done/brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md),
+  [verbi con permesso](../work-done/brief-db-magazzino-verbi-con-permesso.md),
+  [piano BE/FE del Lotto 2](../work-done/piano-be-fe-magazzino-lotto-2-motore.md),
+  e il [collaudo a video](collaudo-in-app-magazzino-inventario-e-rettifica.md)
 * Il precedente dell'idempotenza per chiave ricalcolabile:
   `vendite.commesse_attivita.segment_key` e `uq_commesse_attivita_commessa_segment`
 
@@ -2172,7 +2260,7 @@ DOCUMENTO che lo causa e le decisioni di dominio.*
 | 2026-09-02 | 🔴 **Coerenza rimessa a posto**: la tabella delle colonne diceva ancora che l'impegnata «toglie disponibilità», scritto **prima** che si decidesse che l'impegno derivato non ferma niente. ⇒ Corretto: sottrae **solo** il blocco esplicito; impegnata e potenziale si mostrano **accanto**, non dentro. ⭐ E aggiunto che **«disponibile» come numero unico va definito**: *«posso spedire adesso»* e *«posso prometterla»* danno due numeri diversi, e una casella sola che non dice quale mente a metà degli utenti |
 | 2026-09-02 | ✅ **M-3 chiusa — §7-bis.** ⭐ La regola che decide: *il numero mostrato deve prevedere quello che il sistema farà* ⇒ **`disponibile = giacenza − blocchi espliciti`**, identica a ciò che la primitiva controlla, e l'impegno derivato **non si sottrae** (si mostra accanto). L'auto-conteggio si esclude con **la stessa regola** della primitiva — una regola in due posti, non due che divergono. ⭐ *«Posso prometterla?»* **non è un numero**: è una proiezione nel tempo, e schiacciarla in una casella butterebbe via la data, che è l'informazione utile. ⭐⭐ E il conteggio è **guidato da `config.sorgenti`** invece che da query per tipo di documento: così la produzione entra nel calcolo il giorno che si registra, invece di dipendere da chi si ricorda di aggiungerla — e il numero che smette di contare un pezzo lo fa **in silenzio** |
 | 2026-09-02 | ✅ **M-4 chiusa — §7-ter**, e sono usciti **quattro difetti**, non la sola assenza dell'alimentatore. (1) Il **trasferimento a `none` era sbagliato**: con l'accumulatore per magazzino, spostare senza valore gonfia la media di A e diluisce quella di B ⇒ esce alla media di A ed entra in B con lo stesso valore. (2) `impatto_valorizzazione` **mescolava due domande** — *se* valorizzare (della causale) e *con che metodo* (dell'azienda) ⇒ **CMP** unico, `fifo` fuori dal vincolo perché nessuno lo usava e con un accumulatore **non è implementabile**. ⭐⭐ Ma scegliere CMP **non chiude FIFO**: il registro conserva costo e data di ogni entrata, quindi il metodo diventa una decisione di **lettura**. ⚠️ Scritta anche la distinzione fra il FIFO **contabile** e il FIFO **fisico** (la rotazione dello scaffale), che è di M-5 e non di qui. (3) La **quantità era in due posti** e `vw_giacenza_valorizzata` le mescolava ⇒ l'accumulatore tiene **solo il valore**, la quantità sta nel registro, e la tabella si rinomina **`valore_giacenza`** (il nome vecchio era falso: non contiene il costo medio, contiene ciò da cui si ricava). (4) Media **ricalcolabile** ⇒ la verità è il registro, l'accumulatore è una copia riparabile: risolve la **retrodatazione** e si presidia con una vista che deve restare vuota. ⚠️ Residui: manca la **FK su `articolo_id`**, e `costo_unitario` è un *input* in entrata e un *output* in uscita — va nel `COMMENT` |
-| 2026-09-02 | ✅ **M-5 chiusa — §7-quater.** (1) Il **lotto diventa una tabella** con data d'arrivo e scadenza: oggi è testo libero senza catalogo — stessa forma del riferimento libero del §2 — e ⚠️ **senza data d'arrivo il FIFO fisico non è calcolabile**, cioè manca il dato, non il programma. Il FIFO al prelievo resta un **suggerimento**, non un vincolo. (2) Per i **seriali** convivevano due modelli (`movimenti.seriale` testo e l'entità `assets`, con una **posizione propria**: terza sede doppia del documento) ⇒ `asset_id` come FK, la posizione **si deriva dal registro** come il valore in §7-ter, e l'asset resta l'anagrafica del pezzo, non il suo GPS. (3) **Decide l'articolo**: `causali.richiede_lotto`/`richiede_seriale` si ritirano, ⚠️ e ne discende che **manca `catalogo.articoli.requires_lotto`**. (4) `|qta| = 1` con un seriale. (5) **Giacenza per ubicazione** in perimetro, con una vista fine accanto a `vw_giacenza` che resta alla sua grana — ⭐ senza, la coppia OUT/IN decisa in §4 non significherebbe niente. ⭐⭐ **Conseguenza della §4 non tracciata prima**: il modello a coppie rende ridondanti `magazzino_id_dest`, `ubicazione_id_from/_to`, `causali.richiede_magazzino_dest` e i due CHECK che li presuppongono |
+| 2026-09-02 | ✅ **M-5 chiusa — §7-quater.** (1) Il **lotto diventa una tabella** con data d'arrivo e scadenza: oggi è testo libero senza catalogo — stessa forma del riferimento libero del §2 — e ⚠️ **senza data d'arrivo il FIFO fisico non è calcolabile**, cioè manca il dato, non il programma. Il FIFO al prelievo resta un **suggerimento**, non un vincolo. (2) Per i **seriali** convivevano due modelli (`movimenti.seriale` testo e l'entità `assets`, con una **posizione propria**: terza sede doppia del documento) ⇒ `asset_id` come FK, la posizione **si deriva dal registro** come il valore in §7-ter, e l'asset resta l'anagrafica del pezzo, non il suo GPS. (3) **Decide l'articolo**: `causali.richiede_lotto`/`richiede_seriale` si ritirano, ⚠️ e ne discende che **manca `catalogo.articoli.requires_lotto`**. (4) `abs(qta) = 1` con un seriale. (5) **Giacenza per ubicazione** in perimetro, con una vista fine accanto a `vw_giacenza` che resta alla sua grana — ⭐ senza, la coppia OUT/IN decisa in §4 non significherebbe niente. ⭐⭐ **Conseguenza della §4 non tracciata prima**: il modello a coppie rende ridondanti `magazzino_id_dest`, `ubicazione_id_from/_to`, `causali.richiede_magazzino_dest` e i due CHECK che li presuppongono |
 | 2026-09-02 | ✅ **M-8 chiusa — §7-quinquies**: si corregge **aggiungendo**, non annullando. ⛔ Scoperto che `movimenti.attivo` **non fa niente**: `vw_giacenza` non lo filtra, quindi oggi «annullare» un movimento lascia la giacenza identica. ⭐ Idea di Tid accolta: una **utility che genera lo specchio** dalla riga originale — non è comodità, è ciò che impedisce a un costo o a un segno sbagliato di trasformare la correzione in un secondo errore. Storno al **costo originale** (o torna giusto in pezzi e resta storto in euro), `attivo` **si ritira**, ⭐⭐ e lo **storno doppio è impedito gratis** dall'identità di §6 |
 | 2026-09-02 | ⭐ **M-6: decisa l'ancora — §7-sexies.** Osservazione di Tid: un magazzino può essere condiviso, e nemmeno l'articolo è legato all'emittente. ⇒ `emittente_fiscale_id` sta sul **magazzino**, e un capannone condiviso diventa **due magazzini logici** — ⭐ non un ripiego: la merce di due soggetti giuridici è merce diversa anche sullo stesso scaffale. ⭐⭐ Il perimetro **si eredita** via `magazzino_id`: niente colonna copiata sui movimenti. ⚠️ Ne discende che `magazzino_id`, oggi **nullable** su `movimenti_attesi` e `assets`, deve diventare obbligatorio — o quelle due tabelle sfuggono al perimetro in silenzio. ⛔ E **l'articolo non prende l'emittente**: è una definizione, non un possesso, e legarlo spaccherebbe catalogo, distinte, listini e UoM |
 | 2026-09-02 | ✅ **M-6 chiusa — §7-sexies, parte policy.** Perimetro su **tutto ciò che porta merce o valore** (fuori i vocabolari e l'articolo); **solo `OPERATORE`** — ⚠️ perché aprire il magazzino a una controparte le mostrerebbe **il costo medio (cioè il margine)**, le quantità e **i blocchi degli altri clienti col loro nome**: non è una questione di emittente, è che il magazzino contiene informazione interna. ⭐ Ma il portale **non resta al buio**: *«disponibile per consegna immediata»* glielo dice una **vista dedicata** — la differenza fra rispondere a una domanda e aprire un archivio (decisione di Tid). ⚠️ Accensione vera, anche per il proprietario (il precedente di `acquisti`: due policy ferme da mesi), e viste che leggono coi diritti di chi interroga, ⛔ ricordando che quella marcatura **si azzera a ogni riscrittura**. ⭐⭐ E chiarito che **l'aggregato non è mai parziale**: l'ancora sul **magazzino** rende il perimetro tutto-o-niente, mentre con l'emittente sul movimento la somma sarebbe stata monca — la scelta di ieri risolve un problema che non stavamo guardando. ⚠️ Residuo: `vw_costo_medio_globale` è «globale» solo dentro il perimetro |
@@ -2180,6 +2268,8 @@ DOCUMENTO che lo causa e le decisioni di dominio.*
 | 2026-09-04 | 🔴 **REVISIONE ESTERNA — 18 rilievi, tutti accolti.** Due **bloccanti**, nati fra sezioni scritte lo stesso giorno che non si erano guardate: (1) l'identità *(sorgente, chiave, verbo)* **non regge** 30 pezzi serializzati dalla stessa riga di DDT, né una riga servita da due lotti o prelevata da due ubicazioni ⇒ **il discriminante fisico entra nella chiave** (`asset_id`/`lotto_id`/`ubicazione_id`, colonne che §7-quater mette già lì), e resta dichiarato il caso scoperto (stesso prelievo in due riprese senza discriminante ⇒ servirebbe un progressivo); (2) `assets.magazzino_id` NOT NULL **contraddiceva** §7-quater («l'asset non è il suo GPS») e costringeva a mentire su `ASSET_INSTALL` ⇒ l'asset prende un **`emittente_fiscale_id` proprio**. **Sezioni rese stale**: la tabella «guidata dalle causali» era smentita per metà ⇒ riscritta come «guidata da **due** cataloghi»; `impatto_valorizzazione = none` **non ha più consumatori** dopo M-4 ⇒ da ridurre a booleano o togliere; la «formula unica» della giacenza prevista **ritirata**; la formula di `disponibile` riscritta **in colonne**, perché con le quantità firmate la sottrazione dava il segno rovesciato. **Puntuali**: ⛔ il `CHECK` del «per chi» **non teneva** (`FALSE OR NULL` = NULL, e un CHECK passa sul NULL — **provato**) ⇒ `coalesce`; `costo_unitario` ha **tre** significati (l'entrata di trasferimento prende il valore dall'uscita gemella); «ricalcolare» è **ri-sommare**, non ri-eseguire, o si contraddice M-8; l'aggregato non-parziale vale **solo alla grana del magazzino**, non per la vista **per articolo** che è quella principale; `lotti` **esce** dal perimetro RLS (è una definizione, e non ha l'ancora); lo storno doppio è impedito **solo dove la sorgente è valorizzata**; l'impegno derivato si calcola a **due salti**, via il ponte di evasione; **D-6 → D-7/D-1** (riferimento sbagliato, due volte); mancano **due causali in più** (carico da reso cliente, inventario iniziale); `abilita_billing` **verificato morto** (quarto flag); `vw_giacenza_valorizzata` è diventata **tautologica**; §9 riordinata |
 | 2026-09-04 | ✅ **`impatto_valorizzazione` ritirata** (Tid): dopo M-4 tutte le causali valorizzano ⇒ una colonna con una risposta sola. ⚠️ Nominato il caso futuro della **merce di terzi**, con la ragione per cui nemmeno lì la colonna sarebbe la risposta: è una domanda di **proprietà**, non di valorizzazione. ⭐⭐ **E chiuso il residuo dell'aggregato parziale, ma NON come stavo per proporre**: verificato nel corpo di `fn_check_user_emittente_scope` che esiste un **emittente ATTIVO di sessione** che *«restringe chiunque, anche il super admin»* ⇒ ogni query vede **un emittente solo**, la giacenza per articolo è **completa** e raggruppare sarebbe inutile (una riga sola). ⚠️ Resta però la **prima** regola della stessa funzione — *utente NULL → vede tutto* — quindi un **ricalcolo eseguito come job attraversa gli emittenti**: finché scrive alla grana articolo × magazzino non mescola, ma va scritto, perché un aggregato «per articolo» dentro un batch romperebbe il confine in silenzio |
 | 2026-09-04 | ⭐⭐ **Precisazione di Tid che vale oltre questo documento**: *«tutte le attività legate all'emittente obbligano alla scelta di un emittente — anche il super admin, e lo facciamo già in altre attività»*. ⇒ Il meccanismo del DB (la seconda regola di `fn_check_user_emittente_scope`) e la **prassi applicativa** dicono la stessa cosa, quindi **nessuna operazione di magazzino attraversa mai due emittenti** — né una lettura, né la primitiva, né lo storno. ⇒ E il caso del **job** si chiude allo stesso modo: un ricalcolo che serve più emittenti li **itera**, non li somma |
-| 2026-09-15 | ✅ **Lotto 1 chiuso e mergiato** (PR #1593; brief con la fotografia in §12). Aggiunto in §8 il **Lotto 1-bis**, prerequisito del 2: l'emittente di default come BB unico con ritiro delle copie di vendite (decisione Tid, brief suo). ⚠️ Corretto un punto di §7-quater p.3 nel modo in cui era stato letto: `requires_lotto` **non eredita** il lock BoM di `requires_serial` — quello è un flag di **struttura** (congelato su un padre di distinta attiva, in `lock_columns_conditional`), questo no per decisione; e la frase «ricreare `vw_articoli_dettaglio` azzererebbe `security_invoker`» del Lotto 1 era falsa (la vista non ce l'ha e non deve averlo) |
-| 2026-09-17 (sera) | 🔵 **Nato il brief del Lotto 2** ([brief-db-magazzino-lotto-2-motore](brief-db-magazzino-lotto-2-motore.md)), con Lotto 1 e 1-bis chiusi. Scrivendolo sono usciti **tre fatti che questo documento non aveva**: (1) **l'inventario iniziale non ha un costo** — `inventari_righe` porta solo le quantità, quindi il primo carico in assoluto entrerebbe senza valore e la media resterebbe `NULL` fino al primo acquisto ⇒ `costo_unitario` sulle righe di inventario e rettifica (D-L2-c), e il costo di un movimento si decide dalla sua **struttura** (storno → originale, gemella → OUT, uscita → media, entrata → documento con ripiego sulla media), non da una colonna su `causali`; (2) **lo spostamento fra ubicazioni dello stesso magazzino non ha un documento** — §4 lo modella come coppia OUT/IN, ma `trasferimenti` vieta `from = to` e le sue righe non hanno ubicazione: sotto D-6 non si può scrivere. È una D nuova per Tid, e il posting del trasferimento esce dal Lotto 2 (D-L2-g); (3) **`causali.is_rettifica` trova il primo consumatore**: una rettifica registra un **fatto** sulla merce e non si ferma su un **blocco** (una promessa), che semmai diventa insoddisfacibile e si vede in `vw_disponibilita` — il fisico resta (D-L2-d). ⭐ E la porta di §5-bis prende la sua forma: DEFINER del proprietario + `REVOKE` nel loop dei grant, col perimetro rimesso **dal guard di scrittura BB** (`trgfn_guard_emittente_scope`, modo `magazzino`) e non da un controllo scritto a mano (D-L2-b). ⚠️ La «vista situazione merce» di M-3 si chiama `vw_disponibilita`: il nome era già preso da vendite per un'altra domanda (D-L2-j) |
 | 2026-09-14 | ✅ **Le decisioni presupposte sono prese** (Tid; verbale in [analisi aggancio §8-quater](analisi-db-magazzino-aggancio-documento-e-produzione.md)): D-1 catalogo, D-4 la terza forma senza progressivo, **D-6 sorgente `NOT NULL` sul ledger** — 🔴 rovescia il paragrafo «resta tutto nullable» di §6, barrato con la ragione: ogni scrittore è un'operazione con un record e la **correzione a mano è una rettifica**; il `UNIQUE` diventa pieno e `NULLS NOT DISTINCT`, il caveat dello storno doppio (§7-quinquies) cade, la riga «sorgente vuota» della tabella di §6 è ritirata — D-7 il catalogo registra le operazioni, D-8 ambito e tre flag ritirati. 🔴 **Corretta una falsa struttura in §6**: le cinque `*_RIGA` «già a catalogo» esistono **solo sul DB di sviluppo** (CSV a 10 righe, DB a 15) — verde su dev, rosso in CI. ⭐ Emerso scrivendo il brief: M-5 va **propagata alle righe delle testate**; lo storno ha bisogno di **causali sue** (`STORNO_POS`/`STORNO_NEG`, proposta); il perimetro RLS di M-6 atterra **nel Lotto 1 con l'ancora**, o il presidio del perimetro fa rosso; `FORCE` non è la postura del progetto. Aggiunto in §8 lo **spacchettamento in cinque lotti**; il primo è `brief-db-magazzino-lotto-1-terreno-vuoto.md` |
+| 2026-09-15 | ✅ **Lotto 1 chiuso e mergiato** (PR #1593; brief con la fotografia in §12). Aggiunto in §8 il **Lotto 1-bis**, prerequisito del 2: l'emittente di default come BB unico con ritiro delle copie di vendite (decisione Tid, brief suo). ⚠️ Corretto un punto di §7-quater p.3 nel modo in cui era stato letto: `requires_lotto` **non eredita** il lock BoM di `requires_serial` — quello è un flag di **struttura** (congelato su un padre di distinta attiva, in `lock_columns_conditional`), questo no per decisione; e la frase «ricreare `vw_articoli_dettaglio` azzererebbe `security_invoker`» del Lotto 1 era falsa (la vista non ce l'ha e non deve averlo) |
+| 2026-09-17 (sera) | 🔵 **Nato il brief del Lotto 2** ([brief-db-magazzino-lotto-2-motore](../work-done/brief-db-magazzino-lotto-2-motore.md)), con Lotto 1 e 1-bis chiusi. Scrivendolo sono usciti **tre fatti che questo documento non aveva**: (1) **l'inventario iniziale non ha un costo** — `inventari_righe` porta solo le quantità, quindi il primo carico in assoluto entrerebbe senza valore e la media resterebbe `NULL` fino al primo acquisto ⇒ `costo_unitario` sulle righe di inventario e rettifica (D-L2-c), e il costo di un movimento si decide dalla sua **struttura** (storno → originale, gemella → OUT, uscita → media, entrata → documento con ripiego sulla media), non da una colonna su `causali`; (2) **lo spostamento fra ubicazioni dello stesso magazzino non ha un documento** — §4 lo modella come coppia OUT/IN, ma `trasferimenti` vieta `from = to` e le sue righe non hanno ubicazione: sotto D-6 non si può scrivere. È una D nuova per Tid, e il posting del trasferimento esce dal Lotto 2 (D-L2-g); (3) **`causali.is_rettifica` trova il primo consumatore**: una rettifica registra un **fatto** sulla merce e non si ferma su un **blocco** (una promessa), che semmai diventa insoddisfacibile e si vede in `vw_disponibilita` — il fisico resta (D-L2-d). ⭐ E la porta di §5-bis prende la sua forma: DEFINER del proprietario + `REVOKE` nel loop dei grant, col perimetro rimesso **dal guard di scrittura BB** (`trgfn_guard_emittente_scope`, modo `magazzino`) e non da un controllo scritto a mano (D-L2-b). ⚠️ La «vista situazione merce» di M-3 si chiama `vw_disponibilita`: il nome era già preso da vendite per un'altra domanda (D-L2-j) |
+| 2026-09-26 | 🟡 **Riallineamento allo stato di sviluppo** (verifica su doc auto-generata, CSV e brief chiusi). Intestazione riscritta (analisi completa, Lotti 1, 1-bis, 2, 2-bis e verbi costruiti); note di **fotografia del 02-09** su §0, §5, §7; aggiunta in §9 la tabella **«Realizzato»**, voce per voce con i changeSet; §8 aggiornata (passi 1-2 fatti, presidio di prontezza scritto, Lotto 2 consegnato, **D-L2-g presa** nel Lotto 3 con `magazzino_id` sul DDT, riga nuova per gli **eventi asset** D-L2-l). Corretti: D-L1-c e D-L1-d **confermate** (§6, §7-quinquies); «non serve niente di nuovo» per lo spostamento fra ubicazioni (serve il documento, Lotto 3); `assets` nella riga M-6; formula unica residua in §7-bis; righe M-5 e M-8 della tabella di §9 con il numero sbagliato di celle; riga del 14-09 del registro rimessa in ordine. ⚠️ Il commit `f2e724b47` (24-09) aveva corretto due link senza lasciare una riga qui |
+| 2026-09-26 (sera) | 🔵 **Nato il brief del Lotto 3** ([brief-db-magazzino-lotto-3-scarico-da-ddt](brief-db-magazzino-lotto-3-scarico-da-ddt.md)). Tid ha deciso: il magazzino sta sulla **testata** della bolla, il dettaglio fisico in una **tabella figlia dei prelievi**, e la bolla di trasferimento carica l'arrivo al **`CONSEGNATO`**. ⚠️ Emerso scrivendolo, e aggiunge un fatto a §6: l'identità del movimento **non contiene l'articolo**, quindi con sorgente = riga di bolla i componenti senza lotto di un kit collidono. Il brief propone come sorgente il **prelievo**, che è la condizione 1 di §6 presa alla lettera (D-L3-d) |

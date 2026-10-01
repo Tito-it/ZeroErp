@@ -16,11 +16,12 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params, qp_bool_optional
+from apps.core.api.payload_validators import corpo_oggetto, optional_int, paginated_envelope, parse_list_params, qp_bool_optional
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.fornitori_service import FornitoriService
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.core.api.openapi_params import param_ricerca_full
 
 
 # Codice della lista nel registry `ui.lista_definizione`. Stabile per
@@ -42,8 +43,7 @@ class FornitoriView(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False,
-                             description="Ricerca su codice, ragione_sociale, P.IVA, C.F."),
+            param_ricerca_full(),
             OpenApiParameter(name="stato_fornitore_id", type=int, required=False),
             OpenApiParameter(name="attivo", type=bool, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
@@ -138,7 +138,7 @@ class FornitoriDetailView(DomainAPIView):
     # Scopo: Aggiorna campi editabili del fornitore (pagamento, fiscale, FE, rating, note).
     def patch(self, request: Request, fornitore_id: int) -> JsonResponse:
         svc = FornitoriService()
-        result = svc.update_fornitore(fornitore_id, request.data)
+        result = svc.update_fornitore(fornitore_id, corpo_oggetto(request))
         return success_response(result)
 
 
@@ -169,7 +169,7 @@ class FornitoriExportView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="stato_fornitore_id", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
             OpenApiParameter(name="order_dir", type=str, required=False),
@@ -206,7 +206,6 @@ class FornitoriExportView(DomainAPIView):
             order_dir=p["order_dir"],
         )
         filtri_applicati = svc.resolve_filtri_export_label(
-            search=p["search"],
             stato_fornitore_id=stato_id,
         )
         return build_export_response(

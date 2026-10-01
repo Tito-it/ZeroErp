@@ -6,7 +6,7 @@
 --
 --   Precondizioni:
 --     1. Qualifica DIPENDENTE esiste
---     2. Soggetto gestore esiste
+--     2. Un operatore umano costruito, con la sua risorsa umana
 --     3. Almeno due unita' organizzative attive
 --
 --   Funzione fn_notify_cambio_reparto:
@@ -68,19 +68,21 @@ SELECT ok(
 );
 
 -- =========================================================
--- 2) Precondizione: soggetto gestore
+-- 2) Precondizione: un operatore UMANO, con la sua risorsa umana
 -- =========================================================
-CREATE TEMP TABLE _t_soggetto_gestore AS
-SELECT sr.soggetto_id
-  FROM anagrafiche.gestori g
-  JOIN anagrafiche.soggetti_ruoli sr
-    ON sr.id = g.soggetto_ruolo_id
- ORDER BY sr.soggetto_id
- LIMIT 1;
+-- ⛔ 2026-09-23: il file PESCAVA il soggetto del gestore e gli dava a mano il
+--   ruolo RIS_UMANA. Su un database ricostruito dai changelog il gestore non
+--   c'e' (dato di macchina), e la fixture moriva su «soggetto_id mancante per
+--   il ruolo RIS_UMANA». Ed era anche il soggetto sbagliato: una persona
+--   giuridica come risorsa umana, senza utente — mentre il NOTIFY porta
+--   proprio l'auth_user_id del «ponte». Ora la risorsa umana e' quella di un
+--   operatore costruito dal percorso di produzione, ponte compreso.
+CREATE TEMP TABLE _t_operatore AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('cambio reparto');
 
 SELECT ok(
-    (SELECT count(*) FROM _t_soggetto_gestore) = 1,
-    '2. Trovato soggetto gestore'
+    (SELECT risorsa_umana_id IS NOT NULL AND auth_user_id IS NOT NULL FROM _t_operatore),
+    '2. Costruito un operatore umano con la sua risorsa umana'
 );
 
 -- =========================================================
@@ -101,49 +103,8 @@ SELECT ok(
 -- =========================================================
 -- 4) Setup: risorsa con unita' organizzativa
 -- =========================================================
-CREATE TEMP TABLE _t_soggetto_ruolo AS
-SELECT script.fn_get_or_create_soggetto_ruolo(
-    p_soggetto_id  := (SELECT soggetto_id FROM _t_soggetto_gestore),
-    p_cd_int_ruolo := 'RIS_UMANA'
-) AS soggetto_ruolo_id;
-
--- Inserisci o recupera risorsa umana
-WITH ins AS (
-    INSERT INTO anagrafiche.risorse_umane (
-        soggetto_ruolo_id,
-        soggetto_id,
-        qualifica_id,
-        unita_organizzativa_id,
-        valido_dal,
-        attivo
-    )
-    SELECT
-        sr.soggetto_ruolo_id,
-        sg.soggetto_id,
-        q.qualifica_id,
-        (SELECT uo_id FROM _t_uo LIMIT 1),
-        CURRENT_DATE,
-        true
-    FROM _t_soggetto_gestore sg,
-         _t_soggetto_ruolo sr,
-         _t_qualifica q
-    WHERE NOT EXISTS (
-        SELECT 1
-          FROM anagrafiche.risorse_umane ru
-         WHERE ru.soggetto_ruolo_id = sr.soggetto_ruolo_id
-    )
-    RETURNING id
-)
-SELECT COALESCE(
-    (SELECT id FROM ins),
-    (
-        SELECT ru.id
-          FROM anagrafiche.risorse_umane ru
-          JOIN _t_soggetto_ruolo sr
-            ON ru.soggetto_ruolo_id = sr.soggetto_ruolo_id
-    )
-) AS id
-INTO TEMP TABLE _t_risorsa;
+CREATE TEMP TABLE _t_risorsa AS
+SELECT o.risorsa_umana_id AS id FROM _t_operatore o;
 
 -- Assicura stato pulito: attiva, prima uo
 UPDATE anagrafiche.risorse_umane

@@ -21,7 +21,7 @@ from apps.core.services.db_error_fields import (
 )
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.request_context import get_request_id
-from apps.core.services.service_errors import ServiceError
+from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
 # Translator centralizzato: converte errori Python/DB in payload API uniforme.
 
@@ -111,7 +111,7 @@ class ErrorTranslator:
         if isinstance(exc, (ValueError, TypeError)):
             message = str(exc) or "Input non valido."
             return ErrorTranslator._apply_policy(ApiError(
-                code="E_VALIDATION_INPUT",
+                code=E_VALIDATION_INPUT,
                 message=message,
                 detail=message,
                 retryable=False,

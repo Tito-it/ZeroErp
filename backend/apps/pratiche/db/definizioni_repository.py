@@ -15,12 +15,20 @@ from typing import Any, NamedTuple
 
 from django.db import connection
 
+from apps.core.db._helpers import rows_to_list
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
+
 # Campi "core" di uno step editabili in Slice 2 anello 3 — UNICA fonte di verità
 # condivisa da repository (build SQL) e service (clean payload), così i due layer
 # non possono divergere. Gli enum/default vivono nei CHECK/DEFAULT DB, non qui.
 STEP_CORE_FIELDS: tuple[str, ...] = (
     "codice", "descrizione", "sequenza", "obbligatorio",
     "direzione", "modalita_esito", "esito_default",
+)
+
+# Colonne dell'INSERT di uno step: i campi core + le due chiavi imposte dal BE.
+_STEP_INSERT_COLUMNS: tuple[str, ...] = (
+    "definizione_id", "tipo_prestazione_id", *STEP_CORE_FIELDS,
 )
 
 
@@ -150,8 +158,7 @@ class DefinizioniRepository:
     def _rows(self, sql: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: elenco edizioni per (tipo [, emittente]) con drift. Preset =
     # emittente_fiscale_id NULL; il drift e' valorizzato solo per le edizioni
@@ -317,47 +324,41 @@ class DefinizioniRepository:
     # fissa) — mai da input utente — quindi la costruzione dinamica è sicura.
 
     # Scopo: crea uno step nella BOZZA. definizione_id + tipo_prestazione_id
-    # SEMPRE espliciti (il trigger di default non deve re-parentare al preset).
+    # SEMPRE espliciti (il trigger di default non deve re-parentare al preset), e
+    # imposti DOPO `data`: le chiavi del BE vincono.
+    # ⛔ BB `execute_dynamic_insert` dal 2026-09-26: una chiave fuori
+    #    STEP_CORE_FIELDS e' RuntimeError, non piu' uno scarto silenzioso. Il
+    #    service passa solo `_clean_writable(STEP_CORE_FIELDS, ...)`.
     def create_step(
         self, definizione_id: int, tipo_prestazione_id: int, data: dict[str, Any],
     ) -> int:
-        cols = ["definizione_id", "tipo_prestazione_id"]
-        vals: dict[str, Any] = {
-            "definizione_id": definizione_id,
-            "tipo_prestazione_id": tipo_prestazione_id,
-        }
-        for k in STEP_CORE_FIELDS:
-            if k in data:
-                cols.append(k)
-                vals[k] = data[k]
-        placeholders = ", ".join(f"%({c})s" for c in cols)
-        sql = (
-            f"INSERT INTO pratiche.template_flussi ({', '.join(cols)}) "
-            f"VALUES ({placeholders}) RETURNING id"
+        riga = execute_dynamic_insert(
+            "pratiche.template_flussi",
+            {
+                **data,
+                "definizione_id": definizione_id,
+                "tipo_prestazione_id": tipo_prestazione_id,
+            },
+            allowed=_STEP_INSERT_COLUMNS,
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return int(cursor.fetchone()[0])
+        return int(riga["id"])
 
     # Scopo: aggiorna i campi core di uno step, scoping su (id, definizione_id)
     # per ownership atomica. Ritorna il numero di righe toccate (0 = non nello scope
     # → 404 lato service). Precondizione (garantita dal service): `data` contiene
-    # almeno un campo core; violarla è un errore di programmazione, non un no-op.
+    # almeno un campo core; violarla è un errore di programmazione, non un no-op —
+    # dal 2026-09-26 lo dice `sql_set_clause` con un RuntimeError (prima era un
+    # ValueError, che l'ErrorTranslator avrebbe servito come 400 «dato errato»).
     def update_step(
         self, definizione_id: int, step_id: int, data: dict[str, Any],
     ) -> int:
-        sets = [f"{k} = %({k})s" for k in STEP_CORE_FIELDS if k in data]
-        if not sets:
-            raise ValueError("update_step richiede almeno un campo core in `data`")
-        vals: dict[str, Any] = {k: data[k] for k in STEP_CORE_FIELDS if k in data}
-        vals["id"] = step_id
-        vals["definizione_id"] = definizione_id
+        clausola, params = sql_set_clause(data, allowed=STEP_CORE_FIELDS)
         sql = (
-            f"UPDATE pratiche.template_flussi SET {', '.join(sets)} "
-            f"WHERE id = %(id)s AND definizione_id = %(definizione_id)s"
+            f"UPDATE pratiche.template_flussi SET {clausola} "  # noqa: S608 — colonne verificate da sql_set_clause (allowlist STEP_CORE_FIELDS), valori come parametri
+            f"WHERE id = %s AND definizione_id = %s"
         )
         with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
+            cursor.execute(sql, [*params, step_id, definizione_id])
             return cursor.rowcount
 
     # Scopo: hard DELETE di uno step (BOZZA senza pratiche pinnate). Scoping su
@@ -386,43 +387,37 @@ class DefinizioniRepository:
             )
             return cursor.fetchone() is not None
 
-    # Scopo: crea un figlio sotto lo step. template_flusso_id imposto dal BE.
+    # Scopo: crea un figlio sotto lo step. template_flusso_id imposto dal BE
+    # (dopo `data`: vince). Colonne ammesse = spec.writable + template_flusso_id;
+    # fuori lista e' RuntimeError (BB, 2026-09-26).
     def create_child(self, child_kind: str, step_id: int, data: dict[str, Any]) -> int:
         spec = CHILD_SPECS[child_kind]
-        cols = ["template_flusso_id"] + [c for c in spec.writable if c in data]
-        vals: dict[str, Any] = {"template_flusso_id": step_id}
-        vals.update({c: data[c] for c in spec.writable if c in data})
-        placeholders = ", ".join(f"%({c})s" for c in cols)
-        sql = (
-            f"INSERT INTO {spec.table} ({', '.join(cols)}) "
-            f"VALUES ({placeholders}) RETURNING id"
+        riga = execute_dynamic_insert(
+            spec.table,
+            {**data, "template_flusso_id": step_id},
+            allowed=("template_flusso_id", *spec.writable),
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return int(cursor.fetchone()[0])
+        return int(riga["id"])
 
     # Scopo: aggiorna un figlio, scoping (row, step, definizione) via JOIN. Ritorna
-    # le righe toccate (0 = fuori scope → 404 lato service).
+    # le righe toccate (0 = fuori scope → 404 lato service). SET dal BB
+    # `sql_set_clause` (whitelist spec.writable, RuntimeError fuori lista o vuoto).
     def update_child(
         self, child_kind: str, definizione_id: int, step_id: int, row_id: int,
         data: dict[str, Any],
     ) -> int:
         spec = CHILD_SPECS[child_kind]
-        sets = [f"{c} = %({c})s" for c in spec.writable if c in data]
-        if not sets:
-            raise ValueError("update_child richiede almeno un campo scrivibile in `data`")
-        vals: dict[str, Any] = {c: data[c] for c in spec.writable if c in data}
-        vals.update({"row_id": row_id, "step_id": step_id, "definizione_id": definizione_id})
+        clausola, params = sql_set_clause(data, allowed=spec.writable)
         sql = f"""
-            UPDATE {spec.table} AS c SET {', '.join(sets)}
+            UPDATE {spec.table} AS c SET {clausola}
             FROM pratiche.template_flussi tf
-            WHERE c.id = %(row_id)s
-              AND c.template_flusso_id = %(step_id)s
+            WHERE c.id = %s
+              AND c.template_flusso_id = %s
               AND tf.id = c.template_flusso_id
-              AND tf.definizione_id = %(definizione_id)s
-        """
+              AND tf.definizione_id = %s
+        """  # noqa: S608 — tabella da CHILD_SPECS costante, colonne verificate da sql_set_clause, valori come parametri
         with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
+            cursor.execute(sql, [*params, row_id, step_id, definizione_id])
             return cursor.rowcount
 
     # Scopo: hard DELETE di un figlio, scoping (row, step, definizione) via JOIN.
@@ -437,7 +432,7 @@ class DefinizioniRepository:
               AND c.template_flusso_id = %(step_id)s
               AND tf.id = c.template_flusso_id
               AND tf.definizione_id = %(definizione_id)s
-        """
+        """  # noqa: S608 — tabella/colonne da CHILD_SPECS costante, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, {
                 "row_id": row_id, "step_id": step_id, "definizione_id": definizione_id,
@@ -451,39 +446,30 @@ class DefinizioniRepository:
     # provengono SEMPRE dall'allowlist dello spec (mai da input utente).
 
     # Scopo: crea un arco. `data` è già curato dal service (writable + tipo auto-set).
+    # Colonne ammesse = spec.writable + tipo_col; fuori lista e' RuntimeError (BB,
+    # 2026-09-26 — prima scartata in silenzio).
     def create_edge(self, edge_kind: str, data: dict[str, Any]) -> int:
         spec = EDGE_SPECS[edge_kind]
         allowed = spec.writable + ((spec.tipo_col,) if spec.tipo_col else ())
-        cols = [c for c in allowed if c in data]
-        vals = {c: data[c] for c in cols}
-        placeholders = ", ".join(f"%({c})s" for c in cols)
-        sql = (
-            f"INSERT INTO {spec.table} ({', '.join(cols)}) "
-            f"VALUES ({placeholders}) RETURNING id"
-        )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return int(cursor.fetchone()[0])
+        riga = execute_dynamic_insert(spec.table, data, allowed=allowed)
+        return int(riga["id"])
 
     # Scopo: aggiorna un arco (solo colonne writable), scoping anchor→definizione.
+    # SET dal BB `sql_set_clause` (RuntimeError fuori lista o vuoto).
     def update_edge(
         self, edge_kind: str, definizione_id: int, row_id: int, data: dict[str, Any],
     ) -> int:
         spec = EDGE_SPECS[edge_kind]
-        sets = [f"{c} = %({c})s" for c in spec.writable if c in data]
-        if not sets:
-            raise ValueError("update_edge richiede almeno un campo writable in `data`")
-        vals: dict[str, Any] = {c: data[c] for c in spec.writable if c in data}
-        vals.update({"row_id": row_id, "definizione_id": definizione_id})
+        clausola, params = sql_set_clause(data, allowed=spec.writable)
         sql = f"""
-            UPDATE {spec.table} AS e SET {', '.join(sets)}
+            UPDATE {spec.table} AS e SET {clausola}
             FROM pratiche.template_flussi tf
-            WHERE e.id = %(row_id)s
+            WHERE e.id = %s
               AND tf.id = e.{spec.anchor_col}
-              AND tf.definizione_id = %(definizione_id)s
-        """
+              AND tf.definizione_id = %s
+        """  # noqa: S608 — tabella/anchor_col da EDGE_SPECS costante, colonne verificate da sql_set_clause, valori come parametri
         with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
+            cursor.execute(sql, [*params, row_id, definizione_id])
             return cursor.rowcount
 
     # Scopo: hard DELETE di un arco, scoping anchor→definizione.
@@ -495,7 +481,7 @@ class DefinizioniRepository:
             WHERE e.id = %(row_id)s
               AND tf.id = e.{spec.anchor_col}
               AND tf.definizione_id = %(definizione_id)s
-        """
+        """  # noqa: S608 — tabella/colonne da EDGE_SPECS costante, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, {"row_id": row_id, "definizione_id": definizione_id})
             return cursor.rowcount

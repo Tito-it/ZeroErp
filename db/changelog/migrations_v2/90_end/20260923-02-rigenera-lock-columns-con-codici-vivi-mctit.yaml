@@ -1,0 +1,284 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I trigger di LOCK_COLUMNS rigenerati, perche' 69 di loro sollevano ancora un
+#   codice RITIRATO. Brief: brief-db-codici-ritirati-negli-argomenti-dei-trigger
+#
+# ── IL DIFETTO, SUL MODELLO ────────────────────────────────────────────
+#
+#   Il 2026-08-05 il changeSet 20260805-26 ha rinominato undici codici `*` in
+#   `E_*`, fra cui CODICE_NON_MODIFICABILE -> E_CODICE_NON_MODIFICABILE. La sua
+#   intestazione dichiara il metodo: «l'elenco COMPLETO dei posti che nominano
+#   gli 11 codici, ricavato da pg_proc e non a memoria».
+#
+#   ⛔ Ma `script.trgfn_lock_columns` e' una funzione di trigger GENERICA: il
+#   codice errore non sta nel suo corpo, arriva come `TG_ARGV`, cioe' e' scritto
+#   negli ARGOMENTI del CREATE TRIGGER (pg_trigger.tgargs). Un censimento su
+#   `pg_proc` non puo' vederlo, e infatti non l'ha visto.
+#
+#   La rinomina ha corretto il GENERATORE (dbops.fn_run_automations_lock_columns,
+#   che oggi fa COALESCE(error_code, 'E_CODICE_NON_MODIFICABILE')), quindi ogni
+#   trigger nato DOPO porta il codice giusto. Quelli nati prima sono rimasti
+#   com'erano, e nessuno li tocca mai: l'automazione crea **solo se il trigger
+#   manca** (existence_strategy BOTH) e non confronta gli argomenti di uno che
+#   c'e' gia'. ⇒ La stessa regola — «questa colonna non si cambia» — risponde con
+#   due codici diversi a seconda di QUANDO e' nato il trigger: e' storia della
+#   macchina, non una scelta.
+#
+#   Fatto datato (dbdev, 2026-09-23): 69 trigger su 68 tabelle in 8 schemi con il
+#   codice ritirato, 15 con quello vivo; zero funzioni plpgsql lo nominano nel
+#   corpo, quindi il controllo (D) di scripts/sql/guardrail_codice_errore_-
+#   strutturato.sql — che guarda solo `prosrc` — era VERDE. Lo stesso giro lo
+#   estende agli argomenti dei trigger, che e' il rubinetto.
+#
+# ── ⛔ IL CSV DA SOLO NON SERVE A NIENTE ───────────────────────────────
+#
+#   Cambiare `error_code` nelle righe di dbops.automation_lock_columns non muove
+#   nessun trigger esistente. Vale la regola che il progetto conosce per le
+#   colonne EXTRA di questo stesso registro: **DROP + rigenera**. Il CSV
+#   (80_data) e' il PREREQUISITO e gira prima; qui si rigenera.
+#
+# ── ⭐ PERCHE' SI RIGENERA E NON SI RISCRIVE L'ARGOMENTO ────────────────
+#
+#   Si potrebbe ricostruire ogni CREATE TRIGGER da pg_get_triggerdef sostituendo
+#   la stringa. Sarebbe un SECONDO posto che calcola l'elenco degli argomenti,
+#   accanto al generatore — cioe' il difetto che questo registro esiste per
+#   chiudere. Si droppa e si richiama l'automazione: la sede di che cosa si
+#   locka resta UNA.
+#
+# ── ⚠️ I TRE CONTROLLI, E PERCHE' (b) E' QUELLO CHE CONTA ──────────────
+#
+#   Droppare e rigenerare e' sicuro solo se il registro dice gia' tutto quello
+#   che i trigger vivi presidiano. Provato il 2026-09-23 in transazione annullata
+#   su dbdev: NON era cosi'. Due lock erano in vigore FUORI dal registro —
+#   catalogo.articoli.codice (trg_articoli_a10_protect_codice_upd, scritto a mano
+#   e solo rinominato dal 20251119-51) e config.sorgenti.categoria (generato da un
+#   registro che quella riga non la dice piu'). Senza accorgersene, questa
+#   bonifica li avrebbe fatti sparire in silenzio.
+#   ⇒ Le due righe sono entrate nel CSV nello stesso giro, e il controllo (b)
+#   resta qui a presidiare il caso: se una colonna che era lockata non lo e' piu'
+#   dopo la rigenerazione, il changeSet SOLLEVA e il migrate si ferma.
+#   Prova per mutazione (2026-09-23): tolte le due righe dal registro dentro la
+#   transazione, (b) diventa rosso e nomina esattamente quelle due colonne.
+#
+# ── ⚠️ CHE COSA CAMBIA, OLTRE AL CODICE ────────────────────────────────
+#
+#   * catalogo.articoli aveva DUE trigger di lock (_protect_codice_upd e
+#     _protect_uom_id_upd, entrambi a mano): l'automazione ne fa UNO con
+#     entrambe le colonne. Il doppione sparisce.
+#   * config.sorgenti prende anche `codice_interno`, che l'automazione locka
+#     implicitamente su ogni tabella che ce l'ha (linee-guida-sql §6b): ne era
+#     fuori solo perche' il suo trigger e' piu' vecchio di quella regola.
+#   * vendite.preventivi prende `emittente_fiscale_id`, che il registro dichiara
+#     dal 2026-08 e il trigger vivo non aveva mai avuto. ⚠️ Quella riga nominava
+#     EMITTENTE_NON_MODIFICABILE, un codice che NON ESISTE a catalogo (il vivo e'
+#     E_EMITTENTE_NON_MODIFICABILE): era la stessa rinomina del 05-08, mancata
+#     anche li'. Corretta nel CSV — senza, questo changeSet avrebbe armato un
+#     lock che risponde «[MESSAGGIO NON DEFINITO]».
+#
+# ── ⛔ PERCHE' STA IN 90_end ────────────────────────────────────────────
+#
+#   Deve girare DOPO 80_data (il registro corretto) e DOPO che i trigger
+#   esistono. Su un database da ZERO i trigger GENERATI non sono ancora nati
+#   (li genera `ci_apply`, la seconda invocazione) — poi ci_apply li crea gia'
+#   con i codici vivi. Su dev trova i 69 e li rifa'. ⚠️ L'automazione si
+#   richiama SOLO se c'e' stato qualcosa da droppare.
+#   ⛔ CORRETTO il 2026-09-23 (dopo il primo giro su zeroerp_ci): «da zero il
+#   censimento torna vuoto» era FALSO. I trigger di lock SCRITTI A MANO in
+#   20_code esistono gia' alla prima passata, e se nominano un codice ritirato
+#   il censimento li prende. Caso reale: config.iva_stati, trigger del
+#   20251006-22 con E_PERC_IVA_NO_MOD / E_ASSOGGETTAMENTO_NO_MOD (ritirati il
+#   2026-08-07 con lo stesso punto cieco su tgargs), fuori dal registro ⇒
+#   droppato, non rigenerato, rosso del controllo (a). Su dbdev quel trigger
+#   non c'era piu' (tolto fuori da Liquibase), quindi dev e' passato: e' dev a
+#   essere fuori modello, non la CI. Sanato dal registro (due righe
+#   config.iva_stati in automation_lock_columns.csv), non dal controllo.
+#   Non e' DDL incondizionata su un trigger di ci_apply (guardrail_ddl_su_-
+#   trigger_automazione.py): agisce solo su cio' che trova in pg_trigger, e sta
+#   fuori da 00_schema/20_code.
+#
+# ⚠️ Ricaduta dichiarata sul BE, brief §4: apps/magazzino/tests/db/
+#   test_anagrafiche_magazzino_db.py asserisce la stringa 'CODICE_NON_MODIFICABILE'
+#   su magazzino.magazzini.codice e diventa rosso qui. E' un test che pinna un
+#   codice ritirato: il rosso dice la verita'. Per l'operatore non cambia niente
+#   — i due codici hanno la stessa classe (CONFLITTO_STATO) e la stessa frase.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260923-02-rigenera-lock-columns-con-codici-vivi-mctit.yaml
+
+  - changeSet:
+      id: 20260923-02-rigenera-lock-columns-con-codici-vivi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rigenera i trigger di LOCK_COLUMNS che negli ARGOMENTI nominano un codice
+        non vivo (assente dal catalogo o con obsoleto_dal scaduta). Su dbdev sono
+        69, tutti con CODICE_NON_MODIFICABILE, ritirato il 2026-08-05: la rinomina
+        di allora censi' i call site da pg_proc, e un codice che viaggia come
+        TG_ARGV in pg_proc non c'e'. Droppa e richiama l'automazione (la sede di
+        cosa si locka resta una), poi verifica che nessuna colonna lockata sia
+        rimasta scoperta. Su un DB da zero non fa niente.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: dbops, tableName: automation_lock_columns }
+            - tableExists: { schemaName: config, tableName: codici_errore }
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                   WHERE p.proname = 'fn_run_automations_lock_columns'
+                     AND p.pronamespace = 'dbops'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $bonifica$
+              DECLARE
+                  -- Lo stato PRIMA: i trigger di lock che negli ARGOMENTI nominano un
+                  -- codice non vivo, con l'elenco delle colonne che presidiano.
+                  -- ⚠️ Le colonne servono al controllo (b): sono la cosa che si puo'
+                  --    perdere, e l'unico momento in cui si sanno e' adesso.
+                  v_prima     jsonb;
+                  v_rimasti   text;
+                  v_perse     text;
+                  v_residui   text;
+                  r           record;
+              BEGIN
+                  SELECT jsonb_agg(jsonb_build_object(
+                             'sch', x.sch, 'tab', x.tab, 'trg', x.trg, 'cols', x.cols))
+                    INTO v_prima
+                    FROM (
+                      SELECT n.nspname AS sch, c.relname AS tab, t.tgname AS trg,
+                             (SELECT array_agg(a ORDER BY a)
+                                FROM unnest(string_to_array(encode(t.tgargs,'escape'), '\000'))
+                                     WITH ORDINALITY u(a, i)
+                               WHERE i % 2 = 1) AS cols
+                        FROM pg_trigger t
+                        JOIN pg_class c      ON c.oid = t.tgrelid
+                        JOIN pg_namespace n  ON n.oid = c.relnamespace
+                        JOIN pg_proc p       ON p.oid = t.tgfoid
+                       WHERE NOT t.tgisinternal
+                         AND p.proname = 'trgfn_lock_columns'
+                         AND EXISTS (
+                               SELECT 1
+                                 FROM unnest(string_to_array(encode(t.tgargs,'escape'), '\000'))
+                                      WITH ORDINALITY u2(a, i)
+                                 LEFT JOIN config.codici_errore ce ON ce.codice = u2.a
+                                WHERE u2.i % 2 = 0
+                                  AND (ce.codice IS NULL
+                                       OR (ce.obsoleto_dal IS NOT NULL
+                                           AND ce.obsoleto_dal <= CURRENT_DATE)))
+                    ) x;
+
+                  -- Database da zero: i trigger non sono ancora nati (li genera
+                  -- ci_apply, la SECONDA invocazione di Liquibase). Niente da fare,
+                  -- e soprattutto non si chiama l'automazione: la sequenza di un DB
+                  -- nuovo resta identica a oggi.
+                  IF v_prima IS NULL THEN
+                      RAISE NOTICE 'LOCK_COLUMNS: nessun trigger con codice non vivo, niente da bonificare.';
+                      RETURN;
+                  END IF;
+
+                  RAISE NOTICE 'LOCK_COLUMNS: % trigger da rigenerare.', jsonb_array_length(v_prima);
+
+                  FOR r IN SELECT * FROM jsonb_to_recordset(v_prima)
+                                        AS z(sch text, tab text, trg text, cols text[])
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON %I.%I', r.trg, r.sch, r.tab);
+                  END LOOP;
+
+                  -- ⭐ Si rigenera dalla sede, non si riscrive l'argomento: l'elenco
+                  --    delle colonne e dei codici lo calcola il generatore, e deve
+                  --    restare l'unico a farlo.
+                  PERFORM dbops.fn_run_automations_lock_columns('SCHEDULED', NULL, false);
+
+                  -- (a) ogni tabella toccata ha di nuovo un trigger di lock
+                  SELECT string_agg(DISTINCT z.sch||'.'||z.tab, ', ' ORDER BY z.sch||'.'||z.tab)
+                    INTO v_rimasti
+                    FROM jsonb_to_recordset(v_prima) AS z(sch text, tab text, trg text, cols text[])
+                   WHERE NOT EXISTS (
+                     SELECT 1 FROM pg_trigger t
+                       JOIN pg_class c     ON c.oid = t.tgrelid
+                       JOIN pg_namespace n ON n.oid = c.relnamespace
+                       JOIN pg_proc p      ON p.oid = t.tgfoid
+                      WHERE NOT t.tgisinternal AND p.proname = 'trgfn_lock_columns'
+                        AND n.nspname = z.sch AND c.relname = z.tab);
+
+                  IF v_rimasti IS NOT NULL THEN
+                      RAISE EXCEPTION 'LOCK_COLUMNS: tabelle rimaste SENZA lock dopo la rigenerazione: %',
+                            v_rimasti;
+                  END IF;
+
+                  -- (b) ⭐ nessuna COLONNA che era lockata e' rimasta scoperta.
+                  --     E' il controllo che conta: un lock nato FUORI dal registro
+                  --     verrebbe droppato e non rigenerato, e sparirebbe in silenzio.
+                  --     Provato per mutazione il 2026-09-23.
+                  SELECT string_agg(z.sch||'.'||z.tab||'.'||col, ', '
+                                    ORDER BY z.sch||'.'||z.tab||'.'||col)
+                    INTO v_perse
+                    FROM jsonb_to_recordset(v_prima) AS z(sch text, tab text, trg text, cols text[]),
+                         LATERAL unnest(z.cols) AS col
+                   WHERE NOT EXISTS (
+                     SELECT 1 FROM pg_trigger t
+                       JOIN pg_class c     ON c.oid = t.tgrelid
+                       JOIN pg_namespace n ON n.oid = c.relnamespace
+                       JOIN pg_proc p      ON p.oid = t.tgfoid
+                      WHERE NOT t.tgisinternal AND p.proname = 'trgfn_lock_columns'
+                        AND n.nspname = z.sch AND c.relname = z.tab
+                        AND col = ANY(string_to_array(encode(t.tgargs,'escape'), '\000')));
+
+                  IF v_perse IS NOT NULL THEN
+                      RAISE EXCEPTION
+                        'LOCK_COLUMNS: colonne che erano lockate e non lo sono piu'': %. '
+                        'Vuol dire che quel lock non e'' nel registro dbops.automation_lock_columns: '
+                        'va aggiunta la riga PRIMA di rigenerare, non tolto questo controllo.', v_perse;
+                  END IF;
+
+                  -- (c) nessun trigger di lock nomina piu' un codice non vivo
+                  SELECT string_agg(DISTINCT n.nspname||'.'||c.relname, ', '
+                                    ORDER BY n.nspname||'.'||c.relname)
+                    INTO v_residui
+                    FROM pg_trigger t
+                    JOIN pg_class c     ON c.oid = t.tgrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_proc p      ON p.oid = t.tgfoid
+                   WHERE NOT t.tgisinternal AND p.proname = 'trgfn_lock_columns'
+                     AND EXISTS (
+                           SELECT 1 FROM unnest(string_to_array(encode(t.tgargs,'escape'), '\000'))
+                                  WITH ORDINALITY u(a, i)
+                             LEFT JOIN config.codici_errore ce ON ce.codice = u.a
+                            WHERE u.i % 2 = 0
+                              AND (ce.codice IS NULL
+                                   OR (ce.obsoleto_dal IS NOT NULL
+                                       AND ce.obsoleto_dal <= CURRENT_DATE)));
+
+                  IF v_residui IS NOT NULL THEN
+                      RAISE EXCEPTION
+                        'LOCK_COLUMNS: dopo la rigenerazione restano trigger con un codice non vivo su: %. '
+                        'Il registro dbops.automation_lock_columns non e'' allineato.', v_residui;
+                  END IF;
+
+                  RAISE NOTICE 'LOCK_COLUMNS: bonifica completata, nessuna colonna persa.';
+              END
+              $bonifica$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Non si torna indietro, ed e' una scelta: il rollback dovrebbe
+              --    rimettere negli argomenti un codice RITIRATO, cioe' ricreare il
+              --    difetto. I trigger rigenerati restano; se serve rifarli, si
+              --    droppano e si richiama l'automazione, che e' quello che questo
+              --    changeSet fa. Il rollback e' quindi un no-op dichiarato.
+              SELECT 1;

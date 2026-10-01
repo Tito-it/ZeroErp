@@ -13,6 +13,8 @@ from typing import Any, Callable, TypeVar
 
 from django.db import connection
 
+from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
+
 T = TypeVar("T")
 
 # Mapping livello -> set di azioni CRUD consentite.
@@ -77,7 +79,14 @@ class PermissionResolver:
     def get_ruolo_applicativo(
         cls, user: Any, cache: dict[str, Any] | None = None
     ) -> str | None:
-        """Scopo: Restituisce il ruolo_applicativo dell'identita attiva.
+        """Scopo: Restituisce il ruolo_applicativo della SESSIONE corrente.
+
+        ⛔ Risponde per chi fa la richiesta, NON per `user` (S-6,
+        2026-09-27): la GUC e' della sessione, e una credenziale puo' avere
+        piu' vesti, quindi «il» ruolo applicativo di un altro utente non
+        esiste. `user` deve essere l'utente della richiesta. Per chiedere
+        qualcosa di un ALTRO utente si usa la domanda precisa
+        (`has_veste_operatore_attiva`), come fa permessi-effettivi.
 
         Strategia GUC-first (Q1): se `app.ruolo_applicativo` e'
         popolato (JwtAuditAuthentication lo ha gia' propagato per la
@@ -113,6 +122,30 @@ class PermissionResolver:
             return str(row[0]) if row and row[0] else None
 
         return _cached(cache, "ruolo_applicativo", _query)
+
+    @classmethod
+    def has_veste_operatore_attiva(
+        cls, user: Any, cache: dict[str, Any] | None = None
+    ) -> bool:
+        """Scopo: L'utente ha una veste OPERATORE attiva (e nella finestra)?
+
+        E' il passo 1 della catena di `fn_resolve_livello_area` e
+        `fn_resolve_livello_oggetto`: senza, ogni area e' BLOCCATO. Livelli
+        d'area, livelli oggetto e super admin esistono SOLO per la veste
+        OPERATORE; le altre vesti passano dalla porta, non dalle aree.
+        Delega a `script.fn_has_identita_attiva` (stessa lettura della
+        catena): risponde per `user`, qualunque sia la sessione.
+        """
+        def _query() -> bool:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT script.fn_has_identita_attiva(%s, %s::config.ruolo_applicativo)",
+                    [user.id, RUOLO_APPLICATIVO_OPERATORE],
+                )
+                row = cursor.fetchone()
+            return bool(row[0]) if row else False
+
+        return _cached(cache, "veste_operatore_attiva", _query)
 
     @classmethod
     def get_livello_area(
@@ -288,13 +321,19 @@ class PermissionResolver:
     @classmethod
     def list_model_overrides_grouped(cls) -> dict[str, list[dict[str, str]]]:
         """Scopo: Restituisce tutti i model configurabili raggruppati per schema_db.
-        Usato da permessi-effettivi per mostrare il livello oggetto per area."""
+        Usato da permessi-effettivi per mostrare il livello oggetto per area.
+
+        ⚠️ Solo i NON riservati (`area_model_overrides.riservato`, dal
+        2026-09-28): i dieci oggetti del kernel stanno a catalogo per essere
+        dichiarati, non per essere personalizzati — senza il filtro la pagina
+        li mostrerebbe come oggetti della loro area."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT af.schema_db, amo.app_label, amo.model_name
                   FROM config.area_model_overrides amo
                   JOIN config.aree_funzionali af ON af.id = amo.area_id
+                 WHERE NOT amo.riservato
                  ORDER BY af.schema_db, amo.model_name
                 """
             )
@@ -308,21 +347,20 @@ class PermissionResolver:
 
     @classmethod
     def get_area_schema_db(cls, app_label: str, model_name: str) -> str:
-        """Scopo: Determina lo schema_db dell'area per un model.
-        1. Controlla override in area_model_overrides
-        2. Altrimenti usa app_label (che corrisponde allo schema)."""
+        """Scopo: Determina lo schema_db dell'area per un model: l'eccezione
+        di `area_model_overrides`, altrimenti `app_label` (area = schema).
+
+        ⛔ La regola e' di `script.fn_area_di_oggetto`, la stessa che usa il
+        guard dei verbi (`fn_guard_livello`): fino al 2026-09-25 qui c'era la
+        stessa query riscritta, cioe' una seconda sede della regola
+        (brief-db-pannello-config-verbo-generico §6)."""
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT af.schema_db
-                  FROM config.area_model_overrides amo
-                  JOIN config.aree_funzionali af ON af.id = amo.area_id
-                 WHERE amo.app_label = %s AND amo.model_name = %s
-                """,
+                "SELECT script.fn_area_di_oggetto(%s, %s)",
                 [app_label, model_name],
             )
             row = cursor.fetchone()
-        return row[0] if row else app_label
+        return row[0] if row and row[0] else app_label
 
     @classmethod
     def get_unita_organizzativa_id(
@@ -367,31 +405,30 @@ class PermissionResolver:
             una riga del profilo per quell'area — configurazione
             incompleta)
 
-        Delega a `script.fn_get_profili_accesso_applicabili` che
-        incapsula la catena multi-face (AD_HOC prio 1, PORTALE /
-        REPARTO prio 2). La join con `profili_accesso_aree` verifica
-        che almeno uno dei profili applicabili copra l'area
-        richiesta.
+        Delega a `script.fn_get_permessi_ereditati_aree`, la stessa
+        funzione che fa il passo 4 di `fn_resolve_livello_area`: un'area
+        e' «configurata» esattamente quando il resolver la trova nel
+        profilo. Include le righe a `BLOCCATO`, che sono una scelta del
+        profilo e non una sua assenza.
+
+        ⛔ Conta i soli profili della veste OPERATORE (D-1,
+        brief-db-pgtap-permessi-ereditati): un operatore che ha anche una
+        veste cliente non si porta il profilo PORTALE di quella veste.
+        La veste e' fissata nella funzione, non letta dalla GUC di chi
+        chiama: i due caller sono di contesto operatore
+          - permissions.py: gia' gated da ruolo_app == OPERATORE
+          - views.py: ispeziona target_user; filtrare sulla GUC
+            dell'admin corrente sarebbe semanticamente errato.
         """
         def _query() -> bool:
             with connection.cursor() as cursor:
-                # Chiamata 1-arg: post migration 20260421-* la vecchia
-                # firma e' stata droppata; resta solo la 2-arg con
-                # `p_ruolo_applicativo DEFAULT NULL` che, risolta con 1
-                # argomento, equivale a "nessun filtro veste" (comportamento
-                # legacy). Scelta coerente coi due caller:
-                #   - permissions.py: gia' gated da ruolo_app == OPERATORE
-                #   - views.py: ispeziona target_user; filtrare sulla GUC
-                #     dell'admin corrente sarebbe semanticamente errato.
                 cursor.execute(
                     """
                     SELECT EXISTS(
                         SELECT 1
-                          FROM script.fn_get_profili_accesso_applicabili(%s) prof
-                          JOIN config.profili_accesso_aree paa
-                            ON paa.profilo_accesso_id = prof.profilo_accesso_id
+                          FROM script.fn_get_permessi_ereditati_aree(%s) e
                           JOIN config.aree_funzionali af
-                            ON af.id = paa.area_id
+                            ON af.id = e.area_id
                          WHERE af.schema_db = %s
                     )
                     """,

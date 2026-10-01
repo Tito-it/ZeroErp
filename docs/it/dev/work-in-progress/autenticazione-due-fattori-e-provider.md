@@ -3,217 +3,308 @@
 > Documento di pianificazione per l'estensione del sistema di autenticazione.
 >
 > **Data creazione originale**: 2026-04-01 (solo 2FA TOTP)
-> **Rinominato e aggiornato**: 2026-04-23 — aggiunto piano OAuth/SSO + riallineamento al modello multi-face corrente
-> **Stato**: **PIANIFICATO — non ancora in sviluppo**
-> **Rinomina da**: `autenticazione-due-fattori.md` → `autenticazione-due-fattori-e-provider.md`
+> **Aggiornato**: 2026-04-23 — aggiunto piano OAuth/SSO
+> **Riscritto**: 2026-09-25 — riallineato al modello **credenziale + vesti**
+> ([brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md),
+> P-1 e P-2 applicati il 2026-09-25). La versione di aprile metteva l'obbligo
+> del 2FA sulla veste (`identita_digitali.totp_obbligatorio`) e citava
+> `risorse_umane_auth_user`: entrambe le cose non esistono più.
+> **Stato**:
+>
+> * **Parte A (TOTP): 🔵 IN SVILUPPO.** Il rinvio di D-10 (2026-09-24: *«funzione
+>   nuova, non un difetto, non si costruisce ora»*) è superato dal
+>   [brief sicurezza](brief-be-fe-sicurezza-header-token-mfa.md) §3 (decisioni
+>   di Tid del 2026-09-26/28). **DB chiuso il 2026-09-29**
+>   ([brief-db-secondo-fattore-totp.md](brief-db-secondo-fattore-totp.md):
+>   obbligo sulla credenziale o sul profilo, sei verbi del device, anti-replay
+>   sul passo); **BE/FE in corso dal 2026-09-30** coi lotti T-0 → T-5 del brief
+>   sicurezza §3.4-bis. ⚠️ La sede del lavoro sono quei due brief: la Parte A
+>   di questo documento resta come **disegno d'origine**, e dove dissente vale
+>   il brief.
+> * **Parte B (provider esterni / OAuth): PIANIFICATO — non in sviluppo.** Prima
+>   di partire vanno chiuse le **domande aperte del §F**.
 >
 > Copertura:
 >
-> * **Parte A**: 2FA TOTP (Google Authenticator, Authy)
-> * **Parte B**: Autenticazione tramite provider esterni (Google, Microsoft, Apple, ecc.)
+> * **Parte A**: 2FA TOTP (Google Authenticator, Authy, …)
+> * **Parte B**: autenticazione tramite provider esterni (Google, Microsoft, Apple, …)
 >
-> Entrambe estendono il medesimo flusso login esistente e condividono il modello
-> identità digitali. Si trattano insieme per evitare drift architetturale.
+> Entrambe estendono lo stesso flusso di login e toccano la stessa sede, la
+> **credenziale**: si trattano insieme per evitare due disegni divergenti.
 
 ---
 
-## 0. Premessa — stato autenticazione corrente (allineamento 2026-04-23)
+## 0. Premessa — com'è l'autenticazione oggi (verificato 2026-09-25)
 
-Situazione registrata dopo il refactor **multi-face auth** (§8.3.x), completato con `dev/db-tid` 2026-04-18/20.
+### 0.1 Una persona, una credenziale, più vesti
 
-### 0.1 Modello identità
+* **`django.auth_user`** = la **credenziale**: nome utente, email, password.
+  **Una persona, una credenziale** (D-6): la password è una sola e vale per
+  tutte le porte.
+* **`config.credenziali`** (1:1 con `auth_user`) = lo **stato della
+  credenziale**: `deve_cambiare_password`, `fallimenti_consecutivi`,
+  `ultimo_fallimento_at`, blocco dell'amministratore (`bloccata_at`,
+  `bloccata_da`, `motivo_blocco`). La riga nasce alla prima scrittura; la sua
+  **assenza** vale «nessun errore, non bloccata, nessun obbligo». Nessuno la
+  legge o la scrive fuori dal DB: lo fanno le funzioni di `script`. Niente
+  storico, niente RLS ([manual](../../dbzero/config/tabelle/credenziali)).
+* **`config.credenziali_provenienze`** = il **freno** sulla coppia
+  *credenziale + provenienza* (IP fidato del chiamante): le password sbagliate
+  frenano **chi le prova**, non il titolare
+  ([manual](../../dbzero/config/tabelle/credenziali_provenienze)).
+* **`anagrafiche.identita_digitali`** = le **vesti**: una riga per ogni ruolo
+  applicativo attivo della persona (UNIQUE `(auth_user_id, ruolo_applicativo)
+  WHERE attivo`). Porta solo ciò che è della veste: `attivo`, validità,
+  `invito_inviato_at`. Dal 2026-09-25 (`20260925-25`) **non** porta più
+  tentativi, blocco, cambio password né `totp_obbligatorio`
+  ([manual](../../dbzero/anagrafiche/tabelle/identita_digitali)).
+* Ruoli applicativi: `OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`,
+  `SHOP_CUSTOMER`, `API_CLIENT`, `DISABILITATO`.
+* `risorse_umane_auth_user` **non esiste più** (vista di compatibilità
+  ritirata; model Django rimosso il 2026-09-12). Il legame con la risorsa umana
+  passa da `identita_digitali.soggetto_ruolo_id`.
 
-- **`auth_user` Django** = credenziali password + email + username (1 record per persona fisica)
-- **`anagrafiche.identita_digitali`** = bridge N:M verso `soggetti_ruoli`, **una riga per ogni ruolo applicativo attivo** (vincolo UNIQUE `uq_identita_digitali_auth_user_ruolo_attivo` su `(auth_user_id, ruolo_applicativo) WHERE attivo`)
-- **`anagrafiche.risorse_umane_auth_user`** = ponte RU ↔ auth_user per operatori interni (1:1 auth_user↔RU); **tabella legacy rispetto al modello multi-face** ma ancora attiva per compatibilità
-- Ruoli applicativi (enum): `OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, `API_CLIENT`, `DISABILITATO`
+⭐ **Conseguenza per questo piano.** Il secondo fattore protegge la
+**password**, e la password è una: il dispositivo TOTP e (secondo D-10)
+l'obbligo di usarlo appartengono alla **credenziale**, non alla veste. Resta
+aperto se una **porta** possa chiedere il TOTP *in più* (§F, Q-1).
 
-### 0.2 Dove vivono i flag auth (importante per il piano sotto)
+### 0.2 Login oggi (tre porte)
 
-Campi rilevanti **per auth** presenti su entrambe le tabelle a seguito del refactor:
+* `POST /api/v1/admin/token/` → `OPERATORE`, `API_CLIENT`
+* `POST /api/v1/portale/token/` → `CLIENTE_PORTALE`, `FORNITORE_PORTALE`
+* `POST /api/v1/shop/token/` → `SHOP_CUSTOMER`
 
-| Campo                    | `risorse_umane_auth_user` | `identita_digitali` | Canonico post-multi-face         |
-| ------------------------ | :-----------------------: | :-----------------: | -------------------------------- |
-| `deve_cambiare_password` |             ✅            |          ✅         | `identita_digitali` (per-veste)  |
-| `tentativi_falliti`      |             ✅            |          ✅         | `identita_digitali`              |
-| `bloccato_fino_a`        |             ✅            |          ✅         | `identita_digitali`              |
-| `totp_obbligatorio`      |             ✅            |          ✅         | `identita_digitali` (per-veste)  |
-| `invito_inviato_at`      |             ✅            |          ✅         | `identita_digitali`              |
+Portale e shop entrano con l'**email**, l'operatore con il nome utente (D-9,
+lotto L-4 di
+[piano-be-fe-accessi-credenziale-e-vesti.md](piano-be-fe-accessi-credenziale-e-vesti.md)).
 
-**Implicazione operativa**: la fonte di verità per i flag per-identità è `identita_digitali`. Per un utente con N vesti (es. OPERATORE + CLIENTE_PORTALE) il 2FA può essere obbligatorio su una veste e opzionale sull'altra. Il device TOTP, invece, è **1:1 per auth_user** (una sola persona fisica, una sola app authenticator), cfr. §A.1.
+La sequenza, in `AuditTokenObtainPairView.post`
+([auth_views.py](../../../../backend/apps/core/api/auth_views.py)):
 
-### 0.3 Login attuale (3 canali)
+1. **provenienza** (IP fidato, `get_client_ip`); se manca, rifiuto
+   `E_AUTH_CHIAMATA_NON_VALIDA` (fail-closed, prima di cercare l'utente);
+2. `script.fn_check_blocco_login(auth_user_id, provenienza)`: blocco
+   dell'admin (`E_CREDENZIALE_BLOCCATA`), freno sulla provenienza
+   (`E_UTENTE_BLOCCATO`), attesa crescente (`E_LOGIN_ATTESA`);
+3. verifica della password (SimpleJWT) tramite il serializer della porta,
+   sottoclasse di `MultiVesteTokenSerializer`
+   ([multi_veste_token_serializer.py](../../../../backend/apps/core/api/multi_veste_token_serializer.py)),
+   che risolve la veste e mette nel JWT `identita_id`, `ruolo_applicativo` e `sid`;
+4. `script.fn_registra_tentativo_login(...)`: conta il fallimento, oppure
+   azzera la provenienza dopo un successo.
 
-- `POST /api/admin/token/` → ruoli `OPERATORE`, `API_CLIENT`
-- `POST /api/portale/token/` → `CLIENTE_PORTALE`, `FORNITORE_PORTALE`
-- `POST /api/shop/token/` → `SHOP_CUSTOMER`
+Poi `set_jwt_gucs()` porta l'identità nelle GUC `app.*` a ogni richiesta
+([jwt_audit_authentication.py](../../../../backend/apps/core/api/jwt_audit_authentication.py)).
+Il cambio password obbligatorio lo fa rispettare `PasswordChangeRequiredMiddleware`;
+dal punto di vista del JWT è ancora da sistemare (lotto L-6 del piano accessi).
 
-Tutti generati da `SidTokenObtainPairSerializer` ([token_serializers.py](../../../../backend/apps/core/api/token_serializers.py)) con claim JWT:
+### 0.3 Cosa ancora NON c'è
 
-- `user_id` (SimpleJWT standard)
-- `identita_id` (§8.3.2 — obbligatorio, altrimenti `E_JWT_SENZA_IDENTITA`)
-- `ruolo_applicativo`
-- `sid` (session ID stabile, persiste al refresh rotation)
-
-Propagazione DB via `set_jwt_gucs()` in [jwt_audit_authentication.py](../../../../backend/apps/core/api/jwt_audit_authentication.py): 5 GUC `app.*` session-scoped popolate in singola query CTE dopo ogni `authenticate()` riuscito. Vedi `risorse-umane-e-accessi.md` §"Propagazione identità utente al database (GUC)".
-
-### 0.4 Cosa ancora NON c'è
-
-- 2FA TOTP → tabella `config.auth_totp_device` creata (20260328-20), ma nessun flusso BE/FE
-- Provider esterni (OAuth/OIDC) → nessuna dipendenza, nessuna tabella, nessun endpoint
-- Magic link senza password → fuori scope qui
-- WebAuthn/Passkey → fuori scope, possibile evoluzione futura
+* **2FA TOTP**: esiste solo la tabella `config.auth_totp_device`. Nessuna
+  dipendenza Python (`pyotp`, `qrcode`), nessun servizio, endpoint, middleware
+  o schermata. Nessuna colonna di obbligo.
+* **Provider esterni (OAuth/OIDC)**: niente di niente (né dipendenze, né
+  tabelle, né endpoint).
+* Fuori scope: magic link senza password, WebAuthn/Passkey (possibile
+  evoluzione, §C).
 
 ---
 
 # Parte A — 2FA TOTP
 
-## A.1 DB (stato)
+## A.1 DB
 
-### A.1.1 Tabella `config.auth_totp_device` — CREATA ✅ (20260328-20)
+### A.1.1 `config.auth_totp_device` — ESISTE ✅
 
-Stato effettivo come da [doc tabella](../../dbzero/config/tabelle/auth_totp_device):
+Stato effettivo ([doc tabella](../../dbzero/config/tabelle/auth_totp_device)):
 
-```
+```text
 config.auth_totp_device
-├── id                  BIGSERIAL PK
-├── auth_user_id        INTEGER UNIQUE NOT NULL FK → auth_user(id)
-│                       (1:1 — un solo device TOTP per persona fisica,
-│                        condiviso tra tutte le vesti/identita' di quell'auth_user)
-├── secret_encrypted    VARCHAR(512) NOT NULL
-│                       (secret TOTP crittografato con Fernet/SECRET_KEY)
+├── id                  BIGINT PK
+├── auth_user_id        INTEGER NOT NULL, UNIQUE, FK → django.auth_user
+│                       (1:1 con la credenziale: un solo dispositivo per persona)
+├── secret_encrypted    VARCHAR NOT NULL   (Fernet, chiave da SECRET_KEY:
+│                                           apps/core/services/crypto_service.py)
 ├── abilitato           BOOLEAN NOT NULL DEFAULT false
-├── confermato          BOOLEAN NOT NULL DEFAULT false
-│                       (true solo dopo prima verifica riuscita)
-├── recovery_codes_hash JSONB NOT NULL DEFAULT '[]'
-│                       (array di hash SHA-256 dei codici recovery)
-├── ultimo_codice_usato VARCHAR(10) NULL
-│                       (anti-replay: ultimo codice TOTP verificato)
+├── confermato          BOOLEAN NOT NULL DEFAULT false   (true dopo la prima verifica)
+├── recovery_codes_hash JSONB NOT NULL DEFAULT '[]'      (hash SHA-256, monouso)
+├── ultimo_codice_usato VARCHAR NULL                     (anti-replay)
 ├── ultimo_uso_at       TIMESTAMPTZ NULL
 ├── meta                JSONB NOT NULL DEFAULT '{}'
-└── audit fields (data_insert, user_insert, data_update, user_update)
+└── audit (data_insert, user_insert, data_update, user_update)
 ```
 
-**Scelta architetturale**: device 1:1 per `auth_user`, non per identità. Una persona fisica ha una sola app authenticator sul telefono; il 2FA la autentica come persona, poi il login sceglie la veste (claim `identita_id` nel JWT). La forzatura del 2FA (`totp_obbligatorio`) è invece per-veste.
+La FK verso `django.auth_user` sta in `90_end`
+(`20260921-02-fk-config-auth-totp-device-auth-user-id-django-auth-user`),
+nella forma di casa per le FK verso Django. È lo stesso schema e la stessa
+forma di `config.credenziali`: le due tabelle sono **sorelle**, entrambe 1:1
+con la credenziale.
 
-### A.1.2 Colonne `totp_obbligatorio` — CREATE ✅
+⚠️ **Il manual della tabella è superato**
+([manual/auth_totp_device.md](../../dbzero/config/manual/auth_totp_device.md)):
+la sezione «Collegamento con risorse_umane_auth_user» parla di
+`totp_obbligatorio` su una tabella che non esiste più. Va riscritta dal team
+DB (§D.1.d).
 
-- `risorse_umane_auth_user.totp_obbligatorio` — aggiunta ✅ (20260328-21). Copre solo operatori; **conservata per compatibilità** ma non è la fonte canonica.
-- `identita_digitali.totp_obbligatorio` — presente (post-refactor multi-face, deriva da migrations `20260418-10+`). **Fonte canonica**: copre tutte le vesti (OPERATORE, CLIENTE_PORTALE, FORNITORE_PORTALE, SHOP_CUSTOMER).
+### A.1.2 Da fare — DB
 
-**Nota implementativa**: il middleware 2FA (§A.4.8) deve controllare `identita_digitali.totp_obbligatorio` sull'identità del JWT corrente, non `risorse_umane_auth_user`. La colonna legacy su `risorse_umane_auth_user` è utile solo se un admin setta il flag "su tutti gli operatori" come policy aziendale: va mantenuta sincronizzata con l'identità OPERATORE via trigger o applicativo (vedi §A.2.3 — brief DB).
+* [ ] **A.1.2.a — La sede dell'obbligo.** ❓ Dipende da **Q-1** (§F).
+  Qualunque sia la risposta, l'obbligo **non** torna su `identita_digitali`.
+  Le forme possibili sono descritte in Q-1.
+* [ ] **A.1.2.b — Le funzioni del TOTP in `script`.** Come per
+  `config.credenziali`, il backend non dovrebbe scrivere a mano la tabella del
+  dispositivo. Servono funzioni che, dentro il DB, facciano: registrazione del
+  dispositivo non confermato, conferma, disattivazione, consumo di un codice di
+  recupero, aggiornamento dell'anti-replay. La **verifica crittografica** del
+  codice resta al backend (`pyotp`), perché il segreto si decifra con la chiave
+  applicativa. ❓ Il confine preciso (chi legge il segreto cifrato, e come) è
+  **Q-6**.
+* [ ] **A.1.2.c — Il profilo utente.** `script.fn_get_user_profile()` espone
+  già `deve_cambiare_password`, letto dalla credenziale tramite
+  `fn_get_deve_cambiare_password`. Va esteso con:
+  * `totp_abilitato`: EXISTS su `auth_totp_device` con `abilitato AND confermato`;
+  * `totp_obbligatorio`: dalla sede decisa in Q-1.
 
-### A.1.3 Da fare — DB
-
-- [ ] **A.1.3.a** — Aggiornare `script.fn_get_user_profile()` ([fn_get_user_profile](../../dbzero/script/funzioni/fn_get_user_profile)) per includere nel JSONB di risposta:
-  - `totp_abilitato` — da `auth_totp_device` (EXISTS con `abilitato=true AND confermato=true`)
-  - `totp_obbligatorio` — **da `identita_digitali`** per l'identità del JWT corrente (non da `risorse_umane_auth_user`)
-  - Il manual `fn_get_user_profile_auth_flags.md` oggi documenta solo `deve_cambiare_password`: estendere con le due chiavi TOTP.
-- [ ] **A.1.3.b** *(opzionale, consigliato)* — **Trigger di sync legacy→canonico**: `trgfn_risorse_umane_auth_user_sync_totp_obbligatorio` che propaga `totp_obbligatorio` su `identita_digitali` per l'identità `ruolo_applicativo='OPERATORE'` attiva. Evita la divergenza tra le due tabelle finché `risorse_umane_auth_user.totp_obbligatorio` non viene deprecato.
+  Il valore di default dell'assenza deve stare in **una sola funzione**, come
+  per `deve_cambiare_password`.
+* [ ] **A.1.2.d — Il TOTP e il freno.** ❓ Dipende da **Q-2**: se i codici TOTP
+  sbagliati contano, `fn_registra_tentativo_login` (o una funzione sorella)
+  deve riceverli.
 
 ## A.2 Backend
 
 ### A.2.1 `TotpService` — `apps/core/services/totp_service.py`
 
-- [ ] **A.2.1** — Creare servizio. Responsabilità:
-  - `setup_device(auth_user_id) → {secret, provisioning_uri, qr_code_base64, recovery_codes}`
-    - Genera secret con `pyotp.random_base32()`
-    - Cifra secret con Fernet usando `SECRET_KEY`
-    - Genera 10 recovery codes (16 char hex), salva SHA-256 dei codici (mai in chiaro)
-    - Ritorna recovery codes in chiaro **una sola volta** (unica occasione di lettura)
-  - `confirm_setup(auth_user_id, codice) → bool`
-    - Verifica codice TOTP con `pyotp.TOTP(secret).verify(codice, valid_window=1)`
-    - Se OK: `confermato=true`, `abilitato=true`
-  - `verify(auth_user_id, codice) → {valido, tipo, recovery_rimanenti}`
-    - Anti-replay: rifiuta se `codice == ultimo_codice_usato`
-    - Prova TOTP → se fallisce prova match su hash recovery codes
-    - Se match recovery: rimuovere hash dall'array (monouso)
-    - Aggiorna `ultimo_codice_usato`, `ultimo_uso_at`
-  - `disable(auth_user_id)`
-    - Imposta `abilitato=false`, azzera secret e recovery codes
-  - `regenerate_recovery_codes(auth_user_id, codice_totp) → [...]`
-    - Verifica TOTP corrente (conferma possesso device), genera nuovi 10 codici
+* [ ] **A.2.1** — Servizio con queste responsabilità (le scritture passano
+  dalle funzioni DB di A.1.2.b):
+  * `setup_device(auth_user_id) → {secret, provisioning_uri, qr_code_base64, recovery_codes}`
+    * segreto con `pyotp.random_base32()`, cifrato con `crypto_service` (Fernet);
+    * 10 codici di recupero, salvati solo come hash SHA-256;
+    * codici in chiaro restituiti **una sola volta**.
+  * `confirm_setup(auth_user_id, codice) → bool`
+    * `pyotp.TOTP(secret).verify(codice, valid_window=1)`; se valido,
+      `confermato = abilitato = true`.
+  * `verify(auth_user_id, codice) → {valido, tipo, recovery_rimanenti}`
+    * anti-replay su `ultimo_codice_usato`;
+    * prima il TOTP, poi i codici di recupero (monouso: l'hash esce dall'array).
+  * `disable(auth_user_id)`: `abilitato=false`, segreto e codici azzerati.
+  * `regenerate_recovery_codes(auth_user_id, codice_totp)`: richiede un codice
+    TOTP valido.
 
-### A.2.2 Flusso login a due step
+### A.2.2 Login in due passi
 
-- [ ] **A.2.2** — Modifica Step 1 su tutti i 3 canali (`/api/admin/token/`, `/api/portale/token/`, `/api/shop/token/`):
-  - Login username+password come ora
-  - Dopo `authenticate()` successo, **prima di emettere il JWT definitivo**:
-    - Risolve `identita_id` (come oggi in `MultiVesteTokenSerializer` §8.3.2)
-    - Se esiste riga in `auth_totp_device` con `abilitato=true AND confermato=true` **oppure** `identita_digitali.totp_obbligatorio=true` per la veste scelta:
-      - NON emette JWT
-      - Ritorna `{ two_factor_required: true, two_factor_token: "<token>" }`
-      - Il `two_factor_token` è un token firmato con Django `TimestampSigner` (scadenza 5 minuti) che porta `{auth_user_id, identita_id, canale}`
-    - Altrimenti: flusso JWT normale
-- [ ] **A.2.3** — Nuovo endpoint step 2: `POST /api/{canale}/token/2fa-verify/`
-  - Input: `{ two_factor_token, code }`
-  - Valida firma/scadenza `two_factor_token`
-  - Chiama `TotpService.verify(auth_user_id, code)`
-  - Se OK: emette JWT con `identita_id` già risolto nel token temporaneo (evita seconda risoluzione veste)
-  - Se recovery code: accetta, decrementa, eventualmente ritorna warning "ti restano N codici"
-  - Log tentativi su `dbops.sessioni_utente.meta` (già esistente)
+* [ ] **A.2.2 — Passo 1**, sulle tre porte (`/api/v1/{admin,portale,shop}/token/`).
+  La sequenza del §0.2 resta **uguale fino al passo 3 compreso** (provenienza,
+  blocco e freno, password). Dopo una password corretta e **prima** di emettere
+  il JWT:
+  * se la credenziale ha un dispositivo attivo **oppure** l'obbligo vale per
+    questa credenziale/porta (Q-1):
+    * **non** si emette il JWT;
+    * si risponde `{ two_factor_required: true, two_factor_token: "<token>" }`;
+    * `two_factor_token` è firmato (`TimestampSigner`, scadenza 5 minuti) e
+      porta `{auth_user_id, identita_id, porta, provenienza}`. La veste è già
+      risolta: il passo 2 non la risolve di nuovo;
+  * altrimenti, flusso JWT normale.
+  * ❓ Se la password è giusta ma serve il TOTP, il successo sulla provenienza
+    (l'azzeramento del freno) si registra **subito** o solo **dopo** il TOTP?
+    Vedi Q-2.
+* [ ] **A.2.3 — Passo 2**: `POST /api/v1/{porta}/token/2fa-verify/`
+  * input `{ two_factor_token, code }`;
+  * controllo di firma e scadenza, e che la **provenienza** coincida con quella
+    del passo 1;
+  * si ricontrolla `fn_check_blocco_login`: un blocco dell'admin arrivato fra i
+    due passi deve valere;
+  * `TotpService.verify(...)`; se è valido si emette il JWT con l'`identita_id`
+    del token;
+  * se è stato usato un codice di recupero, la risposta porta «ti restano N codici».
 
-### A.2.4 Endpoint profilo 2FA (self-service)
+### A.2.3 Endpoint self-service
 
-- [ ] **A.2.4** — `POST /api/v1/auth/2fa/setup/` — avvia setup, ritorna QR code + secret base32 + recovery codes (1 volta)
-- [ ] **A.2.5** — `POST /api/v1/auth/2fa/confirm/` — conferma setup (primo codice TOTP valido)
-- [ ] **A.2.6** — `POST /api/v1/auth/2fa/disable/` — disabilita 2FA (richiede password corrente). Blocca se esiste identità con `totp_obbligatorio=true` su qualche veste attiva.
-- [ ] **A.2.7** — `POST /api/v1/auth/2fa/recovery-codes/` — rigenera 10 nuovi codici (richiede codice TOTP valido)
+Nello stesso spazio di `api/v1/auth/change-password/`:
 
-### A.2.5 Endpoint admin per gestione 2FA operatori
+* [ ] **A.2.4** — `POST /api/v1/auth/2fa/setup/`: QR, segreto base32 e codici
+  di recupero (una volta sola).
+* [ ] **A.2.5** — `POST /api/v1/auth/2fa/confirm/`: primo codice valido.
+* [ ] **A.2.6** — `POST /api/v1/auth/2fa/disable/`: chiede la password
+  corrente; è rifiutato se l'obbligo vale per la credenziale (Q-1).
+* [ ] **A.2.7** — `POST /api/v1/auth/2fa/recovery-codes/`: chiede un codice
+  TOTP valido.
 
-- [ ] **A.2.8** — `DELETE /api/v1/amm-software/operatori/<id>/2fa/` — disable emergenza (admin)
-- [ ] **A.2.9** — `PUT /api/v1/amm-software/operatori/<id>/2fa-obbligatorio/` — imposta/rimuove obbligo. **Opera su `identita_digitali.totp_obbligatorio` per la veste OPERATORE** (non su `risorse_umane_auth_user`, cfr. §0.2).
-- [ ] **A.2.10** — Audit log per ogni operazione admin su 2FA (usa `dbops.error_log` o `event_log` con severity INFO)
+### A.2.4 Verbi dell'amministratore
 
-### A.2.6 Middleware 2FA obbligatorio
+* [ ] **A.2.8** — Disattivazione d'emergenza del dispositivo (telefono perso).
+* [ ] **A.2.9** — Impostare o togliere l'obbligo (se Q-1 lo mette sulla
+  credenziale).
+* [ ] **A.2.10** — Traccia di ogni verbo, con autore e motivo.
 
-- [ ] **A.2.11** — Nuovo middleware `TotpRequiredMiddleware` (dopo `JwtAuditMiddleware`, prima di `PasswordChangeRequiredMiddleware`):
-  - Se `identita_digitali.totp_obbligatorio=true` **e** `auth_totp_device.abilitato=false`:
-    - Consente solo: `/auth/2fa/setup/`, `/auth/2fa/confirm/`, `/auth/logout/`, `/core/me/`
-    - Tutti gli altri → 403 `E_2FA_SETUP_RICHIESTO`
-  - Check GUC-first: legge `app.current_identita_id` già in GUC (niente query extra)
+❓ **Chi** può usare questi verbi (solo SUPER_ADMIN, come il blocco della
+credenziale per D-B1, oppure un permesso d'area), **dove** stanno (vicino ai
+verbi di blocco e sblocco di `amm_software`, lotto L-2) e se disattivare il
+dispositivo chiude le sessioni aperte: **Q-3**.
+
+### A.2.5 Middleware «2FA obbligatorio non configurato»
+
+* [ ] **A.2.11** — `TotpRequiredMiddleware`, dopo `JwtAuditMiddleware` e prima
+  di `PasswordChangeRequiredMiddleware`. Se l'obbligo vale e il dispositivo non
+  è attivo:
+  * lascia passare solo `/auth/2fa/setup/`, `/auth/2fa/confirm/`, il logout e
+    il profilo;
+  * tutto il resto riceve 403 `E_2FA_SETUP_RICHIESTO`.
+  * ⚠️ Deve leggere l'obbligo in modo compatibile con il JWT: è lo stesso
+    problema del cambio password obbligatorio (A-8, lotto L-6 del piano
+    accessi), da risolvere **con lo stesso meccanismo** e non con un secondo.
+
+### A.2.6 Codici errore
+
+* [ ] **A.2.12** — Codici nuovi in `codici_errore.csv`, per esempio
+  `E_2FA_SETUP_RICHIESTO`, `E_2FA_CODICE_NON_VALIDO`, `E_2FA_TOKEN_SCADUTO`,
+  `E_2FA_OBBLIGATORIO_NON_DISATTIVABILE`. Poi si rigenerano
+  `error_policies_generated.py` **e** il ripiego `error_messages_fallback.py`.
 
 ## A.3 Frontend
 
-- [ ] **A.3.1** — `LoginView.vue` (+ varianti portale/shop): flusso a due step
-  - Step 1: username + password come ora
-  - Se response `two_factor_required=true` → mostra input 6-cifre + link "Usa codice di recupero"
-  - Step 2: POST `/token/2fa-verify/` con `{ two_factor_token, code }`
-- [ ] **A.3.2** — Nuova sezione "Sicurezza" nel profilo utente (pagina `/me/sicurezza`):
-  - Stato 2FA: Abilitato / Disabilitato / Obbligatorio non configurato
-  - Wizard setup:
-    1. QR code + secret testuale (per input manuale)
-    2. Input codice di conferma
-    3. Lista recovery codes (download `.txt` + pulsante stampa)
-    4. Checkbox "Ho salvato i codici"
-  - Pulsanti "Disabilita 2FA" (richiede password) e "Rigenera recovery codes" (richiede codice TOTP)
-- [ ] **A.3.3** — Drawer operatore (admin) — aggiungere:
-  - Badge "2FA attivo" / "Non configurato" / "Obbligatorio"
-  - Pulsante "Disabilita 2FA" (emergenza, con `useConfirmAction`)
-  - Toggle "2FA obbligatorio" → chiama `PUT .../2fa-obbligatorio/`
-- [ ] **A.3.4** — Route guard "forzato setup 2FA": se `totp_obbligatorio && !totp_abilitato` → redirect a `/me/sicurezza/setup-2fa` (simile a `PasswordChangeRequiredGuard`)
+* [ ] **A.3.1** — `LoginView.vue` (una vista per tutte le porte): se la
+  risposta porta `two_factor_required`, compare l'inserimento del codice a 6
+  cifre con il link «Usa un codice di recupero», e si chiama `/token/2fa-verify/`.
+* [ ] **A.3.2** — Sezione «Sicurezza» nel profilo: stato (abilitato /
+  disabilitato / obbligatorio da configurare), procedura guidata (QR + segreto
+  testuale → codice di conferma → codici di recupero con download `.txt` e
+  stampa → «ho salvato i codici»), pulsanti «Disabilita» e «Rigenera i codici».
+* [ ] **A.3.3** — Pannello operatore (admin): stato del 2FA **della
+  credenziale** e i verbi di A.2.8–A.2.9 con `useConfirmAction`. Per chi ha
+  anche vesti portale o shop, dev'essere chiaro che il 2FA vale per la persona
+  e non per la sola veste.
+* [ ] **A.3.4** — Guard di rotta: se l'obbligo vale e il TOTP non è abilitato,
+  si va alla configurazione (stesso schema del cambio password obbligatorio).
 
 ## A.4 Test
 
-- [ ] **A.T.1** — `TotpService.setup_device()` → secret + QR + recovery codes
-- [ ] **A.T.2** — `TotpService.confirm_setup()` con codice valido
-- [ ] **A.T.3** — Login 2-step completo su canale ADMIN
-- [ ] **A.T.4** — Anti-replay (stesso codice rifiutato consecutivamente)
-- [ ] **A.T.5** — Recovery code valido: decremento contatore, hash rimosso
-- [ ] **A.T.6** — Admin disabilita 2FA operatore (audit log presente)
-- [ ] **A.T.7** — `TotpRequiredMiddleware` blocca quando `totp_obbligatorio && !abilitato`
-- [ ] **A.T.8** — Multi-veste: stessa persona ha 2FA obbligatorio su OPERATORE e opzionale su CLIENTE_PORTALE → login sui due canali comportamento diverso
+* [ ] **A.T.1** — `setup_device()`: segreto, QR e codici di recupero.
+* [ ] **A.T.2** — `confirm_setup()` con un codice valido.
+* [ ] **A.T.3** — Login in due passi completo, sulle **tre** porte, con
+  chiamata **reale** (non mock) al DB, come `test_login_credenziale_db`.
+* [ ] **A.T.4** — Anti-replay: lo stesso codice due volte di fila viene rifiutato.
+* [ ] **A.T.5** — Codice di recupero: consumato, contatore che scende.
+* [ ] **A.T.6** — Verbo dell'admin: disattivazione, con la traccia.
+* [ ] **A.T.7** — Il middleware blocca quando l'obbligo vale e il dispositivo manca.
+* [ ] **A.T.8** — Stessa persona con vesti OPERATORE e CLIENTE_PORTALE: il
+  dispositivo è uno solo e vale su entrambe le porte. L'eventuale richiesta in
+  più di una porta dipende da Q-1.
+* [ ] **A.T.9** — Codici TOTP sbagliati e freno (Q-2).
+* [ ] **A.T.10** — Blocco dell'admin arrivato fra passo 1 e passo 2: il passo
+  2 viene rifiutato.
 
 ## A.5 Dipendenze Python
 
-| Pacchetto | Versione | Scopo                                                |
-| --------- | -------- | ---------------------------------------------------- |
-| `pyotp`   | >= 2.9   | Generazione/verifica codici TOTP                     |
-| `qrcode`  | >= 8.0   | QR code per setup authenticator                      |
-| `Pillow`  | >= 11.0  | Output immagine (dipendenza di `qrcode`)             |
+| Pacchetto | Versione | Scopo                                    |
+| --------- | -------- | ---------------------------------------- |
+| `pyotp`   | >= 2.9   | Generazione e verifica dei codici TOTP   |
+| `qrcode`  | >= 8.0   | QR code per configurare l'app            |
+| `Pillow`  | >= 11.0  | Immagine del QR (dipendenza di `qrcode`) |
 
-Aggiungere a `backend/requirements.in` e rigenerare `requirements.txt` con `pip-compile` (cfr. AGENTS.md §"Versione Python").
+Vanno in `backend/requirements.in`, poi si rigenera `requirements.txt` con
+`pip-compile`. ⛔ Sono **dipendenze nuove**: serve l'ok esplicito di Tid.
 
 ---
 
@@ -221,338 +312,323 @@ Aggiungere a `backend/requirements.in` e rigenerare `requirements.txt` con `pip-
 
 ## B.1 Obiettivo e scope
 
-Consentire il login su uno o più canali (ADMIN/PORTALE/SHOP) tramite provider OAuth/OIDC esterni: **Google**, **Microsoft**, **Apple**, estendibile ad altri (GitHub, LinkedIn, provider aziendali custom tipo Okta/Azure AD tenant).
+Entrare da una o più porte (admin, portale, shop) con un provider OAuth/OIDC
+esterno: **Google**, **Microsoft**, **Apple**, estendibile (GitHub, LinkedIn,
+IdP aziendali come Okta o un tenant Azure AD).
 
-**Invariante**: l'autenticazione esterna produce lo **stesso JWT interno** del password flow — claim `identita_id`, `ruolo_applicativo`, `sid`. I permessi, il middleware GUC, il route guard frontend **non cambiano**.
+**Invariante**: il login esterno produce **lo stesso JWT interno** del login
+con password (`identita_id`, `ruolo_applicativo`, `sid`). Permessi, GUC e guard
+di rotta **non cambiano**.
 
-## B.2 Schema DB proposto
+⭐ **Cosa cambia col modello a credenziale.** Il provider autentica la
+**persona**, cioè fa lo stesso lavoro della password: sostituisce la *prova di
+possesso della credenziale*, non la scelta della veste, che resta della porta
+come oggi. Da qui la domanda di fondo della parte B: il collegamento col
+provider sta sulla **credenziale** o sulla **veste**? È **Q-4**. Lo schema qui
+sotto è scritto nella forma «sulla credenziale», coerente con D-6 e D-10, ma
+**non è deciso**.
 
-### B.2.1 Nuova tabella `config.identita_provider_mapping`
+## B.2 Schema DB proposto (da confermare dopo Q-4)
 
-- [ ] **B.2.1** — Brief al team DB per creare:
+### B.2.1 Tabella del collegamento col provider
+
+* [ ] **B.2.1** — Brief al team DB. Forma «sulla credenziale»:
 
 ```sql
-CREATE TABLE config.identita_provider_mapping (
-    id                   BIGSERIAL PRIMARY KEY,
-    identita_digitale_id BIGINT NOT NULL
-        REFERENCES anagrafiche.identita_digitali(id) ON DELETE CASCADE,
-    provider             VARCHAR(50) NOT NULL,   -- 'google', 'microsoft', 'apple'
-    provider_sub         VARCHAR(500) NOT NULL,  -- subject claim dell'IdP (stabile per provider)
-    provider_email       VARCHAR(254),           -- email al momento del linking (denorm per audit)
-    provider_name        VARCHAR(255),           -- display name (denorm per audit)
-    attivo               BOOLEAN NOT NULL DEFAULT true,
-    linked_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-    ultimo_login_at      TIMESTAMPTZ,
-    meta                 JSONB NOT NULL DEFAULT '{}',
-    data_insert          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    user_insert          TEXT NOT NULL DEFAULT CURRENT_USER,
-    data_update          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    user_update          TEXT NOT NULL DEFAULT CURRENT_USER,
-    tx_id                UUID,
-    storicizza           BOOLEAN NOT NULL DEFAULT true
+CREATE TABLE config.credenziali_provider (
+    id               BIGSERIAL PRIMARY KEY,
+    auth_user_id     INTEGER NOT NULL,        -- FK → django.auth_user in 90_end (forma di casa)
+    provider         VARCHAR(50)  NOT NULL,   -- 'google', 'microsoft', 'apple'
+    provider_sub     VARCHAR(500) NOT NULL,   -- subject dell'IdP, stabile per provider
+    provider_email   VARCHAR(254),            -- email al momento del collegamento (audit/UI)
+    provider_name    VARCHAR(255),            -- nome visualizzato (audit/UI)
+    attivo           BOOLEAN NOT NULL DEFAULT true,
+    linked_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ultimo_login_at  TIMESTAMPTZ,
+    meta             JSONB NOT NULL DEFAULT '{}',
+    -- audit standard; storicizzazione: vedi sotto
 );
 
--- Invariante: per provider, un solo subject → una sola identità
-ALTER TABLE config.identita_provider_mapping
-  ADD CONSTRAINT uq_identita_provider_mapping_provider_sub
-  UNIQUE (provider, provider_sub);
-
--- Indice di lookup al callback
-CREATE INDEX ix_identita_provider_mapping_identita
-  ON config.identita_provider_mapping(identita_digitale_id) WHERE attivo = true;
+-- Un subject di un provider appartiene a una sola credenziale
+ALTER TABLE config.credenziali_provider
+  ADD CONSTRAINT uq_credenziali_provider_provider_sub UNIQUE (provider, provider_sub);
 ```
 
-**Razionale**:
+Nella forma alternativa «sulla veste», la FK punterebbe a
+`identita_digitali.id`: la stessa persona dovrebbe collegare Google una volta
+per porta.
 
-- **UNIQUE `(provider, provider_sub)`**: un account Google può essere collegato a una sola identità digitale. Evita shadow-linking.
-- **`ON DELETE CASCADE`** sulla FK verso `identita_digitali`: se l'identità viene eliminata, il mapping esterno decade automaticamente.
-- **Campi denorm (`provider_email`, `provider_name`)**: necessari per audit/UI (l'utente vede "Collegato a google:mario@example.com" nel profilo) e per GDPR (consent evidence).
+**Perché così**:
 
-### B.2.2 Colonne informative su `identita_digitali`
+* **UNIQUE `(provider, provider_sub)`**: un account Google porta a una sola
+  credenziale; evita il collegamento ombra.
+* **FK verso `django.auth_user` in `90_end`**, con `preCondition tableExists` e
+  `MARK_RAN`, come `auth_totp_device` e `credenziali`: in CI la FK non c'è.
+* **Storico**: a differenza di `credenziali` (che cambia a ogni password
+  sbagliata), collegare e scollegare è un atto raro e da tracciare. ❓ Serve lo
+  storico sulla riga oppure un registro di eventi? Lo decide il team DB, e
+  `ultimo_login_at` non deve generare uno snapshot a ogni accesso.
 
-- [ ] **B.2.2** — Brief DB: aggiungere:
+### B.2.2 I metodi di accesso della credenziale
 
-```sql
-ALTER TABLE anagrafiche.identita_digitali ADD COLUMN
-    login_methods TEXT[] NOT NULL DEFAULT ARRAY['PASSWORD']::TEXT[];
-```
+La versione di aprile aggiungeva `identita_digitali.login_methods TEXT[]`,
+tenuto allineato da un trigger. Nel modello attuale i metodi sono della
+**credenziale**, e un array derivato da un'altra tabella è una copia che può
+divergere.
 
-Valori ammessi nei membri dell'array: `'PASSWORD'`, `'OAUTH_GOOGLE'`, `'OAUTH_MICROSOFT'`, `'OAUTH_APPLE'`, ... (enum testuale estensibile).
+* [ ] **B.2.2** — ❓ **Q-5**: servono un campo derivato, o bastano la presenza
+  di una password utilizzabile più le righe attive di `credenziali_provider`,
+  letti da una funzione? Questa pagina propone la **funzione** (nessuna copia),
+  ma la decisione è aperta.
 
-Viene mantenuta sincronizzata da **trigger** su INSERT/UPDATE di `identita_provider_mapping.attivo`:
+### B.2.3 Guard: la credenziale non resta senza modo di entrare
 
-- [ ] **B.2.3** — Brief DB: trigger `trgfn_identita_provider_mapping_sync_methods` che:
-  - su INSERT (attivo=true) o UPDATE (attivo false→true): aggiunge `'OAUTH_<PROVIDER>'` all'array (deduped)
-  - su UPDATE (attivo true→false) o DELETE: rimuove il metodo
-  - `'PASSWORD'` non viene toccato (è il metodo di default; si rimuove solo se admin lo revoca esplicitamente via endpoint dedicato, §B.4)
-
-**Perché un trigger e non logica applicativa**: è un derived field che dipende da un'altra tabella; mantenerlo in DB evita drift se un'operazione di manutenzione DB crea/rimuove righe mapping senza passare dal BE.
-
-### B.2.3 Vincolo: non lasciare l'identità senza metodo di login
-
-- [ ] **B.2.4** — Brief DB: trigger `trgfn_identita_digitali_guard_login_methods`:
-  - Blocca UPDATE su `identita_digitali` che porterebbe `login_methods=[]`
-  - Errore `E_IDENTITA_SENZA_METODO_LOGIN`
-
-Razionale: evitare che per errore un admin disabilita password + unlink di tutti i provider → utente bloccato fuori.
+* [ ] **B.2.3** — Brief DB: un guard che rifiuti lo scollegamento dell'ultimo
+  provider quando la credenziale non ha una password utilizzabile. Errore
+  `E_CREDENZIALE_SENZA_METODO_LOGIN`. Il guard va sulla **credenziale** (è lei
+  che resta chiusa fuori), non sulla veste.
 
 ## B.3 Backend
 
 ### B.3.1 Dipendenze
 
-- [ ] **B.3.1** — Aggiungere a `backend/requirements.in`:
+* [ ] **B.3.1** — Da aggiungere a `backend/requirements.in` (⛔ ok esplicito di Tid):
 
-| Pacchetto                      | Versione | Scopo                                                      |
-| ------------------------------ | -------- | ---------------------------------------------------------- |
-| `django-allauth`               | >= 0.57  | Framework OAuth multi-provider                             |
-| `django-allauth[socialaccount]`| idem     | Estensione social providers                                |
-| `requests-oauthlib`            | >= 1.3   | Client OAuth (dipendenza diretta per flussi custom)        |
+| Pacchetto                        | Versione | Scopo                              |
+| -------------------------------- | -------- | ---------------------------------- |
+| `django-allauth[socialaccount]`  | >= 0.57  | Framework OAuth multi-provider     |
+| `requests-oauthlib`              | >= 1.3   | Client OAuth per i flussi custom   |
 
-`django-allauth` è preferito a `social-auth-app-django` perché:
-- Mantenuto attivamente, RFC 6749/7636 compliant (supporto PKCE nativo)
-- Hook espliciti (`SocialAccountAdapter.pre_social_login`, `populate_user`) per mappare il provider a `identita_digitali` senza forkare il flusso interno
-- Abilita OIDC discovery out-of-the-box (endpoint `/.well-known/openid-configuration`)
+`django-allauth` è preferito a `social-auth-app-django`: è mantenuto, supporta
+PKCE nativamente, ha hook espliciti (`pre_social_login`) per agganciarsi alla
+nostra risoluzione di credenziale e veste, e supporta OIDC discovery.
 
 ### B.3.2 Configurazione
 
-- [ ] **B.3.2** — `settings.py`:
+* [ ] **B.3.2** — `settings.py`: `INSTALLED_APPS` (`allauth`,
+  `allauth.account`, `allauth.socialaccount` + provider),
+  `SOCIALACCOUNT_PROVIDERS` con client id e secret da variabili d'ambiente
+  (`OAUTH_PKCE_ENABLED: True`), `SOCIALACCOUNT_ADAPTER =
+  'apps.core.api.oauth_adapter.ZeroErpSocialAdapter'`,
+  `SOCIALACCOUNT_AUTO_SIGNUP = False`. I segreti stanno in `.env` in sviluppo e
+  in un secret manager in produzione; **mai** committati.
 
-```python
-INSTALLED_APPS += [
-    'allauth',
-    'allauth.account',
-    'allauth.socialaccount',
-    'allauth.socialaccount.providers.google',
-    'allauth.socialaccount.providers.microsoft',
-    'allauth.socialaccount.providers.apple',
-]
+### B.3.3 Adapter: dal provider alla credenziale, poi alla veste
 
-SOCIALACCOUNT_PROVIDERS = {
-    'google': {
-        'APP': {
-            'client_id': os.environ['OAUTH_GOOGLE_CLIENT_ID'],
-            'secret':    os.environ['OAUTH_GOOGLE_CLIENT_SECRET'],
-        },
-        'SCOPE': ['profile', 'email'],
-        'AUTH_PARAMS': {'access_type': 'online'},
-        'OAUTH_PKCE_ENABLED': True,
-    },
-    'microsoft': {
-        'APP': {
-            'client_id': os.environ['OAUTH_MICROSOFT_CLIENT_ID'],
-            'secret':    os.environ['OAUTH_MICROSOFT_CLIENT_SECRET'],
-        },
-        'TENANT': os.environ.get('OAUTH_MICROSOFT_TENANT', 'common'),
-    },
-    # Apple: richiede keypair JWT, vedi doc Apple Sign-In
-}
+* [ ] **B.3.3** — `apps/core/api/oauth_adapter.py`, `pre_social_login`:
+  1. ricava la porta dal path;
+  2. cerca `(provider, sub)` in `credenziali_provider`;
+  3. se lo trova ed è attivo, controlla il **blocco dell'admin** sulla
+     credenziale (`fn_check_blocco_login`: il blocco vale da **ogni** porta e
+     con **ogni** metodo, Q-7), poi risolve la veste della porta con la stessa
+     logica di `MultiVesteTokenSerializer` (senza veste attiva:
+     `VesteNonAttivaError`, come oggi);
+  4. se non lo trova:
+     * porta **admin** → rifiuto `E_OAUTH_OPERATORE_NON_INVITATO` (gli
+       operatori si invitano; il primo accesso OAuth collega la credenziale
+       creata dall'invito);
+     * porte **portale/shop** → ❓ nuova registrazione, oppure collegamento a
+       una credenziale esistente per email? Con l'email unica (D-9) il rischio
+       di presa di possesso è concreto (§B.5.2): **Q-8**;
+  5. aggiorna `ultimo_login_at` ed emette il JWT (B.3.5).
 
-# Custom adapter che mappa provider → identita_digitali
-SOCIALACCOUNT_ADAPTER = 'apps.core.api.oauth_adapter.ZeroErpSocialAdapter'
+| Porta del callback           | Veste                                   | Registrazione autonoma? |
+| ---------------------------- | --------------------------------------- | ----------------------- |
+| `/api/v1/admin/oauth/`       | `OPERATORE`                             | ❌ solo invito          |
+| `/api/v1/portale/oauth/`     | `CLIENTE_PORTALE`, `FORNITORE_PORTALE`  | ❓ Q-8                  |
+| `/api/v1/shop/oauth/`        | `SHOP_CUSTOMER`                         | ❓ Q-8                  |
 
-# Disabilita l'auto-signup standard di allauth: vogliamo controllarlo noi
-SOCIALACCOUNT_AUTO_SIGNUP = False
-```
+### B.3.4 Endpoint OAuth per porta
 
-Secret management: chiavi in `.env` (dev) / secret manager (prod). **Mai committare client_secret.**
+* [ ] **B.3.4**:
+  * `GET /api/v1/{porta}/oauth/<provider>/authorize/`: redirect al provider;
+    `state` e PKCE generati lato server e salvati in Redis (TTL 10 minuti,
+    chiave `oauth_state:<uuid>`);
+  * `GET /api/v1/{porta}/oauth/<provider>/callback/`: scambio del code,
+    risoluzione (B.3.3), JWT. Se serve il 2FA (Q-1, Q-9) risponde con il
+    `two_factor_token` di §A.2.2;
+  * `POST /api/v1/auth/oauth/<provider>/link/`: collegamento da un utente già
+    entrato (§B.5.2);
+  * `POST /api/v1/auth/oauth/<id>/unlink/`: scollegamento (dall'utente stesso
+    o dall'admin), soggetto al guard di §B.2.3.
 
-### B.3.3 Adapter custom — mapping provider → identità
+### B.3.5 Emissione del JWT dopo OAuth
 
-- [ ] **B.3.3** — Creare `apps/core/api/oauth_adapter.py`:
+* [ ] **B.3.5** — Un metodo di `MultiVesteTokenSerializer` (o un helper
+  condiviso con il login a password) che emetta la coppia di token per una
+  credenziale e una porta **senza** verificare la password. Resta **una sola**
+  risoluzione della veste e **un solo** punto di emissione, con metadati di
+  sessione `metodo_login = 'oauth_<provider>'`.
 
-```python
-# Scopo: custom adapter che intercetta il callback OAuth riuscito,
-#        mappa il provider_sub a un'identita_digitali esistente o la crea
-#        (solo per canali self-service), poi genera il JWT ZeroErp al posto
-#        della sessione django-allauth standard.
-class ZeroErpSocialAdapter(DefaultSocialAccountAdapter):
-    def pre_social_login(self, request, sociallogin):
-        # 1. Estrai canale dalla request (path /api/admin/ vs /api/portale/ vs /api/shop/)
-        # 2. Cerca in config.identita_provider_mapping (provider, sub)
-        # 3a. Trovato + attivo + canale coerente → prepara JWT emission
-        # 3b. Non trovato + canale in {PORTALE, SHOP} → crea auth_user + identita_digitali (self-service)
-        # 3c. Non trovato + canale ADMIN → rifiuta (E_OAUTH_OPERATORE_NON_INVITATO)
-        #     (gli operatori vengono invitati; il primo login OAuth collega l'identità
-        #      creata dall'invito al provider_sub)
-        # 4. Aggiorna ultimo_login_at, login_methods (via trigger), genera JWT
-```
+### B.3.6 Codici errore
 
-Il routing dei canali ai ruoli applicativi è lo stesso del password flow (mappa definita in `auth_constants.py` e già enforcata dai permission class):
-
-| Canale callback      | Ruolo creabile         | Self-service? |
-| -------------------- | ---------------------- | ------------- |
-| `/api/admin/oauth/`   | `OPERATORE`            | ❌ (solo invito admin, poi linking al primo OAuth) |
-| `/api/portale/oauth/` | `CLIENTE_PORTALE`, `FORNITORE_PORTALE` | ⚠️ opzionale (abilitabile via parameter) |
-| `/api/shop/oauth/`    | `SHOP_CUSTOMER`        | ✅ |
-
-### B.3.4 Endpoint OAuth per canale
-
-- [ ] **B.3.4** — Nuovo blueprint `/api/{canale}/oauth/<provider>/`:
-  - `GET  /api/{canale}/oauth/<provider>/authorize/` → redirect URL al provider (state + PKCE challenge generati server-side, salvati in Redis con TTL 10min sotto `oauth_state:<uuid>`)
-  - `GET  /api/{canale}/oauth/<provider>/callback/?code=...&state=...` → exchange code, risolve identità, emette JWT ZeroErp
-    - Se canale+identità richiedono 2FA (`identita_digitali.totp_obbligatorio=true` e device configurato), **applica step 2FA** dopo OAuth con stesso meccanismo di §A.2.2 (token temporaneo + `/2fa-verify/`)
-  - `POST /api/{canale}/oauth/<provider>/link/` → **linking da utente già loggato** (aggiunge mapping al profilo corrente; richiede conferma OTP via email se password flow attivo, vedi §B.5)
-  - `POST /api/v1/auth/oauth/<mapping_id>/unlink/` → unlink (admin o self). Blocca se `login_methods` sarebbe vuoto post-unlink (guard §B.2.3).
-
-### B.3.5 Generazione JWT post-OAuth
-
-- [ ] **B.3.5** — Estendere `SidTokenObtainPairSerializer` con metodo di classe `for_oauth_identita(identita_id, canale, provider) → token_pair`:
-  - Stessa logica di risoluzione claim del password flow (chiama il codice esistente)
-  - Aggiunge metadata di sessione su `dbops.sessioni_utente`: `metodo_login='oauth_<provider>'`
-  - Incrementa `identita_provider_mapping.ultimo_login_at`
-
-### B.3.6 Gestione 2FA post-OAuth (decisione di policy)
-
-Due comportamenti possibili, **da decidere con stakeholder prima dello sprint**:
-
-- **Opzione 1 (consigliata, default)**: 2FA sempre richiesto se `totp_obbligatorio=true`, anche dopo OAuth. Sicurezza massima.
-- **Opzione 2**: trust provider MFA (se il provider dichiara MFA già fatto, es. Google con 2-step verification, saltare 2FA interno). Richiede inspection del claim `amr` (Authentication Methods Reference) OIDC. **Più complesso, richiede whitelist provider fidati.**
-
-### B.3.7 Errori specifici
-
-- [ ] **B.3.7** — Nuovi codici errore in `config.messaggi_errore`:
-  - `E_OAUTH_STATE_INVALIDO` — state CSRF non trovato o scaduto
-  - `E_OAUTH_CODE_SCAMBIO_FALLITO` — provider non ha risposto al code exchange
-  - `E_OAUTH_PROVIDER_SUB_MANCANTE` — response provider senza subject claim
-  - `E_OAUTH_EMAIL_NON_VERIFICATA` — provider non ha verificato l'email (Google: claim `email_verified=false`)
-  - `E_OAUTH_OPERATORE_NON_INVITATO` — ADMIN callback senza identità pre-esistente invitata
-  - `E_OAUTH_MAPPING_GIA_LINKATO` — tentativo di linking di un `provider_sub` già associato ad altra identità
-  - `E_OAUTH_PROVIDER_DISABILITATO` — provider configurato ma feature flag OFF
-  - `E_IDENTITA_SENZA_METODO_LOGIN` — tentativo unlink che lascerebbe l'identità senza metodo di accesso
+* [ ] **B.3.6** — In `codici_errore.csv` (con la rigenerazione di policy e ripiego):
+  `E_OAUTH_STATE_INVALIDO`, `E_OAUTH_CODE_SCAMBIO_FALLITO`,
+  `E_OAUTH_PROVIDER_SUB_MANCANTE`, `E_OAUTH_EMAIL_NON_VERIFICATA`,
+  `E_OAUTH_OPERATORE_NON_INVITATO`, `E_OAUTH_MAPPING_GIA_LINKATO`,
+  `E_OAUTH_PROVIDER_DISABILITATO`, `E_CREDENZIALE_SENZA_METODO_LOGIN`.
 
 ## B.4 Frontend
 
-### B.4.1 Pulsanti login sui tre canali
+* [ ] **B.4.1** — `LoginView.vue`: la sezione «Oppure accedi con» mostra i
+  provider configurati **per quella porta** (`/api/v1/{porta}/oauth/providers/`).
+  Il clic avvia un redirect vero del browser (non una chiamata XHR). Al ritorno
+  il backend consegna il JWT al frontend. ❓ Come consegnarlo (frammento
+  dell'URL o cookie di breve durata) è da decidere insieme al trasporto dei
+  token di oggi.
+* [ ] **B.4.2** — «Account collegati» nella sezione Sicurezza del profilo:
+  elenco dei provider (provider, email, collegato il, ultimo accesso),
+  «Collega…» e «Scollega», con avviso se lo scollegamento lascerebbe la
+  credenziale senza modo di entrare.
+* [ ] **B.4.3** — Pannello operatore (admin): i metodi di accesso **della
+  credenziale** (password, provider, 2FA) e «Scollega provider» d'emergenza.
 
-- [ ] **B.4.1** — `LoginView.vue` (admin), `PortaleLoginView.vue`, `ShopLoginView.vue`:
-  - Sotto i campi username/password: sezione "Oppure accedi con"
-  - Pulsanti configurati da config dinamica (`/api/{canale}/oauth/providers/`): mostra solo i provider effettivamente configurati per quel canale
-  - Click → `window.location = /api/{canale}/oauth/<provider>/authorize/?redirect_uri=<current>` (flow redirect browser completo, non XHR)
-  - Dopo callback il backend emette JWT e redirect a `/` con token in cookie temporaneo (o fragment URL), FE lo salva in localStorage come oggi
-
-### B.4.2 Sezione "Account collegati" nel profilo
-
-- [ ] **B.4.2** — Pagina `/me/sicurezza` (stessa di 2FA, sezione aggiuntiva):
-  - Lista provider collegati (tabella: provider, email provider, linked_at, ultimo_login_at)
-  - Pulsante "Collega Google/Microsoft/..." → avvia flow linking (§B.3.4 endpoint `/link/`)
-  - Pulsante "Scollega" per ogni provider → chiama `/unlink/`. Warning se rimane solo PASSWORD e rimuovere renderebbe inaccessibile l'account.
-
-### B.4.3 Drawer admin operatori: tab "Accessi"
-
-- [ ] **B.4.3** — Estendere drawer operatore con tab "Accessi" (oppure sezione) che mostra:
-  - Badge "Password" / "Google" / "Microsoft" / "2FA" per ogni identità dell'utente
-  - Pulsante "Scollega provider" (emergency, admin only)
-
-## B.5 Security — punti critici
+## B.5 Sicurezza — punti critici
 
 ### B.5.1 State CSRF e PKCE
 
-- `state` random 32-byte URL-safe, salvato in Redis con TTL 10min, validato al callback. Binding a `session_id` per defense-in-depth.
-- PKCE abilitato su tutti i provider che lo supportano (OAuth `OAUTH_PKCE_ENABLED: True`). Obbligatorio su Apple.
+`state` casuale di 32 byte URL-safe, in Redis con TTL 10 minuti, legato alla
+sessione. PKCE su tutti i provider che lo supportano; con Apple è obbligatorio.
 
-### B.5.2 Linking safety
+### B.5.2 Collegamento sicuro
 
-**Scenario problematico**: Mario ha password su `mario@example.com`; qualcuno con accesso a Google Workspace crea `mario@example.com` e vuole collegarlo via OAuth. **Auto-linking su email** = account takeover.
+**Lo scenario**: Mario ha la password su `mario@example.com`; qualcuno crea
+`mario@example.com` presso un provider e prova a collegarlo. Collegare **per
+email** significa consegnargli l'account. Con portale e shop che entrano per
+email (D-9), l'email è una chiave: il rischio è maggiore, non minore.
 
-**Decisione di policy**:
-- **NON** auto-linkare per email. Il linking richiede sempre:
-  - utente già loggato via password + conferma con OTP email (per evitare che il solo accesso alla sessione permetta di collegare un nuovo provider), **oppure**
-  - in caso di primo login OAuth su canale ADMIN: fa match stretto su `identita_provider_mapping` pre-esistente (preparato dall'admin al momento dell'invito, via endpoint dedicato `/api/v1/amm-software/operatori/<id>/oauth-invite/`)
+**Decisione di aprile, confermata**: **mai** collegare automaticamente per
+email. Il collegamento richiede sempre una di queste due cose:
 
-### B.5.3 Revoca provider-side
+* un utente già entrato con la password, più una conferma tramite OTP via email;
+* per gli operatori, un collegamento preparato dall'admin al momento
+  dell'invito.
 
-Se Google disabilita l'account di Mario, il JWT ZeroErp resta valido fino a scadenza (15min access / 24h refresh). Due opzioni:
+### B.5.3 Revoca lato provider
 
-- **B.5.3.a** (consigliato, sprint 2-3) — al refresh JWT, validare lato provider che il token sia ancora valido (solo se `grant_type=refresh_token` è supportato dal provider). Costo: +1 roundtrip per refresh.
-- **B.5.3.b** (fuori scope MVP) — webhook provider → blacklist JWT in Redis. Solo alcuni provider supportano webhook di revoca (es. Google Security Events API, richiede setup complesso).
+Se il provider disabilita l'account, il JWT resta valido fino alla scadenza.
+Si può ricontrollare presso il provider a ogni refresh (+1 chiamata), oppure
+usare i webhook di revoca (fuori MVP). Il **blocco dell'admin** della
+credenziale resta il modo immediato per chiudere, da ogni porta e con ogni
+metodo.
 
 ### B.5.4 Email non verificata
 
-Se il provider non dichiara l'email verificata (`email_verified=false`), rifiutare il login con `E_OAUTH_EMAIL_NON_VERIFICATA`. Applicare a tutti i canali.
+Se il provider non dichiara `email_verified`, il login è rifiutato con
+`E_OAUTH_EMAIL_NON_VERIFICATA`, su tutte le porte.
 
-### B.5.5 GDPR
+### B.5.5 GDPR (documentazione, non codice)
 
-- [ ] **B.5.5** — Aggiornamenti documentali **non codice**:
-  - Privacy policy: dichiarare quali dati provider sono memorizzati (`provider_sub`, `provider_email`, `provider_name`)
-  - DPA con Google/Microsoft/Apple (obbligatorio in UE se si usa l'SDK del provider)
-  - Consent evidence: `identita_provider_mapping.linked_at` + `meta.consent_text_version` (stringa del testo accettato al momento del linking)
-  - Diritto all'oblio: DELETE del mapping (cascade cancella storico `storico_identita_provider_mapping` se abilitato)
+* [ ] **B.5.5** — Informativa privacy (quali dati del provider si conservano),
+  DPA con i provider, prova del consenso (`linked_at` +
+  `meta.consent_text_version`), diritto all'oblio (cancellazione del
+  collegamento, e dello storico se c'è).
 
 ## B.6 Test
 
-- [ ] **B.T.1** — Callback Google mock: code exchange → identità esistente trovata → JWT emesso con claim corretti
-- [ ] **B.T.2** — Callback canale ADMIN senza identità invitata → `E_OAUTH_OPERATORE_NON_INVITATO`
-- [ ] **B.T.3** — State CSRF scaduto → `E_OAUTH_STATE_INVALIDO`
-- [ ] **B.T.4** — Email non verificata → `E_OAUTH_EMAIL_NON_VERIFICATA`
-- [ ] **B.T.5** — Linking da utente loggato: OTP richiesto, validato, mapping creato
-- [ ] **B.T.6** — Unlink ultimo metodo → `E_IDENTITA_SENZA_METODO_LOGIN` (trigger DB)
-- [ ] **B.T.7** — 2FA post-OAuth: `totp_obbligatorio=true` → callback emette `two_factor_token`, non JWT
-- [ ] **B.T.8** — Multi-canale: stesso `provider_sub` non può essere linkato a due identità diverse (UNIQUE constraint DB)
+* [ ] **B.T.1** — Callback simulato: credenziale trovata, veste della porta
+  risolta, JWT con i claim giusti.
+* [ ] **B.T.2** — Porta admin senza invito → `E_OAUTH_OPERATORE_NON_INVITATO`.
+* [ ] **B.T.3** — `state` scaduto → `E_OAUTH_STATE_INVALIDO`.
+* [ ] **B.T.4** — Email non verificata → `E_OAUTH_EMAIL_NON_VERIFICATA`.
+* [ ] **B.T.5** — Collegamento da utente entrato: OTP chiesto, verificato,
+  collegamento creato.
+* [ ] **B.T.6** — Scollegamento dell'ultimo metodo → `E_CREDENZIALE_SENZA_METODO_LOGIN`.
+* [ ] **B.T.7** — 2FA dopo OAuth (Q-9): il callback emette il `two_factor_token`, non il JWT.
+* [ ] **B.T.8** — Lo stesso `provider_sub` non si collega a due credenziali (UNIQUE).
+* [ ] **B.T.9** — Credenziale bloccata dall'admin → il login OAuth è rifiutato.
+* [ ] **B.T.10** — Credenziale collegata senza la veste della porta →
+  `VesteNonAttivaError`, come con la password.
 
-## B.7 Dipendenze e infrastruttura
+## B.7 Infrastruttura
 
-- **Variabili ambiente**:
-  ```
-  OAUTH_GOOGLE_CLIENT_ID=
-  OAUTH_GOOGLE_CLIENT_SECRET=
-  OAUTH_MICROSOFT_CLIENT_ID=
-  OAUTH_MICROSOFT_CLIENT_SECRET=
-  OAUTH_MICROSOFT_TENANT=common
-  OAUTH_APPLE_TEAM_ID=
-  OAUTH_APPLE_KEY_ID=
-  OAUTH_APPLE_PRIVATE_KEY_PATH=
-  OAUTH_REDIRECT_URI_ADMIN=https://erp.example.com/api/admin/oauth/callback/
-  OAUTH_REDIRECT_URI_PORTALE=https://erp.example.com/api/portale/oauth/callback/
-  OAUTH_REDIRECT_URI_SHOP=https://erp.example.com/api/shop/oauth/callback/
-  ```
-- **Console provider**: configurare redirect URI whitelist per ogni ambiente (dev/staging/prod). Setup: 1-2h per provider × 3 ambienti.
-- **Redis**: riuso del Redis esistente (permessi cache) per salvare state OAuth con TTL.
+* **Variabili d'ambiente**: `OAUTH_GOOGLE_CLIENT_ID/SECRET`,
+  `OAUTH_MICROSOFT_CLIENT_ID/SECRET/TENANT`,
+  `OAUTH_APPLE_TEAM_ID/KEY_ID/PRIVATE_KEY_PATH`,
+  `OAUTH_REDIRECT_URI_{ADMIN,PORTALE,SHOP}`.
+* **Console dei provider**: redirect URI in whitelist per ogni ambiente.
+* **Redis**: quello che c'è (`django_redis`, `REDIS_URL`); in CI si usa
+  `LocMemCache`, e per lo `state` basta.
 
 ---
 
-# C. Stima sprint e ordine consigliato
+# C. Stima e ordine consigliato
 
-| Fase                                                             | Sprint | Complessità   |
-| ---------------------------------------------------------------- | :----: | ------------- |
-| **A. 2FA TOTP completo** (DB già fatto, resta BE+FE+test)         |  1–2   | Media         |
-| **B.1 MVP OAuth — Google su canale ADMIN**                        |   1    | Bassa-Media   |
-| **B.2 Estensione OAuth — Microsoft + canale PORTALE**             |   1    | Bassa         |
-| **B.3 Linking + unlink UI + OTP conferma**                        |  ~1    | Media         |
-| **B.4 Shop B2C self-signup + Apple Sign-In**                      |   1    | Media         |
-| **B.5 Hardening — refresh validation, revocation list, WebAuthn** |   2+   | Alta          |
-| **Totale copertura completa 2FA + OAuth multi-canale**            | **4–5**| —             |
+| Fase                                                          | Sprint | Complessità |
+| ------------------------------------------------------------- | :----: | ----------- |
+| **Prerequisito** — chiusura del piano accessi (L-2, L-4, L-6) |   —    | in corso    |
+| **A. 2FA TOTP** (tabella pronta; restano obbligo, funzioni DB, BE, FE, test) |  1–2   | Media       |
+| **B.1 MVP OAuth** — Google sulla porta admin                  |   1    | Bassa-Media |
+| **B.2** — Microsoft + porta portale                           |   1    | Bassa       |
+| **B.3** — Collega/scollega + conferma OTP                     |  ~1    | Media       |
+| **B.4** — Shop con registrazione autonoma + Apple (se Q-8 la ammette) |   1    | Media       |
+| **B.5** — Rafforzamento: validazione al refresh, revoca, WebAuthn |   2+   | Alta        |
 
-**Ordine consigliato**: A prima di B. Motivazione: 2FA è già per metà pronto (DB), chiude un debito architetturale, e il middleware `TotpRequiredMiddleware` va integrato prima dell'OAuth per evitare di riscriverlo due volte (OAuth post-2FA è semplice se il middleware esiste già).
+**Ordine consigliato**: prima si chiude il piano accessi, poi A, poi B.
 
----
-
-# D. Brief DB complessivo (da passare al team DB)
-
-## D.1 Per 2FA (Parte A)
-
-- [ ] **D.1.a** — Aggiornare `script.fn_get_user_profile()`: aggiungere `totp_abilitato` e `totp_obbligatorio` nel JSONB, **leggendo `totp_obbligatorio` da `identita_digitali`** per l'identità corrente (non da `risorse_umane_auth_user`). Cfr. `fn_get_user_profile_auth_flags.md` esistente come template.
-- [ ] **D.1.b** *(opzionale)* — Trigger `trgfn_risorse_umane_auth_user_sync_totp_obbligatorio` per tenere in sync il flag legacy con `identita_digitali` (veste OPERATORE).
-
-## D.2 Per OAuth (Parte B)
-
-- [ ] **D.2.a** — Nuova tabella `config.identita_provider_mapping` (schema in §B.2.1) con UNIQUE `(provider, provider_sub)`, FK verso `identita_digitali` con ON DELETE CASCADE.
-- [ ] **D.2.b** — ALTER TABLE `identita_digitali` ADD COLUMN `login_methods TEXT[] NOT NULL DEFAULT ARRAY['PASSWORD']`.
-- [ ] **D.2.c** — Trigger `trgfn_identita_provider_mapping_sync_methods` (§B.2.2) per sync `login_methods` ↔ mapping attivi.
-- [ ] **D.2.d** — Trigger `trgfn_identita_digitali_guard_login_methods` (§B.2.3) per evitare identità senza metodo di login.
-- [ ] **D.2.e** — Seed codici errore OAuth in `config.messaggi_errore` (lingue IT + EN, §B.3.7).
-- [ ] **D.2.f** *(storicizzazione)* — Tabella `storico_identita_provider_mapping` coerente con il pattern `storicizza=true` di altre tabelle config.
-
-Tutti i changeset vanno in `db/changelog/migrations_v2/` con numerazione progressiva e `logicalFilePath`, secondo convenzioni AGENTS.md §"Liquibase v2 Workflow".
+* Il piano accessi prima: il 2FA si innesta nella sequenza di login e nel
+  meccanismo «obbligo compatibile col JWT» (L-6), che stanno cambiando adesso.
+* A prima di B: il passo 2 del login e il middleware servono anche all'OAuth.
 
 ---
 
-# E. Note di coesistenza 2FA + OAuth
+# D. Brief DB complessivo (da passare al team DB, dopo §F)
 
-- **2FA si applica a persone fisiche** (auth_user), OAuth è un metodo di autenticazione dell'identità digitale. Flow composto: login OAuth → identità trovata → se `totp_obbligatorio && device_attivo` → chiedere codice TOTP → JWT finale.
-- Se un utente ha sia password che Google linkato: disabilitando una, l'altra resta utilizzabile. Il guard `trgfn_identita_digitali_guard_login_methods` impedisce di rimuoverle tutte.
-- Recovery codes 2FA funzionano anche dopo OAuth (sono legati all'auth_user, non al metodo di login).
-- **Non** implementare policy "se hai OAuth sei esente da 2FA": alcuni provider non fanno MFA, lasciare la scelta al security officer via `totp_obbligatorio` per-identità.
+## D.1 Per il 2FA (parte A)
+
+* [ ] **D.1.a** — La sede dell'obbligo, secondo Q-1.
+* [ ] **D.1.b** — Le funzioni di `script` sul dispositivo TOTP (A.1.2.b), con
+  il confine deciso in Q-6.
+* [ ] **D.1.c** — `fn_get_user_profile`: `totp_abilitato` e `totp_obbligatorio`
+  (A.1.2.c), con il default dell'assenza in una sola funzione.
+* [ ] **D.1.d** — Riscrittura del manual di `config.auth_totp_device`: togliere
+  la sezione su `risorse_umane_auth_user`, collegarlo a `config.credenziali`.
+* [ ] **D.1.e** — Il TOTP nel freno, se Q-2 lo decide.
+
+## D.2 Per OAuth (parte B)
+
+* [ ] **D.2.a** — La tabella del collegamento col provider (§B.2.1), nella sede
+  decisa da Q-4, con UNIQUE `(provider, provider_sub)` e FK in `90_end`.
+* [ ] **D.2.b** — I metodi di accesso della credenziale (§B.2.2, Q-5).
+* [ ] **D.2.c** — Il guard contro la credenziale senza metodo di accesso (§B.2.3).
+* [ ] **D.2.d** — Storico o registro di eventi per collegamenti e scollegamenti.
+* [ ] **D.2.e** — I codici errore (§B.3.6) in `codici_errore.csv`.
+
+I changeSet seguono le convenzioni di
+[linee-guida-sql.md](../../linee-guida-sql.md) e, per i guard,
+[linee-guida-trigger.md](../../linee-guida-trigger.md).
 
 ---
 
-*2FA + Provider esterni (OAuth) — WIP ZeroERP. Rinominato e aggiornato 2026-04-23. Backend agent.*
+# E. 2FA e OAuth insieme
+
+* **Tutti e due sono della credenziale**: il 2FA protegge la persona, OAuth è
+  un altro modo per dimostrare di essere lei. Il flusso composto è: OAuth →
+  credenziale trovata → controllo del blocco → veste della porta → TOTP (se
+  richiesto) → JWT.
+* Chi ha password e Google collegato continua a entrare con l'una se l'altra
+  viene tolta; il guard di §B.2.3 impedisce di toglierle tutte.
+* I codici di recupero valgono qualunque sia il metodo di accesso.
+* **Il blocco dell'admin vale per tutti i metodi e per tutte le porte.**
+
+---
+
+# F. Domande aperte (da decidere con Tid prima dello sviluppo)
+
+| # | Domanda | Possibili risposte | Dove pesa |
+| --- | --- | --- | --- |
+| **Q-1** | **Dove sta l'obbligo del 2FA?** D-10 dice «sarà della credenziale» e lascia aperto «questa porta chiede il TOTP in più». | (a) una colonna su `config.credenziali` (una regola per tutte le porte); (b) una regola **per porta**, per esempio un parametro «la porta admin chiede il TOTP»; (c) tutte e due, con l'obbligo che vale se vale almeno una delle due | A.1.2.a, A.2.2, A.2.6, A.2.9, A.2.11, A.T.8, D.1.a |
+| **Q-2** | **Un codice TOTP sbagliato conta come una password sbagliata?** Sei cifre si indovinano per forza bruta. E dopo una password giusta, il freno sulla provenienza si azzera subito o solo dopo il TOTP? | contare nel freno di `credenziali_provenienze`, oppure un contatore a parte; azzeramento dopo il passo 2 oppure dopo il passo 1 | A.1.2.d, A.2.2, A.T.9, D.1.e |
+| **Q-3** | **Chi può usare i verbi 2FA dell'admin** (disattivare il dispositivo, imporre l'obbligo) e cosa fanno alle sessioni aperte? | solo SUPER_ADMIN come il blocco (D-B1), oppure un permesso d'area; blacklist delle sessioni sì o no | A.2.8–A.2.10, A.3.3 |
+| **Q-4** | **Il collegamento col provider sta sulla credenziale o sulla veste?** | credenziale (un collegamento per persona, coerente con D-6 e D-10), oppure veste (un collegamento per porta) | B.2.1, B.3.3, D.2.a |
+| **Q-5** | **I metodi di accesso sono un campo o una lettura?** | un campo derivato mantenuto da trigger, oppure una funzione che li calcola | B.2.2, D.2.b |
+| **Q-6** | **Il confine DB/backend sul TOTP**: chi legge e scrive `auth_totp_device`? | solo funzioni di `script`, con il backend che verifica il codice e passa l'esito; oppure un repository backend con SQL diretto | A.1.2.b, A.2.1, D.1.b |
+| **Q-7** | **Blocco dell'admin e OAuth**: la credenziale bloccata resta chiusa anche via provider? (Proposta: sì.) E il cambio password obbligatorio vale per chi entra solo via provider? | sì / no; per il cambio password: si ignora, oppure si chiede lo stesso | B.3.3, B.T.9 |
+| **Q-8** | **Registrazione autonoma via provider su portale e shop**: si ammette? Se l'email esiste già come credenziale, cosa succede? | nessuna registrazione autonoma; oppure registrazione solo con email nuova; mai il collegamento automatico per email (§B.5.2) | B.3.3, B.4, §C fase B.4 |
+| **Q-9** | **Il 2FA dopo OAuth**: richiesto sempre, oppure ci si fida dell'MFA dichiarato dal provider (claim `amr`)? | sempre (proposta di aprile, la più sicura); oppure fiducia verso una whitelist di provider | B.3.4, B.T.7 |
+| **Q-10** | **Il reset della password tocca il 2FA?** Il reset dimostra solo il possesso dell'email; come il blocco dell'admin, il 2FA dovrebbe restare. | il dispositivo resta (proposta); oppure il reset lo disattiva | A.2.1, `password-reset-confirm` |
+
+---
+
+*2FA + provider esterni (OAuth) — WIP ZeroERP. Riscritto il 2026-09-25 sul
+modello credenziale + vesti. Backend agent.*

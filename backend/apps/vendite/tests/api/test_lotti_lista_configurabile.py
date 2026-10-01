@@ -15,7 +15,7 @@
 
 1. test_export_non_passa_dal_cap_della_lista
    L'export chiede piu' righe del tetto di pagina della lista: se passasse da
-   `fn_list_lotti` (page_size <= LIST_MAX_LIMIT) non potrebbe nemmeno rilevare
+   `fn_list_lotti` (page_size <= MAX_LIMIT) non potrebbe nemmeno rilevare
    il superamento del limite, e consegnerebbe un file troncato in silenzio.
 
 2. test_lista_ed_export_condividono_la_stessa_whitelist
@@ -30,12 +30,12 @@ import unittest
 class LottiExportTests(unittest.TestCase):
     # Scopo: l'export non puo' passare dalla porta della lista.
     def test_export_non_passa_dal_cap_della_lista(self) -> None:
-        from apps.core.db._helpers import LIST_MAX_LIMIT
+        from apps.core.api.constants import MAX_LIMIT
         from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 
         self.assertGreater(
             EXPORT_MAX_ROWS,
-            LIST_MAX_LIMIT,
+            MAX_LIMIT,
             "se il tetto export scendesse al cap di lista, l'endpoint dedicato "
             "non servirebbe piu': andrebbe rimosso invece di restare a doppione.",
         )

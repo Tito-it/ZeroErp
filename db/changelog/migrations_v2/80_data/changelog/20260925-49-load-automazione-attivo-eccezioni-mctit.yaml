@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — Mirror del registro dbops.automazione_attivo_eccezioni (00_schema -46)
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 12.3
+#
+# Una tabella, UN CSV: ../sql/dbops/automazione_attivo_eccezioni.csv. Chiave
+# del mirror = la chiave NATURALE (schema, tabella figlia, colonna FK), non
+# l'id: una riga vale ovunque.
+# Prima riga: config.profili_accesso_bindings.identita_digitale_id — porta e
+# profili si sganciano (decisione Tid, 2026-09-25).
+# ⚠️ Ritirare una riga: loadUpdateData non cancella -> DELETE forward-only
+#   (linee-guida §11.2), e i trigger li rigenera il giro successivo
+#   dell'automazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260925-49-load-automazione-attivo-eccezioni-mctit.yaml
+
+  - changeSet:
+      id: 20260925-49-load-automazione-attivo-eccezioni
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Mirror di dbops.automazione_attivo_eccezioni dal suo CSV (chiave naturale). Prima riga:
+        profili_accesso_bindings.identita_digitale_id, porta e profili sganciati. Brief:
+        brief-db-blocco-login-per-credenziale §12.3.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: automazione_attivo_eccezioni
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/automazione_attivo_eccezioni.csv
+            tableName: automazione_attivo_eccezioni
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "schema_figlia,tabella_figlia,colonna_fk"
+            columns:
+              - column: { name: schema_figlia,  type: STRING }
+              - column: { name: tabella_figlia, type: STRING }
+              - column: { name: colonna_fk,     type: STRING }
+              - column: { name: motivo,         type: STRING }

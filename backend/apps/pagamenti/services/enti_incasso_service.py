@@ -19,6 +19,7 @@ import json
 import logging
 from typing import Any
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params, validate_pagination
 from apps.core.services.payload_helpers import (
@@ -102,12 +103,12 @@ def list_enti_incasso(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict[str, Any]:
     _valida_tipo(tipo, obbligatorio=False)
     order_by, order_dir = validate_order_params(
         order_by or "codice",
-        (order_dir or "asc").lower(),
+        order_dir or "asc",
         allowed_columns=frozenset(ENTI_INCASSO_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_enti_incasso",

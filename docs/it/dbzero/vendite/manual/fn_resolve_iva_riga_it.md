@@ -96,8 +96,14 @@ riga vale più del residuo, la funzione ritorna **due righe**:
 * **non tocca i bundle**: sui componenti di kit l'aliquota è una scelta di
   composizione già presa, e questa funzione lavora sulla riga;
 * **non controlla il congelamento** del documento: è contratto del chiamante;
-* **non decide la scissione dei pagamenti**: la trasporta e basta (vedi il
-  guscio).
+* **non decide la scissione dei pagamenti né l'esigibilità**: dal 2026-10-01 la
+  coppia `esigibilita` / `split_payment` esce da
+  [script.fn_esigibilita_iva](/dbzero/script/funzioni/fn_esigibilita_iva), la
+  regola unica condivisa col trigger di riga della fattura, chiamata **per
+  parte** (le due parti di una riga spezzata dal plafond hanno codici, e quindi
+  nature, diverse). Entrano il regime dell'emittente (IVA per cassa), scissione
+  e partita IVA del soggetto. ⚠️ Senza emittente, fuori dalla scissione,
+  l'esigibilità esce `NULL` (regime non noto) e non più `'I'`.
 
 ---
 

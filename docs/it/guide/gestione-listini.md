@@ -1,14 +1,8 @@
-# Guida — Gestione Listini e Pricing (v5)
+# Guida — Gestione Listini e Pricing
 
-> **Ultima revisione**: 23 aprile 2026 — chiusura end-to-end Sprint E+F
-> (workflow L3 approvazione + cleanup + doc API estesa). Il modello v5
-> è feature-complete (resolver a 3 stadi: promo → contratto → categoria
-> + L1+L2+L3 autorizzazioni prezzi + BoM versionata immutabile).
+> **Ultimo aggiornamento**: 20 settembre 2026
 >
-> La versione pre-v5 è archiviata in [gestione-listini-pre-v5](archive/gestione-listini-pre-v5.md)
-> per riferimento storico.
->
-> **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
+> **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
 > **Vedi anche** — schemi DB:
 >
@@ -27,10 +21,12 @@
 > * [API Preventivi](/backend/vendite/manual/api_preventivi) (con flag `richiesta_approvazione` per L3)
 > * [API Contratti](/backend/vendite/manual/api_contratti) / [API Promo articoli](/backend/vendite/manual/api_promo_articoli) / [API Matrice categorie/listini](/backend/anagrafiche/manual/api_categorie_clienti_listini)
 >
-> **Vedi anche** — piani sprint:
+> **Vedi anche** — guide correlate:
 >
-> * Storico piano sprint v5 — tutti gli sprint chiusi end-to-end
-> * Piano test UI v5 — 7 scenari per validazione UI
+> * [Gestione Preventivi](/guide/gestione-preventivi) — dove il prezzo viene sovrascritto (L1/L2/L3)
+> * [Gestione Commesse](/guide/gestione-commesse) — dove lo snapshot pricing vive
+> * [Fatturazione](/guide/fatturazione) — la propagazione dello snapshot alle righe fatturabili
+> * [Modello pre-v5 (archivio)](archive/gestione-listini-pre-v5.md) — la versione precedente, per riferimento storico
 
 ---
 
@@ -54,16 +50,16 @@ Non ci sono tie-break: la struttura dati **garantisce** che ogni stadio produca 
 
 È un **contenitore di prezzi** identificato dalla combinazione:
 
-- `utility_id` — il servizio (Gas, Energia, Idrico, "Base" per commercio)
-- `tipologia_id` — la categoria di voce (CONSUMO, QUOTA_FISSA, IMPOSTA, ONERE_SISTEMA, PRODOTTI, SERVIZI)
-- `emittente_soggetto_ruolo_id` — chi emette la fattura (dimensione interna)
+* `utility_id` — il servizio (Gas, Energia, Idrico, "Base" per commercio)
+* `tipologia_id` — la categoria di voce (CONSUMO, QUOTA_FISSA, IMPOSTA, ONERE_SISTEMA, PRODOTTI, SERVIZI)
+* `emittente_soggetto_ruolo_id` — chi emette la fattura (dimensione interna)
 
 **Un solo listino** per ogni quadrupla (utility, tipologia, emittente, codice). Non esistono "listini derivati": le variazioni commerciali vivono altrove.
 
 Un listino contiene:
 
-- **Versioni** (`listini_versioni`) — finestre temporali con stato BOZZA → ATTIVA → CHIUSA. Solo una versione ATTIVA per listino nel periodo (vincolo `EXCLUDE`).
-- **Righe** (`listini_righe`) — per ogni versione: (articolo, uom) → prezzo. Forma pura, senza dimensioni di scope.
+* **Versioni** (`listini_versioni`) — finestre temporali con stato BOZZA → ATTIVA → CHIUSA. Solo una versione ATTIVA per listino nel periodo (vincolo `EXCLUDE`).
+* **Righe** (`listini_righe`) — per ogni versione: (articolo, uom) → prezzo. Forma pura, senza dimensioni di scope.
 
 ### 2.2 Categoria cliente
 
@@ -71,23 +67,23 @@ Rappresenta la **politica commerciale trasversale** (STANDARD, BASE, SILVER, GOL
 
 Caratteristiche:
 
-- ogni `billing_account` ha esattamente una `categoria_cliente_id` (default STANDARD)
-- la categoria decide se il cliente **partecipa alle promo** (flag `partecipa_promo`)
-- la categoria indirizza al listino corretto via la **matrice**
+* ogni `billing_account` ha esattamente una `categoria_cliente_id` (default STANDARD)
+* la categoria decide se il cliente **partecipa alle promo** (flag `partecipa_promo`)
+* la categoria indirizza al listino corretto via la **matrice**
 
 ### 2.3 Matrice categoria → listino
 
 Tabella `anagrafiche.categorie_clienti_listini`. Per ogni quadrupla:
 
-```
+```text
 (categoria_cliente, utility, emittente, classe_utenza opz.) → listino + variazione opz.
 ```
 
 La variazione è opzionale (`tipo_variazione` + `valore_variazione`, coppia coerente):
 
-- `PERCENTUALE` — firmata (negativo = sconto, positivo = maggiorazione)
-- `VALORE_FISSO` — firmato
-- Nessuna variazione → prezzo base del listino tal quale
+* `PERCENTUALE` — firmata (negativo = sconto, positivo = maggiorazione)
+* `VALORE_FISSO` — firmato
+* Nessuna variazione → prezzo base del listino tal quale
 
 `classe_utenza_id` è opzionale: la ricerca prova prima il match esatto poi il fallback a NULL (dimensione pricing per utility con gradazione, es. DOM-BTA su energia).
 
@@ -97,11 +93,11 @@ Vincolo `EXCLUDE`: non possono esistere due righe attive sovrapposte per la stes
 
 È l'**accordo individuale** tra cliente ed emittente. Tre modalità possibili:
 
-| Modalità | Listino | Variazione globale | Righe override | Quando usarla |
-|---|---|---|---|---|
-| **A** — listino + variazione | sì | sì | vuote o parziali | "Listino standard 2026 scontato 10%" |
-| **B** — listino con override mirati | sì | sì o no | alcune righe con prezzo forzato | "Listino standard, ma art X a €50 fisso" |
-| **C** — interamente negoziato | no | no | tutte le righe con prezzo | Grande cliente con condizioni 100% custom |
+| Modalità                            | Listino | Variazione globale | Righe override                  | Quando usarla                             |
+| ----------------------------------- | ------- | ------------------ | ------------------------------- | ----------------------------------------- |
+| **A** — listino + variazione        | sì      | sì                 | vuote o parziali                | "Listino standard 2026 scontato 10%"      |
+| **B** — listino con override mirati | sì      | sì o no            | alcune righe con prezzo forzato | "Listino standard, ma art X a €50 fisso"  |
+| **C** — interamente negoziato       | no      | no                 | tutte le righe con prezzo       | Grande cliente con condizioni 100% custom |
 
 Un trigger DB blocca la transizione DRAFT → ATTIVO se la modalità C ha righe vuote (errore `E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE`).
 
@@ -109,9 +105,9 @@ Un trigger DB blocca la transizione DRAFT → ATTIVO se la modalità C ha righe 
 
 Tabella `vendite.promo_articoli`. È un **overlay temporale** indipendente:
 
-- (articolo, uom, validità) → tipo e valore variazione
-- batte qualsiasi altro stadio se il cliente appartiene a una categoria con `partecipa_promo = true`
-- ammette `PREZZO_FISSO` (prezzo assoluto sostitutivo) — vietato negli altri stadi
+* (articolo, uom, validità) → tipo e valore variazione
+* batte qualsiasi altro stadio se il cliente appartiene a una categoria con `partecipa_promo = true`
+* ammette `PREZZO_FISSO` (prezzo assoluto sostitutivo) — vietato negli altri stadi
 
 ---
 
@@ -119,13 +115,13 @@ Tabella `vendite.promo_articoli`. È un **overlay temporale** indipendente:
 
 La funzione `vendite.fn_resolve_prezzo_listino_v2` riceve:
 
-- articolo, uom, data, billing_account
-- utility, emittente (derivato dal JWT dell'operatore, 1-a-1)
-- classe_utenza (opzionale, derivata da contratto o istanza)
+* articolo, uom, data, billing_account
+* utility, emittente (derivato dal JWT dell'operatore, 1-a-1)
+* classe_utenza (opzionale, derivata da contratto o istanza)
 
 ### STADIO 0 — Promo overlay
 
-```
+```text
 Esiste riga in promo_articoli (articolo, uom, data) attiva?
   E la categoria del BA ha partecipa_promo = true?
     → SÌ: prezzo_base = STADIO 1/2, applica variazione promo → STOP
@@ -135,7 +131,7 @@ Esiste riga in promo_articoli (articolo, uom, data) attiva?
 
 ### STADIO 1 — Contratto
 
-```
+```text
 Esiste contratto ATTIVO per (ba, utility, data)?
   → SÌ:
       Esiste riga override per (articolo, uom) con prezzo_unitario NOT NULL?
@@ -151,7 +147,7 @@ Esiste contratto ATTIVO per (ba, utility, data)?
 
 ### STADIO 2 — Categoria cliente
 
-```
+```text
 BA ha categoria_cliente_id (sempre sì: default STANDARD)?
   → SÌ:
       Cerca in matrice (categoria, utility, emittente, data):
@@ -168,10 +164,10 @@ BA ha categoria_cliente_id (sempre sì: default STANDARD)?
 
 Il resolver ritorna sempre:
 
-- `prezzo` (persistito su `commesse_attivita.prezzo_snapshot`) e `prezzo_base_snapshot`
-- `origine_prezzo` ∈ `{PROMO, CONTRATTO_OVERRIDE, CONTRATTO_LISTINO, CATEGORIA, MANUALE}`
-- `tipo_variazione_applicata` ∈ `{PERCENTUALE, VALORE_FISSO, PREZZO_FISSO, NESSUNA}`, `valore_variazione_applicata`
-- FK popolate del caso: `listino_versione_id` + `listino_riga_id`, `contratto_id`, `promo_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`
+* `prezzo` (persistito su `commesse_attivita.prezzo_snapshot`) e `prezzo_base_snapshot`
+* `origine_prezzo` ∈ `{PROMO, CONTRATTO_OVERRIDE, CONTRATTO_LISTINO, CATEGORIA, MANUALE}`
+* `tipo_variazione_applicata` ∈ `{PERCENTUALE, VALORE_FISSO, PREZZO_FISSO, NESSUNA}`, `valore_variazione_applicata`
+* FK popolate del caso: `listino_versione_id` + `listino_riga_id`, `contratto_id`, `promo_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`
 
 Su ogni riga `vendite.commesse_attivita` vengono persistite **8 nuove dimensioni snapshot v5** (`prezzo_base_snapshot`, `origine_prezzo`, `tipo_variazione_applicata`, `valore_variazione_applicata`, `promo_id`, `contratto_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`), che si aggiungono ai campi pricing già presenti nel modello operativo (`prezzo_snapshot`, `prezzo_bloccato`, `listino_versione_id`, `listino_riga_id`, `pricing_mode`, `prezzo_da_riallineare`). Il ciclo di vita di questi ultimi è descritto nel §7.
 
@@ -183,17 +179,17 @@ Le stesse 8 dimensioni sono propagate su `vendite.attivita_fatturabili` all'emis
 
 Le variazioni di tipo `PERCENTUALE` e `VALORE_FISSO` sono **firmate**:
 
-| Valore | Effetto |
-|---|---|
+| Valore                 | Effetto                                         |
+| ---------------------- | ----------------------------------------------- |
 | **Negativo** (es. -10) | Sconto (10%  di riduzione o -10€ di correzione) |
-| **Positivo** (es. +5) | Maggiorazione |
-| **Zero** | Vietato dal service (no-op inutile) |
+| **Positivo** (es. +5)  | Maggiorazione                                   |
+| **Zero**               | Vietato dal service (no-op inutile)             |
 
 `PREZZO_FISSO` (ammesso solo in promo) è un prezzo assoluto ≥ 0 che **sostituisce** il prezzo base.
 
 Formule applicate dal resolver:
 
-```
+```text
 PERCENTUALE:  prezzo_finale = prezzo_base × (1 + valore / 100)
 VALORE_FISSO: prezzo_finale = prezzo_base + valore
 PREZZO_FISSO: prezzo_finale = valore
@@ -209,15 +205,15 @@ Ogni articolo ha `listino_tipologia_id` (FK a `config.listini_tipologie`). Un ar
 
 Esempi:
 
-- articolo di tipologia `PRODOTTI` → inseribile solo in listini PRODOTTI
-- articolo di tipologia `CONSUMO` (voce utility) → solo in listini CONSUMO per quella utility
+* articolo di tipologia `PRODOTTI` → inseribile solo in listini PRODOTTI
+* articolo di tipologia `CONSUMO` (voce utility) → solo in listini CONSUMO per quella utility
 
 ### 5.2 Distinta base (BoM) — componenti esposti
 
 Un articolo composito (`is_composito = true`) ha una distinta base in `articoli_componenti`. Il flag `esposto_in_fattura` decide il comportamento:
 
-- **Nessun componente esposto** (CASO B / B1 / B2): il composito ha un prezzo unico (riga listino sul composito, o somma componenti a fallback). Resolver al push, status quo.
-- **Almeno un componente esposto** (CASO A): il resolver ritorna N righe (una per componente). Ogni componente esposto diventa una **riga negoziabile a se' stante** dentro il documento sorgente — vedi §5.2.1 sotto. Al push, la pipeline espande l'articolo composito in N righe `commesse_attivita` separate.
+* **Nessun componente esposto** (CASO B / B1 / B2): il composito ha un prezzo unico (riga listino sul composito, o somma componenti a fallback). Resolver al push, status quo.
+* **Almeno un componente esposto** (CASO A): il resolver ritorna N righe (una per componente). Ogni componente esposto diventa una **riga negoziabile a se' stante** dentro il documento sorgente — vedi §5.2.1 sotto. Al push, la pipeline espande l'articolo composito in N righe `commesse_attivita` separate.
 
 Logica completa in [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2),
 che è **bundle-aware** tramite `p_articolo_padre_contesto`: il vecchio
@@ -305,17 +301,17 @@ L'exclusion constraint daterange `ex_articoli_componenti_no_overlap` sull'indice
 
 Nel preventivo, il prezzo suggerito dal resolver può essere **sovrascritto manualmente** dall'operatore. L1 è attivo:
 
-- Se il payload riga ha `prezzo_unitario` uguale al suggerito → passa sempre
-- Se è diverso → il service verifica l'azione processo `prezzo_override_manuale`
-  - Autorizzato: salva con origine `MANUALE`, traccia in `meta` il resolver originale
-  - Non autorizzato: `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` (403)
+* Se il payload riga ha `prezzo_unitario` uguale al suggerito → passa sempre
+* Se è diverso → il service verifica l'azione processo `prezzo_override_manuale`
+  * Autorizzato: salva con origine `MANUALE`, traccia in `meta` il resolver originale
+  * Non autorizzato: `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` (403)
 
 Il badge UI mostra l'origine del prezzo (`PROMO` / `CONTRATTO_OVERRIDE` /
 `CONTRATTO_LISTINO` / `CATEGORIA` / `MANUALE`) e il delta eventuale.
 
-L2 (limite sconto/maggiorazione %) è in produzione (Sprint D 22-04-2026): vedi `VENDITE_MAX_SCONTO_PCT` / `VENDITE_MAX_MAGGIORAZIONE_PCT` in `config.parameters` e l'endpoint diagnostico `GET /vendite/pricing/limiti-utente/`.
+L2 (limite sconto/maggiorazione %) è attivo: vedi `VENDITE_MAX_SCONTO_PCT` / `VENDITE_MAX_MAGGIORAZIONE_PCT` in `config.parameters` e l'endpoint diagnostico `GET /vendite/pricing/limiti-utente/`.
 
-### 6.2 L1/L2/L3 sui componenti BoM CASO A
+### 6.1 L1/L2/L3 sui componenti BoM CASO A
 
 > **Eccezione al §6**: su articoli compositi CASO A (vedi §5.2.1)
 > l'override L1 si applica **sui singoli componenti esposti**, non sul
@@ -324,11 +320,11 @@ L2 (limite sconto/maggiorazione %) è in produzione (Sprint D 22-04-2026): vedi 
 
 Stesso flusso L1 della riga normale, applicato alla riga componente:
 
-- Se `prezzo_unitario` del componente = suggerito dal resolver → passa
-- Se diverso → service verifica `prezzo_override_manuale`
-  - Autorizzato: salva con `origine_prezzo = 'MANUALE'`, traccia in
+* Se `prezzo_unitario` del componente = suggerito dal resolver → passa
+* Se diverso → service verifica `prezzo_override_manuale`
+  * Autorizzato: salva con `origine_prezzo = 'MANUALE'`, traccia in
     `prezzo_resolver_context` JSONB il suggerito originale + delta
-  - Non autorizzato: `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` (403)
+  * Non autorizzato: `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` (403)
 
 **Listino mancante sul componente**: caso speciale del L1. Quando il
 resolver fallisce su un componente al popolamento iniziale (es.
@@ -345,31 +341,35 @@ e' calcolato componente per componente vs il suo suggerito.
 
 **L3 sui componenti**: workflow approvazione PENDING/APPROVED/REJECTED
 opera anche su `<sorgente>_righe_componenti.stato_approvazione_prezzo`.
-Il guard `trgfn_<sorgente>_guard_transizione_approvazione` blocca la
-transizione del documento sorgente verso lo stato terminale (es.
-preventivo → ACCETTATO) se esiste anche un solo componente PENDING. La
+Dal 2026-09-24 un solo componente attivo PENDING o REJECTED blocca
+l'uscita dalla bozza e l'accettazione del documento sorgente (es.
+preventivo → EMESSO e → ACCETTATO): lo decide
+[`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati),
+chiesto dal guard di transizione di ogni documento. La
 modifica della struttura del componente PENDING e' bloccata da
 `trgfn_<sorgente>_righe_componenti_guard_pending` (simmetrico al guard
 della riga padre).
 
-### 6.1 L3 — Workflow approvazione out-of-policy (Sprint E)
+### 6.2 L3 — Workflow approvazione out-of-policy
 
 Quando l'operatore richiede un prezzo che viola i limiti L2, può **richiedere approvazione al responsabile** invece di rinunciare. Il flusso:
 
 1. **Riga oltre L2 + flag `richiesta_approvazione=true`**: il backend NON solleva errore. Crea una pratica `APPROVAZIONE_PREZZO` (stato APERTA, priorità NORMALE) e salva la riga con `stato_approvazione_prezzo='PENDING'` collegata alla pratica via `pratica_approvazione_prezzo_id`.
 2. **Email best-effort al recipient configurato** in `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL` (parameter scope user/group/emittente). Se il parameter non è configurato, la pratica resta visibile in coda senza notifica push.
 3. **L'approver** (utente con azione `approva_prezzo_override` abilitata) vede la coda in `/vendite/approvazioni-prezzo/` filtrata per scope emittente. Per ogni pratica può:
-   - **Approvare** → riga `stato_approvazione_prezzo='APPROVED'`, pratica CHIUSA con nota interna OK
-   - **Rifiutare** → riga `stato_approvazione_prezzo='REJECTED'`, pratica CHIUSA con nota interna KO + motivazione
+   * **Approvare** → riga `stato_approvazione_prezzo='APPROVED'`, pratica CHIUSA con nota interna OK
+   * **Rifiutare** → riga `stato_approvazione_prezzo='REJECTED'`, pratica CHIUSA con nota interna KO + motivazione
 
 **Trigger DB di guardia**:
-- `trgfn_preventivi_guard_transizione_approvazione`: blocca passaggio preventivo→ACCETTATO se esistono righe `stato_approvazione_prezzo='PENDING'` (`E_PREVENTIVO_RIGHE_PRICING_PENDENTI`)
-- `trgfn_preventivi_righe_guard_pending`: blocca modifica struttura riga PENDING; permette solo transizione di stato approvazione (`E_RIGA_PREZZO_PENDENTE`)
+
+* [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) (dal 2026-09-24): un prezzo in attesa (`PENDING`) o rifiutato (`REJECTED`), su righe o componenti BoM attivi, blocca l'uscita dalla bozza e l'accettazione di preventivi, contratti, offerte, ordini e DDT (`E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`); l'annullamento resta sempre possibile. Sul preventivo la chiede [`vendite.trgfn_preventivi_guard_transizione`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione), che ha preso il posto del trigger ritirato `trgfn_preventivi_guard_transizione_approvazione`
+* `trgfn_preventivi_righe_guard_pending`: blocca modifica struttura riga PENDING; permette solo transizione di stato approvazione (`E_RIGA_PREZZO_PENDENTE`)
 
 **Endpoint API**:
-- `POST /api/v1/vendite/righe/<riga_id>/approva-prezzo/` (body `{nota?}`)
-- `POST /api/v1/vendite/righe/<riga_id>/rifiuta-prezzo/` (body `{motivazione?}`)
-- `GET /api/v1/vendite/approvazioni-prezzo/?limit=&offset=`
+
+* `POST /api/v1/vendite/righe/<riga_id>/approva-prezzo/` (body `{nota?}`)
+* `POST /api/v1/vendite/righe/<riga_id>/rifiuta-prezzo/` (body `{motivazione?}`)
+* `GET /api/v1/vendite/approvazioni-prezzo/?limit=&offset=`
 
 **Riavvio richiesta**: se l'approver rifiuta, l'utente può modificare il prezzo (riga REJECTED non è bloccata) e ri-tentare. Una nuova violazione L2 con `richiesta_approvazione=true` crea una nuova pratica.
 
@@ -381,13 +381,13 @@ Il resolver calcola il prezzo al **momento del push sorgente → commessa**. Da 
 
 ### 7.1 Flag di stato pricing su `commesse_attivita`
 
-| Campo                   | Tipo    | Default   | Ruolo operativo                                                                                         |
-| ----------------------- | ------- | --------- | ------------------------------------------------------------------------------------------------------- |
-| `prezzo_snapshot`       | numeric | —         | Prezzo corrente della riga (output del resolver o override manuale)                                     |
-| `prezzo_bloccato`       | boolean | `FALSE`   | Se `TRUE`, il prezzo è "congelato" da override manuale: il riallineamento automatico/massivo lo salta   |
-| `prezzo_da_riallineare` | boolean | `FALSE`   | Segnalazione: il prezzo di listino è cambiato rispetto allo snapshot e la riga è candidata a revisione  |
-| `pricing_mode`          | varchar | `'FIXED'` | Predisposizione per modalità di calcolo future (`FORMULA`, `SCAGLIONI`). Oggi solo `FIXED` è operativo  |
-| `listino_versione_id`   | bigint  | —         | Versione listino risolta al momento dello snapshot (serve al guard di riallineamento — vedi §7.3)       |
+| Campo                   | Tipo    | Default   | Ruolo operativo                                                                                        |
+| ----------------------- | ------- | --------- | ------------------------------------------------------------------------------------------------------ |
+| `prezzo_snapshot`       | numeric | —         | Prezzo corrente della riga (output del resolver o override manuale)                                    |
+| `prezzo_bloccato`       | boolean | `FALSE`   | Se `TRUE`, il prezzo è "congelato" da override manuale: il riallineamento automatico/massivo lo salta  |
+| `prezzo_da_riallineare` | boolean | `FALSE`   | Segnalazione: il prezzo di listino è cambiato rispetto allo snapshot e la riga è candidata a revisione |
+| `pricing_mode`          | varchar | `'FIXED'` | Predisposizione per modalità di calcolo future (`FORMULA`, `SCAGLIONI`). Oggi solo `FIXED` è operativo |
+| `listino_versione_id`   | bigint  | —         | Versione listino risolta al momento dello snapshot (serve al guard di riallineamento — vedi §7.3)      |
 
 ### 7.2 Variazione prezzo eccezionale — blocco manuale (N7)
 
@@ -398,9 +398,9 @@ Service: `commesse_service.fn_variazione_prezzo_eccezionale` — endpoint e rego
 
 Effetti:
 
-- aggiorna `prezzo_snapshot = nuovo_prezzo`
-- imposta `prezzo_bloccato = TRUE` (d'ora in poi il riallineamento salta la riga)
-- appende una entry a `meta.variazioni_eccezionali` con `data`, `prezzo_precedente`, `prezzo_nuovo`, `motivo`, `stato_commessa`, `listino_versione_id_riferimento`
+* aggiorna `prezzo_snapshot = nuovo_prezzo`
+* imposta `prezzo_bloccato = TRUE` (d'ora in poi il riallineamento salta la riga)
+* appende una entry a `meta.variazioni_eccezionali` con `data`, `prezzo_precedente`, `prezzo_nuovo`, `motivo`, `stato_commessa`, `listino_versione_id_riferimento`
 
 Precondizioni: commessa `modificabile`, riga non fatturata. Il servizio non invoca il resolver: il prezzo è deciso dall'operatore.
 
@@ -429,10 +429,10 @@ Service: `fn_sblocca_prezzo`
 
 Effetti:
 
-- guard: errore `E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO` se la riga non è bloccata
-- ricalcola dal resolver (come §7.3 ma senza guard versione)
-- imposta `prezzo_snapshot = ricalcolato`, `prezzo_bloccato = FALSE`
-- appende a `meta.sblocchi_prezzo` (`data`, `prezzo_bloccato_precedente`, `prezzo_ricalcolato`, `motivo`)
+* guard: errore `E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO` se la riga non è bloccata
+* ricalcola dal resolver (come §7.3 ma senza guard versione)
+* imposta `prezzo_snapshot = ricalcolato`, `prezzo_bloccato = FALSE`
+* appende a `meta.sblocchi_prezzo` (`data`, `prezzo_bloccato_precedente`, `prezzo_ricalcolato`, `motivo`)
 
 Motivo obbligatorio come per il blocco.
 
@@ -444,8 +444,8 @@ La funzione [`vendite.fn_get_commessa_stato`](/dbzero/vendite/funzioni/fn_get_co
 
 All'emissione (`fn_emit_attivita_fatturabili_da_commessa`) il flag `prezzo_bloccato` e lo snapshot pricing vengono **propagati** sulla riga AF. Questo garantisce che:
 
-- gli step della pipeline fatturazione non sovrascrivano un prezzo manualmente bloccato;
-- lo snapshot resolver (8 dimensioni v5) resti tracciabile fino alla riga fattura.
+* gli step della pipeline fatturazione non sovrascrivano un prezzo manualmente bloccato;
+* lo snapshot resolver (8 dimensioni v5) resti tracciabile fino alla riga fattura.
 
 Vedi [guida fatturazione §"Snapshot pricing su commessa"](fatturazione.md#snapshot-pricing-su-commessa-e-propagazione-ad-af).
 
@@ -490,16 +490,16 @@ Tutti i clienti della stessa categoria, utility, emittente condivideranno la reg
 
 Il database rafforza la determinismo con vincoli espliciti (non è "responsabilità del client"):
 
-| Vincolo | Tabella | Cosa garantisce |
-|---|---|---|
-| `ex_contratti_no_overlap` | `contratti` | Un solo contratto attivo per (BA, istanza, utility, ambito) nel periodo |
-| `ex_categ_cli_listini_no_overlap` | `categorie_clienti_listini` | Una sola riga matrice per (categoria, utility, emittente, classe) nel periodo |
-| `ex_promo_articoli_no_overlap` | `promo_articoli` | Una sola promo attiva per (articolo, uom) nel periodo |
-| `ex_listini_versioni_no_overlap` | `listini_versioni` | Una sola versione ATTIVA per listino nel periodo |
-| `uq_listini_righe_key_attiva` | `listini_righe` | Una sola riga attiva per (versione, articolo, uom) |
-| `trgfn_listini_righe_guard_tipologia` | trigger | Articolo e listino devono avere la stessa tipologia |
-| `trgfn_contratti_modalita_c_righe_complete` | trigger | Modalità C: attivazione blocca se righe incomplete |
-| `trgfn_contratti_utilities_guard_tipo_classe` | trigger | Tipo/classe utenza coerenti con ambito (NULL per COMMERCIO) |
+| Vincolo                                       | Tabella                     | Cosa garantisce                                                               |
+| --------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------- |
+| `ex_contratti_no_overlap`                     | `contratti`                 | Un solo contratto attivo per (BA, istanza, utility, ambito) nel periodo       |
+| `ex_categ_cli_listini_no_overlap`             | `categorie_clienti_listini` | Una sola riga matrice per (categoria, utility, emittente, classe) nel periodo |
+| `ex_promo_articoli_no_overlap`                | `promo_articoli`            | Una sola promo attiva per (articolo, uom) nel periodo                         |
+| `ex_listini_versioni_no_overlap`              | `listini_versioni`          | Una sola versione ATTIVA per listino nel periodo                              |
+| `uq_listini_righe_key_attiva`                 | `listini_righe`             | Una sola riga attiva per (versione, articolo, uom)                            |
+| `trgfn_listini_righe_guard_tipologia`         | trigger                     | Articolo e listino devono avere la stessa tipologia                           |
+| `trgfn_contratti_modalita_c_righe_complete`   | trigger                     | Modalità C: attivazione blocca se righe incomplete                            |
+| `trgfn_contratti_utilities_guard_tipo_classe` | trigger                     | Tipo/classe utenza coerenti con ambito (NULL per COMMERCIO)                   |
 
 Il resolver poggia su queste invarianti — il codice Python non deve duplicarle.
 
@@ -509,35 +509,23 @@ Il resolver poggia su queste invarianti — il codice Python non deve duplicarle
 
 Nessun fallback silenzioso. Ogni scenario non risolvibile produce un errore strutturato:
 
-| Codice | Quando |
-|---|---|
-| `E_PREZZO_LISTINO_NON_TROVATO` | BA senza contratto e senza categoria mappata |
-| `E_CATEGORIA_LISTINO_NON_MAPPATA` | Categoria esistente ma nessuna riga in matrice per la quadrupla |
-| `E_PREZZO_LISTINO_RIGA_NON_TROVATA` | Listino risolto ma nessuna riga prezzo per (articolo, uom) |
-| `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` | Contratto modalità C senza riga per l'articolo richiesto |
-| `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE` | Articolo in listino di tipologia diversa |
-| `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` | L1: override prezzo non autorizzato |
-| `E_VENDITE_PRICING_FAILED` | Errore generico pricing (envelope, dettaglio in `detail`) |
-| `E_BOM_MODIFICA_VIETATA` | Tentata modifica/eliminazione campo struttura BoM. Risolvere con pattern chiudi+inserisci nuova versione (vedi §5.3) |
-| `E_BOM_VALIDO_AL_INVALIDO` | Tentata chiusura riga BoM con `valido_al < valido_dal` |
-| `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` | Tentata accettazione preventivo con righe in attesa di approvazione (L3) |
-| `E_RIGA_PREZZO_PENDENTE` | Tentata modifica struttura riga in stato `stato_approvazione_prezzo='PENDING'` |
-| `E_APPROVAZIONE_PREZZO_NON_AMMESSA` | Tentata approva/rifiuta su riga non PENDING o senza pratica collegata; oppure coda approvazioni richiesta da admin globale senza emittente |
+| Codice                                    | Quando                                                                                                                                     |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `E_PREZZO_LISTINO_NON_TROVATO`            | BA senza contratto e senza categoria mappata                                                                                               |
+| `E_CATEGORIA_LISTINO_NON_MAPPATA`         | Categoria esistente ma nessuna riga in matrice per la quadrupla                                                                            |
+| `E_PREZZO_LISTINO_RIGA_NON_TROVATA`       | Listino risolto ma nessuna riga prezzo per (articolo, uom)                                                                                 |
+| `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` | Contratto modalità C senza riga per l'articolo richiesto                                                                                   |
+| `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE`      | Articolo in listino di tipologia diversa                                                                                                   |
+| `E_PREZZO_OVERRIDE_NON_AUTORIZZATO`       | L1: override prezzo non autorizzato                                                                                                        |
+| `E_VENDITE_PRICING_FAILED`                | Errore generico pricing (envelope, dettaglio in `detail`)                                                                                  |
+| `E_BOM_MODIFICA_VIETATA`                  | Tentata modifica/eliminazione campo struttura BoM. Risolvere con pattern chiudi+inserisci nuova versione (vedi §5.3)                       |
+| `E_DATA_AL_MINORE_DAL`                    | Tentata chiusura riga BoM con `valido_al < valido_dal` (guard comune delle date, come su ogni periodo di validità)                        |
+| `E_DOC_PREZZO_PENDENTE`                  | Tentata emissione/accettazione di un documento di vendita con un prezzo in attesa di approvazione (L3). Sostituisce `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`, ritirato il 2026-09-24 |
+| `E_DOC_PREZZO_RIFIUTATO`                 | Tentata emissione/accettazione di un documento di vendita con un prezzo rifiutato (L3)                                                     |
+| `E_RIGA_PREZZO_PENDENTE`                  | Tentata modifica struttura riga in stato `stato_approvazione_prezzo='PENDING'`                                                             |
+| `E_APPROVAZIONE_PREZZO_NON_AMMESSA`       | Tentata approva/rifiuta su riga non PENDING o senza pratica collegata; oppure coda approvazioni richiesta da admin globale senza emittente |
 
 Tutti gestiti dal frontend con messaggi user-friendly (vedi `error_policies.py` backend).
 
 ---
-
-## 11. Cosa NON c'è più (modello pre-v5)
-
-Per chi arrivava dal vecchio modello:
-
-- ❌ `vendite.listini_associazioni` — **droppata** (F1-DB-26). Il suo ruolo è coperto da categoria cliente + contratto + dimensione emittente interna al listino.
-- ❌ "Listini derivati" con `listino_base_id` e variazione — mai implementati. La variazione vive nella matrice (per categoria) o nel contratto (individuale).
-- ❌ `catalogo.articoli.voce_utility` — droppata. L'equivalente v5 è `listino_tipologia_id`.
-- ❌ Resolver a 7 livelli con `match_rank` — sostituito dal resolver deterministico a 3 stadi senza tie-break.
-- ❌ Campo `priorita` su versioni/associazioni — rimosso. Le invarianti `EXCLUDE` garantiscono univocità, niente tie-break.
-
----
-
-*Gestione Listini e Pricing — ZeroERP v5 (23 aprile 2026, chiusura end-to-end)*
+{% include-markdown "signature-core.md" %}

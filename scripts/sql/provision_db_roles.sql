@@ -211,9 +211,91 @@ FROM (VALUES ('magazzino.movimenti'), ('magazzino.valore_giacenza')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
-SELECT format('REVOKE DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+-- ⭐ Dal 2026-09-28 (Lotto 3, D-L3-j) `magazzino.movimenti_attesi` e' in SOLA
+--   LETTURA: i blocchi li aprono e li liberano i verbi fn_apri_blocco /
+--   fn_libera_blocco. Fino a quel giorno era senza DELETE soltanto. Stesso
+--   elenco di `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20260928-83; `db/pgtap/magazzino/test-blocco-manuale-e-porta-lotto3-v1.sql`
+--   lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
 FROM (VALUES ('magazzino.movimenti_attesi')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
+-- ⭐ LA PORTA DELLO STATO DELLA CREDENZIALE (dal 2026-09-25): brief
+--   brief-db-blocco-login-per-credenziale, sezione 2.2. `config.credenziali` e
+--   `config.credenziali_provenienze` sono in SOLA LETTURA per l'applicazione:
+--   tentativi, freni, blocco dell'admin e cambio password obbligatorio li
+--   scrivono solo le funzioni DEFINER del proprietario. Stesso elenco di
+--   `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20260925-24; `db/pgtap/config/test-credenziali-porta-v1.sql` lo dice
+--   se non lo fa. Dal 2026-09-25 anche le gemelle del NOME TENTATO (R-7):
+--   `config.nomi_tentati` e `config.nomi_tentati_provenienze`, forward
+--   90_end/20260925-62. Dal 2026-09-29 anche il DEVICE DEL SECONDO FATTORE,
+--   `config.auth_totp_device` (brief-db-secondo-fattore-totp §3): lo scrivono
+--   solo i verbi script.fn_totp_*; forward 90_end/20260929-24, pgTAP
+--   `db/pgtap/config/test-totp-porta-v1.sql`.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('config.credenziali'), ('config.credenziali_provenienze'),
+             ('config.nomi_tentati'), ('config.nomi_tentati_provenienze'),
+             ('config.auth_totp_device')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
+-- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
+--   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
+--   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'
+--   la lista del verbo, e la scrive solo il seed. Stesso elenco di
+--   `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20260925-34; `db/pgtap/config/test-pannello-porta-v1.sql` lo dice se
+--   non lo fa. Dal 2026-09-28 anche `config.aree_funzionali` (D-P9, §4.2): la
+--   possiede il CSV, nome e ordine si cambiano li'. Forward 90_end/20260928-30.
+--   Dal 2026-09-30 anche `ui.misure_pagina` (brief-db-misure-pagina-catalogo §2):
+--   le misure «righe per pagina», possedute dal CSV. Forward 90_end/20260930-13,
+--   pgTAP `db/pgtap/ui/test-misure-pagina-v1.sql`.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('magazzino.causali'), ('config.tabelle_gestibili'),
+             ('config.aree_funzionali'), ('ui.misure_pagina')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
+-- ⭐ IL REGISTRO DEGLI OWNER (dal 2026-09-26): brief
+--   brief-db-registro-owner-e-sync-riservati-al-migratore, sezione 2.2.
+--   `dbops.sec_functions_owner` dichiara chi possiede le DEFINER di postgres, e
+--   la sync la applica: chi scrive il registro sceglie il proprietario. Lo scrive
+--   solo il migratore; l'app legge. La sync NON si revoca qui (D-3): e' di
+--   postgres, la difende la guardia nel suo corpo (20_code/dbops/20260926-11), e
+--   il `GRANT ... ON ALL FUNCTIONS` sopra resta innocuo. Stesso elenco di
+--   `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20260926-12; `db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql`
+--   lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('dbops.sec_functions_owner')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
+-- ⭐ E LA PORTA SULLE FUNZIONI (dal 2026-09-24): brief
+--   brief-db-magazzino-verbi-con-permesso, sezione 2.3 (P-4). La primitiva e il
+--   ricalcolo del valore sono RISERVATE: l'app li raggiunge solo dai verbi
+--   (`fn_posta_inventario`, `fn_posta_rettifica`, SECURITY DEFINER), che
+--   applicano registra_magazzino. La revoca va anche a PUBLIC (`=X` per default).
+--   Stesso elenco di `v_fn_riservate` nel loop 20260205-41 e del forward
+--   90_end/20260924-42; `db/pgtap/magazzino/test-porta-ledger-v1.sql` (17-18) lo
+--   dice se non lo fa.
+SELECT format('REVOKE EXECUTE ON FUNCTION %I.%I(%s) FROM PUBLIC, %I',
+              n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), :'app_role')
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE (n.nspname, p.proname) IN (
+        ('magazzino', 'fn_scrivi_movimento'), ('magazzino', 'fn_ricalcola_valore_giacenza'),
+        -- ⭐ Dal 2026-09-28 (Lotto 3): lo storno. Forward 90_end/20260928-83.
+        ('magazzino', 'fn_storna_movimenti_sorgente'),
+        -- ⭐ Dal 2026-10-01 i posting della bolla e del reso stanno in vendite
+        --   (erano magazzino.fn_posta_ddt / fn_posta_reso dal 28-09): il registro
+        --   non legge le tabelle dei documenti. Forward 90_end/20261001-24; brief
+        --   brief-db-magazzino-registro-anello-interno (P-5).
+        ('vendite', 'fn_posta_ddt'), ('vendite', 'fn_posta_reso'))
+  AND p.prokind = 'f'
 \gexec
 
 -- ------------------------------------------------------------------

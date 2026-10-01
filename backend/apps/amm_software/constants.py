@@ -9,6 +9,6 @@
 # Sesso default per creazione soggetto PF
 DEFAULT_SESSO = "M"
 
-# Paginazione
-DEFAULT_LIMIT = 50
-MAX_LIMIT = 200
+# Paginazione: la fonte unica e' `apps.core.api.constants` (2026-09-28).
+# Si ri-esporta perche' i moduli di questo dominio la leggono da qui.
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT  # noqa: F401

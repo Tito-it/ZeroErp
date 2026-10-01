@@ -11,7 +11,7 @@
 import { MANAGE_ICONS } from '../core/constants'
 import { NAV_ICONS } from '../core/navigation'
 import { labelOrCode } from '../core/utils/i18nLabel'
-import { DOCUMENTO_DRAWER_TIPI } from './_shared/documenti/documentoDrawers'
+import { DOCUMENTO_DRAWER_TIPI } from '../core/drawerEntita'
 import {
   statoCommessaSeverity,
   statoContrattoSeverity,
@@ -26,7 +26,7 @@ import {
 // DASH_FATTURAZIONE_AREE). DDT dopo ORDINI (e' il suo veicolo di
 // fatturazione differita, DL-21); RESI in coda (flusso inverso, vive solo
 // nel Backlog — DL-24).
-// `drawerTipo`: chiave del registry `DOCUMENTO_DRAWERS` — il drawer di
+// `drawerTipo`: chiave del registro dei drawer (`core/drawerEntita.js`) — il drawer di
 // dettaglio che l'azione "apri documento" apre sull'id di riga (null = area
 // senza drawer, riga consultiva). COMMESSE usa il drawer di GESTIONE, non
 // quello leggero dei passaggi: dal Backlog si governa la commessa.
@@ -106,7 +106,7 @@ export function dashMotivoLabel(t, te, motivo) {
 // Scopo: azione riga "apri documento" dei drill-down dashboard: apre il DRAWER
 //        di gestione del documento della riga, per id — stesso meccanismo delle
 //        tappe del pannello "Passaggi" (DocumentoDrawerHost + registry
-//        DOCUMENTO_DRAWERS). Prima navigava alla lista d'area con
+//        registro dei drawer). Prima navigava alla lista d'area con
 //        ?search=<codice>: l'operatore atterrava su una lista filtrata e doveva
 //        comunque aprire la riga a mano, perdendo il contesto del cruscotto
 //        (cambio rotta). Nascosta se l'area non ha un drawer o la riga non ha

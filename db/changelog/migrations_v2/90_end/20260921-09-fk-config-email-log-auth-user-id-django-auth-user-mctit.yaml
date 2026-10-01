@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-7 (ponte django, 8 di 11) — FK config.email_log.auth_user_id -> django.auth_user.id
+#   Documento: valutazione-modello-di-dominio-db, voce V-7 (rifinita il 21-09).
+#
+# -- IL FATTO -------------------------------------------------------------------
+#   Undici colonne che puntano a django.auth_user senza FK: il DB puo' CHIAMARE
+#   django.* ma non DIPENDERNE strutturalmente, e una FK e' una dipendenza
+#   che si risolve alla CREATE. La forma di casa (18 FK gia' cosi': identita_
+#   digitali, parameter_overrides, documenti_generati, ui.*_preferenza_utente)
+#   e' questa: 90_end + preCondition tableExists su django.auth_user +
+#   onFail MARK_RAN. ⚠️ Il prezzo, dichiarato: in CI Liquibase gira PRIMA di
+#   `manage.py migrate`, quindi li' la FK NON esiste e il changeSet resta
+#   segnato. Il pgTAP config/test-fk-auth-user-ponte-django-v1 lo sa e
+#   salta dove la tabella manca.
+#
+# -- ON DELETE RESTRICT — perche' ---------------------------------------------------
+#   e' un REGISTRO: chi ha tracce nel log non si cancella (Django disattiva, non cancella); SET NULL riscriverebbe righe di log e CASCADE le farebbe sparire.
+#   ON UPDATE CASCADE come le sorelle (l'id di auth_user non cambia mai, e'
+#   solo coerenza di forma).
+#
+# -- CHE COSA NON CAMBIA -------------------------------------------------------
+#   La colonna resta com'e' (tipo, NULL). Zero orfani su dbdev il 21-09.
+#   L'indice: la policy FK (dbops.fk_index_policy, 20260921-13) lo dichiara
+#   consentito=false — la colonna e' gia' in testa a un indice esistente o
+#   nessuna lettura entra da li'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260921-09-fk-config-email-log-auth-user-id-django-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260921-09-fk-config-email_log-auth_user_id-django-auth-user
+      author: mctit
+      comment: >
+        FK config.email_log.auth_user_id -> django.auth_user.id, ON DELETE RESTRICT: e' un REGISTRO.
+        90_end + MARK_RAN come le 18 sorelle (in CI non esiste, dichiarato).
+        Documento: valutazione-modello-di-dominio-db, voce V-7.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - tableExists:
+                schemaName: django
+                tableName: auth_user
+            - columnExists:
+                schemaName: config
+                tableName: email_log
+                columnName: auth_user_id
+            - not:
+                - foreignKeyConstraintExists:
+                    schemaName: config
+                    foreignKeyName: fk_config_email_log_auth_user
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: email_log
+            baseColumnNames: auth_user_id
+            constraintName: fk_config_email_log_auth_user
+            referencedTableSchemaName: django
+            referencedTableName: auth_user
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: email_log
+            constraintName: fk_config_email_log_auth_user

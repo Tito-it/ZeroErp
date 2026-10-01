@@ -17,9 +17,10 @@
 //    fra `core/components` e `anagrafiche/` — non una strada nuova.
 import { ref } from 'vue'
 import i18n from './i18n'
-import router from '../router'
+import { routerApp } from './routerApp'
 import { registraDrawerChiudibile } from './composables/useDrawerChiusuraGlobale'
 import { bersagliRisolti } from './bersagli'
+import { MANAGE_ICONS } from './constants'
 
 // ── L'ospite globale ─────────────────────────────────────────────────────────
 // Stessa tripletta di `useDocumentoDrawer` (visible, chiave registry, id): qui
@@ -62,7 +63,7 @@ function vaiAl(risolto) {
     //  · `param`    → rotta con `:id`, per le entita' che hanno una pagina
     //    propria invece di un pannello (l'editor di una definizione workflow).
     const { name, queryKey, param } = risolto.rotta
-    router.push(
+    routerApp().push(
       param
         ? { name, params: { [param]: risolto.id } }
         : { name, query: { [queryKey]: risolto.id } },
@@ -101,7 +102,7 @@ export function azioniDaBersagli(bersagli, authStore) {
     //    collegamento: due voci nello stesso kebab devono distinguersi prima di
     //    essere lette. ⚠️ Il ripiego resta perche' un pulsante senza icona si
     //    disallinea dagli altri — non perche' una destinazione possa non averla.
-    icon: risolto.icona || 'pi pi-external-link',
+    icon: risolto.icona || MANAGE_ICONS.VAI_A,
     esegui: () => vaiAl(risolto),
   }))
 }

@@ -31,13 +31,14 @@
 //    un documento»; ma le righe contabili hanno endpoint propri, una macchina
 //    a stati propria e una coda propria: sono un'entita' con vita propria,
 //    cioe' la PRIMA domanda del criterio in tre domande (piano PrimeVue 5
-//    §Gruppo B), come i titoli IVA il 02/09. 🔵 Debito dichiarato che RESTA:
-//    la macchina a stati del master-detail (form sotto la lista) e' scritta
-//    qui invece di passare da `RigheMasterDetailTable` (28/08).
-import { computed, ref, watch } from 'vue'
+//    §Gruppo B), come i titoli IVA il 02/09. ⭐ La macchina del master-detail
+//    (form sotto la lista) e' il BB `useFormInline` dal 2026-09-28:
+//    il debito dichiarato il 28/08 e' chiuso (brief-db-liste-righe-documento L1).
+import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
+import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 
@@ -57,9 +58,10 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { READONLY_KEY, useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useFormInline } from '../../core/composables/useFormInline'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { statoDistintaSeverity, statoRigaContabileSeverity } from '../../core/utils/severity'
@@ -79,6 +81,7 @@ import ValidaDistintaDialog from './ValidaDistintaDialog.vue'
 const props = defineProps({
   visible: { type: Boolean, default: false },
   distintaId: { type: [Number, null], default: null },
+  readonly: { type: Boolean, default: false },
 })
 // ⭐ `apri-distinta` e non un secondo drawer annidato: la correzione produce un
 //    DOCUMENTO NUOVO, e lo si apre al posto di questo — chi corregge deve
@@ -91,7 +94,19 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const { execute } = useApiHandler()
 const { confirmAction } = useConfirmAction()
-const isReadonly = useInjectReadonly()
+// ⭐ IL READONLY LO CALCOLA QUESTO DRAWER e lo propaga (`provide(READONLY_KEY)`,
+//    frontend-standards §catena readonly): permessi (dal provider della vista) +
+//    contesto (`props.readonly`) + stato. Lo stato che chiude il documento e'
+//    quello le cui righe non si lavorano piu' (`stato_righe_lavorabili = false`,
+//    la bandiera del catalogo: oggi l'ANNULLATA, D-3 del brief
+//    righe-distinta-annullata) — non `stato_is_final`, perche' sotto la CHIUSA
+//    sospese e scartate si lavorano ancora. Cosi' il badge «Modalita'
+//    consultazione» del titolo si accende come negli altri drawer.
+// ⚠️ Il readonly da PERMESSI resta a parte (`readonlyPermessi`): «non puoi» si
+//    nasconde, «non adesso» si spegne col motivo — le azioni di riga dell'annullata
+//    devono restare visibili, spente, col loro tooltip.
+const parentReadonly = useInjectReadonly()
+const readonlyPermessi = computed(() => parentReadonly.value || props.readonly)
 // ⚠️ Guard anti-race: aprire due distinte in rapida successione farebbe
 //    atterrare la risposta piu' lenta DOPO quella piu' recente, e a video
 //    resterebbe il documento sbagliato — senza nessun errore.
@@ -99,9 +114,17 @@ const { tag, isCurrent, invalidate } = useFetchVersion()
 
 const dettaglio = ref(null)
 const loading = ref(false)
-// `null` = elenco · `'create'` · `'edit'` (pattern master-detail inline).
-const formMode = ref(null)
-const rigaInModifica = ref(null)
+// ⭐ Il form di riga sotto la lista: la macchina e' il BB (regola del 2).
+//    Il click apre la MODIFICA solo se il contenuto si lavora: su una distinta
+//    validata o chiusa aprirebbe un form che il database rifiuta.
+//    ⚠️ `modificabile` e' dichiarata piu' sotto: il getter e' letto al click,
+//    non adesso.
+const {
+  formAperto, rigaInModifica, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({
+  padre: () => (props.visible ? props.distintaId : null),
+  puoModificare: () => modificabile.value,
+})
 const abbinaVisible = ref(false)
 const rigaDaAbbinare = ref(null)
 // Il MODO del dialogo di abbinamento: «abbina» o «abbina e registra» (la
@@ -118,6 +141,11 @@ const correggiVisible = ref(false)
 const righeDaRateVisible = ref(false)
 
 const distinta = computed(() => dettaglio.value?.distinta || null)
+const isWorkflowLocked = computed(
+  () => distinta.value != null && distinta.value.stato_righe_lavorabili === false,
+)
+const isReadonly = computed(() => readonlyPermessi.value || isWorkflowLocked.value)
+provide(READONLY_KEY, isReadonly)
 const statiDistinta = computed(() => dettaglio.value?.stati_distinta || [])
 // ⭐ Il catalogo degli stati di RIGA viaggia nello stesso round-trip, e serve
 //    davvero: porta `is_final`, che il singolo record di riga NON espone — la
@@ -297,24 +325,19 @@ const azioniRighe = computed(() => [
     key: 'righe-da-rate',
     severity: 'primary',
     label: t('pagamenti.rate.righe_da_rate'),
-    icon: 'pi pi-list-check',
+    icon: MANAGE_ICONS.RIGHE_DA_RATE,
     hideWhenReadonly: true,
-    visible: modificabile.value && formMode.value === null,
+    visible: modificabile.value && !formAperto.value,
     command: () => { righeDaRateVisible.value = true },
   },
-  {
-    key: 'nuova-riga',
-    kind: 'primary',
+  azioneNuovaRiga({
     label: t('pagamenti.righe.nuova'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    visible: modificabile.value && formMode.value === null,
-    command: () => { rigaInModifica.value = null; formMode.value = 'create' },
-  },
+    visible: () => modificabile.value,
+  }),
 ])
 
 const {
-  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
   exportDialogVisible, exportLoading, onExportConfirm, reloadAll,
 } = useDrawerTabLista(storeRighe, {
@@ -355,14 +378,15 @@ const interruttoreScartate = computed(
 const { buildRowActions } = useAzioniRigaContabile({
   statiRiga: () => statiRiga.value,
   transizioniRiga: () => dettaglio.value?.transizioni?.riga || {},
-  // I fatti della testata, dal dettaglio: finale (`stato_is_final`) e
-  // registrata (`data_conferma`, scritta dal posting). ⚠️ E' la stessa
+  // I fatti della testata, dal dettaglio: se le righe si lavorano ancora
+  // (`stato_righe_lavorabili`, bandiera del catalogo) e registrata
+  // (`data_conferma`, scritta dal posting). ⚠️ «registrata» e' la stessa
   // lettura di `correggibile`: registrata = finale con la conferma.
   testataDi: () => ({
-    finale: distinta.value?.stato_is_final === true,
+    righeLavorabili: distinta.value?.stato_righe_lavorabili,
     registrata: distinta.value?.data_conferma != null,
   }),
-  readonly: () => isReadonly.value,
+  readonly: () => readonlyPermessi.value,
   onAbbina: (riga, modo) => {
     rigaDaAbbinare.value = riga
     modoAbbina.value = modo
@@ -394,8 +418,7 @@ async function loadDetail() {
 //    su una riga (stato, abbinamento, eliminazione) cambia sia la pagina sia i
 //    totali della testata. Ricaricarne una sola lascerebbe l'altra ferma.
 function ricarica() {
-  formMode.value = null
-  rigaInModifica.value = null
+  chiudiForm()
   reloadAll()
   emit('cambiata')
 }
@@ -416,26 +439,14 @@ function onCambiaStato(codice, descrizione, terminale) {
   })
 }
 
-// ⚠️ Il click sulla riga apre la MODIFICA solo se il contenuto si lavora: su
-//    una distinta validata o chiusa aprirebbe un form che il database rifiuta.
-// ⭐ La firma e' quella del BB: arriva la RIGA, non l'evento PrimeVue.
-function onRigaClick(riga) {
-  if (!modificabile.value) return
-  rigaInModifica.value = riga
-  formMode.value = 'edit'
-}
-
 // ⚠️ Il CARICAMENTO non sta qui: lo fa il watch dello scaffolding della lista
 //    (`useDrawerTabLista`, `fetchExtra`), che ricarica testata e righe insieme
-//    al cambio di distinta. Qui restano il reset del form all'apertura e la
-//    pulizia alla chiusura — due cose che la lista non conosce.
+//    al cambio di distinta; il form lo chiude il BB del master-detail. Qui
+//    resta la pulizia alla chiusura.
 watch(
   () => [props.visible, props.distintaId],
   ([vis]) => {
-    if (vis && props.distintaId) {
-      formMode.value = null
-      rigaInModifica.value = null
-    } else if (!vis) {
+    if (!vis) {
       // ⚠️ Si azzera alla CHIUSURA: senza, riaprendo su un'altra distinta si
       //    vedrebbe per un istante quella di prima — e su documenti di denaro
       //    un lampo del documento sbagliato non e' un dettaglio estetico.
@@ -467,7 +478,7 @@ watch(
            per mezzo secondo si legge come «questa distinta non ha niente», che
            e' un'affermazione — e per giunta falsa. -->
       <div v-if="loading" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
+        <i :class="STATUS_ICONS.CARICAMENTO" />
       </div>
 
       <template v-if="contentReady && distinta">
@@ -598,14 +609,30 @@ watch(
              come un'interfaccia rotta invece che come uno stato. E lo stesso
              vale per il foglio VALIDATO (D18): niente righe nuove ne' fatti,
              ma abbinare e sospendere si puo' — e va detto, o il pulsante
-             «Nuova riga» che manca sembra un difetto. -->
+             «Nuova riga» che manca sembra un difetto.
+             ⭐ Due finali, due frasi (D-1, 30/09): sotto l'ANNULLATA le righe
+             si leggono soltanto (`stato_righe_lavorabili = false`, la bandiera
+             del catalogo); sotto la CHIUSA non entra niente di nuovo, ma
+             sospese e scartate si lavorano ancora. Una frase sola diceva
+             «non si modificano piu'» anche dove la tardiva e' aperta.
+             ⚠️ La seconda frase NOMINA lo stato dal catalogo e non scrive
+             «chiusa»: la condizione e' «finale con righe lavorabili», e uno
+             stato nuovo con la stessa forma non deve farla mentire. -->
         <Message
-          v-if="distinta.stato_is_final"
+          v-if="distinta.stato_righe_lavorabili === false"
           severity="info"
           :closable="false"
           size="small"
         >
-          {{ t('pagamenti.distinte.foglio_chiuso') }}
+          {{ t('pagamenti.distinte.foglio_annullato') }}
+        </Message>
+        <Message
+          v-else-if="distinta.stato_is_final"
+          severity="info"
+          :closable="false"
+          size="small"
+        >
+          {{ t('pagamenti.distinte.foglio_chiuso', { stato: distinta.stato_descrizione || distinta.stato_codice }) }}
         </Message>
         <Message
           v-else-if="!distinta.contenuto_modificabile && !isReadonly"
@@ -630,19 +657,6 @@ watch(
           {{ t('pagamenti.distinte.righe_non_lette') }}
         </Message>
 
-        <!-- ⭐ «Mostra scartate (N)» (FE-3): il BB `FiltroToggle` col conteggio
-             del backend, come «Mostra annullati» sui lotti. Solo quando ha
-             qualcosa da dire. -->
-        <div v-if="interruttoreScartate" class="app-page-filters">
-          <FiltroToggle
-            v-model="mostraScartate"
-            :label="t('pagamenti.distinte.mostra_scartate')"
-            :hint="t('pagamenti.distinte.mostra_scartate_hint')"
-            :count="storeRighe.scartateCount"
-            @change="onMostraScartateChange"
-          />
-        </div>
-
         <!-- ⭐ LISTA STANDARD dal 2026-09-18 (decisione di Tid), col pacchetto
              intero: pagine, ricarica, «Personalizza colonne», export CSV/Excel.
              Le colonne vengono dal catalogo (`ui.lista_colonna`, lista 69):
@@ -653,6 +667,7 @@ watch(
         <DrawerTabLista
           ref="listaRef"
           codice="pagamenti.distinta_righe"
+          :store="storeRighe"
           :rows="storeRighe.items"
           :total="storeRighe.totalRecords"
           :loading="storeRighe.loading"
@@ -665,9 +680,37 @@ watch(
           :perimetro-bloccato="perimetroBloccato"
           @page="onPage"
           @sort="onSort"
-          @row-click="onRigaClick"
+          @row-click="apriRiga"
           @config-loaded="onConfigLoaded"
         >
+          <!-- ⭐ «Mostra scartate (N)» (FE-3): il BB `FiltroToggle` col conteggio
+               del backend, come «Mostra annullati» sui lotti. Solo quando ha
+               qualcosa da dire — e il `v-if` sta sul `<template>`, non sul
+               widget: condizionato dentro, lo slot esisterebbe comunque e in
+               modalita' compatta comparirebbe l'imbuto su un drawer vuoto.
+               ⭐ Dal 2026-09-23 sta nei FILTRI della lista, non in una barra
+               sua sopra di essa: e' un filtro di quelle righe, quindi sotto i
+               1024px scende nel drawer dal basso e conta nel segno. -->
+          <!-- La ricerca: colonne dal catalogo (`ricerca_full`: senza colonne
+               accese la casella non si rende), sotto 3 caratteri il termine
+               non filtra. L'export porta la stessa `search` (`paramsFiltro`). -->
+          <template #filtri-sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
+          <template v-if="interruttoreScartate" #filtri>
+            <FiltroToggle
+              v-model="mostraScartate"
+              :label="t('pagamenti.distinte.mostra_scartate')"
+              :hint="t('pagamenti.distinte.mostra_scartate_hint')"
+              :count="storeRighe.scartateCount"
+              @change="onMostraScartateChange"
+            />
+          </template>
+
           <!-- La frase del dominio al posto dell'empty-state generico.
                ⛔ MA SOLO SE LA LETTURA E' RIUSCITA: con `erroreCaricamento` la
                tabella e' vuota per un'altra ragione, e «non ha ancora righe»
@@ -675,7 +718,7 @@ watch(
                una contraddizione. -->
           <template #empty>
             <div v-if="!storeRighe.erroreCaricamento" class="app-empty-state">
-              <i class="pi pi-list" />
+              <i :class="STATUS_ICONS.VUOTO" />
               <p>{{ t('pagamenti.distinte.nessuna_riga') }}</p>
             </div>
           </template>
@@ -710,18 +753,18 @@ watch(
         <!-- Master-detail inline: il form vive SOTTO la lista, mai in un drawer
              annidato (pattern di progetto). -->
         <DistintaRigaForm
-          v-if="formMode"
+          v-if="formAperto"
           :contabile-id="distintaId"
           :riga="rigaInModifica"
           @salvata="ricarica"
-          @annulla="formMode = null; rigaInModifica = null"
+          @annulla="chiudiForm"
         />
       </template>
     </div>
 
     <!-- ⚠️ In form mode il footer sparisce: il form ha gia' Annulla/Salva, e un
          «Chiudi» in fondo spingerebbe il form sotto il fold. -->
-    <FormFooter v-if="!formMode" close-only @cancel="onClose" />
+    <FormFooter v-if="!formAperto" close-only @cancel="onClose" />
 
     <!-- ⭐ Un dialogo, due modi: «abbina» sotto una distinta aperta, «abbina e
          registra» (la tardiva) sotto una registrata. Il modo lo decide il
@@ -772,7 +815,7 @@ watch(
       v-model:visible="righeDaRateVisible"
       modalita="multipla"
       :contabile-id="distintaId"
-      :readonly="isReadonly"
+      :readonly="readonlyPermessi"
       @righe-create="ricarica"
     />
   </Drawer>

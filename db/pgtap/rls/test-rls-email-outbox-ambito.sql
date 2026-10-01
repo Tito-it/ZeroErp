@@ -23,6 +23,13 @@
 --     letterale anche in `db/pgtap/script/test-fn-scope-identita-processo.sql`,
 --     dove una rinomina fa fallire il test 2.
 --
+-- ⚠️ Rev 2026-09-25 — IL BLOCCO QUI SOTTO E' SUPERATO, e resta come storia.
+--   La RLS sull'outbox e' ACCESA (20260905-37), e dal 20260925-67 la policy
+--   distingue REPARTO e OPERATORE (script.fn_scope_email_ambito). Il collaudo
+--   FUNZIONALE che il blocco chiedeva esiste: e'
+--   db/pgtap/rls/test-rls-email-ambito-reparto-operatore.sql (A non vede, non
+--   modifica e non «regala» la bozza di B). Questo file resta sulla FORMA.
+--
 -- ────────────────────────────────────────────────────────────────
 -- ⛔ CHE COSA QUESTO FILE NON PROVA, E VA DETTO.
 --   La `ROW LEVEL SECURITY` su `config.email_outbox` e' SPENTA di proposito

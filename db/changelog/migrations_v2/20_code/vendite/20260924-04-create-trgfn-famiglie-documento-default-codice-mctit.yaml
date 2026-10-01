@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FAMIGLIA DI DOCUMENTO PRENDE IL SUO `codice` — passo 2 di 4: il default
+#   vendite.trgfn_famiglie_documento_default_codice
+#   trg_famiglie_documento_a10_default_codice_ins
+#   Brief: brief-db-ricerca-full-colonne-da-accendere.md §3.5
+#
+# ── COSA ─────────────────────────────────────────────────────────
+#   Alla nascita di una famiglia, se `codice` non arriva (NULL o stringa
+#   vuota), vale il codice_interno.
+#
+# ── ⭐ PERCHE' UN TRIGGER, E NON UNA COLONNA IN PIU' NELLA MADRE ──
+#   Le famiglie nascono da tre strade: il mirror CSV (che il codice lo
+#   porta), la madre vendite.fn_crea_famiglia_documento e il CRUD del
+#   backend, che il codice non lo conoscono. Col default qui, nessuna delle
+#   due va cambiata perche' il vincolo NOT NULL (-06) regga: la firma della
+#   madre resta quella che il backend chiama. Quando il drawer vorra' far
+#   scegliere il codice all'operatore, lo passera' e il trigger lo lascera'
+#   com'e'.
+#   ⭐ Il default e' il codice_interno perche' e' ESATTAMENTE il valore di
+#   oggi: la lista mostrava quello. Alla nascita i due codici coincidono,
+#   poi il `codice` e' libero.
+#
+# ── ⚠️ SOLO INSERT ───────────────────────────────────────────────
+#   In UPDATE un `codice` portato a NULL o a '' e' un errore dell'operatore,
+#   e lo dicono NOT NULL e CHECK (-06): riempirlo in silenzio col
+#   codice_interno nasconderebbe il valore sbagliato invece di rifiutarlo.
+#
+# ── ⚠️ LA STRINGA VUOTA VALE NULL ────────────────────────────────
+#   Un form che manda il campo vuoto non «sceglie» un codice vuoto: non lo
+#   sceglie affatto. Stessa lettura dei `*_gen_codice` di anagrafiche.
+#
+# ── ORDINE ───────────────────────────────────────────────────────
+#   `_a10_default_…` precede `_a10_guard_…` in ordine alfabetico: il valore
+#   e' gia' al suo posto quando i guard guardano la riga. Nessun guard
+#   legge `codice`, quindi l'ordine oggi non decide niente; e' comunque il
+#   verso giusto (prima si compone la riga, poi la si giudica).
+#
+# Verifica: db/pgtap/vendite/test-famiglie-documento-codice-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260924-04-create-trgfn-famiglie-documento-default-codice-mctit.yaml
+
+  - changeSet:
+      id: 20260924-04-create-trgfn-famiglie-documento-default-codice
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Passo 2 di 4 del codice mutabile di vendite.famiglie_documento: alla nascita, un
+        codice assente o vuoto vale il codice_interno. Solo INSERT: in UPDATE un codice vuoto
+        e'' un errore e lo rifiutano i vincoli (-06). La madre fn_crea_famiglia_documento e il
+        CRUD del backend restano come sono. Brief: brief-db-ricerca-full-colonne-da-accendere.md §3.5.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: famiglie_documento
+            columnName: codice
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_default_codice()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dare un `codice` alla famiglia che nasce senza: vale il
+                  --   codice_interno, cioe' il valore che la lista mostrava
+                  --   prima che la colonna esistesse.
+                  --
+                  -- ⚠️ La stringa vuota vale NULL: un form che manda il campo
+                  --   vuoto non sceglie un codice, non lo sceglie affatto.
+                  -- ⚠️ Solo INSERT (vedi il trigger): in UPDATE un codice
+                  --   vuoto lo rifiutano NOT NULL e CHECK, non lo si ripara.
+                  -- =========================================================
+                  IF NEW.codice IS NULL OR btrim(NEW.codice) = '' THEN
+                      NEW.codice := NEW.codice_interno;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_default_codice()
+              IS 'Trigger BEFORE INSERT su vendite.famiglie_documento: se la famiglia nasce senza `codice` (NULL o stringa vuota), vale il codice_interno — il valore che la lista mostrava prima che la colonna esistesse. ⭐ Esiste perche'' le famiglie nascono anche dalla madre vendite.fn_crea_famiglia_documento e dal CRUD del backend, che il codice non lo passano: col default qui il NOT NULL regge senza cambiare la firma della madre. ⚠️ Solo INSERT: in UPDATE un codice vuoto e'' un errore dell''operatore, e lo rifiutano NOT NULL e chk_famiglie_documento_codice_nonvuoto invece di ripararlo in silenzio. Brief: brief-db-ricerca-full-colonne-da-accendere.md §3.5.';
+
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_default_codice_ins
+                  ON vendite.famiglie_documento;
+
+              CREATE TRIGGER trg_famiglie_documento_a10_default_codice_ins
+                  BEFORE INSERT ON vendite.famiglie_documento
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_famiglie_documento_default_codice();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_default_codice_ins
+                  ON vendite.famiglie_documento;
+              DROP FUNCTION IF EXISTS vendite.trgfn_famiglie_documento_default_codice();

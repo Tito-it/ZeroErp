@@ -22,6 +22,7 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import (
     qp_int_optional,
@@ -152,7 +153,7 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Dimensione pagina (default 50, max 200).",
+                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
             ),
         ],
         responses={
@@ -190,7 +191,7 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
         page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
+        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
 
         # Scope emittente interamente DB-side (RLS invoker): la view non
         # passa alcun auth_user_id.

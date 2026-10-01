@@ -1,0 +1,190 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA REGOLA DELL'ESIGIBILITA' IVA, IN UNA SEDE SOLA
+#   script.fn_esigibilita_iva(p_iva_per_cassa, p_cliente_split_payment,
+#                             p_cliente_partita_iva, p_iva_id)
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezioni 4.2, 8.3, 8.8 (D-2, D-7, D-10)
+#
+# -- PERCHE' UNA SEDE --------------------------------------------
+#   Fino a oggi la coppia esigibilita/split la calcolavano DUE copie: il
+#   trigger di riga della fattura e il risolutore IVA. Coincidevano perche'
+#   guardavano solo il cliente. Con il regime dell'emittente la decisione
+#   dipende da tre cose (regime, cliente, natura della riga): due copie
+#   divergerebbero, e l'anteprima del form direbbe una cosa e la riga salvata
+#   un'altra. La chiamano: il trigger di riga e il ricalcolo del riepilogo
+#   della fattura (via vendite.fn_esigibilita_iva_fattura), il risolutore,
+#   e i riepiloghi di preventivi, ordini e DDT (via
+#   script.fn_esigibilita_iva_documento).
+#
+# -- SUI VALORI, NON SUGLI id ------------------------------------
+#   Ogni chiamante risolve da se' le PARTI (emittente e cliente arrivano da
+#   strade diverse: snapshot della fattura, emittente_fiscale_id dei
+#   documenti fratelli, soggetto del risolutore). Qui entrano i valori. L'unica
+#   lettura e' quella del codice IVA, perche' «e' in inversione contabile» e'
+#   un fatto del codice e non di chi chiama: per questo e' STABLE.
+#
+# -- L'ORDINE DELLE DOMANDE --------------------------------------
+#   1. cliente non noto (split NULL)           -> NULL / NULL («non lo so», D32)
+#   2. scissione dei pagamenti                 -> S / true (imposta)
+#   3. regime non noto                         -> NULL / false
+#   4. regime non per cassa                    -> I / false
+#   5. per cassa, cliente senza partita IVA    -> I / false (privato, D-2)
+#   6. per cassa, codice IVA non noto          -> NULL / false (natura ignota)
+#   7. per cassa, inversione contabile         -> I / false
+#   8. per cassa, il resto                     -> D / false
+#   ⭐ D-7: e' una DERIVAZIONE PURA. Non c'e' un ramo «lascia quello che
+#   c'era»: chi la usa la riscrive sempre. Una differita scelta a mano, se mai
+#   servira', avra' una colonna sua.
+#   ⭐ D-10: il regime entra come attributo (iva_per_cassa), mai come 'RF17'.
+#   ⭐ 8.3: l'inversione contabile e' il flag config.iva_natura.is_reverse_charge,
+#   non un LIKE 'N6%' sul codice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261001-03-create-fn-esigibilita-iva-mctit.yaml
+
+  - changeSet:
+      id: 20261001-03-create-fn-esigibilita-iva
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_esigibilita_iva: la regola unica di esigibilita' IVA e scissione dei
+        pagamenti di una riga, sui valori (regime per cassa, scissione e partita IVA del
+        cliente) e sul codice IVA (inversione contabile). Derivazione pura (D-7). Brief:
+        brief-db-esigibilita-iva-per-cassa-emittente, sezioni 4.2 e 8.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: regimi_fiscali
+            - columnExists:
+                schemaName: config
+                tableName: iva_natura
+                columnName: is_reverse_charge
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_esigibilita_iva(
+                  p_iva_per_cassa          config.regimi_fiscali.iva_per_cassa%TYPE,
+                  p_cliente_split_payment  anagrafiche.soggetti.split_payment%TYPE,
+                  p_cliente_partita_iva    anagrafiche.soggetti.partita_iva%TYPE,
+                  p_iva_id                 config.iva.id%TYPE
+              )
+              RETURNS TABLE(
+                  esigibilita    vendite.fatture_righe.esigibilita%TYPE,
+                  split_payment  vendite.fatture_righe.split_payment%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la coppia (esigibilita, split_payment) di una riga IVA.
+              --   Regola completa e ordine delle domande nell'intestazione del
+              --   changeSet 20261001-03 e nel COMMENT.
+              DECLARE
+                  v_reverse  config.iva_natura.is_reverse_charge%TYPE;
+              BEGIN
+                  -- 1. Cliente non noto: la scissione non e' stata determinata, e
+                  --    «immediata, non scissa» sarebbe un'affermazione (D32).
+                  IF p_cliente_split_payment IS NULL THEN
+                      esigibilita := NULL; split_payment := NULL;
+                      RETURN NEXT; RETURN;
+                  END IF;
+
+                  split_payment := (p_cliente_split_payment = 'S');
+
+                  -- 2. La scissione dei pagamenti prevale su tutto: 'S' e' imposta.
+                  IF split_payment THEN
+                      esigibilita := 'S';
+                      RETURN NEXT; RETURN;
+                  END IF;
+
+                  -- 3-4. Il regime dell'emittente.
+                  IF p_iva_per_cassa IS NULL THEN
+                      esigibilita := NULL;
+                      RETURN NEXT; RETURN;
+                  END IF;
+
+                  IF NOT p_iva_per_cassa THEN
+                      esigibilita := 'I';
+                      RETURN NEXT; RETURN;
+                  END IF;
+
+                  -- 5. Per cassa, ma verso chi non agisce come soggetto IVA (D-2:
+                  --    la partita IVA del cliente). ⚠️ btrim: una stringa vuota
+                  --    non e' una partita IVA.
+                  IF NULLIF(btrim(p_cliente_partita_iva), '') IS NULL THEN
+                      esigibilita := 'I';
+                      RETURN NEXT; RETURN;
+                  END IF;
+
+                  -- 6. Senza codice IVA la natura non e' nota: non si sa se la
+                  --    riga e' in inversione contabile (in bozza e' legittimo, D3).
+                  IF p_iva_id IS NULL THEN
+                      esigibilita := NULL;
+                      RETURN NEXT; RETURN;
+                  END IF;
+
+                  -- ⚠️ COALESCE dentro la SELECT: un codice con aliquota > 0 non
+                  --    ha natura (LEFT JOIN a vuoto) e NON e' in inversione
+                  --    contabile. Il NOT FOUND resta per il codice che non esiste.
+                  SELECT COALESCE(n.is_reverse_charge, false)
+                    INTO v_reverse
+                    FROM config.iva i
+                    LEFT JOIN config.iva_natura n ON n.id = i.natura_iva_id
+                   WHERE i.id = p_iva_id;
+
+                  IF NOT FOUND THEN
+                      esigibilita := NULL;
+                      RETURN NEXT; RETURN;
+                  END IF;
+
+                  -- 7-8. L'inversione contabile resta immediata; il resto e'
+                  --      differito all'incasso.
+                  esigibilita := CASE WHEN v_reverse THEN 'I' ELSE 'D' END;
+                  RETURN NEXT;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_esigibilita_iva(
+                  config.regimi_fiscali.iva_per_cassa%TYPE,
+                  anagrafiche.soggetti.split_payment%TYPE,
+                  anagrafiche.soggetti.partita_iva%TYPE,
+                  config.iva.id%TYPE) IS
+                  'La regola UNICA di esigibilita'' IVA (I immediata, D differita, S scissione) e '
+                  'del flag split_payment di una riga, sui VALORI: il regime dell''emittente come '
+                  'attributo (config.regimi_fiscali.iva_per_cassa, D-10), la scissione e la partita '
+                  'IVA del cliente (D-2), il codice IVA della riga (inversione contabile da '
+                  'config.iva_natura.is_reverse_charge). Ordine: cliente non noto -> NULL/NULL; '
+                  'scissione -> S/true; regime non noto -> NULL; regime ordinario -> I; per cassa '
+                  'verso un cliente senza partita IVA -> I; per cassa senza codice IVA -> NULL '
+                  '(natura ignota); per cassa in inversione contabile -> I; per cassa -> D. ⭐ '
+                  'Derivazione PURA (D-7): chi la usa riscrive sempre il valore, non esiste un '
+                  'ramo «lascia quello che c''era». Le parti le risolvono i chiamanti: '
+                  'vendite.fn_esigibilita_iva_fattura (trigger di riga e ricalcolo del riepilogo), '
+                  'vendite.fn_resolve_iva_riga_it, script.fn_esigibilita_iva_documento (riepiloghi '
+                  'di preventivi, ordini, DDT). STABLE: legge il solo codice IVA. ⚠️ Esclusi dal '
+                  'modello i regimi speciali e le operazioni non imponibili/esenti, che oggi '
+                  'seguono il ramo «per cassa» (domanda aperta nel brief, sezione 9). Brief: '
+                  'brief-db-esigibilita-iva-per-cassa-emittente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_esigibilita_iva(
+                  config.regimi_fiscali.iva_per_cassa%TYPE,
+                  anagrafiche.soggetti.split_payment%TYPE,
+                  anagrafiche.soggetti.partita_iva%TYPE,
+                  config.iva.id%TYPE);

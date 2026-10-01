@@ -1,0 +1,247 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Conferma dell'ordine: un prezzo non autorizzato non si conferma.
+#
+# vendite.trgfn_ordini_guard_transizione, Regola 5: su DRAFT -> CONFERMATO
+# solleva il primo motivo del building block script.fn_check_prezzi_autorizzati
+# (20260924-20). Prima l'ordine non guardava il prezzo (il suo guard di
+# approvazione, 20260512-19, non esiste piu').
+#
+# ⛔ Solo dalla bozza: il rientro automatico EVASO/PARZIALMENTE_EVASO ->
+# CONFERMATO non conferma niente di nuovo, e bloccarlo fermerebbe un
+# annullamento a valle. Per questo NON sta in fn_check_ordine_confermabile,
+# che vale per ogni ingresso in CONFERMATO.
+#
+# ⚠️ Chiamata NON nuova per il presidio script/test-rubinetto-primo-motivo-v1
+# (la funzione chiamava gia' l'helper).
+#
+# Corpo preso dalla doc auto-gen (identico al vivo su zeroerp_ci, 2026-09-24).
+# Brief: brief-db-preventivi-congelamento-pricing.md (D-1, D-5, D-6)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260924-29-update-trgfn-ordini-guard-transizione-prezzi-mctit.yaml
+
+  - changeSet:
+      id: 20260924-29-update-trgfn-ordini-guard-transizione-prezzi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_ordini_guard_transizione: Regola 5, i prezzi non autorizzati
+        bloccano DRAFT -> CONFERMATO.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: enforcement DB-first del grafo transizioni stato ordine.
+              --   La transizione (OLD.stato -> NEW.stato) e' ammessa solo se
+              --   presente e attiva in config.transizioni_stati_ordini. In piu',
+              --   DRAFT->CONFERMATO richiede almeno una riga ordine ATTIVA,
+              --   ->CONFERMATO passa da script.fn_check_ordine_confermabile e
+              --   ->ANNULLATO da script.fn_check_ordine_annullabile.
+              --   Letto dalla matrice (no grafo hardcodato): SSOT col lato
+              --   lettura fn_available_actions_ordine.
+              --   rev 2026-07-16: Regola 2 filtra attivo IS TRUE.
+              --   rev 2026-08-04: Regola 3, l'annullamento riattivato ha i suoi
+              --   controlli (brief-db-vie-uscita-operatore).
+              --   rev 2026-08-29: Regola 4, l'aliquota sulle righe che portano
+              --   un prezzo (brief-db-be-iva-risolutore-e-regime-cliente, I9).
+              --   rev 2026-09-24: Regola 5, i prezzi non autorizzati su DRAFT ->
+              --   CONFERMATO (brief-db-preventivi-congelamento-pricing, D-5/D-6).
+              DECLARE
+                  v_codice_da config.stati_doc_ordini.codice_interno%TYPE;
+                  v_codice_a  config.stati_doc_ordini.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+                  v_motivi    jsonb;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
+                  IF NEW.stato_doc_ordine_id IS NOT DISTINCT FROM OLD.stato_doc_ordine_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_ordine_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_ordine_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_ordini
+                   WHERE id IN (OLD.stato_doc_ordine_id, NEW.stato_doc_ordine_id);
+
+                  -- Regola 1: la transizione deve esistere ed essere attiva in matrice.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.transizioni_stati_ordini t
+                       WHERE t.stato_da_id = OLD.stato_doc_ordine_id
+                         AND t.stato_a_id  = NEW.stato_doc_ordine_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_ORDINE_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object(
+                              'ordine_id', NEW.id,
+                              'numero',    NEW.numero,
+                              'stato_da',  v_codice_da,
+                              'stato_a',   v_codice_a
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          coalesce(v_codice_da, 'NULL'),
+                          coalesce(v_codice_a,  'NULL')
+                      );
+                  END IF;
+
+                  -- Regola 2: DRAFT->CONFERMATO richiede almeno una riga ATTIVA.
+                  -- Spostata da ordini_service.py (E_ORD_NESSUNA_RIGA inline) per
+                  -- DB-first: vale per ogni chiamante, non solo conferma().
+                  -- Una riga disattivata e' logicamente cancellata: un ordine con
+                  -- sole righe inattive e' vuoto e non va confermato.
+                  -- Nessun vincolo su quantita/prezzo/totale: conta la sola
+                  -- presenza (un ordine a totale zero deve poter avanzare).
+                  IF v_codice_da = 'DRAFT' AND v_codice_a = 'CONFERMATO' THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM vendite.ordini_righe r
+                           WHERE r.ordine_id = NEW.id
+                             AND r.attivo IS TRUE
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_ORDINE_CONFERMA_SENZA_RIGHE',
+                              jsonb_build_object(
+                                  'ordine_id', NEW.id,
+                                  'numero',    NEW.numero
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text,
+                              coalesce(NEW.numero, 'NULL')
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Regola 3 (rev 2026-08-04): l'annullamento non deve poter
+                  -- cancellare un documento che ha gia' prodotto qualcosa a
+                  -- valle. La regola vive nella funzione pura, la STESSA che
+                  -- fn_available_actions_ordine usa per accendere il bottone:
+                  -- qui si solleva soltanto, col codice del PRIMO motivo.
+                  IF v_codice_a = 'ANNULLATO' THEN
+                      v_motivi := script.fn_check_ordine_annullabile(NEW.id);
+
+                      -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
+                      --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
+                      --   `dettaglio` nel contesto e ci mette sempre l'elenco COMPLETO dei motivi.
+                      -- ⚠️ L'IF e' sparito e NON e' fail-open: l'helper tace su un array vuoto,
+                      --   che e' esattamente la risposta «passa». Su un non-array resta rumoroso.
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database', TG_NAME::text,
+                          v_motivi,
+                          NULL,
+                          NEW.tx_id,
+                          jsonb_build_object(
+                              'ordine_id', NEW.id,
+                              'numero',    NEW.numero,
+                              'stato_da',  v_codice_da,
+                              'stato_a',   v_codice_a));
+                  END IF;
+
+                  -- Regola 4 (rev 2026-08-29): una riga che porta un PREZZO porta
+                  -- anche l'ALIQUOTA. Stessa forma della Regola 3 — la regola sta
+                  -- nella funzione pura, qui si solleva soltanto.
+                  --
+                  -- ⚠️ Il perimetro e' QUALUNQUE transizione verso CONFERMATO, non
+                  --   il solo DRAFT->CONFERMATO della Regola 2: la matrice ammette
+                  --   il rientro da PARZIALMENTE_EVASO e da EVASO, e un ordine che
+                  --   torna CONFERMATO con una riga senza aliquota produce lo
+                  --   stesso riepilogo storto del percorso diretto. La vista del
+                  --   riepilogo non sa da dove si arriva, e il vincolo deve avere
+                  --   lo stesso perimetro del consumatore che protegge.
+                  --
+                  -- ⚠️ Nel VARIADIC va il NUMERO di riga, non l'id: quel valore
+                  --   riempie i %s, cioe' compone la frase che una persona legge,
+                  --   e un id tecnico non si cerca a mano sul documento. L'id
+                  --   viaggia nel context, che e' il canale di chi diagnostica.
+                  -- ⛔ E nessuna chiave `campo`: il codice e' CONFLITTO_STATO, non
+                  --   DATO_ERRATO — la richiesta e' «porta l'ordine a CONFERMATO»,
+                  --   e non c'e' un campo di QUELLA richiesta da accendere.
+                  IF v_codice_a = 'CONFERMATO' THEN
+                      v_motivi := script.fn_check_ordine_confermabile(NEW.id);
+
+                      -- ⚠️ `riga_id` e `riga_nr` NON si estraggono piu' a mano: stanno nel
+                      --   `dettaglio` del motivo, che l'helper fonde nel contesto. Erano due
+                      --   righe che ricopiavano una struttura decisa dalla check.
+                      -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
+                      --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
+                      --   `dettaglio` nel contesto e ci mette sempre l'elenco COMPLETO dei motivi.
+                      -- ⚠️ L'IF e' sparito e NON e' fail-open: l'helper tace su un array vuoto,
+                      --   che e' esattamente la risposta «passa». Su un non-array resta rumoroso.
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database', TG_NAME::text,
+                          v_motivi,
+                          NULL,
+                          NEW.tx_id,
+                          jsonb_build_object(
+                              'ordine_id', NEW.id,
+                              'numero',    NEW.numero,
+                              'stato_da',  v_codice_da,
+                              'stato_a',   v_codice_a));
+                  END IF;
+
+                  -- Regola 5 (rev 2026-09-24): un ordine con un prezzo che nessuno ha
+                  -- autorizzato — in attesa o rifiutato, sui componenti BoM attivi (la
+                  -- riga d'ordine lo stato non lo porta) — non si conferma (D-1, D-6).
+                  --
+                  -- ⭐ Il predicato e' il building block script.fn_check_prezzi_autorizzati,
+                  --   lo STESSO che fn_available_actions_ordine usa per spegnere
+                  --   «Conferma»: qui si solleva soltanto.
+                  -- ⛔ Solo DRAFT -> CONFERMATO, e NON dentro fn_check_ordine_confermabile
+                  --   come l'aliquota della Regola 4. La matrice fa RIENTRARE l'ordine in
+                  --   CONFERMATO da EVASO e PARZIALMENTE_EVASO, in automatico, quando
+                  --   l'evasione torna indietro (un DDT annullato). Quel rientro non
+                  --   conferma niente di nuovo: un prezzo rimasto non autorizzato sul
+                  --   documento lo bloccherebbe, e con lui l'annullamento a valle — una via
+                  --   d'uscita (D-2). L'aliquota invece protegge il riepilogo IVA, che non
+                  --   sa da dove si arriva: per questo le due regole hanno perimetri
+                  --   diversi, ed e' voluto.
+                  IF v_codice_da = 'DRAFT' AND v_codice_a = 'CONFERMATO' THEN
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database', TG_NAME::text,
+                          script.fn_check_prezzi_autorizzati('vendite.ordini'::regclass, NEW.id),
+                          NULL,
+                          NEW.tx_id,
+                          jsonb_build_object(
+                              'ordine_id', NEW.id,
+                              'numero',    NEW.numero,
+                              'stato_da',  v_codice_da,
+                              'stato_a',   v_codice_a));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_guard_transizione()
+              IS 'Trigger function: enforcement del grafo transizioni stato ordine (matrice config.transizioni_stati_ordini), riga attiva obbligatoria su DRAFT->CONFERMATO, controlli sull''annullamento delegati a script.fn_check_ordine_annullabile (2026-08-04) e, dal 2026-08-29, controlli sulla CONFERMA delegati a script.fn_check_ordine_confermabile — le stesse funzioni lette da fn_available_actions_ordine, cosi'' bottone e guard non divergono. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): Regola 4, una riga attiva che porta un PREZZO deve portare anche l''ALIQUOTA, altrimenti l''ordine non si conferma. Chiude su ordini il difetto silenzioso gia'' sanato sul DDT il 2026-08-28: vw_ordini_righe_iva_base filtra solo attivo e quantita > 0, quindi la riga entra nel riepilogo con imponibile pieno e imposta zero. ⚠️ Il perimetro della Regola 4 e'' QUALUNQUE transizione verso CONFERMATO e non il solo DRAFT->CONFERMATO della Regola 2: la matrice ammette il rientro da PARZIALMENTE_EVASO e da EVASO, e la vista del riepilogo non sa da dove si arriva. ⛔ Non e'' un NOT NULL di colonna e non poteva esserlo: ordini_righe.iva_id e'' nullable e la bozza deve restare libera — il vincolo e'' alla conferma, non al salvataggio. rev 2026-09-24: Regola 5 — su DRAFT -> CONFERMATO solleva il primo motivo di script.fn_check_prezzi_autorizzati (componenti BoM attivi con prezzo PENDING o REJECTED, E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO); prima l''''ordine non guardava il prezzo. ⛔ Solo dalla bozza, e non dentro fn_check_ordine_confermabile: la matrice fa rientrare l''''ordine in CONFERMATO da EVASO/PARZIALMENTE_EVASO in automatico, e bloccare quel rientro fermerebbe l''''annullamento a valle. La capability fn_available_actions_ordine legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-5, D-6).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Manovra di emergenza: il corpo precedente e' nella doc auto-gen alla
+              --   revisione 2026-08-29 e si riapplica a mano.
+              SELECT 1;

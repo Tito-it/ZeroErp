@@ -23,6 +23,36 @@ def env(name, default=None, required=False):
     return v
 
 
+# Scopo: Il valore di una variabile d'ambiente che deve essere un intero >= 0:
+#        altrimenti il backend non parte, col nome e il valore ricevuto.
+#        Estratta il 2026-09-28 (regola del 2, ok Tid): la stessa regola era
+#        scritta in linea per DJANGO_TRUSTED_PROXY_COUNT e in
+#        `parse_hsts_seconds`.
+def parse_intero_non_negativo(nome: str, valore: str) -> int:
+    try:
+        numero = int(valore)
+    except (TypeError, ValueError):
+        numero = -1
+    if numero < 0:
+        raise ImproperlyConfigured(f"{nome} deve essere un intero >= 0, ricevuto {valore!r}")
+    return numero
+
+
+# ⛔ Il backend NON parte con gli `assert` spenti (`python -O`, `PYTHONOPTIMIZE`).
+#    Il codice applicativo usa `assert` per restringere i tipi dopo un
+#    `ErrorManager.require` o dopo una funzione SQL che ritorna sempre una riga,
+#    e la regola ruff `S101` e' spenta per questo (vedi `ruff.toml`). Con `-O`
+#    quelle righe sparirebbero SENZA errore: il rifiuto all'avvio rende la
+#    premessa vera per costruzione, non per consuetudine.
+# ⚠️ I controlli che proteggono qualcosa (whitelist SQL, input) NON si scrivono
+#    come `assert` nemmeno cosi': sono `raise` espliciti.
+if not __debug__:
+    raise ImproperlyConfigured(
+        "Il backend non si avvia con gli assert disattivati "
+        "(python -O / PYTHONOPTIMIZE): rimuovere l'ottimizzazione."
+    )
+
+
 # Gate deprecation Django 7.0 (opt-in via env, attivo in CI). Escala a errore
 # SOLO i RemovedInDjango70Warning: un uso deprecato fa fallire il test che lo
 # tocca invece di scoprirli tutti al salto 6.x -> 7.0. Non usiamo PYTHONWARNINGS
@@ -43,9 +73,45 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-#SECRET_KEY = 'django-insecure-g1_6cz@zezij7v4s8@^s@tm)s3fzw29bz%!s6zppub-$&f042='
-SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure")
+# ⛔ Nessun default: la chiave firma JWT e sessioni. Un ripiego costante e' una
+#    chiave PUBBLICA — sta nel repo — e il backend partirebbe lo stesso senza
+#    dirlo. Generarla: python -c "import secrets; print(secrets.token_urlsafe(64))"
+SECRET_KEY = env("DJANGO_SECRET_KEY", required=True)
+
+
+# Scopo: Legge `DJANGO_FIELD_ENCRYPTION_KEYS` (chiavi Fernet separate da
+#        virgola) e rifiuta l'avvio se una non e' una chiave Fernet valida o se
+#        compare due volte. Il messaggio nomina la POSIZIONE, mai la chiave.
+def parse_chiavi_cifratura(valore: str) -> list[str]:
+    from cryptography.fernet import Fernet
+
+    chiavi = [c.strip() for c in valore.split(",") if c.strip()]
+    if not chiavi:
+        raise ImproperlyConfigured("Missing env var: DJANGO_FIELD_ENCRYPTION_KEYS")
+    for posizione, chiave in enumerate(chiavi, start=1):
+        try:
+            Fernet(chiave)
+        except ValueError:
+            raise ImproperlyConfigured(
+                f"DJANGO_FIELD_ENCRYPTION_KEYS: la chiave in posizione {posizione} "
+                "non e' una chiave Fernet (32 byte in base64 url-safe)"
+            ) from None
+    if len(set(chiavi)) != len(chiavi):
+        raise ImproperlyConfigured("DJANGO_FIELD_ENCRYPTION_KEYS: una chiave compare due volte")
+    return chiavi
+
+
+# ⛔ Chiavi di cifratura dei campi salvati nel DB (`crypto_service`: password
+#    SMTP; domani i segreti TOTP). SEPARATE dalla SECRET_KEY: fino al
+#    2026-09-28 la chiave Fernet ne era derivata, e ruotare la SECRET_KEY
+#    avrebbe reso illeggibile ogni dato cifrato — cioe' non la si sarebbe
+#    ruotata mai (brief-be-fe-sicurezza-header-token-mfa §3.5).
+# ⭐ Piu' chiavi, separate da virgola: si cifra con la PRIMA, si decifra con
+#    tutte. Ruotare = mettere una chiave nuova in testa, lanciare
+#    `manage.py ricifra_campi_cifrati`, poi togliere la vecchia.
+#    Nessun default, per la stessa ragione della SECRET_KEY.
+#    Generarla: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+FIELD_ENCRYPTION_KEYS = parse_chiavi_cifratura(env("DJANGO_FIELD_ENCRYPTION_KEYS", ""))
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -56,14 +122,36 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure")
 #    "backend-dev",                       # hostname locale
 #    "localhost", "127.0.0.1",
 #    "backend-dev.tailXXXX.ts.net",       # MagicDNS Tailscale (nome lungo)
-#    "dbdev.tailXXXX.ts.net",             # se un giorno esponi admin anche dal nodo DB
+#    "dbdev.tailXXXX.ts.net",             # se un giorno servi il BE anche dal nodo DB
 #]
 
-DEBUG = env("DJANGO_DEBUG", "1") == "1"
+# ⛔ Default SPENTO: il DEBUG si accende esplicitamente (`DJANGO_DEBUG=1`) sulla
+#    macchina che lo vuole. Col default acceso, un env file dimenticato apre
+#    le pagine d'errore con le impostazioni e Swagger (che segue DEBUG).
+DEBUG = env("DJANGO_DEBUG", "0") == "1"
 ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
 API_EXCEPTION_MIDDLEWARE_ENABLED = env("DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED", "1") == "1"
 API_RETRY_AFTER_SECONDS = int(env("DJANGO_API_RETRY_AFTER_SECONDS", "3"))
 API_EXPOSE_TECHNICAL_DETAILS = env("DJANGO_API_EXPOSE_TECHNICAL_DETAILS", "0") == "1"
+
+# --- Superficie pubblica: SICUREZZA, non preferenze ---
+# Regole complete, motivazioni e verifiche in
+# docs/it/dev/backend/configurazione-django.md, «Sicurezza della superficie
+# pubblica»: Django solo dietro Nginx (loopback + rate limiting), niente admin,
+# Swagger spento fuori da DEBUG. Valgono anche in sviluppo: il presidio si
+# costruisce dove si sviluppa, non al deploy.
+#
+# `/api/docs/` e `/api/schema/` (Swagger/OpenAPI) elencano l'intera superficie
+# API a chi NON ha un token: strumento di sviluppo, non un servizio. Seguono
+# DEBUG salvo scelta esplicita; su una macchina raggiungibile da fuori restano
+# spenti (404, non 403: la rotta non esiste). Il gate e' request-time
+# (`apps.core.api.api_docs_gate`), cosi' il test lo prova con `override_settings`.
+#
+# L'admin Django (`django.contrib.admin`, `/admin/`) NON c'e' per scelta: zero
+# `ModelAdmin` nel progetto, il FE non lo usa, l'autenticazione e' JWT. Era una
+# form di login a sessione aperta a chiunque raggiungesse il proxy, e la root
+# `/` ci redirigeva. Presidio: `apps/core/tests/api/test_superficie_pubblica.py`.
+API_DOCS_ENABLED = env("DJANGO_API_DOCS_ENABLED", "1" if DEBUG else "0") == "1"
 API_SEARCH_THROTTLE_RATE = env("DJANGO_API_SEARCH_THROTTLE_RATE", "30/min")
 API_STRONG_IDEMPOTENCY_ENABLED = env("DJANGO_API_STRONG_IDEMPOTENCY_ENABLED", "0") == "1"
 REQUEST_LOG_ENABLED = env("DJANGO_REQUEST_LOG_ENABLED", "1") == "1"
@@ -105,7 +193,7 @@ AI_CONTEXT_FILE = env("AI_CONTEXT_FILE", "docs/it/ai/ai-context.md")
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
+    # niente 'django.contrib.admin': vedi «Superficie pubblica» sopra
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -168,6 +256,13 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "v1",
     # Espone nello schema solo gli endpoint versionati /api/v1/*.
     "SCHEMA_PATH_PREFIX": r"/api/v1",
+    # Il primo e' il default di drf-spectacular (va ripetuto: la lista
+    # sostituisce, non aggiunge). Il secondo separa lista e dettaglio
+    # (`x_list` / `x_retrieve`): perche', in `apps/core/api/openapi_extensions.py`.
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "apps.core.api.openapi_extensions.nomi_lista_dettaglio",
+    ],
     # UI Swagger: rimuove header CSRF dai request snippet per API JWT.
     "SWAGGER_UI_SETTINGS": """
     {
@@ -186,8 +281,12 @@ SPECTACULAR_SETTINGS = {
 }
 
 SIMPLE_JWT = {
-    # Per sviluppo: access token piu` lungo, refresh invariato a 1 giorno.
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    # Access BREVE (decisione Tid 2026-09-28, brief sicurezza §2): il frontend
+    # lo tiene solo in memoria e lo rinnova in silenzio dal cookie del
+    # refresh, quindi la durata non costa niente all'utente e limita quanto
+    # vale un access rubato. Il refresh sta nel cookie HttpOnly
+    # (`apps.core.api.refresh_cookie`).
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=10),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     # Token rotation: ad ogni refresh il vecchio refresh token viene blacklistato.
     "ROTATE_REFRESH_TOKENS": True,
@@ -207,10 +306,16 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'apps.core.middleware.jwt_audit_middleware.JwtAuditMiddleware',
-    'apps.core.middleware.password_change_middleware.PasswordChangeRequiredMiddleware',
+    # Il cambio password obbligatorio non e' piu' un middleware: a `process_view`
+    # l'utente del Bearer e' ancora anonimo (A-8). Lo fa rispettare il cancello
+    # degli obblighi dentro JwtAuditAuthentication (apps/core/api/cancello_obblighi.py).
     'apps.core.middleware.request_log_middleware.RequestLogMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # ⛔ ULTIMO, e voluto: apre la sola lettura attorno alla SOLA view delle
+    # GET/HEAD delle API; tutti gli altri middleware (il log della richiesta
+    # per primo) restano fuori (brief-be-letture-in-transazione-sola-lettura).
+    'apps.core.middleware.sola_lettura_middleware.SolaLetturaMiddleware',
 ]
 
 ROOT_URLCONF = 'zeroerp_backend.urls'
@@ -354,7 +459,11 @@ DOCUMENTI_STORAGE_ROOT = env(
 )
 
 # --- Frontend URL (per link in email: reset password, invito, ecc.) ---
-FRONTEND_URL = env("FRONTEND_URL", "http://localhost:5173")
+# ⛔ Obbligatorio, senza default: e' l'indirizzo da cui si entra (Nginx), e un
+# default sbagliato non da' errore — manda nelle email link che aprono una
+# pagina con le API rotte. Il vecchio default `http://localhost:5173` era Vite
+# raggiunto direttamente, strada chiusa dal 2026-09-25 (vite.config.js).
+FRONTEND_URL = env("FRONTEND_URL", required=True).rstrip("/")
 
 # --- Digest dei presidi: a chi arriva ---
 # ⭐ A CHI ARRIVA LA POSTA E' UN FATTO DI QUESTA INSTALLAZIONE, non del software
@@ -378,8 +487,8 @@ PRESIDI_DIGEST_DESTINATARIO = env("ZEROERP_PRESIDI_DIGEST_DESTINATARIO", "")
 # e' li' che vive la "console mode" (host vuoto/placeholder, oppure DEBUG), non
 # in questo backend. Per l'invio reale si configura `config.email_account`.
 #
-# Questo mailer e' la RETE per la posta che spedisce DJANGO — reset password
-# dell'admin, `mail_admins()` di un handler di logging: senza, il default e' lo
+# Questo mailer e' la RETE per la posta che spedisce DJANGO — le form di
+# `django.contrib.auth`, `mail_admins()` di un handler di logging: senza, il default e' lo
 # SMTP backend, cioe' un tentativo di consegna vera verso localhost:25 da un
 # ambiente che non se l'aspetta. La console la rende visibile e innocua.
 #
@@ -393,6 +502,60 @@ MAILERS = {
 
 # --- Proxy HTTPS/Nginx + cookie sicuri ---
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # fidati dell'header di Nginx
+
+# Quanti proxy fidati stanno davanti al backend (Nginx = 1). Decide di quale
+# valore di `X-Forwarded-For` fidarsi: l'N-esimo DA DESTRA, quello scritto dal
+# primo proxy fidato; con 0 vale `REMOTE_ADDR` e l'header e' ignorato. La
+# regola la applica un solo BB, `core.services.request_context.get_client_ip`.
+# ⛔ Obbligatorio e senza default: il numero sbagliato e' un difetto MUTO nei
+# due versi — troppo basso, tutti hanno l'IP di Nginx (e il freno del login
+# per provenienza frena tutti insieme); troppo alto, si torna a fidarsi di un
+# valore scritto dal client. Se la catena davanti al backend cambia (un
+# secondo proxy, un bilanciatore), questo numero si aggiorna.
+TRUSTED_PROXY_COUNT = parse_intero_non_negativo(
+    "DJANGO_TRUSTED_PROXY_COUNT", env("DJANGO_TRUSTED_PROXY_COUNT", required=True),
+)
+
+# --- HTTPS: HSTS e redirect (brief-be-fe-sicurezza-header-token-mfa §1) ---
+# Stanno QUI e non in Nginx: sono versionati, li verifica `check --deploy`, e
+# valgono qualunque proxy ci sia davanti. La CSP invece sta in Nginx, perche' la
+# pagina HTML non la serve Django (vhost in configurazione-django.md).
+#
+# ⛔ HSTS (`DJANGO_SECURE_HSTS_SECONDS`): obbligatoria fuori da DEBUG, SENZA
+#    default: chi mette in piedi una macchina deve scegliere. HSTS fa rifiutare
+#    al browser il sito con un certificato non valido, senza «procedi comunque»:
+#    una macchina con certificato auto-firmato dichiara `0` nel suo ambiente
+#    (decisione Tid 2026-09-28 per backend-dev). In produzione si parte breve
+#    (300) e si sale a un anno (31536000) dopo la verifica.
+#    Sottodomini e preload SPENTI per scelta: riguardano il dominio intero, non
+#    ZeroErp, e il preload e' di fatto irreversibile (`check --deploy` li
+#    segnala come W005/W021: accettati in CI con questa ragione).
+def parse_hsts_seconds(valore: str | None, *, debug: bool) -> int:
+    if valore is None or valore.strip() == "":
+        if debug:
+            return 0
+        raise ImproperlyConfigured(
+            "Missing env var: DJANGO_SECURE_HSTS_SECONDS (obbligatoria con DEBUG=0; "
+            "0 su una macchina con certificato auto-firmato)"
+        )
+    return parse_intero_non_negativo("DJANGO_SECURE_HSTS_SECONDS", valore)
+
+
+SECURE_HSTS_SECONDS = parse_hsts_seconds(env("DJANGO_SECURE_HSTS_SECONDS"), debug=DEBUG)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
+
+# Redirect HTTP → HTTPS anche in Django, non solo in Nginx (308 da 80): il
+# redirect non dipende da un solo strato. Default ACCESO fuori da DEBUG.
+# Dietro Nginx funziona grazie a `SECURE_PROXY_SSL_HEADER` (sopra).
+# ⚠️ Chi chiama Gunicorn DIRETTO in HTTP su loopback riceve un 301:
+#    - `/health` e' esente (controlli locali, smoke del container in CI);
+#    - gli smoke bash si dichiarano HTTPS come fa Nginx
+#      (`backend/scripts/tests/_smoke_https.sh`), e un test lo presidia;
+#    - i test Django lo spengono dal runner (`test_runner.py`): il client di
+#      test parla HTTP per costruzione.
+SECURE_SSL_REDIRECT = env("DJANGO_SECURE_SSL_REDIRECT", "0" if DEBUG else "1") == "1"
+SECURE_REDIRECT_EXEMPT = [r"^health$"]
 
 if DEBUG:
     SESSION_COOKIE_SECURE = False
@@ -409,6 +572,11 @@ else:
     CSRF_TRUSTED_ORIGINS = [
             "https://backend-dev.tailXXXX.ts.net",
         ]
+
+# Il cookie del refresh JWT (`apps.core.api.refresh_cookie`) segue i cookie di
+# sessione: `Secure` fuori da DEBUG. In DEBUG si puo' lavorare in HTTP (Vite
+# da solo), e un cookie `Secure` il browser non lo rimanderebbe.
+REFRESH_COOKIE_SECURE = SESSION_COOKIE_SECURE
 
 
 # --- Logging applicativo ---

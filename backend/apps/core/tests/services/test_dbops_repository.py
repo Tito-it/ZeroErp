@@ -10,7 +10,7 @@ Indice test eseguiti:
 1) DbopsRepositoryTests.test_check_lookup_id_exists_true
 2) DbopsRepositoryTests.test_check_lookup_id_exists_false
 3) DbopsRepositoryTests.test_check_lookup_id_exists_rel_non_consentita
-4) DbopsRepositoryTests.test_documenti_tipi_output_in_whitelist
+4) (spostato sul DB vero: test_config_panel_registro_db, la lista e' in config.tabelle_gestibili)
 """
 
 from unittest import TestCase
@@ -87,8 +87,4 @@ class DbopsRepositoryTests(TestCase):
             repo.check_lookup_id_exists(rel="public.tabella_segreta", record_id=1)
         self.assertEqual(ctx.exception.code, "E_CORE_VALIDATION")
 
-    # Scopo: Il lookup usato dal drawer template documento resta whitelisted.
-    def test_documenti_tipi_output_in_whitelist(self):
-        from apps.core.db.dbops_repository import _REL_CONSENTITE
 
-        self.assertIn("documenti.tipi_documento_output", _REL_CONSENTITE)

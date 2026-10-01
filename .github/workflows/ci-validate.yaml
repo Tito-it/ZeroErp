@@ -39,6 +39,7 @@ on:
       - db/**
       - backend/**
       - requirements/**
+      - requirements.txt
       - scripts/**
       - .github/workflows/ci-validate.yaml
   pull_request:
@@ -47,6 +48,7 @@ on:
       - db/**
       - backend/**
       - requirements/**
+      - requirements.txt
       - scripts/**
       - .github/workflows/ci-validate.yaml
 
@@ -89,8 +91,21 @@ jobs:
       DB_USER: zeroerp
       DB_PASSWORD: secret
       DJANGO_SECRET_KEY: ci-placeholder
+      # Chiave Fernet dei campi cifrati; obbligatoria (settings.py). E' la
+      # base64 di «ci-placeholder-fernet-key-32byte»: un segnaposto leggibile,
+      # non un segreto. Stesso valore di ci.yaml (smoke del container).
+      DJANGO_FIELD_ENCRYPTION_KEYS: "Y2ktcGxhY2Vob2xkZXItZmVybmV0LWtleS0zMmJ5dGU="  # gitleaks:allow
       DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
       DJANGO_DEBUG: "0"
+      # Obbligatoria con DEBUG=0 (settings.py). Qui non conta il valore: il
+      # client di test parla HTTP e HSTS vale solo su HTTPS; il redirect lo
+      # spegne il runner. Il valore di produzione lo prova `check --deploy`.
+      DJANGO_SECURE_HSTS_SECONDS: "0"
+      # Nessun proxy davanti al client di test: vale REMOTE_ADDR (settings.py,
+      # «Quanti proxy fidati»). Obbligatorio, senza il backend non parte.
+      DJANGO_TRUSTED_PROXY_COUNT: "0"
+      # Base dei link nelle email; obbligatorio (settings.py).
+      FRONTEND_URL: "https://localhost"
       CACHE_BACKEND: locmem
 
     steps:
@@ -139,7 +154,23 @@ jobs:
         #     `pre_commit==4.6.2` / `PyYAML==6.0.3`, perche' sono le ultime su
         #     PyPI. La divergenza compare alla prima versione nuova, e nessuno
         #     se ne accorgerebbe.
-        run: pip install -c requirements.txt pre-commit PyYAML
+        run: pip install -c requirements.txt pre-commit PyYAML pip-audit
+
+      - name: Audit dipendenze Python (pip-audit)
+        # Controlla i pin contro i database di vulnerabilita' note (PyPI/OSV).
+        # ⭐ Acceso il 2026-09-26 a ZERO: backend e root puliti con entrambi i
+        #    database. Dependabot AVVISA dopo il merge; questo passo FERMA la
+        #    PR che porta un pin vulnerabile — per esempio un `pip-compile` che
+        #    ritorna a una versione vecchia, il caso di `cryptography` 49.x
+        #    chiuso a mano il 2026-08-08.
+        # ⚠️ `--no-deps --disable-pip`: i due file sono gia' pin completi, non
+        #    serve risolverli in un venv temporaneo (che costerebbe un install).
+        # ⚠️ Un CVE pubblicato su un pin che NON cambia non arriva qui: il
+        #    workflow gira solo sui cambi. Quel caso resta a Dependabot.
+        run: |
+          pip-audit --no-deps --disable-pip \
+            -r backend/requirements.txt \
+            -r requirements.txt
 
       - name: Cache pre-commit
         uses: actions/cache@v5
@@ -252,6 +283,26 @@ jobs:
         # mai, non quello chiuso nel punto sbagliato. Quello lo vede solo il
         # parser di PostgreSQL, cioe' il migrate qui sotto.
         run: python scripts/guardrail_sql_letterali.py
+
+      - name: Guardrail timestamp senza fuso nei changeSet nuovi
+        # Cosa presidia: in PostgreSQL `TIMESTAMP` nudo e' `timestamp without
+        # time zone`, cioe' l'orario LOCALE della sessione che scrive — e le
+        # sessioni di questo progetto sono due (backend in UTC, psql/Liquibase
+        # in Europe/Rome). Lo stesso now() vale due istanti diversi, e la riga
+        # non ricorda quale.
+        #
+        # Perche' esiste: il 2026-09-20 (valutazione del modello, V-3) lo
+        # schema `ui` aveva 22 colonne senza fuso e ZERO con, piu' 8 shadow di
+        # storico, 4 colonne di config e due firme di funzione — tutte nate da
+        # `data_insert TIMESTAMP NOT NULL DEFAULT now()`. Sanate da
+        # 20260920-02..-07; questo cancello e' perche' non rinascano.
+        #
+        # Perimetro: i changelog con data >= 20260920 (quelli prima sono
+        # mergiati e non si toccano), SOLO `changes` (la sezione di ripristino
+        # che rimette il tipo vecchio e' legittima), istruzioni DROP esenti.
+        # Statico e senza database; il database vivo lo guarda il pgTAP
+        # dbops/test-nessun-timestamp-senza-fuso-v1 piu' avanti.
+        run: python scripts/guardrail_timestamp_senza_fuso.py
 
       - name: Guardrail preCondition sul contenuto di 80_data
         # ⚠️ POSIZIONE: prima del migrate, e per lo stesso motivo degli altri
@@ -578,6 +629,42 @@ jobs:
         run: |
           source .venv/bin/activate
           python manage.py check
+
+      - name: Django check --deploy (sicurezza)
+        working-directory: ./backend
+        # I controlli di Django sulla configurazione di produzione (cookie,
+        # HSTS, SSL, SECRET_KEY, DEBUG, X-Frame-Options, ...).
+        # ⚠️ `--tag security`: gli avvisi drf-spectacular (a ZERO dal
+        #    2026-09-26) li tiene a zero un altro cancello, il registro a
+        #    cricchetto `apps/core/tests/test_schema_openapi_registro.py`, che
+        #    gira con la suite Django. Senza il tag resterebbe `mail.E001`.
+        # ⚠️ Un rilievo `security.*` e' un AVVISO: `check` esce 0 comunque.
+        #    Il cancello lo fa il grep qui sotto, con l'elenco a cricchetto dei
+        #    rilievi ACCETTATI. Si toglie una voce quando si chiude, mai si
+        #    aggiunge per far passare una PR.
+        #    - W005 (HSTS senza sottodomini) e W021 (HSTS senza preload):
+        #      spenti PER SCELTA (brief-be-fe-sicurezza-header-token-mfa
+        #      §1.3): riguardano il dominio intero, non ZeroErp, e il preload
+        #      e' di fatto irreversibile. Non sono debito da chiudere.
+        #    W004 (HSTS) e W008 (SSL_REDIRECT) chiusi il 2026-09-28 (§1).
+        # ⭐ La chiave si GENERA qui: il segnaposto del job (`ci-placeholder`)
+        #    fa scattare W009, come la farebbe scattare in produzione.
+        # ⭐ HSTS e redirect con i valori di PRODUZIONE (un anno, redirect
+        #    acceso), cosi' W004/W008 tornerebbero rossi se si spegnessero.
+        run: |
+          source .venv/bin/activate
+          export DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
+          export DJANGO_DEBUG=0
+          export DJANGO_SECURE_HSTS_SECONDS=31536000
+          export DJANGO_SECURE_SSL_REDIRECT=1
+          out="$(python manage.py check --deploy --tag security 2>&1)" || { echo "$out"; exit 1; }
+          echo "$out"
+          nuovi="$(grep -oE '\(security\.[EW][0-9]+\)' <<<"$out" \
+                   | grep -vE 'security\.(W005|W021)\)' || true)"
+          if [ -n "$nuovi" ]; then
+            echo "::error::check --deploy: rilievi di sicurezza non accettati: $nuovi"
+            exit 1
+          fi
 
       - name: Django migrate (schema django)
         working-directory: ./backend

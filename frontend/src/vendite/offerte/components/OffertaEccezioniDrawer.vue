@@ -19,7 +19,7 @@ import Tag from 'primevue/tag'
 import AttivoTag from '../../../core/components/AttivoTag.vue'
 import ToggleSwitch from 'primevue/toggleswitch'
 
-import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../../catalogo/components/ArticoloLookup.vue'
 import DrawerContextHeader from '../../../core/components/DrawerContextHeader.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
@@ -32,10 +32,12 @@ import L2ErrorBanner from '../../_shared/pricing/L2ErrorBanner.vue'
 import { useL2SaveFlow } from '../../_shared/pricing/useL2SaveFlow'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
-import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
+import { useFormInline } from '../../../core/composables/useFormInline'
+import { useArticoloUomOptions } from '../../../catalogo/composables/useArticoloUomOptions'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { displayDate } from '../../../core/utils/date'
@@ -49,6 +51,7 @@ import {
   deleteEccezioneComponente,
 } from '../api/offerteApi'
 import { useOfferteStore } from '../stores/offerte'
+import { USO_MISURA, misuraDefault, misureOpzioni } from '../../../core/misurePagina'
 
 const { t } = useI18n()
 const store = useOfferteStore()
@@ -85,10 +88,22 @@ const isReadonly = computed(
 )
 
 const eccezioni = ref([])
-const formMode = ref(null) // null | 'create' | 'edit'
-const editingId = ref(null)
-const selectedRow = ref(null)
+// La macchina del form (null | 'create' | 'edit', e l'eccezione in modifica,
+// che e' anche la riga evidenziata) e' il BB core `useFormInline` (sede unica,
+// ok Tid 2026-09-28); qui restano i verbi che ci aggiungono il form
+// dell'eccezione. Il click apre solo in scrittura (getter letto al click).
+const {
+  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({ puoModificare: () => !isReadonly.value })
+// L'id dell'eccezione in modifica, per payload e pannello componenti.
+const editingId = computed(() => rigaInModifica.value?.id ?? null)
 const form = ref({})
+// Modifiche non salvate del form inline: conferma alla chiusura del drawer e
+// all'Annulla del form, scritta arancio nel titolo.
+const inline = useDrawerFormPreserve(form, {
+  visibile: () => props.visible && formAperto.value,
+})
+const modificato = inline.modificato
 // Expansion DataTable righe eccezione: chiave = `id` (PK). Mostra
 // `ComponentiPanel` data-driven con i figli aggregati dal BE
 // (`row.componenti` jsonb). Pattern speculare a `ContrattoRigheDrawer`.
@@ -225,7 +240,11 @@ async function reload() {
   if (formMode.value === 'edit' && editingId.value != null) {
     const refreshed = list.find((r) => r.id === editingId.value)
     if (refreshed && refreshed.prezzo_unitario != null) {
+      // Il prezzo lo riscrive il server, non l'operatore: se il form era
+      // pulito resta pulito (la fotografia segue il nuovo SUM).
+      const eraPulito = !modificato.value
       form.value.prezzo_unitario = Number(refreshed.prezzo_unitario)
+      if (eraPulito) inline.fissa()
     }
   }
   emit('changed')
@@ -233,9 +252,7 @@ async function reload() {
 
 watch(() => props.visible, async (val) => {
   if (!val) {
-    formMode.value = null
-    editingId.value = null
-    selectedRow.value = null
+    chiudiForm()
     return
   }
   // All'apertura partiamo dalla snapshot ricevuta dal parent, poi ricarichiamo
@@ -288,21 +305,20 @@ function _resetComponentiState() {
 
 function openCreate() {
   form.value = newForm()
-  editingId.value = null
-  formMode.value = 'create'
-  selectedRow.value = null
+  nuovaRiga()
   resetUomOptions()
   _resetComponentiState()
+  inline.fissa()
 }
 
 function onRowSelect(event) {
-  if (isReadonly.value) return
   const row = event.data
-  selectedRow.value = row
-  editingId.value = row.id
+  apriRiga(row)
+  // In sola lettura il BB non apre: niente form da popolare.
+  if (!formAperto.value) return
   form.value = fromRow(row)
-  formMode.value = 'edit'
   _resetComponentiState()
+  inline.fissa()
   if (row.articolo_id) {
     // In edit l'articolo e' immutabile (Tag readonly); carichiamo comunque le
     // UoM operative dell'articolo cosi' la Select mostra etichetta coerente
@@ -312,9 +328,7 @@ function onRowSelect(event) {
 }
 
 function closeForm() {
-  formMode.value = null
-  editingId.value = null
-  selectedRow.value = null
+  chiudiForm()
   resetUomOptions()
   _resetComponentiState()
 }
@@ -477,23 +491,30 @@ function onDeleteRow(row, event) {
   })
 }
 
+// Label standard "Nuovo" (`common.new`), allineata a tutte le toolbar del
+// progetto (PageActionsBar). Il contesto eccezione e' gia' chiaro dal drawer;
+// usare "Nuova eccezione" rompe lo standard cross-dominio.
+// ⚠️ A form aperto «Nuovo» sparisce (regola del BB): prima restava attivo
+//    durante la modifica, e un clic buttava via la modifica in corso.
 const pageActions = computed(() => [
-  {
-    // Label standard "Nuovo" (`common.new`), allineata a tutte le toolbar
-    // del progetto (PageActionsBar). Il contesto eccezione e' gia' chiaro
-    // dal drawer; usare "Nuova eccezione" rompe lo standard cross-dominio.
+  azioneNuovaRiga({
     key: 'nuova',
-    kind: 'primary',
     label: t('common.new'),
     tooltip: t('vendite.offerte.eccezione_nuova'),
-    icon: MANAGE_ICONS.ADD,
-    disabled: isReadonly.value || formMode.value === 'create',
-    hideWhenReadonly: true,
+    // ⛔ `hideWhenReadonly` (del BB) legge il readonly INIETTATO, e questo
+    //    drawer non fornisce il suo: `isReadonly` qui aggiunge «offerta non
+    //    in BOZZA». Senza questa riga «Nuovo» ricomparirebbe su un'offerta
+    //    emessa.
+    visible: () => !isReadonly.value,
     command: openCreate,
-  },
+  }),
 ])
 
 const onClose = useDrawerClose(emit)
+// Chiusure per volonta' dell'utente: con il form inline modificato chiedono conferma.
+const chiudi = () => inline.chiudiConConferma(onClose)
+const annullaForm = () => inline.chiudiConConferma(closeForm)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -502,13 +523,14 @@ const onClose = useDrawerClose(emit)
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE_PLUS }"
     :dismissable="true"
-    @update:visible="(val) => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
         :title="t('vendite.offerte.eccezioni_titolo')"
         :icon="MANAGE_ICONS.RIGHE"
+        :modificato="modificato"
       />
     </template>
 
@@ -534,7 +556,6 @@ const onClose = useDrawerClose(emit)
         </DrawerContextHeader>
 
         <div class="app-page-toolbar">
-          <div class="app-page-filters" />
           <PageActionsBar :actions="pageActions" />
         </div>
 
@@ -549,8 +570,8 @@ const onClose = useDrawerClose(emit)
           :value="eccezioni"
           :loading="loading"
           paginator
-          :rows="10"
-          :rows-per-page-options="[10, 25]"
+          :rows="misuraDefault(USO_MISURA.COMPATTA)"
+          :rows-per-page-options="misureOpzioni()"
           paginator-position="top"
           striped-rows
           removable-sort
@@ -558,7 +579,7 @@ const onClose = useDrawerClose(emit)
           :sort-order="1"
           class="app-datatable app-datatable--inner"
           selection-mode="single"
-          v-model:selection="selectedRow"
+          :selection="rigaInModifica"
           v-model:expanded-rows="expandedRows"
           data-key="id"
           @row-select="onRowSelect"
@@ -569,7 +590,7 @@ const onClose = useDrawerClose(emit)
           <Column style="width: 2.5rem;" :exportable="false">
             <template #body="{ data }">
               <Button v-if="hasBundleComponenti(data)"
-                :icon="isExpanded(data) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
+                :icon="isExpanded(data) ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND"
                 text rounded size="small"
                 @click.stop="toggleExpansion(data)" />
             </template>
@@ -819,11 +840,11 @@ const onClose = useDrawerClose(emit)
             :loading="saving"
             :disabled="!canSave"
             @save="handleSave"
-            @cancel="closeForm"
+            @cancel="annullaForm"
           />
         </template>
 
-        <FormFooter v-else close-only @cancel="onClose" />
+        <FormFooter v-else close-only @cancel="chiudi" />
       </template>
     </div>
 

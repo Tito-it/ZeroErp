@@ -1,18 +1,30 @@
-# Guida – Gestione dei Pagamenti Vendite
+# Guida — Gestione dei Pagamenti Vendite
 
-> (latest review 04-03-26)
+> **Ultimo aggiornamento**: 20 settembre 2026
 >
-> Destinatari: sviluppatori database e backend
+> **Destinatari**: sviluppatori database e backend, analisti funzionali, operatori dell'area incassi
 >
-> Questa guida descrive il modello contabile dei pagamenti vendite in Zero ERP:
-> centri di riscossione, enti di incasso, testate contabili, righe, movimenti
-> effettivi, compensazioni e fondi fattura.
+> **Vedi anche** — schemi DB:
 >
-> Vedi anche
+> * Configurazione: [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione) · [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso)
+> * Transazionali: [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili) · [vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe) · [vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti) · [sistemazioni](/dbzero/pagamenti/tabelle/sistemazioni) · [vendite_contabili_lotti](/dbzero/pagamenti/tabelle/vendite_contabili_lotti)
+> * Stati e transizioni: [vendite_contabili_stati](/dbzero/pagamenti/tabelle/vendite_contabili_stati) · [vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati) · [transizioni_stati_contabile](/dbzero/pagamenti/tabelle/transizioni_stati_contabile) · [transizioni_stati_contabile_riga](/dbzero/pagamenti/tabelle/transizioni_stati_contabile_riga)
+> * Viste: [vw_eccedenze_da_sistemare](/dbzero/pagamenti/views/vw_eccedenze_da_sistemare) · [vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) · [vw_saldi_rate](/dbzero/pagamenti/views/vw_saldi_rate) · [vendite.vw_fatture_scadenze_lista](/dbzero/vendite/views/vw_fatture_scadenze_lista)
+> * Cross-schema: [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source) · [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze) · [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati)
 >
-> * [Guida Fatturazione](/guide/fatturazione) — ciclo di vita delle fatture
-> * [Guida Gestione Conti Bancari](/guide/gestione-conti-bancari) — IBAN, filiali, SEPA
-> * [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job) — pipeline e task run
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * Il ciclo: [fn_get_or_create_vendite_contabile](/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile) · [fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile) · [fn_posta_riga_tardiva](/dbzero/pagamenti/funzioni/fn_posta_riga_tardiva) · [fn_crea_distinta_correzione](/dbzero/pagamenti/funzioni/fn_crea_distinta_correzione)
+> * Saldi: [fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura) · [fn_get_saldo_fattura_contabili](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura_contabili) · [fn_get_saldo_rata](/dbzero/pagamenti/funzioni/fn_get_saldo_rata) · [fn_get_saldi_rate](/dbzero/pagamenti/funzioni/fn_get_saldi_rate) · [script.fn_check_scadenza_di_fattura](/dbzero/script/funzioni/fn_check_scadenza_di_fattura)
+> * Sistemazioni: [fn_conferma_sistemazione](/dbzero/pagamenti/funzioni/fn_conferma_sistemazione) · [fn_annulla_sistemazione](/dbzero/pagamenti/funzioni/fn_annulla_sistemazione)
+> * Guard: [trgfn_vendite_contabili_guard_transizione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_guard_transizione) · [trgfn_vendite_contabili_righe_guard_transizione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_transizione) · [trgfn_vendite_contabili_guard_validazione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_guard_validazione) · [trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto) · [trgfn_vendite_contabili_righe_guard_rata](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_rata) · [trgfn_vendite_contabili_righe_guard_distinta_finale](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale) · [script.fn_check_riga_contabile_eliminabile](/dbzero/script/funzioni/fn_check_riga_contabile_eliminabile)
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Fatturazione](/guide/fatturazione) — ciclo di vita delle fatture, lotti, pipeline
+> * [Termini di pagamento](/guide/termini-di-pagamento) — quante rate, e quante fatture, nascono da un termine
+> * [Gestione Conti Bancari](/guide/gestione-conti-bancari) — IBAN, filiali, mandati SEPA
+> * [Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job) — pipeline e task run
 
 ---
 
@@ -26,76 +38,16 @@ Il principio fondamentale e che la scrittura diretta in `vendite_movimenti` e un
 
 **Cosa troverai in questa guida:**
 
-* La struttura dei centri di riscossione e degli enti di incasso
-* Il modello contabile: testate, righe, stati e posting
+* La struttura dei centri di riscossione e degli enti di incasso, e il loro conto
+* Il modello contabile: testate, righe, stati, transizioni e posting
 * I movimenti effettivi e il legame 1:1 con le righe contabili
-* Le compensazioni e i fondi fattura come flussi automatici
+* **Il giro operativo**: aprire una distinta, agganciare la rata, abbinare, validare, registrare
+* **La correzione guidata** e **chi resta indietro** (la registrazione tardiva)
+* Il perimetro: chi vede il denaro arrivato prima che abbia una fattura
+* Le sistemazioni (riporti, rimborsi, compensazioni) e i fondi fattura
+* Il piano rate, l'imputazione dei saldi e le capienze
 * Le funzioni di saldo e di creazione/recupero contabile
 * Le regole di dominio applicate dai trigger di guardia
-
----
-
-## Tabelle coinvolte
-
-**Configurazione:**
-
-* [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione) — origini di incasso
-* [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso) — canali fisici di incasso
-
-**Transazionali:**
-
-* [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili) — testata contabile
-* [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe) — dettaglio righe
-* [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti) — movimenti effettivi
-* [pagamenti.sistemazioni](/dbzero/pagamenti/tabelle/sistemazioni) — il registro delle sistemazioni (riporti, rimborsi, compensazioni)
-* [pagamenti.vw_eccedenze_da_sistemare](/dbzero/pagamenti/views/vw_eccedenze_da_sistemare) — l'elenco dei documenti che hanno incassato piu' del dovuto
-* [pagamenti.vendite_contabili_lotti](/dbzero/pagamenti/tabelle/vendite_contabili_lotti) — legame contabile-lotto
-
-**Lookup stati:**
-
-* [pagamenti.vendite_contabili_stati](/dbzero/pagamenti/tabelle/vendite_contabili_stati) — stati della testata
-* [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati) — stati della riga (con `is_postabile`, `is_final` e `richiede_abbinamento`)
-
-**Come ci si passa (dal 2026-08-21):**
-
-* [pagamenti.transizioni_stati_contabile](/dbzero/pagamenti/tabelle/transizioni_stati_contabile) — il grafo della **distinta**
-* [pagamenti.transizioni_stati_contabile_riga](/dbzero/pagamenti/tabelle/transizioni_stati_contabile_riga) — il grafo della **riga**
-
-⭐ Fino a quella data `pagamenti` era l'unico dominio del progetto con degli
-**stati** e **nessuna regola su come ci si passa**: qualunque salto era ammesso,
-compreso uscire da uno stato dichiarato finale. Le due matrici sono lette da
-altrettanti guard, e **nessun grafo è scritto nel codice**.
-
-⚠️ Due regole però le matrici non le portano, perché dipendono da colonne della
-riga e non dalla coppia di stati — vivono nel guard
-`trgfn_vendite_contabili_guard_validazione`: la **riapertura** in bozza è solo
-della distinta manuale, e entrando in `VALIDATA` la somma delle righe deve
-corrispondere al **totale dichiarato**, se c'è. *Chi legge la sola matrice non le
-vede.*
-
-**Autorizzazioni all'addebito:**
-
-* [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati) — mandati SEPA (`CORE` / `B2B`): l'autorizzazione con cui il debitore permette al creditore di addebitare il proprio conto. ⚠️ Oggi la tabella è **vuota** e nessuna funzione la legge: la struttura è pronta, il processo di addebito diretto non è ancora costruito
-
-**Cross-schema:**
-
-* [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source) — sorgenti fondi fattura
-
-**Funzioni:**
-
-* [pagamenti.fn_get_or_create_vendite_contabile](/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile) — creazione o recupero testata
-* [pagamenti.fn_get_saldo_fattura_contabili](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura_contabili) — saldo contabile in lavorazione
-* [pagamenti.fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura) — saldo finanziario effettivo
-* [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile) — ⭐ **la registrazione**: le righe pronte diventano movimenti, e la distinta si chiude
-* [pagamenti.fn_get_saldo_rata](/dbzero/pagamenti/funzioni/fn_get_saldo_rata) — il saldo per **rata**, che distingue il registrato dal dichiarato e l'incassato dal postato
-* [pagamenti.fn_get_saldi_rate](/dbzero/pagamenti/funzioni/fn_get_saldi_rate) — ⭐ dal 17-09-2026 **il nucleo** dei saldi: la formula scritta una volta per N rate, con l'**imputazione** dei movimenti senza rata; `fn_get_saldo_rata` ne è la porta a un elemento
-* [script.fn_check_scadenza_di_fattura](/dbzero/script/funzioni/fn_check_scadenza_di_fattura) — «questa rata e' di questa fattura?», chiesto **fuori** dalla row security
-
-**Viste:**
-
-* [pagamenti.vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) — le rate il cui residuo e' uscito dalla banda: l'elenco senza il quale la forzatura sarebbe un modo di nascondere denaro
-* [pagamenti.vw_saldi_rate](/dbzero/pagamenti/views/vw_saldi_rate) — il saldo di **tutte** le rate in un passaggio: la porta dello scadenzario
-* [vendite.vw_fatture_scadenze_lista](/dbzero/vendite/views/vw_fatture_scadenze_lista) — l'identità delle rate col loro documento, **senza** saldi: la sorgente della lista rate e del picker della distinta
 
 ---
 
@@ -105,7 +57,7 @@ vede.*
 pagamenti
 ├── centri_riscossione              -- origini incasso (banca, poste, cassa, compensazione, fondo fattura)
 │   └── enti_incasso                -- canali fisici (filiale, ufficio postale, PSP)
-├── compensazioni                   -- processo di compensazione fatture
+├── sistemazioni                    -- il registro degli atti: riporti, rimborsi, compensazioni
 ├── vendite_contabili               -- testata contabile (punto unico d'ingresso)
 │   ├── vendite_contabili_righe     -- dettaglio per fattura/BA/rata/importo
 │   │   └── vendite_movimenti      -- movimento effettivo 1:1 con riga
@@ -164,26 +116,26 @@ riferirsi a una scadenza precisa, e quella del fondo fattura e' il caso vivo
 
 ### Che cosa si puo' chiedere adesso
 
-| Domanda | Risposta |
-|---|---|
-| Quanto resta da incassare su una fattura? | ✅ `pagamenti.fn_get_saldo_fattura` |
-| Come e' rateizzata questa fattura? | ✅ `vendite.fatture_scadenze` |
-| **Questa rata e' stata pagata?** | ✅ `pagamenti.fn_get_saldo_rata` — e distingue il **registrato** dal **dichiarato** |
-| Quanto di quel che risulta pagato e' **denaro davvero arrivato**? | ✅ la colonna `incassato`: i centri interni (fondo fattura, compensazione) non sono cassa |
-| Quali rate hanno incassato piu' del dovuto? | ✅ [vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) |
-| Quali rate sono scadute o insolute? | 🟠 **derivabile** dal saldo per rata piu' la data: lo scadenzario e' una schermata da costruire, non piu' un dato che manca. ⭐ Dal 17-09-2026 i due pezzi DB ci sono: `vw_fatture_scadenze_lista` (chi e' la rata) + `vw_saldi_rate` (quanto resta), e «solo aperte» e' `WHERE saldo <> 0` |
-| **Un incasso registrato «sulla fattura, senza rata» — dove finisce?** | ✅ dal 17-09-2026 si **imputa** alle rate per data di scadenza, fino a capienza, e l'ultima assorbe: la somma dei saldi delle rate e' sempre il saldo del documento. Nessuno lo scrive: e' un calcolo del nucleo `fn_get_saldi_rate` |
-| **La nota di credito ha rate?** | ✅ dal 17-09-2026 **una**, negativa, alla prima data del termine: cosi' un pagamento o una compensazione sulla nota passa dal guard di capienza come tutto il resto |
+| Domanda                                                               | Risposta                                                                                                                                                                                                                                                                              |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Quanto resta da incassare su una fattura?                             | `pagamenti.fn_get_saldo_fattura`                                                                                                                                                                                                                                                      |
+| Come e' rateizzata questa fattura?                                    | `vendite.fatture_scadenze`                                                                                                                                                                                                                                                            |
+| **Questa rata e' stata pagata?**                                      | `pagamenti.fn_get_saldo_rata` — e distingue il **registrato** dal **dichiarato**                                                                                                                                                                                                      |
+| Quanto di quel che risulta pagato e' **denaro davvero arrivato**?     | la colonna `incassato`: i centri interni (fondo fattura, compensazione) non sono cassa                                                                                                                                                                                                |
+| Quali rate hanno incassato piu' del dovuto?                           | [vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza)                                                                                                                                                                                                              |
+| Quali rate sono scadute o insolute?                                   | **derivabile** dal saldo per rata piu' la data: lo scadenzario e' una schermata da costruire, non piu' un dato che manca. Dal 17-09-2026 i due pezzi DB ci sono: `vw_fatture_scadenze_lista` (chi e' la rata) + `vw_saldi_rate` (quanto resta), e «solo aperte» e' `WHERE saldo <> 0` |
+| **Un incasso registrato «sulla fattura, senza rata» — dove finisce?** | dal 17-09-2026 si **imputa** alle rate per data di scadenza, fino a capienza, e l'ultima assorbe: la somma dei saldi delle rate e' sempre il saldo del documento. Nessuno lo scrive: e' un calcolo del nucleo `fn_get_saldi_rate`                                                     |
+| **La nota di credito ha rate?**                                       | dal 17-09-2026 **una**, negativa, alla prima data del termine: cosi' un pagamento o una compensazione sulla nota passa dal guard di capienza come tutto il resto                                                                                                                      |
 
 ### ⭐ Le due domande che il database tiene separate
 
 Quando si abbina un incasso a una rata il database ne fa **due**, e risponde in
 modo opposto:
 
-| | Domanda | Che cosa fa |
-| --- | --- | --- |
-| **Coerenza** | «questa rata e' di questa fattura?» | 🔒 **rifiuta** — e' un'incoerenza logica, nessun cliente puo' provocarla |
-| **Capienza** | «c'e' ancora spazio su questa rata?» | ⚠️ **segnala** — che un cliente paghi due volte e' un fatto del mondo |
+|              | Domanda                              | Che cosa fa                                                           |
+| ------------ | ------------------------------------ | --------------------------------------------------------------------- |
+| **Coerenza** | «questa rata e' di questa fattura?»  | **rifiuta** — e' un'incoerenza logica, nessun cliente puo' provocarla |
+| **Capienza** | «c'e' ancora spazio su questa rata?» | **segnala** — che un cliente paghi due volte e' un fatto del mondo    |
 
 > ⭐ **La capienza si puo' forzare, e la forzatura resta scritta.** Il primo
 > tentativo viene rifiutato con i numeri («restano 40, questo importo e' 90»);
@@ -236,7 +188,6 @@ Le attivita' aperte e il loro ordine sono in
 
 ---
 
-
 ## Centri di riscossione e enti di incasso
 
 ### Centri di riscossione
@@ -250,24 +201,19 @@ Due flag booleani distinguono i centri speciali:
 
 Un centro non puo essere contemporaneamente di compensazione e di fondo fattura.
 
-> ✅ **Adesso e vero. Fino al 21-08-2026 non lo era**, e non per una svista di
-> scrittura: il `CHECK chk_centri_riscossione_ruolo_esclusivo` era dichiarato
-> nella migrazione `20260211-21` e **non esisteva nel database** — il blocco che
-> lo crea era annidato dentro l'elenco delle colonne di un `addColumn`, e li
-> dentro non viene eseguito. La colonna era nata, il vincolo no.
-> Rimesso in piedi dal passo **P-1** di
-> [brief-db-posting-e-abbinamento-rata.md](/dev/work-done/brief-db-posting-e-abbinamento-rata),
-> applicato il 21-08-2026 insieme ai due indici unici **parziali** che rendono
-> unico ciascuno dei due ruoli (prima uno dei due era un unico **totale** su un
-> booleano, e teneva la tabella a due righe in tutto).
-
 > ⚠️ **Questi due centri non sono cassa, e chi misura gli incassi deve saperlo.**
-> Un movimento su `is_fondo_fattura` o `is_compensazione` non e denaro arrivato:
-> e denaro **spostato** da un documento a un altro. Per la domanda «questa
-> fattura e ancora da pagare?» valgono tutti i movimenti — il trasferimento la
-> salda davvero. Per la domanda «quanto e **entrato**?» quei centri vanno
-> **esclusi**, altrimenti si conta come incasso qualcosa che non e mai transitato
+> Un movimento su `is_fondo_fattura` o `is_compensazione` non è denaro arrivato:
+> è denaro **spostato** da un documento a un altro. Per la domanda «questa
+> fattura è ancora da pagare?» valgono tutti i movimenti — il trasferimento la
+> salda davvero. Per la domanda «quanto è **entrato**?» quei centri vanno
+> **esclusi**, altrimenti si conta come incasso qualcosa che non è mai transitato
 > da una banca. E i due flag esistono anche per questo.
+>
+> ⚠️ **Sono i centri della macchina, non di chi digita.** Li leggono le funzioni
+> delle sistemazioni, dei fondi e dei saldi: sono il *luogo contabile* dove
+> finiscono gli spostamenti decisi altrove. Una distinta compilata a mano, invece,
+> è denaro che qualcuno ha in mano: quando il sistema saprà distinguere le due
+> cose anche nella tendina dei centri, questa riga lo dirà.
 
 Da un punto di vista tecnico:
 
@@ -283,25 +229,10 @@ Da un punto di vista tecnico:
 | `meta`             | JSONB           |    no    | Metadati estensibili                                       |
 | Campi audit        | —               |    —     | `data_insert`, `user_insert`, `data_update`, `user_update` |
 
-**Vincolo UNIQUE:** `uq_centri_riscossione_compensazione` su `(is_compensazione)` — ~~garantisce al massimo un centro di compensazione nel sistema.~~
-
-> 🔴 **Quella e l'intenzione; il vincolo vivo fa un'altra cosa, e va saputo prima
-> di configurare.** Il vincolo e **totale** su una colonna booleana, non parziale:
-> quindi ammette **una sola riga `true` e una sola riga `false`**, cioe`
-> **`centri_riscossione` non puo contenere piu di DUE righe in tutto**. Oggi ce
-> ne sono esattamente due, quindi il vincolo e saturo e sembra rispettato:
-> **aggiungere il centro banca oggi fallisce.**
->
-> La causa: nella migrazione `20260211-14` il `where: "is_compensazione = true"`
-> e scritto su un `addUniqueConstraint`, che quell'attributo **non prevede** — e
-> lo ha ignorato in silenzio. Sostituito da due indici unici **parziali** (uno
-> per flag) al passo **P-1** di
-> [brief-db-posting-e-abbinamento-rata.md](/dev/work-done/brief-db-posting-e-abbinamento-rata)
-> — ⛔ **non ancora applicato**.
->
-> ⚠️ E `is_fondo_fattura` oggi non ha **nessun** vincolo di unicita: i centri
-> fondo fattura potrebbero essere N, e chi ne sceglie uno prende quello con
-> l'id piu basso.
+**Vincolo UNIQUE:** `uq_centri_riscossione_compensazione` e
+`uq_centri_riscossione_fondo_fattura` — due **indici unici parziali**
+(`WHERE is_compensazione` / `WHERE is_fondo_fattura`): al massimo un centro per
+ciascuno dei due ruoli, e nessun limite al numero di centri ordinari.
 
 **Protezioni:** trigger `trgfn_prevent_deactivate_if_children` impedisce la disattivazione se esistono enti incasso, contabili o movimenti collegati.
 
@@ -327,22 +258,22 @@ avanti, in «Chi vede che cosa».
 
 Da un punto di vista tecnico:
 
-| Colonna                 | Tipo         | Nullable | Descrizione                                                         |
-| ----------------------- | ------------ | :------: | ------------------------------------------------------------------- |
-| `id`                    | BIGINT, PK   |    no    | Chiave primaria                                                     |
-| `codice`                | TEXT, UNIQUE |    no    | Codice identificativo                                               |
-| `codice_interno`        | TEXT         |    si    | Codice interno applicativo                                          |
-| `descrizione`           | TEXT         |    no    | Descrizione leggibile                                               |
-| `tipo`                  | TEXT         |    no    | Tipo canale (`BANCA`, `POSTE`, `PSP`, `ALTRO`)                      |
-| `centro_riscossione_id` | BIGINT, FK   |    si    | Centro di riscossione di appartenenza                               |
-| `soggetto_ruolo_id`     | BIGINT, FK   |    si    | Soggetto con ruolo anagrafico                                       |
-| `bank_branch_id`        | BIGINT, FK   |    si    | Filiale bancaria (obbligatoria per `BANCA`)                         |
-| `soggetto_ruolo_conto_bancario_id` | BIGINT, FK |  **no**  | ⭐ Il conto dell'azienda su cui atterra il denaro del canale — e' il perimetro |
-| `formato_flusso`        | TEXT         |    si    | Formato del flusso importato                                        |
-| `regole_match`          | JSONB        |    no    | Regole di abbinamento flusso                                        |
-| `attivo`                | BOOLEAN      |    no    | Flag attivo/disattivo (default: true)                               |
-| `meta`                  | JSONB        |    no    | Metadati estensibili                                                |
-| Campi audit             | —            |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
+| Colonna                            | Tipo         | Nullable | Descrizione                                                                 |
+| ---------------------------------- | ------------ | :------: | --------------------------------------------------------------------------- |
+| `id`                               | BIGINT, PK   |    no    | Chiave primaria                                                             |
+| `codice`                           | TEXT, UNIQUE |    no    | Codice identificativo                                                       |
+| `codice_interno`                   | TEXT         |    si    | Codice interno applicativo                                                  |
+| `descrizione`                      | TEXT         |    no    | Descrizione leggibile                                                       |
+| `tipo`                             | TEXT         |    no    | Tipo canale (`BANCA`, `POSTE`, `PSP`, `ALTRO`)                              |
+| `centro_riscossione_id`            | BIGINT, FK   |    si    | Centro di riscossione di appartenenza                                       |
+| `soggetto_ruolo_id`                | BIGINT, FK   |    si    | Soggetto con ruolo anagrafico                                               |
+| `bank_branch_id`                   | BIGINT, FK   |    si    | Filiale bancaria (obbligatoria per `BANCA`)                                 |
+| `soggetto_ruolo_conto_bancario_id` | BIGINT, FK   |  **no**  | Il conto dell'azienda su cui atterra il denaro del canale — e' il perimetro |
+| `formato_flusso`                   | TEXT         |    si    | Formato del flusso importato                                                |
+| `regole_match`                     | JSONB        |    no    | Regole di abbinamento flusso                                                |
+| `attivo`                           | BOOLEAN      |    no    | Flag attivo/disattivo (default: true)                                       |
+| `meta`                             | JSONB        |    no    | Metadati estensibili                                                        |
+| Campi audit                        | —            |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`         |
 
 **Vincoli CHECK:**
 
@@ -361,7 +292,7 @@ riconoscimento di chi sono i soldi in arrivo.
 > un canale senza conto produrrebbe una coda di incassi che nessuno vede, e
 > quell'errore si scopre mesi dopo. Meglio fermarsi alla configurazione, dove chi
 > se ne accorge puo' rimediare subito.
-
+>
 > Documentazione dettagliata: [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso)
 
 ---
@@ -374,29 +305,34 @@ La testata contabile e il punto unico d'ingresso per ogni pagamento, sia che pro
 
 Da un punto di vista tecnico:
 
-| Colonna                 | Tipo               | Nullable | Descrizione                                                         |
-| ----------------------- | ------------------ | :------: | ------------------------------------------------------------------- |
-| `id`                    | BIGINT, PK         |    no    | Chiave primaria                                                     |
-| `codice`                | VARCHAR, UNIQUE    |    no    | Numero dal registro `DISTINTA` dell'emittente (`DIS-<SIGLA>-<ANNO>-<7 cifre>`, dal 2026-09-15): come nasce lo dice la scheda [`vendite_contabili`](../dbzero/pagamenti/manual/vendite_contabili.md) |
-| `centro_riscossione_id` | BIGINT, FK         |    no    | Centro di riscossione                                               |
-| `ente_incasso_id`       | BIGINT, FK         |    si    | Ente di incasso (opzionale)                                         |
-| `data_contabile`        | DATE               |    no    | Data contabile dell'operazione                                      |
-| `data_registrazione`    | DATE               |    no    | Data di registrazione                                               |
-| `stato_id`              | SMALLINT, FK       |    si    | Stato della testata                                                 |
-| ~~`compensazione_id`~~  | —                  |    —     | ⛔ **Rimossa il 2026-08-22**: il legame vive su `sistemazioni.contabile_id` (1:1)                                       |
-| `data_conferma`         | TIMESTAMPTZ        |    si    | Data di conferma/posting                                            |
-| `user_conferma`         | TEXT               |    si    | Utente che ha confermato                                            |
-| `meta`                  | JSONB              |    no    | Metadati estensibili                                                |
-| Campi audit             | —                  |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
+| Colonna                       | Tipo            | Nullable | Descrizione                                                                                                                                                                                         |
+| ----------------------------- | --------------- | :------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                          | BIGINT, PK      |    no    | Chiave primaria                                                                                                                                                                                     |
+| `codice`                      | VARCHAR, UNIQUE |    no    | Numero dal registro `DISTINTA` dell'emittente (`DIS-<SIGLA>-<ANNO>-<7 cifre>`, dal 2026-09-15): come nasce lo dice la scheda [`vendite_contabili`](../dbzero/pagamenti/manual/vendite_contabili.md) |
+| `centro_riscossione_id`       | BIGINT, FK      |    no    | Centro di riscossione                                                                                                                                                                               |
+| `ente_incasso_id`             | BIGINT, FK      |    si    | Ente di incasso (opzionale)                                                                                                                                                                         |
+| `data_contabile`              | DATE            |    no    | Data contabile dell'operazione                                                                                                                                                                      |
+| `data_registrazione`          | DATE            |    no    | Data di registrazione                                                                                                                                                                               |
+| `stato_id`                    | SMALLINT, FK    |    no    | Stato della testata (obbligatorio dal 2026-08-21)                                                                                                                                                   |
+| `emittente_soggetto_ruolo_id` | BIGINT, FK      |    no    | L'**emittente** della distinta — c'è anche quando la distinta non ha canale (dal 2026-09-15): è la colonna su cui poggia il **perimetro** (vedi «Chi vede che cosa»)                                |
+| `registro_id`                 | BIGINT, FK      |    si    | Il registro `DISTINTA` che ha emesso il codice                                                                                                                                                      |
+| `anno`                        | SMALLINT        |    si    | L'anno della numerazione                                                                                                                                                                            |
+| `origine`                     | VARCHAR         |    no    | `GENERATA` (dal processo) o la distinta compilata a mano                                                                                                                                            |
+| `importo_dichiarato`          | NUMERIC         |    si    | Il totale che chi lavora **dichiara**: è il metro della **quadratura** (vedi «Flusso logico»)                                                                                                       |
+| `contabile_corretta_id`       | BIGINT, FK      |    si    | La distinta che questa **corregge** (vedi «La correzione guidata»)                                                                                                                                  |
+| `data_conferma`               | TIMESTAMPTZ     |    si    | Data di conferma/posting                                                                                                                                                                            |
+| `user_conferma`               | TEXT            |    si    | Utente che ha confermato                                                                                                                                                                            |
+| `meta`                        | JSONB           |    no    | Metadati estensibili                                                                                                                                                                                |
+| Campi audit                   | —               |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`                                                                                                                                 |
 
 **Vincoli UNIQUE:**
 
 * `uq_vendite_contabili_codice` su `(codice)` — codice univoco per testata
-* ~~`uq_vendite_contabili_compensazione`~~ — ⛔ rimosso: l'unicita' «una distinta per atto» vive su `uq_sistemazioni_contabile`, cioe' dall'altro lato. Una sola testata per compensazione
+* una sola distinta per atto di sistemazione: l'unicità vive dall'altro lato, su `uq_sistemazioni_contabile`
 
 **Trigger principali:**
 
-* `trgfn_vendite_contabili_guard_ente_centro` — coerenza ente/centro e regole compensazione
+* `trgfn_vendite_contabili_guard_ente_centro` — coerenza ente/centro
 * `trgfn_child_requires_active_parent` — su `centri_riscossione`, `enti_incasso` e `vendite_contabili_stati`
 * `trgfn_audit_data_user_generic`, `trgfn_tx_id_managed` — audit e gestione `tx_id`
 
@@ -428,23 +364,26 @@ Sotto una distinta **registrata** o generata dal sistema non si elimina niente.
 
 Da un punto di vista tecnico:
 
-| Colonna              | Tipo         | Nullable | Descrizione                                                         |
-| -------------------- | ------------ | :------: | ------------------------------------------------------------------- |
-| `id`                 | BIGINT, PK   |    no    | Chiave primaria                                                     |
-| `contabile_id`       | BIGINT, FK   |    no    | Testata contabile di appartenenza                                   |
-| `fattura_id`         | BIGINT, FK   |    si    | Fattura collegata                                                   |
-| `billing_account_id` | BIGINT, FK   |    si    | Billing account collegato                                           |
-| `importo`            | NUMERIC      |    no    | Importo (CHECK: diverso da zero)                                    |
-| `stato_id`           | SMALLINT, FK |    no    | Stato della riga                                                    |
-| `riferimento_ente`   | TEXT         |    si    | Riferimento dell'ente incasso                                       |
-| `data_pagamento`     | DATE         |    si    | Data del pagamento                                                  |
-| `data_valuta`        | DATE         |    si    | Data valuta                                                         |
-| `data_operazione`    | DATE         |    si    | Data operazione                                                     |
-| `motivo_sospeso`     | TEXT         |    si    | Motivazione per stato sospeso                                       |
-| `fondo_source_id`    | BIGINT, FK   |    si    | Atto di fondo fattura da cui la riga nasce (vuoto sulle altre)      |
-| `attivo`             | BOOLEAN      |    no    | Flag attivo (default: true)                                         |
-| `meta`               | JSONB        |    no    | Metadati estensibili                                                |
-| Campi audit          | —            |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
+| Colonna              | Tipo         | Nullable | Descrizione                                                                |
+| -------------------- | ------------ | :------: | -------------------------------------------------------------------------- |
+| `id`                 | BIGINT, PK   |    no    | Chiave primaria                                                            |
+| `contabile_id`       | BIGINT, FK   |    no    | Testata contabile di appartenenza                                          |
+| `fattura_id`         | BIGINT, FK   |    si    | Fattura collegata                                                          |
+| `billing_account_id` | BIGINT, FK   |    si    | Billing account collegato                                                  |
+| `importo`            | NUMERIC      |    no    | Importo (CHECK: diverso da zero)                                           |
+| `stato_id`           | SMALLINT, FK |    no    | Stato della riga                                                           |
+| `scadenza_id`        | BIGINT, FK   |    si    | La **rata** di `vendite.fatture_scadenze` a cui l'incasso va (facoltativa) |
+| `forzata`            | BOOLEAN      |    no    | La capienza di quella rata è stata **forzata** (default: false)            |
+| `motivo_forzatura`   | TEXT         |    si    | La ragione della forzatura, facoltativa                                    |
+| `riferimento_ente`   | TEXT         |    si    | Riferimento dell'ente incasso                                              |
+| `data_pagamento`     | DATE         |    si    | Data del pagamento                                                         |
+| `data_valuta`        | DATE         |    si    | Data valuta                                                                |
+| `data_operazione`    | DATE         |    si    | Data operazione                                                            |
+| `motivo_sospeso`     | TEXT         |    si    | Motivazione per stato sospeso                                              |
+| `fondo_source_id`    | BIGINT, FK   |    si    | Atto di fondo fattura da cui la riga nasce (vuoto sulle altre)             |
+| `attivo`             | BOOLEAN      |    no    | Flag attivo (default: true)                                                |
+| `meta`               | JSONB        |    no    | Metadati estensibili                                                       |
+| Campi audit          | —            |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`        |
 
 > ⭐ **`fondo_source_id` e cio che accade quando la riga viene registrata.**
 > Dal 21-08-2026 il legame con l'atto di fondo fattura e una colonna con una
@@ -485,6 +424,7 @@ Da un punto di vista tecnico:
 | `escluso_da_interessi`       | BOOLEAN    |    no    | Esclusione dal calcolo interessi (default: false)                   |
 | `contabile_id`               | BIGINT, FK |    si    | Testata contabile di origine                                        |
 | `contabile_riga_id`          | BIGINT, FK |    si    | Riga contabile di origine (UNIQUE parziale)                         |
+| `scadenza_id`                | BIGINT, FK |    si    | La **rata** copiata dalla riga contabile quando si registra         |
 | `centro_riscossione_id`      | BIGINT, FK |    si    | Centro di riscossione                                               |
 | `attivo`                     | BOOLEAN    |    no    | Flag attivo (default: true)                                         |
 | `meta`                       | JSONB      |    no    | Metadati estensibili                                                |
@@ -506,36 +446,85 @@ Da un punto di vista tecnico:
 
 ### Stati testata: `vendite_contabili_stati`
 
-Ogni testata contabile ha uno stato che ne governa il ciclo di vita. Il flag `is_final` indica se lo stato e definitivo (la testata non puo piu essere modificata).
+Ogni testata contabile ha uno stato che ne governa il ciclo di vita. Il flag `is_final` indica se lo stato e definitivo (la testata non puo piu essere modificata); `is_registrabile` dice invece se **da lì si può registrare** — ed è il flag che accende o spegne il pulsante a video, invece di lasciar partire la richiesta e tornare un errore.
 
-| Colonna          | Tipo         | Descrizione                   |
-| ---------------- | ------------ | ----------------------------- |
-| `id`             | SMALLINT, PK | Chiave primaria               |
-| `codice`         | TEXT, UNIQUE | Codice identificativo         |
-| `codice_interno` | TEXT, UNIQUE | Codice interno applicativo    |
-| `descrizione`    | TEXT         | Descrizione leggibile         |
-| `is_final`       | BOOLEAN      | Stato finale (default: false) |
-| `ordine`         | SMALLINT     | Ordinamento (default: 0)      |
-| `attivo`         | BOOLEAN      | Flag attivo (default: true)   |
+| Codice      | Descrizione                          | `is_final` | `is_registrabile` |
+| ----------- | ------------------------------------ | :--------: | :---------------: |
+| `BOZZA`     | Si digita, si corregge, si elimina   |     no     |        no         |
+| `IMPORTATA` | Arrivata da un flusso, da lavorare   |     no     |        no         |
+| `VALIDATA`  | «Ho finito di inserire»: si registra |     no     |      **sì**       |
+| `CHIUSA`    | Registrata                           |   **sì**   |        no         |
+| `ANNULLATA` | Annullata                            |   **sì**   |        no         |
+
+⚠️ **`CHIUSA` è finale, ma non è la fine di tutto.** Una riga rimasta indietro (sospesa, o scartata e poi ripresa) può ancora essere abbinata e registrata da sola: la distinta resta `CHIUSA` e la quadratura non cambia. È la **registrazione tardiva**, e la fa `fn_posta_riga_tardiva` (vedi «Chi resta indietro»).
+
+Nella colonna `meta` ogni stato porta la chiave `nessuna_azione_key`: è la frase che la barra dell'area Incassi mostra quando **non** c'è nulla da fare in quello stato, e sta nel catalogo perché la scrive chi configura, non chi programma.
+
+| Colonna           | Tipo         | Descrizione                             |
+| ----------------- | ------------ | --------------------------------------- |
+| `id`              | SMALLINT, PK | Chiave primaria                         |
+| `codice`          | TEXT, UNIQUE | Codice identificativo                   |
+| `codice_interno`  | TEXT, UNIQUE | Codice interno applicativo              |
+| `descrizione`     | TEXT         | Descrizione leggibile                   |
+| `is_final`        | BOOLEAN      | Stato finale (default: false)           |
+| `is_registrabile` | BOOLEAN      | Da qui si registra (default: false)     |
+| `ordine`          | SMALLINT     | Ordinamento (default: 0)                |
+| `attivo`          | BOOLEAN      | Flag attivo (default: true)             |
+| `meta`            | JSONB        | Metadati (fra cui `nessuna_azione_key`) |
 
 La disattivazione di uno stato e bloccata se esistono testate che lo referenziano.
 
 > Documentazione dettagliata: [pagamenti.vendite_contabili_stati](/dbzero/pagamenti/tabelle/vendite_contabili_stati)
 
+### Come ci si passa: le due matrici
+
+Dal 2026-08-21 il passaggio di stato non è libero: due **matrici** in tabella
+([transizioni_stati_contabile](/dbzero/pagamenti/tabelle/transizioni_stati_contabile)
+per la distinta,
+[transizioni_stati_contabile_riga](/dbzero/pagamenti/tabelle/transizioni_stati_contabile_riga)
+per la riga) dicono quali salti sono ammessi, e i due guard
+(`trgfn_vendite_contabili_guard_transizione`,
+`trgfn_vendite_contabili_righe_guard_transizione`) li fanno rispettare.
+**Nessun grafo è scritto nel codice**: si cambia la configurazione, non la
+funzione. Prima erano ammessi tutti i salti, compreso uscire da uno stato
+dichiarato finale.
+
+⚠️ Due regole però le matrici non le portano, perché dipendono da colonne della
+riga e non dalla coppia di stati — vivono nel guard
+`trgfn_vendite_contabili_guard_validazione`: la **riapertura** in bozza è solo
+della distinta manuale, e entrando in `VALIDATA` la somma delle righe deve
+corrispondere al **totale dichiarato**, se c'è. *Chi legge la sola matrice non le
+vede.*
+
 ### Stati riga: `vendite_contabili_righe_stati`
 
 Gli stati delle righe contabili includono un flag cruciale per il processo di posting: `is_postabile`. Solo le righe il cui stato ha `is_postabile = true` vengono considerate dalla funzione `fn_get_saldo_fattura_contabili` e sono candidate alla generazione dei movimenti.
 
-| Colonna          | Tipo         | Descrizione                                |
-| ---------------- | ------------ | ------------------------------------------ |
-| `id`             | SMALLINT, PK | Chiave primaria                            |
-| `codice`         | TEXT, UNIQUE | Codice identificativo                      |
-| `codice_interno` | TEXT         | Codice interno applicativo                 |
-| `descrizione`    | TEXT         | Descrizione leggibile                      |
-| `is_postabile`   | BOOLEAN      | Riga candidata al posting (default: false) |
-| `is_final`       | BOOLEAN      | Stato finale (default: false)              |
-| `ordine`         | SMALLINT     | Ordinamento (default: 0)                   |
-| `attivo`         | BOOLEAN      | Flag attivo (default: true)                |
+| Codice        | Descrizione                                       | `is_postabile` | `is_final` | `richiede_abbinamento` | `lavorata` |
+| ------------- | ------------------------------------------------- | :------------: | :--------: | :--------------------: | :--------: |
+| `IMPORTATA`   | Arrivata da un flusso                             |       no       |     no     |           no           |     no     |
+| `DA_ABBINARE` | Nessuno le ha ancora detto a quale fattura va     |       no       |     no     |           no           |     no     |
+| `ABBINATA`    | Ha fattura e rata: è pronta a diventare movimento |     **sì**     |     no     |         **sì**         |   **sì**   |
+| `SOSPESA`     | Messa da parte, con un motivo                     |       no       |     no     |           no           |   **sì**   |
+| `SCARTATA`    | Denaro arrivato che **non è nostro**              |       no       |     no     |           no           |   **sì**   |
+| `POSTATA`     | Registrata: ha generato il suo movimento          |       no       |   **sì**   |         **sì**         |   **sì**   |
+| `STORNATA`    | Movimento stornato (ritirata il 2026-08-21)       |       no       |   **sì**   |           no           |   **sì**   |
+
+⭐ **`lavorata` non è un sotto-flag di `is_postabile`**: dice se qualcuno ha *già deciso* di quella riga. È la colonna che conta nella quadratura e nei contatori («in lavorazione»), perché una riga `DA_ABBINARE` non è lavoro fatto, mentre una `SOSPESA` o una `SCARTATA` sì — e la scartata, che resta fuori dal lavoro, **conta comunque nella quadratura**.
+
+| Colonna                | Tipo         | Descrizione                                |
+| ---------------------- | ------------ | ------------------------------------------ |
+| `id`                   | SMALLINT, PK | Chiave primaria                            |
+| `codice`               | TEXT, UNIQUE | Codice identificativo                      |
+| `codice_interno`       | TEXT         | Codice interno applicativo                 |
+| `descrizione`          | TEXT         | Descrizione leggibile                      |
+| `is_postabile`         | BOOLEAN      | Riga candidata al posting (default: false) |
+| `is_final`             | BOOLEAN      | Stato finale (default: false)              |
+| `richiede_abbinamento` | BOOLEAN      | La riga vive solo dentro una fattura       |
+| `lavorata`             | BOOLEAN      | Qualcuno ne ha già deciso (default: false) |
+| `ordine`               | SMALLINT     | Ordinamento (default: 0)                   |
+| `attivo`               | BOOLEAN      | Flag attivo (default: true)                |
+| `meta`                 | JSONB        | Metadati estensibili                       |
 
 > Documentazione dettagliata: [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati)
 
@@ -578,10 +567,10 @@ di fare, per quanto, su quali documenti, quando e da chi.
 
 ### Le tre strade
 
-| Si sceglie | Che cosa succede |
-|---|---|
-| **Riporto** | il credito va su un'**altra fattura** del cliente, come sconto gia' disponibile |
-| **Rimborso** | il denaro **esce**: si prepara un movimento in uscita da un conto dell'azienda |
+| Si sceglie        | Che cosa succede                                                                 |
+| ----------------- | -------------------------------------------------------------------------------- |
+| **Riporto**       | il credito va su un'**altra fattura** del cliente, come sconto gia' disponibile  |
+| **Rimborso**      | il denaro **esce**: si prepara un movimento in uscita da un conto dell'azienda   |
 | **Compensazione** | il credito di un documento copre il debito di un altro, **dello stesso cliente** |
 
 ⭐ **Nessuna di queste e' un meccanismo nuovo**: il riporto usa i fondi fattura,
@@ -646,7 +635,7 @@ Da un punto di vista tecnico:
 
 **Vincolo UNIQUE:** `uq_vendite_contabili_lotti_lotto_contabile` su `(lotto_id, contabile_id)` — una coppia lotto-contabile non puo essere duplicata.
 
-**Trigger di guardia:** `trgfn_vendite_contabili_lotti_guard_sistemazione` *(dal 2026-08-22; si chiamava `..._guard_compensazione` e copriva le sole compensazioni)* blocca l'inserimento se la testata ha `compensazione_id IS NOT NULL`.
+**Trigger di guardia:** `trgfn_vendite_contabili_lotti_guard_sistemazione` *(dal 2026-08-22; si chiamava `..._guard_compensazione`)* blocca il legame a un lotto quando la testata è **nata da un atto di sistemazione**: la domanda si fa **all'atto** (`sistemazioni.contabile_id`), non più alla testata.
 
 > Documentazione dettagliata: [pagamenti.vendite_contabili_lotti](/dbzero/pagamenti/tabelle/vendite_contabili_lotti)
 
@@ -668,12 +657,12 @@ nel senso comune: sono i due capi di una fascia **che passa per lo zero**.
 
 Con una configurazione da +10 e -500 euro:
 
-| Totale della fattura | Che cosa succede |
-| --- | --- |
-| **sopra +10 €** | il cliente paga normalmente. Nessun fondo |
-| **fra +10 € e 0** | troppo piccola per essere incassata da sola → si riporta come **addebito** sulla fattura dopo |
-| **fra 0 e -500 €** | credito troppo piccolo per un rimborso → si riporta come **accredito** sulla fattura dopo |
-| **sotto -500 €** | credito importante: entra nel processo di **rimborso**, non nel fondo |
+| Totale della fattura | Che cosa succede                                                                              |
+| -------------------- | --------------------------------------------------------------------------------------------- |
+| **sopra +10 €**      | il cliente paga normalmente. Nessun fondo                                                     |
+| **fra +10 € e 0**    | troppo piccola per essere incassata da sola → si riporta come **addebito** sulla fattura dopo |
+| **fra 0 e -500 €**   | credito troppo piccolo per un rimborso → si riporta come **accredito** sulla fattura dopo     |
+| **sotto -500 €**     | credito importante: entra nel processo di **rimborso**, non nel fondo                         |
 
 > ⚠️ **Un fondo puo quindi essere negativo, ed e normale.** Meta della fascia
 > serve proprio a riportare avanti dei crediti — e non e una possibilita
@@ -692,26 +681,26 @@ il totale da pagare con le due soglie.
 
 Da un punto di vista tecnico:
 
-| Colonna                       | Tipo        | Nullable | Descrizione                                                         |
-| ----------------------------- | ----------- | :------: | ------------------------------------------------------------------- |
-| `id`                          | BIGINT, PK  |    no    | Chiave primaria                                                     |
-| `fattura_sorgente_id`         | BIGINT, FK  |    no    | Fattura che genera il fondo                                         |
-| `fattura_figlia_id`           | BIGINT, FK  |    si    | Fattura che utilizza il fondo                                       |
-| `tipo_fondo_fattura_id`       | BIGINT, FK  |    no    | Tipo di fondo                                                       |
-| `importo`                     | NUMERIC     |    no    | Importo del fondo                                                   |
-| `stato`                       | VARCHAR     |    no    | Stato: `DISPONIBILE`, `ASSEGNATO`, `ESEGUITO`, `ANNULLATO` — **quattro**, dal 21-08-2026 |
-| `billing_account_id`          | BIGINT, FK  |    no    | Billing account (denormalizzato dalla sorgente)                     |
-| `utility_id`                  | INTEGER, FK |    no    | Utility (denormalizzata dalla sorgente)                             |
-| `tipo_doc_fiscale_id`         | BIGINT, FK  |    no    | Tipo documento fiscale                                              |
-| `emittente_soggetto_ruolo_id` | BIGINT, FK  |    no    | Emittente (soggetto con ruolo)                                      |
-| `valuta_id`                   | BIGINT, FK  |    no    | Valuta                                                              |
-| `origine`                     | VARCHAR     |    no    | `AUTOMATICA` (il giro notturno) o `MANUALE` (una persona, oggi via riporto di una sistemazione) |
+| Colonna                       | Tipo        | Nullable | Descrizione                                                                                                                |
+| ----------------------------- | ----------- | :------: | -------------------------------------------------------------------------------------------------------------------------- |
+| `id`                          | BIGINT, PK  |    no    | Chiave primaria                                                                                                            |
+| `fattura_sorgente_id`         | BIGINT, FK  |    no    | Fattura che genera il fondo                                                                                                |
+| `fattura_figlia_id`           | BIGINT, FK  |    si    | Fattura che utilizza il fondo                                                                                              |
+| `tipo_fondo_fattura_id`       | BIGINT, FK  |    no    | Tipo di fondo                                                                                                              |
+| `importo`                     | NUMERIC     |    no    | Importo del fondo                                                                                                          |
+| `stato`                       | VARCHAR     |    no    | Stato: `DISPONIBILE`, `ASSEGNATO`, `ESEGUITO`, `ANNULLATO` — **quattro**, dal 21-08-2026                                   |
+| `billing_account_id`          | BIGINT, FK  |    no    | Billing account (denormalizzato dalla sorgente)                                                                            |
+| `utility_id`                  | INTEGER, FK |    no    | Utility (denormalizzata dalla sorgente)                                                                                    |
+| `tipo_doc_fiscale_id`         | BIGINT, FK  |    no    | Tipo documento fiscale                                                                                                     |
+| `emittente_soggetto_ruolo_id` | BIGINT, FK  |    no    | Emittente (soggetto con ruolo)                                                                                             |
+| `valuta_id`                   | BIGINT, FK  |    no    | Valuta                                                                                                                     |
+| `origine`                     | VARCHAR     |    no    | `AUTOMATICA` (il giro notturno) o `MANUALE` (una persona, oggi via riporto di una sistemazione)                            |
 | `motivo`                      | TEXT        |    si    | **Obbligatorio** se `origine = 'MANUALE'` o se `stato = 'ANNULLATO'`: un atto deciso a mano, o disfatto, deve dire perche' |
-| `data_assegnazione`           | TIMESTAMPTZ |    si    | Data di assegnazione alla fattura figlia                            |
-| `user_assegnazione`           | TEXT        |    si    | Utente che ha effettuato l'assegnazione                             |
-| `attivo`                      | BOOLEAN     |    no    | Flag attivo (default: true)                                         |
-| `meta`                        | JSONB       |    no    | Metadati estensibili                                                |
-| Campi audit                   | —           |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
+| `data_assegnazione`           | TIMESTAMPTZ |    si    | Data di assegnazione alla fattura figlia                                                                                   |
+| `user_assegnazione`           | TEXT        |    si    | Utente che ha effettuato l'assegnazione                                                                                    |
+| `attivo`                      | BOOLEAN     |    no    | Flag attivo (default: true)                                                                                                |
+| `meta`                        | JSONB       |    no    | Metadati estensibili                                                                                                       |
+| Campi audit                   | —           |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`                                                        |
 
 **Ciclo di vita dello stato:**
 
@@ -764,10 +753,10 @@ Il giro automatico non sana niente: quando si ferma, **lascia la riga a una
 persona**. Le righe che aspettano una decisione stanno in
 **Vendite → Tool fatturazione → «Fondi da decidere»**, con quattro motivi.
 
-| Il gesto | Dove | Che cosa fa |
-| --- | --- | --- |
-| **Cancellare l'atto** | il kebab sulla riga dell'elenco, solo sul motivo `NON_PIU_CAPIENTE` | toglie un atto che non e' mai diventato un fatto. ⛔ Si **cancella**, non si annulla: un atto mai eseguito non lascia una riga di registro, lascia il posto vuoto che aveva prima |
-| **Disfare un riporto sbagliato** | il drawer della **sistemazione**, non l'elenco dei fondi | si annulla la **sistemazione** che ha deciso il riporto, e il fondo cade con lei. ⚠️ Provando dall'elenco dei fondi il sistema rifiuta e **nomina questa strada** |
+| Il gesto                         | Dove                                                                | Che cosa fa                                                                                                                                                                    |
+| -------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Cancellare l'atto**            | il kebab sulla riga dell'elenco, solo sul motivo `NON_PIU_CAPIENTE` | toglie un atto che non e' mai diventato un fatto. Si **cancella**, non si annulla: un atto mai eseguito non lascia una riga di registro, lascia il posto vuoto che aveva prima |
+| **Disfare un riporto sbagliato** | il drawer della **sistemazione**, non l'elenco dei fondi            | si annulla la **sistemazione** che ha deciso il riporto, e il fondo cade con lei. Provando dall'elenco dei fondi il sistema rifiuta e **nomina questa strada**                 |
 
 > ⛔ **Non ogni fondo si cancella**, e il motivo lo dice il sistema: se il denaro
 > si e' gia' mosso (atto eseguito, riga registrata, distinta chiusa) o se la
@@ -778,12 +767,12 @@ persona**. Le righe che aspettano una decisione stanno in
 > azione «pericolosa»): non basta l'accesso all'area vendite. E **cancellare
 > riapre la generazione automatica** — il giro successivo puo' riproporre un
 > fondo nuovo, letto sul residuo di quel momento.
-
+>
 > ⭐ **Un fondo puo' nascere anche da `pagamenti`.** Quando un'eccedenza viene
 > sistemata con destinazione **riporto**, e' il processo delle sistemazioni a
 > creare l'atto, con `origine = 'MANUALE'` e il motivo di chi ha deciso. E' la
 > ragione per cui esistono le due colonne `origine` e `motivo`.
-
+>
 > 🔒 **La tabella ha la row security** dal 31-08-2026: un operatore vede e tocca
 > solo i fondi del proprio emittente e dei propri billing account.
 
@@ -799,29 +788,26 @@ Questa funzione e il punto d'ingresso programmatico per ottenere una testata con
 
 Da un punto di vista tecnico:
 
-| Parametro                 | Tipo   | Default        | Descrizione                               |
-| ------------------------- | ------ | -------------- | ----------------------------------------- |
-| `p_centro_riscossione_id` | BIGINT | —              | Centro di riscossione (obbligatorio, > 0) |
-| `p_data_contabile`        | DATE   | —              | Data contabile (obbligatoria)             |
-| `p_data_registrazione`    | DATE   | `CURRENT_DATE` | Data registrazione                        |
-| `p_ente_incasso_id`       | BIGINT | NULL           | Ente di incasso (> 0 se valorizzato)      |
-| ~~`p_compensazione_id`~~  | —      | —              | ⛔ **Rimosso il 2026-08-22**: le sistemazioni creano la loro distinta da se'                   |
-| `p_lotto_id`              | BIGINT | NULL           | Lotto di fatturazione                     |
-| `p_codice_stato_interno`  | TEXT   | `'BOZZA'`      | Codice interno dello stato iniziale       |
-| `p_meta`                  | JSONB  | `'{}'`         | Metadati                                  |
-| `p_emittente_fiscale_id`  | BIGINT | NULL           | Emittente della distinta (dal 2026-09-15): se manca, lo dice il lotto o il canale — regole nella scheda [`vendite_contabili`](../dbzero/pagamenti/manual/vendite_contabili.md) |
+| Parametro                 | Tipo    | Default        | Descrizione                                                                                                                                                                    |
+| ------------------------- | ------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `p_centro_riscossione_id` | BIGINT  | —              | Centro di riscossione (obbligatorio, > 0)                                                                                                                                      |
+| `p_data_contabile`        | DATE    | —              | Data contabile (obbligatoria)                                                                                                                                                  |
+| `p_data_registrazione`    | DATE    | `CURRENT_DATE` | Data registrazione                                                                                                                                                             |
+| `p_ente_incasso_id`       | BIGINT  | NULL           | Ente di incasso (> 0 se valorizzato)                                                                                                                                           |
+| `p_lotto_id`              | BIGINT  | NULL           | Lotto di fatturazione                                                                                                                                                          |
+| `p_codice_stato_interno`  | TEXT    | `'BOZZA'`      | Codice interno dello stato iniziale                                                                                                                                            |
+| `p_meta`                  | JSONB   | `'{}'`         | Metadati                                                                                                                                                                       |
+| `p_origine`               | VARCHAR | `'GENERATA'`   | Come nasce la distinta: dal processo o compilata a mano                                                                                                                        |
+| `p_emittente_fiscale_id`  | BIGINT  | NULL           | Emittente della distinta (dal 2026-09-15): se manca, lo dice il lotto o il canale — regole nella scheda [`vendite_contabili`](../dbzero/pagamenti/manual/vendite_contabili.md) |
 
 **Restituisce:** `BIGINT` — l'ID della testata (esistente o appena creata).
 
 **Strategia di ricerca:**
 
-1. ⛔ *(rimosso il 2026-08-22)* Se `p_compensazione_id` era valorizzato: cercava per `compensazione_id` (relazione 1:1 UNIQUE). Se trovata, verifica coerenza dei parametri.
-2. Se `p_lotto_id` e NULL: cerca per combinazione `(centro, ente, data_contabile, data_registrazione, stato)` senza compensazione.
-3. Se `p_lotto_id` e valorizzato: cerca tramite JOIN su `vendite_contabili_lotti` con la stessa combinazione.
-4. Se non trovata: INSERT senza `codice` — il numero lo assegna il registro `DISTINTA` dell'emittente (dal 2026-09-15; prima era `VC_<timestamp>_<random8>`).
-5. Se `p_lotto_id` e valorizzato: INSERT in `vendite_contabili_lotti` con `ON CONFLICT DO NOTHING`.
-
-**Vincolo di mutua esclusione:** ⛔ *(non piu' applicabile dal 2026-08-22, il primo parametro non esiste)* `p_compensazione_id` e `p_lotto_id` erano mutuamente esclusivi (errore se entrambi valorizzati).
+1. Se `p_lotto_id` è NULL: cerca per combinazione `(centro, ente, data_contabile, data_registrazione, stato)`.
+2. Se `p_lotto_id` è valorizzato: cerca tramite JOIN su `vendite_contabili_lotti` con la stessa combinazione.
+3. Se non trovata: INSERT senza `codice` — il numero lo assegna il registro `DISTINTA` dell'emittente.
+4. Se `p_lotto_id` è valorizzato: INSERT in `vendite_contabili_lotti` con `ON CONFLICT DO NOTHING`.
 
 > Documentazione dettagliata: [pagamenti.fn_get_or_create_vendite_contabile](/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile)
 
@@ -833,9 +819,9 @@ Restituisce il saldo contabile "in lavorazione" per una fattura: la somma degli 
 
 Da un punto di vista tecnico:
 
-| Parametro                     | Tipo   | Descrizione               |
-| ----------------------------- | ------ | ------------------------- |
-| `p_fattura_id`                | BIGINT | ID fattura (obbligatorio) |
+| Parametro                     | Tipo   | Descrizione                                                                                                                                                                                                     |
+| ----------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `p_fattura_id`                | BIGINT | ID fattura (obbligatorio)                                                                                                                                                                                       |
 | `p_escludi_contabile_riga_id` | BIGINT | facoltativo (dal 18-09-2026): la riga contabile da **non contare** — «quanto era dichiarato *prima* di me», per chi sta scrivendo o correggendo proprio quella riga. Lo stesso parametro di `fn_get_saldo_rata` |
 
 **Restituisce:** `TABLE(saldo_contabile NUMERIC, has_righe_postabili BOOLEAN)`
@@ -860,9 +846,9 @@ Restituisce il saldo finanziario effettivo di una fattura: il residuo tra il tot
 
 Da un punto di vista tecnico:
 
-| Parametro                     | Tipo   | Descrizione               |
-| ----------------------------- | ------ | ------------------------- |
-| `p_fattura_id`                | BIGINT | ID fattura (obbligatorio) |
+| Parametro                     | Tipo   | Descrizione                                                                                                                                                                                                                                                        |
+| ----------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `p_fattura_id`                | BIGINT | ID fattura (obbligatorio)                                                                                                                                                                                                                                          |
 | `p_escludi_contabile_riga_id` | BIGINT | facoltativo (dal 18-09-2026): la riga contabile da **non contare**, né fra i dichiarati né — se è già registrata — col suo movimento. È «quanto c'era *prima* di me» per chi corregge una riga: lo stesso parametro, con la stessa domanda, di `fn_get_saldo_rata` |
 
 **Restituisce:** `TABLE(saldo NUMERIC, in_lavorazione NUMERIC, incassato NUMERIC, has_movimenti BOOLEAN)` — dal 25-08-2026 la **stessa forma** della sorella della rata: residuo, dichiarato non ancora registrato, cassa vera.
@@ -879,6 +865,16 @@ Da un punto di vista tecnico:
 
 ---
 
+### `fn_conferma_sistemazione` e `fn_annulla_sistemazione`
+
+Sono i due gesti del registro delle sistemazioni: la **conferma** (che fa nascere
+il documento — un fondo o una distinta) e l'**annullamento** di una decisione non
+ancora confermata. Il giro completo è nella sezione «Le sistemazioni».
+
+> Documentazione dettagliata: [pagamenti.fn_conferma_sistemazione](/dbzero/pagamenti/funzioni/fn_conferma_sistemazione) · [pagamenti.fn_annulla_sistemazione](/dbzero/pagamenti/funzioni/fn_annulla_sistemazione)
+
+---
+
 ### `fn_posta_contabile`
 
 ⭐ **La funzione che registra.** Trasforma in movimenti contabili le righe di una
@@ -889,11 +885,11 @@ E' il punto in cui **nasce il primo movimento** del progetto: fino al
 residuo di una fattura coincideva col totale *per costruzione* — non perche'
 nessuno avesse pagato, ma perche' non c'era modo di registrarlo.
 
-| Parametro | Tipo | Descrizione |
-| --- | --- | --- |
-| `p_contabile_id` | BIGINT | La distinta da registrare (obbligatorio) |
-| `p_righe_attese` | INTEGER | Quante righe pronte aveva davanti chi conferma (facoltativo) |
-| `p_totale_atteso` | NUMERIC | ...e per che totale (facoltativo, ma insieme al precedente) |
+| Parametro         | Tipo    | Descrizione                                                  |
+| ----------------- | ------- | ------------------------------------------------------------ |
+| `p_contabile_id`  | BIGINT  | La distinta da registrare (obbligatorio)                     |
+| `p_righe_attese`  | INTEGER | Quante righe pronte aveva davanti chi conferma (facoltativo) |
+| `p_totale_atteso` | NUMERIC | ...e per che totale (facoltativo, ma insieme al precedente)  |
 
 **Restituisce:** `TABLE(movimenti_creati INTEGER, righe_postate INTEGER, righe_saltate INTEGER, totale_postato NUMERIC, esito TEXT)`
 
@@ -918,23 +914,29 @@ conferma e chiude.
 >    restano li' e vengono contate in `righe_saltate` — ma da quel momento **non
 >    possono piu' diventare pronte**, o sarebbe denaro dichiarato che non si
 >    registrera' mai.
-
+>
 > Documentazione dettagliata: [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile)
 
 ---
 
-## Saldi: due livelli di lettura
+## Saldi: tre domande, una formula
 
-Il modello espone due livelli di saldo per ogni fattura, che rispondono a domande diverse:
+A seconda della domanda cambia il livello a cui si guarda — e i livelli, oggi, sono tre:
 
-| Livello               | Funzione                         | Cosa rappresenta                                              |
-| --------------------- | -------------------------------- | ------------------------------------------------------------- |
-| **Saldo finanziario** | `fn_get_saldo_fattura`           | Residuo effettivo: `totale_a_pagare - movimenti attivi`       |
-| **Saldo contabile**   | `fn_get_saldo_fattura_contabili` | Importi in lavorazione: righe postabili su testate non finali |
+| Domanda                                          | Funzione               | Che cosa risponde                                                                                                                                                                               |
+| ------------------------------------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Quanto resta da incassare su **questa fattura**? | `fn_get_saldo_fattura` | Il residuo (`totale_a_pagare` − movimenti attivi) e, nella stessa riga, `in_lavorazione` (il dichiarato non ancora registrato) e `incassato` (solo il denaro passato da un centro di **cassa**) |
+| Quanto resta su **questa rata**?                 | `fn_get_saldo_rata`    | Lo stesso conto letto sulla rata: distingue il **registrato** dal **dichiarato** e l'**incassato** dal postato                                                                                  |
+| E su **tutte** le rate del documento?            | `fn_get_saldi_rate`    | Il **nucleo**: la formula scritta una volta per N rate, con l'**imputazione** degli incassi che non nominano una rata                                                                           |
 
-Il saldo finanziario dice "quanto resta da incassare"; il saldo contabile dice "quanto e gia registrato nelle contabili ma non ancora diventato movimento". La differenza tra i due indica il margine di lavoro operativo.
+`fn_get_saldo_fattura_contabili` è la sola parte «dichiarato»: la usano il processo e chi deve sapere quanto c'è in lavorazione.
 
-Questa separazione e fondamentale per evitare duplicazioni nei processi automatici (generazione fondi fattura, sincronizzazione contabili) e per dare visibilita sullo stato di avanzamento degli incassi.
+⚠️ Due cose che valgono per tutti i livelli:
+
+* **`incassato` non è `saldo`.** I centri interni (fondo fattura, compensazione) **spostano** denaro tra documenti: per la domanda «questa fattura è pagata?» contano come tutto il resto, per la domanda «quanto è **entrato**?» vanno esclusi, altrimenti si conta come cassa qualcosa che non è mai transitato da una banca.
+* **La somma dei saldi delle rate è sempre il saldo del documento.** Gli incassi registrati «sulla fattura, senza rata» si **imputano** alle rate per data di scadenza, fino a capienza, e l'ultima assorbe l'eccedenza: è un calcolo del nucleo, non una colonna che qualcuno scrive.
+
+Questa separazione è fondamentale per evitare duplicazioni nei processi automatici (generazione fondi fattura, sincronizzazione contabili).
 
 ---
 
@@ -944,7 +946,7 @@ Questa separazione e fondamentale per evitare duplicazioni nei processi automati
 > **piu' aziende** (in questo sistema sono due, entrambe attive): chi lavora per
 > l'una non deve vedere i soldi dell'altra.
 
-### Il problema, in una frase
+### Il denaro non ha ancora una fattura
 
 Il sistema capisce a chi appartiene un documento **guardando il documento**: una
 fattura dice qual e' l'azienda che l'ha emessa, e da li' si decide chi puo'
@@ -971,14 +973,14 @@ denaro, sarebbe diventata un varco che **non produce nessun errore visibile**.
 
 ### Che cosa si vede, in concreto
 
-| Che cosa | Chi la vede |
-|---|---|
-| Una **distinta** arrivata da un canale | chi lavora per l'azienda titolare di quel conto |
-| Le sue **righe** | gli stessi — anche quelle non ancora abbinate a una fattura |
-| Una riga gia' abbinata a una **fattura** | anche chi ha quella fattura, se e' di un'altra azienda ⚠️ |
-| I **movimenti** (il denaro registrato) | chi ha la fattura che quel movimento paga |
+| Che cosa                                                           | Chi la vede                                                                                                          |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Una **distinta** arrivata da un canale                             | chi lavora per l'azienda titolare di quel conto                                                                      |
+| Le sue **righe**                                                   | gli stessi — anche quelle non ancora abbinate a una fattura                                                          |
+| Una riga gia' abbinata a una **fattura**                           | anche chi ha quella fattura, se e' di un'altra azienda                                                               |
+| I **movimenti** (il denaro registrato)                             | chi ha la fattura che quel movimento paga                                                                            |
 | Le distinte **interne** del sistema (fondi fattura, compensazioni) | chi lavora per l'azienda emittente della distinta (dal 2026-09-15 ogni distinta ha un emittente, anche senza canale) |
-| Le **righe** di quelle distinte interne | chi vede la testata, piu' chi ha la fattura che la riga porta |
+| Le **righe** di quelle distinte interne                            | chi vede la testata, piu' chi ha la fattura che la riga porta                                                        |
 
 ⚠️ **La terza riga della tabella non e' una svista.** Se una riga finisce per
 sbaglio sulla distinta dell'azienda sbagliata, chi possiede la fattura **deve
@@ -994,10 +996,10 @@ rientra nelle regole normali.
 
 ### Due presidi, e fanno cose diverse
 
-| | Che cosa fa | Che cosa vede l'operatore |
-|---|---|---|
-| **Il filtro in lettura** | fa **sparire** dagli elenchi cio' che non e' suo | niente: gli elenchi mostrano il suo lavoro |
-| **Il blocco in scrittura** | **rifiuta** di scrivere fuori dal proprio perimetro | un messaggio che dice cosa e' successo |
+|                            | Che cosa fa                                         | Che cosa vede l'operatore                  |
+| -------------------------- | --------------------------------------------------- | ------------------------------------------ |
+| **Il filtro in lettura**   | fa **sparire** dagli elenchi cio' che non e' suo    | niente: gli elenchi mostrano il suo lavoro |
+| **Il blocco in scrittura** | **rifiuta** di scrivere fuori dal proprio perimetro | un messaggio che dice cosa e' successo     |
 
 ⭐ Servono insieme, e la ragione e' semplice: **un silenzio dove serve
 riservatezza, un messaggio dove serve un rimedio**. Se ci fosse solo il filtro,
@@ -1013,18 +1015,11 @@ sistema che il filtro non riguarda, perche' devono vedere tutto per definizione.
 
 ### Coerenza ente/centro: `trgfn_vendite_contabili_guard_ente_centro`
 
-Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili`) applica due blocchi di regole:
+Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili`) applica un blocco di regole:
 
-**Blocco 1 — Coerenza ente/centro:**
+**Coerenza ente/centro:**
 
 Se `ente_incasso_id` e valorizzato, verifica che il `centro_riscossione_id` dell'ente corrisponda a quello della testata. Impedisce l'associazione di un ente a un centro incoerente.
-
-**Blocco 2 — Regole compensazione:**
-
-⛔ *(rimosso il 2026-08-22, lotto 7)* Se `compensazione_id` era valorizzato:
-
-* Il centro di riscossione deve avere `is_compensazione = true`
-* La testata non deve avere link in `vendite_contabili_lotti` (mutua esclusione)
 
 ---
 
@@ -1046,7 +1041,29 @@ Questo trigger (BEFORE INSERT / UPDATE dei fatti / DELETE su `vendite_contabili_
 
 ### Mutua esclusione lotto/sistemazione: `trgfn_vendite_contabili_lotti_guard_sistemazione`
 
-Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili_lotti`) impedisce che una testata **nata da una sistemazione** — la domanda si fa all'atto, non piu' alla testata — ~~con `compensazione_id IS NOT NULL` venga associata a un lotto. Lavora in coppia con il blocco 2 del guard ente/centro per applicare la mutua esclusione da entrambi i lati.
+Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili_lotti`) impedisce che una testata **nata da una sistemazione** venga associata a un lotto: la domanda si fa **all'atto** (`sistemazioni.contabile_id`), non alla testata — perché la colonna che legava la distinta all'atto non c'è più.
+
+---
+
+### Gli altri guard, in breve
+
+Oltre a quelli raccontati sopra, il dominio ne ha altri — ognuno con una regola
+sola, e tutti con la stessa forma: **il database dice di no e spiega perché**, e
+il backend legge la stessa funzione per spegnere l'azione a video col motivo.
+
+| Guard                                                     | Che cosa custodisce                                                                                            |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `trgfn_vendite_contabili_guard_transizione`               | Il passaggio di stato della **distinta**, secondo la matrice                                                   |
+| `trgfn_vendite_contabili_righe_guard_transizione`         | Il passaggio di stato della **riga**, secondo la sua matrice                                                   |
+| `trgfn_vendite_contabili_guard_validazione`               | La quadratura col dichiarato all'ingresso in `VALIDATA`, e la riapertura in bozza solo per la distinta manuale |
+| `trgfn_vendite_contabili_guard_chiusura`                  | Che una distinta chiusa non si riapra                                                                          |
+| `trgfn_vendite_contabili_gen_codice`                      | Il codice `DIS-…`: lo emette il registro `DISTINTA` dell'emittente                                             |
+| `trgfn_vendite_contabili_emittente`                       | L'emittente della distinta e il suo perimetro, anche senza canale                                              |
+| `trgfn_vendite_contabili_righe_guard_stato_dati`          | Che una riga non cambi importo o date da stati in cui è un fatto                                               |
+| `trgfn_vendite_contabili_righe_guard_distinta_finale`     | Cosa si può ancora fare su una riga sotto una distinta finale                                                  |
+| `trgfn_vendite_contabili_righe_guard_rata`                | **La capienza della rata**: il doppio tempo col motivo, quando si supera lo spazio                             |
+| `trgfn_vendite_contabili_righe_marca_fondo_eseguito`      | Il fondo fattura che diventa `ESEGUITO` quando la sua riga viene registrata                                    |
+| `trgfn_sistemazioni_guard_transizione` / `..._guard_dati` | Gli stati e i dati di un atto di sistemazione                                                                  |
 
 ---
 
@@ -1066,7 +1083,7 @@ registrazione.
 flowchart TD
   A[Origini pagamento] --> B{Tipo}
   B -->|Flusso esterno| C[Import banca/poste/PSP]
-  B -->|Compensazione| D[pagamenti.compensazioni]
+  B -->|Sistemazione| D[pagamenti.sistemazioni]
   B -->|Fondo fattura| E[vendite.fatture_fondi_fattura_source]
   C --> F[vendite_contabili<br/>testata]
   D --> F
@@ -1083,21 +1100,155 @@ flowchart TD
 
 ---
 
+## Il giro operativo: dal denaro in banca alla distinta registrata
+
+L'area **Incassi** è la porta di tutto questo. Le sue schermate sono: **Canali di
+incasso**, **Distinte** (con le righe), **Da abbinare**, **Sospese**,
+**Eccedenze**, **Rate fuori capienza**. Questa sezione racconta il giro come lo
+fa una persona, nell'ordine in cui lo fa.
+
+### Aprire una distinta
+
+Chi lavora apre una distinta su un canale scelto: il canale **compila il centro**
+(e lo blocca — la coppia incoerente la rifiuterebbe il database), e da esso si
+risale all'emittente attraverso il **conto** su cui atterra il denaro. Se il
+canale non c'è, l'emittente lo si sceglie dalla barra in alto, e la finestra lo
+mostra in sola lettura: la distinta ha un emittente **sempre**, anche senza
+canale.
+
+Il **codice** lo assegna il registro `DISTINTA` dell'emittente, non il client:
+`DIS-<sigla>-<anno>-<7 cifre>`. Riaprire con gli stessi dati **non** crea una
+seconda distinta: ridà quella di prima, e lo dice.
+
+Il campo che fa da metro a tutta la lavorazione è **`importo_dichiarato`**: il
+totale che chi lavora si aspetta di trovare. Da lì la **quadratura** — dichiarato
+contro somma delle righe — con lo scarto in evidenza. Attenzione a contare bene:
+una riga `SCARTATA` **conta** nella quadratura (è denaro arrivato che non è
+nostro), mentre una riga **eliminata** in bozza non è mai esistita.
+
+### Le righe: dalla carta alla rata
+
+«Nuova riga» parte dal **documento**, non dall'importo: si cerca la fattura
+(numero o ragione sociale, dai 3 caratteri) e si sceglie la **rata**; l'importo
+si **propone da solo** col residuo — della rata, o del documento se la rata non
+si indica. La rata resta **facoltativa**: il fondo fattura, per esempio, salda
+per trasferimento e non nomina una scadenza. Il picker mostra numero, cliente,
+scadenza, residuo, in lavorazione e incassato: sono gli stessi numeri che il
+database userà per dire se c'è spazio.
+
+Due gesti valgono la pena di essere detti:
+
+* **«Non riesco ad associarlo»** — l'eccezione si **dichiara**: la riga nasce
+  `DA_ABBINARE` e compare in *Da abbinare*. Senza quel gesto (e senza una
+  fattura) il salvataggio è spento: non esistono righe «nate per sbaglio» senza
+  destinazione.
+* **«Righe da rate»** — si spuntano N rate e nascono **N righe**, ognuna un atto
+  suo: il foglio resta in bozza. L'esito è **per riga**: se una non passa la
+  capienza, le altre vengono comunque create, e la buona non si perde.
+
+In bozza si corregge e si elimina (il cestino): una riga digitata male è un
+errore di battitura, non un fatto, e la quadratura **torna**.
+
+### Abbinare, e i due tempi della capienza
+
+Il database, quando si abbina un incasso a una rata, fa **due domande** e
+risponde in modo opposto:
+
+|              | Domanda                             | Che cosa fa                                                         |
+| ------------ | ----------------------------------- | ------------------------------------------------------------------- |
+| **Coerenza** | «questa rata è di questa fattura?»  | **rifiuta** — è un'incoerenza logica, nessun cliente può provocarla |
+| **Capienza** | «c'è ancora spazio su questa rata?» | **segnala** — che un cliente paghi due volte è un fatto del mondo   |
+
+Il primo tentativo su una rata piena **non** produce un errore rosso: produce una
+**domanda**, col messaggio del database e i numeri («restano 40, questo importo è
+90»). Chi conferma scrive lo stesso, e sulla riga restano `forzata` e
+`motivo_forzatura`. ⛔ Nessun permesso e nessuna azione di processo: l'operatore
+non è mai bloccato — ma **una forzatura senza un elenco è un modo per nascondere,
+non per registrare**, ed è per questo che esiste
+[vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza). Lo
+stesso doppio tempo vale alla nascita della riga, in modifica e nella
+registrazione tardiva.
+
+Sulla riga **già abbinata** si usa **«Abbina»**, che riapre il dialogo sulla
+destinazione attuale: non si «sgancia» per ri-abbinare, e «Porta a
+`DA_ABBINARE`» non esiste più (dal 19-09-2026). Le voci del menu vengono dalla
+matrice delle transizioni, non da un elenco scritto a mano.
+
+### Validare, e poi registrare
+
+Sono **due** gesti, e vale la pena tenerli distinti:
+
+* **Validare** — «ho finito di inserire, e ogni riga è stata guardata». Il
+  database controlla la **quadratura** col dichiarato e (se c'è) che nessuna riga
+  resti `DA_ABBINARE`. Se qualcosa non torna, il pulsante è **spento col
+  motivo**, non un errore dopo il click. Da `VALIDATA` il **contenuto è fermo**:
+  niente righe nuove, niente modifiche a importi e date, niente eliminazioni —
+  finché non si torna in bozza. Le **decisioni** (abbinare, sospendere, scartare)
+  restano libere: sono lavoro, non contenuto.
+* **Registrare** — solo da `VALIDATA` (è il flag `is_registrabile` dello stato a
+  dirlo; in `BOZZA` il pulsante è spento col motivo). Registra il **permesso**
+  `registra_distinta` (azione «pericolosa»: dal 29-08-2026 è a catalogo e non è
+  assegnata a nessun profilo — finché non lo si assegna registra solo il super
+  admin). La funzione è `fn_posta_contabile`, che pretende anche la
+  **dichiarazione** di chi conferma (`p_righe_attese` / `p_totale_atteso`):
+  fra il momento in cui si guarda l'elenco e quello in cui si preme, la distinta
+  può essere cambiata, e la registrazione è irreversibile. «Niente da
+  registrare» non è un errore: è l'esito `NULLA_DA_POSTARE`.
+
+## La correzione guidata: si corregge con un atto nuovo
+
+Una distinta **registrata non si modifica**. Si corregge con un **atto nuovo**:
+
+`fn_crea_distinta_correzione(p_contabile_id, p_data_contabile, p_motivo)` genera
+una **bozza** con le righe **di segno opposto**, con fattura e rata **già
+scritte** (che il legame si eredita) e con lo stato `DA_ABBINARE`: il tasto finale
+lo preme una persona. Il denaro non si muove finché quella bozza non viene
+registrata — e allora sì, e nella direzione opposta.
+
+Le due distinte si nominano a vicenda: la nuova dice **«questa distinta corregge
+la …»** (il legame è `contabile_corretta_id`), l'originale dice **«è già stata
+corretta dalla …»** e spegne «Correggi» col motivo. In `BOZZA` non si corregge:
+non ha prodotto movimenti, e lì si modifica direttamente.
+
+⚠️ Il **doppio tempo della capienza** vale anche qui, e non è una svista: una
+riga negativa su una rata ormai piena **non passa liscia** — compare la stessa
+domanda dell'abbinamento, perché anche il segno negativo è denaro che si muove.
+
+## Chi resta indietro: la registrazione tardiva
+
+Registrare non è «tutto o niente»: `fn_posta_contabile` scrive i movimenti delle
+righe **pronte** e lascia le altre dov'erano, contandole in `righe_saltate`. Chi
+resta indietro **non si perde**, e ha ancora due strade:
+
+* una riga **`SOSPESA`** resta lavorabile anche sotto una distinta `CHIUSA`: in
+  *Incassi → Sospese* il menu offre **«Abbina e registra»** — è
+  `fn_posta_riga_tardiva`, e compare solo a chi ha `registra_distinta`. La
+  distinta resta `CHIUSA` con la **sua** data di registrazione, la quadratura
+  **non cambia** (quella riga era già contata) e nel drawer della fattura il
+  residuo scende.
+* una riga **`SCARTATA`** resta nella quadratura e si vede accendendo **«Mostra
+  scartate»**: **«Riprendi»** la riporta `SOSPESA` anche a distinta chiusa, e da
+  lì vale il giro di sopra.
+
+⚠️ Sulla tardiva torna il **doppio tempo**: se la rata non ha più spazio, la
+domanda c'è come alla nascita. E i movimenti restano **irreversibili**: se serve
+un altro esito si compie un atto nuovo, non si riscrive quello vecchio.
+
 ## Regole di dominio
 
 1. **Punto unico d'ingresso**: ogni incasso o rimborso deve passare da una testata contabile (`vendite_contabili`). La scrittura diretta in `vendite_movimenti` e un'eccezione tecnica, non il percorso standard.
 
 2. **Coerenza ente/centro**: se una testata ha un ente incasso, il `centro_riscossione_id` dell'ente deve coincidere con quello della testata (guard: `trgfn_vendite_contabili_guard_ente_centro`).
 
-3. **Mutua esclusione sistemazione/lotto**: una testata **nata da una sistemazione** non puo avere link in ~~`vendite_contabili_lotti`, e viceversa. Applicata da due trigger simmetrici.
+3. **Mutua esclusione sistemazione/lotto**: una testata **nata da una sistemazione** non puo avere link in `vendite_contabili_lotti`. La applica il guard sul legame (`trgfn_vendite_contabili_lotti_guard_sistemazione`), che legge l'atto.
 
-4. **Centro compensazione obbligatorio**: una testata con `compensazione_id` deve appartenere a un centro con `is_compensazione = true`. Un solo centro nel sistema puo avere questo flag.
+4. **Centro di compensazione unico**: il centro su cui girano le compensazioni è quello con `is_compensazione = true`, e ce n'è **al più uno** (indice unico parziale). Lo stesso vale per il centro dei fondi fattura (`is_fondo_fattura`).
 
 5. **Relazione 1:1 riga-movimento**: ogni riga contabile genera al massimo un movimento (indice UNIQUE parziale su `contabile_riga_id`). La sincronizzazione dei campi e automatica via trigger.
 
 6. **Importo non zero**: le righe contabili non ammettono importo pari a zero (CHECK constraint).
 
-7. **Posting condizionato da stato**: solo le righe il cui stato ha `is_postabile = true` e la cui testata non e in stato `is_final = true` sono candidate alla generazione di movimenti.
+7. **Posting condizionato da stato**: una riga diventa movimento solo se il suo stato ha `is_postabile = true` **e** la testata è registrabile (`is_registrabile`, cioè `VALIDATA`) e non finale. In bozza la registrazione è rifiutata — e a video il pulsante è spento prima, col motivo.
 
 8. **Protezione disattivazione**: centri, enti, stati e righe non possono essere disattivati se referenziati da record figli attivi. ⭐ Per le **righe** la regola dal 14-09-2026 e' piu' precisa: si eliminano (`attivo = false`, e `DELETE`) solo su una distinta **manuale in bozza**; sotto una manuale **validata** il contenuto (righe nuove, importi, date, eliminazioni) e' fermo finche' non torna in bozza, mentre le decisioni restano libere (guard: `trgfn_vendite_contabili_righe_guard_contenuto`).
 
@@ -1116,17 +1267,24 @@ flowchart TD
 
 ---
 
-## Dashboard Pagamenti (da implementare)
+## Dashboard Pagamenti (cosa c'è e cosa manca)
 
-> Stato: WIP — la dashboard operativa e prevista ma non ancora implementata a livello UI/processo.
+> Stato al 20-09-2026. Fino a ieri questa sezione diceva «da implementare»: era
+> vero fino al cantiere incassi di agosto-settembre.
 
-L'obiettivo e offrire un unico punto operativo per gestire il ciclo contabili-movimenti, con visibilita su errori, anomalie e saldi. Le aree previste:
+L'area **Incassi** esiste ed è in collaudo: canali di incasso, distinte con le
+loro righe, coda «Da abbinare», «Sospese», «Eccedenze», «Rate fuori capienza»,
+più i dialoghi di validazione e registrazione. Il giro completo — aprire una
+distinta, digitare o cercare le rate, abbinare, validare, registrare, correggere
+— è descritto in «Il giro operativo».
 
-1. **Import flussi** — selezione canale/ente, acquisizione file o input automatico, creazione testata/righe
-2. **Validazione e abbinamento** — controlli formali, abbinamento fatture/billing account, gestione sospesi
-3. **Automatismi** — monitor fondi fattura e compensazioni, evidenza righe generate da processo
-4. **Posting** — filtro righe postabili, esecuzione posting idempotente, generazione movimenti
-5. **Monitoraggio** — stato contabili/righe, log esecuzione, report saldi
+Resta da costruire **lo scadenzario**: la schermata che risponde a «quali rate
+sono scadute o insolute», per data. I due pezzi che mancavano ci sono dal
+17-09-2026 — [vw_fatture_scadenze_lista](/dbzero/vendite/views/vw_fatture_scadenze_lista)
+(chi è la rata) e [vw_saldi_rate](/dbzero/pagamenti/views/vw_saldi_rate) (quanto
+resta), con «solo aperte» che è un `WHERE saldo <> 0` — e l'elenco delle
+[rate fuori capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) è la sua
+prima vista utile. Servono i filtri, l'ordinamento per data e le azioni.
 
 ---
 
@@ -1159,7 +1317,14 @@ erDiagram
         varchar codice
         bigint centro_riscossione_id FK
         bigint ente_incasso_id FK
+        bigint emittente_soggetto_ruolo_id FK
+        bigint registro_id FK
+        smallint anno
+        varchar origine
         date data_contabile
+        date data_registrazione
+        numeric importo_dichiarato
+        bigint contabile_corretta_id FK
         smallint stato_id FK
     }
 
@@ -1168,7 +1333,10 @@ erDiagram
         bigint contabile_id FK
         bigint fattura_id FK
         bigint billing_account_id FK
+        bigint scadenza_id FK
         numeric importo
+        boolean forzata
+        text motivo_forzatura
         smallint stato_id FK
         boolean attivo
     }
@@ -1177,6 +1345,7 @@ erDiagram
         bigint id PK
         bigint fattura_id FK
         bigint billing_account_id FK
+        bigint scadenza_id FK
         numeric importo
         bigint contabile_id FK
         bigint contabile_riga_id FK
@@ -1208,14 +1377,21 @@ erDiagram
     vendite_contabili ||--o{ vendite_movimenti : "origine"
 ```
 
-### Compensazioni, lotti e fondi fattura
+### Sistemazioni, lotti e fondi fattura
 
 ```mermaid
 erDiagram
-    compensazioni {
+    sistemazioni {
         bigint id PK
+        varchar destinazione
+        varchar stato
+        numeric importo
+        text motivo
+        bigint fattura_origine_id FK
+        bigint fattura_destinazione_id FK
+        bigint contabile_id FK
+        bigint fondo_source_id FK
         timestamptz data_esecuzione
-        jsonb meta
     }
 
     vendite_contabili {
@@ -1249,30 +1425,12 @@ erDiagram
         numeric totale_a_pagare
     }
 
-    compensazioni ||--|| vendite_contabili : "genera 1:1"
+    sistemazioni ||--o| vendite_contabili : "genera 1:1"
     vendite_contabili ||--o{ vendite_contabili_lotti : "associata a"
     fatturazione_lotti ||--o{ vendite_contabili_lotti : "include"
     fatture ||--o{ fatture_fondi_fattura_source : "genera fondi"
     fatture_fondi_fattura_source }o--o| fatture : "applicato su figlia"
 ```
-
----
-
-## Note finali
-
-Questa guida copre il modello contabile dei pagamenti vendite. Per il contesto delle fatture e dei lotti di fatturazione che alimentano il ciclo contabile:
-
-* [Guida Fatturazione](/guide/fatturazione) — ciclo di vita fatture, lotti, pipeline
-* [Guida Gestione Conti Bancari](/guide/gestione-conti-bancari) — IBAN, filiali, mandati SEPA
-* [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job) — pipeline e task run
-
-Per il dettaglio delle singole tabelle e funzioni:
-
-* [pagamenti.vendite_contabili (manual)](/dbzero/pagamenti/manual/vendite_contabili) — contesto e semantica
-* [pagamenti.vendite_contabili_righe (manual)](/dbzero/pagamenti/manual/vendite_contabili_righe) — dettaglio righe
-* [pagamenti.vendite_movimenti (manual)](/dbzero/pagamenti/manual/vendite_movimenti) — movimenti effettivi
-* [pagamenti.sistemazioni (manual)](/dbzero/pagamenti/manual/sistemazioni) — il registro delle sistemazioni
-* [vendite.fatture_fondi_fattura_source (manual)](/dbzero/vendite/manual/fatture_fondi_fattura_source) — fondi fattura
 
 ---
 

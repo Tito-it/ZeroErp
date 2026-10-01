@@ -30,6 +30,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError
 
+from apps.core.db._helpers import order_dir_ammessa
 from apps.core.services.db_error_fields import APP_ERROR_CODE_RE, diagnostica_db
 from apps.core.services.error_manager import ErrorManager
 
@@ -142,14 +143,26 @@ class PayloadValidator:
     # Whitelist colonne ORDER BY
     # =================================================================
 
-    # Scopo: Valida che `order_by` sia nella whitelist di colonne ammesse.
+    # Scopo: Valida che `order_by` sia nella whitelist di colonne ammesse E
+    #        che `order_dir`, se indicato, sia una direzione riconosciuta.
     #        Coerente con policy anti-SQL-injection sui parametri di
     #        ordinamento lista (ogni repo ha la sua _ORDER_COLS).
+    # ⛔ `order_dir` e' OBBLIGATORIO come argomento (2026-09-26): fino a quel
+    #    giorno questo metodo guardava la sola colonna, e i sette service che
+    #    lo usavano — alcuni con il commento «validazione order_by/dir» sopra —
+    #    lasciavano passare `?order_dir=giu`, che il repository trasformava in
+    #    ASC. Renderlo obbligatorio fa si' che chi valida la colonna non possa
+    #    dimenticare la direzione.
+    # ⭐ Il predicato e' `order_dir_ammessa` del BB SQL, non una copia di
+    #    `{asc, desc}`: il service rifiuta ESATTAMENTE cio' che il repository
+    #    rifiuterebbe (maiuscole e spazi ammessi, assente = default), solo con
+    #    il codice di dominio invece del generico `E_VALIDATION_INPUT`.
     def validate_order_by(
         self,
         order_by: str,
         *,
         allowed: frozenset[str],
+        order_dir: str | None,
         log_to_db: bool | None = None,
         function_name: str | None = None,
     ) -> None:
@@ -159,6 +172,14 @@ class PayloadValidator:
             message="Parametri ordinamento non validi.",
             detail=f"order_by deve essere uno tra: {', '.join(sorted(allowed))}",
             context={"order_by": order_by},
+            **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
+        )
+        ErrorManager.require(
+            order_dir_ammessa(order_dir),
+            code=self._code,
+            message="Parametri ordinamento non validi.",
+            detail="order_dir deve essere 'asc' o 'desc'",
+            context={"order_dir": order_dir},
             **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
         )
 
@@ -403,7 +424,6 @@ class PayloadValidator:
                 context={key: raw, "field": key},
                 **em,
             )
-            raise AssertionError("unreachable")  # pragma: no cover
         ErrorManager.require(
             value > 0,
             code=self._code,
@@ -435,7 +455,7 @@ class PayloadValidator:
             ErrorManager.raise_error(
                 code=self._code,
                 message=f"Campo '{key}' deve essere un intero.",
-                context={key: value},
+                context={key: value, "field": key},
                 **em,
             )
         normalized: int
@@ -448,16 +468,15 @@ class PayloadValidator:
             ErrorManager.raise_error(
                 code=self._code,
                 message=f"Campo '{key}' deve essere un intero.",
-                context={key: value},
+                context={key: value, "field": key},
                 **em,
             )
-            raise AssertionError("unreachable")  # pragma: no cover
         ErrorManager.require(
             min_val <= normalized <= max_val,
             code=self._code,
             message=f"Campo '{key}' fuori range.",
             detail=f"Deve essere tra {min_val} e {max_val}.",
-            context={key: normalized},
+            context={key: normalized, "field": key},
             **em,
         )
         return normalized
@@ -485,10 +504,9 @@ class PayloadValidator:
         ErrorManager.raise_error(
             code=self._code,
             message=f"Campo '{key}' deve essere booleano.",
-            context={key: value},
+            context={key: value, "field": key},
             **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
         )
-        raise AssertionError("unreachable")  # pragma: no cover
 
     # =================================================================
     # Estrazione UUID
@@ -519,7 +537,6 @@ class PayloadValidator:
                     cause=exc,
                     **em,
                 )
-                raise AssertionError("unreachable") from exc  # pragma: no cover
         ErrorManager.raise_error(
             code=self._code,
             message=message or f"Campo '{field}' deve essere un UUID (stringa o oggetto).",
@@ -527,7 +544,6 @@ class PayloadValidator:
             context={"field": field, "type": type(value).__name__},
             **em,
         )
-        raise AssertionError("unreachable")  # pragma: no cover
 
     # Scopo: Estrae un UUID obbligatorio dal payload. Accetta stringa ISO o
     #        oggetto uuid.UUID; normalizza a stringa lower-case canonica.
@@ -666,7 +682,6 @@ class PayloadValidator:
                 cause=exc,
                 **em,
             )
-            raise AssertionError("unreachable") from exc  # pragma: no cover
         ErrorManager.require(
             valore.is_finite(),
             code=self._code,
@@ -950,7 +965,6 @@ class PayloadValidator:
                     cause=exc,
                     **em,
                 )
-                raise AssertionError("unreachable") from exc  # pragma: no cover
         ErrorManager.raise_error(
             code=self._code,
             message=message or f"Campo '{field}' deve essere una data o stringa ISO.",
@@ -958,7 +972,6 @@ class PayloadValidator:
             context={"field": field, "type": type(value).__name__},
             **em,
         )
-        raise AssertionError("unreachable")  # pragma: no cover
 
     # Scopo: Estrae una data obbligatoria dal payload. Rifiuta None esplicito
     #        e chiave assente.
@@ -980,7 +993,6 @@ class PayloadValidator:
                 context={"field": key},
                 **em,
             )
-            raise AssertionError("unreachable")  # pragma: no cover
         return self._coerce_date(payload[key], field=key, message=message, em=em)
 
     # Scopo: Estrae una data opzionale. Ritorna None se chiave assente o
@@ -1004,12 +1016,17 @@ class PayloadValidator:
     #          - valore None      -> None se nullable, altrimenti errore
     #          - stringa          -> strip; vuota+nullable -> None;
     #                                vuota+non nullable -> errore
+    #        `max_len` (2026-09-21, regola del 2): lo stesso tetto di
+    #        `require_string`/`optional_string`, con lo stesso messaggio e lo
+    #        stesso `context` — il PATCH per delta delle anagrafiche di
+    #        magazzino lo riscriveva a mano dopo la chiamata.
     def extract_optional_string(
         self,
         payload: dict[str, Any],
         key: str,
         *,
         nullable: bool = False,
+        max_len: int | None = None,
         message: str | None = None,
         log_to_db: bool | None = None,
         function_name: str | None = None,
@@ -1048,6 +1065,15 @@ class PayloadValidator:
             context={"field": key},
             **em,
         )
+        if max_len is not None:
+            ErrorManager.require(
+                len(cleaned) <= max_len,
+                code=self._code,
+                message=message or f"Campo '{key}' troppo lungo.",
+                detail=f"Lunghezza massima: {max_len} caratteri.",
+                context={key: cleaned, "len": len(cleaned), "field": key},
+                **em,
+            )
         return cleaned
 
     # =================================================================
@@ -1083,20 +1109,18 @@ class PayloadValidator:
                 ErrorManager.raise_error(
                     code=self._code,
                     message=f"Il campo '{key}' contiene JSON non valido.",
-                    context={f"{key}_raw": raw},
+                    context={f"{key}_raw": raw, "field": key},
                     cause=exc,
                     **em,
                 )
-                raise AssertionError("unreachable") from exc  # pragma: no cover
             if isinstance(parsed, dict):
                 return parsed
         ErrorManager.raise_error(
             code=self._code,
             message=f"Il campo '{key}' deve essere un oggetto JSON.",
-            context={f"{key}_type": type(raw).__name__},
+            context={f"{key}_type": type(raw).__name__, "field": key},
             **em,
         )
-        raise AssertionError("unreachable")  # pragma: no cover
 
 
 # =================================================================
@@ -1165,7 +1189,6 @@ def vincolo_violato(exc: Exception, nomi: Iterable[str]) -> str | None:
 #                    fallback_message="Violazione vincolo DB su categoria cliente.",
 #                    context={"codice": data.get("codice")},
 #                )
-#                raise  # pragma: no cover — map_integrity_error solleva sempre
 def map_integrity_error(
     exc: IntegrityError,
     *,
@@ -1216,11 +1239,18 @@ def map_integrity_error(
     # Fallback euristico per coppia UNIQUE/FK generica: solo se la mappa
     # non ha un match esatto e il codice fallback vale la pena distinguere,
     # il chiamante passa la mappa. Qui cadiamo sul fallback puro.
+    # ⭐ Ma il CAMPO, quando PostgreSQL lo dice da solo, viaggia (2026-09-21):
+    # su una violazione NOT NULL (23502) `column_name` e' la colonna che
+    # manca, e nessuna mappa per nome di vincolo puo' nominarla — un NOT NULL
+    # non ha un vincolo con un nome. Stessa lettura unica di `translate_db_errors`
+    # (`diagnostica_db`): prima il fallback arrivava senza `fields`, e il form
+    # restava spento sull'unico caso in cui il DB sa gia' quale campo accendere.
     ErrorManager.raise_error(
         code=fallback_code,
         message=fallback_message,
         detail=str(exc),
         context=ctx,
+        fields=diagnostica_db(exc).fields,
         cause=exc,
     )
 
@@ -1251,9 +1281,9 @@ def translate_db_errors(
     context: dict[str, Any],
     fallback_code: str,
     fallback_message: str,
-    unique_constraints: dict[str, tuple[str, str]] | None = None,
-    fk_constraints: dict[str, tuple[str, str]] | None = None,
-    check_constraints: dict[str, tuple[str, str]] | None = None,
+    unique_constraints: dict[str, tuple] | None = None,
+    fk_constraints: dict[str, tuple] | None = None,
+    check_constraints: dict[str, tuple] | None = None,
 ) -> Iterator[None]:
     try:
         yield
@@ -1316,9 +1346,9 @@ def make_db_errors_translator(
     fn_prefix: str,
     fallback_code: str,
     fallback_message: str,
-    unique_constraints: dict[str, tuple[str, str]] | None = None,
-    fk_constraints: dict[str, tuple[str, str]] | None = None,
-    check_constraints: dict[str, tuple[str, str]] | None = None,
+    unique_constraints: dict[str, tuple] | None = None,
+    fk_constraints: dict[str, tuple] | None = None,
+    check_constraints: dict[str, tuple] | None = None,
 ) -> Any:
     @contextmanager
     # Scopo: Traduttore errori DB del dominio per l'operazione `op`.

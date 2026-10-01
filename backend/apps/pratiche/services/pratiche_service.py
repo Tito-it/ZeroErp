@@ -10,7 +10,7 @@
 #        funzioni per creare/gestire pratiche legate ai propri eventi.
 # ------------------------------------------------------------
 
-from typing import Any
+from typing import Any, NoReturn
 
 from django.db import DatabaseError, IntegrityError, transaction
 
@@ -105,6 +105,23 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
 # anche la forma col prefisso `E_` dei codici in via di rinomina.
 _CODICI_DICHIARATI: frozenset[str] = frozenset(c for c, _ in _KNOWN_DB_ERROR_MARKERS)
 
+# Il CAMPO del form per i codici che il DB solleva senza `COLUMN` — una UNIQUE
+# violata (23505) non nomina la colonna, e `diag.fields` resta vuoto. Stessa
+# forma del terzo elemento di `map_integrity_error`: si dichiara solo quando il
+# nome e' una chiave del payload (presidio C2, brief-be-presidio-ui-action-e-
+# canale-campi §3-ter).
+_CAMPO_PER_CODICE_DB: dict[str, tuple[str, ...]] = {
+    "E_TEMPLATE_CODICE_DUPLICATO": ("codice",),
+}
+
+
+# Scopo: il campo dichiarato per un codice DB, letto nella forma col prefisso
+#        `E_` qualunque sia quella con cui il codice arriva. Stessa tolleranza
+#        di `_raise_known_db_error` sui codici in via di rinomina: senza, il
+#        lotto che aggiunge il prefisso a DB spegnerebbe il campo in silenzio.
+def _campo_per_codice_db(code: str) -> tuple[str, ...] | None:
+    return _CAMPO_PER_CODICE_DB.get("E_" + code.removeprefix("E_"))
+
 # Mapping vincoli DB sospensioni -> codici errore applicativi.
 # L'EXCLUDE ex_sospensioni_no_overlap (framework dbops.automazione_overlap)
 # solleva un native 23P01 IntegrityError: lo mappiamo per nome constraint,
@@ -160,6 +177,7 @@ def _require_esito_valido(esito: str, repo: PraticheRepository | None = None) ->
         voce is not None and voce[0],
         code="E_FLUSSO_VALIDATION",
         message=f"Esito non valido: {esito}",
+        context={"field": "esito"},
     )
 
 
@@ -178,6 +196,7 @@ def require_esito_selezionabile_operatore(
         voce is None or voce[1],
         code="E_FLUSSO_VALIDATION",
         message=f"Esito calcolato dal dominio, non selezionabile manualmente: {esito}",
+        context={"field": "esito"},
     )
 
 
@@ -207,7 +226,7 @@ def require_completamento_operatore_ammesso(
 # Scopo: Traduce i DatabaseError dei guard workflow v2 in ServiceError parlante
 # (codice del catalogo DB + policy registrata). Errori non riconosciuti
 # ripropagano al middleware (mapping E_DATABASE generico).
-def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
+def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> NoReturn:
     msg = str(exc)
     # ⭐ UNA lettura sola (BB `diagnostica_db`). ⚠️ E questo e' il QUINTO punto in
     #    cui un errore del database diventa un errore dell'applicazione: i primi
@@ -251,7 +270,7 @@ def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
             message=diag.messaggio or msg,
             detail=diag.detail,
             hint=diag.hint,
-            fields=diag.fields,
+            fields=diag.fields or _campo_per_codice_db(structured),
             targets=diag.bersagli or None,
             cause=exc,
             function_name=function_name,
@@ -266,7 +285,7 @@ def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
                 message=diag.messaggio or msg,
                 detail=diag.detail,
                 hint=diag.hint,
-                fields=diag.fields,
+                fields=diag.fields or _campo_per_codice_db(code),
                 targets=diag.bersagli or None,
                 cause=exc,
                 function_name=function_name,
@@ -303,14 +322,14 @@ def crea_pratica(
         emittente_fiscale_id > 0,
         code="E_PRATICA_VALIDATION",
         message="emittente_fiscale_id obbligatorio e > 0",
+        context={"field": "emittente_fiscale_id"},
     )
-    assert emittente_fiscale_id > 0
     ErrorManager.require(
         tipo_prestazione_id > 0,
         code="E_PRATICA_VALIDATION",
         message="tipo_prestazione_id obbligatorio e > 0",
+        context={"field": "tipo_prestazione_id"},
     )
-    assert tipo_prestazione_id > 0
     # Priorita' opzionale: se assente si applica il default NORMALE risolto
     # per codice_interno (mai id hardcodato — feedback_no_hardcoded_ids).
     if priorita_id is not None:
@@ -318,8 +337,8 @@ def crea_pratica(
             priorita_id > 0,
             code="E_PRATICA_VALIDATION",
             message="priorita_id deve essere > 0",
+            context={"field": "priorita_id"},
         )
-        assert priorita_id > 0
 
     # Validazione coerenza contesto anagrafico (stesse regole del trigger DB,
     # qui per dare errori user-friendly via ServiceError). Modello a due rami
@@ -332,12 +351,14 @@ def crea_pratica(
             soggetto_id is not None,
             code="E_PRATICA_VALIDATION",
             message="istanza_utility_id richiede soggetto_id",
+            context={"field": "soggetto_id"},
         )
     if soggetto_ruolo_id is not None:
         ErrorManager.require(
             soggetto_id is not None,
             code="E_PRATICA_VALIDATION",
             message="soggetto_ruolo_id richiede soggetto_id",
+            context={"field": "soggetto_id"},
         )
 
     # Guard pre/post-attivazione: verifica ammissibilita' tipo prestazione
@@ -354,11 +375,13 @@ def crea_pratica(
             raise ServiceError(
                 code="E_PRATICA_VALIDATION",
                 message="Tipo prestazione ammesso solo per clienti attivati (post-attivazione).",
+                context={"field": "tipo_prestazione_id"},
             )
         if not tipo_att["post_attivazione"] and ha_ba:
             raise ServiceError(
                 code="E_PRATICA_VALIDATION",
                 message="Tipo prestazione ammesso solo prima dell'attivazione cliente (pre-attivazione).",
+                context={"field": "tipo_prestazione_id"},
             )
 
     # Risolve stato iniziale APERTA + default priorita' NORMALE se assente.
@@ -387,7 +410,6 @@ def crea_pratica(
         # solleva DEFINIZIONE_NON_TROVATA → ServiceError parlante invece di E_DATABASE
         # generico (rende effettivo il marker, altrimenti morto su questo percorso).
         _raise_known_db_error(exc, function_name="pratiche_service.crea_pratica")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Aggiorna i campi modificabili di una pratica.
@@ -398,7 +420,6 @@ def aggiorna_pratica(pratica_id: int, data: dict[str, Any]) -> None:
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
 
     repo = PraticheRepository()
     # Verifica esistenza pratica.
@@ -421,11 +442,11 @@ def cambia_stato_pratica(pratica_id: int, nuovo_stato: str) -> None:
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     ErrorManager.require(
         bool(nuovo_stato),
         code="E_PRATICA_VALIDATION",
         message="nuovo_stato obbligatorio",
+        context={"field": "nuovo_stato"},
     )
 
     repo = PraticheRepository()
@@ -451,7 +472,6 @@ def assegna_pratica(
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
 
     repo = PraticheRepository()
     update_data: dict[str, Any] = {}
@@ -552,11 +572,11 @@ def crea_flusso(
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     ErrorManager.require(
         template_flusso_id is not None and template_flusso_id > 0,
         code="E_FLUSSO_VALIDATION",
         message="template_flusso_id obbligatorio e > 0: un flusso nasce sempre da un template del percorso.",
+        context={"field": "template_flusso_id"},
     )
     assert template_flusso_id is not None and template_flusso_id > 0
 
@@ -578,7 +598,6 @@ def crea_flusso(
         # Guard ripetibilita' (D3, trg_flussi_a10_guard_ripetibilita_ins) →
         # PRATICHE_FLUSSO_NON_RIPETIBILE parlante; altri errori al middleware.
         _raise_known_db_error(exc, function_name="pratiche_service.crea_flusso")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Assegna un flusso esistente a un operatore e/o a un reparto.
@@ -600,7 +619,6 @@ def assegna_flusso(
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
 
     update_data: dict[str, Any] = {}
     if set_risorsa:
@@ -627,7 +645,6 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
 
     repo = PraticheRepository()
     # Config esito del template (20260617-01): modalita_esito + esito_default.
@@ -674,7 +691,6 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
         # Guard pratica terminale (CHIUSA/ANNULLATA) → PRATICHE_TERMINALE_FLUSSO_
         # NON_MODIFICABILE parlante; altri errori (handler, ecc.) al middleware.
         _raise_known_db_error(exc, function_name="pratiche_service.avvia_flusso")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: corpo del completamento (transizione COMPLETATO + azioni di dominio),
@@ -723,7 +739,6 @@ def completa_flusso(
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     _require_esito_valido(esito)
     _completa_flusso_validato(
         flusso_id, esito=esito, note_esito=note_esito, user=user, meta=meta,
@@ -751,7 +766,6 @@ def avvia_e_completa_flusso(
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     # Valida l'esito PRIMA di qualsiasi scrittura: niente avvio "orfano" (flusso
     # lasciato IN_CORSO) se l'esito e' fuori dominio.
     _require_esito_valido(esito)
@@ -831,11 +845,11 @@ def cambia_stato_flusso(
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     ErrorManager.require(
         bool(nuovo_stato),
         code="E_FLUSSO_VALIDATION",
         message="nuovo_stato obbligatorio",
+        context={"field": "nuovo_stato"},
     )
 
     repo = PraticheRepository()
@@ -855,7 +869,6 @@ def verifica_prerequisiti(
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
 
     repo = PraticheRepository()
     return repo.check_prerequisiti(pratica_id, template_flusso_id)
@@ -875,7 +888,6 @@ def get_percorso(pratica_id: int) -> list[dict[str, Any]]:
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     return PraticheRepository().get_percorso_pratica(pratica_id)
 
 
@@ -903,7 +915,6 @@ def dispatch_handler(flusso_id: int, *, user: str | None = None) -> dict[str, An
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
 
     flusso = _flusso_per_dispatch(flusso_id)
     if flusso is None:
@@ -1004,10 +1015,12 @@ def crea_nota_pratica(pratica_id: int, tipo_nota_codice: str, contenuto: str) ->
     ErrorManager.require(
         bool(tipo_nota_codice and tipo_nota_codice.strip()),
         code="E_PRATICA_VALIDATION", message="tipo_nota_codice obbligatorio",
+        context={"field": "tipo_nota_codice"},
     )
     ErrorManager.require(
         bool(contenuto and contenuto.strip()),
         code="E_PRATICA_VALIDATION", message="contenuto nota obbligatorio",
+        context={"field": "contenuto"},
     )
     repo = PraticheRepository()
     return repo.create_nota_pratica(pratica_id, tipo_nota_codice.strip(), contenuto.strip())
@@ -1021,6 +1034,7 @@ def aggiorna_nota_pratica(nota_id: int, pratica_id: int, contenuto: str) -> None
     ErrorManager.require(
         bool(contenuto and contenuto.strip()),
         code="E_PRATICA_VALIDATION", message="contenuto nota obbligatorio",
+        context={"field": "contenuto"},
     )
     repo = PraticheRepository()
     updated = repo.update_nota_pratica(nota_id, pratica_id, contenuto.strip())
@@ -1058,10 +1072,12 @@ def crea_allegato_pratica(
     ErrorManager.require(
         bool(tipo_allegato_codice and tipo_allegato_codice.strip()),
         code="E_PRATICA_VALIDATION", message="tipo_allegato_codice obbligatorio",
+        context={"field": "tipo_allegato_codice"},
     )
     ErrorManager.require(
         bool(nome_file and nome_file.strip()),
         code="E_PRATICA_VALIDATION", message="nome_file obbligatorio",
+        context={"field": "nome_file"},
     )
     repo = PraticheRepository()
     return repo.create_allegato_pratica(
@@ -1101,11 +1117,11 @@ def sospendi_pratica(
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     ErrorManager.require(
         bool(motivo and motivo.strip()),
         code="E_PRATICA_VALIDATION",
         message="motivo sospensione obbligatorio",
+        context={"field": "motivo"},
     )
 
     repo = PraticheRepository()
@@ -1143,7 +1159,6 @@ def sospendi_pratica(
     except DatabaseError as exc:
         # Guard data futura (trg a10) -> E_SOSPENSIONE_DATA_FUTURA parlante.
         _raise_known_db_error(exc, function_name="pratiche_service.sospendi_pratica")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Riattiva una pratica sospesa.
@@ -1158,7 +1173,6 @@ def riattiva_pratica(pratica_id: int, *, data_fine: str | None = None) -> None:
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
 
     repo = PraticheRepository()
 
@@ -1191,7 +1205,6 @@ def riattiva_pratica(pratica_id: int, *, data_fine: str | None = None) -> None:
         )
     except DatabaseError as exc:
         _raise_known_db_error(exc, function_name="pratiche_service.riattiva_pratica")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Verifica che il flusso esista e appartenga alla pratica indicata.
@@ -1241,7 +1254,6 @@ def pratica_di_flusso(flusso_id: int) -> int:
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     pratica_id = PraticheRepository().get_pratica_di_flusso(flusso_id)
     ErrorManager.require(
         pratica_id is not None,
@@ -1270,17 +1282,16 @@ def sospendi_flusso(
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     ErrorManager.require(
         flusso_id > 0,
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     ErrorManager.require(
         bool(motivo and motivo.strip()),
         code="E_FLUSSO_VALIDATION",
         message="motivo sospensione obbligatorio",
+        context={"field": "motivo"},
     )
 
     repo = PraticheRepository()
@@ -1317,13 +1328,11 @@ def riattiva_flusso(pratica_id: int, flusso_id: int) -> None:
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     ErrorManager.require(
         flusso_id > 0,
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
 
     repo = PraticheRepository()
     verifica_flusso_pratica(repo, pratica_id, flusso_id)
@@ -1372,7 +1381,6 @@ def get_formule_tempo(tipo_prestazione_id: int) -> list[dict[str, Any]]:
         code="E_INVALID_ID",
         message="tipo_prestazione_id deve essere > 0",
     )
-    assert tipo_prestazione_id > 0
 
     repo = PraticheRepository()
     return repo.list_formule_tempo(tipo_prestazione_id)
@@ -1393,13 +1401,11 @@ def get_coda_lavoro(
         code="E_INVALID_ID",
         message="risorsa_umana_id deve essere > 0",
     )
-    assert risorsa_umana_id > 0
     ErrorManager.require(
         emittente_fiscale_id > 0,
         code="E_INVALID_ID",
         message="emittente_fiscale_id deve essere > 0",
     )
-    assert emittente_fiscale_id > 0
 
     repo = PraticheRepository()
     return repo.list_coda_lavoro(risorsa_umana_id, emittente_fiscale_id)
@@ -1417,13 +1423,11 @@ def prendi_in_carico(flusso_id: int, risorsa_umana_id: int) -> bool:
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     ErrorManager.require(
         risorsa_umana_id > 0,
         code="E_INVALID_ID",
         message="risorsa_umana_id deve essere > 0",
     )
-    assert risorsa_umana_id > 0
 
     repo = PraticheRepository()
     try:
@@ -1433,7 +1437,6 @@ def prendi_in_carico(flusso_id: int, risorsa_umana_id: int) -> bool:
         # mancante (A/D) o operatore fuori reparto (B) → ServiceError parlante
         # invece di E_DATABASE generico. Altri errori al middleware.
         _raise_known_db_error(exc, function_name="pratiche_service.prendi_in_carico")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Lista operatori (risorse umane attive) di un reparto, per il picker di
@@ -1444,7 +1447,6 @@ def list_operatori_reparto(unita_organizzativa_id: int) -> list[dict[str, Any]]:
         code="E_INVALID_ID",
         message="unita_organizzativa_id deve essere > 0",
     )
-    assert unita_organizzativa_id > 0
 
     repo = PraticheRepository()
     return repo.list_operatori_reparto(unita_organizzativa_id)
@@ -1473,19 +1475,16 @@ def crea_competenza_flusso(
         code="E_INVALID_ID",
         message="template_flusso_id deve essere > 0",
     )
-    assert template_flusso_id > 0
     ErrorManager.require(
         unita_organizzativa_id > 0,
         code="E_INVALID_ID",
         message="unita_organizzativa_id deve essere > 0",
     )
-    assert unita_organizzativa_id > 0
     ErrorManager.require(
         risorsa_umana_id > 0,
         code="E_INVALID_ID",
         message="risorsa_umana_id deve essere > 0",
     )
-    assert risorsa_umana_id > 0
 
     repo = PraticheRepository()
     return repo.create_competenza_flusso({
@@ -1504,7 +1503,6 @@ def elimina_competenza_flusso(competenza_id: int) -> None:
         code="E_INVALID_ID",
         message="competenza_id deve essere > 0",
     )
-    assert competenza_id > 0
 
     repo = PraticheRepository()
     deleted = repo.delete_competenza_flusso(competenza_id)

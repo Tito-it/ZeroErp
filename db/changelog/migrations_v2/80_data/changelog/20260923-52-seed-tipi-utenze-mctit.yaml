@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed config.tipi_utenze — il mirror CSV che nessuno caricava.
+#
+# ── ⛔ IL DIFETTO ────────────────────────────────────────────────────
+#   80_data/sql/config/tipi_utenze.csv esisteva, ma nessun changelog lo
+#   caricava (CSV orfano): su un database ricostruito dai changelog la
+#   tabella era VUOTA, e con lei config.classi_utenze, che la referenzia.
+#   Lo ha mostrato anagrafiche/test-istanze-dati-precontrattuali, che
+#   pretende una classe utenza (brief-db-fixture-che-costruiscono-giro-2,
+#   §11). Tid, 2026-09-23: il contenuto e' catalogo, si carica.
+#
+# ── SPECIE DEL SEED (linee-guida-sql §11.7) ──────────────────────────
+#   CATALOGO: le FK puntano solo a config.* (iva, utilities), nessuna ad
+#   anagrafiche.*. Nessun contesto dati_macchina.
+#   ⚠️ id esplicito, colonna senza identity: nessuna sequenza da riallineare.
+#
+# Ordine: prima di 20260923-53 (config.classi_utenze.tipo_utenza_id).
+# Brief: brief-db-fixture-che-costruiscono-giro-2.md §11.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260923-52-seed-tipi-utenze-mctit.yaml
+
+  - changeSet:
+      id: 20260923-52-seed-tipi-utenze
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed config.tipi_utenze dal mirror 80_data/sql/config/tipi_utenze.csv,
+        che nessun changelog caricava. Catalogo (FK solo verso config.*).
+        Mirror loadUpdateData. Brief: brief-db-fixture-che-costruiscono-giro-2 §11.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: tipi_utenze
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/tipi_utenze.csv
+            tableName: tipi_utenze
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: descrizione_breve, type: STRING }
+              - column: { name: iva_id, type: NUMERIC }
+              - column: { name: utility_id, type: NUMERIC }
+              - column: { name: tipo_pdr_std, type: STRING }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Un mirror non si de-carica: le righe possono essere gia'
+              -- referenziate da config.classi_utenze.
+              SELECT 1;

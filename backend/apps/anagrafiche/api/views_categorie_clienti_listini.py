@@ -21,7 +21,9 @@ from apps.anagrafiche.services.categorie_clienti_listini_service import (
 )
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
@@ -43,8 +45,7 @@ class CategorieClientiListiniView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False,
-                             description="Ricerca su codice/descrizione categoria e listino."),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, required=False),
             OpenApiParameter(name="categoria_cliente_id", type=int, required=False),
             OpenApiParameter(name="utility_id", type=int, required=False),
@@ -177,7 +178,7 @@ class CategorieClientiListiniDetailView(AdminAPIView):
     # Scopo: Aggiorna una riga matrice (dimensioni immutabili).
     def patch(self, request: Request, record_id: int) -> JsonResponse:
         svc = CategorieClientiListiniService()
-        return success_response(svc.update_matrice(record_id, request.data))
+        return success_response(svc.update_matrice(record_id, corpo_oggetto(request)))
 
 
 # =================================================================

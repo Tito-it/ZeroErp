@@ -12,9 +12,9 @@ Punto centrale di risoluzione della configurazione di una lista per un utente. A
 
 ```sql
 ui.fn_resolve_lista_config(
-  p_lista_codice         VARCHAR,
-  p_auth_user_id         INTEGER,
-  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE
+  p_lista_codice         ui.lista_definizione.codice%TYPE,
+  p_auth_user_id         ui.lista_preferenza_utente.auth_user_id%TYPE,
+  p_emittente_fiscale_id ui.lista_preset.emittente_fiscale_id%TYPE
 ) RETURNS JSONB
 ```
 
@@ -24,11 +24,11 @@ ui.fn_resolve_lista_config(
 |-----------|------|:---:|-------------|
 | `p_lista_codice` | `VARCHAR` | Sì | Codice lista (es. `anagrafiche.clienti`) |
 | `p_auth_user_id` | `INTEGER` | Sì | ID utente Django (`django.auth_user.id`) |
-| `p_emittente_fiscale_id` | `INTEGER` | No | ID emittente fiscale del contesto. NULL se non rilevante. |
+| `p_emittente_fiscale_id` | `BIGINT` | No | ID emittente fiscale del contesto. NULL se non rilevante. |
 
 ## Algoritmo (6 passi)
 
-**0. Risoluzione lista_id** — lookup `ui.lista_definizione` per codice. Errore `E_UI_LISTA_NON_TROVATA` se non trovata o non attiva.
+**0. La riga della lista** — letta una volta dal building block [`ui.fn_lista_da_codice`](/dbzero/ui/funzioni/fn_lista_da_codice), che solleva `E_UI_LISTA_NON_TROVATA` se la lista non c'è o è spenta. Da questa riga vengono `multi_emittente`, `perimetro_emittente` e `ricerca_min_caratteri`.
 
 **1. Profili applicabili** — chiama `script.fn_get_profili_accesso_applicabili(p_auth_user_id)` e costruisce `v_profili_ids[]`.
 
@@ -54,7 +54,7 @@ In tutti gli altri casi (no preferenza, `preset_base_id IS NULL`, snapshot allin
 
 **3. Merge colonne nuove** — colonne presenti nel catalogo ma assenti dalla configurazione candidata vengono aggiunte in coda con `visibile=FALSE` e `ordine = ordine_default + 10000`. Il contatore `colonne_nuove` nel risultato indica quante colonne sono state aggiunte.
 
-**4. Permessi effettivi** — per ogni colonna, risolve il `livello_accesso` effettivo tramite `DISTINCT ON (codice)` ordinato per `(priorita ASC, restrittivita ASC)`. Costruisce un JSONB `{codice: livello}` usato nel passo 5.
+**4. Permessi effettivi** — il livello di ogni colonna (`TUTTO`, `LETTURA`, `BLOCCATO`) non si calcola qui: lo dà [`ui.fn_lista_colonne_livello`](/dbzero/ui/funzioni/fn_lista_colonne_livello), letto nel passo 5. È lo stesso calcolo che usa la ricerca libera ([`ui.fn_lista_colonne_ricerca_full`](/dbzero/ui/funzioni/fn_lista_colonne_ricerca_full)): una sede sola, così la ricerca non trova righe per una colonna che la lista non mostra.
 
 **5. Normalizzazione e filtro** — per ogni colonna:
   - `identificatore` e `azione` → `visibile = TRUE` forzato
@@ -79,7 +79,8 @@ JSONB con le chiavi:
 | `colonne` | `jsonb[]` | Array di colonne con `codice`, `ordine`, `larghezza`, `visibile`, `fissata`, `esportabile`, `tipo_colonna`, `etichetta_i18n_key`, `priorita` |
 | `ordinamento` | `jsonb[]` | Array `[{"col": "...", "dir": "asc/desc"}]` |
 | `filtri` | `jsonb` | Filtri preimpostati |
-| `pagina_dimensione` | `integer` | Righe per pagina |
+| `pagina_dimensione` | `integer` | Righe per pagina: sempre una misura del catalogo [`ui.misure_pagina`](/dbzero/ui/tabelle/misure_pagina) — quella scelta (preferenza o preset) se è ammessa, altrimenti il default `PAGINA` del catalogo. Mai vuota (dal 30-09-2026; prima ripiegava su un 25 scritto nella funzione, e senza preferenza né preset poteva uscire vuota) |
+| `ricerca_min_caratteri` | `integer` | La soglia della ricerca libera della lista (`ui.lista_definizione.ricerca_min_caratteri`): sotto questo numero di caratteri il frontend non manda il termine. È la stessa colonna che legge la ricerca del backend |
 | `colonne_nuove` | `integer` | Numero di colonne aggiunte dal merge automatico (>0 = badge "aggiornato" nel frontend) |
 | `preset_aggiornato` | `boolean` | DEF-2: `TRUE` se il preset di base è stato modificato dopo lo snapshot della preferenza utente E l'utente non ha ancora ignorato l'aggiornamento (o il preset è cambiato di nuovo dopo l'ultimo ignore). `FALSE` in tutti gli altri casi: nessuna preferenza, `preset_base_id IS NULL`, snapshot allineato, ignore attivo. |
 
@@ -87,12 +88,14 @@ JSONB con le chiavi:
 
 ## Dipendenze
 
-- `ui.lista_definizione` — lookup lista per codice
+- [`ui.fn_lista_da_codice`](/dbzero/ui/funzioni/fn_lista_da_codice) — la riga della lista dal codice (passo 0)
 - `ui.lista_colonna` — catalogo colonne e flag sensibile/esportabile
 - `ui.lista_preset` + `ui.lista_preset_colonna` — configurazioni predefinite
 - `ui.lista_preferenza_utente` — preferenza personale
 - `ui.lista_colonna_permesso` — permessi a livello colonna
-- `script.fn_get_profili_accesso_applicabili` — risoluzione profili (chiamata 2 volte: passo 1 per array IDs, passo 4 per priorità)
+- `script.fn_get_profili_accesso_applicabili` — risoluzione profili (passo 1 e preset di ruolo)
+- [`ui.fn_veste_corrente`](/dbzero/ui/funzioni/fn_veste_corrente) — la veste dalla GUC `app.ruolo_applicativo`
+- [`ui.fn_lista_colonne_livello`](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello effettivo di ogni colonna (passo 5)
 
 ## Esempio
 

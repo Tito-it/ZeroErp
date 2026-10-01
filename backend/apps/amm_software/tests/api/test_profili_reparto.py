@@ -10,6 +10,9 @@
 Indice test eseguiti:
  1) test_list_reparti — GET lista reparti con conteggi
  2) test_list_reparti_empty — GET lista reparti vuota
+ 2b) test_list_reparti_parametri_di_lista — search/order/pagina al repository
+ 2c) test_ordina_per_alias_della_cte — whitelist sugli alias della CTE
+ 2d) test_default_e_fuori_whitelist — ripiego su descrizione ASC
  3) test_get_profilo_reparto — GET profilo reparto (aree + azioni)
  4) test_get_profilo_reparto_empty — GET profilo vuoto
  5) test_put_profilo_reparto — PUT salva profilo e ritorna aggiornato
@@ -56,6 +59,7 @@ def _make_request(method: str = "GET", data: dict | None = None) -> MagicMock:
     request.method = method
     request.user = MagicMock(is_authenticated=True, is_superuser=True, id=1)
     request.data = data or {}
+    request.query_params = {}
     return request
 
 
@@ -63,24 +67,31 @@ class TestRepartiListView(TestCase):
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_list_reparti(self, mock_repo_cls):
-        """GET lista reparti con conteggi profilo e operatori."""
+        """GET lista reparti: envelope paginato standard, parametri al repository."""
         mock_repo = MagicMock()
-        mock_repo.list_reparti.return_value = [SAMPLE_REPARTO]
+        mock_repo.list_reparti.return_value = ([SAMPLE_REPARTO], 1)
         mock_repo_cls.return_value = mock_repo
 
         view = RepartiListView()
         response = view.get(_make_request())
 
-        data = json.loads(response.content)
-        self.assertEqual(len(data["data"]["results"]), 1)
-        self.assertEqual(data["data"]["results"][0]["nome"], "Amministrazione")
-        self.assertEqual(data["data"]["results"][0]["operatori_count"], 10)
+        data = json.loads(response.content)["data"]
+        self.assertEqual(len(data["results"]), 1)
+        self.assertEqual(data["results"][0]["nome"], "Amministrazione")
+        self.assertEqual(data["results"][0]["operatori_count"], 10)
+        self.assertEqual(
+            (data["count"], data["page"], data["page_size"], data["total_pages"]),
+            (1, 1, 25, 1),
+        )
+        mock_repo.list_reparti.assert_called_once_with(
+            search=None, order_by="descrizione", order_dir=None, limit=25, offset=0,
+        )
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_list_reparti_empty(self, mock_repo_cls):
         """GET lista reparti vuota."""
         mock_repo = MagicMock()
-        mock_repo.list_reparti.return_value = []
+        mock_repo.list_reparti.return_value = ([], 0)
         mock_repo_cls.return_value = mock_repo
 
         view = RepartiListView()
@@ -88,6 +99,57 @@ class TestRepartiListView(TestCase):
 
         data = json.loads(response.content)
         self.assertEqual(data["data"]["results"], [])
+        self.assertEqual(data["data"]["count"], 0)
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    def test_list_reparti_parametri_di_lista(self, mock_repo_cls):
+        """Ricerca, ordinamento e pagina arrivano al repository come li manda la lista."""
+        mock_repo = MagicMock()
+        mock_repo.list_reparti.return_value = ([SAMPLE_REPARTO], 30)
+        mock_repo_cls.return_value = mock_repo
+
+        request = _make_request()
+        request.query_params = {
+            "search": "am", "order_by": "operatori_count", "order_dir": "desc",
+            "limit": "10", "offset": "20",
+        }
+        data = json.loads(RepartiListView().get(request).content)["data"]
+
+        self.assertEqual((data["count"], data["page"], data["total_pages"]), (30, 3, 3))
+        mock_repo.list_reparti.assert_called_once_with(
+            search="am", order_by="operatori_count", order_dir="desc", limit=10, offset=20,
+        )
+
+
+class TestRepartiListRepository(TestCase):
+
+    @patch("apps.amm_software.db.amm_software_repository.fetch_paged_with_total")
+    def test_ordina_per_alias_della_cte(self, mock_fetch):
+        """I conteggi ordinano per alias fuori dalla CTE; spareggio sull'id."""
+        from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
+
+        mock_fetch.return_value = ([], 0)
+        AmmSoftwareRepository().list_reparti(order_by="profilo_aree_count", order_dir="desc", limit=25)
+
+        sql, params = mock_fetch.call_args.args
+        self.assertIn("WITH reparti AS (", sql)
+        self.assertIn("ORDER BY rp.profilo_aree_count DESC NULLS LAST, rp.id DESC", sql)
+        self.assertIn("uo.attivo = true", sql)
+        self.assertEqual(params, [25, 0])
+        self.assertIn("uo.attivo = true", mock_fetch.call_args.kwargs["fallback_count_sql"])
+
+    @patch("apps.amm_software.db.amm_software_repository.fetch_paged_with_total")
+    def test_default_e_fuori_whitelist(self, mock_fetch):
+        """Senza ordinamento, o con uno sconosciuto: descrizione ASC."""
+        from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
+
+        mock_fetch.return_value = ([], 0)
+        repo = AmmSoftwareRepository()
+        for order_by in (None, "uo.id; DROP TABLE x"):
+            repo.list_reparti(order_by=order_by)
+            sql = mock_fetch.call_args.args[0]
+            self.assertIn("ORDER BY rp.descrizione ASC NULLS FIRST, rp.id ASC", sql)
+            self.assertNotIn("DROP", sql)
 
 
 class TestRepartoProfiloView(TestCase):

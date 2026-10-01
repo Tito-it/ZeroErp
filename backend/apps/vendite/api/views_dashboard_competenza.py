@@ -24,7 +24,9 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
     qp_bool_optional,
     qp_int_optional,
@@ -160,7 +162,7 @@ class ApiDashboardCompetenzaAttivita(DomainAPIView):
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Dimensione pagina (default 50, max 200).",
+                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
             ),
         ],
         responses={
@@ -201,7 +203,7 @@ class ApiDashboardCompetenzaAttivita(DomainAPIView):
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
         page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
+        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
 
         # Scope emittente interamente DB-side (GUC fail-closed nella vista):
         # la view non passa alcun auth_user_id.
@@ -281,7 +283,7 @@ class ApiDashboardCompetenzaCommesse(DomainAPIView):
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Dimensione pagina (default 50, max 200).",
+                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
             ),
         ],
         responses={
@@ -321,7 +323,7 @@ class ApiDashboardCompetenzaCommesse(DomainAPIView):
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
         page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
+        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
 
         data = fn_dash_competenza_commesse(
             competenza_mese=competenza_mese,
@@ -434,7 +436,7 @@ class ApiDashboardCompetenzaResidui(DomainAPIView):
             ),
             OpenApiParameter(
                 name="page_size", type=int, location=OpenApiParameter.QUERY, required=False,
-                description="Dimensione pagina (default 50, max 200).",
+                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
             ),
         ],
         responses={
@@ -474,7 +476,7 @@ class ApiDashboardCompetenzaResidui(DomainAPIView):
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
             page=qp_int_strict(qp.get("page"), "page", 1),
-            page_size=qp_int_strict(qp.get("page_size"), "page_size", 50),
+            page_size=qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT),
         )
         return success_response(data)
 
@@ -702,18 +704,7 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
                     "valorizzato, `registro_id` viene ignorato."
                 ),
             ),
-            OpenApiParameter(
-                name="search",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Ricerca libera su ragione sociale, identificativo fiscale, "
-                    "codice BA di fatturazione, codice commessa e riferimento "
-                    "documento. Sotto i 3 caratteri viene IGNORATA (nessun 400, "
-                    "nessuna lista svuotata)."
-                ),
-            ),
+            param_ricerca_full(),
             OpenApiParameter(
                 name="order_by",
                 type=str,
@@ -748,7 +739,7 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Dimensione pagina (default 50, max 200).",
+                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
             ),
         ],
         responses={
@@ -789,7 +780,7 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
         )
         assert competenza_mese is not None
         page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
+        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
 
         data = fn_dash_competenza_gruppi(
             competenza_mese=competenza_mese,
@@ -850,7 +841,7 @@ class ApiDashboardCompetenzaErrori(DomainAPIView):
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Dimensione pagina (default 50, max 200).",
+                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
             ),
         ],
         responses={
@@ -883,7 +874,7 @@ class ApiDashboardCompetenzaErrori(DomainAPIView):
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
         page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
+        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
 
         data = fn_dash_competenza_errori(
             competenza_mese=competenza_mese,
@@ -949,7 +940,7 @@ class ApiDashboardCompetenzaGruppiExport(DomainAPIView):
             OpenApiParameter(name="ba_non_determinabile", type=bool, required=False),
             OpenApiParameter(name="registro_id", type=int, required=False),
             OpenApiParameter(name="registro_non_risolvibile", type=bool, required=False),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="order_by", type=str, required=False),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],

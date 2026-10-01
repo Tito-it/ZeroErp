@@ -34,6 +34,7 @@ BEGIN
             'config.trgfn_stati_doc_guard_esito_verdetto',
             'E_STATO_DOC_ESITO_NON_VERDETTO',
             jsonb_build_object(
+                'campo', 'esito',
                 'tabella',        TG_TABLE_NAME,
                 'codice_interno', NEW.codice_interno,
                 'esito',          NEW.esito

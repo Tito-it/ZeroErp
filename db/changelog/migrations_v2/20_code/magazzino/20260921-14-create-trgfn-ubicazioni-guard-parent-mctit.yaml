@@ -1,0 +1,253 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-1 — IL PADRE DI UN'UBICAZIONE STA NELLO STESSO MAGAZZINO, E LA GERARCHIA NON HA CICLI
+#   magazzino.trgfn_ubicazioni_guard_parent()
+#   trg_ubicazioni_a10_parent_guard_ins_upd (magazzino.ubicazioni)
+#   Brief: brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici, R-1 e
+#   sezione 4-bis (D1, D2 decise da Tid il 2026-09-21)
+#
+# -- IL FATTO -----------------------------------------------------------------------
+#   ubicazioni ha parent_id -> ubicazioni.id (area > corsia > scaffale ...) e
+#   magazzino_id. La FK e il require_active_parent (generato) chiedono che il
+#   padre ESISTA e sia ATTIVO: nessuno chiede che sia dello stesso magazzino,
+#   ne' che la catena dei padri non torni su se stessa. Fino al drawer delle
+#   ubicazioni la regola non aveva un chiamante; il picker FE propone solo le
+#   ubicazioni del magazzino, ma «lo filtra il FE» e' la seconda sede di una
+#   regola del modello, e un client qualunque non la vede.
+#
+# -- DUE REGOLE, DUE CODICI ---------------------------------------------------------
+#   1) il padre e' di un altro magazzino (o non si vede, sotto)
+#      -> E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO (DATO_ERRATO, campo parent_id);
+#   2) il padre e' l'ubicazione stessa, o un suo discendente (ciclo di qualsiasi
+#      lunghezza, D2) -> E_MAG_UBICAZIONE_PADRE_CICLICO (DATO_ERRATO, campo
+#      parent_id). Codice SEPARATO: «appartiene al magazzino X, non a X» sarebbe
+#      una frase falsa per un ciclo dentro lo stesso magazzino.
+#   La risalita degli antenati si fa solo in UPDATE: in INSERT la riga nuova
+#   non e' ancora in nessuna catena, e il solo ciclo possibile e' parent_id = id
+#   (id e' IDENTITY BY DEFAULT: in un BEFORE INSERT NEW.id e' gia' assegnato).
+#   La catena si percorre con l'array dei visitati: un ciclo PREESISTENTE nel
+#   pregresso non manda in loop il guard (la preCondition sotto dice che oggi
+#   non ce n'e', ma un guard non si appoggia a una fotografia).
+#
+# -- PERCHE' NON C'E' UN RAMO «UPDATE OF magazzino_id» (D1) --------------------------
+#   Il brief lo chiedeva («spostare un'ubicazione lasciandole il padre vecchio»).
+#   Ma un'ubicazione che cambia magazzino porta con se' anche i FIGLI (che
+#   resterebbero nel magazzino vecchio con il padre in quello nuovo) e il
+#   REGISTRO (movimenti.ubicazione_id accanto a movimenti.magazzino_id: le righe
+#   storiche direbbero «ubicazione di B in un movimento di A»). magazzino_id e'
+#   identita' dell'ubicazione, come magazzini.codice: la sede e' il lock delle
+#   colonne (dbops.automation_lock_columns, codice
+#   E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE), non un ramo di questo guard.
+#
+# -- SOTTO RLS, UN PADRE CHE NON SI VEDE NON E' DEL MIO MAGAZZINO --------------------
+#   La funzione e' SECURITY INVOKER e legge ubicazioni sotto
+#   rls_ubicazioni_ef_whitelist (via il magazzino): un padre di un altro
+#   emittente NON risolve, mentre la FK — che la RLS non la vede — passerebbe.
+#   Si rifiuta anche allora, con il codice 1 (fail-closed), come
+#   trgfn_trasferimenti_guard_stesso_emittente (20260915-14).
+#
+# -- CHI PUO' RIMEDIARE: UNA PERSONA, NEL FORM ----------------------------------------
+#   Il padre lo sceglie l'operatore: DATO_ERRATO (400), campo = parent_id. Le
+#   frasi nominano i codici (ubicazioni, magazzini), non le colonne.
+#
+# -- ORDINE DEI BEFORE a10 SU ubicazioni ---------------------------------------------
+#   `parent_guard` viene DOPO `lock_columns` (l < p) — prima l'immutabilita' di
+#   magazzino_id, poi la validita' del padre nuovo — e prima dei
+#   `ubicazioni_block_deact` (p < u). Il require_active_parent generato e' AFTER.
+#
+# -- NON E' UNA fn_check_* ---------------------------------------------------------
+#   Nessun pulsante da accendere o spegnere: il picker FE filtra a monte e questo
+#   e' la rete. Se un giorno servira' una capability, il predicato si estrae.
+#
+# -- ubicazioni NON HA tx_id --------------------------------------------------------
+#   p_tx_id e' NULL: fn_log_and_raise_error lo risolve dalla sessione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260921-14-create-trgfn-ubicazioni-guard-parent-mctit.yaml
+
+  - changeSet:
+      id: 20260921-14-create-trgfn-ubicazioni-guard-parent
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.trgfn_ubicazioni_guard_parent: il padre di un'ubicazione sta nello
+        stesso magazzino (E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO, fail-closed sotto
+        RLS) e la gerarchia non ha cicli, di nessuna lunghezza
+        (E_MAG_UBICAZIONE_PADRE_CICLICO). Entrambi DATO_ERRATO, campo parent_id.
+        Trigger BEFORE INSERT OR UPDATE OF parent_id. Il ramo su magazzino_id non
+        c'e': quella colonna e' immutabile via automation_lock_columns (D1). Brief:
+        brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici, R-1 e sezione 4-bis.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: magazzino
+                tableName: ubicazioni
+                columnName: parent_id
+            - columnExists:
+                schemaName: magazzino
+                tableName: ubicazioni
+                columnName: magazzino_id
+            # Nessuna riga cattiva nel pregresso: un padre di un altro magazzino o
+            # un padre uguale a se' stessa. Lecita (expectedResult 0), e su un DB
+            # da zero e' zero per costruzione.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM magazzino.ubicazioni u
+                    JOIN magazzino.ubicazioni p ON p.id = u.parent_id
+                   WHERE p.magazzino_id <> u.magazzino_id
+                      OR p.id = u.id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_ubicazioni_guard_parent()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_padre_magazzino_id  magazzino.ubicazioni.magazzino_id%TYPE;
+                v_padre_codice        magazzino.ubicazioni.codice%TYPE;
+                v_mag_codice          magazzino.magazzini.codice%TYPE;
+                v_mag_padre_codice    magazzino.magazzini.codice%TYPE;
+                v_ciclo               boolean := false;
+              BEGIN
+                -- Scopo: il padre di un'ubicazione (parent_id) sta nello stesso magazzino
+                --   della figlia, e la catena dei padri non torna mai su se stessa.
+                --   Lettura sotto RLS (SECURITY INVOKER): un padre fuori perimetro non
+                --   risolve, e si rifiuta lo stesso (fail-closed).
+                -- Regole:
+                --   - parent_id = id, o NEW.id fra gli antenati del padre nuovo (solo in
+                --     UPDATE: in INSERT la riga non e' ancora in nessuna catena):
+                --     E_MAG_UBICAZIONE_PADRE_CICLICO (DATO_ERRATO, campo parent_id);
+                --   - padre di un altro magazzino, o non visibile:
+                --     E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO (DATO_ERRATO, campo parent_id).
+                --   Il cambio di magazzino_id NON passa di qui: e' una colonna immutabile
+                --   (automation_lock_columns, E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE).
+                IF NEW.parent_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 1) Ciclo di lunghezza uno: un'ubicazione dentro se stessa.
+                IF NEW.parent_id = NEW.id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'magazzino.trgfn_ubicazioni_guard_parent',
+                    'E_MAG_UBICAZIONE_PADRE_CICLICO',
+                    jsonb_build_object(
+                      'detail',        'parent_id = id',
+                      'campo',         'parent_id',
+                      'ubicazione_id', NEW.id,
+                      'parent_id',     NEW.parent_id
+                    ),
+                    NULL::uuid,
+                    NEW.codice,
+                    NEW.codice
+                  );
+                END IF;
+
+                -- 2) Il padre, sotto RLS: magazzino e codici per la frase.
+                SELECT u.magazzino_id, u.codice, m.codice
+                  INTO v_padre_magazzino_id, v_padre_codice, v_mag_padre_codice
+                  FROM magazzino.ubicazioni u
+                  LEFT JOIN magazzino.magazzini m ON m.id = u.magazzino_id
+                 WHERE u.id = NEW.parent_id;
+
+                IF v_padre_magazzino_id IS NULL OR v_padre_magazzino_id <> NEW.magazzino_id THEN
+                  SELECT m.codice INTO v_mag_codice
+                    FROM magazzino.magazzini m
+                   WHERE m.id = NEW.magazzino_id;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'magazzino.trgfn_ubicazioni_guard_parent',
+                    'E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO',
+                    jsonb_build_object(
+                      'detail',             'il padre non e'' del magazzino della figlia (o non e'' visibile)',
+                      'campo',              'parent_id',
+                      'ubicazione_id',      NEW.id,
+                      'parent_id',          NEW.parent_id,
+                      'magazzino_id',       NEW.magazzino_id,
+                      'magazzino_id_padre', v_padre_magazzino_id
+                    ),
+                    NULL::uuid,
+                    coalesce(v_padre_codice, NEW.parent_id::text),
+                    coalesce(v_mag_codice, NEW.magazzino_id::text),
+                    coalesce('appartiene al magazzino ' || v_mag_padre_codice,
+                             'non è visibile con i permessi di chi sta operando')
+                  );
+                END IF;
+
+                -- 3) Cicli piu' lunghi: NEW.id fra gli antenati del padre nuovo. Solo in
+                --    UPDATE. L'array dei visitati ferma la risalita anche su una catena
+                --    gia' ciclica nel pregresso.
+                IF TG_OP = 'UPDATE' THEN
+                  SELECT EXISTS (
+                    WITH RECURSIVE antenati AS (
+                      SELECT u.id, u.parent_id, ARRAY[u.id] AS percorso
+                        FROM magazzino.ubicazioni u
+                       WHERE u.id = NEW.parent_id
+                      UNION ALL
+                      SELECT u.id, u.parent_id, a.percorso || u.id
+                        FROM antenati a
+                        JOIN magazzino.ubicazioni u ON u.id = a.parent_id
+                       WHERE NOT (u.id = ANY (a.percorso))
+                    )
+                    SELECT 1 FROM antenati a WHERE a.id = NEW.id
+                  ) INTO v_ciclo;
+
+                  IF v_ciclo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'magazzino.trgfn_ubicazioni_guard_parent',
+                      'E_MAG_UBICAZIONE_PADRE_CICLICO',
+                      jsonb_build_object(
+                        'detail',        'NEW.id e'' fra gli antenati di parent_id',
+                        'campo',         'parent_id',
+                        'ubicazione_id', NEW.id,
+                        'parent_id',     NEW.parent_id
+                      ),
+                      NULL::uuid,
+                      NEW.codice,
+                      v_padre_codice
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.trgfn_ubicazioni_guard_parent() IS
+                  'Guard R-1 sulle ubicazioni: il padre (parent_id) sta nello stesso '
+                  'magazzino della figlia — altrimenti E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO '
+                  '(DATO_ERRATO, campo parent_id; fail-closed: un padre fuori perimetro RLS '
+                  'non risolve e si rifiuta lo stesso) — e la gerarchia non ha cicli di '
+                  'nessuna lunghezza: E_MAG_UBICAZIONE_PADRE_CICLICO (stessa classe, stesso '
+                  'campo). Il cambio di magazzino_id non passa di qui: colonna immutabile via '
+                  'automation_lock_columns. Brief: brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici, R-1.';
+
+              CREATE TRIGGER trg_ubicazioni_a10_parent_guard_ins_upd
+                  BEFORE INSERT OR UPDATE OF parent_id
+                  ON magazzino.ubicazioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION magazzino.trgfn_ubicazioni_guard_parent();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ubicazioni_a10_parent_guard_ins_upd ON magazzino.ubicazioni;
+              DROP FUNCTION IF EXISTS magazzino.trgfn_ubicazioni_guard_parent();

@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { useCategorieClientiStore } from '../stores/categorieClienti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -52,6 +53,9 @@ const form = ref({
   partecipa_promo: false,
   attivo: true
 })
+// Modifiche non salvate: fotografia all'apertura (anche in creazione), e
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 function resetForm() {
   form.value = {
@@ -61,6 +65,7 @@ function resetForm() {
     partecipa_promo: false,
     attivo: true
   }
+  fissa()
 }
 
 async function loadDetail() {
@@ -74,6 +79,7 @@ async function loadDetail() {
     partecipa_promo: data.partecipa_promo ?? false,
     attivo: data.attivo ?? true
   }
+  fissa()
 }
 
 watch(
@@ -118,19 +124,22 @@ async function handleSave() {
         : t('amministrazione.categorie_clienti.created')
     }
   )
-  if (result !== null) emit('saved', result)
+  if (result !== null) { fissa(); emit('saved', result) }
 }
 
 function close() {
-  emit('update:visible', false)
-  emit('cancelled')
+  chiudiConConferma(() => {
+    emit('update:visible', false)
+    emit('cancelled')
+  })
 }
+const suVisibile = gestoreVisibile(emit, close)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="v => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.SIMPLE }"
     :dismissable="true"
@@ -138,6 +147,7 @@ function close() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('amministrazione.categorie_clienti.drawer_title')"
       />

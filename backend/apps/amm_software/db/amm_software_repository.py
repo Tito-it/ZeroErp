@@ -10,16 +10,27 @@ from __future__ import annotations
 
 import re
 from functools import lru_cache
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.db._helpers import rows_to_list, sql_order_direction, sql_tiebreak_direction
+from apps.core.db._helpers import (
+    limiti_pagina,
+    add_ricerca_full_condition,
+    fetch_paged_with_total,
+    jsonb_out,
+    RicercaFull,
+    row_to_dict,
+    rows_to_list,
+    sql_order_clause,
+    sql_order_direction,
+    sql_tiebreak_direction,
+)
 
 from apps.core.services.auth_constants import TIPO_PROFILO_SUPER_ADMIN
 from apps.core.services.error_manager import ErrorManager
 from apps.amm_software.constants import DEFAULT_LIMIT
-from apps.amm_software.types import OperatoreDetailRow, OperatoreRow
+from apps.amm_software.types import CredenzialePerEmailRow, OperatoreDetailRow, OperatoreRow
 
 # ⛔ GLI UTENTI TECNICI NON SONO OPERATORI, e le liste di questo modulo
 # parlano di PERSONE. Dal 2026-09-04 il database crea un utente per ogni
@@ -62,6 +73,51 @@ ALLOWED_ORDER_COLUMNS: dict[str, str] = {
 }
 
 
+# Cosa si PUO' cercare nella lista operatori; cosa si cerca lo dice il catalogo
+# (`add_ricerca_full_condition`). Mappa `campo_sorgente → espressione`: i nomi
+# del catalogo sono nomi di USCITA della SELECT di `list_operatori`, e ogni
+# valore e' la stessa espressione che la SELECT proietta con quel nome (si
+# cerca su cio' che si mostra).
+# ⭐ `soggetto_cognome`/`soggetto_nome` cercano il `COALESCE` col nome
+#    dell'utente, come li mostra la lista: fino al 2026-09-24 la ricerca scritta
+#    a mano cercava `s.cognome`/`s.nome` nudi, e un operatore senza soggetto non
+#    si trovava per il nome che la lista gli mostrava.
+# ⭐ `email`, `soggetto_nome` e `soggetto_ragione_sociale` sono colonne del
+#    catalogo dal 2026-09-24 (brief DB §3.2-bis); la terza e' proiettata apposta.
+_RICERCA_OPERATORI = RicercaFull(
+    "anagrafiche.operatori",
+    {
+        "soggetto_cognome": "COALESCE(s.cognome, au.last_name)",
+        "soggetto_nome": "COALESCE(s.nome, au.first_name)",
+        "username": "au.username",
+        "email": "au.email",
+        "soggetto_ragione_sociale": "s.ragione_sociale_completa",
+    },
+)
+
+
+# Whitelist ORDER BY della lista reparti (`amm.reparti`): chiave = `campo_sorgente`
+# del catalogo, valore = colonna della CTE `reparti` di `list_reparti` (alias
+# `rp`). I due conteggi sono alias della CTE, non colonne di tabella: e' per
+# loro che la SELECT e' avvolta.
+# `profilo_aree_count` a video e' «configurato / mancante», ma ordina il numero:
+# i reparti senza profilo vengono insieme, in testa in ASC.
+REPARTI_ORDER_COLUMNS: dict[str, str] = {
+    "descrizione": "rp.descrizione",
+    "codice": "rp.codice",
+    "profilo_aree_count": "rp.profilo_aree_count",
+    "operatori_count": "rp.operatori_count",
+}
+
+# Cosa si PUO' cercare nella lista reparti; cosa si cerca lo dice il catalogo
+# (soglia 1: codici corti, `ricerca_min_caratteri` della lista). Espressioni su
+# `uo`: la ricerca sta dentro la CTE, sulle colonne vere.
+_RICERCA_REPARTI = RicercaFull("amm.reparti", {
+    "descrizione": "uo.descrizione",
+    "codice": "uo.codice",
+})
+
+
 # Whitelist ORDER BY del log di audit (`storico.audit_log`): chiave =
 # `campo_sorgente` che il frontend invia come sortField (il nome del campo COME
 # APPARE nel risultato), valore = colonna reale della CTE `events`. I due nomi
@@ -87,43 +143,6 @@ AUDIT_ORDER_COLUMNS: dict[str, str] = {
 }
 
 
-# Fase 8 — Model riservati: non possono essere target di override granulari.
-# Sono il kernel del sistema permessi: ammettere override a livello model
-# qui aprirebbe scenari di lockout ricorsivo (es. negare a un admin
-# l'accesso a `profili_accesso_bindings` => non puo' piu' rimuovere il
-# proprio binding => bypass automatico).
-#
-# Convenzione tuple: `(schema_db, model_logical_name)` — stessa del seed
-# `config.area_model_overrides` (es. `('anagrafiche', 'soggetto')`).
-# NOTA: alla data del 2026-04-29 NESSUN model di kernel e' presente in
-# `area_model_overrides` (verifica: il seed `20260410-11` registra solo
-# 12 model business). Questa blacklist e' quindi PREVENTIVA — defense
-# in depth contro futuri seed che includessero per errore tabelle di
-# kernel. Se la convenzione di registrazione cambia (es. uso di
-# Django app_label invece dello schema), aggiornare le tuple di
-# conseguenza.
-_MODEL_OVERRIDE_RISERVATI: frozenset[tuple[str, str]] = frozenset({
-    # Identita digitali (anagrafiche) — modificarla via override-oggetti
-    # lascerebbe l'utente bypassare i guard sul ruolo applicativo.
-    ("anagrafiche", "identita_digitali"),
-    # Catalogo profili accesso e binding SUPER_ADMIN.
-    ("config", "profili_accesso"),
-    ("config", "profili_accesso_bindings"),
-    # Catalogo del lookup stesso: override-abile solo via DDL.
-    ("config", "area_model_overrides"),
-    # Tabelle override granulari: ricorsione semantica.
-    ("config", "user_override_aree"),
-    ("config", "user_override_azioni"),
-    ("config", "user_override_oggetti"),
-    # Scope emittenti utente: cambiarlo cambia i dati visibili.
-    ("config", "user_emittenti_fiscali"),
-    # Profili accesso: livello sopra ai singoli operatori (modello generalizzato
-    # post-cutover PR-B; le legacy profili_reparto_* sono state rimosse).
-    ("config", "profili_accesso_aree"),
-    ("config", "profili_accesso_azioni"),
-})
-
-
 class AmmSoftwareRepository:
     """Accesso DB per amministrazione operatori e reparti."""
 
@@ -146,23 +165,22 @@ class AmmSoftwareRepository:
         order_by: str | None = None,
         order_dir: str | None = None,
     ) -> tuple[list[OperatoreRow], int]:
-        # Validazione ordinamento
+        # Validazione ordinamento: la COLONNA fuori whitelist ripiega sull'ordine
+        # di default (contratto di questa lista). ⛔ La DIREZIONE no: la giudica
+        # `sql_order_direction` qui sotto. Fino al 2026-09-26 qui c'era una
+        # copia a mano (`order_dir.upper() not in ("ASC", "DESC")` -> None) che
+        # trasformava un valore estraneo nel default PRIMA che il BB lo vedesse:
+        # il rifiuto scritto piu' in basso non scattava mai.
         if order_by and order_by not in ALLOWED_ORDER_COLUMNS:
             order_by = None
-        if order_dir and order_dir.upper() not in ("ASC", "DESC"):
-            order_dir = None
 
         conditions: list[str] = [ESCLUDI_UTENTI_TECNICI]
         params: list[Any] = []
 
-        if search:
-            conditions.append(
-                "(au.username ILIKE %s OR au.email ILIKE %s "
-                "OR s.cognome ILIKE %s OR s.nome ILIKE %s "
-                "OR s.ragione_sociale_completa ILIKE %s)"
-            )
-            like_term = f"%{search}%"
-            params.extend([like_term] * 5)
+        # ⚠️ Sotto la soglia della lista (catalogo) il termine non filtra: fino al
+        #    2026-09-24 la ricerca scritta a mano filtrava da un carattere, senza
+        #    `strip` ne' `escape_ilike`.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_OPERATORI)
 
         if is_super_admin is not None:
             # Multi-face auth: filtro binario sul binding SUPER_ADMIN.
@@ -183,8 +201,11 @@ class AmmSoftwareRepository:
         # Ordinamento sicuro (whitelist): la mappa traduce il campo inviato dal
         # client nell'espressione SQL, in un passaggio solo.
         order_column = ALLOWED_ORDER_COLUMNS.get(order_by or "")
+        # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): senza colonna il
+        #    ramo di default la ignora, e un `order_dir` estraneo passava muto.
+        #    Il BB la rifiuta anche quando poi non la si usa.
+        direction = sql_order_direction(order_dir)
         if order_column:
-            direction = sql_order_direction(order_dir)
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = f"ORDER BY {order_column} {direction}, au.id {tiebreak_dir}"
         else:
@@ -198,6 +219,7 @@ class AmmSoftwareRepository:
                    au.last_name,
                    COALESCE(s.cognome, au.last_name) AS soggetto_cognome,
                    COALESCE(s.nome, au.first_name) AS soggetto_nome,
+                   s.ragione_sociale_completa AS soggetto_ragione_sociale,
                    script.fn_is_super_admin(au.id) AS is_super_admin,
                    id.ruolo_applicativo::text AS ruolo_applicativo,
                    au.is_active,
@@ -231,30 +253,17 @@ class AmmSoftwareRepository:
              WHERE {where_clause}
              {order_clause}
              LIMIT %s OFFSET %s
-        """
-        params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            if not cursor.description:
-                return [], 0
-            cols = [c.name for c in cursor.description]
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count = rows[0][cols.index("total_count")]
-        results: list[OperatoreRow] = []
-        for row in rows:
-            d = dict(zip(cols, row))
-            d.pop("total_count", None)
-            results.append(d)  # type: ignore[arg-type]
-
-        return results, total_count
+        """  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_OPERATORI, ORDER BY da whitelist ALLOWED_ORDER_COLUMNS, valori come parametri
+        # ⚠️ Il clamp sta nel repository, non nella view: un `?limit=-5`
+        #    arrivava a DB come `LIMIT -5` e rispondeva 500.
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        params.extend([safe_limit, safe_offset])
+        rows, total_count = fetch_paged_with_total(sql, params, offset=safe_offset)
+        return cast(list[OperatoreRow], rows), total_count
 
     # Scopo: Restituisce il dettaglio completo di un operatore con conteggi
-    # override e i 6 campi capability (can_invite/disable/demote + reason).
+    # override e i 9 campi capability (can_invite/disable/demote + reason
+    # + reason_key, §16).
     #
     # Delega interamente a `script.fn_get_operatore_detail(p_auth_user_id)`
     # (Fase 1 multi-face): la fn DB e' single source of truth per la
@@ -282,13 +291,7 @@ class AmmSoftwareRepository:
             )
             if not cursor.description:
                 return None
-            cols = [c.name for c in cursor.description]
-            row = cursor.fetchone()
-
-        if not row:
-            return None
-
-        return dict(zip(cols, row))  # type: ignore[return-value]
+            return row_to_dict(cursor)  # type: ignore[return-value]
 
     # Scopo: Aggiorna stato identita_digitali (attivo, ruolo_applicativo) per
     # l'utente. Helper privato per orchestrare le 3 write path dei writer
@@ -314,7 +317,7 @@ class AmmSoftwareRepository:
         params.append(auth_user_id)
         with connection.cursor() as cursor:
             cursor.execute(
-                f"UPDATE anagrafiche.identita_digitali "
+                f"UPDATE anagrafiche.identita_digitali "  # noqa: S608 — SET da frammenti letterali di questo metodo, valori come parametri
                 f"SET {', '.join(fields)} "
                 f"WHERE auth_user_id = %s",
                 params,
@@ -399,7 +402,7 @@ class AmmSoftwareRepository:
                 auth_params.append(auth_user_id)
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        f"UPDATE auth_user SET {', '.join(auth_fields)} WHERE id = %s",
+                        f"UPDATE auth_user SET {', '.join(auth_fields)} WHERE id = %s",  # noqa: S608 — SET da frammenti letterali di questo metodo, valori come parametri
                         auth_params,
                     )
 
@@ -442,7 +445,7 @@ class AmmSoftwareRepository:
                                SET {', '.join(ru_fields)}
                               FROM anagrafiche.identita_digitali id
                              WHERE id.auth_user_id = %s
-                               AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",
+                               AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",  # noqa: S608 — SET da frammenti letterali di questo metodo, valori come parametri
                         ru_params + [auth_user_id],
                     )
 
@@ -538,18 +541,22 @@ class AmmSoftwareRepository:
                 [auth_user_id],
             )
 
-    # Scopo: Crea un operatore completo invocando l'orchestratore DB
-    # `anagrafiche.fn_crea_operatore_v2`. Chiama i building block: fn_crea_auth_user,
-    # fn_crea_soggetto_pf, fn_crea_risorsa_umana.
-    # Parametri Sprint 3: comune_nascita_id, indirizzo_resid_dettaglio_id,
-    # indirizzo_domfisc_dettaglio_id (normalizzati via stradario).
-    # Due flussi: soggetto_id NULL (crea soggetto nuovo) o valorizzato (usa esistente).
-    #
-    # Contract multi-face puro (Fase 7-DB step 6): la fn DB v2 accetta
-    # `p_is_super_admin bool` + `p_attivo bool` al posto del legacy
-    # `p_ruolo_sistema config.ruolo_sistema`. Il translator interno e'
-    # stato rimosso. Compat layer DB legacy chiuso.
-    # Ritorna l'auth_user_id del nuovo operatore.
+    # Scopo: Crea un operatore invocando la madre DB
+    # `anagrafiche.fn_crea_operatore_v2` (rev P-2, 20260925-42). Due flussi sul
+    # soggetto: soggetto_id NULL (crea il soggetto PF) o valorizzato (usa
+    # l'esistente). Due flussi sulla CREDENZIALE, decisi dal DB per email
+    # senza maiuscole (D-6: una persona, una credenziale):
+    #   - nuova: nasce con `password_hash` e `username`;
+    #   - RIUSATA: password, username e nome restano i suoi, e quelli passati
+    #     sono ignorati — il ritorno dice quale username vale davvero.
+    # ⛔ La veste OPERATORE nasce SEMPRE spenta: la accende l'attivazione
+    # dell'invito. Credenziale gia' operatore (veste attiva o spenta) →
+    # `E_CREDENZIALE_GIA_OPERATORE` dal DB.
+    # ⭐ Il riuso non e' silenzioso (`20260925-51`): `riusa_auth_user_id` e'
+    # la DICHIARAZIONE della credenziale che l'admin ha visto e confermato.
+    # Senza, o con un'altra, la madre ferma con `E_CREDENZIALE_DA_CONFERMARE`;
+    # su un'altra persona fisica con `E_CREDENZIALE_ALTRA_PERSONA`.
+    # Ritorna {auth_user_id, username, credenziale_riusata}.
     def crea_operatore(
         self,
         *,
@@ -565,15 +572,16 @@ class AmmSoftwareRepository:
         data_nascita: str | None = None,
         sesso: str = "M",
         is_super_admin: bool = False,
-        attivo: bool = True,
         valido_dal: str | None = None,
         valido_al: str | None = None,
         comune_nascita_id: int | None = None,
         indirizzo_resid_dettaglio_id: int | None = None,
         indirizzo_domfisc_dettaglio_id: int | None = None,
-    ) -> int:
+        riusa_auth_user_id: int | None = None,
+    ) -> dict[str, Any]:
         sql = """
-            SELECT anagrafiche.fn_crea_operatore_v2(
+            SELECT auth_user_id, username, credenziale_riusata
+              FROM anagrafiche.fn_crea_operatore_v2(
                 p_soggetto_id                    := %s::uuid,
                 p_cognome                        := %s,
                 p_nome                           := %s,
@@ -586,12 +594,12 @@ class AmmSoftwareRepository:
                 p_data_nascita                   := %s::date,
                 p_sesso                          := %s,
                 p_is_super_admin                 := %s,
-                p_attivo                         := %s,
                 p_valido_dal                     := COALESCE(%s::date, CURRENT_DATE),
                 p_valido_al                      := %s::date,
                 p_comune_nascita_id              := %s,
                 p_indirizzo_resid_dettaglio_id   := %s,
-                p_indirizzo_domfisc_dettaglio_id := %s
+                p_indirizzo_domfisc_dettaglio_id := %s,
+                p_riusa_auth_user_id             := %s
             )
         """
         params = [
@@ -599,17 +607,42 @@ class AmmSoftwareRepository:
             cognome, nome, codice_fiscale,
             username, email, password_hash,
             qualifica_id, unita_organizzativa_id,
-            data_nascita, sesso, is_super_admin, attivo,
+            data_nascita, sesso, is_super_admin,
             valido_dal, valido_al,
             comune_nascita_id,
             indirizzo_resid_dettaglio_id,
             indirizzo_domfisc_dettaglio_id,
+            riusa_auth_user_id,
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
             assert row is not None
-            return row[0]
+            return {
+                "auth_user_id": int(row[0]),
+                "username": row[1],
+                "credenziale_riusata": bool(row[2]),
+            }
+
+    # Scopo: La credenziale che porta un'email, con username e vesti, per il
+    #        dialog di conferma del riuso (B-20). Sede unica della lettura:
+    #        `script.fn_get_credenziale_per_email`, la stessa che la madre usa
+    #        per il rifiuto E_CREDENZIALE_DA_CONFERMARE. Email assente, vuota o
+    #        di nessuno -> None (zero righe: lo decide il DB, non qui); due
+    #        credenziali con la stessa email -> E_CREDENZIALE_EMAIL_AMBIGUA
+    #        dal DB. `vesti` e' jsonb: fuori dall'ORM arriva `str`, lo decodifica
+    #        `jsonb_out` (BB, esplode su un JSON malformato).
+    def get_credenziale_per_email(self, email: str | None) -> CredenzialePerEmailRow | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT auth_user_id, username, vesti"
+                "  FROM script.fn_get_credenziale_per_email(%s)",
+                [email],
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return {"auth_user_id": int(row[0]), "username": row[1], "vesti": jsonb_out(row[2])}
 
     # Scopo: Lista unita' organizzative per dropdown filtro.
     def list_unita_organizzative(self) -> list[dict[str, Any]]:
@@ -758,13 +791,21 @@ class AmmSoftwareRepository:
     # Scopo: Lista model registrati in area_model_overrides (lookup per dropdown admin).
     #        Ogni riga e' arricchita con capability `can_override` (bool) +
     #        `reason` (chiave i18n|None) — Fase 8: i model che afferiscono al
-    #        kernel del sistema permessi (auth_user, identita, bindings, override
+    #        kernel del sistema permessi (identita, profili, bindings, override
     #        stessi) NON possono essere target di override per evitare lockout
     #        ricorsivi. Pattern simmetrico a `can_change_scope`/`change_scope_reason`
     #        di Fase 2.
+    # ⭐ Il riservato e' la colonna `area_model_overrides.riservato` (D-4 di
+    #    brief-db-be-fe-catalogo-oggetti-permessi, `20260928-01`): il catalogo
+    #    DICHIARA i dieci oggetti del kernel, e la FK composita
+    #    `fk_user_override_oggetti_catalogo` rifiuta un override su un oggetto
+    #    fuori catalogo o riservato.
+    # ⛔ Fino al 2026-09-28 l'elenco era la costante Python
+    #    `_MODEL_OVERRIDE_RISERVATI`, preventiva e senza riscontro a DB: due
+    #    elenchi dei riservati, ritirata la copia (regola del 2).
     def list_model_overrides(self) -> list[dict[str, Any]]:
         sql = """
-            SELECT amo.id, amo.app_label, amo.model_name,
+            SELECT amo.id, amo.app_label, amo.model_name, amo.riservato,
                    af.id AS area_id,
                    af.schema_db AS area_schema, af.descrizione AS area_descrizione
               FROM config.area_model_overrides amo
@@ -776,7 +817,7 @@ class AmmSoftwareRepository:
             rows = rows_to_list(cursor)
 
         for row in rows:
-            riservato = (row["app_label"], row["model_name"]) in _MODEL_OVERRIDE_RISERVATI
+            riservato = bool(row.pop("riservato"))
             row["can_override"] = not riservato
             row["reason"] = "amm.model_override_reason_riservato" if riservato else None
         return rows
@@ -808,11 +849,7 @@ class AmmSoftwareRepository:
             )
             if not cursor.description:
                 return None
-            cols = [c.name for c in cursor.description]
-            row = cursor.fetchone()
-        if not row:
-            return None
-        return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # Scopo: Cambio scope emittenti atomico via
     # `script.fn_change_user_emittenti_scope(p_auth_user_id, p_emittente_ids)`.
@@ -841,33 +878,64 @@ class AmmSoftwareRepository:
     # Reparti e profili                                                    #
     # ================================================================== #
 
-    # Scopo: Lista reparti con flag profilo configurato e conteggio operatori.
+    # Scopo: Lista reparti (`amm.reparti`, lista 87) con flag profilo
+    #        configurato e conteggio operatori: paginata, ordinata sulla
+    #        whitelist `REPARTI_ORDER_COLUMNS`, con la ricerca libera del
+    #        catalogo. Ritorna (righe della pagina, totale).
     #        Conteggi su modello generalizzato profili_accesso_* via binding
     #        REPARTO (post-cutover PR-B): JOIN profili_accesso_bindings ->
     #        profili_accesso_aree/_azioni filtrato per unita_organizzativa_id.
-    def list_reparti(self) -> list[dict[str, Any]]:
-        sql = """
-            SELECT uo.id, uo.codice, uo.descrizione, uo.attivo,
-                   (SELECT COUNT(*)
-                      FROM config.profili_accesso_bindings pab
-                      JOIN config.profili_accesso_aree paa
-                        ON paa.profilo_accesso_id = pab.profilo_accesso_id
-                     WHERE pab.unita_organizzativa_id = uo.id) AS profilo_aree_count,
-                   (SELECT COUNT(*)
-                      FROM config.profili_accesso_bindings pab
-                      JOIN config.profili_accesso_azioni paz
-                        ON paz.profilo_accesso_id = pab.profilo_accesso_id
-                     WHERE pab.unita_organizzativa_id = uo.id) AS profilo_azioni_count,
-                   (SELECT COUNT(*) FROM anagrafiche.risorse_umane ru
-                     WHERE ru.unita_organizzativa_id = uo.id
-                       AND ru.attivo = true) AS operatori_count
-              FROM config.unita_organizzative uo
-             WHERE uo.attivo = true
-             ORDER BY uo.descrizione
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql)
-            return rows_to_list(cursor)
+    # ⭐ La SELECT sta in una CTE perche' due colonne ordinabili sono CONTEGGI
+    #    (sottoquery col loro alias): fuori dalla CTE si ordinano per nome come
+    #    le altre, e il `COUNT(*) OVER ()` si conta sulle righe gia' filtrate.
+    #    La ricerca invece resta DENTRO, sulle colonne vere di `uo`.
+    # ⚠️ Solo i reparti ATTIVI (`uo.attivo = true`), come prima della
+    #    paginazione: se servano anche i disattivati e' una domanda aperta
+    #    (brief-db-liste-datatable-grezze §8 punto 5), non una scelta di qui.
+    def list_reparti(
+        self, *, search: str | None = None,
+        order_by: str | None = "descrizione", order_dir: str | None = None,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=REPARTI_ORDER_COLUMNS, default="rp.descrizione", tiebreak="rp.id",
+        )
+        conditions: list[str] = ["uo.attivo = true"]
+        params: list[Any] = []
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_REPARTI)
+        where_clause = "WHERE " + " AND ".join(conditions)
+        return fetch_paged_with_total(
+            f"""
+            WITH reparti AS (
+                SELECT uo.id, uo.codice, uo.descrizione, uo.attivo,
+                       (SELECT COUNT(*)
+                          FROM config.profili_accesso_bindings pab
+                          JOIN config.profili_accesso_aree paa
+                            ON paa.profilo_accesso_id = pab.profilo_accesso_id
+                         WHERE pab.unita_organizzativa_id = uo.id) AS profilo_aree_count,
+                       (SELECT COUNT(*)
+                          FROM config.profili_accesso_bindings pab
+                          JOIN config.profili_accesso_azioni paz
+                            ON paz.profilo_accesso_id = pab.profilo_accesso_id
+                         WHERE pab.unita_organizzativa_id = uo.id) AS profilo_azioni_count,
+                       (SELECT COUNT(*) FROM anagrafiche.risorse_umane ru
+                         WHERE ru.unita_organizzativa_id = uo.id
+                           AND ru.attivo = true) AS operatori_count
+                  FROM config.unita_organizzative uo
+                 {where_clause}
+            )
+            SELECT rp.*, COUNT(*) OVER () AS total_count
+              FROM reparti rp
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+            """,  # noqa: S608 — WHERE da condizioni letterali + add_ricerca_full_condition (_RICERCA_REPARTI), ORDER BY da sql_order_clause su REPARTI_ORDER_COLUMNS, valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) FROM config.unita_organizzative uo {where_clause}",  # noqa: S608 — stesso FROM/WHERE della CTE, condizioni letterali e valori come parametri
+            fallback_params=params,
+            offset=safe_offset,
+        )
 
     # Scopo: Restituisce il profilo completo di un reparto (aree + azioni).
     #        Legge dal modello generalizzato profili_accesso_* via binding
@@ -887,8 +955,7 @@ class AmmSoftwareRepository:
                     ORDER BY af.ordinamento, af.codice""",
                 [uo_id],
             )
-            cols_a = [c.name for c in cursor.description]
-            aree = [dict(zip(cols_a, row)) for row in cursor.fetchall()]
+            aree = rows_to_list(cursor)
 
         # Azioni
         with connection.cursor() as cursor:
@@ -906,8 +973,7 @@ class AmmSoftwareRepository:
                     ORDER BY af.ordinamento, ap.permission_codename""",
                 [uo_id],
             )
-            cols_z = [c.name for c in cursor.description]
-            azioni = [dict(zip(cols_z, row)) for row in cursor.fetchall()]
+            azioni = rows_to_list(cursor)
 
         return {"aree": aree, "azioni": azioni}
 
@@ -918,23 +984,21 @@ class AmmSoftwareRepository:
     #        che ripete il profilo CONGELA la riga (da quel momento non segue
     #        piu' il reparto se il reparto cambia).
     #
-    # ⛔ NON e' `get_profilo_reparto`, e la differenza non e' cosmetica. Quello
-    #    legge il solo binding REPARTO per `unita_organizzativa_id`; i bindings
-    #    sono TRE — `AD_HOC` (priorita' 1, sull'identita'), `PORTALE` e
-    #    `REPARTO` (priorita' 2) — e i resolver prendono il primo per priorita'.
-    #    Per un utente con un binding AD_HOC quella lettura darebbe un valore
-    #    PLAUSIBILE E SBAGLIATO, su una schermata di sicurezza.
+    # ⭐ L'ereditato e' calcolato a DB, da `script.fn_get_permessi_ereditati_aree`
+    #    e `..._azioni`: sono la SEDE UNICA del passo 4 dei resolver
+    #    (`fn_resolve_livello_area`, `fn_check_azione_processo` e le due mappe
+    #    le CHIAMANO), quindi la colonna coincide col valore applicato per
+    #    costruzione. Qui non si riscrive ne' la raccolta dei profili ne' lo
+    #    spareggio: lo presidia il pgTAP `test-fn-get-permessi-ereditati-v1`
+    #    (brief-db-pgtap-permessi-ereditati §7).
+    # ⛔ NON e' `get_profilo_reparto`, che legge il solo binding REPARTO per
+    #    `unita_organizzativa_id`: i profili sono TRE (AD_HOC, REPARTO,
+    #    PORTALE di veste) e per un utente con un binding AD_HOC quella lettura
+    #    darebbe un valore PLAUSIBILE E SBAGLIATO, su una schermata di sicurezza.
     #
-    # ⭐ La sorgente e' `script.fn_get_profili_accesso_applicabili`, cioe' LA
-    #    STESSA funzione che usano `fn_resolve_livello_area` e
-    #    `fn_check_azione_processo`: l'insieme dei profili e le loro priorita'
-    #    non sono ricalcolati qui.
-    # ⚠️ Cio' che si ripete e' il `DISTINCT ON ... ORDER BY priorita`, cioe' lo
-    #    spareggio. E' il minimo duplicabile, ma resta una seconda scrittura di
-    #    un criterio: il presidio e' il test che, su un utente SENZA override,
-    #    confronta questo livello con `fn_resolve_livello_area` — senza override
-    #    la catena del resolver E' l'ereditato, quindi devono coincidere per
-    #    costruzione.
+    # Qui si aggiunge solo presentazione: le etichette del catalogo (JOIN su
+    # `aree_funzionali` / `azioni_processo`). `profilo_nome` e' il nome di
+    # contratto dell'endpoint per `profilo_descrizione`.
     #
     # ℹ️ Nessuna chiave `oggetti`: `config.profili_accesso_oggetti` non esiste.
     #    Per un model l'ereditato e' il livello della sua AREA, che il chiamante
@@ -942,61 +1006,41 @@ class AmmSoftwareRepository:
     #    stessa domanda, con due posti in cui sbagliarla.
     # ℹ️ Voce ASSENTE = nessun profilo copre quell'area/azione ⇒ vale il default
     #    (`BLOCCATO` / azione negata). La lista vuota e' un dato, non un buco.
-    # ⚠️ PARITA' A PRIORITA' UGUALE: `PORTALE` e `REPARTO` valgono entrambi 2,
-    #    quindi un utente bindato a tutti e due ha due profili indistinguibili
-    #    per lo spareggio, e `DISTINCT ON` ne prende uno arbitrario — esattamente
-    #    come fa il resolver col suo `ORDER BY h.priorita LIMIT 1`. Le due
-    #    letture restano quindi coerenti fra loro, ma su quella coppia il
-    #    risultato non e' DETERMINATO: e' un'ambiguita' del modello dei
-    #    bindings, non di questa query, e va risolta li' (una terza chiave di
-    #    ordinamento, o priorita' distinte) se un giorno si presentera'.
     def get_permessi_ereditati(self, auth_user_id: int) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT DISTINCT ON (paa.area_id)
-                          paa.area_id,
-                          af.codice        AS area_codice,
-                          af.descrizione   AS area_descrizione,
-                          paa.livello::text,
-                          pa.descrizione   AS profilo_nome,
-                          pa.tipo::text    AS profilo_tipo
-                     FROM script.fn_get_profili_accesso_applicabili(%s) h
-                     JOIN config.profili_accesso_aree paa
-                       ON paa.profilo_accesso_id = h.profilo_accesso_id
-                     JOIN config.profili_accesso pa
-                       ON pa.id = h.profilo_accesso_id
+                """SELECT e.area_id,
+                          af.codice               AS area_codice,
+                          af.descrizione          AS area_descrizione,
+                          e.livello::text         AS livello,
+                          e.profilo_descrizione   AS profilo_nome,
+                          e.profilo_tipo::text    AS profilo_tipo
+                     FROM script.fn_get_permessi_ereditati_aree(%s) e
                      JOIN config.aree_funzionali af
-                       ON af.id = paa.area_id
-                    ORDER BY paa.area_id, h.priorita""",
+                       ON af.id = e.area_id
+                    ORDER BY e.area_id""",
                 [auth_user_id],
             )
-            cols_a = [c.name for c in cursor.description]
-            aree = [dict(zip(cols_a, row)) for row in cursor.fetchall()]
+            aree = rows_to_list(cursor)
 
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT DISTINCT ON (paz.azione_id)
-                          paz.azione_id,
+                """SELECT e.azione_id,
                           ap.permission_codename,
-                          ap.descrizione   AS azione_descrizione,
-                          af.codice        AS area_codice,
-                          paz.abilitata,
-                          pa.descrizione   AS profilo_nome,
-                          pa.tipo::text    AS profilo_tipo
-                     FROM script.fn_get_profili_accesso_applicabili(%s) h
-                     JOIN config.profili_accesso_azioni paz
-                       ON paz.profilo_accesso_id = h.profilo_accesso_id
-                     JOIN config.profili_accesso pa
-                       ON pa.id = h.profilo_accesso_id
+                          ap.descrizione          AS azione_descrizione,
+                          af.codice               AS area_codice,
+                          e.abilitata,
+                          e.profilo_descrizione   AS profilo_nome,
+                          e.profilo_tipo::text    AS profilo_tipo
+                     FROM script.fn_get_permessi_ereditati_azioni(%s) e
                      JOIN config.azioni_processo ap
-                       ON ap.id = paz.azione_id
+                       ON ap.id = e.azione_id
                      JOIN config.aree_funzionali af
                        ON af.id = ap.area_id
-                    ORDER BY paz.azione_id, h.priorita""",
+                    ORDER BY e.azione_id""",
                 [auth_user_id],
             )
-            cols_z = [c.name for c in cursor.description]
-            azioni = [dict(zip(cols_z, row)) for row in cursor.fetchall()]
+            azioni = rows_to_list(cursor)
 
         return {"aree": aree, "azioni": azioni}
 
@@ -1028,7 +1072,6 @@ class AmmSoftwareRepository:
                     message="Reparto inesistente.",
                     detail=f"unita_organizzativa_id={uo_id}",
                 )
-                raise  # unreachable, per type checker
             codice_interno, descrizione_uo, attivo_uo = row
             codice_profilo = f"REPARTO_{codice_interno}"
 
@@ -1230,7 +1273,7 @@ class AmmSoftwareRepository:
         tabella: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         # ⛔ Il cache GREZZO e non `list_audit_sources()`: quello e' il payload
@@ -1254,7 +1297,7 @@ class AmmSoftwareRepository:
             if not self._AUDIT_STORICO_TABLE_RE.match(storico_table or ""):
                 continue
             unions.append(
-                f"SELECT '{code}' AS code, "
+                f"SELECT '{code}' AS code, "  # noqa: S608 — code/area/storico_table dal catalogo vw_audit_sources filtrati dalle regex _AUDIT_*_RE, nessun input
                 f"'{area}' AS area_funzionale, "
                 f"s.id AS storico_id, "
                 f"s.valid_from, s.tipo_operazione, s.user_insert, "
@@ -1264,14 +1307,14 @@ class AmmSoftwareRepository:
                 #    a rileggere `storico_table` dal catalogo. Le due
                 #    interpolazioni qui sotto SONO diverse apposta.
                 f"script.fn_audit_summary('{code}', s.id) AS audit "
-                f"FROM {storico_table} s"  # noqa: S608
+                f"FROM {storico_table} s"
             )
 
         if not unions:
             return [], 0
 
         params: list[Any] = []
-        sql = f"WITH events AS ({' UNION ALL '.join(unions)}) "  # noqa: S608
+        sql = f"WITH events AS ({' UNION ALL '.join(unions)}) "
         sql += (
             "SELECT code, area_funzionale, storico_id, valid_from, "
             "tipo_operazione, user_insert, snapshot, audit, "
@@ -1289,41 +1332,38 @@ class AmmSoftwareRepository:
         # Ordinamento sicuro: la whitelist traduce il nome di risultato nel nome
         # colonna in un passaggio solo (vedi `AUDIT_ORDER_COLUMNS`).
         order_column = AUDIT_ORDER_COLUMNS.get(order_by or "")
+        # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): il ramo di default
+        #    la ignora, e un `order_dir` estraneo passava muto.
+        direction = sql_order_direction(order_dir, default_desc=True)
         if order_column:
-            direction = sql_order_direction(order_dir, default_desc=True)
             # `valid_from DESC` NON e' uno spareggio tecnico ma l'ordine
             # STORICO delle versioni di una stessa riga (la piu' recente
             # prima): resta fisso anche ordinando al contrario, altrimenti la
             # storia di un record si leggerebbe a rovescio.
-            sql += f"ORDER BY {order_column} {direction}, valid_from DESC "  # noqa: S608
+            sql += f"ORDER BY {order_column} {direction}, valid_from DESC "
         else:
             sql += "ORDER BY valid_from DESC "
         sql += "LIMIT %s OFFSET %s"
-        params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count = rows[0][8]
+        # ⚠️ Il clamp sta nel repository, non nella view: un `?limit=-5`
+        #    arrivava a DB come `LIMIT -5` e rispondeva 500.
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        params.extend([safe_limit, safe_offset])
+        rows, total_count = fetch_paged_with_total(sql, params, offset=safe_offset)
         events = [
             {
-                "code": row[0],
+                "code": r["code"],
                 # Manteniamo `tabella` come alias di `code` per retrocompat
                 # con consumer FE legacy. Nuovi consumer usano `code`.
-                "tabella": row[0],
-                "area_funzionale": row[1],
-                "storico_id": row[2],
-                "timestamp": row[3].isoformat() if row[3] else None,
-                "tipo_operazione": self._OP_LABELS.get(row[4], str(row[4])),
-                "user_modifica": row[5],
-                "snapshot": row[6],
-                "audit": row[7],  # {"summary": "...", "diff": [...]}
+                "tabella": r["code"],
+                "area_funzionale": r["area_funzionale"],
+                "storico_id": r["storico_id"],
+                "timestamp": r["valid_from"].isoformat() if r["valid_from"] else None,
+                "tipo_operazione": self._OP_LABELS.get(r["tipo_operazione"], str(r["tipo_operazione"])),
+                "user_modifica": r["user_insert"],
+                "snapshot": r["snapshot"],
+                "audit": r["audit"],  # {"summary": "...", "diff": [...]}
             }
-            for row in rows
+            for r in rows
         ]
         return events, total_count
 
@@ -1406,7 +1446,7 @@ class AmmSoftwareRepository:
                 ON uo.id = ru.unita_organizzativa_id
              WHERE {where_clause}
              ORDER BY COALESCE(s.cognome, au.last_name), au.username
-        """
+        """  # noqa: S608 — colonne area da config.aree_funzionali filtrate da regex _SAFE_IDENT, WHERE letterale, valori come parametri
 
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
@@ -1455,6 +1495,11 @@ class AmmSoftwareRepository:
             cursor.execute(
                 """SELECT ef.id, ef.codice,
                           ef.soggetto_ruolo_id,
+                          -- Il SOGGETTO dell'emittente (uuid): chi sceglie fra
+                          -- gli indirizzi dell'azienda lo legge da qui
+                          -- (`useEmittenteFiscaleField.soggettoIdSessione`,
+                          -- il super admin dentro un emittente).
+                          sr.soggetto_id,
                           s.ragione_sociale_completa AS ragione_sociale
                      FROM anagrafiche.emittenti_fiscali ef
                      LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id

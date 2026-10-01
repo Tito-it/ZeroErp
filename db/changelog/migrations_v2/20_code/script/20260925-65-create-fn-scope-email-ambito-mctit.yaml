@@ -1,0 +1,197 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_scope_email_ambito — chi vede una mail, secondo il suo AMBITO.
+#   Brief: brief-db-email-visibilita-per-ambito §3, decisioni D-1, D-2, D-5
+#
+# ── ⭐ PERCHE' UNA FUNZIONE, E UNA SOLA ─────────────────────────────
+#   La regola vale identica su `config.email_log` e `config.email_outbox`, in
+#   `USING` e in `WITH CHECK`: quattro sedi. Scritta in linea sarebbe quattro
+#   copie di un CASE a tre rami, e la prima che diverge apre una mail a chi
+#   non doveva vederla senza che nessun errore lo dica (regola del 2).
+#   ⇒ Le due policy (20260925-66, -67) chiamano questa funzione e non
+#     contengono logica: e' anche la forma che linee-guida-sql §10.3 chiede.
+#
+# ── LA REGOLA (modello: config/manual/email_log §«Ambito di visibilita'») ──
+#   SISTEMA    → super admin (+ l'identita' tecnica del processo, se nominato)
+#   REPARTO    → (super admin | stesso reparto   | processo) E emittente in scope
+#   OPERATORE  → (super admin | chi l'ha creata  | processo) E emittente in scope
+#   altro      → false
+#   * D-1: l'emittente resta un cancello in `AND` sui due rami nuovi. Una mail
+#     di un'azienda che l'operatore non ha piu' in perimetro non si vede,
+#     anche se l'ha scritta lui.
+#   * D-2: «admin» e' il super admin, lo stesso del ramo SISTEMA. Passa anche
+#     il cancello emittente (fn_check_user_emittente_scope lo lascia passare),
+#     salvo un emittente attivo scelto che restringe anche lui: e' voluto.
+#   * La regola della scheda pratica (D-3) NON e' qui: rimandata.
+#
+# ── ⭐ IL PROCESSO E' UN PARAMETRO, non una seconda regola ─────────
+#   `send_pending_emails` legge e aggiorna le righe del LOG di ogni ambito:
+#   ripesca PENDING/FAILED/RETRY e ne chiude lo stato. Portare e' leggere.
+#   Senza un ramo suo su REPARTO e OPERATORE, una mail di quegli ambiti fallita
+#   non verrebbe piu' ritentata — e una coda vuota e' identica a «niente da
+#   fare». Il log passa il codice del processo, l'outbox no (nessun processo
+#   la apre: 20260905-33).
+#   ⚠️ Sui rami REPARTO e OPERATORE il processo attraversa il cancello
+#   emittente come chiunque (D-1): legge le mail delle aziende del suo roster.
+#   Sul ramo SISTEMA no, perche' quelle mail non hanno azienda (stessa regola
+#   di prima, 20260905-43).
+#
+# ── ⛔ FAIL-CLOSED CON L'UTENTE NULL ────────────────────────────────
+#   `fn_check_user_emittente_scope(NULL, …)` risponde TRUE («job batch»). Qui
+#   il cancello emittente e' sempre in `AND` con un'altra condizione che con
+#   l'utente NULL e' falsa (super admin, reparto, autore, processo): la
+#   funzione torna false. Un `COALESCE` finale chiude il caso NULL, cosi' il
+#   risultato e' false per scelta e non per coincidenza.
+#   ⛔ Niente STRICT: renderebbe NULL, che in una USING vale false per
+#   un'altra ragione.
+#
+# ── `%TYPE` e `LANGUAGE sql` ───────────────────────────────────────
+#   Parametri ancorati alle colonne del LOG: sono le stesse, di tipo, di
+#   quelle dell'outbox (varchar / bigint / integer / integer), e la firma
+#   sciolta e' una sola. Il risultato e' un `boolean` nudo: e' una risposta,
+#   non il riflesso di una colonna.
+#   `LANGUAGE sql STABLE`: la policy si valuta per riga e cosi' il
+#   pianificatore la puo' incorporare. Non nomina `django.*` (lo fa
+#   `fn_scope_identita_processo`, plpgsql a valle): il CREATE non dipende
+#   dal migrate di Django.
+#
+# Verifica: db/pgtap/rls/test-rls-email-ambito-reparto-operatore.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-65-create-fn-scope-email-ambito-mctit.yaml
+
+  - changeSet:
+      id: 20260925-65-create-fn-scope-email-ambito
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_scope_email_ambito: chi vede una mail secondo il suo ambito
+        (SISTEMA = super admin; REPARTO = stesso reparto; OPERATORE = chi l'ha
+        creata; su questi due l'emittente resta un cancello in AND), con un
+        processo opzionale che entra in tutti e tre i rami. Sede unica della
+        regola per le policy di config.email_log e config.email_outbox. Brief:
+        brief-db-email-visibilita-per-ambito.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: email_log
+                columnName: creato_da_user_id
+            - sqlCheck:
+                expectedResult: 4
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('fn_is_super_admin', 'fn_scope_ef_whitelist',
+                                       'fn_scope_identita_processo', 'fn_get_uo_id_for_user')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_email_ambito(
+                  p_auth_user_id           anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  p_ambito                 config.email_log.ambito%TYPE,
+                  p_emittente_fiscale_id   config.email_log.emittente_fiscale_id%TYPE,
+                  p_unita_organizzativa_id config.email_log.unita_organizzativa_id%TYPE,
+                  p_creato_da_user_id      config.email_log.creato_da_user_id%TYPE,
+                  p_processo_codice        dbops.processi.codice%TYPE DEFAULT NULL)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- =====================================================
+                  -- Scopo:
+                  --   «Chi guarda (p_auth_user_id) puo' vedere una mail con
+                  --   questo ambito, questa azienda, questo reparto e questo
+                  --   autore?» Sede unica per le policy di email_log e
+                  --   email_outbox, in lettura e in scrittura.
+                  --
+                  --   SISTEMA   -> super admin | processo
+                  --   REPARTO   -> (super admin | stesso reparto | processo)
+                  --                AND emittente in scope
+                  --   OPERATORE -> (super admin | autore | processo)
+                  --                AND emittente in scope
+                  --
+                  -- ⚠️ p_processo_codice NULL = nessun processo ammesso
+                  --   (l'outbox). Il log passa 'send_pending_emails':
+                  --   portare e' leggere.
+                  -- ⛔ Con p_auth_user_id NULL ogni ramo e' false: il
+                  --   cancello emittente (che per NULL dice true) e'
+                  --   sempre in AND con una condizione falsa.
+                  -- =====================================================
+                  SELECT COALESCE(
+                      CASE p_ambito
+                          WHEN 'SISTEMA' THEN
+                              script.fn_is_super_admin(p_auth_user_id)
+                              OR (p_processo_codice IS NOT NULL
+                                  AND script.fn_scope_identita_processo(
+                                          p_auth_user_id, p_processo_codice))
+                          WHEN 'REPARTO' THEN
+                              (   script.fn_is_super_admin(p_auth_user_id)
+                               -- ⚠️ Utente senza reparto: la funzione rende
+                               --   NULL, il confronto non e' vero, la riga
+                               --   non si vede. Fail-closed, voluto.
+                               OR p_unita_organizzativa_id
+                                  = script.fn_get_uo_id_for_user(p_auth_user_id)
+                               OR (p_processo_codice IS NOT NULL
+                                   AND script.fn_scope_identita_processo(
+                                           p_auth_user_id, p_processo_codice)))
+                              AND script.fn_scope_ef_whitelist(
+                                      p_auth_user_id, p_emittente_fiscale_id)
+                          WHEN 'OPERATORE' THEN
+                              (   script.fn_is_super_admin(p_auth_user_id)
+                               OR p_creato_da_user_id = p_auth_user_id
+                               OR (p_processo_codice IS NOT NULL
+                                   AND script.fn_scope_identita_processo(
+                                           p_auth_user_id, p_processo_codice)))
+                              AND script.fn_scope_ef_whitelist(
+                                      p_auth_user_id, p_emittente_fiscale_id)
+                          ELSE false
+                      END,
+                      false);
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_email_ambito(
+                  anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  config.email_log.ambito%TYPE,
+                  config.email_log.emittente_fiscale_id%TYPE,
+                  config.email_log.unita_organizzativa_id%TYPE,
+                  config.email_log.creato_da_user_id%TYPE,
+                  dbops.processi.codice%TYPE)
+              IS 'Chi vede una mail secondo il suo AMBITO. SISTEMA: super admin (piu'' il processo, se nominato). REPARTO: super admin, chi e'' nello stesso reparto (script.fn_get_uo_id_for_user) o il processo, E l''emittente nel perimetro di chi guarda. OPERATORE: super admin, chi l''ha creata (creato_da_user_id) o il processo, E l''emittente nel perimetro. Qualunque altro ambito: false. ⭐ Sede unica della regola per rls_email_log_ambito e rls_email_outbox_ambito, in USING e WITH CHECK: quattro sedi che non possono divergere. ⭐ p_processo_codice: il log passa send_pending_emails (portare e'' leggere: senza, una mail REPARTO o OPERATORE fallita non verrebbe ritentata); l''outbox passa NULL, perche'' nessun processo la apre. ⚠️ D-1: l''emittente resta in AND anche per l''autore e per il processo. ⛔ Utente NULL: sempre false, anche se il cancello emittente per NULL dice true. La regola della scheda pratica (D-3) non e'' qui. Brief: brief-db-email-visibilita-per-ambito. rev 2026-09-25.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT EXECUTE ON FUNCTION script.fn_scope_email_ambito(
+                          anagrafiche.identita_digitali.auth_user_id%TYPE,
+                          config.email_log.ambito%TYPE,
+                          config.email_log.emittente_fiscale_id%TYPE,
+                          config.email_log.unita_organizzativa_id%TYPE,
+                          config.email_log.creato_da_user_id%TYPE,
+                          dbops.processi.codice%TYPE)
+                          TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_email_ambito(
+                  integer, character varying, bigint, integer, integer, text);

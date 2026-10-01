@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SEDE UNICA DELL'IMPONIBILE DI RIGA: quantita' x prezzo x (1 - sconto/100).
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   La stessa formula era scritta a mano in OTTO oggetti del database
+#   (censimento del 2026-09-28 sulla doc auto-gen, fatto datato):
+#     · vendite.vw_preventivi_righe_dettaglio (due volte: arrotondata e piena)
+#     · vendite.vw_ordini_righe_iva_base, vendite.vw_ddt_righe_iva_base
+#     · vendite.vw_dash_fatturazione_preventivi / _ordini (due volte) / _ddt
+#     · vendite.fn_ricalcola_riepilogo_iva_preventivo
+#     · vendite.trgfn_fatture_righe_importo
+#   e in tre repository Python (righe di preventivo, ordine, DDT). Oggi danno
+#   tutte lo stesso risultato. Il rischio non e' il risultato di oggi: e' il
+#   giorno in cui la regola cambia e una copia resta indietro — la lista mostra
+#   un importo, il riepilogo IVA ne somma un altro, e nessun errore lo dice.
+#   Decisione di Tid, 2026-09-28: brief-db-liste-righe-documento §8.8 (D-8.8),
+#   «in questo cantiere», con le copie ritirate nello stesso giro
+#   (20260928-17 → -26).
+#
+# -- LA SEMANTICA, che e' quella gia' scritta nelle viste IVA -------------
+#   · prezzo NULL o quantita' NULL -> NULL, MAI zero. E' la regola V-2/DEC-6
+#     del DDT senza prezzo: uno zero sarebbe indistinguibile da una riga che
+#     vale davvero zero, e un totale lo sommerebbe «giusto».
+#   · sconto NULL -> nessuno sconto: li' lo zero E' il fatto.
+#   · precisione PIENA: niente arrotondamento qui. Chi mostra arrotonda
+#     (`round(…, 2)` nelle viste righe), chi aggrega somma il pieno e arrotonda
+#     la somma (riepilogo IVA), chi scrive un documento fiscale usa la regola
+#     configurata (script.fn_arrotonda_importo nel trigger delle fatture). Sono
+#     tre politiche diverse, e nessuna appartiene alla formula.
+#
+# -- ⚠️ TIPI ESPLICITI, e non per dimenticanza ---------------------------
+#   La regola di casa e' %TYPE in firma, RETURNS e DECLARE. Qui non c'e' UNA
+#   colonna di cui i parametri siano il riflesso: la funzione serve le righe di
+#   preventivi, ordini, DDT e fatture (e servira' quelle di acquisti), con
+#   typmod diversi — prezzo numeric(15,6) sul preventivo, numeric(18,6)
+#   sull'ordine, numeric nudo sul DDT; sconto numeric(7,4), numeric(5,2),
+#   numeric. Ancorarla a una di quelle tabelle direbbe il falso sulla sua
+#   origine. E' il caso «funzione polimorfa, tipi espliciti con il perche'».
+#
+# -- ⚠️ PERCHE' PRENDE I VALORI E NON L'ID DELLA RIGA ----------------------
+#   Pura (IMMUTABLE, LANGUAGE sql): il pianificatore la INLINEA nella select
+#   list delle viste, quindi non costa una chiamata per riga, ed e' testabile
+#   senza nessuna fixture. Una fn(p_riga_id) sarebbe STABLE, farebbe una
+#   lettura per riga e dovrebbe esistere una volta per tabella.
+#   ⛔ NON e' STRICT: la semantica «NULL entra, NULL esce» qui coincide, ma lo
+#   sconto NULL e' un caso normale che deve dare l'imponibile pieno — STRICT lo
+#   annullerebbe.
+#
+# -- ⭐ PERCHE' IN `script` ----------------------------------------------
+#   Non e' una regola di vendite: e' la regola di una riga di documento.
+#   PROJECT_CONTEXT: ogni decisione presa su vendite e' presa anche per
+#   acquisti — le righe degli ordini fornitore useranno questa.
+#
+# Dipendenze: nessuna.
+# Cantiere: brief-db-liste-righe-documento §8.8 (D-8.8), §8.10 passo 1
+# Verifica: db/pgtap/script/test-fn-imponibile-riga-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260928-16-create-fn-imponibile-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260928-16-create-fn-imponibile-riga
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La sede UNICA dell'imponibile di riga (quantita' x prezzo x (1 - sconto/100)),
+        che era scritta a mano in otto oggetti del database e tre repository. Pura e
+        IMMUTABLE cosi' le viste la inlineano; NON strict; precisione piena, NULL se manca
+        prezzo o quantita' (mai zero), sconto NULL = nessuno sconto.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_imponibile_riga(
+                  -- ⚠️ Tipi espliciti: funzione POLIMORFA sulle righe di piu'
+                  --    documenti, con typmod diversi (vedi l'intestazione).
+                  p_quantita           numeric,
+                  p_prezzo_unitario    numeric,
+                  p_sconto_percentuale numeric
+              )
+              RETURNS numeric
+              LANGUAGE sql
+              IMMUTABLE
+              PARALLEL SAFE
+              SECURITY INVOKER
+              AS $function$
+                  -- ⭐ La forma e' quella che le otto copie scrivevano, byte per
+                  --   byte nell'aritmetica: prima quantita' x prezzo, poi il
+                  --   fattore di sconto. Cambiare l'ordine delle moltiplicazioni
+                  --   non cambia il valore esatto ma cambia la SCALA del numeric
+                  --   risultante, cioe' come esce a video un valore non arrotondato.
+                  -- ⛔ Nessun COALESCE su prezzo o quantita': NULL deve uscire NULL.
+                  SELECT (p_quantita * p_prezzo_unitario)
+                       * (1::numeric - COALESCE(p_sconto_percentuale, 0::numeric) / 100::numeric);
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_imponibile_riga(numeric, numeric, numeric) IS
+                  'Sede UNICA dell''imponibile di una riga di documento: quantita'' x prezzo x '
+                  '(1 - sconto/100), a precisione PIENA. Nasce il 2026-09-28 '
+                  '(brief-db-liste-righe-documento, D-8.8) perche'' la stessa formula era scritta a '
+                  'mano in otto oggetti del database (righe preventivo, viste IVA di ordini e DDT, '
+                  'tre viste cruscotto, ricalcolo IVA del preventivo, trigger dell''imponibile di '
+                  'fattura) e in tre repository: oggi coincidevano, ma una regola in undici posti '
+                  'diverge alla prima modifica, e una lista che mostra un importo mentre il '
+                  'riepilogo IVA ne somma un altro non da'' nessun errore. '
+                  '⭐ SEMANTICA: prezzo o quantita'' NULL -> NULL, MAI zero (regola V-2/DEC-6 del DDT '
+                  'senza prezzo: lo zero sarebbe indistinguibile da una riga che vale zero); sconto '
+                  'NULL -> nessuno sconto. '
+                  '⚠️ NESSUN ARROTONDAMENTO: e'' politica di chi consuma — round(…, 2) per mostrare, '
+                  'somma piena poi arrotondata per il riepilogo IVA, script.fn_arrotonda_importo con '
+                  'la regola configurata per l''imponibile di fattura. '
+                  '⚠️ Tipi espliciti numeric, non %TYPE: serve righe di documenti diversi con typmod '
+                  'diversi (e servira'' acquisti), e ancorarla a una tabella direbbe il falso. '
+                  'Pura (IMMUTABLE, LANGUAGE sql, PARALLEL SAFE): il pianificatore la inlinea nelle '
+                  'viste. NON e'' STRICT: lo sconto NULL e'' un caso normale.';
+
+              -- Il ruolo applicativo la legge dalle viste che la usano.
+              -- ⚠️ Una funzione ha EXECUTE a PUBLIC per default: il GRANT non
+              --    aggiunge un permesso, lo rende ESPLICITO, cosi' un domani un
+              --    REVOKE ... FROM PUBLIC non spegne le liste righe senza dirlo.
+              -- ⛔ Niente GRANT ai ruoli batch: stanno nel provisioning
+              --    (linee-guida-sql §11.6).
+              GRANT EXECUTE ON FUNCTION script.fn_imponibile_riga(numeric, numeric, numeric)
+                  TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Possibile solo dopo il rollback dei changeSet che la usano
+              --    (20260928-17 → -26): le viste la referenziano.
+              DROP FUNCTION IF EXISTS script.fn_imponibile_riga(numeric, numeric, numeric);

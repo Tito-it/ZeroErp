@@ -27,86 +27,51 @@ from typing import Any
 from django.db import connection
 
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
-from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
-from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+from apps.core.db._helpers import (
+    limiti_pagina,
+    RicercaFull,
+    add_ricerca_full_condition,
+    call_jsonb_fn,
+    fetch_paged_with_total,
+    row_to_dict,
+    rows_to_list,
+    sql_order_clause,
+)
+from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 
 
-# Mappa colonna -> tipo speciale (jsonb). Le altre colonne usano '%s'.
-_COLUMN_TYPES: dict[str, str] = {"meta": "jsonb"}
-
-
-# Scopo: Adatta placeholder e value per colonne con tipo speciale (jsonb).
-def _ph_and_val(col: str, value: Any) -> tuple[str, Any]:
-    col_type = _COLUMN_TYPES.get(col)
-    if col_type is None:
-        return "%s", value
-    return sql_placeholder(col_type), to_write_param(value, col_type)
-
-
-# Scopo: Costruisce SQL INSERT e relativi parametri filtrando `data` sulla
-#        whitelist colonne `write_cols`. `fixed_cols` permette di inserire
-#        colonne valorizzate dal repository (es. `offerta_id` figli) che non
-#        provengono dal payload. Ritorna (sql_str, params).
-def _build_insert(
-    table: str,
-    write_cols: tuple[str, ...],
-    data: dict[str, Any],
-    *,
-    fixed_cols: dict[str, Any] | None = None,
-    returning: str = "id",
-) -> tuple[str, list[Any]]:
-    cols: list[str] = []
-    vals: list[Any] = []
-    placeholders: list[str] = []
-    for col, val in (fixed_cols or {}).items():
-        cols.append(col)
-        placeholders.append("%s")
-        vals.append(val)
-    for col in write_cols:
-        if col in data:
-            ph, v = _ph_and_val(col, data[col])
-            cols.append(col)
-            placeholders.append(ph)
-            vals.append(v)
-    sql = (
-        f"INSERT INTO {table} ({', '.join(cols)}) "  # noqa: S608
-        f"VALUES ({', '.join(placeholders)}) RETURNING {returning}"
-    )
-    return sql, vals
-
-
-# Scopo: Costruisce SQL UPDATE e relativi parametri filtrando `data` sulla
-#        whitelist colonne `write_cols`. Aggiunge il WHERE su `where_col` =
-#        `where_val`. Se `data` non porta alcuna colonna mutabile, ritorna
-#        (None, ...) per segnalare no-op al chiamante.
-def _build_update(
-    table: str,
-    write_cols: tuple[str, ...],
-    data: dict[str, Any],
-    *,
-    where_col: str,
-    where_val: Any,
-) -> tuple[str | None, list[Any]]:
-    set_parts: list[str] = []
-    vals: list[Any] = []
-    for col in write_cols:
-        if col in data:
-            ph, v = _ph_and_val(col, data[col])
-            set_parts.append(f"{col} = {ph}")
-            vals.append(v)
-    if not set_parts:
-        return None, vals
-    vals.append(where_val)
-    sql = (
-        f"UPDATE {table} SET {', '.join(set_parts)} "  # noqa: S608
-        f"WHERE {where_col} = %s"
-    )
-    return sql, vals
+# Colonne jsonb delle tre tabelle scritte qui (testata, eccezioni, utility):
+# dichiarate al BB `execute_dynamic_insert`/`execute_dynamic_update`, cosi' una
+# STRINGA che vi arrivasse e' letta come testo JSON (regola Tid 2026-09-26) e
+# non come uno scalare stringa jsonb.
+# ⭐ 2026-09-26: qui vivevano `_ph_and_val`/`_build_insert`/`_build_update`,
+#    copia locale della composizione dinamica (gemella di quella di
+#    `contratti_repository`), ritirata a favore del BB core. Il loro filtro
+#    `if col in data` SCARTAVA IN SILENZIO le chiavi fuori lista: ora e'
+#    `RuntimeError` nel BB, e il contratto dell'operatore lo fa rispettare il
+#    service (`validate_allowed_keys`, 400) prima di arrivare qui.
+_JSONB_COLS: tuple[str, ...] = ("meta",)
+# ⚠️ Il padre (`offerta_id`) delle INSERT figlie arriva dal PATH e si mette
+#    per ULTIMO nel dict (`{**data, "offerta_id": ...}`): se `data` lo
+#    portasse, vince il path — mai una riga scritta sotto un altro padre. Che
+#    `data` non lo porti lo garantisce il service (le sue whitelist non lo
+#    contengono).
 
 
 # Whitelist ORDER BY per la lista offerte (SQL injection safe).
+# Colonne che la ricerca libera SA cercare nella lista `vendite.offerte`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+_RICERCA_OFFERTE = RicercaFull(
+    "vendite.offerte",
+    (
+        "codice", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+    ),
+)
+
 _ORDER_COLS_OFFERTE: dict[str, str] = {
     # Whitelist colonne sortable LISTA (SQL injection safe). Mappate sulla vista
     # canonica `vendite.vw_offerte_commerciali_lista` (alias `v`, DEF-8). Le
@@ -133,6 +98,38 @@ _ORDER_COLS_OFFERTE: dict[str, str] = {
     "fase": "v.fase",
 }
 
+# Le colonne DATA della whitelist: senza direzione indicata partono DESC (regola
+# Tid 2026-09-02, `colonne_desc` di `sql_order_clause`). Coincidono con le date
+# ordinabili del seed — lo verifica `test_liste_configurabili_seed` (test 10).
+_ORDER_COLS_OFFERTE_DATA: frozenset[str] = frozenset({
+    "validita_dal", "validita_al", "data_emissione", "data_accettazione",
+    "data_rifiuto", "data_annullamento", "data_insert",
+})
+
+
+# Scopo: whitelist ORDER BY del tab «Revisioni» del drawer offerta (lista
+#        `vendite.offerta_revisioni`, alias `v` su `vw_offerte_commerciali_lista`).
+# ⛔ COSTANTE SEPARATA da `_ORDER_COLS_OFFERTE`, e `revisione_numero` NON va
+#    aggiunto la': nella lista principale e' volutamente assente (§7.3). Qui
+#    invece e' l'ordine naturale della catena.
+# ⚠️ Chiavi = `campo_sorgente` della lista 90. Le colonne sono GEMELLE di
+#    quelle dei preventivi (stessi codici `rev`/`data`), ma il campo sorgente
+#    e' dell'offerta: `revisione_numero`, `data_emissione`.
+# ⚠️ `data_emissione` e' NULL sulle bozze: il vuoto si ordina come il valore
+#    minimo (`sql_order_direction`, decisione Tid 2026-07-19) — in coda nel
+#    verso naturale DESC, in testa se l'operatore inverte.
+# ⚠️ `codice` (colonna «numero») e `stato_descrizione` dal 2026-09-28
+#    (§9.1 dello stesso brief), gemelle di quelle dei preventivi.
+OFFERTA_REVISIONI_ORDER_COLUMNS: dict[str, str] = {
+    "revisione_numero": "v.revisione_numero",
+    "codice": "v.codice",
+    "data_emissione": "v.data_emissione",
+    "stato_descrizione": "v.stato_descrizione",
+}
+
+# Colonne DATA della whitelist qui sopra (ripiego DESC senza `order_dir`),
+# confrontate col seed da `test_liste_configurabili_seed` (test 10).
+OFFERTA_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_emissione"})
 
 # === Costante LISTA (vista canonica DEF-8, 2026-06-03) ===
 # La lista paginata legge dalla vista canonica self-contained
@@ -368,12 +365,25 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_max: str | None,
         search: str | None,
         solo_ultima_revisione: bool = True,
+        auth_user_id: int | None = None,
     ) -> tuple[str, list[Any]]:
         # Filtri sulla vista canonica `vw_offerte_commerciali_lista` (alias `v`).
         # Tutti i campi consumati qui sono esposti dalla vista — nessun JOIN
         # ulteriore nel filter builder.
         wheres: list[str] = []
         params: list[Any] = []
+        # Scope emittente (defense-in-depth applicativa, stesso calco di
+        # preventivi e contratti — era l'unica lista di testata del dominio
+        # senza, il B1 dell'analisi RLS; allineata il 2026-09-21). La vista e'
+        # `security_invoker=on`: la RLS filtra gia', questo si somma (api.md
+        # §"Scope emittente"). `v.emittente_fiscale_id` e' la PK reale →
+        # convenzione `pk` (memoria feedback_emittente_pk_vs_soggetto_ruolo).
+        add_emittente_scope_condition(
+            wheres, params,
+            auth_user_id=auth_user_id,
+            column="v.emittente_fiscale_id",
+            convention="pk",
+        )
         if billing_account_id is not None:
             wheres.append("v.billing_account_id = %s")
             params.append(billing_account_id)
@@ -392,11 +402,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         if validita_dal_max:
             wheres.append("v.validita_dal <= %s")
             params.append(validita_dal_max)
-        if search:
-            # Search ILIKE su codice + ragione sociale (nome canonico del
-            # soggetto). L'API impone >=3 char.
-            wheres.append("(v.codice ILIKE %s OR v.ragione_sociale_completa ILIKE %s)")
-            params.extend([f"%{search}%", f"%{search}%"])
+        add_ricerca_full_condition(wheres, params, search, _RICERCA_OFFERTE)
         # Filtro ultima revisione (mirror preventivi): di default mostra solo la
         # revisione non rimpiazzata per lineage. Quando false, storico completo.
         #
@@ -426,12 +432,25 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         search: str | None = None,
         solo_ultima_revisione: bool = True,
         order_by: str = "data_insert",
-        order_dir: str = "DESC",
+        order_dir: str | None = None,
         limit: int = 25,
         offset: int = 0,
+        auth_user_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        order_col = _ORDER_COLS_OFFERTE.get(order_by, _ORDER_COLS_OFFERTE["data_insert"])
-        order_dir_safe = "ASC" if str(order_dir).upper() == "ASC" else "DESC"
+        # ⛔ Ordinamento dal BB `sql_order_clause` (2026-09-26). La copia a mano
+        #    che c'era («tutto cio' che non e' ASC e' DESC») trasformava in DESC
+        #    qualunque direzione estranea, e inchiodava lo spareggio `v.id` a
+        #    DESC anche ordinando ASC. Ora: direzione estranea = `ValueError`,
+        #    NULL come valore minimo, spareggio allineato al verso. Il service
+        #    ha gia' validato colonna e direzione col codice di dominio
+        #    (`validate_order_by`), quindi un `order_by` fuori whitelist qui e'
+        #    un errore di programmazione: `rifiuta_fuori_whitelist`.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS_OFFERTE, default="v.data_insert",
+            default_desc=True, colonne_desc=_ORDER_COLS_OFFERTE_DATA,
+            tiebreak="v.id", rifiuta_fuori_whitelist=True,
+        )
         where_clause, params = self._build_offerte_filters(
             billing_account_id=billing_account_id,
             stato_codice_interno=stato_codice_interno,
@@ -441,6 +460,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             validita_dal_max=validita_dal_max,
             search=search,
             solo_ultima_revisione=solo_ultima_revisione,
+            auth_user_id=auth_user_id,
         )
         # ⭐ Nessuna decodifica qui: `frontiera_tipo_codice_interno` e
         #    `frontiera_natura_doc_codice_interno` arrivano dalla vista
@@ -449,9 +469,9 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             SELECT v.*
               {_FROM_LISTA_OFFERTE}
               {where_clause}
-             ORDER BY {order_col} {order_dir_safe}, v.id DESC
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
-        """  # noqa: S608
+        """
         params.extend([limit, offset])
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
@@ -469,6 +489,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_max: str | None = None,
         search: str | None = None,
         solo_ultima_revisione: bool = True,
+        auth_user_id: int | None = None,
     ) -> int:
         where_clause, params = self._build_offerte_filters(
             billing_account_id=billing_account_id,
@@ -479,12 +500,13 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             validita_dal_max=validita_dal_max,
             search=search,
             solo_ultima_revisione=solo_ultima_revisione,
+            auth_user_id=auth_user_id,
         )
         sql = f"""
             SELECT COUNT(*)
               {_FROM_LISTA_OFFERTE}
               {where_clause}
-        """  # noqa: S608
+        """
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
@@ -499,7 +521,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                 SELECT {_SELECT_COLS_OFFERTA}
                   {_FROM_JOINS_OFFERTA}
                  WHERE o.id = %s
-                """,  # noqa: S608
+                """,
                 [offerta_id],
             )
             return row_to_dict(cursor)
@@ -550,7 +572,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     # `codice` escluso da Step 5 (2026-05-25): generato dal trigger DB
     # `trgfn_offerte_commerciali_gen_codice` (BEFORE INSERT); il repository
     # non lo tocca, defense-in-depth applicativa.
-    _OFFERTA_CREATE_COLS: tuple[str, ...] = (
+    TESTATA_CREATE_COLUMNS: frozenset[str] = frozenset({
         "emittente_fiscale_id",
         "billing_account_id",
         "istanza_utility_id",
@@ -566,13 +588,13 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "revisione_numero",
         "revisione_padre_id",
         "meta",
-    )
+    })
 
     # Colonne aggiornabili in update (sotto-set di create senza chiavi
     # gestionali: `codice`, `stato_doc_offerta_id`, `revisione_*`).
     # `valuta_id`: snapshot fissato al CREATE, immutabile in update (simmetrico
     # a `vendite.preventivi`; eventuale lock applicativo a discrezione del DB).
-    _OFFERTA_UPDATE_COLS: tuple[str, ...] = (
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
         "emittente_fiscale_id",
         "billing_account_id",
         "istanza_utility_id",
@@ -584,30 +606,24 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "validita_dal",
         "validita_al",
         "meta",
-    )
+    })
 
+    # ⛔ Whitelist RIGIDA (BB): una chiave fuori `TESTATA_CREATE_COLUMNS` e'
+    #    `RuntimeError`, non piu' uno scarto silenzioso (2026-09-26).
     def create_offerta(self, data: dict[str, Any]) -> int:
-        sql, vals = _build_insert(
-            "vendite.offerte_commerciali", self._OFFERTA_CREATE_COLS, data,
+        riga = execute_dynamic_insert(
+            "vendite.offerte_commerciali", data,
+            allowed=self.TESTATA_CREATE_COLUMNS, jsonb=_JSONB_COLS,
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna testata offerta. `codice`/`uid`/`stato_doc_offerta_id`
     #        immutabili tramite questo metodo (per lo stato c'e' update_stato).
     def update_offerta(self, offerta_id: int, data: dict[str, Any]) -> bool:
-        sql, vals = _build_update(
-            "vendite.offerte_commerciali", self._OFFERTA_UPDATE_COLS, data,
-            where_col="id", where_val=offerta_id,
+        return execute_dynamic_update(
+            "vendite.offerte_commerciali", offerta_id, data,
+            allowed=self.TESTATA_UPDATE_COLUMNS, jsonb=_JSONB_COLS,
         )
-        if sql is None:
-            return False
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
 
     # Scopo: Cambia lo stato documentale dell'offerta. Il trigger DB
     #        trgfn_offerte_commerciali_guard_transizione verifica che la
@@ -660,7 +676,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                   {_FROM_JOINS_ECCEZIONE}
                  WHERE e.offerta_id = %s
                  ORDER BY e.ordine ASC, e.id ASC
-                """,  # noqa: S608
+                """,
                 [offerta_id],
             )
             return rows_to_list(cursor)
@@ -689,15 +705,16 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                 SELECT {_SELECT_COLS_ECCEZIONE}
                   {_FROM_JOINS_ECCEZIONE}
                  WHERE e.id = %s
-                """,  # noqa: S608
+                """,
                 [eccezione_id],
             )
             return row_to_dict(cursor)
 
     # Colonne scrivibili eccezione: in create includono `articolo_id`/
-    # `tipo_eccezione` (immutabili dopo INSERT); in update vengono filtrati
-    # via `_ECCEZIONE_UPDATE_COLS`.
-    _ECCEZIONE_CREATE_COLS: tuple[str, ...] = (
+    # `tipo_eccezione` (immutabili dopo INSERT), assenti da
+    # `ECCEZIONE_UPDATE_COLUMNS` (in update sono `RuntimeError`, non scartate). `offerta_id` NON e' qui: arriva dall'URL
+    # e lo aggiunge `create_eccezione`.
+    ECCEZIONE_CREATE_COLUMNS: frozenset[str] = frozenset({
         "articolo_id",
         "tipo_eccezione",
         "tipo_erogazione",
@@ -716,9 +733,9 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         # Approvazione prezzo L3 (migration 20260601-01, simmetria contratti_righe).
         "stato_approvazione_prezzo",
         "pratica_approvazione_prezzo_id",
-    )
+    })
 
-    _ECCEZIONE_UPDATE_COLS: tuple[str, ...] = (
+    ECCEZIONE_UPDATE_COLUMNS: frozenset[str] = frozenset({
         "tipo_erogazione",
         "fonte_quantita_attesa",
         "periodicita",
@@ -736,39 +753,27 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         # (`_update_riga_offerta`) e dal gate (REJECTED/meta motivazione).
         "stato_approvazione_prezzo",
         "pratica_approvazione_prezzo_id",
-    )
+    })
 
     # Scopo: Inserisce un'eccezione offerta. I 5 CHECK constraint DB
     #        (chk_offerte_eccezioni_*) validano coerenza prezzo/canone/
     #        fonte/erogazione/qta — qui solo passaggio colonne whitelisted.
     def create_eccezione(self, offerta_id: int, data: dict[str, Any]) -> int:
-        sql, vals = _build_insert(
+        riga = execute_dynamic_insert(
             "vendite.offerte_commerciali_eccezioni",
-            self._ECCEZIONE_CREATE_COLS,
-            data,
-            fixed_cols={"offerta_id": offerta_id},
+            {**data, "offerta_id": offerta_id},
+            allowed={"offerta_id", *self.ECCEZIONE_CREATE_COLUMNS},
+            jsonb=_JSONB_COLS,
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna un'eccezione offerta sul subset mutabile (articolo_id
     #        e tipo_eccezione immutabili — un cambio = delete+create).
     def update_eccezione(self, eccezione_id: int, data: dict[str, Any]) -> bool:
-        sql, vals = _build_update(
-            "vendite.offerte_commerciali_eccezioni",
-            self._ECCEZIONE_UPDATE_COLS,
-            data,
-            where_col="id",
-            where_val=eccezione_id,
+        return execute_dynamic_update(
+            "vendite.offerte_commerciali_eccezioni", eccezione_id, data,
+            allowed=self.ECCEZIONE_UPDATE_COLUMNS, jsonb=_JSONB_COLS,
         )
-        if sql is None:
-            return False
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
 
     # Scopo: Cancella un'eccezione offerta (hard delete). Guard stato BOZZA
     #        a livello service.
@@ -920,14 +925,14 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                 SELECT {_SELECT_COLS_UTILITY}
                   {_FROM_JOINS_UTILITY}
                  WHERE ou.offerta_id = %s
-                """,  # noqa: S608
+                """,
                 [offerta_id],
             )
             return row_to_dict(cursor)
 
     # Colonne scrivibili utility (create con istanza_utility_id/utility_id,
     # update senza — immutabili: cambio = delete+create).
-    _UTILITY_CREATE_COLS: tuple[str, ...] = (
+    UTILITY_CREATE_COLUMNS: frozenset[str] = frozenset({
         "istanza_utility_id",
         "utility_id",
         "istanza_dati_precontrattuali_id",
@@ -936,48 +941,36 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "param_1_num",
         "param_2_txt",
         "meta",
-    )
+    })
 
-    _UTILITY_UPDATE_COLS: tuple[str, ...] = (
+    UTILITY_UPDATE_COLUMNS: frozenset[str] = frozenset({
         "istanza_dati_precontrattuali_id",
         "tipo_utenza_id",
         "classe_utenza_id",
         "param_1_num",
         "param_2_txt",
         "meta",
-    )
+    })
 
     # Scopo: Crea il record utility 1:1 (UNIQUE offerta_id; un INSERT
     #        duplicato fallisce con violazione UNIQUE → mappato dal service).
     def create_utility(self, offerta_id: int, data: dict[str, Any]) -> int:
-        sql, vals = _build_insert(
+        riga = execute_dynamic_insert(
             "vendite.offerte_commerciali_utilities",
-            self._UTILITY_CREATE_COLS,
-            data,
-            fixed_cols={"offerta_id": offerta_id},
+            {**data, "offerta_id": offerta_id},
+            allowed={"offerta_id", *self.UTILITY_CREATE_COLUMNS},
+            jsonb=_JSONB_COLS,
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna il record utility sul subset mutabile (istanza_utility_id
     #        e utility_id NON modificabili: cambiano solo eliminando+ricreando
     #        l'offerta, come per il contratto).
     def update_utility(self, utility_row_id: int, data: dict[str, Any]) -> bool:
-        sql, vals = _build_update(
-            "vendite.offerte_commerciali_utilities",
-            self._UTILITY_UPDATE_COLS,
-            data,
-            where_col="id",
-            where_val=utility_row_id,
+        return execute_dynamic_update(
+            "vendite.offerte_commerciali_utilities", utility_row_id, data,
+            allowed=self.UTILITY_UPDATE_COLUMNS, jsonb=_JSONB_COLS,
         )
-        if sql is None:
-            return False
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
 
     # =================================================================
     # Lookup di supporto
@@ -1122,47 +1115,51 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             )
             return row_to_dict(cursor)
 
-    # Scopo: Lista catena revisioni che condividono il medesimo "root"
-    #        (rev.1) dell'offerta passata. Risale via `revisione_padre_id`
-    #        fino alla radice, poi ridiscende a tutti i discendenti.
-    #        Output ordinato per `revisione_numero` ASC.
-    #
-    #        Caso "lineare" (n revisioni in serie): ritorna [rev.1, ..., rev.N].
-    #        Caso "fork" (es. due figli da rev.1, scenario teorico, non
-    #        previsto dalla state machine ma supportato dalla query):
-    #        ritorna tutti i nodi della componente connessa.
-    def list_revisioni(self, offerta_id: int) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                WITH RECURSIVE
-                ancestors AS (
-                    SELECT id, revisione_padre_id
-                      FROM vendite.offerte_commerciali
-                     WHERE id = %s
-                    UNION ALL
-                    SELECT o.id, o.revisione_padre_id
-                      FROM vendite.offerte_commerciali o
-                      JOIN ancestors a ON a.revisione_padre_id = o.id
-                ),
-                root_id AS (
-                    SELECT id FROM ancestors WHERE revisione_padre_id IS NULL
-                    LIMIT 1
-                ),
-                family AS (
-                    SELECT o.id
-                      FROM vendite.offerte_commerciali o, root_id
-                     WHERE o.id = root_id.id
-                    UNION ALL
-                    SELECT o.id
-                      FROM vendite.offerte_commerciali o
-                      JOIN family f ON o.revisione_padre_id = f.id
-                )
-                SELECT {_SELECT_COLS_OFFERTA}
-                  {_FROM_JOINS_OFFERTA}
-                 WHERE o.id IN (SELECT id FROM family)
-                 ORDER BY o.revisione_numero ASC, o.id ASC
-                """,  # noqa: S608
-                [offerta_id],
-            )
-            return rows_to_list(cursor)
+    # Scopo: Lista PAGINATA della catena revisioni dell'offerta passata (lista
+    #        `vendite.offerta_revisioni`): tutte le righe con la sua stessa
+    #        `revisione_radice_id` (l'id della rev.1), default
+    #        `revisione_numero` ASC. Legge la vista canonica
+    #        `vw_offerte_commerciali_lista`: `is_attiva` e `stato_descrizione`
+    #        ci sono gia'.
+    # ⭐ La catena e' un fatto della RIGA, fissato alla nascita (decisione di
+    #    Tid del 2026-09-27, brief-db-liste-datatable-grezze §3.2): la radice la
+    #    deriva il trigger BEFORE INSERT dal padre ed e' immutabile
+    #    (E_OFFERTA_REVISIONE_CATENA_IMMUTABILE). Si legge per UGUAGLIANZA, come
+    #    `numero` sui preventivi.
+    # ⛔ Fino al 2026-09-27 qui c'era una CTE RICORSIVA (risalita alla radice via
+    #    `revisione_padre_id`, poi ridiscesa ai discendenti), rifatta a ogni
+    #    apertura del tab e senza LIMIT: non paginabile se non contando la
+    #    ricorsione due volte. Ritirata col seed della colonna.
+    # ⚠️ Nessun filtro emittente, come sui preventivi: l'`emittente_fiscale_id`
+    #    del tab lo legge solo il cancello di perimetro (`lista_emittente_param`
+    #    della view). Una catena e' di un emittente solo per costruzione, e un
+    #    filtro in piu' renderebbe un id sbagliato una lista vuota senza errore.
+    def list_revisioni(
+        self, offerta_id: int, *,
+        limit: int = 25, offset: int = 0,
+        order_by: str | None = "revisione_numero", order_dir: str | None = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=OFFERTA_REVISIONI_ORDER_COLUMNS, default="v.revisione_numero",
+            tiebreak="v.id",
+            colonne_desc=OFFERTA_REVISIONI_SORT_COLONNE_DATA,
+        )
+        params: list[Any] = [offerta_id]
+        from_where = (
+            f"{_FROM_LISTA_OFFERTE} WHERE v.revisione_radice_id = ("  # noqa: S608 — frammento letterale del modulo, l'id come parametro
+            "SELECT revisione_radice_id FROM vendite.offerte_commerciali WHERE id = %s)"
+        )
+        return fetch_paged_with_total(
+            f"""
+            SELECT v.*, COUNT(*) OVER () AS total_count
+            {from_where}
+            ORDER BY {ordinamento}
+            LIMIT %s OFFSET %s
+            """,  # ORDER BY da sql_order_clause su whitelist, WHERE da condizioni letterali, valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )

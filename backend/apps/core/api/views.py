@@ -3,6 +3,7 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.error_responses import exception_to_error_response
@@ -81,7 +82,7 @@ class ApiLookupCodici(DomainAPIView):
             OpenApiParameter(name="attivo_only", type=bool, location=OpenApiParameter.QUERY, required=False, description="Filtra solo record attivi (default: true)."),
             OpenApiParameter(name="includi_obsoleti", type=bool, location=OpenApiParameter.QUERY, required=False, description="Includi voci di catalogo obsolete (obsoleto_dal <= oggi). Default: true (mostra tutto). Passare false nella selezione-per-il-nuovo per nascondere gli obsoleti."),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description="Dimensione pagina (default 50, max 200)."),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
         ],
         responses={
             200: inline_serializer(
@@ -119,7 +120,7 @@ class ApiLookupCodici(DomainAPIView):
         includi_obsoleti = qp_bool(request.query_params.get("includi_obsoleti"))
 
         page = qp_int_strict(request.query_params.get("page"), "page", 1)
-        page_size = qp_int_strict(request.query_params.get("page_size"), "page_size", 50)
+        page_size = qp_int_strict(request.query_params.get("page_size"), "page_size", DEFAULT_LIMIT)
 
         data = fn_list_lookup_codici(
             rel=rel,
@@ -149,7 +150,7 @@ class ApiPermessiEffettivi(DomainAPIView):
                             "user_id": serializers.IntegerField(),
                             "username": serializers.CharField(),
                             "is_super_admin": serializers.BooleanField(),
-                            "ruolo_applicativo": serializers.CharField(allow_null=True),
+                            "veste_operatore_attiva": serializers.BooleanField(),
                             "is_active": serializers.BooleanField(),
                             "unita_organizzativa_id": serializers.IntegerField(allow_null=True),
                             "aree": serializers.ListField(child=serializers.DictField()),
@@ -189,15 +190,20 @@ class ApiPermessiEffettivi(DomainAPIView):
                 code="E_CORE_VALIDATION",
                 message="Utente non trovato.",
                 detail=f"Nessun utente con id={user_id}.",
-            )
+            ) from None
 
-        # Risolvi i campi nativi multi-face (Fase 7): `is_super_admin` +
-        # `ruolo_applicativo` sostituiscono il legacy `ruolo_sistema`.
+        # Risolvi i campi nativi multi-face (Fase 7).
         # `is_active` arriva da `auth_user.is_active`; e' la dimensione
         # ortogonale "puo' loggarsi vs no" (sync-ata da fn_sync_auth_user_is_active).
+        # ⭐ Livelli d'area, livelli oggetto e super admin sono della veste
+        #    OPERATORE (passi 0-1 di `fn_resolve_livello_area`): la risposta
+        #    dice se il consultato ce l'ha, cioe' il fatto da cui dipendono.
+        # ⛔ Non `get_ruolo_applicativo(target_user)`: risponde per la
+        #    SESSIONE, e qui riportava la veste di chi guarda (S-6,
+        #    2026-09-27) — per un cliente del portale diceva OPERATORE.
         target_cache: dict = {}
         is_super = PermissionResolver.is_super_admin(target_user, cache=target_cache)
-        ruolo_app = PermissionResolver.get_ruolo_applicativo(
+        veste_operatore = PermissionResolver.has_veste_operatore_attiva(
             target_user, cache=target_cache
         )
         uo_id = PermissionResolver.get_unita_organizzativa_id(
@@ -252,7 +258,7 @@ class ApiPermessiEffettivi(DomainAPIView):
             "user_id": target_user.id,
             "username": target_user.get_username(),
             "is_super_admin": is_super,
-            "ruolo_applicativo": ruolo_app,
+            "veste_operatore_attiva": veste_operatore,
             "is_active": bool(target_user.is_active),
             "unita_organizzativa_id": uo_id,
             "aree": aree_result,
@@ -271,7 +277,7 @@ class ApiPermessiAudit(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro data fine (YYYY-MM-DD)."),
             OpenApiParameter(name="tabella", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro singola tabella sorgente (es. user_override_aree)."),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description="Dimensione pagina (default 50, max 200)."),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
         ],
         responses={
             200: inline_serializer(
@@ -324,7 +330,7 @@ class ApiPermessiAudit(DomainAPIView):
                 code="E_CORE_VALIDATION",
                 message="Utente non trovato.",
                 detail=f"Nessun utente con id={user_id}.",
-            )
+            ) from None
 
         # Scopo: Parse query params.
         data_da = optional_iso_date(
@@ -346,9 +352,15 @@ class ApiPermessiAudit(DomainAPIView):
             {"page": request.query_params.get("page", "1")}, "page"
         )
         page_size = optional_int(
-            {"page_size": request.query_params.get("page_size", "50")}, "page_size"
+            {"page_size": request.query_params.get("page_size", str(DEFAULT_LIMIT))}, "page_size"
         )
-        page_size = min(page_size, 200)
+        # ⛔ Pagina e dimensione partono da 1: `page=0` dava un OFFSET negativo,
+        #    cioe' un errore del DB (F-4). `ValueError` = 400 E_VALIDATION_INPUT.
+        if page < 1:
+            raise ValueError("page_invalid")
+        if page_size < 1:
+            raise ValueError("page_size_invalid")
+        page_size = min(page_size, MAX_LIMIT)
 
         # Scopo: Risolve UO dell'utente target per includere tabelle reparto.
         target_cache: dict = {}

@@ -8,6 +8,7 @@ Approfondimento tabelle:
 >
 Approfondimento funzioni:
 > • [script.fn_check_preventivo_annullabile](/dbzero/script/funzioni/fn_check_preventivo_annullabile) — la gemella, stessa forma
+> • [script.fn_check_prezzi_autorizzati](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) — il building block del MOTIVO 2, i prezzi non autorizzati (dal 2026-09-24)
 > • [script.fn_check_ordine_confermabile](/dbzero/script/funzioni/fn_check_ordine_confermabile) — lo stesso cancello sull'ordine
 > • [vendite.fn_ricalcola_riepilogo_iva_preventivo](/dbzero/vendite/funzioni/fn_ricalcola_riepilogo_iva_preventivo) — il **consumatore** da cui è copiato il perimetro
 > • [vendite.trgfn_preventivi_guard_transizione](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione) — chi solleva
@@ -17,10 +18,14 @@ Approfondimento funzioni:
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-29 — funzione nata il 2026-08-29)
+(rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
 
-Elenca i motivi che impediscono di **emettere** un preventivo. Oggi ne ha uno: una riga
-attiva, con quantità e prezzo, che non porta l'aliquota.
+Elenca i motivi che impediscono di **emettere** un preventivo. Oggi ne ha due, in
+quest'ordine:
+
+1. una riga attiva, con quantità e prezzo, che non porta l'aliquota;
+2. un prezzo che nessuno ha autorizzato — in attesa di approvazione o rifiutato — su una
+   riga o un componente BoM attivi (rev 2026-09-24, vedi la sezione in fondo).
 
 Terzo gemello del cancello «una riga valorizzata porta l'aliquota», dopo il DDT
 (2026-08-28) e l'ordine (2026-08-29).
@@ -126,6 +131,8 @@ restare libera.
 | Codice | Motivo |
 |--------|--------|
 | `E_PREV_RIGA_IVA_MANCANTE` | Una riga attiva con quantità e prezzo non porta l'aliquota (`CONFLITTO_STATO`, 409) |
+| `E_DOC_PREZZO_PENDENTE` | Una riga o un componente attivi hanno il prezzo in attesa di approvazione (`CONFLITTO_STATO`, 409) — dal building block, rev 2026-09-24 |
+| `E_DOC_PREZZO_RIFIUTATO` | Una riga o un componente attivi hanno il prezzo rifiutato (`CONFLITTO_STATO`, 409) — dal building block, rev 2026-09-24 |
 | `E_PARAMETRO_INVALIDO` | `preventivo_id` nullo o non positivo |
 
 ⚠️ Nel contesto **non** va la chiave `campo`: la richiesta è «porta il preventivo a
@@ -153,6 +160,32 @@ la decisione è del chiamante.
 La `reason_key` `vendite.preventivi.azione_reason.iva_mancante` **non è ancora nei locales**.
 
 Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, I9.
+
+Per il MOTIVO 2 valgono le `reason_key` `common.azione_reason.prezzo_pendente` e
+`common.azione_reason.prezzo_rifiutato`, già in debito verso i locales nella pagina del
+building block.
+
+---
+
+### Rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati
+
+Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*. Un
+preventivo con una riga o un componente BoM **attivi** in attesa di approvazione (`PENDING`)
+o **rifiutati** (`REJECTED`) non si emette.
+
+La funzione non scrive da sé la domanda: somma ai propri i motivi del building block
+[`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati),
+la sede unica della regola per tutti i documenti di vendita. Prima l'attesa, poi il rifiuto.
+
+⭐ **Nessun consumatore cambia**: il guard di transizione (Regola 2) e la capability leggono
+già questa funzione, quindi bottone «Emetti» e database vedono il motivo nuovo insieme.
+
+Verso `ACCETTATO` gli stessi motivi li chiede direttamente
+[`vendite.trgfn_preventivi_guard_transizione`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione)
+(Regola 3): non esiste una `fn_check_preventivo_accettabile`, e non se ne crea una con un solo
+motivo. L'annullamento resta sempre possibile.
+
+(changeSet `20260924-21`, brief `brief-db-preventivi-congelamento-pricing`, D-1 e D-2.)
 
 ---
 

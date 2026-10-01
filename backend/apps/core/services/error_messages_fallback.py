@@ -112,9 +112,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_AUTHENTICATION_FAILED": "Autenticazione fallita.",
     "E_AUTH_USER_SOGGETTO_CON_PIVA": "Un operatore non puo' essere associato a un soggetto con partita IVA.",
     "E_AUTH_USER_SOGGETTO_SENZA_CF": "Il soggetto non ha codice fiscale: non ammesso come operatore.",
+    "E_AUTH_CHIAMATA_NON_VALIDA": "Chiamata non valida a una funzione della credenziale.",
     "E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA": "Errore configurazione automazione chiusura. Contattare l'amministratore di sistema.",
     "E_BATCH_ARRAY_DISALLINEATI": "Errore interno nella generazione delle righe.",
-    "E_BA_ADMIN_GLOBALE_VIETATO": "Un amministratore globale non puo' creare billing account quando esistono emittenti fiscali. Operare come operatore di un emittente specifico.",
+    "E_BA_ADMIN_GLOBALE_VIETATO": "Per creare un cliente serve un emittente fiscale su cui lavorare: scegli l'emittente in alto (con «Tutti gli emittenti» non si sa a quale associarlo).",
     # ⚠️ La frase NON nomina piu' «fatture o commesse»: dal 2026-08-31 la storia
     #    e' qualunque documento gia' NUMERATO su un registro — DDT, ordini e resi
     #    compresi — e si deriva da `vendite.famiglie_documento`. Una frase che ne
@@ -128,6 +129,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_BOM_IVA_DISCORDANTE": "Le aliquote IVA di articolo padre e componenti della distinta devono coincidere.",
     "E_BOM_MODIFICA_VIETATA": "Struttura BoM immutabile: i campi di struttura non sono modificabili. Per correggere, chiudere la riga e inserirne una nuova versione.",
     "E_BOM_VALIDO_AL_INVALIDO": "Data di chiusura non valida: deve essere uguale o successiva alla data di inizio della riga.",
+    "E_CAMBIO_PASSWORD_RICHIESTO": "Prima di continuare e' necessario cambiare la password.",
     "E_CANALE_ORIGINE_IMMUTABILE": "Il canale origine non e' modificabile dopo l'inserimento.",
     "E_CATALOGO_ARTICOLO_NOT_FOUND": "Articolo non trovato.",
     "E_CATALOGO_COMPONENTE_NOT_FOUND": "Componente non trovato.",
@@ -202,6 +204,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # sigle con tre `%s`; qui la frase senza argomenti.
     "E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE": "Il canale di incasso scelto e' di un altro emittente: scegliere un canale dell'emittente indicato, oppure cambiare emittente.",
     "E_CONTABILE_EMITTENTE_OBBLIGATORIO": "Per aprire una distinta senza canale bisogna indicare l'emittente.",
+    "E_CONTABILE_ANNULLO_NON_MANUALE": "La distinta contabile non si annulla da qui: non e' stata compilata a mano.",
     "E_CONTABILE_CENTRO_ENTE_INCOERENTE": "Il centro di riscossione della testata non e' quello dell'ente di incasso indicato.",
     "E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE": "La distinta contabile ha ancora righe pronte da registrare: non si puo' chiudere.",
     "E_CONTABILE_DATI_OBBLIGATORI": "Per aprire una distinta contabile mancano dei dati obbligatori.",
@@ -239,6 +242,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CONTRATTO_VALIDO_AL_RETROATTIVO": "Cessazione contratto non ammessa con data retroattiva. La data di fine validita' deve essere oggi o futura.",
     "E_CORE_PROFILE_NOT_FOUND": "Profilo utente non trovato.",
     "E_CORE_VALIDATION": "Parametri non validi.",
+    "E_CREDENZIALE_ALTRA_PERSONA": "L'email appartiene all'accesso di un'altra persona.",
+    "E_CREDENZIALE_BLOCCATA": "Accesso bloccato dall'amministratore.",
+    "E_CREDENZIALE_DA_CONFERMARE": "L'email appartiene gia' a un accesso: confermare quale usare.",
+    "E_CREDENZIALE_EMAIL_AMBIGUA": "Piu' accessi registrati con la stessa email.",
+    "E_CREDENZIALE_GIA_OPERATORE": "L'email appartiene gia' a un operatore.",
+    "E_CREDENZIALE_MOTIVO_OBBLIGATORIO": "Indicare il motivo del blocco.",
+    "E_CREDENZIALE_NON_TROVATA": "Credenziale non trovata.",
     "E_DATABASE": "Errore durante l'operazione database.",
     "E_DATABASE_RETRYABLE": "Conflitto transazionale, riprovare l'operazione.",
     "E_DATA_AL_MINORE_DAL": "La data 'al' non puo' essere anteriore alla data 'dal'.",
@@ -247,6 +257,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DATA_CHIUSURA": "Data di chiusura anteriore alla data di attivazione.",
     "E_DATA_ERRATA": "Data errata o mancante.",
     "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO": "La data finale deve essere successiva alla data iniziale.",
+    "E_DATE_VALIDITA": "Automazione del guard sulle date di validita' fallita: il trigger non e' stato montato. Non dipende dai dati: segnalalo a chi mantiene il database.",
     "E_DATI_SOCIETARI_REQUIRED_MANCANTI": "Dati societari obbligatori mancanti per questo tipo soggetto.",
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "Soggetto non trovato.",
     "E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO": "Policy dati societari non configurata per questo tipo soggetto.",
@@ -256,14 +267,20 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DDT_CLIENTE_IMMUTABILE": "Cliente immutabile dopo la creazione: per cambiare cliente crea un nuovo DDT.",
     "E_DDT_EMISSIONE_SENZA_RIGHE": "DDT senza righe attive: impossibile emettere.",
     "E_DDT_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
+    "E_DDT_MAGAZZINO_IMMUTABILE": "Il magazzino della bolla si sceglie solo in bozza: dopo l'emissione la merce e' gia' uscita da li'.",
+    "E_DDT_MAGAZZINO_INCOERENTE": "Magazzino non valido per questa bolla: deve essere dell'azienda che la emette, e diverso dalla partenza se e' l'arrivo di un trasferimento.",
+    "E_DDT_MAGAZZINO_OBBLIGATORIO": "La bolla non indica il magazzino: senza, la merce non ha da dove uscire (o dove entrare).",
     "E_DDT_NESSUNA_RIGA": "Il DDT non ha righe eleggibili per l'operazione.",
     "E_DDT_NIENTE_DA_EVADERE": "Nessuna quantita' residua da evadere sull'ordine.",
     "E_DDT_NOT_FOUND": "DDT non trovato.",
     "E_DDT_ORDINE_NOT_FOUND": "Ordine di origine non trovato.",
     "E_DDT_ORDINE_STATO_NON_EVADIBILE": "L'ordine non e' in uno stato che consente l'evasione (genera DDT).",
+    "E_DDT_PRELIEVI_INCOMPLETI": "I prelievi di una riga della bolla non coprono la quantita': indicare da quale lotto, seriale o ubicazione esce la merce.",
+    "E_DDT_PRELIEVO_INCOERENTE": "Prelievo non valido: si preleva l'articolo della riga se e' gestito a magazzino, altrimenti i componenti gestiti del suo kit.",
     "E_DDT_PREZZO_NON_RISOLVIBILE": "Causale fatturabile ma una riga del DDT non ha un prezzo risolvibile (proprio o ereditato dall'ordine).",
     "E_DDT_RIGA_IVA_MANCANTE": "Una riga del DDT ha un prezzo ma nessuna aliquota IVA: sceglila, oppure togli il prezzo se la merce non si valorizza.",
     "E_DDT_RIGA_NON_TROVATA": "Riga DDT non trovata.",
+    "E_DDT_STATO_SOLO_DA_VERBO": "La bolla muove merce: il cambio di stato si fa solo dall'operazione della bolla, che registra i movimenti di magazzino.",
     "E_DDT_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente del DDT.",
     "E_DDT_VALIDAZIONE": "Parametri DDT non validi.",
     "E_DEFAULT_CONTATTO_MISSING": "Contatto principale obbligatorio.",
@@ -295,6 +312,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOCUMENTI_RENDER_FAILED": "Generazione PDF documento fallita.",
     "E_DOCUMENTI_STORAGE_FAILED": "Errore lettura/scrittura file documento.",
     "E_DOCUMENTI_VALIDATION": "Parametri documento non validi.",
+    # Il catalogo porta la frase con quattro `%s` (versione, template, le due
+    # forme) e l'altra con uno (che cosa manca); qui le frasi senza argomenti.
+    "E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA": "La versione del template legge i dati in una forma diversa da quella in cui il sistema li prepara: il documento non si stampa con questa versione.",
+    "E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE": "Non si puo' verificare che il template legga i dati del documento.",
     "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED": "Eliminazione versione non consentita: stato non BOZZA o gia' usata da documenti generati.",
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "Versione template documento non trovata.",
     "E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO": "La data del documento e' anteriore a quella dell'ultimo numero gia' emesso su questo registro: la sequenza di un sezionale segue il tempo, e il numero successivo non puo' portare una data precedente.",
@@ -309,10 +330,17 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO": "Componente obbligatorio: il prezzo deve essere diverso da zero.",
     "E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE": "Impossibile emettere: componenti senza prezzo valorizzato.",
     "E_DOC_COMPOSITO_BOM_VUOTA": "Articolo composito senza componenti validi alla data: distinta scaduta o assente.",
+    "E_DOC_PREZZO_PENDENTE": "Non si puo' procedere: ci sono prezzi ancora in attesa di approvazione.",
+    "E_DOC_PREZZO_RIFIUTATO": "Non si puo' procedere: ci sono prezzi rifiutati dal responsabile.",
     "E_DOC_RIGA_NON_COMPOSITO": "L'articolo della riga non e' composito: impossibile aggiungere componenti.",
+    "E_DOC_RIGHE_LOCK_MONTAGGIO": "Il controllo sulle righe del documento e' configurato male nel database: segnalalo, non e' una situazione che dipende dai tuoi dati.",
     "E_DOC_TIPO_NON_GESTITO": "Tipo di documento non gestito dal controllo di cancellazione: segnalalo, non e' una situazione che dipende dai tuoi dati.",
     "E_EMAIL": "Errore configurazione email.",
     "E_EMAIL_ADMIN": "Operazione sulla configurazione email non riuscita.",
+    "E_EMAIL_ALLEGATO_NON_BOZZA": (
+        "La mail non e' piu' in bozza: i suoi allegati si possono aggiungere, "
+        "modificare o togliere solo finche' e' in bozza."
+    ),
     "E_EMAIL_LOG_INESISTENTE": (
         "Impossibile registrare l'esito dell'invio: l'email indicata non esiste."
     ),
@@ -493,10 +521,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_LISTINO_RIGA_COMPOSITO_VIETATO": "Articolo composito: il prezzo diretto non e' ammesso, usare i componenti.",
     "E_LISTINO_RIGA_COMP_BOM_INCOERENTE": "Prezzo bundle riferito a un componente non presente nella distinta base del padre composito.",
     "E_LISTINO_TIPOLOGIA_UTILITY": "Combinazione utility / tipologia non ammessa per questo listino.",
+    "E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI": "La versione di listino e' chiusa: le sue date di validita' non si possono piu' modificare.",
     "E_LISTINO_VERSIONE_NON_ATTIVA": "Listino senza versione attiva alla data del documento. Verificare le versioni del listino o la data di riferimento.",
     "E_LOCK_COLUMNS": "Automazione delle colonne di lock fallita.",
+    "E_LOGIN_ATTESA": "Troppi tentativi non riusciti: riprovare fra qualche secondo.",
     "E_LOGOUT_NO_TOKEN": "Token di refresh richiesto per il logout.",
     "E_LOOKUP_STRUTTURA_TABELLA_INVALIDA": "Configurazione lookup non valida: la tabella richiesta non e' compatibile col formato lookup standard. Contattare l'amministratore.",
+    "E_LOTTO_COMPLETATO_NON_GUADAGNATO": "Il lotto non puo` risultare completato: ha documenti in errore o segnalazioni critiche aperte, oppure e` annullato. Sistema o togli dal giro i documenti in errore e rilancia il giro, che chiude il lotto da se`.",
     "E_LOTTO_DOC_GIA_USCITO": "Il documento e` gia` stato tolto da questo giro: ricarica il lotto per vedere l'elenco aggiornato.",
     "E_LOTTO_DOC_NON_IN_ERRORE": "Dal giro si tolgono solo i documenti che hanno fallito, e questo non e` in errore. Se non deve essere fatturato in questo giro: annulla il lotto e rigeneralo senza di lui.",
     "E_LOTTO_DOC_SENZA_ESITO": "Il documento non risulta lavorato da questo giro: l'elenco a video potrebbe essere invecchiato, oppure il documento appartiene a un altro lotto.",
@@ -543,6 +574,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "in questo (non puo' uscirne). Verificare dove si trova nel registro "
         "dei movimenti e registrare prima il movimento mancante."
     ),
+    "E_MAGAZZINO_VALIDATION": "Richiesta di magazzino non valida.",
+    "E_MAG_BLOCCO_GIA_CHIUSO": "Il blocco e' gia' stato liberato.",
+    "E_MAG_BLOCCO_NON_TROVATO": "Blocco non trovato.",
     "E_MAG_CHIAMATA_NON_VALIDA": (
         "Chiamata non valida a una funzione di magazzino: un valore che "
         "nessuna interfaccia produce. Non c'e' niente da correggere a video: "
@@ -553,6 +587,12 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "registro (uno storno va al costo dell'originale, l'entrata di un "
         "trasferimento al costo dell'uscita gemella, ogni uscita alla media "
         "corrente). Segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE": (
+        "Il magazzino di un inventario o di una rettifica non si cambia: il "
+        "documento nasce dentro il suo magazzino. Se il magazzino e' "
+        "sbagliato, annullare il documento e aprirne uno nuovo in quello "
+        "giusto."
     ),
     "E_MAG_DOCUMENTO_NON_ELIMINABILE": (
         "Il documento non si puo' eliminare: solo una bozza si elimina. Per "
@@ -568,6 +608,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "Il documento non si porta a registrato con un aggiornamento diretto "
         "dello stato: ci passa solo l'operazione di registrazione, che scrive "
         "i movimenti. Segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_DOCUMENTO_RIGA_NON_TROVATA": (
+        "La riga non fa parte di questo documento: non esiste, oppure e' di "
+        "un altro documento. Riaprire il documento per vedere le righe che "
+        "ci sono adesso."
     ),
     "E_MAG_DOCUMENTO_RIGHE_CONGELATE": (
         "Le righe del documento non si modificano piu': si scrivono solo in "
@@ -598,6 +643,12 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "il seriale indicati). Ridurre la quantita', scegliere un altro lotto "
         "o magazzino, oppure registrare prima il carico mancante."
     ),
+    "E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA": (
+        "L'articolo e' gia' contato in questa posizione dell'inventario: due "
+        "letture della stessa posizione non sono due fatti. Modificare la riga "
+        "che c'e' gia'; se la merce e' davvero diversa, e' la posizione a "
+        "essere diversa (ubicazione, lotto o seriale)."
+    ),
     "E_MAG_LOTTO_DI_ALTRO_ARTICOLO": (
         "Il lotto indicato non e' dell'articolo della riga, oppure non e' "
         "piu' attivo: scegliere un lotto attivo dell'articolo, o correggere "
@@ -608,6 +659,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "indicato. Toglierlo, oppure attivare «per lotti» nella scheda "
         "dell'articolo prima di registrare."
     ),
+    "E_MAG_LOTTO_NON_TROVATO": (
+        "Lotto non trovato: non esiste. Verificare l'identificativo del lotto."
+    ),
     "E_MAG_LOTTO_OBBLIGATORIO": (
         "L'articolo si movimenta per lotti: indicare il lotto sulla riga "
         "(crearlo prima, se e' nuovo)."
@@ -617,6 +671,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "si decide prima del primo carico e non si cambia piu'. Se serve un "
         "magazzino organizzato diversamente, crearne uno nuovo e trasferirci "
         "la merce."
+    ),
+    "E_MAG_MAGAZZINO_NON_TROVATO": (
+        "Magazzino non trovato: non esiste, oppure non e' accessibile con i "
+        "permessi di chi sta operando. Verificare l'identificativo del "
+        "magazzino e l'emittente selezionato."
     ),
     "E_MAG_MAGAZZINO_NON_VALIDO": (
         "Magazzino inesistente o non attivo: le operazioni lo leggono dalla "
@@ -658,19 +717,40 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "perimetro: un trasferimento sposta merce solo fra magazzini dello "
         "stesso emittente."
     ),
+    "E_MAG_TRASFERIMENTO_STESSA_POSIZIONE": "In un trasferimento dentro lo stesso magazzino partenza e arrivo coincidono: servono due ubicazioni diverse.",
     "E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO": (
         "L'ubicazione indicata non e' del magazzino del documento, oppure "
         "non e' piu' attiva: scegliere un'ubicazione attiva di quel "
         "magazzino."
+    ),
+    "E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE": (
+        "Il magazzino di un'ubicazione non si cambia: l'ubicazione nasce "
+        "dentro il suo magazzino. Disattivarla e crearne una nel magazzino "
+        "giusto."
     ),
     "E_MAG_UBICAZIONE_NON_AMMESSA": (
         "Il magazzino non usa le ubicazioni: l'ubicazione sulla riga non va "
         "indicata. Toglierla; l'uso delle ubicazioni si decide nella scheda "
         "del magazzino prima del primo movimento."
     ),
+    "E_MAG_UBICAZIONE_NON_TROVATA": (
+        "Ubicazione non trovata: non esiste, non e' del magazzino indicato, "
+        "oppure il magazzino non e' accessibile con i permessi di chi sta "
+        "operando. Verificare ubicazione, magazzino ed emittente selezionato."
+    ),
     "E_MAG_UBICAZIONE_OBBLIGATORIA": (
         "Il magazzino usa le ubicazioni: indicare sulla riga in quale "
         "ubicazione (un'ubicazione attiva di quel magazzino)."
+    ),
+    "E_MAG_UBICAZIONE_PADRE_CICLICO": (
+        "L'ubicazione non puo' avere quel padre: sarebbe un ciclo nella "
+        "gerarchia (il padre e' l'ubicazione stessa o una sua discendente). "
+        "Scegliere un padre che non stia sotto questa, o lasciarlo vuoto."
+    ),
+    "E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO": (
+        "L'ubicazione padre non appartiene a questo magazzino, oppure non e' "
+        "visibile con i permessi di chi sta operando: scegliere un padre "
+        "dello stesso magazzino, o lasciarlo vuoto."
     ),
     # ⭐ `E_MESSAGGIO_NON_DEFINITO` — RINOMINATO dal team DB il 2026-08-07 (era
     # `MESSAGGIO_NON_DEFINITO`, senza prefisso). E' l'ULTIMA riga del registro dei
@@ -728,6 +808,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_OFFERTA_NON_TROVATA": "Offerta non trovata: impossibile generare il contratto.",
     "E_OFFERTA_ORDINE_GIA_GENERATO": "Questa offerta ha già generato un ordine.",
     "E_OFFERTA_PUSH_STATO_NON_AMMESSO": "Push a contratto non ammesso: l'offerta deve essere ACCETTATA.",
+    "E_OFFERTA_REVISIONE_CATENA_IMMUTABILE": "La catena delle revisioni di un'offerta non si cambia: ogni revisione resta legata all'offerta da cui e' nata.",
+    "E_OFFERTA_REVISIONE_PADRE_NON_TROVATO": "L'offerta da cui dovrebbe nascere la revisione non esiste o non e' visibile: la revisione non si puo' creare.",
     "E_OFFERTA_REVISIONE_STATO_NON_AMMESSO": "Revisione non ammessa nello stato corrente dell'offerta.",
     "E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA": "L'offerta non può uscire dal superamento: esiste ancora una revisione viva su questo documento. Va prima annullata quella.",
     "E_OFFERTA_TRANSIZIONE_NON_AMMESSA": "Transizione di stato non ammessa per l'offerta.",
@@ -755,6 +837,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_OUTBOX": "Errore gestione bozza email.",
     "E_PAGAMENTI_CHIAMATA_NON_VALIDA": "Chiamata non valida al modulo pagamenti: e' un difetto del programma, non un dato da correggere.",
     "E_PAGAMENTI_VALIDATION": "Parametri non validi.",
+    "E_PANNELLO_CAMPO_NON_AMMESSO": "Un campo non si puo' salvare da qui.",
+    "E_PANNELLO_DATI_VUOTI": "Non c'e' nessun campo da salvare.",
+    "E_PANNELLO_RIGA_NON_TROVATA": "La riga non esiste piu'.",
+    "E_PANNELLO_TABELLA_NON_AMMESSA": "Tabella non gestita dal pannello di configurazione.",
     "E_PARAMETER_DEFAULT_VALUE_INVALID": "Valore di default parametro non valido: deve esistere nella tabella di catalogo associata.",
     "E_PARAMETER_NOT_FOUND": "Parametro di sistema non trovato.",
     "E_PARAMETER_OVERRIDE_VALUE_INVALID": "Override parametro non valido: il valore deve esistere nella tabella di catalogo associata.",
@@ -812,7 +898,6 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     #    mostrare in un caso gia' tecnico.
     "E_PRESIDIO_NON_A_CATALOGO": "Vista di presidio non dichiarata nel catalogo dbops.presidi, oppure spenta o ritirata. Non e' un errore di dati: segnalalo a chi mantiene il catalogo.",
     "E_PREVENTIVO_RIGA_NON_TROVATA": "Riga preventivo non trovata.",
-    "E_PREVENTIVO_RIGHE_PRICING_PENDENTI": "Esistono righe con prezzo in attesa di approvazione. Attendi esito o annulla la richiesta prima di accettare il preventivo.",
     "E_PREV_ANNULLA_COMMESSA_EMESSA": "Righe del preventivo gia' fatturate in commessa: l'annullamento non e' ammesso. Storna le attivita' emesse dal lato fatturazione, oppure crea una revisione del preventivo.",
     "E_PREV_COMPONENTE_NOT_FOUND": "Componente preventivo non trovato.",
     "E_PREV_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
@@ -901,8 +986,12 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA": "L'accredito supera la quantita' fatturata dalla riga di fattura indicata.",
     "E_RESO_ANNULLO_CON_ACCREDITO": "Il reso ha un accredito registrato: annullare prima l'accredito sulla riga, poi il reso.",
     "E_RESO_ANNULLO_CON_RICONSEGNE": "Il reso e' gia' stato ri-spedito: non e' annullabile.",
+    "E_RESO_DA_DDT_TRASFERIMENTO": "Una bolla di trasferimento fra depositi non genera un reso: la merce e' rimasta nostra.",
     "E_RESO_DDT_NON_CONSEGNATO": "Il DDT sorgente non e' in stato CONSEGNATO: reso non ammesso.",
     "E_RESO_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente del reso.",
+    "E_RESO_MAGAZZINO_IMMUTABILE": "Il magazzino di rientro si sceglie solo in bozza: dopo la conferma la merce e' gia' entrata li'.",
+    "E_RESO_MAGAZZINO_INCOERENTE": "Il magazzino indicato non appartiene all'azienda del reso.",
+    "E_RESO_MAGAZZINO_OBBLIGATORIO": "Il reso non indica il magazzino in cui rientra la merce.",
     "E_RESO_NESSUNA_RICONSEGNA_PENDENTE": "Nessuna riga di ri-consegna pendente da ri-spedire per questo reso.",
     "E_RESO_NON_CONFERMATO": "Confermare il reso prima di generare la ri-spedizione.",
     "E_RESO_NOT_FOUND": "Reso non trovato.",
@@ -910,11 +999,15 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RESO_QTA_SUPERA_CONSEGNATO": "La quantita' resa supera la quantita' consegnata residua della riga DDT.",
     "E_RESO_RICONSEGNA_SUPERA_RESO": "La quantita' ri-spedita supera la quantita' resa da ri-consegnare.",
     "E_RESO_RICONSEGNA_TIPO_NON_VALIDO": "Ri-spedizione ammessa solo su righe reso di tipo ri-consegna.",
+    "E_RESO_RIENTRI_INCOMPLETI": "I rientri di una riga del reso non coprono la quantita': indicare quali lotti o seriali rientrano, e dove.",
+    "E_RESO_RIENTRO_INCOERENTE": "Rientro non valido: si rende la merce uscita con la riga di bolla da cui viene la riga di reso.",
+    "E_RESO_RIENTRO_OLTRE_USCITO": "Da un lotto o seriale rientrerebbe piu' merce di quanta ne era uscita, contando anche gli altri resi della bolla.",
     "E_RESO_RINUNCIA_ACCREDITO_ESEGUITO": "Rinuncia non piu' riapribile: l'accredito della quota e' gia' stato eseguito. Per riaprirla si deve prima annullare l'accredito.",
     "E_RESO_RINUNCIA_SUPERA_RESO": "La quantita' dichiarata definitiva supera la quantita' resa ancora da ri-consegnare.",
     "E_RESO_SENZA_RIGHE": "Il reso non ha righe: aggiungere almeno una riga prima della conferma.",
     "E_RESO_STATO_NON_ANNULLABILE": "Il reso non e' in uno stato che ammette l'annullo.",
     "E_RESO_STATO_NON_CONFERMABILE": "Il reso non e' in bozza: non e' confermabile.",
+    "E_RESO_STATO_SOLO_DA_VERBO": "Il reso fa rientrare merce: il cambio di stato si fa solo dall'operazione del reso, che registra i movimenti di magazzino.",
     "E_RESO_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente del reso.",
     "E_RESO_VALIDAZIONE": "Parametri reso non validi.",
     "E_RIGA_COMMESSA_GIA_ANNULLATA": "La riga era gia` stata annullata.",
@@ -924,6 +1017,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RIGA_COMMESSA_NON_MANUALE": "La riga nasce da un documento e non si annulla qui: il rimedio e` sul documento sorgente.",
     "E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO": "L'abbinamento della riga contabile e' incompleto: mancano dei dati per portarla a quello stato.",
     "E_RIGA_CONTABILE_CAPIENZA_SUPERATA": "L'importo non rientra in quanto resta da regolare sulla rata.",
+    "E_RIGA_CONTABILE_DISTINTA_ANNULLATA": "La distinta contabile e' annullata: le sue righe si leggono soltanto.",
     "E_RIGA_CONTABILE_DISTINTA_FINALE": "La distinta contabile e' in uno stato finale: non accetta altre righe, e quelle che ha non si lavorano piu'.",
     "E_RIGA_CONTABILE_DISTINTA_NON_MANUALE": "La distinta contabile non e' compilata a mano: le sue righe non si eliminano da qui.",
     "E_RIGA_CONTABILE_DISTINTA_VALIDATA": "La distinta contabile e' validata: le sue righe non si aggiungono, non si modificano e non si eliminano finche' non torna in bozza.",
@@ -933,6 +1027,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA": "La distinta contabile non e' registrata: una riga si registra in ritardo solo sotto una distinta gia' registrata.",
     "E_RIGA_CONTABILE_TARDIVA_STATO": "La riga contabile non e' sospesa: in ritardo si registra solo una riga sospesa.",
     "E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA": "La riga contabile non puo' passare a quello stato.",
+    "E_RIGA_DOC_NON_BOZZA": "Il documento non e' piu' in bozza: le sue righe si possono aggiungere, modificare o togliere solo finche' e' in bozza.",
     "E_RIGA_GIA_FATTURATA": "Riga gia' fatturata.",
     "E_RIGA_LISTINO_PROPAGATA": "Riga listino gia' propagata a valle: operazione non ammessa.",
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "Modifica righe listino non consentita: la versione non e' in stato BOZZA.",
@@ -958,6 +1053,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "Scrittura senza un utente in sessione su una tabella con perimetro "
         "emittente: il processo non dichiara chi agisce."
     ),
+    "E_SCRITTURA_IN_LETTURA": "Modifica dati non permessa.",
     "E_SEARCH_NOT_FOUND": "Nessun risultato trovato.",
     "E_SEARCH_VALIDATION": "Parametri ricerca non validi.",
     "E_SEQUENZA_NON_CONFIGURATA": "Sequenza di numerazione non configurata.",
@@ -1011,6 +1107,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_STATO_RESO_TRANSIZIONE_NON_VALIDA": "Transizione di stato non ammessa per il reso.",
     "E_STATO_SORGENTE_PARAM_INVALIDO": "Parametri sorgente non validi.",
     "E_STATO_WORKFLOW_NON_TROVATO": "Stato di destinazione non trovato o non attivo.",
+    "E_STORICO_FK_COL_ASSENTE": "Automazione di storico: la colonna di collegamento non esiste nella tabella storica.",
     "E_STORICO_PARENT_PK_NOT_FOUND": "Impossibile determinare la chiave primaria della tabella padre.",
     "E_STORICO_PROVISION": "Generazione della tabella di storico fallita.",
     "E_STORICO_SCOPE_CATENA_CICLICA": (
@@ -1055,6 +1152,14 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TITOLO_IVA_PLAFOND_MANCANTE": "Questo tipo di titolo ha un tetto che si consuma: indica il plafond.",
     "E_TITOLO_IVA_PLAFOND_NON_AMMESSO": "Questo tipo di titolo non ha un tetto da consumare: il plafond non si indica.",
     "E_TITOLO_IVA_UTILIZZATO_NEGATIVO": "Il consumo del titolo scenderebbe sotto zero: non e' un valore possibile.",
+    "E_TOTP_CODICE_NON_VALIDO": "Codice non valido.",
+    "E_TOTP_CONFIGURAZIONE_RICHIESTA": "Prima di continuare e' necessario configurare il secondo fattore di autenticazione.",
+    "E_TOTP_DEVICE_ASSENTE": "Il secondo fattore non e' attivo per questo accesso.",
+    "E_TOTP_DEVICE_GIA_ATTIVO": "Il secondo fattore e' gia' attivo per questo accesso.",
+    "E_TOTP_MOTIVO_OBBLIGATORIO": "Indicare il motivo della disattivazione.",
+    "E_TOTP_PASSO_GIA_USATO": "Codice gia' usato: attendere il prossimo codice.",
+    "E_TOTP_RECOVERY_NON_VALIDO": "Codice di recupero non valido o gia' usato.",
+    "E_TOTP_SFIDA_NON_VALIDA": "La verifica e' scaduta: accedere di nuovo con la password.",
     "E_TRIGGER_ARGOMENTI_INVALIDI": "Trigger montato con argomenti non validi.",
     "E_TIPO_FONDO_NOT_FOUND": "Tipo fondo non trovato.",
     "E_TIPO_INDIRIZZO": "Tipo indirizzo non ammesso per questo documento.",
@@ -1065,6 +1170,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TXID_GENERATION": "Generazione del tx_id fallita.",
     "E_TX_ID": "Generazione del trigger tx_id fallita.",
     "E_UI_CAMPO_SORGENTE_NON_TROVATO": "Campo sorgente colonna non trovato nella vista SQL.",
+    "E_UI_CHIAMATA_NON_VALIDA": "Chiamata non valida alla configurazione della lista: il contesto della richiesta non corrisponde all'utente.",
     "E_UI_COLONNA_IN_USO": "La colonna e' in uso (preferenze utente, preset o permessi). Disattivala con attivo=false invece di eliminarla.",
     "E_UI_COLONNA_NON_TROVATA": "Colonna lista non trovata.",
     "E_UI_COLONNA_VALIDAZIONE": "Colonna lista non valida.",
@@ -1078,6 +1184,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_GENERIC_FAILED": "Errore configurazione lista.",
     "E_UI_LISTA_EMITTENTE_DA_SCEGLIERE": "Questa lista non dice da quale emittente arriva ogni riga: scegli un emittente per entrare.",
     "E_UI_LISTA_NON_TROVATA": "Lista non trovata.",
+    "E_UI_MISURA_PAGINA_DEFAULT_MANCANTE": "Manca la misura di default delle righe per pagina: anomalia di catalogo.",
+    "E_UI_MISURA_PAGINA_NON_AMMESSA": "La misura di righe per pagina non e' fra quelle ammesse.",
     "E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE": "Il flag multi_emittente di una lista non si imposta dall'applicazione: si dichiara dal seed, insieme al lavoro che lo rende vero.",
     "E_UI_PERMESSO_NON_TROVATO": "Permesso colonna non trovato.",
     "E_UI_PERMESSO_VALIDAZIONE": "Permesso colonna non valido.",
@@ -1091,7 +1199,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UPDATE_NOT_ALLOWED": "Modifica non permessa su questa riga.",
     "E_USER_DISABILITATO": "Utente disabilitato. Contattare l'amministratore.",
     "E_USER_EMITTENTE_DELETE_VIETATO": "Eliminazione vietata: l'associazione utente-emittente puo' essere rimossa solo come parte della disattivazione utente.",
-    "E_UTENTE_BLOCCATO": "Account temporaneamente bloccato per troppi tentativi.",
+    "E_UTENTE_BLOCCATO": "Troppi tentativi non riusciti da questa postazione: riprovare fra qualche minuto.",
     "E_UTENTE_DISABILITATO": "Account disabilitato. Contattare l'amministratore.",
     "E_UTENTE_NON_ATTIVO": "Account non ancora attivo.",
     "E_UTENTE_SCADUTO": "Account scaduto. Contattare l'amministratore.",

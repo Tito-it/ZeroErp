@@ -3,6 +3,7 @@
 // Ref: backend/apps/vendite/api/preventivi_urls.py
 
 import api from '../../../core/api'
+import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
 import { generateIdempotencyKey } from '../../../core/utils/idempotency'
 import { makeComponentiBomApi } from '../../../core/api/componentiBom'
 
@@ -85,15 +86,20 @@ export function generaOrdineFromPreventivo(id, righeIds = null) {
   return api.post(`${BASE}/${id}/genera-ordine/`, body)
 }
 
-export function listRevisioni(id) {
-  return api.get(`${BASE}/${id}/revisioni/`)
+// Catena revisioni del preventivo, PAGINATA (lista a catalogo
+// `vendite.preventivo_revisioni`): `params` porta pagina, ordinamento e
+// `emittente_fiscale_id` del documento (lo legge il cancello di perimetro).
+export function listRevisioni(id, params = {}) {
+  return api.get(`${BASE}/${id}/revisioni/`, { params })
 }
 
 // --- Righe ---
 
-export function listRighe(preventivoId) {
-  return api.get(`${BASE}/${preventivoId}/righe/`)
-}
+// La LISTA configurabile delle righe (pagina + export, `…/righe/lista/`):
+// factory condivisa coi documenti gemelli. ⚠️ Nessuna lettura COMPLETA delle
+// righe qui: il FE non ne ha consumatori (a differenza di ordine e reso, per
+// i dialog di evasione e ri-consegna). `GET …/righe/` resta lato backend.
+export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
 
 export function createRiga(preventivoId, payload) {
   return api.post(`${BASE}/${preventivoId}/righe/`, payload)

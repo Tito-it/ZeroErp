@@ -1,35 +1,39 @@
 <script setup>
 // Scopo: righe preventivo master-detail inline. Thin wrapper su
 //        `core/components/RigheMasterDetailTable.vue` (B10, regola del 2): la
-//        macchina a stati vive nel BB, qui restano colonne (col badge
-//        approvazione prezzo), form di riga e il predicato "elimina bloccato
-//        su PENDING".
-import { ref } from 'vue'
+//        lista, la macchina del form e le azioni vivono nel BB; qui restano le
+//        celle che il catalogo non sa rendere (il prezzo col badge
+//        dell'approvazione), il form di riga e il predicato "elimina bloccato su PENDING".
+//        ⭐ Le colonne vengono dal catalogo (`vendite.preventivo_righe`, lista
+//        97) dal 2026-09-28: quelle che non entrano si ritirano nella riga
+//        espandibile (brief-db-liste-righe-documento).
 import { useI18n } from 'vue-i18n'
 import { usePreventiviStore } from '../stores/preventivi'
-import { formatCurrency, formatNumber } from '../../../core/utils/format'
-import { displayDate } from '../../../core/utils/date'
+import { usePreventivoRigheStore } from '../stores/preventivoRighe'
+import { exportRigheLista } from '../api/preventiviApi'
+import CellaConfigurabile from '../../../core/components/CellaConfigurabile.vue'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
 import { STATO_APPROVAZIONE } from '../../constants'
 import RigheMasterDetailTable from '../../../core/components/RigheMasterDetailTable.vue'
 import PreventiviRigaForm from './PreventiviRigaForm.vue'
-import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 
 const { t } = useI18n()
 const store = usePreventiviStore()
+// La lista delle righe: uno store per istanza del drawer.
+const righe = usePreventivoRigheStore()
 
 defineProps({
   preventivoId: { type: Number, required: true },
+  // L'emittente del preventivo (PK): lasciapassare del cancello di perimetro
+  // della lista, per chi vede piu' emittenti. Arriva col dettaglio.
+  emittenteFiscaleId: { type: Number, default: null },
   // Refactor cascata 2026-05-15: propaga al PreventiviRigaForm per la
   // cascata soglie L2 con livello categoria_cliente del BA.
   billingAccountId: { type: Number, default: null },
   isModificabile: { type: Boolean, default: true },
 })
 const emit = defineEmits(['changed', 'form-aperto'])
-
-const tableRef = ref(null)
-defineExpose({ loadRighe: () => tableRef.value?.loadRighe() })
 
 // Elimina bloccata su righe con approvazione prezzo PENDING (lo blocca anche il
 // backend via guard, ma il FE evita il round-trip).
@@ -74,9 +78,11 @@ function approvazioneTooltip(data) {
 
 <template>
   <RigheMasterDetailTable
-    ref="tableRef"
+    codice="vendite.preventivo_righe"
+    :store="righe"
     :parent-id="preventivoId"
-    :rows-loader="(id) => store.loadRighe(id)"
+    :emittente-fiscale-id="emittenteFiscaleId"
+    :export-fn="exportRigheLista"
     :delete-action="(id, rigaId) => store.eliminaRiga(id, rigaId)"
     :is-modificabile="isModificabile"
     :delete-disabled="deleteDisabled"
@@ -86,46 +92,22 @@ function approvazioneTooltip(data) {
     deleted-message-key="vendite.preventivi.riga_eliminata"
     new-label-key="vendite.preventivi.nuova_riga"
     edit-label-key="vendite.preventivi.modifica_riga"
-    sort-field="descrizione"
     @changed="emit('changed')"
     @form-aperto="emit('form-aperto', $event)"
   >
-    <template #columns>
-      <Column field="articolo_codice" :header="t('vendite.preventivi.riga_articolo')" sortable style="width: 120px;" />
-      <Column field="descrizione" :header="t('vendite.preventivi.riga_descrizione')" sortable />
-      <Column field="qta_operativa" :header="t('vendite.preventivi.riga_quantita')" sortable style="width: 90px;">
-        <template #body="{ data }">{{ formatNumber(data.qta_operativa) }}</template>
-      </Column>
-      <Column field="uom_codice" :header="t('vendite.preventivi.riga_uom')" style="width: 70px;" />
-      <Column field="prezzo_unitario" :header="t('vendite.preventivi.riga_prezzo')" sortable style="width: 130px;">
-        <template #body="{ data }">
-          <div style="display: flex; flex-direction: column; gap: 0.15rem; align-items: flex-start;">
-            <span>{{ formatCurrency(data.prezzo_unitario, { minimumFractionDigits: 6, maximumFractionDigits: 6 }) }}</span>
-            <Tag
-              v-if="data.stato_approvazione_prezzo"
-              :severity="approvazioneSeverity(data.stato_approvazione_prezzo)"
-              :value="approvazioneLabel(data.stato_approvazione_prezzo)"
-              v-tooltip.top="approvazioneTooltip(data)"
-            />
-          </div>
-        </template>
-      </Column>
-      <Column field="sconto_percentuale" :header="t('vendite.preventivi.riga_sconto')" sortable style="width: 80px;">
-        <template #body="{ data }">{{ data.sconto_percentuale ? `${data.sconto_percentuale}%` : '' }}</template>
-      </Column>
-      <Column field="importo_riga" :header="t('vendite.preventivi.riga_importo')" sortable style="width: 120px;">
-        <template #body="{ data }">{{ formatCurrency(data.importo_riga) }}</template>
-      </Column>
-      <Column field="iva_descrizione" :header="t('vendite.preventivi.riga_iva')" sortable style="width: 80px;">
-        <template #body="{ data }">{{ data.iva_descrizione || data.iva_codice || '' }}</template>
-      </Column>
-      <!-- La data di consegna richiesta dal cliente (Blocco A): sul preventivo
-           c'e' solo la richiesta, e il push la porta sull'ordine. -->
-      <Column field="data_consegna_richiesta_cliente" :header="t('vendite.preventivi.riga_data_consegna_richiesta_cliente')" sortable style="width: 110px;">
-        <template #body="{ data }">{{ displayDate(data.data_consegna_richiesta_cliente) }}</template>
-      </Column>
+    <!-- Il prezzo col badge dell'approvazione. Il valore lo rende la cella di
+         catalogo (formato della colonna): lo slot aggiunge solo il badge. -->
+    <template #cell-prezzo_unitario="{ data, col }">
+      <div style="display: flex; flex-direction: column; gap: 0.15rem; align-items: flex-start;">
+        <CellaConfigurabile :col="col" :data="data" />
+        <Tag
+          v-if="data.stato_approvazione_prezzo"
+          :severity="approvazioneSeverity(data.stato_approvazione_prezzo)"
+          :value="approvazioneLabel(data.stato_approvazione_prezzo)"
+          v-tooltip.top="approvazioneTooltip(data)"
+        />
+      </div>
     </template>
-
     <template #form="{ riga, onSaved, onComponentiChanged, onCancel }">
       <PreventiviRigaForm
         :preventivo-id="preventivoId"

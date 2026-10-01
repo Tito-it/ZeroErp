@@ -1,0 +1,119 @@
+# ⚙️ Funzione `fn_posta_ddt`
+
+```sql
+CREATE FUNCTION fn_posta_ddt(p_ddt_id bigint, p_fase text)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_posta_ddt(p_ddt_id bigint, p_fase text)
+ RETURNS TABLE(movimento_id bigint, prelievo_id bigint, qta numeric)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+AS $function$
+#variable_conflict use_column
+-- Scopo: scrivere i movimenti di una bolla, uno per prelievo, nella
+--   fase chiesta — USCITA all'emissione, ARRIVO alla consegna di una
+--   bolla di trasferimento. Non ricontrolla: la primitiva e' la rete.
+-- ⚠️ p_fase e' text e non %TYPE: e' un selettore (USCITA | ARRIVO)
+--   senza colonna-vocabolario, validato qui sotto.
+DECLARE
+    v_ddt         vendite.ddt%ROWTYPE;
+    v_causale     config.causali_trasporto.causale_magazzino%TYPE;
+    v_sorgente_id config.sorgenti.id%TYPE;
+    v_prel        record;
+BEGIN
+    IF p_ddt_id IS NULL OR p_ddt_id <= 0
+       OR p_fase IS NULL OR p_fase NOT IN ('USCITA', 'ARRIVO') THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+            'E_VENDITE_CHIAMATA_NON_VALIDA',
+            jsonb_build_object('detail', 'bolla maggiore di zero, fase USCITA o ARRIVO',
+                               'p_ddt_id', p_ddt_id, 'p_fase', p_fase),
+            NULL::uuid, 'vendite.fn_posta_ddt',
+            'p_ddt_id (obbligatorio, maggiore di zero), p_fase (USCITA | ARRIVO)');
+    END IF;
+
+    SELECT d.* INTO v_ddt FROM vendite.ddt d WHERE d.id = p_ddt_id;
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+            'E_DDT_NOT_FOUND', jsonb_build_object('ddt_id', p_ddt_id), NULL::uuid,
+            VARIADIC ARRAY[]::text[]);
+    END IF;
+
+    v_causale := vendite.fn_ddt_causale_magazzino(v_ddt);
+    -- L'arrivo esiste solo per la bolla di trasferimento: una chiamata
+    -- diversa e' un chiamante rotto, non un dato.
+    IF v_causale IS NULL OR (p_fase = 'ARRIVO' AND v_causale <> 'TRASF_OUT') THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+            'E_VENDITE_CHIAMATA_NON_VALIDA',
+            jsonb_build_object('detail', 'la bolla non muove merce in questa fase',
+                               'ddt_id', p_ddt_id, 'p_fase', p_fase, 'causale_magazzino', v_causale),
+            NULL::uuid, 'vendite.fn_posta_ddt',
+            'una bolla che muove merce (ARRIVO: solo la bolla di trasferimento)');
+    END IF;
+
+    SELECT s.id INTO v_sorgente_id
+      FROM config.sorgenti s
+     WHERE s.codice_interno = 'DDT_VENDITA_PRELIEVO' AND s.attivo;
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+            'E_CONFIG_MANCANTE',
+            jsonb_build_object('config', 'config.sorgenti.DDT_VENDITA_PRELIEVO'),
+            NULL::uuid, VARIADIC ARRAY['sorgente DDT_VENDITA_PRELIEVO (config.sorgenti, attiva)']);
+    END IF;
+
+    FOR v_prel IN
+        SELECT p.id, p.qta AS p_qta, p.lotto_id, p.asset_id,
+               p.ubicazione_id, p.ubicazione_arrivo_id,
+               COALESCE(drc.componente_id, dr.articolo_id) AS articolo_id
+          FROM vendite.ddt_righe_prelievi p
+          JOIN vendite.ddt_righe dr ON dr.id = p.ddt_riga_id
+          LEFT JOIN vendite.ddt_righe_componenti drc ON drc.id = p.ddt_riga_componente_id
+         WHERE dr.ddt_id = p_ddt_id
+           AND dr.attivo
+         ORDER BY dr.riga_nr, dr.id, p.ddt_riga_componente_id NULLS FIRST, p.id
+    LOOP
+        IF p_fase = 'USCITA' THEN
+            movimento_id := magazzino.fn_scrivi_movimento(
+                p_magazzino_id     => v_ddt.magazzino_id,
+                p_articolo_id      => v_prel.articolo_id,
+                p_causale          => v_causale,
+                p_qta              => -v_prel.p_qta,
+                p_sorgente_tipo_id => v_sorgente_id,
+                p_sorgente_riga    => v_prel.id,
+                p_lotto_id         => v_prel.lotto_id,
+                p_asset_id         => v_prel.asset_id,
+                p_ubicazione_id    => v_prel.ubicazione_id,
+                p_data_mov         => v_ddt.data::timestamptz,
+                p_transfer_uid     => CASE WHEN v_causale = 'TRASF_OUT' THEN v_ddt.uid END);
+            qta := -v_prel.p_qta;
+        ELSE
+            movimento_id := magazzino.fn_scrivi_movimento(
+                p_magazzino_id     => v_ddt.magazzino_arrivo_id,
+                p_articolo_id      => v_prel.articolo_id,
+                p_causale          => 'TRASF_IN',
+                p_qta              => v_prel.p_qta,
+                p_sorgente_tipo_id => v_sorgente_id,
+                p_sorgente_riga    => v_prel.id,
+                p_lotto_id         => v_prel.lotto_id,
+                p_asset_id         => v_prel.asset_id,
+                p_ubicazione_id    => v_prel.ubicazione_arrivo_id,
+                p_data_mov         => now(),
+                p_transfer_uid     => v_ddt.uid);
+            qta := v_prel.p_qta;
+        END IF;
+        prelievo_id := v_prel.id;
+        RETURN NEXT;
+    END LOOP;
+    RETURN;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.fn_posta_ddt(p_ddt_id bigint, p_fase text)
+IS 'Il posting di una bolla: un movimento per prelievo (sorgente DDT_VENDITA_PRELIEVO, D-L3-d), righe attive, in ordine di riga e di prelievo. p_fase = USCITA (all''EMESSO): dal magazzino della bolla, con la causale di magazzino della sua causale di trasporto (vendite.fn_ddt_causale_magazzino), quantita'' negativa, ubicazione di partenza, data della bolla; per la bolla di trasferimento transfer_uid = uid della bolla. p_fase = ARRIVO (al CONSEGNATO, solo trasferimento): nel magazzino di arrivo, TRASF_IN, ubicazione di arrivo, stesso transfer_uid — il costo e'' quello dell''uscita, lo trova la primitiva. Non ricontrolla (la primitiva e'' la rete, la check della merce ha gia'' parlato), non crea prelievi, non guarda lo stato: QUANDO lo decide il verbo. SECURITY DEFINER, RISERVATA: ci si arriva solo da vendite.fn_cambia_stato_ddt. Ritorna (movimento_id, prelievo_id, qta). Sta in vendite e non in magazzino: chi muove merce scrive il proprio posting e chiama la primitiva, il registro non legge le tabelle di un documento (D-2). Fino al 2026-10-01 era magazzino.fn_posta_ddt. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-7), brief-db-magazzino-registro-anello-interno (P-1).';
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -23,13 +23,17 @@ from typing import Any
 
 from django.db import DatabaseError, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.payload_helpers import PayloadValidator, make_db_errors_translator
+from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.services._componenti_service_helpers import (
+    dati_patch_componente,
     normalize_componenti_overrides,
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
@@ -90,7 +94,6 @@ _FN = "vendite.ordini_service"
 _STATO_BOZZA = "DRAFT"
 _STATO_CONFERMATO = "CONFERMATO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
-_STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 # Stati che ammettono il push a commessa (fix orfano 2026-07-10, brief DB §16:
 # decoupling fatturazione/spedizione). Per trigger CONFERMATO l'eleggibilita'
 # sopravvive all'evasione in DDT (PARZIALMENTE_EVASO/EVASO): la FONTE UNICA e'
@@ -108,7 +111,7 @@ _STATI_PUSHABILI: frozenset[str] = frozenset(
 # Qui non serve una difesa applicativa aggiuntiva: la testata dell'ordine e'
 # editabile solo in DRAFT (`can_edit_testata`), e il push avviene da CONFERMATO
 # in poi — le due finestre non si sovrappongono.
-_CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
+CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
     "billing_account_id", "soggetto_ruolo_id", "utility_id",
     "emittente_fiscale_id", "valuta_id", "modalita_pagamento_id",
     "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
@@ -116,7 +119,7 @@ _CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
 })
 # NB: billing_account_id NON e' aggiornabile (cliente immutabile post-creazione,
 # vedi aggiorna_ordine): a differenza di create, dove deriva soggetto_ruolo_id.
-_UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
+UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
     "utility_id", "valuta_id", "modalita_pagamento_id",
     "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
     "data", "meta", "fatturazione_immediata",
@@ -128,13 +131,13 @@ _UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
     # ⚠️ Una chiave fuori whitelist viene SCARTATA, non respinta: un client
     # vecchio che la manda ancora non riceve un errore — il valore semplicemente
     # non arriva. E' voluto, ed e' il motivo per cui BE e FE vanno insieme.
-_CREATE_KEYS_RIGA: frozenset[str] = frozenset({
+CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
     "uom_operativa_id", "factor_to_base", "prezzo_unitario", "sconto_percentuale",
     "meta",
     "data_consegna_richiesta_cliente", "data_consegna_confermata",
 })
-_UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
+UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
     "data_consegna_richiesta_cliente", "data_consegna_confermata",
@@ -148,10 +151,11 @@ _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
 #    data malformata e' un 400 col campo acceso, non un 500 dal DB.
 # ⚠️ `data_consegna_confermata` e' «quando ci si impegna», cioe' si decide alla
 #    conferma e puo' cambiare dopo; ma le righe si scrivono solo in DRAFT
-#    (`_STATI_RIGHE_MODIFICABILI`). Il DB non mette nessun guard di stato su
-#    questa colonna, di proposito: il limite alla bozza e' solo di qui, ed e'
-#    dichiarato nel brief (§5.5, 1-bis) come fatto da decidere — non da questo
-#    cantiere.
+#    (BB `richiedi_righe_in_bozza`, codice `E_RIGA_DOC_NON_BOZZA`). Il DB non
+#    mette nessun guard di stato su INSERT/UPDATE di `ordini_righe`, di
+#    proposito (il BB a DB e' montato sul solo DELETE): il limite alla bozza
+#    e' solo di qui, ed e' dichiarato nel brief (§5.5, 1-bis) come fatto da
+#    decidere — non da questo cantiere.
 _DATE_RIGA: tuple[str, ...] = (
     "data_consegna_richiesta_cliente", "data_consegna_confermata",
 )
@@ -179,7 +183,7 @@ def list_ordini_rows(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
     repo = OrdiniRepository()
     return repo.list_ordini(
@@ -209,12 +213,12 @@ def list_ordini(
     search: str | None = None,
     auth_user_id: int | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     order_by: str = "data",
     order_dir: str = "desc",
 ) -> dict[str, object]:
     safe_page = max(1, int(page))
-    safe_size = max(1, min(int(page_size), 200))
+    safe_size = max(1, min(int(page_size), MAX_LIMIT))
     offset = (safe_page - 1) * safe_size
     rows, total = list_ordini_rows(
         stato_codice=stato_codice,
@@ -236,7 +240,6 @@ def list_ordini(
 #        export (DEF-1). Gemello resolve_filtri_export_label preventivi.
 def resolve_filtri_export_label(
     *,
-    search: str | None = None,
     stato_codice: str | None = None,
     billing_account_id: int | None = None,
     utility_id: int | None = None,
@@ -244,8 +247,6 @@ def resolve_filtri_export_label(
     data_al: date | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    if search:
-        out["Ricerca"] = search
     if stato_codice:
         out["Stato"] = stato_codice
     if billing_account_id is not None:
@@ -262,33 +263,51 @@ def resolve_filtri_export_label(
 # Scopo: Dettaglio testata ordine (righe lette a parte via /righe/).
 def get_ordine(ordine_id: int) -> dict[str, object]:
     repo = OrdiniRepository()
-    testata = repo.get_ordine(ordine_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_ORD_NOT_FOUND",
-        message="Ordine non trovato.",
-        detail=f"ordine_id={ordine_id}",
-        function_name=f"{_FN}.get_ordine",
-    )
-    assert testata is not None
-    righe = repo.list_righe(ordine_id)
+    testata = _get_testata_or_raise(repo, ordine_id, op="get_ordine")
+    righe_count = repo.count_righe(ordine_id)
     # Capability data-driven da script.fn_available_actions_ordine (matrice
     # config.transizioni_stati_ordini): available_actions (conferma/annulla/
     # push), can_edit_testata/righe, can_push_commessa(+reason), non_editable_
     # fields, stato_codice. Sostituisce il calcolo hardcoded: la verita' e' a DB
     # (lettura) + trigger guard (enforcement). `can_conferma` non e' piu' un
     # flag: la conferma e' un'entry di available_actions (key='conferma').
+    # Il blob viaggia SOTTO `capabilities` (api.md §«Il blob sta SOTTO
+    # `capabilities`»).
     capabilities = repo.get_capabilities(ordine_id)
     return {
         **testata,
-        **capabilities,
-        "righe_count": len(righe),
+        "capabilities": capabilities,
+        "righe_count": righe_count,
     }
 
 
-# Scopo: Lista righe di un ordine.
+# Scopo: Lista righe di un ordine. Legge prima la testata: un ordine fuori
+#        perimetro (o inesistente) e' un 404, non un pannello vuoto.
 def list_righe(ordine_id: int) -> list[dict[str, Any]]:
-    return OrdiniRepository().list_righe(ordine_id)
+    repo = OrdiniRepository()
+    _get_testata_or_raise(repo, ordine_id, op="list_righe")
+    return repo.list_righe(ordine_id)
+
+
+# Scopo: Una PAGINA delle righe del ordine, per la lista configurabile
+#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina. Legge prima la
+#        testata come `list_righe`. Ritorna `(righe, totale)`.
+def list_righe_pagina(
+    ordine_id: int,
+    *,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int,
+    offset: int = 0,
+    max_limit: int = MAX_LIMIT,
+) -> tuple[list[dict[str, Any]], int]:
+    repo = OrdiniRepository()
+    _get_testata_or_raise(repo, ordine_id, op="list_righe_pagina")
+    return repo.list_righe_pagina(
+        ordine_id, search=search, order_by=order_by, order_dir=order_dir,
+        limit=limit, offset=offset, max_limit=max_limit,
+    )
 
 
 # Scopo: risolve l'ordine COLLEGATO a una pratica (per gli step a valle del
@@ -346,8 +365,11 @@ def _completa_flusso_ordine_pratica(
 #        vw_ordini_riepilogo_iva_dettaglio (stessa formula dei preventivi): il
 #        service legge, nessun ricalcolo Python. Usato dal FE per il pannello
 #        "Riepilogo IVA" del drawer ordine e dal context builder della stampa.
+#        Legge prima la testata: fuori perimetro e' un 404.
 def list_riepilogo_iva(ordine_id: int) -> list[dict[str, Any]]:
-    return OrdiniRepository().list_riepilogo_iva(ordine_id)
+    repo = OrdiniRepository()
+    _get_testata_or_raise(repo, ordine_id, op="list_riepilogo_iva")
+    return repo.list_riepilogo_iva(ordine_id)
 
 
 # ── Indirizzi documento (BB condiviso _indirizzi_documento_helpers) ──
@@ -388,7 +410,7 @@ def delete_indirizzo(ordine_id: int, indirizzo_id: int) -> dict[str, Any]:
 #        trigger DB. soggetto_ruolo_id derivato dal billing_account se assente.
 def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
     repo = OrdiniRepository()
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_ORDINE}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_ORDINE}
 
     billing_account_id = data.get("billing_account_id")
     soggetto_ruolo_id = data.get("soggetto_ruolo_id")
@@ -437,7 +459,7 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
 # Scopo: Aggiorna testata ordine (solo in DRAFT).
 #
 # Cliente immutabile post-creazione: billing_account_id NON e' nella whitelist
-# _UPDATE_KEYS_ORDINE. vendite.ordini denormalizza soggetto_ruolo_id (NOT NULL)
+# UPDATE_KEYS_ORDINE. vendite.ordini denormalizza soggetto_ruolo_id (NOT NULL)
 # accanto a billing_account_id, ma nessun trigger DB li ri-sincronizza su UPDATE
 # (trgfn_ordini_normalize tocca solo fatturazione_trigger): cambiare il BA
 # lascerebbe soggetto_ruolo_id stantio -> incoerenza cliente<->soggetto. Regola
@@ -481,7 +503,7 @@ def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
             function_name=f"{_FN}.aggiorna_ordine",
         )
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_ORDINE}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_ORDINE}
     ErrorManager.require(
         len(data) > 0,
         code="E_ORD_VALIDAZIONE",
@@ -658,15 +680,11 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
     from apps.vendite.db.offerte_repository import OfferteRepository
 
     off_repo = OfferteRepository()
-    testata = off_repo.get_offerta(offerta_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_VENDITE_NOT_FOUND",
-        message="Offerta non trovata.",
-        detail=f"offerta_id={offerta_id}",
-        function_name=f"{_FN}.crea_ordine_da_offerta",
+    testata = testata_o_not_found(
+        off_repo.get_offerta, offerta_id,
+        code="E_VENDITE_NOT_FOUND", message="Offerta non trovata.",
+        id_name="offerta_id", function_name=f"{_FN}.crea_ordine_da_offerta",
     )
-    assert testata is not None
     ErrorManager.require(
         testata.get("stato_codice_interno") in _STATI_OFFERTA_CONVERTIBILI,
         code="E_ORD_ORIGINE_NON_CONVERTIBILE",
@@ -764,7 +782,7 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
 def elimina_ordine(ordine_id: int) -> dict[str, Any]:
     repo = OrdiniRepository()
     _assert_stato(repo, ordine_id, _STATI_MODIFICABILI, op="elimina_ordine")
-    righe_count = len(repo.list_righe(ordine_id))
+    righe_count = repo.count_righe(ordine_id)
     ErrorManager.require(
         righe_count == 0,
         code="E_ORD_STATO_TRANSIZIONE",
@@ -789,10 +807,8 @@ def conferma(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
     # 2 rev 2026-07-16): contano solo le righe ATTIVE — un ordine con sole
     # righe disattivate non e' confermabile. Il guard autorevole resta il
     # trigger (E_ORDINE_CONFERMA_SENZA_RIGHE); qui si evita solo il round-trip.
-    righe = repo.list_righe(ordine_id)
-    righe_attive = [r for r in righe if r.get("attivo")]
     ErrorManager.require(
-        len(righe_attive) > 0,
+        repo.count_righe(ordine_id) > 0,
         code="E_ORD_NESSUNA_RIGA",
         message="Impossibile confermare un ordine senza righe attive.",
         detail=f"ordine_id={ordine_id}",
@@ -866,11 +882,8 @@ def gestisci_riga(
 ) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="gestisci_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message="Righe modificabili solo su ordine in bozza.",
-        detail=f"stato={testata['stato_codice_interno']}",
+    richiedi_righe_in_bozza(
+        testata, documento="Ordine", documento_id=ordine_id, verbo="aggiungere",
         function_name=f"{_FN}.gestisci_riga",
     )
 
@@ -887,7 +900,7 @@ def gestisci_riga(
         error_code="E_ORD_VALIDAZIONE",
     )
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_RIGA}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RIGA}
     _parse_date_riga(data, function_name=f"{_FN}.gestisci_riga")
     articolo_id = data.get("articolo_id")
     ErrorManager.require(
@@ -971,20 +984,12 @@ def aggiorna_riga(
 ) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="aggiorna_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message="Righe modificabili solo su ordine in bozza.",
+    richiedi_righe_in_bozza(
+        testata, documento="Ordine", documento_id=ordine_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None and riga["ordine_id"] == ordine_id,
-        code="E_ORD_NOT_FOUND",
-        message="Riga non trovata per questo ordine.",
-        function_name=f"{_FN}.aggiorna_riga",
-    )
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_RIGA}
+    _get_riga_or_raise(repo, ordine_id, riga_id, op="aggiorna_riga")
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
     ErrorManager.require(
         len(data) > 0,
         code="E_ORD_VALIDAZIONE",
@@ -1002,19 +1007,11 @@ def aggiorna_riga(
 def elimina_riga(ordine_id: int, riga_id: int) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="elimina_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message="Righe eliminabili solo su ordine in bozza.",
+    richiedi_righe_in_bozza(
+        testata, documento="Ordine", documento_id=ordine_id, verbo="togliere",
         function_name=f"{_FN}.elimina_riga",
     )
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None and riga["ordine_id"] == ordine_id,
-        code="E_ORD_NOT_FOUND",
-        message="Riga non trovata per questo ordine.",
-        function_name=f"{_FN}.elimina_riga",
-    )
+    _get_riga_or_raise(repo, ordine_id, riga_id, op="elimina_riga")
     with _db_errors("elimina_riga"):
         deleted = repo.delete_riga(riga_id)
     return {"ordine_id": ordine_id, "riga_id": riga_id, "deleted": deleted}
@@ -1043,11 +1040,15 @@ def preview_componenti_riga(
     )
 
 
-# Scopo: Lista componenti persistiti di una riga.
+# Scopo: Lista componenti persistiti di una riga. Guard di esistenza come
+#        `aggiorna_riga`: la riga deve esistere ED appartenere all'ordine
+#        richiesto (fuori perimetro o id incrociato → E_ORD_NOT_FOUND, 404).
 def list_componenti_riga(
     ordine_id: int, riga_id: int, *, solo_attivi: bool = True,
 ) -> list[dict[str, Any]]:
-    return OrdiniRepository().list_componenti_riga(riga_id, solo_attivi=solo_attivi)
+    repo = OrdiniRepository()
+    _get_riga_or_raise(repo, ordine_id, riga_id, op="list_componenti_riga")
+    return repo.list_componenti_riga(riga_id, solo_attivi=solo_attivi)
 
 
 # Scopo: Aggiorna un componente BoM (solo DRAFT, scope componente→riga→ordine).
@@ -1064,17 +1065,19 @@ def update_componente(
         function_name=f"{_FN}.update_componente",
     )
     assert scope is not None
-    ErrorManager.require(
-        scope["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message="Componenti modificabili solo su ordine in bozza.",
+    richiedi_righe_in_bozza(
+        scope, documento="Ordine", documento_id=ordine_id, verbo="modificare",
         function_name=f"{_FN}.update_componente",
     )
-    # NB: `esposto_in_fattura` NON e' aggiornabile qui — e' un flag della BoM di
-    # catalogo (articoli_componenti, JOIN a lettura), non una colonna di
-    # ordini_righe_componenti: il mixin lo scarterebbe in silenzio.
-    allowed = {"prezzo_unitario", "attivo", "meta"}
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in allowed}
+    # Contratto dell'operatore unico per i cinque documenti (BB): chiavi
+    # estranee -> 400, `origine_prezzo` derivata dal prezzo. ⚠️ Fino al
+    # 2026-09-26 qui c'era un filtro locale che SCARTAVA in silenzio le chiavi
+    # estranee, compresa l'`origine_prezzo` mandata dal pannello: l'origine
+    # manuale non veniva mai scritta.
+    data = dati_patch_componente(
+        payload, function_name=f"{_FN}.update_componente",
+        error_code="E_ORD_VALIDAZIONE",
+    )
     with _db_errors("update_componente"):
         repo.update_componente(componente_id, **data)
     return {"componente_id": componente_id, "updated": True}
@@ -1094,10 +1097,8 @@ def delete_componente(
         function_name=f"{_FN}.delete_componente",
     )
     assert scope is not None
-    ErrorManager.require(
-        scope["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message="Componenti eliminabili solo su ordine in bozza.",
+    richiedi_righe_in_bozza(
+        scope, documento="Ordine", documento_id=ordine_id, verbo="togliere",
         function_name=f"{_FN}.delete_componente",
     )
     with _db_errors("delete_componente"):
@@ -1227,33 +1228,40 @@ _db_errors = make_db_errors_translator(
 )
 
 
+# Scopo: Carica la testata ordine o solleva E_ORD_NOT_FOUND (BB core
+#        `testata_o_not_found`: qui solo codice e messaggio del dominio).
 def _get_testata_or_raise(
     repo: OrdiniRepository, ordine_id: int, *, op: str,
 ) -> dict[str, Any]:
-    testata = repo.get_ordine(ordine_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_ORD_NOT_FOUND",
-        message="Ordine non trovato.",
-        detail=f"ordine_id={ordine_id}",
+    return testata_o_not_found(
+        repo.get_ordine, ordine_id,
+        code="E_ORD_NOT_FOUND", message="Ordine non trovato.",
+        id_name="ordine_id", function_name=f"{_FN}.{op}",
+    )
+
+
+# Scopo: Carica la riga o solleva E_ORD_NOT_FOUND se non esiste o non e' di questo
+#        documento (BB core `riga_del_padre_o_not_found`: qui solo codice e
+#        messaggio del dominio).
+def _get_riga_or_raise(
+    repo: OrdiniRepository, ordine_id: int, riga_id: int, *, op: str,
+) -> dict[str, Any]:
+    return riga_del_padre_o_not_found(
+        repo.get_riga, riga_id, padre_id=ordine_id, chiave_padre="ordine_id",
+        code="E_ORD_NOT_FOUND", message="Riga non trovata per questo ordine.",
         function_name=f"{_FN}.{op}",
     )
-    assert testata is not None
-    return testata
 
 
 def _assert_stato(
     repo: OrdiniRepository, ordine_id: int, ammessi: frozenset[str], *, op: str,
 ) -> str:
-    stato = repo.get_stato_codice(ordine_id)
-    ErrorManager.require(
-        stato is not None,
-        code="E_ORD_NOT_FOUND",
-        message="Ordine non trovato.",
-        detail=f"ordine_id={ordine_id}",
-        function_name=f"{_FN}.{op}",
+    # Stesso BB del guard di testata, col getter leggero (solo codice_interno).
+    stato = testata_o_not_found(
+        repo.get_stato_codice, ordine_id,
+        code="E_ORD_NOT_FOUND", message="Ordine non trovato.",
+        id_name="ordine_id", function_name=f"{_FN}.{op}",
     )
-    assert stato is not None
     ErrorManager.require(
         stato in ammessi,
         code="E_ORD_STATO_TRANSIZIONE",

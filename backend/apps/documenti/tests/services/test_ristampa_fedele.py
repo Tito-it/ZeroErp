@@ -150,8 +150,15 @@ class RistampaFedeleTests(SimpleTestCase):
             "get_documento_generato_snapshot": _snapshot(),
             "get_versione_by_id": versione,
         })
-        with _patch_scope(), _patch_atomic(), _patch_render() as mock_render:
+        with _patch_scope(), _patch_atomic(), _patch_render() as mock_render, \
+                patch.object(DocumentGenerationService, "_risolutore_asset") as mock_ris:
             result = svc.ristampa_fedele(_make_user(), 99)
+
+        # Gli asset: quelli dell'emittente del DOCUMENTO, anche se oggi scaduti
+        # o disattivati (sono immutabili: il codice_interno indica il file di
+        # allora, decisione Tid 2026-10-01).
+        mock_ris.assert_called_once_with(11, solo_validi=False)
+        self.assertIs(mock_render.call_args.kwargs["risolvi_asset"], mock_ris.return_value)
 
         # La versione caricata e' quella pinnata sul documento.
         repo.get_versione_by_id.assert_called_once_with(12)
@@ -177,7 +184,7 @@ class RistampaFedeleTests(SimpleTestCase):
         })
         with _patch_scope(), _patch_atomic(), _patch_render():
             with patch(
-                "apps.documenti.services.document_generation_service.get_builder",
+                "apps.documenti.services.document_generation_service.get_builder_del_template",
             ) as mock_builder:
                 svc.ristampa_fedele(_make_user(), 99)
         mock_builder.assert_not_called()

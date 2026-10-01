@@ -55,8 +55,6 @@ script.fn_available_actions_contratto(
             "key": "attiva",
             "target_state": "ATTIVO",
             "label_key": "contratti.azione_attiva",
-            "severity": "info",
-            "icon": "pi pi-play",
             "requires_confirm": false,
             "requires_date": false,      // true solo per cessa → arricchita con default_date e min_date
             "outlined": false            // true per annulla (peso visivo ridotto)
@@ -120,8 +118,8 @@ Campi bloccati in **ATTIVO** (allineati a `_CONTRATTO_PATCH_ALLOWED_BY_STATE`):
    `NOT FOUND` → `RETURN NULL`.
 2. **Transizioni manuali** — `jsonb_agg` su `config.transizioni_stati_contratti`
    filtrata per `stato_da_id = v_stato_id AND attivo IS TRUE AND manuale IS NOT FALSE`.
-   I metadati UI (`label_key`, `severity`, `icon`, `requires_confirm`, `requires_date`,
-   `outlined`) vengono letti da `t.meta`. Ordine: `sa.ordine`.
+   I metadati UI (`label_key`, `requires_confirm`, `requires_date`,
+   `outlined`) vengono letti da `t.meta`; icona e colore li sceglie il frontend dal `key`. Ordine: `sa.ordine`.
    Guard defense-in-depth: `AND t.meta ? 'action_key' AND t.meta ? 'label_key'`.
 3. **Arricchimento `requires_date`** — via `jsonb_array_elements`: ogni azione
    con `requires_date=true` riceve `default_date = CURRENT_DATE` e
@@ -165,3 +163,23 @@ del BE all'esecuzione.
 - **`stati_doc_contratti.meta.outgoing_action`**: campo storico presente su DRAFT e ATTIVO
   in DB, non più letto dalla funzione. Da rimuovere nella prossima PR che tocca
   `stati_doc_contratti` (vedi `transizioni_stati_contratti` §Regole operative).
+
+## Rev 2026-09-24 — «Attiva» spento finché un prezzo non è autorizzato
+
+Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*. Un
+contratto con una riga o un componente BoM **attivi** in attesa di approvazione
+(`PENDING`) o **rifiutati** (`REJECTED`) non si attiva.
+
+* La funzione passa alla forma dell'**array dei motivi**, come preventivo e ordine:
+  `enabled`, `reason` e `reason_key` di ogni azione discendono da una chiave **nuova**,
+  `reasons`. Nessuna chiave tolta.
+* Verso `ATTIVO` l'array contiene prima i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati), poi il generico «documento
+  vuoto» di prima (`DOCUMENTO_SENZA_RIGHE`, invariato). Il primo è quello che il
+  frontend mostra da solo.
+* È lo stesso building block che
+  [`vendite.trgfn_contratti_guard_transizione_stato`](/dbzero/vendite/funzioni/trgfn_contratti_guard_transizione_stato)
+  usa per sollevare: pulsante e database non possono dissentire.
+
+Motivi nuovi: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
+`common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
+(changeSet `20260924-26`, brief `brief-db-preventivi-congelamento-pricing`.)

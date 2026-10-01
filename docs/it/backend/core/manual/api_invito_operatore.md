@@ -2,49 +2,53 @@
 
 ## Scopo
 
-Permette all'admin di invitare un operatore via email. L'operatore riceve un link,
-imposta la propria password e attiva l'account. Nessuna password viene comunicata
-manualmente.
+Permette all'admin di invitare un operatore via email. L'operatore riceve un link
+e attiva la sua **veste operatore**: sceglie la password se non ne ha ancora una,
+altrimenti conferma con un clic. Nessuna password viene scelta dall'admin né
+comunicata.
 
 ## Contesto
 
-Usa i building block:
+L'invito operatore è il building block unico d'invito delle vesti
+(`apps/core/services/invito_veste.py`, porta `PORTA_OPERATORE`), lo stesso di
+portale e shop: la regola è quella dell'analisi accessi §4.2
+([catalogo BB backend](../../../dev/backend/catalogo-building-block-backend.md),
+sezione «Invito e attivazione di una veste»).
 
-- **BB-1** (Email): template `INVITO_OPERATORE`, risoluzione account per reparto
-- **BB-2** (Token): token monouso tipo `INVITO_OPERATORE` con scadenza 72 ore
-- **BB-3** (Cambio password): flag `deve_cambiare_password` impostato a true
-
-Il flusso e' guidato dall'admin ma l'attivazione e' self-service.
+- La **creazione** dell'operatore fa nascere la veste OPERATORE **spenta**
+  (madre `anagrafiche.fn_crea_operatore_v2`, P-2) e una credenziale nuova col
+  segnaposto non utilizzabile; se l'email è già di una credenziale, la si
+  riusa (la risposta lo dice: `credenziale_riusata`, `username`).
+- L'**invito** non tocca mai la password della credenziale (fino al
+  2026-09-25 la sovrascriveva con una temporanea: A-1).
+- L'**attivazione** consuma il token e **accende la veste** nella stessa
+  transazione (A-3).
 
 ---
 
 ## Flusso completo
 
 ```text
-1. Admin apre drawer operatore → clicca "Invia invito"
+1. Admin crea l'operatore → veste OPERATORE spenta
    |
-2. POST /amm-software/operatori/{id}/invita/
-   → Verifica invitabilita' (fn_check_operatore_invitabile)
-   → Imposta password temporanea casuale (non comunicata)
-   → Imposta deve_cambiare_password = true
-   → Genera token invito (72 ore)
-   → Invia email con link: {FRONTEND_URL}/attivazione/{token}
-   → Aggiorna invito_inviato_at
-   → Response: { inviato: true, email: "m***@azienda.it" }
+2. Admin apre il drawer → «Invia invito» (visibile quando can_invite del DB)
+   POST /amm-software/operatori/{id}/invita/
+   → fn_check_operatore_invitabile (veste spenta, nella finestra, email)
+   → la veste OPERATORE spenta della credenziale (una sola)
+   → token: INVITO_OPERATORE se la credenziale non ha una password vera,
+     ATTIVAZIONE_OPERATORE_CROSS se ce l'ha (72 ore, meta con identita_id)
+   → email con link {FRONTEND_URL}/attivazione/{token}
+   → invito_inviato_at sulla veste (solo se l'email e' partita)
+   → Response: { inviato, email: "m***@azienda.it", is_cross }
    |
-3. Operatore riceve email → clicca link
+3. GET /auth/attivazione-validate/{token}/
+   → { valid, token_type, requires_password }
    |
-4. GET /auth/attivazione-validate/{token}/
-   → Se valido: frontend mostra form password
-   → Se invalido/scaduto: messaggio errore
+4. POST /auth/attivazione/ { token [, new_password, new_password_confirm] }
+   → (con password) validata PRIMA del consumo
+   → consumo + (password) + veste accesa, in una transazione
    |
-5. POST /auth/attivazione/ { token, new_password, new_password_confirm }
-   → Consuma token
-   → Imposta password scelta dall'operatore
-   → Resetta deve_cambiare_password = false
-   → Response: { message: "Account attivato." }
-   |
-6. Operatore fa login con la nuova password
+5. Login con il nome utente (D-9) e la password
 ```
 
 ---
@@ -62,27 +66,49 @@ POST /api/v1/amm-software/operatori/{auth_user_id}/invita/
 
 Body vuoto. L'endpoint verifica automaticamente se l'operatore e' invitabile.
 
-**Condizioni per essere invitabile** (verificate da `script.fn_check_operatore_invitabile`):
+**Condizioni per essere invitabile** (le decide `script.fn_check_operatore_invitabile`,
+rev P-2 `20260925-43`, D-8; il drawer le legge come `can_invite` / `invite_reason`):
 
-1. `auth_user` esiste e `is_active = true`
-2. `identita_digitali` con veste OPERATORE esiste e `attivo = true`
-3. `ruolo_applicativo <> 'DISABILITATO'`
-4. L'utente ha un indirizzo email configurato
-5. `last_login IS NULL` (non ha mai effettuato login)
+1. la credenziale esiste e ha almeno una veste OPERATORE;
+2. **nessuna** veste OPERATORE è già attiva (motivo `Veste OPERATORE gia' attiva`:
+   l'accesso c'è già, per una password dimenticata c'è il reset);
+3. la veste è nella sua finestra di validità (`valido_dal`/`valido_al`);
+4. la credenziale ha un indirizzo email.
+
+⛔ Non contano più `last_login` (D-8) né `is_active` (derivato dalle vesti:
+falso per costruzione finché la veste è spenta). Il service invita **l'unica**
+veste OPERATORE spenta: se la credenziale ne ha più d'una, rifiuta
+(`E_INVITO_OPERATORE`, intervento manuale) invece di sceglierne una a caso.
 
 #### Output (successo)
 
 ```json
-{ "data": { "inviato": true, "email": "m***@azienda.it" } }
+{ "data": { "inviato": true, "email": "m***@azienda.it", "is_cross": false } }
 ```
 
+`is_cross = true`: la persona ha già una password (per esempio è cliente del
+portale) e attiverà con un clic.
+
 L'email e' mascherata per sicurezza (solo primo carattere + `***@dominio`).
+
+`inviato` e' l'esito **dell'email**: `false` se non e' partita (SMTP fallito, canale
+non configurato, template o account mancanti). La chiamata **non** fallisce — il token
+e' stato emesso e resta valido, l'invito si recupera col reinvio — ma il fallimento si
+logga (logger `security`, il motivo e' nel giornale email) e `invito_inviato_at` non si
+aggiorna. In console mode (`DEBUG`) la mail e' stampata e vale come partita. Fino al
+2026-09-28 la risposta era `inviato: true` anche a email fallita (F-3 dell'
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+Dal 2026-09-25 anche `invita`, come `reinvia-invito`, invalida i token pendenti della
+veste nella transazione del nuovo — vale un link solo.
 
 #### Errori
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_INVITO_OPERATORE` | 400 | Operatore non invitabile (motivo specifico nel messaggio) |
+| `E_INVITO_OPERATORE` | 400 | Operatore non invitabile (motivo specifico nel messaggio), anche quando l'utente non esiste |
+
+⚠️ Difetto noto (E-4): anche un `auth_user_id` inesistente esce 400 e non 404 — vedi
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ### Reinvia invito
 
@@ -90,8 +116,9 @@ L'email e' mascherata per sicurezza (solo primo carattere + `***@dominio`).
 POST /api/v1/amm-software/operatori/{auth_user_id}/reinvia-invito/
 ```
 
-Invalida il token invito precedente, ne genera uno nuovo e rinvia l'email.
-Utile se l'invito e' scaduto o non e' stato ricevuto.
+Invalida i token pendenti **della veste** e ne genera uno nuovo **nella stessa
+transazione** (prima l'invalidazione era una scrittura separata: se l'emissione
+falliva l'operatore restava senza link, A-4), poi rinvia l'email.
 
 ---
 
@@ -107,8 +134,13 @@ Usato dal frontend per mostrare il form di attivazione o un messaggio di errore/
 ### Output
 
 ```json
-{ "data": { "valid": true } }
+{ "data": { "valid": true, "token_type": "INVITO_OPERATORE", "requires_password": true } }
 ```
+
+`requires_password` lo decide la **credenziale adesso**: un token
+`INVITO_OPERATORE` su una credenziale che nel frattempo ha una password vera
+(ha attivato un'altra veste) vale come un clic, e quella password non si
+sovrascrive.
 
 oppure:
 
@@ -136,22 +168,32 @@ POST /api/v1/auth/attivazione/
 }
 ```
 
+Con `requires_password = false` basta `{ "token": … }`: una password nel
+payload si **ignora**.
+
 ### Validazioni (ordine critico)
 
 1. `token` non vuoto
-2. `new_password` non vuota
+2. `new_password` non vuota (dopo aver tolto gli spazi iniziali e finali)
 3. `new_password == new_password_confirm`
-4. Token valido tipo `INVITO_OPERATORE` — **validato senza consumare**
-5. Password passa i 4 validators Django
-6. **Solo dopo validazione password**: il token viene consumato
+4. Token valido di uno dei due tipi della porta — **validato senza consumare**
+5. `identita_id` nel meta del token (obbligatorio: un token senza non attiva niente)
+6. (con password) i validators di `AUTH_PASSWORD_VALIDATORS`
+7. **Solo dopo**: il token viene consumato
 
 > Se la password e' troppo debole (es. "12345678"), il token resta valido
 > e l'operatore puo' riprovare con una password piu' forte.
 
+`new_password` e `new_password_confirm` non vengono ripulite dagli spazi: si
+salva la password digitata, e il login non la ripulisce (S-5, 2026-09-27).
+
 ### Azioni (atomiche)
 
-1. `user.set_password(new_password)` + save
-2. Reset flag `deve_cambiare_password = false`
+1. consumo del token
+2. (con password) `apply_new_password`: password + cambio obbligatorio spento
+   (della credenziale, D-7)
+3. **la veste si accende** (`AuthRepository.attiva_identita`, guard su
+   credenziale e porta); se non c'è più, tutto si annulla
 
 ### Output
 
@@ -169,37 +211,41 @@ POST /api/v1/auth/attivazione/
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_TOKEN` | 400 | Token non valido, scaduto o gia' usato |
-| `E_ATTIVAZIONE` | 400 | Password vuota, mismatch, troppo semplice |
+| `E_ATTIVAZIONE` | 400 | Token assente, non valido, scaduto o gia' usato; utente inesistente; token senza veste; veste non più disponibile; password vuota, mismatch, troppo semplice |
+| `E_TOKEN` | 400 | Il token era valido alla verifica ma il consumo non riesce (es. consumato in parallelo) |
 
 ---
 
 ## Sicurezza
 
-- **Password temporanea** casuale, non comunicata (solo il token viaggia nell'email)
+- **Nessuna password dell'admin**: la credenziale nuova nasce col segnaposto non utilizzabile; solo il token viaggia nell'email
+- **La veste nasce spenta**: prima dell'attivazione non si entra (una credenziale riusata riceve `E_VESTE_NON_ATTIVA`)
 - **Token SHA-256**: solo hash in DB, token in chiaro solo nell'email
 - **Scadenza 72 ore**: l'operatore ha 3 giorni per attivare
-- **Invalidazione**: il reinvio invalida automaticamente il token precedente
+- **Invalidazione**: ogni invito (primo o reinvio) invalida i token pendenti della veste nella stessa transazione del nuovo
 - **Validate-before-consume**: la password viene validata PRIMA di consumare il token — password debole non brucia il token
 - **Rate limiting**: 3/15min per IP sull'endpoint attivazione
 - **IP tracking**: l'attivazione registra l'IP di chi consuma il token
-- **Operazioni atomiche**: password + flag in `transaction.atomic()`, email invito in try/except (non blocca il flusso)
+- **Operazioni atomiche**: consumo + password + veste in `transaction.atomic()`, email invito fuori transazione (non blocca il flusso)
 - **Email mascherata**: la response all'admin mostra solo `m***@dominio`
 
 ## Dipendenze DB
 
 | Oggetto | Scopo |
 | --- | --- |
-| `script.fn_check_operatore_invitabile(auth_user_id)` | Verifica 5 condizioni invitabilita' |
+| `script.fn_check_operatore_invitabile(auth_user_id)` | Invitabilità (veste spenta, finestra, email) |
+| `anagrafiche.fn_crea_operatore_v2` | Creazione: credenziale riusata o nuova, veste spenta |
 | `config.token_monouso` | Token invito con scadenza 72h |
 | `anagrafiche.identita_digitali.invito_inviato_at` | Timestamp ultimo invito |
-| `anagrafiche.identita_digitali.deve_cambiare_password` | Flag cambio password (⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1)) |
+| `anagrafiche.identita_digitali.attivo` | La veste: spenta fino all'attivazione |
 
 ## File Python
 
 | File | Scopo |
 | --- | --- |
-| `apps/anagrafiche/services/invito_operatore_service.py` | Service: verifica, genera, invia, reinvia |
+| `apps/core/services/invito_veste.py` | Building block: porta, emissione, spedizione, attivazione |
+| `apps/core/api/attivazione_veste_views.py` | Le due view pubbliche generiche |
+| `apps/anagrafiche/services/invito_operatore_service.py` | Parte dell'operatore: check del DB, veste da invitare |
 | `apps/amm_software/api/invito_views.py` | 2 endpoint admin (invita, reinvia) |
-| `apps/core/api/attivazione_view.py` | 2 endpoint pubblici (validate + attivazione) |
-| `apps/core/db/auth_repository.py` | +get_unita_organizzativa_id, +set_invito_inviato_at |
+| `apps/core/api/attivazione_view.py` | Le view pubbliche sulla porta OPERATORE |
+| `apps/core/db/auth_repository.py` | `find_identita_per_ruolo`, `auth_user_ha_password`, `attiva_identita`, `set_invito_inviato_at` |

@@ -10,7 +10,7 @@ import { fetchNote, createNota, updateNota, deleteNota } from '../api/pratiche-a
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { displayTimestamp } from '../../core/utils/date'
 import Textarea from 'primevue/textarea'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -128,7 +128,7 @@ watch(() => props.praticaId, (id) => {
 
     <!-- Lista note -->
     <div v-if="loading" class="text-center app-text-muted p-3">
-      <i class="pi pi-spin pi-spinner"></i>
+      <i :class="STATUS_ICONS.CARICAMENTO"></i>
     </div>
 
     <div v-else-if="note.length === 0" class="text-center app-text-muted p-3">
@@ -136,7 +136,7 @@ watch(() => props.praticaId, (id) => {
     </div>
 
     <div v-else class="note-list">
-      <div v-for="n in note" :key="n.id" class="nota-entry">
+      <div v-for="n in note" :key="n.id" class="app-voce-registro">
         <div class="nota-header">
           <Tag :value="n.tipo_nota_descrizione || n.tipo_nota_codice" severity="secondary" />
           <span class="nota-date">{{ displayTimestamp(n.data_insert) }}</span>
@@ -182,12 +182,6 @@ watch(() => props.praticaId, (id) => {
   gap: 0.5rem;
 }
 
-.nota-entry {
-  padding: 0.5rem 0.75rem;
-  border-left: 3px solid var(--app-toolbar-border);
-  border-radius: 0 4px 4px 0;
-  background: color-mix(in srgb, var(--p-surface-700) 20%, transparent);
-}
 
 .nota-header {
   display: flex;

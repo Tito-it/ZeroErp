@@ -1,0 +1,84 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_fattura_righe_lista.md" %}
+# 🔍 View `vw_fattura_righe_lista`
+
+> 📝 **Descrizione**
+>
+> Le righe di una fattura come LISTA (brief-db-liste-righe-documento, D-8.3, 2026-09-28): SOLO il primo livello di vw_fattura_righe_esposte (NORMALE, PARTE_PLAFOND, KIT_PADRE), cosi' ordinamento e paginazione lavorano sulle righe del documento e un kit si muove intero. riga_key identifica ogni riga: R:&lt;id&gt; per le righe vere, K:&lt;fattura&gt;:&lt;md5&gt; per il padre di un kit (che non ha PK), costruita sulla stessa tupla con cui la vista madre lo compone. I componenti ESPOSTI stanno nel padre (componenti jsonb, componenti_numero). Nessun calcolo rifatto: la rappresentazione resta di vw_fattura_righe_esposte. Il numero della fattura rettificata e' quello parlante (fn_numero_documento_fattura). Nessun ORDER BY: l'ordine del documento e' ordinamento, riga_nr, riga_key. security_invoker: fatture_righe e' in RLS.
+
+> 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
+```sql
+CREATE OR REPLACE VIEW vendite.vw_fattura_righe_lista
+WITH (security_invoker=true) AS
+SELECT x.riga_key,
+    x.fattura_id,
+    x.tipo_riga,
+    x.riga_nr,
+    x.ordinamento,
+    x.fatture_righe_id,
+    x.articolo_id,
+    x.articolo_codice,
+    x.articolo_descrizione,
+    x.descrizione,
+    x.uom_id,
+    x.uom_codice,
+    x.qta AS quantita,
+    x.prezzo_unitario,
+    x.sconto_percentuale,
+    x.iva_id,
+    x.iva_codice,
+    x.iva_descrizione,
+    x.iva_aliquota,
+    x.iva_natura,
+    x.imponibile AS importo_riga,
+    x.dest_billing_account_id,
+    x.riga_capofila_id,
+    fr.riga_rettificata_id,
+    orig.riga_nr AS riga_rettificata_nr,
+    forig.id AS riga_rettificata_fattura_id,
+    vendite.fn_numero_documento_fattura(forig.numero, forig.serie) AS riga_rettificata_documento,
+    x.componenti,
+    x.componenti_numero
+   FROM (((( SELECT e.fattura_id,
+            e.tipo_riga,
+            e.riga_nr,
+            e.ordinamento,
+            e.livello,
+            e.fatture_righe_id,
+            e.articolo_id,
+            a.codice AS articolo_codice,
+            a.descrizione AS articolo_descrizione,
+            e.descrizione,
+            e.uom_id,
+            um.codice AS uom_codice,
+            e.qta,
+            e.prezzo_unitario,
+            e.sconto_percentuale,
+            e.iva_id,
+            iva.codice AS iva_codice,
+            iva.descrizione AS iva_descrizione,
+            iva.aliquota_iva AS iva_aliquota,
+            e.iva_natura,
+            e.imponibile,
+            e.dest_billing_account_id,
+            e.riga_capofila_id,
+                CASE
+                    WHEN (e.fatture_righe_id IS NOT NULL) THEN ('R:'::text || (e.fatture_righe_id)::text)
+                    ELSE ((('K:'::text || (e.fattura_id)::text) || ':'::text) || md5(concat_ws('|'::text, e.kit_key, e.iva_id, e.dest_billing_account_id, e.articolo_id, e.descrizione)))
+                END AS riga_key,
+            jsonb_agg(jsonb_build_object('fatture_righe_id', e.fatture_righe_id, 'riga_nr', e.riga_nr, 'articolo_id', e.articolo_id, 'articolo_codice', a.codice, 'descrizione', e.descrizione, 'quantita', e.qta, 'uom_codice', um.codice)) FILTER (WHERE (e.livello = 1)) OVER kit AS componenti,
+            (count(*) FILTER (WHERE (e.livello = 1)) OVER kit)::integer AS componenti_numero
+           FROM (((vendite.vw_fattura_righe_esposte e
+             LEFT JOIN catalogo.articoli a ON ((a.id = e.articolo_id)))
+             LEFT JOIN catalogo.unita_misura um ON ((um.id = e.uom_id)))
+             LEFT JOIN config.iva iva ON ((iva.id = e.iva_id)))
+          WINDOW kit AS (PARTITION BY e.fattura_id, e.kit_key, e.iva_id, e.dest_billing_account_id ORDER BY e.riga_nr, e.fatture_righe_id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)) x
+     LEFT JOIN vendite.fatture_righe fr ON ((fr.id = x.fatture_righe_id)))
+     LEFT JOIN vendite.fatture_righe orig ON ((orig.id = fr.riga_rettificata_id)))
+     LEFT JOIN vendite.fatture forig ON ((forig.id = orig.fattura_id)))
+  WHERE (x.livello = 0);
+```
+
+
+---
+{% include-markdown "signature-core.md" %}

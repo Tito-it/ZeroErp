@@ -161,4 +161,11 @@ riusate: `STABLE` non garantisce il riuso fra occorrenze, e senza il `LATERAL`
 
 ---
 
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+È dichiarata come vista della lista configurabile `vendite.reso_righe` (`vista_sql`, 2026-09-28): il catalogo delle liste ne controlla le colonne al migrate. Nessun cambio al corpo.
+
+---
+
 {% include-markdown "signature-core.md" %}

@@ -22,6 +22,7 @@ import {
   deleteOrdine,
   deleteRiga,
   emettiOrdine,
+  generaDdtFromOrdine,
   getOrdine,
   getRiepilogoIva,
   listOrdini,
@@ -148,6 +149,20 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     return res.data.data
   }
 
+  // --- Evasione ---
+
+  // Scopo: Evade l'ordine generando un DDT (in DRAFT) dalle righe scelte, o
+  //        da tutto il residuo con `righe = null`. Il verbo scrive su DUE
+  //        entita' — l'ordine (residui, stato) e il DDT che nasce — e lo store
+  //        le avvisa entrambe (frontend-standards §«Producer cross-tab»).
+  async function generaDdt(ordineId, righe = null) {
+    const res = await generaDdtFromOrdine(ordineId, righe)
+    const data = res.data.data
+    emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
+    if (data?.ddt_id) emitDataChanged(TAB_ENTITIES.DDT, data.ddt_id)
+    return data
+  }
+
   // --- Riepilogo IVA ---
 
   // Scopo: Carica il riepilogo IVA aggregato dell'ordine (una entry per
@@ -168,6 +183,8 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     conferma, emetti, push, cambiaStato,
     // righe
     loadRighe, addRiga, aggiornaRiga, eliminaRiga,
+    // evasione
+    generaDdt,
     // riepilogo IVA
     loadRiepilogoIva,
   }

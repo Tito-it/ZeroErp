@@ -8,7 +8,8 @@
 -- Contesto:
 --   BoM immutabile. DELETE vietato. UPDATE dei campi di struttura
 --   vietato. Ammessi solo:
---     - UPDATE valido_al (con check >= valido_dal)
+--     - UPDATE valido_al (l'ordine delle date lo giudica il guard comune
+--       script.trgfn_guard_date_validita, non questo trigger: 20260924-01)
 --     - UPDATE campi note, meta, attivo
 --     - UPDATE campi audit (gestiti da altri trigger)
 --   Pattern admin: chiudi riga + inserisci nuova con valido_dal
@@ -26,7 +27,8 @@
 --    8. UPDATE valido_dal -> raise
 --    9. UPDATE validita (daterange nativo) -> raise
 --   10. UPDATE valido_al in avanti (chiusura) -> OK
---   11. UPDATE valido_al < valido_dal -> raise E_BOM_VALIDO_AL_INVALIDO
+--   11. UPDATE valido_al < valido_dal -> parla il guard comune
+--       (E_DATA_AL_MINORE_DAL), non piu' E_BOM_VALIDO_AL_INVALIDO
 --   12. UPDATE note_id -> OK
 --   13. UPDATE meta -> OK
 --   14. UPDATE attivo -> OK
@@ -68,21 +70,17 @@ SELECT plan(18);
 -- =========================================================
 -- Setup: riga BoM di partenza
 -- =========================================================
+-- ⛔ Gli articoli si COSTRUISCONO (2026-09-23). Fino a oggi questo file
+--   pescava `ART_TEST_BASE` / `ART_TEST_FALLBACK`, che non stanno in nessun
+--   changelog: sono due righe messe a mano su questa macchina (UUID …101 e
+--   …102). Su un database ricostruito non esistono, e il file moriva nella
+--   fixture — copertura zero, non parziale.
 CREATE TEMP TABLE _t_bom AS
 SELECT
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE')     AS prodotto_id,
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_FALLBACK') AS componente_id,
+    dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-PRODOTTO')   AS prodotto_id,
+    dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-COMPONENTE') AS componente_id,
     (CURRENT_DATE - INTERVAL '30 days')::date  AS v_dal,
     (CURRENT_DATE + INTERVAL '30 days')::date  AS v_al;
-
--- Guard seed
-DO $pgtap$
-BEGIN
-    IF (SELECT prodotto_id IS NULL OR componente_id IS NULL FROM _t_bom) THEN
-        RAISE EXCEPTION 'Seed articoli ART_TEST_BASE / ART_TEST_FALLBACK mancante; impossibile eseguire test.';
-    END IF;
-END
-$pgtap$;
 
 -- Prerequisito: il prodotto deve avere is_composito=true perche' il
 -- trigger trgfn_articoli_componenti_guard_is_composito accetti l'INSERT.
@@ -208,8 +206,8 @@ SELECT throws_ok(
 
 -- =========================================================
 -- 9) UPDATE validita (daterange nativo) -> raise
--- Difesa in profondita': benche' a20_set_validita ricalcoli validita
--- da valido_dal/valido_al, il trigger a10 la include fra i campi
+-- Difesa in profondita': benche' validita sia una colonna generata da
+-- valido_dal/valido_al, il trigger a10 la include fra i campi
 -- bloccati per simmetria.
 -- =========================================================
 SELECT throws_ok(
@@ -238,18 +236,25 @@ SELECT lives_ok(
 );
 
 -- =========================================================
--- 11) UPDATE valido_al < valido_dal -> raise E_BOM_VALIDO_AL_INVALIDO
+-- 11) UPDATE valido_al < valido_dal -> parla il guard comune
 -- valido_dal e' oggi-30; provo valido_al = oggi-60.
+-- ⭐ rev 20260924-01 (brief-db-guard-date-validita §13): fino al 23-09 qui
+--   rispondeva il ramo E_BOM_VALIDO_AL_INVALIDO di questo trigger, che in
+--   ordine alfabetico (`…_a10_block_…` < `…_a10_date_validita_…`) precedeva il
+--   guard comune. Il ramo era una copia della regola del periodo ed e'
+--   ritirato: ora parla script.trgfn_guard_date_validita, come sulle altre
+--   tabelle con la coppia di date. ⚠️ Prima era un throws_ok(NULL, NULL):
+--   verde con QUALSIASI errore. Ora pretende la frase del guard comune.
 -- =========================================================
-SELECT throws_ok(
+SELECT throws_like(
     format(
         $sql$ UPDATE catalogo.articoli_componenti
                  SET valido_al = (CURRENT_DATE - INTERVAL '60 days')::date
                WHERE id = %L::uuid $sql$,
         (SELECT riga_id FROM _t_bom_riga)
     ),
-    NULL, NULL,
-    '11. UPDATE valido_al < valido_dal -> raise E_BOM_VALIDO_AL_INVALIDO'
+    '%è inferiore alla data dal%',
+    '11. UPDATE valido_al < valido_dal -> parla il guard comune (E_DATA_AL_MINORE_DAL)'
 );
 
 -- =========================================================
@@ -336,7 +341,8 @@ SELECT lives_ok(
 -- chk_articoli_componenti_valid_dates (valido_al > valido_dal) bloccava
 -- la chiusura same-day di una riga BoM appena inserita facendo cadere
 -- il flow FE in errore tecnico SQLSTATE 23514. Drop del CHECK in
--- 20260427-02 (codice morto: trgfn_set_validita gia' rifiuta < con
+-- 20260427-02 (codice morto: all'epoca trgfn_set_validita, oggi il guard
+-- comune delle date, gia' rifiuta < ; il daterange sotto rifiuterebbe con
 -- 22000). Il trigger block_modifica_struttura ammette
 -- NEW.valido_al = OLD.valido_dal (controllo strict <), quindi il pattern
 -- "Chiudi riga oggi" su una riga con valido_dal=oggi passa.
@@ -355,7 +361,7 @@ SELECT lives_ok(
 -- =========================================================
 -- 18) Verifica che la canonicalizzazione daterange su [X, X] da '[]'
 -- produca '[X, X+1)' (range 1 giorno) -- non degenere/empty.
--- Il trigger script.trgfn_set_validita ricalcola validita post UPDATE.
+-- La colonna generata validita si ricalcola a ogni UPDATE.
 -- =========================================================
 SELECT is(
     (SELECT validita

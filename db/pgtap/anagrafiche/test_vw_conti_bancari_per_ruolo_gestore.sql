@@ -13,11 +13,20 @@
 --     selezioni il conto dal SOGGETTO (fonte='SOGGETTO')
 -- ------------------------------------------------------------
 
+-- ⛔ 2026-09-23: QUESTO FILE E' UN TEST, E ORA SI COMPORTA COME TALE.
+--   Apriva la transazione TARDI, chiamava la riga di contesto in AUTOCOMMIT e
+--   chiudeva in COMMIT. Su un database ricostruito quella riga, fuori da una
+--   transazione, COSTRUIVA e COMMITTAVA azienda + operatore: un residuo per
+--   corsa e soprattutto una MASCHERA — da li' in poi ogni altro file trovava
+--   un operatore e non percorreva piu' il ramo che costruisce (misurato il
+--   23-09: teneva verdi SEI file del lotto che senza di lei cadono).
+--   Ora: transazione subito, contesto dentro, chiusura in ROLLBACK.
+BEGIN;
+
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
--- ⚠️ Questo file non apre una transazione propria: la riga va prima di plan().
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(5);
@@ -31,21 +40,16 @@ SELECT
     'AGSOGIT2XXX'::varchar                     AS bic_swift_test,
     'INCASSO'::varchar                        AS uso_test;
 
-BEGIN;
 
 -- ---------------------------------------------------------
 -- 1) Recupero del Gestore e del suo soggetto_ruolo/soggetto
 -- ---------------------------------------------------------
+-- ⛔ `anagrafiche.gestori` e' dato di MACCHINA: da zero e' vuota, e «il primo
+--   Gestore» non esiste. L'helper lo prende se c'e' (dbdev) o lo costruisce
+--   (CI), e non ne crea mai un secondo — un guard lo rifiuterebbe.
 CREATE TEMP TABLE tmp_gestore_soggetto AS
-SELECT
-    g.id                AS gestore_id,
-    g.soggetto_ruolo_id AS soggetto_ruolo_id,
-    sr.soggetto_id      AS soggetto_id
-FROM anagrafiche.gestori g
-JOIN anagrafiche.soggetti_ruoli sr
-  ON sr.id = g.soggetto_ruolo_id
-ORDER BY g.id
-LIMIT 1;
+SELECT gestore_id, gestore_soggetto_ruolo_id AS soggetto_ruolo_id, gestore_soggetto_id AS soggetto_id
+  FROM dbops.fn_pgtap_crea_gestore('vw conti per ruolo gestore');
 
 -- Test 1: esiste almeno un Gestore
 SELECT ok(
@@ -56,14 +60,17 @@ SELECT ok(
 -- ---------------------------------------------------------
 -- 2) Recupero di una bank_branch da usare per il conto
 -- ---------------------------------------------------------
+-- ⛔ Anche la filiale e' dato di MACCHINA: da zero `bank_branches` e' vuota.
+-- ⚠️ E il verbo sta in un'istruzione SUA: un builder che scrive e un JOIN che
+--   legge nella stessa istruzione condividono la snapshot, e la riga appena
+--   scritta non si vede.
+CREATE TEMP TABLE tmp_bank_branch_id AS
+SELECT bank_branch_id FROM dbops.fn_pgtap_crea_filiale_bancaria('vw conti per ruolo gestore');
+
 CREATE TEMP TABLE tmp_bank_branch AS
-SELECT
-    bb.id,
-    bb.bank_code,
-    bb.branch_code
-FROM anagrafiche.bank_branches bb
-ORDER BY bb.id
-LIMIT 1;
+SELECT bb.id, bb.bank_code, bb.branch_code
+  FROM anagrafiche.bank_branches bb
+  JOIN tmp_bank_branch_id f ON f.bank_branch_id = bb.id;
 
 -- Test 2: esiste almeno una bank_branch
 SELECT ok(
@@ -230,6 +237,9 @@ SELECT is(
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-COMMIT;
 
 SELECT * FROM finish();
+
+-- ⛔ ROLLBACK, non COMMIT (2026-09-23): questo file e' un test, e un test non
+--   lascia dietro di se' cio' che ha creato.
+ROLLBACK;

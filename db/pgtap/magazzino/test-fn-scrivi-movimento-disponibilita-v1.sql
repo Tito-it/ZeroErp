@@ -1,6 +1,14 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il soggetto sono i CONTROLLI della primitiva
+--   magazzino.fn_scrivi_movimento, che dal 2026-09-24 l'app non esegue piu': la
+--   raggiunge solo dai verbi fn_posta_inventario / fn_posta_rettifica
+--   (brief-db-magazzino-verbi-con-permesso, P-4). Chiamarla coi parametri che il
+--   test sceglie e' cosa che solo uno scrittore privilegiato puo' fare: forma 3
+--   del criterio del runner, come i test del ledger del Lotto 2. Il contesto
+--   operatore resta impostato: il guard di scope e i controlli lo leggono.
 --
 -- Test: la disponibilita' nella primitiva (passo 11 di sezione 4.2) e la
 --   check che UI e primitiva condividono, script.fn_check_disponibilita_uscita

@@ -46,10 +46,14 @@ altrui — rendendo inaccessibile il sistema.
 ### Single source of truth
 
 Sia questo trigger sia quello sui bindings chiamano la **stessa**
-funzione `script.fn_check_almeno_un_super_admin_attivo`. Evolutione
-della condizione (es. aggiunta di ulteriori gate come
-`bloccato_fino_a` scaduto) va fatta **solo lì** e propaga
-automaticamente a entrambi i guard.
+funzione `script.fn_check_almeno_un_super_admin_attivo`. Evoluzione
+della condizione va fatta **solo lì** e propaga automaticamente a
+tutti i guard. ⭐ È successo il 2026-09-25: la funzione ha imparato che
+un SUPER_ADMIN la cui credenziale è **bloccata dall'amministratore**
+([config.credenziali](/dbzero/config/tabelle/credenziali)) non è
+raggiungibile, e un terzo guard — sul blocco stesso,
+[config.trgfn_credenziali_guard_ultimo_super_admin](/dbzero/config/funzioni/trgfn_credenziali_guard_ultimo_super_admin)
+— chiede alla stessa funzione.
 
 ### Bypass / manutenzione
 

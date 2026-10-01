@@ -455,6 +455,62 @@ Presidia i **75 codici che la misura sa leggere**, non i 344. Non è copertura
 totale ed è inutile fingere il contrario: è il rubinetto sui codici vivi e
 *leggibili*, ed è molto più di quello che c'era prima, che era niente.
 
+### 3.6 Uno stato previsto dal modello e mai scritto
+
+**Cosa sorveglia.** Il `CHECK` di una colonna di stato — `stato IN ('DRAFT',
+'CONFIRM', 'POSTED', 'CANCEL')` — è una promessa: ogni valore ammesso è uno
+stato che il sistema sa raggiungere. Se un valore è ammesso e **nessuno lo
+scrive mai**, la promessa è vuota, e il sistema è muto proprio sul caso che quel
+valore doveva raccontare. Di regola è il fallimento: `ERRORE` è stato per mesi
+nel `CHECK` degli esiti di un lotto, con un contatore dedicato nella summary, e
+nessuno lo scriveva — le corse chiudevano in `COMPLETATO` con un documento
+rifiutato.
+
+**Come misura.** Il perimetro non è un elenco: è ogni `CHECK` di appartenenza su
+una colonna il cui nome dice «stato», letto dal catalogo di PostgreSQL. Per ogni
+valore la misura (`dbops.vw_stati_check_scrittori`) cerca **chi lo scrive**: il
+default della colonna, una funzione che scrive la tabella col valore nel corpo,
+o una funzione che chiama uno scrittore passandogli il valore. Non conta le
+righe: guarda la struttura, non il contenuto.
+
+**Il registro** (`dbops.stati_check_dichiarazioni`) porta un **canale**, perché
+il database non vede tutti gli scrittori: una parte dei valori li scrive
+l'applicazione, e quelli il database non può che dichiararli. Il canale dice chi
+verifica la riga:
+
+| `canale` | Che cosa dice la riga | Chi la verifica |
+| --- | --- | --- |
+| `APPLICAZIONE` | «questo valore lo scrive un repository Python» | il test del backend (`apps/core/tests/test_stati_check_scrittori_python.py`): il valore deve comparire in un file che scrive quella tabella — o in uno che la scrive **attraverso** il suo repository, il service che passa il valore; se sparisce, rosso. E nel verso opposto: un valore `NON_DICHIARATO` che Python scrive va dichiarato `APPLICAZIONE`, non sanato a database |
+| `ESENTE` | «non lo scrive nessuno, o il criterio non lo vede — e sappiamo perché» | il pgTAP, nel verso di ritiro: se uno scrittore compare a database, la riga va tolta |
+
+⚠️ `ESENTE` non vuol dire «non scritto»: vuol dire che il **criterio** non lo
+vede. Il caso che l'ha insegnato è un log che riceve lo stato **copiandolo** dal
+suo padre: scritto mille volte, e nessun valore compare in nessuna funzione.
+Stringere il `CHECK` — la prima idea — avrebbe rotto il log.
+
+**La lista di lavoro** (`dbops.vw_stati_check_da_sanare`) è un cancello:
+`db/pgtap/dbops/test-stati-check-scrittori-v1.sql` la fa rossa in CI su un
+valore che nessuno scrive e nessuno ha dichiarato, e su una riga di registro
+che non serve più.
+
+#### Il limite, detto qui e non scoperto dopo
+
+Il criterio è **testuale**: nominare un valore in un `WHERE` dentro una funzione
+che scrive la tabella conta come scriverlo; un valore che passa per tre funzioni
+resta invisibile; una copia da un'altra colonna non si vede. Ognuno di questi
+limiti è scritto nel commento della vista e ha un caso costruito nel pgTAP, così
+che chi legge un verde sappia esattamente che cosa copre.
+
+⭐ **E la misura stessa ha avuto un difetto, ed è il caso da ricordare.** Il
+primo conteggio (19 settembre) trovava 18 colonne; il criterio definitivo ne
+trova 32. Non era cambiato il database: la prima regex vedeva una sola delle
+**due** scritture con cui PostgreSQL stampa lo stesso `CHECK` (colonna `text`
+contro colonna `varchar`). *Anche la misura è un programma, e può avere il suo
+difetto* — per questo il pgTAP tiene l'elenco delle 32 colonne come prova che il
+perimetro non si è ristretto.
+
+Origine: `docs/it/dev/work-done/brief-db-presidio-stati-mai-scritti.md`.
+
 ---
 
 ## 4. Perché alcuni girano da soli e uno no
@@ -683,5 +739,8 @@ automatizzarne un'altra**: evita di costruire un presidio che mente.
 * `docs/it/dev/work-done/brief-db-codice-errore-strutturato.md` — perché il codice errore ha dovuto cambiare strada, e le due misure che lo presidiano (solo nel repository)
 * [Linee guida API](../dev/api.md) §Tassonomia errori — il contratto visto dal lato backend
 * [Automazione DB](automazione-db.md) — il framework che applica le regole strutturali
-* `.codex/AGENTS.md` §Test — l'uso quotidiano della baseline
+* [Come si scrive un test pgTAP](pgtap-come-si-scrive-un-test.md) — l'uso quotidiano della baseline
 * [Gestione dei messaggi di errore e generazione log](Messaggi-di-Errore-e-Generazione-Log.md) — il catalogo, la classe di un codice e il canale del campo, visti dal lato del dominio
+
+---
+{% include-markdown "signature-core.md" %}

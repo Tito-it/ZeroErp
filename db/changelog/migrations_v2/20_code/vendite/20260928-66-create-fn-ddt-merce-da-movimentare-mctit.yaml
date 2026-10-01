@@ -1,0 +1,219 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6/P-7 — CHE COSA muove una bolla: tre funzioni piccole, una sede per regola
+#   vendite.fn_ddt_causale_magazzino(p_ddt)      la mappatura (D-L3-g)
+#   vendite.fn_ddt_merce_da_movimentare(p_ddt)   la regola del kit e il prelievo automatico (D-L3-f)
+#   vendite.fn_ddt_muove_merce(p_ddt)            la condizione della porta (D-L3-e)
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezioni 3 e 4
+#
+# -- PERCHE' TRE, E PERCHE' QUI -------------------------------------------------------------------
+#   Le leggono in quattro: la check della merce (script.fn_check_ddt_merce),
+#   il verbo della bolla (vendite.fn_cambia_stato_ddt), il posting
+#   (magazzino.fn_posta_ddt) e la porta nel guard di transizione. Scritte
+#   quattro volte, la regola del kit o quella del prelievo automatico
+#   divergerebbero alla prima modifica (regola del 2): la check direbbe
+#   «emettibile» a una bolla che il verbo poi posta in un altro modo.
+#
+# -- ⭐ PRENDONO LA RIGA DELLA BOLLA, NON L'ID -----------------------------------------------------
+#   Il guard di transizione e' BEFORE UPDATE: nello stesso UPDATE dell'emissione
+#   possono cambiare causale e magazzino (e' l'operazione legittima per
+#   eccellenza, lo presidia vendite/test-ddt-causale-immutabile-v1 test 4). Una
+#   funzione che rileggesse la bolla per id vedrebbe i valori VECCHI. Con la
+#   riga (NEW) vede quelli nuovi. Stessa forma di script.fn_check_ddt_emittibile.
+#   Le righe, invece, si leggono per id: l'UPDATE della testata non le cambia.
+#
+# -- LA REGOLA DEL KIT (D-L3-f) -------------------------------------------------------------------
+#   Si muove cio' che e' gestito, al livello piu' alto, mai entrambi:
+#     1. l'articolo della riga e' gestito        -> si muove lui;
+#     2. altrimenti, i componenti gestiti del kit -> si muovono loro;
+#     3. altrimenti la riga non muove merce.
+#   Il caso 2 lo producono solo i compositi: i componenti esistono solo li'.
+#
+# -- IL PRELIEVO AUTOMATICO -----------------------------------------------------------------------
+#   Una voce senza prelievi e' «automatica» se il suo prelievo e' unico per
+#   costruzione: articolo senza lotto ne' seriale, magazzini senza ubicazioni.
+#   Allora il verbo lo crea da se' all'emissione (tutta la quantita'), e la
+#   check non la segnala. L'operatore scrive prelievi solo dove c'e' da
+#   scegliere.
+#
+# -- INVOKER E STABLE -----------------------------------------------------------------------------
+#   Chiamate dall'app (la check, sotto RLS) leggono cio' che l'operatore vede;
+#   chiamate dal verbo e dal posting (DEFINER) leggono come proprietario, dopo
+#   che il verbo ha gia' messo il perimetro sulla testata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260928-66-create-fn-ddt-merce-da-movimentare-mctit.yaml
+
+  - changeSet:
+      id: 20260928-66-create-fn-ddt-merce-da-movimentare
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Tre funzioni pure di vendite sulla riga della bolla: fn_ddt_causale_magazzino (con quale
+        causale di magazzino si muove, NULL = non muove), fn_ddt_merce_da_movimentare (le voci da
+        movimentare con la regola del kit, la quantita' gia' prelevata e se il prelievo e'
+        automatico), fn_ddt_muove_merce (la condizione della porta). Brief:
+        brief-db-magazzino-lotto-3-scarico-da-ddt, sezioni 3 e 4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ddt_righe_prelievi
+            - columnExists:
+                schemaName: config
+                tableName: causali_trasporto
+                columnName: causale_magazzino
+            - columnExists:
+                schemaName: vendite
+                tableName: ddt
+                columnName: magazzino_arrivo_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ddt_causale_magazzino(p_ddt vendite.ddt)
+               RETURNS config.causali_trasporto.causale_magazzino%TYPE
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: con quale causale di magazzino si muove la merce di questa
+              --   bolla — la mappatura della sua causale di trasporto (D-L3-g).
+              -- Ritorna: il codice_interno (SCARICO_VEN, TRASF_OUT, ...) oppure NULL
+              --   = la bolla non muove merce (causale mancante o non mappata).
+              DECLARE
+                  v_causale config.causali_trasporto.causale_magazzino%TYPE;
+              BEGIN
+                  SELECT ct.causale_magazzino INTO v_causale
+                    FROM config.causali_trasporto ct
+                   WHERE ct.id = p_ddt.causale_trasporto_id;
+                  RETURN v_causale;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ddt_causale_magazzino(vendite.ddt) IS
+                  'Con quale causale di magazzino si muove la merce di una bolla: '
+                  'config.causali_trasporto.causale_magazzino della sua causale di trasporto '
+                  '(D-L3-g). NULL = non muove merce. Prende la RIGA della bolla, non l''id: il '
+                  'guard BEFORE UPDATE deve vedere la causale nuova. Brief: '
+                  'brief-db-magazzino-lotto-3-scarico-da-ddt.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_ddt_merce_da_movimentare(p_ddt vendite.ddt)
+               RETURNS TABLE(
+                  ddt_riga_id             vendite.ddt_righe.id%TYPE,
+                  ddt_riga_componente_id  vendite.ddt_righe_componenti.id%TYPE,
+                  riga_nr                 vendite.ddt_righe.riga_nr%TYPE,
+                  articolo_id             catalogo.articoli.id%TYPE,
+                  qta                     vendite.ddt_righe.quantita%TYPE,
+                  prelevata               vendite.ddt_righe_prelievi.qta%TYPE,
+                  automatico              boolean)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              #variable_conflict use_column
+              -- Scopo: le VOCI di una bolla che muovono merce, con la regola del kit
+              --   (D-L3-f) in una sede sola: la riga se il suo articolo e' gestito,
+              --   altrimenti i componenti gestiti del kit, mai entrambi. Per ogni voce
+              --   la quantita' da muovere (UoM base), quella gia' coperta dai prelievi
+              --   e se il prelievo e' AUTOMATICO (nessuna scelta da fare: niente
+              --   lotto, niente seriale, magazzini senza ubicazioni).
+              -- Consumatori: script.fn_check_ddt_merce, vendite.fn_ddt_muove_merce,
+              --   vendite.fn_cambia_stato_ddt (crea i prelievi automatici).
+              -- ⚠️ automatico e' boolean e non %TYPE: e' calcolato, non ha colonna.
+              DECLARE
+                  v_ubicazioni boolean;
+              BEGIN
+                  -- Basta un magazzino con ubicazioni (partenza, o arrivo della bolla
+                  -- di trasferimento) perche' il prelievo abbia una scelta da fare.
+                  v_ubicazioni :=
+                         COALESCE((SELECT m.usa_ubicazioni FROM magazzino.magazzini m
+                                    WHERE m.id = p_ddt.magazzino_id), false)
+                      OR COALESCE((SELECT m.usa_ubicazioni FROM magazzino.magazzini m
+                                    WHERE m.id = p_ddt.magazzino_arrivo_id), false);
+
+                  RETURN QUERY
+                  WITH voci AS (
+                      -- 1. la riga, se il suo articolo e' gestito
+                      SELECT dr.id AS v_riga, NULL::bigint AS v_comp, dr.riga_nr AS v_nr,
+                             dr.articolo_id AS v_art, dr.quantita AS v_qta
+                        FROM vendite.ddt_righe dr
+                        JOIN catalogo.articoli a ON a.id = dr.articolo_id
+                       WHERE dr.ddt_id = p_ddt.id
+                         AND dr.attivo
+                         AND a.gestito_a_magazzino
+                      UNION ALL
+                      -- 2. altrimenti i componenti gestiti del kit
+                      SELECT dr.id, drc.id, dr.riga_nr, drc.componente_id, drc.quantita
+                        FROM vendite.ddt_righe dr
+                        JOIN catalogo.articoli a  ON a.id = dr.articolo_id
+                        JOIN vendite.ddt_righe_componenti drc ON drc.riga_ddt_id = dr.id
+                        JOIN catalogo.articoli c  ON c.id = drc.componente_id
+                       WHERE dr.ddt_id = p_ddt.id
+                         AND dr.attivo
+                         AND drc.attivo
+                         AND NOT a.gestito_a_magazzino
+                         AND c.gestito_a_magazzino
+                  )
+                  SELECT v.v_riga, v.v_comp, v.v_nr, v.v_art, v.v_qta,
+                         COALESCE((SELECT sum(p.qta)
+                                     FROM vendite.ddt_righe_prelievi p
+                                    WHERE p.ddt_riga_id = v.v_riga
+                                      AND p.ddt_riga_componente_id IS NOT DISTINCT FROM v.v_comp), 0),
+                         NOT (ar.requires_lotto OR ar.requires_serial OR v_ubicazioni)
+                    FROM voci v
+                    JOIN catalogo.articoli ar ON ar.id = v.v_art
+                   ORDER BY v.v_nr, v.v_riga, v.v_comp NULLS FIRST;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ddt_merce_da_movimentare(vendite.ddt) IS
+                  'Le voci di una bolla che muovono merce, con la regola del kit (D-L3-f) in '
+                  'una sede sola: la riga attiva se il suo articolo e'' gestito a magazzino, '
+                  'altrimenti i componenti attivi e gestiti del suo kit — mai entrambi. Per '
+                  'voce: la quantita'' da muovere (UoM base), quella gia'' coperta dai prelievi, '
+                  'e automatico = il prelievo e'' unico per costruzione (articolo senza lotto '
+                  'ne'' seriale, magazzini della bolla senza ubicazioni), quindi lo crea il verbo '
+                  'e la check non lo chiede. Ordine: numero di riga, poi il componente. Prende '
+                  'la RIGA della bolla (valori nuovi nel guard BEFORE UPDATE). Consumatori: '
+                  'script.fn_check_ddt_merce, vendite.fn_ddt_muove_merce, '
+                  'vendite.fn_cambia_stato_ddt. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_ddt_muove_merce(p_ddt vendite.ddt)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: la bolla muove merce? La causale di trasporto e' mappata
+              --   (D-L3-g) E almeno una voce e' gestita (D-L3-f). E' la condizione
+              --   della porta del registro (D-L3-e, affinata da Tid il 28-09): solo
+              --   una bolla che muove merce deve passare dal verbo.
+              BEGIN
+                  RETURN vendite.fn_ddt_causale_magazzino(p_ddt) IS NOT NULL
+                     AND EXISTS (SELECT 1 FROM vendite.fn_ddt_merce_da_movimentare(p_ddt));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ddt_muove_merce(vendite.ddt) IS
+                  'La bolla muove merce: la sua causale di trasporto e'' mappata su una causale '
+                  'di magazzino (fn_ddt_causale_magazzino) e almeno una voce e'' gestita '
+                  '(fn_ddt_merce_da_movimentare). Condizione della porta del registro nel guard '
+                  'di transizione, della check della merce e del verbo (D-L3-e). Brief: '
+                  'brief-db-magazzino-lotto-3-scarico-da-ddt.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_ddt_muove_merce(vendite.ddt);
+              DROP FUNCTION IF EXISTS vendite.fn_ddt_merce_da_movimentare(vendite.ddt);
+              DROP FUNCTION IF EXISTS vendite.fn_ddt_causale_magazzino(vendite.ddt);

@@ -96,6 +96,13 @@ class FamiglieTests(SimpleTestCase):
         self.assertEqual((inv.ha_descrizione, rett.ha_descrizione), (True, False))
         self.assertEqual(inv.guard_riga_uniq, "uq_mag_inventari_righe_posizione")
         self.assertIsNone(rett.guard_riga_uniq)
+        # ⭐ R-1: l'INVOLUCRO della famiglia, non il corpo parametrico — la
+        # famiglia la sa gia' lui, e un valore in meno da passare e' un valore
+        # in meno da sbagliare.
+        self.assertEqual(
+            (inv.fn_capability, rett.fn_capability),
+            ("script.fn_available_actions_inventario", "script.fn_available_actions_rettifica"),
+        )
 
     # Scopo: un refuso in un identificatore si ferma all'import, non in una query.
     def test_gli_identificatori_passano_dalla_regex(self):
@@ -104,6 +111,7 @@ class FamiglieTests(SimpleTestCase):
                 codice="x", singolare="x", tabella="magazzino.inventari; DROP",
                 tabella_righe="magazzino.inventari_righe", fk_riga="inventario_id",
                 col_stato="stato_mag_inventario", fn_posta="magazzino.fn_posta_inventario",
+                fn_capability="script.fn_available_actions_inventario",
                 sorgente_codice_interno="X", lista_codice="x", lista_righe_codice="x",
                 col_qta="qta_contata", ha_piano=True, ha_descrizione=True, con_motivo=False,
                 guard_riga_uniq=None,
@@ -150,12 +158,49 @@ class DettaglioTests(_ConRepo):
         rett = svc.get_documento("rettifiche", 7)
         self.assertNotIn("piano_riepilogo", rett)
 
-    # Scopo: ⏳ R-1 — finche' la capability non c'e', il blob NON si finge.
-    def test_capabilities_non_si_fingono(self):
+    # Scopo: R-1 — il blob della capability viaggia INTATTO, e `stato_info_key`
+    #        viene da li'. ⛔ Il backend trasporta, non deduce (api.md
+    #        §Capability): se una chiave del blob venisse ricalcolata qui,
+    #        sarebbe la seconda sede della matrice del guard.
+    def test_capabilities_trasportate_intatte(self):
+        blob = {
+            "stato_codice": "CONFIRM",
+            "available_actions": [{"key": "annulla", "target_state": "CANCEL"}],
+            "can_change_state": True,
+            "can_edit_testata": False,
+            "can_edit_righe": False,
+            "can_delete": False,
+            "can_registra": False,
+            "can_registra_reason": "DOCUMENTO_SENZA_RIGHE",
+            "can_registra_reason_key": "magazzino.documenti_interni.registra_reason.senza_righe",
+            "stato_info_key": None,
+        }
+        self.repo.get_capabilities.return_value = blob
         d = svc.get_documento("inventari", 7)
-        self.assertNotIn("capabilities", d)
-        self.assertIn("stato_info_key", d)
-        self.assertIsNone(d["stato_info_key"])
+        self.assertEqual(d["capabilities"], blob)
+        self.assertEqual(self.repo.get_capabilities.call_args.args[0], FAMIGLIE["inventari"])
+
+    # Scopo: `stato_info_key` sta SOLO nel blob — fino al 2026-09-23 era
+    #        copiata anche in cima al documento, una lettura piatta con due
+    #        sedi (api.md §«Il blob sta SOTTO `capabilities`»). Il drawer la
+    #        legge da `capabilities`, e nessuna chiave del blob sale di livello.
+    def test_stato_info_key_solo_nel_blob(self):
+        self.repo.get_capabilities.return_value = {
+            "stato_codice": "POSTED",
+            "stato_info_key": "magazzino.documenti_interni.stato_info.posted",
+        }
+        d = svc.get_documento("inventari", 7)
+        self.assertEqual(
+            d["capabilities"]["stato_info_key"], "magazzino.documenti_interni.stato_info.posted",
+        )
+        self.assertNotIn("stato_info_key", d)
+
+    # Scopo: un documento fuori perimetro e' un 404 sulla TESTATA, e la
+    #        capability non si chiama nemmeno (una capability non solleva).
+    def test_404_prima_della_capability(self):
+        self.repo.get_documento.return_value = None
+        self._rifiuto(lambda: svc.get_documento("inventari", 99))
+        self.repo.get_capabilities.assert_not_called()
 
 
 class ScritturaTests(_ConRepo):
@@ -234,10 +279,12 @@ class RigheTests(_ConRepo):
         svc.crea_riga("rettifiche", 7, {"articolo_id": _ART, "qta_delta": 1, "motivo": "ROTTURA"})
         self.assertEqual(self.repo.create_riga.call_args.args[2]["motivo"], "ROTTURA")
 
+    # ⭐ R-7: codice SUO dal 2026-09-23 — la risposta resta un 404 identico,
+    #    ma dice QUALE delle due cose manca (il documento o la riga).
     def test_riga_di_un_altro_documento_404(self):
         self.repo.get_riga.return_value = None
         e = self._rifiuto(lambda: svc.aggiorna_riga("inventari", 7, 11, {"qta_contata": 1}))
-        self.assertEqual(e.code, "E_MAG_DOCUMENTO_NON_TROVATO")
+        self.assertEqual(e.code, "E_MAG_DOCUMENTO_RIGA_NON_TROVATA")
         self.repo.update_riga.assert_not_called()
         self.repo.get_riga.assert_called_with(FAMIGLIE["inventari"], 7, 11)
 

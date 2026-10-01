@@ -2,11 +2,11 @@
 
 ## 📚 Tabelle
 - [ambiti](tabelle/ambiti.md) — (rev 2026-08-21)
-- [area_model_overrides](tabelle/area_model_overrides.md) — * Gestire le **eccezioni** al mapping automatico area = schema. * Consentire che un model appartenga a un'area diversa senza spostarlo fisicamente di schema.
+- [area_model_overrides](tabelle/area_model_overrides.md)
 - [aree_funzionali](tabelle/aree_funzionali.md) — * Definire il **perimetro funzionale** su cui si applicano i livelli di accesso (TUTTO / LETTURA / BLOCCATO). * Fornire il **mapping area → schema DB** per la risoluzione automatica dei permessi in Django. * Gestire l'**ordine di visualizzazione** nell'interfaccia di configurazione profili reparto.
 - [aspetti_beni](tabelle/aspetti_beni.md) — (rev 2026-08-21)
 - [assets_ownership](tabelle/assets_ownership.md) — * Definire un **catalogo univoco e governato** delle modalità di proprietà degli asset. * Assicurare coerenza tra domini diversi (magazzino, installazioni, contratti, fatturazione, manutenzione). * Abilitare logiche avanzate, tra cui:
-- [auth_totp_device](tabelle/auth_totp_device.md) — La tabella `config.auth_totp_device` gestisce i **device TOTP** per l'autenticazione a due fattori (2FA). Relazione 1:1 con `auth_user`: ogni utente puo' avere al massimo un device TOTP configurato.
+- [auth_totp_device](tabelle/auth_totp_device.md) — (riscritta il 29-09-2026)
 - [azioni_processo](tabelle/azioni_processo.md) — * Catalogare le **azioni di processo** che richiedono abilitazione esplicita. * Raccordare il **codename Django** (`Meta.permissions` → `auth_permission`) con la gestione profili. * Segnalare le azioni **pericolose** che richiedono conferma aggiuntiva nella UI.
 - [canali_pratiche](tabelle/canali_pratiche.md) — La tabella `config.canali_pratiche` definisce i **canali di visibilita'** attraverso cui i flussi di una pratica possono essere esposti verso l'esterno. Non e' un flag booleano sulla pratica ma un **registry di interfacce** configurabile.
 - [categoria_accisa](tabelle/categoria_accisa.md) — (rev 2026-08-21)
@@ -18,6 +18,8 @@
 - [codici_postali](tabelle/codici_postali.md) — * **Elenco dei codici postali**   Per ogni comune (city/municipality), memorizza tutti i codici postali (Postal Code o ZIP Code) validi per quell’area geografica.
 - [comuni](tabelle/comuni.md) — (last review 30-12-25) * **Censimento dei comuni**   Elenco dei comuni presenti in ciascuno stato, identificati da nome e collegamento gerarchico a provincia e stato. * **Attributi specifici per stato**   La colonna `extra_country` (JSONB) permette di memorizzare dati aggiuntivi specifici per ogni paese (per l’Italia: codice catastale, codice ISTAT, fascia climatica, ecc.). * **Integrazione con lo stradario**   L’associazione tra `config.stradario_generale` (prefissi e nomi delle vie) e `config.comuni` genera la tabella `config.stradario`, che contiene l’indirizzo completo con la localizzazione geografica sul comune di appartenenza.   Utilizzata per associare i record di **`config.stradario`** al comune di appartenenza, completa il percorso di indirizzamento. * **Storicizzazione**   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.comuni`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
 - [conti_contabili](tabelle/conti_contabili.md) — * Mantenere il catalogo centralizzato dei **codici conto** con descrizioni e tipologia. * Supportare la validazione dei riferimenti contabili in altre tabelle (ad esempio `config.iva`).
+- [credenziali](tabelle/credenziali.md) — (scritta il 25-09-2026)
+- [credenziali_provenienze](tabelle/credenziali_provenienze.md) — (scritta il 25-09-2026)
 - [email_account](tabelle/email_account.md) — La tabella `config.email_account` definisce gli **account SMTP** utilizzati dal sistema per l'invio di email. Ogni unita' organizzativa (reparto) puo' avere il proprio account mittente; un account con `unita_organizzativa_id = NULL` funge da **fallback di sistema**.
 - [email_allegato](tabelle/email_allegato.md) — La tabella `config.email_allegato` traccia i **file allegati** alle email. I file sono salvati su filesystem (non in DB); la tabella contiene solo i metadati e il percorso relativo.
 - [email_log](tabelle/email_log.md) — La tabella `config.email_log` registra **ogni email che il sistema ha provato a mandare**, conservando il corpo esattamente come inviato (dopo eventuali modifiche manuali dall'outbox), lo stato di invio, il contesto e l'ambito di visibilita'.
@@ -42,6 +44,8 @@
 - [motivi_fermo](tabelle/motivi_fermo.md) — (latest review 06-07-2026) Vocabolario dei **motivi di fermo** della dashboard fatturazione (cruscotti a due lenti) con la **classe di azionabilità**: la gravità di un fermo non si deriva dallo stato grezzo del documento ma dal `motivo_fermo` che i resolver `vw_dash_fatturazione_*` già producono; la classe è una **mappatura statica** decisa dal dominio (decisione DL-6, Tid 2026-07-04), collocata qui DB-first.
 - [nature_doc_fiscale](tabelle/nature_doc_fiscale.md) — (rev 2026-08-18)
 - [nature_vendita](tabelle/nature_vendita.md) — (rev 2026-08-21)
+- [nomi_tentati](tabelle/nomi_tentati.md) — (scritta il 25-09-2026)
+- [nomi_tentati_provenienze](tabelle/nomi_tentati_provenienze.md) — (scritta il 25-09-2026)
 - [note_stili](tabelle/note_stili.md) — (latest review 15-01-26) * Fornire un **catalogo centralizzato** degli stili che possono essere applicati alle note (formattazione e/o semantica). * Separare la **semantica dello stile** (es. AVVISO, AVVERTENZA, INFO) dalla renderizzazione effettiva lato UI/templating. * Supportare la definizione di **regole visuali e di priorità** per note e messaggi (es. stile per warning, info, errori, note di servizio).
 - [parameter_fk_surrogate](tabelle/parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [parameter_overrides](tabelle/parameter_overrides.md)
@@ -53,7 +57,9 @@
 - [profili_accesso_bindings](tabelle/profili_accesso_bindings.md) — (latest revision 18-04-2026)
 - [province](tabelle/province.md) — * **Elenco delle province**   Contiene tutte le province di uno stato (es. in Italia: RM, MI, FI), con sigla e nome descrittivo.
 - [qualifiche](tabelle/qualifiche.md) — La tabella **`config.qualifiche`** definisce il catalogo delle mansioni/posizioni assegnabili alle risorse (es. Amministratore, Dipendente, Consulente). Serve per distinguere la funzione operativa della persona all'interno dell'organizzazione.
+- [regimi_fiscali](tabelle/regimi_fiscali.md) — (rev 2026-10-01 — nata con `20261001-01`, seminata da `20261001-15`)
 - [regioni](tabelle/regioni.md) — * **Elenco delle regioni**   Comprende tutte le regioni appartenenti a uno stato (es. in Italia: `Lazio`, `Campania`, `Sicilia`), con collegamento al rispettivo `stato_id` in **`config.stati`**.
+- [registri_giornale](tabelle/registri_giornale.md) — (rev 2026-09-19 — nata con `20260919-08`, seminata da `20260919-09`)
 - [scope_policy](tabelle/scope_policy.md) — (latest revision 18-04-2026)
 - [sistema_codici](tabelle/sistema_codici.md) — (latest review 18-01-26) * **Definizione del formato codice**   Consente di specificare per ogni tipo di codice (`codice_interno`) un **prefisso**, un **separatore** e la **lunghezza numerica** totale, rendendo parametrica la struttura dei codici generati. * **Configurazione del meccanismo di sequenza**   Tramite il flag `usa_sequenza` si abilita o meno l’utilizzo di una progressione automatica basata su sequenza di database, a garanzia di unicità e ordinarietà. * **Aggancio alla tabella target**   Le colonne `schema_tabella`, `nome_tabella` e `nome_colonna` definiscono la destinazione del codice e permettono di derivare automaticamente il nome sequenza standard. * **Automazione trigger**   Le righe con `usa_sequenza = TRUE` attivano automaticamente la creazione di un trigger sulla tabella target che genera il codice quando il campo risulta nullo (o vuoto/0 secondo il tipo).
 - [sorgenti](tabelle/sorgenti.md) — (latest update 24-01-2026) * Fornire un **catalogo univoco** delle sorgenti applicative utilizzate in:
@@ -77,6 +83,7 @@
 - [storico_set_storicizza](tabelle/storico_set_storicizza.md) — `config.storico_set_storicizza` è la **tabella di configurazione** che elenca le tabelle per le quali lo **storico dei dati** deve essere abilitato **in modo predefinito**. Le tabelle presenti qui hanno la colonna `storicizza` con **default TRUE**: ciò garantisce che **ogni nuova riga** venga automaticamente marcata per la storicizzazione (snapshot su UPDATE/DELETE e protezione dal reset a FALSE a cura dei trigger).
 - [stradario](tabelle/stradario.md) — (latest review 21-01-2026) * **Mappa comunale delle vie**   Contiene l’elenco delle strade e vie di ogni comune, con riferimento al prefisso e al nome forniti da `config.stradario_generale`. * **Geolocalizzazione**   Il campo `geoloc` (geometry Point, SRID 4326) consente di associare ogni via a coordinate geografiche per mappe e ricerche spaziali. * **Associazione CAP**   Collega ogni via a un codice postale obbligatorio (`codice_postale_id`), gestito nella tabella `config.codici_postali`. * **Informazioni estese**   Il campo `meta` (JSONB) permette di memorizzare dati aggiuntivi, come eventuali frazioni, indicazioni o note specifiche. * **Storicizzazione**   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.stradario`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.    ---
 - [stradario_generale](tabelle/stradario_generale.md) — (latest review 30-12-25)  * **Composizione del toponimo**   Unisce il prefisso toponomastico (es. `VIA`, `PIAZZA`) al nome specifico (es. `Garibaldi`, `Roma`) per formare la descrizione completa. * **Indipendenza geografica**   Mantiene un catalogo centralizzato dei nomi senza riferimenti a comuni o aree, favorendo il riuso e la coerenza. * **Integrazione con stradario locale**   Collegata a **`config.stradario`**, che associa ogni record di **`stradario_generale`** al comune di appartenenza, consentendo la geolocalizzazione e l’uso nei processi di indirizzamento.
+- [tabelle_gestibili](tabelle/tabelle_gestibili.md) — (scritta il 25-09-2026)
 - [termini_pagamento](tabelle/termini_pagamento.md) — (latest review 02-08-26)
 - [tipi_allegato](tabelle/tipi_allegato.md) — La tabella `config.tipi_allegato` definisce la **tipologia** degli allegati associabili a pratiche e flussi. Consente di classificare i file allegati per natura (documento, immagine, contratto, ecc.).
 - [tipi_attivita](tabelle/tipi_attivita.md) — (latest review 29-03-2026) `config.tipi_attivita` definisce il catalogo dei **tipi di attivita`** utilizzati dal sistema come classificazione configurabile. La tabella fornisce un vocabolario stabile per distinguere categorie operative omogenee nei moduli che richiedono una tipizzazione leggera basata su codice.
@@ -126,9 +133,13 @@
 - [fn_get_aliquota_iva](funzioni/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
 - [fn_get_natura_doc_fiscale_id](funzioni/fn_get_natura_doc_fiscale_id.md) — (rev 2026-08-18)
 - [fn_get_stati_doc_fiscale](funzioni/fn_get_stati_doc_fiscale.md) — (latest review 24-01-2026) La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
+- [fn_pannello_colonne_scrivibili](funzioni/fn_pannello_colonne_scrivibili.md) — (scritta il 27-09-2026)
+- [fn_pannello_scrivi](funzioni/fn_pannello_scrivi.md) — (scritta il 25-09-2026)
 - [fn_resolve_email_account](funzioni/fn_resolve_email_account.md) — Risolve l'account SMTP da utilizzare per l'invio di una email, dato il reparto (unita' organizzativa) del contesto. Implementa una catena di fallback a 2 livelli per garantire che ci sia sempre un account disponibile.
 - [fn_resolve_email_template](funzioni/fn_resolve_email_template.md) — Risolve il template email da utilizzare per un dato codice, reparto, tipo prestazione e lingua. Implementa una catena di fallback a 5 livelli che permette di specializzare i testi per reparto e tipo pratica mantenendo sempre un default di sistema.
 - [trgfn_comuni_protect_update](funzioni/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
+- [trgfn_credenziali_guard_ultimo_super_admin](funzioni/trgfn_credenziali_guard_ultimo_super_admin.md) — (scritta il 25-09-2026)
+- [trgfn_email_allegato_guard_solo_bozza](funzioni/trgfn_email_allegato_guard_solo_bozza.md)
 - [trgfn_iva_guard_conti_iva](funzioni/trgfn_iva_guard_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_iva_stati_normalize](funzioni/trgfn_iva_stati_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.iva_stati` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_parameter_overrides_fk_surrogate_dispatch](funzioni/trgfn_parameter_overrides_fk_surrogate_dispatch.md) — (latest review 02-05-2026)
@@ -150,4 +161,8 @@
 ## 🔍 Views
 - [vw_codici_errore](views/vw_codici_errore.md) — (rev 2026-08-21)
 - [vw_codici_errore_identita](views/vw_codici_errore_identita.md) — (rev 2026-08-21)
+- [vw_codici_postali_lista](views/vw_codici_postali_lista.md)
+- [vw_comuni_lista](views/vw_comuni_lista.md)
 - [vw_email_in_coda](views/vw_email_in_coda.md) — (latest review 11-09-2026)
+- [vw_province_lista](views/vw_province_lista.md)
+- [vw_regioni_lista](views/vw_regioni_lista.md)

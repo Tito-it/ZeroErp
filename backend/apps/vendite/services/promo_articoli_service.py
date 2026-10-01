@@ -21,6 +21,7 @@ from typing import Any
 from django.db import IntegrityError
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -164,7 +165,7 @@ class PromoArticoliService:
         order_by: str = "valido_dal",
         order_dir: str = "desc",
     ) -> tuple[list[dict[str, Any]], int]:
-        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI)
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI, order_dir=order_dir)
         # tipo_variazione filter whitelist (evita SQL con valori arbitrari).
         if tipo_variazione is not None:
             ErrorManager.require(
@@ -193,20 +194,16 @@ class PromoArticoliService:
     # Scopo: Dettaglio singola promo; solleva NOT_FOUND se assente.
     #        Le capability (stato_temporale, can_update, min_valido_*,
     #        non_editable_fields) arrivano da script.fn_capability_promo_articolo
-    #        e vengono spalmate nel detail per consumo diretto del frontend
-    #        (Fase 1.B3 refactor frontend vendite).
+    #        e viaggiano intatte SOTTO `capabilities` (api.md §«Il blob sta
+    #        SOTTO `capabilities`»).
     def get_promo(self, record_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(record_id, field="record_id")
-        result = self._repo.get_promo(record_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Promo non trovata.",
-            context={"record_id": record_id},
+        result = testata_o_not_found(
+            self._repo.get_promo, record_id,
+            code=E_VENDITE_NOT_FOUND, message="Promo non trovata.",
+            id_name="record_id", function_name="promo_articoli_service.get_promo",
         )
-        assert result is not None
-        capabilities = self._repo.get_capabilities(record_id)
-        result.update(capabilities)
+        result["capabilities"] = self._repo.get_capabilities(record_id)
         return result
 
     # =================================================================
@@ -320,14 +317,9 @@ class PromoArticoliService:
             "valido_dal": self._v.require_date(payload, "valido_dal", message=_MESSAGE),
             "valido_al": self._v.require_date(payload, "valido_al", message=_MESSAGE),
         }
-        # Coerenza range: valido_al >= valido_dal (DB ha il check; anticipiamo UX).
-        ErrorManager.require(
-            data["valido_al"] >= data["valido_dal"],
-            code=E_VENDITE_VALIDATION,
-            message=_MESSAGE,
-            detail="valido_al deve essere >= valido_dal.",
-            context={"valido_dal": data["valido_dal"], "valido_al": data["valido_al"]},
-        )
+        # L'ordine delle date (valido_al non precede valido_dal) lo giudica il
+        # DB: guard comune `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL
+        # col campo `valido_al` (dal 2026-09-23). Non si ripete qui.
 
         attivo = self._v.optional_bool(payload, "attivo")
         if attivo is not None:
@@ -366,14 +358,9 @@ class PromoArticoliService:
             data["valido_al"] = self._v.require_date(
                 payload, "valido_al", message=_MESSAGE
             )
-        if "valido_dal" in data and "valido_al" in data:
-            ErrorManager.require(
-                data["valido_al"] >= data["valido_dal"],
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE,
-                detail="valido_al deve essere >= valido_dal.",
-                context={"valido_dal": data["valido_dal"], "valido_al": data["valido_al"]},
-            )
+        # L'ordine delle date (valido_al non precede valido_dal) lo giudica il
+        # DB: guard comune `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL
+        # col campo `valido_al` (dal 2026-09-23). Non si ripete qui.
 
         if "attivo" in payload:
             value = self._v.optional_bool(payload, "attivo")
@@ -463,10 +450,10 @@ class PromoArticoliService:
 
     # Scopo: in create rifiuta date retroattive. La promo deve partire da
     #        domani in poi (preavviso operativo di 1 gg). Il check su
-    #        valido_al e' ridondante: range valido_al >= valido_dal (gia'
-    #        applicato in _build_create_data) + valido_dal > today implica
-    #        valido_al > today per costruzione. Coerente con la decisione
-    #        DB nel trigger trgfn_promo_articoli_guard_data_driven.
+    #        valido_al e' ridondante: valido_al >= valido_dal (guard comune
+    #        delle date a DB) + valido_dal > today implica valido_al > today
+    #        per costruzione. Coerente con la decisione DB nel trigger
+    #        trgfn_promo_articoli_guard_data_driven.
     def _assert_create_non_retroattiva(self, data: dict[str, Any]) -> None:
         today = date.today()
         ErrorManager.require(

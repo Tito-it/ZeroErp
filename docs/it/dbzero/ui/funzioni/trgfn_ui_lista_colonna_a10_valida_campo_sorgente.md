@@ -13,14 +13,17 @@ CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: verifica che campo_sorgente esista come attributo della view
--- referenziata da lista_definizione.vista_sql, prima di permettere
--- INSERT/UPDATE su lista_colonna.
+-- referenziata da lista_definizione.vista_sql NELLO SCHEMA
+-- lista_definizione.schema_dati, prima di permettere INSERT/UPDATE su
+-- lista_colonna.
 -- Skip per:
 --   - tipo_colonna='azione'           (nessun campo sorgente per disegno)
 --   - campo_sorgente IS NULL o ''     (colonna calcolata FE, es. sosp_riatt)
 --   - lista senza vista_sql definita
+-- rev 2026-09-27: la vista si cerca nel suo schema, non per solo nome.
 DECLARE
-  v_vista_sql        VARCHAR(120);
+  v_vista_sql        ui.lista_definizione.vista_sql%TYPE;
+  v_schema_dati      ui.lista_definizione.schema_dati%TYPE;
   v_colonna_esiste   BOOLEAN;
 BEGIN
   -- Le colonne di tipo 'azione' non hanno campo_sorgente
@@ -34,9 +37,9 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- Recupera vista_sql dalla lista padre
-  SELECT ld.vista_sql
-    INTO v_vista_sql
+  -- Recupera vista_sql e schema dalla lista padre
+  SELECT ld.vista_sql, ld.schema_dati
+    INTO v_vista_sql, v_schema_dati
     FROM ui.lista_definizione ld
    WHERE ld.id = NEW.lista_id;
 
@@ -45,13 +48,14 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- Verifica esistenza della colonna nella relazione
+  -- Verifica esistenza della colonna nella relazione del suo schema
   SELECT EXISTS (
     SELECT 1
       FROM pg_catalog.pg_class c
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
       JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
-     WHERE c.relname = v_vista_sql
+     WHERE n.nspname = v_schema_dati
+       AND c.relname = v_vista_sql
        AND c.relkind IN ('v', 'm', 'r')
        AND a.attname = NEW.campo_sorgente
        AND a.attnum > 0
@@ -64,13 +68,14 @@ BEGIN
       'ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente',
       'E_UI_CAMPO_SORGENTE_NON_TROVATO',
       jsonb_build_object(
-        'detail', format('campo_sorgente = ''%s'' non trovato nella view ''%s''', NEW.campo_sorgente, v_vista_sql),
+        'detail', format('campo_sorgente = ''%s'' non trovato nella view ''%s.%s''',
+                         NEW.campo_sorgente, v_schema_dati, v_vista_sql),
         'lista_id', NEW.lista_id,
         'codice', NEW.codice
       ),
       NULL,
       NEW.campo_sorgente,
-      v_vista_sql
+      v_schema_dati || '.' || v_vista_sql
     );
   END IF;
 

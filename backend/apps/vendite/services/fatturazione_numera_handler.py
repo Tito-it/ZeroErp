@@ -157,7 +157,7 @@ def fatturazione_numera_handler(
                     lotto["id"], lotto["codice"], esito.get("motivo_stop"),
                     (errore or {}).get("code"),
                 )
-        except Exception as exc:  # noqa: BLE001 — resilienza per-lotto voluta
+        except Exception as exc:  # resilienza per-lotto voluta
             code = getattr(exc, "code", type(exc).__name__)
             falliti_dett.append(
                 {"lotto_id": lotto["id"], "codice": lotto["codice"], "code": code},

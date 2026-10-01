@@ -46,6 +46,7 @@ service `get_fattura_dettaglio` (`apps.vendite.services.vendite_service`).
       "tipo_doc_fiscale_codice": "FATTURA", "tipo_doc_fiscale_descrizione": "Fattura",
       "stato_codice_interno": "DEFINITIVA", "stato_descrizione": "Definitiva",
       "emittente_denominazione": "…", "emittente_piva": "…", "emittente_sede": "…",
+      "emittente_fiscale_pk": 3,
       "ragione_sociale_completa": "Rossi Mario SRL",
       "id_fiscale_univoco_cf_piva": "…", "cliente_indirizzo": "…", "ba_codice": "BA-000123",
       "utility_codice": "GAS", "pagamento_modalita_codice": "BON",
@@ -57,11 +58,13 @@ service `get_fattura_dettaglio` (`apps.vendite.services.vendite_service`).
     },
     "righe": [
       {
-        "id": 41, "tipo_riga": "NORMALE", "livello": 0, "riga_nr": 1,
+        "riga_key": "R:41", "fatture_righe_id": 41, "tipo_riga": "NORMALE",
+        "riga_nr": 1, "ordinamento": 1,
         "articolo_codice": "ART-001", "descrizione": "Canone mensile",
         "uom_codice": "kWh", "quantita": "10.00", "prezzo_unitario": "100.00",
         "sconto_percentuale": null, "iva_codice": "22", "iva_aliquota": "22.00",
-        "iva_natura": null, "importo_riga": "1000.00"
+        "iva_natura": null, "importo_riga": "1000.00",
+        "componenti": null, "componenti_numero": 0
       }
     ],
     "riepilogo_iva": [
@@ -72,6 +75,7 @@ service `get_fattura_dettaglio` (`apps.vendite.services.vendite_service`).
     "scadenze": [
       { "numero_rata": 1, "data_scadenza": "2026-08-31", "importo": "1220.00" }
     ],
+    "errore_vivo": null,
     "contatori": { "note": 3 }
   },
   "meta": { "request_id": "…" }
@@ -150,10 +154,21 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
 - Nessun ricalcolo: il riepilogo IVA arriva da `vendite.fatture_riepiloghi_iva`,
   tabella **reale** già aggregata e arrotondata dalla pipeline (a differenza
   degli ordini, che lo derivano da una vista on-the-fly).
-- Le righe arrivano da `vw_fattura_righe_esposte` e **non** dalla tabella: la
-  vista è la rappresentazione unica del documento e risolve i **kit** (una riga
-  `KIT_PADRE` col totale, sotto i soli componenti con `kit_esposto_in_fattura`).
-  ⚠️ `id` è **NULL** sulle righe `KIT_PADRE`: non usarlo come chiave.
+- Le righe arrivano da `vw_fattura_righe_lista` (dal 2026-09-28, lotto C del
+  brief-db-liste-righe-documento), la **stessa vista** della lista a video
+  (`GET fatture/<id>/righe/lista/`, [api_righe_documento.md](api_righe_documento.md)):
+  il primo livello di `vw_fattura_righe_esposte`, la rappresentazione unica del
+  documento che risolve i **kit** — una riga `KIT_PADRE` col totale, con i soli
+  componenti esposti **dentro** di lei (`componenti`, jsonb). Ordine del
+  documento: `ordinamento, riga_nr, riga_key`.
+  ⚠️ La chiave è `riga_key`: `fatture_righe_id` è **NULL** sul padre di un kit,
+  che in tabella non esiste. La chiave vera di un componente è il suo
+  `fatture_righe_id` dentro `componenti`.
+  ⭐ **Dal 2026-09-30 è anche la forma del PDF**: il contesto di stampa della
+  fattura è alla forma 2 e legge la stessa vista (`FattureRepository.list_righe`),
+  la lettura piatta `VenditeRepository.list_fattura_righe` è ritirata. Stampa
+  solo una versione del template che dichiara la forma 2
+  (brief-db-documenti-versione-contesto-template §11).
 - Nessun verbo di modifica su questo path: la fattura è prodotta dalla pipeline
   e oltre la soglia di congelamento le righe sono congelate a DB
   (`trgfn_fattura_satellite_guard_congelamento`, `E_FATTURA_RIGA_CONGELATA`).
@@ -163,6 +178,29 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
   funzione sua — `D34` l'ha riassorbita nella generica dei satelliti, che
   riceve il codice errore come secondo argomento del trigger: stesso rifiuto,
   stesso messaggio, stesso bypass.
+
+### `errore_vivo` — il banner d'errore, con una fonte sua *(dal 2026-09-27)*
+
+La riga ERROR **più recente e non ritirata** del giornale del documento (la
+stessa forma di una riga della Storia: `cosa`, `etichetta_key`, `quando`, …), o
+`null`. Alimenta il banner in testa al `FatturaDrawer`: chi apre una fattura in
+errore la apre per quello.
+
+⭐ **Perché sta qui e non nella Storia.** Fino al 2026-09-27 il banner prendeva
+«il primo ERROR della pagina della Storia», che era ordinata per gravità. Da
+quel giorno la Storia è la lista a catalogo `vendite.giornale`, ordinata dal
+preset (`quando desc`) o dall'operatore: il banner avrebbe taciuto appena
+l'errore fosse scivolato fuori dalla pagina — un documento in errore che a
+video sembra sano, senza nessun errore.
+
+- Lettore: `VenditeRepository.get_giornale_errore_vivo` — lo **stesso corpo**
+  `_list_giornale` della Storia (una pagina da una riga, `gravita = 'ERROR'`
+  esatto, ritirate escluse), quindi stessa decodifica e stessa regola sulle
+  ritirate. ⚠️ La gravità `NULL` resta fuori: è il segnale di un vincolo
+  allargato, non un errore del documento.
+- ⛔ **Non è una capability** (non dice cosa si può *fare*, dice com'è il
+  documento): per questo non sta sotto `capabilities` ma accanto agli altri
+  satelliti, **dopo** il cancello della testata — la vista è `security_invoker`.
 
 ### `contatori` — i badge senza un secondo round-trip
 
@@ -248,6 +286,12 @@ Due punti di merito:
 > **nessun fallback** per decisione (piano BE/FE §9 — dati di test, si
 > rigenerano). ⚠️ `billing_account_id`/`ba_codice` nello snapshot cliente sono
 > il BA **padre** (D-P), non il conto del consumatore nelle gerarchie.
+>
+> ⭐ Eccezione voluta (2026-09-27): `emittente_fiscale_pk` è la PK
+> dell'emittente **viva**, dalla colonna `emittente_soggetto_ruolo_id` (NOT
+> NULL) via `emittenti_fiscali`, non dallo snapshot: serve al cancello di
+> perimetro delle liste del drawer (i documenti generati), e in bozza lo
+> snapshot può mancare. `emittente_fiscale_id` resta quello dello snapshot.
 
 ---
 

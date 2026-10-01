@@ -60,6 +60,10 @@ databaseChangeLog:
               - column: { name: user_insert,  type: STRING }
               - column: { name: data_update,  type: STRING }
               - column: { name: user_update,  type: STRING }
+              # 2026-09-29 (brief-db-secondo-fattore-totp, D-T1): colonna nuova del
+              # CSV, tipizzata qui come nel mirror 20260806-18 che carica lo stesso
+              # file. Nasce in 00_schema/config/20260929-06, prima di 80_data.
+              - column: { name: richiede_secondo_fattore, type: BOOLEAN }
 
         # 2) Profili_accesso_aree (6 righe: 2 per ogni profilo portale).
         - loadUpdateData:

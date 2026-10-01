@@ -4,10 +4,11 @@
 // e consente all'operatore di impostare il valore. L'utente admin puo' scegliere
 // se applicare l'override a livello personale o a livello emittente (default per
 // tutti gli utenti dell'azienda).
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { PARAMETER_SCOPE } from '../../core/composables/useParameterSettings'
 import { useImpostazioniStore } from '../stores/impostazioni'
 import { useAuthStore } from '../../stores/auth'
@@ -38,6 +39,16 @@ const scope = ref(PARAMETER_SCOPE.USER)
 // Id categoria cliente selezionata quando scope=CATEGORIA_CLIENTE (Phase B
 // 2026-05-19). Resettato ad ogni cambio scope. Obbligatorio lato BE.
 const categoriaClienteId = ref(null)
+
+// Modifiche non salvate: il form e' spezzato su tre ref, si raccoglie cio'
+// che il Salva manda.
+const formDaSalvare = computed(() => ({
+  scope: scope.value,
+  categoria_cliente_id: categoriaClienteId.value,
+  valore: overrideValue.value,
+}))
+const { fissa, modificato, chiudiConConferma } =
+  useDrawerFormPreserve(formDaSalvare, { visibile: () => props.visible })
 
 const isEmittenteScope = computed(() => scope.value === PARAMETER_SCOPE.EMITTENTE)
 const isCategoriaScope = computed(() => scope.value === PARAMETER_SCOPE.CATEGORIA_CLIENTE)
@@ -73,11 +84,14 @@ function valueForCurrentScope() {
   return existing ?? p.resolved_value ?? ''
 }
 
-watch(() => props.visible, (v) => {
+watch(() => props.visible, async (v) => {
   if (!v || !props.parameter) return
   scope.value = auth.isSuperAdmin ? PARAMETER_SCOPE.EMITTENTE : PARAMETER_SCOPE.USER
   categoriaClienteId.value = null
   overrideValue.value = valueForCurrentScope()
+  // Fotografia DOPO il watch su `scope`, che riscrive `overrideValue`.
+  await nextTick()
+  fissa()
 })
 
 watch(scope, () => {
@@ -123,15 +137,19 @@ function close() {
   emit('update:visible', false)
   emit('cancelled')
 }
+
+const chiudi = () => chiudiConConferma(close)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.SIMPLE }" :dismissable="true">
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('config.impostazioni.override_title')"
+        :modificato="modificato"
       />
     </template>
 
@@ -178,14 +196,14 @@ function close() {
         </div>
       </div>
 
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 </template>
 
 <style scoped>
 .parameter-description {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-size: 0.85rem;
   padding: 0.25rem 0;
 }

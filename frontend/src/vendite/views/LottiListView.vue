@@ -45,12 +45,13 @@ import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { extractApiError } from '../../core/utils/apiError'
-import { MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
 import { menuItemClass } from '../../core/utils/rowActions'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { exportLotti, listLotti, listLottiMensile } from '../api/lotti'
 import { paramsPerimetro, useLottiStore } from '../stores/lotti'
 import { paramsOrdinamento } from '../../core/utils/listParams'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -65,6 +66,17 @@ const store = useLottiStore()
 // Filtro stato lotto (select statico sui valori di dominio; una nuova voce si
 // mostra comunque via fail-visible).
 const statoFilter = ref(null)
+// ⛔ IL VERSO STORE → WIDGET, che fino al 2026-09-23 mancava. Questo `ref` e'
+//    la sede condivisa dei DUE comandi (i pulsanti di stato e la tendina) e la
+//    spinta verso lo store la fa `syncFiltri()`; ma quando il filtro lo cambia
+//    QUALCUN ALTRO — il «Pulisci filtri» del drawer compatto — nessuno
+//    riportava indietro il valore: la lista tornava a tutti gli stati e la
+//    tendina continuava a mostrare quello di prima. Nessun errore.
+// ⚠️ Qui non si usa `bindSelect` e non e' una dimenticanza: il suo `onChange`
+//    scriverebbe subito nello store, e `syncFiltri()` decide il reset a pagina 1
+//    proprio CONFRONTANDO ref e store — con un binder i due sarebbero sempre
+//    uguali e l'offset non si azzererebbe mai.
+watch(() => store.filters.stato_lotto, (v) => { statoFilter.value = v ?? null })
 
 // Navigazione anno/mese — stesso telaio della Lente Competenza (BB condiviso
 // useDashMesiNav + DashMesiSidebar): anno in alto, 12 mesi sotto. C'è SEMPRE un
@@ -656,9 +668,8 @@ async function confermaNumeraPerimetro(dataDocumento) {
 //    di Menu disabilitata mostra comunque il suo testo, mentre un Button
 //    disabilitato non riceve nemmeno gli eventi del mouse (vedi il wrapper del
 //    tooltip nel template).
-// Icona dei due verbi dell'atto fiscale: una sola, usata dai pulsanti e dalle
-// voci del kebab.
-const VERBO_NUMERA_ICONA = 'pi pi-lock'
+// Icona dei due verbi dell'atto fiscale: una sola, `MANAGE_ICONS.NUMERA`, usata
+// dai pulsanti e dalle voci del kebab.
 
 const verbiMenuRef = ref(null)
 function toggleVerbiMenu(event) {
@@ -700,7 +711,7 @@ const verbiNumerazione = computed(() => {
 
 const verbiMenuItems = computed(() => verbiNumerazione.value.map((v) => ({
   label: v.label,
-  icon: VERBO_NUMERA_ICONA,
+  icon: MANAGE_ICONS.NUMERA,
   // Classe via helper centralizzato: la palette delle voci kebab vive in
   // `rowActions.js`, non in una stringa scritta qui.
   class: menuItemClass(undefined, 'app-menu-item-action'),
@@ -732,7 +743,7 @@ const azioniPagina = computed(() =>
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">{{ t('vendite.lotti.page_title') }}</h2>
         <small class="app-text-muted">{{ t('vendite.lotti.page_description') }}</small>
       </div>
@@ -761,7 +772,7 @@ const azioniPagina = computed(() =>
             class="app-dash-mese-lotti"
             v-tooltip.right="t('vendite.lotti.mese_lotti', { n: mesi[idx].n_lotti })"
           >
-            <i class="pi pi-server" /> {{ mesi[idx].n_lotti }}
+            <i :class="MANAGE_ICONS.LOTTO" /> {{ mesi[idx].n_lotti }}
           </span>
         </template>
       </DashMesiSidebar>
@@ -776,7 +787,7 @@ const azioniPagina = computed(() =>
         >
           <template #badge>
             <span v-if="mesi[meseIdx].n_lotti > 0" class="app-dash-mese-lotti">
-              <i class="pi pi-server" /> {{ mesi[meseIdx].n_lotti }}
+              <i :class="MANAGE_ICONS.LOTTO" /> {{ mesi[meseIdx].n_lotti }}
             </span>
           </template>
         </DashMeseStepper>
@@ -787,7 +798,7 @@ const azioniPagina = computed(() =>
         <FatturazioneEsitiPanel ref="esitiRef" :competenza-mese="competenzaParam" />
 
         <div class="app-page-toolbar">
-          <div class="app-page-filters" :inert="perimetroBloccato">
+          <FiltriLista :store="store" :inert="perimetroBloccato">
             <!-- Etichetta A SINISTRA della tendina, non sopra: due righe per un
                  filtro sono altezza tolta ai lotti, che sono il lavoro.
                  ⭐ `app-dash-filter-toggle` e' la classe che i tre cruscotti
@@ -842,7 +853,7 @@ const azioniPagina = computed(() =>
               :count="annullatiNascosti"
               @change="onAnnullatiChange"
             />
-          </div>
+          </FiltriLista>
 
           <!-- I DUE VERBI DELL'ATTO FISCALE. ⚠️ `severity="warn"` su entrambi:
                è la convenzione che distingue la numerazione — irreversibile —
@@ -867,7 +878,7 @@ const azioniPagina = computed(() =>
               >
                 <Button
                   :label="v.label"
-                  :icon="VERBO_NUMERA_ICONA"
+                  :icon="MANAGE_ICONS.NUMERA"
                   size="small"
                   severity="warn"
                   :outlined="v.key === 'numera-mese'"
@@ -945,7 +956,6 @@ const azioniPagina = computed(() =>
               <!-- Personalizza colonne + esporta anche qui: è una lista come le
                    altre, e l'export porta con sé il filtro della scheda. -->
               <div class="app-page-toolbar">
-                <span class="app-page-filters" />
                 <PageActionsBar :actions="azioniRecuperi.azioniLista.value">
                   <template #suffix>
                     <ListaConfigStatusTag :dirty="azioniRecuperi.dirty.value" />
@@ -966,7 +976,7 @@ const azioniPagina = computed(() =>
                 :selezione="selezioneLotti.perLista.value"
                 :in-giro="lottiInGiro.inGiro"
                 empty-key="vendite.lotti.nessun_recupero_lista"
-                empty-icon="pi pi-history"
+                :empty-icon="STATUS_ICONS.VUOTO"
                 @page="listaRecuperi.onPage"
                 @sort="listaRecuperi.onSort"
                 @row-click="apriLotto"
@@ -1033,7 +1043,7 @@ const azioniPagina = computed(() =>
 /* Rosso dal token PrimeVue, mai un esadecimale a mano: e' la convenzione gia'
    in uso per le spie di stato (`CodaStampaTab`). */
 .app-lotto-spia-errore {
-  color: var(--p-red-500);
+  color: var(--app-severity-danger);
 }
 /* Badge "numero lotti generati" nel mese (sidebar/stepper anno-mese). Neutro:
  * è un conteggio informativo, non un allarme (diverso dai badge errori/fermi
@@ -1043,6 +1053,6 @@ const azioniPagina = computed(() =>
   align-items: center;
   gap: 0.2rem;
   font-size: 0.8rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 </style>

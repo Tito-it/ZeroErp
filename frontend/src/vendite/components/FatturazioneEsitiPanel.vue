@@ -35,6 +35,7 @@ import { extractApiError } from '../../core/utils/apiError'
 import { displayTimestamp } from '../../core/utils/date'
 import { statoCodaStampaSeverity } from '../../core/utils/severity'
 import { getFatturazioneEsiti } from '../api/lotti'
+import { MANAGE_ICONS } from '../../core/constants'
 
 const props = defineProps({
   // Mese di competenza in formato API (YYYY-MM-DD) o null = nessun filtro
@@ -140,7 +141,7 @@ defineExpose({ refresh: load })
          `azioniPagina` in LottiListView, che chiama `refresh` sull'istanza. -->
     <div class="app-esiti-header">
       <span class="app-esiti-titolo">
-        <i class="pi pi-chart-bar" /> {{ t('vendite.fatturazione.esiti_titolo') }}
+        <i :class="MANAGE_ICONS.ESITI" /> {{ t('vendite.fatturazione.esiti_titolo') }}
       </span>
     </div>
 

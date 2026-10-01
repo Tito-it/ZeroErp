@@ -8,7 +8,7 @@
 -- Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §4, §11.1
 --
 -- Elenco test (plan 7):
---   0) PRECONDIZIONI: due soggetti distinti con CF + fixture creata
+--   0) PRECONDIZIONI: due soggetti distinti con CF + fixture creata + BA altrui
 --   1) stesso soggetto, CF presente            -> PASSA  (nessuna regressione)
 --   2) soggetti diversi, CF diversi            -> E_ID_FISCALI_DIVERSI (invariato)
 --   3) * soggetti diversi, ENTRAMBI senza CF   -> E_PARENT_SOGGETTO_DIVERSO
@@ -59,45 +59,53 @@ SELECT plan(7);
 -- ============================================================
 -- Fixture
 -- ============================================================
--- Due soggetti DISTINTI, entrambi con CF, raggiungibili dall'operatore di
--- contesto (cioe' con un BA nel suo perimetro: se non li vedesse, ogni test
--- cadrebbe sul ramo «padre non raggiungibile» e misurerebbe un'altra cosa).
--- ⚠️ ORDER BY obbligatorio: senza, quale coppia esca dipende dal piano.
-CREATE TEMP TABLE _t_sog ON COMMIT DROP AS
-SELECT DISTINCT ON (s.id)
-       s.id                 AS soggetto_id,
-       ba.soggetto_ruolo_id AS soggetto_ruolo_id,
-       ba.utility_id        AS utility_id,
-       ba.categoria_cliente_id AS categoria_cliente_id
-  FROM anagrafiche.billing_account ba
-  JOIN anagrafiche.istanze_utilities iu ON iu.id = ba.istanza_utility_id
-  JOIN anagrafiche.soggetti s          ON s.id  = iu.soggetto_id
- WHERE ba.utility_id IS NOT NULL
-   AND s.id_fiscale_univoco_cf_piva IS NOT NULL
- ORDER BY s.id, ba.id;
+-- ⛔ 2026-09-23: i due soggetti venivano PESCATI fra quelli che hanno «un BA
+--   nel perimetro dell'operatore». Su un database ricostruito dai changelog i
+--   billing account sono zero: la fixture moriva sul NOT NULL di
+--   `istanze_utilities.soggetto_id`. Ora si COSTRUISCONO: due clienti, due
+--   soggetti distinti, entrambi con CF per costruzione, entrambi legati
+--   all'azienda di chi agisce (contesto aperto dalla riga sopra: ramo B).
+CREATE TEMP TABLE _t_mondo ON COMMIT DROP AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('P3 soggetto A');
+
+CREATE TEMP TABLE _t_cli_b ON COMMIT DROP AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('P3 soggetto B');
 
 CREATE TEMP TABLE _t_ref ON COMMIT DROP AS
-SELECT (SELECT soggetto_id       FROM _t_sog ORDER BY soggetto_id LIMIT 1)          AS sog_a,
-       (SELECT soggetto_ruolo_id FROM _t_sog ORDER BY soggetto_id LIMIT 1)          AS sr_a,
-       (SELECT utility_id        FROM _t_sog ORDER BY soggetto_id LIMIT 1)          AS uti_a,
-       (SELECT categoria_cliente_id FROM _t_sog ORDER BY soggetto_id LIMIT 1)       AS cat_a,
-       (SELECT soggetto_id       FROM _t_sog ORDER BY soggetto_id OFFSET 1 LIMIT 1) AS sog_b,
-       (SELECT soggetto_ruolo_id FROM _t_sog ORDER BY soggetto_id OFFSET 1 LIMIT 1) AS sr_b,
-       (SELECT utility_id        FROM _t_sog ORDER BY soggetto_id OFFSET 1 LIMIT 1) AS uti_b,
-       (SELECT categoria_cliente_id FROM _t_sog ORDER BY soggetto_id OFFSET 1 LIMIT 1) AS cat_b;
+SELECT m.cliente_soggetto_id       AS sog_a,
+       m.cliente_soggetto_ruolo_id AS sr_a,
+       m.utility_id                AS uti_a,
+       (SELECT ba.categoria_cliente_id FROM anagrafiche.billing_account ba
+         WHERE ba.id = m.billing_account_id) AS cat_a,
+       b.soggetto_id               AS sog_b,
+       b.soggetto_ruolo_id         AS sr_b,
+       b.utility_id                AS uti_b,
+       (SELECT ba.categoria_cliente_id FROM anagrafiche.billing_account ba
+         WHERE ba.id = b.billing_account_id) AS cat_b
+  FROM _t_mondo m, _t_cli_b b;
 
--- Un BA che l'operatore NON vede: mappato su un emittente fuori dal suo scope.
--- ⚠️ L'id si legge dalla tabella di MAPPING, non da billing_account: la RLS lo
---   nasconderebbe anche a noi, ed e' proprio quello il punto del test 5.
+-- Un BA che l'operatore NON vede: il cliente di un'ALTRA azienda.
+-- ⭐ Si costruisce, e il ramo `skip` del test 5 sparisce: prima lo si cercava
+--   fra i legami esistenti, e su un database con un'azienda sola non c'era.
+--   L'ordine e' quello che il trigger z90 impone: il BA si lega all'azienda
+--   di CHI AGISCE, quindi si agisce per un attimo come l'operatore dell'altra
+--   azienda, e poi si torna al proprio.
+-- ⚠️ L'id si legge dal builder, che lo rilegge sotto il contesto dell'ALTRO:
+--   come il nostro operatore la RLS lo nasconderebbe, ed e' il punto del test 5.
+CREATE TEMP TABLE _t_altra ON COMMIT DROP AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _t_altra));
+
 CREATE TEMP TABLE _t_invisibile ON COMMIT DROP AS
-SELECT efba.billing_account_id AS ba_id
-  FROM anagrafiche.emittenti_fiscali_billing_account efba
- WHERE efba.billing_account_id IS NOT NULL
-   AND NOT (efba.emittente_soggetto_ruolo_id = ANY(
-              script.fn_get_emittenti_scope_sr_ids(
-                NULLIF(current_setting('app.current_user_id', true), '')::integer)))
- ORDER BY efba.billing_account_id
- LIMIT 1;
+SELECT c.billing_account_id AS ba_id
+  FROM dbops.fn_pgtap_crea_cliente_ba('P3 fuori perimetro') c;
+
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _t_mondo));
+
+-- ⚠️ I builder escono IMMEDIATE, e le tre istanze qui sotto sono una saga:
+--   la finestra differita si riapre DICHIARANDOLA, non si conta sul default.
+SET CONSTRAINTS ALL DEFERRED;
 
 -- Tre coppie istanza+BA, tutte SENZA parent: i test lo assegnano via UPDATE.
 CREATE TEMP TABLE _t_ba (etichetta text, ba_id bigint, istanza_id bigint) ON COMMIT DROP;
@@ -138,8 +146,9 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT ok(
     (SELECT sog_a IS NOT NULL AND sog_b IS NOT NULL AND sog_a <> sog_b FROM _t_ref)
-    AND (SELECT count(*) FROM _t_ba) = 3,
-    '0. PRECONDIZIONI: due soggetti distinti con CF + fixture BA creata'
+    AND (SELECT count(*) FROM _t_ba) = 3
+    AND (SELECT ba_id IS NOT NULL FROM _t_invisibile),
+    '0. PRECONDIZIONI: due soggetti distinti con CF + fixture BA creata + un BA di un''altra azienda'
 );
 
 -- ============================================================
@@ -197,15 +206,12 @@ SELECT lives_ok($$
 $$, '4. * STESSO soggetto senza CF: si aggancia lo stesso (nessun falso positivo)');
 
 -- 5) * Padre fuori dal perimetro RLS: lo scenario di §11.1.
-SELECT CASE WHEN EXISTS (SELECT 1 FROM _t_invisibile)
-  THEN throws_like($$
-        UPDATE anagrafiche.billing_account
-           SET parent_account_id = (SELECT ba_id FROM _t_invisibile)
-         WHERE id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio_b')
-    $$, '%non rientra nel tuo perimetro%',
-        '5. * padre fuori dal perimetro RLS -> E_PARENT_NON_RAGGIUNGIBILE (era E_ID_FISCALI_DIVERSI)')
-  ELSE skip('5. nessun BA su un emittente fuori scope: scenario 11.1 non riproducibile qui', 1)
-END;
+SELECT throws_like($$
+    UPDATE anagrafiche.billing_account
+       SET parent_account_id = (SELECT ba_id FROM _t_invisibile)
+     WHERE id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio_b')
+$$, '%non rientra nel tuo perimetro%',
+    '5. * padre fuori dal perimetro RLS -> E_PARENT_NON_RAGGIUNGIBILE (era E_ID_FISCALI_DIVERSI)');
 
 -- 6) Padre inesistente: stesso codice, e il guard BEFORE arriva prima della FK.
 SELECT throws_like($$

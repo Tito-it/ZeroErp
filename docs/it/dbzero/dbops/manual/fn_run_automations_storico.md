@@ -19,7 +19,7 @@ Approfondimento funzioni e trigger:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 26-12-25)
+(latest review 25-09-26)
 La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_run)`** automatizza la creazione (o la simulazione) del **trigger unico di storicizzazione** `BEFORE UPDATE OR DELETE` per le tabelle applicative, delegando la logica alla funzione `script.trgfn_storico_generic`. È uno dei moduli orchestrati da `fn_run_automations`.
 
 ---
@@ -46,6 +46,16 @@ La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_ru
 2. **Scansione tabelle**: per ogni tabella nell'ambito e in `fn_table_in_scope`, verifica che esista la **tabella omologa** nello schema `storico`.
 3. **Regole**: seleziona da `automation_rules_tbl` le regole abilitate con `rule_type='STORICO'`, rispettando `exec_mode`, priorità e target (schema/tabella).
 4. **Risoluzione FK storico**: calcola il nome della FK verso lo storico con `fn_get_override_col(...,'STORICO_FK', '{table}_id')`.
+   ⛔ **Dal 2026-09-25, prima di montare il trigger verifica che quella colonna
+   esista nella gemella.** Se non c'è, solleva `E_STORICO_FK_COL_ASSENTE` e
+   `ci_apply` si ferma. È voluto: il trigger userebbe quel nome per chiudere lo
+   snapshot aperto, e senza la colonna ogni `UPDATE`/`DELETE` di una riga
+   storicizzata della madre morirebbe con `E_SNAPSHOT_CLOSE_ERROR`. Vale anche in
+   dry run. Cinque gemelle del 2025 erano nate così, con il nome al singolare e
+   senza eccezione (`parameters`, `comuni`, `indirizzi`, `indirizzi_dettaglio`,
+   `catasto_unita_immobiliari`), e sono state rinominate da `20260925-26`.
+   Una gemella con un nome diverso da `<tabella>_id` si dichiara come
+   `STORICO_FK` in `automation_overrides_cols.csv`.
 5. **Naming trigger**: usa `name_template` (default: `trg_z90_{table}_storico_upd_dlt`) tramite `fn_name_from_template`.
 6. **Strategia esistenza**: controlla esistenza **per nome** e/o **per funzione** secondo `existence_strategy` (`BY_NAME`, `BY_FUNCTION`, `BOTH`).
 7. **Azione**:
@@ -98,7 +108,7 @@ La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_ru
 
 * La presenza dell’omologo nello schema `storico` è prerequisito: in caso contrario, il trigger non viene creato.
 * `name_template` e `existence_strategy` rendono la regola adattabile a naming legacy o transizioni graduali.
-* È possibile abilitare una **pulizia “vecchi nomi”** per completare la migrazione allo standard unico `upd+dlt`.
+* La colonna FK della gemella deve chiamarsi come l'argomento che la funzione passa al trigger (passo 4): è il controllo che ferma un trigger destinato a non chiudere mai uno snapshot. Il controllo guarda i trigger che **nascono**; quelli già montati li presidia `db/pgtap/dbops/test-storico-colonna-fk-dei-trigger-v1.sql`.
 
 ---
 

@@ -12,7 +12,15 @@ from typing import cast
 
 from django.db import connection
 
-from apps.core.db._helpers import escape_ilike, fetch_paged_with_total, jsonb_out, sql_order_clause
+from apps.core.db._helpers import (
+    colonne_identita,
+    escape_ilike,
+    fetch_paged_with_total,
+    jsonb_out,
+    pattern_contiene,
+    sql_order_clause,
+)
+from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 from apps.core.services.service_errors import ServiceError
 from apps.core.types import (
     AuditLogRow,
@@ -22,129 +30,34 @@ from apps.core.types import (
     TaskRegistryRow,
 )
 
-# Whitelist relazioni consentite per la lookup generica.
-# Include tutte le tabelle config con struttura id/codice/descrizione.
-# La funzione DB fn_get_lookup_codici valida ulteriormente la struttura delle colonne.
-_REL_CONSENTITE: frozenset[str] = frozenset(
-    {
-        # --- config ---
-        "config.ambiti",
-        "config.aree_funzionali",
-        "config.aspetti_beni",
-        "config.assets_ownership",
-        "config.canali_pratiche",
-        "config.categoria_accisa",
-        "config.causali_trasporto",
-        "config.classi_utenze",
-        "config.conti_contabili",
-        "config.email_account",
-        "config.esiti_flussi_pratiche",
-        "config.forme_giuridiche",
-        "config.iva",
-        "config.tipi_titolo_iva",
-        "config.iva_assoggettamenti",
-        "config.iva_natura",
-        "config.lingue",
-        "config.listini_tipologie",
-        "config.modalita_addebito_trasporto",
-        "config.modalita_pagamento",
-        # Modo di approvvigionamento dell'articolo (brief-db-modifiche-certe-
-        # ciclo-vendita-e-articolo, Blocco B). ⭐ Una riga qui e non un endpoint:
-        # e' un vocabolario codice/descrizione come `config.nature_vendita`, il
-        # suo modello dichiarato, e il drawer articolo lo monta con
-        # `<LookupSelect rel="config.modi_approvvigionamento">`.
-        "config.modi_approvvigionamento",
-        "config.nature_doc_fiscale",
-        "config.nature_vendita",
-        "config.note_stili",
-        "config.priorita_pratiche",
-        "config.profili_accesso",
-        "config.qualifiche",
-        "config.sistema_codici",
-        "config.sorgenti",
-        "config.stati",
-        "config.stati_assets",
-        "config.stati_cliente",
-        "config.stati_fornitore",
-        "config.stati_doc_contratti",
-        "config.stati_doc_ddt",
-        "config.stati_doc_fiscale",
-        "config.stati_doc_offerte",
-        "config.stati_doc_ordini",
-        "config.stati_doc_preventivi",
-        "config.stati_doc_reso",
-        "config.stati_flussi_pratiche",
-        "config.stati_pdp",
-        "config.stati_pratiche",
-        "config.stati_sdi",
-        "config.termini_pagamento",
-        "config.tipi_allegato",
-        "config.tipi_attivita",
-        "config.tipi_contatti",
-        "config.tipi_doc_fiscale",
-        "config.tipi_documenti",
-        "config.tipi_evento_assets",
-        "config.tipi_indirizzi",
-        "config.tipi_nota",
-        "config.tipi_reso",
-        "config.tipi_ruoli",
-        "config.titoli_cortesia",
-        "config.tipi_soggetto_dettaglio",
-        "config.tipi_ubicazione",
-        "config.tipi_utenze",
-        "config.unita_organizzative",
-        "config.utilities",
-        "config.valute",
-        # --- anagrafiche ---
-        "anagrafiche.categorie_clienti",
-        # --- catalogo ---
-        "catalogo.uom_tipi",
-        "catalogo.unita_misura",
-        # --- documenti ---
-        "documenti.render_engine_documento",
-        "documenti.tipi_asset_documento",
-        "documenti.tipi_documento_output",
-        "documenti.tipi_file_documento",
-        # --- magazzino ---
-        "magazzino.causali",
-        "magazzino.magazzini",
-        "magazzino.ubicazioni",
-        # --- pagamenti ---
-        "pagamenti.centri_riscossione",
-        "pagamenti.enti_incasso",
-        "pagamenti.vendite_contabili_righe_stati",
-        "pagamenti.vendite_contabili_stati",
-        # --- pratiche ---
-        "pratiche.handler_flussi",
-        "pratiche.template_flussi",
-        "pratiche.tipi_prestazione",
-        # --- ui (personalizzazioni liste) ---
-        "ui.lista_definizione",
-        # --- vendite ---
-        "vendite.area_geografica_fatturazione",
-        # Famiglie di documento numerate su un registro. Serve al form del
-        # CRUD registri (2026-09-01). ⭐ WHITELIST, non un endpoint dedicato:
-        # e' una tabella codice/descrizione e il lookup generico la legge gia'
-        # — verificato sul database vivo, dbops.fn_get_lookup_codici deriva il
-        # `codice` da `codice_interno`, che qui e' l'unica delle due colonne
-        # a esistere (`feedback_lookup_whitelist_first`).
-        # ⚠️ Il valore da spedire e' `codice_interno`: e' quello che la FK
-        #    `fk_registri_fatturazione_famiglia` referenzia.
-        "vendite.famiglie_documento",
+# ⛔ La whitelist del lookup generico NON e' piu' qui: dal 2026-09-25 e' la
+#    tabella `config.tabelle_gestibili` (colonna `lookup`), letta da
+#    `TabelleGestibiliRepository` (brief-db-pannello-config-verbo-generico). Fino
+#    a quel giorno era la costante `REL_CONSENTITE`, con una terza copia nel
+#    frontend; il verbo del pannello legge la stessa riga del DB, e una
+#    costante accanto sarebbe tornata a essere una seconda sede.
+#    `dbops.fn_get_lookup_codici` valida poi la struttura delle colonne.
 
-        "vendite.articoli_gruppi",
-        "vendite.articoli_spesa",
-        "vendite.articoli_tipologie",
-        "vendite.listini",
-        "vendite.stati_commessa",
-        "vendite.tipi_fondi_fattura",
-    }
-)
+
+# Le colonne del payload del lookup generico che possono fare da VALORE di una
+# `<LookupSelect>` (`valueField`), cioe' le colonne che una FK puo' referenziare
+# e che `fn_get_lookup_codici` restituisce per ogni riga. `descrizione`,
+# `attivo` e `codice_stabile` viaggiano anch'esse ma non sono chiavi di
+# nessuna FK. Lo legge il metadata del pannello config per decidere se una FK
+# e' montabile come lookup (`references_lookup`).
+LOOKUP_COLONNE_VALORE: frozenset[str] = frozenset({"id", "codice", "codice_interno"})
 
 
 # Cap massimo righe sorgente per la CTE lookup. Il dataset atteso è molto più piccolo
 # (tabelle config con poche decine/centinaia di record); il cap è una guardia di sicurezza.
 LOOKUP_MAX_SOURCE_ROWS = 10_000
+
+# Scopo: le colonne per cui si ordina una lookup di codici, generica o
+#        specializzata: SEDE UNICA (2026-09-26, regola del 2). Le legge anche
+#        `lookup_service` per validare `order_by` col codice del dominio —
+#        prima ne aveva una sua copia, `{codice, descrizione}` scritto a mano
+#        due volte, che oggi coincideva e domani no.
+LOOKUP_ORDER_COLONNE: tuple[str, ...] = ("codice", "descrizione")
 
 
 # Lookup specializzati: relazioni che estendono il contratto generico
@@ -161,23 +74,28 @@ LOOKUP_MAX_SOURCE_ROWS = 10_000
 #   has_obsoleto       → la tabella ha obsoleto_dal (filtro includi_obsoleti,
 #                        stessa semantica della fn generica: esclude
 #                        obsoleto_dal <= CURRENT_DATE quando false)
-# ⭐ Le tabelle che il PANNELLO CONFIG gestisce (CRUD metadata-driven): la
-#    whitelist della lookup PIU' quelle che il lookup generico non puo'
-#    servire. Fino al 2026-09-18 le due whitelist erano lo stesso insieme, e
-#    la prima tabella senza `descrizione` — `magazzino.lotti` (Lotto 2 del
-#    magazzino: un lotto e' `articolo_id` + `codice` + `data_arrivo`) — le ha
-#    separate: `dbops.fn_get_lookup_codici` PRETENDE la colonna `descrizione`
-#    e rifiuterebbe la rel, quindi metterla in `_REL_CONSENTITE` dichiarerebbe
-#    ammesso un valore che a runtime esplode (`feedback_contratto_dichiarato_
-#    provalo_intero`). Il pannello legge `information_schema` e non ne ha
-#    bisogno. ⛔ Una rel qui e non in `_REL_CONSENTITE` NON si monta con
-#    `<LookupSelect rel=…>`: per i lotti c'e' il lookup dedicato
-#    `GET /magazzino/lotti/lookup/?articolo_id=`.
-CONFIG_TABLES: frozenset[str] = _REL_CONSENTITE | frozenset(
-    {
-        "magazzino.lotti",
-    }
-)
+#   has_attivo         → (opzionale, default True) la tabella ha `attivo`.
+#                        A False il payload porta `attivo = NULL` e
+#                        `attivo_only` non filtra — la stessa cosa che fa
+#                        `dbops.fn_get_lookup_codici` su una tabella senza la
+#                        colonna (`NULL::boolean AS attivo`). ⛔ Fino al
+#                        2026-09-19 l'handler scriveva `t.attivo` fisso: la
+#                        prima specializzata senza il flag —
+#                        `config.registri_giornale`, un vocabolario che nessuno
+#                        «assegna» e che si ritira con `obsoleto_dal` — sarebbe
+#                        stata un 500 alla prima chiamata, con la rel dichiarata
+#                        ammessa (`feedback_contratto_dichiarato_provalo_intero`).
+# ⛔ Le tabelle del PANNELLO CONFIG sono un SOTTOINSIEME di quelle del lookup
+#    (`config.tabelle_gestibili`: `pannello` implica `lookup`, fuori le quattro
+#    con RLS, D-P2): il pannello lista le righe col lookup generico, quindi una
+#    tabella che il lookup non sa servire non la sa servire nemmeno il pannello. Fino al
+#    2026-09-21 qui c'era un superset `CONFIG_TABLES = REL_CONSENTITE | {lotti}`,
+#    nato per `magazzino.lotti` (senza `descrizione`) con la promessa «il pannello
+#    legge information_schema e non ne ha bisogno» — vera per il drawer, falsa
+#    per la LISTA: a video la tabella era vuota con un 400 ingoiato. Due nomi
+#    per lo stesso insieme sono la forma in cui divergono: ne resta uno.
+#    Le anagrafiche di magazzino (magazzini, ubicazioni, lotti) hanno endpoint e
+#    drawer propri: piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.
 
 _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
     "catalogo.unita_misura": {
@@ -214,6 +132,20 @@ _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
         "extra_col": "categoria",
         "has_codice_interno": True,
         "has_obsoleto": True,
+    },
+    "config.registri_giornale": {
+        # etichetta_key: l'INDIRIZZO i18n che il DB dichiara riga per riga
+        # (`config.registri_giornale.<codice_interno minuscolo>`, pinnato dal
+        # pgTAP del catalogo, test 8). Il frontend lo rende con `labelOrCode`
+        # — la tendina «Registro» del giornale e la sua colonna. ⭐ Qui e non
+        # ricostruito nel FE dalla convenzione (brief §8.4): la chiave la
+        # dichiara il database, come per `tipi_entita` ed `eventi_dominio`.
+        # ⚠️ Niente `attivo` (D3): il ritiro di un registro ha un asse solo,
+        #    `obsoleto_dal`, e le righe vecchie del diario restano leggibili.
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": True,
+        "has_attivo": False,
     },
 }
 
@@ -253,6 +185,20 @@ def _prefisso_like(valore: str) -> str:
     return escape_ilike(valore) + "%"
 
 
+# Scopo: La `rel` e' ammessa al lookup generico? La risposta e' della lista a DB
+# (`config.tabelle_gestibili.lookup`); altrimenti 400, come prima. ⭐ Il nome
+# che finisce negli SQL dinamici e' quello di una riga della lista (CHECK di
+# forma), quindi il controllo e' anche la difesa dall'iniezione.
+def _richiedi_rel_lookup(rel: str) -> None:
+    voce = TabelleGestibiliRepository().voce(rel)
+    if voce is None or not voce["lookup"]:
+        raise ServiceError(
+            code="E_CORE_VALIDATION",
+            message="Relazione non consentita.",
+            detail=f"rel '{rel}' non e' fra le tabelle del lookup (config.tabelle_gestibili).",
+        )
+
+
 class DbopsRepository:
     """Repository per funzioni generiche dbops (lookup codici, utility)."""
 
@@ -274,15 +220,28 @@ class DbopsRepository:
         offset: int,
     ) -> tuple[list[dict], int]:
         spec = _LOOKUP_SPECIALIZZATE[rel]
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        order_map = {
-            "codice": "t.codice",
-            "descrizione": "t.descrizione",
-        }
-        order_column = order_map[order_col]
+        search_pattern = pattern_contiene(search)
+        order_map = {c: f"t.{c}" for c in LOOKUP_ORDER_COLONNE}
+        # ⛔ Clausola dal BB (2026-09-26), non `{order_col} {order_dir}`
+        #    interpolati: la direzione si fidava della validazione a monte, e
+        #    un chiamante diretto con un valore estraneo l'avrebbe scritta
+        #    nell'SQL. Il BB la rifiuta, mette i NULL come valore minimo e
+        #    allinea lo spareggio.
+        ordinamento = sql_order_clause(
+            order_col, order_dir,
+            colonne=order_map, default="t.descrizione", tiebreak="t.id",
+            rifiuta_fuori_whitelist=True,
+        )
 
         codice_interno_sql = (
             "t.codice_interno" if spec["has_codice_interno"] else "NULL::text"
+        )
+        # Senza la colonna `attivo` il payload la porta NULL e `attivo_only`
+        # non ha niente su cui filtrare: e' il contratto della fn generica.
+        has_attivo = spec.get("has_attivo", True)
+        attivo_sql = "t.attivo" if has_attivo else "NULL::boolean"
+        attivo_pred = (
+            "(%(attivo_only)s IS FALSE OR t.attivo = true)" if has_attivo else "TRUE"
         )
         obsoleto_pred = (
             "AND (%(includi_obsoleti)s IS TRUE"
@@ -295,54 +254,53 @@ class DbopsRepository:
         )
         extra_expr = spec.get("extra_expr", f"t.{spec['extra_col']}")
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT
-                    t.id,
-                    t.codice,
-                    {codice_interno_sql} AS codice_interno,
-                    t.descrizione,
-                    t.attivo,
-                    {extra_expr} AS {spec["extra_col"]},
-                    COUNT(*) OVER () AS total_count
+        # ⭐ Un frammento FROM+WHERE per la pagina e per il conteggio di
+        #    ripiego: il perimetro del totale e' quello della lista.
+        #    Identificatori interpolati: rel verificata su config.tabelle_gestibili
+        #    (CHECK di forma) e in _LOOKUP_SPECIALIZZATE, colonne da spec
+        #    costante, ORDER BY dal BB sql_order_clause; valori come parametri.
+        from_where = f"""
                   FROM {rel} t
-                 WHERE (%(attivo_only)s IS FALSE OR t.attivo = true)
+                 WHERE {attivo_pred}
                    {obsoleto_pred}
                    AND (
                        %(search)s::text IS NULL
                        OR t.codice ILIKE %(search)s
                        {search_codice_interno}
                        OR t.descrizione ILIKE %(search)s
-                   )
-                 ORDER BY {order_column} {order_dir}, t.id {order_dir}
+                   )"""
+        params = {
+            "attivo_only": attivo_only,
+            "includi_obsoleti": includi_obsoleti,
+            "search": search_pattern,
+            "limit": limit,
+            "offset": offset,
+        }
+        # ⛔ Oltre l'ultima pagina la window function non vede righe e il
+        #    totale era 0 (F-8 dell'analisi difetti doc API core): il BB
+        #    `fetch_paged_with_total` lo ricalcola col conteggio di ripiego.
+        righe, total_count = fetch_paged_with_total(
+            f"""
+                SELECT
+                    t.id,
+                    t.codice,
+                    {codice_interno_sql} AS codice_interno,
+                    t.descrizione,
+                    {attivo_sql} AS attivo,
+                    {extra_expr} AS {spec["extra_col"]},
+                    COUNT(*) OVER () AS total_count
+                {from_where}
+                 ORDER BY {ordinamento}
                  LIMIT %(limit)s OFFSET %(offset)s
-                """,
-                {
-                    "attivo_only": attivo_only,
-                    "includi_obsoleti": includi_obsoleti,
-                    "search": search_pattern,
-                    "limit": limit,
-                    "offset": offset,
-                },
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count = rows[0][6]
+            """,
+            params,
+            fallback_count_sql=f"SELECT COUNT(*)::int {from_where}",
+            fallback_params=params,
+            offset=offset,
+        )
         results = [
-            {
-                "id": row[0],
-                "codice": row[1],
-                "codice_interno": row[2],
-                "descrizione": row[3],
-                "attivo": row[4],
-                "codice_stabile": row[2] or row[1],  # COALESCE(codice_interno, codice)
-                spec["extra_col"]: row[5],
-            }
-            for row in rows
+            {**r, "codice_stabile": r["codice_interno"] or r["codice"]}  # COALESCE(codice_interno, codice)
+            for r in righe
         ]
         return results, total_count
 
@@ -365,12 +323,7 @@ class DbopsRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        if rel not in _REL_CONSENTITE:
-            raise ServiceError(
-                code="E_CORE_VALIDATION",
-                message="Relazione non consentita.",
-                detail=f"rel '{rel}' non è nella whitelist delle lookup consentite.",
-            )
+        _richiedi_rel_lookup(rel)
 
         if rel in _LOOKUP_SPECIALIZZATE:
             return self._list_lookup_specializzato(
@@ -385,15 +338,21 @@ class DbopsRepository:
             )
 
         # Normalizzazione: search None o stringa vuota => nessun filtro.
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
 
-        with connection.cursor() as cursor:
-            # Wrappa fn_get_lookup_codici in una CTE con filtro ILIKE e paginazione esterna.
-            # Il limit interno (LOOKUP_MAX_SOURCE_ROWS) è una guardia; il filtro è applicato sul risultato.
-            # order_col e order_dir sono gia' validati dal service contro whitelist
-            # (frozenset {"codice","descrizione"} e {"asc","desc"}).
-            # Non possono essere parametri SQL (%s), servono nel testo della query.
-            sql = """
+        # Wrappa fn_get_lookup_codici in una CTE con filtro ILIKE e paginazione esterna.
+        # Il limit interno (LOOKUP_MAX_SOURCE_ROWS) è una guardia; il filtro è applicato sul risultato.
+        # ⛔ L'ORDER BY lo scrive il BB `sql_order_clause` (2026-09-26): prima
+        #    `{order_col} {order_dir}` interpolati, fidandosi della whitelist
+        #    del service, e lo spareggio `id` sempre ASC.
+        ordinamento = sql_order_clause(
+            order_col, order_dir,
+            colonne=colonne_identita(*LOOKUP_ORDER_COLONNE),
+            default="descrizione", tiebreak="id", rifiuta_fuori_whitelist=True,
+        )
+        # ⭐ Un frammento (CTE + WHERE) per la pagina e per il conteggio di
+        #    ripiego: il perimetro del totale e' quello della lista.
+        base_where = """
                 WITH base AS (
                     SELECT id, codice, codice_interno, descrizione, attivo
                       FROM dbops.fn_get_lookup_codici(
@@ -406,56 +365,44 @@ class DbopsRepository:
                                %s
                            )
                 )
-                SELECT
-                    id,
-                    codice,
-                    codice_interno,
-                    descrizione,
-                    attivo,
-                    COUNT(*) OVER () AS total_count
+                SELECT {colonne}
                   FROM base
                  WHERE (
                      %s::text IS NULL
                      OR codice ILIKE %s
                      OR codice_interno ILIKE %s
                      OR descrizione ILIKE %s
-                 )
-                 ORDER BY {} {}, id
-                 LIMIT %s OFFSET %s
-                """.format(order_col, order_dir)
-            cursor.execute(
-                sql,
-                [
-                    rel,
-                    order_col,
-                    order_dir,
-                    attivo_only,
-                    LOOKUP_MAX_SOURCE_ROWS,
-                    includi_obsoleti,
-                    search_pattern,
-                    search_pattern,
-                    search_pattern,
-                    search_pattern,
-                    limit,
-                    offset,
-                ],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count = rows[0][5]
+                 )"""
+        params_base = [
+            rel,
+            order_col,
+            order_dir,
+            attivo_only,
+            LOOKUP_MAX_SOURCE_ROWS,
+            includi_obsoleti,
+            search_pattern,
+            search_pattern,
+            search_pattern,
+            search_pattern,
+        ]
+        data_sql = base_where.format(
+            colonne="id, codice, codice_interno, descrizione, attivo, COUNT(*) OVER () AS total_count",
+        ) + f"""
+                 ORDER BY {ordinamento}
+                 LIMIT %s OFFSET %s"""
+        # ⛔ Oltre l'ultima pagina la window function non vede righe e il
+        #    totale era 0 (F-8 dell'analisi difetti doc API core): il BB
+        #    `fetch_paged_with_total` lo ricalcola col conteggio di ripiego.
+        righe, total_count = fetch_paged_with_total(
+            data_sql,
+            [*params_base, limit, offset],
+            fallback_count_sql=base_where.format(colonne="COUNT(*)::int"),
+            fallback_params=params_base,
+            offset=offset,
+        )
         results = [
-            {
-                "id": row[0],
-                "codice": row[1],
-                "codice_interno": row[2],
-                "descrizione": row[3],
-                "attivo": row[4],
-                "codice_stabile": row[2] or row[1],  # COALESCE(codice_interno, codice)
-            }
-            for row in rows
+            {**r, "codice_stabile": r["codice_interno"] or r["codice"]}  # COALESCE(codice_interno, codice)
+            for r in righe
         ]
         return results, total_count
 
@@ -464,12 +411,7 @@ class DbopsRepository:
     #        per le anagrafiche fisse senza `attivo` (es. config.utilities) vale la sola
     #        esistenza (quelle tabelle non hanno il concetto di attivazione).
     def check_lookup_id_exists(self, *, rel: str, record_id: int) -> bool:
-        if rel not in _REL_CONSENTITE:
-            raise ServiceError(
-                code="E_CORE_VALIDATION",
-                message="Relazione non consentita.",
-                detail=f"rel '{rel}' non e` nella whitelist delle lookup consentite.",
-            )
+        _richiedi_rel_lookup(rel)
         schema, _, table = rel.partition(".")
         with connection.cursor() as cursor:
             cursor.execute(
@@ -484,7 +426,7 @@ class DbopsRepository:
             has_attivo = bool(cursor.fetchone()[0])
             predicate = " AND attivo = true" if has_attivo else ""
             cursor.execute(
-                f"SELECT EXISTS(SELECT 1 FROM {rel} WHERE id = %s{predicate})",
+                f"SELECT EXISTS(SELECT 1 FROM {rel} WHERE id = %s{predicate})",  # noqa: S608 — rel verificata su config.tabelle_gestibili (CHECK di forma schema.tabella), predicato letterale, valori come parametri
                 [record_id],
             )
             row = cursor.fetchone()
@@ -505,32 +447,26 @@ class DbopsRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[DominioTaskRow], int]:
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, codice, descrizione, attivo,
-                       COUNT(*) OVER () AS total_count
-                  FROM dbops.domini_task
-                 WHERE (%s IS FALSE OR attivo = true)
-                   AND (%s::text IS NULL
-                        OR codice ILIKE %s
-                        OR descrizione ILIKE %s)
-                 ORDER BY codice, id
-                 LIMIT %s OFFSET %s
-                """,
-                [attivo_only, search_pattern, search_pattern, search_pattern,
-                 limit, offset],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count: int = rows[0][4]
+        search_pattern = pattern_contiene(search)
+        rows, total_count = fetch_paged_with_total(
+            """
+            SELECT id, codice, descrizione, attivo,
+                   COUNT(*) OVER () AS total_count
+              FROM dbops.domini_task
+             WHERE (%s IS FALSE OR attivo = true)
+               AND (%s::text IS NULL
+                    OR codice ILIKE %s
+                    OR descrizione ILIKE %s)
+             ORDER BY codice, id
+             LIMIT %s OFFSET %s
+            """,
+            [attivo_only, search_pattern, search_pattern, search_pattern,
+             limit, offset],
+            offset=offset,
+        )
         results: list[DominioTaskRow] = [
             DominioTaskRow(
-                id=r[0], codice=r[1], descrizione=r[2], attivo=r[3],
+                id=r["id"], codice=r["codice"], descrizione=r["descrizione"], attivo=r["attivo"],
             )
             for r in rows
         ]
@@ -547,37 +483,31 @@ class DbopsRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[TaskRegistryRow], int]:
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT r.id, r.dominio_id, d.codice AS dominio_codice,
-                       r.task_code, r.descrizione, r.attivo,
-                       COUNT(*) OVER () AS total_count
-                  FROM dbops.pipeline_task_registry r
-                  JOIN dbops.domini_task d ON d.id = r.dominio_id
-                 WHERE (%s IS FALSE OR r.attivo = true)
-                   AND (%s::text IS NULL OR d.codice = %s)
-                   AND (%s::text IS NULL
-                        OR r.task_code ILIKE %s
-                        OR r.descrizione ILIKE %s)
-                 ORDER BY d.codice, r.task_code, r.id
-                 LIMIT %s OFFSET %s
-                """,
-                [attivo_only, dominio_codice, dominio_codice,
-                 search_pattern, search_pattern, search_pattern,
-                 limit, offset],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count: int = rows[0][6]
+        search_pattern = pattern_contiene(search)
+        rows, total_count = fetch_paged_with_total(
+            """
+            SELECT r.id, r.dominio_id, d.codice AS dominio_codice,
+                   r.task_code, r.descrizione, r.attivo,
+                   COUNT(*) OVER () AS total_count
+              FROM dbops.pipeline_task_registry r
+              JOIN dbops.domini_task d ON d.id = r.dominio_id
+             WHERE (%s IS FALSE OR r.attivo = true)
+               AND (%s::text IS NULL OR d.codice = %s)
+               AND (%s::text IS NULL
+                    OR r.task_code ILIKE %s
+                    OR r.descrizione ILIKE %s)
+             ORDER BY d.codice, r.task_code, r.id
+             LIMIT %s OFFSET %s
+            """,
+            [attivo_only, dominio_codice, dominio_codice,
+             search_pattern, search_pattern, search_pattern,
+             limit, offset],
+            offset=offset,
+        )
         results: list[TaskRegistryRow] = [
             TaskRegistryRow(
-                id=r[0], dominio_id=r[1], dominio_codice=r[2],
-                task_code=r[3], descrizione=r[4], attivo=r[5],
+                id=r["id"], dominio_id=r["dominio_id"], dominio_codice=r["dominio_codice"],
+                task_code=r["task_code"], descrizione=r["descrizione"], attivo=r["attivo"],
             )
             for r in rows
         ]
@@ -594,37 +524,31 @@ class DbopsRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[TaskRegistryImplRow], int]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT i.id, i.task_registry_id, r.task_code,
-                       i.implementation_key, i.handler_code,
-                       i.is_default, i.attivo,
-                       COUNT(*) OVER () AS total_count
-                  FROM dbops.pipeline_task_registry_impl i
-                  JOIN dbops.pipeline_task_registry r ON r.id = i.task_registry_id
-                  JOIN dbops.domini_task d ON d.id = r.dominio_id
-                 WHERE (%s IS FALSE OR i.attivo = true)
-                   AND (%s::text IS NULL OR r.task_code = %s)
-                   AND (%s::text IS NULL OR d.codice = %s)
-                 ORDER BY r.task_code, i.implementation_key, i.id
-                 LIMIT %s OFFSET %s
-                """,
-                [attivo_only, task_code, task_code,
-                 dominio_codice, dominio_codice,
-                 limit, offset],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count: int = rows[0][7]
+        rows, total_count = fetch_paged_with_total(
+            """
+            SELECT i.id, i.task_registry_id, r.task_code,
+                   i.implementation_key, i.handler_code,
+                   i.is_default, i.attivo,
+                   COUNT(*) OVER () AS total_count
+              FROM dbops.pipeline_task_registry_impl i
+              JOIN dbops.pipeline_task_registry r ON r.id = i.task_registry_id
+              JOIN dbops.domini_task d ON d.id = r.dominio_id
+             WHERE (%s IS FALSE OR i.attivo = true)
+               AND (%s::text IS NULL OR r.task_code = %s)
+               AND (%s::text IS NULL OR d.codice = %s)
+             ORDER BY r.task_code, i.implementation_key, i.id
+             LIMIT %s OFFSET %s
+            """,
+            [attivo_only, task_code, task_code,
+             dominio_codice, dominio_codice,
+             limit, offset],
+            offset=offset,
+        )
         results: list[TaskRegistryImplRow] = [
             TaskRegistryImplRow(
-                id=r[0], task_registry_id=r[1], task_code=r[2],
-                implementation_key=r[3], handler_code=r[4],
-                is_default=r[5], attivo=r[6],
+                id=r["id"], task_registry_id=r["task_registry_id"], task_code=r["task_code"],
+                implementation_key=r["implementation_key"], handler_code=r["handler_code"],
+                is_default=r["is_default"], attivo=r["attivo"],
             )
             for r in rows
         ]
@@ -648,52 +572,49 @@ class DbopsRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[AuditLogRow], int]:
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, function_name, executed_by, executed_at::text,
-                       status, message, duration_ms, tx_id::text,
-                       exec_mode, rule_type, dry_run, rows_affected,
-                       params, result,
-                       COUNT(*) OVER () AS total_count
-                  FROM dbops.audit_log
-                 WHERE (%s::text IS NULL OR status = %s)
-                   AND (%s::text IS NULL OR function_name ILIKE %s)
-                   AND (%s::text IS NULL OR executed_at >= %s::timestamptz)
-                   AND (%s::text IS NULL OR executed_at <= %s::timestamptz + interval '1 day')
-                   AND (%s::text IS NULL
-                        OR function_name ILIKE %s
-                        OR message ILIKE %s)
-                 ORDER BY executed_at DESC, id DESC
-                 LIMIT %s OFFSET %s
-                """,
-                [
-                    status, status,
-                    function_name, f"%{function_name}%" if function_name else None,
-                    date_from, date_from,
-                    date_to, date_to,
-                    search_pattern, search_pattern, search_pattern,
-                    limit, offset,
-                ],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count: int = rows[0][14]
+        search_pattern = pattern_contiene(search)
+        # Guardia e filtro leggono lo STESSO valore: con la guardia sul nome
+        # grezzo, «  » passava la guardia e finiva in `ILIKE NULL` (zero righe).
+        function_pattern = pattern_contiene(function_name)
+        rows, total_count = fetch_paged_with_total(
+            """
+            SELECT id, function_name, executed_by, executed_at::text,
+                   status, message, duration_ms, tx_id::text,
+                   exec_mode, rule_type, dry_run, rows_affected,
+                   params, result,
+                   COUNT(*) OVER () AS total_count
+              FROM dbops.audit_log
+             WHERE (%s::text IS NULL OR status = %s)
+               AND (%s::text IS NULL OR function_name ILIKE %s)
+               AND (%s::text IS NULL OR executed_at >= %s::timestamptz)
+               AND (%s::text IS NULL OR executed_at <= %s::timestamptz + interval '1 day')
+               AND (%s::text IS NULL
+                    OR function_name ILIKE %s
+                    OR message ILIKE %s)
+             ORDER BY executed_at DESC, id DESC
+             LIMIT %s OFFSET %s
+            """,
+            [
+                status, status,
+                function_pattern, function_pattern,
+                date_from, date_from,
+                date_to, date_to,
+                search_pattern, search_pattern, search_pattern,
+                limit, offset,
+            ],
+            offset=offset,
+        )
         results: list[AuditLogRow] = [
             AuditLogRow(
-                id=r[0], function_name=r[1], executed_by=r[2],
-                executed_at=r[3], status=r[4], message=r[5],
-                duration_ms=r[6], tx_id=r[7], exec_mode=r[8],
-                rule_type=r[9], dry_run=r[10], rows_affected=r[11],
+                id=r["id"], function_name=r["function_name"], executed_by=r["executed_by"],
+                executed_at=r["executed_at"], status=r["status"], message=r["message"],
+                duration_ms=r["duration_ms"], tx_id=r["tx_id"], exec_mode=r["exec_mode"],
+                rule_type=r["rule_type"], dry_run=r["dry_run"], rows_affected=r["rows_affected"],
                 # ⛔ `jsonb_out` e non una decodifica a mano (2026-09-19): la
                 #    forma precedente era il BB riscritto, con una parentesi in
                 #    piu' che il presidio `test_coercizione_jsonb_dal_bb` non vedeva.
-                params=jsonb_out(r[12]),
-                result=jsonb_out(r[13]),
+                params=jsonb_out(r["params"]),
+                result=jsonb_out(r["result"]),
             )
             for r in rows
         ]
@@ -752,6 +673,22 @@ class DbopsRepository:
             tiebreak="e.id",
         )
         prefisso = _prefisso_like(function_name.strip()) if function_name and function_name.strip() else None
+        # Un WHERE per la pagina e per il suo conteggio di ripiego.
+        where_sql = """WHERE (%s::text IS NULL OR e.area = %s)
+               AND (%s::text IS NULL OR e.function_name LIKE %s)
+               AND (%s::text IS NULL OR e.messaggio_errore_id IN (
+                        SELECT mm.id FROM config.messaggi_errore mm WHERE mm.codice = %s))
+               AND (%s::uuid IS NULL OR e.tx_id = %s::uuid)
+               AND (%s::date IS NULL OR e.occurred_at >= %s::date)
+               AND (%s::date IS NULL OR e.occurred_at < %s::date + interval '1 day')"""
+        where_params = [
+            area, area,
+            prefisso, prefisso,
+            codice, codice,
+            tx_id, tx_id,
+            data_da, data_da,
+            data_a, data_a,
+        ]
         righe, totale = fetch_paged_with_total(
             f"""
             SELECT e.id, e.occurred_at, e.area, e.function_name,
@@ -763,25 +700,18 @@ class DbopsRepository:
               -- ⚠️ LEFT: un messaggio il cui codice fosse uscito dal catalogo dei
               --    codici non deve far sparire la riga dal diario.
               LEFT JOIN config.codici_errore ce ON ce.codice = m.codice
-             WHERE (%s::text IS NULL OR e.area = %s)
-               AND (%s::text IS NULL OR e.function_name LIKE %s)
-               AND (%s::text IS NULL OR e.messaggio_errore_id IN (
-                        SELECT mm.id FROM config.messaggi_errore mm WHERE mm.codice = %s))
-               AND (%s::uuid IS NULL OR e.tx_id = %s::uuid)
-               AND (%s::date IS NULL OR e.occurred_at >= %s::date)
-               AND (%s::date IS NULL OR e.occurred_at < %s::date + interval '1 day')
+             {where_sql}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
-            """,
-            [
-                area, area,
-                prefisso, prefisso,
-                codice, codice,
-                tx_id, tx_id,
-                data_da, data_da,
-                data_a, data_a,
-                limit, offset,
-            ],
+            """,  # noqa: S608 — ORDER BY da sql_order_clause su whitelist ERROR_LOG_SORT_COLUMNS, valori come parametri
+            [*where_params, limit, offset],
+            # Stesso FROM della pagina meno il LEFT JOIN (non cambia il numero).
+            fallback_count_sql=f"""
+                SELECT COUNT(*) FROM dbops.error_log e
+                  JOIN config.messaggi_errore m ON m.id = e.messaggio_errore_id
+                 {where_sql}
+            """,  # noqa: S608 — WHERE costante, valori come parametri
+            fallback_params=where_params,
             offset=offset,
         )
         risultato: list[ErrorLogRow] = [

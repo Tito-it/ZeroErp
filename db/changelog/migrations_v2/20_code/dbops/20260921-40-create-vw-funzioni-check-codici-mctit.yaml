@@ -1,0 +1,183 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-be-presidio-ui-action-e-canale-campi §4 — LA RISALITA «funzione ->
+# fn_check_* nominate -> codici» DIVENTA UNA SEDE SOLA (regola del 2).
+#
+# ── ⭐ PERCHE' ESISTE ───────────────────────────────────────────────
+#   dbops.vw_punti_primo_motivo (20260908-34) e' il RUBINETTO: vede i soli
+#   punti che sollevano il primo motivo A MANO (`fn_log_and_raise_error(...
+#   ->> 'codice'`), e DEVE vederne solo quelli — il pgTAP del rubinetto pinna
+#   «zero in perimetro» e «fuori perimetro <= 6». I VENTI chiamanti di
+#   script.fn_raise_primo_motivo_se_presente (i bonificati) NON ci stanno, per
+#   costruzione.
+#   Il presidio C2 (dbops.vw_punti_canale_campo, 20260921-42) deve invece
+#   vedere TUTTI i siti che sollevano il codice di un motivo — bonificati e
+#   coda — perche' per ciascuno chiede se il canale `campo` e' valorizzato. La
+#   risalita e' la stessa (le fn_check_* nominate nel corpo, i codici che quelle
+#   nominano): riscriverla nella seconda vista sarebbe la seconda copia, ed e'
+#   cosi' che due presidi sullo stesso fatto cominciano a dissentire.
+#   ⇒ Si estrae QUI, e le due viste la LEGGONO (20260921-41 rimonta il
+#   rubinetto sopra questa, a output identico — verificato in transazione
+#   ritirata il 21-09: 16 legami distinti prima, 16 dopo).
+#
+# ── ⭐ COSA PORTA IN PIU' RISPETTO ALLA RISALITA DI PRIMA ───────────
+#   * `motivo_chiave`: se il MOTIVO che nomina il codice porta la chiave del
+#     canale (`'campo'` o `'parametro'` nel suo `dettaglio`, che
+#     fn_raise_primo_motivo_se_presente fonde nel context). PESSIMISTA: c'e'
+#     solo se TUTTI i motivi che nominano quel codice la portano;
+#   * `n_motivi`: quante volte la check nomina il codice.
+#
+# ── ⚠️ LA FINESTRA DI UN MOTIVO NON E' «FINO AL ;» ─────────────────
+#   La prima stesura cercava la chiave «dal codice al `;`». Le check a CTE
+#   (fn_check_attivita_riportabile_da_emettere) costruiscono QUATTRO motivi in
+#   UNO statement: la finestra del primo inghiottiva gli altri tre, che
+#   sparivano. Il sorgente si SPEZZA sulle occorrenze di `'codice',`: ogni
+#   pezzo va dal proprio codice al `'codice',` successivo, tagliato al primo
+#   `;` — e' la finestra del motivo, dove si cerca la chiave.
+#
+# ── ⚠️ DUE CORREZIONI SILENZIOSE alla risalita del rubinetto ───────
+#   1. le fn_check_* si cercano nel sorgente SENZA commenti (riga e blocco):
+#      una check nominata nella prosa che spiega il corpo non e' un legame
+#      (lezione del rubinetto t.5, 18-09);
+#   2. una riga per (funzione, check, codice): la vecchia derivazione dava un
+#      DOPPIONE quando la check nomina lo stesso codice in due motivi
+#      (E_ATTIVITA_IN_LAVORAZIONE, m4 e m5). I lettori contano DISTINCT o
+#      usano EXISTS: nessuno lo vedeva, nessuno cambia.
+#
+# ── ⚠️ security_invoker VA SPECIFICATO ────────────────────────────
+#   PostgreSQL lo azzera a ogni CREATE OR REPLACE VIEW.
+#
+# Presidio: db/pgtap/dbops/test-punti-canale-campo-v1.sql (t.2-3, casi
+#   costruiti) + il rubinetto test-rubinetto-primo-motivo-v1 (t.7 canarina),
+#   che dalla -41 attraversa questa vista.
+# Brief: brief-be-presidio-ui-action-e-canale-campi §4.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260921-40-create-vw-funzioni-check-codici-mctit.yaml
+
+  - changeSet:
+      id: 20260921-40-create-vw-funzioni-check-codici
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_funzioni_check_codici: sede unica della risalita «funzione ->
+        fn_check_* nominate nel corpo -> codici che quelle nominano come
+        motivo», con motivo_chiave (il motivo porta 'campo'/'parametro' nel
+        dettaglio). Letta da vw_punti_primo_motivo (rubinetto, -41) e da
+        vw_punti_canale_campo (presidio C2, -42): prima viveva dentro la sola
+        vw_punti_primo_motivo e la seconda l'avrebbe ricopiata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_namespace WHERE nspname = 'dbops'
+            - sqlCheck:
+                expectedResult: 0
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'dbops' AND viewname = 'vw_funzioni_check_codici'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW dbops.vw_funzioni_check_codici
+              WITH (security_invoker=true) AS
+              WITH funzioni AS MATERIALIZED (
+                  -- Ogni funzione plpgsql viva, sorgente SENZA commenti di
+                  -- riga e di blocco: una check nominata nella prosa non e'
+                  -- un legame.
+                  SELECT p.oid,
+                         n.nspname::text AS sch,
+                         p.proname::text AS fn,
+                         n.nspname::text || '.' || p.proname::text AS funzione,
+                         regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/', '', 'g'),
+                                        '--[^\n]*', '', 'g') AS sorgente
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+              ), legami AS (
+                  -- TUTTE le fn_check_* nominate nel corpo, non solo quella
+                  -- assegnata a `v_motivi`: un CASE ne sceglie una fra tre.
+                  SELECT DISTINCT f.oid, f.sch, f.fn, f.funzione, m[1] AS csch, m[2] AS cfn
+                    FROM funzioni f
+                    CROSS JOIN LATERAL regexp_matches(f.sorgente, '(\w+)\.(fn_check_\w+)\s*\(', 'g') m
+              ), checks AS MATERIALIZED (
+                  -- Le check nominate, UNA volta ciascuna (una check chiamata
+                  -- da tre funzioni si legge una volta sola).
+                  SELECT DISTINCT c.oid AS check_oid, l.csch, l.cfn,
+                         (c.prosrc ~ '''valori''') AS emette_valori,
+                         regexp_replace(regexp_replace(c.prosrc, '/\*.*?\*/', '', 'g'),
+                                        '--[^\n]*', '', 'g') AS csrc
+                    FROM (SELECT DISTINCT csch, cfn FROM legami) l
+                    JOIN pg_namespace cn ON cn.nspname = l.csch
+                    JOIN pg_proc c ON c.proname = l.cfn AND c.pronamespace = cn.oid
+              ), motivi AS (
+                  -- Un pezzo per ogni `'codice',` del corpo della check: va
+                  -- dal proprio codice al `'codice',` successivo (o alla
+                  -- fine), tagliato al primo `;`. E' la FINESTRA del motivo.
+                  SELECT c.check_oid,
+                         (regexp_match(s.pz, '^''(E_[A-Z0-9_]+)'''))[1] AS codice,
+                         split_part(s.pz, ';', 1) AS finestra
+                    FROM checks c
+                    CROSS JOIN LATERAL regexp_split_to_table(c.csrc, '''codice''\s*,\s*')
+                         WITH ORDINALITY AS s(pz, k)
+                   WHERE s.k > 1
+              ), motivi_per_codice AS (
+                  SELECT check_oid, codice, count(*)::int AS n_motivi,
+                         -- PESSIMISTA: la chiave c'e' solo se TUTTI i motivi
+                         -- che nominano quel codice la portano.
+                         CASE WHEN bool_and(finestra ~ '''campo''\s*,')             THEN 'campo'
+                              WHEN bool_and(finestra ~ '''(campo|parametro)''\s*,') THEN 'parametro'
+                         END AS motivo_chiave
+                    FROM motivi
+                   WHERE codice IS NOT NULL
+                   GROUP BY check_oid, codice
+              )
+              SELECT l.sch,
+                     l.fn,
+                     l.funzione,
+                     l.csch AS check_schema,
+                     l.cfn  AS check_funzione,
+                     c.emette_valori AS check_emette_valori,
+                     -- NULL se la check non nomina nessun codice come motivo:
+                     -- il legame COMPARE lo stesso (ramo cieco = dato).
+                     m.codice,
+                     m.n_motivi,
+                     m.motivo_chiave
+                FROM legami l
+                JOIN checks c ON c.csch = l.csch AND c.cfn = l.cfn
+                LEFT JOIN motivi_per_codice m ON m.check_oid = c.check_oid;
+
+              COMMENT ON VIEW dbops.vw_funzioni_check_codici IS
+              'SEDE UNICA della risalita «funzione plpgsql -> fn_check_* nominate nel corpo -> codici che quelle nominano come motivo». Una riga per (funzione, check, codice); codice NULL se la check non nomina motivi (il legame compare lo stesso). motivo_chiave = ''campo''/''parametro'' se il MOTIVO che nomina il codice porta la chiave del canale nel suo dettaglio (che fn_raise_primo_motivo_se_presente fonde nel context) — PESSIMISTA: solo se tutti i motivi di quel codice la portano; n_motivi = quante volte la check lo nomina.
+              LETTORI: dbops.vw_punti_primo_motivo (il rubinetto: i soli punti che sollevano il primo motivo a mano) e dbops.vw_punti_canale_campo (il presidio C2: tutti i siti, bonificati compresi). Prima la risalita viveva dentro la sola vw_punti_primo_motivo, e la seconda l''avrebbe ricopiata.
+              ⚠️ Le fn_check_* si cercano nel sorgente SENZA commenti; una riga per (funzione, check, codice) — la derivazione precedente dava un doppione quando la check nomina lo stesso codice in due motivi. ⚠️ La finestra di un motivo NON e'' «fino al ;»: le check a CTE costruiscono piu'' motivi in uno statement, quindi il sorgente si spezza sulle occorrenze di ''codice'',. ⚠️ Euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: brief-be-presidio-ui-action-e-canale-campi §4.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_funzioni_check_codici TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_funzioni_check_codici;

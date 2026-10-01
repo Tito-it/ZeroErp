@@ -253,7 +253,13 @@ Vincoli:
 - `is_default` (bool stretto) — default `false`. Partial UNIQUE su
   `(lista_id, ambito, COALESCE(profilo_accesso_id,0), COALESCE(emittente_fiscale_id,0))
    WHERE is_default = TRUE` permette **un solo** default per scope
-- `pagina_dimensione` (int positivo) — max `500`
+- `pagina_dimensione` (int o `null` = «il default») — una delle misure del
+  catalogo `ui.misure_pagina`. Il backend ne controlla solo la forma: una
+  misura fuori catalogo la rifiuta il DB (guard + FK) con
+  `400 E_UI_MISURA_PAGINA_NON_AMMESSA`. ⛔ Fino al 2026-09-30 il service
+  applicava un suo tetto a `500`. Il drawer la sceglie da un `Select` sulle
+  misure del catalogo, e la manda sempre (anche `null`: e' il modo di tornare
+  al default)
 - `ordinamento_default` (lista o null) / `filtri_default` (oggetto o
   null) — formato trasparente al BE
 - `attivo` (bool stretto) — default `true`
@@ -596,8 +602,8 @@ Tabelle:
 
 Lookup whitelist:
 
-- `config.profili_accesso` aggiunta a `_REL_CONSENTITE` in
-  `apps.core.db.dbops_repository` per popolare i Select profilo nei
+- `config.profili_accesso` nella lista del lookup generico
+  (`config.tabelle_gestibili`, colonna `lookup`) per popolare i Select profilo nei
   drawer admin via lookup generico
   `GET /api/v1/core/lookup/codici/?rel=config.profili_accesso`.
 

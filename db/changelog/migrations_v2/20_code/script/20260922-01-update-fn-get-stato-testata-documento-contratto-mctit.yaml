@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LETTORE DI STATO IMPARA IL CONTRATTO — script.fn_get_stato_testata_documento
+#
+# ── PERCHE' ────────────────────────────────────────────────────────
+#   Il guard generico delle righe di documento
+#   (vendite.trgfn_doc_righe_lock_fuori_bozza, 20260922-02) legge lo
+#   stato della testata da QUI, e monta sul terzo adottante:
+#   vendite.contratti_righe. Fino a oggi il lettore conosceva DDT e
+#   ORDINE; ogni altro valore era E_DOC_TIPO_NON_GESTITO (TECNICO).
+#
+# ── COSA CAMBIA ────────────────────────────────────────────────────
+#   Un ramo in piu', CONTRATTO: vendite.contratti ->
+#   config.stati_doc_contratti, etichetta «Contratto <numero>».
+#   Firma, contratto (zero righe = assente; una riga = stato + etichetta),
+#   SECURITY DEFINER e search_path invariati.
+#
+# ── ⚠️ UN FATTO CHE IL COMMENT DEL 26-08 DAVA DIVERSO ──────────────
+#   Allora «vendite.ddt_righe / vendite.ordini_righe NON hanno RLS». Letto
+#   dal catalogo il 22-09: ce l'hanno (relrowsecurity = true, una policy
+#   su ddt_righe, tre su ordini_righe), come contratti e contratti_righe.
+#   Il perno del DEFINER non cambia: il guard deve distinguere «la testata
+#   non c'e' piu'» (cascade) da «la testata non la vedo» (RLS), e solo un
+#   lettore che risponde sempre lo permette.
+#
+# Brief: brief-db-partita-merce-per-documento (D7, giro 5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260922-01-update-fn-get-stato-testata-documento-contratto-mctit.yaml
+
+  - changeSet:
+      id: 20260922-01-update-fn-get-stato-testata-documento-contratto
+      author: mctit
+      # ⛔ runOnChange VIETATO in 20_code (scripts/guardrail_run_on_change.py).
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_get_stato_testata_documento: terzo tipo di documento, CONTRATTO
+        (vendite.contratti -> config.stati_doc_contratti), per il guard generico
+        delle righe di documento. Firma e contratto invariati.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_get_stato_testata_documento'
+                 AND pg_get_function_identity_arguments(p.oid) = 'p_documento text, p_testata_id bigint';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_stato_testata_documento(
+                  p_documento  text,
+                  p_testata_id bigint)
+               RETURNS TABLE (stato text, etichetta text)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY DEFINER
+               SET search_path = pg_catalog, public
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Rispondere a «la testata esiste ancora, e in che stato e'?»
+                --   SENZA passare dalla RLS delle testate.
+                --
+                -- Contratto:
+                --   - zero righe  -> la testata NON esiste (cancellata, o mai
+                --     esistita). Il chiamante deve trattarlo come CASCADE.
+                --   - una riga    -> stato = codice_interno, etichetta = frase
+                --     per l'operatore.
+                --
+                -- ⚠️ Lo stato e' NOT NULL su tutte le testate e la FK verso
+                --    config.stati_doc_* garantisce la riga di stato: se la
+                --    testata c'e', `stato` non e' mai NULL. Il chiamante puo'
+                --    quindi usare l'assenza di riga come segnale, e non deve
+                --    distinguere un NULL da un vuoto.
+                --
+                -- Chi lo chiama (2026-09-22):
+                --   - vendite.trgfn_doc_righe_lock_fuori_bozza (il guard
+                --     generico: righe di documento solo in bozza);
+                --   - vendite.trgfn_dlt_block_ordrig_ddtrig (l'etichetta per i
+                --     messaggi sui legami a valle).
+                -- =========================================================
+                IF p_testata_id IS NULL OR p_testata_id <= 0 THEN
+                  RETURN;   -- nessuna riga: il chiamante lo legge come «assente»
+                END IF;
+
+                IF p_documento = 'DDT' THEN
+                  RETURN QUERY
+                  SELECT s.codice_interno::text,
+                         concat('DDT ', COALESCE(d.numero, '#' || d.id::text))
+                    FROM vendite.ddt d
+                    JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+                   WHERE d.id = p_testata_id;
+
+                ELSIF p_documento = 'ORDINE' THEN
+                  RETURN QUERY
+                  SELECT s.codice_interno::text,
+                         concat('Ordine ', COALESCE(o.numero, '#' || o.id::text))
+                    FROM vendite.ordini o
+                    JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
+                   WHERE o.id = p_testata_id;
+
+                ELSIF p_documento = 'CONTRATTO' THEN
+                  -- rev 2026-09-22: terzo adottante del guard generico delle righe.
+                  RETURN QUERY
+                  SELECT s.codice_interno::text,
+                         concat('Contratto ', COALESCE(c.numero, '#' || c.id::text))
+                    FROM vendite.contratti c
+                    JOIN config.stati_doc_contratti s ON s.id = c.stato_doc_contratto_id
+                   WHERE c.id = p_testata_id;
+
+                ELSE
+                  -- Errore di CHIAMANTE, non di dato: nessuna persona sceglie
+                  -- questo valore. Classe TECNICO, messaggio che nomina il
+                  -- valore ricevuto (fratello di E_RUOLO_APPLICATIVO_NON_GESTITO).
+                  PERFORM script.fn_log_and_raise_error(
+                    'script',
+                    'fn_get_stato_testata_documento',
+                    'E_DOC_TIPO_NON_GESTITO',
+                    jsonb_build_object('documento', p_documento,
+                                       'testata_id', p_testata_id),
+                    NULL::uuid,
+                    COALESCE(p_documento, '<null>'));
+                END IF;
+
+                RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_stato_testata_documento(text, bigint)
+              IS 'Lettore SECURITY DEFINER dello stato e dell''etichetta di una testata di documento. Nasce il 2026-08-26 per vendite.trgfn_dlt_block_ordrig_ddtrig, che deve distinguere «la testata non c''e'' piu''» (CASCADE partito dalla testata) da «la testata non la vedo» (RLS). ⛔ SECURITY DEFINER perche'' quella distinzione e'' il perno della decisione: le testate hanno RLS — e dal 22-09 anche le righe (ddt_righe, ordini_righe, contratti_righe: letto dal catalogo) — e un guard che leggesse sotto RLS diventerebbe fail-open proprio per chi sta fuori perimetro. ⭐ CONTRATTO: zero righe = testata assente; una riga = stato (codice_interno) piu'' etichetta per l''operatore. Lo stato e'' NOT NULL su tutte le testate e la FK garantisce la riga di stato, quindi l''assenza di riga e'' un segnale non ambiguo. ⚠️ L''etichetta ripiega sull''id quando `numero` e'' NULL, che sui documenti in bozza e'' il caso normale, non un residuo. PERIMETRO: legge due colonne, non scrive, non espone dati riservati. Tipi ammessi: DDT | ORDINE | CONTRATTO (rev 2026-09-22, per vendite.trgfn_doc_righe_lock_fuori_bozza); qualunque altro valore e'' un errore di chiamante (E_DOC_TIPO_NON_GESTITO, TECNICO). Chiamanti: vendite.trgfn_doc_righe_lock_fuori_bozza, vendite.trgfn_dlt_block_ordrig_ddtrig.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' quello del 20260826-20 (senza il ramo CONTRATTO):
+              -- il ripristino e' il ripristino del giro (il guard generico lo richiede).
+              SELECT 1;

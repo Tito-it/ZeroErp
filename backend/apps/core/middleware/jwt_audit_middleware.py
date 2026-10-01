@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Middleware Django per le request `/api/*`. Tre responsabilita:
+# Scopo: Middleware Django per le request `/api/*`. Due responsabilita:
 #        1) Reset GUC PG d'identita all'INIZIO di ogni richiesta /api/
 #           (process_request): lavagna pulita prima dell'auth, fail-closed.
 #           Chiude il leak cross-request su connessioni persistenti.
-#        2) Pre-load cache permessi Redis L2 sulla request (process_view)
-#        3) Rifiuto early DISABILITATO con 403 (process_view)
+#        2) Guard BYPASSRLS sulla connessione web (process_request).
+#        ⛔ Il rifiuto dei DISABILITATO NON sta qui (ritirato il 2026-09-28,
+#        analisi difetti doc API core S-2): sta nella catena di
+#        `ZeroERPPermission`, l'unica sede che vede l'utente autenticato.
 #
 #        NOTA: la propagazione delle GUC `app.jwt_user` /
 #        `app.current_user_id` non avviene PIU' in questo middleware
@@ -25,9 +27,6 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
 from apps.core.api.jwt_audit_authentication import JWT_GUC_RESET_SQL
-from apps.core.services.auth_constants import RUOLO_APPLICATIVO_DISABILITATO
-from apps.core.services.permissions_cache import load_user_cache
-from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.request_context import get_idempotency_key, get_request_id
 from apps.core.services.system_context import connection_role_bypasses_rls
 
@@ -53,8 +52,8 @@ def _json_error(code: str, message: str, status: int) -> JsonResponse:
     """Risposta errore JSON con envelope standard
     ``{error:{code,message}, meta:{request_id?, idempotency_key?}}``.
 
-    Usato per le risposte hard-coded del middleware (DISABILITATO,
-    reset GUC fallito) che NON passano dal DRF exception handler:
+    Usato per le risposte hard-coded del middleware (reset GUC fallito,
+    connessione BYPASSRLS) che NON passano dal DRF exception handler:
     centralizza l'envelope per non duplicarlo a ogni call-site.
     """
     payload: dict = {"error": {"code": code, "message": message}}
@@ -71,13 +70,12 @@ def _json_error(code: str, message: str, status: int) -> JsonResponse:
 
 
 class JwtAuditMiddleware(MiddlewareMixin):
-    """Reset GUC d'identita, pre-load cache permessi, rifiuto DISABILITATO.
+    """Reset GUC d'identita e guard BYPASSRLS.
 
     Per ogni richiesta ``/api/`` (anche anonima):
 
-    1. ``process_request`` azzera i 5 GUC PG d'identita (``app.jwt_user``,
-       ``app.current_user_id``, ``app.current_identita_id``,
-       ``app.ruolo_applicativo``, ``app.soggetto_ruolo_id``) **prima**
+    1. ``process_request`` azzera le GUC PG d'identita (l'elenco e' la tupla
+       ``JWT_IDENTITY_GUCS``: non si ricopia qui) **prima**
        dell'auth e di ogni query. Reset incondizionato (non dipende dal
        marker auth) e FAIL-CLOSED (500 se non riesce). Chiude il leak
        cross-request su connessioni persistenti (``CONN_MAX_AGE > 0`` /
@@ -85,13 +83,20 @@ class JwtAuditMiddleware(MiddlewareMixin):
        sulla stessa connessione. Sostituisce il vecchio reset di fine
        richiesta (best-effort, che falliva verso il leak).
 
-    Per le richieste ``/api/`` di utenti autenticati (``process_view``):
+    ⛔ **Niente ``process_view``** (ritirato il 2026-09-28, S-2). Rifiutava i
+    ``DISABILITATO`` con 403, ma a quel punto ``request.user`` e' l'utente di
+    SESSIONE di Django: per un client Bearer e' ``AnonymousUser`` (l'auth DRF
+    gira dopo, nel dispatch della view), quindi il ramo non scattava mai.
+    Il rifiuto vero e' nella catena di ``ZeroERPPermission`` (passo del ruolo
+    applicativo). Un controllo che non scatta non e' difesa in profondita':
+    e' una seconda sede che sembra proteggere. ⚠️ Il modello AMMETTE una
+    veste ``attivo`` col ruolo ``DISABILITATO`` (il guard di coerenza lo
+    esenta): il caso esiste, ed e' la catena a coprirlo.
 
-    2. Pre-carica la cache permessi da Redis L2 su
-       ``request._zeroerp_perms_cache``, riusata da
-       ``ZeroERPPermission._get_cache()`` senza query aggiuntive.
-    3. Rifiuta immediatamente gli utenti con ``ruolo_applicativo = DISABILITATO``
-       restituendo 403, prima che la request raggiunga la view.
+    ⛔ La cache permessi L2 NON si precarica qui (fino al 2026-09-24 si'): la
+    sua chiave e' il contesto di sessione (identita' + emittente effettivo)
+    che nasce in ``set_jwt_gucs``, cioe' DOPO questo punto. La carica una
+    sede sola, ``ZeroERPPermission._get_cache()``.
 
     **Le GUC reali NON vengono settate qui**: la propagazione e' fatta da
     ``apps.core.api.jwt_audit_authentication.JwtAuditAuthentication``
@@ -101,43 +106,6 @@ class JwtAuditMiddleware(MiddlewareMixin):
     Vedi guida ``risorse-umane-e-accessi.md`` sezione "Propagazione
     identita utente al database (GUC)".
     """
-
-    def process_view(
-        self,
-        request: HttpRequest,
-        view_func: object,
-        view_args: tuple,
-        view_kwargs: dict,
-    ) -> HttpResponse | None:
-        del view_func, view_args, view_kwargs
-        # Solo per API: pre-load cache permessi e check DISABILITATO.
-        if not request.path.startswith("/api/"):
-            return None
-        user = getattr(request, "user", None)
-        if not (user and getattr(user, "is_authenticated", False)):
-            return None
-
-        # Scopo: Pre-carica cache permessi da Redis L2 (riusata da
-        # ZeroERPPermission._get_cache senza query aggiuntive).
-        if not hasattr(request, "_zeroerp_perms_cache"):
-            redis_data = load_user_cache(user.id)
-            request._zeroerp_perms_cache = redis_data or {}  # type: ignore[attr-defined]
-            request._zeroerp_perms_cache_loaded_from_redis = redis_data is not None  # type: ignore[attr-defined]
-
-        # Scopo: Rifiuto early DISABILITATO con 403 strutturato.
-        # Check diretto su ruolo_applicativo (GUC-first, vedi
-        # PermissionResolver.get_ruolo_applicativo).
-        ruolo_app = PermissionResolver.get_ruolo_applicativo(
-            user, cache=request._zeroerp_perms_cache  # type: ignore[attr-defined]
-        )
-        if ruolo_app != RUOLO_APPLICATIVO_DISABILITATO:
-            return None
-
-        logger.warning(
-            "security.user_disabilitato user_id=%s path=%s",
-            user.id, request.path,
-        )
-        return _json_error("E_USER_DISABILITATO", "Utente disabilitato.", 403)
 
     # Scopo: lavagna pulita dei GUC d'identita all'INIZIO di ogni
     # richiesta `/api/`, PRIMA che la DRF auth class (JwtAuditAuthentication)

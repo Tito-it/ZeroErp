@@ -162,9 +162,28 @@ class LineageListeFrontieraDecodeTests(TestCase):
 # Regex del montaggio di `<ListaConfigurabile codice="X">`, gemella di quella
 # del presidio trasversale: si cerca `codice="..."` entro una finestra dal nome
 # del tag invece di pretendere di sapere dove il tag finisce.
+# ⛔ Anche `<DrawerTabLista codice="X">` (2026-09-26): e' il contenitore delle
+#    liste dentro un drawer, e inoltra il `codice` a `<ListaConfigurabile>`.
+#    Senza, una lista montata in un drawer sfuggiva al presidio — il drawer dei
+#    contratti del cliente non era mai stato guardato.
 _RE_LISTA_CONFIGURABILE = re.compile(
-    r"<ListaConfigurabile\b.{0,400}?(?<![:@\w-])codice=\"([^\"]+)\"", re.S
+    r"<(?:ListaConfigurabile|DrawerTabLista|ListaPaginaSemplice)\b.{0,400}?(?<![:@\w-])codice=\"([^\"]+)\"", re.S
 )
+
+# Import di un componente `.vue` con percorso relativo: (nome, percorso).
+_RE_IMPORT_VUE = re.compile(r"""import\s+(\w+)(?:\s*,\s*\{[^}]*\})?\s+from\s+['"](\.{1,2}/[^'"]+\.vue)['"]""")
+
+
+# Scopo: il componente `nome` e' montato DENTRO uno slot `cell-*` del file —
+#        `#cell-x` o il dinamico `#[`cell-${c}`]` — entro una finestra che non
+#        scavalca la chiusura della `<template>` (stessa tecnica «a finestra»
+#        di `_RE_LISTA_CONFIGURABILE`).
+def _montato_in_cella(testo: str, nome: str) -> bool:
+    return re.search(
+        r"#(?:cell-[\w-]+|\[`cell-[^`]*`\])[^>]*>(?:(?!</template>).){0,400}?<"
+        + re.escape(nome) + r"[\s/>]",
+        testo, re.S,
+    ) is not None
 
 
 # Scopo: le liste che DICHIARANO a catalogo la colonna «transito»
@@ -189,12 +208,30 @@ def _liste_con_colonna_transito() -> set[str]:
 #    il presidio guarderebbe UNO dei due a caso. Si tengono tutti e si
 #    verificano tutti — se un giorno succede, il difetto si vede invece di
 #    nascondersi dietro l'ordine alfabetico dei file.
+# ⭐ Il testo di un montaggio comprende anche i componenti `.vue` che il file
+#    IMPORTA direttamente (un livello) E MONTA IN UNO SLOT `cell-*`: le celle
+#    di una lista possono stare in un componente condiviso — `ContrattoCella`,
+#    per la schermata Contratti e per i contratti del cliente — e il chip si
+#    monta li'. Senza, il presidio avrebbe chiesto di ricopiare le celle in
+#    ogni file che monta la lista.
+# ⛔ Solo quelli montati in cella, non tutti gli import: un drawer importato
+#    che contiene un chip suo farebbe passare una lista che la cella
+#    «transito» non la monta affatto — verde per addizione.
 def _vue_per_lista() -> dict[str, list[tuple[str, str]]]:
     mappa: dict[str, list[tuple[str, str]]] = {}
     for percorso in sorted((repo_root() / "frontend" / "src").rglob("*.vue")):
         testo = _senza_commenti(percorso.read_text(encoding="utf-8"))
-        for codice in set(_RE_LISTA_CONFIGURABILE.findall(testo)):
-            mappa.setdefault(codice, []).append((percorso.name, testo))
+        codici = set(_RE_LISTA_CONFIGURABILE.findall(testo))
+        if not codici:
+            continue
+        importati = [
+            _senza_commenti((percorso.parent / rel).resolve().read_text(encoding="utf-8"))
+            for nome, rel in _RE_IMPORT_VUE.findall(testo)
+            if _montato_in_cella(testo, nome) and (percorso.parent / rel).resolve().is_file()
+        ]
+        completo = "\n".join([testo, *importati])
+        for codice in codici:
+            mappa.setdefault(codice, []).append((percorso.name, completo))
     return mappa
 
 

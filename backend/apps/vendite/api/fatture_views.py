@@ -28,19 +28,26 @@ from apps.core.api.endpoint_helpers import get_scope_user_id
 from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
-    qp_int_strict,
     qp_str,
 )
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api._giornale_params import (
+    EMITTENTE_PARAM_GIORNALE_ENTITA,
+    PARAMS_LISTA_GIORNALE_ENTITA,
+    parametri_lista_giornale_entita,
+)
 from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
-from apps.core.services.value_normalizer import as_bool
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.vendite_service import (
     get_fattura_dettaglio,
     get_fattura_giornale,
     list_fatture_rows,
 )
+from apps.core.api.openapi_params import param_ricerca_full
+from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
+from apps.vendite.db.fatture_repository import FattureRepository
+from apps.vendite.services import vendite_service
 
 
 class ApiFatturaDetail(DomainAPIView):
@@ -51,6 +58,11 @@ class ApiFatturaDetail(DomainAPIView):
     stessi quattro lettori che alimentano il contesto del PDF, cosi' video e
     stampa mostrano lo stesso documento per costruzione — piu' i `contatori`
     dei badge (note), che il drawer mostra senza una seconda chiamata.
+
+    Le `righe` vengono dalla vista della lista (`vw_fattura_righe_lista`):
+    primo livello, componenti esposti di un kit dentro il padre. Dal
+    2026-09-30 e' anche la sorgente del contesto di stampa (forma 2, brief-db-
+    documenti-versione-contesto-template §11): una proiezione sola.
 
     Fattura inesistente **o fuori scope emittente** → 404 identico: un errore
     che distinguesse i due casi confermerebbe l'esistenza di una fattura altrui.
@@ -114,6 +126,11 @@ class ApiFatturaGiornale(DomainAPIView):
     ⭐ E' il **primo consumatore** di quella vista: fino al 2026-08-24 il suo
     perimetro era verificato dal pgTAP e non dall'uso.
 
+    ⭐ Dal 2026-09-27 e' la lista a catalogo `vendite.giornale` — la stessa del
+    giornale trasversale e della Storia del lotto — filtrata sul documento:
+    contratto di lista standard (`limit`/`offset`/`order_by`/`order_dir`,
+    `_giornale_params`), ordine di partenza del preset (`quando desc`).
+
     ⛔ Non e' il pannello «Collegamenti» (`/passaggi/`), che dice **con quali
     altri documenti** questo e' legato: qui si risponde a *«cosa gli e'
     successo»*, che e' una domanda diversa e ha una sorgente diversa.
@@ -128,43 +145,11 @@ class ApiFatturaGiornale(DomainAPIView):
     # Stesso livello oggetto del dettaglio: chi non puo' vedere la fattura non
     # ne vede nemmeno la storia.
     model_permission = ("vendite", "fattura")
+    lista_codice = "vendite.giornale"
+    lista_emittente_param = EMITTENTE_PARAM_GIORNALE_ENTITA
 
     @extend_schema(
-        parameters=[
-            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(
-                name="sort_by",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Colonna di ordinamento: `gravita` (default, i piu' gravi "
-                    "prima) oppure `quando`. Un valore fuori whitelist ricade "
-                    "sul default. ⛔ L'ordinamento e' del SERVER perche' la "
-                    "lista e' paginata: ordinare la sola pagina caricata "
-                    "risponderebbe a una domanda piu' stretta senza dirlo."
-                ),
-            ),
-            OpenApiParameter(
-                name="sort_dir",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Verso: `desc` (default) o `asc`.",
-            ),
-            OpenApiParameter(
-                name="ritirate",
-                type=bool,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Include anche le segnalazioni RITIRATE (`disabilitato`), che di "
-                    "default sono nascoste perche' appartengono a un tentativo poi "
-                    "rifatto. Quante ne sono state nascoste lo dice `ritirate_count`."
-                ),
-            ),
-        ],
+        parameters=PARAMS_LISTA_GIORNALE_ENTITA,
         responses={
             200: inline_serializer(
                 name="VenditeFatturaGiornaleResponse",
@@ -188,14 +173,9 @@ class ApiFatturaGiornale(DomainAPIView):
     )
     # Scopo: Restituisce via GET il giornale paginato della fattura.
     def get(self, request: Request, fattura_id: int) -> JsonResponse:
-        q = request.query_params
         data = get_fattura_giornale(
             fattura_id=fattura_id,
-            page=qp_int_strict(q.get("page"), "page", 1),
-            page_size=qp_int_strict(q.get("page_size"), "page_size", 50),
-            includi_ritirate=as_bool(q.get("ritirate"), default=False),
-            sort_by=q.get("sort_by") or "gravita",
-            sort_dir=q.get("sort_dir") or "desc",
+            **parametri_lista_giornale_entita(request.query_params),
             auth_user_id=get_scope_user_id(request),
         )
         return success_response(data)
@@ -224,7 +204,7 @@ def _filtri_lista_fatture(qp) -> dict[str, object]:
 
 
 _PARAMETRI_LISTA_FATTURE = [
-    OpenApiParameter(name="search", type=str, required=False),
+    param_ricerca_full(),
     OpenApiParameter(name="stato_codice_interno", type=str, required=False),
     OpenApiParameter(name="natura_doc_codice", type=str, required=False,
                      description="FATTURA | NOTA_CREDITO | NOTA_DEBITO"),
@@ -335,9 +315,8 @@ class ApiFattureExportView(DomainAPIView):
             max_limit=EXPORT_MAX_ROWS + 1,
             **filtri,
         )
+        # La ricerca libera la dichiara il BB (`filtri_export_con_ricerca`).
         applicati = {k: str(v) for k, v in filtri.items() if v is not None}
-        if p["search"]:
-            applicati["search"] = p["search"]
         return build_export_response(
             request,
             lista_codice=_LISTA_CODICE_FATTURE,
@@ -346,3 +325,35 @@ class ApiFattureExportView(DomainAPIView):
             filtri_applicati=applicati,
             fmt=fmt,
         )
+
+
+# ── Righe: la lista configurabile `vendite.fattura_righe` (lista 102) ──
+# Pagina ed export dal factory condiviso `build_lista_figlia_views`
+# (brief-db-liste-righe-documento, lotto C). La closure legge il global di
+# modulo a call-time: i patch dei test sul service restano validi.
+# ⭐ `con_scope=True`: la testata si legge con lo scope dell'operatore, come
+#    il dettaglio e il giornale della fattura.
+# ⚠️ Sola lettura: niente `…/righe/` completa esposta a parte — la lettura
+#    completa arriva col dettaglio (`righe`), dalla stessa vista.
+_FatturaRigheLista, _FatturaRigheListaExport = build_lista_figlia_views(
+    schema_prefix="FatturaRighe",
+    operation_id="vendite_fatture_righe_lista",
+    area_funzionale="vendite",
+    lista_emittente_param=EMITTENTE_DOCUMENTO_PARAM,
+    url_kwarg="fattura_id",
+    model_permission=("vendite", "fattura"),
+    pagina_call=lambda documento_id, **kw: vendite_service.list_fattura_righe_pagina(documento_id, **kw),
+    colonne_ordinabili=FattureRepository.righe_colonne_ordinabili(),
+    ordine_assente=FattureRepository.righe_ordine_di_partenza(),
+    con_scope=True,
+)
+
+
+# ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
+#    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
+class ApiFatturaRigheListaView(_FatturaRigheLista):
+    lista_codice = "vendite.fattura_righe"
+
+
+class ApiFatturaRigheListaExportView(_FatturaRigheListaExport):
+    lista_codice = "vendite.fattura_righe"

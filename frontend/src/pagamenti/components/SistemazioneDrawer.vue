@@ -38,7 +38,7 @@ import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
-import FatturaLookup from '../../core/components/FatturaLookup.vue'
+import FatturaLookup from '../../vendite/components/FatturaLookup.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
@@ -388,6 +388,7 @@ function buildRowActions(atto) {
         <DrawerTabLista
           ref="listaRef"
           codice="pagamenti.sistemazioni_fattura"
+          :store="store"
           :rows="store.items"
           :total="store.totalRecords"
           :loading="store.loading"
@@ -518,7 +519,7 @@ function buildRowActions(atto) {
               <Button
                 size="small"
                 :label="t('pagamenti.sistemazioni.registra_azione')"
-                icon="pi pi-check"
+                :icon="MANAGE_ICONS.REGISTRA"
                 :loading="loading"
                 :disabled="!canSave"
                 @click="onRegistra"

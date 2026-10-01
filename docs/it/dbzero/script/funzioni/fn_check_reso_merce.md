@@ -1,0 +1,184 @@
+# ⚙️ Funzione `fn_check_reso_merce`
+
+```sql
+CREATE FUNCTION fn_check_reso_merce(p_reso vendite.resi)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_check_reso_merce(p_reso vendite.resi)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+-- Scopo: i motivi FISICI che impediscono di confermare un reso che fa
+--   rientrare merce. Funzione PURA (fn_check_*): non solleva, non scrive.
+-- Consumatori: script.fn_available_actions_reso (capability «Conferma») e
+--   vendite.fn_conferma_reso (solleva il PRIMO motivo con
+--   script.fn_raise_primo_motivo_se_presente).
+-- Ritorna: [] se la merce puo' rientrare (o il reso non ne muove),
+--   altrimenti un array con UN motivo {codice, reason, reason_key,
+--   dettaglio, valori}: si esce al primo.
+-- ⭐ I rientri AUTOMATICI si contano come se ci fossero gia': la capability
+--   parla prima che la conferma li crei, e deve dire la stessa cosa.
+-- Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 4 (P-6).
+DECLARE
+    v_voce        record;
+    v_pos         record;
+    v_motivi_riga jsonb;
+    v_primo       jsonb;
+BEGIN
+    -- 0. Un reso che non fa rientrare merce non ha motivi fisici.
+    IF NOT vendite.fn_reso_muove_merce(p_reso) THEN
+        RETURN '[]'::jsonb;
+    END IF;
+
+    -- 1. Il magazzino di rientro.
+    IF p_reso.magazzino_id IS NULL THEN
+        RETURN jsonb_build_array(jsonb_build_object(
+            'codice',     'E_RESO_MAGAZZINO_OBBLIGATORIO',
+            'reason',     'MAGAZZINO_MANCANTE',
+            'reason_key', 'vendite.reso.azione_reason.magazzino_mancante',
+            'dettaglio',  jsonb_build_object('reso_id', p_reso.id),
+            -- Nessun valore: la frase non ha segnaposto. La lista vuota si
+            -- scrive jsonb_build_array(), la forma che il presidio dei
+            -- segnaposto sa contare (rev 2026-09-29).
+            'valori',     jsonb_build_array()));
+    END IF;
+
+    -- 2. I rientri coprono ogni voce (D-3b-g):
+    --    * la riga uscita intera rientra per la quantita' resa, ne' piu' ne' meno;
+    --    * un componente non oltre la sua proporzione; se la riga non ha
+    --      rientri e il componente non e' automatico, manca la scelta.
+    SELECT m.* INTO v_voce
+      FROM vendite.fn_reso_merce_da_rientrare(p_reso) m
+     WHERE (m.ddt_riga_componente_id IS NULL
+            AND ((m.rientrata = 0 AND NOT m.automatico)
+                 OR (m.rientrata > 0 AND m.rientrata <> m.qta)))
+        OR (m.ddt_riga_componente_id IS NOT NULL
+            AND (m.rientrata > m.qta
+                 OR (NOT m.riga_con_rientri AND NOT m.automatico)))
+     ORDER BY m.riga_nr, m.resi_riga_id, m.ddt_riga_componente_id NULLS FIRST
+     LIMIT 1;
+    IF FOUND THEN
+        RETURN jsonb_build_array(jsonb_build_object(
+            'codice',     'E_RESO_RIENTRI_INCOMPLETI',
+            'reason',     'RIENTRI_INCOMPLETI',
+            'reason_key', 'vendite.reso.azione_reason.rientri_incompleti',
+            'dettaglio',  jsonb_build_object('reso_id', p_reso.id,
+                                             'resi_riga_id', v_voce.resi_riga_id,
+                                             'componente_id', v_voce.ddt_riga_componente_id,
+                                             'riga_nr', v_voce.riga_nr,
+                                             'attesa', v_voce.qta,
+                                             'esatta', v_voce.esatta,
+                                             'rientrata', v_voce.rientrata),
+            -- «Riga %s del reso: indicati %s pezzi su %s. ...»
+            'valori',     jsonb_build_array(v_voce.riga_nr::text,
+                                            trim_scale(v_voce.rientrata)::text,
+                                            trim_scale(v_voce.qta)::text)));
+    END IF;
+
+    -- 3. Ogni rientro (e ogni voce automatica, a ubicazione vuota) lo
+    --    accetterebbe la primitiva nel magazzino di rientro? La STESSA check
+    --    che lei chiama; lotto e seriale sono quelli del prelievo d'origine.
+    FOR v_pos IN
+        SELECT m.riga_nr, m.resi_riga_id, m.articolo_id,
+               x.id AS rientro_id, p.lotto_id, p.asset_id, x.ubicazione_id
+          FROM vendite.fn_reso_merce_da_rientrare(p_reso) m
+          JOIN vendite.resi_righe_rientri x  ON x.resi_riga_id = m.resi_riga_id
+          JOIN vendite.ddt_righe_prelievi p  ON p.id = x.ddt_riga_prelievo_id
+                                            AND p.ddt_riga_componente_id IS NOT DISTINCT FROM m.ddt_riga_componente_id
+        UNION ALL
+        SELECT m.riga_nr, m.resi_riga_id, m.articolo_id,
+               NULL::bigint, p.lotto_id, p.asset_id, NULL::bigint
+          FROM vendite.fn_reso_merce_da_rientrare(p_reso) m
+          JOIN vendite.ddt_righe_prelievi p  ON p.id = m.prelievo_unico_id
+         WHERE m.automatico
+         ORDER BY 1, 2, 4 NULLS LAST
+    LOOP
+        v_motivi_riga := script.fn_check_riga_magazzino(
+                             p_reso.magazzino_id, v_pos.articolo_id,
+                             v_pos.lotto_id, v_pos.asset_id, v_pos.ubicazione_id);
+        v_primo := v_motivi_riga -> 0;
+        IF v_primo IS NOT NULL THEN
+            RETURN jsonb_build_array(jsonb_build_object(
+                'codice',     v_primo ->> 'codice',
+                -- reason e reason_key sono del RESO; il dettaglio della riga
+                -- resta nel dettaglio, per chi apre i rientri.
+                'reason',     'MERCE_NON_RICOLLOCABILE',
+                'reason_key', 'vendite.reso.azione_reason.merce_non_ricollocabile',
+                'dettaglio',  COALESCE(v_primo -> 'dettaglio', '{}'::jsonb)
+                              || jsonb_build_object('reso_id', p_reso.id,
+                                                    'resi_riga_id', v_pos.resi_riga_id,
+                                                    'riga_nr', v_pos.riga_nr,
+                                                    'rientro_id', v_pos.rientro_id,
+                                                    'riga_reason', v_primo ->> 'reason',
+                                                    'riga_reason_key', v_primo ->> 'reason_key'),
+                'valori',     COALESCE(v_primo -> 'valori', '[]'::jsonb)));
+        END IF;
+    END LOOP;
+
+    -- 4. Il tetto per prelievo: fra tutti i resi non annullati della bolla
+    --    (questo compreso, con i suoi automatici), non rientra piu' di
+    --    quanto era uscito da quel prelievo. Il PRIMO prelievo sforato, poi la
+    --    guardia accanto al motivo (rev 2026-09-29: prima era un FOR con il
+    --    RETURN dentro, e il classificatore delle condizioni non lo vedeva).
+    WITH questo AS (
+        SELECT x.ddt_riga_prelievo_id AS prelievo_id, x.qta, m.riga_nr
+          FROM vendite.fn_reso_merce_da_rientrare(p_reso) m
+          JOIN vendite.resi_righe_rientri x ON x.resi_riga_id = m.resi_riga_id
+          JOIN vendite.ddt_righe_prelievi p ON p.id = x.ddt_riga_prelievo_id
+                                           AND p.ddt_riga_componente_id IS NOT DISTINCT FROM m.ddt_riga_componente_id
+        UNION ALL
+        SELECT m.prelievo_unico_id, m.qta, m.riga_nr
+          FROM vendite.fn_reso_merce_da_rientrare(p_reso) m
+         WHERE m.automatico
+    ), altri AS (
+        SELECT x.ddt_riga_prelievo_id AS prelievo_id, sum(x.qta) AS qta
+          FROM vendite.resi_righe_rientri x
+          JOIN vendite.resi_righe rr         ON rr.id = x.resi_riga_id
+          JOIN vendite.resi r                ON r.id = rr.reso_id
+          JOIN config.stati_doc_reso s       ON s.id = r.stato_doc_reso_id
+         WHERE r.id <> p_reso.id
+           AND rr.attivo
+           AND s.codice_interno <> 'ANNULLATO'
+           AND x.ddt_riga_prelievo_id IN (SELECT q.prelievo_id FROM questo q)
+         GROUP BY x.ddt_riga_prelievo_id
+    )
+    SELECT q.prelievo_id, min(q.riga_nr) AS riga_nr, p.qta AS uscita,
+           sum(q.qta) + COALESCE(max(a.qta), 0) AS previsto
+      INTO v_pos
+      FROM questo q
+      JOIN vendite.ddt_righe_prelievi p ON p.id = q.prelievo_id
+      LEFT JOIN altri a                 ON a.prelievo_id = q.prelievo_id
+     GROUP BY q.prelievo_id, p.qta
+    HAVING sum(q.qta) + COALESCE(max(a.qta), 0) > p.qta
+     ORDER BY 2, 1
+     LIMIT 1;
+    IF FOUND THEN
+        RETURN jsonb_build_array(jsonb_build_object(
+            'codice',     'E_RESO_RIENTRO_OLTRE_USCITO',
+            'reason',     'RIENTRO_OLTRE_USCITO',
+            'reason_key', 'vendite.reso.azione_reason.rientro_oltre_uscito',
+            'dettaglio',  jsonb_build_object('reso_id', p_reso.id,
+                                             'prelievo_id', v_pos.prelievo_id,
+                                             'riga_nr', v_pos.riga_nr,
+                                             'uscita', v_pos.uscita,
+                                             'previsto', v_pos.previsto),
+            -- «Riga %s del reso: rientrerebbero %s pezzi di un prelievo da cui ne erano usciti %s. ...»
+            'valori',     jsonb_build_array(v_pos.riga_nr::text,
+                                            trim_scale(v_pos.previsto)::text,
+                                            trim_scale(v_pos.uscita)::text)));
+    END IF;
+
+    RETURN '[]'::jsonb;
+END;
+$function$
+
+COMMENT ON FUNCTION script.fn_check_reso_merce(p_reso vendite.resi)
+IS 'I motivi FISICI che impediscono di confermare un reso che fa rientrare merce. PURA. In ordine, si esce al primo: magazzino di rientro mancante (E_RESO_MAGAZZINO_OBBLIGATORIO); una voce non coperta dai rientri — la riga uscita intera deve rientrare per la quantita'' resa, un componente non oltre la sua proporzione, e una riga senza rientri con una voce non automatica chiede la scelta (E_RESO_RIENTRI_INCOMPLETI); un rientro che la primitiva rifiuterebbe nel magazzino di rientro (il codice di script.fn_check_riga_magazzino, con lotto e seriale del prelievo d''origine); un prelievo da cui, sommando i resi non annullati, rientrerebbe piu'' di quanto era uscito (E_RESO_RIENTRO_OLTRE_USCITO). I rientri AUTOMATICI contano come gia'' scritti: la capability parla prima che la conferma li crei. Ogni motivo porta i VALORI della frase: la solleva vendite.fn_conferma_reso col primo motivo. La legge script.fn_available_actions_reso (capability «Conferma»). Un reso che non muove merce torna []. Chiavi i18n: vendite.reso.azione_reason.{magazzino_mancante, rientri_incompleti, merce_non_ricollocabile, rientro_oltre_uscito}. ⚠️ Il tetto e'' esatto solo sotto il lock della bolla d''origine che prende la conferma: due conferme concorrenti si serializzano li''. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso (P-6). rev 2026-09-29: i valori vuoti del motivo 1 si scrivono jsonb_build_array() e non ''[]''::jsonb — script/test-catalogo-messaggi-errore-completo (test 7) conta i valori dal jsonb_build_array che segue ''valori'', e con il letterale finiva sul jsonb_build_array del motivo dopo (1 valore contro 0 segnaposto). rev 2026-09-29 (bis): il motivo 4 (E_RESO_RIENTRO_OLTRE_USCITO) passa da un FOR con il RETURN dentro alla forma SELECT … INTO + IF FOUND, come il motivo 2: dbops/test-vw-codici-errore-motivo-nominato (test 6) non vedeva la guardia, lontana piu'' di 25 righe dal motivo. Nessun cambio di comportamento: il primo prelievo sforato, nello stesso ordine.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

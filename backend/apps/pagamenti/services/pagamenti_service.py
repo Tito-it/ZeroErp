@@ -27,6 +27,7 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.fan_out import run_fan_out
@@ -381,14 +382,15 @@ def list_distinte(
     ente_incasso_id: int | None = None,
     data_da: date | None = None,
     data_a: date | None = None,
+    search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict[str, Any]:
     order_by, order_dir = validate_order_params(
         order_by or "data_contabile",
-        (order_dir or "desc").lower(),
+        order_dir or "desc",
         allowed_columns=frozenset(DISTINTE_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_distinte",
@@ -405,6 +407,7 @@ def list_distinte(
         ente_incasso_id=ente_incasso_id,
         data_da=data_da,
         data_a=data_a,
+        search=search,
         order_by=order_by,
         order_dir=order_dir,
         limit=page_size,
@@ -693,9 +696,10 @@ def list_righe(
     order_by: str | None = None,
     order_dir: str | None = None,
     scartate: bool = False,
+    search: str | None = None,
 ) -> dict[str, Any]:
     order_by, order_dir = validate_order_params(
-        order_by, order_dir.lower() if order_dir else None,
+        order_by, order_dir,
         allowed_columns=DISTINTA_RIGHE_SORT_COLUMNS,
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_righe",
@@ -706,6 +710,7 @@ def list_righe(
     results, total = repository.list_righe_distinta(
         contabile_id,
         escludi_stato_codice=None if scartate else STATO_RIGA_SCARTATA,
+        search=search,
         order_by=order_by,
         order_dir=order_dir,
         limit=limit,
@@ -1185,10 +1190,11 @@ def list_coda_righe(
     billing_account_id: int | None = None,
     data_da: date | None = None,
     data_a: date | None = None,
+    search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict[str, Any]:
     chiave = (coda or "TUTTE").upper()
     ErrorManager.require(
@@ -1201,7 +1207,7 @@ def list_coda_righe(
     )
     order_by, order_dir = validate_order_params(
         order_by or "data_pagamento",
-        (order_dir or "desc").lower(),
+        order_dir or "desc",
         allowed_columns=frozenset(RIGHE_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_coda_righe",
@@ -1217,6 +1223,7 @@ def list_coda_righe(
         billing_account_id=billing_account_id,
         data_da=data_da,
         data_a=data_a,
+        search=search,
         order_by=order_by,
         order_dir=order_dir,
         limit=page_size,
@@ -1245,10 +1252,11 @@ def list_rate_fuori_capienza(
     *,
     motivo: str | None = None,
     billing_account_id: int | None = None,
+    search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict[str, Any]:
     # Fail-fast sul vocabolario chiuso: un motivo inventato darebbe una lista
     # vuota, che su due soli valori possibili e' indistinguibile da «non c'e'
@@ -1263,7 +1271,7 @@ def list_rate_fuori_capienza(
     )
     order_by, order_dir = validate_order_params(
         order_by or "data_scadenza",
-        (order_dir or "desc").lower(),
+        order_dir or "desc",
         allowed_columns=frozenset(RATE_FUORI_CAPIENZA_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_rate_fuori_capienza",
@@ -1277,6 +1285,7 @@ def list_rate_fuori_capienza(
     results, total = repository.list_rate_fuori_capienza(
         motivo=motivo,
         billing_account_id=billing_account_id,
+        search=search,
         order_by=order_by,
         order_dir=order_dir,
         limit=page_size,

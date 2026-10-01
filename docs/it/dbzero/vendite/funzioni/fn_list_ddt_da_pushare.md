@@ -23,8 +23,17 @@ BEGIN
   -- rev 2026-07-27: fatturazione_immediata proiettata dalla COLONNA.
   -- rev 2026-08-03 (T.1): espone termine/modalita' di pagamento (NULL).
   -- rev 2026-08-17 (partita generalizzata S5): la differenza si legge
-  --   da vw_partite_merce, che e' GIA' per riga di DDT. Spariscono la
-  --   ridistribuzione greedy e il caso speciale standalone/compositi.
+  --   dalla partita, che e' GIA' per riga di DDT.
+  -- rev 2026-09-21 (D14, quarta leva): la partita col DDT come seme.
+  -- ⭐ rev 2026-09-21 (D14, seconda leva, forma B2): QUESTA FUNZIONE
+  --   NON DECIDE PIU' CHI E' ELEGGIBILE. Deriva da
+  --   vendite.fn_ddt_push_diagnosi — la fonte unica: ogni predicato
+  --   che qui era un JOIN o una riga di WHERE la' e' una rank — e
+  --   aggiunge solo i filtri di chiamata e la proiezione. Le righe
+  --   e le quantita' sono le stesse di prima per costruzione: la
+  --   dose la calcola la diagnosi (quantita_push), una volta.
+  --   ⛔ Un predicato di eleggibilita' nuovo si aggiunge alla
+  --   diagnosi come rank, non qui: qui non c'e' piu' un posto.
   IF p_ddt_id IS NOT NULL AND p_ddt_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_ddt_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -46,13 +55,21 @@ BEGIN
 
   RETURN QUERY
   WITH cand AS (
-    -- Righe DDT eleggibili + riga d'ordine (via fulfillment) +
-    -- la differenza della LORO partita di merce.
+    -- Le righe ELEGGIBILI le dice la diagnosi (motivo NULL). I JOIN
+    -- qui sotto servono alla PROIEZIONE, non a escludere:
+    --   - ddt / ddt_righe: le righe che la diagnosi ha gia' letto
+    --     sotto la stessa RLS;
+    --   - articoli: articolo_id e' NOT NULL e la tabella non ha RLS;
+    --   - billing_account: g.billing_account_id e' NOT NULL per una
+    --     riga eleggibile (rank 3) e la diagnosi lo ha gia'
+    --     attraversato sotto policy;
+    --   - ordini_righe / ordini: per CHIAVE, dalla riga d'ordine
+    --     sorgente che la diagnosi ha scelto (primo fulfillment).
     SELECT
       d.id            AS d_id,
       d.uid           AS d_uid,
       dr.id           AS dr_id,
-      COALESCE(d.billing_account_id, src.src_billing_account_id) AS ba_id,
+      g.billing_account_id AS ba_id,
       ba.utility_id           AS ba_utility_id,
       ba.istanza_utility_id   AS ba_istanza,
       d.data          AS d_data,
@@ -69,91 +86,25 @@ BEGIN
       dr.factor_to_base   AS dr_factor,
       dr.prezzo_unitario  AS dr_prezzo,
       a.uom_id        AS a_uom,
-      src.src_ordine_uid,
-      src.src_fatturazione_trigger,
-      src.src_prezzo_unitario,
-      src.src_valuta_id,
-      src.src_ordine_riga_id,
-      pm.differenza   AS partita_diff
-    FROM vendite.ddt d
-    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
-    -- CINTURA solo-trasporto (DL-28): la causale dichiara se la
-    -- merce che viaggia e' una vendita. Vale per entrambi i rami:
-    -- descrive il viaggio, non la provenienza del documento.
-    JOIN config.causali_trasporto caus
-      ON caus.id = d.causale_trasporto_id
-     AND caus.fatturabile IS TRUE
-    JOIN vendite.ddt_righe dr
-      ON dr.ddt_id = d.id
-     AND dr.attivo IS TRUE
-    JOIN catalogo.articoli a ON a.id = dr.articolo_id
-    -- LA PARTITA DI MERCE della riga. INNER JOIN, e non e' una
-    -- svista: se non c'e' una partita non c'e' merce uscita, e
-    -- non c'e' niente da fatturare. Copre TUTTE le famiglie —
-    -- order-backed, standalone, kit — con la stessa regola.
-    JOIN vendite.vw_partite_merce pm ON pm.ddt_riga_id = dr.id
-    LEFT JOIN LATERAL (
-      SELECT
-        o_src.billing_account_id   AS src_billing_account_id,
-        o_src.fatturazione_trigger AS src_fatturazione_trigger,
-        o_src.uid                  AS src_ordine_uid,
-        o_src.valuta_id            AS src_valuta_id,
-        or_r.prezzo_unitario       AS src_prezzo_unitario,
-        or_r.id                    AS src_ordine_riga_id
-      FROM vendite.ordini_righe_fulfillment ful
-      JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
-      JOIN vendite.ordini o_src      ON o_src.id = or_r.ordine_id
-      WHERE ful.ddt_riga_id = dr.id
-      ORDER BY ful.id LIMIT 1
-    ) src ON TRUE
-    -- Rank dello stato-trigger dell'ordine, per chiave naturale
-    -- stabile. CONFERMATO non esiste fra gli stati DDT -> non
-    -- risolve -> il ramo order-backed e' falso (§3e.3).
-    LEFT JOIN config.stati_doc_ddt sdd_trg
-      ON sdd_trg.codice_interno = src.src_fatturazione_trigger
-    JOIN anagrafiche.billing_account ba
-      ON ba.id = COALESCE(d.billing_account_id, src.src_billing_account_id)
-    WHERE COALESCE(d.billing_account_id, src.src_billing_account_id) IS NOT NULL
-      -- ⚠️ PREDICATO ESPLICITO, non un COALESCE a zero che
-      -- lascerebbe fuori delle righe come effetto collaterale.
-      -- `differenza` vuota vuol dire «il conto non si applica», e
-      -- ha TRE cause, tutte buone ragioni per non fatturare:
-      --   - causale non fatturabile senza alcun fatturato;
-      --   - conto non misurabile (kit senza coefficiente): una
-      --     quantita' che nessuno ha saputo calcolare e' peggio
-      --     non fatturarla che fatturarla sbagliata;
-      --   - riga di RI-CONSEGNA: merce gia' contata sulla partita
-      --     d'origine. Fatturarla di nuovo sarebbe il «bug 1a».
-      AND pm.differenza IS NOT NULL
-      AND (
-        -- ORDER-BACKED: dallo stato-trigger IN POI (fix orfano §1c),
-        -- ma mai su un documento morto (ANNULLATO, via is_abortito)
-        -- ne' su merce tutta tornata indietro (RESO).
-        (src.src_fatturazione_trigger IS NOT NULL
-         AND src.src_fatturazione_trigger != 'CONFERMATO'   -- cintura XOR: NON toccare
-         AND sdd_trg.ordine IS NOT NULL
-         AND sdd.ordine >= sdd_trg.ordine
-         AND NOT sdd.is_abortito
-         AND sdd.codice_interno <> 'RESO')
-        OR
-        -- STANDALONE: invariato (gia' privo di RESO/ANNULLATO).
-        (src.src_fatturazione_trigger IS NULL
-         AND d.billing_account_id IS NOT NULL
-         AND sdd.codice_interno IN ('SPEDITO', 'CONSEGNATO'))
-      )
+      o_src.uid                  AS src_ordine_uid,
+      o_src.fatturazione_trigger AS src_fatturazione_trigger,
+      or_r.prezzo_unitario       AS src_prezzo_unitario,
+      o_src.valuta_id            AS src_valuta_id,
+      -- La DOSE, dalla diagnosi: e' la stessa che la rank 11 ha
+      -- giudicato > 0. Non si ricalcola.
+      g.quantita_push AS quantita_push
+    FROM vendite.fn_ddt_push_diagnosi(p_ddt_id) g
+    JOIN vendite.ddt d        ON d.id  = g.ddt_id
+    JOIN vendite.ddt_righe dr ON dr.id = g.riga_id
+    JOIN catalogo.articoli a  ON a.id  = dr.articolo_id
+    JOIN anagrafiche.billing_account ba ON ba.id = g.billing_account_id
+    LEFT JOIN vendite.ordini_righe or_r ON or_r.id = g.ordine_riga_id
+    LEFT JOIN vendite.ordini o_src      ON o_src.id = or_r.ordine_id
+    WHERE g.motivo IS NULL
+      -- I filtri DI CHIAMATA: non decidono l'eleggibilita', scelgono
+      -- una fetta delle righe eleggibili (lista push per mese/BA).
       AND (p_competenza_mese IS NULL OR date_trunc('month', d.data)::date = p_competenza_mese)
-      AND (p_billing_account_id IS NULL
-           OR COALESCE(d.billing_account_id, src.src_billing_account_id) = p_billing_account_id)
-      AND (p_ddt_id IS NULL OR d.id = p_ddt_id)
-      -- Esclusione "gia' inviato": eleggibile solo se MAI
-      -- instradata (LIBERA) — classificatore condiviso coi rami
-      -- reason della capability: vede anche i componenti #CMP.
-      -- ⚠️ E' l'unica cintura che impedira' di ri-spingere una
-      -- riga la cui differenza torna positiva per una RETTIFICA
-      -- (nota di credito): chi introdurra' un segment_key nuovo
-      -- per la rettifica deve insegnarglielo.
-      AND script.fn_get_stato_push_segment(
-            'DDT:' || d.uid::text || ':R:' || dr.id::text) = 'LIBERA'
+      AND (p_billing_account_id IS NULL OR g.billing_account_id = p_billing_account_id)
   )
   SELECT
     x.d_id,
@@ -173,15 +124,10 @@ BEGIN
     x.ba_istanza,
     x.d_data,
     x.a_uom,
-    -- La quantita' da fatturare E' la differenza della partita.
-    -- Il cap a dr_quantita e' una cintura: oggi differenza non
-    -- puo' superare il consegnato, ma quando la nota di credito
-    -- abbassera' il fatturato quel rapporto va ri-verificato.
-    GREATEST(0::numeric, LEAST(x.dr_quantita, COALESCE(x.partita_diff, 0))) AS quantita_push,
+    -- La quantita' da fatturare E' la dose della diagnosi.
+    x.quantita_push,
     -- qta_operativa scalata proporzionalmente (ratio = 1 se nessuna riduzione)
-    x.dr_qta_op
-      * (GREATEST(0::numeric, LEAST(x.dr_quantita, COALESCE(x.partita_diff, 0)))
-         / NULLIF(x.dr_quantita, 0)),
+    x.dr_qta_op * (x.quantita_push / NULLIF(x.dr_quantita, 0)),
     x.dr_uom_op,
     COALESCE(x.dr_factor, 1::numeric),
     date_trunc('month', x.d_data)::date,
@@ -206,14 +152,13 @@ BEGIN
     NULL::bigint,
     NULL::integer
   FROM cand x
-  WHERE GREATEST(0::numeric, LEAST(x.dr_quantita, COALESCE(x.partita_diff, 0))) > 0
   ORDER BY x.d_id, x.dr_id
   LIMIT p_limit;
 END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ddt_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ddt_id bigint)
-IS 'Lista righe DDT eligible al push su commessa. rev 2026-08-17 (partita generalizzata S5): la quantita'' da fatturare e'' la DIFFERENZA della partita di merce (vendite.vw_partite_merce), che e'' gia'' per riga di DDT — spariscono la ridistribuzione greedy della differenza d''ordine e il caso speciale che mandava standalone e compositi a dr.quantita GREZZA, cioe'' senza alcun conto. Tutte le famiglie di merce passano ora sotto lo stesso dosatore. ⚠️ Cambio di comportamento dichiarato: una partita NON MISURABILE (kit di cui non si ricostruisce la quantita'' del padre) non viene piu'' spinta — predicato esplicito AND pm.misurabile, non un COALESCE a zero. ⚠️ Nota per la nota di credito: quando una RETTIFICA abbassera'' il fatturato, la differenza tornera'' positiva e solo script.fn_get_stato_push_segment = LIBERA impedira'' la ri-spinta. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (DL-28). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI, cintura XOR != CONFERMATO PRESERVATA. rev 2026-06-28: sorgente/stato per codice_interno. rev 2026-07-19: esclusione su ALLOCAZIONE via fn_get_stato_push_segment. rev 2026-07-27: fatturazione_immediata dalla colonna. Espone termine_pagamento_id e modalita_pagamento_id a NULL (rev 2026-08-03, T.1).';
+IS 'rev 2026-09-21 (D14, seconda leva, forma B2): il lister DERIVA da vendite.fn_ddt_push_diagnosi — FROM fn_ddt_push_diagnosi(p_ddt_id) WHERE motivo IS NULL — e aggiunge solo i filtri di chiamata (competenza, BA, limit) e la proiezione dei 31 campi; BA, riga d''ordine sorgente e DOSE (quantita_push) li riceve dalla diagnosi. L''eleggibilita'' sta scritta in UN posto: un predicato nuovo si aggiunge alla diagnosi come rank, non qui. Contratto verso la pipeline invariato, stesse righe e stesse quantita'' per costruzione. rev 2026-09-21 (D14, quarta leva): la partita si legge da vendite.fn_partite_merce con il DDT chiesto come SEME (la chiusura del documento, non le partite di tutti); p_ddt_id NULL (lista push, cockpit) = tutte. Lista righe DDT eligible al push su commessa. rev 2026-08-17 (partita generalizzata S5): la quantita'' da fatturare e'' la DIFFERENZA della partita di merce, gia'' per riga di DDT — spariscono la ridistribuzione greedy della differenza d''ordine e il caso speciale standalone/compositi. ⚠️ Una partita NON MISURABILE non viene spinta (rank 9 della diagnosi). ⚠️ Nota per la nota di credito: quando una RETTIFICA abbassera'' il fatturato, la differenza tornera'' positiva e solo script.fn_get_stato_push_segment = LIBERA (rank 4) impedira'' la ri-spinta. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (DL-28). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI, cintura XOR != CONFERMATO PRESERVATA. rev 2026-06-28: sorgente/stato per codice_interno. rev 2026-07-19: esclusione su ALLOCAZIONE via fn_get_stato_push_segment. rev 2026-07-27: fatturazione_immediata dalla colonna. Espone termine_pagamento_id e modalita_pagamento_id a NULL (rev 2026-08-03, T.1).';
 ```
 
 ---

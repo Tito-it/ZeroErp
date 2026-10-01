@@ -59,6 +59,10 @@ Indice test eseguiti:
 54) CatalogoServiceTests.test_fn_update_articolo_approvvigionamento_propagato (Blocco B)
 55) CatalogoServiceTests.test_fn_update_articolo_modo_approvvigionamento_null_invalid
 56) CatalogoServiceTests.test_fn_update_articolo_lead_time_negativo_invalid
+57) CatalogoServiceTests.test_chiave_fuori_contratto_e_un_400_prima_del_repository
+58) CatalogoServiceTests.test_nota_meta_null_diventa_oggetto_vuoto
+    (2026-09-26: il repository e' a whitelist RIGIDA, quindi il 400 del
+    service e' l'unica risposta educata — per OGNI scrittura del dominio)
 """
 
 from unittest import TestCase
@@ -1129,3 +1133,64 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(rows[0]["motivo_non_eliminabile"], "UOM_BASE_NON_ELIMINABILE")
         self.assertTrue(rows[1]["puo_eliminarsi"])
         self.assertIsNone(rows[1]["motivo_non_eliminabile"])
+
+    # Scopo: 57. ⛔ Dal 2026-09-26 i repository del catalogo scrivono col BB
+    #    `execute_dynamic_insert`/`execute_dynamic_update`/`sql_set_clause`, a
+    #    whitelist RIGIDA: una chiave fuori lista e' un `RuntimeError` (500),
+    #    non piu' uno scarto silenzioso. Il 400 educato lo deve dare il service,
+    #    PRIMA del repository — per ogni scrittura, comprese le chiavi che il
+    #    repository scrive da se' (padre dal path, partizione della nota).
+    @patch("apps.catalogo.services.catalogo_service._resolve_single_nota")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_chiave_fuori_contratto_e_un_400_prima_del_repository(
+        self, mock_repo_cls, mock_bom_cls, mock_uom_cls, mock_resolve,
+    ):
+        from apps.catalogo.services import catalogo_service as svc
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+        mock_resolve.return_value = {"nota_target_tipo": "ARTICOLI", "nota_target_id": "art-1"}
+        comp = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
+        casi = (
+            ("update_articolo", lambda: svc.fn_update_articolo("art-1", {"descrizione": "x", "estranea": 1})),
+            ("create_uom_operativa", lambda: svc.fn_create_uom_operativa("art-1", {"uom_id": 3, "articolo_id": "altro"})),
+            ("update_uom_operativa", lambda: svc.fn_update_uom_operativa("art-1", 7, {"qty_step": "1", "estranea": 1})),
+            ("create_componente", lambda: svc.fn_create_componente(
+                "art-1", {"componente_id": comp, "coeff_qta": "1", "prodotto_id": "altro"},
+            )),
+            ("update_componente", lambda: svc.fn_update_componente("art-1", comp, {"coeff_qta": "2", "estranea": 1})),
+            ("create_nota", lambda: svc.fn_create_nota_articolo(
+                "art-1", {"testo": "t", "id_stile": 1, "target_tipo": "ARTICOLI_COMPONENTI"},
+            )),
+            ("update_nota", lambda: svc.fn_update_nota(5, {"testo": "t", "target_id": "altro"})),
+            ("update_uom_tipo", lambda: svc.fn_update_uom_tipo(1, {"descrizione": "x", "codice": "Y"})),
+            ("update_unita_misura", lambda: svc.fn_update_unita_misura(1, {"descrizione": "x", "codice": "Y"})),
+            ("update_conversione", lambda: svc.fn_update_conversione(1, {"fattore": "2", "uom_from_id": 3})),
+        )
+        for nome, chiama in casi:
+            with self.subTest(nome), self.assertRaises(ServiceError) as ctx:
+                chiama()
+            self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION", nome)
+
+        # Nessuna scrittura e' arrivata al repository.
+        for repo in (mock_repo_cls, mock_bom_cls, mock_uom_cls):
+            scritture = [
+                c for c in repo.return_value.method_calls
+                if c[0].startswith(("create_", "update_"))
+            ]
+            self.assertEqual(scritture, [], "una chiave fuori contratto ha raggiunto il repository")
+
+    # 58. ⛔ `catalogo.note.meta` e' NOT NULL DEFAULT '{}': `meta: null` dal
+    #     client e' «nessun metadato», cioe' `{}`. Prima arrivava NULL al DB e
+    #     la scrittura falliva sul vincolo.
+    def test_nota_meta_null_diventa_oggetto_vuoto(self):
+        from apps.catalogo.services.catalogo_service import _extract_nota_payload
+
+        for for_update in (False, True):
+            with self.subTest(for_update=for_update):
+                data = _extract_nota_payload(
+                    {"testo": "x", "id_stile": 1, "meta": None},
+                    for_update=for_update, function_name="t",
+                )
+                self.assertEqual(data["meta"], {})

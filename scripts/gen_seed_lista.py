@@ -67,6 +67,7 @@ Non usa il DB, quindi gira ovunque ci sia il repo:
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import io
 import json
@@ -138,7 +139,16 @@ TIPO_DA_FORMATO = {
 #   (file, costante)              costante di modulo, dict oppure set
 #   (file, costante, "class X")   costante dentro una classe
 #   (file, "_CODA_META", chiave)  mappa annidata: <chiave>["order_cols"]
+#   (file, costante)              anche `NOME = colonne_identita("a", ...)`
 WHITELIST_BE: dict[str, tuple] = {
+    # Le sei geografiche (2026-09-27, brief-db-liste-datatable-grezze riga 9):
+    # whitelist `colonne_identita` di `geo_repository`.
+    "config.stati": ("apps/anagrafiche/db/geo_repository.py", "_STATI_ORDER_COLS"),
+    "config.regioni": ("apps/anagrafiche/db/geo_repository.py", "_REGIONI_ORDER_COLS"),
+    "config.province": ("apps/anagrafiche/db/geo_repository.py", "_PROVINCE_ORDER_COLS"),
+    "config.comuni": ("apps/anagrafiche/db/geo_repository.py", "_COMUNI_ORDER_COLS"),
+    "config.codici_postali": ("apps/anagrafiche/db/geo_repository.py", "_CODICI_POSTALI_ORDER_COLS"),
+    "config.toponomastica": ("apps/anagrafiche/db/geo_repository.py", "_TOPONOMASTICA_ORDER_COLS"),
     "anagrafiche.clienti": ("apps/anagrafiche/db/clienti_repository.py", "_CLIENTI_ORDER_COLS"),
     "anagrafiche.soggetti": ("apps/anagrafiche/db/soggetti_repository.py", "_SOGGETTI_ORDER_COLS"),
     "anagrafiche.fornitori": ("apps/anagrafiche/db/fornitori_repository.py", "_FORNITORI_ORDER_COLS"),
@@ -162,6 +172,20 @@ WHITELIST_BE: dict[str, tuple] = {
     # le righe hanno la loro (la quantita' ha un nome fisico diverso).
     "magazzino.inventari": ("apps/magazzino/db/magazzino_repository.py", "DOCUMENTI_SORT_COLUMNS"),
     "magazzino.rettifiche": ("apps/magazzino/db/magazzino_repository.py", "DOCUMENTI_SORT_COLUMNS"),
+    # Righe dei documenti di vendita (2026-09-28, brief-db-liste-righe-
+    # documento lotto A): whitelist di modulo del repository, con le colonne
+    # gemelle importate dal mixin (`**COLONNE_RIGHE_COMMERCIALI`).
+    "vendite.preventivo_righe": ("apps/vendite/db/preventivi_repository.py", "_ORDER_COLS_RIGHE"),
+    "vendite.ordine_righe": ("apps/vendite/db/ordini_repository.py", "_ORDER_COLS_RIGHE"),
+    "vendite.ddt_righe": ("apps/vendite/db/ddt_repository.py", "_ORDER_COLS_RIGHE"),
+    "vendite.reso_righe": ("apps/vendite/db/resi_repository.py", "_ORDER_COLS_RIGHE"),
+    # La distinta base (2026-09-28, lotto C).
+    "catalogo.articolo_componenti": ("apps/catalogo/db/catalogo_bom_repository.py",
+                                     "COMPONENTI_SORT_COLUMNS"),
+    # Le righe di una fattura (2026-09-28, lotto C).
+    "vendite.fattura_righe": ("apps/vendite/db/fatture_repository.py", "_ORDER_COLS_RIGHE_FATTURA"),
+    # Le righe di un contratto (2026-09-30, lotto D).
+    "vendite.contratto_righe": ("apps/vendite/db/contratti_repository.py", "_ORDER_COLS_RIGHE_CONTRATTO"),
     "magazzino.inventario_righe": ("apps/magazzino/db/magazzino_repository.py",
                                    "INVENTARIO_RIGHE_SORT_COLUMNS"),
     "magazzino.rettifica_righe": ("apps/magazzino/db/magazzino_repository.py",
@@ -171,6 +195,9 @@ WHITELIST_BE: dict[str, tuple] = {
     "magazzino.disponibilita_articoli": ("apps/magazzino/db/magazzino_repository.py",
                                          "DISPONIBILITA_ARTICOLI_SORT_COLUMNS"),
     "magazzino.movimenti": ("apps/magazzino/db/magazzino_repository.py", "MOVIMENTI_SORT_COLUMNS"),
+    "magazzino.magazzini": ("apps/magazzino/db/anagrafiche_magazzino_repository.py", "MAGAZZINI_SORT_COLUMNS"),
+    "magazzino.ubicazioni": ("apps/magazzino/db/anagrafiche_magazzino_repository.py", "UBICAZIONI_SORT_COLUMNS"),
+    "magazzino.lotti": ("apps/magazzino/db/anagrafiche_magazzino_repository.py", "LOTTI_SORT_COLUMNS"),
     "config.utilities_tipi_ruolo": ("apps/config/db/utilities_tipi_ruolo_repository.py", "_ORDER_COLS"),
     "config.tipi_ruolo_tipi_indirizzo": ("apps/config/db/tipi_ruolo_tipi_indirizzo_repository.py",
                                          "_ORDER_COLS"),
@@ -189,6 +216,10 @@ WHITELIST_BE: dict[str, tuple] = {
     "vendite.contratti": ("apps/vendite/db/contratti_repository.py", "_ORDER_COLS_CONTRATTI"),
     "vendite.preventivi": ("apps/vendite/db/preventivi_repository.py", "_ORDER_COLS_PREVENTIVI"),
     "vendite.offerte": ("apps/vendite/db/offerte_repository.py", "_ORDER_COLS_OFFERTE"),
+    "vendite.preventivo_revisioni": ("apps/vendite/db/preventivi_repository.py",
+                                     "PREVENTIVO_REVISIONI_ORDER_COLUMNS"),
+    "vendite.offerta_revisioni": ("apps/vendite/db/offerte_repository.py",
+                                  "OFFERTA_REVISIONI_ORDER_COLUMNS"),
     "vendite.ordini": ("apps/vendite/db/ordini_repository.py", "_ORDER_COLS_ORDINI"),
     "vendite.ddt": ("apps/vendite/db/ddt_repository.py", "_ORDER_COLS_DDT"),
     "vendite.resi": ("apps/vendite/db/resi_repository.py", "_ORDER_COLS_RESI"),
@@ -211,6 +242,11 @@ WHITELIST_BE: dict[str, tuple] = {
                                      "TEMPLATES_ORDER_COLUMNS"),
     "documenti.template_asset": ("apps/documenti/db/documenti_repository.py",
                                  "ASSET_ORDER_COLUMNS"),
+    # brief-db-liste-datatable-grezze righe 2 e 6 (2026-09-27).
+    "documenti.documenti_sorgente": ("apps/documenti/db/documenti_repository.py",
+                                     "DOCUMENTI_SORGENTE_ORDER_COLUMNS"),
+    "documenti.template_versioni": ("apps/documenti/db/documenti_repository.py",
+                                    "TEMPLATE_VERSIONI_ORDER_COLUMNS"),
     "vendite.promo_articoli": ("apps/vendite/db/promo_articoli_repository.py", "_ORDER_COLS"),
     # Quinto lotto (2026-08-01). Stesso criterio del quarto: mappate prima di
     # generare. `ALLOWED_ORDER_COLUMNS` e' un `frozenset({...})` — forma che il
@@ -334,6 +370,16 @@ WHITELIST_BE: dict[str, tuple] = {
                                  "ENTI_INCASSO_SORT_COLUMNS"),
     "vendite.dash_competenza_commesse": ("apps/vendite/db/vendite_repository.py",
                                          "DASH_COMPETENZA_COMMESSE_SORT_COLUMNS", "class VenditeRepository"),
+    # Sessioni attive e reparti (2026-09-27, brief-db-liste-datatable-grezze
+    # righe 1 e 5): costanti di MODULO nei due repository.
+    "core.sessioni_attive": ("apps/core/db/session_audit_repository.py",
+                             "SESSIONI_ATTIVE_ORDER_COLUMNS"),
+    "amm.reparti": ("apps/amm_software/db/amm_software_repository.py", "REPARTI_ORDER_COLUMNS"),
+    # Flussi di una pratica e utilizzo della matrice utility/ruoli (2026-09-27,
+    # brief-db-liste-datatable-grezze righe 3 e 4): costanti di MODULO.
+    "pratiche.flussi": ("apps/pratiche/db/pratiche_repository.py", "FLUSSI_ORDER_COLS"),
+    "config.utilities_tipi_ruolo_usage": ("apps/config/db/utilities_tipi_ruolo_repository.py",
+                                          "USAGE_ORDER_COLS"),
 }
 
 # Colonne che devono ordinare SEMPRE, quando la lista ce l'ha (regola di
@@ -420,7 +466,7 @@ def connetti():
             m = re.match(r"\s*(?:export\s+)?([A-Z_]+)=(.*)", riga)
             if m:
                 env[m.group(1)] = m.group(2).strip().strip("'\"")
-    g = lambda k, d=None: os.environ.get(k) or env.get(k) or d  # noqa: E731
+    g = lambda k, d=None: os.environ.get(k) or env.get(k) or d
     return psycopg.connect(
         host=g("DB_HOST", "localhost"), port=g("DB_PORT", "5432"),
         dbname=g("DB_NAME"), user=g("DB_USER"), password=g("DB_PASSWORD"),
@@ -650,7 +696,7 @@ def righe_csv(nome_csv: str) -> dict[tuple, dict]:
 def prossimo_id(conn, nome_csv: str, campo: str = "id") -> int:
     da_csv = max((int(k[0]) for k in righe_csv(nome_csv) if k[0]), default=0)
     with conn.cursor() as cur:
-        cur.execute(f"SELECT COALESCE(MAX({campo}), 0) FROM {CSV_SEED[nome_csv]['tabella']}")
+        cur.execute(f"SELECT COALESCE(MAX({campo}), 0) FROM {CSV_SEED[nome_csv]['tabella']}")  # noqa: S608 — tabella dalla costante CSV_SEED, colonna dal default letterale 'id'; script CLI, nessun valore nel testo
         da_db = cur.fetchone()[0] or 0
     return max(da_csv, int(da_db)) + 1
 
@@ -661,16 +707,16 @@ def righe_db(conn, id_lista: int) -> dict[str, dict[tuple, dict]]:
     fuori: dict[str, dict[tuple, dict]] = {}
     interrogazioni = {
         "lista_definizione.csv": (
-            f"SELECT {', '.join(CAMPI_DEF)} FROM ui.lista_definizione WHERE id = %s",
+            f"SELECT {', '.join(CAMPI_DEF)} FROM ui.lista_definizione WHERE id = %s",  # noqa: S608 — colonne dalla costante CAMPI_DEF, id_lista come parametro
             CAMPI_DEF),
         "lista_colonna.csv": (
-            f"SELECT {', '.join(CAMPI_COL)} FROM ui.lista_colonna WHERE lista_id = %s "
+            f"SELECT {', '.join(CAMPI_COL)} FROM ui.lista_colonna WHERE lista_id = %s "  # noqa: S608 — colonne dalla costante CAMPI_COL, id_lista come parametro
             "ORDER BY ordine_default, id", CAMPI_COL),
         "lista_preset.csv": (
-            f"SELECT {', '.join(CAMPI_PRESET)} FROM ui.lista_preset WHERE lista_id = %s "
+            f"SELECT {', '.join(CAMPI_PRESET)} FROM ui.lista_preset WHERE lista_id = %s "  # noqa: S608 — colonne dalla costante CAMPI_PRESET, id_lista come parametro
             "ORDER BY id", CAMPI_PRESET),
         "lista_preset_colonna.csv": (
-            "SELECT pc.preset_id, pc.colonna_id, pc.ordine, pc.visibile, pc.fissata "
+            f"SELECT {', '.join(f'pc.{c}' for c in CAMPI_PC)} "  # noqa: S608 — colonne dalla costante CAMPI_PC, id_lista come parametro
             "FROM ui.lista_preset_colonna pc JOIN ui.lista_preset p ON p.id = pc.preset_id "
             "WHERE p.lista_id = %s ORDER BY pc.preset_id, pc.ordine", CAMPI_PC),
     }
@@ -679,7 +725,7 @@ def righe_db(conn, id_lista: int) -> dict[str, dict[tuple, dict]]:
         pk = CSV_SEED[nome_csv]["pk"]
         with conn.cursor() as cur:
             cur.execute(sql, (id_lista,))
-            righe = [dict(zip(campi, [cella(v, nullo) for v in r])) for r in cur.fetchall()]
+            righe = [dict(zip(campi, [cella(v, nullo) for v in r], strict=True)) for r in cur.fetchall()]
         fuori[nome_csv] = {tuple(r[c] for c in pk): r for r in righe}
     return fuori
 
@@ -786,7 +832,7 @@ def genera(codice, descrizione, schema, vista, cols_vista, cols_vue, dizionario,
     id_col = id_col_base - 1
     usati: set[str] = set()
 
-    for pos, (voce, proposto) in enumerate(zip(dati, proposte), start=1):
+    for pos, (voce, proposto) in enumerate(zip(dati, proposte, strict=True), start=1):
         id_col += 1
         campo = voce["campo"]
         calcolata = campo is None
@@ -1005,6 +1051,32 @@ def whitelist_backend(percorso: str, costante: str, dentro: str | None = None) -
         base = testo.index(dentro) if dentro else 0
         if dentro and dentro not in testo:
             raise ValueError(f"ancora `{dentro}` non trovata in {percorso}")
+        # ⭐ `NOME = colonne_identita("a", "b", ...)` (2026-09-27): la whitelist
+        #    in cui il nome E' la colonna (BB di `_helpers`), anche su piu'
+        #    righe. Fino a quel giorno il lettore cercava solo `{`: la forma non
+        #    lo aveva, e `anagrafiche.indirizzi` usciva «whitelist illeggibile»
+        #    — con le sei geografiche (riga 9 di brief-db-liste-datatable-
+        #    grezze) sarebbero state sette liste mai verificate.
+        #    Gli argomenti sono stringhe letterali: sono loro le chiavi.
+        m_id = re.compile(rf"^[ \t]*{re.escape(costante)}\s*(?::[^=\n]*)?=\s*"
+                          r"colonne_identita\(", re.M).search(testo, base)
+        if m_id:
+            aperta = m_id.end() - 1
+            profondita = 0
+            for chiusa in range(aperta, len(testo)):
+                profondita += (testo[chiusa] == "(") - (testo[chiusa] == ")")
+                if profondita == 0:
+                    break
+            # ⚠️ Gli argomenti li legge il parser di Python, non una regex: una
+            #    regex sulle sole virgolette doppie perdeva le chiavi fra apici
+            #    (falso «KO») e prendeva quelle scritte in un commento in coda
+            #    (falso verde, il peggiore per uno strumento di consegna).
+            chiamata = ast.parse("f" + testo[aperta:chiusa + 1], mode="eval").body
+            chiavi = {a.value for a in chiamata.args
+                      if isinstance(a, ast.Constant) and isinstance(a.value, str)}
+            if not chiavi:
+                raise ValueError(f"`{costante} = colonne_identita()` senza colonne in {percorso}")
+            return chiavi
         # `NOME = {...}`, `NOME: tipo = {...}`, ma anche `NOME = frozenset({...})`
         # / `set({...})`: la forma con wrapper e' usata dove la whitelist e' un
         # insieme immutabile (amm_software). Senza questo ramo il lettore non
@@ -1029,7 +1101,29 @@ def whitelist_backend(percorso: str, costante: str, dentro: str | None = None) -
                       if not r.strip().startswith("#"))
     # Forma dict (`"chiave": "v.colonna"`) oppure set (`"chiave", ...`).
     chiavi = set(re.findall(r'"([a-z_0-9]+)"\s*:', corpo))
+    # ⭐ `{**ALTRA, "chiave": ...}` (2026-09-28, righe dei documenti di vendita):
+    #    le colonne GEMELLE di tre liste sono dichiarate una volta
+    #    (`COLONNE_RIGHE_COMMERCIALI`) e ogni repository aggiunge le sue.
+    #    ⛔ Senza questo ramo il lettore vedrebbe solo le chiavi scritte a mano
+    #    e darebbe le gemelle per mancanti: un falso «KO» che insegna a
+    #    ignorare lo strumento.
+    for nome in re.findall(r"\*\*([A-Za-z_][A-Za-z0-9_]*)", corpo):
+        chiavi |= _whitelist_importata(percorso, testo, nome)
     return chiavi or set(re.findall(r'"([a-z_0-9]+)"', corpo))
+
+
+# Scopo: le chiavi di una costante nominata in un `**NOME`: nello stesso file,
+#        oppure nel modulo `apps.…` da cui il file la importa.
+def _whitelist_importata(percorso: str, testo: str, nome: str) -> set[str]:
+    if re.search(rf"^[ \t]*{re.escape(nome)}\s*(?::[^=\n]*)?=", testo, re.M):
+        return whitelist_backend(percorso, nome)
+    # Le due forme dell'import: fra parentesi (anche su piu' righe) o in linea.
+    for m in re.finditer(r"^from (apps(?:\.\w+)+) import (?:\(([^)]*)\)|([^\n(]+))$", testo, re.M):
+        elenco = m.group(2) if m.group(2) is not None else m.group(3)
+        importati = {n.split("#")[0].strip() for n in elenco.split(",")}
+        if nome in importati:
+            return whitelist_backend(m.group(1).replace(".", "/") + ".py", nome)
+    raise ValueError(f"`**{nome}` in {percorso}: costante non trovata ne' importata")
 
 
 # Scopo: confronta il seed con la whitelist di ordinamento del backend, lista
@@ -1120,7 +1214,7 @@ def verifica_ordinamento(solo: str | None = None) -> int:
         if default_rotti:
             print(f"      ordinamento di APERTURA del preset        : {'; '.join(default_rotti)}")
 
-    plurale = lambda n, s, p: f"{n} {s if n == 1 else p}"  # noqa: E731
+    plurale = lambda n, s, p: f"{n} {s if n == 1 else p}"
     print()
     if saltate:
         print(f"[X] {plurale(saltate, 'lista non verificata', 'liste non verificate')}: "

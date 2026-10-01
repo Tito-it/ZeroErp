@@ -35,6 +35,8 @@ from apps.vendite.api.views_ddt import (
     ApiDdtRigaDetail,
     ApiDdtRigaPreviewComponenti,
     ApiDdtRighe,
+    ApiDdtRigheListaExportView,
+    ApiDdtRigheListaView,
     ApiDdtRighePerReso,
 )
 from apps.vendite.api.views_form_defaults import ApiDdtFormDefaults
@@ -101,6 +103,12 @@ urlpatterns = [
     # Righe
     path("<int:ddt_id>/righe/", ApiDdtRighe.as_view(),
          name="vendite-ddt-righe-list"),
+    # Righe: la LISTA configurabile (pagina + export). `…/righe/` sopra resta
+    # la lettura completa e la creazione (brief-db-liste-righe-documento).
+    path("<int:ddt_id>/righe/lista/", ApiDdtRigheListaView.as_view(),
+         name="vendite-ddt-righe-lista"),
+    path("<int:ddt_id>/righe/lista/export/", ApiDdtRigheListaExportView.as_view(),
+         name="vendite-ddt-righe-lista-export"),
     # Righe con residuo rendibile per il pannello "crea reso" (slice resi).
     path("<int:ddt_id>/righe-per-reso/", ApiDdtRighePerReso.as_view(),
          name="vendite-ddt-righe-per-reso"),

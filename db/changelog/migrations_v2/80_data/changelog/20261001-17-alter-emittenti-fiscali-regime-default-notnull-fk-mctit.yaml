@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGIME DELL'EMITTENTE SI LEGA AL CATALOGO (D-1, D-9)
+#   anagrafiche.emittenti_fiscali.regime_fiscale_rf:
+#   SET DEFAULT 'RF01' + SET NOT NULL + FK su config.regimi_fiscali(codice_interno)
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezioni 4.1, 8.4, 8.6 (D-1, D-9)
+#
+# -- PERCHE' IN 80_data E NON IN 00_schema --------------------------
+#   La FK e il DEFAULT puntano a una riga di seed (RF01, 20261001-15): in
+#   00_schema il catalogo e' vuoto. Stessa forma di
+#   catalogo.articoli.modo_approvvigionamento_id (20260913-09/-10/-11).
+#   Le insert di emittenti dei changeSet di 80_data gia' mergiati hanno date
+#   precedenti e girano prima: la colonna l'hanno lasciata NULL, e il backfill
+#   20261001-16 l'ha portata a RF01.
+#
+# -- LA FORMA (D-9) ------------------------------------------------
+#   La colonna resta col suo nome e il suo tipo (varchar): i due lettori che
+#   la usano come testo — vendite.fn_snapshot_intestazione_fattura e
+#   script.fn_get_user_profile — non cambiano. FK su codice_interno, la
+#   chiave naturale esterna del tracciato (linee-guida-sql 6b, punto 2):
+#   precedente config.causali_trasporto.causale_magazzino.
+#   ON UPDATE / ON DELETE RESTRICT: codice_interno e' immutabile (lock
+#   automatico) e una riga di catalogo non si cancella.
+#   ⚠️ DEFAULT 'RF01' e' un letterale di codice_interno, non un id: non
+#   dipende dal reseed. NOT NULL perche' un emittente ha sempre un regime
+#   (D-1): «nessun regime» non e' un valore che il tracciato conosca.
+#   ⚠️ Il DEFAULT vale solo quando la colonna MANCA dall'INSERT: un client
+#   che scrive NULL esplicito riceve 23502 (richiesta al BE nel brief).
+#
+# -- A ci_apply -------------------------------------------------------
+#   Con la FK verso una tabella con `attivo` nasce la coppia ATTIVO: un
+#   emittente non punta a un regime spento, e un regime usato non si spegne.
+#   L'indice della FK: fn_populate_fk_index_policy la registra a
+#   consentito = false da sola (policy opt-in); nessuna query entra da qui.
+#
+# -- TRANSAZIONE SEPARATA DAL BACKFILL (20261001-16) -------------------
+#   L'UPDATE lascia eventi trigger in sospeso, e un ALTER TABLE nella stessa
+#   transazione muore. Se il backfill avesse lasciato vuoti, il SET NOT NULL
+#   qui fallisce fail-fast; se ci fossero valori fuori catalogo li avrebbe
+#   fermati il cancello del -16, e qui la FK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261001-17-alter-emittenti-fiscali-regime-default-notnull-fk-mctit.yaml
+
+  - changeSet:
+      id: 20261001-17-alter-emittenti-fiscali-regime-default-notnull-fk
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.emittenti_fiscali.regime_fiscale_rf: SET DEFAULT 'RF01', SET NOT NULL,
+        FK fk_emittenti_fiscali_regimi_fiscali su config.regimi_fiscali(codice_interno).
+        Transazione separata dal backfill 20261001-16. Brief:
+        brief-db-esigibilita-iva-per-cassa-emittente (D-1, D-9).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: regimi_fiscali
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE c.conrelid = 'anagrafiche.emittenti_fiscali'::regclass
+                     AND c.conname = 'fk_emittenti_fiscali_regimi_fiscali';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  ALTER COLUMN regime_fiscale_rf SET DEFAULT 'RF01';
+
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  ALTER COLUMN regime_fiscale_rf SET NOT NULL;
+
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  ADD CONSTRAINT fk_emittenti_fiscali_regimi_fiscali
+                  FOREIGN KEY (regime_fiscale_rf)
+                  REFERENCES config.regimi_fiscali (codice_interno)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              COMMENT ON COLUMN anagrafiche.emittenti_fiscali.regime_fiscale_rf IS
+                  'Il regime fiscale dell''emittente: codice RegimeFiscale del tracciato FatturaPA, '
+                  'FK su config.regimi_fiscali(codice_interno) (D-9). NOT NULL DEFAULT ''RF01'' '
+                  '(D-1): un default e'' un regime che nessuno ha dichiarato, e lo mostra il '
+                  'presidio dbops.vw_emittenti_regime_non_confermato finche'' '
+                  'regime_fiscale_confermato_il e'' NULL. Decide l''esigibilita'' IVA delle righe '
+                  '(config.regimi_fiscali.iva_per_cassa, letto da script.fn_esigibilita_iva) ed e'' '
+                  'congelato nello snapshot dell''intestazione della fattura, da cui le righe lo '
+                  'rileggono (D-8). Brief: brief-db-esigibilita-iva-per-cassa-emittente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  DROP CONSTRAINT IF EXISTS fk_emittenti_fiscali_regimi_fiscali;
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  ALTER COLUMN regime_fiscale_rf DROP NOT NULL;
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  ALTER COLUMN regime_fiscale_rf DROP DEFAULT;

@@ -11,22 +11,40 @@ CREATE FUNCTION fn_posta_inventario(p_inventario_id bigint)
 CREATE OR REPLACE FUNCTION magazzino.fn_posta_inventario(p_inventario_id bigint)
  RETURNS TABLE(movimento_id bigint, riga_id bigint, qta numeric)
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 -- Scopo: registrare un inventario CONFIRM — per ogni riga del piano
 --   (fn_inventario_piano) scrive qta_sistema e posta il delta con la
 --   causale del piano attraverso la primitiva; poi porta la testata a
 --   POSTED. Una transazione: se una riga fallisce non resta niente e il
 --   documento resta CONFIRM. Ritorna, riga per riga, il movimento scritto.
+-- Rev 2026-09-22 (Lotto 2-bis, R-1): le condizioni di registrabilita' non
+--   sono piu' scritte qui — le dice
+--   script.fn_check_documento_interno_registrabile, la stessa funzione da
+--   cui la capability del drawer accende o spegne «Registra». Codici e
+--   valori invariati: le frasi sono quelle di prima.
+-- Rev 2026-09-24 (brief-db-magazzino-verbi-con-permesso, D-4): e' un VERBO.
+--   Prima riga: script.fn_guard_azione('registra_magazzino'), lo stesso
+--   permesso che il backend chiede all'endpoint. SECURITY DEFINER del
+--   proprietario: l'app non chiama piu' la primitiva, la chiama il verbo.
+--   La RLS dei documenti qui non vale: il perimetro lo rimette il predicato
+--   della policy (fn_scope_ef_whitelist_via_magazzino) nella WHERE del
+--   FOR UPDATE — fuori perimetro resta NON TROVATO, e senza lock.
 DECLARE
+    v_utente       config.user_override_azioni.auth_user_id%TYPE;
     v_magazzino_id magazzino.inventari.magazzino_id%TYPE;
     v_data         magazzino.inventari.data%TYPE;
     v_stato        magazzino.inventari.stato_mag_inventario%TYPE;
-    v_n_righe      bigint;
     v_sorgente_id  config.sorgenti.id%TYPE;
     v_costo        magazzino.inventari_righe.costo_unitario%TYPE;
     v_motivi       jsonb;
     v_piano        record;
 BEGIN
+    -- 0. Il permesso, prima di ogni altra cosa: lo stesso del backend.
+    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    PERFORM script.fn_guard_azione(v_utente, 'registra_magazzino');
+
     -- 1. Parametro
     IF p_inventario_id IS NULL OR p_inventario_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
@@ -35,11 +53,15 @@ BEGIN
             NULL::uuid, 'magazzino.fn_posta_inventario', 'p_inventario_id (obbligatorio, maggiore di zero)');
     END IF;
 
-    -- 2. La testata, FOR UPDATE, sotto RLS: fuori perimetro NON C'E'.
+    -- 2. La testata, FOR UPDATE, nel perimetro: fuori perimetro NON C'E'.
+    --    Il predicato e' quello della policy (qui la RLS non vale: DEFINER).
+    --    Il lock viene PRIMA di ogni domanda: e' cio' che serializza due
+    --    posting dello stesso documento (la check e' STABLE e non lo prende).
     SELECT i.magazzino_id, i.data, i.stato_mag_inventario
       INTO v_magazzino_id, v_data, v_stato
       FROM magazzino.inventari i
      WHERE i.id = p_inventario_id
+       AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, i.magazzino_id)
        FOR UPDATE;
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
@@ -47,22 +69,14 @@ BEGIN
             jsonb_build_object('inventario_id', p_inventario_id),
             NULL::uuid, p_inventario_id::text);
     END IF;
-    IF v_stato <> 'CONFIRM' THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
-            'E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA',
-            jsonb_build_object('detail', 'il posting parte da CONFIRM',
-                               'inventario_id', p_inventario_id, 'stato', v_stato),
-            NULL::uuid, v_stato, 'POSTED');
-    END IF;
 
-    -- 3. Almeno una riga.
-    SELECT count(*) INTO v_n_righe FROM magazzino.inventari_righe r WHERE r.inventario_id = p_inventario_id;
-    IF v_n_righe = 0 THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
-            'E_MAG_DOCUMENTO_SENZA_RIGHE',
-            jsonb_build_object('inventario_id', p_inventario_id),
-            NULL::uuid, p_inventario_id::text);
-    END IF;
+    -- 3. Si puo' registrare? Lo dice la check CONDIVISA con la capability:
+    --    stato non CONFIRM, nessuna riga, una riga non postabile — in
+    --    quest'ordine. Il codice lo LEGGO dall'array, quindi l'helper.
+    v_motivi := script.fn_check_documento_interno_registrabile('INVENTARIO', p_inventario_id);
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'magazzino', 'magazzino.fn_posta_inventario', v_motivi, NULL, NULL::uuid,
+        jsonb_build_object('inventario_id', p_inventario_id));
 
     SELECT s.id INTO v_sorgente_id FROM config.sorgenti s WHERE s.codice_interno = 'INVENTARIO_RIGA' AND s.attivo;
     IF NOT FOUND THEN
@@ -89,7 +103,8 @@ BEGIN
          WHERE r.id = v_piano.riga_id;
 
         IF v_piano.esito = 'NON_POSTABILE' THEN
-            -- Il primo motivo della STESSA check: il piano l'aveva gia' detto.
+            -- La RETE: la check del passo 3 l'ha gia' detto, ma se un giorno
+            -- i due percorsi divergessero il ledger non deve pagarlo.
             v_motivi := script.fn_check_riga_magazzino(v_magazzino_id, v_piano.articolo_id,
                                                        v_piano.lotto_id, v_piano.asset_id, v_piano.ubicazione_id);
             PERFORM script.fn_raise_primo_motivo_se_presente(
@@ -132,7 +147,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION magazzino.fn_posta_inventario(p_inventario_id bigint)
-IS 'Registra un inventario CONFIRM (D-L2-f, D-L2-n): legge il piano (fn_inventario_piano), scrive qta_sistema su ogni riga, posta le righe con delta <> 0 attraverso la primitiva (causale del piano: INV_INIZIALE se l''articolo non ha movimenti nel magazzino, altrimenti RETT_POS/RETT_NEG; sorgente INVENTARIO_RIGA:{riga}; costo della riga solo su un''entrata; data_mov = data dell''inventario), porta la testata a POSTED con la GUC transazionale zeroerp.magazzino_posting_inventario. Le NON_CONTATA restano; una NON_POSTABILE rifiuta tutto col primo motivo di fn_check_riga_magazzino. SECURITY INVOKER: la testata sotto RLS FOR UPDATE — fuori perimetro E_MAG_DOCUMENTO_NON_TROVATO (404 no-leak); non CONFIRM: E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA; senza righe: E_MAG_DOCUMENTO_SENZA_RIGHE. UNA transazione per costruzione (5b): se una riga fallisce non resta niente. Ritorna (movimento_id, riga_id, qta) per riga postata. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.5.';
+IS 'VERBO (rev 2026-09-24, brief-db-magazzino-verbi-con-permesso): registra un inventario CONFIRM (D-L2-f, D-L2-n). Prima riga: script.fn_guard_azione(utente, ''registra_magazzino''), lo stesso permesso dell''endpoint (E_PERMESSO_NEGATO, anche senza utente). SECURITY DEFINER del proprietario con search_path bloccato: e'' la sola strada verso la primitiva. La RLS qui non vale: la testata si prende FOR UPDATE con il predicato della policy (script.fn_scope_ef_whitelist_via_magazzino) nella WHERE — fuori perimetro E_MAG_DOCUMENTO_NON_TROVATO (404 no-leak) e nessun lock. Poi come prima: legge il piano (fn_inventario_piano), scrive qta_sistema su ogni riga, posta le righe con delta <> 0 attraverso la primitiva (causale del piano; sorgente INVENTARIO_RIGA; costo della riga solo su un''entrata; data_mov = data dell''inventario), porta la testata a POSTED con la GUC transazionale zeroerp.magazzino_posting_inventario. Non CONFIRM: E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA; senza righe: E_MAG_DOCUMENTO_SENZA_RIGHE; una NON_POSTABILE rifiuta tutto. UNA transazione: se una riga fallisce non resta niente. Ritorna (movimento_id, riga_id, qta) per riga postata.';
 ```
 
 ---

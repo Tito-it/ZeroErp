@@ -24,7 +24,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.core.db._helpers import LIST_MAX_LIMIT
+from apps.core.db._helpers import limiti_pagina
 from apps.core.db.presidi_repository import PresidiRepository
 from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.avvio_manuale import (
@@ -44,14 +44,15 @@ from apps.core.services.list_helpers import (
     validate_order_params,
 )
 from apps.core.services.payload_helpers import translate_db_errors
+from apps.core.services.service_errors import E_VALIDATION_INPUT
 from apps.core.services.sveglie import sveglia_di_processo, sveglie_di_processo
 
 _FN = "core.processi_service"
 E_VALIDATION = "E_CORE_VALIDATION"
 # Il codice del payload malformato di un VERBO (unit assente o non del
-# processo): e' quello che il resto dei verbi di coda usa per la stessa
-# condizione, con `field` nel context per accendere il campo a video.
-E_VALIDATION_INPUT = "E_VALIDATION_INPUT"
+# processo) e' `E_VALIDATION_INPUT` (da `service_errors`): quello che il resto
+# dei verbi di coda usa per la stessa condizione, con `field` nel context per
+# accendere il campo a video.
 
 # ✅ Il ripiego dichiarato e' RIENTRATO il 2026-09-05 (DB-8): il codice esiste a
 # catalogo con classe `NON_TROVATO`, quindi un codice processo inesistente in URL
@@ -143,8 +144,7 @@ class ProcessiService:
         #    adattatore nel client sarebbe una traduzione in piu' da tenere
         #    allineata.
         fn = f"{_FN}.list_processi"
-        limit = min(max(int(limit), 1), LIST_MAX_LIMIT)
-        offset = max(int(offset), 0)
+        limit, offset = limiti_pagina(limit, offset)
         validate_enum_param(
             classe, allowed=_CLASSI, nullable=True, error_code=E_VALIDATION,
             function_name=fn, param_name="classe",
@@ -285,8 +285,7 @@ class ProcessiService:
     def list_run(
         self, codice: str, *, limit: int = DEFAULT_LIMIT, offset: int = 0,
     ) -> dict[str, Any]:
-        limit = min(max(int(limit), 1), LIST_MAX_LIMIT)
-        offset = max(int(offset), 0)
+        limit, offset = limiti_pagina(limit, offset)
         righe, totale = self._repo.list_run_processo(
             codice, limit=limit, offset=offset,
         )

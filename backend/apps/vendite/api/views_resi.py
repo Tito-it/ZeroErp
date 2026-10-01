@@ -24,6 +24,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     optional_iso_date,
     paginated_envelope,
     parse_list_params,
@@ -35,6 +36,10 @@ from apps.ui.api.export_helpers import build_export_response, parse_export_forma
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
 from apps.vendite.services import resi_service
+from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
+from apps.vendite.db.resi_repository import ResiRepository
+from apps.core.api.openapi_params import param_ricerca_full
+from apps.vendite.api._schema_da_contratto import schema_da_contratto
 
 # Codici lista config (ui.lista_definizione) delle liste resi: guidano la
 # risoluzione colonne visibili/ordine/permessi dell'export (DEF-1).
@@ -42,6 +47,76 @@ _LISTA_CODICE_RESI = "vendite.resi"
 _LISTA_CODICE_DA_ACCREDITARE = "vendite.resi_da_accreditare"
 _LISTA_CODICE_DA_RICONSEGNARE = "vendite.resi_da_riconsegnare"
 
+
+# ── Schemi OpenAPI dei corpi: le chiavi dal contratto del service ──────────
+_RESO_RIGA_CREATE_REQUEST = schema_da_contratto(
+    "VenditeResoRigaCreateReq", resi_service.CREATE_KEYS_RIGA,
+    obbligatorie=("ddt_riga_id", "tipo_reso_id", "qta_operativa"),
+)
+_RESO_RIGA_UPDATE_REQUEST = schema_da_contratto(
+    "VenditeResoRigaUpdateReq", resi_service.UPDATE_KEYS_RIGA,
+)
+# Il reso nasce da un DDT; con `righe` la testata e le righe in un colpo solo.
+_RESO_CREATE_REQUEST = schema_da_contratto(
+    "VenditeResoCreateReq", resi_service.CREATE_KEYS_RESO,
+    obbligatorie=("ddt_id",),
+    speciali={"righe": serializers.ListField(
+        child=type(_RESO_RIGA_CREATE_REQUEST)(), required=False,
+    )},
+)
+_RESO_UPDATE_REQUEST = schema_da_contratto(
+    "VenditeResoUpdateReq", resi_service.UPDATE_KEYS_RESO,
+)
+
+
+# Una riga di ri-consegna, come la legge `_parse_righe_riconsegna` (unita'
+# BASE). ⚠️ UNA sola CLASSE, un'istanza per uso: tre `inline_serializer` con lo
+# stesso nome sono tre classi diverse (drf-spectacular avverte che lo schema e'
+# sbagliato), e un'istanza gia' legata a un campo non si riusa come `child=`.
+_RigaRiconsegna = type(inline_serializer(
+    name="VenditeResoRigaRiconsegna",
+    fields={
+        "resi_riga_id": serializers.IntegerField(),
+        "qta": serializers.DecimalField(max_digits=22, decimal_places=10),
+    },
+))
+
+
+# Scopo: il campo `righe` delle tre azioni di ri-consegna. Omesso: tutta la
+#        copertura residua. Fabbrica: il ListField e' per serializer.
+def _righe_riconsegna_field() -> serializers.Field:
+    return serializers.ListField(
+        required=False,
+        help_text="Omessa: tutta la copertura residua del reso.",
+        child=_RigaRiconsegna(),
+    )
+
+
+_RESO_GENERA_DDT_RICONSEGNA_REQUEST = inline_serializer(
+    name="VenditeResoGeneraDdtRiconsegnaReq",
+    fields={
+        "righe": _righe_riconsegna_field(),
+        "data": serializers.DateField(required=False, allow_null=True),
+    },
+)
+_RESO_CHIUDI_RICONSEGNA_REQUEST = inline_serializer(
+    name="VenditeResoChiudiRiconsegnaReq",
+    fields={
+        "righe": _righe_riconsegna_field(),
+        "note": serializers.CharField(required=False, allow_null=True),
+    },
+)
+_RESO_RIAPRI_RICONSEGNA_REQUEST = inline_serializer(
+    name="VenditeResoRiapriRiconsegnaReq",
+    fields={"righe": _righe_riconsegna_field()},
+)
+_RESO_RESPONSE = inline_serializer(
+    name="VenditeResoResp", fields={"data": serializers.DictField()},
+)
+_RESO_LISTA_RESPONSE = inline_serializer(
+    name="VenditeResoListaResp",
+    fields={"data": serializers.ListField(child=serializers.DictField())},
+)
 
 # Scopo: Estrae i filtri delle due code: gli stessi della lista (BB
 #        extract_doc_list_filters) SENZA lo stato (le viste coda si
@@ -75,13 +150,14 @@ class ApiResiList(DomainAPIView):
     """GET/POST /api/v1/vendite/resi/ — lista paginata + create reso da DDT."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi"
 
     @extend_schema(
         operation_id="vendite_resi_list",
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="stato_codice_interno", type=str, required=False,
                              description="codice_interno stato (DRAFT | CONFERMATO | ANNULLATO)"),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
@@ -117,6 +193,10 @@ class ApiResiList(DomainAPIView):
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
+    @extend_schema(
+        request=_RESO_CREATE_REQUEST,
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Crea nuovo reso da DDT (DRAFT). Payload {ddt_id, data?, righe?}.
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=resi_service.crea_reso)
@@ -131,6 +211,7 @@ class ApiResiExport(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi"
 
@@ -139,7 +220,7 @@ class ApiResiExport(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="stato_codice_interno", type=str, required=False),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
@@ -170,7 +251,6 @@ class ApiResiExport(DomainAPIView):
             **f,
         )
         filtri_applicati = resi_service.resolve_filtri_export_label(
-            search=p["search"],
             stato_codice=f["stato_codice"],
             billing_account_id=f["billing_account_id"],
             data_da=f["data_da"],
@@ -194,13 +274,14 @@ class ApiResiDaAccreditare(DomainAPIView):
     opzione DL-26). Il consumo arriva con la slice NC."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi_da_accreditare"
 
     @extend_schema(
         operation_id="vendite_resi_da_accreditare",
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
@@ -254,6 +335,7 @@ class ApiResiDaAccreditareExport(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi_da_accreditare"
 
@@ -262,7 +344,7 @@ class ApiResiDaAccreditareExport(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
@@ -302,7 +384,6 @@ class ApiResiDaAccreditareExport(DomainAPIView):
             **f,
         )
         filtri_applicati = resi_service.resolve_filtri_coda_export_label(
-            search=p["search"],
             billing_account_id=f["billing_account_id"],
             data_da=f["data_da"],
             data_al=f["data_al"],
@@ -326,13 +407,14 @@ class ApiResiDaRiconsegnare(DomainAPIView):
     stato_riconsegna derivato). Si auto-svuota a copertura completa."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi_da_riconsegnare"
 
     @extend_schema(
         operation_id="vendite_resi_da_riconsegnare",
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
@@ -383,6 +465,7 @@ class ApiResiDaRiconsegnareExport(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi_da_riconsegnare"
 
@@ -391,7 +474,7 @@ class ApiResiDaRiconsegnareExport(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
@@ -429,7 +512,6 @@ class ApiResiDaRiconsegnareExport(DomainAPIView):
             **f,
         )
         filtri_applicati = resi_service.resolve_filtri_coda_export_label(
-            search=p["search"],
             billing_account_id=f["billing_account_id"],
             data_da=f["data_da"],
             data_al=f["data_al"],
@@ -450,18 +532,29 @@ class ApiResoDetail(DomainAPIView):
     """GET/PATCH/DELETE /api/v1/vendite/resi/<reso_id>/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
+    @extend_schema(
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Dettaglio testata reso + capability data-driven.
     def get(self, request: Request, reso_id: int) -> JsonResponse:
         return success_response(resi_service.get_reso(int(reso_id)))
 
+    @extend_schema(
+        request=_RESO_UPDATE_REQUEST,
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Aggiorna testata reso (solo DRAFT; data/meta). PATCH usa
     #        request.data (DRF ha gia' parsato il body).
     def patch(self, request: Request, reso_id: int) -> JsonResponse:
         return success_response(
-            resi_service.aggiorna_reso(int(reso_id), dict(request.data)),
+            resi_service.aggiorna_reso(int(reso_id), dict(corpo_oggetto(request))),
         )
 
+    @extend_schema(
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Hard-delete reso (abbandono bozza, solo DRAFT + 0 righe).
     def delete(self, request: Request, reso_id: int) -> JsonResponse:
         return success_response(resi_service.elimina_reso(int(reso_id)))
@@ -473,7 +566,12 @@ class ApiResoConferma(DomainAPIView):
     ordine, flip DDT se reso totale). Body vuoto."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
+    @extend_schema(
+        request=None,
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Conferma il reso (fn madre atomica DB).
     def post(self, request: Request, reso_id: int) -> JsonResponse:
         return handle_post_json(
@@ -487,7 +585,12 @@ class ApiResoAnnulla(DomainAPIView):
     CONFERMATO) via fn madre `fn_annulla_reso` (storno effetti). Body vuoto."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
+    @extend_schema(
+        request=None,
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Annulla il reso (fn madre atomica DB, storno post-conferma).
     def post(self, request: Request, reso_id: int) -> JsonResponse:
         return handle_post_json(
@@ -505,7 +608,12 @@ class ApiResoGeneraDdtRiconsegna(DomainAPIView):
     validazione nel service (_parse_righe_riconsegna)."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
+    @extend_schema(
+        request=_RESO_GENERA_DDT_RICONSEGNA_REQUEST,
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Genera il DDT di ri-consegna (parziale/multiplo) dal reso.
     def post(self, request: Request, reso_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
@@ -529,7 +637,12 @@ class ApiResoChiudiRiconsegna(DomainAPIView):
     `righe` degeneri = 400, NON "rendi definitivo tutto"."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
+    @extend_schema(
+        request=_RESO_CHIUDI_RICONSEGNA_REQUEST,
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Chiude la ri-consegna (rinuncia parziale/totale) sul reso.
     def post(self, request: Request, reso_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
@@ -551,7 +664,12 @@ class ApiResoRiapriRiconsegna(DomainAPIView):
     del reso; lo scalo parte dalle rinunce piu' RECENTI (LIFO, lato DB)."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
+    @extend_schema(
+        request=_RESO_RIAPRI_RICONSEGNA_REQUEST,
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Riapre una chiusura di ri-consegna (rimedio a una rinuncia errata).
     def post(self, request: Request, reso_id: int) -> JsonResponse:
         return handle_post_json(
@@ -657,11 +775,19 @@ class ApiResoRighe(DomainAPIView):
     """GET/POST /api/v1/vendite/resi/<reso_id>/righe/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
+    @extend_schema(
+        responses={200: _RESO_LISTA_RESPONSE},
+    )
     # Scopo: Lista righe del reso (con copertura ri-consegna derivata).
     def get(self, request: Request, reso_id: int) -> JsonResponse:
         return success_response(resi_service.list_righe(int(reso_id)))
 
+    @extend_schema(
+        request=_RESO_RIGA_CREATE_REQUEST,
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Aggiunge una riga (solo DRAFT, snapshot dalla riga DDT).
     def post(self, request: Request, reso_id: int) -> JsonResponse:
         return handle_post_json(
@@ -676,17 +802,53 @@ class ApiResoRigaDetail(DomainAPIView):
     """PATCH/DELETE /api/v1/vendite/resi/<reso_id>/righe/<riga_id>/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
+    @extend_schema(
+        request=_RESO_RIGA_UPDATE_REQUEST,
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Aggiorna una riga del reso (solo DRAFT; qta/tipo/motivo/meta).
     def patch(self, request: Request, reso_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             resi_service.aggiorna_riga(
-                int(reso_id), int(riga_id), dict(request.data),
+                int(reso_id), int(riga_id), dict(corpo_oggetto(request)),
             ),
         )
 
+    @extend_schema(
+        responses={200: _RESO_RESPONSE},
+    )
     # Scopo: Elimina una riga del reso (hard delete, solo DRAFT).
     def delete(self, request: Request, reso_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             resi_service.elimina_riga(int(reso_id), int(riga_id)),
         )
+
+
+# ── Righe: la lista configurabile `vendite.reso_righe` ──
+# Pagina ed export dal factory condiviso `build_lista_figlia_views`
+# (brief-db-liste-righe-documento, lotto A). La closure legge il global di
+# modulo a call-time: i patch dei test sul service restano validi.
+# ⚠️ `GET …/righe/` resta la lettura COMPLETA: la lista e' su `…/righe/lista/`.
+_ResoRigheLista, _ResoRigheListaExport = build_lista_figlia_views(
+    schema_prefix="ResoRighe",
+    operation_id="vendite_resi_righe_lista",
+    area_funzionale="vendite",
+    lista_emittente_param=EMITTENTE_DOCUMENTO_PARAM,
+    url_kwarg="reso_id",
+    model_permission=('vendite', 'reso'),
+    pagina_call=lambda documento_id, **kw: resi_service.list_righe_pagina(documento_id, **kw),
+    colonne_ordinabili=ResiRepository.righe_colonne_ordinabili(),
+    ordine_assente=ResiRepository.righe_ordine_di_partenza(),
+)
+
+
+# ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
+#    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
+class ApiResoRigheListaView(_ResoRigheLista):
+    lista_codice = "vendite.reso_righe"
+
+
+class ApiResoRigheListaExportView(_ResoRigheListaExport):
+    lista_codice = "vendite.reso_righe"

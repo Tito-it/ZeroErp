@@ -20,10 +20,10 @@
 
 L'assistente AI e' un Anello 4: consuma le API degli anelli interni senza che questi lo conoscano. Tuttavia, ogni volta che si aggiunge o modifica un endpoint REST nei domini esistenti (pratiche, anagrafiche, vendite, ecc.), e' opportuno verificare se:
 
-- **Esiste un tool AI che wrappa quell'endpoint** — se si', aggiornare il tool per riflettere i nuovi campi o parametri
-- **Il nuovo endpoint espone dati utili all'operatore** — valutare se creare un nuovo tool (un file, una classe, una registrazione)
+- **Esiste un tool AI che ha quell'endpoint come gemello** — se si', aggiornare il tool per riflettere i nuovi campi o parametri
+- **Il nuovo endpoint espone dati utili all'operatore** — valutare se creare un nuovo tool che lo abbia come gemello (§6.3)
 - **Gli stati o le transizioni sono cambiati** — aggiornare `docs/it/ai/ai-context.md` che alimenta il system prompt
-- **I permessi dell'area funzionale sono cambiati** — il filtro tool usa `PermissionResolver`, nessuna azione necessaria se i permessi sono gestiti centralmente
+- **I permessi dell'endpoint sono cambiati** — nessuna azione: il tool li eredita dal suo endpoint gemello (§3.4)
 
 Non e' obbligatorio — l'ERP funziona identicamente senza AI. Ma un tool non aggiornato restituisce dati incompleti, e un contesto statico non allineato produce risposte imprecise.
 
@@ -121,10 +121,15 @@ Il provider e' configurabile via variabile d'ambiente `AI_PROVIDER`. In questo m
 Il catalogo degli strumenti AI non e' un elenco statico inviato all'LLM. Viene filtrato ad ogni richiesta in base a:
 
 1. **Blacklist installazione** — parametro `AI_DISABLED_TOOLS` in `config.parameters`, per disabilitare tool specifici per installazione senza toccare codice
-2. **Permessi area funzionale** — usa `PermissionResolver` (Anello 0), lo stesso componente di `ZeroERPPermission`. Se l'operatore non ha accesso all'area `pratiche`, il tool `cerca_pratiche` non viene nemmeno inviato all'LLM
-3. **Livello accesso** — i tool in scrittura richiedono `TUTTO`; un operatore con `LETTURA` non li vede
+2. **Permessi dell'endpoint gemello** — ogni tool dichiara l'endpoint della UI che fa la stessa cosa (classe della view e metodo HTTP), e il permesso si **deriva** da li': il filtro chiama `valuta_accesso_endpoint`, la stessa regola che `ZeroERPPermission` applica alle chiamate della UI (catalogo BB backend). Area del model o `area_funzionale`, livello richiesto dal metodo, azione di processo (`<metodo>_permission`), override per oggetto, `SUPER_ADMIN`: tutto vale per il tool esattamente come per l'endpoint. Se l'operatore non puo' chiamare `ApiPraticheList`, il tool `cerca_pratiche` non viene nemmeno inviato all'LLM; se non puo' fare la `POST` di `ApiPraticheList`, non vede `crea_pratica`
 
-Questo garantisce che l'LLM non puo' mai chiamare un'operazione per cui l'utente non ha permesso — perche' lo strumento non esiste nel suo catalogo.
+3. **Livello sull'assistente** — l'area `ai_assistant` fa da secondo filtro, sullo strumento stesso: con `LETTURA` l'assistente **consulta** (solo i tool il cui gemello e' una lettura), con `TUTTO` anche **agisce** (i tool di scrittura, sempre con conferma), con `BLOCCATO` non risponde. Vale sempre il piu' stretto dei due livelli: un operatore con `TUTTO` su `pratiche` e `LETTURA` sull'assistente crea pratiche dalla UI ma non tramite l'assistente; uno con `TUTTO` sull'assistente e `LETTURA` su `pratiche` non ne crea da nessuna parte
+
+Il tool non dichiara area, livello o azione, e nemmeno se scrive: anche questo si **deriva** dal gemello (`chiamata_in_scrittura`, la stessa regola che decide il tipo di accesso della UI). Una seconda copia della regola prima o poi direbbe una cosa diversa dalla UI. Un tool senza endpoint gemello e' un'eccezione, da scrivere per nome con il motivo (§6.3).
+
+Il filtro e' ripetuto **tre volte**: quando il catalogo si offre al modello, quando un tool viene eseguito e quando si conferma una scrittura. Questo garantisce che l'LLM non puo' mai chiamare un'operazione per cui l'utente non ha permesso — perche' lo strumento non esiste nel suo catalogo.
+
+**L'ingresso.** L'endpoint dell'assistente (`AIQueryView`) appartiene all'area funzionale `ai_assistant`, che l'amministratore concede dal pannello dei profili come ogni altra area. Una domanda e' una lettura anche se viaggia in una `POST`: la view lo dichiara (`post_accesso = "view"`), quindi basta `LETTURA` per entrare. Il bottone dell'assistente nella barra in alto compare solo a chi puo' entrare: lo dice `GET /ai-assistant/status/` (campo `utilizzabile`), con la stessa regola.
 
 ### 3.5 Conferma operazioni in scrittura
 
@@ -134,6 +139,8 @@ Le operazioni che modificano dati (creazione pratica, cambio stato, aggiunta not
 2. **Esecuzione** — solo dopo conferma esplicita dell'operatore, il tool esegue l'operazione reale chiamando il service di dominio.
 
 Se l'operatore non conferma entro 5 minuti, la conferma pendente viene scartata automaticamente.
+
+**Le letture le garantisce il database.** Ogni tool di lettura, e l'anteprima di ogni tool di scrittura, gira dentro una transazione di **sola lettura** (`transazione_sola_lettura`, catalogo BB backend). Se un tool classificato come lettura prova a scrivere — per un errore di classificazione o per un service che scrive piu' di quanto dice — lo ferma PostgreSQL (`25006`), anche dentro una funzione `SECURITY DEFINER`. Restano fuori solo l'esecuzione confermata di una scrittura e il registro `dbops.ai_query_log`.
 
 ### 3.6 Contesto statico documentale
 
@@ -163,11 +170,11 @@ I tool sono oggetti Python con handler — una tabella DB puo' solo disabilitare
 
 ### 4.1 Autorizzazioni — *(pilastro 1)*
 
-L'endpoint usa le stesse autorizzazioni JWT del resto delle API. Il catalogo strumenti e' filtrato per area/livello: **se l'operatore non ha il permesso, lo strumento non viene proprio inviato al modello**. Anche un'AI dirottata da un'injection puo' invocare solo strumenti che l'utente potrebbe gia' usare a mano.
+L'endpoint usa le stesse autorizzazioni JWT del resto delle API. Il catalogo strumenti e' filtrato con i permessi dell'endpoint gemello di ciascun tool (§3.4): **se l'operatore non ha il permesso, lo strumento non viene proprio inviato al modello**. Anche un'AI dirottata da un'injection puo' invocare solo strumenti che l'utente potrebbe gia' usare a mano.
 
 ### 4.2 Row-Level Security — *(pilastro 2)*
 
-Le tabelle sensibili (`vendite.fatture`, `vendite.fatturazione_lotti`, ...) hanno **RLS attiva**: la connessione applicativa filtra le righe in base al contesto operatore (GUC `app.*` dal JWT). Quindi un tool di lettura disponibile **non** espone righe che l'operatore non vedrebbe nella UI. E' la difesa per-riga che il filtro-catalogo (grossolano, per-area) da solo non da'.
+Le tabelle sensibili (`vendite.fatture`, `vendite.fatturazione_lotti`, ...) hanno **RLS attiva**: la connessione applicativa filtra le righe in base al contesto operatore (GUC `app.*` dal JWT). Quindi un tool di lettura disponibile **non** espone righe che l'operatore non vedrebbe nella UI. E' la difesa per-riga che il filtro-catalogo (grossolano, per endpoint) da solo non da'.
 
 ### 4.3 Conferma sulle scritture — *(pilastro 3)*
 
@@ -220,43 +227,45 @@ Le risposte includono **azioni di navigazione** cliccabili che portano l'operato
 
 ### 6.1 Lettura
 
-| Strumento | Dominio | Descrizione |
+| Strumento | Endpoint gemello | Descrizione |
 |---|---|---|
-| `cerca_pratiche` | pratiche | Ricerca pratiche per stato, cliente, scadenza |
-| `dettaglio_pratica` | pratiche | Dati completi di una pratica |
-| `cerca_flussi_pratica` | pratiche | Flussi operativi di una pratica |
-| `cerca_soggetti` | anagrafiche | Ricerca soggetti con ruoli (cliente, fornitore) |
-| `dettaglio_soggetto` | anagrafiche | Dati completi, contatti, indirizzi, ruoli |
-| `cerca_operatori` | amm_software | Ricerca operatori per nome, reparto, ruolo |
-| `cerca_billing_account` | anagrafiche | Ricerca clienti (billing account) per ragione sociale, codice fiscale, partita IVA |
-| `cerca_articoli` | catalogo | Ricerca articoli del catalogo per codice o descrizione |
-| `cerca_contratti` | vendite | Ricerca contratti commerciali per stato, utility, ambito, cliente, scadenza |
-| `dettaglio_contratto` | vendite | Dati completi di un contratto: testata, utility 1:1, righe con prezzi |
-| `cerca_preventivi` | vendite | Ricerca preventivi per stato (DRAFT/EMESSO/ACCETTATO/...), cliente, utility, periodo |
-| `dettaglio_preventivo` | vendite | Dati completi di un preventivo: testata, totali, validita', capabilities, count righe |
-| `cerca_promo_articoli` | vendite | Ricerca promo articolo per articolo, tipo variazione (PERCENTUALE/VALORE_FISSO/PREZZO_FISSO), validita' |
-| `cerca_listini` | vendite | Ricerca listini di pricing per utility, tipologia, attivo |
-| `cerca_documenti_generati` | documenti | Lista versioni PDF archiviate per un record sorgente (oggi: PREVENTIVO; estendibile a CONTRATTO/ORDINE) |
+| `cerca_pratiche` | `ApiPraticheList` GET | Ricerca pratiche per stato, cliente, scadenza |
+| `dettaglio_pratica` | `ApiPraticaDetail` GET | Dati completi di una pratica |
+| `cerca_flussi_pratica` | `ApiPraticaFlussiList` GET | Flussi operativi di una pratica |
+| `cerca_soggetti` | `SoggettiView` GET | Ricerca soggetti con ruoli (cliente, fornitore) |
+| `dettaglio_soggetto` | `SoggettiDetailView` GET | Dati completi, contatti, indirizzi, ruoli |
+| `cerca_operatori` | `OperatoriListView` GET (solo `SUPER_ADMIN`) | Ricerca operatori per nome, reparto, ruolo |
+| `cerca_billing_account` | `BillingAccountLookupView` GET (lookup, ogni operatore attivo) | Ricerca clienti (billing account) per ragione sociale, codice fiscale, partita IVA |
+| `cerca_articoli` | `ApiArticoliLookup` GET (lookup, ogni operatore attivo) | Ricerca articoli del catalogo per codice o descrizione |
+| `cerca_contratti` | `ApiContrattiList` GET | Ricerca contratti commerciali per stato, utility, ambito, cliente, scadenza |
+| `dettaglio_contratto` | `ApiContrattoDetail` GET | Dati completi di un contratto: testata, utility 1:1, righe con prezzi |
+| `cerca_preventivi` | `ApiPreventiviList` GET | Ricerca preventivi per stato (DRAFT/EMESSO/ACCETTATO/...), cliente, utility, periodo |
+| `dettaglio_preventivo` | `ApiPreventivoDetail` GET | Dati completi di un preventivo: testata, totali, validita', capabilities, count righe |
+| `cerca_promo_articoli` | `PromoArticoliView` GET | Ricerca promo articolo per articolo, tipo variazione (PERCENTUALE/VALORE_FISSO/PREZZO_FISSO), validita' |
+| `cerca_listini` | `ApiListiniList` GET | Ricerca listini di pricing per utility, tipologia, attivo |
+| `cerca_documenti_generati` | `ApiPreventivoDocumentiList` GET | Lista versioni PDF archiviate per un record sorgente (oggi: PREVENTIVO; estendibile a CONTRATTO/ORDINE) |
 
 ### 6.2 Scrittura (con conferma)
 
-| Strumento | Dominio | Descrizione |
+| Strumento | Endpoint gemello | Descrizione |
 |---|---|---|
-| `crea_pratica` | pratiche | Crea nuova pratica con tipo prestazione e priorita' |
-| `cambia_stato_pratica` | pratiche | Attiva, sospendi, chiudi o annulla una pratica |
-| `aggiungi_nota_pratica` | pratiche | Aggiunge nota con tipo (generale, interna, tecnica) |
+| `crea_pratica` | `ApiPraticheList` POST | Crea nuova pratica con tipo prestazione e priorita' |
+| `cambia_stato_pratica` | `ApiPraticaStato` POST (azione `cambia_stato_pratica`) | Attiva, sospendi, chiudi o annulla una pratica |
+| `aggiungi_nota_pratica` | `ApiPraticaNoteList` POST | Aggiunge nota con tipo (generale, interna, tecnica) |
 
-Tutti i tool in scrittura richiedono livello accesso `TUTTO` e conferma esplicita dell'operatore.
+Un tool in scrittura e' disponibile solo a chi puo' fare la stessa scrittura dalla UI (livello o azione di processo del gemello), e chiede sempre la conferma esplicita dell'operatore.
 
 ### 6.3 Aggiungere un nuovo tool
 
 Per aggiungere uno strumento:
 
 1. Creare un file in `backend/apps/ai_assistant/tools/` con una classe che estende `AITool`
-2. Definire `name`, `description`, `input_schema`, `required_area`, `required_level`
+2. Definire `name`, `description`, `input_schema` ed `endpoint=EndpointGemello(<view>, "<metodo>")`: la view della UI che chiama lo **stesso** service con lo stesso significato. I permessi del tool sono quelli di quell'endpoint, e non si dichiarano altrove
 3. Implementare `execute()` che chiama il service/repository esistente
-4. Per tool in scrittura, impostare `requires_confirmation=True` e implementare `preview()`
+4. Per tool in scrittura, implementare `preview()`. Che il tool scriva non si dichiara: lo dice il gemello (un metodo che non e' una lettura), e da li' discendono la conferma, il livello `TUTTO` sull'assistente e la sola lettura dell'anteprima
 5. Registrare nella funzione `populate_registry()` in `tool_registry.py`
+
+⚠️ Un tool che non ha un endpoint gemello e' un'eccezione: si decide chi lo puo' usare e lo si scrive per nome, con il motivo, in `_SENZA_GEMELLO` (`tests/tools/test_tool_endpoint_gemello.py`). Lo stesso test verifica per ogni tool registrato che il gemello esista, implementi il metodo, e che «scrive» sia derivato dal gemello.
 
 I metodi helper `simplify_results()` e `safe_page_size()` nella classe base eliminano il codice ripetitivo.
 
@@ -314,3 +323,6 @@ Le attivita' di evoluzione previste sono:
 ---
 
 *Guida tecnica — Integrazione AI in ZeroERP (31 marzo 2026)*
+
+---
+{% include-markdown "signature-core.md" %}

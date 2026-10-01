@@ -17,6 +17,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
+from apps.core.api.payload_validators import corpo_oggetto, parse_list_params
 from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
 
 
@@ -42,7 +43,10 @@ class ContiBancariLookupView(DomainAPIView):
     # Scopo: Ricerca IBAN per autocomplete (min 2 char).
     def get(self, request: Request) -> JsonResponse:
         search = request.query_params.get("search", "")
-        limit = int(request.query_params.get("limit", 10))
+        # Autocomplete: 10 righe di default; il tetto e la validazione del
+        # numero sono quelli di ogni lista (prima `int()` nudo e nessun tetto:
+        # `?limit=1000000` restituiva la tabella intera).
+        limit = parse_list_params(request.query_params, default_limit=10)["limit"]
         svc = ContiBancariService()
         results = svc.search_conti_bancari(search, limit)
         return success_response({"results": results})
@@ -70,7 +74,10 @@ class BankBranchesLookupView(DomainAPIView):
     # Scopo: Ricerca filiali per autocomplete (min 2 char).
     def get(self, request: Request) -> JsonResponse:
         search = request.query_params.get("search", "")
-        limit = int(request.query_params.get("limit", 10))
+        # Autocomplete: 10 righe di default; il tetto e la validazione del
+        # numero sono quelli di ogni lista (prima `int()` nudo e nessun tetto:
+        # `?limit=1000000` restituiva la tabella intera).
+        limit = parse_list_params(request.query_params, default_limit=10)["limit"]
         svc = ContiBancariService()
         results = svc.search_bank_branches(search, limit)
         return success_response({"results": results})
@@ -146,7 +153,7 @@ class SoggettoContiBancariDetailView(DomainAPIView):
     )
     # Scopo: Aggiorna legame soggetto ↔ conto con ownership check.
     def patch(self, request: Request, soggetto_id: str, cb_id: int) -> JsonResponse:
-        result = ContiBancariService().update_conto_soggetto(soggetto_id, cb_id, request.data)
+        result = ContiBancariService().update_conto_soggetto(soggetto_id, cb_id, corpo_oggetto(request))
         return success_response(result)
 
     @extend_schema(
@@ -237,7 +244,7 @@ class RuoloContiBancariDetailView(DomainAPIView):
     )
     # Scopo: Aggiorna legame ruolo ↔ conto con ownership check.
     def patch(self, request: Request, soggetto_ruolo_id: int, cb_id: int) -> JsonResponse:
-        result = ContiBancariService().update_conto_ruolo(soggetto_ruolo_id, cb_id, request.data)
+        result = ContiBancariService().update_conto_ruolo(soggetto_ruolo_id, cb_id, corpo_oggetto(request))
         return success_response(result)
 
     @extend_schema(

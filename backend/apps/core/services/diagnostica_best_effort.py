@@ -107,7 +107,7 @@ def diagnostica_best_effort(
     try:
         with transaction.atomic():
             azione()
-    except Exception as exc:  # noqa: BLE001 — vedi l'intestazione: e' il mestiere
+    except Exception as exc:  # vedi l'intestazione: e' il mestiere
         # Qui la transazione del chiamante e' di nuovo sana (savepoint rollato
         # indietro), quindi questa scrittura puo' davvero avvenire: e' la riga
         # che distingue «best-effort» da «silenzio».

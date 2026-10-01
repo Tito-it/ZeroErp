@@ -69,15 +69,15 @@ import Textarea from 'primevue/textarea'
 import ToggleSwitch from 'primevue/toggleswitch'
 
 import DrawerContextHeader from '../../core/components/DrawerContextHeader.vue'
-import FatturaLookup from '../../core/components/FatturaLookup.vue'
+import FatturaLookup from '../../vendite/components/FatturaLookup.vue'
 import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
-import SaldoPanel from '../../core/components/SaldoPanel.vue'
+import SaldoPanel from './SaldoPanel.vue'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
-import { LIVELLO, spazioSaldo, useSaldi } from '../../core/composables/useSaldi'
-import { DATE_FORMAT } from '../../core/constants'
+import { LIVELLO, spazioSaldo, useSaldi } from '../composables/useSaldi'
+import { DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
-import { aggiornaRiga, creaRiga } from '../api/pagamenti'
+import { aggiornaRiga, creaRiga, forzaturaConMotivo } from '../api/pagamenti'
 import { useEtichettePagamenti } from '../etichette'
 import RataSelect from './RataSelect.vue'
 import RatePickerDialog from './RatePickerDialog.vue'
@@ -408,7 +408,7 @@ async function onSalva() {
 
 // Scopo: secondo tentativo — con la forzatura e il suo motivo.
 async function onConferma() {
-  const esito = await conferma(motivoForzatura.value.trim() || null)
+  const esito = await conferma(forzaturaConMotivo(motivoForzatura.value.trim() || null))
   if (esito !== null) emit('salvata')
 }
 </script>
@@ -435,7 +435,7 @@ async function onConferma() {
                  tutti scritti sul posto. -->
             <Button
               v-tooltip.top="t('pagamenti.rate.cerca')"
-              icon="pi pi-search"
+              :icon="MANAGE_ICONS.RICERCA"
               text
               rounded
               size="small"
@@ -581,14 +581,14 @@ async function onConferma() {
           text
           size="small"
           :label="t('common.cancel')"
-          icon="pi pi-arrow-left"
+          :icon="MANAGE_ICONS.BACK"
           @click="annulla"
         />
         <Button
           size="small"
           severity="warn"
           :label="t('pagamenti.abbina.forza')"
-          icon="pi pi-check"
+          :icon="MANAGE_ICONS.CONFIRM"
           :loading="loading"
           @click="onConferma"
         />
@@ -598,13 +598,13 @@ async function onConferma() {
           text
           size="small"
           :label="t('common.cancel')"
-          icon="pi pi-arrow-left"
+          :icon="MANAGE_ICONS.BACK"
           @click="emit('annulla')"
         />
         <Button
           size="small"
           :label="t('common.save')"
-          icon="pi pi-check"
+          :icon="MANAGE_ICONS.CONFIRM"
           :loading="loading"
           :disabled="!canSave"
           @click="onSalva"

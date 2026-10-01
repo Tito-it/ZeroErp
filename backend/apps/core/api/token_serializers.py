@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.serializers import PasswordField, TokenObtainPairSerializer
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 
@@ -26,6 +26,16 @@ class SidTokenObtainPairSerializer(TokenObtainPairSerializer):
     - nell'access token (SimpleJWT copia tutti i claim non in no_copy_claims)
     - nei refresh token ruotati (SimpleJWT modifica solo jti/exp/iat)
     """
+
+    # Scopo: La password del login arriva ad `authenticate` COSI' COM'E'.
+    # ⛔ `PasswordField` di SimpleJWT e' un `CharField` e ne toglieva gli
+    #    spazi ai bordi (`trim_whitespace`), e per restare coerenti li
+    #    toglievano anche reset, attivazione e cambio password: la password
+    #    salvata non era quella digitata (S-5, decisione Tid 2026-09-27). Ora
+    #    non la tocca nessuno dei due lati; lo username resta ripulito.
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.fields["password"] = PasswordField(trim_whitespace=False)
 
     @classmethod
     # Scopo: Genera il refresh token con il claim `sid` aggiuntivo.

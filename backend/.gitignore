@@ -16,6 +16,9 @@ internal.env
 backend/.env
 backend/.env.*
 backend/.env.systemd
+# il modello senza segreti si committa
+!.env.example
+!backend/.env.example
 
 # DB locali
 *.sqlite3
@@ -78,4 +81,5 @@ site/
 # Storage documenti filesystem (FilesystemDocumentStorage v1)
 # Default DOCUMENTI_STORAGE_ROOT=<BASE_DIR>/var/documenti
 var/
-
+!.env.example
+!backend/.env.example

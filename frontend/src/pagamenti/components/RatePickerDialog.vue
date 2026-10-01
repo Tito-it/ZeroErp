@@ -26,11 +26,14 @@
 //    guarda deve poter vedere che quel documento e' a posto.
 // ⛔ I documenti NON NUMERATI invece non si vedono (Tid, rilievo in-app
 //    2026-09-18): una bozza non e' ancora un documento fiscale, e la sua rata
-//    non e' un credito su cui registrare un incasso. Il filtro e' del backend
-//    (`solo_numerate`, `numero IS NOT NULL`) e parte acceso dallo store: qui
-//    non c'e' niente da scrivere. ⏳ La regola di Tid e' piu' stretta — «solo
-//    le definitive, inviate a SDI» — e arrivera' come predicato di dominio, in
-//    una sede sola a DB (piano D19 §8), non come un secondo booleano.
+//    non e' un credito su cui registrare un incasso. ⭐ E dal 2026-09-23 qui non
+//    c'e' niente da scrivere DAVVERO: la regola e' un perimetro del BACKEND
+//    (`list_rate`, `solo_numerate` default `True`), non un filtro che il picker
+//    manda. Prima stava nei `filterDefaults` dello store, e da li' contava come
+//    filtro attivo nel segno dell'imbuto — un «1» su un filtro che a video non
+//    esiste. ⏳ La regola di Tid e' piu' stretta — «solo le definitive, inviate
+//    a SDI» — e arrivera' come predicato di dominio, in una sede sola a DB
+//    (piano D19 §8), non come un secondo booleano.
 // ⭐ IL DIALOG E' ALTO DIECI RIGHE, DA SUBITO: la lista nasce a dieci righe
 //    per pagina (`limit` dello store) e il blocco lista ha un'altezza DEFINITA
 //    (`app-dialog-lista`, main.css) — cosi' la pagina vuota e la pagina piena
@@ -57,7 +60,7 @@
 //      successivo rimanda le sole rimaste. Il dialog si chiude da solo SOLO a
 //      esito completo. Chiudere con rate in area chiede conferma: un'area
 //      temporanea persa in silenzio e' lavoro perso.
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
@@ -76,12 +79,13 @@ import ResiduoCella from './ResiduoCella.vue'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useNotify } from '../../core/composables/useNotify'
-import { spazioSaldo } from '../../core/composables/useSaldi'
-import { DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
+import { spazioSaldo } from '../composables/useSaldi'
+import { DATE_FORMAT, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { formatCurrency } from '../../core/utils/format'
 import { rataEsaurita, useRigheDaRate } from '../composables/useRigheDaRate'
 import { useEtichettePagamenti } from '../etichette'
 import { useRateStore } from '../stores/rate'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -127,17 +131,37 @@ const macchina = useRigheDaRate({
 })
 
 // ── i criteri ──────────────────────────────────────────────────────
-const cliente = ref(null)
-const numeroFattura = ref(null)
-const serie = ref('')
+// ⛔ I TRE CRITERI LEGGONO LO STORE, non lo copiano in tre `ref`, ed e' la
+//    correzione del 2026-09-23. Questa lista parte VUOTA e non chiede niente al
+//    backend finche' non c'e' un criterio (`startsEmpty` + `gateKeys`): con tre
+//    `ref` che spingevano e basta, il «Pulisci filtri» del drawer compatto
+//    svuotava lo store — e quindi l'elenco — mentre il lookup continuava a
+//    mostrare il cliente scelto. Un dialog che dice «nessuna rata» mentre il
+//    cliente non e' piu' fra i criteri, e nessun errore da nessuna parte.
+// ⭐ Il cliente passa da `bindLookup`, che sa gia' le due cose che servono qui:
+//    il verso store → widget e la memoria dell'OGGETTO scelto
+//    (`<chiave>_obj`), cioe' cio' che permette al lookup di rendersi quando il
+//    dialog si riapre.
+const { bindLookup } = useStoreFilterBindings(store, applyFilters)
+const { value: cliente, onChange: onClienteChange } = bindLookup('billing_account_id')
 
-// Scopo: porta i criteri nello store e rilancia dalla pagina 1.
+const numeroFattura = computed({
+  get: () => store.filters.fattura_numero,
+  set: (v) => { store.filters.fattura_numero = v ?? null },
+})
+// ⚠️ La stringa vuota diventa `null`: il core manda ogni filtro `!= null`, e
+//    una serie vuota sul filo sarebbe un parametro che non filtra niente.
+const serie = computed({
+  get: () => store.filters.serie ?? '',
+  set: (v) => { store.filters.serie = v?.trim() || null },
+})
+
+// Scopo: rilancia dalla pagina 1 dopo un cambio di criterio.
 // ⚠️ `applyFilters` azzera l'offset: la pagina 3 del cliente precedente non
 //    esiste per il prossimo.
+// ⚠️ Nel template `v-model` PRECEDE il listener: quando questa parte, lo store
+//    e' gia' stato scritto dal setter del `computed`.
 function applicaCriteri() {
-  store.filters.billing_account_id = cliente.value?.id ?? null
-  store.filters.fattura_numero = numeroFattura.value ?? null
-  store.filters.serie = serie.value?.trim() || null
   applyFilters()
 }
 
@@ -146,10 +170,15 @@ watch(
   (aperto) => {
     if (!aperto) return
     macchina.azzera()
-    cliente.value = props.billingAccountIniziale ?? null
+    // I criteri si azzerano nella SEDE UNICA (lo store): le caselle sono
+    // `computed`/binder e ci si riallineano da se'.
     numeroFattura.value = null
     serie.value = ''
-    if (cliente.value?.id != null) applicaCriteri()
+    cliente.value = props.billingAccountIniziale ?? null
+    // ⚠️ `onClienteChange` scrive l'id E l'oggetto ricordato, poi rilancia;
+    //    senza cliente non si rilancia affatto, perche' la lista parte vuota.
+    if (cliente.value?.id != null) onClienteChange()
+    else store.filters.billing_account_id = null
   },
 )
 
@@ -258,6 +287,7 @@ function onVisibleChange(v) {
       class="app-dialog-lista"
       codice="pagamenti.rate"
       data-key="scadenza_id"
+      :store="store"
       :rows="store.items"
       :total="store.totalRecords"
       :loading="store.loading"
@@ -275,30 +305,38 @@ function onVisibleChange(v) {
     >
       <!-- ⭐ I due criteri, e ne basta uno: il cliente (lookup ricco) o il
            numero ESATTO della fattura (con la serie per disambiguare). -->
-      <template #filtri>
+      <!-- ⭐ IL CLIENTE STA IN `filtri-sempre` COME UNA RICERCA, e non e' una
+           forzatura: qui il gesto principale e' lui — finche' non si sceglie un
+           cliente (o si digita un numero) la lista NON chiede niente al backend
+           (`startsEmpty` + `gateKeys`). In modalita' compatta, dentro il
+           drawer, l'operatore vedrebbe un elenco vuoto e un'icona a imbuto,
+           cioe' un dialog che non dice come si usa. -->
+      <template #filtri-sempre>
         <BillingAccountLookup
           v-model="cliente"
-          style="min-width: 20rem;"
-          @select="applicaCriteri"
-          @clear="applicaCriteri"
+          class="app-filter-w-lg"
+          @update:model-value="onClienteChange"
         />
-        <!-- ⚠️ `input-style`, non `style`: la larghezza scritta sul wrapper
-             `.p-inputnumber` non arriva all'<input>, che tiene la sua
-             larghezza intrinseca e SBORDA dal wrapper — a video il bordo del
-             numero finiva addosso al campo Serie e si vedevano due bordi
-             (rilievo di Tid, 2026-09-18). Stessa forma di `DdtResoDialog`. -->
+      </template>
+      <template #filtri>
+        <!-- ⚠️ La taglia sta sull'INVOLUCRO e l'<input> la segue per regola di
+             foglio (`.p-inputnumber[class*="app-filter-w-"] > input`): la
+             larghezza scritta sul wrapper `.p-inputnumber` non arriva
+             all'<input>, che tiene la sua larghezza intrinseca e SBORDA — a
+             video il bordo del numero finiva addosso al campo Serie e si
+             vedevano due bordi (rilievo di Tid, 2026-09-18). -->
         <InputNumber
           v-model="numeroFattura"
+          class="app-filter-w-sm"
           :placeholder="t('pagamenti.rate.filtro_numero')"
           :use-grouping="false"
           :min="1"
-          input-style="width: 9rem;"
           @update:model-value="applicaCriteri"
         />
         <InputText
           v-model="serie"
+          class="app-filter-w-sm"
           :placeholder="t('pagamenti.rate.filtro_serie')"
-          style="width: 6rem;"
           @change="applicaCriteri"
         />
       </template>
@@ -350,15 +388,15 @@ function onVisibleChange(v) {
       <template #empty>
         <div class="app-empty-state">
           <template v-if="store.erroreCaricamento">
-            <i class="pi pi-exclamation-triangle" />
+            <i :class="STATUS_ICONS.ERRORE" />
             <p>{{ t('pagamenti.rate.non_lette') }}</p>
           </template>
           <template v-else-if="haCriterio && store.hasSearched">
-            <i class="pi pi-inbox" />
+            <i :class="STATUS_ICONS.VUOTO" />
             <p>{{ t('pagamenti.rate.nessuna_rata') }}</p>
           </template>
           <template v-else>
-            <i class="pi pi-search" />
+            <i :class="MANAGE_ICONS.RICERCA" />
             <p>{{ t('pagamenti.rate.criterio_obbligatorio') }}</p>
           </template>
         </div>

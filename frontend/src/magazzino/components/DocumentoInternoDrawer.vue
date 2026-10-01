@@ -8,16 +8,15 @@
 //        testata, righe (lista standard + form sotto), e — per l'inventario —
 //        il piano.
 //
-// ⏳ SENZA LA BARRA DELLE AZIONI DI STATO (R-1 del brief 2-bis, passo 7 del
-//    piano). Le transizioni («Conferma», «Riapri», «Annulla») e «Registra» si
-//    montano da `capabilities.available_actions` con
-//    `mapAvailableActionsToDrawerActions` — che il backend NON emette finche'
-//    `fn_available_actions_*` non esiste a DB. ⛔ Niente `v-if` su `stato`
-//    scritto a mano al loro posto: sarebbe la matrice del guard riscritta una
-//    seconda volta (frontend-standards §Azioni Drawer). Quando R-1 arriva, le
-//    azioni entrano qui, in `drawerActions`, e basta. La barra oggi porta le
-//    sole azioni che non dipendono dalla matrice: «Piano» e l'export delle
-//    righe, piu' la nota di stato (`stato_info_key`, che oggi e' `null`).
+// ⭐ LA BARRA E' DATA, NON CODICE (R-1, dal 2026-09-23). Le transizioni
+//    («Conferma», «Riapri», «Annulla») escono da `capabilities.available_
+//    actions` via `mapAvailableActionsToDrawerActions`, e «Registra» dalla
+//    terna `can_registra` / `_reason` / `_reason_key`. ⛔ Nessun `v-if` su
+//    `stato` al loro posto: sarebbe la matrice del guard riscritta una
+//    seconda volta (frontend-standards §Azioni Drawer). ⚠️ Anche il
+//    pulsante SPENTO si monta, col motivo nel tooltip: «permesso ⇒ nascondi,
+//    stato ⇒ disabilita col motivo» (api.md §Capability). La nota dello stato
+//    chiuso arriva dallo stesso blob (`stato_info_key`).
 //
 // ⭐ IL READONLY LO CALCOLA QUESTO DRAWER e lo propaga (`provide(READONLY_KEY)`):
 //    permessi d'area (dal provider della vista) + stato del documento — le
@@ -28,10 +27,10 @@
 //
 // ⭐ LE RIGHE SONO UNA LISTA STANDARD (`useDrawerTabLista` + `<DrawerTabLista>`,
 //    liste 71 e 74): pagine, ricarica, colonne, export. Il form di riga vive
-//    SOTTO la lista, mai in un drawer annidato. 🔵 Debito dichiarato che
-//    RESTA, lo stesso di `DistintaDrawer`: la macchina a stati del
-//    master-detail (`formMode`) e' scritta qui invece di passare da
-//    `RigheMasterDetailTable`.
+//    SOTTO la lista, mai in un drawer annidato. ⭐ La macchina del
+//    master-detail e' il BB `useFormInline` dal 2026-09-28, lo stesso
+//    di `DistintaDrawer` e `RigheMasterDetailTable`: il debito dichiarato qui
+//    e' chiuso (brief-db-liste-righe-documento L1).
 import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DatePicker from 'primevue/datepicker'
@@ -49,22 +48,27 @@ import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
+import { aspettoAzione } from '../../core/aspettoAzioni'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
-import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
+import { useNotify } from '../../core/composables/useNotify'
 import { READONLY_KEY, useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { useFormInline } from '../../core/composables/useFormInline'
+import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, parseIsoDate, toDateString } from '../../core/utils/date'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 import { documentoInternoSeverity } from '../../core/utils/severity'
 import { exportRighe } from '../api/magazzino'
 import { useEtichetteMagazzino } from '../etichette'
 import { useDocumentiInterniStore } from '../stores/documentiInterni'
 import { useDocumentoRigheStore } from '../stores/documentoRighe'
-import { FAMIGLIE, STATO_DOCUMENTO } from '../vocabolari'
+import { AZIONE_REGISTRA_MAGAZZINO, FAMIGLIE, STATO_DOCUMENTO } from '../vocabolari'
 import DocumentoInternoRigaForm from './DocumentoInternoRigaForm.vue'
 import InventarioPianoDialog from './InventarioPianoDialog.vue'
 
@@ -77,7 +81,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:visible'])
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const f = FAMIGLIE[props.famiglia]
 const store = useDocumentiInterniStore(f.codice)
 const storeRighe = useDocumentoRigheStore(f.codice)
@@ -86,6 +90,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const { execute, loading: salvando, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
+const notify = useNotify()
 const { statoDocumento } = useEtichetteMagazzino()
 const parentReadonly = useInjectReadonly()
 // ⚠️ Guard anti-race: aprire due documenti in rapida successione farebbe
@@ -94,9 +99,16 @@ const { tag, isCurrent, invalidate } = useFetchVersion()
 
 const detail = ref(null)
 const loading = ref(false)
-// `null` = elenco · `'create'` · `'edit'` (pattern master-detail inline).
-const formMode = ref(null)
-const rigaInModifica = ref(null)
+// ⭐ Il form di riga sotto la lista: la macchina e' il BB (regola del 2). Il
+//    click apre la MODIFICA solo se le righe si scrivono.
+//    ⚠️ `isReadonly` e' dichiarata piu' sotto: il getter e' letto al click,
+//    non adesso.
+const {
+  formAperto, rigaInModifica, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({
+  padre: () => (props.visible ? props.documentoId : null),
+  puoModificare: () => !isReadonly.value,
+})
 const pianoVisible = ref(false)
 
 // ── il readonly, calcolato qui e propagato ────────────────────────
@@ -116,7 +128,9 @@ const readonlyPermessi = computed(() => parentReadonly.value || props.readonly)
 const form = ref(defaultForm())
 // La ricarica del dettaglio dopo una riga NON deve cancellare una descrizione
 // digitata e non salvata: il BB tiene la baseline e ripristina il pendente.
-const { preserva, reset: resetPreserva } = useDrawerFormPreserve(form)
+const { preserva, reset: resetPreserva, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
+// Uscita (X, ESC, clic fuori, Chiudi) con la testata non salvata: prima si chiede.
+const onChiudi = () => chiudiConConferma(onClose)
 
 function defaultForm() {
   return { data: null, descrizione: '' }
@@ -145,12 +159,119 @@ async function onSalvaTestata() {
 }
 
 // ── la barra ──────────────────────────────────────────────────────
-// ⏳ R-1: qui entreranno `mapAvailableActionsToDrawerActions(capabilities.
-//    available_actions)` (kind `state`) e «Registra» (kind `primary`, terna
-//    `can_registra*`). Oggi le sole azioni che non dipendono dalla matrice.
+// Il blob della capability: `{}` finche' il dettaglio non c'e', cosi' i
+// computed qui sotto non guardano mai dentro un `null`.
+const capabilities = computed(() => detail.value?.capabilities ?? {})
+
+// Le transizioni di stato, dalla matrice che il guard fa rispettare. ⛔ Il
+// `readonly` che si passa al mapper e' quello PURO (permessi + contesto), non
+// `isReadonly`: quest'ultimo include il lock di stato, e un documento
+// confermato ha il form bloccato ma deve comunque mostrare «Riapri».
+const stateActions = computed(() => mapAvailableActionsToDrawerActions({
+  availableActions: capabilities.value.available_actions ?? [],
+  t,
+  te,
+  readonly: readonlyPermessi.value,
+  onAction: (action) => onCambiaStato(action),
+}))
+
+// Scopo: chiede la transizione. `requires_confirm` lo dice il DATO (oggi solo
+//        l'annullamento, che e' terminale), non un `if` sul codice dello stato.
+function onCambiaStato(action) {
+  const esegui = async () => {
+    const esito = await execute(
+      () => store.cambiaStato(props.documentoId, action.target_state),
+      { successMessage: t('magazzino.documenti_interni.stato_cambiato') },
+    )
+    if (esito === null) return
+    ricarica()
+    // ⭐ Q-5 (D-L2-n): dopo un CONFIRM riuscito il piano si apre DA SOLO,
+    //    sempre — e' la fotografia contro cui si registrera', con le
+    //    `NON_CONTATA` evidenziate, e la si vede una volta. Non e' un `v-if`
+    //    sullo stato del documento: e' la reazione a QUESTA transizione, che
+    //    l'operatore ha appena chiesto.
+    if (f.haPiano && action.target_state === STATO_DOCUMENTO.CONFIRM) pianoVisible.value = true
+  }
+  if (!action.requires_confirm) { esegui(); return }
+  confirmAction({
+    header: t(action.label_key),
+    // ⚠️ L'etichetta entra CITATA, non coniugata: «Vuoi annulla…» non e'
+    //    italiano, e un verbo all'infinito per ogni azione sarebbe un secondo
+    //    vocabolario accanto alle `label_key` del blob.
+    message: t('magazzino.documenti_interni.conferma_transizione', {
+      azione: t(action.label_key),
+    }),
+    // ⚠️ `danger` da solo porterebbe la coppia «Elimina» + cestino: qui il
+    //    gesto e' un annullamento, non una cancellazione, e label e icona
+    //    vengono dal verbo della capability (lo stesso aspetto del pulsante).
+    acceptLabel: t(action.label_key),
+    acceptIcon: aspettoAzione(action.key).icona,
+    danger: aspettoAzione(action.key).severity === 'danger',
+    onAccept: esegui,
+  })
+}
+
+// Scopo: il verbo irreversibile. ⭐ Lo stato del pulsante NON si calcola qui:
+//        `can_registra` e il suo motivo vengono dalla stessa check che le due
+//        `fn_posta_*` chiamano per rifiutare — il pulsante non puo' promettere
+//        cio' che il database rifiutera'.
+function onRegistra() {
+  const riepilogo = detail.value?.piano_riepilogo
+  const righe = [t('magazzino.documenti_interni.registra.irreversibile')]
+  if (f.haPiano && riepilogo) {
+    righe.push(t('magazzino.documenti_interni.registra.riepilogo_piano', {
+      con_delta: riepilogo.n_con_delta ?? 0,
+      non_contate: riepilogo.n_non_contate ?? 0,
+    }))
+  }
+  confirmAction({
+    header: t('magazzino.documenti_interni.registra.titolo'),
+    // Spazio, non '\n': il messaggio del ConfirmDialog non e' `pre-line`, e
+    //    le frasi finiscono gia' col punto.
+    message: righe.join(' '),
+    acceptLabel: t('magazzino.documenti_interni.registra.conferma'),
+    acceptIcon: NAV_ICONS.MOVIMENTI,
+    danger: true,
+    onAccept: async () => {
+      const esito = await execute(() => store.registra(props.documentoId))
+      if (esito !== null) {
+        notify.success(t('magazzino.documenti_interni.registra.fatto', { n: esito.n_movimenti ?? 0 }))
+        ricarica()
+      }
+    },
+  })
+}
+
 const drawerActions = computed(() => {
   if (!detail.value) return []
-  const azioni = []
+  const azioni = [...stateActions.value]
+  // ⚠️ «Registra» c'e' ANCHE spento, col motivo nel tooltip: e' lo stato, e
+  //    puo' cambiare. Sparisce solo senza permessi d'area (`hideWhenReadonly`)
+  //    o senza l'azione di processo (`action`, che il BE presidia davvero).
+  // ⭐ In BOZZA c'e', spento col motivo `non_confermato` (brief 2-bis: «Registra
+  //    spento su una bozza»): dice all'operatore qual e' il passo che manca.
+  // ⛔ Sparisce sul documento CHIUSO (POSTED, CANCEL): li' non c'e' piu' niente
+  //    da registrare, e un pulsante grigio in fondo a un documento chiuso e'
+  //    rumore — la nota di stato dice gia' la strada. «Chiuso» lo dice la
+  //    MATRICE (`can_change_state`: nessuna transizione da qui), non un
+  //    confronto su `stato_codice` scritto a mano.
+  if (capabilities.value.can_change_state) {
+    const motivo = capabilities.value.can_registra_reason_key
+    azioni.push({
+      key: 'registra',
+      kind: 'primary',
+      label: t('magazzino.documenti_interni.registra.azione'),
+      icon: NAV_ICONS.MOVIMENTI,
+      severity: 'warn',
+      hideWhenReadonly: true,
+      action: AZIONE_REGISTRA_MAGAZZINO,
+      disabled: !capabilities.value.can_registra,
+      tooltip: capabilities.value.can_registra
+        ? undefined
+        : labelOrCode(t, te, motivo, capabilities.value.can_registra_reason || ''),
+      command: onRegistra,
+    })
+  }
   if (f.haPiano) {
     azioni.push({
       key: 'piano',
@@ -172,19 +293,11 @@ const drawerActions = computed(() => {
 //    (`extraActions`): ha una CONDIZIONE (solo in DRAFT, non mentre il form e'
 //    aperto) che l'azione standard «Nuovo» non sa.
 const azioniRighe = computed(() => [
-  {
-    key: 'nuova-riga',
-    kind: 'primary',
-    label: t('magazzino.documenti_interni.riga.nuova'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    visible: formMode.value === null,
-    command: () => { rigaInModifica.value = null; formMode.value = 'create' },
-  },
+  azioneNuovaRiga({ label: t('magazzino.documenti_interni.riga.nuova') }),
 ])
 
 const {
-  onPage, onSort, paginatorProps, tablePage,
+  searchText, onPage, onSort, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
   exportDialogVisible, exportLoading, onExportConfirm, reloadAll,
 } = useDrawerTabLista(storeRighe, {
@@ -235,13 +348,6 @@ function onEliminaRiga(riga) {
   })
 }
 
-// Il click sulla riga apre la MODIFICA solo se le righe si scrivono.
-function onRigaClick(riga) {
-  if (isReadonly.value) return
-  rigaInModifica.value = riga
-  formMode.value = 'edit'
-}
-
 // ── caricamento ───────────────────────────────────────────────────
 async function loadDetail() {
   if (!props.documentoId) return
@@ -265,20 +371,18 @@ async function loadDetail() {
 //        documenti (che mostra `righe_count`) si ricarica da sola: il verbo
 //        dello store ha emesso l'evento della famiglia.
 function ricarica() {
-  formMode.value = null
-  rigaInModifica.value = null
+  chiudiForm()
   reloadAll()
 }
 
 // ⚠️ Il CARICAMENTO non sta qui: lo fa il watch dello scaffolding della lista
-//    (`fetchExtra`) al cambio di documento. Qui restano il reset del form
-//    all'apertura e la pulizia alla chiusura.
+//    (`fetchExtra`) al cambio di documento, e il form lo chiude il BB del
+//    master-detail. Qui restano il reset del piano all'apertura e la pulizia
+//    alla chiusura.
 watch(
   () => [props.visible, props.documentoId],
   ([vis]) => {
     if (vis && props.documentoId) {
-      formMode.value = null
-      rigaInModifica.value = null
       pianoVisible.value = false
     } else if (!vis) {
       detail.value = null
@@ -289,6 +393,7 @@ watch(
   },
   { immediate: true },
 )
+const suVisibile = gestoreVisibile(emit, onChiudi)
 </script>
 
 <template>
@@ -296,11 +401,12 @@ watch(
     :visible="visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
-    @update:visible="(v) => emit('update:visible', v)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :title="t(`${f.i18n}.titolo_singolare`)"
         :icon="f.haPiano ? NAV_ICONS.INVENTARI : NAV_ICONS.RETTIFICHE"
       />
@@ -308,7 +414,7 @@ watch(
 
     <div class="app-drawer-content">
       <div v-if="loading && !detail" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
+        <i :class="STATUS_ICONS.CARICAMENTO" />
       </div>
 
       <template v-if="contentReady && detail">
@@ -339,11 +445,11 @@ watch(
           </template>
         </DrawerEntityHeader>
 
-        <!-- La nota di stato arriva dal BE (`stato_info_key`): qui nessun
+        <!-- La nota di stato arriva dal blob (`capabilities.stato_info_key`): qui nessun
              `v-if` sullo stato. Oggi e' `null` (R-1). -->
         <DrawerActionsBar
           :actions="drawerActions"
-          :info-key="detail.stato_info_key || ''"
+          :info-key="capabilities.stato_info_key || ''"
         />
 
         <!-- ══ La testata ══ -->
@@ -374,18 +480,6 @@ watch(
             </div>
           </div>
         </div>
-        <!-- Il Salva della testata: `FormFooter` nasconde da se' il pulsante
-             in readonly (inject), e sta FUORI dal pannello protect. ⚠️ Solo a
-             form di riga chiuso: in form mode il Salva della riga e' l'unico
-             a video, e «Chiudi» spingerebbe il form sotto il fold. -->
-        <FormFooter
-          v-if="!formMode"
-          :loading="salvando"
-          :disabled="!canSaveTestata"
-          :cancel-label="t('common.close')"
-          @save="onSalvaTestata"
-          @cancel="onClose"
-        />
 
         <!-- ══ Le righe ══ -->
         <div class="app-drawer-section">
@@ -413,12 +507,13 @@ watch(
           :closable="false"
           size="small"
         >
-          {{ t('magazzino.documenti_interni.righe_non_lette') }}
+          {{ t('common.righe_non_lette') }}
         </Message>
 
         <DrawerTabLista
           ref="listaRef"
           :codice="f.listaRigheCodice"
+          :store="storeRighe"
           :rows="storeRighe.items"
           :total="storeRighe.totalRecords"
           :loading="storeRighe.loading"
@@ -431,12 +526,24 @@ watch(
           :perimetro-bloccato="perimetroBloccato"
           @page="onPage"
           @sort="onSort"
-          @row-click="onRigaClick"
+          @row-click="apriRiga"
           @config-loaded="onConfigLoaded"
         >
+          <!-- La ricerca: le colonne le decide il catalogo della famiglia
+               (`ricerca_full`), il placeholder non le elenca. Sotto 3 caratteri
+               il termine non filtra; l'export porta la stessa `search`
+               (`paramsFiltro`). -->
+          <template #filtri-sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
+
           <template #empty>
             <div v-if="!storeRighe.erroreCaricamento" class="app-empty-state">
-              <i class="pi pi-list" />
+              <i :class="STATUS_ICONS.VUOTO" />
               <p>{{ t(`${f.i18n}.nessuna_riga`) }}</p>
             </div>
           </template>
@@ -448,12 +555,26 @@ watch(
 
         <!-- Master-detail inline: il form vive SOTTO la lista. -->
         <DocumentoInternoRigaForm
-          v-if="formMode"
+          v-if="formAperto"
           :famiglia="famiglia"
           :documento="detail"
           :riga="rigaInModifica"
           @salvata="ricarica"
-          @annulla="formMode = null; rigaInModifica = null"
+          @annulla="chiudiForm"
+        />
+
+        <!-- Il Salva della testata: IN FONDO, dopo la lista (standard
+             master-detail, punto 12). `FormFooter` nasconde da se' il pulsante
+             in readonly (inject), e sta FUORI dal pannello protect. ⚠️ Solo a
+             form di riga chiuso: in form mode il Salva della riga e' l'unico
+             a video, e «Chiudi» spingerebbe il form sotto il fold. -->
+        <FormFooter
+          v-if="!formAperto"
+          :loading="salvando"
+          :disabled="!canSaveTestata"
+          :cancel-label="t('common.close')"
+          @save="onSalvaTestata"
+          @cancel="onChiudi"
         />
       </template>
     </div>

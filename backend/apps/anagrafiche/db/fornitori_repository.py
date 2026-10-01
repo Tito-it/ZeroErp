@@ -14,7 +14,17 @@ from typing import Any
 from django.db import connection
 
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
-from apps.core.db._helpers import sql_order_clause, extract_paginated, row_to_dict
+from apps.core.db.sql_write_helpers import (
+    execute_dynamic_insert,
+    execute_dynamic_update,
+)
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    fetch_paged_with_total,
+    row_to_dict,
+    sql_order_clause,
+)
 
 
 # Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
@@ -37,6 +47,48 @@ _FORNITORI_ORDER_COLS: dict[str, str] = {
 }
 
 
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⭐ L'id fiscale univoco e non CF e P.IVA separati (Tid, 2026-09-23): come le
+#    liste di vendite.
+_RICERCA_FORNITORI = RicercaFull(
+    "anagrafiche.fornitori", ("codice", "ragione_sociale_completa", "id_fiscale_univoco_cf_piva"),
+)
+
+
+# Campi editabili sul fornitore (pagamento, fiscale, FE, rating, note).
+# ⚠️ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): e' anche la
+#    base del contratto PATCH che `FornitoriService` valida (400).
+FORNITORE_UPDATE_ALLOWED: frozenset[str] = frozenset({
+    "stato_fornitore_id", "attivo",
+    "valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
+    "giorni_pagamento", "fine_mese",
+    "split_payment", "ritenuta_acconto", "ritenuta_aliquota",
+    "regime_fiscale", "bollo_esente",
+    "canale_fe", "pec_email",
+    "rating", "qualifica_scadenza",
+    "note",
+})
+
+
+# Colonne scrivibili in creazione. Whitelist RIGIDA del BB
+# `execute_dynamic_insert` (2026-09-26).
+# ⚠️ `stato_fornitore_id` c'e' perche' il BB fa passare la whitelist anche alle
+#    colonne delle `espressioni`: lo scrive l'espressione VE di
+#    `create_fornitore`, e se arrivasse ANCHE fra i valori il BB rifiuterebbe
+#    (due risposte alla stessa domanda) — non puo' sceglierlo il chiamante.
+_CREATE_ALLOWED: frozenset[str] = frozenset({
+    "soggetto_ruolo_id", "stato_fornitore_id",
+    "codice",
+    "valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
+    "giorni_pagamento", "fine_mese",
+    "split_payment", "ritenuta_acconto", "ritenuta_aliquota",
+    "regime_fiscale", "bollo_esente",
+    "canale_fe", "pec_email",
+    "rating", "qualifica_scadenza",
+    "note",
+})
+
+
 class FornitoriRepository:
     """Accesso DB per fornitori."""
 
@@ -52,41 +104,27 @@ class FornitoriRepository:
     # Scopo: Crea record fornitore.
     #        I trigger DB gestiscono: guard ruolo, normalize, audit, tx_id, storicizzazione.
     #        Il codice viene generato dal meccanismo centralizzato config.sistema_codici.
+    #        ⭐ BB core `execute_dynamic_insert` (2026-09-26): lo stato iniziale
+    #        (VE) e' un'`espressione` letterale — una sottoquery su un codice
+    #        fisso, mai input — e le colonne opzionali passano la whitelist
+    #        RIGIDA `_CREATE_ALLOWED` (fuori lista = `RuntimeError`, prima era
+    #        uno scarto silenzioso). Le chiavi le sceglie il service
+    #        (`_extract_fornitore_data`: nomi letterali), non il client.
+    #        `skip_none=True`: un opzionale None si OMETTE, cosi' il DEFAULT del
+    #        DB e il `sistema_codici` restano attivi (come prima).
     def create_fornitore(self, **kwargs: Any) -> int:
-        # Colonne fisse (sempre presenti)
-        cols = ["soggetto_ruolo_id", "stato_fornitore_id"]
-        vals: list[Any] = [kwargs["soggetto_ruolo_id"]]
-        # Espressioni speciali (non parametrizzate)
-        special = {
-            "stato_fornitore_id": "(SELECT id FROM config.stati_fornitore WHERE codice_interno = 'VE')",
-        }
-        # Colonne opzionali: incluse solo se valorizzate (non None)
-        _OPTIONAL = [
-            "codice",
-            "valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
-            "giorni_pagamento", "fine_mese",
-            "split_payment", "ritenuta_acconto", "ritenuta_aliquota",
-            "regime_fiscale", "bollo_esente",
-            "canale_fe", "pec_email",
-            "rating", "qualifica_scadenza",
-            "note",
-        ]
-        for col in _OPTIONAL:
-            val = kwargs.get(col)
-            if val is not None:
-                cols.append(col)
-                vals.append(val)
-        placeholders = [special.get(c, "%s") for c in cols]
-        sql = f"""
-            INSERT INTO anagrafiche.fornitori ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+        riga = execute_dynamic_insert(
+            "anagrafiche.fornitori",
+            kwargs,
+            allowed=_CREATE_ALLOWED,
+            skip_none=True,
+            espressioni={
+                "stato_fornitore_id": (
+                    "(SELECT id FROM config.stati_fornitore WHERE codice_interno = 'VE')"
+                ),
+            },
+        )
+        return riga["id"]
 
     # =================================================================
     # Lista e dettaglio
@@ -107,7 +145,12 @@ class FornitoriRepository:
             default=_FORNITORI_ORDER_COLS["ragione_sociale_completa"],
             tiebreak="v.id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        conditions: list[str] = [
+            "(%s::integer IS NULL OR v.stato_fornitore_id = %s)",
+            "(%s::boolean IS NULL OR v.attivo = %s)",
+        ]
+        params: list[Any] = [stato_fornitore_id, stato_fornitore_id, attivo, attivo]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_FORNITORI, alias="v")
         sql = f"""
             SELECT v.id,
                    v.soggetto_ruolo_id,
@@ -139,27 +182,12 @@ class FornitoriRepository:
                    v.data_update,
                    COUNT(*) OVER () AS total_count
               FROM anagrafiche.vw_fornitori_dettaglio v
-             WHERE (%s::text IS NULL OR (
-                       v.ragione_sociale_completa ILIKE %s
-                    OR v.codice_fiscale ILIKE %s
-                    OR v.partita_iva ILIKE %s
-                    OR v.codice ILIKE %s
-                   ))
-               AND (%s::integer IS NULL OR v.stato_fornitore_id = %s)
-               AND (%s::boolean IS NULL OR v.attivo = %s)
+             WHERE {" AND ".join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        params: list[Any] = [
-            search_pattern, search_pattern, search_pattern,
-            search_pattern, search_pattern,
-            stato_fornitore_id, stato_fornitore_id,
-            attivo, attivo,
-            limit, offset,
-        ]
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return extract_paginated(cursor)
+        params.extend([limit, offset])
+        return fetch_paged_with_total(sql, params, offset=offset)
 
     # Scopo: Dettaglio completo di un fornitore con dati soggetto e FK descrizioni.
     def get_fornitore(self, fornitore_id: int) -> dict[str, Any] | None:
@@ -235,17 +263,6 @@ class FornitoriRepository:
     # Aggiornamento
     # =================================================================
 
-    # Campi editabili sul fornitore (pagamento, fiscale, FE, rating, note).
-    _UPDATE_ALLOWED = {
-        "stato_fornitore_id", "attivo",
-        "valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
-        "giorni_pagamento", "fine_mese",
-        "split_payment", "ritenuta_acconto", "ritenuta_aliquota",
-        "regime_fiscale", "bollo_esente",
-        "canale_fe", "pec_email",
-        "rating", "qualifica_scadenza",
-        "note",
-    }
     _UPDATE_NULLABLE = {
         "valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
         "giorni_pagamento", "ritenuta_aliquota",
@@ -254,18 +271,17 @@ class FornitoriRepository:
     }
 
     # Scopo: Aggiorna campi editabili di un fornitore (delta update).
+    #        BB `execute_dynamic_update` (2026-09-26): whitelist RIGIDA
+    #        `FORNITORE_UPDATE_ALLOWED`, le chiavi le valida prima il service (400).
     def update_fornitore(self, fornitore_id: int, data: dict[str, Any]) -> bool:
+        # Copia: `data` e' `request.data`, non si muta l'input del chiamante.
+        valori = dict(data)
         # Normalizza stringhe vuote a None per campi nullable
         for k in self._UPDATE_NULLABLE:
-            if k in data and isinstance(data[k], str) and not data[k].strip():
-                data[k] = None
-        fields = [(k, v) for k, v in data.items() if k in self._UPDATE_ALLOWED]
-        if not fields:
-            return False
-        set_clause = ", ".join(f"{f[0]} = %s" for f in fields)
-        values: list[Any] = [f[1] for f in fields]
-        values.append(fornitore_id)
-        sql = f"UPDATE anagrafiche.fornitori SET {set_clause} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, values)
-            return cursor.rowcount > 0
+            val = valori.get(k)
+            if isinstance(val, str) and not val.strip():
+                valori[k] = None
+        return execute_dynamic_update(
+            "anagrafiche.fornitori", fornitore_id, valori,
+            allowed=FORNITORE_UPDATE_ALLOWED,
+        )

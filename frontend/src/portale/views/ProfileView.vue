@@ -19,16 +19,14 @@ import Card from 'primevue/card'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import { useAuthStore } from '../../stores/auth'
 import AttivaAccessoShopButton from '../components/AttivaAccessoShopButton.vue'
+import { etichettaRuoloApplicativo } from '../../core/utils/i18nLabel'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const auth = useAuthStore()
 
 const emailAccount = computed(() => auth.user?.utente?.email || '')
 const username = computed(() => auth.user?.utente?.username || '')
-const ruoloLabel = computed(() => {
-  const ra = auth.ruoloApplicativo
-  return ra ? t(`auth.ruolo_applicativo.${ra}`) : ''
-})
+const ruoloLabel = computed(() => etichettaRuoloApplicativo(t, te, auth.ruoloApplicativo))
 
 // Lista righe "stato accessi" per la card Accessi. Usare un array reso
 // il template v-for-friendly ed elimina duplicazione visuale.

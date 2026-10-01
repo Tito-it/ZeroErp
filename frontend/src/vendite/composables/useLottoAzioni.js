@@ -26,7 +26,7 @@ import { estraiBersagli } from '../../core/bersagli'
 import { azioniDaBersagli } from '../../core/bersaglioGesto'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useNotify } from '../../core/composables/useNotify'
-import { labelOrCode } from '../../core/utils/i18nLabel'
+import { testoMotivi } from '../../core/composables/useDrawerActions'
 import {
   getLotto,
   numeraLotto,
@@ -36,6 +36,7 @@ import {
   runLottoPipeline,
 } from '../api/lotti'
 import { MANAGE_ICONS } from '../../core/constants'
+import { aspettoAzione } from '../../core/aspettoAzioni'
 
 // Permesso di processo per verbo. La numerazione ha un gate fiscale SEPARATO
 // (I-7); annullamento e ritorno in lavorazione condividono `reset_lotto_draft`
@@ -56,11 +57,11 @@ export const LOTTO_AZIONE_PERMESSO = {
 // Presentazione dei due verbi che il DB non espone (vedi testata): il resto
 // delle azioni prende label/icona/severity dal `meta` di catalogo.
 export const LOTTO_AZIONE_PIPELINE_UI = {
-  avanza_step: { label_key: 'vendite.lotti.avanza', icon: 'pi pi-forward', severity: undefined },
+  avanza_step: { label_key: 'vendite.lotti.avanza', icon: MANAGE_ICONS.AVANZA, severity: undefined },
   // ⚠️ Icona DIVERSA da `avanza_step` di proposito: la freccia in avanti su un
   // gesto che non avanza e' la stessa bugia dell'etichetta.
-  rigenera_bozza: { label_key: 'vendite.lotti.rigenera', icon: 'pi pi-refresh', severity: undefined },
-  rilancia_step: { label_key: 'vendite.lotti.rerun', icon: 'pi pi-replay', severity: 'warn' },
+  rigenera_bozza: { label_key: 'vendite.lotti.rigenera', icon: MANAGE_ICONS.RIGENERA, severity: undefined },
+  rilancia_step: { label_key: 'vendite.lotti.rerun', icon: MANAGE_ICONS.RIPROVA, severity: 'warn' },
 }
 
 // Le tre CHIAVI dei due verbi che il DB non espone (`rigenera_bozza` è la
@@ -71,24 +72,11 @@ export const LOTTO_AZIONE_PIPELINE_UI = {
 // sopra e dimenticata nell'`if` sarebbe passata dal percorso sbagliato.
 const VERBI_PIPELINE = Object.keys(LOTTO_AZIONE_PIPELINE_UI)
 
-// Icona/severity dei verbi di stato per il kebab della lista. Nel drawer
-// arrivano dal `meta` di catalogo insieme al resto del blob; la riga di lista il
-// blob non ce l'ha, quindi qui si rispecchiano i valori seedati il 2026-08-04 —
-// se cambiano a catalogo vanno cambiati anche qui. Sono presentazione, non
-// regole: nessun verdetto passa da questi due oggetti.
-const LOTTO_AZIONE_ICONA = {
-  numera: 'pi pi-verified',
-  ristampa: 'pi pi-print',
-  annulla: MANAGE_ICONS.ANNULLA,
-  riporta_a_draft: 'pi pi-undo',
-}
-
-const LOTTO_AZIONE_SEVERITY = {
-  numera: 'success',
-  ristampa: 'secondary',
-  annulla: 'danger',
-  riporta_a_draft: 'warn',
-}
+// ⭐ Icona e colore dei verbi di stato NON stanno qui: li dà il verbo, dalla
+// stessa mappa della barra del drawer (`core/aspettoAzioni.js`,
+// brief-db-icone-azioni-per-significato). Le copie a mano dei valori del DB
+// (`LOTTO_AZIONE_ICONA`, `LOTTO_AZIONE_SEVERITY`) sono ritirate il 2026-09-27:
+// la riga di lista il blob non ce l'ha, e la copia doveva inseguire il seed.
 
 // Scopo: un lotto si può numerare? ⚠️ È lo stato del DOCUMENTO, non del lavoro:
 //   `stato_lotto` (bozza/in esecuzione/completato) è un altro asse.
@@ -186,16 +174,6 @@ export function useLottoAzioni({ onDone } = {}) {
         attivita: res?.riemesse_attivita ?? 0,
       }),
     },
-  }
-
-  // Scopo: i motivi ostativi del DB in testo leggibile. `reason_key` mancante a
-  //   catalogo → si mostra il codice macchina, mai il path della chiave
-  //   (fail-visible, stessa regola di mapAvailableActionsToDrawerActions).
-  function motiviTesto(action) {
-    return (action?.reasons ?? [])
-      .map((r) => (r.reason_key ? labelOrCode(t, te, r.reason_key, r.reason || '') : r.reason || ''))
-      .filter(Boolean)
-      .join('\n')
   }
 
 // I motivi di arresto del driver pipeline (`_drive_lotto_until_done`) che sono
@@ -332,7 +310,7 @@ function verdettoRunner(res) {
   async function eseguiVerificato(lottoId, key) {
     const dettaglio = await execute(() => getLotto(lottoId))
     if (dettaglio === null) return
-    const azione = (dettaglio.available_actions ?? []).find((a) => a.key === key)
+    const azione = (dettaglio.capabilities?.available_actions ?? []).find((a) => a.key === key)
     // ⭐ DUE FAMIGLIE, UNA SOLA DOMANDA: «la riga fresca propone ancora questo
     //   verbo?». Per i verbi di stato la risposta è nel blob del DB; per i tre
     //   di pipeline, che nel blob non ci sono per costruzione, è `verbiPipeline`
@@ -353,7 +331,7 @@ function verdettoRunner(res) {
     // per i verbi del blob — sui tre di pipeline `azione` è `undefined`, e
     // `undefined === false` è falso: si prosegue, che è corretto.
     if (azione?.enabled === false) {
-      notify.warn(motiviTesto(azione) || t('vendite.lotti.azione_non_piu_disponibile'))
+      notify.warn(testoMotivi(t, te, azione) || t('vendite.lotti.azione_non_piu_disponibile'))
       return
     }
     esegui(lottoId, key)
@@ -440,7 +418,7 @@ function verdettoRunner(res) {
   }
 
   // Scopo: le voci per RowActionsMenu di una riga di lista. Label e icone
-  //   restano quelle del catalogo DB (le stesse del drawer): il kebab della
+  //   sono quelle del drawer (etichetta dal catalogo DB, icona e colore dal verbo): il kebab della
   //   lista e la barra del drawer non possono chiamare la stessa cosa in due
   //   modi diversi.
   function azioniRiga(row, { readonly = false } = {}) {
@@ -453,8 +431,8 @@ function verdettoRunner(res) {
       return {
         key,
         label: t(labelKey),
-        icon: ui?.icon ?? LOTTO_AZIONE_ICONA[key],
-        severity: ui ? ui.severity : LOTTO_AZIONE_SEVERITY[key],
+        icon: ui ? ui.icon : aspettoAzione(key).icona,
+        severity: ui ? ui.severity : aspettoAzione(key).severity,
         ...(LOTTO_AZIONE_PERMESSO[key] ? { action: LOTTO_AZIONE_PERMESSO[key] } : {}),
         command: () => eseguiVerificato(row.id, key),
       }
@@ -470,6 +448,5 @@ function verdettoRunner(res) {
     verbiPipeline,
     verbiPlausibili,
     azioniRiga,
-    motiviTesto,
   }
 }

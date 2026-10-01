@@ -1,7 +1,28 @@
 # Analisi — La UI dei permessi di un operatore
 
-> **Tipo**: analisi preliminare (nessuna riga di codice scritta) · **Data**: 2026-09-05 ·
-> **Owner**: Tid · **Stato**: 🟢 **PERIMETRO DECISO** (Tid, 2026-09-05) — vedi §7
+> **Tipo**: analisi · **Data**: 2026-09-05 · **Owner**: Tid ·
+> **Stato**: 🟡 **ESEGUITA, IN COLLAUDO** (aggiornato 2026-09-25) — perimetro
+> deciso il 2026-09-05 (§7), codice fatto lo stesso giorno
+>
+> 📍 **Dove siamo (2026-09-25)**
+>
+> - ✅ **Codice**: endpoint `permessi-ereditati`, BB `MatriceOverride.vue`, tab
+>   convertito — vedi lo stato nel [piano](piano-be-fe-ui-permessi-operatore.md).
+> - ⏳ **Collaudo a video**: copione in
+>   [collaudo-in-app-ui-permessi-operatore.md](collaudo-in-app-ui-permessi-operatore.md),
+>   da eseguire.
+> - ✅ **pgTAP «ereditato = resolver»** (2026-09-25):
+>   [brief-db-pgtap-permessi-ereditati.md](../work-done/brief-db-pgtap-permessi-ereditati.md).
+>   L'ereditato ora sta a DB, i resolver lo chiamano e il backend lo legge;
+>   applicato, con la ricaduta BE fatta. Il brief ha corretto anche un difetto:
+>   i resolver da operatore contavano i profili delle **altre vesti**
+>   dell'utente (D-1, D-2, D-3).
+> - 🔴 **Tetto d'area**: aperto, senza decisione; ora è registrato in
+>   `.codex/PROJECT_CONTEXT.md` § «Aperto», così sopravvive alla chiusura di
+>   questo documento.
+> - 📌 Riconteggio del catalogo al 2026-09-25 in §8.
+>
+> ⇒ Collaudo verde + pgTAP applicato → analisi e piano vanno in `work-done/`.
 >
 > ✅ **Decisioni prese**: *nessun cambio di funzionalità* — il tetto d'area (§3)
 > **non si fa** e resta segnalato come difetto a sé; la UI **resta nel drawer**;
@@ -34,7 +55,7 @@
 
 ## 1 · Cosa c'è oggi
 
-[`OperatorePermessiTab.vue`](../../../frontend/src/amministrazione/components/OperatorePermessiTab.vue)
+[`OperatorePermessiTab.vue`](../../../../frontend/src/amministrazione/components/OperatorePermessiTab.vue)
 — 428 righe — porta tre `DataTable` affiancate (aree, azioni, oggetti). Ogni
 riga è un **override**: una tendina per scegliere l'entità, una per il livello,
 un cestino. «Aggiungi override» spinge in lista una riga vuota.
@@ -162,7 +183,7 @@ prima di allora sarebbe una bugia gentile.
 
 **4.5 · Il drawer è il vincolo peggiore.** 59 righe con tre colonne non stanno
 in un drawer stretto. Esiste già
-[`PermessiRiepilogoView`](../../../frontend/src/amministrazione/views/PermessiRiepilogoView.vue)
+[`PermessiRiepilogoView`](../../../../frontend/src/amministrazione/views/PermessiRiepilogoView.vue)
 (matrice operatori × aree, sola lettura): la strada naturale è una **pagina
 intera** per l'editing, tenendo il drawer per la consultazione rapida.
 `getLivelloSeverity` / `getLivelloLabel` in `amministrazione/constants` sono già
@@ -367,3 +388,45 @@ oggetto → override area → profilo dell'**area** → BLOCCATO*. Quindi nella 
 oggetti la colonna si chiama **«ereditato dall'area»**, e il valore mostrato è
 quello dell'area — non un livello di profilo che per gli oggetti non esiste.
 Chiamarla come le altre due sarebbe un nome sbagliato su un valore giusto.
+
+---
+
+## 8 · Riconteggio al 2026-09-25
+
+> 📌 *Fatti datati, non motivi.* I conteggi del §1 e i fatti del §3 e del §7.7
+> sono del 2026-09-05. Qui li si rifà con le stesse sorgenti del pannello: i
+> lookup `aree-funzionali`, `azioni-processo` e `model-overrides`
+> (`AmmSoftwareRepository`), letti sul database di sviluppo. Nessuna decisione
+> cambia: la scelta di mostrare tutte le righe senza paginare sta sul **modello**
+> (§7.3, una riga per voce di catalogo), non sul numero.
+
+| | 2026-09-05 | **2026-09-25** | Cosa è cambiato |
+| --- | --- | --- | --- |
+| Aree funzionali attive | 13 | **14** | + `ai_assistant` |
+| Azioni di processo | 34 | **35** | + 1 in `magazzino` |
+| Model overridabili | 12 | **12** | — (nessuno riservato) |
+| **Righe del pannello** | 59 | **61** | |
+| Profili di accesso | 8 | **8** | — |
+| Utenti con almeno un override | 3 | **3** | 6 righe aree, 20 azioni, 4 oggetti |
+
+Azioni per area: `vendite` 19, `pratiche` 8, `config` 2, `documenti` 2,
+`strumenti` 2, `magazzino` 1, `pagamenti` 1. **Sette aree a zero**:
+`anagrafiche`, `acquisti`, `catalogo`, `contabilita`, `storico`, `core`,
+`ai_assistant`.
+
+**I fatti del §3 e del §7.7, ricontrollati:**
+
+- **Tetto d'area**: ancora **zero** azioni abilitate da override sotto un'area
+  che per quell'utente risulta `BLOCCATO`, e i 4 override oggetti sono tutti
+  ≤ al livello della loro area. ⇒ Cambiare la regola oggi non cambierebbe il
+  significato di nessuna configurazione. Il difetto resta aperto nel codice:
+  [`permissions.py`](../../../backend/apps/core/api/permissions.py) consulta
+  ancora solo l'azione.
+- **Binding attivi**: 4 `REPARTO`, 3 `PORTALE`, 1 `SUPER_ADMIN`, **nessun
+  `AD_HOC`** — come il 05-09.
+- ⚠️ **Override che ripetono l'ereditato** (il caso dell'avviso, piano §3.3):
+  **5 dei 6** override aree ripetono il livello del profilo, e **3 dei 4**
+  override oggetti ripetono il livello dell'area. Sono righe che *congelano*
+  l'utente (§7.7): se il profilo cambia, quegli utenti restano indietro. Il
+  collaudo le usa come casi veri per la prova dell'avviso; se toglierle è una
+  decisione di Tid, non del collaudo.
