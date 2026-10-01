@@ -2,18 +2,17 @@
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-09-29. **A chi:** team DB e backend
 > (`dev/backend-tid`); Tid per le decisioni di §7.
-> **Origine:** §9.8.4 di [brief-db-liste-righe-documento.md](brief-db-liste-righe-documento.md)
+> **Origine:** §9.8.4 di [brief-db-liste-righe-documento.md](../work-in-progress/brief-db-liste-righe-documento.md)
 > (la stampa della fattura dalla lista delle righe).
-> **Stato:** ✅ **lato DB APPLICATO su dbdev il 2026-09-30, pgTAP verdi (corsa di Tid)**
-> (`20260930-14 → -21` + codici 1169-1170). ✅ **Giro BE/FE fatto il 2026-09-30** (§12: R-1 … R-5,
-> test Django verdi anche sul DB vero). ✅ **Fattura alla forma 2 a codice il 2026-09-30** (§13:
-> builder, ritiro di `list_fattura_righe`, corpo della v4 nel repo). ⏳ Resta a Tid: riavviare il backend,
-> poi creare la BOZZA v4 dall'app e pubblicarla (§13.2, in quest'ordine). ✅ Decisione di Tid
-> (2026-09-29): si fa tutto, per TUTTI i documenti; ✅ D-C1 → D-C4 accettate il 2026-09-29 (§7).
+> **Stato:** ✅ **CHIUSO il 2026-10-01** (verificato su dbdev, §14). ✅ Lato DB **applicato** su dbdev il
+> 2026-09-30, pgTAP verdi (corsa di Tid) (`20260930-14 → -21` + codici 1169-1170). ✅ **Giro BE/FE fatto il
+> 2026-09-30** (§12: R-1 … R-5, test Django verdi anche sul DB vero). ✅ **Fattura alla forma 2 il
+> 2026-09-30** (§13: builder, ritiro di `list_fattura_righe`, v4 **pubblicata** da Tid dall'app, §13.2).
+> ✅ Decisione di Tid (2026-09-29): si fa tutto, per TUTTI i documenti; ✅ D-C1 → D-C4 accettate il
+> 2026-09-29 (§7).
 >
-> **Da leggere per primo: §8 (che cosa è stato scritto, e dove si discosta da §4) e §10 (le richieste
-> al BE, che dopo l'apply sono BLOCCANTI: la pubblicazione e la creazione di una versione dal
-> backend muoiono finché non le fa).**
+> **Da leggere per primo: §8 (che cosa è stato scritto, e dove si discosta da §4) e §14 (la chiusura,
+> e che cosa resta fuori).**
 >
 > **In una riga:** oggi una versione di template può leggere dati di una forma diversa da quella
 > che il backend le prepara, e stampare un documento **incompleto senza nessun errore**. Ogni
@@ -352,3 +351,27 @@ fattura non stampa è il tempo dei passi 2-3.
 
 La ristampa fedele delle fatture già emesse non cambia: contesto congelato in forma 1, versione 3 fissata.
 
+
+## 14. Chiusura (2026-10-01)
+
+Verificato su dbdev, non sulla testata:
+
+* template `fattura`: v4 (id 2159) **PUBBLICATA** dal 2026-09-30, `versione_contesto = 2`, v3 OBSOLETA
+  (`valido_al` 2026-09-29); il corpo HTML della v4 coincide (md5) con
+  [`template-fattura-v4.html`](template-fattura-v4.html), che scorre `r.componenti`;
+* stampe registrate (lette **nel contesto operatore**: `documenti_generati` e `fatture_stampa_coda`
+  hanno RLS, senza GUC tornano zero righe): 2 fatture con la v4 e `_meta.context_version = 2`
+  (2026-09-30 23:02), coda di stampa chiusa a FATTO; le 3 righe di coda in ERRORE sono del
+  2026-09-09, prima della finestra di §13.2 — nessuna da rimettere in coda.
+
+**Che cosa resta fuori, e dove va** (in `.codex/PROJECT_CONTEXT.md` § «Aperto — Media priorità»):
+
+* **D-C3** — la validazione delle variabili di una versione alla pubblicazione (decisioni 35-36 del
+  2026-04-29): esclusa da questo giro per decisione; si appoggerà allo stesso momento della
+  pubblicazione, come la verifica degli asset di `brief-be-documenti-risorse-esterne-render-pdf.md` (§5.3).
+* **§12.1** — la colonna «Forma dei dati» nella lista configurabile delle versioni (88): facoltativa,
+  al team DB.
+
+**Chi continua il patto:** ogni cambio di forma della fattura vuole una versione nuova del template
+nello stesso giro — oggi `brief-db-esposizione-componenti-kit-in-fattura.md` e la R-3 di
+`brief-db-esigibilita-iva-per-cassa-emittente.md` (in `work-in-progress/`).

@@ -1777,7 +1777,7 @@ Frontend: vitest 61 file / 487 test, `npm run lint`, `npm run guards`,
 
 > ✅ **Decisione di Tid (2026-09-29): si fa tutto, per TUTTI i documenti, appena possibile.**
 > Il lavoro esce da questo brief e prosegue in
-> [brief-db-documenti-versione-contesto-template.md](brief-db-documenti-versione-contesto-template.md).
+> [brief-db-documenti-versione-contesto-template.md](../work-done/brief-db-documenti-versione-contesto-template.md).
 > ⚠️ Una correzione alla proposta qui sotto (punto 1): «le versioni senza dichiarazione valgono
 > 1» renderebbe non stampabili i documenti i cui builder sono già alla forma 2 (cinque su sei):
 > la forma di ogni versione esistente va stabilita leggendola (§4 e D-C1 del brief nuovo).

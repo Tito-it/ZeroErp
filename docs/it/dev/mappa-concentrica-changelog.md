@@ -329,10 +329,11 @@ e nessuno se ne accorgeva. Ogni versione di template dichiara ora la forma che
 legge (`versione_contesto`, NOT NULL, senza default) e si stampa o si pubblica
 solo se coincide con quella del builder — *non è un caso isolato, è il
 modello*: con i template per azienda diventa la norma. DB applicato il 30-09
-(D-C1…D-C4, backfill su 20 versioni). ⚠️ Aperto e **bloccante**: il BE
-(R-1…R-5) — senza, pubblicazione e creazione di versioni dal backend
-falliscono — e la versione 4 del template Fattura. Vedi
-[brief-db-documenti-versione-contesto-template.md](work-in-progress/brief-db-documenti-versione-contesto-template.md).
+(D-C1…D-C4, backfill su 20 versioni); lo stesso giorno il BE (R-1…R-5: una
+costante `CONTEXT_VERSION` per builder, controllo prima del render e alla
+pubblicazione) e la fattura alla **forma 2**, con la versione 4 del template che
+scorre `riga.componenti`, pubblicata dall'app. ✅ Chiuso il 2026-10-01. Vedi
+[brief-db-documenti-versione-contesto-template.md](work-done/brief-db-documenti-versione-contesto-template.md).
 
 **In breve, senza un tema proprio** — la verifica «doc API contro codice» su
 47 documenti di `core` apre un'analisi BE che chiude in quattro giorni una
