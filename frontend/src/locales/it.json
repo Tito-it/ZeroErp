@@ -599,7 +599,8 @@
     "avvio_non_riuscito_message": "Non è stato possibile leggere la configurazione dell'applicazione dal server. Riprova tra poco; se il problema continua, avvisa l'assistenza.",
     "back_home": "Torna alla Home",
     "lookup_load_failed": "Caricamento elenco non riuscito. Riprova oppure contatta l'amministratore.",
-    "bersaglio_apri_senza_id": "Apri {entita}"
+    "bersaglio_apri_senza_id": "Apri {entita}",
+    "http_413_file_troppo_grande": "Il file è troppo grande: supera la dimensione massima che il server accetta. Usa un file più piccolo."
   },
   "placeholder": {
     "wip_title": "Area in costruzione",
@@ -5410,7 +5411,16 @@
         "versione_contesto_builder_assente": "Il generatore dei dati di questo template non e' registrato: le sue versioni non si pubblicano e non stampano.",
         "publish_forma": "Questa versione legge i dati nella forma {versione}; il sistema li prepara nella forma {builder}.",
         "orientation_portrait": "Verticale",
-        "orientation_landscape": "Orizzontale"
+        "orientation_landscape": "Orizzontale",
+        "asset": {
+          "titolo": "Asset richiamabili",
+          "hint": "Gli asset dell'emittente del template, attivi e validi oggi. Nel template si richiamano con asset:<codice interno>.",
+          "senza_emittente": "Il template non ha ancora un emittente: gli asset si mostrano dopo il primo salvataggio.",
+          "nessuno": "L'emittente non ha asset attivi e validi oggi. Si caricano dalla scheda «Asset documentali».",
+          "inserisci_html": "In HTML",
+          "inserisci_css": "In CSS",
+          "troncati": "Mostrati {mostrati} asset su {totale}: gli altri si cercano nella scheda «Asset documentali»."
+        }
       },
       "asset": {
         "search_placeholder": "Cerca per codice, descrizione, file",

@@ -29,14 +29,14 @@ from unittest.mock import patch
 
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User
-from django.db import connection, transaction
+from django.db import connection
 from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.core.api.throttling import PasswordResetRateThrottle
 from apps.core.services.invito_veste import PORTA_PORTALE, InvitoVeste
 from apps.core.services.token_service import TokenService
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 
 # Due vesti finte della stessa porta: bastano due identita_id distinti.
 _VESTE_CLIENTE = 900_001
@@ -57,12 +57,7 @@ class _TransazioneAnnullata(unittest.TestCase):
         richiedi_db_provvisto()
 
     def setUp(self) -> None:
-        self._atomic = transaction.atomic()
-        self._atomic.__enter__()
-
-    def tearDown(self) -> None:
-        transaction.set_rollback(True)
-        self._atomic.__exit__(None, None, None)
+        apri_transazione_annullata(self)
 
 
 class TokenVesteDbTests(_TransazioneAnnullata):

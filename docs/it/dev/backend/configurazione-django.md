@@ -295,6 +295,19 @@ server {
 
     location /api/ {
         limit_req zone=zeroerp_api burst=100 nodelay;
+        # ⛔ Senza questa riga Nginx accetta corpi fino a 1 MB (il suo
+        #    default) e risponde 413 PRIMA di Django: un logo da 2 MB non
+        #    arriva mai al backend, nel log di Django non resta traccia e il
+        #    FE riceve un errore senza envelope. Mancava fino al 2026-10-01.
+        #    Da quel giorno il FE traduce il 413 in «file troppo grande»
+        #    (`MESSAGGI_STATO_PROXY` in useApiHandler), senza scrivere il
+        #    limite: il numero vive qui e nei parametri.
+        # Il valore segue i limiti dell'applicazione, che sono PARAMETRI
+        # (`config.parameters`): `documenti_asset_upload_max_mb` e
+        # `documenti_allegato_upload_max_mb`, 25 MB ciascuno, piu' il margine
+        # del multipart. ⚠️ Chi alza uno di quei parametri alza anche questo,
+        # o il limite vero resta quello di Nginx, senza errori parlanti.
+        client_max_body_size 30m;
         include proxy_params;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_pass http://127.0.0.1:8000;

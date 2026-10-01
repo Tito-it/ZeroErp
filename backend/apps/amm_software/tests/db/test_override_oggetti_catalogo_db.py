@@ -41,7 +41,7 @@ from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 from apps.amm_software.services.amm_software_service import E_AMM_VALIDAZIONE, AmmSoftwareService
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 
 
 class OverrideOggettiCatalogoDbTests(TestCase):
@@ -52,8 +52,7 @@ class OverrideOggettiCatalogoDbTests(TestCase):
         richiedi_db_provvisto()
 
     def setUp(self) -> None:
-        self._atomic = transaction.atomic()
-        self._atomic.__enter__()
+        apri_transazione_annullata(self)
         with connection.cursor() as cur:
             cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore()")
             self.uid = int(cur.fetchone()[0])
@@ -62,10 +61,6 @@ class OverrideOggettiCatalogoDbTests(TestCase):
         patcher = patch("apps.amm_software.services.amm_software_service.invalidate_user")
         patcher.start()
         self.addCleanup(patcher.stop)
-
-    def tearDown(self) -> None:
-        transaction.set_rollback(True)
-        self._atomic.__exit__(None, None, None)
 
     # Scopo: Le coppie `riservato = t` del catalogo, lette dal DB.
     def _riservati_a_db(self) -> set[tuple[str, str]]:

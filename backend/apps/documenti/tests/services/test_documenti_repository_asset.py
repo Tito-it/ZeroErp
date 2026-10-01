@@ -24,6 +24,7 @@
 # Indice test (0..N):
 #   0. list_asset_basic_no_filters
 #   1. list_asset_applies_filters_and_search_dal_catalogo
+#   1-bis. list_asset_utilizzabili_usa_la_condizione_del_render
 #   2. list_asset_applies_emittente_scope_anyarray
 #   3. list_asset_paginazione_deterministica_id_tiebreaker
 #   4. list_asset_invalid_order_by_raises_validation_no_db
@@ -173,6 +174,36 @@ class DocumentiRepositoryListAssetTests(TestCase):
             params,
             [False, 4, 11, "%logo%", "%logo%", "%logo%"],
         )
+
+    # 1-bis. Il filtro `utilizzabili` usa la STESSA condizione con cui il
+    #        render risolve `asset:` (la prova che le due letture concordano
+    #        sul DB vero e' in tests/db/test_asset_per_render_db); assente =
+    #        nessun filtro.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_list_asset_utilizzabili_usa_la_condizione_del_render(self, mocked_factory) -> None:
+        from apps.documenti.db.documenti_repository import _ASSET_UTILIZZABILE_OGGI
+
+        for valore, atteso in (
+            (True, f"AND {_ASSET_UTILIZZABILE_OGGI}"),
+            (False, f"NOT {_ASSET_UTILIZZABILE_OGGI}"),
+            (None, None),
+        ):
+            with self.subTest(utilizzabili=valore):
+                cursor = _mk_cursor(
+                    fetchone_results=[(0,), None],
+                    descriptions=[[], _columns("id")],
+                    fetchall_results=[[], []],
+                )
+                mocked_factory.return_value = cursor
+                with catalogo_ricerca_finto(["codice"]):
+                    DocumentiRepository().list_asset(
+                        **self._list_default_args(utilizzabili=valore),
+                    )
+                sql, _ = cursor.execute.call_args_list[0].args
+                if atteso is None:
+                    self.assertNotIn("validita", sql)
+                else:
+                    self.assertIn(atteso, sql)
 
     # 2. scope emittente passa lista ANY(%s) con i soli id whitelisted.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")

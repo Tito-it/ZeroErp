@@ -6,7 +6,7 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==1.8.0
+anthropic==1.11.0
     # via -r ../requirements.in
 anyio==4.15.1
     # via
@@ -28,7 +28,7 @@ cffi==2.1.1
     # via
     #   cryptography
     #   weasyprint
-cryptography==50.0.1
+cryptography==50.0.2
     # via -r ../requirements.in
 cssselect2==0.10.1
     # via weasyprint
@@ -54,7 +54,7 @@ drf-spectacular==0.30.0
     # via -r ../requirements.in
 et-xmlfile==2.0.0
     # via openpyxl
-fonttools[woff]==4.66.0
+fonttools[woff]==4.66.1
     # via weasyprint
 gunicorn==26.2.0
     # via -r ../requirements.in
@@ -85,7 +85,9 @@ openpyxl==3.1.5
 packaging==26.3
     # via -r ../requirements.in
 pillow==12.3.0
-    # via weasyprint
+    # via
+    #   -r ../requirements.in
+    #   weasyprint
 psycopg==3.3.6
     # via -r ../requirements.in
 psycopg-binary==3.3.6
@@ -100,7 +102,7 @@ pydantic-core==2.46.5
     # via pydantic
 pydyf==0.12.1
     # via weasyprint
-pyjwt==2.15.0
+pyjwt==2.15.1
     # via
     #   -r ../requirements.in
     #   djangorestframework-simplejwt

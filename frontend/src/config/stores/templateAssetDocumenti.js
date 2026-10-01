@@ -22,9 +22,10 @@ import {
   uploadTemplateAssetDocumento,
 } from '../api/templateAssetDocumenti'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 const STORE_NAME = 'config-template-asset-documenti'
-const EMIT_KEY = 'template_asset_documenti'
+const EMIT_KEY = TAB_ENTITIES.TEMPLATE_ASSET_DOCUMENTI
 
 export const useTemplateAssetDocumentiStore = createListaStore(STORE_NAME, {
   fetchPage: listTemplateAssetDocumenti,

@@ -630,7 +630,7 @@ class CommesseRepositoryUnitTests(TestCase):
             order_by="data_attivita", order_dir="desc",
         )
         self.assertEqual(result["count"], 5)  # total count, non len(rows)
-        row = result["rows"][0]
+        row = result["results"][0]
         self.assertEqual(row["id"], 100)
         self.assertEqual(row["segment_key"], "SEG:001")
         self.assertEqual(row["articolo_id"], str(_art_id))
@@ -682,7 +682,7 @@ class CommesseRepositoryUnitTests(TestCase):
         repo = CommesseRepository()
         result = repo.list_commessa_attivita(1)
         self.assertEqual(result["count"], 0)
-        self.assertEqual(result["rows"], [])
+        self.assertEqual(result["results"], [])
 
     # Scopo: Verifica mapping BatchUpsertResult da fn_batch_upsert_commessa_attivita.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")

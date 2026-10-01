@@ -32,6 +32,8 @@
 #  20. asset_upload_happy_path_multipart
 #  21. asset_patch_metadati_happy_path
 #  22. asset_download_file_binary_happy_path
+#  22-bis. asset_miniatura_inline_con_etag_e_no_cache
+#  22-ter. asset_miniatura_304_quando_il_client_ha_lo_stesso_etag
 #  23. le liste nei drawer dichiarano codice e parametro dell'emittente
 # ------------------------------------------------------------
 
@@ -621,6 +623,57 @@ class DocumentiAssetApiTests(JwtMockedApiTest):
         self.assertIn('attachment; filename="logo.png"', resp["Content-Disposition"])
         self.assertEqual(resp["Content-Length"], "9")
         mocked_reader_cls.return_value.download_asset.assert_called_once()
+
+    # 22-bis. Miniatura: inline (niente attachment), ETag e `private,
+    #         no-cache` — il browser la riusa ma la rivalida sempre, cosi'
+    #         lo scope si ricontrolla a ogni richiesta.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(is_superuser=True), None),
+    )
+    @patch("apps.documenti.api.views.TemplateService")
+    def test_asset_miniatura_inline_con_etag_e_no_cache(
+        self, mocked_reader_cls, _mock_auth
+    ) -> None:
+        mocked_reader_cls.return_value.miniatura_asset.return_value = {
+            "etag": '"abc-128"', "file_bytes": b"PNGMINI", "mime_type": "image/png",
+        }
+
+        resp = self.client.get("/api/v1/documenti/asset/50/miniatura/")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, b"PNGMINI")
+        self.assertEqual(resp["Content-Type"], "image/png")
+        self.assertEqual(resp["ETag"], '"abc-128"')
+        self.assertEqual(resp["Cache-Control"], "private, no-cache")
+        self.assertNotIn("Content-Disposition", resp)
+        _, kwargs = mocked_reader_cls.return_value.miniatura_asset.call_args
+        self.assertEqual(kwargs["etag_noti"], [])
+
+    # 22-ter. Il client porta l'ETag che ha in cache: la view lo passa al
+    #         service (che controlla lo scope PRIMA) e risponde 304 vuoto.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(is_superuser=True), None),
+    )
+    @patch("apps.documenti.api.views.TemplateService")
+    def test_asset_miniatura_304_quando_il_client_ha_lo_stesso_etag(
+        self, mocked_reader_cls, _mock_auth
+    ) -> None:
+        mocked_reader_cls.return_value.miniatura_asset.return_value = {
+            "etag": '"abc-128"', "file_bytes": None, "mime_type": None,
+        }
+
+        resp = self.client.get(
+            "/api/v1/documenti/asset/50/miniatura/",
+            HTTP_IF_NONE_MATCH='"abc-128"',
+        )
+
+        self.assertEqual(resp.status_code, 304)
+        self.assertEqual(resp.content, b"")
+        self.assertEqual(resp["ETag"], '"abc-128"')
+        _, kwargs = mocked_reader_cls.return_value.miniatura_asset.call_args
+        self.assertEqual(kwargs["etag_noti"], ['"abc-128"'])
 
 
 class ListeNeiDrawerDichiaranoIlCancelloTests(SimpleTestCase):

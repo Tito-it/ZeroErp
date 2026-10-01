@@ -13,7 +13,8 @@
 
 from __future__ import annotations
 
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseNotModified, JsonResponse
+from django.utils.http import parse_etags
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -525,6 +526,14 @@ class ApiAssetList(DomainAPIView):
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="asset_tipo_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="emittente_fiscale_id", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="utilizzabili", type=bool, location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "true = solo gli asset che il render accetta oggi (attivi e "
+                    "validi oggi), la stessa regola di `asset:<codice_interno>`; "
+                    "false = solo gli altri; assente = tutti."
+                ),
+            ),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
@@ -552,6 +561,7 @@ class ApiAssetList(DomainAPIView):
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             asset_tipo_id=qp_int_optional(request.query_params.get("asset_tipo_id"), "asset_tipo_id"),
             emittente_fiscale_id=qp_int_optional(request.query_params.get("emittente_fiscale_id"), "emittente_fiscale_id"),
+            utilizzabili=qp_bool_optional(request.query_params.get("utilizzabili"), "utilizzabili"),
             search=params["search"],
             order_by=params["order_by"],
             order_dir=params["order_dir"],
@@ -715,4 +725,36 @@ class ApiAssetFileDownload(DomainAPIView):
             f'attachment; filename="{result["file_name"]}"'
         )
         response["Content-Length"] = str(result["size_bytes"])
+        return response
+
+
+class ApiAssetMiniatura(DomainAPIView):
+    """
+    GET /api/v1/documenti/asset/<id>/miniatura/ — miniatura di un asset
+    immagine (PNG di lato al massimo `LATO_MINIATURA`; SVG cosi' com'e').
+    """
+
+    area_funzionale = "documenti"
+
+    @extend_schema(
+        responses={200: bytes, 304: None},
+    )
+    # Scopo: Restituisce la miniatura inline, con `ETag` e
+    #        `Cache-Control: private, no-cache`: il browser la riusa, ma la
+    #        rivalida a ogni richiesta (304 se l'asset e' lo stesso), cosi'
+    #        lo scope si ricontrolla sempre e un altro utente dello stesso
+    #        browser non la riceve dalla cache.
+    def get(self, request: Request, asset_id: int) -> HttpResponse:
+        result = TemplateService().miniatura_asset(
+            request.user, int(asset_id),
+            etag_noti=parse_etags(request.headers.get("If-None-Match", "")),
+        )
+        if result["file_bytes"] is None:
+            response = HttpResponseNotModified()
+        else:
+            response = HttpResponse(
+                result["file_bytes"], content_type=result["mime_type"],
+            )
+        response["ETag"] = result["etag"]
+        response["Cache-Control"] = "private, no-cache"
         return response

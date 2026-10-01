@@ -233,12 +233,18 @@ class GeneraDocumentoHappyPathTests(SimpleTestCase):
             },
             storage_methods={"write": "filesystem:documenti/11/abc.pdf"},
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 42}), _patch_render(b"PDF-bytes"):
+        with _patch_scope(None), _patch_get_builder({"numero": 42}), \
+                _patch_render(b"PDF-bytes") as mock_render, \
+                patch.object(DocumentGenerationService, "_risolutore_asset") as mock_ris:
             with _patch_transaction_atomic_noop():
                 result = svc.genera_documento(
                     _make_user(),
                     **_GENERA_DEFAULT,
                 )
+
+        # Gli asset: quelli dell'emittente del template, solo attivi e validi.
+        mock_ris.assert_called_once_with(11, solo_validi=True)
+        self.assertIs(mock_render.call_args.kwargs["risolvi_asset"], mock_ris.return_value)
 
         self.assertEqual(result["id"], 99)
         self.assertTrue(result["uid"].startswith("0190a000"))

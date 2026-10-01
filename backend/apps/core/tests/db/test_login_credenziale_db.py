@@ -61,7 +61,7 @@ from apps.core.api.throttling import LoginRateThrottle, PasswordResetRateThrottl
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.nome_tentato import digest_nome_tentato
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_annullata, richiedi_db_provvisto
 
 _PASSWORD = "Giusta-Per-Il-Test-2026!"
 _URL_LOGIN = "/api/v1/admin/token/"
@@ -94,12 +94,7 @@ class _TransazioneAnnullata(unittest.TestCase):
         richiedi_db_provvisto()
 
     def setUp(self) -> None:
-        self._atomic = transaction.atomic()
-        self._atomic.__enter__()
-
-    def tearDown(self) -> None:
-        transaction.set_rollback(True)
-        self._atomic.__exit__(None, None, None)
+        apri_transazione_annullata(self)
 
     # Scopo: Esegue `azione` in un savepoint e ne ritorna il codice d'errore del DB.
     def _codice_errore(self, azione) -> str | None:
@@ -247,7 +242,7 @@ class _ViewVere(_TransazioneAnnullata):
     # guasto (500) lasciano la transazione interrotta, e confermarla farebbe
     # fallire le asserzioni successive con un errore che non e' il loro.
     def _post(self, url: str, dati: dict, ip: str = "198.51.100.99"):
-        sid = transaction.savepoint()
+        sid = transaction.savepoint_create()
         risposta = APIClient().post(url, dati, format="json", REMOTE_ADDR=ip)
         if risposta.status_code in (200, 401):
             transaction.savepoint_commit(sid)

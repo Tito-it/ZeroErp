@@ -197,6 +197,39 @@ def apri_contesto_operatore(cur) -> int:
     return int(riga[0])
 
 
+# Scopo: apre la transazione di un test sul DB vero e ne REGISTRA l'annullo,
+#        che gira sempre: a test finito, fallito, saltato — e anche quando a
+#        interrompersi e' il `setUp` stesso. Da chiamare come prima istruzione
+#        del `setUp`, prima di qualunque cosa possa sollevare.
+#
+# ⭐ ESTRATTO IL 2026-10-01 (regola del 2, ok di Tid): la coppia «`atomic` in
+#    `setUp`, `set_rollback` + `__exit__` in `tearDown`» stava in sei classi di
+#    cinque file — `test_login_credenziale_db`, `test_token_veste_db`,
+#    `test_obblighi_e_secondo_fattore_db`, `test_pannello_verbo_db` (due) e
+#    `amm_software/.../test_override_oggetti_catalogo_db`.
+#
+# 🔴 PERCHE' `addCleanup` E NON `tearDown`, ed e' il difetto che le sei copie
+#    avevano tutte. Se il `setUp` si interrompe, `unittest` NON chiama
+#    `tearDown`: chiama solo i cleanup gia' registrati. Con l'annullo in
+#    `tearDown`, uno `SkipTest` sollevato dopo l'`atomic` — per esempio da
+#    `apri_contesto_operatore` su un database senza utenti, cioe' quello che la
+#    CI ricostruisce da zero — lasciava la transazione APERTA sulla connessione
+#    condivisa. Da li' in poi ogni test cadeva su «c'e' gia' una transazione
+#    aperta» o «current transaction is aborted»: 274 rossi il 2026-10-01, quasi
+#    tutti in test che col DB non c'entravano, e nessuno che indicasse la causa.
+def apri_transazione_annullata(test: unittest.TestCase) -> None:
+    from django.db import transaction
+
+    blocco = transaction.atomic()
+    blocco.__enter__()
+
+    def _annulla() -> None:
+        transaction.set_rollback(True)
+        blocco.__exit__(None, None, None)
+
+    test.addCleanup(_annulla)
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  I VOCABOLARI SPECCHIATI — Python contro il CHECK che li possiede
 # ══════════════════════════════════════════════════════════════════════

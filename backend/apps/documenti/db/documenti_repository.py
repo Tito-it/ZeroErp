@@ -376,6 +376,15 @@ _RICERCA_TEMPLATE_ASSET = RicercaFull("documenti.template_asset", ("codice", "de
 _RICERCA_DOCUMENTI_SORGENTE = RicercaFull("documenti.documenti_sorgente", ("titolo", "nome_file"))
 _RICERCA_TEMPLATE_VERSIONI = RicercaFull("documenti.template_versioni", ("titolo",))
 
+# Quando un asset e' UTILIZZABILE nel render di oggi: attivo e valido oggi.
+# ⭐ Una condizione sola, letta da due punti (regola del 2): la risoluzione di
+#    `asset:<codice_interno>` nel render (`get_asset_per_render`) e il filtro
+#    `utilizzabili` della lista, con cui l'editor dei template mostra gli asset
+#    da richiamare. Se le due divergessero, l'editor proporrebbe un asset che
+#    il render rifiuta. La validita' si legge dalla colonna generata
+#    `validita`, mai ricalcolata da `valido_dal`/`valido_al`.
+_ASSET_UTILIZZABILE_OGGI = "(a.attivo AND a.validita @> CURRENT_DATE)"
+
 _ASSET_FROM = """
     FROM documenti.template_asset a
     JOIN documenti.tipi_asset_documento tad ON tad.id = a.asset_tipo_id
@@ -817,6 +826,7 @@ class DocumentiRepository:
         emittente_fiscale_id: int | None,
         search: str | None,
         emittente_ids_scope: list[int] | None,
+        utilizzabili: bool | None = None,
         order_by: str,
         order_dir: str,
         limit: int,
@@ -843,6 +853,13 @@ class DocumentiRepository:
         if attivo is not None:
             conditions.append("a.attivo = %s")
             params.append(attivo)
+        # Filtro (lo sceglie il client, assente = nessun filtro): True = solo
+        # gli asset che il render accetta oggi, False = solo quelli che rifiuta.
+        if utilizzabili is not None:
+            conditions.append(
+                _ASSET_UTILIZZABILE_OGGI if utilizzabili
+                else f"NOT {_ASSET_UTILIZZABILE_OGGI}"
+            )
         if asset_tipo_id is not None:
             conditions.append("a.asset_tipo_id = %s")
             params.append(asset_tipo_id)
@@ -880,6 +897,38 @@ class DocumentiRepository:
             results = rows_to_list(cursor)
 
         return results, total
+
+    # Scopo: L'asset che un template richiama nel render con
+    #        `asset:<codice_interno>` (brief-be-documenti-risorse-esterne-render-pdf).
+    #        La chiave e' `(emittente del template, codice_interno)`, la stessa
+    #        del vincolo `uq_template_asset_emittente_codice_interno`: al piu'
+    #        una riga, e il `codice_interno` non si modifica (lock automatico),
+    #        quindi un asset rinominato non rompe i template che lo citano.
+    #        `solo_validi`: generazione e anteprima vedono solo gli asset
+    #        attivi e validi oggi; la ristampa fedele passa False, perche'
+    #        l'asset e' immutabile e non si cancella, e quello di allora resta
+    #        quello giusto anche se oggi e' scaduto (decisione Tid 2026-10-01).
+    #        «Attivo e valido oggi» e' `_ASSET_UTILIZZABILE_OGGI`, la stessa
+    #        condizione del filtro `utilizzabili` della lista.
+    def get_asset_per_render(
+        self,
+        emittente_fiscale_id: int,
+        codice_interno: str,
+        *,
+        solo_validi: bool,
+    ) -> dict[str, Any] | None:
+        conditions = ["a.emittente_fiscale_id = %s", "a.codice_interno = %s"]
+        if solo_validi:
+            conditions.append(_ASSET_UTILIZZABILE_OGGI)
+        sql = f"""
+            SELECT a.id, a.storage_key, a.mime_type, a.sha256
+            FROM documenti.template_asset a
+            WHERE {" AND ".join(conditions)}
+        """  # noqa: S608 — WHERE da condizioni letterali, valori come parametri
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(emittente_fiscale_id), codice_interno])
+            results = rows_to_list(cursor)
+        return results[0] if results else None
 
     # Scopo: Dettaglio asset. Ritorna None se inesistente o fuori scope
     #        (il service traduce in 404 unificato).
