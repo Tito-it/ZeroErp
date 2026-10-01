@@ -580,7 +580,13 @@
     "split_select": "Select tab to show alongside",
     "split_readonly": "Read only",
     "split_swap": "Swap panels",
-    "remaining": "Tabs still openable: {count}"
+    "remaining": "Tabs still openable: {count}",
+    "sostituisci": {
+      "titolo": "Replace tab",
+      "messaggio": "You have reached the maximum number of open tabs: the \"{nome}\" tab will be replaced. Continue?",
+      "messaggio_modifiche": "You have reached the maximum number of open tabs: the \"{nome}\" tab has unsaved changes, which will be lost. Replace it anyway?",
+      "conferma": "Replace"
+    }
   },
   "errors": {
     "not_found_title": "Page not found",
@@ -831,7 +837,6 @@
     "generic_info": "Information",
     "generic_warn": "Warning",
     "detail_non_accessibile": "Item not found or no longer accessible.",
-    "tab_limit_reached": "Maximum number of tabs reached. Close a tab to open a new one.",
     "network_error": "Unable to reach the server. Please check your connection.",
     "timeout_error": "The server did not respond in time. Please try again.",
     "validation_error": "Please fill in all required fields."
@@ -4381,6 +4386,7 @@
       "verbo_riprendi": "Resume",
       "conferma_stato_a": "Move the line to «{stato}»?",
       "elimina_reason": {
+        "distinta_annullata": "The batch is cancelled: its lines are read-only.",
         "distinta_finale": "The batch is closed or cancelled: its lines can no longer be worked.",
         "distinta_non_manuale": "The batch was not entered by hand: its lines cannot be deleted from here. For one produced by the system act on what generated it (invoice fund or adjustment); for one loaded from a file cancel it and import it again.",
         "distinta_validata": "The batch is validated: reopen it to draft with «Reopen», delete the line, then validate it again."

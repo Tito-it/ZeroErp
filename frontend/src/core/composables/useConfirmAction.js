@@ -58,7 +58,9 @@ export function useConfirmAction() {
   //        standard (icona di testa, classe e icona del reject, ESC) e lascia
   //        al chiamante solo header/message e la coppia label/icona/classe
   //        dell'accept.
-  function richiedi({ header, message, acceptLabel, acceptIcon, acceptClass, onAccept }) {
+  // ⚠️ `onReject` scatta su «Annulla» E sulla chiusura senza scelta (ESC:
+  //    `onHide`), perche' per chi aspetta una risposta sono lo stesso «no».
+  function richiedi({ header, message, acceptLabel, acceptIcon, acceptClass, onAccept, onReject }) {
     confirm.require({
       header,
       message,
@@ -74,6 +76,8 @@ export function useConfirmAction() {
       acceptIcon,
       rejectIcon: STANDARD_REJECT_ICON,
       accept: onAccept,
+      reject: onReject,
+      onHide: onReject,
     })
   }
 
@@ -111,8 +115,9 @@ export function useConfirmAction() {
    * @param {string} [options.acceptIcon] - icona pulsante conferma (override)
    * @param {boolean} [options.danger] - true = pulsante rosso + default "Elimina" + cestino
    * @param {Function} options.onAccept - callback eseguita alla conferma
+   * @param {Function} [options.onReject] - callback su «Annulla» o chiusura senza scelta
    */
-  function confirmAction({ header, message, acceptLabel, acceptIcon, danger = false, onAccept }) {
+  function confirmAction({ header, message, acceptLabel, acceptIcon, danger = false, onAccept, onReject }) {
     richiedi({
       header,
       message,
@@ -120,6 +125,7 @@ export function useConfirmAction() {
       acceptIcon: acceptIcon || (danger ? MANAGE_ICONS.DELETE : STANDARD_ACCEPT_ICON),
       acceptClass: danger ? 'p-button-danger' : '',
       onAccept,
+      onReject,
     })
   }
 

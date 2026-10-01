@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { useNavigationStore } from '../../stores/navigation'
-import { useTabsStore } from '../../stores/tabs'
 import {
   DOMAINS,
   DOMAIN_MENUS,
@@ -18,7 +17,6 @@ export function useNavigationFavorites() {
   const router = useRouter()
   const auth = useAuthStore()
   const nav = useNavigationStore()
-  const tabs = useTabsStore()
 
   // Scopo: filtro visibilita' delle voci L2 legato allo store auth. La regola
   // e' il BB `isMenuItemAllowed` di core/navigation, la stessa del router.
@@ -63,15 +61,8 @@ export function useNavigationFavorites() {
       : resolveFavorite(favoriteLike?.domain, favoriteLike?.path)
     if (!favorite) return false
 
-    const opened = tabs.openTab({
-      path: favorite.path,
-      label: favorite.label,
-      domain: favorite.domain,
-      menuKey: favorite.item.key,
-      icon: favorite.icon
-    })
-    if (!opened) return false
-
+    // La scheda la apre il guard del router (unico punto, anche per la
+    // sostituzione oltre il limite): qui si naviga e basta.
     nav.setDomain(favorite.domain)
     router.push(favorite.path)
     return true

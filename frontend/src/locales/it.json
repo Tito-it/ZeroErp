@@ -580,7 +580,13 @@
     "split_select": "Seleziona tab da affiancare",
     "split_readonly": "Sola lettura",
     "split_swap": "Scambia pannelli",
-    "remaining": "Schede ancora apribili: {count}"
+    "remaining": "Schede ancora apribili: {count}",
+    "sostituisci": {
+      "titolo": "Sostituisci la scheda",
+      "messaggio": "Hai raggiunto il massimo di schede aperte: la scheda «{nome}» verrà sostituita. Confermi?",
+      "messaggio_modifiche": "Hai raggiunto il massimo di schede aperte: la scheda «{nome}» ha modifiche non salvate, che andranno perse. Sostituirla comunque?",
+      "conferma": "Sostituisci"
+    }
   },
   "errors": {
     "not_found_title": "Pagina non trovata",
@@ -831,7 +837,6 @@
     "generic_info": "Informazione",
     "generic_warn": "Attenzione",
     "detail_non_accessibile": "Elemento non trovato o non più accessibile.",
-    "tab_limit_reached": "Numero massimo di schede raggiunto. Chiudere una scheda per aprirne una nuova.",
     "network_error": "Impossibile contattare il server. Verificare la connessione.",
     "timeout_error": "Il server non ha risposto in tempo. Riprovare.",
     "validation_error": "Compilare tutti i campi obbligatori."
@@ -4381,6 +4386,7 @@
       "verbo_riprendi": "Riprendi",
       "conferma_stato_a": "Vuoi portare la riga a «{stato}»?",
       "elimina_reason": {
+        "distinta_annullata": "La distinta è annullata: le sue righe si leggono soltanto.",
         "distinta_finale": "La distinta è chiusa o annullata: le sue righe non si lavorano più.",
         "distinta_non_manuale": "La distinta non è compilata a mano: le sue righe non si eliminano da qui. Per una prodotta dal sistema si agisce sull'atto che l'ha generata (fondo fattura o sistemazione); per una arrivata da un file si annulla e si reimporta.",
         "distinta_validata": "La distinta è validata: riportala in bozza con «Riapri», elimina la riga, poi validala di nuovo."

@@ -215,7 +215,8 @@ logica di navigazione.
 ### Content Tabs
 
 - Barra tab sotto la topbar per navigazione multi-entita'
-- Massimo 10 tab aperti (configurabile in `constants.js`)
+- Massimo 10 tab aperti (`TABS.MAX_OPEN` in `constants.js`). ⭐ **Oltre il limite la decima si sostituisce** (Tid, 2026-09-30): le prime nove sono il tavolo di lavoro, l'ultima in fila è la scheda di passaggio. Una conferma **nomina** la scheda che si chiude, ed è **rossa** se quella ha modifiche non salvate, come la X di chiusura. «Annulla» lascia l'operatore dov'era. Fino a quel giorno l'undicesima era bloccata con un toast
+- ⛔ **Le schede le apre solo il guard del router** (`router.beforeEach`): sidebar, preferiti e widget fanno solo `router.push`. Un secondo punto che chiama `openTab` prima del push farebbe due conferme per un clic. La conferma la mostra `ContentTabs`, perché il guard non ha un componente in cui aprire una dialog: lo store custodisce la richiesta in attesa (`chiediSostituzione`) e ContentTabs risponde. Presidio: `stores/tabs.spec.js`
 - KeepAlive per preservare lo stato dei tab
 - Shortcut: Ctrl+W chiude tab, Ctrl+Tab prossimo, Ctrl+Shift+Tab precedente
 - Tab label derivata automaticamente da route meta via `resolveTabLabel()`

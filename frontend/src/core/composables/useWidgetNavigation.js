@@ -30,7 +30,6 @@
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useNavigationStore } from '../../stores/navigation'
-import { useTabsStore } from '../../stores/tabs'
 import { useNavigationFavorites } from './useNavigationFavorites'
 import {
   DOMAINS,
@@ -43,7 +42,6 @@ export function useWidgetNavigation() {
   const { t, te } = useI18n()
   const router = useRouter()
   const nav = useNavigationStore()
-  const tabs = useTabsStore()
   const { isMenuItemAllowed } = useNavigationFavorites()
 
   // Scopo: normalizza un deep_link in `{path, query}`. Tollera il campo
@@ -124,15 +122,8 @@ export function useWidgetNavigation() {
     const target = resolveWidgetTarget(deepLink)
     if (!target) return false
 
-    const opened = tabs.openTab({
-      path: target.fullPath,
-      label: target.label,
-      domain: target.domain,
-      menuKey: target.item.key,
-      icon: target.icon,
-    })
-    if (!opened) return false
-
+    // La scheda la apre il guard del router (unico punto, anche per la
+    // sostituzione oltre il limite): qui si naviga e basta.
     nav.setDomain(target.domain)
     router.push(target.fullPath)
     return true
