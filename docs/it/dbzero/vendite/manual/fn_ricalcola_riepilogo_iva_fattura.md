@@ -45,6 +45,14 @@ righe (`fatture_righe`).
   fotografia quando il documento **smette di essere scritto**, non perché
   qualcuno smette di leggerlo. Il riallineamento tocca solo ciò che è davvero
   cambiato.
+* ⭐ **Riallinea anche `esigibilita` e `split_payment`** (dal 2026-10-01, D-8 di
+  `brief-db-esigibilita-iva-per-cassa-emittente`), per la stessa ragione: la
+  riga li deriva quando viene scritta, ma il regime dell'emittente, la scissione
+  o la partita IVA del cliente possono cambiare dopo. La coppia esce da
+  [vendite.fn_esigibilita_iva_fattura](/dbzero/vendite/funzioni/fn_esigibilita_iva_fattura),
+  che usa il regime **congelato nello snapshot** dell'intestazione: il passo
+  `ricalcola_iva_lotto` della fase EMESSA, l'ultimo prima del congelamento,
+  lascia righe e testata sullo stesso regime.
 * Le righe devono avere `iva_id` gia` valorizzato dal processo di generazione.
 * I riepiloghi sono ricreati aggregando per combinazione fiscale.
 

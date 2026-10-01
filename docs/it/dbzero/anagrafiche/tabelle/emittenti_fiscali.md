@@ -13,7 +13,7 @@
 | soggetto_ruolo_id | bigint | NO |  |
 | codice | character varying | NO |  |
 | attivo | boolean | NO | true |
-| regime_fiscale_rf | character varying | YES |  |
+| regime_fiscale_rf | character varying | NO | 'RF01'::character varying |
 | bollo_auto | boolean | YES |  |
 | bollo_soglia | numeric | YES |  |
 | rounding_policy | character varying | YES |  |
@@ -25,6 +25,8 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
 | valuta_id | integer | YES |  |
+| regime_fiscale_confermato_il | timestamp with time zone | YES |  |
+| regime_fiscale_confermato_da | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -32,7 +34,9 @@
 | CHECK | chk_emittenti_fiscali_bollo_soglia |  |
 | CHECK | chk_emittenti_fiscali_codice_forma |  |
 | CHECK | chk_emittenti_fiscali_codice_non_vuoto |  |
+| CHECK | chk_emittenti_fiscali_regime_conferma_coppia |  |
 | CHECK | chk_emittenti_fiscali_rounding_policy |  |
+| FOREIGN KEY | fk_emittenti_fiscali_regimi_fiscali | regime_fiscale_rf |
 | FOREIGN KEY | fk_emittenti_fiscali_ruolo | soggetto_ruolo_id |
 | PRIMARY KEY | pk_emittf | id |
 | UNIQUE | uq:codice | codice |
@@ -78,16 +82,17 @@
 | trg_emittenti_fiscali_a10_user_emittente_attivo_block_de_78b189 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'user_emittente_attivo', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_user_emittenti_fiscali_block_d_f876e4 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'user_emittenti_fiscali', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_workflow_definizioni_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'workflow_definizioni', 'emittente_fiscale_id', 'id', 'attivo')` |
-| trg_emittenti_fiscali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_emittenti_fiscali_a20_regime_conferma_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_regime_conferma()` |
 | trg_emittenti_fiscali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_emittenti_fiscali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_emittenti_fiscali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_emittenti_fiscali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()` |
 | trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()` |
 | trg_emittenti_fiscali_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
 | trg_emittenti_fiscali_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
-| trg_emittenti_fiscali_z90_provision_registri_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_emittenti_fiscali_provision_registri()` |
 | trg_emittenti_fiscali_z90_provision_registri_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_emittenti_fiscali_provision_registri()` |
+| trg_emittenti_fiscali_z90_provision_registri_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_emittenti_fiscali_provision_registri()` |
 | trg_emittenti_fiscali_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('emittenti_fiscali_id')` |
 | trg_emittenti_fiscali_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('emittenti_fiscali_id')` |
 

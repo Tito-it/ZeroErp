@@ -75,6 +75,8 @@
 - [fn_data_operativa](funzioni/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md) — (rev 2026-08-21)
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
+- [fn_esigibilita_iva](funzioni/fn_esigibilita_iva.md)
+- [fn_esigibilita_iva_documento](funzioni/fn_esigibilita_iva_documento.md)
 - [fn_generate_codice](funzioni/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 - [fn_get_auth_user_id_for_email](funzioni/fn_get_auth_user_id_for_email.md)
 - [fn_get_auth_user_id_for_risorsa_umana](funzioni/fn_get_auth_user_id_for_risorsa_umana.md) — (nata il 12-09-2026, `20_code/script/20260912-17`)

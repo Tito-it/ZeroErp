@@ -160,6 +160,7 @@
 - [vw_duplicate_indexes](views/vw_duplicate_indexes.md) — (latest review 27-07-26)
 - [vw_email_da_guardare](views/vw_email_da_guardare.md) — (latest review 11-09-2026)
 - [vw_emittenti_non_serviti](views/vw_emittenti_non_serviti.md) — (latest review 04-09-2026)
+- [vw_emittenti_regime_non_confermato](views/vw_emittenti_regime_non_confermato.md)
 - [vw_eventi_non_dichiarati](views/vw_eventi_non_dichiarati.md)
 - [vw_fatture_stampa_coda_da_guardare](views/vw_fatture_stampa_coda_da_guardare.md) — (latest review 11-09-2026)
 - [vw_fk_con_indice_missing_policy](views/vw_fk_con_indice_missing_policy.md) — (latest review 27-07-26)

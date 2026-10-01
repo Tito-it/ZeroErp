@@ -147,6 +147,7 @@
 - [fn_elimina_fattura_da_lotto](funzioni/fn_elimina_fattura_da_lotto.md) — (latest review 04-08-2026)   Toglie **una sola fattura** da un lotto **cancellandola**, senza toccare il lotto né le altre fatture. È il verbo per il caso in cui un documento è sbagliato e va rifatto, mentre il resto del giro è sano.
 - [fn_emit_attivita_fatturabili_da_commessa](funzioni/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 - [fn_escludi_documento_da_giro](funzioni/fn_escludi_documento_da_giro.md) — (latest review 2026-09-08)
+- [fn_esigibilita_iva_fattura](funzioni/fn_esigibilita_iva_fattura.md)
 - [fn_esito_gruppi_giro](funzioni/fn_esito_gruppi_giro.md) — (latest review 15-08-2026)
 - [fn_espandi_listino_versione](funzioni/fn_espandi_listino_versione.md)
 - [fn_fail_lotto_task_run](funzioni/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
@@ -341,7 +342,7 @@
 - [trgfn_fatture_log_sync_ai_stmt](funzioni/trgfn_fatture_log_sync_ai_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo INSERT su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_log_sync_au_stmt](funzioni/trgfn_fatture_log_sync_au_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo UPDATE su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_numerata_non_annulabile](funzioni/trgfn_fatture_numerata_non_annulabile.md) — Blocca il passaggio a stato `ANNULLATA` per una fattura gia` numerata.
-- [trgfn_fatture_righe_guard_normalize](funzioni/trgfn_fatture_righe_guard_normalize.md) — Normalizza i dati di riga fattura su inserimento/aggiornamento: * eredita `dest_billing_account_id` dalla testata se assente; * allinea lo snapshot `iva_natura` in base a `config.iva`; * ⭐ **congela `aliquota_iva`** (dal 2026-08-29); * ⭐ **riempie `esigibilita` e `split_payment`** dal soggetto **cliente**   (dal 2026-08-30).
+- [trgfn_fatture_righe_guard_normalize](funzioni/trgfn_fatture_righe_guard_normalize.md) — Normalizza i dati di riga fattura su inserimento/aggiornamento: * eredita `dest_billing_account_id` dalla testata se assente; * allinea lo snapshot `iva_natura` in base a `config.iva`; * ⭐ **congela `aliquota_iva`** (dal 2026-08-29); * ⭐ **riempie `esigibilita` e `split_payment`** (dal 2026-08-30); dal   2026-10-01 le **riscrive sempre**, chiedendole alla regola unica, che guarda   anche il **regime dell'emittente** (IVA per cassa).
 - [trgfn_fatture_righe_guard_riga_capofila](funzioni/trgfn_fatture_righe_guard_riga_capofila.md)
 - [trgfn_fatture_righe_importo](funzioni/trgfn_fatture_righe_importo.md) — Garantire che **l'importo di una riga di fattura esista sempre e sia coerente** con quantità, prezzo e sconto della riga stessa.
 - [trgfn_fondi_source_guard_importo](funzioni/trgfn_fondi_source_guard_importo.md) — (latest review 15-08-2026)

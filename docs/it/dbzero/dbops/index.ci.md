@@ -138,6 +138,7 @@
 - [vw_duplicate_indexes](manual/vw_duplicate_indexes.md) — (latest review 27-07-26)
 - [vw_email_da_guardare](manual/vw_email_da_guardare.md) — (latest review 11-09-2026)
 - [vw_emittenti_non_serviti](manual/vw_emittenti_non_serviti.md) — (latest review 04-09-2026)
+- [vw_emittenti_regime_non_confermato](manual/vw_emittenti_regime_non_confermato.md)
 - [vw_fatture_stampa_coda_da_guardare](manual/vw_fatture_stampa_coda_da_guardare.md) — (latest review 11-09-2026)
 - [vw_fk_con_indice_missing_policy](manual/vw_fk_con_indice_missing_policy.md) — (latest review 27-07-26)
 - [vw_fk_senza_indice](manual/vw_fk_senza_indice.md) — (latest review 27-07-26)

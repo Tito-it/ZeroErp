@@ -10,15 +10,18 @@
 --   20260829-54 le scrive il trigger, derivandole dal soggetto CLIENTE. Questo
 --   file e' cio' che impedisce a quello scrittore di sparire in silenzio.
 --
--- ⭐ PERCHE' LE DUE META' NON SI PROVANO ALLO STESSO MODO
---   `split_payment` e' una derivazione pura e si riscrive SEMPRE: non esiste
---   una scelta legittima per riga. `esigibilita` no — con la scissione 'S' e'
---   IMPOSTA, ma senza restano 'I' e 'D', e la DIFFERITA e' una scelta del
---   documento che nessuna colonna sa dedurre. Percio' fuori dalla scissione il
---   trigger riempie solo il VUOTO.
---   ⚠️ E' la parte che si romperebbe per «semplificazione»: un domani qualcuno
---   uniforma i due rami «perche' fanno la stessa cosa», e una 'D' scelta da un
---   operatore sparisce senza un errore. I casi 4 e 5 sono li' per quello.
+-- ⭐ rev 2026-10-01 (D-7 di brief-db-esigibilita-iva-per-cassa-emittente):
+--   ENTRAMBE le colonne sono una derivazione pura e si riscrivono SEMPRE.
+--   Fino al 2026-09-30 fuori dalla scissione il trigger riempiva solo il
+--   VUOTO, perche' una 'D' poteva venire solo da una persona, e il caso 4
+--   pretendeva che una 'D' scritta a mano sopravvivesse. Con l'IVA per cassa
+--   anche la 'D' e' DEDOTTA (dal regime dell'emittente), e una colonna non sa
+--   dire chi l'ha scritta: il «solo il vuoto» lasciava valori stantii. Il caso
+--   4 ora pretende il contrario, ed e' il cambio deciso. I casi del regime per
+--   cassa stanno in vendite/test-esigibilita-iva-per-cassa-v1.sql.
+--   ⚠️ La fixture fissa l'emittente a RF01: prende un emittente dai DATI, e
+--   il suo regime decide l'esigibilita' — un emittente per cassa sporcherebbe
+--   i casi 2 e 4 senza che il test lo dica.
 --
 -- ⛔ IL CASO 7 E' QUELLO CHE SPIEGA LA SEDE
 --   Il riepilogo RAGGRUPPA per (iva, natura, esigibilita, split). Se due righe
@@ -31,7 +34,7 @@
 -- 1) La fixture e completa
 -- 2) Cliente NON scisso: la riga nasce con split=false ed esigibilita='I'
 -- 3) Cliente scisso: la riga nasce con split=true ed esigibilita='S'
--- 4) ⭐ Una 'D' scelta SOPRAVVIVE quando il cliente non e scisso
+-- 4) ⭐ D-7: una 'D' scritta a mano NON sopravvive su un emittente ordinario
 -- 5) ⛔ Ma NON sopravvive quando il cliente e scisso: la 'S' e imposta
 -- 6) split_payment si riscrive SEMPRE: una riga che dissente viene riallineata
 -- 7) ⭐ Il riepilogo porta gli stessi valori, e resta UNA riga sola
@@ -81,6 +84,11 @@ SELECT (SELECT emittente_soggetto_ruolo_id FROM cfg) AS emittente_soggetto_ruolo
        (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT'
          ORDER BY id LIMIT 1)                        AS stato_doc_fiscale_id,
        (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id;
+
+-- ⭐ L'emittente della fixture viene dai dati: si fissa il suo regime a RF01,
+--   o un emittente per cassa cambierebbe l'esigibilita' attesa (rev 2026-10-01).
+UPDATE anagrafiche.emittenti_fiscali SET regime_fiscale_rf = 'RF01'
+ WHERE soggetto_ruolo_id = (SELECT emittente_soggetto_ruolo_id FROM tmp_es_refs);
 
 -- il soggetto CLIENTE della fattura: e' lui a portare la scissione (D8)
 CREATE TEMP TABLE tmp_es_sogg AS
@@ -167,12 +175,14 @@ SELECT is(
 );
 
 -- ============================================================
--- 4) ⭐ La DIFFERITA sopravvive, quando il cliente non e' scisso
+-- 4) ⭐ D-7: la DIFFERITA non si sceglie piu' a mano
 -- ============================================================
--- ⛔ E' la meta' che si perde per «semplificazione»: 'D' non e' deducibile da
---   nessuna colonna, e' una scelta del documento. Un trigger che sovrascrivesse
---   anche qui la cancellerebbe SENZA UN ERRORE — l'operatore vedrebbe 'I' e non
---   saprebbe mai che la sua scelta e' stata buttata.
+-- ⛔ Rev 2026-10-01. Fino al 2026-09-30 qui si pretendeva che una 'D' scritta
+--   a mano sopravvivesse. Con l'IVA per cassa la 'D' la deduce il regime
+--   dell'emittente, e una colonna che ospita insieme valori dedotti e scelti
+--   non sa dire quale dei due ha davanti: l'esigibilita' e' una derivazione
+--   pura (D-7). Su un emittente ordinario la 'D' a mano diventa 'I'. Una
+--   differita scelta, se mai servira', avra' una colonna sua.
 UPDATE anagrafiche.soggetti SET split_payment = 'N'
  WHERE id = (SELECT soggetto_id FROM tmp_es_sogg);
 
@@ -185,16 +195,15 @@ SELECT (SELECT id FROM tmp_es_fatt), 3, 'Riga differita', 1, 100, r.iva_id, 'D',
 SELECT is(
   (SELECT esigibilita::text FROM vendite.fatture_righe
     WHERE fattura_id = (SELECT id FROM tmp_es_fatt) AND riga_nr = 3),
-  'D',
-  '4) su cliente non scisso una D esplicita SOPRAVVIVE: il trigger riempie il vuoto, non sovrascrive'
+  'I',
+  '4) D-7: su un emittente ordinario una D esplicita NON sopravvive, la riga dice I'
 );
 
 -- ============================================================
 -- 5) ⛔ Ma con la scissione la 'D' NON sopravvive
 -- ============================================================
--- ⚠️ Il caso 4 da solo sarebbe pericoloso: farebbe credere che l'esigibilita'
---   sia sempre negoziabile. Non lo e' — con la scissione dei pagamenti la 'S'
---   e' imposta dalla legge, e un documento che dicesse 'D' sarebbe sbagliato.
+-- ⚠️ Con la scissione dei pagamenti la 'S' e' imposta dalla legge, e un
+--   documento che dicesse 'D' sarebbe sbagliato.
 UPDATE anagrafiche.soggetti SET split_payment = 'S'
  WHERE id = (SELECT soggetto_id FROM tmp_es_sogg);
 

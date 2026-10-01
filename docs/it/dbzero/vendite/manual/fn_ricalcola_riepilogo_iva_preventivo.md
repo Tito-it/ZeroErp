@@ -52,8 +52,12 @@ vendite.fn_ricalcola_riepilogo_iva_preventivo(
 4. **CTE `righe`**: imponibile_riga **full precision** = `qta * prezzo *
    (1 - COALESCE(sconto%, 0)/100)`, niente ROUND. Filtra `attivo IS TRUE` e
    `quantita > 0`.
-5. **INSERT aggregato**, group by `iva_id` (preventivi non hanno
-   natura/esigibilita/split, quei campi sono `NULL`):
+5. **INSERT aggregato**, group by `iva_id`. `natura_id` resta `NULL`;
+   `esigibilita` e `split_payment` (dal 2026-10-01, D-4 di
+   `brief-db-esigibilita-iva-per-cassa-emittente`) escono per codice IVA da
+   [script.fn_esigibilita_iva_documento](/dbzero/script/funzioni/fn_esigibilita_iva_documento)
+   con emittente e cliente del preventivo: la stessa regola delle righe di
+   fattura. Senza cliente la coppia esce `NULL`/`NULL`:
 
    ```sql
    imponibile      = ROUND(SUM(imponibile_riga), 2)
