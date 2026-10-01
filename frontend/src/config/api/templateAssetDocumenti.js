@@ -32,6 +32,13 @@ export function downloadTemplateAssetDocumento(id) {
   return api.get(`${BASE}/${id}/file/`, { responseType: 'blob' })
 }
 
+// Scopo: Miniatura di un asset immagine (PNG di lato al massimo 128 px; SVG
+//        com'e'). Il backend risponde con ETag e `no-cache`: il browser la
+//        tiene in cache e la rivalida (304), senza riscaricare il file.
+export function miniaturaTemplateAssetDocumento(id) {
+  return api.get(`${BASE}/${id}/miniatura/`, { responseType: 'blob' })
+}
+
 // Scopo: Upload asset (multipart). `file` -> binario; gli altri campi
 //        sono i metadati anagrafici. Il BE valida MIME contro whitelist
 //        per `tipi_asset_documento.codice_interno`.

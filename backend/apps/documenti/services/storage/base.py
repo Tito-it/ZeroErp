@@ -16,6 +16,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
+from apps.core.services.error_manager import ErrorManager
+
 
 class DocumentStorage(ABC):
     """
@@ -76,3 +78,32 @@ class DocumentStorage(ABC):
     @abstractmethod
     def exists(self, storage_uri: str) -> bool:
         """Verifica esistenza del file persistito."""
+
+
+# Scopo: Legge il file di una `storage_key` salvata su DB e traduce
+#        QUALUNQUE errore dello storage (file mancante, permessi, IO) in
+#        `E_DOCUMENTI_STORAGE_FAILED`, con il messaggio e il detail del
+#        chiamante: e' lui a sapere QUALE file mancava (documento, asset).
+# ⭐ ESTRATTO IL 2026-10-01 (regola del 2, ok di Tid): il blocco
+#    «build_storage_uri + read + except -> E_STORAGE_FAILED» stava in
+#    quattro punti — `download_documento`, `download_documento_file`,
+#    `TemplateService.download_asset` e il risolutore degli asset del render.
+#    Nel risolutore mancava, e un errore di IO usciva dal render come
+#    «risorsa non ammessa», indicando il template invece del disco.
+#    Funzione e non metodo: i chiamanti ricevono lo storage dalla factory,
+#    e nei test e' un doppio che non eredita da `DocumentStorage`.
+def leggi_da_storage(
+    storage: DocumentStorage,
+    storage_key: str,
+    *,
+    message: str,
+    detail: str,
+) -> bytes:
+    try:
+        return storage.read(storage.build_storage_uri(storage_key))
+    except Exception:
+        ErrorManager.raise_error(
+            code="E_DOCUMENTI_STORAGE_FAILED",
+            message=message,
+            detail=detail,
+        )

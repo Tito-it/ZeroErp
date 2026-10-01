@@ -16,6 +16,7 @@ from django.urls import path
 from apps.documenti.api.views import (
     ApiAssetDetail,
     ApiAssetFileDownload,
+    ApiAssetMiniatura,
     ApiAssetList,
     ApiTemplateDetail,
     ApiTemplateList,
@@ -73,5 +74,10 @@ urlpatterns = [
         "asset/<int:asset_id>/file/",
         ApiAssetFileDownload.as_view(),
         name="documenti-asset-file-download",
+    ),
+    path(
+        "asset/<int:asset_id>/miniatura/",
+        ApiAssetMiniatura.as_view(),
+        name="documenti-asset-miniatura",
     ),
 ]

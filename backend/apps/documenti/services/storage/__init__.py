@@ -7,7 +7,7 @@
 #        che istanzia il provider attivo da config.parameters.
 # ------------------------------------------------------------
 
-from apps.documenti.services.storage.base import DocumentStorage
+from apps.documenti.services.storage.base import DocumentStorage, leggi_da_storage
 from apps.documenti.services.storage.selector import get_storage
 
-__all__ = ["DocumentStorage", "get_storage"]
+__all__ = ["DocumentStorage", "get_storage", "leggi_da_storage"]

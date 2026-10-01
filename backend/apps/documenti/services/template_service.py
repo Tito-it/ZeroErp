@@ -12,18 +12,24 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from typing import Any
 
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
+from PIL import Image, ImageOps
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.documenti.db.documenti_repository import DocumentiRepository
 from apps.documenti.services.context_builders import versione_contesto_registrata
-from apps.documenti.services.storage import DocumentStorage, get_storage
+from apps.documenti.services.storage import DocumentStorage, get_storage, leggi_da_storage
 
 E_VALIDATION = "E_DOCUMENTI_VALIDATION"
+
+# Lato massimo (px) della miniatura di un asset immagine. Il pannello la
+# mostra in 2rem: 128 px restano nitidi anche su uno schermo ad alta densita'.
+LATO_MINIATURA = 128
 
 # Set CHECK chiuso v1 — coerente con DDL template_documenti_versioni.
 _STATI_VERSIONE_VALIDI: frozenset[str] = frozenset({"BOZZA", "PUBBLICATA", "OBSOLETA"})
@@ -163,6 +169,7 @@ class TemplateService:
         asset_tipo_id: int | None = None,
         emittente_fiscale_id: int | None = None,
         search: str | None = None,
+        utilizzabili: bool | None = None,
         order_by: str = "codice",
         order_dir: str = "asc",
         limit: int = 50,
@@ -175,6 +182,7 @@ class TemplateService:
             emittente_fiscale_id=emittente_fiscale_id,
             search=search,
             emittente_ids_scope=emittente_ids_scope,
+            utilizzabili=utilizzabili,
             order_by=order_by,
             order_dir=order_dir,
             limit=limit,
@@ -212,16 +220,11 @@ class TemplateService:
         asset_id: int,
     ) -> dict[str, Any]:
         asset = self.get_asset(user, asset_id)
-        storage = self._storage_factory()
-        storage_uri = storage.build_storage_uri(asset["storage_key"])
-        try:
-            file_bytes = storage.read(storage_uri)
-        except Exception:
-            ErrorManager.raise_error(
-                code="E_DOCUMENTI_STORAGE_FAILED",
-                message="Errore lettura asset documentale dallo storage.",
-                detail=f"asset_id={asset_id}",
-            )
+        file_bytes = leggi_da_storage(
+            self._storage_factory(), asset["storage_key"],
+            message="Errore lettura asset documentale dallo storage.",
+            detail=f"asset_id={asset_id}",
+        )
 
         return {
             "asset_id": asset_id,
@@ -229,6 +232,48 @@ class TemplateService:
             "file_name": asset["file_name"],
             "mime_type": asset["mime_type"],
             "size_bytes": int(asset["file_size_bytes"]),
+        }
+
+    # Scopo: La miniatura di un asset immagine, per riconoscerlo a colpo
+    #        d'occhio nell'editor dei template senza scaricare il file intero.
+    #        Stesso scope emittente del dettaglio. Raster -> PNG di lato al
+    #        massimo `LATO_MINIATURA`; SVG -> il file cosi' com'e' (e'
+    #        vettoriale: lo rimpicciolisce il browser, e Pillow non lo legge).
+    #        `etag` dipende dall'impronta del file (immutabile a DB) e dal lato:
+    #        se il client ne porta uno uguale fra `etag_noti` la risposta e'
+    #        «non modificata» (`file_bytes` None) e il file non si legge.
+    # ⚠️ Lo scope si controlla PRIMA dell'ETag: un 304 dato senza controllo
+    #    confermerebbe a chiunque che l'asset esiste.
+    def miniatura_asset(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        asset_id: int,
+        *,
+        etag_noti: list[str] | None = None,
+    ) -> dict[str, Any]:
+        asset = self.get_asset(user, asset_id)
+        mime_type = asset["mime_type"] or ""
+        ErrorManager.require(
+            mime_type.startswith("image/"),
+            code=E_VALIDATION,
+            message="L'asset non e' un'immagine: non ha una miniatura.",
+            detail=f"asset_id={asset_id} mime_type={mime_type}",
+        )
+        etag = f'"{asset["sha256"]}-{LATO_MINIATURA}"'
+        if etag in (etag_noti or []):
+            return {"etag": etag, "file_bytes": None, "mime_type": None}
+
+        contenuto = leggi_da_storage(
+            self._storage_factory(), asset["storage_key"],
+            message="Errore lettura asset documentale dallo storage.",
+            detail=f"asset_id={asset_id}",
+        )
+        if mime_type == "image/svg+xml":
+            return {"etag": etag, "file_bytes": contenuto, "mime_type": mime_type}
+        return {
+            "etag": etag,
+            "file_bytes": _miniatura_png(contenuto, asset_id),
+            "mime_type": "image/png",
         }
 
     # ---- helper interni ------------------------------------------------------
@@ -247,3 +292,29 @@ class TemplateService:
             # = nessun risultato, mai panel-leak.
             return []
         return PermissionResolver.get_emittenti_pk_ids(user)
+
+
+# Scopo: Riduce un'immagine raster a PNG di lato al massimo `LATO_MINIATURA`,
+#        conservando le proporzioni e la trasparenza (i loghi la usano).
+#        L'orientamento EXIF si applica prima: una foto girata dal telefono
+#        resterebbe storta. Di una GIF animata si prende il primo fotogramma.
+#        Un file che Pillow non sa leggere (corrotto, o abbastanza grande da
+#        far scattare la guardia contro le «decompression bomb") e'
+#        E_DOCUMENTI_RENDER_FAILED.
+def _miniatura_png(contenuto: bytes, asset_id: int) -> bytes:
+    try:
+        with Image.open(BytesIO(contenuto)) as originale:
+            originale.draft("RGB", (LATO_MINIATURA, LATO_MINIATURA))
+            immagine = ImageOps.exif_transpose(originale)
+            immagine.thumbnail((LATO_MINIATURA, LATO_MINIATURA))
+            if immagine.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+                immagine = immagine.convert("RGBA")
+            uscita = BytesIO()
+            immagine.save(uscita, format="PNG", optimize=True)
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
+        ErrorManager.raise_error(
+            code="E_DOCUMENTI_RENDER_FAILED",
+            message="Miniatura non generabile: il file non e' un'immagine leggibile.",
+            detail=f"asset_id={asset_id} {type(exc).__name__}: {exc}",
+        )
+    return uscita.getvalue()

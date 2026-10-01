@@ -137,7 +137,9 @@ class AnteprimaDocumentoTests(SimpleTestCase):
                 "get_versione_pubblicata_attiva": versione,
             },
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 42}), _patch_render(b"PDF"):
+        with _patch_scope(None), _patch_get_builder({"numero": 42}), \
+                _patch_render(b"PDF") as mock_render, \
+                patch.object(DocumentGenerationService, "_risolutore_asset") as mock_ris:
             result = svc.anteprima_documento(
                 _make_user(),
                 emittente_fiscale_id=11,
@@ -145,6 +147,9 @@ class AnteprimaDocumentoTests(SimpleTestCase):
                 sorgente_id=100,
             )
         self.assertEqual(result["pdf_bytes"], b"PDF")
+        # Gli asset: quelli dell'emittente del template, solo attivi e validi.
+        mock_ris.assert_called_once_with(11, solo_validi=True)
+        self.assertIs(mock_render.call_args.kwargs["risolvi_asset"], mock_ris.return_value)
         self.assertEqual(result["nome_file"], "preventivo-42.pdf")
         self.assertEqual(result["mime_type"], "application/pdf")
         # Anche l'anteprima chiede al DB il patto versione/forma dei dati.

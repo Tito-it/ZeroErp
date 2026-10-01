@@ -674,7 +674,7 @@ cambia, e le ristampe di ieri devono continuare a mostrare quello di ieri.
 
 | | |
 |---|---|
-| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `page`, `page_size`, `order_by`, `order_dir` |
+| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `utilizzabili`, `page`, `page_size`, `order_by`, `order_dir` |
 | **Upload** | `POST /api/v1/documenti/asset/` — **multipart**: campo `file` piu' l'anagrafica (`codice`, `codice_interno`, `descrizione`, `asset_tipo_id`, `emittente_fiscale_id`, `valido_dal`…). I metadati si possono passare come campi form singoli **oppure** come JSON nel campo `metadati`: la view accetta entrambe le forme |
 | **Dettaglio / aggiorna** | `GET` `PATCH /api/v1/documenti/asset/{asset_id}/` — la `PATCH` tocca i **metadati**, non il binario |
 | **Download** | `GET /api/v1/documenti/asset/{asset_id}/file/` — il file originale, come `attachment` |
@@ -691,4 +691,49 @@ nessuno la faccia.
 La lista e' `is_search_endpoint` (throttling di ricerca). `search`: le colonne le
 decide il catalogo della lista `documenti.template_asset`; da un carattere, senza
 400 (tabella di configurazione, Tid 2026-09-24). ⛔ Il `codice_interno` non si cerca (dal 2026-09-24).
+
+### Come un template richiama un asset
+
+Nell'HTML o nel CSS di una versione un asset si richiama per **`codice_interno`**,
+con lo schema `asset:`:
+
+```html
+<img src="asset:LOGO_INTESTAZIONE">
+<link rel="stylesheet" href="asset:STILE_BASE">
+```
+
+```css
+.firma { background: url(asset:FIRMA_AD); }
+```
+
+Il `codice_interno` non si modifica (lock automatico del DB), mentre il `codice`
+e' un'etichetta che si puo' cambiare: per questo il riferimento sta sul primo.
+
+**Che cosa il render carica**, ed e' una lista chiusa:
+
+| Riferimento | Esito |
+|---|---|
+| `asset:<codice_interno>` | l'asset **dello stesso emittente del template**. Nella generazione e nell'anteprima deve essere attivo e valido oggi; nella **ristampa fedele** vale anche se oggi e' scaduto o disattivato, perche' e' il file di allora |
+| `data:...` | ammesso: il contenuto e' gia' nella stringa |
+| `file:`, `http:`, `https:`, ogni altro schema | **rifiutato** |
+
+Gli asset di un altro emittente non si vedono, e non esiste un livello globale
+da usare come ripiego.
+
+⭐ **Il filtro `utilizzabili` della lista** (`true` = solo gli asset attivi e
+validi oggi, `false` = solo gli altri, assente = tutti) usa **la stessa
+condizione** con cui il render risolve `asset:` (`_ASSET_UTILIZZABILE_OGGI` nel
+repository). È quello che usa l'editor dei template per proporre gli asset da
+richiamare: un asset proposto lì non viene rifiutato alla stampa per scadenza.
+È un **filtro**, non un perimetro: la lista di amministrazione degli asset
+continua a mostrarli tutti.
+
+Ogni rifiuto **ferma il render** con `E_DOCUMENTI_RENDER_FAILED` e l'URL nel
+`detail`: un asset che l'emittente non ha, uno schema non ammesso, anche dentro
+un SVG o un CSS importato. Un PDF senza logo e senza errore non esce mai. Un
+render carica al massimo 50 risorse: e' il limite che ferma un CSS che importa
+se stesso. Se il file sullo storage non corrisponde allo `sha256` registrato, il
+render si ferma con `E_DOCUMENTI_STORAGE_FAILED`.
+
+Decisioni e motivi: `work-in-progress/brief-be-documenti-risorse-esterne-render-pdf.md`.
 

@@ -63,8 +63,12 @@ from apps.documenti.services._scope import (
 )
 from apps.documenti.services.context_builders.base import DocumentContextBuilder
 from apps.documenti.services.context_builders.registry import get_builder_del_template
-from apps.documenti.services.render_service import render_pdf
-from apps.documenti.services.storage import DocumentStorage, get_storage
+from apps.documenti.services.render_service import RisolviAsset, render_pdf
+from apps.documenti.services.storage import (
+    DocumentStorage,
+    get_storage,
+    leggi_da_storage,
+)
 from apps.documenti.services.template_service import TemplateService
 
 logger = logging.getLogger(__name__)
@@ -267,7 +271,13 @@ class DocumentGenerationService:
         )
 
         # 6) render PDF (fuori transazione: render fail = niente record DB)
-        pdf_bytes = render_pdf(template_versione=versione, context=context)
+        pdf_bytes = render_pdf(
+            template_versione=versione,
+            context=context,
+            risolvi_asset=self._risolutore_asset(
+                emittente_fiscale_id, solo_validi=True,
+            ),
+        )
         if not pdf_bytes:
             ErrorManager.raise_error(
                 code=E_RENDER_FAILED,
@@ -496,7 +506,13 @@ class DocumentGenerationService:
         context = self._build_context_for_sorgente(
             user, builder, sorgente_id, locale=locale,
         )
-        pdf_bytes = render_pdf(template_versione=versione, context=context)
+        pdf_bytes = render_pdf(
+            template_versione=versione,
+            context=context,
+            risolvi_asset=self._risolutore_asset(
+                emittente_fiscale_id, solo_validi=True,
+            ),
+        )
         if not pdf_bytes:
             ErrorManager.raise_error(
                 code=E_RENDER_FAILED,
@@ -554,7 +570,7 @@ class DocumentGenerationService:
     #         1. guard id + auth + scope;
     #         2. lookup `documenti_generati` (404 unificato no leak);
     #         3. lookup file principale (404 se mai persistito);
-    #         4. read storage tramite `storage.read(build_storage_uri(key))`;
+    #         4. read storage tramite `leggi_da_storage(storage, key)`;
     #         5. emit evento `SCARICATO/OK` in transazione separata
     #            (non bloccare il download se l'INSERT log fallisce: il
     #            file e' la priorita');
@@ -589,16 +605,11 @@ class DocumentGenerationService:
         )
         assert file_row is not None
 
-        storage = self._storage_factory()
-        storage_uri = storage.build_storage_uri(file_row["storage_key"])
-        try:
-            pdf_bytes = storage.read(storage_uri)
-        except Exception:
-            ErrorManager.raise_error(
-                code=E_STORAGE_FAILED,
-                message="Errore lettura file documento dallo storage.",
-                detail=f"documento_id={documento_id}",
-            )
+        pdf_bytes = leggi_da_storage(
+            self._storage_factory(), file_row["storage_key"],
+            message="Errore lettura file documento dallo storage.",
+            detail=f"documento_id={documento_id}",
+        )
 
         # Emit evento SCARICATO in tx separata: il download e' la priorita'.
         # Se il log fallisce (es. tx rollback per FK race) il file e' gia'
@@ -721,7 +732,17 @@ class DocumentGenerationService:
         # 4) render con gli ingredienti di allora. Nessun controllo della forma
         #    dei dati: la coppia versione/contesto l'ha gia' verificata il
         #    trigger sull'INSERT della stampa, e nessuna delle due e' cambiata.
-        pdf_bytes = render_pdf(template_versione=versione, context=context)
+        #    Gli asset sono quelli dell'emittente del documento, anche se oggi
+        #    scaduti o disattivati: sono immutabili e non si cancellano, quindi
+        #    il `codice_interno` scritto nella versione indica il file di allora
+        #    (decisione Tid 2026-10-01).
+        pdf_bytes = render_pdf(
+            template_versione=versione,
+            context=context,
+            risolvi_asset=self._risolutore_asset(
+                int(documento["emittente_fiscale_id"]), solo_validi=False,
+            ),
+        )
         if not pdf_bytes:
             ErrorManager.raise_error(
                 code=E_RENDER_FAILED,
@@ -932,16 +953,11 @@ class DocumentGenerationService:
         )
         assert file_row is not None
 
-        storage = self._storage_factory()
-        storage_uri = storage.build_storage_uri(file_row["storage_key"])
-        try:
-            file_bytes = storage.read(storage_uri)
-        except Exception:
-            ErrorManager.raise_error(
-                code=E_STORAGE_FAILED,
-                message="Errore lettura file documento dallo storage.",
-                detail=f"documento_id={documento_id} file_id={file_id}",
-            )
+        file_bytes = leggi_da_storage(
+            self._storage_factory(), file_row["storage_key"],
+            message="Errore lettura file documento dallo storage.",
+            detail=f"documento_id={documento_id} file_id={file_id}",
+        )
 
         try:
             with transaction.atomic():
@@ -1235,6 +1251,64 @@ class DocumentGenerationService:
     # Scopo: SHA256 hex su bytes.
     def _sha256_bytes(self, data: bytes) -> str:
         return hashlib.sha256(data).hexdigest()
+
+    # Scopo: Il risolutore degli asset di UN render (contratto `RisolviAsset`
+    #        di `render_service`): `asset:<codice_interno>` -> (contenuto,
+    #        mime_type), letto dallo storage dentro il perimetro di UN
+    #        emittente, quello del template. Nessun livello globale e nessun
+    #        ripiego (§4.3 del brief, Tid 2026-10-01): un asset che non c'e' e'
+    #        E_DOCUMENTI_RENDER_FAILED, perche' un logo generico al suo posto
+    #        darebbe un PDF sbagliato senza errore.
+    #        ⭐ Si crea per render (factory): la cache dei file letti e' stato,
+    #        e non si condivide fra due render.
+    #        ⚠️ L'impronta del file letto si confronta con `sha256` della riga:
+    #        la riga e' immutabile a DB, il file sul disco no, e la ristampa
+    #        fedele si regge proprio su "stesso codice_interno, stessi byte".
+    def _risolutore_asset(
+        self, emittente_fiscale_id: int, *, solo_validi: bool,
+    ) -> RisolviAsset:
+        letti: dict[str, tuple[bytes, str]] = {}
+
+        def risolvi(codice_interno: str) -> tuple[bytes, str]:
+            if codice_interno in letti:
+                return letti[codice_interno]
+            asset = self._repo.get_asset_per_render(
+                emittente_fiscale_id, codice_interno, solo_validi=solo_validi,
+            )
+            ErrorManager.require(
+                asset is not None,
+                code=E_RENDER_FAILED,
+                message=(
+                    "Il template richiama un asset che l'emittente non ha"
+                    + (" attivo e valido oggi." if solo_validi else ".")
+                ),
+                detail=(
+                    f"asset:{codice_interno} "
+                    f"emittente_fiscale_id={emittente_fiscale_id}"
+                ),
+            )
+            assert asset is not None
+            # ⚠️ Un errore di IO va tradotto QUI (`leggi_da_storage`): dal
+            #    fetcher di WeasyPrint un'eccezione qualunque uscirebbe come
+            #    «risorsa non ammessa», e si cercherebbe l'errore nel template.
+            contenuto = leggi_da_storage(
+                self._storage_factory(), asset["storage_key"],
+                message="Errore lettura asset documentale dallo storage.",
+                detail=f"asset_id={asset['id']} asset:{codice_interno}",
+            )
+            ErrorManager.require(
+                self._sha256_bytes(contenuto) == asset["sha256"],
+                code=E_STORAGE_FAILED,
+                message=(
+                    "Il file dell'asset sullo storage non corrisponde "
+                    "all'impronta registrata."
+                ),
+                detail=f"asset_id={asset['id']} asset:{codice_interno}",
+            )
+            letti[codice_interno] = (contenuto, asset["mime_type"])
+            return letti[codice_interno]
+
+        return risolvi
 
     # Scopo: Serializzazione JSON canonica del context (sort_keys + default=str
     #        per oggetti non-serializzabili come Decimal/date). Il risultato

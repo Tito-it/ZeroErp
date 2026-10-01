@@ -19,7 +19,9 @@
 //         - Elimina   (solo BOZZA, confirm dialog)
 //
 //        Editor HTML/CSS/markdown: textarea base. v1 senza editor
-//        visuale (Decisione 9 esplicita: fuori scope).
+//        visuale (Decisione 9 esplicita: fuori scope). Accanto, gli asset
+//        dell'emittente che il render accetta (`TemplateAssetRiferimenti`,
+//        2026-10-01): un clic inserisce `asset:<codice_interno>` al cursore.
 //
 // ⭐ LA FORMA DEI DATI (2026-09-30, brief-db-documenti-versione-contesto-
 //    template): ogni versione dichiara la forma che legge
@@ -28,7 +30,7 @@
 //    (`versione_contesto_builder`): qui si MOSTRA e precompila la nuova
 //    versione, non si confronta — chi rifiuta pubblicazione e stampa e' il
 //    database, con la sua frase.
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateVersioniStore } from '../stores/templateVersioni'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -60,6 +62,7 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import Message from 'primevue/message'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import TemplateAssetRiferimenti from './TemplateAssetRiferimenti.vue'
 
 const props = defineProps({
   templateId: { type: Number, required: true },
@@ -114,6 +117,27 @@ const form = ref(emptyForm())
 const { fissa, modificato, chiudiConConferma } =
   useDrawerFormPreserve(form, { visibile: () => editing.value })
 defineExpose({ modificato, chiudiConConferma })
+
+// Le textarea in cui il pannello degli asset inserisce un riferimento.
+const htmlTextarea = ref(null)
+const cssTextarea = ref(null)
+const TEXTAREA_PER_CAMPO = { html_template: htmlTextarea, css_template: cssTextarea }
+
+// Scopo: Inserisce il riferimento di un asset nel campo scelto, al posto
+//        della selezione (o al cursore), e rimette il cursore dopo il testo
+//        inserito. Senza un cursore noto (campo mai toccato) va in coda.
+async function inserisciRiferimento({ campo, testo }) {
+  const el = TEXTAREA_PER_CAMPO[campo]?.value?.$el
+  const valore = form.value[campo] ?? ''
+  const inizio = el?.selectionStart ?? valore.length
+  const fine = el?.selectionEnd ?? valore.length
+  form.value[campo] = valore.slice(0, inizio) + testo + valore.slice(fine)
+  await nextTick()
+  if (el) {
+    el.focus()
+    el.setSelectionRange(inizio + testo.length, inizio + testo.length)
+  }
+}
 function emptyForm() {
   return {
     titolo: '',
@@ -452,14 +476,21 @@ async function confirmPubblica() {
       </div>
       <div class="form-field form-field-wide">
         <label>{{ t('config.modelli_documenti.versioni.field_html') }}</label>
-        <Textarea v-model="form.html_template" :disabled="props.readonly" rows="10" auto-resize
+        <Textarea ref="htmlTextarea" v-model="form.html_template" :disabled="props.readonly" rows="10" auto-resize
           :invalid="campiErrati.includes('html_template')"
         />
       </div>
       <div class="form-field form-field-wide">
         <label>{{ t('config.modelli_documenti.versioni.field_css') }}</label>
-        <Textarea v-model="form.css_template" :disabled="props.readonly" rows="6" auto-resize
+        <Textarea ref="cssTextarea" v-model="form.css_template" :disabled="props.readonly" rows="6" auto-resize
           :invalid="campiErrati.includes('css_template')"
+        />
+      </div>
+      <div class="form-field form-field-wide">
+        <TemplateAssetRiferimenti
+          :emittente-fiscale-id="props.emittenteFiscaleId"
+          :readonly="props.readonly"
+          @inserisci="inserisciRiferimento"
         />
       </div>
       <div class="form-field form-field-wide">
