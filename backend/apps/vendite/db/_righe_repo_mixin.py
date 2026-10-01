@@ -54,6 +54,7 @@ from apps.core.db._helpers import (
     colonne_identita,
     fetch_paged_with_total,
     fetchone_scalar,
+    jsonb_out,
     row_to_dict,
     rows_to_list,
     sql_order_clause,
@@ -105,6 +106,11 @@ class RigheListaMixin:
       restituisce le righe del documento, al posto di ``_righe_vista`` e
       ``_righe_fk_documento`` (default ``None``; il contratto:
       ``"vendite.fn_contratto_righe_preview"``).
+    - ``_righe_jsonb``: colonne jsonb della sorgente, consegnate DECODIFICATE
+      (default nessuna; ``("componenti",)`` sulla fattura). Fuori dall'ORM il
+      cursor le rende come testo: una lista consegnata come stringa la
+      scorre un carattere alla volta chi la legge — il drawer fattura
+      disegnava una riga per carattere sotto un kit (2026-10-01).
     """
 
     _righe_vista: str
@@ -117,6 +123,7 @@ class RigheListaMixin:
     _righe_chiave: str = "id"
     _righe_solo_attive: bool = True
     _righe_ordine_documento_extra: tuple[str, ...] = ()
+    _righe_jsonb: tuple[str, ...] = ()
 
     # Scopo: una sorgente sola per classe. Vista e funzione insieme non si
     #        rifiutano da sole: vincerebbe la funzione in silenzio, e la vista
@@ -184,7 +191,17 @@ class RigheListaMixin:
         """  # noqa: S608 — sorgente, FK e colonne d'ordine sono attributi di classe costanti; valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            return rows_to_list(cursor)
+            return self._decodifica_jsonb(rows_to_list(cursor))
+
+    # Scopo: le colonne `_righe_jsonb` da testo a oggetto, NULL compreso
+    #        (`jsonb_out`: un JSON rotto esplode, il tipo della colonna lo
+    #        garantisce). Una sede per la lettura completa e per la pagina.
+    def _decodifica_jsonb(self, righe: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for riga in righe:
+            for colonna in self._righe_jsonb:
+                if colonna in riga:
+                    riga[colonna] = jsonb_out(riga[colonna])
+        return righe
 
     # Scopo: una PAGINA delle righe del documento, per la lista
     #        configurabile: ricerca libera dal catalogo, ordinamento dalla
@@ -226,7 +243,7 @@ class RigheListaMixin:
         from_sql, conditions, params = self._righe_da(documento_id)
         add_ricerca_full_condition(conditions, params, search, self._righe_ricerca)
         from_where = f"FROM {from_sql} {self._righe_where(conditions)}"
-        return fetch_paged_with_total(
+        righe, totale = fetch_paged_with_total(
             f"""
             SELECT v.*, COUNT(*) OVER () AS total_count
             {from_where}
@@ -238,6 +255,7 @@ class RigheListaMixin:
             fallback_params=params,
             offset=safe_offset,
         )
+        return self._decodifica_jsonb(righe), totale
 
 
 class RigheDocumentoRepositoryMixin(RigheListaMixin):

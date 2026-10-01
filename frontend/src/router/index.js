@@ -779,8 +779,19 @@ router.beforeEach(async (to) => {
   }
 
   // Apre tab (escluso home e pagine errore)
+  // ⭐ E' L'UNICO PUNTO CHE APRE LE SCHEDE: sidebar, preferiti e widget fanno
+  //    solo `router.push`. Fino al 2026-09-30 aprivano anche loro, prima del
+  //    push, e il guard riapriva: con una conferma in mezzo sarebbero state
+  //    due dialog per un clic. Oltre il limite si sostituisce l'ultima in fila,
+  //    se l'operatore conferma; «Annulla» lo lascia dov'era.
   if (domain && domain !== 'home' && to.name !== 'forbidden' && to.name !== 'not-found') {
     const tabs = useTabsStore()
+    const daSostituire = tabs.schedaDaSostituire(to.path)
+    if (daSostituire) {
+      const conferma = await tabs.chiediSostituzione(daSostituire)
+      if (!conferma) return false
+      tabs.removeTab(daSostituire.id)
+    }
     const opened = tabs.openTab({
       path: to.path,
       label: resolveTabLabel(to.meta, t) || to.path,
@@ -788,7 +799,6 @@ router.beforeEach(async (to) => {
       menuKey: to.meta.menuKey || null,
       icon: resolveTabIcon(to.meta)
     })
-    // Limite raggiunto — blocca navigazione
     if (!opened) return false
   }
 })

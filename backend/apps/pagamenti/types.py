@@ -39,6 +39,10 @@ class DistintaRow(TypedDict):
     #   posting legge al posto del letterale. Il frontend spegne «Registra» col
     #   motivo quando e' falsa, invece di lasciarlo finire in 409.
     stato_is_registrabile: bool | None
+    # ⭐ «Le righe si lavorano ancora?» sta nel catalogo (D-1, brief-db-righe-
+    #   distinta-annullata-fuori-dalle-code): false sull'ANNULLATA, che congela
+    #   le righe; true sulla CHIUSA, dove sospese e scartate hanno un futuro.
+    stato_righe_lavorabili: bool | None
     # La chiave i18n della riga «dove sono» del drawer, dal `meta` dello stato
     # (`nessuna_azione_key`, lo stesso campo degli otto domini con
     # `DrawerActionsBar :info-key`). NULL finche' il seed non c'e'.
@@ -185,6 +189,9 @@ class RigaCodaRow(RigaContabileRow):
     # aperta si abbina e basta. Il frontend sceglie da un fatto, non ricalcola.
     contabile_stato_codice_interno: str | None
     contabile_is_final: bool | None
+    # La bandiera del catalogo (D-1): la coda filtra su di lei, e il frontend
+    # spegne le azioni leggendola invece di derivarla da finale + registrata.
+    contabile_righe_lavorabili: bool | None
     contabile_registrata: bool
 
 

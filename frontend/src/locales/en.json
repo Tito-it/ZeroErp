@@ -461,6 +461,7 @@
       "capitale_sociale_policy": "Share capital policy",
       "categoria": "Category",
       "categoria_accisa_id": "Excise category",
+      "causale_magazzino": "Warehouse reason",
       "centro_riscossione_id": "Collection center",
       "cf_obbligatorio": "Tax code required",
       "check_lettura": "Read check",
@@ -543,6 +544,7 @@
       "ricerca_visibile": "Visible in search",
       "richiede_abbinamento": "Requires matching",
       "richiede_pdp": "Requires PDP",
+      "righe_lavorabili": "Workable lines",
       "ripartizione": "Split",
       "ripetibilita": "Repeatability",
       "schema_db": "DB schema",
@@ -580,7 +582,13 @@
     "split_select": "Select tab to show alongside",
     "split_readonly": "Read only",
     "split_swap": "Swap panels",
-    "remaining": "Tabs still openable: {count}"
+    "remaining": "Tabs still openable: {count}",
+    "sostituisci": {
+      "titolo": "Replace tab",
+      "messaggio": "You have reached the maximum number of open tabs: the \"{nome}\" tab will be replaced. Continue?",
+      "messaggio_modifiche": "You have reached the maximum number of open tabs: the \"{nome}\" tab has unsaved changes, which will be lost. Replace it anyway?",
+      "conferma": "Replace"
+    }
   },
   "errors": {
     "not_found_title": "Page not found",
@@ -831,7 +839,6 @@
     "generic_info": "Information",
     "generic_warn": "Warning",
     "detail_non_accessibile": "Item not found or no longer accessible.",
-    "tab_limit_reached": "Maximum number of tabs reached. Close a tab to open a new one.",
     "network_error": "Unable to reach the server. Please check your connection.",
     "timeout_error": "The server did not respond in time. Please try again.",
     "validation_error": "Please fill in all required fields."
@@ -4318,7 +4325,8 @@
       "porta_a": "Move to {stato}",
       "conferma_stato": "Move the sheet to «{stato}»?",
       "stato_cambiato": "Sheet status updated.",
-      "foglio_chiuso": "This sheet is in a final state: lines can no longer be changed.",
+      "foglio_annullato": "This batch is cancelled: its lines are read-only.",
+      "foglio_chiuso": "This batch is in state «{stato}»: it accepts no new lines. Suspended and discarded lines can still be worked.",
       "contenuto_fermo": "Batch validated: its content is frozen. A line can still be matched or suspended; to add, correct or delete, reopen the batch to draft.",
       "mostra_scartate": "Show discarded",
       "mostra_scartate_hint": "Discarded lines (“not ours”) stay in the batch and in the reconciliation, but leave the work queue: hidden by default.",
@@ -4381,7 +4389,8 @@
       "verbo_riprendi": "Resume",
       "conferma_stato_a": "Move the line to «{stato}»?",
       "elimina_reason": {
-        "distinta_finale": "The batch is closed or cancelled: its lines can no longer be worked.",
+        "distinta_annullata": "The batch is cancelled: its lines are read-only.",
+        "distinta_finale": "The batch is closed: its lines can no longer be deleted.",
         "distinta_non_manuale": "The batch was not entered by hand: its lines cannot be deleted from here. For one produced by the system act on what generated it (invoice fund or adjustment); for one loaded from a file cancel it and import it again.",
         "distinta_validata": "The batch is validated: reopen it to draft with «Reopen», delete the line, then validate it again."
       },
@@ -5396,6 +5405,10 @@
         "field_margin_left": "Margin left (mm)",
         "field_valido_dal": "Valid from",
         "field_valido_al": "Valid to",
+        "field_versione_contesto": "Reads the data in shape",
+        "versione_contesto_hint": "The system currently prepares this document's data in shape {forma}. A version is published and printed only if it reads that shape; a draft may declare another one to prepare it.",
+        "versione_contesto_builder_assente": "This template's data builder is not registered: its versions cannot be published or printed.",
+        "publish_forma": "This version reads the data in shape {versione}; the system prepares it in shape {builder}.",
         "orientation_portrait": "Portrait",
         "orientation_landscape": "Landscape"
       },

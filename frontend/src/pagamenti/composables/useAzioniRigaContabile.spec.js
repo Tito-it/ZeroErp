@@ -78,7 +78,7 @@ function fabbrica(over = {}) {
   const azioni = useAzioniRigaContabile({
     statiRiga: () => STATI,
     transizioniRiga: () => MATRICE,
-    testataDi: () => ({ finale: false, registrata: false }),
+    testataDi: () => ({ righeLavorabili: true, registrata: false }),
     readonly: () => false,
     onAbbina,
     ricarica,
@@ -145,7 +145,7 @@ describe('useAzioniRigaContabile — i fatti della testata cambiano il verbo', (
   it('sotto una distinta REGISTRATA la sospesa si «abbina e registra», col cancello della registrazione', () => {
     lingua = 'it'
     const { buildRowActions, onAbbina } = fabbrica({
-      testataDi: () => ({ finale: true, registrata: true }),
+      testataDi: () => ({ righeLavorabili: true, registrata: true }),
     })
     const voci = buildRowActions(riga('SOSPESA'))
     const abbina = voce(voci, 'abbina')
@@ -158,17 +158,46 @@ describe('useAzioniRigaContabile — i fatti della testata cambiano il verbo', (
     expect(voce(voci, 'stato-SCARTATA').disabled).toBe(false)
   })
 
-  it('sotto una distinta FINALE non registrata (annullata) tutto e\' spento col motivo «foglio chiuso»', () => {
+  it('sotto una distinta le cui righe NON si lavorano (annullata) tutto e\' spento col motivo', () => {
     lingua = 'it'
     const { buildRowActions } = fabbrica({
-      testataDi: () => ({ finale: true, registrata: false }),
+      testataDi: () => ({ righeLavorabili: false, registrata: false }),
+      conElimina: true,
     })
     const voci = buildRowActions(riga('SOSPESA'))
-    for (const v of voci) {
+    for (const v of voci.filter((x) => x.key !== 'elimina')) {
       expect(v.disabled).toBe(true)
-      expect(v.tooltip).toBe(risolvi('pagamenti.distinte.foglio_chiuso'))
+      expect(v.tooltip).toBe(risolvi('pagamenti.distinte.foglio_annullato'))
     }
     expect(voce(voci, 'abbina').label).toBe(risolvi('pagamenti.abbina.azione'))
+  })
+
+  // ⭐ La regola e' la BANDIERA del catalogo, non «finale e non registrata»:
+  //    una testata che dice «lavorabile» non spegne niente anche se non e'
+  //    registrata (la BOZZA), e la chiave del cestino dell'annullata — che
+  //    arriva dalla check del DB — esiste nei locales (R-1).
+  it('con righeLavorabili true niente e\' spento dal foglio, registrata o no', () => {
+    const { buildRowActions } = fabbrica({
+      testataDi: () => ({ righeLavorabili: true, registrata: false }),
+    })
+    const voci = buildRowActions(riga('SOSPESA'))
+    expect(voci.every((v) => v.tooltip !== risolvi('pagamenti.distinte.foglio_annullato'))).toBe(true)
+    expect(voce(voci, 'stato-SCARTATA').disabled).toBe(false)
+  })
+
+  it('il cestino dell\'annullata dice il motivo della check del database', () => {
+    lingua = 'it'
+    const { buildRowActions } = fabbrica({
+      testataDi: () => ({ righeLavorabili: false, registrata: false }),
+      conElimina: true,
+    })
+    const elimina = voce(buildRowActions(riga('DA_ABBINARE', {
+      can_eliminare: false,
+      elimina_blocco_reason: 'DISTINTA_ANNULLATA',
+      elimina_blocco_reason_key: 'pagamenti.righe.elimina_reason.distinta_annullata',
+    })), 'elimina')
+    expect(elimina.disabled).toBe(true)
+    expect(elimina.tooltip).toBe(risolvi('pagamenti.righe.elimina_reason.distinta_annullata'))
   })
 
   it('una riga gia\' registrata (stato finale a catalogo) e\' spenta col suo motivo', () => {

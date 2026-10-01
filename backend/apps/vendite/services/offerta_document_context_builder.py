@@ -55,6 +55,8 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti OFFERTA_COMMERCIALE."""
 
     CODE = "OFFERTA_COMMERCIALE"
+    # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
+    CONTEXT_VERSION = 2
 
     # Tipi indirizzo ammessi nell'ambito OFFERTE
     # (`config.tipi_indirizzi_allowed`). Dichiarati qui e non letti a runtime:
@@ -113,7 +115,7 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
                 "locale": locale,
                 "auth_user_id": auth_user_id,
                 # v2 (2026-08-05): aggiunto il blocco `indirizzi`.
-                "context_version": 2,
+                "context_version": self.CONTEXT_VERSION,
                 "context_code": self.CODE,
                 "righe_source": "OFFERTE_ECCEZIONI",
             },

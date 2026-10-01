@@ -27,6 +27,9 @@ Indice test eseguiti:
 7)  TardivaTests.test_la_madre_si_pianifica
 8)  TardivaTests.test_la_tardiva_per_intero_sotto_una_distinta_registrata
 9)  TardivaTests.test_sotto_una_validata_e_un_rifiuto_409_non_un_esito
+10) AnnullataTests.test_le_righe_di_un_annullata_escono_dalla_coda
+11) AnnullataTests.test_nel_drawer_restano_e_si_leggono_soltanto
+12) AnnullataTests.test_una_distinta_non_manuale_non_si_annulla
 """
 
 from __future__ import annotations
@@ -46,6 +49,7 @@ from apps.pagamenti.services import pagamenti_service
 _COLONNE_TESTATA_CODA = (
     "contabile_stato_codice_interno",
     "contabile_is_final",
+    "contabile_righe_lavorabili",
     "contabile_registrata",
 )
 
@@ -361,3 +365,100 @@ class TardivaTests(_DbTestCase):
         self.assertEqual(ErrorPolicyRegistry.resolve(codice).http_status, 409)
         # E non ha scritto niente: la riga e' ancora sospesa.
         self.assertEqual(stato, "SOSPESA")
+
+
+class AnnullataTests(_DbTestCase):
+    """
+    ANNULLATA vuol dire «non e' mai successa», e le sue righe si leggono
+    soltanto (brief-db-righe-distinta-annullata-fuori-dalle-code, D-1…D-5).
+    ⭐ I soggetti si COSTRUISCONO: la distinta della fixture e' MANUALE (R-4:
+    il default della colonna e' GENERATA, che da D-4 non si annulla) e la
+    riga DA_ABBINARE nasce qui. ⚠️ Ogni asserzione «esce» ha il suo
+    controcampo «prima c'era»: un filtro che toglie tutto passerebbe da solo.
+    """
+
+    _CODA_DI_LAVORO = ("DA_ABBINARE", "SOSPESA")
+
+    # Scopo: gli id dell'INTERA coda, pagina per pagina.
+    # ⚠️ Non una pagina sola: su un database con piu' righe in coda di quante
+    #    ne stiano in una pagina, le righe della fixture potrebbero cadere
+    #    fuori — e «non c'e'» passerebbe per la popolazione, non per il filtro.
+    def _coda(self) -> set[int]:
+        repo, ids, offset, pagina = PagamentiRepository(), set(), 0, 500
+        while True:
+            righe, totale = repo.list_righe_coda(
+                stati=self._CODA_DI_LAVORO,
+                order_by="data_pagamento", order_dir="desc",
+                limit=pagina, offset=offset,
+            )
+            ids.update(r["id"] for r in righe)
+            offset += pagina
+            if not righe or offset >= totale:
+                return ids
+
+    # Scopo: 🔴 IL DIFETTO DEL COLLAUDO — una DA_ABBINARE e una SOSPESA sotto
+    #        una distinta annullata escono dalla coda, e il dettaglio lo dice
+    #        con la bandiera del catalogo (non con «finale e non registrata»).
+    def test_le_righe_di_un_annullata_escono_dalla_coda(self):
+        def _prova(cur):
+            m = _monta(cur, con_riga_da_lavorare=True)
+            cid = m["contabile_id"]
+            prima_coda = self._coda()
+            prima = pagamenti_service.get_distinta(cid)["distinta"]
+            pagamenti_service.cambia_stato_distinta(cid, {"nuovo_stato": "ANNULLATA"})
+            return m["righe"], prima_coda, prima, self._coda(), (
+                pagamenti_service.get_distinta(cid)["distinta"]
+            )
+        righe, prima_coda, prima, dopo_coda, dopo = self._con_operatore(_prova)
+        mie = {righe["D"], righe["S1"]}
+        self.assertEqual(mie & prima_coda, mie)
+        self.assertEqual(mie & dopo_coda, set())
+        self.assertIs(prima["stato_righe_lavorabili"], True)
+        self.assertEqual(dopo["stato_codice"], "ANNULLATA")
+        self.assertIs(dopo["stato_righe_lavorabili"], False)
+
+    # Scopo: nel DRAWER le righe restano (e' il documento, non una coda), ma
+    #        sono congelate (D-3): il cestino e' spento col motivo nuovo della
+    #        check, e un cambio di stato e' un 409 col codice proprio (D-2).
+    def test_nel_drawer_restano_e_si_leggono_soltanto(self):
+        def _prova(cur):
+            m = _monta(cur, con_riga_da_lavorare=True)
+            cid = m["contabile_id"]
+            pagamenti_service.cambia_stato_distinta(cid, {"nuovo_stato": "ANNULLATA"})
+            righe = pagamenti_service.list_righe(cid, limit=50)["results"]
+            with self.assertRaises(ServiceError) as ctx, transaction.atomic():
+                pagamenti_service.cambia_stato_riga(
+                    m["righe"]["D"], {"nuovo_stato": "SOSPESA"}
+                )
+            return m["righe"], righe, ctx.exception.code
+        mie, righe, codice = self._con_operatore(_prova)
+        per_id = {r["id"]: r for r in righe}
+        self.assertIn(mie["D"], per_id)
+        d = per_id[mie["D"]]
+        self.assertIs(d["can_eliminare"], False)
+        self.assertEqual(d["elimina_blocco_reason"], "DISTINTA_ANNULLATA")
+        self.assertEqual(
+            d["elimina_blocco_reason_key"],
+            "pagamenti.righe.elimina_reason.distinta_annullata",
+        )
+        self.assertEqual(codice, "E_RIGA_CONTABILE_DISTINTA_ANNULLATA")
+        self.assertEqual(ErrorPolicyRegistry.resolve(codice).http_status, 409)
+
+    # Scopo: D-4 — l'annullo e' un gesto della MANUALE: su una GENERATA il
+    #        guard rifiuta col codice proprio (D-5), e il service lo porta
+    #        come 409, non come 500.
+    def test_una_distinta_non_manuale_non_si_annulla(self):
+        def _prova(cur):
+            m = _monta(cur, con_riga_da_lavorare=False)
+            cid = m["contabile_id"]
+            pagamenti_service.cambia_stato_distinta(cid, {"nuovo_stato": "VALIDATA"})
+            cur.execute(
+                "UPDATE pagamenti.vendite_contabili SET origine = 'GENERATA' WHERE id = %s",
+                [cid],
+            )
+            with self.assertRaises(ServiceError) as ctx, transaction.atomic():
+                pagamenti_service.cambia_stato_distinta(cid, {"nuovo_stato": "ANNULLATA"})
+            return ctx.exception.code
+        codice = self._con_operatore(_prova)
+        self.assertEqual(codice, "E_CONTABILE_ANNULLO_NON_MANUALE")
+        self.assertEqual(ErrorPolicyRegistry.resolve(codice).http_status, 409)

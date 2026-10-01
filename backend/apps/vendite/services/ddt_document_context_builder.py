@@ -65,6 +65,8 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti DDT_VENDITA (DDT accompagnatorio)."""
 
     CODE = "DDT_VENDITA"
+    # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
+    CONTEXT_VERSION = 2
 
     # Scopo: Iniezione opzionale del repository per testabilita' (mock).
     #        In runtime il default va benissimo: l'istanza e' singleton di
@@ -118,7 +120,7 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
             "_meta": {
                 "locale": locale,
                 "auth_user_id": auth_user_id,
-                "context_version": 2,
+                "context_version": self.CONTEXT_VERSION,
                 "context_code": self.CODE,
             },
         }

@@ -38,6 +38,13 @@ packaging>=26.0
 # senza alzarlo qui un pip-compile futuro potrebbe risolvere di nuovo a una 49.x.
 cryptography>=50.0.0
 
+# Secondo fattore (TOTP, RFC 6238) e il QR code della configurazione, generato
+# nel backend come SVG: il frontend non aggiunge librerie (decisione di Tid del
+# 2026-09-28, brief-be-fe-sicurezza-header-token-mfa §3.4). `segno` non ha
+# dipendenze; `pyotp` nemmeno.
+pyotp>=2.10
+segno>=1.6
+
 # Sanitizzazione HTML (preview template email — Fase 6 amm-software)
 bleach>=6.2
 

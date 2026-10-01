@@ -36,6 +36,19 @@ OBBLIGO_SECONDO_FATTORE = "SECONDO_FATTORE"
 # poter uscire) e il profilo `/core/me/` (il frontend ci legge gli obblighi).
 TUTTI_GLI_OBBLIGHI: frozenset[str] = frozenset({OBBLIGO_CAMBIO_PASSWORD, OBBLIGO_SECONDO_FATTORE})
 
+# ⭐ Gli obblighi che il cancello FA RISPETTARE: quelli per cui esiste la
+# strada per soddisfarli, cioe' una view che li ammette e li chiude (il cambio
+# password: `ChangePasswordView`). Un obbligo senza strada non e' un obbligo,
+# e' un'utenza murata: il 2026-09-30 il SUPER_ADMIN, che ha sempre l'obbligo
+# del secondo fattore (`script.fn_totp_obbligatorio`, motivo PROFILO), non
+# apriva piu' nessuna pagina, perche' la configurazione del secondo fattore
+# non esisteva ancora. ``SECONDO_FATTORE`` entra qui nello STESSO lotto dei
+# suoi endpoint self-service (T-3 del brief sicurezza §3.4-bis), che lo
+# dichiarano in `obblighi_ammessi`; il guard del frontend e' T-4.
+# `obblighi_pendenti` resta la regola sui fatti e li dice tutti: e' il
+# cancello a scegliere quali fermano una richiesta.
+OBBLIGHI_IN_VIGORE: frozenset[str] = frozenset({OBBLIGO_CAMBIO_PASSWORD})
+
 # Lo stato del device col quale il secondo fattore e' in uso
 # (`script.fn_get_totp_device`).
 TOTP_STATO_ATTIVO = "ATTIVO"
@@ -80,14 +93,18 @@ def obblighi_pendenti(fatti: dict[str, Any]) -> tuple[str, ...]:
     return tuple(pendenti)
 
 
-# Scopo: Il cancello. Solleva l'errore del PRIMO obbligo pendente che la view
-# non ammette (`obblighi_ammessi`, attributo di classe; assente = nessuno).
+# Scopo: Il cancello. Solleva l'errore del PRIMO obbligo pendente e in vigore
+# (`OBBLIGHI_IN_VIGORE`) che la view non ammette (`obblighi_ammessi`, attributo
+# di classe; assente = nessuno).
 # ⚠️ Il primo pendente, non il primo non ammesso: con la password da cambiare
 # la pagina del secondo fattore resta chiusa, perche' l'ordine e' quello.
 # Fail-closed: un DB che non risponde e' un errore della richiesta, non un
 # «nessun obbligo».
 def verifica_obblighi(view: Any, auth_user_id: int) -> None:
-    pendenti = obblighi_pendenti(_auth_repo.get_fatti_obblighi(auth_user_id))
+    pendenti = [
+        o for o in obblighi_pendenti(_auth_repo.get_fatti_obblighi(auth_user_id))
+        if o in OBBLIGHI_IN_VIGORE
+    ]
     if not pendenti:
         return
     ammessi: frozenset[str] = getattr(view, "obblighi_ammessi", frozenset())

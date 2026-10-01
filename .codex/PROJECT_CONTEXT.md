@@ -291,6 +291,16 @@ generico `config.fn_pannello_scrivi` sull'oggetto di ogni tabella, la lista è
 ordine si cambiano nel CSV.
 
 ### Aperto — Media priorità
+- ⏳ **«Annulla» e «Porta a Bozza» sulle distinte non manuali: spenti col motivo**
+  (DB poi BE/FE, ereditata il 2026-09-30 dalla chiusura di
+  `work-done/brief-db-righe-distinta-annullata-fuori-dalle-code.md`, R-3 + D-6 §11.3-§11.4,
+  D-6 approvata da Tid). Oggi le due voci si propongono accese su una GENERATA
+  e finiscono in 409 (`E_CONTABILE_ANNULLO_NON_MANUALE`,
+  `E_CONTABILE_RIAPERTURA_NON_MANUALE`): le regole vivono solo nel corpo del
+  guard `trgfn_vendite_contabili_guard_validazione` e non c'è una check da
+  leggere. ⏳ Al team DB: `script.fn_check_contabile_transizione` + il guard che
+  la chiama (P-9 … P-12). Poi il BE espone `transizioni_blocco` e il drawer spegne
+  le voci col motivo.
 - 🟡 **Colori PrimeVue ancora scritti nei componenti** (FE, registrato il
   2026-09-26 alla chiusura di `work-done/analisi-fe-regole-standard-violate-dal-codice.md`
   R-3): circa 60 `var(--p-*)` — `primary-700/500/50`, `yellow-*`, `blue-*`,

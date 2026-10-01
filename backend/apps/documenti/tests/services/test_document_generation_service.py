@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unit `DocumentGenerationService` (Tranche I). Mock-only:
-#        repo + reader + storage + render_pdf + registry.get_builder +
+#        repo + reader + storage + render_pdf + get_builder_del_template +
 #        PermissionResolver. Verifica:
 #         - happy path: pipeline completa con resolution template/versione,
 #           builder context, render, INSERT 3 record + storage.write,
@@ -54,6 +54,7 @@
 #  28. genera_documento_scope_none_senza_canale_sistema_raises (C-0)
 #  29. genera_documento_scope_esplicito_guard_emittente (C-0)
 #  30. genera_documento_path_sistema_template_override_usa_repo (C-0)
+#  31. genera_documento_forma_dei_dati_rifiutata_niente_render (2026-09-30)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -178,12 +179,15 @@ def _patch_render(return_value: bytes = b"%PDF-1.4 fake"):
 
 
 def _patch_get_builder(context: dict[str, Any] | None = None):
-    """Patch registry.get_builder con un MagicMock ritornante un builder
+    """Patch get_builder_del_template con un MagicMock ritornante un builder
     il cui `build_context` ritorna `context`."""
     builder = MagicMock()
+    builder.CODE = "PREVENTIVO"
+    # La forma dei dati del builder: arriva al guard prima del render.
+    builder.CONTEXT_VERSION = 2
     builder.build_context.return_value = context if context is not None else {"numero": 1}
     return patch(
-        "apps.documenti.services.document_generation_service.get_builder",
+        "apps.documenti.services.document_generation_service.get_builder_del_template",
         return_value=builder,
     )
 
@@ -250,6 +254,9 @@ class GeneraDocumentoHappyPathTests(SimpleTestCase):
         # Verifica chiamate repo nell'ordine atteso.
         repo.find_template_applicabile.assert_called_once()
         repo.get_versione_pubblicata_attiva.assert_called_once()
+        # Il patto versione/forma dei dati chiesto al DB: la versione
+        # pubblicata (12) e la forma del builder (2).
+        repo.guard_versione_contesto.assert_called_once_with(12, 2)
         repo.next_progressivo_sorgente.assert_called_once()
         repo.create_documento_generato.assert_called_once()
         repo.create_documento_generato_file.assert_called_once()
@@ -1090,3 +1097,36 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
         repo.get_template.assert_called_once_with(42, emittente_ids_scope=[11])
         reader.get_template.assert_not_called()
         repo.find_template_applicabile.assert_not_called()
+
+
+# =====================================================================
+# Il patto versione/forma dei dati (2026-09-30)
+# =====================================================================
+
+
+class GeneraDocumentoVersioneContestoTests(SimpleTestCase):
+    # 31. La versione pubblicata legge un'altra forma: il rifiuto del DB
+    #     arriva PRIMA di costruire il contesto e di renderizzare — nessun PDF
+    #     da buttare, nessuna riga, nessun file. La traduzione vera del
+    #     rifiuto (P0001 -> 409 col codice) e' provata sul DB in
+    #     tests/db/test_versione_contesto_db.
+    def test_genera_documento_forma_dei_dati_rifiutata_niente_render(self) -> None:
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={
+                "find_template_applicabile": _template_row(),
+                "get_versione_pubblicata_attiva": _versione_row(),
+            },
+        )
+        repo.guard_versione_contesto.side_effect = ServiceError(
+            code="E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA",
+            message="La versione legge un'altra forma.",
+        )
+        with _patch_scope(None), _patch_get_builder() as get_builder, \
+                _patch_render() as render:
+            with self.assertRaises(ServiceError) as ctx:
+                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA")
+        get_builder.return_value.build_context.assert_not_called()
+        render.assert_not_called()
+        repo.create_documento_generato.assert_not_called()
+        storage.write.assert_not_called()

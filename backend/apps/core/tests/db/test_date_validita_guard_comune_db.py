@@ -252,6 +252,7 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
 
     # 5. Versioni dei template: create, clone, update e pubblicazione.
     def test_template_versioni_create_clone_update_pubblica(self):
+        from apps.documenti.services.context_builders import get_builder
         from apps.documenti.services.template_admin_service import TemplateAdminService
         from apps.documenti.services.template_versioni_admin_service import (
             TemplateVersioniAdminService,
@@ -266,15 +267,24 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
                 """
             )
             tipo_output, sorgente, engine = (int(x) for x in cur.fetchone())
+            # Un builder vero: la pubblicazione ne legge la forma.
+            builder = "CONTRATTO"
             template = TemplateAdminService().create_template(m.user, {
                 "tipo_documento_output_id": tipo_output, "sorgente_tipo_id": sorgente,
                 "emittente_fiscale_id": m.emittente_id,
                 "codice": "BE-DATE-TPL", "codice_interno": "BE_DATE_TPL",
-                "descrizione": "Template date", "context_builder_code": "contratto",
+                "descrizione": "Template date", "context_builder_code": builder,
             })
             tid = template["id"]
             svc = TemplateVersioniAdminService()
-            base = {"titolo": "V", "html_template": "<p>x</p>", "render_engine_id": engine}
+            # Il builder vero del template e la sua forma: la pubblicazione
+            # passa dal patto versione/forma dei dati PRIMA del guard delle
+            # date, e con una forma diversa si fermerebbe li'.
+            forma = get_builder(builder).CONTEXT_VERSION
+            base = {
+                "titolo": "V", "html_template": "<p>x</p>", "render_engine_id": engine,
+                "versione_contesto": forma,
+            }
             date_invertite = {"valido_dal": _DAL.isoformat(), "valido_al": _AL_PRIMA.isoformat()}
             self._rifiuto_del_periodo(
                 "template_versioni.create",

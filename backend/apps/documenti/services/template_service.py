@@ -20,6 +20,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.services.context_builders import versione_contesto_registrata
 from apps.documenti.services.storage import DocumentStorage, get_storage
 
 E_VALIDATION = "E_DOCUMENTI_VALIDATION"
@@ -92,6 +93,14 @@ class TemplateService:
             detail=f"template_id={template_id}",
         )
         assert row is not None
+        # La forma dei dati che il builder del template produce OGGI: e' un
+        # fatto del codice (`CONTEXT_VERSION`), non del DB, e il dettaglio lo
+        # porta perche' chi prepara una versione sappia quale forma dichiarare
+        # (una versione si pubblica e stampa solo se legge questa). `None` =
+        # builder non registrato: il template non genera ne' si pubblica.
+        row["versione_contesto_builder"] = versione_contesto_registrata(
+            row.get("context_builder_code"),
+        )
         return row
 
     # Scopo: Lista versioni di un template. Pre-verifica che il template

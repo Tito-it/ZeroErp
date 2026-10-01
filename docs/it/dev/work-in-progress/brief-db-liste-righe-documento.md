@@ -1810,6 +1810,11 @@ installazione ha le sue versioni, scritte sul contesto di quando sono nate.
 
 Fino ad allora il PDF legge `list_fattura_righe` (contesto v1): è l'eccezione
 dichiarata in `ApiFatturaDetail` e in testa al `FatturaDrawer`.
+✅ **Chiusa lato BE il 2026-09-30** (punti 1-3): il patto versione/forma dei dati
+esiste (`versione_contesto`, colonna e non chiave del jsonb, senza il «valgono 1»),
+il contesto della fattura è alla forma 2 e `list_fattura_righe` è ritirata. Resta
+la pubblicazione della versione 4 del template: brief-db-documenti-versione-
+contesto-template §11-§13.
 
 
 ### 9.9 Verifica critica del lotto C (2026-09-28/29)

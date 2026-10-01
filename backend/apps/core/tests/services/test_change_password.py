@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Test unitari per ChangePasswordView e PasswordChangeRequiredMiddleware.
-#        Mock DB, compatibile CI senza database reale.
+# Scopo: Test unitari per ChangePasswordView e il flag del login.
+#        Mock DB, compatibile CI senza database reale. Il blocco della
+#        navigazione con la password da cambiare e' il cancello degli
+#        obblighi: test_cancello_obblighi.py.
 # ------------------------------------------------------------
 
 """
@@ -12,12 +14,8 @@ Indice test eseguiti:
 2) ChangePasswordTests.test_password_mismatch_raises
 3) ChangePasswordTests.test_same_password_raises
 4) ChangePasswordTests.test_wrong_old_password_raises
-5) MiddlewareTests.test_allowed_paths_pass_through
-6) MiddlewareTests.test_blocked_path_returns_403
-7) MiddlewareTests.test_unauthenticated_passes_through
-8) MiddlewareTests.test_superuser_passes_through
-9) AuthViewTests.test_login_adds_password_change_flag
-10) AuthViewTests.test_login_no_flag_when_not_required
+5) AuthViewTests.test_login_adds_password_change_flag
+6) AuthViewTests.test_login_no_flag_when_not_required
 """
 
 from unittest import TestCase
@@ -67,62 +65,6 @@ class ChangePasswordTests(TestCase):
             )
 
 
-class MiddlewareTests(TestCase):
-    """Test PasswordChangeRequiredMiddleware."""
-
-    def _make_request(self, path, authenticated=True, superuser=False, deve_cambiare=False):
-        request = MagicMock()
-        request.path = path
-        if authenticated:
-            request.user.is_authenticated = True
-            request.user.is_superuser = superuser
-            request.user.id = 42
-        else:
-            request.user.is_authenticated = False
-        return request, deve_cambiare
-
-    # Scopo: Verifica che i path consentiti passino anche con flag attivo.
-    @patch(f"{_AUTH_REPO}.get_deve_cambiare_password", return_value=True)
-    def test_allowed_paths_pass_through(self, mock_flag):
-        from apps.core.middleware.password_change_middleware import PasswordChangeRequiredMiddleware
-
-        mw = PasswordChangeRequiredMiddleware(lambda r: None)
-        for path in ["/api/v1/auth/change-password/", "/api/v1/auth/logout/", "/api/v1/core/me/"]:
-            request, _ = self._make_request(path, deve_cambiare=True)
-            result = mw.process_view(request, None, None, None)
-            self.assertIsNone(result, f"Path {path} dovrebbe passare")
-
-    # Scopo: Verifica che path bloccato ritorni 403 con flag attivo.
-    @patch("apps.core.db.auth_repository.AuthRepository.get_deve_cambiare_password", return_value=True)
-    def test_blocked_path_returns_403(self, mock_flag):
-        from apps.core.middleware.password_change_middleware import PasswordChangeRequiredMiddleware
-
-        mw = PasswordChangeRequiredMiddleware(lambda r: None)
-        request, _ = self._make_request("/api/v1/vendite/lotti/")
-        result = mw.process_view(request, None, None, None)
-
-        self.assertIsNotNone(result)
-        self.assertEqual(result.status_code, 403)
-
-    # Scopo: Verifica che utente non autenticato passi (gestito da JWT auth).
-    def test_unauthenticated_passes_through(self):
-        from apps.core.middleware.password_change_middleware import PasswordChangeRequiredMiddleware
-
-        mw = PasswordChangeRequiredMiddleware(lambda r: None)
-        request, _ = self._make_request("/api/v1/vendite/lotti/", authenticated=False)
-        result = mw.process_view(request, None, None, None)
-        self.assertIsNone(result)
-
-    # Scopo: Verifica che superuser bypassa il middleware.
-    def test_superuser_passes_through(self):
-        from apps.core.middleware.password_change_middleware import PasswordChangeRequiredMiddleware
-
-        mw = PasswordChangeRequiredMiddleware(lambda r: None)
-        request, _ = self._make_request("/api/v1/vendite/lotti/", superuser=True)
-        result = mw.process_view(request, None, None, None)
-        self.assertIsNone(result)
-
-
 class AuthViewTests(TestCase):
     """Test che il login aggiunga il flag password_change_required."""
 
@@ -132,6 +74,11 @@ class AuthViewTests(TestCase):
         patcher = patch("apps.core.api.auth_views.get_client_ip", return_value="203.0.113.7")
         patcher.start()
         self.addCleanup(patcher.stop)
+        # Il login legge il device del secondo fattore dopo la password:
+        # nessun device. ⛔ `unittest.TestCase`: senza, andrebbe al DB vero.
+        device = patch("apps.core.api.auth_views._secondo_fattore_repo")
+        device.start().get_device.return_value = {"stato": "ASSENTE"}
+        self.addCleanup(device.stop)
 
     # Scopo: Verifica che la response del login includa il flag se attivo.
     @patch(f"{_AUTH_REPO}.get_deve_cambiare_password", return_value=True)

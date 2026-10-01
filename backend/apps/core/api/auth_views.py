@@ -40,11 +40,13 @@ from apps.core.api.multi_veste_token_serializer import (
 )
 from apps.core.api.throttling import LoginRateThrottle
 from apps.core.db.auth_repository import AuthRepository
+from apps.core.db.secondo_fattore_repository import SecondoFattoreRepository
 from apps.core.services import session_audit_service
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.nome_tentato import digest_nome_tentato, etichetta_log
 from apps.core.services.request_context import get_client_ip
 from apps.core.services.service_errors import ServiceError
+from apps.core.services.sfida_secondo_fattore import DURATA_SFIDA_SECONDI, Sfida, emetti_sfida
 from apps.core.services.auth_constants import (
     JWT_CLAIM_EMITTENTE_ATTIVO_ID,
     JWT_CLAIM_IDENTITA_ID,
@@ -98,6 +100,72 @@ def _extract_identita_id_from_refresh(refresh_str: str | None) -> int | None:
 
 logger = logging.getLogger("security")
 _auth_repo = AuthRepository()
+_secondo_fattore_repo = SecondoFattoreRepository()
+
+# Lo stato del device col quale il login chiede il secondo passo.
+_DEVICE_ATTIVO = "ATTIVO"
+
+
+# Scopo: Chiude un accesso RIUSCITO, cioe' una sessione appena emessa per
+#        `user` nella veste `identita_id`: il successo sul freno (della sola
+#        coppia credenziale + provenienza), l'ultimo accesso, le GUC per i
+#        trigger di audit, la riga LOGIN in `dbops.sessioni_utente`.
+#        Restituisce se la credenziale deve cambiare la password.
+#        ⭐ Due chiamanti (regola del 2, 2026-10-01): il login senza secondo
+#        fattore e il secondo passo (`secondo_fattore_token_views`). Con il
+#        secondo fattore attivo la password giusta NON chiude l'accesso: lo
+#        chiude il codice (§9.5.3 del brief DB) — altrimenti la password
+#        azzererebbe i tentativi del codice.
+#        `dettaglio` finisce nella riga LOGIN (es. con quale secondo fattore).
+def chiudi_accesso_riuscito(
+    *,
+    user: User,
+    digest: bytes,
+    provenienza: str,
+    identita_id: int | None,
+    sid: str | None,
+    django_request,
+    dettaglio: dict | None = None,
+) -> bool:
+    _auth_repo.registra_tentativo_login(
+        user.id, nome_digest=digest, provenienza=provenienza, successo=True,
+    )
+    # Ultimo accesso (D-8): della credenziale, a ogni accesso riuscito. Qui e
+    # non con `UPDATE_LAST_LOGIN` di SimpleJWT: quello lo scrive nel
+    # serializer PRIMA del controllo della veste, cioe' anche per chi ha la
+    # password giusta e nessun accesso a questa porta (E_VESTE_NON_ATTIVA) —
+    # e, col secondo fattore, prima del codice.
+    update_last_login(None, user)
+
+    # Il login NON passa dalla DRF auth chain (l'utente non e' ancora
+    # autenticato a authenticate() time), quindi JwtAuditAuthentication NON
+    # setta le GUC: le si setta qui, prima della scrittura di audit, cosi' i
+    # trigger DB di sessioni_utente popolano user_insert con lo username
+    # effettivo invece di 'zeroerp_app'. Il marker _zeroerp_jwt_guc_set fa
+    # partire il reset nel JwtAuditMiddleware.
+    gucs_ok = set_jwt_gucs(
+        username=user.username,
+        user_id=user.id,
+        identita_id=identita_id,
+        request=django_request,
+    )
+    # Una sessione appena emessa ha sempre un identita_id valido: l'assenza
+    # indica un bug nel serializer o una veste spenta in mezzo. L'audit
+    # resta scritto, con GUC vuote (user_insert='zeroerp_app').
+    if not gucs_ok:
+        logger.warning(
+            "security.login_guc_mancate user=%s identita_id=%s",
+            user.username, identita_id,
+        )
+    session_audit_service.record_login(
+        user_id=user.id,
+        request=django_request,
+        jti=sid,
+        dettaglio=dettaglio,
+    )
+    # Cambio password obbligatorio: e' della CREDENZIALE (D-7), vale per
+    # qualunque porta si stia usando.
+    return _auth_repo.get_deve_cambiare_password(user.id)
 
 
 class AuditTokenObtainPairView(TokenObtainPairView):
@@ -121,6 +189,9 @@ class AuditTokenObtainPairView(TokenObtainPairView):
     """
 
     throttle_classes = [LoginRateThrottle]
+    # La porta della view (il segmento del path): la sfida del secondo
+    # fattore vale solo sulla porta che l'ha emessa.
+    porta: str = ""
     # `serializer_class = None` + guard in post() rendono la base effettivamente
     # astratta: chiamare `AuditTokenObtainPairView.as_view()` direttamente
     # senza override di serializer_class solleva RuntimeError subito.
@@ -237,66 +308,61 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                     )
             raise
 
-        # 3. Login OK: reset contatore + audit sessione + check cambio password
+        # 3. Password giusta, veste risolta.
         if response.status_code == 200:
-            # Un accesso riuscito ha sempre la credenziale: il nome e' passato
-            # dalla stessa normalizzazione di `authenticate`. Un successo senza
-            # credenziale il DB lo rifiuta come chiamata non valida.
-            if user and digest is not None:
-                _auth_repo.registra_tentativo_login(
-                    user.id, nome_digest=digest, provenienza=provenienza,
-                    successo=True,
-                )
-                # Ultimo accesso (D-8): della credenziale, a ogni login
-                # riuscito. Qui e non con `UPDATE_LAST_LOGIN` di SimpleJWT:
-                # quello lo scrive nel serializer PRIMA del controllo della
-                # veste, cioe' anche per chi ha la password giusta e nessun
-                # accesso a questa porta (E_VESTE_NON_ATTIVA).
-                update_last_login(None, user)
-
-            user_id, jti = self._extract_claims(response)
+            _, jti = self._extract_claims(response)
             # §8.3.4: il MultiVesteTokenSerializer ha iniettato
-            # `identita_id` nel refresh token; serve alle GUC di audit.
+            # `identita_id` nel refresh token; serve alle GUC di audit e,
+            # col secondo fattore, alla sfida.
             identita_id = _extract_identita_id_from_refresh(
                 response.data.get("refresh") if response.data else None
             )
-
-            # Cambio password obbligatorio: e' della CREDENZIALE (D-7), vale
-            # per qualunque porta si stia usando.
-            if user and _auth_repo.get_deve_cambiare_password(user.id):
-                response.data["password_change_required"] = True
-
-            # Hotfix BE-2.0ter: il login NON passa dalla DRF auth chain
-            # (l'utente non e' ancora autenticato a authenticate() time),
-            # quindi JwtAuditAuthentication NON setta le GUC. Le settiamo
-            # qui manualmente, prima della scrittura di audit, cosi' i
-            # trigger DB di sessioni_utente popolano user_insert con lo
-            # username effettivo invece di 'zeroerp_app'. Il marker
-            # _zeroerp_jwt_guc_set fa partire il reset simmetrico nel
-            # JwtAuditMiddleware.process_response.
-            if user and user_id:
-                gucs_ok = set_jwt_gucs(
-                    username=user.username,
-                    user_id=user_id,
-                    identita_id=identita_id,
-                    request=django_request,
+            # Un accesso riuscito ha sempre la credenziale: il nome e' passato
+            # dalla stessa normalizzazione di `authenticate`. Un successo senza
+            # credenziale il DB lo rifiuta come chiamata non valida.
+            if not (user and digest is not None):
+                logger.error("security.login_senza_credenziale %s", chi)
+                raise ServiceError(
+                    code="E_AUTH_CHIAMATA_NON_VALIDA",
+                    message="Chiamata non valida al login.",
+                    detail="password accettata senza una credenziale trovata dal nome",
                 )
-                # Se identita_id e' None o l'identita risulta non attiva,
-                # l'audit storico in record_login sara' scritto con GUC
-                # vuote (user_insert='zeroerp_app'). Segnaliamo l'anomalia
-                # — il JWT di un login appena emesso dovrebbe sempre avere
-                # un identita_id valido. Assenza indica bug nel serializer
-                # o race DB tra emissione JWT e record_login.
-                if not gucs_ok:
-                    logger.warning(
-                        "security.login_guc_mancate user=%s identita_id=%s",
-                        user.username, identita_id,
+
+            # 3a. Secondo fattore attivo: la password non basta. Niente JWT
+            #     (quelli appena emessi da SimpleJWT non escono da qui), niente
+            #     successo sul freno, niente sessione: una sfida breve, e il
+            #     secondo passo chiude l'accesso col codice
+            #     (brief sicurezza §3.4-bis, T-2).
+            if _secondo_fattore_repo.get_device(user.id)["stato"] == _DEVICE_ATTIVO:
+                if identita_id is None:
+                    raise ServiceError(
+                        code="E_AUTH_CHIAMATA_NON_VALIDA",
+                        message="Chiamata non valida al login.",
+                        detail="refresh del login senza identita_id",
                     )
-            session_audit_service.record_login(
-                user_id=user_id,
-                request=django_request,
-                jti=jti,
-            )
+                logger.info("security.login_secondo_passo %s provenienza=%s", chi, provenienza)
+                sfida = emetti_sfida(Sfida(
+                    auth_user_id=user.id,
+                    identita_id=identita_id,
+                    porta=self.porta,
+                    provenienza=provenienza,
+                ))
+                return Response({
+                    "two_factor_required": True,
+                    "sfida": sfida,
+                    "scade_in_secondi": DURATA_SFIDA_SECONDI,
+                })
+
+            # 3b. Accesso chiuso dalla password.
+            if chiudi_accesso_riuscito(
+                user=user,
+                digest=digest,
+                provenienza=provenienza,
+                identita_id=identita_id,
+                sid=jti,
+                django_request=django_request,
+            ):
+                response.data["password_change_required"] = True
             # ⭐ Ultimo passo: i claim del refresh sono gia' stati letti dal
             #    corpo (sopra); ora il refresh esce dal corpo e va nel cookie
             #    HttpOnly. Al client resta il solo access.
@@ -362,6 +428,7 @@ class AdminTokenView(AuditTokenObtainPairView):
     """
 
     serializer_class = AdminTokenSerializer
+    porta = "admin"
 
 
 class PortaleTokenView(AuditTokenObtainPairView):
@@ -375,6 +442,7 @@ class PortaleTokenView(AuditTokenObtainPairView):
     """
 
     serializer_class = PortaleTokenSerializer
+    porta = "portale"
 
 
 class ShopTokenView(AuditTokenObtainPairView):
@@ -387,6 +455,7 @@ class ShopTokenView(AuditTokenObtainPairView):
     """
 
     serializer_class = ShopTokenSerializer
+    porta = "shop"
 
 
 class AuditTokenRefreshView(TokenRefreshView):

@@ -96,6 +96,11 @@ const formVersioneAperto = ref(false)
 // del precedente finche' il dettaglio non arriva — la lista partirebbe col
 // padre vecchio e ripartirebbe da capo un attimo dopo. `null` = in attesa.
 const emittenteLetto = ref(null)
+// La forma dei dati che il builder del template produce oggi, LETTA dal
+// dettaglio (`versione_contesto_builder`, un fatto del backend): la sezione
+// versioni la mostra e ne precompila la nuova versione. `null` = in attesa, o
+// builder non registrato.
+const versioneContestoBuilder = ref(null)
 
 const form = ref(emptyForm())
 // Modifiche non salvate della testata: fotografia a form popolato, conferma
@@ -125,6 +130,7 @@ async function loadDetail() {
   const data = await store.fetchDetail(effectiveId.value)
   if (!data) return
   emittenteLetto.value = data.emittente_fiscale_id ?? null
+  versioneContestoBuilder.value = data.versione_contesto_builder ?? null
   form.value = {
     codice: data.codice ?? '',
     codice_interno: data.codice_interno ?? '',
@@ -149,6 +155,7 @@ watch(
     localMode.value = mode
     createdId.value = null
     emittenteLetto.value = null
+    versioneContestoBuilder.value = null
     if (mode === 'edit') {
       loadDetail()
     } else {
@@ -225,6 +232,7 @@ async function handleSave() {
       // Il template appena salvato ha l'emittente scelto nel form: e' il
       // padre della lista delle versioni, che senza resterebbe in attesa.
       emittenteLetto.value = result.emittente_fiscale_id ?? payload.emittente_fiscale_id ?? null
+      versioneContestoBuilder.value = result.versione_contesto_builder ?? null
       localMode.value = 'edit'
       fissa()
       emit('saved', result)
@@ -388,6 +396,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           ref="versioniRef"
           :template-id="effectiveId"
           :emittente-fiscale-id="emittenteLetto"
+          :versione-contesto-builder="versioneContestoBuilder"
           :readonly="isReadOnlyEffective"
           @form-aperto="(v) => { formVersioneAperto = v }"
         />

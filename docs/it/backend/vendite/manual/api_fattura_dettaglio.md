@@ -164,10 +164,11 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
   ⚠️ La chiave è `riga_key`: `fatture_righe_id` è **NULL** sul padre di un kit,
   che in tabella non esiste. La chiave vera di un componente è il suo
   `fatture_righe_id` dentro `componenti`.
-  ⚠️ **Il PDF non legge ancora questa forma**: il contesto di stampa resta alla
-  versione 1 (righe piatte con `tipo_riga`/`livello`, da
-  `VenditeRepository.list_fattura_righe`) finché non c'è il legame fra versione
-  del template e versione del contesto (brief §9.8).
+  ⭐ **Dal 2026-09-30 è anche la forma del PDF**: il contesto di stampa della
+  fattura è alla forma 2 e legge la stessa vista (`FattureRepository.list_righe`),
+  la lettura piatta `VenditeRepository.list_fattura_righe` è ritirata. Stampa
+  solo una versione del template che dichiara la forma 2
+  (brief-db-documenti-versione-contesto-template §11).
 - Nessun verbo di modifica su questo path: la fattura è prodotta dalla pipeline
   e oltre la soglia di congelamento le righe sono congelate a DB
   (`trgfn_fattura_satellite_guard_congelamento`, `E_FATTURA_RIGA_CONGELATA`).

@@ -290,6 +290,10 @@ class ApiTemplateVersioniList(DomainAPIView):
                 "titolo": serializers.CharField(),
                 "html_template": serializers.CharField(),
                 "render_engine_id": serializers.IntegerField(),
+                # La forma dei dati che la versione legge: obbligatoria,
+                # senza default (vedi il `versione_contesto_builder` del
+                # dettaglio template per la forma che il builder produce).
+                "versione_contesto": serializers.IntegerField(min_value=1),
                 "formato_template": serializers.CharField(required=False),
                 "css_template": serializers.CharField(required=False, allow_null=True),
                 "markdown_template": serializers.CharField(required=False, allow_null=True),
@@ -365,6 +369,7 @@ class ApiTemplateVersioneDetail(DomainAPIView):
                 "css_template": serializers.CharField(required=False, allow_null=True),
                 "markdown_template": serializers.CharField(required=False, allow_null=True),
                 "render_engine_id": serializers.IntegerField(required=False),
+                "versione_contesto": serializers.IntegerField(required=False, min_value=1),
                 "formato_template": serializers.CharField(required=False),
                 "page_format": serializers.CharField(required=False),
                 "page_orientation": serializers.CharField(required=False),

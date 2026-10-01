@@ -13,8 +13,8 @@ import Popover from 'primevue/popover'
 import { useTabsStore } from '../../stores/tabs'
 import { useContextStore } from '../../stores/context'
 import { useUiStore } from '../../stores/ui'
+import { useConfirmAction } from '../composables/useConfirmAction'
 import { useConfirmCloseTab } from '../composables/useConfirmCloseTab'
-import { useNotify } from '../composables/useNotify'
 import { BREAKPOINTS, MANAGE_ICONS, TABS } from '../constants'
 import { resolveTabDisplayLabel } from '../navigation'
 
@@ -24,14 +24,27 @@ const tabs = useTabsStore()
 const context = useContextStore()
 const ui = useUiStore()
 const { closeTab } = useConfirmCloseTab()
-const { warn } = useNotify()
+const { confirmAction } = useConfirmAction()
 
-// Mostra toast quando il limite tab viene raggiunto
-watch(() => tabs.tabLimitReached, (reached) => {
-  if (reached) {
-    warn(t('notifications.tab_limit_reached'))
-    tabs.tabLimitReached = false
-  }
+// ⭐ La conferma della sostituzione oltre il limite (la chiede il guard del
+//    router, vedi `stores/tabs`). La dialog NOMINA la scheda: «l'ultima» fa
+//    cercare quale sia. ⚠️ Con modifiche non salvate e' rossa e lo dice,
+//    come la X di chiusura (`useConfirmCloseTab`): sostituire e' chiudere.
+watch(() => tabs.richiestaSostituzione, (richiesta) => {
+  if (!richiesta) return
+  const nome = tabLabel(richiesta.tab)
+  const sporca = richiesta.tab.dirty === true
+  confirmAction({
+    header: t('tabs.sostituisci.titolo'),
+    message: sporca
+      ? t('tabs.sostituisci.messaggio_modifiche', { nome })
+      : t('tabs.sostituisci.messaggio', { nome }),
+    danger: sporca,
+    acceptLabel: t('tabs.sostituisci.conferma'),
+    acceptIcon: MANAGE_ICONS.CONFIRM,
+    onAccept: () => richiesta.rispondi(true),
+    onReject: () => richiesta.rispondi(false),
+  })
 })
 
 // Schede rimanenti — visibile quando <= 5

@@ -33,7 +33,7 @@ video la trova; con due caratteri la lista **non** cambia.
 | X   | Magazzino → Movimenti                                                                           | `magazzino.movimenti`           |
 | X   | Pagamenti → Distinte                                                                            | `pagamenti.distinte`            |
 | X   | Pagamenti → drawer di una distinta, righe (anche l'**export**: il file porta la stessa ricerca) | `pagamenti.distinta_righe`      |
-| ☐   | Pagamenti → Coda del riconciliatore                                                             | `pagamenti.righe`               |
+| X   | Pagamenti → Coda del riconciliatore                                                             | `pagamenti.righe`               |
 | X   | Pagamenti → Rate fuori capienza                                                                 | `pagamenti.rate_fuori_capienza` |
 | X   | Pagamenti → Eccedenze                                                                           | `pagamenti.eccedenze`           |
 

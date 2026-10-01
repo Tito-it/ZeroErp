@@ -62,6 +62,8 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti ORDINE_VENDITA (conferma d'ordine)."""
 
     CODE = "ORDINE_VENDITA"
+    # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
+    CONTEXT_VERSION = 2
 
     # Tipi indirizzo ammessi nell'ambito ORDINI (`config.tipi_indirizzi_allowed`).
     # Dichiarati qui e non letti a runtime: il context deve essere
@@ -142,7 +144,7 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
                 "locale": locale,
                 "auth_user_id": auth_user_id,
                 # v2 (2026-08-05): aggiunto il blocco `indirizzi`.
-                "context_version": 2,
+                "context_version": self.CONTEXT_VERSION,
                 "context_code": self.CODE,
             },
         }

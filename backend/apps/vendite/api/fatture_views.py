@@ -59,11 +59,10 @@ class ApiFatturaDetail(DomainAPIView):
     stampa mostrano lo stesso documento per costruzione — piu' i `contatori`
     dei badge (note), che il drawer mostra senza una seconda chiamata.
 
-    ⚠️ Eccezione aperta dal 2026-09-28 (brief-db-liste-righe-documento §9.8):
-    le `righe` vengono gia' dalla vista della lista (`vw_fattura_righe_lista`),
-    il PDF ancora da `VenditeRepository.list_fattura_righe` (contesto v1).
-    Stesse righe, due proiezioni, finche' il contesto di stampa non passa
-    alla forma della lista.
+    Le `righe` vengono dalla vista della lista (`vw_fattura_righe_lista`):
+    primo livello, componenti esposti di un kit dentro il padre. Dal
+    2026-09-30 e' anche la sorgente del contesto di stampa (forma 2, brief-db-
+    documenti-versione-contesto-template §11): una proiezione sola.
 
     Fattura inesistente **o fuori scope emittente** → 404 identico: un errore
     che distinguesse i due casi confermerebbe l'esistenza di una fattura altrui.

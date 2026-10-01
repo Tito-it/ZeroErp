@@ -24,6 +24,7 @@ Indice test eseguiti:
  9f) AuditAuthViewsTests.test_nome_con_spazi_trova_la_credenziale_come_authenticate
  9g) AuditAuthViewsTests.test_nome_assente_nessuna_chiamata_al_db
  9h) AuditAuthViewsTests.test_guasto_nella_ricerca_ferma_il_login
+ 9i) AuditAuthViewsTests.test_secondo_fattore_attivo_risponde_con_la_sfida — T-2
 10) ExtractIdentitaIdFromRefreshTests.test_none_returns_none
 11) ExtractIdentitaIdFromRefreshTests.test_empty_string_returns_none
 12) ExtractIdentitaIdFromRefreshTests.test_invalid_token_fail_open
@@ -95,6 +96,19 @@ _RINNOVA = "apps.core.api.auth_views.AuditTokenRefreshView._rinnova"
 # I claim del refresh con la firma verificata (BB `claims_refresh_firmati`):
 # i test dei guard li fissano, la verifica vera la prova test_refresh_cookie.
 _CLAIMS = "apps.core.api.auth_views.claims_refresh_firmati"
+# Il device del secondo fattore, che il login legge dopo la password giusta.
+_SECONDO_FATTORE = "apps.core.api.auth_views._secondo_fattore_repo"
+
+
+# Scopo: Spegne la lettura del device nel login: nessun secondo fattore.
+#        ⛔ Questi sono `unittest.TestCase`: senza, la lettura andrebbe al DB
+#        di sviluppo con un utente finto, e il test resterebbe verde.
+def _senza_secondo_fattore(test: TestCase) -> MagicMock:
+    patcher = patch(_SECONDO_FATTORE)
+    repo = patcher.start()
+    repo.get_device.return_value = {"stato": "ASSENTE"}
+    test.addCleanup(patcher.stop)
+    return repo
 
 
 # Scopo: Una richiesta di refresh come la manda il browser: il refresh nel
@@ -115,20 +129,28 @@ class AuditAuthViewsTests(TestCase):
         patcher = patch(_GET_IP, return_value=_IP)
         self.mock_get_ip = patcher.start()
         self.addCleanup(patcher.stop)
+        _senza_secondo_fattore(self)
 
     # Scopo: Verifica che login con successo chiami record_login con user_id e jti.
     @patch(f"{_SERVICE}.record_login")
     @patch.object(AuditTokenObtainPairView, "_extract_claims", return_value=(42, "jti-abc"))
+    @patch.object(AuditTokenObtainPairView, "_find_user")
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch(_SET_GUCS)
     @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
     def test_login_success_calls_record_login(
-        self, mock_super_post, mock_extract, mock_record
+        self, mock_super_post, _gucs, mock_repo, mock_find_user, mock_extract, mock_record
     ):
+        mock_find_user.return_value = MagicMock(id=42, username="alice")
+        mock_repo.registra_tentativo_login.return_value = {"bloccato": False}
+        mock_repo.get_deve_cambiare_password.return_value = False
         mock_super_post.return_value = Response(
             {"access": "tok.en.jwt", "refresh": "ref.tok.en"},
             status=200,
         )
         request = MagicMock()
         request._request = MagicMock()
+        request.data = {"username": "alice"}
 
         view = AdminTokenView()
         response = view.post(request)
@@ -138,6 +160,7 @@ class AuditAuthViewsTests(TestCase):
             user_id=42,
             request=request._request,
             jti="jti-abc",
+            dettaglio=None,
         )
 
     # Scopo: Verifica che login fallito non chiami record_login.
@@ -503,6 +526,44 @@ class AuditAuthViewsTests(TestCase):
         mock_repo.registra_tentativo_login.assert_not_called()
         mock_super_post.assert_not_called()
 
+    # Scopo: T-2 (brief sicurezza §3.4-bis). Password giusta e secondo
+    # fattore ATTIVO: niente JWT ne' cookie, niente successo sul freno ne'
+    # sessione; una sfida legata alla credenziale, alla veste del refresh
+    # appena emesso, alla porta e alla provenienza.
+    @patch(f"{_SERVICE}.record_login")
+    @patch("apps.core.api.auth_views._extract_identita_id_from_refresh", return_value=7)
+    @patch.object(AuditTokenObtainPairView, "_extract_claims", return_value=(42, "sid-1"))
+    @patch.object(AuditTokenObtainPairView, "_find_user")
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch(_SET_GUCS)
+    @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
+    def test_secondo_fattore_attivo_risponde_con_la_sfida(
+        self, mock_super_post, mock_gucs, mock_repo, mock_find_user, _extract, _identita, mock_record,
+    ):
+        from apps.core.services.sfida_secondo_fattore import leggi_sfida
+
+        mock_find_user.return_value = MagicMock(id=42, username="tid")
+        mock_super_post.return_value = Response(
+            {"access": "tok.access", "refresh": "tok.refresh"}, status=200,
+        )
+        with patch(_SECONDO_FATTORE) as device:
+            device.get_device.return_value = {"stato": "ATTIVO"}
+            request = MagicMock()
+            request._request = MagicMock()
+            request.data = {"username": "tid"}
+            response = AdminTokenView().post(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["two_factor_required"])
+        self.assertNotIn("access", response.data)
+        self.assertNotIn("refresh", response.data)
+        self.assertNotIn(REFRESH_COOKIE_NAME, response.cookies)
+        mock_repo.registra_tentativo_login.assert_not_called()
+        mock_gucs.assert_not_called()
+        mock_record.assert_not_called()
+        sfida = leggi_sfida(response.data["sfida"], porta="admin", provenienza=_IP)
+        self.assertEqual((sfida.auth_user_id, sfida.identita_id), (42, 7))
+
     # Scopo: Verifica il guard di astrazione. Chiamare direttamente
     # AuditTokenObtainPairView().post() senza subclasse -> RuntimeError.
     # Previene regressione silente in cui qualcuno usa la base class
@@ -660,6 +721,9 @@ class RefreshCookieTests(TestCase):
     HttpOnly, mai nel corpo; il refresh, autenticato dal solo cookie,
     pretende l'header anti-CSRF."""
 
+    def setUp(self):
+        _senza_secondo_fattore(self)
+
     # Scopo: Gli attributi del cookie scritto: sono loro la protezione.
     def _assert_cookie_refresh(self, response, valore: str) -> None:
         cookie = response.cookies[REFRESH_COOKIE_NAME]
@@ -705,15 +769,22 @@ class RefreshCookieTests(TestCase):
     @patch(_GET_IP, return_value=_IP)
     @patch(f"{_SERVICE}.record_login")
     @patch.object(AuditTokenObtainPairView, "_extract_claims", return_value=(42, "sid-1"))
+    @patch.object(AuditTokenObtainPairView, "_find_user")
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch(_SET_GUCS)
     @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
     def test_login_riuscito_mette_il_refresh_nel_cookie(
-        self, mock_super_post, _mock_extract, _mock_record, _mock_ip,
+        self, mock_super_post, _gucs, mock_repo, mock_find_user, _mock_extract, _mock_record, _mock_ip,
     ):
+        mock_find_user.return_value = MagicMock(id=42, username="alice")
+        mock_repo.registra_tentativo_login.return_value = {"bloccato": False}
+        mock_repo.get_deve_cambiare_password.return_value = False
         mock_super_post.return_value = Response(
             {"access": "tok.access", "refresh": "tok.refresh"}, status=200,
         )
         request = MagicMock()
         request._request = MagicMock()
+        request.data = {"username": "alice"}
         response = AdminTokenView().post(request)
         self.assertEqual(response.data, {"access": "tok.access"})
         self._assert_cookie_refresh(response, "tok.refresh")

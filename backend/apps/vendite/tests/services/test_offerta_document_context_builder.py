@@ -111,6 +111,9 @@ class BuildContextOffertaTests(SimpleTestCase):
         self.assertEqual(ctx["cliente"]["denominazione"], "Cliente Offerta Srl")
         self.assertEqual(ctx["cliente"]["id_fiscale"], "IT01234567890")
         self.assertEqual(ctx["_meta"]["context_code"], "OFFERTA_COMMERCIALE")
+        # La forma dei dati (`CONTEXT_VERSION`): v2 dal 2026-08-05, il blocco
+        # `indirizzi`. Cambiarla vuole una versione di template che la legga.
+        self.assertEqual(ctx["_meta"]["context_version"], 2)
         self.assertEqual(ctx["_meta"]["righe_source"], "OFFERTE_ECCEZIONI")
         self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
 

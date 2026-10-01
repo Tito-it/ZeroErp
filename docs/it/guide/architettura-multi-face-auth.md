@@ -605,7 +605,7 @@ Simmetrico al flusso operatori ([Risorse umane §Invito operatore](/guide/risors
 
 Riusa tutto l'impianto esistente: [token_monouso](/dbzero/config/tabelle/token_monouso),
 [fn_sync_auth_user_is_active](/guide/risorse-umane-e-accessi#sync-auth_user-is_active) (generalizzata),
-middleware `PasswordChangeRequiredMiddleware`.
+il cancello degli obblighi (`apps/core/api/cancello_obblighi.py`) per il cambio password obbligato.
 
 ### 8.2 Self-service (shop)
 

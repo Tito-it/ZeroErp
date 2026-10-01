@@ -164,6 +164,8 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                     "titolo": "v1",
                     "html_template": "<p>x</p>",
                     "render_engine_id": engine,
+                    # NOT NULL senza default dal 20260930-16.
+                    "versione_contesto": 1,
                 })
                 documento_id, uid = repo.create_documento_generato({
                     "tipo_documento_output_id": tipo_output,
@@ -176,7 +178,9 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                     "stato": "GENERATO",
                     "titolo": "Documento",
                     "nome_file": "documento.pdf",
-                    "context_json": {"cliente": "x"},
+                    # La forma dei dati deve essere quella della versione:
+                    # il trigger sull'INSERT la confronta (20260930-20).
+                    "context_json": {"cliente": "x", "_meta": {"context_version": 1}},
                     "context_hash": "b" * 64,
                     "template_hash": "c" * 64,
                     "pdf_hash": "d" * 64,
@@ -252,6 +256,7 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                     "html_template": html,
                     "css_template": css,
                     "render_engine_id": engine,
+                    "versione_contesto": 1,
                     "context_schema": {"type": "object"},
                     "meta": {"k": "v"},
                 })

@@ -461,6 +461,7 @@
       "capitale_sociale_policy": "Regola capitale sociale",
       "categoria": "Categoria",
       "categoria_accisa_id": "Categoria accisa",
+      "causale_magazzino": "Causale di magazzino",
       "centro_riscossione_id": "Centro di riscossione",
       "cf_obbligatorio": "Codice fiscale obbligatorio",
       "check_lettura": "Controllo di lettura",
@@ -543,6 +544,7 @@
       "ricerca_visibile": "Visibile in ricerca",
       "richiede_abbinamento": "Richiede abbinamento",
       "richiede_pdp": "Richiede PDP",
+      "righe_lavorabili": "Righe lavorabili",
       "ripartizione": "Ripartizione",
       "ripetibilita": "Ripetibilità",
       "schema_db": "Schema DB",
@@ -580,7 +582,13 @@
     "split_select": "Seleziona tab da affiancare",
     "split_readonly": "Sola lettura",
     "split_swap": "Scambia pannelli",
-    "remaining": "Schede ancora apribili: {count}"
+    "remaining": "Schede ancora apribili: {count}",
+    "sostituisci": {
+      "titolo": "Sostituisci la scheda",
+      "messaggio": "Hai raggiunto il massimo di schede aperte: la scheda «{nome}» verrà sostituita. Confermi?",
+      "messaggio_modifiche": "Hai raggiunto il massimo di schede aperte: la scheda «{nome}» ha modifiche non salvate, che andranno perse. Sostituirla comunque?",
+      "conferma": "Sostituisci"
+    }
   },
   "errors": {
     "not_found_title": "Pagina non trovata",
@@ -831,7 +839,6 @@
     "generic_info": "Informazione",
     "generic_warn": "Attenzione",
     "detail_non_accessibile": "Elemento non trovato o non più accessibile.",
-    "tab_limit_reached": "Numero massimo di schede raggiunto. Chiudere una scheda per aprirne una nuova.",
     "network_error": "Impossibile contattare il server. Verificare la connessione.",
     "timeout_error": "Il server non ha risposto in tempo. Riprovare.",
     "validation_error": "Compilare tutti i campi obbligatori."
@@ -4318,7 +4325,8 @@
       "porta_a": "Porta a {stato}",
       "conferma_stato": "Portare la distinta allo stato «{stato}»?",
       "stato_cambiato": "Stato della distinta aggiornato.",
-      "foglio_chiuso": "Questa distinta e' in uno stato finale: le righe non si modificano piu'.",
+      "foglio_annullato": "Questa distinta è annullata: le sue righe si leggono soltanto.",
+      "foglio_chiuso": "Questa distinta è in stato «{stato}»: non accetta righe nuove. Le sospese e le scartate si lavorano ancora.",
       "contenuto_fermo": "Distinta validata: il contenuto è fermo. Si può ancora abbinare o sospendere una riga; per aggiungere, correggere o eliminare, riportala in bozza.",
       "mostra_scartate": "Mostra scartate",
       "mostra_scartate_hint": "Le righe scartate («non è nostra») restano nella distinta e nella quadratura, ma escono dal lavoro: di default sono nascoste.",
@@ -4381,7 +4389,8 @@
       "verbo_riprendi": "Riprendi",
       "conferma_stato_a": "Vuoi portare la riga a «{stato}»?",
       "elimina_reason": {
-        "distinta_finale": "La distinta è chiusa o annullata: le sue righe non si lavorano più.",
+        "distinta_annullata": "La distinta è annullata: le sue righe si leggono soltanto.",
+        "distinta_finale": "La distinta è chiusa: le sue righe non si eliminano più.",
         "distinta_non_manuale": "La distinta non è compilata a mano: le sue righe non si eliminano da qui. Per una prodotta dal sistema si agisce sull'atto che l'ha generata (fondo fattura o sistemazione); per una arrivata da un file si annulla e si reimporta.",
         "distinta_validata": "La distinta è validata: riportala in bozza con «Riapri», elimina la riga, poi validala di nuovo."
       },
@@ -5396,6 +5405,10 @@
         "field_margin_left": "Margine left (mm)",
         "field_valido_dal": "Valido dal",
         "field_valido_al": "Valido al",
+        "field_versione_contesto": "Legge i dati nella forma",
+        "versione_contesto_hint": "Il sistema prepara oggi i dati di questo documento nella forma {forma}. Una versione si pubblica e stampa solo se legge quella forma; una bozza puo' dichiararne un'altra per prepararla.",
+        "versione_contesto_builder_assente": "Il generatore dei dati di questo template non e' registrato: le sue versioni non si pubblicano e non stampano.",
+        "publish_forma": "Questa versione legge i dati nella forma {versione}; il sistema li prepara nella forma {builder}.",
         "orientation_portrait": "Verticale",
         "orientation_landscape": "Orizzontale"
       },

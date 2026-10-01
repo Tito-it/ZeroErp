@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { computed, inject, ref } from 'vue'
 import { useNavigationStore } from '../../stores/navigation'
-import { useTabsStore } from '../../stores/tabs'
 import { useNotify } from '../composables/useNotify'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { NAV_ICONS, resolveNavigationLabel } from '../navigation'
@@ -16,7 +15,6 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const nav = useNavigationStore()
-const tabs = useTabsStore()
 const notify = useNotify()
 const { isMenuItemAllowed } = useNavigationFavorites()
 const isCollapsed = inject('sidebarCollapsed', ref(false))
@@ -59,15 +57,8 @@ function handleBackHome() {
 }
 
 function handleLeafClick(item) {
-  // Apre la tab (o attiva quella esistente) — se limite raggiunto, blocca navigazione
-  const opened = tabs.openTab({
-    path: item.to,
-    label: itemLabel(item),
-    domain: nav.currentDomain,
-    menuKey: item.key,
-    icon: item.icon
-  })
-  if (!opened) return
+  // La scheda la apre il guard del router (unico punto, anche per la
+  // sostituzione oltre il limite): qui si naviga e basta.
   router.push(item.to)
   emit('navigate')
 }

@@ -10,8 +10,13 @@
 > dalle code lato **lettura**, l'annullo non le tocca) il 2026-09-29; **D-1, D-2,
 > D-3 il 2026-09-30** (§5); **D-4, D-5 il 2026-09-30** (§8.3). Piano DB al §9;
 > ✅ **DB CONSEGNATO il 2026-09-30** (§10: `20260930-30 → -33`): applicato da Tid su dev,
-> pgTAP verdi. ⏳ **Resta il lato BE/FE**: §6 e §10.4 (R-1 … R-5), poi il collaudo
-> (la riga di un'annullata sparisce dalla coda e resta in sola lettura nel drawer).
+> pgTAP verdi. ✅ **BE/FE il 2026-09-30** (§11): R-1, R-2, R-4, R-5. ⏳ **R-3
+> fermo** sulla sede DB del motivo: ✅ **D-6 approvata da Tid il 2026-09-30**,
+> ⏳ **al team DB** (§11.3, richiesta §11.4). Collaudo: ✅ la riga di
+> un'annullata sparisce dalla coda e nel drawer resta in sola lettura, col badge
+> «Modalità consultazione» (Tid, 2026-09-30).
+> ✅ **BRIEF CHIUSO il 2026-09-30** (Tid). La R-3 con la D-6 (P-9 … P-12, §11.4)
+> **non è chiusa**: passa in `.codex/PROJECT_CONTEXT.md` § «Aperto — Media priorità».
 >
 > **In una riga:** `ANNULLATA` vuol dire *«non è mai successa»*, ma una coda di
 > lavoro continua a proporre le sue righe. Il frontend le mostra con tutte le
@@ -375,12 +380,108 @@ perché nessuno di loro annulla una distinta.
 | --- | --- |
 | DB (P-1 … P-8) | ✅ applicato su dev, pgTAP verdi |
 | CI da zero | ⏳ alla prossima PR `dev/db-tid` → `Tito-dev`. ⚠️ Finché manca R-1, `check_i18n_keys` è rosso per la `reason_key` nuova |
-| BE: coda filtrata e bandiera esposta (§6, R-5) | ⏳ |
-| BE: policy e ripieghi dei due codici (R-2) | ⏳ |
-| BE/FE: «Annulla» spento col motivo sulle non manuali (R-3) | ⏳ |
-| BE: test Django con distinte `MANUALE` quando annullano (R-4) | ⏳ |
-| FE: chiave i18n `distinta_annullata` (R-1), azioni di riga lette dalla bandiera (§6) | ⏳ |
-| Collaudo in-app (§6) | ⏳ dopo BE/FE |
+| BE: coda filtrata e bandiera esposta (§6, R-5) | ✅ 2026-09-30 (§11.1) |
+| BE: policy e ripieghi dei due codici (R-2) | ✅ 2026-09-30 (§11.1) |
+| DB: check delle condizioni di transizione (D-6, §11.4) | ⏳ al team DB (D-6 approvata da Tid il 2026-09-30) |
+| BE/FE: «Annulla» e «Porta a Bozza» spenti col motivo sulle non manuali (R-3) | ⏳ dopo D-6 |
+| BE: test Django con distinte `MANUALE` quando annullano (R-4) | ✅ 2026-09-30 (§11.1) |
+| FE: chiave i18n `distinta_annullata` (R-1), azioni di riga lette dalla bandiera (§6) | ✅ 2026-09-30 (§11.2) |
+| Collaudo in-app (§6): la riga sparisce dalla coda | ✅ 2026-09-30, Tid: una `DA_ABBINARE` caricata a mano, distinta annullata → la coda «Da abbinare» si svuota |
+| Collaudo in-app (§6): nel drawer la riga resta, in sola lettura, col motivo | ✅ 2026-09-30, Tid, dopo la correzione del badge (§11.2, riga D-3) |
 
-Il brief resta in `work-in-progress/` finché il lato BE/FE e il collaudo non sono
-chiusi.
+Chiuso da Tid il 2026-09-30 a collaudo verde: la R-3 (D-6) continua in
+PROJECT_CONTEXT § «Aperto — Media priorità».
+
+## 11. Consegna BE/FE (2026-09-30)
+
+Sessione `dev/backend-tid`, sul DB di sviluppo con `20260930-30 → -33`
+applicati (merge #1734).
+
+### 11.1 Backend
+
+| # | Cosa | Dove |
+| --- | --- | --- |
+| R-5 | La coda seleziona solo righe con `cst.righe_lavorabili IS TRUE` (fail-closed: con la LEFT JOIN uno stato non letto non è «lavorabile»). La riga della coda porta `contabile_righe_lavorabili`, e il dettaglio e la lista delle distinte portano `stato_righe_lavorabili` (nella proiezione condivisa `_DISTINTA_SELECT`: è una colonna di catalogo e costa zero) | `pagamenti_repository.py`, `types.py` |
+| R-2 | `error_policies_generated.py` rigenerato: due classi nuove, nessuna classe cambiata. Ripieghi senza `%s` per i due codici | `core/services/` |
+| R-4 | Nessun test Django annullava una distinta sul DB vero. I test nuovi usano la fixture `_monta`, che la costruisce `MANUALE` | — |
+| test | `AnnullataTests` (3 test, DB vero, soggetti costruiti): (1) la DA_ABBINARE e la SOSPESA ci sono in coda prima e **non** ci sono dopo l'annullo, e la bandiera del dettaglio passa da true a false; (2) nel drawer la riga resta, il cestino è spento con `DISTINTA_ANNULLATA` e la sua `reason_key`, e un cambio di stato è un 409 `E_RIGA_CONTABILE_DISTINTA_ANNULLATA`; (3) l'annullo di una non manuale è un 409 `E_CONTABILE_ANNULLO_NON_MANUALE`. **Mutazione**: senza il filtro della coda, (1) è rosso | `tests/db/test_validata_e_tardiva_db.py` |
+
+### 11.2 Frontend
+
+| # | Cosa |
+| --- | --- |
+| §6 | `useAzioniRigaContabile`: `testataDi(riga)` porta `{ righeLavorabili, registrata }` e il foglio si spegne su `righeLavorabili === false`, non più su `finale && !registrata`. La coda passa `contabile_righe_lavorabili` e il drawer passa `stato_righe_lavorabili` |
+| §6 | Il motivo si divide in due chiavi: `pagamenti.distinte.foglio_annullato` («le sue righe si leggono soltanto»), che è il tooltip delle azioni e il messaggio del drawer sull'annullata, e `foglio_chiuso`, riscritta per la finale con righe lavorabili: nomina lo stato dal catalogo (`{stato}`, oggi «Chiusa») e dice «non accetta righe nuove; sospese e scartate si lavorano ancora». Prima la frase era una sola e sulla CHIUSA diceva «non si modificano più», dove invece la tardiva è aperta |
+| R-1 | `pagamenti.righe.elimina_reason.distinta_annullata` in it/en. `distinta_finale` è riscritta per la sola CHIUSA, perché dalla check ora arriva solo da lì |
+| — | `config_panel.campi.righe_lavorabili` in it/en: il pannello config degli stati mostra la colonna nuova, e `test_config_panel_registro_db` la pretende |
+| test | Il test della coda la legge **intera**, pagina per pagina: con una pagina sola le righe della fixture potevano cadere fuori, e «non c'è» sarebbe passato per la popolazione e non per il filtro. |
+| test | Spec del composable: foglio spento sulla bandiera, bandiera true e non registrata che non spegne niente, cestino dell'annullata col motivo della check |
+| D-3 | (collaudo di Tid, 2026-09-30) Sull'annullata mancava il badge «Modalità consultazione» del titolo: il drawer leggeva il readonly **solo dai permessi**. Ora fa da provider della catena readonly (frontend-standards §catena readonly): permessi + prop `readonly` + stato (`stato_righe_lavorabili === false`, non `stato_is_final`: sotto la CHIUSA si lavora ancora), con `provide(READONLY_KEY)`. Le azioni di riga e il `RatePickerDialog` leggono il readonly **da permessi** (`readonlyPermessi`): sull'annullata restano visibili, spente col motivo. ⚠️ Niente `app-readonly` sul contenuto: `pointer-events: none` spegnerebbe il click sulla riga e i tooltip |
+
+Verdi: pagamenti + core Django (1838 test, DB vero), vitest pagamenti,
+`check_i18n_keys`, `genera_error_policies --check`. I rossi di `core` che
+restano **non sono di questo brief**, e c'erano già prima:
+`causale_magazzino` senza etichetta, `versione_contesto` NOT NULL sui template, e
+i ripieghi di `E_DOCUMENTI_VERSIONE_CONTESTO_*`, del brief
+documenti-versione-contesto-template, che la rigenerazione ha reso visibili.
+
+Worker gunicorn ricaricati il 2026-09-30: il BE nuovo è attivo per il collaudo.
+
+### 11.3 R-3 è fermo: manca la sede del motivo — D-6 (✅ Tid, 2026-09-30)
+
+La R-3 chiede «Annulla» spento **col motivo** su una non manuale, letto dal DB
+come `can_validare`. Ma `can_validare` legge una **check**
+(`fn_check_contabile_validabile`), mentre la regola 3 vive **solo nel corpo del
+guard** (`trgfn_vendite_contabili_guard_validazione`). Non c'è niente da
+leggere. Le strade dal lato BE sono tutte copie:
+
+* ricalcolare in Python o in SQL del repository «stato d'arrivo con
+  `righe_lavorabili = false` e `origine <> 'MANUALE'`» è la seconda sede, che la
+  R-3 stessa esclude;
+* proporre la voce e lasciar parlare il 409 contraddice §12.1 (stato ⇒
+  disabilita col motivo).
+
+⭐ **E la stessa lacuna c'è già sulla regola 2** (`VALIDATA → BOZZA` solo MANUALE,
+`E_CONTABILE_RIAPERTURA_NON_MANUALE`): oggi «Porta a Bozza» su una generata
+validata si propone acceso e finisce in 409. Sono due regole dello stesso guard,
+con la stessa forma (transizione × origine), e la matrice non le vede.
+
+**Proposta al team DB (D-6):** una check sola per le condizioni di transizione
+che la matrice non porta:
+
+`script.fn_check_contabile_transizione(p_contabile_id bigint, p_stato_a text) → jsonb`
+
+nella forma di `fn_check_contabile_validabile` (array di motivi
+`{codice, reason, reason_key, dettaglio, valori}`, `[]` = ammessa), con i motivi
+`RIAPERTURA_NON_MANUALE` (regola 2) e `ANNULLO_NON_MANUALE` (regola 3). Il
+guard la chiama con `fn_raise_primo_motivo_se_presente`, come fa già per la
+regola 1, così il rifiuto e il pulsante spento non possono divergere.
+`reason_key` `pagamenti.distinte.transizione_reason.riapertura_non_manuale` e
+`.annullo_non_manuale`, da mettere nei locales nello stesso giro.
+
+⚠️ La regola 1 (VALIDATA) ha già la sua check con un secondo argomento
+(l'importo dichiarato). Se debba entrare nella stessa check o restare a parte lo
+decide il team DB. Dal BE basta sapere che ogni transizione ha **una** check da
+leggere.
+
+**Ricaduta BE/FE, dopo il DB:** il dettaglio espone, per ogni uscita della
+testata, il blocco con il motivo (`transizioni_blocco: {stato_a: {reason,
+reason_key, dettaglio}}`, letto con il BB `sql_lateral_primo_motivo` su ogni
+uscita della matrice). Il drawer spegne «Porta a …» col motivo: «Annulla» sulle
+non manuali (R-3) e, per simmetria, «Porta a Bozza» sulle non manuali.
+
+### 11.4 Richiesta al team DB (D-6, approvata da Tid il 2026-09-30)
+
+| # | Cosa |
+| --- | --- |
+| P-9 | `script.fn_check_contabile_transizione(p_contabile_id bigint, p_stato_a text) → jsonb`, nella forma di `fn_check_contabile_validabile`: array di motivi `{codice, reason, reason_key, dettaglio, valori}`, `[]` se la transizione è ammessa. Motivi, in quest'ordine: `RIAPERTURA_NON_MANUALE` (regola 2, `E_CONTABILE_RIAPERTURA_NON_MANUALE`, `VALIDATA → BOZZA` su una non MANUALE) e `ANNULLO_NON_MANUALE` (regola 3, `E_CONTABILE_ANNULLO_NON_MANUALE`, stato d'arrivo con `righe_lavorabili = false` su una non MANUALE). `STABLE`, firma con `%TYPE` dove serve. ⚠️ `p_stato_a` è il `codice_interno`, perché il BE lo conosce dalla matrice. Se il team DB preferisce l'id, lo dica: il BE si adegua |
+| P-10 | `trgfn_vendite_contabili_guard_validazione`: le regole 2 e 3 chiamano la check con `fn_raise_primo_motivo_se_presente`, come fa già la regola 1, e il corpo non tiene più i due `IF` in proprio. È la condizione perché il pulsante spento e il 409 non possano divergere |
+| P-11 | `reason_key` `pagamenti.distinte.transizione_reason.riapertura_non_manuale` e `.annullo_non_manuale`, con `dettaglio` che porta i valori della frase (codice della distinta, origine leggibile). ⚠️ `check_i18n_keys` le trova nel corpo: il BE/FE le mette nei locales **nello stesso giro** del push, come per R-1 |
+| P-12 | pgTAP con soggetti costruiti: check `[]` su una MANUALE (annullo e riapertura), motivo giusto su una GENERATA (per entrambe le regole), guard che rifiuta con lo stesso codice del primo motivo, e mutazione (senza la chiamata alla check, il rifiuto sparisce) |
+| — | Se la regola 1 (VALIDATA, con l'importo dichiarato) debba entrare nella stessa check o restare a parte lo decide il team DB: al BE basta **una** check leggibile per ogni transizione |
+
+**Dopo il push DB, lato BE/FE:** il dettaglio espone `transizioni_blocco:
+{stato_a: {reason, reason_key, dettaglio}}` su ogni uscita della matrice (BB
+`sql_lateral_primo_motivo`), e il drawer spegne «Porta a …» col motivo.
+Test: su una GENERATA validata «Annulla» e «Porta a Bozza» sono spenti col
+motivo, e il 409 del guard porta lo stesso codice.

@@ -24,6 +24,15 @@ class DocumentContextBuilder(ABC):
     - `CODE` (class var): chiave whitelisted, deve combaciare 1:1 con
       `documenti.template_documenti.context_builder_code`. Il render
       service usa questa chiave per il dispatch.
+    - `CONTEXT_VERSION` (class var, intero >= 1): la FORMA dei dati che il
+      builder produce. E' la sede unica del numero: ne escono
+      `_meta.context_version` del contesto, il controllo prima del render e
+      il parametro della pubblicazione di una versione di template
+      (`documenti.fn_guard_versione_contesto`, brief-db-documenti-versione-
+      contesto-template). Si alza di uno quando cambia la forma — una chiave
+      tolta, rinominata o di struttura diversa — e nello stesso giro nasce la
+      versione di template che la legge. ⛔ Mai un default: un builder che non
+      la dichiara non si registra.
     - `build_context(sorgente_id, *, auth_user_id, locale)` ritorna un dict
       JSON-serializable usato dal template engine. Il builder NON conosce
       il template HTML: si limita a fornire i dati. La logica di template
@@ -33,6 +42,7 @@ class DocumentContextBuilder(ABC):
     """
 
     CODE: str = ""
+    CONTEXT_VERSION: int = 0
 
     @abstractmethod
     def build_context(

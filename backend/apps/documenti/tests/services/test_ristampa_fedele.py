@@ -177,7 +177,7 @@ class RistampaFedeleTests(SimpleTestCase):
         })
         with _patch_scope(), _patch_atomic(), _patch_render():
             with patch(
-                "apps.documenti.services.document_generation_service.get_builder",
+                "apps.documenti.services.document_generation_service.get_builder_del_template",
             ) as mock_builder:
                 svc.ristampa_fedele(_make_user(), 99)
         mock_builder.assert_not_called()

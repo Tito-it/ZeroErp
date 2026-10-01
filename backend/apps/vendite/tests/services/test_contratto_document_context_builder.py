@@ -114,6 +114,9 @@ class BuildContextContrattoTests(SimpleTestCase):
         self.assertEqual(ctx["righe"][0]["prezzo_finale"], "90,00")
         self.assertEqual(ctx["_meta"]["righe_source"], "PREVIEW_LISTINO")
         self.assertEqual(ctx["_meta"]["context_code"], "CONTRATTO")
+        # La forma dei dati (`CONTEXT_VERSION`): v2 dal 2026-08-05, il blocco
+        # `indirizzi`. Cambiarla vuole una versione di template che la legga.
+        self.assertEqual(ctx["_meta"]["context_version"], 2)
         self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
         repo.list_righe_preview.assert_called_once_with(7)
 

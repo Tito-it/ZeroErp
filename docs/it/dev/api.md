@@ -1224,6 +1224,24 @@ e refresh che ammettono solo il subset di vesti che gli compete:
 Il vecchio path unificato `/api/v1/auth/token/` e' stato **rimosso senza
 alias** (breaking, grace 0). Client pre-refactor devono aggiornarsi.
 
+#### Il login a due passi (secondo fattore, dal 2026-10-01)
+
+Con il secondo fattore **attivo** sulla credenziale, il login risponde 200
+**senza** JWT e senza cookie:
+
+```json
+{ "two_factor_required": true, "sfida": "<firmata>", "scade_in_secondi": 300 }
+```
+
+Il secondo passo è `POST /api/v1/{admin|portale|shop}/token/secondo-fattore/`
+con `{"sfida", "codice"}` oppure `{"sfida", "codice_recupero"}`: risponde
+nell'envelope `{"data": {"access", "password_change_required"?,
+"codici_recupero_rimasti"?}}` e scrive il refresh nel cookie. Sfida scaduta, di
+un'altra porta o provenienza → 401 `E_TOTP_SFIDA_NON_VALIDA` (si riparte dalla
+password); codice sbagliato → 400 `E_TOTP_CODICE_NON_VALIDO`, e conta come una
+password sbagliata. Il successo sul freno si registra solo al secondo passo.
+Brief: [sicurezza](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis, T-2.
+
 Contratto HTTP completo, claim JWT, codici errore e guard cross-namespace:
 [api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md).
 

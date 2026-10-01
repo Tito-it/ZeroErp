@@ -154,6 +154,12 @@ _DISTINTA_SELECT = """
         --    Il frontend la porta per spegnere «Registra» COL MOTIVO invece di
         --    lasciarlo finire in 409 — e non deduce niente dal nome dello stato.
         st.is_registrabile AS stato_is_registrabile,
+        -- ⭐ «Le righe di questa distinta si lavorano ancora?» sta nel CATALOGO
+        --    (D-1, brief-db-righe-distinta-annullata-fuori-dalle-code): CHIUSA e
+        --    ANNULLATA sono entrambe `is_final` ma opposte per le righe. Il
+        --    frontend spegne le azioni di riga da qui, e non ricalcola piu'
+        --    «finale e non registrata» con `data_conferma` presa in prestito.
+        st.righe_lavorabili AS stato_righe_lavorabili,
         -- ⭐ La riga «dove sono» del drawer (FE-9): la chiave i18n vive nel
         --    `meta` dello STATO, come negli otto domini che usano
         --    `DrawerActionsBar :info-key`. Il backend la TRASPORTA: un `CASE`
@@ -373,6 +379,12 @@ _RIGHE_DISTINTA_ATTIVE_SQL = f"""
 #    registrata si «abbina e registra» (la tardiva), sotto una aperta si
 #    abbina e basta: il frontend sceglie il verbo da un fatto, non ricalcola
 #    una regola.
+# ⭐ E porta la bandiera del CATALOGO `righe_lavorabili` (D-1, brief-db-righe-
+#    distinta-annullata-fuori-dalle-code §6): e' la risposta a «si lavora?»,
+#    la stessa che il guard legge per congelare. ⚠️ Sulla coda vale sempre
+#    true per costruzione (`list_righe_coda` filtra su di lei), ma la
+#    proiezione e' la RIGA della coda, non la coda: chi la legge non deve
+#    sapere da quale filtro e' passata.
 _RIGA_CODA_SELECT = f"""
     SELECT {_RIGA_COLONNE},
         c.codice          AS contabile_codice,
@@ -380,6 +392,7 @@ _RIGA_CODA_SELECT = f"""
         c.origine         AS contabile_origine,
         cst.codice_interno AS contabile_stato_codice_interno,
         cst.is_final       AS contabile_is_final,
+        cst.righe_lavorabili AS contabile_righe_lavorabili,
         (c.data_conferma IS NOT NULL) AS contabile_registrata
     {_RIGA_FROM}
       JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
@@ -1783,7 +1796,18 @@ class PagamentiRepository:
     ) -> tuple[list[RigaCodaRow], int]:
         self._guard_canale_sistema("list_righe_coda")
 
-        conditions = ["r.attivo IS TRUE", "rs.codice_interno = ANY(%s)"]
+        # ⭐ La coda e' una lista di LAVORO: cio' che non si lavora non ci sta.
+        #    Una riga DA_ABBINARE sotto una distinta ANNULLATA restava qui per
+        #    sempre, con ogni azione spenta (brief-db-righe-distinta-annullata-
+        #    fuori-dalle-code §1). La condizione e' la bandiera del catalogo,
+        #    non `NOT is_final`: sotto una CHIUSA le sospese si lavorano ancora
+        #    (la tardiva, D20-b). ⚠️ `IS TRUE`: con la LEFT JOIN, uno stato non
+        #    letto non si dice «lavorabile» (fail-closed, come il default).
+        conditions = [
+            "r.attivo IS TRUE",
+            "rs.codice_interno = ANY(%s)",
+            "cst.righe_lavorabili IS TRUE",
+        ]
         params: list[Any] = [list(stati)]
         if billing_account_id is not None:
             conditions.append("r.billing_account_id = %s")

@@ -34,7 +34,7 @@
 //    §Gruppo B), come i titoli IVA il 02/09. ⭐ La macchina del master-detail
 //    (form sotto la lista) e' il BB `useFormInline` dal 2026-09-28:
 //    il debito dichiarato il 28/08 e' chiuso (brief-db-liste-righe-documento L1).
-import { computed, ref, watch } from 'vue'
+import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
@@ -58,7 +58,7 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { READONLY_KEY, useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useFormInline } from '../../core/composables/useFormInline'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
@@ -81,6 +81,7 @@ import ValidaDistintaDialog from './ValidaDistintaDialog.vue'
 const props = defineProps({
   visible: { type: Boolean, default: false },
   distintaId: { type: [Number, null], default: null },
+  readonly: { type: Boolean, default: false },
 })
 // ⭐ `apri-distinta` e non un secondo drawer annidato: la correzione produce un
 //    DOCUMENTO NUOVO, e lo si apre al posto di questo — chi corregge deve
@@ -93,7 +94,19 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const { execute } = useApiHandler()
 const { confirmAction } = useConfirmAction()
-const isReadonly = useInjectReadonly()
+// ⭐ IL READONLY LO CALCOLA QUESTO DRAWER e lo propaga (`provide(READONLY_KEY)`,
+//    frontend-standards §catena readonly): permessi (dal provider della vista) +
+//    contesto (`props.readonly`) + stato. Lo stato che chiude il documento e'
+//    quello le cui righe non si lavorano piu' (`stato_righe_lavorabili = false`,
+//    la bandiera del catalogo: oggi l'ANNULLATA, D-3 del brief
+//    righe-distinta-annullata) — non `stato_is_final`, perche' sotto la CHIUSA
+//    sospese e scartate si lavorano ancora. Cosi' il badge «Modalita'
+//    consultazione» del titolo si accende come negli altri drawer.
+// ⚠️ Il readonly da PERMESSI resta a parte (`readonlyPermessi`): «non puoi» si
+//    nasconde, «non adesso» si spegne col motivo — le azioni di riga dell'annullata
+//    devono restare visibili, spente, col loro tooltip.
+const parentReadonly = useInjectReadonly()
+const readonlyPermessi = computed(() => parentReadonly.value || props.readonly)
 // ⚠️ Guard anti-race: aprire due distinte in rapida successione farebbe
 //    atterrare la risposta piu' lenta DOPO quella piu' recente, e a video
 //    resterebbe il documento sbagliato — senza nessun errore.
@@ -128,6 +141,11 @@ const correggiVisible = ref(false)
 const righeDaRateVisible = ref(false)
 
 const distinta = computed(() => dettaglio.value?.distinta || null)
+const isWorkflowLocked = computed(
+  () => distinta.value != null && distinta.value.stato_righe_lavorabili === false,
+)
+const isReadonly = computed(() => readonlyPermessi.value || isWorkflowLocked.value)
+provide(READONLY_KEY, isReadonly)
 const statiDistinta = computed(() => dettaglio.value?.stati_distinta || [])
 // ⭐ Il catalogo degli stati di RIGA viaggia nello stesso round-trip, e serve
 //    davvero: porta `is_final`, che il singolo record di riga NON espone — la
@@ -360,14 +378,15 @@ const interruttoreScartate = computed(
 const { buildRowActions } = useAzioniRigaContabile({
   statiRiga: () => statiRiga.value,
   transizioniRiga: () => dettaglio.value?.transizioni?.riga || {},
-  // I fatti della testata, dal dettaglio: finale (`stato_is_final`) e
-  // registrata (`data_conferma`, scritta dal posting). ⚠️ E' la stessa
+  // I fatti della testata, dal dettaglio: se le righe si lavorano ancora
+  // (`stato_righe_lavorabili`, bandiera del catalogo) e registrata
+  // (`data_conferma`, scritta dal posting). ⚠️ «registrata» e' la stessa
   // lettura di `correggibile`: registrata = finale con la conferma.
   testataDi: () => ({
-    finale: distinta.value?.stato_is_final === true,
+    righeLavorabili: distinta.value?.stato_righe_lavorabili,
     registrata: distinta.value?.data_conferma != null,
   }),
-  readonly: () => isReadonly.value,
+  readonly: () => readonlyPermessi.value,
   onAbbina: (riga, modo) => {
     rigaDaAbbinare.value = riga
     modoAbbina.value = modo
@@ -590,14 +609,30 @@ watch(
              come un'interfaccia rotta invece che come uno stato. E lo stesso
              vale per il foglio VALIDATO (D18): niente righe nuove ne' fatti,
              ma abbinare e sospendere si puo' — e va detto, o il pulsante
-             «Nuova riga» che manca sembra un difetto. -->
+             «Nuova riga» che manca sembra un difetto.
+             ⭐ Due finali, due frasi (D-1, 30/09): sotto l'ANNULLATA le righe
+             si leggono soltanto (`stato_righe_lavorabili = false`, la bandiera
+             del catalogo); sotto la CHIUSA non entra niente di nuovo, ma
+             sospese e scartate si lavorano ancora. Una frase sola diceva
+             «non si modificano piu'» anche dove la tardiva e' aperta.
+             ⚠️ La seconda frase NOMINA lo stato dal catalogo e non scrive
+             «chiusa»: la condizione e' «finale con righe lavorabili», e uno
+             stato nuovo con la stessa forma non deve farla mentire. -->
         <Message
-          v-if="distinta.stato_is_final"
+          v-if="distinta.stato_righe_lavorabili === false"
           severity="info"
           :closable="false"
           size="small"
         >
-          {{ t('pagamenti.distinte.foglio_chiuso') }}
+          {{ t('pagamenti.distinte.foglio_annullato') }}
+        </Message>
+        <Message
+          v-else-if="distinta.stato_is_final"
+          severity="info"
+          :closable="false"
+          size="small"
+        >
+          {{ t('pagamenti.distinte.foglio_chiuso', { stato: distinta.stato_descrizione || distinta.stato_codice }) }}
         </Message>
         <Message
           v-else-if="!distinta.contenuto_modificabile && !isReadonly"
@@ -780,7 +815,7 @@ watch(
       v-model:visible="righeDaRateVisible"
       modalita="multipla"
       :contabile-id="distintaId"
-      :readonly="isReadonly"
+      :readonly="readonlyPermessi"
       @righe-create="ricarica"
     />
   </Drawer>
