@@ -1,7 +1,7 @@
 # Schema `magazzino`
 
 ## 📚 Tabelle
-- [assets](tabelle/assets.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [assets](tabelle/assets.md) — (rev 2026-09-15 — Lotto 1 del magazzino; rev 2026-10-01 — il contratto esce)
 - [causali](tabelle/causali.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [eventi_assets](tabelle/eventi_assets.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [inventari](tabelle/inventari.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
@@ -33,9 +33,7 @@
 - [fn_get_magazzino_note](funzioni/fn_get_magazzino_note.md) — (rev 2026-08-21)
 - [fn_inventario_piano](funzioni/fn_inventario_piano.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_libera_blocco](funzioni/fn_libera_blocco.md)
-- [fn_posta_ddt](funzioni/fn_posta_ddt.md)
 - [fn_posta_inventario](funzioni/fn_posta_inventario.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
-- [fn_posta_reso](funzioni/fn_posta_reso.md)
 - [fn_posta_rettifica](funzioni/fn_posta_rettifica.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_posta_trasferimento](funzioni/fn_posta_trasferimento.md)
 - [fn_ricalcola_valore_giacenza](funzioni/fn_ricalcola_valore_giacenza.md) — (rev 2026-09-18 — Lotto 2 del magazzino)

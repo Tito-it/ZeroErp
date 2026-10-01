@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DI dbops.fk_index_policy CHE D-3 RENDE MORTA
+#   Brief: brief-db-magazzino-registro-anello-interno, sezione 2 (D-3)
+#
+#   fk_mag_assets_contratto e' caduta con magazzino.assets.contratto_id
+#   (00_schema/magazzino/20261001-22). La riga sta nel mirror base
+#   fk_index_policy.csv, che e' di gennaio e NON si sveglia (linee-guida-sql
+#   11.2): il file la tiene, il database no — la stessa forma di
+#   20260915-12 (le tredici righe del Lotto 1).
+#   Innocua (consentito = f: apply_fk_index_policy() farebbe un DROP INDEX IF
+#   EXISTS a vuoto), ma un registro che nomina un vincolo inesistente e' un
+#   registro sporco.
+#   In CI: il mirror base la inserisce, questo DELETE la toglie subito dopo
+#   (20261001 > 20260116). Forma: per coordinate complete, come la PK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261001-25-delete-fk-index-policy-assets-contratto-mctit.yaml
+
+  - changeSet:
+      id: 20261001-25-delete-fk-index-policy-assets-contratto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da dbops.fk_index_policy la riga di fk_mag_assets_contratto, caduta con
+        magazzino.assets.contratto_id (D-3). Il mirror base e' dormiente e non cancella. Brief:
+        brief-db-magazzino-registro-anello-interno.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: fk_index_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.fk_index_policy
+               WHERE (schema_name, table_name, constraint_name)
+                     = ('magazzino', 'assets', 'fk_mag_assets_contratto');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La riga torna dal mirror base al suo prossimo risveglio. Nessun INSERT qui.
+              SELECT 1;

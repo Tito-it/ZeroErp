@@ -7,7 +7,7 @@ CREATE FUNCTION fn_posta_ddt(p_ddt_id bigint, p_fase text)
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION magazzino.fn_posta_ddt(p_ddt_id bigint, p_fase text)
+CREATE OR REPLACE FUNCTION vendite.fn_posta_ddt(p_ddt_id bigint, p_fase text)
  RETURNS TABLE(movimento_id bigint, prelievo_id bigint, qta numeric)
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -27,17 +27,17 @@ DECLARE
 BEGIN
     IF p_ddt_id IS NULL OR p_ddt_id <= 0
        OR p_fase IS NULL OR p_fase NOT IN ('USCITA', 'ARRIVO') THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_ddt',
-            'E_MAG_CHIAMATA_NON_VALIDA',
+        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+            'E_VENDITE_CHIAMATA_NON_VALIDA',
             jsonb_build_object('detail', 'bolla maggiore di zero, fase USCITA o ARRIVO',
                                'p_ddt_id', p_ddt_id, 'p_fase', p_fase),
-            NULL::uuid, 'magazzino.fn_posta_ddt',
+            NULL::uuid, 'vendite.fn_posta_ddt',
             'p_ddt_id (obbligatorio, maggiore di zero), p_fase (USCITA | ARRIVO)');
     END IF;
 
     SELECT d.* INTO v_ddt FROM vendite.ddt d WHERE d.id = p_ddt_id;
     IF NOT FOUND THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_ddt',
+        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
             'E_DDT_NOT_FOUND', jsonb_build_object('ddt_id', p_ddt_id), NULL::uuid,
             VARIADIC ARRAY[]::text[]);
     END IF;
@@ -46,11 +46,11 @@ BEGIN
     -- L'arrivo esiste solo per la bolla di trasferimento: una chiamata
     -- diversa e' un chiamante rotto, non un dato.
     IF v_causale IS NULL OR (p_fase = 'ARRIVO' AND v_causale <> 'TRASF_OUT') THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_ddt',
-            'E_MAG_CHIAMATA_NON_VALIDA',
+        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+            'E_VENDITE_CHIAMATA_NON_VALIDA',
             jsonb_build_object('detail', 'la bolla non muove merce in questa fase',
                                'ddt_id', p_ddt_id, 'p_fase', p_fase, 'causale_magazzino', v_causale),
-            NULL::uuid, 'magazzino.fn_posta_ddt',
+            NULL::uuid, 'vendite.fn_posta_ddt',
             'una bolla che muove merce (ARRIVO: solo la bolla di trasferimento)');
     END IF;
 
@@ -58,7 +58,7 @@ BEGIN
       FROM config.sorgenti s
      WHERE s.codice_interno = 'DDT_VENDITA_PRELIEVO' AND s.attivo;
     IF NOT FOUND THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_ddt',
+        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
             'E_CONFIG_MANCANTE',
             jsonb_build_object('config', 'config.sorgenti.DDT_VENDITA_PRELIEVO'),
             NULL::uuid, VARIADIC ARRAY['sorgente DDT_VENDITA_PRELIEVO (config.sorgenti, attiva)']);
@@ -111,8 +111,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION magazzino.fn_posta_ddt(p_ddt_id bigint, p_fase text)
-IS 'Il posting di una bolla: un movimento per prelievo (sorgente DDT_VENDITA_PRELIEVO, D-L3-d), righe attive, in ordine di riga e di prelievo. p_fase = USCITA (all''EMESSO): dal magazzino della bolla, con la causale di magazzino della sua causale di trasporto (vendite.fn_ddt_causale_magazzino), quantita'' negativa, ubicazione di partenza, data della bolla; per la bolla di trasferimento transfer_uid = uid della bolla. p_fase = ARRIVO (al CONSEGNATO, solo trasferimento): nel magazzino di arrivo, TRASF_IN, ubicazione di arrivo, stesso transfer_uid — il costo e'' quello dell''uscita, lo trova la primitiva. Non ricontrolla (la primitiva e'' la rete, la check della merce ha gia'' parlato), non crea prelievi, non guarda lo stato: QUANDO lo decide il verbo. SECURITY DEFINER, RISERVATA: ci si arriva solo da vendite.fn_cambia_stato_ddt. Ritorna (movimento_id, prelievo_id, qta). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-7).';
+COMMENT ON FUNCTION vendite.fn_posta_ddt(p_ddt_id bigint, p_fase text)
+IS 'Il posting di una bolla: un movimento per prelievo (sorgente DDT_VENDITA_PRELIEVO, D-L3-d), righe attive, in ordine di riga e di prelievo. p_fase = USCITA (all''EMESSO): dal magazzino della bolla, con la causale di magazzino della sua causale di trasporto (vendite.fn_ddt_causale_magazzino), quantita'' negativa, ubicazione di partenza, data della bolla; per la bolla di trasferimento transfer_uid = uid della bolla. p_fase = ARRIVO (al CONSEGNATO, solo trasferimento): nel magazzino di arrivo, TRASF_IN, ubicazione di arrivo, stesso transfer_uid — il costo e'' quello dell''uscita, lo trova la primitiva. Non ricontrolla (la primitiva e'' la rete, la check della merce ha gia'' parlato), non crea prelievi, non guarda lo stato: QUANDO lo decide il verbo. SECURITY DEFINER, RISERVATA: ci si arriva solo da vendite.fn_cambia_stato_ddt. Ritorna (movimento_id, prelievo_id, qta). Sta in vendite e non in magazzino: chi muove merce scrive il proprio posting e chiama la primitiva, il registro non legge le tabelle di un documento (D-2). Fino al 2026-10-01 era magazzino.fn_posta_ddt. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-7), brief-db-magazzino-registro-anello-interno (P-1).';
 ```
 
 ---

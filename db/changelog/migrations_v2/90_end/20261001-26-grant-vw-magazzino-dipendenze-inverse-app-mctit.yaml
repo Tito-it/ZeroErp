@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il cancello del registro di magazzino si legge anche come applicazione
+#   GRANT SELECT ON dbops.vw_magazzino_dipendenze_inverse TO zeroerp_app
+#   Brief: brief-db-magazzino-registro-anello-interno, sezione 4 (P-6)
+#
+#   In CI il loop 90_end/ci_apply/20260205-41 concede SELECT su tutto dbops;
+#   su dev il loop non gira da solo, e la vista nuova resterebbe illeggibile
+#   all'app fino al prossimo db-ci-apply. Un GRANT in piu' e' lecito
+#   (linee-guida-sql 11.8): il loop lo rifa' uguale. Stampo: 20260911-33.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261001-26-grant-vw-magazzino-dipendenze-inverse-app-mctit.yaml
+
+  - changeSet:
+      id: 20261001-26-grant-vw-magazzino-dipendenze-inverse-app
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        GRANT SELECT su dbops.vw_magazzino_dipendenze_inverse a zeroerp_app, per dev (in CI lo
+        da' il loop ci_apply). Brief: brief-db-magazzino-registro-anello-interno (P-6).
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: dbops
+            viewName: vw_magazzino_dipendenze_inverse
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $grant$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                      RETURN;
+                  END IF;
+                  GRANT SELECT ON dbops.vw_magazzino_dipendenze_inverse TO zeroerp_app;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $revoke$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app')
+                     AND to_regclass('dbops.vw_magazzino_dipendenze_inverse') IS NOT NULL THEN
+                      REVOKE SELECT ON dbops.vw_magazzino_dipendenze_inverse FROM zeroerp_app;
+                  END IF;
+              END
+              $revoke$;

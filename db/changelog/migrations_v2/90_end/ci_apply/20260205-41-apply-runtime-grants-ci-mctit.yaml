@@ -123,6 +123,16 @@
 #   ogni funzione. Forward su dev `90_end/20260928-98`; terza sede il blocco
 #   del provisioning; pgTAP `db/pgtap/magazzino/test-reso-carico-v1.sql`.
 #
+# ── ⭐ I POSTING ESCONO DAL REGISTRO (dal 2026-10-01) ────────────────────────
+#   Brief: brief-db-magazzino-registro-anello-interno, sezione 3 (P-5)
+#   Il registro di magazzino e' un servizio dell'anello 2 (D-1) e non legge le
+#   tabelle dei documenti: i posting della bolla e del reso passano in vendite
+#   (D-2). In `v_fn_riservate` le voci `magazzino.fn_posta_ddt` /
+#   `magazzino.fn_posta_reso` diventano `vendite.fn_posta_ddt` /
+#   `vendite.fn_posta_reso`. Forward su dev `90_end/20261001-24` (che ritira
+#   anche le due del registro); terza sede il blocco del provisioning; pgTAP
+#   `test-blocco-manuale-e-porta-lotto3-v1` e `test-reso-carico-v1`.
+#
 # ── ⭐ IL DEVICE DEL SECONDO FATTORE (dal 2026-09-29) ───────────────────────
 #   Brief: brief-db-secondo-fattore-totp, sezione 3
 #   `config.auth_totp_device` entra in `v_tabelle_sola_lettura_app`: anti-replay
@@ -190,13 +200,14 @@ databaseChangeLog:
                   'dbops.fn_audit_end',
                   'magazzino.fn_scrivi_movimento',
                   'magazzino.fn_ricalcola_valore_giacenza',
-                  -- ⭐ Dal 2026-09-28 (Lotto 3): le operazioni interne della bolla e lo
-                  --   storno; l'app ci arriva solo da vendite.fn_cambia_stato_ddt.
-                  'magazzino.fn_posta_ddt',
+                  -- ⭐ Dal 2026-09-28 (Lotto 3): lo storno; l'app ci arriva solo dai verbi.
                   'magazzino.fn_storna_movimenti_sorgente',
-                  -- ⭐ Dal 2026-09-28 (Lotto 3-bis): il posting del reso; l'app ci
-                  --   arriva solo da vendite.fn_conferma_reso.
-                  'magazzino.fn_posta_reso'
+                  -- ⭐ Dal 2026-10-01 i posting della bolla e del reso stanno in vendite
+                  --   (erano magazzino.fn_posta_ddt / fn_posta_reso dal 28-09): l'app ci
+                  --   arriva solo da vendite.fn_cambia_stato_ddt e vendite.fn_conferma_reso.
+                  --   Brief: brief-db-magazzino-registro-anello-interno (P-5).
+                  'vendite.fn_posta_ddt',
+                  'vendite.fn_posta_reso'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la

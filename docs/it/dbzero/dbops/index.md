@@ -171,6 +171,7 @@
 - [vw_liste_multi_emittente_non_certificate](views/vw_liste_multi_emittente_non_certificate.md) — (latest review 18-08-26)
 - [vw_lotti_chiusi_con_errori_da_guardare](views/vw_lotti_chiusi_con_errori_da_guardare.md)
 - [vw_lotti_fermi_da_guardare](views/vw_lotti_fermi_da_guardare.md) — (latest review 19-09-2026)
+- [vw_magazzino_dipendenze_inverse](views/vw_magazzino_dipendenze_inverse.md) — (latest review 01-10-2026)
 - [vw_magazzino_movimenti_senza_costo](views/vw_magazzino_movimenti_senza_costo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_magazzino_valore_giacenza_divergente](views/vw_magazzino_valore_giacenza_divergente.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_non_editable_fields](views/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)

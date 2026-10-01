@@ -349,7 +349,7 @@ SELECT ok(
 
 -- 24) la postura
 SELECT ok(
-    NOT has_function_privilege('zeroerp_app', 'magazzino.fn_posta_reso(bigint)', 'EXECUTE'),
+    NOT has_function_privilege('zeroerp_app', 'vendite.fn_posta_reso(bigint)', 'EXECUTE'),
     '24) l''app non esegue il posting del reso: ci arriva solo dal verbo');
 
 -- 25) le righe del reso confermato sono congelate (D-3b-h): il carico e' scritto

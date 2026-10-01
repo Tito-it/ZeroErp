@@ -31,9 +31,11 @@
 > D3-c, D9-a, D10-bis, D12**.
 >
 > ✅ **Riallineato il 2026-09-28** sulle liste: il registro delle `DataTable`
-> grezze è sceso da 45 a **33** (+3 standard) e quelle senza motivazione da 33 a
-> **12**, con la riclassificazione del 26-09 e il
+> grezze è sceso da 45 a **33** e quelle senza motivazione da 33 a **12**, con
+> la riclassificazione del 26-09 e il
 > [brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md)
+> — e il 29-09 a **31** (+2 standard), senza motivazione **11**, col lotto C del
+> [brief righe documento](brief-db-liste-righe-documento.md)
 > chiuso il 28-09 (D10, §9). Riletti con la loro data i numeri di §2 (presidi
 > FE da 6 a 13, file `.spec.js` da 3 a 57) e di D9 (test sul DB vero da 22 a
 > 82 file). Corretto il rimando di D2-b: la riga sull'`assert` sta in
@@ -383,8 +385,8 @@ Un registro è una buona invenzione **a condizione che scenda**. Stato:
 | -------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Errori `oxlint`                        | **0**                       | ✅ cancello in CI (`npm run lint`, senza `--fix`), dal 09-09                                                                                                                                                                                                          |
 | Rilievi `ruff`                         | **0**                       | ✅ cancello in pre-commit e CI, dal 09-09                                                                                                                                                                                                                             |
-| `DataTable` grezza in una view         | **33** grezze (+3 standard), 28-09; erano 45 il 09-10 | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro. ⭐ **Cala davvero dal 26-09** (§9 D10)                  |
-| …di cui senza commento di motivazione  | **12**, 28-09; erano 33      | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import). Dieci delle 12 sono **decisioni di Tid aperte** ([brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md) §5); le righe di `FatturaDrawer` sono nel [brief righe documento](brief-db-liste-righe-documento.md); gli step di `PraticaFlussiTab` sono Gruppo B per il piano e manca solo il commento |
+| `DataTable` grezza in una view         | **31** grezze (+2 standard), 29-09; erano 33 il 28-09, 45 il 09-10 | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro. ⭐ **Cala davvero dal 26-09** (§9 D10)                  |
+| …di cui senza commento di motivazione  | **11**, 29-09; erano 12 il 28-09, 33 prima | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import). Dieci delle 11 sono **decisioni di Tid aperte** ([brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md) §5); le righe di `FatturaDrawer` sono uscite il 29-09 col lotto C del [brief righe documento](brief-db-liste-righe-documento.md) (con `ArticoloBomDrawer` fra le grezze); gli step di `PraticaFlussiTab` sono Gruppo B per il piano e manca solo il commento |
 | Filtri di lista scritti a mano         | **0** su tre voci, dal 09-23 | ✅ cricchetto `check-filtri-lista.mjs` + `filtri-lista.baseline.json` (blocchi grezzi, larghezze inline, coppie di date a mano)                                                                                                                                        |
 | File tracciati senza header di licenza | 1.169 su 5.787 (09-10)      | ✅ cala davvero (erano 2.042 il 08-26); l'hook guarda i soli file aggiunti, per scelta                                                                                                                                                                                |
 | `baseline-smoke.tsv`                   | 2 su 16                     | ⛔ nessun verso: vive o muore con D9-a                                                                                                                                                                                                                                |
@@ -454,7 +456,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Perimetro e permessi (applicativo)**  | 🟠 medio | **7,5/10** | Catena unica, fail-closed, reset GUC incondizionato. ✅ 25-09 D5 chiuso con presidio aree/catalogo. ✅ 12-09: lo skip muto (D15) deciso e chiuso su tutte e 15 le view, presidiato dagli attributi **e** dal percorso reale |
 | **Correttezza dei contratti di lista**  | 🟠 medio | **8/10**   | Lookup con `troncato`, presidiato sul DB vero (D6). Nessun cancello sui `count: len()` senza `LIMIT`                                                                                                                   |
 | **Simmetria del dominio**               | 🟠 medio | **4/10**   | `acquisti`/`magazzino` modellati a DB e vuoti su BE e FE. La decisione dell'11-09 dà un verso al debito, non scrive il codice: il voto si muove col comportamento                                                      |
-| **Building block — frontend**           | 🟡 basso | **9/10**   | Un solo punto HTTP (presidiato anche nei componenti dal 26-09), `bersagli`, contratto KeepAlive presidiato (D8), 13 guard. `DataTable` grezze 45 → 33 e senza motivo 33 → 12 (28-09): le rimaste aspettano una decisione di Tid (voto rivisto il 28-09; era 8,5) |
+| **Building block — frontend**           | 🟡 basso | **9/10**   | Un solo punto HTTP (presidiato anche nei componenti dal 26-09), `bersagli`, contratto KeepAlive presidiato (D8), 13 guard. `DataTable` grezze 45 → 33 → **31** e senza motivo 33 → 12 → **11** (28/29-09): le rimaste aspettano una decisione di Tid (voto rivisto il 28-09; era 8,5) |
 | **Multilingua**                         | 🟡 basso | **9/10**   | Parità perfetta e guard in CI. Il catalogo a monte è monolingue (§2.6)                                                                                                                                                 |
 | **Gestione del debito**                 | 🟡 basso | **8/10**   | Registri con cancello o cricchetto (D10), e quello delle `DataTable` è sceso davvero il 26-28/09. Senza verso: le letture cross-dominio con `skip_area_check` e la baseline smoke                                        |
 | **Documentazione di contesto**          | 🟡 basso | **9/10**   | Sette righe su sette chiuse (§1)                                                                                                                                                                                       |
@@ -571,7 +573,8 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
       `DataTable` con cricchetto.
 * [x] **D10 (le `DataTable`)** — ✅ 2026-09-26/28: riclassificazione dei 44 file
       e brief delle liste grezze chiuso; registro 45 → 33, senza motivazione
-      33 → 12. Le rimaste aspettano decisioni di Tid (§3 D10).
+      33 → 12; il 29-09 → **31** e **11** col lotto C delle righe documento.
+      Le rimaste aspettano decisioni di Tid (§3 D10).
 * [ ] **D10-bis** — gli `skip_area_check` (da leggere uno per uno) e la baseline
       degli smoke (con D9-a).
 * [x] **D11** — ✅ 2026-09-11: `acquisti`/`magazzino` prossimo cantiere, in `PROJECT_CONTEXT.md`.
@@ -820,7 +823,9 @@ chiuso su DB, BE e FE il 28-09. Strada facendo: `GeoSearchTable` ritirato, il
 giornale di fattura e lotto su un solo componente (`GiornaleEntitaTab`, su
 `vendite.giornale`), la catena delle revisioni dell'offerta a DB, e la
 validazione del catalogo liste contro la vista (`schema_dati`). Registro:
-**45 → 33** grezze, senza motivazione **33 → 12**. Le rimaste sono in §3 D10.
+**45 → 33** grezze, senza motivazione **33 → 12**; il 29-09, col lotto C del
+[brief righe documento](brief-db-liste-righe-documento.md), **31** e **11**.
+Le rimaste sono in §3 D10.
 
 ### ✅ D11 — Quattro app scheletro: la decisione — 2026-09-11
 

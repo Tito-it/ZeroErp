@@ -286,14 +286,15 @@ SELECT format('REVOKE EXECUTE ON FUNCTION %I.%I(%s) FROM PUBLIC, %I',
               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), :'app_role')
 FROM pg_proc p
 JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'magazzino'
-  AND p.proname IN ('fn_scrivi_movimento', 'fn_ricalcola_valore_giacenza',
-                    -- ⭐ Dal 2026-09-28 (Lotto 3): le operazioni interne della bolla e
-                    --   lo storno. Forward 90_end/20260928-83.
-                    'fn_posta_ddt', 'fn_storna_movimenti_sorgente',
-                    -- ⭐ Dal 2026-09-28 (Lotto 3-bis): il posting del reso.
-                    --   Forward 90_end/20260928-98.
-                    'fn_posta_reso')
+WHERE (n.nspname, p.proname) IN (
+        ('magazzino', 'fn_scrivi_movimento'), ('magazzino', 'fn_ricalcola_valore_giacenza'),
+        -- ⭐ Dal 2026-09-28 (Lotto 3): lo storno. Forward 90_end/20260928-83.
+        ('magazzino', 'fn_storna_movimenti_sorgente'),
+        -- ⭐ Dal 2026-10-01 i posting della bolla e del reso stanno in vendite
+        --   (erano magazzino.fn_posta_ddt / fn_posta_reso dal 28-09): il registro
+        --   non legge le tabelle dei documenti. Forward 90_end/20261001-24; brief
+        --   brief-db-magazzino-registro-anello-interno (P-5).
+        ('vendite', 'fn_posta_ddt'), ('vendite', 'fn_posta_reso'))
   AND p.prokind = 'f'
 \gexec
 

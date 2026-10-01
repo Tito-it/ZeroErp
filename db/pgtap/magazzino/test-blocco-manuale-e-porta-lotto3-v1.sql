@@ -21,7 +21,8 @@
 --    9) l'app esegue il verbo della bolla (vendite.fn_cambia_stato_ddt)
 --   10) l'app esegue il verbo del trasferimento interno
 --   11) l'app esegue i due verbi del blocco
---   12) l'app NON esegue il posting interno della bolla (magazzino.fn_posta_ddt)
+--   12) l'app NON esegue il posting interno della bolla (vendite.fn_posta_ddt:
+--       stava in magazzino fino al 2026-10-01, brief-db-magazzino-registro-anello-interno)
 --   13) l'app NON esegue la utility di storno
 --   14) i verbi del Lotto 3 sono SECURITY DEFINER, le operazioni interne pure
 -- ------------------------------------------------------------
@@ -106,8 +107,8 @@ SELECT ok(
 SELECT ok(
     (SELECT NOT bool_or(has_function_privilege('zeroerp_app', p.oid, 'EXECUTE')) AND count(*) = 1
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE n.nspname = 'magazzino' AND p.proname = 'fn_posta_ddt'),
-    '12) l''app NON esegue magazzino.fn_posta_ddt: ci arriva solo dal verbo della bolla');
+      WHERE n.nspname = 'vendite' AND p.proname = 'fn_posta_ddt'),
+    '12) l''app NON esegue vendite.fn_posta_ddt: ci arriva solo dal verbo della bolla');
 SELECT ok(
     (SELECT NOT bool_or(has_function_privilege('zeroerp_app', p.oid, 'EXECUTE')) AND count(*) = 1
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -118,11 +119,12 @@ SELECT ok(
 SELECT is(
     (SELECT string_agg(n.nspname || '.' || p.proname || '=' || p.prosecdef::text, ',' ORDER BY n.nspname, p.proname)
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE (n.nspname, p.proname) IN (('vendite', 'fn_cambia_stato_ddt'), ('magazzino', 'fn_posta_ddt'),
+      WHERE (n.nspname, p.proname) IN (('vendite', 'fn_cambia_stato_ddt'), ('vendite', 'fn_posta_ddt'),
                                        ('magazzino', 'fn_posta_trasferimento'), ('magazzino', 'fn_storna_movimenti_sorgente'),
                                        ('magazzino', 'fn_apri_blocco'), ('magazzino', 'fn_libera_blocco'))),
-    'magazzino.fn_apri_blocco=true,magazzino.fn_libera_blocco=true,magazzino.fn_posta_ddt=true,'
-    'magazzino.fn_posta_trasferimento=true,magazzino.fn_storna_movimenti_sorgente=true,vendite.fn_cambia_stato_ddt=true',
+    'magazzino.fn_apri_blocco=true,magazzino.fn_libera_blocco=true,'
+    'magazzino.fn_posta_trasferimento=true,magazzino.fn_storna_movimenti_sorgente=true,'
+    'vendite.fn_cambia_stato_ddt=true,vendite.fn_posta_ddt=true',
     '14) verbi e operazioni interne del Lotto 3: tutti SECURITY DEFINER');
 
 SELECT * FROM finish();

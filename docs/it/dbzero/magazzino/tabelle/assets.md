@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Istanza fisica di un bene serializzato (contatore, apparecchiatura): l'oggetto che movimenti.asset_id sposta uno alla volta (|qta| = 1). Di un emittente (emittente_fiscale_id), con una proprieta' (ownership_id), eventualmente presso un billing account e sotto un contratto. Dal 2026-09-15 non porta piu' la posizione (magazzino, ubicazione): la dice il registro. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7.
+> Istanza fisica di un bene serializzato (contatore, apparecchiatura): l'oggetto che movimenti.asset_id sposta uno alla volta (|qta| = 1). Di un emittente (emittente_fiscale_id), con una proprieta' (ownership_id), eventualmente presso un billing account. Dal 2026-09-15 non porta piu' la posizione (magazzino, ubicazione): la dice il registro. Dal 2026-10-01 non porta il contratto: il registro non conosce i documenti che lo usano, e il legame, se servira', nasce nel contratto. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7; brief-db-magazzino-registro-anello-interno (D-3).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -12,7 +12,6 @@
 | articolo_id | uuid | NO |  |
 | seriale | character varying | NO |  |
 | billing_account_id | bigint | YES |  |
-| contratto_id | bigint | YES |  |
 | data_stato | timestamp with time zone | NO | now() |
 | attivo | boolean | NO | true |
 | meta | jsonb | YES | '{}'::jsonb |
@@ -31,7 +30,6 @@
 |------|------|---------|
 | FOREIGN KEY | fk_mag_assets_articolo | articolo_id |
 | FOREIGN KEY | fk_mag_assets_billing_account | billing_account_id |
-| FOREIGN KEY | fk_mag_assets_contratto | contratto_id |
 | FOREIGN KEY | fk_mag_assets_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_mag_assets_ownership_id | ownership_id |
 | FOREIGN KEY | fk_mag_assets_stato | stato_id |

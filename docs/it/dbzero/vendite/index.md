@@ -219,6 +219,8 @@
 - [fn_ordine_riga_qta_riconsegna](funzioni/fn_ordine_riga_qta_riconsegna.md) — (rev 2026-07-26)
 - [fn_partite_merce](funzioni/fn_partite_merce.md) — (latest review 2026-09-21)
 - [fn_popola_fatture_rettifiche](funzioni/fn_popola_fatture_rettifiche.md) — (rev 2026-08-18)
+- [fn_posta_ddt](funzioni/fn_posta_ddt.md)
+- [fn_posta_reso](funzioni/fn_posta_reso.md)
 - [fn_prepare_sdi_payload](funzioni/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
 - [fn_preventivo_ha_residuo_commessa](funzioni/fn_preventivo_ha_residuo_commessa.md) — `TRUE` se il **push commessa avrebbe effetto** sul preventivo: esistono righe eleggibili (vista predicato unico) **e** la testata e' completa. E' la meta' "servizi" della coppia simmetrica di capability del modello split-per-natura.
 - [fn_preventivo_ha_residuo_ordine](funzioni/fn_preventivo_ha_residuo_ordine.md) — `TRUE` se il preventivo ha righe natura **ORDINE** (merce) non ancora allocate a un ordine: il push ordine avrebbe effetto. E' la meta' "merce" della coppia simmetrica di capability del modello split-per-natura (brief-preventivi-ordini.md D6/D8).
