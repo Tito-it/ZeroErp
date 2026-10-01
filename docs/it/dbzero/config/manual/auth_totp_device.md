@@ -9,6 +9,8 @@
 > **La lettura:** [fn_get_totp_device](/dbzero/script/funzioni/fn_get_totp_device)
 >
 > **I verbi:** [fn_totp_registra_device](/dbzero/script/funzioni/fn_totp_registra_device) · [fn_totp_conferma_device](/dbzero/script/funzioni/fn_totp_conferma_device) · [fn_totp_registra_uso](/dbzero/script/funzioni/fn_totp_registra_uso) · [fn_totp_consuma_recovery](/dbzero/script/funzioni/fn_totp_consuma_recovery) · [fn_totp_rigenera_recovery](/dbzero/script/funzioni/fn_totp_rigenera_recovery) · [fn_totp_disabilita_device](/dbzero/script/funzioni/fn_totp_disabilita_device)
+>
+> **Il cambio delle chiavi:** [fn_totp_ricifra_segreto](/dbzero/script/funzioni/fn_totp_ricifra_segreto)
 
 ---
 
@@ -46,6 +48,11 @@ qui sotto.
 | **Codice di recupero** | nessuno (prima del login) | senza telefono si entra con uno dei codici di recupero, che dopo non vale più ([fn_totp_consuma_recovery](/dbzero/script/funzioni/fn_totp_consuma_recovery)) |
 | **Codici nuovi** | la persona | con un codice valido del telefono si generano codici nuovi, e i vecchi non valgono più ([fn_totp_rigenera_recovery](/dbzero/script/funzioni/fn_totp_rigenera_recovery)) |
 | **Disattivazione** | la persona, un SUPER_ADMIN, o chi amministra il database | il dispositivo **viene cancellato**, segreto e codici compresi ([fn_totp_disabilita_device](/dbzero/script/funzioni/fn_totp_disabilita_device)). Chi ha l'obbligo viene riportato alla configurazione al prossimo accesso |
+
+Quando si cambiano le chiavi dei dati cifrati, un comando del backend riporta il
+segreto sulla chiave nuova ([fn_totp_ricifra_segreto](/dbzero/script/funzioni/fn_totp_ricifra_segreto)),
+per un dispositivo in qualunque stato, senza toccare altro: chi ha il secondo
+fattore non deve riconfigurare il telefono.
 
 Lo stato si legge con [fn_get_totp_device](/dbzero/script/funzioni/fn_get_totp_device):
 `ASSENTE`, `DA_CONFERMARE` o `ATTIVO`.
@@ -104,5 +111,7 @@ sparisce, e non resta un segreto solo per tenere uno storico.
   passa dal testo del codice all'intervallo (`ultimo_passo_usato`), esce
   `abilitato` (doppione di `confermato`), nascono i verbi e la tabella si chiude
   in scrittura all'applicazione. Brief: brief-db-secondo-fattore-totp.
+* 2026-10-01 — il segreto segue il cambio delle chiavi di cifratura del backend
+  (`20261001-35`, `fn_totp_ricifra_segreto`). Brief: brief-db-totp-ricifra-segreto.
 
 {% include-markdown "signature-core.md" %}

@@ -3,9 +3,13 @@
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-10-01. **A chi:** team DB (`dev/db-tid`).
 > **Origine:** T-1 di [brief-be-fe-sicurezza-header-token-mfa.md](brief-be-fe-sicurezza-header-token-mfa.md)
 > §3.4-bis; decisione 9 di §6 (Tid, 2026-10-01: strada A).
-> **Stato:** 🟡 da fare. Il backend va avanti con T-2, che non ne dipende; il segreto entra in
-> `CAMPI_CIFRATI` all'arrivo del verbo, e **prima** che T-3 metta in esercizio la registrazione
-> dei device.
+> **Stato:** ✅ **DB consegnato il 2026-10-01**: `20261001-35` applicato da Tid, pgTAP senza
+> regressioni (§5). ⏳ Resta il backend (§4).
+> Prima riga di stato del giorno: «scritto lato DB, da applicare». Il backend va avanti con
+> T-2, che non ne dipende; il segreto entra in `CAMPI_CIFRATI` all'arrivo del verbo, e **prima**
+> che T-3 metta in esercizio la registrazione dei device.
+>
+> **Da leggere per primo: §5** — cosa è stato scritto, cosa è provato, cosa resta a Tid.
 >
 > **In una riga:** un verbo `script` che sostituisce `config.auth_totp_device.secret_encrypted`
 > solo se è ancora il valore letto (confronta e sostituisci), perché il comando di rotazione
@@ -66,3 +70,53 @@ segreto cambiato fra la lettura e la scrittura.
 * `config.auth_totp_device.secret_encrypted` entra in `CAMPI_CIFRATI`;
 * `test_ricifra_campi_cifrati_db` aggiunge il caso del device e quello del segreto cambiato nel
   frattempo.
+
+## 5. Consegna DB (2026-10-01)
+
+### 5.1 Cosa è stato scritto
+
+| File | Cosa |
+| --- | --- |
+| `20_code/script/20261001-35-create-fn-totp-ricifra-segreto-mctit.yaml` | il verbo, come in §2. Numero `-35`: il buco `-27 … -39` del giorno era libero (`-18 … -26` sono del cantiere magazzino, `-40` dell'esigibilità IVA) |
+| `db/pgtap/config/test-totp-ricifra-segreto-v1.sql` (nuovo, plan 12) | prove 1-4 di §3: sostituisce e dà `true`; `false` su segreto cambiato e su device assente; non tocca `confermato`, passo, codici, `ultimo_uso_at`, `meta`; un device `DA_CONFERMARE` si ricifra e resta tale; quattro parametri rotti. I device li fabbricano i verbi del ciclo di vita, il verbo gira con `app.current_user_id` vuoto |
+| `db/pgtap/config/test-totp-porta-v1.sql` | prova 5 di §3: il verbo entra nell'elenco del test 3 (`DEFINER`), e quindi nei test 4 (search_path), 5 (proprietario) e 6 (`EXECUTE` all'app). Il «niente `UPDATE` sulla tabella» lo provano già i test 1-2 |
+| `docs/it/dbzero/script/manual/fn_totp_ricifra_segreto.md` (nuovo) | la scheda, col **limite** di §2 scritto |
+| `docs/it/dbzero/config/manual/auth_totp_device.md` | il verbo nei «Vedi anche», nel ciclo di vita e nella storia |
+
+Scelte fatte scrivendo, non dette da §2:
+
+* ⛔ **I segreti non entrano nel contesto del log.** `fn_log_and_raise_error` scrive il
+  contesto in `dbops.error_log`: lì vanno solo i segni (`atteso_vuoto`, `nuovo_vuoto`,
+  `uguali`), mai i due token, nemmeno cifrati. Un registro degli errori non è un posto
+  dove tenere segreti, cifrati o no.
+* **Non tocca `ultimo_uso_at`**: ricifrare non è un uso. `data_update`/`user_update` li
+  aggiorna il trigger di audit, come per ogni scrittura.
+* **Niente `GRANT` né `REVOKE`**: l'`EXECUTE` all'app arriva da PUBLIC e dal loop
+  `20260205-41`, come per gli altri sei verbi; la postura della tabella non cambia.
+* Parametri tipati `secret_encrypted%TYPE`, come `fn_totp_registra_device`.
+
+### 5.2 Cosa è provato, e dove
+
+Provato su un **cluster PG18 usa-e-getta** (il DB di sviluppo non era raggiungibile senza
+credenziali), con l'SQL **estratto** dagli YAML: la tabella (`20260328-20` + `20260929-07`)
+e il verbo (`20261001-35`, `COMMENT` compreso), in `BEGIN … ROLLBACK`, il migratore non
+superuser come proprietario e l'app con il solo `SELECT`. Come app: le dodici prove del pgTAP
+nuovo in forma ridotta (fixture scritte da owner, non dai verbi), la porta (`UPDATE … WHERE
+false` → `42501`), `SECURITY DEFINER` col `search_path` bloccato. `plpgsql_check_function`
+sul verbo: zero righe. ⚠️ `fn_log_and_raise_error` era uno **stub** dichiarato (solleva
+«Chiamata non valida a …» e stampa il contesto), che non è il soggetto: ha fatto vedere che
+nel contesto ci sono solo i segni.
+
+**Non coperto dalla prova**, e resta a Tid: l'apply; la corsa del pgTAP nuovo e di
+`test-totp-porta-v1.sql` col runner (fixture vere `fn_pgtap_crea_operatore_umano`, catalogo
+dei messaggi vero); i due presidi trasversali sulle funzioni nuove,
+`dbops/test-riferimenti-morti-v1` (plpgsql_check su ogni funzione: localmente zero) e
+`script/test-rubinetto-primo-motivo-v1` test 5 (il verbo non chiama l'helper: il conteggio
+non si sposta).
+
+### 5.3 Cosa resta
+
+* ✅ **Tid, 2026-10-01**: `20261001-35` applicato; pgTAP rilanciati, nessuna regressione.
+* ⏳ **Backend**: §4 — `CampoCifrato` che scrive attraverso il verbo,
+  `config.auth_totp_device.secret_encrypted` in `CAMPI_CIFRATI`, i due casi nuovi in
+  `test_ricifra_campi_cifrati_db`. Il verbo è a DB: il backend non aspetta più niente.
