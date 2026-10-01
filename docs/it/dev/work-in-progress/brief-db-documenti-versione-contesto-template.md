@@ -111,9 +111,10 @@ Vale per **tutti** i tipi di documento, anche per quelli che oggi non cambiano f
 Tutti e due parlano di **che cosa una versione di template si aspetta di trovare al render**:
 qui la *forma dei dati*, là le *risorse esterne* (asset, `url_fetcher`). Non si bloccano a
 vicenda. Il punto in comune è il **momento della pubblicazione** come controllo: se là nasce
-`asset:<codice>`, la verifica «gli asset citati esistono e sono dell'emittente» ha la stessa sede
+`asset:<codice_interno>` (chiave decisa il 2026-10-01 nel §5.3 di quel brief), la verifica «gli asset citati esistono e sono dell'emittente» ha la stessa sede
 naturale di questo patto (`fn_pubblica_template_documento_versione`, o il service che la chiama).
-La domanda §5.3 di quel brief (chiave stabile dell'asset) resta indipendente.
+La domanda §5.3 di quel brief (chiave stabile dell'asset) era indipendente da questo patto, e ha già
+una risposta: `codice_interno`, con asset solo per emittente.
 
 ### 5.4 ⚠️ Tre changeSet di agosto dormienti (dichiarato, voluto)
 

@@ -1,7 +1,10 @@
 # Brief BE — Documenti: che cosa può caricare un template durante il render PDF
 
 > **Destinatari:** backend (`dev/backend-tid`). Una domanda al team DB (§5.3),
-> che può cambiare la forma della soluzione ma non la blocca.
+> che può cambiare la forma della soluzione ma non la blocca. **Risposta DB
+> scritta il 2026-10-01 in §5.3**: `asset:<codice_interno>`. **§4.3 deciso
+> da Tid il 2026-10-01**: asset e template solo per emittente, nessun livello
+> globale.
 >
 > **Tipo:** brief di design. Nasce il 2026-09-26 dall'accensione delle regole
 > di sicurezza ruff (`S`), che ha trovato il render documentale con
@@ -104,8 +107,9 @@ Alternative considerate:
 ### 4.2 Che cosa il fetcher ammette
 
 Proposta, lista chiusa:
-- `asset:` → storage, solo asset **attivi e validi** dell'emittente del
-  template (quelli di sistema, `emittente` NULL, da decidere in §4.3);
+- `asset:<codice_interno>` → storage, solo asset **attivi e validi**
+  (`validita @> current_date`) con lo **stesso** `emittente_fiscale_id` del
+  template (§4.3);
 - `data:` → ammesso, perché non accede a niente;
 - **tutto il resto rifiutato**: `file:`, `http(s):`, schemi ignoti.
 
@@ -114,12 +118,19 @@ l'URL rifiutata nel `detail`), non un'immagine mancante in silenzio.
 WeasyPrint, se il fetcher fallisce, di default logga e va avanti: il PDF esce
 senza logo e nessuno sa perché. È lo stesso tipo di difetto che non dà errore.
 
-### 4.3 Asset di sistema e asset dell'emittente
+### 4.3 Asset di sistema e asset dell'emittente — ✅ deciso
 
-Un template di sistema (senza emittente) può usare solo asset di sistema?
-Un template di emittente può usare quelli di sistema come ripiego (per esempio
-un logo generico)? Serve la regola di risoluzione, in modo simmetrico a quella
-dei template stessi (§«risoluzione» di `template_documenti.md`).
+**Deciso da Tid il 2026-10-01: solo per emittente.** Il modello non ha un
+livello globale, né per gli asset né per i template (`emittente_fiscale_id`
+`NOT NULL` su entrambi, §5.3), e per ora non se ne aggiunge uno. Non c'è
+quindi nessuna regola di risoluzione e nessun ripiego. Un template vede
+soltanto gli asset del suo emittente. Se il template chiede un `asset:` che
+non esiste, il fetcher alza l'errore parlante di §4.2: un logo generico al
+suo posto sarebbe un PDF sbagliato senza nessun errore.
+
+Un livello globale dei template (per esempio un'impaginazione di base per un
+emittente nuovo) resta fuori da questo brief. Se tornerà a servire, sarà una
+domanda di modello con un brief DB apposito.
 
 ### 4.4 Il CSS
 
@@ -155,6 +166,45 @@ test con un SVG che punta a `file://`.
   `asset:<codice>`, oppure serve un `codice_interno` immutabile, come per i
   template? Se l'asset si rinomina, i template che lo citano si rompono. La
   risposta decide la sintassi di §4.1.
+
+**Risposta DB (2026-10-01, verificata sui changeSet, non sul DB vivo):**
+
+- **Il `codice_interno` c'è già, e non serve nessun lavoro DB.**
+  `documenti.template_asset` (changeSet `20260429-55`) ha `codice_interno
+  varchar(120) NOT NULL`, unico per emittente
+  (`uq_template_asset_emittente_codice_interno`) e non vuoto. È immutabile
+  grazie al lock automatico (linee-guida-sql §6b/§6c): la regola
+  `LOCK_COLUMNS` di `dbops.automation_rules_tbl` vale per tutte le tabelle
+  (`*all`), lo schema `documenti` è in `dbops.automation_scope`, e la sola
+  presenza della colonna fa nascere il lock. Una modifica dà
+  `E_CODICE_NON_MODIFICABILE`.
+- **Il `codice` invece si può modificare.** È unico per emittente, ma non
+  c'è nessun lock: il guard A4 (`trgfn_template_asset_protect_file`) blocca
+  solo le colonne del file (`storage_key`, `sha256`, `file_size_bytes`,
+  `mime_type`, `file_name`). È un'etichetta da mostrare (§6c).
+- **Quindi la sintassi è `asset:<codice_interno>`.** Lo dice la regola d'oro
+  di §6c: la logica si aggancia solo a `codice_interno`. La chiave del fetcher
+  è `(emittente del template, codice_interno)`, e corrisponde esattamente al
+  vincolo unico.
+
+⚠️ **Una premessa di §4.2 e §4.3 non regge sul modello: gli asset di sistema
+non esistono.** In `template_asset` la colonna `emittente_fiscale_id` è `NOT
+NULL`, e lo è anche in `template_documenti` (changeSet `20260429-53`).
+Inoltre il trigger `a10_default_emittente_ins` (changeSet `20260915-45`,
+modo `SOLLEVA`) solleva `E_EMITTENTE_NON_RISOLTO` invece di lasciare NULL.
+Non c'è quindi né un «template di sistema» né un «asset di sistema», e in
+`template_documenti.md` non esiste la sezione «risoluzione» a cui rimanda
+§4.3. Per il BE, oggi:
+
+- in §4.2 il perimetro è uno solo: gli asset con lo **stesso**
+  `emittente_fiscale_id` del template. La parentesi su `emittente` NULL va
+  tolta;
+- §4.3 non era una regola di risoluzione da scegliere, ma una **domanda di
+  modello**. Tid l'ha chiusa il 2026-10-01: solo per emittente (vedi §4.3).
+
+Nota per §4.2 («attivi e validi»): la validità si legge da `validita @>
+current_date`, colonna `GENERATED ALWAYS … STORED` (changeSet `20260514-27`).
+Va letta così, senza ricalcolarla da `valido_dal`/`valido_al`.
 
 ## 6. Fuori perimetro
 
