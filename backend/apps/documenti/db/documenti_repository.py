@@ -150,6 +150,7 @@ VERSIONE_CREATE_COLUMNS: tuple[str, ...] = (
     "margin_left_mm",
     "valido_dal",
     "valido_al",
+    "versione_contesto",
     "context_schema",
     "meta",
     "attivo",
@@ -161,6 +162,8 @@ VERSIONE_CREATE_COLUMNS: tuple[str, ...] = (
 # La transizione di stato passa solo dal comando dedicato pubblica_versione.
 # Il trigger DB A1 (protect_pubblicata) blocca comunque l'update di
 # html/css/render/layout/valido_* se OLD.stato='PUBBLICATA' — defense-in-depth.
+# `versione_contesto` (la forma dei dati che la versione legge, NOT NULL senza
+# default) e' nel suo `UPDATE OF` dal 20260930-17: si cambia solo in BOZZA.
 VERSIONE_UPDATE_COLUMNS: tuple[str, ...] = (
     "titolo",
     "formato_template",
@@ -176,6 +179,7 @@ VERSIONE_UPDATE_COLUMNS: tuple[str, ...] = (
     "margin_left_mm",
     "valido_dal",
     "valido_al",
+    "versione_contesto",
     "context_schema",
     "meta",
     "attivo",
@@ -437,6 +441,7 @@ _VERSIONI_PROJECTION = """
     v.page_orientation,
     v.valido_dal,
     v.valido_al,
+    v.versione_contesto,
     v.attivo,
     v.data_insert,
     v.data_update
@@ -754,26 +759,49 @@ class DocumentiRepository:
     #        La funzione blocca le versioni dello stesso template, auto-chiude
     #        eventuali PUBBLICATE precedenti sovrapposte e poi pubblica la BOZZA.
     #        Il vincolo EXCLUDE resta guardrail finale contro overlap residui.
+    #        `versione_contesto` e' la forma dei dati che il builder del
+    #        template produce (`CONTEXT_VERSION`): obbligatoria e senza default
+    #        a DB, la versione si pubblica solo se dichiara di leggere quella
+    #        (E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA, 20260930-21).
     def pubblica_versione(
         self,
         versione_id: int,
         *,
         valido_dal: Any,
         valido_al: Any,
+        versione_contesto: int,
     ) -> bool:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT versione_id
                   FROM documenti.fn_pubblica_template_documento_versione(
-                    p_versione_id => %s,
-                    p_valido_dal  => %s,
-                    p_valido_al   => %s
+                    p_versione_id       => %s,
+                    p_valido_dal        => %s,
+                    p_versione_contesto => %s,
+                    p_valido_al         => %s
                   )
                 """,
-                [int(versione_id), valido_dal, valido_al],
+                [int(versione_id), valido_dal, int(versione_contesto), valido_al],
             )
             return cursor.fetchone() is not None
+
+    # Scopo: Il patto fra una versione di template e la forma dei dati, chiesto
+    #        al DB PRIMA del render: `documenti.fn_guard_versione_contesto`
+    #        solleva se la versione non legge `versione_contesto` (la forma che
+    #        il builder produce). E' la stessa funzione che il trigger
+    #        sull'INSERT di `documenti_generati` chiama sul contesto congelato:
+    #        chiederla prima evita un PDF generato e poi rifiutato. La regola non
+    #        si ricopia in Python (confronto sul `versione_contesto` letto): una
+    #        funzione, tre chiamanti.
+    def guard_versione_contesto(
+        self, template_versione_id: int, versione_contesto: int,
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT documenti.fn_guard_versione_contesto(%s, %s)",
+                [int(template_versione_id), int(versione_contesto)],
+            )
 
     # =================================================================
     # Asset documentali (Tranche G)

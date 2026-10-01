@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 958, di cui 98 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 960, di cui 98 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -483,6 +483,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOCUMENTI_RENDER_FAILED": "TECNICO",
     "E_DOCUMENTI_STORAGE_FAILED": "TECNICO",
     "E_DOCUMENTI_VALIDATION": "DATO_ERRATO",
+    # documenti.fn_guard_versione_contesto: la forma dei dati che la versione di template dichiara di leggere (template_documenti_versioni.versione_contesto) non e' quella dei dati (_meta.context_version del contesto, o la costante del builder). Lo sollevano il backend prima del render, il trigger sull'INSERT di documenti.documenti_generati e documenti.fn_pubblica_template_documento_versione. CONFLITTO_STATO (409) e non DATO_ERRATO: nessun campo da correggere nella richiesta, rimedia chi amministra i template pubblicando una versione che legga la forma di oggi. Segnaposto: numero di versione, nome del template, forma del template, forma dei dati. Nessun bersaglio: un template non e' fra i tipi di config.tipi_entita. Nasce il 2026-09-30 (brief-db-documenti-versione-contesto-template).
+    "E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA": "CONFLITTO_STATO",
+    # documenti.fn_guard_versione_contesto: il chiamante non ha passato la versione di template (NULL o non positiva) o la forma dei dati (NULL: per una stampa, un contesto senza _meta.context_version intero). Solo un chiamante rotto lo produce — un builder che non dichiara la sua forma — quindi TECNICO (500), niente campo. Segnaposto: che cosa manca, in parole (la versione del template / la forma dichiarata dai dati). Nasce il 2026-09-30 (brief-db-documenti-versione-contesto-template).
+    "E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE": "TECNICO",
     "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED": "CONFLITTO_STATO",
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "NON_TROVATO",
     # EXCLUDE GIST parziale WHERE attivo+stato=PUBBLICATA (ripristino · enforcement 2026-06-02, migration 20260602-05). Pattern simmetrico agli · altri overlap (E_VENDITE_PROMO_OVERLAP / E_VENDITE_LISTINO_VERSIONE_OVERLAP): · codice 409 dedicato invece del generico E_DOCUMENTI_VALIDATION (400).

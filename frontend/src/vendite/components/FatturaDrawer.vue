@@ -13,9 +13,9 @@
 //        (emissione, numerazione, ristampa massiva) restano nel cockpit.
 //        I dati arrivano dagli STESSI lettori che alimentano il contesto del
 //        PDF: ciò che si vede qui è ciò che finisce nel documento fiscale.
-//        ⚠️ Eccezione aperta dal 2026-09-28: le righe vengono dalla vista della
-//        lista (`vw_fattura_righe_lista`), il PDF ancora dalla lettura piatta
-//        (brief-db-liste-righe-documento §9.8).
+//        Le righe vengono dalla vista della lista (`vw_fattura_righe_lista`),
+//        la stessa del contesto di stampa dal 2026-09-30 (forma 2,
+//        brief-db-documenti-versione-contesto-template §11).
 //        Brief: docs/it/dev/work-done/brief-be-fe-drawer-fattura.md
 //
 // ⛔ NESSUN cancello ne' etichetta di perimetro emittente qui, ed e' una

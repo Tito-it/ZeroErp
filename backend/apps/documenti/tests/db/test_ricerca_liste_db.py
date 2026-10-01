@@ -160,9 +160,10 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
                     """
                     INSERT INTO documenti.template_documenti_versioni
                            (template_documento_id, versione, titolo, html_template,
-                            render_engine_id)
+                            render_engine_id, versione_contesto)
                     VALUES (%s, 1, 'Versione rictitver', '<p></p>',
-                            (SELECT id FROM documenti.render_engine_documento ORDER BY id LIMIT 1))
+                            (SELECT id FROM documenti.render_engine_documento ORDER BY id LIMIT 1),
+                            1)
                     RETURNING id
                     """,
                     [template],
@@ -176,7 +177,8 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
                             progressivo_sorgente, titolo, nome_file, context_json,
                             context_hash, template_hash, pdf_hash, emittente_fiscale_id)
                     VALUES (%s, %s, %s, %s, %s, 1, 'Documento rictitdoc',
-                            'ricfiledoc.pdf', '{}'::jsonb, repeat('a', 64),
+                            'ricfiledoc.pdf', '{"_meta": {"context_version": 1}}'::jsonb,
+                            repeat('a', 64),
                             repeat('b', 64), repeat('c', 64), %s)
                     RETURNING id
                     """,

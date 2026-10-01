@@ -20,6 +20,14 @@
 //
 //        Editor HTML/CSS/markdown: textarea base. v1 senza editor
 //        visuale (Decisione 9 esplicita: fuori scope).
+//
+// ⭐ LA FORMA DEI DATI (2026-09-30, brief-db-documenti-versione-contesto-
+//    template): ogni versione dichiara la forma che legge
+//    (`versione_contesto`, obbligatoria, modificabile solo in BOZZA). La forma
+//    che il sistema produce oggi la dice il backend nel dettaglio del template
+//    (`versione_contesto_builder`): qui si MOSTRA e precompila la nuova
+//    versione, non si confronta — chi rifiuta pubblicazione e stampa e' il
+//    database, con la sua frase.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateVersioniStore } from '../stores/templateVersioni'
@@ -59,6 +67,10 @@ const props = defineProps({
   // la lista lo gira al cancello di perimetro, perche' il super admin su
   // «Tutti» non debba scegliere l'emittente del template che ha gia' aperto.
   emittenteFiscaleId: { type: [Number, null], default: null },
+  // La forma dei dati che il builder del template produce oggi
+  // (`versione_contesto_builder` del dettaglio). `null` = builder non
+  // registrato, o dettaglio non ancora letto.
+  versioneContestoBuilder: { type: [Number, null], default: null },
   readonly: { type: Boolean, default: false },
 })
 
@@ -110,6 +122,9 @@ function emptyForm() {
     css_template: '',
     markdown_template: '',
     render_engine_id: null,
+    // Precompilata con la forma di oggi: e' una proposta a video, l'operatore
+    // la vede e la conferma col salvataggio (il backend non ha default).
+    versione_contesto: props.versioneContestoBuilder,
     page_format: 'A4',
     page_orientation: 'PORTRAIT',
     margin_top_mm: 15,
@@ -126,6 +141,9 @@ function emptyForm() {
 const pubblicaDialog = ref(false)
 const pubblicaTargetId = ref(null)
 const pubblicaForm = ref({ valido_dal: null, valido_al: null })
+// La forma letta dalla versione che si sta pubblicando, per mostrarla accanto
+// a quella del sistema nel dialog.
+const pubblicaFormaVersione = ref(null)
 
 // Il padre e' il template: al cambio, lo scaffolding scrive l'id nello store,
 // azzera pagina e ricerca e ricarica. Il «Nuovo» sta nella barra della lista,
@@ -213,6 +231,7 @@ async function openEdit(row) {
     css_template: data.css_template ?? '',
     markdown_template: data.markdown_template ?? '',
     render_engine_id: data.render_engine_id ?? null,
+    versione_contesto: data.versione_contesto ?? null,
     page_format: data.page_format ?? 'A4',
     page_orientation: data.page_orientation ?? 'PORTRAIT',
     margin_top_mm: data.margin_top_mm ?? 15,
@@ -246,6 +265,7 @@ const canSaveForm = computed(() => {
   const f = form.value
   if (!f.titolo?.trim()) return false
   if (!f.render_engine_id) return false
+  if (!f.versione_contesto) return false
   return true
 })
 
@@ -258,6 +278,7 @@ async function saveForm() {
     css_template: f.css_template || null,
     markdown_template: f.markdown_template || null,
     render_engine_id: f.render_engine_id,
+    versione_contesto: f.versione_contesto,
     page_format: f.page_format,
     page_orientation: f.page_orientation,
     margin_top_mm: toNumberOrNull(f.margin_top_mm),
@@ -309,6 +330,7 @@ function confirmDeleteVersione(row) {
 
 function openPubblicaDialog(row) {
   pubblicaTargetId.value = row.id
+  pubblicaFormaVersione.value = row.versione_contesto ?? null
   pubblicaForm.value = {
     valido_dal: parseIsoDate(row.valido_dal) || new Date(),
     valido_al: parseIsoDate(row.valido_al),
@@ -401,6 +423,21 @@ async function confirmPubblica() {
           :placeholder="t('config.modelli_documenti.versioni.field_render_engine_placeholder')"
           :disabled="props.readonly"
         />
+      </div>
+      <div class="form-field">
+        <label>{{ t('config.modelli_documenti.versioni.field_versione_contesto') }} *</label>
+        <InputNumber v-model="form.versione_contesto" :disabled="props.readonly"
+          :min="1" :use-grouping="false"
+          :invalid="campiErrati.includes('versione_contesto')"
+        />
+        <small v-if="props.versioneContestoBuilder" class="app-text-muted">
+          {{ t('config.modelli_documenti.versioni.versione_contesto_hint', {
+            forma: props.versioneContestoBuilder,
+          }) }}
+        </small>
+        <small v-else class="app-text-muted">
+          {{ t('config.modelli_documenti.versioni.versione_contesto_builder_assente') }}
+        </small>
       </div>
       <div class="form-field">
         <label>{{ t('config.modelli_documenti.versioni.field_formato') }}</label>
@@ -506,6 +543,13 @@ async function confirmPubblica() {
       <div class="form-grid">
         <Message severity="warn" :closable="false">
           {{ t('config.modelli_documenti.versioni.publish_hint') }}
+        </Message>
+        <Message v-if="pubblicaFormaVersione && props.versioneContestoBuilder"
+          severity="info" :closable="false">
+          {{ t('config.modelli_documenti.versioni.publish_forma', {
+            versione: pubblicaFormaVersione,
+            builder: props.versioneContestoBuilder,
+          }) }}
         </Message>
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.versioni.field_valido_dal') }} *</label>

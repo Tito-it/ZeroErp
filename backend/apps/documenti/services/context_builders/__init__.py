@@ -15,13 +15,17 @@ from apps.documenti.services.context_builders.base import (
 )
 from apps.documenti.services.context_builders.registry import (
     get_builder,
+    get_builder_del_template,
     register_builder,
     registered_codes,
+    versione_contesto_registrata,
 )
 
 __all__ = [
     "DocumentContextBuilder",
     "get_builder",
+    "get_builder_del_template",
     "register_builder",
     "registered_codes",
+    "versione_contesto_registrata",
 ]

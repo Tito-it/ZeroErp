@@ -17,8 +17,9 @@
 #         - la fattura NON si "emette" da UI: è già prodotta dalla pipeline
 #           di fatturazione. Il builder alimenta solo stampa/ristampa (nessuna
 #           transizione di stato → la view factory è istanziata SENZA emetti);
-#         - i read stanno in `VenditeRepository` (nessun repository fattura
-#           dedicato), accanto a `list_lotto_fatture`;
+#         - testata, riepilogo IVA e scadenze da `VenditeRepository`; le
+#           righe da `FattureRepository.list_righe`, la lettura completa della
+#           STESSA vista della lista a video (`vw_fattura_righe_lista`);
 #         - `riepilogo_iva` letto dalla tabella REALE
 #           `vendite.fatture_riepiloghi_iva` (non da una vista derivata come
 #           per gli ordini): la fattura fissa il riepilogo fiscale al momento
@@ -32,6 +33,18 @@
 #           strutturati formattabili lato Jinja; nessun calcolo fiscale in
 #           Python (imponibile/imposta/totali sono già mantenuti dalla
 #           pipeline sulle tabelle fattura).
+#
+#        ⭐ FORMA 2 dal 2026-09-30 (brief-db-documenti-versione-contesto-
+#        template §11): `righe` e' il SOLO primo livello del documento
+#        (NORMALE, PARTE_PLAFOND, KIT_PADRE) e un kit porta i suoi componenti
+#        esposti DENTRO la riga (`riga.componenti`, lista, vuota fuori dai
+#        kit). Nella forma 1 le righe erano in fila da `vw_fattura_righe_
+#        esposte` e il componente si riconosceva da `tipo_riga`: una versione
+#        di template scritta per la forma 1 su questi dati stamperebbe la
+#        fattura SENZA i componenti, e il patto versione/forma lo impedisce.
+#        Chiavi di riga: quelle della vista (`riga_key`, `fatture_righe_id`,
+#        `riga_rettificata_documento` parlante…); via `id`, `livello` e
+#        `riga_rettificata_fattura_numero` della forma 1.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -53,6 +66,7 @@ from apps.documenti.services.context_builders.base import (
     DocumentContextBuilder,
 )
 from apps.documenti.services.context_builders.registry import register_builder
+from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.vendite_repository import VenditeRepository
 
 E_VALIDATION = "E_DOCUMENTI_VALIDATION"
@@ -63,20 +77,28 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti FATTURA (stampa/ristampa fattura)."""
 
     CODE = "FATTURA"
+    # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
+    CONTEXT_VERSION = 2
 
-    # Scopo: Iniezione opzionale del repository per testabilità (mock). In
+    # Scopo: Iniezione opzionale dei repository per testabilità (mock). In
     #        runtime il default va benissimo: l'istanza è singleton di processo
     #        (registry).
-    def __init__(self, repo: VenditeRepository | None = None) -> None:
+    def __init__(
+        self,
+        repo: VenditeRepository | None = None,
+        righe_repo: FattureRepository | None = None,
+    ) -> None:
         self._repo = repo or VenditeRepository()
+        self._righe_repo = righe_repo or FattureRepository()
         self._v = PayloadValidator(validation_code=E_VALIDATION)
 
     # Scopo: Costruisce il dict di contesto a partire dall'id della fattura.
     #        Pipeline:
     #         1. guard id positivo;
     #         2. testata via `get_fattura_testata` (None → NOT_FOUND);
-    #         3. righe + riepilogo IVA (tabella reale fatture_riepiloghi_iva);
-    #         4. compone shape stabile (versione 1) usata dai template HTML.
+    #         3. righe (primo livello, kit coi componenti dentro) + riepilogo
+    #            IVA (tabella reale fatture_riepiloghi_iva);
+    #         4. compone la shape della forma `CONTEXT_VERSION` (2).
     def build_context(
         self,
         sorgente_id: int,
@@ -97,13 +119,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
         # italiano. Misure e importi seguono due regole diverse — vedi
         # `_number_formatting`.
         righe = [
-            formatta_campi(
-                r,
-                misure=("quantita", "qta_operativa", "factor_to_base", "prezzo_unitario",
-                        "sconto_percentuale"),
-                importi=("iva_aliquota", "importo_riga", "imponibile_riga"),
-            )
-            for r in self._repo.list_fattura_righe(sorgente_id)
+            self._shape_riga(r) for r in self._righe_repo.list_righe(sorgente_id)
         ]
         riepilogo_iva = [
             formatta_campi(
@@ -129,7 +145,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             "_meta": {
                 "locale": locale,
                 "auth_user_id": auth_user_id,
-                "context_version": 1,
+                "context_version": self.CONTEXT_VERSION,
                 "context_code": self.CODE,
             },
         }
@@ -240,6 +256,23 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             "billing_account_id": testata.get("billing_account_id"),
             "ba_codice": testata.get("ba_codice"),
         }
+
+    # Scopo: Una riga di primo livello, coi numeri pronti per la stampa, e i
+    #        componenti esposti di un kit come LISTA (`[]` fuori dai kit: il
+    #        template scorre `riga.componenti` senza chiedersi se c'e').
+    #        `componenti` arriva gia' decodificato dal repository
+    #        (`_righe_jsonb`): NULL fuori dai kit.
+    def _shape_riga(self, riga: dict[str, Any]) -> dict[str, Any]:
+        r = formatta_campi(
+            riga,
+            misure=("quantita", "prezzo_unitario", "sconto_percentuale"),
+            importi=("iva_aliquota", "importo_riga"),
+        )
+        r["componenti"] = [
+            formatta_campi(dict(c), misure=("quantita",))
+            for c in (r.get("componenti") or [])
+        ]
+        return r
 
     # Scopo: Sotto-dict "scadenza" (rata del piano pagamenti). Chiavi stabili
     #        attese dal template (`nr`/`data`/`importo`/`modalita_codice`); tutte

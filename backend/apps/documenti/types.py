@@ -53,6 +53,9 @@ class TemplateDocumentoDetailRow(TemplateDocumentoListRow):
     storicizza: bool
     user_insert: str
     user_update: str
+    # Non e' una colonna: la forma dei dati che il builder del template
+    # produce oggi (`CONTEXT_VERSION`), None se il builder non e' registrato.
+    versione_contesto_builder: int | None
 
 
 class TemplateVersioneListRow(TypedDict):
@@ -72,6 +75,9 @@ class TemplateVersioneListRow(TypedDict):
     page_orientation: str
     valido_dal: date | None
     valido_al: date | None
+    # La forma dei dati che la versione legge (NOT NULL, >= 1): stampa e
+    # pubblicazione passano solo se e' quella del builder del template.
+    versione_contesto: int
     attivo: bool
     data_insert: datetime
     data_update: datetime

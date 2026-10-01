@@ -310,6 +310,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOCUMENTI_RENDER_FAILED": "Generazione PDF documento fallita.",
     "E_DOCUMENTI_STORAGE_FAILED": "Errore lettura/scrittura file documento.",
     "E_DOCUMENTI_VALIDATION": "Parametri documento non validi.",
+    # Il catalogo porta la frase con quattro `%s` (versione, template, le due
+    # forme) e l'altra con uno (che cosa manca); qui le frasi senza argomenti.
+    "E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA": "La versione del template legge i dati in una forma diversa da quella in cui il sistema li prepara: il documento non si stampa con questa versione.",
+    "E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE": "Non si puo' verificare che il template legga i dati del documento.",
     "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED": "Eliminazione versione non consentita: stato non BOZZA o gia' usata da documenti generati.",
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "Versione template documento non trovata.",
     "E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO": "La data del documento e' anteriore a quella dell'ultimo numero gia' emesso su questo registro: la sequenza di un sezionale segue il tempo, e il numero successivo non puo' portare una data precedente.",

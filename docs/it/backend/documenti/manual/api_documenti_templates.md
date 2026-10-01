@@ -30,6 +30,23 @@ Gli endpoint di generazione/anteprima/download dei documenti generati sono
 documentati nelle API delle sorgenti funzionali che li espongono
 (es. contratti e preventivi).
 
+### La forma dei dati (dal 2026-09-30)
+
+Ogni versione dichiara la **forma dei dati che legge**
+(`versione_contesto`, intero >= 1, NOT NULL senza default). Il builder di
+contesto del template dichiara la forma che **produce** (`CONTEXT_VERSION`
+nel codice, da cui esce anche `_meta.context_version` del contesto). Una
+versione si **pubblica** e si **stampa** solo se le due coincidono: lo decide
+`documenti.fn_guard_versione_contesto`, chiamata dal verbo di pubblicazione,
+dal backend prima del render (generazione e anteprima) e dal trigger
+sull'INSERT della stampa. Il rifiuto è `409
+E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`, con la frase a catalogo che nomina
+versione, template e le due forme. Una BOZZA può dichiarare una forma che il
+builder non produce ancora: è così che si prepara la versione successiva.
+La ristampa fedele non ricontrolla: la coppia versione/contesto congelata è
+stata verificata alla stampa. Brief:
+`brief-db-documenti-versione-contesto-template.md`.
+
 ---
 
 ## Endpoint
@@ -110,7 +127,11 @@ documentati nelle API delle sorgenti funzionali che li espongono
 #### Output
 
 - `200`: stessi campi della lista + `meta` (jsonb), `storicizza`,
-  `user_insert`, `user_update`.
+  `user_insert`, `user_update`, e `versione_contesto_builder` (int|null): la
+  forma dei dati che il builder del template (`context_builder_code`) produce
+  **oggi**. Non è una colonna: la legge il backend dal registry dei builder.
+  `null` = builder non registrato, e il template non genera né pubblica.
+  La portano anche le risposte di crea/aggiorna testata.
 - `404`: template inesistente o fuori scope emittente — codice
   `E_DOCUMENTI_NOT_FOUND`. La risposta non distingue i due casi (no leak
   di esistenza fuori scope).
@@ -163,6 +184,7 @@ documentati nelle API delle sorgenti funzionali che li espongono
         "page_orientation": "PORTRAIT",
         "valido_dal": "2026-05-01",
         "valido_al": null,
+        "versione_contesto": 2,
         "attivo": true,
         "data_insert": "2026-04-29T00:00:00+02:00",
         "data_update": "2026-04-29T00:00:00+02:00"
@@ -296,6 +318,9 @@ nuovo template e disabilitare il precedente.
   - `titolo`* (string non vuota, max 500)
   - `html_template`* (string non vuota — payload HTML del template)
   - `render_engine_id`* (int positivo, FK su `documenti.render_engine_documento`)
+  - `versione_contesto`* (int positivo) — la forma dei dati che la versione
+    legge. **Nessun default**, né qui né a DB: la dichiara chi scrive la
+    versione (il frontend propone `versione_contesto_builder` del template)
   - `formato_template` (string in `{HTML, HTML_MARKDOWN_BLOCKS}`, default `HTML`)
   - `css_template` (string nullable)
   - `markdown_template` (string nullable)
@@ -314,9 +339,9 @@ nuovo template e disabilitare il precedente.
   - `versione`: numero calcolato come `MAX(versione)+1` per il template.
   - `stato`: sempre `BOZZA` su create.
 - `400` `E_DOCUMENTI_VALIDATION`: chiave non whitelisted, campo richiesto
-  mancante, formato/page_format/orientation fuori whitelist, margine
-  negativo, race su `uq_template_documenti_versioni_template_versione`
-  (riprovare).
+  mancante (anche `versione_contesto`, col campo), formato/page_format/
+  orientation fuori whitelist, margine negativo, race su
+  `uq_template_documenti_versioni_template_versione` (riprovare).
 - `404` `E_DOCUMENTI_NOT_FOUND`: template inesistente o fuori scope.
 
 ### 8. Aggiorna versione BOZZA (Tranche F)
@@ -329,7 +354,8 @@ nuovo template e disabilitare il precedente.
 - Body JSON (tutti opzionali; almeno uno obbligatorio): stesse chiavi della
   create, esclusi i campi calcolati `template_documento_id`, `versione`,
   `stato`. La transizione di stato passa solo dall'endpoint dedicato
-  `pubblica/`.
+  `pubblica/`. `versione_contesto` si cambia qui, solo in BOZZA (da
+  PUBBLICATA lo rifiuta anche il trigger A1, dal `20260930-17`).
 
 #### Output
 
@@ -384,8 +410,9 @@ nuovo template e disabilitare il precedente.
 - `200`: dettaglio della nuova versione clone.
   - Source copiato: `formato_template`, `html_template`, `css_template`,
     `markdown_template`, `render_engine_id`, `page_format`,
-    `page_orientation`, `margin_*`, `context_schema`. (`meta` se non
-    overrideato.)
+    `page_orientation`, `margin_*`, `context_schema`, `versione_contesto`
+    (il corpo è lo stesso, quindi legge le stesse chiavi; per preparare la
+    forma successiva la si cambia sulla bozza). (`meta` se non overrideato.)
   - Default forzati: `stato='BOZZA'`, `versione=MAX+1`, `valido_dal=NULL`,
     `valido_al=NULL` (le date di una nuova bozza si fissano alla
     pubblicazione).
@@ -420,6 +447,14 @@ nuovo template e disabilitare il precedente.
   - versione gia' in `PUBBLICATA` o `OBSOLETA` (idempotenza per design:
     una seconda chiamata dopo la pubblicazione iniziale ritorna 400 con
     "stato_corrente=PUBBLICATA").
+- `400` `E_DOCUMENTI_VALIDATION` dal registry: il `context_builder_code` del
+  template non è un builder registrato — non c'è una forma con cui
+  confrontare, e la pubblicazione non arriva al verbo.
+- `409` `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`: la versione legge una forma
+  dei dati diversa da quella che il builder del template produce oggi. Il
+  service passa al verbo la forma del builder (`p_versione_contesto`,
+  obbligatorio dal `20260930-21`); il confronto è del DB, prima di chiudere
+  qualunque altra versione. La versione resta BOZZA.
 - `409` `E_DOCUMENTI_VERSIONE_OVERLAP`: violazione EXCLUDE gist parziale
   `ex_template_documenti_versioni_no_overlap_pubblicata` (ripristino enforcement
   2026-06-02, migration `20260602-05`) — le date si sovrappongono con un'altra

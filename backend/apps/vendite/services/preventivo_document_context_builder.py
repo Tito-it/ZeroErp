@@ -55,6 +55,8 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti PREVENTIVO."""
 
     CODE = "PREVENTIVO"
+    # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
+    CONTEXT_VERSION = 2
 
     # Tipi indirizzo ammessi nell'ambito PREVENTIVI
     # (`config.tipi_indirizzi_allowed`: FATT, CON, FORNITURA, RES — stesso
@@ -151,7 +153,7 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
                 "auth_user_id": auth_user_id,
                 # v2 (2026-08-16): `indirizzi` passa da lista a slot con nome
                 # (forma unica cross-dominio).
-                "context_version": 2,
+                "context_version": self.CONTEXT_VERSION,
                 "context_code": self.CODE,
             },
         }

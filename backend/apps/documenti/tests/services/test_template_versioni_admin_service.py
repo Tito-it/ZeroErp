@@ -28,6 +28,18 @@
 #  11. pubblica_delega_ordine_date_al_db
 #  12. pubblica_bozza_happy_path
 #  13. pubblica_already_pubblicata_rejected_at_service
+#  14. pubblica_overlap_mappato_a_codice_dedicato
+#  15. create_senza_forma_dei_dati_rifiutata (2026-09-30)
+#  16. update_bozza_cambia_la_forma_dei_dati (2026-09-30)
+#  17. clone_copia_la_forma_dei_dati (2026-09-30)
+#  18. pubblica_passa_la_forma_del_builder_del_template (2026-09-30)
+#  19. pubblica_builder_non_registrato_rifiutata (2026-09-30)
+#
+#  `versione_contesto` (brief-db-documenti-versione-contesto-template): la
+#  forma dei dati che la versione legge. Obbligatoria in create, cambia solo
+#  in BOZZA, il clone la copia; alla pubblicazione il service passa al verbo
+#  DB la forma del builder del template (`CONTEXT_VERSION`), e il confronto
+#  lo fa il DB (provato sul DB vero in test_versione_contesto_db).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -55,6 +67,9 @@ def _patch_transaction_atomic():
     )
 
 from apps.core.services.service_errors import ServiceError
+from apps.documenti.services.context_builders import (
+    get_builder_del_template as _get_builder_vero,
+)
 from apps.documenti.services.template_versioni_admin_service import (
     TemplateVersioniAdminService,
 )
@@ -70,6 +85,7 @@ _VALID_VERSIONE_PAYLOAD: dict[str, Any] = {
     "titolo": "v1 standard",
     "html_template": "<html><body>{{ numero }}</body></html>",
     "render_engine_id": 1,
+    "versione_contesto": 2,
 }
 
 _BOZZA_VERSIONE = {
@@ -89,12 +105,27 @@ _BOZZA_VERSIONE = {
     "margin_right_mm": 10,
     "margin_bottom_mm": 10,
     "margin_left_mm": 10,
+    "versione_contesto": 1,
     "context_schema": {},
     "meta": {},
     "valido_dal": None,
     "valido_al": None,
     "attivo": True,
 }
+
+# Il template della versione: il suo builder dice la forma da pubblicare.
+_TEMPLATE = {"id": 1, "context_builder_code": "BUILDER_DI_PROVA"}
+
+
+def _patch_builder(forma: int = 1):
+    """Il registry dei builder con un builder finto per `BUILDER_DI_PROVA`:
+    i test non dipendono dalla forma che i builder di produzione hanno oggi."""
+    builder = MagicMock()
+    builder.CONTEXT_VERSION = forma
+    return patch(
+        "apps.documenti.services.template_versioni_admin_service.get_builder_del_template",
+        return_value=builder,
+    )
 
 
 def _service_with_mocks(
@@ -147,6 +178,26 @@ class TemplateVersioniAdminServiceCreateTests(SimpleTestCase):
         self.assertEqual(data["stato"], "BOZZA")
         self.assertEqual(data["versione"], 5)
         self.assertEqual(data["template_documento_id"], 1)
+        self.assertEqual(data["versione_contesto"], 2)
+
+    # 15. La forma dei dati e' obbligatoria e senza default: assente, zero o
+    #     non intera -> 400 col campo, nessuna scrittura.
+    def test_create_senza_forma_dei_dati_rifiutata(self) -> None:
+        for forma in (None, 0, -1, "due"):
+            with self.subTest(forma=forma):
+                svc, repo, _ = _service_with_mocks(
+                    reader_methods={"get_template": {"id": 1}},
+                )
+                payload = dict(_VALID_VERSIONE_PAYLOAD)
+                if forma is None:
+                    del payload["versione_contesto"]
+                else:
+                    payload["versione_contesto"] = forma
+                with self.assertRaises(ServiceError) as ctx:
+                    svc.create_versione(_make_user(), 1, payload)
+                self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+                self.assertEqual(ctx.exception.context.get("field"), "versione_contesto")
+                repo.create_versione.assert_not_called()
 
     # 2. chiave extra in payload -> validate_allowed_keys solleva.
     def test_create_payload_extra_keys_rejected(self) -> None:
@@ -228,6 +279,19 @@ class TemplateVersioniAdminServiceUpdateTests(SimpleTestCase):
         self.assertEqual(data["margin_bottom_mm"], 17)
         self.assertEqual(data["margin_left_mm"], 0.0)
 
+    # 16. In BOZZA la forma si cambia: e' cosi' che si prepara la versione
+    #     che leggera' la forma successiva (D-C4). Da PUBBLICATA no: lo dice
+    #     il test 4 (service) e il trigger A1 a DB.
+    def test_update_bozza_cambia_la_forma_dei_dati(self) -> None:
+        svc, repo, _ = _service_with_mocks(
+            repo_methods={"update_versione": True},
+            reader_methods={"get_versione": dict(_BOZZA_VERSIONE)},
+        )
+        svc.update_versione(_make_user(), 1, 11, {"versione_contesto": 2})
+        self.assertEqual(
+            repo.update_versione.call_args.args[1], {"versione_contesto": 2},
+        )
+
     # 6. payload {} rifiutato.
     def test_update_empty_payload_rejected(self) -> None:
         svc, repo, _ = _service_with_mocks(
@@ -296,6 +360,18 @@ class TemplateVersioniAdminServiceCloneTests(SimpleTestCase):
         # html copiato dal source.
         self.assertEqual(data["html_template"], "<original/>")
 
+    # 17. Il clone copia la forma letta: il corpo e' lo stesso, quindi legge
+    #     le stesse chiavi (una bozza nuova non nasce senza forma).
+    def test_clone_copia_la_forma_dei_dati(self) -> None:
+        svc, repo, _ = _service_with_mocks(
+            repo_methods={"next_versione_num": 4, "create_versione": 40},
+            reader_methods={
+                "get_versione": {**_BOZZA_VERSIONE, "versione_contesto": 3},
+            },
+        )
+        svc.clone_versione(_make_user(), 1, 11, {})
+        self.assertEqual(repo.create_versione.call_args.args[0]["versione_contesto"], 3)
+
 
 class TemplateVersioniAdminServicePubblicaTests(SimpleTestCase):
     """`transaction.atomic` mockata in tutti i test: SimpleTestCase non
@@ -306,6 +382,9 @@ class TemplateVersioniAdminServicePubblicaTests(SimpleTestCase):
         patcher = _patch_transaction_atomic()
         patcher.start()
         self.addCleanup(patcher.stop)
+        builder_patcher = _patch_builder(forma=4)
+        self.get_builder = builder_patcher.start()
+        self.addCleanup(builder_patcher.stop)
 
     # 10. valido_dal obbligatorio.
     def test_pubblica_requires_valido_dal(self) -> None:
@@ -323,7 +402,9 @@ class TemplateVersioniAdminServicePubblicaTests(SimpleTestCase):
     def test_pubblica_delega_ordine_date_al_db(self) -> None:
         svc, repo, _ = _service_with_mocks(
             repo_methods={"pubblica_versione": True},
-            reader_methods={"get_versione": dict(_BOZZA_VERSIONE)},
+            reader_methods={
+                "get_versione": dict(_BOZZA_VERSIONE), "get_template": _TEMPLATE,
+            },
         )
         svc.pubblica_versione(
             _make_user(),
@@ -333,13 +414,16 @@ class TemplateVersioniAdminServicePubblicaTests(SimpleTestCase):
         )
         repo.pubblica_versione.assert_called_once_with(
             11, valido_dal=date(2026, 6, 1), valido_al=date(2026, 5, 30),
+            versione_contesto=4,
         )
 
     # 12. happy path: BOZZA -> PUBBLICATA con valido_dal.
     def test_pubblica_bozza_happy_path(self) -> None:
         svc, repo, _ = _service_with_mocks(
             repo_methods={"pubblica_versione": True},
-            reader_methods={"get_versione": dict(_BOZZA_VERSIONE)},
+            reader_methods={
+                "get_versione": dict(_BOZZA_VERSIONE), "get_template": _TEMPLATE,
+            },
         )
         result = svc.pubblica_versione(
             _make_user(), 1, 11, {"valido_dal": "2026-06-01"}
@@ -369,7 +453,9 @@ class TemplateVersioniAdminServicePubblicaTests(SimpleTestCase):
     #     E_DOCUMENTI_VERSIONE_OVERLAP (armonizzazione, prima era E_DOCUMENTI_VALIDATION).
     def test_pubblica_overlap_mappato_a_codice_dedicato(self) -> None:
         svc, repo, _ = _service_with_mocks(
-            reader_methods={"get_versione": dict(_BOZZA_VERSIONE)},
+            reader_methods={
+                "get_versione": dict(_BOZZA_VERSIONE), "get_template": _TEMPLATE,
+            },
         )
         repo.pubblica_versione.side_effect = IntegrityError(
             'conflicting key value violates exclusion constraint '
@@ -381,3 +467,34 @@ class TemplateVersioniAdminServicePubblicaTests(SimpleTestCase):
             )
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VERSIONE_OVERLAP")
         self.assertIn("sovrappongono", (ctx.exception.message or "").lower())
+
+    # 18. La forma che arriva al verbo e' quella del builder DEL TEMPLATE
+    #     (risolto dal suo `context_builder_code`), non quella dichiarata
+    #     dalla versione: il confronto e' del DB, che rifiuta se differiscono.
+    def test_pubblica_passa_la_forma_del_builder_del_template(self) -> None:
+        svc, repo, _ = _service_with_mocks(
+            repo_methods={"pubblica_versione": True},
+            reader_methods={
+                "get_versione": {**_BOZZA_VERSIONE, "versione_contesto": 1},
+                "get_template": _TEMPLATE,
+            },
+        )
+        svc.pubblica_versione(_make_user(), 1, 11, {"valido_dal": "2026-06-01"})
+        self.get_builder.assert_called_once_with(_TEMPLATE)
+        self.assertEqual(repo.pubblica_versione.call_args.kwargs["versione_contesto"], 4)
+
+    # 19. Un template il cui builder non e' registrato non ha una forma con cui
+    #     confrontare: la pubblicazione si ferma al registry (400), senza
+    #     arrivare al verbo. Registry vero, non il finto del setUp.
+    def test_pubblica_builder_non_registrato_rifiutata(self) -> None:
+        self.get_builder.side_effect = _get_builder_vero
+        svc, repo, _ = _service_with_mocks(
+            reader_methods={
+                "get_versione": dict(_BOZZA_VERSIONE),
+                "get_template": {"id": 1, "context_builder_code": "NON_REGISTRATO"},
+            },
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            svc.pubblica_versione(_make_user(), 1, 11, {"valido_dal": "2026-06-01"})
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.pubblica_versione.assert_not_called()

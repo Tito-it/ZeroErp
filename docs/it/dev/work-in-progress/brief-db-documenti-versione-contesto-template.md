@@ -5,8 +5,10 @@
 > **Origine:** §9.8.4 di [brief-db-liste-righe-documento.md](brief-db-liste-righe-documento.md)
 > (la stampa della fattura dalla lista delle righe).
 > **Stato:** ✅ **lato DB APPLICATO su dbdev il 2026-09-30, pgTAP verdi (corsa di Tid)**
-> (`20260930-14 → -21` + codici 1169-1170). ⏳ Restano: il giro BE (§10, R-1 … R-5, **bloccanti**)
-> e la **versione 4 del template Fattura**, che al 30-09 **non esiste** (§11). ✅ Decisione di Tid
+> (`20260930-14 → -21` + codici 1169-1170). ✅ **Giro BE/FE fatto il 2026-09-30** (§12: R-1 … R-5,
+> test Django verdi anche sul DB vero). ✅ **Fattura alla forma 2 a codice il 2026-09-30** (§13:
+> builder, ritiro di `list_fattura_righe`, corpo della v4 nel repo). ⏳ Resta a Tid: riavviare il backend,
+> poi creare la BOZZA v4 dall'app e pubblicarla (§13.2, in quest'ordine). ✅ Decisione di Tid
 > (2026-09-29): si fa tutto, per TUTTI i documenti; ✅ D-C1 → D-C4 accettate il 2026-09-29 (§7).
 >
 > **Da leggere per primo: §8 (che cosa è stato scritto, e dove si discosta da §4) e §10 (le richieste
@@ -268,3 +270,84 @@ forma 2 (R-3 e il builder), il DB prepara la **BOZZA v4** come changeSet `80_dat
 e riscrive il solo ciclo delle righe su `riga.componenti`, con ancore verificate sul corpo vivo e
 `versione_contesto = 2` (stampo: `20260816-01`). La **pubblicazione** resta un passo separato, da
 fare quando il builder produce la 2.
+
+## 12. Esito del giro BE/FE (2026-09-30, `dev/backend-tid`)
+
+| # | Esito | Dove |
+| --- | --- | --- |
+| **R-1** | ✅ `pubblica_versione` passa `p_versione_contesto` per nome (firma a quattro); il service lo prende dal builder **del template** (`context_builder_code` → registry → `CONTEXT_VERSION`). Builder non registrato = 400 `E_DOCUMENTI_VALIDATION` dal registry, prima del verbo | `documenti_repository.pubblica_versione`, `template_versioni_admin_service.pubblica_versione` |
+| **R-2** | ✅ `versione_contesto` nelle whitelist INSERT/UPDATE e nella proiezione (lista e dettaglio); **obbligatoria** in create (400 col campo, nessun default), modificabile solo in BOZZA (pre-check di stato già esistente + trigger A1), **copiata** dal clone. A video: campo «Legge i dati nella forma» nel form della versione, precompilato con la forma di oggi, e le due forme nel dialog di pubblicazione | service versioni, `TemplateVersioniSection.vue`, `TemplateDocumentoDrawer.vue` |
+| **R-3** | ✅ Una costante per builder, `CONTEXT_VERSION` su `DocumentContextBuilder`, da cui escono `_meta.context_version` e il controllo; `register_builder` rifiuta un builder senza forma. Prima di costruire il contesto e di renderizzare, **generazione e anteprima** chiamano `fn_guard_versione_contesto(versione, CONTEXT_VERSION)`, tradotto in `ServiceError` (409 col codice e la frase del catalogo; lo legge anche il worker della coda di stampa). La ristampa fedele non ricontrolla: la coppia congelata l'ha verificata il trigger | `context_builders/`, i sei `*_document_context_builder.py`, `document_generation_service` |
+| **R-4** | ✅ `error_policies_generated.py` già rigenerato coi due codici; ripieghi senza segnaposto aggiunti in `error_messages_fallback.py`. Test allineati (versione con `versione_contesto`, contesto con `_meta.context_version`, template di prova col builder vero) e nuovi: registry, service, generazione, e `documenti/tests/db/test_versione_contesto_db.py` sul DB vero (binding delle due funzioni, 409 con le due forme nella frase, bozza per la forma successiva che si pubblica solo dopo averla riportata alla forma del builder) | `documenti/tests/…`, `core/tests/db/test_date_validita_guard_comune_db.py` |
+| **R-5** | ✅ **Confermata** la tabella §8.2: riletti i corpi delle 20 versioni su dbdev, la chiave della forma 2 (`indirizzi.consegna`; per il preventivo v1-3 il ciclo su `indirizzi` come lista) compare esattamente nelle versioni a cui il backfill ha dato 2 | — |
+
+Il dettaglio del template porta ora `versione_contesto_builder` (la forma che il builder produce oggi,
+`null` se il builder non è registrato): non è una colonna, lo legge il backend dal registry.
+
+### 12.1 Richiesta al team DB (facoltativa, non bloccante)
+
+La lista delle versioni è la configurabile `documenti.template_versioni` (88): il campo
+`versione_contesto` viaggia già nelle righe, ma a video non c'è la colonna finché il catalogo non la
+dichiara. Se utile, una riga in `ui.lista_colonna` (`campo_sorgente = versione_contesto`, intestazione
+«Forma dei dati») con la chiave i18n che il team preferisce.
+
+### 12.2 Test
+
+Suite Django intera con `ZEROERP_TEST_DB_E2E=1` al 30-09: 5894 test, **3 rossi estranei a questo
+giro** (`vendite.test_commesse_repository` ×2, chiave `rows`; `core.test_config_panel_registro_db`,
+etichetta `config_panel.campi.causale_magazzino` assente in it.json). Frontend: lint, `npm run guards`,
+`check_i18n_keys.py` verdi. ⚠️ **Non provato a video**: il form della versione non è stato aperto in-app.
+
+## 13. La fattura alla forma 2 e la versione 4 (2026-09-30, `dev/backend-tid`)
+
+✅ **Decisione di Tid (30-09): la v4 la scrive il BE**, nello stesso giro del builder — chi fissa la forma
+ad albero scrive il ciclo che la legge — e nasce dall'app, non da un changeSet `80_data` (i template non
+sono seed: su un DB da zero quel changeSet salterebbe comunque, e le ancore sul corpo vivo sono fragili).
+La traccia rivedibile è il file nel repo.
+
+### 13.1 Che cosa è stato fatto
+
+* **Builder** `FatturaDocumentContextBuilder`: `CONTEXT_VERSION = 2`; `righe` dalla lettura completa di
+  `vw_fattura_righe_lista` (`FattureRepository.list_righe`): solo il primo livello (NORMALE,
+  PARTE_PLAFOND, KIT_PADRE), i componenti esposti di un kit **dentro** la riga (`riga.componenti`, lista
+  di dict con la quantità formattata; `[]` fuori dai kit; il jsonb arriva come testo e si decodifica con
+  `jsonb_out`). Chiavi di riga: quelle della vista; via `id`, `livello`,
+  `riga_rettificata_fattura_numero` della forma 1 (la v3 non le leggeva).
+* **Ritirata** `VenditeRepository.list_fattura_righe` col suo test; chiuse le eccezioni dichiarate in
+  `ApiFatturaDetail`, `FatturaDrawer.vue`, `api_fattura_dettaglio.md` e brief liste §9.8.
+* **Corpo della v4**: [`template-fattura-v4.html`](template-fattura-v4.html) = il corpo vivo della v3
+  (id 75, letto il 30-09) col **solo** ciclo delle righe riscritto: niente più riconoscimento del
+  componente da `tipo_riga`, un ciclo interno su `r.componenti` sotto ogni riga, con la classe
+  `row-componente` già nel CSS della v3. Il CSS non cambia (lo copia il clone). ⚠️ Una differenza
+  voluta: sui componenti la v3 stampava anche l'IVA, la v4 la lascia vuota come prezzo e importo — il
+  valore del componente è già nel totale del padre, e l'IVA del kit è una sola.
+* **Prova** (dbdev, in `ROLLBACK`, contesto di un operatore): il contesto forma 2 di una fattura reale
+  con in più una riga kit **fabbricata** (su dbdev non c'è una fattura con kit: fatto datato, 30-09),
+  passata dallo stesso `_shape_riga`. Resa con la v3: il kit c'è, **i due componenti no**, e nessun
+  errore — il caso §1. Resa con la v4: kit e componenti, le 5 righe reali in entrambe. Il PDF esce in
+  entrambi i casi (WeasyPrint).
+
+### 13.2 I passi di Tid, in quest'ordine
+
+⚠️ **Corretto il 2026-09-30**: la prima stesura metteva la bozza v4 PRIMA del riavvio. Non si può: il
+backend in esercizio col codice vecchio non copia `versione_contesto` nel clone (NOT NULL a DB: 23502) e
+pubblica con la firma a tre, che non esiste più. Il riavvio viene per primo; la finestra in cui la
+fattura non stampa è il tempo dei passi 2-3.
+
+1. **Riavvio del backend** (`kill -HUP $(pgrep -f "gunicorn zeroerp" | head -1)`, worker con l'orario
+   nuovo in `ps aux`): da qui il builder produce la forma 2 e la v3 pubblicata, che legge la 1, **non
+   stampa più** — 409 `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`, anche per la coda di stampa (le righe
+   vanno in errore coi tentativi). È il patto che fa il suo mestiere.
+1-bis. **Build del frontend** (`cd frontend && npm run build`, poi ricarica forzata del browser): in dev
+   il frontend è servito da `frontend/dist`, senza aggiornamento automatico. ⚠️ Saltato il 30-09 sera:
+   col form vecchio il campo della forma non c'era, la bozza v4 è rimasta alla forma 1 del clone e la
+   pubblicazione è stata rifiutata col 409 — il patto ha fatto il suo mestiere.
+2. **Bozza v4** dall'app: template «fattura» → versione 3 → «Clona»; nella bozza, l'HTML sostituito col
+   contenuto di `template-fattura-v4.html` (il CSS resta quello copiato), «Legge i dati nella forma» =
+   **2** (il clone copia 1 dalla v3), salva. È anche il collaudo a video del campo di R-2.
+3. **Pubblicare la v4** (dal pulsante, `valido_dal` = oggi, `valido_al` vuoto): la v3 diventa OBSOLETA e
+   la stampa riparte. Le righe di coda finite in errore terminale nella finestra si rimettono in coda
+   dalla gestione code.
+
+La ristampa fedele delle fatture già emesse non cambia: contesto congelato in forma 1, versione 3 fissata.
+

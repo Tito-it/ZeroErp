@@ -5402,6 +5402,10 @@
         "field_margin_left": "Margine left (mm)",
         "field_valido_dal": "Valido dal",
         "field_valido_al": "Valido al",
+        "field_versione_contesto": "Legge i dati nella forma",
+        "versione_contesto_hint": "Il sistema prepara oggi i dati di questo documento nella forma {forma}. Una versione si pubblica e stampa solo se legge quella forma; una bozza puo' dichiararne un'altra per prepararla.",
+        "versione_contesto_builder_assente": "Il generatore dei dati di questo template non e' registrato: le sue versioni non si pubblicano e non stampano.",
+        "publish_forma": "Questa versione legge i dati nella forma {versione}; il sistema li prepara nella forma {builder}.",
         "orientation_portrait": "Verticale",
         "orientation_landscape": "Orizzontale"
       },

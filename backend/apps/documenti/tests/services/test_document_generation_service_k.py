@@ -103,9 +103,10 @@ def _patch_render(return_value: bytes = b"%PDF-1.4 fake"):
 
 def _patch_get_builder(context: dict[str, Any] | None = None):
     builder = MagicMock()
+    builder.CONTEXT_VERSION = 2
     builder.build_context.return_value = context if context is not None else {"numero": 1}
     return patch(
-        "apps.documenti.services.document_generation_service.get_builder",
+        "apps.documenti.services.document_generation_service.get_builder_del_template",
         return_value=builder,
     )
 
@@ -146,6 +147,8 @@ class AnteprimaDocumentoTests(SimpleTestCase):
         self.assertEqual(result["pdf_bytes"], b"PDF")
         self.assertEqual(result["nome_file"], "preventivo-42.pdf")
         self.assertEqual(result["mime_type"], "application/pdf")
+        # Anche l'anteprima chiede al DB il patto versione/forma dei dati.
+        repo.guard_versione_contesto.assert_called_once_with(12, 2)
         # Nessuna persistenza.
         repo.create_documento_generato.assert_not_called()
         repo.create_documento_generato_file.assert_not_called()
