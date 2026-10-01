@@ -19,6 +19,7 @@
 //   <LookupSelect v-model="form.tipo" :fetcher="lookupX" lookup-key="vendite.x"
 //                 :transform="r => r.data.data" value-field="codice" show-code />
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useGlobalLookup } from '../composables/useGlobalLookup'
 import { LOOKUP_CODICI_PAGE_SIZE, useLookupCodici } from '../composables/useLookupCodici'
 import { etichettaVoce } from '../utils/etichettaSelezionata'
@@ -64,6 +65,18 @@ const props = defineProps({
   // obsolete, obsoleto_dal <= oggi). Passare false nella "selezione per il
   // nuovo" (es. tipo nuova pratica) per nasconderle. Vale solo in modalita' `rel`.
   includiObsoleti: { type: Boolean, default: true },
+  // ⭐ LA VOCE CHE IL RECORD HA GIA', anche se l'elenco non la propone piu'
+  //    (2026-10-01, brief-db-esigibilita-iva-per-cassa-emittente). L'elenco e'
+  //    quello delle voci ATTIVE: una voce che il catalogo ha disattivato DOPO
+  //    che il record l'ha presa non c'e', e la combo mostrava il campo VUOTO
+  //    con un valore dentro — l'operatore leggeva «nessun regime» su un
+  //    emittente che ne ha uno, e confermandolo confermava quello che non vedeva.
+  //    Il chiamante passa la voce come la conosce dal dettaglio (stessi campi
+  //    dell'elenco: `valueField`, `labelField`, `codice` se `showCode`); se non
+  //    e' nell'elenco si aggiunge in coda, marcata «non attiva». Resta
+  //    sceglibile: tenerla e' ammesso (Tid, 2026-10-01), e tornarci dopo averla
+  //    cambiata nello stesso form non deve essere impossibile.
+  voceCorrente: { type: Object, default: null },
 })
 
 if (import.meta.env.DEV && !props.rel === !props.fetcher) {
@@ -72,6 +85,7 @@ if (import.meta.env.DEV && !props.rel === !props.fetcher) {
 }
 
 const emit = defineEmits(['update:modelValue', 'change'])
+const { t } = useI18n()
 
 // Cache globale per-chiave: tutte le istanze con la stessa chiave condividono
 // la stessa fetch (evita N chiamate duplicate nei form con piu' dropdown).
@@ -99,13 +113,36 @@ const filteredItems = computed(() => {
   return items.filter(item => item?.[props.filterField] === props.filterValue)
 })
 
+// La voce del record fuori dall'elenco (vedi `voceCorrente`), o null.
+// ⚠️ Si confronta con l'elenco INTERO (`lookup.items`), non col filtrato: una
+//    voce attiva esclusa da `filterField`/`excludeValue` e' una scelta del
+//    chiamante, non una voce disattivata, e non va rimessa dentro.
+// ⚠️ Solo a elenco CARICATO (`loaded`: vero dopo una lettura riuscita, non
+//    dopo un errore). Prima, o se la lettura fallisce, l'elenco vuoto farebbe
+//    dire «non attiva» a una voce attivissima.
+// ⚠️ «Non e' nell'elenco» vale «non e' proposta» perche' il lookup legge una
+//    tabella di configurazione INTERA, in una pagina (`LOOKUP_CODICI_PAGE_SIZE`):
+//    con un `pageSize` ridotto dal chiamante non varrebbe piu'.
+const voceFuoriElenco = computed(() => {
+  const v = props.voceCorrente
+  const valore = v?.[props.valueField]
+  if (valore == null || !lookup.loaded.value) return null
+  if (lookup.items.value.some(i => i?.[props.valueField] === valore)) return null
+  const etichetta = v[props.labelField] ?? valore
+  return { ...v, [props.labelField]: `${etichetta} — ${t('common.lookup_voce_non_attiva')}` }
+})
+
 // Opzioni renderizzate: con includeAllOption prepende la voce "Tutti"
-// (value=null), usando gli stessi field-name del Select.
+// (value=null), usando gli stessi field-name del Select; la voce del record
+// fuori elenco va in coda.
 const visibleOptions = computed(() => {
-  if (!props.includeAllOption) return filteredItems.value
+  const voci = voceFuoriElenco.value
+    ? [...filteredItems.value, voceFuoriElenco.value]
+    : filteredItems.value
+  if (!props.includeAllOption) return voci
   return [
     { [props.valueField]: null, [props.labelField]: props.allLabel },
-    ...filteredItems.value,
+    ...voci,
   ]
 })
 

@@ -26,9 +26,6 @@ const props = defineProps({
   items: { type: Array, default: () => [] },
   // Mostra colonna arrotondamento (diagnostica). Off di default per UX pulita.
   showArrotondamento: { type: Boolean, default: false },
-  // Mostra colonna esigibilita' IVA decodificata (fatture: I/D/S FatturaPA).
-  // Off di default: preventivi/ordini/DDT non la espongono.
-  showEsigibilita: { type: Boolean, default: false },
   // Mostra tooltip didascalico sotto al titolo (riferimento normativo).
   showSubtitle: { type: Boolean, default: false },
 })
@@ -88,6 +85,10 @@ function aliquotaLabel(row) {
          fatture useranno la chiave composita iva+natura+esigibilita+split):
          per una tabella senza selezione/espansione PrimeVue usa l'indice di
          riga, evitando key duplicate quando id e' assente. -->
+    <!-- Larghezze: 31+27+27+15 = 100 con la colonna esigibilita' (sempre).
+         La colonna diagnostica `arrotondamento` (10%) la sfora di proposito:
+         con `table-layout: fixed` il browser riproporziona, ed e' una vista
+         di controllo, non di lettura. -->
     <DataTable :value="items" size="small" striped-rows show-gridlines class="app-datatable"
       :pt="{ table: { style: 'table-layout: fixed;' } }">
       <template #empty>
@@ -100,7 +101,7 @@ function aliquotaLabel(row) {
         :footer="t('common.riepilogo_iva_totale')"
         header-style="text-align: left;" body-style="text-align: left;"
         footer-style="text-align: left; font-weight: 600;"
-        style="width: 30%;">
+        style="width: 31%;">
         <template #body="{ data }">
           <div style="display: flex; flex-direction: column; gap: 0.1rem;">
             <span>{{ aliquotaLabel(data) }}</span>
@@ -117,7 +118,7 @@ function aliquotaLabel(row) {
       <Column field="imponibile" :header="t('common.riepilogo_iva_col_imponibile')"
         header-style="text-align: right;" body-style="text-align: right;"
         footer-style="text-align: right; font-weight: 600;"
-        style="width: 30%;">
+        style="width: 27%;">
         <template #body="{ data }">{{ formatCurrency(data.imponibile) }}</template>
         <template #footer>{{ formatCurrency(totals.imponibile) }}</template>
       </Column>
@@ -125,12 +126,19 @@ function aliquotaLabel(row) {
       <Column field="imposta" :header="t('common.riepilogo_iva_col_imposta')"
         header-style="text-align: right;" body-style="text-align: right;"
         footer-style="text-align: right; font-weight: 600;"
-        style="width: 30%;">
+        style="width: 27%;">
         <template #body="{ data }">{{ formatCurrency(data.imposta) }}</template>
         <template #footer>{{ formatCurrency(totals.imposta) }}</template>
       </Column>
 
-      <Column v-if="showEsigibilita" field="esigibilita"
+      <!-- Esigibilita' IVA decodificata (I/D/S FatturaPA): SEMPRE, su tutti i
+           documenti di vendita. Dal 2026-10-01 la coppia esigibilita'/scissione
+           di fattura, preventivo, ordine e DDT esce dalla stessa regola DB
+           (`script.fn_esigibilita_iva`, R-4 di brief-db-esigibilita-iva-per-
+           cassa-emittente): la prop `showEsigibilita` che la accendeva e' stata
+           RITIRATA quando tutti e quattro i consumer la passavano uguale.
+           NULL = cliente o regime non noto: la cella mostra '—'. -->
+      <Column field="esigibilita"
         :header="t('common.riepilogo_iva_col_esigibilita')"
         header-style="text-align: left;" body-style="text-align: left;"
         style="width: 15%;">

@@ -662,7 +662,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
           <!-- Riepilogo IVA: BB condiviso con preventivi/ordini/DDT (titolo,
                label esenti con natura, footer di quadratura, totale documento).
                Lettura pura da fatture_riepiloghi_iva: nessun ricalcolo qui. -->
-          <RiepilogoIvaTable :items="riepilogoIva" show-esigibilita show-subtitle />
+          <RiepilogoIvaTable :items="riepilogoIva" show-subtitle />
 
           <!-- Chiusura del documento: bollo/arrotondamento se ci sono, poi i
                due totali. `totale_doc` e `totale_a_pagare` entrambi perché

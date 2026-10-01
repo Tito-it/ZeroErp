@@ -9,9 +9,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from apps.anagrafiche.db.emittenti_fiscali_repository import (
     EMITTENTE_UPDATE_ALLOWED,
@@ -34,7 +36,11 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.non_editable_fields_helper import (
     compute_non_editable_fields,
 )
-from apps.core.services.payload_helpers import PayloadValidator, translate_db_errors
+from apps.core.services.payload_helpers import (
+    PayloadValidator,
+    translate_db_errors,
+    vincolo_violato,
+)
 
 
 # Gap rispetto al registro DB `dbops.vw_non_editable_fields` (Fase 4 — A9).
@@ -54,6 +60,52 @@ _UPDATE_UTILITY_KEYS: frozenset[str] = UTILITIES_UPDATE_ALLOWED
 
 # Validator stateless del dominio (solo il codice errore): condivisibile.
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
+
+# Il regime fiscale dell'emittente (brief-db-esigibilita-iva-per-cassa-emittente,
+# 2026-10-01): NOT NULL con default RF01 e FK al catalogo `config.regimi_fiscali`.
+_CAMPO_REGIME = "regime_fiscale_rf"
+_FK_REGIME = "fk_emittenti_fiscali_regimi_fiscali"
+
+
+# Scopo: Dice se il payload DICHIARA il regime fiscale, e ne rifiuta il vuoto.
+#        ⭐ Dichiarare il regime e' confermarlo (D-11): chi lo porta nel payload
+#        lo ha scelto, e la conferma (data e autore) si scrive con lui.
+#        ⛔ Il vuoto e il `null` NON significano «lascia stare»: sono un 400
+#        sul campo. Fino al 2026-10-01 diventavano NULL, e con la colonna NOT
+#        NULL sarebbero stati un 23502 — in creazione, peggio, un vuoto veniva
+#        omesso in silenzio e l'emittente nasceva RF01 come se nessuno avesse
+#        scritto niente. Chi non vuole dichiarare il regime NON manda la chiave.
+def _regime_dichiarato(payload: dict[str, Any]) -> bool:
+    if _CAMPO_REGIME not in payload:
+        return False
+    valore = payload[_CAMPO_REGIME]
+    ErrorManager.require(
+        isinstance(valore, str) and bool(valore.strip()),
+        code=E_ANAG_VALIDAZIONE,
+        message="Regime fiscale obbligatorio: scegliere un codice dal catalogo.",
+        context={"field": _CAMPO_REGIME},
+    )
+    return True
+
+
+# Scopo: Traduce in 400 sul campo un codice di regime fuori catalogo (FK).
+#        ⚠️ Traduce SOLO la FK del regime: ogni altra IntegrityError si rilancia
+#        com'e', perche' il ripiego dei chiamanti (o il middleware) la gestisce
+#        gia' — un ripiego qui la maschererebbe da errore di regime.
+@contextmanager
+def _regime_nel_catalogo() -> Iterator[None]:
+    try:
+        yield
+    except IntegrityError as exc:
+        if vincolo_violato(exc, [_FK_REGIME]) is None:
+            raise
+        ErrorManager.raise_error(
+            code=E_ANAG_VALIDAZIONE,
+            message="Regime fiscale non presente nel catalogo dei regimi.",
+            detail=str(exc),
+            context={"field": _CAMPO_REGIME},
+            cause=exc,
+        )
 
 
 class EmittentiFiscaliService:
@@ -123,17 +175,22 @@ class EmittentiFiscaliService:
         # (brief `brief-emittente-ragione-sociale-dal-soggetto.md`).
         codice = require_str(payload, "codice", "Codice emittente obbligatorio.")
 
+        # Il regime: dichiarato = scelto e confermato; assente = default DB RF01,
+        # NON confermato (l'emittente entra nel presidio dei regimi da confermare).
+        conferma_regime = _regime_dichiarato(payload)
+
         # Campi opzionali (incluso attivo se passato dal payload, default DB true)
         emittente_data = self._extract_emittente_data(payload)
 
         # Atomic: ruolo EF e insert emittente devono essere consistenti — se fallisce
         # l'insert dopo aver creato il ruolo, il rollback evita ruoli orfani.
-        with transaction.atomic():
+        with _regime_nel_catalogo(), transaction.atomic():
             soggetto_ruolo_id = self._repo.get_or_create_ruolo_emittente(soggetto_id)
             result = create_with_constraint_mapping(
                 lambda: {"id": self._repo.create_emittente(
                     soggetto_ruolo_id=soggetto_ruolo_id,
                     codice=codice,
+                    conferma_regime=conferma_regime,
                     **emittente_data,
                 )},
                 {
@@ -165,16 +222,25 @@ class EmittentiFiscaliService:
     # Scopo: Aggiorna campi editabili dell'emittente fiscale.
     #        Il campo codice e' bloccato dal trigger DB: in PATCH e' rifiutato
     #        (400) dal contratto `_UPDATE_EMITTENTE_KEYS`, come ogni chiave ignota.
+    #        ⭐ Una PATCH che porta `regime_fiscale_rf` lo CONFERMA, anche se il
+    #        valore e' lo stesso di prima: e' cosi' che l'operatore conferma un
+    #        regime che nessuno aveva dichiarato (D-11). Chi non tocca il regime
+    #        non manda la chiave. Data e autore della conferma non sono chiavi
+    #        del contratto: li scrive il database.
     def update_emittente(self, emittente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         _V.validate_allowed_keys(
             payload, allowed=_UPDATE_EMITTENTE_KEYS,
             message="Payload emittente fiscale non valido.",
         )
+        conferma_regime = _regime_dichiarato(payload)
         # Verifica che l'emittente esista
         self.get_emittente(emittente_id)
         # Copia difensiva: il repo normalizza stringhe vuote -> None e non deve mutare
         # request.data della view (che potrebbe essere riusato dal middleware di logging).
-        updated = self._repo.update_emittente(emittente_id, dict(payload))
+        with _regime_nel_catalogo():
+            updated = self._repo.update_emittente(
+                emittente_id, dict(payload), conferma_regime=conferma_regime,
+            )
         ErrorManager.require(
             updated,
             code=E_ANAG_NOT_FOUND,

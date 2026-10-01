@@ -1,5 +1,6 @@
 {
   "common": {
+    "lookup_voce_non_attiva": "not active",
     "righe_non_lette": "Could not load the document lines.",
     "invito_non_spedito": "Invitation created, but the email was not sent: the person did not receive the link. Check the email account and send the invitation again.",
     "invito_non_spedito_info": "The invitation link was created, but the email was not sent: the person did not receive it. Check the system email account and resend the invitation.",
@@ -1493,7 +1494,11 @@
       "field_codice_hint": "Issuer short code: {min} to {max} characters, uppercase letters and digits only. It becomes part of the job code (CMM-CODE-year-number) and cannot be changed after saving.",
       "field_attivo": "Active",
       "field_regime_fiscale_rf": "Tax regime (RF)",
-      "regime_fiscale_rf_hint": "RF tax regime code of the FE/SdI layout (e.g. RF01, RF19).",
+      "regime_fiscale_rf_hint": "Tax regime of the FatturaPA layout. It affects the VAT chargeability of invoices: a cash accounting regime makes it deferred.",
+      "regime_confermato_il": "Regime confirmed on {data} by {utente}.",
+      "regime_confermato_al_salvataggio": "The regime will be confirmed when saved.",
+      "regime_non_confermato": "Regime not confirmed yet: check that it is the issuer's one.",
+      "regime_conferma": "Confirm the regime",
       "field_bollo_auto": "Automatic stamp duty",
       "field_bollo_soglia": "Stamp duty threshold",
       "field_rounding_policy": "Rounding policy",

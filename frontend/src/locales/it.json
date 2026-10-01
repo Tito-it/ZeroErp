@@ -1,5 +1,6 @@
 {
   "common": {
+    "lookup_voce_non_attiva": "non attiva",
     "righe_non_lette": "Non sono riuscito a leggere le righe del documento.",
     "invito_non_spedito": "Invito creato, ma l'email non è partita: la persona non ha ricevuto il link. Controlla l'account email e invia di nuovo l'invito.",
     "invito_non_spedito_info": "Il link d'invito è stato creato, ma l'email non è partita: la persona non l'ha ricevuto. Controlla l'account email di sistema e reinvia l'invito.",
@@ -1493,7 +1494,11 @@
       "field_codice_hint": "Sigla dell'azienda che emette: da {min} a {max} caratteri, solo lettere maiuscole e cifre. Entra nel codice delle commesse (CMM-SIGLA-anno-numero) e non e' piu' modificabile dopo il salvataggio.",
       "field_attivo": "Attivo",
       "field_regime_fiscale_rf": "Regime fiscale (RF)",
-      "regime_fiscale_rf_hint": "Codice regime fiscale RF del tracciato FE/SdI (es. RF01, RF19).",
+      "regime_fiscale_rf_hint": "Regime fiscale del tracciato FatturaPA. Entra nell'esigibilità IVA delle fatture: un regime per cassa la rende differita.",
+      "regime_confermato_il": "Regime confermato il {data} da {utente}.",
+      "regime_confermato_al_salvataggio": "Il regime sarà confermato al salvataggio.",
+      "regime_non_confermato": "Regime non ancora confermato: verificare che sia quello dell'emittente.",
+      "regime_conferma": "Conferma il regime",
       "field_bollo_auto": "Bollo automatico",
       "field_bollo_soglia": "Soglia bollo",
       "field_rounding_policy": "Policy arrotondamento",

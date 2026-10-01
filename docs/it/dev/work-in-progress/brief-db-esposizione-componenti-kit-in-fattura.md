@@ -119,6 +119,9 @@ Un vocabolario a tre valori al posto del booleano (E-1):
   prezzo e importo), per il patto versione/forma.
 * **Template**: versione 5 della fattura, che stampa prezzo e importo dei valorizzati e il kit senza
   resto senza importo. Dichiara la forma 3; si pubblica quando il builder la produce.
+  ⚠️ **Numerazione da verificare al momento di scrivere** (sessione BE, 2026-10-01): anche R-3 di
+  `brief-db-esigibilita-iva-per-cassa-emittente.md` (§11) porta la fattura a «forma 3 + v5» (le
+  annotazioni). Chi arriva primo prende 3/v5, l'altro passa a 4/v6 e parte dal template dell'altro.
 * **FE**: nella distinta dell'articolo il toggle «esposto in fattura» diventa una scelta fra tre
   (etichette dal vocabolario); il pannello componenti mostra l'esposizione per esteso; nel drawer
   fattura l'espansione del kit mostra prezzo e importo dei valorizzati.
