@@ -212,7 +212,7 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" \
 | `codice` | string | Si | Univoco; **immutabile** dopo la creazione (lock_columns trigger) |
 | `descrizione` | string | Si | Etichetta visibile |
 | `attivo` | bool | No | Default DB `true` |
-| `regime_fiscale_rf` | string | No | Codice del catalogo `config.regimi_fiscali` (FK, es. `RF01`, `RF17`). **Presente** = regime dichiarato e **confermato** nella stessa scrittura (data e autore li scrive il DB). **Omesso** = default DB `RF01`, non confermato: l'emittente entra nel presidio `dbops.vw_emittenti_regime_non_confermato`. Vuoto o `null` → 400 |
+| `regime_fiscale_rf` | string | No | Codice del catalogo `config.regimi_fiscali` (FK, es. `RF01`, `RF17`). **Presente** = regime dichiarato e **confermato**: la INSERT non conferma mai, quindi il service la fa seguire da un UPDATE del regime nella stessa transazione, e data e autore li deriva il DB. **Omesso** = default DB `RF01`, non confermato: l'emittente entra nel presidio `dbops.vw_emittenti_regime_non_confermato`. Vuoto o `null` → 400 |
 | `bollo_auto` | bool | No | Calcolo bollo automatico |
 | `bollo_soglia` | numeric | No | Soglia per applicare il bollo |
 | `rounding_policy` | enum | No | Uno tra: `UP`, `DOWN`, `HALF_UP`, `HALF_DOWN` (allineato alla matrice utility) |
@@ -292,12 +292,14 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
 - **Regime fiscale** (dal 2026-10-01, `brief-db-esigibilita-iva-per-cassa-emittente`):
   `regime_fiscale_rf` e' NOT NULL con FK al catalogo `config.regimi_fiscali`.
   Una PATCH che lo porta — **anche con lo stesso valore** — lo dichiara e lo
-  **conferma**: `regime_fiscale_confermato_il`/`_da` si scrivono nella stessa
-  UPDATE (l'autore e' l'operatore, GUC `app.jwt_user`). Chi non tocca il regime
-  **omette la chiave**: un cambio di regime senza conferma la azzera (trigger
-  `trgfn_emittenti_fiscali_regime_conferma`). Le due colonne di conferma non
-  sono chiavi del contratto. Vuoto, `null` o codice fuori catalogo →
-  `E_ANAG_VALIDAZIONE` 400 sul campo.
+  **conferma**: dal 2026-10-02 `regime_fiscale_confermato_il`/`_da` li
+  **deriva il database** da ogni UPDATE che nomina il regime (trigger
+  `trgfn_emittenti_fiscali_regime_conferma`; l'autore e' l'operatore, GUC
+  `app.jwt_user`). Chi non tocca il regime **omette la chiave**, e la conferma
+  resta com'e'. Le due colonne di conferma non sono chiavi del contratto, e il
+  database rifiuta chi le scrive direttamente
+  (`E_EMITTENTE_REGIME_CONFERMA_DERIVATA`). Vuoto, `null` o codice fuori
+  catalogo → `E_ANAG_VALIDAZIONE` 400 sul campo.
 - `rounding_policy` accetta solo i valori enum `UP`, `DOWN`, `HALF_UP`, `HALF_DOWN`
   (allineato ai metodi della matrice utility).
 - **Disattivazione (`attivo = false`)**: rifiutata dal trigger DB se l'emittente ha

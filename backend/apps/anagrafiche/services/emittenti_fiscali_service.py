@@ -68,8 +68,9 @@ _FK_REGIME = "fk_emittenti_fiscali_regimi_fiscali"
 
 
 # Scopo: Dice se il payload DICHIARA il regime fiscale, e ne rifiuta il vuoto.
-#        ⭐ Dichiarare il regime e' confermarlo (D-11): chi lo porta nel payload
-#        lo ha scelto, e la conferma (data e autore) si scrive con lui.
+#        ⭐ Dichiarare il regime e' confermarlo: chi lo porta nel payload lo ha
+#        scelto, e la conferma (data e autore) la deriva il database da ogni
+#        UPDATE che nomina il regime (§10 del brief, applicato il 2026-10-02).
 #        ⛔ Il vuoto e il `null` NON significano «lascia stare»: sono un 400
 #        sul campo. Fino al 2026-10-01 diventavano NULL, e con la colonna NOT
 #        NULL sarebbero stati un 23502 — in creazione, peggio, un vuoto veniva
@@ -177,7 +178,7 @@ class EmittentiFiscaliService:
 
         # Il regime: dichiarato = scelto e confermato; assente = default DB RF01,
         # NON confermato (l'emittente entra nel presidio dei regimi da confermare).
-        conferma_regime = _regime_dichiarato(payload)
+        regime_dichiarato = _regime_dichiarato(payload)
 
         # Campi opzionali (incluso attivo se passato dal payload, default DB true)
         emittente_data = self._extract_emittente_data(payload)
@@ -190,7 +191,6 @@ class EmittentiFiscaliService:
                 lambda: {"id": self._repo.create_emittente(
                     soggetto_ruolo_id=soggetto_ruolo_id,
                     codice=codice,
-                    conferma_regime=conferma_regime,
                     **emittente_data,
                 )},
                 {
@@ -198,6 +198,20 @@ class EmittentiFiscaliService:
                     "uq:codice": "Esiste gia' un emittente fiscale con questo codice.",
                 },
             )
+            # ⭐ La INSERT non conferma mai il regime (il default RF01 e un
+            #    RF01 scelto sono indistinguibili): la dichiarazione e' un
+            #    UPDATE del regime, nella stessa transazione. Lo stesso valore
+            #    gia' scritto dalla INSERT va bene: conta la colonna nominata.
+            # ⚠️ L'esito si controlla: una UPDATE che non tocca la riga (0 righe)
+            #    lascerebbe l'emittente creato e NON confermato, senza errore.
+            if regime_dichiarato:
+                ErrorManager.require(
+                    self._repo.update_emittente(
+                        result["id"], {_CAMPO_REGIME: emittente_data[_CAMPO_REGIME]},
+                    ),
+                    code=E_ANAG_NOT_FOUND,
+                    message="Emittente fiscale appena creato non trovato per la conferma del regime.",
+                )
 
         return {
             "id": result["id"],
@@ -224,23 +238,21 @@ class EmittentiFiscaliService:
     #        (400) dal contratto `_UPDATE_EMITTENTE_KEYS`, come ogni chiave ignota.
     #        ⭐ Una PATCH che porta `regime_fiscale_rf` lo CONFERMA, anche se il
     #        valore e' lo stesso di prima: e' cosi' che l'operatore conferma un
-    #        regime che nessuno aveva dichiarato (D-11). Chi non tocca il regime
+    #        regime che nessuno aveva dichiarato. Chi non tocca il regime
     #        non manda la chiave. Data e autore della conferma non sono chiavi
-    #        del contratto: li scrive il database.
+    #        del contratto: li deriva il database (§10 del brief).
     def update_emittente(self, emittente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         _V.validate_allowed_keys(
             payload, allowed=_UPDATE_EMITTENTE_KEYS,
             message="Payload emittente fiscale non valido.",
         )
-        conferma_regime = _regime_dichiarato(payload)
+        _regime_dichiarato(payload)
         # Verifica che l'emittente esista
         self.get_emittente(emittente_id)
         # Copia difensiva: il repo normalizza stringhe vuote -> None e non deve mutare
         # request.data della view (che potrebbe essere riusato dal middleware di logging).
         with _regime_nel_catalogo():
-            updated = self._repo.update_emittente(
-                emittente_id, dict(payload), conferma_regime=conferma_regime,
-            )
+            updated = self._repo.update_emittente(emittente_id, dict(payload))
         ErrorManager.require(
             updated,
             code=E_ANAG_NOT_FOUND,

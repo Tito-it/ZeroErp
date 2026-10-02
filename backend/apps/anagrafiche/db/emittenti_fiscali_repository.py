@@ -87,28 +87,18 @@ EMITTENTE_UPDATE_ALLOWED: frozenset[str] = frozenset({
 })
 
 
-# ⭐ LA CONFERMA DEL REGIME FISCALE (D-11 di brief-db-esigibilita-iva-per-cassa-
-#    emittente, 2026-10-01). Chi dichiara il regime lo conferma, e la conferma
-#    va scritta NELLA STESSA scrittura del regime: il trigger
-#    `trgfn_emittenti_fiscali_regime_conferma` azzera la conferma quando il
-#    regime cambia e la data di conferma no — un secondo UPDATE arriverebbe
-#    dopo l'azzeramento, e l'emittente resterebbe nel presidio
-#    `dbops.vw_emittenti_regime_non_confermato`.
-# ⭐ Data e autore li scrive il database, non Python: l'autore e' l'operatore
-#    della richiesta (`app.jwt_user`, la stessa GUC da cui leggono l'audit e
-#    l'archiviazione delle code), col ruolo DB come ripiego — senza ripiego un
-#    contesto privo di GUC violerebbe il CHECK di coppia
-#    `chk_emittenti_fiscali_regime_conferma_coppia` (data senza autore).
-# ⚠️ TRANSITORIO: l'espressione dell'autore ricopia quella dei trigger DB
-#    (`dbops.trgfn_coda_archiviazione`). Tid ha deciso (2026-10-01) che la
-#    conferma la derivi il trigger: dopo l'apply di §10 del brief questa mappa
-#    si RITIRA, e con lei la copia.
-_CONFERMA_REGIME_ESPRESSIONI: dict[str, str] = {
-    "regime_fiscale_confermato_il": "now()",
-    "regime_fiscale_confermato_da": (
-        "COALESCE(NULLIF(current_setting('app.jwt_user', true), ''), CURRENT_USER)"
-    ),
-}
+# ⭐ LA CONFERMA DEL REGIME FISCALE (§10 di brief-db-esigibilita-iva-per-cassa-
+#    emittente, applicato il 2026-10-02): data e autore li DERIVA il database.
+#    Ogni `UPDATE OF regime_fiscale_rf`, anche con lo stesso valore, e' una
+#    dichiarazione del regime e il trigger `trgfn_emittenti_fiscali_regime_
+#    conferma` scrive `confermato_il`/`_da` (autore da `app.jwt_user`).
+#    ⛔ Le due colonne di conferma non si scrivono da qui: il guard
+#    `trgfn_emittenti_fiscali_guard_regime_conferma` le RIFIUTA
+#    (`E_EMITTENTE_REGIME_CONFERMA_DERIVATA`). Restano fuori dalle whitelist
+#    di create e update, e il BB le ferma prima di arrivare al DB.
+#    ⚠️ Una INSERT non conferma mai (il default RF01 e un RF01 scelto sono
+#    indistinguibili): chi crea dichiarando il regime fa poi un UPDATE del
+#    regime nella stessa transazione (`EmittentiFiscaliService.crea_emittente`).
 
 
 class EmittentiFiscaliRepository:
@@ -163,18 +153,13 @@ class EmittentiFiscaliRepository:
     #    `skip_none=True`: le colonne opzionali a None si OMETTONO, cosi' il
     #    DEFAULT del DB resta attivo (la semantica di prima). Una chiave fuori
     #    `_CREATE_COLS` e' `RuntimeError`: i kwargs li scrive il service.
-    # ⭐ `conferma_regime=True` scrive la conferma del regime insieme al
-    #    regime (vedi `_CONFERMA_REGIME_ESPRESSIONI`).
-    #    ⛔ Le colonne della conferma NON sono in `_CREATE_COLS`: entrano nella
-    #    whitelist solo come espressioni, solo quando le chiede `conferma_regime`.
-    #    Un kwarg `regime_fiscale_confermato_*` resta un `RuntimeError` del BB:
-    #    fuori whitelist senza conferma, «sia in values sia in espressioni» con.
-    def create_emittente(self, *, conferma_regime: bool = False, **kwargs: Any) -> int:
-        espressioni = _CONFERMA_REGIME_ESPRESSIONI if conferma_regime else {}
+    # ⛔ Le colonne della conferma NON sono in `_CREATE_COLS`: un kwarg
+    #    `regime_fiscale_confermato_*` e' un `RuntimeError` del BB. La INSERT
+    #    non conferma il regime nemmeno quando lo porta (vedi sopra).
+    def create_emittente(self, **kwargs: Any) -> int:
         riga = execute_dynamic_insert(
             "anagrafiche.emittenti_fiscali", kwargs,
-            allowed=self._CREATE_COLS | espressioni.keys(), skip_none=True,
-            espressioni=espressioni or None,
+            allowed=self._CREATE_COLS, skip_none=True,
         )
         return riga["id"]
 
@@ -290,11 +275,9 @@ class EmittentiFiscaliRepository:
     #        Il campo codice e' bloccato dal trigger DB (lock_columns) e va escluso.
     #        BB `execute_dynamic_update` (2026-09-26): whitelist RIGIDA
     #        `EMITTENTE_UPDATE_ALLOWED`, le chiavi le valida prima il service (400).
-    #        ⭐ `conferma_regime=True` scrive la conferma del regime nella
-    #        STESSA UPDATE (vedi `_CONFERMA_REGIME_ESPRESSIONI`).
-    def update_emittente(
-        self, emittente_id: int, data: dict[str, Any], *, conferma_regime: bool = False,
-    ) -> bool:
+    #        ⭐ Se `data` porta `regime_fiscale_rf` la UPDATE lo nomina, e il
+    #        database lo registra come conferma (vedi sopra).
+    def update_emittente(self, emittente_id: int, data: dict[str, Any]) -> bool:
         # Copia: non si muta l'input del chiamante.
         valori = dict(data)
         # Normalizza stringhe vuote a None per campi nullable
@@ -302,14 +285,9 @@ class EmittentiFiscaliRepository:
             val = valori.get(k)
             if isinstance(val, str) and not val.strip():
                 valori[k] = None
-        conferma = (
-            ", ".join(f"{col} = {espr}" for col, espr in _CONFERMA_REGIME_ESPRESSIONI.items())
-            if conferma_regime else None
-        )
         return execute_dynamic_update(
             "anagrafiche.emittenti_fiscali", emittente_id, valori,
             allowed=EMITTENTE_UPDATE_ALLOWED,
-            extra_set=conferma,
         )
 
     # =================================================================

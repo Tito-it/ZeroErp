@@ -11,6 +11,8 @@
 #        (`list_righe`), i componenti esposti di un kit DENTRO la riga.
 #        ⭐ Forma 3 dal 2026-10-02: un componente VALORIZZATO porta prezzo,
 #        sconto e importo suoi; il padre senza resto ha importo NULL.
+#        ⭐ Forma 4 dal 2026-10-02: `annotazioni`, la lista `{codice, testo}`
+#        decisa dal DB (`fn_annotazioni_fattura`), nell'ordine dato.
 #
 # Indice test (0..N):
 #   0. build_context_shape_e_campi
@@ -19,6 +21,7 @@
 #   1-ter. build_context_kit_porta_i_componenti_dentro (2026-09-30)
 #   1-quater. build_context_componente_valorizzato_porta_i_suoi_numeri (2026-10-02)
 #   2. build_context_riepilogo_iva_propagate
+#   2-bis. build_context_annotazioni_dal_db (2026-10-02)
 #   3. build_context_id_non_valido_raises_validation
 #   4. build_context_fattura_inesistente_raises_not_found
 #   5. registry_contiene_fattura_dopo_import_modulo
@@ -90,6 +93,7 @@ def _builder(righe: list[dict[str, Any]] | None = None):
     repo.get_fattura_testata.return_value = _testata_row()
     repo.list_fattura_riepilogo_iva.return_value = []
     repo.list_fattura_scadenze.return_value = []
+    repo.list_fattura_annotazioni.return_value = []
     righe_repo = MagicMock()
     righe_repo.list_righe.return_value = righe or []
     return FatturaDocumentContextBuilder(repo=repo, righe_repo=righe_repo), repo, righe_repo
@@ -105,7 +109,8 @@ class BuildContextFatturaTests(SimpleTestCase):
 
         self.assertEqual(
             set(ctx.keys()),
-            {"fattura", "cliente", "righe", "riepilogo_iva", "scadenze", "_meta"},
+            {"fattura", "cliente", "righe", "riepilogo_iva", "scadenze", "annotazioni",
+             "_meta"},
         )
         fattura = ctx["fattura"]
         self.assertEqual(fattura["numero"], 137)
@@ -143,9 +148,12 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual(cliente["indirizzo"], "Corso Test 12, 00100 Roma RM")
 
         self.assertEqual(ctx["_meta"]["context_code"], "FATTURA")
-        # Forma 3 dal 2026-10-02: kit coi componenti dentro, e i VALORIZZATI
-        # coi numeri loro. Pubblicare/stampare vuole una versione che la legga.
-        self.assertEqual(ctx["_meta"]["context_version"], 3)
+        # Forma 4 dal 2026-10-02: la forma 3 (kit coi componenti dentro, i
+        # VALORIZZATI coi numeri loro) + le annotazioni di legge. Pubblicare/
+        # stampare vuole una versione che la legga.
+        self.assertEqual(ctx["_meta"]["context_version"], 4)
+        # Nessuna annotazione = lista vuota, non chiave assente (StrictUndefined).
+        self.assertEqual(ctx["annotazioni"], [])
         self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
         self.assertEqual(ctx["_meta"]["locale"], "it-IT")
 
@@ -310,6 +318,24 @@ class BuildContextFatturaTests(SimpleTestCase):
         # meta None → modalita_codice None (nessun errore)
         self.assertIsNone(ctx["scadenze"][1]["modalita_codice"])
         repo.list_fattura_scadenze.assert_called_once_with(42)
+
+    # 2-bis. Le annotazioni le decide il DB: il builder ne porta codice e testo
+    #        nell'ordine ricevuto, senza filtrare ne' riordinare, e nient'altro
+    #        (l'`ordine` serve alla query, non al template).
+    def test_build_context_annotazioni_dal_db(self) -> None:
+        builder, repo, _ = _builder()
+        repo.list_fattura_annotazioni.return_value = [
+            {"codice": "ESIGIBILITA_DIFFERITA", "testo": "Operazione con IVA per cassa"},
+            {"codice": "ALTRA", "testo": "Seconda voce"},
+        ]
+
+        ctx = builder.build_context(42)
+
+        self.assertEqual(ctx["annotazioni"], [
+            {"codice": "ESIGIBILITA_DIFFERITA", "testo": "Operazione con IVA per cassa"},
+            {"codice": "ALTRA", "testo": "Seconda voce"},
+        ])
+        repo.list_fattura_annotazioni.assert_called_once_with(42)
 
 
 class BuildContextFatturaGuardTests(SimpleTestCase):

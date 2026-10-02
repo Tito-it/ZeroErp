@@ -54,6 +54,14 @@
 #        NULL. Una versione scritta per la forma 2 su questi dati stamperebbe
 #        il kit senza l'importo dei valorizzati e la fattura non tornerebbe
 #        coi totali: per questo e' una forma nuova, non chiavi in piu'.
+#
+#        ⭐ FORMA 4 dal 2026-10-02 (brief-db-esigibilita-iva-per-cassa-
+#        emittente §11, R-3): `annotazioni`, la lista `{codice, testo}` delle
+#        annotazioni di legge del documento (oggi l'IVA per cassa, art. 32-bis
+#        DL 83/2012), nell'ordine dato da `vendite.fn_annotazioni_fattura`;
+#        lista vuota quando non ce ne sono. Le decide il database: una
+#        versione scritta per la forma 3 stamperebbe una fattura RF17 senza
+#        l'annotazione obbligatoria, ed e' per questo una forma nuova.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -87,7 +95,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
 
     CODE = "FATTURA"
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
-    CONTEXT_VERSION = 3
+    CONTEXT_VERSION = 4
 
     # Scopo: Iniezione opzionale dei repository per testabilità (mock). In
     #        runtime il default va benissimo: l'istanza è singleton di processo
@@ -106,8 +114,9 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
     #         1. guard id positivo;
     #         2. testata via `get_fattura_testata` (None → NOT_FOUND);
     #         3. righe (primo livello, kit coi componenti dentro) + riepilogo
-    #            IVA (tabella reale fatture_riepiloghi_iva);
-    #         4. compone la shape della forma `CONTEXT_VERSION` (3).
+    #            IVA (tabella reale fatture_riepiloghi_iva) + annotazioni di
+    #            legge (decise dal DB);
+    #         4. compone la shape della forma `CONTEXT_VERSION` (4).
     def build_context(
         self,
         sorgente_id: int,
@@ -139,6 +148,10 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             for r in self._repo.list_fattura_riepilogo_iva(sorgente_id)
         ]
         scadenze = self._repo.list_fattura_scadenze(sorgente_id)
+        annotazioni = [
+            {"codice": a["codice"], "testo": a["testo"]}
+            for a in self._repo.list_fattura_annotazioni(sorgente_id)
+        ]
 
         return {
             "fattura": self._shape_fattura(testata),
@@ -146,6 +159,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             "righe": righe,
             "riepilogo_iva": riepilogo_iva,
             "scadenze": [self._shape_scadenza(s) for s in scadenze],
+            "annotazioni": annotazioni,
             # `_meta`: parametri di rendering stabili a parità di chiamata
             # (locale, utente). NON inserire qui timestamp/random: il
             # `context_hash` deve restare deterministico per il dedup logico
