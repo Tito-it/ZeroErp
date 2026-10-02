@@ -19,7 +19,7 @@ import { listUnitaOrganizzative } from '../api/amministrazione'
 import { useSetupStatus } from '../composables/useSetupStatus'
 import { buildFilterSuperAdminOptions } from '../constants'
 import { buildAttivoOptions } from '../../core/utils/options'
-import { RUOLO_APPLICATIVO, READONLY_DOMAINS, TAB_ENTITIES, MANAGE_ICONS } from '../../core/constants'
+import { READONLY_DOMAINS, TAB_ENTITIES, MANAGE_ICONS } from '../../core/constants'
 import OperatoreDrawer from '../components/OperatoreDrawer.vue'
 import OperatorePermessiDrawer from '../components/OperatorePermessiDrawer.vue'
 import OperatoriNonAssegnatiBanner from '../components/OperatoriNonAssegnatiBanner.vue'
@@ -217,8 +217,11 @@ function buildRowActions(data) {
         <div class="operatore-ruolo-badges">
           <Badge v-if="data.is_super_admin"
             :value="t('amministrazione.is_super_admin.badge')" severity="warn" />
-          <Badge :value="ruoloAppLabel(data.ruolo_applicativo)"
-            :severity="data.ruolo_applicativo === RUOLO_APPLICATIVO.DISABILITATO ? 'danger' : 'info'" />
+          <!-- ⭐ Spenta, la veste TIENE il tipo (R-DB-1, 2026-10-02): il
+               «disabilitato» si legge da `veste_attiva`, non dal ruolo. -->
+          <Badge v-if="data.veste_attiva === false"
+            :value="t('amministrazione.permessi_stato_disabilitato')" severity="danger" />
+          <Badge v-else :value="ruoloAppLabel(data.ruolo_applicativo)" severity="info" />
           <!-- Le ALTRE vesti attive della credenziale (D-6, 2026-10-02): solo
                un'informazione — «e' anche cliente dello shop» —, si governano
                dal drawer del cliente o del fornitore, non da qui. -->

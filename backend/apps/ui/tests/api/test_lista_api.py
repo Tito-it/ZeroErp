@@ -25,14 +25,13 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from django.test import Client
+from django.test import Client, override_settings
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
 # Path mock di PermissionResolver lato view (skip_area_check abilitato ma
-# DomainAPIView legge comunque ruolo_applicativo per il check
-# DISABILITATO + is_super_admin per il bypass).
+# DomainAPIView legge comunque `is_super_admin` per il bypass).
 _PERM = "apps.core.api.permissions.PermissionResolver"
 
 
@@ -45,6 +44,9 @@ class _UserStub:
         self.is_superuser = False
 
 
+# Idempotenza forte OFF deterministica: con DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1
+# nell'ambiente il claim colpirebbe il DB (vietato in SimpleTestCase) → 500 finti.
+@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class UiListaApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
@@ -52,7 +54,6 @@ class UiListaApiTests(JwtMockedApiTest):
         # Mocka PermissionResolver per evitare query DB sotto SimpleTestCase.
         self._perm_patcher = patch(_PERM)
         mock_resolver = self._perm_patcher.start()
-        # OPERATORE != DISABILITATO -> non rifiutato early dal middleware.
         # is_super_admin=False -> passa al check area, che skippiamo via
         # skip_area_check=True nelle 3 view.
         mock_resolver.return_value.get_ruolo_applicativo.return_value = "OPERATORE"

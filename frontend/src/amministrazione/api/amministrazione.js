@@ -38,25 +38,65 @@ export function riattivaOperatore(authUserId) {
   return api.post(`${BASE}/operatori/${authUserId}/riattiva/`)
 }
 
-// --- Invito operatore ---
+// --- Area «Accessi» (brief-db-be-fe-area-accessi) ---
+// I due tab accanto agli operatori: insieme censiscono TUTTE le credenziali,
+// ognuna in un tab solo (la categoria la decide il DB).
 
-// --- Secondo fattore dell'operatore (brief sicurezza §3.4-bis, T-4) ---
-
-// Scopo: lo stato del secondo fattore dell'operatore, e se l'obbligo viene
-//        dalla credenziale o da un profilo.
-export function getSecondoFattoreOperatore(authUserId) {
-  return api.get(`${BASE}/operatori/${authUserId}/secondo-fattore/`)
+// Scopo: le persone senza veste operatore (portale, shop, nessuna veste).
+export function listAccessiAltri(params = {}) {
+  return api.get(`${BASE}/accessi/altri/`, { params })
 }
 
-// Scopo: accende o spegne l'obbligo sulla CREDENZIALE dell'operatore.
+// Scopo: le credenziali delle macchine (utenti tecnici dei processi, API_CLIENT).
+export function listAccessiSistema(params = {}) {
+  return api.get(`${BASE}/accessi/sistema/`, { params })
+}
+
+// --- La CREDENZIALE: azioni che valgono per tutte le sue vesti (A-4, A-5) ---
+// ⛔ Non stanno sotto `/operatori/`: una persona senza veste operatore non si
+//    raggiunge da li'. Fino al 2026-10-02 il secondo fattore stava sotto
+//    `operatori/<id>/secondo-fattore/`: ritirato.
+
+// Scopo: lo stato della credenziale (blocco dell'amministratore, capability).
+export function getCredenziale(authUserId) {
+  return api.get(`${BASE}/credenziali/${authUserId}/`)
+}
+
+// Scopo: blocca la credenziale su tutte le porte e chiude le sue sessioni.
+export function bloccaCredenziale(authUserId, motivo) {
+  return api.post(
+    `${BASE}/credenziali/${authUserId}/blocca/`,
+    { motivo },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
+// Scopo: toglie il blocco dell'amministratore.
+export function sbloccaCredenziale(authUserId) {
+  return api.post(
+    `${BASE}/credenziali/${authUserId}/sblocca/`,
+    {},
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
+// Scopo: lo stato del secondo fattore della credenziale, e se l'obbligo viene
+//        dalla credenziale o da un profilo (brief sicurezza §3.4-bis, T-4).
+export function getSecondoFattoreCredenziale(authUserId) {
+  return api.get(`${BASE}/credenziali/${authUserId}/secondo-fattore/`)
+}
+
+// Scopo: accende o spegne l'obbligo sulla CREDENZIALE.
 export function impostaObbligoSecondoFattore(authUserId, valore) {
-  return api.post(`${BASE}/operatori/${authUserId}/secondo-fattore/obbligo/`, { valore })
+  return api.post(`${BASE}/credenziali/${authUserId}/secondo-fattore/obbligo/`, { valore })
 }
 
-// Scopo: cancella il device dell'operatore (telefono perso), col motivo.
-export function disattivaSecondoFattoreOperatore(authUserId, motivo) {
-  return api.post(`${BASE}/operatori/${authUserId}/secondo-fattore/disattiva/`, { motivo })
+// Scopo: cancella il device della credenziale (telefono perso), col motivo.
+export function disattivaSecondoFattoreCredenziale(authUserId, motivo) {
+  return api.post(`${BASE}/credenziali/${authUserId}/secondo-fattore/disattiva/`, { motivo })
 }
+
+// --- Invito operatore ---
 
 export function invitaOperatore(authUserId) {
   return api.post(`${BASE}/operatori/${authUserId}/invita/`)

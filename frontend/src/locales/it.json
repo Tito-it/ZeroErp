@@ -282,7 +282,7 @@
       "email": "Email"
     },
     "amm-software": {
-      "operatori": "Operatori",
+      "accessi": "Accessi",
       "profili-reparto": "Profili Reparto",
       "permessi": "Permessi",
       "emittenti-fiscali": "Emittenti Fiscali",
@@ -693,13 +693,6 @@
       "badge_label": "Web",
       "user": "Utente:"
     },
-    "stato": {
-      "NESSUNO": "Non invitato",
-      "PENDING": "Invito inviato",
-      "NON_SPEDITO": "Invito non spedito",
-      "ATTIVO": "Attivo",
-      "DISATTIVO": "Disattivato"
-    },
     "nuovo_utente_creato": "nuovo account creato",
     "activation_title": "Attivazione account portale",
     "activation_welcome": "Imposta la tua password per completare l'attivazione dell'account portale.",
@@ -858,6 +851,13 @@
       "file_codici_intestazione": "ZeroERP — codici di recupero del secondo fattore. Ognuno vale una volta sola.",
       "file_codici_nome": "zeroerp-codici-recupero.txt",
       "uscita_conferma": "La pagina Sicurezza esce dall'applicazione: le modifiche non salvate (schede: {n}) andranno perse. Continuare?"
+    },
+    "stato_veste": {
+      "NESSUNO": "Non invitato",
+      "PENDING": "Invito inviato",
+      "NON_SPEDITO": "Invito non spedito",
+      "ATTIVO": "Attivo",
+      "DISATTIVO": "Disattivato"
     }
   },
   "resolver": {
@@ -1738,6 +1738,49 @@
       "disattivato": "Secondo fattore disattivato.",
       "richiesto_dal_profilo": "Richiede il secondo fattore",
       "richiesto_dal_profilo_aiuto": "Chi appartiene a questo reparto deve usare il secondo fattore di autenticazione."
+    },
+    "accessi": {
+      "col_vesti": "Accessi",
+      "col_nessun_accesso": "Nessun accesso",
+      "col_soggetti": "Soggetti collegati",
+      "col_secondo_fattore": "Secondo fattore",
+      "col_secondo_fattore_obbligatorio": "Secondo fattore obbligatorio",
+      "col_bloccata": "Bloccata",
+      "col_ultimo_accesso": "Ultimo accesso",
+      "col_tipo": "Tipo",
+      "col_processo": "Processo",
+      "col_processo_descrizione": "Descrizione processo",
+      "col_identita_attiva": "Attiva",
+      "tab_operatori": "Operatori",
+      "tab_altri": "Altri accessi",
+      "tab_sistema": "Di sistema",
+      "sezione_credenziale": "Accesso",
+      "blocco_titolo": "Blocco dell'amministratore",
+      "bloccata": "Bloccato",
+      "non_bloccata": "Non bloccato",
+      "bloccata_dettaglio": "Bloccato il {quando} da {chi}: {motivo}",
+      "blocca": "Blocca accesso",
+      "sblocca": "Sblocca accesso",
+      "sblocca_conferma": "La persona potrà di nuovo entrare con la sua password, da tutte le porte.",
+      "blocca_spiegazione": "La persona non entrerà più da nessuna porta (gestionale, portale, negozio) e le sue sessioni aperte vengono chiuse. Il blocco non scade e il cambio password non lo toglie: si toglie solo con «Sblocca accesso».",
+      "motivo_blocco": "Motivo",
+      "bloccata_ok": "Accesso bloccato.",
+      "sbloccata_ok": "Accesso sbloccato.",
+      "blocca_reason": {
+        "ultimo_super_admin": "È l'ultimo super amministratore raggiungibile: bloccarlo lascerebbe il sistema senza amministratori."
+      },
+      "nessun_accesso_spiegazione": "Questo accesso non ha nessuna veste: non entra da nessuna porta. È un caso da sanare, e lo segnala anche il controllo delle credenziali da sanare.",
+      "invito_scade": "Invito valido fino al {quando}",
+      "veste_valida_al": "Valida fino al {quando}",
+      "apri_scheda": "Apri la scheda",
+      "apri_scheda_di": "Apri la scheda: {veste} di {soggetto}",
+      "search_altri": "Cerca per nome, username, email, soggetto",
+      "search_sistema": "Cerca per username, processo, emittente",
+      "sistema_senza_processo": "Questo accesso non è legato a un processo automatico: non c'è un pannello da aprire.",
+      "tipo": {
+        "PROCESSO": "Processo automatico",
+        "API_CLIENT": "Sistema esterno"
+      }
     }
   },
   "indirizzi": {
@@ -1861,7 +1904,7 @@
     "col_base": "Base",
     "col_coeff_qta": "Coeff. Qta'",
     "col_esposto_fattura": "In fattura",
-    "field_esposto_fattura": "Esposto in fattura",
+    "field_esposizione_fattura": "Come compare in fattura",
     "col_testo": "Testo",
     "col_posizione": "Posizione",
     "field_codice": "Codice",
@@ -1952,7 +1995,7 @@
     "duplica_versione_conferma": "Duplica versione",
     "nuova_versione_componente": "Nuova versione componente",
     "nuova_versione_hint": "Sorgente '{codice}' chiusa al {data}. I campi sono pre-compilati dalla riga chiusa: modificali se serve, poi salva per inserire la nuova versione.",
-    "bom_immutabile_hint": "I campi struttura della BoM (componente, coefficiente, esposto in fattura, ecc.) non sono modificabili. Per correggerli, chiudi la riga e inseriscine una nuova.",
+    "bom_immutabile_hint": "I campi struttura della BoM (componente, coefficiente, modo in fattura, ecc.) non sono modificabili. Per correggerli, chiudi la riga e inseriscine una nuova.",
     "motivo_uom_base_non_eliminabile": "L'UoM base non puo' essere eliminata",
     "motivo_articolo_solo_componente": "Articolo marcato come solo componente: non puo' avere distinta base",
     "motivo_articolo_non_composito": "Articolo non composito: non puo' avere distinta base",
@@ -2182,8 +2225,6 @@
       "col_opzionale_tag": "Opzionale",
       "preview_listino_mancante": "Listino non configurato — inserisci prezzo manuale.",
       "attivo_disabilitato_tooltip": "Componente obbligatorio: non può essere escluso dalla riga.",
-      "esposto_in_fattura_tooltip": "Comparirà come riga descrittiva separata in fattura (oltre al padre).",
-      "esposto_no_tooltip": "Non comparirà in fattura: il prezzo è incluso nel padre.",
       "obbligatorio_mancante": "Inserire il prezzo per tutti i componenti obbligatori prima di confermare.",
       "bom_vuota": "Articolo composito senza componenti validi alla data del documento. BoM scaduta o non configurata in catalogo.",
       "errore_caricamento": "Errore durante il caricamento dei componenti.",

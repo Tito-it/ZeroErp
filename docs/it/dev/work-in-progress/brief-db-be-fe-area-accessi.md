@@ -4,8 +4,11 @@
 > per §3; poi BE/FE (§4, §5).
 > **Origine:** revisione delle modifiche BE sul riuso della credenziale (D-6, «una persona, una
 > credenziale») e discussione con Tid sulla lista operatori, 2026-10-02.
-> **Stato:** ✅ **giro DB scritto, applicato su dbdev e pgTAP verdi (Tid, 2026-10-02; §7).** ⏳ Ora tocca
-> al BE: **R-BE-a per primo** (§7.8). Il resto della testata qui sotto è del momento della scrittura. Tutte le richieste di §3
+> **Stato:** ✅ **giro DB applicato (§7) e ✅ giro BE/FE fatto lo stesso giorno (§8)**: R-BE-a…g
+> chiuse, area «Accessi» a video con le tre schede, blocco e secondo fattore sulla credenziale.
+> ⏳ Restano: le tre richieste nuove al team DB (§8.3, nessuna bloccante), la conferma di Tid sulla
+> conseguenza 1 di §7.2 (§8.4) e il collaudo a video (§8.5). ~~Ora tocca
+> al BE: **R-BE-a per primo** (§7.8).~~ Il resto della testata qui sotto è del momento della scrittura. Tutte le richieste di §3
 > (R-DB-1, R-DB-2, R-DB-A1, A2, A2-bis, A3) hanno il loro changeSet o seed. **Da leggere per
 > primo: §7.11** (i passi di Tid, in ordine: prima dell'apply c'è una query da lanciare), poi
 > §7.8 (BE) e §7.9 (FE). ⚠️ Dopo l'apply, «disabilita operatore» del BE fallisce finché il BE non
@@ -559,3 +562,83 @@ database. Rilanciati da Tid: ✅ **verdi, nessuna regressione** nella corsa.
 3. **pgTAP**: i due nuovi, i toccati e i trasversali di §7.10.
 4. **Subito dopo, R-BE-a**: fino ad allora «disabilita operatore» fallisce.
 5. Confermare la conseguenza 1 di §7.2: l'operatore disattivato si può reinvitare.
+
+---
+
+## 8. Risposta BE/FE (2026-10-02, `dev/backend-tid`)
+
+> **Chi scrive:** sessione BE/FE, dopo l'apply di §7 su dbdev. **A chi:** Tid (§8.4, §8.5), team DB
+> (§8.3). Niente è committato.
+
+### 8.1 Le richieste al BE (§7.8)
+
+| # | Esito | Dove |
+| --- | --- | --- |
+| **R-BE-a** | ✅ spegnere e riaccendere la veste operatore scrivono **solo** `attivo` (`_set_veste_attiva`, `disabilita_operatore`, `riattiva_operatore`); `count_admin_attivi` senza il secondo controllo. ⭐ La veste comandata è quella di riferimento del DB (`script.fn_veste_di_riferimento(credenziale, 'OPERATORE')`), anche per la risorsa umana e il binding SUPER_ADMIN: con la veste spenta che tiene il tipo, un `WHERE ruolo = 'OPERATORE'` avrebbe riacceso due vesti | `amm_software_repository.py` |
+| **R-BE-b** | ✅ la lista operatori e il riepilogo permessi filtrano con `script.fn_categoria_accesso(au.id) = 'OPERATORE'`; ritirati `_VESTE_OPERATORE` (risorsa umana), `SOLO_VESTE_OPERATORE` ed `ESCLUDI_UTENTI_TECNICI`. Le righe portano `veste_attiva`: il badge «Disabilitato» si legge da lì. ⭐ **Trovato facendolo**: senza la risorsa umana a distinguere, le rotte `operatori/<id>/…` avrebbero spento la veste OPERATORE di un **utente tecnico** (ora `OPERATORE` con `tecnica`). `AmmSoftwareService.get_operatore` risponde 404 a ogni credenziale che non sia di categoria `OPERATORE` | idem, `amm_software_service.py` |
+| **R-BE-c** | ✅ lo stato accessi di cliente e fornitore legge `script.fn_stato_veste`; ritirata `stato_veste` (e il suo test), `get_stato_identita` non riceve più i tipi di token | `portale_repository.py`, `invito_portale_service.py` |
+| **R-BE-d** | ✅ `GET /amm-software/accessi/altri/` e `/sistema/` su `v.*` delle due viste, whitelist §7.7 in `WHITELIST_BE`. `vesti` decodificato (fuori dall'ORM il driver dà il jsonb come stringa). Vocabolari dei filtri validati: un valore estraneo è un 400, non una lista vuota | `accessi_repository.py`, `accessi_service.py`, `accessi_views.py` |
+| **R-BE-e** | ✅ le due liste in `_ESENZIONI` del perimetro, in `_RICERCHE` della ricerca full e nel registro delle whitelist d'ordinamento (`colonne_desc` su `ultimo_accesso`) | test `core` |
+| **R-BE-f** | ✅ nessun traduttore per campo su quei punti: `E_CREDENZIALE_PERSONA_E_SISTEMA` esce col banner della sua classe | — |
+| **R-BE-g** | ✅ policy rigenerate; ripieghi senza `%s` per i due codici nuovi | `error_policies_generated.py`, `error_messages_fallback.py` |
+| §4 azioni | ✅ sede unica della credenziale: `credenziali/<id>/` (stato + capability del blocco), `blocca/` (motivo, `Idempotency-Key`, chiude tutte le sessioni nella stessa transazione), `sblocca/`, `secondo-fattore/…`. ⛔ Ritirate le rotte `operatori/<id>/secondo-fattore/` | `accessi_views.py`, `urls_v1.py` |
+| `DISABILITATO` | ✅ ritirati anche i consumatori BE della catena dei permessi (il passo «ruolo DISABILITATO → nega» di `ZeroERPPermission`, il ramo gemello dello shop, `MotivoDiniego.DISABILITATO`, la costante): rami morti, nessuna veste può più averlo | `permissions.py`, `auth_constants.py` |
+
+Prove: `amm_software/tests/db/test_accessi_db.py` (8, sul DB vero, casi costruiti: partizione,
+ogni filtro e ogni chiave d'ordinamento delle due liste, vocabolario degli stati letto dal corpo di
+`fn_stato_veste`, blocco e sblocco coi verbi veri, motivo obbligatorio, porta degli operatori chiusa
+alle altre categorie, stato veste della scheda cliente dal DB) — provato per mutazione su due punti;
+`tests/api/test_accessi_views.py` (10); `test_operatore_altre_vesti_db` allineato a R-DB-1. Suite
+backend intera verde (6043, con `ZEROERP_TEST_DB_E2E=1`): i quattro rossi «estranei» del mattino
+erano questo giro.
+
+### 8.2 Il frontend (§5, §7.9)
+
+* Menu: la voce «Operatori» è diventata **«Accessi»** (`/amm-software/accessi`), tre schede col tab
+  nella query (`?tab=operatori|altri|sistema`, BB `useTabDaQuery`). `/amm-software/operatori` è un
+  redirect sulla scheda «Operatori»: i preferiti salvati restano buoni.
+* **Operatori**: la lista di prima; il badge «Disabilitato» (anche nel riepilogo permessi) da
+  `veste_attiva`. `RUOLO_APPLICATIVO.DISABILITATO` ritirato con i suoi consumatori.
+* **Altri accessi**: lista a catalogo con le vesti come badge (tipo + colore dello stato), «Nessun
+  accesso» in evidenza, filtri veste/stato/nessun accesso/secondo fattore/blocco. Il drawer è in
+  sola lettura sulle vesti e porta le azioni della credenziale.
+* **Di sistema**: lista a catalogo in sola lettura; il clic apre il drawer del processo
+  (`processo_codice`), su un `API_CLIENT` lo dice invece di non fare niente.
+* ⭐ **Regola del 2**: il pannello del secondo fattore è diventato della credenziale
+  (`CredenzialeSecondoFattore`) e, col nuovo `CredenzialeBlocco`, sta in `CredenzialeAzioni`, montato
+  dal drawer operatore e da quello degli altri accessi (A-5). Il colore dello stato di una veste è
+  sceso in `core/utils/severity.js` (`statoVesteSeverity`) e le sue traduzioni in `auth.stato_veste.*`
+  (erano `portale.stato.*`, una `switch` dentro `PortaleAccessoPanel`).
+* **Decisione su `cliente_ids`** (§7.4, aperta al FE): con UNA scheda cliente si apre quella; con
+  più d'una, o nessuna, la scheda del **soggetto**, che le elenca. Scegliere un id sarebbe scegliere
+  a caso (`useSchedaVeste`).
+* i18n: le 11 intestazioni di colonna (il rosso della CI), i vocabolari (stato della veste, tipo di
+  sistema), menu e schede. `check_i18n_keys` pulito; lint, guard, 573 test, build verdi.
+
+### 8.3 Al team DB — tre richieste nuove, nessuna bloccante
+
+| # | Richiesta | Perché |
+| --- | --- | --- |
+| **R-DB-A4** | Lista 105, colonna `emittente_ragione_sociale`: `ordinabile = t` | È NUCLEO («ragione sociale», `gen_seed_lista --verifica-ordinamento` dice KO): chi la accende deve poterla ordinare. Il backend la sa ordinare; la chiave entra nella whitelist quando il seed la offre (prima il presidio direbbe «il BE la ordina e il seed no») |
+| **R-DB-A5** | Una `script.fn_check_credenziale_bloccabile(auth_user_id)` → `reason`/`reason_key` (oggi `ULTIMO_SUPER_ADMIN`), chiamata dal guard `trgfn_credenziali_guard_ultimo_super_admin` e leggibile dal backend | api.md §«Capability di riga»: il motivo lo produce la stessa funzione che rifiuta. Oggi il PREDICATO viene dal DB (`fn_check_ultimo_super_admin_attivo`), ma codice e chiave i18n li compone il backend: debito dichiarato in `accessi_service.py`. Sostituisce R-6 del piano accessi (la lettura dello stato del blocco non serve più: `config.credenziali` è leggibile dall'app) |
+| **R-DB-A6** | ❓ **Decisione di Tid prima del DB**: i verbi della credenziale (`fn_blocca_credenziale`, i `fn_totp_*` dell'amministratore) devono **rifiutare** una credenziale di categoria `SISTEMA`? | A-6 dice «sola lettura»: oggi lo è solo a video (la scheda non ha i gesti). Una chiamata diretta all'API blocca l'utente tecnico di un processo, cioè ferma un automatismo all'insaputa del suo pannello. Se è una regola del modello, la sede è il verbo |
+
+### 8.4 Da confermare, Tid
+
+* **La conseguenza 1 di §7.2**: un operatore disattivato è **invitabile** (la capability `can_invite`
+  arriva dal DB, e il drawer la segue): a video, sul suo drawer compare «Invia invito», che lo riaccende
+  con una password nuova. In alternativa resta l'interruttore «attivo» del drawer. Il piano accessi
+  (L-5, D-3) vuole proprio questo — riattivare col reinvio — ma l'interruttore c'è ancora.
+
+### 8.5 Collaudo a video (non fatto: nessuna pagina aperta in-app in questa sessione)
+
+1. Menu Amm. Software → «Accessi»: tre schede; un preferito «Operatori» porta alla prima.
+2. «Operatori»: disattivare un operatore → badge «Disabilitato», resta in elenco.
+3. «Altri accessi»: un cliente dello shop col badge verde; una credenziale senza vesti col badge
+   «Nessun accesso»; ogni filtro; dal kebab «Apri la scheda» porta alla scheda del cliente.
+4. Drawer di un altro accesso: «Blocca accesso» col motivo → in lista «Bloccata = Sì», la persona
+   non entra (né dal portale né dallo shop); «Sblocca accesso» la riapre.
+5. Drawer operatore: la stessa sezione «Accesso»; sul proprio super admin, se è l'ultimo, «Blocca»
+   è spento col motivo nel tooltip.
+6. «Di sistema»: il clic su un utente tecnico apre il pannello del suo processo.
+

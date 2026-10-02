@@ -16,6 +16,7 @@ Indice test eseguiti:
  5a) test_create_operatore_consenso_al_riuso — `riusa_auth_user_id` arriva al repo, assente = None
  6) test_get_operatore_ok — dettaglio operatore
  7) test_get_operatore_not_found — id inesistente
+ 7a) test_get_operatore_di_un_altra_categoria — una macchina o un cliente non e' un operatore (404)
  8) test_update_operatore_ok — aggiorna e invalida cache
  9) test_update_operatore_not_found — id inesistente
  9a) test_update_operatore_passa_flag_multiface_al_repo — Fase 7: contract is_super_admin/attivo
@@ -109,6 +110,7 @@ class TestCreateOperatore(TestCase):
         mock_repo.crea_operatore.return_value = {
             "auth_user_id": 1, "username": "mrossi", "credenziale_riusata": riusata,
         }
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1, "username": "mrossi"}
         return mock_repo
 
@@ -207,6 +209,7 @@ class TestGetOperatore(TestCase):
 
     @patch(REPO)
     def test_get_operatore_ok(self, mock_repo_cls):
+        mock_repo_cls.return_value.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo_cls.return_value.get_operatore_detail.return_value = {"auth_user_id": 1}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         result = AmmSoftwareService().get_operatore(1)
@@ -214,11 +217,27 @@ class TestGetOperatore(TestCase):
 
     @patch(REPO)
     def test_get_operatore_not_found(self, mock_repo_cls):
+        mock_repo_cls.return_value.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo_cls.return_value.get_operatore_detail.return_value = None
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
             AmmSoftwareService().get_operatore(999)
         self.assertEqual(ctx.exception.code, "E_AMM_OPERATORE_NOT_FOUND")
+
+    # Scopo: Una credenziale di categoria SISTEMA o ALTRO risponde come un id
+    #        inesistente, e il dettaglio non si legge: i comandi dell'operatore
+    #        spegnerebbero la veste OPERATORE di un utente tecnico (R-DB-A1).
+    @patch(REPO)
+    def test_get_operatore_di_un_altra_categoria(self, mock_repo_cls):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        for categoria in ("SISTEMA", "ALTRO", None):
+            with self.subTest(categoria=categoria):
+                mock_repo_cls.return_value.get_categoria_accesso.return_value = categoria
+                mock_repo_cls.return_value.get_operatore_detail.return_value = {"auth_user_id": 9}
+                with self.assertRaises(ServiceError) as ctx:
+                    AmmSoftwareService().get_operatore(9)
+                self.assertEqual(ctx.exception.code, "E_AMM_OPERATORE_NOT_FOUND")
+        mock_repo_cls.return_value.get_operatore_detail.assert_not_called()
 
 
 class TestUpdateOperatore(TestCase):
@@ -229,6 +248,7 @@ class TestUpdateOperatore(TestCase):
     def test_update_operatore_ok(self, mock_repo_cls, mock_invalidate):
         """Aggiorna e invalida cache."""
         mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         AmmSoftwareService().update_operatore(1, {"email": "new@test.it"})
@@ -237,6 +257,7 @@ class TestUpdateOperatore(TestCase):
 
     @patch(REPO)
     def test_update_operatore_not_found(self, mock_repo_cls):
+        mock_repo_cls.return_value.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo_cls.return_value.get_operatore_detail.return_value = None
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError):
@@ -252,6 +273,7 @@ class TestUpdateOperatore(TestCase):
         self, mock_repo_cls, _mock_invalidate
     ):
         mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
 
@@ -300,15 +322,15 @@ class TestUpdateOperatore(TestCase):
         mock_repo_cls.return_value.update_operatore.assert_not_called()
 
     # Scopo: Fase 7 — payload con solo `attivo:false` arriva al repo come
-    # is_super_admin=None (NO-OP) + attivo=False. La traduzione legacy
-    # verso DISABILITATO e' interna al repo (`_legacy_ruolo_from_contract`),
-    # invisibile dal service.
+    # is_super_admin=None (NO-OP) + attivo=False. Spegnere e' solo
+    # `attivo = false` sulla veste (R-DB-1), e lo fa il repo.
     @patch(INVALIDATE_USER)
     @patch(REPO)
     def test_update_operatore_attivo_only(
         self, mock_repo_cls, _mock_invalidate
     ):
         mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         AmmSoftwareService().update_operatore(1, {"attivo": False})
@@ -327,6 +349,7 @@ class TestUpdateOperatore(TestCase):
         self, mock_repo_cls, _mock_invalidate
     ):
         mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.update_operatore.side_effect = DatabaseError(
             "ERROR: Codice: E_PROFILO_ULTIMO_SUPER_ADMIN — ultimo super admin attivo"
@@ -349,6 +372,7 @@ class TestDisabilitaOperatore(TestCase):
     def test_disabilita_operatore_ok(self, mock_repo_cls, mock_invalidate, mock_blacklist, _tx):
         """Disabilita, invalida cache, blacklist token."""
         mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         AmmSoftwareService().disabilita_operatore(1)
@@ -368,6 +392,7 @@ class TestDisabilitaOperatore(TestCase):
     def test_disabilita_operatore_revoca_fallita_propaga(
         self, mock_repo_cls, mock_invalidate, mock_blacklist, _tx,
     ):
+        mock_repo_cls.return_value.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo_cls.return_value.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_blacklist.side_effect = DatabaseError("scrittura blacklist fallita")
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
@@ -377,6 +402,7 @@ class TestDisabilitaOperatore(TestCase):
 
     @patch(REPO)
     def test_disabilita_operatore_not_found(self, mock_repo_cls):
+        mock_repo_cls.return_value.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo_cls.return_value.get_operatore_detail.return_value = None
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError):
@@ -388,6 +414,7 @@ class TestDisabilitaOperatore(TestCase):
     @patch(REPO)
     def test_disabilita_operatore_ultimo_super_admin_preview(self, mock_repo_cls):
         mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {
             "auth_user_id": 1,
             "is_super_admin": True,
@@ -415,6 +442,7 @@ class TestDisabilitaOperatore(TestCase):
         self, mock_repo_cls, _mock_invalidate, _mock_blacklist, _tx,
     ):
         mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {
             "auth_user_id": 1,
             "is_super_admin": True,
@@ -457,6 +485,7 @@ class TestOverrideCache(TestCase):
         # Fase 2: signature cambiata da `(auth_user_id, list)` a
         # `(auth_user_id, payload)` con scope_mode + emittenti_ids.
         mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_user_emittenti_scope.return_value = {
             "auth_user_id": 1, "scope_mode": "GLOBAL",

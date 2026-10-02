@@ -335,11 +335,11 @@ Registrati, non aperti:
 | **R-BE-3** | ✅ riletto: **la regola resta**. La vista raggruppa il padre per (fattura, kit, IVA, BA) e fa la media della quantità su **tutti** i componenti, valorizzati compresi: l'esposizione cambia l'importo del padre, non la sua quantità. Il guard R10 resta com'è; commento aggiornato, due test nuovi (modi misti con quantità uguali passano; un valorizzato con quantità diversa si ferma) | `fatture_righe_service.py` |
 | **R-BE-4** | ✅ distinta: `esposizione_in_fattura` nella whitelist di scrittura, estratto come stringa non nulla; i valori li giudica la FK (`23503` → `400 E_CATALOGO_VALIDATION`, traduttore già esistente). Il booleano vecchio torna `400` come chiave sconosciuta (test). Ordinamento della lista 101 su `esposizione_in_fattura_codice` — erano i due rossi di `test_liste_configurabili_seed` | `catalogo_bom_repository.py`, `catalogo_service.py` |
 | **R-BE-5** | ✅ anteprime e componenti di riga leggono `esposizione_in_fattura` (cinque `fn_*_preview`, il JOIN del mixin, il bundle dei listini, i `TypedDict`). Binding provato col **piano** sul DB vero (`EXPLAIN` di ogni query, con un controllo negativo sulla colonna vecchia che deve fallire, e fallisce): sotto RLS le tabelle erano vuote, e uno zero non provava niente | repository vendite, `types.py` |
-| **R-BE-6** | ⏳ **bloccato da R-DB-K1** (§10.2). La voce in `_LOOKUP_SPECIALIZZATE` è pronta da scrivere (`extra_col: etichetta_key`, `has_codice_interno: True`, `has_obsoleto: False`, `has_attivo: False`), ma `test_lookup_specializzate` pretende — giustamente — che ogni specializzata stia nella whitelist DB: aggiungerla prima la manderebbe rossa | `dbops_repository.py` |
+| **R-BE-6** | ✅ chiuso in §10.6. Era: ⏳ **bloccato da R-DB-K1** (§10.2). La voce in `_LOOKUP_SPECIALIZZATE` è pronta da scrivere (`extra_col: etichetta_key`, `has_codice_interno: True`, `has_obsoleto: False`, `has_attivo: False`), ma `test_lookup_specializzate` pretende — giustamente — che ogni specializzata stia nella whitelist DB: aggiungerla prima la manderebbe rossa | `dbops_repository.py` |
 | **R-BE-7** | ✅ builder fattura alla **forma 3** (`CONTEXT_VERSION = 3`): i componenti portano `esposizione`, `prezzo_unitario`, `sconto_percentuale`, `importo_riga` formattati come una riga, NULL che restano NULL sul descrittivo. **Template v5** scritto: [`template-fattura-v5.html`](template-fattura-v5.html) = v4 + componenti valorizzati con prezzo/sconto/IVA del padre/importo, padre senza resto con celle vuote (non «-»). Reso col motore vero (StrictUndefined + autoescape) su una fattura con kit costruita sul DB in transazione annullata, nei due casi (con resto, senza resto). Doc API allineate (`api_catalogo`, `api_contratti`, `api_listini`, `api_ordini`, `api_preventivi`; in `pricing_service` la sezione di un metodo ritirato a maggio è stata sostituita da una riga che lo dice) e lo smoke bash dei componenti | builder, test, doc, smoke |
 | **R-FE-1** | ✅ già chiuso prima di questo giro (le tre chiavi sono entrate con `c6793e4db`); `check_i18n_keys` pulito | — |
-| **R-FE-2** | ⏳ **bloccato** (R-DB-K1 → R-BE-6): la scelta fra tre vuole le etichette dal vocabolario, cioè `useLookupEtichettato({ rel: 'config.esposizioni_componente', campoCodice: 'codice_interno' })`. ⚠️ **Fino ad allora il drawer della distinta non salva una riga nuova**: manda ancora il booleano, e il BE lo rifiuta con un 400 che lo nomina. Non è una regressione di questo giro: dall'apply del DB la colonna non c'era più | `ArticoloBomDrawer.vue` |
-| **R-FE-3** | ⏳ **bloccato** come R-FE-2: il modo per esteso è `etichetta(codice)` dello stesso lookup. ⚠️ Fino ad allora la colonna «In fattura» di pannello e dialog dei componenti legge un campo che non arriva più, e mostra «No» per tutti | `ComponentiPanel.vue`, `ComponentiDialog.vue` |
+| **R-FE-2** | ✅ chiuso in §10.6. Era: ⏳ **bloccato** (R-DB-K1 → R-BE-6): la scelta fra tre vuole le etichette dal vocabolario, cioè `useLookupEtichettato({ rel: 'config.esposizioni_componente', campoCodice: 'codice_interno' })`. ⚠️ **Fino ad allora il drawer della distinta non salva una riga nuova**: manda ancora il booleano, e il BE lo rifiuta con un 400 che lo nomina. Non è una regressione di questo giro: dall'apply del DB la colonna non c'era più | `ArticoloBomDrawer.vue` |
+| **R-FE-3** | ✅ chiuso in §10.6. Era: ⏳ **bloccato** come R-FE-2: il modo per esteso è `etichetta(codice)` dello stesso lookup. ⚠️ Fino ad allora la colonna «In fattura» di pannello e dialog dei componenti legge un campo che non arriva più, e mostra «No» per tutti | `ComponentiPanel.vue`, `ComponentiDialog.vue` |
 | **R-FE-4** | ✅ nel drawer fattura l'espansione del kit mostra `× prezzo − sconto% = importo` sui valorizzati; niente sui descrittivi | `FatturaDrawer.vue` |
 | **R-FE-5** | ✅ nessun codice: la colonna non ha uno slot e rende il `campo_sorgente` del CSV (il codice del modo). Il formato con l'etichetta tradotta viene con R-FE-3 | — |
 
@@ -386,3 +386,32 @@ blocco annotazioni, verificato con `diff`); il brief è aggiornato (§11.3).
 
 **Dopo l'apply**, al team BE: R-BE-6 (la voce in `_LOOKUP_SPECIALIZZATE`, già pronta in §10.1), poi
 R-FE-2 e R-FE-3.
+
+### 10.6 Dopo R-DB-K1 (2026-10-02, stessa sessione)
+
+R-DB-K1 applicata su dbdev dal team DB (riga 89 di `tabelle_gestibili.csv`, `lookup = true`,
+`pannello = false`), verificata dal BE: la `rel` è in whitelist e il vocabolario risponde con i tre
+modi e le loro `etichetta_key`.
+
+| # | Esito | Dove |
+| --- | --- | --- |
+| **R-BE-6** | ✅ `config.esposizioni_componente` fra le `_LOOKUP_SPECIALIZZATE` (`etichetta_key`, `codice_interno`, senza `attivo` né `obsoleto_dal`). `test_lookup_specializzate` e `test_lookup_codici_pagina_oltre` verdi sul DB vero: in whitelist, contratto attraversato per intero | `dbops_repository.py`, `api_lookup_codici.md` |
+| **R-FE-2** | ✅ nel drawer della distinta il toggle è diventato la scelta fra tre (`Select` con le etichette dal DB); default dal parametro `CATALOGO_BOM_DEFAULT_ESPOSIZIONE_IN_FATTURA` (`paramString`, ripiego `NASCOSTO`); in sola lettura il modo per esteso. Payload `esposizione_in_fattura` | `ArticoloBomDrawer.vue` |
+| **R-FE-3** | ✅ pannello e dialog dei componenti: un Tag col modo per esteso (`info` se compare in fattura, `secondary` su NASCOSTO) al posto del sì/no; ritirati i due tooltip che descrivevano il booleano | `ComponentiPanel.vue`, `ComponentiDialog.vue` |
+| regola del 2 | ✅ `catalogo/composables/useEsposizioniComponente.js` (ok Tid), tre consumatori, presidio `useEsposizioniComponente.spec.js` (4), voce nel catalogo BB FE | — |
+
+i18n: `catalogo.field_esposto_fattura` → `field_esposizione_fattura`; via
+`vendite.componenti.esposto_in_fattura_tooltip` / `esposto_no_tooltip`; resta
+`catalogo.col_esposto_fattura` (la emette il seed della colonna 101). `check_i18n_keys` pulito.
+
+Test: FE 564 verdi, build e `npm run guards` puliti. BE: verde tutto ciò che tocca questo giro; la
+suite completa ha **4 rossi estranei** — il DB di sviluppo è avanti rispetto a git su un altro lavoro
+(vesti/credenziali): due codici nuovi senza policy (`E_CREDENZIALE_PERSONA_E_SISTEMA`,
+`E_RUOLO_APPLICATIVO_RITIRATO`) e il trigger che rifiuta il ruolo `DISABILITATO` in due test di
+`amm_software`. Policy **non** rigenerate: col DB avanti si rigenera dopo il merge di quel lavoro.
+
+**Aperto (decisione):** il lookup ordina per `descrizione` (default del lookup generico), quindi la
+tendina esce NASCOSTO, VALORIZZATO, DESCRITTIVO e non nell'ordine della colonna `ordine`. Rispettarla
+vuole un'estensione dell'handler delle specializzate (un ordine naturale per `rel`): fuori da questo
+giro.
+

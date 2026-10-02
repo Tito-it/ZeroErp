@@ -29,11 +29,10 @@ Nello stesso file stanno altre tre permission class, descritte in fondo
 ```text
 1. Utente non autenticato?                  → nega (DRF: 401 E_NOT_AUTHENTICATED)
 2. is_superuser?                            → OK
-3. ruolo applicativo = DISABILITATO?        → nega
-4. PermissionResolver.is_super_admin()?     → OK (binding SUPER_ADMIN)
-5. ViewSet con <action>_permission?         → check_azione() via PermissionResolver
-6. APIView (nessuna action) con <method>_permission? → check_azione()
-7. CRUD standard:
+3. PermissionResolver.is_super_admin()?     → OK (binding SUPER_ADMIN)
+4. ViewSet con <action>_permission?         → check_azione() via PermissionResolver
+5. APIView (nessuna action) con <method>_permission? → check_azione()
+6. CRUD standard:
    a. Determina required (view/add/change/delete)
    b. Azione sconosciuta (required = None)? → nega (fail-closed)
    c. Risolvi area funzionale
@@ -99,7 +98,6 @@ I messaggi restano solo nel codice:
 
 | Causa                              | Messaggio                                                       |
 |-------------------------------------|-----------------------------------------------------------------|
-| `ruolo_sistema = DISABILITATO`     | "Utente disabilitato. Contattare l'amministratore."             |
 | Azione processo negata              | "Non hai i permessi per questa operazione."                     |
 | Azione sconosciuta (fail-closed)    | "Non hai i permessi per questa operazione."                     |
 | Area non definita (fail-closed)     | "Non hai i permessi per questa operazione."                     |
@@ -135,7 +133,7 @@ Se non esiste ancora, `ZeroERPPermission._get_cache()` la crea caricandola da Re
 se disponibile, e le chiamate successive nella stessa request la riusano senza query aggiuntive.
 Il middleware `JwtAuditMiddleware` prova a pre-popolarla in `process_view`.
 ⚠️ Difetto noto ([S-2](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): per i client con token Bearer, in `process_view`
-`request.user` e' ancora anonimo, quindi il pre-caricamento (e il rifiuto dei DISABILITATO) del
+`request.user` e' ancora anonimo, quindi il pre-caricamento del
 middleware non scatta. Il caricamento avviene di fatto in `_get_cache()`.
 Alla fine di ogni `has_permission` (blocco `finally`, anche in caso di diniego) la cache, se
 non vuota, viene salvata su Redis per le request successive.
@@ -145,7 +143,14 @@ non vuota, viene salvata su Redis per le request successive.
 Ogni negazione genera un log `logger.warning("security.permission_denied ...")` con:
 
 - `user_id` — ID utente
-- `reason` — tipo di negazione (`DISABILITATO`, `azione_negata`, `livello_insufficiente`, `azione_sconosciuta`, `area_non_definita`)
+- `reason` — tipo di negazione (`azione_negata`, `livello_insufficiente`, `azione_sconosciuta`, `area_non_definita`)
+
+> ⛔ **Il passo «ruolo applicativo = DISABILITATO → nega» e' ritirato** (2026-10-02,
+> brief-db-be-fe-area-accessi R-DB-1): una veste spenta tiene il suo tipo e ha
+> `attivo = false`, e la tabella rifiuta `DISABILITATO`. Chi ha solo vesti spente
+> non ha un'identita' attiva: niente GUC di veste, niente SUPER_ADMIN, e il
+> livello d'area nega. Con lui sono usciti `MotivoDiniego.DISABILITATO`, il suo
+> messaggio e il ramo gemello di `ShopBasePermission`.
 - `path` — endpoint richiesto
 - campi aggiuntivi specifici per caso (es. `azione`, `area`, `livello`, `required`)
 
@@ -166,7 +171,7 @@ Redis nel `finally`. Un utente non autenticato e' negato da `IsAdminZeroERP` e
 |---|---|---|---|
 | `IsAdminZeroERP` | `AdminAPIView` | superuser Django o `PermissionResolver.is_super_admin()` (binding SUPER_ADMIN, senza passare da profili area/override) | log `security.admin_denied`, messaggio "Accesso riservato agli amministratori." |
 | `PortaleBasePermission` | `PortaleAPIView` (`/api/portale/*`) | ruolo applicativo in `RUOLI_PORTALE` (cliente e fornitore portale); nessun controllo di area o livello, lo scope dati e' di RLS + `script.fn_scope_*` | log `security.portale_denied`, messaggio "Accesso riservato agli utenti portale." |
-| `ShopBasePermission` | `ShopAPIView` (`/api/shop/*`) | utente anonimo **ammesso** (catalogo pubblico); se autenticato, ruolo applicativo in `RUOLI_SHOP` (`SHOP_CUSTOMER`). Le view che richiedono login verificano `request.user.is_authenticated` da sole | DISABILITATO: messaggio "Utente disabilitato."; altri ruoli: log `security.shop_denied`, messaggio "Accesso riservato ai clienti shop." |
+| `ShopBasePermission` | `ShopAPIView` (`/api/shop/*`) | utente anonimo **ammesso** (catalogo pubblico); se autenticato, ruolo applicativo in `RUOLI_SHOP` (`SHOP_CUSTOMER`). Le view che richiedono login verificano `request.user.is_authenticated` da sole | log `security.shop_denied`, messaggio "Accesso riservato ai clienti shop." |
 
 ## Dipendenze
 

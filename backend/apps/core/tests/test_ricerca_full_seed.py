@@ -160,6 +160,8 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
     ("anagrafiche.soggetti", _da_costante("apps.anagrafiche.db.soggetti_repository", "_RICERCA_SOGGETTI")),
     ("anagrafiche.categorie_clienti_listini", _da_costante("apps.anagrafiche.db.categorie_clienti_listini_repository", "_RICERCA_MATRICE")),
     ("anagrafiche.operatori", _da_costante("apps.amm_software.db.amm_software_repository", "_RICERCA_OPERATORI")),
+    ("anagrafiche.accessi_altri", _da_costante("apps.amm_software.db.accessi_repository", "_RICERCA_ACCESSI_ALTRI")),
+    ("anagrafiche.accessi_sistema", _da_costante("apps.amm_software.db.accessi_repository", "_RICERCA_ACCESSI_SISTEMA")),
     ("vendite.listini", _da_costante(_V + "listini_repository", "_RICERCA_LISTINI")),
     ("vendite.listini_righe", _da_costante(_V + "listini_repository", "_RICERCA_LISTINI_RIGHE")),
     ("vendite.promo_articoli", _da_costante(_V + "promo_articoli_repository", "_RICERCA_PROMO")),

@@ -17,6 +17,7 @@ from django.contrib.auth.hashers import make_password
 from django.db import DatabaseError, transaction
 
 from apps.core.api.payload_validators import optional_int
+from apps.core.services.auth_constants import CATEGORIA_ACCESSO_OPERATORE
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.parameter_service import ParameterService
@@ -252,8 +253,17 @@ class AmmSoftwareService:
         return {**dettaglio, "credenziale_riusata": creato["credenziale_riusata"]}
 
     # Scopo: Dettaglio operatore con validazione esistenza.
+    # ⛔ Un operatore e' una credenziale di categoria OPERATORE
+    #    (`script.fn_categoria_accesso`, R-DB-A1). Le altre — una macchina, un
+    #    cliente del portale — rispondono 404 come un id inesistente: i comandi
+    #    di questa porta spengono e riaccendono la veste operatore, e su un
+    #    utente tecnico la troverebbero (dal 2026-10-02 la sua veste e'
+    #    `OPERATORE` con `tecnica`, e non la distingue piu' la risorsa umana).
+    #    Fermerebbero un processo automatico all'insaputa del suo pannello (A-6).
     def get_operatore(self, auth_user_id: int) -> dict[str, Any]:
-        operatore = self._repo.get_operatore_detail(auth_user_id)
+        operatore = None
+        if self._repo.get_categoria_accesso(auth_user_id) == CATEGORIA_ACCESSO_OPERATORE:
+            operatore = self._repo.get_operatore_detail(auth_user_id)
         ErrorManager.require(operatore is not None, code=E_AMM_NOT_FOUND, message=f"Operatore {auth_user_id} non trovato.")
         assert operatore is not None
         return operatore

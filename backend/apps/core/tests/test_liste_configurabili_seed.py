@@ -395,6 +395,9 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("config.email_log", _da_costante("apps.core.db.email_repository", "EMAIL_LOG_ORDER_COLUMNS")),
     ("anagrafiche.categorie_clienti_listini", _da_costante("apps.anagrafiche.db.categorie_clienti_listini_repository", "_ORDER_COLS")),
     ("anagrafiche.operatori", _da_costante("apps.amm_software.db.amm_software_repository", "ALLOWED_ORDER_COLUMNS")),
+    # L'area «Accessi» (2026-10-02, brief-db-be-fe-area-accessi R-BE-d).
+    ("anagrafiche.accessi_altri", _da_costante("apps.amm_software.db.accessi_repository", "ACCESSI_ALTRI_ORDER_COLUMNS")),
+    ("anagrafiche.accessi_sistema", _da_costante("apps.amm_software.db.accessi_repository", "ACCESSI_SISTEMA_ORDER_COLUMNS")),
     # `storico.audit_log` era sospesa: il seed aveva 4 colonne e la pagina ne
     # mostra 5 (mancava la calcolata *Dettaglio*). Riga 378 aggiunta dal team DB
     # il 2026-08-02, conversione completata. E' l'unica lista polimorfa

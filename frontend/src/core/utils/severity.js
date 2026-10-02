@@ -2,7 +2,7 @@
 // Un solo punto di modifica per i colori di stato in tutta l'applicazione.
 // Ogni mappa associa codice_interno (con trim) a una severity PrimeVue.
 
-import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
+import { MANAGE_ICONS, STATO_VESTE, STATUS_ICONS } from '../constants'
 
 // --- Resolver generico ---
 // Scopo: Risolve severity da una mappa. Trim automatico, fallback 'secondary'.
@@ -806,4 +806,25 @@ export const STATO_EMAIL_LOG_MAP = {
 // Scopo: Shortcut per lo stato di una mail nel log.
 export function statoEmailLogSeverity(codice) {
   return resolveSeverity(STATO_EMAIL_LOG_MAP, codice)
+}
+
+// --- Mappa dello STATO di una veste d'accesso (`script.fn_stato_veste`) ---
+// ⭐ Scesa qui il 2026-10-02 alla seconda occorrenza (regola del 2): il pannello
+//    accessi del cliente/fornitore (`PortaleAccessoPanel`) e la lista «Altri
+//    accessi» dell'amministrazione mostrano lo stesso stato, calcolato una volta
+//    a DB (A-7, brief-db-be-fe-area-accessi). Il colore ha una sede sola.
+// NON_SPEDITO e' rosso e non giallo: il link c'e' ma l'email non e' partita
+// (F-3), e la persona non puo' attivare finche' non si reinvia.
+// NESSUNO (nessuna veste) cade sul ripiego neutro.
+export const STATO_VESTE_MAP = {
+  [STATO_VESTE.ATTIVO]: 'success',
+  [STATO_VESTE.PENDING]: 'warn',
+  [STATO_VESTE.NON_SPEDITO]: 'danger',
+  [STATO_VESTE.DISATTIVO]: 'danger',
+}
+
+// Scopo: Shortcut per lo stato di una veste (o lo stato riassunto di una
+//        credenziale, `stato_accesso`).
+export function statoVesteSeverity(codice) {
+  return resolveSeverity(STATO_VESTE_MAP, codice)
 }

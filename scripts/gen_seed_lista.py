@@ -255,6 +255,12 @@ WHITELIST_BE: dict[str, tuple] = {
     "vendite.listini": ("apps/vendite/db/listini_repository.py", "LISTINI_ORDER_COLUMNS"),
     "anagrafiche.operatori": ("apps/amm_software/db/amm_software_repository.py",
                               "ALLOWED_ORDER_COLUMNS"),
+    # L'area «Accessi» (2026-10-02, brief-db-be-fe-area-accessi R-BE-d): gli
+    # altri due tab accanto agli operatori, whitelist di modulo.
+    "anagrafiche.accessi_altri": ("apps/amm_software/db/accessi_repository.py",
+                                  "ACCESSI_ALTRI_ORDER_COLUMNS"),
+    "anagrafiche.accessi_sistema": ("apps/amm_software/db/accessi_repository.py",
+                                    "ACCESSI_SISTEMA_ORDER_COLUMNS"),
     # Sesto lotto (2026-08-01). Le tre email nascono dalla passata unica del BE
     # su `email_repository` (whitelist + query param + envelope paginato: la
     # forma di ApiConversioniUomList), chiesta PRIMA di scegliere il lotto
