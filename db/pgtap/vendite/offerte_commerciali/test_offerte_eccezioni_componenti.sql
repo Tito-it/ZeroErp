@@ -30,7 +30,7 @@
 -- 21) fn_preview esiste (has_function)
 -- 22) fn_preview articolo semplice → 0 righe        [skip se no ctx]
 -- 23) fn_preview articolo composito → righe > 0,
---     colonne obbligatorio+esposto_in_fattura accessibili [skip se no composito valido]
+--     colonne obbligatorio+esposizione_in_fattura accessibili [skip se no composito valido]
 -- 24) fn_preview COUNT = COUNT componenti attivi validi
 --     (nessun filtro esposto_in_fattura)              [skip se no composito valido]
 -- 25) fn_preview quantita_componente = coeff_qta * quantita_padre [skip se no composito valido]
@@ -604,7 +604,7 @@ END;
 
 -- ============================================================
 -- TEST 23) fn_preview articolo composito → righe > 0
---          (obbligatorio + esposto_in_fattura accessibili nella proiezione)
+--          (obbligatorio + esposizione_in_fattura accessibili nella proiezione)
 -- ============================================================
 SELECT CASE
     WHEN (SELECT disponibile FROM tmp_preview_ctx)
@@ -622,9 +622,9 @@ SELECT CASE
         -- IS NOT DISTINCT FROM sé stesso è tautologia: se le colonne non
         -- esistessero nella RETURNS TABLE, la query fallirebbe qui
         WHERE p.obbligatorio IS NOT DISTINCT FROM p.obbligatorio
-          AND p.esposto_in_fattura IS NOT DISTINCT FROM p.esposto_in_fattura
+          AND p.esposizione_in_fattura IS NOT DISTINCT FROM p.esposizione_in_fattura
         ) > 0,
-        '23) fn_preview articolo composito: righe > 0, colonne obbligatorio+esposto_in_fattura accessibili'
+        '23) fn_preview articolo composito: righe > 0, colonne obbligatorio+esposizione_in_fattura accessibili'
     )
     ELSE skip('23) skip: articolo composito con componenti validi per CURRENT_DATE non disponibile')
 END;
@@ -682,15 +682,16 @@ SELECT CASE
 END;
 
 -- ============================================================
--- TEST 26) fn_preview include componenti con esposto_in_fattura=FALSE
---          (verifica rimozione del vecchio filtro AND esposto_in_fattura=TRUE)
+-- TEST 26) fn_preview include componenti NASCOSTI
+--          (verifica rimozione del vecchio filtro AND esposto_in_fattura=TRUE;
+--          dal 2026-10-01 il booleano false e' esposizione_in_fattura = NASCOSTO)
 -- ============================================================
 SELECT CASE
     WHEN (SELECT disponibile FROM tmp_preview_ctx)
        AND EXISTS (
            SELECT 1 FROM catalogo.articoli_componenti ac
             WHERE ac.prodotto_id = (SELECT articolo_composito_id FROM tmp_preview_ctx)
-              AND COALESCE(ac.esposto_in_fattura, TRUE) = FALSE
+              AND ac.esposizione_in_fattura = 'NASCOSTO'
               AND COALESCE(ac.attivo, TRUE) = TRUE
               AND ac.validita @> CURRENT_DATE
        )
@@ -707,11 +708,11 @@ SELECT CASE
                   (SELECT emittente_sr_id       FROM tmp_preview_ctx),
                   NULL
               ) p
-             WHERE p.esposto_in_fattura = FALSE
+             WHERE p.esposizione_in_fattura = 'NASCOSTO'
         ),
-        '26) fn_preview include componenti con esposto_in_fattura=FALSE (filtro AND esposto=TRUE rimosso)'
+        '26) fn_preview include componenti NASCOSTI (filtro AND esposto=TRUE rimosso)'
     )
-    ELSE skip('26) skip: nessun componente con esposto_in_fattura=FALSE valido per CURRENT_DATE')
+    ELSE skip('26) skip: nessun componente NASCOSTO valido per CURRENT_DATE')
 END;
 
 -- ============================================================

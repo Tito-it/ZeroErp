@@ -105,9 +105,9 @@ SELECT columns_are('vendite', 'vw_ddt_righe_dettaglio', ARRAY[
 SELECT ok(
     (SELECT count(*) = 2 FROM pg_attribute
       WHERE attrelid = 'catalogo.vw_articoli_componenti_dettaglio'::regclass
-        AND attname IN ('esposto_in_fattura', 'determina_qta_padre')
+        AND attname IN ('esposizione_in_fattura', 'determina_qta_padre')
         AND NOT attisdropped),
-    '8) distinta: esposto_in_fattura e determina_qta_padre (prima solo nel repository)');
+    '8) distinta: esposizione_in_fattura e determina_qta_padre (prima solo nel repository)');
 
 SELECT ok(
     (SELECT count(*) = 4 FROM pg_attribute

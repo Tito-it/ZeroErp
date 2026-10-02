@@ -55,7 +55,7 @@ SELECT plan(12);
 
 -- =========================================================
 -- Setup: cerca un articolo composito CASO A con almeno 1
--- componente esposto_in_fattura=TRUE valido oggi.
+-- componente con esposizione_in_fattura non NASCOSTO valido oggi.
 -- Se non trovato, i test vengono skippati via skip().
 -- =========================================================
 DO $$
@@ -68,7 +68,7 @@ BEGIN
            AND EXISTS (
                SELECT 1 FROM catalogo.articoli_componenti ac
                 WHERE ac.prodotto_id        = a.id
-                  AND ac.esposto_in_fattura = TRUE
+                  AND ac.esposizione_in_fattura <> 'NASCOSTO'
                   AND ac.validita          @> CURRENT_DATE
            )
     ) INTO v_has_setup;
@@ -156,7 +156,7 @@ SELECT CASE
          )
       OR NOT EXISTS (
              SELECT 1 FROM catalogo.articoli_componenti
-              WHERE esposto_in_fattura = TRUE
+              WHERE esposizione_in_fattura <> 'NASCOSTO'
                 AND validita @> CURRENT_DATE
          )
     THEN skip('4) prerequisiti non disponibili in questo DB (nessuna riga non-composita o nessun componente esposto)')
@@ -176,7 +176,7 @@ SELECT CASE
 
             SELECT ac.id, ac.componente_id INTO v_bom_id, v_comp_id
               FROM catalogo.articoli_componenti ac
-             WHERE ac.esposto_in_fattura = TRUE
+             WHERE ac.esposizione_in_fattura <> 'NASCOSTO'
                AND ac.validita @> CURRENT_DATE
              LIMIT 1;
 
@@ -212,7 +212,7 @@ SELECT CASE
              SELECT 1 FROM catalogo.articoli_componenti ac2
                JOIN catalogo.articoli ap ON ap.id = ac2.prodotto_id
               WHERE ap.is_composito = TRUE
-                AND ac2.esposto_in_fattura = TRUE
+                AND ac2.esposizione_in_fattura <> 'NASCOSTO'
                 AND ac2.validita @> CURRENT_DATE
          )
     THEN skip('5) prerequisiti non disponibili in questo DB (nessuna riga composita senza componenti o nessuna BoM esposta)')
@@ -238,7 +238,7 @@ SELECT CASE
               FROM catalogo.articoli_componenti ac
               JOIN catalogo.articoli ap ON ap.id = ac.prodotto_id
              WHERE ap.is_composito = TRUE
-               AND ac.esposto_in_fattura = TRUE
+               AND ac.esposizione_in_fattura <> 'NASCOSTO'
                AND ac.validita @> CURRENT_DATE
                AND ac.prodotto_id != (
                    SELECT articolo_id FROM vendite.preventivi_righe WHERE id = v_riga_id
@@ -273,7 +273,7 @@ SELECT CASE
                 AND EXISTS (
                     SELECT 1 FROM catalogo.articoli_componenti ac
                      WHERE ac.prodotto_id = a.id
-                       AND ac.esposto_in_fattura = TRUE
+                       AND ac.esposizione_in_fattura <> 'NASCOSTO'
                        AND ac.validita @> CURRENT_DATE
                 )
          )
@@ -292,13 +292,13 @@ SELECT CASE
              WHERE a.is_composito = TRUE AND pr.attivo = TRUE
                AND NOT EXISTS (SELECT 1 FROM vendite.preventivi_righe_componenti prc WHERE prc.riga_preventivo_id = pr.id)
                AND EXISTS (SELECT 1 FROM catalogo.articoli_componenti ac
-                            WHERE ac.prodotto_id = a.id AND ac.esposto_in_fattura = TRUE AND ac.validita @> CURRENT_DATE)
+                            WHERE ac.prodotto_id = a.id AND ac.esposizione_in_fattura <> 'NASCOSTO' AND ac.validita @> CURRENT_DATE)
              LIMIT 1;
 
             SELECT ac.id INTO v_bom_id
               FROM catalogo.articoli_componenti ac
              WHERE ac.prodotto_id = (SELECT articolo_id FROM vendite.preventivi_righe WHERE id = v_riga_id)
-               AND ac.esposto_in_fattura = TRUE AND ac.validita @> CURRENT_DATE
+               AND ac.esposizione_in_fattura <> 'NASCOSTO' AND ac.validita @> CURRENT_DATE
              LIMIT 1;
 
             SELECT a.id INTO v_wrong_id

@@ -1051,7 +1051,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1051,101,coeff_qta,Coeff. Qta',,coeff_qta,informazione,numeric,number,110,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,catalogo.col_coeff_qta,90
 1052,101,valido_dal,Valido Dal,,valido_dal,informazione,date,date_short,120,40,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,catalogo.field_valido_dal,65
 1053,101,valido_al,Valido Al,,valido_al,informazione,date,date_short,120,50,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,catalogo.field_valido_al,60
-1054,101,esposto_in_fattura,In fattura,,esposto_in_fattura,informazione,boolean,yesno,110,60,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,catalogo.col_esposto_fattura,40
+1054,101,esposizione_in_fattura,In fattura,Come compare il componente in fattura,esposizione_in_fattura_codice,informazione,string,,110,60,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,catalogo.col_esposto_fattura,40
 1055,101,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
 1056,102,riga_nr,N.,,riga_nr,identificatore,numeric,,70,10,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_riga,100
 1057,102,descrizione,Descrizione,,descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_descrizione,95

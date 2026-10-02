@@ -9,7 +9,7 @@
 -- Rilevante: dopo l'introduzione del trigger
 -- trgfn_articoli_componenti_block_modifica_struttura (BoM immutabile,
 -- migration 20260422-01) non e' piu' possibile cambiare i flag di
--- struttura (incluso esposto_in_fattura) dopo l'INSERT. Il test
+-- struttura (incluso esposizione_in_fattura) dopo l'INSERT. Il test
 -- precedente usava 1 solo prodotto e faceva UPDATE per passare fra i
 -- 3 scenari — pattern non piu' ammesso. Questo test riscritto usa
 -- 3 prodotti composito distinti, uno per scenario.
@@ -103,33 +103,33 @@ INSERT INTO catalogo.articoli(codice, descrizione, uom_id, listino_tipologia_id,
 SELECT 'PGTAP_BOM_B', 'Componente B pgtap', t.uom_id, t.tipologia_prodotti, TRUE
   FROM tmp_ctx t;
 
--- BoM CASO A: A esposto=TRUE coeff=2, B esposto=FALSE coeff=3.
+-- BoM CASO A: A DESCRITTIVO coeff=2, B NASCOSTO coeff=3.
 INSERT INTO catalogo.articoli_componenti(prodotto_id, componente_id, coeff_qta,
                                          obbligatorio, valido_dal, attivo,
-                                         esposto_in_fattura)
-SELECT p.id, a.id, 2, TRUE, CURRENT_DATE, TRUE, TRUE
+                                         esposizione_in_fattura)
+SELECT p.id, a.id, 2, TRUE, CURRENT_DATE, TRUE, 'DESCRITTIVO'
   FROM catalogo.articoli p, catalogo.articoli a
  WHERE p.codice = 'PGTAP_BOM_PADRE_A' AND a.codice = 'PGTAP_BOM_A';
 
 INSERT INTO catalogo.articoli_componenti(prodotto_id, componente_id, coeff_qta,
                                          obbligatorio, valido_dal, attivo,
-                                         esposto_in_fattura)
-SELECT p.id, b.id, 3, TRUE, CURRENT_DATE, TRUE, FALSE
+                                         esposizione_in_fattura)
+SELECT p.id, b.id, 3, TRUE, CURRENT_DATE, TRUE, 'NASCOSTO'
   FROM catalogo.articoli p, catalogo.articoli b
  WHERE p.codice = 'PGTAP_BOM_PADRE_A' AND b.codice = 'PGTAP_BOM_B';
 
 -- BoM CASO B1 / CASO B2: entrambi componenti non esposti (stessi coeff).
 INSERT INTO catalogo.articoli_componenti(prodotto_id, componente_id, coeff_qta,
                                          obbligatorio, valido_dal, attivo,
-                                         esposto_in_fattura)
-SELECT p.id, a.id, 2, TRUE, CURRENT_DATE, TRUE, FALSE
+                                         esposizione_in_fattura)
+SELECT p.id, a.id, 2, TRUE, CURRENT_DATE, TRUE, 'NASCOSTO'
   FROM catalogo.articoli p, catalogo.articoli a
  WHERE p.codice IN ('PGTAP_BOM_PADRE_B1', 'PGTAP_BOM_PADRE_B2') AND a.codice = 'PGTAP_BOM_A';
 
 INSERT INTO catalogo.articoli_componenti(prodotto_id, componente_id, coeff_qta,
                                          obbligatorio, valido_dal, attivo,
-                                         esposto_in_fattura)
-SELECT p.id, b.id, 3, TRUE, CURRENT_DATE, TRUE, FALSE
+                                         esposizione_in_fattura)
+SELECT p.id, b.id, 3, TRUE, CURRENT_DATE, TRUE, 'NASCOSTO'
   FROM catalogo.articoli p, catalogo.articoli b
  WHERE p.codice IN ('PGTAP_BOM_PADRE_B1', 'PGTAP_BOM_PADRE_B2') AND b.codice = 'PGTAP_BOM_B';
 

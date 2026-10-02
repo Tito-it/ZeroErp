@@ -27,7 +27,9 @@
 --   1) fixture: il kit e' misurato in unita' PADRE e la coda chiede 3
 --   2) il verbo crea DUE rettifiche, una per componente
 --   3) ⭐ ciascuna porta `componente_di` EREDITATO dalla riga rettificata
---   4) ⭐ e `esposto_in_fattura`, il secondo tasto che mancava
+--   4) ⭐ e `esposizione`, il secondo tasto che mancava (fino al 2026-10-01 si
+--      chiamava `esposto_in_fattura` ed era un booleano: tre modi da
+--      brief-db-esposizione-componenti-kit-in-fattura)
 --   5) `coeff_qta` continua ad arrivare (era l'unico che gia' passava)
 --   6) il segmento e' <spedizione>#RET:1#CMP:<componente> — il `#RET:` PRIMA
 --      del `#CMP:`, cosi' il kit_key della rettifica resta calcolabile
@@ -174,7 +176,7 @@ BEGIN
     p_meta                          => jsonb_strip_nulls(jsonb_build_object(
                                           'coeff_qta',           p_coeff,
                                           'componente_di',       p_padre,
-                                          'esposto_in_fattura',  true)));
+                                          'esposizione',         'DESCRITTIVO')));
 END $$ LANGUAGE plpgsql;
 
 -- Emette le attivita' della commessa e aggancia ognuna a una riga di fattura
@@ -315,9 +317,9 @@ SELECT is(
 SELECT is(
   (SELECT count(*)::int FROM vendite.commesse_attivita ca
     WHERE ca.id IN (SELECT commessa_attivita_id FROM tmp_acc_kit)
-      AND (ca.meta ->> 'esposto_in_fattura')::boolean IS TRUE),
+      AND ca.meta ->> 'esposizione' = 'DESCRITTIVO'),
   2,
-  '4) e portano `esposto_in_fattura`: la nota di credito prende la forma della fattura che rettifica'
+  '4) e portano `esposizione`: la nota di credito prende la forma della fattura che rettifica'
 );
 
 SELECT is(

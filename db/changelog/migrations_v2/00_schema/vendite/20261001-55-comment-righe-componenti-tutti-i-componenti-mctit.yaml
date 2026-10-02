@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Quattro COMMENT stantii: le *_righe_componenti di preventivi, ordini, DDT e
+# contratti dicono «una riga per ogni componente esposto_in_fattura=TRUE».
+#   Brief: brief-db-esposizione-componenti-kit-in-fattura, sezioni 2 e 4.6
+#
+#   Dal modello unificato del 2026-05-13 le funzioni *_riga_componenti_init
+#   inseriscono TUTTI i componenti attivi e validi della distinta: l'esposizione
+#   e' una regola di presentazione della fattura (vw_fattura_righe_esposte),
+#   non un filtro su queste righe. E il flag che il commento nomina non esiste
+#   piu' (20261001-42). Il resto di ogni testo e' quello vivo, identico.
+#   ⚠️ vendite.offerte_commerciali_eccezioni_componenti non nomina il flag nel
+#   commento della tabella: non si tocca.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261001-55-comment-righe-componenti-tutti-i-componenti-mctit.yaml
+
+  - changeSet:
+      id: 20261001-55-comment-righe-componenti-tutti-i-componenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT delle quattro *_righe_componenti (preventivi, ordini, DDT, contratti): una
+        riga per ogni componente attivo e valido della distinta, non solo per gli
+        «esposto_in_fattura=TRUE» (modello unificato del 2026-05-13). Brief:
+        brief-db-esposizione-componenti-kit-in-fattura (sezione 4.6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE vendite.preventivi_righe_componenti IS
+                  'Componenti BoM CASO A del preventivo: una riga per ogni componente attivo e valido '
+                  'della distinta di un articolo composito (modello unificato del 2026-05-13: '
+                  'l''esposizione in fattura e'' una regola di presentazione, non un filtro su queste '
+                  'righe). Prezzo proprio negoziabile (L1/L2/L3). Prezzo padre calcolato da trigger come '
+                  'SUM(prezzo_unitario * coeff_qta_snapshot). Snapshot pricing: al push su commessa i '
+                  'prezzi vengono propagati senza ri-chiamare il resolver.';
+              COMMENT ON TABLE vendite.ordini_righe_componenti IS
+                  'Componenti BoM CASO A dell''ordine: una riga per ogni componente attivo e valido '
+                  'della distinta di un articolo composito (modello unificato del 2026-05-13: '
+                  'l''esposizione in fattura e'' una regola di presentazione, non un filtro su queste '
+                  'righe). Prezzo proprio negoziabile (L1/L2/L3). Prezzo padre calcolato da trigger come '
+                  'SUM(prezzo_unitario * coeff_qta_snapshot). Snapshot pricing: al push su commessa i '
+                  'prezzi vengono propagati senza ri-chiamare il resolver.';
+              COMMENT ON TABLE vendite.ddt_righe_componenti IS
+                  'Componenti BoM CASO A del DDT: una riga per ogni componente attivo e valido della '
+                  'distinta di un articolo composito (modello unificato del 2026-05-13: l''esposizione '
+                  'in fattura e'' una regola di presentazione, non un filtro su queste righe). Prezzo '
+                  'proprio negoziabile (L1/L2/L3). Prezzo padre calcolato da trigger come '
+                  'SUM(prezzo_unitario * coeff_qta_snapshot). Snapshot pricing: al push su commessa i '
+                  'prezzi vengono propagati senza ri-chiamare il resolver.';
+              COMMENT ON TABLE vendite.contratti_righe_componenti IS
+                  'Componenti BoM CASO A del contratto: una riga per ogni componente attivo e valido '
+                  'della distinta di un articolo composito (modello unificato del 2026-05-13: '
+                  'l''esposizione in fattura e'' una regola di presentazione, non un filtro su queste '
+                  'righe). Prezzo proprio negoziabile (L1/L2/L3). Prezzo padre calcolato da trigger come '
+                  'SUM(prezzo_unitario * coeff_qta_snapshot). Snapshot pricing al push.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Un commento stantio non si ripristina.
+              SELECT 1;

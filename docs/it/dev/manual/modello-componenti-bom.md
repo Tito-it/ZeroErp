@@ -5,7 +5,8 @@
 > storico delle iterazioni e' in
 > [changelog-decisioni-componenti.md](changelog-decisioni-componenti.md).
 >
-> **Ultimo aggiornamento**: 2026-05-13 (decisione "BoM contratto
+> **Ultimo aggiornamento**: 2026-10-01 (esposizione in fattura a tre
+> modi — vedi §7). Prima: 2026-05-13 (decisione "BoM contratto
 > immutabile per documento" — vedi §9.3).
 
 ---
@@ -40,7 +41,7 @@ Colonne strutturali (immutabili):
 | `componente_id`                               | articolo figlio (puo' essere a sua volta composito? No, vedi §9)  |
 | `coeff_qta`                                   | quantita' del figlio per unita' di padre                          |
 | `obbligatorio`                                | TRUE = sempre incluso, FALSE = opzionale                          |
-| `esposto_in_fattura`                          | TRUE = riga descrittiva in fattura, FALSE = invisibile in fattura |
+| `esposizione_in_fattura`                      | come il figlio si vede in fattura: `NASCOSTO` (default) \| `DESCRITTIVO` \| `VALORIZZATO` (vedi §7) |
 | `valido_dal`, `valido_al`, `validita` (range) | versionamento daterange                                           |
 | `attivo`                                      | soft-delete logico                                                |
 
@@ -170,23 +171,43 @@ rifiuta, gli altri accettano).
 > rimosso il 2026-06-03 proprio per togliere l'asimmetria (vedi brief
 > `work-done/brief-db-listini-rimozione-guard5-iva.md`).
 
-## 7. Esposto in fattura = flag di presentazione (non di pricing)
+## 7. Esposizione in fattura = regola di presentazione (non di pricing)
 
-- `esposto_in_fattura = TRUE` → il figlio appare in fattura come riga
-  descrittiva separata (oltre al padre)
-- `esposto_in_fattura = FALSE` → il figlio non appare in fattura come
-  riga separata; il suo prezzo e' gia' incluso nel padre tramite SUM
+`catalogo.articoli_componenti.esposizione_in_fattura` (FK su
+`config.esposizioni_componente`) dice come il figlio si vede in
+fattura, sotto la riga del suo kit:
 
-**Importante**: `esposto_in_fattura` NON e' gate di pricing — non
-filtra quali componenti finiscono in `*_righe_componenti`. Tutti i
-figli validi alla data vi finiscono. Il flag e' letto SOLO al momento
-della generazione fattura per decidere come aggregare la
-presentazione.
+| Modo | In fattura | Nel totale del kit |
+| --- | --- | --- |
+| `NASCOSTO` (default) | non compare | si' |
+| `DESCRITTIVO` | riga sotto il kit, senza prezzo ne' importo | si' |
+| `VALORIZZATO` | riga sotto il kit con quantita', prezzo e importo suoi | **no**: il suo importo e' sulla sua riga |
 
-**Snapshot non necessario** in catena (`*_righe_componenti`,
-`commesse_attivita`, `attivita_fatturabili`, `fatture_righe`): la BoM
-e' immutabile per design, quindi JOIN runtime su
-`articoli_componenti.esposto_in_fattura` e' sempre coerente.
+- Un figlio resta **sempre legato al suo kit**, anche valorizzato: mai
+  una riga sciolta, come se fosse venduto da solo.
+- Se tutti i figli sono `VALORIZZATO`, la riga del kit resta come
+  intestazione **senza importo** (`NULL`, non zero).
+- Il **totale del documento non cambia mai** al variare
+  dell'esposizione: ogni figlio sta o nel kit o sulla sua riga.
+
+Fino al 2026-10-01 era il booleano `esposto_in_fattura`, convertito sul
+posto: `false` → `NASCOSTO`, `true` → `DESCRITTIVO` (cio' che il `true`
+produceva). Il `VALORIZZATO` e' il terzo modo nato quel giorno.
+
+**Importante**: l'esposizione NON e' gate di pricing — non filtra quali
+componenti finiscono in `*_righe_componenti`. Tutti i figli validi alla
+data vi finiscono, con il loro prezzo. La legge SOLO la
+rappresentazione della fattura,
+[`vendite.vw_fattura_righe_esposte`](/dbzero/vendite/views/vw_fattura_righe_esposte),
+la stessa per PDF, XML SDI e portale.
+
+**Dove viaggia**: nei documenti (`*_righe_componenti`) non e' copiata,
+si legge dalla BoM (immutabile per design) e le preview la proiettano;
+in commessa sta nel `meta` dell'attivita' (chiave `esposizione`; fino
+al 2026-10-01 `esposto_in_fattura` — il cambio di chiave e' a carico
+del backend); sulla fattura e' congelata in
+`fatture_righe.kit_esposizione` alla generazione, insieme a `kit_key`
+e all'articolo padre.
 
 ## 8. Listino composito (livello 2): bundle-aware
 
@@ -255,7 +276,9 @@ iniziale (era `attivo = obbligatorio` fino al 2026-05-12). Conseguenze:
   prezzo zero** (`script.trgfn_componenti_check_prezzo_obbligatorio`).
   Obbligatori non ammettono `prezzo_unitario = 0`; opzionali sì.
 - UX FE: nessuna checkbox "attivo" nel Dialog/Panel componenti.
-  Restano i tag info Obbligatorio/Opzionale + In fattura Sì/No.
+  Restano i tag info Obbligatorio/Opzionale + l'esposizione in fattura
+  (fino al 2026-10-01 un tag In fattura Sì/No; dal 2026-10-01 i tre
+  modi, con le etichette dal vocabolario).
 
 ### 9.4 Obbligatorio non disattivabile (safety net)
 
@@ -281,16 +304,19 @@ Interazione con prezzo bundle (STADIO 0):
 ```
 preventivi_righe + preventivi_righe_componenti
   -> (push commessa)
-commesse_attivita (tutti i figli, niente filtro esposto_in_fattura)
+commesse_attivita (tutti i figli, niente filtro sull'esposizione)
   -> (run pipeline fatturazione)
 attivita_fatturabili
   -> (generazione lotto)
-fatture_righe (padre con totale + figli esposti come righe descrittive)
+fatture_righe (tutti i figli, ognuno col suo prezzo + kit_esposizione)
+  -> (rappresentazione)
+vw_fattura_righe_esposte (riga del kit + figli secondo il modo)
 ```
 
-In ogni passaggio: tutti i componenti, niente snapshot del flag
-`esposto_in_fattura`. La presentazione finale (fattura PDF / XML SDI /
-report) legge runtime via JOIN su `articoli_componenti`.
+In ogni passaggio: tutti i componenti, col loro prezzo. L'esposizione
+viaggia nel `meta` della commessa e si congela su `fatture_righe`
+(`kit_esposizione`); la presentazione finale (fattura PDF / XML SDI /
+portale) la applica leggendo `vw_fattura_righe_esposte` (§7).
 
 ## 11. Costanti / errori
 
