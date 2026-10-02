@@ -171,6 +171,7 @@ class TestOperatoriDetailView(TestCase):
     def test_detail_operatore_success(self, MockRepo: MagicMock) -> None:
         """Scopo: GET dettaglio ritorna i dati completi dell'operatore."""
         repo_instance = MockRepo.return_value
+        repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
 
         view = OperatoriDetailView()
@@ -187,6 +188,7 @@ class TestOperatoriDetailView(TestCase):
     def test_detail_operatore_not_found(self, MockRepo: MagicMock) -> None:
         """Scopo: GET dettaglio per operatore inesistente solleva errore."""
         repo_instance = MockRepo.return_value
+        repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         repo_instance.get_operatore_detail.return_value = None
 
         view = OperatoriDetailView()
@@ -213,6 +215,7 @@ class TestOperatoriPatchView(TestCase):
     def test_patch_operatore_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: PATCH modifica i campi e ritorna il dettaglio aggiornato."""
         repo_instance = MockRepo.return_value
+        repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
 
         view = OperatoriDetailView()
@@ -228,6 +231,7 @@ class TestOperatoriPatchView(TestCase):
     def test_patch_operatore_invalidates_cache(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: PATCH invalida la cache permessi dell'operatore modificato."""
         repo_instance = MockRepo.return_value
+        repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
 
         view = OperatoriDetailView()
@@ -244,6 +248,7 @@ class TestOperatoriPatchView(TestCase):
     def test_patch_operatore_not_found(self, MockRepo: MagicMock) -> None:
         """Scopo: PATCH su operatore inesistente solleva errore."""
         repo_instance = MockRepo.return_value
+        repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         repo_instance.get_operatore_detail.return_value = None
 
         view = OperatoriDetailView()
@@ -259,6 +264,7 @@ class TestOperatoriPatchView(TestCase):
         """Scopo: Fase 7 — PATCH `is_super_admin: true, attivo: true` arriva
         al repo come bool nel contract multi-face (no traduzione legacy)."""
         repo_instance = MockRepo.return_value
+        repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
 
         view = OperatoriDetailView()
@@ -278,6 +284,7 @@ class TestOperatoriPatchView(TestCase):
     def test_patch_attivo(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: PATCH cambio attivo passa il valore corretto al repository."""
         repo_instance = MockRepo.return_value
+        repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
 
         view = OperatoriDetailView()
@@ -296,7 +303,8 @@ class TestOperatoriDisabilitaView(TestCase):
     def test_disabilita_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock, mock_blacklist: MagicMock) -> None:
         """Scopo: POST disabilita imposta stato e ritorna dettaglio aggiornato."""
         repo_instance = MockRepo.return_value
-        disabled = {**SAMPLE_DETAIL, "ruolo_applicativo": "DISABILITATO", "attivo": False, "is_active": False}
+        disabled = {**SAMPLE_DETAIL, "veste_attiva": False, "attivo": False, "is_active": False}
+        repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         repo_instance.get_operatore_detail.side_effect = [SAMPLE_DETAIL, disabled]
 
         view = OperatoriDisabilitaView()
@@ -312,6 +320,7 @@ class TestOperatoriDisabilitaView(TestCase):
     def test_disabilita_invalidates_cache(self, MockRepo: MagicMock, mock_invalidate: MagicMock, mock_blacklist: MagicMock) -> None:
         """Scopo: POST disabilita invalida cache permessi."""
         repo_instance = MockRepo.return_value
+        repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
 
         view = OperatoriDisabilitaView()
@@ -325,6 +334,7 @@ class TestOperatoriDisabilitaView(TestCase):
     def test_disabilita_not_found(self, MockRepo: MagicMock) -> None:
         """Scopo: POST disabilita su operatore inesistente solleva errore."""
         repo_instance = MockRepo.return_value
+        repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         repo_instance.get_operatore_detail.return_value = None
 
         view = OperatoriDisabilitaView()

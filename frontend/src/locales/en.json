@@ -282,7 +282,7 @@
       "email": "Email"
     },
     "amm-software": {
-      "operatori": "Operators",
+      "accessi": "Accesses",
       "profili-reparto": "Department Profiles",
       "permessi": "Permissions",
       "emittenti-fiscali": "Fiscal Issuers",
@@ -693,13 +693,6 @@
       "badge_label": "Web",
       "user": "User:"
     },
-    "stato": {
-      "NESSUNO": "Not invited",
-      "PENDING": "Invitation sent",
-      "NON_SPEDITO": "Invitation not sent",
-      "ATTIVO": "Active",
-      "DISATTIVO": "Disabled"
-    },
     "nuovo_utente_creato": "new account created",
     "activation_title": "Portal account activation",
     "activation_welcome": "Set your password to complete the portal account activation.",
@@ -858,6 +851,13 @@
       "file_codici_intestazione": "ZeroERP — two-factor recovery codes. Each one works only once.",
       "file_codici_nome": "zeroerp-recovery-codes.txt",
       "uscita_conferma": "The Security page leaves the application: unsaved changes (tabs: {n}) will be lost. Continue?"
+    },
+    "stato_veste": {
+      "NESSUNO": "Not invited",
+      "PENDING": "Invitation sent",
+      "NON_SPEDITO": "Invitation not sent",
+      "ATTIVO": "Active",
+      "DISATTIVO": "Disabled"
     }
   },
   "resolver": {
@@ -1738,6 +1738,49 @@
       "disattivato": "Two-factor authentication disabled.",
       "richiesto_dal_profilo": "Requires two-factor authentication",
       "richiesto_dal_profilo_aiuto": "Members of this department must use two-factor authentication."
+    },
+    "accessi": {
+      "col_vesti": "Accesses",
+      "col_nessun_accesso": "No access",
+      "col_soggetti": "Linked parties",
+      "col_secondo_fattore": "Second factor",
+      "col_secondo_fattore_obbligatorio": "Second factor required",
+      "col_bloccata": "Blocked",
+      "col_ultimo_accesso": "Last access",
+      "col_tipo": "Type",
+      "col_processo": "Process",
+      "col_processo_descrizione": "Process description",
+      "col_identita_attiva": "Active",
+      "tab_operatori": "Operators",
+      "tab_altri": "Other accesses",
+      "tab_sistema": "System",
+      "sezione_credenziale": "Access",
+      "blocco_titolo": "Administrator block",
+      "bloccata": "Blocked",
+      "non_bloccata": "Not blocked",
+      "bloccata_dettaglio": "Blocked on {quando} by {chi}: {motivo}",
+      "blocca": "Block access",
+      "sblocca": "Unblock access",
+      "sblocca_conferma": "The person will be able to sign in again with their password, through every entry point.",
+      "blocca_spiegazione": "The person will no longer be able to sign in through any entry point (back office, portal, shop) and their open sessions are closed. The block does not expire and a password change does not remove it: only «Unblock access» does.",
+      "motivo_blocco": "Reason",
+      "bloccata_ok": "Access blocked.",
+      "sbloccata_ok": "Access unblocked.",
+      "blocca_reason": {
+        "ultimo_super_admin": "This is the last reachable super administrator: blocking it would leave the system without administrators."
+      },
+      "nessun_accesso_spiegazione": "This access has no role: it cannot sign in anywhere. It needs fixing, and the check of credentials to fix reports it too.",
+      "invito_scade": "Invitation valid until {quando}",
+      "veste_valida_al": "Valid until {quando}",
+      "apri_scheda": "Open the record",
+      "apri_scheda_di": "Open the record: {veste} of {soggetto}",
+      "search_altri": "Search by name, username, email, party",
+      "search_sistema": "Search by username, process, issuer",
+      "sistema_senza_processo": "This access is not linked to an automatic process: there is no panel to open.",
+      "tipo": {
+        "PROCESSO": "Automatic process",
+        "API_CLIENT": "External system"
+      }
     }
   },
   "indirizzi": {
@@ -1861,7 +1904,7 @@
     "col_base": "Base",
     "col_coeff_qta": "Qty coeff.",
     "col_esposto_fattura": "On invoice",
-    "field_esposto_fattura": "Shown on invoice",
+    "field_esposizione_fattura": "How it appears on the invoice",
     "col_testo": "Text",
     "col_posizione": "Position",
     "field_codice": "Code",
@@ -1952,7 +1995,7 @@
     "duplica_versione_conferma": "Duplicate version",
     "nuova_versione_componente": "New component version",
     "nuova_versione_hint": "Source '{codice}' closed on {data}. Fields are pre-filled from the closed row: edit if needed, then save to insert the new version.",
-    "bom_immutabile_hint": "BoM structural fields (component, coefficient, exposed in invoice, etc.) are not editable. To fix them, close the row and insert a new one.",
+    "bom_immutabile_hint": "BoM structural fields (component, coefficient, invoice display, etc.) are not editable. To fix them, close the row and insert a new one.",
     "motivo_uom_base_non_eliminabile": "Base UoM cannot be deleted",
     "motivo_articolo_solo_componente": "Article marked as component-only: cannot have a bill of materials",
     "motivo_articolo_non_composito": "Non-composite article: cannot have a bill of materials",
@@ -2182,8 +2225,6 @@
       "col_opzionale_tag": "Optional",
       "preview_listino_mancante": "No price list configured — enter manual price.",
       "attivo_disabilitato_tooltip": "Required component: cannot be excluded from the row.",
-      "esposto_in_fattura_tooltip": "Will appear as a separate descriptive line on the invoice (in addition to the parent).",
-      "esposto_no_tooltip": "Will not appear on the invoice: its price is included in the parent.",
       "obbligatorio_mancante": "Enter the price for all required components before confirming.",
       "bom_vuota": "Composite article with no components valid at the document date. BoM expired or not configured in the catalogue.",
       "errore_caricamento": "Error while loading components.",

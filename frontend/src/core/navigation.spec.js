@@ -17,11 +17,13 @@
 //  5. findMenuItem trova la voce di una rotta Strumenti (e nulla senza menuKey)
 //  6. resolveTabDisplayLabel: ricalcola, non si fida della label salvata
 //  7. resolveTabDisplayLabel: il nome dato a mano vince, il ripiego e' la label
+//  8. rottaListaTipoRuolo: cliente e fornitore la loro lista, il resto i soggetti
 // ------------------------------------------------------------
 
 import { describe, expect, it } from 'vitest'
 
-import { findMenuItem, isMenuItemAllowed, resolveTabDisplayLabel } from './navigation'
+import { TIPO_RUOLO } from './constants'
+import { findMenuItem, isMenuItemAllowed, resolveTabDisplayLabel, rottaListaTipoRuolo } from './navigation'
 
 function authCon({ aree = [], azioni = [], superAdmin = false } = {}) {
   return {
@@ -80,5 +82,14 @@ describe('resolveTabDisplayLabel', () => {
     )).toBe('Mio')
     expect(resolveTabDisplayLabel({ domain: 'ignoto', label: 'Salvata' }, t, te)).toBe('Salvata')
     expect(resolveTabDisplayLabel(null, t, te)).toBe('')
+  })
+})
+
+describe('rottaListaTipoRuolo', () => {
+  it('cliente e fornitore la loro lista, ogni altro tipo (o nessuno) i soggetti', () => {
+    expect(rottaListaTipoRuolo(TIPO_RUOLO.CLIENTE)).toBe('anagrafiche-clienti')
+    expect(rottaListaTipoRuolo(TIPO_RUOLO.FORNITORE)).toBe('anagrafiche-fornitori')
+    expect(rottaListaTipoRuolo('XX')).toBe('anagrafiche-soggetti')
+    expect(rottaListaTipoRuolo(null)).toBe('anagrafiche-soggetti')
   })
 })

@@ -37,6 +37,7 @@
 
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useEsposizioniComponente, severitaEsposizione } from '../../../catalogo/composables/useEsposizioniComponente'
 
 import { useNotify } from '../../../core/composables/useNotify'
 import { useRigaComponenti } from '../../../core/composables/useRigaComponenti'
@@ -63,6 +64,8 @@ import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 
 const { t, te } = useI18n()
+// Il modo di esposizione in fattura per esteso, con l'etichetta dal DB.
+const { etichetta: etichettaEsposizione } = useEsposizioniComponente()
 const notify = useNotify()
 const auth = useAuthStore()
 
@@ -87,7 +90,7 @@ const props = defineProps({
   // da DB), salta la fetch e rende direttamente. Shape attesa allineata
   // al jsonb_agg standard delle fn preview: componente_id,
   // componente_codice, componente_descrizione, uom_id, uom_codice,
-  // coeff_qta, prezzo, obbligatorio, esposto_in_fattura.
+  // coeff_qta, prezzo, obbligatorio, esposizione_in_fattura.
   // Il normalizer mappa coeff_qta->quantita e prezzo->prezzo_unitario
   // per usare le stesse celle del rendering fetch-driven.
   initialData: { type: [Array, String], default: null },
@@ -191,7 +194,7 @@ function normalizeRow(c) {
     stato_approvazione_prezzo: c.stato_approvazione_prezzo ?? null,
     iva_codice: c.iva_codice ?? null,
     obbligatorio: c.obbligatorio === true,
-    esposto_in_fattura: c.esposto_in_fattura === true,
+    esposizione_in_fattura: c.esposizione_in_fattura ?? null,
   }
 }
 
@@ -275,13 +278,10 @@ function approvazioneLabel(stato) {
   return t(localizedKey('badge_approvazione_pending'))
 }
 
-// Modello unificato 2026-05-13: `obbligatorio` ed `esposto_in_fattura`
+// Modello unificato 2026-05-13: `obbligatorio` ed `esposizione_in_fattura`
 // arrivano dalla proiezione BE (JOIN articoli_componenti).
 function isObbligatorio(comp) {
   return comp.obbligatorio === true
-}
-function isEsposto(comp) {
-  return comp.esposto_in_fattura === true
 }
 
 // Dirty check: prezzo editato diverso da quello del componente (oltre
@@ -443,20 +443,15 @@ async function onSalvaPrezzo(comp) {
       <Column
         v-if="hasIvaData"
         field="iva_codice" :header="t(localizedKey('col_iva'))" style="width: 50px;" />
-      <Column :header="t('vendite.componenti.col_esposto')" style="width: 70px;">
+      <Column :header="t('vendite.componenti.col_esposto')" style="width: 150px;">
+        <!-- Il modo per esteso (NASCOSTO / DESCRITTIVO / VALORIZZATO), con
+             l'etichetta che il DB dichiara: dal 2026-10-01 non e' piu' un si'/no. -->
         <template #body="{ data }">
           <Tag
-            v-if="isEsposto(data)"
-            severity="info"
-            :value="t('common.yes')"
+            :severity="severitaEsposizione(data.esposizione_in_fattura)"
+            :value="etichettaEsposizione(data.esposizione_in_fattura)"
             class="app-tag-xs"
-            v-tooltip.top="t('vendite.componenti.esposto_in_fattura_tooltip')" />
-          <Tag
-            v-else
-            severity="secondary"
-            :value="t('common.no')"
-            class="app-tag-xs"
-            v-tooltip.top="t('vendite.componenti.esposto_no_tooltip')" />
+          />
         </template>
       </Column>
     </DataTable>

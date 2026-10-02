@@ -85,16 +85,22 @@ function applyFilters() {
 }
 
 // Tag stato operatore multi-face: SUPER_ADMIN ha precedenza
-// (warn=privilegio elevato), poi DISABILITATO (danger), poi default.
+// (warn=privilegio elevato), poi disabilitato (danger), poi default.
+// ⭐ «Disabilitato» si legge dalla VESTE operatore spenta (`veste_attiva`,
+//    2026-10-02, R-DB-1: il ruolo non cambia piu'), o dalla credenziale spenta.
+function disabilitato(op) {
+  return op.veste_attiva === false || op.is_active === false
+}
+
 function getStatoSeverity(op) {
   if (op.is_super_admin) return 'warn'
-  if (op.ruolo_applicativo === 'DISABILITATO' || op.is_active === false) return 'danger'
+  if (disabilitato(op)) return 'danger'
   return 'info'
 }
 
 function getStatoLabel(op) {
   if (op.is_super_admin) return t('amministrazione.permessi_stato_super_admin')
-  if (op.ruolo_applicativo === 'DISABILITATO' || op.is_active === false) return t('amministrazione.permessi_stato_disabilitato')
+  if (disabilitato(op)) return t('amministrazione.permessi_stato_disabilitato')
   return t('amministrazione.permessi_stato_operatore')
 }
 

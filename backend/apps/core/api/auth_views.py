@@ -45,6 +45,7 @@ from apps.core.services import session_audit_service
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.nome_tentato import digest_nome_tentato, etichetta_log
 from apps.core.services.request_context import provenienza_obbligatoria, richiesta_django
+from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.sfida_secondo_fattore import DURATA_SFIDA_SECONDI, Sfida, emetti_sfida
 from apps.core.services.auth_constants import (
@@ -101,6 +102,31 @@ def _extract_identita_id_from_refresh(refresh_str: str | None) -> int | None:
 logger = logging.getLogger("security")
 _auth_repo = AuthRepository()
 _secondo_fattore_repo = SecondoFattoreRepository()
+
+
+# Scopo: La veste del refresh presentato e' ancora ACCESA? Legge `identita_id`
+#        e `user_id` dai claim verificati e chiede la riga della veste, legata
+#        alla credenziale (stesso predicato di `set_jwt_gucs`: id, auth_user,
+#        `attivo`). Claim assente = False: ogni refresh nostro lo porta
+#        (`emetti_refresh_veste`), come gia' il claim `ruolo_applicativo`.
+#
+# ⛔ D-5 (Tid, 2026-10-02): spegnere una veste chiude le sue sessioni al
+#    primo rinnovo, QUALUNQUE sia la strada che l'ha spenta — interruttore
+#    «Accesso attivo», «Disabilita», portale, shop, e le strade che verranno.
+#    Fino a quel giorno il controllo stava solo in `set_jwt_gucs`, DOPO la
+#    rotazione, e un esito negativo era un warning: il refresh ruotava per
+#    sempre una sessione che non poteva piu' fare nulla. La regola sta qui,
+#    in un posto solo; la blacklist dei singoli comandi e' la chiusura
+#    IMMEDIATA, non la regola.
+# ⚠️ Un guasto della lettura PROPAGA (500): non e' una prova che la veste sia
+#    accesa, e il refresh non si concede su un dubbio.
+def _veste_accesa(claims: dict) -> bool:
+    identita_id = _int_claim(claims, JWT_CLAIM_IDENTITA_ID)
+    user_id = _int_claim(claims, "user_id")
+    if identita_id is None or user_id is None:
+        return False
+    veste = _auth_repo.get_identita_dettaglio(identita_id, user_id)
+    return bool(veste and veste.get("attivo"))
 
 
 
@@ -524,6 +550,22 @@ class AuditTokenRefreshView(TokenRefreshView):
                 request.path, ruolo,
             )
             raise VesteNonAttivaError()
+
+        # ⛔ Veste spenta: la sessione e' chiusa, PRIMA della rotazione (D-5,
+        #    `_veste_accesa`). Si blocca anche il refresh presentato, per sid:
+        #    una veste riaccesa dopo non resuscita la sessione — si rientra col
+        #    login. 401 e non il 403 del guard sopra: il token era buono, la
+        #    sessione non c'e' piu', e il client va al login come per ogni
+        #    refresh rifiutato.
+        if not _veste_accesa(claims):
+            user_id, sid = self._extract_claims(claims)
+            if user_id and sid:
+                blocca_token_sessioni(user_id, lambda s: s == sid)
+            logger.warning(
+                "security.refresh_veste_spenta user_id=%s identita_id=%s",
+                user_id, claims.get(JWT_CLAIM_IDENTITA_ID),
+            )
+            raise InvalidToken("Sessione chiusa: la veste non e' piu' attiva.")
 
         # `_rinnova` risponde 200 o solleva: da qui in poi il rinnovo e' riuscito.
         response = self._rinnova(refresh_str)

@@ -55,12 +55,16 @@ chiamante, registro `_SU_SE_STESSI` di `test_skip_area_check_registro`).
 
 ## Endpoint — amministratore (SUPER_ADMIN)
 
-`AdminAPIView`; i verbi del DB ricontrollano il SUPER_ADMIN. L'operatore deve
-esistere (`E_AMM_NOT_FOUND`), prima di ogni lettura.
+`AdminAPIView`; i verbi del DB ricontrollano il SUPER_ADMIN. La credenziale deve
+esistere (`E_CREDENZIALE_NON_TROVATA`, 404), prima di ogni lettura.
+⭐ Dal 2026-10-02 la sede e' la **credenziale** (`credenziali/<id>/…`,
+brief-db-be-fe-area-accessi): il secondo fattore vale per tutte le sue vesti, e
+il tab «Altri accessi» lo gestisce per un cliente del portale come il drawer
+operatore per un operatore. Prima stava sotto `operatori/<id>/`: ritirato.
 
 | Metodo e path | Corpo | Risposta `data` |
 | --- | --- | --- |
-| `GET /api/v1/amm-software/operatori/<auth_user_id>/secondo-fattore/` | — | lo stato, più `obbligo_sulla_credenziale` |
+| `GET /api/v1/amm-software/credenziali/<auth_user_id>/secondo-fattore/` | — | lo stato, più `obbligo_sulla_credenziale` |
 | `POST …/secondo-fattore/obbligo/` | `{valore: bool}` | lo stato |
 | `POST …/secondo-fattore/disattiva/` | `{motivo}` (obbligatorio) | lo stato |
 

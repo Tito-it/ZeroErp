@@ -11,6 +11,7 @@ import { chiudiTuttiIDrawer } from '../core/composables/useDrawerChiusuraGlobale
 import { CODE } from '../pagamenti/vocabolari'
 import { FAMIGLIA } from '../magazzino/vocabolari'
 import { UOM_TABS } from '../catalogo/constants'
+import { ACCESSI_TABS } from '../amministrazione/constants'
 import AppLayout from '../core/components/AppLayout.vue'
 import HomeView from '../core/views/HomeView.vue'
 
@@ -151,11 +152,22 @@ const router = createRouter({
         },
 
         // --- Amm. Software ---
+        // L'area «Accessi» (brief-db-be-fe-area-accessi, A-1): tre schede che
+        // censiscono tutte le credenziali. La voce «Operatori» e' diventata la
+        // prima scheda.
+        {
+          path: 'amm-software/accessi',
+          name: 'amm-software-accessi',
+          component: () => import('../amministrazione/views/AccessiView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'accessi' }
+        },
+        // ⛔ Il vecchio indirizzo resta come redirect: i PREFERITI sono path
+        //    salvati (`useNavigationFavorites`), e un link rotto non lo vede
+        //    nessun test. Porta sulla scheda «Operatori».
         {
           path: 'amm-software/operatori',
           name: 'amm-software-operatori',
-          component: () => import('../amministrazione/views/OperatoriListView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'operatori' }
+          redirect: { name: 'amm-software-accessi', query: { tab: ACCESSI_TABS.OPERATORI } }
         },
         {
           path: 'amm-software/profili-reparto',
@@ -726,7 +738,7 @@ router.beforeEach(async (to) => {
   // `portale` per CLIENTE/FORNITORE_PORTALE, `shop` per SHOP_CUSTOMER).
   // Regole:
   //   - rotte universali (cambio password, forbidden, 404) esentate;
-  //   - veste senza namespace FE (API_CLIENT, DISABILITATO) → forbidden;
+  //   - veste senza namespace FE (API_CLIENT) → forbidden;
   //   - path in namespace diverso dalla veste → grace redirect alla home
   //     namespace (UX: utente portale che digita / → /portale, non 403).
   // La mappa ruolo→config e' in `constants.RUOLO_FE_NAMESPACE` — single

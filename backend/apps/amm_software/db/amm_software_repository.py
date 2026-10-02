@@ -27,65 +27,41 @@ from apps.core.db._helpers import (
     sql_tiebreak_direction,
 )
 
-from apps.core.services.auth_constants import TIPO_PROFILO_SUPER_ADMIN
+from apps.core.services.auth_constants import (
+    CATEGORIA_ACCESSO_OPERATORE,
+    RUOLO_APPLICATIVO_OPERATORE,
+    TIPO_PROFILO_SUPER_ADMIN,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.amm_software.constants import DEFAULT_LIMIT
 from apps.amm_software.types import CredenzialePerEmailRow, OperatoreDetailRow, OperatoreRow
 
-# ⛔ GLI UTENTI TECNICI NON SONO OPERATORI, e le liste di questo modulo
-# parlano di PERSONE. Dal 2026-09-04 il database crea un utente per ogni
-# coppia (processo automatico, emittente) — `run_fatturazione_batch@ACME` e
-# compagni: hanno un `auth_user`, un'identita' `OPERATORE` e un perimetro, ma
-# non un rapporto di lavoro, non un reparto e nessuno a cui telefonare.
-# Le due query di questo file partono `FROM auth_user`, quindi li mostravano
-# come persone senza cognome: nessun errore, righe vere di una specie
-# sbagliata.
-#   ⭐ Il discriminante e' DICHIARATO, non dedotto dal nome utente:
-#   `anagrafiche.identita_digitali.tecnica`, il flag che il cantiere
-#   «nessun processo senza operatore» ha introdotto apposta.
-#   ⚠️ `COALESCE(..., false)`: la JOIN sull'identita' e' LEFT (`tecnica` NULL
-#   dove la veste operatore manca). Fino al 2026-10-02 quelle righe restavano
-#   in elenco apposta — la credenziale senza veste era «il caso da sanare» —;
-#   da allora le toglie `SOLO_VESTE_OPERATORE`, e a segnalarle e' il presidio
-#   chiesto al team DB. Il flag resta il guard DICHIARATO anche se oggi
-#   l'utente tecnico (senza risorsa umana) esce gia' per la veste: e' la
-#   regola scritta, non una deduzione dalla forma della join.
-#   ⚠️ Va nel `WHERE`, non nella condizione di JOIN: nella JOIN l'utente
-#   tecnico resterebbe in elenco con le colonne dell'identita' a NULL.
-ESCLUDI_UTENTI_TECNICI = "NOT COALESCE(id.tecnica, false)"
+# ⛔ IL TAB DELL'AREA ACCESSI IN CUI STA UNA CREDENZIALE LO DICE IL DATABASE:
+#    `script.fn_categoria_accesso` → OPERATORE / SISTEMA / ALTRO, un valore
+#    solo per credenziale (brief-db-be-fe-area-accessi, R-DB-A1). Le liste di
+#    questo modulo sono di OPERATORI: le credenziali delle macchine (utenti
+#    tecnici dei processi automatici, API_CLIENT) stanno nel tab «Di sistema»,
+#    le persone senza veste operatore — e le credenziali senza alcuna veste —
+#    in «Altri accessi». ⭐ Una funzione che dà UN valore rende la partizione
+#    vera per costruzione: nessuna credenziale in due tab, nessuna in nessuno.
+#    Fino al 2026-10-02 la regola stava qui in due copie
+#    (`SOLO_VESTE_OPERATORE` + `ESCLUDI_UTENTI_TECNICI`) e le altre due liste
+#    non c'erano. Le vesti spente contano: un operatore disattivato resta qui.
+#    `{au}` = l'espressione della credenziale nella query.
+_CATEGORIA_OPERATORE = "script.fn_categoria_accesso({au}) = '" + CATEGORIA_ACCESSO_OPERATORE + "'"
 
-# ⛔ LA VESTE OPERATORE di una credenziale: quella il cui ruolo ha una risorsa
-#    umana. Vale anche spenta (`ruolo_applicativo = DISABILITATO`): la risorsa
-#    umana resta. Dal riuso della credenziale (D-6, «una persona una
-#    credenziale», 2026-09) una credenziale puo' avere ALTRE vesti — cliente
-#    del portale, dello shop — e i comandi dell'operatore non le toccano.
-#    Fino al 2026-10-02 aggiornare, disabilitare, riattivare e il binding
-#    SUPER_ADMIN lavoravano su TUTTE le vesti (`WHERE auth_user_id = %s`):
-#    salvando un operatore con una veste shop, la si trasformava in OPERATORE
-#    (lo fermava il trigger di coerenza, E_SOGGETTI_RUOLI), e disabilitandolo
-#    il cliente perdeva lo shop.
-# ⭐ E' la definizione UNICA del modulo, per i comandi e per le letture: fino
-#    allo stesso giorno la lista operatori e il riepilogo permessi la
-#    cercavano con `ruolo_applicativo = 'OPERATORE'`, e un operatore
-#    disabilitato vi compariva senza reparto ne' validita' (e il badge
-#    «Disabilitato» del FE non poteva accendersi).
-#    `{v}` = l'alias (o il nome) della tabella `identita_digitali` nella query.
-_VESTE_OPERATORE = (
-    "EXISTS (SELECT 1 FROM anagrafiche.risorse_umane ru_veste "
-    "WHERE ru_veste.soggetto_ruolo_id = {v}.soggetto_ruolo_id)"
-)
-
-# ⛔ LE LISTE DI QUESTO MODULO SONO LISTE DI OPERATORI: una credenziale senza
-#    la veste operatore (solo cliente dello shop o del portale) non ci sta.
-#    Le query partono `FROM auth_user` e agganciano la veste con una LEFT JOIN
-#    su `_VESTE_OPERATORE`: questo e' il filtro che ne tiene solo le righe con
-#    la veste. Fino al 2026-10-02 mancava, e un cliente dello shop compariva
-#    fra gli operatori con veste e risorsa umana vuote (decisione di Tid: le
-#    vesti cliente e fornitore si governano dal loro drawer, in anagrafiche).
-#    ⚠️ Esce anche la credenziale SENZA alcuna veste, che prima restava qui
-#    come caso da sanare: la segnala il presidio chiesto al team DB
-#    (brief-db-be-fe-area-accessi, R-DB-2).
-SOLO_VESTE_OPERATORE = "id.id IS NOT NULL"
+# ⛔ LA VESTE OPERATORE di una credenziale, quella che si guarda e si comanda:
+#    `script.fn_veste_di_riferimento(credenziale, 'OPERATORE')` — l'accesa,
+#    altrimenti la spenta piu' recente. ⭐ Dal 2026-10-02 (R-DB-1) una veste
+#    spenta TIENE il suo tipo, quindi un JOIN nudo su `ruolo_applicativo`
+#    prenderebbe la spenta accanto all'accesa (due righe in lista, due vesti
+#    accese da una riattivazione). E' la stessa regola che il DB usa in
+#    `fn_get_operatore_detail`: una sede sola, la sua.
+#    Dal riuso della credenziale (D-6, «una persona una credenziale», 2026-09)
+#    una credenziale puo' avere ALTRE vesti — cliente del portale, dello shop —
+#    e i comandi dell'operatore non le toccano.
+#    `{au}` = l'espressione (o il segnaposto) della credenziale.
+_VESTE_OPERATORE = "script.fn_veste_di_riferimento({au}, '" + RUOLO_APPLICATIVO_OPERATORE + "')"
 
 # Le ALTRE vesti ATTIVE della credenziale (D-6: una persona, una credenziale):
 # in lista sono un'informazione — «e' anche cliente dello shop» — non qualcosa
@@ -221,7 +197,7 @@ class AmmSoftwareRepository:
         if order_by and order_by not in ALLOWED_ORDER_COLUMNS:
             order_by = None
 
-        conditions: list[str] = [SOLO_VESTE_OPERATORE, ESCLUDI_UTENTI_TECNICI]
+        conditions: list[str] = [_CATEGORIA_OPERATORE.format(au="au.id")]
         params: list[Any] = []
 
         # ⚠️ Sotto la soglia della lista (catalogo) il termine non filtra: fino al
@@ -269,6 +245,12 @@ class AmmSoftwareRepository:
                    s.ragione_sociale_completa AS soggetto_ragione_sociale,
                    script.fn_is_super_admin(au.id) AS is_super_admin,
                    id.ruolo_applicativo::text AS ruolo_applicativo,
+                   -- Lo stato della VESTE operatore: dal 2026-10-02 (R-DB-1)
+                   -- una veste spenta tiene il tipo, e «disabilitato» si legge
+                   -- da qui, non dal ruolo. `is_active` e' della credenziale
+                   -- (derivato da TUTTE le vesti): un operatore spento che e'
+                   -- anche cliente dello shop resta `is_active`.
+                   id.attivo AS veste_attiva,
                    au.is_active,
                    ru.unita_organizzativa_id,
                    uo.descrizione AS unita_organizzativa_nome,
@@ -288,8 +270,7 @@ class AmmSoftwareRepository:
                    COUNT(*) OVER() AS total_count
               FROM auth_user au
               LEFT JOIN anagrafiche.identita_digitali id
-                ON id.auth_user_id = au.id
-               AND {_VESTE_OPERATORE.format(v="id")}
+                ON id.id = {_VESTE_OPERATORE.format(au="au.id")}
               LEFT JOIN anagrafiche.soggetti_ruoli sr
                 ON sr.id = id.soggetto_ruolo_id
               LEFT JOIN anagrafiche.risorse_umane ru
@@ -341,34 +322,33 @@ class AmmSoftwareRepository:
                 return None
             return row_to_dict(cursor)  # type: ignore[return-value]
 
-    # Scopo: Aggiorna stato (attivo, ruolo_applicativo) della VESTE OPERATORE
-    # della credenziale (`_VESTE_OPERATORE`), non delle altre: una credenziale
-    # puo' avere anche vesti di portale o shop (D-6).
-    def _set_identita_state(
-        self,
-        auth_user_id: int,
-        *,
-        attivo: bool | None = None,
-        ruolo_applicativo: str | None = None,
-    ) -> None:
-        fields: list[str] = []
-        params: list[Any] = []
-        if attivo is not None:
-            fields.append("attivo = %s")
-            params.append(attivo)
-        if ruolo_applicativo is not None:
-            fields.append("ruolo_applicativo = %s::config.ruolo_applicativo")
-            params.append(ruolo_applicativo)
-        if not fields:
-            return
-        params.append(auth_user_id)
+    # Scopo: La categoria di una credenziale — il tab dell'area Accessi —
+    #        da `script.fn_categoria_accesso`: OPERATORE, SISTEMA o ALTRO.
+    #        `None` se la credenziale non esiste (la funzione SQL risponde
+    #        ALTRO anche per un id inesistente: l'esistenza la chiede la query).
+    def get_categoria_accesso(self, auth_user_id: int) -> str | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                f"UPDATE anagrafiche.identita_digitali "  # noqa: S608 — SET da frammenti letterali di questo metodo, valori come parametri
-                f"SET {', '.join(fields)} "
-                f"WHERE auth_user_id = %s "
-                f"AND {_VESTE_OPERATORE.format(v='identita_digitali')}",
-                params,
+                "SELECT script.fn_categoria_accesso(au.id) FROM auth_user au WHERE au.id = %s",
+                [auth_user_id],
+            )
+            row = cursor.fetchone()
+        return row[0] if row else None
+
+    # Scopo: Accende o spegne la VESTE OPERATORE della credenziale
+    # (`_VESTE_OPERATORE`), non le altre: una credenziale puo' avere anche
+    # vesti di portale o shop (D-6).
+    # ⛔ Spegnere vuol dire SOLO `attivo = false`, e il tipo resta (R-DB-1,
+    #    2026-10-02): la tabella rifiuta `DISABILITATO` con
+    #    `E_RUOLO_APPLICATIVO_RITIRATO`. Fino a quel giorno lo spegnimento
+    #    scriveva anche il ruolo, e la riattivazione lo ricostruiva perche' il
+    #    codice lo SAPEVA, non perche' il dato lo dicesse.
+    def _set_veste_attiva(self, auth_user_id: int, *, attivo: bool) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE anagrafiche.identita_digitali SET attivo = %s "  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
+                f"WHERE id = {_VESTE_OPERATORE.format(au='%s')}",
+                [attivo, auth_user_id],
             )
 
     # Scopo: Aggiunge o rimuove il binding SUPER_ADMIN sull'identita
@@ -388,8 +368,7 @@ class AmmSoftwareRepository:
                          FROM config.profili_accesso pa
                         CROSS JOIN anagrafiche.identita_digitali id
                         WHERE pa.tipo = %s::config.tipo_profilo_accesso
-                          AND id.auth_user_id = %s
-                          AND """ + _VESTE_OPERATORE.format(v="id") + """
+                          AND id.id = """ + _VESTE_OPERATORE.format(au="%s") + """
                        ON CONFLICT DO NOTHING""",  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
                     [TIPO_PROFILO_SUPER_ADMIN, auth_user_id],
                 )
@@ -401,8 +380,7 @@ class AmmSoftwareRepository:
                         WHERE pab.identita_digitale_id = id.id
                           AND pab.profilo_accesso_id  = pa.id
                           AND pa.tipo = %s::config.tipo_profilo_accesso
-                          AND id.auth_user_id = %s
-                          AND """ + _VESTE_OPERATORE.format(v="id"),  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
+                          AND id.id = """ + _VESTE_OPERATORE.format(au="%s"),  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
                     [TIPO_PROFILO_SUPER_ADMIN, auth_user_id],
                 )
 
@@ -417,10 +395,9 @@ class AmmSoftwareRepository:
     #                               OPERATORE attiva)
     #   - `is_super_admin=False` -> binding SUPER_ADMIN DELETE (identita
     #                               OPERATORE attiva)
-    #   - `attivo=False`         -> identita_digitali.attivo=False +
-    #                               ruolo_applicativo=DISABILITATO
-    #   - `attivo=True`          -> identita_digitali.attivo=True +
-    #                               ruolo_applicativo=OPERATORE
+    #   - `attivo=False`         -> veste operatore attivo=false (il tipo
+    #                               resta, R-DB-1)
+    #   - `attivo=True`          -> veste operatore attivo=true
     # `is_super_admin` e `attivo` sono ortogonali e indipendenti.
     def update_operatore(
         self,
@@ -456,18 +433,10 @@ class AmmSoftwareRepository:
                         auth_params,
                     )
 
-            # 2) Stato identita_digitali pilotato da `attivo` (cambio
-            #    simmetrico a disabilita/riattiva):
-            #    attivo=True  -> ruolo_applicativo=OPERATORE attivo
-            #    attivo=False -> ruolo_applicativo=DISABILITATO + attivo=false
-            if attivo is True:
-                self._set_identita_state(
-                    auth_user_id, attivo=True, ruolo_applicativo="OPERATORE"
-                )
-            elif attivo is False:
-                self._set_identita_state(
-                    auth_user_id, attivo=False, ruolo_applicativo="DISABILITATO"
-                )
+            # 2) La veste operatore segue `attivo` (simmetrico a
+            #    disabilita/riattiva): solo `attivo`, il tipo resta.
+            if attivo is not None:
+                self._set_veste_attiva(auth_user_id, attivo=attivo)
 
             # 3) Binding SUPER_ADMIN (ortogonale ad `attivo`).
             if is_super_admin is True:
@@ -475,7 +444,9 @@ class AmmSoftwareRepository:
             elif is_super_admin is False:
                 self._set_super_admin_binding(auth_user_id, enabled=False)
 
-            # 4) Aggiorna risorse_umane via catena identita -> soggetto_ruolo
+            # 4) Aggiorna la risorsa umana della VESTE OPERATORE (catena
+            #    veste -> soggetto_ruolo): le altre vesti della credenziale
+            #    hanno soggetti_ruoli loro, e non sono affari di questo comando.
             ru_fields: list[str] = []
             ru_params: list[Any] = []
             if attivo is not None:
@@ -494,8 +465,8 @@ class AmmSoftwareRepository:
                         f"""UPDATE anagrafiche.risorse_umane ru
                                SET {', '.join(ru_fields)}
                               FROM anagrafiche.identita_digitali id
-                             WHERE id.auth_user_id = %s
-                               AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",  # noqa: S608 — SET da frammenti letterali di questo metodo, valori come parametri
+                             WHERE id.id = {_VESTE_OPERATORE.format(au="%s")}
+                               AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",  # noqa: S608 — SET da frammenti letterali di questo metodo, predicato letterale del modulo, valori come parametri
                         ru_params + [auth_user_id],
                     )
 
@@ -522,8 +493,7 @@ class AmmSoftwareRepository:
                        ON id.id = pab.identita_digitale_id
                     WHERE pa.tipo = %s::config.tipo_profilo_accesso
                       AND pa.attivo = true
-                      AND id.attivo = true
-                      AND id.ruolo_applicativo <> 'DISABILITATO'""",
+                      AND id.attivo = true""",
                 [TIPO_PROFILO_SUPER_ADMIN],
             )
             return cursor.fetchone()[0]
@@ -535,24 +505,22 @@ class AmmSoftwareRepository:
     # stato inconsistente se uno dei 3 step fallisce.
     def disabilita_operatore(self, auth_user_id: int) -> None:
         with transaction.atomic(), connection.cursor() as cursor:
-            # 1. Disattiva identita_digitali + marca ruolo_applicativo
-            #    DISABILITATO (signal esplicito, simmetrico a riattiva).
+            # 1. Spegne la veste operatore (figlio): solo `attivo`, il tipo
+            #    resta (R-DB-1).
             cursor.execute(
-                """UPDATE anagrafiche.identita_digitali
-                      SET attivo = false,
-                          ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
-                    WHERE auth_user_id = %s
-                      AND """ + _VESTE_OPERATORE.format(v="identita_digitali"),  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
+                "UPDATE anagrafiche.identita_digitali SET attivo = false "  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
+                f"WHERE id = {_VESTE_OPERATORE.format(au='%s')}",
                 [auth_user_id],
             )
-            # 2. Disattiva risorse_umane (padre) + imposta valido_al = oggi
+            # 2. Disattiva la risorsa umana di quella veste (padre) +
+            #    valido_al = oggi
             cursor.execute(
-                """UPDATE anagrafiche.risorse_umane ru
+                f"""UPDATE anagrafiche.risorse_umane ru
                       SET attivo = false,
                           valido_al = CURRENT_DATE
                      FROM anagrafiche.identita_digitali id
-                    WHERE id.auth_user_id = %s
-                      AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",
+                    WHERE id.id = {_VESTE_OPERATORE.format(au="%s")}
+                      AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
                 [auth_user_id],
             )
             # 3. Sync auth_user.is_active
@@ -568,23 +536,20 @@ class AmmSoftwareRepository:
         with transaction.atomic(), connection.cursor() as cursor:
             # 1. Riattiva risorse_umane (padre) + valido_dal=oggi, valido_al=NULL
             cursor.execute(
-                """UPDATE anagrafiche.risorse_umane ru
+                f"""UPDATE anagrafiche.risorse_umane ru
                       SET attivo = true,
                           valido_dal = CURRENT_DATE,
                           valido_al = NULL
                      FROM anagrafiche.identita_digitali id
-                    WHERE id.auth_user_id = %s
-                      AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",
+                    WHERE id.id = {_VESTE_OPERATORE.format(au="%s")}
+                      AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
                 [auth_user_id],
             )
-            # 2. Riattiva identita_digitali + ripristina ruolo_applicativo=OPERATORE
-            #    (utente era DISABILITATO o inattivo)
+            # 2. Riaccende la veste operatore (figlio): il tipo non va
+            #    ricostruito, non l'ha mai perso (R-DB-1).
             cursor.execute(
-                """UPDATE anagrafiche.identita_digitali
-                      SET attivo = true,
-                          ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-                    WHERE auth_user_id = %s
-                      AND """ + _VESTE_OPERATORE.format(v="identita_digitali"),  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
+                "UPDATE anagrafiche.identita_digitali SET attivo = true "  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
+                f"WHERE id = {_VESTE_OPERATORE.format(au='%s')}",
                 [auth_user_id],
             )
             # 3. Sync auth_user.is_active
@@ -1464,7 +1429,7 @@ class AmmSoftwareRepository:
         aree = self.list_aree_funzionali()
 
         # 2. Query operatori attivi con livello effettivo per ogni area
-        conditions: list[str] = ["au.is_active = true", SOLO_VESTE_OPERATORE, ESCLUDI_UTENTI_TECNICI]
+        conditions: list[str] = ["au.is_active = true", _CATEGORIA_OPERATORE.format(au="au.id")]
         params: list[Any] = []
 
         if unita_organizzativa_id is not None:
@@ -1506,13 +1471,13 @@ class AmmSoftwareRepository:
                    COALESCE(s.nome, au.first_name) AS nome,
                    script.fn_is_super_admin(au.id) AS is_super_admin,
                    id.ruolo_applicativo::text AS ruolo_applicativo,
+                   id.attivo AS veste_attiva,
                    au.is_active,
                    uo.descrizione AS reparto,
                    {area_columns}
               FROM auth_user au
               LEFT JOIN anagrafiche.identita_digitali id
-                ON id.auth_user_id = au.id
-               AND {_VESTE_OPERATORE.format(v="id")}
+                ON id.id = {_VESTE_OPERATORE.format(au="au.id")}
               LEFT JOIN anagrafiche.soggetti_ruoli sr
                 ON sr.id = id.soggetto_ruolo_id
               LEFT JOIN anagrafiche.risorse_umane ru

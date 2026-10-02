@@ -24,7 +24,8 @@ import { useEsitoInvito } from '../../core/composables/useEsitoInvito'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { isEmailValid } from '../../core/utils/validators'
 import { extractApiError } from '../../core/utils/apiError'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATO_VESTE } from '../../core/constants'
+import { statoVesteSeverity } from '../../core/utils/severity'
 import {
   disattivaPortaleCliente,
   disattivaPortaleFornitore,
@@ -52,8 +53,8 @@ const props = defineProps({
 const emit = defineEmits(['stato-cambiato'])
 
 const email = ref(props.emailIniziale)
-const statoPortale = ref({ stato: 'NESSUNO', invito_inviato_at: null, token_scade_at: null, username: null, email: null })
-const statoShop = ref({ stato: 'NESSUNO', invito_inviato_at: null, token_scade_at: null, username: null, email: null })
+const statoPortale = ref({ stato: STATO_VESTE.NESSUNO, invito_inviato_at: null, token_scade_at: null, username: null, email: null })
+const statoShop = ref({ stato: STATO_VESTE.NESSUNO, invito_inviato_at: null, token_scade_at: null, username: null, email: null })
 
 const showShopActions = computed(() => props.entitaTipo === 'cliente')
 const canInvia = computed(
@@ -65,26 +66,12 @@ watch(
   (val) => { if (val && !email.value) email.value = val },
 )
 
-// Scopo: Tag severity per il badge stato di una veste.
-//   NESSUNO     -> contrast (neutro)
-//   PENDING     -> warn (giallo/arancio)
-//   NON_SPEDITO -> danger: il link c'e' ma l'email non e' partita (F-3),
-//                  la persona non puo' attivare finche' non si reinvia
-//   ATTIVO      -> success
-//   DISATTIVO   -> danger
-function statoSeverity(stato) {
-  switch (stato) {
-    case 'ATTIVO': return 'success'
-    case 'PENDING': return 'warn'
-    case 'NON_SPEDITO': return 'danger'
-    case 'DISATTIVO': return 'danger'
-    default: return 'secondary'
-  }
-}
+// Il colore dello stato di una veste: BB `statoVesteSeverity` (sede unica,
+// la usa anche la lista «Altri accessi» dell'amministrazione).
 
 // Scopo: Una veste si disattiva quando esiste e non e' gia' spenta: accesa,
 // o con un invito in volo (spedito o no). Una regola per portale e shop.
-const STATI_DISATTIVABILI = ['ATTIVO', 'PENDING', 'NON_SPEDITO']
+const STATI_DISATTIVABILI = [STATO_VESTE.ATTIVO, STATO_VESTE.PENDING, STATO_VESTE.NON_SPEDITO]
 const disattivabile = (stato) => STATI_DISATTIVABILI.includes(stato)
 
 // ── Load stato all'apertura + dopo ogni mutazione ────────────────
@@ -95,8 +82,8 @@ async function loadStato() {
       ? await getStatoAccessiCliente(props.entitaId)
       : await getStatoAccessiFornitore(props.entitaId)
     const data = res?.data?.data || {}
-    statoPortale.value = data.portale || { stato: 'NESSUNO' }
-    statoShop.value = data.shop || { stato: 'NESSUNO' }
+    statoPortale.value = data.portale || { stato: STATO_VESTE.NESSUNO }
+    statoShop.value = data.shop || { stato: STATO_VESTE.NESSUNO }
   } catch (err) {
     // Load stato non blocca l'UI: se fallisce mostriamo stato ignoto,
     // i pulsanti azione restano comunque usabili.
@@ -197,8 +184,8 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
     <h4>
       {{ t('portale.accesso_portale_title') }}
       <Tag
-        :value="t(`portale.stato.${statoPortale.stato}`)"
-        :severity="statoSeverity(statoPortale.stato)"
+        :value="t(`auth.stato_veste.${statoPortale.stato}`)"
+        :severity="statoVesteSeverity(statoPortale.stato)"
         class="portale-accesso-stato-tag"
       />
     </h4>
@@ -231,7 +218,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
     <div class="portale-accesso-actions">
       <!-- Invia: NESSUNO / DISATTIVO. Reinvia: PENDING / NON_SPEDITO / ATTIVO. -->
       <Button
-        v-if="statoPortale.stato === 'NESSUNO' || statoPortale.stato === 'DISATTIVO'"
+        v-if="statoPortale.stato === STATO_VESTE.NESSUNO || statoPortale.stato === STATO_VESTE.DISATTIVO"
         :label="t('portale.btn_invia_invito')"
         :icon="MANAGE_ICONS.INVITA"
         :disabled="!canInvia"
@@ -262,7 +249,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
     </div>
 
     <Message
-      v-if="statoPortale.stato === 'PENDING' && statoPortale.token_scade_at"
+      v-if="statoPortale.stato === STATO_VESTE.PENDING && statoPortale.token_scade_at"
       severity="info"
       :closable="false"
       class="mt-1"
@@ -270,7 +257,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
       {{ t('portale.invito_pending_info') }}
     </Message>
     <Message
-      v-else-if="statoPortale.stato === 'NON_SPEDITO'"
+      v-else-if="statoPortale.stato === STATO_VESTE.NON_SPEDITO"
       severity="error"
       :closable="false"
       class="mt-1"
@@ -283,8 +270,8 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
       <h4>
         {{ t('shop.accesso_shop_title') }}
         <Tag
-          :value="t(`portale.stato.${statoShop.stato}`)"
-          :severity="statoSeverity(statoShop.stato)"
+          :value="t(`auth.stato_veste.${statoShop.stato}`)"
+          :severity="statoVesteSeverity(statoShop.stato)"
           class="portale-accesso-stato-tag"
         />
       </h4>
@@ -302,7 +289,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
       </div>
       <div class="portale-accesso-actions">
         <Button
-          v-if="statoShop.stato === 'NESSUNO' || statoShop.stato === 'DISATTIVO'"
+          v-if="statoShop.stato === STATO_VESTE.NESSUNO || statoShop.stato === STATO_VESTE.DISATTIVO"
           :label="t('shop.btn_invia_invito')"
           :icon="MANAGE_ICONS.INVITA"
           :disabled="!canInvia"
@@ -331,7 +318,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
         />
       </div>
       <Message
-        v-if="statoShop.stato === 'PENDING' && statoShop.token_scade_at"
+        v-if="statoShop.stato === STATO_VESTE.PENDING && statoShop.token_scade_at"
         severity="info"
         :closable="false"
         class="mt-1"
@@ -339,7 +326,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
         {{ t('shop.invito_pending_info') }}
       </Message>
       <Message
-        v-else-if="statoShop.stato === 'NON_SPEDITO'"
+        v-else-if="statoShop.stato === STATO_VESTE.NON_SPEDITO"
         severity="error"
         :closable="false"
         class="mt-1"

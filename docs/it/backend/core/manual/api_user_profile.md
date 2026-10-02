@@ -41,7 +41,7 @@ Il blocco `data` contiene il JSONB dalla funzione DB con le sezioni:
 |---|---|---|
 | `utente` | object | auth_user_id, username, first_name, last_name, email |
 | `is_super_admin` | boolean | True se l'utente ha binding attivo al profilo SUPER_ADMIN (id 9100) **sulla veste OPERATORE** (§8.3.7 filtro DB). Emesso da `fn_get_user_profile` |
-| `ruolo_applicativo` | string/null | Ruolo applicativo dell'identita attiva del JWT: `OPERATORE` \| `CLIENTE_PORTALE` \| `FORNITORE_PORTALE` \| `SHOP_CUSTOMER` \| `API_CLIENT` \| `DISABILITATO` \| null |
+| `ruolo_applicativo` | string/null | Ruolo applicativo dell'identita attiva del JWT: `OPERATORE` \| `CLIENTE_PORTALE` \| `FORNITORE_PORTALE` \| `SHOP_CUSTOMER` \| `API_CLIENT` \| null (`DISABILITATO` non e' piu' un tipo di veste dal 2026-10-02) |
 | `risorse_umane` | object | risorsa_umana_id, soggetto_ruolo_id, qualifica (id/codice/codice_interno/descrizione), UO (id/codice/codice_interno/descrizione), validita', attivo |
 | `soggetto` | object | Dati soggetto completi da `fn_get_soggetto_dati_by_ruolo` (identita', dati_societari) |
 | `emittente` | object/null | Dati emittente fiscale (`emittente_fiscale_id`, `emittente_codice`, `emittente_descrizione`, `user_emittente_fiscale_id`, ...) + soggetto ditta (null se non risolto) |

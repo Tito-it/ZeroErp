@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 966, di cui 98 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 968, di cui 98 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -365,6 +365,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CREDENZIALE_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
     # La credenziale indicata (django.auth_user.id) non esiste: la sollevano i verbi che scrivono config.credenziali (fn_registra_tentativo_login, fn_imposta_deve_cambiare_password, fn_blocca/fn_sblocca_credenziale), perche' la FK verso django.auth_user in CI non esiste (90_end, MARK_RAN) e senza il controllo lo stesso errore sarebbe un 23503 su dev e una riga orfana in CI. Frase chiusa: l'id viaggia nel contesto. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale).
     "E_CREDENZIALE_NON_TROVATA": "NON_TROVATO",
+    # anagrafiche.trgfn_identita_digitali_guard_natura_credenziale: la veste che si scrive e un'altra veste della stessa credenziale (anche spenta) hanno nature diverse, una di persona e una di macchina (script.fn_veste_di_sistema: API_CLIENT o flag tecnica). Una credenziale e' una password per tutte le porte, e le sue azioni (blocco, secondo fattore) valgono per tutte le vesti. Il caso reale e' un'email che appartiene a un utente tecnico usata per invitare una persona: rimedia chi compila, con un'altra email (DATO_ERRATO). Segnaposto: lo username della credenziale, o il suo id se Django non la ha. Nasce il 2026-10-02 (brief-db-be-fe-area-accessi R-DB-A1).
+    "E_CREDENZIALE_PERSONA_E_SISTEMA": "DATO_ERRATO",
     "E_DATA_AL_MINORE_DAL": "DATO_ERRATO",
     "E_DATA_APERTURA": "DATO_ERRATO",
     "E_DATABASE": "DATO_ERRATO",
@@ -1200,6 +1202,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "ERRORE_PARAMETRI_TABELLA": "DATO_ERRATO",
     # anagrafiche.trgfn_identita_digitali_guard_coerenza, ramo ELSE: · qualcuno ha esteso l'enum dei ruoli applicativi senza scrivere la · regola, e il guard «non apre per omissione». Non e' un errore di · chi compila: manca una regola nel sistema, e il 500 lo dice a chi · legge i log invece di nasconderlo fra i 400. · ⚠️ Il 500 NON nasconde il messaggio del DB: `is_technical_code` e' · una lista chiusa di tre codici, non dipende dallo status.
     "E_RUOLO_APPLICATIVO_NON_GESTITO": "TECNICO",
+    # anagrafiche.trgfn_identita_digitali_guard_coerenza, ramo 0: qualcuno scrive il ruolo applicativo DISABILITATO su anagrafiche.identita_digitali. Dal 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1) non e' piu' un tipo di veste: una veste si spegne con attivo = false e tiene il tipo. La tabella viva lo rifiuta anche col CHECK chk_identita_digitali_ruolo_non_ritirato; il guard parla prima del CHECK con questo codice, che dice il rimedio. TECNICO: lo scrive solo un chiamante rimasto indietro (lo spegnimento dell'operatore nel backend fino al giro BE di R-DB-1), non chi compila un modulo. Gemello di E_RUOLO_APPLICATIVO_NON_GESTITO. Il valore resta nell'enum perche' lo porta storico.identita_digitali.
+    "E_RUOLO_APPLICATIVO_RITIRATO": "TECNICO",
     "E_RUOLO_NATURA_NON_AMMESSA": "DATO_ERRATO",
     "E_RUOLO_NATURA_TIPO_DET_NULL": "DATO_ERRATO",
     "E_RUOLO_RICHIEDE_PIVA": "DATO_ERRATO",

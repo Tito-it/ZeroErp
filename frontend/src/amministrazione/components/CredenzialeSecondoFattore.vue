@@ -1,12 +1,14 @@
 <!--
   SPDX-License-Identifier: GPL-3.0-or-later
   Copyright (C) 2026 Tid (Michele Carlo Titini)
-  Scopo: Il secondo fattore di un operatore, dal lato dell'amministratore
-         (brief sicurezza §3.4-bis, T-4), nella scheda dati del drawer
-         operatore: lo stato, l'obbligo sulla CREDENZIALE e la disattivazione
-         del device (telefono perso), col motivo.
-  Note: La credenziale e' una: obbligo e device valgono per tutte le porte, non
-        per la sola veste di operatore. Un obbligo che viene da un PROFILO non
+  Scopo: Il secondo fattore di una CREDENZIALE, dal lato dell'amministratore
+         (brief sicurezza §3.4-bis, T-4): lo stato, l'obbligo sulla credenziale
+         e la disattivazione del device (telefono perso), col motivo. Lo monta
+         `CredenzialeAzioni`, nei drawer dell'operatore e degli altri accessi.
+  Note: ⭐ Era `OperatoreSecondoFattore` fino al 2026-10-02: il secondo fattore
+        e' della credenziale, non della veste operatore, e da quel giorno lo usa
+        anche il tab «Altri accessi» (brief-db-be-fe-area-accessi, regola del 2).
+        La credenziale e' una: obbligo e device valgono per tutte le porte. Un obbligo che viene da un PROFILO non
         si spegne da qui (si cambia il profilo): l'interruttore dice solo quello
         della credenziale. Disattivare non chiude le sessioni aperte
         (decisione 8). Endpoint riservati al SUPER_ADMIN.
@@ -19,8 +21,8 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import {
-  disattivaSecondoFattoreOperatore,
-  getSecondoFattoreOperatore,
+  disattivaSecondoFattoreCredenziale,
+  getSecondoFattoreCredenziale,
   impostaObbligoSecondoFattore,
 } from '../api/amministrazione'
 import { MANAGE_ICONS, STATO_SECONDO_FATTORE, MOTIVO_OBBLIGO_SECONDO_FATTORE } from '../../core/constants'
@@ -59,10 +61,10 @@ const obbligoDalProfilo = computed(() => stato.value?.motivo === MOTIVO_OBBLIGO_
 
 async function carica() {
   const id = props.authUserId
-  // Niente stato dell'operatore precedente mentre si legge il nuovo.
+  // Niente stato della credenziale precedente mentre si legge la nuova.
   stato.value = null
-  const res = await execute(() => getSecondoFattoreOperatore(id))
-  // Una risposta arrivata dopo il cambio di operatore non e' la sua.
+  const res = await execute(() => getSecondoFattoreCredenziale(id))
+  // Una risposta arrivata dopo il cambio di credenziale non e' la sua.
   if (res && id === props.authUserId) stato.value = res
 }
 
@@ -85,7 +87,7 @@ function apriDisattiva() {
 
 async function confermaDisattiva() {
   const res = await execute(
-    () => disattivaSecondoFattoreOperatore(props.authUserId, motivo.value),
+    () => disattivaSecondoFattoreCredenziale(props.authUserId, motivo.value),
     { successMessage: t('amministrazione.secondo_fattore.disattivato') }
   )
   if (res) {

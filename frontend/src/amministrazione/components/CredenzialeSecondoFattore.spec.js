@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
-// Scopo: Il secondo fattore di un operatore nel drawer dell'amministratore
-//        (`OperatoreSecondoFattore`). ⭐ Nasce dal difetto del 2026-10-02: il
+// Scopo: Il secondo fattore di una credenziale nel drawer dell'amministratore
+//        (`CredenzialeSecondoFattore`). ⭐ Nasce dal difetto del 2026-10-02: il
 //        componente leggeva `res.data.data` da `execute`, che restituisce GIA'
 //        il contenuto dell'envelope, e la sezione non compariva mai — senza
 //        un errore. Qui si monta con la risposta vera del backend.
@@ -21,17 +21,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 
-const getSecondoFattoreOperatore = vi.fn()
-const disattivaSecondoFattoreOperatore = vi.fn()
+const getSecondoFattoreCredenziale = vi.fn()
+const disattivaSecondoFattoreCredenziale = vi.fn()
 
 vi.mock('../api/amministrazione', () => ({
-  getSecondoFattoreOperatore: (...a) => getSecondoFattoreOperatore(...a),
+  getSecondoFattoreCredenziale: (...a) => getSecondoFattoreCredenziale(...a),
   impostaObbligoSecondoFattore: vi.fn(),
-  disattivaSecondoFattoreOperatore: (...a) => disattivaSecondoFattoreOperatore(...a),
+  disattivaSecondoFattoreCredenziale: (...a) => disattivaSecondoFattoreCredenziale(...a),
 }))
 
 const { monta } = await import('../../../test/montaggio')
-const { default: OperatoreSecondoFattore } = await import('./OperatoreSecondoFattore.vue')
+const { default: CredenzialeSecondoFattore } = await import('./CredenzialeSecondoFattore.vue')
 const { useAuthStore } = await import('../../stores/auth')
 
 const IO = 1
@@ -48,7 +48,7 @@ function stato(statoDevice) {
 const comeAxios = (data) => ({ data: { data } })
 
 async function apri(authUserId, { readonly = false } = {}) {
-  const wrapper = monta(OperatoreSecondoFattore, { authUserId, readonly })
+  const wrapper = monta(CredenzialeSecondoFattore, { authUserId, readonly })
   useAuthStore().user = { utente: { auth_user_id: IO }, is_super_admin: true }
   await flushPromises()
   return wrapper
@@ -57,10 +57,10 @@ async function apri(authUserId, { readonly = false } = {}) {
 const pulsanteDisattiva = (w) =>
   w.findAll('button').find(b => b.text().includes('amministrazione.secondo_fattore.disattiva'))
 
-describe('OperatoreSecondoFattore', () => {
+describe('CredenzialeSecondoFattore', () => {
   beforeEach(() => {
-    getSecondoFattoreOperatore.mockReset().mockResolvedValue(comeAxios(stato('ATTIVO')))
-    disattivaSecondoFattoreOperatore.mockReset()
+    getSecondoFattoreCredenziale.mockReset().mockResolvedValue(comeAxios(stato('ATTIVO')))
+    disattivaSecondoFattoreCredenziale.mockReset()
   })
 
   it('device ATTIVO di un altro: la sezione e «Disattiva» compaiono', async () => {
@@ -81,13 +81,13 @@ describe('OperatoreSecondoFattore', () => {
   })
 
   it('la disattivazione aggiorna lo stato con la risposta', async () => {
-    disattivaSecondoFattoreOperatore.mockResolvedValue(comeAxios(stato('ASSENTE')))
+    disattivaSecondoFattoreCredenziale.mockResolvedValue(comeAxios(stato('ASSENTE')))
     const w = await apri(POCHI)
     await pulsanteDisattiva(w).trigger('click')
     w.vm.motivo = 'telefono perso'
     await w.vm.confermaDisattiva()
     await flushPromises()
-    expect(disattivaSecondoFattoreOperatore).toHaveBeenCalledWith(POCHI, 'telefono perso')
+    expect(disattivaSecondoFattoreCredenziale).toHaveBeenCalledWith(POCHI, 'telefono perso')
     expect(w.text()).toContain('amministrazione.secondo_fattore.stato.ASSENTE')
   })
 })

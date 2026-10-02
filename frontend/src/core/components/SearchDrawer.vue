@@ -13,6 +13,7 @@ import { useApiHandler } from '../composables/useApiHandler'
 import { usePagination } from '../composables/usePagination'
 import { useContextStore } from '../../stores/context'
 import { DRAWER_WIDTH, MANAGE_ICONS, RICERCA, STATUS_ICONS, TIPO_RUOLO } from '../constants'
+import { ROTTA_LISTA_PER_TIPO_RUOLO, ROTTA_LISTA_SOGGETTI, rottaListaTipoRuolo } from '../navigation'
 import { termineCorto } from '../utils/listParams'
 import DrawerTitle from './DrawerTitle.vue'
 import SearchDetailTable from './details/SearchDetailTable.vue'
@@ -161,17 +162,11 @@ const ENTITA_ID_KEY = {
   [TIPO_RUOLO.FORNITORE]: 'fornitore_id'
 }
 
-// Mappa tipo ruolo codice -> nome rotta lista corrispondente
-const TIPO_RUOLO_ROUTES = {
-  [TIPO_RUOLO.CLIENTE]: 'anagrafiche-clienti',
-  [TIPO_RUOLO.FORNITORE]: 'anagrafiche-fornitori',
-}
-
-// Rotte che possono gestire il contesto senza navigazione (hanno watcher su ctx)
+// Rotte che possono gestire il contesto senza navigazione (hanno watcher su ctx):
+// sono le liste d'arrivo di `rottaListaTipoRuolo`, tutte e sole.
 const CONTEXT_AWARE_ROUTES = new Set([
-  'anagrafiche-soggetti',
-  'anagrafiche-clienti',
-  'anagrafiche-fornitori',
+  ROTTA_LISTA_SOGGETTI,
+  ...Object.values(ROTTA_LISTA_PER_TIPO_RUOLO),
 ])
 
 // Scopo: imposta il contesto globale dall'entita' selezionata, chiude il drawer.
@@ -199,7 +194,7 @@ function handleSetContext(row) {
   // Naviga solo se la pagina corrente non gestisce il contesto
   const currentRoute = router.currentRoute.value.name
   if (!CONTEXT_AWARE_ROUTES.has(currentRoute)) {
-    const routeName = TIPO_RUOLO_ROUTES[codice] || 'anagrafiche-soggetti'
+    const routeName = rottaListaTipoRuolo(codice)
     const query = searchTerm.value ? { search: searchTerm.value } : {}
     router.push({ name: routeName, query })
   }
@@ -208,7 +203,7 @@ function handleSetContext(row) {
 // Scopo: naviga alla scheda anagrafica completa del soggetto
 function handleOpenDetail() {
   const codice = selectedTipoRuolo.value?.codice
-  const routeName = TIPO_RUOLO_ROUTES[codice] || 'anagrafiche-soggetti'
+  const routeName = rottaListaTipoRuolo(codice)
   const query = searchTerm.value ? { search: searchTerm.value } : {}
   emit('update:visible', false)
   router.push({ name: routeName, query })

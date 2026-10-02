@@ -1,7 +1,25 @@
 // Configurazione centralizzata della navigazione per dominio.
 // Sidebar, HomeView e store navigation leggono da qui — un'unica fonte di verita'.
 
-import { MANAGE_ICONS, READONLY_DOMAINS } from './constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, TIPO_RUOLO } from './constants'
+
+// ── Dove si apre la scheda di un soggetto, dato il tipo ruolo ──
+// La lista anagrafica che legge il CONTESTO globale (`useContextStore`) e apre
+// da se' il drawer: cliente e fornitore la loro, ogni altro tipo (o nessuno)
+// quella dei soggetti. ⭐ Regola del 2 (ok Tid 2026-10-02): la ricerca
+// universale (`SearchDrawer`) e il salto da una veste alla sua scheda
+// (`useSchedaVeste`) la scrivevano ognuno per se'.
+export const ROTTA_LISTA_SOGGETTI = 'anagrafiche-soggetti'
+export const ROTTA_LISTA_PER_TIPO_RUOLO = Object.freeze({
+  [TIPO_RUOLO.CLIENTE]: 'anagrafiche-clienti',
+  [TIPO_RUOLO.FORNITORE]: 'anagrafiche-fornitori',
+})
+
+// Scopo: il nome della rotta della lista che apre la scheda di quel tipo
+//        ruolo; ripiego sulla lista dei soggetti.
+export function rottaListaTipoRuolo(codiceTipoRuolo) {
+  return ROTTA_LISTA_PER_TIPO_RUOLO[codiceTipoRuolo] || ROTTA_LISTA_SOGGETTI
+}
 
 export const NAV_ICONS = Object.freeze({
   ANAGRAFICHE: 'pi pi-users',
@@ -120,6 +138,11 @@ export const NAV_ICONS = Object.freeze({
   // voce di menu «Operatori» (C10: prima portava `pi-key`, che e'
   // `MANAGE_ICONS.SBLOCCA`) e l'avatar dell'operatore nel widget AI.
   OPERATORE: 'pi pi-user',
+  // L'area «Accessi» (brief-db-be-fe-area-accessi, 2026-10-02): il censimento
+  // di TUTTE le credenziali, in tre tab. ⭐ Stesso segno degli accessi web di
+  // un soggetto (`MANAGE_ICONS.ACCESSI_WEB`): e' la stessa cosa — gli accessi —
+  // guardata per tutti invece che per uno. Riferita, non ricopiata.
+  ACCESSI: MANAGE_ICONS.ACCESSI_WEB,
   // L'assistente AI: pulsante topbar, voce menu mobile, header e avatar del
   // widget. E' una porta dell'app, per questo sta qui.
   ASSISTENTE_AI: 'pi pi-microchip-ai',
@@ -243,7 +266,7 @@ export const DOMAINS = [
 //                               abilitata. Filter applicato lato sidebar.
 export const DOMAIN_MENUS = {
   'amm-software': [
-    { key: 'operatori', icon: NAV_ICONS.OPERATORE, to: '/amm-software/operatori' },
+    { key: 'accessi', icon: NAV_ICONS.ACCESSI, to: '/amm-software/accessi' },
     { key: 'profili-reparto', icon: NAV_ICONS.PROFILI_REPARTO, to: '/amm-software/profili-reparto' },
     { key: 'permessi', icon: NAV_ICONS.PERMESSI, to: '/amm-software/permessi' },
     { key: 'emittenti-fiscali', icon: NAV_ICONS.EMITTENTI_FISCALI, to: '/amm-software/emittenti-fiscali' },

@@ -9,7 +9,7 @@
 Indice test eseguiti:
  1) test_admin_user_allowed — ruolo ADMIN -> accesso consentito
  2) test_operativo_denied — ruolo OPERATIVO -> 403
- 3) test_disabilitato_denied — ruolo DISABILITATO -> 403
+ 3) test_disabilitato_denied — senza binding SUPER_ADMIN attivo (veste spenta) -> 403
  4) test_no_bridge_denied — utente senza bridge (ruolo None) -> 403
  5) test_superuser_bypass — superuser Django -> accesso consentito senza check ruolo
  6) test_anonymous_denied — utente non autenticato -> 403
@@ -73,7 +73,7 @@ class TestIsAdminZeroERP(TestCase):
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
     @patch("apps.core.api.permissions.PermissionResolver.is_super_admin", return_value=False)
     def test_disabilitato_denied(self, mock_check: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock) -> None:
-        """Scopo: Un utente disabilitato (non SUPER_ADMIN) non deve avere accesso."""
+        """Scopo: Un utente disabilitato (veste spenta: nessun SUPER_ADMIN attivo) non deve avere accesso."""
         request = _mock_request()
         result = self.perm.has_permission(request, _mock_view())
         self.assertFalse(result)
