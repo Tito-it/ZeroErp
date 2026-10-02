@@ -42,14 +42,21 @@ fase `a10` (guard fail-fast).
 | `SHOP_CUSTOMER`                | `CL`                               | —                                                             |
 | `FORNITORE_PORTALE`            | `FO`                               | —                                                             |
 | `API_CLIENT`                   | nessun vincolo di coerenza         | (rinviato a Fase 2 del modello multi-face auth)               |
-| `DISABILITATO`                 | nessun vincolo di coerenza         | Permette di conservare identità disattivate                   |
+| `DISABILITATO`                 | ⛔ rifiutato                        | `E_RUOLO_APPLICATIVO_RITIRATO` (dal 2026-10-02): non è più un tipo di veste |
 
 ---
 
 ### Regole applicate
 
-* Per i ruoli `API_CLIENT` e `DISABILITATO` la funzione fa **early-exit**
-  senza query: nessun vincolo di coerenza è richiesto in questa fase.
+* Per `API_CLIENT` la funzione fa **early-exit** senza query: nessun vincolo
+  di coerenza è richiesto in questa fase.
+* ⭐ `DISABILITATO` si **rifiuta** con `E_RUOLO_APPLICATIVO_RITIRATO` (dal
+  2026-10-02, brief `brief-db-be-fe-area-accessi`, R-DB-1). Fino a quel giorno usciva in anticipo come `API_CLIENT`:
+  lo spegnimento dell'operatore scriveva quel tipo, e la veste spenta non
+  veniva più controllata. Ora l'operatore spento resta `OPERATORE` con
+  `attivo = false` e passa dal suo ramo come quello acceso. Il guard parla
+  prima del CHECK `chk_identita_digitali_ruolo_non_ritirato`, che dice la
+  stessa cosa alla tabella.
 * Per `OPERATORE`: un'unica SELECT su `soggetti_ruoli` recupera il
   `soggetto_id`, poi la funzione **si biforca sul flag `tecnica`**
   *(dal 2026-09-04)*:

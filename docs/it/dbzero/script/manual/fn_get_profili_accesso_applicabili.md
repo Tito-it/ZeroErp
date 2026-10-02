@@ -81,7 +81,6 @@ personale** che vince su qualsiasi default di gruppo.
 Filtri:
 - `identita_digitali.attivo = true`
 - Identità nella finestra temporale (`valido_dal <= oggi <= valido_al`)
-- `ruolo_applicativo <> 'DISABILITATO'`
 - `profili_accesso_bindings.attivo = true`
 - `profili_accesso.attivo = true` e `tipo = 'AD_HOC'`
 
@@ -177,8 +176,9 @@ determinato. Se non c'è nessun profilo, il resolver ritorna `BLOCCATO` / `false
   `profili_accesso_aree` / `profili_accesso_azioni` per singolo lookup.
 * `DISTINCT` su ciascun ramo UNION per robustezza (se il modello
   dovesse, per qualche ragione, produrre duplicati).
-* Il filtro `ruolo_applicativo <> 'DISABILITATO'` è esplicito in
-  AD_HOC e PORTALE; implicito in REPARTO tramite `= 'OPERATORE'`.
+* Una veste spenta si riconosce **solo** da `attivo` (dal 2026-10-02,
+  brief `brief-db-be-fe-area-accessi`, R-DB-1): il filtro `ruolo_applicativo <> 'DISABILITATO'` dei rami AD_HOC e
+  PORTALE è caduto con il tipo, che la tabella viva non ammette più.
 
 ---
 

@@ -1074,3 +1074,24 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1074,103,origine,Origine,,origine,informazione,string,,110,90,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_origine,30
 1075,103,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
 1076,98,data_consegna_richiesta_cliente,Consegna richiesta dal cliente,,data_consegna_richiesta_cliente,informazione,date,date_short,120,95,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_data_consegna_richiesta_cliente,33
+1077,104,nome_visualizzato,Nome,"Nome e cognome della persona che accede, o lo username",nome_visualizzato,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-10-02 00:00:00,mctit,amministrazione.col_nome,90
+1078,104,username,Username,Nome utente di accesso,username,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-10-02 00:00:00,mctit,amministrazione.col_username,80
+1079,104,email,Email,Indirizzo email della credenziale,email,informazione,string,,,25,left,,,f,f,t,t,f,t,2026-10-02 00:00:00,mctit,common.email,35
+1080,104,vesti,Accessi,Le vesti della credenziale con il loro stato: badge composti dal frontend su vesti,vesti_elenco,informazione,string,,,30,left,,,t,f,t,t,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_vesti,70
+1081,104,stato_accesso,Stato,Il migliore stato fra le vesti; NESSUNO senza vesti,stato_accesso,informazione,string,,,40,center,,,t,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.col_stato,60
+1082,104,nessun_accesso,Nessun accesso,Credenziale senza alcuna veste,nessun_accesso,informazione,boolean,yesno,,45,center,,,t,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_nessun_accesso,55
+1083,104,soggetti_elenco,Soggetti collegati,Clienti e fornitori collegati alle vesti,soggetti_elenco,informazione,string,,,50,left,,,f,f,t,t,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_soggetti,30
+1084,104,secondo_fattore_stato,Secondo fattore,"Stato del secondo fattore: ASSENTE, DA_CONFERMARE, ATTIVO",secondo_fattore_stato,informazione,string,,,60,center,,,t,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_secondo_fattore,45
+1085,104,secondo_fattore_obbligatorio,Secondo fattore obbligatorio,Il secondo fattore e obbligatorio per questa credenziale,secondo_fattore_obbligatorio,informazione,boolean,yesno,,65,center,,,t,f,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_secondo_fattore_obbligatorio,20
+1086,104,bloccata,Bloccata,Credenziale bloccata dall amministratore,bloccata,informazione,boolean,yesno,,70,center,,,t,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_bloccata,50
+1087,104,ultimo_accesso,Ultimo accesso,Data e ora dell ultimo accesso,ultimo_accesso,informazione,datetime,datetime_short,,80,left,,,f,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_ultimo_accesso,40
+1088,104,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-10-02 00:00:00,mctit,common.col_azioni,50
+1089,105,username,Username,Nome utente della credenziale di sistema,username,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-10-02 00:00:00,mctit,amministrazione.col_username,90
+1090,105,tipo,Tipo,PROCESSO (utente tecnico di un processo automatico) o API_CLIENT,tipo,informazione,string,,,20,center,,,t,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_tipo,70
+1091,105,processo_codice,Processo,Processo automatico che usa la credenziale,processo_codice,informazione,string,,,30,left,,,t,t,t,t,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_processo,80
+1092,105,processo_descrizione,Descrizione processo,Che cosa fa il processo automatico,processo_descrizione,informazione,string,,,35,left,,,f,f,t,t,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_processo_descrizione,30
+1093,105,emittente_codice,Emittente fiscale,Azienda del perimetro dell utente tecnico,emittente_codice,informazione,string,,,40,left,,,t,t,t,t,f,t,2026-10-02 00:00:00,mctit,amministrazione.field_emittente,60
+1094,105,emittente_ragione_sociale,Ragione sociale emittente,Ragione sociale dell azienda del perimetro,emittente_ragione_sociale,informazione,string,,,45,left,,,f,f,t,t,f,t,2026-10-02 00:00:00,mctit,common.ragione_sociale,25
+1095,105,identita_attiva,Attiva,Almeno una veste della credenziale e accesa,identita_attiva,informazione,boolean,yesno,,50,center,,,t,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_identita_attiva,55
+1096,105,bloccata,Bloccata,Credenziale bloccata dall amministratore,bloccata,informazione,boolean,yesno,,60,center,,,t,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_bloccata,50
+1097,105,ultimo_accesso,Ultimo accesso,Data e ora dell ultimo accesso,ultimo_accesso,informazione,datetime,datetime_short,,70,left,,,f,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_ultimo_accesso,40

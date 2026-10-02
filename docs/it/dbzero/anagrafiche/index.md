@@ -99,6 +99,7 @@
 - [trgfn_gestori_guard](funzioni/trgfn_gestori_guard.md) — (latest review 03-12-25) La funzione **`anagrafiche.trgfn_gestori_guard()`** è una **funzione trigger di guardia di dominio** per la tabella `anagrafiche.gestori`.
 - [trgfn_gestori_guard_ruolo_gestore](funzioni/trgfn_gestori_guard_ruolo_gestore.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_identita_digitali_guard_coerenza](funzioni/trgfn_identita_digitali_guard_coerenza.md) — (latest review 04-09-2026 — biforcazione sul flag `tecnica`; prima: 18-04-2026) La trigger function **`anagrafiche.trgfn_identita_digitali_guard_coerenza()`** verifica la coerenza tra il **ruolo applicativo** di una identità digitale e il **tipo di soggetto_ruolo** a cui è collegata.
+- [trgfn_identita_digitali_guard_natura_credenziale](funzioni/trgfn_identita_digitali_guard_natura_credenziale.md)
 - [trgfn_identita_digitali_guard_ultimo_super_admin](funzioni/trgfn_identita_digitali_guard_ultimo_super_admin.md) — (latest review 19-04-2026)
 - [trgfn_identita_digitali_sync_auth_user_active](funzioni/trgfn_identita_digitali_sync_auth_user_active.md) — (latest review 18-04-2026)
 - [trgfn_indirizzi_base_normalize](funzioni/trgfn_indirizzi_base_normalize.md) — (latest review 28-12-25) Normalizzare i campi base di `anagrafiche.indirizzi` in base alla presenza del collegamento a `indirizzi_dettaglio`.
@@ -146,6 +147,8 @@
 - [trgfn_vettori_normalize](funzioni/trgfn_vettori_normalize.md) — (rev 2026-08-21)
 
 ## 🔍 Views
+- [vw_accessi_altri](views/vw_accessi_altri.md)
+- [vw_accessi_sistema](views/vw_accessi_sistema.md)
 - [vw_clienti_codice_ba](views/vw_clienti_codice_ba.md) — (rev 2026-08-21)
 - [vw_clienti_lista](views/vw_clienti_lista.md) — (rev 2026-08-21)
 - [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md) — (latest review 25-03-26)

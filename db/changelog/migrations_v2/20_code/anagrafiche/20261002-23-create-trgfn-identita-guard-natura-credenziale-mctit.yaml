@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_identita_digitali_guard_natura_credenziale:
+#   UNA CREDENZIALE E' DI UNA PERSONA O DI UNA MACCHINA, NON DI TUTTE E DUE
+#   Brief: brief-db-be-fe-area-accessi, R-DB-A1 (sezione 7.3)
+#
+# -- PERCHE' ------------------------------------------------------------------------
+#   Il brief chiede di dichiarare sul modello la precedenza fra SISTEMA e
+#   OPERATORE «se il modello ammette» una credenziale con tutte e due, e di
+#   scriverlo e presidiarlo se non la ammette. Non la ammette, per due ragioni
+#   di modello:
+#   - una credenziale e' UNA password per tutte le porte (config.credenziali):
+#     se la regge un processo automatico, chiunque ne conosca la password e'
+#     anche quella persona, e viceversa;
+#   - il blocco, il secondo fattore e la disattivazione sono azioni della
+#     credenziale (A-4, A-5): su una credenziale mista bloccare la persona
+#     fermerebbe il processo all'insaputa del suo pannello (A-6).
+#   Senza questa regola la categoria (script.fn_categoria_accesso) dovrebbe
+#   scegliere fra due risposte giuste, e il tab di una persona dipenderebbe
+#   dall'ordine di un CASE.
+#
+# -- LA REGOLA ---------------------------------------------------------------------
+#   La veste che si scrive e ogni ALTRA veste della stessa credenziale (anche
+#   spenta: una veste spenta e' ancora della sua credenziale) devono avere la
+#   stessa natura secondo script.fn_veste_di_sistema (-20). Si rifiuta con
+#   E_CREDENZIALE_PERSONA_E_SISTEMA (DATO_ERRATO: il caso reale e' un'email che
+#   appartiene a un utente tecnico, usata per invitare una persona; il rimedio e'
+#   un'altra email). Il segnaposto e' lo username della credenziale.
+#
+# -- PERIMETRO E LIMITI, dichiarati -------------------------------------------------
+#   · BEFORE INSERT e UPDATE OF auth_user_id, ruolo_applicativo, tecnica: le sole
+#     colonne che cambiano la natura o la credenziale di una riga (-24);
+#   · le righe gia' scritte non le giudica (un trigger guarda la riga che passa):
+#     le segnala il presidio dbops.vw_credenziali_da_sanare (-35);
+#   · due transazioni concorrenti che scrivessero sulla stessa credenziale una
+#     veste di persona e una di macchina passerebbero entrambe (ognuna non vede
+#     l'altra). Non e' un percorso del modello di oggi (l'utente tecnico nasce
+#     con una credenziale nuova, script.fn_crea_utente_tecnico): lo copre il
+#     presidio, non un lock;
+#   · lo username si legge da django.auth_user: plpgsql (late-bound) e tipo
+#     esplicito, mai %TYPE su django.*. Credenziale assente = l'id, come ripiego.
+#
+# Il trigger e' in -24 (stampo 20261001-12/-13: funzione e trigger in due file).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261002-23-create-trgfn-identita-guard-natura-credenziale-mctit.yaml
+
+  - changeSet:
+      id: 20261002-23-create-trgfn-identita-guard-natura-credenziale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_identita_digitali_guard_natura_credenziale: una credenziale non porta
+        insieme vesti di persona e vesti di macchina (script.fn_veste_di_sistema), anche spente.
+        E_CREDENZIALE_PERSONA_E_SISTEMA. Rende la categoria di una credenziale univoca sul
+        modello. Brief: brief-db-be-fe-area-accessi R-DB-A1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_veste_di_sistema';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_natura_credenziale()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_di_sistema  boolean;   -- la natura della riga che passa (calcolata)
+                  v_altra_id    anagrafiche.identita_digitali.id%TYPE;
+                  v_altra_ruolo anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+                  -- ⚠️ Tipo esplicito: colonna di django.auth_user. Lo schema
+                  --    django non esiste quando Liquibase crea la funzione, e un
+                  --    %TYPE si risolverebbe proprio al CREATE.
+                  v_username    text;
+              BEGIN
+                  -- ------------------------------------------------------------
+                  -- Guard: tutte le vesti di una credenziale hanno la stessa
+                  -- natura, persona o macchina (script.fn_veste_di_sistema).
+                  -- Anche le spente contano: una veste spenta e' ancora della
+                  -- sua credenziale, e riaccenderla non deve poter mescolare.
+                  -- Fase a10, BEFORE INSERT / UPDATE OF auth_user_id,
+                  -- ruolo_applicativo, tecnica.
+                  -- ------------------------------------------------------------
+                  v_di_sistema := script.fn_veste_di_sistema(NEW.ruolo_applicativo, NEW.tecnica);
+
+                  -- NEW.id e' gia' assegnato in INSERT (il DEFAULT precede i trigger
+                  -- BEFORE): la riga stessa si esclude per id, in tutti e due i casi.
+                  SELECT idg.id, idg.ruolo_applicativo
+                    INTO v_altra_id, v_altra_ruolo
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.auth_user_id = NEW.auth_user_id
+                     AND idg.id <> NEW.id
+                     AND script.fn_veste_di_sistema(idg.ruolo_applicativo, idg.tecnica)
+                         <> v_di_sistema
+                   ORDER BY idg.id
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      SELECT au.username::text
+                        INTO v_username
+                        FROM django.auth_user au
+                       WHERE au.id = NEW.auth_user_id;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_CREDENZIALE_PERSONA_E_SISTEMA',
+                          jsonb_build_object(
+                              'table',                  TG_TABLE_NAME,
+                              'auth_user_id',           NEW.auth_user_id,
+                              'identita_id',            NEW.id,
+                              'ruolo_applicativo',      NEW.ruolo_applicativo,
+                              'veste_di_sistema',       v_di_sistema,
+                              'altra_identita_id',      v_altra_id,
+                              'altra_ruolo_applicativo', v_altra_ruolo
+                          ),
+                          NULL::uuid,
+                          COALESCE(v_username, NEW.auth_user_id::text)
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_natura_credenziale() IS
+                  'Guard a10 su anagrafiche.identita_digitali (BEFORE INSERT / UPDATE OF auth_user_id, '
+                  'ruolo_applicativo, tecnica): tutte le vesti di una credenziale, anche spente, hanno la '
+                  'stessa natura, persona o macchina (script.fn_veste_di_sistema). Altrimenti '
+                  'E_CREDENZIALE_PERSONA_E_SISTEMA. Una credenziale e'' una password per tutte le porte, '
+                  'e le sue azioni (blocco, secondo fattore) sono di tutte le sue vesti: su una '
+                  'credenziale mista bloccare la persona fermerebbe il processo. Rende univoca la '
+                  'categoria script.fn_categoria_accesso. Le righe gia'' scritte, e la gara fra due '
+                  'transazioni concorrenti, le segnala il presidio dbops.vw_credenziali_da_sanare. '
+                  'Brief: brief-db-be-fe-area-accessi (R-DB-A1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_identita_digitali_guard_natura_credenziale();

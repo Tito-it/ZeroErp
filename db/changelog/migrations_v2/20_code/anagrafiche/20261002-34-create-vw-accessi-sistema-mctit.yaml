@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.vw_accessi_sistema: IL TAB «DI SISTEMA»
+#   Brief: brief-db-be-fe-area-accessi, R-DB-A2-bis e A-6 (sezione 7.5)
+#
+# -- CHI C'E' -----------------------------------------------------------------------
+#   Una riga per credenziale di categoria SISTEMA (script.fn_categoria_accesso):
+#   gli utenti tecnici dei processi automatici (vesti con `tecnica`) e le
+#   credenziali con veste API_CLIENT. Sola lettura (A-6): il proprietario di
+#   queste credenziali e' il pannello dei processi, e il tab ne e' la vista
+#   d'insieme, non un secondo pannello.
+#
+# -- LE COLONNE -------------------------------------------------------------------------
+#   auth_user_id, username
+#   tipo              PROCESSO (almeno una veste con tecnica) o API_CLIENT.
+#                     ⚠️ Con tutte e due (il modello non lo vieta: sono entrambe
+#                     macchine) vince PROCESSO, perche' e' quella che ha un
+#                     processo da aprire; vesti_elenco le dice tutte.
+#   vesti_elenco      i tipi di veste, distinti e ordinati
+#   identita_attiva   almeno una veste accesa
+#   processo_id, processo_codice, processo_descrizione, processo_attivo
+#                     il processo che la usa (dbops.processi_identita, UNIQUE su
+#                     auth_user_id: al piu' uno). legame_processo_attivo e'
+#                     l'attivo del legame. NULL per un API_CLIENT.
+#   emittente_fiscale_id, emittente_codice, emittente_ragione_sociale
+#                     il perimetro dell'utente tecnico (config.user_emittenti_fiscali,
+#                     UNIQUE su auth_user_id: al piu' uno)
+#   is_active, bloccata, bloccata_dal, motivo_blocco, ultimo_accesso
+#                     come in vw_accessi_altri. Il secondo fattore NO: su una
+#                     macchina non ha senso (A-6).
+#
+# -- FORMA -----------------------------------------------------------------------------
+#   security_invoker = true per coerenza con la gemella (nessuna tabella attraversata
+#   ha la RLS oggi: se un giorno l'avra', la vista filtrera' come chi legge senza
+#   essere toccata). Credenziali da script.fn_credenziali (una vista non nomina
+#   django.*); l'aggregato delle vesti e' un INNER LATERAL perche' una credenziale
+#   SISTEMA ha per definizione almeno una veste.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261002-34-create-vw-accessi-sistema-mctit.yaml
+
+  - changeSet:
+      id: 20261002-34-create-vw-accessi-sistema
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.vw_accessi_sistema: una riga per credenziale di categoria SISTEMA (utenti
+        tecnici dei processi e API_CLIENT), con tipo, processo collegato, emittente, stato
+        dell'identita', blocco e ultimo accesso. Sola lettura per il FE. security_invoker.
+        Brief: brief-db-be-fe-area-accessi R-DB-A2-bis.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: processi_identita
+            - sqlCheck:
+                expectedResult: 2
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('fn_credenziali', 'fn_categoria_accesso');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW anagrafiche.vw_accessi_sistema
+              WITH (security_invoker = true) AS
+              SELECT c.auth_user_id,
+                     c.username,
+                     CASE WHEN v.e_processo THEN 'PROCESSO' ELSE 'API_CLIENT' END AS tipo,
+                     v.vesti_elenco,
+                     v.identita_attiva,
+                     pr.id                          AS processo_id,
+                     pr.codice                      AS processo_codice,
+                     pr.descrizione                 AS processo_descrizione,
+                     pr.attivo                      AS processo_attivo,
+                     pi.attivo                      AS legame_processo_attivo,
+                     ef.id                          AS emittente_fiscale_id,
+                     ef.codice                      AS emittente_codice,
+                     s_ef.ragione_sociale_completa  AS emittente_ragione_sociale,
+                     c.is_active,
+                     (cr.bloccata_at IS NOT NULL)   AS bloccata,
+                     cr.bloccata_at                 AS bloccata_dal,
+                     cr.motivo_blocco,
+                     c.last_login                   AS ultimo_accesso
+                FROM script.fn_credenziali() c
+                JOIN LATERAL (
+                    SELECT bool_or(idg.tecnica)                                   AS e_processo,
+                           bool_or(idg.attivo)                                    AS identita_attiva,
+                           string_agg(DISTINCT idg.ruolo_applicativo::text, ', '
+                                      ORDER BY idg.ruolo_applicativo::text)       AS vesti_elenco
+                      FROM anagrafiche.identita_digitali idg
+                     WHERE idg.auth_user_id = c.auth_user_id
+                ) v ON true
+                LEFT JOIN dbops.processi_identita pi
+                  ON pi.auth_user_id = c.auth_user_id
+                LEFT JOIN dbops.processi pr
+                  ON pr.id = pi.processo_id
+                LEFT JOIN config.user_emittenti_fiscali uef
+                  ON uef.auth_user_id = c.auth_user_id
+                LEFT JOIN anagrafiche.emittenti_fiscali ef
+                  ON ef.id = uef.emittente_fiscale_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                  ON sr_ef.id = ef.soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s_ef
+                  ON s_ef.id = sr_ef.soggetto_id
+                LEFT JOIN config.credenziali cr
+                  ON cr.auth_user_id = c.auth_user_id
+               WHERE script.fn_categoria_accesso(c.auth_user_id) = 'SISTEMA';
+
+              COMMENT ON VIEW anagrafiche.vw_accessi_sistema IS
+                  'Il tab «Di sistema» dell''area Accessi, sola lettura (A-6): una riga per credenziale '
+                  'di categoria SISTEMA (script.fn_categoria_accesso), cioe'' gli utenti tecnici dei '
+                  'processi automatici e le credenziali API_CLIENT. tipo = PROCESSO (una veste con '
+                  'tecnica; vince se ci sono entrambe) o API_CLIENT. Processo collegato da '
+                  'dbops.processi_identita (al piu'' uno), emittente da config.user_emittenti_fiscali '
+                  '(al piu'' uno), blocco da config.credenziali. Niente secondo fattore: su una '
+                  'macchina non ha senso. Il FE apre il drawer del processo da processo_id. Brief: '
+                  'brief-db-be-fe-area-accessi (R-DB-A2-bis).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_accessi_sistema;

@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_credenziali_da_sanare: IL PRESIDIO DELLE CREDENZIALI
+#   Brief: brief-db-be-fe-area-accessi, R-DB-2 e V-2, V-3 (sezione 7.6);
+#          il secondo motivo nasce da R-DB-A1 (sezione 7.3)
+#
+# -- PERCHE' ------------------------------------------------------------------------
+#   Una credenziale senza alcuna veste non entra da nessuna porta e non la vedeva
+#   nessuno: dal 2026-10-02 la lista operatori mostra solo chi ha la veste
+#   operatore. Il tab «Altri accessi» la mostra di nuovo (nessun_accesso), ma la
+#   lista e' dove si guarda; il presidio e' chi avvisa (V-2).
+#
+# -- I DUE MOTIVI ---------------------------------------------------------------------
+#   NESSUNA_VESTE      la credenziale non ha alcuna veste, nemmeno spenta. Letto
+#                      da anagrafiche.vw_accessi_altri.nessun_accesso, come chiede
+#                      il brief: una regola, non due. ⚠️ Perimetro V-3: una
+#                      credenziale con sole vesti SPENTE e' una persona disattivata,
+#                      uno stato legittimo, e NON entra.
+#   PERSONA_E_SISTEMA  la credenziale porta vesti di persona e vesti di macchina
+#                      (script.fn_veste_di_sistema). Il guard
+#                      trgfn_identita_digitali_guard_natura_credenziale le rifiuta
+#                      da -23/-24; qui escono quelle nate prima e quelle di una gara
+#                      fra due transazioni, che un trigger non vede.
+#
+# -- NATURA, nel catalogo dbops.presidi (riga in 80_data) ---------------------------------
+#   ZERO, SETTIMANALE, LIBERO: qualunque riga va sanata, ma non e' un incidente
+#   di oggi (la credenziale non entra comunque). LIBERO perche' il conteggio non
+#   dipende da nessuna RLS: vw_accessi_altri attraversa anagrafiche.clienti solo per
+#   gli array cliente_ids, non per le righe.
+#
+# -- FORMA -----------------------------------------------------------------------------
+#   Vista in dbops (il catalogo presidi pretende ogni vista dello schema: la riga
+#   e' nello stesso giro). security_invoker = true come le viste che legge. Lo
+#   username dei motivi PERSONA_E_SISTEMA da script.fn_get_auth_user_stato (una
+#   vista non nomina django.*), in LEFT JOIN: una credenziale cancellata in Django
+#   resta una riga da guardare, senza nome.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261002-35-create-vw-credenziali-da-sanare-mctit.yaml
+
+  - changeSet:
+      id: 20261002-35-create-vw-credenziali-da-sanare
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_credenziali_da_sanare: le credenziali senza alcuna veste (NESSUNA_VESTE, da
+        vw_accessi_altri.nessun_accesso; quelle con sole vesti spente no, V-3) e quelle che
+        mescolano vesti di persona e di macchina (PERSONA_E_SISTEMA). Presidio ZERO del
+        catalogo dbops.presidi. Brief: brief-db-be-fe-area-accessi R-DB-2.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: anagrafiche
+            viewName: vw_accessi_altri
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_credenziali_da_sanare
+              WITH (security_invoker = true) AS
+              SELECT a.auth_user_id,
+                     a.username,
+                     'NESSUNA_VESTE'::text AS motivo
+                FROM anagrafiche.vw_accessi_altri a
+               WHERE a.nessun_accesso
+              UNION ALL
+              SELECT m.auth_user_id,
+                     au.username,
+                     'PERSONA_E_SISTEMA'::text AS motivo
+                FROM (SELECT idg.auth_user_id
+                        FROM anagrafiche.identita_digitali idg
+                       GROUP BY idg.auth_user_id
+                      HAVING bool_or(script.fn_veste_di_sistema(idg.ruolo_applicativo, idg.tecnica))
+                         AND bool_or(NOT script.fn_veste_di_sistema(idg.ruolo_applicativo, idg.tecnica))
+                     ) m
+                LEFT JOIN LATERAL script.fn_get_auth_user_stato(m.auth_user_id) au ON true;
+
+              COMMENT ON VIEW dbops.vw_credenziali_da_sanare IS
+                  'Presidio ZERO delle credenziali. NESSUNA_VESTE: la credenziale non ha alcuna veste, '
+                  'nemmeno spenta (anagrafiche.vw_accessi_altri.nessun_accesso: una regola sola); una '
+                  'credenziale con sole vesti spente e'' una persona disattivata e non entra (V-3). '
+                  'PERSONA_E_SISTEMA: vesti di persona e di macchina sulla stessa credenziale '
+                  '(script.fn_veste_di_sistema), che il guard '
+                  'trgfn_identita_digitali_guard_natura_credenziale rifiuta: escono le righe nate '
+                  'prima del guard e quelle di una gara fra transazioni. NESSUNA_VESTE si sana dando '
+                  'una veste alla credenziale o cancellandola (spegnerla in Django non basta: resta '
+                  'una credenziale senza veste); PERSONA_E_SISTEMA separando le due nature su due '
+                  'credenziali. '
+                  'Brief: brief-db-be-fe-area-accessi (R-DB-2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_credenziali_da_sanare;

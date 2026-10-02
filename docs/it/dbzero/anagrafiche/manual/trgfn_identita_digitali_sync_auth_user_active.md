@@ -39,8 +39,8 @@ portale clienti, portale fornitori, shop customer, api_client, disabilitato).
     login (evita scatti inutili su `meta`, audit, ecc.).
 * Passa `NEW.auth_user_id` a
   [`fn_sync_auth_user_is_active`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active).
-* La funzione sync gestisce internamente i casi fail-closed (ruolo
-  DISABILITATO, finestra scaduta, soggetto disattivato) e l'UPDATE
+* La funzione sync gestisce internamente i casi fail-closed (veste
+  spenta, finestra scaduta, soggetto disattivato) e l'UPDATE
   idempotente su `auth_user.is_active` (solo se cambia).
 * Fase `z90` (final/deferrable, pattern ZeroErp per trigger di propagazione).
 * Ritorno `NULL` (trigger AFTER: valore ignorato).
@@ -56,7 +56,7 @@ portale clienti, portale fornitori, shop customer, api_client, disabilitato).
 | `FORNITORE_PORTALE` | Verifica identità + soggetto attivo |
 | `SHOP_CUSTOMER` | Verifica identità + soggetto attivo |
 | `API_CLIENT` | Verifica identità + soggetto attivo |
-| `DISABILITATO` | `is_active = false` secco (fail-closed immediato) |
+| `DISABILITATO` | non esiste più nella tabella viva (dal 2026-10-02, brief `brief-db-be-fe-area-accessi`, R-DB-1): una veste spenta è `attivo = false`, di qualunque tipo |
 
 ---
 

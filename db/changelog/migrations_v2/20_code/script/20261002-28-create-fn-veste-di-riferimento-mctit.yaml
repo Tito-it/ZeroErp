@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_veste_di_riferimento(auth_user_id, ruolo_applicativo):
+#   FRA PIU' VESTI DELLO STESSO TIPO, QUALE SI GUARDA
+#   Brief: brief-db-be-fe-area-accessi, R-DB-1 (sezione 7.2)
+#
+# -- IL DIFETTO CHE R-DB-1 ALLARGA ------------------------------------------------
+#   Il modello ammette piu' vesti dello stesso tipo sulla stessa credenziale: gli
+#   indici unici di identita_digitali valgono solo WHERE attivo, quindi al piu'
+#   UNA accesa e quante si vuole spente. Chi cerca «la veste OPERATORE» di una
+#   credenziale con un JOIN nudo ne prende una qualunque.
+#   script.fn_get_user_profile lo faceva (LEFT JOIN ... AND ruolo = OPERATORE,
+#   SELECT INTO senza ORDER BY): finche' lo spegnimento scriveva DISABILITATO, le
+#   vesti spente dall'amministratore uscivano dal JOIN da sole. Da R-DB-1 restano
+#   OPERATORE, e il profilo poteva prendere la spenta accanto all'accesa e
+#   rifiutare il login con E_UTENTE_DISABILITATO.
+#
+# -- LA REGOLA, e perche' diventa un building block ---------------------------------
+#   La veste di riferimento e' quella ACCESA (al piu' una, per l'indice unico);
+#   se nessuna lo e', la piu' recente (data_insert, poi id). E' la regola che
+#   script.fn_get_operatore_detail gia' scriveva da se' (rev 20260925-54, R-9):
+#   con fn_get_user_profile sono DUE lettori, e la regola si estrae qui (regola
+#   del 2). Le copie si ritirano nello stesso giro (-29, -30).
+#
+# -- FORMA --------------------------------------------------------------------------
+#   LANGUAGE sql BEGIN ATOMIC, STABLE: legge solo anagrafiche.identita_digitali.
+#   Restituisce l'id della veste, NULL se la credenziale non ha vesti di quel tipo
+#   (nessun guard: e' la chiave di un JOIN, e «nessuna veste» e' una risposta).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261002-28-create-fn-veste-di-riferimento-mctit.yaml
+
+  - changeSet:
+      id: 20261002-28-create-fn-veste-di-riferimento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_veste_di_riferimento(auth_user_id, ruolo_applicativo): l'id della veste di
+        quel tipo che si guarda, l'accesa o altrimenti la spenta piu' recente. Estratta da
+        fn_get_operatore_detail per fn_get_user_profile, che dopo R-DB-1 vedrebbe le vesti
+        spente. Brief: brief-db-be-fe-area-accessi R-DB-1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_veste_di_riferimento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_veste_di_riferimento(
+                  p_auth_user_id      anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  p_ruolo_applicativo anagrafiche.identita_digitali.ruolo_applicativo%TYPE)
+              RETURNS anagrafiche.identita_digitali.id%TYPE
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  -- ⭐ L'accesa (al piu' una: indici unici WHERE attivo), poi la piu' recente.
+                  SELECT idg.id
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.auth_user_id      = p_auth_user_id
+                     AND idg.ruolo_applicativo = p_ruolo_applicativo
+                   ORDER BY idg.attivo DESC, idg.data_insert DESC, idg.id DESC
+                   LIMIT 1;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_veste_di_riferimento(
+                  anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  anagrafiche.identita_digitali.ruolo_applicativo%TYPE) IS
+                  'Fra le vesti di un tipo che una credenziale porta, quella che si guarda: l''accesa '
+                  '(al piu'' una, gli indici unici valgono WHERE attivo), altrimenti la spenta piu'' '
+                  'recente (data_insert, poi id). Ritorna l''id della veste, NULL se non ce n''e''. '
+                  'Building block (regola del 2): la leggono script.fn_get_user_profile e '
+                  'script.fn_get_operatore_detail. Nasce con R-DB-1: da li'' la veste OPERATORE '
+                  'spenta resta OPERATORE, e un JOIN nudo sul tipo prenderebbe la spenta accanto '
+                  'all''accesa. Brief: brief-db-be-fe-area-accessi (R-DB-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_veste_di_riferimento(integer, config.ruolo_applicativo);

@@ -182,8 +182,12 @@ BEGIN
     --   utente tecnico con un'altra veste non e' «meno abilitato», e' un
     --   utente che le policy non vedono — e il lavoro girerebbe senza
     --   perimetro.
+    -- ⚠️ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): era DISABILITATO,
+    --   che la tabella viva ora rifiuta (una veste si spegne con attivo = false).
+    --   API_CLIENT e' un altro tipo di MACCHINA: passa il guard di coerenza
+    --   (early-exit) e quello sulla natura della credenziale (tecnica resta).
     UPDATE anagrafiche.identita_digitali
-       SET ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
+       SET ruolo_applicativo = 'API_CLIENT'::config.ruolo_applicativo
      WHERE id = v_idg;
     SELECT count(*) INTO v_resta FROM dbops.vw_processi_roster WHERE auth_user_id = v_user;
     PERFORM set_config('pgtap.senza_ruolo', v_resta::text, true);

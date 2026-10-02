@@ -102,3 +102,5 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 101,101,articolo_componenti_default,Vista standard distinta base,sistema,,,t,10,"[{""col"":""valido_dal"",""dir"":""desc""}]",t,2026-09-28 00:00:00,mctit
 102,102,fattura_righe_default,Vista standard righe di una fattura,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
 103,103,contratto_righe_default,Vista standard righe di un contratto,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
+104,104,accessi_altri_default,Vista standard altri accessi,sistema,,,t,25,"[{""col"":""nome_visualizzato"",""dir"":""asc""}]",t,2026-10-02 00:00:00,mctit
+105,105,accessi_sistema_default,Vista standard accessi di sistema,sistema,,,t,25,"[{""col"":""username"",""dir"":""asc""}]",t,2026-10-02 00:00:00,mctit
