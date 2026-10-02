@@ -97,9 +97,7 @@ const store = useArticoloComponentiStore()
 // non sono ancora seedati nel DB, nessuna regressione.
 const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults([
   'CATALOGO_BOM_DEFAULT_COEFF_QTA',
-  'CATALOGO_BOM_DEFAULT_PARTECIPA_QTA',
   'CATALOGO_BOM_DEFAULT_OBBLIGATORIO',
-  'CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE',
   'CATALOGO_BOM_DEFAULT_ESPOSIZIONE_IN_FATTURA',
 ])
 loadDefaults()
@@ -215,9 +213,7 @@ function defaultForm() {
   return {
     componente_id: null,
     coeff_qta: paramNumber(p.CATALOGO_BOM_DEFAULT_COEFF_QTA, 1),
-    partecipa_qta: paramBool(p.CATALOGO_BOM_DEFAULT_PARTECIPA_QTA, true),
     obbligatorio: paramBool(p.CATALOGO_BOM_DEFAULT_OBBLIGATORIO, true),
-    determina_qta_padre: paramBool(p.CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE, false),
     // Un CODICE di `config.esposizioni_componente` (dal 2026-10-01 non e' piu'
     // un booleano): il parametro lo valida il registro FK surrogata.
     esposizione_in_fattura: paramString(p.CATALOGO_BOM_DEFAULT_ESPOSIZIONE_IN_FATTURA, ESPOSIZIONE_NASCOSTO),
@@ -232,10 +228,10 @@ function defaultForm() {
 
 // I flag booleani della riga, nell'ordine del form. ⚠️ `labelKey` LETTERALE e
 // completa: e' la forma che `scripts/check_i18n_keys.py` sa verificare.
+// `partecipa_qta` e `determina_qta_padre` ritirati il 2026-10-02: nessuna
+// logica li leggeva (brief-db-bom-flag-quantita-e-kit-in-fattura, D-1).
 const FLAG_COMPONENTE = [
   { campo: 'obbligatorio', labelKey: 'catalogo.field_obbligatorio' },
-  { campo: 'partecipa_qta', labelKey: 'catalogo.field_partecipa_qta' },
-  { campo: 'determina_qta_padre', labelKey: 'catalogo.field_determina_qta_padre' },
 ]
 
 // Scopo: i valori di una riga nel form (dettaglio in sola lettura e
@@ -244,9 +240,7 @@ function formDaRiga(row, { validoDal, validoAl }) {
   form.value = {
     componente_id: row.componente_id,
     coeff_qta: row.coeff_qta,
-    partecipa_qta: row.partecipa_qta,
     obbligatorio: row.obbligatorio,
-    determina_qta_padre: row.determina_qta_padre,
     esposizione_in_fattura: row.esposizione_in_fattura,
     valido_dal: validoDal,
     valido_al: validoAl,
@@ -378,9 +372,7 @@ async function onSaveNew() {
   const payload = {
     componente_id: form.value.componente_id,
     coeff_qta: form.value.coeff_qta,
-    partecipa_qta: form.value.partecipa_qta,
     obbligatorio: form.value.obbligatorio,
-    determina_qta_padre: form.value.determina_qta_padre,
     esposizione_in_fattura: form.value.esposizione_in_fattura,
     valido_dal: toDateString(form.value.valido_dal),
     valido_al: toDateString(form.value.valido_al),

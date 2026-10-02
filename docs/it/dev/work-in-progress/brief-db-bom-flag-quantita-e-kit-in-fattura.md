@@ -12,6 +12,11 @@
 > nessuna fattura** finché il BE non scrive il periodo (R-BE-B1), e ⛔ **la distinta non salva**
 > finché il BE manda i due flag (R-BE-A1). Richieste in §5.
 > La documentazione di modello e i `manual/` sono aggiornati (§7).
+> ✅ **Lato BE/FE scritto il 2026-10-03** (§9, `dev/backend-tid`, non committato): R-BE-A1, B1, B2,
+> B3, B4, B6 e R-FE-A1 fatti, test verdi; R-BE-B5 è uno script da lanciare (§9.3); il template v7 è
+> da pubblicare. ⏳ **Restano al team DB due richieste nuove (§9.4)**: `fn_accredita_riga_reso`
+> deve scrivere la quantità padre **accreditata** (oggi la eredita dalla riga rettificata: la
+> nota di credito di un kit si ferma, voluto) e la colonna `periodo` della lista 102.
 >
 > **In una riga:** (A) `partecipa_qta` e `determina_qta_padre` si impostano ma nessuna logica li
 > legge: si ritirano. (B) In fattura la riga del kit si ricava quantità e UoM **dai componenti**:
@@ -359,3 +364,105 @@ e la vista lo identifica per `articolo_id`. Due strade:
   `ci_apply` (il `require_attivo` che nascerà su `kit_uom_id`, come su `uom_id`), il mirror di
   `parameters.csv` (risvegliato ieri senza errori), il pgTAP vero. ✅ Apply e corsa pgTAP di Tid
   il 2026-10-02: verdi.
+
+## 9. Lato BE/FE — cosa è stato scritto (2026-10-03)
+
+> **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-03. **A chi:** Tid (commit, script,
+> pubblicazione del template), team DB (§9.4).
+> **Stato:** scritto, **non committato**. Test: `apps.vendite`, `apps.catalogo`, `apps.core` 3828
+> verdi (103 skip); i test sul DB provvisto toccati (`catalogo/tests/db`, righe fattura lista,
+> scritture dinamiche, guardrail pipeline, seed liste e ricerca) verdi; frontend `vitest` 574 verdi,
+> `guards` e lint verdi. ⚠️ Nessun giro di generazione **su dbdev**: i test della generazione sono
+> mockati, la giuntura con le colonne nuove la prova solo il primo lotto vero (§9.5).
+
+### 9.1 Le richieste del §5
+
+| # | Stato | Dove |
+| --- | --- | --- |
+| R-BE-A1 | ✅ via da serializer, whitelist di scrittura, normalizzatore del service, due smoke | `catalogo/api/views.py`, `catalogo_bom_repository.py`, `catalogo_service.py`, `smoke-test-catalogo-phase3.sh`, `smoke-test-preventivi-componenti.sh`; `api_catalogo.md` |
+| R-BE-B1 | ✅ le tre `INSERT` scrivono il periodo | `pipeline_repository.py`: generazione (`batch_insert_righe_and_mark`), parte di plafond (copia quello della capofila). La terza, `insert_fattura_riga`, non aveva chiamanti: **ritirata** (§9.5) |
+| R-BE-B2 | ✅ push e generazione | `_kit_meta.py` (`qta_padre`, `uom_padre_id` + i due lettori), `commesse_source_handlers.py`, `fatture_righe_service.py` |
+| R-BE-B3 | ✅ R10 ritirata coi suoi test | `fatture_righe_service.py`. `E_KIT_QUANTITA_DISOMOGENEE` nessun punto di chiamata: **al team DB il ritiro dal catalogo** (resta in `error_policies_generated.py` e nel ripiego finché il catalogo lo porta) |
+| R-BE-B4 | ✅ `componente["uom_operativa_id"]`, niente ripiego | `commesse_source_handlers.py` |
+| R-BE-B5 | ⏳ **scritto, da lanciare** | [`allegati/kit-qta-uom-padre-meta-attivita-una-tantum.sql`](allegati/kit-qta-uom-padre-meta-attivita-una-tantum.sql), §9.3 |
+| R-BE-B6 | ✅ builder alla **forma 5** | `fattura_document_context_builder.py`: per riga `competenza_dal`/`_al` (italiano) + `_iso` + `ha_periodo` (trasportato, non ricalcolato); `quantita`/`prezzo_unitario` NULL restano NULL. `api_fattura_dettaglio.md` |
+| R-BE-B7 | ✅ niente da fare | nessun consumatore memorizza `riga_key`: lista e drawer la leggono a ogni caricamento |
+| R-FE-A1 | ✅ campi, default dai parametri, chiavi i18n | `ArticoloBomDrawer.vue`, `it.json`, `en.json` |
+| R-FE-B1 | ✅ a metà, **aspetta il DB** | slot `#cell-periodo` in `FatturaDrawer.vue` + chiavi `vendite.fatture.col_periodo`/`periodo_valore`: si accende quando il catalogo ha la colonna (R-DB-B9, §9.4). Il kit con quantità vuota non rompe niente: la colonna numerica mostra il vuoto |
+| Template | ✅ **v7 scritta, da pubblicare** | [`template-fattura-v7.html`](template-fattura-v7.html) = v6 + periodo sotto la descrizione quando `ha_periodo` + quantità e prezzo vuoti (non «-») sul kit senza quantità. Dichiara la **forma 5**. Prova: resa Jinja con i due casi |
+
+⚠️ **Dal deploy del BE, finché la v7 non è pubblicata, la fattura non si stampa**: il builder
+produce la forma 5 e nessuna versione la dichiara. È il patto versione/forma che fa il suo
+mestiere; la sequenza è quella di sempre (riavvio, bozza dall'app, pubblicazione).
+
+### 9.2 Scelte fatte scrivendo
+
+* **Il periodo di una rettifica è quello della riga rettificata**, e vince anche su un periodo
+  vero dell'attività: come prezzo, sconto e IVA (N-1). L'attività di rettifica porta la data
+  dell'accredito, non quella del fatto che corregge. Letto nella stessa proiezione
+  (`rett_competenza_dal/_al` da `fatture_righe`), una riga rettificata senza periodo è un errore.
+* **Riga puntuale**: `dal = al = max(competenza_al)` sulle attività aggregate — su un'attività
+  puntuale `competenza_al` è la data dell'attività (è la definizione di puntuale in
+  `_build_group_key`). Il periodo vero si legge dalla chiave, non si ricalcola.
+* **`uom_padre_id` entra nel bucket** come padre ed esposizione: è del kit, e una riga ne porta una
+  sola.
+* **Nessun ripiego per le chiavi mancanti**: un componente senza `qta_padre` o `uom_padre_id` nel
+  meta ferma la generazione con `E_GROUP_ATTIVITA_INVALID_DATA` (lo stesso codice delle altre
+  attività incomplete — prezzo, BA — col dettaglio che nomina la chiave).
+* **Il segno**: la quantità padre e quella del componente descrivono la stessa attività (D-NC-2),
+  quindi devono avere lo stesso segno. Se non ce l'hanno la generazione si ferma, con lo stesso
+  codice. È il presidio del difetto in §9.4 R-DB-B8.
+* La quantità padre nel meta è la quantità della riga padre **com'è** (`PushableRow.quantita`), con
+  la sua UoM (`uom_id`): è la coppia che la riga avrebbe in fattura se non fosse un kit, ed è
+  quella su cui il push moltiplica `coeff_qta`.
+
+### 9.3 R-BE-B5 — lo script delle attività già in commessa
+
+Stessa forma dello stampo: prova in `ROLLBACK` di default, `-v applica=1` per il `COMMIT`, ruolo
+superuser o `BYPASSRLS`, savepoint per riga con l'elenco delle rifiutate, bypass di manutenzione
+per le attività già fatturate. Aggiunge le due chiavi ai componenti di kit (`componente_di` nel
+meta) che non le hanno; le chiavi già scritte dal push vincono. In coda due controlli: chi è
+rimasto senza chiavi, e chi ha la quantità padre di segno opposto (attese zero righe).
+⚠️ **Non l'ho lanciato** (azione su DB): va lanciato da Tid col merge del BE. Prima di allora una
+fattura con un componente di kit già in commessa non si genera, e lo dice.
+
+### 9.4 Richieste al team DB
+
+| # | Cosa | Perché |
+| --- | --- | --- |
+| **R-DB-B8** ⛔ | `vendite.fn_accredita_riga_reso`: nel `jsonb_build_object` a destra del `\|\|` del `p_meta` aggiungere `'qta_padre', - v_quota` (sui componenti; `v_quota` è già in unità padre) | Il meta della rettifica **eredita** quello della riga rettificata (P-7): dal push di R-BE-B2 porta la quantità padre dell'**originale**, positiva, su componenti negativi. Scritta così, la nota di credito direbbe «+2 kit». Il BE la rifiuta (segno opposto, §9.2): ⇒ **oggi l'accredito di un kit non si fattura** finché questo non arriva. È la terza chiave che «potrebbe mentire», accanto a `tipo_consumo` e `segment_key` che il commento della funzione già nomina. `uom_padre_id` ereditata è giusta |
+| R-DB-B9 | lista 102 (`vendite.fattura_righe`): una colonna `periodo` (`campo_sorgente` `competenza_dal`, data, non ordinabile, esportabile, `etichetta_i18n_key` `vendite.fatture.col_periodo`), sulla forma di `riga_rettificata` | Il drawer la rende con lo slot `#cell-periodo` (già scritto); a catalogo vale anche per l'export. Senza, il periodo a video non c'è |
+| R-DB-B10 | ritiro di `E_KIT_QUANTITA_DISOMOGENEE` dal catalogo errori | R-BE-B3 fatto: nessun punto di chiamata |
+
+### 9.5 Cosa resta, dichiarato
+
+* ⚠️ **Il primo lotto vero su dbdev** è la prova che manca: la `INSERT` della generazione ha
+  quattro array nuovi nell'`unnest`, e i test la mockano. Va guardato il primo giro dopo lo script.
+* ✅ `insert_fattura_riga` del repository **ritirata** (2026-10-03, ok di Tid): nessun chiamante —
+  verificato anche per nome in stringa —, solo un omonimo nel mock dei test, tolto con lei insieme
+  al contatore `insert_calls` che asseriva uno zero ormai senza significato.
+* **Plafond e kit, difetto preesistente**: la parte di una riga spezzata dal plafond
+  (`insert_parte_plafond`) non copia le colonne kit, quindi la parte di un componente esce dal
+  kit come riga sciolta. Non è di questo cantiere e non l'ho toccato; con `kit_qta` la domanda
+  diventa anche «come si divide la quantità padre fra capofila e parte». Da decidere.
+* Il guard `test_error_codes_db_policy_guardrail` sul DB provvisto è rosso per
+  `E_EMITTENTE_REGIME_CONFERMA_DERIVATA` (cantiere esigibilità, non questo): manca il
+  `genera_error_policies`.
+
+### 9.6 Revisione critica del codice (2026-10-03)
+
+* 🔴 **Corretto un difetto che non dava errore.** La «data più recente» di D-3.1 era calcolata **per
+  riga**: se un componente di un kit finisce in due righe (prezzi diversi nel tempo) e un altro in
+  una sola, le righe dello stesso kit prendevano date diverse, la vista separava il kit in due
+  padri e la quantità del kit usciva NULL. Ora le righe **puntuali** di un'istanza di kit
+  (fattura, `kit_key`) portano tutte la data più recente del kit (`_allinea_periodo_kit`); periodo
+  vero e periodo della rettifica non si toccano. Test 48, provato che cade senza la correzione.
+* Controllo del segno più stretto: un componente non nullo con la quantità padre a zero passava;
+  ora è rifiutato (test 49).
+* Regola del 2: il `require` di `E_GROUP_ATTIVITA_INVALID_DATA` era scritto **12 volte** nello stesso
+  file (7 di prima, 5 mie): ora è `_richiedi_dati_attivita`, copie ritirate. Il nome funzione
+  della generazione, cablato in cinque punti, è una costante.
+* Builder: `competenza_dal`, `competenza_al` e `ha_periodo` si leggono **stretti** — una colonna
+  sparita dalla vista ferma la stampa invece di diventare «nessun periodo» su ogni riga.
+* Messaggi del `meta`: «senza una … valida» (la chiave può esserci con un valore illeggibile).
+

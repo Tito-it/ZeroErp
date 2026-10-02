@@ -855,6 +855,11 @@ class BoMComponentExpanderTests(TestCase):
         self.assertEqual(result[0].meta["componente_di"], "art-parent")
         self.assertEqual(result[0].meta["coeff_qta"], "2")
         self.assertEqual(result[0].meta["origine_prezzo"], "MANUALE")
+        # Quantita' e UoM della riga PADRE (R-BE-B2): la fattura le congela
+        # sulla riga del kit. Il padre qui e' 3 in uom 42; il componente 3 x 2.
+        self.assertEqual(result[0].meta["qta_padre"], "3")
+        self.assertEqual(result[0].meta["uom_padre_id"], 42)
+        self.assertEqual(result[0].quantita, Decimal("6"))
         # Preservato dal padre:
         self.assertEqual(result[0].meta["tipo_commessa"], "AUTO")
         self.assertEqual(result[0].meta["extra_padre"], "x")

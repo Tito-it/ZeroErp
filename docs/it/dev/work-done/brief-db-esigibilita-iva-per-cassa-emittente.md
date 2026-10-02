@@ -5,7 +5,10 @@
 > **Origine:** controllo dell'esigibilità sulle fatture del cliente Titini Michele Carlo (2026-10-01):
 > lì «Immediata» è **corretta** (privato con codice fiscale, fuori dalla scissione). Il controllo ha
 > però mostrato che la decisione guarda **solo il cliente** e mai l'emittente.
-> **Stato:** ✅ **D-1 → D-6 decise da Tid il 2026-10-01** (§6). ✅ **D-7 → D-11 (analisi critica del
+> **Stato:** ✅ **CHIUSO il 2026-10-03** (§12): DB, BE e FE fatti, template fattura **v6 pubblicata**
+> (forma 4). I residui, non bloccanti, sono riportati in `.codex/PROJECT_CONTEXT.md` § «Aperto — Media
+> priorità». Storia della lavorazione:
+> ✅ **D-1 → D-6 decise da Tid il 2026-10-01** (§6). ✅ **D-7 → D-11 (analisi critica del
 > team DB, §8) accettate da Tid il 2026-10-01, come proposte.** ✅ **Lato DB SCRITTO il 2026-10-01**
 > (`20261001-01 → -17`, §9), ✅ **applicato su dbdev il 2026-10-01** (con il `-40` di D-12;
 > verificato dalla sessione BE su `databasechangelog`). Richieste a BE/FE (§9.5): ✅ **R-1, R-2, R-5
@@ -804,3 +807,29 @@ Fatto datato (dbdev, 2026-10-02): il template `Fattura` ha la **v5 PUBBLICATA** 
 
 La ristampa fedele delle fatture già emesse non cambia: contesto congelato nella sua forma, versione
 fissata.
+
+## 12. Chiusura (2026-10-03)
+
+Verificato su dbdev, non sulla testata di questo documento:
+
+* template `Fattura`: **v6 PUBBLICATA** (id 2330, `versione_contesto = 4`, `valido_dal`
+  2026-10-02), v5 OBSOLETA; l'HTML della v6 coincide (md5) con
+  [`template-fattura-v6.html`](template-fattura-v6.html). Nessuna riga in
+  `dbops.vw_fatture_stampa_coda_da_guardare` dopo la pubblicazione;
+* changeSet `20261001-01 → -17`, `-40`, `20261002-02 → -07`, `20261002-40 → -42` applicati (Tid,
+  pgTAP verdi); BE nei commit `3f87540c9` e `4cb3efb96` (`dev/backend-tid`), test unitari e sul DB
+  vero verdi.
+
+Fatto: R-1 → R-5, §10 (conferma derivata dal DB), R-DB-3 + R-3 (annotazioni in stampa).
+
+**Resta aperto, e non è di questo cantiere** (riportato in PROJECT_CONTEXT):
+
+* **R-DB-1** (§9.5): i riepiloghi IVA dei preventivi già scritti non sono stati ricalcolati — non
+  bloccante per decisione di Tid; il difetto di **modello** del «riepilogo memorizzato» è
+  rimandato, non chiuso;
+* **storicità del regime** (D-8, §8.2): `regime_fiscale_rf` non ha validità nel tempo;
+* **domande per il consulente** (§9.4): RF16, il catalogo dei codici RF (RF03 escluso, RF20
+  incluso), il DDT senza cliente;
+* **annotazioni future** (§11.2): scissione dei pagamenti, inversione contabile, forfettario RF19 —
+  righe nuove di `fn_annotazioni_fattura`, senza forma nuova;
+* **R-6**: il payload SDI legge l'esigibilità dalle righe (sospeso per decisione).

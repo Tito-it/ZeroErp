@@ -130,8 +130,6 @@ def _uom_write_fields(*, include_uom_id: bool) -> dict[str, serializers.Field]:
 def _componente_write_fields(*, include_componente_id: bool) -> dict[str, serializers.Field]:
     fields: dict[str, serializers.Field] = {
         "coeff_qta": serializers.DecimalField(required=False, max_digits=18, decimal_places=6),
-        "partecipa_qta": serializers.BooleanField(required=False),
-        "determina_qta_padre": serializers.BooleanField(required=False),
         "obbligatorio": serializers.BooleanField(required=False),
         "valido_dal": serializers.DateField(required=False),
         "valido_al": serializers.DateField(required=False, allow_null=True),

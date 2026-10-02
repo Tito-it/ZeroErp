@@ -994,8 +994,6 @@ def _extract_componente_payload(
     )
 
     for field_name in (
-        "partecipa_qta",
-        "determina_qta_padre",
         "obbligatorio",
         "attivo",
     ):

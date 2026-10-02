@@ -15,13 +15,18 @@ Indice test eseguiti:
 11) FattureRigheServiceKitTests.test_snapshot_kit_congelato_sulla_riga
 12) FattureRigheServiceKitTests.test_componente_senza_padre_solleva
 13) FattureRigheServiceKitTests.test_kit_diversi_non_si_fondono
-14) FattureRigheServiceKitTests.test_quantita_kit_disomogenee_solleva
+14) FattureRigheServiceKitTests.test_coefficienti_diversi_non_fermano_la_generazione
 15) FattureRigheServiceKitTests.test_riga_normale_senza_colonne_kit
 16) FattureRigheServiceKitTests.test_kit_con_iva_diverse_non_e_falso_positivo
 16b) FattureRigheServiceKitTests.test_esposizione_congelata_col_suo_codice
 16c) FattureRigheServiceKitTests.test_chiave_esposizione_assente_vale_nascosto
-16d) FattureRigheServiceKitTests.test_r10_ignora_l_esposizione
-16e) FattureRigheServiceKitTests.test_r10_vale_anche_per_i_valorizzati
+16d) FattureRigheServiceKitTests.test_kit_qta_somma_le_attivita_del_gruppo
+16e) FattureRigheServiceKitTests.test_kit_uom_e_la_uom_del_padre
+16f) FattureRigheServiceKitTests.test_qta_padre_assente_solleva
+16g) FattureRigheServiceKitTests.test_uom_padre_assente_solleva
+16h) FattureRigheServiceKitTests.test_rettifica_kit_con_qta_padre_ereditata_solleva
+16i) FattureRigheServiceKitTests.test_rettifica_kit_porta_la_quantita_accreditata
+16j) FattureRigheServiceKitTests.test_uom_padre_diverse_non_si_fondono
 17) FattureRigheServiceRobustezzaTests.test_prezzo_mancante_solleva_con_attivita_identificata
 18) FattureRigheServiceRobustezzaTests.test_ordinamento_per_prezzo_e_numerico
 19) FattureRigheServiceRettificaTests.test_rettifiche_di_righe_diverse_non_si_fondono
@@ -48,6 +53,13 @@ Indice test eseguiti:
 40) FattureRigheServiceIvaRisoltaTests.test_fatture_diverse_risolvono_separatamente
 41) FattureRigheServiceIvaRisoltaTests.test_meta_porta_origine_e_titolo
 42) FattureRigheServiceIvaRisoltaTests.test_iva_risolta_diversa_produce_due_righe
+43) FattureRigheServicePeriodoTests.test_periodo_vero_dalla_chiave
+44) FattureRigheServicePeriodoTests.test_puntuale_porta_la_data_piu_recente
+45) FattureRigheServicePeriodoTests.test_rettifica_copia_il_periodo_della_riga_rettificata
+46) FattureRigheServicePeriodoTests.test_rettifica_senza_periodo_della_riga_solleva
+47) FattureRigheServicePeriodoTests.test_periodi_diversi_non_si_fondono
+48) FattureRigheServicePeriodoTests.test_kit_puntuale_spezzato_porta_una_data_sola
+49) FattureRigheServiceKitTests.test_padre_a_zero_con_componente_non_nullo_solleva
 """
 
 import json
@@ -81,8 +93,8 @@ _CODICI = {ART_A: CODICE_A, ART_B: CODICE_B}
 class _RepoMock:
     # Scopo: Inizializza la istanza.
     def __init__(self, attivita=None, prezzi=None, fatture=None, iva=None,
-                 rettifiche=None, contratti=None, senza_emittente=False):
-        self.insert_calls = 0
+                 rettifiche=None, contratti=None, senza_emittente=False,
+                 competenze=None):
         self.batch_insert_and_mark_calls = 0
         self.running_calls = 0
         self.last_kwargs: dict = {}
@@ -105,6 +117,9 @@ class _RepoMock:
         # ⛔ `P3`: senza emittente il calcolo si FERMA, non ripiega
         #    sull'aliquota ordinaria.
         self._senza_emittente = senza_emittente
+        # competenza per attivita_id: (dal, al, data_attivita). Default: un
+        # periodo vero (gennaio), che entra nella chiave.
+        self._competenze = competenze or {}
 
     def _make_group_input(self, attivita_id):
         rett = self._rettifiche.get(attivita_id) or {}
@@ -117,9 +132,9 @@ class _RepoMock:
                 self._prezzi[attivita_id] if attivita_id in self._prezzi
                 else Decimal("10.50")
             ),
-            competenza_dal=date(2026, 1, 1),
-            competenza_al=date(2026, 1, 31),
-            data_attivita=date(2026, 1, 10),
+            competenza_dal=self._competenza(attivita_id)[0],
+            competenza_al=self._competenza(attivita_id)[1],
+            data_attivita=self._competenza(attivita_id)[2],
             calcolo_qta_padre="fissa",
             arrotondamento_importi_dec=2,
             arrotondamento_quantita_dec=3,
@@ -131,6 +146,13 @@ class _RepoMock:
             rett_sconto_percentuale=rett.get("sconto"),
             rett_iva_id=rett.get("iva"),
             contratto_id=self._contratti.get(attivita_id),
+            rett_competenza_dal=rett.get("dal"),
+            rett_competenza_al=rett.get("al"),
+        )
+
+    def _competenza(self, attivita_id):
+        return self._competenze.get(
+            attivita_id, (date(2026, 1, 1), date(2026, 1, 31), date(2026, 1, 10))
         )
 
     def _articolo_di(self, attivita_id):
@@ -186,11 +208,6 @@ class _RepoMock:
     def get_max_riga_nrs(self, fattura_ids):
         return dict.fromkeys(fattura_ids, 0)
 
-    # Scopo: Gestisce `insert_fattura_riga` nel flusso applicativo del modulo.
-    def insert_fattura_riga(self, **kwargs):
-        self.insert_calls += 1
-        return 900
-
     # Scopo: Batch INSERT righe + UPDATE attivita in un solo round-trip.
     def batch_insert_righe_and_mark(self, **kwargs):
         self.batch_insert_and_mark_calls += 1
@@ -227,6 +244,8 @@ def _attivita_kit(
     quantita="2.0",
     padre=ART_PADRE,
     esposizione="DESCRITTIVO",
+    qta_padre="2",
+    uom_padre=5,
 ):
     meta = {
         kit_meta.META_KEY_SEGMENT_KEY: kit_meta.segment_key_componente(
@@ -239,6 +258,12 @@ def _attivita_kit(
         meta[kit_meta.META_KEY_ESPOSIZIONE] = esposizione
     if padre is not None:
         meta[kit_meta.META_KEY_COMPONENTE_DI] = padre
+    # `None` = chiave assente: il meta di un'attivita' scritta prima del push
+    # che porta quantita' e UoM del padre (e non corretta dallo script).
+    if qta_padre is not None:
+        meta[kit_meta.META_KEY_QTA_PADRE] = qta_padre
+    if uom_padre is not None:
+        meta[kit_meta.META_KEY_UOM_PADRE] = uom_padre
     return _attivita_base(
         attivita_id, quantita=quantita, articolo_id=articolo_id, meta=meta
     )
@@ -316,7 +341,6 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
         repo = _RepoMock()
         result = _genera(repo, dry_run=True)
         self.assertEqual(result, 1)
-        self.assertEqual(repo.insert_calls, 0)
         self.assertEqual(repo.batch_insert_and_mark_calls, 0)
         # Nessun effetto collaterale: nemmeno la marcatura RUNNING.
         self.assertEqual(repo.running_calls, 0)
@@ -468,18 +492,21 @@ class FattureRigheServiceKitTests(SimpleTestCase):
         self.assertEqual(len(kw["righe_nrs"]), 2)
         self.assertEqual(len(set(kw["righe_kit_keys"])), 2)
 
-    # Scopo: R10 — la vista stampa avg(qta): su quantità disomogenee sarebbe
-    # una media senza significato, con il totale che torna lo stesso.
-    def test_quantita_kit_disomogenee_solleva(self):
+    # Scopo: R10 e' ritirata (R-BE-B3, 2026-10-02): con quantita' e UoM del
+    # padre congelate sulla riga, coefficienti diversi (la sedia con 8 viti)
+    # non sono piu' un errore. Ogni componente porta la sua quantita', e la
+    # quantita' del kit e' la stessa su tutte e due le righe.
+    def test_coefficienti_diversi_non_fermano_la_generazione(self):
         repo = _RepoMock(
             attivita=[
                 _attivita_kit(11, kit_riga=608, articolo_id=ART_A, quantita="2.0"),
                 _attivita_kit(12, kit_riga=608, articolo_id=ART_B, quantita="6.0"),
             ]
         )
-        with self.assertRaises(ServiceError) as exc:
-            _genera(repo)
-        self.assertEqual(exc.exception.code, "E_KIT_QUANTITA_DISOMOGENEE")
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(sorted(kw["righe_qtas"]), [Decimal("2.0"), Decimal("6.0")])
+        self.assertEqual(kw["righe_kit_qtas"], [Decimal("2"), Decimal("2")])
 
     # Scopo: Una riga non di kit non porta nessuna delle 4 colonne (CHECK
     # `chk_fatture_righe_kit_coerente`: tutte o nessuna).
@@ -490,6 +517,8 @@ class FattureRigheServiceKitTests(SimpleTestCase):
         self.assertEqual(kw["righe_kit_keys"], [None])
         self.assertEqual(kw["righe_kit_esposizioni"], [None])
         self.assertEqual(kw["righe_kit_articolo_padre_ids"], [None])
+        self.assertEqual(kw["righe_kit_qtas"], [None])
+        self.assertEqual(kw["righe_kit_uom_ids"], [None])
 
     # Scopo: R13 — componenti dello stesso kit con IVA diverse producono DUE
     # righe padre distinte nella vista, ognuna con la propria media: le loro
@@ -530,37 +559,91 @@ class FattureRigheServiceKitTests(SimpleTestCase):
         _genera(repo)
         self.assertEqual(repo.last_kwargs["righe_kit_esposizioni"], ["NASCOSTO"])
 
-    # Scopo: R-BE-3 — la vista fa la media della quantita' su TUTTI i
-    # componenti, valorizzati compresi: modi diversi con la stessa quantita'
-    # sono un kit legittimo, non due padri.
-    def test_r10_ignora_l_esposizione(self):
+    # Scopo: `kit_qta` somma la quantita' padre delle attivita' aggregate,
+    # come `qta` somma quella del componente: due mesi puntuali dello stesso
+    # kit nella stessa riga sono due kit.
+    def test_kit_qta_somma_le_attivita_del_gruppo(self):
         repo = _RepoMock(
             attivita=[
-                _attivita_kit(11, kit_riga=608, articolo_id=ART_A, esposizione="VALORIZZATO"),
-                _attivita_kit(12, kit_riga=608, articolo_id=ART_B, esposizione="NASCOSTO"),
+                _attivita_kit(11, kit_riga=608, quantita="3.0", qta_padre="1"),
+                _attivita_kit(12, kit_riga=608, quantita="3.0", qta_padre="1"),
             ]
         )
         _genera(repo)
-        self.assertEqual(len(repo.last_kwargs["righe_nrs"]), 2)
+        kw = repo.last_kwargs
+        self.assertEqual(kw["righe_qtas"], [Decimal("6.0")])
+        self.assertEqual(kw["righe_kit_qtas"], [Decimal("2")])
 
-    # Scopo: R-BE-3, il rovescio — un valorizzato con quantita' diversa
-    # renderebbe senza significato la quantita' del padre: si ferma.
-    def test_r10_vale_anche_per_i_valorizzati(self):
+    # Scopo: la UoM della riga del kit e' quella del PADRE, non quella del
+    # componente (che sulla riga sta in `uom_id`).
+    def test_kit_uom_e_la_uom_del_padre(self):
+        repo = _RepoMock(attivita=[_attivita_kit(11, kit_riga=608, uom_padre=41)])
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(kw["righe_kit_uom_ids"], [41])
+        self.assertEqual(kw["righe_uom_ids"], [3])
+
+    # Scopo: ⛔ nessun ripiego sulla quantita' del componente: senza la chiave
+    # la riga del kit avrebbe una quantita' inventata.
+    def test_qta_padre_assente_solleva(self):
+        repo = _RepoMock(attivita=[_attivita_kit(11, kit_riga=608, qta_padre=None)])
+        with self.assertRaises(ServiceError) as exc:
+            _genera(repo)
+        self.assertEqual(exc.exception.code, "E_GROUP_ATTIVITA_INVALID_DATA")
+        self.assertIn(kit_meta.META_KEY_QTA_PADRE, exc.exception.detail)
+
+    # Scopo: ⛔ nessun ripiego sulla UoM del componente: su un kit misto
+    # darebbe unita' discordanti nello stesso kit (D-4).
+    def test_uom_padre_assente_solleva(self):
+        repo = _RepoMock(attivita=[_attivita_kit(11, kit_riga=608, uom_padre=None)])
+        with self.assertRaises(ServiceError) as exc:
+            _genera(repo)
+        self.assertEqual(exc.exception.code, "E_GROUP_ATTIVITA_INVALID_DATA")
+        self.assertIn(kit_meta.META_KEY_UOM_PADRE, exc.exception.detail)
+
+    # Scopo: la rettifica di un componente EREDITA il meta della riga
+    # rettificata (`fn_accredita_riga_reso`, P-7): se la quantita' padre
+    # ereditata e' quella dell'originale, la nota di credito direbbe «+2 kit»
+    # su componenti negativi. Si ferma invece di scriverlo.
+    def test_rettifica_kit_con_qta_padre_ereditata_solleva(self):
         repo = _RepoMock(
-            attivita=[
-                _attivita_kit(
-                    11, kit_riga=608, articolo_id=ART_A, quantita="2.0",
-                    esposizione="VALORIZZATO",
-                ),
-                _attivita_kit(
-                    12, kit_riga=608, articolo_id=ART_B, quantita="6.0",
-                    esposizione="NASCOSTO",
-                ),
-            ]
+            attivita=[_attivita_kit(11, kit_riga=608, quantita="-2.0", qta_padre="2")],
+            rettifiche={11: _rettifica(7001)},
         )
         with self.assertRaises(ServiceError) as exc:
             _genera(repo)
-        self.assertEqual(exc.exception.code, "E_KIT_QUANTITA_DISOMOGENEE")
+        self.assertEqual(exc.exception.code, "E_GROUP_ATTIVITA_INVALID_DATA")
+        self.assertIn("segno opposto", exc.exception.detail)
+
+    # Scopo: il rovescio — con la quantita' padre accreditata (negativa, come
+    # quella del componente) la riga della nota porta il suo numero di kit.
+    def test_rettifica_kit_porta_la_quantita_accreditata(self):
+        repo = _RepoMock(
+            attivita=[_attivita_kit(11, kit_riga=608, quantita="-2.0", qta_padre="-1")],
+            rettifiche={11: _rettifica(7001)},
+        )
+        _genera(repo)
+        self.assertEqual(repo.last_kwargs["righe_kit_qtas"], [Decimal("-1")])
+
+    # Scopo: quantita' componente = quantita' padre × coeff: un componente non
+    # nullo con il padre a zero e' una catena rotta, non un kit «da zero».
+    def test_padre_a_zero_con_componente_non_nullo_solleva(self):
+        repo = _RepoMock(attivita=[_attivita_kit(11, kit_riga=608, quantita="2.0", qta_padre="0")])
+        with self.assertRaises(ServiceError) as exc:
+            _genera(repo)
+        self.assertEqual(exc.exception.code, "E_GROUP_ATTIVITA_INVALID_DATA")
+
+    # Scopo: la UoM padre e' del kit: due attivita' che la dichiarano diversa
+    # non finiscono nella stessa riga, che porterebbe una UoM sola.
+    def test_uom_padre_diverse_non_si_fondono(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_kit(11, kit_riga=608, uom_padre=5),
+                _attivita_kit(12, kit_riga=608, uom_padre=6),
+            ]
+        )
+        _genera(repo)
+        self.assertEqual(sorted(repo.last_kwargs["righe_kit_uom_ids"]), [5, 6])
 
 
 class FattureRigheServiceRobustezzaTests(SimpleTestCase):
@@ -599,13 +682,18 @@ class FattureRigheServiceRobustezzaTests(SimpleTestCase):
 # valori della riga di fattura rettificata sono DIVERSI da quelli dell'attività
 # — è l'unico modo di distinguere «li ha copiati dal documento» da «ha usato i
 # suoi», visto che in esercizio i due coincidono per costruzione.
-def _rettifica(riga_fattura_id, prezzo="12.00", sconto="5.00", iva=4):
+def _rettifica(riga_fattura_id, prezzo="12.00", sconto="5.00", iva=4,
+               dal=date(2025, 12, 1), al=date(2025, 12, 31)):
     return {
         "tipo_movimento": "RETTIFICA",
         "riga_id": riga_fattura_id,
         "prezzo": None if prezzo is None else Decimal(prezzo),
         "sconto": None if sconto is None else Decimal(sconto),
         "iva": iva,
+        # Il periodo della riga rettificata: diverso da quello dell'attivita'
+        # (gennaio), per la stessa ragione dei tre valori sopra.
+        "dal": dal,
+        "al": al,
     }
 
 
@@ -976,3 +1064,111 @@ class FattureRigheServiceIvaRisoltaTests(SimpleTestCase):
         )
         _genera(repo, resolver=_ResolverMock({ART_B: 4}))
         self.assertEqual(sorted(repo.last_kwargs["righe_iva_ids"]), [4, 22])
+
+
+# Scopo: competenza di un'attivita' PUNTUALE: dal = al = data dell'attivita'.
+def _puntuale(giorno):
+    return (giorno, giorno, giorno)
+
+
+class FattureRigheServicePeriodoTests(SimpleTestCase):
+    """Il periodo della riga: `competenza_dal/_al` NOT NULL dal 2026-10-02
+    (brief-db-bom-flag-quantita-e-kit-in-fattura D-3, D-3.1, R-BE-B1)."""
+
+    # Scopo: l'attivita' con un periodo vero lo porta sulla riga, e la vista
+    # lo stampera' (`dal != al`).
+    def test_periodo_vero_dalla_chiave(self):
+        repo = _RepoMock(attivita=[_attivita_base(11)])
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(kw["righe_competenze_dal"], [date(2026, 1, 1)])
+        self.assertEqual(kw["righe_competenze_al"], [date(2026, 1, 31)])
+
+    # Scopo: ⭐ D-3.1 — due attivita' puntuali di date diverse nella stessa
+    # riga: dal = al = la PIU' RECENTE. ⛔ Mai min-max, che si stamperebbe
+    # come un periodo che non esiste. L'ordine di arrivo e' rovesciato di
+    # proposito: «l'ultima vista» non e' «la piu' recente».
+    def test_puntuale_porta_la_data_piu_recente(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11), _attivita_base(12)],
+            competenze={11: _puntuale(date(2026, 3, 20)), 12: _puntuale(date(2026, 3, 5))},
+        )
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(len(kw["righe_nrs"]), 1)
+        self.assertEqual(kw["righe_competenze_dal"], [date(2026, 3, 20)])
+        self.assertEqual(kw["righe_competenze_al"], [date(2026, 3, 20)])
+
+    # Scopo: la nota di credito copia il periodo della riga che rettifica,
+    # come ne copia prezzo e IVA (N-1) — non quello dell'attivita'.
+    def test_rettifica_copia_il_periodo_della_riga_rettificata(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, quantita="-1.0")],
+            rettifiche={11: _rettifica(7001)},
+            competenze={11: _puntuale(date(2026, 2, 14))},
+        )
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(kw["righe_competenze_dal"], [date(2025, 12, 1)])
+        self.assertEqual(kw["righe_competenze_al"], [date(2025, 12, 31)])
+
+    # Scopo: una riga rettificata senza periodo e' una catena rotta: la
+    # colonna e' NOT NULL, quindi non e' un caso da ripiegare.
+    def test_rettifica_senza_periodo_della_riga_solleva(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, quantita="-1.0")],
+            rettifiche={11: _rettifica(7001, dal=None, al=None)},
+            competenze={11: _puntuale(date(2026, 2, 14))},
+        )
+        with self.assertRaises(ServiceError) as exc:
+            _genera(repo)
+        self.assertEqual(exc.exception.code, "E_GROUP_ATTIVITA_INVALID_DATA")
+
+    # Scopo: due periodi veri diversi sono due righe, anche sullo stesso kit
+    # (D-3, strada b): un kit da 1 su gennaio e febbraio e' «1 a X» due
+    # volte, non «1 a 2X».
+    def test_periodi_diversi_non_si_fondono(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_kit(11, kit_riga=608, qta_padre="1"),
+                _attivita_kit(12, kit_riga=608, qta_padre="1"),
+            ],
+            competenze={
+                11: (date(2026, 1, 1), date(2026, 1, 31), date(2026, 1, 31)),
+                12: (date(2026, 2, 1), date(2026, 2, 28), date(2026, 2, 28)),
+            },
+        )
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(len(kw["righe_nrs"]), 2)
+        self.assertEqual(kw["righe_kit_qtas"], [Decimal("1"), Decimal("1")])
+        self.assertEqual(
+            kw["righe_competenze_dal"], [date(2026, 1, 1), date(2026, 2, 1)]
+        )
+
+    # Scopo: 🔴 il kit non si spezza per data. Componente A: due attivita'
+    # puntuali (3 e 20 marzo) allo stesso prezzo → una riga; componente B:
+    # le stesse due date a prezzi diversi → due righe. Con la data piu'
+    # recente PER RIGA, B del 3 marzo finirebbe su un altro padre (la vista
+    # separa il kit per periodo) e la quantita' del kit uscirebbe NULL. Tutte
+    # le righe puntuali del kit portano la data piu' recente del kit.
+    def test_kit_puntuale_spezzato_porta_una_data_sola(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_kit(11, kit_riga=608, articolo_id=ART_A, qta_padre="1"),
+                _attivita_kit(12, kit_riga=608, articolo_id=ART_A, qta_padre="1"),
+                _attivita_kit(13, kit_riga=608, articolo_id=ART_B, qta_padre="1"),
+                _attivita_kit(14, kit_riga=608, articolo_id=ART_B, qta_padre="1"),
+            ],
+            prezzi={13: Decimal("5.00"), 14: Decimal("6.00")},
+            competenze={
+                11: _puntuale(date(2026, 3, 3)), 12: _puntuale(date(2026, 3, 20)),
+                13: _puntuale(date(2026, 3, 3)), 14: _puntuale(date(2026, 3, 20)),
+            },
+        )
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(len(kw["righe_nrs"]), 3)
+        self.assertEqual(set(kw["righe_competenze_dal"]), {date(2026, 3, 20)})
+        self.assertEqual(set(kw["righe_competenze_al"]), {date(2026, 3, 20)})
+

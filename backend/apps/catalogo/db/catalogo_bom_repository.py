@@ -33,8 +33,8 @@ from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_claus
 COMPONENTE_WRITE_COLUMNS: frozenset[str] = frozenset({
     "componente_id",
     "coeff_qta",
-    "partecipa_qta",
-    "determina_qta_padre",
+    # `partecipa_qta` e `determina_qta_padre` ritirati il 2026-10-02: nessuna
+    # logica li leggeva (brief-db-bom-flag-quantita-e-kit-in-fattura, D-1).
     "obbligatorio",
     "valido_dal",
     "valido_al",

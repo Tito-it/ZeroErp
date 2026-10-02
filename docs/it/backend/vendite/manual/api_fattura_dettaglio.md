@@ -169,6 +169,16 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
   la lettura piatta `VenditeRepository.list_fattura_righe` è ritirata. Stampa
   solo una versione del template che dichiara la forma 2
   (brief-db-documenti-versione-contesto-template §11).
+  ⭐ **Dal 2026-10-02 ogni riga porta il suo periodo** — `competenza_dal`,
+  `competenza_al` (date, `NOT NULL`) e `ha_periodo`, vero quando `dal ≠ al`: è
+  la vista a deciderlo, il client lo mostra e non lo ricalcola. Lo stesso kit
+  su due periodi sono **due** righe `KIT_PADRE`. La quantità e l'unità del
+  padre sono quelle della **riga padre del documento** (`fatture_righe.kit_qta`,
+  `kit_uom_id`), non più media e massimo dei componenti; su un kit i cui
+  componenti non dicono lo stesso numero di kit (nota di credito parziale)
+  `quantita` e `prezzo_unitario` sono **NULL** e resta l'importo — non è un
+  errore. Il contesto di stampa è alla **forma 5** e la stampa la legge solo
+  la v7 del template (brief-db-bom-flag-quantita-e-kit-in-fattura, R-BE-B6).
 - Nessun verbo di modifica su questo path: la fattura è prodotta dalla pipeline
   e oltre la soglia di congelamento le righe sono congelate a DB
   (`trgfn_fattura_satellite_guard_congelamento`, `E_FATTURA_RIGA_CONGELATA`).

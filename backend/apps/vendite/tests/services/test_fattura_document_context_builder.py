@@ -13,6 +13,8 @@
 #        sconto e importo suoi; il padre senza resto ha importo NULL.
 #        ⭐ Forma 4 dal 2026-10-02: `annotazioni`, la lista `{codice, testo}`
 #        decisa dal DB (`fn_annotazioni_fattura`), nell'ordine dato.
+#        ⭐ Forma 5 dal 2026-10-02: il periodo della riga (`competenza_dal/_al`,
+#        `ha_periodo`) e la quantita' del kit che puo' essere NULL.
 #
 # Indice test (0..N):
 #   0. build_context_shape_e_campi
@@ -20,6 +22,8 @@
 #   1-bis. build_context_righe_chiavi_di_contratto
 #   1-ter. build_context_kit_porta_i_componenti_dentro (2026-09-30)
 #   1-quater. build_context_componente_valorizzato_porta_i_suoi_numeri (2026-10-02)
+#   1-quinquies. build_context_riga_porta_il_periodo (2026-10-02)
+#   1-sexies. build_context_kit_senza_quantita_resta_senza (2026-10-02)
 #   2. build_context_riepilogo_iva_propagate
 #   2-bis. build_context_annotazioni_dal_db (2026-10-02)
 #   3. build_context_id_non_valido_raises_validation
@@ -95,6 +99,13 @@ def _builder(righe: list[dict[str, Any]] | None = None):
     repo.list_fattura_scadenze.return_value = []
     repo.list_fattura_annotazioni.return_value = []
     righe_repo = MagicMock()
+    # Le tre colonne del periodo sono del contratto della vista (forma 5) e il
+    # builder le legge strette: le righe dei test che non parlano di periodo
+    # le ricevono puntuali, come una riga vera.
+    for r in righe or []:
+        r.setdefault("competenza_dal", "2026-06-30")
+        r.setdefault("competenza_al", "2026-06-30")
+        r.setdefault("ha_periodo", False)
     righe_repo.list_righe.return_value = righe or []
     return FatturaDocumentContextBuilder(repo=repo, righe_repo=righe_repo), repo, righe_repo
 
@@ -148,10 +159,11 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual(cliente["indirizzo"], "Corso Test 12, 00100 Roma RM")
 
         self.assertEqual(ctx["_meta"]["context_code"], "FATTURA")
-        # Forma 4 dal 2026-10-02: la forma 3 (kit coi componenti dentro, i
-        # VALORIZZATI coi numeri loro) + le annotazioni di legge. Pubblicare/
-        # stampare vuole una versione che la legga.
-        self.assertEqual(ctx["_meta"]["context_version"], 4)
+        # Forma 5 dal 2026-10-02: la forma 4 (kit coi componenti dentro, i
+        # VALORIZZATI coi numeri loro, le annotazioni di legge) + il periodo di
+        # riga e la quantita' del kit dalla riga padre. Pubblicare/stampare
+        # vuole una versione che la legga.
+        self.assertEqual(ctx["_meta"]["context_version"], 5)
         # Nessuna annotazione = lista vuota, non chiave assente (StrictUndefined).
         self.assertEqual(ctx["annotazioni"], [])
         self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
@@ -272,6 +284,57 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual(descrittivo["esposizione"], "DESCRITTIVO")
         for chiave in ("prezzo_unitario", "sconto_percentuale", "importo_riga"):
             self.assertIsNone(descrittivo[chiave])
+
+    # 1-quinquies. Forma 5: la riga porta il suo periodo come le date di
+    #             testata (italiano + ISO), e `ha_periodo` com'e' nella vista:
+    #             il builder non lo ricalcola. Una riga puntuale ha `dal = al`
+    #             e `ha_periodo` falso.
+    def test_build_context_riga_porta_il_periodo(self) -> None:
+        from datetime import date
+        builder, _, _ = _builder([
+            {
+                "riga_key": "K:42:gen", "tipo_riga": "KIT_PADRE", "riga_nr": 1,
+                "descrizione": "Kit", "quantita": "1.000000",
+                "importo_riga": "250.00", "componenti": None,
+                "competenza_dal": date(2026, 1, 1), "competenza_al": date(2026, 1, 31),
+                "ha_periodo": True,
+            },
+            {
+                "riga_key": "R:7", "riga_nr": 2, "descrizione": "Riga",
+                "quantita": "1", "importo_riga": "10.00", "componenti": None,
+                "competenza_dal": date(2026, 2, 3), "competenza_al": date(2026, 2, 3),
+                "ha_periodo": False,
+            },
+        ])
+
+        kit, puntuale = builder.build_context(42)["righe"]
+
+        self.assertEqual(kit["competenza_dal"], "01-01-2026")
+        self.assertEqual(kit["competenza_al"], "31-01-2026")
+        self.assertEqual(kit["competenza_dal_iso"], "2026-01-01")
+        self.assertEqual(kit["competenza_al_iso"], "2026-01-31")
+        self.assertIs(kit["ha_periodo"], True)
+        self.assertIs(puntuale["ha_periodo"], False)
+        self.assertEqual(puntuale["competenza_dal"], puntuale["competenza_al"])
+
+    # 1-sexies. Forma 5: un kit i cui componenti non dicono lo stesso numero
+    #           di kit (nota di credito parziale) ha quantita' e prezzo NULL e
+    #           il suo importo: il builder non inventa un «0,00».
+    def test_build_context_kit_senza_quantita_resta_senza(self) -> None:
+        builder, _, _ = _builder([
+            {
+                "riga_key": "K:42:nc", "tipo_riga": "KIT_PADRE", "riga_nr": 1,
+                "descrizione": "Kit reso in parte", "quantita": None,
+                "prezzo_unitario": None, "importo_riga": "-230.00",
+                "componenti": None, "ha_periodo": False,
+            },
+        ])
+
+        kit = builder.build_context(42)["righe"][0]
+
+        self.assertIsNone(kit["quantita"])
+        self.assertIsNone(kit["prezzo_unitario"])
+        self.assertEqual(kit["importo_riga"], "-230,00")
 
     # 2. Il riepilogo IVA (tabella reale) passa intatto nel context.
     def test_build_context_riepilogo_iva_propagate(self) -> None:
