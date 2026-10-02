@@ -45,10 +45,13 @@ BEGIN
 
     -- 2) Calcolo OR: esiste almeno una identita utilizzabile?
     --    Una identita e' utilizzabile se:
-    --      attiva AND ruolo != DISABILITATO
+    --      attiva
     --      AND finestra temporale corrente
     --      AND soggetto parent attivo
-    --    DISABILITATO e' fail-closed per convenzione.
+    --    ⭐ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): «spenta» si
+    --    legge SOLO da attivo. Il secondo controllo (ruolo <> DISABILITATO)
+    --    e' caduto: DISABILITATO non e' piu' un tipo di veste, la tabella
+    --    viva lo rifiuta (chk_identita_digitali_ruolo_non_ritirato).
     SELECT EXISTS (
         SELECT 1
           FROM anagrafiche.identita_digitali id
@@ -56,7 +59,6 @@ BEGIN
           JOIN anagrafiche.soggetti          s  ON s.id  = sr.soggetto_id
          WHERE id.auth_user_id      = p_auth_user_id
            AND id.attivo            = true
-           AND id.ruolo_applicativo <> 'DISABILITATO'
            AND CURRENT_DATE >= id.valido_dal
            AND (id.valido_al IS NULL OR CURRENT_DATE <= id.valido_al)
            AND s.attivo             = true
@@ -94,7 +96,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_sync_auth_user_is_active(p_auth_user_id integer)
-IS 'Sincronizza django.auth_user.is_active via OR sulle N identita digitali dello stesso auth_user (modello SSO multi-veste post 20-04-2026). is_active=true se almeno una identita e'' utilizzabile (attiva, ruolo != DISABILITATO, finestra valida, soggetto attivo). Return true se ha modificato auth_user.';
+IS 'Sincronizza django.auth_user.is_active via OR sulle N identita digitali dello stesso auth_user (modello SSO multi-veste post 20-04-2026). is_active=true se almeno una identita e'' utilizzabile (attiva, finestra valida, soggetto attivo). Return true se ha modificato auth_user. Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): spenta si legge solo da attivo, il controllo su DISABILITATO e'' caduto con il tipo (chk_identita_digitali_ruolo_non_ritirato).';
 ```
 
 ---

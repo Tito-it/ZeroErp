@@ -26,8 +26,9 @@ Quattro regole la governano, dal 2026-09-25
 3. **Una credenziale che ha già una veste OPERATORE si rifiuta**, attiva o
    spenta, con `E_CREDENZIALE_GIA_OPERATORE`: una veste spenta è un invito
    pendente o un operatore disattivato, e il rimedio è il reinvito, non un
-   secondo operatore sulla stessa persona. Le vesti col ruolo `DISABILITATO`
-   non contano (il valore è in ritiro).
+   secondo operatore sulla stessa persona. Dal 2026-10-02 (brief `brief-db-be-fe-area-accessi`, R-DB-1) un operatore
+   disattivato dall'amministratore **è** una veste OPERATORE spenta: rientra in
+   questa regola come l'invito pendente. `DISABILITATO` non è più un tipo di veste.
 4. **Il riuso non è mai silenzioso** (dal 2026-09-25, `20260925-51`, §12.7 del
    brief). Un'email sbagliata non deve poter collegare la veste all'accesso di
    un'altra persona:

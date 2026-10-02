@@ -26,8 +26,9 @@ dell'utente.
 
 Post 20-04-2026 (modello SSO multi-veste) la funzione ha una logica **OR
 su N identita**: `auth_user.is_active = true` se e solo se esiste almeno
-un'identita utilizzabile per l'utente (cioe' attiva, con ruolo applicativo
-diverso da DISABILITATO, in finestra temporale, con soggetto parent attivo).
+un'identita utilizzabile per l'utente (cioe' attiva, in finestra temporale,
+con soggetto parent attivo). Dal 2026-10-02 (brief `brief-db-be-fe-area-accessi`, R-DB-1) «spenta» si legge solo da
+`attivo`: il controllo sul ruolo `DISABILITATO` è caduto con il tipo.
 
 ---
 
@@ -58,7 +59,6 @@ assente).
    digitali dell'utente. `is_active = true` se esiste almeno un'identita
    che soddisfa tutti i criteri:
    * `id.attivo = true`
-   * `id.ruolo_applicativo <> 'DISABILITATO'` (fail-closed per convenzione)
    * `CURRENT_DATE BETWEEN id.valido_dal AND COALESCE(id.valido_al, CURRENT_DATE)`
    * Soggetto parent attivo (via `soggetti_ruoli` → `soggetti.attivo = true`)
 3. **No-op ambiente CI** — se schema Django assente, `RETURN false`

@@ -64,13 +64,22 @@ La funzione aggrega in una sola chiamata:
 | `p_auth_user_id` NULL o `<= 0` | `E_ADMIN_VALIDAZIONE` | blocco immediato |
 | `auth_user` inesistente | `E_ADMIN_VALIDAZIONE` | profilo non costruibile |
 | nessuna `identita_digitali` OPERATORE | `E_ADMIN_VALIDAZIONE` | user non collegato a risorsa |
-| identita attivo=false o ruolo DISABILITATO | `E_UTENTE_DISABILITATO` | login bloccato |
+| veste OPERATORE di riferimento spenta (`attivo = false`) | `E_UTENTE_DISABILITATO` | login bloccato; il segnaposto è lo username |
 | nessun record `risorse_umane` | `E_ADMIN_VALIDAZIONE` | catena utente incompleta |
 | `risorse_umane.attivo = false` | `E_UTENTE_DISABILITATO` | utente disattivato |
 | `CURRENT_DATE < valido_dal` (identita o ru) | `E_UTENTE_NON_ATTIVO` | utente non ancora attivo |
 | `CURRENT_DATE > valido_al` (identita o ru) | `E_UTENTE_SCADUTO` | utente scaduto |
 
 Tutti i guard usano `script.fn_log_and_raise_error`.
+
+⭐ **Quale veste OPERATORE** (dal 2026-10-02, brief `brief-db-be-fe-area-accessi`,
+R-DB-1): quella di riferimento della credenziale,
+[script.fn_veste_di_riferimento](/dbzero/script/funzioni/fn_veste_di_riferimento) — l'accesa,
+altrimenti la spenta più recente. Prima la cercava un `LEFT JOIN` su (credenziale,
+OPERATORE) con un `SELECT INTO` senza ordine: finché lo spegnimento scriveva
+`DISABILITATO` le vesti spente dall'amministratore uscivano dal JOIN da sole, e da quando
+restano `OPERATORE` il profilo avrebbe potuto prendere la spenta accanto all'accesa (una
+credenziale riusata, D-6) e rifiutare il login. «Spenta» si legge solo da `attivo`.
 
 **Nota** (post PR-B 21-04-2026): la funzione richiede ancora un'identita
 OPERATORE attiva per completare (e' pensata per lo scoped operatore +

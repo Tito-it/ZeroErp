@@ -49,7 +49,7 @@ policy RLS (difesa-in-profondità §V sviluppo-concentrico).
 | Caso | Risultato |
 |------|-----------|
 | Identità inesistente / non attiva | `false` |
-| Identità in veste non-cliente (es. OPERATORE, FORNITORE_PORTALE, DISABILITATO) | `false` |
+| Identità in veste non-cliente (es. OPERATORE, FORNITORE_PORTALE, API_CLIENT) | `false` |
 | BA inesistente | `false` |
 | BA appartiene a un altro `soggetto_ruolo` | `false` |
 | Identità CLIENTE_PORTALE o SHOP_CUSTOMER attiva + BA con stesso SR | `true` |

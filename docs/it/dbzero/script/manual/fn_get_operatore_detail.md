@@ -130,6 +130,12 @@ I nomi dei campi sono quelli già in servizio sul dettaglio operatore
   riga per veste. Si mostra quella **attiva** (al più una), altrimenti la
   **spenta più recente** (`data_insert`, poi `id`). Con più vesti spente
   l'invito non è offerto, e `invite_reason` dice perché (`PIU_VESTI_SPENTE`).
+  ⭐ Dal 2026-10-02 la regola non è più scritta qui: è
+  [script.fn_veste_di_riferimento](/dbzero/script/funzioni/fn_veste_di_riferimento),
+  che legge anche `fn_get_user_profile` (regola del 2). E dopo R-DB-1 di
+  `brief-db-be-fe-area-accessi` un operatore disattivato dall'amministratore
+  resta `OPERATORE` spento e compare **per intero** (prima, `DISABILITATO`,
+  usciva con i campi anagrafici vuoti).
 * `veste_attiva` è lo stato di **quella** veste: né `attivo` (della risorsa
   umana) né `is_active` (della credenziale, derivato da tutte le vesti) lo
   dicono. ⛔ Non serve a ricavare il motivo del non invitabile: quello è

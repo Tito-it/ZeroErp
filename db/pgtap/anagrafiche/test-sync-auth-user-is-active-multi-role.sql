@@ -8,9 +8,13 @@
 -- La funzione post-cutover legge SOLO da identita_digitali (niente
 -- fallback legacy su risorse_umane_auth_user, niente doppia verifica
 -- OPERATORE). Deve gestire correttamente i 5 ruoli applicativi
--- OPERATORE / CLIENTE_PORTALE / FORNITORE_PORTALE / SHOP_CUSTOMER /
--- DISABILITATO (API_CLIENT escluso: non ha corrispondente auth_user
--- nel modello attuale).
+-- OPERATORE / CLIENTE_PORTALE / FORNITORE_PORTALE / SHOP_CUSTOMER
+-- (API_CLIENT escluso: non ha corrispondente auth_user nel modello
+-- attuale).
+-- ⚠️ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): DISABILITATO
+-- non e' piu' un tipo di veste. Una veste si spegne con attivo = false
+-- e tiene il tipo; la tabella viva rifiuta DISABILITATO. Il test 9, che
+-- spegneva la veste cambiandone il tipo, ora prova il rifiuto.
 --
 -- Il test esistente test-sync-auth-user-is-active.sql copre OPERATORE
 -- regression via RUA legacy (ora vista); questo file copre i 4 ruoli
@@ -19,12 +23,12 @@
 -- Semantica attesa:
 --   - NULL / <=0 p_auth_user_id -> raise E_PARAMETRO_INVALIDO
 --   - Utente senza identita -> return false (no modifica auth_user)
---   - DISABILITATO -> should_active = false (fail-closed)
---   - Non-DISABILITATO attivo con finestra valida + soggetto attivo ->
+--   - veste attiva con finestra valida + soggetto attivo ->
 --     should_active = true
---   - Non-DISABILITATO con attivo=false -> should_active = false
---   - Non-DISABILITATO fuori finestra (valido_al < CURRENT_DATE) ->
+--   - veste con attivo=false -> should_active = false
+--   - veste fuori finestra (valido_al < CURRENT_DATE) ->
 --     should_active = false
+--   - DISABILITATO non si scrive: E_RUOLO_APPLICATIVO_RITIRATO
 --
 -- Indice test (1..10):
 --    1. Guard: p_auth_user_id NULL -> raise
@@ -35,7 +39,8 @@
 --    6. CLIENTE_PORTALE fuori finestra temporale -> auth_user.is_active=false
 --    7. FORNITORE_PORTALE attiva -> auth_user.is_active=true
 --    8. SHOP_CUSTOMER attiva -> auth_user.is_active=true
---    9. Cambio ruolo_applicativo a DISABILITATO -> auth_user.is_active=false
+--    9. Cambio ruolo_applicativo a DISABILITATO -> rifiutato
+--       (E_RUOLO_APPLICATIVO_RITIRATO, rev 2026-10-02)
 --   10. Identita riattivata dopo disabilitazione -> auth_user.is_active=true
 --
 -- BEGIN; + ROLLBACK a fine file (isolamento completo).
@@ -380,26 +385,33 @@ SELECT CASE
 END;
 
 -- =========================================================
--- 9) Cambio ruolo_applicativo a DISABILITATO -> is_active=false (fail-closed)
+-- 9) Cambio ruolo_applicativo a DISABILITATO -> rifiutato
+--    (rev 2026-10-02, R-DB-1): spegnere una veste e' attivo = false,
+--    il tipo resta. Il guard di coerenza parla prima del CHECK
+--    chk_identita_digitali_ruolo_non_ritirato; il codice viaggia nel
+--    canale CONSTRAINT_NAME dell'eccezione P0001.
 -- =========================================================
-UPDATE anagrafiche.identita_digitali
-   SET ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
- WHERE id = (SELECT case_cli_id_id FROM _t_setup WHERE case_cli_ready);
-
-UPDATE django.auth_user SET is_active = true
- WHERE id = (SELECT case_cli_au FROM _t_setup WHERE case_cli_ready);
-
-SELECT anagrafiche.fn_sync_auth_user_is_active(
-    (SELECT case_cli_au FROM _t_setup WHERE case_cli_ready)
-)
- WHERE (SELECT case_cli_ready FROM _t_setup);
+CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE v_c text;
+BEGIN
+    EXECUTE p_sql;
+    RETURN NULL;
+EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
+    RETURN v_c;
+END $$;
 
 SELECT CASE
     WHEN (SELECT case_cli_ready FROM _t_setup)
-    THEN ok(
-        (SELECT is_active FROM django.auth_user
-          WHERE id = (SELECT case_cli_au FROM _t_setup)) = false,
-        '9. ruolo_applicativo=DISABILITATO -> auth_user.is_active=false (fail-closed)'
+    THEN is(
+        pg_temp.codice_errore(format(
+            $$UPDATE anagrafiche.identita_digitali
+                 SET ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
+               WHERE id = %s$$,
+            (SELECT case_cli_id_id FROM _t_setup))),
+        'E_RUOLO_APPLICATIVO_RITIRATO',
+        '9. ruolo_applicativo=DISABILITATO -> rifiutato (E_RUOLO_APPLICATIVO_RITIRATO)'
     )
     ELSE skip('Setup non ready: test 9 skippato', 1)
 END;

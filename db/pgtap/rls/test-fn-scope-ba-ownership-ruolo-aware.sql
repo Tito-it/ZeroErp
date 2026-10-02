@@ -23,7 +23,11 @@
 -- FORNITORE_PORTALE su FO):
 --   - CLIENTE_PORTALE su SR_CL -> ammesso dal guard
 --   - SHOP_CUSTOMER su SR_CL -> ammesso
---   - DISABILITATO su SR_CL -> ammesso (early-exit guard)
+--   - API_CLIENT su SR_CL -> ammesso (early-exit guard)
+--     ⚠️ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): era
+--     DISABILITATO, che la tabella viva ora rifiuta. API_CLIENT e' l'unico
+--     altro tipo che il guard ammette su un ruolo cliente, ed e' proprio
+--     «un'identita non-cliente su un SR comune al BA».
 --   - identita inattiva -> indipendente dal ruolo, testa attivo=false
 --
 -- Indice test (1..5):
@@ -31,7 +35,7 @@
 --    2. fn(identita CLIENTE_PORTALE attiva, BA) -> true
 --    3. fn(identita SHOP_CUSTOMER attiva, BA) -> true
 --       (test chiave: multi-canale sullo stesso SR)
---    4. fn(identita DISABILITATO attiva, BA) -> false
+--    4. fn(identita API_CLIENT attiva, BA) -> false
 --       (filtro ruolo-aware esclude non-cliente)
 --    5. fn(identita CLIENTE_PORTALE con attivo=false, BA) -> false
 --       (fail-closed su identita inattiva)
@@ -168,9 +172,9 @@ SELECT is(
 );
 
 -- =========================================================
--- 4) DISABILITATO attiva + BA stesso SR -> false
+-- 4) API_CLIENT attiva + BA stesso SR -> false
 --    La fn filtra id.ruolo_applicativo IN (CLIENTE_PORTALE, SHOP_CUSTOMER)
---    -> DISABILITATO non passa anche se l'identita e' attiva e il
+--    -> API_CLIENT non passa anche se l'identita e' attiva e il
 --    SR coincide.
 -- =========================================================
 DO $$
@@ -182,7 +186,7 @@ BEGIN
     VALUES (
         (SELECT sr_cl_id FROM _t_ctx),
         (SELECT auth_user_id FROM _t_au_pool WHERE idx = 3),
-        'DISABILITATO', true
+        'API_CLIENT', true
     ) RETURNING id INTO v_id;
 
     PERFORM set_config('zeroerp.test_id_3', v_id::text, true);
@@ -195,7 +199,7 @@ SELECT is(
         (SELECT ba_id FROM _t_ctx)
     ),
     false,
-    '4. DISABILITATO attiva + BA stesso SR -> false (filtro ruolo-aware)'
+    '4. API_CLIENT attiva + BA stesso SR -> false (filtro ruolo-aware)'
 );
 
 -- =========================================================

@@ -68,6 +68,15 @@ BEGIN
     --   OPERATORE + risorse_umane via soggetto_ruolo. Top-level
     --   ruolo_applicativo GUC-aware (20260421-05); top-level
     --   is_super_admin context-aware (20260421-03).
+    --
+    -- ⭐ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1):
+    --   la veste OPERATORE e' quella di riferimento della credenziale
+    --   (script.fn_veste_di_riferimento: l'accesa, o la spenta piu'
+    --   recente), non una qualunque. Fino a R-DB-1 lo spegnimento
+    --   scriveva DISABILITATO e le vesti spente uscivano dal JOIN da
+    --   sole; ora restano OPERATORE, e un JOIN nudo poteva prendere la
+    --   spenta accanto all'accesa e rifiutare il login. «Disabilitato»
+    --   si legge solo da attivo.
     -- =========================================================
 
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
@@ -128,8 +137,8 @@ BEGIN
            v_uo_descrizione
       FROM django.auth_user au
       LEFT JOIN anagrafiche.identita_digitali id
-        ON id.auth_user_id = au.id
-       AND id.ruolo_applicativo = 'OPERATORE'
+        ON id.id = script.fn_veste_di_riferimento(
+                       au.id, 'OPERATORE'::config.ruolo_applicativo)
       LEFT JOIN anagrafiche.risorse_umane ru
         ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
       LEFT JOIN config.qualifiche q
@@ -158,18 +167,22 @@ BEGIN
         );
     END IF;
 
-    -- Guard: identita disabilitata / ruolo DISABILITATO / inattiva.
-    IF v_identita_attiva = false OR v_ruolo_applicativo = 'DISABILITATO' THEN
+    -- Guard: veste OPERATORE spenta. Rev 2026-10-02 (R-DB-1): «spenta» si
+    -- legge solo da attivo; DISABILITATO non esiste piu' nella tabella viva.
+    -- ⭐ Il segnaposto e' lo username: e' la cosa che chi prova ad accedere
+    --   riconosce. Prima era una frase intera, che il messaggio «Utente
+    --   disabilitato: %s» ripeteva due volte.
+    IF v_identita_attiva = false THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_profile',
             'E_UTENTE_DISABILITATO',
             jsonb_build_object(
                 'auth_user_id', p_auth_user_id,
-                'ruolo_applicativo', v_ruolo_applicativo::text,
+                'identita_id', v_identita_id,
                 'identita_attiva', v_identita_attiva
             ),
             NULL::uuid,
-            'Utente disabilitato: identita non attiva o ruolo DISABILITATO.'
+            v_utente ->> 'username'
         );
     END IF;
 
@@ -213,7 +226,9 @@ BEGIN
             jsonb_build_object('auth_user_id', p_auth_user_id,
                                'risorsa_umana_id', v_risorsa_umana_id),
             NULL::uuid,
-            v_risorsa_umana_id::text
+            -- Rev 2026-10-02: lo username, come il ramo della veste spenta
+            -- (era l'id della risorsa umana, che nessuno riconosce a video).
+            v_utente ->> 'username'
         );
     END IF;
     IF v_valido_dal IS NOT NULL AND CURRENT_DATE < v_valido_dal THEN
@@ -388,7 +403,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
-IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti). La chiave emittente.emittente_descrizione porta la ragione_sociale_completa del soggetto emittente (Fase 1 cantiere emittente 2026-08-02: prima leggeva emittenti_fiscali.descrizione nuda, cioe'' l''etichetta interna). La chiave deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password, non piu'' dall''identita OPERATORE.';
+IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti). La chiave emittente.emittente_descrizione porta la ragione_sociale_completa del soggetto emittente (Fase 1 cantiere emittente 2026-08-02: prima leggeva emittenti_fiscali.descrizione nuda, cioe'' l''etichetta interna). La chiave deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password, non piu'' dall''identita OPERATORE. ⭐ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): la veste OPERATORE e'' quella di riferimento della credenziale (script.fn_veste_di_riferimento: l''accesa, o la spenta piu'' recente), non una qualunque; spenta si legge solo da attivo (E_UTENTE_DISABILITATO), DISABILITATO non esiste piu'' nella tabella viva. Il segnaposto di E_UTENTE_DISABILITATO e'' lo username.';
 ```
 
 ---

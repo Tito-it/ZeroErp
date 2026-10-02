@@ -20,10 +20,12 @@
 --          di presidio COSTRUITO al setup garantisce che il SA del
 --          test non sia mai l'unico -> guard anti-lockout non scatta.
 --     UPDATE rau SET ruolo_sistema='DISABILITATO' (test 29)
---       -> UPDATE id.ruolo_applicativo='DISABILITATO'
---          (helper pg_temp.set_disabilitato).
---     Ripristino post-DISABILITATO -> UPDATE id.ruolo_applicativo
---          ='OPERATORE' (helper pg_temp.unset_disabilitato).
+--       -> UPDATE id.attivo = false (helper pg_temp.set_disabilitato).
+--     Ripristino -> UPDATE id.attivo = true (pg_temp.unset_disabilitato).
+--     ⚠️ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): fino a quel
+--     giorno i due helper scrivevano ruolo_applicativo = DISABILITATO /
+--     OPERATORE. Una veste si spegne con attivo = false e tiene il tipo, e
+--     la tabella viva rifiuta DISABILITATO.
 --
 -- Funzioni testate:
 --   script.fn_is_super_admin (sostituisce fn_get_ruolo_sistema
@@ -68,7 +70,7 @@
 -- 26) fn_get_emittenti_scope_sr_ids: OPERATIVO con whitelist → array con sr_id
 -- 27) fn_get_emittenti_scope_sr_ids: ADMIN → NULL
 -- 28) fn_get_emittenti_scope_sr_ids: OPERATIVO senza whitelist → NULL
--- 29) fn_get_emittenti_scope_sr_ids: DISABILITATO → array vuoto
+-- 29) fn_get_emittenti_scope_sr_ids: veste operatore spenta → array vuoto
 -- 30) Seed: 3 nuovi codename azioni_processo esistono
 -- 31) fn_get_user_object_permissions_map: nessun override → {}
 -- 32) fn_get_user_object_permissions_map: override attivo → chiave presente
@@ -147,11 +149,12 @@ BEGIN
 END
 $$;
 
+-- Rev 2026-10-02 (R-DB-1): l'operatore si spegne con attivo = false, il tipo resta.
 CREATE OR REPLACE FUNCTION pg_temp.set_disabilitato(p_identita_id bigint)
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
     UPDATE anagrafiche.identita_digitali
-       SET ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
+       SET attivo = false
      WHERE id = p_identita_id;
 END
 $$;
@@ -160,7 +163,7 @@ CREATE OR REPLACE FUNCTION pg_temp.unset_disabilitato(p_identita_id bigint)
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
     UPDATE anagrafiche.identita_digitali
-       SET ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+       SET attivo = true
      WHERE id = p_identita_id;
 END
 $$;
@@ -658,7 +661,7 @@ SELECT is(
     '28) fn_get_emittenti_scope_sr_ids: OPERATIVO senza whitelist → ''{}'' (P-2a)'
 );
 
--- 29) DISABILITATO → array vuoto (nessun accesso)
+-- 29) veste OPERATORE spenta → array vuoto (nessun accesso)
 SELECT pg_temp.set_disabilitato((SELECT identita_id FROM tmp_ctx));
 
 SELECT is(
@@ -666,7 +669,7 @@ SELECT is(
         (SELECT user_id FROM tmp_ctx)
     ),
     '{}'::bigint[],
-    '29) fn_get_emittenti_scope_sr_ids: DISABILITATO → array vuoto'
+    '29) fn_get_emittenti_scope_sr_ids: veste operatore spenta → array vuoto'
 );
 
 SELECT pg_temp.unset_disabilitato((SELECT identita_id FROM tmp_ctx));

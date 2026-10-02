@@ -18,6 +18,7 @@
 - [fn_azzera_tentativi_credenziale](manual/fn_azzera_tentativi_credenziale.md) — (scritta il 25-09-2026)
 - [fn_blocca_credenziale](manual/fn_blocca_credenziale.md) — (scritta il 25-09-2026)
 - [fn_capability_promo_articolo](manual/fn_capability_promo_articolo.md)
+- [fn_categoria_accesso](manual/fn_categoria_accesso.md)
 - [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md)
 - [fn_check_accredito_annullabile](manual/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
@@ -64,6 +65,7 @@
 - [fn_check_utility_istanza_coerenza](manual/fn_check_utility_istanza_coerenza.md)
 - [fn_clone_catasto_from_parent_by_istanza](manual/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_crea_utente_tecnico](manual/fn_crea_utente_tecnico.md) — (latest review 04-09-2026)
+- [fn_credenziali](manual/fn_credenziali.md)
 - [fn_current_identita_context](manual/fn_current_identita_context.md) — (latest review 19-04-2026)
 - [fn_data_operativa](manual/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](manual/fn_disdetta_cliente.md) — (rev 2026-08-21)
@@ -185,6 +187,7 @@
 - [fn_search_stradario_generale](manual/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
 - [fn_snapshot_indirizzo](manual/fn_snapshot_indirizzo.md)
 - [fn_snapshot_indirizzo_soggetto](manual/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
+- [fn_stato_veste](manual/fn_stato_veste.md)
 - [fn_subentro_cliente](manual/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_totp_conferma_device](manual/fn_totp_conferma_device.md) — (scritta il 29-09-2026)
 - [fn_totp_consuma_recovery](manual/fn_totp_consuma_recovery.md) — (scritta il 29-09-2026)
@@ -197,6 +200,8 @@
 - [fn_valida_codice_fiscale](manual/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](manual/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
 - [fn_validate_cf_piva_it](manual/fn_validate_cf_piva_it.md) — * **Centralizzazione Validazioni**: Unico punto per verificare CF e P.IVA in accordo ai formati configurati. * **Dinamicità**: I formati (alfanumerico, numerico, lunghezza) sono letti da `config.tipi_soggetto_dettaglio` e possono variare per Stato. * **Estendibilità**: Aggiunta futura di funzioni con suffissi di Stato, es. `_FR`, `_DE`, `_UK`.
+- [fn_veste_di_riferimento](manual/fn_veste_di_riferimento.md)
+- [fn_veste_di_sistema](manual/fn_veste_di_sistema.md)
 - [log](manual/log.md) — (rev 2026-08-21)
 - [trgfn_audit_data_user_generic](manual/trgfn_audit_data_user_generic.md) — * **Audit automatico su INSERT e UPDATE**   Assicura che ogni inserimento e modifica sia registrato con timestamp (`data_update`) e utente reale (`user_update` / `user_insert`). * **Centralizzare la logica di audit**   Un'unica trigger function per tutte le tabelle, evitando duplicazione di logica. * **Tracciare l'utente reale (JWT)**   Utilizza la GUC `app.jwt_user` impostata dal middleware Django per registrare   l'utente che ha effettuato la chiamata API, non il ruolo DB della connessione.
 - [trgfn_canale_origine_immutable](manual/trgfn_canale_origine_immutable.md) — (latest review 20-04-2026)

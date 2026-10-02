@@ -50,10 +50,16 @@
 --   19) ...flusso A con lo STESSO CF: stessa persona, parla E_ADMIN_CF_DUPLICATO
 --   20) ...flusso B con lo STESSO soggetto: l'identita' passa, serve il consenso
 --
--- ⭐ La credenziale «di una persona fisica» e' un operatore DISATTIVATO nella
---   forma di oggi (veste DISABILITATO su un soggetto persona fisica): il
---   rifiuto «gia' operatore» guarda solo le vesti OPERATORE, quindi non la
---   copre, e il controllo d'identita' e' l'unico che parla.
+-- ⭐ La credenziale «di una persona fisica» ha una veste SHOP_CUSTOMER su un
+--   ruolo cliente di un soggetto persona fisica: il rifiuto «gia' operatore»
+--   guarda solo le vesti OPERATORE, quindi non la copre, e il controllo
+--   d'identita' e' l'unico che parla.
+--   ⚠️ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): fino a quel giorno
+--   la fixture era un operatore disattivato nella forma di allora (veste
+--   DISABILITATO). Da R-DB-1 un operatore disattivato resta OPERATORE con
+--   attivo = false, cioe' «gia' operatore» (test 7), e il tipo DISABILITATO
+--   la tabella viva lo rifiuta: la fixture sposta la veste su un ruolo
+--   cliente dello stesso soggetto, che e' cio' che il test voleva dire.
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
@@ -290,9 +296,10 @@ SELECT is(
     'E_CREDENZIALE_DA_CONFERMARE',
     '16) consenso che dichiara un''altra credenziale: E_CREDENZIALE_DA_CONFERMARE');
 
--- Una credenziale con una veste su una PERSONA FISICA: un operatore
--- disattivato nella forma di oggi (DISABILITATO), e un secondo operatore come
--- «altra persona» per il flusso B.
+-- Una credenziale con una veste su una PERSONA FISICA che non e' una veste
+-- operatore: la veste dell'operatore umano diventa SHOP_CUSTOMER su un ruolo
+-- cliente (CL) dello stesso soggetto; e un secondo operatore come «altra
+-- persona» per il flusso B.
 CREATE TEMP TABLE _pf AS
 SELECT o.auth_user_id, o.soggetto_id, o.identita_id
   FROM dbops.fn_pgtap_crea_operatore_umano('riuso persona', false) o;
@@ -300,8 +307,11 @@ CREATE TEMP TABLE _altro AS
 SELECT o.soggetto_id FROM dbops.fn_pgtap_crea_operatore_umano('riuso altra persona', false) o;
 
 UPDATE anagrafiche.identita_digitali
-   SET attivo = false, ruolo_applicativo = 'DISABILITATO'
+   SET attivo            = false,
+       ruolo_applicativo = 'SHOP_CUSTOMER'::config.ruolo_applicativo,
+       soggetto_ruolo_id = dbops.fn_pgtap_crea_soggetto_ruolo((SELECT soggetto_id FROM _pf), 'CL')
  WHERE id = (SELECT identita_id FROM _pf);
+SET CONSTRAINTS ALL IMMEDIATE;
 
 ALTER TABLE _pf ADD COLUMN email text, ADD COLUMN cf text;
 UPDATE _pf p SET email = au.email FROM django.auth_user au WHERE au.id = p.auth_user_id;

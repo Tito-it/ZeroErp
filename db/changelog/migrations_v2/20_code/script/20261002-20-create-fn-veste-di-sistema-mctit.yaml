@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_veste_di_sistema(ruolo_applicativo, tecnica): UNA VESTE E' DI UNA MACCHINA?
+#   Brief: brief-db-be-fe-area-accessi, R-DB-A1 (sezione 7.3)
+#
+# -- PERCHE' UNA FUNZIONE PER UNA RIGA ------------------------------------------
+#   «Questa veste e' di un processo, non di una persona» e' la regola che separa
+#   il tab «Di sistema» dagli altri due (A-6), e la leggono in tre: la categoria
+#   di una credenziale (script.fn_categoria_accesso, -21), il guard che non
+#   lascia mescolare persona e macchina sulla stessa credenziale (-23) e il
+#   presidio delle credenziali da sanare (-35). Tre copie dello stesso
+#   predicato divergerebbero alla prima veste di sistema nuova: qui la regola,
+#   la' i lettori (regola del 2).
+#
+# -- LA REGOLA ------------------------------------------------------------------
+#   Una veste e' di sistema se e' API_CLIENT (un sistema terzo, per definizione
+#   del tipo) oppure porta il flag `tecnica` (l'utente tecnico di un processo
+#   automatico, script.fn_crea_utente_tecnico). Nient'altro: la persona e' il
+#   complemento, non una seconda lista.
+#
+# -- FORMA ----------------------------------------------------------------------
+#   Pura sui VALORI, IMMUTABLE: non legge tabelle, quindi si usa dentro un
+#   trigger BEFORE ROW sui valori NEW e dentro un aggregato senza rileggere la
+#   riga. BEGIN ATOMIC da sola nel suo `sql:`, il COMMENT nel secondo (pgjdbc
+#   non riprende a spezzare dopo l'END). Firma ancorata alle colonne di cui i
+#   parametri sono il riflesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261002-20-create-fn-veste-di-sistema-mctit.yaml
+
+  - changeSet:
+      id: 20261002-20-create-fn-veste-di-sistema
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_veste_di_sistema(ruolo_applicativo, tecnica): true se la veste e' di una
+        macchina (API_CLIENT o flag tecnica). Predicato unico letto dalla categoria di una
+        credenziale, dal guard sulla natura della credenziale e dal presidio. Brief:
+        brief-db-be-fe-area-accessi R-DB-A1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_veste_di_sistema';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_veste_di_sistema(
+                  p_ruolo_applicativo anagrafiche.identita_digitali.ruolo_applicativo%TYPE,
+                  p_tecnica           anagrafiche.identita_digitali.tecnica%TYPE)
+              RETURNS boolean   -- un predicato: nessuna colonna di cui sia il riflesso
+              LANGUAGE sql
+              IMMUTABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  -- ⭐ La regola, in un posto solo: API_CLIENT e' un sistema terzo per
+                  --   definizione del tipo; `tecnica` marca l'utente tecnico di un processo.
+                  SELECT p_ruolo_applicativo = 'API_CLIENT'::config.ruolo_applicativo
+                         OR p_tecnica;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_veste_di_sistema(
+                  anagrafiche.identita_digitali.ruolo_applicativo%TYPE,
+                  anagrafiche.identita_digitali.tecnica%TYPE) IS
+                  'Una veste e'' di una MACCHINA? true se e'' API_CLIENT (un sistema terzo) o '
+                  'porta il flag tecnica (l''utente tecnico di un processo automatico, '
+                  'script.fn_crea_utente_tecnico); la persona e'' il complemento. Pura sui valori, '
+                  'IMMUTABLE: la leggono script.fn_categoria_accesso, il guard '
+                  'anagrafiche.trgfn_identita_digitali_guard_natura_credenziale e il presidio '
+                  'dbops.vw_credenziali_da_sanare, sede unica del predicato. Brief: '
+                  'brief-db-be-fe-area-accessi (R-DB-A1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_veste_di_sistema(config.ruolo_applicativo, boolean);

@@ -42,6 +42,12 @@ BEGIN
     --   veste_attiva: lo stato di QUELLA veste (NULL se non ce n'e'
     --   nessuna). Ne' attivo (risorsa umana) ne' is_active
     --   (credenziale, derivato da tutte le vesti) lo dicevano.
+    --   ⭐ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): la
+    --   regola «l'accesa, altrimenti la spenta piu' recente» non si
+    --   scrive piu' qui: e' script.fn_veste_di_riferimento, che legge
+    --   anche fn_get_user_profile (regola del 2). Dopo R-DB-1 un
+    --   operatore spento dall'amministratore resta OPERATORE e compare
+    --   qui per intero (prima, DISABILITATO, usciva con i campi vuoti).
     --
     -- Rev 20260927-01/-02 (brief §16):
     --   I motivi sono CODICI con la loro chiave i18n, non frasi.
@@ -113,15 +119,9 @@ BEGIN
              ELSE NULL
         END                                                    AS demote_reason_key
       FROM django.auth_user au
-      LEFT JOIN LATERAL (
-          SELECT idg.soggetto_ruolo_id, idg.ruolo_applicativo,
-                 idg.attivo, idg.invito_inviato_at
-            FROM anagrafiche.identita_digitali idg
-           WHERE idg.auth_user_id      = au.id
-             AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-           ORDER BY idg.attivo DESC, idg.data_insert DESC, idg.id DESC
-           LIMIT 1
-      ) id ON true
+      LEFT JOIN anagrafiche.identita_digitali id
+        ON id.id = script.fn_veste_di_riferimento(
+                       au.id, 'OPERATORE'::config.ruolo_applicativo)
       LEFT JOIN anagrafiche.soggetti_ruoli sr
         ON sr.id = id.soggetto_ruolo_id
       LEFT JOIN anagrafiche.risorse_umane ru
@@ -153,7 +153,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
-IS 'Riga di dettaglio operatore + capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE. La colonna deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password. Rev 20260925-54 (R-9): UNA riga anche con piu'' vesti OPERATORE — quella attiva, altrimenti la spenta piu'' recente (data_insert, poi id) — e la colonna veste_attiva, lo stato di quella veste (NULL senza veste OPERATORE). ⭐ Rev 20260927-02 (brief-db-blocco-login-per-credenziale §16): i motivi sono CODICI con la chiave i18n, non frasi. invite_reason/invite_reason_key = reason/reason_key di fn_check_operatore_invitabile (codici e chiavi nel suo COMMENT). disable_reason = ULTIMO_SUPER_ADMIN, disable_reason_key = amministrazione.operatori.disabilita_reason.ultimo_super_admin. demote_reason = ULTIMO_SUPER_ADMIN, demote_reason_key = amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin. Tutti NULL quando l''azione e'' ammessa (e demote anche quando non si applica).';
+IS 'Riga di dettaglio operatore + capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE. La colonna deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password. Rev 20260925-54 (R-9): UNA riga anche con piu'' vesti OPERATORE — quella attiva, altrimenti la spenta piu'' recente (data_insert, poi id) — e la colonna veste_attiva, lo stato di quella veste (NULL senza veste OPERATORE). ⭐ Rev 20260927-02 (brief-db-blocco-login-per-credenziale §16): i motivi sono CODICI con la chiave i18n, non frasi. invite_reason/invite_reason_key = reason/reason_key di fn_check_operatore_invitabile (codici e chiavi nel suo COMMENT). disable_reason = ULTIMO_SUPER_ADMIN, disable_reason_key = amministrazione.operatori.disabilita_reason.ultimo_super_admin. demote_reason = ULTIMO_SUPER_ADMIN, demote_reason_key = amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin. Tutti NULL quando l''azione e'' ammessa (e demote anche quando non si applica). Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): la veste mostrata e'' script.fn_veste_di_riferimento(credenziale, OPERATORE), la regola che prima stava scritta qui; un operatore spento resta OPERATORE e compare per intero.';
 ```
 
 ---

@@ -117,6 +117,11 @@ SELECT is(
           -- ⭐ 2026-09-27 (brief-db-liste-datatable-grezze, riga 5): i reparti
           --   sono `config.unita_organizzative`, catalogo senza emittente.
           'amm.reparti',
+          -- ⭐ 2026-10-02 (brief-db-be-fe-area-accessi, R-DB-A3): una
+          --   CREDENZIALE non appartiene a un'azienda — e' una password per
+          --   tutte le porte, e un cliente del portale lo e' di chi lo serve.
+          --   La lista non ha colonne d'emittente (test 8).
+          'anagrafiche.accessi_altri',
           -- ⭐ D-1 (Tid, 2026-09-18): la riga non APPARTIENE a un emittente,
           --   la riga E' l'emittente. Scegliere un emittente per vedere
           --   l'elenco degli emittenti era una domanda senza risposta.

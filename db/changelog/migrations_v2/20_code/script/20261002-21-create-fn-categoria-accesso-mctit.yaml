@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_categoria_accesso(auth_user_id): IN QUALE TAB STA UNA CREDENZIALE
+#   Brief: brief-db-be-fe-area-accessi, R-DB-A1 (sezione 7.3)
+#
+# -- PERCHE' ------------------------------------------------------------------------
+#   L'area «Accessi» ha tre tab che devono essere una PARTIZIONE (A-2): ogni
+#   credenziale in uno solo, nessuna in nessuno. Se ogni lista avesse il suo
+#   predicato, le copie divergerebbero e una credenziale finirebbe in due tab o
+#   in nessuno. Una funzione che restituisce UN valore rende la partizione vera
+#   per costruzione: le tre liste e il backend (che ritira _VESTE_OPERATORE)
+#   chiedono a lei.
+#
+# -- LA REGOLA, sulle vesti della credenziale (TUTTE, anche spente) -------------------
+#   SISTEMA   almeno una veste di sistema (script.fn_veste_di_sistema, -20)
+#   OPERATORE altrimenti, almeno una veste OPERATORE (dopo R-DB-1 una veste
+#             operatore spenta resta OPERATORE: e' ancora una persona da gestire)
+#   ALTRO     tutte le altre, comprese le credenziali SENZA alcuna veste
+#   Le vesti spente contano: una persona disattivata resta nel suo tab (V-3), non
+#   scivola in un altro perche' si e' spenta.
+#
+# -- LA PRECEDENZA, dichiarata sul modello -------------------------------------------
+#   Il modello NON ammette una credenziale che sia insieme persona e macchina: lo
+#   dice il guard anagrafiche.trgfn_identita_digitali_guard_natura_credenziale
+#   (-23/-24) e lo presidia dbops.vw_credenziali_da_sanare (-35). Quindi l'ordine
+#   del CASE fra SISTEMA e OPERATORE non sceglie fra due casi del modello. Conta
+#   solo per una riga nata prima del guard, e li' SISTEMA viene prima apposta: il
+#   tab «Di sistema» e' in sola lettura (A-6), e una credenziale che regge un
+#   processo non si blocca da una lista di persone all'insaputa del pannello dei
+#   processi. Il presidio la segnala comunque.
+#
+# -- FORMA -----------------------------------------------------------------------------
+#   LANGUAGE sql BEGIN ATOMIC, STABLE: legge solo anagrafiche.identita_digitali
+#   (nessun django.*), le dipendenze entrano in pg_depend. bool_or su zero righe e'
+#   NULL: il CASE cade su ALTRO, che e' la risposta giusta per una credenziale senza
+#   vesti. Nessun guard sul parametro: un id assente e' una credenziale senza vesti,
+#   ALTRO, come in una lista. Il valore e' un codice testuale (tre, fissi): e' il
+#   nome di un tab, non un dato di configurazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261002-21-create-fn-categoria-accesso-mctit.yaml
+
+  - changeSet:
+      id: 20261002-21-create-fn-categoria-accesso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_categoria_accesso(auth_user_id): SISTEMA / OPERATORE / ALTRO, una
+        categoria per credenziale, calcolata da un posto solo: la partizione dei tre tab
+        dell'area Accessi e' vera per costruzione. Brief: brief-db-be-fe-area-accessi R-DB-A1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_veste_di_sistema';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_categoria_accesso(
+                  p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE)
+              RETURNS text   -- codice calcolato: SISTEMA / OPERATORE / ALTRO
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  -- ⭐ Tutte le vesti, anche spente: una persona disattivata resta nel
+                  --   suo tab. SISTEMA prima di OPERATORE: vedi l'intestazione del changeSet.
+                  SELECT CASE
+                             WHEN bool_or(script.fn_veste_di_sistema(idg.ruolo_applicativo,
+                                                                     idg.tecnica))
+                                 THEN 'SISTEMA'
+                             WHEN bool_or(idg.ruolo_applicativo
+                                          = 'OPERATORE'::config.ruolo_applicativo)
+                                 THEN 'OPERATORE'
+                             ELSE 'ALTRO'
+                         END
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.auth_user_id = p_auth_user_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_categoria_accesso(
+                  anagrafiche.identita_digitali.auth_user_id%TYPE) IS
+                  'La categoria di una CREDENZIALE, cioe'' il tab dell''area Accessi in cui sta: '
+                  'SISTEMA (almeno una veste di sistema, script.fn_veste_di_sistema), OPERATORE '
+                  '(altrimenti, almeno una veste OPERATORE), ALTRO (tutte le altre, comprese le '
+                  'credenziali senza alcuna veste). Contano tutte le vesti, anche spente: una '
+                  'persona disattivata resta nel suo tab. Un valore solo per credenziale rende la '
+                  'partizione dei tre tab vera per costruzione (A-2): la leggono le viste '
+                  'anagrafiche.vw_accessi_altri e vw_accessi_sistema e il backend. SISTEMA prima di '
+                  'OPERATORE non sceglie fra due casi del modello: persona e macchina sulla stessa '
+                  'credenziale le rifiuta il guard trgfn_identita_digitali_guard_natura_credenziale; '
+                  'per una riga nata prima del guard vince la sola lettura del tab Di sistema, e la '
+                  'segnala dbops.vw_credenziali_da_sanare. Brief: brief-db-be-fe-area-accessi (R-DB-A1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_categoria_accesso(integer);

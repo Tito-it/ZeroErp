@@ -196,14 +196,25 @@ SELECT t.lato, t.canale, t.billing_account_id, t.soggetto_ruolo_id,
   FROM tutti t JOIN ins i ON i.billing_account_id = t.billing_account_id;
 
 -- L'identita' di shop: stessa persona giuridica del cliente A, veste SHOP.
+-- ⛔ Con un ACCESSO SUO, non quello dell'operatore di A: l'operatore di
+--   fn_pgtap_crea_emittente_operatore e' un utente TECNICO (un processo), e
+--   dall'area Accessi il guard trg_identita_digitali_a10_guard_natura_credenziale
+--   rifiuta una veste di persona sulla credenziale di un processo. Il test non
+--   ha mai avuto bisogno che fossero la stessa credenziale: il contesto shop si
+--   da' con app.current_identita_id e app.current_user_id vuoto (test 8-11).
 CREATE TEMP TABLE _shop AS
-WITH i AS (
+WITH u AS (
+    INSERT INTO django.auth_user (username, password, is_active, is_staff, is_superuser,
+                                  first_name, last_name, email, date_joined)
+    VALUES ('_pgtap_rlscli_shop_' || substring(md5(clock_timestamp()::text) FROM 1 FOR 8),
+            '!', true, false, false, '', '', '', now())
+    RETURNING id
+), i AS (
     INSERT INTO anagrafiche.identita_digitali
         (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT b.soggetto_ruolo_id, m.auth_user_id,
+    SELECT b.soggetto_ruolo_id, u.id,
            'SHOP_CUSTOMER'::config.ruolo_applicativo, true
-      FROM _ba_shop b CROSS JOIN _mondi m
-     WHERE m.lato = 'A'
+      FROM _ba_shop b CROSS JOIN u
     RETURNING id
 )
 SELECT id AS identita_id FROM i;
