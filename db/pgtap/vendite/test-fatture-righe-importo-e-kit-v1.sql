@@ -300,11 +300,13 @@ SELECT throws_ok(
   NULL::text, NULL::text,
   '16) riga di kit con metadati a meta'': respinta dal CHECK di coerenza');
 
--- Kit completo: 3 componenti (2+6+9 = 17), due esposti e uno no.
-INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
+-- Kit completo: 3 componenti (2+6+9 = 17), due esposti e uno no. Ogni componente
+-- e' un articolo suo (chk_fatture_righe_kit_articolo, 20261002-43).
+INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione, qta,
        prezzo_unitario, iva_id, kit_key, kit_esposizione,
        kit_articolo_padre_id, kit_descrizione_padre, competenza_dal, competenza_al, kit_qta)
-SELECT (SELECT id FROM tmp_fattura_kit_fri), v.nr, v.descr, 1, v.prezzo,
+SELECT (SELECT id FROM tmp_fattura_kit_fri), v.nr,
+       dbops.fn_pgtap_crea_articolo('PGTAP-FRI-C' || v.nr), v.descr, 1, v.prezzo,
        (SELECT iva_id FROM tmp_refs_fri), 'K-TEST', v.esposto,
        (SELECT articolo_id FROM tmp_refs_fri), 'Padre del kit di test', CURRENT_DATE, CURRENT_DATE, 1
   FROM (VALUES (1, 'comp A', 2::numeric, 'DESCRITTIVO'),

@@ -113,6 +113,7 @@ Obiettivi principali:
   * `chk_fatture_righe_sconto` → `sconto_percentuale` 0..100 (rinominato da `chk_fatture_righe_sconto_perc`, unificazione 2026-06-05).
   * `chk_fatture_righe_competenza_dal_al` → `competenza_dal <= competenza_al` (dal 2026-10-02).
   * `chk_fatture_righe_kit_coerente` → o la riga **non è** di kit (tutte le colonne `kit_*` NULL), o lo è per intero (chiave, esposizione, articolo padre e, dal 2026-10-02, `kit_qta` valorizzati; `kit_uom_id` può restare vuota come `uom_id`). Una riga con metadati a metà sarebbe indistinguibile da una riga normale per la vista di esposizione, e sparirebbe dal raggruppamento senza un fiato.
+  * `chk_fatture_righe_kit_articolo` *(dal 2026-10-02, `20261002-43`)* → una riga di kit ha sempre `articolo_id`: è un componente, e un componente è un articolo della distinta. La vista di esposizione conta i kit **componente per componente**, cioè per articolo: due righe di kit senza articolo cadrebbero nello stesso gruppo e sommerebbero le loro quantità (2 kit dove ce n'è uno), senza un errore. Il periodo di competenza non le separa, perché sono dello stesso kit e dello stesso periodo.
   * ~~`chk_fatr_iva_perc`~~ → **non esiste**: il manuale precedente lo citava insieme alla colonna `iva_perc`, che su questa tabella non c'è mai stata.
 * **UNIQUE**:
 

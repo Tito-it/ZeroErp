@@ -238,7 +238,7 @@ documento**, congelate su ogni componente alla generazione.
 
 | Della riga del kit | Da dove viene |
 | --- | --- |
-| quantita' | `fatture_righe.kit_qta` (quanti kit rappresenta la riga), sommata componente per componente |
+| quantita' | `fatture_righe.kit_qta` (quanti kit rappresenta la riga), sommata componente per componente, cioe' per `articolo_id`: per questo una riga di kit ha sempre l'articolo (`chk_fatture_righe_kit_articolo`) |
 | UoM | `fatture_righe.kit_uom_id` (la UoM della riga padre) |
 | periodo | `competenza_dal`, `competenza_al`: un kit su due periodi sono due righe |
 | prezzo unitario | `importo del kit / quantita'` |

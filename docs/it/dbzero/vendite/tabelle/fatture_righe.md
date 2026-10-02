@@ -52,6 +52,7 @@
 | CHECK | chk_fatture_righe_capofila_non_se_stessa |  |
 | CHECK | chk_fatture_righe_competenza_dal_al |  |
 | CHECK | chk_fatture_righe_esigibilita |  |
+| CHECK | chk_fatture_righe_kit_articolo |  |
 | CHECK | chk_fatture_righe_kit_coerente |  |
 | CHECK | chk_fatture_righe_rettificata_non_se_stessa |  |
 | CHECK | chk_fatture_righe_sconto |  |

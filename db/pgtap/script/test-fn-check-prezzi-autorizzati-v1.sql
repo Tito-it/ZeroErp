@@ -697,9 +697,9 @@ BEGIN
 
         INSERT INTO vendite.ddt_righe_componenti
             (riga_ddt_id, articolo_componente_id, componente_id,
-             coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo)
+             coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id)
         VALUES
-            (v_riga, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE')
+            (v_riga, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE', (SELECT uom_id FROM catalogo.articoli WHERE id = k.cmp_id))
         RETURNING id INTO v_comp;
 
         UPDATE vendite.ddt_righe_componenti

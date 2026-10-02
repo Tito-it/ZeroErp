@@ -11,8 +11,9 @@
 > verificato dalla sessione BE su `databasechangelog`). Richieste a BE/FE (§9.5): ✅ **R-1, R-2, R-5
 > fatte dalla sessione BE il 2026-10-01**, ✅ R-4 anche. ✅ **§10** (la conferma del regime la
 > deriva il trigger, revisione di D-11) **SCRITTO dal team DB il 2026-10-02** (`20261002-40 → -42`,
-> §10.4), ⏳ **da applicare** (Tid), poi ⏳ BE §10.3 — ⚠️ fra i due il drawer dell'emittente è
-> rotto (§10.4.3). ⚪ **R-DB-1** (ricalcolo dei riepiloghi dei preventivi) **non bloccante** per
+> §10.4), ✅ **applicato su dbdev il 2026-10-02 da Tid, pgTAP verdi**. ⏳ **BE §10.3 / §10.4.3, ora**:
+> da questo apply la forma di D-11 è rifiutata, e il drawer dell'emittente è rotto finché il BE non
+> si allinea. ⚪ **R-DB-1** (ricalcolo dei riepiloghi dei preventivi) **non bloccante** per
 > decisione di Tid (2026-10-02, §9.5). ✅ **R-DB-3** (le annotazioni del documento, §11) **SCRITTO dal team DB il
 > 2026-10-02** (`20261002-02 → -07`, §11.4), ✅ **applicato su dbdev il 2026-10-02, nessuna
 > regressione pgTAP** (Tid). ⏳ R-3 (sessione BE, ora sbloccato):
@@ -513,7 +514,8 @@ diventa **quello che la deriva**:
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-02. **A chi:** Tid (apply e pgTAP), sessione BE
 > (§10.4.3).
 > **Stato:** ✅ scritto e provato sullo scratch `zeroerp_ci` in transazione annullata (§10.4.4).
-> ⏳ Apply e corsa pgTAP: Tid.
+> ✅ **Applicato su dbdev il 2026-10-02 da Tid (`databasechangelog`: `-40 → -42`), corsa pgTAP
+> verde.** Resta il BE (§10.4.3).
 
 #### 10.4.1 I changeSet
 
@@ -574,6 +576,12 @@ Dall'apply la forma di D-11 è **rifiutata** con `E_EMITTENTE_REGIME_CONFERMA_DE
 * l'autore è `app.jwt_user`, la stessa GUC che il repository usava già: a video non cambia niente;
 * `tests/db/test_regime_fiscale_conferma_db.py`: i casi che scrivono la conferma a mano diventano
   casi di rifiuto (`E_EMITTENTE_REGIME_CONFERMA_DERIVATA`).
+
+* doc `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` §4.2 (righe ~295-298): dice
+  ancora che la conferma «si scrive nella stessa scrittura» e che un cambio senza conferma «la
+  azzera» (trigger `trgfn_emittenti_fiscali_regime_conferma`). Dopo l'apply sono due frasi false:
+  la conferma la deriva il DB da ogni scrittura del regime, e non si azzera più. Riga 215 (in
+  creazione «presente = confermato») vale solo con l'`UPDATE` successivo alla `INSERT`.
 
 Nessuna chiave i18n: il codice è `TECNICO`, e non arriva a un operatore se il BE è allineato.
 
@@ -750,4 +758,3 @@ Come `zeroerp` (proprietario sullo scratch), in `BEGIN … ROLLBACK`, con l'SQL 
   `script/test-catalogo-messaggi-errore-completo.sql` (un sito nuovo per un codice esistente).
 * ✅ **2026-10-02, Tid: migrazione applicata, nessuna regressione** nella corsa pgTAP. Il punto
   «non provato» qui sopra (RLS, apply con Liquibase, runner come app) è coperto da quella corsa.
-

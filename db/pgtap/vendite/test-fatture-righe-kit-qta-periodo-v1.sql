@@ -52,6 +52,9 @@
 --   22) la distinta non ha piu' partecipa_qta
 --   23) la distinta non ha piu' determina_qta_padre
 --   24) i due parametri di default ritirati non ci sono piu'
+--   25) ⭐ una riga di kit senza articolo e' respinta (chk_fatture_righe_kit_articolo,
+--       20261002-43): la vista conta i kit per articolo, e due righe senza
+--       articolo sommerebbero le loro quantita'
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -61,7 +64,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: il test gira come l'applicazione (RLS attiva).
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(24);
+SELECT plan(25);
 
 -- ============================================================
 -- FIXTURE
@@ -310,6 +313,13 @@ SELECT is(
       WHERE code IN ('CATALOGO_BOM_DEFAULT_PARTECIPA_QTA', 'CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE')),
     0,
     '24) i parametri di default dei due flag sono ritirati');
+
+-- Il frammento e' il NOME del vincolo: 23514 da solo passerebbe anche per il
+-- CHECK di coerenza, cioe' per il motivo sbagliato.
+SELECT throws_like(
+    $$SELECT pg_temp.fx_kqp(95, 'KA', 'DESCRITTIVO', NULL, (SELECT u1 FROM tmp_kqp_u), 1, 1, 1)$$,
+    '%chk_fatture_righe_kit_articolo%',
+    '25) una riga di kit senza articolo e'' respinta: un componente e'' un articolo');
 
 SELECT * FROM finish();
 ROLLBACK;

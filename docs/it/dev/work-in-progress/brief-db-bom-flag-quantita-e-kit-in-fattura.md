@@ -282,6 +282,63 @@ valorizzano già.
   `kit_qta`; gli 8 INSERT di componenti in 7 file portano la UoM vera del componente — tre `throws_ok`
   aspettavano il CHECK sull'origine, e il NOT NULL sarebbe scattato prima; altri tre accettavano
   qualunque errore e sarebbero passati per il motivo sbagliato.
+* ⚠️ **Il nono, sfuggito (corsa di Tid, 2026-10-02)**: `script/test-fn-check-prezzi-autorizzati-v1.sql`,
+  INSERT su `ddt_righe_componenti` (fixture dei casi DDT) senza `uom_operativa_id` → `23502`, 13/44
+  rossi. Il censimento di prima aveva corretto le due sorelle dello stesso file (preventivi, ordini)
+  e non questa. Corretta allo stesso modo (UoM del componente); provato sullo scratch in
+  transazione annullata: 44/44. Ricensimento con un parser su tutti i `db/pgtap/**` e sui changelog
+  (INSERT sulle cinque tabelle del `-66` senza la colonna): nessun altro caso.
+* ⚠️ **`vendite/test-vw-fattura-righe-esposte-tre-modi-v1.sql` test 8 (corsa di Tid, 2026-10-02)**:
+  il padre KV usciva con `qta = 2` invece di 1. La vista `-64` raggruppa il kit **componente per
+  componente**, cioè per `articolo_id`; la fixture scriveva le righe di kit **senza articolo**, e i
+  due componenti di KV cadevano nello stesso gruppo `NULL`: `sum(kit_qta)` = 1 + 1. Corretta la
+  fixture (tre articoli componente, uno per posizione nel kit); scratch in transazione annullata:
+  18/18.
+  ⛔ **Ma il difetto non è solo della fixture: il modello lo ammette.** `chk_fatture_righe_kit_coerente`
+  non pretende `articolo_id` su una riga di kit, e su due componenti senza articolo la vista dà una
+  quantità del kit **sbagliata, senza errore**. Chi scrive le righe di kit in fattura è il BE
+  (`fatture_righe_service`, `pipeline_repository`). Decisione per Tid in §8.2.1.
+  Stessa forma, verdi **per coincidenza** (non asseriscono la quantità del padre):
+  `vendite/test-vw-fattura-righe-lista-v1.sql` (KA, tre componenti senza articolo → la vista gli dà 3
+  kit) e `vendite/test-fatture-righe-importo-e-kit-v1.sql` (K-TEST). Da allineare insieme alla §8.2.1.
+
+#### 8.2.1 Una riga di kit senza articolo — ✅ decisa la strada (a) (Tid, 2026-10-02)
+
+> ✅ **Scritto il 2026-10-02**: `00_schema/vendite/20261002-43` (CHECK
+> `chk_fatture_righe_kit_articolo`: `kit_key IS NULL OR articolo_id IS NOT NULL`, un CHECK suo e non
+> dentro quello di coerenza: due regole, due nomi). `preCondition` HALT sulle righe di kit senza
+> articolo già scritte (su dbdev non le ho contate: come app sotto RLS uno zero non direbbe
+> niente; se il migrate si ferma, la query è nel messaggio). Censimento dei writer: solo il BE
+> (`pipeline_repository`, l'articolo del gruppo è il `componente_id` della riga del documento);
+> nessuna funzione del DB scrive righe di kit. Nessuna richiesta al BE.
+> pgTAP: `test-fatture-righe-kit-qta-periodo-v1` **test 25** nuovo (`throws_like` sul nome del
+> vincolo, piano 25); fixture allineate in `test-vw-fattura-righe-lista-v1` (KA, KB) e
+> `test-fatture-righe-importo-e-kit-v1` (K-TEST). Prova sullo scratch con l'SQL estratto in testa,
+> transazione annullata: `kit-qta-periodo` 25/25, `tre-modi` 18/18, `lista` 14/14 (precondizioni a
+> 0). ⚠️ `importo-e-kit` sullo scratch si ferma prima, sul difetto di fixture già in baseline
+> (`ERRORE_FIXTURE`, registro senza emittente): la sua modifica la prova solo la corsa su dbdev.
+> Pagina `manual/` di `fatture_righe` aggiornata.
+> ✅ **Applicato su dbdev il 2026-10-02 da Tid (`20261002-43`), corsa pgTAP verde**: la
+> `preCondition` non ha trovato righe di kit senza articolo, e i file corretti in questo giro
+> (`test-fn-check-prezzi-autorizzati-v1`, `tre-modi`, `lista`, `importo-e-kit`,
+> `kit-qta-periodo` con il test 25) sono verdi.
+> Fuori da questo cantiere, nello stesso giro: `vendite/test-fn-list-ddt-da-pushare-v1.sql` sceglieva
+> «l'ultimo articolo attivo», senza il filtro `is_composito IS FALSE` dei fratelli; su dbdev era un
+> kit con componenti gestiti, la bolla muoveva merce e la porta del registro (`20260928-71`)
+> rifiutava l'`UPDATE` a EMESSO. Ora costruisce un articolo semplice non gestito; verde.
+
+
+Un componente di kit è un articolo della distinta (`articoli_componenti.componente_id` è NOT NULL),
+e la vista lo identifica per `articolo_id`. Due strade:
+
+* **(a, consigliata)** CHECK: `kit_key IS NOT NULL → articolo_id IS NOT NULL`, aggiunto a
+  `chk_fatture_righe_kit_coerente` (o un CHECK suo). Il contratto lo dice la tabella, e la vista
+  resta com'è. Prima: censire i writer del BE (devono già scriverlo: una riga di kit nasce da un
+  componente) e le righe di kit su dbdev senza articolo (`preCondition` HALT, si correggono a
+  mano); poi le due fixture qui sopra.
+* **(b)** la vista tratta una riga senza articolo come un componente a sé (`COALESCE(articolo_id,
+  id)` nel raggruppamento). Non rifiuta niente, ma dà un significato a una riga che il modello non
+  sa spiegare («componente di quale distinta?»).
 
 ### 8.3 Come è stato provato, e cosa la prova NON copre
 

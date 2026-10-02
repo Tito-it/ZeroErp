@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA RIGA DI KIT E' UN COMPONENTE, E UN COMPONENTE E' UN ARTICOLO
+#   vendite.fatture_righe: CHECK chk_fatture_righe_kit_articolo
+#   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura, sezione 8.2.1 (strada a,
+#   Tid 2026-10-02)
+#
+# -- PERCHE' ------------------------------------------------------
+#   vendite.vw_fattura_righe_esposte (20261002-64) conta i kit COMPONENTE PER
+#   COMPONENTE: raggruppa le righe di un kit, in un periodo, per articolo_id
+#   (la generazione spezza lo stesso componente per prezzo, e le righe si
+#   ricompongono), poi pretende che ogni componente dica lo stesso numero di
+#   kit. Su due righe di kit SENZA articolo i due componenti cadono nello
+#   stesso gruppo NULL e i loro kit_qta si sommano: la fattura dice 2 kit dove
+#   ce n'e' uno, senza un errore. Il periodo non c'entra: le due righe sono
+#   dello stesso kit e dello stesso periodo.
+#   Il modello non sa spiegare una riga di kit senza articolo («componente di
+#   quale distinta?»): catalogo.articoli_componenti.componente_id e' NOT NULL.
+#   Quindi lo dice la tabella, e la vista resta com'e'.
+#   ⛔ Scartata: la vista che tratta una riga senza articolo come un componente
+#   a se' (COALESCE(articolo_id, id)): darebbe un significato a una riga che
+#   il modello non ammette.
+#
+# -- CHI SCRIVE (censimento 2026-10-02) ---------------------------
+#   Solo il backend (pipeline_repository, dalle attivita' fatturabili: per un
+#   componente l'articolo e' il componente_id della riga del documento). Nessuna
+#   funzione del DB scrive righe di kit; le rettifiche le genera il backend
+#   copiando la riga rettificata.
+#
+# -- UN CHECK SUO, non dentro chk_fatture_righe_kit_coerente ------
+#   Quello dice «i metadati del kit stanno insieme»; questo dice «un componente
+#   e' un articolo». Due regole, due nomi: chi legge l'errore sa quale.
+#
+#   preCondition HALT: una riga di kit gia' scritta senza articolo fermerebbe
+#   l'ADD CONSTRAINT a meta' migrate. Si corregge a mano prima (la query e'
+#   quella della preCondition). Su un DB da zero la tabella e' vuota.
+#   ⚠️ preCondition su vendite.fatture_righe, dato di esercizio, non su un seed
+#   di 80_data: non e' il divieto di linee-guida-sql 11.4.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261002-43-alter-fatture-righe-chk-kit-articolo-mctit.yaml
+
+  - changeSet:
+      id: 20261002-43-alter-fatture-righe-chk-kit-articolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatture_righe: CHECK chk_fatture_righe_kit_articolo (una riga di kit ha sempre
+        articolo_id). La vista vw_fattura_righe_esposte conta i kit per componente, cioe' per
+        articolo: due righe di kit senza articolo sommerebbero le loro quantita'. Brief:
+        brief-db-bom-flag-quantita-e-kit-in-fattura, sezione 8.2.1.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            Ci sono righe di fattura di kit (kit_key valorizzato) senza articolo_id: vanno
+            corrette a mano prima del CHECK chk_fatture_righe_kit_articolo
+            (SELECT id, fattura_id, kit_key FROM vendite.fatture_righe
+            WHERE kit_key IS NOT NULL AND articolo_id IS NULL).
+        - and:
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE c.conrelid = 'vendite.fatture_righe'::regclass
+                     AND c.conname = 'chk_fatture_righe_kit_articolo';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM vendite.fatture_righe
+                   WHERE kit_key IS NOT NULL AND articolo_id IS NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_righe
+                  ADD CONSTRAINT chk_fatture_righe_kit_articolo
+                  CHECK (kit_key IS NULL OR articolo_id IS NOT NULL);
+
+              COMMENT ON CONSTRAINT chk_fatture_righe_kit_articolo ON vendite.fatture_righe IS
+                  'Una riga di kit e'' un componente, e un componente e'' un articolo della distinta: '
+                  'kit_key valorizzato vuole articolo_id. La vista vw_fattura_righe_esposte conta i '
+                  'kit componente per componente, cioe'' per articolo: senza, due righe di kit senza '
+                  'articolo cadrebbero nello stesso gruppo e sommerebbero le loro quantita''. Brief: '
+                  'brief-db-bom-flag-quantita-e-kit-in-fattura (sezione 8.2.1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_righe
+                  DROP CONSTRAINT IF EXISTS chk_fatture_righe_kit_articolo;

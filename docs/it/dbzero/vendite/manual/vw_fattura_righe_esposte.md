@@ -76,9 +76,12 @@ nessuno.
 
 * **Quantità e UoM della riga padre** (dal 2026-10-02, `20261002-64`) = quelle
   della **riga padre del documento**, congelate su ogni componente alla generazione
-  (`fatture_righe.kit_qta`, `kit_uom_id`). Si leggono **componente per componente**
-  (le righe dello stesso componente, che la generazione separa anche per prezzo, si
-  sommano) e valgono se tutti i componenti dicono lo stesso numero di kit, valorizzati
+  (`fatture_righe.kit_qta`, `kit_uom_id`). Si leggono **componente per componente**,
+  cioè per `articolo_id` (le righe dello stesso componente, che la generazione separa
+  anche per prezzo, si sommano). Per questo una riga di kit ha **sempre** l'articolo
+  (`chk_fatture_righe_kit_articolo`, dal 2026-10-02): due componenti senza articolo
+  cadrebbero nello stesso gruppo e la quantità del kit raddoppierebbe, senza un errore.
+  Le quantità valgono se tutti i componenti dicono lo stesso numero di kit, valorizzati
   compresi: un kit senza resto ha comunque la sua quantità. Se non lo dicono — una
   nota di credito parziale, dove si rende un componente solo — quantità e prezzo
   della riga padre sono `NULL`: il kit lì non ha una quantità, e il caso **non si
