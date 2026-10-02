@@ -974,8 +974,8 @@ class PreventiviRepository(
     # componente) + resolver_error_reason. Consumato dal FE per
     # pre-popolare la tabella componenti del drawer riga PRIMA del save.
     # Modello unificato 2026-05-13: tutti i componenti attivi sono
-    # restituiti (no filtro esposto_in_fattura), proiezione include
-    # `obbligatorio` (gate prezzo zero) e `esposto_in_fattura` (flag
+    # restituiti (no filtro sull'esposizione), proiezione include
+    # `obbligatorio` (gate prezzo zero) e `esposizione_in_fattura` (modo
     # presentazione fattura).
     def preview_componenti_riga(
         self,
@@ -1006,7 +1006,7 @@ class PreventiviRepository(
                    origine_prezzo,
                    resolver_error_reason,
                    obbligatorio,
-                   esposto_in_fattura
+                   esposizione_in_fattura
               FROM vendite.fn_preventivo_riga_componenti_preview(
                   %s, %s, %s, %s, %s, %s, %s, %s
               )

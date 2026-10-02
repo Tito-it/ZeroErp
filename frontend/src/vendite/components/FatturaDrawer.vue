@@ -651,6 +651,20 @@ const suVisibile = gestoreVisibile(emit, onClose)
                     · {{ formatNumber(c.quantita, { placeholder: '—', minimumFractionDigits: 0, maximumFractionDigits: 6 }) }}
                     {{ c.uom_codice || '' }}
                   </span>
+                  <!-- Il VALORIZZATO porta prezzo, sconto e importo suoi, fuori
+                       dal totale del padre (dal 2026-10-01): si leggono qui,
+                       sotto il kit a cui resta legato. Il DESCRITTIVO li ha
+                       NULL — il suo valore e' nel padre — e non mostra niente:
+                       un «—» farebbe leggere «a costo zero». Per lo stesso
+                       motivo un padre con importo vuoto e' un kit senza resto
+                       (tutti valorizzati), non un errore. -->
+                  <span v-if="c.importo_riga != null" class="app-fattura-componente-importo">
+                    × {{ formatCurrency(c.prezzo_unitario, { placeholder: '—' }) }}
+                    <template v-if="Number(c.sconto_percentuale) > 0">
+                      − {{ formatNumber(c.sconto_percentuale, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}%
+                    </template>
+                    = <strong>{{ formatCurrency(c.importo_riga) }}</strong>
+                  </span>
                 </li>
               </ul>
             </template>
@@ -749,5 +763,8 @@ const suVisibile = gestoreVisibile(emit, onClose)
 .app-fattura-componenti {
   margin: 0;
   padding-left: 1.2rem;
+}
+.app-fattura-componente-importo {
+  margin-left: 0.4rem;
 }
 </style>

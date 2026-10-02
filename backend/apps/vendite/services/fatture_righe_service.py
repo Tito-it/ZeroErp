@@ -15,7 +15,6 @@ from typing import Any
 from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.value_normalizer import as_bool
 from apps.vendite.db.commesse_repository import TIPO_MOVIMENTO_RETTIFICA
 from apps.vendite.db.pipeline_repository import (
     AttivitaDaFatturare,
@@ -39,7 +38,8 @@ from apps.vendite.types import GroupAttivitaKey
 class _KitSnapshot:
     key: str | None = None
     articolo_padre_id: str | None = None
-    esposto_in_fattura: bool | None = None
+    # Codice di `config.esposizioni_componente`; None sulle righe sciolte.
+    esposizione: str | None = None
 
 
 # Accumulatore di un gruppo di attività destinate a UNA riga di fattura.
@@ -334,7 +334,7 @@ class FattureRigheService:
 
     # Scopo: Estrae dallo `meta` dell'attività lo snapshot di esposizione kit.
     # Perimetro: nessuna risoluzione di distinta base — il push ha già scritto
-    # `componente_di` ed `esposto_in_fattura`. Risultato: snapshot vuoto per le
+    # `componente_di` ed `esposizione`. Risultato: snapshot vuoto per le
     # righe normali, valorizzato per i componenti di kit.
     @staticmethod
     def _build_kit_snapshot(attivita: AttivitaDaFatturare) -> _KitSnapshot:
@@ -360,8 +360,8 @@ class FattureRigheService:
         return _KitSnapshot(
             key=kit_key,
             articolo_padre_id=padre,
-            esposto_in_fattura=as_bool(
-                meta.get(kit_meta.META_KEY_ESPOSTO_IN_FATTURA), default=False
+            esposizione=kit_meta.esposizione_o_default(
+                meta.get(kit_meta.META_KEY_ESPOSIZIONE)
             ),
         )
 
@@ -509,7 +509,7 @@ class FattureRigheService:
             righe_iva_ids: list[int | None] = []
             righe_dest_ba_ids: list[int] = []
             righe_kit_keys: list[str | None] = []
-            righe_kit_esposti: list[bool | None] = []
+            righe_kit_esposizioni: list[str | None] = []
             righe_kit_padri: list[str | None] = []
             righe_metas: list[str | None] = []
             # Le due colonne della rettifica. Restano piene di `None` su un
@@ -539,7 +539,7 @@ class FattureRigheService:
                 righe_iva_ids.append(gk["iva_id"])
                 righe_dest_ba_ids.append(gk["dest_billing_account_id"])
                 righe_kit_keys.append(gruppo.kit.key)
-                righe_kit_esposti.append(gruppo.kit.esposto_in_fattura)
+                righe_kit_esposizioni.append(gruppo.kit.esposizione)
                 righe_kit_padri.append(gruppo.kit.articolo_padre_id)
                 righe_sconti.append(_to_decimal(gk["sconto_percentuale"]))
                 righe_rettificate.append(gk["fattura_riga_rettificata_id"])
@@ -582,7 +582,7 @@ class FattureRigheService:
                 righe_iva_ids=righe_iva_ids,
                 righe_dest_billing_account_ids=righe_dest_ba_ids,
                 righe_kit_keys=righe_kit_keys,
-                righe_kit_esposti=righe_kit_esposti,
+                righe_kit_esposizioni=righe_kit_esposizioni,
                 righe_kit_articolo_padre_ids=righe_kit_padri,
                 righe_sconti=righe_sconti,
                 righe_rettificate=righe_rettificate,
@@ -620,7 +620,7 @@ class FattureRigheService:
                     "group_key": gk,
                     "kit_key": kit.key,
                     "kit_padre": kit.articolo_padre_id,
-                    "kit_esposto": kit.esposto_in_fattura,
+                    "kit_esposizione": kit.esposizione,
                 },
                 sort_keys=True,
             )
@@ -706,6 +706,11 @@ class FattureRigheService:
     # stesso kit con IVA diverse producono DUE righe padre distinte (regola R13),
     # ognuna con la propria media. Confrontarne le quantità fra loro sarebbe un
     # falso positivo su una configurazione legittima.
+    # ⭐ L'esposizione NON entra nella chiave, ed è voluto (riletto il
+    # 2026-10-01, brief-db-esposizione-componenti-kit-in-fattura R-BE-3): la
+    # vista calcola la media su TUTTI i componenti, valorizzati compresi — un
+    # kit senza resto ha comunque la sua quantità. Cambia l'importo del padre,
+    # non la sua quantità, quindi la regola qui resta la stessa.
     @staticmethod
     def _guard_quantita_kit_omogenee(
         gruppi: list[_GruppoRiga], *, function_name: str

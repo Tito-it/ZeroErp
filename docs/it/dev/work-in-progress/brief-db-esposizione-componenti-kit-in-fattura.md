@@ -11,6 +11,8 @@
 > — **R-FE-1 blocca la CI**, **R-BE-1 blocca la generazione di una fattura con un kit** su dbdev.
 > Al merge di R-BE-2 si lancia lo script di §9.3. Restano da confermare §9.1 e §9.2 (già applicati
 > così a DB: una conferma, non lavoro).
+> ✅ **Giro BE/FE del 2026-10-02 (§10)**: R-BE-1/2/3/4/5/7 fatti, R-FE-1/4/5 chiusi. ⏳ **R-DB-K1**
+> (una riga in `tabelle_gestibili.csv`) blocca R-BE-6, e con lui R-FE-2/3. Passi di Tid in §10.3.
 >
 > **In una riga:** oggi un componente di kit in fattura o non compare, o compare come riga
 > descrittiva **senza prezzo**. Manca il terzo modo, quello che si intende di solito con «esposto in
@@ -318,3 +320,57 @@ Registrati, non aperti:
 * **Un commento nel corpo di `fn_accredita_riga_reso`** elenca le chiavi del meta kit col nome
   vecchio: diventa stantio quando il BE rinomina la chiave (R-BE-2). Si corregge al prossimo giro
   sulla funzione — ricrearne il corpo per un commento non vale il rischio.
+
+## 10. Giro BE/FE (2026-10-02, `dev/backend-tid`)
+
+> **Chi scrive:** sessione BE/FE, 2026-10-02. **A chi:** Tid (passi di §10.3); team DB (R-DB-K1).
+
+### 10.1 Esito delle richieste
+
+| # | Esito | Dove |
+| --- | --- | --- |
+| **R-BE-1** | ✅ la riga di fattura scrive `kit_esposizione` (array `varchar[]` nell'`unnest`, parametro `righe_kit_esposizioni`). Provato sul DB vero con lo smoke della fatturazione (kit con un VALORIZZATO e un DESCRITTIVO, in transazione annullata): modi congelati coi codici, vista con padre = descrittivo, valorizzato con importo e `kit_riga_nr` del padre, totale invariato | `pipeline_repository.py`, `fatture_righe_service.py`, `smoke-fatturazione-aggregazione-righe.py` (test 8b, 11 nuovi) |
+| **R-BE-2** | ✅ `META_KEY_ESPOSIZIONE = "esposizione"`, valore il codice. Scrittore e lettore passano dallo stesso `kit_meta.esposizione_o_default`: chiave assente o vuota = `NASCOSTO` (il DEFAULT della colonna di distinta, e la stessa lettura dello script §9.3). ⛔ Nessuna lettura della chiave vecchia: un meta non corretto con `esposto_in_fattura: true` finirebbe NASCOSTO — per questo lo script va lanciato **subito** (§10.3). Un valore fuori vocabolario non si giudica in Python: lo ferma la FK su `kit_esposizione` | `_kit_meta.py`, `commesse_source_handlers.py`, `fatture_righe_service.py` |
+| **R-BE-3** | ✅ riletto: **la regola resta**. La vista raggruppa il padre per (fattura, kit, IVA, BA) e fa la media della quantità su **tutti** i componenti, valorizzati compresi: l'esposizione cambia l'importo del padre, non la sua quantità. Il guard R10 resta com'è; commento aggiornato, due test nuovi (modi misti con quantità uguali passano; un valorizzato con quantità diversa si ferma) | `fatture_righe_service.py` |
+| **R-BE-4** | ✅ distinta: `esposizione_in_fattura` nella whitelist di scrittura, estratto come stringa non nulla; i valori li giudica la FK (`23503` → `400 E_CATALOGO_VALIDATION`, traduttore già esistente). Il booleano vecchio torna `400` come chiave sconosciuta (test). Ordinamento della lista 101 su `esposizione_in_fattura_codice` — erano i due rossi di `test_liste_configurabili_seed` | `catalogo_bom_repository.py`, `catalogo_service.py` |
+| **R-BE-5** | ✅ anteprime e componenti di riga leggono `esposizione_in_fattura` (cinque `fn_*_preview`, il JOIN del mixin, il bundle dei listini, i `TypedDict`). Binding provato col **piano** sul DB vero (`EXPLAIN` di ogni query, con un controllo negativo sulla colonna vecchia che deve fallire, e fallisce): sotto RLS le tabelle erano vuote, e uno zero non provava niente | repository vendite, `types.py` |
+| **R-BE-6** | ⏳ **bloccato da R-DB-K1** (§10.2). La voce in `_LOOKUP_SPECIALIZZATE` è pronta da scrivere (`extra_col: etichetta_key`, `has_codice_interno: True`, `has_obsoleto: False`, `has_attivo: False`), ma `test_lookup_specializzate` pretende — giustamente — che ogni specializzata stia nella whitelist DB: aggiungerla prima la manderebbe rossa | `dbops_repository.py` |
+| **R-BE-7** | ✅ builder fattura alla **forma 3** (`CONTEXT_VERSION = 3`): i componenti portano `esposizione`, `prezzo_unitario`, `sconto_percentuale`, `importo_riga` formattati come una riga, NULL che restano NULL sul descrittivo. **Template v5** scritto: [`template-fattura-v5.html`](template-fattura-v5.html) = v4 + componenti valorizzati con prezzo/sconto/IVA del padre/importo, padre senza resto con celle vuote (non «-»). Reso col motore vero (StrictUndefined + autoescape) su una fattura con kit costruita sul DB in transazione annullata, nei due casi (con resto, senza resto). Doc API allineate (`api_catalogo`, `api_contratti`, `api_listini`, `api_ordini`, `api_preventivi`; in `pricing_service` la sezione di un metodo ritirato a maggio è stata sostituita da una riga che lo dice) e lo smoke bash dei componenti | builder, test, doc, smoke |
+| **R-FE-1** | ✅ già chiuso prima di questo giro (le tre chiavi sono entrate con `c6793e4db`); `check_i18n_keys` pulito | — |
+| **R-FE-2** | ⏳ **bloccato** (R-DB-K1 → R-BE-6): la scelta fra tre vuole le etichette dal vocabolario, cioè `useLookupEtichettato({ rel: 'config.esposizioni_componente', campoCodice: 'codice_interno' })`. ⚠️ **Fino ad allora il drawer della distinta non salva una riga nuova**: manda ancora il booleano, e il BE lo rifiuta con un 400 che lo nomina. Non è una regressione di questo giro: dall'apply del DB la colonna non c'era più | `ArticoloBomDrawer.vue` |
+| **R-FE-3** | ⏳ **bloccato** come R-FE-2: il modo per esteso è `etichetta(codice)` dello stesso lookup. ⚠️ Fino ad allora la colonna «In fattura» di pannello e dialog dei componenti legge un campo che non arriva più, e mostra «No» per tutti | `ComponentiPanel.vue`, `ComponentiDialog.vue` |
+| **R-FE-4** | ✅ nel drawer fattura l'espansione del kit mostra `× prezzo − sconto% = importo` sui valorizzati; niente sui descrittivi | `FatturaDrawer.vue` |
+| **R-FE-5** | ✅ nessun codice: la colonna non ha uno slot e rende il `campo_sorgente` del CSV (il codice del modo). Il formato con l'etichetta tradotta viene con R-FE-3 | — |
+
+Test: suite Django completa **6027 verdi** col secondo livello acceso (`ZEROERP_TEST_DB_E2E=1`), build FE e lint puliti.
+⚠️ Non lanciato: lo smoke bash `smoke-test-preventivi-componenti.sh` (crea dati via HTTP, vuole il BE riavviato).
+
+### 10.2 Richiesta al team DB
+
+| # | Cosa | Perché |
+| --- | --- | --- |
+| **R-DB-K1** | Una riga in `80_data/sql/config/tabelle_gestibili.csv`: `config.esposizioni_componente`, `lookup = true`, `pannello = false` (è la semantica della vista, non una configurazione: §9.2) | è la whitelist del lookup generico; senza, `GET /core/lookup/codici/?rel=config.esposizioni_componente` risponde 400 e il FE non ha le tre etichette. Sblocca R-BE-6 → R-FE-2, R-FE-3 |
+
+### 10.3 I passi di Tid, in quest'ordine
+
+1. **Riavvio del backend** (`kill -HUP` sul master gunicorn): da qui la fattura si genera con un kit e
+   il builder produce la **forma 3**. ⚠️ Da questo momento la **v4 pubblicata non stampa più** (409
+   del patto: legge la forma 2) finché non è pubblicata la v5 — la finestra va tenuta corta.
+2. **Script §9.3 sul meta delle attività**, subito: prima prova (`ROLLBACK`), poi `-v applica=1`.
+   Senza, un'attività vecchia con `esposto_in_fattura: true` si fatturerebbe NASCOSTO invece che
+   DESCRITTIVO, senza errore.
+   ✅ **Fatto da Tid il 2026-10-02** (`COMMIT`): chiave vecchia da 24 → 0 su `commesse_attivita`
+   (8 DESCRITTIVO, 16 NASCOSTO) e da 21 → 0 su `attivita_fatturabili` (7 DESCRITTIVO, 14
+   NASCOSTO), tutti codici a catalogo, **nessuna riga rifiutata**; `fatture_righe.meta` senza la
+   chiave vecchia.
+3. **Bozza v5** dall'app: template «fattura» → versione 4 → «Clona»; HTML sostituito col contenuto di
+   [`template-fattura-v5.html`](template-fattura-v5.html), «Legge i dati nella forma» = **3**.
+4. **Pubblicare la v5** (`valido_dal` = oggi): la v4 diventa OBSOLETA.
+
+### 10.4 La numerazione condivisa con l'esigibilità
+
+Il kit è arrivato per primo e ha preso **forma 3 / v5**. Il giro R-3 di
+`brief-db-esigibilita-iva-per-cassa-emittente.md` passa a **forma 4 / v6**: la sua bozza è stata
+rinominata [`template-fattura-v6.html`](template-fattura-v6.html) e rifatta sopra la v5 (v5 + il solo
+blocco annotazioni, verificato con `diff`); il brief è aggiornato (§11.3).
+

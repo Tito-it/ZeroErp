@@ -45,6 +45,15 @@
 #        Chiavi di riga: quelle della vista (`riga_key`, `fatture_righe_id`,
 #        `riga_rettificata_documento` parlante…); via `id`, `livello` e
 #        `riga_rettificata_fattura_numero` della forma 1.
+#
+#        ⭐ FORMA 3 dal 2026-10-02 (brief-db-esposizione-componenti-kit-in-
+#        fattura, R-BE-7): un componente porta il suo modo (`esposizione`:
+#        DESCRITTIVO | VALORIZZATO) e, se VALORIZZATO, `prezzo_unitario`,
+#        `sconto_percentuale` e `importo_riga` suoi, FUORI dal totale del
+#        padre; un padre senza resto (tutti valorizzati) ha `importo_riga`
+#        NULL. Una versione scritta per la forma 2 su questi dati stamperebbe
+#        il kit senza l'importo dei valorizzati e la fattura non tornerebbe
+#        coi totali: per questo e' una forma nuova, non chiavi in piu'.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -78,7 +87,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
 
     CODE = "FATTURA"
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
-    CONTEXT_VERSION = 2
+    CONTEXT_VERSION = 3
 
     # Scopo: Iniezione opzionale dei repository per testabilità (mock). In
     #        runtime il default va benissimo: l'istanza è singleton di processo
@@ -98,7 +107,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
     #         2. testata via `get_fattura_testata` (None → NOT_FOUND);
     #         3. righe (primo livello, kit coi componenti dentro) + riepilogo
     #            IVA (tabella reale fatture_riepiloghi_iva);
-    #         4. compone la shape della forma `CONTEXT_VERSION` (2).
+    #         4. compone la shape della forma `CONTEXT_VERSION` (3).
     def build_context(
         self,
         sorgente_id: int,
@@ -261,7 +270,10 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
     #        componenti esposti di un kit come LISTA (`[]` fuori dai kit: il
     #        template scorre `riga.componenti` senza chiedersi se c'e').
     #        `componenti` arriva gia' decodificato dal repository
-    #        (`_righe_jsonb`): NULL fuori dai kit.
+    #        (`_righe_jsonb`): NULL fuori dai kit. Forma 3: i numeri di un
+    #        componente seguono le regole della riga (prezzo e sconto come
+    #        misure, importo come importo); su un DESCRITTIVO sono NULL e
+    #        restano NULL — e' cio' che dice al template «nel totale del kit».
     def _shape_riga(self, riga: dict[str, Any]) -> dict[str, Any]:
         r = formatta_campi(
             riga,
@@ -269,7 +281,11 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             importi=("iva_aliquota", "importo_riga"),
         )
         r["componenti"] = [
-            formatta_campi(dict(c), misure=("quantita",))
+            formatta_campi(
+                dict(c),
+                misure=("quantita", "prezzo_unitario", "sconto_percentuale"),
+                importi=("importo_riga",),
+            )
             for c in (r.get("componenti") or [])
         ]
         return r

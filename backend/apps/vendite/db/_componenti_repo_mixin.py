@@ -72,7 +72,7 @@ class ComponentiRepositoryMixin:
     _componenti_fk_riga: str = ""     # da definire in sottoclasse
 
     # Scopo: Lista componenti BoM di una riga padre con denormalizzazioni
-    # articolo/uom/iva + flag `obbligatorio` / `esposto_in_fattura` (JOIN
+    # articolo/uom/iva + flag `obbligatorio` / modo `esposizione_in_fattura` (JOIN
     # runtime su `articoli_componenti` — BoM immutabile per design, no
     # snapshot necessario).
     #
@@ -110,7 +110,7 @@ class ComponentiRepositoryMixin:
                 c.ordine,
                 c.attivo,
                 ac.obbligatorio,
-                ac.esposto_in_fattura
+                ac.esposizione_in_fattura
               FROM {self._componenti_table_name} c
               LEFT JOIN catalogo.articoli a    ON a.id  = c.componente_id
               LEFT JOIN catalogo.unita_misura um ON um.id = c.uom_operativa_id
@@ -154,7 +154,7 @@ class ComponentiRepositoryMixin:
                 c.ordine,
                 c.attivo,
                 ac.obbligatorio,
-                ac.esposto_in_fattura
+                ac.esposizione_in_fattura
               FROM {self._componenti_table_name} c
               LEFT JOIN catalogo.articoli a    ON a.id  = c.componente_id
               LEFT JOIN catalogo.unita_misura um ON um.id = c.uom_operativa_id

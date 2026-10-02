@@ -188,7 +188,7 @@ class AttivitaDaFatturare:
     # legge vede il `codice`.
     articolo_codice: str | None = None
     # `meta` dell'attivita': porta lo snapshot kit gia' risolto dal push
-    # (`segment_key`, `componente_di`, `esposto_in_fattura`). Nessuna
+    # (`segment_key`, `componente_di`, `esposizione`). Nessuna
     # risoluzione di distinta base a valle: lo stesso componente puo'
     # appartenere a piu' kit, solo il documento sorgente sa quale e' stato
     # venduto. Vedi brief-fix-importi-riga-fattura-zero §4.7-bis (D5).
@@ -3413,7 +3413,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         righe_iva_ids: list[int | None],
         righe_dest_billing_account_ids: list[int],
         righe_kit_keys: list[str | None],
-        righe_kit_esposti: list[bool | None],
+        righe_kit_esposizioni: list[str | None],
         righe_kit_articolo_padre_ids: list[str | None],  # uuid
         righe_sconti: list[Decimal | None],
         righe_rettificate: list[int | None],
@@ -3435,7 +3435,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             "uom_ids": righe_uom_ids, "qtas": righe_qtas,
             "prezzi": righe_prezzi_unitari, "iva_ids": righe_iva_ids,
             "dest_ba_ids": righe_dest_billing_account_ids,
-            "kit_keys": righe_kit_keys, "kit_esposti": righe_kit_esposti,
+            "kit_keys": righe_kit_keys, "kit_esposizioni": righe_kit_esposizioni,
             "kit_padri": righe_kit_articolo_padre_ids, "metas": righe_metas,
             # Le due colonne della rettifica entrano nel guard come tutte le
             # altre: sono esattamente il tipo di array che si dimentica di
@@ -3484,7 +3484,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         %s::int[],
                         %s::bigint[],
                         %s::text[],
-                        %s::boolean[],
+                        %s::varchar[],
                         %s::uuid[],
                         %s::numeric[],
                         %s::bigint[],
@@ -3493,7 +3493,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         fattura_id, riga_nr, articolo_id, descrizione,
                         uom_id, qta, prezzo_unitario, iva_id,
                         dest_billing_account_id,
-                        kit_key, kit_esposto_in_fattura, kit_articolo_padre_id,
+                        kit_key, kit_esposizione, kit_articolo_padre_id,
                         sconto_percentuale, riga_rettificata_id,
                         meta
                     )
@@ -3504,7 +3504,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         uom_id, qta, prezzo_unitario, iva_id,
                         dest_billing_account_id,
                         sorgente_tipo_id, sorgente_uid, sorgente_riga,
-                        kit_key, kit_esposto_in_fattura,
+                        kit_key, kit_esposizione,
                         kit_articolo_padre_id, kit_descrizione_padre,
                         sconto_percentuale, riga_rettificata_id,
                         meta
@@ -3517,7 +3517,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         -- singola da dichiarare. La tracciabilita' passa dal
                         -- puntatore attivita_fatturabili.fattura_riga_id (D4).
                         NULL, NULL, NULL,
-                        d.kit_key, d.kit_esposto_in_fattura,
+                        d.kit_key, d.kit_esposizione,
                         d.kit_articolo_padre_id,
                         CASE WHEN d.kit_articolo_padre_id IS NULL THEN NULL
                              ELSE (SELECT art.descrizione
@@ -3580,7 +3580,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     righe_iva_ids,
                     righe_dest_billing_account_ids,
                     righe_kit_keys,
-                    righe_kit_esposti,
+                    righe_kit_esposizioni,
                     righe_kit_articolo_padre_ids,
                     # ⚠️ L'ordine di questa lista È il contratto con l'`unnest`:
                     # le due nuove vanno PRIMA di `righe_metas`, come nella

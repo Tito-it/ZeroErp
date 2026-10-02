@@ -58,7 +58,7 @@ _IS_COMPOSITO_MODULE_CACHE_TTL_SECONDS = 300
 
 # Chiavi `meta` condivise tra BoMComponentExpander (scrittura) e il wiring
 # audit pricing (lettura): centralizzate per evitare drift silente sui literal.
-# Il contratto kit (`componente_di`, `esposto_in_fattura`, suffisso del
+# Il contratto kit (`componente_di`, `esposizione`, suffisso del
 # `segment_key`) sta in `_kit_meta`: e' letto anche dalla generazione righe
 # fattura, che e' l'altro capo del contratto.
 _META_KEY_ORIGINE_PREZZO = "origine_prezzo"
@@ -115,15 +115,16 @@ class BoMComponentExpander:
 
     Modello unificato componenti BoM 2026-05-13: il padre composito viene
     sempre espanso in N righe (una per ciascun componente attivo della
-    riga sorgente). `esposto_in_fattura` ora e' un flag di presentazione
-    fattura, non gate di expansion: tutti i figli attivi passano in
-    commessa, la separazione fra "padre con totale" e "figli esposti
-    come righe descrittive" avviene a valle (generazione fatture_righe).
+    riga sorgente). `esposizione_in_fattura` e' il modo di presentazione
+    in fattura (NASCOSTO / DESCRITTIVO / VALORIZZATO), non gate di
+    expansion: tutti i figli attivi passano in commessa, e cosa sta nel
+    totale del padre e cosa sulla riga del componente lo decide a valle
+    `vw_fattura_righe_esposte`.
 
     Path snapshot (unico, post cleanup legacy 2026-05-14): legge i
     componenti gia' negoziati al documento sorgente via
     `componenti_loader`, che internamente filtra `attivo=TRUE` (solo
-    componenti effettivamente inclusi). `esposto_in_fattura` arriva dalla
+    componenti effettivamente inclusi). `esposizione_in_fattura` arriva dalla
     proiezione (JOIN runtime su `articoli_componenti`).
 
     Articolo composito senza loader o con snapshot vuoto: pass-through
@@ -235,7 +236,7 @@ class BoMComponentExpander:
         componente_uom_id: int | None,
         componente_prezzo: Any,
         coeff_qta: Decimal,
-        esposto_in_fattura: bool,
+        esposizione: str,
         origine_prezzo: str | None = None,
     ) -> PushableRow:
         quantita_padre = row.quantita if row.quantita is not None else Decimal(0)
@@ -244,7 +245,7 @@ class BoMComponentExpander:
         # Meta: preservo tutto del padre, aggiungo audit componente.
         # `componente_di` permette tracing inverso in commesse_attivita.
         nuovo_meta = dict(row.meta or {})
-        nuovo_meta[kit_meta.META_KEY_ESPOSTO_IN_FATTURA] = esposto_in_fattura
+        nuovo_meta[kit_meta.META_KEY_ESPOSIZIONE] = esposizione
         nuovo_meta[kit_meta.META_KEY_COMPONENTE_DI] = str(row.articolo_id)
         nuovo_meta[kit_meta.META_KEY_COEFF_QTA] = str(coeff_qta)
         if origine_prezzo is not None:
@@ -267,10 +268,10 @@ class BoMComponentExpander:
     #          - `uom_operativa_id` invece di `uom_id`
     #          - `coeff_qta_snapshot` invece di `coeff_qta`
     #          - `origine_prezzo` propagato in meta per audit downstream.
-    #        Modello unificato 2026-05-13: `esposto_in_fattura` arriva
+    #        Modello unificato 2026-05-13: `esposizione_in_fattura` arriva
     #        dalla proiezione del repository (JOIN runtime su
     #        `articoli_componenti`, BoM immutabile per design). Init popola
-    #        TUTTI i figli (no piu' filtro su esposto). Il `list_componenti_riga`
+    #        TUTTI i figli (nessun filtro sull'esposizione). Il `list_componenti_riga`
     #        col default `solo_attivi=True` filtra solo i componenti
     #        effettivamente inclusi nel documento (opzionali disattivati
     #        esclusi dal push verso commessa).
@@ -286,7 +287,11 @@ class BoMComponentExpander:
             componente_uom_id=componente.get("uom_operativa_id") or row.uom_id,
             componente_prezzo=componente["prezzo_unitario"],
             coeff_qta=Decimal(str(componente["coeff_qta_snapshot"])),
-            esposto_in_fattura=bool(componente.get("esposto_in_fattura", False)),
+            # LEFT JOIN sulla distinta nella proiezione: un NULL vale il
+            # default della colonna, non un errore.
+            esposizione=kit_meta.esposizione_o_default(
+                componente.get("esposizione_in_fattura")
+            ),
             origine_prezzo=componente.get("origine_prezzo"),
         )
 
@@ -587,8 +592,8 @@ class BaseSourceHandler(ABC):
     def _expand_rows(self, row: PushableRow) -> list[PushableRow]:
         """Hook per fan-out 1→N. Default: applica BoM v5 via BoMComponentExpander.
 
-        Articoli compositi con almeno un componente esposto in fattura
-        diventano N righe (una per componente obbligatorio attivo).
+        Articoli compositi diventano N righe (una per componente attivo,
+        qualunque sia il suo modo di esposizione in fattura).
         Articoli semplici e CASO B del resolver (1 riga padre) sono
         pass-through. Override completo possibile per pattern non-BoM
         (es. HandlerConsumi fan-out su componenti utility).

@@ -616,7 +616,7 @@ class DdtRepository(
                    origine_prezzo,
                    resolver_error_reason,
                    obbligatorio,
-                   esposto_in_fattura
+                   esposizione_in_fattura
               FROM vendite.fn_ddt_riga_componenti_preview(
                   %s, %s, %s, %s, %s, %s, %s, %s
               )

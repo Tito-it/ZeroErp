@@ -12,7 +12,8 @@
 > fatte dalla sessione BE il 2026-10-01**, ✅ R-4 anche. ⏳ Al team DB: **R-DB-1** (ricalcolo dei
 > riepiloghi dei preventivi, §9.5) e **§10** (la conferma del regime la deriva il trigger, revisione
 > di D-11 decisa da Tid) e **R-DB-3** (le annotazioni del documento, §11: bloccante per R-3). ⏳ R-3:
-> corpo della v5 pronto, builder e pubblicazione dopo l'apply di R-DB-3.
+> corpo della **v6** pronto (era la v5: il kit è arrivato prima e ha preso forma 3 / v5, 2026-10-02,
+> §11.3), builder e pubblicazione dopo l'apply di R-DB-3.
 >
 > **In una riga:** un emittente in regime di **IVA per cassa** (art. 32-bis, codice RF17) deve
 > emettere fatture con esigibilità **D** (differita); il sistema oggi scrive **I** (immediata) e non
@@ -490,8 +491,8 @@ diventa **quello che la deriva**:
 
 > **Chi scrive:** sessione BE, 2026-10-01. **A chi:** team DB (R-DB-3, **bloccante per R-3**); Tid
 > per la decisione AN-1.
-> **Stato:** ⏳ R-DB-3 da scrivere lato DB. Lato BE pronto il **corpo della v5** del template
-> ([`template-fattura-v5.html`](template-fattura-v5.html)); builder e pubblicazione dopo l'apply.
+> **Stato:** ⏳ R-DB-3 da scrivere lato DB. Lato BE pronto il **corpo della v6** del template
+> ([`template-fattura-v6.html`](template-fattura-v6.html)); builder e pubblicazione dopo l'apply.
 
 ### 11.1 Perché non lo fa il BE da solo
 
@@ -530,11 +531,15 @@ nuova del contesto e una versione nuova del template.
 
 ### 11.3 Lato BE e template (dopo l'apply di R-DB-3)
 
-* Builder fattura alla **forma 3**: `annotazioni` = lista di `{codice, testo}` dalla funzione,
+* Builder fattura alla **forma 4**: `annotazioni` = lista di `{codice, testo}` dalla funzione,
   nell'ordine dato; lista vuota quando non ce ne sono. Nient'altro cambia.
-* **Template v5** = v4 + un blocco che stampa le annotazioni sotto i totali, solo se la lista non è
-  vuota. Dichiara la forma 3; si pubblica quando il builder la produce (stessa sequenza di
+* **Template v6** = v5 + un blocco che stampa le annotazioni sotto i totali, solo se la lista non è
+  vuota. Dichiara la forma 4; si pubblica quando il builder la produce (stessa sequenza di
   `brief-db-documenti-versione-contesto-template` §13.2: riavvio, build, bozza dall'app,
   pubblicazione).
-* ⚠️ **Numerazione**: anche `brief-db-esposizione-componenti-kit-in-fattura.md` prevede «forma 3 +
-  v5». Il primo dei due che arriva prende 3/v5, l'altro passa a 4/v6. Annotato anche lì.
+* ✅ **Numerazione risolta (2026-10-02)**: il kit (`brief-db-esposizione-componenti-kit-in-fattura.md`)
+  è arrivato per primo e ha preso **forma 3 / v5** (componenti valorizzati con prezzo e importo).
+  Questo giro passa a **forma 4 / v6**, e il corpo è stato rifatto **sopra la v5 del kit**:
+  [`template-fattura-v6.html`](template-fattura-v6.html) = v5 + il blocco annotazioni, nient'altro
+  (differenza verificata con `diff`). ⚠️ Se la v5 cambiasse prima della pubblicazione della v6, la
+  v6 va rifatta da lì.

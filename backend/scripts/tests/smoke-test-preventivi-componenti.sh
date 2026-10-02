@@ -10,7 +10,7 @@
 # ------------------------------------------------------------
 # Indice test (0..N):
 #  0) Autenticazione JWT (UNA volta, no thundering throttle)
-#  1) Setup CASO A: PATCH BoM attiva -> esposto_in_fattura=TRUE
+#  1) Setup CASO A: articolo composito nuovo + riga BoM esposizione_in_fattura=DESCRITTIVO
 #  2) Discovery cliente + emittente (BA con utility + emittente attivo)
 #  3) Cleanup proattivo: delete preventivi smoke precedenti
 #  4) Crea preventivo DRAFT con suffisso unico (smoke-<EPOCH>)
@@ -22,7 +22,7 @@
 # 10) DELETE componente (se >1): verifica padre ricalcolato
 # 11) Guard transizione: tenta cambio stato verso ACCETTATO con prezzo
 #     PENDING (se applicabile) -> deve fallire E_PREVENTIVO_RIGHE_PRICING_PENDENTI
-# 12) Cleanup finale: delete preventivo + restore esposto_in_fattura=FALSE
+# 12) Cleanup finale: delete preventivo + chiudi BoM + disattiva articolo
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -160,7 +160,7 @@ BOM_PAYLOAD=$(cat <<EOF
   "componente_id": "$COMPONENTE_REFERENCE_ID",
   "coeff_qta": 1,
   "obbligatorio": true,
-  "esposto_in_fattura": true,
+  "esposizione_in_fattura": "DESCRITTIVO",
   "partecipa_qta": true,
   "determina_qta_padre": false,
   "valido_dal": "$DATA_IERI_UTC",
@@ -174,7 +174,7 @@ check_http "POST BoM componente esposto" "200" || {
     exit 3
 }
 NEW_BOM_ROW_ID=$(json_get "$LAST_BODY" "data.id")
-log_info "Creata BoM riga id=$NEW_BOM_ROW_ID (esposto=TRUE)"
+log_info "Creata BoM riga id=$NEW_BOM_ROW_ID (esposizione=DESCRITTIVO)"
 
 # =====================================================
 # 2) Discovery cliente + emittente

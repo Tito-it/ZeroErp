@@ -29,9 +29,29 @@ SEP_COMPONENTE = "#CMP:"
 # si risale mai alla distinta base, perche' lo stesso componente puo'
 # appartenere a piu' kit e solo il documento sorgente sa quale e' stato venduto.
 META_KEY_COMPONENTE_DI = "componente_di"
-META_KEY_ESPOSTO_IN_FATTURA = "esposto_in_fattura"
+# Il modo di esposizione in fattura: un CODICE di `config.esposizioni_componente`
+# (NASCOSTO / DESCRITTIVO / VALORIZZATO), letto dalla distinta al push e
+# congelato su `fatture_righe.kit_esposizione`. Fino al 2026-10-01 era il
+# booleano `esposto_in_fattura` (brief-db-esposizione-componenti-kit-in-fattura).
+META_KEY_ESPOSIZIONE = "esposizione"
 META_KEY_SEGMENT_KEY = "segment_key"
 META_KEY_COEFF_QTA = "coeff_qta"
+
+# Il modo quando la chiave manca: lo stesso DEFAULT della colonna
+# `articoli_componenti.esposizione_in_fattura`, e la stessa lettura della
+# correzione una tantum del meta vecchio (chiave assente -> NASCOSTO). Non e'
+# una copia del vocabolario: i valori ammessi li giudica la FK su
+# `fatture_righe.kit_esposizione`, e un codice sconosciuto si ferma li'.
+ESPOSIZIONE_DEFAULT = "NASCOSTO"
+
+
+# Scopo: Il modo di esposizione di un valore letto (meta o distinta). Assente
+#        o vuoto -> il default; altrimenti il codice com'e', senza giudicarlo.
+def esposizione_o_default(valore: object) -> str:
+    if valore is None:
+        return ESPOSIZIONE_DEFAULT
+    testo = str(valore).strip()
+    return testo or ESPOSIZIONE_DEFAULT
 
 
 # Scopo: Compone il `segment_key` di un componente a partire da quello del

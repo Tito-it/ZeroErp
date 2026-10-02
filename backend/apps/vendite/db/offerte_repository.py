@@ -844,8 +844,9 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     ) -> list[dict[str, Any]]:
         # Proiezione allineata al RETURNS TABLE della fn DB
         # `fn_offerta_eccezione_componenti_preview` (rev 2026-05-27, modello
-        # unificato: filtro `esposto_in_fattura=TRUE` rimosso dal WHERE +
-        # `obbligatorio`/`esposto_in_fattura` esposti nella proiezione). Shape
+        # unificato: filtro sul flag di esposizione rimosso dal WHERE +
+        # `obbligatorio`/esposizione esposti nella proiezione; dal 2026-10-01
+        # `esposizione_in_fattura` e' il codice del modo, non un booleano). Shape
         # ora identica a `fn_contratto_riga_componenti_preview`: il
         # ComponentiDialog rende i badge "Obbligatorio" / "In fattura".
         sql = """
@@ -862,7 +863,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                    origine_prezzo,
                    resolver_error_reason,
                    obbligatorio,
-                   esposto_in_fattura
+                   esposizione_in_fattura
               FROM vendite.fn_offerta_eccezione_componenti_preview(
                   %s, %s, %s, %s, %s, %s, %s, %s
               )

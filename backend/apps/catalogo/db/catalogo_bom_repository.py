@@ -39,7 +39,10 @@ COMPONENTE_WRITE_COLUMNS: frozenset[str] = frozenset({
     "valido_dal",
     "valido_al",
     "attivo",
-    "esposto_in_fattura",
+    # Il modo di esposizione in fattura (NASCOSTO / DESCRITTIVO / VALORIZZATO,
+    # `config.esposizioni_componente`): il valore lo giudica la FK, un codice
+    # fuori catalogo torna 23503 (brief-db-esposizione-componenti-kit-in-fattura).
+    "esposizione_in_fattura",
     "meta",
 })
 
@@ -75,7 +78,9 @@ COMPONENTI_SORT_COLUMNS: dict[str, str] = {
     "coeff_qta": "v.coeff_qta",
     "valido_dal": "v.valido_dal",
     "valido_al": "COALESCE(v.valido_al, 'infinity'::date)",
-    "esposto_in_fattura": "v.esposto_in_fattura",
+    # La colonna «In fattura» mostra il CODICE del modo, e si ordina su quello
+    # (dal 2026-10-01 non e' piu' un booleano).
+    "esposizione_in_fattura_codice": "v.esposizione_in_fattura_codice",
 }
 # Le date partono DESC quando nessuno chiede un verso (regola di Tid del
 # 2026-09-02).

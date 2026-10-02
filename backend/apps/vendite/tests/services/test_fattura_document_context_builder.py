@@ -9,12 +9,15 @@
 #        registrazione registry.
 #        ⭐ Forma 2 dal 2026-09-30: righe di primo livello dalla lista
 #        (`list_righe`), i componenti esposti di un kit DENTRO la riga.
+#        ⭐ Forma 3 dal 2026-10-02: un componente VALORIZZATO porta prezzo,
+#        sconto e importo suoi; il padre senza resto ha importo NULL.
 #
 # Indice test (0..N):
 #   0. build_context_shape_e_campi
 #   1. build_context_righe_propagate
 #   1-bis. build_context_righe_chiavi_di_contratto
 #   1-ter. build_context_kit_porta_i_componenti_dentro (2026-09-30)
+#   1-quater. build_context_componente_valorizzato_porta_i_suoi_numeri (2026-10-02)
 #   2. build_context_riepilogo_iva_propagate
 #   3. build_context_id_non_valido_raises_validation
 #   4. build_context_fattura_inesistente_raises_not_found
@@ -140,9 +143,9 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual(cliente["indirizzo"], "Corso Test 12, 00100 Roma RM")
 
         self.assertEqual(ctx["_meta"]["context_code"], "FATTURA")
-        # Forma 2 dal 2026-09-30: righe di primo livello, kit coi componenti
-        # dentro. Pubblicare/stampare vuole una versione di template che la legga.
-        self.assertEqual(ctx["_meta"]["context_version"], 2)
+        # Forma 3 dal 2026-10-02: kit coi componenti dentro, e i VALORIZZATI
+        # coi numeri loro. Pubblicare/stampare vuole una versione che la legga.
+        self.assertEqual(ctx["_meta"]["context_version"], 3)
         self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
         self.assertEqual(ctx["_meta"]["locale"], "it-IT")
 
@@ -227,6 +230,40 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual([c["descrizione"] for c in kit["componenti"]], ["Pezzo A", "Pezzo B"])
         self.assertEqual([c["quantita"] for c in kit["componenti"]], ["2,00", "1,50"])
         self.assertNotIn("KIT_COMPONENTE", [r.get("tipo_riga") for r in righe])
+
+    # 1-quater. Forma 3: il VALORIZZATO porta prezzo, sconto e importo suoi,
+    #           formattati come quelli di una riga; il DESCRITTIVO li ha NULL e
+    #           restano NULL (nessun «0,00» che direbbe omaggio); il padre di un
+    #           kit senza resto ha importo NULL, non zero.
+    def test_build_context_componente_valorizzato_porta_i_suoi_numeri(self) -> None:
+        builder, _, _ = _builder([
+            {
+                "riga_key": "K:42:def", "tipo_riga": "KIT_PADRE", "riga_nr": 1,
+                "descrizione": "Kit senza resto", "quantita": "1.000000",
+                "prezzo_unitario": None, "importo_riga": None,
+                "componenti_numero": 2,
+                "componenti": [
+                    {"riga_nr": 1, "descrizione": "Scrivania", "quantita": 1,
+                     "esposizione": "VALORIZZATO", "prezzo_unitario": 600,
+                     "sconto_percentuale": 10, "importo_riga": 540},
+                    {"riga_nr": 2, "descrizione": "Manuale", "quantita": 1,
+                     "esposizione": "DESCRITTIVO", "prezzo_unitario": None,
+                     "sconto_percentuale": None, "importo_riga": None},
+                ],
+            },
+        ])
+
+        kit = builder.build_context(42)["righe"][0]
+
+        self.assertIsNone(kit["importo_riga"])
+        valorizzato, descrittivo = kit["componenti"]
+        self.assertEqual(valorizzato["esposizione"], "VALORIZZATO")
+        self.assertEqual(valorizzato["prezzo_unitario"], "600,00")
+        self.assertEqual(valorizzato["sconto_percentuale"], "10,00")
+        self.assertEqual(valorizzato["importo_riga"], "540,00")
+        self.assertEqual(descrittivo["esposizione"], "DESCRITTIVO")
+        for chiave in ("prezzo_unitario", "sconto_percentuale", "importo_riga"):
+            self.assertIsNone(descrittivo[chiave])
 
     # 2. Il riepilogo IVA (tabella reale) passa intatto nel context.
     def test_build_context_riepilogo_iva_propagate(self) -> None:

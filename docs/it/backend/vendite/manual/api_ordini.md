@@ -322,7 +322,7 @@ di prezzo) o un dialog di conferma che la raccolga: non è di questo cantiere.
 | --- | --- |
 | `POST /<id>/righe/preview-componenti/` | Preview read-only dei componenti BoM (pre-save). Payload: `articolo_id`, `uom_operativa_id`, `quantita` |
 | `GET /<id>/righe/<riga_id>/componenti/` | Lista componenti persistiti (`?solo_attivi=true`) |
-| `PATCH /<id>/righe/<riga_id>/componenti/<componente_id>/` | Aggiorna componente (solo DRAFT): `prezzo_unitario`, `attivo`, `esposto_in_fattura`, `meta` |
+| `PATCH /<id>/righe/<riga_id>/componenti/<componente_id>/` | Aggiorna componente (solo DRAFT): `prezzo_unitario`, `attivo`, `meta`. Il modo di esposizione in fattura è della distinta (`esposizione_in_fattura` in lettura), non della riga |
 | `DELETE /<id>/righe/<riga_id>/componenti/<componente_id>/` | Soft-delete componente (`attivo=FALSE`, solo DRAFT) |
 
 **Override prezzi componente pre-save** (CREATE riga composita, simmetria
