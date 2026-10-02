@@ -5,20 +5,22 @@
 > **Origine:** controllo dell'esigibilità sulle fatture del cliente Titini Michele Carlo (2026-10-01):
 > lì «Immediata» è **corretta** (privato con codice fiscale, fuori dalla scissione). Il controllo ha
 > però mostrato che la decisione guarda **solo il cliente** e mai l'emittente.
-> **Stato:** ✅ **D-1 → D-6 decise da Tid il 2026-10-01** (§6). ✅ **D-7 → D-11 (analisi critica del
+> **Stato:** ✅ **CHIUSO il 2026-10-03** (§12): DB, BE e FE fatti, template fattura **v6 pubblicata**
+> (forma 4). I residui, non bloccanti, sono riportati in `.codex/PROJECT_CONTEXT.md` § «Aperto — Media
+> priorità». Storia della lavorazione:
+> ✅ **D-1 → D-6 decise da Tid il 2026-10-01** (§6). ✅ **D-7 → D-11 (analisi critica del
 > team DB, §8) accettate da Tid il 2026-10-01, come proposte.** ✅ **Lato DB SCRITTO il 2026-10-01**
 > (`20261001-01 → -17`, §9), ✅ **applicato su dbdev il 2026-10-01** (con il `-40` di D-12;
 > verificato dalla sessione BE su `databasechangelog`). Richieste a BE/FE (§9.5): ✅ **R-1, R-2, R-5
 > fatte dalla sessione BE il 2026-10-01**, ✅ R-4 anche. ✅ **§10** (la conferma del regime la
 > deriva il trigger, revisione di D-11) **SCRITTO dal team DB il 2026-10-02** (`20261002-40 → -42`,
-> §10.4), ✅ **applicato su dbdev il 2026-10-02 da Tid, pgTAP verdi**. ⏳ **BE §10.3 / §10.4.3, ora**:
-> da questo apply la forma di D-11 è rifiutata, e il drawer dell'emittente è rotto finché il BE non
-> si allinea. ⚪ **R-DB-1** (ricalcolo dei riepiloghi dei preventivi) **non bloccante** per
+> §10.4), ✅ **applicato su dbdev il 2026-10-02 da Tid, pgTAP verdi**. ✅ **BE §10.3 / §10.4.3
+> allineato dalla sessione BE il 2026-10-02** (§10.5), worker ricaricati. ⚪ **R-DB-1** (ricalcolo dei riepiloghi dei preventivi) **non bloccante** per
 > decisione di Tid (2026-10-02, §9.5). ✅ **R-DB-3** (le annotazioni del documento, §11) **SCRITTO dal team DB il
 > 2026-10-02** (`20261002-02 → -07`, §11.4), ✅ **applicato su dbdev il 2026-10-02, nessuna
-> regressione pgTAP** (Tid). ⏳ R-3 (sessione BE, ora sbloccato):
-> corpo della **v6** pronto (era la v5: il kit è arrivato prima e ha preso forma 3 / v5, 2026-10-02,
-> §11.3), builder e pubblicazione dopo l'apply di R-DB-3.
+> regressione pgTAP** (Tid). ✅ R-3 lato codice (sessione BE, 2026-10-02): builder alla **forma 4**
+> (§11.5). ⏳ **Tid**: riavvio del backend e pubblicazione della **v6** dall'app (§11.5.2): finché la
+> v6 non è pubblicata, la fattura non stampa (409, è il patto versione/forma).
 >
 > **In una riga:** un emittente in regime di **IVA per cassa** (art. 32-bis, codice RF17) deve
 > emettere fatture con esigibilità **D** (differita); il sistema oggi scrive **I** (immediata) e non
@@ -411,7 +413,8 @@ dbdev non era raggiungibile dalla sessione (autenticazione). La prova è su un c
 * ✅ **R-4** — `show-esigibilita` acceso su `PreventiviDrawer`, `OrdiniDrawer`, `DdtDrawer`. Il
   backend portava gia' la coppia (`RiepilogoIvaRepositoryMixin` legge `esigibilita`,
   `split_payment` da tutte e tre le viste).
-* ⏳ **R-3** (annotazione in stampa, forma nuova del contesto): aperta.
+* ✅ **R-3** (annotazione in stampa, forma nuova del contesto): builder alla forma 4 il
+  2026-10-02 (§11.5); resta la pubblicazione della v6 (Tid).
 
 **🔴 Richiesta al team DB (sessione BE, 2026-10-01) — R-DB-1: i riepiloghi dei preventivi gia'
 esistenti non sono stati ricalcolati.**
@@ -606,6 +609,21 @@ il `20261002-0x`.
 * ⚠️ Il test Django `anagrafiche/tests/db/test_regime_fiscale_conferma_db.py` **diventa rosso**
   all'apply finché il BE non fa il §10.4.3: è atteso, non è una regressione del DB.
 
+### 10.5 Lato BE (sessione BE, 2026-10-02)
+
+* `EmittentiFiscaliRepository`: ritirata `_CONFERMA_REGIME_ESPRESSIONI` e il parametro
+  `conferma_regime` di `create_emittente`/`update_emittente`. Le colonne di conferma restano fuori
+  dalle whitelist del BB: un tentativo di scriverle è un `RuntimeError` prima di arrivare al DB.
+* `EmittentiFiscaliService.crea_emittente`: col regime nel payload, la INSERT (che lo porta, così la
+  FK lo controlla lì) è seguita da `update_emittente(id, {regime_fiscale_rf})` nella stessa
+  `transaction.atomic()`. `update_emittente`: il payload passa com'è, la chiave presente nomina il
+  regime e il DB conferma.
+* Test: `tests/services/test_emittenti_fiscali_regime.py` (9, mock) riscritto;
+  `tests/db/test_regime_fiscale_conferma_db.py` (9, **DB vero, verdi su dbdev**) riscritto sul
+  nuovo autore, più «scrittura diretta delle colonne di conferma → `E_EMITTENTE_REGIME_CONFERMA_DERIVATA`»
+  e «la INSERT col regime non conferma».
+* Doc `api_emittenti_fiscali.md` (§4.1 riga del regime, §4.2) allineata.
+
 ## 11. R-3: l'annotazione in stampa la decide il database (sessione BE, 2026-10-01)
 
 > **Chi scrive:** sessione BE, 2026-10-01. **A chi:** team DB (R-DB-3, **bloccante per R-3**); Tid
@@ -758,3 +776,60 @@ Come `zeroerp` (proprietario sullo scratch), in `BEGIN … ROLLBACK`, con l'SQL 
   `script/test-catalogo-messaggi-errore-completo.sql` (un sito nuovo per un codice esistente).
 * ✅ **2026-10-02, Tid: migrazione applicata, nessuna regressione** nella corsa pgTAP. Il punto
   «non provato» qui sopra (RLS, apply con Liquibase, runner come app) è coperto da quella corsa.
+
+### 11.5 Lato BE (sessione BE, 2026-10-02)
+
+#### 11.5.1 Che cosa è stato scritto
+
+* `VenditeRepository.list_fattura_annotazioni(fattura_id)`: `SELECT codice, testo FROM
+  vendite.fn_annotazioni_fattura(%s) ORDER BY ordine`, il contratto del §11.4.3 tale e quale.
+* `FatturaDocumentContextBuilder`: `CONTEXT_VERSION = 4`, chiave nuova `annotazioni` = lista di
+  `{codice, testo}` nell'ordine dato; `[]` quando non ce ne sono (mai chiave assente: il template
+  gira con `StrictUndefined`). Nient'altro cambia rispetto alla forma 3.
+* Test: `test_fattura_document_context_builder.py` (forma 4, caso 2-bis sulle annotazioni). Binding
+  reale provato su dbdev in transazione annullata: la funzione risponde, il contesto esce in forma 4
+  (fattura senza regime per cassa → `annotazioni: []`). Il caso con la voce lo prova il pgTAP
+  `test-annotazioni-fattura-v1.sql`.
+
+#### 11.5.2 I passi di Tid, in quest'ordine (come §13.2 di `brief-db-documenti-versione-contesto-template`)
+
+Fatto datato (dbdev, 2026-10-02): il template `Fattura` ha la **v5 PUBBLICATA** (id 2232,
+`versione_contesto = 3`), il cui HTML coincide (md5) con `template-fattura-v5.html`; la
+`template-fattura-v6.html` è la v5 più il solo blocco annotazioni (verificato con `diff`).
+
+1. **Riavvio del backend** (`kill -HUP $(pgrep -f "gunicorn zeroerp" | head -1)`): da qui il builder
+   produce la forma 4 e la v5 **non stampa più** (409 `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`, anche
+   per la coda di stampa). Il build del frontend non serve: il campo della forma c'è già.
+2. **Bozza v6** dall'app: template «Fattura» → versione 5 → «Clona»; HTML sostituito col contenuto di
+   `template-fattura-v6.html` (CSS invariato), «Legge i dati nella forma» = **4**, salva.
+3. **Pubblicare la v6** (`valido_dal` = oggi, `valido_al` vuoto): la v5 diventa OBSOLETA e la stampa
+   riparte. Le righe di coda finite in errore nella finestra si rimettono in coda dalla gestione code.
+
+La ristampa fedele delle fatture già emesse non cambia: contesto congelato nella sua forma, versione
+fissata.
+
+## 12. Chiusura (2026-10-03)
+
+Verificato su dbdev, non sulla testata di questo documento:
+
+* template `Fattura`: **v6 PUBBLICATA** (id 2330, `versione_contesto = 4`, `valido_dal`
+  2026-10-02), v5 OBSOLETA; l'HTML della v6 coincide (md5) con
+  [`template-fattura-v6.html`](template-fattura-v6.html). Nessuna riga in
+  `dbops.vw_fatture_stampa_coda_da_guardare` dopo la pubblicazione;
+* changeSet `20261001-01 → -17`, `-40`, `20261002-02 → -07`, `20261002-40 → -42` applicati (Tid,
+  pgTAP verdi); BE nei commit `3f87540c9` e `4cb3efb96` (`dev/backend-tid`), test unitari e sul DB
+  vero verdi.
+
+Fatto: R-1 → R-5, §10 (conferma derivata dal DB), R-DB-3 + R-3 (annotazioni in stampa).
+
+**Resta aperto, e non è di questo cantiere** (riportato in PROJECT_CONTEXT):
+
+* **R-DB-1** (§9.5): i riepiloghi IVA dei preventivi già scritti non sono stati ricalcolati — non
+  bloccante per decisione di Tid; il difetto di **modello** del «riepilogo memorizzato» è
+  rimandato, non chiuso;
+* **storicità del regime** (D-8, §8.2): `regime_fiscale_rf` non ha validità nel tempo;
+* **domande per il consulente** (§9.4): RF16, il catalogo dei codici RF (RF03 escluso, RF20
+  incluso), il DDT senza cliente;
+* **annotazioni future** (§11.2): scissione dei pagamenti, inversione contabile, forfettario RF19 —
+  righe nuove di `fn_annotazioni_fattura`, senza forma nuova;
+* **R-6**: il payload SDI legge l'esigibilità dalle righe (sospeso per decisione).

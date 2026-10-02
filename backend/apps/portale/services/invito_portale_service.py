@@ -229,9 +229,9 @@ class InvitoPortaleService:
         )
 
     # Scopo: core comune della disattivazione — risolve l'identita, la
-    # disattiva se attiva, invalida i token pendenti. Transazionale quando
-    # c'e' un UPDATE fisico; altrimenti salta il wrapper `atomic` per non
-    # aprire transazioni vuote.
+    # disattiva se attiva, invalida i token pendenti, chiude le sessioni della
+    # veste e la cache dei permessi. Tutto in una transazione: una chiusura
+    # fallita annulla anche lo spegnimento.
     def _disattiva_veste_common(
         self,
         *,
@@ -255,17 +255,22 @@ class InvitoPortaleService:
 
         # Invalida i token pendenti della veste in ogni caso (anche su una
         # veste gia' spenta: un invito in volo smette di funzionare).
+        # ⛔ E chiude le sessioni di QUESTA veste, con la cache dei permessi a
+        #    commit avvenuto (A-5, D-5, 2026-10-02; BB
+        #    `InvitoVeste.chiudi_veste_spenta`): gli stessi effetti dello
+        #    spegnimento di una veste operatore. Fino a quel giorno portale e
+        #    shop non chiudevano ne' sessioni ne' cache. Le sessioni delle altre
+        #    vesti della credenziale restano: si filtra per `identita_id`.
+        #    Anche su una veste gia' spenta: idempotente, e chiude le sessioni
+        #    rimaste vive da prima di questa regola.
         porta = porta_della_veste(ruolo_applicativo)
-        if was_active:
-            with transaction.atomic():
+        with transaction.atomic():
+            if was_active:
                 self._repo.disattiva_identita(identita_id)
-                if auth_user_id is not None:
-                    self._invito.invalida(
-                        porta, auth_user_id=auth_user_id, identita_id=identita_id,
-                    )
-        elif auth_user_id is not None:
-            # Gia' spenta: si puliscono solo i token (nessun UPDATE, niente atomic).
-            self._invito.invalida(porta, auth_user_id=auth_user_id, identita_id=identita_id)
+            if auth_user_id is not None:
+                self._invito.chiudi_veste_spenta(
+                    porta, auth_user_id=auth_user_id, identita_id=identita_id,
+                )
 
         logger.info(
             "security.veste_disattivata identita_id=%s ruolo=%s auth_user=%s da=%s was_active=%s",

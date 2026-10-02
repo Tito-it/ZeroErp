@@ -233,7 +233,7 @@ class BoMComponentExpander:
         row: PushableRow,
         *,
         componente_id: Any,
-        componente_uom_id: int | None,
+        componente_uom_id: int,
         componente_prezzo: Any,
         coeff_qta: Decimal,
         esposizione: str,
@@ -248,6 +248,13 @@ class BoMComponentExpander:
         nuovo_meta[kit_meta.META_KEY_ESPOSIZIONE] = esposizione
         nuovo_meta[kit_meta.META_KEY_COMPONENTE_DI] = str(row.articolo_id)
         nuovo_meta[kit_meta.META_KEY_COEFF_QTA] = str(coeff_qta)
+        # Quantita' e UoM della riga PADRE: la fattura le congela sulla riga
+        # del kit (`kit_qta`, `kit_uom_id`). Ricavarle dai componenti non si
+        # puo': con coefficienti diversi o unita' diverse non dicono un numero
+        # solo (brief-db-bom-flag-quantita-e-kit-in-fattura §2.2).
+        # `expand` arriva qui solo con quantita' e UoM del padre valorizzate.
+        nuovo_meta[kit_meta.META_KEY_QTA_PADRE] = str(quantita_padre)
+        nuovo_meta[kit_meta.META_KEY_UOM_PADRE] = row.uom_id
         if origine_prezzo is not None:
             nuovo_meta[_META_KEY_ORIGINE_PREZZO] = origine_prezzo
 
@@ -284,7 +291,11 @@ class BoMComponentExpander:
         return cls._build_componente_pushable_row(
             row,
             componente_id=componente["componente_id"],
-            componente_uom_id=componente.get("uom_operativa_id") or row.uom_id,
+            # NOT NULL sulle `*_righe_componenti` dal 2026-10-02: niente
+            # ripiego sulla UoM del padre, che su un kit misto trasformerebbe
+            # «3 metri» in «3 kit» (brief-db-bom-flag-quantita-e-kit-in-fattura
+            # §2.3, R-BE-B4).
+            componente_uom_id=componente["uom_operativa_id"],
             componente_prezzo=componente["prezzo_unitario"],
             coeff_qta=Decimal(str(componente["coeff_qta_snapshot"])),
             # LEFT JOIN sulla distinta nella proiezione: un NULL vale il

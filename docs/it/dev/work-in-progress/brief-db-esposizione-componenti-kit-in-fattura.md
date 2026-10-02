@@ -372,7 +372,7 @@ Test: suite Django completa **6027 verdi** col secondo livello acceso (`ZEROERP_
 
 Il kit è arrivato per primo e ha preso **forma 3 / v5**. Il giro R-3 di
 `brief-db-esigibilita-iva-per-cassa-emittente.md` passa a **forma 4 / v6**: la sua bozza è stata
-rinominata [`template-fattura-v6.html`](template-fattura-v6.html) e rifatta sopra la v5 (v5 + il solo
+rinominata [`template-fattura-v6.html`](../work-done/template-fattura-v6.html) e rifatta sopra la v5 (v5 + il solo
 blocco annotazioni, verificato con `diff`); il brief è aggiornato (§11.3).
 
 ### 10.5 Risposta del team DB (2026-10-02, `dev/db-tid`)

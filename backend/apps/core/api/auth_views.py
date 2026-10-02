@@ -23,6 +23,7 @@ from rest_framework.fields import empty
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.settings import api_settings as simplejwt_settings
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.core.api.jwt_audit_authentication import set_jwt_gucs
@@ -104,11 +105,15 @@ _auth_repo = AuthRepository()
 _secondo_fattore_repo = SecondoFattoreRepository()
 
 
-# Scopo: La veste del refresh presentato e' ancora ACCESA? Legge `identita_id`
-#        e `user_id` dai claim verificati e chiede la riga della veste, legata
-#        alla credenziale (stesso predicato di `set_jwt_gucs`: id, auth_user,
-#        `attivo`). Claim assente = False: ogni refresh nostro lo porta
+# Scopo: La veste del refresh presentato e' ancora ACCESA? Chiede la riga della
+#        veste `identita_id` legata alla credenziale `user_id` (dai claim
+#        verificati). Claim assente (None) = False: ogni refresh nostro lo porta
 #        (`emetti_refresh_veste`), come gia' il claim `ruolo_applicativo`.
+# ⚠️ Gemella della CTE `id_row` di `set_jwt_gucs` (jwt_audit_authentication):
+#    stesso predicato (id, auth_user, `attivo`), una per il refresh e una per
+#    ogni richiesta. Chi aggiunge una condizione alla veste valida (L-6, A-7:
+#    `valido_dal`/`valido_al`) la aggiunge a TUTTE E DUE, o il refresh rinnova
+#    una sessione che ogni richiesta rifiuta.
 #
 # ⛔ D-5 (Tid, 2026-10-02): spegnere una veste chiude le sue sessioni al
 #    primo rinnovo, QUALUNQUE sia la strada che l'ha spenta — interruttore
@@ -120,10 +125,8 @@ _secondo_fattore_repo = SecondoFattoreRepository()
 #    IMMEDIATA, non la regola.
 # ⚠️ Un guasto della lettura PROPAGA (500): non e' una prova che la veste sia
 #    accesa, e il refresh non si concede su un dubbio.
-def _veste_accesa(claims: dict) -> bool:
-    identita_id = _int_claim(claims, JWT_CLAIM_IDENTITA_ID)
-    user_id = _int_claim(claims, "user_id")
-    if identita_id is None or user_id is None:
+def _veste_accesa(identita_id: int | None, user_id: int | None) -> bool:
+    if identita_id is None or not user_id:
         return False
     veste = _auth_repo.get_identita_dettaglio(identita_id, user_id)
     return bool(veste and veste.get("attivo"))
@@ -437,7 +440,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             return 0, None
         try:
             token = RefreshToken(refresh_str)
-            return int(token.get("user_id", 0)), str(token.get(JWT_CLAIM_SID, ""))
+            return int(token.get(simplejwt_settings.USER_ID_CLAIM, 0)), str(token.get(JWT_CLAIM_SID, ""))
         except Exception:
             return 0, None
 
@@ -557,13 +560,14 @@ class AuditTokenRefreshView(TokenRefreshView):
         #    login. 401 e non il 403 del guard sopra: il token era buono, la
         #    sessione non c'e' piu', e il client va al login come per ogni
         #    refresh rifiutato.
-        if not _veste_accesa(claims):
-            user_id, sid = self._extract_claims(claims)
+        user_id, sid = self._extract_claims(claims)
+        identita_id = _int_claim(claims, JWT_CLAIM_IDENTITA_ID)
+        if not _veste_accesa(identita_id, user_id):
             if user_id and sid:
                 blocca_token_sessioni(user_id, lambda s: s == sid)
             logger.warning(
                 "security.refresh_veste_spenta user_id=%s identita_id=%s",
-                user_id, claims.get(JWT_CLAIM_IDENTITA_ID),
+                user_id, identita_id,
             )
             raise InvalidToken("Sessione chiusa: la veste non e' piu' attiva.")
 
@@ -572,9 +576,9 @@ class AuditTokenRefreshView(TokenRefreshView):
         # Il refresh ruotato torna nel cookie, e dal corpo esce.
         sposta_refresh_nel_cookie(response, response.data)
         django_request = richiesta_django(request)
-        # Audit e GUC dagli STESSI claim verificati del guard, non da una
-        # seconda lettura del token (la rotazione preserva i claim custom).
-        user_id, jti = self._extract_claims(claims)
+        # Audit e GUC dagli STESSI claim verificati del guard (letti sopra:
+        # `user_id`, `sid`, `identita_id`), non da una seconda lettura del
+        # token (la rotazione preserva i claim custom).
         # Hotfix BE-2.0ter: il refresh NON passa dalla DRF auth chain
         # (la request porta solo il refresh token nel cookie, niente
         # Authorization Bearer), quindi JwtAuditAuthentication NON
@@ -587,7 +591,6 @@ class AuditTokenRefreshView(TokenRefreshView):
                 # §8.3.4: il refresh token (anche dopo rotation) preserva
                 # il claim identita_id iniettato al login: quello del
                 # refresh in entrata basta per le GUC sulla veste giusta.
-                identita_id = _int_claim(claims, JWT_CLAIM_IDENTITA_ID)
                 gucs_ok = set_jwt_gucs(
                     username=username,
                     user_id=user_id,
@@ -608,7 +611,7 @@ class AuditTokenRefreshView(TokenRefreshView):
         session_audit_service.record_refresh(
             user_id=user_id,
             request=django_request,
-            jti=jti,
+            jti=sid,
         )
         return response
 
@@ -642,7 +645,7 @@ class AuditTokenRefreshView(TokenRefreshView):
     def _extract_claims(claims: dict) -> tuple[int, str | None]:
         raw_sid = claims.get(JWT_CLAIM_SID)
         sid = str(raw_sid) if raw_sid is not None else None
-        return _int_claim(claims, "user_id") or 0, sid
+        return _int_claim(claims, simplejwt_settings.USER_ID_CLAIM) or 0, sid
 
 
 # ── Refresh view per namespace (§8.3.5) ─────────────────────

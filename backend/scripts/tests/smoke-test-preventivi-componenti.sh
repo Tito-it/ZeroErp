@@ -161,8 +161,6 @@ BOM_PAYLOAD=$(cat <<EOF
   "coeff_qta": 1,
   "obbligatorio": true,
   "esposizione_in_fattura": "DESCRITTIVO",
-  "partecipa_qta": true,
-  "determina_qta_padre": false,
   "valido_dal": "$DATA_IERI_UTC",
   "valido_al": null
 }

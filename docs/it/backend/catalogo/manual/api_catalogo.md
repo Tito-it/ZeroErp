@@ -561,9 +561,8 @@ lettura completa (il riepilogo nel drawer dell'articolo).
 Campi principali:
 
 - `componente_id`
-- `coeff_qta`
-- `partecipa_qta`
-- `determina_qta_padre`
+- `coeff_qta` — la quantita' del componente e' sempre `quantita padre ×
+  coeff_qta`
 - `obbligatorio`
 - `esposizione_in_fattura` — il modo in cui il componente compare in fattura:
   codice di `config.esposizioni_componente` (`NASCOSTO`, `DESCRITTIVO`,
@@ -576,6 +575,11 @@ Campi principali:
 - `attivo`
 - `meta`
 
+⛔ `partecipa_qta` e `determina_qta_padre` **non esistono più** dal 2026-10-02
+(brief-db-bom-flag-quantita-e-kit-in-fattura, D-1): si impostavano ma nessuna
+logica li leggeva. Le colonne sono state ritirate a DB, e il backend non li
+legge né li scrive.
+
 #### Defaults Fase 2
 
 I default operativi BoM sono parametrizzati in `config.parameters` (override
@@ -584,13 +588,11 @@ emittente disponibile):
 | Parametro | Default sistema |
 |---|---|
 | `CATALOGO_BOM_DEFAULT_COEFF_QTA` | `1` |
-| `CATALOGO_BOM_DEFAULT_PARTECIPA_QTA` | `true` |
 | `CATALOGO_BOM_DEFAULT_OBBLIGATORIO` | `true` |
-| `CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE` | `false` |
 | `CATALOGO_BOM_DEFAULT_ESPOSIZIONE_IN_FATTURA` | `NASCOSTO` (un codice di `config.esposizioni_componente`) |
 
-Allineato lato DDL: `articoli_componenti.partecipa_qta` ha `DEFAULT true`
-(migration `20260428-02`) per coerenza tra service e insert SQL diretti.
+`CATALOGO_BOM_DEFAULT_PARTECIPA_QTA` e `CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE`
+sono stati ritirati con i loro due campi (`20261002-67`).
 
 ### 4.3 Aggiorna componente
 
@@ -601,8 +603,8 @@ Allineato lato DDL: `articoli_componenti.partecipa_qta` ha `DEFAULT true`
 
 #### Regole specifiche
 
-- I campi struttura (`componente_id`, `coeff_qta`, `partecipa_qta`,
-  `determina_qta_padre`, `obbligatorio`, `esposizione_in_fattura`) sono
+- I campi struttura (`componente_id`, `coeff_qta`, `obbligatorio`,
+  `esposizione_in_fattura`) sono
   **immutabili** per design: il trigger DB
   `trgfn_articoli_componenti_block_modifica_struttura` blocca le UPDATE.
 - L'unico campo struttura modificabile e' `valido_al` (per chiudere la

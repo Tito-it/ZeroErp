@@ -76,9 +76,9 @@ class EmittentiFiscaliView(AdminAPIView):
             "regime_fiscale_rf": serializers.CharField(
                 required=False,
                 help_text="Codice del catalogo config.regimi_fiscali (es. RF01). "
-                          "Se presente e' il regime dichiarato, e si scrive confermato "
-                          "(data e autore li mette il DB). Omesso: default RF01, NON "
-                          "confermato. Vuoto o null: 400.",
+                          "Se presente e' il regime dichiarato, e l'emittente nasce "
+                          "con il regime confermato (data e autore li deriva il DB). "
+                          "Omesso: default RF01, NON confermato. Vuoto o null: 400.",
             ),
             "bollo_auto": serializers.BooleanField(required=False),
             "bollo_soglia": serializers.FloatField(required=False),
@@ -125,9 +125,9 @@ class EmittentiFiscaliDetailView(AdminAPIView):
             "regime_fiscale_rf": serializers.CharField(
                 required=False,
                 help_text="Codice del catalogo config.regimi_fiscali. Se presente "
-                          "(anche invariato) dichiara e CONFERMA il regime nella "
-                          "stessa scrittura. Chi non tocca il regime omette la chiave. "
-                          "Vuoto o null: 400.",
+                          "(anche invariato) dichiara e CONFERMA il regime: data e "
+                          "autore li deriva il DB. Chi non tocca il regime omette la "
+                          "chiave. Vuoto o null: 400.",
             ),
             "bollo_auto": serializers.BooleanField(required=False),
             "bollo_soglia": serializers.FloatField(required=False),

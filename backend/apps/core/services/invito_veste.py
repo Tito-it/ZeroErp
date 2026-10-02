@@ -21,6 +21,9 @@
 #        Chi decide COSA invitare (la veste da creare o da cercare, il check
 #        d'invitabilita') resta al servizio della veste; da qui in giu' la
 #        strada e' una.
+#        ⭐ Anche lo SPEGNIMENTO ha la sua strada qui (`chiudi_veste_spenta`,
+#        2026-10-03): cio' che resta aperto di una veste spenta si chiude
+#        allo stesso modo per ogni porta.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -48,6 +51,8 @@ from apps.core.services.auth_helpers import (
 )
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.permissions_cache import invalidate_user
+from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.core.services.token_service import TokenService
 
 logger = logging.getLogger("security")
@@ -179,6 +184,26 @@ class InvitoVeste:
         return self._token_service.invalidate_for_identita(
             porta.token_tipi, auth_user_id, identita_id
         )
+
+    # Scopo: Chiude cio' che resta aperto di una veste SPENTA: gli inviti
+    #        pendenti (un link in volo la riaccenderebbe), le sue sessioni
+    #        (`blocca_token_sessioni` per `identita_id`: quelle delle altre
+    #        vesti della credenziale restano) e, a commit avvenuto, la cache
+    #        dei permessi della credenziale.
+    # ⭐ Regola del 2 (ok Tid, 2026-10-03): la scrivevano due servizi,
+    #    `AmmSoftwareService._spegni_veste_operatore` e
+    #    `InvitoPortaleService._disattiva_veste_common` (A-5, D-5). Una
+    #    conseguenza nuova dello spegnimento si aggiunge qui, per ogni porta.
+    # ⛔ Va chiamata DENTRO la transazione che spegne la veste: una chiusura
+    #    fallita deve annullare anche lo spegnimento, e `on_commit` senza
+    #    transazione aperta scatterebbe subito, prima che la veste sia spenta
+    #    per gli altri. Non spegne la veste: lo fa il chiamante.
+    def chiudi_veste_spenta(
+        self, porta: PortaInvito, *, auth_user_id: int, identita_id: int,
+    ) -> None:
+        self.invalida(porta, auth_user_id=auth_user_id, identita_id=identita_id)
+        blocca_token_sessioni(auth_user_id, identita_id=identita_id)
+        transaction.on_commit(lambda: invalidate_user(auth_user_id))
 
     # Scopo: Emette il token d'invito di una veste SPENTA. Il flusso si decide
     # sulla credenziale; i token pendenti della veste si invalidano SEMPRE,

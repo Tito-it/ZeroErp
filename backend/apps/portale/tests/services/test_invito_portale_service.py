@@ -26,7 +26,7 @@ Indice test eseguiti:
 15) GetStatoAccessiTests.test_cliente_include_portale_e_shop
 16) GetStatoAccessiTests.test_fornitore_solo_portale
 17) GetStatoAccessiTests.test_cliente_not_found_solleva
-18) DisattivaVesteTests.test_disattiva_cliente_portale_attivo_invalida_token
+18) DisattivaVesteTests.test_disattiva_cliente_portale_attivo_invalida_token — anche sessioni della veste e cache
 19) DisattivaVesteTests.test_disattiva_cliente_nessuna_identita_noop
 20) DisattivaVesteTests.test_disattiva_fornitore_portale
 21) DisattivaVesteTests.test_disattiva_cliente_identita_gia_disattiva_idempotente
@@ -44,6 +44,9 @@ _AUTH_REPO = f"{_SVC_PATH}.AuthRepository"
 # il service lo costruisce, e i suoi collaboratori si fingono li'.
 _BB = "apps.core.services.invito_veste"
 _TOKEN_SVC = f"{_BB}.TokenService"
+# Le chiusure della veste spenta stanno nel BB (`InvitoVeste.chiudi_veste_spenta`).
+_BLOCCA = f"{_BB}.blocca_token_sessioni"
+_INVALIDATE = f"{_BB}.invalidate_user"
 _EMAIL_SVC = f"{_BB}.EmailDispatchService"
 _SETTINGS = f"{_BB}.settings"
 
@@ -806,6 +809,14 @@ class GetStatoAccessiTests(TestCase):
 class DisattivaVesteTests(TestCase):
     """Test soft-revoke veste cliente + fornitore."""
 
+    # ⛔ Sessioni e cache si chiudono anche qui (A-5, D-5): senza questi mock
+    #    la blacklist andrebbe sul DB di sviluppo, e il test resterebbe verde.
+    def setUp(self):
+        for nome, attr in ((_BLOCCA, "mock_blocca"), (_INVALIDATE, "mock_invalidate")):
+            patcher = patch(nome)
+            setattr(self, attr, patcher.start())
+            self.addCleanup(patcher.stop)
+
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
@@ -839,6 +850,9 @@ class DisattivaVesteTests(TestCase):
         MockToken.return_value.invalidate_for_identita.assert_called_once_with(
             ("INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"), 10, 500,
         )
+        # D-5: le sessioni della SOLA veste spenta; A-5: la cache.
+        self.mock_blocca.assert_called_once_with(10, identita_id=500)
+        self.mock_invalidate.assert_called_once_with(10)
 
     @patch(_REPO)
     def test_disattiva_cliente_nessuna_identita_noop(self, MockRepo):
@@ -859,6 +873,7 @@ class DisattivaVesteTests(TestCase):
         self.assertFalse(result["disattivato"])
         self.assertEqual(result["stato"], "NESSUNO")
         repo.disattiva_identita.assert_not_called()
+        self.mock_blocca.assert_not_called()
 
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
@@ -884,6 +899,7 @@ class DisattivaVesteTests(TestCase):
         )
         self.assertTrue(result["disattivato"])
         self.assertEqual(result["identita_id"], 600)
+        self.mock_blocca.assert_called_once_with(20, identita_id=600)
 
     @patch(_TOKEN_SVC)
     @patch(_REPO)
@@ -919,3 +935,5 @@ class DisattivaVesteTests(TestCase):
         MockToken.return_value.invalidate_for_identita.assert_called_once_with(
             ("INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"), 10, 500,
         )
+        # Anche su una veste gia' spenta: chiude le sessioni rimaste vive.
+        self.mock_blocca.assert_called_once_with(10, identita_id=500)

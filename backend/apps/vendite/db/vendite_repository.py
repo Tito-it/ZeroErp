@@ -4455,6 +4455,22 @@ class VenditeRepository:
             row["meta"] = jsonb_out(row.get("meta"))
         return rows
 
+    # Scopo: Annotazioni di legge della fattura per il context builder (forma 4,
+    #        R-3 di brief-db-esigibilita-iva-per-cassa-emittente §11). QUALI
+    #        annotazioni e con quale testo lo decide il database
+    #        (`vendite.fn_annotazioni_fattura`, con la stessa regola del regime
+    #        che calcola l'esigibilita' delle righe): qui solo l'ordine dato.
+    #        Nessuna voce = lista vuota; mai un `testo` NULL (contratto DB).
+    def list_fattura_annotazioni(self, fattura_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT a.codice, a.testo
+              FROM vendite.fn_annotazioni_fattura(%s) a
+             ORDER BY a.ordine
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
     # ------------------------------------------------------------------
     # Lineage documenti (genealogia/transiti — brief-be-fe-lineage)
     # Letture generiche sulla famiglia vw_documento_lineage* +

@@ -641,6 +641,20 @@ const suVisibile = gestoreVisibile(emit, onClose)
               </span>
               <span v-else>—</span>
             </template>
+            <!-- Il periodo della riga (dal 2026-10-02, brief-db-bom-flag-
+                 quantita-e-kit-in-fattura R-FE-B1): si mostra quando
+                 `ha_periodo` e' vero — la regola (dal != al) e' della vista, qui
+                 non si ricalcola. Una riga puntuale non ha un periodo da dire.
+                 Lo stesso kit su due periodi sono due righe. -->
+            <template #cell-periodo="{ data }">
+              <span v-if="data.ha_periodo">
+                {{ t('vendite.fatture.periodo_valore', {
+                     dal: displayDate(data.competenza_dal),
+                     al: displayDate(data.competenza_al),
+                   }) }}
+              </span>
+              <span v-else>—</span>
+            </template>
             <template #row-expansion="{ data }">
               <ul v-if="data.componenti?.length" class="app-fattura-componenti">
                 <li v-for="c in data.componenti" :key="c.fatture_righe_id">
@@ -657,7 +671,10 @@ const suVisibile = gestoreVisibile(emit, onClose)
                        NULL — il suo valore e' nel padre — e non mostra niente:
                        un «—» farebbe leggere «a costo zero». Per lo stesso
                        motivo un padre con importo vuoto e' un kit senza resto
-                       (tutti valorizzati), non un errore. -->
+                       (tutti valorizzati), non un errore; e un padre con
+                       quantita' e prezzo vuoti e' un kit i cui componenti non
+                       dicono lo stesso numero di kit (nota di credito
+                       parziale, dal 2026-10-02): ha il suo importo e basta. -->
                   <span v-if="c.importo_riga != null" class="app-fattura-componente-importo">
                     × {{ formatCurrency(c.prezzo_unitario, { placeholder: '—' }) }}
                     <template v-if="Number(c.sconto_percentuale) > 0">

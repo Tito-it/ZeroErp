@@ -105,8 +105,9 @@ function defaultForm() {
 const form = ref(defaultForm())
 
 // ⭐ LA CONFERMA DEL REGIME FISCALE (R-2 di brief-db-esigibilita-iva-per-cassa-
-//    emittente). Mandare `regime_fiscale_rf` al backend E' dichiararlo: il
-//    backend scrive la conferma (data e autore) nella stessa scrittura. Per
+//    emittente, §10). Mandare `regime_fiscale_rf` al backend E' dichiararlo:
+//    il database deriva la conferma (data e autore) da ogni scrittura che
+//    nomina il regime, anche con lo stesso valore. Per
 //    questo il regime viaggia SOLO quando l'operatore lo ha cambiato, o ha
 //    confermato quello che c'e' (`confermaRegime`): un salvataggio che tocca
 //    il bollo non deve confermare un regime che nessuno ha guardato.

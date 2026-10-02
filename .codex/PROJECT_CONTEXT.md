@@ -15,7 +15,7 @@
 
 1. **DB-first**: tutta la logica di business vive in PostgreSQL (funzioni, trigger, viste)
 2. **Django**: orchestrazione, API REST, e logica che non può stare nel DB
-3. **Vue** (futuro): SOLO presentazione — zero logica business nel frontend
+3. **Vue**: SOLO presentazione — zero logica business nel frontend
 4. **No logica duplicata** tra livelli: se è nel DB non va replicata in Python, e viceversa
 5. ⛔ **Si progetta sul modello, mai su una fotografia**: le misure sui *dati* del DB
    di sviluppo (`count(*)`, «zero righe in quello stato», «N su M») non decidono
@@ -28,11 +28,11 @@
 
 | Componente | Versione | Note |
 |---|---|---|
-| Python | 3.14 (da `.python-version`) | Fonte unica di verità per versione |
-| Django | 6.01 | DRF 3.16, SimpleJWT, drf-spectacular |
+| Python | da `.python-version` | Fonte unica di verità per la versione |
+| Django | da `backend/requirements.in` | DRF, SimpleJWT, drf-spectacular; versioni esatte nel lock `requirements.txt` |
 | PostgreSQL | 18 (CI) | PostGIS 3.6, pgTAP, pgAgent |
 | Liquibase | 5 Community | Migrazioni YAML in `db/changelog/migrations_v2/` |
-| Frontend Vue | da `frontend/package.json` | **Fonte unica di verità per le versioni** (Vue, Vite, PrimeVue, Pinia, Vue Router, vue-i18n, Axios; Node in `engines.node`). ⛔ Non ricopiarle qui: il 2026-09-09 questa riga, `AGENTS.md` e `frontend-standards.md` dicevano tre cose diverse e tutte e tre sbagliate. **Frontend sviluppato e in uso**, non più placeholder. Standard: `docs/it/dev/frontend/frontend-standards.md` + catalogo BB FE |
+| Frontend Vue | da `frontend/package.json` | **Fonte unica di verità per le versioni** (Vue, Vite, PrimeVue, Pinia, Vue Router, vue-i18n, Axios; Node in `engines.node`): ⛔ non ricopiarle qui. Standard: `docs/it/dev/frontend/frontend-standards.md` + catalogo BB FE |
 
 ## Infrastruttura di Sviluppo
 
@@ -63,8 +63,8 @@ ZeroErp/
 │   │   ├── ui/               # Liste configurabili: la configurazione è DATO, non DDL
 │   │   ├── vendite/          # App più attiva — pipeline fatturazione
 │   │   ├── acquisti/         # 🔵 PROSSIMO CANTIERE (Tid, 2026-09-11) — modello a DB, comportamento da scrivere
-│   │   ├── magazzino/        # 🔵 CANTIERE APERTO (idem) — Lotto 2: primo carico da video (BE/FE 23-09), collaudo a video di Tid
-│   │   ├── storico/          # ⚠️ scheletro (13 file, 26 righe, 0 test) — nessuna decisione presa
+│   │   ├── magazzino/        # 🔵 CANTIERE APERTO (idem) — Lotti 1-2 chiusi; Lotti 3 e 3-bis applicati a DB, BE/FE da fare
+│   │   ├── storico/          # ⚠️ scheletro (13 file, 23 righe, 0 test) — nessuna decisione presa
 │   │   └── contabilita/      # ⛔ scheletro vuoto — schema DB vuoto, fuori perimetro per decisione
 │   ├── requirements.in       # Dipendenze dirette (editare qui)
 │   └── requirements.txt      # Generato da pip-compile (non editare)
@@ -86,23 +86,31 @@ ZeroErp/
 └── .python-version           # Fonte unica versione Python
 ```
 
-## Schemi DB (13 totali)
+## Schemi DB
 
 | Schema | Scopo |
 |---|---|
-| `anagrafiche` | Soggetti, indirizzi, contatti, ruoli |
-| `catalogo` | Articoli, listini, UoM, distinte base |
-| `config` | Dati di riferimento (stati, nazioni, termini pagamento) |
+| `anagrafiche` | Soggetti, indirizzi, contatti, ruoli, emittenti fiscali |
+| `catalogo` | Articoli, UoM, distinte base |
+| `config` | Dati di riferimento (stati, nazioni, termini pagamento, regimi fiscali…) e credenziali |
 | `vendite` | Ciclo vendite: preventivi→ordini→DDT→fatture + pipeline fatturazione |
 | `acquisti` | Ciclo acquisti |
 | `magazzino` | Movimenti, giacenze, lotti, seriali |
 | `pagamenti` | Scadenze, riconciliazioni, contabili |
-| `contabilita` | ⛔ **VUOTO e fuori perimetro** — zero tabelle, funzioni e viste (verificato 01-09-2026). ⚠️ Diceva «piano conti, registrazioni, partite»: non esistono. `backend/apps/contabilita/` è uno scheletro vuoto. Se servirà sarà un **aggancio a una contabilità esterna**, con la forma dettata dal sistema di destinazione |
+| `documenti` | Motore documentale: template versionati, documenti generati, ristampa fedele |
+| `pratiche` | Motore di workflow versionato |
+| `ui` | Liste configurabili (la configurazione è dato) |
+| `shop` | Veste SHOP_CUSTOMER |
+| `contabilita` | ⛔ **VUOTO e fuori perimetro**: zero tabelle, funzioni e viste. Se servirà sarà un **aggancio a una contabilità esterna**, con la forma dettata dal sistema di destinazione |
 | `storico` | Audit temporale (storicizzazione tabelle) |
-| `dbops` | Strumenti DBA, registry task, FK policy |
-| `script` | Viste e funzioni applicative riusabili (incl. risoluzione permessi) |
+| `dbops` | Strumenti DBA, registry task, presidi, FK policy |
+| `script` | Viste e funzioni applicative riusabili (building block, risoluzione permessi) |
 | `maintenance` | Job schedulati (pgAgent) |
-| `public` | Estensioni (`dblink`, `unaccent`, `postgis`, `plpgsql_check`), **nessuna tabella**. ⛔ `version_info` — una riga, zero lettori — è stata **droppata il 2026-09-12** (decisione Tid, `90_end/20260912-29`, nel provisioning perché lì era nata). Per la versione applicata usare `DATABASECHANGELOG`. Fino a quel giorno questa riga la dava «esiste, decisione aperta»: analisi-software-per-dati-morti §2.6 |
+| `django` | Tabelle di Django (auth, sessioni) |
+| `public` | Estensioni (`dblink`, `unaccent`, `postgis`, `plpgsql_check`), **nessuna tabella**. Per la versione applicata: `DATABASECHANGELOG` |
+
+Schemi non applicativi presenti su dbdev: `topology` (PostGIS), `pgagent` (scheduler),
+`data_conversion`, `internal`, `test`.
 
 ## Struttura App Django (pattern per ogni dominio)
 
@@ -160,137 +168,79 @@ def nome_metodo(self, ...):
 # Scopo: obiettivo, perimetro e risultato atteso dettagliati
 ```
 
-## Stato del Progetto — istantanea aprile 2026 (storica)
+## Stato del Progetto — cantieri
 
-> ⚠️ **Questa sezione è ferma ad aprile 2026 e non riflette lo stato corrente.** Da allora
-> sono arrivati (fra gli altri) frontend Vue completo, multi-face auth, RLS operatori,
-> personalizzazioni liste, motore documentale, commesse/DDT/resi e il cockpit fatturazione.
-> Per lo stato reale usare, in quest'ordine: l'handoff più recente in memoria, i documenti in
-> `docs/it/dev/work-in-progress/`, e il repo. Le voci sotto restano perché descrivono
-> fondamenta ancora valide, non perché siano l'ultima parola.
+> Lo stato reale sta nei documenti di `docs/it/dev/work-in-progress/` e nel repo; qui solo
+> le decisioni di rotta e una riga per cantiere aperto.
 
-### Completato ✅ (al netto della nota sopra)
-- Refactor permessi (08-03-2026): 9 funzioni risoluzione permessi spostate da `config` a `script` — migrations `20260308-01..12`, Python backend + pgTAP test + doc aggiornati
-- Pipeline fatturazione: `vendite.fatturazione_pipeline` + runner Django (`LottoPipelineRunner`)
-- Lotti massivi e giornalieri con stati (DRAFT→EMESSA→DEFINITIVA)
-- Registry task DB multi-dominio (`dbops.domini_task`, `pipeline_task_registry`, `pipeline_task_registry_impl`)
-- Dispatch task con `implementation_key` controllato (no dynamic import)
-- Log fatture e flag `critical` (`vendite.fatture_log`)
-- Refactor fondi fattura (contabili/righe)
-- Refactor saldo fattura (residuo + saldo contabile postabile)
-- Payload SDI preparato (`fn_prepare_sdi_payload`)
-- Runtime task tracing: `vendite.fatturazione_pipeline_task_policy` + `vendite.fatturazione_lotti_task_runs`
-- Test pgtap runtime task + test Django pipeline runner
-- **Listini v3 completo** (12-04-2026): Sprint B-v3 — N8a variazione % massa, N2 alert scadenze, N6 rettifica controllata, N5 riallineamento prezzo, N7 variazione eccezionale + sblocco, trigger DB guard, 6 endpoint API, 24 test, doc API
-- **Migrazione daterange** (12-04-2026): 18 tabelle migrate a `daterange`/`tstzrange` nativo, `script.trgfn_set_validita()`, backend ottimizzato con `@>`, linee guida SQL §7b
-- **Pricing commesse** (12-04-2026): riallineamento prezzo, variazione eccezionale, sblocco — 3 endpoint API con lock FOR UPDATE e audit trail
+### 🔵 Il cantiere principale — `acquisti` e `magazzino` (decisione di Tid, 2026-09-11)
 
-### 🔵 Il prossimo cantiere — `acquisti` e `magazzino` (decisione di Tid, 2026-09-11)
+Le due app sono il cantiere in corso (voce D11 di
+[migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md)).
+`magazzino` ha il comportamento dei Lotti 1-2; `acquisti` ha il solo modello DB.
 
-Le due app **non sono scheletri congelati: sono il prossimo cantiere**, e la
-decisione è stata presa il 2026-09-11 rispondendo alla voce D11 di
-[migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md).
+⭐ **Ogni decisione presa su `vendite` è presa anche per `acquisti`** — envelope,
+capability di riga, scope emittente, ordinamento, export, drawer autonomi,
+`ListaConfigurabile`. Quando un'asimmetria fra i due domini emerge, si chiude
+**subito**, non in una «fase due».
 
-Al 2026-09-11 avevano un **modello DB curato e zero comportamento applicativo**:
-26 tabelle e 71 CHECK su `magazzino`, 9 tabelle e 42 FK su `acquisti`, 13 file
-Python e 0 test per ciascuna. ⚠️ Da allora `magazzino` ha il comportamento dei
-Lotti 1 e 2 (paragrafi sotto); `acquisti` è ancora a quel punto.
+⚠️ `storico` **resta senza decisione** e `contabilita` resta **fuori perimetro**:
+non sono la stessa cosa e non vanno letti insieme ai due sopra.
 
-⭐ **Cosa comporta, ed è la ragione per cui sta scritto qui e non in un piano:**
-ogni decisione che si prende lavorando su `vendite` — envelope, capability di
-riga, scope emittente, ordinamento, export, drawer autonomi,
-`ListaConfigurabile` — è una decisione presa **anche per `acquisti`**. Finché
-erano dichiarati «scheletri», quel debito cresceva in silenzio; da adesso chi
-decide su `vendite` sa di star decidendo per due domini.
-⇒ Ne discende la regola operativa: quando un'asimmetria fra i due domini emerge,
-si chiude **subito**, non in una «fase due» — una simmetria rimandata è un debito
-che nessuno rilegge.
+- **Magazzino, Lotti 1 e 2: chiusi** (`work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md`,
+  `work-done/brief-db-magazzino-lotto-2-motore.md`, `work-done/piano-be-fe-magazzino-lotto-2-motore.md`;
+  API in `docs/it/backend/magazzino/manual/api_magazzino.md`). ⏳ Collaudo a video di Tid:
+  `work-in-progress/collaudo-in-app-magazzino-inventario-e-rettifica.md`.
+- ⏳ **Magazzino, Lotto 3 — la merce esce con la bolla**
+  (`work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md`): DB applicato; restano le
+  richieste a BE/FE (§6 — senza R-1 il backend non emette una bolla che muove merce: il BE non
+  chiama ancora `vendite.fn_cambia_stato_ddt`) e la CI da zero.
+- ⏳ **Magazzino, Lotto 3-bis — carico da reso cliente**
+  (`work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`): DB applicato; restano
+  R-1…R-5 a BE/FE.
+- **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
+  repository di righe, nessuna chiave i18n).
 
-⚠️ `storico` **resta senza decisione** e `contabilita` resta **fuori perimetro**
-(schema DB vuoto, verificato 01-09-2026): non sono la stessa cosa e non vanno
-letti insieme ai due sopra.
+⭐ **I domini nuovi nascono con il permesso applicato dal DB**
+(`work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md`, D-1 → D-5 di Tid). Il modello è
+«una scrittura = un verbo»: una funzione DB che nella prima riga chiama un guard —
+`script.fn_guard_azione` (azione di processo), `script.fn_guard_livello` (livello sull'oggetto)
+o `script.fn_guard_super_admin` (gestione accessi) — e l'app che perde la scrittura diretta sulle
+tabelle che il verbo protegge (guida `architettura-permessi-e-autorizzazioni.md` §7.4-7.5).
+`magazzino` e `acquisti` nascono così; gli altri domini ci passano quando un cantiere tocca le loro
+scritture. Il limite è scritto: il modello protegge da un backend che **sbaglia**, non da uno
+**manomesso** (l'identità la dichiara il backend). Già su verbo: le poste di inventario e
+rettifica (`registra_magazzino`), il pannello di configurazione (`config.fn_pannello_scrivi`, lista
+in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'app).
 
-✅ **Il prerequisito è consegnato** (2026-09-14, brief chiuso in
-`work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md`): le date di
-consegna sulle righe (vendite **e** acquisti), `config.modi_approvvigionamento`,
-`articoli.gestito_a_magazzino`/`lead_time_giorni`, la commessa leggibile,
-`famiglie_documento` senza BA obbligatorio — DB, BE e FE. **Tre cose il cantiere
-le eredita, e sono scritte nel riquadro «CHIUSO» di quel brief:**
+### 🟡 Altri cantieri aperti
 
-- 🔴 il **presidio di prontezza** su `articoli.gestito_a_magazzino` (vista
-  `dbops` a una riga `MARCATI`/`NESSUNO_MARCATO`, `ZERO`, `stato_atteso =
-  MARCATI` in `presidi.csv`) — deciso da Tid il 14-09: si scrive **qui**, col
-  primo carico (analisi carico e scarico §8), non prima: al rilascio tutti gli
-  articoli sono `false` e nessun rosso lo dice;
-- le due date di `acquisti.ordini_righe` sono a DB **senza consumatore**
-  (nessun repository di righe, nessuna chiave i18n);
-- `E_ATTIVO_REQUIRE`, il codice del require generato dal framework ATTIVO, è
-  **TECNICO** anche quando il dato l'ha scelto una persona: candidato allo split,
-  per **tutte** le coppie — cantiere `dbops`, non di dominio.
-
-✅ **Il Lotto 1 di magazzino («il terreno vuoto») è CHIUSO e archiviato**
-(`work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md`, 2026-09-17): DB
-mergiato il 15-09 (PR #1593), le richieste BE/FE chiuse lo stesso giorno
-(PR #1595: `E_MAG_*` rigenerati coi ripieghi, `ambito_causale` via da
-`_REL_CONSENTITE`/`CONFIG_TABLES`), CI verde. Il **Lotto 2** («il motore»: primitiva DEFINER + porta sul
-ledger, check di disponibilità condivisa, inventario e rettifica,
-`vw_disponibilita`, orfani, presidio di prontezza, `requires_lotto` in UI) ha
-il suo brief dal **17-09** — `work-done/brief-db-magazzino-lotto-2-motore.md`,
-✅ **quattordici D-L2 tutte decise da Tid il 17-09** (fra cui `magazzini.usa_ubicazioni`, `trasferimenti` = trasferimento interno, via `COUNTING`), ✅ **CONSEGNATO il 22-09 e ARCHIVIATO il 24-09**, dopo che la porta è stata completata coi verbi (paragrafo sotto) — era partito da
-`analisi-db-magazzino-carico-e-scarico.md` §8 e dalle sei lezioni in coda a §5
-del brief del Lotto 1. ✅ **Il lato BE/FE del Lotto 2 è consegnato a codice il
-23-09** (`work-done/piano-be-fe-magazzino-lotto-2-motore.md`): inventario e
-rettifica come **una** famiglia parametrica (lista, drawer, righe, piano,
-«Registra» dalla capability), disponibilità e registro dei movimenti; le richieste
-del piano al DB (R-1 … R-7) sono in `work-done/brief-db-magazzino-lotto-2-bis-be-fe.md`.
-Pagina API `docs/it/backend/magazzino/manual/api_magazzino.md` (25-09). ⏳ Resta il
-**collaudo a video** di Tid (`work-in-progress/collaudo-in-app-magazzino-inventario-e-rettifica.md`):
-il frontend non è mai stato aperto in-app. Il prerequisito deciso da Tid il 15-09 —
-`brief-db-emittente-di-default-un-bb-solo.md`, l'emittente di default come
-**building block unico** in `script`, montato su `magazzini`/`assets` e **al
-posto delle quattro copie di vendite**, ritirate nello stesso giro — è
-**CHIUSO anch'esso il 17-09** (`work-done/brief-db-emittente-di-default-un-bb-solo.md`:
-`20260915-36 → -46` applicati, undici trigger sul BB e zero copie a DB vivo,
-commit `e98cf2469` + PR #1598, BE allineato con `E_EMITTENTE_NON_RISOLTO`).
-⭐ La regola che ne discende, e vale per ogni cantiere: *quando
-emerge un BB generico, i duplicati esistenti si ritirano subito — non c'è
-produzione, non c'è niente da aspettare.*
-
-⭐ **I domini nuovi nascono con il permesso applicato dal DB** (decisioni D-1 →
-D-5 di Tid, 2026-09-24, in `work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md`).
-Fino a quel giorno il DB **calcolava** i permessi ma li **applicava** solo il
-backend. Il modello è «una scrittura = un verbo»: una funzione DB che nella prima
-riga chiama un guard — `script.fn_guard_azione` (azione di processo),
-`script.fn_guard_livello` (livello sull'oggetto) o `script.fn_guard_super_admin`
-(gestione accessi) — e l'app che perde la scrittura diretta sulle tabelle che il
-verbo protegge. Il modello è descritto nella guida
-`architettura-permessi-e-autorizzazioni.md` §7.4-7.5. `magazzino` e `acquisti` nascono così; gli altri domini ci passano
-quando un cantiere tocca le loro scritture, senza data. ✅ **Primo caso chiuso il
-2026-09-24** (`work-done/brief-db-magazzino-verbi-con-permesso.md`,
-`20260924-38` → `-42`): `fn_posta_inventario` e `fn_posta_rettifica` applicano
-`registra_magazzino`, l'app non esegue più la primitiva del registro. Il limite è
-scritto: il modello protegge da un backend che **sbaglia**, non da uno
-**manomesso** (l'identità la dichiara il backend).
-
-✅ **Il Lotto 3 di magazzino — la merce esce con la bolla — e' applicato lato DB
-il 2026-09-28** (`work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md`,
-`20260928-60` → `-83`, pgTAP verdi col runner). Undici decisioni di Tid: il
-magazzino sulla **testata** della bolla, i **prelievi** in tabella figlia come
-sorgente del movimento, il verbo `vendite.fn_cambia_stato_ddt` (azione
-`emetti_ddt`) con la **porta del registro** sui soli passaggi che muovono merce,
-la bolla di trasferimento che carica l'arrivo al `CONSEGNATO`, il trasferimento
-interno (`fn_posta_trasferimento`), i verbi del blocco manuale (azione
-`blocca_merce`, `movimenti_attesi` in sola lettura per l'app). ⏳ Restano le
-richieste a BE/FE (brief §6: senza R-1 il backend non emette una bolla che muove
-merce), la CI da zero e il **Lotto 3-bis** (carico da reso cliente, `work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`), ✅ **applicato lato DB il 2026-09-29** (`20260928-84 → -98`, `20260929-01 → -04`, pgTAP verdi col runner): la conferma del reso è un verbo (azione `conferma_reso`) che fa rientrare la merce dai **rientri**, che puntano al prelievo d'origine, al costo dell'uscita; l'annullo storna; le righe del reso si toccano solo in bozza. Del 3-bis restano le richieste a BE/FE (R-1…R-5). ✅ **Secondo caso, il pannello di configurazione, chiuso il 2026-09-28** (D-3,
-`work-done/brief-db-pannello-config-verbo-generico.md`): scrive col verbo
-generico `config.fn_pannello_scrivi` sull'oggetto di ogni tabella, la lista è
-`config.tabelle_gestibili` (niente più `REL_CONSENTITE` nel BE né
-`config-tables.js` nel FE), `magazzino.causali` è chiusa all'app. Anche
-`config.aree_funzionali` è in sola lettura per l'app (D-P9, `20260928-30`): nome e
-ordine si cambiano nel CSV.
+- **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
+  resta R-4, che vuole un brief DB non ancora scritto; ⏳ al team DB
+  `work-in-progress/brief-db-credenziale-verbi-amministratore.md` (non bloccante).
+- **Secondo fattore: la password per registrare il device**
+  (`work-in-progress/brief-db-secondo-fattore-riautenticazione-password.md`): ⏳ al team DB (R-1),
+  poi BE/FE.
+- **Kit in fattura** (`work-in-progress/brief-db-esposizione-componenti-kit-in-fattura.md`,
+  `work-in-progress/brief-db-bom-flag-quantita-e-kit-in-fattura.md`): DB chiuso, giro BE/FE in corso.
+- **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
+  deciso, si parte da OFFERTA.
+- **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il
+  cambio di licenza.
 
 ### Aperto — Media priorità
+- **`E_ATTIVO_REQUIRE` è TECNICO anche quando il dato l'ha scelto una persona**
+  (DB, `dbops`; residuo di `work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md`): il
+  codice del require generato dal framework ATTIVO è candidato allo split, per **tutte** le coppie
+- 🟡 **IVA per cassa: i residui del cantiere** (DB, ereditati il 2026-10-03 dalla chiusura
+  di `work-done/brief-db-esigibilita-iva-per-cassa-emittente.md` §12):
+  **R-DB-1** — i riepiloghi IVA **memorizzati** dei preventivi non si ricalcolano
+  quando cambia la regola che li produce (rimandato da Tid, SQL a mano nel §9.5;
+  si riapre al prossimo cambio della regola: ricalcolo del pregresso o riepilogo
+  derivato come ordini e DDT); **storicità del regime** dell'emittente (D-8,
+  oggi senza validità nel tempo); **domande al consulente** (§9.4: RF16, catalogo
+  RF, DDT senza cliente); **annotazioni future** (scissione, inversione
+  contabile, RF19) come righe di `vendite.fn_annotazioni_fattura`.
 - 🟡 **Le variabili di una versione di template non si validano alla pubblicazione**
   (DB + BE, ereditata il 2026-10-01 dalla chiusura di
   `work-done/brief-db-documenti-versione-contesto-template.md`, D-C3 §7 e §14): le
@@ -485,24 +435,11 @@ ordine si cambiano nel CSV.
   vista (le tabelle lo hanno o lo raggiungono) + la colonna a catalogo. Il
   collaudo in-app dell'osservabilità (`work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md`,
   scritto il 19-09, **da eseguire**) lo dichiara al §3.15
-- ✅ **Il catalogo dei registri del giornale — CHIUSO il 2026-09-19** su DB,
-  BE e FE (`work-done/brief-db-registri-giornale-catalogo.md`): le tre sedi
-  che non si conoscevano (letterali della vista, costante BE, array FE) sono
-  **una**, `config.registri_giornale`, legata alla vista dal pgTAP nei due
-  versi; il filtro `registro` del giornale trasversale si valida leggendo il
-  catalogo (`registri_giornale_ammessi`, niente costante), la tendina e la
-  colonna «Registro» portano l'etichetta dal lookup specializzato
-  (`etichetta_key`), e `check_i18n_keys.py` legge la colonna `etichetta_key`
-  dei CSV. **Due cose ereditate**, nel brief §5.1: (a) l'handler delle
-  specializzate scriveva `t.attivo` fisso — ora `has_attivo`, e
-  `test_lookup_specializzate` attraversa **tutte** le rel sul DB provvisto;
-  (b) ✅ regola del 2 applicata (ok Tid): le due tendine del giornale
-  («Entità», «Registro») passano dal BB `useLookupEtichettato` — lookup del
-  catalogo con l'etichetta dichiarata dal DB, `etichetta(codice)` + `opzioni`;
-  e dalla rilettura critica `useLookupCodici` (chiave `<rel>[::no-obsoleti]`
-  + fetch del lookup generico composte in un posto, 7 siti). ⚠️ Restano
-  dichiarati i siti che chiamano `lookupCodici(rel)` senza `page_size`
-  (pagina 50: tendina troncabile in silenzio) — da rivedere uno per uno
+- **Tendine del lookup generico senza `page_size`** (FE, residuo di
+  `work-done/brief-db-registri-giornale-catalogo.md` §5.1): i siti che chiamano
+  `lookupCodici(rel)` senza `page_size` ricevono la pagina di default (50) e la
+  tendina si tronca in silenzio — da rivedere uno per uno, o da far passare da
+  `useLookupCodici`
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare
@@ -543,7 +480,7 @@ lezione della §Nota di metodo di quel file):
 ### Note operative
 - `config.stati_doc_fiscale.chiude_lotto = true` → unico meccanismo di chiusura lotto (nessun hardcode)
 - Reset lotto MASSIVO: ammesso in DRAFT; la DEFINITIVA fa resume per fattura (non reset globale)
-- La procedura SQL `pr_run_lotto_pipeline` è stata **rimossa** (non in `pg_proc`, verificato 2026-09-12); l'orchestrazione è in Django (`run_lotto_pipeline`). Fino a quel giorno questa riga la dava «deprecata e in fase di rimozione»
+- L'orchestrazione della pipeline è in Django (`run_lotto_pipeline`), non in una procedura SQL
 
 ## File Django Chiave (vendite)
 
@@ -553,8 +490,8 @@ apps/vendite/
 │   ├── pipeline_runner.py          # LottoPipelineRunner — orchestrazione step pipeline
 │   ├── pipeline_step_executor.py   # Esecuzione singolo step + dispatch task
 │   └── fatture_righe_service.py    # Generazione righe fattura
-├── db/ o repositories/
-│   └── vendite_pipeline_repository.py  # Lookup registry DB, fn SQL
+├── db/
+│   └── pipeline_repository.py      # Lookup registry DB, fn SQL
 ├── types.py                        # TypedDict per pipeline/lotto
 └── tests/
     ├── services/
@@ -582,10 +519,8 @@ pip-compile backend/requirements.in --output-file backend/requirements.txt
 # Aggiornare strumenti dev (mkdocs, pre-commit, ecc.)
 scripts/update-venv.sh
 
-# Liquibase locale
-make db-migrate       # applica migrazioni
-make db-ci-apply      # applica automazioni CI
-make db-setup         # entrambi
+# Liquibase: wrapper scripts/liquibase5.sh (procedura in docs/it/liquibase-setup-workflow.md).
+# ⛔ Le migrazioni le applica Tid: l'hook guardrail_no_db_migrate.py le blocca all'agente.
 ```
 
 ## Documentazione di Riferimento Rapido

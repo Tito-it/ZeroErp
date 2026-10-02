@@ -6,8 +6,11 @@
 > credenziale») e discussione con Tid sulla lista operatori, 2026-10-02.
 > **Stato:** ✅ **giro DB applicato (§7) e ✅ giro BE/FE fatto lo stesso giorno (§8)**: R-BE-a…g
 > chiuse, area «Accessi» a video con le tre schede, blocco e secondo fattore sulla credenziale.
-> ⏳ Restano: le tre richieste nuove al team DB (§8.3, nessuna bloccante), la conferma di Tid sulla
-> conseguenza 1 di §7.2 (§8.4) e il collaudo a video (§8.5). ~~Ora tocca
+> ✅ Collaudo a video eseguito da Tid (§8.5, registrato il 2026-10-02).
+> ✅ **CHIUSO il 2026-10-02.** Quello che restava ha una sede propria: le tre richieste al team DB
+> (§8.3) nel [brief credenziale e utenti di sistema](../work-in-progress/brief-db-credenziale-verbi-amministratore.md);
+> la conferma di §8.4 è la decisione D-3, già presa, e il lavoro che ne segue sta nel
+> [piano accessi](../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md) (L-5). ~~Ora tocca
 > al BE: **R-BE-a per primo** (§7.8).~~ Il resto della testata qui sotto è del momento della scrittura. Tutte le richieste di §3
 > (R-DB-1, R-DB-2, R-DB-A1, A2, A2-bis, A3) hanno il loro changeSet o seed. **Da leggere per
 > primo: §7.11** (i passi di Tid, in ordine: prima dell'apply c'è una query da lanciare), poi
@@ -365,8 +368,8 @@ senza veste non si vedono, e una vista non può nominare `django.*`.
 
 ⚠️ **`cliente_ids` è un array, non un id.** `anagrafiche.clienti` non è unica su
 `soggetto_ruolo_id` (un cliente per istanza utility): una veste cliente può avere più schede, e
-sceglierne una vorrebbe dire scegliere per id. **Decisione aperta al FE**: con uno si apre quella
-scheda; con più di uno, un elenco o la scheda del soggetto.
+sceglierne una vorrebbe dire scegliere per id. **Decisione del FE** (✅ presa, §8.2): con uno si
+apre quella scheda; con più di uno, o nessuno, la scheda del soggetto.
 
 ⚠️ La vista attraversa `anagrafiche.clienti`, che ha la RLS. Letta senza contesto, gli array
 `cliente_ids` escono vuoti; le righe no.
@@ -451,7 +454,7 @@ di ricerca è 3, quindi niente da toccare nel terzo elenco.
   * tipo: `PROCESSO` / `API_CLIENT`.
 * Tab «Di sistema»: il clic apre il drawer del processo con `processo_id`. È NULL per un
   `API_CLIENT`.
-* `cliente_ids` è un array: decisione aperta, §7.4.
+* `cliente_ids` è un array: deciso dal FE, §7.4 e §8.2.
 * `RUOLO_APPLICATIVO.DISABILITATO`: dopo R-BE-a non arriva più da nessuna veste. I suoi consumatori
   (router, login, store auth, drawer) si ritirano, come previsto in §5.
 
@@ -609,7 +612,7 @@ erano questo giro.
   dal drawer operatore e da quello degli altri accessi (A-5). Il colore dello stato di una veste è
   sceso in `core/utils/severity.js` (`statoVesteSeverity`) e le sue traduzioni in `auth.stato_veste.*`
   (erano `portale.stato.*`, una `switch` dentro `PortaleAccessoPanel`).
-* **Decisione su `cliente_ids`** (§7.4, aperta al FE): con UNA scheda cliente si apre quella; con
+* **Decisione su `cliente_ids`** (§7.4, ✅ presa dal FE e collaudata, §8.5 passo 3): con UNA scheda cliente si apre quella; con
   più d'una, o nessuna, la scheda del **soggetto**, che le elenca. Scegliere un id sarebbe scegliere
   a caso (`useSchedaVeste`).
 * i18n: le 11 intestazioni di colonna (il rosso della CI), i vocabolari (stato della veste, tipo di
@@ -617,20 +620,34 @@ erano questo giro.
 
 ### 8.3 Al team DB — tre richieste nuove, nessuna bloccante
 
+> ➡️ **Spostate il 2026-10-02** nel
+> [brief credenziale e utenti di sistema](../work-in-progress/brief-db-credenziale-verbi-amministratore.md),
+> dove si seguono. La tabella sotto resta come era al momento della chiusura.
+
 | # | Richiesta | Perché |
 | --- | --- | --- |
 | **R-DB-A4** | Lista 105, colonna `emittente_ragione_sociale`: `ordinabile = t` | È NUCLEO («ragione sociale», `gen_seed_lista --verifica-ordinamento` dice KO): chi la accende deve poterla ordinare. Il backend la sa ordinare; la chiave entra nella whitelist quando il seed la offre (prima il presidio direbbe «il BE la ordina e il seed no») |
 | **R-DB-A5** | Una `script.fn_check_credenziale_bloccabile(auth_user_id)` → `reason`/`reason_key` (oggi `ULTIMO_SUPER_ADMIN`), chiamata dal guard `trgfn_credenziali_guard_ultimo_super_admin` e leggibile dal backend | api.md §«Capability di riga»: il motivo lo produce la stessa funzione che rifiuta. Oggi il PREDICATO viene dal DB (`fn_check_ultimo_super_admin_attivo`), ma codice e chiave i18n li compone il backend: debito dichiarato in `accessi_service.py`. Sostituisce R-6 del piano accessi (la lettura dello stato del blocco non serve più: `config.credenziali` è leggibile dall'app) |
-| **R-DB-A6** | ❓ **Decisione di Tid prima del DB**: i verbi della credenziale (`fn_blocca_credenziale`, i `fn_totp_*` dell'amministratore) devono **rifiutare** una credenziale di categoria `SISTEMA`? | A-6 dice «sola lettura»: oggi lo è solo a video (la scheda non ha i gesti). Una chiamata diretta all'API blocca l'utente tecnico di un processo, cioè ferma un automatismo all'insaputa del suo pannello. Se è una regola del modello, la sede è il verbo |
+| **R-DB-A6** | ✅ **Deciso da Tid (2026-10-02): sì, il DB rifiuta.** I verbi della credenziale usati dall'amministratore (`fn_blocca_credenziale`, i `fn_totp_*` dell'amministratore) **rifiutano** una credenziale di categoria `SISTEMA` con un codice d'errore, qualunque sia la strada (video, API, script). Per fermare un processo si usa il suo pannello | A-6 dice «sola lettura»: oggi lo è solo a video (la scheda non ha i gesti). Una chiamata diretta all'API blocca l'utente tecnico di un processo, cioè ferma un automatismo all'insaputa del suo pannello. Se è una regola del modello, la sede è il verbo |
 
-### 8.4 Da confermare, Tid
+### 8.4 Da confermare, Tid — ✅ già deciso: è D-3
+
+> ✅ Non è una domanda aperta: D-3 (Tid, 2026-09-24) dice «riattivazione sempre con un nuovo
+> invito, per tutte le vesti», quindi «Invia invito» sull'operatore disattivato è il comportamento
+> voluto. Resta **lavoro**, non una decisione: ritirare la riattivazione diretta (l'interruttore
+> riacceso e `operatori/<id>/riattiva/`). Si segue nel
+> [piano accessi](../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md), L-5/D-3.
 
 * **La conseguenza 1 di §7.2**: un operatore disattivato è **invitabile** (la capability `can_invite`
   arriva dal DB, e il drawer la segue): a video, sul suo drawer compare «Invia invito», che lo riaccende
   con una password nuova. In alternativa resta l'interruttore «attivo» del drawer. Il piano accessi
   (L-5, D-3) vuole proprio questo — riattivare col reinvio — ma l'interruttore c'è ancora.
 
-### 8.5 Collaudo a video (non fatto: nessuna pagina aperta in-app in questa sessione)
+### 8.5 Collaudo a video — ✅ eseguito da Tid, tutti e sei i passi con esito buono
+
+> Registrato il 2026-10-02: Tid li aveva eseguiti senza che finissero in un documento.
+> ⚠️ È precedente ai cambi dello stesso giorno su sessioni e inviti per veste (piano accessi
+> §4.3-bis, D-5 e A-5): quei passi a video stanno nel piano, non qui.
 
 1. Menu Amm. Software → «Accessi»: tre schede; un preferito «Operatori» porta alla prima.
 2. «Operatori»: disattivare un operatore → badge «Disabilitato», resta in elenco.

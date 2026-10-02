@@ -5,11 +5,13 @@
 # Scopo: La conferma del regime fiscale dell'emittente (R-1/R-2 di
 #        brief-db-esigibilita-iva-per-cassa-emittente), provata sul DATABASE
 #        VERO: cio' che i test di servizio, che mockano il repository, non
-#        possono vedere — che la conferma esca dalla STESSA scrittura del
-#        regime (il trigger `trgfn_emittenti_fiscali_regime_conferma` la
-#        azzera altrimenti), che l'autore sia l'operatore della GUC
-#        `app.jwt_user`, e che la FK al catalogo arrivi al client come 400 sul
-#        campo e non come 500.
+#        possono vedere. Dal §10 (applicato il 2026-10-02) la conferma la
+#        DERIVA il trigger `trgfn_emittenti_fiscali_regime_conferma` da ogni
+#        UPDATE che nomina il regime: si prova che il repository la ottenga
+#        solo nominandolo, che l'autore sia l'operatore della GUC
+#        `app.jwt_user`, che la creazione col regime nasca confermata (INSERT
+#        + UPDATE), che chi scrive le colonne di conferma sia rifiutato dal
+#        guard, e che la FK al catalogo arrivi al client come 400 sul campo.
 # Note: ⚠️ Il mondo si COSTRUISCE (builder `dbops.fn_pgtap_crea_*`), in
 #       transazione ANNULLATA. Opt-in `ZEROERP_TEST_DB_E2E=1` (acceso in CI).
 #       ⚠️ I regimi usati (RF01, RF17) sono SEED di `config.regimi_fiscali`
@@ -24,13 +26,15 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 5) RegimeFiscaleConfermaDbTests.test_create_senza_regime_nasce_rf01_non_confermato
 6) RegimeFiscaleConfermaDbTests.test_regime_fuori_catalogo_400_sul_campo
 7) RegimeFiscaleConfermaDbTests.test_create_regime_fuori_catalogo_400_sul_campo
+8) RegimeFiscaleConfermaDbTests.test_scrittura_diretta_della_conferma_rifiutata
+9) RegimeFiscaleConfermaDbTests.test_insert_col_regime_non_conferma
 """
 from __future__ import annotations
 
 import unittest
 import uuid
 
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
 from apps.core.tests.db_e2e import (
     apri_contesto_operatore,
@@ -72,14 +76,14 @@ class RegimeFiscaleConfermaDbTests(unittest.TestCase):
         )
         return EmittentiFiscaliRepository()
 
-    # 1. Il regime nuovo e la sua conferma nella stessa UPDATE: il trigger la
-    #    lascia (data cambiata insieme al regime), e l'autore e' l'operatore.
+    # 1. Una UPDATE che nomina il regime: data e autore li scrive il trigger,
+    #    e l'autore e' l'operatore.
     def test_update_col_regime_scrive_la_conferma(self):
         emittente_id = self._emittente()
         self.assertEqual(("RF01", False, None), self._stato(emittente_id))
 
         self.assertTrue(self._repo().update_emittente(
-            emittente_id, {"regime_fiscale_rf": "RF17"}, conferma_regime=True,
+            emittente_id, {"regime_fiscale_rf": "RF17"},
         ))
         self.assertEqual(("RF17", True, _OPERATORE), self._stato(emittente_id))
 
@@ -87,7 +91,7 @@ class RegimeFiscaleConfermaDbTests(unittest.TestCase):
     def test_update_senza_regime_non_tocca_la_conferma(self):
         emittente_id = self._emittente()
         repo = self._repo()
-        repo.update_emittente(emittente_id, {"regime_fiscale_rf": "RF17"}, conferma_regime=True)
+        repo.update_emittente(emittente_id, {"regime_fiscale_rf": "RF17"})
 
         self.assertTrue(repo.update_emittente(emittente_id, {"bollo_auto": True}))
         self.assertEqual(("RF17", True, _OPERATORE), self._stato(emittente_id))
@@ -96,9 +100,7 @@ class RegimeFiscaleConfermaDbTests(unittest.TestCase):
     #    aveva dichiarato: e' il percorso con cui l'operatore svuota il presidio.
     def test_update_regime_invariato_conferma_lo_stesso(self):
         emittente_id = self._emittente()
-        self._repo().update_emittente(
-            emittente_id, {"regime_fiscale_rf": "RF01"}, conferma_regime=True,
-        )
+        self._repo().update_emittente(emittente_id, {"regime_fiscale_rf": "RF01"})
         self.assertEqual(("RF01", True, _OPERATORE), self._stato(emittente_id))
         with connection.cursor() as cur:
             cur.execute(
@@ -107,6 +109,13 @@ class RegimeFiscaleConfermaDbTests(unittest.TestCase):
                 [emittente_id],
             )
             self.assertEqual(0, cur.fetchone()[0])
+
+    # P.IVA libera dal builder (`fn_pgtap_piva_libera`): una fissa collide col
+    # residuo di un'altra corsa o coi dati.
+    def _soggetto_pg(self, nome: str) -> str:
+        with connection.cursor() as cur:
+            cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_pg(%s)", [nome])
+            return str(cur.fetchone()[0])
 
     def _soggetto_ruolo_ef(self) -> int:
         with connection.cursor() as cur:
@@ -121,13 +130,18 @@ class RegimeFiscaleConfermaDbTests(unittest.TestCase):
     def _codice() -> str:
         return "RC" + uuid.uuid4().hex[:8].upper()
 
-    # 4. Creare dichiarando il regime = nascere confermati.
+    # 4. Creare dichiarando il regime = nascere confermati. Passa dal SERVICE:
+    #    e' lui che fa seguire alla INSERT la UPDATE del regime.
     def test_create_col_regime_nasce_confermato(self):
-        emittente_id = self._repo().create_emittente(
-            soggetto_ruolo_id=self._soggetto_ruolo_ef(), codice=self._codice(),
-            regime_fiscale_rf="RF17", conferma_regime=True,
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliService,
         )
-        self.assertEqual(("RF17", True, _OPERATORE), self._stato(emittente_id))
+
+        risultato = EmittentiFiscaliService().crea_emittente({
+            "soggetto_id": self._soggetto_pg("Emittente e2e regime"),
+            "codice": self._codice(), "regime_fiscale_rf": "RF17",
+        })
+        self.assertEqual(("RF17", True, _OPERATORE), self._stato(risultato["id"]))
 
     # 5. Senza regime vale il default del DB, e nessuno l'ha confermato.
     def test_create_senza_regime_nasce_rf01_non_confermato(self):
@@ -161,13 +175,7 @@ class RegimeFiscaleConfermaDbTests(unittest.TestCase):
         )
         from apps.core.services.service_errors import ServiceError
 
-        with connection.cursor() as cur:
-            cur.execute(
-                # P.IVA libera dal builder (`fn_pgtap_piva_libera`): una fissa
-                # collide col residuo di un'altra corsa o coi dati.
-                "SELECT dbops.fn_pgtap_crea_soggetto_pg('Emittente e2e regime FK')"
-            )
-            soggetto_id = str(cur.fetchone()[0])
+        soggetto_id = self._soggetto_pg("Emittente e2e regime FK")
         with self.assertRaises(ServiceError) as ctx, transaction.atomic():
             EmittentiFiscaliService().crea_emittente({
                 "soggetto_id": soggetto_id, "codice": self._codice(),
@@ -175,3 +183,31 @@ class RegimeFiscaleConfermaDbTests(unittest.TestCase):
             })
         self.assertEqual("E_ANAG_VALIDAZIONE", ctx.exception.code)
         self.assertEqual("regime_fiscale_rf", ctx.exception.context.get("field"))
+
+    # 8. ⛔ Le colonne di conferma non si scrivono da fuori: il guard
+    #    `trgfn_emittenti_fiscali_guard_regime_conferma` rifiuta, non
+    #    sovrascrive. Il repository non puo' nemmeno provarci (whitelist del
+    #    BB): si scrive in SQL, come farebbe un altro scrittore.
+    def test_scrittura_diretta_della_conferma_rifiutata(self):
+        emittente_id = self._emittente()
+        with self.assertRaises(DatabaseError) as ctx, transaction.atomic(), \
+                connection.cursor() as cur:
+            cur.execute(
+                "UPDATE anagrafiche.emittenti_fiscali"
+                "   SET regime_fiscale_confermato_il = now(),"
+                "       regime_fiscale_confermato_da = 'qualcuno'"
+                " WHERE id = %s",
+                [emittente_id],
+            )
+        self.assertIn("E_EMITTENTE_REGIME_CONFERMA_DERIVATA", str(ctx.exception))
+        self.assertEqual(("RF01", False, None), self._stato(emittente_id))
+
+    # 9. La INSERT non conferma mai, nemmeno con un regime esplicito: un RF01
+    #    scelto e uno di default sono indistinguibili. La conferma in
+    #    creazione e' solo quella della UPDATE che il service fa seguire (4).
+    def test_insert_col_regime_non_conferma(self):
+        emittente_id = self._repo().create_emittente(
+            soggetto_ruolo_id=self._soggetto_ruolo_ef(), codice=self._codice(),
+            regime_fiscale_rf="RF17",
+        )
+        self.assertEqual(("RF17", False, None), self._stato(emittente_id))

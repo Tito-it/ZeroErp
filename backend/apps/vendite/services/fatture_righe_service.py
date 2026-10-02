@@ -24,6 +24,9 @@ from apps.vendite.db.pipeline_repository import (
 from apps.vendite.services import _kit_meta as kit_meta
 from apps.vendite.types import GroupAttivitaKey
 
+# Il nome con cui la generazione delle righe firma i suoi errori.
+_FN_GENERA = "vendite.fatture_righe_service.generate_fatture_righe"
+
 # Servizio applicativo che porta in Python il grouping e la generazione righe
 # fattura. È l'implementazione IN ESERCIZIO: il task `generate_fatture_righe`
 # della pipeline passa di qui (`pipeline_step_executor`), non dalla funzione SQL
@@ -40,6 +43,9 @@ class _KitSnapshot:
     articolo_padre_id: str | None = None
     # Codice di `config.esposizioni_componente`; None sulle righe sciolte.
     esposizione: str | None = None
+    # La UoM della riga PADRE del documento (`fatture_righe.kit_uom_id`): e'
+    # del kit, non dell'attivita', quindi entra nel bucket come il padre.
+    uom_padre_id: int | None = None
 
 
 # Accumulatore di un gruppo di attività destinate a UNA riga di fattura.
@@ -55,6 +61,17 @@ class _GruppoRiga:
     # costruzione) — serve solo all'ORDINAMENTO, che deve essere leggibile.
     articolo_codice: str | None = None
     qta_totale: Decimal = Decimal(0)
+    # Somma della quantita' PADRE sulle attivita' del gruppo, come `qta_totale`
+    # somma quella del componente; None sulle righe fuori dal kit.
+    kit_qta_totale: Decimal | None = None
+    # Il periodo della riga (`competenza_dal/_al`, NOT NULL): quello della
+    # chiave se l'attivita' ne ha uno, altrimenti la data piu' recente fra le
+    # attivita' aggregate (D-3.1). Lo risolve `_aggrega`.
+    competenza_dal: date | None = None
+    competenza_al: date | None = None
+    # Vero se il periodo e' quello di una riga PUNTUALE (la data piu'
+    # recente): e' il solo che `_allinea_periodo_kit` puo' spostare.
+    periodo_puntuale: bool = False
     attivita_ids: list[int] = field(default_factory=list)
 
 
@@ -86,14 +103,11 @@ class FattureRigheService:
             log_to_db=True,
         )
         assert row is not None
-        ErrorManager.require(
+        _richiedi_dati_attivita(
             row.dest_billing_account_id is not None,
-            code="E_GROUP_ATTIVITA_INVALID_DATA",
-            message="Dati attivita non validi per grouping.",
             detail=f"dest_billing_account_id mancante per attivita: {attivita_id}",
             context={"attivita_id": attivita_id},
             function_name="vendite.fatture_righe_service.group_attivita_fatturabili",
-            log_to_db=True,
         )
         fn = "vendite.fatture_righe_service.group_attivita_fatturabili"
         self._guard_coerenza_rettifica(row, function_name=fn)
@@ -121,17 +135,14 @@ class FattureRigheService:
 
         ba_id = row.dest_billing_account_id
         emittente_id = BillingAccountRepository().get_emittente_fiscale_id(int(ba_id))
-        ErrorManager.require(
+        _richiedi_dati_attivita(
             emittente_id is not None,
-            code="E_GROUP_ATTIVITA_INVALID_DATA",
-            message="Dati attivita non validi per grouping.",
             detail=(
                 f"emittente fiscale non risolvibile per il billing account {ba_id}: "
                 "il trattamento IVA non e' determinabile"
             ),
             context={"attivita_id": row.attivita_id},
             function_name=function_name,
-            log_to_db=True,
         )
         resolver = IvaResolverService()
         parte = resolver.risolvi_anteprima(
@@ -162,10 +173,8 @@ class FattureRigheService:
     def _guard_coerenza_rettifica(row: GroupAttivitaInput, *, function_name: str) -> None:
         e_rettifica_label = row.tipo_movimento == TIPO_MOVIMENTO_RETTIFICA
         e_rettifica_ptr = row.fattura_riga_rettificata_id is not None
-        ErrorManager.require(
+        _richiedi_dati_attivita(
             e_rettifica_label == e_rettifica_ptr,
-            code="E_GROUP_ATTIVITA_INVALID_DATA",
-            message="Dati attivita non validi per grouping.",
             detail=(
                 f"attivita {row.attivita_id}: tipo_movimento="
                 f"{row.tipo_movimento} e fattura_riga_rettificata_id="
@@ -174,7 +183,6 @@ class FattureRigheService:
             ),
             context={"attivita_id": row.attivita_id},
             function_name=function_name,
-            log_to_db=True,
         )
 
     # Scopo: Costruisce GroupAttivitaKey da un GroupAttivitaInput con logica competenza.
@@ -294,26 +302,20 @@ class FattureRigheService:
                 #    l'aliquota ordinaria SENZA sollevare. Non è una lista più
                 #    corta — è un'imposta applicata dove non andava, su un
                 #    documento che nessuno segnalerà.
-                ErrorManager.require(
+                _richiedi_dati_attivita(
                     ctx.get("emittente_fiscale_id") is not None,
-                    code="E_GROUP_ATTIVITA_INVALID_DATA",
-                    message="Dati attivita non validi per grouping.",
                     detail=(
                         "emittente fiscale non risolvibile per la fattura "
                         f"{fattura_id}: il trattamento IVA non e' determinabile"
                     ),
                     context={"attivita_id": aid, "fattura_id": fattura_id},
                     function_name=function_name,
-                    log_to_db=True,
                 )
-                ErrorManager.require(
+                _richiedi_dati_attivita(
                     ctx.get("data_riferimento") is not None,
-                    code="E_GROUP_ATTIVITA_INVALID_DATA",
-                    message="Dati attivita non validi per grouping.",
                     detail=f"fattura {fattura_id} senza data: IVA non determinabile",
                     context={"attivita_id": aid, "fattura_id": fattura_id},
                     function_name=function_name,
-                    log_to_db=True,
                 )
                 # ⚠️ ANTEPRIMA, cioè SENZA imponibile, ed è deliberato in questa
                 #    slice: passando l'importo il risolutore può tornare DUE
@@ -354,8 +356,22 @@ class FattureRigheService:
             message="Attivita componente di kit senza articolo padre.",
             detail=f"componente_di assente nel meta dell'attivita: {attivita.id}",
             context={"attivita_id": attivita.id, "segment_key": segment},
-            function_name="vendite.fatture_righe_service.generate_fatture_righe",
+            function_name=_FN_GENERA,
             log_to_db=True,
+        )
+        # ⛔ Nessun ripiego sulla UoM del componente: su un kit misto
+        #    darebbe unita' discordanti nello stesso kit (D-4). Il meta delle
+        #    attivita' di prima la riceve dalla correzione una tantum
+        #    (R-BE-B5): se manca, la catena e' rotta a monte.
+        uom_padre = kit_meta.uom_padre_da_meta(meta)
+        _richiedi_dati_attivita(
+            uom_padre is not None,
+            detail=(
+                f"attivita {attivita.id}: componente di kit senza una UoM del padre "
+                f"valida ({kit_meta.META_KEY_UOM_PADRE}) nel meta"
+            ),
+            context={"attivita_id": attivita.id, "segment_key": segment},
+            function_name=_FN_GENERA,
         )
         return _KitSnapshot(
             key=kit_key,
@@ -363,7 +379,48 @@ class FattureRigheService:
             esposizione=kit_meta.esposizione_o_default(
                 meta.get(kit_meta.META_KEY_ESPOSIZIONE)
             ),
+            uom_padre_id=uom_padre,
         )
+
+    # Scopo: La quantita' PADRE che un'attivita' componente di kit rappresenta,
+    #        letta dal meta (la scrive il push).
+    # ⛔ Fail-loud in due casi, e nessuno dei due ha un ripiego onesto:
+    #    - la chiave manca: la riga del kit uscirebbe senza quantita' (la
+    #      tabella la rifiuta) o con una inventata;
+    #    - il SEGNO non e' quello della quantita' del componente: le due
+    #      quantita' descrivono la stessa attivita' (D-NC-2, il segno sta nel
+    #      numero). E' il caso di una rettifica il cui meta eredita la quantita'
+    #      padre della riga rettificata invece di quella accreditata: scritta
+    #      cosi', la nota di credito direbbe «+2 kit» su componenti negativi.
+    @staticmethod
+    def _kit_qta_attivita(attivita: AttivitaDaFatturare) -> Decimal:
+        fn = _FN_GENERA
+        meta = attivita.meta or {}
+        qta_padre = kit_meta.qta_padre_da_meta(meta)
+        _richiedi_dati_attivita(
+            qta_padre is not None,
+            detail=(
+                f"attivita {attivita.id}: componente di kit senza una quantita' del "
+                f"padre valida ({kit_meta.META_KEY_QTA_PADRE}) nel meta"
+            ),
+            context={"attivita_id": attivita.id},
+            function_name=fn,
+        )
+        assert qta_padre is not None
+        qta = attivita.quantita or Decimal(0)
+        _richiedi_dati_attivita(
+            # Un componente a quantita' zero (coeff 0) ha qualunque padre; uno
+            # a quantita' non nulla vuole un padre non nullo dello stesso segno
+            # (quantita' componente = quantita' padre × coeff, coeff >= 0).
+            qta == 0 or (qta_padre != 0 and (qta > 0) == (qta_padre > 0)),
+            detail=(
+                f"attivita {attivita.id}: quantita' del componente {qta} e quantita' "
+                f"del padre {qta_padre} incoerenti (segno opposto o padre a zero)"
+            ),
+            context={"attivita_id": attivita.id},
+            function_name=fn,
+        )
+        return qta_padre
 
     # Scopo: Genera le righe fattura del lotto AGGREGANDO le attività fatturabili
     #        per chiave di raggruppamento, e congelando lo snapshot di esposizione
@@ -386,7 +443,7 @@ class FattureRigheService:
             message="Parametro lotto non valido.",
             detail="lotto_id obbligatorio",
             context={"lotto_id": lotto_id},
-            function_name="vendite.fatture_righe_service.generate_fatture_righe",
+            function_name=_FN_GENERA,
             log_to_db=True,
         )
         assert lotto_id is not None
@@ -404,7 +461,7 @@ class FattureRigheService:
             return 0
 
         attivita_ids = [a.id for a in attivita_list]
-        fn = "vendite.fatture_righe_service.generate_fatture_righe"
+        fn = _FN_GENERA
 
         with transaction.atomic():
             # 1. Le attività entrano in lavorazione.
@@ -450,14 +507,11 @@ class FattureRigheService:
                     log_to_db=True,
                 )
                 assert gi is not None
-                ErrorManager.require(
+                _richiedi_dati_attivita(
                     gi.dest_billing_account_id is not None,
-                    code="E_GROUP_ATTIVITA_INVALID_DATA",
-                    message="Dati attivita non validi per grouping.",
                     detail=f"dest_billing_account_id mancante per attivita: {aid}",
                     context={"attivita_id": aid},
                     function_name=fn,
-                    log_to_db=True,
                 )
                 self._guard_coerenza_rettifica(gi, function_name=fn)
                 # `chiave` e non `gk`: piu' avanti nella stessa funzione `gk` e'
@@ -475,20 +529,18 @@ class FattureRigheService:
                 # `gi.prezzo_unitario`: su una rettifica il prezzo è quello
                 # della riga di fattura, e guardare il campo sbagliato lascerebbe
                 # passare proprio il caso che questo guard esiste per fermare.
-                ErrorManager.require(
+                _richiedi_dati_attivita(
                     chiave["prezzo_unitario"] is not None,
-                    code="E_GROUP_ATTIVITA_INVALID_DATA",
-                    message="Dati attivita non validi per grouping.",
                     detail=f"prezzo_unitario mancante per attivita: {aid}",
                     context={"attivita_id": aid},
                     function_name=fn,
-                    log_to_db=True,
                 )
                 group_keys[aid] = chiave
 
             # 5. Aggregazione: una riga per gruppo.
-            gruppi = self._aggrega(attivita_list, group_keys, header_map)
-            self._guard_quantita_kit_omogenee(gruppi, function_name=fn)
+            gruppi = self._aggrega(
+                attivita_list, group_keys, header_map, group_inputs, function_name=fn
+            )
 
             # 6. riga_nr progressivo per fattura, su ordinamento deterministico
             #    dei gruppi: altrimenti l'ordine delle righe cambierebbe a ogni
@@ -511,6 +563,10 @@ class FattureRigheService:
             righe_kit_keys: list[str | None] = []
             righe_kit_esposizioni: list[str | None] = []
             righe_kit_padri: list[str | None] = []
+            righe_kit_qtas: list[Decimal | None] = []
+            righe_kit_uom_ids: list[int | None] = []
+            righe_competenze_dal: list[date] = []
+            righe_competenze_al: list[date] = []
             righe_metas: list[str | None] = []
             # Le due colonne della rettifica. Restano piene di `None` su un
             # lotto senza note di credito, che e' il caso normale.
@@ -541,6 +597,12 @@ class FattureRigheService:
                 righe_kit_keys.append(gruppo.kit.key)
                 righe_kit_esposizioni.append(gruppo.kit.esposizione)
                 righe_kit_padri.append(gruppo.kit.articolo_padre_id)
+                righe_kit_qtas.append(gruppo.kit_qta_totale)
+                righe_kit_uom_ids.append(gruppo.kit.uom_padre_id)
+                assert gruppo.competenza_dal is not None
+                assert gruppo.competenza_al is not None
+                righe_competenze_dal.append(gruppo.competenza_dal)
+                righe_competenze_al.append(gruppo.competenza_al)
                 righe_sconti.append(_to_decimal(gk["sconto_percentuale"]))
                 righe_rettificate.append(gk["fattura_riga_rettificata_id"])
                 # ⭐ `iva_origine` e `iva_titolo_id` nel `meta`, come sui
@@ -584,6 +646,10 @@ class FattureRigheService:
                 righe_kit_keys=righe_kit_keys,
                 righe_kit_esposizioni=righe_kit_esposizioni,
                 righe_kit_articolo_padre_ids=righe_kit_padri,
+                righe_kit_qtas=righe_kit_qtas,
+                righe_kit_uom_ids=righe_kit_uom_ids,
+                righe_competenze_dal=righe_competenze_dal,
+                righe_competenze_al=righe_competenze_al,
                 righe_sconti=righe_sconti,
                 righe_rettificate=righe_rettificate,
                 righe_metas=righe_metas,
@@ -598,11 +664,16 @@ class FattureRigheService:
     # L'ordinamento è esplicito (fattura, articolo, competenza, prezzo, uom, kit)
     # e non segue l'ordine di arrivo delle attività: è ciò che rende stabile il
     # `riga_nr` fra due rigenerazioni dello stesso lotto.
+    # Risolve anche, per gruppo, il periodo della riga e la quantità padre del
+    # kit (somma, come la quantità).
     @staticmethod
     def _aggrega(
         attivita_list: list[AttivitaDaFatturare],
         group_keys: dict[int, GroupAttivitaKey],
         header_map: dict[int, int],
+        group_inputs: dict[int, GroupAttivitaInput],
+        *,
+        function_name: str,
     ) -> list[_GruppoRiga]:
         gruppi: dict[str, _GruppoRiga] = {}
         for attivita in attivita_list:
@@ -621,6 +692,7 @@ class FattureRigheService:
                     "kit_key": kit.key,
                     "kit_padre": kit.articolo_padre_id,
                     "kit_esposizione": kit.esposizione,
+                    "kit_uom_padre": kit.uom_padre_id,
                 },
                 sort_keys=True,
             )
@@ -638,10 +710,18 @@ class FattureRigheService:
                 gruppi[bucket] = gruppo
 
             gruppo.qta_totale += attivita.quantita or Decimal(0)
+            if kit.key is not None:
+                gruppo.kit_qta_totale = (
+                    gruppo.kit_qta_totale or Decimal(0)
+                ) + FattureRigheService._kit_qta_attivita(attivita)
+            FattureRigheService._accumula_periodo(
+                gruppo, group_inputs[attivita.id], function_name=function_name
+            )
             gruppo.attivita_ids.append(attivita.id)
 
         for gruppo in gruppi.values():
             gruppo.attivita_ids.sort()
+        FattureRigheService._allinea_periodo_kit(list(gruppi.values()))
 
         return sorted(gruppi.values(), key=FattureRigheService._chiave_ordinamento)
 
@@ -696,54 +776,106 @@ class FattureRigheService:
             g.group_key["contratto_id"] or 0,
         )
 
-    # Scopo: R10 — i componenti che confluiscono nella stessa riga padre devono
-    # portare la stessa quantità. La vista di esposizione stampa `avg(qta)` come
-    # quantità del padre: su quantità disomogenee sarebbe una media senza
-    # significato, e il totale tornerebbe lo stesso — quindi nessuno se ne
-    # accorgerebbe. Meglio fermarsi che stampare un numero inventato.
-    # ⚠️ Il raggruppamento deve essere lo STESSO di `vw_fattura_righe_esposte`,
-    # che aggrega per (fattura, kit, iva, BA destinatario): componenti dello
-    # stesso kit con IVA diverse producono DUE righe padre distinte (regola R13),
-    # ognuna con la propria media. Confrontarne le quantità fra loro sarebbe un
-    # falso positivo su una configurazione legittima.
-    # ⭐ L'esposizione NON entra nella chiave, ed è voluto (riletto il
-    # 2026-10-01, brief-db-esposizione-componenti-kit-in-fattura R-BE-3): la
-    # vista calcola la media su TUTTI i componenti, valorizzati compresi — un
-    # kit senza resto ha comunque la sua quantità. Cambia l'importo del padre,
-    # non la sua quantità, quindi la regola qui resta la stessa.
+    # Scopo: Il periodo della riga di fattura (`competenza_dal/_al`, NOT NULL
+    #        dal 2026-10-02 — brief-db-bom-flag-quantita-e-kit-in-fattura D-3,
+    #        D-3.1, R-BE-B1), una attività alla volta:
+    #          - RETTIFICA → il periodo della riga rettificata, come prezzo e
+    #            IVA (N-1): vince su quello dell'attività, che è la data
+    #            dell'accredito e non quella del fatto che corregge;
+    #          - la chiave porta un periodo vero → quello, uguale per tutte le
+    #            attività del gruppo perché sta nella chiave;
+    #          - riga puntuale → `dal = al` = la data PIÙ RECENTE fra le
+    #            attività aggregate. ⛔ Mai `min`–`max`: con `dal ≠ al` la riga
+    #            si stamperebbe come un periodo che non esiste (la vista stampa
+    #            il periodo quando `dal ≠ al`).
+    # ⚠️ Il periodo vero si riconosce dalla chiave e non si ricalcola: la regola
+    #    «è un periodo» sta in `_build_group_key`, e una seconda copia qui
+    #    divergerebbe.
     @staticmethod
-    def _guard_quantita_kit_omogenee(
-        gruppi: list[_GruppoRiga], *, function_name: str
+    def _accumula_periodo(
+        gruppo: _GruppoRiga, gi: GroupAttivitaInput, *, function_name: str
     ) -> None:
-        quantita_per_padre: dict[tuple[int, str, int | None, int], set[Decimal]] = {}
-        for gruppo in gruppi:
-            if gruppo.kit.key is None:
-                continue
-            chiave = (
-                gruppo.fattura_id,
-                gruppo.kit.key,
-                gruppo.group_key["iva_id"],
-                gruppo.group_key["dest_billing_account_id"],
-            )
-            quantita_per_padre.setdefault(chiave, set()).add(gruppo.qta_totale)
-
-        for (fattura_id, kit_key, iva_id, _ba_id), quantita in quantita_per_padre.items():
-            ErrorManager.require(
-                len(quantita) == 1,
-                code="E_KIT_QUANTITA_DISOMOGENEE",
-                message="Componenti dello stesso kit con quantita diverse.",
+        if gi.fattura_riga_rettificata_id is not None:
+            _richiedi_dati_attivita(
+                gi.rett_competenza_dal is not None and gi.rett_competenza_al is not None,
                 detail=(
-                    f"kit {kit_key} sulla fattura {fattura_id} (iva_id={iva_id}): "
-                    f"quantita distinte {sorted(str(q) for q in quantita)}"
+                    f"attivita {gi.attivita_id}: la riga rettificata "
+                    f"{gi.fattura_riga_rettificata_id} non ha un periodo"
                 ),
-                context={
-                    "fattura_id": fattura_id,
-                    "kit_key": kit_key,
-                    "iva_id": iva_id,
-                },
+                context={"attivita_id": gi.attivita_id},
                 function_name=function_name,
-                log_to_db=True,
             )
+            gruppo.competenza_dal = gi.rett_competenza_dal
+            gruppo.competenza_al = gi.rett_competenza_al
+            return
+        gk = gruppo.group_key
+        if gk["competenza_dal"] is not None and gk["competenza_al"] is not None:
+            gruppo.competenza_dal = date.fromisoformat(gk["competenza_dal"])
+            gruppo.competenza_al = date.fromisoformat(gk["competenza_al"])
+            return
+        # Puntuale: `competenza_al` è NOT NULL su `attivita_fatturabili` e su
+        # una riga puntuale vale la data dell'attività.
+        _richiedi_dati_attivita(
+            gi.competenza_al is not None,
+            detail=f"attivita {gi.attivita_id}: competenza_al mancante",
+            context={"attivita_id": gi.attivita_id},
+            function_name=function_name,
+        )
+        assert gi.competenza_al is not None
+        gruppo.periodo_puntuale = True
+        if gruppo.competenza_al is None or gi.competenza_al > gruppo.competenza_al:
+            gruppo.competenza_dal = gi.competenza_al
+            gruppo.competenza_al = gi.competenza_al
+
+    # Scopo: Le righe PUNTUALI dello stesso kit portano la STESSA data: la piu'
+    #        recente fra tutte, non quella di ciascuna riga.
+    # 🔴 Perche': la vista separa il kit per periodo. Le attivita' dei
+    #    componenti di un'istanza di kit nascono insieme (stesse date), ma un
+    #    componente puo' finire in piu' righe (prezzi diversi nel tempo) e un
+    #    altro in una sola: con la data piu' recente PER RIGA, il kit si
+    #    spezzerebbe in due padri e la sua quantita' uscirebbe discordante
+    #    (NULL) — senza nessun errore. La regola D-3.1 vale per l'istanza di kit.
+    # ⚠️ Solo il periodo puntuale si sposta: un periodo vero sta nella chiave,
+    #    quello di una rettifica e' della riga rettificata.
+    @staticmethod
+    def _allinea_periodo_kit(gruppi: list[_GruppoRiga]) -> None:
+        piu_recente: dict[tuple[int, str], date] = {}
+        for g in gruppi:
+            if g.kit.key is None or not g.periodo_puntuale:
+                continue
+            assert g.competenza_al is not None
+            chiave = (g.fattura_id, g.kit.key)
+            if chiave not in piu_recente or g.competenza_al > piu_recente[chiave]:
+                piu_recente[chiave] = g.competenza_al
+        for g in gruppi:
+            if g.kit.key is None or not g.periodo_puntuale:
+                continue
+            data = piu_recente[(g.fattura_id, g.kit.key)]
+            g.competenza_dal = data
+            g.competenza_al = data
+
+
+# Scopo: Il rifiuto di un'attivita' con dati incompleti o incoerenti per il
+#        raggruppamento: un codice e una frase, il dettaglio nomina l'attivita'.
+#        Sede unica (regola del 2): era lo stesso `require` scritto dodici
+#        volte, e una copia con la frase o il codice diversi non l'avrebbe
+#        segnalata nessuno.
+def _richiedi_dati_attivita(
+    condizione: bool,
+    *,
+    detail: str,
+    context: dict[str, Any],
+    function_name: str,
+) -> None:
+    ErrorManager.require(
+        condizione,
+        code="E_GROUP_ATTIVITA_INVALID_DATA",
+        message="Dati attivita non validi per grouping.",
+        detail=detail,
+        context=context,
+        function_name=function_name,
+        log_to_db=True,
+    )
 
 
 # Scopo: Rappresentazione decimale canonica, esatta e stabile fra scale diverse.

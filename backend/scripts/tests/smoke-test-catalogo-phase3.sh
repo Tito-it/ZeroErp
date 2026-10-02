@@ -250,7 +250,7 @@ log_info "Componenti trovati: ${EXTRACTED:-?}"
 # --- 11. PATCH componente BoM ---
 echo ""
 echo "-- 11. PATCH componente BoM --"
-do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${COMP_ROW_ID}/" "{\"coeff_qta\":\"3\",\"partecipa_qta\":true}"
+do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${COMP_ROW_ID}/" "{\"coeff_qta\":\"3\"}"
 check "PATCH componente BoM" "200" ".data.coeff_qta"
 log_info "coeff_qta aggiornato: ${EXTRACTED:-n/d}"
 
