@@ -87,6 +87,30 @@ EMITTENTE_UPDATE_ALLOWED: frozenset[str] = frozenset({
 })
 
 
+# ⭐ LA CONFERMA DEL REGIME FISCALE (D-11 di brief-db-esigibilita-iva-per-cassa-
+#    emittente, 2026-10-01). Chi dichiara il regime lo conferma, e la conferma
+#    va scritta NELLA STESSA scrittura del regime: il trigger
+#    `trgfn_emittenti_fiscali_regime_conferma` azzera la conferma quando il
+#    regime cambia e la data di conferma no — un secondo UPDATE arriverebbe
+#    dopo l'azzeramento, e l'emittente resterebbe nel presidio
+#    `dbops.vw_emittenti_regime_non_confermato`.
+# ⭐ Data e autore li scrive il database, non Python: l'autore e' l'operatore
+#    della richiesta (`app.jwt_user`, la stessa GUC da cui leggono l'audit e
+#    l'archiviazione delle code), col ruolo DB come ripiego — senza ripiego un
+#    contesto privo di GUC violerebbe il CHECK di coppia
+#    `chk_emittenti_fiscali_regime_conferma_coppia` (data senza autore).
+# ⚠️ TRANSITORIO: l'espressione dell'autore ricopia quella dei trigger DB
+#    (`dbops.trgfn_coda_archiviazione`). Tid ha deciso (2026-10-01) che la
+#    conferma la derivi il trigger: dopo l'apply di §10 del brief questa mappa
+#    si RITIRA, e con lei la copia.
+_CONFERMA_REGIME_ESPRESSIONI: dict[str, str] = {
+    "regime_fiscale_confermato_il": "now()",
+    "regime_fiscale_confermato_da": (
+        "COALESCE(NULLIF(current_setting('app.jwt_user', true), ''), CURRENT_USER)"
+    ),
+}
+
+
 class EmittentiFiscaliRepository:
     """Accesso DB per emittenti fiscali."""
 
@@ -139,10 +163,18 @@ class EmittentiFiscaliRepository:
     #    `skip_none=True`: le colonne opzionali a None si OMETTONO, cosi' il
     #    DEFAULT del DB resta attivo (la semantica di prima). Una chiave fuori
     #    `_CREATE_COLS` e' `RuntimeError`: i kwargs li scrive il service.
-    def create_emittente(self, **kwargs: Any) -> int:
+    # ⭐ `conferma_regime=True` scrive la conferma del regime insieme al
+    #    regime (vedi `_CONFERMA_REGIME_ESPRESSIONI`).
+    #    ⛔ Le colonne della conferma NON sono in `_CREATE_COLS`: entrano nella
+    #    whitelist solo come espressioni, solo quando le chiede `conferma_regime`.
+    #    Un kwarg `regime_fiscale_confermato_*` resta un `RuntimeError` del BB:
+    #    fuori whitelist senza conferma, «sia in values sia in espressioni» con.
+    def create_emittente(self, *, conferma_regime: bool = False, **kwargs: Any) -> int:
+        espressioni = _CONFERMA_REGIME_ESPRESSIONI if conferma_regime else {}
         riga = execute_dynamic_insert(
             "anagrafiche.emittenti_fiscali", kwargs,
-            allowed=self._CREATE_COLS, skip_none=True,
+            allowed=self._CREATE_COLS | espressioni.keys(), skip_none=True,
+            espressioni=espressioni or None,
         )
         return riga["id"]
 
@@ -210,6 +242,9 @@ class EmittentiFiscaliRepository:
                    ef.codice,
                    ef.attivo,
                    ef.regime_fiscale_rf,
+                   rf.descrizione         AS regime_fiscale_descrizione,
+                   ef.regime_fiscale_confermato_il,
+                   ef.regime_fiscale_confermato_da,
                    ef.bollo_auto,
                    ef.bollo_soglia,
                    ef.rounding_policy,
@@ -229,6 +264,9 @@ class EmittentiFiscaliRepository:
               JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
               JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
               LEFT JOIN config.valute v          ON v.id  = ef.valuta_id
+              -- FK `fk_emittenti_fiscali_regimi_fiscali` + NOT NULL: la riga
+              -- c'e' sempre; LEFT per non perdere l'emittente se un domani no.
+              LEFT JOIN config.regimi_fiscali rf ON rf.codice_interno = ef.regime_fiscale_rf
              WHERE ef.id = %s
         """
         with connection.cursor() as cursor:
@@ -239,8 +277,10 @@ class EmittentiFiscaliRepository:
     # Aggiornamento
     # =================================================================
 
+    # ⛔ `regime_fiscale_rf` NON c'e' piu' (2026-10-01): e' NOT NULL con FK al
+    #    catalogo, e un vuoto portato a NULL diventava un 23502. Lo valida il
+    #    service, che rifiuta il vuoto con 400 sul campo.
     _UPDATE_NULLABLE = {
-        "regime_fiscale_rf",
         "rounding_policy",
         "bollo_soglia",
         "valuta_id",
@@ -250,7 +290,11 @@ class EmittentiFiscaliRepository:
     #        Il campo codice e' bloccato dal trigger DB (lock_columns) e va escluso.
     #        BB `execute_dynamic_update` (2026-09-26): whitelist RIGIDA
     #        `EMITTENTE_UPDATE_ALLOWED`, le chiavi le valida prima il service (400).
-    def update_emittente(self, emittente_id: int, data: dict[str, Any]) -> bool:
+    #        ⭐ `conferma_regime=True` scrive la conferma del regime nella
+    #        STESSA UPDATE (vedi `_CONFERMA_REGIME_ESPRESSIONI`).
+    def update_emittente(
+        self, emittente_id: int, data: dict[str, Any], *, conferma_regime: bool = False,
+    ) -> bool:
         # Copia: non si muta l'input del chiamante.
         valori = dict(data)
         # Normalizza stringhe vuote a None per campi nullable
@@ -258,9 +302,14 @@ class EmittentiFiscaliRepository:
             val = valori.get(k)
             if isinstance(val, str) and not val.strip():
                 valori[k] = None
+        conferma = (
+            ", ".join(f"{col} = {espr}" for col, espr in _CONFERMA_REGIME_ESPRESSIONI.items())
+            if conferma_regime else None
+        )
         return execute_dynamic_update(
             "anagrafiche.emittenti_fiscali", emittente_id, valori,
             allowed=EMITTENTE_UPDATE_ALLOWED,
+            extra_set=conferma,
         )
 
     # =================================================================

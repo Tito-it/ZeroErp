@@ -291,6 +291,19 @@ generico `config.fn_pannello_scrivi` sull'oggetto di ogni tabella, la lista è
 ordine si cambiano nel CSV.
 
 ### Aperto — Media priorità
+- 🟡 **Le variabili di una versione di template non si validano alla pubblicazione**
+  (DB + BE, ereditata il 2026-10-01 dalla chiusura di
+  `work-done/brief-db-documenti-versione-contesto-template.md`, D-C3 §7 e §14): le
+  decisioni 35-36 del 2026-04-29 (`work-done/sviluppo-documenti.md`) volevano
+  `context_schema` «contratto leggero delle variabili attese», validato prima di
+  pubblicare; il campo è ancora `'{}'` ovunque e nessuno lo legge. Il caso grave
+  (pezzi mancanti in silenzio per un cambio di forma) lo chiude già
+  `versione_contesto`; questo è il raffinamento per variabile. Sede naturale: la
+  pubblicazione, la stessa della verifica degli asset citati
+  (`brief-be-documenti-risorse-esterne-render-pdf.md` §5.3). Con la stessa
+  chiusura, facoltativa al team DB: la colonna «Forma dei dati»
+  (`versione_contesto`) nella lista configurabile `documenti.template_versioni`
+  (88) — il campo viaggia già nelle righe (§12.1 del brief).
 - ⏳ **«Annulla» e «Porta a Bozza» sulle distinte non manuali: spenti col motivo**
   (DB poi BE/FE, ereditata il 2026-09-30 dalla chiusura di
   `work-done/brief-db-righe-distinta-annullata-fuori-dalle-code.md`, R-3 + D-6 §11.3-§11.4,

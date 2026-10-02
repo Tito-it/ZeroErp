@@ -75,7 +75,10 @@ class EmittentiFiscaliView(AdminAPIView):
             "attivo": serializers.BooleanField(required=False, help_text="Default DB: true."),
             "regime_fiscale_rf": serializers.CharField(
                 required=False,
-                help_text="Codice regime fiscale RF del tracciato FE/SdI (es. RF01).",
+                help_text="Codice del catalogo config.regimi_fiscali (es. RF01). "
+                          "Se presente e' il regime dichiarato, e si scrive confermato "
+                          "(data e autore li mette il DB). Omesso: default RF01, NON "
+                          "confermato. Vuoto o null: 400.",
             ),
             "bollo_auto": serializers.BooleanField(required=False),
             "bollo_soglia": serializers.FloatField(required=False),
@@ -119,7 +122,13 @@ class EmittentiFiscaliDetailView(AdminAPIView):
     @extend_schema(
         request=inline_serializer(name="EmittenteFiscaleUpdateReq", fields={
             "attivo": serializers.BooleanField(required=False),
-            "regime_fiscale_rf": serializers.CharField(required=False),
+            "regime_fiscale_rf": serializers.CharField(
+                required=False,
+                help_text="Codice del catalogo config.regimi_fiscali. Se presente "
+                          "(anche invariato) dichiara e CONFERMA il regime nella "
+                          "stessa scrittura. Chi non tocca il regime omette la chiave. "
+                          "Vuoto o null: 400.",
+            ),
             "bollo_auto": serializers.BooleanField(required=False),
             "bollo_soglia": serializers.FloatField(required=False),
             "rounding_policy": serializers.ChoiceField(

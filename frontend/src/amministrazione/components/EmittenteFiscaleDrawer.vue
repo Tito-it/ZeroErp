@@ -15,6 +15,7 @@ import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, FIELD_LENGTH } from '../../core
 import { getEmittenteFormDefaults } from '../api/amministrazione'
 import { paramBool, paramNumber, paramString } from '../../core/utils/parameterCast'
 import { blockNonAlphanumeric, normalizeUpperNoSpaces } from '../../core/utils/string'
+import { displayTimestamp } from '../../core/utils/date'
 import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -85,7 +86,11 @@ function defaultForm() {
   return {
     codice: '',
     attivo: true,
-    regime_fiscale_rf: '',
+    // Codice del catalogo `config.regimi_fiscali` (FK). In creazione si
+    // SCEGLIE: nessun precompilato, perche' il default RF01 del DB vale per
+    // chi non dichiara il regime — e un emittente che nasce cosi' finisce nel
+    // presidio dei regimi da confermare.
+    regime_fiscale_rf: null,
     bollo_auto: false,
     bollo_soglia: null,
     rounding_policy: null,
@@ -98,10 +103,43 @@ function defaultForm() {
 }
 
 const form = ref(defaultForm())
+
+// ⭐ LA CONFERMA DEL REGIME FISCALE (R-2 di brief-db-esigibilita-iva-per-cassa-
+//    emittente). Mandare `regime_fiscale_rf` al backend E' dichiararlo: il
+//    backend scrive la conferma (data e autore) nella stessa scrittura. Per
+//    questo il regime viaggia SOLO quando l'operatore lo ha cambiato, o ha
+//    confermato quello che c'e' (`confermaRegime`): un salvataggio che tocca
+//    il bollo non deve confermare un regime che nessuno ha guardato.
+const confermaRegime = ref(false)
+const regimeConfermato = computed(() => !!detail.value?.regime_fiscale_confermato_il)
+// La voce del regime dell'emittente come la conosce il dettaglio: la combo
+// propone i soli regimi ATTIVI, e uno disattivato dopo che l'emittente l'ha
+// preso resta suo (Tid, 2026-10-01) — senza questa voce il campo apparirebbe
+// vuoto. Stessi campi dell'elenco del lookup.
+const voceRegimeCorrente = computed(() => {
+  const d = detail.value
+  if (!d?.regime_fiscale_rf) return null
+  return {
+    codice_interno: d.regime_fiscale_rf,
+    codice: d.regime_fiscale_rf,
+    descrizione: d.regime_fiscale_descrizione,
+  }
+})
+const regimeCambiato = computed(() =>
+  isEdit.value && form.value.regime_fiscale_rf !== (detail.value?.regime_fiscale_rf ?? null))
+const regimeDaDichiarare = computed(() =>
+  isEdit.value ? (regimeCambiato.value || confermaRegime.value) : !!form.value.regime_fiscale_rf)
+
 // Modifiche non salvate: fotografia all'apertura (anche in creazione), e
 // chiudere con modifiche chiede conferma (BB useDrawerFormPreserve). In
 // creazione il soggetto scelto sta fuori dal form: il confronto ne raccoglie l'id.
-const formSalvato = computed(() => ({ ...form.value, soggetto_id: soggettoSelezionato.value?.id ?? null }))
+// La conferma del regime e' una modifica: senza, «Conferma» e poi chiudere
+// non chiederebbe niente.
+const formSalvato = computed(() => ({
+  ...form.value,
+  soggetto_id: soggettoSelezionato.value?.id ?? null,
+  conferma_regime: confermaRegime.value,
+}))
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
 
 // Carica defaults da BE (cast tipi gia' applicato lato server) e li applica
@@ -136,14 +174,16 @@ async function applyFormDefaults() {
 function resetForm() {
   soggettoSelezionato.value = null
   detail.value = null
+  confermaRegime.value = false
   form.value = defaultForm()
 }
 
 function populateFormFromDetail(d) {
+  confermaRegime.value = false
   form.value = {
     codice: d.codice || '',
     attivo: !!d.attivo,
-    regime_fiscale_rf: d.regime_fiscale_rf || '',
+    regime_fiscale_rf: d.regime_fiscale_rf ?? null,
     bollo_auto: !!d.bollo_auto,
     bollo_soglia: d.bollo_soglia,
     rounding_policy: d.rounding_policy || null,
@@ -217,22 +257,27 @@ const CODICE_EMITTENTE_RE = new RegExp(
 // l'unico): i restanti sono opzionali o hanno default, quindi il salvataggio e'
 // sempre ammesso. In CREATE restano soggetto con P.IVA e codice.
 const canSave = computed(() => {
-  if (isEdit.value) return true
+  // Il regime e' NOT NULL a DB: in modifica non si svuota (il select non ha
+  // «pulisci»), in creazione si sceglie.
+  if (isEdit.value) return !!form.value.regime_fiscale_rf
   return !!soggettoSelezionato.value
       && soggettoHasPartitaIva.value
       && CODICE_EMITTENTE_RE.test(form.value.codice.trim())
+      && !!form.value.regime_fiscale_rf
 })
 
 async function save() {
   if (!canSave.value) return
   const payload = {
     attivo: form.value.attivo,
-    regime_fiscale_rf: form.value.regime_fiscale_rf || null,
     bollo_auto: form.value.bollo_auto,
     bollo_soglia: form.value.bollo_soglia,
     rounding_policy: form.value.rounding_policy || null,
     valuta_id: form.value.valuta_id || null
   }
+  // ⛔ Mai `null` ne' '' sul regime (NOT NULL a DB, 400 dal backend): o il
+  //    codice scelto, o la chiave assente.
+  if (regimeDaDichiarare.value) payload.regime_fiscale_rf = form.value.regime_fiscale_rf
   let result
   if (isEdit.value) {
     result = await execute(
@@ -363,12 +408,47 @@ const suVisibile = gestoreVisibile(emit, close)
 
             <h4>{{ t('amministrazione.emittenti_fiscali.section_fiscale') }}</h4>
 
+            <!-- Il regime entra nell'esigibilita' IVA delle fatture (un regime
+                 per cassa la rende differita: lo dice il catalogo, non il
+                 codice): si sceglie dal catalogo e si CONFERMA (vedi
+                 `confermaRegime` nello script). -->
             <div class="form-field">
-              <label>{{ t('amministrazione.emittenti_fiscali.field_regime_fiscale_rf') }}</label>
-              <InputText v-model="form.regime_fiscale_rf" maxlength="10" />
+              <label>{{ t('amministrazione.emittenti_fiscali.field_regime_fiscale_rf') }} *</label>
+              <LookupSelect
+                v-model="form.regime_fiscale_rf"
+                rel="config.regimi_fiscali"
+                value-field="codice_interno"
+                show-code
+                :voce-corrente="voceRegimeCorrente"
+                :placeholder="t('amministrazione.emittenti_fiscali.field_regime_fiscale_rf')"
+                :invalid="campiErrati.includes('regime_fiscale_rf')"
+              />
               <small class="mt-1 app-text-muted">
                 {{ t('amministrazione.emittenti_fiscali.regime_fiscale_rf_hint') }}
               </small>
+              <template v-if="isEdit && detail">
+                <small v-if="regimeCambiato" class="mt-1 app-field-hint">
+                  {{ t('amministrazione.emittenti_fiscali.regime_confermato_al_salvataggio') }}
+                </small>
+                <small v-else-if="regimeConfermato" class="mt-1 app-text-muted">
+                  {{ t('amministrazione.emittenti_fiscali.regime_confermato_il', {
+                    data: displayTimestamp(detail.regime_fiscale_confermato_il),
+                    utente: detail.regime_fiscale_confermato_da,
+                  }) }}
+                </small>
+                <Message v-else-if="confermaRegime" severity="info" size="small" class="mt-1">
+                  {{ t('amministrazione.emittenti_fiscali.regime_confermato_al_salvataggio') }}
+                </Message>
+                <Message v-else severity="warn" size="small" class="mt-1">
+                  {{ t('amministrazione.emittenti_fiscali.regime_non_confermato') }}
+                  <Button
+                    v-if="!isReadonly"
+                    :label="t('amministrazione.emittenti_fiscali.regime_conferma')"
+                    size="small" text
+                    @click="confermaRegime = true"
+                  />
+                </Message>
+              </template>
             </div>
 
             <h4>{{ t('amministrazione.emittenti_fiscali.section_bollo') }}</h4>

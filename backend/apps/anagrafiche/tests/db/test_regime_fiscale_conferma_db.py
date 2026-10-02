@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: La conferma del regime fiscale dell'emittente (R-1/R-2 di
+#        brief-db-esigibilita-iva-per-cassa-emittente), provata sul DATABASE
+#        VERO: cio' che i test di servizio, che mockano il repository, non
+#        possono vedere — che la conferma esca dalla STESSA scrittura del
+#        regime (il trigger `trgfn_emittenti_fiscali_regime_conferma` la
+#        azzera altrimenti), che l'autore sia l'operatore della GUC
+#        `app.jwt_user`, e che la FK al catalogo arrivi al client come 400 sul
+#        campo e non come 500.
+# Note: ⚠️ Il mondo si COSTRUISCE (builder `dbops.fn_pgtap_crea_*`), in
+#       transazione ANNULLATA. Opt-in `ZEROERP_TEST_DB_E2E=1` (acceso in CI).
+#       ⚠️ I regimi usati (RF01, RF17) sono SEED di `config.regimi_fiscali`
+#       (`80_data`): contratto, non popolazione.
+# ------------------------------------------------------------
+"""
+Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
+1) RegimeFiscaleConfermaDbTests.test_update_col_regime_scrive_la_conferma
+2) RegimeFiscaleConfermaDbTests.test_update_senza_regime_non_tocca_la_conferma
+3) RegimeFiscaleConfermaDbTests.test_update_regime_invariato_conferma_lo_stesso
+4) RegimeFiscaleConfermaDbTests.test_create_col_regime_nasce_confermato
+5) RegimeFiscaleConfermaDbTests.test_create_senza_regime_nasce_rf01_non_confermato
+6) RegimeFiscaleConfermaDbTests.test_regime_fuori_catalogo_400_sul_campo
+7) RegimeFiscaleConfermaDbTests.test_create_regime_fuori_catalogo_400_sul_campo
+"""
+from __future__ import annotations
+
+import unittest
+import uuid
+
+from django.db import connection, transaction
+
+from apps.core.tests.db_e2e import (
+    apri_contesto_operatore,
+    apri_transazione_annullata,
+    richiedi_db_provvisto,
+)
+
+_OPERATORE = "test-regime-conferma@e2e"
+
+
+class RegimeFiscaleConfermaDbTests(unittest.TestCase):
+
+    def setUp(self):
+        apri_transazione_annullata(self)
+        richiedi_db_provvisto()
+        with connection.cursor() as cur:
+            apri_contesto_operatore(cur)
+            cur.execute("SET LOCAL app.jwt_user = %s", [_OPERATORE])
+
+    # Scopo: un emittente nuovo dal builder: nasce RF01 (default), non confermato.
+    def _emittente(self) -> int:
+        with connection.cursor() as cur:
+            cur.execute("SELECT emittente_fiscale_id FROM dbops.fn_pgtap_crea_emittente()")
+            return int(cur.fetchone()[0])
+
+    def _stato(self, emittente_id: int) -> tuple:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT regime_fiscale_rf, regime_fiscale_confermato_il IS NOT NULL,"
+                "       regime_fiscale_confermato_da"
+                "  FROM anagrafiche.emittenti_fiscali WHERE id = %s",
+                [emittente_id],
+            )
+            return cur.fetchone()
+
+    def _repo(self):
+        from apps.anagrafiche.db.emittenti_fiscali_repository import (
+            EmittentiFiscaliRepository,
+        )
+        return EmittentiFiscaliRepository()
+
+    # 1. Il regime nuovo e la sua conferma nella stessa UPDATE: il trigger la
+    #    lascia (data cambiata insieme al regime), e l'autore e' l'operatore.
+    def test_update_col_regime_scrive_la_conferma(self):
+        emittente_id = self._emittente()
+        self.assertEqual(("RF01", False, None), self._stato(emittente_id))
+
+        self.assertTrue(self._repo().update_emittente(
+            emittente_id, {"regime_fiscale_rf": "RF17"}, conferma_regime=True,
+        ))
+        self.assertEqual(("RF17", True, _OPERATORE), self._stato(emittente_id))
+
+    # 2. Una PATCH che non porta il regime non conferma e non azzera niente.
+    def test_update_senza_regime_non_tocca_la_conferma(self):
+        emittente_id = self._emittente()
+        repo = self._repo()
+        repo.update_emittente(emittente_id, {"regime_fiscale_rf": "RF17"}, conferma_regime=True)
+
+        self.assertTrue(repo.update_emittente(emittente_id, {"bollo_auto": True}))
+        self.assertEqual(("RF17", True, _OPERATORE), self._stato(emittente_id))
+
+    # 3. Il regime riscritto uguale e' la conferma di un regime che nessuno
+    #    aveva dichiarato: e' il percorso con cui l'operatore svuota il presidio.
+    def test_update_regime_invariato_conferma_lo_stesso(self):
+        emittente_id = self._emittente()
+        self._repo().update_emittente(
+            emittente_id, {"regime_fiscale_rf": "RF01"}, conferma_regime=True,
+        )
+        self.assertEqual(("RF01", True, _OPERATORE), self._stato(emittente_id))
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT count(*) FROM dbops.vw_emittenti_regime_non_confermato"
+                " WHERE emittente_fiscale_id = %s",
+                [emittente_id],
+            )
+            self.assertEqual(0, cur.fetchone()[0])
+
+    def _soggetto_ruolo_ef(self) -> int:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT dbops.fn_pgtap_crea_soggetto_ruolo("
+                "  dbops.fn_pgtap_crea_soggetto_pg('Emittente e2e regime'), 'EF')"
+            )
+            return int(cur.fetchone()[0])
+
+    # Sigla libera nella forma di `chk_emittenti_fiscali_codice_forma`.
+    @staticmethod
+    def _codice() -> str:
+        return "RC" + uuid.uuid4().hex[:8].upper()
+
+    # 4. Creare dichiarando il regime = nascere confermati.
+    def test_create_col_regime_nasce_confermato(self):
+        emittente_id = self._repo().create_emittente(
+            soggetto_ruolo_id=self._soggetto_ruolo_ef(), codice=self._codice(),
+            regime_fiscale_rf="RF17", conferma_regime=True,
+        )
+        self.assertEqual(("RF17", True, _OPERATORE), self._stato(emittente_id))
+
+    # 5. Senza regime vale il default del DB, e nessuno l'ha confermato.
+    def test_create_senza_regime_nasce_rf01_non_confermato(self):
+        emittente_id = self._repo().create_emittente(
+            soggetto_ruolo_id=self._soggetto_ruolo_ef(), codice=self._codice(),
+        )
+        self.assertEqual(("RF01", False, None), self._stato(emittente_id))
+
+    # 6. Un codice fuori catalogo e' la FK: il service lo da' come 400 sul
+    #    campo, non come 500. Savepoint: la FK abortisce la sola sotto-transazione.
+    def test_regime_fuori_catalogo_400_sul_campo(self):
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliService,
+        )
+        from apps.core.services.service_errors import ServiceError
+
+        emittente_id = self._emittente()
+        with self.assertRaises(ServiceError) as ctx, transaction.atomic():
+            EmittentiFiscaliService().update_emittente(
+                emittente_id, {"regime_fiscale_rf": "RF99"},
+            )
+        self.assertEqual("E_ANAG_VALIDAZIONE", ctx.exception.code)
+        self.assertEqual("regime_fiscale_rf", ctx.exception.context.get("field"))
+
+    # 7. Lo stesso in creazione, dove la FK attraversa `create_with_constraint_
+    #    mapping`: deve RILANCIARLA (nessuna UNIQUE in causa) e non mascherarla
+    #    da duplicato, e la traduzione esterna deve darla come 400 sul campo.
+    def test_create_regime_fuori_catalogo_400_sul_campo(self):
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliService,
+        )
+        from apps.core.services.service_errors import ServiceError
+
+        with connection.cursor() as cur:
+            cur.execute(
+                # P.IVA libera dal builder (`fn_pgtap_piva_libera`): una fissa
+                # collide col residuo di un'altra corsa o coi dati.
+                "SELECT dbops.fn_pgtap_crea_soggetto_pg('Emittente e2e regime FK')"
+            )
+            soggetto_id = str(cur.fetchone()[0])
+        with self.assertRaises(ServiceError) as ctx, transaction.atomic():
+            EmittentiFiscaliService().crea_emittente({
+                "soggetto_id": soggetto_id, "codice": self._codice(),
+                "regime_fiscale_rf": "RF99",
+            })
+        self.assertEqual("E_ANAG_VALIDAZIONE", ctx.exception.code)
+        self.assertEqual("regime_fiscale_rf", ctx.exception.context.get("field"))

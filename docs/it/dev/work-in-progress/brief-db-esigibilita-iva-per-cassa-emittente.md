@@ -7,8 +7,12 @@
 > però mostrato che la decisione guarda **solo il cliente** e mai l'emittente.
 > **Stato:** ✅ **D-1 → D-6 decise da Tid il 2026-10-01** (§6). ✅ **D-7 → D-11 (analisi critica del
 > team DB, §8) accettate da Tid il 2026-10-01, come proposte.** ✅ **Lato DB SCRITTO il 2026-10-01**
-> (`20261001-01 → -17`, §9), **non applicato**: ⏳ l'apply e la corsa pgTAP sono di Tid. Poi le
-> richieste a BE/FE (§9.5), bloccanti dopo l'apply per due punti (R-1, R-2).
+> (`20261001-01 → -17`, §9), ✅ **applicato su dbdev il 2026-10-01** (con il `-40` di D-12;
+> verificato dalla sessione BE su `databasechangelog`). Richieste a BE/FE (§9.5): ✅ **R-1, R-2, R-5
+> fatte dalla sessione BE il 2026-10-01**, ✅ R-4 anche. ⏳ Al team DB: **R-DB-1** (ricalcolo dei
+> riepiloghi dei preventivi, §9.5) e **§10** (la conferma del regime la deriva il trigger, revisione
+> di D-11 decisa da Tid) e **R-DB-3** (le annotazioni del documento, §11: bloccante per R-3). ⏳ R-3:
+> corpo della v5 pronto, builder e pubblicazione dopo l'apply di R-DB-3.
 >
 > **In una riga:** un emittente in regime di **IVA per cassa** (art. 32-bis, codice RF17) deve
 > emettere fatture con esigibilità **D** (differita); il sistema oggi scrive **I** (immediata) e non
@@ -378,3 +382,159 @@ dbdev non era raggiungibile dalla sessione (autenticazione). La prova è su un c
 | **R-4** | `RiepilogoIvaTable` con `show-esigibilita` sui drawer di preventivo, ordine e DDT (§5) | le colonne ci sono, ma a video no |
 | **R-5** | Nessun codice errore nuovo. I test Django che creano emittenti con `regime_fiscale_rf` libero vanno allineati a un codice del catalogo | rossi su `23503` |
 | **R-6** | Il payload SDI (sospeso) legge l'esigibilità dalle righe, che sono già giuste | — |
+
+**Stato BE/FE (2026-10-01, sessione BE).**
+
+* ✅ **R-1** — `EmittenteFiscaleDrawer`: il regime si sceglie dal lookup generico
+  (`config.regimi_fiscali`, valore `codice_interno`), obbligatorio in creazione e non svuotabile in
+  modifica. Il backend rifiuta vuoto e `null` (400 sul campo) e traduce la FK in 400 sul campo. Il
+  form di `amm_software` del §9.5 è lo stesso drawer: nel FE non ce n'è un secondo.
+  ✅ **Decisione di Tid (2026-10-01): un emittente può TENERE un regime che il catalogo disattiva**
+  (la FK non guarda `attivo`, e va bene così: nessun guard DB). La combo propone i soli regimi
+  attivi, quindi il drawer passa la voce corrente dal dettaglio (`LookupSelect` prop `voceCorrente`,
+  generica): se non è fra le attive compare in coda marcata «non attiva», invece di un campo vuoto
+  con un valore dentro.
+* ✅ **R-2** — Dichiarare il regime **è** confermarlo: se `regime_fiscale_rf` è nel payload, il
+  repository scrive `regime_fiscale_confermato_il = now()` e `_da = app.jwt_user` **nella stessa
+  INSERT/UPDATE**. Il drawer manda il regime **solo** se l'operatore lo ha cambiato o ha premuto
+  «Conferma il regime» (un salvataggio del bollo non conferma un regime che nessuno ha guardato).
+  Il dettaglio espone data, autore e descrizione del regime.
+* ✅ **R-5** — I test Django esistenti usavano già `RF01` (a catalogo). Nuovi:
+  `anagrafiche/tests/services/test_emittenti_fiscali_regime.py` (7, mock) e
+  `anagrafiche/tests/db/test_regime_fiscale_conferma_db.py` (6, DB vero, verdi su dbdev).
+* ✅ **R-4** — `show-esigibilita` acceso su `PreventiviDrawer`, `OrdiniDrawer`, `DdtDrawer`. Il
+  backend portava gia' la coppia (`RiepilogoIvaRepositoryMixin` legge `esigibilita`,
+  `split_payment` da tutte e tre le viste).
+* ⏳ **R-3** (annotazione in stampa, forma nuova del contesto): aperta.
+
+**🔴 Richiesta al team DB (sessione BE, 2026-10-01) — R-DB-1: i riepiloghi dei preventivi gia'
+esistenti non sono stati ricalcolati.**
+
+Ordini e DDT leggono viste **derivate** (`-10`, `-11`): la coppia esce dalla regola a ogni
+lettura. Il preventivo no: `vw_preventivi_riepilogo_iva_dettaglio` legge le righe **memorizzate**
+in `vendite.preventivi_riepiloghi_iva`, che `fn_ricalcola_riepilogo_iva_preventivo` riscrive solo
+quando il preventivo cambia. Il `-09` ha cambiato la funzione ma non ha ricalcolato le righe gia'
+scritte, che restano con `esigibilita`/`split_payment` a `NULL` — cioe' i `NULL` di prima di D-4 —
+fino alla prossima modifica del preventivo. La colonna di R-4 mostra `—` su quei preventivi.
+
+* Fatto (dbdev, 2026-10-01, contesto operatore): le righe di riepilogo dei preventivi lette
+  avevano tutte la coppia `NULL`; chiamando la funzione su un preventivo con cliente, in
+  transazione annullata, le sue righe escono `I`/`false`. ⇒ la funzione e' giusta, manca il
+  ricalcolo del pregresso.
+* ⭐ Il difetto e' di **modello**, non di dati: la forma «riepilogo memorizzato» vuole che **ogni**
+  cambio della regola che lo produce si porti dietro il ricalcolo di cio' che ha gia' prodotto.
+  Su un database ricostruito da zero non si vede (non c'e' pregresso, e la CI resta verde); su
+  ogni macchina viva si'. Da decidere al team DB: changeSet di ricalcolo in `80_data` (con quali stati del
+  preventivo: un preventivo accettato o chiuso e' immutabile?), oppure riepilogo derivato come
+  ordini e DDT.
+* Lato BE/FE non serve niente: appena le righe sono ricalcolate, la colonna le mostra.
+
+## 10. Revisione di D-11: la conferma la scrive il database (Tid, 2026-10-01)
+
+> **Chi scrive:** sessione BE, 2026-10-01, su decisione di Tid. **A chi:** team DB.
+> **Stato:** ⏳ da scrivere lato DB. Lato BE oggi vale ancora la forma di D-11 (§9.5, R-2): resta
+> finché il DB non è applicato, poi si ritira (§10.3).
+
+### 10.1 Perché
+
+D-11 diceva «una colonna di conferma scritta **dal form** dell'emittente». Il BE oggi la scrive
+nella stessa scrittura del regime (`now()` e `app.jwt_user`). Funziona, ma lascia la regola fuori
+dal database: **ogni** scrittore futuro del regime (un import, un batch, un altro endpoint) deve
+ricordarsi di scrivere anche la conferma, altrimenti il trigger `-12` la azzera e l'emittente torna
+nel presidio senza che nessuno l'abbia chiesto.
+
+⭐ Il modello che il progetto usa già per lo stesso problema è quello delle code
+(`dbops.trgfn_coda_archiviazione`): chi scrive dichiara il **fatto**, e data e autore li **deriva**
+il trigger dalla GUC `app.jwt_user`. **Tid sceglie questa forma** anche per la conferma del regime.
+
+### 10.2 La regola proposta
+
+Il trigger della conferma (oggi `trgfn_emittenti_fiscali_regime_conferma`, che azzera e basta)
+diventa **quello che la deriva**:
+
+* **`BEFORE UPDATE OF regime_fiscale_rf`** — la colonna nella `SET`, **anche con lo stesso
+  valore**, è una **dichiarazione** del regime: `regime_fiscale_confermato_il := now()`,
+  `regime_fiscale_confermato_da := COALESCE(NULLIF(current_setting('app.jwt_user', true), ''),
+  CURRENT_USER)`. Lo stesso valore conta: è il modo in cui l'operatore conferma un RF01 che
+  nessuno aveva dichiarato (il drawer manda il regime **solo** quando l'operatore lo cambia o
+  preme «Conferma il regime»).
+* **Un UPDATE che non nomina il regime** non tocca la conferma.
+* ⛔ **Le due colonne di conferma non si scrivono da fuori**: un valore scritto direttamente si
+  sovrascrive (o si rifiuta: a scelta del team DB, secondo `linee-guida-trigger`). Altrimenti la
+  conferma torna a dire una cosa che il trigger non ha visto.
+* ⚠️ **La INSERT.** Su una INSERT il trigger vede `NEW.regime_fiscale_rf` **col default già
+  applicato**: un RF01 scelto e un RF01 di default (D-1) sono indistinguibili. Proposta: **la
+  INSERT non conferma mai**, e la dichiarazione è sempre un `UPDATE OF regime_fiscale_rf`. Il BE,
+  quando la creazione porta un regime, fa INSERT e poi `UPDATE … SET regime_fiscale_rf = <scelto>`
+  nella **stessa transazione**. È una riga in più nel BE, ma il significato resta uno solo:
+  «confermato» = «qualcuno ha dichiarato il regime», mai «è nato così».
+  * Scartata: confermare ogni INSERT. Un emittente nato col default risulterebbe confermato, e il
+    presidio di D-1 perderebbe proprio il caso per cui esiste.
+  * Scartata: togliere il default RF01 perché ogni INSERT dichiari. Rovescia D-1, decisa da Tid.
+* Il `CHECK` di coppia resta. Il presidio `vw_emittenti_regime_non_confermato` non cambia.
+* pgTAP: dichiarazione con valore uguale e diverso, UPDATE senza regime, scrittura diretta delle
+  colonne di conferma, INSERT (non conferma), autore senza GUC (ripiego `CURRENT_USER`).
+
+### 10.3 Ricaduta sul BE (dopo l'apply, sessione BE)
+
+* Ritirare `_CONFERMA_REGIME_ESPRESSIONI` dal repository: niente più `extra_set` né
+  `espressioni` sulla conferma.
+* `crea_emittente` con regime: INSERT senza regime, poi `UPDATE … SET regime_fiscale_rf`
+  nella stessa `transaction.atomic()`.
+* `update_emittente`: invariato nel contratto (la chiave presente = dichiarazione), cambia solo
+  chi scrive data e autore.
+* Riscrivere `tests/db/test_regime_fiscale_conferma_db.py` sul nuovo autore e aggiungere il caso
+  «scrittura diretta delle colonne di conferma».
+
+## 11. R-3: l'annotazione in stampa la decide il database (sessione BE, 2026-10-01)
+
+> **Chi scrive:** sessione BE, 2026-10-01. **A chi:** team DB (R-DB-3, **bloccante per R-3**); Tid
+> per la decisione AN-1.
+> **Stato:** ⏳ R-DB-3 da scrivere lato DB. Lato BE pronto il **corpo della v5** del template
+> ([`template-fattura-v5.html`](template-fattura-v5.html)); builder e pubblicazione dopo l'apply.
+
+### 11.1 Perché non lo fa il BE da solo
+
+R-3 dice: l'annotazione del regime **della fattura**, solo se almeno una riga è `D` (§8.7). «Il
+regime della fattura» è già una regola del database: quello dello **snapshot**, se c'è, altrimenti
+quello **vivo** (D-8, dentro `vendite.fn_esigibilita_iva_fattura`). Se il builder la riscrivesse in
+SQL per decidere l'annotazione, la stessa regola avrebbe due sedi, e la prima che cambia lascia
+l'altra a stampare un'annotazione su righe calcolate con un altro regime — senza errore. Un caso
+concreto: una fattura senza snapshot ha righe `D` calcolate col regime vivo, e un builder che
+legge solo lo snapshot non stamperebbe niente.
+
+### 11.2 Il difetto più largo: oggi il documento non stampa nessuna annotazione di legge
+
+Il template v4 non ha **nessuna** annotazione: non c'è nemmeno «scissione dei pagamenti» (art.
+17-ter, righe `S`) né «inversione contabile» (Natura N6.x). Un campo «annotazione del regime»
+aggiunto per R-3 sarebbe la prima di una serie, e ogni annotazione successiva vorrebbe una forma
+nuova del contesto e una versione nuova del template.
+
+**AN-1 (per Tid): le annotazioni del documento come LISTA, decisa dal database.**
+
+* **R-DB-3** — una funzione `vendite.fn_annotazioni_fattura(p_fattura_id bigint)`
+  `RETURNS TABLE(codice text, testo text, ordine int)`, `STABLE`, che oggi rende **una** voce:
+  * `codice = 'ESIGIBILITA_DIFFERITA'`, `testo = config.regimi_fiscali.annotazione_documento` del
+    regime della fattura, **solo se** almeno una `fatture_righe.esigibilita = 'D'` (§8.7);
+  * il regime risolto con **la stessa** regola di `fn_esigibilita_iva_fattura` (snapshot, poi
+    vivo): ⭐ estrarla in una `vendite.fn_regime_fiscale_fattura(p_fattura_id)` che usano tutte e
+    due (regola del 2, lato DB) — oggi la risoluzione è scritta dentro la prima;
+  * nessuna voce = nessuna annotazione (tabella vuota, mai una riga a `NULL`).
+* Le voci future (scissione dei pagamenti su righe `S`, inversione contabile su Natura N6.x, bollo
+  virtuale…) diventano **righe** della stessa funzione, con il loro testo **a catalogo**: nessuna
+  forma nuova e nessuna versione nuova del template per aggiungerle. Fuori da questo giro:
+  dichiarate qui perché il disegno le regga.
+* pgTAP: RF17 con righe `D` → una voce; RF17 con sole righe `I` (privato, reverse charge, Natura)
+  → nessuna; RF01 → nessuna; snapshot RF17 con regime vivo RF01 → la voce c'è; fattura senza
+  snapshot → regime vivo.
+
+### 11.3 Lato BE e template (dopo l'apply di R-DB-3)
+
+* Builder fattura alla **forma 3**: `annotazioni` = lista di `{codice, testo}` dalla funzione,
+  nell'ordine dato; lista vuota quando non ce ne sono. Nient'altro cambia.
+* **Template v5** = v4 + un blocco che stampa le annotazioni sotto i totali, solo se la lista non è
+  vuota. Dichiara la forma 3; si pubblica quando il builder la produce (stessa sequenza di
+  `brief-db-documenti-versione-contesto-template` §13.2: riavvio, build, bozza dall'app,
+  pubblicazione).
+* ⚠️ **Numerazione**: anche `brief-db-esposizione-componenti-kit-in-fattura.md` prevede «forma 3 +
+  v5». Il primo dei due che arriva prende 3/v5, l'altro passa a 4/v6. Annotato anche lì.

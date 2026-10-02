@@ -171,8 +171,11 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/?searc
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/` |
 
-Restituisce lo stesso oggetto della lista, con in piu' `valuta_descrizione` e
-`brand_meta` (jsonb opzionale per branding/metadati emittente).
+Restituisce lo stesso oggetto della lista, con in piu' `valuta_descrizione`,
+`brand_meta` (jsonb opzionale per branding/metadati emittente) e, dal
+2026-10-01, `regime_fiscale_descrizione` (dal catalogo `config.regimi_fiscali`)
+con `regime_fiscale_confermato_il` / `regime_fiscale_confermato_da` (entrambi
+`null` = regime mai confermato, vedi §4.2).
 
 **Fase 4 — `non_editable_fields` nel detail**: il dict di response include
 `non_editable_fields: ["codice", "soggetto_id"]`. Il FE consuma il campo
@@ -209,7 +212,7 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" \
 | `codice` | string | Si | Univoco; **immutabile** dopo la creazione (lock_columns trigger) |
 | `descrizione` | string | Si | Etichetta visibile |
 | `attivo` | bool | No | Default DB `true` |
-| `regime_fiscale_rf` | string | No | Codice regime fiscale RF del tracciato FE/SdI (es. `RF01`) |
+| `regime_fiscale_rf` | string | No | Codice del catalogo `config.regimi_fiscali` (FK, es. `RF01`, `RF17`). **Presente** = regime dichiarato e **confermato** nella stessa scrittura (data e autore li scrive il DB). **Omesso** = default DB `RF01`, non confermato: l'emittente entra nel presidio `dbops.vw_emittenti_regime_non_confermato`. Vuoto o `null` → 400 |
 | `bollo_auto` | bool | No | Calcolo bollo automatico |
 | `bollo_soglia` | numeric | No | Soglia per applicare il bollo |
 | `rounding_policy` | enum | No | Uno tra: `UP`, `DOWN`, `HALF_UP`, `HALF_DOWN` (allineato alla matrice utility) |
@@ -261,7 +264,7 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
 
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
-| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id`, `codice` o `descrizione` mancanti, oppure soggetto senza P.IVA |
+| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id`, `codice` o `descrizione` mancanti, oppure soggetto senza P.IVA; `regime_fiscale_rf` vuoto/`null` o fuori catalogo (`error.fields` = `regime_fiscale_rf`) |
 | `E_ANAG_DUPLICATO` | 409 | Esiste gia' un emittente per questo soggetto o codice |
 
 ---
@@ -284,8 +287,17 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
 
 ### 4.2 Regole
 
-- I campi nullable (es. `regime_fiscale_rf`, `bollo_soglia`) accettano stringhe
+- I campi nullable (es. `rounding_policy`, `bollo_soglia`) accettano stringhe
   vuote che vengono normalizzate a `NULL`.
+- **Regime fiscale** (dal 2026-10-01, `brief-db-esigibilita-iva-per-cassa-emittente`):
+  `regime_fiscale_rf` e' NOT NULL con FK al catalogo `config.regimi_fiscali`.
+  Una PATCH che lo porta — **anche con lo stesso valore** — lo dichiara e lo
+  **conferma**: `regime_fiscale_confermato_il`/`_da` si scrivono nella stessa
+  UPDATE (l'autore e' l'operatore, GUC `app.jwt_user`). Chi non tocca il regime
+  **omette la chiave**: un cambio di regime senza conferma la azzera (trigger
+  `trgfn_emittenti_fiscali_regime_conferma`). Le due colonne di conferma non
+  sono chiavi del contratto. Vuoto, `null` o codice fuori catalogo →
+  `E_ANAG_VALIDAZIONE` 400 sul campo.
 - `rounding_policy` accetta solo i valori enum `UP`, `DOWN`, `HALF_UP`, `HALF_DOWN`
   (allineato ai metodi della matrice utility).
 - **Disattivazione (`attivo = false`)**: rifiutata dal trigger DB se l'emittente ha
