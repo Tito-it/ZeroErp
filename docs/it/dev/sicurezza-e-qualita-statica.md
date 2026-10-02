@@ -289,7 +289,7 @@ dettaglio sta nel documento che lo possiede.
 | --- | --- | --- | --- | --- |
 | 1 | **nginx** | unico ingresso HTTPS; rate limit (più stretto su login e reset); 404 su admin e Swagger | vhost + `zeroerp-ratelimit.conf` (fuori dal repo) | [Configurazione Django](backend/configurazione-django.md) |
 | 2 | **Django — superficie** | nessun admin, Swagger solo con `API_DOCS_ENABLED`, solo JSON, cookie `Secure` senza DEBUG, IP del client dal solo proxy fidato | `settings.py`, `api_docs_gate.py`, `request_context.get_client_ip` | idem |
-| 3 | **Autenticazione** | JWT con rotazione e blacklist del refresh, freno sui tentativi per credenziale e provenienza, throttle per IP, cambio password obbligato, token monouso con hash | `jwt_audit_authentication.py`, `auth_views.py`, `throttling.py`, `cancello_obblighi.py` | [Multi face auth](../guide/architettura-multi-face-auth.md), [Risorse umane e accessi](../guide/risorse-umane-e-accessi.md) |
+| 3 | **Autenticazione** | JWT con rotazione e blacklist del refresh, freno sui tentativi per credenziale e provenienza, throttle per IP, **secondo fattore TOTP** (login a due passi con sfida firmata, anti-replay sul passo a DB, codici di recupero monouso; obbligatorio per credenziale o profilo, sempre per il SUPER_ADMIN), cancello degli obblighi (cambio password, configurazione del secondo fattore), token monouso con hash | `jwt_audit_authentication.py`, `auth_views.py`, `secondo_fattore_token_views.py`, `secondo_fattore_service.py`, `throttling.py`, `cancello_obblighi.py` | [Multi face auth](../guide/architettura-multi-face-auth.md), [Risorse umane e accessi](../guide/risorse-umane-e-accessi.md) |
 | 4 | **Permessi** | ogni endpoint dichiara un'area; senza area si nega (fail-closed); TUTTO / LETTURA / BLOCCATO | `ZeroERPPermission` in `core/api/permissions.py` | [Permessi](../guide/architettura-permessi-e-autorizzazioni.md) |
 | 5 | **Identità al DB** | i GUC `app.*` si azzerano a ogni richiesta e si impostano dal token; una funzione che li trova vuoti rifiuta | `jwt_audit_middleware.py` | [Contratto GUC APP](../guide/contratto-guc-app.md) |
 | 6 | **RLS PostgreSQL** | anche un bug nel backend non fa vedere righe fuori perimetro; i ruoli che la scavalcano non sono usabili dal web | policy nei changeSet, `system_context.connection_role_bypasses_rls` | [RLS](../postgresql/row-level-security.md), [Provisioning ruoli](backend/provisioning-db-roles.md) |
@@ -338,7 +338,10 @@ illeggibile ogni dato cifrato, cioè non la si sarebbe ruotata mai.
 * **Le chiavi di cifratura** sono un elenco separato da virgola: si cifra con la **prima**, si
   decifra con **tutte** (`MultiFernet`). Chi le conosce può decifrare quei dati.
 * Ogni colonna cifrata è iscritta in `crypto_service.CAMPI_CIFRATI`: è l'elenco che la
-  rotazione percorre.
+  rotazione percorre. Oggi due: la password SMTP (`config.email_account`) e il segreto del
+  secondo fattore (`config.auth_totp_device`, dal 2026-10-01). La seconda è chiusa in
+  scrittura all'app, e la rotazione la riscrive col verbo `script.fn_totp_ricifra_segreto`,
+  che sostituisce il segreto solo se è ancora quello letto.
 
 Le chiavi si gestiscono con due script in `backend/scripts/`, che tengono allineati i due file
 d'ambiente (`env.sh` e `.env.systemd`), non stampano mai una chiave e salvano una copia dei due
@@ -390,7 +393,7 @@ Qui l'elenco di ciò che, in tema sicurezza, oggi **non** c'è.
 | Cosa | Stato |
 | --- | --- |
 | **Rotazione dei segreti** rimasti nella storia del repo (`backend/.env`, e la chiave che era commentata in `settings.py`) | non urgente, decisione di Tid del 2026-09-26: il repo è privato. La chiave di cifratura è separata dal 2026-09-28 (brief §3.5): la `SECRET_KEY` si può ruotare dopo la migrazione dei dati cifrati, sezione [Le chiavi dei dati cifrati](#le-chiavi-dei-dati-cifrati) |
-| **CSP** e header di pagina (`Referrer-Policy`, `Permissions-Policy`) in Nginx | ✅ applicata su `backend-dev` il 2026-09-28 dopo il collaudo in `Report-Only` — brief [sicurezza: header, token, MFA](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §1.6, registro voce D3-c. In produzione va la politica senza le due eccezioni di Vite, scritta accanto nel vhost documentato |
+| **CSP** e header di pagina (`Referrer-Policy`, `Permissions-Policy`) in Nginx | ✅ applicata su `backend-dev` il 2026-09-28 dopo il collaudo in `Report-Only` — brief [sicurezza: header, token, MFA](work-done/brief-be-fe-sicurezza-header-token-mfa.md) §1.6, registro voce D3-c. In produzione va la politica senza le due eccezioni di Vite, scritta accanto nel vhost documentato |
 | `npm audit` in CI, Dependabot | da decidere — registro, voce D1-f |
 | Token JWT fuori da `localStorage` | ✅ fatto il 2026-09-28 (brief §2): refresh in cookie `HttpOnly`/`SameSite=Strict` (BB `apps/core/api/refresh_cookie.py`), access di 10 minuti solo in memoria (`frontend/src/core/sessione.js`), rinnovo coordinato fra schede. Resta il collaudo a video su `backend-dev` |
 | Autenticazione a due fattori | stesso brief, §3 |

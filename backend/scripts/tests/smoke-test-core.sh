@@ -27,12 +27,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-# Refresh JWT nel cookie HttpOnly: lettura dal Set-Cookie e ripresentazione.
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_refresh.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -119,41 +115,12 @@ echo "========================================="
 echo ""
 echo "-- 0. Autenticazione --"
 
-if [[ -z "$PASSWORD" ]]; then
-    echo -n "Password per utente '$USERNAME': "
-    read -rs PASSWORD
-    echo ""
-fi
-
-curl -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
+# Login vero (-D lo implica): il passo 1 prova il refresh dal suo cookie.
+smoke_login -D "${TMPFILE}.hdr"
 REFRESH=$(refresh_dal_set_cookie "${TMPFILE}.hdr")
 
-AUTH_STATUS=$(tail -1 "$TMPFILE")
-AUTH_BODY=$(sed '$d' "$TMPFILE")
-
-if [[ "$AUTH_STATUS" != "200" ]]; then
-    echo -e "${RED}ERRORE: autenticazione fallita (HTTP $AUTH_STATUS)${NC}"
-    echo "$AUTH_BODY" | head -c 300
-    exit 1
-fi
-
-TOKEN=$(json_get "$AUTH_BODY" ".access")
-if [[ -z "$TOKEN" ]]; then
-    echo -e "${RED}ERRORE: token JWT non trovato nella risposta${NC}"
-    exit 1
-fi
-
 # Estrai user_id dal token (payload JWT base64)
-USER_ID=$(echo "$TOKEN" | cut -d. -f2 | python3 -c "
-import sys, base64, json
-payload = sys.stdin.read().strip()
-padding = 4 - len(payload) % 4
-decoded = base64.urlsafe_b64decode(payload + '=' * padding)
-print(json.loads(decoded).get('user_id', ''))
-" 2>/dev/null)
+USER_ID=$(smoke_jwt_claim "$TOKEN" user_id)
 
 log_ok "JWT ottenuto per '$USERNAME' (user_id=$USER_ID)"
 
@@ -340,8 +307,9 @@ except Exception as e:
 echo ""
 echo "-- 11. Logout --"
 
-# Secondo login per ottenere un refresh fresco da usare per il logout
-curl -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" \
+# login esplicito: una SECONDA sessione, col refresh fresco da usare per il
+# logout; il suo esito e' un passo del test (log_fail), non un'uscita.
+curl_login -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
     "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null

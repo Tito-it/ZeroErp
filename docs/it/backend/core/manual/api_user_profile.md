@@ -52,6 +52,7 @@ Il blocco `data` contiene il JSONB dalla funzione DB con le sezioni:
 | `azioni_abilitate` | object | Mappa azioni abilitate, da `fn_get_user_actions_map` |
 | `permessi_oggetto` | object | Mappa permessi per oggetto, da `fn_get_user_object_permissions_map` |
 | `deve_cambiare_password` | boolean | Flag dell'identita digitale (default false) |
+| `obblighi_pendenti` | array | Gli obblighi della credenziale che il cancello fa rispettare, nell'ordine in cui si chiudono: `CAMBIO_PASSWORD`, `SECONDO_FATTORE` (dal 2026-10-02, `cancello_obblighi.obblighi_in_vigore`). Il frontend porta alla pagina del primo. Il profilo risponde anche con un obbligo pendente (`obblighi_ammessi`) |
 
 ### Esempio risposta
 

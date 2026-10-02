@@ -56,6 +56,23 @@ class LoginRateThrottle(_CustomRateAnonThrottle):
     rate = "5/5m"
 
 
+class SecondoFattoreRateThrottle(_CustomRateAnonThrottle):
+    """Limita il SECONDO PASSO del login per IP: 5 ogni 5 minuti.
+
+    ⭐ Contatore proprio, non quello del login (fino al 2026-10-02 era lo
+    stesso): col secondo fattore ogni accesso costa due richieste, e un
+    contatore condiviso dimezzava i login possibili da un IP — dietro un
+    ufficio con un solo indirizzo, due o tre persone insieme ricevevano 429
+    (collaudo di Tid: lo smoke col secondo login fermato al secondo passo).
+    Chi prova codici a raffica resta frenato tre volte: da questo limite, dal
+    freno della credenziale a DB (ogni codice sbagliato e' un tentativo fallito,
+    D-T2) e dalla sfida, che scade in 5 minuti. Lo stesso ritmo del login per
+    scelta, non per copia: i due limiti possono divergere.
+    """
+    scope = "login_secondo_fattore"
+    rate = "5/5m"
+
+
 class PasswordResetRateThrottle(_CustomRateAnonThrottle):
     """Limita richieste reset password per IP: 3 ogni 15 minuti."""
     scope = "password_reset"

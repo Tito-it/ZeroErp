@@ -11,11 +11,14 @@
 > `risorse_umane_auth_user`: entrambe le cose non esistono più.
 > **Stato**:
 >
-> * **Parte A (TOTP): 🔵 IN SVILUPPO.** Il rinvio di D-10 (2026-09-24: *«funzione
+> * **Parte A (TOTP): ✅ COSTRUITA il 2026-10-02** (DB 29-09, BE/FE T-0 → T-4,
+>   collaudo di Tid lo stesso giorno). Stato attuale nella guida
+>   `guide/risorse-umane-e-accessi.md` («Secondo fattore di autenticazione») e
+>   nel manuale `backend/core/manual/api_secondo_fattore.md`. Storia: Il rinvio di D-10 (2026-09-24: *«funzione
 >   nuova, non un difetto, non si costruisce ora»*) è superato dal
->   [brief sicurezza](brief-be-fe-sicurezza-header-token-mfa.md) §3 (decisioni
+>   [brief sicurezza](../work-done/brief-be-fe-sicurezza-header-token-mfa.md) §3 (decisioni
 >   di Tid del 2026-09-26/28). **DB chiuso il 2026-09-29**
->   ([brief-db-secondo-fattore-totp.md](brief-db-secondo-fattore-totp.md):
+>   ([brief-db-secondo-fattore-totp.md](../work-done/brief-db-secondo-fattore-totp.md):
 >   obbligo sulla credenziale o sul profilo, sei verbi del device, anti-replay
 >   sul passo); **BE/FE in corso dal 2026-09-30** coi lotti T-0 → T-5 del brief
 >   sicurezza §3.4-bis. ⚠️ La sede del lavoro sono quei due brief: la Parte A
@@ -614,6 +617,16 @@ I changeSet seguono le convenzioni di
 ---
 
 # F. Domande aperte (da decidere con Tid prima dello sviluppo)
+
+> ✅ **Chiuse dalla Parte A (2026-09-28 → 10-02, brief sicurezza §6 e brief DB
+> TOTP §7):** Q-1 → **tutte e due**, flag sulla credenziale **oppure** segno sul
+> profilo (D-T1; il SUPER_ADMIN sempre); niente regola per porta. Q-2 → **sì**, il
+> codice sbagliato conta nel freno della credenziale, e il successo si registra
+> solo dopo il secondo passo (D-T2). Q-3 → solo **SUPER_ADMIN**, con motivo;
+> disattivare **non** chiude le sessioni (decisione 8). Q-6 → **solo funzioni di
+> `script`**, il backend verifica il codice e passa il passo. Q-10 → di fatto **il
+> dispositivo resta** (il reset della password non lo tocca): da confermare se
+> mai la si volesse diversa. Restano aperte quelle della Parte B.
 
 | # | Domanda | Possibili risposte | Dove pesa |
 | --- | --- | --- | --- |

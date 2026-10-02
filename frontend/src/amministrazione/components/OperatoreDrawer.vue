@@ -28,6 +28,7 @@ import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import AuthUserForm from '../../core/components/AuthUserForm.vue'
 import OperatorePermessiTab from './OperatorePermessiTab.vue'
+import OperatoreSecondoFattore from './OperatoreSecondoFattore.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import AppDialog from '../../core/components/AppDialog.vue'
@@ -603,6 +604,8 @@ const suVisibile = gestoreVisibile(emit, onClose)
                 <InputText :model-value="form.valido_al ? displayDate(form.valido_al) : t('amministrazione.valido_al_illimitato')" disabled />
               </div>
             </div>
+            <!-- Il secondo fattore della credenziale (azioni immediate, non dal Salva). -->
+            <OperatoreSecondoFattore :auth-user-id="props.authUserId" :readonly="isReadonly" />
           </template>
         </div>
 

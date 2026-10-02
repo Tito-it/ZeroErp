@@ -13,7 +13,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.cancello_obblighi import TUTTI_GLI_OBBLIGHI
+from apps.core.api.cancello_obblighi import TUTTI_GLI_OBBLIGHI, obblighi_in_vigore
 
 from apps.core.api.success_responses import success_response
 from apps.core.db.auth_repository import AuthRepository
@@ -101,6 +101,14 @@ class UserProfileView(DomainAPIView):
                                     "Prodotta da script.fn_get_user_permissions_map."
                                 ),
                             ),
+                            "obblighi_pendenti": serializers.ListField(
+                                child=serializers.ChoiceField(choices=sorted(TUTTI_GLI_OBBLIGHI)),
+                                help_text=(
+                                    "Gli obblighi della credenziale che il cancello fa "
+                                    "rispettare, nell'ordine in cui si chiudono: il "
+                                    "frontend porta alla pagina del primo."
+                                ),
+                            ),
                             "identita": serializers.DictField(
                                 allow_null=True,
                                 help_text=(
@@ -159,6 +167,10 @@ class UserProfileView(DomainAPIView):
             user=request.user,
             cache={"is_super_admin": bool(profile.get("is_super_admin"))},
         )
+        # Gli obblighi che il cancello fa rispettare, nell'ordine (brief
+        # sicurezza §3.4-bis, T-4): il guard del frontend porta alla pagina
+        # che chiude il primo. La regola e' una, quella del cancello.
+        profile["obblighi_pendenti"] = list(obblighi_in_vigore(request.user.id))
         return success_response(profile)
 
     # Scopo: Legge `emittente_attivo_id` dal JWT validato. Claim assente =

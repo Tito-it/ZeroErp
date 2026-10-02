@@ -89,6 +89,11 @@ async function handleConfirm() {
 
       <!-- Form nuova password -->
       <form v-else @submit.prevent="handleConfirm" class="login-form">
+        <!-- Esito SOPRA i campi, fuori dal flusso (login-esito--sopra), come
+             nel login: sotto spingeva il pulsante fuori dal cerchio. -->
+        <div v-if="errorMessage" class="login-error login-esito--sopra" role="alert">{{ errorMessage }}</div>
+        <div v-if="successMessage" class="login-success login-esito--sopra">{{ successMessage }}</div>
+
         <div class="field">
           <Password
             id="new_password"
@@ -116,9 +121,6 @@ async function handleConfirm() {
             fluid
           />
         </div>
-
-        <div v-if="errorMessage" class="login-error">{{ errorMessage }}</div>
-        <div v-if="successMessage" class="login-success">{{ successMessage }}</div>
 
         <Button
           type="submit"

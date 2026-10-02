@@ -11,6 +11,8 @@
 7. Git/GitHub da VS Code (SSH 22/443, HTTPS)
 8. Checklist post‑riavvio
 9. Comandi veloci (appendice)
+10. Sblocco del secondo fattore (DBA)
+11. Smoke bash: utente dedicato, secondo fattore, login unico
 
 ---
 
@@ -438,3 +440,129 @@ essh -vvv -p 443 -i ~/.ssh/id_ed25519 -o HostName=ssh.github.com git@github.com
 
 **Nota finale**
 Questo runbook è pensato per “stabilizzare” le componenti critiche (DNS, firewall, Tailscale, Postgres, Git) con passi minimi e reversibili. In caso di incidenti futuri, parti dal §1 (cheatsheet) e percorri nell’ordine: rete → DNS → firewall → servizi.
+
+---
+
+## 10) Sblocco del secondo fattore (DBA)
+
+**Quando serve.** Una persona ha perso il telefono **e** i codici di recupero, e
+nessun SUPER_ADMIN può disattivarle il secondo fattore dall'applicazione (drawer
+operatore → «Disattiva il secondo fattore») — tipicamente perché è l'unico
+SUPER_ADMIN. In ogni altro caso si usa l'applicazione.
+
+**Chi.** Solo la sessione del **migratore** (il ruolo che esegue le migrazioni,
+`zeroerp_migration`, o un superuser): il verbo la riconosce
+(`dbops.fn_sessione_del_migratore`); l'applicazione non raggiunge questo ramo
+(decisione D-T4, brief-db-secondo-fattore-totp).
+
+**Come**, dal server, collegati col ruolo del migratore:
+
+```sql
+-- 1. la credenziale
+SELECT id, username FROM auth_user WHERE username = '<username>';
+
+-- 2. lo sblocco: il motivo è OBBLIGATORIO (E_TOTP_MOTIVO_OBBLIGATORIO)
+SELECT script.fn_totp_disabilita_device(<id>, '<motivo: es. telefono e codici persi, richiesta del <data>>');
+
+-- 3. la verifica: device assente, e la traccia scritta dal verbo
+SELECT stato FROM script.fn_get_totp_device(<id>);          -- atteso: ASSENTE
+SELECT data_insert, dettaglio
+  FROM dbops.sessioni_utente
+ WHERE auth_user_id = <id> AND evento = 'TOTP_DISABILITATO'
+ ORDER BY data_insert DESC LIMIT 1;                           -- via SERVER, chi, motivo
+```
+
+* **Non** impostare `app.current_user_id`: la sessione agisce come migratore.
+* La traccia (`dettaglio = {via: SERVER, sessione, chi_agisce, motivo}`) la
+  scrive il verbo nella stessa istruzione: se non si scrive, lo sblocco si annulla.
+* **Dopo**: al login successivo la persona entra con la sola password e, se ha
+  l'obbligo (il SUPER_ADMIN ce l'ha sempre), la pagina «Sicurezza dell'accesso»
+  le fa configurare subito un dispositivo nuovo. Le sessioni già aperte restano.
+* Guida d'uso: `docs/it/guide/risorse-umane-e-accessi.md`, «Secondo fattore di
+  autenticazione».
+
+---
+
+## 11) Smoke bash: utente dedicato, secondo fattore, login unico
+
+Gli smoke bash (`backend/scripts/tests/smoke-test-*.sh`) fanno il login con un
+solo building block, `smoke_login` di `_smoke_auth.sh`: credenziali da
+`SMOKE_USER` / `SMOKE_PASSWORD` (o primo argomento), secondo fattore da
+`SMOKE_TOTP_SECRET`, e il riuso di `SMOKE_TOKEN` (§11.4).
+
+### 11.1 Perché un utente dedicato
+
+Fino al 2026-10-02 gli smoke usavano l'utente personale `tid` (che resta il
+ripiego se `SMOKE_USER` manca). Non va bene:
+
+* il **secondo fattore** è della credenziale: il DB accetta un codice per
+  intervallo di 30 s (anti-replay), quindi ogni login di uno smoke aspetta il
+  passo nuovo, e il passo che usa lo smoke non lo può usare la persona (e
+  viceversa);
+* un codice già usato o sbagliato conta come **tentativo fallito** sul freno di
+  login della credenziale: un giro di smoke andato storto frena l'accesso di
+  chi lavora;
+* le scritture degli smoke (audit, `user_insert`, sessioni) si confondono con
+  quelle della persona.
+
+### 11.2 Creare l'utente (dall'applicazione, una volta)
+
+1. **Admin → Amm. Software → Operatori → «Nuovo»**: nome utente (es. `smoke`),
+   un'email che si legge, una qualifica. Poi «Invia invito» e, dal link, la
+   scelta della password (guida `docs/it/guide/risorse-umane-e-accessi.md`,
+   «Invito operatore»).
+2. **Permessi**: gli smoke esercitano tutte le aree, anche in scrittura
+   (catalogo, vendite, anagrafiche, pratiche, definizioni di workflow,
+   amministrazione), e alcuni lo pretendono esplicitamente (SUPER_ADMIN,
+   «admin globale»). Quindi alla veste **OPERATORE** si lega il profilo
+   **`SUPER_ADMIN`**, **senza** emittente fiscale assegnato (admin globale:
+   `is_admin_globale = true` in `GET /api/v1/core/me/`). La veste OPERATORE
+   deve essere **attiva**: `smoke-test-guida-inversione-preventivi.sh` ne legge
+   l'identità per le GUC.
+3. **Secondo fattore**: col profilo SUPER_ADMIN è obbligatorio. Primo login col
+   nuovo utente nel browser → si apre da sola «Sicurezza dell'accesso». Si
+   copia la **chiave** mostrata sotto il QR (32 caratteri, lettere A-Z e cifre
+   2-7: ⛔ non un codice di recupero), si conservano i codici di recupero, si
+   conferma col primo codice (dall'app sul telefono, oppure calcolato dalla
+   chiave: `SMOKE_TOTP_SECRET='<chiave>' backend/.venv/bin/python backend/scripts/tests/_smoke_totp_codice.py`).
+
+### 11.3 Le variabili, in `backend/env.sh`
+
+`env.sh` è fuori da git (`backend/.gitignore`) e con permessi `600`: ci stanno
+le tre variabili, come le altre del backend.
+
+```bash
+export SMOKE_USER='smoke'
+export SMOKE_PASSWORD='<password scelta al punto 1>'
+export SMOKE_TOTP_SECRET='<chiave del punto 3>'
+```
+
+* Opzionali: `SMOKE_TOKEN_MARGINE` (secondi, default 180, §11.4),
+  `SMOKE_PYTHON` (il python che calcola il codice, default il venv del backend).
+* `smoke-test-rls-emittente-operatore.sh` vuole un **altro** utente (un
+  operatore ristretto, con riga in `config.user_emittenti_fiscali`): si lancia
+  con `SMOKE_USER`, `SMOKE_PASSWORD` e, se ha il secondo fattore, il suo
+  `SMOKE_TOTP_SECRET` sulla riga di comando.
+
+### 11.4 Il login unico di una sessione di smoke
+
+```bash
+eval "$(backend/scripts/tests/smoke-login.sh)"     # un login (e un codice TOTP)
+backend/scripts/tests/smoke-test-catalogo.sh        # nessun login
+backend/scripts/tests/smoke-test-vendite.sh         # nessun login
+```
+
+* `smoke-login.sh` fa il login vero e stampa solo `export SMOKE_TOKEN=...`;
+  domanda della password e messaggi vanno sul terminale.
+* Ogni smoke riusa `SMOKE_TOKEN` se vale ancora più di `SMOKE_TOKEN_MARGINE`
+  secondi (claim `exp`), se `GET /api/v1/core/me/` lo accetta (una sessione
+  revocata lo invalida prima) e se è proprio di `SMOKE_USER`. Altrimenti dice
+  perché e fa il login da sé, come sempre.
+* ⚠️ L'access dura **10 minuti** (`SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"]` in
+  `backend/zeroerp_backend/settings.py`): col margine di default il riuso vale
+  per ~7 minuti, poi ogni smoke torna al login proprio. Per ripartire si
+  rilancia `smoke-login.sh`.
+* Fanno **sempre** il login vero, perché provano proprio quello:
+  `smoke-test-core.sh` (refresh e logout), `smoke-test-audit-logging.sh`
+  (sessione LOGIN, refresh, login rifiutato), `smoke-test-jwt-audit-guc.sh`
+  (refresh), `smoke-test-email-auth.sh` (risposta del login).

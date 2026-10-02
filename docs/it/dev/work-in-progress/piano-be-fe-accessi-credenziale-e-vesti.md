@@ -39,7 +39,7 @@ Il perché di ognuna sta nell'[analisi](../work-done/analisi-accessi-credenziale
 | **A-5** | Revoca asimmetrica: blacklist, token d'invito e cache permessi presenti in un flusso e assenti nell'altro | L-5 |
 | **A-6** | Lo shop si riattiva da solo (`ProfileActivateShopView`) anche dopo una revoca dell'admin (D-4) | L-5 (R-4) |
 | **A-7** | `valido_dal`/`valido_al` della veste non applicati al login né a ogni richiesta | L-6 |
-| **A-8** | `PasswordChangeRequiredMiddleware` inerte col JWT: il cambio obbligatorio lo fa rispettare solo il FE | ➡️ **T-0** del [brief sicurezza](brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis (Tid, 2026-09-30): un cancello degli obblighi per cambio password **e** secondo fattore. In L-6 resta A-7 |
+| **A-8** | `PasswordChangeRequiredMiddleware` inerte col JWT: il cambio obbligatorio lo fa rispettare solo il FE | ➡️ **T-0** del [brief sicurezza](../work-done/brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis (Tid, 2026-09-30): un cancello degli obblighi per cambio password **e** secondo fattore. In L-6 resta A-7 |
 | **A-9** | Resta il consenso dell'admin al riuso della credenziale (rev `-51`, già in git) | L-3 (coda) |
 | **D-1** | Il blocco **vero** è un verbo dell'admin: nessun endpoint `blocca-credenziale` ancora | L-2 (R-6) |
 | **D-9** | Portale e shop entrano con l'email; nome utente nell'invito operatore | L-4 |

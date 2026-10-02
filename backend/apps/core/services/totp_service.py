@@ -100,10 +100,12 @@ def uri_configurazione(segreto: str, nome_account: str) -> str:
     )
 
 
-# Scopo: Il QR dell'indirizzo, come SVG da mettere nella pagina. Generato qui
-#        perche' il frontend non aggiunga librerie (decisione del 2026-09-28).
-def qr_svg(uri: str) -> str:
-    return segno.make(uri, error="m").svg_inline(scale=4)
+# Scopo: Il QR dell'indirizzo, come data URI di un SVG: il frontend lo mette
+#        in un `<img>`, dove nessuno script puo' girare — mai markup del server
+#        con `v-html`. Generato qui perche' il frontend non aggiunga librerie
+#        (decisione del 2026-09-28).
+def qr_data_uri(uri: str) -> str:
+    return segno.make(uri, error="m").svg_data_uri(scale=4)
 
 
 # Scopo: Un mazzo di codici di recupero nuovi, nella forma da mostrare

@@ -28,8 +28,10 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+# Utente DIVERSO dall'utente generale degli smoke (un operatore ristretto): niente
+# ripiego, SMOKE_USER va detto; la password solo da SMOKE_PASSWORD.
 USERNAME="${SMOKE_USER:-}"
 PASSWORD="${SMOKE_PASSWORD:-}"
 OUT_OF_SCOPE_ID="${OUT_OF_SCOPE_CONTRATTO_ID:-}"
@@ -94,21 +96,11 @@ if [[ -z "$USERNAME" ]]; then
     echo -e "${RED}ERRORE: SMOKE_USER non impostato (serve un operatore con whitelist EF).${NC}"
     exit 2
 fi
-if [[ -z "$PASSWORD" ]]; then
-    echo -n "Password per '$USERNAME': "; read -rs PASSWORD; echo ""
-fi
 
 # ---- 0. Login -> token + auth_user_id -------------------------------
 echo ""; echo "-- 0. Login JWT --"
-curl -s -w '\n%{http_code}' -H "Content-Type: application/json" \
-    -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE"
-AUTH_STATUS=$(tail -1 "$TMPFILE"); AUTH_BODY=$(sed '$d' "$TMPFILE")
-if [[ "$AUTH_STATUS" != "200" ]]; then
-    log_fail "login fallito (HTTP $AUTH_STATUS): $(echo "$AUTH_BODY" | head -c 200)"; exit 1
-fi
-TOKEN=$(echo "$AUTH_BODY" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("access",""))')
-[[ -z "$TOKEN" ]] && { log_fail "access token assente nella risposta login"; exit 1; }
+# SMOKE_TOKEN di un altro utente non entra: il BB lo riusa solo se e' di USERNAME.
+smoke_login
 log_ok "JWT ottenuto"
 USER_ID=$(db_query "SELECT id FROM auth_user WHERE username='$USERNAME' LIMIT 1" | tail -1)
 if ! [[ "$USER_ID" =~ ^[0-9]+$ ]]; then

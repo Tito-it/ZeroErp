@@ -131,10 +131,12 @@ async function handleActivation() {
         @submit.prevent="handleActivation"
         class="login-form"
       >
-        <p class="login-subtitle">{{ t(k('activation_cross_welcome')) }}</p>
+        <!-- Esito SOPRA il form, fuori dal flusso (login-esito--sopra), come
+             nel login: sotto spingeva il pulsante fuori dal cerchio. -->
+        <div v-if="errorMessage" class="login-error login-esito--sopra" role="alert">{{ errorMessage }}</div>
+        <div v-if="successMessage" class="login-success login-esito--sopra">{{ successMessage }}</div>
 
-        <div v-if="errorMessage" class="login-error">{{ errorMessage }}</div>
-        <div v-if="successMessage" class="login-success">{{ successMessage }}</div>
+        <p class="login-subtitle">{{ t(k('activation_cross_welcome')) }}</p>
 
         <Button
           type="submit"
@@ -147,6 +149,11 @@ async function handleActivation() {
 
       <!-- Con password: la persona la sceglie -->
       <form v-else @submit.prevent="handleActivation" class="login-form">
+        <!-- Esito SOPRA il form, fuori dal flusso (login-esito--sopra), come
+             nel login: sotto spingeva il pulsante fuori dal cerchio. -->
+        <div v-if="errorMessage" class="login-error login-esito--sopra" role="alert">{{ errorMessage }}</div>
+        <div v-if="successMessage" class="login-success login-esito--sopra">{{ successMessage }}</div>
+
         <p class="login-subtitle">{{ t(k('activation_welcome')) }}</p>
 
         <div class="field">
@@ -176,9 +183,6 @@ async function handleActivation() {
             fluid
           />
         </div>
-
-        <div v-if="errorMessage" class="login-error">{{ errorMessage }}</div>
-        <div v-if="successMessage" class="login-success">{{ successMessage }}</div>
 
         <Button
           type="submit"

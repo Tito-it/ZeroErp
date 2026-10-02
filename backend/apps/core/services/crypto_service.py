@@ -20,21 +20,34 @@ from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from django.conf import settings
 
 
-# Scopo: Una colonna del DB che contiene un token di questo servizio.
+# Scopo: Una colonna del DB che contiene un token di questo servizio, e come
+#        la si riscrive alla rotazione delle chiavi.
+#        `verbo` None: la tabella e' scrivibile dall'app, `ricifra_campi_cifrati`
+#        la legge con FOR UPDATE e la riscrive con un UPDATE diretto sulla `chiave`.
+#        `verbo` dato: la tabella e' CHIUSA all'app (solo SELECT), e si riscrive
+#        con quella funzione `(chiave, token_atteso, token_nuovo) -> boolean`,
+#        che confronta e sostituisce: `false` = il segreto e' cambiato fra la
+#        lettura e la scrittura, e resta com'e' (gia' sulla chiave buona).
 @dataclass(frozen=True)
 class CampoCifrato:
     tabella: str
     colonna: str
+    chiave: str = "id"
+    verbo: str | None = None
 
 
 # ⛔ OGNI colonna cifrata con `encrypt` si iscrive qui: e' l'elenco che
 #    `ricifra_campi_cifrati` percorre quando le chiavi ruotano. Una colonna
 #    dimenticata resta cifrata con la chiave vecchia, e diventa illeggibile nel
 #    momento in cui quella chiave si toglie.
-#    `config.auth_totp_device.secret_encrypted` entrera' col lavoro sul TOTP,
-#    insieme al codice che la scrive (oggi nessuno).
 CAMPI_CIFRATI: tuple[CampoCifrato, ...] = (
     CampoCifrato("config.email_account", "smtp_password_encrypted"),
+    # Il segreto del secondo fattore: tabella chiusa all'app, si riscrive col
+    # verbo (brief-db-totp-ricifra-segreto, consegnato il 2026-10-01).
+    CampoCifrato(
+        "config.auth_totp_device", "secret_encrypted",
+        chiave="auth_user_id", verbo="script.fn_totp_ricifra_segreto",
+    ),
 )
 
 

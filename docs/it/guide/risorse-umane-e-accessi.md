@@ -516,6 +516,51 @@ Ogni evento di autenticazione viene registrato in `dbops.sessioni_utente`:
 
 ---
 
+
+### Secondo fattore di autenticazione
+
+Dopo la password, un codice di sei cifre che cambia ogni 30 secondi, generato da
+un'app sul telefono (Google Authenticator, Microsoft Authenticator, Aegis, 2FAS…).
+È della **credenziale**: un dispositivo per persona, valido su tutte le porte.
+
+**Chi deve usarlo.** Obbligo = flag sulla credenziale **oppure** un profilo che lo
+richiede:
+
+| Fonte | Chi la decide |
+| --- | --- |
+| Flag sulla credenziale | Il SUPER_ADMIN, dal drawer dell'operatore («Obbligatorio per questo accesso») |
+| Profilo con «richiede il secondo fattore» | Chi amministra i profili (per il reparto: editor del profilo di reparto) |
+| Profilo SUPER_ADMIN | Sempre: non si spegne (vincolo a DB) |
+
+L'obbligo segue i profili: chi riceve il reparto lo ha, chi lo lascia non più.
+Senza obbligo, chiunque può attivarlo lo stesso.
+
+**Come si configura.** Menu utente → «Sicurezza dell'accesso»; con l'obbligo
+pendente la pagina si apre da sola dopo il login, e il backend non risponde ad
+altro (403 `E_TOTP_CONFIGURAZIONE_RICHIESTA`). Si inquadra il QR con l'app (o si
+scrive la chiave), si conservano i **dieci codici di recupero** (ognuno vale una
+volta, mostrati una volta sola), si conferma col primo codice.
+
+**Al login.** Dopo la password la scheda chiede il codice; «Non hai il telefono?»
+accetta un codice di recupero. Un codice sbagliato conta come una password
+sbagliata (stesso freno). Lo stesso codice non vale due volte.
+
+**Dalla pagina Sicurezza**, dietro un codice: codici di recupero nuovi (i vecchi
+non valgono più), disattivazione (per esempio per cambiare telefono: con
+l'obbligo, si configura di nuovo subito).
+
+**L'amministratore (SUPER_ADMIN)** vede lo stato nel drawer dell'operatore, accende
+o spegne l'obbligo sulla credenziale e, per un telefono perso, **disattiva** il
+dispositivo con un motivo. Le sessioni già aperte restano. Ogni disattivazione
+lascia l'evento `TOTP_DISABILITATO` nel registro delle sessioni, con chi, perché e
+da dove.
+
+**Il caso senza via d'uscita** (l'unico SUPER_ADMIN senza telefono né codici): lo
+sblocca il DBA dal server, procedura nel
+[runbook](../dev/infra/comandi-utili-run-book.md), «Sblocco del secondo fattore».
+
+Contratto degli endpoint: [API secondo fattore](../backend/core/manual/api_secondo_fattore.md).
+
 ## Diagrammi ER
 
 Il modello e rappresentato in due diagrammi separati per facilitare la lettura.

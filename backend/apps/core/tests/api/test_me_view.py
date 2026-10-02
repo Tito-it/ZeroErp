@@ -22,6 +22,7 @@ Indice test eseguiti:
 12) IdentitaDelJwtTests.test_claim_assente_ritorna_none
 13) IdentitaDelJwtTests.test_claim_presente_delega_al_repo
 14) IdentitaDelJwtTests.test_profile_contiene_blocco_identita
+15) UserProfileViewTests.test_profilo_porta_gli_obblighi_del_cancello — T-4 brief sicurezza
 """
 
 from unittest import TestCase
@@ -91,6 +92,30 @@ _REPO_PATH = "apps.core.api.me_view.CoreRepository"
 
 
 class UserProfileViewTests(TestCase):
+
+    # Gli obblighi della credenziale li legge il cancello dal DB: qui si fissano.
+    # ⛔ `unittest.TestCase`: senza, la lettura andrebbe al DB di sviluppo.
+    def setUp(self) -> None:
+        patcher = patch("apps.core.api.me_view.obblighi_in_vigore", return_value=())
+        self.mock_obblighi = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    # Scopo: T-4. Il profilo porta gli obblighi che il cancello fa
+    # rispettare, nell'ordine: il guard del frontend li legge da qui.
+    @patch(_REPO_PATH)
+    def test_profilo_porta_gli_obblighi_del_cancello(self, MockRepo):
+        from apps.core.api.me_view import UserProfileView
+
+        MockRepo.return_value.get_user_profile.return_value = dict(_PROFILE_FULL)
+        self.mock_obblighi.return_value = ("CAMBIO_PASSWORD", "SECONDO_FATTORE")
+        request = MagicMock(); request.user = MagicMock(); request.user.id = 1; request.auth = None
+        with patch("apps.core.api.me_view.success_response") as mock_resp, \
+                patch("apps.core.api.me_view.EmittenteAttivoService"):
+            UserProfileView().get(request)
+        self.assertEqual(
+            mock_resp.call_args[0][0]["obblighi_pendenti"], ["CAMBIO_PASSWORD", "SECONDO_FATTORE"],
+        )
+        self.mock_obblighi.assert_called_once_with(1)
 
     # Scopo: Verifica che GET /me/ restituisca il profilo completo con envelope data
     # e arricchito con is_admin_globale.
@@ -320,9 +345,10 @@ class IdentitaDelJwtTests(TestCase):
             identita_id=7, auth_user_id=42,
         )
 
+    @patch("apps.core.api.me_view.obblighi_in_vigore", return_value=())
     @patch(_REPO_PATH)
     @patch("apps.core.api.me_view.AuthRepository")
-    def test_profile_contiene_blocco_identita(self, MockAuth, MockRepo):
+    def test_profile_contiene_blocco_identita(self, MockAuth, MockRepo, _obblighi):
         """End-to-end della view: il profilo ritornato contiene la chiave
         `identita` popolata dal repo auth."""
         from apps.core.api.me_view import UserProfileView

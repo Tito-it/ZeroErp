@@ -16,6 +16,7 @@ import {
   RUOLO_APPLICATIVO,
   LIVELLO_ACCESSO,
   CANALE_LOGIN,
+  OBBLIGO_CREDENZIALE,
   resolveCanaleLogin
 } from '../core/constants'
 import { resetAllUserScopedStores } from '../core/pinia-plugins/auto-reset'
@@ -24,6 +25,7 @@ import { useUiStore } from './ui'
 import { useNavigationStore } from './navigation'
 import { switchEmittenteAttivo } from '../core/api/emittenteAttivo'
 import { cambiaPassword as apiCambiaPassword } from '../core/api/password'
+import { secondoPassoLogin } from '../core/api/secondoFattore'
 
 export const useAuthStore = defineStore('auth', () => {
   // ⛔ I token non stanno più in localStorage (brief sicurezza §2, dal
@@ -162,19 +164,44 @@ export const useAuthStore = defineStore('auth', () => {
   // se omesso, usa la key gia' salvata (default ADMIN). Il canale determina
   // quale endpoint token chiamare (`/admin/token/` | `/portale/token/` |
   // `/shop/token/`) e viene persistito per il successivo refresh.
+  //        ⭐ Col secondo fattore attivo la password non basta: il backend
+  //        risponde con una SFIDA e nessun token (brief sicurezza §3.4-bis).
+  //        Ritorna `{ secondoPasso: true, sfida }`, e la view chiede il codice
+  //        (`completaSecondoPasso`); altrimenti `{ secondoPasso: false }`.
   async function login(username, password, canaleKey) {
     if (canaleKey) {
       setLoginChannel(canaleKey)
     }
     const canale = resolveCanaleLogin(loginChannel.value)
     const response = await api.post(canale.tokenPath, { username, password })
-    // Il refresh l'ha scritto il backend nel cookie; qui arriva il solo access.
-    impostaAccess(response.data.access, { annuncia: false })
+    if (response.data?.two_factor_required) {
+      return { secondoPasso: true, sfida: response.data.sfida }
+    }
+    await apriSessione(response.data.access, response.data.password_change_required)
+    return { secondoPasso: false }
+  }
+
+  // Scopo: il secondo passo del login: la sfida del primo e la prova
+  //        (`{ codice }` dell'app o `{ codiceRecupero }`). Apre la sessione e
+  //        ritorna quanti codici di recupero restano, se se n'è usato uno.
+  async function completaSecondoPasso(sfida, prova) {
+    const canale = resolveCanaleLogin(loginChannel.value)
+    const response = await secondoPassoLogin(canale.secondoFattorePath, sfida, prova)
+    const data = response.data?.data || {}
+    await apriSessione(data.access, data.password_change_required)
+    return { codiciRecuperoRimasti: data.codici_recupero_rimasti ?? null }
+  }
+
+  // Scopo: apre la sessione appena data dal backend (il refresh è già nel
+  //        cookie, qui arriva l'access). ⭐ Una sede per i due passi del
+  //        login (regola del 2).
+  async function apriSessione(access, cambioPassword) {
+    impostaAccess(access, { annuncia: false })
     // Il cookie ora è di QUESTA sessione, per tutte le schede: quelle aperte
     // su un'altra ripartono dal boot invece di mostrarne i dati.
     annunciaAlleAltreSchede({ tipo: EVENTO_SESSIONE.SESSIONE_NUOVA })
     // Controlla flag cambio password dal backend
-    passwordChangeRequired.value = !!response.data.password_change_required
+    passwordChangeRequired.value = !!cambioPassword
     try {
       await fetchProfile()
     } catch (err) {
@@ -489,6 +516,14 @@ export const useAuthStore = defineStore('auth', () => {
     passwordChangeRequired.value || !!user.value?.deve_cambiare_password
   )
 
+  // Scopo: il secondo fattore è obbligatorio e non ancora configurato. Lo
+  //        dice il backend (`obblighi_pendenti` di `/core/me/`, la stessa
+  //        regola del cancello): qui non si ricalcola niente. Dopo la
+  //        configurazione si rilegge il profilo (`fetchProfile`).
+  const mustConfigureSecondFactor = computed(() =>
+    (user.value?.obblighi_pendenti || []).includes(OBBLIGO_CREDENZIALE.SECONDO_FATTORE)
+  )
+
   return {
     user,
     isAuthenticated,
@@ -511,7 +546,9 @@ export const useAuthStore = defineStore('auth', () => {
     deveScegliereEmittente,
     cambiaEmittenteAttivo,
     cambiaPassword,
+    completaSecondoPasso,
     mustChangePassword,
+    mustConfigureSecondFactor,
     passwordChangeRequired,
     displayName,
     visibleDomains,

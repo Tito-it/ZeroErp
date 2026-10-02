@@ -47,8 +47,8 @@ export const useRepartiStore = createListaStore('amm-reparti', {
       }
     }
 
-    async function saveProfilo(uoId, aree, azioni) {
-      const res = await putProfiloReparto(uoId, aree, azioni)
+    async function saveProfilo(uoId, aree, azioni, richiedeSecondoFattore) {
+      const res = await putProfiloReparto(uoId, aree, azioni, richiedeSecondoFattore)
       currentProfilo.value = res.data.data
       emitDataChanged(TAB_ENTITIES.PROFILO_REPARTO, uoId)
       return res.data.data

@@ -33,6 +33,7 @@ from apps.core.services.auth_helpers import (
     valida_nuova_password,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.request_context import richiesta_django
 
 logger = logging.getLogger("security")
 
@@ -128,7 +129,7 @@ class ChangePasswordView(DomainAPIView):
             # login (prima si registrava il `jti`, che cambia a ogni refresh).
             session_audit_service.record_login(
                 user_id=user.id,
-                request=request._request if hasattr(request, "_request") else request,
+                request=richiesta_django(request),
                 jti=str(refresh[JWT_CLAIM_SID]),
             )
             logger.info("security.password_changed user_id=%s", user.id)

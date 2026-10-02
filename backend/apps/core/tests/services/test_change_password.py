@@ -71,7 +71,7 @@ class AuthViewTests(TestCase):
     # Il login chiede la provenienza (IP fidato): qui si fissa, la request e'
     # un MagicMock. La regola dell'IP e' provata in test_request_context.
     def setUp(self):
-        patcher = patch("apps.core.api.auth_views.get_client_ip", return_value="203.0.113.7")
+        patcher = patch("apps.core.services.request_context.get_client_ip", return_value="203.0.113.7")
         patcher.start()
         self.addCleanup(patcher.stop)
         # Il login legge il device del secondo fattore dopo la password:

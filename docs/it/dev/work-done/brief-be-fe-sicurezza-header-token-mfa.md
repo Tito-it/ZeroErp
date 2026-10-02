@@ -6,31 +6,29 @@
 > **Tipo:** quattro lavori indipendenti, raccolti qui perché nascono dalla stessa revisione
 > di sicurezza del 2026-09-26. Si possono fare in qualunque ordine; l'ordine consigliato è in §5.
 >
-> **Stato:** 🔵 in corso dal 2026-09-28. Decisioni di Tid del 2026-09-26: §1 *«facciamo dopo»*,
-> §2–§4 *«più avanti»*; il 2026-09-28 Tid ha dato il via allo sviluppo. ✅ §3.5 consegnata a
-> codice il 2026-09-28 e migrata su `backend-dev` lo stesso giorno (§3.5 «Fatto»). ✅ §4 ruff `B`
-> accesa il 2026-09-28 (§4 «Fatto»). ✅ §1 chiusa il 2026-09-28: HSTS e redirect in Django, CSP
-> applicata in Nginx dopo il collaudo in `Report-Only` (§1.6 «Fatto»). ✅ §2 token fuori da
-> `localStorage` fatto il 2026-09-28, smoke verdi, collaudo a video chiuso il 2026-09-29 (§2.5).
-> **Commit:** §3.5 e §4 in `077ade022`; §1 (HSTS/redirect), §2 e la revisione del cantiere in
-> `2356ed65c` (2026-09-28, `dev/backend-tid`).
+> **Stato:** ✅ **CHIUSO il 2026-10-02 e archiviato.** Le quattro parti sono fatte:
+> §1 header HTTPS (HSTS, redirect, CSP applicata in Nginx, 28-09); §2 token fuori da
+> `localStorage` (refresh nel cookie `HttpOnly`, collaudo a video il 29-09); §3 secondo
+> fattore, DB il 29-09 ([brief-db-secondo-fattore-totp.md](brief-db-secondo-fattore-totp.md),
+> archiviato con questo) e BE/FE coi lotti T-0 → T-5 di §3.4-bis (30-09 → 02-10, collaudo di
+> Tid il 02-10); §3.5 chiave di cifratura separata e §4 ruff `B` (28-09). Decisioni 1 → 10 di §6
+> tutte prese. **Commit:** §3.5 e §4 in `077ade022`; §1-§2 in `2356ed65c`; T-0 → T-2 in
+> `af9c6f659`; T-1 (rotazione), T-3, T-4, T-5 e il BB degli smoke da committare
+> (`dev/backend-tid`).
 >
-> ⏳ **Cosa manca per chiudere il brief** (in ordine):
-> 1. ✅ backend riavviato su `backend-dev` col codice nuovo (2026-09-28);
-> 2. ✅ tre smoke del refresh verdi (2026-09-28), dopo la correzione della provenienza negli
->    smoke (§2.5);
-> 3. ✅ collaudo a video di §2 (2026-09-29, §2.5);
-> 4. ✅ CSP applicata in Nginx (2026-09-28, §1.6);
-> 5. ✅ frase dopo un logout da un'altra scheda (2026-09-29); resta da decidere, prima della
->    produzione, la scheda rimasta con il frontend di una versione precedente (§2.5);
-> 6. 🔵 §3 TOTP: DB consegnato il 2026-09-29 ([brief-db-secondo-fattore-totp.md](brief-db-secondo-fattore-totp.md)),
->    BE/FE **in corso dal 2026-09-30** coi lotti T-0 → T-5 di §3.4-bis (decisioni 5 → 8 di §6).
->    Tre codici a catalogo in [brief-db-codici-cancello-obblighi-e-sfida-totp.md](../work-done/brief-db-codici-cancello-obblighi-e-sfida-totp.md):
-   ✅ chiuso il 2026-09-30 (id 1182 → 1184): applicati, policy rigenerate, ripieghi scritti,
-   `PasswordChangeRequiredMiddleware` ritirato.
+> **Residui, con la loro sede** (nessuno resta solo qui):
+> 1. ❓ **la scheda rimasta col frontend di una versione precedente** (§2.5): non si ripara da
+>    sola, esce a ogni scadenza finché non la si ricarica — in produzione serve un avviso
+>    «versione nuova» o una ricarica automatica. → PROJECT_CONTEXT § «Aperto»;
+> 2. ✏️ **due collaudi a video non ancora fatti**, perché vogliono un secondo utente col secondo
+>    fattore: la disattivazione da amministratore (drawer operatore, col motivo) e il segno
+>    «richiede il secondo fattore» sul profilo di un reparto. → PROJECT_CONTEXT § «Aperto»;
+> 3. 🗂️ [brief-db-totp-ricifra-segreto.md](../work-in-progress/brief-db-totp-ricifra-segreto.md):
+>    DB consegnato e BE fatto (T-1), si archivia quando la sua versione aggiornata dal team DB
+>    (`26749ed5b`, §5 della consegna) arriva in `Tito-dev` — toccarlo prima sarebbe un conflitto.
 >
 > **Contesto:** [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md), sezione
-> «Aperto». Registro del debito: [migliorie generali](migliorie-generali-BE-FE-da-test-valutazione.md),
+> «Aperto». Registro del debito: [migliorie generali](../work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md),
 > voce D3-c per §1.
 
 ---
@@ -384,20 +382,20 @@ Il DB del secondo fattore è applicato ([brief-db-secondo-fattore-totp.md](brief
 richieste al BE/FE in §9.5). Decisioni di Tid del 2026-09-30: le decisioni 5 → 8 di §6.
 
 ⛔ **Il «middleware sul modello di `PasswordChangeRequiredMiddleware`» non si fa**: quel
-middleware è **inerte col JWT** (A-8 del [piano accessi](piano-be-fe-accessi-credenziale-e-vesti.md):
+middleware è **inerte col JWT** (A-8 del [piano accessi](../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md):
 a `process_view` l'utente del Bearer è ancora anonimo) e scrive a mano un codice che non è a
 catalogo. Copiato, anche l'obbligo del secondo fattore sarebbe fatto rispettare dal solo
-frontend. L'analisi [2FA](autenticazione-due-fattori-e-provider.md) A.2.11 lo diceva già: **lo
+frontend. L'analisi [2FA](../work-in-progress/autenticazione-due-fattori-e-provider.md) A.2.11 lo diceva già: **lo
 stesso meccanismo, non un secondo**.
 
 | Lotto | Cosa |
 | --- | --- |
-| **T-0** | Il **cancello degli obblighi** dopo l'autenticazione DRF (chiude A-8; A-7 resta in L-6): cambio password e configurazione del secondo fattore in **una** sede, ciascuno coi suoi percorsi ammessi. Prima un test che provi che oggi non scatta, poi la correzione. Codici a catalogo: [brief-db-codici-cancello-obblighi-e-sfida-totp.md](../work-done/brief-db-codici-cancello-obblighi-e-sfida-totp.md). ⚠️ **In vigore solo il cambio password** (`OBBLIGHI_IN_VIGORE`, 2026-09-30): un obbligo si fa rispettare solo quando esiste la strada per soddisfarlo. Acceso insieme a T-0, il secondo fattore murava il `SUPER_ADMIN` (obbligo per PROFILO, device assente): ogni API rispondeva 403 e la UI finiva su «avvio non riuscito» |
-| **T-1** | `pyotp` e `segno` in `requirements.in`; `genera_error_policies` per i sei `E_TOTP_*`; `totp_service` (verifica che restituisce il **passo** accettato, periodo in una sede sola; codici di recupero; QR SVG); i verbi DB dietro `AuthRepository`; `auth_totp_device.secret_encrypted` in `CAMPI_CIFRATI`. ✅ **Fatto il 2026-10-01**, tranne l'ultima voce: `pyotp==2.10.0` e `segno==1.6.6` nel lock (nessun altro pacchetto mosso); policy e ripieghi dei sei codici presenti; [totp_service.py](../../../../backend/apps/core/services/totp_service.py) (vettori RFC 6238, provato per mutazione); i verbi dietro un repository suo, [secondo_fattore_repository.py](../../../../backend/apps/core/db/secondo_fattore_repository.py), provato sul DB vero col ciclo di vita intero (anti-replay, codici monouso). 🔴 **`CAMPI_CIFRATI` no, ed è un difetto di modello**: `ricifra_campi_cifrati` legge con `SELECT … FOR UPDATE` e riscrive con un `UPDATE` diretto, ma su `auth_totp_device` l'app ha il solo `SELECT` (`20260929-24`; verificato sul DB vivo il 2026-10-01). Iscritta così, la colonna farebbe fallire la rotazione delle chiavi; non iscritta, i segreti resterebbero sulla chiave vecchia e diventerebbero illeggibili quando la si toglie. Serve un verbo DB per la rotazione: decisione 9 di §6, [brief-db-totp-ricifra-segreto.md](brief-db-totp-ricifra-segreto.md); la colonna entra in `CAMPI_CIFRATI` col verbo e **prima** che T-3 registri dei device |
+| **T-0** | Il **cancello degli obblighi** dopo l'autenticazione DRF (chiude A-8; A-7 resta in L-6): cambio password e configurazione del secondo fattore in **una** sede, ciascuno coi suoi percorsi ammessi. Prima un test che provi che oggi non scatta, poi la correzione. Codici a catalogo: [brief-db-codici-cancello-obblighi-e-sfida-totp.md](brief-db-codici-cancello-obblighi-e-sfida-totp.md). ⚠️ **In vigore solo il cambio password** (`OBBLIGHI_IN_VIGORE`, 2026-09-30): un obbligo si fa rispettare solo quando esiste la strada per soddisfarlo. Acceso insieme a T-0, il secondo fattore murava il `SUPER_ADMIN` (obbligo per PROFILO, device assente): ogni API rispondeva 403 e la UI finiva su «avvio non riuscito» |
+| **T-1** | `pyotp` e `segno` in `requirements.in`; `genera_error_policies` per i sei `E_TOTP_*`; `totp_service` (verifica che restituisce il **passo** accettato, periodo in una sede sola; codici di recupero; QR SVG); i verbi DB dietro `AuthRepository`; `auth_totp_device.secret_encrypted` in `CAMPI_CIFRATI`. ✅ **Fatto il 2026-10-01**, tranne l'ultima voce: `pyotp==2.10.0` e `segno==1.6.6` nel lock (nessun altro pacchetto mosso); policy e ripieghi dei sei codici presenti; [totp_service.py](../../../../backend/apps/core/services/totp_service.py) (vettori RFC 6238, provato per mutazione); i verbi dietro un repository suo, [secondo_fattore_repository.py](../../../../backend/apps/core/db/secondo_fattore_repository.py), provato sul DB vero col ciclo di vita intero (anti-replay, codici monouso). 🔴 **`CAMPI_CIFRATI` no, ed è un difetto di modello**: `ricifra_campi_cifrati` legge con `SELECT … FOR UPDATE` e riscrive con un `UPDATE` diretto, ma su `auth_totp_device` l'app ha il solo `SELECT` (`20260929-24`; verificato sul DB vivo il 2026-10-01). Iscritta così, la colonna farebbe fallire la rotazione delle chiavi; non iscritta, i segreti resterebbero sulla chiave vecchia e diventerebbero illeggibili quando la si toglie. Serve un verbo DB per la rotazione: decisione 9 di §6, [brief-db-totp-ricifra-segreto.md](../work-in-progress/brief-db-totp-ricifra-segreto.md). ✅ **Chiuso il 2026-10-01**: verbo consegnato dal DB (`20261001-35`), `CampoCifrato` impara a scrivere col verbo, il segreto è in `CAMPI_CIFRATI`; `test_ricifra_campi_cifrati_db` con i due casi del device (ruota, cambiato nel frattempo), provati per mutazione. T-3 non aspetta più niente |
 | **T-2** | Login a due passi sulle **tre** porte: device `ATTIVO` → niente JWT, `two_factor_required` + sfida firmata di 5 minuti (credenziale, veste, porta, provenienza). `POST /api/v1/{porta}/token/secondo-fattore/` con il codice **o** un codice di recupero: blocco ricontrollato, codice sbagliato = `fn_registra_tentativo_login(successo => false)` (D-T2), il successo si registra **solo** qui ✅ **Fatto il 2026-10-01**: il primo passo nelle tre porte (`porta` sulla view), la sfida in [sfida_secondo_fattore.py](../../../../backend/apps/core/services/sfida_secondo_fattore.py), il secondo passo in [secondo_fattore_token_views.py](../../../../backend/apps/core/api/secondo_fattore_token_views.py), la chiusura dell'accesso estratta in `chiudi_accesso_riuscito` (due chiamanti). Il login intero è provato sul DB vero, e lì è emerso un difetto: il rifiuto del DB su un codice ripresentato interrompeva la transazione e il tentativo fallito non veniva contato. Corretto con un savepoint. ⚠️ Dichiarato: al primo passo SimpleJWT emette comunque access e refresh, che non escono dalla view (una riga in più fra gli `OutstandingToken`, nessun token consegnato) |
-| **T-3** | Self-service `/api/v1/auth/secondo-fattore/` (stato, registrazione, conferma, codici di recupero, disattivazione); per il `SUPER_ADMIN` l'obbligo sulla credenziale e la disattivazione del device di un altro con motivo, traccia `TOTP_DISABILITATO` (`via: APP`) in `dbops.sessioni_utente` (D-T3); il segno `richiede_secondo_fattore` nell'editor del profilo di reparto — oggi l'unico profilo con una scrittura. **Nello stesso lotto** `SECONDO_FATTORE` entra in `OBBLIGHI_IN_VIGORE` e gli endpoint self-service lo dichiarano in `obblighi_ammessi` (`test_ogni_obbligo_in_vigore_ha_la_sua_strada` lo verifica sugli URL veri) |
-| **T-4** | FE: il secondo passo in `LoginView`; la pagina «Sicurezza» (QR, conferma, codici di recupero mostrati una volta) con la voce nel menu utente e il guard dell'obbligo — ⚠️ **prima** del caricamento delle misure di pagina nel `beforeEach`, come `mustChangePassword`: dopo, il 403 dell'obbligo diventa «avvio non riuscito» invece del setup; la sezione nel drawer operatore; il toggle nell'editor del reparto; i18n. **Solo il FE admin**: le pagine di login di portale e shop non esistono (Q-3 del piano accessi) — il BE copre le tre porte |
-| **T-5** | Test (il login a due passi anche col DB vero), smoke, doc (api.md, manuale del token multi-veste, cataloghi BB, runbook del DBA per lo sblocco dal server, §9.5 punto 7 del brief DB), collaudo |
+| **T-3** | Self-service `/api/v1/auth/secondo-fattore/` (stato, registrazione, conferma, codici di recupero, disattivazione); per il `SUPER_ADMIN` l'obbligo sulla credenziale e la disattivazione del device di un altro con motivo, traccia `TOTP_DISABILITATO` (`via: APP`) in `dbops.sessioni_utente` (D-T3); il segno `richiede_secondo_fattore` nell'editor del profilo di reparto — oggi l'unico profilo con una scrittura. **Nello stesso lotto** `SECONDO_FATTORE` entra in `OBBLIGHI_IN_VIGORE` e gli endpoint self-service lo dichiarano in `obblighi_ammessi` (`test_ogni_obbligo_in_vigore_ha_la_sua_strada` lo verifica sugli URL veri) ✅ **BE fatto il 2026-10-01**: [secondo_fattore_service.py](../../../../backend/apps/core/services/secondo_fattore_service.py) (la verifica della prova ci è stata spostata dal secondo passo: tre chiamanti), le view self-service e del SUPER_ADMIN, il segno nel profilo di reparto (assente nel PUT = invariato), `errore_provenienza_assente` estratto (regola del 2). Provati il servizio sul DB vero (configura, rigenera, disattiva con traccia; obbligo e disattivazione del SUPER_ADMIN, il rifiuto senza motivo) e il segno di reparto. ⚠️ **L'obbligo del secondo fattore resta FUORI dal cancello** (`OBBLIGHI_IN_VIGORE`): entra con T-4, quando c'è la pagina e il guard che ci porta — senza, il SUPER_ADMIN avrebbe 403 ovunque |
+| **T-4** | FE: il secondo passo in `LoginView`; la pagina «Sicurezza» (QR, conferma, codici di recupero mostrati una volta) con la voce nel menu utente e il guard dell'obbligo — ⚠️ **prima** del caricamento delle misure di pagina nel `beforeEach`, come `mustChangePassword`: dopo, il 403 dell'obbligo diventa «avvio non riuscito» invece del setup; la sezione nel drawer operatore; il toggle nell'editor del reparto; i18n. **Solo il FE admin**: le pagine di login di portale e shop non esistono (Q-3 del piano accessi) — il BE copre le tre porte ✅ **Fatto il 2026-10-02**. BE: l'obbligo del secondo fattore **in vigore** nel cancello, `obblighi_pendenti` su `/core/me/` (la regola del cancello, non una copia), il QR come data URI (un `<img>`, mai `v-html`). FE: `completaSecondoPasso` nello store e il secondo passo in `LoginView`; `SicurezzaView` (`/sicurezza`, fuori dal layout) col guard dopo quello del cambio password e la voce nel menu utente; `OperatoreSecondoFattore.vue` nella scheda dati del drawer operatore; il segno nell'editor del reparto; i18n it/en. Verdi: backend 5737 + 5999 col DB vero, frontend 532 test, lint, guard, build. ⚠️ **Gli smoke bash** entrano come `SMOKE_USER` (default `tid`, SUPER_ADMIN): col secondo fattore attivo il loro login riceve la sfida — decisione 10 di §6 🟡 **Collaudo del 2026-10-02 (Tid), superato**: configurazione dalla pagina Sicurezza, login col codice, smoke `smoke-test-core` col secondo passo automatico. Corretti strada facendo: la pagina era il cerchio del login e tagliava QR e codici (ora un riquadro ad altezza libera, centrato); il BB degli smoke falliva in silenzio dietro `2>/dev/null` (ora un 401 che dice cosa manca, e riconosce un codice di recupero passato come chiave); il secondo passo condivideva il contatore di frequenza del login (429 al secondo login: ora `SecondoFattoreRateThrottle`, un contatore suo) |
+| **T-5** | Test (il login a due passi anche col DB vero), smoke, doc (api.md, manuale del token multi-veste, cataloghi BB, runbook del DBA per lo sblocco dal server, §9.5 punto 7 del brief DB), collaudo ✅ **Fatto il 2026-10-02**: manuale `backend/core/manual/api_secondo_fattore.md` (e il secondo passo in `api_multi_veste_token.md`, il contatore in `api_throttling.md`, `obblighi_pendenti` in `api_user_profile.md`); la guida `risorse-umane-e-accessi.md` («Secondo fattore di autenticazione»); la procedura del DBA nel runbook `dev/infra/comandi-utili-run-book.md` §10; l'analisi 2FA aggiornata (Parte A costruita, domande chiuse); i test sul DB vero e il collaudo (T-4). Brief archiviato |
 
 ⚠️ **Dichiarati, non decisi:**
 
@@ -433,7 +431,7 @@ Proposta, **prima** del TOTP:
   `auth_totp_device.secret_encrypted` entra col TOTP, insieme al codice che la scrive);
 * `manage.py ricifra_campi_cifrati [--dry-run] [--anche-chiave-da-secret-key]`: tutto o niente;
   l'opzione è la migrazione una-tantum dalla chiave derivata. La derivazione vive solo lì;
-* test: `test_crypto_service` (14), `test_ricifra_campi_cifrati_db` (4, sul DB vero);
+* test: `test_crypto_service` (14), `test_ricifra_campi_cifrati_db` (4, sul DB vero; 6 dal 2026-10-01, col segreto TOTP);
 * CI: chiave segnaposto in `ci-validate.yaml` e nello smoke del container di `ci.yaml`;
 * doc: `.env.example`, `configurazione-django.md`, `sicurezza-e-qualita-statica.md`
   § «Le chiavi dei dati cifrati» (la procedura di rotazione), catalogo BB, manuali email.
@@ -564,4 +562,5 @@ Emerse nel giro, rimandate il 2026-09-28 e ✅ **fatte lo stesso giorno** (richi
 | 6 | ✅ I codici mancanti con un mini brief DB, il BE lavora in parallelo e il merge aspetta l'apply (Tid, 2026-09-30) | 3.4-bis |
 | 7 | ✅ L'utente che disattiva da sé il proprio device presenta un codice TOTP **o** di recupero: una sessione rubata da sola non spegne il secondo fattore (Tid, 2026-09-30) | 3.4-bis |
 | 8 | ✅ Il `SUPER_ADMIN` che disattiva il device di un altro **non** chiude le sue sessioni: sono state aperte col secondo fattore, e il telefono perso non le compromette (Tid, 2026-09-30) | 3.4-bis |
-| 9 | ✅ La rotazione delle chiavi per il segreto TOTP: un verbo DB che sostituisce il segreto **solo se è ancora quello letto**, chiamato dal comando di rotazione senza un utente (strada A; scartate la sola sessione del migratore, che porterebbe le sue credenziali sul server del backend, e il rinvio). Brief: [brief-db-totp-ricifra-segreto.md](brief-db-totp-ricifra-segreto.md) (Tid, 2026-10-01) | 3.4-bis |
+| 9 | ✅ La rotazione delle chiavi per il segreto TOTP: un verbo DB che sostituisce il segreto **solo se è ancora quello letto**, chiamato dal comando di rotazione senza un utente (strada A; scartate la sola sessione del migratore, che porterebbe le sue credenziali sul server del backend, e il rinvio). Brief: [brief-db-totp-ricifra-segreto.md](../work-in-progress/brief-db-totp-ricifra-segreto.md) (Tid, 2026-10-01) | 3.4-bis |
+| 10 | ✅ Gli smoke bash col secondo fattore attivo sull'utente con cui entrano (`SMOKE_USER`, default `tid`, SUPER_ADMIN): il BB `_smoke_secondo_fattore.sh` (`curl_login`) fa il secondo passo col segreto in `SMOKE_TOTP_SECRET` e il codice calcolato col venv, aspettando un passo nuovo fra due login. Scartati: un utente degli smoke senza obbligo (non può essere SUPER_ADMIN, che l'obbligo l'ha sempre, e gli smoke di amministrazione lo vogliono) e togliere l'obbligo al SUPER_ADMIN (contro D-T1, e non risolve: il problema è il device, non l'obbligo) (Tid, 2026-10-02) | 3.4-bis |

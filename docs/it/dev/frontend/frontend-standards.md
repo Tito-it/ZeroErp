@@ -2763,6 +2763,12 @@ La schermata di login e' l'unica pagina senza sidebar e topbar.
 - Pulsante **Accedi** (larghezza piena del form)
 - Messaggio di errore inline (non toast)
 - Nessun link "Registrati" — accesso solo su invito
+- **Secondo passo** (dal 2026-10-02): col secondo fattore attivo la password porta
+  una sfida e la stessa scheda chiede il codice dell'app, con «usa un codice di
+  recupero» e il ritorno alla password. Una sfida scaduta riporta alla password
+  col suo messaggio. La pagina **«Sicurezza dell'accesso»** (`/sicurezza`, fuori
+  dal layout come il cambio password) configura il secondo fattore: il QR è un
+  `<img>` col data URI che dà il backend, **mai** markup del server con `v-html`
 
 ---
 
@@ -3347,7 +3353,7 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
 
 ### Autenticazione JWT
 
-⛔ **Nessun token in `localStorage`** (dal 2026-09-28, [brief sicurezza](../work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §2).
+⛔ **Nessun token in `localStorage`** (dal 2026-09-28, [brief sicurezza](../work-done/brief-be-fe-sicurezza-header-token-mfa.md) §2).
 Il **refresh** sta in un cookie `HttpOnly` che il JavaScript non vede: lo
 scrivono e lo leggono il backend e il browser. L'**access** (10 minuti) vive solo
 in memoria, in `core/sessione.js`. Al ricaricamento della pagina l'access non
@@ -3362,6 +3368,7 @@ c'è mai: la sessione si ritrova rinnovando dal cookie.
 | Accodamento           | `core/sessione.js`                     | Chiamate concorrenti della stessa scheda aspettano la stessa promise                  |
 | Protezione loop       | `core/api.js`                          | Chiamate a `/token/` escluse dal rinnovo                                              |
 | Redirect              | `LoginView`                            | Rotta originale salvata in `?redirect=`                                               |
+| Obblighi              | `router/index.js`                      | Cambio password, poi secondo fattore: dal profilo (`obblighi_pendenti`), nell'ordine del cancello del backend |
 | Motivo del ritorno    | `core/sessione.js` `MOTIVO_USCITA`     | `?reason=`: sessione scaduta o logout da un'altra scheda, ognuno con la sua frase     |
 | Logout                | `stores/auth.js`                       | Backend cancella il cookie; `clearTokens()` pulisce; le altre schede escono           |
 

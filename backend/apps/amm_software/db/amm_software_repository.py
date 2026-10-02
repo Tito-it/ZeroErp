@@ -975,7 +975,24 @@ class AmmSoftwareRepository:
             )
             azioni = rows_to_list(cursor)
 
-        return {"aree": aree, "azioni": azioni}
+        # Il segno del secondo fattore sul profilo (D-T1 del brief DB TOTP):
+        # chi riceve il profilo deve usare il secondo fattore. Nessun profilo
+        # ancora per il reparto = false, come il default della colonna.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT pa.richiede_secondo_fattore
+                     FROM config.profili_accesso_bindings pab
+                     JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
+                    WHERE pab.unita_organizzativa_id = %s""",
+                [uo_id],
+            )
+            riga = cursor.fetchone()
+
+        return {
+            "aree": aree,
+            "azioni": azioni,
+            "richiede_secondo_fattore": bool(riga[0]) if riga else False,
+        }
 
     # Scopo: I livelli che un operatore EREDITA dal profilo, per area e per
     #        azione — cioe' cosa avrebbe senza nessun override individuale.
@@ -1055,8 +1072,11 @@ class AmmSoftwareRepository:
     #        di toccare qualunque tabella. Tutti gli operatori bindati al
     #        reparto ereditano le modifiche; la cache permessi e' invalidata
     #        dal service caller (`invalidate_department`).
+    #        `richiede_secondo_fattore` None = lascia il valore che c'e' (un
+    #        profilo nuovo nasce con false, il default della colonna).
     def put_profilo_reparto(
-        self, uo_id: int, aree: list[dict[str, Any]], azioni: list[dict[str, Any]]
+        self, uo_id: int, aree: list[dict[str, Any]], azioni: list[dict[str, Any]],
+        *, richiede_secondo_fattore: bool | None = None,
     ) -> None:
         with transaction.atomic(), connection.cursor() as cursor:
             # 1. Recupera codice/descrizione UO per derivare codice profilo.
@@ -1078,14 +1098,19 @@ class AmmSoftwareRepository:
             # 2. UPSERT profilo accesso (tipo REPARTO). Idempotente sul codice.
             cursor.execute(
                 """INSERT INTO config.profili_accesso (
-                       tipo, codice, descrizione, attivo
+                       tipo, codice, descrizione, attivo, richiede_secondo_fattore
                    )
-                   VALUES ('REPARTO', %s, %s, %s)
+                   VALUES ('REPARTO', %s, %s, %s, COALESCE(%s, false))
                    ON CONFLICT ON CONSTRAINT uq_profili_accesso_codice
                    DO UPDATE SET descrizione = EXCLUDED.descrizione,
-                                 attivo      = EXCLUDED.attivo
+                                 attivo      = EXCLUDED.attivo,
+                                 richiede_secondo_fattore = COALESCE(
+                                     %s, config.profili_accesso.richiede_secondo_fattore)
                    RETURNING id""",
-                [codice_profilo, f"Profilo reparto {descrizione_uo}", attivo_uo],
+                [
+                    codice_profilo, f"Profilo reparto {descrizione_uo}", attivo_uo,
+                    richiede_secondo_fattore, richiede_secondo_fattore,
+                ],
             )
             profilo_id = cursor.fetchone()[0]
 

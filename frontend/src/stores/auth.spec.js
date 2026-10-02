@@ -15,14 +15,20 @@
 /*
 Indice test eseguiti:
 1) LOGOUT da un'altra scheda → login col motivo USCITA_ALTRA_SCHEDA
+2) login col secondo fattore attivo → sfida, nessun access, nessun profilo
+3) secondo passo → access in memoria, profilo, codici di recupero rimasti
+4) secondo passo senza codice di recupero → rimasti null
+5) obbligo del secondo fattore → dal profilo (`obblighi_pendenti`), non ricalcolato
 */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 const redirectToLogin = vi.fn()
+const apiPost = vi.fn()
+const apiGet = vi.fn()
 vi.mock('../core/api', () => ({
-  default: { post: vi.fn(), get: vi.fn() },
+  default: { post: (...a) => apiPost(...a), get: (...a) => apiGet(...a) },
   redirectToLogin: (...args) => redirectToLogin(...args),
   rinnovaAccess: vi.fn()
 }))
@@ -37,11 +43,20 @@ vi.mock('../core/sessione', async importOriginal => ({
 }))
 
 const { useAuthStore } = await import('./auth')
-const { EVENTO_SESSIONE, MOTIVO_USCITA } = await import('../core/sessione')
+const { EVENTO_SESSIONE, MOTIVO_USCITA, getAccessToken, azzeraAccess } = await import('../core/sessione')
+
+// Un access dall'aspetto di un JWT, non scaduto (exp fra un'ora).
+function accessFinto() {
+  const corpo = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 }))
+  return `x.${corpo}.y`
+}
 
 beforeEach(() => {
   setActivePinia(createPinia())
   redirectToLogin.mockClear()
+  apiPost.mockReset()
+  apiGet.mockReset()
+  azzeraAccess()
   suEvento = null
 })
 
@@ -51,5 +66,48 @@ describe('eventi delle altre schede', () => {
     expect(suEvento).toBeTypeOf('function')
     suEvento({ tipo: EVENTO_SESSIONE.LOGOUT })
     expect(redirectToLogin).toHaveBeenCalledWith(MOTIVO_USCITA.USCITA_ALTRA_SCHEDA)
+  })
+})
+
+describe('login a due passi (brief sicurezza §3.4-bis, T-4)', () => {
+  it('2) login col secondo fattore attivo → sfida, nessun access, nessun profilo', async () => {
+    apiPost.mockResolvedValue({ data: { two_factor_required: true, sfida: 'sfida-1', scade_in_secondi: 300 } })
+    const auth = useAuthStore()
+    const esito = await auth.login('tid', 'pw', 'ADMIN')
+    expect(esito).toEqual({ secondoPasso: true, sfida: 'sfida-1' })
+    expect(apiPost).toHaveBeenCalledWith('/admin/token/', { username: 'tid', password: 'pw' })
+    expect(getAccessToken()).toBeFalsy()
+    expect(apiGet).not.toHaveBeenCalled()
+  })
+
+  it('3) secondo passo → access in memoria, profilo, codici di recupero rimasti', async () => {
+    const access = accessFinto()
+    apiPost.mockResolvedValue({ data: { data: { access, codici_recupero_rimasti: 3 } } })
+    apiGet.mockResolvedValue({ data: { data: { utente: { username: 'tid' }, obblighi_pendenti: [] } } })
+    const auth = useAuthStore()
+    const esito = await auth.completaSecondoPasso('sfida-1', { codiceRecupero: 'AB01-CD23-EF45-GH67' })
+    expect(apiPost).toHaveBeenCalledWith(
+      '/admin/token/secondo-fattore/', { sfida: 'sfida-1', codice_recupero: 'AB01-CD23-EF45-GH67' },
+    )
+    expect(getAccessToken()).toBe(access)
+    expect(apiGet).toHaveBeenCalledWith('/core/me/')
+    expect(esito).toEqual({ codiciRecuperoRimasti: 3 })
+  })
+
+  it('4) secondo passo senza codice di recupero → rimasti null', async () => {
+    apiPost.mockResolvedValue({ data: { data: { access: accessFinto() } } })
+    apiGet.mockResolvedValue({ data: { data: { utente: {}, obblighi_pendenti: [] } } })
+    const auth = useAuthStore()
+    const esito = await auth.completaSecondoPasso('sfida-1', { codice: '123456' })
+    expect(apiPost).toHaveBeenCalledWith('/admin/token/secondo-fattore/', { sfida: 'sfida-1', codice: '123456' })
+    expect(esito).toEqual({ codiciRecuperoRimasti: null })
+  })
+
+  it('5) obbligo del secondo fattore → dal profilo, non ricalcolato', () => {
+    const auth = useAuthStore()
+    auth.user = { obblighi_pendenti: [] }
+    expect(auth.mustConfigureSecondFactor).toBe(false)
+    auth.user = { obblighi_pendenti: ['SECONDO_FATTORE'] }
+    expect(auth.mustConfigureSecondFactor).toBe(true)
   })
 })

@@ -89,7 +89,7 @@ from apps.core.services.service_errors import ServiceError
 
 _SERVICE = "apps.core.api.auth_views.session_audit_service"
 _SET_GUCS = "apps.core.api.auth_views.set_jwt_gucs"
-_GET_IP = "apps.core.api.auth_views.get_client_ip"
+_GET_IP = "apps.core.services.request_context.get_client_ip"
 _IP = "203.0.113.7"
 _DIGEST_TID = digest_nome_tentato("tid")
 _RINNOVA = "apps.core.api.auth_views.AuditTokenRefreshView._rinnova"

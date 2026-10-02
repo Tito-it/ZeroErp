@@ -815,7 +815,50 @@
     "activate_btn": "Attiva account",
     "activation_cross_welcome": "Stai per attivare l'accesso al gestionale con le tue credenziali esistenti. Non è richiesta una nuova password.",
     "activate_cross_btn": "Attiva accesso",
-    "activation_cross_success": "Accesso attivato. Effettua il login con le tue credenziali esistenti."
+    "activation_cross_success": "Accesso attivato. Effettua il login con le tue credenziali esistenti.",
+    "secondo_fattore": {
+      "codice_non_valido": "Codice non valido.",
+      "codice_gia_usato": "Codice già usato: attendere il prossimo codice.",
+      "recupero_non_valido": "Codice di recupero non valido o già usato.",
+      "sfida_scaduta": "La verifica è scaduta: accedere di nuovo con la password.",
+      "recupero_rimasti": "Accesso con un codice di recupero: ne restano {n}. Se stanno finendo, generane di nuovi dalla pagina Sicurezza.",
+      "chiedi_codice": "Inserisci il codice mostrato dall'app di autenticazione.",
+      "chiedi_recupero": "Inserisci uno dei codici di recupero che hai conservato.",
+      "codice": "Codice dell'app",
+      "codice_recupero": "Codice di recupero",
+      "verifica": "Verifica",
+      "usa_codice": "Usa il codice dell'app",
+      "usa_recupero": "Non hai il telefono? Usa un codice di recupero",
+      "titolo": "Sicurezza dell'accesso",
+      "obbligo_da_configurare": "Prima di continuare devi attivare il secondo fattore di autenticazione.",
+      "motivo": {
+        "CREDENZIALE": "Lo ha richiesto l'amministratore per il tuo accesso.",
+        "PROFILO": "Lo richiede un profilo che ti è assegnato."
+      },
+      "spiegazione": "Il secondo fattore chiede, dopo la password, un codice che cambia ogni 30 secondi, generato da un'app sul telefono (per esempio Google Authenticator o Microsoft Authenticator).",
+      "configurazione_a_meta": "La configurazione è stata avviata ma non completata: ricominciala per ricevere un codice QR nuovo.",
+      "configura": "Configura il secondo fattore",
+      "ricomincia": "Ricomincia la configurazione",
+      "passo_qr": "1. Inquadra il codice QR con l'app di autenticazione.",
+      "qr_alt": "Codice QR per l'app di autenticazione",
+      "segreto_manuale": "Se non puoi inquadrarlo, inserisci nell'app questa chiave:",
+      "passo_codici": "2. Conserva i codici di recupero: ognuno vale una volta, e servono se perdi il telefono. Non verranno più mostrati.",
+      "scarica_codici": "Scarica i codici di recupero",
+      "passo_conferma": "3. Inserisci il codice che l'app mostra adesso.",
+      "attiva": "Attiva",
+      "attivato": "Secondo fattore attivato.",
+      "disattivato": "Secondo fattore disattivato.",
+      "stato_attivo": "Il secondo fattore è attivo. Codici di recupero rimasti: {n}.",
+      "codici_nuovi": "I nuovi codici di recupero: i precedenti non valgono più. Conservali, non verranno più mostrati.",
+      "chiedi_codice_codici": "Per generare codici di recupero nuovi, inserisci il codice dell'app.",
+      "chiedi_codice_disattiva": "Per disattivare il secondo fattore, inserisci il codice dell'app.",
+      "genera_codici": "Genera nuovi codici di recupero",
+      "disattiva": "Disattiva il secondo fattore",
+      "torna": "Torna all'applicazione",
+      "file_codici_intestazione": "ZeroERP — codici di recupero del secondo fattore. Ognuno vale una volta sola.",
+      "file_codici_nome": "zeroerp-codici-recupero.txt",
+      "uscita_conferma": "La pagina Sicurezza esce dall'applicazione: le modifiche non salvate (schede: {n}) andranno perse. Continuare?"
+    }
   },
   "resolver": {
     "action_search": "Cerca",
@@ -1678,7 +1721,24 @@
     "riuso_veste_spenta": "spenta",
     "riuso_conferma": "Usa questo accesso",
     "riuso_spiegazione": "Confermando, l'operatore userà questo accesso: nome utente e password restano quelli di oggi. Se non è la stessa persona, annulla e correggi l'email.",
-    "riuso_credenziale_sparita": "La credenziale di questa email non esiste più: salva di nuovo."
+    "riuso_credenziale_sparita": "La credenziale di questa email non esiste più: salva di nuovo.",
+    "secondo_fattore": {
+      "titolo": "Secondo fattore",
+      "stato": {
+        "ASSENTE": "Non configurato",
+        "DA_CONFERMARE": "Configurazione non completata",
+        "ATTIVO": "Attivo"
+      },
+      "codici_rimasti": "codici di recupero rimasti: {n}",
+      "obbligo_credenziale": "Obbligatorio per questo accesso",
+      "obbligo_dal_profilo": "È obbligatorio comunque per un profilo assegnato (super amministratore o reparto): si toglie dal profilo, non da qui.",
+      "disattiva": "Disattiva il secondo fattore",
+      "disattiva_spiegazione": "Il dispositivo dell'utente viene cancellato (per esempio, telefono perso). Le sessioni già aperte restano. Se il secondo fattore è obbligatorio, al prossimo accesso dovrà configurarlo di nuovo.",
+      "motivo": "Motivo",
+      "disattivato": "Secondo fattore disattivato.",
+      "richiesto_dal_profilo": "Richiede il secondo fattore",
+      "richiesto_dal_profilo_aiuto": "Chi appartiene a questo reparto deve usare il secondo fattore di autenticazione."
+    }
   },
   "indirizzi": {
     "tab_indirizzi": "Indirizzi",
@@ -5511,6 +5571,11 @@
       "lotto_log": "Log del lotto",
       "task_run": "Giri dei task",
       "fattura_log": "Log della fattura"
+    },
+    "esposizioni_componente": {
+      "nascosto": "Nascosto",
+      "descrittivo": "Descrittivo, senza prezzo",
+      "valorizzato": "Valorizzato, con prezzo"
     },
     "eventi_dominio": {
       "emittibilita_fallita": "Controllo di emittibilità non superato",

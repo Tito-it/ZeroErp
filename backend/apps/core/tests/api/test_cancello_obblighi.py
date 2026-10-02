@@ -22,7 +22,7 @@ Indice test eseguiti:
 10) test_si_ferma_al_primo_pendente — pagina del secondo fattore chiusa finche' c'e' la password
 11) test_view_senza_dichiarazione_non_ammette_niente
 12) test_view_ammesse_dichiarate — logout e profilo tutti, cambio password il suo
-13) test_secondo_fattore_non_in_vigore_passa — senza la sua strada non ferma (T-3)
+13) test_obblighi_in_vigore_per_il_profilo — quelli che /core/me/ pubblica (T-4)
 14) test_ogni_obbligo_in_vigore_ha_la_sua_strada — una view negli URL che lo ammette
 """
 
@@ -146,14 +146,16 @@ class CancelloObblighiBearerTests(JwtMockedApiTest):
         self.assertNotEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.json()["error"]["code"], "E_DATABASE")
 
-    # Scopo: Oggi il secondo fattore NON si puo' configurare (endpoint T-3,
-    #        pagina T-4): un obbligo che ferma tutto senza una strada mura
-    #        l'utenza. Il 2026-09-30 il SUPER_ADMIN (obbligo per PROFILO) non
-    #        apriva piu' nessuna pagina. Il fatto resta pendente, la richiesta
-    #        passa.
-    def test_secondo_fattore_non_in_vigore_passa(self):
-        resp = self._get(_fatti(totp=True, stato="ASSENTE"))
-        self.assertEqual(resp.status_code, 200, resp.content)
+    # Scopo: T-4. Gli obblighi che `/core/me/` pubblica per il guard del
+    #        frontend sono quelli che il cancello fa rispettare, nell'ordine;
+    #        dal 2026-10-02 il secondo fattore e' fra questi.
+    def test_obblighi_in_vigore_per_il_profilo(self):
+        from apps.core.api.cancello_obblighi import obblighi_in_vigore
+
+        with patch(_FATTI, return_value=_fatti(password=True, totp=True)):
+            self.assertEqual(obblighi_in_vigore(42), (OBBLIGO_CAMBIO_PASSWORD, OBBLIGO_SECONDO_FATTORE))
+        with patch(_FATTI, return_value=_fatti(totp=True, stato="ATTIVO")):
+            self.assertEqual(obblighi_in_vigore(42), ())
 
 
 class _View:

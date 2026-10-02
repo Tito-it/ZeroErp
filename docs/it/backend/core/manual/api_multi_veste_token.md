@@ -95,6 +95,56 @@ dopo l'audit e le GUC che ne leggono ancora i claim.
 e' della credenziale, non della veste — vale su ogni porta); altrimenti la
 chiave **manca** (non vale mai `false`).
 
+### Login col secondo fattore attivo (HTTP 200, nessun token)
+
+Se la credenziale ha il secondo fattore **attivo** (`script.fn_get_totp_device`
+→ `ATTIVO`), la password giusta **non** apre la sessione: niente `access`, niente
+cookie, niente successo sul freno della credenziale né riga `LOGIN`.
+
+```json
+{
+  "two_factor_required": true,
+  "sfida": "eJyrVkrLz1eyUlA...",
+  "scade_in_secondi": 300
+}
+```
+
+La sfida è firmata (`apps/core/services/sfida_secondo_fattore.py`), vale 5 minuti e
+porta credenziale, veste, porta e provenienza. ⚠️ SimpleJWT emette comunque access e
+refresh, che non escono dalla view (una riga in più fra gli `OutstandingToken`).
+
+### Secondo passo del login (secondo fattore)
+
+| Path | View |
+| --- | --- |
+| `POST /api/v1/admin/token/secondo-fattore/` | `AdminSecondoFattoreTokenView` |
+| `POST /api/v1/portale/token/secondo-fattore/` | `PortaleSecondoFattoreTokenView` |
+| `POST /api/v1/shop/token/secondo-fattore/` | `ShopSecondoFattoreTokenView` |
+
+Corpo: `{"sfida", "codice"}` (l'app di autenticazione) oppure `{"sfida",
+"codice_recupero"}`. Risposta nell'envelope:
+
+```json
+{ "data": { "access": "eyJ...", "password_change_required": true, "codici_recupero_rimasti": 7 } }
+```
+
+col refresh nel `Set-Cookie` (solo su 200). `codici_recupero_rimasti` c'è solo se
+si è entrati con un codice di recupero. Rifiuti:
+
+| Codice | HTTP | Quando |
+| --- | --- | --- |
+| `E_TOTP_SFIDA_NON_VALIDA` | 401 | sfida scaduta, manomessa, di un'altra porta o provenienza; veste, device o credenziale cambiati fra i due passi. Si riparte dalla password |
+| `E_TOTP_CODICE_NON_VALIDO` | 400 | codice sbagliato — conta come una password sbagliata |
+| `E_TOTP_PASSO_GIA_USATO` | 400 | codice già usato — conta come una password sbagliata |
+| `E_TOTP_RECOVERY_NON_VALIDO` | 400 | codice di recupero sbagliato o già usato — conta |
+| `E_CREDENZIALE_BLOCCATA` / `E_UTENTE_BLOCCATO` / `E_LOGIN_ATTESA` | 403 | il freno, ricontrollato prima del codice |
+
+Il successo sul freno si registra **solo** qui (`chiudi_accesso_riuscito`, la sede
+comune ai due passi): la password giusta non azzera i tentativi del codice. La riga
+`LOGIN` porta `dettaglio.secondo_fattore` (`TOTP` / `CODICE_RECUPERO`). Throttle
+proprio, `SecondoFattoreRateThrottle` ([api_throttling.md](api_throttling.md)).
+Configurazione del secondo fattore: [api_secondo_fattore.md](api_secondo_fattore.md).
+
 ### Refresh success (HTTP 200)
 
 ```http

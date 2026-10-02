@@ -24,6 +24,14 @@ from django.db import connection
 
 from apps.core.db._helpers import fetchone_scalar, row_to_dict
 
+# Gli stati del device come li dice `script.fn_get_totp_device`. Sede unica:
+# il cancello, il login, il secondo passo, il servizio e i serializer li
+# importano da qui (regola del 2, 2026-10-02: erano quattro copie).
+STATO_DEVICE_ASSENTE = "ASSENTE"
+STATO_DEVICE_DA_CONFERMARE = "DA_CONFERMARE"
+STATO_DEVICE_ATTIVO = "ATTIVO"
+STATI_DEVICE: tuple[str, ...] = (STATO_DEVICE_ASSENTE, STATO_DEVICE_DA_CONFERMARE, STATO_DEVICE_ATTIVO)
+
 
 class SecondoFattoreRepository:
     """Building block: device e obbligo del secondo fattore di una credenziale."""

@@ -1240,14 +1240,30 @@ nell'envelope `{"data": {"access", "password_change_required"?,
 un'altra porta o provenienza → 401 `E_TOTP_SFIDA_NON_VALIDA` (si riparte dalla
 password); codice sbagliato → 400 `E_TOTP_CODICE_NON_VALIDO`, e conta come una
 password sbagliata. Il successo sul freno si registra solo al secondo passo.
-Brief: [sicurezza](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis, T-2.
+Brief: [sicurezza](work-done/brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis, T-2.
+
+La configurazione è della persona, su `/api/v1/auth/secondo-fattore/`: `GET` lo
+stato, `POST registra/` (QR come data URI di un SVG, segreto e codici di recupero **una volta**),
+`conferma/` (`{codice}`), `codici-recupero/` (`{codice}`), `disattiva/`
+(`{codice}` o `{codice_recupero}`). Il SUPER_ADMIN, su
+`/api/v1/amm-software/operatori/<id>/secondo-fattore/`: `GET`, `POST obbligo/`
+(`{valore}`), `POST disattiva/` (`{motivo}`). Il segno del profilo di reparto è
+`richiede_secondo_fattore` nel corpo di `reparti/<uo_id>/profilo/` (assente =
+invariato).
+
+⭐ **Gli obblighi della credenziale** (cambio password, configurazione del secondo
+fattore) li fa rispettare il cancello dentro `JwtAuditAuthentication`: 403
+`E_CAMBIO_PASSWORD_RICHIESTO` / `E_TOTP_CONFIGURAZIONE_RICHIESTA` su ogni view
+che non li dichiara in `obblighi_ammessi`. `GET /api/v1/core/me/` li pubblica in
+`obblighi_pendenti`, nell'ordine in cui si chiudono: il frontend porta alla
+pagina del primo.
 
 Contratto HTTP completo, claim JWT, codici errore e guard cross-namespace:
 [api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md).
 
 ### ⛔ Il refresh token viaggia nel cookie, mai nel corpo
 
-Dal 2026-09-28 ([brief sicurezza](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md)
+Dal 2026-09-28 ([brief sicurezza](work-done/brief-be-fe-sicurezza-header-token-mfa.md)
 §2). Il refresh vale un giorno e rinnova la sessione: in `localStorage` o in un
 corpo JSON lo legge qualunque script giri nella pagina. Ora sta in un cookie
 che il JavaScript non vede, e l'access (10 minuti) vive solo nella memoria del
@@ -2200,10 +2216,19 @@ accendere un cancello, non nella peggiore.
   `E_AUTH_CHIAMATA_NON_VALIDA` (freno sulla credenziale, fail-closed). Presidio:
   `apps/core/tests/api/test_https_header.py`.
   I test Django non ne hanno bisogno: il redirect lo spegne il runner.
-* Uno smoke bash che usa il refresh token (refresh, logout) include anche
-  `_smoke_refresh.sh`: il refresh non è più nel corpo del login ma nel cookie
-  `zeroerp_refresh`, e lo si legge dal `Set-Cookie` (`curl -D`) e ripresenta
-  con cookie e header anti-CSRF (`curl_refresh`).
+* ⛔ Uno smoke bash che fa il **login** include, subito dopo `BASE_URL=`, solo
+  `source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"` (porta con sé
+  `_smoke_https.sh`, `_smoke_secondo_fattore.sh` e `_smoke_refresh.sh`) e chiama
+  **`smoke_login`** (opzioni `-D`, `--login-vero`, `--senza-prompt`, `--uscita N`).
+  Se l'utente degli smoke ha il secondo fattore attivo, il secondo passo lo fa il
+  BB col codice calcolato da **`SMOKE_TOTP_SECRET`**; il DB accetta un codice per
+  intervallo di 30 secondi, e fra due login il BB **aspetta** il codice nuovo. Un
+  login che il BB non copre resta `curl_login` con `# login esplicito: <perché>`.
+  Utente da `SMOKE_USER`, mai scritto a mano. Login unico per un giro di smoke:
+  `eval "$(scripts/tests/smoke-login.sh)"` (run-book §11). Il refresh non è più
+  nel corpo del login ma nel cookie `zeroerp_refresh`: lo si legge dal
+  `Set-Cookie` (`smoke_login -D`) e ripresenta con `curl_refresh`. Presidio:
+  `test_https_header` 13, 15–18.
 * Esecuzione: `./manage-test.sh apps.core.tests.api -v 2`. Smoke di docs/schema:
   `apps/core/tests/api/test_diagnostics_api.py`.
 

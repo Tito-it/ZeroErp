@@ -24,6 +24,7 @@
 - [api_routing_core](manual/api_routing_core.md) — Indice delle rotte del dominio core: per ogni path, la view che lo serve e la doc che ne descrive il contratto.
 - [api_search_universale](manual/api_search_universale.md) — Espone la ricerca universale soggetti a due livelli: lista paginata (livello 1) e dettaglio per tipo ruolo con row expansion (livello 2).
 - [api_search_validation](manual/api_search_validation.md) — Evitare query di ricerca troppo generiche che degradano performance e selettivita`.
+- [api_secondo_fattore](manual/api_secondo_fattore.md) — Gestisce il secondo fattore di autenticazione (codice a tempo, RFC 6238) di una credenziale: la configurazione fatta dalla persona stessa (QR, chiave, codici di recupero, conferma), la rigenerazione dei codici di recupe…
 - [api_sessioni_attive](manual/api_sessioni_attive.md) — Permette all'utente autenticato di visualizzare le proprie sessioni attive (esclusa quella corrente) e di revocare sessioni sospette.
 - [api_throttling](manual/api_throttling.md) — Limitare burst di chiamate sugli endpoint search per proteggere backend e DB, e i tentativi ripetuti sugli endpoint anonimi di login e reset password.
 - [api_tipi_entita_lookup](manual/api_tipi_entita_lookup.md) — Restituire i **tipi di entità vivi** del catalogo config.tipi_entita — codice, etichetta_key (l'indirizzo i18n che il DB dichiara per ciascuno), key_selector — per i filtri e i picker che nominano *su quale cosa* è succ…

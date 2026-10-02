@@ -28,6 +28,13 @@ from apps.core.api.auth_views import (
 )
 from apps.core.api.api_docs_gate import solo_se_api_docs_abilitate
 from apps.core.api.change_password_view import ChangePasswordView
+from apps.core.api.secondo_fattore_views import (
+    SecondoFattoreCodiciRecuperoView,
+    SecondoFattoreConfermaView,
+    SecondoFattoreDisattivaView,
+    SecondoFattoreRegistraView,
+    SecondoFattoreStatoView,
+)
 from apps.core.api.secondo_fattore_token_views import (
     AdminSecondoFattoreTokenView,
     PortaleSecondoFattoreTokenView,
@@ -121,6 +128,12 @@ urlpatterns = [
         LogoutView.as_view(),
         name="auth-logout",
     ),
+    # Il secondo fattore della propria credenziale (brief sicurezza §3.4-bis, T-3).
+    path("api/v1/auth/secondo-fattore/", SecondoFattoreStatoView.as_view(), name="auth-secondo-fattore"),
+    path("api/v1/auth/secondo-fattore/registra/", SecondoFattoreRegistraView.as_view(), name="auth-secondo-fattore-registra"),
+    path("api/v1/auth/secondo-fattore/conferma/", SecondoFattoreConfermaView.as_view(), name="auth-secondo-fattore-conferma"),
+    path("api/v1/auth/secondo-fattore/codici-recupero/", SecondoFattoreCodiciRecuperoView.as_view(), name="auth-secondo-fattore-codici-recupero"),
+    path("api/v1/auth/secondo-fattore/disattiva/", SecondoFattoreDisattivaView.as_view(), name="auth-secondo-fattore-disattiva"),
     path(
         "api/v1/auth/change-password/",
         ChangePasswordView.as_view(),

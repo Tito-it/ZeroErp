@@ -31,7 +31,7 @@ from apps.core.services.invito_veste import (
     richiede_password,
     risolvi_token,
 )
-from apps.core.services.request_context import get_client_ip
+from apps.core.services.request_context import get_client_ip, richiesta_django
 
 _VALIDATE_RESP = inline_serializer(
     name="AttivazioneVesteValidateResp",
@@ -124,7 +124,7 @@ class AttivazioneVesteView(APIView):
                 token=(payload.get("token") or "").strip(),
                 new_password=password_digitata(payload, "new_password"),
                 new_password_confirm=password_digitata(payload, "new_password_confirm"),
-                ip=get_client_ip(request._request if hasattr(request, "_request") else request),
+                ip=get_client_ip(richiesta_django(request)),
             )
             return {
                 "message": self.messaggio_cross if esito.is_cross else self.messaggio_con_password,

@@ -27,10 +27,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 
 # Fixture: clonare campi articolo `composito` esistente per il padre nuovo,
 # riusare componente2 esistente come componente esposto in fattura.
@@ -121,21 +119,7 @@ check_http() {
 # 0) AUTH
 # =====================================================
 log_step "0) Autenticazione JWT"
-if [[ -z "$PASSWORD" ]]; then
-    echo "ERROR: password mancante. Uso: $0 <password> oppure SMOKE_PASSWORD=...";
-    exit 2
-fi
-RESP=$(curl -s -w '\n%{http_code}' -X POST "${BASE_URL}/api/v1/admin/token/" \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}")
-STATUS=$(echo "$RESP" | tail -1)
-BODY=$(echo "$RESP" | sed '$d')
-if [[ "$STATUS" != "200" ]]; then
-    log_fail "Login HTTP $STATUS — $(echo "$BODY" | head -c 200)"
-    exit 2
-fi
-TOKEN=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('access',''))")
-if [[ -z "$TOKEN" ]]; then log_fail "Token vuoto"; exit 2; fi
+smoke_login --senza-prompt --uscita 2
 log_ok "Login OK (token ${#TOKEN} char)"
 
 # =====================================================
@@ -223,7 +207,7 @@ DEFAULT_IVA_ID=$(json_get "$LAST_BODY" "data.iva_id")
 VALIDITA_AL=$(json_get "$LAST_BODY" "data.default_validita_al")
 log_info "utility=$UTILITY_ID istanza=$ISTANZA_ID valuta=$VALUTA_ID iva=$DEFAULT_IVA_ID validita_al=$VALIDITA_AL"
 
-# 2c) Emittente: utente tid e' admin globale (no emittente assegnato),
+# 2c) Emittente: l'utente degli smoke e' admin globale (no emittente assegnato),
 # devo passarlo esplicito. Scelgo il primo emittente attivo via lookup.
 do_curl GET "/api/v1/anagrafiche/emittenti-fiscali/?page_size=20"
 check_http "GET emittenti fiscali (per discovery)" "200" || exit 4

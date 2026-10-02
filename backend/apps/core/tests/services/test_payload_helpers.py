@@ -43,6 +43,7 @@ Indice test eseguiti:
 32) test_optional_bool_none                     — None -> None
 33) test_optional_bool_str                      — "true" rifiutato
 34) test_optional_bool_int                      — 1 rifiutato
+34b) test_require_bool_*                        — vero/falso passano; assente, None, "true" rifiutati col campo
 35) test_optional_meta_absent                   — assente -> None
 36) test_optional_meta_none                     — None esplicito -> {}
 37) test_optional_meta_dict                     — dict passa
@@ -300,6 +301,21 @@ class TestOptionalBool(_Base):
     def test_optional_bool_int(self):
         with self.assertRaisesValidation():
             self.v.optional_bool({"attivo": 1}, "attivo")
+
+    def test_require_bool_true_false(self):
+        self.assertIs(self.v.require_bool({"attivo": True}, "attivo"), True)
+        self.assertIs(self.v.require_bool({"attivo": False}, "attivo"), False)
+
+    # Scopo: assente e None non sono «invariato»: il comando vuole il valore.
+    def test_require_bool_assente_o_none_rifiutato(self):
+        for corpo in ({}, {"attivo": None}):
+            with self.assertRaises(ServiceError) as ctx:
+                self.v.require_bool(corpo, "attivo")
+            self.assertEqual(ctx.exception.context.get("field"), "attivo", corpo)
+
+    def test_require_bool_str_rifiutato(self):
+        with self.assertRaisesValidation():
+            self.v.require_bool({"attivo": "true"}, "attivo")
 
 
 class TestDecimal(_Base):

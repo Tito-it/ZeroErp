@@ -11,6 +11,7 @@ Implementazione in `apps/core/api/throttling.py`:
 |---|---|---|---|---|
 | `SearchBurstRateThrottle` | `search_burst` | da settings (vedi sotto) | IP | default DRF (`DEFAULT_THROTTLE_CLASSES`), attivo solo sulle view con `is_search_endpoint = True` |
 | `LoginRateThrottle` | `login` | `5/5m` (fisso nella classe) | IP | viste di login (`auth_views.py`) |
+| `SecondoFattoreRateThrottle` | `login_secondo_fattore` | `5/5m` (fisso nella classe) | IP | secondo passo del login (`secondo_fattore_token_views.py`). ⭐ Contatore suo: condiviso con `login`, ogni accesso col secondo fattore ne consumava due (2026-10-02) |
 | `PasswordResetRateThrottle` | `password_reset` | `3/15m` (fisso nella classe) | IP | reset password (`password_reset_views.py`), attivazione (`attivazione_view.py`), portale e shop |
 
 `LoginRateThrottle` e `PasswordResetRateThrottle` derivano da `AnonRateThrottle`, con un

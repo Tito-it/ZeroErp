@@ -44,6 +44,9 @@ async function handleRequest() {
 
       <template v-if="!sent">
         <form @submit.prevent="handleRequest" class="login-form">
+          <!-- Errore SOPRA il campo, fuori dal flusso, come nel login. -->
+          <div v-if="errorMessage" class="login-error login-esito--sopra" role="alert">{{ errorMessage }}</div>
+
           <div class="field">
             <InputText
               id="username"
@@ -55,8 +58,6 @@ async function handleRequest() {
               fluid
             />
           </div>
-
-          <div v-if="errorMessage" class="login-error">{{ errorMessage }}</div>
 
           <Button
             type="submit"

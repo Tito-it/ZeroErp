@@ -25,6 +25,7 @@ Indice test eseguiti:
 13) test_senza_prova_non_e_un_tentativo
 14) test_segreto_illeggibile_non_e_un_tentativo — chiave tolta prima della rotazione
 15) test_cambio_password_pendente_nella_risposta
+16) test_il_secondo_passo_ha_un_contatore_suo — non dimezza i login di un IP
 """
 
 import base64
@@ -35,12 +36,14 @@ from django.db import DatabaseError
 from django.test import Client
 
 from apps.core.api.refresh_cookie import REFRESH_COOKIE_NAME
-from apps.core.api.secondo_fattore_token_views import AuditSecondoFattoreTokenView
+from apps.core.api.secondo_fattore_token_views import AuditSecondoFattoreTokenView, _secondo_fattore
 from apps.core.services import crypto_service
 from apps.core.services.sfida_secondo_fattore import Sfida, emetti_sfida
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _MOD = "apps.core.api.secondo_fattore_token_views"
+# Letto all'import, prima che il setUp lo spenga coi patch.
+_THROTTLE_DEL_SECONDO_PASSO = list(AuditSecondoFattoreTokenView.throttle_classes)
 _URL = "/api/v1/admin/token/secondo-fattore/"
 _IP = "203.0.113.7"
 # Il vettore dell'RFC 6238 (SHA1): al passo 1 il codice e' 287082.
@@ -77,12 +80,13 @@ class SecondoPassoTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()
-        for nome, valore in (
-            ("get_client_ip", _IP),
-            ("chiudi_accesso_riuscito", False),
+        # La provenienza la legge il BB `provenienza_obbligatoria`.
+        for bersaglio, valore in (
+            ("apps.core.services.request_context.get_client_ip", _IP),
+            (f"{_MOD}.chiudi_accesso_riuscito", False),
         ):
-            p = patch(f"{_MOD}.{nome}", return_value=valore)
-            setattr(self, f"mock_{nome}", p.start())
+            p = patch(bersaglio, return_value=valore)
+            setattr(self, f"mock_{bersaglio.rsplit('.', 1)[1]}", p.start())
             self.addCleanup(p.stop)
         # Lo stesso secchio del primo passo: qui farebbe scattare il 429.
         throttle = patch.object(AuditSecondoFattoreTokenView, "throttle_classes", [])
@@ -91,7 +95,7 @@ class SecondoPassoTests(JwtMockedApiTest):
         # Il savepoint attorno alla prova vuole una connessione: qui non c'e'.
         # Il suo motivo (il rifiuto del DB non deve perdere il tentativo) lo
         # prova il login a due passi sul DB vero (test_login_credenziale_db, 10).
-        savepoint = patch(f"{_MOD}.transaction")
+        savepoint = patch("apps.core.services.secondo_fattore_service.transaction")
         savepoint.start()
         self.addCleanup(savepoint.stop)
         # Il passo di adesso, fissato sul vettore dell'RFC.
@@ -105,15 +109,20 @@ class SecondoPassoTests(JwtMockedApiTest):
         user_cls.start().objects.filter.return_value.first.return_value = utente
         self.addCleanup(user_cls.stop)
 
+        # Lo stesso finto per le due sedi che lo usano: la view (la veste) e
+        # il servizio (freno e tentativi).
         auth_repo = patch(f"{_MOD}._auth_repo")
         self.auth_repo = auth_repo.start()
+        servizio_auth = patch.object(_secondo_fattore, "_auth_repo", self.auth_repo)
+        servizio_auth.start()
+        self.addCleanup(servizio_auth.stop)
         self.auth_repo.get_identita_dettaglio.return_value = {
             "id": 7, "ruolo_applicativo": "OPERATORE", "attivo": True,
         }
         self.auth_repo.registra_tentativo_login.return_value = {"bloccato": False}
         self.addCleanup(auth_repo.stop)
 
-        sf_repo = patch(f"{_MOD}._secondo_fattore_repo")
+        sf_repo = patch.object(_secondo_fattore, "_repo")
         self.sf_repo = sf_repo.start()
         self.sf_repo.get_device.return_value = {
             "stato": "ATTIVO",
@@ -239,3 +248,15 @@ class SecondoPassoTests(JwtMockedApiTest):
         self.mock_chiudi_accesso_riuscito.return_value = True
         resp = self._post({"sfida": _sfida(), "codice": _CODICE})
         self.assertTrue(resp.json()["data"]["password_change_required"])
+
+    # Scopo: Il secondo passo ha un contatore di frequenza SUO. Condiviso con
+    #        quello del login, ogni accesso col secondo fattore ne consumava
+    #        due e lo smoke col secondo login si fermava a 429 (collaudo del
+    #        2026-10-02); da un ufficio con un solo IP, due o tre persone.
+    def test_il_secondo_passo_ha_un_contatore_suo(self):
+        from apps.core.api.auth_views import AdminTokenView
+        from apps.core.api.throttling import SecondoFattoreRateThrottle
+
+        self.assertEqual(_THROTTLE_DEL_SECONDO_PASSO, [SecondoFattoreRateThrottle])
+        scope_login = {t.scope for t in AdminTokenView.throttle_classes}
+        self.assertNotIn(SecondoFattoreRateThrottle.scope, scope_login)

@@ -346,7 +346,7 @@ concordare con chi gestisce nginx); **nessuna CSP**, né in `settings.py` né in
 `v-html` è a zero e `axios` sta in un file solo — cioè perché **non c'è
 superficie** — ma nessun presidio la verifica. O si aggiunge la CSP, o si scrive
 perché no. Proposta pronta in
-[brief-be-fe-sicurezza-header-token-mfa.md](brief-be-fe-sicurezza-header-token-mfa.md)
+[brief-be-fe-sicurezza-header-token-mfa.md](../work-done/brief-be-fe-sicurezza-header-token-mfa.md)
 §1 (decisione di Tid 2026-09-26: *«facciamo dopo»*); `W004`/`W008` sono
 nell'elenco a cricchetto del passo `check --deploy` e si tolgono a §1 chiusa.
 🟡 **2026-09-28: metà chiusa.** HSTS e redirect sono in `settings.py`, e
@@ -541,7 +541,7 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
       zero lo stesso giorno; resta solo la decisione sulla CI (sopra).
 * [x] **D3-c** — `SECURE_HSTS_SECONDS` / `SECURE_SSL_REDIRECT` (con chi gestisce
       nginx) e **decidere** sulla CSP.
-      Proposta pronta: [brief sicurezza](brief-be-fe-sicurezza-header-token-mfa.md) §1.
+      Proposta pronta: [brief sicurezza](../work-done/brief-be-fe-sicurezza-header-token-mfa.md) §1.
       🟡 2026-09-28: HSTS e redirect fatti, W004/W008 tolti dal cricchetto;
       ✅ 2026-09-28: CSP applicata in Nginx dopo il collaudo a video. Chiusa.
 * [x] **D4** — ✅ 2026-09-09: `hint` a video, filtro sui codici tecnici, sei

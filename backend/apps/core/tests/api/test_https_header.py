@@ -7,7 +7,9 @@
 #        HTTP, non su `/health` e non su chi arriva da Nginx; l'header HSTS
 #        porta il valore scelto e niente sottodomini/preload; la variabile
 #        d'ambiente non ha ripiego fuori da DEBUG; ogni smoke bash si dichiara
-#        HTTPS e dichiara una provenienza che `get_client_ip` accetta.
+#        HTTPS e dichiara una provenienza che `get_client_ip` accetta; ogni
+#        login degli smoke passa dal BB `smoke_login` (`_smoke_auth.sh`), che
+#        riusa SMOKE_TOKEN valido, e nessuno smoke cabla lo username.
 # Note: il runner spegne `SECURE_SSL_REDIRECT` per tutta la suite
 #       (`test_runner.py`): qui lo si riaccende apposta.
 # ------------------------------------------------------------
@@ -26,6 +28,12 @@ Indice test eseguiti:
 10) SmokeBashTests.test_ogni_smoke_si_dichiara_https
 11) HstsSettingsTests.test_intero_non_negativo_nomina_variabile_e_valore
 12) SmokeBashTests.test_il_bb_dichiara_una_provenienza_che_il_login_accetta
+13) SmokeBashTests.test_ogni_login_degli_smoke_passa_da_curl_login — secondo fattore (2026-10-02)
+14) SmokeBashTests.test_curl_login_fa_il_secondo_passo_e_restituisce_la_forma_di_prima
+15) SmokeBashTests.test_ogni_smoke_che_fa_login_passa_da_smoke_login — login unico (2026-10-02)
+16) SmokeBashTests.test_nessuno_username_cablato_negli_smoke
+17) SmokeBashTests.test_smoke_login_riusa_smoke_token_valido_e_suo
+18) SmokeBashTests.test_smoke_login_fallito_lo_dice_ed_esce
 """
 
 import os
@@ -131,7 +139,10 @@ class SmokeBashTests(SimpleTestCase):
     def test_ogni_smoke_si_dichiara_https(self):
         cartella = Path(settings.BASE_DIR) / "scripts" / "tests"
         smoke = sorted(p for p in cartella.glob("*.sh") if not p.name.startswith("_"))
-        inclusione = re.compile(r'^source .*_smoke_https\.sh"?\s*$', re.MULTILINE)
+        # `_smoke_auth.sh` (il login degli smoke) include a sua volta `_smoke_https.sh`.
+        inclusione = re.compile(r'^source .*_smoke_(https|auth)\.sh"?( "\$@")?\s*$', re.MULTILINE)
+        auth = (cartella / "_smoke_auth.sh").read_text(encoding="utf-8")
+        self.assertRegex(auth, re.compile(r'^source .*/_smoke_https\.sh"\s*$', re.MULTILINE))
         controllati = 0
         for script in smoke:
             testo = script.read_text(encoding="utf-8")
@@ -141,7 +152,7 @@ class SmokeBashTests(SimpleTestCase):
             controllati += 1
             with self.subTest(script=script.name):
                 trovata = inclusione.search(testo, base_url.end())
-                self.assertIsNotNone(trovata, "manca `source .../_smoke_https.sh` dopo BASE_URL=")
+                self.assertIsNotNone(trovata, "manca `source .../_smoke_auth.sh` (o _smoke_https.sh) dopo BASE_URL=")
                 self.assertNotIn("command curl", testo)
         # Il test non deve passare a vuoto se la cartella si sposta.
         self.assertGreater(controllati, 0)
@@ -171,3 +182,232 @@ class SmokeBashTests(SimpleTestCase):
                 )
                 with override_settings(TRUSTED_PROXY_COUNT=proxy_fidati):
                     self.assertEqual(get_client_ip(richiesta), "127.0.0.1")
+
+    # Scopo: Brief sicurezza §3.4-bis (2026-10-02). Col secondo fattore attivo
+    #        il login degli smoke risponde con una sfida e nessun token: ogni
+    #        chiamata di login passa da `curl_login` (`_smoke_secondo_fattore.sh`),
+    #        che fa il secondo passo. Una sola chiamata con `curl` nudo ferma quello
+    #        smoke al passo 0, il giorno in cui l'utente degli smoke configura il
+    #        secondo fattore. Il login ordinario sta nel BB (`_smoke_auth.sh`); in
+    #        uno smoke resta solo il login che il BB non copre, con
+    #        `# login esplicito: <perche'>` sopra.
+    def test_ogni_login_degli_smoke_passa_da_curl_login(self):
+        cartella = Path(settings.BASE_DIR) / "scripts" / "tests"
+        login = re.compile(r'/(admin|portale|shop)/token/"')
+        auth = (cartella / "_smoke_auth.sh").read_text(encoding="utf-8")
+        self.assertRegex(auth, re.compile(r'^source .*/_smoke_secondo_fattore\.sh"\s*$', re.MULTILINE))
+        controllati = 0
+        for script in sorted(cartella.glob("*.sh")):
+            if script.name == "_smoke_secondo_fattore.sh":
+                continue
+            righe = script.read_text(encoding="utf-8").split("\n")
+            for i, riga in enumerate(righe):
+                if not login.search(riga):
+                    continue
+                controllati += 1
+                j = i
+                while j >= 0 and "curl" not in righe[j]:
+                    j -= 1
+                with self.subTest(script=script.name, riga=i + 1):
+                    self.assertIn("curl_login", righe[j])
+                    if script.name.startswith("_"):
+                        continue
+                    sopra = "\n".join(righe[max(j - 6, 0):j])
+                    self.assertIn(
+                        "# login esplicito:", sopra,
+                        "login fuori dal BB: si usa `smoke_login`, o si dice perche' no",
+                    )
+        self.assertGreater(controllati, 0)
+
+    # Scopo: `curl_login` eseguito davvero in bash, con `curl` finto: alla
+    #        sfida fa il secondo passo sul percorso della porta col codice del
+    #        segreto, e restituisce cio' che lo smoke legge dal login di prima
+    #        (`{"access"}` in testa, il cookie negli header, lo status nel
+    #        formato di `-w`). Senza sfida e' `curl`, e basta.
+    def test_curl_login_fa_il_secondo_passo_e_restituisce_la_forma_di_prima(self):
+        import sys
+        import tempfile
+
+        cartella = Path(settings.BASE_DIR) / "scripts" / "tests"
+        # `curl` finto: il primo login dice la sfida (o il token, se SENZA_SFIDA);
+        # il secondo passo da' il token nell'envelope e il cookie. Registra gli URL.
+        finto = r"""
+curl() {
+  local o="" d="" url=""
+  while (($#)); do case "$1" in -o) o="$2"; shift 2;; -D) d="$2"; shift 2;;
+    -w|-H|-d) [[ "$1" == "-d" ]] && echo "CORPO $2" >> "$LOG"; shift 2;; -s) shift;; *) url="$1"; shift;; esac; done
+  echo "URL $url" >> "$LOG"
+  if [[ "$url" == *secondo-fattore/ ]]; then
+    echo '{"data": {"access": "A2"}}' > "$o"; printf 'Set-Cookie: zeroerp_refresh=R2; Path=/\r\n' > "$d"
+  elif [[ -n "${SENZA_SFIDA:-}" ]]; then
+    echo '{"access": "A1"}' > "$o"; printf 'Set-Cookie: zeroerp_refresh=R1; Path=/\r\n' > "$d"
+  else
+    echo '{"two_factor_required": true, "sfida": "S1", "scade_in_secondi": 300}' > "$o"; : > "$d"
+  fi
+  printf '200'
+}
+"""
+        programma = (
+            f'source "{cartella / "_smoke_secondo_fattore.sh"}"\n{finto}\n'
+            'curl_login -s -w "\\n%{http_code}" -D "$HDR" -d "{}" "http://x/api/v1/admin/token/"'
+        )
+        # ⛔ Senza la chiave: nessun ritorno non-zero (gli smoke hanno `set -e`
+        #    e buttano lo stderr del login: si chiudevano IN SILENZIO al passo 0,
+        #    collaudo del 2026-10-02), ma un login fallito che dice cosa manca.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {k: v for k, v in os.environ.items() if k != "SMOKE_TOTP_SECRET"}
+            env.update(SMOKE_PYTHON=sys.executable, TMPDIR=tmp, HDR=f"{tmp}/hdr", LOG=f"{tmp}/log")
+            fatto = subprocess.run(
+                ["bash", "-c", "set -e\n" + programma], env=env, capture_output=True, text=True,
+            )
+            self.assertEqual(fatto.returncode, 0, fatto.stderr)
+            self.assertIn("SMOKE_TOTP_SECRET", fatto.stdout)
+            self.assertTrue(fatto.stdout.endswith("\n401"), fatto.stdout)
+
+        for senza_sfida in (False, True):
+            with self.subTest(senza_sfida=senza_sfida), tempfile.TemporaryDirectory() as tmp:
+                env = {
+                    **os.environ,
+                    "SMOKE_PYTHON": sys.executable,
+                    "SMOKE_TOTP_SECRET": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+                    "TMPDIR": tmp,  # il file dell'ultimo passo, isolato
+                    "HDR": f"{tmp}/hdr",
+                    "LOG": f"{tmp}/log",
+                    **({"SENZA_SFIDA": "1"} if senza_sfida else {}),
+                }
+                uscita = subprocess.run(
+                    ["bash", "-c", programma], env=env, capture_output=True, text=True, check=True,
+                ).stdout
+                log = Path(f"{tmp}/log").read_text().splitlines()
+                header = Path(f"{tmp}/hdr").read_text()
+                if senza_sfida:
+                    self.assertEqual(uscita, '{"access": "A1"}\n\n200')
+                    self.assertIn("zeroerp_refresh=R1", header)
+                    self.assertEqual([r for r in log if r.startswith("URL")], ["URL http://x/api/v1/admin/token/"])
+                else:
+                    self.assertEqual(uscita, '{"access": "A2"}\n200')
+                    self.assertIn("zeroerp_refresh=R2", header)
+                    self.assertEqual(
+                        [r for r in log if r.startswith("URL")],
+                        ["URL http://x/api/v1/admin/token/", "URL http://x/api/v1/admin/token/secondo-fattore/"],
+                    )
+                    corpo = [r for r in log if r.startswith("CORPO")][-1]
+                    self.assertRegex(corpo, r'^CORPO \{"sfida":"S1","codice":"\d{6}"\}$')
+
+    # Scopo: Regola del 2 (decisione Tid 2026-10-02): il login degli smoke e'
+    #        UNO, `smoke_login` di `_smoke_auth.sh`. Ogni smoke che parla col
+    #        backend autenticato include il BB con un solo `source` (non i pezzi
+    #        che il BB porta con se') e chiama `smoke_login`.
+    def test_ogni_smoke_che_fa_login_passa_da_smoke_login(self):
+        cartella = Path(settings.BASE_DIR) / "scripts" / "tests"
+        inclusione = re.compile(r'^source .*/_smoke_auth\.sh" "\$@"\s*$', re.MULTILINE)
+        pezzi = re.compile(r'^source .*/_smoke_(https|secondo_fattore|refresh)\.sh', re.MULTILINE)
+        chiamata = re.compile(r'^\s*smoke_login\b', re.MULTILINE)
+        controllati = 0
+        for script in sorted(p for p in cartella.glob("*.sh") if not p.name.startswith("_")):
+            testo = script.read_text(encoding="utf-8")
+            if "Authorization: Bearer" not in testo and script.name != "smoke-login.sh":
+                continue
+            controllati += 1
+            with self.subTest(script=script.name):
+                self.assertRegex(testo, inclusione)
+                self.assertNotRegex(testo, pezzi)
+                self.assertRegex(testo, chiamata)
+        self.assertGreater(controllati, 0)
+
+    # Scopo: Gli smoke girano con l'utente di SMOKE_USER (un utente dedicato):
+    #        nessuno username scritto nel login, nelle query o nelle GUC. L'unico
+    #        ripiego (`tid`, storico) sta nel BB.
+    def test_nessuno_username_cablato_negli_smoke(self):
+        cartella = Path(settings.BASE_DIR) / "scripts" / "tests"
+        nel_login = re.compile(r'username\\?"\s*:\s*\\?"(?!\$)')
+        letterale = re.compile(r'''(["'])tid\1''')
+        for script in sorted(cartella.glob("*.sh")):
+            testo = script.read_text(encoding="utf-8")
+            with self.subTest(script=script.name):
+                self.assertNotRegex(testo, nel_login)
+                self.assertNotRegex(testo, letterale)
+                if script.name != "_smoke_auth.sh":
+                    self.assertNotIn("SMOKE_USER:-tid", testo)
+
+    # Esegue `smoke_login` in bash con `curl` finto: `/core/me/` risponde lo
+    # username ME_USER, il login il token NUOVO (status LOGIN_STATUS). Torna
+    # (esito, URL chiamati).
+    def _smoke_login(self, opzioni: str = "", **env_extra: str):
+        import tempfile
+
+        cartella = Path(settings.BASE_DIR) / "scripts" / "tests"
+        finto = r"""
+curl() {
+  local o="" url=""
+  while (($#)); do case "$1" in -o) o="$2"; shift 2;; -D|-w|-H|-d) shift 2;; -s|-X) shift;; *) url="$1"; shift;; esac; done
+  echo "$url" >> "$LOG"
+  if [[ "$url" == */core/me/ ]]; then echo "{\"data\": {\"utente\": {\"username\": \"${ME_USER}\"}}}"; return 0; fi
+  echo '{"access": "NUOVO"}' > "$o"; printf '%s' "${LOGIN_STATUS:-200}"
+}
+"""
+        programma = (
+            f'set -euo pipefail\nBASE_URL=http://x\nsource "{cartella / "_smoke_auth.sh"}"\n{finto}\n'
+            f'smoke_login {opzioni}\necho "TOKEN=$TOKEN FONTE=$SMOKE_LOGIN_FONTE"'
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {k: v for k, v in os.environ.items() if not k.startswith("SMOKE_")}
+            env.update({"SMOKE_USER": "smoke", "SMOKE_PASSWORD": "pw", "ME_USER": "smoke", **env_extra})
+            env["LOG"] = f"{tmp}/log"
+            esito = subprocess.run(
+                ["bash", "-c", programma], env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+            )
+            log = Path(f"{tmp}/log")
+            chiamati = log.read_text().splitlines() if log.exists() else []
+        return esito, chiamati
+
+    @staticmethod
+    def _jwt(scade_fra: int) -> str:
+        import base64
+        import json
+        import time
+
+        def parte(d: dict) -> str:
+            return base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")
+        return f"{parte({'alg': 'HS256'})}.{parte({'exp': int(time.time()) + scade_fra, 'user_id': 7})}.firma"
+
+    # Scopo: Un solo login per una sessione di smoke (decisione Tid 2026-10-02).
+    #        SMOKE_TOKEN valido, accettato dal backend e dell'utente dello smoke:
+    #        nessun login. Scaduto/in scadenza, di un altro utente, o uno smoke
+    #        che prova il login (`-D`, `--login-vero`): il login vero, e lo dice.
+    def test_smoke_login_riusa_smoke_token_valido_e_suo(self):
+        login = "http://x/api/v1/admin/token/"
+        valido = self._jwt(600)
+        esito, chiamati = self._smoke_login(SMOKE_TOKEN=valido)
+        self.assertEqual(esito.returncode, 0, esito.stdout + esito.stderr)
+        self.assertIn(f"TOKEN={valido} FONTE=SMOKE_TOKEN", esito.stdout)
+        self.assertNotIn(login, chiamati)
+
+        casi = {
+            "in scadenza": ({"SMOKE_TOKEN": self._jwt(60)}, "", "scaduto o in scadenza"),
+            "di un altro utente": ({"SMOKE_TOKEN": valido, "ME_USER": "tid"}, "", "non di 'smoke'"),
+            "non accettato": ({"SMOKE_TOKEN": valido, "ME_USER": ""}, "", "non lo accetta"),
+            "header del refresh": ({"SMOKE_TOKEN": valido}, '-D "$LOG.hdr"', "login vero"),
+            "login vero": ({"SMOKE_TOKEN": valido}, "--login-vero", "login vero"),
+        }
+        for caso, (env, opzioni, perche) in casi.items():
+            with self.subTest(caso=caso):
+                esito, chiamati = self._smoke_login(opzioni, **env)
+                self.assertEqual(esito.returncode, 0, esito.stdout + esito.stderr)
+                self.assertIn("TOKEN=NUOVO FONTE=login", esito.stdout)
+                self.assertIn(perche, esito.stdout)
+                self.assertIn(login, chiamati)
+
+    # Scopo: ⛔ sotto `set -e` mai un'uscita silenziosa: un login rifiutato o
+    #        una password mancante stampano la causa ed escono col codice scelto
+    #        dallo smoke (`--uscita`), senza arrivare al primo passo.
+    def test_smoke_login_fallito_lo_dice_ed_esce(self):
+        esito, _ = self._smoke_login("--uscita 2", LOGIN_STATUS="401")
+        self.assertEqual(esito.returncode, 2)
+        self.assertIn("autenticazione fallita (HTTP 401)", esito.stdout)
+        self.assertNotIn("TOKEN=", esito.stdout)
+
+        esito, chiamati = self._smoke_login("--senza-prompt", SMOKE_PASSWORD="")
+        self.assertEqual(esito.returncode, 1)
+        self.assertIn("Password mancante", esito.stdout)
+        self.assertEqual(chiamati, [])
