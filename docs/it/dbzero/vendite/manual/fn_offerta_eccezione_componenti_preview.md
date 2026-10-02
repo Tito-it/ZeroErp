@@ -2,7 +2,7 @@
 
 ### Scopo
 
-Preview read-only dei componenti BoM CASO A per il drawer eccezione offerta (pattern form atomic). Mirror di `fn_contratto_riga_componenti_preview` tipizzato per il dominio offerte. Proietta tutti i componenti con `esposto_in_fattura = TRUE` della distinta base dell'articolo, incluso il prezzo suggerito dal resolver. Consumata dal BE prima del save dell'eccezione composita. STABLE: nessun effetto collaterale.
+Preview read-only dei componenti BoM CASO A per il drawer eccezione offerta (pattern form atomic). Mirror di `fn_contratto_riga_componenti_preview` tipizzato per il dominio offerte. Proietta tutti i componenti attivi e validi della distinta base dell'articolo (modello unificato, rev 2026-05-27: tolto il filtro sul vecchio flag `esposto_in_fattura`), incluso il prezzo suggerito dal resolver, `obbligatorio` ed `esposizione_in_fattura` (`NASCOSTO` | `DESCRITTIVO` | `VALORIZZATO`; fino al 2026-10-01 era il booleano `esposto_in_fattura`, rev `20261001-52`). Consumata dal BE prima del save dell'eccezione composita. STABLE: nessun effetto collaterale.
 
 > **Vedi anche**
 >
@@ -38,7 +38,9 @@ vendite.fn_offerta_eccezione_componenti_preview(
     iva_id                 catalogo.articoli.iva_id%TYPE,
     prezzo_suggerito       vendite.listini_righe.prezzo%TYPE,
     origine_prezzo         vendite.contratti_righe_componenti.origine_prezzo%TYPE,
-    resolver_error_reason  text
+    resolver_error_reason  text,
+    obbligatorio           boolean,
+    esposizione_in_fattura catalogo.articoli_componenti.esposizione_in_fattura%TYPE
 )
 ```
 
@@ -49,12 +51,12 @@ vendite.fn_offerta_eccezione_componenti_preview(
 | `p_quantita_padre` tipo | `contratti_righe.quantita%TYPE` | `offerte_commerciali_eccezioni.quantita%TYPE` |
 | `p_utility_id` tipo | `contratti.utility_id%TYPE` | `offerte_commerciali.utility_id%TYPE` |
 | `origine_prezzo` tipo | da `contratti_righe_componenti` | da `contratti_righe_componenti` (stesso CHECK) |
-| `obbligatorio` / `esposto_in_fattura` | proiettati | **non proiettati** — la preview offerta espone solo i componenti CASO A (già filtrati `esposto_in_fattura = TRUE`) |
+| `obbligatorio` / `esposizione_in_fattura` | proiettati | identico (dal 2026-05-27; prima la preview offerta filtrava i soli componenti col vecchio flag acceso e non li proiettava) |
 
 ## Logica, output e pattern form atomic
 
 Identici a `fn_contratto_riga_componenti_preview` — vedi quella doc per la descrizione completa.
 
-`prezzo_suggerito = NULL` + `resolver_error_reason` se il resolver fallisce per un componente. STABLE, nessun side-effect. Il resolver riceve `p_articolo_padre_contesto = p_articolo_id` per attivare lo STADIO BUNDLE. Se `p_articolo_id` non ha componenti con `esposto_in_fattura = TRUE` attivi → zero righe restituite.
+`prezzo_suggerito = NULL` + `resolver_error_reason` se il resolver fallisce per un componente. STABLE, nessun side-effect. Il resolver riceve `p_articolo_padre_contesto = p_articolo_id` per attivare lo STADIO BUNDLE. Se `p_articolo_id` non ha componenti attivi → zero righe restituite.
 
 L'`articolo_componente_id` restituito è il valore da usare come chiave in `p_componenti_overrides` di `fn_offerta_eccezione_componenti_init` (shape `{articolo_componente_id::text: prezzo}`).

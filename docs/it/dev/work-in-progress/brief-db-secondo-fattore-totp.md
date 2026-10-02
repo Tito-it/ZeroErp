@@ -13,6 +13,11 @@
 > rigenerata. ✅ D-T1 → D-T3 decise da Tid il 2026-09-28 (§7); ✅ D-T4 e D-T5 il 2026-09-29.
 > ⏳ **Resta il BE/FE** (`dev/backend-tid`): le richieste di §9.5. Il brief si archivia quando
 > il backend le ha chiuse.
+> **Punto al 2026-10-01** (letto dal codice e da §3.4-bis del brief di sicurezza, che le segue coi
+> lotti T-0 → T-5): ✅ 1 policy dei sei codici, 2 `stato`, 3 D-T2 nel login a due passi, 5 hash dei
+> codici di recupero, 6 il passo calcolato in una sede (T-1, T-2). ⏳ 4 il segno nell'editor dei
+> profili e 8 l'etichetta di `TOTP_DISABILITATO` (T-3/T-4), 7 il runbook del DBA (T-5), 9 i18n FE
+> (T-4). Nessuna richiesta al DB.
 >
 > **In una riga:** oggi `config.auth_totp_device` esiste ma nessuno la usa, l'obbligo del
 > secondo fattore non ha una sede, e i manuali descrivono un disegno mai costruito. Servono

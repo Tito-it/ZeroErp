@@ -47,7 +47,12 @@ Supporta:
 * **Legame**: `prodotto_id UUID` (FK), `componente_id UUID` (FK)
 * **Versioning**: `valido_dal DATE` (**obbligatorio**), `valido_al DATE` *(NULL = infinito)*
 * **Quantità & logica**: `coeff_qta NUMERIC(18,6) ≥ 0`, `partecipa_qta BOOLEAN`, `determina_qta_padre BOOLEAN`, `obbligatorio BOOLEAN`
-* **Esposizione in fattura** (14-04-2026, pricing v5): `esposto_in_fattura BOOLEAN NOT NULL DEFAULT false`. Se `true`, il componente appare come riga separata in fattura con prezzo/IVA propri; gli articoli compositi con almeno un componente esposto vengono espansi in `commesse_attivita` alla creazione dell'attivita'.
+* **Esposizione in fattura** (rev 2026-10-01): `esposizione_in_fattura VARCHAR NOT NULL DEFAULT 'NASCOSTO'`, FK su `config.esposizioni_componente(codice_interno)`. Dice **come il componente si vede in fattura sotto il suo kit**, ed è solo una regola di presentazione: tutti i componenti attivi generano comunque righe nei documenti e in commessa (modello unificato del 2026-05-13).
+    * `NASCOSTO`: il componente non compare; il suo valore sta nel totale del kit.
+    * `DESCRITTIVO`: riga sotto il kit senza prezzo né importo; il valore sta nel totale del kit.
+    * `VALORIZZATO`: riga sotto il kit con quantità, prezzo e importo suoi, **fuori** dal totale del kit.
+
+    Le regole le applica la vista di rappresentazione [`vendite.vw_fattura_righe_esposte`](/dbzero/vendite/views/vw_fattura_righe_esposte). Fino al 2026-10-01 era il booleano `esposto_in_fattura` (introdotto il 14-04-2026, pricing v5), convertito sul posto: `false` → `NASCOSTO`, `true` → `DESCRITTIVO`.
 * **Note**: `note_target_tipo`, `note_id` (FK composita verso `catalogo.note`)
 * **Meta & Audit**: `meta JSONB`, `attivo`, `storicizza`, `tx_id`, `user_*`, `data_*`
 
@@ -83,7 +88,7 @@ Non rientrano nella generazione automatica `automations` perché la tabella
 A partire dal trigger `trg_articoli_componenti_a10_block_update_struct_upd_dlt` (`20260422-01`), la BoM è **immutabile** sui campi di struttura:
 
 * **DELETE**: sempre bloccato (errore `E_BOM_MODIFICA_VIETATA` id 387). Non si elimina una riga BoM: si chiude.
-* **UPDATE** dei campi `coeff_qta`, `componente_id`, `obbligatorio`, `esposto_in_fattura`, `partecipa_qta`, `determina_qta_padre`, `valido_dal`, `validita`: bloccato (`E_BOM_MODIFICA_VIETATA`).
+* **UPDATE** dei campi `coeff_qta`, `componente_id`, `obbligatorio`, `esposizione_in_fattura` (fino al 2026-10-01 `esposto_in_fattura`), `partecipa_qta`, `determina_qta_padre`, `valido_dal`, `validita`: bloccato (`E_BOM_MODIFICA_VIETATA`).
 * **UPDATE** di `valido_al`: ammesso. È l'unico modo per chiudere una riga. Che non preceda `valido_dal` lo verifica il guard comune delle date, `script.trgfn_guard_date_validita` (`E_DATA_AL_MINORE_DAL`), come su ogni tabella con la coppia di date.
 * **UPDATE** di `note_*`, `meta`, `attivo`, e dei campi audit: ammesso (non sono campi di struttura).
 

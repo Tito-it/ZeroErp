@@ -94,7 +94,7 @@ BEGIN
               'coeff_qta',              ac.coeff_qta,
               'prezzo',                 lrc.prezzo,
               'obbligatorio',           ac.obbligatorio,
-              'esposto_in_fattura',     ac.esposto_in_fattura
+              'esposizione_in_fattura', ac.esposizione_in_fattura
           ) ORDER BY lrc.id) AS componenti
             FROM vendite.listini_righe_componenti lrc
             JOIN catalogo.articoli_componenti ac
@@ -112,7 +112,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_espandi_listino_versione(p_listino_versione_id bigint, p_tipo_var character varying, p_valore_var numeric)
-IS 'Core condiviso: espande una versione listino in righe piatte (standalone + bundle) con prezzo da-listino (variazione globale solo su standalone, come da contratti) e BoM in jsonb (incl. articolo_componente_id). Consumato da fn_contratto_righe_preview e fn_offerta_righe_espanse. Nessuna eccezione di dominio.';
+IS 'Core condiviso: espande una versione listino in righe piatte (standalone + bundle) con prezzo da-listino (variazione globale solo su standalone, come da contratti) e BoM in jsonb (incl. articolo_componente_id). Consumato da fn_contratto_righe_preview e fn_offerta_righe_espanse. Nessuna eccezione di dominio. rev 2026-10-01: nel jsonb componenti la chiave esposto_in_fattura diventa esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) (brief-db-esposizione-componenti-kit-in-fattura).';
 ```
 
 ---

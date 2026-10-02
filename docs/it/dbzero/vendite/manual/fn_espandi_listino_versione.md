@@ -55,9 +55,11 @@ LANGUAGE plpgsql STABLE
   "coeff_qta":              "numeric",
   "prezzo":                 "numeric",
   "obbligatorio":           "boolean",
-  "esposto_in_fattura":     "boolean"
+  "esposizione_in_fattura": "varchar"
 }
 ```
+
+`esposizione_in_fattura`: il codice interno del modo in cui il componente si vede in fattura sotto il suo kit (`NASCOSTO` | `DESCRITTIVO` | `VALORIZZATO`), letto da `catalogo.articoli_componenti`. Fino al 2026-10-01 la chiave era `esposto_in_fattura` (boolean: `false` → `NASCOSTO`, `true` → `DESCRITTIVO`), rev `20261001-54`.
 
 `articolo_componente_id` (rispetto alla preview storica) serve ai consumer per copiare i componenti in `*_righe_componenti` (es. `ordini_righe_componenti`).
 

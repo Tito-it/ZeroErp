@@ -7,7 +7,8 @@
 --   ChangeSet: 90_end/20260929-24 (forward), 90_end/ci_apply/20260205-41
 --   (v_tabelle_sola_lettura_app), scripts/sql/provision_db_roles.sql (POSTURA
 --   DICHIARATA); 00_schema/config/20260929-07 (forma), 90_end/20260929-23
---   (il CHECK sul SUPER_ADMIN); 20_code/script/20260929-12 → -22.
+--   (il CHECK sul SUPER_ADMIN); 20_code/script/20260929-12 → -22,
+--   20261001-35 (fn_totp_ricifra_segreto, brief-db-totp-ricifra-segreto §3.5).
 --
 -- ⭐ E' il presidio che tiene allineate le TRE sedi della postura (linee-guida
 --   §11.8): verde su dev col solo forward, rosso su un database ricostruito se
@@ -65,14 +66,16 @@ SELECT p.oid, p.proname, p.prosecdef, p.proconfig, pg_get_userbyid(p.proowner) A
                      'fn_check_totp_recovery_hash', 'fn_is_super_admin_account',
                      'fn_totp_registra_device', 'fn_totp_conferma_device',
                      'fn_totp_registra_uso', 'fn_totp_consuma_recovery',
-                     'fn_totp_rigenera_recovery', 'fn_totp_disabilita_device');
+                     'fn_totp_rigenera_recovery', 'fn_totp_disabilita_device',
+                     'fn_totp_ricifra_segreto');
 
 SELECT is(
     (SELECT string_agg(format('%s=%s', proname, CASE WHEN prosecdef THEN 'D' ELSE 'I' END), ',' ORDER BY proname COLLATE "C") FROM _fn),
     'fn_check_totp_recovery_hash=I,fn_get_totp_device=I,fn_guard_utente_stesso=I,'
     || 'fn_imposta_totp_obbligatorio=D,fn_is_super_admin_account=I,fn_totp_conferma_device=D,'
     || 'fn_totp_consuma_recovery=D,fn_totp_disabilita_device=D,fn_totp_obbligatorio=D,'
-    || 'fn_totp_registra_device=D,fn_totp_registra_uso=D,fn_totp_rigenera_recovery=D',
+    || 'fn_totp_registra_device=D,fn_totp_registra_uso=D,fn_totp_ricifra_segreto=D,'
+    || 'fn_totp_rigenera_recovery=D',
     '3) scrivono le DEFINER; letture, guard e check INVOKER (fn_totp_obbligatorio DEFINER)');
 
 SELECT is(

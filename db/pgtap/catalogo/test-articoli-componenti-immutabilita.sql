@@ -21,7 +21,7 @@
 --    2. UPDATE coeff_qta -> raise
 --    3. UPDATE componente_id -> raise
 --    4. UPDATE obbligatorio -> raise
---    5. UPDATE esposto_in_fattura -> raise
+--    5. UPDATE esposizione_in_fattura -> raise
 --    6. UPDATE partecipa_qta -> raise
 --    7. UPDATE determina_qta_padre -> raise
 --    8. UPDATE valido_dal -> raise
@@ -94,9 +94,9 @@ CREATE TEMP TABLE _t_bom_riga (riga_id uuid);
 WITH ins AS (
     INSERT INTO catalogo.articoli_componenti (
         prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
-        esposto_in_fattura, determina_qta_padre, valido_dal, valido_al, attivo
+        esposizione_in_fattura, determina_qta_padre, valido_dal, valido_al, attivo
     )
-    SELECT prodotto_id, componente_id, 1, false, true, false, false, v_dal, v_al, true
+    SELECT prodotto_id, componente_id, 1, false, true, 'NASCOSTO', false, v_dal, v_al, true
       FROM _t_bom
     RETURNING id
 )
@@ -155,15 +155,16 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- 5) UPDATE esposto_in_fattura -> raise
+-- 5) UPDATE esposizione_in_fattura -> raise
+-- (con un valore a catalogo: la riga deve fallire per il guard, non per la FK)
 -- =========================================================
 SELECT throws_ok(
     format(
-        $sql$ UPDATE catalogo.articoli_componenti SET esposto_in_fattura = true WHERE id = %L::uuid $sql$,
+        $sql$ UPDATE catalogo.articoli_componenti SET esposizione_in_fattura = 'DESCRITTIVO' WHERE id = %L::uuid $sql$,
         (SELECT riga_id FROM _t_bom_riga)
     ),
     NULL, NULL,
-    '5. UPDATE esposto_in_fattura -> raise E_BOM_MODIFICA_VIETATA'
+    '5. UPDATE esposizione_in_fattura -> raise E_BOM_MODIFICA_VIETATA'
 );
 
 -- =========================================================
@@ -323,10 +324,10 @@ SELECT lives_ok(
     format(
         $sql$ INSERT INTO catalogo.articoli_componenti (
                   prodotto_id, componente_id, coeff_qta, partecipa_qta,
-                  obbligatorio, esposto_in_fattura, determina_qta_padre,
+                  obbligatorio, esposizione_in_fattura, determina_qta_padre,
                   valido_dal, valido_al, attivo
               )
-              SELECT prodotto_id, componente_id, 2, false, true, false, false,
+              SELECT prodotto_id, componente_id, 2, false, true, 'NASCOSTO', false,
                      (CURRENT_DATE + INTERVAL '6 days')::date,
                      NULL,
                      true

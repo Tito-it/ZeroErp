@@ -148,7 +148,7 @@ v_listino_versione_id := vendite.fn_listino_versione_in_vigore(v_listino_id, CUR
                 'coeff_qta',              crc.coeff_qta_snapshot,
                 'prezzo',                 crc.prezzo_unitario,
                 'obbligatorio',           ac.obbligatorio,
-                'esposto_in_fattura',     ac.esposto_in_fattura
+                'esposizione_in_fattura', ac.esposizione_in_fattura
             ) ORDER BY crc.ordine, crc.id)
               FROM vendite.contratti_righe_componenti crc
               JOIN catalogo.articoli af ON af.id = crc.componente_id
@@ -170,7 +170,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_contratto_righe_preview(p_contratto_id bigint)
-IS 'Le righe OPERATIVE di un contratto: parte 1 dal listino (core fn_espandi_listino_versione, standalone e bundle) con l''overlay delle eccezioni OVERRIDE/ESCLUSIONE; parte 2 le AGGIUNTA (standalone e bundle, componenti da contratti_righe_componenti). Versione del listino: fissata se il contratto e'' attivo, altrimenti la ATTIVA/CHIUSA valida oggi. ⭐ Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.4) e'' la SORGENTE della lista configurabile vendite.contratto_righe, per le due forme del contratto (senza listino restano le sole AGGIUNTA), e porta tre colonne in coda: riga_key (L:<articolo>:<uom> per le righe del listino, A:<id> per le aggiunte: la chiave che prima il frontend inventava), azioni (i verbi che l''origine ammette: DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> MODIFICA, RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI) e escludi_blocco_codice (il reason del primo motivo di script.fn_check_esclusione_articolo_contratto, NULL = «Escludi» ammesso: lo stesso predicato del guard). Il blocco «fuori bozza» non e'' qui: e'' di documento. 22 colonne.';
+IS 'Le righe OPERATIVE di un contratto: parte 1 dal listino (core fn_espandi_listino_versione, standalone e bundle) con l''overlay delle eccezioni OVERRIDE/ESCLUSIONE; parte 2 le AGGIUNTA (standalone e bundle, componenti da contratti_righe_componenti). Versione del listino: fissata se il contratto e'' attivo, altrimenti la ATTIVA/CHIUSA valida oggi. ⭐ Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.4) e'' la SORGENTE della lista configurabile vendite.contratto_righe, per le due forme del contratto (senza listino restano le sole AGGIUNTA), e porta tre colonne in coda: riga_key (L:<articolo>:<uom> per le righe del listino, A:<id> per le aggiunte: la chiave che prima il frontend inventava), azioni (i verbi che l''origine ammette: DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> MODIFICA, RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI) e escludi_blocco_codice (il reason del primo motivo di script.fn_check_esclusione_articolo_contratto, NULL = «Escludi» ammesso: lo stesso predicato del guard). Il blocco «fuori bozza» non e'' qui: e'' di documento. 22 colonne. rev 2026-10-01: nel jsonb componenti la chiave esposto_in_fattura diventa esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) (brief-db-esposizione-componenti-kit-in-fattura).';
 ```
 
 ---

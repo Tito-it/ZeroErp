@@ -192,6 +192,7 @@
 - [fn_totp_obbligatorio](manual/fn_totp_obbligatorio.md) — (scritta il 29-09-2026)
 - [fn_totp_registra_device](manual/fn_totp_registra_device.md) — (scritta il 29-09-2026)
 - [fn_totp_registra_uso](manual/fn_totp_registra_uso.md) — (scritta il 29-09-2026)
+- [fn_totp_ricifra_segreto](manual/fn_totp_ricifra_segreto.md) — (scritta il 01-10-2026)
 - [fn_totp_rigenera_recovery](manual/fn_totp_rigenera_recovery.md) — (scritta il 29-09-2026)
 - [fn_valida_codice_fiscale](manual/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](manual/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
