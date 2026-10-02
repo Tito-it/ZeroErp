@@ -4,7 +4,8 @@
 > **Origine:** revisione del giro BE/FE del secondo fattore (chiuso in
 > [brief-be-fe-sicurezza-header-token-mfa.md](../work-done/brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis).
 > **Decisione di Tid (2026-10-02):** `registra/` chiede la password della credenziale.
-> **Stato:** ⏳ in attesa del team DB (R-1). Il BE/FE parte dopo, sul codice applicato.
+> **Stato:** 🔧 R-1 scritto dal team DB (2026-10-03), ⏳ in attesa di apply e corsa pgTAP
+> di Tid. Il BE/FE parte dopo, sul codice applicato.
 
 ## 1. Il problema
 
@@ -34,6 +35,12 @@ la registrazione del secondo fattore no.
 | # | Cosa | Perché |
 | --- | --- | --- |
 | **R-1** | Codice nuovo `E_TOTP_PASSWORD_NON_VALIDA`, classe `DATO_ERRATO`, campo `password`, in `codici_errore.csv` e `messaggi_errore.csv` (it, con causa e soluzione). Proposta di frase: «Password non corretta.» — causa «La password non è quella dell'accesso.», soluzione «Inserire la password con cui si accede.». Lo solleva il **backend** (la verifica della password è di Django), come `E_TOTP_CODICE_NON_VALIDO`; conta come tentativo fallito (D-T2) | Nessun codice a catalogo dice «password sbagliata» fuori dal cambio password: `E_CHANGE_PASSWORD` è di un'altra operazione; `E_AUTHENTICATION_FAILED` è un 401, e un 401 sul frontend fa partire il rinnovo della sessione e poi il logout |
+
+**Esito R-1 (DB, 2026-10-03).** Una riga in `80_data/sql/config/codici_errore.csv`
+(`DATO_ERRATO`, la nota dice chi lo solleva, perché non è un 401 e `campo = password` nel
+contesto) e una in `messaggi_errore.csv` (id **1189**), con la frase, la causa e la
+soluzione proposte senza cambi. Nessun changeSet nuovo: i due CSV li ricarica il loader
+del seed. Frase chiusa, nessun segnaposto.
 
 Dopo l'apply il BE rigenera `error_policies_generated.py` e aggiunge il ripiego senza
 segnaposto in `error_messages_fallback.py`.
