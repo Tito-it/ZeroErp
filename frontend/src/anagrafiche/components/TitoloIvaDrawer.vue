@@ -256,7 +256,7 @@ watch(() => props.visible, async (val) => {
   if (isEdit.value) {
     const res = await execute(() => getSoggettoTitoloIva(props.soggettoId, props.titoloId))
     if (res === null || !fv.isCurrent(v)) return
-    detail.value = res.data.data
+    detail.value = res
     populateFromDetail(detail.value)
   } else {
     detail.value = null
@@ -411,7 +411,7 @@ async function ricaricaDettaglio() {
   const v = fv.tag()
   const res = await execute(() => getSoggettoTitoloIva(props.soggettoId, props.titoloId))
   if (res === null || !fv.isCurrent(v)) return
-  detail.value = res.data.data
+  detail.value = res
   // ⛔ Anche le due liste, e non e' ridondante: leggono i LORO endpoint, quindi
   //    una scrittura sui figli non le aggiorna da se'. Ricaricare solo il
   //    dettaglio lascerebbe a video le righe di prima accanto a un residuo gia'

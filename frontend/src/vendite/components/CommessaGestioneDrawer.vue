@@ -301,7 +301,7 @@ async function salvaTestata() {
       responsabile_risorsa_umana_id: testataForm.value.responsabile_risorsa_umana_id ?? null,
     }), { successMessage: t('vendite.commesse.testata_salvata') })
     if (res !== null) {
-      stato.value = res.data?.data ?? stato.value
+      stato.value = res ?? stato.value
       emit('saved')
     }
   } finally {
