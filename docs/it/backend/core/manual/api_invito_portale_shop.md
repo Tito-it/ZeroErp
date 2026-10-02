@@ -246,10 +246,14 @@ errore (`disattivato=false`, stato ritornato coerente).
 
 - Se c'era un invito pendente (`PENDING`), il link email smette di
   funzionare: chiunque clicca il link vede "Token non valido o scaduto".
-- L'utente loggato al momento del revoke non viene disconnesso
-  immediatamente (JWT valido fino a scadenza), ma al refresh o al
-  prossimo `/me/` il guard namespace FE rifiuta il contesto portale/shop
-  (identita non attiva).
+- Le sessioni **della veste** vanno in blacklist (refresh JWT col claim
+  `identita_id` di quella veste) e la cache permessi si invalida a commit
+  avvenuto, nella stessa transazione dello spegnimento; anche su una veste
+  gia' spenta (idempotente). Le sessioni delle altre vesti della stessa
+  credenziale restano aperte (A-5, D-5, 2026-10-02 — prima nessuna chiusura).
+  L'access gia' emesso vive fino a scadenza, ma ogni richiesta risponde 401
+  `E_IDENTITA_NON_ATTIVA` e il refresh 401 (veste spenta,
+  [api_multi_veste_token.md](api_multi_veste_token.md) §2-bis).
 
 **Riattivazione**: non c'e' un endpoint "riattiva" dedicato per evitare
 ambiguita. Per rimettere in linea un accesso disattivato, l'admin

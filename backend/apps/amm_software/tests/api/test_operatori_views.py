@@ -37,6 +37,7 @@ from apps.amm_software.api.views import (
     OperatoriDisabilitaView,
     OperatoriListView,
 )
+from apps.core.services.invito_veste import PORTA_OPERATORE
 
 
 SAMPLE_OPERATORE = {
@@ -210,6 +211,13 @@ class TestOperatoriDetailView(TestCase):
 
 class TestOperatoriPatchView(TestCase):
 
+    # ⛔ Spegnere l'operatore invalida gli inviti pendenti (A-5): senza questo
+    #    mock l'UPDATE andrebbe su `config.token_monouso` del DB di sviluppo.
+    def setUp(self):
+        patcher = patch("apps.amm_software.services.amm_software_service.InvitoVeste")
+        self.mock_invito = patcher.start()
+        self.addCleanup(patcher.stop)
+
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_patch_operatore_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
@@ -282,10 +290,13 @@ class TestOperatoriPatchView(TestCase):
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_patch_attivo(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
-        """Scopo: PATCH cambio attivo passa il valore corretto al repository."""
+        """Scopo: PATCH cambio attivo passa il valore corretto al repository,
+        e spegnere chiude le sessioni della sola veste operatore (A-5, D-5)."""
         repo_instance = MockRepo.return_value
         repo_instance.get_categoria_accesso.return_value = "OPERATORE"
-        repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
+        # Una veste ACCESA che si spegne: solo allora si chiudono sessioni e inviti.
+        repo_instance.get_operatore_detail.return_value = {**SAMPLE_DETAIL, "veste_attiva": True}
+        repo_instance.get_veste_operatore_id.return_value = 7
 
         view = OperatoriDetailView()
         view.check_permissions = MagicMock()
@@ -293,14 +304,23 @@ class TestOperatoriPatchView(TestCase):
 
         call_kwargs = repo_instance.update_operatore.call_args.kwargs
         self.assertFalse(call_kwargs["attivo"])
+        self.mock_invito.return_value.chiudi_veste_spenta.assert_called_once_with(
+            PORTA_OPERATORE, auth_user_id=1, identita_id=7,
+        )
 
 
 class TestOperatoriDisabilitaView(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service.blocca_token_sessioni")
+    # ⛔ Spegnere l'operatore invalida gli inviti pendenti (A-5): senza questo
+    #    mock l'UPDATE andrebbe su `config.token_monouso` del DB di sviluppo.
+    def setUp(self):
+        patcher = patch("apps.amm_software.services.amm_software_service.InvitoVeste")
+        self.mock_invito = patcher.start()
+        self.addCleanup(patcher.stop)
+
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
-    def test_disabilita_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock, mock_blacklist: MagicMock) -> None:
+    def test_disabilita_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: POST disabilita imposta stato e ritorna dettaglio aggiornato."""
         repo_instance = MockRepo.return_value
         disabled = {**SAMPLE_DETAIL, "veste_attiva": False, "attivo": False, "is_active": False}
@@ -314,21 +334,23 @@ class TestOperatoriDisabilitaView(TestCase):
         self.assertEqual(response.status_code, 200)
         repo_instance.disabilita_operatore.assert_called_once_with(1)
 
-    @patch("apps.amm_software.services.amm_software_service.blocca_token_sessioni")
-    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
-    def test_disabilita_invalidates_cache(self, MockRepo: MagicMock, mock_invalidate: MagicMock, mock_blacklist: MagicMock) -> None:
-        """Scopo: POST disabilita invalida cache permessi."""
+    def test_disabilita_invalidates_cache(self, MockRepo: MagicMock) -> None:
+        """Scopo: POST disabilita chiude la veste operatore spenta col BB
+        (`InvitoVeste.chiudi_veste_spenta`: inviti, sessioni e cache, provati
+        in `core/tests/services/test_invito_veste.py`)."""
         repo_instance = MockRepo.return_value
         repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
+        repo_instance.get_veste_operatore_id.return_value = 7
 
         view = OperatoriDisabilitaView()
         view.check_permissions = MagicMock()
         view.post(_admin_request(method="POST"), auth_user_id=1)
 
-        mock_invalidate.assert_called_once_with(1)
-        mock_blacklist.assert_called_once_with(1)
+        self.mock_invito.return_value.chiudi_veste_spenta.assert_called_once_with(
+            PORTA_OPERATORE, auth_user_id=1, identita_id=7,
+        )
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_disabilita_not_found(self, MockRepo: MagicMock) -> None:

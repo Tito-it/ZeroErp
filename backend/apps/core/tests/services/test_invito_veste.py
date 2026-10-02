@@ -37,6 +37,8 @@ Indice test eseguiti:
 18) AttivaTests.test_meta_senza_identita_solleva
 19) ViewTests.test_validate_dice_se_chiedere_la_password
 20) ViewTests.test_validate_token_non_valido
+21) ChiudiVesteSpentaTests.test_inviti_sessioni_della_veste_e_cache_a_commit
+22) ChiudiVesteSpentaTests.test_chiusura_fallita_propaga_e_non_tocca_la_cache
 """
 
 from __future__ import annotations
@@ -391,3 +393,35 @@ class ViewTests(TestCase):
         body = json.loads(AttivazionePortaleValidateView().get(MagicMock(), token="x").content)["data"]
         self.assertFalse(body["valid"])
         self.assertNotIn("token_type", body)
+
+
+# Scopo: `chiudi_veste_spenta` — cio' che resta aperto di una veste spenta, per
+#        ogni porta (regola del 2, 2026-10-03: operatore e portale/shop).
+@patch(f"{_BB}.invalidate_user")
+@patch(f"{_BB}.blocca_token_sessioni")
+@patch(f"{_BB}.transaction")
+class ChiudiVesteSpentaTests(TestCase):
+
+    # Scopo: Inviti della veste (tipi della porta), sessioni della SOLA veste
+    #        (per `identita_id`), cache della credenziale a COMMIT avvenuto.
+    def test_inviti_sessioni_della_veste_e_cache_a_commit(self, mock_tx, mock_blocca, mock_invalidate):
+        invito, _, tokens, _ = _invito(ha_password=True)
+        invito.chiudi_veste_spenta(PORTA_SHOP, auth_user_id=42, identita_id=700)
+
+        tokens.invalidate_for_identita.assert_called_once_with(PORTA_SHOP.token_tipi, 42, 700)
+        mock_blocca.assert_called_once_with(42, identita_id=700)
+        # La cache aspetta il commit: prima, una richiesta concorrente la
+        # ricaricherebbe dalla veste ancora accesa.
+        mock_invalidate.assert_not_called()
+        (callback,), _ = mock_tx.on_commit.call_args
+        callback()
+        mock_invalidate.assert_called_once_with(42)
+
+    # Scopo: Una chiusura fallita PROPAGA (il chiamante annulla anche lo
+    #        spegnimento) e non prenota l'invalidazione della cache.
+    def test_chiusura_fallita_propaga_e_non_tocca_la_cache(self, mock_tx, mock_blocca, _invalidate):
+        invito, _, _, _ = _invito(ha_password=True)
+        mock_blocca.side_effect = RuntimeError("scrittura blacklist fallita")
+        with self.assertRaises(RuntimeError):
+            invito.chiudi_veste_spenta(PORTA_OPERATORE, auth_user_id=42, identita_id=700)
+        mock_tx.on_commit.assert_not_called()

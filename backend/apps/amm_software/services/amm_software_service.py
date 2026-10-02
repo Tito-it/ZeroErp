@@ -20,11 +20,11 @@ from apps.core.api.payload_validators import optional_int
 from apps.core.services.auth_constants import CATEGORIA_ACCESSO_OPERATORE
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
+from apps.core.services.invito_veste import PORTA_OPERATORE, InvitoVeste
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import PayloadValidator, translate_db_errors
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
-from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.amm_software.constants import DEFAULT_SESSO
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 from apps.amm_software.types import CredenzialePerEmailRow
@@ -282,9 +282,10 @@ class AmmSoftwareService:
             code=E_AMM_VALIDAZIONE,
             message="Campo 'ruolo_sistema' non ammesso: usa is_super_admin + attivo.",
         )
-        self.get_operatore(auth_user_id)  # verifica esistenza
-        _run_or_raise_super_admin_guard(
-            lambda: self._repo.update_operatore(
+        operatore = self.get_operatore(auth_user_id)  # verifica esistenza
+
+        def _aggiorna() -> None:
+            self._repo.update_operatore(
                 auth_user_id,
                 email=payload.get("email"),
                 first_name=payload.get("first_name"),
@@ -294,11 +295,53 @@ class AmmSoftwareService:
                 attivo=payload.get("attivo"),
                 valido_al=payload.get("valido_al"),
             )
-        )
-        invalidate_user(auth_user_id)
+
+        # ⛔ L'interruttore «Accesso attivo» spento e' uno spegnimento come
+        #    «Disabilita» (A-5): inviti, sessioni e cache della veste operatore,
+        #    e solo di quella. Fino al 2026-10-02 invalidava la sola cache.
+        # ⛔ Solo quando la veste PASSA da accesa a spenta (`veste_attiva`).
+        #    Il drawer manda `attivo` a OGNI salvataggio: su un operatore gia'
+        #    spento, correggere l'email arriva con `attivo: false` invariato, e
+        #    trattarlo da spegnimento invaliderebbe l'invito appena spedito per
+        #    riaccenderlo (D-3). Un salvataggio non e' un gesto di revoca.
+        if payload.get("attivo") is False and operatore.get("veste_attiva") is True:
+            self._spegni_veste_operatore(auth_user_id, _aggiorna)
+        else:
+            _run_or_raise_super_admin_guard(_aggiorna)
+            invalidate_user(auth_user_id)
         return self._repo.get_operatore_detail(auth_user_id) or {}
 
-    # Scopo: Disabilita operatore, invalida cache e blacklist token.
+    # Scopo: Spegne la veste operatore con `spegni` e ne chiude cio' che resta
+    #        aperto (inviti, sessioni, cache: `InvitoVeste.chiudi_veste_spenta`),
+    #        in UNA transazione: la strada unica di «Disabilita» e
+    #        dell'interruttore (regola del 2, 2026-10-02).
+    # ⛔ Gli inviti pendenti si invalidano come per portale e shop (A-5,
+    #    2026-10-02): fino a quel giorno un operatore disabilitato con un
+    #    invito in volo poteva ancora attivarlo, e l'attivazione riaccendeva la
+    #    veste che l'amministratore aveva appena spento.
+    # ⛔ Si chiudono le sessioni della SOLA veste operatore (D-5,
+    #    `blocca_token_sessioni` per `identita_id`): la stessa credenziale puo'
+    #    avere una veste shop o portale, che resta accesa e connessa. Fino al
+    #    2026-10-02 «Disabilita» chiudeva tutte le sessioni della credenziale.
+    #    L'id si legge PRIMA di spegnere: e' quello della veste che si spegne.
+    # ⛔ Una revoca fallita PROPAGA e annulla anche lo spegnimento
+    #    (2026-09-26): l'amministratore riprova su uno stato intero.
+    # ⚠️ La cache dei permessi si invalida a COMMIT avvenuto: invalidata
+    #    prima, una richiesta concorrente la ricaricherebbe dallo stato
+    #    ancora attivo.
+    def _spegni_veste_operatore(self, auth_user_id: int, spegni: Callable[[], None]) -> None:
+        with transaction.atomic():
+            veste_id = self._repo.get_veste_operatore_id(auth_user_id)
+            _run_or_raise_super_admin_guard(spegni)
+            if veste_id is not None:
+                InvitoVeste().chiudi_veste_spenta(
+                    PORTA_OPERATORE, auth_user_id=auth_user_id, identita_id=veste_id,
+                )
+            else:
+                transaction.on_commit(lambda: invalidate_user(auth_user_id))
+
+    # Scopo: Disabilita operatore, invalida cache e chiude le sessioni della
+    # sua veste operatore (non quelle delle altre vesti della credenziale).
     # Preview UX `can_disable=false` evita il round-trip DB nel 99% dei casi
     # (single source of truth: `script.fn_check_ultimo_super_admin_attivo`
     # consumata da `fn_get_operatore_detail`). L'autorita' finale resta il
@@ -322,21 +365,11 @@ class AmmSoftwareService:
                     "reason": operatore.get("disable_reason"),
                 },
             )
-        # ⛔ Disattivazione e revoca delle sessioni in UNA transazione
-        #    (2026-09-26): la disattivazione prima committava da sola, e una
-        #    revoca fallita dopo lasciava l'operatore disattivato con le
-        #    sessioni vive — il contrario di cio' che questo commento
-        #    prometteva. Ora una revoca fallita PROPAGA e annulla anche la
-        #    disattivazione: l'amministratore riprova su uno stato intero.
-        # ⚠️ La cache dei permessi si invalida a COMMIT avvenuto: invalidata
-        #    prima, una richiesta concorrente la ricaricherebbe dallo stato
-        #    ancora attivo.
-        with transaction.atomic():
-            _run_or_raise_super_admin_guard(
-                lambda: self._repo.disabilita_operatore(auth_user_id)
-            )
-            blocca_token_sessioni(auth_user_id)
-            transaction.on_commit(lambda: invalidate_user(auth_user_id))
+        # Disattivazione e chiusura delle sessioni della veste operatore in
+        # UNA transazione: `_spegni_veste_operatore`.
+        self._spegni_veste_operatore(
+            auth_user_id, lambda: self._repo.disabilita_operatore(auth_user_id)
+        )
         return self._repo.get_operatore_detail(auth_user_id) or {}
 
     # Scopo: Riattiva operatore disabilitato, invalida cache.

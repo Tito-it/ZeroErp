@@ -22,6 +22,7 @@
 3. test_il_super_admin_si_lega_alla_sola_veste_operatore
 4. test_la_lista_legge_la_veste_operatore_anche_disabilitata
 5. test_la_sola_veste_shop_non_e_un_operatore
+6. test_spegnere_l_operatore_chiude_le_sessioni_della_sola_veste_operatore — e ne invalida gli inviti pendenti
 """
 
 from __future__ import annotations
@@ -31,6 +32,9 @@ from unittest import TestCase
 from django.db import connection, transaction
 
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
+from apps.amm_software.services.amm_software_service import AmmSoftwareService
+from apps.core.services.invito_veste import PORTA_OPERATORE, PORTA_SHOP
+from apps.core.services.token_service import TokenService
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 
 
@@ -195,3 +199,74 @@ class OperatoreAltreVestiDbTests(TestCase):
                 raise _Annulla
         except _Annulla:
             pass
+
+    # Scopo: Una sessione aperta in una veste: un OutstandingToken con il claim
+    #        `identita_id` di quella veste, come lo scrive il login. Ritorna l'id.
+    @staticmethod
+    def _sessione(auth_user_id: int, identita_id: int) -> int:
+        import uuid
+        from datetime import timedelta
+
+        import jwt
+        from django.utils import timezone
+        from rest_framework_simplejwt.settings import api_settings as simplejwt_settings
+        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+
+        from apps.core.services.auth_constants import JWT_CLAIM_IDENTITA_ID, JWT_CLAIM_SID
+
+        jti = uuid.uuid4().hex
+        token = jwt.encode(
+            {"token_type": "refresh", simplejwt_settings.USER_ID_CLAIM: auth_user_id, "jti": jti,
+             JWT_CLAIM_IDENTITA_ID: identita_id, JWT_CLAIM_SID: uuid.uuid4().hex},
+            "solo-per-il-test-la-firma-non-si-legge-xxxxxxxxxxxx", algorithm="HS256",
+        )
+        return OutstandingToken.objects.create(
+            user_id=auth_user_id, jti=jti, token=token,
+            created_at=timezone.now(), expires_at=timezone.now() + timedelta(days=1),
+        ).id
+
+    # Scopo: D-5 (2026-10-02) — «Disabilita» e l'interruttore «Accesso attivo»
+    #        chiudono le sessioni della SOLA veste operatore: il cliente dello
+    #        shop con la stessa credenziale resta connesso. Fino a quel giorno
+    #        «Disabilita» le chiudeva tutte, e l'interruttore nessuna.
+    #        A-5 (stesso giorno): anche l'invito operatore pendente smette di
+    #        valere, e quello della veste shop no.
+    def test_spegnere_l_operatore_chiude_le_sessioni_della_sola_veste_operatore(self):
+        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
+
+        for nome, spegni in (
+            ("disabilita", lambda servizio, uid: servizio.disabilita_operatore(uid)),
+            ("interruttore", lambda servizio, uid: servizio.update_operatore(uid, {"attivo": False})),
+        ):
+            with self.subTest(strada=nome):
+                try:
+                    with transaction.atomic(), connection.cursor() as cur:
+                        # I builder PRIMA del contesto operatore, come nei pgTAP.
+                        uid, operatore, shop = self._operatore_anche_cliente_shop(cur)
+                        apri_contesto_operatore(cur)
+                        s_operatore = self._sessione(uid, operatore)
+                        s_shop = self._sessione(uid, shop)
+                        inviti = TokenService()
+                        invito_operatore = inviti.create(
+                            tipo=PORTA_OPERATORE.token_invito, auth_user_id=uid,
+                            meta={"identita_id": operatore},
+                        )
+                        invito_shop = inviti.create(
+                            tipo=PORTA_SHOP.token_invito, auth_user_id=uid,
+                            meta={"identita_id": shop},
+                        )
+
+                        spegni(AmmSoftwareService(), uid)
+
+                        bloccati = set(
+                            BlacklistedToken.objects.filter(token__user_id=uid)
+                            .values_list("token_id", flat=True)
+                        )
+                        self.assertIn(s_operatore, bloccati)
+                        self.assertNotIn(s_shop, bloccati)
+                        self.assertEqual(self._veste(cur, shop), ("SHOP_CUSTOMER", True))
+                        self.assertIsNone(inviti.validate(invito_operatore, PORTA_OPERATORE.token_invito))
+                        self.assertIsNotNone(inviti.validate(invito_shop, PORTA_SHOP.token_invito))
+                        raise _Annulla
+                except _Annulla:
+                    pass

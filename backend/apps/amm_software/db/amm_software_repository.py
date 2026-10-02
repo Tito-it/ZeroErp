@@ -335,6 +335,19 @@ class AmmSoftwareRepository:
             row = cursor.fetchone()
         return row[0] if row else None
 
+    # Scopo: L'id della VESTE OPERATORE della credenziale (`_VESTE_OPERATORE`:
+    # l'accesa, altrimenti la spenta piu' recente), None se non ce n'e'.
+    # Serve a chiudere le sessioni di QUELLA veste (D-5): il chiamante la
+    # legge PRIMA di spegnerla, cosi' l'id e' quello della veste che spegne.
+    def get_veste_operatore_id(self, auth_user_id: int) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT {_VESTE_OPERATORE.format(au='%s')}",
+                [auth_user_id],
+            )
+            row = cursor.fetchone()
+        return int(row[0]) if row and row[0] is not None else None
+
     # Scopo: Accende o spegne la VESTE OPERATORE della credenziale
     # (`_VESTE_OPERATORE`), non le altre: una credenziale puo' avere anche
     # vesti di portale o shop (D-6).

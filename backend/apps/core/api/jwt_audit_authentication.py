@@ -192,6 +192,9 @@ def set_jwt_gucs(
             # spento fino alla scadenza dell'access token. Lo SCOPE invece non
             # si rivalida qui: ci pensa il DB a ogni chiamata, e un claim fuori
             # perimetro produce insieme vuoto (fail-closed), non accesso.
+            # ⚠️ `id_row` e' la regola «veste accesa» di ogni richiesta; la sua
+            #    gemella per il refresh e' `auth_views._veste_accesa`. Una
+            #    condizione nuova (L-6, A-7: validita') va in tutte e due.
             cursor.execute(
                 """
                 WITH id_row AS (

@@ -358,6 +358,14 @@ service traduce internamente la coppia in `ruolo_sistema` legacy per il repo
 - Se `is_super_admin` o `attivo` vengono modificati, viene chiamata
   `anagrafiche.fn_sync_auth_user_is_active` per sincronizzare `auth_user.is_active`
 - La cache permessi dell'utente viene invalidata dopo ogni modifica
+- `attivo: false` (l'interruttore «Accesso attivo») spegne come §1.5: invalida
+  gli inviti pendenti e chiude le sessioni della **sola veste operatore** nella
+  stessa transazione, e la cache si invalida a commit avvenuto (A-5, D-5,
+  2026-10-02 — prima solo la cache). ⛔ **Solo se la veste passa da accesa a
+  spenta** (`veste_attiva` del dettaglio): il drawer manda `attivo` a ogni
+  salvataggio, e salvare un operatore già spento non invalida l'invito spedito
+  per riaccenderlo (D-3). `attivo: true` o un payload senza `attivo` non
+  chiudono sessioni
 
 **Risposta:** dettaglio utente aggiornato (stesso formato di GET §1.3).
 
@@ -376,8 +384,12 @@ curl -X PATCH -H "Authorization: Bearer <token>" \
 
 Disabilita un utente: la veste OPERATORE di riferimento `attivo=false` (il tipo
 resta, R-DB-1), la sua risorsa umana `attivo=false`+`valido_al=oggi`. Sincronizza `auth_user.is_active`,
-invalida la cache permessi e inserisce tutti i token JWT dell'utente nella
-blacklist (SimpleJWT), impedendo ulteriori accessi.
+invalida la cache permessi a commit avvenuto, invalida gli **inviti operatore
+pendenti** di quella veste (A-5, 2026-10-02: prima un invito in volo poteva
+ancora riaccenderla) e mette in blacklist le sessioni della **sola veste
+operatore** (refresh JWT col claim `identita_id` di quella veste), nella stessa
+transazione: una chiusura fallita annulla anche la disabilitazione. Le sessioni delle altre vesti della credenziale (shop,
+portale) restano aperte (D-5, 2026-10-02 — prima si chiudevano **tutte**).
 
 **Parametri path:** `id` (int) -- auth_user_id dell'utente.
 
@@ -463,7 +475,7 @@ curl -X POST -H "Authorization: Bearer <token>" \
 
 ## 1-bis. Area «Accessi» e azioni della credenziale
 
-> Dal 2026-10-02 ([brief-db-be-fe-area-accessi](../../../dev/work-in-progress/brief-db-be-fe-area-accessi.md)).
+> Dal 2026-10-02 ([brief-db-be-fe-area-accessi](../../../dev/work-done/brief-db-be-fe-area-accessi.md)).
 > La voce «Operatori» e' diventata l'area **«Accessi»**, tre schede che insieme
 > censiscono TUTTE le credenziali, ognuna in una scheda sola: la partizione la
 > decide il DB (`script.fn_categoria_accesso` → `OPERATORE` / `SISTEMA` /
