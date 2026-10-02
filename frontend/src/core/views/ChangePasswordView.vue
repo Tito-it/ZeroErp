@@ -58,11 +58,18 @@ async function handleChangePassword() {
         class="login-logo-bg"
       />
 
-      <p v-if="auth.mustChangePassword" class="login-subtitle">
-        {{ t('auth.password_change_required') }}
-      </p>
-
       <form @submit.prevent="handleChangePassword" class="login-form login-form--wide">
+        <!-- Esito SOPRA il form, fuori dal flusso (login-esito--sopra), come
+             nel login: sotto spingeva il pulsante fuori dal cerchio. Il
+             sottotitolo sta DENTRO il form, cosi' l'esito sale sopra di lui
+             invece di coprirlo. -->
+        <div v-if="errorMessage" class="login-error login-esito--sopra" role="alert">{{ errorMessage }}</div>
+        <div v-if="successMessage" class="login-success login-esito--sopra">{{ successMessage }}</div>
+
+        <p v-if="auth.mustChangePassword" class="login-subtitle">
+          {{ t('auth.password_change_required') }}
+        </p>
+
         <div class="field">
           <Password
             id="old_password"
@@ -104,9 +111,6 @@ async function handleChangePassword() {
             fluid
           />
         </div>
-
-        <div v-if="errorMessage" class="login-error">{{ errorMessage }}</div>
-        <div v-if="successMessage" class="login-success">{{ successMessage }}</div>
 
         <Button
           type="submit"

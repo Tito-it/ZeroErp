@@ -40,6 +40,24 @@ export function riattivaOperatore(authUserId) {
 
 // --- Invito operatore ---
 
+// --- Secondo fattore dell'operatore (brief sicurezza §3.4-bis, T-4) ---
+
+// Scopo: lo stato del secondo fattore dell'operatore, e se l'obbligo viene
+//        dalla credenziale o da un profilo.
+export function getSecondoFattoreOperatore(authUserId) {
+  return api.get(`${BASE}/operatori/${authUserId}/secondo-fattore/`)
+}
+
+// Scopo: accende o spegne l'obbligo sulla CREDENZIALE dell'operatore.
+export function impostaObbligoSecondoFattore(authUserId, valore) {
+  return api.post(`${BASE}/operatori/${authUserId}/secondo-fattore/obbligo/`, { valore })
+}
+
+// Scopo: cancella il device dell'operatore (telefono perso), col motivo.
+export function disattivaSecondoFattoreOperatore(authUserId, motivo) {
+  return api.post(`${BASE}/operatori/${authUserId}/secondo-fattore/disattiva/`, { motivo })
+}
+
 export function invitaOperatore(authUserId) {
   return api.post(`${BASE}/operatori/${authUserId}/invita/`)
 }
@@ -203,8 +221,12 @@ export function getProfiloReparto(uoId) {
   return api.get(`${BASE}/reparti/${uoId}/profilo/`)
 }
 
-export function putProfiloReparto(uoId, aree, azioni) {
-  return api.put(`${BASE}/reparti/${uoId}/profilo/`, { aree, azioni })
+// `richiedeSecondoFattore`: il segno del profilo (chi lo riceve deve usare il
+// secondo fattore). `undefined` = non si manda, e il backend lo lascia com'e'.
+export function putProfiloReparto(uoId, aree, azioni, richiedeSecondoFattore) {
+  const corpo = { aree, azioni }
+  if (richiedeSecondoFattore !== undefined) corpo.richiede_secondo_fattore = richiedeSecondoFattore
+  return api.put(`${BASE}/reparti/${uoId}/profilo/`, corpo)
 }
 
 // --- Email Accounts ---

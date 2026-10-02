@@ -23,6 +23,7 @@ const ROTTA_AVVIO_NON_RIUSCITO = 'avvio-non-riuscito'
 
 const UNIVERSAL_ROUTE_NAMES = new Set([
   'change-password',
+  'sicurezza',
   'forbidden',
   'not-found',
   ROTTA_AVVIO_NON_RIUSCITO
@@ -75,6 +76,16 @@ const router = createRouter({
       path: '/change-password',
       name: 'change-password',
       component: () => import('../core/views/ChangePasswordView.vue'),
+      meta: { requiresAuth: true }
+    },
+    // «Sicurezza dell'accesso» (secondo fattore): fuori dal layout come il
+    // cambio password, perche' con l'obbligo pendente il backend apre solo i
+    // suoi endpoint — dentro il layout l'avvio chiamerebbe API che rispondono
+    // 403 (brief sicurezza §3.4-bis, T-4).
+    {
+      path: '/sicurezza',
+      name: 'sicurezza',
+      component: () => import('../core/views/SicurezzaView.vue'),
       meta: { requiresAuth: true }
     },
     {
@@ -700,6 +711,14 @@ router.beforeEach(async (to) => {
   // Guard cambio password obbligatorio: redirect a /change-password
   if (auth.mustChangePassword && to.name !== 'change-password') {
     return { name: 'change-password' }
+  }
+
+  // Guard secondo fattore obbligatorio e non configurato: dopo la password,
+  // nell'ordine del cancello degli obblighi del backend (`obblighi_pendenti`
+  // di `/core/me/`). La destinazione resta in `redirect`.
+  if (auth.mustConfigureSecondFactor && to.name !== 'sicurezza') {
+    const query = to.fullPath !== '/' ? { redirect: to.fullPath } : {}
+    return { name: 'sicurezza', query }
   }
 
   // §8.5.4/§8.5.5 — Namespace multi-canale. Un utente autenticato puo'

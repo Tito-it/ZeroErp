@@ -147,13 +147,16 @@ def maschera_email(email: str) -> str:
     return f"{local[0]}***@{domain}"
 
 
-# Scopo: Il nome da mostrare di una credenziale (nome e cognome, altrimenti
-# lo username), per la firma «invitato da» delle email d'invito.
+# Scopo: Il nome da mostrare di una credenziale nelle email: la ragione
+# sociale completa del suo soggetto (decisione di Tid, 2026-10-02: «Ciao
+# Soggetto1773959838» veniva dal first_name copiato alla creazione), poi nome
+# e cognome, poi lo username. Il saluto del reset e della conferma del cambio
+# password, e la firma «invitato da» degli inviti.
 def nome_visualizzato(auth_user_id: int, auth_repo: AuthRepository | None = None) -> str:
     nomi = (auth_repo or AuthRepository()).get_nomi_credenziale(auth_user_id)
     if nomi is None:
         return "Amministratore"
-    nome = f"{nomi['first_name']} {nomi['last_name']}".strip()
+    nome = nomi.get("ragione_sociale_completa") or f"{nomi['first_name']} {nomi['last_name']}".strip()
     return nome or nomi["username"] or "Amministratore"
 
 

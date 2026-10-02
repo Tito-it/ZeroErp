@@ -3,8 +3,12 @@
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-10-01. **A chi:** team DB (`dev/db-tid`).
 > **Origine:** T-1 di [brief-be-fe-sicurezza-header-token-mfa.md](brief-be-fe-sicurezza-header-token-mfa.md)
 > §3.4-bis; decisione 9 di §6 (Tid, 2026-10-01: strada A).
-> **Stato:** ✅ **DB consegnato il 2026-10-01**: `20261001-35` applicato da Tid, pgTAP senza
-> regressioni (§5). ⏳ Resta il backend (§4).
+> **Stato:** ✅ **CHIUSO il 2026-10-02.** DB consegnato il 2026-10-01 (`20261001-35` applicato da
+> Tid, pgTAP senza regressioni, §5; in `Tito-dev` col `26749ed5b`). Backend fatto (§4):
+> `config.auth_totp_device.secret_encrypted` in `CAMPI_CIFRATI` con `verbo =
+> script.fn_totp_ricifra_segreto`, e i due casi in `test_ricifra_campi_cifrati_db`
+> (`test_segreto_totp_ruota_attraverso_il_verbo`, `test_segreto_totp_cambiato_nel_frattempo_resta`),
+> verdi sul DB vero.
 > Prima riga di stato del giorno: «scritto lato DB, da applicare». Il backend va avanti con
 > T-2, che non ne dipende; il segreto entra in `CAMPI_CIFRATI` all'arrivo del verbo, e **prima**
 > che T-3 metta in esercizio la registrazione dei device.

@@ -196,20 +196,47 @@ export const CANALE_LOGIN = {
     key: 'ADMIN',
     tokenPath: '/admin/token/',
     refreshPath: '/admin/token/refresh/',
+    // Il secondo passo del login (secondo fattore): sotto /token/, quindi
+    // l'interceptor non prova a rinnovare la sessione su un suo 401.
+    secondoFattorePath: '/admin/token/secondo-fattore/',
     i18n: 'auth.canale.admin'
   },
   PORTALE: {
     key: 'PORTALE',
     tokenPath: '/portale/token/',
     refreshPath: '/portale/token/refresh/',
+    secondoFattorePath: '/portale/token/secondo-fattore/',
     i18n: 'auth.canale.portale'
   },
   SHOP: {
     key: 'SHOP',
     tokenPath: '/shop/token/',
     refreshPath: '/shop/token/refresh/',
+    secondoFattorePath: '/shop/token/secondo-fattore/',
     i18n: 'auth.canale.shop'
   }
+}
+
+// Gli obblighi della credenziale che il backend fa rispettare (cancello degli
+// obblighi): arrivano da `/core/me/` in `obblighi_pendenti`, nell'ordine in cui
+// si chiudono. Il guard del router porta alla pagina che chiude il primo.
+export const OBBLIGO_CREDENZIALE = {
+  CAMBIO_PASSWORD: 'CAMBIO_PASSWORD',
+  SECONDO_FATTORE: 'SECONDO_FATTORE'
+}
+
+// Lo stato del device del secondo fattore, come lo dice il backend
+// (`STATI_DEVICE` di `apps/core/db/secondo_fattore_repository.py`).
+export const STATO_SECONDO_FATTORE = {
+  ASSENTE: 'ASSENTE',
+  DA_CONFERMARE: 'DA_CONFERMARE',
+  ATTIVO: 'ATTIVO'
+}
+
+// Da dove viene l'obbligo del secondo fattore (`motivo` dello stato).
+export const MOTIVO_OBBLIGO_SECONDO_FATTORE = {
+  CREDENZIALE: 'CREDENZIALE',
+  PROFILO: 'PROFILO'
 }
 
 // Lista ordinata dei canali (ordine di visualizzazione nel radio).
@@ -454,6 +481,9 @@ export const MANAGE_ICONS = {
   CLOSE: 'pi pi-lock',
   CLOSE_DATE: 'pi pi-calendar-times',
   PERMISSIONS: 'pi pi-shield',
+  // La sicurezza dell'accesso: il secondo fattore (pagina «Sicurezza», sezione
+  // del drawer operatore).
+  SICUREZZA_ACCESSO: 'pi pi-key',
   BILLING_ACCOUNT: 'pi pi-credit-card',
   UTILITY: 'pi pi-bolt',
   LIST: 'pi pi-list',

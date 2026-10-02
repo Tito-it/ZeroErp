@@ -16,6 +16,7 @@ Indice test eseguiti:
 1)  PorteTests.test_ogni_veste_invitabile_ha_la_sua_porta
 2)  PorteTests.test_veste_senza_porta_esplode
 3)  PorteTests.test_maschera_email
+3b) PorteTests.test_nome_visualizzato_* — ragione sociale, poi nome e cognome, poi username
 4)  EmettiTests.test_senza_password_vera_token_invito
 5)  EmettiTests.test_con_password_vera_token_cross
 6)  EmettiTests.test_invalida_la_veste_prima_del_token_nuovo
@@ -54,6 +55,7 @@ from apps.core.services.invito_veste import (
     InvitoVeste,
     attiva_veste,
     maschera_email,
+    nome_visualizzato,
     porta_della_veste,
 )
 from apps.core.services.service_errors import ServiceError
@@ -79,6 +81,25 @@ class PorteTests(TestCase):
         self.assertEqual(maschera_email("mario@x.it"), "m***@x.it")
         self.assertEqual(maschera_email("a@x.it"), "*@x.it")
         self.assertEqual(maschera_email(""), "***")
+
+    # Scopo: Il nome delle email: la ragione sociale del soggetto prima di
+    #        tutto (decisione di Tid, 2026-10-02), poi i ripieghi.
+    def test_nome_visualizzato_ragione_sociale_prima(self):
+        repo = MagicMock()
+        nomi = {"first_name": "Soggetto1773959838", "last_name": "SmokeTest", "username": "smoke"}
+        repo.get_nomi_credenziale.return_value = {**nomi, "ragione_sociale_completa": "Test Smoke"}
+        self.assertEqual(nome_visualizzato(7, repo), "Test Smoke")
+        repo.get_nomi_credenziale.return_value = {**nomi, "ragione_sociale_completa": ""}
+        self.assertEqual(nome_visualizzato(7, repo), "Soggetto1773959838 SmokeTest")
+
+    def test_nome_visualizzato_ripieghi(self):
+        repo = MagicMock()
+        repo.get_nomi_credenziale.return_value = {
+            "first_name": "", "last_name": "", "username": "smoke", "ragione_sociale_completa": "",
+        }
+        self.assertEqual(nome_visualizzato(7, repo), "smoke")
+        repo.get_nomi_credenziale.return_value = None
+        self.assertEqual(nome_visualizzato(7, repo), "Amministratore")
 
 
 def _invito(ha_password: bool) -> tuple[InvitoVeste, MagicMock, MagicMock, MagicMock]:

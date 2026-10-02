@@ -26,7 +26,7 @@ from rest_framework.views import APIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import password_digitata
 from apps.core.api.success_responses import success_response
-from apps.core.api.throttling import PasswordResetRateThrottle
+from apps.core.api.throttling import ConfermaTokenRateThrottle, PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_constants import NOME_SISTEMA_EMAIL
 from apps.core.services.auth_helpers import (
@@ -36,7 +36,8 @@ from apps.core.services.auth_helpers import (
 )
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.request_context import get_client_ip
+from apps.core.services.invito_veste import nome_visualizzato
+from apps.core.services.request_context import get_client_ip, richiesta_django
 from apps.core.services.token_service import TokenService
 
 logger = logging.getLogger("security")
@@ -114,7 +115,7 @@ class PasswordResetRequestView(APIView):
                         codice_template=_TEMPLATE_RESET,
                         destinatario=user.email,
                         variabili={
-                            "nome": user.first_name or user.username,
+                            "nome": nome_visualizzato(user.id, _auth_repo),
                             "azienda": NOME_SISTEMA_EMAIL,
                             "link": link,
                             "scadenza_ore": str(_RESET_SCADENZA_ORE),
@@ -155,7 +156,7 @@ class PasswordResetConfirmView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [PasswordResetRateThrottle]
+    throttle_classes = [ConfermaTokenRateThrottle]
 
     @extend_schema(request=_RESET_CONFIRM_REQUEST, summary="Conferma reset password", responses={200: dict})
     # Scopo: Consuma token, imposta nuova password, blacklista token JWT,
@@ -187,7 +188,7 @@ class PasswordResetConfirmView(APIView):
             # che il freno protegge — i tentativi si azzerano su TUTTE le
             # provenienze. ⛔ Il blocco dell'admin resta (D-B3): il reset
             # dimostra il possesso dell'email, non annulla una decisione.
-            ip = get_client_ip(request._request if hasattr(request, "_request") else request)
+            ip = get_client_ip(richiesta_django(request))
             with transaction.atomic():
                 _token_service.consume(token, _RESET_TOKEN_TIPO, ip=ip)
                 apply_new_password(
@@ -206,7 +207,7 @@ class PasswordResetConfirmView(APIView):
                     codice_template=_TEMPLATE_CONFERMA,
                     destinatario=user.email,
                     variabili={
-                        "nome": user.first_name or user.username,
+                        "nome": nome_visualizzato(user.id, _auth_repo),
                         "azienda": NOME_SISTEMA_EMAIL,
                         "data_cambio": datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M"),
                     },

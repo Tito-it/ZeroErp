@@ -28,7 +28,7 @@ class PipelineStepLogMeta(TypedDict):
 # rende l'aggregazione un'identita' esatta (somma(qi*p) = p*somma(qi)), e
 # raggruppare su un float la renderebbe approssimata.
 # `visibilita_componenti` e' uscita dal modello il 2026-07-28: non era la regola
-# di esposizione dei kit (quella e' `articoli_componenti.esposto_in_fattura`) e
+# di esposizione dei kit (quella e' `articoli_componenti.esposizione_in_fattura`) e
 # non aveva alcun consumatore vivo.
 class GroupAttivitaKey(TypedDict):
     articolo_id: str  # uuid (catalogo.articoli.id)
@@ -832,7 +832,7 @@ class PreventivoRigaComponenteRow(TypedDict):
     ordine: int | None
     attivo: bool
     obbligatorio: bool
-    esposto_in_fattura: bool
+    esposizione_in_fattura: str  # codice di config.esposizioni_componente
 
 
 class PreventivoRigaComponentePreviewRow(TypedDict):
@@ -849,7 +849,7 @@ class PreventivoRigaComponentePreviewRow(TypedDict):
     origine_prezzo: str | None
     resolver_error_reason: str | None
     obbligatorio: bool
-    esposto_in_fattura: bool
+    esposizione_in_fattura: str  # codice di config.esposizioni_componente
 
 
 # Componente BoM di riga contratto (modello unificato 2026-05-13). Specchio
@@ -880,7 +880,7 @@ class ContrattoRigaComponenteRow(TypedDict):
     ordine: int | None
     attivo: bool
     obbligatorio: bool
-    esposto_in_fattura: bool
+    esposizione_in_fattura: str  # codice di config.esposizioni_componente
 
 
 # Aggregato smistamento per ramo (vw_preventivi_smistamento, sostituisce la
@@ -1044,7 +1044,7 @@ class OffertaEccezioneComponenteRow(TypedDict):
     ordine: int | None
     attivo: bool
     obbligatorio: bool
-    esposto_in_fattura: bool
+    esposizione_in_fattura: str  # codice di config.esposizioni_componente
 
 
 class OffertaUtilityRow(TypedDict):

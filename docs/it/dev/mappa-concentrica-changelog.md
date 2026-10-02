@@ -178,8 +178,8 @@ passo, non sul codice*, sblocco d'emergenza solo dalla sessione del migratore
 con traccia. I tre codici del **cancello degli obblighi** sono consegnati a
 file il 30-09, **da applicare**. ⚠️ Aperto: il TOTP lato BE/FE (lotti
 T-0…T-5, dal 30-09). Vedi
-[brief-be-fe-sicurezza-header-token-mfa.md](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md),
-[brief-db-secondo-fattore-totp.md](work-in-progress/brief-db-secondo-fattore-totp.md),
+[brief-be-fe-sicurezza-header-token-mfa.md](work-done/brief-be-fe-sicurezza-header-token-mfa.md),
+[brief-db-secondo-fattore-totp.md](work-done/brief-db-secondo-fattore-totp.md),
 [configurazione-django.md](backend/configurazione-django.md).
 
 **Anello 0 — Ciò che la CI non vedeva: trigger generati e giro notturno.**

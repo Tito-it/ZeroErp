@@ -20,10 +20,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -66,29 +64,9 @@ echo "========================================="
 echo ""
 echo "-- 0. Login JWT admin --"
 
-if [[ -z "$PASSWORD" ]]; then
-    echo -n "Password per utente '$USERNAME': "
-    read -rs PASSWORD
-    echo ""
-fi
-
-LOGIN_BODY=$(printf '{"username":"%s","password":"%s"}' "$USERNAME" "$PASSWORD")
-
-curl -s -w '\n%{http_code}' \
-    -H "Content-Type: application/json" \
-    -d "$LOGIN_BODY" \
-    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
-
-AUTH_STATUS=$(tail -1 "$TMPFILE")
-AUTH_BODY=$(sed '$d' "$TMPFILE")
-
-if [[ "$AUTH_STATUS" != "200" ]]; then
-    echo -e "${RED}ERRORE: autenticazione fallita (HTTP $AUTH_STATUS)${NC}"
-    echo "$AUTH_BODY" | head -c 300
-    exit 1
-fi
-
-ACCESS_TOKEN=$(json_get "$AUTH_BODY" "access")
+# Login vero: il passo legge la risposta del login (password_change_required).
+smoke_login --login-vero
+ACCESS_TOKEN="$TOKEN"
 log_ok "Login riuscito (HTTP $AUTH_STATUS)"
 
 PW_FLAG=$(json_get "$AUTH_BODY" "password_change_required")

@@ -18,6 +18,10 @@ Indice test eseguiti:
 14) FattureRigheServiceKitTests.test_quantita_kit_disomogenee_solleva
 15) FattureRigheServiceKitTests.test_riga_normale_senza_colonne_kit
 16) FattureRigheServiceKitTests.test_kit_con_iva_diverse_non_e_falso_positivo
+16b) FattureRigheServiceKitTests.test_esposizione_congelata_col_suo_codice
+16c) FattureRigheServiceKitTests.test_chiave_esposizione_assente_vale_nascosto
+16d) FattureRigheServiceKitTests.test_r10_ignora_l_esposizione
+16e) FattureRigheServiceKitTests.test_r10_vale_anche_per_i_valorizzati
 17) FattureRigheServiceRobustezzaTests.test_prezzo_mancante_solleva_con_attivita_identificata
 18) FattureRigheServiceRobustezzaTests.test_ordinamento_per_prezzo_e_numerico
 19) FattureRigheServiceRettificaTests.test_rettifiche_di_righe_diverse_non_si_fondono
@@ -222,14 +226,17 @@ def _attivita_kit(
     articolo_id=ART_A,
     quantita="2.0",
     padre=ART_PADRE,
-    esposto=True,
+    esposizione="DESCRITTIVO",
 ):
     meta = {
         kit_meta.META_KEY_SEGMENT_KEY: kit_meta.segment_key_componente(
             f"ORD:019f7c7b-c434-735e-98b7-9564eb6a9626:R:{kit_riga}", articolo_id
         ),
-        kit_meta.META_KEY_ESPOSTO_IN_FATTURA: esposto,
     }
+    # `None` = chiave assente: il meta di un'attivita' scritta prima del push
+    # che porta il modo.
+    if esposizione is not None:
+        meta[kit_meta.META_KEY_ESPOSIZIONE] = esposizione
     if padre is not None:
         meta[kit_meta.META_KEY_COMPONENTE_DI] = padre
     return _attivita_base(
@@ -439,7 +446,7 @@ class FattureRigheServiceKitTests(SimpleTestCase):
             ["ORD:019f7c7b-c434-735e-98b7-9564eb6a9626:R:608"],
         )
         self.assertEqual(kw["righe_kit_articolo_padre_ids"], [ART_PADRE])
-        self.assertEqual(kw["righe_kit_esposti"], [True])
+        self.assertEqual(kw["righe_kit_esposizioni"], ["DESCRITTIVO"])
 
     # Scopo: R11 — senza `componente_di` il componente si fatturerebbe due volte.
     def test_componente_senza_padre_solleva(self):
@@ -481,7 +488,7 @@ class FattureRigheServiceKitTests(SimpleTestCase):
         _genera(repo)
         kw = repo.last_kwargs
         self.assertEqual(kw["righe_kit_keys"], [None])
-        self.assertEqual(kw["righe_kit_esposti"], [None])
+        self.assertEqual(kw["righe_kit_esposizioni"], [None])
         self.assertEqual(kw["righe_kit_articolo_padre_ids"], [None])
 
     # Scopo: R13 — componenti dello stesso kit con IVA diverse producono DUE
@@ -500,6 +507,60 @@ class FattureRigheServiceKitTests(SimpleTestCase):
         kw = repo.last_kwargs
         self.assertEqual(len(kw["righe_nrs"]), 2)
         self.assertEqual(sorted(kw["righe_qtas"]), [Decimal("2.0"), Decimal("6.0")])
+
+    # Scopo: il modo arriva sulla riga com'e' nel meta, codice e non booleano:
+    # i valori li giudica la FK su `fatture_righe.kit_esposizione`.
+    def test_esposizione_congelata_col_suo_codice(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_kit(11, kit_riga=608, articolo_id=ART_A, esposizione="VALORIZZATO"),
+                _attivita_kit(12, kit_riga=608, articolo_id=ART_B, esposizione="NASCOSTO"),
+            ]
+        )
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(
+            sorted(kw["righe_kit_esposizioni"]), ["NASCOSTO", "VALORIZZATO"]
+        )
+
+    # Scopo: un meta senza la chiave vale il default della colonna di
+    # distinta (NASCOSTO), non NULL — che il CHECK `kit_coerente` rifiuterebbe.
+    def test_chiave_esposizione_assente_vale_nascosto(self):
+        repo = _RepoMock(attivita=[_attivita_kit(11, kit_riga=608, esposizione=None)])
+        _genera(repo)
+        self.assertEqual(repo.last_kwargs["righe_kit_esposizioni"], ["NASCOSTO"])
+
+    # Scopo: R-BE-3 — la vista fa la media della quantita' su TUTTI i
+    # componenti, valorizzati compresi: modi diversi con la stessa quantita'
+    # sono un kit legittimo, non due padri.
+    def test_r10_ignora_l_esposizione(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_kit(11, kit_riga=608, articolo_id=ART_A, esposizione="VALORIZZATO"),
+                _attivita_kit(12, kit_riga=608, articolo_id=ART_B, esposizione="NASCOSTO"),
+            ]
+        )
+        _genera(repo)
+        self.assertEqual(len(repo.last_kwargs["righe_nrs"]), 2)
+
+    # Scopo: R-BE-3, il rovescio — un valorizzato con quantita' diversa
+    # renderebbe senza significato la quantita' del padre: si ferma.
+    def test_r10_vale_anche_per_i_valorizzati(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_kit(
+                    11, kit_riga=608, articolo_id=ART_A, quantita="2.0",
+                    esposizione="VALORIZZATO",
+                ),
+                _attivita_kit(
+                    12, kit_riga=608, articolo_id=ART_B, quantita="6.0",
+                    esposizione="NASCOSTO",
+                ),
+            ]
+        )
+        with self.assertRaises(ServiceError) as exc:
+            _genera(repo)
+        self.assertEqual(exc.exception.code, "E_KIT_QUANTITA_DISOMOGENEE")
 
 
 class FattureRigheServiceRobustezzaTests(SimpleTestCase):

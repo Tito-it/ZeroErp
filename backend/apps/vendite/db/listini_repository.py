@@ -1305,7 +1305,7 @@ class ListiniRepository:
                 -- gia' scalato per la quantita padre del documento.
                 ac.coeff_qta                       AS quantita_componente,
                 ac.obbligatorio,
-                ac.esposto_in_fattura,
+                ac.esposizione_in_fattura,
                 a.iva_id,
                 iva.codice                         AS iva_codice,
                 iva.aliquota_iva                   AS iva_aliquota,

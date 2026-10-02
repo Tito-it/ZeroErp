@@ -508,6 +508,28 @@ class PayloadValidator:
             **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
         )
 
+    # Scopo: Estrae un bool obbligatorio rigoroso: assente o None si rifiutano
+    #        come un valore non booleano (stesse regole di `optional_bool`).
+    #        Per i comandi che accendono o spengono qualcosa, dove «assente =
+    #        invariato» non ha senso.
+    def require_bool(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> bool:
+        value = self.optional_bool(payload, key, log_to_db=log_to_db, function_name=function_name)
+        if value is None:
+            ErrorManager.raise_error(
+                code=self._code,
+                message=f"Campo '{key}' obbligatorio (booleano).",
+                context={key: None, "field": key},
+                **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
+            )
+        return value
+
     # =================================================================
     # Estrazione UUID
     # =================================================================

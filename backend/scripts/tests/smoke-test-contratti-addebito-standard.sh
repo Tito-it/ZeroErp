@@ -26,10 +26,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 # Override esplicito emittente (opzionale). Se vuoto, si deriva dal documento
 # sorgente del BA (vedi setup); ultimo fallback 32.
 EMITTENTE_OVERRIDE="${EMITTENTE_ID:-}"
@@ -88,13 +86,7 @@ check() {
 
 # --- 0. Auth ---
 echo "== Smoke contratto addebito standard → commessa =="
-if [[ -z "$PASSWORD" ]]; then echo -e "${RED}Password mancante${NC} (arg1 o SMOKE_PASSWORD)"; exit 2; fi
-curl -s -w '\n%{http_code}' -X POST -H "Content-Type: application/json" \
-    -d "{\"username\": \"$USERNAME\", \"password\": \"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
-AUTH_BODY=$(sed '$d' "$TMPFILE")
-TOKEN=$(json_get "$AUTH_BODY" "access")
-if [[ -z "$TOKEN" ]]; then echo -e "${RED}Auth fallita${NC}"; exit 2; fi
+smoke_login --senza-prompt --uscita 2
 log_ok "Autenticazione JWT"
 
 # --- 1. Setup: tripla BA+utility+istanza + articolo ---

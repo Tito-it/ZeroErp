@@ -383,6 +383,7 @@ class RepartoProfiloView(AdminAPIView):
     @extend_schema(
         request=inline_serializer(name="RepartoProfiloPutReq", fields={
             "aree": serializers.ListField(), "azioni": serializers.ListField(),
+            "richiede_secondo_fattore": serializers.BooleanField(required=False),
         }),
         responses={200: inline_serializer(name="RepartoProfiloPutResp", fields={"data": serializers.DictField()})},
     )
@@ -390,6 +391,7 @@ class RepartoProfiloView(AdminAPIView):
         corpo = corpo_oggetto(request)
         result = AmmSoftwareService().put_profilo_reparto(
             uo_id, corpo.get("aree", []), corpo.get("azioni", []),
+            payload=corpo,
         )
         return success_response(result)
 

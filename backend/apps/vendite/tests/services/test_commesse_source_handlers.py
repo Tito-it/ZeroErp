@@ -56,7 +56,7 @@ Ottimizzazioni post-review (O1 cache modulo + O2 skip qta zero):
 
 Path snapshot componenti pre-popolati (refactor 2026-05-11):
 38) BoMComponentExpanderTests.test_snapshot_loader_genera_pushable_rows_da_componenti
-38b) BoMComponentExpanderTests.test_snapshot_loader_esposto_default_false_se_assente
+38b) BoMComponentExpanderTests.test_snapshot_loader_esposizione_default_nascosto_se_assente
 39) BoMComponentExpanderTests.test_snapshot_loader_vuoto_fallback_resolver
 40) BoMComponentExpanderTests.test_snapshot_loader_skip_se_riga_sorgente_id_none
 
@@ -569,7 +569,7 @@ def _make_snapshot_componente(**overrides) -> dict:
         "uom_operativa_id": 42,
         "prezzo_unitario": Decimal("10.00"),
         "coeff_qta_snapshot": Decimal("1"),
-        "esposto_in_fattura": True,
+        "esposizione_in_fattura": "DESCRITTIVO",
         "origine_prezzo": "CATEGORIA",
     }
     defaults.update(overrides)
@@ -629,7 +629,7 @@ class BoMComponentExpanderTests(TestCase):
 
     # Scopo: con componenti_loader iniettato + riga_sorgente_id valorizzato +
     # snapshot non vuoto, l'expander genera PushableRow dai componenti
-    # pre-popolati. Modello unificato 2026-05-13: `esposto_in_fattura`
+    # pre-popolati. Modello unificato 2026-05-13: `esposizione_in_fattura`
     # arriva dal snapshot (proiezione JOIN su articoli_componenti),
     # propagato nel meta. Tutti i figli passano in commessa.
     def test_snapshot_loader_genera_pushable_rows_da_componenti(self):
@@ -640,7 +640,7 @@ class BoMComponentExpanderTests(TestCase):
                 "prezzo_unitario": Decimal("200.00"),
                 "coeff_qta_snapshot": Decimal("1"),
                 "origine_prezzo": "LISTINO_BUNDLE",
-                "esposto_in_fattura": True,
+                "esposizione_in_fattura": "VALORIZZATO",
             },
             {
                 "componente_id": "cmp-02",
@@ -648,7 +648,7 @@ class BoMComponentExpanderTests(TestCase):
                 "prezzo_unitario": Decimal("75.00"),
                 "coeff_qta_snapshot": Decimal("4"),
                 "origine_prezzo": "MANUALE",
-                "esposto_in_fattura": False,
+                "esposizione_in_fattura": "NASCOSTO",
             },
         ])
         expander = BoMComponentExpander(
@@ -673,22 +673,19 @@ class BoMComponentExpanderTests(TestCase):
         self.assertIn("#CMP:cmp-01", result[0].segment_key)
         self.assertIn("#CMP:cmp-02", result[1].segment_key)
         # DEC-6 meta arricchito.
-        self.assertEqual(result[0].meta["esposto_in_fattura"], True)
+        self.assertEqual(result[0].meta["esposizione"], "VALORIZZATO")
         self.assertEqual(result[0].meta["componente_di"], str(row.articolo_id))
-        self.assertEqual(result[1].meta["esposto_in_fattura"], False)
+        self.assertEqual(result[1].meta["esposizione"], "NASCOSTO")
         # origine_prezzo propagato in meta per audit downstream
         self.assertEqual(result[0].meta["origine_prezzo"], "LISTINO_BUNDLE")
         self.assertEqual(result[1].meta["origine_prezzo"], "MANUALE")
-        # esposto_in_fattura letto dal snapshot (modello unificato): True
-        # per il primo, False per il secondo. Era hardcoded True nel
-        # vecchio modello (CASO A: solo esposti popolati in init).
-        self.assertEqual(result[0].meta["esposto_in_fattura"], True)
-        self.assertEqual(result[1].meta["esposto_in_fattura"], False)
+        # Il modo e' il CODICE letto dalla distinta, non un booleano
+        # (dal 2026-10-01), e nessuna vecchia chiave resta nel meta.
+        self.assertNotIn("esposto_in_fattura", result[0].meta)
 
-    # Scopo: snapshot privo del flag `esposto_in_fattura` → default False.
-    # Defense-in-depth contro caller che non popolano il campo (es. test
-    # legacy, snapshot pre-modello-unificato non aggiornati).
-    def test_snapshot_loader_esposto_default_false_se_assente(self):
+    # Scopo: snapshot senza `esposizione_in_fattura` (LEFT JOIN sulla
+    # distinta) → il default della colonna, NASCOSTO.
+    def test_snapshot_loader_esposizione_default_nascosto_se_assente(self):
         snapshot_loader = MagicMock(return_value=[
             {
                 "componente_id": "cmp-01",
@@ -696,7 +693,7 @@ class BoMComponentExpanderTests(TestCase):
                 "prezzo_unitario": Decimal("100.00"),
                 "coeff_qta_snapshot": Decimal("1"),
                 "origine_prezzo": "MANUALE",
-                # Nessun esposto_in_fattura
+                # Nessuna esposizione_in_fattura
             },
         ])
         expander = BoMComponentExpander(
@@ -708,7 +705,7 @@ class BoMComponentExpanderTests(TestCase):
         result = expander.expand(row)
 
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0].meta["esposto_in_fattura"], False)
+        self.assertEqual(result[0].meta["esposizione"], "NASCOSTO")
 
     # Scopo: composito senza snapshot loader → pass-through difensivo +
     # warning audit. Post cleanup legacy 2026-05-14 (no piu' fallback al
@@ -830,14 +827,14 @@ class BoMComponentExpanderTests(TestCase):
         self.assertEqual(componente.competenza_mese, date(2026, 9, 1))
         self.assertTrue(componente.fatturazione_immediata)
 
-    # Scopo: DEC-6 — meta componente arricchito con `esposto_in_fattura`,
+    # Scopo: DEC-6 — meta componente arricchito con `esposizione`,
     # `componente_di` (audit inverso), `coeff_qta`, `origine_prezzo`.
     # Preserva meta padre.
     def test_snapshot_meta_arricchito(self):
         snapshot_loader = MagicMock(return_value=[
             _make_snapshot_componente(
                 componente_id="cmp-01",
-                esposto_in_fattura=True,
+                esposizione_in_fattura="DESCRITTIVO",
                 coeff_qta_snapshot=Decimal("2"),
                 origine_prezzo="MANUALE",
             ),
@@ -854,7 +851,7 @@ class BoMComponentExpanderTests(TestCase):
 
         result = expander.expand(row)
 
-        self.assertEqual(result[0].meta["esposto_in_fattura"], True)
+        self.assertEqual(result[0].meta["esposizione"], "DESCRITTIVO")
         self.assertEqual(result[0].meta["componente_di"], "art-parent")
         self.assertEqual(result[0].meta["coeff_qta"], "2")
         self.assertEqual(result[0].meta["origine_prezzo"], "MANUALE")
@@ -1359,10 +1356,10 @@ class CompositiFanOutWiringTests(TestCase):
         comp_repo.list_componenti_riga.return_value = [
             {"componente_id": "c1", "uom_operativa_id": 9,
              "prezzo_unitario": Decimal("5.00"), "coeff_qta_snapshot": "1",
-             "esposto_in_fattura": True, "origine_prezzo": "CONTRATTO_LISTINO"},
+             "esposizione_in_fattura": "DESCRITTIVO", "origine_prezzo": "CONTRATTO_LISTINO"},
             {"componente_id": "c2", "uom_operativa_id": 9,
              "prezzo_unitario": Decimal("3.00"), "coeff_qta_snapshot": "2",
-             "esposto_in_fattura": False, "origine_prezzo": "CONTRATTO_LISTINO"},
+             "esposizione_in_fattura": "NASCOSTO", "origine_prezzo": "CONTRATTO_LISTINO"},
         ]
         ps = MagicMock()
         ps.resolve_prezzo.return_value = {}  # audit best-effort, non rilevante qui

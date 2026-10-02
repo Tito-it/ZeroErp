@@ -55,11 +55,14 @@ const livelloOptions = buildLivelloOptions(t)
 
 const localAree = ref([])
 const localAzioni = ref([])
+// Il segno del profilo: chi riceve il reparto deve usare il secondo fattore.
+const localRichiedeSecondoFattore = ref(false)
 
 // Modifiche non salvate: i due elenchi raccolti in cio' che il Salva manda.
 const profiloDaSalvare = computed(() => ({
   aree: localAree.value.map(a => ({ area_id: a.area_id, livello: a.livello })),
   azioni: localAzioni.value.map(a => ({ azione_id: a.azione_id, abilitata: a.abilitata })),
+  richiede_secondo_fattore: localRichiedeSecondoFattore.value,
 }))
 const { fissa, modificato, chiudiConConferma } =
   useDrawerFormPreserve(profiloDaSalvare, { visibile: () => props.visible })
@@ -88,6 +91,7 @@ watch(() => props.visible, async (val) => {
       pericolosa: ap.pericolosa,
       abilitata: existingAzioni.get(ap.id) || false
     }))
+    localRichiedeSecondoFattore.value = !!profilo.richiede_secondo_fattore
     fissa()
   }
 })
@@ -95,9 +99,9 @@ watch(() => props.visible, async (val) => {
 function onSave() {
   confirmSave(async () => {
     // Lo stesso payload che la fotografia confronta: una definizione sola.
-    const { aree, azioni } = profiloDaSalvare.value
+    const { aree, azioni, richiede_secondo_fattore } = profiloDaSalvare.value
     const result = await execute(
-      () => repartiStore.saveProfilo(props.uoId, aree, azioni),
+      () => repartiStore.saveProfilo(props.uoId, aree, azioni, richiede_secondo_fattore),
       { successMessage: t('notifications.save_success') }
     )
     if (result) emit('saved')
@@ -122,6 +126,13 @@ const suVisibile = gestoreVisibile(emit, chiudi)
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div class="form-field">
+      <label for="tg-richiede-secondo-fattore">{{ t('amministrazione.secondo_fattore.richiesto_dal_profilo') }}</label>
+      <div class="app-form-inline-toggle">
+        <ToggleSwitch v-model="localRichiedeSecondoFattore" input-id="tg-richiede-secondo-fattore" />
+        <small class="app-field-hint">{{ t('amministrazione.secondo_fattore.richiesto_dal_profilo_aiuto') }}</small>
+      </div>
+    </div>
     <Accordion :value="['aree', 'azioni']" multiple>
       <AccordionPanel value="aree">
         <AccordionHeader>{{ t('amministrazione.aree_funzionali') }}</AccordionHeader>

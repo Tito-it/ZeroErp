@@ -814,7 +814,7 @@ function riportaSelezionati() {
         //    ne' perche', e riproverebbe.
         const check = await execute(() => checkRiportabili(ids))
         if (check === null) return
-        const ostacoli = check.data?.data?.motivi ?? []
+        const ostacoli = check?.motivi ?? []
         if (ostacoli.length) {
           notify.warn(t('vendite.dashboard_competenza.riporta_ostacoli', {
             n: ostacoli.length,
@@ -831,7 +831,7 @@ function riportaSelezionati() {
         //    falsy, e `useApiHandler` restituisce `null` SOLO in errore. Con
         //    `if (res)` un esito legittimo verrebbe scambiato per un fallimento.
         if (res === null) return
-        const d = res.data?.data ?? {}
+        const d = res ?? {}
         const riportate = Number(d.riportate ?? 0)
         if (riportate > 0) {
           notify.success(t('vendite.dashboard_competenza.riporta_esito', {

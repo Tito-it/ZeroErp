@@ -20,7 +20,7 @@ from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.parameter_service import ParameterService
-from apps.core.services.payload_helpers import translate_db_errors
+from apps.core.services.payload_helpers import PayloadValidator, translate_db_errors
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
 from apps.core.services.revoca_token import blocca_token_sessioni
@@ -610,8 +610,17 @@ class AmmSoftwareService:
     # =================================================================
 
     # Scopo: Salva profilo reparto e invalida cache di tutti gli operatori del reparto.
-    def put_profilo_reparto(self, uo_id: int, aree: list, azioni: list) -> dict:
-        self._repo.put_profilo_reparto(uo_id, aree, azioni)
+    #        `richiede_secondo_fattore` letto dal corpo: assente = invariato; se
+    #        c'e' dev'essere un booleano (brief sicurezza §3.4-bis, T-3).
+    def put_profilo_reparto(
+        self, uo_id: int, aree: list, azioni: list, *, payload: dict[str, Any] | None = None,
+    ) -> dict:
+        richiede_secondo_fattore = PayloadValidator(validation_code=E_AMM_VALIDAZIONE).optional_bool(
+            payload or {}, "richiede_secondo_fattore",
+        )
+        self._repo.put_profilo_reparto(
+            uo_id, aree, azioni, richiede_secondo_fattore=richiede_secondo_fattore,
+        )
         invalidate_department(uo_id)
         return self._repo.get_profilo_reparto(uo_id)
 

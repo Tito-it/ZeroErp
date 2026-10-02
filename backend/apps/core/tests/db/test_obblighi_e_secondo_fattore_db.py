@@ -21,12 +21,17 @@ Indice test eseguiti:
 5) DeviceDbTests.test_codici_di_recupero_monouso — consuma, conta, rigenera
 6) DeviceDbTests.test_obbligo_da_configurare_con_device_a_meta — DA_CONFERMARE non soddisfa
 7) DeviceDbTests.test_uso_senza_device_attivo — prima della conferma niente login
+8) ServizioDbTests.test_configura_rigenera_e_disattiva_da_se — col servizio, e la riga di traccia
+9) ServizioDbTests.test_il_super_admin_impone_l_obbligo_e_disattiva_col_motivo — il SUPER_ADMIN lo crea il test
+10) ServizioDbTests.test_chi_non_e_super_admin_non_impone_ne_disattiva — E_PERMESSO_NEGATO dai verbi
+11) ServizioDbTests.test_senza_traccia_la_disattivazione_si_annulla — D-T3, il savepoint del servizio
 """
 
 from __future__ import annotations
 
 import unittest
 import uuid
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.db import DatabaseError, connection, transaction
@@ -36,6 +41,7 @@ from apps.core.api.cancello_obblighi import (
     OBBLIGO_SECONDO_FATTORE,
     obblighi_pendenti,
 )
+from apps.core.db._helpers import jsonb_out
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.db.secondo_fattore_repository import SecondoFattoreRepository
 from apps.core.services import crypto_service, totp_service
@@ -199,3 +205,149 @@ class DeviceDbTests(_TransazioneAnnullata):
             self._codice_errore(lambda: self.repo.registra_uso(self.uid, passo=passo)),
             "E_TOTP_DEVICE_ASSENTE",
         )
+
+
+class ServizioDbTests(_TransazioneAnnullata):
+    """Il servizio sui verbi veri: cio' che le view del self-service e del
+    SUPER_ADMIN fanno, senza HTTP (la view e' provata coi mock)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from django.test import RequestFactory
+
+        from apps.core.services.secondo_fattore_service import SecondoFattoreService
+
+        self.servizio = SecondoFattoreService()
+        self.user = _nuova_credenziale()
+        self.request = RequestFactory().post("/", REMOTE_ADDR="198.51.100.60")
+
+    # Scopo: Chi agisce, per i verbi che lo leggono (la GUC del Bearer).
+    @staticmethod
+    def _agisce(auth_user_id: int) -> None:
+        with connection.cursor() as cur:
+            cur.execute("SELECT set_config('app.current_user_id', %s, true)", [str(auth_user_id)])
+
+    # Scopo: Il codice dell'app per il segreto mostrato, al passo dato.
+    @staticmethod
+    def _codice(segreto_mostrato: str, passo: int) -> str:
+        import pyotp
+
+        return pyotp.TOTP(segreto_mostrato.replace(" ", "")).generate_otp(passo)
+
+    # Scopo: Le righe TOTP_DISABILITATO della credenziale.
+    @staticmethod
+    def _tracce(auth_user_id: int) -> list:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT dettaglio FROM dbops.sessioni_utente "
+                "WHERE auth_user_id = %s AND evento = 'TOTP_DISABILITATO'",
+                [auth_user_id],
+            )
+            return [jsonb_out(r[0]) for r in cur.fetchall()]
+
+    def test_configura_rigenera_e_disattiva_da_se(self):
+        self._agisce(self.user.id)
+        adesso = totp_service.passo_corrente()
+        configurazione = self.servizio.avvia_configurazione(self.user)
+        self.assertEqual(self.servizio.stato(self.user.id)["stato"], "DA_CONFERMARE")
+
+        # Conferma col codice del passo precedente: il successivo resta libero.
+        segreto = configurazione["segreto"]
+        with patch("apps.core.services.totp_service.passo_corrente", return_value=adesso - 1):
+            self.servizio.conferma_configurazione(self.user, self._codice(segreto, adesso - 1))
+        self.assertEqual(self.servizio.stato(self.user.id)["stato"], "ATTIVO")
+
+        with patch("apps.core.services.totp_service.passo_corrente", return_value=adesso):
+            nuovi = self.servizio.rigenera_codici_recupero(
+                self.user, self._codice(segreto, adesso), provenienza="198.51.100.60",
+            )["codici_recupero"]
+
+        # Disattiva con un codice di recupero NUOVO: la traccia c'e', via APP.
+        self.servizio.disattiva_propria(
+            self.user, codice=None, codice_recupero=nuovi[0],
+            provenienza="198.51.100.60", request=self.request,
+        )
+        self.assertEqual(self.servizio.stato(self.user.id)["stato"], "ASSENTE")
+        self.assertEqual(
+            self._tracce(self.user.id),
+            [{"via": "APP", "chi_agisce": self.user.id, "motivo": None}],
+        )
+
+    # Scopo: Un operatore costruito dal percorso di produzione, volendo
+    #        SUPER_ADMIN. ⛔ Non uno preso dal DB: su un DB senza
+    #        amministratori il test si sarebbe saltato, verde senza provare.
+    @staticmethod
+    def _operatore(etichetta: str, *, super_admin: bool) -> int:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano(%s, %s)",
+                [etichetta, super_admin],
+            )
+            return cur.fetchone()[0]
+
+    # Scopo: Un device attivo per la credenziale del test, scritto da lei.
+    def _device_attivo(self) -> None:
+        self._agisce(self.user.id)
+        self.servizio.avvia_configurazione(self.user)
+        SecondoFattoreRepository().conferma_device(self.user.id, passo=totp_service.passo_corrente())
+
+    def test_il_super_admin_impone_l_obbligo_e_disattiva_col_motivo(self):
+        admin_id = self._operatore("sf admin", super_admin=True)
+        self._device_attivo()
+
+        self._agisce(admin_id)
+        stato = self.servizio.imposta_obbligo(self.user.id, True)
+        self.assertEqual((stato["obbligatorio"], stato["motivo"]), (True, "CREDENZIALE"))
+        self.assertTrue(stato["obbligo_sulla_credenziale"])
+
+        # Senza motivo il DB rifiuta, e niente traccia.
+        codice = self._codice_errore(lambda: self.servizio.disattiva_da_admin(
+            self.user.id, motivo="  ", chi_agisce=admin_id, request=self.request,
+        ))
+        self.assertEqual(codice, "E_TOTP_MOTIVO_OBBLIGATORIO")
+        self.assertEqual(self._tracce(self.user.id), [])
+
+        self.servizio.disattiva_da_admin(
+            self.user.id, motivo="telefono perso", chi_agisce=admin_id, request=self.request,
+        )
+        self.assertEqual(self.servizio.stato(self.user.id)["stato"], "ASSENTE")
+        self.assertEqual(
+            self._tracce(self.user.id),
+            [{"via": "APP", "chi_agisce": admin_id, "motivo": "telefono perso"}],
+        )
+
+    def test_chi_non_e_super_admin_non_impone_ne_disattiva(self):
+        collega = self._operatore("sf collega", super_admin=False)
+        self._device_attivo()
+
+        self._agisce(collega)
+        self.assertEqual(
+            self._codice_errore(lambda: self.servizio.imposta_obbligo(self.user.id, True)),
+            "E_PERMESSO_NEGATO",
+        )
+        self.assertEqual(
+            self._codice_errore(lambda: self.servizio.disattiva_da_admin(
+                self.user.id, motivo="telefono perso", chi_agisce=collega, request=self.request,
+            )),
+            "E_PERMESSO_NEGATO",
+        )
+        self.assertEqual(self.servizio.stato(self.user.id)["stato"], "ATTIVO")
+        self.assertEqual(self._tracce(self.user.id), [])
+
+    # Scopo: D-T3: una disattivazione senza traccia non resta. Se la scrittura
+    #        della riga TOTP_DISABILITATO fallisce, il device e' ancora ATTIVO.
+    #        ⭐ Sotto la transazione del test l'`atomic` del servizio e' un
+    #        savepoint: il suo annullamento si osserva qui.
+    def test_senza_traccia_la_disattivazione_si_annulla(self):
+        admin_id = self._operatore("sf traccia", super_admin=True)
+        self._device_attivo()
+
+        self._agisce(admin_id)
+        with patch(
+            "apps.core.services.secondo_fattore_service.SessionAuditRepository.log_session_event",
+            side_effect=DatabaseError("traccia non scritta"),
+        ), self.assertRaises(DatabaseError):
+            self.servizio.disattiva_da_admin(
+                self.user.id, motivo="telefono perso", chi_agisce=admin_id, request=self.request,
+            )
+        self.assertEqual(self.servizio.stato(self.user.id)["stato"], "ATTIVO")

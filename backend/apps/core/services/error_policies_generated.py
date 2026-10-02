@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 965, di cui 98 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 966, di cui 98 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1187,6 +1187,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Trigger DB immutabilita' v5 su listini_righe / listini_righe_componenti · (script.fn_log_and_raise_error, P0001): blocca INS/UPD/DLT quando · la versione listino non e' in BOZZA. Solleva il service · `fn_save_bundle` quando l'admin tenta di modificare prezzi bundle · su versione ATTIVA/CHIUSA.
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "CONFLITTO_STATO",
     "E_RIGA_PREZZO_PENDENTE": "CONFLITTO_STATO",
+    # anagrafiche.fn_crea_risorsa_umana_v2: il soggetto e' gia' una risorsa umana (uq_risorse_umane_soggetto_ruolo, anche se spenta). Lo raggiunge il flusso B di fn_crea_operatore_v2 su un soggetto che ha gia' il suo operatore. Prima arrivava come 23505/E_DATABASE. Campo = soggetto_id. Segnaposto: il nome del soggetto (con ripiego su nome e cognome, poi Il soggetto).
+    "E_RISORSA_UMANA_GIA_PRESENTE": "CONFLITTO_STATO",
     # anagrafiche.trgfn_risorse_umane_guard_identita_attiva: si prova a disattivare una risorsa umana mentre la sua identita digitale OPERATORE (stesso soggetto_ruolo_id) e ancora attiva. Figli prima, padre poi: il legame non e una FK (passa da soggetti_ruoli), quindi l automazione ATTIVO non lo genera e il guard e scritto a mano (12-09-2026, analisi-software-per-dati-morti 6.2). CONFLITTO_STATO: lo stato del figlio puo cambiare, l azione resta proposta e disabilitata col motivo.
     "E_RISORSA_UMANA_IDENTITA_ATTIVA": "CONFLITTO_STATO",
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "DATO_ERRATO",

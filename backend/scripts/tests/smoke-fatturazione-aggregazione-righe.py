@@ -23,7 +23,7 @@
 # crea proprie righe di commessa, un proprio lotto e proprie attivita' — e alla
 # fine non resta nulla. Rieseguibile all'infinito, anche in parallelo.
 #
-# Indice test (1..10):
+# Indice test (1..11):
 #   1  due attivita' con la STESSA chiave -> UNA riga, qta sommata
 #   2  la riga aggregata NON dichiara una sorgente singola
 #   3  entrambe le attivita' puntano alla riga (correlazione n->1)
@@ -32,8 +32,12 @@
 #   6  prezzo diverso -> riga separata (il prezzo sta nella chiave)
 #   7  la quantita' aggregata NON e' arrotondata
 #   8  componente di kit -> le 4 colonne di snapshot sono congelate
-#   9  la vista di esposizione produce KIT_PADRE + KIT_COMPONENTE
+#   9  la vista di esposizione produce KIT_PADRE + KIT_COMPONENTE (uno per
+#      componente non NASCOSTO)
 #  10  il totale della fattura non dipende da come il kit viene esposto
+#  11  il VALORIZZATO porta il suo importo, legato al kit (kit_riga_nr); il
+#      padre porta solo il DESCRITTIVO (brief-db-esposizione-componenti-kit-
+#      in-fattura, 2026-10-01)
 # ------------------------------------------------------------
 
 import uuid
@@ -217,14 +221,13 @@ with transaction.atomic():
         altri = [r[0] for r in cur.fetchall()]
         kit_ok = len(altri) >= 1
         if kit_ok:
-            for nome, art, esposto in [("K1", altri[0], True),
-                                       ("K2", t["articolo_id"], False)]:
+            for nome, art, esposizione in [("K1", altri[0], "VALORIZZATO"),
+                                           ("K2", t["articolo_id"], "DESCRITTIVO")]:
                 seg = kit_meta.segment_key_componente(kit_padre_segment, art)
                 meta_kit = (
-                    '{"%s": "%s", "%s": %s}'
+                    '{"%s": "%s", "%s": "%s"}'
                     % (kit_meta.META_KEY_COMPONENTE_DI, t["articolo_id"],
-                       kit_meta.META_KEY_ESPOSTO_IN_FATTURA,
-                       "true" if esposto else "false")
+                       kit_meta.META_KEY_ESPOSIZIONE, esposizione)
                 )
                 ca = crea_commessa_attivita(
                     cur, t, segment_key=seg, articolo_id=art,
@@ -252,7 +255,7 @@ with transaction.atomic():
             """
             SELECT r.id, r.riga_nr, r.qta, r.prezzo_unitario, r.imponibile_riga,
                    r.sorgente_tipo_id, r.sorgente_uid, r.kit_key,
-                   r.kit_esposto_in_fattura, r.kit_articolo_padre_id,
+                   r.kit_esposizione, r.kit_articolo_padre_id,
                    r.kit_descrizione_padre, r.meta, r.fattura_id
               FROM vendite.fatture_righe r
               JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = r.fattura_id
@@ -325,8 +328,28 @@ with transaction.atomic():
             esposizione = dict(cur.fetchall())
             check("9) la vista produce KIT_PADRE + KIT_COMPONENTE",
                   esposizione.get("KIT_PADRE") == 1
-                  and esposizione.get("KIT_COMPONENTE") == 1,
+                  and esposizione.get("KIT_COMPONENTE") == 2,
                   str(esposizione))
+            check("8b) il modo e' congelato col suo codice",
+                  sorted(r[8] for r in kit_righe) == ["DESCRITTIVO", "VALORIZZATO"],
+                  str(sorted(r[8] for r in kit_righe)))
+
+            # 11) il valorizzato fuori dal padre, legato al kit
+            cur.execute(
+                "SELECT tipo_riga, esposizione, imponibile, kit_riga_nr, riga_nr "
+                "FROM vendite.vw_fattura_righe_esposte "
+                "WHERE fattura_id = %s AND kit_key IS NOT NULL", [fattura_id],
+            )
+            vista = cur.fetchall()
+            padre = [v for v in vista if v[0] == "KIT_PADRE"]
+            valorizzati = [v for v in vista if v[1] == "VALORIZZATO"]
+            descrittivi = [v for v in vista if v[1] == "DESCRITTIVO"]
+            check("11) valorizzato con importo, descrittivo senza, padre = descrittivo",
+                  len(padre) == 1 and len(valorizzati) == 1 and len(descrittivi) == 1
+                  and valorizzati[0][2] is not None and descrittivi[0][2] is None
+                  and padre[0][2] == next(r[4] for r in kit_righe if r[8] == "DESCRITTIVO")
+                  and valorizzati[0][3] == padre[0][3],
+                  str(vista))
 
             # 10) invariante R18: il totale non dipende dall'esposizione.
             cur.execute(

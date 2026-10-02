@@ -4,6 +4,7 @@ import { local, STORAGE_KEYS } from './storage'
 import { resolveCanaleLogin } from './constants'
 import { MOTIVO_USCITA, azzeraAccess, getAccessToken, rinnovaCoordinato } from './sessione'
 import i18n from './i18n'
+import { extractApiErrorCode } from './utils/apiError'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -78,6 +79,11 @@ api.interceptors.response.use(
     //    e si è già sulla pagina di login.
     if (nonAutorizzato && originalRequest?._retry && !rottaDiToken) {
       await redirectToLogin()
+      return Promise.reject(error)
+    }
+
+    if (CODICI_OBBLIGO_PENDENTE.has(extractApiErrorCode(error))) {
+      await portaAllObbligo()
       return Promise.reject(error)
     }
 
@@ -159,6 +165,47 @@ export async function redirectToLogin(motivo = MOTIVO_USCITA.SESSIONE_SCADUTA) {
   // ⚠️ `catch` sul push: una navigazione respinta da un guard (o superata da
   //    un'altra) rifiuta la promise, e qui dentro nessuno la aspetta.
   return routerApp().push({ name: 'login', query }).catch(() => {})
+}
+
+// I 403 del cancello degli obblighi del backend (`apps/core/api/cancello_obblighi.py`):
+// la credenziale ha un obbligo da chiudere prima di ogni altra richiesta.
+const CODICI_OBBLIGO_PENDENTE = new Set(['E_CAMBIO_PASSWORD_RICHIESTO', 'E_TOTP_CONFIGURAZIONE_RICHIESTA'])
+
+// Le pagine che chiudono un obbligo: da lì un 403 del cancello non riporta
+// altrove (ci si è già).
+const ROTTE_DEGLI_OBBLIGHI = new Set(['change-password', 'sicurezza'])
+
+let portaAllObbligoInCorso = null
+
+// Scopo: un obbligo nato A SESSIONE APERTA — l'amministratore accende
+//        l'obbligo o spegne il device, un reparto passa a «richiede il secondo
+//        fattore», il secondo fattore spento da un'altra scheda. Il profilo
+//        letto al login non lo sa, e senza questo ogni chiamata rispondeva 403
+//        finché non si ricaricava la pagina. Si rilegge il profilo e si rifà la
+//        navigazione corrente: è il guard del router a scegliere la pagina
+//        (una regola sola, quella di `obblighi_pendenti`).
+// ⚠️ Una sola volta per volta: con più chiamate in volo che prendono il 403
+//    insieme, aspettano tutte la stessa promise.
+// ⚠️ Import dinamico per la stessa ragione di `redirectToLogin` (ciclo api →
+//    auth → api).
+function portaAllObbligo() {
+  if (!portaAllObbligoInCorso) {
+    portaAllObbligoInCorso = (async () => {
+      const rottaCorrente = routerApp().currentRoute?.value
+      if (ROTTE_DEGLI_OBBLIGHI.has(rottaCorrente?.name)) return
+      try {
+        const { useAuthStore } = await import('../stores/auth')
+        await useAuthStore().fetchProfile()
+      } catch {
+        return
+      }
+      // `force`: la stessa rotta, rinavigata perché il guard la rivaluti.
+      await routerApp().push({ path: rottaCorrente?.fullPath ?? '/', force: true }).catch(() => {})
+    })().finally(() => {
+      portaAllObbligoInCorso = null
+    })
+  }
+  return portaAllObbligoInCorso
 }
 
 export default api

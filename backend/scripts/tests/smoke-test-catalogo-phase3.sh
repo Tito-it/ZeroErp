@@ -26,10 +26,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 NOTE_STYLE_ID="${NOTE_STYLE_ID:-}"
 
 RED='\033[0;31m'
@@ -115,39 +113,9 @@ echo "========================================="
 echo ""
 echo "-- 0. Autenticazione --"
 
-if [[ -z "$PASSWORD" ]]; then
-    echo -n "Password per utente '$USERNAME': "
-    read -rs PASSWORD
-    echo ""
-fi
+smoke_login
 
-curl -s -w '\n%{http_code}' \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
-
-AUTH_STATUS=$(tail -1 "$TMPFILE")
-AUTH_BODY=$(sed '$d' "$TMPFILE")
-
-if [[ "$AUTH_STATUS" != "200" ]]; then
-    echo -e "${RED}ERRORE: autenticazione fallita (HTTP $AUTH_STATUS)${NC}"
-    echo "$AUTH_BODY" | head -c 300
-    exit 1
-fi
-
-TOKEN=$(json_get "$AUTH_BODY" ".access")
-if [[ -z "$TOKEN" ]]; then
-    echo -e "${RED}ERRORE: token JWT non trovato nella risposta${NC}"
-    exit 1
-fi
-
-USER_ID=$(echo "$TOKEN" | cut -d. -f2 | python3 -c "
-import sys, base64, json
-payload = sys.stdin.read().strip()
-padding = (-len(payload)) % 4
-decoded = base64.urlsafe_b64decode(payload + '=' * padding)
-print(json.loads(decoded).get('user_id', ''))
-" 2>/dev/null)
+USER_ID=$(smoke_jwt_claim "$TOKEN" user_id)
 
 log_ok "JWT ottenuto per '$USERNAME' (user_id=${USER_ID:-?})"
 

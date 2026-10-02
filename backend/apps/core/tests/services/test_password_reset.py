@@ -155,7 +155,7 @@ class ConfirmViewTests(TestCase):
     # Scopo: Reset riuscito → nuova password E tentativi azzerati su tutte le
     # provenienze, dentro la stessa transazione (se l'azzeramento fallisce,
     # il reset si annulla: niente password cambiata con il freno ancora su).
-    @patch("apps.core.api.throttling.PasswordResetRateThrottle.allow_request", return_value=True)
+    @patch("apps.core.api.throttling.ConfermaTokenRateThrottle.allow_request", return_value=True)
     @patch("apps.core.api.password_reset_views.transaction")
     @patch("apps.core.api.password_reset_views.apply_new_password")
     @patch("apps.core.services.auth_helpers.validate_password")

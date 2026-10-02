@@ -22,6 +22,9 @@ class OperatoreRow(TypedDict):
     # Solo nella lista (colonna del catalogo e della ricerca, 2026-09-24): il
     # dettaglio lo compone `script.fn_get_operatore_detail`, che non la porta.
     soggetto_ragione_sociale: NotRequired[str | None]
+    # Solo nella lista (2026-10-02): le altre vesti ATTIVE della credenziale
+    # (codici di `config.ruolo_applicativo`), `[]` se non ne ha.
+    altre_vesti: NotRequired[list[str]]
     is_super_admin: bool
     ruolo_applicativo: str | None
     is_active: bool

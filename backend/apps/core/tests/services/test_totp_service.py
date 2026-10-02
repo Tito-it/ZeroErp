@@ -113,5 +113,5 @@ class TotpServiceTests(SimpleTestCase):
         self.assertTrue(uri.startswith("otpauth://totp/"), uri)
         self.assertIn(f"issuer={totp_service.EMITTENTE}", uri)
         self.assertIn(f"secret={_SEGRETO_RFC}", uri)
-        svg = totp_service.qr_svg(uri)
-        self.assertTrue(re.match(r"^<svg ", svg), svg[:40])
+        qr = totp_service.qr_data_uri(uri)
+        self.assertTrue(re.match(r"^data:image/svg\+xml;", qr), qr[:40])

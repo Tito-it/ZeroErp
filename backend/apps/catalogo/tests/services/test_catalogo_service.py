@@ -38,7 +38,9 @@ Indice test eseguiti:
 27) CatalogoServiceTests.test_fn_update_articolo_listino_tipologia_id_invalid
 27b) CatalogoServiceTests.test_fn_create_articolo_natura_vendita_id_ok
 27c) CatalogoServiceTests.test_fn_update_articolo_natura_vendita_id_null_invalid
-28) CatalogoServiceTests.test_fn_create_componente_esposto_in_fattura_ok
+28) CatalogoServiceTests.test_fn_create_componente_esposizione_in_fattura_ok
+28b) CatalogoServiceTests.test_fn_create_componente_booleano_ritirato_rifiutato
+28c) CatalogoServiceTests.test_fn_create_componente_esposizione_null_rifiutata
 29) CatalogoServiceTests.test_fn_list_uom_rounding_modes_ok
 30) CatalogoServiceTests.test_fn_list_uom_rounding_modes_coverage
 31) CatalogoServiceTests.test_fn_create_componente_valido_dal_fallback_today
@@ -893,17 +895,19 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
         self.assertEqual(ctx.exception.context.get("field"), "lead_time_giorni")
 
-    # Scopo: create componente con esposto_in_fattura -> flag propagato al repo (BoM v5).
+    # Scopo: create componente con esposizione_in_fattura -> codice propagato
+    # al repo com'e' (dal 2026-10-01 un codice, non un booleano; i valori li
+    # giudica la FK su config.esposizioni_componente).
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
-    def test_fn_create_componente_esposto_in_fattura_ok(self, mock_repo_cls, mock_bom_repo_cls):
+    def test_fn_create_componente_esposizione_in_fattura_ok(self, mock_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_componente
 
         comp_id = "019bbee2-5f6a-704f-bbd0-34ed84db252e"
         mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
         bom_repo = mock_bom_repo_cls.return_value
         bom_repo.create_componente.return_value = comp_id
-        bom_repo.get_componente.return_value = {"id": comp_id, "esposto_in_fattura": True}
+        bom_repo.get_componente.return_value = {"id": comp_id, "esposizione_in_fattura": "VALORIZZATO"}
 
         fn_create_componente(
             "art-1",
@@ -911,12 +915,48 @@ class CatalogoServiceTests(TestCase):
                 "componente_id": comp_id,
                 "coeff_qta": "1",
                 "valido_dal": "2026-01-01",
-                "esposto_in_fattura": True,
+                "esposizione_in_fattura": "VALORIZZATO",
             },
         )
 
         args, _ = bom_repo.create_componente.call_args
-        self.assertEqual(args[1]["esposto_in_fattura"], True)
+        self.assertEqual(args[1]["esposizione_in_fattura"], "VALORIZZATO")
+
+    # Scopo: il booleano ritirato non e' piu' una chiave ammessa: chi lo manda
+    # ancora riceve un 400 che lo nomina, non un salvataggio che lo ignora.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_componente_booleano_ritirato_rifiutato(self, mock_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_create_componente
+
+        comp_id = "019bbee2-5f6a-704f-bbd0-34ed84db252e"
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_create_componente(
+                "art-1",
+                {"componente_id": comp_id, "coeff_qta": "1", "esposto_in_fattura": True},
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        mock_bom_repo_cls.return_value.create_componente.assert_not_called()
+
+    # Scopo: l'esposizione e' NOT NULL a DB: un `null` esplicito si ferma nel
+    # service con il campo nominato.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_componente_esposizione_null_rifiutata(self, mock_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_create_componente
+
+        comp_id = "019bbee2-5f6a-704f-bbd0-34ed84db252e"
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_create_componente(
+                "art-1",
+                {"componente_id": comp_id, "coeff_qta": "1", "esposizione_in_fattura": None},
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "esposizione_in_fattura")
 
     # Scopo: lookup statico rounding modes -> 5 codici nell'ordine canonico
     # con descrizione popolata. Niente DB: la funzione e' pura.

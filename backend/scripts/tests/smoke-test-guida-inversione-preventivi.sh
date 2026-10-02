@@ -18,14 +18,18 @@
 # Idempotente: marker 'SMOKE_GUIDA' + cleanup all'inizio e via trap EXIT.
 #
 # Uso:  ./scripts/tests/smoke-test-guida-inversione-preventivi.sh [password]
-#   oppure  SMOKE_TOKEN=<jwt> ./...   (salta il login)
-# Richiede: server BE attivo, .env.systemd (env DB per manage.py), utente 'tid'.
+#   oppure, col login unico: eval "$(./scripts/tests/smoke-login.sh)" e poi lo smoke
+#   (riusa SMOKE_TOKEN finche' vale, `_smoke_auth.sh`).
+# Richiede: server BE attivo, .env.systemd (env DB per manage.py), l'utente degli
+# smoke (SMOKE_USER) con un'identita' OPERATORE attiva.
 # ------------------------------------------------------------
 set -uo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+# Le GUC dei heredoc Python sono dello STESSO utente del login (letto da os.environ).
+export SMOKE_GUC_USER="$USERNAME"
 BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PY="$BACKEND_DIR/.venv/bin/python"
 MANAGE=("$PY" "$BACKEND_DIR/manage.py" "shell")
@@ -45,30 +49,23 @@ echo "========================================="
 
 # GUC operatore condiviso dagli heredoc Python (RLS: senza, le pratiche sono nascoste).
 read -r -d '' GUC_PY <<'PY' || true
+import os
 from django.db import connection
 def _guc(c):
+    utente = os.environ["SMOKE_GUC_USER"]
     c.execute("""SELECT idg.id, idg.soggetto_ruolo_id, au.id FROM anagrafiche.identita_digitali idg
                  JOIN auth_user au ON au.id=idg.auth_user_id
-                 WHERE au.username='tid' AND idg.ruolo_applicativo='OPERATORE' AND idg.attivo IS TRUE LIMIT 1""")
+                 WHERE au.username=%s AND idg.ruolo_applicativo='OPERATORE' AND idg.attivo IS TRUE LIMIT 1""", [utente])
     idid, srid, uid = c.fetchone()
     for k, v in [("app.current_user_id",str(uid)),("app.current_identita_id",str(idid)),
-                 ("app.soggetto_ruolo_id",str(srid)),("app.ruolo_applicativo","OPERATORE"),("app.jwt_user","tid")]:
+                 ("app.soggetto_ruolo_id",str(srid)),("app.ruolo_applicativo","OPERATORE"),("app.jwt_user",utente)]:
         c.execute("SELECT set_config(%s,%s,false)", [k, v])
 PY
 
 # --- 0. Token ---
 echo ""; echo "-- 0. Autenticazione --"
-if [[ -n "${SMOKE_TOKEN:-}" ]]; then
-    TOKEN="$SMOKE_TOKEN"; log_ok "Token da SMOKE_TOKEN"
-else
-    PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
-    if [[ -z "$PASSWORD" ]]; then echo -n "Password per 'tid': "; read -rs PASSWORD; echo ""; fi
-    TOKEN="$(curl -s -H "Content-Type: application/json" \
-        -d "{\"username\":\"tid\",\"password\":\"$PASSWORD\"}" \
-        "${BASE_URL}/api/v1/admin/token/" | "$PY" -c "import sys,json;print(json.load(sys.stdin).get('access',''))" 2>/dev/null)"
-    [[ -z "$TOKEN" ]] && { echo -e "${RED}Auth fallita${NC}"; exit 1; }
-    log_ok "Login JWT"
-fi
+smoke_login
+if [[ "$SMOKE_LOGIN_FONTE" == "SMOKE_TOKEN" ]]; then log_ok "Token da SMOKE_TOKEN"; else log_ok "Login JWT"; fi
 
 # --- Cleanup (inizio + trap) ---
 cleanup() {

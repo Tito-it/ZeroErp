@@ -219,6 +219,12 @@ function buildRowActions(data) {
             :value="t('amministrazione.is_super_admin.badge')" severity="warn" />
           <Badge :value="ruoloAppLabel(data.ruolo_applicativo)"
             :severity="data.ruolo_applicativo === RUOLO_APPLICATIVO.DISABILITATO ? 'danger' : 'info'" />
+          <!-- Le ALTRE vesti attive della credenziale (D-6, 2026-10-02): solo
+               un'informazione — «e' anche cliente dello shop» —, si governano
+               dal drawer del cliente o del fornitore, non da qui. -->
+          <Badge v-for="veste in data.altre_vesti || []" :key="veste"
+            :value="ruoloAppLabel(veste)" severity="secondary"
+            v-tooltip.top="t('amministrazione.riuso_vesti')" />
         </div>
       </template>
       <template #cell-is_active="{ data }">

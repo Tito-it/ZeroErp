@@ -7,7 +7,7 @@
 
 from django.urls import path
 
-from . import email_views, invito_views, views
+from . import email_views, invito_views, secondo_fattore_views, views
 
 urlpatterns = [
     # Operatori
@@ -61,6 +61,10 @@ urlpatterns = [
     path("emittenti-fiscali/form-defaults/", views.EmittentiFormDefaultsView.as_view(), name="amm-emittenti-form-defaults"),
     # Audit hardening + email log lookup (Fase 5)
     path("lookup/audit-sources/", views.AuditSourcesLookupView.as_view(), name="amm-audit-sources-lookup"),
+    # Secondo fattore dell'operatore (brief sicurezza §3.4-bis, T-3)
+    path("operatori/<int:auth_user_id>/secondo-fattore/", secondo_fattore_views.OperatoreSecondoFattoreView.as_view(), name="amm-operatori-secondo-fattore"),
+    path("operatori/<int:auth_user_id>/secondo-fattore/obbligo/", secondo_fattore_views.OperatoreSecondoFattoreObbligoView.as_view(), name="amm-operatori-secondo-fattore-obbligo"),
+    path("operatori/<int:auth_user_id>/secondo-fattore/disattiva/", secondo_fattore_views.OperatoreSecondoFattoreDisattivaView.as_view(), name="amm-operatori-secondo-fattore-disattiva"),
     # Invito operatore
     path("operatori/<int:auth_user_id>/invita/", invito_views.InvitaOperatoreView.as_view(), name="amm-operatori-invita"),
     path("operatori/<int:auth_user_id>/reinvia-invito/", invito_views.ReinviaInvitoView.as_view(), name="amm-operatori-reinvia-invito"),

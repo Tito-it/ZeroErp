@@ -207,7 +207,7 @@ con `E_DATABASE` (fail-closed), mai un «nessun obbligo».
 
 Lo stesso cancello ospita l'obbligo del secondo fattore (`E_TOTP_CONFIGURAZIONE_RICHIESTA`), che
 entra in vigore coi suoi endpoint di configurazione (lotto T-3 di
-[brief-be-fe-sicurezza-header-token-mfa](../../../dev/work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md)).
+[brief-be-fe-sicurezza-header-token-mfa](../../../dev/work-done/brief-be-fe-sicurezza-header-token-mfa.md)).
 Fino al 2026-09-30 il blocco era `PasswordChangeRequiredMiddleware`, che guardava
 `request.user` in `process_view`, prima dell'autenticazione DRF: per un Bearer non scattava mai.
 

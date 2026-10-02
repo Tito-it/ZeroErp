@@ -50,7 +50,7 @@
 //    una maschera di caricamento che lampeggia ogni pochi secondi su una lista
 //    che si sta leggendo e' peggio del dato stantio che va a correggere.
 
-import { nextTick, onActivated, onDeactivated, onMounted, onUnmounted } from 'vue'
+import { nextTick, onActivated, onDeactivated, onMounted, onUnmounted, watch } from 'vue'
 
 // 15s: e' una lista aperta DAVANTI a una persona, non un contatore ambientale.
 // Il badge della topbar sta a 60s perche' vive su ogni pagina; qui la vista e'
@@ -73,11 +73,31 @@ const INTERVAL_MS = 15_000
 //   subitoAlMount  un primo giro IMMEDIATO al montaggio (default false). Le
 //                  liste caricano gia' per conto loro e non lo vogliono; un
 //                  contatore che nasce vuoto si'.
+//   ammesso        () => bool, REATTIVO — il chiamante dice PRIMA della
+//                  chiamata se l'utente passa la porta dell'endpoint (un
+//                  profilo, un'area). Finche' e' falso non si gira, come con
+//                  `abilitato`; a differenza di `abilitato` NON e' definitivo:
+//                  diventato vero (il profilo arriva dopo il montaggio, cambia
+//                  la veste) si parte con un giro immediato, diventato falso ci
+//                  si ferma. ⭐ Dal 2026-10-02 (regola del 2, ok Tid): era
+//                  scritto uguale nel pallino dei presidi e nel badge delle
+//                  code, che prima provavano l'endpoint per chiunque e si
+//                  spegnevano al 403 — ogni non ammesso lasciava a ogni accesso
+//                  un falso «accesso negato» nel log di sicurezza.
 export function useRefreshPeriodico(azione, {
   intervalMs = INTERVAL_MS,
-  abilitato = () => true,
+  abilitato: abilitatoDalChiamante = () => true,
   subitoAlMount = false,
+  ammesso = () => true,
 } = {}) {
+  // Il guard di ogni giro: la porta (`ammesso`) e lo spegnimento definitivo
+  // (`abilitato`) insieme. Tutto il resto del BB legge solo questo.
+  const abilitato = () => ammesso() && abilitatoDalChiamante()
+  // La vista e' montata e davanti (non sotto KeepAlive in background): un
+  // `ammesso` che diventa vero fuori da qui non deve accendere una catena che
+  // `onDeactivated`/`onUnmounted` hanno appena spento.
+  let inVista = false
+
   let timer = null
   let vivo = false
   // Token di generazione: `refresh()` o un ritorno in primo piano possono
@@ -153,6 +173,7 @@ export function useRefreshPeriodico(azione, {
   let avviatoDalMount = false
   onMounted(() => {
     document.addEventListener('visibilitychange', onVisibilityChange)
+    inVista = true
     avviatoDalMount = true
     // Di norma NESSUN giro immediato: il caricamento iniziale lo fa gia' la
     // view. `subitoAlMount` e' per chi non ha un altro caricamento (un
@@ -161,13 +182,26 @@ export function useRefreshPeriodico(azione, {
     nextTick(() => { avviatoDalMount = false })
   })
   onActivated(() => {
+    inVista = true
     if (avviatoDalMount) return
     avvia({ subito: true })
   })
-  onDeactivated(ferma)
+  onDeactivated(() => {
+    inVista = false
+    ferma()
+  })
   onUnmounted(() => {
+    inVista = false
     ferma()
     document.removeEventListener('visibilitychange', onVisibilityChange)
+  })
+
+  // La porta che cambia a vista aperta: vero → si parte subito, falso → ci si
+  // ferma. `avvia` rispetta da se' anche `abilitato` (un 403 gia' preso resta).
+  watch(() => ammesso(), (ora) => {
+    if (!inVista) return
+    if (ora) avvia({ subito: true })
+    else ferma()
   })
 
   return { avvia, ferma }

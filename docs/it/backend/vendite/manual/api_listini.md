@@ -664,7 +664,7 @@ Mostra la BoM corrente del padre composito + i prezzi bundle gia' definiti (LEFT
       "componente_descrizione": "Componente A",
       "coeff_qta": "1.0",
       "obbligatorio": true,
-      "esposto_in_fattura": false,
+      "esposizione_in_fattura": "NASCOSTO",
       "iva_id": 1,
       "iva_codice": "22",
       "iva_aliquota": "22.00",

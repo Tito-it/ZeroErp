@@ -269,18 +269,19 @@ def poll_job(job_id, label, timeout_s=240):
     return None
 
 
-# --- identità operatore (tid, admin globale) ----------------------------
+# --- identità operatore (l'utente degli smoke, admin globale) ------------
+# Lo stesso utente degli smoke bash: SMOKE_USER (run-book §11), mai scritto a mano.
 User = get_user_model()
-tid = User.objects.get(username="tid")
+operatore = User.objects.get(username=os.environ.get("SMOKE_USER", "tid"))
 rows = q(
     "SELECT id FROM anagrafiche.identita_digitali WHERE auth_user_id=%s AND attivo AND ruolo_applicativo='OPERATORE' ORDER BY id LIMIT 1",
-    [tid.id],
+    [operatore.id],
 )
-assert rows, "nessuna identita' OPERATORE attiva per tid"
+assert rows, f"nessuna identita' OPERATORE attiva per {operatore.username}"
 identita_id = rows[0][0]
-emittente_ids = PermissionResolver.get_emittenti_pk_ids(tid)
+emittente_ids = PermissionResolver.get_emittenti_pk_ids(operatore)
 scope_key = scope_key_da_emittenti(emittente_ids)
-print(f"identita': auth_user={tid.id} identita={identita_id} emittenti={emittente_ids} scope_key={scope_key}")
+print(f"identita': auth_user={operatore.id} identita={identita_id} emittenti={emittente_ids} scope_key={scope_key}")
 
 pre = snapshot("PRE")
 lotti_pre_ids = {r[0] for r in q("SELECT id FROM vendite.fatturazione_lotti WHERE competenza_mese=%s", [COMPETENZA])}
@@ -288,8 +289,8 @@ stampa_pre_ids = {r[0] for r in q("SELECT id FROM vendite.fatture_stampa_coda")}
 
 # --- 1) APPROVA competenza (stesso service della view A-2) --------------
 print("== 1) APPROVA competenza", COMPETENZA)
-with operator_identity_context(tid.id, username=tid.username, identita_id=identita_id):
-    esito = approva_attivita_competenza(competenza_mese=COMPETENZA, commessa_ids=None, user=tid.username)
+with operator_identity_context(operatore.id, username=operatore.username, identita_id=identita_id):
+    esito = approva_attivita_competenza(competenza_mese=COMPETENZA, commessa_ids=None, user=operatore.username)
 print("    esito approva:", esito)
 bozze_dopo = q(
     "SELECT count(*) FROM vendite.commesse_attivita WHERE competenza_mese=%s AND stato_approvazione='BOZZA'",
@@ -300,8 +301,8 @@ check("approva: nessuna attivita' BOZZA residua nel mese", bozze_dopo == 0, f"re
 # --- 2) GIRO di fatturazione (enqueue identico alla view C-3) -----------
 print("== 2) GIRO FATTURAZIONE (enqueue + drain worker systemd)")
 scope = {
-    "auth_user_id": int(tid.id),
-    "username": str(tid.username),
+    "auth_user_id": int(operatore.id),
+    "username": str(operatore.username),
     "identita_id": identita_id,
     "emittente_ids": emittente_ids,
     "scope_key": scope_key,

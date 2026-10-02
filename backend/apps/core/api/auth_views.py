@@ -40,11 +40,11 @@ from apps.core.api.multi_veste_token_serializer import (
 )
 from apps.core.api.throttling import LoginRateThrottle
 from apps.core.db.auth_repository import AuthRepository
-from apps.core.db.secondo_fattore_repository import SecondoFattoreRepository
+from apps.core.db.secondo_fattore_repository import STATO_DEVICE_ATTIVO, SecondoFattoreRepository
 from apps.core.services import session_audit_service
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.nome_tentato import digest_nome_tentato, etichetta_log
-from apps.core.services.request_context import get_client_ip
+from apps.core.services.request_context import provenienza_obbligatoria, richiesta_django
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.sfida_secondo_fattore import DURATA_SFIDA_SECONDI, Sfida, emetti_sfida
 from apps.core.services.auth_constants import (
@@ -102,8 +102,6 @@ logger = logging.getLogger("security")
 _auth_repo = AuthRepository()
 _secondo_fattore_repo = SecondoFattoreRepository()
 
-# Lo stato del device col quale il login chiede il secondo passo.
-_DEVICE_ATTIVO = "ATTIVO"
 
 
 # Scopo: Chiude un accesso RIUSCITO, cioe' una sessione appena emessa per
@@ -217,25 +215,14 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                 "serializer_class subclass di MultiVesteTokenSerializer)."
             )
 
-        django_request = request._request if hasattr(request, "_request") else request
+        django_request = richiesta_django(request)
 
         # 0. La provenienza (IP fidato) e' la chiave del freno: senza, il
         #    freno non si puo' applicare e il login si rifiuta (fail-closed).
         #    Prima di cercare l'utente: la risposta non deve dipendere
         #    dall'esistenza dello username. Causa tipica: la richiesta non e'
         #    passata dalla catena di proxy dichiarata (DJANGO_TRUSTED_PROXY_COUNT).
-        provenienza = get_client_ip(django_request)
-        if provenienza is None:
-            logger.error(
-                "security.login_senza_provenienza remote_addr=%s xff=%s",
-                django_request.META.get("REMOTE_ADDR"),
-                django_request.META.get("HTTP_X_FORWARDED_FOR"),
-            )
-            raise ServiceError(
-                code="E_AUTH_CHIAMATA_NON_VALIDA",
-                message="Chiamata non valida al login: provenienza assente.",
-                detail="IP del chiamante non ricavabile dalla catena di proxy dichiarata.",
-            )
+        provenienza = provenienza_obbligatoria(django_request)
 
         # Il nome tentato come lo vedra' `authenticate` (vedi `_nome_tentato`).
         # None = la richiesta non porta un nome: il serializer rispondera' 400
@@ -295,6 +282,15 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                     credenziale_id, nome_digest=digest, provenienza=provenienza,
                     successo=False,
                 )
+                # ⭐ Ogni password sbagliata nel log di sicurezza, non solo
+                #    quella che fa scattare il freno (2026-10-02): fino ad
+                #    allora i primi errori stavano solo a DB, mentre un codice
+                #    del secondo fattore sbagliato lasciava gia' la sua riga
+                #    (`security.secondo_fattore_fallito`).
+                logger.warning(
+                    "security.login_fallito %s provenienza=%s bloccato=%s",
+                    chi, provenienza, bool(result.get("bloccato")),
+                )
                 if result.get("bloccato"):
                     logger.warning(
                         "security.login_locked %s provenienza=%s tentativi=%s blocco_minuti=%s",
@@ -333,7 +329,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             #     successo sul freno, niente sessione: una sfida breve, e il
             #     secondo passo chiude l'accesso col codice
             #     (brief sicurezza §3.4-bis, T-2).
-            if _secondo_fattore_repo.get_device(user.id)["stato"] == _DEVICE_ATTIVO:
+            if _secondo_fattore_repo.get_device(user.id)["stato"] == STATO_DEVICE_ATTIVO:
                 if identita_id is None:
                     raise ServiceError(
                         code="E_AUTH_CHIAMATA_NON_VALIDA",
@@ -533,7 +529,7 @@ class AuditTokenRefreshView(TokenRefreshView):
         response = self._rinnova(refresh_str)
         # Il refresh ruotato torna nel cookie, e dal corpo esce.
         sposta_refresh_nel_cookie(response, response.data)
-        django_request = request._request if hasattr(request, "_request") else request
+        django_request = richiesta_django(request)
         # Audit e GUC dagli STESSI claim verificati del guard, non da una
         # seconda lettura del token (la rotazione preserva i claim custom).
         user_id, jti = self._extract_claims(claims)

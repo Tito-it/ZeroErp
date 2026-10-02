@@ -591,7 +591,7 @@ Query param `solo_attivi` (bool, default `true`):
   consentire riattivazione via toggle. Accetta `"false"`/`"0"`/`"no"`/`"off"`
 
 Output: una riga per componente con denormalizzazioni
-articolo/uom/iva + flag `obbligatorio` ed `esposto_in_fattura` (JOIN
+articolo/uom/iva + flag `obbligatorio` e modo `esposizione_in_fattura` (JOIN
 runtime su `articoli_componenti`).
 
 #### Update componente `PATCH /api/v1/vendite/contratti/<id>/righe/<rid>/componenti/<cid>/`
@@ -685,7 +685,7 @@ Delega tutto a `vendite.fn_contratto_righe_preview` — il BE e' thin wrapper.
           "coeff_qta": "2.0",
           "prezzo": "15.00",
           "obbligatorio": true,
-          "esposto_in_fattura": false
+          "esposizione_in_fattura": "NASCOSTO"
         },
         {
           "componente_id": "uuid-figlio2",
@@ -696,7 +696,7 @@ Delega tutto a `vendite.fn_contratto_righe_preview` — il BE e' thin wrapper.
           "coeff_qta": "1.0",
           "prezzo": "18.00",
           "obbligatorio": false,
-          "esposto_in_fattura": true
+          "esposizione_in_fattura": "VALORIZZATO"
         }
       ]
     }

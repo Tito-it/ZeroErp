@@ -12,12 +12,8 @@
 > `postgres`, il `CHECK` di `sessioni_utente` ammette `TOTP_DISABILITATO`; doc auto-gen
 > rigenerata. ✅ D-T1 → D-T3 decise da Tid il 2026-09-28 (§7); ✅ D-T4 e D-T5 il 2026-09-29.
 > ⏳ **Resta il BE/FE** (`dev/backend-tid`): le richieste di §9.5. Il brief si archivia quando
-> il backend le ha chiuse.
-> **Punto al 2026-10-01** (letto dal codice e da §3.4-bis del brief di sicurezza, che le segue coi
-> lotti T-0 → T-5): ✅ 1 policy dei sei codici, 2 `stato`, 3 D-T2 nel login a due passi, 5 hash dei
-> codici di recupero, 6 il passo calcolato in una sede (T-1, T-2). ⏳ 4 il segno nell'editor dei
-> profili e 8 l'etichetta di `TOTP_DISABILITATO` (T-3/T-4), 7 il runbook del DBA (T-5), 9 i18n FE
-> (T-4). Nessuna richiesta al DB.
+> il backend le ha chiuse. ✅ **CHIUSO il 2026-10-02 e archiviato: 9 su 9** (la 7, la procedura
+> del DBA, nel runbook `dev/infra/comandi-utili-run-book.md` §10) dei lotti di [brief-be-fe-sicurezza-header-token-mfa.md](brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis.
 >
 > **In una riga:** oggi `config.auth_totp_device` esiste ma nessuno la usa, l'obbligo del
 > secondo fattore non ha una sede, e i manuali descrivono un disegno mai costruito. Servono
@@ -306,6 +302,15 @@ chiave derivata da `SECRET_KEY`); `credenziali.md` (la quarta cosa della credenz
 ✅ Doc auto-gen rigenerata: le 13 pagine nuove includono la loro scheda.
 
 ### 9.5 ⏳ Richieste al BE / FE (`dev/backend-tid`)
+
+> **Stato al 2026-10-01** (commit `af9c6f659` e seguenti): ✅ 1 (policy rigenerate), ✅ 2
+> (la sfida solo su `ATTIVO`, il cancello tratta `DA_CONFERMARE` come pendente), ✅ 3 (codice
+> sbagliato = tentativo fallito, successo solo al secondo passo), ✅ 5 (impronte distinte,
+> `consuma_recovery` → rimasti), ✅ 6 (il passo in `totp_service`, sede unica del periodo, test
+> sui valori), ➖ 8 (il pannello della storia degli accessi non esiste: niente da etichettare
+> oggi), ✅ 4 (T-3, 2026-10-01: il segno nel profilo di reparto), ✅ 9 (T-4, 2026-10-02: i due
+> motivi e i codici del login in it/en; gli altri messaggi arrivano dal catalogo), ✅ 7 (T-5,
+> 2026-10-02: runbook §10, «Sblocco del secondo fattore»).
 
 1. **Policy HTTP** dei sei codici in `error_policies.py` (o `test_error_codes_db_policy_guardrail`
    è rosso alla rigenerazione della doc auto-gen).

@@ -14,12 +14,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-# Refresh JWT nel cookie HttpOnly: lettura dal Set-Cookie e ripresentazione.
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_refresh.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -71,30 +67,11 @@ echo "========================================="
 echo ""
 echo "-- 0. Login JWT → sessione audit --"
 
-if [[ -z "$PASSWORD" ]]; then
-    echo -n "Password per utente '$USERNAME': "
-    read -rs PASSWORD
-    echo ""
-fi
-
 # Conta sessioni prima
 SESS_BEFORE=$(db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento='LOGIN'" | tail -1)
 
-curl -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
-
-AUTH_STATUS=$(tail -1 "$TMPFILE")
-AUTH_BODY=$(sed '$d' "$TMPFILE")
-
-if [[ "$AUTH_STATUS" != "200" ]]; then
-    echo -e "${RED}ERRORE: autenticazione fallita (HTTP $AUTH_STATUS)${NC}"
-    echo "$AUTH_BODY" | head -c 300
-    exit 1
-fi
-
-TOKEN=$(json_get "$AUTH_BODY" ".access")
+# Login vero (-D lo implica): il passo conta il record LOGIN che apre.
+smoke_login -D "${TMPFILE}.hdr"
 # Il refresh e' nel cookie HttpOnly, non nel corpo.
 REFRESH=$(refresh_dal_set_cookie "${TMPFILE}.hdr")
 log_ok "JWT ottenuto (HTTP 200)"
@@ -200,7 +177,9 @@ echo "-- 4. Login fallito → nessun record --"
 
 SESS_BEFORE_F=$(db_query "SELECT count(*) FROM dbops.sessioni_utente" | tail -1)
 
-curl -s -w '\n%{http_code}' \
+# login esplicito: il passo prova proprio il RIFIUTO del login (401) e che non
+# apra sessioni; smoke_login uscirebbe al primo errore.
+curl_login -s -w '\n%{http_code}' \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"password_errata_12345\"}" \
     "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null

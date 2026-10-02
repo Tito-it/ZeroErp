@@ -107,7 +107,7 @@ function onAllinea() {
           () => forkDefinizione(d.preset_corrente_id, emittenteId),
           { successMessage: t('amministrazione.definizioni_workflow.ed_msg_allinea_ok') },
         )
-        const nuovoId = res?.data?.data?.definizione_id
+        const nuovoId = res?.definizione_id
         if (res !== null && nuovoId) {
           router.push({ name: 'amm-software-definizione-editor', params: { id: nuovoId } })
         }

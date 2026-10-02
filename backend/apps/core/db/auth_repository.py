@@ -274,18 +274,39 @@ class AuthRepository:
             cursor.execute(sql, [auth_user_id, ruolo_applicativo])
             return rows_to_list(cursor)
 
-    # Scopo: Nome, cognome e username di una credenziale (stringhe, mai None),
-    # per le variabili delle email d'invito. None se la credenziale non esiste.
+    # Scopo: Nome, cognome, username di una credenziale e la ragione sociale
+    # completa del suo soggetto (stringhe, mai None), per le variabili e il
+    # saluto delle email. None se la credenziale non esiste.
+    # Il soggetto: quello della veste OPERATORE (la persona), poi delle vesti
+    # attive, a parita' la veste piu' vecchia. Senza vesti: stringa vuota.
+    # Tabelle senza RLS: vale anche dalle richieste anonime (reset password).
     def get_nomi_credenziale(self, auth_user_id: int) -> dict[str, str] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT first_name, last_name, username FROM django.auth_user WHERE id = %s",
+                """
+                SELECT au.first_name, au.last_name, au.username,
+                       (SELECT s.ragione_sociale_completa
+                          FROM anagrafiche.identita_digitali idg
+                          JOIN anagrafiche.soggetti_ruoli sr ON sr.id = idg.soggetto_ruolo_id
+                          JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
+                         WHERE idg.auth_user_id = au.id
+                         ORDER BY (idg.ruolo_applicativo::text = 'OPERATORE') DESC,
+                                  idg.attivo DESC, idg.id
+                         LIMIT 1)
+                  FROM django.auth_user au
+                 WHERE au.id = %s
+                """,
                 [auth_user_id],
             )
             row = cursor.fetchone()
         if not row:
             return None
-        return {"first_name": row[0] or "", "last_name": row[1] or "", "username": row[2] or ""}
+        return {
+            "first_name": row[0] or "",
+            "last_name": row[1] or "",
+            "username": row[2] or "",
+            "ragione_sociale_completa": (row[3] or "").strip(),
+        }
 
     # Scopo: Dice se la credenziale ha una password VERA, cioe' scelta dalla
     # persona (attivando un invito, col reset, col cambio). E' il

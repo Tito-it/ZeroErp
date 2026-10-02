@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Bash
-# Scopo: Incluso (`source`) dagli smoke che usano il refresh token JWT.
+# Scopo: Incluso (`source`) da `_smoke_auth.sh`: lo usano gli smoke che provano
+#        il refresh token JWT (login con `smoke_login -D <file header>`).
 #        Dal 2026-09-28 il refresh viaggia nel cookie HttpOnly
 #        `zeroerp_refresh`, mai nel corpo (brief-be-fe-sicurezza-header-token-mfa
 #        §2): si legge dal `Set-Cookie` della risposta e si ripresenta come fa

@@ -998,7 +998,6 @@ def _extract_componente_payload(
         "determina_qta_padre",
         "obbligatorio",
         "attivo",
-        "esposto_in_fattura",
     ):
         field_value = _extract_present_bool(
             payload,
@@ -1008,6 +1007,21 @@ def _extract_componente_payload(
         )
         if field_value is not _MISSING:
             data[field_name] = field_value
+
+    # Il modo di esposizione in fattura e' un CODICE di
+    # `config.esposizioni_componente`, non un booleano (dal 2026-10-01). Qui si
+    # controlla solo che sia una stringa: i valori ammessi li giudica la FK, e
+    # una copia del vocabolario in Python divergerebbe al primo modo nuovo.
+    # NOT NULL a DB: `null` non e' ammesso, si omette per tenere il default.
+    esposizione = _extract_string(
+        payload,
+        "esposizione_in_fattura",
+        function_name=function_name,
+        nullable=False,
+        message=payload_message,
+    )
+    if esposizione is not _MISSING:
+        data["esposizione_in_fattura"] = esposizione
 
     meta = _extract_meta(payload, function_name=function_name, message=payload_message)
     if meta is not _MISSING:

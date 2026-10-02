@@ -14,10 +14,12 @@ import TieredMenu from 'primevue/tieredmenu'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
+import { useTabsStore } from '../../stores/tabs'
+import { useConfirmAction } from '../composables/useConfirmAction'
 import { DOMAINS, NAV_ICONS } from '../navigation'
 import { getAIStatus } from '../api/ai-api'
 import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
-import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../constants'
 import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
 import CodeLavoroDrawer from './CodeLavoroDrawer.vue'
@@ -42,6 +44,26 @@ const ui = useUiStore()
 const ricercaMontata = ref(false)
 watch(() => ui.searchDrawerVisible, (aperta) => { if (aperta) ricercaMontata.value = true }, { immediate: true })
 const context = useContextStore()
+const tabs = useTabsStore()
+const { confirmAction } = useConfirmAction()
+
+// Scopo: apre «Sicurezza dell'accesso». La rotta sta FUORI da AppLayout
+//        (famiglia login): entrarci smonta le schede, e le modifiche non
+//        salvate andrebbero perse senza che nessuno lo dica. Con schede
+//        modificate si chiede conferma, contandole (come il cambio emittente,
+//        `EmittenteAttivoSelect`); senza, si va diretti come prima.
+function apriSicurezza() {
+  const vai = () => router.push({ name: 'sicurezza' })
+  if (!tabs.hasDirtyTabs()) {
+    vai()
+    return
+  }
+  confirmAction({
+    header: t('auth.secondo_fattore.titolo'),
+    message: t('auth.secondo_fattore.uscita_conferma', { n: tabs.tabs.filter(x => x.dirty).length }),
+    onAccept: vai,
+  })
+}
 
 defineProps({
   showHamburger: { type: Boolean, default: false }
@@ -124,22 +146,24 @@ const languageLabel = computed(() => locale.value.toUpperCase())
 
 // Badge code di lavoro (D-B/D-C brief gestione-code): due segmenti — job vivi
 // della coda lavori (propri) e stampe vive (per emittente). Polling lento 60s
-// sospeso in background; su 403 (niente area core) il pulsante sparisce.
+// sospeso in background. ⭐ Solo per chi ha l'area `strumenti` (la porta
+// dell'endpoint, `area_funzionale = "strumenti"`): gli altri non lo chiamano,
+// invece di lasciare un permesso negato nel log di sicurezza a ogni accesso.
 const {
   lavoriVivi, stampaVive, workerOk,
   disponibile: codeDisponibile,
-} = useQueueCountsPolling()
+} = useQueueCountsPolling({ ammesso: () => !auth.isAreaBlocked(READONLY_DOMAINS.STRUMENTI) })
 
 // Il pallino dei presidi (decisione #8 di Tid, 2026-09-18): accanto al badge
 // code perche' e' lo stesso genere di segnale — contatore ambientale sul
-// SISTEMA, non «notifiche per te». Sempre visibile per chi passa la porta,
+// SISTEMA, non «notifiche per te». Sempre visibile per chi passa la porta (SUPER_ADMIN: detto prima della chiamata),
 // verde a zero (la giornaliera muta non sa dirlo), rosso col numero; click →
 // «Processi automatici». Cadenza e politica sugli errori nel composable.
 const {
   pallino: presidiPallino,
   lettoAlle: presidiLettoAlle,
   disponibile: presidiDisponibile,
-} = usePresidiPolling()
+} = usePresidiPolling({ ammesso: () => auth.isSuperAdmin })
 
 const presidiTooltip = computed(() => {
   const p = presidiPallino.value
@@ -234,6 +258,12 @@ const userKebabItems = computed(() => {
     icon: MANAGE_ICONS.PREFERITI,
     class: TOPBAR_MENU_CLASS,
     items: favoritesSubmenu.value,
+  })
+  items.push({
+    label: t('auth.secondo_fattore.titolo'),
+    icon: MANAGE_ICONS.SICUREZZA_ACCESSO,
+    class: TOPBAR_MENU_CLASS,
+    command: apriSicurezza,
   })
   items.push({
     label: `${t('common.language')} · ${languageLabel.value}`,

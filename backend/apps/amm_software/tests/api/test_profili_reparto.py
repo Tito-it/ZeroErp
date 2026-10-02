@@ -17,6 +17,8 @@ Indice test eseguiti:
  4) test_get_profilo_reparto_empty — GET profilo vuoto
  5) test_put_profilo_reparto — PUT salva profilo e ritorna aggiornato
  6) test_put_profilo_invalidates_cache — PUT invalida cache reparto
+ 6b) test_put_profilo_porta_il_segno_del_secondo_fattore — T-3 del brief sicurezza
+ 6c) test_put_profilo_segno_non_booleano_rifiutato — niente stringhe «true»
  7) test_lookup_aree — GET lookup aree funzionali
  8) test_lookup_azioni — GET lookup azioni processo
  9) test_lookup_emittenti — GET lookup emittenti fiscali
@@ -198,9 +200,36 @@ class TestRepartoProfiloView(TestCase):
         view = RepartoProfiloView()
         response = view.put(request, uo_id=1)
 
-        mock_repo.put_profilo_reparto.assert_called_once_with(1, aree, azioni)
+        # Senza il segno nel corpo: None = il valore resta quello che c'e'.
+        mock_repo.put_profilo_reparto.assert_called_once_with(
+            1, aree, azioni, richiede_secondo_fattore=None,
+        )
         data = json.loads(response.content)
         self.assertIn("aree", data["data"])
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_department")
+    def test_put_profilo_porta_il_segno_del_secondo_fattore(self, _invalidate, mock_repo_cls):
+        """Il segno «richiede secondo fattore» arriva al repository."""
+        mock_repo = mock_repo_cls.return_value
+        mock_repo.get_profilo_reparto.return_value = SAMPLE_PROFILO
+        RepartoProfiloView().put(
+            _make_request("PUT", {"aree": [], "azioni": [], "richiede_secondo_fattore": True}), uo_id=1,
+        )
+        mock_repo.put_profilo_reparto.assert_called_once_with(1, [], [], richiede_secondo_fattore=True)
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_department")
+    def test_put_profilo_segno_non_booleano_rifiutato(self, _invalidate, mock_repo_cls):
+        """Un segno che non e' un booleano non si scrive."""
+        from apps.core.services.service_errors import ServiceError
+
+        with self.assertRaises(ServiceError) as ctx:
+            RepartoProfiloView().put(
+                _make_request("PUT", {"aree": [], "azioni": [], "richiede_secondo_fattore": "true"}), uo_id=1,
+            )
+        self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        mock_repo_cls.return_value.put_profilo_reparto.assert_not_called()
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     @patch("apps.amm_software.services.amm_software_service.invalidate_department")

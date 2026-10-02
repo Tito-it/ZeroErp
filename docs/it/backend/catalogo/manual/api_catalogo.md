@@ -565,7 +565,12 @@ Campi principali:
 - `partecipa_qta`
 - `determina_qta_padre`
 - `obbligatorio`
-- `esposto_in_fattura`
+- `esposizione_in_fattura` — il modo in cui il componente compare in fattura:
+  codice di `config.esposizioni_componente` (`NASCOSTO`, `DESCRITTIVO`,
+  `VALORIZZATO`). Il valore lo giudica la FK: un codice fuori vocabolario torna
+  `400 E_CATALOGO_VALIDATION`; `null` non è ammesso (omettere il campo per il
+  default). Fino al 2026-10-01 era il booleano `esposto_in_fattura`, oggi
+  rifiutato come chiave sconosciuta
 - `valido_dal` (Fase 4: opzionale, fallback `today` se omesso/null)
 - `valido_al`
 - `attivo`
@@ -582,7 +587,7 @@ emittente disponibile):
 | `CATALOGO_BOM_DEFAULT_PARTECIPA_QTA` | `true` |
 | `CATALOGO_BOM_DEFAULT_OBBLIGATORIO` | `true` |
 | `CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE` | `false` |
-| `CATALOGO_BOM_DEFAULT_ESPOSTO_IN_FATTURA` | `false` |
+| `CATALOGO_BOM_DEFAULT_ESPOSIZIONE_IN_FATTURA` | `NASCOSTO` (un codice di `config.esposizioni_componente`) |
 
 Allineato lato DDL: `articoli_componenti.partecipa_qta` ha `DEFAULT true`
 (migration `20260428-02`) per coerenza tra service e insert SQL diretti.
@@ -597,7 +602,7 @@ Allineato lato DDL: `articoli_componenti.partecipa_qta` ha `DEFAULT true`
 #### Regole specifiche
 
 - I campi struttura (`componente_id`, `coeff_qta`, `partecipa_qta`,
-  `determina_qta_padre`, `obbligatorio`, `esposto_in_fattura`) sono
+  `determina_qta_padre`, `obbligatorio`, `esposizione_in_fattura`) sono
   **immutabili** per design: il trigger DB
   `trgfn_articoli_componenti_block_modifica_struttura` blocca le UPDATE.
 - L'unico campo struttura modificabile e' `valido_al` (per chiudere la
