@@ -321,7 +321,7 @@ class ApiRunLottoPipeline(DomainAPIView):
 
 Non creare classi V1 per nuovi endpoint.
 
-La risoluzione permessi segue la catena: superuser bypass → `ruolo_applicativo = DISABILITATO` → bypass `SUPER_ADMIN` → azione processo → livello area/oggetto CRUD. Vedi `apps/core/api/permissions.py`.
+La risoluzione permessi segue la catena: superuser bypass → bypass `SUPER_ADMIN` → azione processo → livello area/oggetto CRUD (dal 2026-10-02 senza il passo «`ruolo_applicativo = DISABILITATO` → nega»: una veste spenta tiene il suo tipo e ha `attivo = false`, quindi non e' l'identita' attiva di nessuna sessione — brief-db-be-fe-area-accessi R-DB-1). Vedi `apps/core/api/permissions.py`.
 
 ---
 
@@ -1154,7 +1154,7 @@ I nomi usano kebab-case: `reset-draft`, `calcoli-tempo`, `regole-generazione`.
 Per l'inventario completo degli endpoint attivi per dominio, consultare la documentazione OpenAPI generata automaticamente all'endpoint `/api/docs/` oppure i documenti manuali per dominio:
 
 * **Pratiche**: [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati) | [api_flusso_assegnazione.md](/backend/pratiche/manual/api_flusso_assegnazione) | [api_operatori_reparto.md](/backend/pratiche/manual/api_operatori_reparto) | [api_prendi_in_carico.md](/backend/pratiche/manual/api_prendi_in_carico) | [api_coda_lavoro.md](/backend/pratiche/manual/api_coda_lavoro)
-* **Amm. Software**: [api_amm_software.md](../backend/amm-software/manual/api_amm_software.md) — dal 2026-09-18 anche `GET /amm-software/processi/presidi/conteggi/` (§6.1-bis): la **testata sola** dei presidi (`totale · con_righe · non_letti`) per il **pallino della topbar**, stesso giro di `presidi/` senza le prime righe, stessa porta `AdminAPIView`; un presidio non leggibile è `non_letti`, non un errore | [api_error_log.md](../backend/amm-software/manual/api_error_log.md) — dal 2026-09-19 `GET /amm-software/error-log/` (+ `export/`): la **consultazione di `dbops.error_log`** per i tecnici (pezzo E dell'osservabilità) — quale funzione ha sollevato quale codice, quando, in quale transazione — con frase, causa, soluzione e **classe** dal catalogo per JOIN e il `context` **com'è**. Ogni filtro della whitelist ha il suo indice (P-3) ed è provato con `EXPLAIN`; `function_name` è un prefisso `LIKE` con `_` escapato, `tx_id` è il ponte dal giornale di dominio. Stessa porta `AdminAPIView` dei due diari accanto; lista `dbops.error_log` esente dal perimetro emittente
+* **Amm. Software**: [api_amm_software.md](../backend/amm-software/manual/api_amm_software.md) — dal 2026-10-02 l'area **Accessi** (§«Area Accessi» della pagina): `accessi/altri/` e `accessi/sistema/`, le due liste che con gli operatori censiscono TUTTE le credenziali (la partizione la decide il DB, `script.fn_categoria_accesso`), e le azioni della **credenziale** — `credenziali/<id>/`, `blocca/`, `sblocca/` (`Idempotency-Key`), `secondo-fattore/…` — che valgono per tutte le sue vesti e quindi non stanno sotto `/operatori/` (il secondo fattore ci stava fino a quel giorno: ritirato). Dal 2026-09-18 anche `GET /amm-software/processi/presidi/conteggi/` (§6.1-bis): la **testata sola** dei presidi (`totale · con_righe · non_letti`) per il **pallino della topbar**, stesso giro di `presidi/` senza le prime righe, stessa porta `AdminAPIView`; un presidio non leggibile è `non_letti`, non un errore | [api_error_log.md](../backend/amm-software/manual/api_error_log.md) — dal 2026-09-19 `GET /amm-software/error-log/` (+ `export/`): la **consultazione di `dbops.error_log`** per i tecnici (pezzo E dell'osservabilità) — quale funzione ha sollevato quale codice, quando, in quale transazione — con frase, causa, soluzione e **classe** dal catalogo per JOIN e il `context` **com'è**. Ogni filtro della whitelist ha il suo indice (P-3) ed è provato con `EXPLAIN`; `function_name` è un prefisso `LIKE` con `_` escapato, `tx_id` è il ponte dal giornale di dominio. Stessa porta `AdminAPIView` dei due diari accanto; lista `dbops.error_log` esente dal perimetro emittente
 * **Anagrafiche**: [api_soggetti.md](../backend/anagrafiche/manual/api_soggetti.md) | [api_clienti.md](../backend/anagrafiche/manual/api_clienti.md) | [api_indirizzi.md](../backend/anagrafiche/manual/api_indirizzi.md) | [api_indirizzi_ruolo.md](../backend/anagrafiche/manual/api_indirizzi_ruolo.md) | [api_contatti_ruolo.md](../backend/anagrafiche/manual/api_contatti_ruolo.md) | [api_conti_bancari_ruolo.md](../backend/anagrafiche/manual/api_conti_bancari_ruolo.md) | [api_geo_config.md](../backend/anagrafiche/manual/api_geo_config.md) | [api_fornitori.md](../backend/anagrafiche/manual/api_fornitori.md) | [api_categorie_clienti.md](../backend/anagrafiche/manual/api_categorie_clienti.md) | [api_categorie_clienti_listini.md](../backend/anagrafiche/manual/api_categorie_clienti_listini.md) | [api_emittenti_fiscali.md](../backend/anagrafiche/manual/api_emittenti_fiscali.md) | [api_risorse_umane_lookup.md](../backend/anagrafiche/manual/api_risorse_umane_lookup.md) — `GET /anagrafiche/risorse-umane/lookup/`, il picker delle persone interne (responsabile commessa): cross-dominio, legge la vista modello `vw_risorse_umane_dettaglio`
 * **Catalogo**: [api_catalogo.md](/backend/catalogo/manual/api_catalogo) — articoli (CRUD, lista `catalogo.articoli` id 26, UoM operative, BoM, note): oltre alla natura di vendita (*dove va* la riga) l'articolo dichiara **da dove arriva** — `modo_approvvigionamento_id` (lookup generico `rel=config.modi_approvvigionamento`, default `ACQUISTO`), `gestito_a_magazzino` (default `false`, fail-safe) e `lead_time_giorni` (nullable per modello). ⚠️ `ARTICOLI_DETAIL_COLUMNS` è una proiezione **per nome** da `vw_articoli_dettaglio`: una colonna nuova della vista non esce finché nessuno la nomina
 * **Auth**: [api_multi_veste_token.md](/backend/core/manual/api_multi_veste_token) | [auth_views_audit.md](/backend/core/manual/auth_views_audit) | [api_user_profile.md](/backend/core/manual/api_user_profile) | [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore) | [api_invito_portale_shop.md](/backend/core/manual/api_invito_portale_shop) | [api_logout.md](/backend/core/manual/api_logout)
@@ -1205,7 +1205,7 @@ Per i building block backend riutilizzabili (helpers, services, repository), con
 | Permission class    | `ZeroERPPermission` — risoluzione centralizzata                         |
 | Superuser           | Bypass totale                                                           |
 | SUPER_ADMIN         | Bypass via `script.fn_is_super_admin` (filtro veste OPERATORE, §8.3.7)  |
-| DISABILITATO        | Rifiuto immediato su `ruolo_applicativo = DISABILITATO`                 |
+| Veste spenta        | Nessuna identita' attiva: niente GUC di veste, niente SUPER_ADMIN, il livello d'area nega (dal 2026-10-02 `DISABILITATO` non e' piu' un tipo di veste) |
 | Azione processo     | Verificata se la view dichiara `post_permission` / `get_permission`     |
 | CRUD standard       | Livello area/oggetto (`TUTTO`, `LETTURA`, `BLOCCATO`)                   |
 | Scope emittente     | Filtra i dati per emittente fiscale autorizzato (vedi sotto)            |
@@ -1246,7 +1246,7 @@ La configurazione è della persona, su `/api/v1/auth/secondo-fattore/`: `GET` lo
 stato, `POST registra/` (QR come data URI di un SVG, segreto e codici di recupero **una volta**),
 `conferma/` (`{codice}`), `codici-recupero/` (`{codice}`), `disattiva/`
 (`{codice}` o `{codice_recupero}`). Il SUPER_ADMIN, su
-`/api/v1/amm-software/operatori/<id>/secondo-fattore/`: `GET`, `POST obbligo/`
+`/api/v1/amm-software/credenziali/<id>/secondo-fattore/`: `GET`, `POST obbligo/`
 (`{valore}`), `POST disattiva/` (`{motivo}`). Il segno del profilo di reparto è
 `richiede_secondo_fattore` nel corpo di `reparti/<uo_id>/profilo/` (assente =
 invariato).
@@ -1290,7 +1290,10 @@ stato sostituito dal refactor multi-face auth con:
 
 * `ruolo_applicativo` — categoria dell'identita' digitale
   (`OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`,
-  `API_CLIENT`, `DISABILITATO`). Letto via
+  `API_CLIENT`). ⛔ `DISABILITATO` non e' piu' un tipo di veste dal
+  2026-10-02 (R-DB-1): una veste spenta tiene il tipo e ha `attivo = false`, e
+  la tabella rifiuta il valore (`E_RUOLO_APPLICATIVO_RITIRATO`), che resta
+  nell'enum come voce storica. Letto via
   `PermissionResolver.get_ruolo_applicativo(user)` (GUC-first), che risponde
   per la **sessione**: ⛔ mai per un altro utente (S-6). Di un altro si chiede
   il fatto preciso, per esempio `has_veste_operatore_attiva(user)`.
@@ -2146,8 +2149,9 @@ resta.
 direttamente da `JwtAuditMiddleware` (helper `_json_error`, stesso envelope)
 e **non** passano dall'exception handler / `error_policies.py`. (Fino al
 2026-09-28 c'era anche `E_USER_DISABILITATO`, dal rifiuto in `process_view`:
-ritirato perché per i client Bearer non scattava mai — il rifiuto dei
-`DISABILITATO` è della catena di `ZeroERPPermission`.)
+ritirato perché per i client Bearer non scattava mai. Dal 2026-10-02 non
+c'e' piu' nemmeno un `DISABILITATO` da rifiutare: una veste spenta e'
+`attivo = false` col suo tipo, R-DB-1.)
 
 | Codice                | HTTP | Quando                                                                                                                                                                                                           |
 | --------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

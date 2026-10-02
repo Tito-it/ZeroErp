@@ -10,11 +10,20 @@
 > (`af9c6f659`, 2026-10-01); ✅ R-1, R-2, R-3, R-7, R-8, R-9 consegnati dal DB
 > e allineati dal BE/FE (§5). 🟡 **L-5 iniziato**: i comandi dell'operatore
 > toccano la sola veste operatore (2026-10-02, §4.3).
-> ⏳ **Da fare**: L-2, L-4, il resto di L-5, L-6 (solo A-7).
-> ⏳ **R-4, R-5, R-6 aspettano il secondo brief DB, ancora non scritto**
-> (verificato il 2026-10-02: nessun brief in `work-in-progress/` né in
-> `work-done/`; sul DB `DISABILITATO` è ancora nel tipo, `identita_digitali`
-> non ha la revoca, nessuna funzione legge lo stato del blocco).
+> ✅ **L-2 fatto il 2026-10-02** col brief dell'area Accessi
+> ([brief-db-be-fe-area-accessi](brief-db-be-fe-area-accessi.md) §8): blocco e
+> sblocco sulla CREDENZIALE (`credenziali/<id>/blocca|sblocca/`), nei drawer
+> dell'operatore e degli altri accessi. ✅ **R-5 consegnata** dallo stesso brief
+> (R-DB-1: la veste spenta tiene il tipo, `DISABILITATO` voce storica) e allineata
+> dal BE/FE. **R-6 superata**: lo stato del blocco si legge da
+> `config.credenziali`, leggibile dall'app; resta la capability del blocco
+> come codice del DB (R-DB-A5 di quel brief).
+> 🟡 **D-5 staccata da L-5** (Tid, 2026-10-02): le sessioni per veste sono
+> solo BE, non aspettano il brief DB (§4.3-bis). ✅ Parte 1 fatta: il refresh
+> di una veste spenta è un 401 e chiude la sessione.
+> ⏳ **Da fare**: L-4, D-5 parte 2 (§4.3-bis), il resto di L-5 (R-4 e D-3),
+> L-6 (solo A-7).
+> ⏳ **R-4 aspetta ancora un brief DB** (la revoca della veste).
 > Le tre domande di §6 sono decise (Tid, 2026-09-24).
 >
 > ⭐ **Questo piano è la sede unica del lavoro che resta** del cantiere accessi:
@@ -41,12 +50,12 @@ Il perché di ognuna sta nell'[analisi](../work-done/analisi-accessi-credenziale
 
 | Sigla | Cosa resta | Lotto |
 | --- | --- | --- |
-| **M-5** | 🟡 Metà chiusa il 2026-10-02: le due strade (`disabilita_operatore` e `update_operatore` con `attivo=False`, l'interruttore di `OperatoreDrawer.vue`) toccano ora la **sola veste operatore** (`_VESTE_OPERATORE`, §4.3). Resta: la veste spenta prende ancora `ruolo_applicativo = DISABILITATO` (R-5), e le sessioni non sono per veste (D-5) | L-5 (R-5) |
+| **M-5** | 🟡 Quasi chiusa il 2026-10-02: le due strade (`disabilita_operatore` e `update_operatore` con `attivo=False`, l'interruttore di `OperatoreDrawer.vue`) toccano la **sola veste operatore** (la veste di riferimento del DB, §4.3) e la spengono con il **solo** `attivo` (R-5 consegnata, brief area Accessi). Resta: le sessioni non sono per veste (D-5, §4.3-bis) | L-5 |
 | **M-6** | 🟡 Il difetto («tutte le identità a `OPERATORE`») è chiuso dallo stesso `_VESTE_OPERATORE`, con caso costruito. Resta la decisione D-3: **ritirare la riattivazione diretta** — `riattiva_operatore` **e** `update_operatore` con `attivo=True` — e riattivare col reinvio | L-5 |
 | **A-5** | Revoca asimmetrica: `disabilita_operatore` chiude le sessioni (tutte quelle della credenziale) e la cache, ma non i token d'invito pendenti; l'interruttore (`update_operatore`, `attivo=False`) solo la cache; portale/shop invalidano i token d'invito, ma non chiudono sessioni né cache | L-5 |
 | **A-6** | Lo shop si riattiva da solo (`ProfileActivateShopView`) anche dopo una revoca dell'admin (D-4) | L-5 (R-4) |
 | **A-7** | `valido_dal`/`valido_al` della veste non applicati al login né a ogni richiesta | L-6 |
-| **D-1** | Il blocco **vero** è un verbo dell'admin: i verbi DB ci sono (`fn_blocca_credenziale`, `fn_sblocca_credenziale`), l'endpoint e il FE no | L-2 (R-6) |
+| ~~**D-1**~~ | ✅ 2026-10-02: endpoint e FE del blocco dell'admin sulla credenziale (brief area Accessi §8) | ~~L-2~~ |
 | **D-9** | Portale e shop entrano con l'email; il reset accetta l'email. ✅ Il nome utente nell'invito operatore è fatto (R-3, B-15) | L-4 |
 
 ✅ **Chiuse dopo il 2026-09-28**: **A-8** dal T-0 del
@@ -67,10 +76,10 @@ suo prerequisito DB (indice unico sull'email, P-2) è in vigore.
 | --- | --- | --- | --- | --- |
 | **L-0** | L'IP del chiamante, fidato | niente (§6 Q-1) | prerequisito di L-1 | ✅ 2026-09-24 |
 | **L-1** | Login su tentativi, freno, attesa; cambio password obbligatorio per credenziale; azzeramento al reset | brief **P-1** | M-4, D-1 (il freno), D-2, D-7 | ✅ 2026-09-25, con R-7 e R-8 |
-| **L-2** | Blocco e sblocco dell'admin | P-1 (§3.3, ✅ a DB) + **R-6** | D-1 (blocco vero) | ⏳ aspetta R-6 |
+| **L-2** | Blocco e sblocco dell'admin | P-1 (§3.3, ✅ a DB) | D-1 (blocco vero) | ✅ 2026-10-02 (brief area Accessi §8) |
 | **L-3** | Una persona, una credenziale; invito e attivazione operatore sulla regola unica; ultimo accesso | P-2, R-1, R-2, R-9, brief credenziale per email | D-6, D-8, A-1, A-2, A-3, A-4, A-9 | ✅ 2026-09-27 (collaudo 2026-10-02) |
 | **L-4** | Portale e shop entrano con l'email; il nome utente nell'invito operatore | P-2 (indice email, ✅) + R-3 (✅) | D-9 | 🟡 nome utente nell'invito fatto; login e reset per email da fare, nessuna dipendenza |
-| **L-5** | Disattivazione per veste, niente riattivazione diretta, revoca che tiene, sessioni per veste | **R-4, R-5** | M-5, M-6, D-3, D-4, D-5, A-5, A-6 | 🟡 sola veste operatore fatta (2026-10-02); il resto aspetta il secondo brief DB |
+| **L-5** | Disattivazione per veste, niente riattivazione diretta, revoca che tiene, sessioni per veste | **R-4, R-5** (D-5 nessuna, §4.3-bis) | M-5, M-6, D-3, D-4, D-5, A-5, A-6 | 🟡 sola veste operatore fatta (2026-10-02); D-5 parte 1 fatta (2026-10-02); il resto aspetta il secondo brief DB |
 | **L-6** | Validità della veste al login e a ogni richiesta | niente | A-7 (A-8 ➡️ T-0, ✅) | ⏳ da fare |
 
 ---
@@ -397,9 +406,21 @@ sospeso). Collaudo a video
 | `disabilita_operatore` **e** `update_operatore` con `attivo=False` | ✅ tocca **solo la veste OPERATORE** (2026-10-02). ⏳ `ruolo_applicativo` **invariato** (§6 Q-2): oggi tutte e due le strade scrivono ancora `DISABILITATO` → aspetta R-5 |
 | `riattiva_operatore`, endpoint `…/riattiva/` **e** `update_operatore` con `attivo=True` | ⏳ **ritirati** (D-3): si riattiva col reinvio. Catena ancora in piedi: service `riattiva_operatore`, `OperatoriRiattivaView`, rotta `operatori/<id>/riattiva/`, FE `riattivaOperatore` e azione store `riattiva`. ~~FE: il pulsante «Riattiva» diventa «Reinvia invito»~~ → superato: nessun `.vue` ha più un pulsante «Riattiva»; la strada viva è l'**interruttore** «attivo» di `OperatoreDrawer.vue` (PATCH), ed è quello che va riportato al reinvio |
 | Revoca (D-4) | disattivare **dall'admin** marca la veste come revocata → §5 R-4; `ProfileActivateShopView` rifiuta una veste revocata; FE `AttivaAccessoShopButton` spento col motivo, `PortaleAccessoPanel` mostra «revocato» |
-| Sessioni (D-5) | un BB unico «chiudi le sessioni di una veste»: blacklist degli `OutstandingToken` della credenziale il cui claim `identita_id` è quello della veste. Usato da operatore, portale e shop. ⭐ Il BB della revoca esiste dal 2026-09-26 (`apps/core/services/revoca_token.blocca_token_sessioni`, filtro per `sid`): si estende con il filtro per veste, non se ne scrive un secondo. ⚠️ oggi `disabilita_operatore` chiude **tutte** le sessioni della credenziale (anche quelle di una veste shop che ora resta accesa), `update_operatore` con `attivo=False` **nessuna**, portale/shop **nessuna** |
+| Sessioni (D-5) | ➡️ **§4.3-bis** (staccata il 2026-10-02). Il disegno originale: un BB unico «chiudi le sessioni di una veste»: blacklist degli `OutstandingToken` della credenziale il cui claim `identita_id` è quello della veste. Usato da operatore, portale e shop. ⭐ Il BB della revoca esiste dal 2026-09-26 (`apps/core/services/revoca_token.blocca_token_sessioni`, filtro per `sid`): si estende con il filtro per veste, non se ne scrive un secondo. ⚠️ oggi `disabilita_operatore` chiude **tutte** le sessioni della credenziale (anche quelle di una veste shop che ora resta accesa), `update_operatore` con `attivo=False` **nessuna**, portale/shop **nessuna** |
 | Stessi effetti per tutte le vesti (A-5) | invalidazione dei token d'invito pendenti **e** della cache permessi anche su portale/shop (oggi solo operatore la seconda, solo portale/shop la prima) |
 | Test | ⭐ M-6 **costruito**: credenziale con veste operatore + cliente portale → disattiva operatore → il portale resta attivo, il cliente entra; reinvio → attivazione → operatore di nuovo attivo, cliente intatto. Sul DB provvisto. 🟡 Metà fatta (2026-10-02): `test_operatore_altre_vesti_db` prova disattiva/riattiva con una veste shop; mancano il login del cliente dopo la disattivazione e il giro col reinvio, che nasce con D-3 |
+
+### 4.3-bis D-5 — Sessioni per veste (solo BE, staccata da L-5 il 2026-10-02)
+
+Deciso con Tid il 2026-10-02: nessun prerequisito DB (il claim `identita_id`
+è in ogni refresh, `emetti_refresh_veste`), quindi non aspetta il secondo
+brief DB. Due parti, in quest'ordine: prima la **regola**, poi la chiusura
+immediata.
+
+| Parte | Cosa | Stato |
+| --- | --- | --- |
+| **1. La regola: il refresh rifiuta una veste spenta** | `AuditTokenRefreshView.post()` controlla la veste del claim **prima** della rotazione (`_veste_accesa` in `core/api/auth_views.py`): spenta, assente, di un'altra credenziale o claim mancante → 401 `E_AUTHENTICATION_FAILED`, e la sessione presentata va in blacklist per `sid` (una veste riaccesa non la resuscita). Vale per ogni strada che spegne una veste. Prima: le richieste erano già 401 `E_IDENTITA_NON_ATTIVA`, ma il refresh ruotava ancora (il controllo stava in `set_jwt_gucs`, dopo la rotazione, e finiva in un warning). Test: `RefreshVesteSpentaTests` in `core/tests/api/test_auth_views.py`; `_veste_accesa` provata in lettura sul DB di sviluppo (accesa, spenta, altra credenziale). Doc: `api_multi_veste_token.md` §2-bis | ✅ 2026-10-02 |
+| **2. Chiusura immediata per veste** | `blocca_token_sessioni` si estende col filtro per veste (claim `identita_id`), non un secondo BB. Lo usano `disabilita_operatore` (oggi chiude **tutte** le sessioni della credenziale, anche la veste shop accesa: M-5), `update_operatore` con `attivo=False` (oggi **nessuna**: A-5), portale e shop (oggi nessuna) | ⏳ |
 
 ### 4.4 L-6 — Validità della veste al login e a ogni richiesta (A-7)
 
@@ -462,8 +483,9 @@ né in `work-done/`). Si scrive prima di riprendere L-5 (R-4, R-5) e L-2 (R-6).
 Riscritto il 2026-10-02 sul lavoro che resta (L-0, L-1, L-3 sono fatti):
 
 1. **L-6** (A-7) e **L-4** (login e reset per email): nessuna dipendenza.
-2. Il **secondo brief DB** con R-4, R-5, R-6.
-3. **L-2** con R-6; **L-5** (il resto) con R-4, R-5.
+2. **D-5 parte 2** (§4.3-bis): nessuna dipendenza.
+3. Il **secondo brief DB** con R-4, R-5, R-6.
+4. **L-2** con R-6; **L-5** (il resto) con R-4, R-5.
 
 Ogni lotto chiude le sue righe nell'analisi e i «⚠️ Difetto noto» nelle doc
 `manual/` che rimandano a M-4, M-5, M-6.

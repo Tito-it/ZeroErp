@@ -31,7 +31,6 @@ from apps.core.services.auth_constants import (
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.invito_veste import (
     PORTA_PORTALE,
-    PORTA_SHOP,
     InvitoVeste,
     maschera_email,
     porta_della_veste,
@@ -161,12 +160,10 @@ class InvitoPortaleService:
             "portale": self._repo.get_stato_identita(
                 soggetto_ruolo_id,
                 RUOLO_APPLICATIVO_CLIENTE_PORTALE,
-                PORTA_PORTALE.token_tipi,
             ),
             "shop": self._repo.get_stato_identita(
                 soggetto_ruolo_id,
                 RUOLO_APPLICATIVO_SHOP_CUSTOMER,
-                PORTA_SHOP.token_tipi,
             ),
         }
 
@@ -184,7 +181,6 @@ class InvitoPortaleService:
             "portale": self._repo.get_stato_identita(
                 int(info["soggetto_ruolo_id"]),
                 RUOLO_APPLICATIVO_FORNITORE_PORTALE,
-                PORTA_PORTALE.token_tipi,
             ),
         }
 

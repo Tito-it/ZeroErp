@@ -9,27 +9,24 @@
 Indice test eseguiti:
  1) test_anonymous_user_denied
  2) test_superuser_allowed
- 3) test_disabilitato_denied
- 4) test_admin_ruolo_allowed
- 5) test_operativo_area_tutto_get_allowed
- 6) test_operativo_area_lettura_post_denied
- 7) test_operativo_area_lettura_get_allowed
- 8) test_operativo_area_bloccato_denied
- 9) test_action_permission_checked
-10) test_post_permission_on_apiview
-11) test_no_area_without_skip_denied (fail-closed)
-12) test_no_area_with_skip_allowed (skip_area_check=True)
-13) test_no_area_denied_logs_warning
-14) test_disabilitato_message
-15) test_bloccato_senza_profilo_message
-16) test_bloccato_con_profilo_message
-17) test_azione_negata_message
-18) test_log_warning_disabilitato
-19) test_log_warning_azione_negata
-20) test_log_warning_livello_insufficiente
-21) test_model_permission_uses_livello_oggetto
-22) test_model_permission_fallback_area
-23) test_no_model_permission_uses_area
+ 3) test_admin_ruolo_allowed
+ 4) test_operativo_area_tutto_get_allowed
+ 5) test_operativo_area_lettura_post_denied
+ 6) test_operativo_area_lettura_get_allowed
+ 7) test_operativo_area_bloccato_denied
+ 8) test_action_permission_checked
+ 9) test_post_permission_on_apiview
+10) test_no_area_without_skip_denied (fail-closed)
+11) test_no_area_with_skip_allowed (skip_area_check=True)
+12) test_no_area_denied_logs_warning
+13) test_bloccato_senza_profilo_message
+14) test_bloccato_con_profilo_message
+15) test_azione_negata_message
+16) test_log_warning_azione_negata
+17) test_log_warning_livello_insufficiente
+18) test_model_permission_uses_livello_oggetto
+19) test_model_permission_fallback_area
+20) test_no_model_permission_uses_area
 """
 
 from unittest import TestCase
@@ -99,14 +96,6 @@ class ZeroERPPermissionTests(TestCase):
         request = _mock_request(is_superuser=True)
         view = _mock_view(area="vendite")
         self.assertTrue(self.perm.has_permission(request, view))
-
-    # Scopo: Utente DISABILITATO deve essere negato.
-    @patch("apps.core.api.permissions.PermissionResolver")
-    def test_disabilitato_denied(self, mock_resolver):
-        mock_resolver.get_ruolo_applicativo.return_value = "DISABILITATO"
-        request = _mock_request()
-        view = _mock_view(area="vendite")
-        self.assertFalse(self.perm.has_permission(request, view))
 
     # Scopo: Utente con ruolo_sistema ADMIN deve essere ammesso.
     @patch("apps.core.api.permissions.PermissionResolver")
@@ -222,15 +211,6 @@ class ZeroERPPermissionTests(TestCase):
         log_msg = mock_logger.warning.call_args[0][0]
         self.assertIn("area_non_definita", log_msg)
 
-    # Scopo: DISABILITATO produce messaggio specifico.
-    @patch("apps.core.api.permissions.PermissionResolver")
-    def test_disabilitato_message(self, mock_resolver):
-        mock_resolver.get_ruolo_applicativo.return_value = "DISABILITATO"
-        request = _mock_request()
-        view = _mock_view(area="vendite")
-        self.perm.has_permission(request, view)
-        self.assertIn("disabilitato", self.perm.message.lower())
-
     # Scopo: BLOCCATO senza profilo reparto produce messaggio specifico.
     # Si applica solo agli OPERATORI interni (il messaggio e' legato al
     # reparto; utenti portale/shop ricevono il messaggio generico).
@@ -272,19 +252,6 @@ class ZeroERPPermissionTests(TestCase):
         view.post_permission = "genera_fatture_lotti"
         self.perm.has_permission(request, view)
         self.assertIn("permessi", self.perm.message.lower())
-
-    # Scopo: DISABILITATO logga warning di sicurezza.
-    @patch("apps.core.api.permissions.logger")
-    @patch("apps.core.api.permissions.PermissionResolver")
-    def test_log_warning_disabilitato(self, mock_resolver, mock_logger):
-        mock_resolver.get_ruolo_applicativo.return_value = "DISABILITATO"
-        request = _mock_request()
-        request.path = "/api/v1/vendite/lotti/"
-        view = _mock_view(area="vendite")
-        self.perm.has_permission(request, view)
-        mock_logger.warning.assert_called_once()
-        log_msg = mock_logger.warning.call_args[0][0]
-        self.assertIn("DISABILITATO", log_msg)
 
     # Scopo: Azione negata logga warning di sicurezza.
     @patch("apps.core.api.permissions.logger")

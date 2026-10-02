@@ -14,7 +14,7 @@
 //    form aperto.
 //
 // Pattern immutabilità (sviluppo-listini-v5 §14.4 / DEC-4):
-//   - i campi struttura (componente, coeff_qta, esposto_in_fattura, ecc.)
+//   - i campi struttura (componente, coeff_qta, esposizione_in_fattura, ecc.)
 //     non sono modificabili in place: trigger DB E_BOM_MODIFICA_VIETATA li
 //     blocca. Per cambiare valori si usa "chiudi riga" + nuovo "Aggiungi
 //     componente" con i nuovi parametri (operazioni esplicite, intenzionali).
@@ -45,7 +45,7 @@ import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFormInline } from '../../core/composables/useFormInline'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
-import { paramBool, paramNumber } from '../../core/utils/parameterCast'
+import { paramBool, paramNumber, paramString } from '../../core/utils/parameterCast'
 import {
   createArticoloComponente,
   updateArticoloComponente,
@@ -53,6 +53,7 @@ import {
   makeComponenteNotesApi,
 } from '../api/catalogo'
 import { useArticoloComponentiStore } from '../stores/articoloComponenti'
+import { useEsposizioniComponente, ESPOSIZIONE_NASCOSTO } from '../composables/useEsposizioniComponente'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { addDaysToToday, displayDate, parseIsoDate, toDateString } from '../../core/utils/date'
 import ArticoloLookup from './ArticoloLookup.vue'
@@ -70,6 +71,7 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
+import Select from 'primevue/select'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -98,9 +100,12 @@ const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults([
   'CATALOGO_BOM_DEFAULT_PARTECIPA_QTA',
   'CATALOGO_BOM_DEFAULT_OBBLIGATORIO',
   'CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE',
-  'CATALOGO_BOM_DEFAULT_ESPOSTO_IN_FATTURA',
+  'CATALOGO_BOM_DEFAULT_ESPOSIZIONE_IN_FATTURA',
 ])
 loadDefaults()
+
+// I tre modi di esporre il componente in fattura, con l'etichetta dal DB.
+const { opzioni: esposizioniOptions, etichetta: etichettaEsposizione } = useEsposizioniComponente()
 
 // La macchina del form (BB `useFormInline`): `create` = nuovo componente (anche
 // la nuova versione del Duplica), `edit` = la riga aperta in SOLA LETTURA.
@@ -213,7 +218,9 @@ function defaultForm() {
     partecipa_qta: paramBool(p.CATALOGO_BOM_DEFAULT_PARTECIPA_QTA, true),
     obbligatorio: paramBool(p.CATALOGO_BOM_DEFAULT_OBBLIGATORIO, true),
     determina_qta_padre: paramBool(p.CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE, false),
-    esposto_in_fattura: paramBool(p.CATALOGO_BOM_DEFAULT_ESPOSTO_IN_FATTURA, false),
+    // Un CODICE di `config.esposizioni_componente` (dal 2026-10-01 non e' piu'
+    // un booleano): il parametro lo valida il registro FK surrogata.
+    esposizione_in_fattura: paramString(p.CATALOGO_BOM_DEFAULT_ESPOSIZIONE_IN_FATTURA, ESPOSIZIONE_NASCOSTO),
     // valido_dal: null (Fase 4 BE-only). Se l'admin non sceglie una data,
     // il service applica today come default. Il DatePicker resta vuoto
     // finche' l'utente non interagisce: piu' onesto rispetto al pre-fill che
@@ -229,7 +236,6 @@ const FLAG_COMPONENTE = [
   { campo: 'obbligatorio', labelKey: 'catalogo.field_obbligatorio' },
   { campo: 'partecipa_qta', labelKey: 'catalogo.field_partecipa_qta' },
   { campo: 'determina_qta_padre', labelKey: 'catalogo.field_determina_qta_padre' },
-  { campo: 'esposto_in_fattura', labelKey: 'catalogo.field_esposto_fattura' },
 ]
 
 // Scopo: i valori di una riga nel form (dettaglio in sola lettura e
@@ -241,7 +247,7 @@ function formDaRiga(row, { validoDal, validoAl }) {
     partecipa_qta: row.partecipa_qta,
     obbligatorio: row.obbligatorio,
     determina_qta_padre: row.determina_qta_padre,
-    esposto_in_fattura: row.esposto_in_fattura,
+    esposizione_in_fattura: row.esposizione_in_fattura,
     valido_dal: validoDal,
     valido_al: validoAl,
   }
@@ -375,7 +381,7 @@ async function onSaveNew() {
     partecipa_qta: form.value.partecipa_qta,
     obbligatorio: form.value.obbligatorio,
     determina_qta_padre: form.value.determina_qta_padre,
-    esposto_in_fattura: form.value.esposto_in_fattura,
+    esposizione_in_fattura: form.value.esposizione_in_fattura,
     valido_dal: toDateString(form.value.valido_dal),
     valido_al: toDateString(form.value.valido_al),
   }
@@ -595,7 +601,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
             />
           </div>
         </div>
-        <!-- I quattro flag della riga: in sola lettura uno switch disegnato
+        <!-- I tre flag della riga: in sola lettura uno switch disegnato
              (il ToggleSwitch disabilitato non si legge), altrimenti il widget. -->
         <div class="form-grid-2col mt-05" :class="{ 'app-readonly': isFormReadonly }">
           <div v-for="flag in FLAG_COMPONENTE" :key="flag.campo" class="form-field">
@@ -610,6 +616,17 @@ const suVisibile = gestoreVisibile(emit, chiudi)
             </span>
             <ToggleSwitch v-else v-model="form[flag.campo]"
               :invalid="campiErrati.includes(flag.campo)"
+            />
+          </div>
+          <!-- Come compare il componente in fattura: una scelta fra tre, non un
+               sì/no (NASCOSTO nel totale del kit, DESCRITTIVO riga senza
+               prezzo, VALORIZZATO riga con prezzo e importo suoi). -->
+          <div class="form-field">
+            <label>{{ t('catalogo.field_esposizione_fattura') }}</label>
+            <span v-if="isFormReadonly">{{ etichettaEsposizione(form.esposizione_in_fattura) }}</span>
+            <Select v-else v-model="form.esposizione_in_fattura"
+              :options="esposizioniOptions" option-label="label" option-value="value"
+              :invalid="campiErrati.includes('esposizione_in_fattura')"
             />
           </div>
         </div>

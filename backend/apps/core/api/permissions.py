@@ -24,7 +24,6 @@ from rest_framework.request import Request
 from apps.core.services.auth_constants import (
     RUOLI_PORTALE,
     RUOLI_SHOP,
-    RUOLO_APPLICATIVO_DISABILITATO,
     RUOLO_APPLICATIVO_OPERATORE,
 )
 from apps.core.services.permissions_cache import load_user_cache, save_user_cache
@@ -47,7 +46,6 @@ class MotivoDiniego(StrEnum):
     NESSUNA_PERMISSION_CLASS = "nessuna_permission_class"
     PERMISSION_CLASS_NON_VALUTABILE = "permission_class_non_valutabile"
     ADMIN_NEGATO = "admin_negato"
-    DISABILITATO = "DISABILITATO"
     AZIONE_NEGATA = "azione_negata"
     AZIONE_SCONOSCIUTA = "azione_sconosciuta"
     AREA_NON_DEFINITA = "area_non_definita"
@@ -317,10 +315,13 @@ class ZeroERPPermission(BasePermission):
         if user.is_superuser:
             return _CONSENTITO
 
-        # Check ruolo applicativo (DISABILITATO => negato subito)
+        # ⛔ Niente piu' «ruolo DISABILITATO => negato» (ritirato il 2026-10-02,
+        #    brief-db-be-fe-area-accessi R-DB-1): una veste spenta tiene il suo
+        #    tipo e ha `attivo = false`, e la tabella rifiuta DISABILITATO. Chi
+        #    ha solo vesti spente non ha un'identita' attiva: niente GUC di
+        #    veste, niente SUPER_ADMIN, e il livello d'area lo nega piu' sotto.
+        # Il ruolo serve ancora al messaggio del diniego d'area (`_esito_livello`).
         ruolo_app = PermissionResolver.get_ruolo_applicativo(user, cache=cache)
-        if ruolo_app == RUOLO_APPLICATIVO_DISABILITATO:
-            return EsitoPermesso(consentito=False, motivo=MotivoDiniego.DISABILITATO)
         # SUPER_ADMIN bypass — single source of truth per il privilegio admin.
         if PermissionResolver.is_super_admin(user, cache=cache):
             return _CONSENTITO
@@ -454,13 +455,7 @@ class ZeroERPPermission(BasePermission):
         user = request.user
         motivo = esito.motivo
         self.message = _MSG_PERMESSO_NEGATO
-        if motivo is MotivoDiniego.DISABILITATO:
-            logger.warning(
-                "security.permission_denied user_id=%s reason=DISABILITATO path=%s",
-                user.id, request.path,
-            )
-            self.message = "Utente disabilitato. Contattare l'amministratore."
-        elif motivo is MotivoDiniego.AZIONE_NEGATA:
+        if motivo is MotivoDiniego.AZIONE_NEGATA:
             logger.warning(
                 "security.permission_denied user_id=%s reason=azione_negata azione=%s path=%s",
                 user.id, esito.azione, request.path,
@@ -638,10 +633,6 @@ class ShopBasePermission(BasePermission):
             ruolo = PermissionResolver.get_ruolo_applicativo(user, cache=cache)
         if ruolo in RUOLI_SHOP:
             return True
-
-        if ruolo == RUOLO_APPLICATIVO_DISABILITATO:
-            self.message = "Utente disabilitato."
-            return False
 
         logger.warning(
             "security.shop_denied user_id=%s ruolo=%s path=%s",

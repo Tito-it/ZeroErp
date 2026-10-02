@@ -70,7 +70,7 @@ class UserProfileView(DomainAPIView):
                                     "Ruolo applicativo dell'identita' attiva: "
                                     "OPERATORE | CLIENTE_PORTALE | "
                                     "FORNITORE_PORTALE | SHOP_CUSTOMER | "
-                                    "API_CLIENT | DISABILITATO | null. "
+                                    "API_CLIENT | null. "
                                     "Emesso da script.fn_get_user_profile "
                                     "(GUC-first: la veste del JWT corrente)."
                                 ),

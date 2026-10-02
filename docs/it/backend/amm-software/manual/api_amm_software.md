@@ -65,14 +65,20 @@ Base URL: `/api/v1/amm-software/`
 
 ### 1.1 GET /api/v1/amm-software/operatori/ -- Lista utenti
 
-Restituisce la lista paginata degli operatori con filtri opzionali.
+Restituisce la lista paginata degli operatori con filtri opzionali: la prima
+scheda dell'area «Accessi» (§1-bis). ⭐ Dal 2026-10-02 una riga e' una credenziale
+di categoria `OPERATORE` (`script.fn_categoria_accesso`, la regola che decide il
+tab), e la veste mostrata e' quella di riferimento (`script.fn_veste_di_riferimento`:
+l'accesa, altrimenti la spenta piu' recente). Ogni riga porta `veste_attiva`: un
+operatore disattivato resta in elenco col tipo `OPERATORE` e `veste_attiva = false`
+(R-DB-1: «disabilitato» si legge dallo stato, non dal ruolo).
 
 **Parametri query string:**
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `search` | string | no | Ricerca libera sulle colonne che il catalogo della lista `anagrafiche.operatori` accende per l'operatore (le decide il catalogo, non il codice: `ricerca_full` nella configurazione della lista). Sotto 3 caratteri non filtra (nessun 400). Ogni riga porta anche `soggetto_ragione_sociale` (ragione sociale completa del soggetto, `null` senza soggetto) |
-| `ruolo_sistema` | string | no | Filtra per ruolo: `ADMIN`, `OPERATIVO`, `DISABILITATO` |
+| `is_super_admin` | bool | no | Filtra sul binding SUPER_ADMIN |
 | `unita_organizzativa_id` | int | no | Filtra per unita' organizzativa |
 | `is_active` | bool | no | Filtra per stato attivo (`true`/`false`/`1`/`0`) |
 | `limit` | int | no | Numero massimo risultati (default 50, max 200) |
@@ -280,7 +286,8 @@ Il dettaglio e' generato da `script.fn_get_operatore_detail(p_auth_user_id)`
 | Campo | Tipo | Descrizione |
 |---|---|---|
 | `is_super_admin` | bool | `true` se l'identita ha binding `SUPER_ADMIN` attivo (`config.profili_accesso_bindings`, profilo seed id 9100) |
-| `ruolo_applicativo` | string | `OPERATORE` / `CLIENTE_PORTALE` / `FORNITORE_PORTALE` / `SHOP_CUSTOMER` / `API_CLIENT` / `DISABILITATO` |
+| `ruolo_applicativo` | string | Il tipo della veste OPERATORE di riferimento. ⛔ Dal 2026-10-02 mai `DISABILITATO`: spenta, la veste tiene il tipo (`veste_attiva = false`) |
+| `veste_attiva` | bool \| null | Lo stato della veste OPERATORE di riferimento (R-9) |
 | `last_login` | timestamptz \| null | Ultimo login (`auth_user.last_login`); NULL se mai loggato |
 | `invito_inviato_at` | timestamptz \| null | Quando e' stato spedito l'ultimo invito (`identita_digitali.invito_inviato_at`) |
 | `deve_cambiare_password` | bool | Force-reset password al prossimo login |
@@ -322,10 +329,11 @@ Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`. Il
 service traduce internamente la coppia in `ruolo_sistema` legacy per il repo
 (compat layer interno) secondo la regola:
 
-- `attivo=False` → `DISABILITATO` (a prescindere da `is_super_admin`)
-- `attivo=True, is_super_admin=True` → `ADMIN`
-- `attivo=True, is_super_admin=False` → `OPERATIVO`
-- payload senza `is_super_admin` ne' `attivo` → NO-OP sul ruolo (solo altri campi)
+- `attivo` accende o spegne la sola veste OPERATORE di riferimento: **solo**
+  `attivo`, il tipo resta (R-DB-1, 2026-10-02 — prima lo spegnimento scriveva
+  `DISABILITATO`, e la tabella oggi lo rifiuta con `E_RUOLO_APPLICATIVO_RITIRATO`)
+- `is_super_admin` lega o slega il profilo SUPER_ADMIN sulla stessa veste
+- payload senza `is_super_admin` ne' `attivo` → nessuno dei due tocchi
 
 **Parametri path:** `id` (int) -- auth_user_id dell'utente.
 
@@ -366,8 +374,8 @@ curl -X PATCH -H "Authorization: Bearer <token>" \
 
 ### 1.5 POST /api/v1/amm-software/operatori/{id}/disabilita/ -- Disabilita utente
 
-Disabilita un utente: identita digitale `attivo=false`, `ruolo_applicativo='DISABILITATO'`,
-risorsa umana `attivo=false`+`valido_al=oggi`. Sincronizza `auth_user.is_active`,
+Disabilita un utente: la veste OPERATORE di riferimento `attivo=false` (il tipo
+resta, R-DB-1), la sua risorsa umana `attivo=false`+`valido_al=oggi`. Sincronizza `auth_user.is_active`,
 invalida la cache permessi e inserisce tutti i token JWT dell'utente nella
 blacklist (SimpleJWT), impedendo ulteriori accessi.
 
@@ -392,13 +400,13 @@ l'envelope errore (HTTP 409).
 - Invalida la cache permessi dell'utente.
 - Blacklist di tutti i token JWT outstanding (best-effort).
 
-> ⚠️ Difetto noto (M-5): l'UPDATE su `identita_digitali` e' per `auth_user_id`,
-> senza filtro sul ruolo: disattiva e rinomina `DISABILITATO` **tutte** le vesti
-> della credenziale, comprese quelle portale e shop. Vedi
-> [analisi accessi](../../../dev/work-done/analisi-accessi-credenziale-e-vesti.md).
+> ✅ Chiuso M-5 (2026-10-02): si spegne la sola veste operatore, le vesti
+> portale e shop della stessa credenziale restano come sono. ⚠️ Le sessioni
+> chiuse sono ancora TUTTE quelle della credenziale (D-5, piano accessi L-5).
 
-**Risposta:** dettaglio utente aggiornato (con `is_active=false`,
-`attivo=false`, `ruolo_applicativo="DISABILITATO"`).
+**Risposta:** dettaglio utente aggiornato (con `attivo=false`,
+`veste_attiva=false`, `ruolo_applicativo="OPERATORE"`; `is_active` resta `true`
+se la credenziale ha un'altra veste accesa).
 
 **Esempio curl:**
 
@@ -423,19 +431,17 @@ richiede padre attivo).
 **Regole:**
 
 - `risorse_umane`: `attivo=true`, `valido_dal=oggi`, `valido_al=NULL`.
-- `identita_digitali`: `attivo=true`, `ruolo_applicativo='OPERATORE'`.
+- veste OPERATORE di riferimento: `attivo=true` (il tipo non va ricostruito:
+  non l'ha mai perso, R-DB-1).
 - Sync `auth_user.is_active`.
 - Invalida la cache permessi dell'utente.
-- ⚠️ Difetto noto (M-6): l'UPDATE e' per `auth_user_id` e porta a `OPERATORE`
-  **tutte** le identita' della credenziale; con una veste cliente, fornitore o
-  shop i vincoli del DB la fanno fallire. Vedi
-  [analisi accessi](../../../dev/work-done/analisi-accessi-credenziale-e-vesti.md).
+- ✅ M-6 chiuso: si riaccende la sola veste operatore.
 - **Non riattiva il binding SUPER_ADMIN**: se l'utente era stato
   precedentemente promosso e poi disabilitato, l'eventuale binding va
   ri-impostato via PATCH `is_super_admin: true` (azione esplicita).
 
 **Risposta:** dettaglio utente aggiornato (con `is_active=true`,
-`attivo=true`, `ruolo_applicativo="OPERATORE"`).
+`attivo=true`, `veste_attiva=true`).
 
 **Esempio curl:**
 
@@ -443,6 +449,118 @@ richiede padre attivo).
 curl -X POST -H "Authorization: Bearer <token>" \
   "https://host/api/v1/amm-software/operatori/1/riattiva/"
 ```
+
+---
+
+> ⛔ **Tutte le rotte `operatori/{id}/…` valgono per le sole credenziali di
+> categoria `OPERATORE`** (dal 2026-10-02): un cliente del portale o l'utente
+> tecnico di un processo rispondono `E_AMM_OPERATORE_NOT_FOUND` (404) come un id
+> inesistente. Senza, i comandi spegnerebbero la veste OPERATORE di una
+> macchina — la sua veste e' `OPERATORE` con `tecnica`, e fermarla e' affare
+> del pannello dei processi (A-6).
+
+---
+
+## 1-bis. Area «Accessi» e azioni della credenziale
+
+> Dal 2026-10-02 ([brief-db-be-fe-area-accessi](../../../dev/work-in-progress/brief-db-be-fe-area-accessi.md)).
+> La voce «Operatori» e' diventata l'area **«Accessi»**, tre schede che insieme
+> censiscono TUTTE le credenziali, ognuna in una scheda sola: la partizione la
+> decide il DB (`script.fn_categoria_accesso` → `OPERATORE` / `SISTEMA` /
+> `ALTRO`) e nessuna lista la ricalcola. La prima scheda e' §1.1.
+
+### 1-bis.1 GET /api/v1/amm-software/accessi/altri/ -- Altri accessi
+
+Le credenziali di categoria `ALTRO`: clienti e fornitori del portale, clienti
+dello shop, e le credenziali **senza alcuna veste** (`nessun_accesso = true`).
+Legge `anagrafiche.vw_accessi_altri` (`v.*`: la vista e' il contratto), lista a
+catalogo `anagrafiche.accessi_altri` (104). Envelope paginato standard
+(`count`, `page`, `page_size`, `total_pages`, `results`).
+
+| Parametro | Tipo | Descrizione |
+|---|---|---|
+| `search` | string | Ricerca libera sulle colonne accese dal catalogo (nome, username, email, vesti, soggetti) |
+| `ruolo_applicativo` | string | Una veste di quel tipo fra le vesti della credenziale (`CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, …). `DISABILITATO` → 400 |
+| `stato_accesso` | string | Il migliore fra le vesti: `ATTIVO`, `PENDING`, `NON_SPEDITO`, `DISATTIVO`, `NESSUNO`. Estraneo → 400 |
+| `nessun_accesso` | bool | Nessuna veste |
+| `secondo_fattore_stato` | string | `ASSENTE`, `DA_CONFERMARE`, `ATTIVO` |
+| `secondo_fattore_obbligatorio` | bool | |
+| `bloccata` | bool | Blocco dell'amministratore |
+| `limit` / `offset` / `order_by` / `order_dir` | | Ordinabili: `nome_visualizzato` (default), `username`, `stato_accesso`, `nessun_accesso`, `secondo_fattore_stato`, `bloccata`, `ultimo_accesso` (senza verso: dal piu' recente) |
+
+Riga: `auth_user_id`, `username`, `email`, `nome`, `cognome`,
+`nome_visualizzato`, **`vesti`** (lista, una voce per veste anche spenta:
+`identita_id`, `ruolo_applicativo`, `stato` di `script.fn_stato_veste`,
+`attivo`, validita', `invito_inviato_at`, `token_scade_at`, `soggetto_id`,
+`soggetto_ruolo_id`, `soggetto`, **`cliente_ids` (array)**, `fornitore_id`),
+`vesti_elenco`, `soggetti_elenco`, `nessun_accesso`, `stato_accesso`,
+`is_active`, `secondo_fattore_stato`, `secondo_fattore_obbligatorio`,
+`bloccata`, `bloccata_dal`, `motivo_blocco`, `ultimo_accesso`.
+
+⚠️ `cliente_ids` e' un array perche' un soggetto_ruolo puo' avere piu' schede
+cliente (una per istanza utility): il FE con una apre quella scheda, con piu'
+d'una la scheda del soggetto. ⚠️ La vista attraversa `anagrafiche.clienti`
+(RLS): la legge la richiesta, con le sue GUC.
+
+### 1-bis.2 GET /api/v1/amm-software/accessi/sistema/ -- Accessi di sistema
+
+Le credenziali di categoria `SISTEMA`: gli utenti tecnici dei processi
+automatici (`tipo = PROCESSO`, con `processo_id`/`processo_codice` da aprire) e
+i sistemi esterni (`tipo = API_CLIENT`, senza processo). **Sola lettura** (A-6):
+il proprietario e' il pannello dei processi. Legge
+`anagrafiche.vw_accessi_sistema`, lista `anagrafiche.accessi_sistema` (105,
+`multi_emittente`: l'emittente per riga). Filtri `search`, `tipo`
+(`PROCESSO`/`API_CLIENT`, estraneo → 400), `emittente_fiscale_id`,
+`identita_attiva`, `bloccata`. Ordinabili: `username` (default), `tipo`,
+`processo_codice`, `emittente_codice`, `identita_attiva`, `bloccata`,
+`ultimo_accesso`.
+
+### 1-bis.3 GET /api/v1/amm-software/credenziali/{id}/ -- Stato della credenziale
+
+```json
+{ "data": {
+  "auth_user_id": 7, "username": "cliente7", "email": null,
+  "categoria": "ALTRO",
+  "bloccata": true, "bloccata_dal": "2026-10-02T10:00:00+00:00",
+  "bloccata_da": "tid", "motivo_blocco": "abuso",
+  "can_block": true, "block_reason": null, "block_reason_key": null
+} }
+```
+
+`can_block = false` con `block_reason = ULTIMO_SUPER_ADMIN` e
+`block_reason_key = amministrazione.accessi.blocca_reason.ultimo_super_admin`
+sull'ultimo SUPER_ADMIN raggiungibile: il predicato e'
+`script.fn_check_ultimo_super_admin_attivo`, lo stesso caso in cui il guard
+`trgfn_credenziali_guard_ultimo_super_admin` rifiuta il blocco. ⚠️ Il codice e
+la chiave li compone ancora il backend: manca una `fn_check_*` del blocco che li
+emetta (chiesta al team DB). Credenziale inesistente → 404
+`E_CREDENZIALE_NON_TROVATA`. Il blocco si legge da `config.credenziali`
+(leggibile dall'app; le scritture passano dai verbi).
+
+### 1-bis.4 POST /api/v1/amm-software/credenziali/{id}/blocca/ -- Blocca
+
+Corpo `{"motivo": "…"}`, **`Idempotency-Key` obbligatoria**. Chiama
+`script.fn_blocca_credenziale` (SUPER_ADMIN alla prima riga, motivo obbligatorio
+→ `E_CREDENZIALE_MOTIVO_OBBLIGATORIO`, anti-lockout → `E_PROFILO_ULTIMO_SUPER_ADMIN`)
+e mette in blacklist **tutte** le sessioni della credenziale, nella stessa
+transazione: un blocco con le sessioni vive non e' un blocco. Il blocco vale su
+tutte le porte, non scade, il reset password non lo toglie. Risposta: lo stato
+di §1-bis.3.
+
+### 1-bis.5 POST /api/v1/amm-software/credenziali/{id}/sblocca/ -- Sblocca
+
+Nessun corpo, `Idempotency-Key` obbligatoria. `script.fn_sblocca_credenziale`:
+idempotente, non tocca i tentativi; le sessioni chiuse dal blocco non si
+riaprono. Risposta: lo stato di §1-bis.3.
+
+### 1-bis.6 Secondo fattore della credenziale
+
+`GET credenziali/{id}/secondo-fattore/`, `POST …/obbligo/` (`{valore}`),
+`POST …/disattiva/` (`{motivo}`): stesso contratto di prima
+([api_secondo_fattore](../../core/manual/api_secondo_fattore.md)), nuova sede.
+⛔ Fino al 2026-10-02 stavano sotto `operatori/{id}/secondo-fattore/`: ritirate
+nello stesso giro (il secondo fattore e' della credenziale, e un cliente del
+portale non si raggiungeva da li').
 
 ---
 

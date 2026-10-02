@@ -24,7 +24,7 @@ Indice test eseguiti:
 11) test_admin_obbligo_vuole_un_booleano
 12) test_admin_obbligo_sulla_credenziale
 13) test_admin_disattiva_lascia_la_traccia_col_motivo
-14) test_admin_operatore_inesistente_non_legge_il_device
+14) test_admin_credenziale_inesistente_non_legge_il_device
 15) test_admin_non_disattiva_il_proprio — senza prova, solo dalla pagina Sicurezza (decisione 7)
 """
 
@@ -185,7 +185,10 @@ class SecondoFattoreProprioTests(_Base):
 
 
 class SecondoFattoreAdminTests(_Base):
-    _URL = "/api/v1/amm-software/operatori/77/secondo-fattore/"
+    # ⭐ La sede e' la CREDENZIALE (brief-db-be-fe-area-accessi, 2026-10-02):
+    #    il secondo fattore vale per tutte le sue vesti. Prima stava sotto
+    #    `operatori/<id>/`.
+    _URL = "/api/v1/amm-software/credenziali/77/secondo-fattore/"
 
     def setUp(self) -> None:
         super().setUp()
@@ -193,8 +196,8 @@ class SecondoFattoreAdminTests(_Base):
             p = patch(target, return_value=valore)
             p.start()
             self.addCleanup(p.stop)
-        esiste = patch("apps.amm_software.api.secondo_fattore_views.AmmSoftwareService")
-        self.amm = esiste.start().return_value
+        esiste = patch("apps.amm_software.api.accessi_views.AccessiService")
+        self.accessi = esiste.start().return_value
         self.addCleanup(esiste.stop)
 
     def test_admin_obbligo_vuole_un_booleano(self):
@@ -218,20 +221,22 @@ class SecondoFattoreAdminTests(_Base):
             {"via": "APP", "chi_agisce": 42, "motivo": "telefono perso"},
         )
 
-    def test_admin_operatore_inesistente_non_legge_il_device(self):
+    def test_admin_credenziale_inesistente_non_legge_il_device(self):
         from apps.core.services.service_errors import ServiceError
 
-        self.amm.get_operatore.side_effect = ServiceError(code="E_AMM_NOT_FOUND", message="Operatore 77 non trovato.")
+        self.accessi.get_credenziale.side_effect = ServiceError(
+            code="E_CREDENZIALE_NON_TROVATA", message="Credenziale 77 non trovata.",
+        )
         resp = self.client.get(self._URL)
-        # Lo status e' quello della classe a catalogo di E_AMM_NOT_FOUND.
-        self.assertEqual(resp.json()["error"]["code"], "E_AMM_NOT_FOUND", resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(resp.json()["error"]["code"], "E_CREDENZIALE_NON_TROVATA", resp.content)
         self.repo.get_device.assert_not_called()
 
     # Scopo: Per il DB «la credenziale stessa» disattiva senza motivo e senza
     #        prova: dall'endpoint dell'amministratore, con la sola sessione,
     #        il SUPER_ADMIN non spegne il proprio (decisione 7).
     def test_admin_non_disattiva_il_proprio(self):
-        resp = self._post("/api/v1/amm-software/operatori/42/secondo-fattore/disattiva/", {"motivo": "x"})
+        resp = self._post("/api/v1/amm-software/credenziali/42/secondo-fattore/disattiva/", {"motivo": "x"})
         self.assertEqual(resp.status_code, 403, resp.content)
         self.assertEqual(resp.json()["error"]["code"], "E_PERMESSO_NEGATO")
         self.repo.disabilita_device.assert_not_called()

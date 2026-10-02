@@ -133,3 +133,19 @@ export const REGISTRO_RESET_POLICY_DEFAULT = 'ANNUALE'
 //    due letterali che devono restare uguali sono un letterale di troppo.
 export const REGISTRO_CIFRE_MIN = 1
 export const REGISTRO_CIFRE_MAX = 18
+
+// Le tre schede dell'area «Accessi» (brief-db-be-fe-area-accessi, A-1/A-2):
+// una PARTIZIONE delle credenziali — ognuna sta in una scheda sola, decisa dal
+// DB (`script.fn_categoria_accesso`). Il valore e' quello del `?tab=` del
+// link: stringhe stabili, mai indici (frontend-standards §«Pattern Tab-View»).
+export const ACCESSI_TABS = Object.freeze({
+  OPERATORI: 'operatori',
+  ALTRI: 'altri',
+  SISTEMA: 'sistema',
+})
+
+// Il TIPO di una credenziale di sistema (`vw_accessi_sistema.tipo`).
+export const TIPO_ACCESSO_SISTEMA = Object.freeze({
+  PROCESSO: 'PROCESSO',
+  API_CLIENT: 'API_CLIENT',
+})

@@ -246,7 +246,7 @@ export const useAuthStore = defineStore('auth', () => {
   //   Rinominati i consumer, alias tolto: il presidio e' il grep a zero.
   // - ruoloApplicativo: categoria dell'identita' attiva
   //   (OPERATORE | CLIENTE_PORTALE | FORNITORE_PORTALE | SHOP_CUSTOMER |
-  //    API_CLIENT | DISABILITATO | null).
+  //    API_CLIENT | null).
   const isSuperAdmin = computed(() => user.value?.is_super_admin === true)
   const ruoloApplicativo = computed(() => user.value?.ruolo_applicativo || null)
 

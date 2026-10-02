@@ -30,8 +30,7 @@
 # 14. test_is_allowed_gemello_con_azione_decide_solo_l_azione
 # 15. test_is_allowed_gemello_admin_solo_super_admin
 # 16. test_is_allowed_superuser_django_come_la_ui
-# 17. test_is_allowed_disabilitato_negato
-# 18. test_is_allowed_permission_class_non_valutabile_nega
+# 17. test_is_allowed_permission_class_non_valutabile_nega
 
 import unittest
 from typing import Any
@@ -291,14 +290,6 @@ class TestToolRegistry(unittest.TestCase):
         self.assertTrue(
             tool_registry.is_tool_allowed_for_user(_operatore(is_superuser=True), t)
         )
-
-    # Scopo: ruolo DISABILITATO → negato anche con area TUTTO.
-    @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
-    def test_is_allowed_disabilitato_negato(self, _mock_disabled):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO", **_AI_TUTTO})
-        self.mock_get_ruolo_applicativo.return_value = "DISABILITATO"
-        t = _tool("t_dis", _PraticheView)
-        self.assertFalse(tool_registry.is_tool_allowed_for_user(_operatore(), t))
 
     # Scopo: una permission class senza `valuta` non si sa valutare fuori da
     #        una richiesta → fail-closed, anche con area TUTTO.

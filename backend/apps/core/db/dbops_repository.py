@@ -147,6 +147,20 @@ _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
         "has_obsoleto": True,
         "has_attivo": False,
     },
+    "config.esposizioni_componente": {
+        # etichetta_key: come per i registri, l'indirizzo i18n che il DB
+        # dichiara per ciascuno dei tre modi di esporre in fattura un
+        # componente di kit (NASCOSTO / DESCRITTIVO / VALORIZZATO). Il frontend
+        # lo rende con `useLookupEtichettato`: la scelta nella distinta e il
+        # modo per esteso nei componenti (brief-db-esposizione-componenti-kit-
+        # in-fattura, R-BE-6).
+        # ⚠️ Niente `attivo` e niente `obsoleto_dal` (§9.2): i tre valori sono
+        #    la semantica di `vw_fattura_righe_esposte`, non una configurazione.
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
 }
 
 

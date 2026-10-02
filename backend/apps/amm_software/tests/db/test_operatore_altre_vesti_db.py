@@ -99,7 +99,8 @@ class OperatoreAltreVestiDbTests(TestCase):
                 apri_contesto_operatore(cur)
 
                 repo.disabilita_operatore(uid)
-                self.assertEqual(self._veste(cur, operatore), ("DISABILITATO", False))
+                # ⭐ R-DB-1 (2026-10-02): spenta, la veste TIENE il tipo.
+                self.assertEqual(self._veste(cur, operatore), ("OPERATORE", False))
                 # Il cliente non perde lo shop perche' lo si toglie come operatore.
                 self.assertEqual(self._veste(cur, shop), ("SHOP_CUSTOMER", True))
 
@@ -131,11 +132,11 @@ class OperatoreAltreVestiDbTests(TestCase):
             pass
 
     # Scopo: La lista operatori legge la veste con la stessa definizione dei
-    #        comandi (`_VESTE_OPERATORE`): disabilitato, l'operatore resta in
-    #        elenco con la sua risorsa umana e `DISABILITATO`; la veste shop
-    #        della stessa credenziale non entra nella join (una riga sola).
-    #        Fino al 2026-10-02 la join chiedeva `ruolo_applicativo =
-    #        'OPERATORE'`, e da disabilitato le sue colonne erano NULL.
+    #        comandi (`_VESTE_OPERATORE`, la veste di riferimento del DB):
+    #        disabilitato, l'operatore resta in elenco con la sua risorsa umana,
+    #        il tipo OPERATORE e `veste_attiva = false` (R-DB-1: «disabilitato»
+    #        si legge dallo stato, non dal ruolo); la veste shop della stessa
+    #        credenziale non entra nella join (una riga sola).
     def test_la_lista_legge_la_veste_operatore_anche_disabilitata(self):
         repo = AmmSoftwareRepository()
         try:
@@ -151,7 +152,8 @@ class OperatoreAltreVestiDbTests(TestCase):
 
                 mie = [r for r in righe if r["auth_user_id"] == uid]
                 self.assertEqual(len(mie), 1)
-                self.assertEqual(mie[0]["ruolo_applicativo"], "DISABILITATO")
+                self.assertEqual(mie[0]["ruolo_applicativo"], "OPERATORE")
+                self.assertIs(mie[0]["veste_attiva"], False)
                 self.assertIsNotNone(mie[0]["risorsa_umana_id"])
                 self.assertIs(mie[0]["attivo"], False)
                 # L'altra veste attiva e' un'informazione della riga (D-6).

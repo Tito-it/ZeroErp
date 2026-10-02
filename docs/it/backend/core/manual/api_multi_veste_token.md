@@ -201,7 +201,7 @@ sessione: il login e — dal 2026-09-24 — il cambio password
 | Claim               | Tipo   | Fonte                                             | Scopo                                                                                                                                                                        |
 | ------------------- | ------ | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `identita_id`       | int    | `anagrafiche.identita_digitali.id`                | Discriminatore veste. Usato da `JwtAuditAuthentication` per popolare GUC `app.current_identita_id` + validare che l'identita sia ancora attiva                               |
-| `ruolo_applicativo` | string | `anagrafiche.identita_digitali.ruolo_applicativo` | `OPERATORE` \| `CLIENTE_PORTALE` \| `FORNITORE_PORTALE` \| `SHOP_CUSTOMER` \| `API_CLIENT` \| `DISABILITATO`. Letto da guard cross-namespace del refresh + esposto in `/me/` |
+| `ruolo_applicativo` | string | `anagrafiche.identita_digitali.ruolo_applicativo` | `OPERATORE` \| `CLIENTE_PORTALE` \| `FORNITORE_PORTALE` \| `SHOP_CUSTOMER` \| `API_CLIENT` (`DISABILITATO` non e' piu' un tipo di veste dal 2026-10-02, R-DB-1). Letto da guard cross-namespace del refresh + esposto in `/me/` |
 | `sid`               | uuid   | `SidTokenObtainPairSerializer.get_token`          | Session ID stabile (invariato tra rotazioni). Usato dall'audit sessioni                                                                                                      |
 | `emittente_attivo_id` | int  | `EmittenteAttivoService.risolvi_per_login`        | **Opzionale, solo veste `OPERATORE`**: emittente attivo (impersonazione di scope). Claim assente = «Tutti gli emittenti». Popola la GUC `app.current_emittente_id`, rivalidata (emittente ancora attivo) a ogni richiesta |
 | `user_id`           | int    | `auth_user.id`                                    | Standard SimpleJWT                                                                                                                                                           |
@@ -254,6 +254,27 @@ rientri nel set `expected_ruoli_applicativi` del namespace chiamato:
 Non c'e' escalation di privilegio (il claim veste viene dal token firmato),
 ma chiude l'ambiguita' semantica cross-path.
 
+### 2-bis. Veste spenta al refresh (D-5, 2026-10-02)
+
+Subito dopo il guard cross-namespace, e **prima** della rotazione,
+`AuditTokenRefreshView.post()` controlla che la veste del claim `identita_id`
+sia ancora accesa sulla credenziale del token (`_veste_accesa`: id della veste +
+`user_id` + `attivo`, lo stesso predicato di `set_jwt_gucs`):
+
+- Veste accesa → si prosegue col rinnovo.
+- Veste spenta, inesistente o di un'altra credenziale, oppure claim
+  `identita_id` assente → 401 `E_AUTHENTICATION_FAILED`, nessuna rotazione, e
+  la sessione del token presentato (per `sid`) finisce in blacklist: una veste
+  riaccesa dopo **non** la resuscita, si rientra col login.
+- Guasto nella lettura della veste → l'errore propaga (500): il refresh non si
+  concede su un dubbio.
+
+La regola vale per **qualunque** strada spenga la veste (interruttore
+«Accesso attivo», «Disabilita», portale, shop). Fino al 2026-10-02 il controllo
+stava solo in `set_jwt_gucs`, dopo la rotazione, e un esito negativo era un
+warning: la richiesta veniva rifiutata (401 `E_IDENTITA_NON_ATTIVA`, §3), ma il
+refresh ruotava ancora.
+
 ### 3. Guard identita al request authenticated (§8.3.4)
 
 Ad **ogni** richiesta con Bearer, `JwtAuditAuthentication.authenticate()`:
@@ -269,7 +290,7 @@ Ad **ogni** richiesta con Bearer, `JwtAuditAuthentication.authenticate()`:
 
 | Codice                    | HTTP | UI action         | Quando                                                                         | Policy        |
 | ------------------------- | ---- | ----------------- | ------------------------------------------------------------------------------ | ------------- |
-| `E_AUTHENTICATION_FAILED` | 401  | show_error_banner | Credenziali errate; refresh senza cookie `zeroerp_refresh` o con refresh non valido/scaduto/in blacklist | Pre-esistente |
+| `E_AUTHENTICATION_FAILED` | 401  | show_error_banner | Credenziali errate; refresh senza cookie `zeroerp_refresh` o con refresh non valido/scaduto/in blacklist; refresh di una veste spenta (§2-bis) | Pre-esistente |
 | `E_NOT_AUTHENTICATED`     | 401  | show_error_banner | Header `Authorization` assente su endpoint protetto                            | Pre-esistente |
 | `E_PERMISSION_DENIED`     | 403  | show_error_banner | Refresh senza header `X-Requested-With: XMLHttpRequest` (anti-CSRF)            | 2026-09-28    |
 | `E_VESTE_NON_ATTIVA`      | 403  | show_error_banner | Utente senza identita del namespace chiamato (login) / refresh cross-namespace | §8.3.2        |

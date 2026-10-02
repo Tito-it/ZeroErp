@@ -176,8 +176,11 @@ export const RUOLO_APPLICATIVO = {
   FORNITORE_PORTALE: 'FORNITORE_PORTALE',
   SHOP_CUSTOMER: 'SHOP_CUSTOMER',
   API_CLIENT: 'API_CLIENT',
-  DISABILITATO: 'DISABILITATO'
 }
+// ⛔ Niente piu' `DISABILITATO` (2026-10-02, brief-db-be-fe-area-accessi
+//    R-DB-1): una veste spenta TIENE il suo tipo e ha `attivo = false`, e la
+//    tabella rifiuta il valore, che resta nell'enum del DB solo come voce
+//    storica. «Disabilitato» si legge dallo stato della veste, non dal ruolo.
 
 // Canali di login (§8.5.1 multi-face auth). Il login dell'utente e' per
 // "canale": a seconda del canale scelto il BE emette il JWT con la veste
@@ -232,6 +235,21 @@ export const STATO_SECONDO_FATTORE = {
   DA_CONFERMARE: 'DA_CONFERMARE',
   ATTIVO: 'ATTIVO'
 }
+
+// Lo stato di una VESTE d'accesso: i quattro di `script.fn_stato_veste` (A-7,
+// calcolati SOLO a DB) piu' NESSUNO, la veste che non esiste — lo dichiarano
+// la scheda accessi del soggetto e `vw_accessi_altri.stato_accesso`. ⭐ Il
+// vocabolario sta qui, non nelle chiavi della mappa dei colori (`STATO_VESTE_MAP`):
+// un filtro costruito dai colori perderebbe in silenzio uno stato senza colore.
+// Regola del 2 (ok Tid 2026-10-02): `PortaleAccessoPanel`, `WebAccessiBadge`,
+// `AccessiAltriTab`.
+export const STATO_VESTE = Object.freeze({
+  ATTIVO: 'ATTIVO',
+  PENDING: 'PENDING',
+  NON_SPEDITO: 'NON_SPEDITO',
+  DISATTIVO: 'DISATTIVO',
+  NESSUNO: 'NESSUNO',
+})
 
 // Da dove viene l'obbligo del secondo fattore (`motivo` dello stato).
 export const MOTIVO_OBBLIGO_SECONDO_FATTORE = {
@@ -293,7 +311,7 @@ export const RUOLO_FE_NAMESPACE = {
 }
 
 // Scopo: Config FE namespace della veste corrente. Ritorna null per le
-// vesti senza namespace FE (API_CLIENT, DISABILITATO, assente): il caller
+// vesti senza namespace FE (API_CLIENT, assente): il caller
 // tipicamente traduce in `forbidden`.
 export function resolveRuoloFeConfig(ruoloApplicativo) {
   return RUOLO_FE_NAMESPACE[ruoloApplicativo] || null
@@ -643,6 +661,12 @@ export const MANAGE_ICONS = {
   // Togliere un blocco. ⛔ Non il lucchetto aperto: su un bottone si legge
   // come STATO «aperto» (e il lucchetto aperto e' `APRI`).
   SBLOCCA: 'pi pi-key',
+  // Bloccare l'ACCESSO di una persona: la credenziale non entra piu' da
+  // nessuna porta, per decisione dell'amministratore (brief-db-be-fe-area-
+  // accessi). Coppia di `SBLOCCA`. ⛔ Non il lucchetto (`CLOSE`, `REGISTRA`,
+  // `VIETATO`) ne' `DISATTIVA` (`pi-ban`, spegne una veste): qui si toglie
+  // l'ingresso alla persona, su tutte le sue vesti.
+  BLOCCA_ACCESSO: 'pi pi-user-minus',
   //
   // ─── Pipeline e lavori ─────────────────────────────────────────────────────
   // Avanzare di uno step la pipeline del lotto. Coppia di `RIPORTA_A_BOZZA`.
