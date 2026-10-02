@@ -155,9 +155,9 @@ CREATE OR REPLACE FUNCTION pg_temp.fx_riga_fri(
 RETURNS numeric LANGUAGE sql AS $fx$
   WITH ins AS (
     INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                       prezzo_unitario, sconto_percentuale, iva_id)
+                                       prezzo_unitario, sconto_percentuale, iva_id, competenza_dal, competenza_al)
     SELECT (SELECT id FROM tmp_fattura_fri), p_nr, 'Riga test ' || p_nr,
-           p_qta, p_prezzo, p_sconto, (SELECT iva_id FROM tmp_refs_fri)
+           p_qta, p_prezzo, p_sconto, (SELECT iva_id FROM tmp_refs_fri), CURRENT_DATE, CURRENT_DATE
     RETURNING imponibile_riga
   )
   SELECT imponibile_riga FROM ins;
@@ -188,9 +188,9 @@ SELECT is(pg_temp.fx_riga_fri(5, 3, 0.333, 0), 1.00::numeric,
 --    esterno non sopravvive mai — ma la segnalazione sparisce: questo caso e'
 --    cio' che la sostituisce.
 INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                   prezzo_unitario, iva_id, imponibile_riga)
+                                   prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_fattura_fri), 6, 'Riga con importo imposto',
-       1, 1, (SELECT iva_id FROM tmp_refs_fri), 999999;
+       1, 1, (SELECT iva_id FROM tmp_refs_fri), 999999, CURRENT_DATE, CURRENT_DATE;
 
 SELECT is(
   (SELECT imponibile_riga FROM vendite.fatture_righe
@@ -265,8 +265,8 @@ SELECT throws_ok(
   '13) oltre soglia il DELETE della riga e'' respinto');
 
 SELECT throws_ok(
-  $$ INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario)
-     SELECT (SELECT id FROM tmp_fattura_fri), 99, 'Riga tardiva', 1, 1 $$,
+  $$ INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, competenza_dal, competenza_al)
+     SELECT (SELECT id FROM tmp_fattura_fri), 99, 'Riga tardiva', 1, 1, CURRENT_DATE, CURRENT_DATE $$,
   NULL::text, NULL::text,
   '14) oltre soglia anche l''INSERT di una riga nuova e'' respinto');
 
@@ -295,18 +295,20 @@ SELECT pg_temp.fx_fattura_fri((SELECT stato_draft FROM tmp_refs_fri)) AS id;
 
 SELECT throws_ok(
   $$ INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                        prezzo_unitario, kit_key)
-     SELECT (SELECT id FROM tmp_fattura_kit_fri), 1, 'kit a meta', 1, 1, 'K-INCOMPLETO' $$,
+                                        prezzo_unitario, kit_key, competenza_dal, competenza_al)
+     SELECT (SELECT id FROM tmp_fattura_kit_fri), 1, 'kit a meta', 1, 1, 'K-INCOMPLETO', CURRENT_DATE, CURRENT_DATE $$,
   NULL::text, NULL::text,
   '16) riga di kit con metadati a meta'': respinta dal CHECK di coerenza');
 
--- Kit completo: 3 componenti (2+6+9 = 17), due esposti e uno no.
-INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
+-- Kit completo: 3 componenti (2+6+9 = 17), due esposti e uno no. Ogni componente
+-- e' un articolo suo (chk_fatture_righe_kit_articolo, 20261002-43).
+INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione, qta,
        prezzo_unitario, iva_id, kit_key, kit_esposizione,
-       kit_articolo_padre_id, kit_descrizione_padre)
-SELECT (SELECT id FROM tmp_fattura_kit_fri), v.nr, v.descr, 1, v.prezzo,
+       kit_articolo_padre_id, kit_descrizione_padre, competenza_dal, competenza_al, kit_qta)
+SELECT (SELECT id FROM tmp_fattura_kit_fri), v.nr,
+       dbops.fn_pgtap_crea_articolo('PGTAP-FRI-C' || v.nr), v.descr, 1, v.prezzo,
        (SELECT iva_id FROM tmp_refs_fri), 'K-TEST', v.esposto,
-       (SELECT articolo_id FROM tmp_refs_fri), 'Padre del kit di test'
+       (SELECT articolo_id FROM tmp_refs_fri), 'Padre del kit di test', CURRENT_DATE, CURRENT_DATE, 1
   FROM (VALUES (1, 'comp A', 2::numeric, 'DESCRITTIVO'),
                (2, 'comp B', 6::numeric, 'DESCRITTIVO'),
                (3, 'comp C', 9::numeric, 'NASCOSTO')) AS v(nr, descr, prezzo, esposto);

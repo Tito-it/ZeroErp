@@ -48,7 +48,7 @@
 --    5) KM: il descrittivo non ha prezzo ne' importo
 --    6) KM: il valorizzato ha prezzo e importo suoi (30)
 --    7) KV: il padre resta, con importo e prezzo NULL (E-2)
---    8) KV: il padre ha comunque la sua quantita' (media di tutti)
+--    8) KV: il padre ha comunque la sua quantita' (kit_qta, valorizzati compresi)
 --    9) KV: i due valorizzati sotto il padre, coi loro importi
 --   10) KD: il padre porta il valore del descrittivo (70)
 --   11) KN: il padre porta 80, nessun componente sotto
@@ -80,31 +80,47 @@ SELECT * FROM dbops.fn_pgtap_crea_fattura('esposizione tre modi');
 CREATE TEMP TABLE tmp_e3m_iva AS
 SELECT (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS iva_id;
 
+-- ⭐ Un componente di kit e' un ARTICOLO della distinta, e dentro un kit due
+--   componenti sono due articoli diversi: la vista raggruppa il kit
+--   componente per componente (per articolo_id, 20261002-64). Senza articolo
+--   le righe di un kit cadrebbero tutte nello stesso gruppo NULL e i loro
+--   kit_qta si sommerebbero (KV: 1 + 1 = 2 kit).
 CREATE TEMP TABLE tmp_e3m_art AS
-SELECT dbops.fn_pgtap_crea_articolo('PGTAP-E3M-KIT') AS padre_id;
+SELECT dbops.fn_pgtap_crea_articolo('PGTAP-E3M-KIT') AS padre_id,
+       dbops.fn_pgtap_crea_articolo('PGTAP-E3M-C1')  AS c1,
+       dbops.fn_pgtap_crea_articolo('PGTAP-E3M-C2')  AS c2,
+       dbops.fn_pgtap_crea_articolo('PGTAP-E3M-C3')  AS c3;
 
--- Scopo: una riga di fattura, di kit se p_kit e' valorizzato.
+-- Scopo: una riga di fattura, di kit se p_kit e' valorizzato; p_cmp = quale
+--   componente (1, 2, 3) dentro il kit.
 CREATE OR REPLACE FUNCTION pg_temp.fx_riga_e3m(
-    p_nr integer, p_prezzo numeric, p_kit text DEFAULT NULL, p_modo varchar DEFAULT NULL)
+    p_nr integer, p_prezzo numeric, p_kit text DEFAULT NULL, p_modo varchar DEFAULT NULL,
+    p_cmp integer DEFAULT NULL)
 RETURNS bigint LANGUAGE sql AS $fx$
-  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario,
-         iva_id, kit_key, kit_esposizione, kit_articolo_padre_id, kit_descrizione_padre)
-  SELECT (SELECT fattura_id FROM tmp_e3m), p_nr, 'Riga ' || p_nr, 1, p_prezzo,
+  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione, qta, prezzo_unitario,
+         iva_id, kit_key, kit_esposizione, kit_articolo_padre_id, kit_descrizione_padre, competenza_dal, competenza_al,
+         kit_qta)
+  SELECT (SELECT fattura_id FROM tmp_e3m), p_nr,
+         (SELECT CASE p_cmp WHEN 1 THEN c1 WHEN 2 THEN c2 WHEN 3 THEN c3 END FROM tmp_e3m_art),
+         'Riga ' || p_nr, 1, p_prezzo,
          (SELECT iva_id FROM tmp_e3m_iva),
          p_kit, p_modo,
          CASE WHEN p_kit IS NOT NULL THEN (SELECT padre_id FROM tmp_e3m_art) END,
-         CASE WHEN p_kit IS NOT NULL THEN 'Padre ' || p_kit END
+         CASE WHEN p_kit IS NOT NULL THEN 'Padre ' || p_kit END, CURRENT_DATE, CURRENT_DATE,
+         -- un kit per riga di componente (rev 2026-10-02: la quantita' del kit
+         -- viene dalla riga padre del documento, non piu' dalla media)
+         CASE WHEN p_kit IS NOT NULL THEN 1 END
   RETURNING id;
 $fx$;
 
-SELECT pg_temp.fx_riga_e3m(1, 10, 'KM', 'NASCOSTO');
-SELECT pg_temp.fx_riga_e3m(2, 20, 'KM', 'DESCRITTIVO');
-SELECT pg_temp.fx_riga_e3m(3, 30, 'KM', 'VALORIZZATO');
-SELECT pg_temp.fx_riga_e3m(4, 40, 'KV', 'VALORIZZATO');
-SELECT pg_temp.fx_riga_e3m(5, 50, 'KV', 'VALORIZZATO');
-SELECT pg_temp.fx_riga_e3m(6, 60, 'KD', 'VALORIZZATO');
-SELECT pg_temp.fx_riga_e3m(7, 70, 'KD', 'DESCRITTIVO');
-SELECT pg_temp.fx_riga_e3m(8, 80, 'KN', 'NASCOSTO');
+SELECT pg_temp.fx_riga_e3m(1, 10, 'KM', 'NASCOSTO',    1);
+SELECT pg_temp.fx_riga_e3m(2, 20, 'KM', 'DESCRITTIVO', 2);
+SELECT pg_temp.fx_riga_e3m(3, 30, 'KM', 'VALORIZZATO', 3);
+SELECT pg_temp.fx_riga_e3m(4, 40, 'KV', 'VALORIZZATO', 1);
+SELECT pg_temp.fx_riga_e3m(5, 50, 'KV', 'VALORIZZATO', 2);
+SELECT pg_temp.fx_riga_e3m(6, 60, 'KD', 'VALORIZZATO', 1);
+SELECT pg_temp.fx_riga_e3m(7, 70, 'KD', 'DESCRITTIVO', 2);
+SELECT pg_temp.fx_riga_e3m(8, 80, 'KN', 'NASCOSTO',    1);
 SELECT pg_temp.fx_riga_e3m(9, 5);
 
 -- La vista letta una volta, sui modi misti della fixture.
@@ -164,7 +180,7 @@ SELECT ok(
 SELECT is(
     (SELECT qta FROM tmp_e3m_v WHERE tipo_riga = 'KIT_PADRE' AND kit_key = 'KV'),
     1::numeric,
-    '8) KV: il padre ha comunque la sua quantita'' (media di tutti i componenti)');
+    '8) KV: il padre ha comunque la sua quantita'' (kit_qta dei componenti, valorizzati compresi)');
 
 SELECT is(
     (SELECT array_agg(imponibile ORDER BY riga_nr) FROM tmp_e3m_v

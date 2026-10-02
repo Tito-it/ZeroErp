@@ -94,6 +94,7 @@
 - [fn_accredita_riga_reso](manual/fn_accredita_riga_reso.md) — (rev 2026-09-21 — la coda si legge per documento · rev 2026-08-18)
 - [fn_af_merce_per_riga](manual/fn_af_merce_per_riga.md) — È il **contatore delle attività fatturabili per riga di documento** — la stessa domanda di `vw_af_merce_per_riga` (*«di questa riga, quanti pezzi sono entrati nella corsia di fatturazione?»*) — che risponde **solo per le righe che le si chiedono**. La vista ne è la proiezione senza filtro: `fn_af_merce_per_riga(NULL)`. Un corpo solo.
 - [fn_aggiungi_onere_commessa](manual/fn_aggiungi_onere_commessa.md) — (rev 2026-07-23)
+- [fn_annotazioni_fattura](manual/fn_annotazioni_fattura.md)
 - [fn_annulla_accredito_riga_reso](manual/fn_annulla_accredito_riga_reso.md) — (rev 2026-08-21 — funzione del 2026-08-18)
 - [fn_annulla_commessa_attivita](manual/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
 - [fn_annulla_lotto_da_draft](manual/fn_annulla_lotto_da_draft.md) — (latest review 23-09-2026)   La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico** di un lotto in stato **DRAFT**, eliminando i documenti generati dal draft, ripristinando le righe di `attivita_fatturabili` e **chiudendo** il lotto portandolo ad **ANNULLATA**.
@@ -220,6 +221,7 @@
 - [fn_provision_registri_famiglia](manual/fn_provision_registri_famiglia.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_push_offerta_a_contratto](manual/fn_push_offerta_a_contratto.md) — (rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 - [fn_push_preventivo_a_ordine](manual/fn_push_preventivo_a_ordine.md) — (latest review 08-07-2026)
+- [fn_regime_fiscale_fattura](manual/fn_regime_fiscale_fattura.md)
 - [fn_reset_fondi_fattura](manual/fn_reset_fondi_fattura.md) — (latest review 22-08-2026)
 - [fn_resi_da_accreditare](manual/fn_resi_da_accreditare.md) — (latest review 2026-09-21)
 - [fn_resi_riga_accreditato_partita](manual/fn_resi_riga_accreditato_partita.md) — (rev 2026-08-18)

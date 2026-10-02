@@ -64,7 +64,8 @@ Obiettivi principali:
   no — lì una `'D'` (differita) scelta di proposito **sopravvive**, perché è una
   decisione del documento che nessuna colonna sa dedurre.
 * **Importo congelato**: `imponibile_riga` — `NOT NULL`, **calcolato dal DB**, mai da chi scrive la riga. Un valore passato dall'esterno viene **sovrascritto**.
-* **Snapshot kit** (`NULL` sulle righe non-kit, tutti valorizzati insieme sulle righe di kit): `kit_key` (identità dell'**istanza** di kit), `kit_esposizione` (fino al 2026-10-01 `kit_esposto_in_fattura`), `kit_articolo_padre_id`, `kit_descrizione_padre`. Vedi *Kit ed esposizione*.
+* **Periodo di competenza** (dal 2026-10-02): `competenza_dal`, `competenza_al` — `NOT NULL` **senza default**: chi scrive la riga dice il suo periodo, come entra nella chiave di raggruppamento della generazione. `dal <> al` è un periodo (utilities, canoni), che la rappresentazione stampa; `dal = al` è una riga puntuale, e se raggruppa più attività di date diverse porta **la più recente** (mai `min`–`max`, che si stamperebbe come un periodo inesistente). Le righe nate prima portano il giorno del migrate in entrambe (dati di test).
+* **Snapshot kit** (`NULL` sulle righe non-kit, valorizzati insieme sulle righe di kit): `kit_key` (identità dell'**istanza** di kit), `kit_esposizione` (fino al 2026-10-01 `kit_esposto_in_fattura`), `kit_articolo_padre_id`, `kit_descrizione_padre`, e dal 2026-10-02 `kit_qta` (obbligatoria) e `kit_uom_id` (nullable come `uom_id`). Vedi *Kit ed esposizione*.
 * **Riga spezzata** (dal 2026-08-31): `riga_capofila_id` — vuoto sulle righe
   ordinarie, valorizzato sulle parti. Vedi *Quando una riga si spezza in due*.
 * **Riferimento all'atto** (dal 2026-08-31): `fattura_atto_id` — il blocco di
@@ -106,11 +107,13 @@ Obiettivi principali:
 
 ### Vincoli, indici e coerenze
 
-* **FK**: fattura, articolo (opz.), UoM, IVA, BA destinatario (opz.), sorgente tipo.
+* **FK**: fattura, articolo (opz.), UoM, UoM del kit (`fk_fatture_righe_kit_uom`, dal 2026-10-02), IVA, BA destinatario (opz.), sorgente tipo.
 * **CHECK**:
 
   * `chk_fatture_righe_sconto` → `sconto_percentuale` 0..100 (rinominato da `chk_fatture_righe_sconto_perc`, unificazione 2026-06-05).
-  * `chk_fatture_righe_kit_coerente` → o la riga **non è** di kit (tutte le colonne `kit_*` NULL), o lo è per intero (chiave, esposizione ed articolo padre valorizzati). Una riga con metadati a metà sarebbe indistinguibile da una riga normale per la vista di esposizione, e sparirebbe dal raggruppamento senza un fiato.
+  * `chk_fatture_righe_competenza_dal_al` → `competenza_dal <= competenza_al` (dal 2026-10-02).
+  * `chk_fatture_righe_kit_coerente` → o la riga **non è** di kit (tutte le colonne `kit_*` NULL), o lo è per intero (chiave, esposizione, articolo padre e, dal 2026-10-02, `kit_qta` valorizzati; `kit_uom_id` può restare vuota come `uom_id`). Una riga con metadati a metà sarebbe indistinguibile da una riga normale per la vista di esposizione, e sparirebbe dal raggruppamento senza un fiato.
+  * `chk_fatture_righe_kit_articolo` *(dal 2026-10-02, `20261002-43`)* → una riga di kit ha sempre `articolo_id`: è un componente, e un componente è un articolo della distinta. La vista di esposizione conta i kit **componente per componente**, cioè per articolo: due righe di kit senza articolo cadrebbero nello stesso gruppo e sommerebbero le loro quantità (2 kit dove ce n'è uno), senza un errore. Il periodo di competenza non le separa, perché sono dello stesso kit e dello stesso periodo.
   * ~~`chk_fatr_iva_perc`~~ → **non esiste**: il manuale precedente lo citava insieme alla colonna `iva_perc`, che su questa tabella non c'è mai stata.
 * **UNIQUE**:
 
@@ -180,6 +183,8 @@ presentazione è una **rappresentazione**, prodotta dalla vista
 | `kit_esposizione` | snapshot di `catalogo.articoli_componenti.esposizione_in_fattura` per **quella** componente: `NASCOSTO` \| `DESCRITTIVO` \| `VALORIZZATO`, FK su `config.esposizioni_componente(codice_interno)` |
 | `kit_articolo_padre_id` | dal `meta` dell'attività (`componente_di`), già risolto dal push |
 | `kit_descrizione_padre` | congelata per poterla stampare senza risalire a monte |
+| `kit_qta` | *(dal 2026-10-02)* quanti kit rappresenta questa riga: la somma delle quantità della **riga padre del documento** sulle attività aggregate. Non si ricava da `qta / coeff_qta`, perché `coeff_qta` può essere zero |
+| `kit_uom_id` | *(dal 2026-10-02)* la UoM della riga padre del documento: in un kit di unità diverse è l'unica che la riga del kit può stampare |
 
 **I tre modi**, come li applica la vista di rappresentazione:
 

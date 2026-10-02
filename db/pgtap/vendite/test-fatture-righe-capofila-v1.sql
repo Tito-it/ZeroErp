@@ -118,10 +118,10 @@ SELECT * FROM ins;
 CREATE TEMP TABLE tmp_cf_capo AS
 WITH ins AS (
   INSERT INTO vendite.fatture_righe
-      (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta)
+      (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta, competenza_dal, competenza_al)
   SELECT f.id, 1, 'Capofila fattura ' || f.n, 10, 100,
          (SELECT iva_id FROM tmp_cf_refs),
-         jsonb_build_object('test_scope', 'pgtap_capofila', 'n', f.n)
+         jsonb_build_object('test_scope', 'pgtap_capofila', 'n', f.n), CURRENT_DATE, CURRENT_DATE
     FROM tmp_cf_fatt f
   RETURNING id, fattura_id, (meta ->> 'n')::int AS n)
 SELECT * FROM ins;
@@ -142,17 +142,17 @@ SELECT ok(
 --   funziona» da «il guard e' un muro».
 INSERT INTO vendite.fatture_righe
     (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
-     riga_capofila_id, meta)
+     riga_capofila_id, meta, competenza_dal, competenza_al)
 SELECT c.fattura_id, 2, 'Parte 2 (plafond esaurito)', 4, 100,
        (SELECT iva_id FROM tmp_cf_refs), c.id,
-       jsonb_build_object('test_scope', 'pgtap_capofila')
+       jsonb_build_object('test_scope', 'pgtap_capofila'), CURRENT_DATE, CURRENT_DATE
   FROM tmp_cf_capo c WHERE c.n = 1;
 
 SELECT lives_ok(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
-               riga_capofila_id)
-           VALUES (%s, 3, 'Parte 3', 1, 100, %s, %s)$$,
+               riga_capofila_id, competenza_dal, competenza_al)
+           VALUES (%s, 3, 'Parte 3', 1, 100, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
          (SELECT fattura_id FROM tmp_cf_capo WHERE n = 1),
          (SELECT iva_id FROM tmp_cf_refs),
          (SELECT id FROM tmp_cf_capo WHERE n = 1)),
@@ -168,8 +168,8 @@ SELECT lives_ok(
 SELECT throws_ok(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
-               riga_capofila_id)
-           VALUES (%s, 4, 'Nipote', 1, 100, %s, %s)$$,
+               riga_capofila_id, competenza_dal, competenza_al)
+           VALUES (%s, 4, 'Nipote', 1, 100, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
          (SELECT fattura_id FROM tmp_cf_capo WHERE n = 1),
          (SELECT iva_id FROM tmp_cf_refs),
          (SELECT r.id FROM vendite.fatture_righe r
@@ -190,8 +190,8 @@ SELECT throws_ok(
 SELECT throws_ok(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
-               riga_capofila_id)
-           VALUES (%s, 9, 'Parte con capofila altrui', 1, 100, %s, %s)$$,
+               riga_capofila_id, competenza_dal, competenza_al)
+           VALUES (%s, 9, 'Parte con capofila altrui', 1, 100, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
          (SELECT fattura_id FROM tmp_cf_capo WHERE n = 2),
          (SELECT iva_id FROM tmp_cf_refs),
          (SELECT id FROM tmp_cf_capo WHERE n = 1)),
@@ -210,11 +210,11 @@ SELECT throws_ok(
 --   vincolo di fattura la respingerebbe prima per un altro motivo — e il test
 --   direbbe verde per il presidio sbagliato.
 INSERT INTO vendite.fatture_righe
-    (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta)
+    (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta, competenza_dal, competenza_al)
 SELECT (SELECT fattura_id FROM tmp_cf_capo WHERE n = 1), 5,
        'Terza capofila, stessa fattura', 1, 100,
        (SELECT iva_id FROM tmp_cf_refs),
-       jsonb_build_object('test_scope', 'pgtap_capofila');
+       jsonb_build_object('test_scope', 'pgtap_capofila'), CURRENT_DATE, CURRENT_DATE;
 
 SELECT throws_ok(
   format($$UPDATE vendite.fatture_righe SET riga_capofila_id = %s WHERE id = %s$$,
@@ -248,8 +248,8 @@ SELECT throws_ok(
 SELECT throws_like(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
-               riga_capofila_id)
-           VALUES (%s, 6, 'Nipote bis', 1, 100, %s, %s)$$,
+               riga_capofila_id, competenza_dal, competenza_al)
+           VALUES (%s, 6, 'Nipote bis', 1, 100, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
          (SELECT fattura_id FROM tmp_cf_capo WHERE n = 1),
          (SELECT iva_id FROM tmp_cf_refs),
          (SELECT r.id FROM vendite.fatture_righe r

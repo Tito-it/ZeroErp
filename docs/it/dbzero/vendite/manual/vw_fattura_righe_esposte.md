@@ -74,14 +74,25 @@ nessuno.
 
 ### Convenzioni
 
-* **Quantità della riga padre** = **media** delle quantità di **tutti** i
-  componenti, valorizzati compresi (un kit senza resto ha comunque la sua quantità). In un
-  kit da 2 pezzi tutti i componenti portano 2 e il padre porta 2: la media dà 2.
-  ⚠️ Regge finché `coeff_qta_snapshot` vale 1 — vero su tutte le righe di
-  `ordini_righe_componenti` alla data. Con un coefficiente diverso la media
-  diventerebbe un numero che non corrisponde a nulla (un kit da 2 con un
-  componente a coefficiente 3 darebbe la media di `{2, 6, 6}`). Il rimedio, se
-  servirà, è congelare la quantità del padre alla generazione.
+* **Quantità e UoM della riga padre** (dal 2026-10-02, `20261002-64`) = quelle
+  della **riga padre del documento**, congelate su ogni componente alla generazione
+  (`fatture_righe.kit_qta`, `kit_uom_id`). Si leggono **componente per componente**,
+  cioè per `articolo_id` (le righe dello stesso componente, che la generazione separa
+  anche per prezzo, si sommano). Per questo una riga di kit ha **sempre** l'articolo
+  (`chk_fatture_righe_kit_articolo`, dal 2026-10-02): due componenti senza articolo
+  cadrebbero nello stesso gruppo e la quantità del kit raddoppierebbe, senza un errore.
+  Le quantità valgono se tutti i componenti dicono lo stesso numero di kit, valorizzati
+  compresi: un kit senza resto ha comunque la sua quantità. Se non lo dicono — una
+  nota di credito parziale, dove si rende un componente solo — quantità e prezzo
+  della riga padre sono `NULL`: il kit lì non ha una quantità, e il caso **non si
+  rifiuta**. Fino al 2026-10-01 erano **media** e **max** dei componenti: con
+  coefficienti diversi da 1 la media non voleva dire niente (il backend fermava la
+  fattura, R10), e in un kit di unità diverse (pezzi, metri, ore) l'unità era una a
+  caso.
+* **Periodo** (dal 2026-10-02): la riga padre si costruisce anche per
+  `competenza_dal`/`competenza_al`, quindi lo stesso kit fatturato su due mesi dà
+  **due** righe padre, come un articolo normale. Prima i due periodi finivano nella
+  stessa riga, con quantità 1 e prezzo doppio.
 * **`riga_nr` della riga padre** = quello del **primo** dei suoi componenti.
 * **Importo della riga padre** = **somma** dei componenti **non valorizzati**
   (`NASCOSTO` e `DESCRITTIVO`); `NULL` se non ce ne sono.
@@ -104,6 +115,8 @@ nessuno.
 | `fatture_righe_id` | la riga sottostante; **`NULL`** sulla riga padre, che è sintetizzata e non esiste come record |
 | `riga_capofila_id` | *(dal 2026-08-31)* la capofila di una riga spezzata dal plafond; vuoto su tutte le altre |
 | `esposizione` | *(dal 2026-10-01, in coda)* il modo del componente (`DESCRITTIVO` \| `VALORIZZATO`) sulle righe `KIT_COMPONENTE`; `NULL` altrove |
+| `competenza_dal`, `competenza_al` | *(dal 2026-10-02, in coda)* il periodo della riga, su ogni riga; sulla riga padre quello del suo gruppo |
+| `ha_periodo` | *(dal 2026-10-02, in coda)* `competenza_dal <> competenza_al`: la riga ha un **periodo** da stampare. È la regola unica per PDF, SDI (`DataInizioPeriodo`/`DataFinePeriodo`) e portale; una riga puntuale (`dal = al`) non stampa nulla |
 | `kit_riga_nr` | *(dal 2026-10-01, in coda)* il `riga_nr` della riga del kit a cui la riga appartiene, su `KIT_PADRE` e `KIT_COMPONENTE`; `NULL` sulle righe sciolte. È il legame che il tracciato SDI, a linee piatte, dovrà dichiarare: oggi coincide con `ordinamento`, ma `ordinamento` è un ordine, non un riferimento |
 
 ⚠️ **Chi somma gli importi somma tutte le righe con importo valorizzato**, a

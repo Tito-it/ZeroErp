@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-1 — LA DISTINTA PERDE DUE FLAG CHE NON FACEVANO NIENTE
+#   catalogo.articoli_componenti.partecipa_qta       (boolean, default true)
+#   catalogo.articoli_componenti.determina_qta_padre (boolean, default false)
+#   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura, parte A (D-1, sezione 4.1)
+#
+# -- PERCHE' -------------------------------------------------------------------
+#   Nessuna logica li legge: la quantita' di ogni componente e' SEMPRE
+#   quantita' padre x coeff_qta (script.trgfn_componenti_calcola_quantita,
+#   script.trgfn_componenti_propaga_qta, il push in commessa). Si salvavano, il
+#   drawer li mostrava e il guard di immutabilita' li congelava: un'impostazione
+#   che l'utente cambia senza effetto. Decisione di Tid, 2026-10-02.
+#
+# -- CHI LI NOMINA, E COSA SUCCEDE A OGNUNO (censimento 2026-10-02) ---------------
+#   · catalogo.vw_articoli_componenti_dettaglio — li proietta: si droppa qui,
+#     la ricrea 20261002-62 senza;
+#   · il TRIGGER del guard di immutabilita' — `BEFORE DELETE OR UPDATE OF
+#     <campi di struttura>`: una colonna in `UPDATE OF` e' una dipendenza e
+#     DROP COLUMN la rifiuterebbe (e' cio' che ha fatto morire il primo apply di
+#     20261001-42). Si droppa e si ricrea qui con la stessa lista meno le due;
+#   · il CORPO del guard — li confronta in plpgsql: nessuna dipendenza, lo
+#     riscrive 20261002-61. In mezzo un UPDATE fallirebbe a runtime: nessuno ne
+#     fa nella stessa corsa;
+#   · storico.articoli_componenti — snapshot jsonb: le righe vecchie tengono le
+#     due chiavi, ed e' la loro storia;
+#   · CSV di 80_data: parameters.csv (righe 23, 25, ritirate da 20261002-67) e
+#     messaggi_errore.csv (descrizione di E_BOM_MODIFICA_VIETATA). Nessun
+#     changeSet di 80_data o 90_end pretende le colonne;
+#   · nessuna lista configurabile (lista_colonna.csv), nessun indice, nessun
+#     vincolo.
+#   ⚠️ Fuori dal DB li scrivono ancora il drawer della distinta e l'API
+#   (R-BE-A1, R-FE-A1 del brief): dall'apply, un payload che li porta torna 400
+#   come chiave sconosciuta. Interruzione accettata da Tid (nessuna produzione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20261002-60-alter-articoli-componenti-ritira-flag-qta-mctit.yaml
+
+  - changeSet:
+      id: 20261002-60-alter-articoli-componenti-ritira-flag-qta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.articoli_componenti: ritirate partecipa_qta e determina_qta_padre, che nessuna
+        logica leggeva (la quantita' del componente e' sempre quantita' padre x coeff_qta).
+        Droppata la vista che le proietta (ricreata da 20261002-62) e ricreato il trigger del
+        guard di immutabilita' senza le due colonne nella lista UPDATE OF. Brief:
+        brief-db-bom-flag-quantita-e-kit-in-fattura (D-1, sezione 4.1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli_componenti
+                columnName: partecipa_qta
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli_componenti
+                columnName: determina_qta_padre
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La sola vista che le nomina: DROP COLUMN non passa finche' esiste.
+              DROP VIEW catalogo.vw_articoli_componenti_dettaglio;
+
+              -- Il guard di immutabilita' le ha nella lista UPDATE OF (20261001-42):
+              -- e' una dipendenza. Si toglie e si rimette sotto senza le due.
+              DROP TRIGGER trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  ON catalogo.articoli_componenti;
+
+              ALTER TABLE catalogo.articoli_componenti
+                  DROP COLUMN partecipa_qta,
+                  DROP COLUMN determina_qta_padre;
+
+              -- Stessa lista di 20261001-42, nello stesso ordine, meno le due colonne.
+              CREATE TRIGGER trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  BEFORE DELETE OR UPDATE OF
+                      coeff_qta,
+                      componente_id,
+                      obbligatorio,
+                      esposizione_in_fattura,
+                      valido_dal,
+                      valido_al
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW EXECUTE FUNCTION
+                      catalogo.trgfn_articoli_componenti_block_modifica_struttura();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback di -62 ha gia' droppato la vista nuova. Le colonne tornano coi
+              -- loro DEFAULT: i valori di prima non si ricostruiscono (nessuno li leggeva).
+              DROP VIEW IF EXISTS catalogo.vw_articoli_componenti_dettaglio;
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  ON catalogo.articoli_componenti;
+              ALTER TABLE catalogo.articoli_componenti
+                  ADD COLUMN partecipa_qta boolean NOT NULL DEFAULT true,
+                  ADD COLUMN determina_qta_padre boolean NOT NULL DEFAULT false;
+              CREATE TRIGGER trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  BEFORE DELETE OR UPDATE OF
+                      coeff_qta, componente_id, obbligatorio, esposizione_in_fattura,
+                      partecipa_qta, determina_qta_padre, valido_dal, valido_al
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW EXECUTE FUNCTION
+                      catalogo.trgfn_articoli_componenti_block_modifica_struttura();
+              -- La vista nella forma di 20261001-44.
+              CREATE VIEW catalogo.vw_articoli_componenti_dettaglio AS
+              SELECT ac.id, ac.prodotto_id, ac.componente_id, ac.coeff_qta, ac.partecipa_qta,
+                  ac.obbligatorio, ac.valido_dal, ac.valido_al, ac.meta, ac.user_insert,
+                  ac.user_update, ac.data_insert, ac.data_update, ac.tx_id, ac.storicizza,
+                  ac.attivo, ac.note_target_tipo, ac.note_id,
+                  ap.codice AS prodotto_codice, ap.descrizione AS prodotto_descrizione,
+                  acmp.codice AS componente_codice, acmp.descrizione AS componente_descrizione,
+                  (ac.valido_al IS NULL) AS puo_chiudersi,
+                  CASE WHEN (ac.valido_al IS NULL) THEN ac.valido_dal ELSE NULL::date END
+                      AS data_min_chiusura,
+                  CASE WHEN (ac.valido_al IS NULL) THEN GREATEST(ac.valido_dal, CURRENT_DATE)
+                       ELSE NULL::date END AS data_default_chiusura,
+                  CASE WHEN (ac.valido_al IS NULL) THEN NULL::text
+                       ELSE 'RIGA_GIA_CHIUSA'::text END AS motivo_non_chiudibile,
+                  ac.determina_qta_padre,
+                  ac.esposizione_in_fattura,
+                  ec.codice AS esposizione_in_fattura_codice,
+                  ec.etichetta_key AS esposizione_in_fattura_etichetta_key
+                FROM (((catalogo.articoli_componenti ac
+                  LEFT JOIN catalogo.articoli ap ON ((ap.id = ac.prodotto_id)))
+                  LEFT JOIN catalogo.articoli acmp ON ((acmp.id = ac.componente_id)))
+                  LEFT JOIN config.esposizioni_componente ec
+                         ON ((ec.codice_interno = ac.esposizione_in_fattura)));

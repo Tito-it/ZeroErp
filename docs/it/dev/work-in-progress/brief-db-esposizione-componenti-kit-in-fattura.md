@@ -11,8 +11,9 @@
 > — **R-FE-1 blocca la CI**, **R-BE-1 blocca la generazione di una fattura con un kit** su dbdev.
 > Al merge di R-BE-2 si lancia lo script di §9.3. Restano da confermare §9.1 e §9.2 (già applicati
 > così a DB: una conferma, non lavoro).
-> ✅ **Giro BE/FE del 2026-10-02 (§10)**: tutte le richieste R-BE e R-FE chiuse; R-DB-K1 applicata dal
-> team DB lo stesso giorno, e con lei R-BE-6 e R-FE-2/3 (§10.5 risposta DB, §10.6 giro BE/FE). Passi di Tid in §10.3.
+> ✅ **Giro BE/FE del 2026-10-02 (§10)**: R-BE-1/2/3/4/5/7 fatti, R-FE-1/4/5 chiusi.
+> ✅ **R-DB-K1 scritto e applicato da Tid (2026-10-02, §10.5)**: si sbloccano R-BE-6 e con lui
+> R-FE-2/3 — la palla è al BE. Passi di Tid in §10.3.
 >
 > **In una riga:** oggi un componente di kit in fattura o non compare, o compare come riga
 > descrittiva **senza prezzo**. Manca il terzo modo, quello che si intende di solito con «esposto in
@@ -378,7 +379,7 @@ blocco annotazioni, verificato con `diff`); il brief è aggiornato (§11.3).
 
 | # | Esito | Dove |
 | --- | --- | --- |
-| **R-DB-K1** | ✅ scritto, **da applicare**: riga `89,config.esposizioni_componente,…,true,false` — oggetto (schema, nome tabella) per convenzione (D-P1), `lookup = true`, `pannello = false` (§9.2: semantica della vista, non configurazione). Nessun changeSet nuovo: il mirror `20260925-30` è `runOnChange` + `ANY`, la riga entra al prossimo apply e il secondo change riallinea la sequence (stampo della riga 88, `config.regimi_fiscali`). Nessun GRANT da scrivere: la tabella li prende dal loop di `ci_apply` come ogni `config.*`. I pgTAP del pannello (`test-pannello-porta-v1`, 6/7/9) non toccano una riga fuori dal pannello | `80_data/sql/config/tabelle_gestibili.csv` |
+| **R-DB-K1** | ✅ scritto e **applicato** da Tid il 2026-10-02: riga `89,config.esposizioni_componente,…,true,false` — oggetto (schema, nome tabella) per convenzione (D-P1), `lookup = true`, `pannello = false` (§9.2: semantica della vista, non configurazione). Nessun changeSet nuovo: il mirror `20260925-30` è `runOnChange` + `ANY`, la riga entra al prossimo apply e il secondo change riallinea la sequence (stampo della riga 88, `config.regimi_fiscali`). Nessun GRANT da scrivere: la tabella li prende dal loop di `ci_apply` come ogni `config.*`. I pgTAP del pannello (`test-pannello-porta-v1`, 6/7/9) non toccano una riga fuori dal pannello | `80_data/sql/config/tabelle_gestibili.csv` |
 
 ⚠️ Il commento in testa allo YAML del mirror dice ancora «le 87 voci»: era già stantio dalla riga
 88, e non si riscrive un changelog pushato per un commento.

@@ -267,9 +267,9 @@ SELECT id FROM ins;
 CREATE TEMP TABLE tmp_dc_fattura_riga AS
 WITH ins AS (
   INSERT INTO vendite.fatture_righe (
-    fattura_id, riga_nr, descrizione, qta, prezzo_unitario, imponibile_riga)
+    fattura_id, riga_nr, descrizione, qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
   SELECT (SELECT id FROM tmp_dc_fattura), 1,
-         'PGTAP dash competenza', 1, 40.000000, 40.000000
+         'PGTAP dash competenza', 1, 40.000000, 40.000000, CURRENT_DATE, CURRENT_DATE
   RETURNING id)
 SELECT id FROM ins;
 

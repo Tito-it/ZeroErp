@@ -1,0 +1,199 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PARTE B — LA RIGA DI FATTURA PORTA IL SUO PERIODO E LA QUANTITA' DEL SUO KIT
+#   vendite.fatture_righe: + competenza_dal, competenza_al (date NOT NULL)
+#                          + kit_qta (numeric(18,6)), kit_uom_id (FK unita_misura)
+#   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura, parte B (D-3, D-3.1, D-4,
+#   sezione 4.2)
+#
+# -- IL DIFETTO ----------------------------------------------------------------
+#   La riga del kit non esiste in tabella: la compone vw_fattura_righe_esposte
+#   dai componenti, e ne RICAVAVA quantita' (avg) e UoM (max). Con coefficienti
+#   diversi la media non vuol dire niente (il BE fermava la fattura, R10), con
+#   coefficienti uguali ma <> 1 era sbagliata senza errore, con un kit di unita'
+#   diverse stampava un'unita' a caso, e con lo stesso kit su due competenze
+#   rimetteva insieme due periodi (quantita' 1, prezzo doppio): la competenza
+#   separava le righe nel BE ma la tabella non la portava.
+#
+# -- LE COLONNE ------------------------------------------------------------------
+#   · competenza_dal / competenza_al: il periodo della riga, come entra nella
+#     chiave di raggruppamento del BE. NOT NULL (D-3: il sistema va predisposto
+#     per le utilities, che fatturano per periodo). Una riga puntuale ha dal = al
+#     (la data piu' recente fra le attivita' aggregate, D-3.1). Si STAMPA il
+#     periodo quando dal <> al: la regola sta nella vista, sede unica per PDF,
+#     SDI (DataInizioPeriodo/DataFinePeriodo) e portale.
+#   · kit_qta: quanti kit rappresenta questa riga di componente — la somma delle
+#     quantita' della riga PADRE del documento sulle attivita' aggregate. Non
+#     ricavabile dal componente (qta / coeff_qta): coeff_qta puo' essere 0.
+#   · kit_uom_id: la UoM della riga padre del documento. Nullable come uom_id
+#     (una riga senza unita' e' ammessa dal modello, anche a monte).
+#
+# -- LE RIGHE ESISTENTI (D-4: tutte di test, «un valore valido e amen») ---------
+#   Riempite SENZA UPDATE: il guard di congelamento rifiuta le righe oltre EMESSA
+#   e un UPDATE rigiudicherebbe ogni riga (riferimenti attivi, importo). Quindi:
+#   · competenze: ADD COLUMN ... DEFAULT CURRENT_DATE (fast default, valutato una
+#     volta all'ALTER, nessuna riscrittura) e subito DROP DEFAULT: dal = al =
+#     giorno del migrate, nessun periodo stampato. CURRENT_DATE e non
+#     script.fn_data_operativa(): quella legge un seed di 80_data che in
+#     00_schema, su un database nuovo, non c'e' ancora;
+#   · kit_qta: ADD COLUMN nuda, poi ALTER TYPE ... USING sulla riga stessa
+#     (riscrive la tabella senza trigger di riga, forma di 20261001-45): 1 sulle
+#     righe di kit, NULL sulle altre;
+#   · kit_uom_id: resta NULL. La UoM del padre non sta sulla riga, e la uom_id
+#     del componente (provata il 2026-10-02 su cluster usa-e-getta) da' ai
+#     componenti dello stesso kit unita' discordanti, che la vista scarta: NULL
+#     dice la stessa cosa senza scrivere un valore che sembra vero.
+#   ⛔ DROP DEFAULT voluto: chi scrive una riga deve dire il suo periodo. Un
+#   default lo inventerebbe in silenzio.
+#
+# -- A ci_apply ------------------------------------------------------------------
+#   kit_uom_id e' una FK verso catalogo.unita_misura, che ha `attivo`: le
+#   automazioni montano il require_attivo come per uom_id (stessa natura di
+#   snapshot, stesso trattamento). Indice FK: policy opt-in, registrata a
+#   consentito = false da sola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261002-63-alter-fatture-righe-competenza-e-kit-qta-mctit.yaml
+
+  - changeSet:
+      id: 20261002-63-alter-fatture-righe-competenza-e-kit-qta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatture_righe: periodo di competenza (competenza_dal, competenza_al, NOT NULL) e,
+        sulle righe di kit, quantita' e UoM della riga padre del documento (kit_qta,
+        kit_uom_id), cosi' la vista non le ricava piu' dai componenti. Righe esistenti riempite
+        senza UPDATE (fast default e ALTER TYPE USING). Brief:
+        brief-db-bom-flag-quantita-e-kit-in-fattura (D-3, D-4, sezione 4.2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture_righe
+                    columnName: competenza_dal
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture_righe
+                    columnName: kit_qta
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Periodo: fast default per le righe che ci sono, poi niente default.
+              ALTER TABLE vendite.fatture_righe
+                  ADD COLUMN competenza_dal date NOT NULL DEFAULT CURRENT_DATE,
+                  ADD COLUMN competenza_al  date NOT NULL DEFAULT CURRENT_DATE;
+
+              ALTER TABLE vendite.fatture_righe
+                  ALTER COLUMN competenza_dal DROP DEFAULT,
+                  ALTER COLUMN competenza_al  DROP DEFAULT;
+
+              ALTER TABLE vendite.fatture_righe
+                  ADD CONSTRAINT chk_fatture_righe_competenza_dal_al
+                  CHECK (competenza_dal <= competenza_al);
+
+              -- Kit: colonne nude, poi riempite sul posto dalla riga stessa.
+              ALTER TABLE vendite.fatture_righe
+                  ADD COLUMN kit_qta    numeric(18,6),
+                  ADD COLUMN kit_uom_id bigint;
+
+              ALTER TABLE vendite.fatture_righe
+                  ALTER COLUMN kit_qta TYPE numeric(18,6)
+                      USING (CASE WHEN kit_key IS NOT NULL THEN 1 END);
+
+              ALTER TABLE vendite.fatture_righe
+                  ADD CONSTRAINT fk_fatture_righe_kit_uom
+                  FOREIGN KEY (kit_uom_id) REFERENCES catalogo.unita_misura (id);
+
+              -- La coerenza del kit: tutto o niente, ora con kit_qta (obbligatoria sulle
+              -- righe di kit) e kit_uom_id (nullable come uom_id, ma mai fuori da un kit).
+              ALTER TABLE vendite.fatture_righe
+                  DROP CONSTRAINT chk_fatture_righe_kit_coerente;
+
+              ALTER TABLE vendite.fatture_righe
+                  ADD CONSTRAINT chk_fatture_righe_kit_coerente
+                  CHECK (
+                      (kit_key IS NULL
+                       AND kit_esposizione IS NULL
+                       AND kit_articolo_padre_id IS NULL
+                       AND kit_descrizione_padre IS NULL
+                       AND kit_qta IS NULL
+                       AND kit_uom_id IS NULL)
+                      OR
+                      (kit_key IS NOT NULL
+                       AND kit_esposizione IS NOT NULL
+                       AND kit_articolo_padre_id IS NOT NULL
+                       AND kit_qta IS NOT NULL)
+                  );
+
+              COMMENT ON COLUMN vendite.fatture_righe.competenza_dal IS
+                  'Inizio del periodo di competenza della riga, come entra nella chiave di '
+                  'raggruppamento della generazione. Con competenza_al: dal <> al = un periodo '
+                  '(utilities, canoni), che la rappresentazione stampa; dal = al = una riga puntuale '
+                  '(la data piu'' recente fra le attivita'' aggregate), nessun periodo stampato. '
+                  'NOT NULL senza default: chi scrive la riga dice il suo periodo. Le righe nate prima '
+                  'del 2026-10-02 portano il giorno del migrate in entrambe (dati di test). Brief: '
+                  'brief-db-bom-flag-quantita-e-kit-in-fattura (D-3, D-3.1, D-4).';
+
+              COMMENT ON COLUMN vendite.fatture_righe.competenza_al IS
+                  'Fine del periodo di competenza della riga (compresa). Vedi competenza_dal; '
+                  'chk_fatture_righe_competenza_dal_al: mai prima di competenza_dal.';
+
+              COMMENT ON COLUMN vendite.fatture_righe.kit_qta IS
+                  'Solo sulle righe di kit: quanti kit rappresenta questa riga di componente, cioe'' '
+                  'la somma delle quantita'' della riga PADRE del documento sulle attivita'' '
+                  'aggregate. La rappresentazione ne ricava la quantita'' della riga del kit '
+                  '(vendite.vw_fattura_righe_esposte), che prima era una media delle quantita'' dei '
+                  'componenti. Snapshot: non si ricava da qta / coeff_qta, che puo'' essere zero. '
+                  'NULL sulle righe non di kit (chk_fatture_righe_kit_coerente). Le righe di kit nate '
+                  'prima del 2026-10-02 portano 1 (dati di test). Brief: '
+                  'brief-db-bom-flag-quantita-e-kit-in-fattura (sezione 4.2).';
+
+              COMMENT ON COLUMN vendite.fatture_righe.kit_uom_id IS
+                  'Solo sulle righe di kit: la UoM della riga PADRE del documento, che la '
+                  'rappresentazione stampa sulla riga del kit (prima era il max delle UoM dei '
+                  'componenti: in un kit di unita'' diverse, un''unita'' a caso). Nullable come '
+                  'uom_id; NULL sulle righe non di kit (chk_fatture_righe_kit_coerente). Le righe di '
+                  'kit nate prima del 2026-10-02 la portano NULL (dati di test). '
+                  'Brief: brief-db-bom-flag-quantita-e-kit-in-fattura (sezione 4.2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Nel verso inverso girano prima i rollback di -65 e -64, che rimettono le
+              -- viste nella forma di 20261001-46/-47 (non nominano le colonne nuove).
+              ALTER TABLE vendite.fatture_righe
+                  DROP CONSTRAINT chk_fatture_righe_kit_coerente;
+              ALTER TABLE vendite.fatture_righe
+                  ADD CONSTRAINT chk_fatture_righe_kit_coerente
+                  CHECK (
+                      (kit_key IS NULL
+                       AND kit_esposizione IS NULL
+                       AND kit_articolo_padre_id IS NULL
+                       AND kit_descrizione_padre IS NULL)
+                      OR
+                      (kit_key IS NOT NULL
+                       AND kit_esposizione IS NOT NULL
+                       AND kit_articolo_padre_id IS NOT NULL)
+                  );
+              ALTER TABLE vendite.fatture_righe
+                  DROP CONSTRAINT fk_fatture_righe_kit_uom,
+                  DROP CONSTRAINT chk_fatture_righe_competenza_dal_al,
+                  DROP COLUMN kit_uom_id,
+                  DROP COLUMN kit_qta,
+                  DROP COLUMN competenza_al,
+                  DROP COLUMN competenza_dal;

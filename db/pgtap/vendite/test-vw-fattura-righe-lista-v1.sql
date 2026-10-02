@@ -65,34 +65,44 @@ CREATE TEMP TABLE tmp_frl_iva AS
 SELECT (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1)          AS iva_1,
        (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id OFFSET 1 LIMIT 1) AS iva_2;
 
+-- Una riga di kit e' un componente, cioe' un articolo (chk_fatture_righe_kit_articolo,
+-- 20261002-43): tre articoli componente, uno per posizione nel kit.
 CREATE TEMP TABLE tmp_frl_art AS
-SELECT dbops.fn_pgtap_crea_articolo('PGTAP-FRL-KIT') AS padre_id;
+SELECT dbops.fn_pgtap_crea_articolo('PGTAP-FRL-KIT') AS padre_id,
+       dbops.fn_pgtap_crea_articolo('PGTAP-FRL-C1')  AS c1,
+       dbops.fn_pgtap_crea_articolo('PGTAP-FRL-C2')  AS c2,
+       dbops.fn_pgtap_crea_articolo('PGTAP-FRL-C3')  AS c3;
 
 -- Scopo: una riga di fattura; kit e capofila facoltativi.
 CREATE OR REPLACE FUNCTION pg_temp.fx_riga_frl(
     p_nr integer, p_prezzo numeric, p_iva bigint,
     p_kit text DEFAULT NULL, p_esposizione varchar DEFAULT NULL,
-    p_capofila bigint DEFAULT NULL)
+    p_capofila bigint DEFAULT NULL, p_cmp integer DEFAULT NULL)
 RETURNS bigint LANGUAGE sql AS $fx$
-  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario,
+  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione, qta, prezzo_unitario,
          iva_id, kit_key, kit_esposizione, kit_articolo_padre_id, kit_descrizione_padre,
-         riga_capofila_id)
-  SELECT (SELECT fattura_id FROM tmp_frl), p_nr, 'Riga ' || p_nr, 1, p_prezzo, p_iva,
+         riga_capofila_id, competenza_dal, competenza_al, kit_qta)
+  SELECT (SELECT fattura_id FROM tmp_frl), p_nr,
+         (SELECT CASE p_cmp WHEN 1 THEN c1 WHEN 2 THEN c2 WHEN 3 THEN c3 END FROM tmp_frl_art),
+         'Riga ' || p_nr, 1, p_prezzo, p_iva,
          p_kit, p_esposizione,
          CASE WHEN p_kit IS NOT NULL THEN (SELECT padre_id FROM tmp_frl_art) END,
          CASE WHEN p_kit IS NOT NULL THEN 'Padre ' || p_kit END,
-         p_capofila
+         p_capofila, CURRENT_DATE, CURRENT_DATE,
+         -- un kit per riga di componente (rev 2026-10-02: kit_qta obbligatoria sulle
+         -- righe di kit, chk_fatture_righe_kit_coerente)
+         CASE WHEN p_kit IS NOT NULL THEN 1 END
   RETURNING id;
 $fx$;
 
 -- 1: riga normale. 2-4: kit A, tre componenti, il terzo NON esposto.
 -- 5-6: kit B con due aliquote. 7: capofila, 8: sua parte (plafond).
 SELECT pg_temp.fx_riga_frl(1, 10, (SELECT iva_1 FROM tmp_frl_iva));
-SELECT pg_temp.fx_riga_frl(2, 2, (SELECT iva_1 FROM tmp_frl_iva), 'KA', 'DESCRITTIVO');
-SELECT pg_temp.fx_riga_frl(3, 6, (SELECT iva_1 FROM tmp_frl_iva), 'KA', 'DESCRITTIVO');
-SELECT pg_temp.fx_riga_frl(4, 9, (SELECT iva_1 FROM tmp_frl_iva), 'KA', 'NASCOSTO');
-SELECT pg_temp.fx_riga_frl(5, 4, (SELECT iva_1 FROM tmp_frl_iva), 'KB', 'DESCRITTIVO');
-SELECT pg_temp.fx_riga_frl(6, 5, (SELECT iva_2 FROM tmp_frl_iva), 'KB', 'DESCRITTIVO');
+SELECT pg_temp.fx_riga_frl(2, 2, (SELECT iva_1 FROM tmp_frl_iva), 'KA', 'DESCRITTIVO', p_cmp => 1);
+SELECT pg_temp.fx_riga_frl(3, 6, (SELECT iva_1 FROM tmp_frl_iva), 'KA', 'DESCRITTIVO', p_cmp => 2);
+SELECT pg_temp.fx_riga_frl(4, 9, (SELECT iva_1 FROM tmp_frl_iva), 'KA', 'NASCOSTO', p_cmp => 3);
+SELECT pg_temp.fx_riga_frl(5, 4, (SELECT iva_1 FROM tmp_frl_iva), 'KB', 'DESCRITTIVO', p_cmp => 1);
+SELECT pg_temp.fx_riga_frl(6, 5, (SELECT iva_2 FROM tmp_frl_iva), 'KB', 'DESCRITTIVO', p_cmp => 2);
 CREATE TEMP TABLE tmp_frl_capofila AS
 SELECT pg_temp.fx_riga_frl(7, 30, (SELECT iva_1 FROM tmp_frl_iva)) AS id;
 SELECT pg_temp.fx_riga_frl(8, 20, (SELECT iva_2 FROM tmp_frl_iva), NULL, NULL,

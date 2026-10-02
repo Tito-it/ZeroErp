@@ -14,7 +14,7 @@
 | componente_id | uuid | NO |  |
 | coeff_qta_snapshot | numeric | NO |  |
 | quantita | numeric | NO |  |
-| uom_operativa_id | bigint | YES |  |
+| uom_operativa_id | bigint | NO |  |
 | factor_to_base | numeric | NO | 1 |
 | qta_operativa | numeric | YES |  |
 | prezzo_unitario | numeric | NO |  |

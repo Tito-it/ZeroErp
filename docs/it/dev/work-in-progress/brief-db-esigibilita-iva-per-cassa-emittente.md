@@ -9,9 +9,14 @@
 > team DB, §8) accettate da Tid il 2026-10-01, come proposte.** ✅ **Lato DB SCRITTO il 2026-10-01**
 > (`20261001-01 → -17`, §9), ✅ **applicato su dbdev il 2026-10-01** (con il `-40` di D-12;
 > verificato dalla sessione BE su `databasechangelog`). Richieste a BE/FE (§9.5): ✅ **R-1, R-2, R-5
-> fatte dalla sessione BE il 2026-10-01**, ✅ R-4 anche. ⏳ Al team DB: **R-DB-1** (ricalcolo dei
-> riepiloghi dei preventivi, §9.5) e **§10** (la conferma del regime la deriva il trigger, revisione
-> di D-11 decisa da Tid) e **R-DB-3** (le annotazioni del documento, §11: bloccante per R-3). ⏳ R-3:
+> fatte dalla sessione BE il 2026-10-01**, ✅ R-4 anche. ✅ **§10** (la conferma del regime la
+> deriva il trigger, revisione di D-11) **SCRITTO dal team DB il 2026-10-02** (`20261002-40 → -42`,
+> §10.4), ✅ **applicato su dbdev il 2026-10-02 da Tid, pgTAP verdi**. ⏳ **BE §10.3 / §10.4.3, ora**:
+> da questo apply la forma di D-11 è rifiutata, e il drawer dell'emittente è rotto finché il BE non
+> si allinea. ⚪ **R-DB-1** (ricalcolo dei riepiloghi dei preventivi) **non bloccante** per
+> decisione di Tid (2026-10-02, §9.5). ✅ **R-DB-3** (le annotazioni del documento, §11) **SCRITTO dal team DB il
+> 2026-10-02** (`20261002-02 → -07`, §11.4), ✅ **applicato su dbdev il 2026-10-02, nessuna
+> regressione pgTAP** (Tid). ⏳ R-3 (sessione BE, ora sbloccato):
 > corpo della **v6** pronto (era la v5: il kit è arrivato prima e ha preso forma 3 / v5, 2026-10-02,
 > §11.3), builder e pubblicazione dopo l'apply di R-DB-3.
 >
@@ -430,11 +435,28 @@ fino alla prossima modifica del preventivo. La colonna di R-4 mostra `—` su qu
   ordini e DDT.
 * Lato BE/FE non serve niente: appena le righe sono ricalcolate, la colonna le mostra.
 
+⚪ **Decisione di Tid (2026-10-02): non bloccante.** I preventivi con la coppia a `NULL` sono dati
+di prova; se serve si sistemano a mano con l'SQL qui sotto, ed è l'ultima delle priorità. Nessun
+changeSet. ⚠️ Resta vero il difetto di **modello** descritto sopra («riepilogo memorizzato» =
+ogni cambio della regola deve ricalcolare il pregresso, oppure riepilogo derivato come ordini e
+DDT): non è chiuso, è **rimandato**, e si riapre al prossimo cambio della regola del riepilogo.
+
+```sql
+-- A mano, su dbdev, solo se serve (non è una migrazione). Ricalcola i preventivi che hanno
+-- righe di riepilogo con la coppia vuota. Gira col contesto applicativo, perché la funzione
+-- legge sotto RLS: un preventivo che il guard rifiuta (stato) resta com'è.
+SELECT p.id, vendite.fn_ricalcola_riepilogo_iva_preventivo(p.id)
+  FROM vendite.preventivi p
+ WHERE EXISTS (SELECT 1 FROM vendite.preventivi_riepiloghi_iva r
+                WHERE r.preventivo_id = p.id AND r.esigibilita IS NULL);
+```
+
 ## 10. Revisione di D-11: la conferma la scrive il database (Tid, 2026-10-01)
 
 > **Chi scrive:** sessione BE, 2026-10-01, su decisione di Tid. **A chi:** team DB.
-> **Stato:** ⏳ da scrivere lato DB. Lato BE oggi vale ancora la forma di D-11 (§9.5, R-2): resta
-> finché il DB non è applicato, poi si ritira (§10.3).
+> **Stato:** ✅ **scritto dal team DB il 2026-10-02** (§10.4), provato sullo scratch in
+> transazione annullata. ⏳ Apply e pgTAP (Tid). ⏳ Poi BE §10.3, **subito dopo l'apply**: da quel
+> momento la forma di D-11 (§9.5, R-2) è **rifiutata** dal database (§10.4.3).
 
 ### 10.1 Perché
 
@@ -487,12 +509,111 @@ diventa **quello che la deriva**:
 * Riscrivere `tests/db/test_regime_fiscale_conferma_db.py` sul nuovo autore e aggiungere il caso
   «scrittura diretta delle colonne di conferma».
 
+### 10.4 Che cosa è stato scritto (team DB, 2026-10-02)
+
+> **Chi scrive:** team DB (`dev/db-tid`), 2026-10-02. **A chi:** Tid (apply e pgTAP), sessione BE
+> (§10.4.3).
+> **Stato:** ✅ scritto e provato sullo scratch `zeroerp_ci` in transazione annullata (§10.4.4).
+> ✅ **Applicato su dbdev il 2026-10-02 da Tid (`databasechangelog`: `-40 → -42`), corsa pgTAP
+> verde.** Resta il BE (§10.4.3).
+
+#### 10.4.1 I changeSet
+
+| changeSet | cosa |
+| --- | --- |
+| `20_code/anagrafiche/20261002-40` | `anagrafiche.trgfn_emittenti_fiscali_regime_conferma` **deriva** la conferma: un `UPDATE OF regime_fiscale_rf`, anche con lo stesso valore, scrive `confermato_il = now()` e `confermato_da = app.jwt_user` (`CURRENT_USER` se manca). Il ramo «azzera» sparisce. Trigger `a20` invariato (`20261001-13`). In coda i `COMMENT` delle due colonne (dicevano «le scrive il form» e «si azzera da sola») |
+| `20_code/anagrafiche/20261002-41` | `anagrafiche.trgfn_emittenti_fiscali_guard_regime_conferma`: **rifiuta** una `INSERT` con la conferma valorizzata e un `UPDATE` che la cambia. Codice nuovo `E_EMITTENTE_REGIME_CONFERMA_DERIVATA` (`TECNICO`, id 1188) |
+| `20_code/anagrafiche/20261002-42` | trigger `trg_emittenti_fiscali_a10_guard_regime_conferma_ins_upd`, `BEFORE INSERT OR UPDATE OF regime_fiscale_confermato_il, regime_fiscale_confermato_da` |
+| `80_data/sql/config/messaggi_errore.csv`, `codici_errore.csv` | il codice nuovo |
+| `80_data/sql/dbops/presidi.csv` | nota di `vw_emittenti_regime_non_confermato`: niente più «cambio senza conferma» |
+| `db/pgtap/vendite/test-esigibilita-iva-per-cassa-v1.sql` | casi 22-25 di D-11 sostituiti dai casi 22-33 (`plan` da 26 a 34) |
+
+Pagine `manual/`: riscritta `trgfn_emittenti_fiscali_regime_conferma`, nuova
+`trgfn_emittenti_fiscali_guard_regime_conferma`, aggiornate `emittenti_fiscali` e
+`vw_emittenti_regime_non_confermato`.
+
+#### 10.4.2 Le scelte, e dove si discosta dal §10.2
+
+* ⭐ **Scrittura diretta delle colonne: si rifiuta**, non si sovrascrive (la scelta lasciata al
+  team DB). Chi le scrive ha capito male il contratto; sovrascrivere glielo nasconderebbe (scrive
+  «confermato da Mario» e legge un altro nome senza sapere perché). È un **guard separato** e non un
+  ramo della funzione che deriva, per una ragione di PostgreSQL: dentro un trigger non si sa
+  **quali colonne** stanno nella `SET`, si vedono solo i valori. Con due trigger la menzione la
+  decide la clausola `UPDATE OF` di ciascuno: il guard `a10` (sulle colonne di conferma) parla
+  prima e vede i valori del chiamante, la derivazione `a20` (sul regime) scrive dopo.
+* Il guard guarda il **valore, non la menzione**: un salvataggio che riscrive tutta la riga nomina le
+  due colonne con i valori che hanno già, e passa (caso 32).
+* ⭐ **In più rispetto al §10.2: riempire un regime VUOTO non conferma.** Su un database ricostruito
+  da zero l'`80_data` gira **dopo** tutto il `20_code` (`changelog-master-v2.yaml`), quindi il
+  backfill `80_data/20261001-16` (vuoto → RF01, D-1) passa dalla nuova derivazione. Senza questa
+  regola «confermerebbe» col nome del migratore ogni RF01 messo dal default, svuotando il presidio
+  di D-1 proprio sul caso per cui esiste. È la stessa regola della `INSERT`: il default non è una
+  dichiarazione. Dopo il `-17` (`NOT NULL` + FK) un regime vuoto non esiste più, e il ramo resta
+  come regola, non come percorso vivo.
+* ⚠️ **Conseguenza di modello, dichiarata:** non esiste più un regime **cambiato e non confermato**.
+  Ogni `UPDATE` del regime è una dichiarazione di chi lo scrive, anche un import o un `UPDATE` a
+  mano (l'autore sarà il loro `app.jwt_user`, o il ruolo del database). Il presidio mostra solo i
+  regimi che nessuno ha mai dichiarato: quelli nati dal default o da una creazione.
+* Il `CHECK` di coppia resta. Il caso 25 di prima (`23514` su una conferma senza autore) non si
+  raggiunge più dall'esterno, perché il guard parla prima del `CHECK`: è sostituito da
+  un'asserzione sulla struttura (caso 33).
+* Nessuna GUC di override: una conferma la dà chi dichiara il regime, e dichiararlo è sempre
+  possibile.
+
+#### 10.4.3 Per la sessione BE — ⚠️ da fare subito dopo l'apply
+
+Dall'apply la forma di D-11 è **rifiutata** con `E_EMITTENTE_REGIME_CONFERMA_DERIVATA` (TECNICO,
+500):
+
+* `update_emittente` con il regime: l'`UPDATE` che porta anche `_CONFERMA_REGIME_ESPRESSIONI`
+  (`now()`, `app.jwt_user`) viene **rifiutato**. Va tolto, e basta scrivere il regime;
+* `crea_emittente` con la conferma nella `INSERT`: viene **rifiutato**. `INSERT`, poi
+  `UPDATE … SET regime_fiscale_rf = <scelto>` nella stessa `transaction.atomic()`; lo stesso valore
+  già scritto nella `INSERT` va bene;
+* ⚠️ un salvataggio che riscrive **tutta** la riga (compreso `regime_fiscale_rf`) **conferma**. Il
+  repository oggi scrive solo le colonne del payload, ed è quello che serve: il regime va mandato
+  solo quando l'operatore lo cambia o preme «Conferma il regime» (come già fa il drawer);
+* l'autore è `app.jwt_user`, la stessa GUC che il repository usava già: a video non cambia niente;
+* `tests/db/test_regime_fiscale_conferma_db.py`: i casi che scrivono la conferma a mano diventano
+  casi di rifiuto (`E_EMITTENTE_REGIME_CONFERMA_DERIVATA`).
+
+* doc `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` §4.2 (righe ~295-298): dice
+  ancora che la conferma «si scrive nella stessa scrittura» e che un cambio senza conferma «la
+  azzera» (trigger `trgfn_emittenti_fiscali_regime_conferma`). Dopo l'apply sono due frasi false:
+  la conferma la deriva il DB da ogni scrittura del regime, e non si azzera più. Riga 215 (in
+  creazione «presente = confermato») vale solo con l'`UPDATE` successivo alla `INSERT`.
+
+Nessuna chiave i18n: il codice è `TECNICO`, e non arriva a un operatore se il BE è allineato.
+
+#### 10.4.4 La prova (2026-10-02): scratch `zeroerp_ci`, NON dbdev
+
+Come `zeroerp` (proprietario sullo scratch), in `BEGIN … ROLLBACK`, con l'SQL **estratto** dagli YAML
+`-40 → -42` più le due righe del codice nuovo. Lo scratch aveva applicato tutto il `20261001-*` e
+il `20261002-0x`.
+
+* `plpgsql_check_function` sulle due funzioni: zero righe.
+* `test-esigibilita-iva-per-cassa-v1.sql` con l'SQL nuovo in testa: **34/34 ok**.
+* Il ramo del backfill, a parte, perché il runner come app non lo sa costruire (serve togliere il
+  `NOT NULL` e spegnere i trigger): una riga col regime vuoto, poi il corpo del `-16` →
+  `RF01|NULL` (non conferma). **Mutazione**: la stessa funzione senza il ramo del vuoto →
+  `RF01|migratore.finto`, cioè il difetto che il ramo impedisce.
+* Dopo il rollback la funzione viva dello scratch è identica a prima (md5 di
+  `pg_get_functiondef`), e il guard non esiste.
+* ⚠️ **Non provato**: l'apply con Liquibase e la corsa col runner (`PGTAP_RUNNER=app`). Da far
+  girare nella corsa di Tid: `vendite/test-esigibilita-iva-per-cassa-v1.sql`,
+  `dbops/test-riferimenti-morti-v1.sql` (una funzione plpgsql nuova),
+  `script/test-catalogo-messaggi-errore-completo.sql` (codice nuovo).
+* ⚠️ Il test Django `anagrafiche/tests/db/test_regime_fiscale_conferma_db.py` **diventa rosso**
+  all'apply finché il BE non fa il §10.4.3: è atteso, non è una regressione del DB.
+
 ## 11. R-3: l'annotazione in stampa la decide il database (sessione BE, 2026-10-01)
 
 > **Chi scrive:** sessione BE, 2026-10-01. **A chi:** team DB (R-DB-3, **bloccante per R-3**); Tid
 > per la decisione AN-1.
-> **Stato:** ⏳ R-DB-3 da scrivere lato DB. Lato BE pronto il **corpo della v6** del template
-> ([`template-fattura-v6.html`](template-fattura-v6.html)); builder e pubblicazione dopo l'apply.
+> **Stato:** ✅ R-DB-3 **scritto e applicato** il 2026-10-02 (§11.4), nessuna regressione. ⏳ Al BE
+> (sbloccato): builder alla forma 4 e pubblicazione della v6. Lato BE pronto il
+> **corpo della v6** del template ([`template-fattura-v6.html`](template-fattura-v6.html)); builder e
+> pubblicazione dopo l'apply. Il contratto per il builder non cambia rispetto al §11.2 (§11.4.3).
 
 ### 11.1 Perché non lo fa il BE da solo
 
@@ -543,3 +664,97 @@ nuova del contesto e una versione nuova del template.
   [`template-fattura-v6.html`](template-fattura-v6.html) = v5 + il blocco annotazioni, nient'altro
   (differenza verificata con `diff`). ⚠️ Se la v5 cambiasse prima della pubblicazione della v6, la
   v6 va rifatta da lì.
+
+### 11.4 Che cosa è stato scritto (team DB, 2026-10-02)
+
+> **Chi scrive:** team DB (`dev/db-tid`), 2026-10-02. **A chi:** Tid (apply e pgTAP), sessione BE
+> (builder, §11.4.3).
+> **Stato:** ✅ scritto e provato sullo scratch `zeroerp_ci` in transazione annullata (§11.4.4).
+> ✅ **Applicato su dbdev il 2026-10-02 da Tid, corsa pgTAP senza regressioni.** Resta il lato BE
+> (§11.4.3).
+
+#### 11.4.1 I changeSet
+
+| changeSet | cosa |
+| --- | --- |
+| `00_schema/config/20261002-02` | `config.regimi_fiscali`: `CHECK chk_regimi_fiscali_per_cassa_annotazione` (`NOT iva_per_cassa OR annotazione_documento IS NOT NULL`); in coda il `COMMENT` di `annotazione_documento` nomina la funzione che la stampa |
+| `20_code/script/20261002-03` | `script.fn_regime_fiscale_documento(p_emittente_fiscale_id, p_regime_fiscale_rf DEFAULT NULL)`: **la regola del regime** (congelato se c'è e non è vuoto, altrimenti vivo), estratta |
+| `20_code/script/20261002-04` | `script.fn_esigibilita_iva_documento`: il regime dal building block; la copia della regola si ritira. Firma e risultato invariati |
+| `20_code/vendite/20261002-05` | `vendite.fn_regime_fiscale_fattura(p_fattura_id)`: legge snapshot ed emittente dalla testata e chiama il `-03` |
+| `20_code/vendite/20261002-06` | `vendite.fn_esigibilita_iva_fattura`: il regime da `fn_regime_fiscale_fattura`. Firma e risultato invariati |
+| `20_code/vendite/20261002-07` | `vendite.fn_annotazioni_fattura(p_fattura_id)` → `TABLE(codice text, testo text, ordine integer)`: oggi la voce `ESIGIBILITA_DIFFERITA` |
+| `db/pgtap/vendite/test-annotazioni-fattura-v1.sql` | nuovo, 13 test (§11.4.4) |
+
+Pagine `manual/` nuove per le tre funzioni nuove; aggiornate quelle di
+`fn_esigibilita_iva_documento`, `fn_esigibilita_iva_fattura` e `config.regimi_fiscali`.
+
+#### 11.4.2 Dove si discosta dal §11.2, e perché
+
+* ⭐ **La regola del regime sta in `script`, non in `vendite`.** Il §11.2 chiedeva di estrarla in
+  `vendite.fn_regime_fiscale_fattura`. Ma la regola («congelato se c'è, altrimenti vivo») era scritta
+  dentro `script.fn_esigibilita_iva_documento`, che non conosce la fattura: riceve il congelato come
+  parametro. Una `fn_regime_fiscale_fattura` che la riscrivesse avrebbe lasciato **due** copie della
+  stessa regola. Quindi: la regola è `script.fn_regime_fiscale_documento` (sui valori, come
+  `fn_esigibilita_iva`), e `vendite.fn_regime_fiscale_fattura` fa solo la parte della fattura
+  (legge snapshot ed emittente dalla testata). La copia dentro `fn_esigibilita_iva_documento` è
+  ritirata nello stesso giro (`-04`).
+* **La voce chiede anche `iva_per_cassa`**, non solo righe `D` e un testo a catalogo. La voce è
+  quella dell'IVA per cassa. Senza questa condizione, il primo regime con una dicitura sua che non
+  dipende dalle righe (il forfettario RF19, «operazione in franchigia») finirebbe stampato solo
+  sulle fatture con righe `D`, cioè mai. Quel caso avrà una voce sua; oggi il catalogo non ha il
+  testo di RF19, ed è **dichiarato** nel `COMMENT` di `annotazione_documento`.
+* ⭐ **Un CHECK in più sul catalogo (`-02`).** Con un regime per cassa senza testo, la fattura avrebbe
+  righe `D` e nessuna annotazione: una dicitura obbligatoria che manca senza un errore. Il catalogo
+  non deve poter arrivare in quello stato. È una regola fra due colonne della stessa riga, e vale
+  dal `CREATE` della tabella: su un DB da zero il seed porta RF17 con flag e testo insieme.
+* **`VOLATILE`, non `STABLE`.** `fn_annotazioni_fattura` è il punto d'ingresso del backend e ha il
+  guard di parametro (`E_VENDITE_CHIAMATA_NON_VALIDA`, codice già a catalogo): un id rotto è un
+  chiamante rotto, e una lista vuota lo nasconderebbe. Il guard solleva e scrive il log, quindi la
+  funzione non può dichiararsi `STABLE`. `fn_regime_fiscale_fattura` resta `STABLE` e senza guard,
+  perché la chiama anche il trigger di riga con l'id di una FK.
+* `ordine` della voce `ESIGIBILITA_DIFFERITA` = **10**, per lasciare spazio alle voci future.
+* Costo: `fn_esigibilita_iva_fattura` ora legge la testata due volte (la sua lettura per emittente
+  e billing account, più quella di `fn_regime_fiscale_fattura`). Sono due letture per chiave
+  primaria; in cambio la fattura ha una sede sola per il suo regime.
+
+#### 11.4.3 Per la sessione BE (builder alla forma 4)
+
+Il contratto del §11.2/§11.3 resta quello:
+
+```sql
+SELECT codice, testo FROM vendite.fn_annotazioni_fattura(%s) ORDER BY ordine;
+```
+
+* nessuna riga = `annotazioni: []`; mai righe con `testo` a `NULL`;
+* `codice` oggi può valere solo `ESIGIBILITA_DIFFERITA`; il template non deve dipendere dal codice
+  per stampare, solo dal `testo`;
+* `E_VENDITE_CHIAMATA_NON_VALIDA` (TECNICO) se l'id è nullo o non positivo.
+
+Nessun codice errore nuovo, nessuna chiave i18n.
+
+#### 11.4.4 La prova (2026-10-02): scratch `zeroerp_ci`, NON dbdev
+
+Come `zeroerp` (proprietario sullo scratch), in `BEGIN … ROLLBACK`, con l'SQL **estratto** dagli YAML
+`-02 → -07` (`yaml.safe_load`, blocchi `changes[].sql` in ordine). Lo scratch aveva applicato tutto il
+`20261001-*` del cantiere (letto dal suo `databasechangelog`).
+
+* Tutto il blocco applica: `ALTER TABLE … ADD CONSTRAINT` valida le righe del seed.
+* Firme e risultati di `fn_esigibilita_iva_documento` e `fn_esigibilita_iva_fattura` invariati
+  (`regprocedure` e `pg_get_function_result`), una funzione per nome.
+* `plpgsql_check_function` sulle cinque funzioni (tre nuove, due riscritte): zero righe.
+* `test-annotazioni-fattura-v1.sql`: **13/13 ok**.
+* Regressione: `test-esigibilita-iva-per-cassa-v1.sql` **26/26** sia senza sia con l'SQL nuovo in
+  testa. `test-fatture-righe-esigibilita-split.sql` e `test-fn-resolve-iva-riga.sql` sono rossi
+  **identici** con e senza (fixture: `registri_fatturazione.emittente_soggetto_ruolo_id` NULL;
+  «Risoluzione IVA invocata senza articolo_id»): sono già in `baseline-rossi-scratch.tsv` e
+  `baseline-rossi-ci.tsv` come `ERRORE_FIXTURE`, e non vengono da questo giro.
+* Dopo il rollback le funzioni vive dello scratch sono identiche a prima (md5 di
+  `pg_get_functiondef`), e le tre nuove non esistono.
+* ⚠️ **Non provato**: la RLS. Da proprietario le policy non si applicano, e i test girano con il
+  contesto operatore ma senza `FORCE`. Mancano anche l'apply vero con Liquibase e la corsa col
+  runner (`PGTAP_RUNNER=app`). Da far girare nella corsa di Tid:
+  `vendite/test-annotazioni-fattura-v1.sql` (nuovo), `vendite/test-esigibilita-iva-per-cassa-v1.sql`,
+  `dbops/test-riferimenti-morti-v1.sql` (tre funzioni plpgsql nuove),
+  `script/test-catalogo-messaggi-errore-completo.sql` (un sito nuovo per un codice esistente).
+* ✅ **2026-10-02, Tid: migrazione applicata, nessuna regressione** nella corsa pgTAP. Il punto
+  «non provato» qui sopra (RLS, apply con Liquibase, runner come app) è coperto da quella corsa.

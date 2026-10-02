@@ -5,8 +5,10 @@
 > storico delle iterazioni e' in
 > [changelog-decisioni-componenti.md](changelog-decisioni-componenti.md).
 >
-> **Ultimo aggiornamento**: 2026-10-01 (esposizione in fattura a tre
-> modi — vedi §7). Prima: 2026-05-13 (decisione "BoM contratto
+> **Ultimo aggiornamento**: 2026-10-02 (ritirati `partecipa_qta` e
+> `determina_qta_padre` — §2; quantita', UoM e periodo del kit in fattura
+> dalla riga padre del documento — §7.1). Prima: 2026-10-01 (esposizione
+> in fattura a tre modi — vedi §7). Prima: 2026-05-13 (decisione "BoM contratto
 > immutabile per documento" — vedi §9.3).
 
 ---
@@ -45,8 +47,20 @@ Colonne strutturali (immutabili):
 | `valido_dal`, `valido_al`, `validita` (range) | versionamento daterange                                           |
 | `attivo`                                      | soft-delete logico                                                |
 
-Colonne `partecipa_qta` e `determina_qta_padre`: scheletro per logiche
-future di calcolo quantita', non lette runtime dalle fn attuali.
+Fino al 2026-10-02 la distinta aveva anche `partecipa_qta` e
+`determina_qta_padre`: si salvavano, il drawer li mostrava e il guard di
+immutabilita' li congelava, ma **nessuna logica li leggeva**. Residuo di una
+logica di calcolo quantita' mai implementata, **ritirati** (decisione di
+Tid, `20261002-60`). La quantita' di **ogni** componente e' sempre
+`quantita padre × coeff_qta` (§7.1). Se un giorno serve un componente a
+quantita' fissa, nasce con la sua semantica e il suo cantiere.
+
+L'**unita' di misura** dei componenti e' libera: nessun vincolo la lega a
+quella del padre (l'unico vincolo padre-figli e' l'IVA, §6). Un kit puo'
+essere fatto di pezzi, metri e ore. Nel documento il componente porta la
+sua UoM operativa, `NOT NULL` dal 2026-10-02 (`20261002-66`): il ripiego
+sulla UoM del padre, che in un kit misto faceva «3 kit» di «3 metri», e'
+ritirato.
 
 ## 3. Simmetria padre-figli a 3 livelli
 
@@ -208,6 +222,50 @@ al 2026-10-01 `esposto_in_fattura` — il cambio di chiave e' a carico
 del backend); sulla fattura e' congelata in
 `fatture_righe.kit_esposizione` alla generazione, insieme a `kit_key`
 e all'articolo padre.
+
+### 7.1 Quantita', UoM e periodo del kit in fattura
+
+La quantita' dei componenti segue il padre ovunque: `quantita
+componente = quantita padre × coeff_qta`
+(`script.trgfn_componenti_calcola_quantita`,
+`script.trgfn_componenti_propaga_qta`, e al push in commessa
+`BoMComponentExpander`).
+
+La riga del kit in fattura non esiste in tabella: la compone
+`vw_fattura_righe_esposte` dai componenti. Dal 2026-10-02 quantita' e UoM
+**non si ricavano** dai componenti: sono quelle della **riga padre del
+documento**, congelate su ogni componente alla generazione.
+
+| Della riga del kit | Da dove viene |
+| --- | --- |
+| quantita' | `fatture_righe.kit_qta` (quanti kit rappresenta la riga), sommata componente per componente, cioe' per `articolo_id`: per questo una riga di kit ha sempre l'articolo (`chk_fatture_righe_kit_articolo`) |
+| UoM | `fatture_righe.kit_uom_id` (la UoM della riga padre) |
+| periodo | `competenza_dal`, `competenza_al`: un kit su due periodi sono due righe |
+| prezzo unitario | `importo del kit / quantita'` |
+| importo | somma dei componenti `NASCOSTO` e `DESCRITTIVO` (§7) |
+
+- **Coefficienti diversi fra i componenti** (la sedia con 8 viti): nessun
+  problema, la quantita' del kit non viene da loro. Il guard R10 del BE,
+  che fermava la fattura, si ritira.
+- **Kit di unita' diverse**: la riga del kit stampa la sua unita', ogni
+  componente esposto la sua. Un componente `NASCOSTO` non stampa nessuna
+  quantita'. Per questo **non** serve vietare `NASCOSTO` ai componenti di
+  unita' diversa (decisione di Tid, 2026-10-02, D-2).
+- **Componenti che non dicono lo stesso numero di kit** — una nota di
+  credito parziale, dove si rende un componente solo: la riga del kit ha
+  quantita' e prezzo `NULL`, e porta il suo importo. Non si rifiuta: e' un
+  caso legittimo, e li' il kit non ha una quantita'.
+- **Periodo**: si stampa quando `competenza_dal <> competenza_al`
+  (colonna `ha_periodo` della vista), una regola sola per PDF, SDI
+  (`DataInizioPeriodo`/`DataFinePeriodo`) e portale. Una riga puntuale ha
+  `dal = al`; se raggruppa piu' attivita' di date diverse porta la piu'
+  recente.
+
+Fino al 2026-10-01 la vista faceva `avg(qta)` e `max(uom_id)` sui
+componenti e ignorava il periodo: con coefficienti diversi da 1 la media
+non voleva dire niente, in un kit misto l'unita' era una a caso, e lo
+stesso kit su due mesi usciva come una riga con quantita' 1 e prezzo
+doppio. Cantiere: `brief-db-bom-flag-quantita-e-kit-in-fattura`.
 
 ## 8. Listino composito (livello 2): bundle-aware
 

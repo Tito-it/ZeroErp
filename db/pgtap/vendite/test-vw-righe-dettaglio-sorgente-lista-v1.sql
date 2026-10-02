@@ -102,12 +102,15 @@ SELECT columns_are('vendite', 'vw_ddt_righe_dettaglio', ARRAY[
     '7) righe DDT: le colonne del repository');
 
 -- ---- 8..9: la distinta base -------------------------------------------------
+-- rev 2026-10-02: determina_qta_padre ritirata dalla distinta (20261002-60): la
+-- vista porta l'esposizione e NON piu' i due flag senza effetto.
 SELECT ok(
-    (SELECT count(*) = 2 FROM pg_attribute
+    (SELECT count(*) FILTER (WHERE attname = 'esposizione_in_fattura') = 1
+        AND count(*) FILTER (WHERE attname IN ('determina_qta_padre', 'partecipa_qta')) = 0
+       FROM pg_attribute
       WHERE attrelid = 'catalogo.vw_articoli_componenti_dettaglio'::regclass
-        AND attname IN ('esposizione_in_fattura', 'determina_qta_padre')
         AND NOT attisdropped),
-    '8) distinta: esposizione_in_fattura e determina_qta_padre (prima solo nel repository)');
+    '8) distinta: esposizione_in_fattura si, partecipa_qta e determina_qta_padre no (ritirate 2026-10-02)');
 
 SELECT ok(
     (SELECT count(*) = 4 FROM pg_attribute

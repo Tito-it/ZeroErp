@@ -105,9 +105,9 @@ BEGIN
     -- BoM attiva aperta (valido_al NULL): copre CURRENT_DATE e qualsiasi data
     -- futura, cosi' la temporal FK non interferisce col test Guard 7.
     INSERT INTO catalogo.articoli_componenti (
-        prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
+        prodotto_id, componente_id, coeff_qta, obbligatorio,
         valido_dal, valido_al, attivo)
-    VALUES (v_p, v_f, 1, FALSE, TRUE, (CURRENT_DATE - 1), NULL, TRUE)
+    VALUES (v_p, v_f, 1, TRUE, (CURRENT_DATE - 1), NULL, TRUE)
     RETURNING id INTO v_l;
 
     -- Versione BOZZA (obbligatoria per INSERT su listini_righe_componenti),

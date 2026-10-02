@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ESIGIBILITA' DI UNA RIGA DI FATTURA LEGGE IL REGIME DELLA FATTURA
+#   vendite.fn_esigibilita_iva_fattura(p_fattura_id, p_iva_id)
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezione 11.2 (R-DB-3)
+#
+# -- COSA CAMBIA ---------------------------------------------------
+#   Il regime non si legge piu' qui dallo snapshot: lo da'
+#   vendite.fn_regime_fiscale_fattura (-05), la stessa funzione che usano le
+#   annotazioni in stampa (-07). Cosi' «il regime della fattura» ha una sede,
+#   e l'annotazione non puo' guardare un regime diverso da quello con cui le
+#   righe sono state calcolate.
+#   La testata si legge ancora per l'emittente e il billing account, che
+#   servono alla catena delle parti; il regime che arriva e' gia' risolto, e
+#   la catena lo passa com'e'.
+#   Firma, risultato, volatilita' invariati rispetto al 20261001-05 (corpo
+#   confrontato con la doc auto-generata).
+#
+# ⚠️ Fattura inesistente: nessuna riga in testata, tutte le parti NULL, la
+#   coppia esce NULL/NULL, come prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261002-06-update-fn-esigibilita-iva-fattura-regime-della-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20261002-06-update-fn-esigibilita-iva-fattura-regime-della-fattura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_esigibilita_iva_fattura: il regime lo da' vendite.fn_regime_fiscale_fattura,
+        la sede unica che leggono anche le annotazioni in stampa. Firma e risultato invariati.
+        Brief: brief-db-esigibilita-iva-per-cassa-emittente sezione 11 (R-DB-3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_regime_fiscale_fattura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_esigibilita_iva_fattura(
+                  p_fattura_id  vendite.fatture.id%TYPE,
+                  p_iva_id      config.iva.id%TYPE
+              )
+              RETURNS TABLE(
+                  esigibilita    vendite.fatture_righe.esigibilita%TYPE,
+                  split_payment  vendite.fatture_righe.split_payment%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la coppia (esigibilita, split_payment) di una riga della
+              --   fattura p_fattura_id con codice IVA p_iva_id. Regime: quello
+              --   della fattura (vendite.fn_regime_fiscale_fattura: lo snapshot,
+              --   se c'e', altrimenti quello vivo, D-8).
+              DECLARE
+                  v_emittente_id  anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ba_id         vendite.fatture.billing_account_id%TYPE;
+              BEGIN
+                  SELECT ef.id,
+                         f.billing_account_id
+                    INTO v_emittente_id, v_ba_id
+                    FROM vendite.fatture f
+                    LEFT JOIN anagrafiche.emittenti_fiscali ef
+                           ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                   WHERE f.id = p_fattura_id;
+
+                  RETURN QUERY
+                  SELECT e.esigibilita, e.split_payment
+                    FROM script.fn_esigibilita_iva_documento(
+                             v_emittente_id, v_ba_id, p_iva_id,
+                             vendite.fn_regime_fiscale_fattura(p_fattura_id)) e;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_esigibilita_iva_fattura(
+                  vendite.fatture.id%TYPE, config.iva.id%TYPE) IS
+                  'La coppia (esigibilita, split_payment) di una riga di fattura: emittente dalla '
+                  'testata (emittente_soggetto_ruolo_id -> emittenti_fiscali), cliente dal billing '
+                  'account, e il REGIME della fattura da vendite.fn_regime_fiscale_fattura (quello '
+                  'congelato nello snapshot dell''intestazione se c''e'', quello vivo altrimenti): '
+                  'righe, testata e annotazioni in stampa dicono lo stesso regime (D-8). La regola '
+                  'e'' script.fn_esigibilita_iva, la catena delle parti '
+                  'script.fn_esigibilita_iva_documento. La chiamano '
+                  'vendite.trgfn_fatture_righe_guard_normalize e '
+                  'vendite.fn_ricalcola_riepilogo_iva_fattura. Brief: '
+                  'brief-db-esigibilita-iva-per-cassa-emittente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_esigibilita_iva_fattura(
+                  p_fattura_id  vendite.fatture.id%TYPE,
+                  p_iva_id      config.iva.id%TYPE
+              )
+              RETURNS TABLE(
+                  esigibilita    vendite.fatture_righe.esigibilita%TYPE,
+                  split_payment  vendite.fatture_righe.split_payment%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la coppia (esigibilita, split_payment) di una riga della
+              --   fattura p_fattura_id con codice IVA p_iva_id. Regime: quello
+              --   congelato nello snapshot, se c'e', altrimenti quello vivo (D-8).
+              DECLARE
+                  v_emittente_id  anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ba_id         vendite.fatture.billing_account_id%TYPE;
+                  v_regime_snap   anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE;
+              BEGIN
+                  SELECT ef.id,
+                         f.billing_account_id,
+                         f.emittente_snapshot ->> 'regime_fiscale_rf'
+                    INTO v_emittente_id, v_ba_id, v_regime_snap
+                    FROM vendite.fatture f
+                    LEFT JOIN anagrafiche.emittenti_fiscali ef
+                           ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                   WHERE f.id = p_fattura_id;
+
+                  RETURN QUERY
+                  SELECT e.esigibilita, e.split_payment
+                    FROM script.fn_esigibilita_iva_documento(
+                             v_emittente_id, v_ba_id, p_iva_id, v_regime_snap) e;
+              END;
+              $function$;

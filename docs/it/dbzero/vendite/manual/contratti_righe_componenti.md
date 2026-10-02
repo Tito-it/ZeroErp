@@ -69,6 +69,7 @@ La migration `20260511-31` ha rinominato la colonna `quantita_fissa` → `quanti
 | `componente_id` | FK all'articolo componente (`articoli.id`) — denormalizzato |
 | `coeff_qta_snapshot` | Snapshot `articoli_componenti.coeff_qta` al momento della creazione |
 | `quantita` | Calcolata dal trigger `_m50_calcola_quantita` come `coeff_qta_snapshot × quantita_padre` |
+| `uom_operativa_id` | UoM **del componente** (non del kit), `NOT NULL` dal 2026-10-02 (`20261002-66`): la valorizza la funzione `_init` dalla UoM dell'articolo componente. Un kit può essere fatto di unità diverse (pezzi, metri, ore); il ripiego sulla UoM del padre è ritirato |
 | `prezzo_unitario` | Prezzo del componente (suggerito dal resolver, modificabile L1/L2/L3) |
 | `origine_prezzo` | `PROMO`, `CONTRATTO_OVERRIDE`, `CONTRATTO_LISTINO`, `CATEGORIA`, `MANUALE` |
 | `prezzo_resolver_context` | JSONB con emittente, BA, data, utility_id, istanza_utility_id |

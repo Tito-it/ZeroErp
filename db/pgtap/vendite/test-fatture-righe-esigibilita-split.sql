@@ -142,9 +142,9 @@ SELECT * FROM ins;
 UPDATE anagrafiche.soggetti SET split_payment = 'N'
  WHERE id = (SELECT soggetto_id FROM tmp_es_sogg);
 
-INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta)
+INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_es_fatt), 1, 'Riga non scissa', 1, 100, r.iva_id,
-       jsonb_build_object('test_scope', 'pgtap_esigibilita')
+       jsonb_build_object('test_scope', 'pgtap_esigibilita'), CURRENT_DATE, CURRENT_DATE
   FROM tmp_es_refs r;
 
 SELECT is(
@@ -161,9 +161,9 @@ SELECT is(
 UPDATE anagrafiche.soggetti SET split_payment = 'S'
  WHERE id = (SELECT soggetto_id FROM tmp_es_sogg);
 
-INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta)
+INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_es_fatt), 2, 'Riga scissa', 1, 100, r.iva_id,
-       jsonb_build_object('test_scope', 'pgtap_esigibilita')
+       jsonb_build_object('test_scope', 'pgtap_esigibilita'), CURRENT_DATE, CURRENT_DATE
   FROM tmp_es_refs r;
 
 SELECT is(
@@ -187,9 +187,9 @@ UPDATE anagrafiche.soggetti SET split_payment = 'N'
  WHERE id = (SELECT soggetto_id FROM tmp_es_sogg);
 
 INSERT INTO vendite.fatture_righe
-    (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, esigibilita, meta)
+    (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, esigibilita, meta, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_es_fatt), 3, 'Riga differita', 1, 100, r.iva_id, 'D',
-       jsonb_build_object('test_scope', 'pgtap_esigibilita')
+       jsonb_build_object('test_scope', 'pgtap_esigibilita'), CURRENT_DATE, CURRENT_DATE
   FROM tmp_es_refs r;
 
 SELECT is(
@@ -208,9 +208,9 @@ UPDATE anagrafiche.soggetti SET split_payment = 'S'
  WHERE id = (SELECT soggetto_id FROM tmp_es_sogg);
 
 INSERT INTO vendite.fatture_righe
-    (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, esigibilita, meta)
+    (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, esigibilita, meta, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_es_fatt), 4, 'Riga differita ma scissa', 1, 100, r.iva_id, 'D',
-       jsonb_build_object('test_scope', 'pgtap_esigibilita')
+       jsonb_build_object('test_scope', 'pgtap_esigibilita'), CURRENT_DATE, CURRENT_DATE
   FROM tmp_es_refs r;
 
 SELECT is(

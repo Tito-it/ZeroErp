@@ -19,9 +19,14 @@ nessuno ha dichiarato, e questa vista lo rende visibile.
 
 ### Perché tutti i regimi e non solo RF01
 
-La conferma si azzera anche quando il regime cambia senza una conferma nuova: un
-RF17 non confermato è lo stesso fatto, «nessuno ha dichiarato questo regime».
-Filtrare su RF01 sarebbe un letterale di codice in un presidio, e un buco.
+Un emittente può nascere con un regime diverso dal default (una `INSERT` che porta
+RF17), e la creazione non conferma mai: un RF17 non confermato è lo stesso fatto,
+«nessuno ha dichiarato questo regime». Filtrare su RF01 sarebbe un letterale di
+codice in un presidio, e un buco.
+
+Dal 2026-10-02 la conferma la scrive il database a ogni dichiarazione del regime
+(sezione 10 del brief), quindi non si azzera più: la vista mostra solo i regimi che
+nessuno ha mai dichiarato.
 
 ### Colonne
 
@@ -35,7 +40,8 @@ Filtrare su RF01 sarebbe un letterale di codice in un presidio, e un buco.
 
 `dbops.presidi`: natura `ZERO`, cadenza `SETTIMANALE` (è una condizione di
 prontezza, non un incidente), perimetro `LIBERO` (`anagrafiche.emittenti_fiscali`
-non ha RLS). Si svuota confermando il regime dal form dell'emittente.
+non ha RLS). Si svuota confermando il regime dal form dell'emittente, cioè scrivendo il
+regime, anche con lo stesso valore.
 
 ---
 

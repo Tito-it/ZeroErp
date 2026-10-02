@@ -79,11 +79,14 @@ SELECT
      FROM anagrafiche.soggetti_ruoli sr
     ORDER BY sr.id LIMIT 1
   ) AS soggetto_ruolo_id,
-  (SELECT a.id
-     FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1
-  ) AS articolo_id,
+  -- ⭐ Articolo COSTRUITO e NON gestito a magazzino (rev 2026-10-02). Prima era
+  --   «l'ultimo articolo attivo del catalogo»: se quello era gestito, la bolla
+  --   muoveva merce, e la porta del registro (trgfn_ddt_guard_transizione,
+  --   Regola 3, 20260928-71) rifiutava il passaggio a EMESSO fatto con l'UPDATE
+  --   di pg_temp.spedisci (E_DDT_STATO_SOLO_DA_VERBO). Il test misura il lister
+  --   del push, non il registro di magazzino: la bolla non deve muovere merce,
+  --   e non deve dipenderlo dal catalogo della macchina.
+  dbops.fn_pgtap_crea_articolo('PGTAP-LDDT-ART', false) AS articolo_id,
   (SELECT v.id
      FROM config.valute v
     ORDER BY v.id LIMIT 1
