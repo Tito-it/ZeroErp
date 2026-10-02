@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_emittenti_fiscali_guard_regime_conferma:
+#   LA CONFERMA DEL REGIME NON SI SCRIVE DA FUORI
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezione 10
+#
+# -- PERCHE' ------------------------------------------------------
+#   Da 20261002-40 data e autore della conferma li deriva il trigger a20 da
+#   una dichiarazione del regime. Un valore scritto direttamente direbbe una
+#   cosa che il trigger non ha visto: una conferma senza dichiarazione (un
+#   UPDATE della sola data), o un autore che non e' chi ha scritto.
+#   Il brief lascia al team DB la scelta fra sovrascrivere e rifiutare. Si
+#   RIFIUTA: chi scrive quelle colonne ha capito male il contratto, e una
+#   sovrascrittura silenziosa glielo nasconderebbe (scriverebbe «confermato
+#   da Mario» e leggerebbe un altro nome, senza sapere perche').
+#
+# -- LA REGOLA ----------------------------------------------------
+#   · INSERT con una delle due colonne valorizzata: rifiutata. La INSERT non
+#     conferma mai (sezione 10.2): un regime dichiarato in creazione si
+#     conferma con un UPDATE OF regime_fiscale_rf nella stessa transazione;
+#   · UPDATE che CAMBIA una delle due colonne: rifiutato. Guarda il valore,
+#     non la menzione: UPDATE OF scatta anche riassegnando lo stesso valore
+#     (un salvataggio che riscrive tutta la riga), e quello non scrive niente.
+#   Codice E_EMITTENTE_REGIME_CONFERMA_DERIVATA, TECNICO: lo produce solo un
+#   chiamante rimasto alla forma di D-11, non chi compila un modulo.
+#
+# -- PERIMETRO E ORDINE, dichiarati -------------------------------
+#   · Fase a10 (-42), BEFORE INSERT / UPDATE OF regime_fiscale_confermato_il,
+#     regime_fiscale_confermato_da: parla PRIMA del trigger a20 che deriva,
+#     quindi vede i valori del chiamante. E' l'ordine che rende possibili le
+#     due cose insieme: il guard rifiuta lo scrittore esterno, e la
+#     derivazione a20 scrive dopo senza attraversarlo.
+#   · Il CHECK chk_emittenti_fiscali_regime_conferma_coppia resta: presidia le
+#     strade che i trigger non percorrono (trigger spenti, COPY).
+#   · Nessuna via di manutenzione (GUC di override): una conferma la da' chi
+#     dichiara il regime, e la dichiarazione e' sempre disponibile.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261002-41-create-trgfn-emittenti-fiscali-guard-regime-conferma-mctit.yaml
+
+  - changeSet:
+      id: 20261002-41-create-trgfn-emittenti-fiscali-guard-regime-conferma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_emittenti_fiscali_guard_regime_conferma: regime_fiscale_confermato_il
+        e _da non si scrivono da fuori (INSERT valorizzata, UPDATE che le cambia):
+        E_EMITTENTE_REGIME_CONFERMA_DERIVATA. Le deriva trgfn_emittenti_fiscali_regime_conferma.
+        Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezione 10.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali
+            columnName: regime_fiscale_confermato_da
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_regime_conferma()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_scritta boolean;   -- il chiamante ha scritto la conferma
+              BEGIN
+                  -- ------------------------------------------------------------
+                  -- Guard: data e autore della conferma del regime li scrive il
+                  -- database (trgfn_emittenti_fiscali_regime_conferma, a20), da
+                  -- una dichiarazione del regime. Fase a10, BEFORE INSERT /
+                  -- UPDATE OF regime_fiscale_confermato_il, _da: qui NEW porta
+                  -- ancora i valori del chiamante.
+                  -- ------------------------------------------------------------
+                  IF TG_OP = 'INSERT' THEN
+                      -- La INSERT non conferma mai.
+                      v_scritta := NEW.regime_fiscale_confermato_il IS NOT NULL
+                                OR NEW.regime_fiscale_confermato_da IS NOT NULL;
+                  ELSE
+                      -- Il valore, non la menzione: riscrivere lo stesso valore
+                      -- non scrive una conferma.
+                      v_scritta := NEW.regime_fiscale_confermato_il IS DISTINCT FROM OLD.regime_fiscale_confermato_il
+                                OR NEW.regime_fiscale_confermato_da IS DISTINCT FROM OLD.regime_fiscale_confermato_da;
+                  END IF;
+
+                  IF v_scritta THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_EMITTENTE_REGIME_CONFERMA_DERIVATA',
+                          jsonb_build_object(
+                              'table',                        TG_TABLE_NAME,
+                              'operazione',                   TG_OP,
+                              'emittente_fiscale_id',         NEW.id,
+                              'regime_fiscale_confermato_il', NEW.regime_fiscale_confermato_il,
+                              'regime_fiscale_confermato_da', NEW.regime_fiscale_confermato_da
+                          ),
+                          NULL::uuid,
+                          COALESCE(NEW.codice, NEW.id::text)
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_regime_conferma() IS
+                  'Guard a10 su anagrafiche.emittenti_fiscali (BEFORE INSERT / UPDATE OF '
+                  'regime_fiscale_confermato_il, regime_fiscale_confermato_da): le due colonne della '
+                  'conferma del regime non si scrivono da fuori. Rifiuta una INSERT che le valorizza (la '
+                  'INSERT non conferma mai) e un UPDATE che le cambia (il valore, non la menzione: '
+                  'riscriverle uguali passa). Le deriva il trigger a20 '
+                  'trgfn_emittenti_fiscali_regime_conferma da un UPDATE OF regime_fiscale_rf, e parla '
+                  'dopo questo guard: e'' l''ordine a10 < a20 che separa lo scrittore esterno dalla '
+                  'derivazione. Errore: E_EMITTENTE_REGIME_CONFERMA_DERIVATA (TECNICO). Brief: '
+                  'brief-db-esigibilita-iva-per-cassa-emittente (sezione 10).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_emittenti_fiscali_guard_regime_conferma();

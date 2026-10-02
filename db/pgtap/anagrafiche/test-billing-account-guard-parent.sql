@@ -405,8 +405,8 @@ BEGIN
     RETURNING id INTO v_fattura_id;
 
     INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
-                                       qta, prezzo_unitario, imponibile_riga)
-    VALUES (v_fattura_id, 1, 'Riga PGTAP guard parent', 1, 10, 10)
+                                       qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
+    VALUES (v_fattura_id, 1, 'Riga PGTAP guard parent', 1, 10, 10, CURRENT_DATE, CURRENT_DATE)
     RETURNING id INTO v_riga_id;
 
     UPDATE vendite.attivita_fatturabili

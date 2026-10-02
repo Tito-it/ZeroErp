@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGIME FISCALE DI UNA FATTURA
+#   vendite.fn_regime_fiscale_fattura(p_fattura_id)
+#     RETURNS anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezione 11.2 (R-DB-3), D-8
+#
+# -- COSA FA -------------------------------------------------------
+#   Legge dalla testata le due cose che servono alla regola: il regime
+#   congelato nello snapshot dell'intestazione (emittente_snapshot ->>
+#   'regime_fiscale_rf') e l'emittente (emittente_soggetto_ruolo_id ->
+#   emittenti_fiscali; la fattura non ha emittente_fiscale_id). Poi chiede a
+#   script.fn_regime_fiscale_documento (-03) quale vale.
+#
+# -- PERCHE' UNA FUNZIONE ------------------------------------------
+#   «Il regime della fattura» ha due lettori: l'esigibilita' delle righe
+#   (vendite.fn_esigibilita_iva_fattura, -06) e le annotazioni in stampa
+#   (vendite.fn_annotazioni_fattura, -07). Se l'annotazione leggesse il solo
+#   snapshot, una fattura senza snapshot con righe D calcolate col regime vivo
+#   non stamperebbe niente (sezione 11.1 del brief).
+#
+# ⚠️ Fattura inesistente o fuori dal perimetro di chi legge: NULL, «regime
+#   non noto». STABLE, nessun guard che sollevi: la chiama anche il trigger di
+#   riga, attraverso fn_esigibilita_iva_fattura, con l'id di una FK. Il guard
+#   di parametro sta sul punto d'ingresso del backend (-07).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261002-05-create-fn-regime-fiscale-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20261002-05-create-fn-regime-fiscale-fattura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_regime_fiscale_fattura: il regime fiscale di una fattura, quello dello
+        snapshot dell'intestazione se c'e', altrimenti quello vivo dell'emittente (la regola e'
+        script.fn_regime_fiscale_documento). La usano l'esigibilita' delle righe e le
+        annotazioni in stampa. Brief: brief-db-esigibilita-iva-per-cassa-emittente sezione 11
+        (R-DB-3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_regime_fiscale_documento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_regime_fiscale_fattura(
+                  p_fattura_id  vendite.fatture.id%TYPE
+              )
+              RETURNS anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: il regime fiscale della fattura p_fattura_id: quello
+              --   congelato nello snapshot, se c'e', altrimenti quello vivo
+              --   dell'emittente (D-8).
+              DECLARE
+                  v_emittente_id  anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_regime_snap   anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE;
+              BEGIN
+                  SELECT ef.id,
+                         f.emittente_snapshot ->> 'regime_fiscale_rf'
+                    INTO v_emittente_id, v_regime_snap
+                    FROM vendite.fatture f
+                    LEFT JOIN anagrafiche.emittenti_fiscali ef
+                           ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                   WHERE f.id = p_fattura_id;
+
+                  RETURN script.fn_regime_fiscale_documento(v_emittente_id, v_regime_snap);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_regime_fiscale_fattura(vendite.fatture.id%TYPE) IS
+                  'Il regime fiscale di una fattura: quello congelato nello snapshot '
+                  'dell''intestazione (emittente_snapshot ->> regime_fiscale_rf) se c''e'', '
+                  'altrimenti quello vivo dell''emittente (emittente_soggetto_ruolo_id -> '
+                  'emittenti_fiscali); la regola e'' script.fn_regime_fiscale_documento. NULL se la '
+                  'fattura non c''e'' o non ha emittente. Una sede per i due lettori: l''esigibilita'' '
+                  'delle righe (vendite.fn_esigibilita_iva_fattura) e le annotazioni in stampa '
+                  '(vendite.fn_annotazioni_fattura). Brief: '
+                  'brief-db-esigibilita-iva-per-cassa-emittente (R-DB-3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_regime_fiscale_fattura(vendite.fatture.id%TYPE);

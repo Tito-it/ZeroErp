@@ -63,6 +63,7 @@ Questa tabella è **solo CASO A**. Per CASO B la riga padre ha il prezzo diretta
 | `componente_id` | FK all'articolo componente (`articoli.id`) — denormalizzato per query dirette, coerenza garantita da guard |
 | `coeff_qta_snapshot` | Snapshot di `articoli_componenti.coeff_qta` al momento della creazione — isolato da evoluzioni BoM future |
 | `quantita` | Calcolata dal trigger `_m50_calcola_quantita` come `coeff_qta_snapshot × quantita_padre` |
+| `uom_operativa_id` | UoM **del componente** (non del kit), `NOT NULL` dal 2026-10-02 (`20261002-66`): la valorizza la funzione `_init` dalla UoM dell'articolo componente. Un kit può essere fatto di unità diverse (pezzi, metri, ore); il ripiego sulla UoM del padre è ritirato |
 | `prezzo_unitario` | Prezzo del componente (suggerito dal resolver, modificabile dall'operatore L1/L2/L3). ⚠️ **Può mancare** dal 2026-08-19, vedi sotto |
 | `origine_prezzo` | Traccia l'origine: `PROMO`, `CONTRATTO_OVERRIDE`, `CONTRATTO_LISTINO`, `CATEGORIA`, `MANUALE`, `LISTINO_BUNDLE`. ⚠️ **Può mancare** insieme al prezzo |
 | `prezzo_resolver_context` | JSONB con contesto chiamata resolver (emittente, BA, data, utility); in fallback contiene `error`/`sqlstate` |

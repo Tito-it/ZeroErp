@@ -16,14 +16,14 @@
 --   successivo. L'EXCLUDE constraint ex_articoli_componenti_no_overlap
 --   impedisce overlap tra versioni.
 --
--- Indice test (1..18):
+-- Indice test (1..18, senza 6 e 7: 16 asserzioni):
 --    1. DELETE -> raise E_BOM_MODIFICA_VIETATA
 --    2. UPDATE coeff_qta -> raise
 --    3. UPDATE componente_id -> raise
 --    4. UPDATE obbligatorio -> raise
 --    5. UPDATE esposizione_in_fattura -> raise
---    6. UPDATE partecipa_qta -> raise
---    7. UPDATE determina_qta_padre -> raise
+--    6. (ritirato 2026-10-02: partecipa_qta non esiste piu', 20261002-60)
+--    7. (ritirato 2026-10-02: determina_qta_padre non esiste piu', 20261002-60)
 --    8. UPDATE valido_dal -> raise
 --    9. UPDATE validita (daterange nativo) -> raise
 --   10. UPDATE valido_al in avanti (chiusura) -> OK
@@ -65,7 +65,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(18);
+SELECT plan(16);
 
 -- =========================================================
 -- Setup: riga BoM di partenza
@@ -93,10 +93,10 @@ CREATE TEMP TABLE _t_bom_riga (riga_id uuid);
 
 WITH ins AS (
     INSERT INTO catalogo.articoli_componenti (
-        prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
-        esposizione_in_fattura, determina_qta_padre, valido_dal, valido_al, attivo
+        prodotto_id, componente_id, coeff_qta, obbligatorio,
+        esposizione_in_fattura, valido_dal, valido_al, attivo
     )
-    SELECT prodotto_id, componente_id, 1, false, true, 'NASCOSTO', false, v_dal, v_al, true
+    SELECT prodotto_id, componente_id, 1, true, 'NASCOSTO', v_dal, v_al, true
       FROM _t_bom
     RETURNING id
 )
@@ -168,28 +168,11 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- 6) UPDATE partecipa_qta -> raise
+-- 6), 7) RITIRATI il 2026-10-02: provavano UPDATE di partecipa_qta e
+-- determina_qta_padre, colonne ritirate dalla distinta (20261002-60,
+-- brief-db-bom-flag-quantita-e-kit-in-fattura D-1). Numerazione degli altri
+-- invariata.
 -- =========================================================
-SELECT throws_ok(
-    format(
-        $sql$ UPDATE catalogo.articoli_componenti SET partecipa_qta = true WHERE id = %L::uuid $sql$,
-        (SELECT riga_id FROM _t_bom_riga)
-    ),
-    NULL, NULL,
-    '6. UPDATE partecipa_qta -> raise E_BOM_MODIFICA_VIETATA'
-);
-
--- =========================================================
--- 7) UPDATE determina_qta_padre -> raise
--- =========================================================
-SELECT throws_ok(
-    format(
-        $sql$ UPDATE catalogo.articoli_componenti SET determina_qta_padre = true WHERE id = %L::uuid $sql$,
-        (SELECT riga_id FROM _t_bom_riga)
-    ),
-    NULL, NULL,
-    '7. UPDATE determina_qta_padre -> raise E_BOM_MODIFICA_VIETATA'
-);
 
 -- =========================================================
 -- 8) UPDATE valido_dal -> raise
@@ -323,11 +306,11 @@ SELECT lives_ok(
 SELECT lives_ok(
     format(
         $sql$ INSERT INTO catalogo.articoli_componenti (
-                  prodotto_id, componente_id, coeff_qta, partecipa_qta,
-                  obbligatorio, esposizione_in_fattura, determina_qta_padre,
+                  prodotto_id, componente_id, coeff_qta,
+                  obbligatorio, esposizione_in_fattura,
                   valido_dal, valido_al, attivo
               )
-              SELECT prodotto_id, componente_id, 2, false, true, 'NASCOSTO', false,
+              SELECT prodotto_id, componente_id, 2, true, 'NASCOSTO',
                      (CURRENT_DATE + INTERVAL '6 days')::date,
                      NULL,
                      true

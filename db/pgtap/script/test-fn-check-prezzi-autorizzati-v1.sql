@@ -186,10 +186,10 @@ BEGIN
         INSERT INTO vendite.preventivi_righe_componenti
             (riga_preventivo_id, articolo_componente_id, componente_id,
              coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo,
-             stato_approvazione_prezzo)
+             stato_approvazione_prezzo, uom_operativa_id)
         VALUES
             (v_riga, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE',
-             v_caso.st_comp::config.stato_approvazione_prezzo)
+             v_caso.st_comp::config.stato_approvazione_prezzo, (SELECT uom_id FROM catalogo.articoli WHERE id = k.cmp_id))
         RETURNING id INTO v_comp;
 
         -- ⚠️ Lo stato della RIGA si scrive DOPO il componente, non alla
@@ -483,9 +483,9 @@ BEGIN
         IF v_tag = 'kit' THEN
             INSERT INTO vendite.offerte_commerciali_eccezioni_componenti
                 (eccezione_offerta_id, articolo_componente_id, componente_id,
-                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo)
+                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id)
             VALUES
-                (v_ecc, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE')
+                (v_ecc, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE', (SELECT uom_id FROM catalogo.articoli WHERE id = k.cmp_id))
             RETURNING id INTO v_comp;
         ELSE
             UPDATE vendite.offerte_commerciali_eccezioni
@@ -589,9 +589,9 @@ BEGIN
 
         INSERT INTO vendite.ordini_righe_componenti
             (riga_ordine_id, articolo_componente_id, componente_id,
-             coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo)
+             coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id)
         VALUES
-            (v_riga, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE')
+            (v_riga, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE', (SELECT uom_id FROM catalogo.articoli WHERE id = k.cmp_id))
         RETURNING id INTO v_comp;
 
         IF v_tag = 'rifiutato' THEN

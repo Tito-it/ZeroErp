@@ -222,7 +222,7 @@ INSERT INTO vendite.fatture_righe (
     qta,
     prezzo_unitario,
     iva_id,
-    meta
+    meta, competenza_dal, competenza_al
   )
 SELECT (
     SELECT id
@@ -242,7 +242,7 @@ SELECT (
       SELECT test_scope
       FROM tmp_costanti_iva
     )
-  )
+  ), CURRENT_DATE, CURRENT_DATE
 FROM (
     -- ⚠️ 2026-07-28: la fixture NON fornisce piu' gli importi di riga.
     --   `imponibile_riga` e' calcolato dal trigger a20 (qta * prezzo * (1-sconto/100),

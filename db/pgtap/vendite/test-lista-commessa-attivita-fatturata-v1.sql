@@ -209,10 +209,10 @@ SELECT (SELECT id FROM f) AS fattura_id, NULL::bigint AS riga_id;
 
 WITH r AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                     prezzo_unitario, meta)
+                                     prezzo_unitario, meta, competenza_dal, competenza_al)
   SELECT (SELECT fattura_id FROM tmp_fattura_lcf), 1, 'Riga di test',
          1::numeric, 10::numeric,
-         jsonb_build_object('test_scope', 'pgtap_lista_commessa_attivita_fatturata')
+         jsonb_build_object('test_scope', 'pgtap_lista_commessa_attivita_fatturata'), CURRENT_DATE, CURRENT_DATE
   RETURNING id
 )
 UPDATE tmp_fattura_lcf SET riga_id = (SELECT id FROM r);

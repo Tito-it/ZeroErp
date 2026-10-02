@@ -4,6 +4,7 @@
 >
 > [script.fn_esigibilita_iva](/dbzero/script/funzioni/fn_esigibilita_iva) (la regola)
 > [vendite.fn_esigibilita_iva_fattura](/dbzero/vendite/funzioni/fn_esigibilita_iva_fattura)
+> [script.fn_regime_fiscale_documento](/dbzero/script/funzioni/fn_regime_fiscale_documento) (quale regime vale)
 
 ### 🎯 Scopo
 
@@ -30,6 +31,11 @@ testata: la catena dei join sta qui una volta sola (regola del 2).
 ⭐ `p_regime_fiscale_rf` è una **fonte di valore**, non un filtro: la fattura passa
 il regime del suo snapshot dell'intestazione, così righe e testata dicono lo stesso
 regime (D-8). I documenti senza snapshot non lo passano, e vale il regime vivo.
+
+Quale regime vale lo decide [script.fn_regime_fiscale_documento](/dbzero/script/funzioni/fn_regime_fiscale_documento)
+(dal 02-10-2026, `20261002-04`): la regola «congelato se c'è, altrimenti vivo» era
+scritta qui dentro, e ha preso una sede sua quando è arrivato il secondo lettore,
+le annotazioni della fattura (R-DB-3).
 
 `SECURITY INVOKER`: un cliente che chi chiama non vede diventa «non noto», e la
 coppia esce `NULL`/`NULL`.

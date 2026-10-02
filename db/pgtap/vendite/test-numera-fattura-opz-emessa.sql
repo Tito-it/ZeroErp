@@ -164,7 +164,7 @@ SELECT ok(
 --   L'importo della riga lo calcola il trigger a20 (1 x 100 -> 100,00).
 --   brief-fix-importi-riga-fattura-zero §4.5.
 INSERT INTO vendite.fatture_righe (
-  fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta
+  fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta, competenza_dal, competenza_al
 )
 SELECT
   (SELECT id FROM tmp_fattura_nf),
@@ -173,7 +173,7 @@ SELECT
   1::numeric,
   100::numeric,
   (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-  jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_nf));
+  jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_nf)), CURRENT_DATE, CURRENT_DATE;
 
 -- ⚠️ 2026-08-02: la fattura di test deve essere anche COERENTE.
 --   Il guard D-K (Fase 4b, E_FATTURA_NON_NUMERABILE_INCOERENTE) rifiuta un

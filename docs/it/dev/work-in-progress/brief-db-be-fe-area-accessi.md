@@ -517,6 +517,25 @@ Presidi trasversali da rilanciare:
 * `script/test-catalogo-messaggi-errore-completo`;
 * `ui/test-lista-*`.
 
+**Dopo l'apply, due rossi corretti (team DB, 2026-10-02).** Erano errori dei test, non del
+database. Rilanciati da Tid: ✅ **verdi, nessuna regressione** nella corsa.
+
+* `anagrafiche/test-area-accessi-v1.sql`, test 11: `concat_ws` scrive un booleano come `t`, e
+  l'atteso era `true`. La vista era giusta. Corretto con `a.nessun_accesso::text`, la stessa forma
+  del test 10.
+* `rls/test-rls-clienti.sql`, fixture: l'identità SHOP_CUSTOMER nasceva sulla credenziale
+  dell'operatore di `fn_pgtap_crea_emittente_operatore`, che è un **utente tecnico**. Il guard
+  della natura (`trg_identita_digitali_a10_guard_natura_credenziale`) la rifiuta, ed è la regola
+  di questo giro che fa il suo lavoro. Ora la veste shop ha un `auth_user` suo; il test 9
+  (stesso proprietario, canali SHOP e ADMIN) è invariato.
+  Censiti gli altri pgTAP che usano quell'operatore e creano una veste di persona
+  (`test-fn-scope-ba-ownership`, `-ruolo-aware`, `test-fn-scope-ef-whitelist`,
+  `test-rls-fatture-residuo`, `test-rls-fondi-fattura-source-functional`): si costruiscono già
+  credenziali loro, e non hanno il problema.
+* ⭐ Lezione: un guard nuovo sulla **natura** di una credenziale va censito anche sulle **fixture**
+  che riusano la credenziale di un helper (`fn_pgtap_crea_emittente_operatore` dà un utente
+  tecnico), non solo sui test che scrivono la colonna cambiata.
+
 ### 7.11 I passi di Tid, in quest'ordine
 
 1. **Prima dell'apply, su dbdev**: le vesti DISABILITATO senza un tipo ricavabile (V-4). Sono

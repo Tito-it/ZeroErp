@@ -17,7 +17,7 @@ DECLARE
     v_ru_id        anagrafiche.risorse_umane.id%TYPE;
     v_identita_id  anagrafiche.identita_digitali.id%TYPE;
     v_profilo_sa   config.profili_accesso_bindings.profilo_accesso_id%TYPE;
-    v_n_profili_sa integer;
+    v_n_profili_sa integer;  -- un conteggio: nessuna colonna di cui sia il riflesso
 BEGIN
     -- =========================================================
     -- Scopo (v2 multi-face native, Chunk A Fase 7 2026-04-29):
@@ -127,6 +127,36 @@ BEGIN
         p_soggetto_id, 'RIS_UMANA'
     ) INTO v_sr_id;
 
+    -- ⛔ Una persona e' una risorsa umana sola (uq_risorse_umane_soggetto_ruolo,
+    --   non parziale: vale anche per una risorsa spenta). Senza questo guard il
+    --   secondo operatore sullo stesso soggetto arrivava al client come 23505,
+    --   E_DATABASE. Il rimedio e' sulla risorsa che c'e' (reinvito, riattivazione),
+    --   non una seconda. (rev 20261002-01)
+    -- ⚠️ Il controllo e' sulla CHIAVE del vincolo (soggetto_ruolo_id), non su
+    --   attivo: una risorsa disattivata occupa lo slot come una attiva.
+    -- ⚠️ Il segnaposto e' la frase dell'operatore: ragione_sociale_completa e'
+    --   nullable, quindi si ripiega su nome e cognome, poi su «Il soggetto» —
+    --   mai una frase con un buco al posto del nome.
+    IF EXISTS (
+        SELECT 1 FROM anagrafiche.risorse_umane ru
+         WHERE ru.soggetto_ruolo_id = v_sr_id
+    ) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+            'E_RISORSA_UMANA_GIA_PRESENTE',
+            jsonb_build_object('campo',             'soggetto_id',
+                               'soggetto_id',       p_soggetto_id,
+                               'soggetto_ruolo_id', v_sr_id),
+            NULL::uuid,
+            COALESCE(
+                (SELECT COALESCE(NULLIF(btrim(s.ragione_sociale_completa), ''),
+                                 NULLIF(btrim(concat_ws(' ', s.nome, s.cognome)), ''),
+                                 NULLIF(btrim(s.ragione_sociale), ''))
+                   FROM anagrafiche.soggetti s
+                  WHERE s.id = p_soggetto_id),
+                'Il soggetto'));
+    END IF;
+
     -- Step 2: risorsa umana
     INSERT INTO anagrafiche.risorse_umane (
         soggetto_ruolo_id, soggetto_id, qualifica_id,
@@ -182,7 +212,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_is_super_admin boolean, p_attivo boolean)
-IS 'Building block multi-face native (v2 Chunk A Fase 7 2026-04-29). Sostituisce v1 (firma con p_ruolo_sistema config.ruolo_sistema) con p_is_super_admin/p_attivo. Body invariato salvo: identita_digitali.attivo=p_attivo (era hardcoded true) e binding SUPER_ADMIN gated su p_is_super_admin invece di p_ruolo_sistema=ADMIN. v1 droppata in Chunk B post BE migrato. ⛔ Rev 20260923-10: il profilo del binding SUPER_ADMIN si RISOLVE per config.profili_accesso.tipo = SUPER_ADMIN fra i profili attivi (chiave stabile, linee-guida-sql §6d), non piu'' con l''id cablato 9100; se i profili attivi di quel tipo non sono esattamente uno solleva E_CONFIG_MANCANTE prima di ogni scrittura.';
+IS 'Building block multi-face native (v2 Chunk A Fase 7 2026-04-29). Sostituisce v1 (firma con p_ruolo_sistema config.ruolo_sistema) con p_is_super_admin/p_attivo. Body invariato salvo: identita_digitali.attivo=p_attivo (era hardcoded true) e binding SUPER_ADMIN gated su p_is_super_admin invece di p_ruolo_sistema=ADMIN. v1 droppata in Chunk B post BE migrato. ⛔ Rev 20260923-10: il profilo del binding SUPER_ADMIN si RISOLVE per config.profili_accesso.tipo = SUPER_ADMIN fra i profili attivi (chiave stabile, linee-guida-sql §6d), non piu'' con l''id cablato 9100; se i profili attivi di quel tipo non sono esattamente uno solleva E_CONFIG_MANCANTE prima di ogni scrittura. ⛔ Rev 20261002-01: una persona e'' una risorsa umana sola (uq_risorse_umane_soggetto_ruolo, anche spenta): se il soggetto lo e'' gia'' solleva E_RISORSA_UMANA_GIA_PRESENTE (campo soggetto_id) invece di lasciar arrivare il 23505; vale per ogni chiamante, non solo per fn_crea_operatore_v2.';
 ```
 
 ---

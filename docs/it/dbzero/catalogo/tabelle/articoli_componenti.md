@@ -12,7 +12,6 @@
 | prodotto_id | uuid | NO |  |
 | componente_id | uuid | NO |  |
 | coeff_qta | numeric | NO | 1 |
-| partecipa_qta | boolean | NO | true |
 | obbligatorio | boolean | NO | true |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |
@@ -26,7 +25,6 @@
 | attivo | boolean | NO | true |
 | note_target_tipo | character varying | YES |  |
 | note_id | bigint | YES |  |
-| determina_qta_padre | boolean | NO | false |
 | esposizione_in_fattura | character varying | NO | 'NASCOSTO'::character varying |
 | validita | daterange | NO |  |
 

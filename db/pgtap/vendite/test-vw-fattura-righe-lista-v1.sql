@@ -76,12 +76,15 @@ CREATE OR REPLACE FUNCTION pg_temp.fx_riga_frl(
 RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario,
          iva_id, kit_key, kit_esposizione, kit_articolo_padre_id, kit_descrizione_padre,
-         riga_capofila_id)
+         riga_capofila_id, competenza_dal, competenza_al, kit_qta)
   SELECT (SELECT fattura_id FROM tmp_frl), p_nr, 'Riga ' || p_nr, 1, p_prezzo, p_iva,
          p_kit, p_esposizione,
          CASE WHEN p_kit IS NOT NULL THEN (SELECT padre_id FROM tmp_frl_art) END,
          CASE WHEN p_kit IS NOT NULL THEN 'Padre ' || p_kit END,
-         p_capofila
+         p_capofila, CURRENT_DATE, CURRENT_DATE,
+         -- un kit per riga di componente (rev 2026-10-02: kit_qta obbligatoria sulle
+         -- righe di kit, chk_fatture_righe_kit_coerente)
+         CASE WHEN p_kit IS NOT NULL THEN 1 END
   RETURNING id;
 $fx$;
 

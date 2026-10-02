@@ -83,10 +83,10 @@ CREATE TEMP TABLE _t_righe (scenario text, riga_id uuid);
 -- Riga CHIUSA: BASE/FALLBACK, [oggi-100, oggi-50]
 WITH ins AS (
     INSERT INTO catalogo.articoli_componenti (
-        prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
-        esposizione_in_fattura, determina_qta_padre, valido_dal, valido_al, attivo
+        prodotto_id, componente_id, coeff_qta, obbligatorio,
+        esposizione_in_fattura, valido_dal, valido_al, attivo
     )
-    SELECT art_base, art_fallback, 1, false, true, 'NASCOSTO', false,
+    SELECT art_base, art_fallback, 1, true, 'NASCOSTO',
            (CURRENT_DATE - INTERVAL '100 days')::date,
            (CURRENT_DATE - INTERVAL '50  days')::date,
            true
@@ -99,10 +99,10 @@ INSERT INTO _t_righe (scenario, riga_id) SELECT 'chiusa', id FROM ins;
 -- chiusa (oggi-30 > oggi-50).
 WITH ins AS (
     INSERT INTO catalogo.articoli_componenti (
-        prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
-        esposizione_in_fattura, determina_qta_padre, valido_dal, valido_al, attivo
+        prodotto_id, componente_id, coeff_qta, obbligatorio,
+        esposizione_in_fattura, valido_dal, valido_al, attivo
     )
-    SELECT art_base, art_fallback, 1, false, true, 'NASCOSTO', false,
+    SELECT art_base, art_fallback, 1, true, 'NASCOSTO',
            (CURRENT_DATE - INTERVAL '30 days')::date,
            NULL,
            true
@@ -115,10 +115,10 @@ INSERT INTO _t_righe (scenario, riga_id) SELECT 'aperta', id FROM ins;
 -- con la riga aperta sullo stesso couple, [oggi+10, +inf).
 WITH ins AS (
     INSERT INTO catalogo.articoli_componenti (
-        prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
-        esposizione_in_fattura, determina_qta_padre, valido_dal, valido_al, attivo
+        prodotto_id, componente_id, coeff_qta, obbligatorio,
+        esposizione_in_fattura, valido_dal, valido_al, attivo
     )
-    SELECT art_fallback, art_base, 1, false, true, 'NASCOSTO', false,
+    SELECT art_fallback, art_base, 1, true, 'NASCOSTO',
            (CURRENT_DATE + INTERVAL '10 days')::date,
            NULL,
            true

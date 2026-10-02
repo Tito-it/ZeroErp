@@ -97,11 +97,11 @@ BEGIN
     RETURNING id INTO v_f;
 
     INSERT INTO catalogo.articoli_componenti (
-        prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
+        prodotto_id, componente_id, coeff_qta, obbligatorio,
         valido_dal, valido_al, attivo
     )
     VALUES (
-        v_p, v_f, 1, FALSE, TRUE,
+        v_p, v_f, 1, TRUE,
         (CURRENT_DATE - INTERVAL '1 day')::date, NULL, TRUE
     )
     RETURNING id INTO v_l;

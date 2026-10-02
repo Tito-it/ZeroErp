@@ -214,10 +214,10 @@ SELECT (SELECT id FROM tmp_at_fatt WHERE n = 1), k.contratto_id, c.numero, c.dat
 
 INSERT INTO vendite.fatture_righe
     (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
-     fattura_atto_id, meta)
+     fattura_atto_id, meta, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_at_fatt WHERE n = 1), k.n,
        'Riga atto ' || k.n, 1, 100, (SELECT iva_id FROM tmp_at_refs),
-       a.id, jsonb_build_object('test_scope', 'pgtap_fatture_atti')
+       a.id, jsonb_build_object('test_scope', 'pgtap_fatture_atti'), CURRENT_DATE, CURRENT_DATE
   FROM tmp_at_contr k
   JOIN vendite.fatture_atti a
          ON a.fattura_id   = (SELECT id FROM tmp_at_fatt WHERE n = 1)
@@ -273,8 +273,8 @@ SELECT throws_ok(
 SELECT throws_ok(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
-               fattura_atto_id)
-           VALUES (%s, 90, 'Riga con atto altrui', 1, 10, %s, %s)$$,
+               fattura_atto_id, competenza_dal, competenza_al)
+           VALUES (%s, 90, 'Riga con atto altrui', 1, 10, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
          (SELECT id FROM tmp_at_fatt WHERE n = 2),
          (SELECT iva_id FROM tmp_at_refs),
          (SELECT a.id FROM vendite.fatture_atti a
@@ -296,8 +296,8 @@ SELECT (SELECT id FROM tmp_at_fatt WHERE n = 2),
 SELECT lives_ok(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
-               fattura_atto_id)
-           VALUES (%s, 91, 'Riga con atto proprio', 1, 10, %s, %s)$$,
+               fattura_atto_id, competenza_dal, competenza_al)
+           VALUES (%s, 91, 'Riga con atto proprio', 1, 10, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
          (SELECT id FROM tmp_at_fatt WHERE n = 2),
          (SELECT iva_id FROM tmp_at_refs),
          (SELECT a.id FROM vendite.fatture_atti a

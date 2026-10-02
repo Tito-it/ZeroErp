@@ -157,10 +157,10 @@ BEGIN
   RETURNING id INTO v_fattura_id;
 
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                     prezzo_unitario, iva_id, meta)
+                                     prezzo_unitario, iva_id, meta, competenza_dal, competenza_al)
   VALUES (v_fattura_id, 1, 'Riga test guard D-K', 1::numeric, p_prezzo,
           (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-          jsonb_build_object('test_scope', 'pgtap_guard_dk'));
+          jsonb_build_object('test_scope', 'pgtap_guard_dk'), CURRENT_DATE, CURRENT_DATE);
 
   RETURN v_fattura_id;
 END;

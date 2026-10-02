@@ -304,7 +304,7 @@ CREATE TEMP TABLE tmp_fattura_riga_rl AS WITH ins AS (
       descrizione,
       qta,
       prezzo_unitario,
-      meta
+      meta, competenza_dal, competenza_al
     )
   VALUES (
       (
@@ -321,7 +321,7 @@ CREATE TEMP TABLE tmp_fattura_riga_rl AS WITH ins AS (
           SELECT test_scope
           FROM tmp_costanti_rl
         )
-      )
+      ), CURRENT_DATE, CURRENT_DATE
     )
   RETURNING id
 )
@@ -530,7 +530,7 @@ CREATE TEMP TABLE tmp_fattura_riga_rl2 AS WITH ins AS (
       descrizione,
       qta,
       prezzo_unitario,
-      meta
+      meta, competenza_dal, competenza_al
     )
   VALUES (
       (
@@ -547,7 +547,7 @@ CREATE TEMP TABLE tmp_fattura_riga_rl2 AS WITH ins AS (
           SELECT test_scope
           FROM tmp_costanti_rl
         )
-      )
+      ), CURRENT_DATE, CURRENT_DATE
     )
   RETURNING id
 )

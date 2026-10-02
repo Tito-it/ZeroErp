@@ -322,12 +322,12 @@ SELECT CASE
     ELSE throws_like(
         $q$ INSERT INTO vendite.contratti_righe_componenti (
                 riga_contratto_id, articolo_componente_id, componente_id,
-                coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo
+                coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id
             ) VALUES (
                 (SELECT id FROM vendite.contratti_righe LIMIT 1),
                 (SELECT id FROM catalogo.articoli_componenti LIMIT 1),
                 (SELECT componente_id FROM catalogo.articoli_componenti LIMIT 1),
-                1, 1, 1, 'VALORE_NON_VALIDO'
+                1, 1, 1, 'VALORE_NON_VALIDO', (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = (SELECT componente_id FROM catalogo.articoli_componenti LIMIT 1))
             ) $q$,
         '%',
         '23) INSERT con origine_prezzo non valido bloccato (CHECK o guard BoM)'

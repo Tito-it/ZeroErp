@@ -146,10 +146,10 @@ BEGIN
   RETURNING id INTO v_id;
 
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                     prezzo_unitario, iva_id, meta)
+                                     prezzo_unitario, iva_id, meta, competenza_dal, competenza_al)
   VALUES (v_id, 1, 'Riga test NC rata unica', -1::numeric, p_prezzo,
           (SELECT iva_id FROM tmp_refs_nc),
-          jsonb_build_object('test_scope', 'pgtap_nc_rata_unica'));
+          jsonb_build_object('test_scope', 'pgtap_nc_rata_unica'), CURRENT_DATE, CURRENT_DATE);
 
   PERFORM vendite.fn_ricalcola_riepilogo_iva_fattura(v_id);
   PERFORM vendite.fn_ricalcola_totali_fattura(v_id);

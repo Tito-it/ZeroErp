@@ -243,16 +243,16 @@ SELECT (SELECT id FROM tmp_lotto_ef), f.fattura_id, (SELECT stato_draft_id FROM 
 -- Una riga per fattura. Due istruzioni: un INSERT non sta in un LATERAL.
 WITH ins AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
-                                     qta, prezzo_unitario, imponibile_riga)
-  SELECT f.fattura_id, 1, 'Riga PGTAP EF A', 1, 10, 10
+                                     qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
+  SELECT f.fattura_id, 1, 'Riga PGTAP EF A', 1, 10, 10, CURRENT_DATE, CURRENT_DATE
     FROM tmp_fatture_ef f WHERE f.slot = 'A'
   RETURNING id)
 UPDATE tmp_fatture_ef t SET riga_id = (SELECT id FROM ins) WHERE t.slot = 'A';
 
 WITH ins AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
-                                     qta, prezzo_unitario, imponibile_riga)
-  SELECT f.fattura_id, 1, 'Riga PGTAP EF B', 1, 10, 10
+                                     qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
+  SELECT f.fattura_id, 1, 'Riga PGTAP EF B', 1, 10, 10, CURRENT_DATE, CURRENT_DATE
     FROM tmp_fatture_ef f WHERE f.slot = 'B'
   RETURNING id)
 UPDATE tmp_fatture_ef t SET riga_id = (SELECT id FROM ins) WHERE t.slot = 'B';

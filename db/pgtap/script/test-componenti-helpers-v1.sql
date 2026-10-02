@@ -182,8 +182,8 @@ SELECT CASE
 
             INSERT INTO vendite.preventivi_righe_componenti
                 (riga_preventivo_id, articolo_componente_id, componente_id,
-                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo)
-            VALUES (v_riga_id, v_bom_id, v_comp_id, 1, 1, 10, 'MANUALE');
+                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id)
+            VALUES (v_riga_id, v_bom_id, v_comp_id, 1, 1, 10, 'MANUALE', (SELECT uom_id FROM catalogo.articoli WHERE id = v_comp_id));
         END
         $inner$
         $$,
@@ -247,8 +247,8 @@ SELECT CASE
 
             INSERT INTO vendite.preventivi_righe_componenti
                 (riga_preventivo_id, articolo_componente_id, componente_id,
-                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo)
-            VALUES (v_riga_id, v_bom_id, v_comp_id, 1, 1, 10, 'MANUALE');
+                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id)
+            VALUES (v_riga_id, v_bom_id, v_comp_id, 1, 1, 10, 'MANUALE', (SELECT uom_id FROM catalogo.articoli WHERE id = v_comp_id));
         END
         $inner$
         $$,
@@ -309,8 +309,8 @@ SELECT CASE
 
             INSERT INTO vendite.preventivi_righe_componenti
                 (riga_preventivo_id, articolo_componente_id, componente_id,
-                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo)
-            VALUES (v_riga_id, v_bom_id, v_wrong_id, 1, 1, 10, 'MANUALE');
+                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id)
+            VALUES (v_riga_id, v_bom_id, v_wrong_id, 1, 1, 10, 'MANUALE', (SELECT uom_id FROM catalogo.articoli WHERE id = v_wrong_id));
         END
         $inner$
         $$,

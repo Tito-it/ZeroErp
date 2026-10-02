@@ -6,6 +6,7 @@
 > [script.fn_esigibilita_iva_documento](/dbzero/script/funzioni/fn_esigibilita_iva_documento)
 > [vendite.trgfn_fatture_righe_guard_normalize](/dbzero/vendite/funzioni/trgfn_fatture_righe_guard_normalize)
 > [vendite.fn_ricalcola_riepilogo_iva_fattura](/dbzero/vendite/funzioni/fn_ricalcola_riepilogo_iva_fattura)
+> [vendite.fn_regime_fiscale_fattura](/dbzero/vendite/funzioni/fn_regime_fiscale_fattura) (il regime della fattura)
 
 ### 🎯 Scopo
 
@@ -21,6 +22,12 @@ dell'intestazione (`emittente_snapshot ->> 'regime_fiscale_rf'`), e passa tutto 
 snapshot ha congelato. Se le righe leggessero quello vivo dell'emittente, un cambio
 di regime con la fattura in bozza farebbe dire alla testata RF01 e alle righe `D`.
 Da quando lo snapshot c'è, le righe seguono la testata; prima, il regime vivo.
+
+⭐ **Il regime lo dà [vendite.fn_regime_fiscale_fattura](/dbzero/vendite/funzioni/fn_regime_fiscale_fattura)**
+(dal 02-10-2026, `20261002-06`), la stessa funzione che leggono le annotazioni in
+stampa ([vendite.fn_annotazioni_fattura](/dbzero/vendite/funzioni/fn_annotazioni_fattura)):
+l'annotazione non può guardare un regime diverso da quello con cui le righe sono
+state calcolate.
 
 ### Firma
 

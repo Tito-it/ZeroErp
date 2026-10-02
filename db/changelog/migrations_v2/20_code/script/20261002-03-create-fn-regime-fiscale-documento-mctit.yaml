@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGIME FISCALE DI UN DOCUMENTO: UNA REGOLA SOLA
+#   script.fn_regime_fiscale_documento(p_emittente_fiscale_id, p_regime_fiscale_rf DEFAULT NULL)
+#     RETURNS anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezione 11.2 (R-DB-3), D-8
+#
+# -- LA REGOLA -----------------------------------------------------
+#   Il regime CONGELATO del documento, se il chiamante lo passa e non e'
+#   vuoto (la fattura lo prende dallo snapshot dell'intestazione); altrimenti
+#   quello VIVO dell'emittente. Nessun emittente e nessun congelato: NULL,
+#   «regime non noto».
+#
+# -- PERCHE' UN BUILDING BLOCK (regola del 2) ---------------------
+#   Fino a oggi la regola stava scritta dentro
+#   script.fn_esigibilita_iva_documento. R-DB-3 ne vuole un secondo lettore:
+#   l'annotazione in stampa deve usare il regime con cui le righe sono state
+#   calcolate, o una fattura senza snapshot con righe D (regime vivo) non
+#   stamperebbe niente. Alla seconda occorrenza la regola si estrae; la copia
+#   dentro fn_esigibilita_iva_documento si ritira nello stesso giro (-04).
+#
+# -- PERCHE' IN script E NON IN vendite ----------------------------
+#   La domanda non e' della fattura: e' di ogni documento che congela un
+#   regime. Oggi lo fa la sola fattura; la stessa domanda la fara' acquisti
+#   sul passivo, come per fn_esigibilita_iva (sezione 8.8 del brief).
+#
+# ⚠️ Un congelato fuori catalogo (lo snapshot e' un testo) esce com'e': e' il
+#   lettore del catalogo a trattarlo come «non noto». Questa funzione dice
+#   QUALE regime, non che cosa significa.
+#
+# INVOKER, plpgsql, STABLE: legge e basta. Sotto RLS un emittente che chi
+#   chiama non vede da' NULL, come prima dell'estrazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261002-03-create-fn-regime-fiscale-documento-mctit.yaml
+
+  - changeSet:
+      id: 20261002-03-create-fn-regime-fiscale-documento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_regime_fiscale_documento: il regime fiscale di un documento, cioe' quello
+        congelato passato dal chiamante se c'e', altrimenti quello vivo dell'emittente.
+        Estratta da script.fn_esigibilita_iva_documento (regola del 2): la usano
+        l'esigibilita' delle righe e le annotazioni della fattura. Brief:
+        brief-db-esigibilita-iva-per-cassa-emittente sezione 11 (R-DB-3).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali
+            columnName: regime_fiscale_rf
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_regime_fiscale_documento(
+                  p_emittente_fiscale_id  anagrafiche.emittenti_fiscali.id%TYPE,
+                  p_regime_fiscale_rf     anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE DEFAULT NULL
+              )
+              RETURNS anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: il regime fiscale di un documento. p_regime_fiscale_rf =
+              --   il regime congelato del documento, se c'e' (la fattura lo
+              --   prende dallo snapshot); altrimenti quello vivo dell'emittente.
+              DECLARE
+                  v_regime  anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE;
+              BEGIN
+                  v_regime := NULLIF(btrim(p_regime_fiscale_rf), '');
+
+                  IF v_regime IS NULL AND p_emittente_fiscale_id IS NOT NULL THEN
+                      SELECT ef.regime_fiscale_rf
+                        INTO v_regime
+                        FROM anagrafiche.emittenti_fiscali ef
+                       WHERE ef.id = p_emittente_fiscale_id;
+                  END IF;
+
+                  RETURN v_regime;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_regime_fiscale_documento(
+                  anagrafiche.emittenti_fiscali.id%TYPE,
+                  anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE) IS
+                  'Il regime fiscale di un documento: quello CONGELATO che il chiamante passa in '
+                  'p_regime_fiscale_rf, se non e'' vuoto (la fattura lo prende dallo snapshot '
+                  'dell''intestazione, D-8), altrimenti quello vivo dell''emittente; NULL se non ci '
+                  'sono ne'' l''uno ne'' l''altro. Un congelato fuori catalogo esce com''e'': che '
+                  'cosa significa lo dice chi legge config.regimi_fiscali. Una regola sola per '
+                  'l''esigibilita'' delle righe (script.fn_esigibilita_iva_documento) e per le '
+                  'annotazioni della fattura (vendite.fn_regime_fiscale_fattura). Brief: '
+                  'brief-db-esigibilita-iva-per-cassa-emittente (R-DB-3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_regime_fiscale_documento(
+                  anagrafiche.emittenti_fiscali.id%TYPE,
+                  anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE);

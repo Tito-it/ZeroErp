@@ -29,6 +29,7 @@
 | CHECK | chk_regimi_fiscali_annotazione_non_vuota |  |
 | CHECK | chk_regimi_fiscali_codice_interno_forma |  |
 | CHECK | chk_regimi_fiscali_descrizione_non_vuota |  |
+| CHECK | chk_regimi_fiscali_per_cassa_annotazione |  |
 | PRIMARY KEY | pk_regimi_fiscali | id |
 | UNIQUE | uq_regimi_fiscali_codice | codice |
 | UNIQUE | uq_regimi_fiscali_codice_interno | codice_interno |

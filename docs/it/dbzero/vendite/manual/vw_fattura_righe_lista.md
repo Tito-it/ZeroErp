@@ -36,7 +36,7 @@
 | Colonna | Cosa |
 | --- | --- |
 | righe | **solo il primo livello**: righe normali, parti di una riga spezzata dal plafond, padri dei kit |
-| `riga_key` | `R:<id>` per le righe vere; `K:<fattura>:<md5>` per il padre di un kit, costruita sulla stessa tupla con cui la vista madre lo compone (fattura, kit, IVA, cliente di destinazione, articolo e descrizione del padre) |
+| `riga_key` | `R:<id>` per le righe vere; `K:<fattura>:<md5>` per il padre di un kit, costruita sulla stessa tupla con cui la vista madre lo compone (fattura, kit, IVA, cliente di destinazione, articolo e descrizione del padre e, dal 2026-10-02, il periodo: lo stesso kit su due periodi sono due padri) |
 | `componenti`, `componenti_numero` | i componenti **esposti** del kit (DESCRITTIVO e VALORIZZATO; i NASCOSTO no), dentro la riga padre, per la riga di espansione. Dal 2026-10-01 ogni componente porta anche `esposizione`, `prezzo_unitario`, `sconto_percentuale` e `importo_riga`, valorizzati solo sul VALORIZZATO |
 | `importo_riga` | l'imponibile come lo espone la fattura: sul padre, la somma dei componenti **non** valorizzati; NULL se il kit è tutto valorizzato (kit senza resto). ⚠️ Dal 2026-10-01 la somma della colonna **non** dà il totale del documento: l'importo dei valorizzati sta dentro `componenti`. Il totale si legge dalla testata |
 | `riga_rettificata_*` | il legame riga-riga della nota di credito; `riga_rettificata_documento` è il numero **parlante** della fattura rettificata, non il contatore |
@@ -58,6 +58,10 @@ importo possono separarsi (per numero di riga restano vicine).
 - Il filtro per fattura scende fino alle righe (dal 2026-09-28 il CTE `kit`
   della vista madre non è più materializzato, `20260928-43`).
 - **Nessun `ORDER BY`**; `security_invoker`: `fatture_righe` è in RLS.
+- **Il periodo** (dal 2026-10-02, `20261002-65`): `competenza_dal`, `competenza_al`
+  e `ha_periodo` in coda, dalla vista madre. Si stampa il periodo quando
+  `ha_periodo` è vero. Il periodo entra anche nella partizione dei componenti, così
+  ogni padre porta solo i componenti del suo periodo.
 
 ---
 

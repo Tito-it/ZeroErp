@@ -48,7 +48,7 @@
 --    5) KM: il descrittivo non ha prezzo ne' importo
 --    6) KM: il valorizzato ha prezzo e importo suoi (30)
 --    7) KV: il padre resta, con importo e prezzo NULL (E-2)
---    8) KV: il padre ha comunque la sua quantita' (media di tutti)
+--    8) KV: il padre ha comunque la sua quantita' (kit_qta, valorizzati compresi)
 --    9) KV: i due valorizzati sotto il padre, coi loro importi
 --   10) KD: il padre porta il valore del descrittivo (70)
 --   11) KN: il padre porta 80, nessun componente sotto
@@ -88,12 +88,16 @@ CREATE OR REPLACE FUNCTION pg_temp.fx_riga_e3m(
     p_nr integer, p_prezzo numeric, p_kit text DEFAULT NULL, p_modo varchar DEFAULT NULL)
 RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario,
-         iva_id, kit_key, kit_esposizione, kit_articolo_padre_id, kit_descrizione_padre)
+         iva_id, kit_key, kit_esposizione, kit_articolo_padre_id, kit_descrizione_padre, competenza_dal, competenza_al,
+         kit_qta)
   SELECT (SELECT fattura_id FROM tmp_e3m), p_nr, 'Riga ' || p_nr, 1, p_prezzo,
          (SELECT iva_id FROM tmp_e3m_iva),
          p_kit, p_modo,
          CASE WHEN p_kit IS NOT NULL THEN (SELECT padre_id FROM tmp_e3m_art) END,
-         CASE WHEN p_kit IS NOT NULL THEN 'Padre ' || p_kit END
+         CASE WHEN p_kit IS NOT NULL THEN 'Padre ' || p_kit END, CURRENT_DATE, CURRENT_DATE,
+         -- un kit per riga di componente (rev 2026-10-02: la quantita' del kit
+         -- viene dalla riga padre del documento, non piu' dalla media)
+         CASE WHEN p_kit IS NOT NULL THEN 1 END
   RETURNING id;
 $fx$;
 
@@ -164,7 +168,7 @@ SELECT ok(
 SELECT is(
     (SELECT qta FROM tmp_e3m_v WHERE tipo_riga = 'KIT_PADRE' AND kit_key = 'KV'),
     1::numeric,
-    '8) KV: il padre ha comunque la sua quantita'' (media di tutti i componenti)');
+    '8) KV: il padre ha comunque la sua quantita'' (kit_qta dei componenti, valorizzati compresi)');
 
 SELECT is(
     (SELECT array_agg(imponibile ORDER BY riga_nr) FROM tmp_e3m_v

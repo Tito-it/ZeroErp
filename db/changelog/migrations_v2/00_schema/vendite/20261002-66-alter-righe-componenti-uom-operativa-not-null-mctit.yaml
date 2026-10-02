@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PARTE B — UN COMPONENTE NEL DOCUMENTO HA SEMPRE LA SUA UNITA' DI MISURA
+#   vendite.{preventivi,ordini,contratti,ddt}_righe_componenti.uom_operativa_id
+#   vendite.offerte_commerciali_eccezioni_componenti.uom_operativa_id
+#   -> NOT NULL
+#   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura, parte B (sezione 2.3, 4.2.5)
+#
+# -- PERCHE' -------------------------------------------------------------------
+#   La UoM del componente e' sua, non del kit: un kit puo' essere fatto di pezzi,
+#   metri e ore (il modello lo ammette, nessun vincolo la lega al padre). La
+#   colonna era nullable e il push in commessa, trovandola vuota, ripiegava sulla
+#   UoM del PADRE: in un kit misto un componente senza UoM diventava «3 kit»
+#   invece di «3 metri». Il dato si puo' sempre fornire (articoli.uom_id e' NOT
+#   NULL): quindi NOT NULL, e il ripiego del BE si ritira (R-BE-B3).
+#
+# -- CHI SCRIVE QUESTE RIGHE (censimento 2026-10-02, corpo vivo) -----------------
+#   Tutti la valorizzano gia': le cinque fn_*_componenti_init (dalla UoM del
+#   componente), fn_crea_revisione_preventivo, fn_push_offerta_a_contratto,
+#   fn_genera_ddt_da_ordine (copie riga per riga), fn_push_preventivo_a_ordine
+#   (via init). Nessuna funzione cambia.
+#
+# -- SE IL MIGRATE SI FERMA QUI --------------------------------------------------
+#   SET NOT NULL e' DDL: nessun trigger di riga. Fallisce solo se una riga
+#   esistente e' senza UoM, e lo dice per tabella. Le righe si trovano con
+#     SELECT id FROM vendite.<tabella> WHERE uom_operativa_id IS NULL;
+#   e si correggono a mano con la UoM del componente (dati di sviluppo, D-4).
+#   Su un database nuovo le tabelle sono vuote.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261002-66-alter-righe-componenti-uom-operativa-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261002-66-alter-righe-componenti-uom-operativa-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        uom_operativa_id NOT NULL sulle quattro *_righe_componenti dei documenti e sulle
+        eccezioni componenti delle offerte: la UoM del componente si puo' sempre fornire, e
+        il ripiego sulla UoM del padre sbagliava nei kit di unita' diverse. Brief:
+        brief-db-bom-flag-quantita-e-kit-in-fattura (sezione 2.3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: preventivi_righe_componenti
+                columnName: uom_operativa_id
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini_righe_componenti
+                columnName: uom_operativa_id
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti_righe_componenti
+                columnName: uom_operativa_id
+            - columnExists:
+                schemaName: vendite
+                tableName: ddt_righe_componenti
+                columnName: uom_operativa_id
+            - columnExists:
+                schemaName: vendite
+                tableName: offerte_commerciali_eccezioni_componenti
+                columnName: uom_operativa_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  ALTER COLUMN uom_operativa_id SET NOT NULL;
+
+              ALTER TABLE vendite.ordini_righe_componenti
+                  ALTER COLUMN uom_operativa_id SET NOT NULL;
+
+              ALTER TABLE vendite.contratti_righe_componenti
+                  ALTER COLUMN uom_operativa_id SET NOT NULL;
+
+              ALTER TABLE vendite.ddt_righe_componenti
+                  ALTER COLUMN uom_operativa_id SET NOT NULL;
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                  ALTER COLUMN uom_operativa_id SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe_componenti ALTER COLUMN uom_operativa_id DROP NOT NULL;
+              ALTER TABLE vendite.ordini_righe_componenti ALTER COLUMN uom_operativa_id DROP NOT NULL;
+              ALTER TABLE vendite.contratti_righe_componenti ALTER COLUMN uom_operativa_id DROP NOT NULL;
+              ALTER TABLE vendite.ddt_righe_componenti ALTER COLUMN uom_operativa_id DROP NOT NULL;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti ALTER COLUMN uom_operativa_id DROP NOT NULL;

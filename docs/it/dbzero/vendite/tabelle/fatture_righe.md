@@ -41,11 +41,16 @@
 | aliquota_iva | numeric | YES |  |
 | fattura_atto_id | bigint | YES |  |
 | riga_capofila_id | bigint | YES |  |
+| competenza_dal | date | NO |  |
+| competenza_al | date | NO |  |
+| kit_qta | numeric | YES |  |
+| kit_uom_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_fatture_righe_capofila_non_se_stessa |  |
+| CHECK | chk_fatture_righe_competenza_dal_al |  |
 | CHECK | chk_fatture_righe_esigibilita |  |
 | CHECK | chk_fatture_righe_kit_coerente |  |
 | CHECK | chk_fatture_righe_rettificata_non_se_stessa |  |
@@ -57,6 +62,7 @@
 | FOREIGN KEY | fk_fatture_righe_fattura_atto | fattura_atto_id, fattura_id |
 | FOREIGN KEY | fk_fatture_righe_iva | iva_id |
 | FOREIGN KEY | fk_fatture_righe_kit_articolo_padre | kit_articolo_padre_id |
+| FOREIGN KEY | fk_fatture_righe_kit_uom | kit_uom_id |
 | FOREIGN KEY | fk_fatture_righe_riga_capofila | riga_capofila_id, fattura_id |
 | FOREIGN KEY | fk_fatture_righe_riga_rettificata | riga_rettificata_id |
 | FOREIGN KEY | fk_fatture_righe_sorgente_tipo | sorgente_tipo_id |
