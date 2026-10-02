@@ -208,12 +208,19 @@ Esempi:
 * articolo di tipologia `PRODOTTI` → inseribile solo in listini PRODOTTI
 * articolo di tipologia `CONSUMO` (voce utility) → solo in listini CONSUMO per quella utility
 
-### 5.2 Distinta base (BoM) — componenti esposti
+### 5.2 Distinta base (BoM) — componenti di un kit
 
-Un articolo composito (`is_composito = true`) ha una distinta base in `articoli_componenti`. Il flag `esposto_in_fattura` decide il comportamento:
+Un articolo composito (`is_composito = true`) ha una distinta base in `articoli_componenti`. Dal modello unificato del 2026-05-13 **ogni articolo composito è CASO A**: ogni componente attivo della distinta diventa una **riga negoziabile a se' stante** dentro il documento sorgente — vedi §5.2.1 sotto — e il prezzo del kit è la somma dei componenti. Al push, la pipeline espande l'articolo composito in N righe `commesse_attivita` separate. CASO B resta il nome dell'articolo **non** composito, con il suo prezzo unico.
 
-* **Nessun componente esposto** (CASO B / B1 / B2): il composito ha un prezzo unico (riga listino sul composito, o somma componenti a fallback). Resolver al push, status quo.
-* **Almeno un componente esposto** (CASO A): il resolver ritorna N righe (una per componente). Ogni componente esposto diventa una **riga negoziabile a se' stante** dentro il documento sorgente — vedi §5.2.1 sotto. Al push, la pipeline espande l'articolo composito in N righe `commesse_attivita` separate.
+**Come si vede il componente in fattura** è un'altra scelta della distinta, per singolo componente: l'**esposizione in fattura**. Non cambia né il prezzo né le righe del documento, solo cosa legge il cliente:
+
+| Esposizione | Cosa vede il cliente in fattura |
+| --- | --- |
+| **Nascosto** (il default) | solo il kit: il componente non compare, il suo valore è nel prezzo del kit |
+| **Descrittivo** | il componente come riga sotto il kit, **senza prezzo**: il suo valore è nel prezzo del kit |
+| **Valorizzato** | il componente come riga sotto il kit **con il suo prezzo e il suo importo**, fuori dal prezzo del kit |
+
+Il totale della fattura è lo stesso nei tre casi. Le regole complete sono nella [guida fatturazione](/guide/fatturazione) (§ *Come si espone un kit*). Fino al 2026-10-01 la scelta era un sì/no («esposto in fattura»: no = nascosto, sì = descrittivo), e fino al 2026-05-13 quel flag decideva anche CASO A / CASO B.
 
 Logica completa in [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2),
 che è **bundle-aware** tramite `p_articolo_padre_contesto`: il vecchio
@@ -244,7 +251,7 @@ tabella `<sorgente>_righe_componenti` parallela a `<sorgente>_righe`.
 Quando l'operatore inserisce una riga su articolo composito CASO A:
 
 1. Il backend chiama `fn_<sorgente>_riga_componenti_init` che invoca
-   il resolver e popola un record per ogni componente esposto, con
+   il resolver e popola un record per ogni componente attivo della distinta, con
    `prezzo_unitario` = prezzo suggerito + `origine_prezzo` (PROMO /
    CONTRATTO_OVERRIDE / CONTRATTO_LISTINO / CATEGORIA — vedi §3).
 2. Se il resolver fallisce su un componente (es. listino mancante),
@@ -262,8 +269,8 @@ Quando l'operatore inserisce una riga su articolo composito CASO A:
 
 **Componenti vs riga padre**: la riga padre composita CASO A esiste
 sul documento sorgente come "ricetta" + totale calcolato. I componenti
-vivono nella tabella parallela. In fattura ogni componente esposto
-genera 1 riga `commesse_attivita` con `articolo_id = componente_id`,
+vivono nella tabella parallela. Ogni componente, qualunque sia la sua
+esposizione in fattura, genera 1 riga `commesse_attivita` con `articolo_id = componente_id`,
 `quantita = quantita_componente × quantita_padre`, `prezzo_unitario =
 quello fissato sul componente preventivo`.
 
@@ -272,17 +279,19 @@ riga padre, un trigger DB propaga il ricalcolo della `quantita` di
 tutti i componenti come `coeff_qta_snapshot × quantita_padre`. Il
 prezzo unitario dei componenti resta invariato.
 
-**Cosa NON entra nella tabella componenti**: componenti con
-`esposto_in_fattura = FALSE`. Restano interni al composito, vivono
-solo nella BoM `articoli_componenti` e non sono mai negoziabili —
-contribuiscono al prezzo via fallback "somma componenti" del resolver
-nel CASO B.
+**Cosa entra nella tabella componenti**: tutti i componenti attivi e
+validi della distinta, anche quelli che in fattura resteranno nascosti.
+(Fino al 2026-05-13 ne restavano fuori i componenti col flag
+`esposto_in_fattura = FALSE`, che contribuivano al prezzo solo via
+fallback "somma componenti" del resolver: il modello unificato li ha
+portati dentro, e l'esposizione è diventata una regola di sola
+presentazione.)
 
 **Workflow L1/L2/L3 sui componenti**: vedi §6.2.
 
 ### 5.3 Immutabilità della BoM — pattern "chiudi + nuova versione"
 
-La distinta base è **immutabile nel tempo**: una volta inserita una riga in `articoli_componenti`, i campi di struttura (componente, `coeff_qta`, `esposto_in_fattura`, `obbligatorio`, `partecipa_qta`, `determina_qta_padre`, `valido_dal`) non possono essere modificati in place. Il trigger DB `trgfn_articoli_componenti_block_modifica_struttura` blocca gli UPDATE con errore `E_BOM_MODIFICA_VIETATA` e le DELETE (una riga BoM non si elimina mai: si chiude).
+La distinta base è **immutabile nel tempo**: una volta inserita una riga in `articoli_componenti`, i campi di struttura (componente, `coeff_qta`, `esposizione_in_fattura`, `obbligatorio`, `partecipa_qta`, `determina_qta_padre`, `valido_dal`) non possono essere modificati in place. Il trigger DB `trgfn_articoli_componenti_block_modifica_struttura` blocca gli UPDATE con errore `E_BOM_MODIFICA_VIETATA` e le DELETE (una riga BoM non si elimina mai: si chiude).
 
 **Perché**: le commesse e le fatturazioni che hanno già consumato quella BoM restano ancorate alla struttura del momento, e lo snapshot `prezzo_bloccato` sulle righe commessa preserva il calcolo fatto all'epoca. Modificare la BoM "sotto" a una commessa emessa romperebbe la ricostruzione storica.
 
@@ -314,7 +323,7 @@ L2 (limite sconto/maggiorazione %) è attivo: vedi `VENDITE_MAX_SCONTO_PCT` / `V
 ### 6.1 L1/L2/L3 sui componenti BoM CASO A
 
 > **Eccezione al §6**: su articoli compositi CASO A (vedi §5.2.1)
-> l'override L1 si applica **sui singoli componenti esposti**, non sul
+> l'override L1 si applica **sui singoli componenti**, non sul
 > prezzo padre. Il prezzo padre e' un valore calcolato readonly. Solo
 > i componenti sono righe negoziabili.
 

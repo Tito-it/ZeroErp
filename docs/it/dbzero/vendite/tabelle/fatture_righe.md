@@ -34,7 +34,7 @@
 | sorgente_uid | uuid | YES |  |
 | imponibile_riga | numeric | NO |  |
 | kit_key | text | YES |  |
-| kit_esposto_in_fattura | boolean | YES |  |
+| kit_esposizione | character varying | YES |  |
 | kit_articolo_padre_id | uuid | YES |  |
 | kit_descrizione_padre | character varying | YES |  |
 | riga_rettificata_id | bigint | YES |  |
@@ -52,6 +52,7 @@
 | CHECK | chk_fatture_righe_sconto |  |
 | FOREIGN KEY | fk_fatture_righe_art | articolo_id |
 | FOREIGN KEY | fk_fatture_righe_ba_dest | dest_billing_account_id |
+| FOREIGN KEY | fk_fatture_righe_esposizioni_componente | kit_esposizione |
 | FOREIGN KEY | fk_fatture_righe_fat | fattura_id |
 | FOREIGN KEY | fk_fatture_righe_fattura_atto | fattura_atto_id, fattura_id |
 | FOREIGN KEY | fk_fatture_righe_iva | iva_id |

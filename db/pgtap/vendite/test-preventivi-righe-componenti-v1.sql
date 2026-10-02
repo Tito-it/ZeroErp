@@ -390,7 +390,7 @@ SELECT CASE
                 AND EXISTS (
                     SELECT 1 FROM catalogo.articoli_componenti ac
                      WHERE ac.prodotto_id = a.id
-                       AND ac.esposto_in_fattura = TRUE
+                       AND ac.esposizione_in_fattura <> 'NASCOSTO'
                        AND ac.validita @> p.data
                 )
          )
@@ -411,7 +411,7 @@ SELECT CASE
                AND EXISTS (
                    SELECT 1 FROM catalogo.articoli_componenti ac
                     WHERE ac.prodotto_id = a.id
-                      AND ac.esposto_in_fattura = TRUE
+                      AND ac.esposizione_in_fattura <> 'NASCOSTO'
                       AND ac.validita @> p.data
                )
              LIMIT 1;
@@ -423,7 +423,7 @@ SELECT CASE
               JOIN vendite.preventivi p ON p.id = pr.preventivo_id
               JOIN catalogo.articoli_componenti ac ON ac.prodotto_id = pr.articolo_id
              WHERE pr.id = v_riga_id
-               AND ac.esposto_in_fattura = TRUE
+               AND ac.esposizione_in_fattura <> 'NASCOSTO'
                AND ac.validita @> p.data
              LIMIT 1;
 

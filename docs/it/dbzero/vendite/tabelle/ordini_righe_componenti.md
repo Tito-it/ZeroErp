@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Componenti BoM CASO A dell'ordine: una riga per ogni componente esposto_in_fattura=TRUE di un articolo composito. Prezzo proprio negoziabile (L1/L2/L3). Prezzo padre calcolato da trigger come SUM(prezzo_unitario * coeff_qta_snapshot). Snapshot pricing: al push su commessa i prezzi vengono propagati senza ri-chiamare il resolver.
+> Componenti BoM CASO A dell'ordine: una riga per ogni componente attivo e valido della distinta di un articolo composito (modello unificato del 2026-05-13: l'esposizione in fattura e' una regola di presentazione, non un filtro su queste righe). Prezzo proprio negoziabile (L1/L2/L3). Prezzo padre calcolato da trigger come SUM(prezzo_unitario * coeff_qta_snapshot). Snapshot pricing: al push su commessa i prezzi vengono propagati senza ri-chiamare il resolver.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

@@ -302,14 +302,14 @@ SELECT throws_ok(
 
 -- Kit completo: 3 componenti (2+6+9 = 17), due esposti e uno no.
 INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-       prezzo_unitario, iva_id, kit_key, kit_esposto_in_fattura,
+       prezzo_unitario, iva_id, kit_key, kit_esposizione,
        kit_articolo_padre_id, kit_descrizione_padre)
 SELECT (SELECT id FROM tmp_fattura_kit_fri), v.nr, v.descr, 1, v.prezzo,
        (SELECT iva_id FROM tmp_refs_fri), 'K-TEST', v.esposto,
        (SELECT articolo_id FROM tmp_refs_fri), 'Padre del kit di test'
-  FROM (VALUES (1, 'comp A', 2::numeric, true),
-               (2, 'comp B', 6::numeric, true),
-               (3, 'comp C', 9::numeric, false)) AS v(nr, descr, prezzo, esposto);
+  FROM (VALUES (1, 'comp A', 2::numeric, 'DESCRITTIVO'),
+               (2, 'comp B', 6::numeric, 'DESCRITTIVO'),
+               (3, 'comp C', 9::numeric, 'NASCOSTO')) AS v(nr, descr, prezzo, esposto);
 
 SELECT is(
   (SELECT imponibile FROM vendite.vw_fattura_righe_esposte

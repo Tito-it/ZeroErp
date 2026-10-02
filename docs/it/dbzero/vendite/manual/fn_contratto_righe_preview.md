@@ -112,9 +112,11 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
   "coeff_qta":              "numeric",
   "prezzo":                 "numeric",
   "obbligatorio":           "boolean",
-  "esposto_in_fattura":     "boolean"
+  "esposizione_in_fattura": "varchar"
 }
 ```
+
+`esposizione_in_fattura`: il codice interno del modo in cui il componente si vede in fattura sotto il suo kit (`NASCOSTO` | `DESCRITTIVO` | `VALORIZZATO`), letto da `catalogo.articoli_componenti`. Fino al 2026-10-01 la chiave era `esposto_in_fattura` (boolean: `false` → `NASCOSTO`, `true` → `DESCRITTIVO`), rev `20261001-53`.
 
 `coeff_qta`: in Parte 1b viene da `catalogo.articoli_componenti.coeff_qta`; in Parte 2b da `contratti_righe_componenti.coeff_qta_snapshot`.  
 `prezzo`: in Parte 1b è `listini_righe_componenti.prezzo`; in Parte 2b è `contratti_righe_componenti.prezzo_unitario`.

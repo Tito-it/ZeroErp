@@ -103,6 +103,6 @@ Sulla eccezione padre `offerte_commerciali_eccezioni` è registrato anche
 
 - **FK ON DELETE CASCADE**: l'eliminazione di una `offerte_commerciali_eccezioni` elimina automaticamente tutti i suoi componenti.
 - **UNIQUE (eccezione_offerta_id, articolo_componente_id)**: un componente BoM al massimo una volta per eccezione padre.
-- **Solo componenti `esposto_in_fattura = TRUE`**: `fn_offerta_eccezione_componenti_init` filtra la BoM per questo flag (CASO A). Non tutti i componenti della distinta vengono inseriti — solo quelli rilevanti per la fatturazione.
+- **Tutti i componenti attivi e validi della distinta**: dal modello unificato (rev 2026-05-27) `fn_offerta_eccezione_componenti_init` non filtra più la BoM sul vecchio flag `esposto_in_fattura`, e inserisce un componente per ogni voce attiva alla data. L'esposizione in fattura (`catalogo.articoli_componenti.esposizione_in_fattura`, dal 2026-10-01 a tre modi `NASCOSTO` | `DESCRITTIVO` | `VALORIZZATO`) è una regola di presentazione della fattura, non un filtro su queste righe.
 - **`stato_approvazione_prezzo` NULL di default**: il workflow L3 sulle offerte non è attivo; il campo è presente per trasporto 1:1 al momento del push offerta→contratto, preservando eventuali approvazioni pre-negoziazione.
 - **Copia 1:1 al push**: `fn_push_offerta_a_contratto` (rev3) copia tutti i componenti in `contratti_righe_componenti` con `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` intatti. Il contratto DRAFT acquisisce i componenti già valutati.
