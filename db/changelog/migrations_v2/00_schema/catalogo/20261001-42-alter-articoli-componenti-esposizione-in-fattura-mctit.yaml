@@ -1,0 +1,185 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# E-1 — LA DISTINTA PASSA DAL BOOLEANO AI TRE MODI
+#   catalogo.articoli_componenti.esposto_in_fattura (boolean)
+#     -> esposizione_in_fattura varchar(40) NOT NULL DEFAULT 'NASCOSTO'
+#   Brief: brief-db-esposizione-componenti-kit-in-fattura, sezione 4.2
+#
+# -- LA FORMA: CONVERSIONE SUL POSTO, NON COLONNA NUOVA + BACKFILL --------------
+#   `ALTER COLUMN ... TYPE ... USING` e `RENAME`: la colonna cambia tipo e nome
+#   in un'istruzione DDL, quindi
+#   · NESSUN trigger di riga scatta: il guard di immutabilita' della distinta
+#     (trgfn_articoli_componenti_block_modifica_struttura) bloccherebbe un
+#     UPDATE di backfill su un campo di struttura, e gli altri guard di riga
+#     (date di validita', IVA, solo_componente) rigiudicherebbero righe che
+#     nessuno sta cambiando;
+#   · non esiste mai un momento con DUE colonne per la stessa scelta, ne' un
+#     ritiro da fare «dopo» (il brief: il booleano si ritira nello stesso giro);
+#   · storico: lo snapshot e' jsonb, le righe vecchie restano col nome vecchio,
+#     ed e' la loro storia.
+#   Il backfill e' quello del brief: false -> NASCOSTO, true -> DESCRITTIVO (e'
+#   cio' che il `true` produceva in fattura).
+#
+# -- LA VISTA CHE DIPENDE DALLA COLONNA SI TOGLIE QUI --------------------------
+#   ALTER TYPE rifiuta una colonna usata da una vista: si droppa
+#   catalogo.vw_articoli_componenti_dettaglio (unica vista che la nomina,
+#   censita dalla doc auto-gen del 2026-10-01; nessun oggetto dipende dalla
+#   vista) e la ricrea 20261001-44, nella stessa corsa. In mezzo (-43) si
+#   riscrive il guard di immutabilita', che nomina NEW.esposto_in_fattura: e'
+#   plpgsql, non e' una dipendenza, e fino al -43 fallirebbe a runtime su un
+#   UPDATE — nessuno ne fa in mezzo a un migrate.
+#
+#   ⚠️ E anche il TRIGGER del guard: e' `BEFORE DELETE OR UPDATE OF <campi di
+#   struttura>` (20260514-15), e una colonna in `UPDATE OF` e' una dipendenza
+#   che ALTER TYPE rifiuta («trigger ... dipende dalla colonna»). La doc
+#   auto-gen stampa l'evento come «UPDATE» senza la lista: il primo apply e'
+#   morto qui il 2026-10-02 (in transazione, nulla registrato). Si droppa e si
+#   ricrea nello stesso changeSet, stessa lista con la colonna nuova.
+#
+# -- LA FK NON E' QUI --------------------------------------------------------
+#   Punta a config.esposizioni_componente(codice_interno), che in 00_schema e'
+#   vuota: nasce in 80_data dopo il seed (20261001-57), forma di
+#   20261001-17 (regime dell'emittente).
+#
+# -- CHI NOMINA LA COLONNA NELLE FASI SUCCESSIVE (ref DROP in 00_schema) ---------
+#   grep su 80_data e 90_end: solo CSV (messaggi_errore, parameters,
+#   ui/lista_colonna), aggiornati in questo cantiere; nessun changeSet la
+#   pretende col nome vecchio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20261001-42-alter-articoli-componenti-esposizione-in-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20261001-42-alter-articoli-componenti-esposizione-in-fattura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.articoli_componenti: esposto_in_fattura (boolean) diventa
+        esposizione_in_fattura (varchar, NASCOSTO | DESCRITTIVO | VALORIZZATO), convertita
+        sul posto (false -> NASCOSTO, true -> DESCRITTIVO): nessun trigger di riga, nessuna
+        seconda colonna. Droppata la vista che la nomina, ricreata da 20261001-44. Brief:
+        brief-db-esposizione-componenti-kit-in-fattura (E-1, sezione 4.2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli_componenti
+                columnName: esposto_in_fattura
+            - not:
+                - columnExists:
+                    schemaName: catalogo
+                    tableName: articoli_componenti
+                    columnName: esposizione_in_fattura
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La sola vista che nomina la colonna: ALTER TYPE non passa finche' esiste.
+              DROP VIEW catalogo.vw_articoli_componenti_dettaglio;
+
+              -- Il guard di immutabilita' e' BEFORE DELETE OR UPDATE OF <campi di
+              -- struttura> (20260514-15): la lista di colonne e' una dipendenza, e
+              -- ALTER TYPE la rifiuta. Si toglie qui e si rimette sotto, con la
+              -- colonna nuova nella stessa posizione della lista.
+              DROP TRIGGER trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  ON catalogo.articoli_componenti;
+
+              ALTER TABLE catalogo.articoli_componenti
+                  ALTER COLUMN esposto_in_fattura DROP DEFAULT;
+
+              ALTER TABLE catalogo.articoli_componenti
+                  ALTER COLUMN esposto_in_fattura TYPE varchar(40)
+                  USING CASE WHEN esposto_in_fattura THEN 'DESCRITTIVO' ELSE 'NASCOSTO' END;
+
+              ALTER TABLE catalogo.articoli_componenti
+                  RENAME COLUMN esposto_in_fattura TO esposizione_in_fattura;
+
+              ALTER TABLE catalogo.articoli_componenti
+                  ALTER COLUMN esposizione_in_fattura SET DEFAULT 'NASCOSTO';
+
+              -- Il guard torna com'era (20260514-15), con la colonna rinominata. Il
+              -- suo corpo nomina ancora NEW.esposto_in_fattura fino a -43: plpgsql,
+              -- nessuna dipendenza, e nessun UPDATE in mezzo alla stessa corsa.
+              CREATE TRIGGER trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  BEFORE DELETE OR UPDATE OF
+                      coeff_qta,
+                      componente_id,
+                      obbligatorio,
+                      esposizione_in_fattura,
+                      partecipa_qta,
+                      determina_qta_padre,
+                      valido_dal,
+                      valido_al
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW EXECUTE FUNCTION
+                      catalogo.trgfn_articoli_componenti_block_modifica_struttura();
+
+              COMMENT ON COLUMN catalogo.articoli_componenti.esposizione_in_fattura IS
+                  'Come si espone in fattura questo componente quando il kit e'' venduto: '
+                  'NASCOSTO (non compare, valore nel totale del kit), DESCRITTIVO (riga sotto il kit '
+                  'senza importo, valore nel totale del kit), VALORIZZATO (riga sotto il kit con '
+                  'quantita'', prezzo e importo suoi, fuori dal totale del kit). Codice di '
+                  'config.esposizioni_componente(codice_interno), FK in 80_data (20261001-57). '
+                  'Proprieta'' della DISTINTA, non del documento: le righe dei documenti non la '
+                  'copiano, il push la mette nel meta delle attivita'' e la fattura la congela su '
+                  'vendite.fatture_righe.kit_esposizione. Campo di struttura: immutabile '
+                  '(trgfn_articoli_componenti_block_modifica_struttura). Fino al 2026-10-01 era il '
+                  'booleano esposto_in_fattura (false -> NASCOSTO, true -> DESCRITTIVO). Brief: '
+                  'brief-db-esposizione-componenti-kit-in-fattura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback di -44 ha gia' droppato la vista nuova; qui si ripristina la
+              -- colonna e si ricrea la vista nella forma di 20260928-27.
+              DROP VIEW IF EXISTS catalogo.vw_articoli_componenti_dettaglio;
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  ON catalogo.articoli_componenti;
+              ALTER TABLE catalogo.articoli_componenti
+                  ALTER COLUMN esposizione_in_fattura DROP DEFAULT;
+              ALTER TABLE catalogo.articoli_componenti
+                  RENAME COLUMN esposizione_in_fattura TO esposto_in_fattura;
+              -- VALORIZZATO non ha un booleano che lo dica: torna true, come DESCRITTIVO.
+              ALTER TABLE catalogo.articoli_componenti
+                  ALTER COLUMN esposto_in_fattura TYPE boolean
+                  USING (esposto_in_fattura <> 'NASCOSTO');
+              ALTER TABLE catalogo.articoli_componenti
+                  ALTER COLUMN esposto_in_fattura SET DEFAULT false;
+              CREATE TRIGGER trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  BEFORE DELETE OR UPDATE OF
+                      coeff_qta, componente_id, obbligatorio, esposto_in_fattura,
+                      partecipa_qta, determina_qta_padre, valido_dal, valido_al
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW EXECUTE FUNCTION
+                      catalogo.trgfn_articoli_componenti_block_modifica_struttura();
+              CREATE VIEW catalogo.vw_articoli_componenti_dettaglio AS
+              SELECT ac.id, ac.prodotto_id, ac.componente_id, ac.coeff_qta, ac.partecipa_qta,
+                  ac.obbligatorio, ac.valido_dal, ac.valido_al, ac.meta, ac.user_insert,
+                  ac.user_update, ac.data_insert, ac.data_update, ac.tx_id, ac.storicizza,
+                  ac.attivo, ac.note_target_tipo, ac.note_id,
+                  ap.codice AS prodotto_codice, ap.descrizione AS prodotto_descrizione,
+                  acmp.codice AS componente_codice, acmp.descrizione AS componente_descrizione,
+                  (ac.valido_al IS NULL) AS puo_chiudersi,
+                  CASE WHEN (ac.valido_al IS NULL) THEN ac.valido_dal ELSE NULL::date END
+                      AS data_min_chiusura,
+                  CASE WHEN (ac.valido_al IS NULL) THEN GREATEST(ac.valido_dal, CURRENT_DATE)
+                       ELSE NULL::date END AS data_default_chiusura,
+                  CASE WHEN (ac.valido_al IS NULL) THEN NULL::text
+                       ELSE 'RIGA_GIA_CHIUSA'::text END AS motivo_non_chiudibile,
+                  ac.determina_qta_padre,
+                  ac.esposto_in_fattura
+                FROM ((catalogo.articoli_componenti ac
+                  LEFT JOIN catalogo.articoli ap ON ((ap.id = ac.prodotto_id)))
+                  LEFT JOIN catalogo.articoli acmp ON ((acmp.id = ac.componente_id)));

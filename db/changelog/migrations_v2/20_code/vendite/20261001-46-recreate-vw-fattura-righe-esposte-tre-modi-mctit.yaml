@@ -1,0 +1,246 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.vw_fattura_righe_esposte: TRE MODI DI ESPORRE UN COMPONENTE DI KIT
+#   (droppata da 20261001-45 per convertire fatture_righe.kit_esposizione)
+#   Brief: brief-db-esposizione-componenti-kit-in-fattura, sezioni 3 e 4.4
+#
+# -- LE REGOLE (sezione 3 del brief, E-1 / E-2 di Tid) ----------------------------
+#   kit_esposizione      in fattura                              nel totale del kit
+#   NASCOSTO             non compare                             si'
+#   DESCRITTIVO          riga sotto il kit, senza prezzo/importo si'
+#   VALORIZZATO          riga sotto il kit, prezzo e importo suoi NO
+#
+#   · la riga del kit (KIT_PADRE) porta la somma dei NON valorizzati;
+#   · ⭐ il componente resta SEMPRE legato al suo kit: livello 1, stessa
+#     kit_key, `ordinamento` del padre — mai una riga sciolta;
+#   · kit senza resto (tutti VALORIZZATO): il padre resta come intestazione
+#     con imponibile e prezzo NULL, non zero (E-2, strada a). Lo da' la
+#     somma filtrata su un insieme vuoto, senza un ramo a parte;
+#   · quantita' del padre: la media su TUTTI i componenti, valorizzati
+#     compresi (un kit senza resto ha comunque la sua quantita');
+#   · ⭐ il totale del documento non cambia mai: ogni componente sta o nel
+#     padre (NASCOSTO, DESCRITTIVO) o sulla sua riga (VALORIZZATO), mai in
+#     tutti e due, mai in nessuno.
+#
+#   ⚠️ CORREZIONE AL BRIEF, da confermare (sezione 9 del brief): E-2 dice
+#   «tutti VALORIZZATO — o VALORIZZATO e DESCRITTIVO — la riga del kit resta
+#   senza importo». La seconda meta' contraddice la tabella dei modi
+#   (DESCRITTIVO e' nel totale del kit) e l'invariante del totale: se il padre
+#   perdesse l'importo dei descrittivi, quel valore sparirebbe dal documento.
+#   Qui vince la regola: VALORIZZATO + DESCRITTIVO = padre con la somma dei
+#   descrittivi.
+#
+# -- DUE COLONNE NUOVE, IN CODA ---------------------------------------------------
+#   · esposizione: il modo del componente (KIT_COMPONENTE), NULL altrove;
+#   · kit_riga_nr: il riga_nr della riga del kit a cui la riga appartiene
+#     (KIT_PADRE e KIT_COMPONENTE), NULL sulle righe sciolte. E' il dato che
+#     il cantiere SDI usera' per dichiarare il legame in un tracciato a linee
+#     piatte (sezione 3 del brief): oggi coincide con `ordinamento`, ma
+#     `ordinamento` e' un ordine, non un riferimento, e potrebbe smettere di
+#     coincidere.
+#   Le 18 colonne di prima restano identiche, nello stesso ordine.
+#
+# -- COSA NON CAMBIA --------------------------------------------------------------
+#   Righe sciolte e parti di plafond identiche (ramo 1 copiato dal corpo vivo,
+#   20260928-43). CTE `kit` NOT MATERIALIZED (§8.12.4 di
+#   brief-db-liste-righe-documento). security_invoker = on ripetuto. Nessun
+#   GRANT: lo da' il loop dei grant (20260928-28).
+#
+# -- LIMITE DICHIARATO, CHE QUESTO CANTIERE NON APRE --------------------------------
+#   Il padre prende come riga_nr il minimo dei componenti, quindi condivide il
+#   numero col primo componente esposto. C'era gia' coi descrittivi; con i
+#   valorizzati sono due righe CON importo e lo stesso riga_nr. Per il PDF non
+#   cambia nulla (ordinamento + livello), per l'SDI la numerazione delle linee
+#   la fa il builder (cantiere sospeso): scritto nel brief, sezione 9.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261001-46-recreate-vw-fattura-righe-esposte-tre-modi-mctit.yaml
+
+  - changeSet:
+      id: 20261001-46-recreate-vw-fattura-righe-esposte-tre-modi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vw_fattura_righe_esposte ricreata coi tre modi: NASCOSTO e DESCRITTIVO nel totale
+        del kit, VALORIZZATO sotto il kit con prezzo e importo suoi; kit senza resto =
+        intestazione con importo NULL; in coda esposizione e kit_riga_nr. Totale del
+        documento invariato. Brief: brief-db-esposizione-componenti-kit-in-fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: kit_esposizione
+            - not:
+                - viewExists:
+                    schemaName: vendite
+                    viewName: vw_fattura_righe_esposte
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_fattura_righe_esposte
+              WITH (security_invoker=on) AS
+              WITH kit AS NOT MATERIALIZED (
+                       SELECT r.fattura_id,
+                          r.kit_key,
+                          r.iva_id,
+                          r.dest_billing_account_id,
+                          r.kit_articolo_padre_id AS articolo_padre_id,
+                          r.kit_descrizione_padre AS descrizione_padre,
+                          min(r.riga_nr) AS riga_nr_padre,
+                          max(r.uom_id) AS uom_id,
+                          -- La quantita' del kit: su TUTTI i componenti, anche i
+                          -- valorizzati (un kit senza resto ha la sua quantita').
+                          avg(r.qta) AS qta_media,
+                          -- Il RESTO: i componenti che non hanno una riga con importo.
+                          -- Su un insieme vuoto (tutti valorizzati) e' NULL, non zero:
+                          -- e' la riga d'intestazione di E-2.
+                          sum(r.imponibile_riga) FILTER (WHERE r.kit_esposizione <> 'VALORIZZATO')
+                              AS imponibile_totale,
+                          max((r.iva_natura)::text) AS iva_natura
+                         FROM vendite.fatture_righe r
+                        WHERE (r.kit_key IS NOT NULL)
+                        GROUP BY r.fattura_id, r.kit_key, r.iva_id, r.dest_billing_account_id, r.kit_articolo_padre_id, r.kit_descrizione_padre
+                      )
+               SELECT r.fattura_id,
+                      CASE
+                          WHEN (r.riga_capofila_id IS NOT NULL) THEN 'PARTE_PLAFOND'::text
+                          ELSE 'NORMALE'::text
+                      END AS tipo_riga,
+                  r.riga_nr,
+                  COALESCE(cap.riga_nr, r.riga_nr) AS ordinamento,
+                  (0)::smallint AS livello,
+                  r.id AS fatture_righe_id,
+                  r.articolo_id,
+                  r.descrizione,
+                  r.uom_id,
+                  r.qta,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  r.iva_id,
+                  r.iva_natura,
+                  r.imponibile_riga AS imponibile,
+                  r.dest_billing_account_id,
+                  NULL::text AS kit_key,
+                  r.riga_capofila_id,
+                  NULL::character varying AS esposizione,
+                  NULL::integer AS kit_riga_nr
+                 FROM (vendite.fatture_righe r
+                   LEFT JOIN vendite.fatture_righe cap ON ((cap.id = r.riga_capofila_id)))
+                WHERE (r.kit_key IS NULL)
+              UNION ALL
+               SELECT k.fattura_id,
+                  'KIT_PADRE'::text AS tipo_riga,
+                  k.riga_nr_padre AS riga_nr,
+                  k.riga_nr_padre AS ordinamento,
+                  (0)::smallint AS livello,
+                  NULL::bigint AS fatture_righe_id,
+                  k.articolo_padre_id AS articolo_id,
+                  k.descrizione_padre AS descrizione,
+                  k.uom_id,
+                  k.qta_media AS qta,
+                      CASE
+                          WHEN (COALESCE(k.qta_media, (0)::numeric) = (0)::numeric) THEN NULL::numeric
+                          ELSE (k.imponibile_totale / k.qta_media)
+                      END AS prezzo_unitario,
+                  NULL::numeric AS sconto_percentuale,
+                  k.iva_id,
+                  k.iva_natura,
+                  k.imponibile_totale AS imponibile,
+                  k.dest_billing_account_id,
+                  k.kit_key,
+                  NULL::bigint AS riga_capofila_id,
+                  NULL::character varying AS esposizione,
+                  k.riga_nr_padre AS kit_riga_nr
+                 FROM kit k
+              UNION ALL
+               SELECT r.fattura_id,
+                  'KIT_COMPONENTE'::text AS tipo_riga,
+                  r.riga_nr,
+                  k.riga_nr_padre AS ordinamento,
+                  (1)::smallint AS livello,
+                  r.id AS fatture_righe_id,
+                  r.articolo_id,
+                  r.descrizione,
+                  r.uom_id,
+                  r.qta,
+                  -- Prezzo, sconto e importo SOLO sul valorizzato: il descrittivo
+                  -- ha il suo valore nel padre, e mostrarlo due volte direbbe il
+                  -- falso sul totale.
+                  CASE WHEN (r.kit_esposizione = 'VALORIZZATO') THEN r.prezzo_unitario END
+                      AS prezzo_unitario,
+                  CASE WHEN (r.kit_esposizione = 'VALORIZZATO') THEN r.sconto_percentuale END
+                      AS sconto_percentuale,
+                  r.iva_id,
+                  r.iva_natura,
+                  CASE WHEN (r.kit_esposizione = 'VALORIZZATO') THEN r.imponibile_riga END
+                      AS imponibile,
+                  r.dest_billing_account_id,
+                  r.kit_key,
+                  r.riga_capofila_id,
+                  r.kit_esposizione AS esposizione,
+                  k.riga_nr_padre AS kit_riga_nr
+                 FROM (vendite.fatture_righe r
+                   JOIN kit k ON (((k.fattura_id = r.fattura_id) AND (k.kit_key = r.kit_key) AND (NOT (k.iva_id IS DISTINCT FROM r.iva_id)) AND (NOT (k.dest_billing_account_id IS DISTINCT FROM r.dest_billing_account_id)))))
+                WHERE ((r.kit_key IS NOT NULL) AND (r.kit_esposizione <> 'NASCOSTO'));
+
+              COMMENT ON VIEW vendite.vw_fattura_righe_esposte IS
+                  'Rappresentazione del documento per OGNI uscita verso l''esterno: PDF, XML SDI, '
+                  'portale. ⚠️ NON e'' «la vista di stampa»: se il PDF mostrasse il kit raggruppato e '
+                  'l''XML trasmettesse i componenti avremmo due uscite dello stesso documento con '
+                  'dettagli diversi. vendite.fatture_righe resta il DETTAGLIO (tutte le componenti, '
+                  'con articolo/quantita''/prezzo propri), questa vista produce la SINTESI — nessun '
+                  'secondo dato da tenere allineato. ⭐ rev 2026-10-01 '
+                  '(brief-db-esposizione-componenti-kit-in-fattura): TRE MODI di esporre un '
+                  'componente, da fatture_righe.kit_esposizione. NASCOSTO: non compare, il valore '
+                  'sta nel padre. DESCRITTIVO: riga KIT_COMPONENTE senza prezzo ne'' importo (NULL), '
+                  'il valore sta nel padre. VALORIZZATO: riga KIT_COMPONENTE con prezzo, sconto e '
+                  'importo suoi, FUORI dal padre. Il padre (KIT_PADRE) porta la somma dei non '
+                  'valorizzati; se non ce ne sono resta come intestazione con imponibile e prezzo '
+                  'NULL, non zero (zero direbbe «omaggio»). Un componente resta SEMPRE legato al suo '
+                  'kit: livello 1, stessa kit_key, ordinamento del padre, e kit_riga_nr = il riga_nr '
+                  'del padre (il legame che il tracciato SDI, a linee piatte, dovra'' dichiarare). '
+                  '⚠️ Quindi livello 1 NON significa piu'' «senza importo»: chi somma gli importi '
+                  'somma tutte le righe con imponibile valorizzato. Il totale del documento non '
+                  'cambia mai al variare dell''esposizione: ogni componente sta o nel padre o sulla '
+                  'sua riga. Convenzioni: quantita'' del padre = MEDIA di tutti i componenti, '
+                  'valorizzati compresi (regge finche'' coeff_qta_snapshot vale 1), riga_nr = il primo '
+                  'dei componenti, prezzo unitario derivato come totale/quantita''. La riga padre e'' '
+                  'costruita per (fattura, kit, IVA, BA destinatario): un kit con aliquote diverse '
+                  'produce due righe padre, che e'' l''esito corretto. esposizione e kit_riga_nr sono '
+                  'NULL sulle righe sciolte. ⭐ rev 2026-08-31 (decisione B, '
+                  'brief-db-richieste-aperte-dal-backend voce 5): LA VISTA CONOSCE LA RIGA SPEZZATA '
+                  'DAL PLAFOND. Quando il plafond di un titolo IVA copre solo una quota '
+                  'dell''imponibile la riga di fattura si spezza in due — per OBBLIGO DI FORMATO, '
+                  'perche'' una riga FatturaPA porta una sola AliquotaIVA e una sola Natura — e le due '
+                  'parti escono qui come DUE RIGHE SORELLE: entrambe col loro imponibile, entrambe a '
+                  'livello 0, stesso ordinamento (quello della capofila), e tipo_riga = PARTE_PLAFOND '
+                  'sulla parte. riga_capofila_id e'' esposta perche'' chi consuma possa raggruppare '
+                  'senza rifare il join. ⛔ NON SI E'' RIUSATA LA FORMA DEL KIT: quella AGGREGA, e '
+                  'aggregare le due parti produrrebbe UN SOLO DettaglioLinee, cioe'' cancellerebbe la '
+                  'ragione per cui la riga si e'' spezzata. ⚠️ riga_nr NON cambia: e'' il numero di '
+                  'linea del documento. 📌 Limiti dichiarati: una riga che e'' insieme componente di kit '
+                  'E parte di plafond cade nei rami del kit (oggi il backend non spezza i componenti '
+                  'di kit); il padre condivide il riga_nr col primo componente esposto, che ora puo'' '
+                  'portare un importo — la numerazione delle linee SDI e'' del builder. '
+                  'brief-fix-importi-riga-fattura-zero §4.7-bis (D5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La forma di prima nomina kit_esposto_in_fattura, che torna col rollback
+              -- di -45: la si riapplica da 20260928-43 dopo quel rollback.
+              DROP VIEW IF EXISTS vendite.vw_fattura_righe_esposte;

@@ -108,8 +108,8 @@ UPDATE catalogo.articoli SET is_composito = true
 --   documento (script.trgfn_componenti_guard_obbligatorio), e il caso 8 — un
 --   componente rifiutato e poi TOLTO — esiste solo per i facoltativi.
 INSERT INTO catalogo.articoli_componenti
-    (prodotto_id, componente_id, coeff_qta, valido_dal, esposto_in_fattura, obbligatorio)
-SELECT a.kit_id, a.cmp_id, 1, CURRENT_DATE - 30, true, false FROM _a a;
+    (prodotto_id, componente_id, coeff_qta, valido_dal, esposizione_in_fattura, obbligatorio)
+SELECT a.kit_id, a.cmp_id, 1, CURRENT_DATE - 30, 'DESCRITTIVO', false FROM _a a;
 
 CREATE TEMP TABLE _k AS
 SELECT a.kit_id, a.cmp_id,

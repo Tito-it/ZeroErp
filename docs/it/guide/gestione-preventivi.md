@@ -422,13 +422,22 @@ prezzo zero.
 
 ### 5.3 Esposizione in fattura
 
-Ogni componente porta un flag `esposto_in_fattura` (proviene dalla BoM):
+Ogni componente porta la sua **esposizione in fattura**, decisa nella distinta
+base dell'articolo (il preventivo la mostra, non la cambia). Dice cosa vedrà il
+cliente quando il kit arriverà in fattura:
 
-- `TRUE` → in fattura compare come riga descrittiva separata (oltre al padre)
-- `FALSE` → in fattura non appare; il suo prezzo è già incluso nel totale padre
+- **Nascosto** → il componente non compare; il suo prezzo è già dentro il prezzo
+  del kit
+- **Descrittivo** → compare come riga sotto il kit, **senza prezzo**; il suo
+  prezzo è già dentro il prezzo del kit
+- **Valorizzato** → compare come riga sotto il kit **con il suo prezzo e il suo
+  importo**, che non vengono più sommati al prezzo del kit
 
-Il flag è solo di **presentazione finale**, non incide sulla composizione del
-preventivo o sui calcoli.
+L'esposizione è solo di **presentazione finale**: non incide sulla composizione
+del preventivo né sui calcoli, e il totale del documento è lo stesso in tutti e
+tre i casi. Le regole complete sono nella
+[guida fatturazione](/guide/fatturazione) (§ *Come si espone un kit*). Fino al
+2026-10-01 era un sì/no («esposto in fattura»: no = nascosto, sì = descrittivo).
 
 ---
 

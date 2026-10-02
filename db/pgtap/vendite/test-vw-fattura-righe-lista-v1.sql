@@ -71,14 +71,14 @@ SELECT dbops.fn_pgtap_crea_articolo('PGTAP-FRL-KIT') AS padre_id;
 -- Scopo: una riga di fattura; kit e capofila facoltativi.
 CREATE OR REPLACE FUNCTION pg_temp.fx_riga_frl(
     p_nr integer, p_prezzo numeric, p_iva bigint,
-    p_kit text DEFAULT NULL, p_esposto boolean DEFAULT NULL,
+    p_kit text DEFAULT NULL, p_esposizione varchar DEFAULT NULL,
     p_capofila bigint DEFAULT NULL)
 RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario,
-         iva_id, kit_key, kit_esposto_in_fattura, kit_articolo_padre_id, kit_descrizione_padre,
+         iva_id, kit_key, kit_esposizione, kit_articolo_padre_id, kit_descrizione_padre,
          riga_capofila_id)
   SELECT (SELECT fattura_id FROM tmp_frl), p_nr, 'Riga ' || p_nr, 1, p_prezzo, p_iva,
-         p_kit, p_esposto,
+         p_kit, p_esposizione,
          CASE WHEN p_kit IS NOT NULL THEN (SELECT padre_id FROM tmp_frl_art) END,
          CASE WHEN p_kit IS NOT NULL THEN 'Padre ' || p_kit END,
          p_capofila
@@ -88,11 +88,11 @@ $fx$;
 -- 1: riga normale. 2-4: kit A, tre componenti, il terzo NON esposto.
 -- 5-6: kit B con due aliquote. 7: capofila, 8: sua parte (plafond).
 SELECT pg_temp.fx_riga_frl(1, 10, (SELECT iva_1 FROM tmp_frl_iva));
-SELECT pg_temp.fx_riga_frl(2, 2, (SELECT iva_1 FROM tmp_frl_iva), 'KA', true);
-SELECT pg_temp.fx_riga_frl(3, 6, (SELECT iva_1 FROM tmp_frl_iva), 'KA', true);
-SELECT pg_temp.fx_riga_frl(4, 9, (SELECT iva_1 FROM tmp_frl_iva), 'KA', false);
-SELECT pg_temp.fx_riga_frl(5, 4, (SELECT iva_1 FROM tmp_frl_iva), 'KB', true);
-SELECT pg_temp.fx_riga_frl(6, 5, (SELECT iva_2 FROM tmp_frl_iva), 'KB', true);
+SELECT pg_temp.fx_riga_frl(2, 2, (SELECT iva_1 FROM tmp_frl_iva), 'KA', 'DESCRITTIVO');
+SELECT pg_temp.fx_riga_frl(3, 6, (SELECT iva_1 FROM tmp_frl_iva), 'KA', 'DESCRITTIVO');
+SELECT pg_temp.fx_riga_frl(4, 9, (SELECT iva_1 FROM tmp_frl_iva), 'KA', 'NASCOSTO');
+SELECT pg_temp.fx_riga_frl(5, 4, (SELECT iva_1 FROM tmp_frl_iva), 'KB', 'DESCRITTIVO');
+SELECT pg_temp.fx_riga_frl(6, 5, (SELECT iva_2 FROM tmp_frl_iva), 'KB', 'DESCRITTIVO');
 CREATE TEMP TABLE tmp_frl_capofila AS
 SELECT pg_temp.fx_riga_frl(7, 30, (SELECT iva_1 FROM tmp_frl_iva)) AS id;
 SELECT pg_temp.fx_riga_frl(8, 20, (SELECT iva_2 FROM tmp_frl_iva), NULL, NULL,

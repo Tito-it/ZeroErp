@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# E-1 — LE DUE COLONNE SI LEGANO AL VOCABOLARIO
+#   catalogo.articoli_componenti.esposizione_in_fattura -> NOT NULL + FK
+#   vendite.fatture_righe.kit_esposizione               -> FK
+#   su config.esposizioni_componente(codice_interno)
+#   Brief: brief-db-esposizione-componenti-kit-in-fattura, sezioni 4.2 e 4.3
+#
+# -- PERCHE' IN 80_data E NON IN 00_schema ---------------------------------
+#   Le FK puntano a righe di seed (20261001-56): in 00_schema il catalogo e'
+#   vuoto. Forma di 20261001-17 (regime fiscale dell'emittente).
+#
+# -- LA FORMA ------------------------------------------------------------------
+#   · FK su codice_interno, la chiave naturale (linee-guida-sql 6b): il valore
+#     arriva dal meta delle attivita' di commessa com'e', senza risolverlo.
+#     ON UPDATE / ON DELETE RESTRICT: codice_interno e' immutabile (lock
+#     automatico) e una riga di catalogo non si cancella;
+#   · articoli_componenti: NOT NULL ribadito. La colonna era gia' NOT NULL
+#     (lo era il booleano, e ALTER TYPE conserva il vincolo): il SET NOT NULL
+#     qui non costa niente e dice il contratto nello stesso posto della FK;
+#   · fatture_righe: nullable, com'era. NULL = riga non di kit, e lo presidia
+#     chk_fatture_righe_kit_coerente.
+#
+# -- IL CANCELLO PRIMA DELLA FK ------------------------------------------------
+#   La conversione (-42, -45) produce solo NASCOSTO / DESCRITTIVO, quindi la FK
+#   non puo' trovare valori fuori catalogo. Lo dice la FK stessa, fail-fast.
+#
+# -- A ci_apply ----------------------------------------------------------------
+#   Il vocabolario non ha `attivo`: nessuna coppia ATTIVO (ne' require sul
+#   figlio ne' block sul padre), voluto — sulla colonna snapshot della fattura
+#   un require_attivo non avrebbe senso. Gli indici delle FK: la policy e'
+#   opt-in, fn_populate_fk_index_policy le registra a consentito = false da
+#   sola; nessuna query entra per questa colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261001-57-fk-esposizione-componente-mctit.yaml
+
+  - changeSet:
+      id: 20261001-57-fk-esposizione-componente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        FK su config.esposizioni_componente(codice_interno) da
+        catalogo.articoli_componenti.esposizione_in_fattura (NOT NULL) e da
+        vendite.fatture_righe.kit_esposizione (nullable: NULL = riga non di kit). In 80_data
+        perche' il catalogo nasce dal seed 20261001-56. Brief:
+        brief-db-esposizione-componenti-kit-in-fattura (E-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: esposizioni_componente
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli_componenti
+                columnName: esposizione_in_fattura
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: kit_esposizione
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE c.conname IN ('fk_articoli_componenti_esposizioni_componente',
+                                       'fk_fatture_righe_esposizioni_componente');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.articoli_componenti
+                  ALTER COLUMN esposizione_in_fattura SET NOT NULL;
+
+              ALTER TABLE catalogo.articoli_componenti
+                  ADD CONSTRAINT fk_articoli_componenti_esposizioni_componente
+                  FOREIGN KEY (esposizione_in_fattura)
+                  REFERENCES config.esposizioni_componente (codice_interno)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              ALTER TABLE vendite.fatture_righe
+                  ADD CONSTRAINT fk_fatture_righe_esposizioni_componente
+                  FOREIGN KEY (kit_esposizione)
+                  REFERENCES config.esposizioni_componente (codice_interno)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_righe
+                  DROP CONSTRAINT IF EXISTS fk_fatture_righe_esposizioni_componente;
+              ALTER TABLE catalogo.articoli_componenti
+                  DROP CONSTRAINT IF EXISTS fk_articoli_componenti_esposizioni_componente;

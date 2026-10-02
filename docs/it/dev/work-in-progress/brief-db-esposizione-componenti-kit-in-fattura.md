@@ -4,7 +4,13 @@
 > poi BE/FE (§5).
 > **Origine:** collaudo della fattura con un kit (versione 4 del template, forma 2 del contesto,
 > `brief-db-documenti-versione-contesto-template` §13), 2026-10-01.
-> **Stato:** ✅ **E-1, E-2, E-3 decise da Tid il 2026-10-01** (§6). Nessun changeSet scritto.
+> **Stato:** ✅ **E-1, E-2, E-3 decise da Tid il 2026-10-01** (§6). ✅ **Lato DB CHIUSO il
+> 2026-10-02**: changeSet `20261001-41 → -57` applicati su dbdev da Tid (dopo la correzione di
+> `-42`, §8.4), pgTAP **senza regressioni**, confermato due volte (§8.3); script una tantum del
+> meta pronto (§9.3). ➡️ **La palla passa al BE/FE** (decisione di Tid, 2026-10-02): richieste in §5
+> — **R-FE-1 blocca la CI**, **R-BE-1 blocca la generazione di una fattura con un kit** su dbdev.
+> Al merge di R-BE-2 si lancia lo script di §9.3. Restano da confermare §9.1 e §9.2 (già applicati
+> così a DB: una conferma, non lavoro).
 >
 > **In una riga:** oggi un componente di kit in fattura o non compare, o compare come riga
 > descrittiva **senza prezzo**. Manca il terzo modo, quello che si intende di solito con «esposto in
@@ -74,6 +80,11 @@ Un vocabolario a tre valori al posto del booleano (E-1):
   `VALORIZZATO` e `DESCRITTIVO` — la riga del kit **resta come intestazione senza importo** (`NULL`,
   non zero: zero direbbe «omaggio»), con i componenti sotto. Il cliente ha comprato il kit, e la
   fattura continua a dirlo.
+  ⚠️ **Corretto in scrittura (2026-10-02), da confermare — §9.1**: «o `VALORIZZATO` e
+  `DESCRITTIVO`» contraddice la riga sopra e l'invariante del totale. Un `DESCRITTIVO` non ha
+  importo suo, quindi il suo valore **deve** stare nel kit; se il kit restasse senza importo, quel
+  valore sparirebbe dal documento. La vista fa: **senza resto = solo valorizzati**; con valorizzati e
+  descrittivi il kit porta la somma dei descrittivi.
 * **Quantità del kit**: la stessa di oggi (media delle quantità dei componenti, omogenee per il guard
   R10), calcolata su **tutti** i componenti, anche i valorizzati: un kit senza resto ha comunque la
   sua quantità.
@@ -111,17 +122,38 @@ Un vocabolario a tre valori al posto del booleano (E-1):
    valorizzati), un kit valorizzato + descrittivo, e il totale del documento uguale nei tre casi.
    Nessun confronto con la popolazione.
 
-## 5. Ricadute fuori dal DB (da chiedere a BE/FE quando il DB è fatto)
+## 5. Ricadute fuori dal DB — richieste a BE/FE (il DB è scritto, §8)
 
-* **BE**: il contratto del meta di commessa (`_kit_meta.META_KEY_ESPOSTO_IN_FATTURA` →
-  `esposizione`) e chi lo scrive (`BoMComponentExpander`) e lo legge (`FattureRigheService`); i
-  `TypedDict` e i repository dei componenti; il builder fattura alla **forma 3** (componenti con
-  prezzo e importo), per il patto versione/forma.
-* **Template**: versione 5 della fattura, che stampa prezzo e importo dei valorizzati e il kit senza
-  resto senza importo. Dichiara la forma 3; si pubblica quando il builder la produce.
-* **FE**: nella distinta dell'articolo il toggle «esposto in fattura» diventa una scelta fra tre
-  (etichette dal vocabolario); il pannello componenti mostra l'esposizione per esteso; nel drawer
-  fattura l'espansione del kit mostra prezzo e importo dei valorizzati.
+⚠️ **Il DB ritira il booleano nello stesso giro** (§4.2), quindi dal momento dell'apply i punti che
+lo scrivono o lo leggono per nome **falliscono**, non degradano: è la forma voluta (un booleano
+scritto come testo non è un modo), ma vuol dire che DB, BE e FE vanno **mergiati insieme**.
+
+### FE
+
+| # | Cosa | Dove |
+| --- | --- | --- |
+| **R-FE-1** ⛔ | le tre chiavi `config.esposizioni_componente.nascosto` / `.descrittivo` / `.valorizzato` in `it.json` **e** `en.json`. **Blocca la CI**: `scripts/check_i18n_keys.py` legge l'`etichetta_key` del CSV nuovo e oggi dà «3 chiavi emesse dal DB e assenti dai locales» | `frontend/src/locales/` |
+| R-FE-2 | il toggle «esposto in fattura» diventa una scelta fra tre, con le etichette dal vocabolario (lookup su `config.esposizioni_componente`, `ordine`); il default dal parametro **rinominato** `CATALOGO_BOM_DEFAULT_ESPOSIZIONE_IN_FATTURA` (valore: un codice, non un booleano) | `ArticoloBomDrawer.vue` (righe 101, 216) |
+| R-FE-3 | il pannello e il dialog dei componenti mostrano il modo per esteso: il campo è `esposizione_in_fattura` (codice) nelle anteprime e nei jsonb `componenti` | `ComponentiPanel.vue`, `ComponentiDialog.vue` |
+| R-FE-4 | nel drawer fattura l'espansione del kit mostra prezzo, sconto e importo dei valorizzati (nuove chiavi del jsonb `componenti` di `vw_fattura_righe_lista`); un padre con `importo_riga` NULL è un kit senza resto, non un errore | drawer fattura |
+| R-FE-5 | colonna «In fattura» della lista 101 (distinta): da `yesno` a testo, `campo_sorgente = esposizione_in_fattura_codice` (CSV aggiornato qui); `codice` della colonna cambiato in `esposizione_in_fattura` — un preset utente che la nominava col codice vecchio la perde | lista `catalogo.articolo_componenti` |
+
+### BE
+
+| # | Cosa | Dove |
+| --- | --- | --- |
+| **R-BE-1** ⛔ | la riga di fattura scrive `kit_esposizione` (il codice) al posto di `kit_esposto_in_fattura`: senza, la generazione di una fattura con un kit fallisce sulla colonna che non c'è | `pipeline_repository.py` 3496-3520 |
+| R-BE-2 | il contratto del meta: `META_KEY_ESPOSTO_IN_FATTURA` → `esposizione`, valore il codice; chi lo scrive (`BoMComponentExpander`, che oggi fa `bool(componente.get("esposto_in_fattura"))`) e chi lo legge (`FattureRigheService`, `as_bool(...)`) | `_kit_meta.py:32`, `commesse_source_handlers.py` 238-289, `fatture_righe_service.py` 42, 363, 542, 623 |
+| R-BE-3 | ⚠️ `fatture_righe_service.py:704` dichiara un raggruppamento «che deve essere lo STESSO di `vw_fattura_righe_esposte`»: è una seconda sede della regola. Da rileggere: se il raggruppamento dipende dall'esposizione, va riallineato ai tre modi (o meglio ritirato a favore della vista) | `fatture_righe_service.py` |
+| R-BE-4 | la distinta: scrittura e lettura di `esposizione_in_fattura` (codice validato dalla FK: un valore fuori catalogo torna `23503`) al posto di `esposto_in_fattura`; la proiezione legge `vw_articoli_componenti_dettaglio`, che porta anche `_codice` ed `_etichetta_key` | `catalogo_bom_repository.py` 42, 78; `catalogo_service.py:1001` |
+| R-BE-5 | le anteprime dei componenti restituiscono `esposizione_in_fattura` (non più `esposto_in_fattura`), e il JOIN sul catalogo legge la colonna nuova | `_componenti_repo_mixin.py` 113, 157; `preventivi_` / `ordini_` / `ddt_` / `contratti_` / `offerte_repository.py`; `listini_repository.py:1308`; `types.py` 835, 852, 883, 1047 |
+| R-BE-6 | il lookup del vocabolario per il FE (R-FE-2): `config.esposizioni_componente` nel lookup generico/specializzato con `etichetta_key` (stampo `config.registri_giornale`) | lookup BE |
+| R-BE-7 | il builder fattura alla **forma 3** (componenti con prezzo e importo), per il patto versione/forma; documentazione API (`api_catalogo`, `api_listini`, `api_preventivi`, `api_contratti`, `api_ordini`, `pricing_service`) e lo smoke `smoke-fatturazione-aggregazione-righe.py` | builder, doc, smoke |
+
+### Template
+
+* **Versione 5 della fattura**, che stampa prezzo e importo dei valorizzati e il kit senza resto
+  senza importo. Dichiara la forma 3; si pubblica quando il builder la produce.
 
 ## 6. Decisioni di Tid (2026-10-01)
 
@@ -137,3 +169,140 @@ Un vocabolario a tre valori al posto del booleano (E-1):
   proprietà della distinta, e resta così finché qualcuno non porta un caso.
 * La stampa di preventivi, ordini e DDT: i loro template mostrano i componenti con un'altra logica,
   da guardare a parte.
+
+## 8. Lato DB — cosa è stato scritto (applicato su dbdev il 2026-10-02)
+
+> ✅ **Apply e pgTAP di Tid, 2026-10-02**: migrazione applicata (al secondo tentativo, dopo la
+> correzione di `-42` in §8.4), **nessuna regressione** nella corsa pgTAP. Da qui su dbdev il
+> booleano non esiste più: finché R-BE-1 e R-BE-4/5 non arrivano, il BE fallisce dove lo scrive o lo
+> legge per nome (generazione fattura con kit, distinta, anteprime componenti). Non ancora fatto:
+> §9.3 (meta delle attività già in commessa). §9.4 è chiuso: l'apply ha risvegliato il mirror di
+> `parameters.csv` senza errori.
+
+### 8.1 La forma, e perché: conversione sul posto
+
+Le due colonne non nascono accanto al booleano con un backfill: **cambiano tipo e nome sul posto**
+(`ALTER COLUMN … TYPE varchar(40) USING CASE …` + `RENAME`). Un'istruzione DDL non fa scattare i
+trigger di riga, e qui conta:
+
+* sulla distinta il guard di immutabilità rifiuterebbe l'`UPDATE` di un campo di struttura;
+* su `fatture_righe` le righe oltre EMESSA sono intoccabili (D1-bis): un backfill per `UPDATE` si
+  fermerebbe sulla prima fattura emessa, e E-3 chiede che la vista valga per tutte;
+* non esiste mai un momento con **due** colonne per la stessa scelta.
+
+Il prezzo: `ALTER TYPE` non passa finché una vista legge la colonna, quindi il changeSet di schema
+**droppa** le viste dipendenti e quello di codice successivo le **ricrea** (stessa corsa).
+
+### 8.2 I changeSet
+
+| # | Fase | Cosa |
+| --- | --- | --- |
+| `-41` | `00_schema/config` | `config.esposizioni_componente` (codice_interno, codice, descrizione, etichetta_key, ordine). **Niente `attivo`** (§9.2) |
+| `-42` | `00_schema/catalogo` | `articoli_componenti.esposto_in_fattura` → `esposizione_in_fattura` varchar, default `NASCOSTO` (false → NASCOSTO, true → DESCRITTIVO). Droppa `vw_articoli_componenti_dettaglio` |
+| `-43` | `20_code/catalogo` | il guard di immutabilità confronta la colonna nuova |
+| `-44` | `20_code/catalogo` | `vw_articoli_componenti_dettaglio` ricreata: `esposizione_in_fattura` + `_codice`, `_etichetta_key` in coda |
+| `-45` | `00_schema/vendite` | `fatture_righe.kit_esposto_in_fattura` → `kit_esposizione`. Droppa `vw_fattura_righe_lista` e `vw_fattura_righe_esposte`. Il CHECK di coerenza segue la colonna da solo |
+| `-46` | `20_code/vendite` | `vw_fattura_righe_esposte` coi tre modi (§3); in coda `esposizione` e `kit_riga_nr` (il riga_nr del kit, per l'SDI) |
+| `-47` | `20_code/vendite` | `vw_fattura_righe_lista`: il jsonb `componenti` porta `esposizione`, `prezzo_unitario`, `sconto_percentuale`, `importo_riga`; il `COMMENT` dice che `importo_riga` non somma più al totale |
+| `-48 → -52` | `20_code/vendite` | le cinque `fn_*_riga_componenti_preview`: DROP + CREATE (cambia il `RETURNS TABLE`), firma ancorata dall'ultimo YAML, corpo vivo patchato con sostituzioni contate, `EXECUTE` all'app ridichiarato |
+| `-53`, `-54` | `20_code/vendite` | `fn_contratto_righe_preview`, `fn_espandi_listino_versione`: chiave jsonb `esposizione_in_fattura` |
+| `-55` | `00_schema/vendite` | i quattro `COMMENT` stantii delle `*_righe_componenti` (§2) |
+| `-56` | `80_data` | seed del vocabolario (`config/esposizioni_componente.csv`, mirror per `id`) |
+| `-57` | `80_data` | FK su `config.esposizioni_componente(codice_interno)` dalle due colonne (dopo il seed: forma di `20261001-17`) |
+
+CSV toccati: `parameters.csv` (riga 26 rinominata `CATALOGO_BOM_DEFAULT_ESPOSIZIONE_IN_FATTURA`,
+valore `NASCOSTO`), `parameter_fk_surrogate.csv` (riga 6: il valore si valida sul vocabolario),
+`ui/lista_colonna.csv` (riga 1054, R-FE-5), `messaggi_errore.csv` (descrizione di
+`E_BOM_MODIFICA_VIETATA`).
+
+### 8.3 pgTAP
+
+* **Nuovo**: `vendite/test-vw-fattura-righe-esposte-tre-modi-v1.sql` (18 test) — costruisce una
+  fattura con un kit per modo, uno senza resto, uno valorizzato + descrittivo, uno tutto nascosto;
+  verifica il legame componente → kit e il **totale invariato** rileggendo lo stesso documento con
+  tutti i componenti NASCOSTO, poi DESCRITTIVO, poi VALORIZZATO. Nessun confronto con la popolazione.
+* **Adattati** (colonna, valori, chiave del meta): `catalogo/test-articoli-componenti-immutabilita`,
+  `catalogo/test-vw-articoli-componenti-dettaglio-capabilities-v1`, `script/test-componenti-helpers-v1`,
+  `script/test-fn-check-prezzi-autorizzati-v1`, `vendite/offerte_commerciali/test_offerte_eccezioni_componenti`,
+  `vendite/test-accredito-kit-meta-v1` (meta con la chiave nuova `esposizione`, R-BE-2),
+  `vendite/test-articolo-regole-fatturazione` (commento), `vendite/test-fatture-righe-importo-e-kit-v1`,
+  `vendite/test-fn-resolve-prezzo-composito-v1`, `vendite/test-preventivi-righe-componenti-v1`,
+  `vendite/test-vw-fattura-righe-lista-v1`, `vendite/test-vw-righe-dettaglio-sorgente-lista-v1`.
+  Dove il test filtrava `esposto_in_fattura = TRUE` sulla popolazione, la sostituzione è
+  l'equivalente esatto (`<> 'NASCOSTO'`): quei test restano dipendenti dai dati com'erano, non è
+  questo il giro per riscriverli.
+
+### 8.4 Come è stato provato, e cosa la prova NON copre
+
+* **Cancelli statici** verdi: `guardrail_sql_letterali`, `_run_on_change`, `_precondition_seed`,
+  `_ddl_su_trigger_automazione`, `_grant_ruolo_batch`, `_pgtap_preambolo`, `_timestamp_senza_fuso`.
+  `check_i18n_keys` **rosso** sulle tre chiavi di R-FE-1, e solo su quelle.
+* **SQL estratto** (`changes[].sql.sql` dagli YAML, non riscritto) eseguito con `ON_ERROR_STOP` su un
+  **cluster PG18 usa-e-getta**, sopra tabelle *stub* con la forma della doc auto-gen e gli oggetti di
+  prima presi dai loro YAML (`20260924-01`, `20260928-27`, `-28`, `-43`). Verde in avanti: conversione
+  senza far scattare un guard di riga che rifiuta ogni `UPDATE`, CHECK che segue la colonna, viste e
+  funzioni ricreate con l'`EXECUTE` all'app, FK che respinge un codice fuori catalogo, e i casi del
+  pgTAP nuovo (totale 365 nei tre modi). Verde anche **all'indietro** (i `rollback` estratti, in
+  ordine inverso).
+* ⛔ **Primo apply di Tid, 2026-10-02: `-42` morto** con «non è possibile cambiare il tipo di una
+  colonna usata nella definizione di un trigger». Il guard di immutabilità è `BEFORE DELETE OR
+  UPDATE OF <campi di struttura>` (`20260514-15`), e la colonna in `UPDATE OF` è una dipendenza.
+  La doc auto-gen stampa l'evento come «UPDATE» senza la lista; lo stub l'aveva ricostruito da
+  lì, quindi la prova non poteva vederlo. Corretto: `-42` droppa e ricrea il trigger con la stessa
+  lista (colonna nuova), il rollback lo rimette com'era; la prova ora prende il trigger dallo YAML
+  vero e verifica `tgattr`. Il changeSet era fallito in transazione: niente da ripulire. Rigenerati
+  anche `-48 → -54` con i `%TYPE` mancanti (`obbligatorio` nelle cinque anteprime, l'intero
+  `RETURNS TABLE` della DDT e `p_quantita_padre`, `p_tipo_var`/`p_valore_var` di
+  `fn_espandi_listino_versione`). Restano espliciti solo i valori calcolati, che non hanno una
+  colonna sorgente: `resolver_error_reason`, `p_data_riferimento`, `v_msg`, chiavi, azioni e jsonb.
+* ⚠️ **Non copre**: i dati veri, la RLS, `plpgsql_check`, i presidi trasversali, i mirror CSV (il
+  seed è stato emulato riga per riga), e il pgTAP vero (`fn_pgtap_*`). **Apply e corsa pgTAP restano
+  di Tid.**
+
+## 9. Punti da confermare (Tid)
+
+1. **E-2, la seconda metà** (§3): con valorizzati e descrittivi il kit porta la somma dei
+   descrittivi, non resta senza importo — altrimenti il loro valore uscirebbe dal documento. Così è
+   scritto in `-46` e pinnato dal test 10. Se invece l'intento era un altro (per esempio «un
+   descrittivo accanto a valorizzati diventa valorizzato»), è un cambio della vista e del test.
+2. **Il vocabolario senza `attivo`**: i tre valori sono la semantica della vista, non una
+   configurazione; con `attivo` la `ci_apply` monterebbe la coppia ATTIVO anche sulla colonna
+   *snapshot* della fattura. Un modo si ritira con un cantiere.
+3. **Le attività già in commessa col meta vecchio** (`esposto_in_fattura: true|false`): quando il BE
+   leggerà la chiave `esposizione` (R-BE-2), quelle righe non la troveranno. Non siamo in produzione:
+   la proposta è una correzione **a mano** su dbdev (`meta - 'esposto_in_fattura' ||
+   {"esposizione": …}`) al momento del merge, non un changeSet né una lettura delle due chiavi nel BE.
+   ✅ **Script pronto (2026-10-02)**: [`allegati/esposizione-kit-meta-attivita-una-tantum.sql`](allegati/esposizione-kit-meta-attivita-una-tantum.sql).
+   Si lancia **al merge di R-BE-2**, non prima (il BE di oggi su una riga corretta leggerebbe
+   «assente» = false). In sintesi:
+   * tocca `commesse_attivita` e `attivita_fatturabili`; **anche le fatturate**, perché l'accredito
+     di un reso eredita il `meta` della riga rettificata. Il guard `guard_fatturato` si supera col
+     suo bypass di manutenzione (`zeroerp.maintenance_reset_lotto_draft`, `SET LOCAL`);
+   * **riga per riga**, con un savepoint ciascuna: i trigger «riferimento attivo» rigiudicano la
+     riga a ogni `UPDATE`, quindi un'attività vecchia con un padre spento rifiuta anche l'`UPDATE`
+     del solo `meta`. Le rifiutate sono **elencate** col motivo, non saltate in silenzio;
+   * `true` → DESCRITTIVO, `false`/assente → NASCOSTO; se `esposizione` c'è già, vince quella;
+   * non tocca `fatture_righe.meta`: la fattura legge la colonna `kit_esposizione`. Ne conta le
+     righe, solo per informazione;
+   * si ferma se il ruolo non è superuser/BYPASSRLS (sotto RLS vedrebbe zero righe);
+   * **di default annulla** (`ROLLBACK`): si legge l'esito, poi `-v applica=1` fa il `COMMIT`.
+   Provato su cluster usa-e-getta con tabelle stub (guard «fatturato» col bypass vero, un trigger
+   che rifiuta una riga, chiave vecchia `true`/`false`/stringa, riga con entrambe le chiavi, ruolo
+   filtrato): esiti come attesi, la prova non lascia modifiche. Sui dati veri non è stato lanciato.
+4. ✅ **Chiuso dall'apply del 2026-10-02**: il mirror si è risvegliato e ha riscritto tutte le
+   righe senza errori, che è esattamente ciò che la verifica doveva provare. Testo originale:
+   **Il mirror di `parameters.csv` si risveglia** (riga 26): la verifica di §11.2 delle linee guida
+   — upsert di **tutte** le righe del CSV in una transazione annullata — va fatta su dbdev prima
+   dell'apply; da qui il DB non era raggiungibile. L'ordine è sicuro: il mirror dei parametri
+   (`20250715-01`) gira prima di quello del registro FK surrogata (`20260520-02`), quindi il valore
+   `NASCOSTO` non viene validato prima che il vocabolario esista.
+
+Registrati, non aperti:
+
+* **Il padre condivide il `riga_nr` col primo componente esposto** (c'era già coi descrittivi): con i
+  valorizzati sono due righe con importo e lo stesso numero. Il PDF non ne soffre (ordinamento +
+  livello); per l'SDI la numerazione delle linee la fa il builder, cantiere sospeso. Il legame vero è
+  `kit_riga_nr`.
+* **Un commento nel corpo di `fn_accredita_riga_reso`** elenca le chiavi del meta kit col nome
+  vecchio: diventa stantio quando il BE rinomina la chiave (R-BE-2). Si corregge al prossimo giro
+  sulla funzione — ricrearne il corpo per un commento non vale il rischio.

@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# E-1 — LO SNAPSHOT DELLA FATTURA PASSA AI TRE MODI
+#   vendite.fatture_righe.kit_esposto_in_fattura (boolean)
+#     -> kit_esposizione varchar(40)
+#   Brief: brief-db-esposizione-componenti-kit-in-fattura, sezione 4.3
+#
+# -- LA FORMA: CONVERSIONE SUL POSTO --------------------------------------
+#   Come per la distinta (20261001-42): ALTER TYPE ... USING + RENAME, nessun
+#   UPDATE. Qui la ragione pesa di piu': le righe oltre EMESSA sono intoccabili
+#   per il guard D1-bis (20260728-03/04), quindi un backfill per UPDATE si
+#   fermerebbe sulla prima fattura emessa. Un'istruzione DDL non fa scattare
+#   trigger di riga. E-3 (Tid, 2026-10-01): nessun riguardo per le fatture gia'
+#   emesse, la vista vale per tutte — e la conversione e' quella che il `true`
+#   significava: true -> DESCRITTIVO, false -> NASCOSTO, NULL (riga non di kit)
+#   resta NULL.
+#
+# -- COSA SEGUE DA SOLO ----------------------------------------------------
+#   chk_fatture_righe_kit_coerente nomina la colonna: RENAME la segue, e dopo
+#   ALTER TYPE PostgreSQL ricostruisce il CHECK sul tipo nuovo (la forma
+#   «kit_esposizione IS [NOT] NULL» vale per qualunque tipo). Il nome del
+#   vincolo non contiene quello della colonna: niente da rinominare.
+#   Storico: lo snapshot e' jsonb, le righe vecchie restano col nome vecchio.
+#
+# -- LE VISTE A VALLE SI TOLGONO QUI ------------------------------------------
+#   ALTER TYPE rifiuta una colonna letta da una vista, anche indirettamente:
+#   vendite.vw_fattura_righe_esposte la legge, vendite.vw_fattura_righe_lista
+#   legge la prima. Si droppano nell'ordine dei dipendenti e le ricreano
+#   20261001-46 e -47 con le regole nuove. Censimento sulla doc auto-gen del
+#   2026-10-01: nessun'altra vista o funzione nomina la colonna o le due viste
+#   (le leggono il repository fatture e il builder del documento, dal BE).
+#
+# -- LA FK NON E' QUI ---------------------------------------------------------
+#   Su config.esposizioni_componente(codice_interno), in 80_data dopo il seed
+#   (20261001-57).
+#
+# ⚠️ Il writer della colonna e' il BACKEND (pipeline_repository, INSERT delle
+#   righe dal meta delle attivita'): da qui in poi scrive il codice, non il
+#   booleano — richiesta nel brief, sezione 5. Prima che arrivi, la generazione
+#   di una fattura con un kit fallisce sulla FK: e' voluto, un booleano scritto
+#   come testo non e' un modo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261001-45-alter-fatture-righe-kit-esposizione-tre-modi-mctit.yaml
+
+  - changeSet:
+      id: 20261001-45-alter-fatture-righe-kit-esposizione-tre-modi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatture_righe: kit_esposto_in_fattura (boolean) diventa kit_esposizione
+        (varchar, NASCOSTO | DESCRITTIVO | VALORIZZATO), convertita sul posto senza UPDATE
+        (le righe emesse sono intoccabili). Droppate vw_fattura_righe_lista e
+        vw_fattura_righe_esposte, ricreate da 20261001-46/-47. Brief:
+        brief-db-esposizione-componenti-kit-in-fattura (E-1, E-3, sezione 4.3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: kit_esposto_in_fattura
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture_righe
+                    columnName: kit_esposizione
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Le due viste a valle, nell'ordine dei dipendenti.
+              DROP VIEW vendite.vw_fattura_righe_lista;
+              DROP VIEW vendite.vw_fattura_righe_esposte;
+
+              ALTER TABLE vendite.fatture_righe
+                  ALTER COLUMN kit_esposto_in_fattura TYPE varchar(40)
+                  USING CASE kit_esposto_in_fattura
+                            WHEN true  THEN 'DESCRITTIVO'
+                            WHEN false THEN 'NASCOSTO'
+                        END;
+
+              ALTER TABLE vendite.fatture_righe
+                  RENAME COLUMN kit_esposto_in_fattura TO kit_esposizione;
+
+              COMMENT ON COLUMN vendite.fatture_righe.kit_esposizione IS
+                  'Snapshot di catalogo.articoli_componenti.esposizione_in_fattura per QUESTA '
+                  'componente, propagato dal push nel meta delle attivita'' (chiave esposizione): '
+                  'NASCOSTO | DESCRITTIVO | VALORIZZATO, FK su '
+                  'config.esposizioni_componente(codice_interno). NULL sulle righe non di kit '
+                  '(chk_fatture_righe_kit_coerente). E'' la regola di PRESENTAZIONE della fattura, '
+                  'applicata da vendite.vw_fattura_righe_esposte: il dato resta il dettaglio, ogni '
+                  'componente con prezzo e importo propri. Snapshot e non lettura al volo: la '
+                  'distinta puo'' cambiare dopo l''emissione e una fattura emessa non deve cambiare '
+                  'aspetto. Fino al 2026-10-01 era il booleano kit_esposto_in_fattura (true -> '
+                  'DESCRITTIVO, false -> NASCOSTO). Brief: '
+                  'brief-db-esposizione-componenti-kit-in-fattura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Nel verso inverso girano prima i rollback di -47 e -46, che droppano le
+              -- viste nuove. Qui si ripristina la colonna; le viste vecchie, che la
+              -- nominano, si ricreano riapplicando a mano i corpi di 20260928-43
+              -- (vw_fattura_righe_esposte) e 20260928-28 (vw_fattura_righe_lista).
+              DROP VIEW IF EXISTS vendite.vw_fattura_righe_lista;
+              DROP VIEW IF EXISTS vendite.vw_fattura_righe_esposte;
+              ALTER TABLE vendite.fatture_righe
+                  RENAME COLUMN kit_esposizione TO kit_esposto_in_fattura;
+              -- VALORIZZATO non ha un booleano che lo dica: torna true, come DESCRITTIVO.
+              ALTER TABLE vendite.fatture_righe
+                  ALTER COLUMN kit_esposto_in_fattura TYPE boolean
+                  USING (kit_esposto_in_fattura <> 'NASCOSTO');

@@ -738,17 +738,41 @@ Un articolo composito **non arriva in fattura come riga unica**: il push lo
 espande e in commessa entrano **solo i componenti**, mai il padre. È il modello
 unificato dei componenti BoM, ed è voluto.
 
-La regola di esposizione è
-**`catalogo.articoli_componenti.esposto_in_fattura`**, per singolo componente.
+Come si vede ogni componente lo decide la **distinta base** dell'articolo, per
+singolo componente: è l'**esposizione in fattura**, una scelta fra tre modi.
 Viene congelata sulla riga di fattura alla generazione, insieme all'identità del
-kit e all'articolo padre. La vista `vw_fattura_righe_esposte` produce poi:
+kit e all'articolo padre, e la applica la vista di rappresentazione
+`vw_fattura_righe_esposte`. In fattura il cliente vede **la riga del kit** e,
+sotto, i componenti secondo il loro modo:
 
-* **una riga padre** con il totale del kit;
-* sotto, i soli componenti con il flag a `true`, come righe **descrittive** senza
-  importo.
+| Modo | Cosa vede il cliente | Dove sta il valore del componente |
+| --- | --- | --- |
+| **Nascosto** | niente: il componente non compare | dentro il prezzo del kit |
+| **Descrittivo** | una riga sotto il kit, con descrizione e quantità ma **senza prezzo né importo** | dentro il prezzo del kit |
+| **Valorizzato** | una riga sotto il kit **con quantità, prezzo e importo suoi** | sulla sua riga, **fuori** dal prezzo del kit |
 
-I componenti non esposti non compaiono, ma il loro valore è nel totale del padre:
-**il totale del documento non cambia mai al variare dell'esposizione**.
+Un esempio: una postazione d'ufficio composta da scrivania e sedia
+(valorizzate) e da una lampada (nascosta).
+
+```text
+Postazione ufficio ............ 100 €   ← il valore della lampada
+  Scrivania ................... 600 €   ← valorizzata, resta sotto il kit
+  Sedia ....................... 300 €   ← valorizzata, resta sotto il kit
+                        totale  1.000 €
+```
+
+* Un componente resta **sempre legato al suo kit**, anche quando è valorizzato:
+  compare sotto la riga del kit, mai come un articolo venduto da solo.
+* Se **tutti** i componenti sono valorizzati, la riga del kit resta come
+  intestazione **senza importo** (vuoto, non zero: zero direbbe «omaggio»). Il
+  cliente ha comprato il kit, e la fattura continua a dirlo.
+* **Il totale del documento non cambia mai al variare dell'esposizione**: ogni
+  componente è contato una volta sola, o nel prezzo del kit o sulla sua riga.
+
+ℹ️ Fino al 2026-10-01 i modi erano due (il flag «esposto in fattura»: spento =
+nascosto, acceso = descrittivo); il modo valorizzato è nato quel giorno. Il
+dettaglio tecnico è nella pagina della vista
+[vendite.vw_fattura_righe_esposte](/dbzero/vendite/views/vw_fattura_righe_esposte).
 
 ⚠️ **Non è "la vista di stampa"**: PDF, XML SDI e portale devono leggere **la
 stessa** rappresentazione. Altrimenti si producono due uscite dello stesso

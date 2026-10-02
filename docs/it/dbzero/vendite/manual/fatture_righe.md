@@ -64,7 +64,7 @@ Obiettivi principali:
   no — lì una `'D'` (differita) scelta di proposito **sopravvive**, perché è una
   decisione del documento che nessuna colonna sa dedurre.
 * **Importo congelato**: `imponibile_riga` — `NOT NULL`, **calcolato dal DB**, mai da chi scrive la riga. Un valore passato dall'esterno viene **sovrascritto**.
-* **Snapshot kit** (`NULL` sulle righe non-kit, tutti valorizzati insieme sulle righe di kit): `kit_key` (identità dell'**istanza** di kit), `kit_esposto_in_fattura`, `kit_articolo_padre_id`, `kit_descrizione_padre`. Vedi *Kit ed esposizione*.
+* **Snapshot kit** (`NULL` sulle righe non-kit, tutti valorizzati insieme sulle righe di kit): `kit_key` (identità dell'**istanza** di kit), `kit_esposizione` (fino al 2026-10-01 `kit_esposto_in_fattura`), `kit_articolo_padre_id`, `kit_descrizione_padre`. Vedi *Kit ed esposizione*.
 * **Riga spezzata** (dal 2026-08-31): `riga_capofila_id` — vuoto sulle righe
   ordinarie, valorizzato sulle parti. Vedi *Quando una riga si spezza in due*.
 * **Riferimento all'atto** (dal 2026-08-31): `fattura_atto_id` — il blocco di
@@ -110,7 +110,7 @@ Obiettivi principali:
 * **CHECK**:
 
   * `chk_fatture_righe_sconto` → `sconto_percentuale` 0..100 (rinominato da `chk_fatture_righe_sconto_perc`, unificazione 2026-06-05).
-  * `chk_fatture_righe_kit_coerente` → o la riga **non è** di kit (tutte le colonne `kit_*` NULL), o lo è per intero (chiave, flag ed articolo padre valorizzati). Una riga con metadati a metà sarebbe indistinguibile da una riga normale per la vista di esposizione, e sparirebbe dal raggruppamento senza un fiato.
+  * `chk_fatture_righe_kit_coerente` → o la riga **non è** di kit (tutte le colonne `kit_*` NULL), o lo è per intero (chiave, esposizione ed articolo padre valorizzati). Una riga con metadati a metà sarebbe indistinguibile da una riga normale per la vista di esposizione, e sparirebbe dal raggruppamento senza un fiato.
   * ~~`chk_fatr_iva_perc`~~ → **non esiste**: il manuale precedente lo citava insieme alla colonna `iva_perc`, che su questa tabella non c'è mai stata.
 * **UNIQUE**:
 
@@ -177,19 +177,37 @@ presentazione è una **rappresentazione**, prodotta dalla vista
 | Colonna | Contenuto |
 |---|---|
 | `kit_key` | identità dell'**istanza** di kit (prefisso del `segment_key`, senza la parte `#CMP`). Non l'articolo padre: lo stesso kit può comparire due volte sulla stessa fattura da righe sorgente diverse |
-| `kit_esposto_in_fattura` | snapshot di `catalogo.articoli_componenti.esposto_in_fattura` per **quella** componente |
+| `kit_esposizione` | snapshot di `catalogo.articoli_componenti.esposizione_in_fattura` per **quella** componente: `NASCOSTO` \| `DESCRITTIVO` \| `VALORIZZATO`, FK su `config.esposizioni_componente(codice_interno)` |
 | `kit_articolo_padre_id` | dal `meta` dell'attività (`componente_di`), già risolto dal push |
 | `kit_descrizione_padre` | congelata per poterla stampare senza risalire a monte |
 
-⚠️ **`esposto_in_fattura` è la regola**, non
+**I tre modi**, come li applica la vista di rappresentazione:
+
+| `kit_esposizione` | In fattura | Nel totale del kit |
+| --- | --- | --- |
+| `NASCOSTO` | il componente non compare | **sì** |
+| `DESCRITTIVO` | riga sotto il kit, senza prezzo né importo | **sì** |
+| `VALORIZZATO` | riga sotto il kit con quantità, prezzo e importo suoi | **no**: il suo importo è sulla sua riga |
+
+Il componente resta **sempre legato al suo kit**, anche quando è valorizzato: non
+diventa mai una riga sciolta. La riga del kit porta la somma dei componenti
+nascosti e descrittivi; se il kit non ha resto (tutti i componenti valorizzati)
+resta come intestazione **senza importo** (`NULL`, non zero). Il totale del documento non cambia al
+variare dell'esposizione: le righe di `fatture_righe` sono sempre le stesse.
+
+Fino al 2026-10-01 la colonna era il booleano `kit_esposto_in_fattura`,
+convertito sul posto senza `UPDATE` (le righe emesse sono intoccabili):
+`false` → `NASCOSTO`, `true` → `DESCRITTIVO`, `NULL` (riga non di kit) resta `NULL`.
+
+⚠️ **`esposizione_in_fattura` della distinta è la regola**, non
 `articolo_regole_fatturazione.visibilita_componenti` — quest'ultima non era
 applicata da nessuno ed è stata **rimossa** dal modello il 2026-07-28.
 
 **Congelamento senza meccanismi aggiuntivi**: lo snapshot sta sulla riga, e le
 righe oltre `EMESSA` sono già intoccabili per effetto del guard `a10`. Quindi
 cambiare la distinta **non tocca** le fatture emesse, mentre rigenerare una
-fattura (reset lotto) rilegge il flag corrente — e l'esposizione cambia, com'è
-giusto.
+fattura (reset lotto) rilegge l'esposizione corrente — e la rappresentazione
+cambia, com'è giusto.
 
 ⚠️ **La vista vale per OGNI uscita**: PDF, XML SDI, portale. Non è «la vista di
 stampa»: se il PDF mostrasse il kit raggruppato e l'XML trasmettesse i

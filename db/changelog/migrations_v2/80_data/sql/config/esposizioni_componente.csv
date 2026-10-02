@@ -1,0 +1,4 @@
+id,codice_interno,codice,descrizione,etichetta_key,ordine
+1,NASCOSTO,NASCOSTO,"Non compare in fattura: il suo valore sta nel totale del kit",config.esposizioni_componente.nascosto,10
+2,DESCRITTIVO,DESCRITTIVO,"Riga sotto il kit, senza prezzo: il suo valore sta nel totale del kit",config.esposizioni_componente.descrittivo,20
+3,VALORIZZATO,VALORIZZATO,"Riga sotto il kit con prezzo e importo suoi, fuori dal totale del kit",config.esposizioni_componente.valorizzato,30
