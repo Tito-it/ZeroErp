@@ -33,7 +33,7 @@ from django.db import connection
 from django.test import override_settings
 from rest_framework.test import APIClient
 
-from apps.core.api.throttling import PasswordResetRateThrottle
+from apps.core.api.throttling import ConfermaTokenRateThrottle, PasswordResetRateThrottle
 from apps.core.services.invito_veste import PORTA_PORTALE, InvitoVeste
 from apps.core.services.token_service import TokenService
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
@@ -117,6 +117,7 @@ class ResetPasswordDbTests(_TransazioneAnnullata):
         super().setUp()
         self.enterContext(override_settings(TRUSTED_PROXY_COUNT=0, REQUEST_LOG_ENABLED=False))
         self.enterContext(patch.object(PasswordResetRateThrottle, "allow_request", return_value=True))
+        self.enterContext(patch.object(ConfermaTokenRateThrottle, "allow_request", return_value=True))
         self.email = self.enterContext(
             patch("apps.core.api.password_reset_views._email_service")
         )

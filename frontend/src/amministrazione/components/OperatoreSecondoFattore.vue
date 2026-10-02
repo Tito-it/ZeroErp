@@ -36,6 +36,9 @@ const props = defineProps({
 })
 
 const { t } = useI18n()
+// ⚠️ `execute` restituisce GIA' il contenuto dell'envelope (lo stato), non la
+//    risposta axios: fino al 2026-10-02 qui si leggeva `res.data.data`, cioe'
+//    undefined, e la sezione non compariva mai.
 const { execute, loading, campiErrati } = useApiHandler()
 const auth = useAuthStore()
 
@@ -60,7 +63,7 @@ async function carica() {
   stato.value = null
   const res = await execute(() => getSecondoFattoreOperatore(id))
   // Una risposta arrivata dopo il cambio di operatore non e' la sua.
-  if (res && id === props.authUserId) stato.value = res.data.data
+  if (res && id === props.authUserId) stato.value = res
 }
 
 watch(() => props.authUserId, (id) => { if (id) carica() }, { immediate: true })
@@ -71,7 +74,7 @@ async function cambiaObbligo(valore) {
     () => impostaObbligoSecondoFattore(props.authUserId, valore),
     { successMessage: t('notifications.save_success') }
   )
-  if (res) stato.value = res.data.data
+  if (res) stato.value = res
   else chiaveObbligo.value++
 }
 
@@ -86,7 +89,7 @@ async function confermaDisattiva() {
     { successMessage: t('amministrazione.secondo_fattore.disattivato') }
   )
   if (res) {
-    stato.value = res.data.data
+    stato.value = res
     dialogVisibile.value = false
   }
 }

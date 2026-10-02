@@ -12,9 +12,10 @@ Implementazione in `apps/core/api/throttling.py`:
 | `SearchBurstRateThrottle` | `search_burst` | da settings (vedi sotto) | IP | default DRF (`DEFAULT_THROTTLE_CLASSES`), attivo solo sulle view con `is_search_endpoint = True` |
 | `LoginRateThrottle` | `login` | `5/5m` (fisso nella classe) | IP | viste di login (`auth_views.py`) |
 | `SecondoFattoreRateThrottle` | `login_secondo_fattore` | `5/5m` (fisso nella classe) | IP | secondo passo del login (`secondo_fattore_token_views.py`). ⭐ Contatore suo: condiviso con `login`, ogni accesso col secondo fattore ne consumava due (2026-10-02) |
-| `PasswordResetRateThrottle` | `password_reset` | `3/15m` (fisso nella classe) | IP | reset password (`password_reset_views.py`), attivazione (`attivazione_view.py`), portale e shop |
+| `PasswordResetRateThrottle` | `password_reset` | `3/15m` (fisso nella classe) | IP | **richiesta** del link di reset (`PasswordResetRequestView`): manda un'email a chi digita un nome, quindi stretto |
+| `ConfermaTokenRateThrottle` | `conferma_token` | `10/15m` (fisso nella classe) | IP | **conferma con un link**: nuova password del reset (`PasswordResetConfirmView`) e attivazione dell'invito, per tutte le porte (`AttivazioneVesteView`). ⭐ Contatore suo (2026-10-02): condiviso con la richiesta, una password rifiutata dalle regole consumava uno dei tre tentativi. Il token, lungo, monouso e con scadenza, resta la vera protezione |
 
-`LoginRateThrottle` e `PasswordResetRateThrottle` derivano da `AnonRateThrottle`, con un
+`LoginRateThrottle`, `SecondoFattoreRateThrottle`, `PasswordResetRateThrottle` e `ConfermaTokenRateThrottle` derivano da `AnonRateThrottle`, con un
 parsing del rate che accetta anche periodi in minuti/ore (`5m`, `15m`, `1h`). Una view che
 dichiara `throttle_classes` sostituisce il default.
 
@@ -50,6 +51,7 @@ Il resto di questo documento riguarda `SearchBurstRateThrottle`.
   - env `DJANGO_API_SEARCH_THROTTLE_RATE`
   - default `30/min`.
 - In superamento limite, DRF risponde con `429`.
+- Ogni limite che scatta scrive nel log `security` (WARNING) `security.limite_frequenza scope=<scope> provenienza=<IP fidato> path=<path> attesa_s=<secondi>`, dalla base comune dei throttle (`_ClientIpIdentMixin.allow_request`), quindi per tutti gli scope. È l'unica traccia di un 429 sugli endpoint anonimi (login, secondo passo, reset): `dbops.request_log` registra le sole richieste autenticate (dal 2026-10-02). ⭐ **Una riga per episodio di blocco**, non una per richiesta respinta: la prima scrive e mette in cache un segnaposto (`throttle_log_<scope>_<ident>`, `cache.add`, atomico fra i worker) che dura quanto l'attesa; finito il blocco, il successivo ha di nuovo la sua riga. Sotto una raffica, chi martella l'endpoint non decide quanto log si scrive.
 
 ## Dipendenze DB
 - Nessuna diretta.

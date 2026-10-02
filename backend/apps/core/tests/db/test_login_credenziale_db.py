@@ -57,7 +57,7 @@ from django.db import DatabaseError, connection, transaction
 from django.test import override_settings
 from rest_framework.test import APIClient
 
-from apps.core.api.throttling import LoginRateThrottle, PasswordResetRateThrottle
+from apps.core.api.throttling import ConfermaTokenRateThrottle, LoginRateThrottle, PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.nome_tentato import digest_nome_tentato
@@ -366,6 +366,7 @@ class CicloOperatoreDbTests(_ViewVere):
     def setUp(self) -> None:
         super().setUp()
         self.enterContext(patch.object(PasswordResetRateThrottle, "allow_request", return_value=True))
+        self.enterContext(patch.object(ConfermaTokenRateThrottle, "allow_request", return_value=True))
         with connection.cursor() as cur:
             self.admin_id = apri_contesto_operatore(cur)
             cur.execute("SELECT id FROM config.qualifiche WHERE codice = 'DIPENDENTE'")

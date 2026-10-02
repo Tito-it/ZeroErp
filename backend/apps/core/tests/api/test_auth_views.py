@@ -21,6 +21,7 @@ Indice test eseguiti:
  9c) AuditAuthViewsTests.test_login_fallito_registra_con_la_provenienza
  9d) AuditAuthViewsTests.test_login_riuscito_registra_e_legge_il_flag_della_credenziale
  9e) AuditAuthViewsTests.test_nome_inesistente_check_e_registrazione_sul_nome
+ 9e-bis) AuditAuthViewsTests.test_password_sbagliata_senza_freno_scrive_il_log — ogni password sbagliata nel log di sicurezza
  9f) AuditAuthViewsTests.test_nome_con_spazi_trova_la_credenziale_come_authenticate
  9g) AuditAuthViewsTests.test_nome_assente_nessuna_chiamata_al_db
  9h) AuditAuthViewsTests.test_guasto_nella_ricerca_ferma_il_login
@@ -461,9 +462,34 @@ class AuditAuthViewsTests(TestCase):
             None, nome_digest=digest, provenienza=_IP, successo=False,
         )
         testo = "\n".join(log.output)
+        self.assertIn("security.login_fallito", testo)
         self.assertIn("security.login_locked", testo)
         self.assertIn(f"nome={digest.hex()[:12]}", testo)
         self.assertNotIn(nome, testo)
+
+    # Scopo: Una password sbagliata che NON fa scattare il freno lascia
+    #        comunque la sua riga nel log di sicurezza (prima stava solo a DB).
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch.object(AuditTokenObtainPairView, "_find_user", return_value=None)
+    @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
+    def test_password_sbagliata_senza_freno_scrive_il_log(
+        self, mock_super_post, _mock_find_user, mock_repo
+    ):
+        mock_repo.registra_tentativo_login.return_value = {
+            "bloccato": False, "tentativi": 1, "minuti_rimanenti": 0, "attesa_secondi": 0,
+        }
+        mock_super_post.side_effect = AuthenticationFailed()
+        request = MagicMock()
+        request.data = {"username": "qualcuno"}
+
+        with self.assertLogs("security", level="WARNING") as log:
+            with self.assertRaises(AuthenticationFailed):
+                AdminTokenView().post(request)
+
+        testo = "\n".join(log.output)
+        self.assertIn("security.login_fallito", testo)
+        self.assertIn(f"provenienza={_IP} bloccato=False", testo)
+        self.assertNotIn("security.login_locked", testo)
 
     # Scopo: Il nome si normalizza come lo normalizza il serializer (spazi
     # tolti): « tid » deve trovare la credenziale di «tid» e avere la sua

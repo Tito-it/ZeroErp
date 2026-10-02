@@ -24,7 +24,7 @@ from rest_framework.views import APIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import password_digitata
 from apps.core.api.success_responses import success_response
-from apps.core.api.throttling import PasswordResetRateThrottle
+from apps.core.api.throttling import ConfermaTokenRateThrottle
 from apps.core.services.invito_veste import (
     PortaInvito,
     attiva_veste,
@@ -107,7 +107,7 @@ class AttivazioneVesteView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [PasswordResetRateThrottle]
+    throttle_classes = [ConfermaTokenRateThrottle]
     porta: PortaInvito | None = None
     messaggio_con_password: str = "Accesso attivato. Effettua il login con la nuova password."  # noqa: S105 — testo del messaggio, non una password
     messaggio_cross: str = "Accesso attivato. Effettua il login con le tue credenziali esistenti."

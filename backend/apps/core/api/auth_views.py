@@ -282,6 +282,15 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                     credenziale_id, nome_digest=digest, provenienza=provenienza,
                     successo=False,
                 )
+                # ⭐ Ogni password sbagliata nel log di sicurezza, non solo
+                #    quella che fa scattare il freno (2026-10-02): fino ad
+                #    allora i primi errori stavano solo a DB, mentre un codice
+                #    del secondo fattore sbagliato lasciava gia' la sua riga
+                #    (`security.secondo_fattore_fallito`).
+                logger.warning(
+                    "security.login_fallito %s provenienza=%s bloccato=%s",
+                    chi, provenienza, bool(result.get("bloccato")),
+                )
                 if result.get("bloccato"):
                     logger.warning(
                         "security.login_locked %s provenienza=%s tentativi=%s blocco_minuti=%s",

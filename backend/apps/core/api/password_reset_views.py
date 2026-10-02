@@ -26,7 +26,7 @@ from rest_framework.views import APIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import password_digitata
 from apps.core.api.success_responses import success_response
-from apps.core.api.throttling import PasswordResetRateThrottle
+from apps.core.api.throttling import ConfermaTokenRateThrottle, PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_constants import NOME_SISTEMA_EMAIL
 from apps.core.services.auth_helpers import (
@@ -156,7 +156,7 @@ class PasswordResetConfirmView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [PasswordResetRateThrottle]
+    throttle_classes = [ConfermaTokenRateThrottle]
 
     @extend_schema(request=_RESET_CONFIRM_REQUEST, summary="Conferma reset password", responses={200: dict})
     # Scopo: Consuma token, imposta nuova password, blacklista token JWT,

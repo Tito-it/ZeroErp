@@ -17,8 +17,12 @@
 //        l'applicazione davanti — e per dirla deve essere visibile ANCHE a
 //        zero: verde con lo zero, non nascosto.
 //        ⚠️ Chi lo vede: chi passa la porta dell'endpoint (oggi `AdminAPIView`,
-//        come il pannello). Su 403/401 `disponibile` diventa false e il
-//        pulsante non compare — come il badge code per chi non ha l'area core.
+//        come il pannello). ⭐ Lo dice il chiamante PRIMA della chiamata
+//        (`ammesso`, dalla topbar: `auth.isSuperAdmin`): fino al 2026-10-02 il
+//        pallino PROVAVA l'endpoint per chiunque e si spegneva al 403, e ogni
+//        operatore non amministratore lasciava a ogni accesso un falso
+//        `security.admin_denied` nel log di sicurezza. Il 403/401 resta come
+//        rete: un permesso tolto a sessione aperta spegne il pallino.
 //        ⭐ La RESA (`statoPallino`) sta in `core/utils/pallinoPresidi.js`,
 //        pura e senza import: e' cio' che ha la spec, e importarla da qui
 //        trascinerebbe store → auth → i18n → `localStorage` nel test.
@@ -55,14 +59,18 @@ export function adottaTestataPresidi(testata) {
   adozioni.emetti(testata)
 }
 
-export function usePresidiPolling() {
+// `ammesso`: il chiamante dice se l'utente passa la porta dell'endpoint
+// (getter, reattivo). Assente = si prova, e decide il 403.
+export function usePresidiPolling({ ammesso = () => true } = {}) {
   const testata = ref(null)
   // Quando la testata e' stata letta l'ultima volta: e' nel tooltip, perche'
   // un verde senza ora e' un verde di cui non si sa l'eta'.
   const lettoAlle = ref(null)
-  // false = endpoint negato (403/401): il pulsante non si mostra e il polling
-  // non riparte piu', nemmeno al rientro in primo piano (predicato `abilitato`).
-  const disponibile = ref(true)
+  // L'endpoint ha risposto 403/401: il polling non riparte piu', nemmeno al
+  // rientro in primo piano (predicato `abilitato`).
+  const negato = ref(false)
+  // false = non ammesso o negato: il pulsante non si mostra e non si chiama.
+  const disponibile = computed(() => ammesso() && !negato.value)
 
   const pallino = computed(() => statoPallino(testata.value))
 
@@ -79,7 +87,7 @@ export function usePresidiPolling() {
       } catch (err) {
         const status = err?.response?.status
         if (status === 403 || status === 401) {
-          disponibile.value = false
+          negato.value = true
           ferma()
         }
         // Ogni altro errore mantiene l'ultimo valore: su un contatore
@@ -88,7 +96,9 @@ export function usePresidiPolling() {
     },
     {
       intervalMs: PRESIDI_INTERVAL_MS,
-      abilitato: () => disponibile.value,
+      abilitato: () => !negato.value,
+      // La porta la giudica il BB (anche quando cambia a vista aperta).
+      ammesso,
       // Il pallino nascerebbe vuoto: il primo giro serve subito.
       subitoAlMount: true,
     },

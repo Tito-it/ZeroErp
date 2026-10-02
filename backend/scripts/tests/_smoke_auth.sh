@@ -16,9 +16,10 @@
 #   smoke_login                       # -> TOKEN (e AUTH_STATUS/AUTH_BODY)
 #   smoke_login -D "${TMPFILE}.hdr"   # salva gli header (cookie del refresh)
 # Credenziali (le legge l'include, dagli argomenti dello smoke):
-#   USERNAME = SMOKE_USER (default `tid`: ⚠️ ripiego storico, va creato un
-#              utente DEDICATO agli smoke: docs/it/dev/infra/comandi-utili-run-book.md
-#              §11 «Smoke bash: utente dedicato, secondo fattore, login unico»)
+#   USERNAME = SMOKE_USER: l'utente `smoke`, dedicato agli smoke (dal
+#              2026-10-02; com'e' fatto e come si ricrea:
+#              docs/it/dev/infra/comandi-utili-run-book.md §11). Il default
+#              `tid` resta solo come ripiego per chi non imposta SMOKE_USER.
 #   PASSWORD = primo argomento dello smoke, o SMOKE_PASSWORD; se manca la si
 #              chiede a terminale (con `--senza-prompt`: errore ed uscita).
 #   Uno smoke che vuole un utente diverso riassegna USERNAME/PASSWORD dopo

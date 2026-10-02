@@ -291,18 +291,6 @@ generico `config.fn_pannello_scrivi` sull'oggetto di ogni tabella, la lista è
 ordine si cambiano nel CSV.
 
 ### Aperto — Media priorità
-- ❓ **La scheda rimasta col frontend di una versione precedente** (FE + rilascio,
-  ereditata il 2026-10-02 dalla chiusura di
-  `work-done/brief-be-fe-sicurezza-header-token-mfa.md`, §2.5): dopo un rilascio
-  una scheda aperta da prima non si ripara da sola — col refresh nel cookie esce a
-  ogni scadenza finché non la si ricarica. Prima della produzione serve un avviso
-  «versione nuova, ricarica» o una ricarica automatica. Decisione di Tid
-- ✏️ **Due collaudi a video del secondo fattore** (stessa origine, 2026-10-02): la
-  disattivazione da amministratore (drawer operatore, col motivo, traccia
-  `TOTP_DISABILITATO`) e il segno «richiede il secondo fattore» sul profilo di un
-  reparto. Vogliono un secondo utente col secondo fattore attivo; il resto è
-  collaudato (login a due passi, pagina «Sicurezza», smoke). Guida:
-  `guide/risorse-umane-e-accessi.md`, «Secondo fattore di autenticazione»
 - 🟡 **Le variabili di una versione di template non si validano alla pubblicazione**
   (DB + BE, ereditata il 2026-10-01 dalla chiusura di
   `work-done/brief-db-documenti-versione-contesto-template.md`, D-C3 §7 e §14): le

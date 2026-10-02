@@ -6,7 +6,7 @@
 > **Data**: 2026-09-27 · **Stato**: ✅ **CHIUSO il 2026-09-27.** Lato DB
 > `20260927-40`, `-41` applicati (§2.1); B-20 e F-4 scritti (§3.1), test verdi.
 > ➜ Il controllo a video di F-4 (e di F-3, ereditato dal brief di origine) è il
-> [collaudo in-app](../work-in-progress/collaudo-in-app-consenso-riuso-credenziale.md),
+> [collaudo in-app](collaudo-in-app-consenso-riuso-credenziale.md),
 > da eseguire: quando è verde va in `work-done/` accanto a questo brief.
 >
 > **Origine**: §17 di
@@ -183,7 +183,7 @@ e rimanda con `riusa_auth_user_id`.
   password, veste spenta, consenso in due tempi) e §1.2-bis nuova.
 
 ➜ **Da vedere a video** (nessun presidio lo vede): il copione è il
-[collaudo in-app](../work-in-progress/collaudo-in-app-consenso-riuso-credenziale.md)
+[collaudo in-app](collaudo-in-app-consenso-riuso-credenziale.md)
 (dialog, conferma, rinuncia, rifiuto sull'email di un'altra persona, e la
 non-regressione della forzatura dei pagamenti).
 
@@ -204,6 +204,7 @@ rifiutata).
 | 2026-09-27 | BE | Merge con `Tito-dev`: il §17.4 del brief di origine portato qui come §2.1 (riferimenti rinumerati) |
 | 2026-09-27 | BE/FE | **B-20** e **F-4** (§3.1): endpoint di lettura, `confirm_and_retry` sul codice, BB `useForzaturaConfermata` generalizzato (ok Tid), dialog nel drawer. Resta il controllo a video |
 | 2026-09-27 | BE | **Chiuso** (Tid). Il controllo a video passa al `collaudo-in-app-consenso-riuso-credenziale.md`, in `work-in-progress/` finché non è eseguito. Brief spostato in `work-done/` |
+| 2026-10-02 | — | **Collaudo eseguito** (Tid) e archiviato accanto a questo brief. Aggiunto il caso che mancava, §4-bis: l'email di chi è **già operatore** si rifiuta con `E_CREDENZIALE_GIA_OPERATORE`, senza dialog (rimedio: il reinvito) |
 
 ---
 {% include-markdown "signature-core.md" %}

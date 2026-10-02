@@ -2,7 +2,7 @@
 
 > **Cos'è.** Il copione della validazione a video, da tenere aperto accanto
 > all'applicazione e da spuntare. Il *perché* di ogni scelta sta nel
-> [brief](../work-done/brief-db-credenziale-per-email.md) (§1 il problema, §2.1
+> [brief](brief-db-credenziale-per-email.md) (§1 il problema, §2.1
 > l'esecuzione DB, §3.1 quella BE/FE). Qui c'è solo **cosa fare, cosa deve
 > succedere, e cosa fare se non succede**.
 >
@@ -16,7 +16,18 @@
 > - il dialog e il rifiuto del database leggono **la stessa funzione**
 >   (`script.fn_get_credenziale_per_email`): non possono dire cose diverse.
 >
-> **Stato**: ✏️ scritto il 2026-09-27, da eseguire.
+> **Stato**: ✅ **eseguito (Tid, 2026-10-02)** e archiviato. Il 2026-10-02 il caso
+> «email di chi è già operatore» (§4-bis, mancava nel copione) ha dato il rifiuto
+> giusto, senza dialog.
+>
+> **Quale risposta, per un'email che ha già una credenziale** (regola della madre
+> `anagrafiche.fn_crea_operatore_v2`):
+>
+> | La credenziale di quell'email… | Risposta | § |
+> | --- | --- | --- |
+> | ha solo vesti di **cliente** (portale, shop) di un'azienda, o nessuna veste | il **dialog** del riuso (`E_CREDENZIALE_DA_CONFERMARE`) | §2–§3 |
+> | ha una veste su una **persona fisica diversa** dall'operatore | **rifiuto** `E_CREDENZIALE_ALTRA_PERSONA` | §4 |
+> | è **già un operatore** (veste OPERATORE attiva o spenta) | **rifiuto** `E_CREDENZIALE_GIA_OPERATORE`: il rimedio è il reinvito | §4-bis |
 > **Ambiente**: sviluppo (`dbdev`).
 > **Utente**: un **super admin** (la gestione operatori è solo sua).
 > **Dove**: Amministrazione software → Operatori → *Nuovo*; e Anagrafiche →
@@ -93,6 +104,17 @@ valido qualunque), nome utente a piacere, **la prima email**, una qualifica.
 | --- | --- | --- | --- |
 | **4.1** | Invita al portale il **cliente persona fisica**, con la seconda email | Invito inviato | — |
 | **4.2** | Operatori → *Nuovo*: soggetto nuovo con un codice fiscale **diverso** da quello del cliente, la seconda email, *Salva* | Messaggio di errore **«L'email … appartiene all'accesso di un'altra persona.»** (`E_CREDENZIALE_ALTRA_PERSONA`, 400). ⛔ **Nessun dialog**: questo non si conferma, si corregge l'email | Il dialog si apre: si potrebbe collegare la veste all'accesso di un'altra persona, ⛔ fermati |
+
+---
+
+## 4-bis. Il rifiuto: l'email di chi è già operatore
+
+| | Cosa fare | Cosa deve succedere | Se non succede |
+| --- | --- | --- | --- |
+| **4b.1** | Operatori → *Nuovo* con l'email di un operatore che esiste già (anche se è pure cliente del portale o dello shop) | Messaggio **«L'email … appartiene già a un operatore.»** (`E_CREDENZIALE_GIA_OPERATORE`, 409). ⛔ **Nessun dialog**: una persona ha un operatore solo; se il suo accesso è spento o l'invito non è stato accettato, lo si **reinvia** dal dettaglio dell'operatore | Il dialog si apre: si creerebbe un secondo operatore sulla stessa credenziale, ⛔ fermati |
+
+✅ 2026-10-02 (Tid): con `mc.titini@gmail.com` (`tid`) e `michelecarlo@inwind.it`
+(`pochi`, operatore e cliente dello shop) — rifiuto alle 11:33, nessun dialog.
 
 ---
 

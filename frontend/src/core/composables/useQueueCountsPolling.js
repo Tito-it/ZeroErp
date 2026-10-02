@@ -66,13 +66,20 @@ export function workerOkDaConteggi(conteggi) {
   return (w.coda_lavori?.attivo === true) && (w.coda_stampa?.attivo === true)
 }
 
-export function useQueueCountsPolling() {
+// `ammesso`: il chiamante dice se l'utente passa la porta dell'endpoint
+// (getter, reattivo; dalla topbar: l'area `strumenti` non bloccata). ⭐ Dal
+// 2026-10-02, come il pallino dei presidi: chi non ha l'area non chiama, invece
+// di lasciare a ogni accesso un `security.permission_denied` nel log. Assente =
+// si prova, e decide il 403.
+export function useQueueCountsPolling({ ammesso = () => true } = {}) {
   const conteggi = ref(null)
-  // false = endpoint negato (403/401): il badge non si mostra affatto, e il
-  // polling non riparte piu' — nemmeno tornando in primo piano. E' il predicato
-  // `abilitato` passato al BB: senza, un rientro riaccenderebbe una catena su
-  // un endpoint che ha gia' detto di no.
-  const disponibile = ref(true)
+  // L'endpoint ha risposto 403/401: il polling non riparte piu' — nemmeno
+  // tornando in primo piano. E' nel predicato `abilitato` passato al BB:
+  // senza, un rientro riaccenderebbe una catena su un endpoint che ha gia'
+  // detto di no. Resta come rete: un permesso tolto a sessione aperta.
+  const negato = ref(false)
+  // false = non ammesso o negato: il badge non si mostra affatto.
+  const disponibile = computed(() => ammesso() && !negato.value)
 
   const lavoriVivi = computed(() => contaVivi(conteggi.value, 'coda_lavori'))
   const stampaVive = computed(() => contaVivi(conteggi.value, 'coda_stampa'))
@@ -95,14 +102,16 @@ export function useQueueCountsPolling() {
       } catch (err) {
         const status = err?.response?.status
         if (status === 403 || status === 401) {
-          disponibile.value = false
+          negato.value = true
           ferma()
         }
       }
     },
     {
       intervalMs: INTERVAL_MS,
-      abilitato: () => disponibile.value,
+      abilitato: () => !negato.value,
+      // La porta la giudica il BB (anche quando cambia a vista aperta).
+      ammesso,
       // Il badge nascerebbe vuoto: qui il primo giro serve subito.
       subitoAlMount: true,
     },

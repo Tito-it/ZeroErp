@@ -12,7 +12,7 @@
 8. Checklist post‑riavvio
 9. Comandi veloci (appendice)
 10. Sblocco del secondo fattore (DBA)
-11. Smoke bash: utente dedicato, secondo fattore, login unico
+11. Smoke bash: l'utente `smoke`, secondo fattore, login unico
 
 ---
 
@@ -483,48 +483,75 @@ SELECT data_insert, dettaglio
 
 ---
 
-## 11) Smoke bash: utente dedicato, secondo fattore, login unico
+## 11) Smoke bash: l'utente `smoke`, secondo fattore, login unico
 
 Gli smoke bash (`backend/scripts/tests/smoke-test-*.sh`) fanno il login con un
 solo building block, `smoke_login` di `_smoke_auth.sh`: credenziali da
 `SMOKE_USER` / `SMOKE_PASSWORD` (o primo argomento), secondo fattore da
 `SMOKE_TOTP_SECRET`, e il riuso di `SMOKE_TOKEN` (§11.4).
 
-### 11.1 Perché un utente dedicato
+### 11.1 L'utente `smoke`
 
-Fino al 2026-10-02 gli smoke usavano l'utente personale `tid` (che resta il
-ripiego se `SMOKE_USER` manca). Non va bene:
+Dal 2026-10-02 gli smoke entrano con l'utente **`smoke`**, dedicato a loro
+(prima usavano l'utente personale `tid`, che resta il ripiego solo se
+`SMOKE_USER` manca). Perché non un utente personale:
 
 * il **secondo fattore** è della credenziale: il DB accetta un codice per
-  intervallo di 30 s (anti-replay), quindi ogni login di uno smoke aspetta il
-  passo nuovo, e il passo che usa lo smoke non lo può usare la persona (e
-  viceversa);
+  intervallo di 30 s (anti-replay), quindi il passo che usa lo smoke non lo
+  può usare la persona (e viceversa);
 * un codice già usato o sbagliato conta come **tentativo fallito** sul freno di
-  login della credenziale: un giro di smoke andato storto frena l'accesso di
-  chi lavora;
-* le scritture degli smoke (audit, `user_insert`, sessioni) si confondono con
-  quelle della persona.
+  login della credenziale: un giro di smoke andato storto frenerebbe l'accesso
+  di chi lavora;
+* i due fattori dell'utente stanno in `env.sh`: meglio quelli di un'utenza di
+  prova che quelli di un SUPER_ADMIN personale;
+* le scritture degli smoke (audit, `user_insert`, sessioni) non si confondono
+  con quelle della persona.
 
-### 11.2 Creare l'utente (dall'applicazione, una volta)
+Com'è fatto (verificato il 2026-10-02, `smoke-test-core.sh` 25 OK):
 
-1. **Admin → Amm. Software → Operatori → «Nuovo»**: nome utente (es. `smoke`),
-   un'email che si legge, una qualifica. Poi «Invia invito» e, dal link, la
-   scelta della password (guida `docs/it/guide/risorse-umane-e-accessi.md`,
-   «Invito operatore»).
-2. **Permessi**: gli smoke esercitano tutte le aree, anche in scrittura
+| | |
+| --- | --- |
+| Persona | un soggetto **fittizio** suo, non quello di una persona vera |
+| Email | `mc.titini+smoke@gmail.com` (arriva alla casella di Tid) |
+| Veste | OPERATORE attiva, profilo **`SUPER_ADMIN`**, nessun emittente (admin globale) |
+| Secondo fattore | obbligatorio (SUPER_ADMIN) e configurato: la chiave è in `SMOKE_TOTP_SECRET` |
+
+### 11.2 Ricrearlo (su un'installazione nuova)
+
+1. **La persona: un soggetto NUOVO e fittizio**, per esempio «Smoke Test».
+   ⛔ Non quello di una persona che ha già un accesso: una persona è una risorsa
+   umana sola e ha una credenziale sola (D-6), e il secondo operatore sullo
+   stesso soggetto si rifiuta con `E_RISORSA_UMANA_GIA_PRESENTE` («… è già una
+   risorsa umana», dal 2026-10-02; prima arrivava come `E_DATABASE`). Il codice fiscale, valido e libero, lo
+   dà `SELECT dbops.fn_pgtap_cf_libero();` (una lettura).
+2. **Admin → Amm. Software → Operatori → «Nuovo»** su quel soggetto: nome
+   utente `smoke`, una qualifica, e un'**email nuova**. Un'email che ha già una
+   credenziale operatore si rifiuta (`E_CREDENZIALE_GIA_OPERATORE`): basta
+   l'indirizzo col `+` (`nome+smoke@dominio`), che il DB tratta come un'email
+   diversa (confronto `lower(trim(email))`) e che la casella riceve.
+3. **Invito**: «Invia invito» e, dal link, la scelta della password. ⚠️ Non
+   simile al nome utente (le regole di Django la rifiutano): la conferma col
+   link ha un suo limite di frequenza (`conferma_token`, 10 ogni 15 minuti),
+   la richiesta del link un altro più stretto (`password_reset`, 3 ogni 15).
+4. **Permessi**: gli smoke esercitano tutte le aree, anche in scrittura
    (catalogo, vendite, anagrafiche, pratiche, definizioni di workflow,
    amministrazione), e alcuni lo pretendono esplicitamente (SUPER_ADMIN,
    «admin globale»). Quindi alla veste **OPERATORE** si lega il profilo
    **`SUPER_ADMIN`**, **senza** emittente fiscale assegnato (admin globale:
    `is_admin_globale = true` in `GET /api/v1/core/me/`). La veste OPERATORE
    deve essere **attiva**: `smoke-test-guida-inversione-preventivi.sh` ne legge
-   l'identità per le GUC.
-3. **Secondo fattore**: col profilo SUPER_ADMIN è obbligatorio. Primo login col
-   nuovo utente nel browser → si apre da sola «Sicurezza dell'accesso». Si
-   copia la **chiave** mostrata sotto il QR (32 caratteri, lettere A-Z e cifre
-   2-7: ⛔ non un codice di recupero), si conservano i codici di recupero, si
-   conferma col primo codice (dall'app sul telefono, oppure calcolato dalla
-   chiave: `SMOKE_TOTP_SECRET='<chiave>' backend/.venv/bin/python backend/scripts/tests/_smoke_totp_codice.py`).
+   l'identità per le GUC. Un utente degli smoke non SUPER_ADMIN, per evitare il
+   secondo fattore, è stato scartato (decisione 10 del brief sicurezza).
+5. **Secondo fattore**: col profilo SUPER_ADMIN è obbligatorio. Primo login col
+   nuovo utente in una finestra anonima → si apre da sola «Sicurezza
+   dell'accesso». «Configura», poi si copia la **chiave** mostrata sotto il QR
+   (32 caratteri, lettere A-Z e cifre 2-7, a gruppi di quattro: gli spazi non
+   contano; è lo stesso segreto del QR. ⛔ Non un codice di recupero), si
+   conservano i codici di recupero, e si **conferma** col primo codice, dall'app
+   sul telefono oppure calcolato dalla chiave:
+   `SMOKE_TOTP_SECRET='<chiave>' backend/.venv/bin/python backend/scripts/tests/_smoke_totp_codice.py`.
+   ⚠️ Finché non si preme «Attiva» col codice il device resta `DA_CONFERMARE` e
+   gli smoke ricevono 403.
 
 ### 11.3 Le variabili, in `backend/env.sh`
 
