@@ -30,7 +30,7 @@
 //    (`versione_contesto_builder`): qui si MOSTRA e precompila la nuova
 //    versione, non si confronta — chi rifiuta pubblicazione e stampa e' il
 //    database, con la sua frase.
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateVersioniStore } from '../stores/templateVersioni'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -41,7 +41,7 @@ import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 // `onAccept` callback). Memoria feedback_useconfirmaction_destructuring:
 // usare destructured + nome callback `onAccept` (non `accept`) per
 // evitare dialog silente.
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, DATE_FORMAT } from '../../core/constants'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
 import {
   FORMATI_TEMPLATE,
@@ -63,6 +63,7 @@ import Message from 'primevue/message'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import TemplateAssetRiferimenti from './TemplateAssetRiferimenti.vue'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const props = defineProps({
   templateId: { type: Number, required: true },
@@ -108,6 +109,13 @@ const isNew = computed(() => editing.value && editingVersioneId.value === null)
 // Propaga al drawer padre l'apertura del form (per nascondere la sua
 // FormFooter durante create/edit versione).
 watch(editing, (v) => emit('form-aperto', v))
+// ⚠️ Smontata a form aperto (drawer chiuso: AppDrawer smonta il corpo) il
+//    watch non scatta piu': senza questo il padre resterebbe col footer
+//    spento, e alla riapertura — anche in creazione, dove questa sezione non
+//    c'e' — non avrebbe ne' Salva ne' Annulla.
+onBeforeUnmount(() => {
+  if (editing.value) emit('form-aperto', false)
+})
 
 const form = ref(emptyForm())
 // Modifiche non salvate del form versione. La sezione vive solo dentro il
@@ -377,6 +385,9 @@ async function confirmPubblica() {
     await reload()
   }
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotoPubblica = useFotografiaDialog(() => ({ ...pubblicaForm.value }), { visibile: () => pubblicaDialog.value })
 </script>
 
 <template>
@@ -563,6 +574,7 @@ async function confirmPubblica() {
     </div>
 
     <AppDialog
+      :conferma-uscita="fotoPubblica.chiudiConConferma"
       v-model:visible="pubblicaDialog"
       :header="t('config.modelli_documenti.versioni.publish_title')"
       width="sm"
@@ -584,12 +596,12 @@ async function confirmPubblica() {
         </Message>
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.versioni.field_valido_dal') }} *</label>
-          <DatePicker v-model="pubblicaForm.valido_dal" date-format="dd/mm/yy"
+          <DatePicker v-model="pubblicaForm.valido_dal" :date-format="DATE_FORMAT"
             :invalid="campiErrati.includes('valido_dal')" />
         </div>
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.versioni.field_valido_al') }}</label>
-          <DatePicker v-model="pubblicaForm.valido_al" date-format="dd/mm/yy" show-icon
+          <DatePicker v-model="pubblicaForm.valido_al" :date-format="DATE_FORMAT" show-icon
             :invalid="campiErrati.includes('valido_al')" />
         </div>
       </div>

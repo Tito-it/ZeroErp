@@ -23,18 +23,13 @@
 //    cioè «questo emittente non ha registri» (`feedback_emittente_pk_vs_soggetto_ruolo`).
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import EmittenteFiscaleRegistriTab from './EmittenteFiscaleRegistriTab.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import Drawer from 'primevue/drawer'
-import Button from 'primevue/button'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 
 
 
 const { t } = useI18n()
-const isReadonly = useInjectReadonly()
 
 const props = defineProps({
   visible: Boolean,
@@ -42,10 +37,6 @@ const props = defineProps({
   emittenteRagioneSociale: { type: String, default: '' },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'close'])
 
 const titolo = computed(() => {
@@ -55,36 +46,24 @@ const titolo = computed(() => {
     : base
 })
 
-function chiudi() {
-  emit('update:visible', false)
-  emit('close')
-}
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.XLARGE }"
+    :title="titolo"
+    :icon="MANAGE_ICONS.NUMERAZIONE"
+    :width="DRAWER_WIDTH.XLARGE"
+    footer="chiudi"
     @update:visible="(v) => emit('update:visible', v)"
-    @after-show="onAfterShow"
+    @cancel="emit('close')"
   >
-    <template #header>
-      <DrawerTitle :icon="MANAGE_ICONS.NUMERAZIONE" :title="titolo" />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <EmittenteFiscaleRegistriTab
-        v-if="emittenteSoggettoRuoloId"
-        :emittente-soggetto-ruolo-id="emittenteSoggettoRuoloId"
-        :emittente-ragione-sociale="emittenteRagioneSociale"
-      />
-
-      <!-- `closeOnly`: è un drawer di sola lista, il salvataggio vive nel
-           drawer del singolo registro (`feedback_drawer_footer_close_only`). -->
-      <div class="app-form-footer">
-        <Button :label="t('common.close')" :icon="MANAGE_ICONS.CANCEL" text @click="chiudi" />
-      </div>
-    </div>
-  </Drawer>
+    <EmittenteFiscaleRegistriTab
+      v-if="emittenteSoggettoRuoloId"
+      :emittente-soggetto-ruolo-id="emittenteSoggettoRuoloId"
+      :emittente-ragione-sociale="emittenteRagioneSociale"
+    />
+  </AppDrawer>
 </template>

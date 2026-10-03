@@ -12,7 +12,6 @@
 //        rollback vive nel motore DB/BE (fail-visible sugli errori parlanti).
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
@@ -23,10 +22,9 @@ import Message from 'primevue/message'
 import Button from 'primevue/button'
 import SelectButton from 'primevue/selectbutton'
 import SelectButtonGravita from '../../core/components/SelectButtonGravita.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
 import BersaglioAzioni from '../../core/components/BersaglioAzioni.vue'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
@@ -49,7 +47,6 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useActionPermission } from '../../core/composables/useActionPermission'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
@@ -96,9 +93,9 @@ import { scegliRamoBanner, conteggiDaSegnalazioni } from '../_shared/lotti/ramoB
 import { motivoUscitaBloccata } from '../uscitaDalGiro'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
-import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import GiornaleEntitaTab from '../_shared/giornale/GiornaleEntitaTab.vue'
 import { useLottoGiornaleStore } from '../stores/giornaleEntita'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -116,7 +113,6 @@ const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 const onClose = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const docStore = useDocumentiPerSorgenteStore()
 
 // Readonly effettivo: area in LETTURA (inject dal provider della view) o prop
@@ -1214,528 +1210,526 @@ function gruppoRiferimento(row) {
 function fatturaNumero(row) {
   return row.numero_documento || '—'
 }
-const suVisibile = gestoreVisibile(emit, onClose)
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotoEsclusione = useFotografiaDialog(() => ({ motivo: esclusioneMotivo.value }), { visibile: () => esclusione.value.visible })
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
-    :dismissable="true"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="t('vendite.lotti.drawer_titolo')"
+    :icon="MANAGE_ICONS.LOTTO"
+    :width="DRAWER_WIDTH.WIDE"
+    :proteggi-corpo="false"
+    :readonly="isReadonly"
+    footer="chiudi"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle :title="t('vendite.lotti.drawer_titolo')" :icon="MANAGE_ICONS.LOTTO" />
-    </template>
+    <template v-if="lotto">
+      <DrawerEntityHeader>
+        <Tag :value="lotto.codice" severity="secondary" />
+        <span class="app-text-muted">{{ lotto.tipo_lotto }}</span>
+        <span v-if="lotto.competenza_mese" class="app-text-muted">
+          {{ displayDate(lotto.competenza_mese) }}
+        </span>
+        <template #status>
+          <Tag :value="lotto.stato_lotto" :severity="statoLottoSeverity(lotto.stato_lotto)" />
+        </template>
+      </DrawerEntityHeader>
 
-    <div class="app-drawer-content">
-      <template v-if="contentReady && lotto">
-        <DrawerEntityHeader>
-          <Tag :value="lotto.codice" severity="secondary" />
-          <span class="app-text-muted">{{ lotto.tipo_lotto }}</span>
-          <span v-if="lotto.competenza_mese" class="app-text-muted">
-            {{ displayDate(lotto.competenza_mese) }}
-          </span>
-          <template #status>
-            <Tag :value="lotto.stato_lotto" :severity="statoLottoSeverity(lotto.stato_lotto)" />
-          </template>
-        </DrawerEntityHeader>
+      <!-- Step corrente (stato doc fiscale del lotto). -->
+      <div class="app-lotto-step">
+        <span class="app-text-muted">{{ t('vendite.lotti.step_corrente') }}:</span>
+        <Tag :value="lotto.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
+        <span v-if="lotto.stato_operativo" class="app-text-muted">· {{ lotto.stato_operativo }}</span>
+      </div>
 
-        <!-- Step corrente (stato doc fiscale del lotto). -->
-        <div class="app-lotto-step">
-          <span class="app-text-muted">{{ t('vendite.lotti.step_corrente') }}:</span>
-          <Tag :value="lotto.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
-          <span v-if="lotto.stato_operativo" class="app-text-muted">· {{ lotto.stato_operativo }}</span>
-        </div>
-
-        <!-- Banner del lotto FERMO (blocca l'avanzamento). Compare sul VERDETTO
-             del backend, non su un conteggio: dal 2026-09-12 un lotto puo' essere
-             fermo con zero critiche vive (esiti in errore, D2). -->
-        <!-- ⚠️ Il ROSSO solo dove c'e' qualcosa da fare: su un lotto congelato
-             le critiche sono storia, e un allarme rosso su un giro chiuso
-             insegna a ignorare gli allarmi rossi. -->
-        <Message
-          v-if="lottoFermo"
-          :severity="giroRimediabile ? 'error' : 'secondary'"
-          :closable="false"
-          class="app-mt-1"
-        >
-          {{ fraseBanner }}
-          <!-- Il banner dice QUANTE sono; il dettaglio sta in una scheda sola,
-               e il link ci porta invece di chiedere all'operatore di cercarla.
-               Apre già filtrata sulle critiche: sono quelle di cui parla. -->
-          <Button
-            link
-            size="small"
-            class="app-lotto-segn-link"
-            :label="t('vendite.lotti.segnalazioni_apri')"
-            @click="apriSegnalazioni" />
-        </Message>
+      <!-- Banner del lotto FERMO (blocca l'avanzamento). Compare sul VERDETTO
+           del backend, non su un conteggio: dal 2026-09-12 un lotto puo' essere
+           fermo con zero critiche vive (esiti in errore, D2). -->
+      <!-- ⚠️ Il ROSSO solo dove c'e' qualcosa da fare: su un lotto congelato
+           le critiche sono storia, e un allarme rosso su un giro chiuso
+           insegna a ignorare gli allarmi rossi. -->
+      <Message
+        v-if="lottoFermo"
+        :severity="giroRimediabile ? 'error' : 'secondary'"
+        :closable="false"
+        class="app-mt-1"
+      >
+        {{ fraseBanner }}
+        <!-- Il banner dice QUANTE sono; il dettaglio sta in una scheda sola,
+             e il link ci porta invece di chiedere all'operatore di cercarla.
+             Apre già filtrata sulle critiche: sono quelle di cui parla. -->
+        <Button
+          link
+          size="small"
+          class="app-lotto-segn-link"
+          :label="t('vendite.lotti.segnalazioni_apri')"
+          @click="apriSegnalazioni" />
+      </Message>
 
 
-        <!-- Azioni di governo del lotto. Quali esistono, quali sono abilitate e
-             perché no lo dice il BE (`available_actions`): qui si rende e si
-             chiama. In sola lettura la barra resta vuota. -->
-        <DrawerActionsBar
-          :actions="drawerActions"
-          :info-key="capabilities.stato_info_key || ''"
-          :disabled="loading || azioniLoading"
-        />
+      <!-- Azioni di governo del lotto. Quali esistono, quali sono abilitate e
+           perché no lo dice il BE (`available_actions`): qui si rende e si
+           chiama. In sola lettura la barra resta vuota. -->
+      <DrawerActionsBar
+        :actions="drawerActions"
+        :info-key="capabilities.stato_info_key || ''"
+        :disabled="loading || azioniLoading"
+      />
 
-        <Tabs v-model:value="tabAttiva" class="app-mt-1">
-          <TabList>
-            <!-- ⚠️ «Documenti», non «fatture»: dal 2026-08 un lotto puo'
-                 contenere anche NOTE DI CREDITO, e il verbo «numera» le numera
-                 entrambe sui rispettivi registri (§12.4-bis.8 del brief nota di
-                 credito). Un conteggio che dice «3 fatture» su 2 fatture e una
-                 nota e' un numero giusto con il nome sbagliato. -->
-            <!-- ⚠️ Il conteggio e' il TOTALE del server, non le righe caricate:
-                 con la paginazione «(25)» su 137 documenti sarebbe la
-                 dimensione della pagina spacciata per quantita'. -->
-            <Tab :value="LOTTO_SCHEDE.DOCUMENTI">{{ t('vendite.lotti.tab_documenti') }} ({{ listaDocumenti.totale.value }})</Tab>
-            <!-- ⭐ I documenti PRESI IN CARICO — quelli che una fattura non sono
-                 mai diventati compresi. Il conteggio è quello del server, come
-                 sulle altre schede: dal 2026-09-07 vale su entrambi i tipi di
-                 giro, quindi non ha più bisogno di essere condizionato. -->
-            <Tab :value="LOTTO_SCHEDE.PRESI_IN_CARICO">{{ t('vendite.lotti.tab_gruppi') }} ({{ listaGruppi.totale.value }})</Tab>
-            <Tab :value="LOTTO_SCHEDE.TASK">{{ t('vendite.lotti.tab_task') }} ({{ listaTask.totale.value }})</Tab>
-            <Tab :value="LOTTO_SCHEDE.SEGNALAZIONI">{{ t('vendite.lotti.tab_segnalazioni') }}</Tab>
-            <!-- ⭐ La quarta scheda risponde a una domanda che le altre tre non
-                 fanno: le prime dicono COSA C'E' ORA, questa COSA E' SUCCESSO.
-                 Il conteggio nell'etichetta dice se vale la pena entrare. -->
-            <Tab :value="LOTTO_SCHEDE.STORIA">
-              {{ t('vendite.lotti.tab_storia') }}
-              <template v-if="giornaleStore.totalRecords"> ({{ giornaleStore.totalRecords }})</template>
-            </Tab>
-          </TabList>
-          <TabPanels>
-            <!-- ⭐ I TRE TAB SONO TRE LISTE CONFIGURABILI (seed 45/46/47, FE-2
-                 del brief liste drawer lotto). Le colonne arrivano dal
-                 catalogo: qui restano solo gli slot delle celle che hanno una
-                 resa propria (Tag, icona errore, kebab). Aggiungere una
-                 colonna e' ora un seed, non una riga di `.vue`. -->
-            <TabPanel :value="LOTTO_SCHEDE.DOCUMENTI">
-              <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
-                   destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
-                   stesso di ogni pagina lista.
-                   ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
-                   `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
-              <div class="app-page-toolbar">
-                <PageActionsBar :actions="barraDocumenti">
-                  <template #suffix>
-                    <ListaConfigStatusTag :dirty="azioniDocumenti.dirty.value" />
-                  </template>
-                </PageActionsBar>
-              </div>
-              <ListaConfigurabile
-                ref="listaDocumentiRef"
-                codice="vendite.lotto_fatture"
-                data-key="fattura_id"
-                :rows="listaDocumenti.righe.value"
-                :total="listaDocumenti.totale.value"
-                :loading="tabLoading || listaDocumenti.loading.value"
-                :paginator-options="listaDocumenti.paginatorOptions.value"
-                :page="listaDocumenti.page.value"
-                :sort-field="listaDocumenti.sortField.value"
-                :sort-order="listaDocumenti.sortOrder.value"
-                @page="listaDocumenti.onPage"
-                @sort="listaDocumenti.onSort"
-                @config-loaded="listaDocumenti.onConfigLoaded"
-              >
-                <!-- ⚠️ Il seed dichiara la colonna `numero`, ma a video ci va il
-                     NUMERO DOCUMENTO (`numero - serie`) che arriva gia' composto
-                     dal backend: qui il FE non compone piu' niente. I due nomi
-                     restano diversi di proposito — `numero` e' il campo su cui
-                     si ORDINA, il numero documento e' quello che si LEGGE. -->
-                <template #cell-numero="{ data }">{{ fatturaNumero(data) }}</template>
-                <!-- ⚠️ La natura NON ha slot: il seed dichiara `formato = natura_doc`
-                     e `CellaConfigurabile` la rende con `NaturaDocTag` (dal 18/09,
-                     come `yesno`). La nota di credito non e' un'anomalia: severity
-                     neutra, mai `danger` — e il totale negativo si mostra com'e',
-                     perche' e' il documento a essere di segno opposto. -->
-                <template #cell-stato_doc_fiscale_descrizione="{ data }">
-                  <Tag :value="data.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
+      <Tabs v-model:value="tabAttiva" class="app-mt-1">
+        <TabList>
+          <!-- ⚠️ «Documenti», non «fatture»: dal 2026-08 un lotto puo'
+               contenere anche NOTE DI CREDITO, e il verbo «numera» le numera
+               entrambe sui rispettivi registri (§12.4-bis.8 del brief nota di
+               credito). Un conteggio che dice «3 fatture» su 2 fatture e una
+               nota e' un numero giusto con il nome sbagliato. -->
+          <!-- ⚠️ Il conteggio e' il TOTALE del server, non le righe caricate:
+               con la paginazione «(25)» su 137 documenti sarebbe la
+               dimensione della pagina spacciata per quantita'. -->
+          <Tab :value="LOTTO_SCHEDE.DOCUMENTI">{{ t('vendite.lotti.tab_documenti') }} ({{ listaDocumenti.totale.value }})</Tab>
+          <!-- ⭐ I documenti PRESI IN CARICO — quelli che una fattura non sono
+               mai diventati compresi. Il conteggio è quello del server, come
+               sulle altre schede: dal 2026-09-07 vale su entrambi i tipi di
+               giro, quindi non ha più bisogno di essere condizionato. -->
+          <Tab :value="LOTTO_SCHEDE.PRESI_IN_CARICO">{{ t('vendite.lotti.tab_gruppi') }} ({{ listaGruppi.totale.value }})</Tab>
+          <Tab :value="LOTTO_SCHEDE.TASK">{{ t('vendite.lotti.tab_task') }} ({{ listaTask.totale.value }})</Tab>
+          <Tab :value="LOTTO_SCHEDE.SEGNALAZIONI">{{ t('vendite.lotti.tab_segnalazioni') }}</Tab>
+          <!-- ⭐ La quarta scheda risponde a una domanda che le altre tre non
+               fanno: le prime dicono COSA C'E' ORA, questa COSA E' SUCCESSO.
+               Il conteggio nell'etichetta dice se vale la pena entrare. -->
+          <Tab :value="LOTTO_SCHEDE.STORIA">
+            {{ t('vendite.lotti.tab_storia') }}
+            <template v-if="giornaleStore.totalRecords"> ({{ giornaleStore.totalRecords }})</template>
+          </Tab>
+        </TabList>
+        <TabPanels>
+          <!-- ⭐ I TRE TAB SONO TRE LISTE CONFIGURABILI (seed 45/46/47, FE-2
+               del brief liste drawer lotto). Le colonne arrivano dal
+               catalogo: qui restano solo gli slot delle celle che hanno una
+               resa propria (Tag, icona errore, kebab). Aggiungere una
+               colonna e' ora un seed, non una riga di `.vue`. -->
+          <TabPanel :value="LOTTO_SCHEDE.DOCUMENTI">
+            <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
+                 destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
+                 stesso di ogni pagina lista.
+                 ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
+                 `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
+            <div class="app-page-toolbar">
+              <PageActionsBar :actions="barraDocumenti">
+                <template #suffix>
+                  <ListaConfigStatusTag :dirty="azioniDocumenti.dirty.value" />
                 </template>
-                <template #cell-stato_esecuzione="{ data }">
-                  <span class="app-lotto-esecuzione-cella">
-                    <Tag :value="data.stato_esecuzione" :severity="statoEsecuzioneLottoSeverity(data.stato_esecuzione)" />
-                    <!-- Il PERCHE' accanto al CHE COSA: senza, «ERRORE» e' una
-                         bandiera senza messaggio. Il componente si nasconde da
-                         solo quando non c'e' errore. -->
-                    <ErroreRigaInfo
-                      :messaggio="data.errore_messaggio"
-                      :codice="data.errore_codice"
-                      :quando="data.errore_quando"
-                      :livello="data.errore_livello"
-                      :bersagli="data.errore_bersagli || []"
-                      :entita-corrente="{ tipo: 'FATTURA', id: data.fattura_id }"
-                      :titolo="t('vendite.lotti.errore_documento_titolo')"
-                    />
-                  </span>
-                </template>
-                <!-- ⛔ LO SLOT SI CHIAMA `actions`, NON `cell-azioni`.
-                     `ListaConfigurabile` rende la colonna delle azioni SOLO se
-                     la config la dichiara **e** il caller fornisce lo slot
-                     `#actions` (`haAzioni`).
-                     🔴 Col nome sbagliato la condizione e' falsa e la colonna
-                     non viene resa affatto: nessun kebab, e nessun errore da
-                     nessuna parte.
-                     Il kebab sotto spazio stretto arriva da se'
-                     (`CellaAzioniRiga`): lo scope `compact` non va girato. -->
-                <template #actions="{ data }">
-                  <RowActionsMenu :row="data" :actions="buildFatturaActions(data)" />
-                </template>
-                <!-- Empty-state TRADOTTO: senza lo slot il BB lascia il default
-                     PrimeVue, che e' in inglese. -->
-                <template #empty>
-                  <div class="app-empty-state"><i :class="STATUS_ICONS.VUOTO" /><p>{{ t('vendite.lotti.nessuna_fattura') }}</p></div>
-                </template>
-              </ListaConfigurabile>
-            </TabPanel>
+              </PageActionsBar>
+            </div>
+            <ListaConfigurabile
+              ref="listaDocumentiRef"
+              codice="vendite.lotto_fatture"
+              data-key="fattura_id"
+              :rows="listaDocumenti.righe.value"
+              :total="listaDocumenti.totale.value"
+              :loading="tabLoading || listaDocumenti.loading.value"
+              :paginator-options="listaDocumenti.paginatorOptions.value"
+              :page="listaDocumenti.page.value"
+              :sort-field="listaDocumenti.sortField.value"
+              :sort-order="listaDocumenti.sortOrder.value"
+              @page="listaDocumenti.onPage"
+              @sort="listaDocumenti.onSort"
+              @config-loaded="listaDocumenti.onConfigLoaded"
+            >
+              <!-- ⚠️ Il seed dichiara la colonna `numero`, ma a video ci va il
+                   NUMERO DOCUMENTO (`numero - serie`) che arriva gia' composto
+                   dal backend: qui il FE non compone piu' niente. I due nomi
+                   restano diversi di proposito — `numero` e' il campo su cui
+                   si ORDINA, il numero documento e' quello che si LEGGE. -->
+              <template #cell-numero="{ data }">{{ fatturaNumero(data) }}</template>
+              <!-- ⚠️ La natura NON ha slot: il seed dichiara `formato = natura_doc`
+                   e `CellaConfigurabile` la rende con `NaturaDocTag` (dal 18/09,
+                   come `yesno`). La nota di credito non e' un'anomalia: severity
+                   neutra, mai `danger` — e il totale negativo si mostra com'e',
+                   perche' e' il documento a essere di segno opposto. -->
+              <template #cell-stato_doc_fiscale_descrizione="{ data }">
+                <Tag :value="data.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
+              </template>
+              <template #cell-stato_esecuzione="{ data }">
+                <span class="app-lotto-esecuzione-cella">
+                  <Tag :value="data.stato_esecuzione" :severity="statoEsecuzioneLottoSeverity(data.stato_esecuzione)" />
+                  <!-- Il PERCHE' accanto al CHE COSA: senza, «ERRORE» e' una
+                       bandiera senza messaggio. Il componente si nasconde da
+                       solo quando non c'e' errore. -->
+                  <ErroreRigaInfo
+                    :messaggio="data.errore_messaggio"
+                    :codice="data.errore_codice"
+                    :quando="data.errore_quando"
+                    :livello="data.errore_livello"
+                    :bersagli="data.errore_bersagli || []"
+                    :entita-corrente="{ tipo: 'FATTURA', id: data.fattura_id }"
+                    :titolo="t('vendite.lotti.errore_documento_titolo')"
+                  />
+                </span>
+              </template>
+              <!-- ⛔ LO SLOT SI CHIAMA `actions`, NON `cell-azioni`.
+                   `ListaConfigurabile` rende la colonna delle azioni SOLO se
+                   la config la dichiara **e** il caller fornisce lo slot
+                   `#actions` (`haAzioni`).
+                   🔴 Col nome sbagliato la condizione e' falsa e la colonna
+                   non viene resa affatto: nessun kebab, e nessun errore da
+                   nessuna parte.
+                   Il kebab sotto spazio stretto arriva da se'
+                   (`CellaAzioniRiga`): lo scope `compact` non va girato. -->
+              <template #actions="{ data }">
+                <RowActionsMenu :row="data" :actions="buildFatturaActions(data)" />
+              </template>
+              <!-- Empty-state TRADOTTO: senza lo slot il BB lascia il default
+                   PrimeVue, che e' in inglese. -->
+              <template #empty>
+                <div class="app-empty-state"><i :class="STATUS_ICONS.VUOTO" /><p>{{ t('vendite.lotti.nessuna_fattura') }}</p></div>
+              </template>
+            </ListaConfigurabile>
+          </TabPanel>
 
-            <TabPanel :value="LOTTO_SCHEDE.PRESI_IN_CARICO">
-              <div class="app-page-toolbar">
-                <PageActionsBar :actions="barraGruppi">
-                  <template #suffix>
-                    <ListaConfigStatusTag :dirty="azioniGruppi.dirty.value" />
-                  </template>
-                </PageActionsBar>
-              </div>
-              <ListaConfigurabile
-                ref="listaGruppiRef"
-                codice="vendite.lotto_gruppi"
-                data-key="gruppo_key"
-                :selezione="selezioneDocumenti.perLista.value"
-                :rows="listaGruppi.righe.value"
-                :total="listaGruppi.totale.value"
-                :loading="tabLoading || listaGruppi.loading.value"
-                :paginator-options="listaGruppi.paginatorOptions.value"
-                :page="listaGruppi.page.value"
-                :sort-field="listaGruppi.sortField.value"
-                :sort-order="listaGruppi.sortOrder.value"
-                @page="listaGruppi.onPage"
-                @sort="listaGruppi.onSort"
-                @config-loaded="listaGruppi.onConfigLoaded"
-              >
-                <!-- ⚠️ Il ripiego è la CHIAVE del gruppo, non un trattino: una
-                     riga che ha perso l'identità ha comunque un esito da
-                     raccontare, ed è quella per cui la scheda esiste. -->
-                <template #cell-riferimento="{ data }">
-                  <strong>{{ gruppoRiferimento(data) }}</strong>
+          <TabPanel :value="LOTTO_SCHEDE.PRESI_IN_CARICO">
+            <div class="app-page-toolbar">
+              <PageActionsBar :actions="barraGruppi">
+                <template #suffix>
+                  <ListaConfigStatusTag :dirty="azioniGruppi.dirty.value" />
                 </template>
-                <template #cell-tipo_gruppo="{ data }">
-                  <Tag v-if="data.tipo_gruppo" :value="data.tipo_gruppo" severity="secondary" />
+              </PageActionsBar>
+            </div>
+            <ListaConfigurabile
+              ref="listaGruppiRef"
+              codice="vendite.lotto_gruppi"
+              data-key="gruppo_key"
+              :selezione="selezioneDocumenti.perLista.value"
+              :rows="listaGruppi.righe.value"
+              :total="listaGruppi.totale.value"
+              :loading="tabLoading || listaGruppi.loading.value"
+              :paginator-options="listaGruppi.paginatorOptions.value"
+              :page="listaGruppi.page.value"
+              :sort-field="listaGruppi.sortField.value"
+              :sort-order="listaGruppi.sortOrder.value"
+              @page="listaGruppi.onPage"
+              @sort="listaGruppi.onSort"
+              @config-loaded="listaGruppi.onConfigLoaded"
+            >
+              <!-- ⚠️ Il ripiego è la CHIAVE del gruppo, non un trattino: una
+                   riga che ha perso l'identità ha comunque un esito da
+                   raccontare, ed è quella per cui la scheda esiste. -->
+              <template #cell-riferimento="{ data }">
+                <strong>{{ gruppoRiferimento(data) }}</strong>
+              </template>
+              <template #cell-tipo_gruppo="{ data }">
+                <Tag v-if="data.tipo_gruppo" :value="data.tipo_gruppo" severity="secondary" />
+                <span v-else>—</span>
+              </template>
+              <!-- ⚠️ Vuota quando il documento alimenta PIÙ commesse
+                   (`commesse_n > 1`): non è «non lo so», è «sono più di una»,
+                   e le due cose si scrivono diverse — stessa forma con cui
+                   questa applicazione tratta già il sezionale multiplo. -->
+              <template #cell-commessa_codice="{ data }">
+                <span v-if="data.commessa_codice">{{ data.commessa_codice }}</span>
+                <span
+                  v-else-if="data.commesse_n > 1"
+                  v-tooltip.bottom="t('vendite.lotti.gruppo_commesse_multi_tooltip')"
+                >
+                  <i :class="STATUS_ICONS.MULTIPLI" />
+                  {{ t('vendite.lotti.gruppo_commesse_multi', { n: data.commesse_n }) }}
+                </span>
+                <span v-else>—</span>
+              </template>
+              <!-- ⭐ Il CHE COSA e il PERCHÉ nella stessa cella, come sulla
+                   scheda «Documenti»: il tag dice com'è andata, l'icona apre
+                   il motivo per intero e porta alla commessa da correggere.
+                   ⚠️ Vuoto = MAI TENTATO in questo lotto, e non è «andata
+                   bene»: si scrive «—», che è l'assenza, non un `PENDING`
+                   inventato qui. -->
+              <template #cell-stato_esecuzione="{ data }">
+                <span class="app-lotto-esecuzione-cella">
+                  <Tag
+                    v-if="data.stato_esecuzione"
+                    :value="data.stato_esecuzione"
+                    :severity="statoEsecuzioneLottoSeverity(data.stato_esecuzione)"
+                  />
                   <span v-else>—</span>
-                </template>
-                <!-- ⚠️ Vuota quando il documento alimenta PIÙ commesse
-                     (`commesse_n > 1`): non è «non lo so», è «sono più di una»,
-                     e le due cose si scrivono diverse — stessa forma con cui
-                     questa applicazione tratta già il sezionale multiplo. -->
-                <template #cell-commessa_codice="{ data }">
-                  <span v-if="data.commessa_codice">{{ data.commessa_codice }}</span>
-                  <span
-                    v-else-if="data.commesse_n > 1"
-                    v-tooltip.bottom="t('vendite.lotti.gruppo_commesse_multi_tooltip')"
-                  >
-                    <i :class="STATUS_ICONS.MULTIPLI" />
-                    {{ t('vendite.lotti.gruppo_commesse_multi', { n: data.commesse_n }) }}
-                  </span>
-                  <span v-else>—</span>
-                </template>
-                <!-- ⭐ Il CHE COSA e il PERCHÉ nella stessa cella, come sulla
-                     scheda «Documenti»: il tag dice com'è andata, l'icona apre
-                     il motivo per intero e porta alla commessa da correggere.
-                     ⚠️ Vuoto = MAI TENTATO in questo lotto, e non è «andata
-                     bene»: si scrive «—», che è l'assenza, non un `PENDING`
-                     inventato qui. -->
-                <template #cell-stato_esecuzione="{ data }">
-                  <span class="app-lotto-esecuzione-cella">
-                    <Tag
-                      v-if="data.stato_esecuzione"
-                      :value="data.stato_esecuzione"
-                      :severity="statoEsecuzioneLottoSeverity(data.stato_esecuzione)"
-                    />
-                    <span v-else>—</span>
-                    <ErroreRigaInfo
-                      v-if="data.stato_esecuzione === STATO_ESECUZIONE_LOTTO.ERRORE"
-                      :messaggio="data.errore_messaggio"
-                      :codice="data.errore_codice"
-                      :quando="data.errore_quando"
-                      :bersagli="bersaglioCommessa(data)"
-                      :titolo="t('vendite.lotti.gruppo_errore_titolo')"
-                    />
-                    <!-- ⭐ CHI L'HA TOLTO E PERCHÉ. Il motivo è obbligatorio
-                         (D-5) proprio perché fra un mese qualcuno chiederà come
-                         mai quel documento non è in quella fattura: senza il
-                         nome e la data, «ESCLUSO» è un tag che non risponde.
-                         ⚠️ Il timbro lo scrive un trigger dalla GUC, non il
-                         chiamante — e non riusa `data_update`/`user_update`,
-                         che qualunque aggiornamento successivo riscriverebbe. -->
-                    <i
-                      v-if="data.stato_esecuzione === STATO_ESECUZIONE_LOTTO.ESCLUSO"
-                      v-tooltip.bottom="uscitaTooltip(data)"
-                      :class="STATUS_ICONS.INFO"
-                    />
-                  </span>
-                </template>
-                <!-- ⛔ `actions`, non `cell-azioni`: col nome sbagliato la
-                     colonna non viene resa affatto e non fallisce niente. -->
-                <template #actions="{ data }">
-                  <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" />
-                </template>
-                <!-- ⚠️ Empty-state ONESTO, e la frase è cambiata col modello:
-                     zero righe non vuol più dire «giro di massa, qui non si può
-                     sapere» — vuol dire che di questo lotto non risulta nessun
-                     documento. Vero sia per un lotto che non ha ancora
-                     lavorato, sia per uno anteriore al tracciamento: non si
-                     afferma che non abbia fatto niente, e si dice dove
-                     guardare. -->
-                <template #empty>
-                  <div class="app-empty-state">
-                    <i :class="STATUS_ICONS.VUOTO" />
-                    <p>{{ t('vendite.lotti.nessun_gruppo') }}</p>
-                  </div>
-                </template>
-              </ListaConfigurabile>
-            </TabPanel>
+                  <ErroreRigaInfo
+                    v-if="data.stato_esecuzione === STATO_ESECUZIONE_LOTTO.ERRORE"
+                    :messaggio="data.errore_messaggio"
+                    :codice="data.errore_codice"
+                    :quando="data.errore_quando"
+                    :bersagli="bersaglioCommessa(data)"
+                    :titolo="t('vendite.lotti.gruppo_errore_titolo')"
+                  />
+                  <!-- ⭐ CHI L'HA TOLTO E PERCHÉ. Il motivo è obbligatorio
+                       (D-5) proprio perché fra un mese qualcuno chiederà come
+                       mai quel documento non è in quella fattura: senza il
+                       nome e la data, «ESCLUSO» è un tag che non risponde.
+                       ⚠️ Il timbro lo scrive un trigger dalla GUC, non il
+                       chiamante — e non riusa `data_update`/`user_update`,
+                       che qualunque aggiornamento successivo riscriverebbe. -->
+                  <i
+                    v-if="data.stato_esecuzione === STATO_ESECUZIONE_LOTTO.ESCLUSO"
+                    v-tooltip.bottom="uscitaTooltip(data)"
+                    :class="STATUS_ICONS.INFO"
+                  />
+                </span>
+              </template>
+              <!-- ⛔ `actions`, non `cell-azioni`: col nome sbagliato la
+                   colonna non viene resa affatto e non fallisce niente. -->
+              <template #actions="{ data }">
+                <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" />
+              </template>
+              <!-- ⚠️ Empty-state ONESTO, e la frase è cambiata col modello:
+                   zero righe non vuol più dire «giro di massa, qui non si può
+                   sapere» — vuol dire che di questo lotto non risulta nessun
+                   documento. Vero sia per un lotto che non ha ancora
+                   lavorato, sia per uno anteriore al tracciamento: non si
+                   afferma che non abbia fatto niente, e si dice dove
+                   guardare. -->
+              <template #empty>
+                <div class="app-empty-state">
+                  <i :class="STATUS_ICONS.VUOTO" />
+                  <p>{{ t('vendite.lotti.nessun_gruppo') }}</p>
+                </div>
+              </template>
+            </ListaConfigurabile>
+          </TabPanel>
 
-            <TabPanel :value="LOTTO_SCHEDE.TASK">
+          <TabPanel :value="LOTTO_SCHEDE.TASK">
+            <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
+                 destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
+                 stesso di ogni pagina lista, quindi queste tre si comportano come le
+                 altre anche quando la regola cambia.
+                 ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
+                 `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
+            <!-- ⚠️ Il numero che rende ONESTO il filtro: il default nasconde
+                 gli annullati (sul 6260 sono 80 righe su 90), e senza questa
+                 riga un elenco filtrato e un elenco corto si leggono uguali. -->
+            <Message
+              v-if="esclusiTask > 0"
+              severity="secondary"
+              :closable="false"
+              class="app-mb-1"
+            >
+              {{ t('vendite.lotti.task_esclusi', { n: esclusiTask }) }}
+            </Message>
+
+            <div class="app-page-toolbar">
+              <!-- ⚠️ `:segno` e non `:store`: queste sotto-liste del lotto non
+                   hanno uno store-lista — i loro filtri sono ref di questo
+                   drawer. E' il ripiego dichiarato dal brief. -->
+              <FiltriLista :segno="segnoAmpiezzaTask" @pulisci="azzeraAmpiezzaTask">
+                <!-- Filtro di AMPIEZZA, a sinistra come i filtri di ogni
+                     lista. Non è il gemello del filtro gravità delle
+                     segnalazioni: là si sceglie un livello, qui quanto si
+                     guarda. -->
+                <SelectButton
+                  class="app-filtro-largo"
+                  v-model="ampiezzaTask"
+                  :options="opzioniAmpiezzaTask"
+                  option-label="label"
+                  option-value="value"
+                  :allow-empty="false"
+                  size="small"
+                />
+              </FiltriLista>
+              <PageActionsBar :actions="barraTask">
+                <template #suffix>
+                  <ListaConfigStatusTag :dirty="azioniTask.dirty.value" />
+                </template>
+              </PageActionsBar>
+            </div>
+            <ListaConfigurabile
+              ref="listaTaskRef"
+              codice="vendite.lotto_task_runs"
+              data-key="id"
+              :rows="listaTask.righe.value"
+              :total="listaTask.totale.value"
+              :loading="tabLoading || listaTask.loading.value"
+              :paginator-options="listaTask.paginatorOptions.value"
+              :page="listaTask.page.value"
+              :sort-field="listaTask.sortField.value"
+              :sort-order="listaTask.sortOrder.value"
+              @page="listaTask.onPage"
+              @sort="listaTask.onSort"
+              @config-loaded="listaTask.onConfigLoaded"
+            >
+              <!-- La fase e' l'etichetta leggibile del passo; su un task senza
+                   fase a catalogo si ripiega sul codice, che almeno lo
+                   identifica. -->
+              <template #cell-fase="{ data }">{{ data.fase || data.task_code }}</template>
+              <template #cell-task_stato="{ data }">
+                <Tag :value="data.task_stato" :severity="statoTaskRunSeverity(data.task_stato)" />
+              </template>
+              <template #empty>
+                <div class="app-empty-state"><i :class="STATUS_ICONS.VUOTO" /><p>{{ t('vendite.lotti.nessun_task') }}</p></div>
+              </template>
+            </ListaConfigurabile>
+          </TabPanel>
+
+          <TabPanel :value="LOTTO_SCHEDE.SEGNALAZIONI">
+            <div v-if="segnalazioni">
+              <Message
+                v-if="segnalazioni.blocks_next_step"
+                severity="warn"
+                :closable="false"
+                class="app-mb-1"
+              >
+                {{ t('vendite.lotti.blocca_step') }}
+              </Message>
+
+              <!-- ⚠️ Il numero che rende onesto l'elenco: senza, una lista che
+                   mostra solo l'ultima corsa e una lista vuota si leggono
+                   uguali. -->
+              <Message
+                v-if="segnalazioniFuoriJob > 0"
+                severity="secondary"
+                :closable="false"
+                class="app-mb-1"
+              >
+                {{ t('vendite.lotti.segn_fuori_job', { n: segnalazioniFuoriJob }) }}
+              </Message>
+
               <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
                    destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
                    stesso di ogni pagina lista, quindi queste tre si comportano come le
                    altre anche quando la regola cambia.
                    ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
                    `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
-              <!-- ⚠️ Il numero che rende ONESTO il filtro: il default nasconde
-                   gli annullati (sul 6260 sono 80 righe su 90), e senza questa
-                   riga un elenco filtrato e un elenco corto si leggono uguali. -->
-              <Message
-                v-if="esclusiTask > 0"
-                severity="secondary"
-                :closable="false"
-                class="app-mb-1"
-              >
-                {{ t('vendite.lotti.task_esclusi', { n: esclusiTask }) }}
-              </Message>
-
               <div class="app-page-toolbar">
-                <!-- ⚠️ `:segno` e non `:store`: queste sotto-liste del lotto non
-                     hanno uno store-lista — i loro filtri sono ref di questo
-                     drawer. E' il ripiego dichiarato dal brief. -->
-                <FiltriLista :segno="segnoAmpiezzaTask" @pulisci="azzeraAmpiezzaTask">
-                  <!-- Filtro di AMPIEZZA, a sinistra come i filtri di ogni
-                       lista. Non è il gemello del filtro gravità delle
-                       segnalazioni: là si sceglie un livello, qui quanto si
-                       guarda. -->
-                  <SelectButton
+                <FiltriLista :segno="segnoLivelloSegnalazioni" @pulisci="azzeraLivelloSegnalazioni">
+                  <!-- Filtro per livello, a sinistra come i filtri di ogni
+                       lista. Il CONTEGGIO sta nell'etichetta: dice se vale la
+                       pena guardare quel livello. -->
+                  <SelectButtonGravita
                     class="app-filtro-largo"
-                    v-model="ampiezzaTask"
-                    :options="opzioniAmpiezzaTask"
-                    option-label="label"
-                    option-value="value"
-                    :allow-empty="false"
-                    size="small"
+                    v-model="livelloSegnalazioni"
+                    :options="opzioniLivello"
                   />
                 </FiltriLista>
-                <PageActionsBar :actions="barraTask">
+                <PageActionsBar :actions="barraSegnalazioni">
                   <template #suffix>
-                    <ListaConfigStatusTag :dirty="azioniTask.dirty.value" />
+                    <ListaConfigStatusTag :dirty="azioniSegnalazioni.dirty.value" />
                   </template>
                 </PageActionsBar>
               </div>
               <ListaConfigurabile
-                ref="listaTaskRef"
-                codice="vendite.lotto_task_runs"
-                data-key="id"
-                :rows="listaTask.righe.value"
-                :total="listaTask.totale.value"
-                :loading="tabLoading || listaTask.loading.value"
-                :paginator-options="listaTask.paginatorOptions.value"
-                :page="listaTask.page.value"
-                :sort-field="listaTask.sortField.value"
-                :sort-order="listaTask.sortOrder.value"
-                @page="listaTask.onPage"
-                @sort="listaTask.onSort"
-                @config-loaded="listaTask.onConfigLoaded"
+                ref="listaSegnalazioniRef"
+                codice="vendite.lotto_segnalazioni"
+                data-key="riga_key"
+                :rows="listaSegnalazioni.righe.value"
+                :total="listaSegnalazioni.totale.value"
+                :loading="tabLoading || listaSegnalazioni.loading.value"
+                :paginator-options="listaSegnalazioni.paginatorOptions.value"
+                :page="listaSegnalazioni.page.value"
+                :sort-field="listaSegnalazioni.sortField.value"
+                :sort-order="listaSegnalazioni.sortOrder.value"
+                @page="listaSegnalazioni.onPage"
+                @sort="listaSegnalazioni.onSort"
+                @config-loaded="listaSegnalazioni.onConfigLoaded"
               >
-                <!-- La fase e' l'etichetta leggibile del passo; su un task senza
-                     fase a catalogo si ripiega sul codice, che almeno lo
-                     identifica. -->
-                <template #cell-fase="{ data }">{{ data.fase || data.task_code }}</template>
-                <template #cell-task_stato="{ data }">
-                  <Tag :value="data.task_stato" :severity="statoTaskRunSeverity(data.task_stato)" />
+                <!-- Il livello col colore della sua gravita', la stessa scala
+                     del filtro qui sopra. -->
+                <template #cell-livello="{ data }">
+                  <Tag :value="data.livello" :severity="severitaLivelloSegnalazione(data.livello)" />
+                </template>
+                <!-- ⭐ IL MESSAGGIO, E IL MODO DI ARRIVARCI. Questa scheda e'
+                     la superficie dove l'errore si legge DOPO — a giro
+                     finito, magari il mattino seguente: e' il lettore che il
+                     §1 del brief chiama «l'operatore cinque minuti dopo».
+                     ⛔ Il gesto NON si costruisce su `fattura_id`, che pure
+                     sta nella riga: quello e' il documento che ha FALLITO e
+                     che l'operatore sta gia' guardando qui; il bersaglio e'
+                     dove deve ANDARE.
+                     ⭐ E dal `T-3b` (2026-08-24) `fattura_id` torna utile
+                     proprio per QUESTO: il bersaglio porta ora anche il
+                     documento su cui l'errore e' successo — che su una riga
+                     e' la riga stessa — e passandolo come `entitaCorrente`
+                     quel pulsante si nasconde. Non e' il gesto: e' cio' che
+                     il gesto NON deve essere.
+                     ⚠️ Le righe di LOTTO non hanno documento: li' `null`,
+                     cioe' nessun filtro. -->
+                <template #cell-messaggio="{ data }">
+                  <div class="app-segn-messaggio">
+                    <span>{{ data.messaggio }}</span>
+                    <BersaglioAzioni
+                      :bersagli="data.target"
+                      :entita-corrente="data.fattura_id ? { tipo: 'FATTURA', id: data.fattura_id } : null"
+                    />
+                  </div>
+                </template>
+                <!-- Sulle righe di LOTTO non c'e' documento: si mostra la
+                     fase invece di un trattino muto. -->
+                <template #cell-documento_display="{ data }">
+                  <span v-if="data.documento_display">{{ data.documento_display }}</span>
+                  <span v-else class="app-text-muted">{{ data.fase || t('vendite.lotti.segn_origine_lotto') }}</span>
+                </template>
+                <!-- ⭐ DI CHI E' LA CRITICA — la colonna che divide la scheda
+                     in DUE FAMIGLIE con vie d'uscita diverse: quella di un
+                     documento si toglie dal giro, quella del GIRO si corregge
+                     e basta. Prima erano indistinguibili, ed è la ragione per
+                     cui l'unica proposta a video era «annulla tutto».
+                     ⚠️ Il vuoto si SCRIVE, non si lascia in bianco: «è del
+                     giro» è un'informazione, non un dato mancante.
+                     ⭐ Si legge il RIFERIMENTO e non la chiave (2026-09-08):
+                     `ORD0036004` invece di `ORDINE_VENDITA:<uuid>`. I due non
+                     sono in concorrenza — servono a destinatari diversi: la
+                     chiave la vuole il PULSANTE e continua a viaggiare in
+                     riga, il riferimento è per la persona ed è l'unico dei
+                     due che si vede (la colonna della chiave è spenta a
+                     catalogo, D-7).
+                     ⚠️ Nessun ripiego sulla chiave qui: la scala di ripiego
+                     la fa già il database — numero del documento, codice
+                     commessa, chiave grezza — e rifarla qui sarebbe la terza
+                     sede della stessa regola. -->
+                <template #cell-riferimento="{ data }">
+                  <span v-if="data.riferimento">{{ data.riferimento }}</span>
+                  <span v-else class="app-text-muted">
+                    {{ t('vendite.lotti.segn_del_giro') }}
+                  </span>
+                </template>
+                <!-- ⛔ `actions`, non `cell-azioni`: col nome sbagliato la
+                     colonna non viene resa affatto e non fallisce niente. -->
+                <template #actions="{ data }">
+                  <RowActionsMenu
+                    :row="data"
+                    :actions="buildSegnalazioneRowActions(data)"
+                  />
                 </template>
                 <template #empty>
-                  <div class="app-empty-state"><i :class="STATUS_ICONS.VUOTO" /><p>{{ t('vendite.lotti.nessun_task') }}</p></div>
+                  <div class="app-empty-state">
+                    <i :class="STATUS_ICONS.TUTTO_OK" />
+                    <p>{{ t('vendite.lotti.nessuna_segnalazione_livello') }}</p>
+                  </div>
                 </template>
               </ListaConfigurabile>
-            </TabPanel>
-
-            <TabPanel :value="LOTTO_SCHEDE.SEGNALAZIONI">
-              <div v-if="segnalazioni">
-                <Message
-                  v-if="segnalazioni.blocks_next_step"
-                  severity="warn"
-                  :closable="false"
-                  class="app-mb-1"
-                >
-                  {{ t('vendite.lotti.blocca_step') }}
-                </Message>
-
-                <!-- ⚠️ Il numero che rende onesto l'elenco: senza, una lista che
-                     mostra solo l'ultima corsa e una lista vuota si leggono
-                     uguali. -->
-                <Message
-                  v-if="segnalazioniFuoriJob > 0"
-                  severity="secondary"
-                  :closable="false"
-                  class="app-mb-1"
-                >
-                  {{ t('vendite.lotti.segn_fuori_job', { n: segnalazioniFuoriJob }) }}
-                </Message>
-
-                <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
-                     destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
-                     stesso di ogni pagina lista, quindi queste tre si comportano come le
-                     altre anche quando la regola cambia.
-                     ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
-                     `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
-                <div class="app-page-toolbar">
-                  <FiltriLista :segno="segnoLivelloSegnalazioni" @pulisci="azzeraLivelloSegnalazioni">
-                    <!-- Filtro per livello, a sinistra come i filtri di ogni
-                         lista. Il CONTEGGIO sta nell'etichetta: dice se vale la
-                         pena guardare quel livello. -->
-                    <SelectButtonGravita
-                      class="app-filtro-largo"
-                      v-model="livelloSegnalazioni"
-                      :options="opzioniLivello"
-                    />
-                  </FiltriLista>
-                  <PageActionsBar :actions="barraSegnalazioni">
-                    <template #suffix>
-                      <ListaConfigStatusTag :dirty="azioniSegnalazioni.dirty.value" />
-                    </template>
-                  </PageActionsBar>
-                </div>
-                <ListaConfigurabile
-                  ref="listaSegnalazioniRef"
-                  codice="vendite.lotto_segnalazioni"
-                  data-key="riga_key"
-                  :rows="listaSegnalazioni.righe.value"
-                  :total="listaSegnalazioni.totale.value"
-                  :loading="tabLoading || listaSegnalazioni.loading.value"
-                  :paginator-options="listaSegnalazioni.paginatorOptions.value"
-                  :page="listaSegnalazioni.page.value"
-                  :sort-field="listaSegnalazioni.sortField.value"
-                  :sort-order="listaSegnalazioni.sortOrder.value"
-                  @page="listaSegnalazioni.onPage"
-                  @sort="listaSegnalazioni.onSort"
-                  @config-loaded="listaSegnalazioni.onConfigLoaded"
-                >
-                  <!-- Il livello col colore della sua gravita', la stessa scala
-                       del filtro qui sopra. -->
-                  <template #cell-livello="{ data }">
-                    <Tag :value="data.livello" :severity="severitaLivelloSegnalazione(data.livello)" />
-                  </template>
-                  <!-- ⭐ IL MESSAGGIO, E IL MODO DI ARRIVARCI. Questa scheda e'
-                       la superficie dove l'errore si legge DOPO — a giro
-                       finito, magari il mattino seguente: e' il lettore che il
-                       §1 del brief chiama «l'operatore cinque minuti dopo».
-                       ⛔ Il gesto NON si costruisce su `fattura_id`, che pure
-                       sta nella riga: quello e' il documento che ha FALLITO e
-                       che l'operatore sta gia' guardando qui; il bersaglio e'
-                       dove deve ANDARE.
-                       ⭐ E dal `T-3b` (2026-08-24) `fattura_id` torna utile
-                       proprio per QUESTO: il bersaglio porta ora anche il
-                       documento su cui l'errore e' successo — che su una riga
-                       e' la riga stessa — e passandolo come `entitaCorrente`
-                       quel pulsante si nasconde. Non e' il gesto: e' cio' che
-                       il gesto NON deve essere.
-                       ⚠️ Le righe di LOTTO non hanno documento: li' `null`,
-                       cioe' nessun filtro. -->
-                  <template #cell-messaggio="{ data }">
-                    <div class="app-segn-messaggio">
-                      <span>{{ data.messaggio }}</span>
-                      <BersaglioAzioni
-                        :bersagli="data.target"
-                        :entita-corrente="data.fattura_id ? { tipo: 'FATTURA', id: data.fattura_id } : null"
-                      />
-                    </div>
-                  </template>
-                  <!-- Sulle righe di LOTTO non c'e' documento: si mostra la
-                       fase invece di un trattino muto. -->
-                  <template #cell-documento_display="{ data }">
-                    <span v-if="data.documento_display">{{ data.documento_display }}</span>
-                    <span v-else class="app-text-muted">{{ data.fase || t('vendite.lotti.segn_origine_lotto') }}</span>
-                  </template>
-                  <!-- ⭐ DI CHI E' LA CRITICA — la colonna che divide la scheda
-                       in DUE FAMIGLIE con vie d'uscita diverse: quella di un
-                       documento si toglie dal giro, quella del GIRO si corregge
-                       e basta. Prima erano indistinguibili, ed è la ragione per
-                       cui l'unica proposta a video era «annulla tutto».
-                       ⚠️ Il vuoto si SCRIVE, non si lascia in bianco: «è del
-                       giro» è un'informazione, non un dato mancante.
-                       ⭐ Si legge il RIFERIMENTO e non la chiave (2026-09-08):
-                       `ORD0036004` invece di `ORDINE_VENDITA:<uuid>`. I due non
-                       sono in concorrenza — servono a destinatari diversi: la
-                       chiave la vuole il PULSANTE e continua a viaggiare in
-                       riga, il riferimento è per la persona ed è l'unico dei
-                       due che si vede (la colonna della chiave è spenta a
-                       catalogo, D-7).
-                       ⚠️ Nessun ripiego sulla chiave qui: la scala di ripiego
-                       la fa già il database — numero del documento, codice
-                       commessa, chiave grezza — e rifarla qui sarebbe la terza
-                       sede della stessa regola. -->
-                  <template #cell-riferimento="{ data }">
-                    <span v-if="data.riferimento">{{ data.riferimento }}</span>
-                    <span v-else class="app-text-muted">
-                      {{ t('vendite.lotti.segn_del_giro') }}
-                    </span>
-                  </template>
-                  <!-- ⛔ `actions`, non `cell-azioni`: col nome sbagliato la
-                       colonna non viene resa affatto e non fallisce niente. -->
-                  <template #actions="{ data }">
-                    <RowActionsMenu
-                      :row="data"
-                      :actions="buildSegnalazioneRowActions(data)"
-                    />
-                  </template>
-                  <template #empty>
-                    <div class="app-empty-state">
-                      <i :class="STATUS_ICONS.TUTTO_OK" />
-                      <p>{{ t('vendite.lotti.nessuna_segnalazione_livello') }}</p>
-                    </div>
-                  </template>
-                </ListaConfigurabile>
-              </div>
-              <div v-else class="app-empty-state"><i :class="STATUS_ICONS.TUTTO_OK" /><p>{{ t('vendite.lotti.nessuna_segnalazione') }}</p></div>
-            </TabPanel>
-            <TabPanel :value="LOTTO_SCHEDE.STORIA">
-              <!-- ⭐ LA STORIA DEL LOTTO — «cosa è successo, in che ordine».
-                   La lista a catalogo `vendite.giornale` sul lotto PIÙ le sue
-                   fatture (sorgente `script.vw_giornale_entita`: sul lotto
-                   rispondono `EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`, più
-                   `FATTURA_LOG` per i documenti che contiene).
-                   ⭐ Le righe della FATTURA ci sono di proposito: il lotto
-                   ripete «Esito fatture lotto · WARN» e il motivo sta sul
-                   documento, perché la sua entità è la fattura — ed è per
-                   questo che le colonne Entità/Riferimento servono.
-                   ⛔ Non è la scheda «Segnalazioni»: quella elenca i problemi
-                   APERTI da risolvere, qui c'è anche ciò che è andato bene. -->
-              <GiornaleEntitaTab
-                :store="giornaleStore"
-                :entita-id="lottoId"
-                :emittente-soggetto-ruolo-id="lotto.emittente_soggetto_ruolo_id"
-              />
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
-      </template>
-
-      <FormFooter close-only @cancel="onClose" />
-    </div>
+            </div>
+            <div v-else class="app-empty-state"><i :class="STATUS_ICONS.TUTTO_OK" /><p>{{ t('vendite.lotti.nessuna_segnalazione') }}</p></div>
+          </TabPanel>
+          <TabPanel :value="LOTTO_SCHEDE.STORIA">
+            <!-- ⭐ LA STORIA DEL LOTTO — «cosa è successo, in che ordine».
+                 La lista a catalogo `vendite.giornale` sul lotto PIÙ le sue
+                 fatture (sorgente `script.vw_giornale_entita`: sul lotto
+                 rispondono `EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`, più
+                 `FATTURA_LOG` per i documenti che contiene).
+                 ⭐ Le righe della FATTURA ci sono di proposito: il lotto
+                 ripete «Esito fatture lotto · WARN» e il motivo sta sul
+                 documento, perché la sua entità è la fattura — ed è per
+                 questo che le colonne Entità/Riferimento servono.
+                 ⛔ Non è la scheda «Segnalazioni»: quella elenca i problemi
+                 APERTI da risolvere, qui c'è anche ciò che è andato bene. -->
+            <GiornaleEntitaTab
+              :store="giornaleStore"
+              :entita-id="lottoId"
+              :emittente-soggetto-ruolo-id="lotto.emittente_soggetto_ruolo_id"
+            />
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
+    </template>
 
     <!-- I tre dialog di export (uno per lista): scelta del formato e download.
        ⚠️ Fuori dal drawer nel markup ma dentro il componente: sono teleported
@@ -1792,6 +1786,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
          e senza questo `FormFooter` erediterebbe readonly e nasconderebbe la
          conferma di un'azione che su quello stato è legittima. -->
     <AppDialog
+      :conferma-uscita="fotoEsclusione.chiudiConConferma"
       v-model:visible="esclusione.visible"
       :header="t('vendite.lotti.gruppo_escludi_header')"
       width="md"
@@ -1834,7 +1829,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
         />
       </div>
     </AppDialog>
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>

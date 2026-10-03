@@ -1807,6 +1807,34 @@ a {
   padding-top: 1rem;
 }
 
+/* Footer di AppDrawer con azioni in piu' a sinistra (`#footer-azioni`: il
+   «Ripristina» delle personalizzazioni) + Annulla/Salva a destra. Su drawer
+   stretto va a capo, mai farsi tagliare: `flex-wrap` + `margin-left: auto`
+   che si annulla quando si va a capo. Il footer (`.p-drawer-footer`) e'
+   FRATELLO del contenuto: la `@container` si misura sul footer stesso. */
+.app-drawer-footer-azioni {
+  container-type: inline-size;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: 100%;
+  /* Lo stacco dal corpo e' qui, non sul FormFooter: cosi' «Ripristina» e
+     Annulla/Salva stanno sulla stessa riga visiva. */
+  padding-top: 1rem;
+}
+.app-drawer-footer-azioni > .app-form-footer {
+  margin-left: auto;
+  padding-top: 0;
+}
+@container (max-width: 559.98px) {
+  .app-drawer-footer-azioni > .app-form-footer {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
 /* ===== Loading spinner centrato =====
  * Applicare class="app-loading" su un div wrapper.
  * Contenuto: <i class="pi pi-spin pi-spinner" /> */

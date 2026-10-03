@@ -27,18 +27,15 @@
 //    (lock a DB, `E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE`).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { lookupUbicazioni } from '../api/magazzino'
@@ -59,9 +56,6 @@ const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const close = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(close)
-
-// Contenuto deferito a fine animazione (`feedback_content_ready_after_show`).
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const isEdit = computed(() => props.ubicazioneId != null)
 
@@ -84,7 +78,6 @@ const form = ref(formVuoto())
 const {
   fissa, modificato, chiudiConConferma, fotografia,
 } = useDrawerFormPreserve(form, { visibile: () => props.visible })
-const chiudi = () => chiudiConConferma(close)
 
 // Scopo: le ubicazioni del magazzino come opzioni del padre: etichetta
 //        «codice — descrizione». PURA (solo la risposta): finisce nella cache
@@ -190,79 +183,76 @@ async function handleSave() {
     close()
   }
 }
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
-    :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH.SIMPLE }"
-    @after-show="onAfterShow"
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('magazzino.ubicazioni.titolo_singolare')"
+    :icon="MANAGE_ICONS.UBICAZIONI"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.SIMPLE"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('magazzino.ubicazioni.titolo_singolare')"
-        :icon="MANAGE_ICONS.UBICAZIONI" />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div class="form-grid">
-        <div class="form-field">
-          <label>{{ t('magazzino.ubicazioni.field_codice') }} *</label>
-          <InputText v-model="form.codice" :disabled="isReadonly" :invalid="campiErrati.includes('codice')" />
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('magazzino.ubicazioni.field_tipo') }} *</label>
-          <LookupSelect
-            v-model="form.tipo_id"
-            rel="config.tipi_ubicazione"
-            show-code
-            :disabled="isReadonly"
-            :invalid="campiErrati.includes('tipo_id')"
-          />
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('magazzino.ubicazioni.field_parent') }}</label>
-          <!-- Le ubicazioni DI QUESTO magazzino, senza questa: la chiave di
-               cache porta il magazzino, e la lista la invalida a ogni scrittura. -->
-          <LookupSelect
-            :key="`padre-${magazzinoId}-${ubicazioneId ?? 'new'}`"
-            v-model="form.parent_id"
-            :fetcher="fetchPadri"
-            :lookup-key="chiaveLookupUbicazioni(magazzinoId)"
-            :transform="opzioniPadre"
-            :exclude-value="ubicazioneId"
-            label-field="etichetta"
-            show-clear
-            :disabled="isReadonly"
-            :invalid="campiErrati.includes('parent_id')"
-          />
-          <small class="app-text-muted">{{ t('magazzino.ubicazioni.hint_parent') }}</small>
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('magazzino.ubicazioni.field_descrizione') }}</label>
-          <InputText v-model="form.descrizione" :disabled="isReadonly" :invalid="campiErrati.includes('descrizione')" />
-        </div>
-
-        <div class="app-drawer-section"><h4>{{ t('magazzino.ubicazioni.sezione_posizione') }}</h4></div>
-        <div v-for="k in CAMPI_POSIZIONE" :key="k" class="form-field">
-          <label>{{ t(`magazzino.ubicazioni.field_${k}`) }}</label>
-          <InputText v-model="form[k]" :disabled="isReadonly" :invalid="campiErrati.includes(k)" />
-        </div>
-
-        <div v-if="isEdit" class="form-field">
-          <label>{{ t('magazzino.ubicazioni.field_attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadonly" :invalid="campiErrati.includes('attivo')" />
-          <small class="app-text-muted">{{ t('magazzino.ubicazioni.hint_attivo') }}</small>
-        </div>
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t('magazzino.ubicazioni.field_codice') }} *</label>
+        <InputText v-model="form.codice" :disabled="isReadonly" :invalid="campiErrati.includes('codice')" />
       </div>
 
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
+      <div class="form-field">
+        <label>{{ t('magazzino.ubicazioni.field_tipo') }} *</label>
+        <LookupSelect
+          v-model="form.tipo_id"
+          rel="config.tipi_ubicazione"
+          show-code
+          :disabled="isReadonly"
+          :invalid="campiErrati.includes('tipo_id')"
+        />
+      </div>
+
+      <div class="form-field">
+        <label>{{ t('magazzino.ubicazioni.field_parent') }}</label>
+        <!-- Le ubicazioni DI QUESTO magazzino, senza questa: la chiave di
+             cache porta il magazzino, e la lista la invalida a ogni scrittura. -->
+        <LookupSelect
+          :key="`padre-${magazzinoId}-${ubicazioneId ?? 'new'}`"
+          v-model="form.parent_id"
+          :fetcher="fetchPadri"
+          :lookup-key="chiaveLookupUbicazioni(magazzinoId)"
+          :transform="opzioniPadre"
+          :exclude-value="ubicazioneId"
+          label-field="etichetta"
+          show-clear
+          :disabled="isReadonly"
+          :invalid="campiErrati.includes('parent_id')"
+        />
+        <small class="app-text-muted">{{ t('magazzino.ubicazioni.hint_parent') }}</small>
+      </div>
+
+      <div class="form-field">
+        <label>{{ t('magazzino.ubicazioni.field_descrizione') }}</label>
+        <InputText v-model="form.descrizione" :disabled="isReadonly" :invalid="campiErrati.includes('descrizione')" />
+      </div>
+
+      <div class="app-drawer-section"><h4>{{ t('magazzino.ubicazioni.sezione_posizione') }}</h4></div>
+      <div v-for="k in CAMPI_POSIZIONE" :key="k" class="form-field">
+        <label>{{ t(`magazzino.ubicazioni.field_${k}`) }}</label>
+        <InputText v-model="form[k]" :disabled="isReadonly" :invalid="campiErrati.includes(k)" />
+      </div>
+
+      <div v-if="isEdit" class="form-field">
+        <label>{{ t('magazzino.ubicazioni.field_attivo') }}</label>
+        <ToggleSwitch v-model="form.attivo" :disabled="isReadonly" :invalid="campiErrati.includes('attivo')" />
+        <small class="app-text-muted">{{ t('magazzino.ubicazioni.hint_attivo') }}</small>
+      </div>
     </div>
-  </Drawer>
+  </AppDrawer>
 </template>

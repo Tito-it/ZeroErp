@@ -30,7 +30,6 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { labelOrCode } from '../../core/utils/i18nLabel'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
@@ -40,7 +39,7 @@ import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
 import PuntoEstensione from '../../core/components/PuntoEstensione.vue'
@@ -49,7 +48,6 @@ import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import InputText from 'primevue/inputtext'
-import FormFooter from '../../core/components/FormFooter.vue'
 import RiepilogoIvaTable from '../../core/components/RiepilogoIvaTable.vue'
 import ScadenzeSintesi from '../../core/components/ScadenzeSintesi.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
@@ -57,7 +55,6 @@ import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBa
 import FatturaNoteDrawer from './FatturaNoteDrawer.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
@@ -80,7 +77,6 @@ import { exportRigheLista, getFatturaDettaglio } from '../api/fatture'
 import { useFatturaRigheStore } from '../stores/fatturaRighe'
 import GiornaleEntitaTab from '../_shared/giornale/GiornaleEntitaTab.vue'
 import { useFatturaGiornaleStore } from '../stores/giornaleEntita'
-import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -91,7 +87,6 @@ const emit = defineEmits(['update:visible'])
 const { t, te } = useI18n()
 const onClose = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 // I contributi al punto si caricano ora, non quando il punto si monta.
 precaricaPunto(PUNTI_ESTENSIONE.FATTURA_DRAWER_SEZIONI)
 const { execute } = useApiHandler()
@@ -408,338 +403,331 @@ function onNoteSaved(total) {
   if (typeof total === 'number' && Number.isFinite(total)) noteCount.value = total
 }
 
-const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- Livello oggetto BLOCCATO: pannello sostitutivo (safety net — il BE
+       risponde comunque 403 sul dettaglio). -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="t('vendite.fatture.drawer_titolo')"
+    :icon="NAV_ICONS.FATTURE"
+    :width="DRAWER_WIDTH.WIDE"
+    footer="chiudi"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle :title="t('vendite.fatture.drawer_titolo')" :icon="NAV_ICONS.FATTURE" />
-    </template>
-
-    <!-- Livello oggetto BLOCCATO: pannello sostitutivo (safety net — il BE
-         risponde comunque 403 sul dettaglio). -->
     <AccessoBloccatoPanel v-if="isBlocked" />
+    <template v-else>
+      <div v-if="loading && !fattura" class="app-loading">
+        <i :class="STATUS_ICONS.CARICAMENTO" />
+      </div>
 
-    <div v-else class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <template v-if="contentReady">
-        <div v-if="loading && !fattura" class="app-loading">
-          <i :class="STATUS_ICONS.CARICAMENTO" />
+      <template v-if="fattura">
+        <!-- Header: numero e data emissione etichettati (in un documento
+             fiscale un valore nudo non dice quale dei due è). Il cliente non
+             sta qui: è la prima voce della sezione Cliente. -->
+        <DrawerEntityHeader>
+          <span class="app-drawer-header-muted">{{ t('vendite.fatture.label_numero') }}</span>
+          <Tag :value="numeroDisplay" severity="secondary" />
+          <template v-if="fattura.data">
+            <span class="app-drawer-header-muted">
+              {{ t('vendite.fatture.data_emissione') }}
+            </span>
+            <span>{{ displayDate(fattura.data) }}</span>
+          </template>
+          <template #status>
+            <!-- Stato in alto, utility sotto: è il contesto del documento
+                 (quale servizio si sta fatturando), non un suo stato. -->
+            <div class="app-drawer-header-status-stack">
+              <!-- Natura del documento: si dichiara solo quando NON è una
+                   fattura (B5) — lo decide il BB, che tace sulla ordinaria.
+                   ⚠️ Mostrarla sempre («Fattura» su una fattura)
+                   aggiungerebbe rumore al caso normale e toglierebbe forza
+                   al caso che conta. -->
+              <NaturaDocTag
+                :codice="fattura.natura_doc_codice_interno"
+                :descrizione="fattura.natura_doc_descrizione"
+              />
+              <Tag
+                v-if="fattura.stato_descrizione"
+                :value="fattura.stato_descrizione"
+                :severity="statoDocFiscaleSeverity(fattura.stato_codice_interno)"
+              />
+              <Tag v-if="utilityLabel" :value="utilityLabel" severity="info" />
+            </div>
+          </template>
+        </DrawerEntityHeader>
+
+        <DrawerActionsBar :actions="drawerActions" />
+
+        <!-- Collegamenti del documento (genealogia), lo stesso BB degli altri
+             sei domini. La fattura ci arriva ultima (2026-08-21) perche' era
+             stata classificata «capolinea senza superficie propria»: aveva un
+             drawer da luglio, e da ieri ha anche un discendente — l'arco N
+             verso la nota di credito che la rettifica.
+             ⭐ QUI SI LEGGE AL CONTRARIO degli altri: una fattura non ha archi
+             in avanti nel grafo forward, quindi il valore e' la direzione
+             INDIETRO — da quali commesse, ordini e preventivi viene. Misurato
+             sulla fattura 835: sette tappe a monte, tre commesse distinte.
+             ⚠️ E NON DUPLICA il blocco «documenti collegati» qui sotto, che
+             legge `vendite.fatture_rettifiche`: quel ponte lo popola un task
+             DOPO la numerazione, mentre il grafo ricostruisce il legame dalle
+             RIGHE ed e' gia' pieno prima. Nella finestra fra emissione e
+             numerazione questa barra e' l'unica delle due che parla. -->
+        <DocumentoCollegamentiBar
+          base-path="/vendite/fatture"
+          :doc-id="fatturaId"
+          :readonly="isReadonly" />
+
+        <!-- F5 · IL LEGAME DOCUMENTALE. «Questo accredito vale 12 € perché la
+             riga 7 della fattura 2026/1234 valeva 12 €»: qui la prima metà,
+             sulle righe la seconda. Nei DUE versi — una nota di credito dice
+             cosa rettifica, una fattura dice da quali note è stata
+             rettificata: chi guarda la fattura ha lo stesso diritto di
+             saperlo.
+             ⚠️ La proiezione la scrive il task di pipeline dopo la
+             NUMERAZIONE: su un documento non ancora numerato è
+             legittimamente vuota, e infatti qui non compare niente. -->
+        <div
+          v-for="b in blocchiCollegati"
+          :key="b.verso"
+          class="app-doc-campo app-mt-1"
+        >
+          <span class="app-doc-campo-label">{{ t(b.labelKey) }}</span>
+          <span>
+            <Tag
+              v-for="d in b.documenti"
+              :key="d.id"
+              class="mr-05"
+              severity="info"
+              :value="documentoLabel(d)"
+            />
+          </span>
         </div>
 
-        <template v-if="fattura">
-          <!-- Header: numero e data emissione etichettati (in un documento
-               fiscale un valore nudo non dice quale dei due è). Il cliente non
-               sta qui: è la prima voce della sezione Cliente. -->
-          <DrawerEntityHeader>
-            <span class="app-drawer-header-muted">{{ t('vendite.fatture.label_numero') }}</span>
-            <Tag :value="numeroDisplay" severity="secondary" />
-            <template v-if="fattura.data">
-              <span class="app-drawer-header-muted">
-                {{ t('vendite.fatture.data_emissione') }}
+        <!-- ⭐ LA SEGNALAZIONE IN TESTA. Se il documento porta un errore, lo
+             dice QUI: chi apre una fattura in errore la apre proprio per
+             quello, e farglielo cercare in fondo a una scheda e' il difetto
+             che questo pannello esiste per togliere.
+             ⚠️ Il pulsante e' interattivo dentro `app-drawer-content`, che
+             diventa `.app-readonly` quando l'area e' in LETTURA: senza
+             `app-escape` si vedrebbe e non si potrebbe cliccare (memoria
+             `feedback_app_escape_pannelli_processo`). -->
+        <Message v-if="erroreVivo" severity="error" :closable="false" class="app-mb-1">
+          <!-- ⚠️ E' una riga del giornale come quelle della scheda Storia:
+               si decodifica allo stesso modo, o lo stesso fatto avrebbe due
+               nomi diversi a due centimetri di distanza. -->
+          <div class="app-giornale-cosa">
+            {{ labelOrCode(t, te, erroreVivo.etichetta_key, erroreVivo.cosa) }}
+          </div>
+          <Button
+            class="app-escape"
+            link
+            size="small"
+            :label="t('vendite.fatture.giornale_vai')"
+            @click="apriStoria"
+          />
+        </Message>
+
+        <!-- ⭐ DUE SCHEDE e non una pagina sola da scorrere (decisione di Tid,
+             2026-08-24): il documento e la sua storia rispondono a due
+             domande diverse, e chi cerca la seconda non deve attraversare la
+             prima. Stessa forma del `LottoDrawer`. -->
+        <Tabs v-model:value="tabAttiva" class="app-mt-1">
+          <TabList>
+            <Tab value="documento">{{ t('vendite.fatture.tab_documento') }}</Tab>
+            <!-- Il CONTEGGIO nell'etichetta: dice se vale la pena entrare,
+                 senza doverci entrare. -->
+            <Tab value="storia">
+              {{ t('vendite.fatture.tab_storia') }}
+              <template v-if="giornaleStore.totalRecords"> ({{ giornaleStore.totalRecords }})</template>
+            </Tab>
+          </TabList>
+          <TabPanels>
+            <TabPanel value="documento">
+        <!-- ⭐ IL SALDO PER PRIMO: «questa fattura e' stata pagata?» e' la
+             domanda per cui si apre questo drawer, e sta sopra i dati
+             anagrafici perche' e' quella che si fa entrando. La sezione la
+             contribuisce pagamenti (core/estensioni.js): qui si offre il
+             punto, non si conosce chi ci scrive. -->
+        <PuntoEstensione
+          :punto="PUNTI_ESTENSIONE.FATTURA_DRAWER_SEZIONI"
+          :fattura-id="fatturaId"
+        />
+
+        <!-- Cliente e Documento affiancati (`form-grid-2col`, collassa a una
+             colonna su schermi stretti): due schede corte, nessuna ragione di
+             incolonnarle su un drawer WIDE. -->
+        <div class="form-grid-2col">
+          <div>
+            <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_cliente') }}</h4></div>
+            <div v-for="c in campiCliente" :key="c.labelKey" class="app-doc-campo">
+              <span class="app-doc-campo-label">{{ t(c.labelKey) }}</span>
+              <span>{{ c.value || '—' }}</span>
+            </div>
+          </div>
+
+          <div>
+            <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_documento') }}</h4></div>
+            <div v-for="c in campiDocumento" :key="c.labelKey" class="app-doc-campo">
+              <span class="app-doc-campo-label">{{ t(c.labelKey) }}</span>
+              <span>{{ c.value || '—' }}</span>
+            </div>
+            <!-- Scadenza: la prossima rata PER DATA, col chip che apre il
+                 piano completo. Non è uno stato di pagamento — il modello non
+                 sa quale rata sia stata incassata (vedi useScadenzeSintesi). -->
+            <div class="app-doc-campo">
+              <span class="app-doc-campo-label">
+                {{ t('vendite.fatture.prossima_rata') }}
               </span>
-              <span>{{ displayDate(fattura.data) }}</span>
-            </template>
-            <template #status>
-              <!-- Stato in alto, utility sotto: è il contesto del documento
-                   (quale servizio si sta fatturando), non un suo stato. -->
-              <div class="app-drawer-header-status-stack">
-                <!-- Natura del documento: si dichiara solo quando NON è una
-                     fattura (B5) — lo decide il BB, che tace sulla ordinaria.
-                     ⚠️ Mostrarla sempre («Fattura» su una fattura)
-                     aggiungerebbe rumore al caso normale e toglierebbe forza
-                     al caso che conta. -->
-                <NaturaDocTag
-                  :codice="fattura.natura_doc_codice_interno"
-                  :descrizione="fattura.natura_doc_descrizione"
-                />
-                <Tag
-                  v-if="fattura.stato_descrizione"
-                  :value="fattura.stato_descrizione"
-                  :severity="statoDocFiscaleSeverity(fattura.stato_codice_interno)"
-                />
-                <Tag v-if="utilityLabel" :value="utilityLabel" severity="info" />
-              </div>
-            </template>
-          </DrawerEntityHeader>
+              <ScadenzeSintesi :scadenze="scadenze" />
+            </div>
+          </div>
+        </div>
 
-          <DrawerActionsBar :actions="drawerActions" />
+        <!-- Righe: la lista `vendite.fattura_righe`. Il padre di un kit porta
+             i suoi componenti esposti (`componenti`), che si leggono nella
+             riga espandibile: paginazione e ordinamento spostano il kit
+             intero. La chiave e' `riga_key` (il padre non ha un id). -->
+        <div class="app-drawer-section app-drawer-section--senza-bordo">
+          <h4>{{ t('vendite.fatture.sez_righe') }}</h4>
+        </div>
+        <Message v-if="righeStore.erroreCaricamento" severity="warn" :closable="false" size="small">
+          {{ t('common.righe_non_lette') }}
+        </Message>
+        <DrawerTabLista
+          ref="righeListaRef"
+          codice="vendite.fattura_righe"
+          :store="righeStore"
+          :emittente-esplicito="fattura.emittente_fiscale_pk ?? null"
+          :rows="righeStore.items"
+          :total="righeStore.totalRecords"
+          :loading="righeStore.loading"
+          :paginator-options="righePaginator"
+          :page="righePage"
+          :sort-field="righePaginator.sortField"
+          :sort-order="righePaginator.sortOrder"
+          :page-actions="righeActions"
+          :dirty="righeDirty"
+          :perimetro-bloccato="righePerimetroBloccato"
+          data-key="riga_key"
+          @page="onRighePage"
+          @sort="onRigheSort"
+          @config-loaded="onRigheConfigLoaded"
+        >
+          <template #filtri-sempre>
+            <InputText v-model="righeSearch" class="app-filter-w-lg" :placeholder="t('common.search')" />
+          </template>
+          <!-- La riga gemella di una nota di credito: il documento parlante
+               e la riga. E' cio' che rende verificabile l'importo della
+               rettifica senza aprire l'altro documento. -->
+          <template #cell-riga_rettificata="{ data }">
+            <span v-if="data.riga_rettificata_id">
+              {{ t('vendite.fatture.rettifica_riga_valore', {
+                   numero: data.riga_rettificata_documento ?? '—',
+                   riga: data.riga_rettificata_nr ?? '—',
+                 }) }}
+            </span>
+            <span v-else>—</span>
+          </template>
+          <!-- Il periodo della riga (dal 2026-10-02, brief-db-bom-flag-
+               quantita-e-kit-in-fattura R-FE-B1): si mostra quando
+               `ha_periodo` e' vero — la regola (dal != al) e' della vista, qui
+               non si ricalcola. Una riga puntuale non ha un periodo da dire.
+               Lo stesso kit su due periodi sono due righe. -->
+          <template #cell-periodo="{ data }">
+            <span v-if="data.ha_periodo">
+              {{ t('vendite.fatture.periodo_valore', {
+                   dal: displayDate(data.competenza_dal),
+                   al: displayDate(data.competenza_al),
+                 }) }}
+            </span>
+            <span v-else>—</span>
+          </template>
+          <template #row-expansion="{ data }">
+            <ul v-if="data.componenti?.length" class="app-fattura-componenti">
+              <li v-for="c in data.componenti" :key="c.fatture_righe_id">
+                <span v-if="c.articolo_codice" class="app-fattura-articolo">{{ c.articolo_codice }}</span>
+                {{ c.descrizione || '—' }}
+                <!-- Quantita' al massimo alla precisione della colonna (6). -->
+                <span class="app-text-muted">
+                  · {{ formatNumber(c.quantita, { placeholder: '—', minimumFractionDigits: 0, maximumFractionDigits: 6 }) }}
+                  {{ c.uom_codice || '' }}
+                </span>
+                <!-- Il VALORIZZATO porta prezzo, sconto e importo suoi, fuori
+                     dal totale del padre (dal 2026-10-01): si leggono qui,
+                     sotto il kit a cui resta legato. Il DESCRITTIVO li ha
+                     NULL — il suo valore e' nel padre — e non mostra niente:
+                     un «—» farebbe leggere «a costo zero». Per lo stesso
+                     motivo un padre con importo vuoto e' un kit senza resto
+                     (tutti valorizzati), non un errore; e un padre con
+                     quantita' e prezzo vuoti e' un kit i cui componenti non
+                     dicono lo stesso numero di kit (nota di credito
+                     parziale, dal 2026-10-02): ha il suo importo e basta. -->
+                <span v-if="c.importo_riga != null" class="app-fattura-componente-importo">
+                  × {{ formatCurrency(c.prezzo_unitario, { placeholder: '—' }) }}
+                  <template v-if="Number(c.sconto_percentuale) > 0">
+                    − {{ formatNumber(c.sconto_percentuale, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}%
+                  </template>
+                  = <strong>{{ formatCurrency(c.importo_riga) }}</strong>
+                </span>
+              </li>
+            </ul>
+          </template>
+          <template #empty>
+            <span v-if="!righeStore.erroreCaricamento">{{ t('vendite.fatture.nessuna_riga') }}</span>
+          </template>
+        </DrawerTabLista>
 
-          <!-- Collegamenti del documento (genealogia), lo stesso BB degli altri
-               sei domini. La fattura ci arriva ultima (2026-08-21) perche' era
-               stata classificata «capolinea senza superficie propria»: aveva un
-               drawer da luglio, e da ieri ha anche un discendente — l'arco N
-               verso la nota di credito che la rettifica.
-               ⭐ QUI SI LEGGE AL CONTRARIO degli altri: una fattura non ha archi
-               in avanti nel grafo forward, quindi il valore e' la direzione
-               INDIETRO — da quali commesse, ordini e preventivi viene. Misurato
-               sulla fattura 835: sette tappe a monte, tre commesse distinte.
-               ⚠️ E NON DUPLICA il blocco «documenti collegati» qui sotto, che
-               legge `vendite.fatture_rettifiche`: quel ponte lo popola un task
-               DOPO la numerazione, mentre il grafo ricostruisce il legame dalle
-               RIGHE ed e' gia' pieno prima. Nella finestra fra emissione e
-               numerazione questa barra e' l'unica delle due che parla. -->
-          <DocumentoCollegamentiBar
-            base-path="/vendite/fatture"
-            :doc-id="fatturaId"
-            :readonly="isReadonly" />
+        <!-- Riepilogo IVA: BB condiviso con preventivi/ordini/DDT (titolo,
+             label esenti con natura, footer di quadratura, totale documento).
+             Lettura pura da fatture_riepiloghi_iva: nessun ricalcolo qui. -->
+        <RiepilogoIvaTable :items="riepilogoIva" show-subtitle />
 
-          <!-- F5 · IL LEGAME DOCUMENTALE. «Questo accredito vale 12 € perché la
-               riga 7 della fattura 2026/1234 valeva 12 €»: qui la prima metà,
-               sulle righe la seconda. Nei DUE versi — una nota di credito dice
-               cosa rettifica, una fattura dice da quali note è stata
-               rettificata: chi guarda la fattura ha lo stesso diritto di
-               saperlo.
-               ⚠️ La proiezione la scrive il task di pipeline dopo la
-               NUMERAZIONE: su un documento non ancora numerato è
-               legittimamente vuota, e infatti qui non compare niente. -->
+        <!-- Chiusura del documento: bollo/arrotondamento se ci sono, poi i
+             due totali. `totale_doc` e `totale_a_pagare` entrambi perché
+             divergono quando ci sono fondi/acconti applicati, e mostrarne uno
+             solo lascia l'operatore senza spiegazione. Placeholder '—' sugli
+             importi assenti: NULL non è zero, e su un documento fiscale uno
+             zero inventato è un'informazione falsa. -->
+        <div class="app-doc-totali">
           <div
-            v-for="b in blocchiCollegati"
-            :key="b.verso"
-            class="app-doc-campo app-mt-1"
+            v-for="c in campiTotali"
+            :key="c.labelKey"
+            class="app-doc-totali-riga"
+            :class="{ 'app-doc-totali-riga--forte': c.forte }"
           >
-            <span class="app-doc-campo-label">{{ t(b.labelKey) }}</span>
-            <span>
-              <Tag
-                v-for="d in b.documenti"
-                :key="d.id"
-                class="mr-05"
-                severity="info"
-                :value="documentoLabel(d)"
-              />
+            <span class="app-doc-totali-label">{{ t(c.labelKey) }}</span>
+            <span class="app-doc-totali-value">
+              {{ formatCurrency(c.importo, { placeholder: '—' }) }}
             </span>
           </div>
+        </div>
+            </TabPanel>
+            <TabPanel value="storia">
 
-          <!-- ⭐ LA SEGNALAZIONE IN TESTA. Se il documento porta un errore, lo
-               dice QUI: chi apre una fattura in errore la apre proprio per
-               quello, e farglielo cercare in fondo a una scheda e' il difetto
-               che questo pannello esiste per togliere.
-               ⚠️ Il pulsante e' interattivo dentro `app-drawer-content`, che
-               diventa `.app-readonly` quando l'area e' in LETTURA: senza
-               `app-escape` si vedrebbe e non si potrebbe cliccare (memoria
-               `feedback_app_escape_pannelli_processo`). -->
-          <Message v-if="erroreVivo" severity="error" :closable="false" class="app-mb-1">
-            <!-- ⚠️ E' una riga del giornale come quelle della scheda Storia:
-                 si decodifica allo stesso modo, o lo stesso fatto avrebbe due
-                 nomi diversi a due centimetri di distanza. -->
-            <div class="app-giornale-cosa">
-              {{ labelOrCode(t, te, erroreVivo.etichetta_key, erroreVivo.cosa) }}
-            </div>
-            <Button
-              class="app-escape"
-              link
-              size="small"
-              :label="t('vendite.fatture.giornale_vai')"
-              @click="apriStoria"
-            />
-          </Message>
+        <!-- ⭐ LA STORIA DEL DOCUMENTO — «cosa è successo a questa fattura».
+             La lista a catalogo `vendite.giornale` sulla sola fattura
+             (sorgente `script.vw_giornale_entita`; per la fattura oggi
+             risponde `fatture_log`), nel tab condiviso col `LottoDrawer`.
+             ⛔ Non è il pannello «Collegamenti»: quello dice con quali ALTRI
+             documenti la fattura è legata, questo cosa le è successo.
+             ⭐ L'emittente del documento scioglie il cancello di perimetro
+             della lista: chi vede più emittenti non deve sceglierne uno per
+             leggere la storia di un documento che lo dichiara. -->
+        <GiornaleEntitaTab
+          :store="giornaleStore"
+          :entita-id="fatturaId"
+          :emittente-soggetto-ruolo-id="fattura.emittente_soggetto_ruolo_id"
+        />
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
 
-          <!-- ⭐ DUE SCHEDE e non una pagina sola da scorrere (decisione di Tid,
-               2026-08-24): il documento e la sua storia rispondono a due
-               domande diverse, e chi cerca la seconda non deve attraversare la
-               prima. Stessa forma del `LottoDrawer`. -->
-          <Tabs v-model:value="tabAttiva" class="app-mt-1">
-            <TabList>
-              <Tab value="documento">{{ t('vendite.fatture.tab_documento') }}</Tab>
-              <!-- Il CONTEGGIO nell'etichetta: dice se vale la pena entrare,
-                   senza doverci entrare. -->
-              <Tab value="storia">
-                {{ t('vendite.fatture.tab_storia') }}
-                <template v-if="giornaleStore.totalRecords"> ({{ giornaleStore.totalRecords }})</template>
-              </Tab>
-            </TabList>
-            <TabPanels>
-              <TabPanel value="documento">
-          <!-- ⭐ IL SALDO PER PRIMO: «questa fattura e' stata pagata?» e' la
-               domanda per cui si apre questo drawer, e sta sopra i dati
-               anagrafici perche' e' quella che si fa entrando. La sezione la
-               contribuisce pagamenti (core/estensioni.js): qui si offre il
-               punto, non si conosce chi ci scrive. -->
-          <PuntoEstensione
-            :punto="PUNTI_ESTENSIONE.FATTURA_DRAWER_SEZIONI"
-            :fattura-id="fatturaId"
-          />
-
-          <!-- Cliente e Documento affiancati (`form-grid-2col`, collassa a una
-               colonna su schermi stretti): due schede corte, nessuna ragione di
-               incolonnarle su un drawer WIDE. -->
-          <div class="form-grid-2col">
-            <div>
-              <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_cliente') }}</h4></div>
-              <div v-for="c in campiCliente" :key="c.labelKey" class="app-doc-campo">
-                <span class="app-doc-campo-label">{{ t(c.labelKey) }}</span>
-                <span>{{ c.value || '—' }}</span>
-              </div>
-            </div>
-
-            <div>
-              <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_documento') }}</h4></div>
-              <div v-for="c in campiDocumento" :key="c.labelKey" class="app-doc-campo">
-                <span class="app-doc-campo-label">{{ t(c.labelKey) }}</span>
-                <span>{{ c.value || '—' }}</span>
-              </div>
-              <!-- Scadenza: la prossima rata PER DATA, col chip che apre il
-                   piano completo. Non è uno stato di pagamento — il modello non
-                   sa quale rata sia stata incassata (vedi useScadenzeSintesi). -->
-              <div class="app-doc-campo">
-                <span class="app-doc-campo-label">
-                  {{ t('vendite.fatture.prossima_rata') }}
-                </span>
-                <ScadenzeSintesi :scadenze="scadenze" />
-              </div>
-            </div>
-          </div>
-
-          <!-- Righe: la lista `vendite.fattura_righe`. Il padre di un kit porta
-               i suoi componenti esposti (`componenti`), che si leggono nella
-               riga espandibile: paginazione e ordinamento spostano il kit
-               intero. La chiave e' `riga_key` (il padre non ha un id). -->
-          <div class="app-drawer-section app-drawer-section--senza-bordo">
-            <h4>{{ t('vendite.fatture.sez_righe') }}</h4>
-          </div>
-          <Message v-if="righeStore.erroreCaricamento" severity="warn" :closable="false" size="small">
-            {{ t('common.righe_non_lette') }}
-          </Message>
-          <DrawerTabLista
-            ref="righeListaRef"
-            codice="vendite.fattura_righe"
-            :store="righeStore"
-            :emittente-esplicito="fattura.emittente_fiscale_pk ?? null"
-            :rows="righeStore.items"
-            :total="righeStore.totalRecords"
-            :loading="righeStore.loading"
-            :paginator-options="righePaginator"
-            :page="righePage"
-            :sort-field="righePaginator.sortField"
-            :sort-order="righePaginator.sortOrder"
-            :page-actions="righeActions"
-            :dirty="righeDirty"
-            :perimetro-bloccato="righePerimetroBloccato"
-            data-key="riga_key"
-            @page="onRighePage"
-            @sort="onRigheSort"
-            @config-loaded="onRigheConfigLoaded"
-          >
-            <template #filtri-sempre>
-              <InputText v-model="righeSearch" class="app-filter-w-lg" :placeholder="t('common.search')" />
-            </template>
-            <!-- La riga gemella di una nota di credito: il documento parlante
-                 e la riga. E' cio' che rende verificabile l'importo della
-                 rettifica senza aprire l'altro documento. -->
-            <template #cell-riga_rettificata="{ data }">
-              <span v-if="data.riga_rettificata_id">
-                {{ t('vendite.fatture.rettifica_riga_valore', {
-                     numero: data.riga_rettificata_documento ?? '—',
-                     riga: data.riga_rettificata_nr ?? '—',
-                   }) }}
-              </span>
-              <span v-else>—</span>
-            </template>
-            <!-- Il periodo della riga (dal 2026-10-02, brief-db-bom-flag-
-                 quantita-e-kit-in-fattura R-FE-B1): si mostra quando
-                 `ha_periodo` e' vero — la regola (dal != al) e' della vista, qui
-                 non si ricalcola. Una riga puntuale non ha un periodo da dire.
-                 Lo stesso kit su due periodi sono due righe. -->
-            <template #cell-periodo="{ data }">
-              <span v-if="data.ha_periodo">
-                {{ t('vendite.fatture.periodo_valore', {
-                     dal: displayDate(data.competenza_dal),
-                     al: displayDate(data.competenza_al),
-                   }) }}
-              </span>
-              <span v-else>—</span>
-            </template>
-            <template #row-expansion="{ data }">
-              <ul v-if="data.componenti?.length" class="app-fattura-componenti">
-                <li v-for="c in data.componenti" :key="c.fatture_righe_id">
-                  <span v-if="c.articolo_codice" class="app-fattura-articolo">{{ c.articolo_codice }}</span>
-                  {{ c.descrizione || '—' }}
-                  <!-- Quantita' al massimo alla precisione della colonna (6). -->
-                  <span class="app-text-muted">
-                    · {{ formatNumber(c.quantita, { placeholder: '—', minimumFractionDigits: 0, maximumFractionDigits: 6 }) }}
-                    {{ c.uom_codice || '' }}
-                  </span>
-                  <!-- Il VALORIZZATO porta prezzo, sconto e importo suoi, fuori
-                       dal totale del padre (dal 2026-10-01): si leggono qui,
-                       sotto il kit a cui resta legato. Il DESCRITTIVO li ha
-                       NULL — il suo valore e' nel padre — e non mostra niente:
-                       un «—» farebbe leggere «a costo zero». Per lo stesso
-                       motivo un padre con importo vuoto e' un kit senza resto
-                       (tutti valorizzati), non un errore; e un padre con
-                       quantita' e prezzo vuoti e' un kit i cui componenti non
-                       dicono lo stesso numero di kit (nota di credito
-                       parziale, dal 2026-10-02): ha il suo importo e basta. -->
-                  <span v-if="c.importo_riga != null" class="app-fattura-componente-importo">
-                    × {{ formatCurrency(c.prezzo_unitario, { placeholder: '—' }) }}
-                    <template v-if="Number(c.sconto_percentuale) > 0">
-                      − {{ formatNumber(c.sconto_percentuale, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}%
-                    </template>
-                    = <strong>{{ formatCurrency(c.importo_riga) }}</strong>
-                  </span>
-                </li>
-              </ul>
-            </template>
-            <template #empty>
-              <span v-if="!righeStore.erroreCaricamento">{{ t('vendite.fatture.nessuna_riga') }}</span>
-            </template>
-          </DrawerTabLista>
-
-          <!-- Riepilogo IVA: BB condiviso con preventivi/ordini/DDT (titolo,
-               label esenti con natura, footer di quadratura, totale documento).
-               Lettura pura da fatture_riepiloghi_iva: nessun ricalcolo qui. -->
-          <RiepilogoIvaTable :items="riepilogoIva" show-subtitle />
-
-          <!-- Chiusura del documento: bollo/arrotondamento se ci sono, poi i
-               due totali. `totale_doc` e `totale_a_pagare` entrambi perché
-               divergono quando ci sono fondi/acconti applicati, e mostrarne uno
-               solo lascia l'operatore senza spiegazione. Placeholder '—' sugli
-               importi assenti: NULL non è zero, e su un documento fiscale uno
-               zero inventato è un'informazione falsa. -->
-          <div class="app-doc-totali">
-            <div
-              v-for="c in campiTotali"
-              :key="c.labelKey"
-              class="app-doc-totali-riga"
-              :class="{ 'app-doc-totali-riga--forte': c.forte }"
-            >
-              <span class="app-doc-totali-label">{{ t(c.labelKey) }}</span>
-              <span class="app-doc-totali-value">
-                {{ formatCurrency(c.importo, { placeholder: '—' }) }}
-              </span>
-            </div>
-          </div>
-              </TabPanel>
-              <TabPanel value="storia">
-
-          <!-- ⭐ LA STORIA DEL DOCUMENTO — «cosa è successo a questa fattura».
-               La lista a catalogo `vendite.giornale` sulla sola fattura
-               (sorgente `script.vw_giornale_entita`; per la fattura oggi
-               risponde `fatture_log`), nel tab condiviso col `LottoDrawer`.
-               ⛔ Non è il pannello «Collegamenti»: quello dice con quali ALTRI
-               documenti la fattura è legata, questo cosa le è successo.
-               ⭐ L'emittente del documento scioglie il cancello di perimetro
-               della lista: chi vede più emittenti non deve sceglierne uno per
-               leggere la storia di un documento che lo dichiara. -->
-          <GiornaleEntitaTab
-            :store="giornaleStore"
-            :entita-id="fatturaId"
-            :emittente-soggetto-ruolo-id="fattura.emittente_soggetto_ruolo_id"
-          />
-              </TabPanel>
-            </TabPanels>
-          </Tabs>
-
-        </template>
       </template>
-
-      <FormFooter close-only @cancel="onClose" />
-    </div>
+    </template>
 
     <ExportDialog
       v-model:visible="righeExportVisible"
@@ -767,7 +755,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
       :righe="righe"
       @saved="onNoteSaved"
     />
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>

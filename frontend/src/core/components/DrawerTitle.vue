@@ -3,9 +3,14 @@
 // icona + entita' centrata (verde grande), badge "Sola lettura" a destra
 // (auto-visibile quando il drawer e' in modalita' readonly via inject).
 // Layout a 3 colonne: [azione] [icona + titolo centrato] [badge readonly].
-// Usare nel #header slot di ogni Drawer.
+// Usare nel #header slot di ogni Drawer (lo monta `AppDrawer`).
+// ⭐ `conteggio` (2026-10-03, D-10 di work-done/analisi-fe-chrome-drawer.md,
+//    ok Tid): un numero accanto al titolo che dice «ci sono N cose nuove da
+//    guardare» — le colonne nuove di una lista, i widget nuovi della home. Era
+//    scritto a mano, uguale, nelle due testate che lo usano. A 0 non si vede.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Badge from 'primevue/badge'
 import ReadonlyBadge from './ReadonlyBadge.vue'
 
 const props = defineProps({
@@ -18,6 +23,8 @@ const props = defineProps({
   // ⚠️ Un drawer senza `action` non avrebbe niente da colorare: al suo posto
   //    compare la scritta «Modifiche non salvate», o il segnale non si vede.
   modificato: { type: Boolean, default: false },
+  conteggio: { type: Number, default: 0 },
+  conteggioTooltip: { type: String, default: null },
 })
 
 const { t } = useI18n()
@@ -36,6 +43,13 @@ const scritta = computed(() =>
     <span class="app-drawer-title-entity">
       <i v-if="icon" :class="icon" class="app-drawer-title-icon" />
       {{ title }}
+      <Badge
+        v-if="conteggio > 0"
+        :value="conteggio"
+        severity="info"
+        class="app-drawer-title-conteggio"
+        v-tooltip.bottom="conteggioTooltip"
+      />
     </span>
     <span class="app-drawer-title-end">
       <ReadonlyBadge />
@@ -74,6 +88,10 @@ const scritta = computed(() =>
   font-size: 1.1rem;
   margin-right: 0.4rem;
   vertical-align: baseline;
+}
+.app-drawer-title-conteggio {
+  margin-left: 0.4rem;
+  vertical-align: middle;
 }
 .app-drawer-title-end {
   display: inline-flex;

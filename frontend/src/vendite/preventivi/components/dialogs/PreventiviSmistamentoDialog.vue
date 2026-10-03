@@ -36,9 +36,11 @@ import Tag from 'primevue/tag'
 import Checkbox from 'primevue/checkbox'
 // DataTable grezza: sono le RIGHE del preventivo col loro stato di smistamento
 // (/smistamento/ → .righe), nel dialog d'azione — dettaglio del documento.
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { STATUS_ICONS } from '../../../../core/constants'
+import { useFotografiaDialog } from '../../../../core/composables/useFotografiaDialog'
 
 const { t } = useI18n()
 const store = usePreventiviStore()
@@ -84,11 +86,14 @@ const tutteSmistate = computed(() => {
 // righe già smistate, il guard di toggleRow tiene comunque fuori dalla
 // selezione tutto ciò che non è RESIDUA. Il BE/DB farebbe skip silenzioso
 // (D5), ma il conteggio del confirm deve riflettere lo smistato reale.
+// Le righe di `/smistamento/` non hanno `id`: la chiave e' `riga_id`, una sola
+// volta per selezione e fotografia.
+const ROW_KEY = 'riga_id'
 const { isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected } =
   useSelezioneToggle({
     selected,
     selezionabili: righeResidue,
-    rowKey: 'riga_id',
+    rowKey: ROW_KEY,
   })
 
 // Etichetta azione: "Smista tutto" quando le righe residue hanno un'unica
@@ -118,6 +123,7 @@ async function loadSmistamento() {
   try {
     smistamento.value = await store.loadSmistamento(props.preventivoId)
     selected.value = props.consuntivo ? [] : [...righeResidue.value]
+    fotografia.fissa()
   } finally {
     loadingSmistamento.value = false
   }
@@ -235,6 +241,9 @@ function onSmista() {
     },
   })
 }
+
+// D-14: la selezione delle righe da smistare e' lavoro dell'operatore; la fotografia si fissa a smistamento letto (anche dopo ogni smistamento riuscito).
+const fotografia = useFotografiaDialog(() => ({ selezionate: selected.value.map((r) => r[ROW_KEY]) }), { visibile: () => props.visible, fissaAllApertura: false })
 </script>
 
 <template>
@@ -245,6 +254,7 @@ function onSmista() {
        quello stato. Stessa ragione per cui il pannello, quando viveva nel
        drawer, stava in `app-escape`. -->
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="visible"
     width="xl"
     :header="t('vendite.preventivi.section_smistamento')"

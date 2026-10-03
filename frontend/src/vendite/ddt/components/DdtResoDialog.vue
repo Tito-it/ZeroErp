@@ -22,6 +22,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Checkbox from 'primevue/checkbox'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
@@ -85,6 +86,7 @@ const {
   righe, loadingRighe, selected, qtaMap, righeSelezionabili,
   loadRighe, buildPayloadRighe,
   isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected,
+  chiudiConConferma,
 } = useRigheSelezioneQta({
   fetchRighe: async () => {
     if (!props.ddtId) return []
@@ -97,6 +99,9 @@ const {
   residuoDi,
   rowKey: 'ddt_riga_id',
   readonly: () => props.readonly,
+  // La fotografia (D-14) e' del BB, fissata a ogni caricamento delle righe.
+  visibile: () => props.visible,
+  statoExtra: () => ({ tipo: tipoMap.value, motivo: motivoMap.value }),
   // Niente righe spuntate ne' quantita' precompilate: sceglie l'operatore.
   preselezione: 'nessuna',
   onLoaded: (rows) => {
@@ -165,6 +170,7 @@ function onCrea() {
     },
   })
 }
+
 </script>
 
 <template>
@@ -175,6 +181,7 @@ function onCrea() {
        ragione per cui il pannello, quando viveva nel drawer, stava in
        `app-escape`. -->
   <AppDialog
+    :conferma-uscita="chiudiConConferma"
     :visible="visible"
     width="xl"
     :header="t('vendite.resi.crea_titolo')"

@@ -13,7 +13,6 @@ import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import DatePicker from 'primevue/datepicker'
 import AppDialog from '../../../core/components/AppDialog.vue'
-import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
@@ -30,8 +29,7 @@ import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
 import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
-import FormFooter from '../../../core/components/FormFooter.vue'
-import DrawerTitle from '../../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../../core/components/AppDrawer.vue'
 import EmittenteFiscaleField from '../../../core/components/EmittenteFiscaleField.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
@@ -39,20 +37,20 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
-import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { useGlobalLookup } from '../../../core/composables/useGlobalLookup'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
+import { useFooterDocumento } from '../../../core/composables/useFooterDocumento'
 import {
   READONLY_KEY,
   useInjectReadonly,
 } from '../../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO } from '../../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, DATE_FORMAT } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
 import { displayDate, parseIsoDate, toDateString } from '../../../core/utils/date'
@@ -158,9 +156,6 @@ provide(READONLY_KEY, isReadonly)
 const isStatoTerminale = computed(
   () => STATI_OFFERTA_TERMINALI.includes(stato.value),
 )
-
-// Deferimento contenuto: i LookupSelect montano solo dopo l'animazione.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // Lookup listini "selezionabili come riferimento contrattuale" — stesso
 // pattern del contratto (refactor 2026-05-18 §4.4). L'offerta congela la
@@ -808,374 +803,364 @@ const drawerActions = computed(() => {
 })
 
 const onClose = useDrawerClose(emit, 'cancelled')
-// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
-const chiudi = () => chiudiConConferma(onClose)
 // Detail fuori scope (RLS) / inesistente → toast + chiusura, niente drawer vuoto.
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
-const suVisibile = gestoreVisibile(emit, chiudi)
+
+// Il footer del drawer segue lo stato del documento (BB useFooterDocumento,
+// D-11 di work-done/analisi-fe-chrome-drawer.md).
+// «Modificabile» qui e' il readonly di stato: Salva solo in CREATE o in BOZZA.
+// Le eccezioni hanno un drawer loro: nessun form di riga qui.
+const footerDrawer = useFooterDocumento({
+  modificabile: () => !isReadonly.value,
+  presente: () => isEdit.value,
+})
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="props.visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    :dismissable="true"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="t('vendite.offerte.titolo_drawer')"
+    :icon="NAV_ICONS.OFFERTE"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :footer="footerDrawer"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('vendite.offerte.titolo_drawer')"
-        :icon="NAV_ICONS.OFFERTE"
-      />
+
+    <template v-if="isEdit && detail">
+      <DrawerEntityHeader>
+        <Tag :value="detail.codice" severity="secondary" />
+        <span v-if="detail.revisione_numero > 1" class="app-drawer-header-muted">
+          rev.{{ detail.revisione_numero }}
+        </span>
+        <span v-if="detail.data_emissione" class="app-drawer-header-muted">
+          {{ displayDate(detail.data_emissione) }}
+        </span>
+        <Tag
+          v-if="detail.is_scaduta && STATI_OFFERTA_SEGNALA_SCADENZA.includes(stato)"
+          :value="t('vendite.offerte.badge_scaduta')"
+          severity="warn"
+        />
+        <template #status>
+          <Tag
+            :value="detail.stato_descrizione"
+            :severity="statoOffertaSeverity(stato)"
+          />
+        </template>
+      </DrawerEntityHeader>
+
+      <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
+        <template #suffix>
+          <EntityPdfButton
+            :sorgente-code="SORGENTE_CODES.OFFERTA_COMMERCIALE"
+            :entity-id="props.offertaId"
+            :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+            :pdf="capabilities.pdf"
+            i18n-prefix="vendite.offerte.pdf"
+            :dialog-title="detail.codice
+              ? t('vendite.offerte.pdf.dialog_title', { codice: detail.codice })
+              : ''"
+          />
+        </template>
+      </DrawerActionsBar>
+
+      <!-- Collegamenti diretti (pratica + origine + destinazioni di livello
+           1): segnalazione a colpo d'occhio sotto i pulsanti — «Ordine»,
+           «Contratto». Il grafo completo si apre dai chip in dialog.
+           Solo in EDIT: in CREATE non c'e' ancora un documento. -->
+      <DocumentoCollegamentiBar
+        v-if="isEdit && offertaId"
+        ref="collegamentiRef"
+        base-path="/vendite/offerte"
+        :doc-id="offertaId"
+        :readonly="parentReadonly" />
+
+      <!-- Motivo per cui push contratto / genera ordine non sono offerti
+           (gia' generato, offerta non accettata): senza questo i pulsanti
+           spariscono e basta. -->
+      <Message
+        v-for="r in pushReasons"
+        :key="r.key"
+        severity="info"
+        :closable="false"
+        class="mt-1"
+      >
+        {{ t(r.key) }}
+      </Message>
+
+      <Message
+        v-if="isStatoTerminale"
+        severity="warn"
+        :closable="false"
+        size="small"
+      >
+        {{ t('vendite.offerte.banner_stato_terminale', { stato: detail.stato_descrizione }) }}
+      </Message>
+      <Message
+        v-else-if="!canEditTestata"
+        severity="info"
+        :closable="false"
+        size="small"
+      >
+        {{ t('vendite.offerte.banner_locked_post_bozza', { stato: detail.stato_descrizione }) }}
+      </Message>
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <template v-if="contentReady">
+    <Tabs v-model:value="activeTab">
+      <TabList>
+        <Tab value="testata">{{ t('vendite.offerte.tab_testata') }}</Tab>
+        <!-- Tab "Eccezioni" rimossa (UX UI 2026-05-26): l'entry-point
+             e' il bottone "Gestisci eccezioni" nella DrawerActionsBar
+             (con badge counter), che apre il sub-drawer master-detail
+             dedicato. Pattern allineato a ContrattoDrawer. -->
+        <Tab value="revisioni" :disabled="!isEdit">
+          {{ t('vendite.offerte.tab_revisioni') }}
+          <span v-if="isEdit && revisioniStore.totalRecords">({{ revisioniStore.totalRecords }})</span>
+        </Tab>
+      </TabList>
 
-        <template v-if="isEdit && detail">
-          <DrawerEntityHeader>
-            <Tag :value="detail.codice" severity="secondary" />
-            <span v-if="detail.revisione_numero > 1" class="app-drawer-header-muted">
-              rev.{{ detail.revisione_numero }}
-            </span>
-            <span v-if="detail.data_emissione" class="app-drawer-header-muted">
-              {{ displayDate(detail.data_emissione) }}
-            </span>
-            <Tag
-              v-if="detail.is_scaduta && STATI_OFFERTA_SEGNALA_SCADENZA.includes(stato)"
-              :value="t('vendite.offerte.badge_scaduta')"
-              severity="warn"
+      <TabPanels>
+        <!-- ====================== TAB TESTATA ====================== -->
+        <TabPanel value="testata">
+
+          <h4>{{ t('vendite.offerte.section_emittente') }}</h4>
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
+              <!-- Campo emittente fiscale auto-adattivo (pattern preventivi/contratti):
+                   - edit                 -> testo read-only dal record (codice + RS denormalizzati)
+                   - create + operatore   -> testo read-only dal profilo (derivato 1-a-1)
+                   - create + admin glob. -> Select sugli EF disponibili
+                   In CREATE per operatore non-admin il valore arriva da
+                   `useEmittenteFiscaleField().defaultEmittenteId`. -->
+              <EmittenteFiscaleField
+                v-model="form.emittente_fiscale_id"
+                :record="detail"
+                :is-edit="isEdit"
+                :disabled="isReadonly"
+              />
+            </div>
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_utility') }} <span v-if="!isEdit">*</span></label>
+              <!-- Building block standard utility-per-ruolo-EF
+                   (`UtilityPerRuoloSelect`). Filtra le utility configurate
+                   per l'EF dell'operatore + ammesse al ruolo CLIENTE
+                   (intersezione `emittenti_fiscali_utilities` x
+                   `utilities_tipi_ruolo`). Pre-popolata dal `defaultForm()`
+                   via `utilityDefaultId` (parametro `DEFAULT_UTILITY`,
+                   codice_interno -> id locale). Quando l'operatore sceglie
+                   il BA, `onBaSelected` sovrascrive con la utility canonical
+                   del BA (coerenza FK garantita); se l'operatore pulisce
+                   il BA, ripristiniamo il default per mantenere il filtro
+                   lookup BA sull'utility tipica. -->
+              <UtilityPerRuoloSelect
+                v-model="form.utility_id"
+                :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
+                :placeholder="t('vendite.offerte.field_utility')"
+                :disabled="isReadonly"
+              />
+            </div>
+          </div>
+
+          <h4>{{ t('vendite.offerte.section_cliente') }}</h4>
+          <div class="form-field">
+            <label>{{ t('vendite.offerte.field_billing_account') }} <span v-if="!isEdit">*</span></label>
+            <!-- `utility-id` (da utilityDefaultId in CREATE) pre-filtra
+                 il lookup BA sull'utility dell'operatore. Lookup ricco
+                 (3 righe: ragione sociale + codice + PDP) — sta a tutta
+                 larghezza in una propria riga. -->
+            <BillingAccountLookup
+              v-if="!isEdit"
+              :model-value="form.billing_account_obj"
+              :utility-id="form.utility_id"
+              :placeholder="t('vendite.offerte.select_billing_account')"
+              @update:model-value="onBaSelected"
             />
-            <template #status>
-              <Tag
-                :value="detail.stato_descrizione"
-                :severity="statoOffertaSeverity(stato)"
-              />
-            </template>
-          </DrawerEntityHeader>
+            <InputText
+              v-else
+              :model-value="detail?.billing_account_display"
+              disabled
+            />
+          </div>
 
-          <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
-            <template #suffix>
-              <EntityPdfButton
-                :sorgente-code="SORGENTE_CODES.OFFERTA_COMMERCIALE"
-                :entity-id="props.offertaId"
-                :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-                :pdf="capabilities.pdf"
-                i18n-prefix="vendite.offerte.pdf"
-                :dialog-title="detail.codice
-                  ? t('vendite.offerte.pdf.dialog_title', { codice: detail.codice })
-                  : ''"
-              />
-            </template>
-          </DrawerActionsBar>
+          <h4>{{ t('vendite.offerte.section_listino') }}</h4>
+          <div class="form-field">
+            <label>{{ t('vendite.offerte.field_listino') }} <span v-if="!isEdit">*</span></label>
+            <Select
+              v-model="form.listino_id"
+              :options="listiniLookup.items.value"
+              :option-label="formatListinoOption"
+              option-value="id"
+              :loading="listiniLookup.loading.value"
+              :placeholder="t('vendite.offerte.select_listino')"
+              show-clear
+              filter
+              :disabled="isReadonly"
+              @update:model-value="onListinoChange"
+              :invalid="campiErrati.includes('listino_id')"
+            />
+            <small v-if="isEdit && detail?.listino_versione_codice"
+              class="app-text-muted">
+              {{ t('vendite.offerte.hint_versione_fissata', { codice: detail.listino_versione_codice }) }}
+            </small>
+          </div>
 
-          <!-- Collegamenti diretti (pratica + origine + destinazioni di livello
-               1): segnalazione a colpo d'occhio sotto i pulsanti — «Ordine»,
-               «Contratto». Il grafo completo si apre dai chip in dialog.
-               Solo in EDIT: in CREATE non c'e' ancora un documento. -->
-          <DocumentoCollegamentiBar
-            v-if="isEdit && offertaId"
-            ref="collegamentiRef"
-            base-path="/vendite/offerte"
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_tipo_variazione') }}</label>
+              <TipoVariazioneSelect
+                v-model="form.tipo_variazione_globale"
+                scope="contratto"
+                show-clear
+                :disabled="isReadonly"
+              />
+            </div>
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_valore_variazione') }}</label>
+              <InputNumber
+                v-model="form.valore_variazione_globale"
+                :min-fraction-digits="0"
+                :max-fraction-digits="4"
+                show-buttons
+                :disabled="isReadonly"
+                :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''"
+                @update:model-value="onValoreVariazioneChange"
+                :invalid="campiErrati.includes('valore_variazione_globale')"
+              />
+            </div>
+          </div>
+
+          <!-- Valuta: snapshot fissato al CREATE, immutabile in EDIT
+               (allineato a preventivi/contratti). Pre-popolata da
+               ApiOffertaFormDefaults via cascata BB resolve_valuta_default. -->
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_valuta') }}</label>
+              <LookupSelect
+                v-model="form.valuta_id"
+                rel="config.valute"
+                :placeholder="t('vendite.offerte.field_valuta')"
+                :disabled="isReadonly || isEdit"
+                show-clear
+              />
+            </div>
+          </div>
+
+          <h4>{{ t('vendite.offerte.section_validita') }}</h4>
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_validita_dal') }} <span v-if="!isEdit">*</span></label>
+              <DatePicker
+                :model-value="parseIsoDate(form.validita_dal)"
+                :disabled="isReadonly"
+                :date-format="DATE_FORMAT"
+                show-icon
+                @update:model-value="form.validita_dal = toIsoDate($event)"
+              />
+            </div>
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_validita_al') }}</label>
+              <DatePicker
+                :model-value="parseIsoDate(form.validita_al)"
+                :disabled="isReadonly"
+                :date-format="DATE_FORMAT"
+                show-icon
+                show-button-bar
+                @update:model-value="form.validita_al = toIsoDate($event)"
+              />
+            </div>
+          </div>
+
+          <!-- === Utility inline (mirror ContrattoDrawer) === -->
+          <h4>{{ t('vendite.offerte.section_utenza') }}</h4>
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_tipo_utenza') }}</label>
+              <LookupSelect
+                v-model="form.utility_tipo_utenza_id"
+                rel="config.tipi_utenze"
+                :placeholder="t('vendite.offerte.select_tipo_utenza')"
+                show-clear
+                :disabled="isReadonly"
+              />
+            </div>
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_classe_utenza') }}</label>
+              <LookupSelect
+                v-model="form.utility_classe_utenza_id"
+                rel="config.classi_utenze"
+                :placeholder="t('vendite.offerte.select_classe_utenza')"
+                show-clear
+                :disabled="isReadonly"
+              />
+            </div>
+          </div>
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_param_1_num') }}</label>
+              <InputNumber
+                v-model="form.utility_param_1_num"
+                :min-fraction-digits="0"
+                :max-fraction-digits="6"
+                :disabled="isReadonly"
+              />
+            </div>
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_param_2_txt') }}</label>
+              <InputText
+                v-model="form.utility_param_2_txt"
+                :disabled="isReadonly"
+              />
+            </div>
+          </div>
+
+          <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
+               contatore "+N altri", pulsante "Indirizzi" che apre il
+               drawer di gestione. Solo in EDIT (documento persistito). -->
+          <DocumentoIndirizziSection
+            v-if="isEdit && detail"
+            dominio="offerte"
             :doc-id="offertaId"
-            :readonly="parentReadonly" />
+            :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
+            :istanza-utility-id="detail?.istanza_utility_id ?? null"
+            :readonly="isReadonly" />
 
-          <!-- Motivo per cui push contratto / genera ordine non sono offerti
-               (gia' generato, offerta non accettata): senza questo i pulsanti
-               spariscono e basta. -->
-          <Message
-            v-for="r in pushReasons"
-            :key="r.key"
-            severity="info"
-            :closable="false"
-            class="mt-1"
-          >
-            {{ t(r.key) }}
-          </Message>
-
-          <Message
-            v-if="isStatoTerminale"
-            severity="warn"
-            :closable="false"
-            size="small"
-          >
-            {{ t('vendite.offerte.banner_stato_terminale', { stato: detail.stato_descrizione }) }}
-          </Message>
-          <Message
-            v-else-if="!canEditTestata"
-            severity="info"
-            :closable="false"
-            size="small"
-          >
-            {{ t('vendite.offerte.banner_locked_post_bozza', { stato: detail.stato_descrizione }) }}
-          </Message>
-        </template>
-
-        <Tabs v-model:value="activeTab">
-          <TabList>
-            <Tab value="testata">{{ t('vendite.offerte.tab_testata') }}</Tab>
-            <!-- Tab "Eccezioni" rimossa (UX UI 2026-05-26): l'entry-point
-                 e' il bottone "Gestisci eccezioni" nella DrawerActionsBar
-                 (con badge counter), che apre il sub-drawer master-detail
-                 dedicato. Pattern allineato a ContrattoDrawer. -->
-            <Tab value="revisioni" :disabled="!isEdit">
-              {{ t('vendite.offerte.tab_revisioni') }}
-              <span v-if="isEdit && revisioniStore.totalRecords">({{ revisioniStore.totalRecords }})</span>
-            </Tab>
-          </TabList>
-
-          <TabPanels>
-            <!-- ====================== TAB TESTATA ====================== -->
-            <TabPanel value="testata">
-
-              <h4>{{ t('vendite.offerte.section_emittente') }}</h4>
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
-                  <!-- Campo emittente fiscale auto-adattivo (pattern preventivi/contratti):
-                       - edit                 -> testo read-only dal record (codice + RS denormalizzati)
-                       - create + operatore   -> testo read-only dal profilo (derivato 1-a-1)
-                       - create + admin glob. -> Select sugli EF disponibili
-                       In CREATE per operatore non-admin il valore arriva da
-                       `useEmittenteFiscaleField().defaultEmittenteId`. -->
-                  <EmittenteFiscaleField
-                    v-model="form.emittente_fiscale_id"
-                    :record="detail"
-                    :is-edit="isEdit"
-                    :disabled="isReadonly"
-                  />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_utility') }} <span v-if="!isEdit">*</span></label>
-                  <!-- Building block standard utility-per-ruolo-EF
-                       (`UtilityPerRuoloSelect`). Filtra le utility configurate
-                       per l'EF dell'operatore + ammesse al ruolo CLIENTE
-                       (intersezione `emittenti_fiscali_utilities` x
-                       `utilities_tipi_ruolo`). Pre-popolata dal `defaultForm()`
-                       via `utilityDefaultId` (parametro `DEFAULT_UTILITY`,
-                       codice_interno -> id locale). Quando l'operatore sceglie
-                       il BA, `onBaSelected` sovrascrive con la utility canonical
-                       del BA (coerenza FK garantita); se l'operatore pulisce
-                       il BA, ripristiniamo il default per mantenere il filtro
-                       lookup BA sull'utility tipica. -->
-                  <UtilityPerRuoloSelect
-                    v-model="form.utility_id"
-                    :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
-                    :placeholder="t('vendite.offerte.field_utility')"
-                    :disabled="isReadonly"
-                  />
-                </div>
-              </div>
-
-              <h4>{{ t('vendite.offerte.section_cliente') }}</h4>
-              <div class="form-field">
-                <label>{{ t('vendite.offerte.field_billing_account') }} <span v-if="!isEdit">*</span></label>
-                <!-- `utility-id` (da utilityDefaultId in CREATE) pre-filtra
-                     il lookup BA sull'utility dell'operatore. Lookup ricco
-                     (3 righe: ragione sociale + codice + PDP) — sta a tutta
-                     larghezza in una propria riga. -->
-                <BillingAccountLookup
-                  v-if="!isEdit"
-                  :model-value="form.billing_account_obj"
-                  :utility-id="form.utility_id"
-                  :placeholder="t('vendite.offerte.select_billing_account')"
-                  @update:model-value="onBaSelected"
-                />
-                <InputText
-                  v-else
-                  :model-value="detail?.billing_account_display"
-                  disabled
-                />
-              </div>
-
-              <h4>{{ t('vendite.offerte.section_listino') }}</h4>
-              <div class="form-field">
-                <label>{{ t('vendite.offerte.field_listino') }} <span v-if="!isEdit">*</span></label>
-                <Select
-                  v-model="form.listino_id"
-                  :options="listiniLookup.items.value"
-                  :option-label="formatListinoOption"
-                  option-value="id"
-                  :loading="listiniLookup.loading.value"
-                  :placeholder="t('vendite.offerte.select_listino')"
-                  show-clear
-                  filter
-                  :disabled="isReadonly"
-                  @update:model-value="onListinoChange"
-                  :invalid="campiErrati.includes('listino_id')"
-                />
-                <small v-if="isEdit && detail?.listino_versione_codice"
-                  class="app-text-muted">
-                  {{ t('vendite.offerte.hint_versione_fissata', { codice: detail.listino_versione_codice }) }}
-                </small>
-              </div>
-
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_tipo_variazione') }}</label>
-                  <TipoVariazioneSelect
-                    v-model="form.tipo_variazione_globale"
-                    scope="contratto"
-                    show-clear
-                    :disabled="isReadonly"
-                  />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_valore_variazione') }}</label>
-                  <InputNumber
-                    v-model="form.valore_variazione_globale"
-                    :min-fraction-digits="0"
-                    :max-fraction-digits="4"
-                    show-buttons
-                    :disabled="isReadonly"
-                    :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''"
-                    @update:model-value="onValoreVariazioneChange"
-                    :invalid="campiErrati.includes('valore_variazione_globale')"
-                  />
-                </div>
-              </div>
-
-              <!-- Valuta: snapshot fissato al CREATE, immutabile in EDIT
-                   (allineato a preventivi/contratti). Pre-popolata da
-                   ApiOffertaFormDefaults via cascata BB resolve_valuta_default. -->
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_valuta') }}</label>
-                  <LookupSelect
-                    v-model="form.valuta_id"
-                    rel="config.valute"
-                    :placeholder="t('vendite.offerte.field_valuta')"
-                    :disabled="isReadonly || isEdit"
-                    show-clear
-                  />
-                </div>
-              </div>
-
-              <h4>{{ t('vendite.offerte.section_validita') }}</h4>
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_validita_dal') }} <span v-if="!isEdit">*</span></label>
-                  <DatePicker
-                    :model-value="parseIsoDate(form.validita_dal)"
-                    :disabled="isReadonly"
-                    date-format="dd/mm/yy"
-                    show-icon
-                    @update:model-value="form.validita_dal = toIsoDate($event)"
-                  />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_validita_al') }}</label>
-                  <DatePicker
-                    :model-value="parseIsoDate(form.validita_al)"
-                    :disabled="isReadonly"
-                    date-format="dd/mm/yy"
-                    show-icon
-                    show-button-bar
-                    @update:model-value="form.validita_al = toIsoDate($event)"
-                  />
-                </div>
-              </div>
-
-              <!-- === Utility inline (mirror ContrattoDrawer) === -->
-              <h4>{{ t('vendite.offerte.section_utenza') }}</h4>
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_tipo_utenza') }}</label>
-                  <LookupSelect
-                    v-model="form.utility_tipo_utenza_id"
-                    rel="config.tipi_utenze"
-                    :placeholder="t('vendite.offerte.select_tipo_utenza')"
-                    show-clear
-                    :disabled="isReadonly"
-                  />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_classe_utenza') }}</label>
-                  <LookupSelect
-                    v-model="form.utility_classe_utenza_id"
-                    rel="config.classi_utenze"
-                    :placeholder="t('vendite.offerte.select_classe_utenza')"
-                    show-clear
-                    :disabled="isReadonly"
-                  />
-                </div>
-              </div>
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_param_1_num') }}</label>
-                  <InputNumber
-                    v-model="form.utility_param_1_num"
-                    :min-fraction-digits="0"
-                    :max-fraction-digits="6"
-                    :disabled="isReadonly"
-                  />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_param_2_txt') }}</label>
-                  <InputText
-                    v-model="form.utility_param_2_txt"
-                    :disabled="isReadonly"
-                  />
-                </div>
-              </div>
-
-              <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
-                   contatore "+N altri", pulsante "Indirizzi" che apre il
-                   drawer di gestione. Solo in EDIT (documento persistito). -->
-              <DocumentoIndirizziSection
-                v-if="isEdit && detail"
-                dominio="offerte"
-                :doc-id="offertaId"
-                :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
-                :istanza-utility-id="detail?.istanza_utility_id ?? null"
-                :readonly="isReadonly" />
-
-              <!-- Motivazione (sola lettura, valorizzata su RIFIUTATA/ANNULLATA) -->
-              <template v-if="isEdit && detail?.motivazione_rifiuto">
-                <h4>{{ t('vendite.offerte.section_motivazione') }}</h4>
-                <Message severity="warn" :closable="false" size="small">
-                  {{ detail.motivazione_rifiuto }}
-                </Message>
-              </template>
+          <!-- Motivazione (sola lettura, valorizzata su RIFIUTATA/ANNULLATA) -->
+          <template v-if="isEdit && detail?.motivazione_rifiuto">
+            <h4>{{ t('vendite.offerte.section_motivazione') }}</h4>
+            <Message severity="warn" :closable="false" size="small">
+              {{ detail.motivazione_rifiuto }}
+            </Message>
+          </template>
 
 
-            </TabPanel>
+        </TabPanel>
 
-            <!-- ====================== TAB REVISIONI ====================== -->
-            <TabPanel value="revisioni">
-              <!-- Lista a catalogo `vendite.offerta_revisioni` (colonne
-                   gemelle di quelle del preventivo). Montata solo in EDIT: in
-                   CREATE il tab e' spento e non c'e' una catena da leggere. -->
-              <RevisioniTab
-                v-if="isEdit"
-                codice="vendite.offerta_revisioni"
-                :store="revisioniStore"
-                :documento-id="visible ? offertaId : null"
-                :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-                :severity="statoOffertaSeverity"
-                :intro="t('vendite.offerte.revisioni_intro')"
-                :vuoto="t('vendite.offerte.revisioni_empty')" />
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
-
-        <!-- Footer: Salva visibile solo in CREATE o EDIT BOZZA. Negli stati
-             post-BOZZA mostriamo Chiudi (close-only) — il footer Salva non ha
-             senso (cambio stato passa dalla DrawerActionsBar). -->
-        <FormFooter
-          v-if="!isReadonly"
-          :loading="loading"
-          :disabled="!canSave"
-          @save="handleSave"
-          @cancel="chiudi"
-        />
-        <FormFooter v-else-if="isEdit" close-only @cancel="chiudi" />
-      </template>
-    </div>
+        <!-- ====================== TAB REVISIONI ====================== -->
+        <TabPanel value="revisioni">
+          <!-- Lista a catalogo `vendite.offerta_revisioni` (colonne
+               gemelle di quelle del preventivo). Montata solo in EDIT: in
+               CREATE il tab e' spento e non c'e' una catena da leggere. -->
+          <RevisioniTab
+            v-if="isEdit"
+            codice="vendite.offerta_revisioni"
+            :store="revisioniStore"
+            :documento-id="visible ? offertaId : null"
+            :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+            :severity="statoOffertaSeverity"
+            :intro="t('vendite.offerte.revisioni_intro')"
+            :vuoto="t('vendite.offerte.revisioni_empty')" />
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
 
     <!-- Sub-drawer eccezioni (master-detail inline). -->
     <OffertaEccezioniDrawer
@@ -1280,5 +1265,5 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         />
       </template>
     </AppDialog>
-  </Drawer>
+  </AppDrawer>
 </template>

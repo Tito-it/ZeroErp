@@ -58,6 +58,7 @@ import { abbinaRiga, forzaturaConMotivo, registraRigaTardiva } from '../api/paga
 import { formatCurrency } from '../../core/utils/format'
 import { MODO_ABBINA } from '../composables/useAzioniRigaContabile'
 import RataSelect from './RataSelect.vue'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -169,10 +170,14 @@ function chiudiConEsito() {
   emit('abbinata')
   emit('update:visible', false)
 }
+
+// D-14: la destinazione scelta e il motivo sono lavoro dell'operatore (della fattura si guarda l'id: il lookup la riemette come oggetto nuovo).
+const fotografia = useFotografiaDialog(() => ({ fattura: fattura.value?.id ?? null, scadenzaId: scadenzaId.value, motivo: motivoForzatura.value }), { visibile: () => props.visible })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="visible"
     :header="registra ? t('pagamenti.abbina.titolo_registra') : t('pagamenti.abbina.titolo')"
     width="md"

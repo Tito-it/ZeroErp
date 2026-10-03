@@ -7,17 +7,14 @@ import { ref, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
-import { DRAWER_WIDTH, MANAGE_ICONS, STATO_PRATICA, STATI_PRATICA_TERMINALI } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, STATO_PRATICA, STATI_PRATICA_TERMINALI, DATE_FORMAT } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
@@ -25,6 +22,7 @@ import SoggettoRuoloLookup from '../../core/components/SoggettoRuoloLookup.vue'
 import IstanzaUtilityLookup from '../../core/components/IstanzaUtilityLookup.vue'
 import { getSoggettoRuoloLookupById } from '../../core/apiCore'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
+import { useFooterDocumento } from '../../core/composables/useFooterDocumento'
 import PraticaFlussiTab from './PraticaFlussiTab.vue'
 import PraticaNoteTab from './PraticaNoteTab.vue'
 import PraticaAllegatiTab from './PraticaAllegatiTab.vue'
@@ -32,7 +30,6 @@ import PraticaSospensioniTab from './PraticaSospensioniTab.vue'
 import PraticaGiornaleTab from './PraticaGiornaleTab.vue'
 import SospensionePraticaDialog from './SospensionePraticaDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import DatePicker from 'primevue/datepicker'
@@ -282,11 +279,6 @@ function onAnnullaPratica() {
   })
 }
 
-// Deferimento contenuto: Tabs e LookupSelect montano solo dopo l'animazione
-// del drawer (pattern feedback_content_ready_after_show centralizzato in
-// useDrawerContentReady).
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
-
 // Azioni della testata pratica consumate da DrawerActionsBar (refactor UI
 // drawer 2026-05-22, Fase 3.A). State actions condizionali per stato corrente:
 // Apri (BOZZA), Sospendi (APERTA), Riattiva (SOSPESA), Annulla (non terminale).
@@ -387,97 +379,181 @@ const canSave = computed(() => {
   return !!form.value.tipo_prestazione_id
 })
 
-const onClose = useDrawerClose(emit, 'cancelled')
-// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
-const chiudi = () => chiudiConConferma(onClose)
-const suVisibile = gestoreVisibile(emit, chiudi)
+
+// Il footer del drawer (BB useFooterDocumento, 2026-10-03): Annulla/Salva in
+// creazione e, in modifica, sulla scheda Dati — fino a quel giorno stava
+// dentro quei due pannelli —; «Chiudi» sulle altre schede, che un footer non
+// l'avevano e si chiudevano solo dalla X.
+const footerDrawer = useFooterDocumento({
+  modificabile: () => !isEdit.value || activeTab.value === 'dati',
+  presente: () => detail.value != null,
+})
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="props.visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="t('pratiche.pratica')"
+    :icon="NAV_ICONS.PRATICHE"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :readonly="effectiveReadonly"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :footer="footerDrawer"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="onSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('pratiche.pratica')"
-        :icon="NAV_ICONS.PRATICHE"
-      />
-    </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': effectiveReadonly }">
-      <template v-if="contentReady">
+  <!-- === CREAZIONE: form con soggetto/ruolo opzionali === -->
+  <template v-if="!isEdit">
+    <div class="form-grid">
 
-      <!-- === CREAZIONE: form con soggetto/ruolo opzionali === -->
-      <template v-if="!isEdit">
+      <!-- Contesto anagrafico (opzionale — pratica interna se vuoto):
+           lookup ricco a una riga per soggetto+ruolo, incl. riga
+           "senza ruolo" per i prospect puri. -->
+      <h4>{{ t('pratiche.section_soggetto') }}</h4>
+      <div class="form-field">
+        <label>{{ t('pratiche.field_contesto') }}</label>
+        <SoggettoRuoloLookup v-model="contestoSelezionato" />
+        <small class="app-text-muted">{{ t('pratiche.soggetto_opzionale') }}</small>
+      </div>
+      <div>
+        <Button :label="t('pratiche.nuovo_soggetto')" :icon="MANAGE_ICONS.ADD"
+          text size="small" @click="resolverVisible = true" />
+      </div>
+
+      <!-- Istanza utility: visibile solo quando la scelta e' dell'operatore
+           (CL multi-istanza o prospect senza ruolo). Cliente con istanza
+           unica -> auto-derivata con hint (pattern preventivi "istanza da
+           BA"); ruoli non-CL -> nessuna istanza. -->
+      <div v-if="mostraCampoIstanza" class="form-field">
+        <label>{{ t('pratiche.field_istanza') }}</label>
+        <!-- Con ruolo selezionato (CL multi-istanza) la combo e' ristretta
+             alle sole forniture del cliente; per il prospect senza ruolo
+             resta filtrata sul soggetto. -->
+        <IstanzaUtilityLookup
+          v-model="istanzaSelezionata"
+          :soggetto-id="contestoSelezionato.soggetto_id"
+          :soggetto-ruolo-id="contestoSelezionato.soggetto_ruolo_id"
+        />
+        <!-- Hint contestuale: per il cliente multi-istanza la scelta
+             della fornitura e' il punto, non un opzionale generico. -->
+        <small class="app-text-muted">
+          {{ contestoSelezionato.ruolo_codice === TIPO_RUOLO_CLIENTE
+            ? t('pratiche.istanza_scegli_fornitura', { n: contestoSelezionato.n_istanze })
+            : t('pratiche.istanza_hint') }}
+        </small>
+      </div>
+      <div v-else-if="istanzaDerivata" class="form-field">
+        <label>{{ t('pratiche.field_istanza') }}</label>
+        <div class="app-field-hint">
+          <i :class="MANAGE_ICONS.DERIVATO" style="margin-right: 0.4rem;"></i>
+          {{ t('pratiche.istanza_derivata', { codice: contestoSelezionato.istanza_unica_codice }) }}
+        </div>
+      </div>
+
+      <!-- Dati pratica -->
+      <h4>{{ t('pratiche.section_dati') }}</h4>
+      <div class="form-field">
+        <label>{{ t('pratiche.col_tipo_prestazione') }} *</label>
+        <LookupSelect
+          v-model="form.tipo_prestazione_id"
+          rel="pratiche.tipi_prestazione"
+          :includi-obsoleti="false"
+          :placeholder="t('pratiche.select_tipo_prestazione')"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('pratiche.col_priorita') }}</label>
+        <LookupSelect
+          v-model="form.priorita_id"
+          rel="config.priorita_pratiche"
+          :placeholder="t('pratiche.select_priorita')"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('pratiche.field_descrizione') }}</label>
+        <Textarea v-model="form.descrizione" rows="3" auto-resize
+          :invalid="campiErrati.includes('descrizione')"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('pratiche.col_data_scadenza') }}</label>
+        <DatePicker v-model="form.data_scadenza" :date-format="DATE_FORMAT" show-icon />
+      </div>
+    </div>
+
+    <!-- Sotto-drawer: SoggettoResolver -->
+    <SoggettoResolver
+      :visible="resolverVisible"
+      tipo-ruolo-codice=""
+      @update:visible="v => resolverVisible = v"
+      @soggetto-selezionato="onSoggettoRicevuto"
+      @soggetto-creato="onSoggettoRicevuto"
+      @annullato="resolverVisible = false"
+    />
+  </template>
+
+  <!-- === EDIT: header + azioni in alto, poi Tabs con Dati + Flussi + Giornale === -->
+  <template v-if="isEdit && detail">
+    <!-- Refactor UI drawer 2026-05-22 (Fase 3.A): header info + barra
+         azioni state in alto al drawer (sopra i Tabs), simmetrici a
+         contratti/preventivi. Tag stato + Tag priorita' in #status,
+         codice come identificativo a sinistra. -->
+    <DrawerEntityHeader>
+      <Tag :value="detail.codice" severity="secondary" />
+      <template #status>
+        <Tag
+          :value="detail.stato_descrizione"
+          :severity="statoPraticaSeverity(detail.stato_codice_interno)"
+        />
+        <Tag
+          v-if="detail.priorita_descrizione"
+          :value="detail.priorita_descrizione"
+          :severity="prioritaPraticaSeverity(detail.priorita_codice_interno)"
+        />
+      </template>
+    </DrawerEntityHeader>
+
+    <DrawerActionsBar :actions="drawerActions" />
+
+    <Tabs v-model:value="activeTab">
+      <TabList>
+        <Tab value="dati">{{ t('pratiche.tab_dati') }}</Tab>
+        <Tab value="flussi">{{ t('pratiche.tab_flussi') }}</Tab>
+        <Tab value="note">{{ t('pratiche.tab_note') }}</Tab>
+        <Tab value="allegati">{{ t('pratiche.tab_allegati') }}</Tab>
+        <Tab value="sospensioni">{{ t('pratiche.tab_sospensioni') }}</Tab>
+        <Tab value="giornale">{{ t('pratiche.tab_giornale') }}</Tab>
+      </TabList>
+      <TabPanels>
+
+      <!-- Tab Dati -->
+      <TabPanel value="dati">
+        <!-- Soggetto (se presente) -->
+        <div v-if="detail.soggetto_display" class="form-field">
+          <label>{{ t('pratiche.col_soggetto') }}</label>
+          <InputText :model-value="detail.soggetto_display" disabled />
+        </div>
+
+        <!-- Form dati editabili -->
         <div class="form-grid">
-
-          <!-- Contesto anagrafico (opzionale — pratica interna se vuoto):
-               lookup ricco a una riga per soggetto+ruolo, incl. riga
-               "senza ruolo" per i prospect puri. -->
-          <h4>{{ t('pratiche.section_soggetto') }}</h4>
           <div class="form-field">
-            <label>{{ t('pratiche.field_contesto') }}</label>
-            <SoggettoRuoloLookup v-model="contestoSelezionato" />
-            <small class="app-text-muted">{{ t('pratiche.soggetto_opzionale') }}</small>
-          </div>
-          <div>
-            <Button :label="t('pratiche.nuovo_soggetto')" :icon="MANAGE_ICONS.ADD"
-              text size="small" @click="resolverVisible = true" />
-          </div>
-
-          <!-- Istanza utility: visibile solo quando la scelta e' dell'operatore
-               (CL multi-istanza o prospect senza ruolo). Cliente con istanza
-               unica -> auto-derivata con hint (pattern preventivi "istanza da
-               BA"); ruoli non-CL -> nessuna istanza. -->
-          <div v-if="mostraCampoIstanza" class="form-field">
-            <label>{{ t('pratiche.field_istanza') }}</label>
-            <!-- Con ruolo selezionato (CL multi-istanza) la combo e' ristretta
-                 alle sole forniture del cliente; per il prospect senza ruolo
-                 resta filtrata sul soggetto. -->
-            <IstanzaUtilityLookup
-              v-model="istanzaSelezionata"
-              :soggetto-id="contestoSelezionato.soggetto_id"
-              :soggetto-ruolo-id="contestoSelezionato.soggetto_ruolo_id"
-            />
-            <!-- Hint contestuale: per il cliente multi-istanza la scelta
-                 della fornitura e' il punto, non un opzionale generico. -->
-            <small class="app-text-muted">
-              {{ contestoSelezionato.ruolo_codice === TIPO_RUOLO_CLIENTE
-                ? t('pratiche.istanza_scegli_fornitura', { n: contestoSelezionato.n_istanze })
-                : t('pratiche.istanza_hint') }}
-            </small>
-          </div>
-          <div v-else-if="istanzaDerivata" class="form-field">
-            <label>{{ t('pratiche.field_istanza') }}</label>
-            <div class="app-field-hint">
-              <i :class="MANAGE_ICONS.DERIVATO" style="margin-right: 0.4rem;"></i>
-              {{ t('pratiche.istanza_derivata', { codice: contestoSelezionato.istanza_unica_codice }) }}
-            </div>
-          </div>
-
-          <!-- Dati pratica -->
-          <h4>{{ t('pratiche.section_dati') }}</h4>
-          <div class="form-field">
-            <label>{{ t('pratiche.col_tipo_prestazione') }} *</label>
-            <LookupSelect
-              v-model="form.tipo_prestazione_id"
-              rel="pratiche.tipi_prestazione"
-              :includi-obsoleti="false"
-              :placeholder="t('pratiche.select_tipo_prestazione')"
-            />
+            <label>{{ t('pratiche.col_tipo_prestazione') }}</label>
+            <InputText :model-value="detail.tipo_prestazione_descrizione" disabled />
           </div>
           <div class="form-field">
             <label>{{ t('pratiche.col_priorita') }}</label>
             <LookupSelect
               v-model="form.priorita_id"
               rel="config.priorita_pratiche"
-              :placeholder="t('pratiche.select_priorita')"
+              :placeholder="t('pratiche.select_priorita')" show-clear
             />
           </div>
           <div class="form-field">
@@ -486,155 +562,66 @@ const suVisibile = gestoreVisibile(emit, chiudi)
               :invalid="campiErrati.includes('descrizione')"
             />
           </div>
-          <div class="form-field">
-            <label>{{ t('pratiche.col_data_scadenza') }}</label>
-            <DatePicker v-model="form.data_scadenza" date-format="dd/mm/yy" show-icon />
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('pratiche.col_data_scadenza') }}</label>
+              <DatePicker v-model="form.data_scadenza" :date-format="DATE_FORMAT" show-icon />
+            </div>
+            <div class="form-field">
+              <label>{{ t('pratiche.col_data_apertura') }}</label>
+              <InputText :model-value="displayDate(detail.data_apertura)" disabled />
+            </div>
+          </div>
+          <div v-if="detail.risorsa_umana_display" class="form-field">
+            <label>{{ t('pratiche.col_assegnata_a') }}</label>
+            <InputText :model-value="detail.risorsa_umana_display" disabled />
           </div>
         </div>
-        <div>
-          <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="chiudi" />
-        </div>
+      </TabPanel>
 
-        <!-- Sotto-drawer: SoggettoResolver -->
-        <SoggettoResolver
-          :visible="resolverVisible"
-          tipo-ruolo-codice=""
-          @update:visible="v => resolverVisible = v"
-          @soggetto-selezionato="onSoggettoRicevuto"
-          @soggetto-creato="onSoggettoRicevuto"
-          @annullato="resolverVisible = false"
-        />
-      </template>
-
-      <!-- === EDIT: header + azioni in alto, poi Tabs con Dati + Flussi + Giornale === -->
-      <template v-if="isEdit && detail">
-        <!-- Refactor UI drawer 2026-05-22 (Fase 3.A): header info + barra
-             azioni state in alto al drawer (sopra i Tabs), simmetrici a
-             contratti/preventivi. Tag stato + Tag priorita' in #status,
-             codice come identificativo a sinistra. -->
-        <DrawerEntityHeader>
-          <Tag :value="detail.codice" severity="secondary" />
-          <template #status>
-            <Tag
-              :value="detail.stato_descrizione"
-              :severity="statoPraticaSeverity(detail.stato_codice_interno)"
-            />
-            <Tag
-              v-if="detail.priorita_descrizione"
-              :value="detail.priorita_descrizione"
-              :severity="prioritaPraticaSeverity(detail.priorita_codice_interno)"
-            />
-          </template>
-        </DrawerEntityHeader>
-
-        <DrawerActionsBar :actions="drawerActions" />
-
-        <Tabs v-model:value="activeTab">
-          <TabList>
-            <Tab value="dati">{{ t('pratiche.tab_dati') }}</Tab>
-            <Tab value="flussi">{{ t('pratiche.tab_flussi') }}</Tab>
-            <Tab value="note">{{ t('pratiche.tab_note') }}</Tab>
-            <Tab value="allegati">{{ t('pratiche.tab_allegati') }}</Tab>
-            <Tab value="sospensioni">{{ t('pratiche.tab_sospensioni') }}</Tab>
-            <Tab value="giornale">{{ t('pratiche.tab_giornale') }}</Tab>
-          </TabList>
-          <TabPanels>
-
-          <!-- Tab Dati -->
-          <TabPanel value="dati">
-            <!-- Soggetto (se presente) -->
-            <div v-if="detail.soggetto_display" class="form-field">
-              <label>{{ t('pratiche.col_soggetto') }}</label>
-              <InputText :model-value="detail.soggetto_display" disabled />
-            </div>
-
-            <!-- Form dati editabili -->
-            <div class="form-grid">
-              <div class="form-field">
-                <label>{{ t('pratiche.col_tipo_prestazione') }}</label>
-                <InputText :model-value="detail.tipo_prestazione_descrizione" disabled />
-              </div>
-              <div class="form-field">
-                <label>{{ t('pratiche.col_priorita') }}</label>
-                <LookupSelect
-                  v-model="form.priorita_id"
-                  rel="config.priorita_pratiche"
-                  :placeholder="t('pratiche.select_priorita')" show-clear
-                />
-              </div>
-              <div class="form-field">
-                <label>{{ t('pratiche.field_descrizione') }}</label>
-                <Textarea v-model="form.descrizione" rows="3" auto-resize
-                  :invalid="campiErrati.includes('descrizione')"
-                />
-              </div>
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('pratiche.col_data_scadenza') }}</label>
-                  <DatePicker v-model="form.data_scadenza" date-format="dd/mm/yy" show-icon />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('pratiche.col_data_apertura') }}</label>
-                  <InputText :model-value="displayDate(detail.data_apertura)" disabled />
-                </div>
-              </div>
-              <div v-if="detail.risorsa_umana_display" class="form-field">
-                <label>{{ t('pratiche.col_assegnata_a') }}</label>
-                <InputText :model-value="detail.risorsa_umana_display" disabled />
-              </div>
-            </div>
-
-            <div>
-              <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="chiudi" />
-            </div>
-          </TabPanel>
-
-          <!-- Tab Flussi -->
-          <TabPanel value="flussi">
-            <!-- L'emittente della pratica scioglie il cancello di perimetro
-                 della lista `pratiche.flussi` (non `multi_emittente`). -->
-            <PraticaFlussiTab
-              :pratica-id="props.praticaId"
-              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-            />
-          </TabPanel>
-
-          <!-- Tab Note -->
-          <TabPanel value="note">
-            <PraticaNoteTab :pratica-id="props.praticaId" />
-          </TabPanel>
-
-          <!-- Tab Allegati -->
-          <TabPanel value="allegati">
-            <PraticaAllegatiTab :pratica-id="props.praticaId" />
-          </TabPanel>
-
-          <!-- Tab Sospensioni -->
-          <TabPanel value="sospensioni">
-            <PraticaSospensioniTab :pratica-id="props.praticaId" />
-          </TabPanel>
-
-          <!-- Tab Giornale -->
-          <TabPanel value="giornale">
-            <PraticaGiornaleTab :pratica-id="props.praticaId" />
-          </TabPanel>
-
-          </TabPanels>
-        </Tabs>
-
-        <!-- Dialog condiviso sospendi/riattiva (data/ora manuale) aperto dai
-             pulsanti della DrawerActionsBar. -->
-        <SospensionePraticaDialog
-          :visible="sospDialogVisible"
-          :mode="sospDialogMode"
+      <!-- Tab Flussi -->
+      <TabPanel value="flussi">
+        <!-- L'emittente della pratica scioglie il cancello di perimetro
+             della lista `pratiche.flussi` (non `multi_emittente`). -->
+        <PraticaFlussiTab
           :pratica-id="props.praticaId"
-          @update:visible="v => sospDialogVisible = v"
-          @saved="onSospensioneSaved"
+          :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
         />
-      </template>
+      </TabPanel>
 
-      </template>
-    </div>
-  </Drawer>
+      <!-- Tab Note -->
+      <TabPanel value="note">
+        <PraticaNoteTab :pratica-id="props.praticaId" />
+      </TabPanel>
+
+      <!-- Tab Allegati -->
+      <TabPanel value="allegati">
+        <PraticaAllegatiTab :pratica-id="props.praticaId" />
+      </TabPanel>
+
+      <!-- Tab Sospensioni -->
+      <TabPanel value="sospensioni">
+        <PraticaSospensioniTab :pratica-id="props.praticaId" />
+      </TabPanel>
+
+      <!-- Tab Giornale -->
+      <TabPanel value="giornale">
+        <PraticaGiornaleTab :pratica-id="props.praticaId" />
+      </TabPanel>
+
+      </TabPanels>
+    </Tabs>
+
+    <!-- Dialog condiviso sospendi/riattiva (data/ora manuale) aperto dai
+         pulsanti della DrawerActionsBar. -->
+    <SospensionePraticaDialog
+      :visible="sospDialogVisible"
+      :mode="sospDialogMode"
+      :pratica-id="props.praticaId"
+      @update:visible="v => sospDialogVisible = v"
+      @saved="onSospensioneSaved"
+    />
+  </template>
+  </AppDrawer>
 </template>
 

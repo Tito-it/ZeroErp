@@ -87,6 +87,7 @@ const haNonPostabili = computed(() => Number(props.riepilogo?.n_non_postabili ??
 </script>
 
 <template>
+  <!-- conferma-uscita: nessuna — l'unico campo e' la ricerca nel piano: filtrare e' leggere, uscendo non si perde niente (D-14) -->
   <AppDialog
     :visible="visible"
     :header="t('magazzino.piano.titolo')"

@@ -218,10 +218,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
   resta R-4, che vuole un brief DB non ancora scritto;
   `work-in-progress/brief-db-credenziale-verbi-amministratore.md` (non bloccante): DB scritto il
-  2026-10-03 (`20261003-01…-04`, applicati, pgTAP senza regressioni); ⏳ giro BE/FE (§7).
-- **Secondo fattore: la password per registrare il device**
-  (`work-in-progress/brief-db-secondo-fattore-riautenticazione-password.md`): ⏳ al team DB (R-1),
-  poi BE/FE.
+  2026-10-03 (`20261003-01…-04`, applicati, pgTAP senza regressioni); BE/FE scritto il
+  2026-10-03 (§8, non committato): si chiude col commit.
 - **Kit in fattura** (`work-in-progress/brief-db-esposizione-componenti-kit-in-fattura.md`,
   `work-in-progress/brief-db-bom-flag-quantita-e-kit-in-fattura.md`): BE/FE scritto; secondo giro
   DB (R-DB-B8…B10, `20261003-05`/`-06`) applicato il 2026-10-03, baseline senza regressioni;
@@ -233,9 +231,18 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- 🟡 **L'editor dei workflow perde le righe in compilazione senza chiedere** (FE, ereditato il
+  2026-10-03 dalla chiusura di `work-done/analisi-fe-chrome-drawer.md`, D-13): `DefinizioneEditorView`
+  e i pannelli di passi e archi (`useEditableCollection`) non tengono la fotografia del form di riga,
+  quindi cambiare riga o uscire butta cio' che si e' scritto. Il rimedio esiste ed e' provato sui
+  documenti: fotografia nel form (`useDrawerFormPreserve`) + `confermaCambio` di `useFormInline`.
+  Non fatto con il resto perche' non e' un drawer documento e ha form propri: un giro a se'.
 - **`E_ATTIVO_REQUIRE` è TECNICO anche quando il dato l'ha scelto una persona**
   (DB, `dbops`; residuo di `work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md`): il
   codice del require generato dal framework ATTIVO è candidato allo split, per **tutte** le coppie
+  ATTIVO: oggi un riferimento a un dato disattivato scelto dall'operatore esce come 500, lo
+  stesso codice di un trigger montato male. Cantiere `dbops`, non di dominio; intanto il BE
+  pre-verifica «attivo» e risponde 400 col campo (§5.5 nota 2 e tabella dei residui, voce 4).
 - 🟡 **IVA per cassa: i residui del cantiere** (DB, ereditati il 2026-10-03 dalla chiusura
   di `work-done/brief-db-esigibilita-iva-per-cassa-emittente.md` §12):
   **R-DB-1** — i riepiloghi IVA **memorizzati** dei preventivi non si ricalcolano
@@ -275,6 +282,18 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `--app-*` perché il loro **significato** non è nominato. Si decide caso per
   caso cosa dicono (il nome è il significato, non la tinta), poi un guard che
   tenga lo zero. Regola: frontend-standards § «Stili CSS».
+- 🟡 **`djangorestframework-simplejwt` senza un manutentore certo** (BE, sicurezza;
+  registrato il 2026-10-03): siamo alla 5.5.1 (21-07-2025), ultima release;
+  PyPI dichiara il supporto solo fino a Django 5.2 (noi siamo su 6.1). Il
+  repo sta ancora su `jazzband/`, ma Jazzband ha annunciato la chiusura il
+  14-03-2026, coi progetti da trasferire. Oggi va bene così: la crittografia è
+  di PyJWT (mantenuto a parte) e la configurazione è prudente (access token da
+  10 minuti, rotazione e blacklist del refresh). Le condizioni: i test su login,
+  refresh, rotazione e blacklist vanno fatti girare a ogni salto di Django o DRF;
+  poi va seguito dove finisce il repo, l'eventuale nuova release con Django 6 e
+  gli advisory. **Da decidere prima della produzione**, se il manutentore non si
+  è chiarito: sostituirlo con un nostro strato sopra PyJWT, cioè una dipendenza
+  in meno e del codice nostro in più. È una scelta di Tid.
 - ❓ **Le FK verso `django.auth_user` non nascono su un'installazione nuova**
   (DB, domanda di forma per Tid, ereditata il 2026-09-27 dalla chiusura di
   `work-done/brief-db-blocco-login-per-credenziale.md`, §11.5): con

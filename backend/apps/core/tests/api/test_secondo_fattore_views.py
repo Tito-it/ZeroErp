@@ -12,6 +12,9 @@
 Indice test eseguiti:
  1) test_stato
  2) test_registra_da_qr_segreto_e_codici_una_volta — al DB il segreto cifrato e le impronte
+ 2b) test_registra_password_sbagliata_conta — D-T2, e il device non nasce
+ 2c) test_registra_senza_password_non_conta — 400, non e' un tentativo
+ 2d) test_registra_credenziale_bloccata_ferma_prima_della_password
  3) test_conferma_col_codice_giusto_registra_il_passo
  4) test_conferma_col_codice_sbagliato_non_conta — il segreto l'ha appena ricevuto
  5) test_conferma_senza_configurazione_avviata — 409 E_TOTP_DEVICE_ASSENTE
@@ -34,12 +37,14 @@ from unittest.mock import MagicMock, patch
 from django.test import Client
 
 from apps.core.services import crypto_service
+from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _SERVIZIO = "apps.core.services.secondo_fattore_service"
 _SEGRETO = base64.b32encode(b"12345678901234567890").decode()
 _CODICE = "287082"  # RFC 6238, passo 1
 _IP = "203.0.113.7"
+_PASSWORD = "Giusta-2026!"
 
 
 class _Base(JwtMockedApiTest):
@@ -50,6 +55,7 @@ class _Base(JwtMockedApiTest):
         self.client = Client()
         self.user = MagicMock(id=42, is_authenticated=True, is_superuser=False)
         self.user.get_username.return_value = "alice"
+        self.user.check_password.side_effect = lambda p: p == _PASSWORD
         auth = patch(
             "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
             return_value=(self.user, None),
@@ -72,9 +78,10 @@ class _Base(JwtMockedApiTest):
             p.start()
             self.addCleanup(p.stop)
         # Il savepoint vuole una connessione: il suo motivo lo prova il DB vero.
-        savepoint = patch(f"{_SERVIZIO}.transaction")
-        savepoint.start()
-        self.addCleanup(savepoint.stop)
+        for modulo in (_SERVIZIO, "apps.core.services.password_con_freno"):
+            savepoint = patch(f"{modulo}.transaction")
+            savepoint.start()
+            self.addCleanup(savepoint.stop)
 
     @staticmethod
     def _device(stato: str) -> dict:
@@ -106,8 +113,11 @@ class SecondoFattoreProprioTests(_Base):
         )
 
     def test_registra_da_qr_segreto_e_codici_una_volta(self):
-        resp = self._post(self._URL + "registra/")
+        resp = self._post(self._URL + "registra/", {"password": _PASSWORD})
         self.assertEqual(resp.status_code, 200, resp.content)
+        self.auth_repo.check_blocco_login.assert_called_once()
+        # La password giusta non e' un login: non azzera i tentativi.
+        self.auth_repo.registra_tentativo_login.assert_not_called()
         dati = resp.json()["data"]
         self.assertTrue(dati["qr_data_uri"].startswith("data:image/svg+xml;"))
         self.assertEqual(len(dati["codici_recupero"]), 10)
@@ -121,6 +131,33 @@ class SecondoFattoreProprioTests(_Base):
         self.assertEqual(len(impronte), 10)
         self.assertTrue(all(len(i) == 64 for i in impronte))
         self.assertNotIn(dati["codici_recupero"][0], impronte)
+
+    # Scopo: Chi tiene la sessione non prova password senza freno.
+    def test_registra_password_sbagliata_conta(self):
+        resp = self._post(self._URL + "registra/", {"password": "Sbagliata-2026!"})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        errore = resp.json()["error"]
+        self.assertEqual(errore["code"], "E_TOTP_PASSWORD_NON_VALIDA")
+        self._assert_tentativo_fallito()
+        self.repo.registra_device.assert_not_called()
+
+    def test_registra_senza_password_non_conta(self):
+        resp = self._post(self._URL + "registra/", {})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.json()["error"]["code"], "E_TOTP_PASSWORD_NON_VALIDA")
+        self.auth_repo.registra_tentativo_login.assert_not_called()
+        self.repo.registra_device.assert_not_called()
+
+    # Scopo: Il freno prima della password: a credenziale bloccata la password
+    #        non si verifica nemmeno (il codice del DB lo prova il test DB).
+    def test_registra_credenziale_bloccata_ferma_prima_della_password(self):
+        self.auth_repo.check_blocco_login.side_effect = ServiceError(
+            code="E_UTENTE_BLOCCATO", message="bloccato",
+        )
+        resp = self._post(self._URL + "registra/", {"password": _PASSWORD})
+        self.assertEqual(resp.json()["error"]["code"], "E_UTENTE_BLOCCATO")
+        self.user.check_password.assert_not_called()
+        self.repo.registra_device.assert_not_called()
 
     def test_conferma_col_codice_giusto_registra_il_passo(self):
         self.repo.get_device.return_value = self._device("DA_CONFERMARE")

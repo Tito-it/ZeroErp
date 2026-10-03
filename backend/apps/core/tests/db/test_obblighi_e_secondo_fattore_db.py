@@ -25,6 +25,8 @@ Indice test eseguiti:
 9) ServizioDbTests.test_il_super_admin_impone_l_obbligo_e_disattiva_col_motivo — il SUPER_ADMIN lo crea il test
 10) ServizioDbTests.test_chi_non_e_super_admin_non_impone_ne_disattiva — E_PERMESSO_NEGATO dai verbi
 11) ServizioDbTests.test_senza_traccia_la_disattivazione_si_annulla — D-T3, il savepoint del servizio
+12) ServizioDbTests.test_la_password_sbagliata_conta_e_frena_la_configurazione — D-T2 sul freno vero
+13) ServizioDbTests.test_su_una_credenziale_di_sistema_l_obbligo_non_si_accende — le uscite restano aperte
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.db import DatabaseError, connection, transaction
+from django.test import override_settings
 
 from apps.core.api.cancello_obblighi import (
     OBBLIGO_CAMBIO_PASSWORD,
@@ -46,15 +49,19 @@ from apps.core.db.auth_repository import AuthRepository
 from apps.core.db.secondo_fattore_repository import SecondoFattoreRepository
 from apps.core.services import crypto_service, totp_service
 from apps.core.services.db_error_fields import structured_db_error_code
+from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 
 
 # Scopo: Credenziale fabbricata, senza vesti e senza device.
+_PASSWORD = "Giusta-Per-Il-Test-2026!"
+
+
 def _nuova_credenziale() -> User:
     return User.objects.create_user(
         username=f"test_obblighi_{uuid.uuid4().hex[:12]}",
         email="",
-        password="Giusta-Per-Il-Test-2026!",
+        password=_PASSWORD,
     )
 
 
@@ -65,6 +72,16 @@ class _TransazioneAnnullata(unittest.TestCase):
 
     def setUp(self) -> None:
         apri_transazione_annullata(self)
+
+    # Scopo: Come `_codice_errore`, ma senza savepoint: per provare che il
+    #        savepoint ce l'ha chi viene chiamato.
+    @staticmethod
+    def _codice_senza_savepoint(azione) -> str | None:
+        try:
+            azione()
+        except DatabaseError as exc:
+            return structured_db_error_code(exc)
+        return None
 
     # Scopo: Esegue `azione` in un savepoint e ne ritorna il codice d'errore del DB.
     def _codice_errore(self, azione) -> str | None:
@@ -219,6 +236,9 @@ class ServizioDbTests(_TransazioneAnnullata):
 
         self.servizio = SecondoFattoreService()
         self.user = _nuova_credenziale()
+        # La provenienza da REMOTE_ADDR, qualunque sia la catena di proxy della
+        # macchina: il freno la vuole, e il test non deve dipendere da env.sh.
+        self.enterContext(override_settings(TRUSTED_PROXY_COUNT=0))
         self.request = RequestFactory().post("/", REMOTE_ADDR="198.51.100.60")
 
     # Scopo: Chi agisce, per i verbi che lo leggono (la GUC del Bearer).
@@ -248,7 +268,9 @@ class ServizioDbTests(_TransazioneAnnullata):
     def test_configura_rigenera_e_disattiva_da_se(self):
         self._agisce(self.user.id)
         adesso = totp_service.passo_corrente()
-        configurazione = self.servizio.avvia_configurazione(self.user)
+        configurazione = self.servizio.avvia_configurazione(
+            self.user, _PASSWORD, request=self.request,
+        )
         self.assertEqual(self.servizio.stato(self.user.id)["stato"], "DA_CONFERMARE")
 
         # Conferma col codice del passo precedente: il successivo resta libero.
@@ -273,6 +295,43 @@ class ServizioDbTests(_TransazioneAnnullata):
             [{"via": "APP", "chi_agisce": self.user.id, "motivo": None}],
         )
 
+    # Scopo: La password sbagliata all'avvio della configurazione conta sul
+    #        freno VERO della credenziale: dopo `max_tentativi` dalla stessa
+    #        provenienza si ferma anche chi la scrive giusta, e il device non
+    #        nasce (brief secondo fattore e riautenticazione).
+    def test_la_password_sbagliata_conta_e_frena_la_configurazione(self):
+        self._agisce(self.user.id)
+        with connection.cursor() as cur:
+            cur.execute("SELECT max_tentativi FROM script.fn_login_parametri()")
+            n = cur.fetchone()[0]
+        from django.test import RequestFactory
+
+        # Una provenienza sua: il freno e' sulla coppia credenziale + provenienza.
+        richiesta = RequestFactory().post("/", REMOTE_ADDR="198.51.100.61")
+        for _ in range(n - 1):
+            with self.assertRaises(ServiceError) as rifiuto:
+                self.servizio.avvia_configurazione(self.user, "Sbagliata-2026!", request=richiesta)
+            self.assertEqual(rifiuto.exception.code, "E_TOTP_PASSWORD_NON_VALIDA")
+
+        # Il tentativo che fa scattare il freno risponde col freno (la frase del
+        # DB, coi minuti), non con «password sbagliata». ⛔ SENZA il savepoint
+        # di `_codice_errore`: e' il BB a doverne avere uno suo, altrimenti il
+        # rifiuto annullerebbe il tentativo appena registrato e la password
+        # giusta, dopo, passerebbe.
+        self.assertEqual(
+            self._codice_senza_savepoint(
+                lambda: self.servizio.avvia_configurazione(self.user, "Sbagliata-2026!", request=richiesta)
+            ),
+            "E_UTENTE_BLOCCATO",
+        )
+        self.assertEqual(
+            self._codice_senza_savepoint(
+                lambda: self.servizio.avvia_configurazione(self.user, _PASSWORD, request=richiesta)
+            ),
+            "E_UTENTE_BLOCCATO",
+        )
+        self.assertEqual(self.servizio.stato(self.user.id)["stato"], "ASSENTE")
+
     # Scopo: Un operatore costruito dal percorso di produzione, volendo
     #        SUPER_ADMIN. ⛔ Non uno preso dal DB: su un DB senza
     #        amministratori il test si sarebbe saltato, verde senza provare.
@@ -288,7 +347,7 @@ class ServizioDbTests(_TransazioneAnnullata):
     # Scopo: Un device attivo per la credenziale del test, scritto da lei.
     def _device_attivo(self) -> None:
         self._agisce(self.user.id)
-        self.servizio.avvia_configurazione(self.user)
+        self.servizio.avvia_configurazione(self.user, _PASSWORD, request=self.request)
         SecondoFattoreRepository().conferma_device(self.user.id, passo=totp_service.passo_corrente())
 
     def test_il_super_admin_impone_l_obbligo_e_disattiva_col_motivo(self):
@@ -315,6 +374,39 @@ class ServizioDbTests(_TransazioneAnnullata):
             self._tracce(self.user.id),
             [{"via": "APP", "chi_agisce": admin_id, "motivo": "telefono perso"}],
         )
+
+    # Scopo: Su una credenziale di sistema (l'utente tecnico di un processo)
+    #        il SUPER_ADMIN non accende l'obbligo: una macchina non ha un
+    #        telefono, e il processo si fermerebbe. Le uscite restano aperte:
+    #        spegnere l'obbligo e togliere un device registrato per errore
+    #        passano (brief-db-credenziale-verbi-amministratore, D-2).
+    def test_su_una_credenziale_di_sistema_l_obbligo_non_si_accende(self):
+        admin_id = self._operatore("sf sistema", super_admin=True)
+        with connection.cursor() as cur:
+            cur.execute("SELECT m.auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore() m")
+            macchina = cur.fetchone()[0]
+            cur.execute("SELECT script.fn_categoria_accesso(%s)", [macchina])
+            self.assertEqual(cur.fetchone()[0], "SISTEMA", "la credenziale costruita dev'essere di sistema")
+
+        self._agisce(admin_id)
+        self.assertEqual(
+            self._codice_errore(lambda: self.servizio.imposta_obbligo(macchina, True)),
+            "E_CREDENZIALE_DI_SISTEMA",
+        )
+        self.assertFalse(self.servizio.stato(macchina)["obbligatorio"])
+        self.assertFalse(self.servizio.imposta_obbligo(macchina, False)["obbligatorio"])
+
+        # Il device di una macchina esiste solo per errore: lo registra lei,
+        # il SUPER_ADMIN lo toglie.
+        self._agisce(macchina)
+        SecondoFattoreRepository().registra_device(
+            macchina, secret_encrypted="segreto-macchina", impronte_recupero=["m1"],
+        )
+        self._agisce(admin_id)
+        stato = self.servizio.disattiva_da_admin(
+            macchina, motivo="registrato per errore", chi_agisce=admin_id, request=self.request,
+        )
+        self.assertEqual(stato["stato"], "ASSENTE")
 
     def test_chi_non_e_super_admin_non_impone_ne_disattiva(self):
         collega = self._operatore("sf collega", super_admin=False)

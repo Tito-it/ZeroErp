@@ -7,15 +7,12 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTipiRuoloTipiIndirizzoStore } from '../stores/tipiRuoloTipiIndirizzo'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { displayDate } from '../../core/utils/date'
-import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
@@ -35,10 +32,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
@@ -164,101 +157,99 @@ async function handleSave() {
   }
 }
 
+// Uscita dopo il salvataggio, diretta. Quella per volonta' dell'utente passa
+// dalla conferma di AppDrawer (`conferma-uscita`).
 function close() {
   emit('update:visible', false)
   emit('cancelled')
 }
-// Uscita per volonta' dell'utente: con modifiche chiede conferma. Dopo il
-// salvataggio `close()` resta diretta.
-const chiudi = () => chiudiConConferma(close)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH.SIMPLE }" :dismissable="true"
-    @after-show="onAfterShow"
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('amministrazione.matrice_indirizzi_ruoli.drawer_title')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.SIMPLE"
+    :readonly="isReadOnlyEffective"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('amministrazione.matrice_indirizzi_ruoli.drawer_title')"
-      />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
-      <div class="form-grid">
-        <div class="form-field">
-          <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_tipo_ruolo') }}</label>
-          <LookupSelect v-model="form.tipo_ruolo_id" rel="config.tipi_ruoli"
-            :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_tipo_ruolo_placeholder')"
-            :disabled="isFieldImmutable('tipo_ruolo_id') || isReadOnlyEffective" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_tipo_indirizzo') }}</label>
-          <LookupSelect v-model="form.tipo_indirizzo_id" rel="config.tipi_indirizzi"
-            :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_tipo_indirizzo_placeholder')"
-            :disabled="isFieldImmutable('tipo_indirizzo_id') || isReadOnlyEffective" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_obbligatorio') }}</label>
-          <ToggleSwitch v-model="form.obbligatorio" :disabled="isReadOnlyEffective"
-            :invalid="campiErrati.includes('obbligatorio')"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_fallback') }}</label>
-          <!-- Fase 4: in edit usa fallback_options pre-filtrate dal BE
-               (no self-ref + no cicli). In create il record non esiste ancora,
-               il guard ciclo non e' computabile: fallback al LookupSelect generico
-               sui tipi_indirizzi (BE rifiuta self-ref via FK constraint). -->
-          <Select v-if="isEdit" v-model="form.fallback_tipo_indirizzo_id"
-            :options="fallbackOptions"
-            option-label="descrizione"
-            option-value="tipo_indirizzo_id"
-            :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_fallback_placeholder')"
-            :disabled="isReadOnlyEffective" show-clear filter
-            :invalid="campiErrati.includes('fallback_tipo_indirizzo_id')"
-          />
-          <LookupSelect v-else v-model="form.fallback_tipo_indirizzo_id" rel="config.tipi_indirizzi"
-            :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_fallback_placeholder')"
-            :disabled="isReadOnlyEffective" show-clear />
-        </div>
-        <div v-if="isEdit" class="form-field">
-          <label>{{ t('indirizzi.campo_attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
-            :invalid="campiErrati.includes('attivo')"
-          />
-        </div>
-        <Message v-if="isEdit" severity="info" :closable="false">
-          {{ t('amministrazione.matrice_indirizzi_ruoli.fk_immutable_hint') }}
-        </Message>
-        <template v-if="isEdit && detail">
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('amministrazione.matrice_indirizzi_ruoli.col_valido_dal') }}</label>
-              <InputText :model-value="displayDate(detail.valido_dal)" disabled />
-            </div>
-            <div class="form-field">
-              <label>{{ t('amministrazione.matrice_indirizzi_ruoli.col_valido_al') }}</label>
-              <InputText :model-value="displayDate(detail.valido_al)" disabled />
-            </div>
-          </div>
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('common.data_insert') }}</label>
-              <InputText :model-value="displayDate(detail.data_insert)" disabled />
-            </div>
-            <div class="form-field">
-              <label>{{ t('common.data_update') }}</label>
-              <InputText :model-value="displayDate(detail.data_update)" disabled />
-            </div>
-          </div>
-        </template>
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_tipo_ruolo') }}</label>
+        <LookupSelect v-model="form.tipo_ruolo_id" rel="config.tipi_ruoli"
+          :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_tipo_ruolo_placeholder')"
+          :disabled="isFieldImmutable('tipo_ruolo_id') || isReadOnlyEffective" />
       </div>
-
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
+      <div class="form-field">
+        <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_tipo_indirizzo') }}</label>
+        <LookupSelect v-model="form.tipo_indirizzo_id" rel="config.tipi_indirizzi"
+          :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_tipo_indirizzo_placeholder')"
+          :disabled="isFieldImmutable('tipo_indirizzo_id') || isReadOnlyEffective" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_obbligatorio') }}</label>
+        <ToggleSwitch v-model="form.obbligatorio" :disabled="isReadOnlyEffective"
+          :invalid="campiErrati.includes('obbligatorio')"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_fallback') }}</label>
+        <!-- Fase 4: in edit usa fallback_options pre-filtrate dal BE
+             (no self-ref + no cicli). In create il record non esiste ancora,
+             il guard ciclo non e' computabile: fallback al LookupSelect generico
+             sui tipi_indirizzi (BE rifiuta self-ref via FK constraint). -->
+        <Select v-if="isEdit" v-model="form.fallback_tipo_indirizzo_id"
+          :options="fallbackOptions"
+          option-label="descrizione"
+          option-value="tipo_indirizzo_id"
+          :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_fallback_placeholder')"
+          :disabled="isReadOnlyEffective" show-clear filter
+          :invalid="campiErrati.includes('fallback_tipo_indirizzo_id')"
+        />
+        <LookupSelect v-else v-model="form.fallback_tipo_indirizzo_id" rel="config.tipi_indirizzi"
+          :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_fallback_placeholder')"
+          :disabled="isReadOnlyEffective" show-clear />
+      </div>
+      <div v-if="isEdit" class="form-field">
+        <label>{{ t('indirizzi.campo_attivo') }}</label>
+        <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+          :invalid="campiErrati.includes('attivo')"
+        />
+      </div>
+      <Message v-if="isEdit" severity="info" :closable="false">
+        {{ t('amministrazione.matrice_indirizzi_ruoli.fk_immutable_hint') }}
+      </Message>
+      <template v-if="isEdit && detail">
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('amministrazione.matrice_indirizzi_ruoli.col_valido_dal') }}</label>
+            <InputText :model-value="displayDate(detail.valido_dal)" disabled />
+          </div>
+          <div class="form-field">
+            <label>{{ t('amministrazione.matrice_indirizzi_ruoli.col_valido_al') }}</label>
+            <InputText :model-value="displayDate(detail.valido_al)" disabled />
+          </div>
+        </div>
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('common.data_insert') }}</label>
+            <InputText :model-value="displayDate(detail.data_insert)" disabled />
+          </div>
+          <div class="form-field">
+            <label>{{ t('common.data_update') }}</label>
+            <InputText :model-value="displayDate(detail.data_update)" disabled />
+          </div>
+        </div>
+      </template>
     </div>
-  </Drawer>
+  </AppDrawer>
 </template>

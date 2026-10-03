@@ -57,7 +57,7 @@
 //    di questo form offriva lo stesso un «Forza» che ripeteva il PATCH nudo:
 //    un pulsante che il database rifiutava. Il verbo ha imparato a raccogliere
 //    la conferma; il form la porta con `extra`, come alla nascita.
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import DatePicker from 'primevue/datepicker'
@@ -73,6 +73,7 @@ import FatturaLookup from '../../vendite/components/FatturaLookup.vue'
 import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
 import SaldoPanel from './SaldoPanel.vue'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { LIVELLO, spazioSaldo, useSaldi } from '../composables/useSaldi'
 import { DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
@@ -156,9 +157,34 @@ watch(
         }
       : defaultForm()
     resetDestinazione()
+    // Dopo il giro di watch: anche la creazione conta. ⚠️ Dentro una freccia:
+    //    il watch e' `immediate` e gira PRIMA che `fissa` sia dichiarata piu'
+    //    sotto — `nextTick(fissa)` la leggerebbe adesso (TDZ).
+    nextTick(() => fissa())
   },
   { immediate: true },
 )
+
+// Modifiche non salvate (2026-10-03, D-1 di
+// work-done/analisi-fe-chrome-drawer.md): fino a quel giorno la X del
+// drawer, l'ESC, il clic fuori e l'Annulla buttavano la riga in compilazione
+// senza domanda. La fotografia e' il form PIU' la destinazione scelta, che
+// vive fuori dal form; della destinazione si guardano gli ID: `RataSelect`
+// riemette la rata come oggetto nuovo coi numeri uguali, e non e' una
+// modifica. Il drawer la legge da `defineExpose` (`unisciFotografie`).
+// ⚠️ `visibile` sempre vero: il form esiste solo mentre e' aperto (`v-if` nel
+//    drawer), e allo smontaggio la fotografia se ne va con lui.
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(
+  computed(() => ({
+    ...form.value,
+    fattura_id: fattura.value?.id ?? null,
+    scadenza_id: rataScelta.value?.scadenza_id ?? null,
+    non_identificata: nonIdentificata.value,
+    motivo_forzatura: motivoForzatura.value,
+  })),
+  { visibile: () => true },
+)
+const annullaForm = () => chiudiConConferma(() => emit('annulla'))
 
 // Scopo: propone un importo, ma solo sopra un campo vuoto o sopra la
 //        proposta precedente — mai sopra un valore digitato.
@@ -411,6 +437,7 @@ async function onConferma() {
   const esito = await conferma(forzaturaConMotivo(motivoForzatura.value.trim() || null))
   if (esito !== null) emit('salvata')
 }
+defineExpose({ modificato, chiudiConConferma })
 </script>
 
 <template>
@@ -599,7 +626,7 @@ async function onConferma() {
           size="small"
           :label="t('common.cancel')"
           :icon="MANAGE_ICONS.BACK"
-          @click="emit('annulla')"
+          @click="annullaForm"
         />
         <Button
           size="small"

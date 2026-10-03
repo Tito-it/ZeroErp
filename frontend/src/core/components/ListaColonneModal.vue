@@ -16,18 +16,15 @@
 
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
-import FormFooter from './FormFooter.vue'
+import AppDrawer from './AppDrawer.vue'
 import ToggleSwitch from 'primevue/toggleswitch'
 import InputNumber from 'primevue/inputnumber'
-import Badge from 'primevue/badge'
 import Tag from 'primevue/tag'
 import { etichettaColonna } from '../utils/i18nLabel'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { useConfirmAction } from '../composables/useConfirmAction'
-import { useDrawerContentReady } from '../composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../composables/useDrawerFormPreserve'
 
 
 const { confirmAction } = useConfirmAction()
@@ -51,10 +48,6 @@ const props = defineProps({
   codice: { type: String, default: '' },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'apply', 'reset'])
 const { t, te } = useI18n()
@@ -74,7 +67,7 @@ const colonneDaSalvare = computed(() =>
     larghezza: c.larghezza ?? null,
   })),
 )
-const { fissa, chiudiConConferma } =
+const { fissa, modificato, chiudiConConferma } =
   useDrawerFormPreserve(colonneDaSalvare, { visibile: () => props.visible })
 
 watch(
@@ -156,10 +149,6 @@ function onSave() {
   emit('apply', { colonne: localColonne.value })
 }
 
-function onCancel() {
-  chiudiConConferma(() => emit('update:visible', false))
-}
-
 // Scopo: reset preferenza utente. Conferma dialog -> emit('reset').
 //        Il genitore chiama useListaConfig.reset() che fa DELETE +
 //        ricarica la config dalla cascata BE.
@@ -173,32 +162,31 @@ function onReset() {
     },
   })
 }
-const suVisibile = gestoreVisibile(emit, onCancel)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md, D-10): la testata e'
+       quella di tutti i drawer, col conteggio delle colonne nuove; il footer
+       e' quello del guscio, con «Ripristina» nello slot `#footer-azioni`. Ogni uscita passa dalla
+       conferma, l'Annulla compreso (`chiudi` dello slot). -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.SIMPLE }"
-    :modal="true"
+    :title="t('lista_config.modal_title')"
+    :icon="MANAGE_ICONS.PERSONALIZZA"
+    :action="t('common.edit')"
+    :width="DRAWER_WIDTH.SIMPLE"
+    :proteggi-corpo="false"
     :dismissable="!loading"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :conteggio="colonneNuove"
+    :conteggio-tooltip="t('lista_config.colonne_nuove_tooltip', { count: colonneNuove })"
+    :loading="loading"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="onSave"
   >
-    <template #header>
-      <div class="lista-config-header">
-        <h3>{{ t('lista_config.modal_title') }}</h3>
-        <Badge
-          v-if="colonneNuove > 0"
-          :value="colonneNuove"
-          severity="info"
-          v-tooltip.bottom="t('lista_config.colonne_nuove_tooltip', { count: colonneNuove })"
-        />
-      </div>
-    </template>
-
-    <div v-if="contentReady" class="lista-config-body">
+    <div class="lista-config-body">
       <div
         v-for="(gruppo, gIdx) in gruppiOrdinati"
         :key="gruppo.label"
@@ -274,39 +262,22 @@ const suVisibile = gestoreVisibile(emit, onCancel)
       </div>
     </div>
 
-    <template #footer>
-      <div class="lista-config-footer">
-        <!-- Reset preferenza: bottone aggiuntivo non standard del pattern
-             Annulla/Salva, resta standalone. -->
-        <Button
-          :label="t('lista_config.reset_preferenza')"
-          :icon="MANAGE_ICONS.RIPRISTINA_DEFAULT"
-          severity="secondary"
-          text
-          :disabled="loading"
-          @click="onReset"
-        />
-        <div class="lista-config-footer-right">
-          <FormFooter
-            :loading="loading"
-            @cancel="onCancel"
-            @save="onSave"
-          />
-        </div>
-      </div>
+    <!-- «Ripristina» accanto ad Annulla/Salva: lo slot `#footer-azioni` del
+         guscio, che tiene footer e uscita (ogni uscita passa dalla conferma). -->
+    <template #footer-azioni>
+      <Button
+        :label="t('lista_config.reset_preferenza')"
+        :icon="MANAGE_ICONS.RIPRISTINA_DEFAULT"
+        severity="secondary"
+        text
+        :disabled="loading"
+        @click="onReset"
+      />
     </template>
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>
-.lista-config-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.lista-config-header h3 {
-  margin: 0;
-}
 .lista-config-body {
   display: flex;
   flex-direction: column;
@@ -341,15 +312,5 @@ const suVisibile = gestoreVisibile(emit, onCancel)
   display: flex;
   align-items: center;
   gap: 0.25rem;
-}
-.lista-config-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.lista-config-footer-right {
-  display: flex;
-  gap: 0.5rem;
 }
 </style>

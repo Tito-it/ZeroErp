@@ -4,7 +4,8 @@
   Scopo: «Sicurezza dell'accesso»: il secondo fattore della PROPRIA credenziale
          (brief sicurezza §3.4-bis, T-4). Configurazione (QR, segreto, codici di
          recupero mostrati una volta, conferma col primo codice), codici nuovi e
-         disattivazione dietro un codice. Ci porta il guard del router quando
+         disattivazione dietro un codice. L'avvio della configurazione vuole la
+         password: con la sola sessione non si lega un telefono all'accesso. Ci porta il guard del router quando
          il secondo fattore e' obbligatorio e non configurato; ci si arriva anche
          dal menu utente.
   Note: Pagina della famiglia login (fuori da AppLayout): l'errore si mostra
@@ -24,11 +25,13 @@ import {
   registraSecondoFattore,
   rigeneraCodiciRecupero,
 } from '../api/secondoFattore'
+import { seSessioneChiusaDalFreno } from '../uscitaSessione'
 import { extractApiError } from '../utils/apiError'
 import { downloadBlob } from '../utils/download'
 import { provaSecondoFattore } from '../utils/provaSecondoFattore'
 import { STATO_SECONDO_FATTORE as STATO } from '../constants'
 import Button from 'primevue/button'
+import Password from 'primevue/password'
 import CodiceSecondoFattoreInput from '../components/CodiceSecondoFattoreInput.vue'
 
 const { t } = useI18n()
@@ -44,6 +47,8 @@ const codiciNuovi = ref(null)
 // Quale azione sullo stato ATTIVO si sta compilando: 'codici' | 'disattiva' | null.
 const azione = ref(null)
 const codice = ref('')
+// La password della credenziale, chiesta per avviare la configurazione.
+const password = ref('')
 const usaRecupero = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
@@ -62,7 +67,10 @@ async function esegui(chiamata) {
   try {
     return await chiamata()
   } catch (err) {
-    errorMessage.value = extractApiError(err, t('auth.login_technical_error'))
+    // Il freno sulla password chiude la sessione: si va al login col motivo.
+    if (!seSessioneChiusaDalFreno(err)) {
+      errorMessage.value = extractApiError(err, t('auth.login_technical_error'))
+    }
     return null
   } finally {
     loading.value = false
@@ -77,9 +85,10 @@ async function caricaStato() {
 onMounted(caricaStato)
 
 async function avviaConfigurazione() {
-  const res = await esegui(() => registraSecondoFattore())
+  const res = await esegui(() => registraSecondoFattore(password.value))
   if (!res) return
   configurazione.value = res.data.data
+  password.value = ''
   codice.value = ''
   await caricaStato()
 }
@@ -158,21 +167,36 @@ function tornaAllApplicazione() {
         <template v-if="stato">
           <!-- Non attivo: avvio, poi QR + codici + conferma -->
           <template v-if="!attivo">
-            <template v-if="!configurazione">
+            <form v-if="!configurazione" @submit.prevent="avviaConfigurazione" class="secondo-fattore-configurazione">
               <p class="login-subtitle">
                 {{ stato.stato === STATO.DA_CONFERMARE
                   ? t('auth.secondo_fattore.configurazione_a_meta')
                   : t('auth.secondo_fattore.spiegazione') }}
               </p>
+              <p class="login-subtitle">{{ t('auth.secondo_fattore.chiedi_password') }}</p>
+              <div class="field">
+                <Password
+                  id="password_secondo_fattore"
+                  v-model="password"
+                  :disabled="loading"
+                  :feedback="false"
+                  toggleMask
+                  :placeholder="t('auth.password')"
+                  :aria-label="t('auth.password')"
+                  autocomplete="current-password"
+                  fluid
+                />
+              </div>
               <Button
+                type="submit"
                 :label="stato.stato === STATO.DA_CONFERMARE
                   ? t('auth.secondo_fattore.ricomincia')
                   : t('auth.secondo_fattore.configura')"
                 :loading="loading"
+                :disabled="!password"
                 class="auth-submit-btn"
-                @click="avviaConfigurazione"
               />
-            </template>
+            </form>
 
             <form v-else @submit.prevent="conferma" class="secondo-fattore-configurazione">
               <p class="login-subtitle">{{ t('auth.secondo_fattore.passo_qr') }}</p>
@@ -252,7 +276,7 @@ function tornaAllApplicazione() {
         </template>
 
         <a v-if="!auth.mustChangePassword && !auth.mustConfigureSecondFactor" href="#" class="back-link" @click.prevent="tornaAllApplicazione">
-          {{ t('auth.secondo_fattore.torna') }}
+          {{ t('auth.account.torna') }}
         </a>
         <a v-else href="#" class="back-link" @click.prevent="auth.logout().then(() => router.push({ name: 'login' }))">
           {{ t('auth.logout') }}

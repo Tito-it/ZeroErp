@@ -16,19 +16,17 @@ import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
-import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, STATUS_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, STATUS_ICONS, DATE_FORMAT } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { addDaysToToday, toDateString, parseIsoDate, displayDate } from '../../core/utils/date'
 import { paramInt, paramString } from '../../core/utils/parameterCast'
 import { statoContrattoSeverity } from '../../core/utils/severity'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import DocumentoIndirizziSection from '../_shared/indirizzi/DocumentoIndirizziSection.vue'
@@ -51,9 +49,9 @@ import { useParameterDefaults } from '../../core/composables/useParameterDefault
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
+import { useFooterDocumento } from '../../core/composables/useFooterDocumento'
 import { getContrattoFormDefaults } from '../api/formDefaults'
 import { useBaFormDefaults } from '../_shared/baDefaults/useBaFormDefaults'
-import Drawer from 'primevue/drawer'
 import AppDialog from '../../core/components/AppDialog.vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -62,6 +60,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import ToggleSwitch from 'primevue/toggleswitch'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const { t, te } = useI18n()
 const store = useContrattiStore()
@@ -168,10 +167,6 @@ const mostraFooterSalva = computed(
   () => (!isReadonly.value && (!detail.value || detail.value.stato_codice_interno === 'DRAFT'))
     || codiciAttoEditabili.value,
 )
-
-// Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
-// (pattern feedback_content_ready_after_show centralizzato in useDrawerContentReady).
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // Lookup dinamico listini "selezionabili come riferimento contrattuale"
 // (refactor 2026-05-18 §4.4): filtra `vendite.listini` per esistenza di una
@@ -350,9 +345,9 @@ function toIsoDate(d) {
   return typeof d === 'string' ? d : toDateString(d)
 }
 
-// Carica dati all'apertura. Il reset di `contentReady` alla chiusura e' gestito
-// dal composable useDrawerContentReady — qui resta solo l'invalidation del guard
-// di versione per scartare fetch stantii in caso di apertura/chiusura rapide.
+// Carica dati all'apertura (il montaggio a fine animazione e' di AppDrawer).
+// Alla chiusura resta solo l'invalidation del guard di versione, per scartare
+// fetch stantii in caso di apertura/chiusura rapide.
 watch(() => props.visible, async (val) => {
   if (!val) { fgFv.invalidate(); return }
   const v = fgFv.tag()
@@ -785,410 +780,402 @@ const drawerActions = computed(() => {
 })
 
 const onClose = useDrawerClose(emit, 'cancelled')
-// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
-const chiudi = () => chiudiConConferma(onClose)
 // Detail fuori scope (RLS) / inesistente → toast + chiusura, niente drawer vuoto.
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
-const suVisibile = gestoreVisibile(emit, chiudi)
+
+// Il footer del drawer segue lo stato del documento (BB useFooterDocumento,
+// D-11 di work-done/analisi-fe-chrome-drawer.md).
+// «Modificabile» qui e' `mostraFooterSalva`: in CREATE e in DRAFT, piu' l'ATTIVO
+// per i soli riferimenti dell'atto (Q1). NB: ATTIVO ammette tecnicamente anche
+// la modifica di `valido_al` + meta (_CONTRATTO_PATCH_ALLOWED_BY_STATE), ma
+// l'unica modifica operativa li' e' la cessazione programmata, dal dialog «Cessa
+// contratto». ⚠️ In ATTIVO la catena readonly e' accesa (`isContractLocked`):
+// il Salva lo riaccende `footer-readonly`, i tre campi l'`app-escape` della
+// loro sezione — e il payload di `handleSave` porta solo quelli.
+// Le righe hanno un drawer loro: nessun form di riga qui.
+const footerDrawer = useFooterDocumento({
+  modificabile: () => mostraFooterSalva.value,
+  presente: () => detail.value != null,
+})
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), { visibile: () => cessaDialogVisible.value })
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="props.visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    :dismissable="true"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="t('vendite.contratti.contratto')"
+    :icon="NAV_ICONS.CONTRATTI"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :footer="footerDrawer"
+    :loading="loading"
+    :save-disabled="!canSave"
+    :footer-readonly="codiciAttoEditabili ? false : undefined"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('vendite.contratti.contratto')"
-        :icon="NAV_ICONS.CONTRATTI"
-      />
-    </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <template v-if="contentReady">
-
-      <!-- === Intestazione edit: numero/stato + azioni testata omogenee ai preventivi.
-           Refactor UI drawer 2026-05-21: header info e azioni passano dai BB
-           condivisi DrawerEntityHeader + DrawerActionsBar (vedi
-           docs/it/dev/frontend/frontend-standards.md §"Azioni Drawer"). === -->
-      <template v-if="isEdit && detail">
-        <DrawerEntityHeader>
-          <Tag :value="detail.numero" severity="secondary" />
-          <span v-if="detail.data" class="app-drawer-header-muted">
-            {{ displayDate(detail.data) }}
-          </span>
-          <Tag
-            :value="t(`vendite.contratti.forma_${formaDerivata}`)"
-            :severity="formaDerivata === 'senza_listino' ? 'warn' : 'info'"
-          />
-          <template #status>
-            <Tag
-              :value="detail.stato_descrizione"
-              :severity="statoContrattoSeverity(detail.stato_codice_interno)"
-            />
-          </template>
-        </DrawerEntityHeader>
-
-        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
-          <template #suffix>
-            <EntityPdfButton
-              :sorgente-code="SORGENTE_CODES.CONTRATTO"
-              :entity-id="props.contrattoId"
-              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-              :pdf="capabilities.pdf"
-              i18n-prefix="vendite.contratti.pdf"
-              :dialog-title="detail.numero
-                ? t('vendite.contratti.pdf.dialog_title', { numero: detail.numero })
-                : ''"
-            />
-          </template>
-        </DrawerActionsBar>
-
-        <!-- Collegamenti diretti (pratica + origine + destinazioni di livello 1):
-             segnalazione a colpo d'occhio sotto i pulsanti. Il grafo completo si
-             apre dai chip in dialog. Solo in EDIT. -->
-        <DocumentoCollegamentiBar
-          v-if="isEdit && contrattoId"
-          base-path="/vendite/contratti"
-          :doc-id="contrattoId"
-          :readonly="readonly || parentReadonly" />
-
-        <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo
-             modifica valido_al (programma cessazione) + cambio stato.
-             Coerente con Profilo A whitelist BE. -->
-        <Message v-if="isContractLocked && detail.stato_codice_interno !== 'CESSATO'"
-          severity="info" :closable="false" size="small">
-          {{ t('vendite.contratti.banner_locked_attivo', { stato: detail.stato_descrizione }) }}
-        </Message>
-        <Message v-else-if="isContractLocked && detail.stato_codice_interno === 'CESSATO'"
-          severity="warn" :closable="false" size="small">
-          {{ t('vendite.contratti.banner_locked_cessato') }}
-        </Message>
-      </template>
-
-      <!-- === Emittente fiscale === -->
-      <!-- Sezione separata sopra il cliente (pattern offerte/preventivi).
-           Operatore con EF assegnato -> read-only auto-popolato dal profilo;
-           admin globale (multi-EF) -> Select sugli EF disponibili.
-           In edit mostra codice + ragione sociale denormalizzati dal record. -->
-      <h4>{{ t('vendite.contratti.section_emittente') }}</h4>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
-          <EmittenteFiscaleField
-            v-model="form.emittente_fiscale_id"
-            :record="detail"
-            :is-edit="isEdit"
-            :disabled="isReadonly"
-          />
-        </div>
-      </div>
-
-      <!-- === Cliente (BA + utility) + badge utility/PDP === -->
-      <h4>
-        {{ t('vendite.contratti.section_cliente') }}
-        <Tag v-if="baBadgeLabel" :value="baBadgeLabel" severity="info" class="ml-05" />
-      </h4>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_billing_account') }} <span v-if="!isEdit">*</span></label>
-          <!-- `utility-id` pre-filtra il lookup BA sull'utility selezionata
-               (default = utility dell'operatore via `utilityDefaultId`).
-               `onBaSelected` sovrascrive `utility_id` con quella canonical
-               del BA scelto, mantenendo coerenza FK. Allinea OffertaDrawer. -->
-          <BillingAccountLookup
-            v-if="!isEdit"
-            :model-value="form.billing_account_obj"
-            :utility-id="form.utility_id"
-            @update:model-value="onBaSelected"
-            :placeholder="t('vendite.contratti.select_billing_account')"
-          />
-          <InputText v-else :model-value="detail?.ba_ragione_sociale" disabled />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_utility') }} <span v-if="!isEdit">*</span></label>
-          <!-- Building block standard utility-per-ruolo-EF: filtra le utility
-               configurate per l'EF dell'operatore + ammesse al ruolo CLIENTE
-               (intersezione `emittenti_fiscali_utilities` x
-               `utilities_tipi_ruolo`). Pre-popolato da `defaultForm()` via
-               `utilityDefaultId`; quando l'operatore sceglie il BA,
-               `onBaSelected` sovrascrive con la utility canonical del BA. -->
-          <UtilityPerRuoloSelect
-            v-model="form.utility_id"
-            :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
-            :placeholder="t('vendite.contratti.field_utility')"
-            :disabled="isEdit || isReadonly"
-          />
-        </div>
-      </div>
-      <!-- Ambito + Categoria cliente snapshot sulla stessa riga.
-           Categoria editabile in create e in DRAFT, bloccata dopo
-           attivazione (BE/non_editable_fields + trigger DB). -->
-      <div class="form-grid-2col mt-1">
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_ambito') }} <span v-if="!isEdit">*</span></label>
-          <AmbitoContrattoSelect v-model="form.ambito"
-            :disabled="isEdit && isLocked('ambito')" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_categoria_cliente_snapshot') }}</label>
-          <LookupSelect
-            v-model="form.categoria_cliente_id_snapshot"
-            rel="anagrafiche.categorie_clienti"
-            :placeholder="t('vendite.contratti.select_categoria_cliente')"
-            show-clear
-            :disabled="isEdit && isLocked('categoria_cliente_id_snapshot')"
-          />
-        </div>
-      </div>
-
-      <!-- Corsia di fatturazione: instradamento deciso PRIMA che il contratto
-           entri in commessa; dopo il push il flag e' inerte e il DB respinge
-           la modifica. Disponibile sia in creazione sia in modifica; in ATTIVO
-           la PATCH ammette solo la data di fine validita', quindi il campo
-           risulta bloccato da `isReadonly`. -->
-      <div class="form-grid-2col mt-1">
-        <div class="form-field">
-          <label for="ctr-fatt-immediata">{{ t('vendite.contratti.field_fatturazione_immediata') }}</label>
-          <div class="app-form-inline-toggle">
-            <ToggleSwitch
-              input-id="ctr-fatt-immediata"
-              v-model="form.fatturazione_immediata"
-              :disabled="(isEdit && isLocked('fatturazione_immediata')) || isReadonly"
-              :invalid="campiErrati.includes('fatturazione_immediata')" />
-            <small class="app-text-muted">
-              {{ t('vendite.contratti.fatturazione_immediata_hint') }}
-            </small>
-          </div>
-        </div>
-        <div class="form-field"></div>
-      </div>
-
-      <!-- === Riferimenti dell'atto (CIG / CUP / commessa) ===
-           I8/D9: prima stavano su `anagrafiche.clienti`, cioe' su una riga PER
-           FORNITURA, mentre nominano un CONTRATTO — una PA con tre contratti ha
-           tre CIG. In fattura elettronica viaggiano nello stesso blocco
-           (DatiContratto/DatiOrdineAcquisto), quindi stanno insieme.
-           ⭐ Visibili anche in CREATE dalla slice S3-b (2026-08-31). Prima no:
-           la whitelist della fn madre DB non li conosceva e li avrebbe SCARTATI
-           in silenzio — caselle che invitano a scrivere un valore che il
-           database butta via sono peggio di caselle assenti. Il changeSet
-           `20260831-24` le ha ammesse, e il momento naturale per digitare un
-           CIG e' proprio la creazione: nasce con la gara.
-           ⭐ Editabili anche a contratto ATTIVO (Q1): il CIG di una gara arriva
-           quando arriva. -->
-      <template>
-        <h4>{{ t('vendite.contratti.section_riferimenti_atto') }}</h4>
-        <div class="form-grid-3col">
-          <div class="form-field">
-            <label>{{ t('vendite.contratti.field_codice_cig') }}</label>
-            <InputText v-model="form.codice_cig"
-              :maxlength="CODICI_ATTO_MAX_LEN.cig"
-              :disabled="!codiciAttoEditabili"
-              :invalid="campiErrati.includes('codice_cig')" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('vendite.contratti.field_codice_cup') }}</label>
-            <InputText v-model="form.codice_cup"
-              :maxlength="CODICI_ATTO_MAX_LEN.cup"
-              :disabled="!codiciAttoEditabili"
-              :invalid="campiErrati.includes('codice_cup')" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('vendite.contratti.field_codice_commessa') }}</label>
-            <InputText v-model="form.codice_commessa"
-              :maxlength="CODICI_ATTO_MAX_LEN.commessa"
-              :disabled="!codiciAttoEditabili"
-              :invalid="campiErrati.includes('codice_commessa')" />
-          </div>
-        </div>
-      </template>
-
-      <!-- === Validità === -->
-      <h4>{{ t('vendite.contratti.section_validita') }}</h4>
-      <div class="form-grid-3col">
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_data') }} *</label>
-          <DatePicker :model-value="parseIsoDate(form.data)"
-            @update:model-value="form.data = toIsoDate($event)"
-            :disabled="isEdit && isLocked('data')"
-            date-format="dd/mm/yy" show-icon />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_valido_dal') }} *</label>
-          <DatePicker :model-value="parseIsoDate(form.valido_dal)"
-            @update:model-value="form.valido_dal = toIsoDate($event)"
-            :disabled="isEdit && isLocked('valido_dal')"
-            date-format="dd/mm/yy" show-icon />
-        </div>
-        <!-- Campo valido_al condizionale per stato:
-             - DRAFT: editabile come "Fine validita' (opz.)"
-             - ATTIVO con valido_al impostato: readonly come "Cessazione
-               programmata al {data}" (cessazione futura applicata via
-               dialog Cessa, in attesa di scadere)
-             - ATTIVO senza valido_al: nascosto (cessazione passa solo
-               dal dialog dedicato)
-             - CESSATO: readonly come "Data cessazione" -->
-        <div class="form-field"
-          v-if="!isEdit
-            || detail?.stato_codice_interno === 'DRAFT'
-            || detail?.stato_codice_interno === 'CESSATO'
-            || (form.valido_al && detail?.stato_codice_interno === 'ATTIVO')">
-          <label>
-            {{ detail?.stato_codice_interno === 'CESSATO'
-              ? t('vendite.contratti.field_data_cessazione')
-              : detail?.stato_codice_interno === 'ATTIVO' && form.valido_al
-                ? t('vendite.contratti.field_cessazione_programmata')
-                : t('vendite.contratti.field_valido_al') }}
-          </label>
-          <DatePicker :model-value="parseIsoDate(form.valido_al)"
-            @update:model-value="form.valido_al = toIsoDate($event)"
-            :disabled="isEdit && isLocked('valido_al')"
-            :invalid="campiErrati.includes('valido_al')"
-            date-format="dd/mm/yy" show-icon show-button-bar />
-        </div>
-      </div>
-
-      <!-- === Pricing (refactor modalita 2026-05-15) === -->
-      <!-- Niente piu' SelectButton A/B/C: l'operatore compila campi opzionali
-           (listino + variazione globale). La "forma" derivata e' un badge
-           informativo readonly mostrato sopra in detail (composable
-           `formaDerivata`). -->
-      <h4>{{ t('vendite.contratti.section_pricing') }}</h4>
-
-      <!-- Badge forma derivata: visibile in EDIT come audit visivo del path. -->
-      <Message
-        v-if="isEdit && detail"
+  <!-- === Intestazione edit: numero/stato + azioni testata omogenee ai preventivi.
+       Refactor UI drawer 2026-05-21: header info e azioni passano dai BB
+       condivisi DrawerEntityHeader + DrawerActionsBar (vedi
+       docs/it/dev/frontend/frontend-standards.md §"Azioni Drawer"). === -->
+  <template v-if="isEdit && detail">
+    <DrawerEntityHeader>
+      <Tag :value="detail.numero" severity="secondary" />
+      <span v-if="detail.data" class="app-drawer-header-muted">
+        {{ displayDate(detail.data) }}
+      </span>
+      <Tag
+        :value="t(`vendite.contratti.forma_${formaDerivata}`)"
         :severity="formaDerivata === 'senza_listino' ? 'warn' : 'info'"
-        :closable="false" size="small"
-      >
-        {{ t(`vendite.contratti.forma_${formaDerivata}_descrizione`) }}
-      </Message>
-
-      <div class="form-field">
-        <label>{{ t('vendite.contratti.field_listino') }}</label>
-        <!-- Refactor 2026-05-18 §4.4: lookup dedicato che esclude i listini
-             senza versione ATTIVA. Pattern useGlobalLookup + Select, cache
-             modulo-level. Niente piu' LookupSelect generico per non far
-             apparire scelte che il save rifiuterebbe. -->
-        <Select v-model="form.listino_id"
-          :options="listiniLookup.items.value"
-          :option-label="formatListinoOption"
-          option-value="id"
-          :loading="listiniLookup.loading.value"
-          :placeholder="t('vendite.contratti.select_listino_opzionale')"
-          :invalid="campiErrati.includes('listino_id')"
-          show-clear
-          filter
-          @update:model-value="onListinoChange"
-          :disabled="isEdit && (isLocked('listino_id') || righeCount > 0)" />
-        <small v-if="isEdit && righeCount > 0 && !isLocked('listino_id')"
-          style="color: var(--p-yellow-700, #b45309);">
-          <i :class="STATUS_ICONS.ERRORE" />
-          {{ t('vendite.contratti.hint_listino_lock_righe', { n: righeCount }) }}
-        </small>
-        <small v-else class="app-text-muted">
-          {{ t('vendite.contratti.hint_listino_opzionale') }}
-        </small>
-      </div>
-
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_tipo_variazione') }}</label>
-          <TipoVariazioneSelect v-model="form.tipo_variazione_globale"
-            scope="contratto"
-            show-clear
-            :disabled="isEdit && isLocked('tipo_variazione_globale')" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_valore_variazione') }}</label>
-          <InputNumber v-model="form.valore_variazione_globale"
-            :min-fraction-digits="0" :max-fraction-digits="4" showButtons
-            @update:model-value="onValoreVariazioneChange"
-            :disabled="isEdit && isLocked('valore_variazione_globale')"
-            :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''"
-            :invalid="campiErrati.includes('valore_variazione_globale')" />
-          <small class="app-text-muted">{{ t('vendite.contratti.hint_valore_variazione') }}</small>
-        </div>
-      </div>
-
-      <!-- Valuta: snapshot fissato al CREATE, immutabile in EDIT
-           (allineato a preventivi/offerte). Pre-popolata da
-           ApiContrattoFormDefaults via cascata BB resolve_valuta_default. -->
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_valuta') }}</label>
-          <LookupSelect v-model="form.valuta_id" rel="config.valute"
-            :placeholder="t('vendite.contratti.field_valuta')"
-            :disabled="isEdit"
-            show-clear />
-        </div>
-      </div>
-
-      <!-- === Tipo/Classe utenza (editabile in BOZZA, readonly dopo) === -->
-      <h4>{{ t('vendite.contratti.section_utenza') }}</h4>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_tipo_utenza') }}</label>
-          <LookupSelect v-model="form.utility_tipo_utenza_id" rel="config.tipi_utenze"
-            :placeholder="t('vendite.contratti.select_tipo_utenza')" show-clear
-            :disabled="isEdit && detail?.stato_codice_interno !== 'DRAFT'" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.contratti.field_classe_utenza') }}</label>
-          <LookupSelect v-model="form.utility_classe_utenza_id" rel="config.classi_utenze"
-            :placeholder="t('vendite.contratti.select_classe_utenza')" show-clear
-            :disabled="isEdit && detail?.stato_codice_interno !== 'DRAFT'" />
-        </div>
-      </div>
-
-      <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
-           contatore "+N altri", pulsante "Indirizzi" che apre il drawer
-           di gestione. Solo in EDIT (documento persistito). -->
-      <DocumentoIndirizziSection
-        v-if="isEdit && detail"
-        dominio="contratti"
-        :doc-id="contrattoId"
-        :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
-        :istanza-utility-id="detail?.istanza_utility_id ?? null"
-        :readonly="isReadonly" />
-
-      <!-- L'area inline "Documenti generati" e' stata rimossa 2026-07-16
-           (doppione): l'archivio PDF si consulta dal pulsante PDF in testata
-           (EntityPdfButton -> PdfDocumentiSorgenteDialog, stesso BB con in
-           piu' expand automatico e append allegati). Il seed pdf_mode
-           ANNULLATO=ARCHIVE (regola unica 5 domini: annullare non cancella
-           la storia) tiene il pulsante consultabile anche sugli annullati. -->
-
-
-      <!-- Footer Salva/Annulla solo se editabile. La regola di dominio e':
-           - CREATE (no detail): editabile
-           - EDIT DRAFT: editabile
-           - EDIT ATTIVO/CESSATO/ANNULLATO: NON editabile (solo Chiudi)
-           NB: ATTIVO ammette tecnicamente modifica di `valido_al + meta`
-           (cf. _CONTRATTO_PATCH_ALLOWED_BY_STATE BE + fn_available_actions_contratto
-           che ritorna `can_edit_testata=true` per ATTIVO), ma l'unica modifica
-           operativa in ATTIVO e' la cessazione programmata, gestita via
-           dialog "Cessa contratto" dedicato (non via Salva del drawer).
-           Quindi UX: mostrare solo Chiudi sgombera il footer da azioni
-           ingannevoli ("Salva" semanticamente non porta a nessuna modifica
-           visibile per l'operatore in ATTIVO). -->
-      <FormFooter v-if="mostraFooterSalva"
-        :loading="loading" :disabled="!canSave"
-        @save="handleSave" @cancel="chiudi" />
-      <!-- Fallback close-only: stati post-DRAFT o LETTURA. Footer dedicato
-           con solo "Chiudi" (semantica completion, vs X in alto = dismiss).
-           Pattern coerente con `feedback_drawer_footer_close_only` e
-           PreventiviDrawer. -->
-      <FormFooter v-else-if="detail" close-only @cancel="chiudi" />
+      />
+      <template #status>
+        <Tag
+          :value="detail.stato_descrizione"
+          :severity="statoContrattoSeverity(detail.stato_codice_interno)"
+        />
       </template>
+    </DrawerEntityHeader>
+
+    <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
+      <template #suffix>
+        <EntityPdfButton
+          :sorgente-code="SORGENTE_CODES.CONTRATTO"
+          :entity-id="props.contrattoId"
+          :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+          :pdf="capabilities.pdf"
+          i18n-prefix="vendite.contratti.pdf"
+          :dialog-title="detail.numero
+            ? t('vendite.contratti.pdf.dialog_title', { numero: detail.numero })
+            : ''"
+        />
+      </template>
+    </DrawerActionsBar>
+
+    <!-- Collegamenti diretti (pratica + origine + destinazioni di livello 1):
+         segnalazione a colpo d'occhio sotto i pulsanti. Il grafo completo si
+         apre dai chip in dialog. Solo in EDIT. -->
+    <DocumentoCollegamentiBar
+      v-if="isEdit && contrattoId"
+      base-path="/vendite/contratti"
+      :doc-id="contrattoId"
+      :readonly="readonly || parentReadonly" />
+
+    <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo
+         modifica valido_al (programma cessazione) + cambio stato.
+         Coerente con Profilo A whitelist BE. -->
+    <Message v-if="isContractLocked && detail.stato_codice_interno !== 'CESSATO'"
+      severity="info" :closable="false" size="small">
+      {{ t('vendite.contratti.banner_locked_attivo', { stato: detail.stato_descrizione }) }}
+    </Message>
+    <Message v-else-if="isContractLocked && detail.stato_codice_interno === 'CESSATO'"
+      severity="warn" :closable="false" size="small">
+      {{ t('vendite.contratti.banner_locked_cessato') }}
+    </Message>
+  </template>
+
+  <!-- === Emittente fiscale === -->
+  <!-- Sezione separata sopra il cliente (pattern offerte/preventivi).
+       Operatore con EF assegnato -> read-only auto-popolato dal profilo;
+       admin globale (multi-EF) -> Select sugli EF disponibili.
+       In edit mostra codice + ragione sociale denormalizzati dal record. -->
+  <h4>{{ t('vendite.contratti.section_emittente') }}</h4>
+  <div class="form-grid-2col">
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
+      <EmittenteFiscaleField
+        v-model="form.emittente_fiscale_id"
+        :record="detail"
+        :is-edit="isEdit"
+        :disabled="isReadonly"
+      />
     </div>
+  </div>
+
+  <!-- === Cliente (BA + utility) + badge utility/PDP === -->
+  <h4>
+    {{ t('vendite.contratti.section_cliente') }}
+    <Tag v-if="baBadgeLabel" :value="baBadgeLabel" severity="info" class="ml-05" />
+  </h4>
+  <div class="form-grid-2col">
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_billing_account') }} <span v-if="!isEdit">*</span></label>
+      <!-- `utility-id` pre-filtra il lookup BA sull'utility selezionata
+           (default = utility dell'operatore via `utilityDefaultId`).
+           `onBaSelected` sovrascrive `utility_id` con quella canonical
+           del BA scelto, mantenendo coerenza FK. Allinea OffertaDrawer. -->
+      <BillingAccountLookup
+        v-if="!isEdit"
+        :model-value="form.billing_account_obj"
+        :utility-id="form.utility_id"
+        @update:model-value="onBaSelected"
+        :placeholder="t('vendite.contratti.select_billing_account')"
+      />
+      <InputText v-else :model-value="detail?.ba_ragione_sociale" disabled />
+    </div>
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_utility') }} <span v-if="!isEdit">*</span></label>
+      <!-- Building block standard utility-per-ruolo-EF: filtra le utility
+           configurate per l'EF dell'operatore + ammesse al ruolo CLIENTE
+           (intersezione `emittenti_fiscali_utilities` x
+           `utilities_tipi_ruolo`). Pre-popolato da `defaultForm()` via
+           `utilityDefaultId`; quando l'operatore sceglie il BA,
+           `onBaSelected` sovrascrive con la utility canonical del BA. -->
+      <UtilityPerRuoloSelect
+        v-model="form.utility_id"
+        :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
+        :placeholder="t('vendite.contratti.field_utility')"
+        :disabled="isEdit || isReadonly"
+      />
+    </div>
+  </div>
+  <!-- Ambito + Categoria cliente snapshot sulla stessa riga.
+       Categoria editabile in create e in DRAFT, bloccata dopo
+       attivazione (BE/non_editable_fields + trigger DB). -->
+  <div class="form-grid-2col mt-1">
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_ambito') }} <span v-if="!isEdit">*</span></label>
+      <AmbitoContrattoSelect v-model="form.ambito"
+        :disabled="isEdit && isLocked('ambito')" />
+    </div>
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_categoria_cliente_snapshot') }}</label>
+      <LookupSelect
+        v-model="form.categoria_cliente_id_snapshot"
+        rel="anagrafiche.categorie_clienti"
+        :placeholder="t('vendite.contratti.select_categoria_cliente')"
+        show-clear
+        :disabled="isEdit && isLocked('categoria_cliente_id_snapshot')"
+      />
+    </div>
+  </div>
+
+  <!-- Corsia di fatturazione: instradamento deciso PRIMA che il contratto
+       entri in commessa; dopo il push il flag e' inerte e il DB respinge
+       la modifica. Disponibile sia in creazione sia in modifica; in ATTIVO
+       la PATCH ammette solo la data di fine validita', quindi il campo
+       risulta bloccato da `isReadonly`. -->
+  <div class="form-grid-2col mt-1">
+    <div class="form-field">
+      <label for="ctr-fatt-immediata">{{ t('vendite.contratti.field_fatturazione_immediata') }}</label>
+      <div class="app-form-inline-toggle">
+        <ToggleSwitch
+          input-id="ctr-fatt-immediata"
+          v-model="form.fatturazione_immediata"
+          :disabled="(isEdit && isLocked('fatturazione_immediata')) || isReadonly"
+          :invalid="campiErrati.includes('fatturazione_immediata')" />
+        <small class="app-text-muted">
+          {{ t('vendite.contratti.fatturazione_immediata_hint') }}
+        </small>
+      </div>
+    </div>
+    <div class="form-field"></div>
+  </div>
+
+  <!-- === Riferimenti dell'atto (CIG / CUP / commessa) ===
+       I8/D9: prima stavano su `anagrafiche.clienti`, cioe' su una riga PER
+       FORNITURA, mentre nominano un CONTRATTO — una PA con tre contratti ha
+       tre CIG. In fattura elettronica viaggiano nello stesso blocco
+       (DatiContratto/DatiOrdineAcquisto), quindi stanno insieme.
+       ⭐ Visibili anche in CREATE dalla slice S3-b (2026-08-31). Prima no:
+       la whitelist della fn madre DB non li conosceva e li avrebbe SCARTATI
+       in silenzio — caselle che invitano a scrivere un valore che il
+       database butta via sono peggio di caselle assenti. Il changeSet
+       `20260831-24` le ha ammesse, e il momento naturale per digitare un
+       CIG e' proprio la creazione: nasce con la gara.
+       ⭐ Editabili anche a contratto ATTIVO (Q1): il CIG di una gara arriva
+       quando arriva. -->
+  <!-- `app-escape` solo quando la catena e' in sola lettura ma i tre campi no
+       (contratto ATTIVO, Q1): il corpo protetto li spegnerebbe. -->
+  <div :class="{ 'app-escape': codiciAttoEditabili && isReadonly }">
+    <h4>{{ t('vendite.contratti.section_riferimenti_atto') }}</h4>
+    <div class="form-grid-3col">
+      <div class="form-field">
+        <label>{{ t('vendite.contratti.field_codice_cig') }}</label>
+        <InputText v-model="form.codice_cig"
+          :maxlength="CODICI_ATTO_MAX_LEN.cig"
+          :disabled="!codiciAttoEditabili"
+          :invalid="campiErrati.includes('codice_cig')" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.contratti.field_codice_cup') }}</label>
+        <InputText v-model="form.codice_cup"
+          :maxlength="CODICI_ATTO_MAX_LEN.cup"
+          :disabled="!codiciAttoEditabili"
+          :invalid="campiErrati.includes('codice_cup')" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.contratti.field_codice_commessa') }}</label>
+        <InputText v-model="form.codice_commessa"
+          :maxlength="CODICI_ATTO_MAX_LEN.commessa"
+          :disabled="!codiciAttoEditabili"
+          :invalid="campiErrati.includes('codice_commessa')" />
+      </div>
+    </div>
+  </div>
+
+  <!-- === Validità === -->
+  <h4>{{ t('vendite.contratti.section_validita') }}</h4>
+  <div class="form-grid-3col">
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_data') }} *</label>
+      <DatePicker :model-value="parseIsoDate(form.data)"
+        @update:model-value="form.data = toIsoDate($event)"
+        :disabled="isEdit && isLocked('data')"
+        :date-format="DATE_FORMAT" show-icon />
+    </div>
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_valido_dal') }} *</label>
+      <DatePicker :model-value="parseIsoDate(form.valido_dal)"
+        @update:model-value="form.valido_dal = toIsoDate($event)"
+        :disabled="isEdit && isLocked('valido_dal')"
+        :date-format="DATE_FORMAT" show-icon />
+    </div>
+    <!-- Campo valido_al condizionale per stato:
+         - DRAFT: editabile come "Fine validita' (opz.)"
+         - ATTIVO con valido_al impostato: readonly come "Cessazione
+           programmata al {data}" (cessazione futura applicata via
+           dialog Cessa, in attesa di scadere)
+         - ATTIVO senza valido_al: nascosto (cessazione passa solo
+           dal dialog dedicato)
+         - CESSATO: readonly come "Data cessazione" -->
+    <div class="form-field"
+      v-if="!isEdit
+        || detail?.stato_codice_interno === 'DRAFT'
+        || detail?.stato_codice_interno === 'CESSATO'
+        || (form.valido_al && detail?.stato_codice_interno === 'ATTIVO')">
+      <label>
+        {{ detail?.stato_codice_interno === 'CESSATO'
+          ? t('vendite.contratti.field_data_cessazione')
+          : detail?.stato_codice_interno === 'ATTIVO' && form.valido_al
+            ? t('vendite.contratti.field_cessazione_programmata')
+            : t('vendite.contratti.field_valido_al') }}
+      </label>
+      <DatePicker :model-value="parseIsoDate(form.valido_al)"
+        @update:model-value="form.valido_al = toIsoDate($event)"
+        :disabled="isEdit && isLocked('valido_al')"
+        :invalid="campiErrati.includes('valido_al')"
+        :date-format="DATE_FORMAT" show-icon show-button-bar />
+    </div>
+  </div>
+
+  <!-- === Pricing (refactor modalita 2026-05-15) === -->
+  <!-- Niente piu' SelectButton A/B/C: l'operatore compila campi opzionali
+       (listino + variazione globale). La "forma" derivata e' un badge
+       informativo readonly mostrato sopra in detail (composable
+       `formaDerivata`). -->
+  <h4>{{ t('vendite.contratti.section_pricing') }}</h4>
+
+  <!-- Badge forma derivata: visibile in EDIT come audit visivo del path. -->
+  <Message
+    v-if="isEdit && detail"
+    :severity="formaDerivata === 'senza_listino' ? 'warn' : 'info'"
+    :closable="false" size="small"
+  >
+    {{ t(`vendite.contratti.forma_${formaDerivata}_descrizione`) }}
+  </Message>
+
+  <div class="form-field">
+    <label>{{ t('vendite.contratti.field_listino') }}</label>
+    <!-- Refactor 2026-05-18 §4.4: lookup dedicato che esclude i listini
+         senza versione ATTIVA. Pattern useGlobalLookup + Select, cache
+         modulo-level. Niente piu' LookupSelect generico per non far
+         apparire scelte che il save rifiuterebbe. -->
+    <Select v-model="form.listino_id"
+      :options="listiniLookup.items.value"
+      :option-label="formatListinoOption"
+      option-value="id"
+      :loading="listiniLookup.loading.value"
+      :placeholder="t('vendite.contratti.select_listino_opzionale')"
+      :invalid="campiErrati.includes('listino_id')"
+      show-clear
+      filter
+      @update:model-value="onListinoChange"
+      :disabled="isEdit && (isLocked('listino_id') || righeCount > 0)" />
+    <small v-if="isEdit && righeCount > 0 && !isLocked('listino_id')"
+      style="color: var(--p-yellow-700, #b45309);">
+      <i :class="STATUS_ICONS.ERRORE" />
+      {{ t('vendite.contratti.hint_listino_lock_righe', { n: righeCount }) }}
+    </small>
+    <small v-else class="app-text-muted">
+      {{ t('vendite.contratti.hint_listino_opzionale') }}
+    </small>
+  </div>
+
+  <div class="form-grid-2col">
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_tipo_variazione') }}</label>
+      <TipoVariazioneSelect v-model="form.tipo_variazione_globale"
+        scope="contratto"
+        show-clear
+        :disabled="isEdit && isLocked('tipo_variazione_globale')" />
+    </div>
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_valore_variazione') }}</label>
+      <InputNumber v-model="form.valore_variazione_globale"
+        :min-fraction-digits="0" :max-fraction-digits="4" showButtons
+        @update:model-value="onValoreVariazioneChange"
+        :disabled="isEdit && isLocked('valore_variazione_globale')"
+        :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''"
+        :invalid="campiErrati.includes('valore_variazione_globale')" />
+      <small class="app-text-muted">{{ t('vendite.contratti.hint_valore_variazione') }}</small>
+    </div>
+  </div>
+
+  <!-- Valuta: snapshot fissato al CREATE, immutabile in EDIT
+       (allineato a preventivi/offerte). Pre-popolata da
+       ApiContrattoFormDefaults via cascata BB resolve_valuta_default. -->
+  <div class="form-grid-2col">
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_valuta') }}</label>
+      <LookupSelect v-model="form.valuta_id" rel="config.valute"
+        :placeholder="t('vendite.contratti.field_valuta')"
+        :disabled="isEdit"
+        show-clear />
+    </div>
+  </div>
+
+  <!-- === Tipo/Classe utenza (editabile in BOZZA, readonly dopo) === -->
+  <h4>{{ t('vendite.contratti.section_utenza') }}</h4>
+  <div class="form-grid-2col">
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_tipo_utenza') }}</label>
+      <LookupSelect v-model="form.utility_tipo_utenza_id" rel="config.tipi_utenze"
+        :placeholder="t('vendite.contratti.select_tipo_utenza')" show-clear
+        :disabled="isEdit && detail?.stato_codice_interno !== 'DRAFT'" />
+    </div>
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_classe_utenza') }}</label>
+      <LookupSelect v-model="form.utility_classe_utenza_id" rel="config.classi_utenze"
+        :placeholder="t('vendite.contratti.select_classe_utenza')" show-clear
+        :disabled="isEdit && detail?.stato_codice_interno !== 'DRAFT'" />
+    </div>
+  </div>
+
+  <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
+       contatore "+N altri", pulsante "Indirizzi" che apre il drawer
+       di gestione. Solo in EDIT (documento persistito). -->
+  <DocumentoIndirizziSection
+    v-if="isEdit && detail"
+    dominio="contratti"
+    :doc-id="contrattoId"
+    :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
+    :istanza-utility-id="detail?.istanza_utility_id ?? null"
+    :readonly="isReadonly" />
+
+  <!-- L'area inline "Documenti generati" e' stata rimossa 2026-07-16
+       (doppione): l'archivio PDF si consulta dal pulsante PDF in testata
+       (EntityPdfButton -> PdfDocumentiSorgenteDialog, stesso BB con in
+       piu' expand automatico e append allegati). Il seed pdf_mode
+       ANNULLATO=ARCHIVE (regola unica 5 domini: annullare non cancella
+       la storia) tiene il pulsante consultabile anche sugli annullati. -->
 
     <!-- Sub-drawer: gestione righe -->
     <ContrattoRigheDrawer
@@ -1232,7 +1219,8 @@ const suVisibile = gestoreVisibile(emit, chiudi)
          Comportamento data-driven:
          - data < oggi  -> cessazione immediata, stato CESSATO
          - data >= oggi -> cessazione programmata, stato resta ATTIVO -->
-    <AppDialog v-model:visible="cessaDialogVisible"
+    <AppDialog
+      :conferma-uscita="fotoCessa.chiudiConConferma" v-model:visible="cessaDialogVisible"
       :header="cessazioneProgrammata
         ? t('vendite.contratti.cessa_dialog_titolo_programma')
         : t('vendite.contratti.cessa_dialog_titolo_immediata')"
@@ -1247,7 +1235,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       @save="onConfermaCessazione">
       <div class="form-field">
         <label>{{ t('vendite.contratti.cessa_dialog_data') }}</label>
-        <DatePicker v-model="cessaDialogData" date-format="dd/mm/yy"
+        <DatePicker v-model="cessaDialogData" :date-format="DATE_FORMAT"
           show-icon show-button-bar :min-date="cessaDialogMinDate"
           :invalid="campiErrati.includes('valido_al')" />
       </div>
@@ -1258,7 +1246,6 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           : t('vendite.contratti.cessa_dialog_warning_immediata') }}
       </Message>
     </AppDialog>
-
-  </Drawer>
+  </AppDrawer>
 </template>
 

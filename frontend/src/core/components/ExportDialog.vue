@@ -26,6 +26,7 @@ import SelectButton from 'primevue/selectbutton'
 import Message from 'primevue/message'
 import { isFileSystemAccessSupported } from '../composables/useFileDownload'
 import { MANAGE_ICONS } from '../constants'
+import { useFotografiaDialog } from '../composables/useFotografiaDialog'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -74,6 +75,9 @@ const fsApiHint = computed(() =>
 function onConfirm() {
   emit('export', selectedFormat.value)
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ selectedFormat: selectedFormat.value }), { visibile: () => props.visible })
 </script>
 
 <template>
@@ -82,6 +86,7 @@ function onConfirm() {
        update:visible propagato da AppDialog. ESC spento durante l'export lo
        fa il BB da `loading` (2026-09-18): qui non si riscrive. -->
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="visible"
     @update:visible="(v) => emit('update:visible', v)"
     :header="t('export_dialog.title')"

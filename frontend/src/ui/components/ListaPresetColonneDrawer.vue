@@ -9,7 +9,7 @@
 //        L'ordine si modifica con frecce (no drag-and-drop esterno).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
@@ -17,13 +17,11 @@ import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
 
@@ -37,10 +35,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved'])
 
@@ -191,159 +185,141 @@ async function onSave() {
   }
 }
 
-function onCancel() {
-  chiudiConConferma(() => emit('update:visible', false))
-}
-const suVisibile = gestoreVisibile(emit, onCancel)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
-    :modal="true"
-    :dismissable-mask="false"
-    @after-show="onAfterShow"
+    :title="`${t('ui.admin.preset_composizione')} — ${presetCodice}`"
+    :icon="NAV_ICONS.PERSONALIZZAZIONI_LISTE"
+    :width="DRAWER_WIDTH.WIDE"
+    :readonly="isReadonlyEffective"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :footer="isReadonlyEffective ? 'chiudi' : 'form'"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="onSave"
   >
-    <template #header>
-      <DrawerTitle
-        :title="`${t('ui.admin.preset_composizione')} — ${presetCodice}`"
-        :icon="NAV_ICONS.PERSONALIZZAZIONI_LISTE"
-        :modificato="modificato"
-      />
-    </template>
-
-    <div v-if="contentReady"
-      class="app-drawer-content"
-      :class="{ 'app-readonly': isReadonlyEffective }"
+    <Message
+      v-if="fetchError"
+      severity="error"
+      :closable="false"
     >
-      <Message
-        v-if="fetchError"
-        severity="error"
-        :closable="false"
-      >
-        {{ t('ui.admin.composizione_load_error') }}
-      </Message>
+      {{ t('ui.admin.composizione_load_error') }}
+    </Message>
 
-      <div class="composizione-toolbar">
-        <Select
-          v-model="colonnaDaAggiungere"
-          :options="catalogoDisponibile"
-          option-label="etichetta"
-          option-value="id"
-          :placeholder="t('ui.admin.composizione_seleziona_colonna')"
-          :disabled="isReadonlyEffective || fetching || catalogoDisponibile.length === 0"
-          :filter="catalogoDisponibile.length > 5"
-          class="composizione-select"
-        />
-        <Button
-          :label="t('common.add')"
-          :icon="MANAGE_ICONS.ADD"
-          class="app-action-btn"
-          :disabled="isReadonlyEffective || !colonnaDaAggiungere"
-          @click="aggiungiColonna"
-        />
-      </div>
+    <div class="composizione-toolbar">
+      <Select
+        v-model="colonnaDaAggiungere"
+        :options="catalogoDisponibile"
+        option-label="etichetta"
+        option-value="id"
+        :placeholder="t('ui.admin.composizione_seleziona_colonna')"
+        :disabled="isReadonlyEffective || fetching || catalogoDisponibile.length === 0"
+        :filter="catalogoDisponibile.length > 5"
+        class="composizione-select"
+      />
+      <Button
+        :label="t('common.add')"
+        :icon="MANAGE_ICONS.ADD"
+        class="app-action-btn"
+        :disabled="isReadonlyEffective || !colonnaDaAggiungere"
+        @click="aggiungiColonna"
+      />
+    </div>
 
-      <DataTable
-        :value="composizione"
-        data-key="colonna_id"
-        class="app-datatable"
-        :loading="fetching"
-        scrollable
-        scroll-height="flex"
-      >
-        <Column field="ordine" :header="t('ui.admin.composizione_col_ordine')" style="width: 90px">
-          <template #body="{ index }">
-            <div class="ordine-actions">
-              <Button
-                :icon="MANAGE_ICONS.SPOSTA_SU"
-                text
-                rounded
-                size="small"
-                :disabled="isReadonlyEffective || index === 0"
-                @click="spostaSu(index)"
-              />
-              <Button
-                :icon="MANAGE_ICONS.SPOSTA_GIU"
-                text
-                rounded
-                size="small"
-                :disabled="isReadonlyEffective || index === composizione.length - 1"
-                @click="spostaGiu(index)"
-              />
-            </div>
-          </template>
-        </Column>
-        <Column field="codice" :header="t('ui.admin.composizione_col_codice')" style="width: 180px" />
-        <Column field="etichetta" :header="t('ui.admin.composizione_col_etichetta')" />
-        <Column :header="t('ui.admin.composizione_col_larghezza')" style="width: 120px">
-          <template #body="{ data }">
-            <InputNumber
-              v-model="data.larghezza"
-              :min="40"
-              :max="800"
-              :disabled="isReadonlyEffective"
-              show-buttons
-              size="small"
-              @input="(e) => (data.larghezza = e.value)"
-            />
-          </template>
-        </Column>
-        <Column :header="t('ui.admin.composizione_col_visibile')" style="width: 90px">
-          <template #body="{ data }">
-            <Checkbox
-              v-model="data.visibile"
-              binary
-              :disabled="isReadonlyEffective || data.tipo_colonna === 'identificatore' || data.tipo_colonna === 'azione'"
-            />
-          </template>
-        </Column>
-        <Column :header="t('ui.admin.composizione_col_fissata')" style="width: 90px">
-          <template #body="{ data }">
-            <Checkbox
-              v-model="data.fissata"
-              binary
-              :disabled="isReadonlyEffective"
-            />
-          </template>
-        </Column>
-        <Column :header="t('common.col_azioni')" :exportable="false" style="width: 70px">
-          <template #body="{ data }">
+    <DataTable
+      :value="composizione"
+      data-key="colonna_id"
+      class="app-datatable"
+      :loading="fetching"
+      scrollable
+      scroll-height="flex"
+    >
+      <Column field="ordine" :header="t('ui.admin.composizione_col_ordine')" style="width: 90px">
+        <template #body="{ index }">
+          <div class="ordine-actions">
             <Button
-              :icon="MANAGE_ICONS.DELETE"
+              :icon="MANAGE_ICONS.SPOSTA_SU"
               text
               rounded
               size="small"
-              class="app-delete-btn"
-              :disabled="isReadonlyEffective"
-              @click.stop="rimuoviColonna(data.colonna_id)"
+              :disabled="isReadonlyEffective || index === 0"
+              @click="spostaSu(index)"
             />
-          </template>
-        </Column>
-      </DataTable>
+            <Button
+              :icon="MANAGE_ICONS.SPOSTA_GIU"
+              text
+              rounded
+              size="small"
+              :disabled="isReadonlyEffective || index === composizione.length - 1"
+              @click="spostaGiu(index)"
+            />
+          </div>
+        </template>
+      </Column>
+      <Column field="codice" :header="t('ui.admin.composizione_col_codice')" style="width: 180px" />
+      <Column field="etichetta" :header="t('ui.admin.composizione_col_etichetta')" />
+      <Column :header="t('ui.admin.composizione_col_larghezza')" style="width: 120px">
+        <template #body="{ data }">
+          <InputNumber
+            v-model="data.larghezza"
+            :min="40"
+            :max="800"
+            :disabled="isReadonlyEffective"
+            show-buttons
+            size="small"
+            @input="(e) => (data.larghezza = e.value)"
+          />
+        </template>
+      </Column>
+      <Column :header="t('ui.admin.composizione_col_visibile')" style="width: 90px">
+        <template #body="{ data }">
+          <Checkbox
+            v-model="data.visibile"
+            binary
+            :disabled="isReadonlyEffective || data.tipo_colonna === 'identificatore' || data.tipo_colonna === 'azione'"
+          />
+        </template>
+      </Column>
+      <Column :header="t('ui.admin.composizione_col_fissata')" style="width: 90px">
+        <template #body="{ data }">
+          <Checkbox
+            v-model="data.fissata"
+            binary
+            :disabled="isReadonlyEffective"
+          />
+        </template>
+      </Column>
+      <Column :header="t('common.col_azioni')" :exportable="false" style="width: 70px">
+        <template #body="{ data }">
+          <Button
+            :icon="MANAGE_ICONS.DELETE"
+            text
+            rounded
+            size="small"
+            class="app-delete-btn"
+            :disabled="isReadonlyEffective"
+            @click.stop="rimuoviColonna(data.colonna_id)"
+          />
+        </template>
+      </Column>
+    </DataTable>
 
-      <Message
-        v-if="modificato"
-        severity="warn"
-        :closable="false"
-        size="small"
-        class="mt-1"
-      >
-        {{ t('ui.admin.composizione_dirty_warning') }}
-      </Message>
-    </div>
-
-    <FormFooter
-      v-if="!isReadonlyEffective"
-      :loading="loading"
-      :disabled="!canSave"
-      @save="onSave"
-      @cancel="onCancel"
-    />
-  </Drawer>
+    <Message
+      v-if="modificato"
+      severity="warn"
+      :closable="false"
+      size="small"
+      class="mt-1"
+    >
+      {{ t('ui.admin.composizione_dirty_warning') }}
+    </Message>
+  </AppDrawer>
 </template>
 
 <style scoped>

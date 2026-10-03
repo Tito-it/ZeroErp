@@ -27,6 +27,7 @@ import GenericConfigDrawer from './GenericConfigDrawer.vue'
 import PageActionsBar from './PageActionsBar.vue'
 // DataTable grezza: le colonne non stanno in un catalogo, le descrive
 // `/metadata/` a runtime per la tabella di configurazione scelta.
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'

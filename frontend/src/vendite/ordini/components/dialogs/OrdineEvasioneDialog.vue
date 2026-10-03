@@ -28,6 +28,7 @@ import { formatNumber } from '../../../../core/utils/format'
 import Checkbox from 'primevue/checkbox'
 // DataTable grezza: sono le RIGHE dell'ordine (store.loadRighe) su cui si sceglie
 // cosa evadere, nel dialog d'azione — dettaglio del documento, non una lista.
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
@@ -63,6 +64,7 @@ const {
   coversAllResiduo: evadeTuttoResiduo,
   loadRighe, buildPayloadRighe,
   isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected,
+  chiudiConConferma,
 } = useRigheSelezioneQta({
   fetchRighe: async () => {
     if (!props.ordineId) return []
@@ -70,6 +72,8 @@ const {
   },
   residuoDi,
   readonly: () => props.readonly,
+  // La fotografia (D-14) e' del BB, fissata a ogni caricamento delle righe.
+  visibile: () => props.visible,
 })
 
 // Fetch lazy: all'apertura (e a ogni riapertura, cosi' i residui restano
@@ -136,6 +140,7 @@ function onGenera() {
     },
   })
 }
+
 </script>
 
 <template>
@@ -146,6 +151,7 @@ function onGenera() {
        quello stato. Stessa ragione per cui il pannello, quando viveva nel
        drawer, stava in `app-escape`. -->
   <AppDialog
+    :conferma-uscita="chiudiConConferma"
     :visible="visible"
     width="xl"
     :header="t('vendite.ordini.evasione_titolo')"

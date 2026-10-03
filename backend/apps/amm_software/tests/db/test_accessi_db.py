@@ -23,13 +23,14 @@
 6. test_il_blocco_vuole_il_motivo
 7. test_la_porta_operatori_non_apre_altre_categorie
 8. test_lo_stato_della_veste_della_scheda_cliente_viene_dal_db
+9. test_la_credenziale_di_sistema_non_si_blocca
 """
 
 from __future__ import annotations
 
 import unittest
 
-from django.db import DatabaseError, connection
+from django.db import DatabaseError, connection, transaction
 
 from apps.amm_software.db.accessi_repository import (
     ACCESSI_ALTRI_ORDER_COLUMNS,
@@ -74,6 +75,8 @@ class AccessiDbTests(unittest.TestCase):
             [self.ruolo_cliente, self.shop],
         )
         self.nuda = self._credenziale("accessi_senza_vesti")
+        cur.execute("SELECT m.auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore() m")
+        self.macchina = cur.fetchone()[0]
         cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
         cur.execute("SET LOCAL app.current_user_id = %s", [str(self.admin)])
         cur.execute("SELECT script.fn_is_super_admin(%s)", [self.admin])
@@ -183,6 +186,27 @@ class AccessiDbTests(unittest.TestCase):
         sbloccata = servizio.sblocca_credenziale(self.shop)
         self.assertIs(sbloccata["bloccata"], False)
         self.assertIsNone(sbloccata["motivo_blocco"])
+
+    # Scopo: La capability del blocco e il rifiuto del verbo vengono dalla
+    #        stessa check del DB (`fn_check_credenziale_bloccabile`): su una
+    #        credenziale di sistema «Blocca» e' spento col motivo del DB, e il
+    #        verbo rifiuta con lo stesso. Lo sblocco resta aperto (l'uscita).
+    def test_la_credenziale_di_sistema_non_si_blocca(self):
+        servizio = AccessiService()
+        cred = servizio.get_credenziale(self.macchina)
+        self.assertEqual(cred["categoria"], "SISTEMA")
+        self.assertIs(cred["can_block"], False)
+        self.assertEqual(cred["block_reason"], "CREDENZIALE_DI_SISTEMA")
+        self.assertEqual(
+            cred["block_reason_key"], "amministrazione.accessi.blocca_reason.credenziale_di_sistema",
+        )
+
+        with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+            servizio.blocca_credenziale(self.macchina, "chiave sospetta")
+        self.assertEqual(structured_db_error_code(ctx.exception), "E_CREDENZIALE_DI_SISTEMA")
+        self.assertIs(servizio.get_credenziale(self.macchina)["bloccata"], False)
+
+        self.assertIs(servizio.sblocca_credenziale(self.macchina)["bloccata"], False)
 
     def test_il_blocco_vuole_il_motivo(self):
         with self.assertRaises(DatabaseError) as ctx:

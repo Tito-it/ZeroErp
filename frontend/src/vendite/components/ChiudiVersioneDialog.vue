@@ -15,6 +15,8 @@ import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
 import FormFooter from '../../core/components/FormFooter.vue'
 import Message from 'primevue/message'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
+import { DATE_FORMAT } from '../../core/constants'
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
@@ -61,6 +63,7 @@ async function loadDefaults() {
 watch(() => props.visible, async (v) => {
   if (!v || !props.versione) return
   await loadDefaults()
+  fotografia.fissa()
 })
 
 function onHide() {
@@ -96,10 +99,16 @@ async function rimuoviChiusura() {
     onHide()
   }
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ dataChiusura: dataChiusura.value }), { visibile: () => props.visible, fissaAllApertura: false })
 </script>
 
 <template>
-  <AppDialog :visible="visible" @update:visible="onHide"
+  <AppDialog
+    :visible="visible"
+    :conferma-uscita="fotografia.chiudiConConferma"
+    @update:visible="onHide"
     :header="t('vendite.listini.chiudi_versione_titolo')" width="sm">
 
     <Message v-if="dataChiusura" severity="warn" :closable="false">
@@ -109,14 +118,14 @@ async function rimuoviChiusura() {
     <div class="form-grid">
       <div class="form-field">
         <label>{{ t('vendite.listini.chiudi_versione_data') }}</label>
-        <DatePicker v-model="dataChiusura" date-format="dd/mm/yy"
+        <DatePicker v-model="dataChiusura" :date-format="DATE_FORMAT"
           show-icon show-button-bar :min-date="new Date()" />
       </div>
     </div>
 
     <!-- Footer custom: oltre ad Annulla/Conferma standard c'e' il bottone
          distruttivo "Rimuovi chiusura" (terzo pulsante extra-pattern). -->
-    <template #footer>
+    <template #footer="{ chiudi }">
       <Button
         v-if="haGiaChiusura"
         :label="t('common.delete')"
@@ -130,7 +139,7 @@ async function rimuoviChiusura() {
         save-severity="warn"
         :loading="loading"
         :disabled="!dataChiusura"
-        @cancel="onHide"
+        @cancel="chiudi"
         @save="conferma"
       />
     </template>

@@ -14,10 +14,8 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import { createConversioneUom, updateConversioneUom } from '../api/catalogo'
@@ -28,9 +26,8 @@ import { NAV_ICONS } from '../../core/navigation'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
@@ -49,10 +46,6 @@ const props = defineProps({
   uomCodice: { type: String, default: '' },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved'])
 
 const store = useUomConversioniStore()
@@ -207,136 +200,123 @@ function cancelEditFattore() {
   editingFattoreValue.value = null
 }
 
-// Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
-// Nasconde il footer in modalita' adding per non duplicarlo con Annulla/Salva
-// del form e non spingere il form sotto al fold.
-const onClose = useDrawerClose(emit)
-
-// Chiusura del drawer per volonta' dell'utente (X/ESC/clic fuori/Chiudi):
-// chiede conferma se uno dei due form ha modifiche — una domanda sola, a
-// quello modificato (se lo sono entrambi basta la prima).
-const chiudi = () => chiudiTutto(onClose)
-
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @after-show="onAfterShow"
+    :title="uomCodice"
+    :icon="NAV_ICONS.UNITA_MISURA"
+    :action="t('catalogo.gestisci_conversioni')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificatoTutto"
+    :conferma-uscita="chiudiTutto"
+    :footer="adding ? 'nessuno' : 'chiudi'"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle :action="t('catalogo.gestisci_conversioni')" :title="uomCodice" :icon="NAV_ICONS.UNITA_MISURA"
-        :modificato="modificatoTutto" />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <!-- Lista conversioni: catalogo `catalogo.conversioni_uom`, filtrata
-           sulla UoM. Il fattore si modifica sulla riga (slot `cell-fattore`). -->
-      <DrawerTabLista
-        ref="listaRef"
-        codice="catalogo.conversioni_uom"
-        :store="store"
-        :rows="store.items"
-        :total="store.totalRecords"
-        :loading="store.loading"
-        :paginator-options="paginatorProps"
-        :page="tablePage"
-        :sort-field="paginatorProps.sortField"
-        :sort-order="paginatorProps.sortOrder"
-        :page-actions="pageActions"
-        :dirty="dirty"
-        :perimetro-bloccato="perimetroBloccato"
-        @page="onPage"
-        @sort="onSort"
-        @config-loaded="onConfigLoaded"
-      >
-        <!-- La frase del dominio al posto dell'empty-state generico, e solo se
-             la lettura e' riuscita: con `erroreCaricamento` la lista e' vuota
-             per un'altra ragione. -->
-        <template #empty>
-          <span v-if="!store.erroreCaricamento">{{ t('catalogo.nessuna_conversione') }}</span>
-        </template>
-        <template #cell-fattore="{ data }">
-          <template v-if="editingFattoreId === data.id">
-            <div>
-              <InputNumber v-model="editingFattoreValue" :min="0" :min-fraction-digits="2"
-                :max-fraction-digits="10" style="width: 100px;" />
-              <Button :icon="MANAGE_ICONS.CONFIRM" text rounded size="small" class="app-action-btn"
-                @click="confirmEditFattore(data)" />
-              <Button :icon="MANAGE_ICONS.CANCEL" text rounded size="small"
-                @click="fattoreInline.chiudiConConferma(cancelEditFattore)" />
-            </div>
-          </template>
-          <template v-else>
-            <span v-if="!isReadonly" class="app-mono fattore-cell" @click="startEditFattore(data)">
-              {{ data.fattore }}
-              <i :class="MANAGE_ICONS.EDIT" style="font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.5;" />
-            </span>
-            <span v-else class="app-mono">{{ data.fattore }}</span>
-          </template>
-        </template>
-        <template #cell-attivo="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
-      </DrawerTabLista>
-
-      <!-- Form inserimento nuova conversione (pulsante "Nuovo" e' nella
-           toolbar sopra la lista, non piu' inline qui). -->
-      <template v-if="!isReadonly">
-        <template v-if="adding">
-          <div class="app-drawer-section">
-            <h4>{{ t('catalogo.nuova_conversione_uom') }}</h4>
+    <!-- Lista conversioni: catalogo `catalogo.conversioni_uom`, filtrata
+         sulla UoM. Il fattore si modifica sulla riga (slot `cell-fattore`). -->
+    <DrawerTabLista
+      ref="listaRef"
+      codice="catalogo.conversioni_uom"
+      :store="store"
+      :rows="store.items"
+      :total="store.totalRecords"
+      :loading="store.loading"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      :page-actions="pageActions"
+      :dirty="dirty"
+      :perimetro-bloccato="perimetroBloccato"
+      @page="onPage"
+      @sort="onSort"
+      @config-loaded="onConfigLoaded"
+    >
+      <!-- La frase del dominio al posto dell'empty-state generico, e solo se
+           la lettura e' riuscita: con `erroreCaricamento` la lista e' vuota
+           per un'altra ragione. -->
+      <template #empty>
+        <span v-if="!store.erroreCaricamento">{{ t('catalogo.nessuna_conversione') }}</span>
+      </template>
+      <template #cell-fattore="{ data }">
+        <template v-if="editingFattoreId === data.id">
+          <div>
+            <InputNumber v-model="editingFattoreValue" :min="0" :min-fraction-digits="2"
+              :max-fraction-digits="10" style="width: 100px;" />
+            <Button :icon="MANAGE_ICONS.CONFIRM" text rounded size="small" class="app-action-btn"
+              @click="confirmEditFattore(data)" />
+            <Button :icon="MANAGE_ICONS.CANCEL" text rounded size="small"
+              @click="fattoreInline.chiudiConConferma(cancelEditFattore)" />
           </div>
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('catalogo.field_uom_a') }} *</label>
-              <LookupSelect v-model="form.uom_to_id" rel="catalogo.unita_misura"
-                :placeholder="t('catalogo.select_uom_a')" filter-field="tipo_uom_id"
-                :filter-value="currentTipoUomId" />
-            </div>
-            <div class="form-field">
-              <label>{{ t('catalogo.col_fattore') }} *</label>
-              <InputNumber v-model="form.fattore" :min="0" :min-fraction-digits="2"
-                :max-fraction-digits="10" />
-            </div>
-            <div class="form-field">
-              <label>{{ t('catalogo.field_valido_dal') }}</label>
-              <DatePicker
-                v-model="form.valido_dal"
-                :date-format="DATE_FORMAT"
-                show-icon
-                show-button-bar
-                :disabled="form.valido_dal_sempre"
-                :invalid="campiErrati.includes('valido_dal')"
-              />
-            </div>
-          </div>
-          <div class="form-grid">
-            <div class="form-field">
-              <label>{{ t('catalogo.validita_sempre') }}</label>
-              <ToggleSwitch v-model="form.valido_dal_sempre" />
-            </div>
-          </div>
+        </template>
+        <template v-else>
+          <span v-if="!isReadonly" class="app-mono fattore-cell" @click="startEditFattore(data)">
+            {{ data.fattore }}
+            <i :class="MANAGE_ICONS.EDIT" style="font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.5;" />
+          </span>
+          <span v-else class="app-mono">{{ data.fattore }}</span>
         </template>
       </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
+      </template>
+    </DrawerTabLista>
 
-      <!-- Footer standard: in modalita' adding mostra Annulla/Salva del form,
-           altrimenti close-only per chiudere il drawer (pattern speculare
-           ArticoloUomDrawer). -->
-      <FormFooter
-        v-if="adding"
-        :loading="loading"
-        :disabled="!canSaveNew"
-        @save="onSaveNew"
-        @cancel="annullaAdd"
-      />
-      <FormFooter v-else close-only @cancel="chiudi" />
-    </div>
-  </Drawer>
+    <!-- Form inserimento nuova conversione (pulsante "Nuovo" e' nella
+         toolbar sopra la lista, non piu' inline qui). -->
+    <template v-if="!isReadonly">
+      <template v-if="adding">
+        <div class="app-drawer-section">
+          <h4>{{ t('catalogo.nuova_conversione_uom') }}</h4>
+        </div>
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('catalogo.field_uom_a') }} *</label>
+            <LookupSelect v-model="form.uom_to_id" rel="catalogo.unita_misura"
+              :placeholder="t('catalogo.select_uom_a')" filter-field="tipo_uom_id"
+              :filter-value="currentTipoUomId" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('catalogo.col_fattore') }} *</label>
+            <InputNumber v-model="form.fattore" :min="0" :min-fraction-digits="2"
+              :max-fraction-digits="10" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('catalogo.field_valido_dal') }}</label>
+            <DatePicker
+              v-model="form.valido_dal"
+              :date-format="DATE_FORMAT"
+              show-icon
+              show-button-bar
+              :disabled="form.valido_dal_sempre"
+              :invalid="campiErrati.includes('valido_dal')"
+            />
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label>{{ t('catalogo.validita_sempre') }}</label>
+            <ToggleSwitch v-model="form.valido_dal_sempre" />
+          </div>
+        </div>
+      </template>
+    </template>
+
+    <!-- Footer standard: in modalita' adding mostra Annulla/Salva del form,
+         altrimenti close-only per chiudere il drawer (pattern speculare
+         ArticoloUomDrawer). -->
+    <FormFooter
+      v-if="adding"
+      :loading="loading"
+      :disabled="!canSaveNew"
+      @save="onSaveNew"
+      @cancel="annullaAdd"
+    />
+  </AppDrawer>
 </template>
 
 <style scoped>

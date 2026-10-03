@@ -11,6 +11,7 @@ import { useLookup } from '../../core/composables/useLookup'
 import { getPermessiRiepilogo, listUnitaOrganizzative } from '../api/amministrazione'
 import { listEmittentiFiscali } from '../../core/apiCore'
 import { buildFilterSuperAdminOptions, getLivelloSeverity, getLivelloLabel } from '../constants'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'

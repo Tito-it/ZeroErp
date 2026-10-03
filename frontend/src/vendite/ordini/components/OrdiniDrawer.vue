@@ -32,11 +32,11 @@ import { displayDate, toDateString } from '../../../core/utils/date'
 import { getOrdineFormDefaults } from '../../api/formDefaults'
 import { createOrdine } from '../api/ordiniApi'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
+import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
 import { getBillingAccountLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
-import DrawerTitle from '../../../core/components/DrawerTitle.vue'
-import FormFooter from '../../../core/components/FormFooter.vue'
+import AppDrawer from '../../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
@@ -48,7 +48,6 @@ import OrdiniRigheTable from './OrdiniRigheTable.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
 import OrdineEvasioneDialog from './dialogs/OrdineEvasioneDialog.vue'
 import OrdineEmissioneDialog from './dialogs/OrdineEmissioneDialog.vue'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 
@@ -81,6 +80,19 @@ const {
   modificato,
   chiudiConConferma,
 } = useDrawerFormPreserve(form, { visibile: () => props.visible })
+
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): testata E riga aperta,
+//    una domanda sola. Fino a quel giorno la fotografia copriva la sola
+//    testata, e una riga in compilazione si perdeva uscendo dal drawer. La
+//    fotografia della riga la tiene il suo form e arriva dalla tabella-righe.
+// Tabella-righe, fotografia unita (testata + riga aperta) e footer secondo lo
+// stato: il legame e' del BB `useRigheDocumento` (regola del 2).
+const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumento({
+  testata: { modificato, chiudiConConferma },
+  modificabile: () => canEditTestataEffective.value && !isReadonly.value,
+  presente: () => hasDetail.value,
+})
+const modificatoDocumento = documento.modificato
 const detail = ref(null)
 const noteDrawerVisible = ref(false)
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_ordini_riepilogo_iva_dettaglio`).
@@ -96,9 +108,6 @@ const showRiepilogoIva = computed(
 // Auto-save bozza: in CREATE, appena il cliente (BA) e' valorizzato, il drawer
 // crea l'ordine in BOZZA e si comporta da "edit-evolved" (righe + azioni stato).
 const createdId = ref(null)
-// Stato form riga inline: quando si edita/aggiunge una riga, il FormFooter
-// testata si nasconde per non duplicare i bottoni di OrdiniRigaForm.
-const formRigaAperto = ref(false)
 const effectiveOrdineId = computed(() => createdId.value ?? props.ordineId)
 const hasDetail = computed(() => detail.value !== null)
 
@@ -331,9 +340,9 @@ async function applyBaDefaults(baId) {
 
 // Auto-save bozza + abbandono bozza orfana via BB condiviso (B13, regola del 2).
 // Trigger: cliente (BA) valorizzato in CREATE. Prima di creare applica i default
-// da anagrafica cliente (valuta/modalita/termine). `close`/`onVisibleChange`
-// usati dal template; createdId resta ref del drawer.
-const { close, onVisibleChange } = useDrawerAutosaveBozza({
+// da anagrafica cliente (valuta/modalita/termine). `close` e'
+// l'uscita del drawer (`conferma-uscita` di AppDrawer); createdId resta ref del drawer.
+const { close } = useDrawerAutosaveBozza({
   emit,
   execute,
   loading,
@@ -369,7 +378,7 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
   // Uscita con modifiche non salvate: prima si chiede (BB useDrawerFormPreserve).
-  confermaUscita: chiudiConConferma,
+  confermaUscita: documento.chiudiConConferma,
   messages: {
     bozzaCreata: t('vendite.ordini.bozza_creata'),
     abbandonoTitolo: t('vendite.ordini.abbandono_bozza_titolo'),
@@ -584,130 +593,134 @@ const drawerActions = computed(() => {
     },
   ]
 })
+
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="onVisibleChange"
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- L'uscita la possiede l'auto-salvataggio della bozza
+       (`useDrawerAutosaveBozza`): con una bozza rimasta vuota chiede se
+       eliminarla, altrimenti le modifiche non salvate; poi emette lui
+       `update:visible` e `cancelled` verso il padre. Per questo
+       `conferma-uscita` ignora il `chiudi` del guscio. -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('vendite.ordini.ordine')"
+    :icon="NAV_ICONS.ORDINI"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.WIDE_PLUS"
+    :modificato="modificatoDocumento"
+    :conferma-uscita="() => close()"
+    :footer="footerDrawer"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
     @after-show="onAfterShow"
-    position="right" :style="{ width: DRAWER_WIDTH.WIDE_PLUS }" :dismissable="true">
-    <template #header>
-      <DrawerTitle
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :modificato="modificato"
-        :title="t('vendite.ordini.ordine')"
-        :icon="NAV_ICONS.ORDINI"
-      />
+    @save="handleSave"
+  >
+
+    <!-- Header info: visibile in EDIT classico e in CREATE post auto-save. -->
+    <template v-if="hasDetail">
+      <DrawerEntityHeader>
+        <Tag :value="detail.numero" severity="secondary" />
+        <span v-if="detail.data" class="app-drawer-header-muted font-bold">
+          {{ displayDate(detail.data) }}
+        </span>
+        <!-- La provenienza upstream (preventivo/offerta) NON e' piu' un chip
+             d'header dedicato: e' assorbita dai chip di
+             DocumentoCollegamentiBar sotto la barra azioni, dove sta
+             l'origine di TUTTI i domini (2026-07-25). -->
+
+        <template #status>
+          <Tag
+            :value="detail.stato_descrizione"
+            :severity="statoOrdineSeverity(detail.stato_codice_interno)"
+          />
+        </template>
+      </DrawerEntityHeader>
+
+      <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
+        <template #suffix>
+          <!-- Stampa conferma d'ordine: anteprima PDF on-demand
+               (ristampabile, §12.4(a)). BB EntityPdfButton riusato 1:1. -->
+          <EntityPdfButton
+            :sorgente-code="SORGENTE_CODES.ORDINE_VENDITA"
+            :entity-id="effectiveOrdineId"
+            :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+            :pdf="capabilities.pdf"
+            i18n-prefix="vendite.ordini.pdf"
+            :dialog-title="detail.numero
+              ? t('vendite.ordini.pdf.dialog_title', { numero: detail.numero })
+              : ''"
+          />
+        </template>
+      </DrawerActionsBar>
+
+      <!-- Collegamenti diretti (pratica + origine + destinazioni di livello 1):
+           segnalazione a colpo d'occhio sotto i pulsanti — «Preventivo»,
+           «2 DDT». Il grafo completo si apre dai chip stessi in dialog. -->
+      <DocumentoCollegamentiBar
+        ref="collegamentiRef"
+        base-path="/vendite/ordini"
+        :doc-id="effectiveOrdineId"
+        :readonly="isReadonlyPuro" />
+
+      <!-- Situazione merce dell'ordine: il riassunto per riga ordinata —
+           comprese quelle MAI SPEDITE, che il vecchio contatore non
+           conteneva affatto — con il dettaglio delle spedizioni e delle due
+           code a un clic. E' il rilievo in-app del 2026-08-17: cinque
+           schermate per ricostruire una storia, e la riga che la riassume
+           non esisteva. -->
+      <SituazioneMerceBar
+        ref="merceRef"
+        base-path="/vendite/ordini"
+        :doc-id="effectiveOrdineId"
+        :readonly="isReadonlyPuro" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <Divider v-if="hasDetail" />
 
-      <!-- Header info: visibile in EDIT classico e in CREATE post auto-save. -->
-      <template v-if="hasDetail">
-        <DrawerEntityHeader>
-          <Tag :value="detail.numero" severity="secondary" />
-          <span v-if="detail.data" class="app-drawer-header-muted font-bold">
-            {{ displayDate(detail.data) }}
-          </span>
-          <!-- La provenienza upstream (preventivo/offerta) NON e' piu' un chip
-               d'header dedicato: e' assorbita dai chip di
-               DocumentoCollegamentiBar sotto la barra azioni, dove sta
-               l'origine di TUTTI i domini (2026-07-25). -->
+    <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup. -->
+    <OrdiniForm
+      :campi-errati="campiErrati"
+      :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
+      :non-editable-fields="nonEditableFields"
+      :is-edit="isEdit || createdId !== null"
+      :record="detail" />
 
-          <template #status>
-            <Tag
-              :value="detail.stato_descrizione"
-              :severity="statoOrdineSeverity(detail.stato_codice_interno)"
-            />
-          </template>
-        </DrawerEntityHeader>
+    <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
+    <template v-if="hasDetail">
+      <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
+           contatore "+N altri", pulsante "Indirizzi" che apre il drawer
+           di gestione. -->
+      <DocumentoIndirizziSection
+        dominio="ordini"
+        :doc-id="effectiveOrdineId"
+        :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
+        :istanza-utility-id="detail?.istanza_utility_id ?? null"
+        :readonly="!(canEditTestataEffective && !isReadonly)"
+        :bordo="false" />
 
-        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
-          <template #suffix>
-            <!-- Stampa conferma d'ordine: anteprima PDF on-demand
-                 (ristampabile, §12.4(a)). BB EntityPdfButton riusato 1:1. -->
-            <EntityPdfButton
-              :sorgente-code="SORGENTE_CODES.ORDINE_VENDITA"
-              :entity-id="effectiveOrdineId"
-              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-              :pdf="capabilities.pdf"
-              i18n-prefix="vendite.ordini.pdf"
-              :dialog-title="detail.numero
-                ? t('vendite.ordini.pdf.dialog_title', { numero: detail.numero })
-                : ''"
-            />
-          </template>
-        </DrawerActionsBar>
+      <Divider />
+      <OrdiniRigheTable
+        ref="righeTableRef"
+        :ordine-id="effectiveOrdineId"
+        :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+        :is-modificabile="canEditRighe && !isReadonly"
+        @changed="loadDetail()"
+        @form-aperto="onFormAperto" />
 
-        <!-- Collegamenti diretti (pratica + origine + destinazioni di livello 1):
-             segnalazione a colpo d'occhio sotto i pulsanti — «Preventivo»,
-             «2 DDT». Il grafo completo si apre dai chip stessi in dialog. -->
-        <DocumentoCollegamentiBar
-          ref="collegamentiRef"
-          base-path="/vendite/ordini"
-          :doc-id="effectiveOrdineId"
-          :readonly="isReadonlyPuro" />
-
-        <!-- Situazione merce dell'ordine: il riassunto per riga ordinata —
-             comprese quelle MAI SPEDITE, che il vecchio contatore non
-             conteneva affatto — con il dettaglio delle spedizioni e delle due
-             code a un clic. E' il rilievo in-app del 2026-08-17: cinque
-             schermate per ricostruire una storia, e la riga che la riassume
-             non esisteva. -->
-        <SituazioneMerceBar
-          ref="merceRef"
-          base-path="/vendite/ordini"
-          :doc-id="effectiveOrdineId"
-          :readonly="isReadonlyPuro" />
-      </template>
-
-      <Divider v-if="hasDetail" />
-
-      <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup. -->
-      <OrdiniForm
-        :campi-errati="campiErrati" v-if="contentReady"
-        :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
-        :non-editable-fields="nonEditableFields"
-        :is-edit="isEdit || createdId !== null"
-        :record="detail" />
-
-      <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
-      <template v-if="contentReady && hasDetail">
-        <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
-             contatore "+N altri", pulsante "Indirizzi" che apre il drawer
-             di gestione. -->
-        <DocumentoIndirizziSection
-          dominio="ordini"
-          :doc-id="effectiveOrdineId"
-          :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
-          :istanza-utility-id="detail?.istanza_utility_id ?? null"
-          :readonly="!(canEditTestataEffective && !isReadonly)"
-          :bordo="false" />
-
+      <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
+           Visibile con almeno una riga. Il footer mostra gia' totale
+           imponibile + imposta + totale documento. Componente riusabile
+           cross-dominio condiviso con preventivi (regola del 2). -->
+      <template v-if="showRiepilogoIva">
         <Divider />
-        <OrdiniRigheTable
-          :ordine-id="effectiveOrdineId"
-          :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-          :is-modificabile="canEditRighe && !isReadonly"
-          @changed="loadDetail()"
-          @form-aperto="(v) => { formRigaAperto = v }" />
-
-        <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
-             Visibile con almeno una riga. Il footer mostra gia' totale
-             imponibile + imposta + totale documento. Componente riusabile
-             cross-dominio condiviso con preventivi (regola del 2). -->
-        <template v-if="showRiepilogoIva">
-          <Divider />
-          <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
-        </template>
+        <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
       </template>
-
-
-      <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"
-        :loading="loading" :disabled="!canSave"
-        @save="handleSave" @cancel="close" />
-      <FormFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="close" />
-    </div>
-  </Drawer>
+    </template>
+  </AppDrawer>
 
   <!-- Sub-drawer note: cablato sull'id effettivo dell'ordine. -->
   <OrdineNoteDrawer

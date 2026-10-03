@@ -8,6 +8,7 @@ import { displayDate } from '../../core/utils/date'
 import Badge from 'primevue/badge'
 import Button from 'primevue/button'
 import Popover from 'primevue/popover'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { STATUS_ICONS } from '../../core/constants'

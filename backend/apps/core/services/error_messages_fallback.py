@@ -245,6 +245,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CREDENZIALE_ALTRA_PERSONA": "L'email appartiene all'accesso di un'altra persona.",
     "E_CREDENZIALE_BLOCCATA": "Accesso bloccato dall'amministratore.",
     "E_CREDENZIALE_DA_CONFERMARE": "L'email appartiene gia' a un accesso: confermare quale usare.",
+    "E_CREDENZIALE_DI_SISTEMA": "Le credenziali di sistema non si modificano da qui.",
     "E_CREDENZIALE_EMAIL_AMBIGUA": "Piu' accessi registrati con la stessa email.",
     "E_CREDENZIALE_GIA_OPERATORE": "L'email appartiene gia' a un operatore.",
     "E_CREDENZIALE_MOTIVO_OBBLIGATORIO": "Indicare il motivo del blocco.",
@@ -361,6 +362,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # E_CONTRATTO_EMITTENTE_NON_RISOLTO, che restano qui perche' ritirati, non
     # cancellati. Stessa frase dei ripieghi delle sorelle.
     "E_EMITTENTE_NON_RISOLTO": "Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
+    "E_EMITTENTE_REGIME_CONFERMA_DERIVATA": "La conferma del regime fiscale la scrive il database. Per confermare il regime si scrive il regime, anche con lo stesso valore.",
     "E_ENTE_INCASSO_CONTO_NON_DI_INCASSO": "Il conto indicato per questo canale di incasso non e' un conto di incasso.",
     "E_ENTE_INCASSO_NON_TROVATO": "Il canale di incasso indicato non esiste, oppure appartiene a un emittente fuori dal tuo perimetro.",
     "E_ENTE_INCASSO_PSP_NON_CENSITO": "Il soggetto-ruolo ha il ruolo PSP ma non risulta censito e attivo fra i PSP.",
@@ -1161,6 +1163,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TOTP_DEVICE_GIA_ATTIVO": "Il secondo fattore e' gia' attivo per questo accesso.",
     "E_TOTP_MOTIVO_OBBLIGATORIO": "Indicare il motivo della disattivazione.",
     "E_TOTP_PASSO_GIA_USATO": "Codice gia' usato: attendere il prossimo codice.",
+    "E_TOTP_PASSWORD_NON_VALIDA": "Password non corretta.",
     "E_TOTP_RECOVERY_NON_VALIDO": "Codice di recupero non valido o gia' usato.",
     "E_TOTP_SFIDA_NON_VALIDA": "La verifica e' scaduta: accedere di nuovo con la password.",
     "E_TRIGGER_ARGOMENTI_INVALIDI": "Trigger montato con argomenti non validi.",

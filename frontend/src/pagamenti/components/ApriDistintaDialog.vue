@@ -50,6 +50,7 @@ import { DATE_FORMAT } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 import { creaDistinta } from '../api/pagamenti'
 import { useCanaliIncasso } from '../composables/useCanaliIncasso'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 // ⚠️ Niente `class="w-full"` sui campi: `.form-field` e' gia' `flex-direction:
 //    column`, quindi i figli si stirano da se'. Quella classe e' usata in una
@@ -134,6 +135,7 @@ watch(() => props.visible, async (aperto) => {
   if (!aperto) return
   form.value = defaultForm()
   await caricaCanali()
+  fotografia.fissa()
 })
 
 async function onSave() {
@@ -188,10 +190,14 @@ async function onSave() {
 }
 
 function onCancel() { emit('update:visible', false) }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ ...form.value }), { visibile: () => props.visible, fissaAllApertura: false })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="visible"
     :header="t('pagamenti.distinte.apri_titolo')"
     width="md"

@@ -29,8 +29,19 @@
 //   reso totale per inerzia, e il reso totale flippa il DDT a RESO.
 // - onLoaded: (rows) => void opzionale — seed di mappe extra del caller
 //   (es. tipo/motivo per riga nel crea-reso).
+// - visibile: () => bool — la visibilita' del dialog che monta la macchina.
+//   Con questa il BB tiene la FOTOGRAFIA (D-14, 2026-10-03, regola del 2, ok
+//   Tid): selezione e quantita' sono lavoro dell'operatore, e uscire dopo
+//   averle toccate chiede. ⭐ Si fissa alla fine di OGNI `loadRighe` — anche
+//   la ricarica dopo un gesto gia' salvato riscrive selezione e quantita', ed
+//   e' la nuova base, non una modifica (la copia che lo dimenticava chiedeva
+//   «modifiche non salvate» a chi non aveva toccato niente). Espone
+//   `chiudiConConferma` per `conferma-uscita` di AppDialog.
+// - statoExtra: () => object opzionale — lo stato del caller da fotografare
+//   insieme (le mappe tipo/motivo del crea-reso).
 import { computed, ref } from 'vue'
 import { useSelezioneToggle } from '../../../core/composables/useSelezioneToggle'
+import { useFotografiaDialog } from '../../../core/composables/useFotografiaDialog'
 
 export function useRigheSelezioneQta({
   fetchRighe,
@@ -39,6 +50,8 @@ export function useRigheSelezioneQta({
   readonly = () => false,
   preselezione = 'tutto',
   onLoaded = null,
+  visibile = null,
+  statoExtra = () => ({}),
 } = {}) {
   const preselezionaTutto = preselezione !== 'nessuna'
   const righe = ref([])
@@ -58,6 +71,15 @@ export function useRigheSelezioneQta({
   const { isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected } =
     useSelezioneToggle({ selected, selezionabili: righeSelezionabili, rowKey })
 
+  // La fotografia si fissa a righe caricate, non all'apertura: i dati che
+  // arrivano dalla fetch non sono modifiche.
+  const fotografia = visibile
+    ? useFotografiaDialog(
+      () => ({ selezionate: selected.value.map(r => r[rowKey]), qta: qtaMap.value, ...statoExtra() }),
+      { visibile, fissaAllApertura: false },
+    )
+    : null
+
   // Scopo: carica le righe e applica la politica di seed (`preselezione`):
   //        'tutto' → qtaMap col residuo (0 per le esaurite) + righe lavorabili
   //        preselezionate; 'nessuna' → qtaMap vuota (null = campo non compilato)
@@ -74,6 +96,7 @@ export function useRigheSelezioneQta({
       selected.value = (readonly() || !preselezionaTutto)
         ? []
         : [...righeSelezionabili.value]
+      fotografia?.fissa()
     } finally {
       loadingRighe.value = false
     }
@@ -123,5 +146,7 @@ export function useRigheSelezioneQta({
     toggleAll,
     allSelected,
     anySelected,
+    modificato: fotografia ? fotografia.modificato : computed(() => false),
+    chiudiConConferma: fotografia ? fotografia.chiudiConConferma : (chiudi) => chiudi(),
   }
 }

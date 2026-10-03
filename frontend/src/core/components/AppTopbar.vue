@@ -8,14 +8,11 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import Badge from 'primevue/badge'
-import Button from 'primevue/button'
 import Chip from 'primevue/chip'
 import TieredMenu from 'primevue/tieredmenu'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
-import { useTabsStore } from '../../stores/tabs'
-import { useConfirmAction } from '../composables/useConfirmAction'
 import { DOMAINS, NAV_ICONS } from '../navigation'
 import { getAIStatus } from '../api/ai-api'
 import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
@@ -24,6 +21,7 @@ import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
 import CodeLavoroDrawer from './CodeLavoroDrawer.vue'
 import EmittenteAttivoSelect from './EmittenteAttivoSelect.vue'
+import SchedaUtentePopover from './SchedaUtentePopover.vue'
 import { menuItemClass } from '../utils/rowActions'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { useQueueCountsPolling } from '../composables/useQueueCountsPolling'
@@ -44,26 +42,8 @@ const ui = useUiStore()
 const ricercaMontata = ref(false)
 watch(() => ui.searchDrawerVisible, (aperta) => { if (aperta) ricercaMontata.value = true }, { immediate: true })
 const context = useContextStore()
-const tabs = useTabsStore()
-const { confirmAction } = useConfirmAction()
-
-// Scopo: apre «Sicurezza dell'accesso». La rotta sta FUORI da AppLayout
-//        (famiglia login): entrarci smonta le schede, e le modifiche non
-//        salvate andrebbero perse senza che nessuno lo dica. Con schede
-//        modificate si chiede conferma, contandole (come il cambio emittente,
-//        `EmittenteAttivoSelect`); senza, si va diretti come prima.
-function apriSicurezza() {
-  const vai = () => router.push({ name: 'sicurezza' })
-  if (!tabs.hasDirtyTabs()) {
-    vai()
-    return
-  }
-  confirmAction({
-    header: t('auth.secondo_fattore.titolo'),
-    message: t('auth.secondo_fattore.uscita_conferma', { n: tabs.tabs.filter(x => x.dirty).length }),
-    onAccept: vai,
-  })
-}
+// La scheda dell'utente (badge): `toggle(event)`.
+const schedaUtente = ref(null)
 
 defineProps({
   showHamburger: { type: Boolean, default: false }
@@ -260,12 +240,6 @@ const userKebabItems = computed(() => {
     items: favoritesSubmenu.value,
   })
   items.push({
-    label: t('auth.secondo_fattore.titolo'),
-    icon: MANAGE_ICONS.SICUREZZA_ACCESSO,
-    class: TOPBAR_MENU_CLASS,
-    command: apriSicurezza,
-  })
-  items.push({
     label: `${t('common.language')} · ${languageLabel.value}`,
     icon: MANAGE_ICONS.LINGUA,
     class: TOPBAR_MENU_CLASS,
@@ -300,17 +274,7 @@ onMounted(async () => {
 <template>
   <header class="app-topbar">
     <div class="topbar-left">
-      <!-- Hamburger su mobile -->
-      <Button
-        v-if="showHamburger"
-        :icon="MANAGE_ICONS.MENU"
-        text
-        rounded
-        size="small"
-        class="topbar-hamburger"
-        @click="emit('toggle-menu')"
-      />
-      <i v-else class="topbar-emittente-icon" :class="MANAGE_ICONS.BUILDING"></i>
+      <i v-if="!showHamburger" class="topbar-emittente-icon" :class="MANAGE_ICONS.BUILDING"></i>
       <EmittenteAttivoSelect />
 
       <!-- Operatore: badge SUPER_ADMIN o iniziali, subito dopo l'emittente.
@@ -320,15 +284,28 @@ onMounted(async () => {
            (l'area), destra = COSA (contesto, data, strumenti, uscita). Fino a
            quel giorno il badge stava a destra tra il chip contesto e la data,
            cioe' tra cose che non descrivono l'identita'. -->
-      <Chip v-if="auth.isSuperAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
-        <template #default>
-          <i class="admin-chip-icon" :class="MANAGE_ICONS.SUPER_ADMIN" />
-          <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
-        </template>
-      </Chip>
-      <span v-else class="user-initials-badge" v-tooltip.bottom="auth.displayName">
-        {{ userInitials }}
-      </span>
+      <!-- ⭐ Il badge apre la scheda dell'utente: chi e' e le azioni sul
+           proprio accesso (cambio password, Sicurezza). Decisione di Tid,
+           2026-10-03: prima «Sicurezza» stava nel kebab delle preferenze. -->
+      <button
+        type="button"
+        class="topbar-utente-btn"
+        v-tooltip.bottom="auth.displayName"
+        :aria-label="t('auth.account.apri_scheda')"
+        aria-haspopup="true"
+        @click="schedaUtente?.toggle($event)"
+      >
+        <Chip v-if="auth.isSuperAdmin" class="admin-chip">
+          <template #default>
+            <i class="admin-chip-icon" :class="MANAGE_ICONS.SUPER_ADMIN" />
+            <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
+          </template>
+        </Chip>
+        <span v-else class="user-initials-badge">
+          {{ userInitials }}
+        </span>
+      </button>
+      <SchedaUtentePopover ref="schedaUtente" />
     </div>
 
     <div class="topbar-center">
@@ -427,6 +404,15 @@ onMounted(async () => {
         </button>
       </div>
 
+      <!-- Hamburger su mobile: a destra, subito prima del kebab. -->
+      <button
+        v-if="showHamburger"
+        class="topbar-icon-btn"
+        @click="emit('toggle-menu')"
+      >
+        <i :class="MANAGE_ICONS.MENU"></i>
+      </button>
+
       <!-- Kebab utente: preferiti (submenu) + lingua + dark/light.
            Standard di kebab (stessa palette `app-menu-item-action`).
            Sempre visibile, subito prima del logout. -->
@@ -466,6 +452,7 @@ onMounted(async () => {
 .app-topbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  column-gap: 0.75rem;
   align-items: center;
   height: var(--app-topbar-height);
   min-height: var(--app-topbar-height);
@@ -498,10 +485,6 @@ onMounted(async () => {
 .topbar-left .admin-chip,
 .topbar-left .user-initials-badge {
   flex: none;
-}
-
-.topbar-hamburger {
-  color: var(--app-topbar-breadcrumb-color);
 }
 
 .topbar-company {
@@ -555,7 +538,7 @@ onMounted(async () => {
   gap: 0.5rem;
 }
 
-/* Bottone icona topbar — classe riutilizzabile per search, AI, logout */
+/* Bottone icona topbar — classe riutilizzabile per hamburger, search, AI, kebab, logout */
 .topbar-icon-btn {
   display: flex;
   align-items: center;
@@ -598,8 +581,27 @@ onMounted(async () => {
 }
 
 /* Badge admin */
+/* Il badge e' un pulsante (apre la scheda dell'utente): senza il chrome del
+   bottone, il badge resta com'era. Il margine raddoppia il gap dell'ala
+   (0.5rem → 1rem) solo tra emittente e operatore. */
+.topbar-utente-btn {
+  display: flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--app-border-radius);
+}
+
+.topbar-utente-btn:focus-visible {
+  outline: 2px solid var(--app-focus-ring);
+  outline-offset: 2px;
+}
+
 .admin-chip {
-  cursor: default;
+  cursor: pointer;
   font-size: var(--app-font-size-sm);
   background: color-mix(in srgb, var(--app-warning-color) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--app-warning-color) 30%, transparent);
@@ -671,6 +673,28 @@ onMounted(async () => {
 
 /* Mobile — nasconde data, azienda, azioni inline; mostra solo il kebab */
 @media (max-width: 767.98px) {
+  /* ⛔ Le ali uguali della grid qui non reggono: l'ala sinistra e' piu'
+     stretta di emittente + badge, il badge (che non cede) sborda dalla sua
+     colonna e finisce sotto il titolo. In flex il titolo prende lo spazio
+     TRA le ali, centrato li', e tronca lui e l'emittente invece di
+     sovrapporsi (Tid, 2026-10-03). */
+  .app-topbar {
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  .topbar-left {
+    flex: 0 1 auto;
+  }
+
+  .topbar-center {
+    flex: 1 1 auto;
+  }
+
+  .topbar-right {
+    flex: none;
+  }
+
   .topbar-company,
   .topbar-date {
     display: none;

@@ -24,7 +24,6 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -37,12 +36,10 @@ import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import TitoloIvaDrawer from './TitoloIvaDrawer.vue'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 
 const { t } = useI18n()
@@ -149,70 +146,67 @@ function residuoSeverity(r) {
   return Number(r.residuo) < 0 ? 'danger' : 'success'
 }
 
-const onClose = useDrawerClose(emit)
 </script>
 
 <template>
-  <Drawer
-    :visible="visible" @update:visible="emit('update:visible', $event)"
-    position="right" :style="{ width: DRAWER_WIDTH.WIDE }">
-    <template #header>
-      <DrawerTitle
-        :action="soggettoNome"
-        :title="t('anagrafiche.titoli_iva.titolo_lista')"
-        :icon="MANAGE_ICONS.TITOLI_IVA" />
-    </template>
-
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <DrawerTabLista
-        ref="listaRef"
-        codice="anagrafiche.soggetto_titoli_iva"
-        :store="store"
-        :rows="store.items"
-        :total="store.totalRecords"
-        :loading="store.loading"
-        :paginator-options="paginatorProps"
-        :page="tablePage"
-        :sort-field="paginatorProps.sortField"
-        :sort-order="paginatorProps.sortOrder"
-        :page-actions="pageActions"
-        :dirty="dirty"
-        :perimetro-bloccato="perimetroBloccato"
-        @page="onPage"
-        @sort="onSort"
-        @row-click="apriTitolo($event.id)"
-        @config-loaded="onConfigLoaded"
-      >
-        <!-- Colonna composta da DUE campi: non ha un `campo_sorgente` e il
-             catalogo la dichiara calcolata. -->
-        <template #cell-validita="{ data }">
-          {{ displayDate(data.valido_dal) }} —
-          {{ data.valido_al ? displayDate(data.valido_al) : t('anagrafiche.titoli_iva.senza_scadenza') }}
-        </template>
-        <template #cell-residuo="{ data }">
-          <!-- Il residuo esiste solo dove esiste un tetto: sui tipi senza
-               plafond non si mostra uno zero, che sembrerebbe «esaurito». -->
-          <Tag v-if="data.residuo != null" :value="formatCurrency(data.residuo)"
-            :severity="residuoSeverity(data)" />
-          <span v-else class="app-text-muted">—</span>
-        </template>
-        <template #cell-stato="{ data }">
-          <Tag v-if="!data.attivo" :value="t('anagrafiche.titoli_iva.tag_non_attivo')" severity="secondary" />
-          <!-- Q2: RISTRETTO senza righe non copre nessuna merce. Lo DICHIARA
-               il backend (`ambito_incompleto`): qui non si ri-deriva. -->
-          <Tag v-else-if="data.ambito_incompleto"
-            :value="t('anagrafiche.titoli_iva.tag_ambito_incompleto')" severity="warn" />
-          <Tag v-else :value="t('common.attivo')" severity="success" />
-        </template>
-        <template #actions="{ data }">
-          <RowActionsMenu
-            :row="data"
-            :actions="buildRowActions(data)" />
-        </template>
-      </DrawerTabLista>
-
-      <FormFooter close-only @cancel="onClose" />
-    </div>
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :proteggi-corpo="false"
+    :title="t('anagrafiche.titoli_iva.titolo_lista')"
+    :icon="MANAGE_ICONS.TITOLI_IVA"
+    :action="soggettoNome"
+    :width="DRAWER_WIDTH.WIDE"
+    footer="chiudi"
+    @update:visible="(v) => emit('update:visible', v)"
+  >
+    <DrawerTabLista
+      ref="listaRef"
+      codice="anagrafiche.soggetto_titoli_iva"
+      :store="store"
+      :rows="store.items"
+      :total="store.totalRecords"
+      :loading="store.loading"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      :page-actions="pageActions"
+      :dirty="dirty"
+      :perimetro-bloccato="perimetroBloccato"
+      @page="onPage"
+      @sort="onSort"
+      @row-click="apriTitolo($event.id)"
+      @config-loaded="onConfigLoaded"
+    >
+      <!-- Colonna composta da DUE campi: non ha un `campo_sorgente` e il
+           catalogo la dichiara calcolata. -->
+      <template #cell-validita="{ data }">
+        {{ displayDate(data.valido_dal) }} —
+        {{ data.valido_al ? displayDate(data.valido_al) : t('anagrafiche.titoli_iva.senza_scadenza') }}
+      </template>
+      <template #cell-residuo="{ data }">
+        <!-- Il residuo esiste solo dove esiste un tetto: sui tipi senza
+             plafond non si mostra uno zero, che sembrerebbe «esaurito». -->
+        <Tag v-if="data.residuo != null" :value="formatCurrency(data.residuo)"
+          :severity="residuoSeverity(data)" />
+        <span v-else class="app-text-muted">—</span>
+      </template>
+      <template #cell-stato="{ data }">
+        <Tag v-if="!data.attivo" :value="t('anagrafiche.titoli_iva.tag_non_attivo')" severity="secondary" />
+        <!-- Q2: RISTRETTO senza righe non copre nessuna merce. Lo DICHIARA
+             il backend (`ambito_incompleto`): qui non si ri-deriva. -->
+        <Tag v-else-if="data.ambito_incompleto"
+          :value="t('anagrafiche.titoli_iva.tag_ambito_incompleto')" severity="warn" />
+        <Tag v-else :value="t('common.attivo')" severity="success" />
+      </template>
+      <template #actions="{ data }">
+        <RowActionsMenu
+          :row="data"
+          :actions="buildRowActions(data)" />
+      </template>
+    </DrawerTabLista>
 
     <ExportDialog
       v-model:visible="exportDialogVisible"
@@ -224,5 +218,5 @@ const onClose = useDrawerClose(emit)
       :soggetto-id="soggettoId"
       :titolo-id="titoloSelezionatoId"
       @saved="onTitoloSaved" />
-  </Drawer>
+  </AppDrawer>
 </template>

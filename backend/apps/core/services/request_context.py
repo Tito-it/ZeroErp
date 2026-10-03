@@ -46,6 +46,7 @@ from typing import Any
 from django.conf import settings
 from django.http import HttpRequest
 
+from apps.core.services.auth_constants import JWT_CLAIM_SID
 from apps.core.services.service_errors import ServiceError
 
 
@@ -80,6 +81,16 @@ def get_client_ip(request: HttpRequest) -> str | None:
 #        in dieci view.
 def richiesta_django(request: Any) -> HttpRequest:
     return getattr(request, "_request", request)
+
+
+# Scopo: Il `sid` (la sessione) del JWT della richiesta corrente; None se la
+#        richiesta non porta un token (una `HttpRequest` di Django, un test).
+#        ⭐ Regola del 2 (2026-10-03): era `_get_current_sid` di
+#        `sessioni_view`; il secondo consumatore e' il freno della password
+#        dentro una sessione, che chiude QUELLA sessione.
+def sid_corrente(request: Any) -> str | None:
+    auth = getattr(request, "auth", None)
+    return str(auth.get(JWT_CLAIM_SID, "")) if auth else None
 
 
 # Scopo: La provenienza di una richiesta di autenticazione, o il rifiuto:

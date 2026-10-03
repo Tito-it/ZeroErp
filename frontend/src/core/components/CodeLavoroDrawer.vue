@@ -22,11 +22,10 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
-import FormFooter from './FormFooter.vue'
+import AppDrawer from './AppDrawer.vue'
 import { useNotify } from '../composables/useNotify'
 import { useDrawerClose } from '../composables/useDrawerClose'
 import { extractApiError } from '../utils/apiError'
@@ -37,7 +36,6 @@ import { CODE_TABS, DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../constant
 import { NAV_ICONS } from '../navigation'
 import { getCodeConteggi, listCodaLavori, listCodaStampa } from '../api/tracciamento'
 import { STATI_CODA_VIVI, contaVivi, workerOkDaConteggi } from '../composables/useQueueCountsPolling'
-import { useDrawerContentReady } from '../composables/useDrawerContentReady'
 
 
 
@@ -49,10 +47,6 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible'])
 const onClose = useDrawerClose(emit)
 
@@ -192,87 +186,88 @@ function apriCoda(tab) {
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md): la testata e' quella di
+       tutti i drawer (`DrawerTitle` con l'icona delle code), non piu' la prop
+       `header` di testo semplice. Sola lettura: footer «Chiudi». -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.SIMPLE }"
-    :header="t('strumenti.code.drawer_titolo')"
+    :title="t('strumenti.code.drawer_titolo')"
+    :icon="NAV_ICONS.CODE_LAVORO"
+    :width="DRAWER_WIDTH.SIMPLE"
+    :proteggi-corpo="false"
+    footer="chiudi"
     @update:visible="(v) => emit('update:visible', v)"
-    @after-show="onAfterShow"
   >
-    <div v-if="contentReady" class="app-drawer-content">
-      <!-- Stato worker: giù (nessun run recente) / coda impegnata / tutto scorre -->
-      <Message v-if="workerOk === false" severity="warn" :closable="false">
-        {{ t('strumenti.code.banner_worker_giu') }}
-      </Message>
-      <Message v-else-if="codaImpegnata" severity="info" :closable="false">
-        {{ t('strumenti.code.banner_coda_impegnata') }}
-      </Message>
-      <Message v-else-if="conteggi" severity="success" :closable="false">
-        {{ t('strumenti.code.banner_tutto_scorre') }}
-      </Message>
+    <!-- Stato worker: giù (nessun run recente) / coda impegnata / tutto scorre -->
+    <Message v-if="workerOk === false" severity="warn" :closable="false">
+      {{ t('strumenti.code.banner_worker_giu') }}
+    </Message>
+    <Message v-else-if="codaImpegnata" severity="info" :closable="false">
+      {{ t('strumenti.code.banner_coda_impegnata') }}
+    </Message>
+    <Message v-else-if="conteggi" severity="success" :closable="false">
+      {{ t('strumenti.code.banner_tutto_scorre') }}
+    </Message>
 
-      <!-- Un blocco per coda: titolo-comando, conteggi vivi, righe recenti. -->
-      <div v-for="sez in sezioni" :key="sez.tab" class="app-code-sezione">
-        <!-- ⚠️ È un CONTROLLO, non un titolo: pulsante vero (hit-area, focus da
-             tastiera), colore e hover del «gestisci» blu dalla classe
-             centralizzata, freccia a destra che dice dove porta. Un titolo che
-             si può premere e non lo sembra non viene premuto.
-             ⛔ `Button` di PrimeVue e non un <button> nudo: `.app-manage-btn` è
-             definita come `.app-manage-btn.p-button` — su un elemento qualunque
-             non applica niente, e il colore centralizzato sarebbe una classe
-             dichiarata e mai letta. -->
-        <Button
-          text
-          class="app-manage-btn app-code-sezione-titolo"
-          v-tooltip.bottom="t('strumenti.code.apri_scheda_hint', { coda: sez.titolo })"
-          @click="apriCoda(sez.tab)"
-        >
-          <i :class="sez.icona" />
-          <span>{{ sez.titolo }}</span>
-          <i class="app-code-sezione-vai" :class="MANAGE_ICONS.VAI_A" />
-        </Button>
+    <!-- Un blocco per coda: titolo-comando, conteggi vivi, righe recenti. -->
+    <div v-for="sez in sezioni" :key="sez.tab" class="app-code-sezione">
+      <!-- ⚠️ È un CONTROLLO, non un titolo: pulsante vero (hit-area, focus da
+           tastiera), colore e hover del «gestisci» blu dalla classe
+           centralizzata, freccia a destra che dice dove porta. Un titolo che
+           si può premere e non lo sembra non viene premuto.
+           ⛔ `Button` di PrimeVue e non un <button> nudo: `.app-manage-btn` è
+           definita come `.app-manage-btn.p-button` — su un elemento qualunque
+           non applica niente, e il colore centralizzato sarebbe una classe
+           dichiarata e mai letta. -->
+      <Button
+        text
+        class="app-manage-btn app-code-sezione-titolo"
+        v-tooltip.bottom="t('strumenti.code.apri_scheda_hint', { coda: sez.titolo })"
+        @click="apriCoda(sez.tab)"
+      >
+        <i :class="sez.icona" />
+        <span>{{ sez.titolo }}</span>
+        <i class="app-code-sezione-vai" :class="MANAGE_ICONS.VAI_A" />
+      </Button>
 
-        <div class="app-code-chips">
-          <!-- Finché la lettura è in volo non si afferma niente: né le chip
-               (i conteggi non ci sono) né «coda vuota». -->
-          <i v-if="loading" class="app-spinner-in-corso" :class="STATUS_ICONS.CARICAMENTO" />
-          <template v-for="s in STATI_VIVI" :key="s.codice">
-            <Tag
-              v-if="(sez.conteggi?.[s.chiave] ?? 0) > 0"
-              :value="`${s.label}: ${sez.conteggi[s.chiave]}`"
-              :severity="sez.severity(s.codice)"
-            />
-          </template>
-          <span v-if="caricato && sez.vivi === 0" class="app-text-muted">
-            {{ t('strumenti.code.coda_vuota') }}
-          </span>
-        </div>
-
-        <!-- Le ultime righe della coda, sotto i suoi conteggi: dicono COSA c'è
-             dentro quel numero. La riga di titolo dice di che elenco si tratta:
-             «vuota» parla dei vivi, questo elenco anche delle terminate, e
-             senza l'etichetta i due si leggerebbero in contraddizione. -->
-        <span class="app-code-recenti-titolo app-text-muted">
-          {{ sez.titoloRecenti }}
-        </span>
-        <div v-if="sez.righe.length" class="app-code-jobs">
-          <div v-for="riga in sez.righe" :key="riga.id" class="app-code-job">
-            <Tag :value="riga.stato" :severity="sez.severity(riga.stato)" />
-            <span class="app-mono app-code-job-tipo">{{ riga.testo }}</span>
-            <span class="app-text-muted">
-              {{ riga.quando ? displayTimestamp(riga.quando) : '—' }}
-            </span>
-          </div>
-        </div>
-        <span v-else-if="caricato" class="app-text-muted app-code-recenti-vuoto">
-          {{ sez.vuotoRecenti }}
+      <div class="app-code-chips">
+        <!-- Finché la lettura è in volo non si afferma niente: né le chip
+             (i conteggi non ci sono) né «coda vuota». -->
+        <i v-if="loading" class="app-spinner-in-corso" :class="STATUS_ICONS.CARICAMENTO" />
+        <template v-for="s in STATI_VIVI" :key="s.codice">
+          <Tag
+            v-if="(sez.conteggi?.[s.chiave] ?? 0) > 0"
+            :value="`${s.label}: ${sez.conteggi[s.chiave]}`"
+            :severity="sez.severity(s.codice)"
+          />
+        </template>
+        <span v-if="caricato && sez.vivi === 0" class="app-text-muted">
+          {{ t('strumenti.code.coda_vuota') }}
         </span>
       </div>
 
-      <FormFooter close-only @cancel="onClose" />
+      <!-- Le ultime righe della coda, sotto i suoi conteggi: dicono COSA c'è
+           dentro quel numero. La riga di titolo dice di che elenco si tratta:
+           «vuota» parla dei vivi, questo elenco anche delle terminate, e
+           senza l'etichetta i due si leggerebbero in contraddizione. -->
+      <span class="app-code-recenti-titolo app-text-muted">
+        {{ sez.titoloRecenti }}
+      </span>
+      <div v-if="sez.righe.length" class="app-code-jobs">
+        <div v-for="riga in sez.righe" :key="riga.id" class="app-code-job">
+          <Tag :value="riga.stato" :severity="sez.severity(riga.stato)" />
+          <span class="app-mono app-code-job-tipo">{{ riga.testo }}</span>
+          <span class="app-text-muted">
+            {{ riga.quando ? displayTimestamp(riga.quando) : '—' }}
+          </span>
+        </div>
+      </div>
+      <span v-else-if="caricato" class="app-text-muted app-code-recenti-vuoto">
+        {{ sez.vuotoRecenti }}
+      </span>
     </div>
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>

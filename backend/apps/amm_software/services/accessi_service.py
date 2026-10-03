@@ -28,17 +28,6 @@ from apps.core.services.revoca_token import blocca_token_sessioni
 
 E_CREDENZIALE_NON_TROVATA = "E_CREDENZIALE_NON_TROVATA"
 
-# ⭐ Il motivo per cui «Blocca» si spegne: lo stesso caso in cui il guard
-#    `trgfn_credenziali_guard_ultimo_super_admin` rifiuterebbe il blocco con
-#    `E_PROFILO_ULTIMO_SUPER_ADMIN`. Il PREDICATO viene dal DB
-#    (`script.fn_check_ultimo_super_admin_attivo`, nella lettura del
-#    repository); il codice e la chiave i18n del motivo, per ora, li compone il
-#    backend: il DB non ha ancora una `fn_check_*` del blocco che li emetta
-#    (richiesta al team DB nel brief, §8). ⚠️ Debito dichiarato: e' la forma
-#    che api.md §«Capability di riga» chiede di non avere.
-_MOTIVO_ULTIMO_SUPER_ADMIN = "ULTIMO_SUPER_ADMIN"
-_CHIAVE_ULTIMO_SUPER_ADMIN = "amministrazione.accessi.blocca_reason.ultimo_super_admin"
-
 # Le vesti per il filtro «Accessi»: i tipi che una veste VIVA puo' avere
 # (`RUOLO_APPLICATIVO`, senza la voce storica DISABILITATO: come filtro
 # troverebbe sempre niente).
@@ -84,7 +73,8 @@ class AccessiService:
 
     # Scopo: Lo stato di una credenziale per il pannello delle sue azioni, con
     #        la capability del blocco (`can_block` + motivo e chiave quando e'
-    #        spento). 404 `E_CREDENZIALE_NON_TROVATA` se non esiste.
+    #        spento, dalla check del DB: vedi il repository).
+    #        404 `E_CREDENZIALE_NON_TROVATA` se non esiste.
     def get_credenziale(self, auth_user_id: int) -> dict[str, Any]:
         cred = self._repo.get_credenziale(auth_user_id)
         ErrorManager.require(
@@ -94,13 +84,7 @@ class AccessiService:
             context={"auth_user_id": auth_user_id},
         )
         assert cred is not None
-        ultimo = bool(cred.pop("ultimo_super_admin"))
-        return {
-            **cred,
-            "can_block": not ultimo,
-            "block_reason": _MOTIVO_ULTIMO_SUPER_ADMIN if ultimo else None,
-            "block_reason_key": _CHIAVE_ULTIMO_SUPER_ADMIN if ultimo else None,
-        }
+        return cred
 
     # Scopo: Blocca la credenziale (verbo `script.fn_blocca_credenziale`) e
     #        chiude TUTTE le sue sessioni, nella stessa transazione: un blocco

@@ -30,6 +30,7 @@ import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS, TIPO_RUOLO } from '../../../core/constants'
 import IndirizzoProvenienzaTags from './IndirizzoProvenienzaTags.vue'
 import { formatSnapshotDisplay, makeIndirizziDocumentoApi, pickTipoDefault } from './documentoIndirizziApi'
+import { useFotografiaDialog } from '../../../core/composables/useFotografiaDialog'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -180,6 +181,10 @@ function removeSlot(row) {
     },
   })
 }
+
+// D-14: uscire dai due dialog con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotoUsaCome = useFotografiaDialog(() => ({ tipo: usaComeTipoId.value }), { visibile: () => usaComeVisible.value })
+const fotoLibero = useFotografiaDialog(() => ({ tipo: liberoTipoId.value, ...liberoForm.value }), { visibile: () => liberoVisible.value })
 </script>
 
 <template>
@@ -237,6 +242,7 @@ function removeSlot(row) {
 
   <!-- Dialog "Usa come": solo quando il dominio ammette piu' tipi. -->
   <AppDialog
+    :conferma-uscita="fotoUsaCome.chiudiConConferma"
     v-model:visible="usaComeVisible"
     :header="t('vendite.indirizzi.usa_come')"
     width="sm"
@@ -256,6 +262,7 @@ function removeSlot(row) {
 
   <!-- Dialog una-tantum: indirizzo occasionale non in anagrafica. -->
   <AppDialog
+    :conferma-uscita="fotoLibero.chiudiConConferma"
     v-model:visible="liberoVisible"
     :header="t('vendite.indirizzi.indirizzo_libero')"
     width="md"

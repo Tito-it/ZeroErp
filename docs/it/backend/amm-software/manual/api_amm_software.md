@@ -524,8 +524,15 @@ il proprietario e' il pannello dei processi. Legge
 `multi_emittente`: l'emittente per riga). Filtri `search`, `tipo`
 (`PROCESSO`/`API_CLIENT`, estraneo → 400), `emittente_fiscale_id`,
 `identita_attiva`, `bloccata`. Ordinabili: `username` (default), `tipo`,
-`processo_codice`, `emittente_codice`, `identita_attiva`, `bloccata`,
-`ultimo_accesso`.
+`processo_codice`, `emittente_codice`, `emittente_ragione_sociale`,
+`identita_attiva`, `bloccata`, `ultimo_accesso`.
+
+⛔ I verbi dell'amministratore rifiutano una credenziale di questa categoria
+con `E_CREDENZIALE_DI_SISTEMA` (409): il blocco (§1-bis.4) e l'**accensione**
+dell'obbligo del secondo fattore (§1-bis.6). Restano aperte le uscite: lo
+sblocco, lo spegnimento dell'obbligo, la rimozione di un device registrato per
+errore. Il blocco d'emergenza di una credenziale di sistema compromessa si fa
+dal server (sessione del migratore), non dall'app.
 
 ### 1-bis.3 GET /api/v1/amm-software/credenziali/{id}/ -- Stato della credenziale
 
@@ -539,13 +546,17 @@ il proprietario e' il pannello dei processi. Legge
 } }
 ```
 
-`can_block = false` con `block_reason = ULTIMO_SUPER_ADMIN` e
-`block_reason_key = amministrazione.accessi.blocca_reason.ultimo_super_admin`
-sull'ultimo SUPER_ADMIN raggiungibile: il predicato e'
-`script.fn_check_ultimo_super_admin_attivo`, lo stesso caso in cui il guard
-`trgfn_credenziali_guard_ultimo_super_admin` rifiuta il blocco. ⚠️ Il codice e
-la chiave li compone ancora il backend: manca una `fn_check_*` del blocco che li
-emetta (chiesta al team DB). Credenziale inesistente → 404
+`can_block`, `block_reason`, `block_reason_key` sono il **primo motivo** di
+`script.fn_check_credenziale_bloccabile`, la stessa check che il verbo del blocco
+chiama prima di scrivere: pulsante spento e rifiuto dicono la stessa cosa.
+Motivi e chiavi sono del DB; in ordine:
+
+| `block_reason` | `block_reason_key` | Quando |
+| --- | --- | --- |
+| `CREDENZIALE_DI_SISTEMA` | `amministrazione.accessi.blocca_reason.credenziale_di_sistema` | credenziale di categoria `SISTEMA` |
+| `ULTIMO_SUPER_ADMIN` | `amministrazione.accessi.blocca_reason.ultimo_super_admin` | ultimo SUPER_ADMIN raggiungibile |
+
+Credenziale inesistente → 404
 `E_CREDENZIALE_NON_TROVATA`. Il blocco si legge da `config.credenziali`
 (leggibile dall'app; le scritture passano dai verbi).
 
@@ -553,7 +564,9 @@ emetta (chiesta al team DB). Credenziale inesistente → 404
 
 Corpo `{"motivo": "…"}`, **`Idempotency-Key` obbligatoria**. Chiama
 `script.fn_blocca_credenziale` (SUPER_ADMIN alla prima riga, motivo obbligatorio
-→ `E_CREDENZIALE_MOTIVO_OBBLIGATORIO`, anti-lockout → `E_PROFILO_ULTIMO_SUPER_ADMIN`)
+→ `E_CREDENZIALE_MOTIVO_OBBLIGATORIO`, poi il primo motivo della check di §1-bis.3:
+credenziale di sistema → `E_CREDENZIALE_DI_SISTEMA`, anti-lockout →
+`E_PROFILO_ULTIMO_SUPER_ADMIN`, entrambi 409)
 e mette in blacklist **tutte** le sessioni della credenziale, nella stessa
 transazione: un blocco con le sessioni vive non e' un blocco. Il blocco vale su
 tutte le porte, non scade, il reset password non lo toglie. Risposta: lo stato
@@ -573,6 +586,9 @@ riaprono. Risposta: lo stato di §1-bis.3.
 ⛔ Fino al 2026-10-02 stavano sotto `operatori/{id}/secondo-fattore/`: ritirate
 nello stesso giro (il secondo fattore e' della credenziale, e un cliente del
 portale non si raggiungeva da li').
+Su una credenziale di sistema `POST …/obbligo/` con `valore = true` → 409
+`E_CREDENZIALE_DI_SISTEMA` (una macchina non ha un telefono); `valore = false` e
+`…/disattiva/` passano.
 
 ---
 
@@ -1625,6 +1641,7 @@ lavori vivi si leggono con **una** query per tutte le unit del processo.
 | `E_AMM_VALIDAZIONE` | 400 | Campi obbligatori mancanti, `ruolo_sistema` legacy nel payload (Fase 1), validazioni domain |
 | `E_AMM_OPERATORE_NOT_FOUND` | 404 | Operatore non trovato (dettaglio, aggiorna, disabilita, riattiva, scope) |
 | `E_AMM_SCOPE_NON_AMMESSO` | 400 | (Fase 2) `scope_mode` non in `['GLOBAL','SINGLE']`, oppure `SINGLE` con array vuoto/multi-elemento |
+| `E_CREDENZIALE_DI_SISTEMA` | 409 | Blocco o accensione dell'obbligo del secondo fattore su una credenziale di categoria `SISTEMA` (§1-bis). Verbi `script.fn_blocca_credenziale` e `script.fn_imposta_totp_obbligatorio` |
 | `E_PROFILO_ULTIMO_SUPER_ADMIN` | 409 | (Fase 1) L'operazione (disabilita, demote, cambio scope) lascerebbe il sistema senza super admin attivi. Trigger DB `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` |
 | `E_OPERATORE_SCOPE_PARAM_NON_VALIDO` | 400 | (Fase 5) `fn_change_user_emittenti_scope` rifiuta il payload (scope_mode invalido, array vuoto/multi-elemento). Codice stabile dal DB, sostituisce il `RAISE 22023` generico pre-Fase 5 |
 | `E_AUDIT_SUMMARY_PARAM_NON_VALIDO` | 400 | (Fase 5) `code` o `storico_id` assenti/malformati nella richiesta audit-summary |

@@ -12,6 +12,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { formatCurrency, formatNumber } from '../utils/format'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 
