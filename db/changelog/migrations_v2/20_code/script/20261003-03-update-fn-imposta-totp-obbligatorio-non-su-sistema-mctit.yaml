@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_imposta_totp_obbligatorio: L'OBBLIGO DEL SECONDO FATTORE NON SI
+#   ACCENDE SU UNA CREDENZIALE DI SISTEMA
+#   Brief: brief-db-credenziale-verbi-amministratore, R-DB-A6 (§5, D-2)
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   Con p_valore = true su una credenziale di categoria SISTEMA
+#   (script.fn_categoria_accesso) il verbo rifiuta con E_CREDENZIALE_DI_SISTEMA:
+#   un processo o un API_CLIENT non ha un telefono, e l'obbligo lo FERMA.
+#   D-2 di Tid (2026-10-03): p_valore = false PASSA. Spegnere l'obbligo e'
+#   l'uscita (rimedia a un obbligo acceso per sbaglio, anche prima di questa
+#   regola), come lo sblocco per il blocco. Per la stessa ragione
+#   script.fn_totp_disabilita_device NON cambia: su una macchina un device esiste
+#   solo per errore, e toglierlo e' il rimedio.
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   Firma, prima riga (fn_guard_super_admin), validazioni, upsert. Nessuna
+#   eccezione per la sessione del migratore: accendere il secondo fattore su
+#   una macchina non e' mai un rimedio. Il predicato e' il building block
+#   script.fn_categoria_accesso, chiamato e non riscritto; nessuna check qui,
+#   perche' a video la scheda «Di sistema» non ha gesti da spegnere col motivo.
+#   Corpo dal vivo (doc auto-gen = 20260929-12).
+#
+# SECURITY DEFINER del PROPRIETARIO, search_path bloccato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261003-03-update-fn-imposta-totp-obbligatorio-non-su-sistema-mctit.yaml
+
+  - changeSet:
+      id: 20261003-03-update-fn-imposta-totp-obbligatorio-non-su-sistema
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_imposta_totp_obbligatorio: accendere l'obbligo del secondo fattore su una
+        credenziale di categoria SISTEMA e' rifiutato (E_CREDENZIALE_DI_SISTEMA); spegnerlo passa,
+        e' l'uscita (D-2). Brief: brief-db-credenziale-verbi-amministratore R-DB-A6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_imposta_totp_obbligatorio';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_imposta_totp_obbligatorio(
+                  p_auth_user_id integer,
+                  p_valore       config.credenziali.totp_obbligatorio%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: imporre (o togliere) il secondo fattore a una credenziale,
+              --   per decisione di un SUPER_ADMIN. Upsert: la riga nasce qui.
+              BEGIN
+                  -- Prima riga: chi agisce dev'essere SUPER_ADMIN.
+                  PERFORM script.fn_guard_super_admin(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer);
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 OR p_valore IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_imposta_totp_obbligatorio', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id, 'p_valore', p_valore),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_imposta_totp_obbligatorio',
+                                         'credenziale e valore obbligatori']);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_imposta_totp_obbligatorio', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- R-DB-A6: su una macchina l'obbligo la ferma. Si rifiuta solo
+                  -- l'ACCENSIONE: spegnere e' l'uscita (D-2).
+                  IF p_valore
+                     AND script.fn_categoria_accesso(p_auth_user_id) = 'SISTEMA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_imposta_totp_obbligatorio', 'E_CREDENZIALE_DI_SISTEMA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id, 'valore', p_valore),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  INSERT INTO config.credenziali AS c (auth_user_id, totp_obbligatorio)
+                  VALUES (p_auth_user_id, p_valore)
+                  ON CONFLICT (auth_user_id) DO UPDATE
+                     SET totp_obbligatorio = EXCLUDED.totp_obbligatorio
+                   WHERE c.totp_obbligatorio IS DISTINCT FROM EXCLUDED.totp_obbligatorio;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_imposta_totp_obbligatorio(p_auth_user_id integer, p_valore boolean) IS
+                  'Accende o spegne l''obbligo del secondo fattore (TOTP) sulla CREDENZIALE '
+                  '(brief-db-secondo-fattore-totp §2.1): upsert su config.credenziali.totp_obbligatorio, dove la '
+                  'riga nasce alla prima scrittura. Prima riga script.fn_guard_super_admin(app.current_user_id): '
+                  'e'' gestione accessi, come il blocco. Credenziale inesistente -> E_CREDENZIALE_NON_TROVATA (la '
+                  'FK verso django.auth_user in CI non esiste). ACCENDERE l''obbligo su una credenziale di '
+                  'categoria SISTEMA (script.fn_categoria_accesso: processo o API_CLIENT) -> '
+                  'E_CREDENZIALE_DI_SISTEMA, da ogni strada: una macchina non ha un telefono e l''obbligo la '
+                  'ferma. SPEGNERLO passa: e'' l''uscita (D-2, brief-db-credenziale-verbi-amministratore R-DB-A6). '
+                  'Spegnere l''obbligo non toglie il device, e non toglie l''obbligo che viene da un profilo: la '
+                  'risposta unica e'' script.fn_totp_obbligatorio. SECURITY DEFINER del PROPRIETARIO, search_path '
+                  'bloccato: l''app su config.credenziali ha solo SELECT.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' 20260929-12 (senza il rifiuto di sistema), nella
+              -- doc auto-gen alla revisione prima di questa.
+              SELECT 1;

@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_credenziale_bloccabile: PERCHE' UNA CREDENZIALE NON SI BLOCCA
+#   Brief: brief-db-credenziale-verbi-amministratore, R-DB-A5 + R-DB-A6 (§5)
+#
+# -- PERCHE' ------------------------------------------------------------------------
+#   Il pannello della credenziale spegne «Blocca accesso» col motivo, e fino a oggi
+#   il CODICE e la CHIAVE i18n del motivo li scriveva il backend (debito dichiarato
+#   in accessi_service). Qui il motivo lo produce la stessa regola che rifiuta:
+#   la legge il backend per la capability e la CHIAMA la madre
+#   script.fn_blocca_credenziale, che ne solleva il primo motivo
+#   (linee-guida-sql §12.5.2: la madre non riscrive il predicato).
+#
+# -- FORMA -----------------------------------------------------------------------------
+#   §12.5.1: '[]' se si puo' bloccare, altrimenti l'array ORDINATO dei motivi
+#   {codice, reason, reason_key, dettaglio, valori}. L'ordine e' il contratto:
+#     1. CREDENZIALE_DI_SISTEMA  (E_CREDENZIALE_DI_SISTEMA, nuovo)
+#     2. ULTIMO_SUPER_ADMIN      (E_PROFILO_ULTIMO_SUPER_ADMIN, gia' a catalogo)
+#   Le due regole sono gia' building block: script.fn_categoria_accesso e
+#   script.fn_check_ultimo_super_admin_attivo (stato PRIMA del blocco). Qui si
+#   compongono, non si riscrivono.
+#   ⚠️ NON la chiama il guard config.trgfn_credenziali_guard_ultimo_super_admin:
+#   quello e' AFTER ROW e guarda lo stato DOPO, dove la credenziale bloccata e'
+#   gia' «non raggiungibile» e fn_check_ultimo_super_admin_attivo risponderebbe
+#   sempre false. Il guard resta la rete (corse fra due sessioni), con la sua
+#   primitiva fn_check_almeno_un_super_admin_attivo, come i due gemelli.
+#   La reason_key ULTIMO_SUPER_ADMIN e' l'INDIRIZZO che il backend usava gia'
+#   (nei locales): non si rinomina (§12.5.1).
+#   plpgsql STABLE, SECURITY INVOKER; nessuna tabella con RLS fra quelle lette.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261003-01-create-fn-check-credenziale-bloccabile-mctit.yaml
+
+  - changeSet:
+      id: 20261003-01-create-fn-check-credenziale-bloccabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_credenziale_bloccabile(p_auth_user_id): i motivi per cui una credenziale
+        non si blocca, nella forma §12.5.1 ('[]' = si puo'). In ordine CREDENZIALE_DI_SISTEMA
+        (E_CREDENZIALE_DI_SISTEMA) e ULTIMO_SUPER_ADMIN (E_PROFILO_ULTIMO_SUPER_ADMIN). La legge
+        il backend per can_block/block_reason, la chiama fn_blocca_credenziale. Brief:
+        brief-db-credenziale-verbi-amministratore R-DB-A5/A6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_credenziale_bloccabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_credenziale_bloccabile(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- Nudo: e' l'array dei motivi che la funzione restituisce.
+                  v_motivi jsonb := '[]'::jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire perche' una credenziale NON si puo' bloccare.
+                  --   '[]' = si puo'. Non solleva: sollevare e' mestiere
+                  --   della madre script.fn_blocca_credenziale.
+                  --
+                  -- Motivi (in ordine: il primo e' quello che la madre
+                  -- solleva e il tooltip mostra):
+                  --   1. la credenziale e' di SISTEMA (script.fn_categoria_accesso):
+                  --      l'utente di un processo automatico o un API_CLIENT
+                  --   2. e' l'ultimo SUPER_ADMIN raggiungibile
+                  --      (script.fn_check_ultimo_super_admin_attivo, stato PRIMA)
+                  --   In pratica non convivono: una veste di sistema e una di
+                  --   persona sulla stessa credenziale le rifiuta il guard della
+                  --   natura. L'ordine resta scritto: lo specifico batte il resto.
+                  -- =========================================================
+
+                  -- Guard parametro: un id assente o non positivo non esce da
+                  -- nessuna interfaccia, lo produce un chiamante rotto.
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_check_credenziale_bloccabile', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_check_credenziale_bloccabile',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  -- 1. Credenziale di sistema (R-DB-A6).
+                  IF script.fn_categoria_accesso(p_auth_user_id) = 'SISTEMA' THEN
+                      v_motivi := v_motivi || jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_CREDENZIALE_DI_SISTEMA',
+                          'reason',     'CREDENZIALE_DI_SISTEMA',
+                          'reason_key', 'amministrazione.accessi.blocca_reason.credenziale_di_sistema',
+                          'dettaglio',  jsonb_build_object('auth_user_id', p_auth_user_id),
+                          -- Frase chiusa: niente da infilare nei segnaposto.
+                          'valori',     '[]'::jsonb));
+                  END IF;
+
+                  -- 2. Ultimo SUPER_ADMIN raggiungibile (anti-lockout).
+                  IF script.fn_check_ultimo_super_admin_attivo(p_auth_user_id) THEN
+                      v_motivi := v_motivi || jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          'reason',     'ULTIMO_SUPER_ADMIN',
+                          'reason_key', 'amministrazione.accessi.blocca_reason.ultimo_super_admin',
+                          'dettaglio',  jsonb_build_object('auth_user_id', p_auth_user_id),
+                          'valori',     '[]'::jsonb));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_credenziale_bloccabile(p_auth_user_id integer) IS
+                  'I motivi per cui una CREDENZIALE non si puo'' bloccare (linee-guida-sql §12.5.1): '
+                  '''[]'' se si puo'', altrimenti l''array ORDINATO {codice, reason, reason_key, dettaglio, '
+                  'valori}. In ordine: CREDENZIALE_DI_SISTEMA (E_CREDENZIALE_DI_SISTEMA, '
+                  'amministrazione.accessi.blocca_reason.credenziale_di_sistema: categoria SISTEMA di '
+                  'script.fn_categoria_accesso, l''utente di un processo o un API_CLIENT) e ULTIMO_SUPER_ADMIN '
+                  '(E_PROFILO_ULTIMO_SUPER_ADMIN, amministrazione.accessi.blocca_reason.ultimo_super_admin: '
+                  'script.fn_check_ultimo_super_admin_attivo, stato prima del blocco). La legge il backend per '
+                  'la capability can_block/block_reason/block_reason_key del dettaglio credenziale; la chiama '
+                  'script.fn_blocca_credenziale e ne solleva il primo motivo (§12.5.2), salvo il motivo di '
+                  'sistema dalla sessione del migratore. Non la chiama il guard '
+                  'config.trgfn_credenziali_guard_ultimo_super_admin, che e'' AFTER ROW (stato dopo) e resta '
+                  'la rete per le corse. Id NULL o <= 0 -> E_AUTH_CHIAMATA_NON_VALIDA. STABLE, SECURITY '
+                  'INVOKER. Brief: brief-db-credenziale-verbi-amministratore (R-DB-A5, R-DB-A6).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_credenziale_bloccabile(integer);

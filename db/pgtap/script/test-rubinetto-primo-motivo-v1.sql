@@ -154,7 +154,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    30,
+    31,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -214,7 +214,12 @@ SELECT is(
     --   vendite.fn_conferma_reso (20260928-95), che alla conferma di un reso che
     --   fa rientrare merce solleva il primo motivo di script.fn_check_reso_merce
     --   (brief-db-magazzino-lotto-3-bis-carico-da-reso).
-    'le trenta funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-10-03: da 30 a 31. Un sito NUOVO, e nasce da un debito del
+    --   backend: script.fn_blocca_credenziale (20261003-02) solleva il primo
+    --   motivo di script.fn_check_credenziale_bloccabile (20261003-01), la
+    --   stessa funzione da cui il dettaglio credenziale spegne «Blocca accesso»
+    --   (brief-db-credenziale-verbi-amministratore R-DB-A5/A6).
+    'le trentuno funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

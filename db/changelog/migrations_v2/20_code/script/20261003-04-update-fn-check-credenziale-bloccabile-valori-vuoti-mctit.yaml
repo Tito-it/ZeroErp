@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_credenziale_bloccabile: I `valori` VUOTI SI SCRIVONO
+#   jsonb_build_array()
+#   Brief: brief-db-credenziale-verbi-amministratore, §6.4
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   Solo la forma dei `valori` vuoti dei due motivi: da '[]'::jsonb a
+#   jsonb_build_array(), la forma delle check sorelle. Il valore e' identico.
+#   Il presidio db/pgtap/script/test-catalogo-messaggi-errore-completo.sql
+#   (test 7) legge i `valori` dal SORGENTE: dopo la chiave 'valori' cerca la
+#   chiamata jsonb_build_array( prima del 'codice' seguente. Con '[]'::jsonb
+#   non la trovava e prendeva quella che apre il motivo SUCCESSIVO
+#   (v_motivi || jsonb_build_array(jsonb_build_object(...))): «emette 1, il
+#   messaggio ne chiede 0» su E_CREDENZIALE_DI_SISTEMA, rosso dopo l'apply di
+#   20261003-01 (2026-10-03).
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   Firma, motivi, ordine, codici, chiavi, COMMENT. 20261003-01 e' applicato e
+#   non si tocca. Corpo dal vivo (doc auto-gen = 20261003-01).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261003-04-update-fn-check-credenziale-bloccabile-valori-vuoti-mctit.yaml
+
+  - changeSet:
+      id: 20261003-04-update-fn-check-credenziale-bloccabile-valori-vuoti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_credenziale_bloccabile: i valori vuoti dei due motivi scritti
+        jsonb_build_array() invece di '[]'::jsonb (stesso valore), la forma che lo scanner del
+        presidio test-catalogo-messaggi-errore-completo sa leggere. Brief:
+        brief-db-credenziale-verbi-amministratore §6.4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_credenziale_bloccabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_credenziale_bloccabile(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- Nudo: e' l'array dei motivi che la funzione restituisce.
+                  v_motivi jsonb := '[]'::jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire perche' una credenziale NON si puo' bloccare.
+                  --   '[]' = si puo'. Non solleva: sollevare e' mestiere
+                  --   della madre script.fn_blocca_credenziale.
+                  --
+                  -- Motivi (in ordine: il primo e' quello che la madre
+                  -- solleva e il tooltip mostra):
+                  --   1. la credenziale e' di SISTEMA (script.fn_categoria_accesso):
+                  --      l'utente di un processo automatico o un API_CLIENT
+                  --   2. e' l'ultimo SUPER_ADMIN raggiungibile
+                  --      (script.fn_check_ultimo_super_admin_attivo, stato PRIMA)
+                  --   In pratica non convivono: una veste di sistema e una di
+                  --   persona sulla stessa credenziale le rifiuta il guard della
+                  --   natura. L'ordine resta scritto: lo specifico batte il resto.
+                  -- =========================================================
+
+                  -- Guard parametro: un id assente o non positivo non esce da
+                  -- nessuna interfaccia, lo produce un chiamante rotto.
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_check_credenziale_bloccabile', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_check_credenziale_bloccabile',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  -- 1. Credenziale di sistema (R-DB-A6).
+                  IF script.fn_categoria_accesso(p_auth_user_id) = 'SISTEMA' THEN
+                      v_motivi := v_motivi || jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_CREDENZIALE_DI_SISTEMA',
+                          'reason',     'CREDENZIALE_DI_SISTEMA',
+                          'reason_key', 'amministrazione.accessi.blocca_reason.credenziale_di_sistema',
+                          'dettaglio',  jsonb_build_object('auth_user_id', p_auth_user_id),
+                          -- Frase chiusa: niente da infilare nei segnaposto.
+                          'valori',     jsonb_build_array()));
+                  END IF;
+
+                  -- 2. Ultimo SUPER_ADMIN raggiungibile (anti-lockout).
+                  IF script.fn_check_ultimo_super_admin_attivo(p_auth_user_id) THEN
+                      v_motivi := v_motivi || jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          'reason',     'ULTIMO_SUPER_ADMIN',
+                          'reason_key', 'amministrazione.accessi.blocca_reason.ultimo_super_admin',
+                          'dettaglio',  jsonb_build_object('auth_user_id', p_auth_user_id),
+                          'valori',     jsonb_build_array()));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_credenziale_bloccabile(p_auth_user_id integer) IS
+                  'I motivi per cui una CREDENZIALE non si puo'' bloccare (linee-guida-sql §12.5.1): '
+                  '''[]'' se si puo'', altrimenti l''array ORDINATO {codice, reason, reason_key, dettaglio, '
+                  'valori}. In ordine: CREDENZIALE_DI_SISTEMA (E_CREDENZIALE_DI_SISTEMA, '
+                  'amministrazione.accessi.blocca_reason.credenziale_di_sistema: categoria SISTEMA di '
+                  'script.fn_categoria_accesso, l''utente di un processo o un API_CLIENT) e ULTIMO_SUPER_ADMIN '
+                  '(E_PROFILO_ULTIMO_SUPER_ADMIN, amministrazione.accessi.blocca_reason.ultimo_super_admin: '
+                  'script.fn_check_ultimo_super_admin_attivo, stato prima del blocco). La legge il backend per '
+                  'la capability can_block/block_reason/block_reason_key del dettaglio credenziale; la chiama '
+                  'script.fn_blocca_credenziale e ne solleva il primo motivo (§12.5.2), salvo il motivo di '
+                  'sistema dalla sessione del migratore. Non la chiama il guard '
+                  'config.trgfn_credenziali_guard_ultimo_super_admin, che e'' AFTER ROW (stato dopo) e resta '
+                  'la rete per le corse. Id NULL o <= 0 -> E_AUTH_CHIAMATA_NON_VALIDA. STABLE, SECURITY '
+                  'INVOKER. Brief: brief-db-credenziale-verbi-amministratore (R-DB-A5, R-DB-A6).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' 20261003-01 ('[]'::jsonb), nella doc auto-gen
+              -- alla revisione prima di questa.
+              SELECT 1;
