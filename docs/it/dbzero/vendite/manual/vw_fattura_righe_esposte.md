@@ -161,8 +161,13 @@ documento, e niente direbbe che vengono dalla stessa origine.
 plafond finisce nei rami del kit, non in questo. Non è un buco — il
 raggruppamento del kit tiene già conto dell'IVA, quindi due trattamenti diversi
 producono due righe padre distinte, che è l'esito corretto — ma lì le due parti
-non si vedono come una sola origine. Il caso non è stato costruito perché oggi
-il backend non spezza i componenti di kit.
+non si vedono come una sola origine.
+⭐ Dal 2026-10-03 (`brief-db-bom-flag-quantita-e-kit-in-fattura` §11, D-5) il
+plafond spezza un kit come un'unità sola: ogni componente con la stessa frazione,
+le colonne kit copiate sulla parte. Le due metà, con IVA diverse, escono quindi
+come due righe padre, ciascuna con la sua quantità del kit (1,2 e 1,8 su un kit
+da 3). La frazione unica la calcola
+[fn_consuma_plafond_titolo_iva_righe](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva_righe).
 
 ---
 

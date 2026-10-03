@@ -45,6 +45,7 @@
 - [fn_check_fornitore_attivo](manual/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
 - [fn_check_titolo_iva_ambito](manual/fn_check_titolo_iva_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [fn_consuma_plafond_titolo_iva](manual/fn_consuma_plafond_titolo_iva.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_consuma_plafond_titolo_iva_righe](manual/fn_consuma_plafond_titolo_iva_righe.md) — (funzione nata il 2026-10-03, `20261003-07`)
 - [fn_crea_auth_user](manual/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_indirizzo_soggetto](manual/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
 - [fn_crea_operatore_v2](manual/fn_crea_operatore_v2.md)

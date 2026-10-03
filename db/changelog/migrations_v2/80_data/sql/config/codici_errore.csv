@@ -319,7 +319,7 @@ E_JOB_NON_TROVATO,NON_TROVATO,NULL,C-3: polling di un giro (job coda) inesistent
 E_JOB_TYPE_NON_ATTIVO,NON_DISPONIBILE,NULL,"⚠️ Distinto dal gemello NON_TROVATO: qui il tipo **esiste** ed e' · stato disattivato. Stessa famiglia di `E_AI_DISABLED` e · `E_SHOP_NON_DISPONIBILE`, gia' a 501: funzione presente ma non · servita. Il 503 sarebbe l'alternativa, ma introdurrebbe un · dodicesimo status per un codice solo — vedi api.md sui one-off."
 E_JOB_TYPE_NON_TROVATO,TECNICO,NULL,"`dbops.coda_lavori_tipi` non ha quel codice: un tipo di job che il · backend accoda ma nessuno ha registrato. E' il gemello esatto di · `E_PIPELINE_TASK_HANDLER_NOT_FOUND` — difetto di deploy, non · risorsa mancante."
 E_JWT_SENZA_IDENTITA,NON_AUTENTICATO,NULL,NULL
-E_KIT_QUANTITA_DISOMOGENEE,CONFLITTO_STATO,NULL,NULL
+E_KIT_QUANTITA_DISOMOGENEE,CONFLITTO_STATO,2026-10-03,"Ritirato il 2026-10-03 (brief-db-bom-flag-quantita-e-kit-in-fattura, R-DB-B10): la quantita'' del kit si legge dalla riga padre del documento (kit_qta), e componenti con coefficienti diversi non sono piu'' un errore. Il BE ha ritirato R10, unico punto che lo sollevava."
 E_LISTINO_COMPONENTE_COERENZA_BOM,DATO_ERRATO,NULL,NULL
 E_LISTINO_RIGA_COMPOSITO_VIETATO,DATO_ERRATO,NULL,NULL
 E_LISTINO_RIGA_COMP_BOM_INCOERENTE,DATO_ERRATO,NULL,Trigger DB guard coerenza BoM su listini_righe_componenti: blocca · prezzi bundle riferiti a componenti non presenti nella BoM corrente · del padre composito (o fuori dal range di validita' della BoM).

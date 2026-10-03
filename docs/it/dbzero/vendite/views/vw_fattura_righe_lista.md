@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Le righe di una fattura come LISTA (brief-db-liste-righe-documento, D-8.3, 2026-09-28): SOLO il primo livello di vw_fattura_righe_esposte (NORMALE, PARTE_PLAFOND, KIT_PADRE), cosi' ordinamento e paginazione lavorano sulle righe del documento e un kit si muove intero. riga_key identifica ogni riga: R:&lt;id&gt; per le righe vere, K:&lt;fattura&gt;:&lt;md5&gt; per il padre di un kit (che non ha PK), costruita sulla stessa tupla con cui la vista madre lo compone. I componenti ESPOSTI stanno nel padre (componenti jsonb, componenti_numero). ⭐ rev 2026-10-01 (brief-db-esposizione-componenti-kit-in-fattura): ogni componente porta esposizione (DESCRITTIVO | VALORIZZATO), prezzo_unitario, sconto_percentuale e importo_riga, valorizzati solo sul VALORIZZATO. ⚠️ Quindi importo_riga della lista NON somma al totale del documento: l'importo dei valorizzati sta dentro componenti, e il padre di un kit senza resto ha importo_riga NULL. E' voluto: il componente resta legato al kit. Il totale si legge dalla testata. Nessun calcolo rifatto: la rappresentazione resta di vw_fattura_righe_esposte. Il numero della fattura rettificata e' quello parlante (fn_numero_documento_fattura). Nessun ORDER BY: l'ordine del documento e' ordinamento, riga_nr, riga_key. security_invoker: fatture_righe e' in RLS. ⭐ rev 2026-10-02 (brief-db-bom-flag-quantita-e-kit-in-fattura): lo stesso kit su due periodi sono due padri, quindi il periodo entra nella partizione dei componenti e nella tupla di riga_key; in coda competenza_dal, competenza_al e ha_periodo dalla vista madre (si stampa il periodo quando ha_periodo e' vero).
+> Le righe di una fattura come LISTA (brief-db-liste-righe-documento, D-8.3, 2026-09-28): SOLO il primo livello di vw_fattura_righe_esposte (NORMALE, PARTE_PLAFOND, KIT_PADRE), cosi' ordinamento e paginazione lavorano sulle righe del documento e un kit si muove intero. riga_key identifica ogni riga: R:&lt;id&gt; per le righe vere, K:&lt;fattura&gt;:&lt;md5&gt; per il padre di un kit (che non ha PK), costruita sulla stessa tupla con cui la vista madre lo compone. I componenti ESPOSTI stanno nel padre (componenti jsonb, componenti_numero). ⭐ rev 2026-10-01 (brief-db-esposizione-componenti-kit-in-fattura): ogni componente porta esposizione (DESCRITTIVO | VALORIZZATO), prezzo_unitario, sconto_percentuale e importo_riga, valorizzati solo sul VALORIZZATO. ⚠️ Quindi importo_riga della lista NON somma al totale del documento: l'importo dei valorizzati sta dentro componenti, e il padre di un kit senza resto ha importo_riga NULL. E' voluto: il componente resta legato al kit. Il totale si legge dalla testata. Nessun calcolo rifatto: la rappresentazione resta di vw_fattura_righe_esposte. Il numero della fattura rettificata e' quello parlante (fn_numero_documento_fattura). Nessun ORDER BY: l'ordine del documento e' ordinamento, riga_nr, riga_key. security_invoker: fatture_righe e' in RLS. ⭐ rev 2026-10-02 (brief-db-bom-flag-quantita-e-kit-in-fattura): lo stesso kit su due periodi sono due padri, quindi il periodo entra nella partizione dei componenti e nella tupla di riga_key; in coda competenza_dal, competenza_al e ha_periodo dalla vista madre (si stampa il periodo quando ha_periodo e' vero). ⭐ rev 2026-10-03 (stesso brief, R-DB-B9): in coda periodo_dal e periodo_al, il periodo da mostrare: competenza_dal/_al quando ha_periodo, NULL sulle righe puntuali. Sono le sorgenti delle colonne di lista «Periodo dal» e «Periodo al» (video ed export).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -41,7 +41,15 @@ SELECT x.riga_key,
     x.componenti_numero,
     x.competenza_dal,
     x.competenza_al,
-    x.ha_periodo
+    x.ha_periodo,
+        CASE
+            WHEN x.ha_periodo THEN x.competenza_dal
+            ELSE NULL::date
+        END AS periodo_dal,
+        CASE
+            WHEN x.ha_periodo THEN x.competenza_al
+            ELSE NULL::date
+        END AS periodo_al
    FROM (((( SELECT e.fattura_id,
             e.tipo_riga,
             e.riga_nr,

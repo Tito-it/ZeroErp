@@ -166,6 +166,15 @@ coeff_qta)`, non la somma — esattamente come fa `vw_af_merce_per_riga`. Consum
 un'unità padre nascono **N rettifiche**, una per componente, ciascuna di
 `quota × coeff_qta` e ciascuna specchio della **sua** riga di fattura.
 
+⭐ **Quanti kit rende, lo dice la rettifica stessa** (dal 2026-10-03,
+`20261003-05`). Il meta della rettifica eredita quello della riga rettificata,
+e quella riga porta `qta_padre`: la quantità della riga padre del documento,
+che il push scrive su ogni componente. Ereditata, sarebbe positiva e intera, e
+la nota di credito direbbe «+10 kit» per un reso di 3. Per questo la madre la
+riscrive, sui soli componenti, a `- quota`: unità padre, con lo stesso segno
+della quantità del componente. `uom_padre_id` resta quella ereditata, che è
+giusta. Sulle righe che non sono di un kit la chiave non nasce.
+
 ⚠️ Non è un caso di scuola: la prima riga della coda accrediti *è* un articolo
 composito con tre componenti a 1, 2 e 14 euro.
 

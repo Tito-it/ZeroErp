@@ -23,6 +23,13 @@ ordinaria.
 **Invariante**: `quota_coperta + quota_ordinaria = imponibile passato`, sempre e su
 tutti i rami.
 
+⭐ **Dal 2026-10-03 è un involucro** (`20261003-08`): chiama
+[fn_consuma_plafond_titolo_iva_righe](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva_righe)
+con una riga sola. Lì stanno le regole descritte in questa pagina (lock, capienza,
+idempotenza, rami), una volta per tutte e due le forme. Firma e risultato non sono
+cambiati. La forma per gruppo serve ai kit, che il plafond spezza con una frazione
+unica per tutti i componenti.
+
 ---
 
 ### ⭐ Ritorna una ripartizione, non un codice IVA
