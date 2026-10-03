@@ -216,8 +216,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 ### 🟡 Altri cantieri aperti
 
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
-  resta R-4, che vuole un brief DB non ancora scritto; ⏳ al team DB
-  `work-in-progress/brief-db-credenziale-verbi-amministratore.md` (non bloccante).
+  resta R-4, che vuole un brief DB non ancora scritto;
+  `work-in-progress/brief-db-credenziale-verbi-amministratore.md` (non bloccante): DB scritto il
+  2026-10-03 (`20261003-01…-04`, applicati, pgTAP senza regressioni); ⏳ giro BE/FE (§7).
 - **Secondo fattore: la password per registrare il device**
   (`work-in-progress/brief-db-secondo-fattore-riautenticazione-password.md`): ⏳ al team DB (R-1),
   poi BE/FE.

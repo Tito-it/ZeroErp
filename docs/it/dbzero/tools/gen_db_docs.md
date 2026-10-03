@@ -34,7 +34,7 @@ Permette inoltre di includere documentazione manuale preesistente, mantenendo un
 * **Ambiente Python 3** con i pacchetti:
 
   ```bash
-  pip install python-dotenv psycopg2-binary
+  pip install python-dotenv "psycopg[binary]"
   ```
 * **File `.env`**:
 
