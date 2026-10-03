@@ -19,11 +19,14 @@ Indice test eseguiti:
 2) più 403 insieme → una sola rilettura e una sola navigazione
 3) 403 sulla pagina che chiude l'obbligo → nessuna navigazione
 4) 403 d'altro tipo → nessuna rilettura
+5) seSessioneChiusaDalFreno: E_UTENTE_BLOCCATO → sessione azzerata e login col motivo
+6) seSessioneChiusaDalFreno: E_LOGIN_ATTESA o altro → nessuna uscita
 */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const fetchProfile = vi.fn()
+const clearTokens = vi.fn()
 const push = vi.fn()
 const rottaCorrente = { value: { name: 'clienti', fullPath: '/clienti?q=1' } }
 
@@ -31,10 +34,10 @@ vi.mock('./routerApp', () => ({
   routerApp: () => ({ currentRoute: rottaCorrente, push })
 }))
 vi.mock('../stores/auth', () => ({
-  useAuthStore: () => ({ fetchProfile })
+  useAuthStore: () => ({ fetchProfile, clearTokens })
 }))
 
-const { default: api } = await import('./api')
+const { default: api, seSessioneChiusaDalFreno } = await import('./api')
 
 // L'handler di errore dell'interceptor di risposta, come lo chiama axios.
 const suErrore = api.interceptors.response.handlers[0].rejected
@@ -77,5 +80,32 @@ describe('core/api — 403 del cancello degli obblighi', () => {
     await expect(suErrore(errore403('E_PERMESSO_NEGATO'))).rejects.toBeTruthy()
     expect(fetchProfile).not.toHaveBeenCalled()
     expect(push).not.toHaveBeenCalled()
+  })
+})
+
+describe('core/api — la sessione chiusa dal freno della password', () => {
+  beforeEach(() => {
+    clearTokens.mockReset()
+    push.mockReset().mockResolvedValue(undefined)
+    rottaCorrente.value = { name: 'change-password', fullPath: '/change-password' }
+  })
+
+  it('E_UTENTE_BLOCCATO: azzera la sessione e porta al login col motivo', async () => {
+    expect(seSessioneChiusaDalFreno(errore403('E_UTENTE_BLOCCATO'))).toBe(true)
+    // redirectToLogin importa lo store in modo dinamico: si aspetta il giro.
+    await vi.waitFor(() => expect(push).toHaveBeenCalled())
+    expect(clearTokens).toHaveBeenCalledTimes(1)
+    expect(push.mock.calls[0][0]).toMatchObject({
+      name: 'login',
+      query: { reason: 'password_attempts', redirect: '/change-password' }
+    })
+  })
+
+  it("E_LOGIN_ATTESA o un altro errore: nessuna uscita", async () => {
+    expect(seSessioneChiusaDalFreno(errore403('E_LOGIN_ATTESA'))).toBe(false)
+    expect(seSessioneChiusaDalFreno({ response: { status: 400, data: { error: { code: 'E_CHANGE_PASSWORD' } } } })).toBe(false)
+    await Promise.resolve()
+    expect(push).not.toHaveBeenCalled()
+    expect(clearTokens).not.toHaveBeenCalled()
   })
 })

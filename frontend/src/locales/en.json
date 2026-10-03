@@ -772,6 +772,7 @@
     "login_error": "Invalid credentials",
     "session_expired": "Session expired — please sign in again",
     "logout_other_tab": "You signed out in another tab",
+    "sessione_chiusa_freno": "Session closed: too many wrong passwords from this device. You can sign in again in a few minutes.",
     "account_disabled": "Account disabled — contact the administrator",
     "account_not_active": "Account not yet active",
     "account_expired": "Account expired — contact the administrator",
@@ -832,6 +833,7 @@
       "configurazione_a_meta": "Setup was started but not completed: start it again to get a new QR code.",
       "configura": "Set up two-factor authentication",
       "ricomincia": "Start setup again",
+      "chiedi_password": "To start the setup, enter the password you sign in with.",
       "passo_qr": "1. Scan the QR code with your authenticator app.",
       "qr_alt": "QR code for the authenticator app",
       "segreto_manuale": "If you cannot scan it, enter this key in the app:",
@@ -847,10 +849,8 @@
       "chiedi_codice_disattiva": "To disable two-factor authentication, enter the app code.",
       "genera_codici": "Generate new recovery codes",
       "disattiva": "Disable two-factor authentication",
-      "torna": "Back to the application",
       "file_codici_intestazione": "ZeroERP — two-factor recovery codes. Each one works only once.",
-      "file_codici_nome": "zeroerp-recovery-codes.txt",
-      "uscita_conferma": "The Security page leaves the application: unsaved changes (tabs: {n}) will be lost. Continue?"
+      "file_codici_nome": "zeroerp-recovery-codes.txt"
     },
     "stato_veste": {
       "NESSUNO": "Not invited",
@@ -858,6 +858,12 @@
       "NON_SPEDITO": "Invitation not sent",
       "ATTIVO": "Active",
       "DISATTIVO": "Disabled"
+    },
+    "account": {
+      "apri_scheda": "My access: profile, password, security",
+      "utente": "User",
+      "uscita_conferma": "The «{pagina}» page leaves the application: unsaved changes (tabs: {n}) will be lost. Continue?",
+      "torna": "Back to the application"
     }
   },
   "resolver": {
@@ -1767,6 +1773,7 @@
       "bloccata_ok": "Access blocked.",
       "sbloccata_ok": "Access unblocked.",
       "blocca_reason": {
+        "credenziale_di_sistema": "This is the access of an automated process or an external system: blocking it would stop its work.",
         "ultimo_super_admin": "This is the last reachable super administrator: blocking it would leave the system without administrators."
       },
       "nessun_accesso_spiegazione": "This access has no role: it cannot sign in anywhere. It needs fixing, and the check of credentials to fix reports it too.",

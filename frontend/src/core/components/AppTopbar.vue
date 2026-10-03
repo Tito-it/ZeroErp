@@ -14,8 +14,6 @@ import TieredMenu from 'primevue/tieredmenu'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
-import { useTabsStore } from '../../stores/tabs'
-import { useConfirmAction } from '../composables/useConfirmAction'
 import { DOMAINS, NAV_ICONS } from '../navigation'
 import { getAIStatus } from '../api/ai-api'
 import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
@@ -24,6 +22,7 @@ import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
 import CodeLavoroDrawer from './CodeLavoroDrawer.vue'
 import EmittenteAttivoSelect from './EmittenteAttivoSelect.vue'
+import SchedaUtentePopover from './SchedaUtentePopover.vue'
 import { menuItemClass } from '../utils/rowActions'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { useQueueCountsPolling } from '../composables/useQueueCountsPolling'
@@ -44,26 +43,8 @@ const ui = useUiStore()
 const ricercaMontata = ref(false)
 watch(() => ui.searchDrawerVisible, (aperta) => { if (aperta) ricercaMontata.value = true }, { immediate: true })
 const context = useContextStore()
-const tabs = useTabsStore()
-const { confirmAction } = useConfirmAction()
-
-// Scopo: apre «Sicurezza dell'accesso». La rotta sta FUORI da AppLayout
-//        (famiglia login): entrarci smonta le schede, e le modifiche non
-//        salvate andrebbero perse senza che nessuno lo dica. Con schede
-//        modificate si chiede conferma, contandole (come il cambio emittente,
-//        `EmittenteAttivoSelect`); senza, si va diretti come prima.
-function apriSicurezza() {
-  const vai = () => router.push({ name: 'sicurezza' })
-  if (!tabs.hasDirtyTabs()) {
-    vai()
-    return
-  }
-  confirmAction({
-    header: t('auth.secondo_fattore.titolo'),
-    message: t('auth.secondo_fattore.uscita_conferma', { n: tabs.tabs.filter(x => x.dirty).length }),
-    onAccept: vai,
-  })
-}
+// La scheda dell'utente (badge): `toggle(event)`.
+const schedaUtente = ref(null)
 
 defineProps({
   showHamburger: { type: Boolean, default: false }
@@ -260,12 +241,6 @@ const userKebabItems = computed(() => {
     items: favoritesSubmenu.value,
   })
   items.push({
-    label: t('auth.secondo_fattore.titolo'),
-    icon: MANAGE_ICONS.SICUREZZA_ACCESSO,
-    class: TOPBAR_MENU_CLASS,
-    command: apriSicurezza,
-  })
-  items.push({
     label: `${t('common.language')} · ${languageLabel.value}`,
     icon: MANAGE_ICONS.LINGUA,
     class: TOPBAR_MENU_CLASS,
@@ -320,15 +295,28 @@ onMounted(async () => {
            (l'area), destra = COSA (contesto, data, strumenti, uscita). Fino a
            quel giorno il badge stava a destra tra il chip contesto e la data,
            cioe' tra cose che non descrivono l'identita'. -->
-      <Chip v-if="auth.isSuperAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
-        <template #default>
-          <i class="admin-chip-icon" :class="MANAGE_ICONS.SUPER_ADMIN" />
-          <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
-        </template>
-      </Chip>
-      <span v-else class="user-initials-badge" v-tooltip.bottom="auth.displayName">
-        {{ userInitials }}
-      </span>
+      <!-- ⭐ Il badge apre la scheda dell'utente: chi e' e le azioni sul
+           proprio accesso (cambio password, Sicurezza). Decisione di Tid,
+           2026-10-03: prima «Sicurezza» stava nel kebab delle preferenze. -->
+      <button
+        type="button"
+        class="topbar-utente-btn"
+        v-tooltip.bottom="auth.displayName"
+        :aria-label="t('auth.account.apri_scheda')"
+        aria-haspopup="true"
+        @click="schedaUtente?.toggle($event)"
+      >
+        <Chip v-if="auth.isSuperAdmin" class="admin-chip">
+          <template #default>
+            <i class="admin-chip-icon" :class="MANAGE_ICONS.SUPER_ADMIN" />
+            <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
+          </template>
+        </Chip>
+        <span v-else class="user-initials-badge">
+          {{ userInitials }}
+        </span>
+      </button>
+      <SchedaUtentePopover ref="schedaUtente" />
     </div>
 
     <div class="topbar-center">
@@ -598,8 +586,25 @@ onMounted(async () => {
 }
 
 /* Badge admin */
+/* Il badge e' un pulsante (apre la scheda dell'utente): senza il chrome del
+   bottone, il badge resta com'era. */
+.topbar-utente-btn {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--app-border-radius);
+}
+
+.topbar-utente-btn:focus-visible {
+  outline: 2px solid var(--app-focus-ring);
+  outline-offset: 2px;
+}
+
 .admin-chip {
-  cursor: default;
+  cursor: pointer;
   font-size: var(--app-font-size-sm);
   background: color-mix(in srgb, var(--app-warning-color) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--app-warning-color) 30%, transparent);

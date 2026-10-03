@@ -219,9 +219,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   resta R-4, che vuole un brief DB non ancora scritto;
   `work-in-progress/brief-db-credenziale-verbi-amministratore.md` (non bloccante): DB scritto il
   2026-10-03 (`20261003-01…-04`, applicati, pgTAP senza regressioni); ⏳ giro BE/FE (§7).
-- **Secondo fattore: la password per registrare il device**
-  (`work-in-progress/brief-db-secondo-fattore-riautenticazione-password.md`): ⏳ al team DB (R-1),
-  poi BE/FE.
 - **Kit in fattura** (`work-in-progress/brief-db-esposizione-componenti-kit-in-fattura.md`,
   `work-in-progress/brief-db-bom-flag-quantita-e-kit-in-fattura.md`): DB chiuso, giro BE/FE in corso.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):

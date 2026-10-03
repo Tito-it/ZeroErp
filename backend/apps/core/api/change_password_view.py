@@ -3,7 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Endpoint POST /api/v1/auth/change-password/ — cambio password
-#        con validazione (vecchia password + 4 validators Django).
+#        con validazione (vecchia password, col freno della credenziale, +
+#        4 validators Django).
 #        Resetta flag deve_cambiare_password, blacklista token precedenti,
 #        riapre la sessione nella stessa veste (catena del login).
 # ------------------------------------------------------------
@@ -33,6 +34,7 @@ from apps.core.services.auth_helpers import (
     valida_nuova_password,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.password_con_freno import verifica_password_con_freno
 from apps.core.services.request_context import richiesta_django
 
 logger = logging.getLogger("security")
@@ -73,19 +75,21 @@ class ChangePasswordView(DomainAPIView):
             new_password = password_digitata(payload, "new_password")
             new_password_confirm = password_digitata(payload, "new_password_confirm")
 
-            # Validazioni input: la nuova password col BB, poi le regole del
-            # cambio (diversa dalla precedente, precedente corretta).
-            ErrorManager.require(bool(old_password), code=E_CHANGE_PW, message="Password attuale obbligatoria.")
+            # ⛔ PRIMA di ogni altra validazione, col freno della credenziale:
+            # chi tiene una sessione rubata non prova password senza attesa, e
+            # un errore sulla nuova che arrivasse prima lascerebbe provare
+            # l'attuale senza che il tentativo conti.
+            verifica_password_con_freno(
+                user, old_password,
+                request=request, auth_repo=_auth_repo,
+                codice=E_CHANGE_PW, messaggio="Password attuale non corretta.",
+                messaggio_assente="Password attuale obbligatoria.", campo="old_password",
+            )
+            # Poi la nuova password col BB e la regola del cambio.
             valida_nuova_password(new_password, new_password_confirm, user=user, code=E_CHANGE_PW)
             ErrorManager.require(
                 new_password != old_password,
                 code=E_CHANGE_PW, message="La nuova password deve essere diversa dalla precedente.",
-            )
-
-            # Verifica password attuale
-            ErrorManager.require(
-                user.check_password(old_password),
-                code=E_CHANGE_PW, message="Password attuale non corretta.",
             )
 
             # La veste della sessione corrente: e' su QUELLA che si resetta il

@@ -21,15 +21,9 @@ from apps.core.api.payload_validators import paginated_envelope, parse_list_para
 from apps.core.api.success_responses import success_response
 from apps.core.db.session_audit_repository import SessionAuditRepository
 from apps.core.services import session_audit_service
-from apps.core.services.auth_constants import JWT_CLAIM_SID
+from apps.core.services.request_context import sid_corrente
 from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.core.services.service_errors import ServiceError
-
-
-# Scopo: Estrae il SID (session ID) dal token JWT di accesso nella request corrente.
-def _get_current_sid(request: Request) -> str | None:
-    auth = request.auth
-    return str(auth.get(JWT_CLAIM_SID, "")) if auth else None
 
 
 class SessioniAttiveListView(DomainAPIView):
@@ -94,7 +88,7 @@ class SessioniAttiveListView(DomainAPIView):
     def get(self, request: Request) -> Response:
         p = parse_list_params(request.query_params, default_order="data_ultimo_evento")
         repo = SessionAuditRepository()
-        current_sid = _get_current_sid(request)
+        current_sid = sid_corrente(request)
         results, total = repo.list_sessioni_attive_paginata(
             request.user.id,
             escludi_jti=current_sid,
@@ -121,7 +115,7 @@ class SessioneRevocaView(DomainAPIView):
     # Scopo: Revoca una sessione per sid — blacklista tutti i token JWT associati.
     def post(self, request: Request, jti: str) -> Response:
         sid = jti  # il parametro URL si chiama jti ma ora contiene un sid
-        current_sid = _get_current_sid(request)
+        current_sid = sid_corrente(request)
         # ⛔ Niente `current_sid and ...`: con un sid vuoto quel cortocircuito
         #    rendeva il rifiuto sempre falso, cioe' si poteva revocare la
         #    PROPRIA sessione dal pannello delle altre. Oggi il vuoto non arriva
@@ -187,7 +181,7 @@ class SessioniRevocaTutteView(DomainAPIView):
     #    diversi: restringere anche la blacklist legherebbe un presidio a una
     #    coincidenza non presidiata.
     def post(self, request: Request) -> Response:
-        current_sid = _get_current_sid(request)
+        current_sid = sid_corrente(request)
 
         # ⚠️ `current_sid` non puo' essere vuoto: dal 2026-09-04 il claim `sid` e'
         #    verificato in autenticazione (`JwtAuditAuthentication`, eccezione
