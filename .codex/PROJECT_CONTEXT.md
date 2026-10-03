@@ -202,7 +202,7 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   repository di righe, nessuna chiave i18n).
 
 ⭐ **I domini nuovi nascono con il permesso applicato dal DB**
-(`work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md`, D-1 → D-5 di Tid). Il modello è
+(`work-done/brief-db-permesso-nel-verbo-di-scrittura.md`, D-1 → D-5 di Tid). Il modello è
 «una scrittura = un verbo»: una funzione DB che nella prima riga chiama un guard —
 `script.fn_guard_azione` (azione di processo), `script.fn_guard_livello` (livello sull'oggetto)
 o `script.fn_guard_super_admin` (gestione accessi) — e l'app che perde la scrittura diretta sulle

@@ -94,7 +94,7 @@ divergenza che la regola del 2 previene.
 | | |
 | --- | --- |
 | ✅ **Garantisce** | che una richiesta classificata come lettura **non scriva nulla** sul DB, qualunque cosa faccia il codice che chiama |
-| ⛔ **Non garantisce** | che il backend **autorizzi** correttamente una scrittura: un `POST` con il permesso dichiarato male passa ancora. Quello è il compito del [brief-db-permesso-nel-verbo-di-scrittura.md](../work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md) |
+| ⛔ **Non garantisce** | che il backend **autorizzi** correttamente una scrittura: un `POST` con il permesso dichiarato male passa ancora. Quello è il compito del [brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md) |
 
 ## 4. I presìdi
 

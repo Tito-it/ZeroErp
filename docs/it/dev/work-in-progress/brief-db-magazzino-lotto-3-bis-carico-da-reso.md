@@ -489,7 +489,7 @@ prova il loader (celle vuote → token `NULL` e `nullValue: "NULL"`).
   -b, -d, -e, -f, -i), [analisi carico e scarico](analisi-db-magazzino-carico-e-scarico.md)
   (§6 identità, §7-quinquies storno, §8 lotti),
   [Lotto 2](../work-done/brief-db-magazzino-lotto-2-motore.md) (D-L2-c costo,
-  D-L2-m ubicazioni), [permesso nel verbo](brief-db-permesso-nel-verbo-di-scrittura.md).
+  D-L2-m ubicazioni), [permesso nel verbo](../work-done/brief-db-permesso-nel-verbo-di-scrittura.md).
 - Le forme da copiare: il verbo → `vendite.fn_cambia_stato_ddt`; la merce da
   muovere in una sede → `vendite.fn_ddt_merce_da_movimentare`; la check che
   parla → `script.fn_check_ddt_merce`; il posting → `magazzino.fn_posta_ddt`; lo

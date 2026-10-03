@@ -210,7 +210,7 @@ già, quindi il rubinetto non lo ferma).
 > `registra_magazzino` e l'app non esegue più primitiva e ricalcolo. Dettaglio in
 > [brief-db-magazzino-verbi-con-permesso.md](../work-done/brief-db-magazzino-verbi-con-permesso.md),
 > primo cantiere del modello deciso in
-> [brief-db-permesso-nel-verbo-di-scrittura.md](../work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md)
+> [brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md)
 > (D-4). Il testo qui sotto resta com'era: descrive ciò che è stato consegnato.
 
 | Chi | Che cosa può fare, da questo lotto |

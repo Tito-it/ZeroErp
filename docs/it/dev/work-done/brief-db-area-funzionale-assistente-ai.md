@@ -533,7 +533,7 @@ query più l'area «Assistente AI» fra quelle assegnabili nel pannello dei prof
     solo da una funzione DB che controlla azione o livello: protegge anche da
     un backend che autorizza la scrittura sbagliata, che la sola lettura non
     copre. Cantiere di architettura, con decisioni aperte:
-    [brief-db-permesso-nel-verbo-di-scrittura.md](../work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md).
+    [brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md).
   * ⛔ **Esclusa**: policy RLS di scrittura sul livello d'area. Una policy vede
     la tabella, non l'operazione — bloccherebbe l'operatore in `LETTURA` a cui è
     stata concessa un'azione — e le funzioni DEFINER la scavalcano. Il

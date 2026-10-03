@@ -82,7 +82,7 @@ nessun controllo aveva già due eccezioni silenziose.*
 
 **Anello 0 — Il DB applica i permessi, non solo li calcola.** Il modello sta
 in un brief che resta aperto per costruzione
-([brief-db-permesso-nel-verbo-di-scrittura.md](work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md),
+([brief-db-permesso-nel-verbo-di-scrittura.md](work-done/brief-db-permesso-nel-verbo-di-scrittura.md),
 D-1…D-5 del 24-09): il verbo dichiara il permesso **nella prima riga** con un
 BB unico (`fn_guard_azione` per i processi, `fn_guard_livello` per il CRUD; la
 terza forma, `fn_guard_super_admin`, nasce il 25-09 col blocco login), e
