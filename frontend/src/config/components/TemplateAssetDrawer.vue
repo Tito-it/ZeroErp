@@ -12,27 +12,22 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateAssetDocumentiStore } from '../stores/templateAssetDocumenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, DATE_FORMAT } from '../../core/constants'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
 import { downloadBlob } from '../../core/utils/download'
 import { ASSET_UPLOAD_MAX_BYTES } from '../constants/documentiVersioniWhitelists'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
-import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
 import FileUpload from 'primevue/fileupload'
 import Message from 'primevue/message'
-
-
 
 const { t } = useI18n()
 const store = useTemplateAssetDocumentiStore()
@@ -47,10 +42,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
@@ -213,177 +204,160 @@ async function handleSave() {
   }
 }
 
-function close() {
-  emit('update:visible', false)
-  emit('cancelled')
-}
-const chiudi = () => chiudiConConferma(close)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :dismissable="true"
-    @after-show="onAfterShow"
+    :title="t('config.modelli_documenti.asset.drawer_title')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :readonly="isReadOnlyEffective"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('config.modelli_documenti.asset.drawer_title')"
-      />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
-      <div class="form-grid">
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.asset.field_codice') }} *</label>
-            <InputText
-              v-model="form.codice"
-              :disabled="isEdit || isReadOnlyEffective"
-              maxlength="120"
-              fluid
-              :invalid="campiErrati.includes('codice')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.asset.field_codice_interno') }} *</label>
-            <InputText
-              v-model="form.codice_interno"
-              :disabled="isEdit || isReadOnlyEffective"
-              maxlength="120"
-              fluid
-              :invalid="campiErrati.includes('codice_interno')"
-            />
-          </div>
-        </div>
+    <div class="form-grid">
+      <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('config.modelli_documenti.asset.field_descrizione') }} *</label>
+          <label>{{ t('config.modelli_documenti.asset.field_codice') }} *</label>
           <InputText
-            v-model="form.descrizione"
-            :disabled="isReadOnlyEffective"
-            maxlength="500"
-            :invalid="campiErrati.includes('descrizione')"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('config.modelli_documenti.asset.field_tipo') }} *</label>
-          <LookupSelect
-            v-model="form.asset_tipo_id"
-            rel="documenti.tipi_asset_documento"
-            :placeholder="t('config.modelli_documenti.asset.filter_tipo')"
+            v-model="form.codice"
             :disabled="isEdit || isReadOnlyEffective"
+            maxlength="120"
+            fluid
+            :invalid="campiErrati.includes('codice')"
           />
-          <small v-if="isEdit" class="app-text-muted">
-            {{ t('config.modelli_documenti.asset.field_tipo_immutable_hint') }}
-          </small>
         </div>
         <div class="form-field">
-          <label>{{ t('config.modelli_documenti.field_emittente') }} *</label>
-          <EmittenteFiscaleField
-            v-model="form.emittente_fiscale_id"
-            :record="form"
-            :is-edit="isEdit"
-            :disabled="isReadOnlyEffective"
+          <label>{{ t('config.modelli_documenti.asset.field_codice_interno') }} *</label>
+          <InputText
+            v-model="form.codice_interno"
+            :disabled="isEdit || isReadOnlyEffective"
+            maxlength="120"
+            fluid
+            :invalid="campiErrati.includes('codice_interno')"
           />
-          <small class="app-text-muted">
-            {{ t('config.modelli_documenti.field_emittente_hint') }}
-          </small>
         </div>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.asset.field_valido_dal') }}</label>
-            <DatePicker v-model="form.valido_dal" :disabled="isReadOnlyEffective" date-format="dd/mm/yy" fluid
-              :invalid="campiErrati.includes('valido_dal')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.asset.field_valido_al') }}</label>
-            <DatePicker v-model="form.valido_al" :disabled="isReadOnlyEffective" date-format="dd/mm/yy" fluid
-              :invalid="campiErrati.includes('valido_al')"
-            />
-          </div>
+      </div>
+      <div class="form-field">
+        <label>{{ t('config.modelli_documenti.asset.field_descrizione') }} *</label>
+        <InputText
+          v-model="form.descrizione"
+          :disabled="isReadOnlyEffective"
+          maxlength="500"
+          :invalid="campiErrati.includes('descrizione')"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('config.modelli_documenti.asset.field_tipo') }} *</label>
+        <LookupSelect
+          v-model="form.asset_tipo_id"
+          rel="documenti.tipi_asset_documento"
+          :placeholder="t('config.modelli_documenti.asset.filter_tipo')"
+          :disabled="isEdit || isReadOnlyEffective"
+        />
+        <small v-if="isEdit" class="app-text-muted">
+          {{ t('config.modelli_documenti.asset.field_tipo_immutable_hint') }}
+        </small>
+      </div>
+      <div class="form-field">
+        <label>{{ t('config.modelli_documenti.field_emittente') }} *</label>
+        <EmittenteFiscaleField
+          v-model="form.emittente_fiscale_id"
+          :record="form"
+          :is-edit="isEdit"
+          :disabled="isReadOnlyEffective"
+        />
+        <small class="app-text-muted">
+          {{ t('config.modelli_documenti.field_emittente_hint') }}
+        </small>
+      </div>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.asset.field_valido_dal') }}</label>
+          <DatePicker v-model="form.valido_dal" :disabled="isReadOnlyEffective" :date-format="DATE_FORMAT" fluid
+            :invalid="campiErrati.includes('valido_dal')"
+          />
         </div>
         <div class="form-field">
-          <label>{{ t('common.attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
-            :invalid="campiErrati.includes('attivo')"
+          <label>{{ t('config.modelli_documenti.asset.field_valido_al') }}</label>
+          <DatePicker v-model="form.valido_al" :disabled="isReadOnlyEffective" :date-format="DATE_FORMAT" fluid
+            :invalid="campiErrati.includes('valido_al')"
           />
         </div>
-
-        <template v-if="!isEdit">
-          <div class="form-field form-field-wide">
-            <label>{{ t('config.modelli_documenti.asset.field_file') }} *</label>
-            <FileUpload
-              mode="basic"
-              :auto="false"
-              :multiple="false"
-              :max-file-size="ASSET_UPLOAD_MAX_BYTES"
-              :choose-label="t('config.modelli_documenti.asset.choose_file')"
-              :customUpload="true"
-              @select="onFileSelect"
-              @clear="onFileClear"
-              :disabled="isReadOnlyEffective"
-            />
-            <small v-if="selectedFile" class="app-text-muted">
-              {{ selectedFile.name }} ({{ Math.round(selectedFile.size / 1024) }} KB)
-            </small>
-            <small class="app-text-muted">
-              {{ t('config.modelli_documenti.asset.field_file_hint') }}
-            </small>
-          </div>
-        </template>
-        <template v-else>
-          <div class="form-field form-field-wide">
-            <label>{{ t('config.modelli_documenti.asset.field_file') }}</label>
-            <div class="asset-file-panel">
-              <div class="asset-file-main">
-                <span class="asset-file-count">
-                  {{ t('config.modelli_documenti.asset.file_count', { count: currentFileCount }) }}
-                </span>
-                <strong>{{ form.file_name || '-' }}</strong>
-                <small class="app-text-muted">
-                  {{ form.mime_type || '-' }} · {{ formatFileSize(form.file_size_bytes) }}
-                </small>
-              </div>
-              <Button
-                :icon="MANAGE_ICONS.DOWNLOAD"
-                :label="t('config.modelli_documenti.asset.download_file')"
-                size="small"
-                severity="secondary"
-                outlined
-                :loading="downloadLoading"
-                :disabled="!form.file_name"
-                @click="handleDownloadAsset"
-              />
-            </div>
-            <small v-if="form.sha256" class="app-text-muted asset-file-hash">
-              SHA256 {{ form.sha256 }}
-            </small>
-          </div>
-        </template>
-
-        <Message v-if="isEdit" severity="info" :closable="false">
-          {{ t('config.modelli_documenti.asset.edit_metadati_only_hint') }}
-        </Message>
+      </div>
+      <div class="form-field">
+        <label>{{ t('common.attivo') }}</label>
+        <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+          :invalid="campiErrati.includes('attivo')"
+        />
       </div>
 
-    </div>
+      <template v-if="!isEdit">
+        <div class="form-field form-field-wide">
+          <label>{{ t('config.modelli_documenti.asset.field_file') }} *</label>
+          <FileUpload
+            mode="basic"
+            :auto="false"
+            :multiple="false"
+            :max-file-size="ASSET_UPLOAD_MAX_BYTES"
+            :choose-label="t('config.modelli_documenti.asset.choose_file')"
+            :customUpload="true"
+            @select="onFileSelect"
+            @clear="onFileClear"
+            :disabled="isReadOnlyEffective"
+          />
+          <small v-if="selectedFile" class="app-text-muted">
+            {{ selectedFile.name }} ({{ Math.round(selectedFile.size / 1024) }} KB)
+          </small>
+          <small class="app-text-muted">
+            {{ t('config.modelli_documenti.asset.field_file_hint') }}
+          </small>
+        </div>
+      </template>
+      <template v-else>
+        <div class="form-field form-field-wide">
+          <label>{{ t('config.modelli_documenti.asset.field_file') }}</label>
+          <div class="asset-file-panel">
+            <div class="asset-file-main">
+              <span class="asset-file-count">
+                {{ t('config.modelli_documenti.asset.file_count', { count: currentFileCount }) }}
+              </span>
+              <strong>{{ form.file_name || '-' }}</strong>
+              <small class="app-text-muted">
+                {{ form.mime_type || '-' }} · {{ formatFileSize(form.file_size_bytes) }}
+              </small>
+            </div>
+            <Button
+              :icon="MANAGE_ICONS.DOWNLOAD"
+              :label="t('config.modelli_documenti.asset.download_file')"
+              size="small"
+              severity="secondary"
+              outlined
+              :loading="downloadLoading"
+              :disabled="!form.file_name"
+              class="app-escape"
+              @click="handleDownloadAsset"
+            />
+          </div>
+          <small v-if="form.sha256" class="app-text-muted asset-file-hash">
+            SHA256 {{ form.sha256 }}
+          </small>
+        </div>
+      </template>
 
-    <template #footer>
-      <FormFooter v-if="contentReady"
-        :loading="loading"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="chiudi"
-      />
-    </template>
-  </Drawer>
+      <Message v-if="isEdit" severity="info" :closable="false">
+        {{ t('config.modelli_documenti.asset.edit_metadati_only_hint') }}
+      </Message>
+    </div>
+  </AppDrawer>
 </template>
 
 <style scoped>

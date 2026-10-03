@@ -20,12 +20,10 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { labelOrCode } from '../../core/utils/i18nLabel'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
@@ -44,11 +42,10 @@ import {
   useTitoloIvaAmbitiStore,
   useTitoloIvaMovimentiStore,
 } from '../stores/titoloIvaSottoliste'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, DATE_FORMAT } from '../../core/constants'
 import { toDateString, parseIsoDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import AppDialog from '../../core/components/AppDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import IvaSelect from '../../core/components/IvaSelect.vue'
@@ -56,7 +53,6 @@ import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
-import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -65,6 +61,7 @@ import Textarea from 'primevue/textarea'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const { t, te } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
@@ -80,7 +77,6 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved'])
 
 const isEdit = computed(() => props.titoloId != null)
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 // ⚠️ Guard di versione: il drawer si apre su un titolo, si chiude e si riapre su
 //    un altro piu' in fretta di quanto torni la prima fetch. Senza, la risposta
 //    stantia sovrascrive il form del titolo giusto — e non da' nessun errore.
@@ -209,7 +205,9 @@ const {
   //    tiene il lock.
   newLabelKey: 'anagrafiche.titoli_iva.forza_rettifica',
   newTooltipKey: 'anagrafiche.titoli_iva.forza_rettifica',
-  onNew: () => { forzaturaVisible.value = true },
+  // Si riparte da una forzatura vuota: dopo «Chiudi senza salvare» i dati
+  // abbandonati non devono ricomparire (e diventare la base della fotografia).
+  onNew: () => { forzatura.value = nuovaForzatura(); forzaturaVisible.value = true },
 })
 
 function defaultForm() {
@@ -538,13 +536,16 @@ function movimentoSeverity(tipo) {
   return { FATTURA: 'info', NOTA_CREDITO: 'success', FORZATURA: 'warn' }[tipo] || 'secondary'
 }
 
-const onClose = useDrawerClose(emit)
 // La chiusura chiede conferma se il titolo O il form ambito e' modificato,
 // con un dialog solo.
 const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
   unisciFotografie({ modificato, chiudiConConferma }, inlineAmbito)
-const chiudi = () => chiudiTutto(onClose)
-const suVisibile = gestoreVisibile(emit, chiudi)
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotoAnnullo = useFotografiaDialog(() => ({ ...annullo.value }), { visibile: () => annulloVisible.value })
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotoForzatura = useFotografiaDialog(() => ({ ...forzatura.value }), { visibile: () => forzaturaVisible.value })
 </script>
 
 <template>
@@ -555,253 +556,253 @@ const suVisibile = gestoreVisibile(emit, chiudi)
        ESLint tace. A video le griglie a 2 e 3 colonne collassavano in una e la
        maschera sembrava «scritta male» quando era solo strizzata.
        ⇒ Presidiato da `scripts/check-drawer-width.mjs`, che nasce da qui. -->
-  <Drawer
-    :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH.WIDE }" @after-show="onAfterShow">
-    <template #header>
-      <DrawerTitle
-        :modificato="modificatoTutto"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('anagrafiche.titoli_iva.titolo')"
-        :icon="MANAGE_ICONS.TITOLI_IVA" />
-    </template>
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('anagrafiche.titoli_iva.titolo')"
+    :icon="MANAGE_ICONS.TITOLI_IVA"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.WIDE"
+    :modificato="modificatoTutto"
+    :conferma-uscita="chiudiTutto"
+    :footer="isReadonly ? 'chiudi' : 'form'"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="onSave"
+  >
 
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <!-- ⚠️ Avviso, non blocco (Q2): il DB ammette apposta un titolo RISTRETTO
+         senza righe, perche' il caso si costruisce in due istruzioni. Il
+         messaggio dice l'EFFETTO, non lo stato. -->
+    <Message v-if="ambitoIncompleto" severity="warn" :closable="false">
+      {{ t('anagrafiche.titoli_iva.avviso_ambito_incompleto') }}
+    </Message>
 
-      <!-- ⚠️ Avviso, non blocco (Q2): il DB ammette apposta un titolo RISTRETTO
-           senza righe, perche' il caso si costruisce in due istruzioni. Il
-           messaggio dice l'EFFETTO, non lo stato. -->
-      <Message v-if="ambitoIncompleto" severity="warn" :closable="false">
-        {{ t('anagrafiche.titoli_iva.avviso_ambito_incompleto') }}
-      </Message>
-
-      <h4>{{ t('anagrafiche.titoli_iva.section_titolo') }}</h4>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('anagrafiche.titoli_iva.field_emittente') }} <span v-if="!isEdit">*</span></label>
-          <EmittenteFiscaleField
-            v-model="form.emittente_fiscale_id"
-            :record="detail" :is-edit="isEdit" :disabled="isReadonly" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('anagrafiche.titoli_iva.field_tipo') }} *</label>
-          <LookupSelect
-            v-model="form.tipo_titolo_iva_id" rel="config.tipi_titolo_iva"
-            :disabled="isReadonly"
-            :placeholder="t('anagrafiche.titoli_iva.select_tipo')" />
-        </div>
+    <h4>{{ t('anagrafiche.titoli_iva.section_titolo') }}</h4>
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('anagrafiche.titoli_iva.field_emittente') }} <span v-if="!isEdit">*</span></label>
+        <EmittenteFiscaleField
+          v-model="form.emittente_fiscale_id"
+          :record="detail" :is-edit="isEdit" :disabled="isReadonly" />
       </div>
-
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('anagrafiche.titoli_iva.field_iva') }} *</label>
-          <IvaSelect v-model="form.iva_id" :disabled="isReadonly" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('anagrafiche.titoli_iva.field_ambito') }}</label>
-          <Select v-model="form.ambito" :options="ambitoOptions"
-            option-label="label" option-value="value"
-            :disabled="isReadonly" />
-        </div>
+      <div class="form-field">
+        <label>{{ t('anagrafiche.titoli_iva.field_tipo') }} *</label>
+        <LookupSelect
+          v-model="form.tipo_titolo_iva_id" rel="config.tipi_titolo_iva"
+          :disabled="isReadonly"
+          :placeholder="t('anagrafiche.titoli_iva.select_tipo')" />
       </div>
+    </div>
 
-      <h4>{{ t('anagrafiche.titoli_iva.section_validita') }}</h4>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('anagrafiche.titoli_iva.field_valido_dal') }} *</label>
-          <DatePicker :model-value="parseIsoDate(form.valido_dal)"
-            @update:model-value="form.valido_dal = toDateString($event)"
-            date-format="dd/mm/yy" show-icon :disabled="isReadonly"
-            :invalid="campiErrati.includes('valido_dal')" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('anagrafiche.titoli_iva.field_valido_al') }}</label>
-          <DatePicker :model-value="parseIsoDate(form.valido_al)"
-            @update:model-value="form.valido_al = toDateString($event)"
-            date-format="dd/mm/yy" show-icon show-button-bar 
-            :disabled="isReadonly" />
-        </div>
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('anagrafiche.titoli_iva.field_iva') }} *</label>
+        <IvaSelect v-model="form.iva_id" :disabled="isReadonly" />
       </div>
+      <div class="form-field">
+        <label>{{ t('anagrafiche.titoli_iva.field_ambito') }}</label>
+        <Select v-model="form.ambito" :options="ambitoOptions"
+          option-label="label" option-value="value"
+          :disabled="isReadonly" />
+      </div>
+    </div>
 
-      <h4>{{ t('anagrafiche.titoli_iva.section_prova') }}</h4>
+    <h4>{{ t('anagrafiche.titoli_iva.section_validita') }}</h4>
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('anagrafiche.titoli_iva.field_valido_dal') }} *</label>
+        <DatePicker :model-value="parseIsoDate(form.valido_dal)"
+          @update:model-value="form.valido_dal = toDateString($event)"
+          :date-format="DATE_FORMAT" show-icon :disabled="isReadonly"
+          :invalid="campiErrati.includes('valido_dal')" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('anagrafiche.titoli_iva.field_valido_al') }}</label>
+        <DatePicker :model-value="parseIsoDate(form.valido_al)"
+          @update:model-value="form.valido_al = toDateString($event)"
+          :date-format="DATE_FORMAT" show-icon show-button-bar 
+          :disabled="isReadonly" />
+      </div>
+    </div>
+
+    <h4>{{ t('anagrafiche.titoli_iva.section_prova') }}</h4>
+    <div class="form-grid-3col">
+      <div class="form-field">
+        <label>{{ t('anagrafiche.titoli_iva.field_protocollo') }}</label>
+        <InputText v-model="form.protocollo" :disabled="isReadonly" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('anagrafiche.titoli_iva.field_data_ricezione') }}</label>
+        <DatePicker :model-value="parseIsoDate(form.data_ricezione)"
+          @update:model-value="form.data_ricezione = toDateString($event)"
+          :date-format="DATE_FORMAT" show-icon show-button-bar 
+          :disabled="isReadonly" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('anagrafiche.titoli_iva.field_riferimento') }}</label>
+        <InputText v-model="form.riferimento" :disabled="isReadonly" />
+      </div>
+    </div>
+
+    <!-- Il plafond esiste solo per i tipi che un tetto ce l'hanno (D10). -->
+    <template v-if="mostraPlafond">
+      <h4>{{ t('anagrafiche.titoli_iva.section_plafond') }}</h4>
       <div class="form-grid-3col">
         <div class="form-field">
-          <label>{{ t('anagrafiche.titoli_iva.field_protocollo') }}</label>
-          <InputText v-model="form.protocollo" :disabled="isReadonly" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('anagrafiche.titoli_iva.field_data_ricezione') }}</label>
-          <DatePicker :model-value="parseIsoDate(form.data_ricezione)"
-            @update:model-value="form.data_ricezione = toDateString($event)"
-            date-format="dd/mm/yy" show-icon show-button-bar 
+          <label>{{ t('anagrafiche.titoli_iva.field_plafond') }}</label>
+          <InputNumber v-model="form.plafond" mode="currency" currency="EUR" locale="it-IT"
             :disabled="isReadonly" />
         </div>
-        <div class="form-field">
-          <label>{{ t('anagrafiche.titoli_iva.field_riferimento') }}</label>
-          <InputText v-model="form.riferimento" :disabled="isReadonly" />
+        <div v-if="isEdit" class="form-field">
+          <label>{{ t('anagrafiche.titoli_iva.field_utilizzato') }}</label>
+          <!-- ⚠️ Sola lettura SEMPRE: lo scrive il trigger dell'accumulatore
+               come somma del registro (D5). Un campo editabile qui sarebbe il
+               «numero sovrascritto» che D5 ha tolto di mezzo. -->
+          <InputText :model-value="formatCurrency(detail?.imponibile_utilizzato)"
+            disabled />
+        </div>
+        <div v-if="isEdit" class="form-field">
+          <label>{{ t('anagrafiche.titoli_iva.field_residuo') }}</label>
+          <InputText :model-value="formatCurrency(detail?.residuo)"
+            disabled />
         </div>
       </div>
+    </template>
 
-      <!-- Il plafond esiste solo per i tipi che un tetto ce l'hanno (D10). -->
-      <template v-if="mostraPlafond">
-        <h4>{{ t('anagrafiche.titoli_iva.section_plafond') }}</h4>
-        <div class="form-grid-3col">
-          <div class="form-field">
-            <label>{{ t('anagrafiche.titoli_iva.field_plafond') }}</label>
-            <InputNumber v-model="form.plafond" mode="currency" currency="EUR" locale="it-IT"
-              :disabled="isReadonly" />
-          </div>
-          <div v-if="isEdit" class="form-field">
-            <label>{{ t('anagrafiche.titoli_iva.field_utilizzato') }}</label>
-            <!-- ⚠️ Sola lettura SEMPRE: lo scrive il trigger dell'accumulatore
-                 come somma del registro (D5). Un campo editabile qui sarebbe il
-                 «numero sovrascritto» che D5 ha tolto di mezzo. -->
-            <InputText :model-value="formatCurrency(detail?.imponibile_utilizzato)"
-              disabled />
-          </div>
-          <div v-if="isEdit" class="form-field">
-            <label>{{ t('anagrafiche.titoli_iva.field_residuo') }}</label>
-            <InputText :model-value="formatCurrency(detail?.residuo)"
-              disabled />
-          </div>
-        </div>
-      </template>
+    <!-- === Ambito ristretto: su cosa si applica (D12) === -->
+    <template v-if="form.ambito === 'RISTRETTO' && isEdit">
+      <h4>{{ t('anagrafiche.titoli_iva.section_ambito') }}</h4>
+      <p class="app-text-muted" style="font-size: 0.85rem;">
+        {{ t('anagrafiche.titoli_iva.ambito_hint') }}
+      </p>
 
-      <!-- === Ambito ristretto: su cosa si applica (D12) === -->
-      <template v-if="form.ambito === 'RISTRETTO' && isEdit">
-        <h4>{{ t('anagrafiche.titoli_iva.section_ambito') }}</h4>
-        <p class="app-text-muted" style="font-size: 0.85rem;">
-          {{ t('anagrafiche.titoli_iva.ambito_hint') }}
-        </p>
+      <!-- ⭐ Lista NON paginata: gli ambiti di un titolo sono limitati PER
+           MODELLO — sono gli oggetti su cui si applica, non un registro che
+           cresce. ⛔ `total` resta obbligatorio e arriva da una query sua: e'
+           l'asserzione che le righe siano tutte, e il BB rifiuta di disegnare
+           la tabella se non coincide. -->
+      <DrawerTabLista
+        ref="listaAmbitiRef"
+        codice="anagrafiche.titolo_iva_ambiti"
+        :paginata="false"
+        :store="storeAmbiti"
+        :rows="storeAmbiti.items"
+        :total="storeAmbiti.totalRecords"
+        :loading="storeAmbiti.loading"
+        :page-actions="azioniAmbiti"
+        :dirty="dirtyAmbiti"
+        :perimetro-bloccato="perimetroAmbiti"
+        @page="onPageAmbiti"
+        @sort="onSortAmbiti"
+        @config-loaded="onConfigLoadedAmbiti"
+      >
+        <template #cell-livello="{ data }">
+          <Tag :value="t(`anagrafiche.titoli_iva.livello_${data.livello.toLowerCase()}`)"
+            severity="info" />
+        </template>
+        <!-- Colonna composta da TRE campi alternativi (articolo, gruppo,
+             tipo): non ha un `campo_sorgente` e il catalogo la dichiara
+             calcolata. -->
+        <template #cell-oggetto="{ data }">{{ descriviAmbito(data) }}</template>
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="azioniRigaAmbito(data)" />
+        </template>
+      </DrawerTabLista>
 
-        <!-- ⭐ Lista NON paginata: gli ambiti di un titolo sono limitati PER
-             MODELLO — sono gli oggetti su cui si applica, non un registro che
-             cresce. ⛔ `total` resta obbligatorio e arriva da una query sua: e'
-             l'asserzione che le righe siano tutte, e il BB rifiuta di disegnare
-             la tabella se non coincide. -->
-        <DrawerTabLista
-          ref="listaAmbitiRef"
-          codice="anagrafiche.titolo_iva_ambiti"
-          :paginata="false"
-          :store="storeAmbiti"
-          :rows="storeAmbiti.items"
-          :total="storeAmbiti.totalRecords"
-          :loading="storeAmbiti.loading"
-          :page-actions="azioniAmbiti"
-          :dirty="dirtyAmbiti"
-          :perimetro-bloccato="perimetroAmbiti"
-          @page="onPageAmbiti"
-          @sort="onSortAmbiti"
-          @config-loaded="onConfigLoadedAmbiti"
-        >
-          <template #cell-livello="{ data }">
-            <Tag :value="t(`anagrafiche.titoli_iva.livello_${data.livello.toLowerCase()}`)"
-              severity="info" />
-          </template>
-          <!-- Colonna composta da TRE campi alternativi (articolo, gruppo,
-               tipo): non ha un `campo_sorgente` e il catalogo la dichiara
-               calcolata. -->
-          <template #cell-oggetto="{ data }">{{ descriviAmbito(data) }}</template>
-          <template #actions="{ data }">
-            <RowActionsMenu :row="data" :actions="azioniRigaAmbito(data)" />
-          </template>
-        </DrawerTabLista>
-
-        <div v-if="!isReadonly">
-          <div v-if="ambitoFormAperto" class="app-drawer-section">
-            <div class="form-grid-2col">
-              <div class="form-field">
-                <label>{{ t('anagrafiche.titoli_iva.col_livello') }}</label>
-                <Select v-model="ambitoForm.livello" :options="livelloOptions"
-                  option-label="label" option-value="value"
-                  @change="onLivelloChange" />
-              </div>
-              <div class="form-field">
-                <label>{{ t('anagrafiche.titoli_iva.col_oggetto') }}</label>
-                <ArticoloLookup v-if="ambitoForm.livello === 'ARTICOLO'"
-                  v-model="ambitoForm.articolo_obj"
-                  @select="ambitoForm.articolo_id = $event?.id ?? null" />
-                <LookupSelect v-else-if="ambitoForm.livello === 'GRUPPO_VOCE'"
-                  v-model="ambitoForm.gruppo_voce_id" rel="vendite.articoli_gruppi"
-                />
-                <LookupSelect v-else v-model="ambitoForm.tipo_voce_id"
-                  rel="vendite.articoli_tipologie" />
-              </div>
+      <div v-if="!isReadonly">
+        <div v-if="ambitoFormAperto" class="app-drawer-section">
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('anagrafiche.titoli_iva.col_livello') }}</label>
+              <Select v-model="ambitoForm.livello" :options="livelloOptions"
+                option-label="label" option-value="value"
+                @change="onLivelloChange" />
             </div>
-            <div>
-              <Button :label="t('common.add')" :icon="MANAGE_ICONS.ADD" size="small"
-                :disabled="!ambitoValido" :loading="loading" @click="onAddAmbito" />
-              <Button :label="t('common.cancel')" text size="small"
-                @click="annullaAmbito" />
+            <div class="form-field">
+              <label>{{ t('anagrafiche.titoli_iva.col_oggetto') }}</label>
+              <ArticoloLookup v-if="ambitoForm.livello === 'ARTICOLO'"
+                v-model="ambitoForm.articolo_obj"
+                @select="ambitoForm.articolo_id = $event?.id ?? null" />
+              <LookupSelect v-else-if="ambitoForm.livello === 'GRUPPO_VOCE'"
+                v-model="ambitoForm.gruppo_voce_id" rel="vendite.articoli_gruppi"
+              />
+              <LookupSelect v-else v-model="ambitoForm.tipo_voce_id"
+                rel="vendite.articoli_tipologie" />
             </div>
           </div>
+          <div>
+            <Button :label="t('common.add')" :icon="MANAGE_ICONS.ADD" size="small"
+              :disabled="!ambitoValido" :loading="loading" @click="onAddAmbito" />
+            <Button :label="t('common.cancel')" text size="small"
+              @click="annullaAmbito" />
+          </div>
         </div>
-      </template>
-
-      <!-- === Registro del plafond (D5) ===
-           ⭐ Compare solo dove un tetto esiste: su un tipo senza plafond nessuno
-           scrive movimenti, e un pannello sempre vuoto e' peggio di uno assente.
-           ⛔ Il totale e' `imponibile_utilizzato`, che il trigger tiene pari alla
-           somma del registro: il FE NON lo ricalcola sommando le righe: sarebbe
-           una seconda verita' sullo stesso numero, cioe' il difetto che D5
-           esiste per evitare. -->
-      <template v-if="isEdit && mostraPlafond">
-        <h4>{{ t('anagrafiche.titoli_iva.section_registro') }}</h4>
-        <!-- ⭐ PAGINATO: un registro append-only cresce a ogni fattura, e la
-             pagina la decide il catalogo (lista 65, `pagina_dimensione = 25`).
-             ⛔ NESSUNO slot per data e imponibile: il catalogo dichiara
-             `date_short` e `currency_eur`, e il formatter di serie li rende
-             gia' cosi'. Uno slot qui sarebbe una seconda regola di formato
-             accanto al catalogo, e piu' povera. -->
-        <DrawerTabLista
-          ref="listaMovimentiRef"
-          codice="anagrafiche.titolo_iva_movimenti"
-          :store="storeMovimenti"
-          :rows="storeMovimenti.items"
-          :total="storeMovimenti.totalRecords"
-          :loading="storeMovimenti.loading"
-          :paginator-options="paginatorMovimenti"
-          :page="paginaMovimenti"
-          :sort-field="paginatorMovimenti.sortField"
-          :sort-order="paginatorMovimenti.sortOrder"
-          :page-actions="azioniMovimenti"
-          :dirty="dirtyMovimenti"
-          :perimetro-bloccato="perimetroMovimenti"
-          @page="onPageMovimenti"
-          @sort="onSortMovimenti"
-          @config-loaded="onConfigLoadedMovimenti"
-        >
-          <template #cell-movimento="{ data }">
-            <Tag :value="t(`anagrafiche.titoli_iva.mov_${data.tipo_movimento.toLowerCase()}`)"
-              :severity="movimentoSeverity(data.tipo_movimento)" />
-          </template>
-          <!-- Colonna composta da fattura + riga: calcolata, senza
-               `campo_sorgente` a catalogo. -->
-          <template #cell-documento="{ data }">{{ descriviDocumento(data) }}</template>
-          <!-- ⭐ L'ANNULLO (Q7), col motivo quando e' spento. L'azione non
-               sparisce: resta e SPIEGA — una voce grigia che non dice perche'
-               e' indistinguibile da un difetto.
-               ⛔ Il motivo arriva dalla vista, e lo produce la STESSA check che
-               la madre interroga per rifiutare: tooltip e rifiuto non possono
-               divergere. -->
-          <template #actions="{ data }">
-            <RowActionsMenu :row="data" :actions="azioniRigaMovimento(data)" />
-          </template>
-        </DrawerTabLista>
-      </template>
-
-      <div v-if="isEdit" class="form-field">
-        <label>{{ t('anagrafiche.titoli_iva.field_note') }}</label>
-        <Textarea v-model="form.note" rows="2" :disabled="isReadonly" />
       </div>
+    </template>
 
-      <FormFooter v-if="!isReadonly" :loading="loading" :disabled="!canSave"
-        @save="onSave" @cancel="chiudi" />
-      <FormFooter v-else close-only @cancel="chiudi" />
+    <!-- === Registro del plafond (D5) ===
+         ⭐ Compare solo dove un tetto esiste: su un tipo senza plafond nessuno
+         scrive movimenti, e un pannello sempre vuoto e' peggio di uno assente.
+         ⛔ Il totale e' `imponibile_utilizzato`, che il trigger tiene pari alla
+         somma del registro: il FE NON lo ricalcola sommando le righe: sarebbe
+         una seconda verita' sullo stesso numero, cioe' il difetto che D5
+         esiste per evitare. -->
+    <template v-if="isEdit && mostraPlafond">
+      <h4>{{ t('anagrafiche.titoli_iva.section_registro') }}</h4>
+      <!-- ⭐ PAGINATO: un registro append-only cresce a ogni fattura, e la
+           pagina la decide il catalogo (lista 65, `pagina_dimensione = 25`).
+           ⛔ NESSUNO slot per data e imponibile: il catalogo dichiara
+           `date_short` e `currency_eur`, e il formatter di serie li rende
+           gia' cosi'. Uno slot qui sarebbe una seconda regola di formato
+           accanto al catalogo, e piu' povera. -->
+      <DrawerTabLista
+        ref="listaMovimentiRef"
+        codice="anagrafiche.titolo_iva_movimenti"
+        :store="storeMovimenti"
+        :rows="storeMovimenti.items"
+        :total="storeMovimenti.totalRecords"
+        :loading="storeMovimenti.loading"
+        :paginator-options="paginatorMovimenti"
+        :page="paginaMovimenti"
+        :sort-field="paginatorMovimenti.sortField"
+        :sort-order="paginatorMovimenti.sortOrder"
+        :page-actions="azioniMovimenti"
+        :dirty="dirtyMovimenti"
+        :perimetro-bloccato="perimetroMovimenti"
+        @page="onPageMovimenti"
+        @sort="onSortMovimenti"
+        @config-loaded="onConfigLoadedMovimenti"
+      >
+        <template #cell-movimento="{ data }">
+          <Tag :value="t(`anagrafiche.titoli_iva.mov_${data.tipo_movimento.toLowerCase()}`)"
+            :severity="movimentoSeverity(data.tipo_movimento)" />
+        </template>
+        <!-- Colonna composta da fattura + riga: calcolata, senza
+             `campo_sorgente` a catalogo. -->
+        <template #cell-documento="{ data }">{{ descriviDocumento(data) }}</template>
+        <!-- ⭐ L'ANNULLO (Q7), col motivo quando e' spento. L'azione non
+             sparisce: resta e SPIEGA — una voce grigia che non dice perche'
+             e' indistinguibile da un difetto.
+             ⛔ Il motivo arriva dalla vista, e lo produce la STESSA check che
+             la madre interroga per rifiutare: tooltip e rifiuto non possono
+             divergere. -->
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="azioniRigaMovimento(data)" />
+        </template>
+      </DrawerTabLista>
+    </template>
+
+    <div v-if="isEdit" class="form-field">
+      <label>{{ t('anagrafiche.titoli_iva.field_note') }}</label>
+      <Textarea v-model="form.note" rows="2" :disabled="isReadonly" />
     </div>
 
     <!-- L'annullo di una forzatura (Q7): un contro-movimento, non una delete. -->
     <AppDialog
+      :conferma-uscita="fotoAnnullo.chiudiConConferma"
       v-model:visible="annulloVisible"
       :header="t('anagrafiche.titoli_iva.annulla_movimento')"
       width="md" :loading="loading" :save-disabled="!annulloValido"
@@ -818,6 +819,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
 
     <!-- Forzatura manuale del plafond (Q3 + D5). -->
     <AppDialog
+      :conferma-uscita="fotoForzatura.chiudiConConferma"
       v-model:visible="forzaturaVisible"
       :header="t('anagrafiche.titoli_iva.forza_rettifica')"
       width="md" :loading="loading" :save-disabled="!forzaturaValida"
@@ -834,7 +836,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         </div>
         <div class="form-field">
           <label>{{ t('anagrafiche.titoli_iva.col_data') }} *</label>
-          <DatePicker v-model="forzatura.data_movimento" date-format="dd/mm/yy"
+          <DatePicker v-model="forzatura.data_movimento" :date-format="DATE_FORMAT"
             show-icon />
         </div>
       </div>
@@ -843,5 +845,5 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         <Textarea v-model="forzatura.motivo" rows="2" />
       </div>
     </AppDialog>
-  </Drawer>
+  </AppDrawer>
 </template>

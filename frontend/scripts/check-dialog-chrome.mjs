@@ -18,13 +18,24 @@
 //   ⛔ E' la famiglia dei difetti che questo repo paga piu' cari: non rompe il
 //   build, e si scopre solo perche' qualcuno guarda.
 //
-//   Cinque regole, tutte statiche:
+//   Sei regole, tutte statiche:
 //     1. `primevue/dialog`        si importa SOLO in core/components/AppDialog.vue
 //     2. `primevue/confirmdialog` si importa SOLO in App.vue
 //     3. `primevue/useconfirm`    si importa SOLO in core/composables/useConfirmAction.js
 //     4. ogni `<AppDialog` ha `header` e NON ha `closable` (la X e' andata per
 //        decisione: rimetterla su un tag non e' un override, e' una seconda regola)
 //     5. ogni `confirmAction({...})` ha `header:` e non ha `title:`
+//     6. ogni `<AppDialog>` che contiene CAMPI passa `conferma-uscita`
+//        (2026-10-03, D-14 di work-done/analisi-fe-chrome-drawer.md,
+//        Tid: «nessuna eccezione»). Fino a quel giorno 44 dialog con campi si
+//        chiudevano in silenzio — X, ESC, Annulla — buttando cio' che si era
+//        scritto. ⚠️ Si guardano i campi scritti DENTRO il tag: un dialog che
+//        delega il form a un componente figlio non si vede da qui.
+//        ⭐ Un dialog i cui campi NON sono dati — una casella di ricerca, i
+//        parametri di uno strumento di prova — lo DICHIARA subito sopra il tag:
+//        `<!-- conferma-uscita: nessuna — <motivo> -->`. Il motivo e'
+//        obbligatorio: uscire senza chiedere e' giusto solo se non si perde
+//        niente, e chi legge deve poterlo verificare.
 //
 //   Uso:
 //     node scripts/check-dialog-chrome.mjs
@@ -50,7 +61,11 @@ function senzaCommenti(testo) {
   return testo
     .replace(/<!--[\s\S]*?-->/g, soloRighe)
     .replace(/\/\*[\s\S]*?\*\//g, soloRighe)
-    .replace(/^\s*\/\/.*$/gm, '')
+    // ⚠️ `[ \t]*` e non `\s*` (2026-10-03): con il flag `m`, `\s*` consuma
+    //    anche le righe VUOTE prima del commento, e il testo perdeva righe — i
+    //    numeri di riga dei messaggi sbagliavano, e i marcatori letti dal testo
+    //    grezzo per riga non si trovavano.
+    .replace(/^[ \t]*\/\/.*$/gm, '')
 }
 
 function fileSorgente(dir, acc = []) {
@@ -77,7 +92,12 @@ function* tagAppDialog(testo) {
       else if (c === '>') break
       i++
     }
-    yield { riga: testo.slice(0, m.index).split('\n').length, attrs: testo.slice(m.index, i) }
+    const fine = testo.indexOf('</AppDialog>', i)
+    yield {
+      riga: testo.slice(0, m.index).split('\n').length,
+      attrs: testo.slice(m.index, i),
+      corpo: testo.slice(i, fine === -1 ? i : fine),
+    }
   }
 }
 
@@ -97,13 +117,27 @@ function* blocchiConfirmAction(testo) {
   }
 }
 
+// I campi che rendono un dialog «da non chiudere in silenzio»: i componenti di
+// input, i lookup e i select di casa, e il campo file degli allegati.
+const CAMPO = /<(InputText|InputNumber|Select|MultiSelect|DatePicker|Textarea|LookupSelect|AutoComplete|Checkbox|ToggleSwitch|RadioButton|SelectButton|[A-Z]\w*Lookup|[A-Z]\w*Select)\b|<input\b[^>]*type="file"/
+
+// Scopo: il dialog alla riga `riga` e' dichiarato «senza dati da perdere»?
+//        Il marcatore sta in un commento, quindi si legge dal testo GREZZO (le
+//        righe coincidono: `senzaCommenti` lascia i ritorni a capo).
+function marcatoSenzaDati(grezzo, riga) {
+  return grezzo
+    .slice(Math.max(0, riga - 6), riga - 1)
+    .some((l) => /conferma-uscita: nessuna\s+—\s+\S/.test(l))
+}
+
 const colpevoli = []
 let dialog = 0
 let conferme = 0
 
 for (const percorso of fileSorgente(SRC)) {
   const rel = relative(SRC, percorso)
-  const testo = senzaCommenti(readFileSync(percorso, 'utf8'))
+  const grezzo = readFileSync(percorso, 'utf8').split('\n')
+  const testo = senzaCommenti(grezzo.join('\n'))
 
   if (/from\s+['"]primevue\/dialog['"]/.test(testo) && rel !== SEDE_DIALOG) {
     colpevoli.push(`${rel}: importa primevue/dialog — si usa <AppDialog> (sede: ${SEDE_DIALOG})`)
@@ -116,13 +150,16 @@ for (const percorso of fileSorgente(SRC)) {
   }
 
   if (rel !== SEDE_DIALOG) {
-    for (const { riga, attrs } of tagAppDialog(testo)) {
+    for (const { riga, attrs, corpo } of tagAppDialog(testo)) {
       dialog++
       if (!/(^|\s):?header(=|\s|$)/.test(attrs)) {
         colpevoli.push(`${rel}:${riga}: <AppDialog> senza \`header\` — senza titolo la testa resta vuota e la riga si rompe`)
       }
       if (/(^|\s):?closable(=|\s|$)/.test(attrs)) {
         colpevoli.push(`${rel}:${riga}: <AppDialog> con \`closable\` — la X e' andata per decisione (DIALOG_CHROME), non si rimette sul tag`)
+      }
+      if (CAMPO.test(corpo) && !/(^|\s):?conferma-uscita=/.test(attrs) && !marcatoSenzaDati(grezzo, riga)) {
+        colpevoli.push(`${rel}:${riga}: <AppDialog> con dei campi senza \`conferma-uscita\` — uscendo si butterebbe cio' che si e' scritto senza chiedere (D-14)`)
       }
     }
   }

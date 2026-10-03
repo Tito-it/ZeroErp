@@ -56,6 +56,9 @@ const REGISTRO = resolve(QUI, 'datatable.baseline.json')
 const IMPORT_GREZZO = /from\s+['"]primevue\/datatable['"]/
 // Quante righe sopra l'import si guardano per dire «e' motivata».
 const FINESTRA_COMMENTO = 4
+// Una direttiva di lint (`// eslint-disable…`, `/* oxlint-disable… */`): marca
+// l'eccezione per lo strumento, non la motiva per chi legge.
+const DIRETTIVA_LINT = /^\s*(\/\/|\/\*)\s*(eslint|oxlint)-(disable|enable)/
 const riscrive = process.argv.includes('--baseline')
 
 // Scopo: tutti i `.vue` sotto src/, in ordine stabile (il registro e' un file
@@ -116,10 +119,26 @@ for (const p of fileVue(SRC)) {
   // ⛔ FINESTRA DICHIARATA, e il numero ci dipende: con tre righe invece di
   //    quattro il conto cambia. Un registro il cui valore dipende da un dettaglio
   //    non scritto e' un registro che nessuno puo' riprodurre.
+  // ⛔ Una DIRETTIVA di lint non e' una motivazione, e si salta (2026-10-03):
+  //    dal giorno in cui `no-restricted-imports` ferma l'import, ogni eccezione
+  //    ha un `// eslint-disable-next-line` subito sopra. Contato come commento,
+  //    avrebbe reso «motivati» in un colpo gli 11 file che non lo sono — un
+  //    cricchetto che si allenta senza che nessuno lo decida. La finestra parte
+  //    sopra le direttive, cosi' il motivo scritto prima resta dentro.
   const righe = s.split('\n')
-  const rigaImport = s.slice(0, i).split('\n').length - 1
+  let rigaImport = s.slice(0, i).split('\n').length - 1
+  while (rigaImport > 0 && DIRETTIVA_LINT.test(righe[rigaImport - 1])) rigaImport--
+  // ⛔ E la finestra si ferma alla prima riga VUOTA (2026-10-03): oltre, c'e'
+  //    l'intestazione del file, non il motivo di un import. Togliendo un import
+  //    sopra (`primevue/drawer`, migrazione ad AppDrawer) la finestra di
+  //    `NoteDrawer` arrivava al commento di testa e lo dava per «motivato»:
+  //    il registro calava per un caso, senza che nessuno avesse scritto niente.
   const righeSopra = righe.slice(Math.max(0, rigaImport - FINESTRA_COMMENTO), rigaImport)
-  if (!righeSopra.some((r) => /^\s*(\/\/|\/\*|\*)/.test(r))) senzaMotivazione.push(rel)
+  const vuota = righeSopra.findLastIndex((r) => r.trim() === '')
+  if (vuota !== -1) righeSopra.splice(0, vuota + 1)
+  if (!righeSopra.some((r) => /^\s*(\/\/|\/\*|\*)/.test(r) && !DIRETTIVA_LINT.test(r))) {
+    senzaMotivazione.push(rel)
+  }
 }
 
 const adesso = { grezze, senza_motivazione: senzaMotivazione }

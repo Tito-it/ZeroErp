@@ -772,6 +772,7 @@
     "login_error": "Credenziali non valide",
     "session_expired": "Sessione scaduta — accedi di nuovo",
     "logout_other_tab": "Ti sei scollegato da un'altra scheda",
+    "sessione_chiusa_freno": "Sessione chiusa: troppe password sbagliate da questa postazione. Si potrà accedere di nuovo fra qualche minuto.",
     "account_disabled": "Account disabilitato — contattare l'amministratore",
     "account_not_active": "Account non ancora attivo",
     "account_expired": "Account scaduto — contattare l'amministratore",
@@ -832,6 +833,7 @@
       "configurazione_a_meta": "La configurazione è stata avviata ma non completata: ricominciala per ricevere un codice QR nuovo.",
       "configura": "Configura il secondo fattore",
       "ricomincia": "Ricomincia la configurazione",
+      "chiedi_password": "Per avviare la configurazione, inserisci la password con cui accedi.",
       "passo_qr": "1. Inquadra il codice QR con l'app di autenticazione.",
       "qr_alt": "Codice QR per l'app di autenticazione",
       "segreto_manuale": "Se non puoi inquadrarlo, inserisci nell'app questa chiave:",
@@ -847,10 +849,8 @@
       "chiedi_codice_disattiva": "Per disattivare il secondo fattore, inserisci il codice dell'app.",
       "genera_codici": "Genera nuovi codici di recupero",
       "disattiva": "Disattiva il secondo fattore",
-      "torna": "Torna all'applicazione",
       "file_codici_intestazione": "ZeroERP — codici di recupero del secondo fattore. Ognuno vale una volta sola.",
-      "file_codici_nome": "zeroerp-codici-recupero.txt",
-      "uscita_conferma": "La pagina Sicurezza esce dall'applicazione: le modifiche non salvate (schede: {n}) andranno perse. Continuare?"
+      "file_codici_nome": "zeroerp-codici-recupero.txt"
     },
     "stato_veste": {
       "NESSUNO": "Non invitato",
@@ -858,6 +858,12 @@
       "NON_SPEDITO": "Invito non spedito",
       "ATTIVO": "Attivo",
       "DISATTIVO": "Disattivato"
+    },
+    "account": {
+      "apri_scheda": "Il mio accesso: profilo, password, sicurezza",
+      "utente": "Utente",
+      "uscita_conferma": "La pagina «{pagina}» esce dall'applicazione: le modifiche non salvate (schede: {n}) andranno perse. Continuare?",
+      "torna": "Torna all'applicazione"
     }
   },
   "resolver": {
@@ -1767,6 +1773,7 @@
       "bloccata_ok": "Accesso bloccato.",
       "sbloccata_ok": "Accesso sbloccato.",
       "blocca_reason": {
+        "credenziale_di_sistema": "È l'accesso di un processo automatico o di un sistema esterno: bloccarlo fermerebbe il suo lavoro.",
         "ultimo_super_admin": "È l'ultimo super amministratore raggiungibile: bloccarlo lascerebbe il sistema senza amministratori."
       },
       "nessun_accesso_spiegazione": "Questo accesso non ha nessuna veste: non entra da nessuna porta. È un caso da sanare, e lo segnala anche il controllo delle credenziali da sanare.",

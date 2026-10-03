@@ -413,12 +413,21 @@ L'invito **non** lo accende: la password la sceglie la persona nell'attivazione 
 
 ### Cambio password volontario
 
-L'operatore puo' cambiare la propria password in qualsiasi momento da **Profilo → Cambia password**
-(rotta `/change-password`). Il flusso richiede:
+L'operatore puo' cambiare la propria password in qualsiasi momento: clic sul
+**badge dell'utente** in alto a sinistra (le iniziali, o «Super Admin») →
+**«Cambia password»** (rotta `/change-password`; «Torna all'applicazione» per
+uscirne senza cambiarla). Il flusso richiede:
 
 1. Password attuale (verifica identita')
 2. Nuova password (passa i 4 validators Django)
 3. Conferma nuova password
+
+La password attuale ha lo **stesso freno del login**: sbagliata conta come un
+tentativo fallito, e al blocco della postazione la sessione da cui si stava
+provando si **chiude** e si torna al login («Sessione chiusa: troppe password
+sbagliate…»). Lo stesso vale per la password chiesta da «Sicurezza
+dell'accesso». Le altre sessioni della persona restano aperte: chiuderle tutte
+darebbe a chi ne tiene una rubata il modo di buttare fuori il titolare.
 
 Al successo: password aggiornata, tutti i token JWT precedenti invalidati,
 nuova coppia JWT rilasciata, profilo ricaricato.
@@ -535,7 +544,8 @@ richiede:
 L'obbligo segue i profili: chi riceve il reparto lo ha, chi lo lascia non più.
 Senza obbligo, chiunque può attivarlo lo stesso.
 
-**Come si configura.** Menu utente → «Sicurezza dell'accesso»; con l'obbligo
+**Come si configura.** Badge dell'utente in alto a sinistra → «Sicurezza
+dell'accesso», con la password dell'accesso; con l'obbligo
 pendente la pagina si apre da sola dopo il login, e il backend non risponde ad
 altro (403 `E_TOTP_CONFIGURAZIONE_RICHIESTA`). Si inquadra il QR con l'app (o si
 scrive la chiave), si conservano i **dieci codici di recupero** (ognuno vale una

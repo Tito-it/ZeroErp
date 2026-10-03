@@ -17,9 +17,8 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
-import AppDialog from '../../core/components/AppDialog.vue'
+import MotivoDialog from '../../core/components/MotivoDialog.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { MANAGE_ICONS } from '../../core/constants'
@@ -40,7 +39,6 @@ const { confirmAction } = useConfirmAction()
 
 const cred = ref(null)
 const dialogVisibile = ref(false)
-const motivo = ref('')
 
 const motivoSpento = computed(() =>
   cred.value && !cred.value.can_block
@@ -59,13 +57,12 @@ async function carica() {
 watch(() => props.authUserId, (id) => { if (id) carica() }, { immediate: true })
 
 function apriBlocca() {
-  motivo.value = ''
   dialogVisibile.value = true
 }
 
-async function confermaBlocca() {
+async function confermaBlocca(motivo) {
   const res = await execute(
-    () => bloccaCredenziale(props.authUserId, motivo.value),
+    () => bloccaCredenziale(props.authUserId, motivo),
     { successMessage: t('amministrazione.accessi.bloccata_ok') }
   )
   if (res) {
@@ -134,27 +131,18 @@ function chiediSblocca() {
       </span>
     </div>
 
-    <AppDialog
+    <MotivoDialog
       v-model:visible="dialogVisibile"
       :header="t('amministrazione.accessi.blocca')"
-      width="sm"
+      :label="t('amministrazione.accessi.motivo_blocco')"
+      obbligatorio
       :loading="loading"
-      :save-disabled="!motivo.trim()"
+      :invalid="campiErrati.includes('motivo')"
       :save-label="t('amministrazione.accessi.blocca')"
       save-severity="danger"
-      @save="confermaBlocca"
-      @cancel="dialogVisibile = false"
+      @conferma="confermaBlocca"
     >
       <p>{{ t('amministrazione.accessi.blocca_spiegazione') }}</p>
-      <div class="form-field">
-        <label for="motivo-blocco">{{ t('amministrazione.accessi.motivo_blocco') }} *</label>
-        <InputText
-          id="motivo-blocco"
-          v-model="motivo"
-          :invalid="campiErrati.includes('motivo')"
-          fluid
-        />
-      </div>
-    </AppDialog>
+    </MotivoDialog>
   </div>
 </template>

@@ -17,12 +17,9 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -42,7 +39,6 @@ const emit = defineEmits(['update:visible', 'changed'])
 const { t, te } = useI18n()
 const parentReadonly = useInjectReadonly()
 const isReadonly = computed(() => props.readonly || parentReadonly.value)
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const onClose = useDrawerClose(emit)
 const { apriSchedaVeste } = useSchedaVeste()
 
@@ -55,22 +51,20 @@ function vaiAllaScheda(veste) {
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
+    :title="riga?.nome_visualizzato || t('amministrazione.accessi.tab_altri')"
+    :icon="NAV_ICONS.ACCESSI"
+    :action="t('common.view')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :proteggi-corpo="false"
+    :readonly="isReadonly"
+    footer="chiudi"
     @update:visible="(v) => emit('update:visible', v)"
-    @after-show="onAfterShow"
   >
-    <template #header>
-      <DrawerTitle
-        :action="t('common.view')"
-        :title="riga?.nome_visualizzato || t('amministrazione.accessi.tab_altri')"
-        :icon="NAV_ICONS.ACCESSI"
-      />
-    </template>
-
-    <div v-if="contentReady && riga" class="app-drawer-content">
+    <template v-if="riga">
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('amministrazione.field_username') }}</label>
@@ -120,10 +114,8 @@ function vaiAllaScheda(veste) {
         :readonly="isReadonly"
         @changed="emit('changed')"
       />
-
-      <FormFooter close-only @cancel="onClose" />
-    </div>
-  </Drawer>
+    </template>
+  </AppDrawer>
 </template>
 
 <style scoped>

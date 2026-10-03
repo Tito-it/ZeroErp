@@ -8,21 +8,16 @@
 //        il Select. In edit i campi colonna e profilo sono read-only.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import { DRAWER_WIDTH, LIVELLO_ACCESSO, MANAGE_ICONS } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
 import { useUiPermessoAdminStore } from '../stores/uiPermessoAdmin'
-
-
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -31,11 +26,6 @@ const props = defineProps({
   listaId: { type: Number, default: null },
   readonly: { type: Boolean, default: false },
 })
-
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -129,108 +119,89 @@ async function onSave() {
   }
 }
 
-function onCancel() {
-  emit('cancelled')
-  emit('update:visible', false)
-}
-const chiudi = () => chiudiConConferma(onCancel)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :modal="true"
-    :dismissable-mask="false"
-    @after-show="onAfterShow"
+    :title="t('ui.admin.permesso')"
+    :icon="MANAGE_ICONS.PERMISSIONS"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :readonly="isReadonlyEffective"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :footer="isReadonlyEffective ? 'chiudi' : 'form'"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="onSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('ui.admin.permesso')"
-        :icon="MANAGE_ICONS.PERMISSIONS"
-      />
-    </template>
-
-    <div v-if="contentReady"
-      class="app-drawer-content"
-      :class="{ 'app-readonly': isReadonlyEffective }"
-    >
-      <div class="form-grid">
-        <div class="form-field">
-          <label>{{ t('ui.admin.permesso_colonna') }}</label>
-          <template v-if="isEdit">
-            <InputText
-              :model-value="recordData?.colonna_codice ? `${recordData.colonna_etichetta} (${recordData.colonna_codice})` : ''"
-              readonly
-            />
-          </template>
-          <template v-else>
-            <Select
-              v-model="form.colonna_id"
-              :options="catalogo"
-              option-value="id"
-              :placeholder="t('ui.admin.permesso_seleziona_colonna')"
-              :invalid="campiErrati.includes('colonna_id')"
-              :loading="loadingCatalogo"
-              :filter="catalogo.length > 5"
-            >
-              <template #value="{ value }">
-                <span v-if="value">
-                  {{ catalogoLabel(value) }}
-                </span>
-                <span v-else class="muted">
-                  {{ t('ui.admin.permesso_seleziona_colonna') }}
-                </span>
-              </template>
-              <template #option="{ option }">
-                <span>{{ option.etichetta }} <small class="muted">({{ option.codice }})</small></span>
-              </template>
-            </Select>
-          </template>
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('ui.admin.permesso_profilo') }}</label>
-          <template v-if="isEdit">
-            <InputText
-              :model-value="recordData?.profilo_accesso_codice ?? ''"
-              readonly
-            />
-          </template>
-          <template v-else>
-            <LookupSelect
-              v-model="form.profilo_accesso_id"
-              rel="config.profili_accesso"
-              show-code
-              :placeholder="t('ui.admin.permesso_seleziona_profilo')"
-            />
-          </template>
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('ui.admin.permesso_livello_accesso') }}</label>
-          <Select
-            v-model="form.livello_accesso"
-            :options="livelliOptions"
-            option-label="label"
-            option-value="value"
-            :invalid="campiErrati.includes('livello_accesso')"
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t('ui.admin.permesso_colonna') }}</label>
+        <template v-if="isEdit">
+          <InputText
+            :model-value="recordData?.colonna_codice ? `${recordData.colonna_etichetta} (${recordData.colonna_codice})` : ''"
+            readonly
           />
-        </div>
+        </template>
+        <template v-else>
+          <Select
+            v-model="form.colonna_id"
+            :options="catalogo"
+            option-value="id"
+            :placeholder="t('ui.admin.permesso_seleziona_colonna')"
+            :invalid="campiErrati.includes('colonna_id')"
+            :loading="loadingCatalogo"
+            :filter="catalogo.length > 5"
+          >
+            <template #value="{ value }">
+              <span v-if="value">
+                {{ catalogoLabel(value) }}
+              </span>
+              <span v-else class="muted">
+                {{ t('ui.admin.permesso_seleziona_colonna') }}
+              </span>
+            </template>
+            <template #option="{ option }">
+              <span>{{ option.etichetta }} <small class="muted">({{ option.codice }})</small></span>
+            </template>
+          </Select>
+        </template>
+      </div>
+
+      <div class="form-field">
+        <label>{{ t('ui.admin.permesso_profilo') }}</label>
+        <template v-if="isEdit">
+          <InputText
+            :model-value="recordData?.profilo_accesso_codice ?? ''"
+            readonly
+          />
+        </template>
+        <template v-else>
+          <LookupSelect
+            v-model="form.profilo_accesso_id"
+            rel="config.profili_accesso"
+            show-code
+            :placeholder="t('ui.admin.permesso_seleziona_profilo')"
+          />
+        </template>
+      </div>
+
+      <div class="form-field">
+        <label>{{ t('ui.admin.permesso_livello_accesso') }}</label>
+        <Select
+          v-model="form.livello_accesso"
+          :options="livelliOptions"
+          option-label="label"
+          option-value="value"
+          :invalid="campiErrati.includes('livello_accesso')"
+        />
       </div>
     </div>
-
-    <FormFooter
-      v-if="!isReadonlyEffective"
-      :loading="loading"
-      :disabled="!canSave"
-      @save="onSave"
-      @cancel="chiudi"
-    />
-  </Drawer>
+  </AppDrawer>
 </template>

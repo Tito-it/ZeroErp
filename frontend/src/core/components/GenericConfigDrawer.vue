@@ -14,17 +14,14 @@
 //       non stanno qui: hanno il loro drawer (`EntityFormDrawer` o dedicato).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { DATE_FORMAT, DRAWER_WIDTH } from '../constants'
 import { NAV_ICONS } from '../navigation'
 import { labelOrCode } from '../utils/i18nLabel'
 import { WIDGET, chiaveEtichettaCampo, widgetPerColonna } from '../utils/campoConfig'
 import { parseIsoDate, toDateStringOrNull } from '../utils/date'
-import FormFooter from './FormFooter.vue'
-import DrawerTitle from './DrawerTitle.vue'
+import AppDrawer from './AppDrawer.vue'
 import LookupSelect from './LookupSelect.vue'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -33,8 +30,7 @@ import DatePicker from 'primevue/datepicker'
 import {
   getConfigTableMetadata, getConfigRecord, createConfigRecord, updateConfigRecord,
 } from '../api/configTables'
-import { useDrawerContentReady } from '../composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../composables/useDrawerFormPreserve'
 
 
 
@@ -46,15 +42,9 @@ const props = defineProps({
   recordId: { type: Number, default: null }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
-
 const emit = defineEmits(['update:visible', 'saved'])
 
 const { t, te } = useI18n()
-const isReadonly = useInjectReadonly()
 // `campiErrati`: il BE nomina la colonna da correggere (vincolo a una colonna,
 // NOT NULL, trigger) e qui si accende l'input — e' l'unico consumatore del
 // campo che il service spedisce, senza questo binding il canale finiva nel toast.
@@ -69,7 +59,6 @@ const form = ref({})
 const {
   fissa, modificato, chiudiConConferma, fotografia,
 } = useDrawerFormPreserve(form, { visibile: () => props.visible })
-const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
 
 // ⛔ Il drawer e' UNO per il pannello e cambia tabella con `rel`: il metadata
 // va azzerato, o la seconda tabella si apre col form della prima (e il verbo
@@ -219,75 +208,66 @@ async function handleSave() {
     emit('update:visible', false)
   }
 }
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03 (testata, uscita con conferma,
+       montaggio a fine animazione, corpo, footer):
+       work-done/analisi-fe-chrome-drawer.md. -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.SIMPLE }"
-    @after-show="onAfterShow"
+    :title="label"
+    :icon="NAV_ICONS.TABELLE"
+    :action="mode === 'create' ? t('common.new') : t('common.edit')"
+    :width="DRAWER_WIDTH.SIMPLE"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="mode === 'create' ? t('common.new') : t('common.edit')"
-        :title="label"
-        :icon="NAV_ICONS.TABELLE"
-      />
-    </template>
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div class="form-grid">
-        <template v-for="col in editableColumns" :key="col.name">
-          <div class="form-field">
-            <label>{{ col.etichetta }}{{ col.obbligatoria ? ' *' : '' }}</label>
+    <div class="form-grid">
+      <template v-for="col in editableColumns" :key="col.name">
+        <div class="form-field">
+          <label>{{ col.etichetta }}{{ col.obbligatoria ? ' *' : '' }}</label>
 
-            <!-- FK verso una tabella ammessa al lookup generico. ⚠️ `value-field`
-                 dalla FK: non tutte puntano a `id` (`esito` → `codice_interno`). -->
-            <LookupSelect
-              v-if="col.widget === WIDGET.LOOKUP"
-              v-model="form[col.name]"
-              :rel="col.references"
-              :value-field="col.references_column"
-              :invalid="campiErrati.includes(col.name)"
-              show-clear
-            />
+          <!-- FK verso una tabella ammessa al lookup generico. ⚠️ `value-field`
+               dalla FK: non tutte puntano a `id` (`esito` → `codice_interno`). -->
+          <LookupSelect
+            v-if="col.widget === WIDGET.LOOKUP"
+            v-model="form[col.name]"
+            :rel="col.references"
+            :value-field="col.references_column"
+            :invalid="campiErrati.includes(col.name)"
+            show-clear
+          />
 
-            <!-- FK verso una tabella che il lookup non serve: valore a mano,
-                 dichiarato — numero o testo secondo la colonna -->
-            <template v-else-if="col.widget === WIDGET.FK_ID">
-              <InputNumber v-if="col.type === 'number'" v-model="form[col.name]" :use-grouping="false" :invalid="campiErrati.includes(col.name)" />
-              <InputText v-else v-model="form[col.name]" :invalid="campiErrati.includes(col.name)" />
-              <small class="app-text-muted">{{ t('config_panel.hint_fk_id', { tabella: col.references, colonna: col.references_column }) }}</small>
-            </template>
-
-            <DatePicker
-              v-else-if="col.widget === WIDGET.DATE"
-              v-model="form[col.name]"
-              :date-format="DATE_FORMAT"
-              :invalid="campiErrati.includes(col.name)"
-              show-icon
-            />
-
-            <InputNumber v-else-if="col.widget === WIDGET.NUMBER" v-model="form[col.name]" :use-grouping="false" :invalid="campiErrati.includes(col.name)" />
-
-            <ToggleSwitch v-else-if="col.widget === WIDGET.BOOLEAN" v-model="form[col.name]" :invalid="campiErrati.includes(col.name)" />
-
-            <Textarea v-else-if="col.widget === WIDGET.JSON" v-model="form[col.name]" rows="4" auto-resize :invalid="campiErrati.includes(col.name)" />
-
+          <!-- FK verso una tabella che il lookup non serve: valore a mano,
+               dichiarato — numero o testo secondo la colonna -->
+          <template v-else-if="col.widget === WIDGET.FK_ID">
+            <InputNumber v-if="col.type === 'number'" v-model="form[col.name]" :use-grouping="false" :invalid="campiErrati.includes(col.name)" />
             <InputText v-else v-model="form[col.name]" :invalid="campiErrati.includes(col.name)" />
-          </div>
-        </template>
-      </div>
+            <small class="app-text-muted">{{ t('config_panel.hint_fk_id', { tabella: col.references, colonna: col.references_column }) }}</small>
+          </template>
 
-      <FormFooter
-        :loading="loading"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="chiudi"
-      />
+          <DatePicker
+            v-else-if="col.widget === WIDGET.DATE"
+            v-model="form[col.name]"
+            :date-format="DATE_FORMAT"
+            :invalid="campiErrati.includes(col.name)"
+            show-icon
+          />
+
+          <InputNumber v-else-if="col.widget === WIDGET.NUMBER" v-model="form[col.name]" :use-grouping="false" :invalid="campiErrati.includes(col.name)" />
+
+          <ToggleSwitch v-else-if="col.widget === WIDGET.BOOLEAN" v-model="form[col.name]" :invalid="campiErrati.includes(col.name)" />
+
+          <Textarea v-else-if="col.widget === WIDGET.JSON" v-model="form[col.name]" rows="4" auto-resize :invalid="campiErrati.includes(col.name)" />
+
+          <InputText v-else v-model="form[col.name]" :invalid="campiErrati.includes(col.name)" />
+        </div>
+      </template>
     </div>
-  </Drawer>
+  </AppDrawer>
 </template>

@@ -35,6 +35,7 @@ import { DATE_FORMAT } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 import { useDocumentiInterniStore } from '../stores/documentiInterni'
 import { FAMIGLIE } from '../vocabolari'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 // ⚠️ Niente `class="w-full"` sui campi: `.form-field` e' gia' `flex-direction:
 //    column`, quindi i figli si stirano da se'.
@@ -94,10 +95,14 @@ async function onSave() {
 }
 
 function onCancel() { emit('update:visible', false) }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ ...form.value }), { visibile: () => props.visible })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="visible"
     :header="t(`${f.i18n}.nuovo`)"
     width="md"

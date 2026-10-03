@@ -12,25 +12,20 @@
 //        ricchi senza cambiare il contratto del drawer.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { USO_MISURA, misuraDefault, misureOpzioni } from '../../core/misurePagina'
 import { NAV_ICONS } from '../../core/navigation'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
-
-
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -40,11 +35,6 @@ const props = defineProps({
   listaId: { type: Number, default: null },
   readonly: { type: Boolean, default: false },
 })
-
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -170,148 +160,129 @@ async function onSave() {
   }
 }
 
-function onCancel() {
-  emit('cancelled')
-  emit('update:visible', false)
-}
-const chiudi = () => chiudiConConferma(onCancel)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :modal="true"
-    :dismissable-mask="false"
-    @after-show="onAfterShow"
+    :title="t('ui.admin.preset')"
+    :icon="NAV_ICONS.PERSONALIZZAZIONI_LISTE"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :readonly="isReadonlyEffective"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :footer="isReadonlyEffective ? 'chiudi' : 'form'"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="onSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('ui.admin.preset')"
-        :icon="NAV_ICONS.PERSONALIZZAZIONI_LISTE"
-      />
-    </template>
-
-    <div v-if="contentReady"
-      class="app-drawer-content"
-      :class="{ 'app-readonly': isReadonlyEffective }"
-    >
-      <div class="form-grid">
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('ui.admin.preset_codice') }}</label>
-            <InputText v-model="form.codice" maxlength="80"
-              :invalid="campiErrati.includes('codice')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('ui.admin.preset_pagina_dimensione') }}</label>
-            <!-- ⭐ Le misure del catalogo DB (`ui.misure_pagina`), non un numero
-                 libero: fino al 2026-09-30 era un InputNumber 1-500, che faceva
-                 scrivere misure che il paginatore non offre. Vuoto = «il
-                 default» (NULL a DB). -->
-            <Select
-              v-model="form.pagina_dimensione"
-              :options="misureOpzioni()"
-              :placeholder="t('ui.admin.preset_pagina_dimensione_default', { misura: misuraDefault(USO_MISURA.PAGINA) })"
-              show-clear
-              :invalid="campiErrati.includes('pagina_dimensione')"
-            />
-          </div>
-        </div>
-
+    <div class="form-grid">
+      <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('ui.admin.preset_descrizione') }}</label>
-          <InputText v-model="form.descrizione" maxlength="200"
-            :invalid="campiErrati.includes('descrizione')"
+          <label>{{ t('ui.admin.preset_codice') }}</label>
+          <InputText v-model="form.codice" maxlength="80"
+            :invalid="campiErrati.includes('codice')"
           />
         </div>
-
         <div class="form-field">
-          <label>{{ t('ui.admin.preset_ambito') }}</label>
+          <label>{{ t('ui.admin.preset_pagina_dimensione') }}</label>
+          <!-- ⭐ Le misure del catalogo DB (`ui.misure_pagina`), non un numero
+               libero: fino al 2026-09-30 era un InputNumber 1-500, che faceva
+               scrivere misure che il paginatore non offre. Vuoto = «il
+               default» (NULL a DB). -->
           <Select
-            v-model="form.ambito"
-            :options="ambitiOptions"
-            option-label="label"
-            option-value="value"
-            :disabled="isEdit"
-            :invalid="campiErrati.includes('ambito')"
+            v-model="form.pagina_dimensione"
+            :options="misureOpzioni()"
+            :placeholder="t('ui.admin.preset_pagina_dimensione_default', { misura: misuraDefault(USO_MISURA.PAGINA) })"
+            show-clear
+            :invalid="campiErrati.includes('pagina_dimensione')"
           />
-          <Message
-            v-if="isEdit"
-            severity="info"
-            :closable="false"
-            size="small"
-            class="mt-025"
-          >
-            {{ t('ui.admin.preset_ambito_immutabile') }}
-          </Message>
         </div>
+      </div>
 
-        <div v-if="form.ambito === 'ruolo'" class="form-field">
-          <label>{{ t('ui.admin.preset_profilo_accesso') }}</label>
-          <LookupSelect
-            v-if="!isEdit"
-            v-model="form.profilo_accesso_id"
-            rel="config.profili_accesso"
-            show-code
-            :placeholder="t('ui.admin.preset_seleziona_profilo')"
-          />
-          <InputText
-            v-else
-            :model-value="recordData?.profilo_accesso_codice ?? ''"
-            readonly
-          />
-        </div>
-        <div v-else-if="form.ambito === 'emittente_fiscale'" class="form-field">
-          <label>{{ t('ui.admin.preset_emittente_fiscale') }}</label>
-          <!-- emittenti_fiscali non e' nella whitelist lookup generico
-               (campi non standard); manteniamo InputNumber per ora.
-               Fase 2: switch a EmittenteFiscaleField (gia' building block). -->
-          <InputNumber
-            v-if="!isEdit"
-            v-model="form.emittente_fiscale_id"
-            :min="1"
-            show-buttons
-            :invalid="campiErrati.includes('emittente_fiscale_id')"
-          />
-          <InputText
-            v-else
-            :model-value="recordData?.emittente_fiscale_codice ?? ''"
-            readonly
-          />
-        </div>
+      <div class="form-field">
+        <label>{{ t('ui.admin.preset_descrizione') }}</label>
+        <InputText v-model="form.descrizione" maxlength="200"
+          :invalid="campiErrati.includes('descrizione')"
+        />
+      </div>
 
-        <div class="form-grid-2col">
-          <div class="form-field form-field-inline">
-            <Checkbox v-model="form.is_default" binary input-id="ui-preset-default"
-              :invalid="campiErrati.includes('is_default')"
-            />
-            <label for="ui-preset-default">{{ t('ui.admin.preset_is_default') }}</label>
-          </div>
-          <div class="form-field form-field-inline">
-            <Checkbox v-model="form.attivo" binary input-id="ui-preset-attivo"
-              :invalid="campiErrati.includes('attivo')"
-            />
-            <label for="ui-preset-attivo">{{ t('common.active') }}</label>
-          </div>
+      <div class="form-field">
+        <label>{{ t('ui.admin.preset_ambito') }}</label>
+        <Select
+          v-model="form.ambito"
+          :options="ambitiOptions"
+          option-label="label"
+          option-value="value"
+          :disabled="isEdit"
+          :invalid="campiErrati.includes('ambito')"
+        />
+        <Message
+          v-if="isEdit"
+          severity="info"
+          :closable="false"
+          size="small"
+          class="mt-025"
+        >
+          {{ t('ui.admin.preset_ambito_immutabile') }}
+        </Message>
+      </div>
+
+      <div v-if="form.ambito === 'ruolo'" class="form-field">
+        <label>{{ t('ui.admin.preset_profilo_accesso') }}</label>
+        <LookupSelect
+          v-if="!isEdit"
+          v-model="form.profilo_accesso_id"
+          rel="config.profili_accesso"
+          show-code
+          :placeholder="t('ui.admin.preset_seleziona_profilo')"
+        />
+        <InputText
+          v-else
+          :model-value="recordData?.profilo_accesso_codice ?? ''"
+          readonly
+        />
+      </div>
+      <div v-else-if="form.ambito === 'emittente_fiscale'" class="form-field">
+        <label>{{ t('ui.admin.preset_emittente_fiscale') }}</label>
+        <!-- emittenti_fiscali non e' nella whitelist lookup generico
+             (campi non standard); manteniamo InputNumber per ora.
+             Fase 2: switch a EmittenteFiscaleField (gia' building block). -->
+        <InputNumber
+          v-if="!isEdit"
+          v-model="form.emittente_fiscale_id"
+          :min="1"
+          show-buttons
+          :invalid="campiErrati.includes('emittente_fiscale_id')"
+        />
+        <InputText
+          v-else
+          :model-value="recordData?.emittente_fiscale_codice ?? ''"
+          readonly
+        />
+      </div>
+
+      <div class="form-grid-2col">
+        <div class="form-field form-field-inline">
+          <Checkbox v-model="form.is_default" binary input-id="ui-preset-default"
+            :invalid="campiErrati.includes('is_default')"
+          />
+          <label for="ui-preset-default">{{ t('ui.admin.preset_is_default') }}</label>
+        </div>
+        <div class="form-field form-field-inline">
+          <Checkbox v-model="form.attivo" binary input-id="ui-preset-attivo"
+            :invalid="campiErrati.includes('attivo')"
+          />
+          <label for="ui-preset-attivo">{{ t('common.active') }}</label>
         </div>
       </div>
     </div>
-
-    <FormFooter
-      v-if="!isReadonlyEffective"
-      :loading="loading"
-      :disabled="!canSave"
-      @save="onSave"
-      @cancel="chiudi"
-    />
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>

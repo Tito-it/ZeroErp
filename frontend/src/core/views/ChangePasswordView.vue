@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
 import { usePasswordValidation } from '../composables/usePasswordValidation'
+import { seSessioneChiusaDalFreno } from '../api'
 import { extractApiError } from '../utils/apiError'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
@@ -20,6 +21,10 @@ const confirmPassword = ref('')
 const errorMessage = ref('')
 const successMessage = ref('')
 const loading = ref(false)
+
+function tornaAllApplicazione() {
+  router.push(route.query.redirect || '/')
+}
 
 async function handleChangePassword() {
   errorMessage.value = ''
@@ -39,9 +44,12 @@ async function handleChangePassword() {
       newPasswordConfirm: confirmPassword.value,
     })
     successMessage.value = t('auth.password_changed_success')
-    setTimeout(() => router.push(route.query.redirect || '/'), 1500)
+    setTimeout(tornaAllApplicazione, 1500)
   } catch (err) {
-    errorMessage.value = extractApiError(err, t('auth.login_error'))
+    // Il freno sulla password chiude la sessione: si va al login col motivo.
+    if (!seSessioneChiusaDalFreno(err)) {
+      errorMessage.value = extractApiError(err, t('auth.login_error'))
+    }
   } finally {
     loading.value = false
   }
@@ -119,6 +127,12 @@ async function handleChangePassword() {
           :disabled="!oldPassword || !newPassword || !confirmPassword"
           class="auth-submit-btn"
         />
+
+        <!-- Arrivati di propria iniziativa (scheda utente) si torna indietro;
+             con l'obbligo pendente no: il guard riporterebbe qui. -->
+        <a v-if="!auth.mustChangePassword" href="#" class="back-link" @click.prevent="tornaAllApplicazione">
+          {{ t('auth.account.torna') }}
+        </a>
       </form>
     </div>
   </div>

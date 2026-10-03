@@ -10,7 +10,7 @@
 //        un'azienda che il processo non serve ancora.
 //
 // ⭐ Sola lettura per costruzione: il registro dei processi è CATALOGO — nasce
-//    da un seed, non da questa schermata. `FormFooter close-only`: non c'è
+//    da un seed, non da questa schermata. `footer="chiudi"` di AppDrawer: non c'è
 //    niente da salvare, e un pulsante «Salva» che non salva niente è peggio di
 //    nessun pulsante.
 // ⚠️ Le quattro schede sono `Tabs` PrimeVue 4 e NON `useDrawerTabLista`:
@@ -29,7 +29,6 @@
 //    diventa una lista vera con `useDrawerTabLista` — non prima.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
@@ -39,13 +38,10 @@ import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useNotify } from '../../core/composables/useNotify'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -66,10 +62,6 @@ const props = defineProps({
   codice: { type: String, default: null },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'identita-creata'])
 
 // ⛔ Quante corse si mostrano. Sede UNICA: prima il numero stava nella
@@ -80,7 +72,6 @@ const CORSE_MOSTRATE = 50
 const { t, te } = useI18n()
 const { execute } = useApiHandler()
 const notify = useNotify()
-const onClose = useDrawerClose(emit)
 const { confirmAction } = useConfirmAction()
 
 const dettaglio = ref(null)
@@ -294,276 +285,269 @@ async function eseguiOra(sveglia) {
        La larghezza da sola non basta, perché unit e comando sono testo libero
        del deploy: le due colonne vanno anche a capo (`app-proc-wrap`), così il
        pulsante resta in vista qualunque riga dichiari domani `sveglie.json`. -->
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE_PLUS }"
-    @update:visible="v => emit('update:visible', v)"
-    @after-show="onAfterShow"
+    :title="codice || ''"
+    :icon="NAV_ICONS.PROCESSI_AUTOMATICI"
+    :action="t('amministrazione.processi.drawer_action')"
+    :width="DRAWER_WIDTH.WIDE_PLUS"
+    :proteggi-corpo="false"
+    footer="chiudi"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle
-        :action="t('amministrazione.processi.drawer_action')"
-        :title="codice || ''"
-        :icon="NAV_ICONS.PROCESSI_AUTOMATICI"
-      />
+    <template v-if="dettaglio">
+      <div class="app-proc-testa">
+        <Tag :value="dettaglio.classe" severity="info" />
+        <Tag :value="dettaglio.canale" severity="secondary" />
+        <Tag
+          v-if="!dettaglio.attivo"
+          :value="t('amministrazione.stato_inattivo')"
+          severity="danger"
+        />
+        <span class="app-proc-descrizione">{{ dettaglio.descrizione }}</span>
+      </div>
+
+      <Tabs v-model:value="tabAttiva">
+        <TabList>
+          <Tab value="bersagli">
+            {{ t('amministrazione.processi.tab_bersagli') }}
+            ({{ dettaglio.bersagli.length }})
+          </Tab>
+          <Tab value="identita">
+            {{ t('amministrazione.processi.tab_identita') }}
+            ({{ dettaglio.identita.length }})
+          </Tab>
+          <Tab value="run">
+            {{ t('amministrazione.processi.tab_run') }} ({{ corse.length }})
+          </Tab>
+          <Tab value="sveglie">
+            {{ t('amministrazione.processi.tab_sveglie') }} ({{ sveglie.length }})
+          </Tab>
+        </TabList>
+
+        <TabPanels>
+          <TabPanel value="bersagli">
+            <!-- ⚠️ È un elenco DICHIARATO: prova che qualcuno ha detto dove
+                 il processo scrive, non che scriva solo lì. -->
+            <p class="app-proc-help">
+              {{ t('amministrazione.processi.bersagli_help') }}
+            </p>
+            <table class="app-proc-tabella">
+              <thead>
+                <tr>
+                  <th>{{ t('amministrazione.processi.col_tabella') }}</th>
+                  <th>{{ t('amministrazione.processi.col_percorso') }}</th>
+                  <th>{{ t('amministrazione.processi.col_colonna') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="b in dettaglio.bersagli" :key="`${b.schema_tabella}.${b.nome_tabella}`">
+                  <td>{{ b.schema_tabella }}.{{ b.nome_tabella }}</td>
+                  <!-- ⛔ Percorso assente = il processo scrive dove non c'è
+                       niente su cui filtrare: è il caso che il presidio
+                       «dominio senza emittente» esiste per prendere. -->
+                  <td>
+                    <Tag
+                      v-if="!b.emittente_via"
+                      :value="t('amministrazione.processi.senza_percorso')"
+                      severity="warn"
+                    />
+                    <span v-else>{{ b.emittente_via }}</span>
+                  </td>
+                  <td>{{ b.emittente_colonna || '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </TabPanel>
+
+          <TabPanel value="identita">
+            <p class="app-proc-help">
+              {{ dettaglio.vuole_identita
+                ? t('amministrazione.processi.identita_help')
+                : t('amministrazione.processi.identita_non_serve') }}
+            </p>
+            <table v-if="dettaglio.identita.length" class="app-proc-tabella">
+              <thead>
+                <tr>
+                  <th>{{ t('amministrazione.processi.col_utente') }}</th>
+                  <th>{{ t('amministrazione.processi.col_azienda') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="i in dettaglio.identita" :key="i.auth_user_id">
+                  <td>{{ i.username }}</td>
+                  <td>{{ i.emittente_codice }}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- ⭐ Il numero che rompe il silenzio: senza questo blocco, «due
+                 identità» si legge come «tutto a posto» anche quando la terza
+                 azienda non viene servita e il suo lavoro non parte. -->
+            <template v-if="dettaglio.vuole_identita && emittentiScoperti.length">
+              <Message severity="warn" :closable="false">
+                {{ t('amministrazione.processi.aziende_scoperte', { n: emittentiScoperti.length }) }}
+              </Message>
+              <div class="app-proc-crea">
+                <Select
+                  v-model="emittenteScelto"
+                  :options="emittentiScoperti"
+                  option-label="label"
+                  option-value="value"
+                  :placeholder="t('amministrazione.processi.scegli_azienda')"
+                  @change="daRiattivare = null"
+                />
+                <Button
+                  :label="t('amministrazione.processi.crea_identita')"
+                  :icon="MANAGE_ICONS.ADD"
+                  :disabled="!emittenteScelto || creazioneInCorso"
+                  :loading="creazioneInCorso"
+                  @click="creaIdentita"
+                />
+                <!-- ⭐ Compare SOLO dopo che la fabbrica ha detto che c'è
+                     qualcosa di spento: è il rifiuto parlante a portare qui,
+                     non un'ipotesi del frontend. -->
+                <Button
+                  v-if="daRiattivare"
+                  :label="t('amministrazione.processi.riattiva_identita')"
+                  :icon="MANAGE_ICONS.RIATTIVA"
+                  severity="warn"
+                  :disabled="creazioneInCorso"
+                  :loading="creazioneInCorso"
+                  @click="riattivaIdentita"
+                />
+              </div>
+            </template>
+          </TabPanel>
+
+          <TabPanel value="run">
+            <p class="app-proc-help">
+              {{ t('amministrazione.processi.run_help', { n: CORSE_MOSTRATE }) }}
+            </p>
+            <table v-if="corse.length" class="app-proc-tabella">
+              <thead>
+                <tr>
+                  <th>{{ t('amministrazione.processi.col_quando') }}</th>
+                  <th>{{ t('amministrazione.processi.col_jobname') }}</th>
+                  <th>{{ t('amministrazione.processi.col_origine') }}</th>
+                  <th>{{ t('amministrazione.processi.col_esito') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in corse" :key="r.id">
+                  <td>{{ displayTimestamp(r.started_at) }}</td>
+                  <td>{{ r.jobname }}</td>
+                  <td>{{ r.origine }}</td>
+                  <td>
+                    <!-- ⚠️ `ok` è a tre stati: `null` = corsa ancora aperta,
+                         non «fallita». Appiattirlo a rosso direbbe il falso. -->
+                    <Tag
+                      v-if="r.ok === true"
+                      :value="t('amministrazione.processi.esito_ok')"
+                      severity="success"
+                    />
+                    <Tag
+                      v-else-if="r.ok === false"
+                      :value="r.error_code || t('amministrazione.processi.esito_ko')"
+                      severity="danger"
+                    />
+                    <Tag
+                      v-else
+                      :value="t('amministrazione.processi.esito_in_corso')"
+                      severity="secondary"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-else class="app-proc-help">
+              {{ t('amministrazione.processi.run_nessuno') }}
+            </p>
+          </TabPanel>
+
+          <TabPanel value="sveglie">
+            <!-- ⚠️ È il DICHIARATO di deploy (`sveglie.json`), non lo stato
+                 di questo host: cosa sta girando davvero lo dicono le corse. -->
+            <p class="app-proc-help">
+              {{ t('amministrazione.processi.sveglie_help') }}
+            </p>
+            <table v-if="sveglie.length" class="app-proc-tabella">
+              <thead>
+                <tr>
+                  <th>{{ t('amministrazione.processi.col_unit') }}</th>
+                  <th>{{ t('amministrazione.processi.col_forma') }}</th>
+                  <th>{{ t('amministrazione.processi.col_cadenza') }}</th>
+                  <th>{{ t('amministrazione.processi.col_abilita') }}</th>
+                  <th>{{ t('amministrazione.processi.col_comando') }}</th>
+                  <th>{{ t('common.col_azioni') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="s in sveglie" :key="s.unit">
+                  <td class="app-proc-wrap">{{ s.unit }}</td>
+                  <td>
+                    <Tag
+                      :value="s.forma === FORMA_TIMER
+                        ? t('amministrazione.processi.forma_timer')
+                        : t('amministrazione.processi.forma_servizio')"
+                      :severity="s.forma === FORMA_TIMER ? 'info' : 'secondary'"
+                    />
+                  </td>
+                  <td>
+                    <code v-if="s.oncalendar" class="app-proc-mono">{{ s.oncalendar }}</code>
+                    <span v-else>{{ t('amministrazione.processi.sveglia_sempre_accesa') }}</span>
+                  </td>
+                  <!-- «Spenta» è una scelta del deploy, non un guasto: grigio,
+                       non arancio. Il perché sta nella nota della voce. -->
+                  <td>
+                    <AttivoTag
+                      :active="s.abilita"
+                      :active-label="t('amministrazione.processi.sveglia_abilitata')"
+                      :inactive-label="t('amministrazione.processi.sveglia_spenta')"
+                      inactive-severity="secondary"
+                    />
+                  </td>
+                  <td class="app-proc-wrap"><code class="app-proc-mono">{{ s.comando.join(' ') }}</code></td>
+                  <td>
+                    <!-- ⭐ Solo sui TIMER: su un servizio sempre acceso non
+                         c'è una corsa da lanciare — non è un candidato, non
+                         è uno stato, quindi il pulsante NON compare (invece
+                         di comparire spento). Sul timer dichiarato non
+                         candidato compare spento COL MOTIVO.
+                         ⚠️ Il tooltip sta sull'INVOLUCRO: un `<button
+                         disabled>` non emette eventi del mouse, e a pulsante
+                         spento è proprio quando il motivo serve. -->
+                    <span
+                      v-if="s.forma === FORMA_TIMER"
+                      class="app-action-tooltip-wrap"
+                      v-tooltip.left="eseguiOraTooltip(s)"
+                    >
+                      <Button
+                        :label="t('amministrazione.processi.esegui_ora')"
+                        :icon="MANAGE_ICONS.PLAY"
+                        size="small"
+                        outlined
+                        :disabled="eseguiOraBloccato(s) || eseguiInCorso !== null"
+                        :loading="eseguiInCorso === s.unit"
+                        @click="chiediEseguiOra(s)"
+                      />
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-else class="app-proc-help">
+              {{ t('amministrazione.processi.sveglie_nessuna') }}
+            </p>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </template>
 
-    <div v-if="contentReady" class="app-drawer-content">
-      <template v-if="dettaglio">
-        <div class="app-proc-testa">
-          <Tag :value="dettaglio.classe" severity="info" />
-          <Tag :value="dettaglio.canale" severity="secondary" />
-          <Tag
-            v-if="!dettaglio.attivo"
-            :value="t('amministrazione.stato_inattivo')"
-            severity="danger"
-          />
-          <span class="app-proc-descrizione">{{ dettaglio.descrizione }}</span>
-        </div>
-
-        <Tabs v-model:value="tabAttiva">
-          <TabList>
-            <Tab value="bersagli">
-              {{ t('amministrazione.processi.tab_bersagli') }}
-              ({{ dettaglio.bersagli.length }})
-            </Tab>
-            <Tab value="identita">
-              {{ t('amministrazione.processi.tab_identita') }}
-              ({{ dettaglio.identita.length }})
-            </Tab>
-            <Tab value="run">
-              {{ t('amministrazione.processi.tab_run') }} ({{ corse.length }})
-            </Tab>
-            <Tab value="sveglie">
-              {{ t('amministrazione.processi.tab_sveglie') }} ({{ sveglie.length }})
-            </Tab>
-          </TabList>
-
-          <TabPanels>
-            <TabPanel value="bersagli">
-              <!-- ⚠️ È un elenco DICHIARATO: prova che qualcuno ha detto dove
-                   il processo scrive, non che scriva solo lì. -->
-              <p class="app-proc-help">
-                {{ t('amministrazione.processi.bersagli_help') }}
-              </p>
-              <table class="app-proc-tabella">
-                <thead>
-                  <tr>
-                    <th>{{ t('amministrazione.processi.col_tabella') }}</th>
-                    <th>{{ t('amministrazione.processi.col_percorso') }}</th>
-                    <th>{{ t('amministrazione.processi.col_colonna') }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="b in dettaglio.bersagli" :key="`${b.schema_tabella}.${b.nome_tabella}`">
-                    <td>{{ b.schema_tabella }}.{{ b.nome_tabella }}</td>
-                    <!-- ⛔ Percorso assente = il processo scrive dove non c'è
-                         niente su cui filtrare: è il caso che il presidio
-                         «dominio senza emittente» esiste per prendere. -->
-                    <td>
-                      <Tag
-                        v-if="!b.emittente_via"
-                        :value="t('amministrazione.processi.senza_percorso')"
-                        severity="warn"
-                      />
-                      <span v-else>{{ b.emittente_via }}</span>
-                    </td>
-                    <td>{{ b.emittente_colonna || '—' }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </TabPanel>
-
-            <TabPanel value="identita">
-              <p class="app-proc-help">
-                {{ dettaglio.vuole_identita
-                  ? t('amministrazione.processi.identita_help')
-                  : t('amministrazione.processi.identita_non_serve') }}
-              </p>
-              <table v-if="dettaglio.identita.length" class="app-proc-tabella">
-                <thead>
-                  <tr>
-                    <th>{{ t('amministrazione.processi.col_utente') }}</th>
-                    <th>{{ t('amministrazione.processi.col_azienda') }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="i in dettaglio.identita" :key="i.auth_user_id">
-                    <td>{{ i.username }}</td>
-                    <td>{{ i.emittente_codice }}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <!-- ⭐ Il numero che rompe il silenzio: senza questo blocco, «due
-                   identità» si legge come «tutto a posto» anche quando la terza
-                   azienda non viene servita e il suo lavoro non parte. -->
-              <template v-if="dettaglio.vuole_identita && emittentiScoperti.length">
-                <Message severity="warn" :closable="false">
-                  {{ t('amministrazione.processi.aziende_scoperte', { n: emittentiScoperti.length }) }}
-                </Message>
-                <div class="app-proc-crea">
-                  <Select
-                    v-model="emittenteScelto"
-                    :options="emittentiScoperti"
-                    option-label="label"
-                    option-value="value"
-                    :placeholder="t('amministrazione.processi.scegli_azienda')"
-                    @change="daRiattivare = null"
-                  />
-                  <Button
-                    :label="t('amministrazione.processi.crea_identita')"
-                    :icon="MANAGE_ICONS.ADD"
-                    :disabled="!emittenteScelto || creazioneInCorso"
-                    :loading="creazioneInCorso"
-                    @click="creaIdentita"
-                  />
-                  <!-- ⭐ Compare SOLO dopo che la fabbrica ha detto che c'è
-                       qualcosa di spento: è il rifiuto parlante a portare qui,
-                       non un'ipotesi del frontend. -->
-                  <Button
-                    v-if="daRiattivare"
-                    :label="t('amministrazione.processi.riattiva_identita')"
-                    :icon="MANAGE_ICONS.RIATTIVA"
-                    severity="warn"
-                    :disabled="creazioneInCorso"
-                    :loading="creazioneInCorso"
-                    @click="riattivaIdentita"
-                  />
-                </div>
-              </template>
-            </TabPanel>
-
-            <TabPanel value="run">
-              <p class="app-proc-help">
-                {{ t('amministrazione.processi.run_help', { n: CORSE_MOSTRATE }) }}
-              </p>
-              <table v-if="corse.length" class="app-proc-tabella">
-                <thead>
-                  <tr>
-                    <th>{{ t('amministrazione.processi.col_quando') }}</th>
-                    <th>{{ t('amministrazione.processi.col_jobname') }}</th>
-                    <th>{{ t('amministrazione.processi.col_origine') }}</th>
-                    <th>{{ t('amministrazione.processi.col_esito') }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="r in corse" :key="r.id">
-                    <td>{{ displayTimestamp(r.started_at) }}</td>
-                    <td>{{ r.jobname }}</td>
-                    <td>{{ r.origine }}</td>
-                    <td>
-                      <!-- ⚠️ `ok` è a tre stati: `null` = corsa ancora aperta,
-                           non «fallita». Appiattirlo a rosso direbbe il falso. -->
-                      <Tag
-                        v-if="r.ok === true"
-                        :value="t('amministrazione.processi.esito_ok')"
-                        severity="success"
-                      />
-                      <Tag
-                        v-else-if="r.ok === false"
-                        :value="r.error_code || t('amministrazione.processi.esito_ko')"
-                        severity="danger"
-                      />
-                      <Tag
-                        v-else
-                        :value="t('amministrazione.processi.esito_in_corso')"
-                        severity="secondary"
-                      />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              <p v-else class="app-proc-help">
-                {{ t('amministrazione.processi.run_nessuno') }}
-              </p>
-            </TabPanel>
-
-            <TabPanel value="sveglie">
-              <!-- ⚠️ È il DICHIARATO di deploy (`sveglie.json`), non lo stato
-                   di questo host: cosa sta girando davvero lo dicono le corse. -->
-              <p class="app-proc-help">
-                {{ t('amministrazione.processi.sveglie_help') }}
-              </p>
-              <table v-if="sveglie.length" class="app-proc-tabella">
-                <thead>
-                  <tr>
-                    <th>{{ t('amministrazione.processi.col_unit') }}</th>
-                    <th>{{ t('amministrazione.processi.col_forma') }}</th>
-                    <th>{{ t('amministrazione.processi.col_cadenza') }}</th>
-                    <th>{{ t('amministrazione.processi.col_abilita') }}</th>
-                    <th>{{ t('amministrazione.processi.col_comando') }}</th>
-                    <th>{{ t('common.col_azioni') }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="s in sveglie" :key="s.unit">
-                    <td class="app-proc-wrap">{{ s.unit }}</td>
-                    <td>
-                      <Tag
-                        :value="s.forma === FORMA_TIMER
-                          ? t('amministrazione.processi.forma_timer')
-                          : t('amministrazione.processi.forma_servizio')"
-                        :severity="s.forma === FORMA_TIMER ? 'info' : 'secondary'"
-                      />
-                    </td>
-                    <td>
-                      <code v-if="s.oncalendar" class="app-proc-mono">{{ s.oncalendar }}</code>
-                      <span v-else>{{ t('amministrazione.processi.sveglia_sempre_accesa') }}</span>
-                    </td>
-                    <!-- «Spenta» è una scelta del deploy, non un guasto: grigio,
-                         non arancio. Il perché sta nella nota della voce. -->
-                    <td>
-                      <AttivoTag
-                        :active="s.abilita"
-                        :active-label="t('amministrazione.processi.sveglia_abilitata')"
-                        :inactive-label="t('amministrazione.processi.sveglia_spenta')"
-                        inactive-severity="secondary"
-                      />
-                    </td>
-                    <td class="app-proc-wrap"><code class="app-proc-mono">{{ s.comando.join(' ') }}</code></td>
-                    <td>
-                      <!-- ⭐ Solo sui TIMER: su un servizio sempre acceso non
-                           c'è una corsa da lanciare — non è un candidato, non
-                           è uno stato, quindi il pulsante NON compare (invece
-                           di comparire spento). Sul timer dichiarato non
-                           candidato compare spento COL MOTIVO.
-                           ⚠️ Il tooltip sta sull'INVOLUCRO: un `<button
-                           disabled>` non emette eventi del mouse, e a pulsante
-                           spento è proprio quando il motivo serve. -->
-                      <span
-                        v-if="s.forma === FORMA_TIMER"
-                        class="app-action-tooltip-wrap"
-                        v-tooltip.left="eseguiOraTooltip(s)"
-                      >
-                        <Button
-                          :label="t('amministrazione.processi.esegui_ora')"
-                          :icon="MANAGE_ICONS.PLAY"
-                          size="small"
-                          outlined
-                          :disabled="eseguiOraBloccato(s) || eseguiInCorso !== null"
-                          :loading="eseguiInCorso === s.unit"
-                          @click="chiediEseguiOra(s)"
-                        />
-                      </span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              <p v-else class="app-proc-help">
-                {{ t('amministrazione.processi.sveglie_nessuna') }}
-              </p>
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
-      </template>
-
-      <p v-else-if="caricamento" class="app-proc-help">{{ t('common.loading') }}</p>
-    </div>
-
-    <FormFooter close-only @cancel="onClose" />
-  </Drawer>
+    <p v-else-if="caricamento" class="app-proc-help">{{ t('common.loading') }}</p>
+  </AppDrawer>
 </template>
 
 <style scoped>

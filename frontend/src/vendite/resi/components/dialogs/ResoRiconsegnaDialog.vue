@@ -26,6 +26,7 @@ import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 // DataTable grezza: sono le RIGHE del reso da ri-consegnare (store.loadRighe),
 // scelte e quantificate nel dialog d'azione — dettaglio del documento.
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
@@ -65,6 +66,7 @@ const {
   righe, loadingRighe, selected, qtaMap, righeSelezionabili,
   coversAllResiduo, loadRighe, buildPayloadRighe,
   isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected,
+  chiudiConConferma,
 } = useRigheSelezioneQta({
   fetchRighe: async () => {
     if (!props.resoId) return []
@@ -76,6 +78,8 @@ const {
   },
   residuoDi: (r) => Number(r.qta_residua) || 0,
   readonly: () => props.readonly,
+  // La fotografia (D-14) e' del BB, fissata a ogni caricamento delle righe.
+  visibile: () => props.visible,
 })
 
 // Fetch lazy: all'apertura (e a ogni riapertura, cosi' la copertura residua
@@ -182,10 +186,13 @@ function onRiapri(riga) {
       if (result === null) return
       notify.success(t('vendite.resi.rinuncia_riaperta'))
       emit('aggiornato', result)
+      // La ricarica rifissa la fotografia da se' (BB): la selezione riscritta
+      // e' la nuova base, non una modifica dell'operatore.
       await loadRighe()
     },
   })
 }
+
 </script>
 
 <template>
@@ -194,6 +201,7 @@ function onRiapri(riga) {
        erediterebbe readonly=true nascondendo il pulsante di generazione — pur
        essendo la ri-spedizione un'azione legittima proprio in quello stato. -->
   <AppDialog
+    :conferma-uscita="chiudiConConferma"
     :visible="visible"
     width="xl"
     :header="t('vendite.resi.riconsegna_titolo')"
@@ -208,14 +216,14 @@ function onRiapri(riga) {
          costringerebbe a rifare la selezione per cambiare esito. «Rendi
          definitivo» e' `warn` outlined: e' l'uscita con conseguenza contabile,
          non va data la stessa enfasi del percorso normale. -->
-    <template v-if="!soloChiusura" #footer>
+    <template v-if="!soloChiusura" #footer="{ chiudi }">
       <div class="app-rispedizione-footer">
         <Button
           text
           :label="t('common.close')"
           :icon="MANAGE_ICONS.CANCEL"
           :disabled="loading"
-          @click="close" />
+          @click="chiudi" />
         <Button
           severity="warn"
           outlined

@@ -7,8 +7,7 @@
 import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useSoggettoForm } from '../composables/useSoggettoForm'
@@ -27,18 +26,14 @@ import SoggettoForm from './SoggettoForm.vue'
 import ContattoForm from './ContattoForm.vue'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
 import DatiSocietariForm from './DatiSocietariForm.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import IndirizziSoggettoDrawer from './IndirizziSoggettoDrawer.vue'
 import ContattiSoggettoDrawer from './ContattiSoggettoDrawer.vue'
 import ContiBancariDrawer from './ContiBancariDrawer.vue'
 import TitoliIvaSoggettoDrawer from './TitoliIvaSoggettoDrawer.vue'
-import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
-
-
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -98,11 +93,6 @@ const props = defineProps({
   tipiAmmessiIds: { type: Array, default: null }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
-
 const emit = defineEmits(['update:visible', 'saved', 'saved-with-data'])
 
 // Modifiche non salvate (BB useDrawerFormPreserve) sul form del soggetto, che
@@ -121,7 +111,6 @@ const formSoggetto = computed(() => (props.mode === 'edit'
       }),
     }))
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSoggetto, { visibile: () => props.visible })
-const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
 
 const isEdit = computed(() => props.mode === 'edit')
 
@@ -238,7 +227,6 @@ function populateFromDetail(data) {
   contattiRiepilogo.value = data.contatti || []
   contiBancariRiepilogo.value = data.conti_bancari || []
 }
-
 
 // Callback quando i drawer indirizzi/contatti salvano — ricarica il riepilogo.
 async function onContattiSaved() {
@@ -419,251 +407,246 @@ async function handleSave() {
     }
   }
 }
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    @after-show="onAfterShow"
+    :title="t('anagrafiche.soggetti.soggetto')"
+    :icon="NAV_ICONS.ANAGRAFICHE"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle :modificato="modificato" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('anagrafiche.soggetti.soggetto')" :icon="NAV_ICONS.ANAGRAFICHE" />
-    </template>
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <!-- Sezione: Dati soggetto -->
-      <SoggettoForm
-        :form="soggetto.form"
+    <!-- Sezione: Dati soggetto -->
+    <SoggettoForm
+      :form="soggetto.form"
+      :campi-errati="campiErrati"
+      :tipi-soggetto="soggetto.tipiSoggetto"
+      :is-p-f="soggetto.isPF.value"
+      :show-partita-iva="soggetto.showPartitaIva.value"
+      :is-edit="isEdit"
+      :disabled="false"
+      :tipi-ammessi-ids="tipiAmmessiIds"
+      :tipi-modificabili-ids="tipiModificabiliIds"
+      :non-editable-fields="nonEditableFields"
+      :comune-nascita-item="comuneNascitaItem"
+    />
+
+    <!-- Sezione: Contatto inline (create) o riepilogo (edit) -->
+    <template v-if="!isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
+      </div>
+      <ContattoForm
         :campi-errati="campiErrati"
-        :tipi-soggetto="soggetto.tipiSoggetto"
-        :is-p-f="soggetto.isPF.value"
-        :show-partita-iva="soggetto.showPartitaIva.value"
-        :is-edit="isEdit"
+        :form="contatto.form"
+        :tipi-contatto="contatto.tipiContatto"
+        :unita-organizzative="contatto.unitaOrganizzative"
+        :errors="contattoErrors"
+        :show-u-o="false"
         :disabled="false"
-        :tipi-ammessi-ids="tipiAmmessiIds"
-        :tipi-modificabili-ids="tipiModificabiliIds"
-        :non-editable-fields="nonEditableFields"
-        :comune-nascita-item="comuneNascitaItem"
       />
-
-      <!-- Sezione: Contatto inline (create) o riepilogo (edit) -->
-      <template v-if="!isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
-        </div>
-        <ContattoForm
-          :campi-errati="campiErrati"
-          :form="contatto.form"
-          :tipi-contatto="contatto.tipiContatto"
-          :unita-organizzative="contatto.unitaOrganizzative"
-          :errors="contattoErrors"
-          :show-u-o="false"
-          :disabled="false"
-        />
-      </template>
-      <template v-else>
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
-        </div>
-        <div class="app-riepilogo-section">
-          <div v-if="contattiRiepilogo.length > 0" class="app-riepilogo-list">
-            <div v-for="c in contattiRiepilogo" :key="c.id" class="app-riepilogo-item">
-              <strong>{{ c.nominativo }}</strong>
-              <span v-if="c.email" class="app-riepilogo-detail">{{ c.email }}</span>
-              <span v-if="c.telefono" class="app-riepilogo-detail">{{ c.telefono }}</span>
-            </div>
+    </template>
+    <template v-else>
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
+      </div>
+      <div class="app-riepilogo-section">
+        <div v-if="contattiRiepilogo.length > 0" class="app-riepilogo-list">
+          <div v-for="c in contattiRiepilogo" :key="c.id" class="app-riepilogo-item">
+            <strong>{{ c.nominativo }}</strong>
+            <span v-if="c.email" class="app-riepilogo-detail">{{ c.email }}</span>
+            <span v-if="c.telefono" class="app-riepilogo-detail">{{ c.telefono }}</span>
           </div>
-          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
-            {{ t('anagrafiche.contatto.nessun_contatto') }}
-          </div>
-          <Button
-            :label="t('anagrafiche.contatto.gestisci_contatti')"
-            :icon="MANAGE_ICONS.CONTATTI"
-            text
-            size="small"
-            class="app-action-btn app-escape mt-025"
-            @click="contattiDrawerVisible = true"
-          />
-        </div>
-      </template>
-
-      <!-- Separatore: Indirizzo (solo in create mode) -->
-      <template v-if="!isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
-        </div>
-        <IndirizzoSoggettoForm
-          :form="indirizzo.form"
-          :is-libera="indirizzo.isLibera.value"
-          @update:is-libera="v => indirizzo.isLibera.value = v"
-          :tipi-stato="indirizzo.tipiStato.value"
-          :stati-lookup="indirizzo.statiLookup"
-          :cap-options="indirizzo.capOptions.value"
-          :loading-cap="indirizzo.loadingCap.value"
-          :auto-clone="indirizzo.autoClone.value"
-          @update:auto-clone="v => indirizzo.autoClone.value = v"
-          @switch-tipo="indirizzo.switchTipo"
-          :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
-          :address-not-found="indirizzo.addressNotFound.value"
-          :disabled="false"
-        />
-      </template>
-
-      <!-- Sezione: Dati societari (condizionale) — subito dopo anagrafica/P.IVA -->
-      <template v-if="soggetto.showDatiSocietari.value">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_dati_societari') }}</h4>
-        </div>
-        <DatiSocietariForm
-          :form="datiSocietari.form"
-          :forme-giuridiche="formeGiuridicheLookup"
-          :province-lookup="provinceLookup"
-          :show-rea="datiSocietari.showRea.value"
-          :require-rea="datiSocietari.requireRea.value"
-          :show-capitale-sociale="datiSocietari.showCapitaleSociale.value"
-          :require-capitale-sociale="datiSocietari.requireCapitaleSociale.value"
-          :required="soggetto.requireDatiSocietari.value"
-          :disabled="false"
-        />
-      </template>
-
-      <!-- Sezione: Dati fiscali (edit mode) — regime della controparte.
-           I0/D8: i due flag sono saliti da `anagrafiche.clienti`, dove stavano
-           su una riga PER FORNITURA e ammettevano valori opposti per la stessa
-           partita IVA. Stanno accanto a CF/P.IVA perche' e' da li' che
-           discendono. ⚠️ NON sono un codice IVA e non entrano nel risolutore
-           (D4): non cambiano l'aliquota, cambiano CHI VERSA l'imposta. -->
-      <template v-if="isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_dati_fiscali') }}</h4>
-        </div>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('anagrafiche.soggetti.field_cliente_pa') }}</label>
-            <Select v-model="soggetto.form.cliente_pa" :options="paOptions"
-              option-label="label" option-value="value"
-              :disabled="isReadonly" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('anagrafiche.soggetti.field_split_payment') }}</label>
-            <Select v-model="soggetto.form.split_payment" :options="paOptions"
-              option-label="label" option-value="value"
-              :disabled="isReadonly" />
-          </div>
-        </div>
-      </template>
-
-      <!-- Sezione: Indirizzi riepilogo (edit mode) + pulsante Gestisci -->
-      <template v-if="isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
-        </div>
-        <div>
-          <div v-if="indirizziRiepilogo.length > 0" class="app-riepilogo-list">
-            <div v-for="ind in indirizziRiepilogo" :key="ind.id" class="app-riepilogo-item">
-              <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
-              <span>{{ ind.indirizzo_display }}</span>
-            </div>
-          </div>
-          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
-            {{ t('anagrafiche.indirizzo_soggetto.nessun_indirizzo') }}
-          </div>
-          <Button
-            :label="t('anagrafiche.indirizzo_soggetto.gestisci_indirizzi')"
-            :icon="MANAGE_ICONS.INDIRIZZI"
-            text
-            size="small"
-            class="app-action-btn app-escape mt-025"
-            @click="indirizziDrawerVisible = true"
-          />
-        </div>
-      </template>
-
-      <!-- Sezione: Conti bancari riepilogo (edit mode) -->
-      <template v-if="isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.conti_bancari.titolo') }}</h4>
-        </div>
-        <div class="app-riepilogo-section">
-          <div v-if="contiBancariRiepilogo.length > 0" class="app-riepilogo-list">
-            <div v-for="cb in contiBancariRiepilogo" :key="cb.id" class="app-riepilogo-item">
-              <Tag :value="cb.uso" severity="info" />
-              <span class="app-riepilogo-detail app-mono">{{ cb.iban }}</span>
-              <span v-if="cb.filiale_nome" class="app-riepilogo-detail">{{ cb.filiale_nome }}</span>
-            </div>
-          </div>
-          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
-            {{ t('anagrafiche.conti_bancari.nessun_conto') }}
-          </div>
-          <Button
-            :label="t('anagrafiche.conti_bancari.gestisci_conti')"
-            :icon="MANAGE_ICONS.CONTI_BANCARI"
-            text
-            size="small"
-            class="app-action-btn app-escape mt-025"
-            @click="contiBancariDrawerVisible = true"
-          />
-        </div>
-      </template>
-
-      <!-- Sezione: Titoli IVA (edit mode) — I7/D10.
-           ⭐ E' la sede che realizza D7: l'influenza del soggetto sull'IVA passa
-           SEMPRE da un titolo registrato, datato e con una prova documentale —
-           mai da una colonna di default appesa all'anagrafica. E' la ragione per
-           cui `clienti.iva_id` e' stata tolta e non sostituita. -->
-      <template v-if="isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.titoli_iva.titolo_lista') }}</h4>
-        </div>
-        <div class="app-riepilogo-section">
-          <div v-if="titoliIvaRiepilogo.length > 0" class="app-riepilogo-list">
-            <div v-for="ti in titoliIvaRiepilogo" :key="ti.id" class="app-riepilogo-item">
-              <Tag :value="ti.tipo_descrizione" :severity="ti.attivo ? 'info' : 'secondary'" />
-              <span class="app-riepilogo-detail">{{ ti.emittente_ragione_sociale }}</span>
-              <span v-if="ti.residuo != null" class="app-riepilogo-detail">
-                {{ t('anagrafiche.titoli_iva.col_residuo') }}: {{ ti.residuo }}
-              </span>
-            </div>
-          </div>
-          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
-            {{ t('anagrafiche.titoli_iva.lista_vuota') }}
-          </div>
-          <Button
-            :label="t('anagrafiche.titoli_iva.gestisci_titoli')"
-            :icon="MANAGE_ICONS.TITOLI_IVA"
-            text
-            size="small"
-            class="app-action-btn app-escape mt-025"
-            @click="titoliIvaDrawerVisible = true"
-          />
-        </div>
-      </template>
-
-      <!-- Sezione: Ruoli (solo edit mode, readonly) -->
-      <template v-if="isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_ruoli') }}</h4>
-        </div>
-        <div v-if="ruoliAssegnati.length > 0" class="ruoli-tags">
-          <Tag v-for="r in ruoliAssegnati" :key="r.tipo_ruolo_id"
-               :value="r.ruolo_descrizione" severity="info" />
         </div>
         <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
-          {{ t('anagrafiche.soggetti.nessun_ruolo') }}
+          {{ t('anagrafiche.contatto.nessun_contatto') }}
         </div>
-      </template>
+        <Button
+          :label="t('anagrafiche.contatto.gestisci_contatti')"
+          :icon="MANAGE_ICONS.CONTATTI"
+          text
+          size="small"
+          class="app-action-btn app-escape mt-025"
+          @click="contattiDrawerVisible = true"
+        />
+      </div>
+    </template>
 
-      <FormFooter
-        :loading="loading"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="chiudi"
+    <!-- Separatore: Indirizzo (solo in create mode) -->
+    <template v-if="!isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
+      </div>
+      <IndirizzoSoggettoForm
+        :form="indirizzo.form"
+        :is-libera="indirizzo.isLibera.value"
+        @update:is-libera="v => indirizzo.isLibera.value = v"
+        :tipi-stato="indirizzo.tipiStato.value"
+        :stati-lookup="indirizzo.statiLookup"
+        :cap-options="indirizzo.capOptions.value"
+        :loading-cap="indirizzo.loadingCap.value"
+        :auto-clone="indirizzo.autoClone.value"
+        @update:auto-clone="v => indirizzo.autoClone.value = v"
+        @switch-tipo="indirizzo.switchTipo"
+        :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
+        :address-not-found="indirizzo.addressNotFound.value"
+        :disabled="false"
       />
-    </div>
-  </Drawer>
+    </template>
+
+    <!-- Sezione: Dati societari (condizionale) — subito dopo anagrafica/P.IVA -->
+    <template v-if="soggetto.showDatiSocietari.value">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_dati_societari') }}</h4>
+      </div>
+      <DatiSocietariForm
+        :form="datiSocietari.form"
+        :forme-giuridiche="formeGiuridicheLookup"
+        :province-lookup="provinceLookup"
+        :show-rea="datiSocietari.showRea.value"
+        :require-rea="datiSocietari.requireRea.value"
+        :show-capitale-sociale="datiSocietari.showCapitaleSociale.value"
+        :require-capitale-sociale="datiSocietari.requireCapitaleSociale.value"
+        :required="soggetto.requireDatiSocietari.value"
+        :disabled="false"
+      />
+    </template>
+
+    <!-- Sezione: Dati fiscali (edit mode) — regime della controparte.
+         I0/D8: i due flag sono saliti da `anagrafiche.clienti`, dove stavano
+         su una riga PER FORNITURA e ammettevano valori opposti per la stessa
+         partita IVA. Stanno accanto a CF/P.IVA perche' e' da li' che
+         discendono. ⚠️ NON sono un codice IVA e non entrano nel risolutore
+         (D4): non cambiano l'aliquota, cambiano CHI VERSA l'imposta. -->
+    <template v-if="isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_dati_fiscali') }}</h4>
+      </div>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('anagrafiche.soggetti.field_cliente_pa') }}</label>
+          <Select v-model="soggetto.form.cliente_pa" :options="paOptions"
+            option-label="label" option-value="value"
+            :disabled="isReadonly" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('anagrafiche.soggetti.field_split_payment') }}</label>
+          <Select v-model="soggetto.form.split_payment" :options="paOptions"
+            option-label="label" option-value="value"
+            :disabled="isReadonly" />
+        </div>
+      </div>
+    </template>
+
+    <!-- Sezione: Indirizzi riepilogo (edit mode) + pulsante Gestisci -->
+    <template v-if="isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
+      </div>
+      <div>
+        <div v-if="indirizziRiepilogo.length > 0" class="app-riepilogo-list">
+          <div v-for="ind in indirizziRiepilogo" :key="ind.id" class="app-riepilogo-item">
+            <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
+            <span>{{ ind.indirizzo_display }}</span>
+          </div>
+        </div>
+        <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
+          {{ t('anagrafiche.indirizzo_soggetto.nessun_indirizzo') }}
+        </div>
+        <Button
+          :label="t('anagrafiche.indirizzo_soggetto.gestisci_indirizzi')"
+          :icon="MANAGE_ICONS.INDIRIZZI"
+          text
+          size="small"
+          class="app-action-btn app-escape mt-025"
+          @click="indirizziDrawerVisible = true"
+        />
+      </div>
+    </template>
+
+    <!-- Sezione: Conti bancari riepilogo (edit mode) -->
+    <template v-if="isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.conti_bancari.titolo') }}</h4>
+      </div>
+      <div class="app-riepilogo-section">
+        <div v-if="contiBancariRiepilogo.length > 0" class="app-riepilogo-list">
+          <div v-for="cb in contiBancariRiepilogo" :key="cb.id" class="app-riepilogo-item">
+            <Tag :value="cb.uso" severity="info" />
+            <span class="app-riepilogo-detail app-mono">{{ cb.iban }}</span>
+            <span v-if="cb.filiale_nome" class="app-riepilogo-detail">{{ cb.filiale_nome }}</span>
+          </div>
+        </div>
+        <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
+          {{ t('anagrafiche.conti_bancari.nessun_conto') }}
+        </div>
+        <Button
+          :label="t('anagrafiche.conti_bancari.gestisci_conti')"
+          :icon="MANAGE_ICONS.CONTI_BANCARI"
+          text
+          size="small"
+          class="app-action-btn app-escape mt-025"
+          @click="contiBancariDrawerVisible = true"
+        />
+      </div>
+    </template>
+
+    <!-- Sezione: Titoli IVA (edit mode) — I7/D10.
+         ⭐ E' la sede che realizza D7: l'influenza del soggetto sull'IVA passa
+         SEMPRE da un titolo registrato, datato e con una prova documentale —
+         mai da una colonna di default appesa all'anagrafica. E' la ragione per
+         cui `clienti.iva_id` e' stata tolta e non sostituita. -->
+    <template v-if="isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.titoli_iva.titolo_lista') }}</h4>
+      </div>
+      <div class="app-riepilogo-section">
+        <div v-if="titoliIvaRiepilogo.length > 0" class="app-riepilogo-list">
+          <div v-for="ti in titoliIvaRiepilogo" :key="ti.id" class="app-riepilogo-item">
+            <Tag :value="ti.tipo_descrizione" :severity="ti.attivo ? 'info' : 'secondary'" />
+            <span class="app-riepilogo-detail">{{ ti.emittente_ragione_sociale }}</span>
+            <span v-if="ti.residuo != null" class="app-riepilogo-detail">
+              {{ t('anagrafiche.titoli_iva.col_residuo') }}: {{ ti.residuo }}
+            </span>
+          </div>
+        </div>
+        <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
+          {{ t('anagrafiche.titoli_iva.lista_vuota') }}
+        </div>
+        <Button
+          :label="t('anagrafiche.titoli_iva.gestisci_titoli')"
+          :icon="MANAGE_ICONS.TITOLI_IVA"
+          text
+          size="small"
+          class="app-action-btn app-escape mt-025"
+          @click="titoliIvaDrawerVisible = true"
+        />
+      </div>
+    </template>
+
+    <!-- Sezione: Ruoli (solo edit mode, readonly) -->
+    <template v-if="isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_ruoli') }}</h4>
+      </div>
+      <div v-if="ruoliAssegnati.length > 0" class="ruoli-tags">
+        <Tag v-for="r in ruoliAssegnati" :key="r.tipo_ruolo_id"
+             :value="r.ruolo_descrizione" severity="info" />
+      </div>
+      <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
+        {{ t('anagrafiche.soggetti.nessun_ruolo') }}
+      </div>
+    </template>
+  </AppDrawer>
 
   <!-- Drawer indirizzi soggetto (edit mode) -->
   <IndirizziSoggettoDrawer

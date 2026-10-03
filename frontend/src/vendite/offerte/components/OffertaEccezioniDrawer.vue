@@ -11,8 +11,8 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
-import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
@@ -22,7 +22,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import ArticoloLookup from '../../../catalogo/components/ArticoloLookup.vue'
 import DrawerContextHeader from '../../../core/components/DrawerContextHeader.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
-import DrawerTitle from '../../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../../core/components/AppDrawer.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
 import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
@@ -35,9 +35,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useFormInline } from '../../../core/composables/useFormInline'
 import { useArticoloUomOptions } from '../../../catalogo/composables/useArticoloUomOptions'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
-import { useDrawerClose } from '../../../core/composables/useDrawerClose'
-import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { displayDate } from '../../../core/utils/date'
@@ -94,7 +92,11 @@ const eccezioni = ref([])
 // dell'eccezione. Il click apre solo in scrittura (getter letto al click).
 const {
   formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
-} = useFormInline({ puoModificare: () => !isReadonly.value })
+} = useFormInline({
+  puoModificare: () => !isReadonly.value,
+  // D-8: cambiare riga col form modificato chiede (il getter e' letto al clic).
+  confermaCambio: (p) => inline.chiudiConConferma(p),
+})
 // L'id dell'eccezione in modifica, per payload e pannello componenti.
 const editingId = computed(() => rigaInModifica.value?.id ?? null)
 const form = ref({})
@@ -174,8 +176,6 @@ const {
     && form.value?.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE,
   qtaValida: () => true,
 })
-
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // --- Enum options ---
 
@@ -313,18 +313,17 @@ function openCreate() {
 
 function onRowSelect(event) {
   const row = event.data
-  apriRiga(row)
-  // In sola lettura il BB non apre: niente form da popolare.
-  if (!formAperto.value) return
-  form.value = fromRow(row)
-  _resetComponentiState()
-  inline.fissa()
-  if (row.articolo_id) {
-    // In edit l'articolo e' immutabile (Tag readonly); carichiamo comunque le
-    // UoM operative dell'articolo cosi' la Select mostra etichetta coerente
-    // per il valore gia' valorizzato. Niente autopick (formMode='edit').
-    loadUomPerArticolo(row.articolo_id)
-  }
+  apriRiga(row, () => {
+    form.value = fromRow(row)
+    _resetComponentiState()
+    inline.fissa()
+    if (row.articolo_id) {
+      // In edit l'articolo e' immutabile (Tag readonly); carichiamo comunque le
+      // UoM operative dell'articolo cosi' la Select mostra etichetta coerente
+      // per il valore gia' valorizzato. Niente autopick (formMode='edit').
+      loadUomPerArticolo(row.articolo_id)
+    }
+  })
 }
 
 function closeForm() {
@@ -501,352 +500,340 @@ const pageActions = computed(() => [
     key: 'nuova',
     label: t('common.new'),
     tooltip: t('vendite.offerte.eccezione_nuova'),
-    // ⛔ `hideWhenReadonly` (del BB) legge il readonly INIETTATO, e questo
-    //    drawer non fornisce il suo: `isReadonly` qui aggiunge «offerta non
-    //    in BOZZA». Senza questa riga «Nuovo» ricomparirebbe su un'offerta
-    //    emessa.
+    // ⚠️ `isReadonly` aggiunge «offerta non in BOZZA» al readonly dei
+    //    permessi. AppDrawer lo ri-fornisce ai figli (`:readonly`), ma questa
+    //    azione si costruisce QUI, sopra il guscio: la condizione si scrive
+    //    sul posto, o «Nuovo» dipenderebbe da dove la legge la barra.
     visible: () => !isReadonly.value,
     command: openCreate,
   }),
 ])
 
-const onClose = useDrawerClose(emit)
-// Chiusure per volonta' dell'utente: con il form inline modificato chiedono conferma.
-const chiudi = () => inline.chiudiConConferma(onClose)
 const annullaForm = () => inline.chiudiConConferma(closeForm)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="props.visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE_PLUS }"
-    :dismissable="true"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :proteggi-corpo="false"
+    :title="t('vendite.offerte.eccezioni_titolo')"
+    :icon="MANAGE_ICONS.RIGHE"
+    :width="DRAWER_WIDTH.WIDE_PLUS"
+    :readonly="isReadonly"
+    :modificato="modificato"
+    :conferma-uscita="inline.chiudiConConferma"
+    :footer="formAperto ? 'nessuno' : 'chiudi'"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle
-        :title="t('vendite.offerte.eccezioni_titolo')"
-        :icon="MANAGE_ICONS.RIGHE"
-        :modificato="modificato"
+
+    <!-- Intestazione contesto offerta (BB DrawerContextHeader): allinea
+         al pattern uniformato 2026-05-29 con ContrattoRigheDrawer
+         (drawer di figli/eccezioni con contesto padre). -->
+    <DrawerContextHeader
+      :tag-value="props.offertaCodice"
+      :items="[
+        { label: t('vendite.offerte.col_cliente'), value: props.offertaCliente },
+        { label: t('vendite.offerte.col_validita_dal'), value: props.offertaValiditaDal ? displayDate(props.offertaValiditaDal) : null },
+        { label: t('vendite.offerte.col_validita_al'), value: props.offertaValiditaAl ? displayDate(props.offertaValiditaAl) : null, fallback: '∞' },
+      ]">
+      <template #status>
+        <Tag
+          :value="props.offertaStatoDescrizione"
+          :severity="statoOffertaSeverity(props.offertaStatoCodice)"
+        />
+      </template>
+    </DrawerContextHeader>
+
+    <div class="app-page-toolbar">
+      <PageActionsBar :actions="pageActions" />
+    </div>
+
+    <!-- DataTable in-memory (lista eccezioni gia' caricata via reload()).
+         Pattern allineato a `ContrattoRigheDrawer` per le tabelle inner:
+         niente `scrollable` / `scroll-height="flex"` (servono solo lazy);
+         colonne `sortable` + `sort-field` su una colonna esistente,
+         altrimenti PrimeVue Aura genera artefatti grafici nell'header
+         (doppia underline sotto le label) quando paginator-position=top
+         si combina con un thead senza alcun sort-state attivo. -->
+    <DataTable
+      :value="eccezioni"
+      :loading="loading"
+      paginator
+      :rows="misuraDefault(USO_MISURA.COMPATTA)"
+      :rows-per-page-options="misureOpzioni()"
+      paginator-position="top"
+      striped-rows
+      removable-sort
+      sort-field="tipo_eccezione"
+      :sort-order="1"
+      class="app-datatable app-datatable--inner"
+      selection-mode="single"
+      :selection="rigaInModifica"
+      v-model:expanded-rows="expandedRows"
+      data-key="id"
+      @row-select="onRowSelect"
+    >
+      <!-- Expander custom per articoli compositi: chevron solo dove la
+           riga e' padre composito con figli persistiti. Click.stop evita
+           che il click apra anche il form di edit. -->
+      <Column style="width: 2.5rem;" :exportable="false">
+        <template #body="{ data }">
+          <Button v-if="hasBundleComponenti(data)"
+            :icon="isExpanded(data) ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND"
+            text rounded size="small"
+            @click.stop="toggleExpansion(data)" />
+        </template>
+      </Column>
+      <Column
+        field="tipo_eccezione"
+        :header="t('vendite.offerte.col_tipo_eccezione')"
+        sortable
+        style="width: 130px;"
+      >
+        <template #body="{ data }">
+          <Tag :value="data.tipo_eccezione" severity="info" />
+        </template>
+      </Column>
+      <Column
+        field="articolo_codice"
+        :header="t('vendite.offerte.col_articolo')"
+        sortable
+        style="min-width: 180px;"
+      >
+        <template #body="{ data }">{{
+          data.articolo_codice
+            ? `${data.articolo_codice}${data.articolo_descrizione ? ' — ' + data.articolo_descrizione : ''}`
+            : data.articolo_id
+        }}</template>
+      </Column>
+      <Column
+        field="tipo_erogazione"
+        :header="t('vendite.offerte.col_tipo_erogazione')"
+        sortable
+        style="width: 130px;"
       />
-    </template>
-
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <template v-if="contentReady">
-
-        <!-- Intestazione contesto offerta (BB DrawerContextHeader): allinea
-             al pattern uniformato 2026-05-29 con ContrattoRigheDrawer
-             (drawer di figli/eccezioni con contesto padre). -->
-        <DrawerContextHeader
-          :tag-value="props.offertaCodice"
-          :items="[
-            { label: t('vendite.offerte.col_cliente'), value: props.offertaCliente },
-            { label: t('vendite.offerte.col_validita_dal'), value: props.offertaValiditaDal ? displayDate(props.offertaValiditaDal) : null },
-            { label: t('vendite.offerte.col_validita_al'), value: props.offertaValiditaAl ? displayDate(props.offertaValiditaAl) : null, fallback: '∞' },
-          ]">
-          <template #status>
-            <Tag
-              :value="props.offertaStatoDescrizione"
-              :severity="statoOffertaSeverity(props.offertaStatoCodice)"
-            />
-          </template>
-        </DrawerContextHeader>
-
-        <div class="app-page-toolbar">
-          <PageActionsBar :actions="pageActions" />
-        </div>
-
-        <!-- DataTable in-memory (lista eccezioni gia' caricata via reload()).
-             Pattern allineato a `ContrattoRigheDrawer` per le tabelle inner:
-             niente `scrollable` / `scroll-height="flex"` (servono solo lazy);
-             colonne `sortable` + `sort-field` su una colonna esistente,
-             altrimenti PrimeVue Aura genera artefatti grafici nell'header
-             (doppia underline sotto le label) quando paginator-position=top
-             si combina con un thead senza alcun sort-state attivo. -->
-        <DataTable
-          :value="eccezioni"
-          :loading="loading"
-          paginator
-          :rows="misuraDefault(USO_MISURA.COMPATTA)"
-          :rows-per-page-options="misureOpzioni()"
-          paginator-position="top"
-          striped-rows
-          removable-sort
-          sort-field="tipo_eccezione"
-          :sort-order="1"
-          class="app-datatable app-datatable--inner"
-          selection-mode="single"
-          :selection="rigaInModifica"
-          v-model:expanded-rows="expandedRows"
-          data-key="id"
-          @row-select="onRowSelect"
-        >
-          <!-- Expander custom per articoli compositi: chevron solo dove la
-               riga e' padre composito con figli persistiti. Click.stop evita
-               che il click apra anche il form di edit. -->
-          <Column style="width: 2.5rem;" :exportable="false">
-            <template #body="{ data }">
-              <Button v-if="hasBundleComponenti(data)"
-                :icon="isExpanded(data) ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND"
-                text rounded size="small"
-                @click.stop="toggleExpansion(data)" />
-            </template>
-          </Column>
-          <Column
-            field="tipo_eccezione"
-            :header="t('vendite.offerte.col_tipo_eccezione')"
-            sortable
-            style="width: 130px;"
-          >
-            <template #body="{ data }">
-              <Tag :value="data.tipo_eccezione" severity="info" />
-            </template>
-          </Column>
-          <Column
-            field="articolo_codice"
-            :header="t('vendite.offerte.col_articolo')"
-            sortable
-            style="min-width: 180px;"
-          >
-            <template #body="{ data }">{{
-              data.articolo_codice
-                ? `${data.articolo_codice}${data.articolo_descrizione ? ' — ' + data.articolo_descrizione : ''}`
-                : data.articolo_id
-            }}</template>
-          </Column>
-          <Column
-            field="tipo_erogazione"
-            :header="t('vendite.offerte.col_tipo_erogazione')"
-            sortable
-            style="width: 130px;"
-          />
-          <Column
-            field="prezzo_unitario"
-            :header="t('vendite.offerte.col_prezzo_unitario')"
-            sortable
-            style="width: 120px;"
-          />
-          <Column
-            field="qta_operativa"
-            :header="t('vendite.offerte.col_quantita')"
-            sortable
-            style="width: 100px;"
-          />
-          <Column
-            field="attivo"
-            :header="t('vendite.offerte.col_attivo')"
-            sortable
-            style="width: 90px;"
-          >
-            <template #body="{ data }">
-              <AttivoTag :active="data.attivo" />
-            </template>
-          </Column>
-          <Column
-            :header="t('common.col_azioni')"
-            class="app-col-actions"
-            :exportable="false"
-            style="width: 70px;"
-          >
-            <template #body="{ data }">
-              <Button
-                :icon="MANAGE_ICONS.DELETE"
-                text
-                rounded
-                size="small"
-                class="app-delete-btn"
-                :disabled="isReadonly"
-                @click="(event) => onDeleteRow(data, event)"
-              />
-            </template>
-          </Column>
-          <!-- Expansion BoM: ComponentiPanel data-driven con i figli
-               aggregati dal BE (`data.componenti` jsonb). Pattern speculare
-               a `ContrattoRigheDrawer`. -->
-          <template #expansion="{ data }">
-            <div style="padding: 0.25rem 0 0.5rem 2rem; background: var(--app-table-stripe-bg);">
-              <ComponentiPanel
-                :initial-data="rowComponenti(data)"
-                i18n-prefix="vendite.componenti.panel"
-              />
-            </div>
-          </template>
-        </DataTable>
-
-        <!-- Form dettaglio (create/edit). -->
-        <template v-if="formMode">
-          <div class="app-drawer-section">
-            <h4>
-              {{ formMode === 'create'
-                ? t('vendite.offerte.eccezione_nuova')
-                : t('vendite.offerte.eccezione_modifica') }}
-            </h4>
-          </div>
-
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_tipo_eccezione') }} *</label>
-              <Select
-                v-model="form.tipo_eccezione"
-                :options="tipoEccezioneOptions"
-                option-label="label"
-                option-value="value"
-                :disabled="formMode === 'edit'"
-                :invalid="campiErrati.includes('tipo_eccezione')"
-              />
-            </div>
-            <div class="form-field">
-              <label>
-                {{ t('vendite.offerte.field_articolo') }}
-                <span v-if="formMode === 'create'">*</span>
-              </label>
-              <ArticoloLookup
-                :model-value="form.articolo_obj"
-                :disabled="formMode === 'edit'"
-                @update:model-value="onArticoloSelected"
-              />
-            </div>
-          </div>
-
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_tipo_erogazione') }}</label>
-              <Select
-                v-model="form.tipo_erogazione"
-                :options="tipoErogazioneOptions"
-                option-label="label"
-                option-value="value"
-                show-clear
-              />
-            </div>
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_fonte_quantita') }} *</label>
-              <Select
-                v-model="form.fonte_quantita_attesa"
-                :options="fonteOptions"
-                option-label="label"
-                option-value="value"
-              />
-            </div>
-          </div>
-
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_prezzo_unitario') }}</label>
-              <InputNumber
-                v-model="form.prezzo_unitario"
-                :disabled="form.articolo_obj?.is_composito === true
-                           || form.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE"
-                :min-fraction-digits="0"
-                :max-fraction-digits="6"
-              />
-            </div>
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_quantita') }}</label>
-              <InputNumber
-                v-model="form.qta_operativa"
-                :min-fraction-digits="0"
-                :max-fraction-digits="6"
-              />
-            </div>
-          </div>
-
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_uom_operativa') }}</label>
-              <Select
-                v-model="form.uom_operativa_id"
-                :options="uomOptions"
-                :option-label="uomLabel"
-                option-value="uom_id"
-                :loading="uomLoading"
-                :disabled="!form.articolo_id || uomLoading"
-                :placeholder="form.articolo_id
-                  ? t('vendite.offerte.field_uom_operativa')
-                  : t('vendite.promo_articoli.field_uom_articolo_first')"
-              />
-            </div>
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_ordine') }}</label>
-              <InputNumber v-model="form.ordine" :min="0"
-                :invalid="campiErrati.includes('ordine')"
-              />
-            </div>
-          </div>
-
-          <div class="form-field">
-            <label style="display: inline-flex; gap: 0.5rem; align-items: center;">
-              <ToggleSwitch v-model="form.attivo"
-                :invalid="campiErrati.includes('attivo')"
-              />
-              {{ t('vendite.offerte.field_attivo') }}
-            </label>
-          </div>
-
-          <!-- Sezione componenti BoM (modello unificato, simmetria preventivi).
-               CREATE: la ComponentiDialog si auto-apre al primo set valido
-               (articolo composito + uom + qta) tramite watcher; il payload
-               confermato viaggia col save eccezione (`componenti_overrides`).
-               Niente bottone manuale: l'apertura e' automatica, l'eventuale
-               revisione passa dall'expansion della lista eccezioni post-save.
-               EDIT: ComponentiPanel carica i componenti persistiti e li
-               espone editabili (PATCH per componente). -->
-          <template v-if="form.articolo_obj?.is_composito && formMode === 'edit'">
-            <div class="app-drawer-section">
-              <h4>{{ t('vendite.componenti.panel.section_title') }}</h4>
-            </div>
-            <ComponentiPanel
-              :documento-id="props.offertaId"
-              :riga-id="editingId"
-              :readonly="isReadonly"
-              :api-list="listEccezioneComponenti"
-              :api-update="updateEccezioneComponente"
-              :api-delete="deleteEccezioneComponente"
-              :tab-entity="TAB_ENTITIES.OFFERTA_COMMERCIALE"
-              i18n-prefix="vendite.componenti.panel"
-              @changed="reload"
-            />
-          </template>
-
-          <!-- CREATE su composito: bottone "Modifica componenti" per
-               correggere gli override del Dialog prima del save eccezione.
-               Pattern allineato a contratti/preventivi via BB
-               `ComponentiCreateActionsPanel`. Niente check qta nel
-               `disabled`: l'auto-open scatta per CONSUMO/LETTURE senza
-               qta, quindi il bottone "riapri" deve restare cliccabile. -->
-          <ComponentiCreateActionsPanel
-            v-if="form.articolo_obj?.is_composito && formMode === 'create'"
-            :disabled="!form.articolo_id || !form.uom_operativa_id"
-            :componenti-payload="componentiPayload"
-            @apri-dialog="apriComponentiDialog"
-          />
-
-          <!-- Banner inline L2 (BB condiviso): violazione soglia prezzo →
-               CTA "Richiedi approvazione" che retry-a il save con
-               `richiesta_approvazione=true` (workflow L3). Mirror contratti. -->
-          <L2ErrorBanner
-            :error="l2Error"
-            :loading="saving"
-            :label="t('vendite.offerte.richiedi_approvazione')"
-            :label-loading="t('vendite.offerte.richiedi_approvazione_in_corso')"
-            :tooltip="t('vendite.offerte.richiedi_approvazione_tooltip')"
-            @richiedi="onRichiediApprovazione"
-          />
-
-          <FormFooter
-            :loading="saving"
-            :disabled="!canSave"
-            @save="handleSave"
-            @cancel="annullaForm"
+      <Column
+        field="prezzo_unitario"
+        :header="t('vendite.offerte.col_prezzo_unitario')"
+        sortable
+        style="width: 120px;"
+      />
+      <Column
+        field="qta_operativa"
+        :header="t('vendite.offerte.col_quantita')"
+        sortable
+        style="width: 100px;"
+      />
+      <Column
+        field="attivo"
+        :header="t('vendite.offerte.col_attivo')"
+        sortable
+        style="width: 90px;"
+      >
+        <template #body="{ data }">
+          <AttivoTag :active="data.attivo" />
+        </template>
+      </Column>
+      <Column
+        :header="t('common.col_azioni')"
+        class="app-col-actions"
+        :exportable="false"
+        style="width: 70px;"
+      >
+        <template #body="{ data }">
+          <Button
+            :icon="MANAGE_ICONS.DELETE"
+            text
+            rounded
+            size="small"
+            class="app-delete-btn"
+            :disabled="isReadonly"
+            @click="(event) => onDeleteRow(data, event)"
           />
         </template>
-
-        <FormFooter v-else close-only @cancel="chiudi" />
+      </Column>
+      <!-- Expansion BoM: ComponentiPanel data-driven con i figli
+           aggregati dal BE (`data.componenti` jsonb). Pattern speculare
+           a `ContrattoRigheDrawer`. -->
+      <template #expansion="{ data }">
+        <div style="padding: 0.25rem 0 0.5rem 2rem; background: var(--app-table-stripe-bg);">
+          <ComponentiPanel
+            :initial-data="rowComponenti(data)"
+            i18n-prefix="vendite.componenti.panel"
+          />
+        </div>
       </template>
-    </div>
+    </DataTable>
+
+    <!-- Form dettaglio (create/edit). -->
+    <template v-if="formMode">
+      <div class="app-drawer-section">
+        <h4>
+          {{ formMode === 'create'
+            ? t('vendite.offerte.eccezione_nuova')
+            : t('vendite.offerte.eccezione_modifica') }}
+        </h4>
+      </div>
+
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('vendite.offerte.field_tipo_eccezione') }} *</label>
+          <Select
+            v-model="form.tipo_eccezione"
+            :options="tipoEccezioneOptions"
+            option-label="label"
+            option-value="value"
+            :disabled="formMode === 'edit'"
+            :invalid="campiErrati.includes('tipo_eccezione')"
+          />
+        </div>
+        <div class="form-field">
+          <label>
+            {{ t('vendite.offerte.field_articolo') }}
+            <span v-if="formMode === 'create'">*</span>
+          </label>
+          <ArticoloLookup
+            :model-value="form.articolo_obj"
+            :disabled="formMode === 'edit'"
+            @update:model-value="onArticoloSelected"
+          />
+        </div>
+      </div>
+
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('vendite.offerte.field_tipo_erogazione') }}</label>
+          <Select
+            v-model="form.tipo_erogazione"
+            :options="tipoErogazioneOptions"
+            option-label="label"
+            option-value="value"
+            show-clear
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('vendite.offerte.field_fonte_quantita') }} *</label>
+          <Select
+            v-model="form.fonte_quantita_attesa"
+            :options="fonteOptions"
+            option-label="label"
+            option-value="value"
+          />
+        </div>
+      </div>
+
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('vendite.offerte.field_prezzo_unitario') }}</label>
+          <InputNumber
+            v-model="form.prezzo_unitario"
+            :disabled="form.articolo_obj?.is_composito === true
+                       || form.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE"
+            :min-fraction-digits="0"
+            :max-fraction-digits="6"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('vendite.offerte.field_quantita') }}</label>
+          <InputNumber
+            v-model="form.qta_operativa"
+            :min-fraction-digits="0"
+            :max-fraction-digits="6"
+          />
+        </div>
+      </div>
+
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('vendite.offerte.field_uom_operativa') }}</label>
+          <Select
+            v-model="form.uom_operativa_id"
+            :options="uomOptions"
+            :option-label="uomLabel"
+            option-value="uom_id"
+            :loading="uomLoading"
+            :disabled="!form.articolo_id || uomLoading"
+            :placeholder="form.articolo_id
+              ? t('vendite.offerte.field_uom_operativa')
+              : t('vendite.promo_articoli.field_uom_articolo_first')"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('vendite.offerte.field_ordine') }}</label>
+          <InputNumber v-model="form.ordine" :min="0"
+            :invalid="campiErrati.includes('ordine')"
+          />
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label style="display: inline-flex; gap: 0.5rem; align-items: center;">
+          <ToggleSwitch v-model="form.attivo"
+            :invalid="campiErrati.includes('attivo')"
+          />
+          {{ t('vendite.offerte.field_attivo') }}
+        </label>
+      </div>
+
+      <!-- Sezione componenti BoM (modello unificato, simmetria preventivi).
+           CREATE: la ComponentiDialog si auto-apre al primo set valido
+           (articolo composito + uom + qta) tramite watcher; il payload
+           confermato viaggia col save eccezione (`componenti_overrides`).
+           Niente bottone manuale: l'apertura e' automatica, l'eventuale
+           revisione passa dall'expansion della lista eccezioni post-save.
+           EDIT: ComponentiPanel carica i componenti persistiti e li
+           espone editabili (PATCH per componente). -->
+      <template v-if="form.articolo_obj?.is_composito && formMode === 'edit'">
+        <div class="app-drawer-section">
+          <h4>{{ t('vendite.componenti.panel.section_title') }}</h4>
+        </div>
+        <ComponentiPanel
+          :documento-id="props.offertaId"
+          :riga-id="editingId"
+          :readonly="isReadonly"
+          :api-list="listEccezioneComponenti"
+          :api-update="updateEccezioneComponente"
+          :api-delete="deleteEccezioneComponente"
+          :tab-entity="TAB_ENTITIES.OFFERTA_COMMERCIALE"
+          i18n-prefix="vendite.componenti.panel"
+          @changed="reload"
+        />
+      </template>
+
+      <!-- CREATE su composito: bottone "Modifica componenti" per
+           correggere gli override del Dialog prima del save eccezione.
+           Pattern allineato a contratti/preventivi via BB
+           `ComponentiCreateActionsPanel`. Niente check qta nel
+           `disabled`: l'auto-open scatta per CONSUMO/LETTURE senza
+           qta, quindi il bottone "riapri" deve restare cliccabile. -->
+      <ComponentiCreateActionsPanel
+        v-if="form.articolo_obj?.is_composito && formMode === 'create'"
+        :disabled="!form.articolo_id || !form.uom_operativa_id"
+        :componenti-payload="componentiPayload"
+        @apri-dialog="apriComponentiDialog"
+      />
+
+      <!-- Banner inline L2 (BB condiviso): violazione soglia prezzo →
+           CTA "Richiedi approvazione" che retry-a il save con
+           `richiesta_approvazione=true` (workflow L3). Mirror contratti. -->
+      <L2ErrorBanner
+        :error="l2Error"
+        :loading="saving"
+        :label="t('vendite.offerte.richiedi_approvazione')"
+        :label-loading="t('vendite.offerte.richiedi_approvazione_in_corso')"
+        :tooltip="t('vendite.offerte.richiedi_approvazione_tooltip')"
+        @richiedi="onRichiediApprovazione"
+      />
+
+      <FormFooter
+        :loading="saving"
+        :disabled="!canSave"
+        @save="handleSave"
+        @cancel="annullaForm"
+      />
+    </template>
 
     <!-- ComponentiDialog modale: pre-popola i prezzi BoM PRIMA del save
          di una eccezione padre composita. La conferma alimenta
@@ -861,5 +848,5 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       :initial-payload="componentiPayload"
       @confirm="onComponentiConfirm"
     />
-  </Drawer>
+  </AppDrawer>
 </template>

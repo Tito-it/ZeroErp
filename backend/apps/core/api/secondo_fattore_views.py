@@ -5,8 +5,9 @@
 # Scopo: Il secondo fattore della PROPRIA credenziale (brief sicurezza
 #        §3.4-bis, T-3), sotto /api/v1/auth/secondo-fattore/:
 #          GET  /                 lo stato (device, obbligo e motivo, codici rimasti)
-#          POST registra/         avvia (o ricomincia) la configurazione: QR, segreto
-#                                 e codici di recupero, mostrati UNA volta
+#          POST registra/         avvia (o ricomincia) la configurazione, dietro la
+#                                 password: QR, segreto e codici di recupero,
+#                                 mostrati UNA volta
 #          POST conferma/         chiude la configurazione col primo codice
 #          POST codici-recupero/  codici nuovi, dietro un codice dell'app
 #          POST disattiva/        dietro un codice dell'app o di recupero
@@ -56,6 +57,9 @@ _CODICI = inline_serializer(
 _CON_CODICE = inline_serializer(
     name="CoreSecondoFattoreCodiceReq", fields={"codice": serializers.CharField()},
 )
+_CON_PASSWORD = inline_serializer(
+    name="CoreSecondoFattorePasswordReq", fields={"password": serializers.CharField()},
+)
 _CON_PROVA = inline_serializer(
     name="CoreSecondoFattoreProvaReq",
     fields={
@@ -80,12 +84,16 @@ class SecondoFattoreStatoView(_SecondoFattoreProprioView):
 
 
 class SecondoFattoreRegistraView(_SecondoFattoreProprioView):
-    @extend_schema(request=None, responses={200: _CONFIGURAZIONE}, summary="Secondo fattore: avvia la configurazione")
-    # Scopo: Avvia la configurazione: QR, segreto e codici di recupero, una volta.
+    @extend_schema(request=_CON_PASSWORD, responses={200: _CONFIGURAZIONE}, summary="Secondo fattore: avvia la configurazione")
+    # Scopo: Avvia la configurazione, dietro la password della credenziale: QR,
+    #        segreto e codici di recupero, una volta.
     def post(self, request: Request) -> JsonResponse:
-        return handle_post_json(
-            request, handler=lambda _p: SecondoFattoreService().avvia_configurazione(request.user),
-        )
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            return SecondoFattoreService().avvia_configurazione(
+                request.user, payload.get("password"), request=request,
+            )
+
+        return handle_post_json(request, handler=_handler)
 
 
 class SecondoFattoreConfermaView(_SecondoFattoreProprioView):

@@ -17,14 +17,11 @@ import { useUtilitiesTipiRuoloStore } from '../stores/utilitiesTipiRuolo'
 import { useUtilityTipoRuoloUsageStore } from '../stores/utilityTipoRuoloUsage'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import Drawer from 'primevue/drawer'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
@@ -50,10 +47,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
@@ -158,128 +151,111 @@ async function handleSave() {
     if (result !== null) { fissa(); emit('saved', result) }
   }
 }
-
-function close() {
-  chiudiConConferma(() => {
-    emit('update:visible', false)
-    emit('cancelled')
-  })
-}
-const suVisibile = gestoreVisibile(emit, close)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :dismissable="true"
-    @after-show="onAfterShow"
+    :title="t('amministrazione.matrice_utilities_ruoli.drawer_title')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :readonly="isReadOnlyEffective"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('amministrazione.matrice_utilities_ruoli.drawer_title')"
-      />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
-      <Tabs v-model:value="activeTab">
-        <TabList>
-          <Tab value="dati">{{ t('amministrazione.matrice_utilities_ruoli.tab_dati') }}</Tab>
-          <Tab v-if="isEdit" value="usage">
-            {{ t('amministrazione.matrice_utilities_ruoli.tab_usage') }}
-          </Tab>
-        </TabList>
-        <TabPanels>
-          <!-- TAB Dati -->
-          <TabPanel value="dati">
-            <div class="form-grid">
-              <div class="form-field">
-                <label>{{ t('amministrazione.matrice_utilities_ruoli.field_utility') }}</label>
-                <LookupSelect
-                  v-model="form.utility_id"
-                  rel="config.utilities"
-                  :placeholder="t('amministrazione.matrice_utilities_ruoli.field_utility_placeholder')"
-                  :disabled="isEdit || isReadOnlyEffective"
-                />
-              </div>
-              <div class="form-field">
-                <label>{{ t('amministrazione.matrice_utilities_ruoli.field_tipo_ruolo') }}</label>
-                <LookupSelect
-                  v-model="form.tipo_ruolo_id"
-                  rel="config.tipi_ruoli"
-                  :placeholder="t('amministrazione.matrice_utilities_ruoli.field_tipo_ruolo_placeholder')"
-                  :disabled="isEdit || isReadOnlyEffective"
-                />
-              </div>
-              <div class="form-field">
-                <label>{{ t('common.attivo') }}</label>
-                <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
-                  :invalid="campiErrati.includes('attivo')"
-                />
-              </div>
-              <Message v-if="isEdit" severity="info" :closable="false">
-                {{ t('amministrazione.matrice_utilities_ruoli.fk_immutable_hint') }}
-              </Message>
-            </div>
-          </TabPanel>
-
-          <!-- TAB Usage -->
-          <TabPanel v-if="isEdit" value="usage">
+    <Tabs v-model:value="activeTab">
+      <TabList>
+        <Tab value="dati">{{ t('amministrazione.matrice_utilities_ruoli.tab_dati') }}</Tab>
+        <Tab v-if="isEdit" value="usage">
+          {{ t('amministrazione.matrice_utilities_ruoli.tab_usage') }}
+        </Tab>
+      </TabList>
+      <TabPanels>
+        <!-- TAB Dati -->
+        <TabPanel value="dati">
+          <div class="form-grid">
             <div class="form-field">
-              <Message severity="info" :closable="false">
-                {{ t('amministrazione.matrice_utilities_ruoli.usage_hint') }}
-              </Message>
+              <label>{{ t('amministrazione.matrice_utilities_ruoli.field_utility') }}</label>
+              <LookupSelect
+                v-model="form.utility_id"
+                rel="config.utilities"
+                :placeholder="t('amministrazione.matrice_utilities_ruoli.field_utility_placeholder')"
+                :disabled="isEdit || isReadOnlyEffective"
+              />
             </div>
-            <!-- Nessun «Emittenti con override: N» in testa: con una ricerca
-                 attiva il totale della lista e' quello delle TROVATE, e la
-                 riga direbbe un'altra cosa. Il numero lo da' il paginatore. -->
-            <DrawerTabLista
-              ref="listaRef"
-              codice="config.utilities_tipi_ruolo_usage"
-              data-key="emittente_id"
-              :store="usageStore"
-              :rows="usageStore.items"
-              :total="usageStore.totalRecords"
-              :loading="usageStore.loading"
-              :paginator-options="paginatorProps"
-              :page="tablePage"
-              :sort-field="paginatorProps.sortField"
-              :sort-order="paginatorProps.sortOrder"
-              :page-actions="pageActions"
-              :dirty="dirty"
-              :perimetro-bloccato="perimetroBloccato"
-              @page="onPage"
-              @sort="onSort"
-              @config-loaded="onConfigLoaded"
-            >
-              <template #filtri-sempre>
-                <InputText
-                  v-model="searchText"
-                  class="app-filter-w-lg"
-                  :placeholder="t('amministrazione.matrice_utilities_ruoli.usage_cerca_placeholder')"
-                />
-              </template>
-              <template #cell-emittente_attivo="{ data }">
-                <AttivoTag :active="data.emittente_attivo" />
-              </template>
-              <template #cell-override_attivo="{ data }">
-                <AttivoTag :active="data.override_attivo" />
-              </template>
-            </DrawerTabLista>
-          </TabPanel>
-        </TabPanels>
-      </Tabs>
+            <div class="form-field">
+              <label>{{ t('amministrazione.matrice_utilities_ruoli.field_tipo_ruolo') }}</label>
+              <LookupSelect
+                v-model="form.tipo_ruolo_id"
+                rel="config.tipi_ruoli"
+                :placeholder="t('amministrazione.matrice_utilities_ruoli.field_tipo_ruolo_placeholder')"
+                :disabled="isEdit || isReadOnlyEffective"
+              />
+            </div>
+            <div class="form-field">
+              <label>{{ t('common.attivo') }}</label>
+              <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+                :invalid="campiErrati.includes('attivo')"
+              />
+            </div>
+            <Message v-if="isEdit" severity="info" :closable="false">
+              {{ t('amministrazione.matrice_utilities_ruoli.fk_immutable_hint') }}
+            </Message>
+          </div>
+        </TabPanel>
 
-      <FormFooter
-        :loading="loading"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="close"
-      />
-    </div>
-  </Drawer>
+        <!-- TAB Usage -->
+        <TabPanel v-if="isEdit" value="usage">
+          <div class="form-field">
+            <Message severity="info" :closable="false">
+              {{ t('amministrazione.matrice_utilities_ruoli.usage_hint') }}
+            </Message>
+          </div>
+          <!-- Nessun «Emittenti con override: N» in testa: con una ricerca
+               attiva il totale della lista e' quello delle TROVATE, e la
+               riga direbbe un'altra cosa. Il numero lo da' il paginatore. -->
+          <DrawerTabLista
+            ref="listaRef"
+            codice="config.utilities_tipi_ruolo_usage"
+            data-key="emittente_id"
+            :store="usageStore"
+            :rows="usageStore.items"
+            :total="usageStore.totalRecords"
+            :loading="usageStore.loading"
+            :paginator-options="paginatorProps"
+            :page="tablePage"
+            :sort-field="paginatorProps.sortField"
+            :sort-order="paginatorProps.sortOrder"
+            :page-actions="pageActions"
+            :dirty="dirty"
+            :perimetro-bloccato="perimetroBloccato"
+            @page="onPage"
+            @sort="onSort"
+            @config-loaded="onConfigLoaded"
+          >
+            <template #filtri-sempre>
+              <InputText
+                v-model="searchText"
+                class="app-filter-w-lg"
+                :placeholder="t('amministrazione.matrice_utilities_ruoli.usage_cerca_placeholder')"
+              />
+            </template>
+            <template #cell-emittente_attivo="{ data }">
+              <AttivoTag :active="data.emittente_attivo" />
+            </template>
+            <template #cell-override_attivo="{ data }">
+              <AttivoTag :active="data.override_attivo" />
+            </template>
+          </DrawerTabLista>
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
+  </AppDrawer>
 </template>

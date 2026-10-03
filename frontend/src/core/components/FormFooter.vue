@@ -16,6 +16,12 @@
 //  - default:   Annulla (icona pi-arrow-left "torna indietro") + Salva (pi-check)
 //  - closeOnly: solo pulsante Chiudi (icona pi-times) — per drawer di liste sub-entita'.
 // Auto-hide pulsante Salva: in modalita' sola lettura (inject) o se action non abilitata.
+// ⭐ `readonly` (2026-10-03, decisione di Tid): override ESPLICITO della catena,
+//    default `undefined` = la eredita (come `AppDialog`). Serve all'eccezione di
+//    dominio che resta salvabile dentro un contesto in sola lettura — i
+//    riferimenti dell'atto di un contratto ATTIVO. ⛔ Chi la passa a `false`
+//    risponde dei permessi: la condizione deve gia' escludere l'area in lettura.
+//    Il controllo `action` resta comunque.
 // Il pulsante Annulla/Chiudi resta sempre visibile (chiusura form).
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -37,11 +43,13 @@ const props = defineProps({
   // primary (verde) — l'azione positiva standard. L'icona resta sempre il
   // check: a cambiare e' solo il colore, per segnalare la gravita' dell'azione.
   saveSeverity: { type: String, default: null },
+  readonly: { type: Boolean, default: undefined },
 })
 
 const emit = defineEmits(['save', 'cancel'])
 const { t } = useI18n()
-const isReadonly = useInjectReadonly()
+const readonlyCatena = useInjectReadonly()
+const isReadonly = computed(() => (props.readonly === undefined ? readonlyCatena.value : props.readonly))
 const auth = useAuthStore()
 
 const showSave = computed(() => {

@@ -100,12 +100,24 @@ Authorization: Bearer {access_token}
 
 #### Validazioni
 
-1. `old_password` non vuota
+1. **La password attuale, col freno della credenziale, prima di tutto il resto**
+   (`verifica_password_con_freno`, dal 2026-10-03): credenziale frenata o bloccata →
+   403 `E_UTENTE_BLOCCATO` / `E_CREDENZIALE_BLOCCATA` e la password non si guarda;
+   `old_password` vuota → 400 che **non** conta; sbagliata → **tentativo fallito**
+   della credenziale (D-T2, lo stesso contatore del login) e 400. ⛔ Prima delle
+   regole sulla nuova: un rifiuto della nuova che arrivasse prima lascerebbe provare
+   l'attuale senza contare. Fino a quel giorno la verifica era il solo
+   `check_password`: chi teneva una sessione rubata provava password senza freno.
+   ⭐ Quando il freno della postazione scatta (trovato attivo, o fatto scattare da
+   questo tentativo) la **sessione della richiesta si chiude** — refresh del `sid`
+   in blacklist e riga `LOGOUT` con `dettaglio.motivo = FRENO_PASSWORD` — e la
+   risposta e' il freno stesso, 403 `E_UTENTE_BLOCCATO` coi minuti. Solo quella
+   sessione: le altre della credenziale restano. `E_LOGIN_ATTESA` rallenta e
+   **non** chiude (decisione A di Tid, 2026-10-03)
 2. `new_password` non vuota
 3. `new_password == new_password_confirm`
 4. `new_password != old_password` (deve essere diversa)
-5. `old_password` corretta (check hash Django)
-6. `new_password` passa i 5 validators di `AUTH_PASSWORD_VALIDATORS`:
+5. `new_password` passa i 5 validators di `AUTH_PASSWORD_VALIDATORS`:
    - `UserAttributeSimilarityValidator` — non simile a username/email
    - `MinimumLengthValidator` — lunghezza minima
    - `CommonPasswordValidator` — non nella lista password comuni
@@ -161,7 +173,9 @@ memoria; il cookie lo aggiorna il browser.
 | Codice | HTTP | Causa |
 | --- | --- | --- |
 | `E_CHANGE_PASSWORD` | 400 | Validazione fallita (password vuota, mismatch, troppo semplice, ecc.) |
-| `E_CHANGE_PASSWORD` | 400 | Password attuale non corretta |
+| `E_CHANGE_PASSWORD` | 400 | Password attuale non corretta (conta come tentativo fallito) |
+| `E_UTENTE_BLOCCATO` | 403 | Postazione frenata dai tentativi: la sessione della richiesta e' chiusa |
+| `E_LOGIN_ATTESA`, `E_CREDENZIALE_BLOCCATA` | 403 | Attesa crescente (la sessione resta), o credenziale bloccata dall'amministratore |
 | `E_IDENTITA_NON_ATTIVA` | 401 | La veste della sessione non e' piu' attiva: la password non cambia |
 
 ---

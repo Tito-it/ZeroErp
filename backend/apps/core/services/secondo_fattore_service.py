@@ -34,6 +34,7 @@ from apps.core.db.session_audit_repository import SessionAuditRepository
 from apps.core.services import crypto_service, totp_service
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.nome_tentato import digest_nome_tentato, etichetta_log
+from apps.core.services.password_con_freno import verifica_password_con_freno
 from apps.core.services.request_context import get_client_ip, get_request_id, get_user_agent
 from apps.core.services.service_errors import ServiceError
 
@@ -44,6 +45,9 @@ _T = TypeVar("_T")
 E_TOTP_CODICE_NON_VALIDO = "E_TOTP_CODICE_NON_VALIDO"
 E_TOTP_DEVICE_ASSENTE = "E_TOTP_DEVICE_ASSENTE"
 E_TOTP_DEVICE_GIA_ATTIVO = "E_TOTP_DEVICE_GIA_ATTIVO"
+# ⛔ Non E_AUTHENTICATION_FAILED: un 401 fa partire sul frontend il rinnovo
+# della sessione e poi il logout.
+E_TOTP_PASSWORD_NON_VALIDA = "E_TOTP_PASSWORD_NON_VALIDA"  # noqa: S105 — codice errore, non un segreto
 E_PERMESSO_NEGATO = "E_PERMESSO_NEGATO"
 
 # I rifiuti del DB che, come il codice sbagliato, sono un tentativo fallito:
@@ -187,7 +191,15 @@ class SecondoFattoreService:
     #        escono UNA volta sola, in questa risposta: al DB vanno il segreto
     #        cifrato e le impronte. Su un device ATTIVO il DB rifiuta
     #        (E_TOTP_DEVICE_GIA_ATTIVO): va prima disattivato.
-    def avvia_configurazione(self, user: User) -> dict[str, Any]:
+    #        ⛔ Dietro la password della credenziale, sempre (anche al primo
+    #        accesso con l'obbligo): con la sola sessione, chi la tiene rubata
+    #        legherebbe il proprio telefono all'accesso di un altro (brief
+    #        secondo fattore e riautenticazione, decisione di Tid 2026-10-02).
+    def avvia_configurazione(self, user: User, password: object, *, request: Any) -> dict[str, Any]:
+        verifica_password_con_freno(
+            user, password, request=request, auth_repo=self._auth_repo,
+            codice=E_TOTP_PASSWORD_NON_VALIDA, messaggio="Password non corretta.",
+        )
         segreto = totp_service.nuovo_segreto()
         codici = totp_service.nuovi_codici_recupero()
         self._repo.registra_device(

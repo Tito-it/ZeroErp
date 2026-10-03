@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import AppDialog from '../../../../core/components/AppDialog.vue'
 import Message from 'primevue/message'
 import Textarea from 'primevue/textarea'
+import { useFotografiaDialog } from '../../../../core/composables/useFotografiaDialog'
 
 const { t } = useI18n()
 
@@ -80,10 +81,14 @@ function onConfirm() {
     motivazione: motivazione.value.trim(),
   })
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ motivazione: motivazione.value }), { visibile: () => props.visible })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="props.visible"
     :header="titolo"
     width="md"

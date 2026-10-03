@@ -20,6 +20,8 @@
 //  4. azioneNuovaRiga: spenta a form aperto e dalla condizione del caller
 //  5. risincronizza: riga fresca per id, solo in modifica; assente = resta
 //  6. cambio di padre (e chiusura del drawer): il form si chiude
+//  7. ⭐ cambio di riga col form aperto: passa da confermaCambio, e `poi` arriva solo dopo il sì
+//  8. a form chiuso si apre subito, senza chiedere
 // ------------------------------------------------------------
 
 import { describe, expect, it } from 'vitest'
@@ -114,5 +116,30 @@ describe('useFormInline', () => {
     visible.value = false
     await nextTick()
     expect(r.formAperto.value).toBe(false)
+  })
+
+  it('7. cambio di riga col form aperto: prima si chiede, poi si apre', () => {
+    // 🔴 D-8: il clic su un'altra riga sostituiva il form, e le modifiche alla
+    //    riga precedente si perdevano senza domanda.
+    let procedi = null
+    const m = useFormInline({ confermaCambio: (p) => { procedi = p } })
+    const riempite = []
+    m.apriRiga({ id: 1 }, (r) => riempite.push(r.id))
+    m.apriRiga({ id: 2 }, (r) => riempite.push(r.id))
+    // La domanda e' aperta: il form e' ancora sulla riga 1, e non e' stato
+    // riempito con la 2.
+    expect(m.rigaInModifica.value.id).toBe(1)
+    expect(riempite).toEqual([1])
+    procedi()
+    expect(m.rigaInModifica.value.id).toBe(2)
+    expect(riempite).toEqual([1, 2])
+  })
+
+  it('8. a form chiuso si apre subito, senza chiedere', () => {
+    let chiesto = false
+    const m = useFormInline({ confermaCambio: (p) => { chiesto = true; p() } })
+    m.apriRiga({ id: 1 })
+    expect(chiesto).toBe(false)
+    expect(m.formMode.value).toBe('edit')
   })
 })

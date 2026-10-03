@@ -84,8 +84,8 @@ describe('CredenzialeSecondoFattore', () => {
     disattivaSecondoFattoreCredenziale.mockResolvedValue(comeAxios(stato('ASSENTE')))
     const w = await apri(POCHI)
     await pulsanteDisattiva(w).trigger('click')
-    w.vm.motivo = 'telefono perso'
-    await w.vm.confermaDisattiva()
+    // Il motivo arriva da `MotivoDialog` con `conferma`.
+    await w.vm.confermaDisattiva('telefono perso')
     await flushPromises()
     expect(disattivaSecondoFattoreCredenziale).toHaveBeenCalledWith(POCHI, 'telefono perso')
     expect(w.text()).toContain('amministrazione.secondo_fattore.stato.ASSENTE')

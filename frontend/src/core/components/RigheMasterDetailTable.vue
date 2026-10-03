@@ -28,7 +28,8 @@
 // modificabile (l'annullo di un accredito su un reso confermato).
 //
 // Slot:
-//   #form="{ riga, onSaved, onComponentiChanged, onCancel }" → il form di riga
+//   #form="{ riga, onSaved, onComponentiChanged, onCancel, registra }" → il form di riga
+//     (`registra` va su `:ref` del form: D-13, la sua fotografia)
 //   #cell-<codice>="{ data, value }"  → una cella che il catalogo non sa
 //                                       rendere da sola; ⚠️ il nome e' il
 //                                       `codice` della colonna, non il campo
@@ -46,11 +47,11 @@
 //     new-label-key="..." edit-label-key="..."
 //     @changed="..." @form-aperto="...">
 //     <template #cell-prezzo_unitario="{ data }"> ... </template>
-//     <template #form="{ riga, onSaved, onComponentiChanged, onCancel }">
-//       <RigaForm :riga="riga" @saved="onSaved" @componenti-changed="onComponentiChanged" @cancel="onCancel" />
+//     <template #form="{ riga, onSaved, onComponentiChanged, onCancel, registra }">
+//       <RigaForm :ref="registra" :riga="riga" @saved="onSaved" @componenti-changed="onComponentiChanged" @cancel="onCancel" />
 //     </template>
 //   </RigheMasterDetailTable>
-import { computed, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
@@ -58,6 +59,7 @@ import { useApiHandler } from '../composables/useApiHandler'
 import { useConfirmAction } from '../composables/useConfirmAction'
 import { useDrawerTabLista } from '../composables/useDrawerTabLista'
 import { useFormInline } from '../composables/useFormInline'
+import { unisciFotografie } from '../composables/useDrawerFormPreserve'
 import { MANAGE_ICONS } from '../constants'
 import DrawerTabLista from './DrawerTabLista.vue'
 import ExportDialog from './ExportDialog.vue'
@@ -108,14 +110,34 @@ const props = defineProps({
 //    durante l'edit-riga.
 const emit = defineEmits(['changed', 'form-aperto'])
 
+// ⭐ LA FOTOGRAFIA DEL FORM DI RIGA (2026-10-03, D-13 di
+//    work-done/analisi-fe-chrome-drawer.md, ok Tid). Il form lo monta il
+//    contenitore nello slot `#form`, e qui si registra con `:ref="registra"`
+//    (dallo scope dello slot): cosi' questo BB sa che cosa c'e' aperto. Serve a
+//    due cose — chiedere prima di cambiare riga (D-8, `confermaCambio`) e dire
+//    al drawer, via `defineExpose`, se la riga ha modifiche da non perdere
+//    all'uscita. Un form che non espone la sua fotografia vale «non modificato».
+const formRiga = ref(null)
+function registraFormRiga(el) {
+  formRiga.value = el
+}
+const fotografiaRiga = unisciFotografie(() => formRiga.value)
+
 const {
   formMode, rigaInModifica, formAperto,
   apriRiga, chiudiForm, risincronizza, azioneNuovaRiga,
 } = useFormInline({
   padre: () => props.parentId,
   puoModificare: () => props.isModificabile,
+  confermaCambio: (procedi) => fotografiaRiga.chiudiConConferma(procedi),
 })
 watch(formAperto, (aperto) => emit('form-aperto', aperto))
+// ⚠️ Smontata a form aperto (drawer chiuso: AppDrawer smonta il corpo) il watch
+//    non scatta piu', e il drawer resterebbe con `formRigaAperto` vero: alla
+//    riapertura `useFooterDocumento` darebbe 'nessuno', testata senza Salva.
+onBeforeUnmount(() => {
+  if (formAperto.value) emit('form-aperto', false)
+})
 
 const {
   searchText, onPage, onSort, paginatorProps, tablePage,
@@ -216,7 +238,12 @@ function slotInoltrati(slots) {
 
 // I drawer padre chiamano `loadRighe` sul ref dopo un gesto sul documento:
 // ricarica la lista (e cio' che `useDrawerTabLista` ricarica con lei).
-defineExpose({ loadRighe: () => reloadAll() })
+defineExpose({
+  loadRighe: () => reloadAll(),
+  // D-13: le modifiche della riga aperta, per l'uscita dal drawer.
+  modificato: fotografiaRiga.modificato,
+  chiudiConConferma: fotografiaRiga.chiudiConConferma,
+})
 </script>
 
 <template>
@@ -290,6 +317,7 @@ defineExpose({ loadRighe: () => reloadAll() })
         :on-saved="onRigaSaved"
         :on-componenti-changed="onComponentiChanged"
         :on-cancel="chiudiForm"
+        :registra="registraFormRiga"
       />
     </div>
 

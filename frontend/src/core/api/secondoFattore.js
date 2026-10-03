@@ -34,10 +34,11 @@ export function getSecondoFattore() {
   return api.get(`${BASE}/`)
 }
 
-// Scopo: avvia (o ricomincia) la configurazione: QR, segreto e codici di
-//        recupero, che il backend dà UNA volta sola.
-export function registraSecondoFattore() {
-  return api.post(`${BASE}/registra/`)
+// Scopo: avvia (o ricomincia) la configurazione, dietro la password della
+//        credenziale: QR, segreto e codici di recupero, che il backend dà UNA
+//        volta sola.
+export function registraSecondoFattore(password) {
+  return api.post(`${BASE}/registra/`, { password })
 }
 
 // Scopo: chiude la configurazione col primo codice dell'app.

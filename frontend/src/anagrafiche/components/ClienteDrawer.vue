@@ -7,12 +7,9 @@ import { useI18n } from 'vue-i18n'
 import { useClientiStore } from '../stores/clienti'
 import { useAuthStore } from '../../stores/auth'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useNotify } from '../../core/composables/useNotify'
 import { useLookup } from '../../core/composables/useLookup'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContattoForm } from '../composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
 import { raccogliFormInline } from '../composables/raccogliFormInline'
@@ -29,10 +26,8 @@ import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.v
 import SoggettoPreviewBadges from './SoggettoPreviewBadges.vue'
 import ContattoForm from './ContattoForm.vue'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -46,7 +41,6 @@ const store = useClientiStore()
 const auth = useAuthStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const { warn } = useNotify()
-const isReadonly = useInjectReadonly()
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
@@ -209,24 +203,13 @@ const fgFv = useFetchVersion()
 // diversi durante l'animazione di apertura.
 const ready = ref(false)
 
-// ⭐ DUE CANCELLI, e servono per due motivi diversi.
-//    `ready`        → i DATI sono arrivati (fetchDetail + utility del BA);
-//    `contentReady` → l'ANIMAZIONE di apertura è finita.
-//    Il contenuto si monta solo quando valgono entrambi.
-//
-// 🔴 Prima qui c'era `v-show="ready"`, e la differenza non è di stile: `v-show`
-//    MONTA comunque tutto il sottoalbero e lo nasconde con `display:none`. I
-//    tre `LookupSelect` di questo drawer fanno fetch AL MOUNT
-//    (`useGlobalLookup` con `immediate: true`), quindi durante lo slide-in
-//    partivano tre richieste in più alle due già attese qui sotto, e il mount
-//    dell'intero form occupava il thread proprio mentre il pannello scorreva.
-//    Il risultato erano DUE scatti: l'animazione che si inceppa, e poi il
-//    salto spinner→contenuto quando `ready` passava a true.
-// ⚠️ `v-if` si può fare perché il drawer non ha nessun `ref` di template: il
-//    padre non chiama mai metodi dei figli, quindi non c'è niente che debba
-//    esistere prima del tempo.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
-const contenutoVisibile = computed(() => ready.value && contentReady.value)
+// ⭐ DUE CANCELLI, e servono per due motivi diversi: `ready` → i DATI sono
+//    arrivati (fetchDetail + utility del BA); la fine dell'ANIMAZIONE di
+//    apertura la aspetta AppDrawer (dal 2026-10-03), che monta il corpo solo
+//    allora. Il form si monta quando valgono entrambi.
+// 🔴 `v-if` e non `v-show`: `v-show` MONTA comunque tutto il sottoalbero, e i
+//    tre `LookupSelect` di questo drawer fanno fetch AL MOUNT — durante lo
+//    slide-in partivano tre richieste in piu', e l'animazione si inceppava.
 
 // Carica dati
 watch(() => props.visible, async (val) => {
@@ -382,35 +365,29 @@ const eventoStatoDetail = computed(() => {
   return { label: t(labelKey), date: detail.value.data_evento_stato }
 })
 
-
-const onClose = useDrawerClose(emit, 'cancelled')
-// Uscite dell'utente: prima chiedono conferma se ci sono modifiche non salvate.
-const chiudi = () => chiudiConConferma(onClose)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="props.visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    :dismissable="true"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="t('anagrafiche.clienti.cliente')"
+    :icon="NAV_ICONS.CLIENTI"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!ready || (!isEdit && !canSave)"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="onSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('anagrafiche.clienti.cliente')"
-        :icon="NAV_ICONS.CLIENTI"
-      />
-    </template>
-
-    <div v-if="!contenutoVisibile" class="app-loading">
+    <div v-if="!ready" class="app-loading">
       <i :class="STATUS_ICONS.CARICAMENTO" style="font-size: 1.5rem;"></i>
     </div>
-    <div v-if="contenutoVisibile" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <template v-else>
 
         <!-- === Soggetto === -->
         <h4>{{ t('anagrafiche.clienti.section_soggetto') }}</h4>
@@ -614,9 +591,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         entita-tipo-web="cliente"
         :entita-id-web="props.clienteId"
         :email-iniziale-web="detail?.soggetto_email || ''" />
-
-      <FormFooter :loading="loading" :disabled="!isEdit && !canSave" @save="onSave" @cancel="chiudi" />
-    </div>
+    </template>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->
     <SoggettoResolver
@@ -628,8 +603,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       @soggetto-creato="onSoggettoCreato"
       @annullato="resolverVisible = false"
     />
-
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>

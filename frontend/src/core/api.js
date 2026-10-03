@@ -167,6 +167,18 @@ export async function redirectToLogin(motivo = MOTIVO_USCITA.SESSIONE_SCADUTA) {
   return routerApp().push({ name: 'login', query }).catch(() => {})
 }
 
+// Scopo: il freno della credenziale scattato su una password chiesta DENTRO
+//        la sessione (cambio password, configurazione del secondo fattore):
+//        il backend ha chiuso questa sessione, e si va al login col motivo.
+//        true se era questo il caso; il chiamante, altrimenti, mostra l'errore.
+// ⚠️ Solo `E_UTENTE_BLOCCATO`: e' il solo freno che chiude la sessione
+//    (`password_con_freno.py`). `E_LOGIN_ATTESA` rallenta e basta.
+export function seSessioneChiusaDalFreno(err) {
+  if (extractApiErrorCode(err) !== 'E_UTENTE_BLOCCATO') return false
+  redirectToLogin(MOTIVO_USCITA.FRENO_PASSWORD)
+  return true
+}
+
 // I 403 del cancello degli obblighi del backend (`apps/core/api/cancello_obblighi.py`):
 // la credenziale ha un obbligo da chiudere prima di ogni altra richiesta.
 const CODICI_OBBLIGO_PENDENTE = new Set(['E_CAMBIO_PASSWORD_RICHIESTO', 'E_TOTP_CONFIGURAZIONE_RICHIESTA'])

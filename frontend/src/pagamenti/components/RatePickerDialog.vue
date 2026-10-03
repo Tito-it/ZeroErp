@@ -242,8 +242,13 @@ async function onSalva() {
 }
 
 // Scopo: la chiusura — con rate in area chiede conferma, perche' un'area
-//        temporanea persa in silenzio e' lavoro perso.
-function chiudi() {
+//        temporanea persa in silenzio e' lavoro perso. In modalita' singola
+//        si sceglie una rata e basta: niente da perdere.
+// ⭐ E' la `conferma-uscita` di AppDialog (D-14, 2026-10-03): ci passano X,
+//    ESC, maschera e «Chiudi». Fino a quel giorno ci si arrivava di sponda,
+//    intercettando `update:visible(false)` gia' emesso dal guscio.
+// ⚠️ I filtri (cliente, numero, serie) non contano: cercare e' leggere.
+function confermaUscita(procedi) {
   if (multipla.value && nScelte.value > 0) {
     confirmAction({
       header: t('pagamenti.rate.abbandona_titolo'),
@@ -252,22 +257,19 @@ function chiudi() {
       danger: true,
       onAccept: () => {
         macchina.azzera()
-        emit('update:visible', false)
+        procedi()
       },
     })
     return
   }
-  emit('update:visible', false)
+  procedi()
 }
 
-function onVisibleChange(v) {
-  if (v) emit('update:visible', true)
-  else chiudi()
-}
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="confermaUscita"
     :visible="visible"
     :header="t(multipla ? 'pagamenti.rate.titolo_righe_da_rate' : 'pagamenti.rate.titolo_picker')"
     width="xl"
@@ -276,7 +278,7 @@ function onVisibleChange(v) {
     :save-label="t('pagamenti.rate.crea_righe', nScelte)"
     :save-disabled="!macchina.canSave.value"
     :loading="macchina.loading.value"
-    @update:visible="onVisibleChange"
+    @update:visible="(v) => emit('update:visible', v)"
     @save="onSalva"
   >
     <!-- `app-dialog-lista`: l'altezza definita del blocco lista (dieci righe,

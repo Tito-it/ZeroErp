@@ -34,11 +34,21 @@ chiamante, registro `_SU_SE_STESSI` di `test_skip_area_check_registro`).
 | Metodo e path | Corpo | Risposta `data` |
 | --- | --- | --- |
 | `GET /api/v1/auth/secondo-fattore/` | — | `stato` (`ASSENTE` / `DA_CONFERMARE` / `ATTIVO`), `obbligatorio`, `motivo` (`CREDENZIALE` / `PROFILO` / null), `codici_recupero_rimasti` |
-| `POST /api/v1/auth/secondo-fattore/registra/` | — | `qr_data_uri` (data URI di un SVG, per un `<img>`), `segreto` (la chiave, a gruppi di 4), `codici_recupero` (dieci) |
+| `POST /api/v1/auth/secondo-fattore/registra/` | `{password}` | `qr_data_uri` (data URI di un SVG, per un `<img>`), `segreto` (la chiave, a gruppi di 4), `codici_recupero` (dieci) |
 | `POST /api/v1/auth/secondo-fattore/conferma/` | `{codice}` | lo stato, ora `ATTIVO` |
 | `POST /api/v1/auth/secondo-fattore/codici-recupero/` | `{codice}` | `codici_recupero` (dieci nuovi: i vecchi non valgono più) |
 | `POST /api/v1/auth/secondo-fattore/disattiva/` | `{codice}` o `{codice_recupero}` | lo stato, ora `ASSENTE` |
 
+* `registra/` vuole la **password** della credenziale, sempre — anche al primo
+  accesso con l'obbligo: con la sola sessione, chi la tiene rubata legherebbe il
+  proprio telefono a un accesso **senza device**, e il titolare resterebbe fuori
+  al login dopo. Prima il freno della credenziale (`script.fn_check_blocco_login`), poi la
+  password: sbagliata conta come un tentativo fallito (D-T2), assente no; giusta
+  **non** azzera i tentativi (non è un login). Quando il freno della postazione
+  scatta, la sessione della richiesta si chiude, come nel cambio password
+  ([api_token_cambio_password.md](api_token_cambio_password.md)). ⛔ Il rifiuto è 400
+  `E_TOTP_PASSWORD_NON_VALIDA` e non un 401, che sul frontend farebbe partire il
+  rinnovo della sessione e poi il logout.
 * `registra/` mostra segreto, QR e codici **una volta sola**: al DB vanno il
   segreto cifrato e le impronte (SHA-256) dei codici. Su un device `ATTIVO` il DB
   rifiuta (`E_TOTP_DEVICE_GIA_ATTIVO`); su uno `DA_CONFERMARE` la configurazione
@@ -87,6 +97,8 @@ Envelope standard. Errori principali:
 | Codice | HTTP | Quando |
 | --- | --- | --- |
 | `E_TOTP_CODICE_NON_VALIDO` | 400 | codice sbagliato o assente |
+| `E_TOTP_PASSWORD_NON_VALIDA` | 400 | `registra/` con la password sbagliata o assente (`campo = password`) |
+| `E_UTENTE_BLOCCATO`, `E_CREDENZIALE_BLOCCATA` | 403 | `registra/` o una prova con la credenziale frenata dai tentativi, o bloccata dall'amministratore |
 | `E_TOTP_PASSO_GIA_USATO` | 400 | codice già usato (anti-replay sul passo di 30 secondi) |
 | `E_TOTP_RECOVERY_NON_VALIDO` | 400 | codice di recupero sbagliato o già usato |
 | `E_TOTP_DEVICE_ASSENTE` | 409 | conferma senza configurazione avviata, prova senza device attivo |

@@ -502,6 +502,8 @@ export const MANAGE_ICONS = {
   // La sicurezza dell'accesso: il secondo fattore (pagina «Sicurezza», sezione
   // del drawer operatore).
   SICUREZZA_ACCESSO: 'pi pi-key',
+  // Il cambio della PROPRIA password (scheda utente della topbar).
+  CAMBIO_PASSWORD: 'pi pi-user-edit',
   BILLING_ACCOUNT: 'pi pi-credit-card',
   UTILITY: 'pi pi-bolt',
   LIST: 'pi pi-list',

@@ -95,8 +95,8 @@ describe('CredenzialeBlocco', () => {
   it('il blocco manda il motivo, aggiorna lo stato e avvisa la lista', async () => {
     bloccaCredenziale.mockResolvedValue(comeAxios(cred({ bloccata: true, motivo_blocco: 'abuso' })))
     const w = await apri()
-    w.vm.motivo = 'abuso'
-    await w.vm.confermaBlocca()
+    // Il motivo arriva da `MotivoDialog` con `conferma`.
+    await w.vm.confermaBlocca('abuso')
     await flushPromises()
     expect(bloccaCredenziale).toHaveBeenCalledWith(ID, 'abuso')
     expect(w.text()).toContain('amministrazione.accessi.bloccata')

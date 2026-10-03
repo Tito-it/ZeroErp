@@ -22,9 +22,38 @@
 // Ritorna: { isEdit, isCasoA, isPadreComposito, uomOptions, uomLoading,
 //   loadUomPerArticolo, pickBaseUomId, resetUomOptions, uomLabel,
 //   caricaUomConPickBase, componentiDialogVisible, componentiPayload,
-//   showComponentiDialog, apriComponentiDialog, onComponentiConfirm, submitRiga }
+//   showComponentiDialog, apriComponentiDialog, onComponentiConfirm, submitRiga,
+//   fissa, modificato, chiudiConConferma, seguiRiga }
+//
+// ⭐ LA FOTOGRAFIA DELLA RIGA (2026-10-03, D-13 di
+//    work-done/analisi-fe-chrome-drawer.md, ok Tid). Fino a quel giorno i
+//    form di riga dei documenti non ne avevano una: la fotografia del drawer
+//    copriva la sola testata, e una riga in compilazione si perdeva SENZA
+//    DOMANDA cambiando riga o uscendo dal drawer. Sta qui, una volta per i tre
+//    form che condividono il cuore: il form di dominio PIU' i componenti BoM
+//    confermati nel dialog, che stanno fuori dal form ma partono col Salva.
+//    Il form espone `modificato` e `chiudiConConferma` (`defineExpose`), e il
+//    suo Annulla passa da `chiudiConConferma`.
+//
+// ⭐ `seguiRiga(popola)` — IL LEGAME FORM ↔ RIGA, una volta per i tre form
+//    (2026-10-03, regola del 2, ok Tid). `popola(riga)` e' del dominio (che
+//    campi, come si leggono; `riga` null = creazione); qui stanno le due
+//    regole che non lo sono:
+//    · la fotografia si fissa a riga caricata, dopo il giro di watch;
+//    · la STESSA riga riletta dal server (`risincronizza` di useFormInline,
+//      per esempio dopo che il pannello componenti ha salvato un prezzo) NON
+//      ripopola un form modificato: fino a quel giorno qta e descrizione
+//      scritte e non salvate tornavano ai valori del server, senza domanda.
+//      Form pulito → si ripopola tutto; modificato → si tiene cio' che ha
+//      scritto l'operatore, e si allinea solo il prezzo di un padre composito
+//      (e' la somma dei componenti, scritta dal trigger: non si digita).
+//    ⚠️ Il form la chiama DOVE scriverebbe il suo `watch(() => props.riga)`, in
+//    fondo alle dichiarazioni che `popola` usa: il watch e' `immediate`.
+//    ⚠️ `visibile` sempre vero: il form esiste solo mentre e' aperto (`v-if`
+//    del contenitore), e allo smontaggio la fotografia se ne va con lui.
 
-import { computed } from 'vue'
+import { computed, nextTick, watch } from 'vue'
+import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import { useI18n } from 'vue-i18n'
 import { useArticoloUomOptions } from '../../../catalogo/composables/useArticoloUomOptions'
 import { useComponentiDialog } from '../componenti/useComponentiDialog'
@@ -79,6 +108,29 @@ export function useRigaArticoloComposito({ store, parentId, riga, articoloObj, f
       : store.addRiga(parentId(), payload)
   }
 
+  // ⚠️ Il form si fotografa APPIATTITO, campo per campo: annidato sotto una
+  //    chiave, il confronto diventerebbe `JSON.stringify` dell'intero oggetto e
+  //    perderebbe le regole del BB (`*_obj` ignorati, vuoti equivalenti, testi a
+  //    meno degli spazi) — un `''` al posto di `null` direbbe «modificato».
+  const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(
+    computed(() => ({ ...form.value, componenti_confermati: componenti.componentiPayload.value })),
+    { visibile: () => true },
+  )
+
+  function seguiRiga(popola) {
+    watch(riga, (nuova, prima) => {
+      const stessaRiga = nuova && prima && nuova.id === prima.id
+      if (stessaRiga && modificato.value) {
+        if (isPadreComposito.value) {
+          form.value.prezzo_unitario = nuova.prezzo_unitario != null ? Number(nuova.prezzo_unitario) : null
+        }
+        return
+      }
+      popola(nuova)
+      nextTick(() => fissa())
+    }, { immediate: true })
+  }
+
   return {
     isEdit,
     isCasoA,
@@ -92,5 +144,9 @@ export function useRigaArticoloComposito({ store, parentId, riga, articoloObj, f
     caricaUomConPickBase,
     ...componenti,
     submitRiga,
+    fissa,
+    modificato,
+    chiudiConConferma,
+    seguiRiga,
   }
 }

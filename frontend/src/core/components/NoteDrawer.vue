@@ -16,7 +16,7 @@
 
 import { ref, watch, computed, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
@@ -29,15 +29,13 @@ import { fetchParameterDefaults, lookupCodici } from '../apiCore'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useFormInline } from '../composables/useFormInline'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
-import { useDrawerClose } from '../composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile } from '../composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../composables/useDrawerFormPreserve'
 import { useNote } from '../composables/useNote'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import LookupSelect from './LookupSelect.vue'
-import DrawerTitle from './DrawerTitle.vue'
+import AppDrawer from './AppDrawer.vue'
 import FormFooter from './FormFooter.vue'
 import PageActionsBar from './PageActionsBar.vue'
-import { useDrawerContentReady } from '../composables/useDrawerContentReady'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -54,10 +52,6 @@ const props = defineProps({
   righeOptions: { type: Array, default: () => [] },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 // `saved` porta il TOTALE note del documento dopo l'operazione (create, update
 // o delete): il drawer lo conosce già dalla lista appena ricaricata, così il
 // padre può aggiornare un badge counter senza una seconda chiamata. Il
@@ -78,7 +72,11 @@ const PAGE_SIZE_DEFAULT = 200
 // ⚠️ Il click apre la modifica solo in scrittura: il getter e' letto al click.
 const {
   formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
-} = useFormInline({ puoModificare: () => !isReadonly.value })
+} = useFormInline({
+  puoModificare: () => !isReadonly.value,
+  // D-8: cambiare riga col form modificato chiede (il getter e' letto al clic).
+  confermaCambio: (p) => chiudiConConferma(p),
+})
 const form = ref(defaultForm())
 // Modifiche non salvate del form inline (nuova/modifica nota): la fotografia
 // vive finche' il form e' aperto, e si azzera da sola quando torna la lista.
@@ -169,18 +167,17 @@ async function onStartNew() {
 }
 
 function onStartEdit(n) {
-  apriRiga(n)
-  // In sola lettura il BB non apre: niente form da popolare.
-  if (!formAperto.value) return
-  form.value = {
-    testo_md: n.testo_md || n.testo || '',
-    id_stile: n.id_stile ?? null,
-    id_lingua: n.id_lingua ?? null,
-    target_riga_id: n.target_riga_id ?? null,
-    visibile: n.visibile !== false,
-    solo_stampa: n.solo_stampa === true,
-  }
-  fissa()
+  apriRiga(n, () => {
+    form.value = {
+      testo_md: n.testo_md || n.testo || '',
+      id_stile: n.id_stile ?? null,
+      id_lingua: n.id_lingua ?? null,
+      target_riga_id: n.target_riga_id ?? null,
+      visibile: n.visibile !== false,
+      solo_stampa: n.solo_stampa === true,
+    }
+    fissa()
+  })
 }
 
 function onRowClick(event) {
@@ -200,12 +197,6 @@ const canSaveForm = computed(() => {
   const txt = (form.value.testo_md || '').trim()
   return txt.length > 0 && form.value.id_stile != null
 })
-
-const onClose = useDrawerClose(emit)
-
-// Chiusura del drawer per volonta' dell'utente (X/ESC/clic fuori/Chiudi):
-// con il form inline modificato chiede conferma.
-const chiudi = () => chiudiConConferma(onClose)
 
 // Scopo: persistenza form. Patch in edit, create in new. Re-fetch lista al successo.
 async function onSaveForm() {
@@ -255,162 +246,156 @@ function rigaLabel(n) {
   const found = props.righeOptions.find(opt => opt.value === n.target_riga_id)
   return found ? found.label : `#${n.target_riga_id}`
 }
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). Ogni uscita (X, ESC,
+       clic fuori, Chiudi) passa dalla conferma del form inline; il «Chiudi»
+       sparisce a form aperto, che ha gia' il suo Annulla/Salva. -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
-    @after-show="onAfterShow"
+    :title="title || t('note.titolo_default')"
+    :icon="MANAGE_ICONS.NOTE"
+    :action="t('common.edit')"
+    :width="DRAWER_WIDTH.WIDE"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :footer="formMode ? 'nessuno' : 'chiudi'"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle
-        :action="t('common.edit')"
-        :title="title || t('note.titolo_default')"
-        :icon="MANAGE_ICONS.NOTE"
-        :modificato="modificato"
-      />
-    </template>
+    <div v-if="!formMode" class="app-page-toolbar">
+      <PageActionsBar :actions="pageActions" />
+    </div>
 
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div v-if="!formMode" class="app-page-toolbar">
-        <PageActionsBar :actions="pageActions" />
-      </div>
+    <DataTable
+      :key="notesTableKey"
+      :value="notes"
+      :loading="listLoading"
+      data-key="id"
+      striped-rows
+      size="small"
+      removable-sort
+      class="app-datatable app-datatable--inner"
+      @row-click="onRowClick"
+    >
+      <template #empty>
+        <div class="app-empty-state">
+          <i :class="MANAGE_ICONS.NOTE" />
+          <p>{{ t('note.empty') }}</p>
+        </div>
+      </template>
 
-      <DataTable
-        :key="notesTableKey"
-        :value="notes"
-        :loading="listLoading"
-        data-key="id"
-        striped-rows
-        size="small"
-        removable-sort
-        class="app-datatable app-datatable--inner"
-        @row-click="onRowClick"
-      >
-        <template #empty>
-          <div class="app-empty-state">
-            <i :class="MANAGE_ICONS.NOTE" />
-            <p>{{ t('note.empty') }}</p>
+      <Column field="anchor_tipo" :header="t('note.col_ambito')" :style="{ width: '110px' }">
+        <template #body="{ data }">
+          <Tag
+            :value="data.anchor_tipo === 'RIGA' ? t('note.tag_riga') : t('note.tag_documento')"
+            :severity="data.anchor_tipo === 'RIGA' ? 'info' : 'secondary'"
+          />
+        </template>
+      </Column>
+      <Column :header="t('note.col_riga')" :style="{ width: '140px' }">
+        <template #body="{ data }">
+          <span v-if="rigaLabel(data)">{{ rigaLabel(data) }}</span>
+          <span v-else class="text-muted">—</span>
+        </template>
+      </Column>
+      <Column field="posizione" :header="t('note.col_posizione')" :style="{ width: '110px' }" />
+      <Column :header="t('note.col_testo')">
+        <template #body="{ data }">
+          <span class="nota-card-testo">{{ data.testo_md || data.testo }}</span>
+        </template>
+      </Column>
+      <Column field="stile_descrizione" :header="t('note.col_stile')" :style="{ width: '160px' }" />
+      <Column :header="t('note.col_lingua')" :style="{ width: '90px' }">
+        <template #body="{ data }">
+          <span :title="data.lingua_descrizione || ''">{{ data.lingua_codice_iso || '—' }}</span>
+        </template>
+      </Column>
+      <Column :header="t('common.col_azioni')" :style="{ width: '60px' }" :exportable="false">
+        <template #body="{ data }">
+          <div class="app-row-actions-inline" v-if="!isReadonly && !formMode">
+            <Button
+              :icon="MANAGE_ICONS.DELETE" text rounded size="small"
+              class="app-delete-btn" :title="t('common.delete')"
+              @click.stop="onDelete(data)"
+            />
           </div>
         </template>
+      </Column>
+    </DataTable>
 
-        <Column field="anchor_tipo" :header="t('note.col_ambito')" :style="{ width: '110px' }">
-          <template #body="{ data }">
-            <Tag
-              :value="data.anchor_tipo === 'RIGA' ? t('note.tag_riga') : t('note.tag_documento')"
-              :severity="data.anchor_tipo === 'RIGA' ? 'info' : 'secondary'"
+    <template v-if="formMode">
+      <div class="app-drawer-section">
+        <h4>{{ formMode === 'edit' ? t('note.modifica') : t('note.nuova') }}</h4>
+      </div>
+      <div class="form-grid">
+        <div class="form-grid-2col">
+          <div class="form-field" v-if="canSelectRiga">
+            <label>{{ t('note.field_riga') }}</label>
+            <Select
+              v-model="form.target_riga_id"
+              :options="righeOptions"
+              option-label="label" option-value="value"
+              :placeholder="t('note.placeholder_riga_doc')"
+              :disabled="formMode === 'edit'"
+              show-clear 
+              :invalid="campiErrati.includes('target_riga_id')"
             />
-          </template>
-        </Column>
-        <Column :header="t('note.col_riga')" :style="{ width: '140px' }">
-          <template #body="{ data }">
-            <span v-if="rigaLabel(data)">{{ rigaLabel(data) }}</span>
-            <span v-else class="text-muted">—</span>
-          </template>
-        </Column>
-        <Column field="posizione" :header="t('note.col_posizione')" :style="{ width: '110px' }" />
-        <Column :header="t('note.col_testo')">
-          <template #body="{ data }">
-            <span class="nota-card-testo">{{ data.testo_md || data.testo }}</span>
-          </template>
-        </Column>
-        <Column field="stile_descrizione" :header="t('note.col_stile')" :style="{ width: '160px' }" />
-        <Column :header="t('note.col_lingua')" :style="{ width: '90px' }">
-          <template #body="{ data }">
-            <span :title="data.lingua_descrizione || ''">{{ data.lingua_codice_iso || '—' }}</span>
-          </template>
-        </Column>
-        <Column :header="t('common.col_azioni')" :style="{ width: '60px' }" :exportable="false">
-          <template #body="{ data }">
-            <div class="app-row-actions-inline" v-if="!isReadonly && !formMode">
-              <Button
-                :icon="MANAGE_ICONS.DELETE" text rounded size="small"
-                class="app-delete-btn" :title="t('common.delete')"
-                @click.stop="onDelete(data)"
-              />
-            </div>
-          </template>
-        </Column>
-      </DataTable>
-
-      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
-
-      <template v-if="formMode">
-        <div class="app-drawer-section">
-          <h4>{{ formMode === 'edit' ? t('note.modifica') : t('note.nuova') }}</h4>
-        </div>
-        <div class="form-grid">
-          <div class="form-grid-2col">
-            <div class="form-field" v-if="canSelectRiga">
-              <label>{{ t('note.field_riga') }}</label>
-              <Select
-                v-model="form.target_riga_id"
-                :options="righeOptions"
-                option-label="label" option-value="value"
-                :placeholder="t('note.placeholder_riga_doc')"
-                :disabled="formMode === 'edit'"
-                show-clear 
-                :invalid="campiErrati.includes('target_riga_id')"
-              />
-            </div>
-            <div class="form-field">
-              <label>{{ t('note.field_stile') }} *</label>
-              <LookupSelect
-                v-model="form.id_stile"
-                rel="config.note_stili"
-                :placeholder="t('note.placeholder_stile')"
-              />
-            </div>
-          </div>
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('note.field_lingua') }}</label>
-              <LookupSelect
-                v-model="form.id_lingua"
-                rel="config.lingue"
-                :placeholder="t('note.placeholder_lingua')"
-                show-code
-                show-clear
-              />
-            </div>
           </div>
           <div class="form-field">
-            <label>{{ t('note.field_testo') }} *</label>
-            <Textarea
-              v-model="form.testo_md" rows="6" auto-resize
-              :placeholder="t('note.placeholder_testo')"
-              :invalid="campiErrati.includes('testo_md')"
+            <label>{{ t('note.field_stile') }} *</label>
+            <LookupSelect
+              v-model="form.id_stile"
+              rel="config.note_stili"
+              :placeholder="t('note.placeholder_stile')"
             />
           </div>
-          <div class="form-grid-2col">
-            <div class="form-field form-field-inline">
-              <label>{{ t('note.field_visibile') }}</label>
-              <ToggleSwitch v-model="form.visibile"
-                :invalid="campiErrati.includes('visibile')"
-              />
-            </div>
-            <div class="form-field form-field-inline">
-              <label>{{ t('note.field_solo_stampa') }}</label>
-              <ToggleSwitch v-model="form.solo_stampa"
-                :invalid="campiErrati.includes('solo_stampa')"
-              />
-            </div>
+        </div>
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('note.field_lingua') }}</label>
+            <LookupSelect
+              v-model="form.id_lingua"
+              rel="config.lingue"
+              :placeholder="t('note.placeholder_lingua')"
+              show-code
+              show-clear
+            />
           </div>
         </div>
+        <div class="form-field">
+          <label>{{ t('note.field_testo') }} *</label>
+          <Textarea
+            v-model="form.testo_md" rows="6" auto-resize
+            :placeholder="t('note.placeholder_testo')"
+            :invalid="campiErrati.includes('testo_md')"
+          />
+        </div>
+        <div class="form-grid-2col">
+          <div class="form-field form-field-inline">
+            <label>{{ t('note.field_visibile') }}</label>
+            <ToggleSwitch v-model="form.visibile"
+              :invalid="campiErrati.includes('visibile')"
+            />
+          </div>
+          <div class="form-field form-field-inline">
+            <label>{{ t('note.field_solo_stampa') }}</label>
+            <ToggleSwitch v-model="form.solo_stampa"
+              :invalid="campiErrati.includes('solo_stampa')"
+            />
+          </div>
+        </div>
+      </div>
 
-        <FormFooter
-          :loading="saveLoading"
-          :disabled="!canSaveForm"
-          @save="onSaveForm"
-          @cancel="annullaForm"
-        />
-      </template>
-    </div>
-  </Drawer>
+      <FormFooter
+        :loading="saveLoading"
+        :disabled="!canSaveForm"
+        @save="onSaveForm"
+        @cancel="annullaForm"
+      />
+    </template>
+  </AppDrawer>
 </template>
 
 <style scoped>

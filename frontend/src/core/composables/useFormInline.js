@@ -62,6 +62,17 @@ export function useFormInline({
   // modifica). ⚠️ Non tocca «Nuova riga»: quella ha la sua condizione
   // (`azioneNuovaRiga({ visible })`), che spesso e' piu' stretta.
   puoModificare = () => true,
+  // ⭐ CAMBIARE RIGA COL FORM MODIFICATO CHIEDE (2026-10-03, D-8 di
+  //    work-done/analisi-fe-chrome-drawer.md, decisione di Tid). Fino a
+  //    quel giorno il clic su un'altra riga sostituiva il form aperto, e le
+  //    modifiche alla riga precedente si perdevano senza domanda.
+  //    `confermaCambio(procedi)` e' di solito il `chiudiConConferma` della
+  //    fotografia del form inline (useDrawerFormPreserve): chiede solo se c'e'
+  //    davvero qualcosa da perdere. Senza, si cambia e basta (com'era).
+  // ⚠️ Passarla come freccia, `(p) => fotografia.chiudiConConferma(p)`: la
+  //    fotografia nasce di solito DOPO questo BB (la sua visibilita' legge
+  //    `formAperto`), e la freccia la legge solo al clic.
+  confermaCambio = null,
 } = {}) {
   // `null` = nessun form · `'create'` · `'edit'`.
   const formMode = ref(null)
@@ -79,10 +90,19 @@ export function useFormInline({
   //        rifiuterebbe.
   // ⭐ Riceve la RIGA, non l'evento PrimeVue: e' la firma di `row-click` di
   //    `ListaConfigurabile` / `DrawerTabLista`.
-  function apriRiga(riga) {
+  // ⭐ `poi(riga)`: cio' che il contenitore fa ad apertura avvenuta (popolare il
+  //    form, fissare la fotografia). ⛔ Va passato qui e non scritto DOPO la
+  //    chiamata: con la conferma l'apertura puo' arrivare piu' tardi, o mai, e
+  //    un form riempito subito butterebbe le modifiche prima della risposta.
+  function apriRiga(riga, poi = null) {
     if (!riga || !toValue(puoModificare)) return
-    rigaInModifica.value = riga
-    formMode.value = 'edit'
+    const apri = () => {
+      rigaInModifica.value = riga
+      formMode.value = 'edit'
+      poi?.(riga)
+    }
+    if (formAperto.value && confermaCambio) confermaCambio(apri)
+    else apri()
   }
 
   // Scopo: chiude il form e dimentica la riga.
