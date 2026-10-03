@@ -17,14 +17,20 @@
 #        VIVO al momento della scrittura, quindi dopo la DEFINITIVA la
 #        spezzatura verrebbe rifiutata.
 #
+#        ⭐ UN KIT SI SPEZZA COME UN'UNITA' SOLA (D-5, dal 2026-10-03): i suoi
+#        componenti si consumano come un gruppo, con la stessa frazione, e
+#        il titolo si giudica sull'articolo PADRE (D-5.1). Una riga sciolta
+#        e' un gruppo di uno, sulla stessa strada.
+#
 #        Brief: docs/it/dev/work-in-progress/
-#               brief-be-fe-iva-fase-3-consumatori-risolutore.md (`F3-b2`)
+#               brief-be-fe-iva-fase-3-consumatori-risolutore.md (`F3-b2`),
+#               brief-db-bom-flag-quantita-e-kit-in-fattura.md §11
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 import logging
-from decimal import Decimal
+from decimal import Context, Decimal
 from typing import Any
 
 from django.db import transaction
@@ -36,6 +42,10 @@ logger = logging.getLogger(__name__)
 
 _E_VALIDATION = "E_PIPELINE_VALIDATION"
 _FN = "vendite.plafond_fattura_service.consuma_lotto"
+# ⚠️ Il contesto dei prodotti che devono restare ESATTI (`kit_qta × frazione`):
+#    la precisione di default (28 cifre) puo' arrotondare il prodotto di una
+#    frazione lunga, e due componenti direbbero due numeri di kit diversi.
+_ESATTO = Context(prec=100)
 
 
 class PlafondFatturaService:
@@ -54,14 +64,11 @@ class PlafondFatturaService:
     #    esaurito e' la FORTUNA a decidere quale cliente resta scoperto. Lo
     #    impone il repository, e questo giro non lo ri-ordina.
     def consuma_lotto(self, lotto_id: int) -> dict[str, int]:
-        ErrorManager.require(
+        _richiedi(
             isinstance(lotto_id, int) and lotto_id > 0,
-            code=_E_VALIDATION,
             message="Parametro lotto non valido.",
             detail="lotto_id obbligatorio e > 0",
-            context={"lotto_id": lotto_id},
-            function_name=_FN,
-            log_to_db=True,
+            lotto_id=lotto_id,
         )
         fattura_ids = self.repository.list_fatture_by_lotto_ordinate(lotto_id)
         if not fattura_ids:
@@ -88,7 +95,15 @@ class PlafondFatturaService:
             "movimenti": movimenti,
         }
 
-    # Scopo: il giro di UNA fattura.
+    # Scopo: il giro di UNA fattura, un GRUPPO alla volta.
+    # ⭐ IL GRUPPO E' L'UNITA' DEL CONSUMO (D-5, brief-db-bom-flag-quantita-e-
+    #    kit-in-fattura §11): i componenti di un kit (stessa `kit_key`) si
+    #    spezzano come un'unita' sola, con la stessa frazione; una riga sciolta
+    #    e' un gruppo di uno. Una sola strada per entrambi: due strade di
+    #    consumo sarebbero due copie delle regole di spezzatura.
+    # ⚠️ I gruppi si consumano nell'ordine della loro prima riga (`riga_nr`):
+    #    a plafond quasi esaurito l'ordine decide chi resta coperto, e resta
+    #    quello di stampa come prima.
     def _consuma_fattura(
         self, fattura_id: int, ctx: dict[str, Any]
     ) -> dict[str, int]:
@@ -97,17 +112,14 @@ class PlafondFatturaService:
         #    emittente legge zero titoli e risponde con l'aliquota ORDINARIA
         #    senza sollevare — cioe' nessun plafond consumato, su un documento
         #    che nessuno segnalera'.
-        ErrorManager.require(
+        _richiedi(
             ctx.get("emittente_fiscale_id") is not None,
-            code=_E_VALIDATION,
             message="Contesto fiscale incompleto.",
             detail=(
                 f"emittente fiscale non risolvibile per la fattura {fattura_id}: "
                 "il plafond non e' consumabile"
             ),
-            context={"fattura_id": fattura_id},
-            function_name=_FN,
-            log_to_db=True,
+            fattura_id=fattura_id,
         )
         righe = self.repository.list_righe_per_plafond(fattura_id)
         spezzate = 0
@@ -118,29 +130,49 @@ class PlafondFatturaService:
         from apps.vendite.services.iva_resolver_service import IvaResolverService
 
         resolver = IvaResolverService()
-        for riga in righe:
-            esito = self._consuma_riga(fattura_id, riga, ctx, resolver=resolver)
-            spezzate += esito["spezzata"]
-            movimenti += esito["movimento"]
+        for gruppo in _gruppi_di_consumo(righe):
+            esito = self._consuma_gruppo(fattura_id, gruppo, ctx, resolver=resolver)
+            spezzate += esito["spezzate"]
+            movimenti += esito["movimenti"]
         return {"righe_spezzate": spezzate, "movimenti": movimenti}
 
-    # Scopo: risolve, consuma e — se il titolo copre solo una quota — spezza.
-    def _consuma_riga(
+    # Scopo: risolve, consuma e — se il titolo copre solo una quota — spezza
+    #        ogni riga del gruppo con la stessa frazione.
+    #
+    # ⭐ D-5.1 (a): IL TITOLO SI GIUDICA SUL PADRE DEL KIT. Il risolutore si
+    #    chiama con `kit_articolo_padre_id` e l'imponibile del kit intero: se
+    #    il padre e' nell'ambito del titolo lo seguono tutti i componenti,
+    #    altrimenti nessuno. E' il kit la cosa venduta (come allo stadio A,
+    #    dove l'IVA dei componenti e' vincolata a quella del padre).
+    #
+    # ⛔ PROVVISORIO (R-DB-B13 del brief §12.5, decisione di Tid 2026-10-03):
+    #    la madre oggi RIFIUTA i componenti a imponibile zero o negativo, che il
+    #    modello ammette. Finche' non e' corretta, qui restano fuori dalla
+    #    chiamata e si spezzano con la frazione del kit, perche' una `kit_qta`
+    #    rimasta intera farebbe dare alla vista una quantita' NULL. ⚠️ Sul
+    #    negativo e' anche sbagliato: la frazione esce dai soli positivi, e il
+    #    kit consuma piu' del suo netto. Col fix si passano tutte le righe.
+    def _consuma_gruppo(
         self,
         fattura_id: int,
-        riga: dict[str, Any],
+        gruppo: list[dict[str, Any]],
         ctx: dict[str, Any],
         *,
         resolver: Any,
     ) -> dict[str, int]:
-        imponibile = _dec(riga.get("imponibile_riga"))
-        if imponibile is None or imponibile <= 0:
-            # Niente da ripartire: una riga a imponibile zero non consuma
+        consumanti = [r for r in gruppo if (_dec(r.get("imponibile_riga")) or 0) > 0]
+        if not consumanti:
+            # Niente da ripartire: righe a imponibile zero non consumano
             # capienza, e chiamare la madre scriverebbe un movimento vuoto.
-            return {"spezzata": 0, "movimento": 0}
+            return {"spezzate": 0, "movimenti": 0}
+        imponibile = sum(
+            (_dec(r.get("imponibile_riga")) for r in consumanti), Decimal(0)
+        )
 
+        capo = gruppo[0]
+        articolo = capo.get("kit_articolo_padre_id") if capo.get("kit_key") else None
         argomenti = {
-            "articolo_id": str(riga["articolo_id"]),
+            "articolo_id": str(articolo or capo["articolo_id"]),
             "billing_account_id": ctx["billing_account_id"],
             "emittente_fiscale_id": ctx["emittente_fiscale_id"],
             "data_riferimento": ctx["data_riferimento"],
@@ -151,7 +183,7 @@ class PlafondFatturaService:
         #    ripartizione VERA perche' e' il momento in cui si decide.
         parti = resolver.risolvi(imponibile=imponibile, **argomenti)
         if not parti:
-            return {"spezzata": 0, "movimento": 0}
+            return {"spezzate": 0, "movimenti": 0}
 
         # ⚠️ UNA scansione: la PARTE e' l'informazione, l'id ne discende. Due
         #    `next()` sullo stesso predicato erano due punti da tenere
@@ -161,59 +193,87 @@ class PlafondFatturaService:
         if parte_titolo is None:
             # Nessun titolo: l'IVA e' quella dello stadio A, gia' scritta alla
             # generazione. Non si tocca niente e non si consuma niente.
-            return {"spezzata": 0, "movimento": 0}
-        titolo_id = parte_titolo["titolo_iva_id"]
-
-        esito = self.repository.consuma_plafond_titolo(
-            titolo_iva_id=int(titolo_id),
-            fattura_id=fattura_id,
-            imponibile=imponibile,
-            data_movimento=ctx["data_riferimento"],
-            fattura_riga_id=int(riga["id"]),
-        )
-        coperta = _dec(esito.get("quota_coperta")) or Decimal(0)
-        ordinaria = _dec(esito.get("quota_ordinaria")) or Decimal(0)
-        movimento = 1 if esito.get("movimento_id") else 0
+            return {"spezzate": 0, "movimenti": 0}
 
         # ⭐ L'AUTORITA' E' LA MADRE CHE PRENDE IL LOCK, non il risolutore.
         #    Il risolutore e' `STABLE`: proietta il residuo che vede, e fra la
         #    proiezione e il lock un'altra transazione puo' aver consumato. La
-        #    ripartizione buona e' quella che torna DA QUI.
+        #    ripartizione buona e' quella che torna DA QUI — e per un kit e'
+        #    lei a dare la frazione unica, con un lock solo.
+        esiti = self.repository.consuma_plafond_titolo_righe(
+            titolo_iva_id=int(parte_titolo["titolo_iva_id"]),
+            fattura_id=fattura_id,
+            fattura_riga_ids=[int(r["id"]) for r in consumanti],
+            imponibili=[_dec(r.get("imponibile_riga")) for r in consumanti],
+            data_movimento=ctx["data_riferimento"],
+        )
+        quote = {int(e["fattura_riga_id"]): e for e in esiti}
+        # ⛔ Una riga senza esito resterebbe intera a meta' di un kit spezzato;
+        #    due frazioni diverse sarebbero due kit diversi. Sono il contratto
+        #    della madre, e lo si pretende invece di leggere la prima riga.
+        frazioni = {_dec(e.get("frazione")) for e in esiti}
+        _richiedi(
+            len(esiti) == len(consumanti)
+            and all(int(r["id"]) in quote for r in consumanti)
+            and len(frazioni) == 1,
+            message="Ripartizione del plafond incoerente.",
+            detail=(
+                f"fattura {fattura_id}: la madre ha ripartito {len(esiti)} righe "
+                f"su {len(consumanti)} passate, frazioni {sorted(map(str, frazioni))}"
+            ),
+            fattura_id=fattura_id,
+        )
+        movimenti = sum(1 for e in esiti if e.get("movimento_id"))
+        coperta = sum(
+            ((_dec(e.get("quota_coperta")) or Decimal(0)) for e in esiti), Decimal(0)
+        )
+        ordinaria = sum(
+            ((_dec(e.get("quota_ordinaria")) or Decimal(0)) for e in esiti), Decimal(0)
+        )
         if coperta <= 0:
-            # Il titolo non copriva piu' niente: la riga resta ordinaria com'e'.
-            return {"spezzata": 0, "movimento": movimento}
-
-        # ⛔ L'ORIGINE NON SI SCRIVE A MANO. Il vocabolario e' del DB ed e'
-        #    APERTO (`ARTICOLO`, `TIPO_UTENZA`, `TITOLO`, `ASSENTE`, e domani
-        #    altro): cablare la stringa qui vorrebbe dire raccontare sulla riga
-        #    una provenienza che il risolutore non ha detto. Sulla parte
-        #    coperta e' `TITOLO`, si', ma lo dice LUI — e sulla parte residua
-        #    puo' legittimamente essere `TIPO_UTENZA` o `ASSENTE`, che sono
-        #    proprio i casi in cui scrivere `ARTICOLO` sarebbe una bugia.
-        meta_base = dict(riga.get("meta") or {})
+            # Il titolo non copriva piu' niente: il gruppo resta ordinario.
+            return {"spezzate": 0, "movimenti": movimenti}
 
         if ordinaria <= 0:
-            # Copertura piena: una riga sola, con l'IVA del titolo.
-            self.repository.aggiorna_capofila_plafond(
-                riga_id=int(riga["id"]),
-                qta=_dec(riga.get("qta")) or Decimal(0),
-                iva_id=parte_titolo.get("iva_id"),
-                meta=_meta_parte(meta_base, parte_titolo),
-            )
-            return {"spezzata": 0, "movimento": movimento}
+            # Copertura piena: ogni riga resta una, con l'IVA del titolo.
+            for riga in gruppo:
+                self.repository.aggiorna_capofila_plafond(
+                    riga_id=int(riga["id"]),
+                    qta=_dec(riga.get("qta")) or Decimal(0),
+                    iva_id=parte_titolo.get("iva_id"),
+                    kit_qta=_dec(riga.get("kit_qta")),
+                    meta=_meta_parte(dict(riga.get("meta") or {}), parte_titolo),
+                )
+            return {"spezzate": 0, "movimenti": movimenti}
 
-        self._spezza(
-            fattura_id=fattura_id,
-            riga=riga,
-            coperta=coperta,
-            parte_titolo=parte_titolo,
-            parte_ordinaria=self._parte_ordinaria(
-                parti, resolver=resolver, argomenti=argomenti, residuo=ordinaria,
-                riga_id=int(riga["id"]),
-            ),
-            meta_base=meta_base,
+        parte_ordinaria = self._parte_ordinaria(
+            parti, resolver=resolver, argomenti=argomenti, residuo=ordinaria,
+            riga_id=int(capo["id"]),
         )
-        return {"spezzata": 1, "movimento": movimento}
+        # ⭐ La frazione e' UNA per il gruppo, e la dice la madre: e' la quota
+        #    coperta effettiva sul totale, quella con cui ha diviso le righe.
+        frazione = next(iter(frazioni))
+        _richiedi(
+            frazione is not None and Decimal(0) < frazione < Decimal(1),
+            message="Ripartizione del plafond incoerente.",
+            detail=(
+                f"fattura {fattura_id}: copertura parziale con frazione "
+                f"{frazione} fuori da (0, 1)"
+            ),
+            fattura_id=fattura_id,
+        )
+        assert frazione is not None
+        for riga in gruppo:
+            esito = quote.get(int(riga["id"]))
+            self._spezza(
+                fattura_id=fattura_id,
+                riga=riga,
+                coperta=_dec(esito.get("quota_coperta")) if esito else None,
+                frazione=frazione,
+                parte_titolo=parte_titolo,
+                parte_ordinaria=parte_ordinaria,
+            )
+        return {"spezzate": len(gruppo), "movimenti": movimenti}
 
     # Scopo: la PARTE non coperta — aliquota e origine insieme, mai separate.
     # ⚠️ Di norma la porta il risolutore nella seconda parte. Ma se la madre ha
@@ -267,6 +327,9 @@ class PlafondFatturaService:
     #    `qta = imponibile / prezzo_effettivo` e' l'inverso esatto della formula
     #    con cui il DB calcola `imponibile_riga`. In aritmetica esatta
     #    l'imponibile ricalcolato E' la quota, e il centesimo sparisce.
+    #    Una riga che non ha consumato (`coperta` None: imponibile zero o
+    #    negativo, solo in un kit) non ha una quota da invertire: prende la
+    #    frazione del kit sulla quantita'.
     #
     # ⛔ E LA QUANTITA' DELLA PARTE NON PASSA PER L'ARROTONDAMENTO DI RIGA
     #    (`arrotondamento_quantita_dec`). Applicarlo rimetterebbe la deriva, e
@@ -276,38 +339,56 @@ class PlafondFatturaService:
     # ⭐ IL CENTESIMO VA SULLA PARTE RESIDUA, e qui e' vero PER COSTRUZIONE: la
     #    quantita' del resto e' `qta_totale - qta_coperta`, quindi le due parti
     #    sommano esattamente la riga di partenza, comunque cada la divisione.
+    #
+    # ⭐ `kit_qta` (R-BE-P4) segue la FRAZIONE, non la quantita' del
+    #    componente: `kit_qta × f` alla capofila, il resto alla parte. Con la
+    #    stessa `f` su ogni riga del kit, la vista somma per componente lo
+    #    stesso numero di kit su ogni meta' («1,2» e «1,8»). Il prodotto e'
+    #    ESATTO (contesto `_ESATTO`): un arrotondamento qui farebbe dire ai
+    #    componenti numeri diversi, e la vista darebbe al kit quantita' NULL.
     def _spezza(
         self,
         *,
         fattura_id: int,
         riga: dict[str, Any],
-        coperta: Decimal,
+        coperta: Decimal | None,
+        frazione: Decimal,
         parte_titolo: dict[str, Any],
         parte_ordinaria: dict[str, Any],
-        meta_base: dict[str, Any],
     ) -> None:
         qta_totale = _dec(riga.get("qta")) or Decimal(0)
-        prezzo_eff = _prezzo_effettivo(riga)
-        ErrorManager.require(
-            prezzo_eff is not None and prezzo_eff > 0,
-            code=_E_VALIDATION,
-            message="Riga non spezzabile.",
-            detail=(
-                f"riga {riga.get('id')}: prezzo effettivo nullo o negativo, la "
-                "quantita' della parte coperta non e' derivabile"
-            ),
-            context={"fattura_id": fattura_id, "riga_id": riga.get("id")},
-            function_name=_FN,
-            log_to_db=True,
-        )
-        assert prezzo_eff is not None
-        qta_coperta = coperta / prezzo_eff
+        if coperta is None:
+            qta_coperta = _ESATTO.multiply(qta_totale, frazione)
+        else:
+            prezzo_eff = _prezzo_effettivo(riga)
+            _richiedi(
+                prezzo_eff is not None and prezzo_eff > 0,
+                message="Riga non spezzabile.",
+                detail=(
+                    f"riga {riga.get('id')}: prezzo effettivo nullo o negativo, "
+                    "la quantita' della parte coperta non e' derivabile"
+                ),
+                fattura_id=fattura_id,
+                riga_id=riga.get("id"),
+            )
+            assert prezzo_eff is not None
+            qta_coperta = coperta / prezzo_eff
         qta_residua = qta_totale - qta_coperta
 
+        kit_qta = _dec(riga.get("kit_qta"))
+        kit_qta_coperta = (
+            None if kit_qta is None else _ESATTO.multiply(kit_qta, frazione)
+        )
+        kit_qta_residua = (
+            None if kit_qta is None else _ESATTO.subtract(kit_qta, kit_qta_coperta)
+        )
+
+        meta_base = dict(riga.get("meta") or {})
         self.repository.aggiorna_capofila_plafond(
             riga_id=int(riga["id"]),
             qta=qta_coperta,
             iva_id=parte_titolo.get("iva_id"),
+            kit_qta=kit_qta_coperta,
             # ⛔ NIENTE marcatore «e' una spezzatura» nel `meta`, ed e' una
             #    correzione: ce l'avevo messo per spiegare la quantita' non
             #    tonda, ma quel fatto lo dice gia' `riga_capofila_id` — ed e'
@@ -323,8 +404,29 @@ class PlafondFatturaService:
             riga_nr=self.repository.get_next_fattura_riga_nr(fattura_id),
             qta=qta_residua,
             iva_id=parte_ordinaria.get("iva_id"),
+            kit_qta=kit_qta_residua,
             meta=_meta_parte(meta_base, parte_ordinaria),
         )
+
+
+# Scopo: le righe di una fattura raggruppate per CONSUMO: i componenti di un
+#        kit (stessa `kit_key`) insieme, ogni riga sciolta da sola.
+# ⚠️ Nell'ordine della prima riga di ogni gruppo, e dentro il gruppo in quello
+#    di arrivo (`riga_nr`): e' l'ordine in cui la madre li vuole (R-BE-P3) e
+#    quello in cui il plafond si consuma fra gruppi.
+def _gruppi_di_consumo(righe: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    gruppi: list[list[dict[str, Any]]] = []
+    per_kit: dict[str, list[dict[str, Any]]] = {}
+    for riga in righe:
+        kit_key = riga.get("kit_key")
+        if kit_key is None:
+            gruppi.append([riga])
+        elif kit_key in per_kit:
+            per_kit[kit_key].append(riga)
+        else:
+            per_kit[kit_key] = [riga]
+            gruppi.append(per_kit[kit_key])
+    return gruppi
 
 
 # Scopo: il `meta` di una parte — i due fatti che nessuno puo' ricostruire dopo.
@@ -342,6 +444,20 @@ def _meta_parte(base: dict[str, Any], parte: dict[str, Any]) -> dict[str, Any]:
         "iva_origine": parte.get("origine"),
         "iva_titolo_id": parte.get("titolo_iva_id"),
     }
+
+
+# Scopo: il guard del giro, scritto una volta: stesso codice, stessa funzione,
+#        sempre nel diario. Cambia solo la frase e il contesto.
+def _richiedi(condizione: bool, *, message: str, detail: str, **context: Any) -> None:
+    ErrorManager.require(
+        condizione,
+        code=_E_VALIDATION,
+        message=message,
+        detail=detail,
+        context=context,
+        function_name=_FN,
+        log_to_db=True,
+    )
 
 
 # Scopo: Decimal difensivo — il driver puo' restituire numerici come stringa.

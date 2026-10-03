@@ -221,9 +221,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   dell'amministratore che rifiutano le credenziali di sistema).
 - **Kit in fattura** (`work-in-progress/brief-db-esposizione-componenti-kit-in-fattura.md`,
   `work-in-progress/brief-db-bom-flag-quantita-e-kit-in-fattura.md`): BE/FE scritto; secondo giro
-  DB (R-DB-B8…B10, `20261003-05`/`-06`) applicato il 2026-10-03, baseline senza regressioni;
-  restano FE (R-FE-B1 rivista) e BE (rigenerare le policy dei codici errore).
-  Plafond e kit (§11, D-5): DB `20261003-07…-09` applicato il 2026-10-03, baseline verdi; resta il BE (R-BE-P1…P6).
+  DB (R-DB-B8…B10, `20261003-05`/`-06`) applicato il 2026-10-03, baseline senza regressioni.
+  Plafond e kit (§11, D-5): DB `20261003-07…-09` applicato il 2026-10-03, baseline verdi.
+  Terzo giro BE/FE (§12: R-FE-B1 rivista, R-BE-B8, R-BE-P1…P6) scritto il 2026-10-03, non
+  committato; script R-BE-B5 lanciato; restano il migrate del CSV, la v7 da pubblicare, due ritocchi DB
+  e ⛔ R-DB-B13 (§12.5): la madre del plafond rifiuta i componenti a imponibile `<= 0`, da correggere a DB.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

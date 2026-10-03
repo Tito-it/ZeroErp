@@ -10,7 +10,8 @@
 --   sono COMPONENTI DI KIT (`componente_di` nel meta) aggiunge le due chiavi
 --   del contratto kit che il push scrive dal 2026-10-02 (R-BE-B2):
 --       qta_padre     = quantita / coeff_qta, se coeff_qta (del meta) > 0;
---                       altrimenti 1
+--                       altrimenti 1 col segno della quantita' (-1 su una
+--                       rettifica)
 --       uom_padre_id  = articoli.uom_id dell'articolo padre (`componente_di`)
 --   La quantita' padre porta il SEGNO della quantita' (una rettifica e'
 --   negativa, D-NC-2): e' la regola che la generazione delle righe verifica.
@@ -102,6 +103,9 @@ BEGIN
                            (CASE WHEN (x.meta ->> ''coeff_qta'') ~ ''^[0-9]+(\.[0-9]+)?$''
                                   AND (x.meta ->> ''coeff_qta'')::numeric > 0
                                  THEN trim_scale(x.quantita / (x.meta ->> ''coeff_qta'')::numeric)
+                                 -- Senza coefficiente: un kit, col SEGNO della
+                                 -- quantita'' (una rettifica e'' -1, non +1).
+                                 WHEN x.quantita < 0 THEN -1::numeric
                                  ELSE 1::numeric
                             END)::text,
                            ''uom_padre_id'',

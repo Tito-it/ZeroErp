@@ -439,9 +439,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         "popola_fatture_rettifiche": "vendite.fn_popola_fatture_rettifiche",
         # `None` = implementazione PYTHON. Il consumo del plafond non e' una
         # sola chiamata SQL: e' un giro che ordina le fatture (`P5`), risolve,
-        # spezza le righe e poi chiama `fn_consuma_plafond_titolo_iva` per
-        # riga. La madre DB fa la parte che DEVE stare sotto lock; l'ordine e
-        # la spezzatura stanno qui.
+        # chiama `fn_consuma_plafond_titolo_iva_righe` per gruppo (un kit, o
+        # una riga sciolta: D-5) e spezza le righe. La madre DB fa la parte che
+        # DEVE stare sotto lock; l'ordine e la spezzatura stanno qui.
         "consuma_plafond_lotto": None,
     }
 
@@ -1975,6 +1975,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #    ripetibile senza moltiplicare le righe.
     # ⚠️ Si escludono le RETTIFICHE: la loro IVA viene dal documento che
     #    correggono (`N-1`) e non si ri-risolve.
+    # ⭐ Porta le colonne kit (R-BE-P1, brief-db-bom-flag-quantita-e-kit-in-
+    #    fattura §11): i componenti di un kit si consumano come un gruppo
+    #    (D-5), e la parte di un componente le copia dalla capofila.
     def list_righe_per_plafond(self, fattura_id: int) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1983,6 +1986,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                        r.qta, r.prezzo_unitario, r.sconto_percentuale, r.iva_id,
                        r.imponibile_riga, r.dest_billing_account_id,
                        r.sorgente_tipo_id, r.sorgente_uid, r.sorgente_riga,
+                       r.kit_key, r.kit_esposizione, r.kit_articolo_padre_id,
+                       r.kit_descrizione_padre, r.kit_qta, r.kit_uom_id,
                        r.meta
                   FROM vendite.fatture_righe r
                  WHERE r.fattura_id = %s
@@ -2010,6 +2015,11 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #    parte. La FK e' COMPOSITA `(riga_capofila_id, fattura_id)`: una parte
     #    che puntasse a una riga di un altro documento non viene scritta — non
     #    per sorveglianza, per vincolo.
+    # ⭐ La parte di un componente di kit COPIA le colonne kit dalla capofila
+    #    (R-BE-P5): senza, usciva dal kit come riga sciolta. Solo `kit_qta` si
+    #    passa, perche' e' la sua quota di kit (D-5). Su una riga sciolta le
+    #    colonne copiate sono NULL e `kit_qta` arriva `None`: il CHECK
+    #    `chk_fatture_righe_kit_coerente` vuole le due cose insieme.
     def insert_parte_plafond(
         self,
         *,
@@ -2017,6 +2027,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         riga_nr: int,
         qta: Decimal,
         iva_id: int | None,
+        kit_qta: Decimal | None,
         meta: dict[str, Any] | None,
     ) -> int:
         with connection.cursor() as cursor:
@@ -2027,7 +2038,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     qta, prezzo_unitario, sconto_percentuale, iva_id,
                     dest_billing_account_id, sorgente_tipo_id, sorgente_uid,
                     sorgente_riga, riga_capofila_id, competenza_dal,
-                    competenza_al, meta
+                    competenza_al, kit_key, kit_esposizione,
+                    kit_articolo_padre_id, kit_descrizione_padre, kit_uom_id,
+                    kit_qta, meta
                 )
                 SELECT c.fattura_id, %s, c.articolo_id, c.descrizione, c.uom_id,
                        %s, c.prezzo_unitario, c.sconto_percentuale, %s,
@@ -2035,12 +2048,18 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                        c.sorgente_uid, c.sorgente_riga, c.id,
                        -- La parte e' la stessa riga spezzata per IVA: stesso
                        -- periodo della capofila.
-                       c.competenza_dal, c.competenza_al, %s::jsonb
+                       c.competenza_dal, c.competenza_al,
+                       -- E lo stesso kit: la vista la rimette sotto il suo
+                       -- padre, nel ramo della sua aliquota.
+                       c.kit_key, c.kit_esposizione, c.kit_articolo_padre_id,
+                       c.kit_descrizione_padre, c.kit_uom_id,
+                       %s, %s::jsonb
                   FROM vendite.fatture_righe c
                  WHERE c.id = %s
                 RETURNING id
                 """,
-                [riga_nr, qta, iva_id, self._to_jsonb_param(meta), riga_capofila_id],
+                [riga_nr, qta, iva_id, kit_qta, self._to_jsonb_param(meta),
+                 riga_capofila_id],
             )
             row = cursor.fetchone()
             assert row is not None
@@ -2051,12 +2070,16 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     # ⚠️ `storicizza` si accende QUI e solo sulle righe spezzate (`P10`): il
     #    rubinetto dello storico e' PER RIGA, e accenderlo su tutte darebbe
     #    l'archivio sproporzionato che la decisione di Tid esclude.
+    # ⭐ `kit_qta` si scrive sempre (R-BE-P4): su un componente spezzato e' la
+    #    quota di kit della capofila, su una copertura piena il valore di
+    #    prima, su una riga sciolta `None` (era gia' NULL).
     def aggiorna_capofila_plafond(
         self,
         *,
         riga_id: int,
         qta: Decimal,
         iva_id: int | None,
+        kit_qta: Decimal | None,
         meta: dict[str, Any] | None,
     ) -> None:
         with connection.cursor() as cursor:
@@ -2065,36 +2088,44 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 UPDATE vendite.fatture_righe
                    SET qta = %s,
                        iva_id = %s,
+                       kit_qta = %s,
                        storicizza = TRUE,
                        meta = %s::jsonb
                  WHERE id = %s
                 """,
-                [qta, iva_id, self._to_jsonb_param(meta), riga_id],
+                [qta, iva_id, kit_qta, self._to_jsonb_param(meta), riga_id],
             )
 
-    # Scopo: Wrapper su `anagrafiche.fn_consuma_plafond_titolo_iva`.
+    # Scopo: Wrapper su `anagrafiche.fn_consuma_plafond_titolo_iva_righe`: il
+    #        consumo per un GRUPPO di righe che si spezzano insieme (i
+    #        componenti di un kit, D-5; una riga sciolta e' un gruppo di uno).
     # ⭐ E' la funzione che PRENDE IL LOCK di riga sul titolo (`D15-bis`) e
     #    ritorna la ripartizione EFFETTIVA: il backend non la calcola, la
     #    riceve. Il risolutore e' `STABLE` e proietta; questa consuma.
-    def consuma_plafond_titolo(
+    # ⚠️ Ritorna una riga per riga passata, NELL'ORDINE passato, con la
+    #    `frazione` effettiva del gruppo: e' quella che divide anche la
+    #    quantita' del kit (R-BE-P3, P4).
+    def consuma_plafond_titolo_righe(
         self,
         *,
         titolo_iva_id: int,
         fattura_id: int,
-        imponibile: Decimal,
+        fattura_riga_ids: list[int],
+        imponibili: list[Decimal],
         data_movimento: date,
-        fattura_riga_id: int,
-    ) -> dict[str, Any]:
+    ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT quota_coperta, quota_ordinaria, residuo_dopo, movimento_id
-                  FROM anagrafiche.fn_consuma_plafond_titolo_iva(%s, %s, %s, %s, %s)
+                SELECT fattura_riga_id, imponibile, quota_coperta,
+                       quota_ordinaria, frazione, residuo_dopo, movimento_id
+                  FROM anagrafiche.fn_consuma_plafond_titolo_iva_righe(
+                           %s, %s, %s::bigint[], %s::numeric[], %s)
                 """,
-                [titolo_iva_id, fattura_id, imponibile, data_movimento, fattura_riga_id],
+                [titolo_iva_id, fattura_id, list(fattura_riga_ids),
+                 list(imponibili), data_movimento],
             )
-            righe = rows_to_list(cursor)
-        return righe[0] if righe else {}
+            return rows_to_list(cursor)
 
     # Scopo: Genera i fondi source di tutto il lotto con UNA chiamata alla madre
     #        DB `fn_genera_fondi_fattura_lotto`. Ritorna i conteggi del giro
