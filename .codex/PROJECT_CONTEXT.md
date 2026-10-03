@@ -216,10 +216,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 ### 🟡 Altri cantieri aperti
 
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
-  resta R-4, che vuole un brief DB non ancora scritto;
-  `work-in-progress/brief-db-credenziale-verbi-amministratore.md` (non bloccante): DB scritto il
-  2026-10-03 (`20261003-01…-04`, applicati, pgTAP senza regressioni); BE/FE scritto il
-  2026-10-03 (§8, non committato): si chiude col commit.
+  resta R-4, che vuole un brief DB non ancora scritto. Chiuso il 2026-10-03
+  `work-done/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
+  dell'amministratore che rifiutano le credenziali di sistema).
 - **Kit in fattura** (`work-in-progress/brief-db-esposizione-componenti-kit-in-fattura.md`,
   `work-in-progress/brief-db-bom-flag-quantita-e-kit-in-fattura.md`): DB e BE/FE fatti
   (`168b41e92`). ⏳ Al team DB le tre richieste del §9.4 (R-DB-B8 accredito del kit, ⛔ oggi la

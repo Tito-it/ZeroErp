@@ -18,7 +18,7 @@
 > dal BE/FE. **R-6 superata**: lo stato del blocco si legge da
 > `config.credenziali`, leggibile dall'app; resta la capability del blocco
 > come codice del DB (R-DB-A5, ora nel
-> [brief credenziale e utenti di sistema](brief-db-credenziale-verbi-amministratore.md),
+> [brief credenziale e utenti di sistema](../work-done/brief-db-credenziale-verbi-amministratore.md),
 > con R-DB-A4 e R-DB-A6). Il brief dell'area Accessi è chiuso (2026-10-02).
 > ✅ **D-5 chiusa il 2026-10-02**, staccata da L-5 perché solo BE (§4.3-bis):
 > il refresh di una veste spenta è un 401 e chiude la sessione; spegnere una
@@ -457,7 +457,7 @@ chiuso il 2026-09-27) e allineate dal BE/FE. ✅ **R-5** consegnata dal
 [brief area Accessi](../work-done/brief-db-be-fe-area-accessi.md) (R-DB-1, 2026-10-02).
 **R-6 superata** (lo stato del blocco si legge da `config.credenziali`): al suo posto
 la capability del blocco dal DB, R-DB-A5 nel
-[brief credenziale e utenti di sistema](brief-db-credenziale-verbi-amministratore.md).
+[brief credenziale e utenti di sistema](../work-done/brief-db-credenziale-verbi-amministratore.md).
 ⏳ **Resta R-4**: va in un brief DB che **non esiste ancora**; si scrive prima di
 riprendere D-4.
 
@@ -468,7 +468,7 @@ riprendere D-4.
 | R-3 | Template `INVITO_OPERATORE` con la variabile del nome utente. ⚠️ **Esteso** (L-3, 2026-09-25): i template `INVITO_OPERATORE` e `INVITO_PORTALE` dicono sempre «imposta la password», anche nel flusso con un clic; il backend passa `is_cross` a tutti e tre (`INVITO_SHOP` lo dichiara già fra le variabili, ma il testo non lo usa). Serve il ramo «attiva l'accesso con le credenziali che hai già». ✅ **Consegnata** (brief §15, `7f3208a58`): `username` in `INVITO_OPERATORE`, tre template `_CROSS`; BE B-15, B-16 | L-4, D-9, L-3 ✅ |
 | R-4 | La veste ricorda di essere stata **revocata** dall'admin (chi, quando), e la riattivazione self-service la rifiuta (sede della regola: DB). ⏳ Brief DB da scrivere | L-5, D-4 |
 | R-5 | `DISABILITATO` **si ritira** come valore di `ruolo_applicativo` (§6 Q-2, deciso): la sua sorte nel tipo `config.ruolo_applicativo` e nei lettori (`fn_is_super_admin`, catena permessi, `trgfn_identita_digitali_guard_coerenza` che oggi lo esenta); le righe che oggi lo portano tornano al ruolo che avevano (dati di sviluppo, a mano). ✅ **Consegnata** (brief area Accessi R-DB-1, 2026-10-02). ⚠️ Lettore in più, trovato il 2026-10-02: `script.fn_get_user_profile` (guard `ruolo_applicativo = 'DISABILITATO'`) | L-5 |
-| ~~R-6~~ | ~~Una funzione di lettura dello stato di blocco dell'admin~~ — **superata** (2026-10-02): `config.credenziali` è leggibile dall'app. Al suo posto R-DB-A5 (capability del blocco) nel [brief credenziale e utenti di sistema](brief-db-credenziale-verbi-amministratore.md) | ~~L-2~~ |
+| ~~R-6~~ | ~~Una funzione di lettura dello stato di blocco dell'admin~~ — **superata** (2026-10-02): `config.credenziali` è leggibile dall'app. Al suo posto R-DB-A5 (capability del blocco) nel [brief credenziale e utenti di sistema](../work-done/brief-db-credenziale-verbi-amministratore.md) | ~~L-2~~ |
 | R-7 | **La risposta del login non dipende dall'esistenza dello username** (✅ Tid, 2026-09-25). Oggi il freno e l'attesa hanno per chiave la **credenziale**: un nome inesistente non conta nulla e resta 401 per sempre, uno esistente dopo la soglia risponde 403 `E_UTENTE_BLOCCATO` (e oltre il tetto `E_LOGIN_ATTESA`) ⇒ chi prova sei password sa se l'utente esiste. La regola, sul modello: **il freno e l'attesa valgono per il NOME TENTATO**, esista o no. Per un nome inesistente, stessa soglia, stesso tetto, stessi codici, stesse due chiamate (check prima, registrazione dopo), così nemmeno il numero di chiamate al DB distingue i due casi. Vincoli: ⛔ il nome **non** si salva in chiaro (nel campo username finiscono anche delle password digitate lì per sbaglio): un hash del nome **normalizzato con la stessa regola del lookup** (oggi uguaglianza esatta sullo username; con L-4 email senza maiuscole, e la normalizzazione deve seguirla); righe con `cleanup_at` come `credenziali_provenienze`; nessuna riga in `config.credenziali` per un nome che non è una credenziale. La forma (tabella a parte o parametro nuovo delle stesse funzioni) la sceglie il DB. ⚠️ Due punti da decidere col brief: (a) hash semplice o HMAC con una chiave del backend: l'hash semplice di una password finita nel campo username si può attaccare offline; (b) `E_CREDENZIALE_BLOCCATA` continua a rivelare che il nome esiste, ma solo per una credenziale bloccata dall'admin, e al titolare quella frase serve per sapere a chi rivolgersi: proposta, **accettarlo e dichiararlo**. ✅ **Consegnata** (brief §13, `20260925-55…-62`, `7f3208a58`); BE B-9…B-12 (`e7dbbad73`) | L-1 ✅ |
 | R-8 | Testo di `E_UTENTE_BLOCCATO` in `messaggi_errore.csv` (✅ Tid, 2026-09-25): oggi dice «Account temporaneamente bloccato per troppi tentativi.», ma il freno riguarda la sola **coppia credenziale + provenienza**, e da un'altra postazione si entra. Proposta: «Troppi tentativi non riusciti da questa postazione: accesso sospeso per qualche minuto.» (lo stesso testo della chiave i18n del login, §3.2). Il BE poi riallinea il ripiego in `error_messages_fallback.py`, **dopo** il changeSet: mai prima, o il ripiego sarebbe avanti rispetto al catalogo. ✅ **Consegnata** (`20260925-52`, `48291b801`); BE/FE B-8, F-1 (2026-09-27) | L-1 ✅ |
 | R-9 | `script.fn_get_operatore_detail` porti lo stato della **veste** OPERATORE (es. `veste_attiva`): oggi `attivo` è quello della risorsa umana e `is_active` quello della credenziale (derivato da **tutte** le vesti), e il FE non ha come distinguere «veste già attiva» dagli altri motivi del non invitabile se non leggendo il testo. ⚠️ La join sulla veste OPERATORE è senza filtro: con più vesti OPERATORE spente (il modello le ammette) il dettaglio restituisce più righe. ✅ **Consegnata** (brief §14, `20260925-53`, `-54`); BE/FE B-13, B-14, F-2 | L-3 ✅ |
@@ -493,7 +493,7 @@ Riscritto il 2026-10-02 sul lavoro che resta (L-0, L-1, L-3 sono fatti):
 2. **D-3** (ritiro della riattivazione diretta): nessuna dipendenza DB.
 3. Il brief DB con **R-4**, poi D-4 e A-6.
 4. In parallelo, quando il DB consegna, le ricadute BE/FE del
-   [brief credenziale e utenti di sistema](brief-db-credenziale-verbi-amministratore.md).
+   [brief credenziale e utenti di sistema](../work-done/brief-db-credenziale-verbi-amministratore.md).
 
 Ogni lotto chiude le sue righe nell'analisi e i «⚠️ Difetto noto» nelle doc
 `manual/` che rimandano a M-4, M-5, M-6.

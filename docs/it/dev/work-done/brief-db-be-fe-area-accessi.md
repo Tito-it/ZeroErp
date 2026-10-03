@@ -8,7 +8,7 @@
 > chiuse, area «Accessi» a video con le tre schede, blocco e secondo fattore sulla credenziale.
 > ✅ Collaudo a video eseguito da Tid (§8.5, registrato il 2026-10-02).
 > ✅ **CHIUSO il 2026-10-02.** Quello che restava ha una sede propria: le tre richieste al team DB
-> (§8.3) nel [brief credenziale e utenti di sistema](../work-in-progress/brief-db-credenziale-verbi-amministratore.md);
+> (§8.3) nel [brief credenziale e utenti di sistema](brief-db-credenziale-verbi-amministratore.md);
 > la conferma di §8.4 è la decisione D-3, già presa, e il lavoro che ne segue sta nel
 > [piano accessi](../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md) (L-5). ~~Ora tocca
 > al BE: **R-BE-a per primo** (§7.8).~~ Il resto della testata qui sotto è del momento della scrittura. Tutte le richieste di §3
@@ -621,7 +621,7 @@ erano questo giro.
 ### 8.3 Al team DB — tre richieste nuove, nessuna bloccante
 
 > ➡️ **Spostate il 2026-10-02** nel
-> [brief credenziale e utenti di sistema](../work-in-progress/brief-db-credenziale-verbi-amministratore.md),
+> [brief credenziale e utenti di sistema](brief-db-credenziale-verbi-amministratore.md),
 > dove si seguono. La tabella sotto resta come era al momento della chiusura.
 
 | # | Richiesta | Perché |

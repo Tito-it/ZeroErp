@@ -6,10 +6,8 @@
 > [brief area Accessi](../work-done/brief-db-be-fe-area-accessi.md) §8.3, che si è chiuso il
 > 2026-10-02. Il loro contesto (le viste dei tab, il blocco sulla credenziale, la categoria)
 > sta lì.
-> **Stato (2026-10-03 sera):** ✅ **parte DB chiusa**: `20261003-01…-04` + tre CSV applicati,
-> corsa pgTAP di Tid senza regressioni (§6.5). ✅ **Giro BE/FE scritto il 2026-10-03** (§8,
-> `dev/backend-tid`, non committato): test verdi, presidi del cantiere verdi. Il brief si chiude
-> col commit.
+> **Stato:** ✅ **CHIUSO il 2026-10-03.** Parte DB: `20261003-01…-04` + tre CSV applicati,
+> corsa pgTAP di Tid senza regressioni (§6.5). Giro BE/FE: §8, committato in `3f8301792`.
 > R-DB-A6 è **decisa da Tid** (2026-10-02); l'analisi critica del team DB e le tre decisioni che
 > ne sono uscite sono al **§5** — ⭐ **da leggere per primo**: correggono la forma della check
 > (R-DB-A5) e il perimetro dei verbi (R-DB-A6) scritti nel §2.
@@ -267,7 +265,7 @@ Corsa pgTAP di Tid dopo il `-04`: **nessuna regressione**. ⭐ Il debito di casa
       auto-gen della check viene rigenerata.
     * Nessun gesto nuovo: la scheda «Di sistema» resta in sola lettura.
 
-## 8. Lato BE/FE — cosa è stato scritto (2026-10-03)
+## 8. Lato BE/FE — cosa è stato scritto (2026-10-03, commit `3f8301792`)
 
 | Richiesta del §7 | Stato | Dove |
 | --- | --- | --- |
