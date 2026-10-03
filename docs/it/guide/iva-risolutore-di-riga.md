@@ -181,6 +181,24 @@ L'ordine è parte del contratto: **prima la quota coperta**.
 > il registro dei movimenti è **solo aggiunte**, e una forzatura sbagliata si
 > annulla con un contro-movimento, non cancellando la riga.
 
+### ⭐ Un kit si spezza come un'unità sola
+
+In fattura i componenti di un kit non si spezzano uno per uno: il kit è la cosa
+venduta, e si divide **tutto insieme**, con la stessa frazione per ogni componente.
+
+* Il titolo si giudica sull'**articolo padre** del kit e sull'importo del kit
+  intero: se il padre rientra nell'ambito del titolo lo seguono tutti i
+  componenti, altrimenti nessuno.
+* La quota coperta si calcola sulla somma dei componenti, con un consumo solo
+  ([fn_consuma_plafond_titolo_iva_righe](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva_righe)).
+* Ogni componente va al titolo per quella frazione e all'aliquota ordinaria per il
+  resto, e così il numero di kit: un kit da 3 coperto per il 40% esce in fattura
+  come **due righe di kit**, «1,2» al titolo e «1,8» all'ordinaria, ciascuna con i
+  suoi componenti.
+* Un componente a importo zero (un omaggio nel kit) non consuma plafond, ma si
+  divide lo stesso: altrimenti le due righe del kit non direbbero più quanti kit
+  sono.
+
 ### ⭐ Sui documenti la spezzatura non si fa
 
 Su preventivo, ordine e DDT il titolo si applica **a tutta la riga finché c'è

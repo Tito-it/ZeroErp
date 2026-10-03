@@ -632,20 +632,6 @@ function onNoteSaved(total) {
             </span>
             <span v-else>—</span>
           </template>
-          <!-- Il periodo della riga (dal 2026-10-02, brief-db-bom-flag-
-               quantita-e-kit-in-fattura R-FE-B1): si mostra quando
-               `ha_periodo` e' vero — la regola (dal != al) e' della vista, qui
-               non si ricalcola. Una riga puntuale non ha un periodo da dire.
-               Lo stesso kit su due periodi sono due righe. -->
-          <template #cell-periodo="{ data }">
-            <span v-if="data.ha_periodo">
-              {{ t('vendite.fatture.periodo_valore', {
-                   dal: displayDate(data.competenza_dal),
-                   al: displayDate(data.competenza_al),
-                 }) }}
-            </span>
-            <span v-else>—</span>
-          </template>
           <template #row-expansion="{ data }">
             <ul v-if="data.componenti?.length" class="app-fattura-componenti">
               <li v-for="c in data.componenti" :key="c.fatture_righe_id">
