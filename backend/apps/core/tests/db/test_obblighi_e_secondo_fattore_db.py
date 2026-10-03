@@ -26,6 +26,7 @@ Indice test eseguiti:
 10) ServizioDbTests.test_chi_non_e_super_admin_non_impone_ne_disattiva — E_PERMESSO_NEGATO dai verbi
 11) ServizioDbTests.test_senza_traccia_la_disattivazione_si_annulla — D-T3, il savepoint del servizio
 12) ServizioDbTests.test_la_password_sbagliata_conta_e_frena_la_configurazione — D-T2 sul freno vero
+13) ServizioDbTests.test_su_una_credenziale_di_sistema_l_obbligo_non_si_accende — le uscite restano aperte
 """
 
 from __future__ import annotations
@@ -373,6 +374,39 @@ class ServizioDbTests(_TransazioneAnnullata):
             self._tracce(self.user.id),
             [{"via": "APP", "chi_agisce": admin_id, "motivo": "telefono perso"}],
         )
+
+    # Scopo: Su una credenziale di sistema (l'utente tecnico di un processo)
+    #        il SUPER_ADMIN non accende l'obbligo: una macchina non ha un
+    #        telefono, e il processo si fermerebbe. Le uscite restano aperte:
+    #        spegnere l'obbligo e togliere un device registrato per errore
+    #        passano (brief-db-credenziale-verbi-amministratore, D-2).
+    def test_su_una_credenziale_di_sistema_l_obbligo_non_si_accende(self):
+        admin_id = self._operatore("sf sistema", super_admin=True)
+        with connection.cursor() as cur:
+            cur.execute("SELECT m.auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore() m")
+            macchina = cur.fetchone()[0]
+            cur.execute("SELECT script.fn_categoria_accesso(%s)", [macchina])
+            self.assertEqual(cur.fetchone()[0], "SISTEMA", "la credenziale costruita dev'essere di sistema")
+
+        self._agisce(admin_id)
+        self.assertEqual(
+            self._codice_errore(lambda: self.servizio.imposta_obbligo(macchina, True)),
+            "E_CREDENZIALE_DI_SISTEMA",
+        )
+        self.assertFalse(self.servizio.stato(macchina)["obbligatorio"])
+        self.assertFalse(self.servizio.imposta_obbligo(macchina, False)["obbligatorio"])
+
+        # Il device di una macchina esiste solo per errore: lo registra lei,
+        # il SUPER_ADMIN lo toglie.
+        self._agisce(macchina)
+        SecondoFattoreRepository().registra_device(
+            macchina, secret_encrypted="segreto-macchina", impronte_recupero=["m1"],
+        )
+        self._agisce(admin_id)
+        stato = self.servizio.disattiva_da_admin(
+            macchina, motivo="registrato per errore", chi_agisce=admin_id, request=self.request,
+        )
+        self.assertEqual(stato["stato"], "ASSENTE")
 
     def test_chi_non_e_super_admin_non_impone_ne_disattiva(self):
         collega = self._operatore("sf collega", super_admin=False)

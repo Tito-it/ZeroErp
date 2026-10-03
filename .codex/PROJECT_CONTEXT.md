@@ -218,9 +218,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
   resta R-4, che vuole un brief DB non ancora scritto;
   `work-in-progress/brief-db-credenziale-verbi-amministratore.md` (non bloccante): DB scritto il
-  2026-10-03 (`20261003-01…-04`, applicati, pgTAP senza regressioni); ⏳ giro BE/FE (§7).
+  2026-10-03 (`20261003-01…-04`, applicati, pgTAP senza regressioni); BE/FE scritto il
+  2026-10-03 (§8, non committato): si chiude col commit.
 - **Kit in fattura** (`work-in-progress/brief-db-esposizione-componenti-kit-in-fattura.md`,
-  `work-in-progress/brief-db-bom-flag-quantita-e-kit-in-fattura.md`): DB chiuso, giro BE/FE in corso.
+  `work-in-progress/brief-db-bom-flag-quantita-e-kit-in-fattura.md`): DB e BE/FE fatti
+  (`168b41e92`). ⏳ Al team DB le tre richieste del §9.4 (R-DB-B8 accredito del kit, ⛔ oggi la
+  nota di credito di un kit si ferma; B9 colonna periodo della lista 102; B10 ritiro di
+  `E_KIT_QUANTITA_DISOMOGENEE`); a Tid lo script R-BE-B5 e la pubblicazione del template v7; da
+  decidere plafond e kit (§9.5).
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

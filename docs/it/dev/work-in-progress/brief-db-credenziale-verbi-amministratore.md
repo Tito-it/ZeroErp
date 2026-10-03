@@ -7,8 +7,9 @@
 > 2026-10-02. Il loro contesto (le viste dei tab, il blocco sulla credenziale, la categoria)
 > sta lì.
 > **Stato (2026-10-03 sera):** ✅ **parte DB chiusa**: `20261003-01…-04` + tre CSV applicati,
-> corsa pgTAP di Tid senza regressioni (§6.5). ⏳ Resta il giro **BE/FE** (§7), da fare insieme:
-> chiave i18n, policy del codice nuovo e colonne ordinabili tengono rossi dei presidi finché mancano.
+> corsa pgTAP di Tid senza regressioni (§6.5). ✅ **Giro BE/FE scritto il 2026-10-03** (§8,
+> `dev/backend-tid`, non committato): test verdi, presidi del cantiere verdi. Il brief si chiude
+> col commit.
 > R-DB-A6 è **decisa da Tid** (2026-10-02); l'analisi critica del team DB e le tre decisioni che
 > ne sono uscite sono al **§5** — ⭐ **da leggere per primo**: correggono la forma della check
 > (R-DB-A5) e il perimetro dei verbi (R-DB-A6) scritti nel §2.
@@ -265,6 +266,30 @@ Corsa pgTAP di Tid dopo il `-04`: **nessuna regressione**. ⭐ Il debito di casa
       ed en, **nello stesso giro**: `check_i18n_keys.py` (controllo 4) è rosso da quando la doc
       auto-gen della check viene rigenerata.
     * Nessun gesto nuovo: la scheda «Di sistema» resta in sola lettura.
+
+## 8. Lato BE/FE — cosa è stato scritto (2026-10-03)
+
+| Richiesta del §7 | Stato | Dove |
+| --- | --- | --- |
+| Capability dal primo motivo della check | ✅ `sql_lateral_primo_motivo("script.fn_check_credenziale_bloccabile(au.id)", "blocco")` nel dettaglio; il service passa la terna com'è. Ritirati `_MOTIVO_ULTIMO_SUPER_ADMIN`, `_CHIAVE_ULTIMO_SUPER_ADMIN` e la lettura di `fn_check_ultimo_super_admin_attivo` | `accessi_repository.py`, `accessi_service.py`; consumer registrato nel catalogo BB |
+| `E_CREDENZIALE_DI_SISTEMA` | ✅ policy rigenerata (`CONFLITTO_STATO` → 409) e ripiego senza segnaposto | `error_policies_generated.py`, `error_messages_fallback.py` |
+| `emittente_ragione_sociale` ordinabile | ✅ in `ACCESSI_SISTEMA_ORDER_COLUMNS`; `gen_seed_lista --verifica-ordinamento` da 5 liste divergenti a 4 (le 4 rimaste sono di `pagamenti`, preesistenti) | `accessi_repository.py` |
+| Test dei rifiuti | ✅ sul DB vero: capability `CREDENZIALE_DI_SISTEMA`, blocco rifiutato e sblocco aperto (`test_accessi_db` 9); obbligo acceso rifiutato, spento e rimozione del device passano (`test_obblighi_e_secondo_fattore_db` 13). Con mock: 409 sul blocco (`test_accessi_views` 11) | |
+| Reset password dell'amministratore | ✅ **niente da fare**: nessun endpoint dell'amministratore impone il cambio password a un'altra credenziale. Dal 2026-09-25 l'invito non tocca la password (A-1), e `set_deve_cambiare_password` si chiama solo con `False`, dopo un cambio fatto dalla persona stessa | |
+| Doc | ✅ §1-bis.2-1-bis.6 e tabella errori | `api_amm_software.md` |
+| FE: chiave i18n | ✅ **c'era già** (it/en, commit `1c51774e7`); `check_i18n_keys.py` pulito | |
+
+⚠️ **Policy rigenerata con dbdev avanti rispetto a git.** Sul catalogo di dbdev
+`E_KIT_QUANTITA_DISOMOGENEE` è già ritirato (R-DB-B10 del
+[brief della distinta](brief-db-bom-flag-quantita-e-kit-in-fattura.md), non ancora pushato), e la
+rigenerazione lo portava fra i ritirati. Quella parte è stata **tolta**: il file corrisponde al CSV
+in git, cioè a ciò che la CI genera. Su dbdev, quindi, `genera_error_policies --check` e
+`test_error_policies_divergenza_db` restano rossi **solo** per quel codice finché il DB non pusha
+R-DB-B10; allora si rigenera.
+
+Test: `apps.amm_software` 220 verdi (5 skip), test delle view 11/11; sul DB vero
+`test_accessi_db` + `test_obblighi_e_secondo_fattore_db` 22/22; policy e ripieghi verdi a parte
+la divergenza dichiarata sopra; ruff pulito.
 
 ---
 {% include-markdown "signature-core.md" %}

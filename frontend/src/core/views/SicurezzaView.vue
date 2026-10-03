@@ -25,7 +25,7 @@ import {
   registraSecondoFattore,
   rigeneraCodiciRecupero,
 } from '../api/secondoFattore'
-import { seSessioneChiusaDalFreno } from '../api'
+import { seSessioneChiusaDalFreno } from '../uscitaSessione'
 import { extractApiError } from '../utils/apiError'
 import { downloadBlob } from '../utils/download'
 import { provaSecondoFattore } from '../utils/provaSecondoFattore'

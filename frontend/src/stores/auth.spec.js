@@ -29,8 +29,10 @@ const apiPost = vi.fn()
 const apiGet = vi.fn()
 vi.mock('../core/api', () => ({
   default: { post: (...a) => apiPost(...a), get: (...a) => apiGet(...a) },
-  redirectToLogin: (...args) => redirectToLogin(...args),
   rinnovaAccess: vi.fn()
+}))
+vi.mock('../core/uscitaSessione', () => ({
+  redirectToLogin: (...args) => redirectToLogin(...args),
 }))
 
 let suEvento = null

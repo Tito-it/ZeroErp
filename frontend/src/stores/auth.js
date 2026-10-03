@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api, { redirectToLogin, rinnovaAccess } from '../core/api'
+import api, { rinnovaAccess } from '../core/api'
+import { redirectToLogin } from '../core/uscitaSessione'
 import { DOMAINS } from '../core/navigation'
 import { local, STORAGE_KEYS, ritiraTokenDalLocalStorage } from '../core/storage'
 import {

@@ -26,6 +26,7 @@ from apps.core.db._helpers import (
     jsonb_out,
     limiti_pagina,
     row_to_dict,
+    sql_lateral_primo_motivo,
     sql_order_clause,
 )
 
@@ -60,16 +61,14 @@ ACCESSI_SISTEMA_ORDER_COLUMNS: dict[str, str] = {
     "tipo": "v.tipo",
     "processo_codice": "v.processo_codice",
     "emittente_codice": "v.emittente_codice",
-    # ⚠️ Manca `emittente_ragione_sociale`, e solo perche' il seed la dichiara
-    #    non ordinabile: e' NUCLEO («ragione sociale», `gen_seed_lista
-    #    --verifica-ordinamento`), chi la accende deve poterla ordinare. Chiesto
-    #    al team DB il flag del seed (brief-db-be-fe-area-accessi §8); poi la
-    #    chiave entra qui — prima, il presidio la direbbe «il BE la ordina e
-    #    il seed non la offre».
+    "emittente_ragione_sociale": "v.emittente_ragione_sociale",
     "identita_attiva": "v.identita_attiva",
     "bloccata": "v.bloccata",
     "ultimo_accesso": "v.ultimo_accesso",
 }
+
+# Il primo motivo per cui la credenziale non si blocca (`[]` = si blocca).
+_LATERAL_BLOCCO = sql_lateral_primo_motivo("script.fn_check_credenziale_bloccabile(au.id)", "blocco")
 
 # Le colonne DATA delle due liste: senza `order_dir` si leggono dalla piu'
 # recente (regola di Tid, 2026-09-02). Costante di modulo: il presidio
@@ -214,19 +213,18 @@ class AccessiRepository:
 
     # Scopo: Lo stato di UNA credenziale per il pannello delle sue azioni:
     #        categoria (il tab), blocco dell'amministratore (chi, quando,
-    #        perche') e se e' l'ultimo SUPER_ADMIN raggiungibile.
-    #        `None` se la credenziale non esiste.
-    # ⭐ `ultimo_super_admin` e' `script.fn_check_ultimo_super_admin_attivo`, lo
-    #    stesso predicato del dettaglio operatore (`disable_reason`): il guard
-    #    `trgfn_credenziali_guard_ultimo_super_admin` rifiuta il blocco nello
-    #    stesso caso (via `fn_check_almeno_un_super_admin_attivo`, a stato
-    #    dopo). Il pulsante si spegne col motivo invece di un 409 a sorpresa.
+    #        perche') e la capability del blocco (`can_block`, `block_reason`,
+    #        `block_reason_key`). `None` se la credenziale non esiste.
+    # ⭐ La capability e' il PRIMO motivo di `script.fn_check_credenziale_bloccabile`,
+    #    la stessa check che il verbo `fn_blocca_credenziale` chiama prima di
+    #    scrivere e di cui solleva il primo motivo: pulsante spento e rifiuto
+    #    non possono dire due cose diverse. Motivi e chiavi sono del DB.
     # ⚠️ Il blocco si legge dalla tabella: `config.credenziali` e' leggibile
     #    dall'app (le SCRITTURE passano dai verbi `script.fn_*_credenziale`).
     def get_credenziale(self, auth_user_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT au.id AS auth_user_id,
                        au.username,
                        NULLIF(au.email, '') AS email,
@@ -235,12 +233,15 @@ class AccessiRepository:
                        cr.bloccata_at AS bloccata_dal,
                        chi.username AS bloccata_da,
                        cr.motivo_blocco,
-                       script.fn_check_ultimo_super_admin_attivo(au.id) AS ultimo_super_admin
+                       (blocco.reason IS NULL) AS can_block,
+                       blocco.reason AS block_reason,
+                       blocco.reason_key AS block_reason_key
                   FROM auth_user au
                   LEFT JOIN config.credenziali cr ON cr.auth_user_id = au.id
                   LEFT JOIN auth_user chi ON chi.id = cr.bloccata_da
+                  {_LATERAL_BLOCCO}
                  WHERE au.id = %s
-                """,
+                """,  # noqa: S608 — frammento da costante di modulo, valori come parametri
                 [auth_user_id],
             )
             return row_to_dict(cursor)
