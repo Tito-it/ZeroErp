@@ -10,23 +10,21 @@
 import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useFormInline } from '../../core/composables/useFormInline'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import { listArticoloUom, createArticoloUom, updateArticoloUom, deleteArticoloUom } from '../api/catalogo'
 import { toDateString } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RoundingModeSelect from './RoundingModeSelect.vue'
-import Drawer from 'primevue/drawer'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
@@ -46,10 +44,6 @@ const props = defineProps({
   articoloId: { type: [String, null], default: null }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved'])
 
 const uomList = ref([])
@@ -57,7 +51,11 @@ const listLoading = ref(false)
 // ⚠️ Il click apre la modifica solo in scrittura: il getter e' letto al click.
 const {
   formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
-} = useFormInline({ puoModificare: () => !isReadonly.value })
+} = useFormInline({
+  puoModificare: () => !isReadonly.value,
+  // D-8: cambiare riga col form modificato chiede (il getter e' letto al clic).
+  confermaCambio: (p) => chiudiConConferma(p),
+})
 const form = ref({})
 
 // Modifiche non salvate del form inline (nuova/modifica UoM): la fotografia
@@ -157,28 +155,27 @@ function onStartNew() {
 }
 
 function onStartEdit(row) {
-  apriRiga(row)
-  // In sola lettura il BB non apre: niente form da popolare.
-  if (!formAperto.value) return
-  form.value = {
-    uom_id: row.uom_id,
-    is_base: row.is_base || false,
-    factor_to_base: row.factor_to_base ?? 1,
-    is_sell_uom: row.is_sell_uom || false,
-    is_purchase_uom: row.is_purchase_uom || false,
-    is_logistic_uom: row.is_logistic_uom || false,
-    qty_step: row.qty_step ?? 1,
-    rounding_mode: row.rounding_mode || 'HALF_UP',
-    max_decimals: row.max_decimals ?? 6,
-    forbid_fraction: row.forbid_fraction || false,
-    require_lot: row.require_lot || false,
-    gtin: row.gtin || '',
-    valido_dal: row.valido_dal ? new Date(row.valido_dal + 'T00:00:00') : null,
-    valido_al: row.valido_al ? new Date(row.valido_al + 'T00:00:00') : null,
-    attivo: row.attivo ?? true,
-  }
-  // Dopo il giro di watch: `is_base` e' riscritto da `factor_to_base`.
-  nextTick(fissa)
+  apriRiga(row, () => {
+    form.value = {
+      uom_id: row.uom_id,
+      is_base: row.is_base || false,
+      factor_to_base: row.factor_to_base ?? 1,
+      is_sell_uom: row.is_sell_uom || false,
+      is_purchase_uom: row.is_purchase_uom || false,
+      is_logistic_uom: row.is_logistic_uom || false,
+      qty_step: row.qty_step ?? 1,
+      rounding_mode: row.rounding_mode || 'HALF_UP',
+      max_decimals: row.max_decimals ?? 6,
+      forbid_fraction: row.forbid_fraction || false,
+      require_lot: row.require_lot || false,
+      gtin: row.gtin || '',
+      valido_dal: row.valido_dal ? new Date(row.valido_dal + 'T00:00:00') : null,
+      valido_al: row.valido_al ? new Date(row.valido_al + 'T00:00:00') : null,
+      attivo: row.attivo ?? true,
+    }
+    // Dopo il giro di watch: `is_base` e' riscritto da `factor_to_base`.
+    nextTick(fissa)
+  })
 }
 
 function onCancelForm() {
@@ -300,202 +297,193 @@ function onRowSelect(event) {
   onStartEdit(event.data)
 }
 
-// Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
-const onClose = useDrawerClose(emit)
-
-// Chiusura del drawer per volonta' dell'utente (X/ESC/clic fuori/Chiudi):
-// con il form inline modificato chiede conferma.
-const chiudi = () => chiudiConConferma(onClose)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    @after-show="onAfterShow"
+    :title="t('catalogo.tab_uom')"
+    :icon="MANAGE_ICONS.UOM"
+    :action="t('common.edit')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :footer="formMode ? 'nessuno' : 'chiudi'"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_uom')" :icon="MANAGE_ICONS.UOM" :modificato="modificato" />
-    </template>
+    <div v-if="listLoading" class="app-loading">
+      <i :class="STATUS_ICONS.CARICAMENTO" />
+    </div>
 
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div v-if="listLoading" class="app-loading">
-        <i :class="STATUS_ICONS.CARICAMENTO" />
+    <template v-if="!listLoading && !formMode">
+      <!-- Toolbar pagina standard: filtri (vuoti qui) + azione primaria
+           "Nuovo" prima della lista. Pattern frontend-standards lista
+           "PageActionsBar". -->
+      <div class="app-page-toolbar">
+        <PageActionsBar :actions="pageActions" />
       </div>
 
-      <template v-if="!listLoading && !formMode">
-        <!-- Toolbar pagina standard: filtri (vuoti qui) + azione primaria
-             "Nuovo" prima della lista. Pattern frontend-standards lista
-             "PageActionsBar". -->
-        <div class="app-page-toolbar">
-          <PageActionsBar :actions="pageActions" />
-        </div>
+      <div v-if="uomList.length === 0" class="app-empty-state">
+        <i :class="MANAGE_ICONS.UOM" />
+        <p>{{ t('catalogo.nessuna_uom') }}</p>
+      </div>
 
-        <div v-if="uomList.length === 0" class="app-empty-state">
-          <i :class="MANAGE_ICONS.UOM" />
-          <p>{{ t('catalogo.nessuna_uom') }}</p>
-        </div>
+      <DataTable
+        v-else
+        :value="uomList"
+        class="app-datatable app-datatable--inner"
+        striped-rows
+        selection-mode="single"
+        data-key="id"
+        @row-select="onRowSelect"
+      >
+        <Column field="uom_codice" :header="t('catalogo.col_codice')" style="width: 80px;" />
+        <Column field="uom_descrizione" :header="t('catalogo.col_descrizione')" style="width: 180px;" />
+        <Column :header="t('catalogo.col_base')" style="width: 50px;">
+          <template #body="{ data }">
+            <Tag v-if="data.is_base" :value="t('catalogo.tag_base')" severity="info" />
+          </template>
+        </Column>
+        <Column field="factor_to_base" :header="t('catalogo.col_fattore')" style="width: 70px;">
+          <template #body="{ data }">
+            <span class="app-mono">{{ data.factor_to_base }}</span>
+          </template>
+        </Column>
+        <Column :header="t('catalogo.field_logistica')" style="width: 40px;">
+          <template #body="{ data }">
+            <Tag v-if="data.is_logistic_uom" value="L" severity="success" />
+          </template>
+        </Column>
+        <Column :header="t('catalogo.col_attivo')" style="width: 50px;">
+          <template #body="{ data }">
+            <AttivoTag :active="data.attivo" />
+          </template>
+        </Column>
+        <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
+          <template #body="{ data }">
+            <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
+          </template>
+        </Column>
+      </DataTable>
+    </template>
 
-        <DataTable
-          v-else
-          :value="uomList"
-          class="app-datatable app-datatable--inner"
-          striped-rows
-          selection-mode="single"
-          data-key="id"
-          @row-select="onRowSelect"
-        >
-          <Column field="uom_codice" :header="t('catalogo.col_codice')" style="width: 80px;" />
-          <Column field="uom_descrizione" :header="t('catalogo.col_descrizione')" style="width: 180px;" />
-          <Column :header="t('catalogo.col_base')" style="width: 50px;">
-            <template #body="{ data }">
-              <Tag v-if="data.is_base" :value="t('catalogo.tag_base')" severity="info" />
-            </template>
-          </Column>
-          <Column field="factor_to_base" :header="t('catalogo.col_fattore')" style="width: 70px;">
-            <template #body="{ data }">
-              <span class="app-mono">{{ data.factor_to_base }}</span>
-            </template>
-          </Column>
-          <Column :header="t('catalogo.field_logistica')" style="width: 40px;">
-            <template #body="{ data }">
-              <Tag v-if="data.is_logistic_uom" value="L" severity="success" />
-            </template>
-          </Column>
-          <Column :header="t('catalogo.col_attivo')" style="width: 50px;">
-            <template #body="{ data }">
-              <AttivoTag :active="data.attivo" />
-            </template>
-          </Column>
-          <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-            <template #body="{ data }">
-              <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
-            </template>
-          </Column>
-        </DataTable>
-      </template>
+    <template v-if="formMode">
+      <div class="app-drawer-section">
+        <h4>{{ formMode === 'edit' ? t('catalogo.modifica_uom_operativa') : t('catalogo.nuova_uom_operativa') }}</h4>
+      </div>
 
-      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
+      <!-- UoM + Base + Fattore -->
+      <div class="form-grid">
+        <div class="form-field">
+          <label>{{ t('catalogo.field_uom') }} *</label>
+          <LookupSelect v-model="form.uom_id" rel="catalogo.unita_misura"
+            :placeholder="t('catalogo.select_uom')" :disabled="isFieldLocked('uom_id')" />
+        </div>
+      </div>
 
-      <template v-if="formMode">
-        <div class="app-drawer-section">
-          <h4>{{ formMode === 'edit' ? t('catalogo.modifica_uom_operativa') : t('catalogo.nuova_uom_operativa') }}</h4>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('catalogo.col_base') }}</label>
+          <ToggleSwitch v-model="form.is_base" />
         </div>
+        <div class="form-field">
+          <label>{{ t('catalogo.field_fattore') }} *</label>
+          <InputNumber v-model="form.factor_to_base" :min="0" :min-fraction-digits="2"
+            :max-fraction-digits="6" :disabled="form.is_base"
+            :invalid="campiErrati.includes('factor_to_base')"
+          />
+        </div>
+      </div>
 
-        <!-- UoM + Base + Fattore -->
-        <div class="form-grid">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_uom') }} *</label>
-            <LookupSelect v-model="form.uom_id" rel="catalogo.unita_misura"
-              :placeholder="t('catalogo.select_uom')" :disabled="isFieldLocked('uom_id')" />
-          </div>
+      <!-- Flags uso -->
+      <div class="app-drawer-section"><h4>{{ t('catalogo.section_uso') }}</h4></div>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('catalogo.field_vendita') }}</label>
+          <ToggleSwitch v-model="form.is_sell_uom" />
         </div>
+        <div class="form-field">
+          <label>{{ t('catalogo.field_acquisto') }}</label>
+          <ToggleSwitch v-model="form.is_purchase_uom" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('catalogo.field_logistica') }}</label>
+          <ToggleSwitch v-model="form.is_logistic_uom" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('catalogo.field_require_lot') }}</label>
+          <ToggleSwitch v-model="form.require_lot" />
+        </div>
+      </div>
 
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('catalogo.col_base') }}</label>
-            <ToggleSwitch v-model="form.is_base" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_fattore') }} *</label>
-            <InputNumber v-model="form.factor_to_base" :min="0" :min-fraction-digits="2"
-              :max-fraction-digits="6" :disabled="form.is_base"
-              :invalid="campiErrati.includes('factor_to_base')"
-            />
-          </div>
+      <!-- Regole input -->
+      <div class="app-drawer-section"><h4>{{ t('catalogo.section_regole_input') }}</h4></div>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('catalogo.field_forbid_fraction') }}</label>
+          <ToggleSwitch v-model="form.forbid_fraction" />
         </div>
+        <div class="form-field">
+          <label>{{ t('catalogo.field_qty_step') }}</label>
+          <InputNumber v-model="form.qty_step" :min="0.000001" :min-fraction-digits="0"
+            :max-fraction-digits="6" :disabled="form.forbid_fraction"
+            :invalid="campiErrati.includes('qty_step')"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('catalogo.field_max_decimals') }}</label>
+          <InputNumber v-model="form.max_decimals" :min="0" :max="6"
+            :disabled="form.forbid_fraction"
+            :invalid="campiErrati.includes('max_decimals')"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('catalogo.field_rounding_mode') }}</label>
+          <RoundingModeSelect v-model="form.rounding_mode" />
+        </div>
+      </div>
 
-        <!-- Flags uso -->
-        <div class="app-drawer-section"><h4>{{ t('catalogo.section_uso') }}</h4></div>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_vendita') }}</label>
-            <ToggleSwitch v-model="form.is_sell_uom" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_acquisto') }}</label>
-            <ToggleSwitch v-model="form.is_purchase_uom" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_logistica') }}</label>
-            <ToggleSwitch v-model="form.is_logistic_uom" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_require_lot') }}</label>
-            <ToggleSwitch v-model="form.require_lot" />
-          </div>
+      <!-- GTIN + Validita' + Attivo -->
+      <div class="app-drawer-section"><h4>{{ t('catalogo.section_extra') }}</h4></div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>{{ t('catalogo.field_gtin') }}</label>
+          <InputText v-model="form.gtin" />
         </div>
+      </div>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('catalogo.field_valido_dal') }}</label>
+          <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+            :invalid="campiErrati.includes('valido_dal')"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('catalogo.field_valido_al') }}</label>
+          <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+            :invalid="campiErrati.includes('valido_al')"
+          />
+        </div>
+      </div>
+      <div v-if="formMode === 'edit'" class="form-grid">
+        <div class="form-field">
+          <label>{{ t('indirizzi.campo_attivo') }}</label>
+          <ToggleSwitch v-model="form.attivo"
+            :invalid="campiErrati.includes('attivo')"
+          />
+        </div>
+      </div>
 
-        <!-- Regole input -->
-        <div class="app-drawer-section"><h4>{{ t('catalogo.section_regole_input') }}</h4></div>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_forbid_fraction') }}</label>
-            <ToggleSwitch v-model="form.forbid_fraction" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_qty_step') }}</label>
-            <InputNumber v-model="form.qty_step" :min="0.000001" :min-fraction-digits="0"
-              :max-fraction-digits="6" :disabled="form.forbid_fraction"
-              :invalid="campiErrati.includes('qty_step')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_max_decimals') }}</label>
-            <InputNumber v-model="form.max_decimals" :min="0" :max="6"
-              :disabled="form.forbid_fraction"
-              :invalid="campiErrati.includes('max_decimals')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_rounding_mode') }}</label>
-            <RoundingModeSelect v-model="form.rounding_mode" />
-          </div>
-        </div>
-
-        <!-- GTIN + Validita' + Attivo -->
-        <div class="app-drawer-section"><h4>{{ t('catalogo.section_extra') }}</h4></div>
-        <div class="form-grid">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_gtin') }}</label>
-            <InputText v-model="form.gtin" />
-          </div>
-        </div>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_valido_dal') }}</label>
-            <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon showButtonBar
-              :invalid="campiErrati.includes('valido_dal')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_valido_al') }}</label>
-            <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
-              :invalid="campiErrati.includes('valido_al')"
-            />
-          </div>
-        </div>
-        <div v-if="formMode === 'edit'" class="form-grid">
-          <div class="form-field">
-            <label>{{ t('indirizzi.campo_attivo') }}</label>
-            <ToggleSwitch v-model="form.attivo"
-              :invalid="campiErrati.includes('attivo')"
-            />
-          </div>
-        </div>
-
-        <FormFooter
-          :loading="loading"
-          :disabled="!canSaveForm"
-          @save="onSaveForm"
-          @cancel="annullaForm"
-        />
-      </template>
-    </div>
-  </Drawer>
+      <FormFooter
+        :loading="loading"
+        :disabled="!canSaveForm"
+        @save="onSaveForm"
+        @cancel="annullaForm"
+      />
+    </template>
+  </AppDrawer>
 </template>
 
 <style scoped>

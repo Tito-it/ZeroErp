@@ -15,16 +15,13 @@
 
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import ToggleSwitch from 'primevue/toggleswitch'
-import Badge from 'primevue/badge'
 import Tag from 'primevue/tag'
-import FormFooter from '../FormFooter.vue'
+import AppDrawer from '../AppDrawer.vue'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../constants'
 import { useConfirmAction } from '../../composables/useConfirmAction'
-import { useDrawerContentReady } from '../../composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../composables/useDrawerFormPreserve'
 
 
 
@@ -42,11 +39,6 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
-
 const emit = defineEmits(['update:visible', 'apply', 'reset'])
 const { t, te } = useI18n()
 
@@ -61,7 +53,7 @@ const localWidget = ref([])
 const widgetDaSalvare = computed(() =>
   localWidget.value.map(w => ({ codice: w.codice, visibile: Boolean(w.visibile) })),
 )
-const { fissa, chiudiConConferma } =
+const { fissa, modificato, chiudiConConferma } =
   useDrawerFormPreserve(widgetDaSalvare, { visibile: () => props.visible })
 
 watch(
@@ -122,10 +114,6 @@ function onSave() {
   emit('apply', { widget })
 }
 
-function onCancel() {
-  chiudiConConferma(() => emit('update:visible', false))
-}
-
 function onReset() {
   confirmAction({
     header: t('home.personalizza_reset'),
@@ -136,29 +124,28 @@ function onReset() {
     },
   })
 }
-const suVisibile = gestoreVisibile(emit, onCancel)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md, D-10): testata standard
+       col conteggio dei widget nuovi, «Ripristina» nello slot `#footer-azioni`.
+       Ogni uscita passa dalla conferma, l'Annulla compreso. -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="t('home.personalizza_titolo')"
+    :icon="MANAGE_ICONS.PERSONALIZZA"
+    :action="t('common.edit')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :proteggi-corpo="false"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :conteggio="widgetNuovi"
+    :loading="loading"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="onSave"
   >
-    <template #header>
-      <div class="dash-config-header">
-        <h3>{{ t('home.personalizza_titolo') }}</h3>
-        <Badge
-          v-if="widgetNuovi > 0"
-          :value="widgetNuovi"
-          severity="info"
-        />
-      </div>
-    </template>
-
-    <div v-if="contentReady" class="dash-config-body">
+    <div class="dash-config-body">
       <p class="dash-config-hint">
         {{ t('home.personalizza_hint', { max: dimensioneMax }) }}
       </p>
@@ -207,37 +194,22 @@ const suVisibile = gestoreVisibile(emit, onCancel)
       </div>
     </div>
 
-    <template #footer>
-      <div class="dash-config-footer">
-        <Button
-          :label="t('home.personalizza_reset')"
-          :icon="MANAGE_ICONS.RIPRISTINA_DEFAULT"
-          severity="secondary"
-          text
-          :disabled="loading"
-          @click="onReset"
-        />
-        <div class="dash-config-footer-right">
-          <FormFooter
-            :loading="loading"
-            @cancel="onCancel"
-            @save="onSave"
-          />
-        </div>
-      </div>
+    <!-- «Ripristina» accanto ad Annulla/Salva: lo slot `#footer-azioni` del
+         guscio, che tiene footer e uscita (ogni uscita passa dalla conferma). -->
+    <template #footer-azioni>
+      <Button
+        :label="t('home.personalizza_reset')"
+        :icon="MANAGE_ICONS.RIPRISTINA_DEFAULT"
+        severity="secondary"
+        text
+        :disabled="loading"
+        @click="onReset"
+      />
     </template>
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>
-.dash-config-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.dash-config-header h3 {
-  margin: 0;
-}
 .dash-config-body {
   display: flex;
   flex-direction: column;
@@ -266,30 +238,5 @@ const suVisibile = gestoreVisibile(emit, onCancel)
 .dash-config-row-actions {
   display: flex;
   gap: 0.15rem;
-}
-/* Footer a 3 pulsanti (reset + annulla + salva): su drawer stretto o
-   schermo piccolo deve andare a capo, mai farsi tagliare. `flex-wrap`
-   + `margin-left:auto` che si annulla quando si va a capo. */
-/* Il footer del drawer (`.p-drawer-footer`) e' FRATELLO del contenuto, non
-   suo figlio: non sta dentro il riquadro, e la `@container` qui sotto si
-   misura sul footer stesso. */
-.dash-config-footer {
-  container-type: inline-size;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  width: 100%;
-}
-.dash-config-footer-right {
-  margin-left: auto;
-}
-
-@container (max-width: 559.98px) {
-  .dash-config-footer-right {
-    margin-left: 0;
-    width: 100%;
-  }
 }
 </style>

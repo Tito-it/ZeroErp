@@ -10,6 +10,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 
+import { unisciFotografie } from '../../../core/composables/useDrawerFormPreserve'
 import RigheMasterDetailTable from '../../../core/components/RigheMasterDetailTable.vue'
 import { useActionPermission } from '../../../core/composables/useActionPermission'
 import { MANAGE_ICONS } from '../../../core/constants'
@@ -45,7 +46,13 @@ const emit = defineEmits(['changed', 'form-aperto'])
 
 // Il drawer parent chiama loadRighe sul ref: ri-espone quello del BB.
 const tableRef = ref(null)
-defineExpose({ loadRighe: () => tableRef.value?.loadRighe() })
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): la fotografia della riga
+//    aperta, inoltrata al drawer per le sue uscite. La tiene il form di riga,
+//    che si registra presso la tabella (`registra` dello slot).
+defineExpose({
+  loadRighe: () => tableRef.value?.loadRighe(),
+  ...unisciFotografie(() => tableRef.value),
+})
 
 // ── Annullo dell'accredito (B2-bis) — QUI e' la sede principale ─────────────
 // ⭐ Perche' nel drawer e non nella coda: dopo il verbo la riga ESCE dalla coda
@@ -141,8 +148,9 @@ function azioniRiga(riga) {
         :severity="statoRiconsegnaSeverity(data.stato_riconsegna)" />
     </template>
 
-    <template #form="{ riga, onSaved, onCancel }">
+    <template #form="{ riga, onSaved, onCancel, registra }">
       <ResoRigaForm
+        :ref="registra"
         :reso-id="resoId"
         :ddt-origine-id="ddtOrigineId"
         :riga="riga"

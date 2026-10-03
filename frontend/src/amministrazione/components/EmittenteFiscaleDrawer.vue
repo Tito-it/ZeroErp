@@ -8,8 +8,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, FIELD_LENGTH } from '../../core/constants'
 import { getEmittenteFormDefaults } from '../api/amministrazione'
@@ -18,11 +17,9 @@ import { blockNonAlphanumeric, normalizeUpperNoSpaces } from '../../core/utils/s
 import { displayTimestamp } from '../../core/utils/date'
 import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import EmittenteRoundingModeSelect from './EmittenteRoundingModeSelect.vue'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -46,10 +43,6 @@ const props = defineProps({
   emittenteId: { type: Number, default: null }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -295,227 +288,207 @@ async function save() {
   }
   if (result !== null) { fissa(); emit('saved', result) }
 }
-
-function close() {
-  chiudiConConferma(() => {
-    emit('update:visible', false)
-    emit('cancelled')
-  })
-}
-const suVisibile = gestoreVisibile(emit, close)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @after-show="onAfterShow"
+    :title="drawerTitle"
+    :icon="isEdit ? MANAGE_ICONS.EDIT : MANAGE_ICONS.ADD"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    :save-label="isEdit ? t('common.save') : t('common.create')"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="save"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :icon="isEdit ? MANAGE_ICONS.EDIT : MANAGE_ICONS.ADD"
-        :title="drawerTitle"
-      />
-    </template>
+      <div class="form-grid">
+        <!-- ⚠️ Un emittente NON è solo una riga di anagrafica: senza i propri
+             registri di numerazione la sua prima fattura si ferma con
+             `E_CONFIG_MANCANTE`.
+             Dal 2026-08-19 (P-6) ogni registro è intestato a un emittente e
+             NON esiste più un registro generico di ripiego: è fail-closed, ed
+             è voluto — meglio fermarsi che numerare sul progressivo di
+             un'altra azienda. Ma l'operatore lo scoprirebbe solo al primo
+             documento, cioè tardi e altrove: qui lo sa prima.
+             ⛔ Non si creano i registri per conto suo: «quale serie» è una
+             scelta fiscale (la serie significa CANALE, non azienda) e
+             indovinarla è precisamente ciò che D-P6-2 evita. -->
+        <Message
+          v-if="!isEdit"
+          severity="info"
+          :closable="false"
+        >
+          {{ t('amministrazione.emittenti_fiscali.avviso_registri') }}
+        </Message>
 
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-        <div class="form-grid">
-          <!-- ⚠️ Un emittente NON è solo una riga di anagrafica: senza i propri
-               registri di numerazione la sua prima fattura si ferma con
-               `E_CONFIG_MANCANTE`.
-               Dal 2026-08-19 (P-6) ogni registro è intestato a un emittente e
-               NON esiste più un registro generico di ripiego: è fail-closed, ed
-               è voluto — meglio fermarsi che numerare sul progressivo di
-               un'altra azienda. Ma l'operatore lo scoprirebbe solo al primo
-               documento, cioè tardi e altrove: qui lo sa prima.
-               ⛔ Non si creano i registri per conto suo: «quale serie» è una
-               scelta fiscale (la serie significa CANALE, non azienda) e
-               indovinarla è precisamente ciò che D-P6-2 evita. -->
-          <Message
-            v-if="!isEdit"
-            severity="info"
-            :closable="false"
-          >
-            {{ t('amministrazione.emittenti_fiscali.avviso_registri') }}
-          </Message>
-
-          <!-- Soggetto -->
-          <h4>{{ t('amministrazione.emittenti_fiscali.field_soggetto') }}</h4>
-          <template v-if="!isEdit">
-            <div v-if="soggettoSelezionato">
-              <SoggettoMessageBanner
-                :ragione-sociale="soggettoSelezionato.ragione_sociale || soggettoSelezionato.ragione_sociale_completa"
-                :id-fiscale="soggettoSelezionato.cf || soggettoSelezionato.codice_fiscale || soggettoSelezionato.piva || soggettoSelezionato.partita_iva"
-              />
-              <!-- Validazione P.IVA: requisito legale per emittente fiscale -->
-              <Message
-                v-if="!soggettoHasPartitaIva"
-                severity="warn"
-                :closable="false"
-              >
-                {{ t('amministrazione.emittenti_fiscali.soggetto_no_piva') }}
-              </Message>
-              <Button :label="t('resolver.change')" :icon="MANAGE_ICONS.EDIT"
-                text size="small" class="mt-1" @click="clearSoggetto" />
-            </div>
-            <div v-else>
-              <Button :label="t('resolver.open')" :icon="MANAGE_ICONS.RICERCA"
-                outlined @click="resolverVisible = true" />
-            </div>
-          </template>
-          <div v-if="isEdit && detail">
+        <!-- Soggetto -->
+        <h4>{{ t('amministrazione.emittenti_fiscali.field_soggetto') }}</h4>
+        <template v-if="!isEdit">
+          <div v-if="soggettoSelezionato">
             <SoggettoMessageBanner
-              :ragione-sociale="detail.ragione_sociale_completa"
-              :id-fiscale="detail.codice_fiscale || detail.partita_iva"
+              :ragione-sociale="soggettoSelezionato.ragione_sociale || soggettoSelezionato.ragione_sociale_completa"
+              :id-fiscale="soggettoSelezionato.cf || soggettoSelezionato.codice_fiscale || soggettoSelezionato.piva || soggettoSelezionato.partita_iva"
+            />
+            <!-- Validazione P.IVA: requisito legale per emittente fiscale -->
+            <Message
+              v-if="!soggettoHasPartitaIva"
+              severity="warn"
+              :closable="false"
+            >
+              {{ t('amministrazione.emittenti_fiscali.soggetto_no_piva') }}
+            </Message>
+            <Button :label="t('resolver.change')" :icon="MANAGE_ICONS.EDIT"
+              text size="small" class="mt-1" @click="clearSoggetto" />
+          </div>
+          <div v-else>
+            <Button :label="t('resolver.open')" :icon="MANAGE_ICONS.RICERCA"
+              outlined @click="resolverVisible = true" />
+          </div>
+        </template>
+        <div v-if="isEdit && detail">
+          <SoggettoMessageBanner
+            :ragione-sociale="detail.ragione_sociale_completa"
+            :id-fiscale="detail.codice_fiscale || detail.partita_iva"
+          />
+        </div>
+
+        <!-- Sezioni dati emittente: visibili solo dopo selezione soggetto (create) o sempre (edit) -->
+        <template v-if="isEdit || (soggettoSelezionato && soggettoHasPartitaIva)">
+          <h4>{{ t('amministrazione.emittenti_fiscali.section_anagrafica') }}</h4>
+
+          <!-- ⚠️ Il maiuscolo si ALZA, il trattino si RIFIUTA: e' la stessa
+               asimmetria del guard DB. `normalizeUpperNoSpaces` porta `acme`
+               a `ACME` (forma canonica, non un requisito da conoscere),
+               mentre `blockNonAlphanumeric` non lascia nemmeno digitare il
+               `-` invece di toglierlo dopo — togliere caratteri a un
+               identificatore appena scritto e' una cosa che chi lo scrive
+               deve sapere. -->
+          <div class="form-field">
+            <label>{{ t('amministrazione.emittenti_fiscali.field_codice') }} *</label>
+            <InputText
+              v-model="form.codice"
+              :disabled="isEdit"
+              :maxlength="FIELD_LENGTH.EMITTENTE_CODICE_MAX"
+              :invalid="campiErrati.includes('codice')"
+              @keypress="blockNonAlphanumeric"
+              @input="normalizeUpperNoSpaces(form, 'codice')"
+            />
+            <small v-if="!isEdit" class="app-field-hint">
+              {{ t('amministrazione.emittenti_fiscali.field_codice_hint', {
+                min: FIELD_LENGTH.EMITTENTE_CODICE_MIN,
+                max: FIELD_LENGTH.EMITTENTE_CODICE_MAX,
+              }) }}
+            </small>
+          </div>
+
+          <!-- Nessun campo "descrizione": la denominazione dell'emittente e'
+               la ragione sociale del soggetto, gia' mostrata dal
+               SoggettoMessageBanner qui sopra (colonna droppata il
+               2026-08-02, `brief-emittente-ragione-sociale-dal-soggetto.md`). -->
+
+          <h4>{{ t('amministrazione.emittenti_fiscali.section_fiscale') }}</h4>
+
+          <!-- Il regime entra nell'esigibilita' IVA delle fatture (un regime
+               per cassa la rende differita: lo dice il catalogo, non il
+               codice): si sceglie dal catalogo e si CONFERMA (vedi
+               `confermaRegime` nello script). -->
+          <div class="form-field">
+            <label>{{ t('amministrazione.emittenti_fiscali.field_regime_fiscale_rf') }} *</label>
+            <LookupSelect
+              v-model="form.regime_fiscale_rf"
+              rel="config.regimi_fiscali"
+              value-field="codice_interno"
+              show-code
+              :voce-corrente="voceRegimeCorrente"
+              :placeholder="t('amministrazione.emittenti_fiscali.field_regime_fiscale_rf')"
+              :invalid="campiErrati.includes('regime_fiscale_rf')"
+            />
+            <small class="mt-1 app-text-muted">
+              {{ t('amministrazione.emittenti_fiscali.regime_fiscale_rf_hint') }}
+            </small>
+            <template v-if="isEdit && detail">
+              <small v-if="regimeCambiato" class="mt-1 app-field-hint">
+                {{ t('amministrazione.emittenti_fiscali.regime_confermato_al_salvataggio') }}
+              </small>
+              <small v-else-if="regimeConfermato" class="mt-1 app-text-muted">
+                {{ t('amministrazione.emittenti_fiscali.regime_confermato_il', {
+                  data: displayTimestamp(detail.regime_fiscale_confermato_il),
+                  utente: detail.regime_fiscale_confermato_da,
+                }) }}
+              </small>
+              <Message v-else-if="confermaRegime" severity="info" size="small" class="mt-1">
+                {{ t('amministrazione.emittenti_fiscali.regime_confermato_al_salvataggio') }}
+              </Message>
+              <Message v-else severity="warn" size="small" class="mt-1">
+                {{ t('amministrazione.emittenti_fiscali.regime_non_confermato') }}
+                <Button
+                  v-if="!isReadonly"
+                  :label="t('amministrazione.emittenti_fiscali.regime_conferma')"
+                  size="small" text
+                  @click="confermaRegime = true"
+                />
+              </Message>
+            </template>
+          </div>
+
+          <h4>{{ t('amministrazione.emittenti_fiscali.section_bollo') }}</h4>
+
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('amministrazione.emittenti_fiscali.field_bollo_auto') }}</label>
+              <ToggleSwitch v-model="form.bollo_auto" />
+            </div>
+            <div class="form-field">
+              <label>{{ t('amministrazione.emittenti_fiscali.field_bollo_soglia') }}</label>
+              <!-- Editabile solo se bollo_auto = true; altrimenti azzerata via watch. -->
+              <InputNumber
+                v-model="form.bollo_soglia"
+                :disabled="!form.bollo_auto"
+                :min-fraction-digits="2" :max-fraction-digits="2"
+              />
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label>{{ t('amministrazione.emittenti_fiscali.field_rounding_policy') }}</label>
+            <EmittenteRoundingModeSelect
+              v-model="form.rounding_policy"
+              :placeholder="t('amministrazione.emittenti_fiscali.field_rounding_policy')"
+              show-clear
             />
           </div>
 
-          <!-- Sezioni dati emittente: visibili solo dopo selezione soggetto (create) o sempre (edit) -->
-          <template v-if="isEdit || (soggettoSelezionato && soggettoHasPartitaIva)">
-            <h4>{{ t('amministrazione.emittenti_fiscali.section_anagrafica') }}</h4>
+          <!-- Valuta di default: livello 3 della catena resolve_valuta_default
+               usata da preventivi/contratti senza BA. Senza questo valore i
+               form-defaults restituiscono valuta vuota. -->
+          <div class="form-field">
+            <label>{{ t('amministrazione.emittenti_fiscali.field_valuta') }}</label>
+            <LookupSelect
+              v-model="form.valuta_id"
+              rel="config.valute"
+              :placeholder="t('amministrazione.emittenti_fiscali.field_valuta')"
+              show-clear
+            />
+            <small class="mt-1 app-text-muted">
+              {{ t('amministrazione.emittenti_fiscali.field_valuta_hint') }}
+            </small>
+          </div>
 
-            <!-- ⚠️ Il maiuscolo si ALZA, il trattino si RIFIUTA: e' la stessa
-                 asimmetria del guard DB. `normalizeUpperNoSpaces` porta `acme`
-                 a `ACME` (forma canonica, non un requisito da conoscere),
-                 mentre `blockNonAlphanumeric` non lascia nemmeno digitare il
-                 `-` invece di toglierlo dopo — togliere caratteri a un
-                 identificatore appena scritto e' una cosa che chi lo scrive
-                 deve sapere. -->
-            <div class="form-field">
-              <label>{{ t('amministrazione.emittenti_fiscali.field_codice') }} *</label>
-              <InputText
-                v-model="form.codice"
-                :disabled="isEdit"
-                :maxlength="FIELD_LENGTH.EMITTENTE_CODICE_MAX"
-                :invalid="campiErrati.includes('codice')"
-                @keypress="blockNonAlphanumeric"
-                @input="normalizeUpperNoSpaces(form, 'codice')"
-              />
-              <small v-if="!isEdit" class="app-field-hint">
-                {{ t('amministrazione.emittenti_fiscali.field_codice_hint', {
-                  min: FIELD_LENGTH.EMITTENTE_CODICE_MIN,
-                  max: FIELD_LENGTH.EMITTENTE_CODICE_MAX,
-                }) }}
-              </small>
-            </div>
-
-            <!-- Nessun campo "descrizione": la denominazione dell'emittente e'
-                 la ragione sociale del soggetto, gia' mostrata dal
-                 SoggettoMessageBanner qui sopra (colonna droppata il
-                 2026-08-02, `brief-emittente-ragione-sociale-dal-soggetto.md`). -->
-
-            <h4>{{ t('amministrazione.emittenti_fiscali.section_fiscale') }}</h4>
-
-            <!-- Il regime entra nell'esigibilita' IVA delle fatture (un regime
-                 per cassa la rende differita: lo dice il catalogo, non il
-                 codice): si sceglie dal catalogo e si CONFERMA (vedi
-                 `confermaRegime` nello script). -->
-            <div class="form-field">
-              <label>{{ t('amministrazione.emittenti_fiscali.field_regime_fiscale_rf') }} *</label>
-              <LookupSelect
-                v-model="form.regime_fiscale_rf"
-                rel="config.regimi_fiscali"
-                value-field="codice_interno"
-                show-code
-                :voce-corrente="voceRegimeCorrente"
-                :placeholder="t('amministrazione.emittenti_fiscali.field_regime_fiscale_rf')"
-                :invalid="campiErrati.includes('regime_fiscale_rf')"
-              />
-              <small class="mt-1 app-text-muted">
-                {{ t('amministrazione.emittenti_fiscali.regime_fiscale_rf_hint') }}
-              </small>
-              <template v-if="isEdit && detail">
-                <small v-if="regimeCambiato" class="mt-1 app-field-hint">
-                  {{ t('amministrazione.emittenti_fiscali.regime_confermato_al_salvataggio') }}
-                </small>
-                <small v-else-if="regimeConfermato" class="mt-1 app-text-muted">
-                  {{ t('amministrazione.emittenti_fiscali.regime_confermato_il', {
-                    data: displayTimestamp(detail.regime_fiscale_confermato_il),
-                    utente: detail.regime_fiscale_confermato_da,
-                  }) }}
-                </small>
-                <Message v-else-if="confermaRegime" severity="info" size="small" class="mt-1">
-                  {{ t('amministrazione.emittenti_fiscali.regime_confermato_al_salvataggio') }}
-                </Message>
-                <Message v-else severity="warn" size="small" class="mt-1">
-                  {{ t('amministrazione.emittenti_fiscali.regime_non_confermato') }}
-                  <Button
-                    v-if="!isReadonly"
-                    :label="t('amministrazione.emittenti_fiscali.regime_conferma')"
-                    size="small" text
-                    @click="confermaRegime = true"
-                  />
-                </Message>
-              </template>
-            </div>
-
-            <h4>{{ t('amministrazione.emittenti_fiscali.section_bollo') }}</h4>
-
-            <div class="form-grid-2col">
-              <div class="form-field">
-                <label>{{ t('amministrazione.emittenti_fiscali.field_bollo_auto') }}</label>
-                <ToggleSwitch v-model="form.bollo_auto" />
-              </div>
-              <div class="form-field">
-                <label>{{ t('amministrazione.emittenti_fiscali.field_bollo_soglia') }}</label>
-                <!-- Editabile solo se bollo_auto = true; altrimenti azzerata via watch. -->
-                <InputNumber
-                  v-model="form.bollo_soglia"
-                  :disabled="!form.bollo_auto"
-                  :min-fraction-digits="2" :max-fraction-digits="2"
-                />
-              </div>
-            </div>
-
-            <div class="form-field">
-              <label>{{ t('amministrazione.emittenti_fiscali.field_rounding_policy') }}</label>
-              <EmittenteRoundingModeSelect
-                v-model="form.rounding_policy"
-                :placeholder="t('amministrazione.emittenti_fiscali.field_rounding_policy')"
-                show-clear
-              />
-            </div>
-
-            <!-- Valuta di default: livello 3 della catena resolve_valuta_default
-                 usata da preventivi/contratti senza BA. Senza questo valore i
-                 form-defaults restituiscono valuta vuota. -->
-            <div class="form-field">
-              <label>{{ t('amministrazione.emittenti_fiscali.field_valuta') }}</label>
-              <LookupSelect
-                v-model="form.valuta_id"
-                rel="config.valute"
-                :placeholder="t('amministrazione.emittenti_fiscali.field_valuta')"
-                show-clear
-              />
-              <small class="mt-1 app-text-muted">
-                {{ t('amministrazione.emittenti_fiscali.field_valuta_hint') }}
-              </small>
-            </div>
-
-            <!-- Attivo: ultimo elemento del form (richiesta UX) -->
-            <div class="form-field">
-              <label>{{ t('amministrazione.emittenti_fiscali.field_attivo') }}</label>
-              <ToggleSwitch v-model="form.attivo"
-                :invalid="campiErrati.includes('attivo')"
-              />
-            </div>
-          </template>
-        </div>
-
-        <!-- Footer Salva/Annulla -->
-        <div>
-          <FormFooter
-            :loading="loading"
-            :disabled="!canSave"
-            :save-label="isEdit ? t('common.save') : t('common.create')"
-            @save="save"
-            @cancel="close"
-          />
-        </div>
-    </div>
+          <!-- Attivo: ultimo elemento del form (richiesta UX) -->
+          <div class="form-field">
+            <label>{{ t('amministrazione.emittenti_fiscali.field_attivo') }}</label>
+            <ToggleSwitch v-model="form.attivo"
+              :invalid="campiErrati.includes('attivo')"
+            />
+          </div>
+        </template>
+      </div>
 
     <!-- Sotto-drawer SoggettoResolver (solo creazione) -->
     <SoggettoResolver
@@ -527,5 +500,5 @@ const suVisibile = gestoreVisibile(emit, close)
       @soggetto-creato="onSoggettoCreato"
       @annullato="resolverVisible = false"
     />
-  </Drawer>
+  </AppDrawer>
 </template>

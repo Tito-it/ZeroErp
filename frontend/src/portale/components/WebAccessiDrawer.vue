@@ -7,15 +7,12 @@
 // dell'auth_user collegato.
 //
 // Usa il pattern drawer autonomi (feedback_drawer_autonomi):
-// ereditarieta' readonly dal padre via inject, FormFooter closeOnly,
-// DrawerTitle standard.
+// ereditarieta' readonly dal padre via inject, chrome di AppDrawer con
+// footer «Chiudi».
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import PortaleAccessoPanel from './PortaleAccessoPanel.vue'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 
 const { t } = useI18n()
@@ -40,35 +37,27 @@ function isReadonly() {
   return props.readonly || injectedReadonly.value
 }
 
-const onClose = useDrawerClose(emit)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="props.visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :dismissable="true"
-    @update:visible="val => emit('update:visible', val)"
+    :title="t('portale.accessi_web.title')"
+    :icon="MANAGE_ICONS.ACCESSI_WEB"
+    :action="t('portale.accessi_web.drawer_action')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :proteggi-corpo="false"
+    footer="chiudi"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle
-        :action="t('portale.accessi_web.drawer_action')"
-        :title="t('portale.accessi_web.title')"
-        :icon="MANAGE_ICONS.ACCESSI_WEB"
-      />
-    </template>
-
-    <div class="app-drawer-content">
-      <PortaleAccessoPanel
-        :entita-tipo="props.entitaTipo"
-        :entita-id="props.entitaId"
-        :email-iniziale="props.emailIniziale"
-        :readonly="isReadonly()"
-        @stato-cambiato="$emit('stato-cambiato')"
-      />
-
-      <FormFooter close-only @cancel="onClose" />
-    </div>
-  </Drawer>
+    <PortaleAccessoPanel
+      :entita-tipo="props.entitaTipo"
+      :entita-id="props.entitaId"
+      :email-iniziale="props.emailIniziale"
+      :readonly="isReadonly()"
+      @stato-cambiato="$emit('stato-cambiato')"
+    />
+  </AppDrawer>
 </template>

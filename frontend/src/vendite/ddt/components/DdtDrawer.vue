@@ -34,11 +34,11 @@ import { displayDate, toDateString } from '../../../core/utils/date'
 import { createDdt } from '../api/ddtApi'
 import { getDdtFormDefaults } from '../../api/formDefaults'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
+import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
 import { getBillingAccountLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
-import DrawerTitle from '../../../core/components/DrawerTitle.vue'
-import FormFooter from '../../../core/components/FormFooter.vue'
+import AppDrawer from '../../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
@@ -50,7 +50,6 @@ import DdtRigheTable from './DdtRigheTable.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
 import DdtResoDialog from './DdtResoDialog.vue'
 import DdtEmissioneDialog from './dialogs/DdtEmissioneDialog.vue'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 
@@ -83,6 +82,19 @@ const {
   modificato,
   chiudiConConferma,
 } = useDrawerFormPreserve(form, { visibile: () => props.visible })
+
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): testata E riga aperta,
+//    una domanda sola. Fino a quel giorno la fotografia copriva la sola
+//    testata, e una riga in compilazione si perdeva uscendo dal drawer. La
+//    fotografia della riga la tiene il suo form e arriva dalla tabella-righe.
+// Tabella-righe, fotografia unita (testata + riga aperta) e footer secondo lo
+// stato: il legame e' del BB `useRigheDocumento` (regola del 2).
+const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumento({
+  testata: { modificato, chiudiConConferma },
+  modificabile: () => canEditTestataEffective.value && !isReadonly.value,
+  presente: () => hasDetail.value,
+})
+const modificatoDocumento = documento.modificato
 const detail = ref(null)
 
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_ddt_riepilogo_iva_dettaglio`).
@@ -123,9 +135,6 @@ const indirizzoObbligatorioMancante = ref(false)
 // Auto-save bozza: in CREATE, appena il cliente (BA) e' valorizzato, il drawer
 // crea il DDT in BOZZA e si comporta da "edit-evolved" (righe + azioni stato).
 const createdId = ref(null)
-// Stato form riga inline: quando si edita/aggiunge una riga, il FormFooter
-// testata si nasconde per non duplicare i bottoni di DdtRigaForm.
-const formRigaAperto = ref(false)
 const effectiveDdtId = computed(() => createdId.value ?? props.ddtId)
 // FE-A: «questo documento vende?». La risposta sta nella causale di trasporto
 // (DEC-5 del brief-ddt-righe-senza-prezzo) e ha TRE stati, non due:
@@ -378,9 +387,9 @@ function buildTestataPayload({ includeBa = false } = {}) {
 }
 
 // Auto-save bozza + abbandono bozza orfana via BB condiviso (B13, regola del 2).
-// Trigger: cliente (BA) valorizzato in CREATE. `close`/`onVisibleChange` usati
-// dal template; createdId resta ref del drawer.
-const { close, onVisibleChange } = useDrawerAutosaveBozza({
+// Trigger: cliente (BA) valorizzato in CREATE. `close` e' l'uscita del
+// drawer (`conferma-uscita` di AppDrawer); createdId resta ref del drawer.
+const { close } = useDrawerAutosaveBozza({
   emit,
   execute,
   loading,
@@ -401,7 +410,7 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
   // Uscita con modifiche non salvate: prima si chiede (BB useDrawerFormPreserve).
-  confermaUscita: chiudiConConferma,
+  confermaUscita: documento.chiudiConConferma,
   messages: {
     bozzaCreata: t('vendite.ddt.bozza_creata'),
     abbandonoTitolo: t('vendite.ddt.abbandono_bozza_titolo'),
@@ -594,132 +603,137 @@ const drawerActions = computed(() => {
     },
   ]
 })
+
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="onVisibleChange"
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- L'uscita la possiede l'auto-salvataggio della bozza
+       (`useDrawerAutosaveBozza`): con una bozza rimasta vuota chiede se
+       eliminarla, altrimenti le modifiche non salvate; poi emette lui
+       `update:visible` e `cancelled` verso il padre. Per questo
+       `conferma-uscita` ignora il `chiudi` del guscio. -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('vendite.ddt.ddt')"
+    :icon="NAV_ICONS.DDT"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.WIDE_PLUS"
+    :modificato="modificatoDocumento"
+    :conferma-uscita="() => close()"
+    :footer="footerDrawer"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
     @after-show="onAfterShow"
-    position="right" :style="{ width: DRAWER_WIDTH.WIDE_PLUS }" :dismissable="true">
-    <template #header>
-      <DrawerTitle
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :modificato="modificato"
-        :title="t('vendite.ddt.ddt')"
-        :icon="NAV_ICONS.DDT"
-      />
+    @save="handleSave"
+  >
+
+    <!-- Header info: visibile in EDIT classico e in CREATE post auto-save. -->
+    <template v-if="hasDetail">
+      <DrawerEntityHeader>
+        <!-- Numero: "—" finche' il DDT e' in DRAFT (assegnato solo a EMESSO). -->
+        <Tag :value="detail.numero || '—'" severity="secondary" />
+        <span v-if="detail.data" class="app-drawer-header-muted font-bold">
+          {{ displayDate(detail.data) }}
+        </span>
+        <!-- La provenienza (ordine di evasione) NON e' piu' un chip d'header
+             dedicato: e' assorbita dai chip di DocumentoCollegamentiBar sotto
+             la barra azioni, dove sta l'origine di TUTTI i domini (2026-07-25).
+             Un solo posto, uguale ovunque, invece di un chip speciale del DDT. -->
+
+        <template #status>
+          <Tag
+            :value="detail.stato_descrizione"
+            :severity="statoDdtSeverity(detail.stato_codice_interno)"
+          />
+        </template>
+      </DrawerEntityHeader>
+
+      <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
+        <template #suffix>
+          <!-- Stampa DDT accompagnatorio: anteprima in bozza, gestione
+               documenti generati post-emissione. BB EntityPdfButton 1:1. -->
+          <EntityPdfButton
+            :sorgente-code="SORGENTE_CODES.DDT"
+            :entity-id="effectiveDdtId"
+            :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+            :pdf="capabilities.pdf"
+            i18n-prefix="vendite.ddt.pdf"
+            :dialog-title="detail.numero
+              ? t('vendite.ddt.pdf.dialog_title', { numero: detail.numero })
+              : ''"
+          />
+        </template>
+      </DrawerActionsBar>
+
+      <!-- Collegamenti diretti (pratica + origine + destinazioni di livello 1):
+           segnalazione a colpo d'occhio sotto i pulsanti — «Ordine», «1 Reso».
+           Il dettaglio (grafo completo) si apre dai chip stessi in dialog.
+           `ref` per ricaricare i chip dopo un'azione che li cambia (reso). -->
+      <DocumentoCollegamentiBar
+        ref="collegamentiRef"
+        base-path="/vendite/ddt"
+        :doc-id="effectiveDdtId"
+        :readonly="readonly || parentReadonly" />
+
+      <!-- Situazione merce di QUESTA spedizione: quanto e' uscito, tornato,
+           fatturato e cosa resta aperto. La barra sopra dice COSA e'
+           collegato, questa COM'E' ANDATA. Sparisce se non c'e' nulla da
+           raccontare (un DDT in bozza non ha ancora partite). -->
+      <SituazioneMerceBar
+        ref="merceRef"
+        base-path="/vendite/ddt"
+        :doc-id="effectiveDdtId"
+        :readonly="readonly || parentReadonly" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <Divider v-if="hasDetail" />
 
-      <!-- Header info: visibile in EDIT classico e in CREATE post auto-save. -->
-      <template v-if="hasDetail">
-        <DrawerEntityHeader>
-          <!-- Numero: "—" finche' il DDT e' in DRAFT (assegnato solo a EMESSO). -->
-          <Tag :value="detail.numero || '—'" severity="secondary" />
-          <span v-if="detail.data" class="app-drawer-header-muted font-bold">
-            {{ displayDate(detail.data) }}
-          </span>
-          <!-- La provenienza (ordine di evasione) NON e' piu' un chip d'header
-               dedicato: e' assorbita dai chip di DocumentoCollegamentiBar sotto
-               la barra azioni, dove sta l'origine di TUTTI i domini (2026-07-25).
-               Un solo posto, uguale ovunque, invece di un chip speciale del DDT. -->
+    <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup. -->
+    <DdtForm
+      :campi-errati="campiErrati"
+      :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
+      :non-editable-fields="nonEditableFields"
+      :record="detail"
+      :is-edit="isEdit || createdId !== null" />
 
-          <template #status>
-            <Tag
-              :value="detail.stato_descrizione"
-              :severity="statoDdtSeverity(detail.stato_codice_interno)"
-            />
-          </template>
-        </DrawerEntityHeader>
+    <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
+    <template v-if="hasDetail">
+      <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
+           avviso se mancante (obbligatorio all'emissione, guard DB),
+           pulsante "Indirizzi" che apre il drawer di gestione. -->
+      <DocumentoIndirizziSection
+        dominio="ddt"
+        :doc-id="effectiveDdtId"
+        :soggetto-ruolo-id="detail?.destinatario_soggetto_ruolo_id ?? null"
+        :istanza-utility-id="detail?.istanza_utility_id ?? null"
+        :readonly="!(canEditTestataEffective && !isReadonly)"
+        @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }"
+        :bordo="false" />
 
-        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
-          <template #suffix>
-            <!-- Stampa DDT accompagnatorio: anteprima in bozza, gestione
-                 documenti generati post-emissione. BB EntityPdfButton 1:1. -->
-            <EntityPdfButton
-              :sorgente-code="SORGENTE_CODES.DDT"
-              :entity-id="effectiveDdtId"
-              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-              :pdf="capabilities.pdf"
-              i18n-prefix="vendite.ddt.pdf"
-              :dialog-title="detail.numero
-                ? t('vendite.ddt.pdf.dialog_title', { numero: detail.numero })
-                : ''"
-            />
-          </template>
-        </DrawerActionsBar>
+      <Divider />
+      <DdtRigheTable
+        ref="righeTableRef"
+        :ddt-id="effectiveDdtId"
+        :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+        :is-modificabile="canEditRighe && !isReadonly"
+        :causale-fatturabile="causaleFatturabile"
+        @changed="loadDetail()"
+        @form-aperto="onFormAperto" />
 
-        <!-- Collegamenti diretti (pratica + origine + destinazioni di livello 1):
-             segnalazione a colpo d'occhio sotto i pulsanti — «Ordine», «1 Reso».
-             Il dettaglio (grafo completo) si apre dai chip stessi in dialog.
-             `ref` per ricaricare i chip dopo un'azione che li cambia (reso). -->
-        <DocumentoCollegamentiBar
-          ref="collegamentiRef"
-          base-path="/vendite/ddt"
-          :doc-id="effectiveDdtId"
-          :readonly="readonly || parentReadonly" />
-
-        <!-- Situazione merce di QUESTA spedizione: quanto e' uscito, tornato,
-             fatturato e cosa resta aperto. La barra sopra dice COSA e'
-             collegato, questa COM'E' ANDATA. Sparisce se non c'e' nulla da
-             raccontare (un DDT in bozza non ha ancora partite). -->
-        <SituazioneMerceBar
-          ref="merceRef"
-          base-path="/vendite/ddt"
-          :doc-id="effectiveDdtId"
-          :readonly="readonly || parentReadonly" />
-      </template>
-
-      <Divider v-if="hasDetail" />
-
-      <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup. -->
-      <DdtForm
-        :campi-errati="campiErrati" v-if="contentReady"
-        :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
-        :non-editable-fields="nonEditableFields"
-        :record="detail"
-        :is-edit="isEdit || createdId !== null" />
-
-      <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
-      <template v-if="contentReady && hasDetail">
-        <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
-             avviso se mancante (obbligatorio all'emissione, guard DB),
-             pulsante "Indirizzi" che apre il drawer di gestione. -->
-        <DocumentoIndirizziSection
-          dominio="ddt"
-          :doc-id="effectiveDdtId"
-          :soggetto-ruolo-id="detail?.destinatario_soggetto_ruolo_id ?? null"
-          :istanza-utility-id="detail?.istanza_utility_id ?? null"
-          :readonly="!(canEditTestataEffective && !isReadonly)"
-          @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }"
-          :bordo="false" />
-
+      <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
+           Visibile con almeno una riga valorizzata (righe prezzo NULL escluse
+           in vista: DDT solo di trasporto -> pannello nascosto). Componente
+           riusabile cross-dominio condiviso con preventivi/ordini. -->
+      <template v-if="showRiepilogoIva">
         <Divider />
-        <DdtRigheTable
-          :ddt-id="effectiveDdtId"
-          :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-          :is-modificabile="canEditRighe && !isReadonly"
-          :causale-fatturabile="causaleFatturabile"
-          @changed="loadDetail()"
-          @form-aperto="(v) => { formRigaAperto = v }" />
-
-        <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
-             Visibile con almeno una riga valorizzata (righe prezzo NULL escluse
-             in vista: DDT solo di trasporto -> pannello nascosto). Componente
-             riusabile cross-dominio condiviso con preventivi/ordini. -->
-        <template v-if="showRiepilogoIva">
-          <Divider />
-          <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
-        </template>
-
+        <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
       </template>
 
-      <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"
-        :loading="loading" :disabled="!canSave"
-        @save="handleSave" @cancel="close" />
-      <FormFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="close" />
-    </div>
-  </Drawer>
+    </template>
+  </AppDrawer>
 
   <!-- Sub-drawer note: cablato sull'id effettivo del DDT. -->
   <DdtNoteDrawer

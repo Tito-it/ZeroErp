@@ -32,7 +32,7 @@
 //    cancellando e riscrivendo la riga. La regola «articolo immutabile in edit»
 //    del master-detail di vendita nasce dal pricing (UoM, componenti), che qui
 //    non c'e'.
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
@@ -42,6 +42,7 @@ import Select from 'primevue/select'
 import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { RISULTATI, useLetturaTreStati } from '../../core/composables/useLetturaTreStati'
 import { componiBloccoMotivo } from '../../core/utils/bloccoMotivo'
@@ -137,9 +138,18 @@ watch(
       : defaultForm()
     articoloDellaPosizione = form.value.articolo?.id ?? null
     ricaricaPosizione(articoloDellaPosizione)
+    // Dopo il giro di watch: anche la creazione conta.
+    nextTick(() => fissa())
   },
   { immediate: true },
 )
+
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): la fotografia della riga.
+//    Fino a quel giorno non c'era: una riga in compilazione si perdeva senza
+//    domanda cambiando riga o uscendo dal drawer. Il contenitore la legge da
+//    `defineExpose`. ⚠️ `visibile` sempre vero: il form esiste solo mentre e'
+//    aperto, e allo smontaggio la fotografia se ne va con lui.
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => true })
 
 // Scopo: l'operatore ha cambiato articolo: lotti e seriali erano di un ALTRO
 //        articolo, si azzerano e si ricaricano se il nuovo li pretende.
@@ -244,6 +254,8 @@ async function onSalva() {
 function acceso(campo) {
   return campiErrati.value.includes(campo) || campoMotivo.value === campo
 }
+
+defineExpose({ modificato, chiudiConConferma })
 </script>
 
 <template>
@@ -389,6 +401,6 @@ function acceso(campo) {
     :loading="loading"
     :disabled="!canSave"
     @save="onSalva"
-    @cancel="emit('annulla')"
+    @cancel="chiudiConConferma(() => emit('annulla'))"
   />
 </template>

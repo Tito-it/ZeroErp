@@ -11,6 +11,7 @@ import { assegnaFlusso, fetchOperatoriReparto } from '../api/pratiche-api'
 import AppDialog from '../../core/components/AppDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import Select from 'primevue/select'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
@@ -75,10 +76,14 @@ async function onSave() {
 function onCancel() {
   emit('update:visible', false)
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ repartoId: repartoId.value, operatoreId: operatoreId.value }), { visibile: () => props.visible })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="props.visible"
     :header="t('pratiche.flusso_assegna')"
     width="sm"

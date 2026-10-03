@@ -59,6 +59,19 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
   })
 }
 
+// ⚠️ Stessa lacuna, stessa cura: `ResizeObserver` NON ESISTE in jsdom (niente
+//    layout, niente da misurare). Il `Textarea` di PrimeVue con `auto-resize`
+//    lo crea al montaggio — `MotivoDialog` e chi lo usa — e senza muore con
+//    «ResizeObserver is not defined». Un osservatore che non osserva niente e'
+//    la risposta onesta: in jsdom le dimensioni non cambiano mai.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
+
 // Scopo: l'i18n dei test — `t` rende la CHIAVE, non una frase.
 // ⭐ Cosi' le asserzioni parlano di chiavi: le frasi vivono nei `locales`, si
 //    riscrivono quando cambia il tono, e un test che le pinna diventa rosso

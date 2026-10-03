@@ -8,16 +8,14 @@ import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { PARAMETER_SCOPE } from '../../core/composables/useParameterSettings'
 import { useImpostazioniStore } from '../stores/impostazioni'
 import { useAuthStore } from '../../stores/auth'
 import { DRAWER_WIDTH } from '../../core/constants'
 import ParameterFallback from '../../core/components/ParameterFallback.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 
@@ -138,22 +136,25 @@ function close() {
   emit('cancelled')
 }
 
-const chiudi = () => chiudiConConferma(close)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH.SIMPLE }" :dismissable="true">
-    <template #header>
-      <DrawerTitle
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('config.impostazioni.override_title')"
-        :modificato="modificato"
-      />
-    </template>
-
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }" v-if="parameter">
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('config.impostazioni.override_title')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.SIMPLE"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
+  >
+    <template v-if="parameter">
       <div class="form-grid">
         <div class="form-field">
           <label>{{ t('config.impostazioni.col_code') }}</label>
@@ -195,10 +196,8 @@ const suVisibile = gestoreVisibile(emit, chiudi)
             :placeholder="t('config.impostazioni.override_placeholder')" />
         </div>
       </div>
-
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
-    </div>
-  </Drawer>
+    </template>
+  </AppDrawer>
 </template>
 
 <style scoped>

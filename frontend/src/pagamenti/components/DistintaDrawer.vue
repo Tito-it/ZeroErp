@@ -37,24 +37,22 @@
 import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import FiltroToggle from '../../core/components/FiltroToggle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
@@ -90,8 +88,15 @@ const emit = defineEmits(['update:visible', 'cambiata', 'apri-distinta'])
 
 const { t, te } = useI18n()
 const onClose = useDrawerClose(emit)
+
+// Modifiche non salvate (2026-10-03, D-1 di
+// work-done/analisi-fe-chrome-drawer.md): la fotografia la tiene il form
+// della riga e la espone; finche' il form e' chiuso il ref e' `null` e non c'e'
+// niente da chiedere. Ogni uscita passa di qui: X, ESC, clic fuori, «Chiudi».
+const rigaForm = ref(null)
+const scheda = unisciFotografie(() => rigaForm.value)
+const modificato = scheda.modificato
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const { execute } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 // ⭐ IL READONLY LO CALCOLA QUESTO DRAWER e lo propaga (`provide(READONLY_KEY)`,
@@ -124,6 +129,8 @@ const {
 } = useFormInline({
   padre: () => (props.visible ? props.distintaId : null),
   puoModificare: () => modificabile.value,
+  // D-8: cambiare riga col form modificato chiede (il getter e' letto al clic).
+  confermaCambio: (p) => scheda.chiudiConConferma(p),
 })
 const abbinaVisible = ref(false)
 const rigaDaAbbinare = ref(null)
@@ -459,312 +466,310 @@ watch(
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- Il «Chiudi» sparisce col form di una riga aperto: il form ha gia'
+       Annulla/Salva, e un «Chiudi» lo spingerebbe sotto il fold. La sola
+       lettura qui nasconde le azioni: il corpo resta cliccabile. -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
+    :title="t('pagamenti.distinte.titolo_singolare')"
+    :icon="NAV_ICONS.DISTINTE"
+    :width="DRAWER_WIDTH.WIDE"
+    :proteggi-corpo="false"
+    :modificato="modificato"
+    :conferma-uscita="scheda.chiudiConConferma"
+    :footer="formAperto ? 'nessuno' : 'chiudi'"
     @update:visible="(v) => emit('update:visible', v)"
-    @after-show="onAfterShow"
   >
-    <template #header>
-      <DrawerTitle
-        :title="t('pagamenti.distinte.titolo_singolare')"
-        :icon="NAV_ICONS.DISTINTE"
-      />
-    </template>
+    <!-- ⚠️ Il caricamento si DICE. Un drawer che si apre vuoto e resta vuoto
+         per mezzo secondo si legge come «questa distinta non ha niente», che
+         e' un'affermazione — e per giunta falsa. -->
+    <div v-if="loading" class="app-loading">
+      <i :class="STATUS_ICONS.CARICAMENTO" />
+    </div>
 
-    <div class="app-drawer-content">
-      <!-- ⚠️ Il caricamento si DICE. Un drawer che si apre vuoto e resta vuoto
-           per mezzo secondo si legge come «questa distinta non ha niente», che
-           e' un'affermazione — e per giunta falsa. -->
-      <div v-if="loading" class="app-loading">
-        <i :class="STATUS_ICONS.CARICAMENTO" />
+    <template v-if="distinta">
+      <DrawerEntityHeader>
+        <!-- ⭐ «DIS-… del 18/09/2026», e basta (decisione di Tid, 2026-09-18).
+             Fino a quel giorno fra codice e data stava la ragione sociale
+             dell'emittente (FE-2 del brief distinta-numerata-sul-registro:
+             «di chi e', a colpo d'occhio»): tolta dalla riga, resta nel
+             tooltip del codice — la sigla e' gia' dentro `DIS-<SIGLA>-…`, e
+             chi vuole il nome intero lo trova senza che occupi la testata.
+             ⚠️ La lista delle distinte non ha una colonna emittente: il
+             tooltip e' l'unico posto del drawer in cui il nome si legge. -->
+        <Tag
+          :value="distinta.codice"
+          severity="secondary"
+          v-tooltip.bottom="distinta.emittente_ragione_sociale || undefined"
+        />
+        <span class="app-drawer-header-muted">
+          {{ t('pagamenti.distinte.del_data', { data: displayDate(distinta.data_contabile) }) }}
+        </span>
+        <span v-if="distinta.centro_descrizione">{{ distinta.centro_descrizione }}</span>
+        <span v-if="distinta.ente_descrizione" class="app-drawer-header-muted">
+          {{ distinta.ente_descrizione }}
+        </span>
+
+        <template #status>
+          <Tag
+            :value="distinta.stato_descrizione || distinta.stato_codice"
+            :severity="statoDistintaSeverity(distinta.stato_codice)"
+          />
+        </template>
+      </DrawerEntityHeader>
+
+      <!-- ⭐ La riga «dove sono» (FE-9): «bozza: si digita» · «validata:
+           pronta da registrare, il denaro non e' ancora registrato» ·
+           «registrata». La CHIAVE arriva dal `meta` dello stato via backend
+           (`stato_info_key`), come negli otto drawer di vendite: qui non
+           c'e' nessun `v-if` sullo stato — sarebbe la regola scritta due
+           volte. Finche' il seed (brief §4 P-8) non e' applicato, e' vuota. -->
+      <DrawerActionsBar
+        :actions="drawerActions"
+        :info-key="distinta?.stato_info_key || ''"
+      />
+
+      <!-- ⭐ IL LEGAME DELLA CORREZIONE, nei due versi. Senza, due documenti
+           gemelli di segno opposto stanno nell'elenco senza niente che dica
+           che uno rovescia l'altro — e chi li trova fra sei mesi non ha modo
+           di saperlo. Sono cliccabili perche' il gesto ovvio, letta la riga,
+           e' andare a vedere l'altro documento. -->
+      <Message
+        v-if="distinta.contabile_corretta_id"
+        severity="warn"
+        :closable="false"
+        size="small"
+      >
+        <Button
+          link
+          size="small"
+          :label="t('pagamenti.correggi.e_la_correzione_di', {
+            codice: distinta.contabile_corretta_codice || distinta.contabile_corretta_id,
+          })"
+          @click="scheda.chiudiConConferma(() => emit('apri-distinta', distinta.contabile_corretta_id))"
+        />
+      </Message>
+      <Message
+        v-if="distinta.correzione_id"
+        severity="info"
+        :closable="false"
+        size="small"
+      >
+        <Button
+          link
+          size="small"
+          :label="t('pagamenti.correggi.e_stata_corretta_da', {
+            codice: distinta.correzione_codice || distinta.correzione_id,
+          })"
+          @click="scheda.chiudiConConferma(() => emit('apri-distinta', distinta.correzione_id))"
+        />
+      </Message>
+
+      <!-- ══ La quadratura ══ — il BB di dominio (tre esiti), coi campi
+           propri del drawer nello slot. -->
+      <QuadraturaDistinta :distinta="distinta">
+        <div class="form-field">
+          <label>{{ t('pagamenti.distinte.col_righe_registrabili') }}</label>
+          <span>
+            {{ distinta.righe_registrabili ?? 0 }} / {{ distinta.righe_totali ?? 0 }}
+          </span>
+        </div>
+        <!-- ⭐ «Di cui non nostre» (D20-c): le scartate contano nel totale —
+             quel denaro e' arrivato — ma non sono nostre. Senza questa riga
+             «dichiarato 1000 · righe 1000» con 200 di scartate dentro si
+             leggerebbe come «tutto nostro». Compare solo se ce ne sono. -->
+        <div v-if="righeScartate > 0" class="form-field">
+          <label>{{ t('pagamenti.distinte.di_cui_non_nostre') }}</label>
+          <span>
+            {{ t('pagamenti.distinte.non_nostre_valore', {
+              n: righeScartate,
+              importo: formatCurrency(distinta.totale_scartate),
+            }) }}
+          </span>
+        </div>
+      </QuadraturaDistinta>
+
+      <!-- ══ Chi e quando ha registrato ══ -->
+      <template v-if="distinta.data_conferma">
+        <div class="app-drawer-section">
+          <h4>{{ t('pagamenti.distinte.sezione_registrazione') }}</h4>
+        </div>
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('pagamenti.distinte.col_data_conferma') }}</label>
+            <span>{{ displayTimestamp(distinta.data_conferma) }}</span>
+          </div>
+          <div class="form-field">
+            <label>{{ t('pagamenti.distinte.col_user_conferma') }}</label>
+            <span>{{ distinta.user_conferma || '—' }}</span>
+          </div>
+        </div>
+      </template>
+
+      <!-- ══ Le righe ══ -->
+      <div class="app-drawer-section">
+        <h4>{{ t('pagamenti.distinte.sezione_righe') }}</h4>
       </div>
 
-      <template v-if="contentReady && distinta">
-        <DrawerEntityHeader>
-          <!-- ⭐ «DIS-… del 18/09/2026», e basta (decisione di Tid, 2026-09-18).
-               Fino a quel giorno fra codice e data stava la ragione sociale
-               dell'emittente (FE-2 del brief distinta-numerata-sul-registro:
-               «di chi e', a colpo d'occhio»): tolta dalla riga, resta nel
-               tooltip del codice — la sigla e' gia' dentro `DIS-<SIGLA>-…`, e
-               chi vuole il nome intero lo trova senza che occupi la testata.
-               ⚠️ La lista delle distinte non ha una colonna emittente: il
-               tooltip e' l'unico posto del drawer in cui il nome si legge. -->
-          <Tag
-            :value="distinta.codice"
-            severity="secondary"
-            v-tooltip.bottom="distinta.emittente_ragione_sociale || undefined"
+      <!-- ⚠️ Il foglio chiuso lo si DICE: senza, l'assenza dei verbi si legge
+           come un'interfaccia rotta invece che come uno stato. E lo stesso
+           vale per il foglio VALIDATO (D18): niente righe nuove ne' fatti,
+           ma abbinare e sospendere si puo' — e va detto, o il pulsante
+           «Nuova riga» che manca sembra un difetto.
+           ⭐ Due finali, due frasi (D-1, 30/09): sotto l'ANNULLATA le righe
+           si leggono soltanto (`stato_righe_lavorabili = false`, la bandiera
+           del catalogo); sotto la CHIUSA non entra niente di nuovo, ma
+           sospese e scartate si lavorano ancora. Una frase sola diceva
+           «non si modificano piu'» anche dove la tardiva e' aperta.
+           ⚠️ La seconda frase NOMINA lo stato dal catalogo e non scrive
+           «chiusa»: la condizione e' «finale con righe lavorabili», e uno
+           stato nuovo con la stessa forma non deve farla mentire. -->
+      <Message
+        v-if="distinta.stato_righe_lavorabili === false"
+        severity="info"
+        :closable="false"
+        size="small"
+      >
+        {{ t('pagamenti.distinte.foglio_annullato') }}
+      </Message>
+      <Message
+        v-else-if="distinta.stato_is_final"
+        severity="info"
+        :closable="false"
+        size="small"
+      >
+        {{ t('pagamenti.distinte.foglio_chiuso', { stato: distinta.stato_descrizione || distinta.stato_codice }) }}
+      </Message>
+      <Message
+        v-else-if="!distinta.contenuto_modificabile && !isReadonly"
+        severity="info"
+        :closable="false"
+        size="small"
+      >
+        {{ t('pagamenti.distinte.contenuto_fermo') }}
+      </Message>
+
+      <!-- ⛔ «Non sono riuscito a leggere le righe» non e' «non ce ne sono»:
+           a lista vuota il BB mostrerebbe lo stesso empty-state per entrambi,
+           quindi la distinzione vive qui, sopra la lista, e lo stato lo tiene
+           lo store (`erroreCaricamento`). Su un foglio di denaro «vuoto» e'
+           un'affermazione su cui qualcuno registra. -->
+      <Message
+        v-if="storeRighe.erroreCaricamento"
+        severity="warn"
+        :closable="false"
+        size="small"
+      >
+        {{ t('pagamenti.distinte.righe_non_lette') }}
+      </Message>
+
+      <!-- ⭐ LISTA STANDARD dal 2026-09-18 (decisione di Tid), col pacchetto
+           intero: pagine, ricarica, «Personalizza colonne», export CSV/Excel.
+           Le colonne vengono dal catalogo (`ui.lista_colonna`, lista 69):
+           qui restano solo gli slot che una cella non sa rendere da sola.
+           ⚠️ Niente `#cell-natura`: e' il `formato = natura_doc` del catalogo
+           (`CellaConfigurabile` → `NaturaDocTag`), come nelle altre quattro
+           liste con la natura. Uno slot qui sarebbe la quinta copia. -->
+      <DrawerTabLista
+        ref="listaRef"
+        codice="pagamenti.distinta_righe"
+        :store="storeRighe"
+        :rows="storeRighe.items"
+        :total="storeRighe.totalRecords"
+        :loading="storeRighe.loading"
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
+        :page-actions="pageActions"
+        :dirty="dirty"
+        :perimetro-bloccato="perimetroBloccato"
+        @page="onPage"
+        @sort="onSort"
+        @row-click="apriRiga"
+        @config-loaded="onConfigLoaded"
+      >
+        <!-- ⭐ «Mostra scartate (N)» (FE-3): il BB `FiltroToggle` col conteggio
+             del backend, come «Mostra annullati» sui lotti. Solo quando ha
+             qualcosa da dire — e il `v-if` sta sul `<template>`, non sul
+             widget: condizionato dentro, lo slot esisterebbe comunque e in
+             modalita' compatta comparirebbe l'imbuto su un drawer vuoto.
+             ⭐ Dal 2026-09-23 sta nei FILTRI della lista, non in una barra
+             sua sopra di essa: e' un filtro di quelle righe, quindi sotto i
+             1024px scende nel drawer dal basso e conta nel segno. -->
+        <!-- La ricerca: colonne dal catalogo (`ricerca_full`: senza colonne
+             accese la casella non si rende), sotto 3 caratteri il termine
+             non filtra. L'export porta la stessa `search` (`paramsFiltro`). -->
+        <template #filtri-sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('common.search')"
           />
-          <span class="app-drawer-header-muted">
-            {{ t('pagamenti.distinte.del_data', { data: displayDate(distinta.data_contabile) }) }}
-          </span>
-          <span v-if="distinta.centro_descrizione">{{ distinta.centro_descrizione }}</span>
-          <span v-if="distinta.ente_descrizione" class="app-drawer-header-muted">
-            {{ distinta.ente_descrizione }}
-          </span>
-
-          <template #status>
-            <Tag
-              :value="distinta.stato_descrizione || distinta.stato_codice"
-              :severity="statoDistintaSeverity(distinta.stato_codice)"
-            />
-          </template>
-        </DrawerEntityHeader>
-
-        <!-- ⭐ La riga «dove sono» (FE-9): «bozza: si digita» · «validata:
-             pronta da registrare, il denaro non e' ancora registrato» ·
-             «registrata». La CHIAVE arriva dal `meta` dello stato via backend
-             (`stato_info_key`), come negli otto drawer di vendite: qui non
-             c'e' nessun `v-if` sullo stato — sarebbe la regola scritta due
-             volte. Finche' il seed (brief §4 P-8) non e' applicato, e' vuota. -->
-        <DrawerActionsBar
-          :actions="drawerActions"
-          :info-key="distinta?.stato_info_key || ''"
-        />
-
-        <!-- ⭐ IL LEGAME DELLA CORREZIONE, nei due versi. Senza, due documenti
-             gemelli di segno opposto stanno nell'elenco senza niente che dica
-             che uno rovescia l'altro — e chi li trova fra sei mesi non ha modo
-             di saperlo. Sono cliccabili perche' il gesto ovvio, letta la riga,
-             e' andare a vedere l'altro documento. -->
-        <Message
-          v-if="distinta.contabile_corretta_id"
-          severity="warn"
-          :closable="false"
-          size="small"
-        >
-          <Button
-            link
-            size="small"
-            :label="t('pagamenti.correggi.e_la_correzione_di', {
-              codice: distinta.contabile_corretta_codice || distinta.contabile_corretta_id,
-            })"
-            @click="emit('apri-distinta', distinta.contabile_corretta_id)"
+        </template>
+        <template v-if="interruttoreScartate" #filtri>
+          <FiltroToggle
+            v-model="mostraScartate"
+            :label="t('pagamenti.distinte.mostra_scartate')"
+            :hint="t('pagamenti.distinte.mostra_scartate_hint')"
+            :count="storeRighe.scartateCount"
+            @change="onMostraScartateChange"
           />
-        </Message>
-        <Message
-          v-if="distinta.correzione_id"
-          severity="info"
-          :closable="false"
-          size="small"
-        >
-          <Button
-            link
-            size="small"
-            :label="t('pagamenti.correggi.e_stata_corretta_da', {
-              codice: distinta.correzione_codice || distinta.correzione_id,
-            })"
-            @click="emit('apri-distinta', distinta.correzione_id)"
-          />
-        </Message>
+        </template>
 
-        <!-- ══ La quadratura ══ — il BB di dominio (tre esiti), coi campi
-             propri del drawer nello slot. -->
-        <QuadraturaDistinta :distinta="distinta">
-          <div class="form-field">
-            <label>{{ t('pagamenti.distinte.col_righe_registrabili') }}</label>
-            <span>
-              {{ distinta.righe_registrabili ?? 0 }} / {{ distinta.righe_totali ?? 0 }}
-            </span>
-          </div>
-          <!-- ⭐ «Di cui non nostre» (D20-c): le scartate contano nel totale —
-               quel denaro e' arrivato — ma non sono nostre. Senza questa riga
-               «dichiarato 1000 · righe 1000» con 200 di scartate dentro si
-               leggerebbe come «tutto nostro». Compare solo se ce ne sono. -->
-          <div v-if="righeScartate > 0" class="form-field">
-            <label>{{ t('pagamenti.distinte.di_cui_non_nostre') }}</label>
-            <span>
-              {{ t('pagamenti.distinte.non_nostre_valore', {
-                n: righeScartate,
-                importo: formatCurrency(distinta.totale_scartate),
-              }) }}
-            </span>
-          </div>
-        </QuadraturaDistinta>
-
-        <!-- ══ Chi e quando ha registrato ══ -->
-        <template v-if="distinta.data_conferma">
-          <div class="app-drawer-section">
-            <h4>{{ t('pagamenti.distinte.sezione_registrazione') }}</h4>
-          </div>
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('pagamenti.distinte.col_data_conferma') }}</label>
-              <span>{{ displayTimestamp(distinta.data_conferma) }}</span>
-            </div>
-            <div class="form-field">
-              <label>{{ t('pagamenti.distinte.col_user_conferma') }}</label>
-              <span>{{ distinta.user_conferma || '—' }}</span>
-            </div>
+        <!-- La frase del dominio al posto dell'empty-state generico.
+             ⛔ MA SOLO SE LA LETTURA E' RIUSCITA: con `erroreCaricamento` la
+             tabella e' vuota per un'altra ragione, e «non ha ancora righe»
+             sotto un avviso che dice «non sono riuscito a leggerle» sarebbe
+             una contraddizione. -->
+        <template #empty>
+          <div v-if="!storeRighe.erroreCaricamento" class="app-empty-state">
+            <i :class="STATUS_ICONS.VUOTO" />
+            <p>{{ t('pagamenti.distinte.nessuna_riga') }}</p>
           </div>
         </template>
 
-        <!-- ══ Le righe ══ -->
-        <div class="app-drawer-section">
-          <h4>{{ t('pagamenti.distinte.sezione_righe') }}</h4>
-        </div>
+        <!-- ⚠️ I nomi degli slot sono i `codice` delle colonne A CATALOGO, non
+             i `campo_sorgente`: la colonna si chiama `stato` e il campo che
+             legge e' `stato_descrizione`. Uno slot col nome sbagliato non da'
+             nessun errore — la cella ripiega sul testo e il Tag sparisce. -->
+        <template #cell-stato="{ data }">
+          <Tag
+            :value="data.stato_descrizione || data.stato_codice"
+            :severity="statoRigaContabileSeverity(data.stato_codice)"
+          />
+          <!-- ⭐ La forzatura resta SCRITTA sulla riga ed e' cio' che
+               l'elenco delle rate fuori capienza legge: qui si vede, o la
+               riga racconta meno di quello che e' successo. (La colonna
+               `forzata` a catalogo, spenta di default, la porta anche nel
+               file.) -->
+          <Tag
+            v-if="data.forzata"
+            :value="t('pagamenti.righe.forzata')"
+            severity="warn"
+            class="ml-05"
+          />
+        </template>
 
-        <!-- ⚠️ Il foglio chiuso lo si DICE: senza, l'assenza dei verbi si legge
-             come un'interfaccia rotta invece che come uno stato. E lo stesso
-             vale per il foglio VALIDATO (D18): niente righe nuove ne' fatti,
-             ma abbinare e sospendere si puo' — e va detto, o il pulsante
-             «Nuova riga» che manca sembra un difetto.
-             ⭐ Due finali, due frasi (D-1, 30/09): sotto l'ANNULLATA le righe
-             si leggono soltanto (`stato_righe_lavorabili = false`, la bandiera
-             del catalogo); sotto la CHIUSA non entra niente di nuovo, ma
-             sospese e scartate si lavorano ancora. Una frase sola diceva
-             «non si modificano piu'» anche dove la tardiva e' aperta.
-             ⚠️ La seconda frase NOMINA lo stato dal catalogo e non scrive
-             «chiusa»: la condizione e' «finale con righe lavorabili», e uno
-             stato nuovo con la stessa forma non deve farla mentire. -->
-        <Message
-          v-if="distinta.stato_righe_lavorabili === false"
-          severity="info"
-          :closable="false"
-          size="small"
-        >
-          {{ t('pagamenti.distinte.foglio_annullato') }}
-        </Message>
-        <Message
-          v-else-if="distinta.stato_is_final"
-          severity="info"
-          :closable="false"
-          size="small"
-        >
-          {{ t('pagamenti.distinte.foglio_chiuso', { stato: distinta.stato_descrizione || distinta.stato_codice }) }}
-        </Message>
-        <Message
-          v-else-if="!distinta.contenuto_modificabile && !isReadonly"
-          severity="info"
-          :closable="false"
-          size="small"
-        >
-          {{ t('pagamenti.distinte.contenuto_fermo') }}
-        </Message>
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+        </template>
+      </DrawerTabLista>
 
-        <!-- ⛔ «Non sono riuscito a leggere le righe» non e' «non ce ne sono»:
-             a lista vuota il BB mostrerebbe lo stesso empty-state per entrambi,
-             quindi la distinzione vive qui, sopra la lista, e lo stato lo tiene
-             lo store (`erroreCaricamento`). Su un foglio di denaro «vuoto» e'
-             un'affermazione su cui qualcuno registra. -->
-        <Message
-          v-if="storeRighe.erroreCaricamento"
-          severity="warn"
-          :closable="false"
-          size="small"
-        >
-          {{ t('pagamenti.distinte.righe_non_lette') }}
-        </Message>
+      <!-- Master-detail inline: il form vive SOTTO la lista, mai in un drawer
+           annidato (pattern di progetto). -->
+      <DistintaRigaForm
+        v-if="formAperto"
+        ref="rigaForm"
+        :contabile-id="distintaId"
+        :riga="rigaInModifica"
+        @salvata="ricarica"
+        @annulla="chiudiForm"
+      />
+    </template>
 
-        <!-- ⭐ LISTA STANDARD dal 2026-09-18 (decisione di Tid), col pacchetto
-             intero: pagine, ricarica, «Personalizza colonne», export CSV/Excel.
-             Le colonne vengono dal catalogo (`ui.lista_colonna`, lista 69):
-             qui restano solo gli slot che una cella non sa rendere da sola.
-             ⚠️ Niente `#cell-natura`: e' il `formato = natura_doc` del catalogo
-             (`CellaConfigurabile` → `NaturaDocTag`), come nelle altre quattro
-             liste con la natura. Uno slot qui sarebbe la quinta copia. -->
-        <DrawerTabLista
-          ref="listaRef"
-          codice="pagamenti.distinta_righe"
-          :store="storeRighe"
-          :rows="storeRighe.items"
-          :total="storeRighe.totalRecords"
-          :loading="storeRighe.loading"
-          :paginator-options="paginatorProps"
-          :page="tablePage"
-          :sort-field="paginatorProps.sortField"
-          :sort-order="paginatorProps.sortOrder"
-          :page-actions="pageActions"
-          :dirty="dirty"
-          :perimetro-bloccato="perimetroBloccato"
-          @page="onPage"
-          @sort="onSort"
-          @row-click="apriRiga"
-          @config-loaded="onConfigLoaded"
-        >
-          <!-- ⭐ «Mostra scartate (N)» (FE-3): il BB `FiltroToggle` col conteggio
-               del backend, come «Mostra annullati» sui lotti. Solo quando ha
-               qualcosa da dire — e il `v-if` sta sul `<template>`, non sul
-               widget: condizionato dentro, lo slot esisterebbe comunque e in
-               modalita' compatta comparirebbe l'imbuto su un drawer vuoto.
-               ⭐ Dal 2026-09-23 sta nei FILTRI della lista, non in una barra
-               sua sopra di essa: e' un filtro di quelle righe, quindi sotto i
-               1024px scende nel drawer dal basso e conta nel segno. -->
-          <!-- La ricerca: colonne dal catalogo (`ricerca_full`: senza colonne
-               accese la casella non si rende), sotto 3 caratteri il termine
-               non filtra. L'export porta la stessa `search` (`paramsFiltro`). -->
-          <template #filtri-sempre>
-            <InputText
-              v-model="searchText"
-              class="app-filter-w-lg"
-              :placeholder="t('common.search')"
-            />
-          </template>
-          <template v-if="interruttoreScartate" #filtri>
-            <FiltroToggle
-              v-model="mostraScartate"
-              :label="t('pagamenti.distinte.mostra_scartate')"
-              :hint="t('pagamenti.distinte.mostra_scartate_hint')"
-              :count="storeRighe.scartateCount"
-              @change="onMostraScartateChange"
-            />
-          </template>
-
-          <!-- La frase del dominio al posto dell'empty-state generico.
-               ⛔ MA SOLO SE LA LETTURA E' RIUSCITA: con `erroreCaricamento` la
-               tabella e' vuota per un'altra ragione, e «non ha ancora righe»
-               sotto un avviso che dice «non sono riuscito a leggerle» sarebbe
-               una contraddizione. -->
-          <template #empty>
-            <div v-if="!storeRighe.erroreCaricamento" class="app-empty-state">
-              <i :class="STATUS_ICONS.VUOTO" />
-              <p>{{ t('pagamenti.distinte.nessuna_riga') }}</p>
-            </div>
-          </template>
-
-          <!-- ⚠️ I nomi degli slot sono i `codice` delle colonne A CATALOGO, non
-               i `campo_sorgente`: la colonna si chiama `stato` e il campo che
-               legge e' `stato_descrizione`. Uno slot col nome sbagliato non da'
-               nessun errore — la cella ripiega sul testo e il Tag sparisce. -->
-          <template #cell-stato="{ data }">
-            <Tag
-              :value="data.stato_descrizione || data.stato_codice"
-              :severity="statoRigaContabileSeverity(data.stato_codice)"
-            />
-            <!-- ⭐ La forzatura resta SCRITTA sulla riga ed e' cio' che
-                 l'elenco delle rate fuori capienza legge: qui si vede, o la
-                 riga racconta meno di quello che e' successo. (La colonna
-                 `forzata` a catalogo, spenta di default, la porta anche nel
-                 file.) -->
-            <Tag
-              v-if="data.forzata"
-              :value="t('pagamenti.righe.forzata')"
-              severity="warn"
-              class="ml-05"
-            />
-          </template>
-
-          <template #actions="{ data }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-          </template>
-        </DrawerTabLista>
-
-        <!-- Master-detail inline: il form vive SOTTO la lista, mai in un drawer
-             annidato (pattern di progetto). -->
-        <DistintaRigaForm
-          v-if="formAperto"
-          :contabile-id="distintaId"
-          :riga="rigaInModifica"
-          @salvata="ricarica"
-          @annulla="chiudiForm"
-        />
-      </template>
-    </div>
-
-    <!-- ⚠️ In form mode il footer sparisce: il form ha gia' Annulla/Salva, e un
-         «Chiudi» in fondo spingerebbe il form sotto il fold. -->
-    <FormFooter v-if="!formAperto" close-only @cancel="onClose" />
 
     <!-- ⭐ Un dialogo, due modi: «abbina» sotto una distinta aperta, «abbina e
          registra» (la tardiva) sotto una registrata. Il modo lo decide il
@@ -818,5 +823,5 @@ watch(
       :readonly="readonlyPermessi"
       @righe-create="ricarica"
     />
-  </Drawer>
+  </AppDrawer>
 </template>

@@ -32,6 +32,7 @@ import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { statoFlussoSeverity } from '../../core/utils/severity'
 import { STATO_FLUSSO, RAMO_STEP } from '../../core/constants'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'

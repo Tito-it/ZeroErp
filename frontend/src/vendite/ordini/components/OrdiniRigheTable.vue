@@ -9,9 +9,11 @@
 //        ⚠️ Le due date di consegna sono DUE colonne (la confermata e la
 //        richiesta dal cliente, decisione di Tid): prima erano una cella sola
 //        che mostrava la seconda quando mancava la prima.
+import { ref } from 'vue'
 import { useOrdiniStore } from '../stores/ordini'
 import { useOrdineRigheStore } from '../stores/ordineRighe'
 import { exportRigheLista } from '../api/ordiniApi'
+import { unisciFotografie } from '../../../core/composables/useDrawerFormPreserve'
 import RigheMasterDetailTable from '../../../core/components/RigheMasterDetailTable.vue'
 import OrdiniRigaForm from './OrdiniRigaForm.vue'
 
@@ -27,10 +29,17 @@ defineProps({
   isModificabile: { type: Boolean, default: true },
 })
 const emit = defineEmits(['changed', 'form-aperto'])
+
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): la fotografia della riga
+//    aperta, inoltrata al drawer per le sue uscite. La tiene il form di riga,
+//    che si registra presso la tabella (`registra` dello slot).
+const tabella = ref(null)
+defineExpose({ ...unisciFotografie(() => tabella.value) })
 </script>
 
 <template>
   <RigheMasterDetailTable
+    ref="tabella"
     codice="vendite.ordine_righe"
     :store="righe"
     :parent-id="ordineId"
@@ -47,8 +56,9 @@ const emit = defineEmits(['changed', 'form-aperto'])
     @changed="emit('changed')"
     @form-aperto="emit('form-aperto', $event)"
   >
-    <template #form="{ riga, onSaved, onComponentiChanged, onCancel }">
+    <template #form="{ riga, onSaved, onComponentiChanged, onCancel, registra }">
       <OrdiniRigaForm
+        :ref="registra"
         :ordine-id="ordineId"
         :riga="riga"
         @saved="onSaved"

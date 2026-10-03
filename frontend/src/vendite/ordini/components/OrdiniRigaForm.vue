@@ -11,7 +11,7 @@
 // si apre la ComponentiDialog pre-save per editare i prezzi componente (come
 // preventivi/contratti): gli override viaggiano in `componenti_overrides`. In
 // EDIT i prezzi componente si modificano via OrdiniRigaComponentiPanel.
-import { ref, watch, computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError } from '../../../core/utils/apiError'
@@ -80,6 +80,7 @@ const {
   componentiDialogVisible, componentiPayload, showComponentiDialog,
   apriComponentiDialog, onComponentiConfirm,
   submitRiga,
+  modificato, chiudiConConferma, seguiRiga,
 } = useRigaArticoloComposito({
   store,
   parentId: () => props.ordineId,
@@ -88,7 +89,9 @@ const {
   form,
 })
 
-watch(() => props.riga, (riga) => {
+// Il legame con la riga (fotografia, riga riletta dal server) e' del cuore
+// condiviso: qui solo come si popola il form.
+seguiRiga((riga) => {
   if (riga) {
     form.value = {
       articolo_id: riga.articolo_id,
@@ -113,7 +116,7 @@ watch(() => props.riga, (riga) => {
     articoloObj.value = null
     resetUomOptions()
   }
-}, { immediate: true })
+})
 
 function onArticoloSelect(item) {
   form.value.articolo_id = item.id
@@ -222,6 +225,11 @@ async function handleSave() {
     loading.value = false
   }
 }
+
+// ⭐ D-13 (2026-10-03): la fotografia della riga la tiene il cuore comune
+//    (`useRigaArticoloComposito`). Il contenitore la legge da qui per chiedere
+//    prima di cambiare riga o di uscire dal drawer.
+defineExpose({ modificato, chiudiConConferma })
 </script>
 
 <template>
@@ -353,7 +361,7 @@ async function handleSave() {
     <!-- Bottoni Salva/Annulla della riga: sempre visibili in edit-riga. I bottoni
          del FormFooter testata si nascondono via `formRigaAperto` lato OrdiniDrawer. -->
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">
-      <Button :label="t('common.cancel')" severity="secondary" @click="emit('cancel')" />
+      <Button :label="t('common.cancel')" severity="secondary" @click="chiudiConConferma(() => emit('cancel'))" />
       <Button :label="t('common.save')" :loading="loading" :disabled="!canSave" @click="handleSave" />
     </div>
   </div>

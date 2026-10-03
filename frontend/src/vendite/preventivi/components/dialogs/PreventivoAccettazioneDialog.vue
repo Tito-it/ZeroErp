@@ -18,6 +18,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import DatePicker from 'primevue/datepicker'
 import { toDateString } from '../../../../core/utils/date'
 import { DATE_FORMAT } from '../../../../core/constants'
+import { useFotografiaDialog } from '../../../../core/composables/useFotografiaDialog'
 
 const props = defineProps({
   // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
@@ -66,10 +67,14 @@ function onSave() {
   })
   emit('update:visible', false)
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ ...form.value }), { visibile: () => props.visible })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="props.visible"
     :header="t('vendite.preventivi.accetta_titolo')"
     width="sm"

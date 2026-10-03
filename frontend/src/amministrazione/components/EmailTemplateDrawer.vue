@@ -5,16 +5,13 @@
 // script/CSS invasivo nella shell admin (vedi A12/C5 del WIP frontend amm).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { useEmailTemplatesStore } from '../stores/emailTemplates'
@@ -29,10 +26,6 @@ const props = defineProps({
   templateId: Number
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const { t } = useI18n()
@@ -111,105 +104,100 @@ async function handlePreview() {
     previewLoading.value = false
   }
 }
-// Uscita per volonta' dell'utente (Annulla, X, ESC, clic fuori): con
-// modifiche non salvate si chiede prima.
-const chiudi = () => chiudiConConferma(() => {
-  emit('update:visible', false)
-  emit('cancelled')
-})
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    :dismissable="true"
-    @after-show="onAfterShow"
+    :title="t('amministrazione.email_template_title')"
+    :icon="NAV_ICONS.TEMPLATE_EMAIL"
+    :action="t('common.edit')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="saving"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="t('common.edit')"
-        :title="t('amministrazione.email_template_title')"
-        :icon="NAV_ICONS.TEMPLATE_EMAIL"
-      />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div class="form-grid">
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_codice') }}</label>
-            <InputText :modelValue="form.codice" disabled fluid />
-          </div>
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_lingua') }}</label>
-            <InputText :modelValue="form.lingua" disabled fluid />
-          </div>
-        </div>
-
-        <div class="form-field" v-if="form.variabili_disponibili?.length">
-          <label>{{ t('amministrazione.email_variabili') }}</label>
-          <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
-            <Tag v-for="v in form.variabili_disponibili" :key="v"
-                 :value="`{{${v}}}`" severity="info" />
-          </div>
-        </div>
-
+    <div class="form-grid">
+      <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('amministrazione.email_oggetto') }}</label>
-          <InputText v-model="form.oggetto" :disabled="isReadonly" fluid />
+          <label>{{ t('amministrazione.email_codice') }}</label>
+          <InputText :modelValue="form.codice" disabled fluid />
         </div>
-
         <div class="form-field">
-          <label>{{ t('amministrazione.email_corpo_html') }}</label>
-          <Textarea v-model="form.corpo_html" :rows="12" fluid autoResize :disabled="isReadonly" />
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('amministrazione.email_corpo_testo') }}</label>
-          <Textarea v-model="form.corpo_testo" :rows="5" fluid autoResize :disabled="isReadonly" />
-        </div>
-
-        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
-          <Button
-            :label="t('amministrazione.email_preview')"
-            :icon="MANAGE_ICONS.ANTEPRIMA"
-            :loading="previewLoading"
-            outlined
-            size="small"
-            @click="handlePreview"
-          />
-        </div>
-
-        <!-- Preview confinata in iframe sandbox per non eseguire script/event/CSS
-             dal corpo template (admin-modificabile). srcdoc isola l'HTML dal
-             contesto della shell, sandbox="" rimuove tutti i privilegi. -->
-        <div v-if="showPreview" class="app-preview-box">
-          <iframe
-            class="email-preview-iframe"
-            sandbox=""
-            :srcdoc="previewHtml"
-          />
+          <label>{{ t('amministrazione.email_lingua') }}</label>
+          <InputText :modelValue="form.lingua" disabled fluid />
         </div>
       </div>
-    </div>
 
-    <template #footer>
-      <FormFooter
-        :loading="saving"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="chiudi"
-      />
-    </template>
-  </Drawer>
+      <div class="form-field" v-if="form.variabili_disponibili?.length">
+        <label>{{ t('amministrazione.email_variabili') }}</label>
+        <div class="email-variabili">
+          <Tag v-for="v in form.variabili_disponibili" :key="v"
+               :value="`{{${v}}}`" severity="info" />
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label>{{ t('amministrazione.email_oggetto') }}</label>
+        <InputText v-model="form.oggetto" :disabled="isReadonly" fluid />
+      </div>
+
+      <div class="form-field">
+        <label>{{ t('amministrazione.email_corpo_html') }}</label>
+        <Textarea v-model="form.corpo_html" :rows="12" fluid autoResize :disabled="isReadonly" />
+      </div>
+
+      <div class="form-field">
+        <label>{{ t('amministrazione.email_corpo_testo') }}</label>
+        <Textarea v-model="form.corpo_testo" :rows="5" fluid autoResize :disabled="isReadonly" />
+      </div>
+
+      <!-- `app-escape`: l'anteprima e' consultazione, resta cliccabile anche in
+           sola lettura (il corpo protetto spegne tutto il resto). -->
+      <div class="email-preview-azioni app-escape">
+        <Button
+          :label="t('amministrazione.email_preview')"
+          :icon="MANAGE_ICONS.ANTEPRIMA"
+          :loading="previewLoading"
+          outlined
+          size="small"
+          @click="handlePreview"
+        />
+      </div>
+
+      <!-- Preview confinata in iframe sandbox per non eseguire script/event/CSS
+           dal corpo template (admin-modificabile). srcdoc isola l'HTML dal
+           contesto della shell, sandbox="" rimuove tutti i privilegi. -->
+      <div v-if="showPreview" class="app-preview-box">
+        <iframe
+          class="email-preview-iframe"
+          sandbox=""
+          :srcdoc="previewHtml"
+        />
+      </div>
+    </div>
+  </AppDrawer>
 </template>
 
 <style scoped>
+.email-variabili {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.email-preview-azioni {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+/* `#fff` voluto: e' il fondo dell'email come la vedra' il destinatario, non
+   una superficie dell'app — non segue il tema scuro. */
 .email-preview-iframe {
   width: 100%;
   min-height: 300px;

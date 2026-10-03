@@ -27,9 +27,8 @@ import {
 } from '../api/amministrazione'
 import { MANAGE_ICONS, STATO_SECONDO_FATTORE, MOTIVO_OBBLIGO_SECONDO_FATTORE } from '../../core/constants'
 import { useAuthStore } from '../../stores/auth'
-import AppDialog from '../../core/components/AppDialog.vue'
+import MotivoDialog from '../../core/components/MotivoDialog.vue'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 
 const props = defineProps({
@@ -46,7 +45,6 @@ const auth = useAuthStore()
 
 const stato = ref(null)
 const dialogVisibile = ref(false)
-const motivo = ref('')
 // Cambia a ogni salvataggio dell'obbligo fallito: l'interruttore si
 // ri-monta e torna al valore del server (il ToggleSwitch tiene il proprio).
 const chiaveObbligo = ref(0)
@@ -81,13 +79,12 @@ async function cambiaObbligo(valore) {
 }
 
 function apriDisattiva() {
-  motivo.value = ''
   dialogVisibile.value = true
 }
 
-async function confermaDisattiva() {
+async function confermaDisattiva(motivo) {
   const res = await execute(
-    () => disattivaSecondoFattoreCredenziale(props.authUserId, motivo.value),
+    () => disattivaSecondoFattoreCredenziale(props.authUserId, motivo),
     { successMessage: t('amministrazione.secondo_fattore.disattivato') }
   )
   if (res) {
@@ -131,26 +128,20 @@ async function confermaDisattiva() {
       />
     </div>
 
-    <AppDialog
+    <!-- Gesto distruttivo quanto il blocco della credenziale: stessa gravita'
+         del pulsante (`danger`), che prima qui mancava. -->
+    <MotivoDialog
       v-model:visible="dialogVisibile"
       :header="t('amministrazione.secondo_fattore.disattiva')"
-      width="sm"
+      :label="t('amministrazione.secondo_fattore.motivo')"
+      obbligatorio
       :loading="loading"
-      :save-disabled="!motivo.trim()"
+      :invalid="campiErrati.includes('motivo')"
       :save-label="t('amministrazione.secondo_fattore.disattiva')"
-      @save="confermaDisattiva"
-      @cancel="dialogVisibile = false"
+      save-severity="danger"
+      @conferma="confermaDisattiva"
     >
       <p>{{ t('amministrazione.secondo_fattore.disattiva_spiegazione') }}</p>
-      <div class="form-field">
-        <label for="motivo-disattiva">{{ t('amministrazione.secondo_fattore.motivo') }} *</label>
-        <InputText
-          id="motivo-disattiva"
-          v-model="motivo"
-          :invalid="campiErrati.includes('motivo')"
-          fluid
-        />
-      </div>
-    </AppDialog>
+    </MotivoDialog>
   </div>
 </template>

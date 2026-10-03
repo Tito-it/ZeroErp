@@ -34,6 +34,8 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { displayDate, parseIsoDate, toDateString } from '../../core/utils/date'
 import { getFinestraNumerazione } from '../api/lotti'
 import { MODO_DATA_DOCUMENTO } from '../constants'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
+import { DATE_FORMAT } from '../../core/constants'
 
 const props = defineProps({
   visible: { type: Boolean, required: true },
@@ -141,6 +143,7 @@ async function carica() {
   //   al momento di numerare, quando il sezionale sarà noto.
   if (inCreazione.value) {
     caricato.value = true
+    fotografia.fissa()
     return
   }
 
@@ -163,6 +166,7 @@ async function carica() {
   minima.value = res.data_minima ? parseIsoDate(res.data_minima) : null
   corrente.value = res.data_corrente ? parseIsoDate(res.data_corrente) : null
   dataScelta.value = proponi()
+  fotografia.fissa()
 }
 
 // Ricarica all'apertura, e anche se il PERIMETRO cambia sotto.
@@ -207,10 +211,14 @@ function conferma() {
   emit('conferma', dataScelta.value ? toDateString(dataScelta.value) : null)
   onHide()
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ dataScelta: dataScelta.value }), { visibile: () => props.visible, fissaAllApertura: false })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="visible"
     width="sm"
     :header="t(inCreazione ? 'vendite.numerazione_data.titolo_creazione' : 'vendite.numerazione_data.titolo')"
@@ -270,7 +278,7 @@ function conferma() {
         <label>{{ t(inCreazione ? 'vendite.numerazione_data.campo_data_creazione' : 'vendite.numerazione_data.campo_data') }}</label>
         <DatePicker
           v-model="dataScelta"
-          date-format="dd/mm/yy"
+          :date-format="DATE_FORMAT"
           show-icon
           show-button-bar
           :min-date="minima || undefined"

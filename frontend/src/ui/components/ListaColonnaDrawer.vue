@@ -18,7 +18,6 @@
 //            il BE risolve la cascata `t(key) || etichetta` lato runtime.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
@@ -29,16 +28,12 @@ import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useUiColonnaAdminStore } from '../stores/uiColonnaAdmin'
-
-
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -47,11 +42,6 @@ const props = defineProps({
   recordData: { type: Object, default: null },
   listaId: { type: Number, default: null },
 })
-
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -226,239 +216,222 @@ async function onSave() {
   }
 }
 
-function onCancel() {
-  emit('cancelled')
-  emit('update:visible', false)
-}
-const chiudi = () => chiudiConConferma(onCancel)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
-    :modal="true"
-    :dismissable-mask="false"
-    @after-show="onAfterShow"
+    :title="t('ui.admin.colonna')"
+    :icon="NAV_ICONS.PERSONALIZZAZIONI_LISTE"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.WIDE"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="onSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('ui.admin.colonna')"
-        :icon="NAV_ICONS.PERSONALIZZAZIONI_LISTE"
-      />
-    </template>
+    <Tabs v-model:value="activeTab">
+      <TabList>
+        <Tab value="generale">{{ t('ui.admin.colonna_tab_generale') }}</Tab>
+        <Tab value="comportamento">{{ t('ui.admin.colonna_tab_comportamento') }}</Tab>
+        <Tab value="layout">{{ t('ui.admin.colonna_tab_layout') }}</Tab>
+      </TabList>
 
-    <div v-if="contentReady" class="app-drawer-content">
-      <Tabs v-model:value="activeTab">
-        <TabList>
-          <Tab value="generale">{{ t('ui.admin.colonna_tab_generale') }}</Tab>
-          <Tab value="comportamento">{{ t('ui.admin.colonna_tab_comportamento') }}</Tab>
-          <Tab value="layout">{{ t('ui.admin.colonna_tab_layout') }}</Tab>
-        </TabList>
-
-        <TabPanels>
-          <TabPanel value="generale">
-            <div class="form-grid">
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('ui.admin.colonna_codice') }}</label>
-                  <InputText v-model="form.codice" maxlength="80"
-                    :invalid="campiErrati.includes('codice')"
-                  />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('ui.admin.colonna_campo_sorgente') }}</label>
-                  <InputText v-model="form.campo_sorgente" maxlength="80"
-                    :invalid="campiErrati.includes('campo_sorgente')"
-                  />
-                  <Message
-                    severity="info"
-                    :closable="false"
-                    size="small"
-                    class="mt-025"
-                  >
-                    {{ t('ui.admin.colonna_campo_sorgente_hint') }}
-                  </Message>
-                </div>
-              </div>
-
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('ui.admin.colonna_etichetta') }}</label>
-                  <InputText v-model="form.etichetta" maxlength="120"
-                    :invalid="campiErrati.includes('etichetta')"
-                  />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('ui.admin.colonna_etichetta_i18n_key') }}</label>
-                  <InputText v-model="form.etichetta_i18n_key" maxlength="120"
-                    :invalid="campiErrati.includes('etichetta_i18n_key')"
-                  />
-                  <Message
-                    severity="info"
-                    :closable="false"
-                    size="small"
-                    class="mt-025"
-                  >
-                    {{ t('ui.admin.colonna_etichetta_i18n_hint') }}
-                  </Message>
-                </div>
-              </div>
-
+      <TabPanels>
+        <TabPanel value="generale">
+          <div class="form-grid">
+            <div class="form-grid-2col">
               <div class="form-field">
-                <label>{{ t('ui.admin.colonna_etichetta_estesa') }}</label>
-                <InputText v-model="form.etichetta_estesa" maxlength="200"
-                  :invalid="campiErrati.includes('etichetta_estesa')"
+                <label>{{ t('ui.admin.colonna_codice') }}</label>
+                <InputText v-model="form.codice" maxlength="80"
+                  :invalid="campiErrati.includes('codice')"
                 />
               </div>
-
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('ui.admin.colonna_tipo_colonna') }}</label>
-                  <Select
-                    v-model="form.tipo_colonna"
-                    :options="tipoColonnaOptions"
-                    option-label="label"
-                    option-value="value"
-                    :invalid="campiErrati.includes('tipo_colonna')"
-                  />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('ui.admin.colonna_tipo_dato') }}</label>
-                  <Select
-                    v-model="form.tipo_dato"
-                    :options="tipoDatoOptions"
-                    option-label="label"
-                    option-value="value"
-                    :invalid="campiErrati.includes('tipo_dato')"
-                  />
-                </div>
-              </div>
-            </div>
-          </TabPanel>
-
-          <TabPanel value="comportamento">
-            <div class="form-grid">
-              <div class="form-grid-2col">
-                <div class="form-field form-field-inline">
-                  <Checkbox v-model="form.filtrabile" binary input-id="ui-col-filtrabile" />
-                  <label for="ui-col-filtrabile">{{ t('ui.admin.colonna_filtrabile') }}</label>
-                </div>
-                <div class="form-field form-field-inline">
-                  <Checkbox v-model="form.ordinabile" binary input-id="ui-col-ordinabile" />
-                  <label for="ui-col-ordinabile">{{ t('ui.admin.colonna_ordinabile') }}</label>
-                </div>
-              </div>
-
-              <div class="form-grid-2col">
-                <div class="form-field form-field-inline">
-                  <Checkbox
-                    v-model="form.esportabile"
-                    binary
-                    input-id="ui-col-esportabile"
-                    :disabled="isAzione"
-                  />
-                  <label for="ui-col-esportabile">{{ t('ui.admin.colonna_esportabile') }}</label>
-                </div>
-                <div class="form-field form-field-inline">
-                  <Checkbox v-model="form.ricercabile_full" binary input-id="ui-col-ricercabile" />
-                  <label for="ui-col-ricercabile">{{ t('ui.admin.colonna_ricercabile_full') }}</label>
-                </div>
-              </div>
-              <Message
-                v-if="isAzione"
-                severity="info"
-                :closable="false"
-                size="small"
-              >
-                {{ t('ui.admin.colonna_azione_non_esportabile_hint') }}
-              </Message>
-
-              <div class="form-grid-2col">
-                <div class="form-field form-field-inline">
-                  <Checkbox v-model="form.sensibile" binary input-id="ui-col-sensibile" />
-                  <label for="ui-col-sensibile">{{ t('ui.admin.colonna_sensibile') }}</label>
-                </div>
-                <div class="form-field form-field-inline">
-                  <Checkbox v-model="form.attivo" binary input-id="ui-col-attivo"
-                    :invalid="campiErrati.includes('attivo')"
-                  />
-                  <label for="ui-col-attivo">{{ t('common.active') }}</label>
-                </div>
-              </div>
-            </div>
-          </TabPanel>
-
-          <TabPanel value="layout">
-            <div class="form-grid">
-              <div class="form-grid-3col">
-                <div class="form-field">
-                  <label>{{ t('ui.admin.colonna_ordine_default') }}</label>
-                  <InputNumber v-model="form.ordine_default" :min="1" :max="100000" show-buttons
-                    :invalid="campiErrati.includes('ordine_default')"
-                  />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('ui.admin.colonna_larghezza_default') }}</label>
-                  <InputNumber v-model="form.larghezza_default" :min="1" :max="4000" show-buttons />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('ui.admin.colonna_allineamento') }}</label>
-                  <Select
-                    v-model="form.allineamento"
-                    :options="allineamentoOptions"
-                    option-label="label"
-                    option-value="value"
-                    :invalid="campiErrati.includes('allineamento')"
-                  />
-                </div>
-              </div>
-
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('ui.admin.colonna_formato') }}</label>
-                  <InputText v-model="form.formato" maxlength="60"
-                    :invalid="campiErrati.includes('formato')"
-                  />
-                  <Message
-                    severity="info"
-                    :closable="false"
-                    size="small"
-                    class="mt-025"
-                  >
-                    {{ t('ui.admin.colonna_formato_hint') }}
-                  </Message>
-                </div>
-                <div class="form-field">
-                  <label>{{ t('ui.admin.colonna_gruppo_ordine') }}</label>
-                  <InputNumber v-model="form.gruppo_ordine" :min="1" :max="100000" show-buttons />
-                </div>
-              </div>
-
               <div class="form-field">
-                <label>{{ t('ui.admin.colonna_gruppo') }}</label>
-                <InputText v-model="form.gruppo" maxlength="60"
-                  :invalid="campiErrati.includes('gruppo')"
+                <label>{{ t('ui.admin.colonna_campo_sorgente') }}</label>
+                <InputText v-model="form.campo_sorgente" maxlength="80"
+                  :invalid="campiErrati.includes('campo_sorgente')"
+                />
+                <Message
+                  severity="info"
+                  :closable="false"
+                  size="small"
+                  class="mt-025"
+                >
+                  {{ t('ui.admin.colonna_campo_sorgente_hint') }}
+                </Message>
+              </div>
+            </div>
+
+            <div class="form-grid-2col">
+              <div class="form-field">
+                <label>{{ t('ui.admin.colonna_etichetta') }}</label>
+                <InputText v-model="form.etichetta" maxlength="120"
+                  :invalid="campiErrati.includes('etichetta')"
+                />
+              </div>
+              <div class="form-field">
+                <label>{{ t('ui.admin.colonna_etichetta_i18n_key') }}</label>
+                <InputText v-model="form.etichetta_i18n_key" maxlength="120"
+                  :invalid="campiErrati.includes('etichetta_i18n_key')"
+                />
+                <Message
+                  severity="info"
+                  :closable="false"
+                  size="small"
+                  class="mt-025"
+                >
+                  {{ t('ui.admin.colonna_etichetta_i18n_hint') }}
+                </Message>
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label>{{ t('ui.admin.colonna_etichetta_estesa') }}</label>
+              <InputText v-model="form.etichetta_estesa" maxlength="200"
+                :invalid="campiErrati.includes('etichetta_estesa')"
+              />
+            </div>
+
+            <div class="form-grid-2col">
+              <div class="form-field">
+                <label>{{ t('ui.admin.colonna_tipo_colonna') }}</label>
+                <Select
+                  v-model="form.tipo_colonna"
+                  :options="tipoColonnaOptions"
+                  option-label="label"
+                  option-value="value"
+                  :invalid="campiErrati.includes('tipo_colonna')"
+                />
+              </div>
+              <div class="form-field">
+                <label>{{ t('ui.admin.colonna_tipo_dato') }}</label>
+                <Select
+                  v-model="form.tipo_dato"
+                  :options="tipoDatoOptions"
+                  option-label="label"
+                  option-value="value"
+                  :invalid="campiErrati.includes('tipo_dato')"
                 />
               </div>
             </div>
-          </TabPanel>
-        </TabPanels>
-      </Tabs>
-    </div>
+          </div>
+        </TabPanel>
 
-    <FormFooter v-if="contentReady"
-      :loading="loading"
-      :disabled="!canSave"
-      @save="onSave"
-      @cancel="chiudi"
-    />
-  </Drawer>
+        <TabPanel value="comportamento">
+          <div class="form-grid">
+            <div class="form-grid-2col">
+              <div class="form-field form-field-inline">
+                <Checkbox v-model="form.filtrabile" binary input-id="ui-col-filtrabile" />
+                <label for="ui-col-filtrabile">{{ t('ui.admin.colonna_filtrabile') }}</label>
+              </div>
+              <div class="form-field form-field-inline">
+                <Checkbox v-model="form.ordinabile" binary input-id="ui-col-ordinabile" />
+                <label for="ui-col-ordinabile">{{ t('ui.admin.colonna_ordinabile') }}</label>
+              </div>
+            </div>
+
+            <div class="form-grid-2col">
+              <div class="form-field form-field-inline">
+                <Checkbox
+                  v-model="form.esportabile"
+                  binary
+                  input-id="ui-col-esportabile"
+                  :disabled="isAzione"
+                />
+                <label for="ui-col-esportabile">{{ t('ui.admin.colonna_esportabile') }}</label>
+              </div>
+              <div class="form-field form-field-inline">
+                <Checkbox v-model="form.ricercabile_full" binary input-id="ui-col-ricercabile" />
+                <label for="ui-col-ricercabile">{{ t('ui.admin.colonna_ricercabile_full') }}</label>
+              </div>
+            </div>
+            <Message
+              v-if="isAzione"
+              severity="info"
+              :closable="false"
+              size="small"
+            >
+              {{ t('ui.admin.colonna_azione_non_esportabile_hint') }}
+            </Message>
+
+            <div class="form-grid-2col">
+              <div class="form-field form-field-inline">
+                <Checkbox v-model="form.sensibile" binary input-id="ui-col-sensibile" />
+                <label for="ui-col-sensibile">{{ t('ui.admin.colonna_sensibile') }}</label>
+              </div>
+              <div class="form-field form-field-inline">
+                <Checkbox v-model="form.attivo" binary input-id="ui-col-attivo"
+                  :invalid="campiErrati.includes('attivo')"
+                />
+                <label for="ui-col-attivo">{{ t('common.active') }}</label>
+              </div>
+            </div>
+          </div>
+        </TabPanel>
+
+        <TabPanel value="layout">
+          <div class="form-grid">
+            <div class="form-grid-3col">
+              <div class="form-field">
+                <label>{{ t('ui.admin.colonna_ordine_default') }}</label>
+                <InputNumber v-model="form.ordine_default" :min="1" :max="100000" show-buttons
+                  :invalid="campiErrati.includes('ordine_default')"
+                />
+              </div>
+              <div class="form-field">
+                <label>{{ t('ui.admin.colonna_larghezza_default') }}</label>
+                <InputNumber v-model="form.larghezza_default" :min="1" :max="4000" show-buttons />
+              </div>
+              <div class="form-field">
+                <label>{{ t('ui.admin.colonna_allineamento') }}</label>
+                <Select
+                  v-model="form.allineamento"
+                  :options="allineamentoOptions"
+                  option-label="label"
+                  option-value="value"
+                  :invalid="campiErrati.includes('allineamento')"
+                />
+              </div>
+            </div>
+
+            <div class="form-grid-2col">
+              <div class="form-field">
+                <label>{{ t('ui.admin.colonna_formato') }}</label>
+                <InputText v-model="form.formato" maxlength="60"
+                  :invalid="campiErrati.includes('formato')"
+                />
+                <Message
+                  severity="info"
+                  :closable="false"
+                  size="small"
+                  class="mt-025"
+                >
+                  {{ t('ui.admin.colonna_formato_hint') }}
+                </Message>
+              </div>
+              <div class="form-field">
+                <label>{{ t('ui.admin.colonna_gruppo_ordine') }}</label>
+                <InputNumber v-model="form.gruppo_ordine" :min="1" :max="100000" show-buttons />
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label>{{ t('ui.admin.colonna_gruppo') }}</label>
+              <InputText v-model="form.gruppo" maxlength="60"
+                :invalid="campiErrati.includes('gruppo')"
+              />
+            </div>
+          </div>
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
+  </AppDrawer>
 </template>
 
 <style scoped>

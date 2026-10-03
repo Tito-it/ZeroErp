@@ -20,18 +20,15 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import { addDaysToToday, parseIsoDate, toDateString } from '../../core/utils/date'
 import { paramBool, paramInt } from '../../core/utils/parameterCast'
 import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
@@ -54,11 +51,6 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
-
-// Deferimento contenuto: i LookupSelect/AutoComplete/DatePicker montano solo
-// dopo l'animazione del drawer per evitare il rimbalzo (pattern
-// feedback_content_ready_after_show, applicato 2026-05-22).
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // Capability dal detail backend (Fase 1.B3: script.fn_capability_promo_articolo),
 // lette da `detail.capabilities` via il BB:
@@ -318,177 +310,158 @@ async function handleSave() {
   }
 }
 
-function close() {
-  emit('update:visible', false)
-  emit('cancelled')
-}
-
-// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
-const chiudi = () => chiudiConConferma(close)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :dismissable="true"
+    :title="t('vendite.promo_articoli.drawer_title')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :readonly="isReadOnlyEffective"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('vendite.promo_articoli.drawer_title')"
+  <!-- Banner stato temporale: il backend espone stato_temporale +
+       can_update_reason (i18n-ready). Quando reason esiste, la chiave
+       e' direttamente la label da renderizzare. -->
+  <Message
+    v-if="isEdit && canUpdateReason"
+    severity="info"
+    :closable="false"
+  >
+    {{ t(`vendite.promo_articoli.update_reason.${canUpdateReason.toLowerCase()}`,
+          t('vendite.promo_articoli.scaduta_readonly_hint')) }}
+  </Message>
+  <Message
+    v-else-if="isPromoIniziata"
+    severity="warn"
+    :closable="false"
+  >
+    {{ t('vendite.promo_articoli.iniziata_warn_hint') }}
+  </Message>
+
+  <div class="form-grid">
+    <!-- === Identita' (immutabile in edit via non_editable_fields) === -->
+    <div class="form-field">
+      <label>{{ t('vendite.promo_articoli.field_codice') }} <span v-if="!isEdit">*</span></label>
+      <InputText
+        v-model="form.codice"
+        :disabled="isReadOnlyEffective || isLocked('codice')"
+        :placeholder="t('vendite.promo_articoli.field_codice_placeholder')"
+        maxlength="64"
+        :invalid="campiErrati.includes('codice')"
       />
-    </template>
-
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
-      <template v-if="contentReady">
-      <!-- Banner stato temporale: il backend espone stato_temporale +
-           can_update_reason (i18n-ready). Quando reason esiste, la chiave
-           e' direttamente la label da renderizzare. -->
-      <Message
-        v-if="isEdit && canUpdateReason"
-        severity="info"
-        :closable="false"
-      >
-        {{ t(`vendite.promo_articoli.update_reason.${canUpdateReason.toLowerCase()}`,
-              t('vendite.promo_articoli.scaduta_readonly_hint')) }}
-      </Message>
-      <Message
-        v-else-if="isPromoIniziata"
-        severity="warn"
-        :closable="false"
-      >
-        {{ t('vendite.promo_articoli.iniziata_warn_hint') }}
-      </Message>
-
-      <div class="form-grid">
-        <!-- === Identita' (immutabile in edit via non_editable_fields) === -->
-        <div class="form-field">
-          <label>{{ t('vendite.promo_articoli.field_codice') }} <span v-if="!isEdit">*</span></label>
-          <InputText
-            v-model="form.codice"
-            :disabled="isReadOnlyEffective || isLocked('codice')"
-            :placeholder="t('vendite.promo_articoli.field_codice_placeholder')"
-            maxlength="64"
-            :invalid="campiErrati.includes('codice')"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.promo_articoli.field_descrizione') }} *</label>
-          <InputText
-            v-model="form.descrizione"
-            :disabled="isReadOnlyEffective || isLocked('descrizione')"
-            :placeholder="t('vendite.promo_articoli.field_descrizione_placeholder')"
-            maxlength="255"
-            :invalid="campiErrati.includes('descrizione')"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.promo_articoli.field_articolo') }} <span v-if="!isEdit">*</span></label>
-          <ArticoloLookup
-            v-model="form.articolo_obj"
-            :disabled="isReadOnlyEffective || isLocked('articolo_id')"
-            :filtri="{ soloComponenti: 'escludi' }"
-            :placeholder="t('vendite.promo_articoli.field_articolo_placeholder')"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.promo_articoli.field_uom') }} <span v-if="!isEdit">*</span></label>
-          <Select
-            v-model="form.uom_id"
-            :options="uomOptions"
-            :option-label="uomLabel"
-            option-value="uom_id"
-            :loading="uomLoading"
-            :placeholder="!form.articolo_obj?.id
-              ? t('vendite.promo_articoli.field_uom_articolo_first')
-              : t('vendite.promo_articoli.field_uom_placeholder')"
-            :disabled="isReadOnlyEffective || isLocked('uom_id') || !form.articolo_obj?.id"
-            :invalid="campiErrati.includes('uom_id')"
-          />
-        </div>
-
-        <Message v-if="isEdit" severity="info" :closable="false">
-          {{ t('vendite.promo_articoli.identita_immutable_hint') }}
-        </Message>
-
-        <!-- === Variazione === -->
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('vendite.promo_articoli.field_tipo_variazione') }} *</label>
-            <TipoVariazioneSelect
-              v-model="form.tipo_variazione"
-              scope="promo"
-              :placeholder="t('vendite.promo_articoli.field_tipo_variazione_placeholder')"
-              :disabled="isReadOnlyEffective || isLocked('tipo_variazione')"
-              @change="onTipoVariazioneChange"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('vendite.promo_articoli.field_valore_variazione') }} *</label>
-            <InputNumber
-              v-model="form.valore_variazione"
-              :max-fraction-digits="4"
-              :disabled="form.tipo_variazione == null || isReadOnlyEffective || isLocked('valore_variazione')"
-              showButtons
-              :invalid="campiErrati.includes('valore_variazione')"
-            />
-            <small class="app-text-muted">
-              {{ form.tipo_variazione === 'PREZZO_FISSO'
-                ? t('vendite.promo_articoli.field_valore_variazione_hint_prezzo_fisso')
-                : t('vendite.promo_articoli.field_valore_variazione_hint') }}
-            </small>
-          </div>
-        </div>
-
-        <!-- === Validita' === -->
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('vendite.promo_articoli.field_valido_dal') }} *</label>
-            <DatePicker
-              v-model="form.valido_dal"
-              date-format="dd/mm/yy"
-              show-icon
-              :min-date="validoDalMinDate"
-              :disabled="isReadOnlyEffective || isLocked('valido_dal')"
-              :invalid="campiErrati.includes('valido_dal')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('vendite.promo_articoli.field_valido_al') }} *</label>
-            <DatePicker
-              v-model="form.valido_al"
-              date-format="dd/mm/yy"
-              show-icon
-              :min-date="validoAlMinDate"
-              :disabled="isReadOnlyEffective || isLocked('valido_al')"
-              :invalid="campiErrati.includes('valido_al')"
-            />
-          </div>
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('common.attivo') }}</label>
-          <ToggleSwitch
-            v-model="form.attivo"
-            :disabled="isReadOnlyEffective || isLocked('attivo')"
-            :invalid="campiErrati.includes('attivo')"
-          />
-        </div>
-      </div>
-
-      <FormFooter
-        :loading="loading"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="chiudi"
-      />
-      </template>
     </div>
-  </Drawer>
+    <div class="form-field">
+      <label>{{ t('vendite.promo_articoli.field_descrizione') }} *</label>
+      <InputText
+        v-model="form.descrizione"
+        :disabled="isReadOnlyEffective || isLocked('descrizione')"
+        :placeholder="t('vendite.promo_articoli.field_descrizione_placeholder')"
+        maxlength="255"
+        :invalid="campiErrati.includes('descrizione')"
+      />
+    </div>
+    <div class="form-field">
+      <label>{{ t('vendite.promo_articoli.field_articolo') }} <span v-if="!isEdit">*</span></label>
+      <ArticoloLookup
+        v-model="form.articolo_obj"
+        :disabled="isReadOnlyEffective || isLocked('articolo_id')"
+        :filtri="{ soloComponenti: 'escludi' }"
+        :placeholder="t('vendite.promo_articoli.field_articolo_placeholder')"
+      />
+    </div>
+    <div class="form-field">
+      <label>{{ t('vendite.promo_articoli.field_uom') }} <span v-if="!isEdit">*</span></label>
+      <Select
+        v-model="form.uom_id"
+        :options="uomOptions"
+        :option-label="uomLabel"
+        option-value="uom_id"
+        :loading="uomLoading"
+        :placeholder="!form.articolo_obj?.id
+          ? t('vendite.promo_articoli.field_uom_articolo_first')
+          : t('vendite.promo_articoli.field_uom_placeholder')"
+        :disabled="isReadOnlyEffective || isLocked('uom_id') || !form.articolo_obj?.id"
+        :invalid="campiErrati.includes('uom_id')"
+      />
+    </div>
+
+    <Message v-if="isEdit" severity="info" :closable="false">
+      {{ t('vendite.promo_articoli.identita_immutable_hint') }}
+    </Message>
+
+    <!-- === Variazione === -->
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('vendite.promo_articoli.field_tipo_variazione') }} *</label>
+        <TipoVariazioneSelect
+          v-model="form.tipo_variazione"
+          scope="promo"
+          :placeholder="t('vendite.promo_articoli.field_tipo_variazione_placeholder')"
+          :disabled="isReadOnlyEffective || isLocked('tipo_variazione')"
+          @change="onTipoVariazioneChange"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.promo_articoli.field_valore_variazione') }} *</label>
+        <InputNumber
+          v-model="form.valore_variazione"
+          :max-fraction-digits="4"
+          :disabled="form.tipo_variazione == null || isReadOnlyEffective || isLocked('valore_variazione')"
+          showButtons
+          :invalid="campiErrati.includes('valore_variazione')"
+        />
+        <small class="app-text-muted">
+          {{ form.tipo_variazione === 'PREZZO_FISSO'
+            ? t('vendite.promo_articoli.field_valore_variazione_hint_prezzo_fisso')
+            : t('vendite.promo_articoli.field_valore_variazione_hint') }}
+        </small>
+      </div>
+    </div>
+
+    <!-- === Validita' === -->
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('vendite.promo_articoli.field_valido_dal') }} *</label>
+        <DatePicker
+          v-model="form.valido_dal"
+          :date-format="DATE_FORMAT"
+          show-icon
+          :min-date="validoDalMinDate"
+          :disabled="isReadOnlyEffective || isLocked('valido_dal')"
+          :invalid="campiErrati.includes('valido_dal')"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.promo_articoli.field_valido_al') }} *</label>
+        <DatePicker
+          v-model="form.valido_al"
+          :date-format="DATE_FORMAT"
+          show-icon
+          :min-date="validoAlMinDate"
+          :disabled="isReadOnlyEffective || isLocked('valido_al')"
+          :invalid="campiErrati.includes('valido_al')"
+        />
+      </div>
+    </div>
+
+    <div class="form-field">
+      <label>{{ t('common.attivo') }}</label>
+      <ToggleSwitch
+        v-model="form.attivo"
+        :disabled="isReadOnlyEffective || isLocked('attivo')"
+        :invalid="campiErrati.includes('attivo')"
+      />
+    </div>
+  </div>
+  </AppDrawer>
 </template>

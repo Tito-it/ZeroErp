@@ -8,6 +8,7 @@
 import { computed, onActivated, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
@@ -29,6 +30,7 @@ import {
 } from '../api/definizioniWorkflow'
 import { useDefinizioniWorkflowStore } from '../stores/definizioniWorkflow'
 import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -167,6 +169,9 @@ function buildRowActions(data) {
 //    l'elenco di prima. ⛔ Sostituisce, non si aggiunge: sotto KeepAlive al primo
 //    montaggio scattano ENTRAMBI, quindi tenerli tutti e due farebbe due fetch.
 onActivated(() => store.load())
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ forkEmittenteId: forkEmittenteId.value }), { visibile: () => forkVisible.value })
 </script>
 
 <template>
@@ -225,6 +230,7 @@ onActivated(() => store.load())
 
     <!-- Fork: scelta emittente per la nuova edizione BOZZA -->
     <AppDialog
+      :conferma-uscita="fotografia.chiudiConConferma"
       v-model:visible="forkVisible"
       :header="t('amministrazione.definizioni_workflow.fork_dialog_title')"
       width="sm"

@@ -93,7 +93,11 @@ export function useSoggettoRuoloCollection(config) {
   //    progetto: allineato a 'create' insieme ai drawer che lo leggevano.
   //    ⭐ Il padre e' il proprietario, a drawer aperto: un altro soggetto sotto
   //    lo stesso drawer chiude il form.
-  const form = useFormInline({ padre: () => (visible() ? ownerId() : null) })
+  const form = useFormInline({
+    padre: () => (visible() ? ownerId() : null),
+    // D-8: cambiare riga col form modificato chiede (il getter e' letto al clic).
+    confermaCambio: (p) => fotografia.chiudiConConferma(p),
+  })
   const { formMode, formAperto, rigaInModifica } = form
   const formErrors = ref([])
 
@@ -156,11 +160,12 @@ export function useSoggettoRuoloCollection(config) {
   }
 
   function startEdit(item) {
-    form.apriRiga(item)
-    resetErrori()
-    populateForm(item)
-    onAfterStartEdit?.(item)
-    fotografia.fissa()
+    form.apriRiga(item, () => {
+      resetErrori()
+      populateForm(item)
+      onAfterStartEdit?.(item)
+      fotografia.fissa()
+    })
   }
 
   function cancelForm() {

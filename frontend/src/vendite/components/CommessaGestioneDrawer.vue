@@ -9,7 +9,6 @@
 //        la view invoca e rende (fail-visible sugli errori parlanti).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
@@ -20,10 +19,9 @@ import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import AppDialog from '../../core/components/AppDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
@@ -36,16 +34,15 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { useSelezioneToggle } from '../../core/composables/useSelezioneToggle'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { lookupRisorseUmane } from '../../core/apiCore'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import DocumentoDrawerHost from '../../core/components/DocumentoDrawerHost.vue'
 import { DOCUMENTO_DRAWER_TIPI } from '../../core/drawerEntita'
@@ -80,6 +77,7 @@ import {
 import { lookupArticoli } from '../../catalogo/api/catalogo'
 import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { useListaDrawerPaginata } from '../../core/composables/useListaDrawerPaginata'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -105,7 +103,6 @@ const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 const onClose = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // Readonly effettivo: area in LETTURA (inject) o prop di ispezione.
 const parentReadonly = useInjectReadonly()
@@ -235,8 +232,6 @@ const {
   modificato: testataDirty,
   chiudiConConferma,
 } = useDrawerFormPreserve(testataForm, { visibile: () => props.visible })
-// Uscita (X, ESC, clic fuori, Chiudi) con la testata non salvata: prima si chiede.
-const onChiudi = () => chiudiConConferma(onClose)
 
 // Scopo: allinea il form alla testata caricata (a ogni `loadStato`),
 //        ripristinando cio' che l'operatore aveva cambiato e non salvato.
@@ -805,264 +800,265 @@ const drawerActions = computed(() => [
   },
   ...stateActions.value,
 ])
-const suVisibile = gestoreVisibile(emit, onChiudi)
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotoVariazione = useFotografiaDialog(() => ({ prezzo: variazionePrezzo.value, motivo: variazioneMotivo.value }), { visibile: () => variazioneDialog.value })
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotoSblocca = useFotografiaDialog(() => ({ motivo: sbloccaMotivo.value }), { visibile: () => sbloccaDialog.value })
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotoAnnullaRiga = useFotografiaDialog(() => ({ motivo: annullaRigaMotivo.value }), { visibile: () => annullaRigaDialog.value })
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotoOnere = useFotografiaDialog(() => ({ ...onereForm.value }), { visibile: () => onereDialog.value })
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.XLARGE }"
-    :dismissable="true"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="t('vendite.commesse.gestione_titolo')"
+    :icon="MANAGE_ICONS.COMMESSA"
+    :width="DRAWER_WIDTH.XLARGE"
+    :proteggi-corpo="false"
+    :readonly="isReadonly"
+    :modificato="testataDirty"
+    :conferma-uscita="chiudiConConferma"
+    footer="chiudi"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle :title="t('vendite.commesse.gestione_titolo')" :icon="MANAGE_ICONS.COMMESSA" />
-    <!-- Il REGISTRO della riga: sola lettura, quindi FUORI dai dialog di azione e
-         senza `app-escape`. Si apre dal kebab, anche a commessa in readonly. -->
-    <CommessaRegistroDialog
-      v-model:visible="registroVisible"
-      :commessa-id="props.commessaId"
-      :commessa-attivita-id="registroRigaId"
-    />
-  </template>
-
-    <div class="app-drawer-content">
-      <template v-if="contentReady">
-        <DrawerEntityHeader v-if="stato">
-          <!-- Codice COMMESSA (E-DB-4): correla il drawer alla lista, che mostra
-               commessa_codice; fallback a #<PK> finché il dato non c'è. -->
-          <Tag :value="stato.commessa_codice || `#${stato.commessa_id}`" severity="secondary" />
-          <span v-if="stato.cliente_display" class="app-drawer-header-muted">
-            {{ stato.cliente_display }}
-          </span>
-          <span v-if="stato.policy_fatturazione" class="app-text-muted">
-            {{ stato.policy_fatturazione }}
-          </span>
-          <template #status>
-            <Tag
-              v-if="stato.stato_commessa"
-              :value="stato.stato_commessa"
-              :severity="statoCommessaSeverity(stato.stato_codice_interno)"
-            />
-          </template>
-        </DrawerEntityHeader>
-
-        <!-- Porta oneri + azioni di stato utente (capabilities data-driven).
-             Il `v-if` include `stato_info_key`: senza azioni ma con la
-             spiegazione, la barra deve comparire proprio per dirla (R3). -->
-        <DrawerActionsBar
-          v-if="drawerActions.length || capabilities.stato_info_key"
-          :actions="drawerActions"
-          :info-key="capabilities.stato_info_key || ''"
-          :disabled="loading"
+    <DrawerEntityHeader v-if="stato">
+      <!-- Codice COMMESSA (E-DB-4): correla il drawer alla lista, che mostra
+           commessa_codice; fallback a #<PK> finché il dato non c'è. -->
+      <Tag :value="stato.commessa_codice || `#${stato.commessa_id}`" severity="secondary" />
+      <span v-if="stato.cliente_display" class="app-drawer-header-muted">
+        {{ stato.cliente_display }}
+      </span>
+      <span v-if="stato.policy_fatturazione" class="app-text-muted">
+        {{ stato.policy_fatturazione }}
+      </span>
+      <template #status>
+        <Tag
+          v-if="stato.stato_commessa"
+          :value="stato.stato_commessa"
+          :severity="statoCommessaSeverity(stato.stato_codice_interno)"
         />
+      </template>
+    </DrawerEntityHeader>
 
-        <!-- Collegamenti diretti (sorgenti a monte + fatture a valle): stessa
-             riga di chip dei drawer documento, il grafo completo si apre dai
-             chip in dialog. -->
-        <DocumentoCollegamentiBar
-          v-if="commessaId"
-          base-path="/vendite/commesse"
-          :doc-id="commessaId"
-          :readonly="isReadonly" />
+    <!-- Porta oneri + azioni di stato utente (capabilities data-driven).
+         Il `v-if` include `stato_info_key`: senza azioni ma con la
+         spiegazione, la barra deve comparire proprio per dirla (R3). -->
+    <DrawerActionsBar
+      v-if="drawerActions.length || capabilities.stato_info_key"
+      :actions="drawerActions"
+      :info-key="capabilities.stato_info_key || ''"
+      :disabled="loading"
+    />
 
-        <!-- La TESTATA LEGGIBILE (Blocco C): descrizione e responsabile si
-             scrivono qui, la data di apertura si legge. Salva e' un gesto
-             suo, acceso solo su una modifica vera: la testata non passa da
-             nessun dialog perche' non e' un'azione di processo. -->
-        <div v-if="stato" class="app-commessa-testata">
-          <div class="form-grid-3col">
-            <div class="form-field">
-              <label>{{ t('vendite.commesse.field_descrizione') }}</label>
-              <InputText v-model="testataForm.descrizione" :maxlength="255" fluid
-                :disabled="isReadonly"
-                :invalid="campiErrati.includes('descrizione')" />
-            </div>
-            <div class="form-field">
-              <label>{{ t('vendite.commesse.field_responsabile') }}</label>
-              <Select v-model="testataForm.responsabile_risorsa_umana_id"
-                :options="responsabiliOptions" option-label="display" option-value="id"
-                :option-disabled="(o) => o.attivo === false"
-                :loading="responsabiliLoading"
-                :disabled="isReadonly" show-clear filter fluid
-                :placeholder="t('vendite.commesse.select_responsabile')"
-                :invalid="campiErrati.includes('responsabile_risorsa_umana_id')" />
-            </div>
-            <div class="form-field">
-              <label>{{ t('vendite.commesse.field_data_apertura') }}</label>
-              <!-- Sola lettura: la scrive il default (`fn_data_operativa`)
-                   alla nascita, e non e' fra i campi del PATCH. -->
-              <InputText :model-value="displayDate(stato.data_apertura)" disabled fluid />
-            </div>
-          </div>
-          <div v-if="!isReadonly" class="app-commessa-testata-azioni">
-            <Button :label="t('vendite.commesse.testata_salva')" :icon="MANAGE_ICONS.CONFIRM" size="small"
-              :loading="testataSaving" :disabled="!testataDirty || loading"
-              @click="salvaTestata" />
-          </div>
+    <!-- Collegamenti diretti (sorgenti a monte + fatture a valle): stessa
+         riga di chip dei drawer documento, il grafo completo si apre dai
+         chip in dialog. -->
+    <DocumentoCollegamentiBar
+      v-if="commessaId"
+      base-path="/vendite/commesse"
+      :doc-id="commessaId"
+      :readonly="isReadonly" />
+
+    <!-- La TESTATA LEGGIBILE (Blocco C): descrizione e responsabile si
+         scrivono qui, la data di apertura si legge. Salva e' un gesto
+         suo, acceso solo su una modifica vera: la testata non passa da
+         nessun dialog perche' non e' un'azione di processo. -->
+    <div v-if="stato" class="app-commessa-testata">
+      <div class="form-grid-3col">
+        <div class="form-field">
+          <label>{{ t('vendite.commesse.field_descrizione') }}</label>
+          <InputText v-model="testataForm.descrizione" :maxlength="255" fluid
+            :disabled="isReadonly"
+            :invalid="campiErrati.includes('descrizione')" />
         </div>
-
-        <!-- Contatori funnel testata. -->
-        <div v-if="stato" class="app-commessa-contatori">
-          <span v-for="c in contatori" :key="c.key" class="app-commessa-contatore">
-            <Tag :value="String(c.value)" :severity="c.severity" />
-            <small>{{ c.label }}</small>
-          </span>
+        <div class="form-field">
+          <label>{{ t('vendite.commesse.field_responsabile') }}</label>
+          <Select v-model="testataForm.responsabile_risorsa_umana_id"
+            :options="responsabiliOptions" option-label="display" option-value="id"
+            :option-disabled="(o) => o.attivo === false"
+            :loading="responsabiliLoading"
+            :disabled="isReadonly" show-clear filter fluid
+            :placeholder="t('vendite.commesse.select_responsabile')"
+            :invalid="campiErrati.includes('responsabile_risorsa_umana_id')" />
         </div>
-
-        <!-- Righe attivita' + approvazione (A-1). -->
-        <div class="app-page-toolbar" style="margin-top: 1rem;">
-          <h4 style="margin: 0;">{{ t('vendite.commesse.righe_titolo') }}</h4>
-          <!-- Filtro stato emissione: SEMPRE a video, anche quando arriva
-               preimpostato dalla card di provenienza. E' il punto della
-               funzione — l'utente deve vedere perche' la lista mostra meno
-               righe del contatore di testata, e poterlo togliere. -->
-          <Select
-            v-model="filtroStatoEmissione"
-            :options="opzioniStatoEmissione"
-            option-label="label"
-            option-value="value"
-            :placeholder="t('vendite.commesse.filtro_stato_tutte')"
-            size="small"
-            :aria-label="t('vendite.commesse.filtro_stato_label')"
-            v-tooltip.bottom="t('vendite.commesse.filtro_stato_label')"
-            style="min-width: 12rem;"
-            @change="onFiltroStatoChange"
-          />
-          <!-- Filtro movimento: gemello di quello sopra, stessa forma e stesso
-               handler — cambiare un filtro riparte da pagina 1 e azzera la
-               selezione, qualunque filtro sia. Serve a isolare le rettifiche,
-               che su una commessa vera sono una manciata dentro centinaia. -->
-          <Select
-            v-model="filtroTipoMovimento"
-            :options="opzioniTipoMovimento"
-            option-label="label"
-            option-value="value"
-            :placeholder="t('vendite.commesse.filtro_movimento_tutti')"
-            size="small"
-            :aria-label="t('vendite.commesse.filtro_movimento_label')"
-            v-tooltip.bottom="t('vendite.commesse.filtro_movimento_label')"
-            style="min-width: 12rem;"
-            @change="onFiltroStatoChange"
-          />
-          <!-- Personalizza colonne + Esporta: le stesse due azioni di ogni
-               <ListaConfigurabile> dell'applicazione, dallo stesso BB. Il tag
-               di stato dice quando la configurazione a video si discosta dal
-               preset — senza, l'operatore non sa di star guardando una lista
-               personalizzata. -->
-          <PageActionsBar :actions="azioniLista">
-            <template #suffix>
-              <ListaConfigStatusTag :dirty="dirty" />
-            </template>
-          </PageActionsBar>
-          <!-- Difetto D1 (§6-bis, corretto 2026-07-27): la visibilita' era sul
-               SOLO permesso, quindi su una commessa gia' PRONTA_FATTURAZIONE i
-               due verbi restavano a video disabilitati — rumore che suggerisce
-               un'azione che non c'e' piu'. Ora compaiono solo se c'e'
-               davvero qualcosa da approvare (il permesso resta condizione
-               necessaria, e il BE resta la difesa vera). -->
-          <div v-if="canApprova && (stato?.total_non_approvate ?? 0) > 0" style="display: flex; gap: 0.5rem;">
-            <Button
-              :label="t('vendite.commesse.approva_selezionate', { n: selectedIds.length })"
-              :icon="MANAGE_ICONS.APPROVE"
-              size="small"
-              :disabled="loading || selectedIds.length === 0"
-              @click="approva(selectedIds)"
-            />
-            <Button
-              :label="t('vendite.commesse.approva_tutte')"
-              :icon="MANAGE_ICONS.APPROVE"
-              size="small"
-              outlined
-              :disabled="loading || (stato?.total_non_approvate ?? 0) === 0"
-              @click="approva(null)"
-            />
-          </div>
+        <div class="form-field">
+          <label>{{ t('vendite.commesse.field_data_apertura') }}</label>
+          <!-- Sola lettura: la scrive il default (`fn_data_operativa`)
+               alla nascita, e non e' fra i campi del PATCH. -->
+          <InputText :model-value="displayDate(stato.data_apertura)" disabled fluid />
         </div>
+      </div>
+      <div v-if="!isReadonly" class="app-commessa-testata-azioni">
+        <Button :label="t('vendite.commesse.testata_salva')" :icon="MANAGE_ICONS.CONFIRM" size="small"
+          :loading="testataSaving" :disabled="!testataDirty || loading"
+          @click="salvaTestata" />
+      </div>
+    </div>
 
-        <ListaConfigurabile
-          ref="listaRef"
-          codice="vendite.commesse_attivita"
-          data-key="id"
-          :rows="lista.righe.value"
-          :total="lista.totale.value"
-          :loading="lista.loading.value"
-          :paginator-options="lista.paginatorOptions.value"
-          :page="lista.page.value"
-          :sort-field="lista.sortField.value"
-          :sort-order="lista.sortOrder.value"
-          @page="lista.onPage"
-          @sort="lista.onSort"
-          @config-loaded="lista.onConfigLoaded"
-        >
-          <!-- Checkbox custom (pattern useSelezioneToggle): solo approvabili.
-               Colonna di CHROME del BB, non a catalogo. -->
-          <template v-if="canApprova && righeApprovabili.length" #selection-header>
-            <Checkbox
-              :model-value="allSelected"
-              binary
-              :indeterminate="anySelected"
-              @update:model-value="toggleAll"
-            />
-          </template>
-          <template v-if="canApprova && righeApprovabili.length" #selection="{ data }">
-            <Checkbox
-              :model-value="isSelected(data)"
-              binary
-              :disabled="!isSelectable(data)"
-              @update:model-value="toggleRow(data)"
-            />
-          </template>
+    <!-- Contatori funnel testata. -->
+    <div v-if="stato" class="app-commessa-contatori">
+      <span v-for="c in contatori" :key="c.key" class="app-commessa-contatore">
+        <Tag :value="String(c.value)" :severity="c.severity" />
+        <small>{{ c.label }}</small>
+      </span>
+    </div>
 
-          <!-- data_attivita e competenza_mese non hanno slot: il seed dichiara
-               `date_short` e il formatter di serie le rende gia' cosi'. -->
-          <template #cell-segment_key="{ data }">
-            <span class="app-commessa-segment" :title="data.segment_key">{{ data.segment_key }}</span>
-          </template>
-          <template #cell-quantita="{ data }">
-            {{ data.quantita ?? '—' }}
-          </template>
-          <template #cell-prezzo_snapshot="{ data }">
-            <span>
-              {{ data.prezzo_snapshot != null ? formatCurrency(Number(data.prezzo_snapshot)) : '—' }}
-              <i
-                v-if="data.prezzo_bloccato"
-                :class="STATUS_ICONS.BLOCCATO"
-                v-tooltip.bottom="t('vendite.commesse.prezzo_bloccato')"
-              />
-              <i
-                v-if="data.prezzo_da_riallineare"
-                :class="[STATUS_ICONS.ERRORE, 'app-dash-ritardo']"
-                v-tooltip.bottom="t('vendite.commesse.prezzo_da_riallineare')"
-              />
-            </span>
-          </template>
-          <template #cell-stato_approvazione="{ data }">
-            <Tag :value="data.stato_approvazione" :severity="statoApprovazioneAttivitaSeverity(data.stato_approvazione)" />
-          </template>
-          <template #cell-stato_emissione="{ data }">
-            <Tag :value="data.stato_emissione" :severity="statoEmissioneAttivitaSeverity(data.stato_emissione)" />
-          </template>
+    <!-- Righe attivita' + approvazione (A-1). -->
+    <div class="app-page-toolbar" style="margin-top: 1rem;">
+      <h4 style="margin: 0;">{{ t('vendite.commesse.righe_titolo') }}</h4>
+      <!-- Filtro stato emissione: SEMPRE a video, anche quando arriva
+           preimpostato dalla card di provenienza. E' il punto della
+           funzione — l'utente deve vedere perche' la lista mostra meno
+           righe del contatore di testata, e poterlo togliere. -->
+      <Select
+        v-model="filtroStatoEmissione"
+        :options="opzioniStatoEmissione"
+        option-label="label"
+        option-value="value"
+        :placeholder="t('vendite.commesse.filtro_stato_tutte')"
+        size="small"
+        :aria-label="t('vendite.commesse.filtro_stato_label')"
+        v-tooltip.bottom="t('vendite.commesse.filtro_stato_label')"
+        style="min-width: 12rem;"
+        @change="onFiltroStatoChange"
+      />
+      <!-- Filtro movimento: gemello di quello sopra, stessa forma e stesso
+           handler — cambiare un filtro riparte da pagina 1 e azzera la
+           selezione, qualunque filtro sia. Serve a isolare le rettifiche,
+           che su una commessa vera sono una manciata dentro centinaia. -->
+      <Select
+        v-model="filtroTipoMovimento"
+        :options="opzioniTipoMovimento"
+        option-label="label"
+        option-value="value"
+        :placeholder="t('vendite.commesse.filtro_movimento_tutti')"
+        size="small"
+        :aria-label="t('vendite.commesse.filtro_movimento_label')"
+        v-tooltip.bottom="t('vendite.commesse.filtro_movimento_label')"
+        style="min-width: 12rem;"
+        @change="onFiltroStatoChange"
+      />
+      <!-- Personalizza colonne + Esporta: le stesse due azioni di ogni
+           <ListaConfigurabile> dell'applicazione, dallo stesso BB. Il tag
+           di stato dice quando la configurazione a video si discosta dal
+           preset — senza, l'operatore non sa di star guardando una lista
+           personalizzata. -->
+      <PageActionsBar :actions="azioniLista">
+        <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
+        </template>
+      </PageActionsBar>
+      <!-- Difetto D1 (§6-bis, corretto 2026-07-27): la visibilita' era sul
+           SOLO permesso, quindi su una commessa gia' PRONTA_FATTURAZIONE i
+           due verbi restavano a video disabilitati — rumore che suggerisce
+           un'azione che non c'e' piu'. Ora compaiono solo se c'e'
+           davvero qualcosa da approvare (il permesso resta condizione
+           necessaria, e il BE resta la difesa vera). -->
+      <div v-if="canApprova && (stato?.total_non_approvate ?? 0) > 0" style="display: flex; gap: 0.5rem;">
+        <Button
+          :label="t('vendite.commesse.approva_selezionate', { n: selectedIds.length })"
+          :icon="MANAGE_ICONS.APPROVE"
+          size="small"
+          :disabled="loading || selectedIds.length === 0"
+          @click="approva(selectedIds)"
+        />
+        <Button
+          :label="t('vendite.commesse.approva_tutte')"
+          :icon="MANAGE_ICONS.APPROVE"
+          size="small"
+          outlined
+          :disabled="loading || (stato?.total_non_approvate ?? 0) === 0"
+          @click="approva(null)"
+        />
+      </div>
+    </div>
 
-          <!-- La colonna azioni resta anche in sola lettura: dal 2026-08-16 il
-               kebab porta due voci di NAVIGAZIONE (documento di origine,
-               fattura) che non modificano nulla. Nasconderla in readonly
-               toglierebbe la sola strada per arrivare al documento proprio a
-               chi sta ispezionando. -->
-          <template #actions="{ data }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-          </template>
-        </ListaConfigurabile>
-
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="vendite.commesse_attivita"
+      data-key="id"
+      :rows="lista.righe.value"
+      :total="lista.totale.value"
+      :loading="lista.loading.value"
+      :paginator-options="lista.paginatorOptions.value"
+      :page="lista.page.value"
+      :sort-field="lista.sortField.value"
+      :sort-order="lista.sortOrder.value"
+      @page="lista.onPage"
+      @sort="lista.onSort"
+      @config-loaded="lista.onConfigLoaded"
+    >
+      <!-- Checkbox custom (pattern useSelezioneToggle): solo approvabili.
+           Colonna di CHROME del BB, non a catalogo. -->
+      <template v-if="canApprova && righeApprovabili.length" #selection-header>
+        <Checkbox
+          :model-value="allSelected"
+          binary
+          :indeterminate="anySelected"
+          @update:model-value="toggleAll"
+        />
+      </template>
+      <template v-if="canApprova && righeApprovabili.length" #selection="{ data }">
+        <Checkbox
+          :model-value="isSelected(data)"
+          binary
+          :disabled="!isSelectable(data)"
+          @update:model-value="toggleRow(data)"
+        />
       </template>
 
-      <FormFooter close-only @cancel="onChiudi" />
-    </div>
+      <!-- data_attivita e competenza_mese non hanno slot: il seed dichiara
+           `date_short` e il formatter di serie le rende gia' cosi'. -->
+      <template #cell-segment_key="{ data }">
+        <span class="app-commessa-segment" :title="data.segment_key">{{ data.segment_key }}</span>
+      </template>
+      <template #cell-quantita="{ data }">
+        {{ data.quantita ?? '—' }}
+      </template>
+      <template #cell-prezzo_snapshot="{ data }">
+        <span>
+          {{ data.prezzo_snapshot != null ? formatCurrency(Number(data.prezzo_snapshot)) : '—' }}
+          <i
+            v-if="data.prezzo_bloccato"
+            :class="STATUS_ICONS.BLOCCATO"
+            v-tooltip.bottom="t('vendite.commesse.prezzo_bloccato')"
+          />
+          <i
+            v-if="data.prezzo_da_riallineare"
+            :class="[STATUS_ICONS.ERRORE, 'app-dash-ritardo']"
+            v-tooltip.bottom="t('vendite.commesse.prezzo_da_riallineare')"
+          />
+        </span>
+      </template>
+      <template #cell-stato_approvazione="{ data }">
+        <Tag :value="data.stato_approvazione" :severity="statoApprovazioneAttivitaSeverity(data.stato_approvazione)" />
+      </template>
+      <template #cell-stato_emissione="{ data }">
+        <Tag :value="data.stato_emissione" :severity="statoEmissioneAttivitaSeverity(data.stato_emissione)" />
+      </template>
+
+      <!-- La colonna azioni resta anche in sola lettura: dal 2026-08-16 il
+           kebab porta due voci di NAVIGAZIONE (documento di origine,
+           fattura) che non modificano nulla. Nasconderla in readonly
+           toglierebbe la sola strada per arrivare al documento proprio a
+           chi sta ispezionando. -->
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+      </template>
+    </ListaConfigurabile>
+
 
     <!-- Dialog N7 — variazione prezzo eccezionale (prezzo + motivo). -->
     <AppDialog
+      :conferma-uscita="fotoVariazione.chiudiConConferma"
       v-model:visible="variazioneDialog"
       :header="t('vendite.commesse.variazione_header')"
       width="sm"
@@ -1089,6 +1085,7 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
 
     <!-- Dialog N7-sblocco — motivo obbligatorio (il BE lo esige). -->
     <AppDialog
+      :conferma-uscita="fotoSblocca.chiudiConConferma"
       v-model:visible="sbloccaDialog"
       :header="t('vendite.commesse.sblocca_header')"
       width="sm"
@@ -1109,6 +1106,7 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
 
     <!-- Dialog annullamento riga manuale — motivo obbligatorio (BE + DB). -->
     <AppDialog
+      :conferma-uscita="fotoAnnullaRiga.chiudiConConferma"
       v-model:visible="annullaRigaDialog"
       :header="t('vendite.commesse.annulla_riga_header')"
       width="sm"
@@ -1130,6 +1128,7 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
 
     <!-- Dialog porta oneri — riga di valore (qta=1) sulla commessa. -->
     <AppDialog
+      :conferma-uscita="fotoOnere.chiudiConConferma"
       v-model:visible="onereDialog"
       :header="t('vendite.commesse.onere_header')"
       width="md"
@@ -1194,7 +1193,7 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
         <label>{{ t('vendite.commesse.onere_data') }}</label>
         <DatePicker
           v-model="onereForm.dataAttivita"
-          date-format="dd/mm/yy"
+          :date-format="DATE_FORMAT"
           show-icon
           show-button-bar
           fluid
@@ -1215,7 +1214,17 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
       :tipo-codice="docDrawerTipo"
       :doc-id="docDrawerId"
       @update:visible="onDocDrawerVisible" />
-  </Drawer>
+
+    <!-- Il REGISTRO della riga: sola lettura, quindi FUORI dai dialog di azione e
+         senza `app-escape`. Si apre dal kebab, anche a commessa in readonly.
+         (Montato nello slot della testata fino al 2026-10-03: AppDrawer non
+         lo espone, e il dialog si apre solo da una riga gia' a video.) -->
+    <CommessaRegistroDialog
+      v-model:visible="registroVisible"
+      :commessa-id="props.commessaId"
+      :commessa-attivita-id="registroRigaId"
+    />
+  </AppDrawer>
 
   <!-- Scelta formato export (CSV/XLSX): il file copia la lista a video —
        filtri e ordinamento compresi — non una seconda query che le somiglia. -->

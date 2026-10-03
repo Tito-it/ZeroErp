@@ -54,15 +54,12 @@ import {
 import { useRegistriNumerazioneStore } from '../stores/registriNumerazione'
 import { getRegistro, listRegistri } from '../api/registriNumerazione'
 import { lookupFamiglie } from '../api/famiglieDocumento'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
-import Drawer from 'primevue/drawer'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Message from 'primevue/message'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -77,10 +74,6 @@ const props = defineProps({
   emittenteRagioneSociale: { type: String, default: '' },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved'])
 
 const form = ref(defaultForm())
@@ -385,12 +378,11 @@ async function salva() {
   }
 }
 
+// Uscita dopo il salvataggio, diretta. Quella per volonta' dell'utente passa
+// dalla conferma di AppDrawer (`conferma-uscita`).
 function chiudi() {
   emit('update:visible', false)
 }
-// Uscita per volonta' dell'utente: con modifiche chiede conferma. Dopo il
-// salvataggio `chiudi()` resta diretta.
-const annulla = () => chiudiConConferma(chiudi)
 
 const titolo = computed(() => {
   const base = isEdit.value
@@ -398,249 +390,231 @@ const titolo = computed(() => {
     : t('amministrazione.registri_numerazione.drawer_title_new')
   return props.emittenteRagioneSociale ? `${base} — ${props.emittenteRagioneSociale}` : base
 })
-const suVisibile = gestoreVisibile(emit, annulla)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="titolo"
+    :icon="MANAGE_ICONS.NUMERAZIONE"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="salvando"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="salva"
   >
-    <template #header>
-      <DrawerTitle :modificato="modificato" :icon="MANAGE_ICONS.NUMERAZIONE" :title="titolo" />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div class="form-grid">
-        <div class="form-field">
-          <label>{{ t('vendite.registri_numerazione.col_codice') }} *</label>
-          <InputText
-            v-model="form.codice"
-            :maxlength="FIELD_LENGTH.REGISTRO_CODICE_MAX"
-            :disabled="isReadonly"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.registri_numerazione.col_descrizione') }} *</label>
-          <InputText
-            v-model="form.descrizione"
-            :maxlength="FIELD_LENGTH.REGISTRO_DESCRIZIONE_MAX"
-            :disabled="isReadonly"
-          />
-        </div>
-
-        <!-- ⛔ La famiglia si sceglie SOLO in creazione: cambiarla sposterebbe
-             il registro di slot (famiglia/emittente/utility), che è una
-             creazione, non una modifica. -->
-        <div class="form-field">
-          <label>{{ t('vendite.registri_numerazione.col_famiglia_descrizione') }}</label>
-          <Select
-            v-if="!isEdit"
-            v-model="form.famiglia_documento"
-            :options="famiglie"
-            option-label="label"
-            option-value="value"
-            :disabled="isReadonly"
-          />
-          <span v-else>{{ dettaglio?.famiglia_descrizione || form.famiglia_documento }}</span>
-        </div>
-
-        <!-- ⚠️ `serie_default` SI VEDE E NON SI TOCCA (decisione di Tid,
-             2026-09-01). Il guard sulla forma non la copre — entra nella chiave
-             del contatore, e il mirror CSV la riscrive a ogni migrate — quindi
-             un campo editabile su di lei sarebbe l'unico senza presidio. Si
-             mostra perché spiega da dove viene la serie dei numeri. -->
-        <div v-if="isEdit || famigliaCorrente" class="form-field">
-          <label>{{ t('vendite.registri_numerazione.col_serie_default') }}</label>
-          <span v-if="isEdit">{{ form.serie_default || '—' }}</span>
-          <!-- ⭐ FE-F2: sulle famiglie che la serie non la registrano da nessuna
-               parte, il campo dice PERCHÉ invece di mostrare un trattino muto.
-               La frase è la stessa che il database manda quando rifiuta
-               (`serie_blocco.non_gestita`): una voce sola per lo stesso fatto,
-               detta prima invece che dopo il rifiuto. -->
-          <small v-if="!gestisceSerie" class="app-field-hint">
-            {{ t('amministrazione.registri_fatturazione.serie_blocco.non_gestita', {
-              famiglia_documento: famigliaCorrente?.descrizione || form.famiglia_documento,
-              serie: form.serie_default || '—',
-            }) }}
-          </small>
-          <small v-else class="app-field-hint">
-            {{ t('amministrazione.registri_numerazione.serie_hint') }}
-          </small>
-        </div>
-
-        <!-- ⭐ IL RESET DEL CONTATORE, e sta accanto alla serie perché sono la
-             stessa cosa: due assi della CHIAVE su cui il progressivo riparte.
-             ⛔ Si sceglie SOLO in creazione — cambiarla su un registro che ha
-             già numerato sposta il secchio sotto il contatore, il progressivo
-             riparte da 1 e sbatte contro i numeri già scritti. In modifica si
-             legge, come `serie_default`.
-             ⚠️ E nessun trigger lo rifiuta: qui il campo assente È il presidio,
-             non una scelta di maschera. -->
-        <div class="form-field">
-          <label>{{ t('amministrazione.registri_numerazione.reset_policy') }}</label>
-          <Select
-            v-if="!isEdit"
-            v-model="form.reset_policy"
-            :options="opzioniReset"
-            option-label="label"
-            option-value="value"
-            :disabled="isReadonly"
-          />
-          <span v-else>{{ resetLabel }}</span>
-          <small class="app-field-hint">
-            {{ t('amministrazione.registri_numerazione.reset_hint') }}
-          </small>
-        </div>
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t('vendite.registri_numerazione.col_codice') }} *</label>
+        <InputText
+          v-model="form.codice"
+          :maxlength="FIELD_LENGTH.REGISTRO_CODICE_MAX"
+          :disabled="isReadonly"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.registri_numerazione.col_descrizione') }} *</label>
+        <InputText
+          v-model="form.descrizione"
+          :maxlength="FIELD_LENGTH.REGISTRO_DESCRIZIONE_MAX"
+          :disabled="isReadonly"
+        />
       </div>
 
-      <!-- ── La forma del numero ───────────────────────────────────────── -->
-      <h4>{{ t('amministrazione.registri_numerazione.sezione_forma') }}</h4>
-
-      <Message v-if="formaBloccata" severity="warn" :closable="false">
-        {{ motivoForma }}
-      </Message>
-
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('vendite.registri_numerazione.col_prefisso') }}</label>
-          <!-- ⛔ `maxlength` NON è un vezzo: la colonna è `varchar(4)`, e un
-               carattere in più non produce un 400 parlante ma un `DataError`,
-               che non passa da `map_integrity_error`. -->
-          <InputText
-            v-model="form.prefisso"
-            :maxlength="FIELD_LENGTH.REGISTRO_PREFISSO_MAX"
-            :disabled="isReadonly || formaBloccata"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.registri_numerazione.col_suffisso') }}</label>
-          <InputText
-            v-model="form.suffisso"
-            :maxlength="FIELD_LENGTH.REGISTRO_SUFFISSO_MAX"
-            :disabled="isReadonly || formaBloccata"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.registri_numerazione.col_lunghezza_numero') }}</label>
-          <InputNumber
-            v-model="form.lunghezza_numero"
-            :min="REGISTRO_CIFRE_MIN"
-            :max="REGISTRO_CIFRE_MAX"
-            :disabled="isReadonly || formaBloccata"
-          />
-        </div>
-        <!-- ⭐ L'ANNO NELLA STRINGA — in SOLA LETTURA, sempre, anche in
-             creazione: non è una scelta del sezionale ma una proprietà della
-             sua famiglia, e a scriverla è un risolutore a INSERT
-             (`trg_..._set_anno_nel_numero_ins`).
-             ⚠️ Si mostra perché cambia il numero che una PERSONA legge: un
-             registro che azzera ogni anno senza l'anno nella stringa consegna
-             la stessa stringa in anni diversi, e il database non se ne accorge
-             — la sua unicità porta l'anno in colonna. -->
-        <div class="form-field">
-          <label>{{ t('amministrazione.registri_numerazione.anno_nel_numero') }}</label>
-          <span>{{ form.anno_nel_numero ? t('common.yes') : t('common.no') }}</span>
-          <small class="app-field-hint">
-            {{ t('amministrazione.registri_numerazione.anno_nel_numero_hint') }}
-          </small>
-        </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.registri_numerazione.anteprima') }}</label>
-          <strong>{{ anteprima }}</strong>
-          <small class="app-field-hint">
-            {{ t('amministrazione.registri_numerazione.anteprima_hint') }}
-          </small>
-        </div>
+      <!-- ⛔ La famiglia si sceglie SOLO in creazione: cambiarla sposterebbe
+           il registro di slot (famiglia/emittente/utility), che è una
+           creazione, non una modifica. -->
+      <div class="form-field">
+        <label>{{ t('vendite.registri_numerazione.col_famiglia_descrizione') }}</label>
+        <Select
+          v-if="!isEdit"
+          v-model="form.famiglia_documento"
+          :options="famiglie"
+          option-label="label"
+          option-value="value"
+          :disabled="isReadonly"
+        />
+        <span v-else>{{ dettaglio?.famiglia_descrizione || form.famiglia_documento }}</span>
       </div>
 
-      <!-- ── I campi che il CHECK ammette solo su FATTURA ───────────────── -->
-      <template v-if="ammetteRegoleFiscali">
-        <h4>{{ t('amministrazione.registri_numerazione.sezione_limiti') }}</h4>
-        <div class="form-grid-2col">
-          <!-- ⭐ La politica data è il terzo campo condizionato del §FE-4, e
-               fino alla revisione critica non aveva un campo: viaggiava nel
-               payload col valore di `defaultForm()`. -->
-          <div class="form-field">
-            <label>{{ t('amministrazione.registri_numerazione.politica_data') }}</label>
-            <Select
-              v-model="form.politica_data_documento"
-              :options="opzioniPolitica"
-              option-label="label"
-              option-value="value"
-              :disabled="isReadonly"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('amministrazione.registri_numerazione.limite_giorni') }}</label>
-            <InputNumber
-              v-model="form.limite_emissione_giorni"
-              :disabled="isReadonly"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('amministrazione.registri_numerazione.limite_giorno_mese') }}</label>
-            <InputNumber
-              v-model="form.limite_emissione_giorno_mese"
-              :disabled="isReadonly"
-            />
-          </div>
-        </div>
-      </template>
+      <!-- ⚠️ `serie_default` SI VEDE E NON SI TOCCA (decisione di Tid,
+           2026-09-01). Il guard sulla forma non la copre — entra nella chiave
+           del contatore, e il mirror CSV la riscrive a ogni migrate — quindi
+           un campo editabile su di lei sarebbe l'unico senza presidio. Si
+           mostra perché spiega da dove viene la serie dei numeri. -->
+      <div v-if="isEdit || famigliaCorrente" class="form-field">
+        <label>{{ t('vendite.registri_numerazione.col_serie_default') }}</label>
+        <span v-if="isEdit">{{ form.serie_default || '—' }}</span>
+        <!-- ⭐ FE-F2: sulle famiglie che la serie non la registrano da nessuna
+             parte, il campo dice PERCHÉ invece di mostrare un trattino muto.
+             La frase è la stessa che il database manda quando rifiuta
+             (`serie_blocco.non_gestita`): una voce sola per lo stesso fatto,
+             detta prima invece che dopo il rifiuto. -->
+        <small v-if="!gestisceSerie" class="app-field-hint">
+          {{ t('amministrazione.registri_fatturazione.serie_blocco.non_gestita', {
+            famiglia_documento: famigliaCorrente?.descrizione || form.famiglia_documento,
+            serie: form.serie_default || '—',
+          }) }}
+        </small>
+        <small v-else class="app-field-hint">
+          {{ t('amministrazione.registri_numerazione.serie_hint') }}
+        </small>
+      </div>
 
-      <!-- ── I contatori, in SOLA LETTURA ───────────────────────────────── -->
-      <!-- ⛔ Non esiste nessun endpoint che li scriva, e non ne deve nascere uno
-           "per l'amministratore": cambiare `last_numero` a mano significa
-           riassegnare un numero già uscito, cioè due documenti con lo stesso
-           numero sullo stesso sezionale.
-           ⚠️ Tabella HTML e non `DataTable`: sono poche righe di sola lettura
-           dentro un drawer, e importare `primevue/datatable` qui farebbe salire
-           il contatore della regola zero per una cosa che non è una lista. -->
-      <template v-if="isEdit && dettaglio?.progressivi?.length">
-        <h4>{{ t('amministrazione.registri_numerazione.sezione_contatori') }}</h4>
-        <table class="app-mini-table">
-          <thead>
-            <tr>
-              <th>{{ t('amministrazione.registri_numerazione.col_anno') }}</th>
-              <th>{{ t('vendite.registri_numerazione.col_serie_default') }}</th>
-              <th>{{ t('amministrazione.registri_numerazione.col_ultimo_numero') }}</th>
-              <th>{{ t('amministrazione.registri_numerazione.col_ultima_data') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <!-- La chiave del contatore e' (registro, anno, serie): `mese` non
-                 esiste piu' sul database, per quanto la doc auto-gen la elenchi. -->
-            <tr v-for="p in dettaglio.progressivi" :key="`${p.anno}-${p.serie}`">
-              <td>{{ p.anno }}</td>
-              <td>{{ p.serie || '—' }}</td>
-              <td>{{ p.last_numero }}</td>
-              <td>{{ displayDate(p.ultima_data) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </template>
-
+      <!-- ⭐ IL RESET DEL CONTATORE, e sta accanto alla serie perché sono la
+           stessa cosa: due assi della CHIAVE su cui il progressivo riparte.
+           ⛔ Si sceglie SOLO in creazione — cambiarla su un registro che ha
+           già numerato sposta il secchio sotto il contatore, il progressivo
+           riparte da 1 e sbatte contro i numeri già scritti. In modifica si
+           legge, come `serie_default`.
+           ⚠️ E nessun trigger lo rifiuta: qui il campo assente È il presidio,
+           non una scelta di maschera. -->
+      <div class="form-field">
+        <label>{{ t('amministrazione.registri_numerazione.reset_policy') }}</label>
+        <Select
+          v-if="!isEdit"
+          v-model="form.reset_policy"
+          :options="opzioniReset"
+          option-label="label"
+          option-value="value"
+          :disabled="isReadonly"
+        />
+        <span v-else>{{ resetLabel }}</span>
+        <small class="app-field-hint">
+          {{ t('amministrazione.registri_numerazione.reset_hint') }}
+        </small>
+      </div>
     </div>
 
-    <!-- ⭐ FOOTER STANDARD, e sta FUORI da `app-drawer-content` — è la forma
-         del BB (`ListaColonnaDrawer`, `PraticaDrawer`, e altri 80): fratello
-         del wrapper, figlio diretto del Drawer.
-         ⛔ Qui c'erano due `Button` a mano dentro il wrapper. Non era una
-         variante innocua: `FormFooter` porta Ctrl+S, i tooltip che tengono
-         leggibile il pulsante quando sotto 1024px il CSS nasconde il testo,
-         l'icona «torna indietro» invece di una X, la classe `app-escape` e la
-         gestione di `readonly` dall'inject. Riscriverli a mano significa
-         perderli tutti e cinque, in silenzio. -->
-    <FormFooter
-      v-if="contentReady"
-      :loading="salvando"
-      @save="salva"
-      @cancel="annulla"
-    />
-  </Drawer>
+    <!-- ── La forma del numero ───────────────────────────────────────── -->
+    <h4>{{ t('amministrazione.registri_numerazione.sezione_forma') }}</h4>
+
+    <Message v-if="formaBloccata" severity="warn" :closable="false">
+      {{ motivoForma }}
+    </Message>
+
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('vendite.registri_numerazione.col_prefisso') }}</label>
+        <!-- ⛔ `maxlength` NON è un vezzo: la colonna è `varchar(4)`, e un
+             carattere in più non produce un 400 parlante ma un `DataError`,
+             che non passa da `map_integrity_error`. -->
+        <InputText
+          v-model="form.prefisso"
+          :maxlength="FIELD_LENGTH.REGISTRO_PREFISSO_MAX"
+          :disabled="isReadonly || formaBloccata"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.registri_numerazione.col_suffisso') }}</label>
+        <InputText
+          v-model="form.suffisso"
+          :maxlength="FIELD_LENGTH.REGISTRO_SUFFISSO_MAX"
+          :disabled="isReadonly || formaBloccata"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.registri_numerazione.col_lunghezza_numero') }}</label>
+        <InputNumber
+          v-model="form.lunghezza_numero"
+          :min="REGISTRO_CIFRE_MIN"
+          :max="REGISTRO_CIFRE_MAX"
+          :disabled="isReadonly || formaBloccata"
+        />
+      </div>
+      <!-- ⭐ L'ANNO NELLA STRINGA — in SOLA LETTURA, sempre, anche in
+           creazione: non è una scelta del sezionale ma una proprietà della
+           sua famiglia, e a scriverla è un risolutore a INSERT
+           (`trg_..._set_anno_nel_numero_ins`).
+           ⚠️ Si mostra perché cambia il numero che una PERSONA legge: un
+           registro che azzera ogni anno senza l'anno nella stringa consegna
+           la stessa stringa in anni diversi, e il database non se ne accorge
+           — la sua unicità porta l'anno in colonna. -->
+      <div class="form-field">
+        <label>{{ t('amministrazione.registri_numerazione.anno_nel_numero') }}</label>
+        <span>{{ form.anno_nel_numero ? t('common.yes') : t('common.no') }}</span>
+        <small class="app-field-hint">
+          {{ t('amministrazione.registri_numerazione.anno_nel_numero_hint') }}
+        </small>
+      </div>
+      <div class="form-field">
+        <label>{{ t('amministrazione.registri_numerazione.anteprima') }}</label>
+        <strong>{{ anteprima }}</strong>
+        <small class="app-field-hint">
+          {{ t('amministrazione.registri_numerazione.anteprima_hint') }}
+        </small>
+      </div>
+    </div>
+
+    <!-- ── I campi che il CHECK ammette solo su FATTURA ───────────────── -->
+    <template v-if="ammetteRegoleFiscali">
+      <h4>{{ t('amministrazione.registri_numerazione.sezione_limiti') }}</h4>
+      <div class="form-grid-2col">
+        <!-- ⭐ La politica data è il terzo campo condizionato del §FE-4, e
+             fino alla revisione critica non aveva un campo: viaggiava nel
+             payload col valore di `defaultForm()`. -->
+        <div class="form-field">
+          <label>{{ t('amministrazione.registri_numerazione.politica_data') }}</label>
+          <Select
+            v-model="form.politica_data_documento"
+            :options="opzioniPolitica"
+            option-label="label"
+            option-value="value"
+            :disabled="isReadonly"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('amministrazione.registri_numerazione.limite_giorni') }}</label>
+          <InputNumber
+            v-model="form.limite_emissione_giorni"
+            :disabled="isReadonly"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('amministrazione.registri_numerazione.limite_giorno_mese') }}</label>
+          <InputNumber
+            v-model="form.limite_emissione_giorno_mese"
+            :disabled="isReadonly"
+          />
+        </div>
+      </div>
+    </template>
+
+    <!-- ── I contatori, in SOLA LETTURA ───────────────────────────────── -->
+    <!-- ⛔ Non esiste nessun endpoint che li scriva, e non ne deve nascere uno
+         "per l'amministratore": cambiare `last_numero` a mano significa
+         riassegnare un numero già uscito, cioè due documenti con lo stesso
+         numero sullo stesso sezionale.
+         ⚠️ Tabella HTML e non `DataTable`: sono poche righe di sola lettura
+         dentro un drawer, e importare `primevue/datatable` qui farebbe salire
+         il contatore della regola zero per una cosa che non è una lista. -->
+    <template v-if="isEdit && dettaglio?.progressivi?.length">
+      <h4>{{ t('amministrazione.registri_numerazione.sezione_contatori') }}</h4>
+      <table class="app-mini-table">
+        <thead>
+          <tr>
+            <th>{{ t('amministrazione.registri_numerazione.col_anno') }}</th>
+            <th>{{ t('vendite.registri_numerazione.col_serie_default') }}</th>
+            <th>{{ t('amministrazione.registri_numerazione.col_ultimo_numero') }}</th>
+            <th>{{ t('amministrazione.registri_numerazione.col_ultima_data') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- La chiave del contatore e' (registro, anno, serie): `mese` non
+               esiste piu' sul database, per quanto la doc auto-gen la elenchi. -->
+          <tr v-for="p in dettaglio.progressivi" :key="`${p.anno}-${p.serie}`">
+            <td>{{ p.anno }}</td>
+            <td>{{ p.serie || '—' }}</td>
+            <td>{{ p.last_numero }}</td>
+            <td>{{ displayDate(p.ultima_data) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </template>
+  </AppDrawer>
 </template>
 
 <style scoped>

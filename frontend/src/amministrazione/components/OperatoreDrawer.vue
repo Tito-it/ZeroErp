@@ -7,8 +7,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative, invitaOperatore, reinviaInvito, getCredenzialePerEmail } from '../api/amministrazione'
@@ -29,11 +28,9 @@ import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.v
 import AuthUserForm from '../../core/components/AuthUserForm.vue'
 import OperatorePermessiTab from './OperatorePermessiTab.vue'
 import CredenzialeAzioni from './CredenzialeAzioni.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import AppDialog from '../../core/components/AppDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -45,7 +42,6 @@ import TabPanels from 'primevue/tabpanels'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 
 const { t, te } = useI18n()
 const store = useOperatoriStore()
@@ -92,10 +88,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -428,25 +420,30 @@ function onInvita() {
     }
   })
 }
-
-const chiudiDiretto = useDrawerClose(emit, 'cancelled')
-const onClose = () => tutto.chiudiConConferma(chiudiDiretto)
-const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- Il footer segue la scheda: Annulla/Salva fisso sui Dati, «Chiudi» sui
+       Permessi, dove ogni sezione ha il suo Salva. La larghezza pure
+       (`larghezzaDrawer`: XLARGE sui permessi, COMPLEX altrove). -->
+  <AppDrawer
     :visible="props.visible"
-    position="right"
-    :style="{ width: larghezzaDrawer }"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="t('amministrazione.operatore')"
+    :icon="NAV_ICONS.OPERATORE"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="larghezzaDrawer"
+    :readonly="isReadonly"
+    :modificato="modificatoTutto"
+    :conferma-uscita="tutto.chiudiConConferma"
+    :footer="activeTab === 'dati' ? 'form' : 'chiudi'"
+    :loading="loading || creazione.loading.value"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="onSave"
   >
-    <template #header>
-      <DrawerTitle :modificato="modificatoTutto" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amministrazione.operatore')" :icon="NAV_ICONS.OPERATORE" />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
     <Tabs v-model:value="activeTab">
       <TabList>
         <Tab value="dati">{{ t('amministrazione.tab_dati') }}</Tab>
@@ -621,11 +618,6 @@ const suVisibile = gestoreVisibile(emit, onClose)
             outlined size="small"
             @click="onInvita" />
         </div>
-
-        <!-- Footer Salva/Annulla -->
-        <div>
-          <FormFooter :loading="loading || creazione.loading.value" :disabled="!canSave" @save="onSave" @cancel="onClose" />
-        </div>
       </TabPanel>
 
       <!-- Tab Permessi: solo modifica -->
@@ -634,7 +626,6 @@ const suVisibile = gestoreVisibile(emit, onClose)
       </TabPanel>
       </TabPanels>
     </Tabs>
-    </div>
 
     <!-- Il consenso al riuso della credenziale (F-4): la domanda del DB, e cio'
          che l'admin sta per collegare. Conferma = si dichiara l'id letto. -->
@@ -681,7 +672,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
       @soggetto-creato="onSoggettoCreato"
       @annullato="resolverVisible = false"
     />
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>

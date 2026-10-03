@@ -18,6 +18,8 @@ import { toTimestampString, toDateString } from '../../core/utils/date'
 import AppDialog from '../../core/components/AppDialog.vue'
 import Textarea from 'primevue/textarea'
 import DatePicker from 'primevue/datepicker'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
+import { DATE_FORMAT } from '../../core/constants'
 
 const { t } = useI18n()
 const store = usePraticheStore()
@@ -97,10 +99,14 @@ async function onSave() {
 function onCancel() {
   emit('update:visible', false)
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ motivo: motivo.value, dataInizio: dataInizio.value, dataFine: dataFine.value, dataRiattivazionePrevista: dataRiattivazionePrevista.value }), { visibile: () => props.visible })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="props.visible"
     :header="header"
     width="sm"
@@ -122,13 +128,13 @@ function onCancel() {
         <div class="form-field">
           <label>{{ t('pratiche.sosp_data_inizio') }} *</label>
           <DatePicker v-model="dataInizio" show-time hour-format="24"
-            date-format="dd/mm/yy" show-icon :max-date="maxDate" />
+            :date-format="DATE_FORMAT" show-icon :max-date="maxDate" />
           <small class="app-text-muted">{{ t('pratiche.sosp_data_hint') }}</small>
         </div>
         <div class="form-field">
           <label>{{ t('pratiche.sosp_riattivazione_prevista') }}</label>
           <DatePicker v-model="dataRiattivazionePrevista"
-            date-format="dd/mm/yy" show-icon show-button-bar />
+            :date-format="DATE_FORMAT" show-icon show-button-bar />
           <small class="app-text-muted">{{ t('pratiche.sosp_prevista_hint') }}</small>
         </div>
       </template>
@@ -138,7 +144,7 @@ function onCancel() {
         <div class="form-field">
           <label>{{ t('pratiche.sosp_data_fine') }} *</label>
           <DatePicker v-model="dataFine" show-time hour-format="24"
-            date-format="dd/mm/yy" show-icon :max-date="maxDate" />
+            :date-format="DATE_FORMAT" show-icon :max-date="maxDate" />
           <small class="app-text-muted">{{ t('pratiche.sosp_data_hint') }}</small>
         </div>
       </template>

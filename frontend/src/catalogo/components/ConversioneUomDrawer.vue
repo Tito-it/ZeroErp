@@ -8,15 +8,11 @@ import { useI18n } from 'vue-i18n'
 import { useConversioniUomStore } from '../stores/conversioniUom'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, DATE_FORMAT, STATUS_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
-import Drawer from 'primevue/drawer'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -26,7 +22,6 @@ const ALWAYS_VALID_FROM = '1900-01-01'
 const { t } = useI18n()
 const store = useConversioniUomStore()
 const { execute, loading, campiErrati } = useApiHandler()
-const isReadonly = useInjectReadonly()
 const uomLookup = useLookupCodici('catalogo.unita_misura', { immediate: true })
 
 const props = defineProps({
@@ -54,9 +49,6 @@ function isFieldLocked(name) {
   return isEdit.value && nonEditableFields.value.includes(name)
 }
 
-// Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
-// (pattern feedback_content_ready_after_show centralizzato in useDrawerContentReady).
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const selectedFromTipoId = computed(() => {
   const selected = uomLookup.items.value.find(item => item.id === form.value.uom_from_id)
   return selected?.tipo_uom_id ?? null
@@ -157,81 +149,75 @@ function close() {
   emit('cancelled')
 }
 
-// Chiusura per volonta' dell'utente: con modifiche non salvate chiede conferma.
-// Dopo il salvataggio riuscito resta `close()`, diretta.
-const chiudi = () => chiudiConConferma(close)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH.STANDARD }" :dismissable="true"
-    @after-show="onAfterShow">
-    <template #header>
-      <DrawerTitle :modificato="modificato" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.conversione_uom')" />
-    </template>
-
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <template v-if="contentReady">
-        <div class="form-grid">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_uom_da') }} *</label>
-            <LookupSelect v-model="form.uom_from_id" rel="catalogo.unita_misura"
-              :placeholder="t('catalogo.select_uom')" :disabled="isFieldLocked('uom_from_id')" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_uom_a') }} *</label>
-            <LookupSelect v-model="form.uom_to_id" rel="catalogo.unita_misura"
-              :placeholder="t('catalogo.select_uom')" filter-field="tipo_uom_id"
-              :filter-value="selectedFromTipoId" :disabled="isFieldLocked('uom_to_id')" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_fattore') }} *</label>
-            <InputNumber v-model="form.fattore" :min-fraction-digits="2" :max-fraction-digits="6" :min="0" mode="decimal" />
-          </div>
-        </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('common.data_da') }}</label>
-            <DatePicker
-              v-model="form.valido_dal"
-              :dateFormat="DATE_FORMAT"
-              showIcon
-              showButtonBar
-              :disabled="!isEdit && form.valido_dal_sempre"
-              :invalid="campiErrati.includes('valido_dal')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('common.data_a') }}</label>
-            <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
-              :invalid="campiErrati.includes('valido_al')"
-            />
-          </div>
-        </div>
-        <div v-if="!isEdit" class="form-grid">
-          <div class="form-field">
-            <label>{{ t('catalogo.validita_sempre') }}</label>
-            <ToggleSwitch v-model="form.valido_dal_sempre" />
-          </div>
-        </div>
-
-        <div v-if="isEdit" class="form-grid">
-          <div class="form-field">
-            <label>{{ t('indirizzi.campo_attivo') }}</label>
-            <ToggleSwitch v-model="form.attivo"
-              :invalid="campiErrati.includes('attivo')"
-            />
-          </div>
-        </div>
-      </template>
-
-      <div v-else class="app-loading">
-        <i :class="STATUS_ICONS.CARICAMENTO" style="font-size: 1.5rem;"></i>
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('catalogo.conversione_uom')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
+  >
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t('catalogo.field_uom_da') }} *</label>
+        <LookupSelect v-model="form.uom_from_id" rel="catalogo.unita_misura"
+          :placeholder="t('catalogo.select_uom')" :disabled="isFieldLocked('uom_from_id')" />
       </div>
-
-      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
+      <div class="form-field">
+        <label>{{ t('catalogo.field_uom_a') }} *</label>
+        <LookupSelect v-model="form.uom_to_id" rel="catalogo.unita_misura"
+          :placeholder="t('catalogo.select_uom')" filter-field="tipo_uom_id"
+          :filter-value="selectedFromTipoId" :disabled="isFieldLocked('uom_to_id')" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_fattore') }} *</label>
+        <InputNumber v-model="form.fattore" :min-fraction-digits="2" :max-fraction-digits="6" :min="0" mode="decimal" />
+      </div>
     </div>
-  </Drawer>
+
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('common.data_da') }}</label>
+        <DatePicker
+          v-model="form.valido_dal"
+          :dateFormat="DATE_FORMAT"
+          showIcon
+          showButtonBar
+          :disabled="!isEdit && form.valido_dal_sempre"
+          :invalid="campiErrati.includes('valido_dal')"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('common.data_a') }}</label>
+        <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+          :invalid="campiErrati.includes('valido_al')"
+        />
+      </div>
+    </div>
+    <div v-if="!isEdit" class="form-grid">
+      <div class="form-field">
+        <label>{{ t('catalogo.validita_sempre') }}</label>
+        <ToggleSwitch v-model="form.valido_dal_sempre" />
+      </div>
+    </div>
+
+    <div v-if="isEdit" class="form-grid">
+      <div class="form-field">
+        <label>{{ t('indirizzi.campo_attivo') }}</label>
+        <ToggleSwitch v-model="form.attivo"
+          :invalid="campiErrati.includes('attivo')"
+        />
+      </div>
+    </div>
+  </AppDrawer>
 </template>

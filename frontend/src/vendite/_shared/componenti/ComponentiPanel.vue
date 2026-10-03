@@ -57,6 +57,7 @@ import {
 
 // DataTable grezza: sono i componenti BoM della riga padre (sotto-righe del
 // documento, o `initialData` di anteprima), con prezzo editabile sulla cella.
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'

@@ -194,6 +194,7 @@ function close() {
 </script>
 
 <template>
+  <!-- conferma-uscita: nessuna — strumento di prova del prezzo: i campi sono parametri di interrogazione, non si salva niente (D-14) -->
   <AppDialog :visible="visible" @update:visible="v => emit('update:visible', v)"
     :header="t('vendite.listini.test_prezzo')" width="lg" close-only @cancel="close">
 

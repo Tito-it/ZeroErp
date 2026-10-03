@@ -7,13 +7,10 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCategorieClientiStore } from '../stores/categorieClienti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
-import Drawer from 'primevue/drawer'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -37,10 +34,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
@@ -126,90 +119,73 @@ async function handleSave() {
   )
   if (result !== null) { fissa(); emit('saved', result) }
 }
-
-function close() {
-  chiudiConConferma(() => {
-    emit('update:visible', false)
-    emit('cancelled')
-  })
-}
-const suVisibile = gestoreVisibile(emit, close)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.SIMPLE }"
-    :dismissable="true"
-    @after-show="onAfterShow"
+    :title="t('amministrazione.categorie_clienti.drawer_title')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.SIMPLE"
+    :readonly="isReadOnlyEffective"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('amministrazione.categorie_clienti.drawer_title')"
-      />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
-      <div class="form-grid">
-        <div class="form-field">
-          <label>{{ t('amministrazione.categorie_clienti.field_codice') }} <span v-if="!isEdit">*</span></label>
-          <InputText
-            v-model="form.codice"
-            :disabled="isEdit || isReadOnlyEffective"
-            :placeholder="t('amministrazione.categorie_clienti.field_codice_placeholder')"
-            maxlength="32"
-            :invalid="campiErrati.includes('codice')"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.categorie_clienti.field_descrizione') }} *</label>
-          <InputText
-            v-model="form.descrizione"
-            :disabled="isReadOnlyEffective"
-            :placeholder="t('amministrazione.categorie_clienti.field_descrizione_placeholder')"
-            maxlength="255"
-            :invalid="campiErrati.includes('descrizione')"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.categorie_clienti.field_ordinamento') }}</label>
-          <InputNumber
-            v-model="form.ordinamento"
-            :disabled="isReadOnlyEffective"
-            :min="0"
-            showButtons
-            :invalid="campiErrati.includes('ordinamento')"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.categorie_clienti.field_partecipa_promo') }}</label>
-          <ToggleSwitch v-model="form.partecipa_promo" :disabled="isReadOnlyEffective"
-            :invalid="campiErrati.includes('partecipa_promo')" />
-          <small class="app-text-muted">
-            {{ t('amministrazione.categorie_clienti.field_partecipa_promo_hint') }}
-          </small>
-        </div>
-        <div class="form-field">
-          <label>{{ t('common.attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
-            :invalid="campiErrati.includes('attivo')" />
-        </div>
-
-        <Message v-if="isEdit" severity="info" :closable="false">
-          {{ t('amministrazione.categorie_clienti.codice_immutable_hint') }}
-        </Message>
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t('amministrazione.categorie_clienti.field_codice') }} <span v-if="!isEdit">*</span></label>
+        <InputText
+          v-model="form.codice"
+          :disabled="isEdit || isReadOnlyEffective"
+          :placeholder="t('amministrazione.categorie_clienti.field_codice_placeholder')"
+          maxlength="32"
+          :invalid="campiErrati.includes('codice')"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('amministrazione.categorie_clienti.field_descrizione') }} *</label>
+        <InputText
+          v-model="form.descrizione"
+          :disabled="isReadOnlyEffective"
+          :placeholder="t('amministrazione.categorie_clienti.field_descrizione_placeholder')"
+          maxlength="255"
+          :invalid="campiErrati.includes('descrizione')"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('amministrazione.categorie_clienti.field_ordinamento') }}</label>
+        <InputNumber
+          v-model="form.ordinamento"
+          :disabled="isReadOnlyEffective"
+          :min="0"
+          showButtons
+          :invalid="campiErrati.includes('ordinamento')"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('amministrazione.categorie_clienti.field_partecipa_promo') }}</label>
+        <ToggleSwitch v-model="form.partecipa_promo" :disabled="isReadOnlyEffective"
+          :invalid="campiErrati.includes('partecipa_promo')" />
+        <small class="app-text-muted">
+          {{ t('amministrazione.categorie_clienti.field_partecipa_promo_hint') }}
+        </small>
+      </div>
+      <div class="form-field">
+        <label>{{ t('common.attivo') }}</label>
+        <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+          :invalid="campiErrati.includes('attivo')" />
       </div>
 
-      <FormFooter
-        :loading="loading"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="close"
-      />
+      <Message v-if="isEdit" severity="info" :closable="false">
+        {{ t('amministrazione.categorie_clienti.codice_immutable_hint') }}
+      </Message>
     </div>
-  </Drawer>
+  </AppDrawer>
 </template>

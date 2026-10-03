@@ -120,6 +120,50 @@ Le regole di consistenza sono:
 5. **Nessun testo hardcoded** — tutto via `$t()`, sempre
 6. **Modifiche al pattern devono essere globali** — se cambi il paginator, cambi `useSearchTable` una volta e tutte le liste si aggiornano
 
+### Import PrimeVue riservati — li ferma il lint
+
+⛔ Un componente PrimeVue che ha un wrapper nostro **non si importa
+direttamente**. Lo ferma `no-restricted-imports` in
+[eslint.config.js](../../../../frontend/eslint.config.js)
+(`IMPORT_PRIMEVUE_RISERVATI`, dal 2026-10-03): l'errore compare nell'editor
+mentre si scrive, e `npm run lint` è rosso. La regola la verifica lo strumento,
+non la memoria di chi scrive.
+
+| Import | Al suo posto | Chi lo può importare |
+| --- | --- | --- |
+| `primevue/dialog` | `<AppDialog>` | solo `core/components/AppDialog.vue` |
+| `primevue/confirmdialog` | `useConfirmAction` | solo `App.vue` (la ConfirmDialog globale) |
+| `primevue/useconfirm` | `useConfirmAction` | solo `core/composables/useConfirmAction.js` |
+| `primevue/datatable` | `<ListaConfigurabile>` | i componenti **standard** (sezione `standard` del registro, che il lint legge da lì), più le eccezioni del registro marcate sul punto (§«Regola zero della lista») |
+| `primevue/drawer` | `<AppDrawer>` | solo `core/components/AppDrawer.vue`, più `AppLayout` (menu mobile) e `FiltriLista` (filtri dal basso), che non sono drawer laterali (dal 2026-10-03, a migrazione finita: nessun registro) |
+
+- **La sede** è esentata dalla configurazione, non da un commento.
+  ⚠️ Il lint da solo **non** la protegge: un `eslint-disable-next-line
+  no-restricted-imports` lo zittisce in qualunque file (provato il 2026-10-03:
+  `primevue/dialog` importato così, lint verde). A fermarlo sono i guard, che le
+  direttive non le leggono: `check-dialog-chrome.mjs` per dialog, confirmdialog e
+  useconfirm, il registro per la DataTable, `check-drawer-width.mjs` per il
+  drawer (con la larghezza scritta a mano sul tag di `<AppDrawer>`).
+- **Un'eccezione della DataTable** si scrive in tre posti, ed è voluto: il
+  motivo in un commento sopra l'import,
+  `// eslint-disable-next-line no-restricted-imports -- <motivo>` subito sopra
+  l'import, e la riga nel registro (`scripts/check-datatable-baseline.mjs
+  --baseline`). Il lint da solo non basterebbe: un commento costa dieci secondi,
+  mentre il registro è un cricchetto e la sua modifica si vede nel diff. ⚠️ La
+  direttiva **non** conta come motivazione per il registro.
+- **Un'eccezione scaduta è un errore** (`reportUnusedDisableDirectives:
+  'error'`): se l'import se ne va e il commento resta, il lint è rosso.
+- I guard `check-dialog-chrome.mjs` e `check-datatable-baseline.mjs` restano.
+  Il primo controlla anche il chrome (`header`, `closable`, `confirmAction`), il
+  secondo il verso del debito.
+- **Un componente entra nella tabella quando nasce il suo wrapper**, non prima:
+  un divieto senza un'alternativa da indicare non si può rispettare. Il caso
+  di `primevue/drawer`: il 2026-10-03 `AppDrawer` era un guscio minimo con un
+  consumatore e 82 file montavano `<Drawer>` direttamente; prima è nata la sede
+  vera (§«Drawer (nuovo e modifica)»), poi gli 80 drawer laterali ci sono passati sopra, e solo
+  allora il drawer è entrato in tabella — a zero, senza registro. Storia e
+  decisioni in `work-done/analisi-fe-chrome-drawer.md`.
+
 ---
 
 ## Layout generale
@@ -327,7 +371,9 @@ Il presidio (`scripts/check-datatable-baseline.mjs`) confronta gli import di
 **elenca i file**: se ne compare uno nuovo è rosso e lo nomina — hai aggiunto
 una lista fuori standard, o un'eccezione senza il commento che la motiva. È un
 cricchetto: rosso anche quando il numero **cala**, perché la baseline va
-abbassata nello stesso giro.
+abbassata nello stesso giro. Prima ancora del guard, l'import lo ferma il lint
+(§«Import PrimeVue riservati»): un'eccezione vuole anche la direttiva
+`eslint-disable-next-line no-restricted-imports` sopra l'import.
 
 ### Regole fisse
 
@@ -1802,6 +1848,57 @@ lo schermo. Regola globale in [main.css](../../../../frontend/src/assets/main.cs
 Nessun drawer puo' deviare da questa logica con CSS scoped locale: se
 serve un overflow diverso, modificare la regola globale, non sovrascriverla.
 
+### Sede: `AppDrawer` (dal 2026-10-03)
+
+⭐ Il chrome di un drawer laterale ha **una sede**: `core/components/AppDrawer.vue`,
+mirror di `AppDialog`. Il guscio porta testata, larghezza, uscita con
+conferma, montaggio a fine animazione, corpo con readonly e footer; il
+chiamante porta solo il **contenuto** (dettaglio nel catalogo BB frontend).
+
+```vue
+<AppDrawer
+  :visible="visible" @update:visible="(v) => emit('update:visible', v)"
+  :title="t('…')" :icon="MANAGE_ICONS.X" :action="t('common.edit')"
+  :width="DRAWER_WIDTH.STANDARD"
+  :modificato="modificato" :conferma-uscita="chiudiConConferma"
+  :loading="loading" :save-disabled="!canSave" @save="onSave"
+>
+  <div class="form-grid">…</div>
+</AppDrawer>
+```
+
+- **Il footer è FISSO in basso** (decisione di Tid, 2026-10-03): su un form
+  lungo il Salva resta a vista. Varianti: `footer="form"` (Annulla/Salva),
+  `"chiudi"`, `"nessuno"` (master-detail con il form inline aperto, che ha il
+  suo Annulla/Salva nel corpo).
+- **Ogni uscita passa da `confermaUscita`**: X, ESC, clic fuori, Annulla,
+  Chiudi. Un drawer con un form gli passa il `chiudiConConferma` di
+  `useDrawerFormPreserve` (o di `unisciFotografie`, se le fotografie sono più
+  d'una).
+- **La larghezza è un valore di `DRAWER_WIDTH`**, mai una stringa CSS:
+  `check-drawer-width.mjs` ferma quella scritta a mano sul tag.
+- **La sola lettura protegge il corpo** (`app-readonly`) per default. Un drawer
+  che la protegge **nascondendo le azioni** — consultazione, liste con menu di
+  riga, personalizzazioni dell'utente — passa `:proteggi-corpo="false"`: la
+  catena readonly arriva lo stesso a `FormFooter` e ai figli, ma il corpo resta
+  cliccabile (`RowActionsMenu` non è `.app-escape`).
+- **Un documento** sceglie il footer con il BB `useFooterDocumento`
+  (Annulla/Salva finché la testata si modifica, «Chiudi» quando il documento c'è
+  ma non si tocca, niente col form di una riga aperto).
+- **Un pulsante in più accanto ad Annulla/Salva** (il «Ripristina» delle
+  personalizzazioni) va nello slot `#footer-azioni`: il footer resta del
+  guscio, con la sua uscita. Lo slot `#footer` (che sostituisce tutto) è per
+  i casi veri, come un wizard.
+- **Un'eccezione salvabile in un contesto in sola lettura** (i riferimenti
+  dell'atto di un contratto ATTIVO) passa `:footer-readonly="false"` e libera
+  i suoi campi con `app-escape`. La condizione deve già escludere l'area in
+  sola lettura: l'override non guarda i permessi.
+- **Chi deve aspettare la fine dell'animazione** (l'auto-salvataggio della
+  bozza) ascolta `@after-show` di `AppDrawer`.
+- ✅ **Tutti i drawer laterali sono su `AppDrawer`** dal 2026-10-03, e il lint
+  ferma `primevue/drawer` fuori dalle sedi (§«Import PrimeVue riservati»). Lo
+  schema qui sotto descrive ciò che il guscio rende.
+
 ### Struttura interna
 
 ```
@@ -1818,7 +1915,8 @@ serve un overflow diverso, modificare la regola globale, non sovrascriverla.
 │     div.form-grid-2col           │  ← griglia 2 colonne (opzionale)
 │       ...                        │
 │                                  │
-│   FormFooter                   │  ← componente riutilizzabile
+├──────────────────────────────────┤
+│   FormFooter                     │  ← footer FISSO (slot #footer)
 │     [Annulla]        [Salva]     │
 └──────────────────────────────────┘
 ```
@@ -1882,7 +1980,21 @@ le Dialog: incapsula chrome uniforme + `FormFooter` integrato.
 
 ⛔ `import Dialog from 'primevue/dialog'` è lecito in **un solo file**,
 `core/components/AppDialog.vue` — presidiato da
-`frontend/scripts/check-dialog-chrome.mjs` (`npm run guards`, in CI).
+`frontend/scripts/check-dialog-chrome.mjs` (`npm run guards`, in CI) e, nell'editor,
+dal lint (§«Import PrimeVue riservati»).
+
+⭐ **Uscire con dati inseriti chiede** (dal 2026-10-03, D-14 di
+`work-done/analisi-fe-chrome-drawer.md`, decisione di Tid: nessuna
+eccezione). Ogni uscita — X, ESC, clic sulla maschera, Annulla, e il `chiudi`
+che lo slot `#footer` riceve — passa da `confermaUscita(chiudi)`. Un dialog
+con dei campi gli passa il `chiudiConConferma` della sua fotografia
+(`useFotografiaDialog`), che chiede solo se qualcosa è cambiato rispetto
+all'apertura (o al caricamento, per chi carica dati aprendosi). Un footer
+personalizzato esce con il `chiudi` dello slot, **mai** con un `emit` diretto.
+Un dialog i cui campi non sono dati (una ricerca, i parametri di uno strumento
+di prova) lo dichiara sopra il tag:
+`<!-- conferma-uscita: nessuna — <motivo> -->`. Presidio:
+`check-dialog-chrome.mjs`, regola 6.
 
 Cosa centralizza:
 
@@ -4442,7 +4554,7 @@ caso peggiore. Il test è nato da lì.
 | `FiltriLista` | I FILTRI di una lista: in linea su desktop, in un drawer dal basso sotto i 1024px (o su un touch senza hover), con il segno di quanti ne sono attivi e «Pulisci filtri». Due slot: `#sempre` (la ricerca) e il default (gli altri filtri). ⚠️ I filtri dentro si legano con un **binder**, non con un `ref` a senso unico (§«Un filtro si lega con un binder») | `store` \| `segno`, `inert`, `titolo` | FornitoriSearchTable |
 | `FiltroPeriodo` | Il PERIODO come UN filtro: i due estremi `data_da`/`data_a` resi insieme, una cella sola nella griglia del drawer | `periodo` (da `bindPeriodo`), `placeholderDa/A` | AuditLogView |
 | `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | SoggettiSearchTable |
-| `AppDrawer` | Drawer generico con header + footer + slot body | `title`, `width` | CanaleIncassoDrawer |
+| `AppDrawer` | **La sede del chrome dei drawer laterali**: testata, larghezza dalla scala, uscita con conferma, montaggio a fine animazione, corpo e readonly, footer fisso (§«Drawer (nuovo e modifica)») | `title`, `icon`, `action`, `width`, `modificato`, `confermaUscita`, `footer` | CanaleIncassoDrawer |
 
 #### Building block form
 
@@ -4569,7 +4681,7 @@ Soggetto, indirizzi, contatti, conti bancari e geografia: fino al 2026-09-26 sta
 | Costante | Scopo |
 | --- | --- |
 | `DRAWER_WIDTH` | Larghezze drawer: SIMPLE, STANDARD, COMPLEX, WIDE, WIDE_PLUS, XLARGE (§«Larghezze standard») |
-| `DATE_FORMAT` | Formato data PrimeVue DatePicker (`dd/mm/yy`) |
+| `DATE_FORMAT` | Formato data PrimeVue DatePicker (`dd/mm/yy`). ⛔ Sede unica: ogni `DatePicker` lo riceve come `:date-format="DATE_FORMAT"`, e il locale di PrimeVue (`core/primevue-locale.js`) lo usa come default — fino al 2026-10-03 il letterale era scritto a mano in 27 punti |
 | `TOAST_DURATION` | Durata toast: SUCCESS, INFO, WARN, ERROR, ERROR_CON_SOLUZIONE, SYSTEM_ERROR, AZIONI (§«Notifiche») |
 | `TABS` | Max tab aperti |
 | `BREAKPOINTS` | Breakpoint responsive (MOBILE, TABLET) |

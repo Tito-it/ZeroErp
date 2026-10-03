@@ -34,6 +34,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEsposizioniComponente, severitaEsposizione } from '../../../catalogo/composables/useEsposizioniComponente'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
@@ -48,6 +49,7 @@ import { useAuthStore } from '../../../stores/auth'
 import { PRICING_ACTIONS } from '../../constants'
 
 import { STATUS_ICONS } from '../../../core/constants'
+import { useFotografiaDialog } from '../../../core/composables/useFotografiaDialog'
 const { t, te } = useI18n()
 // Il modo di esposizione in fattura per esteso, con l'etichetta dal DB.
 const { etichetta: etichettaEsposizione } = useEsposizioniComponente()
@@ -178,6 +180,7 @@ function initPayloadDaPreview(rows) {
     }
   }
   prezzoOverrides.value = initOverrides
+  fotografia.fissa()
 }
 
 // Watch sui parametri chiave: se cambia articolo/uom/qta mentre la
@@ -318,10 +321,14 @@ function handleCancel() {
   emit('cancel')
   emit('update:visible', false)
 }
+
+// D-14 (rilievo di Tid): i prezzi dei componenti sono lavoro dell'operatore; la fotografia si fissa a preview caricata, sui prezzi suggeriti o ripristinati.
+const fotografia = useFotografiaDialog(() => ({ prezzi: prezzoOverrides.value }), { visibile: () => props.visible, fissaAllApertura: false })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="props.visible"
     @update:visible="(v) => emit('update:visible', v)"
     :header="articolo

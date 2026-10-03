@@ -6,6 +6,8 @@
 //
 // Riferimento campi: https://primevue.org/configuration/#locale
 
+import { DATE_FORMAT } from './constants'
+
 export const localeIt = {
   startsWith: 'Inizia per',
   contains: 'Contiene',
@@ -65,7 +67,9 @@ export const localeIt = {
   nextSecond: 'Secondo successivo',
   am: 'am',
   pm: 'pm',
-  dateFormat: 'dd/mm/yy',
+  // Il default di ogni DatePicker: la stessa costante dei `:date-format`
+  // espliciti, una sede sola per il formato.
+  dateFormat: DATE_FORMAT,
   firstDayOfWeek: 1, // Lunedì
   today: 'Oggi',
   weekHeader: 'Sett',

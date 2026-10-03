@@ -176,40 +176,38 @@ function onSave() {
   emit('confirm', { files: stagedFiles.value })
 }
 
-// Scopo: Intercetta ogni richiesta di chiusura. Con file in staging mostra
-//        il warning di abbandono (in draft mode lo stato resta invariato).
-function requestClose() {
-  if (stagedFiles.value.length > 0) {
-    confirmAction({
-      header: t('documenti.emissione.abbandona_titolo'),
-      message: props.advancesState
-        ? t('documenti.emissione.abbandona_messaggio_draft')
-        : t('documenti.emissione.abbandona_messaggio'),
-      danger: true,
-      acceptLabel: t('documenti.emissione.abbandona_conferma'),
-      onAccept: doClose,
-    })
+// Scopo: la conferma d'uscita del dialog (`conferma-uscita` di AppDialog: X,
+//        ESC, Annulla passano tutte da qui). Con file in staging avvisa che
+//        si abbandonano (in draft mode lo stato resta invariato).
+// ⛔ UNA conferma sola (2026-10-03): questa e' gia' la fotografia del dialog
+//    — il lavoro dell'operatore sono gli allegati scelti. Sommata a
+//    `useFotografiaDialog` usciva una seconda domanda dentro la prima.
+function confermaAbbandono(chiudi) {
+  if (stagedFiles.value.length === 0) {
+    chiudi()
     return
   }
-  doClose()
-}
-
-function doClose() {
-  stagedFiles.value = []
-  emit('cancel')
-  emit('update:visible', false)
-}
-
-// AppDialog e' controllato: ogni `update:visible(false)` passa dal warning.
-function onDialogVisible(val) {
-  if (!val) requestClose()
+  confirmAction({
+    header: t('documenti.emissione.abbandona_titolo'),
+    message: props.advancesState
+      ? t('documenti.emissione.abbandona_messaggio_draft')
+      : t('documenti.emissione.abbandona_messaggio'),
+    danger: true,
+    acceptLabel: t('documenti.emissione.abbandona_conferma'),
+    onAccept: () => {
+      stagedFiles.value = []
+      chiudi()
+    },
+  })
 }
 
 onBeforeUnmount(revokePreview)
+
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="confermaAbbandono"
     :visible="visible"
     :header="header || t('documenti.emissione.titolo')"
     :width="dialogWidth"
@@ -217,7 +215,8 @@ onBeforeUnmount(revokePreview)
     :save-disabled="saveDisabled"
     :save-label="confirmLabel || t('documenti.emissione.conferma')"
     :close-only="isAppendMode"
-    @update:visible="onDialogVisible"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancel')"
     @save="onSave"
   >
     <div class="documento-emissione">

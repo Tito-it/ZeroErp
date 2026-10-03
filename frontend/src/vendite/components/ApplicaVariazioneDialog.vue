@@ -11,10 +11,12 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import InputNumber from 'primevue/inputnumber'
 // DataTable grezza: anteprima dry_run delle righe che la variazione toccherebbe,
 // dentro il dialog di conferma — non paginata, non configurabile.
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
@@ -89,6 +91,9 @@ function backToInput() {
   step.value = 'input'
   preview.value = null
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ variazionePct: variazionePct.value, decimali: decimali.value }), { visibile: () => props.visible })
 </script>
 
 <template>
@@ -98,7 +103,8 @@ function backToInput() {
        responsive) e classe .app-form-footer-btn condivisa col FormFooter:
        nessun CSS duplicato. Non e' il pattern fisso Annulla/Salva, quindi
        lo slot override sostituisce il FormFooter di default. -->
-  <AppDialog :visible="visible" @update:visible="onHide"
+  <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma" :visible="visible" @update:visible="onHide"
     :header="t('vendite.listini.variazione_pct_titolo')" :width="dialogWidth">
 
     <!-- Step 1: Input -->
@@ -144,11 +150,11 @@ function backToInput() {
          allineati a destra (.app-form-footer) con stile condiviso FormFooter
          (.app-form-footer-btn). Annulla/Indietro = secondary (.app-escape);
          Conferma = verde standard di conferma (come il Salva del FormFooter). -->
-    <template #footer>
+    <template #footer="{ chiudi }">
       <div v-if="step === 'input'" class="app-form-footer">
         <Button :label="t('common.cancel')" :icon="MANAGE_ICONS.CANCEL"
           severity="secondary" class="app-escape app-form-footer-btn"
-          v-tooltip.top="t('common.cancel')" @click="onHide" />
+          v-tooltip.top="t('common.cancel')" @click="chiudi" />
         <Button :label="t('vendite.listini.variazione_pct_preview')" :icon="MANAGE_ICONS.ANTEPRIMA"
           class="app-form-footer-btn" v-tooltip.top="t('vendite.listini.variazione_pct_preview')"
           :disabled="!canPreview" :loading="loading" @click="loadPreview" />

@@ -23,25 +23,20 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateDocumentiStore } from '../stores/templateDocumenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { contextBuilderOptions } from '../constants/documentiContextBuilders'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import TemplateVersioniSection from './TemplateVersioniSection.vue'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
 import Divider from 'primevue/divider'
-
-
 
 const { t } = useI18n()
 const store = useTemplateDocumentiStore()
@@ -56,10 +51,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 // `mode` evolve da create a edit dopo il primo save (memoria
@@ -240,178 +231,160 @@ async function handleSave() {
   }
 }
 
-function close() {
-  emit('update:visible', false)
-  emit('cancelled')
-}
 // Il form inline delle versioni (sezione figlia) ha la sua fotografia: la
 // chiusura chiede conferma se UNO dei due e' modificato, con un dialog solo.
 const versioniRef = ref(null)
 const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
   unisciFotografie({ modificato, chiudiConConferma }, () => versioniRef.value)
-const chiudi = () => chiudiTutto(close)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    :dismissable="true"
-    @after-show="onAfterShow"
+    :title="t('config.modelli_documenti.drawer_title')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :readonly="isReadOnlyEffective"
+    :modificato="modificatoTutto"
+    :conferma-uscita="chiudiTutto"
+    :footer="formVersioneAperto ? 'nessuno' : 'form'"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificatoTutto"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('config.modelli_documenti.drawer_title')"
-      />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
-      <div class="form-grid">
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_codice') }} *</label>
-            <InputText v-model="form.codice" :disabled="isReadOnlyEffective" maxlength="120" fluid
-              :invalid="campiErrati.includes('codice')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_codice_interno') }} *</label>
-            <InputText v-model="form.codice_interno" :disabled="isReadOnlyEffective" maxlength="120" fluid
-              :invalid="campiErrati.includes('codice_interno')"
-            />
-          </div>
-        </div>
+    <div class="form-grid">
+      <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('config.modelli_documenti.field_descrizione') }} *</label>
-          <InputText v-model="form.descrizione" :disabled="isReadOnlyEffective" maxlength="500" fluid
-            :invalid="campiErrati.includes('descrizione')"
+          <label>{{ t('config.modelli_documenti.field_codice') }} *</label>
+          <InputText v-model="form.codice" :disabled="isReadOnlyEffective" maxlength="120" fluid
+            :invalid="campiErrati.includes('codice')"
           />
         </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_tipo_output') }} *</label>
-            <LookupSelect
-              v-model="form.tipo_documento_output_id"
-              rel="documenti.tipi_documento_output"
-              :placeholder="t('config.modelli_documenti.filter_tipo_output')"
-              :disabled="isEdit || isReadOnlyEffective"
-            />
-            <small class="app-text-muted">
-              {{ t('config.modelli_documenti.field_immutable_after_create') }}
-            </small>
-          </div>
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_sorgente') }} *</label>
-            <LookupSelect
-              v-model="form.sorgente_tipo_id"
-              rel="config.sorgenti"
-              :placeholder="t('config.modelli_documenti.filter_sorgente')"
-              :disabled="isEdit || isReadOnlyEffective"
-            />
-          </div>
-        </div>
         <div class="form-field">
-          <label>{{ t('config.modelli_documenti.field_emittente') }} *</label>
-          <EmittenteFiscaleField
-            v-model="form.emittente_fiscale_id"
-            :record="form"
-            :is-edit="isEdit"
-            :disabled="isReadOnlyEffective"
+          <label>{{ t('config.modelli_documenti.field_codice_interno') }} *</label>
+          <InputText v-model="form.codice_interno" :disabled="isReadOnlyEffective" maxlength="120" fluid
+            :invalid="campiErrati.includes('codice_interno')"
+          />
+        </div>
+      </div>
+      <div class="form-field">
+        <label>{{ t('config.modelli_documenti.field_descrizione') }} *</label>
+        <InputText v-model="form.descrizione" :disabled="isReadOnlyEffective" maxlength="500" fluid
+          :invalid="campiErrati.includes('descrizione')"
+        />
+      </div>
+
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_tipo_output') }} *</label>
+          <LookupSelect
+            v-model="form.tipo_documento_output_id"
+            rel="documenti.tipi_documento_output"
+            :placeholder="t('config.modelli_documenti.filter_tipo_output')"
+            :disabled="isEdit || isReadOnlyEffective"
           />
           <small class="app-text-muted">
-            {{ t('config.modelli_documenti.field_emittente_hint') }}
+            {{ t('config.modelli_documenti.field_immutable_after_create') }}
           </small>
         </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_context_builder') }} *</label>
-            <Select
-              v-model="form.context_builder_code"
-              :options="contextBuilderOpts"
-              option-label="label"
-              option-value="code"
-              :placeholder="t('config.modelli_documenti.field_context_builder_placeholder')"
-              :disabled="isReadOnlyEffective"
-              fluid
-              :invalid="campiErrati.includes('context_builder_code')"
-            />
-            <Message
-              v-if="isSelectedBuilderUnregistered"
-              severity="warn"
-              :closable="false"
-              class="mt-025"
-            >
-              {{ t('config.modelli_documenti.field_context_builder_unregistered_warn') }}
-            </Message>
-          </div>
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_file_name_pattern') }}</label>
-            <InputText
-              v-model="form.file_name_pattern"
-              :disabled="isReadOnlyEffective"
-              :placeholder="t('config.modelli_documenti.field_file_name_pattern_placeholder')"
-              maxlength="255"
-              fluid
-              :invalid="campiErrati.includes('file_name_pattern')"
-            />
-            <small class="app-text-muted">
-              {{ t('config.modelli_documenti.field_file_name_pattern_hint') }}
-            </small>
-          </div>
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_sorgente') }} *</label>
+          <LookupSelect
+            v-model="form.sorgente_tipo_id"
+            rel="config.sorgenti"
+            :placeholder="t('config.modelli_documenti.filter_sorgente')"
+            :disabled="isEdit || isReadOnlyEffective"
+          />
         </div>
+      </div>
+      <div class="form-field">
+        <label>{{ t('config.modelli_documenti.field_emittente') }} *</label>
+        <EmittenteFiscaleField
+          v-model="form.emittente_fiscale_id"
+          :record="form"
+          :is-edit="isEdit"
+          :disabled="isReadOnlyEffective"
+        />
+        <small class="app-text-muted">
+          {{ t('config.modelli_documenti.field_emittente_hint') }}
+        </small>
+      </div>
 
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_is_default') }}</label>
-            <ToggleSwitch v-model="form.is_default" :disabled="isReadOnlyEffective"
-              :invalid="campiErrati.includes('is_default')"
-            />
-            <small class="app-text-muted">
-              {{ t('config.modelli_documenti.field_is_default_hint') }}
-            </small>
-          </div>
-          <div class="form-field">
-            <label>{{ t('common.attivo') }}</label>
-            <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
-              :invalid="campiErrati.includes('attivo')"
-            />
-          </div>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_context_builder') }} *</label>
+          <Select
+            v-model="form.context_builder_code"
+            :options="contextBuilderOpts"
+            option-label="label"
+            option-value="code"
+            :placeholder="t('config.modelli_documenti.field_context_builder_placeholder')"
+            :disabled="isReadOnlyEffective"
+            fluid
+            :invalid="campiErrati.includes('context_builder_code')"
+          />
+          <Message
+            v-if="isSelectedBuilderUnregistered"
+            severity="warn"
+            :closable="false"
+            class="mt-025"
+          >
+            {{ t('config.modelli_documenti.field_context_builder_unregistered_warn') }}
+          </Message>
+        </div>
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_file_name_pattern') }}</label>
+          <InputText
+            v-model="form.file_name_pattern"
+            :disabled="isReadOnlyEffective"
+            :placeholder="t('config.modelli_documenti.field_file_name_pattern_placeholder')"
+            maxlength="255"
+            fluid
+            :invalid="campiErrati.includes('file_name_pattern')"
+          />
+          <small class="app-text-muted">
+            {{ t('config.modelli_documenti.field_file_name_pattern_hint') }}
+          </small>
         </div>
       </div>
 
-      <Message v-if="!isEdit" severity="info" :closable="false" class="mt-1">
-        {{ t('config.modelli_documenti.create_first_save_hint') }}
-      </Message>
-
-      <template v-if="isEdit && effectiveId">
-        <Divider />
-        <TemplateVersioniSection
-          ref="versioniRef"
-          :template-id="effectiveId"
-          :emittente-fiscale-id="emittenteLetto"
-          :versione-contesto-builder="versioneContestoBuilder"
-          :readonly="isReadOnlyEffective"
-          @form-aperto="(v) => { formVersioneAperto = v }"
-        />
-      </template>
-
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_is_default') }}</label>
+          <ToggleSwitch v-model="form.is_default" :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('is_default')"
+          />
+          <small class="app-text-muted">
+            {{ t('config.modelli_documenti.field_is_default_hint') }}
+          </small>
+        </div>
+        <div class="form-field">
+          <label>{{ t('common.attivo') }}</label>
+          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('attivo')"
+          />
+        </div>
+      </div>
     </div>
 
-    <template #footer>
-      <FormFooter
-        v-if="!formVersioneAperto"
-        :loading="loading"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="chiudi"
+    <Message v-if="!isEdit" severity="info" :closable="false" class="mt-1">
+      {{ t('config.modelli_documenti.create_first_save_hint') }}
+    </Message>
+
+    <template v-if="isEdit && effectiveId">
+      <Divider />
+      <TemplateVersioniSection
+        ref="versioniRef"
+        :template-id="effectiveId"
+        :emittente-fiscale-id="emittenteLetto"
+        :versione-contesto-builder="versioneContestoBuilder"
+        :readonly="isReadOnlyEffective"
+        @form-aperto="(v) => { formVersioneAperto = v }"
       />
     </template>
-  </Drawer>
+  </AppDrawer>
 </template>

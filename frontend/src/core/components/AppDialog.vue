@@ -78,6 +78,17 @@ const props = defineProps({
   // FormFooter eredita readonly=true e nasconde il pulsante di conferma —
   // pur essendo l'azione legittima sullo stato corrente.
   readonly: { type: Boolean, default: undefined },
+  // ⭐ USCIRE CON DATI INSERITI CHIEDE (2026-10-03, D-14 di
+  //    work-done/analisi-fe-chrome-drawer.md, decisione di Tid). Ogni
+  //    uscita — X, ESC, clic sulla maschera, Annulla, e il `chiudi` dello slot
+  //    `#footer` — passa da `confermaUscita(chiudi)`: un dialog con dei campi
+  //    gli passa il `chiudiConConferma` della sua fotografia
+  //    (useDrawerFormPreserve), che chiede solo se qualcosa e' cambiato. Fino a
+  //    quel giorno i 43 dialog con campi si chiudevano in silenzio, buttando
+  //    cio' che si era scritto (rilievo di Tid sul dialog dei componenti).
+  //    Mirror di `AppDrawer`. Presidio: `check-dialog-chrome.mjs` (un
+  //    `AppDialog` con campi deve passarla).
+  confermaUscita: { type: Function, default: (chiudi) => chiudi() },
 })
 
 const emit = defineEmits(['update:visible', 'save', 'cancel'])
@@ -131,12 +142,17 @@ provide(
   computed(() => (props.readonly === undefined ? parentReadonly.value : props.readonly)),
 )
 
-// Scopo: l'UNICA uscita senza salvare — footer Annulla/Chiudi ed ESC (e la X o
-//        la maschera, se un consumer le riaccende). Ordine fisso: prima
-//        `cancel`, poi `update:visible=false`.
-function onCancel() {
+// Scopo: l'UNICA uscita senza salvare — footer Annulla/Chiudi, ESC, `chiudi`
+//        dello slot (e la X o la maschera, se un consumer le riaccende).
+//        `chiudi` esce e basta, ordine fisso: prima `cancel`, poi
+//        `update:visible=false`; `onCancel` ci arriva passando da
+//        `confermaUscita`.
+function chiudi() {
   emit('cancel')
   emit('update:visible', false)
+}
+function onCancel() {
+  props.confermaUscita(chiudi)
 }
 
 // Scopo: il Dialog PrimeVue emette `update:visible` solo con `false` (ESC,
@@ -168,7 +184,7 @@ function onSave() {
     <template #footer>
       <!-- Default: FormFooter standard. Slot #footer per override (terzo
            bottone, severity dinamica, wizard) mantenendo il chrome AppDialog. -->
-      <slot name="footer">
+      <slot name="footer" :chiudi="onCancel">
         <FormFooter
           :save-label="saveLabel"
           :cancel-label="cancelLabel"

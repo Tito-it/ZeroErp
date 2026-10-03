@@ -9,12 +9,10 @@ import { DRAWER_WIDTH, MANAGE_ICONS, RICERCA, STATUS_ICONS } from '../../core/co
 import { termineCorto } from '../../core/utils/listParams'
 import { listSoggetti, getConfigResolver, listSoggettoContatti } from '../api/anagrafiche'
 import SoggettoDrawer from './SoggettoDrawer.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import Drawer from 'primevue/drawer'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import InputText from 'primevue/inputtext'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import Button from 'primevue/button'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 
 
 
@@ -25,10 +23,6 @@ const props = defineProps({
   tipoRuoloCodice: { type: String, default: '' }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'soggetto-selezionato', 'soggetto-creato', 'annullato'])
 
@@ -188,91 +182,89 @@ async function onSoggettoCreatoDaDrawer(data) {
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- Footer «Chiudi» dal 2026-10-03 (AppDrawer): prima si usciva solo dalla
+       X. L'uscita emette `annullato`, che il padre gia' ascoltava. -->
+  <AppDrawer
     :visible="props.visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    @update:visible="val => emit('update:visible', val)"
-    @after-show="onAfterShow"
+    :title="t('anagrafiche.soggetti.soggetto')"
+    :icon="MANAGE_ICONS.RICERCA"
+    :action="t('resolver.action_search')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :proteggi-corpo="false"
+    footer="chiudi"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('annullato')"
   >
-    <template #header>
-      <DrawerTitle
-        :action="t('resolver.action_search')"
-        :title="t('anagrafiche.soggetti.soggetto')"
-        :icon="MANAGE_ICONS.RICERCA"
-      />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content">
-      <div class="form-field">
-        <label>{{ t('resolver.search_label') }}</label>
-        <span class="p-input-icon-right resolver-search">
-          <InputText
-            v-model="searchQuery"
-            :placeholder="t('resolver.search_placeholder', minSearchLength, { n: minSearchLength })"
-            autofocus
-            @input="onSearchInput"
-          />
-          <i v-if="searchLoading || configLoading" class="resolver-search-icon" :class="STATUS_ICONS.CARICAMENTO" />
-        </span>
-
-        <!-- Risultati INLINE: nessun overlay, l'elenco resta aperto e selezionabile -->
-        <ul v-if="suggestions.length" class="resolver-results" role="listbox">
-          <li
-            v-for="option in suggestions"
-            :key="option.id"
-            class="resolver-suggestion"
-            :class="{
-              'resolver-blocked': option._naturaBloccata,
-              'resolver-picked': selectedSoggetto && selectedSoggetto.id === option.id
-            }"
-            role="option"
-            :aria-selected="selectedSoggetto && selectedSoggetto.id === option.id"
-            @click="onPick(option)"
-          >
-            <div class="resolver-suggestion-name">
-              <strong>{{ option.ragione_sociale_completa }}</strong>
-              <span class="resolver-suggestion-tipo">{{ option.tipo_descrizione }}</span>
-            </div>
-            <div class="resolver-suggestion-detail">
-              <span v-if="option.codice_fiscale">CF: {{ option.codice_fiscale }}</span>
-              <span v-if="option.partita_iva" class="ml-05">P.IVA: {{ option.partita_iva }}</span>
-            </div>
-            <div v-if="option._ruoloDuplicato" class="resolver-warning">
-              <i :class="STATUS_ICONS.ERRORE" />
-              {{ t('resolver.already_role', { ruolo: option._ruoloDescrizione || tipoRuoloCodice }) }}
-            </div>
-            <div v-else-if="option._naturaBloccata" class="resolver-warning">
-              <i :class="STATUS_ICONS.ESCLUSO" />
-              {{ t('resolver.natura_blocked') }}
-            </div>
-          </li>
-        </ul>
-        <small
-          v-else-if="searched && !searchLoading && termineValido"
-          class="resolver-empty"
-        >
-          {{ t('resolver.no_results') }}
-        </small>
-      </div>
-
-      <!-- Soggetto selezionato -->
-      <div v-if="selectedSoggetto" >
-        <SoggettoMessageBanner
-          :ragione-sociale="selectedSoggetto.ragione_sociale_completa"
-          :id-fiscale="selectedSoggetto.codice_fiscale || selectedSoggetto.partita_iva"
+    <div class="form-field">
+      <label>{{ t('resolver.search_label') }}</label>
+      <span class="p-input-icon-right resolver-search">
+        <InputText
+          v-model="searchQuery"
+          :placeholder="t('resolver.search_placeholder', minSearchLength, { n: minSearchLength })"
+          autofocus
+          @input="onSearchInput"
         />
-        <div>
-          <Button :label="t('resolver.confirm_selection')" :icon="MANAGE_ICONS.CONFIRM"
-            @click="confermaSelezionato" />
-        </div>
-      </div>
+        <i v-if="searchLoading || configLoading" class="resolver-search-icon" :class="STATUS_ICONS.CARICAMENTO" />
+      </span>
 
-      <!-- Link per creazione nuovo -->
-      <div class="resolver-create-link">
-        <Button :label="t('resolver.create_new')" :icon="MANAGE_ICONS.ADD"
-          text severity="primary" @click="passaACreazione" />
+      <!-- Risultati INLINE: nessun overlay, l'elenco resta aperto e selezionabile -->
+      <ul v-if="suggestions.length" class="resolver-results" role="listbox">
+        <li
+          v-for="option in suggestions"
+          :key="option.id"
+          class="resolver-suggestion"
+          :class="{
+            'resolver-blocked': option._naturaBloccata,
+            'resolver-picked': selectedSoggetto && selectedSoggetto.id === option.id
+          }"
+          role="option"
+          :aria-selected="selectedSoggetto && selectedSoggetto.id === option.id"
+          @click="onPick(option)"
+        >
+          <div class="resolver-suggestion-name">
+            <strong>{{ option.ragione_sociale_completa }}</strong>
+            <span class="resolver-suggestion-tipo">{{ option.tipo_descrizione }}</span>
+          </div>
+          <div class="resolver-suggestion-detail">
+            <span v-if="option.codice_fiscale">CF: {{ option.codice_fiscale }}</span>
+            <span v-if="option.partita_iva" class="ml-05">P.IVA: {{ option.partita_iva }}</span>
+          </div>
+          <div v-if="option._ruoloDuplicato" class="resolver-warning">
+            <i :class="STATUS_ICONS.ERRORE" />
+            {{ t('resolver.already_role', { ruolo: option._ruoloDescrizione || tipoRuoloCodice }) }}
+          </div>
+          <div v-else-if="option._naturaBloccata" class="resolver-warning">
+            <i :class="STATUS_ICONS.ESCLUSO" />
+            {{ t('resolver.natura_blocked') }}
+          </div>
+        </li>
+      </ul>
+      <small
+        v-else-if="searched && !searchLoading && termineValido"
+        class="resolver-empty"
+      >
+        {{ t('resolver.no_results') }}
+      </small>
+    </div>
+
+    <!-- Soggetto selezionato -->
+    <div v-if="selectedSoggetto" >
+      <SoggettoMessageBanner
+        :ragione-sociale="selectedSoggetto.ragione_sociale_completa"
+        :id-fiscale="selectedSoggetto.codice_fiscale || selectedSoggetto.partita_iva"
+      />
+      <div>
+        <Button :label="t('resolver.confirm_selection')" :icon="MANAGE_ICONS.CONFIRM"
+          @click="confermaSelezionato" />
       </div>
+    </div>
+
+    <!-- Link per creazione nuovo -->
+    <div class="resolver-create-link">
+      <Button :label="t('resolver.create_new')" :icon="MANAGE_ICONS.ADD"
+        text severity="primary" @click="passaACreazione" />
     </div>
 
     <!-- Sotto-drawer: SoggettoDrawer standard (zero duplicazione) -->
@@ -284,7 +276,7 @@ async function onSoggettoCreatoDaDrawer(data) {
       @update:visible="v => creaDrawerVisible = v"
       @saved-with-data="onSoggettoCreatoDaDrawer"
     />
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>

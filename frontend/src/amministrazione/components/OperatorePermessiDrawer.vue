@@ -8,12 +8,10 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import OperatorePermessiTab from './OperatorePermessiTab.vue'
-import Drawer from 'primevue/drawer'
-import { gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
+import { unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 
 const { t } = useI18n()
 const store = useOperatoriStore()
@@ -26,10 +24,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const isReadonly = computed(() => props.readonly || injectedReadonly.value)
 const emit = defineEmits(['update:visible'])
@@ -39,7 +33,6 @@ const emit = defineEmits(['update:visible'])
 const permessiTab = ref(null)
 const scheda = unisciFotografie(() => permessiTab.value)
 const modificato = scheda.modificato
-const chiudi = () => scheda.chiudiConConferma(() => emit('update:visible', false))
 
 // Titolo drawer che include il nome operatore quando il dettaglio e' gia'
 // stato caricato da OperatorePermessiTab. Fallback al titolo generico.
@@ -54,43 +47,38 @@ const drawerTitle = computed(() => {
   const label = fullName || u.username
   return label ? `${base} — ${label}` : base
 })
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- ⭐ `XLARGE` e non `COMPLEX`: la costante lo dice da sé — «matrici
+       parametri-per-entità (utility, slot/override)». Da quando il pannello
+       mostra TUTTE le voci del catalogo con ereditato, override e stato,
+       questo drawer è una di quelle matrici, come il gemello
+       `EmittenteFiscaleUtilitiesDrawer` che l'ha inaugurata.
+       ℹ️ Su viewport più stretti non esce dallo schermo: `.p-drawer` ha
+       `max-width: 100vw` globale, quindi la larghezza è una preferenza.
+       Footer «Chiudi» dal 2026-10-03: prima si usciva solo dalla X; ogni
+       sezione della scheda ha il suo Salva. -->
+  <AppDrawer
     :visible="props.visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.XLARGE }"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="drawerTitle"
+    :icon="MANAGE_ICONS.PERMISSIONS"
+    :action="t('common.edit')"
+    :width="DRAWER_WIDTH.XLARGE"
+    :readonly="isReadonly"
+    :modificato="modificato"
+    :conferma-uscita="scheda.chiudiConConferma"
+    footer="chiudi"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="t('common.edit')"
-        :title="drawerTitle"
-        :icon="MANAGE_ICONS.PERMISSIONS"
-      />
-    </template>
-
-    <!-- ⭐ `XLARGE` e non `COMPLEX`: la costante lo dice da sé — «matrici
-         parametri-per-entità (utility, slot/override)». Da quando il pannello
-         mostra TUTTE le voci del catalogo con ereditato, override e stato,
-         questo drawer è una di quelle matrici, come il gemello
-         `EmittenteFiscaleUtilitiesDrawer` che l'ha inaugurata.
-         ℹ️ Su viewport più stretti non esce dallo schermo: `.p-drawer` ha
-         `max-width: 100vw` globale, quindi la larghezza è una preferenza.
-         `app-drawer-content` aggiunge gap, tipografia e l'`overflow-x: auto`
-         che serve alle tabelle larghe. -->
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <OperatorePermessiTab
-        v-if="props.authUserId"
-        ref="permessiTab"
-        :visible="props.visible"
-        :auth-user-id="props.authUserId"
-        :readonly="isReadonly"
-      />
-    </div>
-  </Drawer>
+    <OperatorePermessiTab
+      v-if="props.authUserId"
+      ref="permessiTab"
+      :visible="props.visible"
+      :auth-user-id="props.authUserId"
+      :readonly="isReadonly"
+    />
+  </AppDrawer>
 </template>

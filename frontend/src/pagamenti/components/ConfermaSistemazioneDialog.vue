@@ -31,6 +31,7 @@ import { useCanaliIncasso } from '../composables/useCanaliIncasso'
 import { useEtichettePagamenti } from '../etichette'
 import { formatCurrency } from '../../core/utils/format'
 import { DESTINAZIONE_CON_CANALE } from '../vocabolari'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -87,10 +88,14 @@ async function onConferma() {
   emit('confermata', esito)
   emit('update:visible', false)
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ enteIncassoId: enteIncassoId.value }), { visibile: () => props.visible })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="visible"
     :header="t('pagamenti.sistemazioni.conferma_titolo')"
     width="md"

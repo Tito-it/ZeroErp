@@ -20,6 +20,7 @@ import Button from 'primevue/button'
 import Column from 'primevue/column'
 // DataTable grezza: è il piano rate del documento (`dettaglio.scadenze`, prop del
 // padre), mostrato per intero in un popover — righe del master, non una lista.
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Popover from 'primevue/popover'
 
