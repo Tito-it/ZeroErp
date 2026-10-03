@@ -3,20 +3,23 @@
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-09-24. **A chi:** Tid (decisioni,
 > §7), poi team DB e backend.
 > **Origine:** approfondimento del §8 di
-> [brief-db-area-funzionale-assistente-ai.md](../work-done/brief-db-area-funzionale-assistente-ai.md).
-> **Stato:** ✅ **D-1 → D-5 decise da Tid il 2026-09-24** (§7). Questo brief è la
-> sede del **modello**; il lavoro si fa nei brief operativi — il primo è
-> [brief-db-magazzino-verbi-con-permesso.md](../work-done/brief-db-magazzino-verbi-con-permesso.md)
-> (D-4, D-5). Il verbo generico del pannello (D-3) avrà il suo, all'inizio del
-> cantiere `magazzino`/`acquisti`.
-> **Avanzamento al 2026-09-28** — il percorso del §5, passo per passo:
+> [brief-db-area-funzionale-assistente-ai.md](brief-db-area-funzionale-assistente-ai.md).
+> **Stato al 2026-10-03:** ✅ **CHIUSO e archiviato in `work-done/`.** D-1 → D-5
+> decise da Tid il 2026-09-24 (§7); passi 1, 2a e 2b fatti. ⭐ **Il modello non vive
+> più qui**: la sua sede è la guida
+> [architettura-permessi-e-autorizzazioni.md §7.4-7.5](../../guide/architettura-permessi-e-autorizzazioni.md#74-il-permesso-nel-verbo-di-scrittura),
+> più completa di questo brief (quattro guard, con `script.fn_guard_utente_stesso`).
+> Il passo 3 non ha una fine e **non tiene aperto il brief**: ogni cantiere che
+> porta un dominio al modello lo scrive nel suo brief operativo e nella guida del
+> dominio. Questo documento resta come storia delle decisioni.
+> **Avanzamento al 2026-10-03** — il percorso del §5, passo per passo:
 >
 > | Passo | Stato |
 > | --- | --- |
 > | 1. BB del permesso | ✅ **fatto**: `script.fn_guard_azione` (`20260924-38`) e `script.fn_guard_livello` (D-2, D-5; `20260925-32`, con `fn_area_di_oggetto` `-31`), applicati su dbdev e verdi |
 > | 2a. Porta del Lotto 2 (D-4) | ✅ **chiusa, committata, backend allineato e committato** (`0aefe15cd`, PR #1686); brief in `work-done/`. `20260924-38` → `-42` (commit `f2e724b47`, PR #1681); **D-V1 decisa il 2026-09-25 (strada A)**: la porta `POSTED` e le righe in `CONFIRM` si aprono solo con la GUC **e** dentro un verbo, col BB nuovo `script.fn_is_proprietario_tabella` (`20260925-37…-39`, commit `1d92ae6a2`, PR #1684). P-6 (`presidi.csv`) letto su dbdev: arrivato. §6 del brief operativo fatto dal backend il 2026-09-25 (fixture con `registra_magazzino`, test DB e smoke verdi) |
-> | 2b. Verbo generico del pannello (D-3) | ✅ **Chiuso il 2026-09-28**: brief operativo [brief-db-pannello-config-verbo-generico.md](../work-done/brief-db-pannello-config-verbo-generico.md), in `work-done/`. **DB**: `20260925-29…-34`, `20260927-20…-22` e `20260928-30` applicati, con pgTAP verdi. L'ultimo è la D-P9: `config.aree_funzionali` in sola lettura per l'app. **Backend e frontend**: §6 in `e7dbbad73`; §6.1, D-P5 e «Salva» vuoto in `5bd689163`. Guida dei permessi (§4.1, §7.4-7.5) e PROJECT_CONTEXT aggiornati |
-> | 3. Domini esistenti | aperto per costruzione, senza data: questo passo non ha una fine, e il brief resta la sede del modello. ⭐ **Secondo caso già fatto** fuori dal cantiere magazzino: [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md) — i verbi di blocco/sblocco della credenziale chiedono `script.fn_guard_super_admin` (`20260925-06`), e l'app ha perso `INSERT`/`UPDATE`/`DELETE` su `config.credenziali` e `config.credenziali_provenienze` (`20260925-24`). DB committato in `e3d188dc0` |
+> | 2b. Verbo generico del pannello (D-3) | ✅ **Chiuso il 2026-09-28**: brief operativo [brief-db-pannello-config-verbo-generico.md](brief-db-pannello-config-verbo-generico.md), in `work-done/`. **DB**: `20260925-29…-34`, `20260927-20…-22` e `20260928-30` applicati, con pgTAP verdi. L'ultimo è la D-P9: `config.aree_funzionali` in sola lettura per l'app. **Backend e frontend**: §6 in `e7dbbad73`; §6.1, D-P5 e «Salva» vuoto in `5bd689163`. Guida dei permessi (§4.1, §7.4-7.5) e PROJECT_CONTEXT aggiornati |
+> | 3. Domini esistenti | aperto per costruzione, senza data, **fuori da questo brief**. Casi fatti al 2026-10-03 (letti dal loop dei grant `90_end/ci_apply/20260205-41` e dai corpi): **credenziali** — blocco/sblocco con `fn_guard_super_admin` (`20260925-06`), `config.credenziali`, `credenziali_provenienze`, `nomi_tentati`, `nomi_tentati_provenienze` chiuse all'app ([brief](brief-db-blocco-login-per-credenziale.md)); **secondo fattore** — verbi `script.fn_totp_*` e il guard nuovo `script.fn_guard_utente_stesso` (`20260929-14`), `config.auth_totp_device` chiusa (`20260929-24`, [brief](brief-db-secondo-fattore-totp.md)); **magazzino, Lotto 3** — `fn_posta_trasferimento` (`registra_magazzino`), `fn_apri_blocco`/`fn_libera_blocco` (`blocca_merce`), `movimenti_attesi` chiusa ([brief](../work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md)); **vendite** — `fn_cambia_stato_ddt` (`emetti_ddt`, `registra_magazzino`) e `fn_conferma_reso`/`fn_annulla_reso` (`conferma_reso`), DEFINER, con la porta **del registro** e non ancora quella del documento (Lotto 3 D-L3-e, [3-bis](../work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md) D-3b-f). ⚠️ **Domini a metà non ancora dichiarati nella loro guida** (§5.3): `magazzino` (aperte, fra le altre, `magazzini` e `ubicazioni`: D-P4 del brief del pannello) — dichiarato nella guida del dominio il 2026-10-03 e affidato a [brief-db-magazzino-tutte-le-scritture-dal-verbo.md](../work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md) — e `vendite`, che avrà un brief suo |
 >
 > **In una riga:** oggi il DB **calcola** i permessi ma non li **applica**:
 > qualunque scrittura che il backend autorizza per errore, il DB la esegue. La
@@ -32,7 +35,7 @@
 
 ## 1. Il problema che resta dopo la sola lettura
 
-Il [brief-be-letture-in-transazione-sola-lettura.md](../work-done/brief-be-letture-in-transazione-sola-lettura.md)
+Il [brief-be-letture-in-transazione-sola-lettura.md](brief-be-letture-in-transazione-sola-lettura.md)
 fa garantire al DB che **una lettura non scriva**. Non copre il caso opposto: una
 richiesta di **scrittura** che il backend autorizza a chi non dovrebbe, per
 esempio un endpoint con il `post_permission` sbagliato, o un tool dell'assistente
@@ -64,7 +67,7 @@ il punto di partenza: **non** decidono né la forma né la priorità.
   generico sulle tabelle di configurazione e scritture a tabella costruita a
   runtime). Le funzioni DB che scrivono coprono una parte dei casi.
 * ⭐ **La forma «porta» esiste già**: Lotto 2 di magazzino, D-L2-b
-  ([brief-db-magazzino-lotto-2-motore.md](../work-done/brief-db-magazzino-lotto-2-motore.md)).
+  ([brief-db-magazzino-lotto-2-motore.md](brief-db-magazzino-lotto-2-motore.md)).
   `zeroerp_app` ha solo `SELECT` su `magazzino.movimenti`; scrive solo la
   primitiva `fn_scrivi_movimento`, `SECURITY DEFINER` del proprietario; il
   perimetro è rimesso dal guard BB `script.trgfn_guard_emittente_scope`.
@@ -109,7 +112,7 @@ la **funzione** che la esegue.
   verbi della gestione accessi (`amm_software`, solo SUPER_ADMIN). Stessa forma
   delle altre: l'utente come parametro, la regola in una funzione che esiste già
   (`script.fn_is_super_admin`). Il perché in
-  [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md)
+  [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)
   §3.3 (D-B1).
 
   Il verbo passa l'utente letto da `app.current_user_id` con l'espressione delle
@@ -181,7 +184,7 @@ perimetro: va scritto nella guida, non lasciato implicito.
 | **D-1** | Adottare il modello (§4) come direzione? | ✅ **DECISA da Tid il 2026-09-24: sì** — i domini nuovi (`magazzino`, `acquisti`) nascono così; gli esistenti ci passano quando un cantiere tocca le loro scritture, uno alla volta, senza data. Accettato il limite del §4.4 |
 | **D-2** | Ogni verbo è legato a **un'azione di processo**, o basta il livello d'area per i verbi CRUD semplici? | ✅ **DECISA da Tid il 2026-09-24: due forme, un BB.** Le operazioni di processo (cambia stato, emetti, genera, annulla…) chiedono la loro azione — verbo e azione coincidono; le operazioni semplici (crea, modifica, cancella) chiedono il livello d'area (`TUTTO`). La forma la sceglie chi scrive il verbo, nella prima riga, con il BB unico. `azioni_processo` non si riempie di azioni che ripetono il livello, e l'amministratore ragiona come oggi |
 | **D-3** | Il CRUD generico delle tabelle di configurazione (`config_crud_repository`) | ✅ **DECISA da Tid il 2026-09-24 — verbo generico SUBITO**, all'inizio del cantiere `magazzino`/`acquisti`. Vedi §7.1 |
-| **D-4** | Il Lotto 2 chiude subito la porta aperta (§2, ultimo punto)? | ✅ **DECISA da Tid il 2026-09-24: sì, primo cantiere del modello, subito.** `fn_posta_inventario` e `fn_posta_rettifica` diventano i verbi: controllano nella prima riga l'azione **`registra_magazzino`**, che esiste già ed è il gate del backend (non servono azioni nuove), e girano DEFINER del proprietario; l'app perde `EXECUTE` su `fn_scrivi_movimento` e `fn_ricalcola_valore_giacenza`; il perimetro sui documenti lo rimette il verbo, chiamando lo stesso predicato della policy. Il backend non cambia. **Sede del lavoro:** [brief-db-magazzino-verbi-con-permesso.md](../work-done/brief-db-magazzino-verbi-con-permesso.md); il brief del Lotto 2 ha solo una nota in D-L2-b, per non falsarne lo stato di consegnato |
+| **D-4** | Il Lotto 2 chiude subito la porta aperta (§2, ultimo punto)? | ✅ **DECISA da Tid il 2026-09-24: sì, primo cantiere del modello, subito.** `fn_posta_inventario` e `fn_posta_rettifica` diventano i verbi: controllano nella prima riga l'azione **`registra_magazzino`**, che esiste già ed è il gate del backend (non servono azioni nuove), e girano DEFINER del proprietario; l'app perde `EXECUTE` su `fn_scrivi_movimento` e `fn_ricalcola_valore_giacenza`; il perimetro sui documenti lo rimette il verbo, chiamando lo stesso predicato della policy. Il backend non cambia. **Sede del lavoro:** [brief-db-magazzino-verbi-con-permesso.md](brief-db-magazzino-verbi-con-permesso.md); il brief del Lotto 2 ha solo una nota in D-L2-b, per non falsarne lo stato di consegnato |
 | **D-5** | Gli override per oggetto (`fn_resolve_livello_oggetto`, `area_model_overrides`) | ✅ **DECISA da Tid il 2026-09-24.** Nella forma semplice il verbo dichiara **l'oggetto** su cui scrive, non l'area: il BB passa da `fn_resolve_livello_oggetto` (override utente, poi livello d'area), e l'area la legge da `area_model_overrides`, senza ripeterla. Vale anche per il verbo generico del pannello (ogni riga della lista ammessa dichiara il suo oggetto). L'oggetto si nomina con la chiave che il catalogo ha già (`app_label` + `model_name`): una seconda nomenclatura sarebbe una seconda sede. Le operazioni di processo restano sull'azione. ⛔ **Difetto trovato**: `fn_resolve_livello_oggetto` non ha il gate di contesto (`app.ruolo_applicativo` ≠ `OPERATORE` ⇒ `BLOCCATO`) che ha `fn_resolve_livello_area`, quindi un override per oggetto vale anche fuori dalla veste operatore. Il BB applica il gate da sé; la funzione si corregge nello stesso lavoro, perché il backend la usa già |
 
 ### 7.1 D-3 — il pannello di configurazione passa dal verbo generico
@@ -248,3 +251,4 @@ migrare.
 | 2026-09-28 | BE/FE | Passo 2b: backend (metadata dalla funzione unica) e frontend (D-P5, «Salva» vuoto) fatti, non committati. Guida dei permessi e PROJECT_CONTEXT aggiornati: il modello ora vive nella guida (§7.4). Resta la D-P9 |
 | 2026-09-28 | DB | Passo 2b: BE/FE pushati (`5bd689163`); D-P9 scritta e provata (`90_end/20260928-30`), da applicare. È l'ultimo pezzo del brief operativo |
 | 2026-09-28 | Tid, DB | `20260928-30` applicato, nessuna regressione nei pgTAP. **Passo 2b chiuso**, e il brief operativo del pannello è in `work-done/`. Aperto resta il passo 3 |
+| 2026-10-03 | DB | **Brief chiuso e spostato in `work-done/`**: il modello vive nella guida dei permessi §7.4-7.5, che è più completa (quattro guard); due sedi avrebbero finito per divergere. La tabella in testa registra i casi del passo 3 fatti dopo il 28-09 (secondo fattore, Lotto 3 di magazzino, verbi di bolla e reso). Rilevati due domini a metà mai dichiarati nella loro guida — `magazzino` (D-P4 del brief del pannello, brief a sé mai scritto) e `vendite` — affidati ai brief dei loro cantieri |

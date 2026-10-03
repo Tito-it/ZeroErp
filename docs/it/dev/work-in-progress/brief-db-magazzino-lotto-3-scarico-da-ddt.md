@@ -99,7 +99,7 @@ ed è collaudata»*. È anche il primo lotto che tocca **un altro dominio**
 deve poter sbagliare da solo»*. Adesso il registro è provato.
 
 ⚠️ **E tocca un dominio in esercizio.** Per la D-1 del
-[brief sul permesso nel verbo](brief-db-permesso-nel-verbo-di-scrittura.md), un
+[brief sul permesso nel verbo](../work-done/brief-db-permesso-nel-verbo-di-scrittura.md), un
 dominio esistente passa al modello *«una scrittura = un verbo»* quando un
 cantiere tocca le sue scritture. Questo lo fa: il cambio di stato della bolla
 diventa un verbo DB (D-L3-e).
@@ -575,7 +575,7 @@ molti più pgTAP: il censimento dei test sui DDT va fatto prima di scrivere.
   (§8-quater), [Lotto 1](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md),
   [Lotto 2](../work-done/brief-db-magazzino-lotto-2-motore.md) (§3 D-L2-g,
   D-L2-h; §9), [verbi con permesso](../work-done/brief-db-magazzino-verbi-con-permesso.md),
-  [permesso nel verbo](brief-db-permesso-nel-verbo-di-scrittura.md) (D-1 → D-5).
+  [permesso nel verbo](../work-done/brief-db-permesso-nel-verbo-di-scrittura.md) (D-1 → D-5).
 - Le forme da copiare: il verbo → `magazzino.fn_posta_inventario` (DEFINER,
   `fn_guard_azione`, GUC `POSTED`, perimetro nella `WHERE`); la conferma che
   parla → `script.fn_check_ddt_emittibile` + `fn_raise_primo_motivo_se_presente`;
