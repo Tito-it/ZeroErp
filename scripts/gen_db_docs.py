@@ -15,8 +15,8 @@
 #!/usr/bin/env python3
 import os, re
 from dotenv import load_dotenv
-import psycopg2
-from psycopg2.extras import DictCursor
+import psycopg
+from psycopg.rows import dict_row
 
 # Directory del file script e root del progetto
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -835,8 +835,11 @@ def verifica_visibilita(cur):
     ciechi = cur.fetchall()
     if not ciechi:
         return
-    cur.execute("SELECT current_user, current_setting('search_path')")
-    utente, spath = cur.fetchone()
+    # Per nome, non per posizione: con `dict_row` uno spacchettamento
+    # `a, b = riga` restituisce le CHIAVI, non i valori, e non da' errore.
+    cur.execute("SELECT current_user AS utente, current_setting('search_path') AS spath")
+    r = cur.fetchone()
+    utente, spath = r["utente"], r["spath"]
     esempi = "\n  ".join(
         f"{r['sch']}.{r['tab']} — {r['reali']} vincoli nel catalogo, 0 visibili"
         for r in ciechi[:8]
@@ -856,7 +859,7 @@ def verifica_visibilita(cur):
 
 # Main
 def main():
-    conn = psycopg2.connect(dsn=DB_DSN, cursor_factory=DictCursor)
+    conn = psycopg.connect(DB_DSN, row_factory=dict_row)
     cur = conn.cursor()
     # ⚠️ Il search_path NON puo' dipendere da chi lancia lo script.
     #   `information_schema.triggers.action_statement` qualifica il nome della
@@ -875,7 +878,7 @@ def main():
     conn.close()
 
 def main_v1():
-    conn = psycopg2.connect(dsn=DB_DSN, cursor_factory=DictCursor)
+    conn = psycopg.connect(DB_DSN, row_factory=dict_row)
     cur = conn.cursor()
     for schema in schemas:
         schema_dir = os.path.join(OUT_DIR, schema)
