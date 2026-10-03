@@ -245,6 +245,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CREDENZIALE_ALTRA_PERSONA": "L'email appartiene all'accesso di un'altra persona.",
     "E_CREDENZIALE_BLOCCATA": "Accesso bloccato dall'amministratore.",
     "E_CREDENZIALE_DA_CONFERMARE": "L'email appartiene gia' a un accesso: confermare quale usare.",
+    "E_CREDENZIALE_DI_SISTEMA": "Le credenziali di sistema non si modificano da qui.",
     "E_CREDENZIALE_EMAIL_AMBIGUA": "Piu' accessi registrati con la stessa email.",
     "E_CREDENZIALE_GIA_OPERATORE": "L'email appartiene gia' a un operatore.",
     "E_CREDENZIALE_MOTIVO_OBBLIGATORIO": "Indicare il motivo del blocco.",

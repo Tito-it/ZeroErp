@@ -15,16 +15,18 @@ Indice test eseguiti:
  2) test_altri_vocabolario_estraneo_e_un_400 — mai una lista vuota che sembra un dato
  3) test_altri_disabilitato_non_e_una_veste — la voce storica non e' un filtro
  4) test_sistema_envelope_e_tipo_validato
- 5) test_credenziale_capability_del_blocco — ultimo SUPER_ADMIN: spento col motivo
+ 5) test_credenziale_capability_del_blocco — il motivo del DB passa com'e'
  6) test_credenziale_inesistente_404
  7) test_blocca_vuole_l_idempotency_key
  8) test_blocca_chiude_le_sessioni_e_rilegge
  9) test_sblocca_non_tocca_le_sessioni
 10) test_vecchia_rotta_del_secondo_fattore_ritirata
+11) test_blocca_credenziale_di_sistema_e_un_409 — il rifiuto del verbo, classe CONFLITTO_STATO
 """
 
 from unittest.mock import MagicMock, patch
 
+from django.db import DatabaseError
 from django.test import Client, override_settings
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -33,7 +35,7 @@ _SERVIZIO = "apps.amm_software.services.accessi_service"
 _CRED = {
     "auth_user_id": 7, "username": "cliente7", "email": None, "categoria": "ALTRO",
     "bloccata": False, "bloccata_dal": None, "bloccata_da": None, "motivo_blocco": None,
-    "ultimo_super_admin": False,
+    "can_block": True, "block_reason": None, "block_reason_key": None,
 }
 
 
@@ -111,13 +113,17 @@ class AccessiListeTests(_Base):
 
 
 class CredenzialeTests(_Base):
+    # Scopo: Motivo e chiave sono della check del DB (letta dal repository):
+    #        il servizio li passa com'e', non li compone.
     def test_credenziale_capability_del_blocco(self):
-        self.repo.get_credenziale.side_effect = lambda _uid: {**_CRED, "ultimo_super_admin": True}
+        self.repo.get_credenziale.side_effect = lambda _uid: {
+            **_CRED, "can_block": False, "block_reason": "CREDENZIALE_DI_SISTEMA",
+            "block_reason_key": "amministrazione.accessi.blocca_reason.credenziale_di_sistema",
+        }
         data = self.client.get("/api/v1/amm-software/credenziali/7/").json()["data"]
         self.assertIs(data["can_block"], False)
-        self.assertEqual(data["block_reason"], "ULTIMO_SUPER_ADMIN")
-        self.assertEqual(data["block_reason_key"], "amministrazione.accessi.blocca_reason.ultimo_super_admin")
-        self.assertNotIn("ultimo_super_admin", data)
+        self.assertEqual(data["block_reason"], "CREDENZIALE_DI_SISTEMA")
+        self.assertEqual(data["block_reason_key"], "amministrazione.accessi.blocca_reason.credenziale_di_sistema")
 
     def test_credenziale_inesistente_404(self):
         self.repo.get_credenziale.side_effect = lambda _uid: None
@@ -143,6 +149,17 @@ class CredenzialeTests(_Base):
         resp = self._post("/api/v1/amm-software/credenziali/7/sblocca/")
         self.assertEqual(resp.status_code, 200, resp.content)
         self.repo.sblocca_credenziale.assert_called_once_with(7)
+        self.revoca.assert_not_called()
+
+    # Scopo: Il verbo del DB rifiuta il blocco di una credenziale di sistema:
+    #        CONFLITTO_STATO e' un 409, e nessuna sessione si chiude.
+    def test_blocca_credenziale_di_sistema_e_un_409(self):
+        self.repo.blocca_credenziale.side_effect = DatabaseError(
+            "ERROR: E_CREDENZIALE_DI_SISTEMA: Le credenziali di sistema non si modificano da qui."
+        )
+        resp = self._post("/api/v1/amm-software/credenziali/7/blocca/", {"motivo": "chiave sospetta"})
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertEqual(resp.json()["error"]["code"], "E_CREDENZIALE_DI_SISTEMA")
         self.revoca.assert_not_called()
 
     # Scopo: Il secondo fattore sta sotto la credenziale; la rotta vecchia

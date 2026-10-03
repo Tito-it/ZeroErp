@@ -675,7 +675,7 @@ router.beforeEach(async (to) => {
     //    l'operatore restava su una home che rispondeva 401 a ogni gesto e ne
     //    usciva solo ricaricando (rilievo di Tid, 2026-09-04).
     // ⚠️ È la seconda metà della correzione, non un doppione: la prima azzera
-    //    lo stato nello store (`redirectToLogin` in `core/api.js`), questa
+    //    lo stato nello store (`redirectToLogin` in `core/uscitaSessione.js`), questa
     //    impedisce che una sessione creduta viva per qualunque ALTRA ragione
     //    ci rimandi indietro. Chi ha una sessione viva e digita /login
     //    continua a essere riportato alla home.
