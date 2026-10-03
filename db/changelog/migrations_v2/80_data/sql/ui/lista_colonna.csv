@@ -1095,3 +1095,5 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1095,105,identita_attiva,Attiva,Almeno una veste della credenziale e accesa,identita_attiva,informazione,boolean,yesno,,50,center,,,t,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_identita_attiva,55
 1096,105,bloccata,Bloccata,Credenziale bloccata dall amministratore,bloccata,informazione,boolean,yesno,,60,center,,,t,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_bloccata,50
 1097,105,ultimo_accesso,Ultimo accesso,Data e ora dell ultimo accesso,ultimo_accesso,informazione,datetime,datetime_short,,70,left,,,f,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_ultimo_accesso,40
+1098,102,periodo_dal,Periodo dal,Inizio del periodo di competenza (vuoto se la riga non ha un periodo),periodo_dal,informazione,date,date_short,110,22,left,,,f,f,t,f,f,f,2026-10-03 00:00:00,mctit,vendite.fatture.col_periodo_dal,25
+1099,102,periodo_al,Periodo al,Fine del periodo di competenza (vuoto se la riga non ha un periodo),periodo_al,informazione,date,date_short,110,24,left,,,f,f,t,f,f,f,2026-10-03 00:00:00,mctit,vendite.fatture.col_periodo_al,25

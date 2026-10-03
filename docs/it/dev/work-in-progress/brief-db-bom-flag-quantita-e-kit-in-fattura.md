@@ -14,9 +14,17 @@
 > La documentazione di modello e i `manual/` sono aggiornati (§7).
 > ✅ **Lato BE/FE scritto il 2026-10-03** (§9, `dev/backend-tid`, non committato): R-BE-A1, B1, B2,
 > B3, B4, B6 e R-FE-A1 fatti, test verdi; R-BE-B5 è uno script da lanciare (§9.3); il template v7 è
-> da pubblicare. ⏳ **Restano al team DB due richieste nuove (§9.4)**: `fn_accredita_riga_reso`
+> da pubblicare. ✅ ~~Restano al team DB due richieste nuove (§9.4)~~ (fatte, §10): `fn_accredita_riga_reso`
 > deve scrivere la quantità padre **accreditata** (oggi la eredita dalla riga rettificata: la
 > nota di credito di un kit si ferma, voluto) e la colonna `periodo` della lista 102.
+> ✅ **Secondo giro DB scritto il 2026-10-03 (§10)**: R-DB-B8, B9 (strada 3 di Tid: due colonne
+> «Periodo dal» / «Periodo al»), B10. changeSet `20261003-05`, `-06` + due CSV.
+> ✅ **Applicato su dbdev da Tid il 2026-10-03, baseline `vendite` senza regressioni**: lato DB
+> di nuovo CHIUSO.
+> ➡️ Restano FE (R-FE-B1 rivista, §10.4) e BE (rigenerare le policy dei codici errore).
+> ⭐ **Plafond e kit (§11)**: il kit si spezza come un'unità sola (D-5, D-5.1 di Tid, 2026-10-03).
+> DB `20261003-07`, `-08`, `-09` ✅ **applicato su dbdev da Tid il 2026-10-03, baseline verdi**.
+> ➡️ Resta il BE (R-BE-P1…P6, §11.6).
 >
 > **In una riga:** (A) `partecipa_qta` e `determina_qta_padre` si impostano ma nessuna logica li
 > legge: si ritirano. (B) In fattura la riga del kit si ricava quantità e UoM **dai componenti**:
@@ -242,7 +250,7 @@ un default, quindi non si rompe nulla; poi il DB le ritira. Niente merge simulta
 > componente senza UoM su dbdev: `-66` è passato), corsa pgTAP **verde**. Da qui su dbdev le due
 > colonne della distinta e i due parametri non esistono più, e `fatture_righe` vuole il periodo:
 > finché R-BE-A1, R-BE-B1 e R-BE-B2 non arrivano, il BE fallisce dove li scrive (salvataggio della
-> distinta, generazione di ogni fattura, fattura con un kit). Resta da confermare la scelta di §8.1
+> distinta, generazione di ogni fattura, fattura con un kit). La scelta di §8.1 è confermata (Tid, 2026-10-03)
 > (nessun rifiuto al posto di R10).
 
 ### 8.1 I changeSet
@@ -261,7 +269,7 @@ un default, quindi non si rompe nulla; poi il DB le ritira. Niente merge simulta
 CSV: `parameters.csv` (righe 23 e 25 tolte), `messaggi_errore.csv` (descrizione di
 `E_BOM_MODIFICA_VIETATA`, 387).
 
-⭐ **Scelta fatta scrivendo, da confermare (Tid)**: al posto di R10 **nessun rifiuto**. Con la strada (b) un
+⭐ **Scelta fatta scrivendo, ✅ confermata da Tid il 2026-10-03**: al posto di R10 **nessun rifiuto**. Con la strada (b) un
 kit i cui componenti non dicono lo stesso numero di kit è una **nota di credito parziale** (si rende
 un componente solo): un caso legittimo, dove il kit non ha una quantità. La vista lo stampa con
 quantità e prezzo `NULL` e il suo importo. Il §4.2 proponeva una regola che rifiutasse: valeva per
@@ -428,6 +436,9 @@ fattura con un componente di kit già in commessa non si genera, e lo dice.
 
 ### 9.4 Richieste al team DB
 
+> ✅ **Tutte e tre scritte e applicate il 2026-10-03 (§10)**. R-DB-B9 non nella forma chiesta qui: due
+> colonne invece di una, scelta di Tid (§10.2).
+
 | # | Cosa | Perché |
 | --- | --- | --- |
 | **R-DB-B8** ⛔ | `vendite.fn_accredita_riga_reso`: nel `jsonb_build_object` a destra del `\|\|` del `p_meta` aggiungere `'qta_padre', - v_quota` (sui componenti; `v_quota` è già in unità padre) | Il meta della rettifica **eredita** quello della riga rettificata (P-7): dal push di R-BE-B2 porta la quantità padre dell'**originale**, positiva, su componenti negativi. Scritta così, la nota di credito direbbe «+2 kit». Il BE la rifiuta (segno opposto, §9.2): ⇒ **oggi l'accredito di un kit non si fattura** finché questo non arriva. È la terza chiave che «potrebbe mentire», accanto a `tipo_consumo` e `segment_key` che il commento della funzione già nomina. `uom_padre_id` ereditata è giusta |
@@ -465,4 +476,208 @@ fattura con un componente di kit già in commessa non si genera, e lo dice.
 * Builder: `competenza_dal`, `competenza_al` e `ha_periodo` si leggono **stretti** — una colonna
   sparita dalla vista ferma la stampa invece di diventare «nessun periodo» su ogni riga.
 * Messaggi del `meta`: «senza una … valida» (la chiave può esserci con un valore illeggibile).
+
+## 10. Lato DB, secondo giro — le richieste del §9.4 (2026-10-03)
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-03. **A chi:** Tid (apply, pgTAP), poi
+> FE e BE (§10.4).
+> **Stato:** ✅ **applicato su dbdev da Tid il 2026-10-03**; baseline pgTAP `vendite` di Tid
+> **senza regressioni**, file toccati compresi (`test-accredito-kit-meta-v1` con il test 9,
+> `test-fatture-righe-kit-qta-periodo-v1` con il test 26). Non committato.
+
+### 10.1 R-DB-B8 — la rettifica di un kit dice quanti kit rende
+
+`20_code/vendite/20261003-05-update-fn-accredita-riga-reso-qta-padre`. Nel `p_meta` della
+rettifica, a destra del `||`, una chiave in più:
+`'qta_padre', CASE WHEN v_cmp.e_componente THEN - v_quota END`. `v_quota` è già in unità
+padre. Su una riga che non è di kit la chiave non nasce (`jsonb_strip_nulls`). `uom_padre_id`
+resta quella ereditata, che è giusta. Il corpo è quello del `20260921-30`, verificato riga per
+riga uguale al corpo vivo della doc auto-gen; firma e `RETURNS TABLE` ancorati con `%TYPE`.
+Aggiornati anche il commento interno («le chiavi che potrebbero mentire», ora tre) e il
+`COMMENT`.
+
+pgTAP: `vendite/test-accredito-kit-meta-v1.sql`, **test 9** (piano 9). La fixture ora scrive il
+meta come il push di oggi (`qta_padre` = quantità / coefficiente, cioè +10), e il test pretende
+`-3` su entrambe le rettifiche. Senza `-05` è rosso.
+
+### 10.2 R-DB-B9 — il periodo nella lista 102, in due colonne
+
+Tid ha scelto la **strada 3** (2026-10-03). La richiesta del BE era una colonna `periodo` con
+`campo_sorgente = competenza_dal`. Ma l'export legge il `campo_sorgente`: avrebbe mostrato solo
+l'inizio del periodo, e una data anche sulle righe puntuali, dove il drawer mostra «—».
+
+* `20_code/vendite/20261003-06-update-vw-fattura-righe-lista-periodo-da-mostrare`:
+  `vw_fattura_righe_lista` (CREATE OR REPLACE, `security_invoker` ri-dichiarato) con in coda
+  `periodo_dal` e `periodo_al`: `competenza_dal`/`_al` quando `ha_periodo`, altrimenti NULL. La
+  regola «quando c'è un periodo» resta una sola, in `vw_fattura_righe_esposte`: la lista legge
+  `ha_periodo`, non la rifà.
+* `ui/lista_colonna.csv`, righe **1098** `periodo_dal` e **1099** `periodo_al`: data
+  (`date_short`), esportabili, non ordinabili né filtrabili, `ordine_default` 22 e 24 (subito
+  dopo la descrizione), priorità 25, chiavi `vendite.fatture.col_periodo_dal` /
+  `col_periodo_al`. ⚠️ **Nascono `attivo = f`**: le due chiavi non sono nei locales, e
+  `check_i18n_keys.py` legge le colonne attive del CSV. Le accende il FE nello stesso commit in
+  cui aggiunge le chiavi (§10.4). Il repository fa `SELECT v.*`, quindi le colonne arrivano al
+  FE senza lavoro BE.
+
+pgTAP: `vendite/test-fatture-righe-kit-qta-periodo-v1.sql`, **test 26** (piano 26):
+`periodo_dal/_al` uguali al periodo sul kit di gennaio e febbraio, NULL sulle righe puntuali.
+
+### 10.3 R-DB-B10 — `E_KIT_QUANTITA_DISOMOGENEE` ritirato
+
+`config/codici_errore.csv`: `obsoleto_dal = 2026-10-03`, con la nota del perché. Il codice si
+ritira, non si cancella (guida Messaggi di errore, «Ritirare un codice»): `error_log` può
+puntarci. Il messaggio in `messaggi_errore.csv` resta, per lo stesso motivo.
+
+### 10.4 Richieste a FE e BE
+
+| # | Cosa | Dove |
+| --- | --- | --- |
+| **R-FE-B1 (rivista)** | Le due chiavi `vendite.fatture.col_periodo_dal` («Periodo dal» / «Period from») e `col_periodo_al` («Periodo al» / «Period to») in `it.json` e `en.json`, e **nello stesso commit** `attivo = t` sulle righe 1098 e 1099 di `lista_colonna.csv`. Lo slot `#cell-periodo` di `FatturaDrawer.vue` e le chiavi `col_periodo` / `periodo_valore` non servono più: nessuna colonna si chiama `periodo`, e le due colonne nuove sono già vuote dove non c'è un periodo | `FatturaDrawer.vue`, locales, `lista_colonna.csv` |
+| R-BE-B8 | Rigenerare `error_policies_generated.py` (`genera_error_policies`): il codice ritirato esce con «⚠️ RITIRATO». Da guardare anche la voce in `error_messages_fallback.py` | `apps/core/services/` |
+
+### 10.5 Come è stato provato, e cosa la prova NON copre
+
+* **SQL estratto** dagli YAML (`changes[].sql.sql`) su `zeroerp_ci` come `zeroerp`, dentro
+  `BEGIN … ROLLBACK` con il `BEGIN` in testa al file ricomposto. Impronta (`md5` di
+  `pg_get_functiondef` e `pg_get_viewdef`) presa prima e confrontata dopo: oggetti vivi
+  invariati.
+* `test-fatture-righe-kit-qta-periodo-v1`: **26/26** con l'SQL estratto; senza, il test 26
+  muore su «la colonna periodo_dal non esiste» (il test vede il difetto).
+* `plpgsql_check_function_tb` sulla funzione nuova: **0 segnalazioni**.
+* Le due righe di `lista_colonna` inserite dopo la vista nuova, anche accese: il guard
+  `a10_valida_campo_sorgente` le accetta, e rifiuta un `campo_sorgente` inesistente.
+* Cancelli statici verdi: `guardrail_sql_letterali`, `_run_on_change`, `_precondition_seed`,
+  `_ddl_su_trigger_automazione`, `_grant_ruolo_batch`, `_timestamp_senza_fuso`,
+  `_pgtap_preambolo`. `check_i18n_keys` ha un rosso che non è di questo cantiere
+  (`amministrazione.accessi.blocca_reason.credenziale_di_sistema`, dalla credenziale).
+* ⚠️ **Non provato prima dell'apply: il test 9 di `test-accredito-kit-meta-v1`.** Su
+  `zeroerp_ci` il file si ferma sulla fixture (nessun billing account): è già in
+  `baseline-rossi-scratch.tsv` e `baseline-rossi-ci.tsv` come `ERRORE_FIXTURE`. Lo prova solo
+  la corsa su dbdev. ✅ Coperto dalla baseline `vendite` di Tid del 2026-10-03: nessuna
+  regressione.
+* ⚠️ **Dati su dbdev, non toccati**: un accredito di kit fatto **dopo** il deploy del push
+  R-BE-B2 e **prima** di `-05` porta la `qta_padre` positiva ereditata, e lo script R-BE-B5 non
+  lo corregge (lascia vincere le chiavi già scritte). Se ce ne sono, la loro fattura si ferma
+  sul controllo del segno. Si trovano con
+  `SELECT id, meta->>'qta_padre', quantita FROM vendite.commesse_attivita WHERE meta->>'accredito_da' = 'RESO' AND meta ? 'qta_padre' AND (meta->>'qta_padre')::numeric > 0`.
+  ✅ **Chiusa da Tid (2026-10-03)**: sono dati di test, nessun problema; se servirà li
+  corregge a mano. Nessuno script di bonifica.
+
+## 11. Plafond e kit — la regola di Tid e cosa serve (2026-10-03)
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-03. Riprende il difetto preesistente del
+> §9.5. **Stato:** D-5 e D-5.1 decise da Tid. ✅ Lato DB **scritto, non applicato** (§11.5):
+> `20261003-07`, `-08`, `-09` ✅ **applicati su dbdev da Tid il 2026-10-03, baseline verdi**.
+> ➡️ Resta il BE (§11.6).
+
+### 11.1 Come funziona oggi
+
+`PlafondFatturaService._consuma_riga` lavora **riga per riga** (`list_righe_per_plafond`, in
+ordine di `riga_nr`), e i componenti di un kit sono righe come le altre. Su un plafond residuo che
+non copre tutto il kit, quindi, i primi componenti vengono coperti per intero, uno viene spezzato
+(`qta_coperta = quota / prezzo effettivo`) e gli ultimi restano all'aliquota ordinaria: ogni
+componente con una frazione diversa. In più la parte nuova (`insert_parte_plafond`) **non copia
+le colonne kit**, ed esce dal kit come riga sciolta. Il `COMMENT` di `vw_fattura_righe_esposte`
+dice «oggi il backend non spezza i componenti di kit»: è superato, li spezza.
+
+### 11.2 D-5 — la regola (Tid, 2026-10-03)
+
+**Il kit si spezza come un'unità sola, con la stessa frazione per tutti i componenti.** Un kit di
+quantità 3 che deve scendere a 1,2 per stare nel plafond diventa una riga di kit da 1,2 (tutti i
+componenti a 1,2/3 della loro quantità, aliquota del titolo) e una da 1,8 (gli stessi componenti
+a 1,8/3, aliquota ordinaria).
+
+In pratica:
+
+* la frazione è `f = quota coperta / imponibile del kit` (la somma dei componenti, non uno alla
+  volta). In generale non è tonda (1,2345 kit), come oggi la quantità di una riga sciolta
+  spezzata: è il metodo «la quantità si deriva dall'imponibile» già scelto da Tid;
+* ogni componente: capofila `qta × f`, parte `qta × (1 − f)`; `kit_qta` allo stesso modo
+  (`kit_qta × f` e `kit_qta × (1 − f)`), e la parte **copia le colonne kit**;
+* ⭐ **la vista è già pronta**: `vw_fattura_righe_esposte` costruisce il padre per (fattura, kit,
+  **IVA**, BA, periodo) e una riga che è insieme componente e parte di plafond «cade nei rami del
+  kit». Le due metà, con aliquote diverse, escono da sole come due righe padre: «1,2 kit» e
+  «1,8 kit», ciascuna con la sua quantità coerente. Da aggiornare solo il `COMMENT`.
+
+### 11.3 Dove vive, proposta
+
+* **DB**: una madre che consuma il plafond **per un kit intero** (lock del titolo una volta,
+  quota coperta sulla somma dei componenti, un movimento per componente, i centesimi distribuiti
+  in modo che la somma dei movimenti sia la quota coperta) e restituisce la quota di ogni riga.
+  Oggi `anagrafiche.fn_consuma_plafond_titolo_iva` lavora su una riga sola
+  (`p_fattura_riga_id`): chiamarla N volte non dà una frazione unica, perché il residuo cambia a
+  ogni chiamata.
+* **BE**: `PlafondFatturaService` raggruppa per `kit_key`, chiama la madre per il gruppo, scrive
+  le due parti di ogni componente con la stessa frazione e copia le colonne kit sulla parte.
+* pgTAP: il kit misto del §10 (tre unità) su un plafond che copre 1,2 kit su 3.
+
+### 11.4 D-5.1 — un titolo che copre solo una parte del kit — ✅ decisa la (a) (Tid, 2026-10-03)
+
+Il titolo IVA ha un **ambito**: `TUTTO`, oppure un elenco di articoli, gruppi voce o tipi voce
+(`soggetti_titoli_iva_ambiti`, letto da `fn_resolve_iva_riga_it` allo stadio B **sull'articolo
+della riga**). Un kit installazione (caldaia, tubo, manodopera) con un titolo il cui ambito
+comprende la caldaia ma non la manodopera si risolverebbe in modo diverso componente per
+componente. Con la regola di D-5 le righe uscirebbero discordi: nella metà ordinaria, i componenti
+coperti dicono 1,8 kit e quelli fuori ambito 3, e la vista dà al kit una quantità NULL.
+
+* **(a, consigliata)** **il titolo si giudica sull'articolo PADRE del kit**: se il padre è
+  nell'ambito, tutti i componenti seguono il titolo con la stessa frazione; se non lo è, nessuno.
+  È coerente con quello che il modello fa già allo stadio A, dove l'IVA dei componenti è
+  vincolata a quella del padre (l'unico vincolo padre-figli): il kit è la cosa venduta.
+* **(b)** si giudica componente per componente, e la frazione si applica solo ai componenti
+  nell'ambito; quelli fuori restano interi all'ordinaria. Rispetta l'ambito alla lettera, ma la
+  metà ordinaria del kit non ha più una quantità (NULL), e il kit a video si legge male.
+
+### 11.5 Lato DB — cosa è stato scritto (2026-10-03, ✅ applicato, baseline verdi)
+
+> ✅ **Apply e baseline di Tid, 2026-10-03**: migrazione applicata su dbdev, baseline pgTAP
+> verdi, compresi il test nuovo e i due dei titoli IVA che passano dall'involucro.
+
+| # | Fase | Cosa |
+| --- | --- | --- |
+| `-07` | `20_code/anagrafiche` | `fn_consuma_plafond_titolo_iva_righe(titolo, fattura, righe[], imponibili[], data, tx)`: un lock, la quota coperta sulla somma del gruppo, ogni riga `round(imponibile × f, scala del suo imponibile)`, l'ultima il resto; un movimento per riga con quota > 0; ritorna per riga quota coperta, quota ordinaria, **frazione effettiva**, residuo, movimento. Diventa la sede delle regole di consumo (guard, lock, validità, titolo senza tetto, idempotenza, capienza). Guard nuovo: le righe devono essere della fattura passata |
+| `-08` | `20_code/anagrafiche` | `fn_consuma_plafond_titolo_iva` diventa l'**involucro** a una riga (`ARRAY[riga]`, `ARRAY[imponibile]`): firma e risultato invariati, anche la scala. Così la capienza non si ricopia (regola del 2). Corpo di prima nel rollback |
+| `-09` | `20_code/vendite` | solo il `COMMENT` di `vw_fattura_righe_esposte`: il «limite dichiarato» sui componenti di kit spezzati dal plafond diventa la regola D-5. Corpo invariato |
+
+pgTAP: **nuovo** `anagrafiche/test-consuma-plafond-titolo-iva-righe-v1.sql` (12 test): il kit da 500
+su plafond 200 (80, 24, 96 con frazione 0,4), i movimenti, l'idempotenza, il centesimo (tre
+righe da 10 su plafond 10: 3,33 3,33 3,34), copertura piena, capienza zero, titolo senza tetto,
+quattro guard. La forma a una riga resta provata da `test-soggetti-titoli-iva` (18-22) e
+`test-soggetti-titoli-iva-due-emittenti`, che ora passano dall'involucro.
+
+Doc `manual/`: pagina nuova `anagrafiche/manual/fn_consuma_plafond_titolo_iva_righe.md`;
+aggiornate `fn_consuma_plafond_titolo_iva.md` e `vendite/manual/vw_fattura_righe_esposte.md`.
+
+⚠️ Un guard di gruppo usa `E_TITOLO_IVA_CONSUMO_NON_INVOCABILE` («Consumo di plafond invocato
+senza %s.»): sulla riga di un'altra fattura la frase dice «senza fattura_riga_ids», che è
+impreciso. È un errore TECNICO (un chiamante rotto), e il contesto porta righe e fattura: non
+ho coniato un codice nuovo. La `soluzione` del messaggio nomina ancora solo la forma a una riga.
+
+**Come è stato provato** (SQL estratto su `zeroerp_ci` come `zeroerp`, `BEGIN … ROLLBACK`,
+impronta degli oggetti vivi uguale prima e dopo):
+
+* `test-consuma-plafond-titolo-iva-righe-v1`: **12/12**;
+* `test-soggetti-titoli-iva` **23/23** e `test-soggetti-titoli-iva-due-emittenti` **5/5** con
+  l'involucro, uguali a senza: la parità c'è, compresi i confronti testuali
+  (`'(700.00,300.00)'`). ⚠️ Sullo scratch oggi passano, e le due baseline (scratch e CI) li
+  registrano ancora come `ERRORE_FIXTURE`: il registro è indietro, non è un effetto di questo giro;
+* `test-fatture-righe-kit-qta-periodo-v1` 26/26 con il `-09` in testa;
+* `plpgsql_check` sulle due funzioni: **0 segnalazioni** (una prima stesura dichiarava a mano
+  il contatore dei `FOR`, che il ciclo dichiara da sé: tolto);
+* cancelli statici verdi.
+
+⚠️ **Non provato prima dell'apply**: la RLS come app (la prova è da owner), i dati veri, il
+pgTAP vero. ✅ RLS e pgTAP coperti dalle baseline di Tid del 2026-10-03. Resta vero che il BE che
+usa la funzione non esiste ancora: oggi nessun chiamante passa più di una riga.
+
+### 11.6 Richieste al BE
+
+| # | Cosa | Dove |
+| --- | --- | --- |
+| **R-BE-P1** | `list_righe_per_plafond` porta anche le colonne kit (`kit_key`, `kit_esposizione`, `kit_articolo_padre_id`, `kit_descrizione_padre`, `kit_qta`, `kit_uom_id`) | `pipeline_repository.py` |
+| **R-BE-P2** | `PlafondFatturaService` raggruppa le righe per `kit_key` (una riga sciolta è un gruppo di uno). Per un kit: **D-5.1 (a)**, il risolutore si chiama con l'articolo **padre** (`kit_articolo_padre_id`) e l'imponibile del kit intero; il titolo, se c'è, vale per tutti i componenti | `plafond_fattura_service.py` |
+| **R-BE-P3** | Il consumo di un kit passa da `anagrafiche.fn_consuma_plafond_titolo_iva_righe` con le righe in ordine di `riga_nr`, e la ripartizione si legge **da lì** (è lei che prende il lock). Frazione 1: copertura piena su tutte. Frazione 0: niente. Altrimenti ogni componente si spezza con il metodo di oggi (`qta_coperta = quota_coperta / prezzo effettivo`, parte = resto) | idem |
+| **R-BE-P4** | `kit_qta` della capofila = `kit_qta × frazione`, della parte = `kit_qta −` quella, **calcolati una volta per il kit** e scritti uguali su tutti i componenti: è ciò che fa dire alla vista lo stesso numero di kit su ogni metà | idem, `aggiorna_capofila_plafond` |
+| **R-BE-P5** | `insert_parte_plafond` copia le colonne kit dalla capofila (`kit_key`, `kit_esposizione`, `kit_articolo_padre_id`, `kit_descrizione_padre`, `kit_uom_id`) e scrive il `kit_qta` della parte. Senza, la parte esce dal kit come riga sciolta (il difetto del §9.5) | `pipeline_repository.py` |
+| R-BE-P6 | Test: il kit misto su un plafond che copre 1,2 kit su 3 → due righe padre «1,2» e «1,8», ciascuna con i suoi tre componenti; totale invariato | test del servizio |
 

@@ -62,6 +62,13 @@ importo possono separarsi (per numero di riga restano vicine).
   e `ha_periodo` in coda, dalla vista madre. Si stampa il periodo quando
   `ha_periodo` è vero. Il periodo entra anche nella partizione dei componenti, così
   ogni padre porta solo i componenti del suo periodo.
+- **Il periodo da mostrare** (dal 2026-10-03, `20261003-06`): `periodo_dal` e
+  `periodo_al` in coda. Sono `competenza_dal` e `competenza_al` quando
+  `ha_periodo` è vero, e restano vuoti sulle righe puntuali. Alimentano le
+  colonne di lista «Periodo dal» e «Periodo al», a video e nell'export. Con
+  `competenza_dal` come sorgente l'export avrebbe mostrato una data anche dove il
+  documento non stampa nessun periodo. La regola su quando c'è un periodo non si
+  ricopia: la vista legge `ha_periodo`.
 
 ---
 

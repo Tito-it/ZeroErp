@@ -5,7 +5,7 @@
 -- Test: quantita' e UoM della riga del kit, e periodo di competenza, in
 --   vendite.vw_fattura_righe_esposte e vendite.vw_fattura_righe_lista.
 --   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura (D-1, D-2, D-3, D-3.1).
---   changeSet: 20261002-60 -> -67.
+--   changeSet: 20261002-60 -> -67; 20261003-06 (test 26).
 --
 -- ⭐ I CASI SI COSTRUISCONO (dbops.fn_pgtap_crea_fattura): nessun confronto con
 --   la popolazione. Dal DB si leggono solo un'aliquota (config.iva) e quattro
@@ -55,6 +55,11 @@
 --   25) ⭐ una riga di kit senza articolo e' respinta (chk_fatture_righe_kit_articolo,
 --       20261002-43): la vista conta i kit per articolo, e due righe senza
 --       articolo sommerebbero le loro quantita'
+--   26) ⭐ lista: periodo_dal / periodo_al (20261003-06, R-DB-B9) valorizzati
+--       solo dove c'e' un periodo; sulle righe puntuali NULL, anche se
+--       competenza_dal/_al ci sono. Sono le sorgenti delle colonne di lista
+--       «Periodo dal» e «Periodo al»: l'export non deve mostrare una data dove
+--       il documento non stampa un periodo
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -64,7 +69,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: il test gira come l'applicazione (RLS attiva).
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(25);
+SELECT plan(26);
 
 -- ============================================================
 -- FIXTURE
@@ -320,6 +325,22 @@ SELECT throws_like(
     $$SELECT pg_temp.fx_kqp(95, 'KA', 'DESCRITTIVO', NULL, (SELECT u1 FROM tmp_kqp_u), 1, 1, 1)$$,
     '%chk_fatture_righe_kit_articolo%',
     '25) una riga di kit senza articolo e'' respinta: un componente e'' un articolo');
+
+-- ============================================================
+-- 26 — il periodo da mostrare nella lista
+-- ============================================================
+SELECT ok(
+    (SELECT bool_and(periodo_dal = competenza_dal AND periodo_al = competenza_al)
+       FROM vendite.vw_fattura_righe_lista
+      WHERE fattura_id = (SELECT fattura_id FROM tmp_kqp)
+        AND tipo_riga = 'KIT_PADRE' AND descrizione = 'Kit KP')
+    AND (SELECT count(*) > 0
+                AND bool_and(periodo_dal IS NULL AND periodo_al IS NULL
+                             AND competenza_dal IS NOT NULL)
+           FROM vendite.vw_fattura_righe_lista
+          WHERE fattura_id = (SELECT fattura_id FROM tmp_kqp)
+            AND NOT ha_periodo),
+    '26) lista: periodo_dal/_al pieni sul kit di gennaio e febbraio, NULL sulle righe puntuali');
 
 SELECT * FROM finish();
 ROLLBACK;

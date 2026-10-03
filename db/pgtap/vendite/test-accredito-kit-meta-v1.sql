@@ -40,6 +40,12 @@
 --   8) ⭐ il guard nuovo: un kit i cui componenti NON portano `componente_di`
 --      viene rifiutato AL VERBO (E_ACCREDITO_KIT_SENZA_PADRE), e la riga
 --      NON esce dalla coda
+--   9) ⭐ la rettifica porta la SUA quantita' padre, -3, e non quella
+--      ereditata dalla riga rettificata (+10): R-DB-B8 di
+--      brief-db-bom-flag-quantita-e-kit-in-fattura, changeset 20261003-05.
+--      ⚠️ Prima di quel changeset e' ROSSO: la fixture scrive `qta_padre`
+--      come il push di oggi (R-BE-B2), e il meta ereditato la riportava
+--      positiva su componenti negativi
 --
 -- ⚠️ I componenti si creano con fn_upsert_commessa_attivita, che e' la stessa
 --    funzione che usa il push (BoMComponentExpander): il meta del kit lo
@@ -53,7 +59,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(9);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -173,10 +179,13 @@ BEGIN
     -- ⭐ Il contratto kit, scritto come lo scrive il push.
     --    jsonb_strip_nulls: con p_padre NULL la chiave `componente_di` NON
     --    nasce, che e' esattamente il caso rotto del test 8.
+    --    Dal 2026-10-03 anche `qta_padre`, la quantita' della riga padre del
+    --    documento (R-BE-B2): quantita' del componente / coefficiente.
     p_meta                          => jsonb_strip_nulls(jsonb_build_object(
                                           'coeff_qta',           p_coeff,
                                           'componente_di',       p_padre,
-                                          'esposizione',         'DESCRITTIVO')));
+                                          'esposizione',         'DESCRITTIVO',
+                                          'qta_padre',           p_qta / p_coeff)));
 END $$ LANGUAGE plpgsql;
 
 -- Emette le attivita' della commessa e aggancia ognuna a una riga di fattura
@@ -386,6 +395,20 @@ SELECT throws_like(
          (SELECT resi_riga_id FROM tmp_kb_reso)),
   '%articolo padre%',
   '8) kit senza `componente_di`: rifiutato AL VERBO, prima che la riga esca dalla coda'
+);
+
+-- ============================================================
+-- 9) ⭐ LA QUANTITA' PADRE DELLA RETTIFICA (R-DB-B8). Il meta ereditato
+--    porterebbe +10, la quantita' padre della riga rettificata: il kit reso
+--    e' di 3, e la nota di credito lo dice col segno del componente.
+--    (::numeric e non il testo: v_quota ha la scala della sua colonna.)
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int FROM vendite.commesse_attivita ca
+    WHERE ca.id IN (SELECT commessa_attivita_id FROM tmp_acc_kit)
+      AND (ca.meta ->> 'qta_padre')::numeric = -3),
+  2,
+  '9) entrambe le rettifiche portano qta_padre = -3 (il kit reso), non +10 ereditato dalla riga rettificata'
 );
 
 SELECT * FROM finish();

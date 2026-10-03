@@ -223,7 +223,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`work-in-progress/brief-db-secondo-fattore-riautenticazione-password.md`): ⏳ al team DB (R-1),
   poi BE/FE.
 - **Kit in fattura** (`work-in-progress/brief-db-esposizione-componenti-kit-in-fattura.md`,
-  `work-in-progress/brief-db-bom-flag-quantita-e-kit-in-fattura.md`): DB chiuso, giro BE/FE in corso.
+  `work-in-progress/brief-db-bom-flag-quantita-e-kit-in-fattura.md`): BE/FE scritto; secondo giro
+  DB (R-DB-B8…B10, `20261003-05`/`-06`) applicato il 2026-10-03, baseline senza regressioni;
+  restano FE (R-FE-B1 rivista) e BE (rigenerare le policy dei codici errore).
+  Plafond e kit (§11, D-5): DB `20261003-07…-09` applicato il 2026-10-03, baseline verdi; resta il BE (R-BE-P1…P6).
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il
