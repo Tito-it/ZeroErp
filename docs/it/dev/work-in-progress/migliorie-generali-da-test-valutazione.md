@@ -52,6 +52,11 @@
 > §3 come **D17** (Q-1…Q-4, brief `brief-db-esclusioni-implicite.md`) e in D8
 > (Q-5); Q-6 è diventata una regola delle linee guida. ✅ **D17 chiusa lo stesso
 > giorno tranne Q-2**, rimandata da Tid (§7 D17, §3 D17).
+>
+> ✅ **2026-10-05**: brief di D17 archiviato in `work-done/`. Le due voci «da
+> verificare» del suo censimento `UPDATE OF` sono state verificate: una è
+> innocua, l'altra è un difetto vero della catena delle istanze su un PDP ed è
+> entrata in §3 come **D18**.
 ---
 
 ## 0. Come si legge, e perché il metodo conta più del voto
@@ -487,7 +492,7 @@ errore.
 | Q-5   | ✔ Confermato: niente emittente, niente registro, unicità globale senza `NULLS NOT DISTINCT`, e nessuna tabella di `acquisti` ha la RLS                                                                                                                                                                                                                                                                                                                            | Accorpata a **D8**: si chiude nel modello di `acquisti`, prima del comportamento                                                                                                                  |
 | Q-6   | ✔ Confermato e **più largo**: 22 tabelle con `emittente_fiscale_id`, 13 con `emittente_soggetto_ruolo_id`. Le chiavi sono 1:1: costo di traduzione, non dati sbagliati                                                                                                                                                                                                                                                                                         | ✅ **`emittente_soggetto_ruolo_id`** per ogni tabella nuova (linee-guida-sql §2); le esistenti convergono quando un cantiere ne tocca il modello                                                    |
 | v1    | ✔ Confermato: 374 file `runOnChange: true` sotto `baseline/` e `migrations/`, fuori dal raggio del §11.1                                                                                                                                                                                                                                                                                                                                                         | ✅ «Il v1 non si tocca»: `guardrail_v1_congelato.py` + manifesto, in CI; linee-guida-sql §11.11. Chiuso il 2026-10-04                                                                             |
-| UPDATE OF | ✔ Confermato, e **mordeva**: i cinque trigger di propagazione delle quantità ai componenti del kit erano `UPDATE OF quantita`, ma `quantita` la ricalcola un trigger BEFORE da `qta_operativa`. Il backend sui preventivi aggiorna solo `qta_operativa`: i componenti restavano con la quantità vecchia. Gli altri casi del censimento sono innocui (scritture solo da NULL, normalizzazioni idempotenti) o da verificare (brief §5) | ✅ Doc corretta (linee-guida-trigger); trigger ricreati con `WHEN (OLD.quantita IS DISTINCT FROM NEW.quantita)` (`20261004-85/-86`). Chiuso il 2026-10-04                                                            |
+| UPDATE OF | ✔ Confermato, e **mordeva**: i cinque trigger di propagazione delle quantità ai componenti del kit erano `UPDATE OF quantita`, ma `quantita` la ricalcola un trigger BEFORE da `qta_operativa`. Il backend sui preventivi aggiorna solo `qta_operativa`: i componenti restavano con la quantità vecchia. Gli altri casi del censimento sono innocui (scritture solo da NULL, normalizzazioni idempotenti). I due «da verificare», visti il 2026-10-05: il registro di DDT e resi è innocuo (lo sceglie un lettore che filtra gli attivi); la catena delle istanze dei clienti **morde** | ✅ Doc corretta (linee-guida-trigger); trigger ricreati con `WHEN (OLD.quantita IS DISTINCT FROM NEW.quantita)` (`20261004-85/-86`). Chiuso il 2026-10-04. La catena delle istanze → **D18** |
 | Doc da dev | Vero, già noto («dev ≠ CI»)                                                                                                                                                                                                                                                                                                                                                                                                                                   | Resta in §2-bis.5, nessuna decisione                                                                                                                                                               |
 
 ---
@@ -502,9 +507,10 @@ errore.
 > ⭐ **D15 è nata dalla chiusura di D14** (2026-09-22) e **D16** da un test
 > diventato rosso da solo (2026-09-23).
 >
-> ⭐ **D17 è nata dalla valutazione qualitativa del 2026-10-04** (§2-bis.8).
+> ⭐ **D17 è nata dalla valutazione qualitativa del 2026-10-04** (§2-bis.8), e
+> **D18** dal censimento `UPDATE OF` di D17 (2026-10-05).
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D6, D7, D8, D9, D11, D12, D15, D16.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -515,10 +521,35 @@ cioè anche `codice_interno`; il divieto di DELETE su clienti ed emittenti; otto
 guard del lotto e delle fatture…). Il backend non ne accende nessuna, ma un blocco
 che l'applicazione può spegnere da sola protegge solo finché l'applicazione non
 sbaglia. Proposta nel brief
-[brief-db-esclusioni-implicite.md](brief-db-esclusioni-implicite.md) §4: un
+[brief-db-esclusioni-implicite.md](../work-done/brief-db-esclusioni-implicite.md) §4: un
 building block che lega il bypass al **proprietario delle tabelle** (la forma di
 `zeroerp.ddt_cambio_stato`), i verbi del lotto DEFINER (approvato), circa 45 pgTAP
 da riscrivere perché usano quelle GUC come scorciatoia di fixture.
+
+⏳ **Al BE resta R-1** del brief: i due codici nuovi di Q-4 in
+`error_policies_generated.py`. Fino ad allora `test_error_policies_divergenza_db.py`
+è rosso.
+
+### 🔴 D18 — La catena delle istanze su un PDP si rompe quando un anello esce o entra
+
+Trovata il 2026-10-05 verificando il censimento `UPDATE OF` di D17. Su un PDP i
+clienti si succedono, e ogni istanza punta a quella del cliente precedente
+(`istanze_utilities.parent_istanza_id`, da cui il subentro clona il catasto). Il
+calcolo ha tre difetti, tutti sul modello:
+
+* **annullare un cliente non lo toglie dalla catena**: il trigger è `UPDATE OF
+  pdp_id, data_attivazione`, l'annullamento cambia lo stato, e `data_attivazione`
+  la azzera un altro trigger `BEFORE`. I due rami scritti per l'annullamento non
+  si raggiungono mai da un UPDATE;
+* **si ricalcola un anello, non la catena**: annullare, inserire in mezzo,
+  spostare una data, cambiare PDP o cancellare lascia sbagliato il **successore**;
+* **il calcolo legge sotto RLS**: il subentro attraversa le aziende, e il
+  predecessore di un'altra azienda per chi lavora non esiste.
+
+Proposta nel brief
+[brief-db-catena-istanze-pdp.md](brief-db-catena-istanze-pdp.md): un ricalcolo
+DEFINER della catena intera del PDP, da un trigger `AFTER` senza `OF`. Cinque
+decisioni aperte per Tid.
 
 ### 🟠 D6 — Resta solo D6-bis: i pin e il registro degli owner sono chiusi (§7)
 
@@ -1048,6 +1079,12 @@ D6 e il registro dei rossi in CI.
       e si ribalta da solo. ⛔ È un **prerequisito** di qualunque cantiere che
       misuri un piano, non una miglioria — e finché non c'è, un guadagno
       dichiarato in millisecondi non è difendibile.
+* [ ] **D17** — Q-2, rimandata da Tid: legare le GUC di bypass al proprietario
+      delle tabelle (proposta in `work-done/brief-db-esclusioni-implicite.md`
+      §4). Il resto di D17 è chiuso (§7); R-1 resta al BE.
+* [ ] **D18** — la catena delle istanze su un PDP: ricalcolo DEFINER della
+      catena intera da un trigger `AFTER` senza `OF`; brief
+      `work-in-progress/brief-db-catena-istanze-pdp.md`, da analizzare con Tid.
 
 ### 🟡 Struttura
 
@@ -1343,34 +1380,6 @@ Otto giri fra il 17 e il 22 settembre, **sette applicati** e l'ottavo provato e
 `c60f39eaa`, `559dbf351`, `acaaab569`, `e05e3b1e5`, `b40d9de24`, `660bbac59` e
 `8d7f14829` (PR #1634, #1635, #1639, #1640, #1646).
 
-### ✅ D17 — Le esclusioni implicite, tranne Q-2 — chiusa il 2026-10-04
-
-Nata e chiusa nello stesso giorno dalla valutazione qualitativa (§2-bis). Erano
-invarianti veri ma non scritti, che quando smettono di valere non danno errore:
-
-* **Q-4** — una fattura numerata **non si cancella e non cambia numero**: guard di
-  tabella `_a05_` (`vendite.trgfn_fatture_guard_numero_fiscale`), due codici
-  `CONFLITTO_STATO`. Chiude la corsa fra la check del ritorno a DRAFT (prima del
-  lock) e la DELETE del cleanup, e il retro per cui un UPDATE poteva togliere il
-  numero prima della DELETE;
-* **Q-1** — **utente NULL = nessun accesso** nelle tre funzioni di scope che
-  dicevano il contrario (la canonica, l'adapter del billing account, lo scope delle
-  ricerche). Una sessione con la veste OPERATORE e senza utente vedeva tutte le
-  aziende; ora la policy vera, provata come applicazione, non vede niente;
-* **Q-3** — l'invariante «tabelle del migratore, applicazione senza proprietà,
-  `FORCE` spento» è **scritto** (linee-guida-sql §10.5, che prima consigliava il
-  contrario) e **presidiato** a criterio (`dbops/test-postura-proprietario-rls-v1`);
-* **`UPDATE OF`** — la regola in linee-guida-trigger era rovesciata, e **mordeva**:
-  la propagazione delle quantità ai componenti dei kit non scattava quando la
-  quantità la ricalcola un trigger BEFORE. Cinque trigger rifatti con `WHEN`;
-* **v1** — la prima generazione dei changelog **non si tocca**: cancello CI con
-  manifesto (linee-guida-sql §11.11);
-* **Q-6** — regola: l'emittente si nomina `emittente_soggetto_ruolo_id`
-  (linee-guida-sql §2). **Q-5** è passata in D8.
-
-Brief `work-in-progress/brief-db-esclusioni-implicite.md`; changeSet
-`20261004-80 → -86`, applicati su dev il 2026-10-04, pgTAP verdi. Resta Q-2 (§3).
-
 **Che cosa è cambiato nel sistema** — le forme, non i millisecondi:
 
 * `vendite.fn_partite_merce` (`BEGIN ATOMIC`) **semina** la partita con il
@@ -1424,6 +1433,37 @@ distanza, ed è il motivo per cui è nata **D15**.
 reclama), i tre `LIKE` di `fn_accredita_riga_reso`, i preventivi come quarto
 adottante del BB delle righe in bozza, e tre voci BE.
 
+### ✅ D17 — Le esclusioni implicite, tranne Q-2 — chiusa il 2026-10-04
+
+Nata e chiusa nello stesso giorno dalla valutazione qualitativa (§2-bis). Erano
+invarianti veri ma non scritti, che quando smettono di valere non danno errore:
+
+* **Q-4** — una fattura numerata **non si cancella e non cambia numero**: guard di
+  tabella `_a05_` (`vendite.trgfn_fatture_guard_numero_fiscale`), due codici
+  `CONFLITTO_STATO`. Chiude la corsa fra la check del ritorno a DRAFT (prima del
+  lock) e la DELETE del cleanup, e il retro per cui un UPDATE poteva togliere il
+  numero prima della DELETE;
+* **Q-1** — **utente NULL = nessun accesso** nelle tre funzioni di scope che
+  dicevano il contrario (la canonica, l'adapter del billing account, lo scope delle
+  ricerche). Una sessione con la veste OPERATORE e senza utente vedeva tutte le
+  aziende; ora la policy vera, provata come applicazione, non vede niente;
+* **Q-3** — l'invariante «tabelle del migratore, applicazione senza proprietà,
+  `FORCE` spento» è **scritto** (linee-guida-sql §10.5, che prima consigliava il
+  contrario) e **presidiato** a criterio (`dbops/test-postura-proprietario-rls-v1`);
+* **`UPDATE OF`** — la regola in linee-guida-trigger era rovesciata, e **mordeva**:
+  la propagazione delle quantità ai componenti dei kit non scattava quando la
+  quantità la ricalcola un trigger BEFORE. Cinque trigger rifatti con `WHEN`;
+* **v1** — la prima generazione dei changelog **non si tocca**: cancello CI con
+  manifesto (linee-guida-sql §11.11);
+* **Q-6** — regola: l'emittente si nomina `emittente_soggetto_ruolo_id`
+  (linee-guida-sql §2). **Q-5** è passata in D8.
+
+Brief `work-done/brief-db-esclusioni-implicite.md` (archiviato il 2026-10-05);
+changeSet `20261004-80 → -86`, applicati su dev il 2026-10-04, pgTAP verdi,
+committato in `4617fabe6`. Il 2026-10-05 sono state verificate le due voci «da
+verificare» del censimento `UPDATE OF`: il registro di DDT e resi è innocuo, la
+catena delle istanze è un difetto vero ed è diventata **D18**. Restano Q-2 (§3)
+e R-1 al BE.
 
 ---
 
@@ -1438,4 +1478,6 @@ numero in entrambe le sezioni quando una voce ha due facce. **Riordinato il
 entrata D15 — le statistiche assenti, che la sua chiusura ha scoperto.
 **Riordinato il 2026-09-26**: D6 e D7 ridotti in §3 al lavoro che resta, il
 giro 2 di D7 riassunto in §7, `magazzino` uscito dalla fotografia di D8, numeri
-del repo rimisurati.*
+del repo rimisurati. **Aggiornato il 2026-10-05**: brief di D17 archiviato,
+nata D18 (la catena delle istanze), il blocco D17 di §7 riportato dopo la coda
+di D14, dove si era infilato.*
