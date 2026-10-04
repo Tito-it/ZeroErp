@@ -588,6 +588,16 @@ class AmmSoftwareService:
         self.get_operatore(auth_user_id)
         return self._repo.get_permessi_ereditati(auth_user_id)
 
+    # Scopo: I permessi EFFETTIVI dell'operatore su azioni e oggetti, col
+    #        tetto d'area gia' applicato a DB (brief-db-permessi-tetto-area).
+    # ⚠️ `get_operatore` prima, per la stessa ragione di
+    #    `get_permessi_ereditati`: su un id inesistente il DB risponderebbe
+    #    «tutto negato / BLOCCATO» (niente identita' OPERATORE), plausibile e
+    #    sbagliato al posto di un errore.
+    def get_permessi_effettivi(self, auth_user_id: int) -> dict:
+        self.get_operatore(auth_user_id)
+        return self._repo.get_permessi_effettivi(auth_user_id)
+
     # Scopo: Lista UO.
     def list_unita_organizzative(self) -> list:
         return self._repo.list_unita_organizzative()

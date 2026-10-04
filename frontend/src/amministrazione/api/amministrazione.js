@@ -334,6 +334,14 @@ export function getPermessiEreditati(authUserId) {
   return api.get(`${BASE}/operatori/${authUserId}/permessi-ereditati/`)
 }
 
+// Permessi EFFETTIVI su azioni e oggetti, col tetto d'area gia' applicato a DB
+// (brief-db-permessi-tetto-area): per ogni voce il valore senza tetto, quello
+// applicato e `limitata_da_area` / `limitato_da_area`. Alimenta l'etichetta
+// «limitata dall'area» del pannello. ⛔ Il tetto non si ricalcola nel FE.
+export function getPermessiEffettivi(authUserId) {
+  return api.get(`${BASE}/operatori/${authUserId}/permessi-effettivi/`)
+}
+
 export function listAreeFunzionali() {
   return api.get(`${BASE}/lookup/aree-funzionali/`)
 }

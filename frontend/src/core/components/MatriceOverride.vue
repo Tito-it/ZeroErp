@@ -127,15 +127,22 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
         <template #body="{ data }">
           <!-- Il nome della voce lo disegna il caller: qui non si sa se una
                voce si chiami `descrizione`, `permission_codename` o altro. -->
-          <slot name="voce" :voce="data">{{ chiave(data) }}</slot>
+          <!-- ⚠️ Il testo della voce VA A CAPO entro una larghezza massima:
+               la tabella e' `width: max-content` (main.css, `.app-datatable`),
+               quindi senza tetto una descrizione lunga allarga la colonna e
+               spinge la colonna Override fuori vista (pannello permessi,
+               azioni di processo, 2026-10-04). -->
+          <div class="app-matrice-override-voce">
+            <slot name="voce" :voce="data">{{ chiave(data) }}</slot>
+          </div>
         </template>
       </Column>
 
       <Column :header="t('matrice_override.col_ereditato')">
         <template #body="{ data }">
-          <span class="app-matrice-override-ereditato">
+          <div class="app-matrice-override-ereditato">
             <slot name="ereditato" :voce="data" />
-          </span>
+          </div>
         </template>
       </Column>
 
@@ -202,7 +209,18 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
 .app-matrice-override-ricerca {
   margin-bottom: 0.5rem;
 }
+/* Voce ed ereditato vanno a capo entro un tetto: con la tabella a
+   `max-content` il tetto e' cio' che limita il contributo della cella, e il
+   resto della larghezza resta alla colonna Override. */
+.app-matrice-override-voce {
+  max-width: 22rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .app-matrice-override-ereditato {
+  max-width: 16rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
   color: var(--app-text-muted);
 }
 .app-matrice-override-avviso {

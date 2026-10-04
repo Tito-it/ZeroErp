@@ -335,6 +335,7 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | `app-page-actions-desktop` | Variante desktop di `PageActionsBar`: utility inline + menu secondarie |
 | `app-page-actions-compact` | Variante touch/tablet/mobile di `PageActionsBar`: kebab popup |
 | `app-tab-content` | Wrapper contenuto tab per DataTable flex (dentro TabPanel o diretto) |
+| `app-elenco-dettaglio` (+ `-filtri`, `-elenco`, `-gruppo`, `-voce`, `-voce--attiva`, `-voce--modificata`, `-voce-testo`, `-vuoto`, `-dettaglio`) | **Elenco di voci-contenitore a sinistra, contenuto della voce scelta a destra** (2026-10-04, brief-db-permessi-tetto-area §7: pannello permessi dell'operatore, una voce per area). Al posto di una tab per voce, che non scala oltre poche voci. La voce scelta usa i token della riga attiva (`--app-riga-attiva-*`), quella con modifiche non salvate l'arancio di `DrawerTitle`. Sotto i 1024px l'elenco va sopra il dettaglio. ⭐ In sola lettura elenco e filtri restano attivi (navigazione, come `.p-tab`). ⛔ `-filtri` NON sono i filtri di una lista (`FiltriLista` + store): restringono la vista di voci già caricate. ℹ️ Solo layout: la macchina (voce scelta, ricerca, filtro) vive nel consumatore, `OperatorePermessiTab`; al secondo uso diventa un BB (regola del 2). |
 
 ### Classi form (`main.css`)
 

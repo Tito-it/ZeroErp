@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 28 settembre 2026
+> **Ultimo aggiornamento**: 4 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -21,6 +21,7 @@
 > * [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin) — il check di bypass
 > * [script.fn_get_profili_accesso_applicabili](/dbzero/script/funzioni/fn_get_profili_accesso_applicabili) — i profili applicabili a un utente
 > * [script.fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area) / [script.fn_resolve_livello_oggetto](/dbzero/script/funzioni/fn_resolve_livello_oggetto) — la catena risolta lato DB
+> * [script.fn_get_permessi_effettivi_azioni](/dbzero/script/funzioni/fn_get_permessi_effettivi_azioni) / [script.fn_get_permessi_effettivi_oggetti](/dbzero/script/funzioni/fn_get_permessi_effettivi_oggetti) — la catena col tetto d'area, sede unica di resolver, mappe di `/me/` e pannello permessi
 > * [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) — la regola di scope emittente, sede unica
 > * [script.fn_get_emittenti_scope_pk_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_pk_ids) / [script.fn_get_emittenti_scope_sr_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_sr_ids) — gli emittenti nel perimetro dell'utente
 > * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il write-guard di difesa in profondita'
@@ -137,33 +138,70 @@ Questo significa che:
 
 ## 3. Regola di risoluzione permessi
 
-Quando un operatore tenta un'azione, il sistema risolve i permessi
-seguendo una catena di priorita' a cascata. La regola generale e'
-che il **livello piu' specifico prevale sempre su quello piu'
-generale**, e in assenza di configurazione il default e' restrittivo.
+Quando un operatore tenta un'azione, il sistema risolve i permessi in due
+tempi: prima trova il valore **specifico** della voce (l'oggetto o l'azione),
+poi lo confronta con il livello della sua **area**. La regola generale e' che
+**il livello dell'area e' un tetto**: un permesso specifico puo' solo
+**restringere** quello della sua area, mai allargarlo. In assenza di
+configurazione il default e' restrittivo.
 
-Per l'accesso a un'area o a un singolo oggetto la catena e':
+Il livello di un'**area** si risolve cosi':
 
-1. **Override individuale su singolo oggetto/model** — se esiste, il
-   suo livello (`TUTTO`, `LETTURA` o `BLOCCATO`) vale e la risoluzione
-   si ferma qui. E' la forma piu' fine ma anche la piu' rara, usata
-   solo per eccezioni puntuali.
-2. **Override individuale sull'area** — in assenza di override sul
-   singolo oggetto, si applica l'eventuale override sull'area.
-3. **Profilo del reparto** — se nemmeno l'area ha un override
-   individuale, si applica il livello che il reparto di appartenenza
-   ha per quell'area.
-4. **Default sicuro** — se nessuna delle regole precedenti applica,
+1. **Override individuale sull'area** — se esiste ed e' valido oggi, vale.
+2. **Profilo** — altrimenti il livello che il profilo applicabile
+   all'operatore (ad hoc, di reparto o di portale, in quest'ordine) da'
+   a quell'area.
+3. **Default sicuro** — se nessuna delle regole precedenti applica,
    l'accesso e' `BLOCCATO`.
 
-Per le **azioni di processo** la risoluzione segue lo stesso principio
-ma e' binaria (l'azione puo' essere solo concessa o negata):
+Per un **singolo oggetto** (model):
 
-1. **Override individuale sull'azione** — se esiste, il suo valore
-   (grant o deny) vale.
-2. **Profilo del reparto** — altrimenti si applica l'abilitazione
-   dichiarata a livello di reparto.
-3. **Default** — in assenza di configurazioni, l'azione e' negata.
+1. **Valore specifico** — l'override individuale sull'oggetto, se esiste;
+   altrimenti il livello dell'area.
+2. **Tetto** — il risultato e' il **piu' restrittivo** fra il valore
+   specifico e il livello dell'area dell'oggetto. Un override `TUTTO` su un
+   oggetto di un'area in `LETTURA` vale `LETTURA`; un override `BLOCCATO`
+   su un oggetto di un'area in `TUTTO` vale `BLOCCATO`.
+
+L'area di un oggetto e' quella dichiarata nel catalogo degli oggetti
+(`config.area_model_overrides`) o, se l'oggetto non e' a catalogo, quella
+del suo schema. La decide sempre `script.fn_area_di_oggetto`, mai il
+chiamante.
+
+Per le **azioni di processo** la risoluzione e' binaria (l'azione puo' essere
+solo concessa o negata):
+
+1. **Valore specifico** — l'override individuale sull'azione se esiste,
+   altrimenti l'abilitazione del profilo, altrimenti **negata**.
+2. **Tetto** — l'azione e' concessa solo se, oltre al valore specifico, il
+   livello dell'area dell'azione arriva al **livello minimo** che l'azione
+   dichiara (`config.azioni_processo.livello_minimo_area`). Il minimo e'
+   `TUTTO` per le azioni che scrivono, e puo' essere `LETTURA` per una di
+   sola consultazione; non puo' essere `BLOCCATO`. Con l'area `BLOCCATO`
+   nessuna azione dell'area e' concessa.
+
+Il tetto vale **da qualunque parte venga** il valore specifico: override
+individuale o profilo.
+
+⭐ **Un override fermato dal tetto non si cancella: resta scritto e
+dormiente.** Torna valido da solo quando l'area si riapre — perche' scade un
+override d'area, cambia il profilo o cambia il reparto. Per questo nessuna
+regola rifiuta, in scrittura, un override piu' permissivo della sua area: il
+livello dell'area puo' cambiare dopo. Il pannello permessi dell'operatore
+mostra queste voci con l'etichetta «limitata dall'area».
+
+ℹ️ Il **super admin** e' un bypass totale e precede il tetto. Restano prima
+di tutto anche il controllo di contesto (una sessione che non e' di veste
+operatore non ha livelli) e l'identita' operatore attiva.
+
+La catena col tetto ha una **sede sola** a DB:
+[script.fn_get_permessi_effettivi_azioni](/dbzero/script/funzioni/fn_get_permessi_effettivi_azioni)
+per le azioni e
+[script.fn_get_permessi_effettivi_oggetti](/dbzero/script/funzioni/fn_get_permessi_effettivi_oggetti)
+per gli oggetti. Le leggono i resolver puntuali usati dal backend
+(`fn_check_azione_processo`, `fn_resolve_livello_oggetto`), le mappe che
+`/me/` consegna al frontend e il pannello permessi. Il frontend non ricalcola
+la catena: legge i livelli gia' risolti.
 
 > Il default e' sempre il piu' restrittivo: se non c'e' configurazione,
 > l'accesso e' negato.
@@ -314,9 +352,10 @@ dal reparto.
 
 > Struttura completa: [user_override_oggetti](/dbzero/config/tabelle/user_override_oggetti)
 
-Override individuale per utente su un singolo model/oggetto. Sovrascrive sia
-il profilo del reparto che l'override su area, offrendo il massimo livello
-di granularita'.
+Override individuale per utente su un singolo model/oggetto, il livello di
+granularita' piu' fine. **Restringe** il livello dell'area, non lo allarga
+(§3): un override piu' permissivo dell'area resta scritto ma vale il livello
+dell'area finche' l'area non si riapre.
 
 **Esempio di uso:** un operatore junior dell'area Anagrafiche con
 livello `TUTTO` generale, ma che non deve poter modificare i clienti,
@@ -331,8 +370,10 @@ profilo del reparto.
 > Struttura completa: [user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
 
 Override individuale per azioni di processo. Sovrascrive l'abilitazione
-ereditata dal reparto. Utile per concedere o negare azioni specifiche
-a singoli operatori.
+ereditata dal profilo. Utile per concedere o negare azioni specifiche
+a singoli operatori. ⚠️ Una concessione vale solo se l'area dell'azione
+arriva al minimo che l'azione dichiara (§3): sotto un'area chiusa l'override
+resta scritto e dormiente.
 
 **Esempio di uso:** se un operatore di un reparto a cui l'azione non e'
 stata abilitata deve comunque poter approvare fatture, si registra un
@@ -375,11 +416,11 @@ Il flusso di una richiesta attraversa, nell'ordine, cinque passaggi:
 1. **Autenticazione DRF** — validazione del token JWT e identificazione
    dell'utente.
 2. **Permission class principale** — risolve il livello di accesso
-   sull'area/oggetto richiesto consultando nell'ordine profilo del
-   reparto, override sull'area e override sull'oggetto specifico.
+   sull'area/oggetto richiesto: override sull'oggetto, poi il livello
+   dell'area (override o profilo) come tetto (§3).
 3. **Permission class delle azioni** — per le azioni di processo,
-   verifica l'abilitazione considerando reparto ed eventuali override
-   individuali.
+   verifica l'abilitazione considerando profilo, eventuali override
+   individuali e il tetto dell'area dell'azione.
 4. **Mixin di ambito emittente** — applica il filtro sul queryset in
    base alla whitelist `user_emittenti_fiscali`.
 5. **View/Serializer** — esegue la logica applicativa; ogni eventuale
@@ -692,14 +733,14 @@ l'ha lasciata passare ai livelli superiori.
 ### 7.3 Funzioni di risoluzione permessi lato DB
 
 Per scenari in cui il DB deve risolvere i permessi autonomamente (trigger guard,
-funzioni di validazione), esistono funzioni SQL che replicano la catena di
-risoluzione:
+funzioni di validazione), esistono funzioni SQL che risolvono la catena (le
+stesse che chiama il backend: non sono una copia):
 
 > [fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area) — risolve il livello effettivo di un utente su un'area (override area -> profilo reparto -> BLOCCATO)
 
-> [fn_resolve_livello_oggetto](/dbzero/script/funzioni/fn_resolve_livello_oggetto) — risolve il livello per un singolo model (override oggetto -> override area -> profilo reparto)
+> [fn_resolve_livello_oggetto](/dbzero/script/funzioni/fn_resolve_livello_oggetto) — risolve il livello per un singolo model (override oggetto, sotto il tetto dell'area dell'oggetto)
 
-> [fn_check_azione_processo](/dbzero/script/funzioni/fn_check_azione_processo) — verifica se un'azione di processo e' abilitata per un utente
+> [fn_check_azione_processo](/dbzero/script/funzioni/fn_check_azione_processo) — verifica se un'azione di processo e' abilitata per un utente (override -> profilo -> negata, sotto il tetto dell'area)
 
 **Esempio di uso:** le funzioni si invocano passando l'identificativo
 dell'utente e l'area o il codename dell'azione. La prima restituisce
@@ -1210,10 +1251,12 @@ l'utente indicato:
   `has_profilo_reparto`;
 * `modelli` — per ogni area, i model registrati in `config.area_model_overrides` con
   il livello oggetto risolto (`fn_resolve_livello_oggetto`: override esplicito o
-  fallback sull'area).
+  livello dell'area, sotto il tetto dell'area).
 
 Serve quando un operatore risulta `BLOCCATO` su un model specifico e bisogna
-distinguere la causa: override oggetto, profilo dell'area, o configurazione assente.
+distinguere la causa: override oggetto, profilo dell'area, tetto dell'area o
+configurazione assente. Per il tetto, il pannello permessi dell'operatore mostra
+la voce come «limitata dall'area».
 
 ### 13.2 L'audit degli override
 

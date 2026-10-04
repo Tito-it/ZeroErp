@@ -12,7 +12,13 @@
 > pericoloso, cioè un salvataggio che scrive 61 override invece di uno, **a
 > video non si vede**: si prova con un `count(*)` sul database.
 >
-> **Stato**: ✏️ scritto il 2026-09-25, da eseguire.
+> **Stato**: ✏️ scritto il 2026-09-25, da eseguire. ⚠️ **Aggiornato il 2026-10-04**
+> al restyle per area e al tetto d'area
+> ([brief-db-permessi-tetto-area.md](brief-db-permessi-tetto-area.md) §7): il pannello
+> non ha più tre tabelle con tre «Salva», ma l'**elenco delle aree** a sinistra e
+> l'area scelta a destra (livello, oggetti, azioni), con **un solo Salva nel footer**
+> del drawer. Nei §1-§5 «le tre tabelle» si leggono area per area, e ogni «*Salva*
+> delle aree/azioni/oggetti» è il **Salva del footer**. Le prove nuove sono al §5-bis.
 > **Ambiente**: sviluppo (`dbdev`).
 > **Utente**: un **super admin** o un operatore con `TUTTO` su Amministrazione
 > software, per aprire il pannello. Il pannello si prova **su altri** operatori.
@@ -104,6 +110,25 @@ decisione di Tid. Il collaudo prova solo che il pannello li fa vedere.
 | **5.1** | Apri il pannello in **sola lettura** (utente con `LETTURA` su Amministrazione software, o drawer aperto in consultazione) | ⛔ **Nessun** controllo premibile: né livelli, né reset, né *Salva* | Un pannello di sicurezza modificabile in sola lettura è il caso peggiore |
 | **5.2** | Apri il pannello su un **super admin** | Il messaggio *«Gli amministratori hanno accesso totale…»* | — |
 | **5.3** | Apri lo stesso operatore dall'**altra** strada (kebab ↔ tab del drawer) | Stesse righe, stessi stati | — |
+
+---
+
+## 5-bis. La forma per area e il tetto (2026-10-04)
+
+| # | Fai | Deve succedere | Se non succede |
+| --- | --- | --- | --- |
+| **5b.1** | Apri il pannello | Due schede: *Aree, oggetti e azioni* e *Scope emittenti fiscali*. A sinistra tutte le aree attive (contale contro il lookup), ognuna col suo livello; a destra la prima | Un'area mancante a sinistra non si può più configurare |
+| **5b.2** | Clicca un'altra area | A destra il suo livello, i **suoi** oggetti e le **sue** azioni, nient'altro | Se compaiono azioni di un'altra area, il raggruppamento legge il campo sbagliato |
+| **5b.3** | Accendi *Solo con override* | A sinistra restano le sole aree con almeno un override (il numero accanto); a destra le sole righe con override | — |
+| **5b.4** | Cerca il nome di un'azione | Resta solo l'area che la contiene, e a destra quell'azione | — |
+| **5b.5** | Cambia un livello senza salvare | Il nome dell'area a sinistra diventa **arancio**; il Salva del footer si accende | Se il Salva resta spento, la fotografia non vede la modifica |
+| **5b.6** | Cambia un'azione **e** il livello della stessa area, poi *Salva* una volta | Una sola notifica; query di controllo di §2: aree e azioni salite di uno, oggetti fermi | Se gli oggetti cambiano, il Salva manda anche una sezione non modificata |
+| **5b.7** | 🔴 **Tetto**: su un'area metti *Bloccato* e su una sua azione *Abilitata*, **senza salvare** | Sotto la tendina dell'azione: *«Limitata dall'area… (anteprima: non ancora salvato)»*; a sinistra il triangolo d'avviso sull'area | Senza etichetta il pannello dice «abilitata» su un'azione che il DB nega |
+| **5b.8** | *Salva* | L'etichetta resta **senza** «anteprima» (ora viene dal DB); l'override resta scritto (stato «Override») | Se l'etichetta sparisce, anteprima e DB non danno lo stesso esito: confrontare con `tettoArea.spec.js` |
+| **5b.9** | Riporta l'area a *Tutto*, *Salva* | L'etichetta sparisce: l'override dormiente torna valido da solo | — |
+| **5b.10** | Lo stesso con un oggetto: area *Lettura*, oggetto *Tutto* | *«Vale "Lettura": limitato dall'area…»* | — |
+| **5b.11** | Sola lettura (§5.1) | Elenco delle aree, ricerca e filtro **funzionano** (sono navigazione); tendine, reset e Salva no | Se l'elenco non risponde, in sola lettura si vede una sola area |
+| **5b.12** | Restringi la finestra sotto i 1024px | L'elenco delle aree va **sopra** il dettaglio, niente scroll orizzontale | — |
 
 ---
 

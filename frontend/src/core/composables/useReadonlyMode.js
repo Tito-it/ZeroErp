@@ -9,7 +9,11 @@
 //
 // Uso nella View (provider) — livello oggetto (v2):
 //   const { isReadonly, isBlocked } = useReadonlyMode('anagrafiche', 'conto_bancario')
-//   Se l'operatore ha un override oggetto, viene usato. Altrimenti fallback area.
+//   Vale il livello EFFETTIVO deciso dal DB (override, area, tetto d'area:
+//   /me/ `permessi_oggetto`). ⚠️ Con il model, il primo argomento e' l'APP_LABEL
+//   dell'oggetto (la chiave del catalogo `area_model_overrides`), non lo schema
+//   dell'area: con una chiave che non combacia si legge il livello dell'area,
+//   senza override ne' tetto, e senza nessun errore.
 //
 // Uso nei componenti figli (consumer):
 //   const isReadonly = useInjectReadonly()
