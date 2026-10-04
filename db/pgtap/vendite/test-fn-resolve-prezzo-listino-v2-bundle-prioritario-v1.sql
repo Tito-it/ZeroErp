@@ -7,19 +7,36 @@
 -- avere PRIORITA' su standalone (listini_righe) quando padre_contesto
 -- e' fornito. Verifica anche E_LISTINO_VERSIONE_NON_ATTIVA (448).
 --
+-- ⭐ TUTTO COSTRUITO (rev 2026-10-05, brief-db-erogazione-obbligatoria-righe-fatturate
+--   §5.5): azienda, cliente, categoria, listino, articoli, distinta, matrice e
+--   contratto nascono qui. Prima il file CERCAVA composito, BA e listino nel
+--   database: da zero non trovava niente e i sette test andavano in skip — verde
+--   per sottrazione. E la versione restava in BOZZA, che il resolver non legge
+--   (fn_listino_versione_in_vigore: ATTIVA o CHIUSA).
+--
+-- LA FIXTURE — il bundle P con due figli in distinta:
+--   F1: solo riga di bundle (75), nessuna riga standalone;
+--   F2: riga di bundle (75) E riga standalone (100).
+--   Una categoria cliente PROPRIA, mappata sul listino: sulla terna
+--   categoria x utility x emittente la matrice ha un'esclusione sulle date, e
+--   su dbdev l'azienda di contesto e' vera — la sua riga potrebbe esserci gia'.
+--
 -- Indice test (1..7):
---   1) Precondizione: esiste composito + BoM IVA-coerente + BA idoneo
---   2) Bundle-only (solo lrc, nessuna listini_righe): padre_contesto
---      fornito -> LISTINO_BUNDLE [CORE FIX]
+--   1) Precondizione: la versione costruita e' quella in vigore oggi
+--   2) Bundle-only (F1, solo lrc): padre_contesto fornito
+--      -> LISTINO_BUNDLE [CORE FIX]
 --   3) Versione listino non attiva alla data (matrice OK, versione NO)
 --      -> E_LISTINO_VERSIONE_NON_ATTIVA (448)
---   4) Bundle + standalone presenti: padre_contesto -> bundle vince
+--   4) Bundle + standalone presenti (F2): padre_contesto -> bundle vince
 --      (prezzo bundle=75, standalone=100)
---   5) Solo standalone + padre_contesto fake (nessuna lrc match)
---      -> fallback CATEGORIA
+--   5) F2 + padre_contesto fake (nessuna lrc match) -> fallback CATEGORIA
 --   6) Ne' bundle ne' standalone (articolo fake, padre_contesto reale)
 --      -> E_PREZZO_LISTINO_RIGA_NON_TROVATA
 --   7) CONTRATTO_OVERRIDE + padre_contesto -> vince CONTRATTO_OVERRIDE
+--
+-- ⚠️ 3 e 6 leggono l'esito dal NUCLEO (fn_resolve_prezzo_listino_v2_esito):
+--   un throws_ok sul guscio con P0001 e messaggio NULL passerebbe con
+--   QUALUNQUE rifiuto, anche quello di una fixture rotta.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -41,166 +58,130 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(7);
 
 -- =========================================================
--- Setup: tmp_bundle_ctx — composito + BoM + BA idoneo
---
--- Criteri selezione:
---   - padre: is_composito=TRUE, attivo=TRUE, listino_tipologia_id NOT NULL
---   - BoM entry: attivo e valida a CURRENT_DATE
---   - figlio: attivo=TRUE, iva_id = padre.iva_id (guard coerenza IVA)
---   - BA: categoria_cliente_id NOT NULL, utility SENZA dimensione
---     tipo/classe (evita guard snapshot contratto)
---   - listino attivo con tipologia padre
+-- FIXTURE
 -- =========================================================
-CREATE TEMP TABLE tmp_bundle_ctx AS
-SELECT
-    a_padre.id                      AS padre_id,
-    a_padre.listino_tipologia_id    AS tipologia_id,
-    a_padre.iva_id                  AS iva_id,
-    ac.id                           AS articolo_componente_id,
-    ac.componente_id                AS figlio_id,
-    a_figlio.uom_id                 AS figlio_uom_id,
-    ba.id                           AS ba_id,
-    ba.categoria_cliente_id         AS categoria_id,
-    ba.utility_id                   AS utility_id,
-    ba.istanza_utility_id           AS istanza_utility_id,
-    (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-      WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1)      AS emittente_srid,
-    (SELECT l.id FROM vendite.listini l
-      WHERE l.tipologia_id = a_padre.listino_tipologia_id
-        AND l.attivo       = TRUE
-      ORDER BY l.id LIMIT 1)                               AS listino_id
-  FROM catalogo.articoli a_padre
-  JOIN catalogo.articoli_componenti ac
-    ON ac.prodotto_id             = a_padre.id
-   AND COALESCE(ac.attivo, TRUE)  = TRUE
-   AND ac.validita               @> CURRENT_DATE
-  JOIN catalogo.articoli a_figlio
-    ON a_figlio.id                = ac.componente_id
-   AND a_figlio.attivo            IS TRUE
-   AND a_figlio.iva_id            = a_padre.iva_id
-  JOIN anagrafiche.billing_account ba
-    ON ba.categoria_cliente_id IS NOT NULL
-  WHERE a_padre.is_composito        = TRUE
-    AND a_padre.attivo              IS TRUE
-    AND a_padre.listino_tipologia_id IS NOT NULL
-    AND NOT EXISTS (
-        SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-    )
-    AND EXISTS (
-        SELECT 1 FROM vendite.listini l
-         WHERE l.tipologia_id = a_padre.listino_tipologia_id AND l.attivo = TRUE
-    )
-  ORDER BY a_padre.id, ac.id, ba.id
-  LIMIT 1;
+CREATE TEMP TABLE tmp_bnd_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('bundle prioritario');
 
--- tmp_bundle_versione: creata SEMPRE (anche vuota) affinche' le SELECT
--- che la referenziano siano parsabili indipendentemente dai dati.
-CREATE TEMP TABLE tmp_bundle_versione (versione_id bigint);
+-- La categoria del cliente: propria, senza promo (l'overlay promo non e' il
+-- caso del test). Il BA nasce con la prima del seed e la cambia qui, prima
+-- del contratto, che ne fotografa la categoria.
+CREATE TEMP TABLE tmp_bnd_categoria AS
+WITH ins AS (
+    INSERT INTO anagrafiche.categorie_clienti (codice, codice_interno, descrizione, partecipa_promo)
+    SELECT s.sigla, s.sigla, 'Fixture pgTAP: bundle prioritario', FALSE
+      FROM (SELECT 'PGTAP-BND-' || substr(md5(clock_timestamp()::text || random()::text), 1, 12) AS sigla) s
+    RETURNING id
+)
+SELECT id FROM ins;
 
--- =========================================================
--- Setup versione BOZZA+attivo + matrice categoria -> listino
--- (solo se dati disponibili)
--- =========================================================
-DO $$
-DECLARE
-    v_listino_id     bigint;
-    v_versione_id    bigint;
-    v_categoria_id   smallint;
-    v_utility_id     integer;
-    v_emittente_srid bigint;
-BEGIN
-    SELECT listino_id, categoria_id, utility_id, emittente_srid
-      INTO v_listino_id, v_categoria_id, v_utility_id, v_emittente_srid
-      FROM tmp_bundle_ctx LIMIT 1;
+UPDATE anagrafiche.billing_account
+   SET categoria_cliente_id = (SELECT id FROM tmp_bnd_categoria)
+ WHERE id = (SELECT billing_account_id FROM tmp_bnd_mondo);
 
-    IF v_listino_id IS NULL THEN RETURN; END IF;
+-- ⚠️ La versione del builder nasce ATTIVA, e i componenti di un bundle non si
+--    scrivono su una versione ATTIVA. La si fa finire nel 2020, e la versione
+--    che copre OGGI si costruisce qui: BOZZA, righe, poi ATTIVA. Finisce a
+--    +400 giorni: il test 3 chiede una data dove nessuna versione e' in vigore.
+CREATE TEMP TABLE tmp_bnd_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino(
+    (SELECT utility_id FROM tmp_bnd_mondo), 'bundle prioritario',
+    '2020-01-01'::date, '2020-12-31'::date);
 
-    -- Versione BOZZA+attivo=TRUE.
-    -- BOZZA: obbligatorio per INSERT su listini_righe_componenti (guard immutabilita').
-    -- attivo=TRUE: il resolver filtra lv.attivo=TRUE.
-    INSERT INTO vendite.listini_versioni(
-        listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-    VALUES (v_listino_id, 'PGTAP_BUNDLE_V', CURRENT_DATE, CURRENT_DATE + 400, 'BOZZA', TRUE);
+CREATE TEMP TABLE tmp_bnd_ver AS
+WITH ins AS (
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, stato)
+    SELECT listino_id, 'PGTAP_BND_V2', CURRENT_DATE, CURRENT_DATE + 400, 'BOZZA' FROM tmp_bnd_listino
+    RETURNING id
+)
+SELECT id FROM ins;
 
-    SELECT id INTO v_versione_id
-      FROM vendite.listini_versioni
-     WHERE codice_versione = 'PGTAP_BUNDLE_V'
-       AND listino_id      = v_listino_id;
+CREATE TEMP TABLE tmp_bnd_art AS
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-BND-' || v.sigla, false) AS id
+  FROM (VALUES ('P'), ('F1'), ('F2')) AS v(sigla);
 
-    INSERT INTO tmp_bundle_versione VALUES (v_versione_id);
+-- Scopo: id di un articolo della fixture per sigla.
+CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
+RETURNS uuid LANGUAGE sql STABLE AS $fx$
+  SELECT id FROM tmp_bnd_art WHERE sigla = p_sigla;
+$fx$;
 
-    -- Matrice categoria -> listino (valido_al NULL = aperto).
-    INSERT INTO anagrafiche.categorie_clienti_listini(
-        categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id,
-        classe_utenza_id, listino_id, tipo_variazione, valore_variazione,
-        valido_dal, valido_al)
-    VALUES (v_categoria_id, v_utility_id, v_emittente_srid,
-            NULL, v_listino_id, NULL, NULL, CURRENT_DATE, NULL);
-END
-$$;
+-- Scopo: UoM base di un articolo della fixture.
+CREATE OR REPLACE FUNCTION pg_temp.uom(p_sigla text)
+RETURNS bigint LANGUAGE sql STABLE AS $fx$
+  SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = pg_temp.art(p_sigla);
+$fx$;
 
--- =========================================================
--- Setup test 2: INSERT solo riga bundle (nessuna listini_righe)
--- =========================================================
-DO $$
-DECLARE
-    v_versione_id bigint;
-BEGIN
-    SELECT versione_id INTO v_versione_id FROM tmp_bundle_versione LIMIT 1;
-    IF v_versione_id IS NULL THEN RETURN; END IF;
+-- Un listino TIPIZZATO accetta solo articoli della sua tipologia.
+UPDATE catalogo.articoli
+   SET listino_tipologia_id = (SELECT tipologia_id FROM tmp_bnd_listino)
+ WHERE id IN (SELECT id FROM tmp_bnd_art);
 
-    INSERT INTO vendite.listini_righe_componenti(
-        listino_versione_id, articolo_componente_id,
-        articolo_padre_id, articolo_figlio_id,
-        prezzo, iva_id, valido_dal, valido_al, attivo)
-    SELECT v_versione_id,
-           ctx.articolo_componente_id,
-           ctx.padre_id,
-           ctx.figlio_id,
-           75.00,
-           ctx.iva_id,
-           CURRENT_DATE,
-           CURRENT_DATE,
-           TRUE
-      FROM tmp_bundle_ctx ctx;
-END
-$$;
+-- Il bundle: P composito, con F1 e F2 in distinta.
+UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('P');
+INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
+SELECT pg_temp.art('P'), pg_temp.art(f.sigla), 1, '2020-01-01'
+  FROM (VALUES ('F1'), ('F2')) AS f(sigla);
+
+INSERT INTO vendite.listini_righe_componenti (listino_versione_id, articolo_componente_id,
+       articolo_padre_id, articolo_figlio_id, prezzo, valido_dal, valido_al)
+-- La validita' della riga sta dentro quella della versione (guard coerenza BoM).
+SELECT (SELECT id FROM tmp_bnd_ver), ac.id, ac.prodotto_id, ac.componente_id, 75.00,
+       CURRENT_DATE, CURRENT_DATE + 400
+  FROM catalogo.articoli_componenti ac
+ WHERE ac.prodotto_id = pg_temp.art('P');
+
+-- Solo F2 ha anche la riga standalone: F1 e' il caso «bundle-only».
+INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
+VALUES ((SELECT id FROM tmp_bnd_ver), pg_temp.art('F2'), pg_temp.uom('F2'), 100.00);
+
+UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_bnd_ver);
+
+-- La matrice categoria -> listino (valido_al NULL = aperta): e' lo stadio
+-- CATEGORIA, quello che i test 2..6 attraversano (nessun contratto ancora).
+INSERT INTO anagrafiche.categorie_clienti_listini (
+    categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id,
+    classe_utenza_id, listino_id, valido_dal)
+SELECT (SELECT id FROM tmp_bnd_categoria), m.utility_id, m.emittente_soggetto_ruolo_id,
+       NULL, (SELECT listino_id FROM tmp_bnd_listino), CURRENT_DATE
+  FROM tmp_bnd_mondo m;
+
+-- Scopo: la chiamata al GUSCIO del resolver sul mondo della fixture.
+CREATE OR REPLACE FUNCTION pg_temp.risolvi(p_articolo uuid, p_uom bigint, p_data date, p_padre uuid)
+RETURNS TABLE(origine text, prezzo_finale numeric) LANGUAGE sql AS $fx$
+  SELECT r.origine::text, r.prezzo_finale
+    FROM tmp_bnd_mondo m,
+         vendite.fn_resolve_prezzo_listino_v2(
+             p_articolo, p_uom, p_data, m.billing_account_id, m.utility_id,
+             m.emittente_soggetto_ruolo_id, NULL, p_padre) r;
+$fx$;
+
+-- Scopo: l'esito del NUCLEO, per i casi di rifiuto (codice esatto, niente log).
+CREATE OR REPLACE FUNCTION pg_temp.esito(p_articolo uuid, p_uom bigint, p_data date, p_padre uuid)
+RETURNS text LANGUAGE sql AS $fx$
+  SELECT r.esito_codice
+    FROM tmp_bnd_mondo m,
+         vendite.fn_resolve_prezzo_listino_v2_esito(
+             p_articolo, p_uom, p_data, m.billing_account_id, m.utility_id,
+             m.emittente_soggetto_ruolo_id, NULL, p_padre) r;
+$fx$;
 
 -- =========================================================
--- 1) Precondizione
+-- 1) Precondizione: i test sotto leggono la versione costruita
 -- =========================================================
-SELECT CASE
-    WHEN (SELECT COUNT(*) FROM tmp_bundle_versione) = 0
-        THEN skip('1) Nessun composito+BoM+BA+listino idoneo — test 2..7 salteranno')
-    ELSE ok(TRUE, '1) Precondizione: composito+BoM+BA+listino+versione BOZZA creati')
-END;
+SELECT is(
+    vendite.fn_listino_versione_in_vigore((SELECT listino_id FROM tmp_bnd_listino), CURRENT_DATE),
+    (SELECT id FROM tmp_bnd_ver),
+    '1) Precondizione: la versione costruita (bundle + standalone) e'' quella in vigore oggi');
 
 -- =========================================================
--- 2) Bundle-only: solo lrc, nessuna listini_righe per il figlio
+-- 2) Bundle-only: F1 ha solo la lrc, nessuna listini_righe
 --    padre_contesto fornito -> LISTINO_BUNDLE [CORE FIX]
 -- =========================================================
-SELECT CASE
-    WHEN (SELECT COUNT(*) FROM tmp_bundle_versione) = 0
-        THEN skip('2) Dati non disponibili')
-    ELSE (
-        SELECT is(
-            (SELECT origine::text
-               FROM vendite.fn_resolve_prezzo_listino_v2(
-                   ctx.figlio_id,
-                   ctx.figlio_uom_id,
-                   CURRENT_DATE,
-                   ctx.ba_id,
-                   ctx.utility_id,
-                   ctx.emittente_srid,
-                   NULL,
-                   ctx.padre_id
-               )),
-            'LISTINO_BUNDLE',
-            '2) Bundle-only + padre_contesto -> LISTINO_BUNDLE (core fix bug bi-layer)'
-        )
-        FROM tmp_bundle_ctx ctx
-    )
-END;
+SELECT is(
+    (SELECT origine FROM pg_temp.risolvi(pg_temp.art('F1'), pg_temp.uom('F1'), CURRENT_DATE, pg_temp.art('P'))),
+    'LISTINO_BUNDLE',
+    '2) Bundle-only + padre_contesto -> LISTINO_BUNDLE (core fix bug bi-layer)');
 
 -- =========================================================
 -- 3) Versione non attiva alla data CURRENT_DATE+500
@@ -208,103 +189,29 @@ END;
 --    La matrice e' aperta (valido_al NULL) -> matrice trovata.
 --    -> E_LISTINO_VERSIONE_NON_ATTIVA (448)
 -- =========================================================
-SELECT CASE
-    WHEN (SELECT COUNT(*) FROM tmp_bundle_versione) = 0
-        THEN skip('3) Dati non disponibili')
-    ELSE (
-        SELECT throws_ok(
-            format(
-                $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
-                    %L::uuid, %s, %L::date, %s, %s, %s, NULL, %L::uuid)$$,
-                ctx.figlio_id::text,
-                ctx.figlio_uom_id,
-                (CURRENT_DATE + 500)::text,
-                ctx.ba_id,
-                ctx.utility_id,
-                ctx.emittente_srid,
-                ctx.padre_id::text
-            ),
-            'P0001',
-            NULL,
-            '3) Versione non attiva alla data -> E_LISTINO_VERSIONE_NON_ATTIVA'
-        )
-        FROM tmp_bundle_ctx ctx
-    )
-END;
+SELECT is(
+    pg_temp.esito(pg_temp.art('F1'), pg_temp.uom('F1'), CURRENT_DATE + 500, pg_temp.art('P')),
+    'E_LISTINO_VERSIONE_NON_ATTIVA',
+    '3) Versione non attiva alla data -> E_LISTINO_VERSIONE_NON_ATTIVA');
 
 -- =========================================================
--- Setup test 4+5: INSERT listini_righe standalone per il figlio
--- (prezzo=100, nella stessa versione BOZZA)
--- =========================================================
-DO $$
-DECLARE
-    v_versione_id bigint;
-BEGIN
-    SELECT versione_id INTO v_versione_id FROM tmp_bundle_versione LIMIT 1;
-    IF v_versione_id IS NULL THEN RETURN; END IF;
-
-    INSERT INTO vendite.listini_righe(
-        listino_versione_id, articolo_id, uom_id, prezzo)
-    SELECT v_versione_id, ctx.figlio_id, ctx.figlio_uom_id, 100.00
-      FROM tmp_bundle_ctx ctx
-    ON CONFLICT DO NOTHING;
-END
-$$;
-
--- =========================================================
--- 4) Bundle + standalone presenti: padre_contesto -> bundle vince
+-- 4) Bundle + standalone presenti (F2): padre_contesto -> bundle vince
 --    (prezzo bundle=75, standalone=100)
 -- =========================================================
-SELECT CASE
-    WHEN (SELECT COUNT(*) FROM tmp_bundle_versione) = 0
-        THEN skip('4) Dati non disponibili')
-    ELSE (
-        SELECT is(
-            (SELECT prezzo_finale
-               FROM vendite.fn_resolve_prezzo_listino_v2(
-                   ctx.figlio_id,
-                   ctx.figlio_uom_id,
-                   CURRENT_DATE,
-                   ctx.ba_id,
-                   ctx.utility_id,
-                   ctx.emittente_srid,
-                   NULL,
-                   ctx.padre_id
-               )),
-            75.00::numeric,
-            '4) Bundle + standalone: padre_contesto -> bundle vince (prezzo=75 non 100)'
-        )
-        FROM tmp_bundle_ctx ctx
-    )
-END;
+SELECT is(
+    (SELECT prezzo_finale FROM pg_temp.risolvi(pg_temp.art('F2'), pg_temp.uom('F2'), CURRENT_DATE, pg_temp.art('P'))),
+    75.00::numeric,
+    '4) Bundle + standalone: padre_contesto -> bundle vince (prezzo=75 non 100)');
 
 -- =========================================================
--- 5) Solo standalone + padre_contesto fake: nessuna lrc per il padre fake
+-- 5) F2 + padre_contesto fake: nessuna lrc per il padre fake
 --    -> fallback CATEGORIA, prezzo=100
 -- =========================================================
-SELECT CASE
-    WHEN (SELECT COUNT(*) FROM tmp_bundle_versione) = 0
-        THEN skip('5) Dati non disponibili')
-    ELSE (
-        SELECT is(
-            (SELECT origine::text
-               FROM vendite.fn_resolve_prezzo_listino_v2(
-                   ctx.figlio_id,
-                   ctx.figlio_uom_id,
-                   CURRENT_DATE,
-                   ctx.ba_id,
-                   ctx.utility_id,
-                   ctx.emittente_srid,
-                   NULL,
-                   -- UUID fake: nessuna lrc con questo padre -> fallback standalone
-                   '00000000-0000-0000-0000-000000000099'::uuid
-               )),
-            'CATEGORIA',
-            '5) padre_contesto fake (nessuna lrc) + standalone presente -> CATEGORIA'
-        )
-        FROM tmp_bundle_ctx ctx
-    )
-END;
+SELECT is(
+    (SELECT origine FROM pg_temp.risolvi(pg_temp.art('F2'), pg_temp.uom('F2'), CURRENT_DATE,
+                                          '00000000-0000-0000-0000-000000000099'::uuid)),
+    'CATEGORIA',
+    '5) padre_contesto fake (nessuna lrc) + standalone presente -> CATEGORIA');
 
 -- =========================================================
 -- 6) Ne' bundle ne' standalone: articolo UUID fake
@@ -312,89 +219,49 @@ END;
 --    standalone non trovato (articolo fake non ha righe)
 --    -> E_PREZZO_LISTINO_RIGA_NON_TROVATA
 -- =========================================================
-SELECT CASE
-    WHEN (SELECT COUNT(*) FROM tmp_bundle_versione) = 0
-        THEN skip('6) Dati non disponibili')
-    ELSE (
-        SELECT throws_ok(
-            format(
-                $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
-                    '00000000-0000-0000-0000-000000000098'::uuid,
-                    %s, %L::date, %s, %s, %s, NULL, %L::uuid)$$,
-                ctx.figlio_uom_id,
-                CURRENT_DATE::text,
-                ctx.ba_id,
-                ctx.utility_id,
-                ctx.emittente_srid,
-                ctx.padre_id::text
-            ),
-            'P0001',
-            NULL,
-            '6) Articolo fake + padre_contesto reale: ne'' bundle ne'' standalone -> P0001'
-        )
-        FROM tmp_bundle_ctx ctx
-    )
-END;
+SELECT is(
+    pg_temp.esito('00000000-0000-0000-0000-000000000098'::uuid, pg_temp.uom('F2'), CURRENT_DATE,
+                  pg_temp.art('P')),
+    'E_PREZZO_LISTINO_RIGA_NON_TROVATA',
+    '6) Articolo fake + padre_contesto reale: ne'' bundle ne'' standalone -> E_PREZZO_LISTINO_RIGA_NON_TROVATA');
 
 -- =========================================================
--- Setup test 7: contratto ATTIVO con riga prezzo=999 per il figlio
+-- Setup test 7: contratto con OVERRIDE prezzo=999 su F2
+--   La strada di un contratto vero: in DRAFT con la riga, poi ATTIVO (il
+--   rifiuto «fuori bozza» non ammette righe nuove su un contratto attivo).
 -- =========================================================
-DO $$
-DECLARE
-    v_versione_id bigint;
-BEGIN
-    SELECT versione_id INTO v_versione_id FROM tmp_bundle_versione LIMIT 1;
-    IF v_versione_id IS NULL THEN RETURN; END IF;
+CREATE TEMP TABLE tmp_bnd_contratto AS
+WITH ins AS (
+    INSERT INTO vendite.contratti (numero, billing_account_id, istanza_utility_id, utility_id,
+           stato_doc_contratto_id, listino_id, valido_dal, valido_al)
+    SELECT 'PGTAP-BND-' || substr(gen_random_uuid()::text, 1, 8),
+           m.billing_account_id, m.istanza_utility_id, m.utility_id,
+           (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
+           (SELECT listino_id FROM tmp_bnd_listino),
+           CURRENT_DATE, CURRENT_DATE + 365
+      FROM tmp_bnd_mondo m
+    RETURNING id
+)
+SELECT id FROM ins;
 
-    INSERT INTO vendite.contratti(
-        numero, billing_account_id, istanza_utility_id, utility_id,
-        stato_doc_contratto_id, valido_dal, listino_id)
-    SELECT 'PGTAP_BNDL_OVR',
-           ctx.ba_id,
-           ctx.istanza_utility_id,
-           ctx.utility_id,
-           (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO'),
-           CURRENT_DATE,
-           ctx.listino_id
-      FROM tmp_bundle_ctx ctx;
+INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
+       tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
+VALUES ((SELECT id FROM tmp_bnd_contratto), pg_temp.art('F2'), 'OVERRIDE', 999.00,
+        'CANONE', 'FISSA', 1, 1, pg_temp.uom('F2'));
 
-    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
-    INSERT INTO vendite.contratti_righe(
-        contratto_id, articolo_id, prezzo_unitario, attivo, qta_operativa,
-        tipo_erogazione)
-    SELECT c.id, ctx.figlio_id, 999.00, TRUE, 1, 'CANONE'
-      FROM vendite.contratti c, tmp_bundle_ctx ctx
-     WHERE c.numero = 'PGTAP_BNDL_OVR';
-END
-$$;
+UPDATE vendite.contratti
+   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
+ WHERE id = (SELECT id FROM tmp_bnd_contratto);
 
 -- =========================================================
 -- 7) CONTRATTO_OVERRIDE + padre_contesto: override batte bundle
---    Il contratto ha riga prezzo=999 per il figlio.
 --    STADIO 1a (CONTRATTO_OVERRIDE) precede bundle -> prezzo=999.
 -- =========================================================
-SELECT CASE
-    WHEN (SELECT COUNT(*) FROM tmp_bundle_versione) = 0
-        THEN skip('7) Dati non disponibili')
-    ELSE (
-        SELECT is(
-            (SELECT origine::text
-               FROM vendite.fn_resolve_prezzo_listino_v2(
-                   ctx.figlio_id,
-                   ctx.figlio_uom_id,
-                   CURRENT_DATE,
-                   ctx.ba_id,
-                   ctx.utility_id,
-                   ctx.emittente_srid,
-                   NULL,
-                   ctx.padre_id
-               )),
-            'CONTRATTO_OVERRIDE',
-            '7) CONTRATTO_OVERRIDE + padre_contesto -> vince override (bundle ignorato)'
-        )
-        FROM tmp_bundle_ctx ctx
-    )
-END;
+SELECT is(
+    (SELECT origine || ' a 999: ' || (prezzo_finale = 999.00)
+       FROM pg_temp.risolvi(pg_temp.art('F2'), pg_temp.uom('F2'), CURRENT_DATE, pg_temp.art('P'))),
+    'CONTRATTO_OVERRIDE a 999: true',
+    '7) CONTRATTO_OVERRIDE + padre_contesto -> vince override a 999 (bundle ignorato)');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -158,11 +158,17 @@ l'ultimo ripiegava (R4).
   `test-contratti-righe-guard-pending-v1`, `test-contratti-schema-step22-v1`, `test-contratti-step23-v1`,
   `test-fn-resolve-prezzo-listino-v2-bundle-prioritario-v1`, `test-fn-resolve-prezzo-listino-v2-step24-v1`,
   `test-fn-resolve-prezzo-listino-v2-v1`, `test-trgfn-doc-righe-lock-fuori-bozza-v1`.
-* 🟠 **Trovato e non corretto qui**: `test-fn-resolve-prezzo-listino-v2-bundle-prioritario-v1.sql`
-  (riga ~361) inserisce una riga di contratto **senza `tipo_eccezione`** (NOT NULL, senza default) su
-  un contratto creato già ATTIVO, che il rifiuto «fuori bozza» respingerebbe. Oggi non gira: la
-  fixture va in `skip` (7 skip). Va ricostruita (OVERRIDE, contratto prima in bozza); è debito di
-  quel file, non di questo giro.
+* ✅ **Trovato qui, corretto il 2026-10-05**: `test-fn-resolve-prezzo-listino-v2-bundle-prioritario-v1.sql`
+  inseriva una riga di contratto **senza `tipo_eccezione`** (NOT NULL, senza default) su un contratto
+  creato già ATTIVO, che il rifiuto «fuori bozza» respingerebbe. Non girava: la fixture **cercava**
+  composito, BA e listino nel DB e andava in `skip` (7 skip, verde per sottrazione); e lasciava la
+  versione in `BOZZA`, che il resolver non legge più (`fn_listino_versione_in_vigore`: ATTIVA o
+  CHIUSA). **Ricostruita sui builder**: mondo cliente, listino, bundle P con due figli (F1 solo
+  bundle, F2 bundle + standalone), versione BOZZA → righe → ATTIVA, contratto in DRAFT con
+  l'OVERRIDE e poi ATTIVO. La categoria cliente è **propria**: sulla matrice categoria × utility ×
+  emittente c'è un'esclusione sulle date, e su dbdev l'azienda di contesto è vera. I test 3 e 6
+  leggono `esito_codice` dal nucleo invece del `throws_ok(…, 'P0001', NULL)` sul guscio, che passava
+  con qualunque rifiuto. Sullo scratch come `zeroerp_app`: **7/7**; verde anche nella corsa di Tid (2026-10-05).
 
 ### 5.6 Verifica
 
@@ -218,6 +224,8 @@ il DB ricostruito da zero:
 2. ✅ Prova sullo scratch dopo l'apply (§5.6).
 3. ✅ Migrazione applicata e pgTAP verdi nella corsa di Tid (2026-10-04).
 4. ✅ BE/FE (§6): scritto il 2026-10-04, vedi §8.
+5. ✅ Debito trovato al §5.5: `test-fn-resolve-prezzo-listino-v2-bundle-prioritario-v1` ricostruito
+   sui builder, verde nella corsa di Tid (2026-10-05).
 
 ## 8. Consegna BE/FE (2026-10-04)
 
