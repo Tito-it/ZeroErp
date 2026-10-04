@@ -136,14 +136,23 @@ SELECT id FROM ins;
 
 -- Scopo: l'INSERT di una riga, come testo da dare a throws_like / lives_ok.
 --   p_tabella: 'contratto' | 'offerta'. p_erogazione NULL = colonna lasciata vuota.
+--   rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): un'ESCLUSIONE
+--   nasce VUOTA — nessun dato di vendita, ne' quantita' ne' fonte: con la regola
+--   nuova la quantita' 1 e la fonte FISSA di prima sarebbero rifiutate.
 CREATE OR REPLACE FUNCTION pg_temp.ins_riga(p_tabella text, p_sigla text, p_tipo text,
                                             p_erogazione text)
 RETURNS text LANGUAGE sql STABLE AS $fx$
   SELECT format(
+      CASE WHEN p_tipo = 'ESCLUSIONE' THEN
+      $$INSERT INTO vendite.%I (%I, articolo_id, tipo_eccezione, prezzo_unitario, tipo_erogazione)
+        SELECT %s, a.id, %L::vendite.tipo_eccezione_contratto, %s, %L
+          FROM catalogo.articoli a WHERE a.id = %L$$
+      ELSE
       $$INSERT INTO vendite.%I (%I, articolo_id, tipo_eccezione, prezzo_unitario,
                tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
         SELECT %s, a.id, %L::vendite.tipo_eccezione_contratto, %s, %L, 'FISSA', 1, 1, a.uom_id
-          FROM catalogo.articoli a WHERE a.id = %L$$,
+          FROM catalogo.articoli a WHERE a.id = %L$$
+      END,
       CASE p_tabella WHEN 'contratto' THEN 'contratti_righe' ELSE 'offerte_commerciali_eccezioni' END,
       CASE p_tabella WHEN 'contratto' THEN 'contratto_id' ELSE 'offerta_id' END,
       CASE p_tabella WHEN 'contratto' THEN (SELECT id FROM tmp_ero_contratto)

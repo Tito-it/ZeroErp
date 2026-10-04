@@ -50,7 +50,11 @@ distinguere un `NULL` da un vuoto.
 
 Tipi di documento ammessi: `DDT`, `ORDINE` e — dal 2026-09-22, per le righe di
 contratto — `CONTRATTO` (`vendite.contratti` → `config.stati_doc_contratti`,
-etichetta «Contratto <numero>»). Qualunque altro valore non è un dato sbagliato,
+etichetta «Contratto <numero>»); poi `EMAIL_BOZZA`, `RESO` e — dal 2026-10-04,
+per le righe dell'offerta — `OFFERTA` (`vendite.offerte_commerciali` →
+`config.stati_doc_offerte`, etichetta «Offerta <codice>»). L'etichetta
+dell'offerta la usa anche il messaggio dell'aggiunta fuori listino, che nomina
+il documento. Qualunque altro valore non è un dato sbagliato,
 è un **chiamante rotto**: `E_DOC_TIPO_NON_GESTITO`, classe `TECNICO`.
 
 ---

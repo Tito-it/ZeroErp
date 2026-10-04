@@ -7,7 +7,7 @@
 --
 -- Indice test (1..15):
 --   Struttura:
---   1) fonte_quantita_attesa NOT NULL
+--   1) fonte_quantita_attesa obbligatoria sulle righe che non sono ESCLUSIONE (CHECK)
 --   2) CHECK chk_contrighe_coerenza_fonte_erogazione presente
 --   3) Trigger trg_contratti_righe_a10_default_fonte_qta_ins_upd presente
 --   4) Setup fixture OK (contratto DRAFT + almeno 1 articolo trovato)
@@ -174,17 +174,18 @@ SELECT plan(17);
 -- ============================================================
 
 -- ============================================================
--- 1) NOT NULL su fonte_quantita_attesa
+-- 1) fonte_quantita_attesa obbligatoria, tranne sull'ESCLUSIONE
 -- ============================================================
-SELECT ok(
-    EXISTS(
-        SELECT 1 FROM information_schema.columns
-         WHERE table_schema = 'vendite'
-           AND table_name   = 'contratti_righe'
-           AND column_name  = 'fonte_quantita_attesa'
-           AND is_nullable  = 'NO'
-    ),
-    '1) fonte_quantita_attesa NOT NULL (20260519-05)'
+-- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R1): il NOT
+--   NULL di 20260519-05 scende al CHECK chk_contrighe_fonte_per_tipo_eccezione.
+--   Un'esclusione non ha fonte: non si fattura. La regola completa la prova
+--   test-righe-esclusione-solo-non-si-vende-v1.
+SELECT is(
+    (SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c
+      WHERE c.conrelid = 'vendite.contratti_righe'::regclass
+        AND c.conname  = 'chk_contrighe_fonte_per_tipo_eccezione'),
+    'CHECK (((tipo_eccezione = ''ESCLUSIONE''::vendite.tipo_eccezione_contratto) OR (fonte_quantita_attesa IS NOT NULL)))',
+    '1) fonte_quantita_attesa obbligatoria sulle righe che non sono ESCLUSIONE (20261004-40)'
 );
 
 -- ============================================================

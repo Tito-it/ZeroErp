@@ -126,8 +126,8 @@ viene preferita l'ATTIVA. Il no-overlap constraint (`ex_listini_versioni_no_over
 garantisce al piu' una ATTIVA per listino su ogni data.
 
 Funzioni che applicano questa regola: `fn_resolve_prezzo_listino_v2`,
-`trgfn_contratti_freeze_listino_versione`, `trgfn_contratti_righe_guard_aggiunta_fuori_listino`,
-`fn_contratto_righe_preview`.
+`trgfn_contratti_freeze_listino_versione` e `fn_documento_listino_operativo`, che la
+dice per le righe di contratti e offerte (lista delle righe, guard delle eccezioni).
 
 **INSERT non vincolato**: il guard scatta solo su UPDATE OF stato.
 Consente seed/import di versioni direttamente in ATTIVA o CHIUSA.

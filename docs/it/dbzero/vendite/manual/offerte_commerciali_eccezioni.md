@@ -124,8 +124,11 @@ Avere `qta_operativa` valorizzata gia' a monte rende la copia 1:1 di
 
 - La riga e' **posseduta dall'offerta**: `ON DELETE CASCADE` su `offerta_id`. Se l'offerta
   viene eliminata (solo in BOZZA), le eccezioni scompaiono con essa.
-- Le righe sono modificabili finche' l'offerta e' in stato BOZZA. Il trigger guard
-  della testata (Step 4) blocca modifiche dopo l'emissione.
+- Le righe si aggiungono, modificano e tolgono solo finche' l'offerta e' in stato
+  BOZZA: dal 2026-10-04 lo dice il trigger
+  `trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt`, il building block
+  [`trgfn_doc_righe_lock_fuori_bozza`](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza)
+  dei contratti e dei DDT → `E_RIGA_DOC_NON_BOZZA`. Prima lo diceva solo il backend.
 - Il campo `attivo` permette di disattivare una riga senza eliminarla; il trigger
   `dbops.trgfn_child_requires_active_parent` blocca la disattivazione dell'articolo
   padre se esiste almeno una riga eccezione attiva che vi fa riferimento.
@@ -143,6 +146,45 @@ rifiuta la riga che la lascia vuota → `E_RIGA_EROGAZIONE_OBBLIGATORIA`, col ca
 anche qui perché `fn_push_offerta_a_contratto` copia l'erogazione nel
 contratto: senza, un'offerta accettata farebbe nascere un contratto che il
 contratto stesso rifiuta.
+
+---
+
+### Le stesse regole del contratto (2026-10-04)
+
+`fn_push_offerta_a_contratto` copia le righe nel contratto 1:1, con la stessa
+versione di listino. Ogni regola che il contratto ha e l'offerta no è
+un'offerta che passa e un contratto rifiutato al push. Dal 2026-10-04 l'offerta
+ha le stesse regole, con le stesse funzioni:
+
+* **Un'esclusione è solo «non si vende»**: i dati di vendita restano vuoti
+  (vincolo `chk_offerte_eccezioni_esclusione_senza_dati`, guard
+  [`trgfn_righe_guard_esclusione_senza_dati`](/dbzero/script/funzioni/trgfn_righe_guard_esclusione_senza_dati)
+  → `E_RIGA_ESCLUSIONE_CON_DATI`). `fonte_quantita_attesa` non è più `NOT NULL`:
+  è obbligatoria solo sulle righe che non sono esclusioni. I trigger della fonte
+  di default e della quantità saltano l'esclusione.
+* **Un'esclusione non si modifica**: si crea e si cancella
+  ([`trgfn_righe_guard_esclusione_immutabile`](/dbzero/script/funzioni/trgfn_righe_guard_esclusione_immutabile)
+  → `E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE`).
+* **Un'aggiunta è un articolo fuori listino**
+  ([`trgfn_righe_guard_aggiunta_fuori_listino`](/dbzero/script/funzioni/trgfn_righe_guard_aggiunta_fuori_listino)
+  → `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO`).
+* **Si esclude il bundle, non il suo componente**
+  ([`trgfn_righe_guard_esclusione_figlio_bundle`](/dbzero/script/funzioni/trgfn_righe_guard_esclusione_figlio_bundle)
+  → `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA`).
+* **Il tipo di una riga non si cambia**: lock di colonna su `tipo_eccezione`
+  → `E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE`.
+
+I codici portano «CONTRATTO» nel nome per storia; i messaggi non nominano il
+documento, o lo nominano con la sua etichetta.
+
+⭐ **I due rifiuti `_a05_` hanno il prefisso lungo del nome della tabella**
+(`trg_offerte_commerciali_eccezioni_a05_…`): fra i trigger `BEFORE ROW` parla
+per primo il nome minore, e i trigger generati da `ci_apply` su questa tabella
+hanno quel prefisso. Con il prefisso corto dei trigger scritti a mano
+(`trg_offerte_eccezioni_…`) «fuori bozza» parlerebbe dopo il lock di colonna.
+
+La lista del drawer, coi verbi che il DB ammette, è
+[`vendite.fn_offerta_righe_preview`](/dbzero/vendite/funzioni/fn_offerta_righe_preview).
 
 ---
 

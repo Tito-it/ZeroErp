@@ -180,18 +180,27 @@ SELECT is(
     0,
     '12) nessuna copia della regola «ATTIVA o CHIUSA» fuori dalla sede unica');
 
+-- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): per le righe di
+--   contratto e offerta la versione la chiede una sede sola,
+--   vendite.fn_documento_listino_operativo, che a sua volta chiede questa. I
+--   quattro consumatori delle righe (check dell'esclusione, guard dell'aggiunta,
+--   lista delle righe, righe espanse dell'offerta) chiamano il risolutore; i
+--   consumatori diretti restano tre.
 SELECT is(
     (SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE (n.nspname, p.proname) IN (
-              ('script',  'fn_check_esclusione_articolo_contratto'),
-              ('vendite', 'trgfn_contratti_righe_guard_aggiunta_fuori_listino'),
+      WHERE ((n.nspname, p.proname) IN (
+              ('vendite', 'fn_documento_listino_operativo'),
               ('vendite', 'trgfn_contratti_freeze_listino_versione'),
-              ('vendite', 'fn_contratto_righe_preview'),
-              ('vendite', 'fn_offerta_righe_espanse'),
               ('vendite', 'fn_resolve_prezzo_listino_v2_esito'))
-        AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_listino_versione_in_vigore\s*\('),
-    6,
-    '13) i sei consumatori chiedono la versione alla sede unica');
+             AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_listino_versione_in_vigore\s*\(')
+         OR ((n.nspname, p.proname) IN (
+              ('script',  'fn_check_esclusione_articolo_documento'),
+              ('script',  'trgfn_righe_guard_aggiunta_fuori_listino'),
+              ('vendite', 'fn_documento_righe_preview'),
+              ('vendite', 'fn_offerta_righe_espanse'))
+             AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_documento_listino_operativo\s*\(')),
+    7,
+    '13) i consumatori chiedono la versione alla sede unica: tre direttamente, quattro dal risolutore delle righe');
 
 SELECT * FROM finish();
 ROLLBACK;

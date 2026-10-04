@@ -112,11 +112,13 @@ SELECT lives_ok(
 --   si era fatta notare solo rompendo questo file.
 
 -- 3) Contratto con listino, in DRAFT: riga di ESCLUSIONE senza prezzo ammessa
+--    rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): l'esclusione
+--    nasce vuota; la qta_operativa 1 di prima e' un dato di vendita, ora rifiutato.
 SELECT lives_ok(
     $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione,
-                                          prezzo_unitario, attivo, qta_operativa)
+                                          prezzo_unitario, attivo)
       SELECT c.id, a.articolo_id, 'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
-             NULL, TRUE, 1
+             NULL, TRUE
         FROM vendite.contratti c, tmp_ctx_articolo a
        WHERE c.numero = 'PGTAP_CONTR_A'$$,
     '3) Contratto con listino in DRAFT: riga di ESCLUSIONE senza prezzo ammessa'
@@ -132,9 +134,9 @@ UPDATE vendite.contratti
 --    l'INSERT ha molti modi di fallire che non c'entrano col lock.
 SELECT throws_ok(
     $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione,
-                                          prezzo_unitario, attivo, qta_operativa)
+                                          prezzo_unitario, attivo)
       SELECT c.id, a.articolo_id, 'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
-             NULL, TRUE, 1
+             NULL, TRUE
         FROM vendite.contratti c, tmp_ctx_articolo a
        WHERE c.numero = 'PGTAP_CONTR_A'$$,
     'P0001',

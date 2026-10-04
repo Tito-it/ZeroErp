@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO delle quattro funzioni delle righe valide per il solo contratto
+#   vendite.trgfn_contratti_righe_guard_esclusione_immutabile()
+#     -> script.trgfn_righe_guard_esclusione_immutabile         (20261004-46)
+#   vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()
+#     -> script.trgfn_righe_guard_aggiunta_fuori_listino        (20261004-45)
+#   vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()
+#     -> script.trgfn_righe_guard_esclusione_figlio_bundle      (20261004-44)
+#   script.fn_check_esclusione_articolo_contratto(bigint, uuid)
+#     -> script.fn_check_esclusione_articolo_documento          (20261004-43)
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (R3, R5)
+#
+# -- PERCHE' NELLO STESSO GIRO ------------------------------------------
+#   Regola del 2: una funzione generica accanto alle copie che doveva
+#   sostituire e' una terza versione della stessa regola, non una sede.
+#   I trigger del contratto puntano alle generiche dal 20261004-48, la lista
+#   dal 20261004-72.
+#
+# -- CHI LE NOMINAVA (censito il 2026-10-04) ----------------------------
+#   · DB: i tre trigger del contratto (rimontati nel -48) e
+#     fn_contratto_righe_preview (ora involucro, -52). La preCondition lo
+#     verifica sul catalogo: nessun trigger le usa, nessuna funzione le
+#     chiama (commenti tolti).
+#   · backend e frontend: solo nei commenti (nessuna chiamata).
+#   · pgTAP: aggiornati nello stesso giro (brief §5.5).
+#   · doc manual/: le pagine delle quattro funzioni si cancellano; la storia
+#     passa nelle pagine delle generiche.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261004-73-drop-funzioni-righe-contratto-ritirate-mctit.yaml
+
+  - changeSet:
+      id: 20261004-73-drop-funzioni-righe-contratto-ritirate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro di vendite.trgfn_contratti_righe_guard_esclusione_immutabile, _guard_aggiunta_fuori_listino,
+        _guard_esclusione_figlio_bundle e di script.fn_check_esclusione_articolo_contratto: le
+        sostituiscono le funzioni generiche per contratto e offerta. Brief:
+        brief-db-righe-esclusione-solo-non-si-vende (R3, R5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_trigger t
+                    JOIN pg_proc p ON p.oid = t.tgfoid
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE NOT t.tgisinternal
+                     AND n.nspname = 'vendite'
+                     AND p.proname IN ('trgfn_contratti_righe_guard_esclusione_immutabile',
+                                       'trgfn_contratti_righe_guard_aggiunta_fuori_listino',
+                                       'trgfn_contratti_righe_guard_esclusione_figlio_bundle');
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND NOT (n.nspname = 'script'
+                              AND p.proname = 'fn_check_esclusione_articolo_contratto')
+                     AND NOT (n.nspname = 'vendite'
+                              AND p.proname IN ('trgfn_contratti_righe_guard_esclusione_immutabile',
+                                                'trgfn_contratti_righe_guard_aggiunta_fuori_listino',
+                                                'trgfn_contratti_righe_guard_esclusione_figlio_bundle'))
+                     AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+                     AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g')
+                         ~ 'fn_check_esclusione_articolo_contratto\s*\(';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_immutabile();
+              DROP FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino();
+              DROP FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle();
+              DROP FUNCTION script.fn_check_esclusione_articolo_contratto(
+                  vendite.contratti.id%TYPE, catalogo.articoli.id%TYPE);

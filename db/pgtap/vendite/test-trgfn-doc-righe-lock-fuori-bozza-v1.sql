@@ -4,7 +4,7 @@
 --
 -- Test: le righe di un documento si aggiungono, modificano e tolgono SOLO
 --   finche' il documento e' in bozza — il building block
---   vendite.trgfn_doc_righe_lock_fuori_bozza e i suoi quattro adottanti (il reso dal 2026-09-29)
+--   vendite.trgfn_doc_righe_lock_fuori_bozza e i suoi cinque adottanti (il reso dal 2026-09-29, l'offerta dal 2026-10-04)
 --   (ddt_righe, ordini_righe sul solo DELETE, contratti_righe).
 --   changeSet 20260922-01 … -06.
 -- ------------------------------------------------------------
@@ -41,7 +41,7 @@
 --
 -- Indice test (1..21)
 --   1) Forma: il BB esiste, plpgsql, non SECURITY DEFINER
---   2) Forma: i quattro trigger sono montati in fascia _a05_ con gli argomenti giusti
+--   2) Forma: i cinque trigger sono montati in fascia _a05_ con gli argomenti giusti
 --   3) Forma: la copia dei contratti (funzione e trigger) non esiste piu'
 --   4) Forma: trgfn_dlt_block_ordrig_ddtrig non nomina piu' il codice ritirato
 --   5) Catalogo: i due codici nuovi con la classe giusta, il vecchio ritirato
@@ -98,9 +98,10 @@ SELECT is(
     WHERE NOT t.tgisinternal AND p.proname = 'trgfn_doc_righe_lock_fuori_bozza'),
   $atteso$vendite.contratti_righe:trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')
 vendite.ddt_righe:trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_id')
+vendite.offerte_commerciali_eccezioni:trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'offerta_id', 'BOZZA')
 vendite.ordini_righe:trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id')
 vendite.resi_righe:trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'reso_id')$atteso$,
-  '2) I quattro adottanti sono montati in fascia _a05_ con gli argomenti giusti');
+  '2) I cinque adottanti sono montati in fascia _a05_ con gli argomenti giusti');
 
 SELECT is(
   (SELECT count(*)::int

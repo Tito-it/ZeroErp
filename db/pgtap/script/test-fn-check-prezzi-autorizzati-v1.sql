@@ -37,8 +37,11 @@
 --  22) «Emetti» spento col motivo del prezzo (il listino c'e')
 --  23) BOZZA -> EMESSA con un prezzo in attesa: BLOCCA
 --  24) BOZZA -> EMESSA con prezzi autorizzati: PASSA
---  25) EMESSA con un componente d'eccezione rifiutato: «Accetta» spento
---  26) EMESSA -> ACCETTATA con un componente rifiutato: BLOCCA
+--  25) EMESSA: il prezzo di un componente non cambia piu' (righe fuori bozza)
+--  26) EMESSA coi prezzi autorizzati: «Accetta» acceso
+--      (rev 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende R5a: prima
+--      «componente rifiutato dopo l'emissione: Accetta spento / BLOCCA», un
+--      caso che il lock delle righe dell'offerta ora rende impossibile)
 --  Ordine (D-6)
 --  27) componente REJECTED: un motivo
 --  28) «Conferma» spento col motivo, dalla bozza
@@ -60,8 +63,10 @@
 --  40) ... e la madre fn_crea_revisione_preventivo rifiuta
 --  41) col prezzo RIFIUTATO la revisione si crea (il rifiutato non blocca)
 --  42) ... e la riga della revisione porta il REJECTED: la copia resta
---  43) offerta EMESSA con un componente in attesa: «Crea revisione» spento
---  44) ... e la madre fn_crea_revisione_offerta rifiuta
+--  43) offerta EMESSA: un componente non torna in attesa (righe fuori bozza)
+--  44) ... e «Crea revisione» e' acceso: i prezzi sono quelli dell'emissione
+--      (rev 2026-10-04, R5a: prima «componente tornato in attesa: Crea
+--      revisione spento / la madre rifiuta», ora impossibile per costruzione)
 --
 -- Scopo:
 --  - ⭐ i casi si COSTRUISCONO: mondo, articoli, distinta base e documenti
@@ -533,26 +538,28 @@ SELECT lives_ok(
     '24) BOZZA -> EMESSA con prezzi autorizzati: PASSA (controllo del 23)'
 );
 
--- Il rifiuto arriva dopo l'emissione, sul COMPONENTE dell'eccezione.
-UPDATE vendite.offerte_commerciali_eccezioni_componenti
-   SET stato_approvazione_prezzo = 'REJECTED'
- WHERE id = (SELECT comp_id FROM _o WHERE tag = 'kit');
-
-SELECT is(
-    (SELECT a ->> 'reason_key'
-       FROM jsonb_array_elements(script.fn_available_actions_offerta(
-              (SELECT offerta_id FROM _o WHERE tag = 'kit')) -> 'available_actions') a
-      WHERE a ->> 'target_state' = 'ACCETTATA' AND (a ->> 'enabled')::boolean IS FALSE),
-    'common.azione_reason.prezzo_rifiutato',
-    '25) EMESSA con un componente d''eccezione rifiutato: «Accetta» spento col motivo'
+-- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a; decisione
+--   di Tid, «lock pieno»): le righe di un'offerta si toccano solo in BOZZA, come
+--   quelle del contratto. Lo stato di approvazione di un componente non cambia
+--   piu' dopo l'emissione: la sua modifica ricalcola il prezzo della riga madre
+--   (trg_oce_comp_z90_ricalcola_padre), e quell'UPDATE e' fuori bozza. Il caso
+--   «componente rifiutato dopo l'emissione», che qui si costruiva con un UPDATE,
+--   non ha piu' una strada: il controllo verso ACCETTATA resta come rete.
+SELECT throws_like(
+    format($$UPDATE vendite.offerte_commerciali_eccezioni_componenti
+                SET stato_approvazione_prezzo = 'REJECTED' WHERE id = %s$$,
+           (SELECT comp_id FROM _o WHERE tag = 'kit')),
+    '%non e'' piu'' in bozza%',
+    '25) EMESSA: il prezzo di un componente non cambia piu'' (righe fuori bozza)'
 );
 
-SELECT throws_like(
-    format('UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'ACCETTATA'),
-           (SELECT offerta_id FROM _o WHERE tag = 'kit')),
-    '%prezzi rifiutati dal responsabile%',
-    '26) EMESSA -> ACCETTATA con un componente rifiutato: BLOCCA'
+SELECT is(
+    (SELECT (a ->> 'enabled')::boolean
+       FROM jsonb_array_elements(script.fn_available_actions_offerta(
+              (SELECT offerta_id FROM _o WHERE tag = 'kit')) -> 'available_actions') a
+      WHERE a ->> 'target_state' = 'ACCETTATA'),
+    true,
+    '26) EMESSA coi prezzi autorizzati all''emissione: «Accetta» acceso'
 );
 
 -- =========================================================
@@ -838,26 +845,27 @@ SELECT is(
     '42) ... e la riga della revisione porta il REJECTED: la copia resta (azzerarla farebbe passare il prezzo rifiutato)'
 );
 
--- Offerta: l'eccezione-kit e' EMESSA (test 24). Il suo componente torna in
--- attesa (una nuova richiesta).
-UPDATE vendite.offerte_commerciali_eccezioni_componenti
-   SET stato_approvazione_prezzo = 'PENDING'
- WHERE id = (SELECT comp_id FROM _o WHERE tag = 'kit');
+-- Offerta: l'eccezione-kit e' EMESSA (test 24).
+-- ⚠️ rev 2026-10-04 (R5a, «lock pieno»): un componente non torna in attesa dopo
+--   l'emissione — la nuova richiesta passa da una revisione, che nasce in BOZZA.
+--   Il caso che qui si costruiva con un UPDATE non ha piu' una strada; il gate
+--   «prezzo in attesa» di fn_crea_revisione_offerta resta come rete (lo prova sul
+--   preventivo il test 40, stesso building block).
+SELECT throws_like(
+    format($$UPDATE vendite.offerte_commerciali_eccezioni_componenti
+                SET stato_approvazione_prezzo = 'PENDING' WHERE id = %s$$,
+           (SELECT comp_id FROM _o WHERE tag = 'kit')),
+    '%non e'' piu'' in bozza%',
+    '43) offerta EMESSA: un componente non torna in attesa (righe fuori bozza)'
+);
 
 SELECT is(
-    (SELECT (a ->> 'enabled') || ' / ' || (a ->> 'reason_key')
+    (SELECT (a ->> 'enabled')::boolean
        FROM jsonb_array_elements(script.fn_available_actions_offerta(
               (SELECT offerta_id FROM _o WHERE tag = 'kit')) -> 'available_actions') a
       WHERE a ->> 'key' = 'crea_revisione'),
-    'false / common.azione_reason.prezzo_pendente',
-    '43) offerta EMESSA con un componente in attesa: «Crea revisione» c''e'', spento col motivo'
-);
-
-SELECT throws_like(
-    format('SELECT vendite.fn_crea_revisione_offerta(%s, ''pgtap'')',
-           (SELECT offerta_id FROM _o WHERE tag = 'kit')),
-    '%prezzi ancora in attesa di approvazione%',
-    '44) ... e la madre fn_crea_revisione_offerta rifiuta'
+    true,
+    '44) ... e «Crea revisione» e'' acceso: i prezzi sono quelli dell''emissione'
 );
 
 SELECT * FROM finish();

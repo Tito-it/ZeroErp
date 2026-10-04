@@ -3,6 +3,7 @@
 ## 📚 Tabelle
 
 ## ⚙️ Funzioni
+- [fn_area_consente_azione](funzioni/fn_area_consente_azione.md) — (scritta il 04-10-2026)
 - [fn_area_di_oggetto](funzioni/fn_area_di_oggetto.md) — (scritta il 25-09-2026)
 - [fn_arrotonda_importo](funzioni/fn_arrotonda_importo.md) — Arrotondare un importo secondo i **decimali** e il **metodo** configurati, in **un punto solo** per tutto il database.
 - [fn_audit_summary](funzioni/fn_audit_summary.md)
@@ -26,7 +27,7 @@
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](funzioni/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
 - [fn_check_attivita_riportabile_da_emettere](funzioni/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
-- [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
+- [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_check_ba_cambio_emittente](funzioni/fn_check_ba_cambio_emittente.md) — (latest review 27-08-26)
 - [fn_check_ba_visible_for_emittenti](funzioni/fn_check_ba_visible_for_emittenti.md) — (latest review 18-08-26)
 - [fn_check_blocco_login](funzioni/fn_check_blocco_login.md) — (riscritta il 25-09-2026)
@@ -40,7 +41,7 @@
 - [fn_check_disponibilita_uscita](funzioni/fn_check_disponibilita_uscita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_documento_escludibile_da_giro](funzioni/fn_check_documento_escludibile_da_giro.md) — (latest review 2026-09-08)
 - [fn_check_documento_interno_registrabile](funzioni/fn_check_documento_interno_registrabile.md) — (scritta il 22-09-2026)
-- [fn_check_esclusione_articolo_contratto](funzioni/fn_check_esclusione_articolo_contratto.md) — (funzione nata il 2026-09-28, `20260928-29`; rev `-36` lo stesso giorno)
+- [fn_check_esclusione_articolo_documento](funzioni/fn_check_esclusione_articolo_documento.md) — (funzione nata il 2026-10-04, `20261004-43`)
 - [fn_check_famiglia_documento_disattivabile](funzioni/fn_check_famiglia_documento_disattivabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_famiglia_documento_struttura_modificabile](funzioni/fn_check_famiglia_documento_struttura_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_fattura_eliminabile_da_lotto](funzioni/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
@@ -109,6 +110,8 @@
 - [fn_get_or_create_soggetto_ruolo](funzioni/fn_get_or_create_soggetto_ruolo.md) — (latest review 09-12-25) La funzione **`script.fn_get_or_create_soggetto_ruolo`** è una **factory di dominio** per garantire l’esistenza di un legame tra:
 - [fn_get_override_scaduti](funzioni/fn_get_override_scaduti.md) — (latest review 08-03-2026) La funzione **`script.fn_get_override_scaduti`** restituisce tutti gli override utente la cui data `valido_al` e scaduta. Unisce le 3 tabelle override (aree, oggetti, azioni) in un unico risultato.
 - [fn_get_parameter_full](funzioni/fn_get_parameter_full.md)
+- [fn_get_permessi_effettivi_azioni](funzioni/fn_get_permessi_effettivi_azioni.md) — (scritta il 04-10-2026)
+- [fn_get_permessi_effettivi_oggetti](funzioni/fn_get_permessi_effettivi_oggetti.md) — (scritta il 04-10-2026)
 - [fn_get_permessi_ereditati_aree](funzioni/fn_get_permessi_ereditati_aree.md)
 - [fn_get_permessi_ereditati_azioni](funzioni/fn_get_permessi_ereditati_azioni.md)
 - [fn_get_profili_accesso_applicabili](funzioni/fn_get_profili_accesso_applicabili.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
@@ -126,9 +129,9 @@
 - [fn_get_tipo_contatto_id](funzioni/fn_get_tipo_contatto_id.md) — Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`cod_int_tipo_contatto`), garantendo al contempo il logging e la tracciabilità tramite un `tx_id` di sessione.
 - [fn_get_totp_device](funzioni/fn_get_totp_device.md) — (scritta il 29-09-2026)
 - [fn_get_uo_id_for_user](funzioni/fn_get_uo_id_for_user.md) — (latest review 19-04-2026)
-- [fn_get_user_actions_map](funzioni/fn_get_user_actions_map.md)
+- [fn_get_user_actions_map](funzioni/fn_get_user_actions_map.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_get_user_emittenti_scope](funzioni/fn_get_user_emittenti_scope.md)
-- [fn_get_user_object_permissions_map](funzioni/fn_get_user_object_permissions_map.md)
+- [fn_get_user_object_permissions_map](funzioni/fn_get_user_object_permissions_map.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_get_user_permissions_map](funzioni/fn_get_user_permissions_map.md)
 - [fn_get_user_profile](funzioni/fn_get_user_profile.md) — - **Profilo utente completo in una chiamata** - **Payload JSONB stabile ed estendibile** - **Riuso delle funzioni di dominio** per soggetto e mappe permessi - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di   `auth_user + identita_digitali + risorse_umane + lookup qualifica/UO`   viene eseguita in una sola `SELECT`
 - [fn_get_vie_discendenti](funzioni/fn_get_vie_discendenti.md) — (rev 2026-08-21)
@@ -152,6 +155,7 @@
 - [fn_job_run_end](funzioni/fn_job_run_end.md) — (latest review 18-06-2026 — registrazione run job headless)
 - [fn_job_run_start](funzioni/fn_job_run_start.md) — (latest review 18-06-2026 — registrazione run job headless)
 - [fn_list_parameters_for_user](funzioni/fn_list_parameters_for_user.md)
+- [fn_livello_con_tetto_area](funzioni/fn_livello_con_tetto_area.md) — (scritta il 04-10-2026)
 - [fn_log](funzioni/fn_log.md) — (rev 2026-08-21)
 - [fn_log_and_raise_error](funzioni/fn_log_and_raise_error.md) — (last review 24-04-2026)
 - [fn_log_error_only](funzioni/fn_log_error_only.md) — (latest review 23-11-25) * **Logging “silenzioso”**: inserisce una riga in `dbops.error_log` con contesto ricco, ma **non** solleva eccezioni. * **Separazione delle responsabilità**: differenzia chiaramente i casi di **solo tracciamento** da quelli di **error handling critico** (per cui usare `fn_log_and_raise_error`).
@@ -174,7 +178,7 @@
 - [fn_resolve_emittente_sr_id](funzioni/fn_resolve_emittente_sr_id.md)
 - [fn_resolve_indirizzo_documento](funzioni/fn_resolve_indirizzo_documento.md) — (latest review 02-08-2026)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
-- [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
+- [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_riattiva_utente_tecnico](funzioni/fn_riattiva_utente_tecnico.md)
 - [fn_ricalcola_prezzo_padre_da_componenti](funzioni/fn_ricalcola_prezzo_padre_da_componenti.md)
 - [fn_sblocca_credenziale](funzioni/fn_sblocca_credenziale.md) — (scritta il 25-09-2026)
@@ -273,7 +277,11 @@
 - [trgfn_prevent_modification_generic](funzioni/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
 - [trgfn_qta_from_operativa](funzioni/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
 - [trgfn_righe_default_fonte_qta](funzioni/trgfn_righe_default_fonte_qta.md) — (rev 2026-08-21)
+- [trgfn_righe_guard_aggiunta_fuori_listino](funzioni/trgfn_righe_guard_aggiunta_fuori_listino.md) — (funzione nata il 2026-10-04, `20261004-45`; trigger `20261004-48` e `-49`)
 - [trgfn_righe_guard_erogazione_obbligatoria](funzioni/trgfn_righe_guard_erogazione_obbligatoria.md) — (funzione nata il 2026-10-04, `20261004-31`; trigger `20261004-32`)
+- [trgfn_righe_guard_esclusione_figlio_bundle](funzioni/trgfn_righe_guard_esclusione_figlio_bundle.md) — (funzione nata il 2026-10-04, `20261004-44`; trigger `20261004-48` e `-49`)
+- [trgfn_righe_guard_esclusione_immutabile](funzioni/trgfn_righe_guard_esclusione_immutabile.md) — (funzione nata il 2026-10-04, `20261004-46`; trigger `20261004-48` e `-49`)
+- [trgfn_righe_guard_esclusione_senza_dati](funzioni/trgfn_righe_guard_esclusione_senza_dati.md) — (funzione nata il 2026-10-04, `20261004-47`; trigger `20261004-48` e `-49`)
 - [trgfn_righe_guard_pending](funzioni/trgfn_righe_guard_pending.md) — (rev 2026-06-01 — estrazione)
 - [trgfn_storico_generic](funzioni/trgfn_storico_generic.md) — (latest review 02-02-26) * **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md) — * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono. * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.

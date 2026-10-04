@@ -69,15 +69,10 @@ WITH ins AS (
 )
 SELECT id, uid FROM ins;
 
--- BOZZA -> EMESSA -> ACCETTATA
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_push_ctx)
- WHERE id = (SELECT id FROM tmp_push_offerta_acc);
-
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_push_ctx)
- WHERE id = (SELECT id FROM tmp_push_offerta_acc);
-
+-- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): le righe
+--   dell'offerta si scrivono solo in BOZZA (trg_offerte_commerciali_eccezioni_a05_
+--   doc_bozza_ins_upd_dlt). L'eccezione nasce quindi PRIMA delle transizioni,
+--   come in un'offerta vera; prima la si aggiungeva a offerta gia' ACCETTATA.
 -- Eccezione OVERRIDE sull'offerta (per verificare che il push copi le righe)
 INSERT INTO vendite.offerte_commerciali_eccezioni (
     offerta_id, articolo_id, tipo_eccezione,
@@ -88,6 +83,15 @@ SELECT acc.id, ctx.articolo_id, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto"
        'UNA_TANTUM', 'MANUALE', 200.00, TRUE
   FROM tmp_push_offerta_acc acc, tmp_push_ctx ctx
  WHERE ctx.articolo_id IS NOT NULL;
+
+-- BOZZA -> EMESSA -> ACCETTATA
+UPDATE vendite.offerte_commerciali
+   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_push_ctx)
+ WHERE id = (SELECT id FROM tmp_push_offerta_acc);
+
+UPDATE vendite.offerte_commerciali
+   SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_push_ctx)
+ WHERE id = (SELECT id FROM tmp_push_offerta_acc);
 
 -- Utility dell'offerta (per verifica copia 1:1)
 INSERT INTO vendite.offerte_commerciali_utilities (

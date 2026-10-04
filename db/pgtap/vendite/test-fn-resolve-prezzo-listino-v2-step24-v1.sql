@@ -117,8 +117,10 @@ SELECT 'PGTAP_V2_ESC',
        c.id_draft, '2071-01-01', '2071-12-31', c.listino_id
   FROM tmp_v2_ctx c WHERE c.listino_id IS NOT NULL;
 
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'ESCLUSIONE', NULL, 1.00
+-- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): l'esclusione
+--   nasce vuota (la qta_operativa 1 era un dato di vendita, ora rifiutato).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario)
+SELECT ca.id, a.id, 'ESCLUSIONE', NULL
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_ESC' AND a.rn = 2;
 
