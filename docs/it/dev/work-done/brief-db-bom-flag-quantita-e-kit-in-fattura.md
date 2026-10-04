@@ -47,8 +47,9 @@
 > sua chiave di motivo (`fattura_plafond_consumato`, scelta A di Tid).
 > ✅ **Quinto giro DB scritto il 2026-10-04 (§16)**: R-DB-C10 (`20261004-15`: la proiezione si
 > ritira, un importo solleva) e R-DB-A2 (`20261004-16`), più il testo di
-> `E_IVA_RESOLVE_NON_INVOCABILE`. ⏳ **Da applicare** (Tid), poi corsa pgTAP. Al BE solo un
-> ritocco facoltativo (§16.4).
+> `E_IVA_RESOLVE_NON_INVOCABILE`. ✅ Applicato su dbdev da Tid il 2026-10-04.
+> ✅ **BRIEF CHIUSO il 2026-10-04 (§17)**: R-BE-C10 fatto, binding del risolutore riprovato sul DB
+> vero dopo l'apply, suite verdi; la v7 è pubblicata e le due colonne del periodo sono accese.
 >
 > **In una riga:** (A) `partecipa_qta` e `determina_qta_padre` si impostano ma nessuna logica li
 > legge: si ritirano. (B) In fattura la riga del kit si ricava quantità e UoM **dai componenti**:
@@ -1216,7 +1217,7 @@ passa `NULL::numeric`. Il ramo nel DB lo ritira il team DB (R-DB-C10).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-04. **A chi:** Tid (apply, pgTAP), poi BE
 > (§16.4, una cosa facoltativa).
-> **Stato:** scritto, ⏳ **da applicare** (Tid). Non committato.
+> **Stato:** ✅ applicato su dbdev da Tid il 2026-10-04 (commit `b13070930`).
 
 ### 16.1 R-DB-C10 — la proiezione del risolutore si ritira
 
@@ -1287,3 +1288,41 @@ invariato.
 | # | Cosa |
 | --- | --- |
 | R-BE-C10 | `error_messages_fallback.py` 507, `E_IVA_RESOLVE_NON_INVOCABILE`: il ripiego dice «invocata senza i dati necessari…». Non è falso come lo era il catalogo, ma se il ripiego si allinea al catalogo va riletto dopo il migrate. Nessuna policy cambia (classe e codice invariati) |
+
+## 17. Chiusura — lato BE dopo il quinto giro DB (2026-10-04)
+
+> **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-04. **A chi:** Tid (commit).
+> **Stato:** ✅ **brief chiuso**. Non committato.
+
+### 17.1 Cosa si è fatto
+
+| # | Stato | Dove |
+| --- | --- | --- |
+| R-BE-C10 | ✅ il ripiego di `E_IVA_RESOLVE_NON_INVOCABILE` dice «Risoluzione IVA invocata con un parametro assente o non valido.»: il catalogo (1023) senza il segnaposto. La causa (il parametro) viaggia nel `%s` del catalogo, il ripiego non la ripete. Policy invariata (`TECNICO`) | `error_messages_fallback.py` |
+
+Nessun altro lavoro: il BE passava già `p_imponibile` a `NULL` (§15.3), quindi il ritiro della
+proiezione non tocca nessun chiamante; la `reason_key` singolare (R-DB-A2) era già nei locales
+(R-FE-A1, §15.1).
+
+### 17.2 Come è stato provato (sul DB dopo l'apply di `-15` e `-16`)
+
+* **Binding del risolutore, chiamata reale** via `IvaResolverRepository.resolve`: anteprima
+  (`consumo` falso) e consumo (`consumo` vero) rispondono con le dieci colonne; una chiamata
+  diretta con un importo è **rifiutata** con il messaggio nuovo del catalogo
+  («… parametro assente o non valido: imponibile.»).
+* `apps.vendite`, `apps.anagrafiche`, `apps.core`: **4288 verdi** (122 skip). Sul DB provvisto
+  (`ZEROERP_TEST_DB_E2E=1`) `apps.vendite.tests.db` e i due presidi dei codici errore: **170 verdi**.
+* Le due cose lasciate a Tid dai giri precedenti sono fatte, letto sul DB: template fattura
+  **v7 PUBBLICATA** dal 2026-10-03 (le v1-v6 obsolete), colonne `periodo_dal` / `periodo_al`
+  della lista 102 **attive**.
+
+### 17.3 Cosa la prova NON copre, dichiarato
+
+* ⚠️ Resta quanto scritto in §15.5: la risposta a **due righe** del risolutore (titolo a tetto) e la
+  madre con un secchio misto sul DB vero le prova solo il primo lotto con una dichiarazione
+  d'intento. La chiamata reale di §17.2 è su un articolo senza titolo. La regola la prova il pgTAP
+  della madre e del risolutore; qui si prova che il BE la chiama bene.
+* ⚠️ `check_i18n_keys` segnala oggi 7 chiavi emesse dal DB e assenti dai locales: sono i vocabolari
+  della versione template (`documenti.formati_pagina.*`, `documenti.formati_template.*`, …), cioè
+  `brief-db-vocabolari-versione-template`, non questo brief. Questo brief non ne lascia nessuna.
+
