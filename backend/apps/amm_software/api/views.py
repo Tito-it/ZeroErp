@@ -365,6 +365,34 @@ class PermessiEreditatiView(AdminAPIView):
         )
 
 
+class PermessiEffettiviOperatoreView(AdminAPIView):
+    """GET permessi EFFETTIVI di un operatore su azioni e oggetti (sola lettura).
+
+    Per ogni voce: il valore senza tetto, quello applicato e se il tetto
+    d'area lo ferma (`limitata_da_area` / `limitato_da_area`). Serve al
+    pannello permessi per dire «abilitata, ma limitata dall'area»: un override
+    sotto un'area che non lo consente resta scritto e dormiente
+    (brief-db-permessi-tetto-area, D-3), e senza questa lettura il pannello lo
+    mostrerebbe come valido.
+
+    ⛔ Non e' `core` `users/<id>/permessi-effettivi/` (riepilogo per area,
+    senza azioni ne' tetto). Il calcolo sta a DB
+    (`script.fn_get_permessi_effettivi_azioni` / `..._oggetti`), la stessa
+    funzione che leggono i resolver.
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PermessiEffettiviOperatoreGetResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Azioni e oggetti effettivi dell'operatore, col tetto d'area.
+    def get(self, request: Request, auth_user_id: int) -> JsonResponse:
+        return success_response(
+            AmmSoftwareService().get_permessi_effettivi(auth_user_id)
+        )
+
+
 class RepartoProfiloView(AdminAPIView):
     """GET/PUT profilo reparto."""
 

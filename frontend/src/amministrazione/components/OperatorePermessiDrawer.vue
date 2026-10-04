@@ -59,8 +59,9 @@ const drawerTitle = computed(() => {
        `EmittenteFiscaleUtilitiesDrawer` che l'ha inaugurata.
        ℹ️ Su viewport più stretti non esce dallo schermo: `.p-drawer` ha
        `max-width: 100vw` globale, quindi la larghezza è una preferenza.
-       Footer «Chiudi» dal 2026-10-03: prima si usciva solo dalla X; ogni
-       sezione della scheda ha il suo Salva. -->
+       Footer Annulla/Salva dal 2026-10-04 (brief-db-permessi-tetto-area §7.4):
+       la scheda ha UN Salva, che manda le sole sezioni modificate (`salva`
+       esposto); prima ogni sezione aveva il suo e il footer era «Chiudi». -->
   <AppDrawer
     :visible="props.visible"
     :title="drawerTitle"
@@ -70,8 +71,11 @@ const drawerTitle = computed(() => {
     :readonly="isReadonly"
     :modificato="modificato"
     :conferma-uscita="scheda.chiudiConConferma"
-    footer="chiudi"
+    footer="form"
+    :loading="!!permessiTab?.salvando"
+    :save-disabled="!permessiTab?.puoSalvare"
     @update:visible="(v) => emit('update:visible', v)"
+    @save="permessiTab?.salva()"
   >
     <OperatorePermessiTab
       v-if="props.authUserId"

@@ -1044,6 +1044,96 @@ a {
   background: var(--app-table-stripe-bg);
 }
 
+/* ===== Elenco a sinistra, dettaglio a destra (`app-elenco-dettaglio`) =====
+ * Un catalogo corto di VOCI-CONTENITORE a sinistra (es. le aree funzionali
+ * nel pannello permessi dell'operatore) e il contenuto della voce scelta a
+ * destra. Nato il 2026-10-04 (brief-db-permessi-tetto-area §7): una tab per
+ * voce non scala oltre poche voci, e una pagina unica disperde il contenuto.
+ * ⭐ La voce scelta usa gli stessi token della riga attiva delle liste
+ *    (`--app-riga-attiva-*`): «dove sono» si legge allo stesso modo ovunque.
+ * Sotto i 1024px (`BREAKPOINTS`, la modalita' compatta) l'elenco va SOPRA il
+ * dettaglio, a tutta larghezza: niente scroll orizzontale.
+ * ℹ️ Primo uso: solo layout. Se nasce un secondo consumatore, la macchina
+ *    (voce scelta, filtro) diventa un BB (regola del 2). */
+/* I filtri dell'elenco (ricerca, interruttori): restringono la VISTA delle
+ * voci gia' caricate, non interrogano un backend. ⛔ Non sono i filtri di
+ * una lista (`FiltriLista` + store, guard `check-filtri-lista`): qui non c'e'
+ * ne' store ne' pagina. */
+.app-elenco-dettaglio-filtri {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.app-elenco-dettaglio {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+@media (max-width: 1023.98px) {
+  .app-elenco-dettaglio {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.app-elenco-dettaglio-elenco {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--app-border-color);
+  border-radius: var(--app-border-radius);
+  overflow: hidden;
+}
+.app-elenco-dettaglio-gruppo {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--app-text-muted);
+  border-bottom: 1px solid var(--app-border-color);
+}
+.app-elenco-dettaglio-voce {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-bottom: 1px solid var(--app-border-color);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.app-elenco-dettaglio-voce:last-child {
+  border-bottom: 0;
+}
+.app-elenco-dettaglio-voce:hover {
+  background: var(--app-riga-attiva-bg);
+}
+.app-elenco-dettaglio-voce.app-elenco-dettaglio-voce--attiva {
+  background: var(--app-riga-attiva-bg);
+  box-shadow: inset 3px 0 0 var(--app-riga-attiva-barra);
+}
+/* Modifiche non salvate nella voce: arancio, come la scritta dell'azione di
+ * `DrawerTitle` (Tid, 2026-09-26) — lo stesso segno per la stessa cosa. */
+.app-elenco-dettaglio-voce--modificata .app-elenco-dettaglio-voce-testo {
+  color: var(--app-warning-color);
+}
+.app-elenco-dettaglio-voce-testo {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-elenco-dettaglio-vuoto {
+  padding: 0.75rem;
+  color: var(--app-text-muted);
+}
+.app-elenco-dettaglio-dettaglio {
+  min-width: 0;
+}
+
 /* ===== Classe utility form field =====
  * Layout verticale label + input usato da tutti i form building block.
  * Singola source of truth — non duplicare in stili scoped dei componenti.
@@ -1556,13 +1646,18 @@ a {
  * scrittura. Bloccarla rende inaccessibili contenuti raggiungibili solo da
  * tab (es. drawer offerta tab "Revisioni", drawer pratica chiusa tutte le tab).
  * `.p-tab` e' l'unica API in uso (Tabs/Tab): il selettore gemello della
- * vecchia API v3 e' stato rimosso con la migrazione a `Tabs`. */
+ * vecchia API v3 e' stato rimosso con la migrazione a `Tabs`.
+ * `.app-elenco-dettaglio-elenco` e `-filtri`: scegliere o cercare la voce a
+ * sinistra e' navigazione come cambiare tab (pannello permessi in sola
+ * lettura, 2026-10-04). */
 /* ⭐ Il pulsante che APRE una riga (2026-09-28, brief-db-liste-righe-documento):
  * sotto i 1024px le colonne che non entrano si ritirano nella riga di
  * espansione, e un documento non modificabile e' proprio quello che si apre per
  * leggerlo. Senza questa riga, su tablet, le colonne ritirate di un ordine
  * confermato non si leggerebbero da nessuna parte. */
 .app-readonly .app-page-filters,
+.app-readonly .app-elenco-dettaglio-elenco,
+.app-readonly .app-elenco-dettaglio-filtri,
 .app-readonly .p-paginator,
 .app-readonly .p-datatable-thead,
 .app-readonly .p-datatable-row-toggle-button,

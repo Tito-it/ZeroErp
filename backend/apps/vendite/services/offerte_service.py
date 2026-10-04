@@ -930,7 +930,11 @@ class OfferteService:
         self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_ECCEZIONE)
         payload = self._con_meta_normalizzato(payload)
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
-        for required in ("articolo_id", "tipo_eccezione", "fonte_quantita_attesa"):
+        # ⚠️ La fonte non si pretende qui (2026-10-04, brief-db-righe-esclusione-
+        # solo-non-si-vende): l'ESCLUSIONE nasce vuota, e su OVERRIDE/AGGIUNTA la
+        # riempie il trigger DB dall'erogazione, che il guard DB rende obbligatoria.
+        # Stessa forma del contratto, che la fonte non l'ha mai pretesa.
+        for required in ("articolo_id", "tipo_eccezione"):
             ErrorManager.require(
                 required in payload and payload[required] not in (None, ""),
                 code=E_VENDITE_VALIDATION,
@@ -967,8 +971,11 @@ class OfferteService:
 
         # Coerenza prezzo_unitario / tipo_eccezione (pre-DB, specchio CHECK
         # `chk_offerte_eccezioni_prezzo_per_tipo_eccezione`):
-        # - ESCLUSIONE -> prezzo NULL (l'articolo non e' disponibile)
         # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
+        # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei dieci dati
+        #    di fatturazione che il guard DB rifiuta col campo
+        #    (E_RIGA_ESCLUSIONE_CON_DATI, brief-db-righe-esclusione-solo-non-si-
+        #    vende R-BE-3), come sul contratto.
         # Eccezione: articolo composito (modello unificato BoM). Il FE puo'
         # omettere `prezzo_unitario` per padri compositi perche' il prezzo
         # padre = SUM(figli × coeff_qta) calcolato dal trigger DB
@@ -979,17 +986,7 @@ class OfferteService:
         # `contratti_service` ~ linea 2114 "Padre composito").
         tipo_eccezione = payload.get("tipo_eccezione")
         prezzo_raw = payload.get("prezzo_unitario")
-        if tipo_eccezione == "ESCLUSIONE":
-            ErrorManager.require(
-                prezzo_raw is None,
-                code=E_VENDITE_VALIDATION,
-                message=(
-                    "ESCLUSIONE: prezzo_unitario deve essere NULL "
-                    "(l'articolo non e' disponibile per questa offerta)."
-                ),
-                context={"tipo_eccezione": tipo_eccezione},
-            )
-        elif prezzo_raw is None and tipo_eccezione in ("OVERRIDE", "AGGIUNTA"):
+        if prezzo_raw is None and tipo_eccezione in ("OVERRIDE", "AGGIUNTA"):
             ErrorManager.require(
                 is_composito,
                 code=E_VENDITE_VALIDATION,

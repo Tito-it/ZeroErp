@@ -23,6 +23,10 @@ urlpatterns = [
     # Livelli EREDITATI dal profilo (sola lettura): la colonna «ereditato» del
     # pannello permessi. Non e' `reparti/<uo_id>/profilo/` — vedi la view.
     path("operatori/<int:auth_user_id>/permessi-ereditati/", views.PermessiEreditatiView.as_view(), name="amm-permessi-ereditati"),
+    # Permessi EFFETTIVI su azioni e oggetti, col tetto d'area (sola lettura):
+    # l'etichetta «limitata dall'area» del pannello. Non e' il `core`
+    # `users/<id>/permessi-effettivi/` — vedi la view.
+    path("operatori/<int:auth_user_id>/permessi-effettivi/", views.PermessiEffettiviOperatoreView.as_view(), name="amm-permessi-effettivi"),
     # Riepilogo permessi e audit
     path("permessi-riepilogo/", views.PermessiRiepilogoView.as_view(), name="amm-permessi-riepilogo"),
     path("audit-log/", views.AuditLogView.as_view(), name="amm-audit-log"),

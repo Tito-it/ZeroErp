@@ -97,7 +97,7 @@ Vincoli DB:
   eccezione OVERRIDE/ESCLUSIONE per coppia `(contratto_id, articolo_id)`.
 - `uq_contrighe_one_aggiunta_per_articolo` (UNIQUE parziale): max 1
   AGGIUNTA per coppia `(contratto_id, articolo_id)`.
-- `trgfn_contratti_righe_guard_aggiunta_fuori_listino` (BEFORE INSERT/UPDATE):
+- `script.trgfn_righe_guard_aggiunta_fuori_listino` (BEFORE INSERT/UPDATE, generica per contratto e offerta):
   blocca AGGIUNTA per articolo gia' presente nel listino di riferimento del
   contratto. L'operatore avrebbe dovuto usare OVERRIDE.
 
@@ -233,7 +233,7 @@ Il livello categoria viene alimentato dai service di dominio passando
 | **Forma derivata** | Stato del contratto rispetto al listino: `con_listino` o `senza_listino`. Calcolata da `c.listino_id`. |
 | **Eccezione** | Riga in `contratti_righe` con `tipo_eccezione` esplicito. Sostituisce le "righe modalita' C" e gli "override modalita' B". |
 | **OVERRIDE** | Eccezione che cambia il prezzo di un articolo del listino. Soggetto a L1 (permesso `prezzo_override_manuale`) + L2 (soglia % vs prezzo resolver) + L3 (richiesta approvazione, vedi sotto). |
-| **ESCLUSIONE** | Eccezione che rende un articolo del listino non disponibile per il cliente. `prezzo_unitario` deve essere NULL. Ammessa su articoli standalone o su padri bundle. **Vietata su figli bundle** (trigger `trgfn_contratti_righe_guard_esclusione_figlio_bundle`, errore 455) — l'esclusione si applica al bundle padre, non al singolo componente. Nessun gate (no prezzo = no L1/L2/L3). |
+| **ESCLUSIONE** | Eccezione che rende un articolo del listino non disponibile per il cliente. Non porta dati di fatturazione: prezzo, quantita', UdM, erogazione e fonte restano NULL (`E_RIGA_ESCLUSIONE_CON_DATI`, 2026-10-04), e non si modifica. Ammessa su articoli standalone o su padri bundle. **Vietata su figli bundle** (trigger su `script.trgfn_righe_guard_esclusione_figlio_bundle`, errore 455) — l'esclusione si applica al bundle padre, non al singolo componente. Nessun gate (no prezzo = no L1/L2/L3). |
 | **AGGIUNTA** | Eccezione che aggiunge un articolo fuori-listino al contratto. L1 sempre (permesso override richiesto). L2/L3 condizionali: si applicano solo se il resolver bundle-aware trova comunque un prezzo di riferimento (matrice categoria_cliente_listino stadio 3 o promo stadio 0). Senza base, prezzo manuale puro (Alternativa B confermata 2026-05-18). |
 | **Versione operativa** | Versione listino con `stato IN ('ATTIVA','CHIUSA')` e `validita @> data`. La BOZZA e' uno stato di preparazione, esclusa dai lookup operativi. |
 | **Versione fissata** | `c.listino_versione_id` valorizzato post-attivazione: snapshot della versione operativa al momento dell'attivazione. Il contratto e' blindato da cambi del listino. |
