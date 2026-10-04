@@ -379,8 +379,9 @@ SELECT is(
 -- ============================================================
 -- 22. ⛔ Utente vuoto
 -- ============================================================
--- ⚠️ fn_check_user_emittente_scope(NULL, …) risponde TRUE («job batch»). Nei
---   rami nuovi e' sempre in AND con una condizione falsa per NULL: niente.
+-- ⚠️ fn_check_user_emittente_scope(NULL, …) rispondeva TRUE («job batch») fino
+--   al 2026-10-04; oggi risponde FALSE (Q-1 di brief-db-esclusioni-implicite).
+--   Nei rami nuovi era comunque in AND con una condizione falsa per NULL.
 --   PER ULTIMO: cambia il contesto e non lo rimette.
 SELECT set_config('app.current_user_id', '', false);
 SELECT is(pg_temp.visti('log') || pg_temp.visti('outbox') || pg_temp.visti('allegato'),

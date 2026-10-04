@@ -15,7 +15,7 @@
 -- config.user_emittenti_fiscali non vede piu' TUTTI gli emittenti.
 -- Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §2.5
 --
--- Elenco test (plan 8):
+-- Elenco test (plan 12):
 --   0) PRECONDIZIONI: le tre aziende e il BA sono stati costruiti
 --   1) operatore CON riga            -> array di 1 (invariato)
 --   2) * operatore SENZA riga        -> '{}' e NON NULL     ⬅ LA correzione
@@ -24,6 +24,11 @@
 --   5) super admin + emittente attivo-> array di 1 (l'intersezione regge)
 --   6) * eredita': fn_get_emittenti_scope_sr_ids -> '{}'
 --   7) * eredita': fn_scope_ef_whitelist_via_efba -> false
+--  Utente NULL (rev 2026-10-04, Q-1 di brief-db-esclusioni-implicite):
+--   8) * fn_check_user_emittente_scope(NULL, …) -> false   (era true)
+--   9) * fn_scope_ef_whitelist_via_efba(NULL, …) -> false  (era true)
+--  10) * fn_get_emittenti_scope_sr_effettivo(NULL, NULL) -> '{}' (era NULL)
+--  11) * fn_get_emittenti_scope_sr_effettivo(NULL, [x]) -> '{}' (era [x])
 --
 -- Scopo:
 --  - 2 e 3 sono la correzione. Prima erano NULL e true, cioe' «vede tutto»:
@@ -63,7 +68,7 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(8);
+SELECT plan(12);
 
 -- ============================================================
 -- Fixture: si costruisce il mondo, POI si apre il contesto
@@ -176,6 +181,42 @@ SELECT ok(
             (SELECT auth_user_id FROM _t_op),
             (SELECT ba_id FROM _t_ba)),
     '7. * eredita'': fn_scope_ef_whitelist_via_efba -> false (le policy chiudono)'
+);
+
+-- ============================================================
+-- 8..11) * Utente NULL = nessun accesso (rev 2026-10-04, Q-1)
+-- ============================================================
+-- Fino al 2026-10-04 la famiglia diceva «utente NULL = job batch = vede
+-- tutto». Le policy restavano chiuse solo per la veste OPERATORE: con la veste
+-- e l'utente vuoto una sessione vedeva tutte le aziende. Il guard di scrittura
+-- aveva tolto lo stesso ramo il 2026-09-04. La prova sulla policy vera, come
+-- applicazione, e' in script/test-guard-emittente-senza-utente (test 9-10):
+-- questo file gira da owner e misura le funzioni.
+-- ⚠️ L'emittente e il BA sono quelli che l'operatore di contesto VEDE: un false
+--   su un emittente altrui non direbbe niente.
+SELECT ok(
+    NOT script.fn_check_user_emittente_scope(
+            NULL,
+            (SELECT m.emittente_fiscale_id FROM _mondi m WHERE m.lato = 'CTX')),
+    '8. * utente NULL: fn_check_user_emittente_scope -> false (era true, «job batch»)'
+);
+
+SELECT ok(
+    NOT script.fn_scope_ef_whitelist_via_efba(NULL, (SELECT ba_id FROM _t_ba)),
+    '9. * utente NULL: fn_scope_ef_whitelist_via_efba -> false (era true)'
+);
+
+SELECT is(
+    script.fn_get_emittenti_scope_sr_effettivo(NULL, NULL),
+    '{}'::bigint[],
+    '10. * utente NULL senza restrizione: sr_effettivo -> ''{}'' (era NULL = tutto)'
+);
+
+SELECT is(
+    script.fn_get_emittenti_scope_sr_effettivo(
+        NULL, ARRAY[(SELECT soggetto_ruolo_id FROM _t_op)]::bigint[]),
+    '{}'::bigint[],
+    '11. * utente NULL con restrizione: sr_effettivo -> ''{}'' (era la restrizione stessa)'
 );
 
 -- ============================================================

@@ -318,10 +318,12 @@ SELECT ok(
 --    costruita sopra, dal perimetro che la puo' scrivere; qui si sposta solo il
 --    contesto.
 --
--- ⛔ E NON si svuota `app.current_user_id`: misurato il 2026-08-31,
---    script.fn_check_user_emittente_scope(NULL, ...) risponde **TRUE**, cioe'
---    fail-OPEN — svuotare il GUC renderebbe visibile tutto e il test passerebbe
---    per il motivo sbagliato. Serve un id CONCRETO senza whitelist, che risponde
+-- ⛔ E NON si svuota `app.current_user_id`: fino al 2026-10-04
+--    script.fn_check_user_emittente_scope(NULL, ...) rispondeva **TRUE**, cioe'
+--    fail-OPEN — svuotare il GUC rendeva visibile tutto e il test passava per
+--    il motivo sbagliato. Dal 2026-10-04 risponde FALSE (Q-1 di
+--    brief-db-esclusioni-implicite), ma il caso che conta resta «un utente
+--    VERO senza whitelist»: e' quello che il test costruisce. Serve un id CONCRETO senza whitelist, che risponde
 --    FALSE. Si calcola invece di scriverlo a mano, cosi' non collide quando gli
 --    utenti crescono.
 --

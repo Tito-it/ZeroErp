@@ -58,6 +58,32 @@ In caso di più varianti sullo stesso concetto, usare un suffisso chiaro e funzi
 
 > ℹ️ Le convenzioni sono tratte dalla struttura condivisa in Zero ERP
 
+#### L'emittente si nomina col suo ruolo: `emittente_soggetto_ruolo_id`
+
+L'azienda che emette un documento oggi ha **due** nomi nel modello:
+`emittente_fiscale_id` (FK a `anagrafiche.emittenti_fiscali`) su preventivi,
+ordini, DDT, resi, contratti, offerte e altre tabelle, ed
+`emittente_soggetto_ruolo_id` (FK a `anagrafiche.soggetti_ruoli`) su fatture,
+registri, lotti, commesse, listini e pagamenti. Le due chiavi sono 1:1, quindi
+nessuna delle due è sbagliata, ma ogni passaggio da un documento all'altro
+traduce, e la coerenza registro ↔ emittente sta in trigger invece che in una
+FK.
+
+**Regola (decisione di Tid del 2026-10-04): una tabella nuova che nomina
+l'emittente usa `emittente_soggetto_ruolo_id`.** Il motivo sta nel modello:
+
+* nel party model l'emittente è un **ruolo** del soggetto, come il cliente e il
+  fornitore, che il modello ancora già al ruolo. `emittenti_fiscali` è il
+  satellite 1:1 dei dati fiscali di quel ruolo, non la sua identità;
+* il cuore fiscale (fatture, registri di numerazione) è già sul ruolo: un
+  documento nuovo che ci arriva non deve tradurre.
+
+Gli adapter dello scope ci sono per tutte e due le forme
+(`fn_scope_ef_whitelist` per la PK, `fn_scope_ef_whitelist_via_sr` per il
+ruolo). Le tabelle che portano `emittente_fiscale_id` convergono quando un
+cantiere ne tocca il modello. `acquisti`, che l'emittente ancora non ce l'ha,
+lo riceverà in questa forma (D8 del documento di valutazione).
+
 ---
 
 ### 3. Gestione delle Chiavi Primarie
@@ -1313,18 +1339,40 @@ riparazioni dati. Due strategie complementari:
 
    Il ruolo ignora tutte le policy. Superuser ha `BYPASSRLS` per default.
 
-2. **`FORCE ROW LEVEL SECURITY`** sulla tabella per **estendere** RLS anche al proprietario
-   della tabella (altrimenti esentato):
-
-   ```sql
-   ALTER TABLE vendite.fatture FORCE ROW LEVEL SECURITY;
-   ```
-
-   Usare **sempre** `FORCE` quando la tabella e' di proprieta' di un ruolo applicativo
-   (`zeroerp_app`): altrimenti l'owner non vede le policy e la RLS e' aggirata per sbaglio.
+2. **Il proprietario delle tabelle** non subisce la RLS finché `FORCE ROW LEVEL SECURITY` è
+   spento. È il meccanismo su cui il progetto **conta** (vedi l'invariante qui sotto).
 
 3. **`zeroerp_app` NON deve avere `BYPASSRLS`**: e' il ruolo con cui il backend si
    connette, deve essere soggetto a tutte le policy.
+
+##### ⛔ L'invariante: tabelle del migratore, applicazione senza proprietà, `FORCE` spento
+
+Le funzioni `SECURITY DEFINER` girano come il loro proprietario. Siccome il proprietario delle
+tabelle non subisce la RLS, una DEFINER del migratore **legge oltre la RLS**: è così che i
+risolutori di scope (`fn_resolve_*`, `fn_get_fattura_intestazione`, i verbi DEFINER che ricopiano il
+filtro della policy nella `WHERE`) vedono i dati che servono per decidere. Questo regge su tre cose,
+e tutte e tre devono restare vere:
+
+* **le tabelle applicative sono del migratore**, un ruolo solo. Una tabella creata
+  dall'applicazione avrebbe `zeroerp_app` come proprietario, e l'applicazione **non subirebbe la
+  RLS** su quella tabella;
+* **`zeroerp_app` non possiede niente** (lo schema `django` a parte, §11.9) e non ha `BYPASSRLS`;
+* **`FORCE ROW LEVEL SECURITY` resta spento.** ⛔ Non si accende «per sicurezza»: le DEFINER
+  smetterebbero di vedere oltre la RLS, e lo scope diventerebbe vuoto o sbagliato, senza un errore.
+  Fino al 2026-10-04 questo paragrafo diceva di accendere `FORCE` sulle tabelle di `zeroerp_app`:
+  rimediava a un caso che non deve esistere. Se un giorno servisse davvero, prima si rivede ogni
+  DEFINER che legge quella tabella.
+
+Le poche DEFINER di `postgres` (dblink, log fuori transazione, dichiarate in
+`dbops.sec_functions_owner`) leggono oltre la RLS perché superuser.
+
+⭐ Lo presidia `db/pgtap/dbops/test-postura-proprietario-rls-v1.sql`, **a criterio** (il
+proprietario si legge dal catalogo, le estensioni si escludono per appartenenza): un solo
+proprietario per le tabelle con RLS, nessuna tabella di `zeroerp_app`, nessun `FORCE` sulle tabelle
+persistenti, ogni DEFINER di chi non subisce la RLS. Un pgTAP che deve esercitare le policy da
+proprietario può accendere `FORCE` **dentro la propria transazione** (come
+`rls/test-rls-offerte-satelliti`), che il `ROLLBACK` spegne: lo stato che resta, ed è quello che il
+presidio guarda, è senza `FORCE`. Un changeSet non lo accende mai.
 
 #### 10.6 `USING` vs `WITH CHECK`
 
@@ -1397,7 +1445,7 @@ Prima di attivare RLS su una tabella esistente:
   gate opzionale mai eseguito, appoggiato a una premessa falsa. Storia in
   `dev/work-done/analisi-attivazione-rls-db.md` §12.
 * Ruolo `zeroerp_migration` ha `BYPASSRLS`
-* `FORCE ROW LEVEL SECURITY` se la tabella e' owned da `zeroerp_app`
+* La tabella è del migratore e **senza** `FORCE` (invariante di §10.5, presidiato da `dbops/test-postura-proprietario-rls-v1`)
 * Policy testata in staging con dati realistici prima del merge
 
 ---
@@ -2124,7 +2172,34 @@ state scritte — `USING col AT TIME ZONE 'UTC'` dove scrive solo il backend,
 al changeSet (`# timestamp-senza-fuso: ammesso — <perché>`) e il cancello le
 stampa come debito; non si spiegano solo in prosa.
 
----
+### 11.11 ⛔ La prima generazione dei changelog (v1) non si tocca
+
+Presidiato da `scripts/guardrail_v1_congelato.py` in CI (decisione di Tid del
+2026-10-04).
+
+**Il meccanismo.** `changelog-master-v2.yaml` include `changelog-master.yaml`,
+che fa `includeAll` di `baseline/` e `migrations/`: la prima generazione
+**rigira a ogni migrate da zero** — in CI e a ogni installazione nuova.
+Centinaia di quei file sono `runOnChange: true`, e il cancello del §11.1
+guarda solo `migrations_v2/`. Un file v1 modificato ripartirebbe al migrate
+successivo **fuori dall'ordine di timeline**, sopra le revisioni v2 più
+recenti: è il difetto del §11.1, entrato dalla porta che quel cancello non
+vede. Su un DB di sviluppo il file è già eseguito e non si nota niente.
+
+**La regola.** In `baseline/`, `migrations/` e `changelog-master.yaml` non si
+aggiunge, non si toglie e non si modifica nessun file. Un cambiamento a un
+oggetto nato nel v1 si scrive come changeSet nuovo in `migrations_v2/`, con il
+corpo preso dalla doc auto-generata.
+
+**Il presidio.** Il manifesto `db/changelog/v1-congelato.json` porta lo sha256
+di ogni file dell'albero v1; il cancello ricalcola e confronta. Un file in più,
+in meno o diverso fa fallire la build.
+
+⚠️ **L'eccezione esiste, e si vede.** È già capitato di dover ritoccare la
+baseline per far girare la CI su un database nuovo (2026-09-02). Un caso così
+si concorda con Tid e si rigenera il manifesto **nello stesso commit**
+(`python scripts/guardrail_v1_congelato.py --rigenera`): il diff del manifesto
+è la firma del cambio.
 
 ---
 

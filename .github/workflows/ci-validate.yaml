@@ -244,6 +244,17 @@ jobs:
         # per nome).
         run: python scripts/guardrail_run_on_change.py
 
+      - name: Guardrail v1 congelato
+        # La prima generazione (baseline/, migrations/, changelog-master.yaml)
+        # rigira a ogni migrate da zero, e centinaia di quei file sono
+        # runOnChange: il cancello qui sopra guarda solo migrations_v2/. Un
+        # file v1 modificato ripartirebbe FUORI ordine, sopra le revisioni v2.
+        # Il manifesto db/changelog/v1-congelato.json porta lo sha256 di ogni
+        # file: aggiunto, tolto o cambiato = build rossa. Un'eccezione si
+        # concorda con Tid e rigenera il manifesto nello stesso commit
+        # (decisione del 2026-10-04, linee-guida-sql §11.11).
+        run: python scripts/guardrail_v1_congelato.py
+
       - name: Guardrail preambolo pgTAP
         # Presidia le tre righe senza le quali un test pgTAP passa SMETTENDO di
         # verificare — «verde per sottrazione»: la transazione, la riga di

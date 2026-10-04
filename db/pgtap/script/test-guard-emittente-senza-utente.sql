@@ -5,7 +5,7 @@
 -- Test: script.trgfn_guard_emittente_scope — la porta chiusa dalla fase 6
 -- Brief: brief-db-processi-automatici-identita-e-perimetro §7
 --
--- Elenco test (plan 8):
+-- Elenco test (plan 10):
 --  1) il guard esiste ed e' SECURITY INVOKER
 --  2) ⭐ IL PRESUPPOSTO: questa sessione SUBISCE la row level security
 --  3) ✅ operatore nel proprio perimetro: la scrittura passa
@@ -18,6 +18,10 @@
 --  8) ...ma la stessa DEFINER dentro il ramo «senza padrone» non e' la porta:
 --     la regola e' che row_security_active dentro una DEFINER risponde per il
 --     proprietario, e il guard lo sa (la funzione lo dichiara nel corpo)
+--  9) ✅ rev 2026-10-04 (Q-1): la LETTURA nel proprio perimetro vede l'ordine
+--     del test 3 — il controllo del 10
+-- 10) ⛔ la stessa lettura con la veste OPERATORE e l'utente vuoto non vede
+--     niente: prima la policy rispondeva «tutto» (utente NULL = job batch)
 --
 -- Scopo:
 --  - provare i TRE esiti che il guard deve distinguere, costruendoli: chi ha
@@ -46,7 +50,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(10);
 
 -- ============================================================
 -- 1) Il guard, e la sua postura
@@ -210,6 +214,32 @@ SELECT ok(
     '8. il guard distingue «dentro una DEFINER» (current_user <> session_user): la rev C1 e'' in servizio'
 );
 DO $ctx3$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx3$;
+
+-- ============================================================
+-- 9..10) ⛔ La lettura senza utente (rev 2026-10-04, Q-1)
+-- ============================================================
+-- Fino al 2026-10-04 script.fn_check_user_emittente_scope rispondeva TRUE con
+-- l'utente NULL («job batch»): la policy rls_ordini_ef_whitelist restava
+-- chiusa solo per la veste, e una sessione con la veste OPERATORE e l'utente
+-- vuoto vedeva gli ordini di TUTTE le aziende. La scrittura l'aveva chiusa la
+-- fase 6 (test 4-5); qui si prova la lettura, che e' rimasta indietro un mese.
+-- Il 9 e' il controllo: senza, un 10 verde potrebbe venire da un ordine mai
+-- scritto.
+SELECT is(
+    (SELECT count(*)::int FROM vendite.ordini o
+      WHERE o.meta ->> 'test_scope' = 'pgtap_guard_senza_utente'),
+    1,
+    '9. operatore nel proprio perimetro: vede l''ordine del test 3'
+);
+
+SELECT set_config('app.current_user_id', '', true);
+SELECT is(
+    (SELECT count(*)::int FROM vendite.ordini o
+      WHERE o.meta ->> 'test_scope' = 'pgtap_guard_senza_utente'),
+    0,
+    '10. veste OPERATORE e utente vuoto: la policy non vede niente (era: tutte le aziende)'
+);
+DO $ctx4$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx4$;
 
 SELECT * FROM finish();
 

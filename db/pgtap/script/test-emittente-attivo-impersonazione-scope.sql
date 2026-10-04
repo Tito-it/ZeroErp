@@ -19,7 +19,8 @@
 --    5. Operatore con emittente attivo su un emittente NON suo ->
 --       _pk_ids '{}' e check false  ** INVARIANTE DI SICUREZZA **
 --    6. Operatore con emittente attivo sul proprio emittente -> invariato
---    7. p_auth_user_id NULL (job batch) con emittente attivo -> true
+--    7. p_auth_user_id NULL con emittente attivo -> FALSE (rev 2026-10-04, Q-1:
+--       era true, «job batch»; un utente NULL non vede niente)
 --    8. Adapter _via_sr con soggetto_ruolo non mappato + emittente attivo ->
 --       false (fail-closed: IS DISTINCT FROM, non <>)
 --    9. Emittente attivo INESISTENTE -> _pk_ids '{}' E _sr_ids '{}'
@@ -197,8 +198,13 @@ SELECT ok(
 );
 
 -- ============================================================
--- 7) Job batch: p_auth_user_id NULL non si auto-blocca
+-- 7) Utente NULL: nessun accesso, nemmeno con l'emittente attivo
 -- ============================================================
+-- ⚠️ Rev 2026-10-04 (Q-1, brief-db-esclusioni-implicite): qui si asseriva
+--   TRUE («job batch, non si auto-blocca»). La canonica risponde ora FALSE a
+--   un utente NULL: le policy restavano chiuse solo per la veste, e con la
+--   veste OPERATORE e l'utente vuoto una sessione vedeva tutte le aziende. Chi
+--   lavora senza utente e senza RLS (owner, BYPASSRLS) non passa di qui.
 DO $$
 BEGIN
     PERFORM set_config('app.current_emittente_id',
@@ -206,8 +212,8 @@ BEGIN
 END $$;
 
 SELECT ok(
-    script.fn_check_user_emittente_scope(NULL, (SELECT ef_y FROM _fx_ef)) IS TRUE,
-    '7. Job batch (auth_user_id NULL) con emittente attivo: true, non si auto-blocca'
+    script.fn_check_user_emittente_scope(NULL, (SELECT ef_y FROM _fx_ef)) IS FALSE,
+    '7. Utente NULL con emittente attivo: false (era true, «job batch»)'
 );
 
 -- ============================================================

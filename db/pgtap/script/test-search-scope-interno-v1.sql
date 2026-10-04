@@ -23,8 +23,8 @@
 --    3) restrizione vuota ('{}')   -> '{}', mai NULL
 --    4) restrizione fuori scope    -> '{}'  (non allarga)
 --    5) restrizione = proprio scope-> scope di diritto
---    6) attore nullo + nessuna restrizione -> NULL (convenzione famiglia)
---    7) attore nullo + restrizione -> la restrizione resta valida
+--    6) attore nullo + nessuna restrizione -> '{}' (rev 2026-10-04, Q-1: era NULL)
+--    7) attore nullo + restrizione -> '{}' (rev 2026-10-04, Q-1: era la restrizione)
 --   script.fn_search_soggetti_universale
 --    8) il parametro non decide piu': NULL == proprio scope (conteggio)
 --    9) restrizione fuori scope -> zero risultati
@@ -179,12 +179,16 @@ SELECT is(
     '5. restrizione = proprio scope -> invariato (il caso del backend di oggi)'
 );
 
--- Attore nullo: convenzione della famiglia (fn_scope_ef_whitelist_via_efba
--- ramo 1). Non e' un fail-open nuovo, e' quello gia' dichiarato altrove.
+-- Attore nullo: nessun accesso.
+-- ⚠️ Rev 2026-10-04 (Q-1, brief-db-esclusioni-implicite): qui si pinnava la
+--   «convenzione della famiglia» (utente NULL = nessuno scope di diritto da
+--   opporre), cioe' NULL = tutto per le due ricerche, che leggono l'utente
+--   dalla GUC. La famiglia e' cambiata insieme (canonica, via_efba): un
+--   utente NULL non vede niente, con o senza restrizione.
 SELECT is(
     script.fn_get_emittenti_scope_sr_effettivo(NULL, NULL),
-    NULL,
-    '6. attore nullo (batch) senza restrizione -> NULL, come da convenzione famiglia'
+    '{}'::bigint[],
+    '6. attore nullo senza restrizione -> ''{}'' (era NULL = tutto)'
 );
 
 SELECT is(
@@ -192,8 +196,8 @@ SELECT is(
         NULL,
         ARRAY[(SELECT sr_id FROM _t_fuori)]::bigint[]
     ),
-    ARRAY[(SELECT sr_id FROM _t_fuori)]::bigint[],
-    '7. attore nullo CON restrizione -> la restrizione resta: e'' restringente'
+    '{}'::bigint[],
+    '7. attore nullo CON restrizione -> ''{}'' (era la restrizione stessa)'
 );
 
 -- ============================================================
