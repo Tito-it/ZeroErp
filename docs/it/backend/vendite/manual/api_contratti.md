@@ -369,6 +369,17 @@ Vincoli:
 - **Coerenza prezzo/tipo**: ESCLUSIONE con prezzo NOT NULL o
   OVERRIDE/AGGIUNTA con prezzo NULL → `E_VENDITE_VALIDATION` (pre-DB) o
   CHECK violation (DB).
+- **Un'ESCLUSIONE non si modifica** (decisione di Tid, 2026-10-04): si crea
+  («Escludi») e si cancella («Ripristina articolo», `DELETE`), e basta. Ogni
+  `UPDATE` che cambia una colonna di contenuto — prezzo, quantita', `attivo`,
+  FK — lo rifiuta il guard `trg_contratti_righe_a05_guard_esclusione_immutabile_upd`
+  → `E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE` (409). La riga non porta il verbo
+  `MODIFICA` (solo `RIPRISTINA_ARTICOLO`), quindi il drawer non apre il form.
+- **Il tipo non si cambia**, per nessuna riga: lock di colonna su
+  `tipo_eccezione` (`dbops.automation_lock_columns`) →
+  `E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE` (409). Dall'API il service
+  rifiuta la chiave per primo (`E_VENDITE_VALIDATION`, col campo): il lock e'
+  la rete per chi scrive da un'altra strada.
 - **Unicita' eccezione**: max 1 eccezione `OVERRIDE`/`ESCLUSIONE` per coppia
   `(contratto_id, articolo_id)`. Stessa univocita' per AGGIUNTA.
 - **Post-attivazione**: tutte le eccezioni sono immutabili (INSERT/UPDATE/DELETE
@@ -377,9 +388,13 @@ Vincoli:
   `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` resta alla **testata**.
 
 `PATCH /api/v1/vendite/contratti/<id>/righe/<riga_id>/` aggiorna i campi
-mutabili; `articolo_id` e `tipo_eccezione` immutabili. Cambio di
-`prezzo_unitario` validato in coerenza col `tipo_eccezione` esistente
-(pre-DB con messaggio parlante).
+mutabili di una riga OVERRIDE o AGGIUNTA; `articolo_id` e `tipo_eccezione`
+immutabili. Cambio di `prezzo_unitario` validato in coerenza col
+`tipo_eccezione` esistente (pre-DB con messaggio parlante: il prezzo resta
+obbligatorio). Su una riga ESCLUSIONE il PATCH arriva al DB e risponde
+`E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE` (409): fino al 2026-10-04 il service
+pre-validava il prezzo di un'esclusione con un 400 suo, ritirato perche' la
+regola e' una sola, a DB.
 
 `DELETE /api/v1/vendite/contratti/<id>/righe/<riga_id>/` hard-delete
 (bloccato dal trigger se note collegate o contratto ATTIVO).
@@ -802,7 +817,8 @@ alle righe di contratto via `target_riga_id`.
    (pre-validation `_validate_variazione_globale_coppia_coerente`).
 7. **Coerenza prezzo/tipo_eccezione**: ESCLUSIONE ↔ prezzo NULL,
    OVERRIDE/AGGIUNTA ↔ prezzo NOT NULL. Validato in service (pre-DB con
-   messaggio parlante) e in DB (`chk_contrighe_prezzo_per_tipo_eccezione`).
+   messaggio parlante; in UPDATE solo OVERRIDE/AGGIUNTA, perche' un'ESCLUSIONE
+   non si modifica affatto) e in DB (`chk_contrighe_prezzo_per_tipo_eccezione`).
 8. Tipo/classe utenza obbligatori per utility con dimensione (es. GAS,
    EE), vietati per utility commercio (Base). Coerenza
    `classi_utenze.tipo_utenza_id = contratti_utilities.tipo_utenza_id`
@@ -858,6 +874,8 @@ alle righe di contratto via `target_riga_id`.
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` | 422 | DB P0001 (refactor modalita 2026-05-15) — attivazione di contratto senza listino senza righe AGGIUNTA con prezzo valorizzato | `trgfn_contratti_freeze_listino_versione` (guard interno) |
 | `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` | 422 | DB P0001 (refactor 2026-05-15) — INSERT/UPDATE riga `tipo_eccezione=AGGIUNTA` per articolo gia' presente nel listino di riferimento | `trgfn_contratti_righe_guard_aggiunta_fuori_listino` |
 | `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 422 | DB P0001 (§6.1 2026-05-16) — INSERT/UPDATE riga `tipo_eccezione=ESCLUSIONE` per articolo che e' `articolo_figlio_id` in un bundle del listino del contratto. L'ESCLUSIONE si applica al padre bundle, non al singolo componente | `trgfn_contratti_righe_guard_esclusione_figlio_bundle` |
+| `E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE` | 409 | DB P0001 (2026-10-04) — UPDATE di una riga ESCLUSIONE che cambia una colonna di contenuto (ammesse le sole tecniche). Parla prima dei guard `_a10_` e del CHECK sul prezzo. Nessun valore nel messaggio | `trgfn_contratti_righe_guard_esclusione_immutabile` (fascia `_a05_`) |
+| `E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE` | 409 | DB P0001 (2026-10-04) — UPDATE che cambia `tipo_eccezione` di una riga qualunque. Dall'API non si raggiunge: il service rifiuta la chiave prima | lock di colonna generato (`trg_contratti_righe_a10_lock_columns_upd`) |
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` | 422 | DB P0001 (resolver pricing) — tentativo di prezzare un articolo che ha eccezione ESCLUSIONE sul contratto attivo del cliente | `fn_resolve_prezzo_listino_v2` (STADIO 1 eccezioni) |
 | `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` | 409 | DB P0001 (refactor §3-bis-A) — UPDATE su `listino_id`/`listino_versione_id`/`tipo_variazione_globale`/`valore_variazione_globale` di contratto ATTIVO (la sola **testata**, dal 2026-09-22) | `trgfn_contratti_lock_post_attivazione` |
 | `E_RIGA_DOC_NON_BOZZA` | 409 | DB P0001 (building block, 2026-09-22 — D7 di brief-db-partita-merce-per-documento) — INSERT/UPDATE/DELETE di un'eccezione su contratto non più in bozza; stesso codice sulle righe di DDT e (DELETE) di ordine. Lo solleva **anche il pre-check BE** (BB `richiedi_righe_in_bozza`) su righe e componenti, con la frase a catalogo (etichetta «Contratto <numero>», stato, verbo) | `trgfn_doc_righe_lock_fuori_bozza` + service |
