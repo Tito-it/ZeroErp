@@ -13,6 +13,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -107,7 +108,7 @@ class TipiRuoloTipiIndirizzoRepository:
         attivo: bool | None = None,
         tipo_ruolo_id: int | None = None,
         tipo_indirizzo_id: int | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "tipo_ruolo_descrizione",
         order_dir: str = "asc",

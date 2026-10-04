@@ -11,6 +11,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -497,7 +498,7 @@ class PraticheRepository:
         search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)
@@ -850,7 +851,7 @@ class PraticheRepository:
     # Scopo: Restituisce il giornale di bordo di una pratica (audit trail).
     # Ordinato cronologicamente (piu' recente in cima), include tx_id per tracciabilita'.
     def get_giornale_pratica(
-        self, pratica_id: int, *, limit: int = 100, offset: int = 0,
+        self, pratica_id: int, *, limit: int = DEFAULT_LIMIT_EVENTI, offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)
 

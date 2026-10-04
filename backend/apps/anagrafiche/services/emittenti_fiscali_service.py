@@ -15,6 +15,7 @@ from typing import Any
 
 from django.db import IntegrityError, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db.emittenti_fiscali_repository import (
     EMITTENTE_UPDATE_ALLOWED,
     UTILITIES_UPDATE_ALLOWED,
@@ -350,7 +351,7 @@ class EmittentiFiscaliBillingAccountService:
         emittente_id: int,
         *,
         search: str | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "billing_account_codice",
         order_dir: str = "asc",

@@ -37,7 +37,13 @@ import { computed, getCurrentScope, onScopeDispose, shallowRef, watch } from 'vu
 
 const pila = shallowRef([])
 
-// Scopo: la pila, in sola lettura: per i test e per la diagnostica.
+// `AppDrawer` fornisce ai suoi figli il proprio `inCima`: chi vive DENTRO un
+// drawer (la barra di una lista, `useScorciatoie`) sa cosi' se il suo
+// livello e' quello davanti. Assente = il livello della pagina.
+export const DRAWER_IN_CIMA_KEY = Symbol('drawer-in-cima')
+
+// Scopo: quanti drawer sono aperti. Lo legge `useScorciatoie` (la pagina e'
+//        davanti solo senza drawer aperti), e i test.
 export function drawerAperti() {
   return pila.value.length
 }

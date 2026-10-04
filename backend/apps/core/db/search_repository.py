@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import jsonb_out, rows_to_list
 from typing import Any
 
@@ -32,7 +33,7 @@ class SearchRepository:
         search_term: str,
         tipo_ruolo_id: int,
         emittente_ids: list[int] | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,

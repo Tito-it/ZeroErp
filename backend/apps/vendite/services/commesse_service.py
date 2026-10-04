@@ -25,7 +25,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, transaction
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
@@ -989,7 +989,7 @@ def fn_list_commessa_attivita(
     stato_emissione: str | None = None,
     stato_approvazione: str | None = None,
     competenza_mese: str | None = None,
-    limit: int = 50,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,
@@ -1558,7 +1558,7 @@ def fn_commessa_registro(
     *,
     commessa_id: int,
     commessa_attivita_id: int | None = None,
-    limit: int = 100,
+    limit: int = DEFAULT_LIMIT_EVENTI,
     offset: int = 0,
 ) -> dict[str, object]:
     ErrorManager.require(

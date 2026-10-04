@@ -158,6 +158,16 @@ export const STATO_CONTRATTO = Object.freeze({
   CESSATO: 'CESSATO',
 })
 
+// Forma di un contratto, DERIVATA (non persistita) da `contratti.listino_id`:
+// con un listino di riferimento o interamente negoziato. La emette il backend
+// nel contesto pricing (`ContrattiRepository.resolve_contesto_pricing_contratto`,
+// campo `forma`) e la ricava allo stesso modo il form della testata. Una sede
+// per i due drawer che la leggono (regola del 2, 2026-10-04).
+export const FORMA_CONTRATTO = Object.freeze({
+  CON_LISTINO: 'con_listino',
+  SENZA_LISTINO: 'senza_listino',
+})
+
 // Mappa stato→modalita'-PDF di contratti e preventivi ora DATA-DRIVEN via
 // capability `pdf` di `fn_available_actions_{contratto,preventivo}`
 // (`config.stati_doc_{contratti,preventivi}.pdf_mode`), consumata da
@@ -178,6 +188,20 @@ export const TIPO_ECCEZIONE = Object.freeze({
   ESCLUSIONE: 'ESCLUSIONE',
   AGGIUNTA: 'AGGIUNTA',
   DA_LISTINO: 'DA_LISTINO',
+})
+
+// I verbi che una riga del contratto ammette: la colonna `azioni` di
+// `vendite.fn_contratto_righe_preview` (capability di riga, §12.5 delle linee
+// guida SQL; brief-db-liste-righe-documento D-8.4). Il DB dice QUALI valgono
+// per la riga, il drawer li rende: SOVRASCRIVI_PREZZO e MODIFICA sono il click
+// sulla riga, gli altri voci del menu.
+export const AZIONE_RIGA_CONTRATTO = Object.freeze({
+  SOVRASCRIVI_PREZZO: 'SOVRASCRIVI_PREZZO',
+  ESCLUDI: 'ESCLUDI',
+  MODIFICA: 'MODIFICA',
+  RIPRISTINA_LISTINO: 'RIPRISTINA_LISTINO',
+  RIPRISTINA_ARTICOLO: 'RIPRISTINA_ARTICOLO',
+  RIMUOVI: 'RIMUOVI',
 })
 
 // Tipi erogazione su `vendite.contratti_righe.tipo_erogazione` (CHECK DB

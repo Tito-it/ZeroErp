@@ -73,7 +73,7 @@ import DrawerTitle from './DrawerTitle.vue'
 import FormFooter from './FormFooter.vue'
 import { gestoreVisibile } from '../composables/useDrawerFormPreserve'
 import { useDrawerContentReady } from '../composables/useDrawerContentReady'
-import { useDrawerInCima } from '../composables/useDrawerInCima'
+import { DRAWER_IN_CIMA_KEY, useDrawerInCima } from '../composables/useDrawerInCima'
 import { READONLY_KEY } from '../composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { TASTO, conScorciatoia, nomeTasto } from '../utils/scorciatoie'
@@ -152,6 +152,8 @@ function suAfterShow() {
 const { inCima, entra, esce } = useDrawerInCima(() => props.visible)
 onDeactivated(esce)
 onActivated(() => { if (props.visible) entra() })
+// Il livello del drawer per chi vive dentro (le scorciatoie della barra).
+provide(DRAWER_IN_CIMA_KEY, inCima)
 
 // Scopo: l'uscita, unica. `cancel` resta per chi deve sapere che si e' usciti
 //        senza salvare (reset, notifiche al padre). Sotto un altro drawer non

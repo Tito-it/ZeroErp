@@ -41,6 +41,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
@@ -191,7 +192,7 @@ class FamiglieDocumentoRepository:
         search: str | None = None,
         attivo: bool | None = None,
         gestisce_serie: bool | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = _ORDER_DEFAULT,
         order_dir: str = "asc",

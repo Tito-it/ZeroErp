@@ -2,7 +2,7 @@
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-09-29. **A chi:** team DB e backend
 > (`dev/backend-tid`); Tid per le decisioni di §7.
-> **Origine:** §9.8.4 di [brief-db-liste-righe-documento.md](../work-in-progress/brief-db-liste-righe-documento.md)
+> **Origine:** §9.8.4 di [brief-db-liste-righe-documento.md](brief-db-liste-righe-documento.md)
 > (la stampa della fattura dalla lista delle righe).
 > **Stato:** ✅ **CHIUSO il 2026-10-01** (verificato su dbdev, §14). ✅ Lato DB **applicato** su dbdev il
 > 2026-09-30, pgTAP verdi (corsa di Tid) (`20260930-14 → -21` + codici 1169-1170). ✅ **Giro BE/FE fatto il

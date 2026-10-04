@@ -17,6 +17,7 @@ from typing import Any
 
 from django.db import IntegrityError
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db.categorie_clienti_repository import (
     _ORDER_COLS,
     CategorieClientiRepository,
@@ -97,7 +98,7 @@ class CategorieClientiService:
         search: str | None = None,
         attivo: bool | None = None,
         partecipa_promo: bool | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "ordinamento",
         order_dir: str = "asc",

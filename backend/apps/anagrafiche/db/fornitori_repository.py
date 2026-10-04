@@ -13,6 +13,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db.sql_write_helpers import (
     execute_dynamic_insert,
@@ -136,7 +137,7 @@ class FornitoriRepository:
         self, *, search: str | None = None,
         stato_fornitore_id: int | None = None,
         attivo: bool | None = None,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(

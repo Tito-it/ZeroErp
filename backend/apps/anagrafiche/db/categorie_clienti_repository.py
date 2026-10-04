@@ -14,6 +14,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -80,7 +81,7 @@ class CategorieClientiRepository:
         search: str | None = None,
         attivo: bool | None = None,
         partecipa_promo: bool | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "ordinamento",
         order_dir: str = "asc",

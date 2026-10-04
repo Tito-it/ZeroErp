@@ -2,11 +2,14 @@
 // Scopo: barra azioni pagina/lista responsive e riusabile.
 // Desktop: azione primaria + utility inline, azioni secondarie in menu.
 // Mobile/tablet: azione primaria visibile, tutte le altre nel kebab.
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
+import ActionBadge from './ActionBadge.vue'
 import { MANAGE_ICONS } from '../constants'
 import { useActionBar } from '../composables/useActionBar'
+import { conTastoDiAzione, useScorciatoie } from '../composables/useScorciatoie'
 
 const props = defineProps({
   actions: { type: Array, default: () => [] },
@@ -18,12 +21,29 @@ const props = defineProps({
 const {
   visibleActions, primaryActions, isActionDisabled, buttonTooltip,
   runAction, menuItems, menuTooltipText,
-  desktopMenuRef, compactMenuRef, toggleDesktopMenu, toggleCompactMenu,
+  desktopMenuRef, compactMenuRef, toggleDesktopMenu, toggleCompactMenu, haBadgeIn,
 } = useActionBar(() => props.actions, {
   disabled: () => props.disabled,
   menuTooltip: () => props.menuTooltip,
   defaultMenuItemClass: 'app-menu-item-action',
 })
+
+// ⭐ I tasti funzione (`useScorciatoie`, 2026-10-04): la barra si iscrive
+//    con le sue azioni visibili e il suo stesso motore (spento/esecuzione), e
+//    il tooltip DICE il tasto («Ricarica lista (F5)»). Un tooltip su piu'
+//    righe porta un motivo, non un nome: li' il tasto non si aggiunge.
+const { t, te } = useI18n()
+const radice = ref(null)
+useScorciatoie({
+  elemento: () => radice.value,
+  azioni: () => visibleActions.value,
+  spenta: isActionDisabled,
+  esegui: (a) => runAction(a),
+})
+function tooltipConTasto(a) {
+  const base = buttonTooltip(a)
+  return typeof base === 'string' ? conTastoDiAzione(t, te, base, a.key) : base
+}
 
 // Partizionamento per kind specifico della barra pagina.
 const nonPrimaryActions = computed(() => visibleActions.value.filter(a => a.kind !== 'primary'))
@@ -50,10 +70,17 @@ function buttonSeverity(action) {
 
 const desktopMenuItems = computed(() => menuItems(desktopMenuActions.value))
 const compactMenuItems = computed(() => menuItems(nonPrimaryActions.value))
+
+// ⭐ Il numero dell'azione (`badge`, 2026-10-04): pallino sull'icona
+//    (`ActionBadge`), «azione (n)» nella voce di menu, punto sul kebab che lo
+//    contiene. «Personalizza colonne» con le colonne nuove: prima il numero
+//    stava nell'etichetta di un pulsante a sola icona, e non si vedeva.
+const desktopMenuHasBadge = computed(() => haBadgeIn(desktopMenuActions.value))
+const compactHasBadge = computed(() => haBadgeIn(nonPrimaryActions.value))
 </script>
 
 <template>
-  <div class="app-page-actions">
+  <div ref="radice" class="app-page-actions">
     <slot name="prefix" />
 
     <span class="app-page-actions-desktop">
@@ -66,7 +93,7 @@ const compactMenuItems = computed(() => menuItems(nonPrimaryActions.value))
         v-for="a in desktopInlineActions"
         :key="a.key"
         class="app-action-tooltip-wrap"
-        v-tooltip.bottom="buttonTooltip(a)"
+        v-tooltip.bottom="tooltipConTasto(a)"
       >
         <Button
           :icon="a.icon"
@@ -77,18 +104,21 @@ const compactMenuItems = computed(() => menuItems(nonPrimaryActions.value))
           :disabled="isActionDisabled(a)"
           @click="runAction(a, $event)"
         />
+        <ActionBadge :valore="a.badge" />
       </span>
-      <Button
-        v-if="desktopMenuActions.length"
-        :icon="MANAGE_ICONS.KEBAB"
-        text
-        rounded
-        class="app-manage-btn"
-        :disabled="disabled"
-        v-tooltip.bottom="menuTooltipText"
-        aria-haspopup="true"
-        @click="toggleDesktopMenu"
-      />
+      <span v-if="desktopMenuActions.length" class="app-action-tooltip-wrap">
+        <Button
+          :icon="MANAGE_ICONS.KEBAB"
+          text
+          rounded
+          class="app-manage-btn"
+          :disabled="disabled"
+          v-tooltip.bottom="menuTooltipText"
+          aria-haspopup="true"
+          @click="toggleDesktopMenu"
+        />
+        <ActionBadge v-if="desktopMenuHasBadge" punto :valore="1" />
+      </span>
       <Menu ref="desktopMenuRef" :model="desktopMenuItems" popup />
     </span>
 
@@ -98,7 +128,7 @@ const compactMenuItems = computed(() => menuItems(nonPrimaryActions.value))
       v-for="a in primaryActions"
       :key="a.key"
       class="app-action-tooltip-wrap"
-      v-tooltip.bottom="buttonTooltip(a)"
+      v-tooltip.bottom="tooltipConTasto(a)"
     >
       <Button
         :icon="a.icon"
@@ -111,17 +141,19 @@ const compactMenuItems = computed(() => menuItems(nonPrimaryActions.value))
     </span>
 
     <span class="app-page-actions-compact">
-      <Button
-        v-if="nonPrimaryActions.length"
-        :icon="MANAGE_ICONS.KEBAB"
-        text
-        rounded
-        class="app-manage-btn"
-        :disabled="disabled"
-        v-tooltip.bottom="menuTooltipText"
-        aria-haspopup="true"
-        @click="toggleCompactMenu"
-      />
+      <span v-if="nonPrimaryActions.length" class="app-action-tooltip-wrap">
+        <Button
+          :icon="MANAGE_ICONS.KEBAB"
+          text
+          rounded
+          class="app-manage-btn"
+          :disabled="disabled"
+          v-tooltip.bottom="menuTooltipText"
+          aria-haspopup="true"
+          @click="toggleCompactMenu"
+        />
+        <ActionBadge v-if="compactHasBadge" punto :valore="1" />
+      </span>
       <Menu ref="compactMenuRef" :model="compactMenuItems" popup />
     </span>
   </div>

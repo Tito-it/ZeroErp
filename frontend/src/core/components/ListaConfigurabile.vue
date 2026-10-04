@@ -178,6 +178,16 @@ const props = defineProps({
   selectionMode: { type: String, default: 'single' },
   // Data key per riga.
   dataKey: { type: String, default: 'id' },
+  // ⭐ LA RIGA APERTA NEL FORM INLINE del contenitore (il suo valore di
+  //    `dataKey`), evidenziata (2026-10-04, §9.6 punto 2 del brief-db-liste-
+  //    righe-documento, Tid: «si evidenzia»). Con il form sotto la lista,
+  //    senza l'evidenza non si vede QUALE riga si sta modificando — la
+  //    `DataTable` grezza di prima la mostrava selezionata. `null` = nessuna.
+  rigaAttiva: { type: [String, Number], default: null },
+  // Le righe si aprono col click? `false` (documento non modificabile, sola
+  // lettura): niente hover ne' cursore a mano, che prometterebbero un click
+  // che non fa niente.
+  righeCliccabili: { type: Boolean, default: true },
   // Override prop paginator: tipicamente `paginatorProps` di useSearchTable.
   // Mergiato con i default del pattern (top + jump + 1/N + rowsOptions).
   // Le prop esplicite del caller hanno precedenza sui default.
@@ -651,6 +661,18 @@ function onSort(event) {
   emit('sort', risolto)
 }
 
+// Scopo: le classi della riga: quella aperta nel form, e le righe che il
+//        click non apre. Le regole di stile stanno in main.css (§ «Riga
+//        attiva e righe non cliccabili»).
+function classeRiga(data) {
+  const classi = []
+  if (props.rigaAttiva != null && data?.[props.dataKey] === props.rigaAttiva) {
+    classi.push('app-riga-attiva')
+  }
+  if (!props.righeCliccabili) classi.push('app-riga-non-cliccabile')
+  return classi
+}
+
 function onRowClick(event) {
   // Il click sul toggler dell'expander NON deve propagarsi come row-click
   // (altrimenti il chevron aprirebbe ANCHE il drawer del caller).
@@ -841,6 +863,7 @@ defineExpose({
       :sort-order="sortOrder"
       :selection-mode="selectionMode"
       :data-key="dataKey"
+      :row-class="classeRiga"
       v-model:expandedRows="expandedRows"
       @page="onPage"
       @sort="onSort"

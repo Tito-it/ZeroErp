@@ -38,11 +38,13 @@ export function useSearchTable(store, options = {}) {
     defaultSortOrder = 'asc', // direzione sort iniziale
     // ⭐ Lista INCORPORATA (pannello della home, sezione di una pagina che
     //    non e' la lista): non e' la lista di rotta, quindi non segue la
-    //    ricerca universale (`?search=`, `ctx.searchTerm`) e non intercetta
-    //    F5. Senza, un pannello sotto KeepAlive si trova la casella riempita
-    //    dall'ultima ricerca fatta altrove, e ogni F5 in qualunque pagina lo
-    //    ricarica (il listener si toglie solo allo smontaggio, che sotto
-    //    KeepAlive non arriva).
+    //    ricerca universale (`?search=`, `ctx.searchTerm`). Senza, un pannello
+    //    sotto KeepAlive si trova la casella riempita dall'ultima ricerca
+    //    fatta altrove.
+    //    F5 non e' piu' di qui (2026-10-04): e' il tasto dell'azione `reload`
+    //    della barra (`useScorciatoie`), che sa quale lista e' a video.
+    //    Il listener di qui restava su `window` sotto KeepAlive, e ogni F5
+    //    ricaricava tutte le liste gia' visitate.
     incorporata = false,
   } = options
 
@@ -145,13 +147,6 @@ export function useSearchTable(store, options = {}) {
     if (fetch && store.hasSearched) store.fetchList()
   }
 
-  // Scopo: intercetta F5 per ricaricare la lista senza reload browser
-  function onKeydown(e) {
-    if (e.key === 'F5') {
-      e.preventDefault()
-      reload()
-    }
-  }
   function onRowsMediaChange() {
     applyResponsiveDefaultRows({ fetch: true })
   }
@@ -159,7 +154,6 @@ export function useSearchTable(store, options = {}) {
   applyResponsiveDefaultRows()
 
   onMounted(() => {
-    if (!incorporata) window.addEventListener('keydown', onKeydown)
     compactRowsQuery?.addEventListener('change', onRowsMediaChange)
   })
 
@@ -231,7 +225,6 @@ export function useSearchTable(store, options = {}) {
   // Cleanup timeout e listener on unmount
   onUnmounted(() => {
     clearTimeout(searchTimeout)
-    window.removeEventListener('keydown', onKeydown)
     compactRowsQuery?.removeEventListener('change', onRowsMediaChange)
   })
 

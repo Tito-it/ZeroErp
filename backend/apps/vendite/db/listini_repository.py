@@ -15,6 +15,7 @@ from uuid import UUID
 
 from django.db import connection, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -756,7 +757,7 @@ class ListiniRepository:
         attivo: bool | None = True,
         order_by: str = "articolo_descrizione",
         order_dir: str = "asc",
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)

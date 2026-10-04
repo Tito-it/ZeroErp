@@ -35,7 +35,7 @@ Indice test:
 import unittest
 from unittest.mock import MagicMock, patch
 
-from apps.vendite.db import _righe_repo_mixin
+from apps.core.db import righe_lista_mixin as _righe_repo_mixin
 from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.ordini_repository import OrdiniRepository
 

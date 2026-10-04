@@ -43,6 +43,7 @@ import ContrattoEmissioneDialog from './dialogs/ContrattoEmissioneDialog.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import EntityPdfButton from '../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../documenti/constants'
+import { FORMA_CONTRATTO } from '../constants'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
@@ -306,7 +307,7 @@ function populateFromDetail(d) {
 // il badge informativo readonly nell'header drawer post-save. Non e' una scelta
 // dell'operatore — segue automaticamente i campi compilati.
 const formaDerivata = computed(() => {
-  return form.value.listino_id ? 'con_listino' : 'senza_listino'
+  return form.value.listino_id ? FORMA_CONTRATTO.CON_LISTINO : FORMA_CONTRATTO.SENZA_LISTINO
 })
 
 // Quando l'operatore rimuove il listino_id, il payload deve coerentemente
@@ -834,7 +835,7 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       </span>
       <Tag
         :value="t(`vendite.contratti.forma_${formaDerivata}`)"
-        :severity="formaDerivata === 'senza_listino' ? 'warn' : 'info'"
+        :severity="formaDerivata === FORMA_CONTRATTO.SENZA_LISTINO ? 'warn' : 'info'"
       />
       <template #status>
         <Tag
@@ -1076,7 +1077,7 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
   <!-- Badge forma derivata: visibile in EDIT come audit visivo del path. -->
   <Message
     v-if="isEdit && detail"
-    :severity="formaDerivata === 'senza_listino' ? 'warn' : 'info'"
+    :severity="formaDerivata === FORMA_CONTRATTO.SENZA_LISTINO ? 'warn' : 'info'"
     :closable="false" size="small"
   >
     {{ t(`vendite.contratti.forma_${formaDerivata}_descrizione`) }}
@@ -1183,8 +1184,8 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       :visible="righeVisible"
       @update:visible="v => righeVisible = v"
       :contratto-id="props.contrattoId"
+      :emittente-fiscale-id="detail.emittente_fiscale_id ?? null"
       :contratto-forma="formaDerivata"
-      :righe-iniziali="detail.righe || []"
       :contratto-numero="detail.numero"
       :contratto-cliente="detail.ba_ragione_sociale"
       :contratto-valido-dal="detail.valido_dal"

@@ -7,22 +7,18 @@
 
 from __future__ import annotations
 
-from datetime import date
+from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
 
 from django.db import connection
 
-from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
     RicercaFull,
-    add_ricerca_full_condition,
-    fetch_paged_with_total,
-    limiti_pagina,
     row_to_dict,
     rows_to_list,
-    sql_order_clause,
 )
+from apps.core.db.righe_lista_mixin import RigheListaCompletaMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
 # Colonne SCRIVIBILI di una riga BoM: whitelist RIGIDA del BB di scrittura
@@ -85,9 +81,6 @@ COMPONENTI_SORT_COLUMNS: dict[str, str] = {
 # Le date partono DESC quando nessuno chiede un verso (regola di Tid del
 # 2026-09-02).
 COMPONENTI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"valido_dal", "valido_al"})
-# L'ordine della distinta quando nessuno chiede altro: la versione piu' recente
-# in cima, com'era la lettura completa (e il preset della lista 101).
-_ORDINE_DISTINTA = "v.valido_dal DESC"
 
 # Colonne SCRIVIBILI di una nota catalogo: whitelist RIGIDA del BB di
 # scrittura (2026-09-26, come COMPONENTE_WRITE_COLUMNS). `target_tipo` e
@@ -166,7 +159,7 @@ _NOTA_PARTITIONED_COLUMNS = """
 """.strip()
 
 
-class CatalogoBomRepository:
+class CatalogoBomRepository(RigheListaCompletaMixin):
     """Repository specializzato per componenti BoM e note catalogo."""
 
     # Scopo: Restituisce la proiezione minima per risolvere una nota via tabella padre.
@@ -174,74 +167,39 @@ class CatalogoBomRepository:
     def _nota_resolve_projection() -> str:
         return ",\n                    ".join(NOTE_RESOLVE_COLUMNS)
 
-    # Scopo: TUTTE le righe della distinta di un prodotto, nell'ordine della
-    #        distinta: per chi le usa insieme (il dettaglio dell'articolo, i
-    #        controlli del service). ⛔ Non e' la lista a video: quella e'
-    #        `list_componenti_pagina`.
-    def list_componenti(self, articolo_id: UUID | str) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT v.*
-                  FROM {_VISTA_COMPONENTI} v
-                 WHERE v.prodotto_id = %s
-                 ORDER BY {_ORDINE_DISTINTA}, v.id
-                """,  # noqa: S608 — vista e ordine sono costanti di modulo; valori come parametri
-                [articolo_id],
-            )
-            return rows_to_list(cursor)
+    # ⭐ Le righe della distinta di un prodotto: la lettura completa
+    #    (`list_righe`: il dettaglio dell'articolo, i controlli del service) e
+    #    la PAGINA della lista configurabile `catalogo.articolo_componenti`
+    #    (`list_righe_pagina`) sono il BB core `RigheListaCompletaMixin`
+    #    (2026-10-04, regola del 2 fra domini, ok Tid): qui erano scritte a
+    #    mano, gemelle di quelle delle righe di vendita. Restano qui le
+    #    dichiarazioni (vista, padre, ordine, whitelist, ricerca) e il filtro
+    #    proprio della lista, «in vigore al».
+    # ⚠️ L'ordine della distinta quando nessuno chiede altro: la versione piu'
+    #    recente in cima (e il preset della lista 101). Nessun filtro `attivo`:
+    #    una riga della distinta non si disattiva, si chiude con `valido_al`.
+    _righe_vista = _VISTA_COMPONENTI
+    _righe_fk_documento = "prodotto_id"
+    _righe_ordine_documento = "valido_dal"
+    _righe_ordine_documento_desc = True
+    _righe_ordinamento = COMPONENTI_SORT_COLUMNS
+    _righe_ricerca = _RICERCA_COMPONENTI
+    _righe_colonne_desc = COMPONENTI_SORT_COLONNE_DATA
+    _righe_solo_attive = False
 
-    # Scopo: UNA PAGINA della distinta di un prodotto, per la lista
-    #        configurabile `catalogo.articolo_componenti`: ricerca dal
-    #        catalogo, ordinamento dalla whitelist, filtro di validita'.
-    #        Ritorna `(righe, totale)`, totale indipendente dalle righe
-    #        consegnate (BB `fetch_paged_with_total`).
-    # ⭐ `valido_al` e' il filtro «in vigore al»: tiene le righe che a quella
-    #    data NON sono ancora chiuse — senza fine, o con la fine da quel giorno
-    #    in poi — comprese quelle che iniziano dopo. E' la stessa regola che il
-    #    drawer applicava sulle righe gia' caricate, portata qui con la
-    #    paginazione (il filtro locale avrebbe filtrato solo la pagina).
-    #    `None` = tutte le versioni.
-    # ⚠️ `max_limit`: la lista resta a `MAX_LIMIT`; l'export passa il suo tetto.
-    def list_componenti_pagina(
-        self,
-        articolo_id: UUID | str,
-        *,
-        valido_al: date | None = None,
-        search: str | None = None,
-        order_by: str | None = None,
-        order_dir: str | None = None,
-        limit: int,
-        offset: int = 0,
-        max_limit: int = MAX_LIMIT,
-    ) -> tuple[list[dict[str, Any]], int]:
-        ordinamento = sql_order_clause(
-            order_by, order_dir,
-            colonne=COMPONENTI_SORT_COLUMNS,
-            default_clause=_ORDINE_DISTINTA,
-            tiebreak="v.id",
-            colonne_desc=COMPONENTI_SORT_COLONNE_DATA,
-        )
-        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
-        conditions = ["v.prodotto_id = %s"]
-        params: list[Any] = [articolo_id]
+    # Scopo: il filtro proprio della lista 101. `valido_al` = «in vigore al»:
+    #        tiene le righe che a quella data NON sono ancora chiuse — senza
+    #        fine, o con la fine da quel giorno in poi — comprese quelle che
+    #        iniziano dopo. `None` = tutte le versioni.
+    def _righe_filtri(
+        self, conditions: list[str], params: list[Any], filtri: Mapping[str, Any],
+    ) -> None:
+        propri = dict(filtri)
+        valido_al = propri.pop("valido_al", None)
         if valido_al is not None:
             conditions.append("(v.valido_al IS NULL OR v.valido_al >= %s)")
             params.append(valido_al)
-        add_ricerca_full_condition(conditions, params, search, _RICERCA_COMPONENTI)
-        from_where = f"FROM {_VISTA_COMPONENTI} v WHERE {' AND '.join(conditions)}"
-        return fetch_paged_with_total(
-            f"""
-            SELECT v.*, COUNT(*) OVER () AS total_count
-            {from_where}
-            ORDER BY {ordinamento}
-            LIMIT %s OFFSET %s
-            """,  # ORDER BY da sql_order_clause su whitelist, WHERE da condizioni letterali e dal BB della ricerca, valori come parametri
-            params + [safe_limit, safe_offset],
-            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
-            fallback_params=params,
-            offset=safe_offset,
-        )
+        super()._righe_filtri(conditions, params, propri)
 
     # Scopo: Restituisce il singolo componente BoM con ownership sul prodotto.
     def get_componente(

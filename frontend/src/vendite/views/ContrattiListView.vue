@@ -44,8 +44,7 @@ watch(
 const righeDrawer = ref({
   visible: false,
   contrattoId: null,
-  modalita: 'B',
-  righe: [],
+  emittenteFiscaleId: null,
   numero: '',
   cliente: '',
   validoDal: '',
@@ -55,31 +54,21 @@ const righeDrawer = ref({
 })
 
 // Scopo: Apre il drawer righe direttamente dalla lista.
-// Carica il dettaglio per avere righe + contesto completo.
+// Carica il dettaglio per il contesto (intestazione ed emittente): le righe
+// le legge il drawer, dalla sua lista.
 async function onOpenRighe(data) {
   const detail = await store.fetchDetail(data.id)
   if (!detail) return
-  const modalita = !detail.listino_id ? 'C' : detail.tipo_variazione_globale ? 'A' : 'B'
   righeDrawer.value = {
     visible: true,
     contrattoId: detail.id,
-    modalita,
-    righe: detail.righe || [],
+    emittenteFiscaleId: detail.emittente_fiscale_id ?? null,
     numero: detail.numero,
     cliente: detail.ba_ragione_sociale,
     validoDal: detail.valido_dal,
     validoAl: detail.valido_al,
     statoCodice: detail.stato_codice_interno,
     statoDescrizione: detail.stato_descrizione,
-  }
-}
-
-async function onRigheChanged() {
-  // Refresh dettaglio righe
-  if (!righeDrawer.value.contrattoId) return
-  const detail = await store.fetchDetail(righeDrawer.value.contrattoId)
-  if (detail) {
-    righeDrawer.value.righe = detail.righe || []
   }
 }
 </script>
@@ -105,15 +94,13 @@ async function onRigheChanged() {
       :visible="righeDrawer.visible"
       @update:visible="v => righeDrawer.visible = v"
       :contratto-id="righeDrawer.contrattoId"
-      :contratto-modalita="righeDrawer.modalita"
-      :righe-iniziali="righeDrawer.righe"
+      :emittente-fiscale-id="righeDrawer.emittenteFiscaleId"
       :contratto-numero="righeDrawer.numero"
       :contratto-cliente="righeDrawer.cliente"
       :contratto-valido-dal="righeDrawer.validoDal"
       :contratto-valido-al="righeDrawer.validoAl"
       :contratto-stato-codice="righeDrawer.statoCodice"
       :contratto-stato-descrizione="righeDrawer.statoDescrizione"
-      @changed="onRigheChanged"
     />
   </div>
 </template>

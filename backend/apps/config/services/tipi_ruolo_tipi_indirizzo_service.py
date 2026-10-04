@@ -14,6 +14,7 @@ from typing import Any
 
 from django.db import IntegrityError
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.config.db.tipi_ruolo_tipi_indirizzo_repository import (
     _ORDER_COLS,
     TipiRuoloTipiIndirizzoRepository,
@@ -106,7 +107,7 @@ class TipiRuoloTipiIndirizzoService:
         attivo: bool | None = None,
         tipo_ruolo_id: int | None = None,
         tipo_indirizzo_id: int | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "tipo_ruolo_descrizione",
         order_dir: str = "asc",

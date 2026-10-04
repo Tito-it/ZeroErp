@@ -1,5 +1,15 @@
 # Brief DB — Le righe di un documento diventano liste standard
 
+> 🏁 **CHIUSO il 2026-10-04** (Tid: «chiudiamo il brief»). Le righe di
+> preventivo, ordine, DDT, reso, fattura, contratto e della distinta base sono
+> liste configurabili (97-103); DB, BE e FE dei lotti A-E chiusi, il contratto
+> collaudato a video da Tid, `…/righe-preview/` ritirato, i residui del §9.1 e
+> del §9.6 risolti (§9.16). Restano fuori, e hanno la loro sede: il contesto di
+> stampa della fattura (`work-done/brief-db-documenti-versione-contesto-template.md`)
+> e le misure del paginatore (`work-done/brief-db-misure-pagina-catalogo.md`).
+> ⚠️ Da guardare a video, senza un brief aperto: la riga evidenziata nei sei
+> drawer col form inline (§9.16).
+
 > **Destinatari:** team DB (`dev/db-tid`) per il §3; il lavoro BE e FE (§4-§6)
 > è di `dev/backend-tid`. Il lotto **L1** parte subito (usa liste già a
 > catalogo); **L2-L4 partono solo a seed applicati**.
@@ -75,6 +85,12 @@
 >   `lista_preset.csv` (§9.14.1). ✅ Doc auto-gen rigenerata.
 >   ⇒ **Parte DB di nuovo chiusa**: il FE del lotto D (§9.11, «Lato FE») può
 >   partire.
+>- ✅ **2026-10-04 (`dev/backend-tid`): FE del lotto D scritto e collaudato a
+>   video da Tid** — `ContrattoRigheDrawer` sulla lista 103 (§9.15);
+>   `…/righe-preview/` ritirato.
+>- ✅ **2026-10-04: residui chiusi** (§9.16, decisioni di Tid): §9.1 verificato,
+>   i quattro punti del §9.6, la lettura della distinta sul BB core, il
+>   `list_righe` morto del contratto. Non committato.
 
 ---
 
@@ -1394,7 +1410,7 @@ vuol dire quindi: **prima del commit** di CSV e doc.
 | **A** | BE liste 97-100: repository sulle viste, lista paginata + export, presidi | ✅ 2026-09-28 (§9.1) |
 | **B** | FE L2: preventivo, ordine, DDT, reso su `DrawerTabLista` | ✅ 2026-09-28 (§9.2); ✅ seed §9.3 e §9.4 migrati il 2026-09-29 (verificati sul DB) |
 | **C** | BE + FE: BoM (101) e fattura (102) | ✅ 2026-09-28 (§9.8); ✅ decisa il 2026-09-29 la stampa (§9.8.4): prosegue in `brief-db-documenti-versione-contesto-template.md` |
-| **D** | BE + FE: contratto (103) | ✅ BE 2026-09-30 (§9.10); ⏳ **FE fermo sulla richiesta al team DB §9.11** (due colonne della funzione, una è un difetto di modello già vivo) |
+| **D** | BE + FE: contratto (103) | ✅ BE 2026-09-30 (§9.10); ✅ DB §9.11 migrato il 2026-10-04; ✅ FE 2026-10-04 (§9.15), collaudato a video da Tid; `…/righe-preview/` ritirato |
 | **E** | policy `E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI`, ~~15~~ **10** righe nei drawer (§9.7), date della versione CHIUSA, doc §6 | ✅ 2026-09-30 (§9.12); le misure del paginatore proseguono in `brief-db-misure-pagina-catalogo.md` |
 
 ### 9.1 Lotto A — BE delle liste 97-100 (2026-09-28)
@@ -1446,7 +1462,7 @@ anche il `POST` di creazione riga, e **non** dichiara `lista_emittente_param`.
 Per chi vede più emittenti (il super admin su «Tutti») sia la lista sia la
 creazione di una riga di inventario o rettifica rispondono
 `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`, a drawer aperto. Stessa forma della
-distinta (`pagamenti.distinta_righe`) da verificare. Da decidere con Tid:
+distinta (`pagamenti.distinta_righe`) da verificare. ✅ **Verificato il 2026-10-04: non è un difetto raggiungibile (§9.16).** Era da decidere con Tid:
 correzione sullo stampo di questo lotto (lista su percorso suo + parametro
 emittente), in un giro a parte.
 
@@ -1651,7 +1667,7 @@ vitest, lint, guards, build verdi.
 | doc | §9.1 e `api_righe_documento.md` dichiaravano un cambio di comportamento inesistente («una riga eliminata non si trova più»: l'eliminazione è un `DELETE` fisico, non si trovava neanche prima); `massimo 200` letterale; `LIST_MAX_LIMIT` nel catalogo BB; «finché non passano a L2» in frontend-standards | riscritti |
 | test | `test_lista_cancello_…` non guardava lo status; nessun test sul `model_permission` delle otto view; il test DESC provava una sola delle due date dell'ordine; etichetta sbagliata di un'eccezione del presidio di paginazione | status 200, `test_lista_ed_export_col_permesso_del_documento`, tutte le `_righe_colonne_desc`, etichetta |
 
-**⏳ Da decidere con Tid:**
+**✅ Decisi da Tid il 2026-10-04, fatti lo stesso giorno (§9.16):** 1 regola del 2, 2 si evidenzia, 3 le liste allo standard, 4 si corregge.
 
 1. **Regola del 2 — `list_righe_pagina` dei quattro service** è la stessa funzione quattro volte (cambiano repository e lettura della testata). Proposta: un helper accanto a `_righe_bozza_guard`, e un test solo che provi «leggi prima la testata» (oggi **nessun** test lo prova: togliere la lettura della testata da un service lascia la suite verde, e un documento fuori perimetro diventa una lista vuota invece di un 404).
 2. **UX della riga in modifica**: la vecchia `DataTable` evidenziava la riga aperta e non mostrava hover sui documenti non modificabili; `ListaConfigurabile` ha `selectionMode='single'` fisso. Serve una prop?
@@ -2086,3 +2102,89 @@ nel resolver vuol dire «il default `PAGINA`», cioè 25.
 CSV del working tree, eseguito **per intero** sullo scratch `zeroerp_ci` in
 transazione annullata. Tutte le righe passano dai guard, e cambiano solo
 `38: 25→10, 45: 25→10, 67: 25→10`. ✅ Migrato da Tid il 2026-10-04.
+
+### 9.15 Lotto D — FE della lista 103 (2026-10-04)
+
+`ContrattoRigheDrawer` legge la lista `vendite.contratto_righe` (§9.11 «Lato
+FE», §8.13.5 punto 3). Non passa da `RigheMasterDetailTable`: quel BB ha il
+click che apre la modifica e il solo «elimina», mentre qui il click su una riga
+del listino **crea** un prezzo forzato e il menu ha quattro verbi. Monta gli
+stessi due BB che `RigheMasterDetailTable` monta (`useDrawerTabLista` +
+`<DrawerTabLista>`), come `FatturaDrawer`.
+
+| Dove | Cosa |
+| --- | --- |
+| `vendite/api/contratti.js` | `listRigheLista` / `exportRigheLista` dal BB `makeRigheListaApi`; ritirata `listRighePreviewContratto` (nessun consumatore FE) |
+| `vendite/stores/contrattoRighe.js` (nuovo) | `useContrattoRigheStore`: `createRigheListaStore` + `storePerIstanza`, padre composto contratto + emittente |
+| `vendite/stores/contratti.js` | ritirata `fetchRighePreview` |
+| `vendite/constants.js` | `AZIONE_RIGA_CONTRATTO`: i sei verbi della colonna `azioni` |
+| `ContrattoRigheDrawer.vue` | `DataTable` grezza → `<DrawerTabLista codice="vendite.contratto_righe" data-key="riga_key">`; ricerca, ordinamento, export e «Ricarica» dal BB (il contesto pricing è il suo `fetchExtra`); cella `origine` (Tag), componenti del bundle nella riga espandibile; **click** = `SOVRASCRIVI_PREZZO` (form OVERRIDE precompilato) o `MODIFICA`; **menu** = una voce per verbo, «Escludi» spento col motivo da `escludi_blocco_codice` (`vendite.contratti.escludi_blocco.<reason>`); il form legge `ordine` e `uom_operativa_id` dalla riga (R-D2), senza ripieghi |
+| Ritirati | `righeIniziali`, `_row_key`, `buildRigaActions` per origine, filtro articolo lato client, shortcut F5 a mano, doppia sorgente righe/anteprima, la rilettura dell'anteprima dopo ogni gesto |
+| Padri (`ContrattoDrawer`, `ContrattiListView`, `ContrattiBillingAccountDrawer`) | passano `emittente-fiscale-id` (`contratti.emittente_fiscale_id`, PK di `emittenti_fiscali`); ritirati `righe-iniziali`, la prop fantasma `contratto-modalita` (il drawer non la dichiarava più dal 2026-05-15) e i due `onRigheChanged`, che rileggevano il dettaglio solo per le righe |
+| `scripts/datatable.baseline.json` | il drawer esce dal registro delle `DataTable` grezze (31 → 30) |
+| doc | catalogo BB FE (`createRigheListaStore`, `useFormInline`), `api_contratti.md` (`/righe-preview/` senza consumatore FE) |
+
+**Tre scelte fatte nel giro, da guardare:**
+
+1. **L'UdM nel form non è più obbligatoria su una riga senza quantità.** Con
+   `uom_operativa_id` letto com'è (§9.11), una riga a fonte diversa da `FISSA`
+   può arrivare con UdM NULL — il modello lo ammette e vale la base
+   dell'articolo (§9.11.1). Il form chiedeva sempre l'UdM: quella riga non si
+   sarebbe più salvata senza inventarne una. Ora l'UdM è obbligatoria solo con
+   fonte `FISSA`, cioè dove c'è una quantità da misurare. Il backend accetta
+   NULL (`_apply_optional_positive_int`), e un `ordine` NULL non lo tocca.
+2. **Il click su una riga del listino vuole il permesso
+   `prezzo_override_manuale`**, come «Nuovo» ed «Escludi». Prima apriva il form
+   a chiunque potesse scrivere, e il 403 arrivava al «Salva». Il commento del
+   drawer lo dichiarava già come regola («la gate vale per le azioni che mutano
+   il prezzo»): è stata applicata anche al click.
+3. **«Listino senza versione oggi» dal contesto pricing**, non più
+   dall'anteprima (che il drawer non legge più): il contesto sceglie la
+   versione con la regola del contratto, e l'anteprima scambiava per «senza
+   versione» anche un listino con tutti gli articoli esclusi.
+
+**Prove:** `npm run guards` verde (registro `DataTable` riscritto), vitest
+88 file / 636 test, `vite build`, eslint su `src` pulito. ⚠️ **Non provato a
+video** al momento della scrittura (collaudo di Tid sotto).
+
+✅ **Collaudo a video di Tid il 2026-10-04: tutto ok.**
+
+✅ **`GET contratti/<id>/righe-preview/` ritirato** (ok di Tid, 2026-10-04):
+non aveva più consumatori nel frontend. Via la rotta, la view
+`ApiContrattoRighePreview` e `ContrattiService.list_righe_preview` (la view era
+il suo solo chiamante), coi loro test (1 API, 6 service). Resta la lettura
+`ContrattiRepository.list_righe_preview`, per stampa e `righe_count`. Doc:
+`api_contratti.md`, `api_righe_documento.md`. Prove: `ruff` su `vendite`
+pulito; test di contratti, lista 103, contesto di stampa, rotte, sola lettura
+e registro OpenAPI verdi (194).
+
+### 9.16 I residui del brief — chiusi (2026-10-04, decisioni di Tid)
+
+**§9.1 — le righe di magazzino e della distinta: verificato, non è un difetto
+raggiungibile.** Il cancello di perimetro rifiuta una lista mono-emittente a
+chi ne vede più di uno senza un emittente fissato. Le testate di magazzino
+(`magazzino.inventari`, `magazzino.rettifiche`) e delle distinte
+(`pagamenti.distinte`) sono mono-emittente col perimetro (`multi_emittente =
+f`, `perimetro_emittente = t`, letto nel seed `lista_definizione.csv`): un
+operatore multi-emittente deve scegliere l'emittente in topbar **prima** di
+entrare. I due drawer si aprono **solo** dalle loro liste
+(`DocumentiInterniListView`, `DistinteListView`: cercato nel frontend), quindi
+le righe arrivano sempre con un emittente solo nel perimetro. Diverso dai
+documenti di vendita, le cui liste sono multi-emittente: lì le righe portano
+l'emittente del documento (`lista_emittente_param`). ⚠️ Se un giorno uno dei
+due drawer si aprirà da un'altra porta (ricerca universale, un chip di
+collegamento), le sue righe vorranno lo stesso parametro.
+
+| Voce | Cosa | Dove |
+| --- | --- | --- |
+| §9.6.1 regola del 2 | BB `pagina_dopo_testata` («leggi prima la testata, poi la pagina»): sette copie ritirate — preventivo, ordine, DDT, reso, fattura, contratto, distinta del catalogo. Nessun test provava l'ordine: ora un caso per consumatore e uno per il BB; mutazione (testata non letta) → 8 rossi | `core/services/testata_guard.py`; `core/tests/services/test_pagina_dopo_testata.py`, `vendite/tests/services/test_righe_pagina_dopo_testata.py`, `catalogo/tests/services/test_catalogo_service.py` |
+| §9.6.2 la riga aperta si evidenzia | `ListaConfigurabile` (+ inoltro in `DrawerTabLista`): `riga-attiva` → `app-riga-attiva`; `righe-cliccabili:false` → niente hover né cursore a mano. Agganciata ai sei contenitori del form inline (righe dei quattro documenti, contratto — che evidenzia anche la riga di listino da cui nasce un prezzo forzato —, distinta pagamenti, documento interno, BoM, versione di listino). Mutazione (classe tolta) → 2 rossi | `ListaConfigurabile.vue`, `DrawerTabLista.vue`, `main.css`; `ListaConfigurabile.spec.js` 9-10 |
+| §9.6.3 liste allo standard | **85 firme** di service e repository in 49 file da un numero (25, 50, 100) a `DEFAULT_LIMIT`; le liste di **eventi** (giornale pratica, registro commessa, task run del lotto) su una costante nuova, `DEFAULT_LIMIT_EVENTI` (100), letta anche dalle loro tre view, che ora non sono più eccezioni del presidio. Esclusi, e dichiarati: lookup (tendine) e batch. Nessun chiamante si appoggiava al default della firma (cercati uno per uno): nessun comportamento cambiato. Il presidio guarda ora anche le firme (`_FIRME_AMMESSE`); mutazione → rosso | `core/api/constants.py`; `core/tests/test_paginazione_fonte_unica.py` 4-5 |
+| §9.6.4 | `fetch_paged_with_total` ricava l'offset da `params[-1]` quando la query lo porta; `offset=` serve solo coi parametri con nome, e se passato e ricavabile deve coincidere (`ValueError`). I 58 chiamanti che lo passano restano validi: il controllo di coerenza è passato su tutta la suite | `core/db/_helpers.py`; `test_fetch_paged_with_total.py` 6-8 |
+| BoM — duplicazione (§9.9) | la lettura delle righe sale in core: `apps/core/db/righe_lista_mixin.py` (`RigheListaMixin` = pagina, `RigheListaCompletaMixin` = + lettura completa), con due ganci nuovi: `_righe_ordine_documento_desc` e `_righe_filtri` (la distinta: `valido_al`). `CatalogoBomRepository` ci si appoggia; via `list_componenti` e `list_componenti_pagina` scritti a mano. ⚠️ Un cambio, dichiarato: sulla distinta un verso chiesto con una colonna fuori whitelist ora vale anche sull'ordine di partenza, come già per le righe di vendita (era sempre DESC) | `catalogo/db/catalogo_bom_repository.py`; `vendite/db/_righe_repo_mixin.py` ridotto alla parte di dominio |
+| `ContrattoRigheListaRepository.list_righe` | ritirato per costruzione: il contratto prende solo `RigheListaMixin` (la pagina) | `vendite/db/contratti_repository.py` |
+
+**Prove:** backend `ruff` pulito, suite completa **6099 test verdi** col DB
+vero acceso (`ZEROERP_TEST_DB_E2E=1`); frontend `npm run guards`, eslint,
+vitest 89 file / 649 test, `vite build`. Worker gunicorn ricaricati. ⚠️ Non
+provato a video: la riga evidenziata nei sei drawer.

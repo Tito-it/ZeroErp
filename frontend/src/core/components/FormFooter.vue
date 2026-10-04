@@ -23,12 +23,12 @@
 //    risponde dei permessi: la condizione deve gia' escludere l'area in lettura.
 //    Il controllo `action` resta comunque.
 // Il pulsante Annulla/Chiudi resta sempre visibile (chiusura form).
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 import { MANAGE_ICONS } from '../constants'
-import { TASTO, conScorciatoia } from '../utils/scorciatoie'
+import { conTastoDiAzione, useScorciatoie } from '../composables/useScorciatoie'
 import Button from 'primevue/button'
 
 const props = defineProps({
@@ -65,26 +65,29 @@ const cancelText = computed(() => {
   return props.closeOnly ? t('common.close') : t('common.cancel')
 })
 
+// L'azione del Salva per la sede delle scorciatoie (Ctrl+S, vedi sotto).
+const AZIONE_SALVA = Object.freeze({ key: 'salva' })
 const saveText = computed(() => props.saveLabel || t('common.save'))
 // Il tooltip DICE la scorciatoia (2026-10-04, ok Tid): «Salva (Ctrl+S)», ⌘S
-// su Mac, nomi tradotti (`scorciatoie.js`). L'etichetta resta l'azione sola.
-const saveTooltip = computed(() => conScorciatoia(t, te, saveText.value, TASTO.SALVA))
+// su Mac, nomi tradotti. L'etichetta resta l'azione sola.
+const saveTooltip = computed(() => conTastoDiAzione(t, te, saveText.value, AZIONE_SALVA.key))
 
-// Ctrl+S → salva (funziona anche dentro input/textarea)
-function onKeydown(e) {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault()
-    if (showSave.value && !props.disabled && !props.loading) {
-      emit('save')
-    }
-  }
-}
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+// ⭐ Ctrl+S (anche dentro un campo) passa dalla sede delle scorciatoie
+//    (`useScorciatoie`, 2026-10-04): salva l'UNICO footer a video al livello
+//    davanti. 🔴 Fino a quel giorno ogni FormFooter montato ascoltava `window`
+//    per conto suo: con la versione aperta sopra il template, Ctrl+S salvava
+//    tutti e due; con un dialog sopra un drawer, anche il drawer sotto.
+const radice = ref(null)
+useScorciatoie({
+  elemento: () => radice.value,
+  azioni: () => (showSave.value ? [AZIONE_SALVA] : []),
+  spenta: () => props.disabled || props.loading,
+  esegui: () => emit('save'),
+})
 </script>
 
 <template>
-  <div class="app-form-footer">
+  <div ref="radice" class="app-form-footer">
     <!-- Annulla: arrow-left (MANAGE_ICONS.BACK) — semantica "torna alla
          lista"; closeOnly mantiene pi-times (chiusura di lista sub-entita',
          non c'e' un form da abbandonare).

@@ -486,7 +486,12 @@ diverso dalle misure del paginatore (brief-db-misure-pagina-catalogo §6.5). Nei
 tetto=MAX_LIMIT)`. ⛔ Mai il numero scritto a mano, nemmeno nella descrizione
 OpenAPI (`f"... (default {DEFAULT_LIMIT}, max {MAX_LIMIT})"`): lo presidia
 `apps/core/tests/test_paginazione_fonte_unica.py`, con le eccezioni dichiarate
-(liste di eventi a 100, autocomplete, batch).
+(autocomplete, batch). ⭐ Le **liste di eventi** (giornale di una pratica,
+registro di una commessa, task run di un lotto) partono da
+`DEFAULT_LIMIT_EVENTI` (100), stessa sede. ⛔ **Anche le firme** di service e
+repository (dal 2026-10-04): `limit: int = DEFAULT_LIMIT`, mai un numero —
+una lista aveva il suo default nella view e un altro, diverso, nella firma; il
+presidio le guarda, con le eccezioni (lookup, batch) in `_FIRME_AMMESSE`.
 
 Risposta paginata:
 
@@ -528,8 +533,9 @@ dalle righe che ritorna:
   stantia. ⭐ Dal 2026-09-28 il ripiego c'e' **sempre**: se il chiamante non
   passa un `fallback_count_sql` suo, il BB rilegge la stessa query con
   `LIMIT 1 OFFSET 0` (serve che finisca con `LIMIT %s OFFSET %s` e abbia
-  parametri posizionali, e lo verifica a ogni chiamata). `offset` e'
-  obbligatorio. ⛔ Una `COUNT(*) OVER ()` letta a mano (`extract_paginated`,
+  parametri posizionali, e lo verifica a ogni chiamata). L'offset il BB lo
+  legge dall'ultimo parametro della query; `offset=` si passa solo con i
+  parametri con nome (dal 2026-10-04: passato e ricavabile, deve coincidere). ⛔ Una `COUNT(*) OVER ()` letta a mano (`extract_paginated`,
   `rows[0][n]`) oltre l'ultima pagina dice totale 0, e la lista a video non sa
   tornare indietro (`useListaEmptyStateFetch` arretra da solo, ma solo su un
   totale vero): si passa dal BB;

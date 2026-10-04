@@ -10,7 +10,7 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
@@ -289,7 +289,7 @@ class ApiPraticaGiornale(DomainAPIView):
     model_permission = ("pratiche", "pratica")
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default 100, max {MAX_LIMIT})."),
+            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT_EVENTI}, max {MAX_LIMIT})."),
             OpenApiParameter(name="offset", type=int, required=False, description="Offset paginazione (default 0)."),
         ],
         responses={200: inline_serializer(
@@ -305,7 +305,7 @@ class ApiPraticaGiornale(DomainAPIView):
     # Scopo: Restituisce via GET il giornale di bordo della pratica (con tx_id).
     def get(self, request: Request, pratica_id: int) -> JsonResponse:
         qp = request.query_params
-        limit = optional_int({"v": qp.get("limit", "100")}, "v") or 100
+        limit = optional_int({"v": qp.get("limit", str(DEFAULT_LIMIT_EVENTI))}, "v") or DEFAULT_LIMIT_EVENTI
         offset = optional_int({"v": qp.get("offset", "0")}, "v") or 0
 
         items, total = pratiche_service.get_giornale(pratica_id, limit=limit, offset=offset)

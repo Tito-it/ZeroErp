@@ -97,7 +97,7 @@ const {
   // Nessun `searchTableOptions`: l'ordinamento di partenza lo dichiara lo
   // store, e una seconda copia qui divergerebbe in silenzio (vince lo store).
   extraActions: () => [{
-    key: 'new-conversione',
+    key: 'new',
     kind: 'primary',
     label: t('common.new'),
     tooltip: t('catalogo.nuova_conversione_uom'),

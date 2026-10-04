@@ -3,6 +3,7 @@
 
 import api from '../../core/api'
 import { makeComponentiBomApi } from '../../core/api/componentiBom'
+import { makeRigheListaApi } from '../_shared/righe/righeListaApi'
 
 const BASE = '/vendite/contratti'
 
@@ -58,15 +59,11 @@ export function addRigaContratto(contrattoId, payload) {
   return api.post(`${BASE}/${contrattoId}/righe/`, payload)
 }
 
-// Anteprima righe applicate (modalita' A/B). Restituisce envelope con
-// testata sintetica (forma derivata, listino + versione fissata, variazione
-// globale) + righe con prezzo_finale calcolato e origine ('DA_LISTINO' /
-// 'OVERRIDE' / 'ESCLUSIONE' / 'AGGIUNTA'). Forma "senza_listino" ritorna
-// righe vuote (le righe AGGIUNTA vivono in `contratti_righe` e si leggono
-// dall'endpoint /righe/).
-export function listRighePreviewContratto(contrattoId) {
-  return api.get(`${BASE}/${contrattoId}/righe-preview/`)
-}
+// La LISTA configurabile delle righe (`vendite.contratto_righe`, pagina +
+// export, `…/righe/lista/`): le righe OPERATIVE del contratto, cioe'
+// `vendite.fn_contratto_righe_preview` — listino con le eccezioni sopra, piu'
+// le aggiunte — per le due forme (brief-db-liste-righe-documento, lotto D).
+export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
 
 // Contesto pricing contratto (FE 2.2): forma, listino + versione fissata
 // (post-attivazione) o corrente (DRAFT), variazione, categoria cliente.

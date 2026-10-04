@@ -15,7 +15,7 @@ from typing import Any, cast
 
 from django.db import connection, transaction
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     call_jsonb_fn,
@@ -772,7 +772,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         self,
         lotto_id: int,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIMIT_EVENTI,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str = "desc",
@@ -2904,7 +2904,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         data_da: Any = None,
         data_a: Any = None,
         includi_archiviate: bool = False,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         sort_by: str = "data_update",
         sort_dir: str = "DESC",

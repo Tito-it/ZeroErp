@@ -27,6 +27,7 @@ from apps.core.services.list_helpers import (
     validate_pagination,
 )
 from apps.core.services.partitioned_note_service import PartitionedNoteService
+from apps.core.services.testata_guard import pagina_dopo_testata
 from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
@@ -2033,26 +2034,22 @@ def _envelope_giornale(
 
 # Scopo: UNA PAGINA delle righe di una fattura, per la lista configurabile
 #        `vendite.fattura_righe` (brief-db-liste-righe-documento, lotto C).
-#        «Leggi prima la testata»: fuori scope e' un 404, non una lista vuota
-#        (la vista e' `security_invoker` e risponderebbe zero righe).
+#        «Leggi prima la testata» (BB core `pagina_dopo_testata`): fuori
+#        scope e' un 404, non una lista vuota (la vista e' `security_invoker`
+#        e risponderebbe zero righe). `auth_user_id` e' dello scope della
+#        testata; il resto e' il contratto della lista.
 def list_fattura_righe_pagina(
     fattura_id: int,
     *,
     auth_user_id: int | None = None,
-    search: str | None = None,
-    order_by: str | None = None,
-    order_dir: str | None = None,
-    limit: int,
-    offset: int = 0,
-    max_limit: int = MAX_LIMIT,
+    **opzioni: Any,
 ) -> tuple[list[dict[str, Any]], int]:
-    _testata_fattura_o_404(
-        VenditeRepository(), fattura_id,
-        auth_user_id=auth_user_id, function_name=_FN_FATTURA_RIGHE,
-    )
-    return FattureRepository().list_righe_pagina(
-        fattura_id, search=search, order_by=order_by, order_dir=order_dir,
-        limit=limit, offset=offset, max_limit=max_limit,
+    return pagina_dopo_testata(
+        lambda: _testata_fattura_o_404(
+            VenditeRepository(), fattura_id,
+            auth_user_id=auth_user_id, function_name=_FN_FATTURA_RIGHE,
+        ),
+        FattureRepository().list_righe_pagina, fattura_id, **opzioni,
     )
 
 
@@ -2082,7 +2079,7 @@ def list_fattura_righe_pagina(
 def get_fattura_giornale(
     *,
     fattura_id: int,
-    limit: int = 25,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,
@@ -2161,7 +2158,7 @@ _FN_LOTTO_GIORNALE = "vendite.vendite_service.get_lotto_giornale"
 def get_lotto_giornale(
     *,
     lotto_id: int,
-    limit: int = 25,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,
@@ -2259,7 +2256,7 @@ def get_giornale_trasversale(
     data_a: date | None = None,
     filo: str | None = None,
     solo_vive: bool = True,
-    limit: int = 50,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,

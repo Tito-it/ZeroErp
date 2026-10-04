@@ -22,6 +22,12 @@
 #        (preventivi, contratti). Non e' una regola di dominio ripetuta: e' la
 #        coerenza del PERCORSO — senza, `/ordini/999/righe/24/` aprirebbe la
 #        riga 24 di un altro ordine.
+#        ⭐ Stessa regola il 2026-10-04 per `pagina_dopo_testata` (§9.6 del
+#        brief-db-liste-righe-documento, Tid): la pagina della lista delle
+#        righe era scritta sei volte — preventivo, ordine, DDT, reso, fattura,
+#        contratto — piu' la distinta del catalogo, ognuna con la sua lettura
+#        della testata davanti, e nessun test la provava: toglierla lasciava la
+#        suite verde e trasformava un 404 in una lista vuota.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -116,3 +122,23 @@ def riga_del_padre_o_not_found(
     )
     assert riga is not None
     return riga
+
+
+# Scopo: «Leggi prima la testata» per una PAGINA di righe: `leggi_testata()`
+#        (che solleva il 404 del dominio, di solito il `_get_testata_or_raise`
+#        del service) e solo dopo `leggi_pagina(padre_id, **opzioni)` (il
+#        `list_righe_pagina` del repository: ricerca, ordinamento, pagina,
+#        filtri propri). Ritorna `(righe, totale)`.
+# ⛔ L'ORDINE e' la regola, ed e' la ragione per cui sta in un posto solo: le
+#    righe stanno dietro RLS e una vista `security_invoker`, quindi lette per
+#    prime su un padre fuori perimetro rispondono zero righe — un 200 con la
+#    lista vuota, che al client dice «non ci sono righe» invece di «non puoi
+#    vederlo».
+def pagina_dopo_testata(
+    leggi_testata: Callable[[], object],
+    leggi_pagina: Callable[..., tuple[list[dict[str, Any]], int]],
+    padre_id: Any,
+    **opzioni: Any,
+) -> tuple[list[dict[str, Any]], int]:
+    leggi_testata()
+    return leggi_pagina(padre_id, **opzioni)

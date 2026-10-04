@@ -9,9 +9,13 @@
 #        25): una lista rispondeva 50 righe e la vicina 25, senza che nessuno
 #        l'avesse deciso.
 # Note: statico, nessun DB. Legge il sorgente di `apps/` (test esclusi) e
-#       cerca le due forme in cui il numero torna: il TETTO (`200` accanto a
-#       limit / page_size) ovunque, e il DEFAULT scritto nella query string di
-#       una view. Le eccezioni stanno in `_AMMESSI`, ciascuna col suo motivo.
+#       cerca le tre forme in cui il numero torna: il TETTO (`200` accanto a
+#       limit / page_size) ovunque, il DEFAULT scritto nella query string di
+#       una view, e il DEFAULT di una FIRMA (`limit: int = 50` in un service o
+#       un repository: §9.6 punto 3 del brief-db-liste-righe-documento, Tid
+#       2026-10-04 — una lista aveva il suo default nella view e un altro,
+#       diverso, nella firma). Le eccezioni stanno in `_AMMESSI` e
+#       `_FIRME_AMMESSE`, ciascuna col suo motivo.
 # ------------------------------------------------------------
 
 """
@@ -19,6 +23,8 @@ Indice test eseguiti:
 1) test_il_tetto_di_pagina_non_e_scritto_a_mano
 2) test_il_default_delle_view_non_e_scritto_a_mano
 3) test_le_eccezioni_esistono_ancora
+4) test_il_default_delle_firme_non_e_scritto_a_mano
+5) test_le_eccezioni_delle_firme_esistono_ancora
 """
 
 from __future__ import annotations
@@ -27,7 +33,7 @@ import re
 import unittest
 from pathlib import Path
 
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 
 _APPS = Path(__file__).resolve().parents[2]
 
@@ -45,12 +51,9 @@ _DEFAULT_VIEW = re.compile(
 # (file relativo ad apps/, frammento della riga) → perche' e' ammesso.
 _AMMESSI: dict[tuple[str, str], str] = {
     ("core/api/constants.py", f"MAX_LIMIT = {MAX_LIMIT}"): "la fonte",
-    # Liste di EVENTI (giornale, registro, segnalazioni): partono da 100
-    # dichiarato nella loro doc OpenAPI — un registro si legge a blocchi piu'
-    # lunghi di una lista anagrafica. Il tetto resta `MAX_LIMIT`.
-    ("pratiche/api/views.py", 'qp.get("limit", "100")'): "giornale pratica, default 100 dichiarato",
-    ("vendite/api/views.py", 'q.get("limit") or "100"'): "task run del lotto (`ApiLottoTaskRuns`), contratto del client storico (FE-2)",
-    ("vendite/api/views.py", 'qp.get("limit", "100")'): "registro commessa, default 100 dichiarato",
+    # ⭐ Le liste di EVENTI (giornale pratica, registro commessa, task run del
+    #    lotto) non sono piu' eccezioni dal 2026-10-04: il loro 100 e' la
+    #    costante `DEFAULT_LIMIT_EVENTI`, letta da view e firme.
     # Lookup (autocomplete): un contratto suo, piu' corto di una pagina.
     ("core/api/views_lookup.py", 'qp.get("limit"), 30)'): "lookup: 30 righe, tetto 100",
     ("catalogo/api/views.py", '"limit", 20)'): "lookup articoli: 20 righe",
@@ -60,6 +63,47 @@ _AMMESSI: dict[tuple[str, str], str] = {
     # Non e' una pagina: righe prese per giro dal drainer della coda lavori.
     ("core/services/coda_lavori/drainer_service.py", "_LIMIT_DEFAULT = 200"): "batch del drainer, non una pagina",
 }
+
+
+# Il default di una FIRMA di service o repository: un numero.
+_DEFAULT_FIRMA = re.compile(r"\b(?:limit|page_size): int = \d+")
+
+# (file relativo ad apps/, nome della funzione) → perche' il numero e' ammesso.
+# ⚠️ Non sono pagine di lista: un lookup ha un tetto suo (le righe di una
+#    tendina), un batch prende cio' che deve lavorare.
+_FIRME_AMMESSE: dict[tuple[str, str], str] = {
+    ("catalogo/services/catalogo_service.py", "fn_lookup_articoli"): "lookup articoli: 20 righe",
+    ("anagrafiche/db/conti_bancari_repository.py", "search_conti_bancari"): "autocomplete IBAN",
+    ("anagrafiche/db/conti_bancari_repository.py", "search_bank_branches"): "autocomplete filiali",
+    ("anagrafiche/services/conti_bancari_service.py", "search_conti_bancari"): "autocomplete IBAN",
+    ("anagrafiche/services/conti_bancari_service.py", "search_bank_branches"): "autocomplete filiali",
+    ("core/db/lookup_repository.py", "search_comuni"): "lookup comuni",
+    ("core/db/lookup_repository.py", "search_stradario"): "lookup stradario",
+    ("core/db/lookup_repository.py", "search_stradario_generale"): "lookup stradario",
+    ("core/db/dbops_repository.py", "list_lookup_codici"): "lookup codici: la pagina delle tendine (PROJECT_CONTEXT, «Tendine del lookup generico»)",
+    ("vendite/db/pipeline_repository.py", "list_attivita_da_fatturare"): "batch della pipeline",
+    ("vendite/db/pipeline_repository.py", "list_fatture_by_lotto"): "batch della pipeline",
+    ("vendite/db/pipeline_repository.py", "list_fatture_by_lotto_ordinate"): "batch della pipeline",
+    ("vendite/db/commesse_repository.py", "list_commesse_emittibili"): "batch di emissione",
+    ("vendite/db/commesse_repository.py", "list_emittibili_lane"): "batch di emissione",
+    ("vendite/services/fatturazione_driver_service.py", "esegui_giro_fatturazione"): "batch del giro di fatturazione",
+}
+
+
+# Scopo: le firme con un default numerico di pagina: (file, funzione, riga).
+#        La funzione e' l'ultimo `def` sopra la riga (la firma va a capo).
+def _firme_con_numero():
+    for p in sorted(_APPS.rglob("*.py")):
+        rel = p.relative_to(_APPS).as_posix()
+        if "/tests/" in f"/{rel}" or "/migrations/" in f"/{rel}":
+            continue
+        funzione = None
+        for n, riga in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            m = re.search(r"\bdef (\w+)\(", riga)
+            if m:
+                funzione = m.group(1)
+            if _DEFAULT_FIRMA.search(riga.split("#", 1)[0]):
+                yield rel, funzione, n
 
 
 # Scopo: le righe di codice di `apps/` (test e migration esclusi), commenti tolti.
@@ -115,3 +159,22 @@ class PaginazioneFonteUnicaTests(unittest.TestCase):
             if not any(rel == f and frammento in codice for rel, codice in righe)
         ]
         self.assertEqual(orfane, [], "eccezioni senza piu' la loro riga: toglierle")
+
+    def test_il_default_delle_firme_non_e_scritto_a_mano(self) -> None:
+        trovate = [
+            f"{rel}:{n} ({funzione})"
+            for rel, funzione, n in _firme_con_numero()
+            if (rel, funzione) not in _FIRME_AMMESSE
+        ]
+        self.assertEqual(
+            trovate, [],
+            f"righe per pagina di default scritte come numero in una firma: usare "
+            f"`DEFAULT_LIMIT` ({DEFAULT_LIMIT}) o, per una lista di eventi, "
+            f"`DEFAULT_LIMIT_EVENTI` ({DEFAULT_LIMIT_EVENTI}); un lookup o un batch va "
+            f"dichiarato in `_FIRME_AMMESSE` col suo motivo:\n" + "\n".join(trovate),
+        )
+
+    def test_le_eccezioni_delle_firme_esistono_ancora(self) -> None:
+        presenti = {(rel, funzione) for rel, funzione, _n in _firme_con_numero()}
+        orfane = [f"{f}: {fn}" for (f, fn) in _FIRME_AMMESSE if (f, fn) not in presenti]
+        self.assertEqual(orfane, [], "eccezioni senza piu' la loro firma: toglierle")

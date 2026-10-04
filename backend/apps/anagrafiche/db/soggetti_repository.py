@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     pattern_contiene,
     RicercaFull,
@@ -166,7 +167,7 @@ class SoggettiRepository:
         self, *, search: str | None = None,
         tipo_soggetto_dettaglio_id: int | None = None,
         emittente_ids: list[int] | None = None,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(

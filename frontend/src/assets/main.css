@@ -726,13 +726,6 @@ a {
   align-items: center;
 }
 
-/* Wrapper bottone azione drawer: posizionato per ospitare il badge counter
- * (es. "Gestisci righe" -> badge col numero righe). */
-.app-drawer-action-wrap {
-  position: relative;
-  display: inline-flex;
-}
-
 /* ⛔ Involucro per il TOOLTIP di un pulsante che puo' essere DISABILITATO.
  * Un `<button disabled>` non emette eventi del mouse — la directive tooltip di
  * PrimeVue aggancia `mouseenter` sull'elemento stesso — quindi un tooltip
@@ -743,8 +736,12 @@ a {
  * `enabled:false` + `reason`, `useDrawerActions` li traduce in disabled +
  * tooltip). Senza involucro quel motivo e' muto ovunque.
  * `inline-flex` perche' l'involucro prende il posto del Button come elemento
- * flex del contenitore: la spaziatura resta quella di prima. */
+ * flex del contenitore: la spaziatura resta quella di prima.
+ * ⭐ `relative`: ospita anche il NUMERO dell'azione (`ActionBadge`), assoluto
+ * rispetto a lui. Fino al 2026-10-04 c'era un secondo involucro identico solo
+ * per quello (`app-drawer-action-wrap`, ritirato). */
 .app-action-tooltip-wrap {
+  position: relative;
   display: inline-flex;
 }
 
@@ -756,20 +753,21 @@ a {
   font-size: 0.65rem;
 }
 
-/* Badge counter sopra un pulsante azione drawer kind:'manage'.
- * Pattern portato dal .contratto-drawer-righe-count pre-refactor. */
-.app-drawer-action-badge {
+/* Il numero sopra un pulsante d'azione (`ActionBadge`): «Gestisci righe» nei
+ * drawer, «Personalizza colonne» nelle liste. Nome neutro dal 2026-10-04 (era
+ * `app-drawer-action-badge`, quando c'era solo nei drawer). */
+.app-action-badge {
   position: absolute;
-  top: -0.35rem;
-  right: -0.35rem;
-  min-width: 1.15rem;
-  height: 1.15rem;
-  padding: 0 0.25rem;
+  top: -0.3rem;
+  right: -0.3rem;
+  min-width: 0.95rem;
+  height: 0.95rem;
+  padding: 0 0.2rem;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 600;
   line-height: 1;
   color: var(--p-primary-contrast-color);
@@ -778,10 +776,18 @@ a {
   pointer-events: none;
 }
 
-/* Variante dot per il kebab compact: segnala presenza di counter dentro il
- * popup senza esporre il numero (sommare counter eterogenei sarebbe ambiguo).
- * Il numero esatto resta nella label della voce menu (es. "Gestisci righe (5)"). */
-.app-drawer-action-badge-dot {
+/* Su un pulsante a SOLA ICONA (la barra delle liste) il pallino sta vicino
+ * all'icona, non all'angolo del pulsante, che ha attorno il suo padding. Su un
+ * pulsante con etichetta resta all'angolo: piu' in basso coprirebbe il testo. */
+.p-button-icon-only + .app-action-badge:not(.app-action-badge--punto) {
+  top: 0.1rem;
+  right: 0.05rem;
+}
+
+/* Variante punto per il kebab: segnala un numero dentro il menu senza
+ * esporlo (sommare conteggi eterogenei sarebbe ambiguo). Il numero esatto
+ * resta nella voce di menu, «Gestisci righe (5)». */
+.app-action-badge--punto {
   min-width: 0.5rem;
   width: 0.5rem;
   height: 0.5rem;
@@ -1006,6 +1012,30 @@ a {
 
 .app-datatable .p-datatable-tbody > tr:hover {
   background: var(--app-table-hover-bg);
+}
+
+/* ===== Riga attiva e righe non cliccabili (ListaConfigurabile) =====
+ * `app-riga-attiva`: la riga aperta nel form inline sotto la lista (prop
+ * `riga-attiva`), evidenziata anche sotto il puntatore — e' il «dove sono».
+ * `app-riga-non-cliccabile`: il click non apre niente (documento in sola
+ * lettura, prop `righe-cliccabili`): niente hover ne' cursore a mano, la riga
+ * a righe alterne tiene il suo fondo.
+ * ⚠️ Le regole di hover delle righe non cliccabili escludono la riga attiva:
+ * con le due classi insieme (form aperto e documento che diventa non
+ * modificabile) vincerebbero per specificita' o per ordine, e l'evidenza
+ * sparirebbe sotto il puntatore. */
+.app-datatable .p-datatable-tbody > tr.app-riga-attiva,
+.app-datatable .p-datatable-tbody > tr.app-riga-attiva:hover {
+  background: var(--app-highlight-bg);
+}
+.app-datatable .p-datatable-tbody > tr.app-riga-non-cliccabile {
+  cursor: default;
+}
+.app-datatable .p-datatable-tbody > tr.app-riga-non-cliccabile:not(.app-riga-attiva):hover {
+  background: transparent;
+}
+.app-datatable .p-datatable-tbody > tr.p-datatable-row-odd.app-riga-non-cliccabile:not(.app-riga-attiva):hover {
+  background: var(--app-table-stripe-bg);
 }
 
 /* ===== Classe utility form field =====

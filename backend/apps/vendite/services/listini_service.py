@@ -14,6 +14,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import collezione_completa, validate_order_params
 from apps.core.services.payload_helpers import (
@@ -997,7 +998,7 @@ def fn_list_listini(
     search: str | None = None,
     order_by: str = "codice",
     order_dir: str = "asc",
-    limit: int = 25,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
     function_name = "vendite.listini_service.fn_list_listini"
@@ -1473,7 +1474,7 @@ def fn_list_righe(
     attivo: bool | None = True,
     order_by: str = "articolo_descrizione",
     order_dir: str = "asc",
-    limit: int = 25,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
     function_name = "vendite.listini_service.fn_list_righe"

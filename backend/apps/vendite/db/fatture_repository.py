@@ -36,7 +36,7 @@ from apps.core.db._helpers import (
     rows_to_list,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.vendite.db._righe_repo_mixin import RigheListaMixin
+from apps.core.db.righe_lista_mixin import RigheListaCompletaMixin
 
 # Scopo: whitelist ORDER BY della lista fatture. Le chiavi sono i
 #        `campo_sorgente` del catalogo `vendite.fatture` — quelli che il FE
@@ -100,9 +100,10 @@ _ORDER_COLS_RIGHE_FATTURA: dict[str, str] = colonne_identita(
 _RICERCA_RIGHE_FATTURA = RicercaFull("vendite.fattura_righe", ("descrizione", "articolo_codice"))
 
 
-class FattureRepository(RigheListaMixin):
+class FattureRepository(RigheListaCompletaMixin):
     """Letture della lista fatture dalla vista canonica, e delle righe di una
-    fattura (BB `RigheListaMixin`)."""
+    fattura (BB `RigheListaCompletaMixin`: pagina e lettura completa, che usa
+    il contesto di stampa)."""
 
     # Righe: la vista di lista, la chiave calcolata e l'ordine del documento.
     # ⚠️ `riga_key` e non `id`: il padre di un kit non esiste in tabella e non

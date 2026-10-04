@@ -91,8 +91,7 @@ const nestedDrawer = useDrawerState()
 const righeDrawer = ref({
   visible: false,
   contrattoId: null,
-  modalita: 'B',
-  righe: [],
+  emittenteFiscaleId: null,
   numero: '',
   cliente: '',
   validoDal: '',
@@ -128,16 +127,15 @@ function buildRowActions(data) {
   ]
 }
 
-// Gestione righe — carica dettaglio per avere righe + contesto
+// Gestione righe — carica il dettaglio per il contesto (intestazione ed
+// emittente): le righe le legge il drawer, dalla sua lista.
 async function onOpenRighe(data) {
   const detail = await storeContratti.fetchDetail(data.id)
   if (!detail) return
-  const modalita = !detail.listino_id ? 'C' : detail.tipo_variazione_globale ? 'A' : 'B'
   righeDrawer.value = {
     visible: true,
     contrattoId: detail.id,
-    modalita,
-    righe: detail.righe || [],
+    emittenteFiscaleId: detail.emittente_fiscale_id ?? null,
     numero: detail.numero,
     cliente: props.billingAccountLabel,
     validoDal: detail.valido_dal,
@@ -145,12 +143,6 @@ async function onOpenRighe(data) {
     statoCodice: detail.stato_codice_interno,
     statoDescrizione: detail.stato_descrizione,
   }
-}
-
-async function onRigheChanged() {
-  if (!righeDrawer.value.contrattoId) return
-  const detail = await storeContratti.fetchDetail(righeDrawer.value.contrattoId)
-  if (detail) righeDrawer.value.righe = detail.righe || []
 }
 
 const billingAccountPrefill = computed(() => (
@@ -250,15 +242,13 @@ const billingAccountPrefill = computed(() => (
       :visible="righeDrawer.visible"
       @update:visible="v => righeDrawer.visible = v"
       :contratto-id="righeDrawer.contrattoId"
-      :contratto-modalita="righeDrawer.modalita"
-      :righe-iniziali="righeDrawer.righe"
+      :emittente-fiscale-id="righeDrawer.emittenteFiscaleId"
       :contratto-numero="righeDrawer.numero"
       :contratto-cliente="righeDrawer.cliente"
       :contratto-valido-dal="righeDrawer.validoDal"
       :contratto-valido-al="righeDrawer.validoAl"
       :contratto-stato-codice="righeDrawer.statoCodice"
       :contratto-stato-descrizione="righeDrawer.statoDescrizione"
-      @changed="onRigheChanged"
     />
   </AppDrawer>
 </template>

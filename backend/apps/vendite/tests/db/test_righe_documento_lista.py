@@ -41,6 +41,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from apps.core.api.constants import MAX_LIMIT
+from apps.core.db import righe_lista_mixin as bb
 from apps.vendite.db import _righe_repo_mixin
 from apps.vendite.db._righe_repo_mixin import COLONNE_RIGHE_COMMERCIALI
 from apps.vendite.db.ddt_repository import DdtRepository
@@ -73,7 +74,7 @@ _DOCUMENTI = (
 #        `fetch_paged_with_total`.
 def _pagina(repo_cls, documento_id=7, **kwargs):
     kwargs.setdefault("limit", 15)
-    with patch.object(_righe_repo_mixin, "fetch_paged_with_total", return_value=([], 0)) as fn:
+    with patch.object(bb, "fetch_paged_with_total", return_value=([], 0)) as fn:
         repo_cls().list_righe_pagina(documento_id, **kwargs)
     args, kw = fn.call_args
     return " ".join(args[0].split()), args[1], kw
@@ -85,7 +86,9 @@ def _lettura(chiamata):
     cursor.description = []
     cursor.fetchall.return_value = []
     cursor.fetchone.return_value = None
-    with patch.object(_righe_repo_mixin, "connection") as conn:
+    # La lettura completa e' del BB core, la riga singola del mixin di vendita:
+    # la stessa connessione finta per tutte e due.
+    with patch.object(bb, "connection") as conn, patch.object(_righe_repo_mixin, "connection", conn):
         conn.cursor.return_value.__enter__.return_value = cursor
         chiamata()
     sql, params = cursor.execute.call_args.args
@@ -134,9 +137,9 @@ class RigheDocumentoListaTests(unittest.TestCase):
     # Scopo: la lista resta al cap standard per pagina; l'export alza il tetto
     #        col suo `max_limit` per accorgersi di un file troncato.
     def test_pagina_rispetta_il_tetto_e_l_export_lo_alza(self):
-        _, params, kw = _pagina(OrdiniRepository, limit=5000, offset=-3)
+        # L'offset del ripiego e' l'ultimo parametro (BB `fetch_paged_with_total`).
+        _, params, _ = _pagina(OrdiniRepository, limit=5000, offset=-3)
         self.assertEqual(params[-2:], [MAX_LIMIT, 0])
-        self.assertEqual(kw["offset"], 0)
         _, params, _ = _pagina(OrdiniRepository, limit=10001, max_limit=10001)
         self.assertEqual(params[-2], 10001)
 

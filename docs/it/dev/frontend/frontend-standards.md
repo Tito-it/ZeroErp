@@ -1437,39 +1437,50 @@ Le combinazioni si dichiarano in `SHORTCUTS` (`core/constants.js`), non nel
 chiamante. Usato da: `AppLayout` (ricerca universale, schede, sidebar, home,
 split, assistente AI).
 
-**2. Listener diretto `window.addEventListener('keydown')` — per shortcut che devono funzionare SEMPRE**
+**2. `useScorciatoie` — le scorciatoie di un'AZIONE (dal 2026-10-04)**
 
-Per shortcut come Ctrl+S che devono attivarsi anche dentro un campo input.
+Per le scorciatoie legate a un pulsante (Salva, i tasti F delle liste), attive
+anche dentro un campo. ⛔ **Mai un listener su `window` nel componente**: uno
+per componente si somma agli altri — il vecchio F5 ricaricava tutte le liste
+visitate (sotto KeepAlive non si smontano), il vecchio Ctrl+S salvava tutti i
+form montati. La sede è una, con un listener solo: il tasto va all'**unico**
+iscritto a video al livello davanti (dialog in cima, drawer in cima, pagina).
+Il componente si iscrive con le sue azioni; il tasto si lega alla **chiave**
+dell'azione (`SCORCIATOIE`):
 
 ```js
-function onKeydown(e) {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault()
-    emit('save')
-  }
-}
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+const radice = ref(null)
+useScorciatoie({
+  elemento: () => radice.value,
+  azioni: () => (showSave.value ? [{ key: 'salva' }] : []),
+  spenta: () => props.disabled || props.loading,
+  esegui: () => emit('save'),
+})
 ```
 
-Usato da: `FormFooter` (Ctrl+S salva) e `useSearchTable` (F5 ricarica lista).
+Iscritti oggi: `PageActionsBar`, `FiltriLista`, `FormFooter`. Il tooltip dice
+il tasto con `conTastoDiAzione`.
 
 **Shortcut attive:**
 
 | Shortcut | Contesto | Azione | Componente |
 |----------|----------|--------|------------|
-| `F5` | Lista (DataTable) | Ricarica lista senza reload browser | `useSearchTable` |
-| `Ctrl+S` | Drawer (qualsiasi) | Salva — rispetta disabled/loading/readonly | `FormFooter` |
-| `Esc` | Drawer PrimeVue | Chiude drawer (nativo PrimeVue `dismissable`) | Drawer |
+| `F2` · `F4` · `F5` · `F6` · `F8` · `F9` | La lista a video, al livello davanti (pagina, o drawer in cima) | Pulisci filtri · Scarica lista · Ricarica · Nuovo · Espandi/Comprimi tutte · Personalizza colonne — l'azione con quella chiave nella `PageActionsBar` (F2: in `FiltriLista`) | `useScorciatoie` |
+| `Ctrl+S` (⌘S) | Il form a video al livello davanti (dialog in cima, o drawer in cima) | Salva — rispetta disabled/loading/readonly | `FormFooter` → `useScorciatoie` |
+| `Esc` | Il drawer in cima | Chiude quel drawer, con la sua conferma (`useDrawerInCima`) | `AppDrawer` |
 | `Ctrl+K` | Globale (fuori dai campi di input) | Apre ricerca universale | `AppLayout` (`SHORTCUTS.SEARCH`) |
 | `Ctrl+W` / `Ctrl+Tab` / `Ctrl+Shift+Tab` | Globale (fuori dai campi di input) | Chiude / scheda successiva / precedente | `AppLayout` |
 | `Ctrl+B`, `Ctrl+Home`, `Ctrl+.` … | Globale (fuori dai campi di input) | Sidebar, home, assistente AI — elenco completo in `SHORTCUTS` | `AppLayout` |
 
 **Regole:**
 - `useKeyboardShortcuts` per shortcut che NON devono interferire con la digitazione
-- Listener diretto per shortcut che devono funzionare SEMPRE, anche dentro un
-  campo (Ctrl+S, F5). ⚠️ Ctrl+K **non** è fra queste: passa da
+- `useScorciatoie` per le scorciatoie di un'azione, attive anche dentro un
+  campo (Ctrl+S, i tasti F). ⚠️ Ctrl+K **non** è fra queste: passa da
   `useKeyboardShortcuts`, quindi dentro un input non si attiva
+- ⛔ **La scorciatoia di un'azione non si scrive nel componente**: si dà
+  all'azione la chiave standard e lo fa `useScorciatoie`
+- ⭐ **Una scorciatoia si dice** nel tooltip, «azione (tasto)»
+  (`core/utils/scorciatoie.js`, nomi dei tasti nei locales)
 - Sempre `e.preventDefault()` per evitare l'azione default del browser
 - Sempre cleanup in `onUnmounted`
 
@@ -1694,6 +1705,7 @@ form dettaglio sotto — tutto nello stesso drawer, zero drawer annidati.
 10. **Elimina**: icona cestino sulla riga (`@click.stop` per non triggerare selezione). Se stavo editando quella riga, chiude il form
 11. **`formMode`**: 3 stati, `null` (nessun form), `'create'`, `'edit'`. Governa visibilita' e comportamento. ⛔ **Non si scrive a mano**: la macchina del form e' il BB `useFormInline` (2026-09-28, regola del 2 — era in dieci sedi, unificate con l'ok di Tid), che da' anche «Nuova riga» spenta a form aperto (`azioneNuovaRiga`), il click che apre solo se le righe si scrivono (`apriRiga`) e la **chiusura del form al cambio di documento**
 12. **Pulsante Chiudi del drawer (obbligatorio)**: in fondo al drawer, in modalita' lista, deve essere presente un `<FormFooter close-only>` con la sola voce "Chiudi". Quando si entra in form mode (Nuovo/Modifica riga), **il footer scompare** (`v-if="!formMode"`): il form ha gia' Annulla/Salva, e il footer del drawer duplicherebbe l'azione e spingerebbe il form sotto il fold. Vale per qualunque drawer di sub-entita' con lista (BoM, righe contratto, indirizzi, contatti, conti, ecc.). La X in alto resta come escape rapido (semantica diversa: dismiss vs completion). Vedi sezione "Componente `FormFooter`"
+13. **La riga aperta si evidenzia** (2026-10-04, Tid): il contenitore passa alla lista `riga-attiva` (la chiave della riga in modifica, o quella da cui nasce la creazione) e `righe-cliccabili` (`false` quando il click non apre niente). Col form sotto la lista, senza l'evidenza non si vede quale riga si sta modificando
 
 ### Riferimento implementativo
 
@@ -2514,7 +2526,7 @@ documento.
 | Voce menu distruttiva | `.app-menu-item-danger` in `main.css` |
 | Tooltip fallback kebab | `common.altre_azioni` ("Altre azioni") in `it.json` |
 | Wrapper barra azioni | `.app-drawer-actions` / `-desktop` / `-compact` in `main.css` |
-| Wrapper badge counter | `.app-drawer-action-wrap` + `.app-drawer-action-badge` |
+| Numero sull'azione | campo `badge` dell'azione → `ActionBadge` (in `.app-action-tooltip-wrap`), anche in `PageActionsBar` |
 | Nota «nessuna azione» | `.app-drawer-actions-info` in `main.css` |
 
 ---

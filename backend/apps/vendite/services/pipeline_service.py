@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.db._helpers import order_dir_ammessa
 from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.services.error_manager import ErrorManager
@@ -989,7 +989,7 @@ def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, object]:
 def fn_get_lotto_task_runs(
     *,
     lotto_id: int,
-    page_size: int = 100,
+    page_size: int = DEFAULT_LIMIT_EVENTI,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str = "desc",

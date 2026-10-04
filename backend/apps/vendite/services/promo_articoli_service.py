@@ -20,6 +20,7 @@ from typing import Any
 
 from django.db import IntegrityError
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
@@ -160,7 +161,7 @@ class PromoArticoliService:
         uom_id: int | None = None,
         tipo_variazione: str | None = None,
         valid_at: date | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "valido_dal",
         order_dir: str = "desc",

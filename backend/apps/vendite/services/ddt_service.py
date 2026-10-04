@@ -37,7 +37,11 @@ from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.payload_helpers import make_db_errors_translator
-from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
+from apps.core.services.testata_guard import (
+    pagina_dopo_testata,
+    riga_del_padre_o_not_found,
+    testata_o_not_found,
+)
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ddt_repository import DdtRepository
 from apps.vendite.services._componenti_service_helpers import (
@@ -218,23 +222,14 @@ def list_righe(ddt_id: int) -> list[dict[str, Any]]:
 
 
 # Scopo: Una PAGINA delle righe del DDT, per la lista configurabile
-#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina. Legge prima la
-#        testata come `list_righe`. Ritorna `(righe, totale)`.
-def list_righe_pagina(
-    ddt_id: int,
-    *,
-    search: str | None = None,
-    order_by: str | None = None,
-    order_dir: str | None = None,
-    limit: int,
-    offset: int = 0,
-    max_limit: int = MAX_LIMIT,
-) -> tuple[list[dict[str, Any]], int]:
+#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina dal BB del
+#        repository, dopo la testata (BB core `pagina_dopo_testata`).
+#        Ritorna `(righe, totale)`.
+def list_righe_pagina(ddt_id: int, **opzioni: Any) -> tuple[list[dict[str, Any]], int]:
     repo = DdtRepository()
-    _get_testata_or_raise(repo, ddt_id, op="list_righe_pagina")
-    return repo.list_righe_pagina(
-        ddt_id, search=search, order_by=order_by, order_dir=order_dir,
-        limit=limit, offset=offset, max_limit=max_limit,
+    return pagina_dopo_testata(
+        lambda: _get_testata_or_raise(repo, ddt_id, op="list_righe_pagina"),
+        repo.list_righe_pagina, ddt_id, **opzioni,
     )
 
 

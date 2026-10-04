@@ -31,6 +31,7 @@ from typing import Any
 
 from django.db import IntegrityError
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db.categorie_clienti_listini_repository import (
     _ORDER_COLS,
     CategorieClientiListiniRepository,
@@ -196,7 +197,7 @@ class CategorieClientiListiniService:
         emittente_soggetto_ruolo_id: int | None = None,
         listino_id: int | None = None,
         valid_at: date | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "valido_dal",
         order_dir: str = "desc",
