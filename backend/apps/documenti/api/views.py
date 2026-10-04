@@ -33,6 +33,7 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from rest_framework.parsers import FormParser, MultiPartParser
 
+from apps.documenti.services.context_builders.registry import builder_registrati
 from apps.documenti.services.template_admin_service import TemplateAdminService
 from apps.documenti.services.template_asset_admin_service import (
     TemplateAssetAdminService,
@@ -148,6 +149,46 @@ class ApiTemplateList(DomainAPIView):
         def _handler(payload: dict) -> dict:
             return TemplateAdminService().create_template(request.user, payload)
         return handle_post_json(request, handler=_handler)
+
+
+class ApiContextBuilders(DomainAPIView):
+    """
+    GET /api/v1/documenti/context-builders/ — i builder di contesto
+    registrati nel backend, con la forma dei dati che producono oggi.
+    """
+
+    area_funzionale = "documenti"
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="DocumentiContextBuildersResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="DocumentiContextBuildersData",
+                        fields={
+                            "results": serializers.ListField(
+                                child=inline_serializer(
+                                    name="DocumentiContextBuilder",
+                                    fields={
+                                        "codice": serializers.CharField(),
+                                        "versione_contesto": serializers.IntegerField(),
+                                    },
+                                )
+                            ),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: La tendina «Context builder» del template legge il REGISTRO:
+    #        fino al 2026-10-03 il frontend ne teneva una copia scritta a mano
+    #        (con un flag «registrato» anch'esso a mano), da tenere allineata.
+    #        Il registro e' di processo (`VenditeConfig.ready()`), non del DB.
+    def get(self, request: Request) -> JsonResponse:
+        return success_response({"results": builder_registrati()})
 
 
 class ApiTemplateDetail(DomainAPIView):

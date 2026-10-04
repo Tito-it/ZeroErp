@@ -96,7 +96,17 @@ def versione_contesto_registrata(code: str | None) -> int | None:
     return builder.CONTEXT_VERSION if builder is not None else None
 
 
-# Scopo: Ritorna l'elenco dei codici registrati. Usato dai test e dalla
-#        view diagnostica /api/v1/documenti/context-builders/ (futura).
+# Scopo: I builder registrati, ciascuno con la forma dei dati che produce
+#        oggi, ordinati per codice. E' la sorgente della tendina del
+#        template (`GET /api/v1/documenti/context-builders/`): il frontend
+#        legge il registro, non ne tiene una copia.
+def builder_registrati() -> list[dict[str, Any]]:
+    return [
+        {"codice": code, "versione_contesto": _REGISTRY[code].CONTEXT_VERSION}
+        for code in sorted(_REGISTRY.keys())
+    ]
+
+
+# Scopo: Ritorna l'elenco dei codici registrati (per i test).
 def registered_codes() -> list[str]:
-    return sorted(_REGISTRY.keys())
+    return [b["codice"] for b in builder_registrati()]

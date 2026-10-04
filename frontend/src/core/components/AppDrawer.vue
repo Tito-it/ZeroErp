@@ -12,6 +12,17 @@
 //    · l'uscita — X, ESC, clic fuori, Annulla/Chiudi passano TUTTE da
 //      `confermaUscita` (il `chiudiConConferma` di useDrawerFormPreserve o di
 //      unisciFotografie): e' un gesto solo, «esco»;
+//    · ⭐ l'uscita del SOLO drawer in cima (`useDrawerInCima`, 2026-10-04): con
+//      un drawer aperto sopra, questo non esce — ESC chiudeva tutti e due, e
+//      il padre smontava il figlio con le sue modifiche senza chiedere. Vale
+//      da solo, anche per un figlio montato fuori dallo slot: il chiamante
+//      non scrive niente (niente `:dismissable="!figlioAperto"` a mano);
+//    · ⭐ la X DICE il suo tasto (2026-10-04, ok Tid): accanto, l'etichetta
+//      «Esc», e il tooltip «Chiudi (Esc)» (`scorciatoie.js`, la forma unica
+//      «azione (tasto)», nomi dei tasti tradotti). Su un dispositivo senza tastiera fisica
+//      (`ui.isCompatto`: stretto o senza hover) l'etichetta non c'e'. La X e'
+//      la nostra (slot `closebutton` di PrimeVue) per poterle dare il tooltip,
+//      ma chiude con la callback di PrimeVue: passa dalla stessa uscita;
 //    · il montaggio a fine animazione — `useDrawerContentReady` interno: il
 //      contenuto pesante non si monta durante lo slide (niente rimbalzo);
 //    · il corpo — `app-drawer-content`, con `app-readonly` dalla catena (salvo
@@ -54,14 +65,19 @@
 //   </AppDrawer>
 //
 // Doc: frontend-standards §«Drawer (nuovo e modifica)», catalogo BB frontend.
-import { computed, inject, provide, ref } from 'vue'
+import { computed, inject, onActivated, onDeactivated, provide, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
+import Button from 'primevue/button'
 import DrawerTitle from './DrawerTitle.vue'
 import FormFooter from './FormFooter.vue'
 import { gestoreVisibile } from '../composables/useDrawerFormPreserve'
 import { useDrawerContentReady } from '../composables/useDrawerContentReady'
+import { useDrawerInCima } from '../composables/useDrawerInCima'
 import { READONLY_KEY } from '../composables/useReadonlyMode'
-import { DRAWER_WIDTH } from '../constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
+import { TASTO, conScorciatoia, nomeTasto } from '../utils/scorciatoie'
+import { useUiStore } from '../../stores/ui'
 
 const props = defineProps({
   visible: { type: Boolean, required: true },
@@ -79,8 +95,9 @@ const props = defineProps({
     default: DRAWER_WIDTH.STANDARD,
     validator: (v) => Object.values(DRAWER_WIDTH).includes(v),
   },
-  // Clic fuori chiude? Un'espressione ha senso: `!hasChildOpen` (non si
-  // chiude il padre mentre un figlio e' aperto), `!loading`.
+  // Clic fuori chiude? Un'espressione ha senso: `!loading`, o `!hasChildOpen`
+  // per un figlio che NON e' un drawer (un dialog). Un drawer figlio non serve
+  // dichiararlo: lo sa la pila (`useDrawerInCima`).
   dismissable: { type: Boolean, default: true },
   // Modifiche non salvate: `modificato` colora l'azione nella testata,
   // `confermaUscita(chiudi)` decide se chiedere prima di uscire.
@@ -111,6 +128,10 @@ const props = defineProps({
 
 const emit = defineEmits(['update:visible', 'save', 'cancel', 'after-show'])
 
+const { t, te } = useI18n()
+const ui = useUiStore()
+const etichettaChiudi = computed(() => conScorciatoia(t, te, t('common.close'), TASTO.ESC))
+
 // La catena readonly, eventualmente stretta dal chiamante. ⚠️ OR con il
 // padre, mai sostituzione: e' la convenzione di `READONLY_KEY`.
 const readonlyPadre = inject(READONLY_KEY, ref(false))
@@ -126,9 +147,17 @@ function suAfterShow() {
   emit('after-show')
 }
 
+// La pila dei drawer visibili: esce solo quello in cima. Una tab in KeepAlive
+// disattivata toglie il suo drawer dalla pila e lo rimette alla riattivazione.
+const { inCima, entra, esce } = useDrawerInCima(() => props.visible)
+onDeactivated(esce)
+onActivated(() => { if (props.visible) entra() })
+
 // Scopo: l'uscita, unica. `cancel` resta per chi deve sapere che si e' usciti
-//        senza salvare (reset, notifiche al padre).
+//        senza salvare (reset, notifiche al padre). Sotto un altro drawer non
+//        si esce: ESC lo ricevono tutti, lo gestisce quello in cima.
 function chiudi() {
+  if (!inCima.value) return
   props.confermaUscita(() => {
     emit('cancel')
     emit('update:visible', false)
@@ -146,6 +175,24 @@ const suVisibile = gestoreVisibile(emit, chiudi)
     @update:visible="suVisibile"
     @after-show="suAfterShow"
   >
+    <!-- La X: aspetto di PrimeVue (classe e varianti del suo pulsante), con
+         il tasto detto. `closeCallback` e' l'uscita di PrimeVue, quindi passa
+         da `confermaUscita` come ESC e il clic fuori. -->
+    <template #closebutton="{ closeCallback }">
+      <div class="app-drawer-chiudi">
+        <kbd v-if="!ui.isCompatto" class="app-kbd" aria-hidden="true">{{ nomeTasto(t, te, TASTO.ESC) }}</kbd>
+        <Button
+          class="p-drawer-close-button"
+          :icon="MANAGE_ICONS.CANCEL"
+          severity="secondary"
+          text
+          rounded
+          :aria-label="etichettaChiudi"
+          v-tooltip.bottom="etichettaChiudi"
+          @click="closeCallback"
+        />
+      </div>
+    </template>
     <template #header>
       <DrawerTitle
         :title="title"

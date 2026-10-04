@@ -18,6 +18,7 @@ from apps.documenti.api.views import (
     ApiAssetFileDownload,
     ApiAssetMiniatura,
     ApiAssetList,
+    ApiContextBuilders,
     ApiTemplateDetail,
     ApiTemplateList,
     ApiTemplateVersioneClona,
@@ -27,6 +28,11 @@ from apps.documenti.api.views import (
 )
 
 urlpatterns = [
+    path(
+        "context-builders/",
+        ApiContextBuilders.as_view(),
+        name="documenti-context-builders",
+    ),
     path(
         "templates/",
         ApiTemplateList.as_view(),

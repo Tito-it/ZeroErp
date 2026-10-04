@@ -35,6 +35,8 @@
 #  22-bis. asset_miniatura_inline_con_etag_e_no_cache
 #  22-ter. asset_miniatura_304_quando_il_client_ha_lo_stesso_etag
 #  23. le liste nei drawer dichiarano codice e parametro dell'emittente
+#  24. context_builders_requires_jwt
+#  25. context_builders_legge_il_registro_nell_envelope_results
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -96,6 +98,37 @@ class DocumentiApiSmokeTests(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
+
+    # 24. JWT assente -> 401.
+    def test_context_builders_requires_jwt(self) -> None:
+        resp = self.client.get("/api/v1/documenti/context-builders/")
+        self.assertEqual(resp.status_code, 401)
+
+    # 25. ⭐ La tendina del template legge il REGISTRO, nell'envelope
+    #     `{"results": [...]}` dei lookup (api.md: una lista nuda e' una
+    #     schermata bianca senza errori). Il registro e' quello vero: le app
+    #     registrano i builder al `ready()`.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(), None),
+    )
+    def test_context_builders_legge_il_registro_nell_envelope_results(
+        self, _mock_auth
+    ) -> None:
+        from apps.documenti.services.context_builders.registry import (
+            builder_registrati,
+        )
+
+        resp = self.client.get("/api/v1/documenti/context-builders/")
+
+        self.assertEqual(resp.status_code, 200)
+        results = resp.json()["data"]["results"]
+        self.assertEqual(results, builder_registrati())
+        codici = [r["codice"] for r in results]
+        self.assertIn("FATTURA", codici)
+        self.assertEqual(codici, sorted(codici))
+        for r in results:
+            self.assertIsInstance(r["versione_contesto"], int)
 
     # 0. JWT assente -> 401.
     def test_list_templates_requires_jwt(self) -> None:

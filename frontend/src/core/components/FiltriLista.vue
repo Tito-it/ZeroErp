@@ -67,6 +67,7 @@ import DrawerTitle from './DrawerTitle.vue'
 import { MANAGE_ICONS } from '../constants'
 import { useUiStore } from '../../stores/ui'
 import { registraDrawerChiudibile } from '../composables/useDrawerChiusuraGlobale'
+import { useDrawerInCima } from '../composables/useDrawerInCima'
 import {
   SEGNO_DEFAULT,
   SEGNO_MODIFICATO,
@@ -129,6 +130,9 @@ const { t } = useI18n()
 const ui = useUiStore()
 
 const drawerVisibile = ref(false)
+// Entra nella pila dei drawer (`useDrawerInCima`): aperto dentro un drawer con
+// una lista, ne e' il figlio — ESC chiude questo, non anche quello sotto.
+useDrawerInCima(() => drawerVisibile.value)
 
 // La soglia NON si decide qui: `isCompatto` e' la sede unica (larghezza sotto
 // il tablet OPPURE assenza di hover, D1). Scriverla di nuovo significherebbe

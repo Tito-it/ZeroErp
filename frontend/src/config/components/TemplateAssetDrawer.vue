@@ -18,7 +18,8 @@ import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFis
 import { DRAWER_WIDTH, MANAGE_ICONS, DATE_FORMAT } from '../../core/constants'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
 import { downloadBlob } from '../../core/utils/download'
-import { ASSET_UPLOAD_MAX_BYTES } from '../constants/documentiVersioniWhitelists'
+import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
+import { paramInt } from '../../core/utils/parameterCast'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
@@ -54,6 +55,18 @@ const form = ref(emptyForm())
 const selectedFile = ref(null)
 const formSalvato = computed(() => ({ ...form.value, file_nome: selectedFile.value?.name ?? null }))
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
+
+// Il limite di upload e' il parametro che il backend applica
+// (`documenti_asset_upload_max_mb`): letto da li', non ricopiato. Fino al
+// 2026-10-03 era 25 MB scritto anche qui, e cambiando il parametro i due
+// limiti si sarebbero separati in silenzio. Parametro non letto ⇒ nessun
+// controllo anticipato: decide il backend, col suo errore.
+const { defaults: paramUpload, load: caricaParamUpload } =
+  useParameterDefaults(['documenti_asset_upload_max_mb'])
+const maxFileBytes = computed(() => {
+  const mb = paramInt(paramUpload.value.documenti_asset_upload_max_mb, null)
+  return mb === null ? undefined : mb * 1024 * 1024
+})
 const downloadLoading = ref(false)
 
 function emptyForm() {
@@ -105,6 +118,7 @@ watch(
   [() => props.visible, () => props.recordId],
   ([visible]) => {
     if (!visible) return
+    caricaParamUpload()
     selectedFile.value = null
     if (isEdit.value) {
       loadDetail()
@@ -307,7 +321,7 @@ async function handleSave() {
             mode="basic"
             :auto="false"
             :multiple="false"
-            :max-file-size="ASSET_UPLOAD_MAX_BYTES"
+            :max-file-size="maxFileBytes"
             :choose-label="t('config.modelli_documenti.asset.choose_file')"
             :customUpload="true"
             @select="onFileSelect"

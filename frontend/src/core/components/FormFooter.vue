@@ -28,6 +28,7 @@ import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 import { MANAGE_ICONS } from '../constants'
+import { TASTO, conScorciatoia } from '../utils/scorciatoie'
 import Button from 'primevue/button'
 
 const props = defineProps({
@@ -47,7 +48,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['save', 'cancel'])
-const { t } = useI18n()
+const { t, te } = useI18n()
 const readonlyCatena = useInjectReadonly()
 const isReadonly = computed(() => (props.readonly === undefined ? readonlyCatena.value : props.readonly))
 const auth = useAuthStore()
@@ -63,6 +64,11 @@ const cancelText = computed(() => {
   if (props.cancelLabel) return props.cancelLabel
   return props.closeOnly ? t('common.close') : t('common.cancel')
 })
+
+const saveText = computed(() => props.saveLabel || t('common.save'))
+// Il tooltip DICE la scorciatoia (2026-10-04, ok Tid): «Salva (Ctrl+S)», ⌘S
+// su Mac, nomi tradotti (`scorciatoie.js`). L'etichetta resta l'azione sola.
+const saveTooltip = computed(() => conScorciatoia(t, te, saveText.value, TASTO.SALVA))
 
 // Ctrl+S → salva (funziona anche dentro input/textarea)
 function onKeydown(e) {
@@ -96,13 +102,13 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
          (default primary verde; 'danger'/'warn' per azioni gravi). -->
     <Button
       v-if="showSave"
-      :label="saveLabel || t('common.save')"
+      :label="saveText"
       :icon="MANAGE_ICONS.CONFIRM"
       :severity="saveSeverity || undefined"
       :loading="loading"
       :disabled="disabled"
       class="app-form-footer-btn"
-      v-tooltip.top="saveLabel || t('common.save')"
+      v-tooltip.top="saveTooltip"
       @click="emit('save')"
     />
   </div>
