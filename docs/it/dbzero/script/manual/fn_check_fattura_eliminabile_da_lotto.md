@@ -11,7 +11,7 @@ fallire la chiamata.
 
 ---
 
-### I quattro motivi, nell'ordine
+### I motivi, nell'ordine
 
 | # | `reason` | Codice | Quando |
 | --- | --- | --- | --- |
@@ -19,6 +19,17 @@ fallire la chiamata.
 | 2 | `FATTURA_NON_COLLEGATA` | `E_FATTURA_NON_COLLEGATA_AL_LOTTO` (832) | la fattura non appartiene a quel lotto |
 | 3 | `FATTURA_NON_PRE_FISCALE` | `E_FATTURA_GIA_FISCALE` (833) | la fattura non è in `DRAFT` né `EMESSA` |
 | 4 | `FATTURA_NUMERATA` | `E_FATTURA_GIA_NUMERATA` (834) | la fattura ha già un numero |
+| 5 | `RIGHE_RETTIFICATE` | `E_FATTURE_RIGHE_RETTIFICATE` (981) | su una riga è già registrato un accredito ([fn_check_fatture_con_rettifiche](/dbzero/script/funzioni/fn_check_fatture_con_rettifiche)) |
+| 6 | `PLAFOND_CONSUMATO` | `E_FATTURE_PLAFOND_CONSUMATO` (1191) | la fattura ha già consumato il plafond di un titolo IVA |
+
+⭐ **Il motivo del plafond consumato** (dal 2026-10-04, decisione di Tid): il plafond di
+una dichiarazione d'intento si consuma all'emissione, **prima** della numerazione. Una
+fattura può quindi aver consumato plafond senza avere ancora il numero, e il motivo sul
+numero non la ferma. Il consumo è un fatto contabile — il registro dei movimenti non si
+cancella — quindi è un punto di non ritorno come il numero: il lotto va avanti, non
+indietro. La domanda vive in un posto solo,
+[script.fn_check_fatture_con_plafond_consumato](/dbzero/script/funzioni/fn_check_fatture_con_plafond_consumato),
+condivisa dalle tre porte di reset e dalla pulizia.
 
 ---
 

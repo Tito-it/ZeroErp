@@ -4,7 +4,7 @@
 >
 > [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva) — il titolo padre ·
 > [vendite.fatture](/dbzero/vendite/tabelle/fatture) ·
-> [anagrafiche.fn_consuma_plafond_titolo_iva](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva) — chi scrive le righe di consumo ·
+> [anagrafiche.fn_consuma_plafond_titolo_iva_righe](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva_righe) — chi scrive le righe di consumo ·
 > [anagrafiche.trgfn_soggetti_titoli_iva_movimenti_accumulatore](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_movimenti_accumulatore) — chi tiene la somma
 
 ---
@@ -18,9 +18,18 @@ usato, un movimento alla volta.
 
 | Movimento | Segno | Da dove |
 | --- | --- | --- |
-| `FATTURA` | `+` | una fattura emessa sotto il titolo consuma capienza |
+| `FATTURA` | `±` | una riga di fattura sotto il titolo: positiva consuma capienza, negativa (uno sconto, un componente di kit negativo) la restituisce |
 | `NOTA_CREDITO` | `−` | la nota di credito la restituisce |
 | `FORZATURA` | `±` | l'operatore, con **motivo obbligatorio** |
+
+⭐ **Dal 2026-10-04 un movimento `FATTURA` può essere negativo** (`20261004-02`,
+decisione C di Tid, `brief-db-bom-flag-quantita-e-kit-in-fattura` §13): il plafond si
+consuma sul **netto** della fattura, e la riga negativa scrive il suo movimento col
+suo segno. Resta di tipo `FATTURA` perché il tipo dice **quale documento** l'ha
+prodotto: scriverla `NOTA_CREDITO` farebbe dire al registro che esiste una nota di
+credito che non c'è. Lo zero resta vietato: non è un movimento. La fattura non
+restituisce mai più di quanto essa stessa consuma, quindi la sua somma resta fra zero
+e la capienza.
 
 `anagrafiche.soggetti_titoli_iva.imponibile_utilizzato` è la **somma** di queste
 righe, e nessuno la scrive a mano.
@@ -73,9 +82,9 @@ nello stesso istante, questa ferma la ripetizione a distanza di tempo.
 ⚠️ Sulle **forzature** non si applica, ed è voluto: due correzioni identiche nello
 stesso giorno possono essere due fatti distinti.
 
-⭐ In pratica non ci si arriva quasi mai, perché `fn_consuma_plafond_titolo_iva` è
-**idempotente**: se quella fattura ha già consumato quel titolo rilegge il movimento
-che c'è invece di scriverne un secondo. L'unicità resta come rete — ma parlerebbe
+⭐ In pratica non ci si arriva quasi mai, perché `fn_consuma_plafond_titolo_iva_righe`
+è **idempotente**: se quella fattura ha già consumato quel titolo rilegge i movimenti
+che ci sono invece di scriverne altri. L'unicità resta come rete — ma parlerebbe
 con un errore tecnico muto dentro un cambio di stato, ed è meglio non doverla
 incontrare.
 
@@ -122,7 +131,7 @@ gira ormai **solo il ramo `INSERT`**; gli altri due, e il trigger di storico, so
 irraggiungibili. Restano dove sono come difesa in profondità, ed è dichiarato nel
 loro manuale.
 
-📌 **La pulizia della fattura, un giorno, dovrà passare.** Oggi non tocca questa
+📌 ~~**La pulizia della fattura, un giorno, dovrà passare.**~~ ⭐ **Deciso il 2026-10-04 (strada A di Tid):** una fattura che ha consumato plafond **non si disfa più** — le tre porte di reset e la pulizia la fermano con `E_FATTURE_PLAFOND_CONSUMATO` ([script.fn_check_fatture_con_plafond_consumato](/dbzero/script/funzioni/fn_check_fatture_con_plafond_consumato)), e il lotto va avanti. Uno storno non avrebbe risolto: anche lo storno nomina la fattura. Il testo che segue è la domanda com'era posta prima della decisione. Oggi non tocca questa
 tabella — è un'eccezione dichiarata nel presidio di copertura, con l'alibi «zero
 righe con una fattura» — ma con `I5` servirà decidere: o un'apertura dichiarata,
 o (preferibile) **stornare invece di cancellare**, cioè lo stesso meccanismo
@@ -203,8 +212,8 @@ negativa sbagliata.
 
 ⛔ **Il superamento del tetto invece non si blocca**, ed è una decisione:
 
-* sulle **fatture** il caso non si presenta — la spezzatura fa sì che il consumo non
-  superi mai la capienza, e a garantirlo è la primitiva;
+* sulle **fatture** il caso non si presenta — la spezzatura fa sì che il consumo
+  netto non superi mai la capienza, e a garantirlo è la madre del consumo;
 * sulle **forzature** un superamento è un'informazione sul mondo. Se le fatturazioni
   fuori sistema sfondano il plafond, è il **plafond registrato a essere sbagliato** —
   e impedire di scrivere il fatto impedirebbe di **accorgersene**.

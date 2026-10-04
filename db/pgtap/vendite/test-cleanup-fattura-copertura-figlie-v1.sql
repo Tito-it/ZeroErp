@@ -179,29 +179,21 @@ INSERT INTO tmp_inventario(tab, categoria, perche) VALUES
   ('vendite.attivita_consumi',             'SCOPERTA_NOTA', 'flusso consumi non ancora acceso: 0 righe e nessuno scrittore (solo fn_list_consumi_da_pushare, che legge). fattura_id e NULLABLE apposta, quindi il giorno che si accende il ripristino dovra azzerarlo, non cancellare il consumo'),
   -- ⭐ rev 2026-08-29 (cantiere IVA, Fase 2 / changeSet 20260829-26): la tabella
   --   registra il CONSUMO DI PLAFOND di un titolo IVA (una dichiarazione
-  --   d intento) da parte di una fattura. E nata ieri, e questo file l ha
+  --   d intento) da parte di una fattura. E nata quel giorno, e questo file l ha
   --   nominata il giorno dopo: e esattamente il lavoro per cui esiste.
   --
-  -- ⚠️ Perche SCOPERTA_NOTA e non una delle due categorie definitive: la
-  --   risposta giusta DIPENDE da una decisione ancora aperta, il punto I5 del
-  --   brief - DOVE si consuma il plafond.
-  --     * se il consumo si registra all EMISSIONE, la pulizia (che lavora su
-  --       documenti in DRAFT) non incontrera mai un movimento, e il giorno che
-  --       lo incontrasse il rifiuto sarebbe la risposta giusta: BLOCCO_VOLUTO,
-  --       la stessa posizione di pagamenti.sistemazioni qui sopra;
-  --     * se invece si registra gia in bozza, un ripristino DEVE stornare il
-  --       movimento prima di cancellare - altrimenti il plafond di un terzo
-  --       resta mangiato da un documento che non esiste piu: GESTITA, e la
-  --       pulizia va estesa.
-  --   Scriverne una adesso significherebbe fissare la decisione da qui, che e
-  --   il verso sbagliato. SCOPERTA_NOTA e la categoria ARMATA: scade da sola
-  --   nel momento esatto in cui la decisione diventa reale.
-  --
-  -- ℹ️ Oggi il presupposto e vero e verificabile: 0 righe e NESSUNO scrittore -
-  --   anagrafiche.fn_consuma_plafond_titolo_iva esiste ma non ha chiamanti.
-  -- ⚠️ La stessa riga copre anche il secondo livello: la tabella ha una FK anche
-  --   verso vendite.fatture_righe, e una tabella vuota e vuota per entrambe.
-  ('anagrafiche.soggetti_titoli_iva_movimenti', 'SCOPERTA_NOTA', 'consumo di plafond di un titolo IVA: 0 righe e nessuno scrittore (fn_consuma_plafond_titolo_iva non ha chiamanti). Entrambe le FK verso fatture e fatture_righe sono NO ACTION e lo sono di proposito - il movimento e un fatto contabile - ma la categoria definitiva dipende da I5: consumo all EMISSIONE -> BLOCCO_VOLUTO come pagamenti.sistemazioni; consumo gia in bozza -> GESTITA, e la pulizia deve stornare il movimento prima di cancellare, altrimenti il plafond di un terzo resta mangiato da un documento che non esiste piu');
+  -- ⭐ rev 2026-10-04 — DA SCOPERTA_NOTA A BLOCCO_VOLUTO: la decisione I5 e
+  --   presa (brief-db-bom-flag-quantita-e-kit-in-fattura §14, strada A di Tid).
+  --   Il consumo si registra all EMISSIONE (task consuma_plafond_lotto, prima
+  --   della numerazione), e una fattura che ha consumato NON si disfa piu: il
+  --   movimento e un fatto contabile, il registro e append-only, e uno storno
+  --   non basterebbe perche nominerebbe anch esso la fattura. Il lotto va
+  --   avanti. Le tre porte di reset si fermano col motivo
+  --   E_FATTURE_PLAFOND_CONSUMATO (script.fn_check_fatture_con_plafond_consumato)
+  --   e la pulizia ha il suo guard: il test 9 lo verifica.
+  -- ⚠️ La stessa decisione vale per il secondo livello (la FK verso
+  --   fatture_righe): stesso fatto, visto dal lato riga.
+  ('anagrafiche.soggetti_titoli_iva_movimenti', 'BLOCCO_VOLUTO', 'una fattura che ha gia CONSUMATO il plafond di un titolo IVA NON si deve poter disfare: il movimento e un fatto contabile (registro append-only, FK NO ACTION di proposito) e uno storno non basterebbe, perche nominerebbe anch esso la fattura. Il consumo avviene all emissione, PRIMA della numerazione: per questo le tre porte hanno un motivo loro (E_FATTURE_PLAFOND_CONSUMATO) oltre a quello sul numero, e la pulizia un guard (test 9). Il lotto va avanti: DEFINITIVA riprende fattura per fattura e il consumo e idempotente. Decisione I5, strada A di Tid del 2026-10-04');
 
 -- Le figlie vere, lette dal catalogo
 CREATE TEMP TABLE tmp_figlie AS
@@ -312,25 +304,12 @@ SELECT is(
 CREATE TEMP TABLE tmp_scoperte AS
 SELECT 'vendite.attivita_consumi'::text AS tab,
        (SELECT count(*) FROM vendite.attivita_consumi) AS righe
-UNION ALL
--- ⭐ SI CONTA SOLO CIO' CHE L'ECCEZIONE DIFENDE (rev 2026-08-30).
---   L'eccezione SCOPERTA_NOTA riguarda le righe FIGLIE DI UNA FATTURA: e' la
---   pulizia della fattura che questo file presidia. Una FORZATURA manuale ha
---   `fattura_id IS NULL` — glielo impone chk_stiva_movimenti_documento — quindi
---   non e' figlia di nessuna fattura e non ha niente a che vedere con questo
---   presidio.
--- ⛔ Senza il filtro, la PRIMA forzatura salvata da un operatore faceva
---   diventare rossa questa asserzione: un rosso in un file che parla di
---   fatture, per un motivo che nessuno avrebbe collegato al cantiere dei titoli
---   IVA. Il registro si e' popolato con il brief-db-titoli-iva-movimenti-annullo,
---   e la creazione della forzatura esiste gia' lato backend.
--- ⚠️ Il presidio NON si indebolisce: resta vivo per il caso vero — il giorno in
---   cui I4 scrivera' i movimenti FATTURA/NOTA_CREDITO, che figlie lo sono
---   davvero, e allora la categoria dell'eccezione andra' decisa come la sua
---   nota gia' dice.
-SELECT 'anagrafiche.soggetti_titoli_iva_movimenti'::text,
-       (SELECT count(*) FROM anagrafiche.soggetti_titoli_iva_movimenti
-         WHERE fattura_id IS NOT NULL);
+;
+-- ⭐ rev 2026-10-04: anagrafiche.soggetti_titoli_iva_movimenti non e' piu'
+--   SCOPERTA_NOTA (e' BLOCCO_VOLUTO, decisione I5): esce da qui. Con lei esce
+--   l'unica ragione del marcatore `pgtap-runner: owner` in testa, che resta
+--   perche' il conteggio di vendite.attivita_consumi e' comunque una misura
+--   piu' affidabile da owner; e' un debito minore, dichiarato.
 
 SELECT is(
   (SELECT count(*) FROM tmp_scoperte WHERE righe > 0),
@@ -404,16 +383,11 @@ INSERT INTO tmp_inventario_righe(vincolo, tab, categoria, perche) VALUES
   ('fk_fatture_righe_riga_capofila',               'vendite.fatture_righe',        'BLOCCO_VOLUTO',
    'auto-riferimento: la parte di una riga spezzata dal plafond punta alla sua capofila. NO ACTION voluta - cancellare la capofila lasciando vive le parti spezzerebbe a meta la lettura «capofila -> parti», e chi somma gli importi partendo dall attivita troverebbe righe orfane. ⭐ Sul percorso della pulizia non scatta MAI per COSTRUZIONE, non per fortuna: la FK e composita su (riga_capofila_id, fattura_id), quindi le due righe stanno sempre sulla stessa fattura e muoiono nello stesso DELETE, dove la NO ACTION e soddisfatta a fine istruzione. ⚠️ E la differenza con fk_fatture_righe_riga_rettificata, che ha la stessa forma: li il caso «la riga sta fuori dall insieme cancellato» esiste davvero (una nota di credito di un altro lotto), qui il modello non lo ammette'),
 
-  -- ── SCOPERTA_NOTA: eccezione a tempo, la prima di questo inventario ─
-  -- ⭐ rev 2026-08-29 (cantiere IVA, Fase 2): e la SECONDA chiave esterna della
-  --   stessa tabella gia classificata al primo livello. Compare qui perche
-  --   questo inventario e indicizzato per VINCOLO e non per tabella - e questo
-  --   e il caso che mostra perche: la classificazione e la stessa, ma senza la
-  --   voce il test 6 sarebbe rosso e nessuna motivazione lo spiegherebbe.
-  -- ⚠️ La verifica di vuotezza NON si duplica: sta al test 5, una volta sola,
-  --   perche una tabella vuota e vuota per tutte le sue chiavi esterne.
-  ('fk_soggetti_titoli_iva_movimenti_fattura_riga', 'anagrafiche.soggetti_titoli_iva_movimenti', 'SCOPERTA_NOTA',
-   'stesso legame visto dal lato riga: il movimento di plafond puo puntare alla singola riga che lo ha consumato. Motivazione e scadenza sono quelle del primo livello - 0 righe, nessuno scrittore, e la categoria definitiva decisa da I5. Vuotezza verificata dal test 5');
+  -- ⭐ rev 2026-10-04: da SCOPERTA_NOTA a BLOCCO_VOLUTO, con il primo livello
+  --   (decisione I5, strada A). E la SECONDA chiave esterna della stessa
+  --   tabella: compare qui perche questo inventario e indicizzato per VINCOLO.
+  ('fk_soggetti_titoli_iva_movimenti_fattura_riga', 'anagrafiche.soggetti_titoli_iva_movimenti', 'BLOCCO_VOLUTO',
+   'stesso legame visto dal lato riga: il movimento di plafond punta alla singola riga che lo ha consumato. Stessa decisione del primo livello - una fattura che ha consumato plafond non si disfa, le porte la fermano con E_FATTURE_PLAFOND_CONSUMATO e la pulizia col suo guard (test 9)');
 
 CREATE TEMP TABLE tmp_figlie_righe AS
 SELECT c.conname                       AS vincolo,
@@ -462,13 +436,21 @@ SELECT is(
 --   meta lavoro, dentro una funzione che i suoi chiamanti danno per
 --   infallibile. Con il guard producono un errore di dominio che dice cosa
 --   fare. Se il guard sparisce, i blocchi restano e la risposta no.
+-- ⭐ rev 2026-10-04: i guard sono DUE, uno per famiglia di blocchi — le
+--   rettifiche (secondo livello) e il plafond consumato (registro dei
+--   movimenti, entrambi i livelli). Ognuno deve esistere ed essere chiamato.
 SELECT ok(
   EXISTS (
     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname = 'script' AND p.proname = 'fn_check_fatture_con_rettifiche'
   )
-  AND (SELECT c.src FROM tmp_corpo c) ILIKE '%fn_check_fatture_con_rettifiche%',
-  '9) il guard fn_check_fatture_con_rettifiche esiste ed e chiamato dalla pulizia'
+  AND (SELECT c.src FROM tmp_corpo c) ILIKE '%fn_check_fatture_con_rettifiche%'
+  AND EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'script' AND p.proname = 'fn_check_fatture_con_plafond_consumato'
+  )
+  AND (SELECT c.src FROM tmp_corpo c) ILIKE '%fn_check_fatture_con_plafond_consumato%',
+  '9) i guard fn_check_fatture_con_rettifiche e fn_check_fatture_con_plafond_consumato esistono e la pulizia li chiama'
 );
 
 -- ============================================================

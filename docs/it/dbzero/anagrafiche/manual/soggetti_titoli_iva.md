@@ -10,7 +10,7 @@ Approfondimento tabelle:
 > • [config.iva](/dbzero/config/tabelle/iva) — il codice che prende il posto di quello ordinario
 >
 Approfondimento funzioni:
-> • [anagrafiche.fn_consuma_plafond_titolo_iva](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva) — chi consuma il tetto
+> • [anagrafiche.fn_consuma_plafond_titolo_iva_righe](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva_righe) — chi consuma il tetto
 > • [anagrafiche.fn_check_titolo_iva_ambito](/dbzero/anagrafiche/funzioni/fn_check_titolo_iva_ambito) — chi verifica che l'ambito stia in piedi
 
 ---
@@ -23,9 +23,10 @@ risolutore IVA di riga. E` il suo **stadio B**: dopo aver stabilito quale aliquo
 compete alla merce, guarda se il cliente ha un titolo che la **sostituisce su
 quella riga**.
 
-⚠️ Il risolutore **non consuma il plafond**: e` in sola lettura, e la ripartizione
-che ritorna e` una **proiezione** sul residuo di adesso. Il consumo e` un atto
-contabile e passa da `anagrafiche.fn_consuma_plafond_titolo_iva`.
+⚠️ Il risolutore **non consuma il plafond**: e` in sola lettura, e dice QUALE titolo
+vale, non quanto copre. Il consumo e` un atto contabile e passa da
+`anagrafiche.fn_consuma_plafond_titolo_iva_righe`, che lo calcola sul **netto** della
+fattura (dal 2026-10-04: le righe negative restituiscono).
 
 ---
 

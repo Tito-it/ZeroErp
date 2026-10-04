@@ -224,8 +224,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   DB (R-DB-B8…B10, `20261003-05`/`-06`) applicato il 2026-10-03, baseline senza regressioni.
   Plafond e kit (§11, D-5): DB `20261003-07…-09` applicato il 2026-10-03, baseline verdi.
   Terzo giro BE/FE (§12: R-FE-B1 rivista, R-BE-B8, R-BE-P1…P6) scritto il 2026-10-03, non
-  committato; script R-BE-B5 lanciato; restano il migrate del CSV, la v7 da pubblicare, due ritocchi DB
-  e ⛔ R-DB-B13 (§12.5): la madre del plafond rifiuta i componenti a imponibile `<= 0`, da correggere a DB.
+  committato; script R-BE-B5 lanciato; restano il migrate del CSV e la v7 da pubblicare.
+  ⭐ Decisione C di Tid (§13, 2026-10-04): il plafond si consuma sul **netto** della fattura, le righe
+  negative restituiscono (comprende R-DB-B13). DB `20261004-02…-06` applicato il 2026-10-04, pgTAP verdi; poi
+  un giro BE (R-BE-C1…C9): risolutore con `p_consumo` in coda, una chiamata alla madre per titolo.
+  Strada A (§14): una fattura che ha consumato plafond non si disfa più (`20261004-07…-11`), applicato il 2026-10-04, pgTAP verdi. Lato DB chiuso; resta BE/FE (R-BE-A1, R-FE-A1).
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

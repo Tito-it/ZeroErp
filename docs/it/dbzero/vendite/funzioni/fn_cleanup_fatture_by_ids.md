@@ -20,6 +20,7 @@ DECLARE
   v_updated_attivita  integer := 0;
   v_riemesse_attivita integer := 0;
   v_motivi_rettifiche jsonb;
+  v_motivi_plafond    jsonb;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -100,6 +101,31 @@ BEGIN
         'motivi',      v_motivi_rettifiche),
       NULL::uuid,
       (v_motivi_rettifiche -> 0 ->> 'dettaglio'));
+  END IF;
+
+  -- ══ GUARD FAIL-LOUD (2026-10-04) — il plafond consumato ══════════
+  -- ⛔ Una fattura che ha gia' consumato il plafond di un titolo IVA non
+  --    si cancella: il registro dei movimenti e' append-only e le sue FK
+  --    verso fattura e riga sono NO ACTION di proposito (un movimento e'
+  --    un fatto contabile). Il consumo avviene PRIMA della numerazione,
+  --    quindi il controllo sul numero delle porte non lo copre.
+  -- ⭐ Qui per la stessa ragione del guard qui sopra: e' il punto che
+  --    tutte le porte attraversano, la difesa della quarta che nessuno ha
+  --    ancora scritto. Senza, il difetto e' un 23503 grezzo.
+  -- Brief: brief-db-bom-flag-quantita-e-kit-in-fattura §14 (strada A).
+  v_motivi_plafond := script.fn_check_fatture_con_plafond_consumato(p_fatture_ids);
+
+  IF jsonb_array_length(v_motivi_plafond) > 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite',
+      'fn_cleanup_fatture_by_ids',
+      'E_FATTURE_PLAFOND_CONSUMATO',
+      jsonb_build_object(
+        'detail',      'Fatture che hanno consumato plafond: pulizia rifiutata',
+        'fatture_ids', to_jsonb(p_fatture_ids),
+        'motivi',      v_motivi_plafond),
+      NULL::uuid,
+      (v_motivi_plafond -> 0 ->> 'dettaglio'));
   END IF;
 
   PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
@@ -265,7 +291,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cleanup_fatture_by_ids(p_fatture_ids bigint[], p_lock_batch_id uuid)
-IS 'Pulizia centralizzata delle fatture e ripristino COMPLETO di cio'' che avevano consumato. Storna dall''ambito di compensazione l''arrotondamento delle fatture cancellate (D-N pezzo 3 / C-23) PRIMA di toccarle; azzera i fondi; RIPRISTINA le attivita_fatturabili (sblocco) e le commesse_attivita collegate (ritorno a stato_emissione = NON_EMESSA, dal 2026-08-03 RD-4); e SOLO DOPO cancella note, riepiloghi IVA, righe, log, collegamento al lotto e testate. ⚠️ Il ritorno a NON_EMESSA vive QUI e non nei chiamanti: sono TRE (fn_annulla_lotto_da_draft, fn_elimina_fattura_da_lotto, fn_riporta_lotto_a_draft) e la correttezza di ognuno dipende dal fatto che facciano la stessa cosa — senza, le attivita'' restano emesse senza fattura e nessun giro futuro le riprende. ⛔ L''ORDINE DEI PASSI E'' PORTANTE, dal 2026-08-26 (D-1''): il ripristino avviene PRIMA di qualunque cancellazione. fk_attivita_fatturabili_fattura_riga e'' ON DELETE SET NULL e NOT DEFERRABLE, quindi l''azione referenziale scatta a fine istruzione del DELETE sulle righe: con il ripristino a valle il predicato girava quando fattura_riga_id era gia'' NULL e non corrispondeva piu'' a nessuna riga, e il danno era DOPPIO perche'' dallo stesso predicato nasceva l''insieme delle commesse_attivita. L''attivita'' restava fatturata senza fattura e la sua riga di commessa su EMESSA, in silenzio: updated_attivita tornava 0, e nessuno legge quel contatore come un''anomalia. ⭐ Riordinando, il legame si usa mentre e'' ancora vivo e la SET NULL diventa INERTE — quando il DELETE arriva non c''e'' piu'' nessun puntatore verso le righe che sta cancellando. ⚠️ Chi aggiunge un passo NON lo metta fra il ripristino e i DELETE. ⭐ E il predicato si valuta UNA volta sola: prima era ripetuto identico in due punti «di proposito», e bastava che i due divergessero per sbloccare un insieme e rimetterne in coda un altro. ⭐ La coppia di scritture del ripristino vive in vendite.fn_libera_attivita_fatturabili, consumata anche dal verbo di recupero «Riporta da emettere»: la duplicazione non esiste mai. ⚠️ Il ramo su p_lock_batch_id prende TUTTE le attivita'' del batch: corretto nel reset globale, ed e'' il motivo per cui il reset per-fattura deve passare NULL (C-22). ⭐ NON cancella da vendite.fatture_rettifiche, e NON e'' una dimenticanza (domanda del backend, 2026-08-18, brief note-credito P-2). La proiezione del legame documentale delle note di credito la scrive il task popola_fatture_rettifiche, che gira DOPO numera_fatture: esiste quindi solo su documenti NUMERATI. E un documento numerato non e'' raggiungibile da nessuna delle tre porte di reset, perche'' tutte e tre lo rifiutano con un controllo ESPLICITO sul numero — fn_check_fattura_eliminabile_da_lotto motivo 4 (E_FATTURA_GIA_NUMERATA), fn_check_lotto_riportabile_a_draft motivo 3 e fn_check_lotto_annullabile motivo 3 (E_LOTTO_FATTURE_NUMERATE, aggiunto il 2026-08-18 proprio per chiudere l''ultima che si affidava al solo stato). ⚠️ La garanzia sta in quelle CONDIZIONI, non nei nomi delle funzioni: l''argomento «sono tutte *_da_draft» era vero e ha smesso di esserlo il 2026-08-04, quando fn_elimina_fattura_da_lotto_draft e'' stata rinominata e il suo perimetro allargato al pre-fiscale (RD-7). ⚠️ Se un giorno una porta di reset ammettesse un documento numerato, questa funzione dovrebbe cancellare anche la coppia in fatture_rettifiche: fk_fatture_ret_fattura NON e'' ON DELETE CASCADE, quindi il reset sbatterebbe su una violazione di chiave esterna grezza dentro una funzione che i suoi chiamanti danno per infallibile. Piano: brief-db-lavoro-che-non-torna-indietro, L1.';
+IS 'Pulizia centralizzata delle fatture e ripristino COMPLETO di cio'' che avevano consumato. Storna dall''ambito di compensazione l''arrotondamento delle fatture cancellate (D-N pezzo 3 / C-23) PRIMA di toccarle; azzera i fondi; RIPRISTINA le attivita_fatturabili (sblocco) e le commesse_attivita collegate (ritorno a stato_emissione = NON_EMESSA, dal 2026-08-03 RD-4); e SOLO DOPO cancella note, riepiloghi IVA, righe, log, collegamento al lotto e testate. ⚠️ Il ritorno a NON_EMESSA vive QUI e non nei chiamanti: sono TRE (fn_annulla_lotto_da_draft, fn_elimina_fattura_da_lotto, fn_riporta_lotto_a_draft) e la correttezza di ognuno dipende dal fatto che facciano la stessa cosa — senza, le attivita'' restano emesse senza fattura e nessun giro futuro le riprende. ⛔ L''ORDINE DEI PASSI E'' PORTANTE, dal 2026-08-26 (D-1''): il ripristino avviene PRIMA di qualunque cancellazione. fk_attivita_fatturabili_fattura_riga e'' ON DELETE SET NULL e NOT DEFERRABLE, quindi l''azione referenziale scatta a fine istruzione del DELETE sulle righe: con il ripristino a valle il predicato girava quando fattura_riga_id era gia'' NULL e non corrispondeva piu'' a nessuna riga, e il danno era DOPPIO perche'' dallo stesso predicato nasceva l''insieme delle commesse_attivita. L''attivita'' restava fatturata senza fattura e la sua riga di commessa su EMESSA, in silenzio: updated_attivita tornava 0, e nessuno legge quel contatore come un''anomalia. ⭐ Riordinando, il legame si usa mentre e'' ancora vivo e la SET NULL diventa INERTE — quando il DELETE arriva non c''e'' piu'' nessun puntatore verso le righe che sta cancellando. ⚠️ Chi aggiunge un passo NON lo metta fra il ripristino e i DELETE. ⭐ E il predicato si valuta UNA volta sola: prima era ripetuto identico in due punti «di proposito», e bastava che i due divergessero per sbloccare un insieme e rimetterne in coda un altro. ⭐ La coppia di scritture del ripristino vive in vendite.fn_libera_attivita_fatturabili, consumata anche dal verbo di recupero «Riporta da emettere»: la duplicazione non esiste mai. ⚠️ Il ramo su p_lock_batch_id prende TUTTE le attivita'' del batch: corretto nel reset globale, ed e'' il motivo per cui il reset per-fattura deve passare NULL (C-22). ⭐ NON cancella da vendite.fatture_rettifiche, e NON e'' una dimenticanza (domanda del backend, 2026-08-18, brief note-credito P-2). La proiezione del legame documentale delle note di credito la scrive il task popola_fatture_rettifiche, che gira DOPO numera_fatture: esiste quindi solo su documenti NUMERATI. E un documento numerato non e'' raggiungibile da nessuna delle tre porte di reset, perche'' tutte e tre lo rifiutano con un controllo ESPLICITO sul numero — fn_check_fattura_eliminabile_da_lotto motivo 4 (E_FATTURA_GIA_NUMERATA), fn_check_lotto_riportabile_a_draft motivo 3 e fn_check_lotto_annullabile motivo 3 (E_LOTTO_FATTURE_NUMERATE, aggiunto il 2026-08-18 proprio per chiudere l''ultima che si affidava al solo stato). ⚠️ La garanzia sta in quelle CONDIZIONI, non nei nomi delle funzioni: l''argomento «sono tutte *_da_draft» era vero e ha smesso di esserlo il 2026-08-04, quando fn_elimina_fattura_da_lotto_draft e'' stata rinominata e il suo perimetro allargato al pre-fiscale (RD-7). ⚠️ Se un giorno una porta di reset ammettesse un documento numerato, questa funzione dovrebbe cancellare anche la coppia in fatture_rettifiche: fk_fatture_ret_fattura NON e'' ON DELETE CASCADE, quindi il reset sbatterebbe su una violazione di chiave esterna grezza dentro una funzione che i suoi chiamanti danno per infallibile. Piano: brief-db-lavoro-che-non-torna-indietro, L1. ⭐ rev 2026-10-04 (brief-db-bom-flag-quantita-e-kit-in-fattura §14, strada A): secondo guard fail-loud accanto a quello delle rettifiche — una fattura che ha gia'' consumato plafond (script.fn_check_fatture_con_plafond_consumato) non si cancella, E_FATTURE_PLAFOND_CONSUMATO invece del 23503 grezzo sulle FK NO ACTION del registro.';
 ```
 
 ---

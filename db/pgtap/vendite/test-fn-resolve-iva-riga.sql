@@ -46,6 +46,9 @@
 -- 13) E le due parti sommano ESATTAMENTE l imponibile
 -- 14) is_reverse_charge arriva dalla NATURA (D22)
 -- 15) ⭐ Senza il soggetto la coppia esigibilita/split dice «non lo so» INSIEME
+-- 16) ⭐ CONSUMO (p_consumo, in coda): titolo a tetto -> DUE righe, prima il titolo, quota NULL
+-- 17) ⭐ CONSUMO a residuo zero: il titolo resta; l anteprima risponde con l ordinario
+-- 18) il consumo non prende un importo: p_consumo con p_imponibile SOLLEVA
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -62,7 +65,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(15);
+SELECT plan(18);
 
 -- ============================================================
 -- La fixture: si COSTRUISCE, non si cerca
@@ -468,11 +471,76 @@ SELECT is(
 );
 
 -- ============================================================
+-- 16-18) ⭐ La domanda di CONSUMO (decisione C, 2026-10-04)
+-- ============================================================
+-- ⚠️ p_consumo e' un parametro NUOVO in coda alla firma (20261004-03/-04): i
+--   casi qui sopra non cambiano. Per nominarlo si passano tutti quelli prima,
+--   per posizione, come fa il backend. Il titolo a tetto e' quello del 12-13
+--   (INTENTO, NI35, plafond 100). Nel consumo il risolutore dice QUALE titolo
+--   e i DUE trattamenti, sempre e nell'ordine: quanto copre lo decide la madre
+--   del consumo sul NETTO della fattura (brief-db-bom-flag-quantita-e-kit-in-
+--   fattura §13.4). L'ordine si legge da WITH ORDINALITY, non dai valori.
+SELECT is(
+  (SELECT string_agg(r.origine || ':' || r.iva_id::text || ':' || COALESCE(r.quota::text, 'NULL'),
+                     ' + ' ORDER BY r.n)
+     FROM tmp_fix f,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL,
+                                              NULL, NULL, f.soggetto_id, f.emittente_id,
+                                              NULL, NULL, NULL, true)
+                  WITH ORDINALITY AS r(quota, iva_id, aliquota, natura_codice, is_reverse_charge,
+                                       esigibilita, split_payment, riferimento_normativo,
+                                       origine, titolo_iva_id, n)),
+  (SELECT 'TITOLO:' || (SELECT id FROM config.iva WHERE codice_interno = 'NI35')::text
+          || ':NULL + ARTICOLO:' || a.iva_id::text || ':NULL'
+     FROM tmp_fix f JOIN catalogo.articoli a ON a.id = f.art_parla),
+  '16) consumo con titolo a tetto: due righe, prima il titolo e poi l ordinario, quota NULL'
+);
+
+-- ⭐ Residuo zero (una forzatura che consuma tutto il plafond): il CONSUMO vede
+--   ancora il titolo — e' la madre a dire che non copre piu' niente, e una riga
+--   negativa della stessa fattura potrebbe restituire capienza — mentre
+--   l'ANTEPRIMA risponde con l'ordinario, il trattamento del primo euro.
+INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti
+    (titolo_iva_id, tipo_movimento, imponibile, data_movimento, motivo)
+SELECT t.id, 'FORZATURA', 100.00, DATE '2026-03-01', 'pgTAP: plafond esaurito'
+  FROM anagrafiche.soggetti_titoli_iva t
+ WHERE t.meta->>'test_scope' = 'pgtap_resolve_iva';
+
+SELECT is(
+  (SELECT string_agg(r.origine, '+' ORDER BY r.n)
+     FROM tmp_fix f,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL,
+                                              NULL, NULL, f.soggetto_id, f.emittente_id,
+                                              NULL, NULL, NULL, true)
+                  WITH ORDINALITY AS r(quota, iva_id, aliquota, natura_codice, is_reverse_charge,
+                                       esigibilita, split_payment, riferimento_normativo,
+                                       origine, titolo_iva_id, n))
+  || ' / ' ||
+  (SELECT string_agg(r.origine, '+')
+     FROM tmp_fix f,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL,
+                                              NULL, NULL, f.soggetto_id, f.emittente_id) r),
+  'TITOLO+ARTICOLO / ARTICOLO',
+  '17) a residuo zero il consumo vede ancora il titolo, l anteprima risponde con l ordinario'
+);
+
+-- ⚠️ La proiezione (con l'importo) e il consumo sono due domande: mescolarle
+--   darebbe una quota che il consumo sul netto smentirebbe.
+SELECT throws_like(
+  format('SELECT * FROM vendite.fn_resolve_iva_riga(%L::uuid, %L::date, 100.00,
+                 NULL, NULL, NULL, NULL, NULL, NULL, NULL, true)',
+         (SELECT art_parla FROM tmp_fix), DATE '2026-06-15'),
+  '%imponibile%',
+  '18) il consumo non prende un importo: p_consumo con p_imponibile solleva'
+);
+
+-- ============================================================
 -- Smontaggio (la transazione si chiude comunque in ROLLBACK)
 -- ============================================================
+-- ⚠️ I titoli non si cancellano piu' (dal 2026-10-04): il caso 17 scrive una
+--   FORZATURA, e il registro e' append-only, quindi un titolo con movimenti
+--   non si cancella. Il ROLLBACK porta via tutto.
 DELETE FROM anagrafiche.soggetti_titoli_iva_ambiti
- WHERE meta->>'test_scope' = 'pgtap_resolve_iva';
-DELETE FROM anagrafiche.soggetti_titoli_iva
  WHERE meta->>'test_scope' = 'pgtap_resolve_iva';
 
 SELECT * FROM finish();

@@ -442,8 +442,30 @@ SELECT throws_ok(
   );
 
 -- ============================================================
--- 18-20) La primitiva di consumo: capienza, spezzatura (P2), idempotenza
+-- 18-20) La madre di consumo: capienza, spezzatura (P2), idempotenza
 -- ============================================================
+-- ⚠️ Dal 2026-10-04 (20261004-05/-06, brief-db-bom-flag-quantita-e-kit-in-
+--   fattura §13) la forma a una riga e' ritirata e la madre vuole righe vere
+--   della fattura (l'imponibile passato deve essere quello della riga): una
+--   riga per importo (300, 1000, 5000). Prima passavano un importo e una riga
+--   NULL.
+-- Scopo: una riga della fattura con l'imponibile dato (qta 1).
+CREATE OR REPLACE FUNCTION pg_temp.fx_tiva_riga(p_nr integer, p_imp numeric)
+RETURNS bigint LANGUAGE sql AS $fx$
+  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione, uom_id,
+         qta, prezzo_unitario, iva_id, competenza_dal, competenza_al)
+  SELECT (SELECT id FROM tmp_tiva_fattura), p_nr, r.articolo_id, 'Riga ' || p_nr,
+         (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1),
+         1, p_imp, r.iva_id, CURRENT_DATE, CURRENT_DATE
+    FROM tmp_tiva_refs r
+  RETURNING id;
+$fx$;
+
+CREATE TEMP TABLE tmp_tiva_righe AS
+SELECT pg_temp.fx_tiva_riga(1, 300.00)  AS r300,
+       pg_temp.fx_tiva_riga(2, 1000.00) AS r1000,
+       pg_temp.fx_tiva_riga(3, 5000.00) AS r5000;
+
 -- Titolo pulito per i test di consumo: plafond 1000, niente movimenti.
 CREATE TEMP TABLE tmp_tiva_consumo AS
 WITH ins AS (
@@ -459,10 +481,10 @@ SELECT * FROM ins;
 
 SELECT is(
     (SELECT (c.quota_coperta, c.quota_ordinaria)::text
-       FROM anagrafiche.fn_consuma_plafond_titolo_iva(
+       FROM anagrafiche.fn_consuma_plafond_titolo_iva_righe(
                 (SELECT id FROM tmp_tiva_consumo),
                 (SELECT id FROM tmp_tiva_fattura),
-                300.00, DATE '2029-03-01') c),
+                ARRAY[(SELECT r300 FROM tmp_tiva_righe)], ARRAY[300.00], DATE '2029-03-01') c),
     '(300.00,0.00)',
     'Consumo entro capienza: il titolo copre tutto e la quota ordinaria e'' zero'
   );
@@ -470,10 +492,8 @@ SELECT is(
 -- ⭐ P2: il plafond finisce a meta' riga. Residuo 700, si chiedono 1000 ->
 --   700 coperti dal titolo, 300 tornano all'aliquota ordinaria. Senza questa
 --   spezzatura una fattura sbagliata non darebbe nessun errore.
--- ⚠️ Fattura diversa dalla precedente? No: e' la RIGA a cambiare, e la UNIQUE
---   parziale distingue (titolo, tipo, fattura, riga). Qui si passa una riga
---   nulla su un secondo consumo, quindi si usa il ramo idempotente — percio'
---   il secondo consumo si fa su un titolo suo.
+-- ⚠️ Un titolo suo: l'idempotenza e' per (titolo, fattura), e sul titolo del
+--   test 18 la fattura ha gia' consumato.
 CREATE TEMP TABLE tmp_tiva_consumo_2 AS
 WITH ins AS (
   INSERT INTO anagrafiche.soggetti_titoli_iva
@@ -488,10 +508,10 @@ SELECT * FROM ins;
 
 SELECT is(
     (SELECT (c.quota_coperta, c.quota_ordinaria)::text
-       FROM anagrafiche.fn_consuma_plafond_titolo_iva(
+       FROM anagrafiche.fn_consuma_plafond_titolo_iva_righe(
                 (SELECT id FROM tmp_tiva_consumo_2),
                 (SELECT id FROM tmp_tiva_fattura),
-                1000.00, DATE '2030-03-01') c),
+                ARRAY[(SELECT r1000 FROM tmp_tiva_righe)], ARRAY[1000.00], DATE '2030-03-01') c),
     '(700.00,300.00)',
     'P2: plafond esaurito a meta'' riga -> 700 non imponibili, 300 ad aliquota ordinaria'
   );
@@ -501,10 +521,10 @@ SELECT is(
 --   che ritornasse il valore giusto scrivendo una seconda riga passerebbe un
 --   test scritto sulla sola ripartizione.
 SELECT is(
-    (SELECT count(*)::int FROM anagrafiche.fn_consuma_plafond_titolo_iva(
+    (SELECT count(*)::int FROM anagrafiche.fn_consuma_plafond_titolo_iva_righe(
                 (SELECT id FROM tmp_tiva_consumo_2),
                 (SELECT id FROM tmp_tiva_fattura),
-                1000.00, DATE '2030-03-01') c
+                ARRAY[(SELECT r1000 FROM tmp_tiva_righe)], ARRAY[1000.00], DATE '2030-03-01') c
       WHERE c.quota_coperta = 700.00)
     + (SELECT count(*)::int FROM anagrafiche.soggetti_titoli_iva_movimenti m
         WHERE m.titolo_iva_id = (SELECT id FROM tmp_tiva_consumo_2)),
@@ -529,10 +549,10 @@ SELECT * FROM ins;
 
 SELECT is(
     (SELECT (c.quota_coperta, c.quota_ordinaria)::text
-       FROM anagrafiche.fn_consuma_plafond_titolo_iva(
+       FROM anagrafiche.fn_consuma_plafond_titolo_iva_righe(
                 (SELECT id FROM tmp_tiva_senza_tetto),
                 (SELECT id FROM tmp_tiva_fattura),
-                5000.00, DATE '2031-03-01') c)
+                ARRAY[(SELECT r5000 FROM tmp_tiva_righe)], ARRAY[5000.00], DATE '2031-03-01') c)
     || ' mov=' ||
     (SELECT count(*)::text FROM anagrafiche.soggetti_titoli_iva_movimenti m
       WHERE m.titolo_iva_id = (SELECT id FROM tmp_tiva_senza_tetto)),
@@ -545,8 +565,9 @@ SELECT is(
 --   una fattura che quel titolo non copre piu' — invisibile.
 SELECT throws_ok(
     format($$
-      SELECT * FROM anagrafiche.fn_consuma_plafond_titolo_iva(%s, %s, 100.00, DATE '2035-01-01')
-    $$, (SELECT id FROM tmp_tiva_consumo), (SELECT id FROM tmp_tiva_fattura)),
+      SELECT * FROM anagrafiche.fn_consuma_plafond_titolo_iva_righe(%s, %s, ARRAY[%s]::bigint[], ARRAY[300.00]::numeric[], DATE '2035-01-01')
+    $$, (SELECT id FROM tmp_tiva_consumo), (SELECT id FROM tmp_tiva_fattura),
+        (SELECT r300 FROM tmp_tiva_righe)),
     'P0001',
     NULL,
     'Consumo a una data fuori dalla validita'' del titolo: si rifiuta'
