@@ -3363,6 +3363,7 @@
         "fattura_non_collegata": "The invoice does not belong to this batch.",
         "fattura_non_pre_fiscale": "The invoice is beyond the pre-fiscal stage: it cannot be deleted.",
         "fattura_numerata": "The invoice is already numbered: deleting it would leave a gap in the fiscal numbering.",
+        "fattura_plafond_consumato": "The invoice has already used the allowance of a declaration of intent: it cannot be deleted. Move the batch forward: finalising it does not use the allowance twice.",
         "righe_rettificate": "This batch contains rows that rectify another invoice: the credit is already recorded and cannot be undone from here."
       },
       "azione_non_piu_disponibile": "This action is no longer available on this batch: the list has been refreshed.",

@@ -637,8 +637,8 @@ class TitoliIvaRepository:
     # Scopo: Registra una FORZATURA manuale.
     # ⛔ SOLO forzature, ed e' la decisione Q3: gli altri due tipi (FATTURA,
     #    NOTA_CREDITO) li scrive la pipeline con I4, passando da
-    #    `fn_consuma_plafond_titolo_iva`, che e' anche l'unica a prendere il lock
-    #    di D15-bis. Un endpoint che accettasse FATTURA consumerebbe plafond
+    #    `fn_consuma_plafond_titolo_iva_righe`, che e' anche l'unica a prendere
+    #    il lock di D15-bis. Un endpoint che accettasse FATTURA consumerebbe plafond
     #    SENZA una fattura.
     # ⚠️ `fattura_id`/`fattura_riga_id` restano NULL: lo impone
     #    `chk_stiva_movimenti_documento`, ed e' cio' che rende una forzatura

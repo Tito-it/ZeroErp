@@ -203,8 +203,8 @@ e l'errore un'altra.
 - `anagrafiche.fn_annulla_movimento_titolo_iva` (madre dell'annullo)
 - `script.fn_check_annullo_movimento_titolo_iva` (`STABLE`, pura — le cinque
   precondizioni, lette **sia** dalla vista **sia** dalla madre)
-- `anagrafiche.fn_consuma_plafond_titolo_iva` (il consumo sotto lock, chiamato
-  dalla fatturazione — non da questi endpoint)
+- `anagrafiche.fn_consuma_plafond_titolo_iva_righe` (il consumo sotto lock, sul
+  netto della fattura, chiamato dalla fatturazione — non da questi endpoint)
 - `config.tipi_titolo_iva` (`ha_plafond`), `config.iva`
 
 ## Note di migrazione

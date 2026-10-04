@@ -11,11 +11,13 @@
 # Indice test:
 #   1. risolvi: senza emittente si FERMA (P3), e non ripiega
 #   2. risolvi: emittente <= 0 e booleano si fermano allo stesso guard
-#   3. risolvi: l'anteprima passa imponibile=None al repository
-#   4. risolvi: con imponibile la ripartizione a due parti passa
+#   3. risolvi: di default e' l'anteprima (consumo=False al repository)
+#   4. risolvi: nel consumo la coppia titolo + ordinario passa
 #   5. risolvi: zero righe = invariante rotta, non «nessuna IVA»
-#   6. risolvi: ripartizione SENZA imponibile = difetto muto intercettato
-#   7. risolvi_anteprima: non e' risolvi()[0] — l'imponibile non si passa
+#   6. risolvi: due parti nell'anteprima = difetto muto intercettato
+#   6b. risolvi: nel consumo due parti nell'ordine sbagliato si fermano
+#   6c. risolvi: consumo non booleano si ferma prima del DB
+#   7. risolvi_anteprima: non e' la domanda di consumo
 #   8. risolvi_anteprima: ritorna la parte, non la lista
 #   9. meta_riga: due chiavi, e non copia cio' che si deriva
 #  10. articolo_id e data_riferimento mancanti si fermano
@@ -104,35 +106,37 @@ class IvaResolverServiceTests(unittest.TestCase):
             )
 
     # ── 3-4. Il contratto della ripartizione ──────────────────────────────
-    # Scopo: sui DOCUMENTI l'imponibile non si passa (P1), ed e' cosi' che la
-    #        riga non si spezza. Si verifica che arrivi `None` al repository,
-    #        non che il risultato abbia un elemento: la seconda cosa sarebbe
-    #        vera anche passando l'imponibile su un plafond capiente.
-    def test_anteprima_passa_imponibile_none_al_repository(self):
+    # Scopo: sui DOCUMENTI si chiede l'anteprima (P1), ed e' cosi' che la
+    #        riga non si spezza. Si verifica cosa arriva al repository, non
+    #        che il risultato abbia un elemento: la seconda cosa sarebbe vera
+    #        anche nella domanda di consumo senza titolo.
+    def test_di_default_e_l_anteprima(self):
         self.repo.resolve.return_value = [_parte()]
         self.service.risolvi(
             articolo_id=_ARTICOLO,
             data_riferimento=_DATA,
             emittente_fiscale_id=_EMITTENTE,
         )
-        self.assertIsNone(self.repo.resolve.call_args.kwargs["imponibile"])
+        self.assertIs(self.repo.resolve.call_args.kwargs["consumo"], False)
 
-    # Scopo: con l'imponibile le due parti sono legittime e passano intatte,
-    #        nell'ordine del DB — prima la quota coperta dal titolo.
-    def test_con_imponibile_la_ripartizione_a_due_parti_passa(self):
+    # Scopo: nel consumo, con un titolo a tetto, le due parti sono legittime e
+    #        passano intatte, nell'ordine del DB — prima il titolo, poi
+    #        l'ordinario, `quota` NULL su entrambe.
+    def test_nel_consumo_titolo_e_ordinario_passano(self):
         self.repo.resolve.return_value = [
-            _parte(quota=Decimal("100"), origine="TITOLO", titolo_iva_id=5, aliquota=Decimal("0")),
-            _parte(quota=Decimal("40")),
+            _parte(origine="TITOLO", titolo_iva_id=5, aliquota=Decimal("0")),
+            _parte(),
         ]
         parti = self.service.risolvi(
             articolo_id=_ARTICOLO,
             data_riferimento=_DATA,
             emittente_fiscale_id=_EMITTENTE,
-            imponibile=Decimal("140"),
+            consumo=True,
         )
         self.assertEqual(len(parti), 2)
         self.assertEqual(parti[0]["origine"], "TITOLO")
-        self.assertEqual(parti[1]["quota"], Decimal("40"))
+        self.assertIsNone(parti[1]["titolo_iva_id"])
+        self.assertIs(self.repo.resolve.call_args.kwargs["consumo"], True)
 
     # ── 5-6. I due difetti muti ───────────────────────────────────────────
     # Scopo: zero righe non e' «nessuna IVA»: il contratto della funzione e'
@@ -150,12 +154,14 @@ class IvaResolverServiceTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_CHIAMATA_NON_VALIDA")
 
-    # Scopo: ⭐ il caso che nessuno penserebbe di scrivere. Senza imponibile
-    #        il DB NON puo' spezzare: se due parti arrivano lo stesso, il ramo
-    #        di anteprima si e' rotto. E il difetto sarebbe MUTO — il
-    #        chiamante prende `parti[0]` e non sa di aver perso l'altra meta'.
-    def test_ripartizione_senza_imponibile_e_un_difetto_intercettato(self):
-        self.repo.resolve.return_value = [_parte(), _parte()]
+    # Scopo: ⭐ il caso che nessuno penserebbe di scrivere. L'anteprima da'
+    #        UNA parte: se ne arrivano due, il ramo si e' rotto. E il difetto
+    #        sarebbe MUTO — il chiamante prende `parti[0]` e non sa di aver
+    #        perso l'altra meta'.
+    def test_due_parti_nell_anteprima_sono_un_difetto_intercettato(self):
+        self.repo.resolve.return_value = [
+            _parte(origine="TITOLO", titolo_iva_id=5), _parte(),
+        ]
         with self.assertRaises(ServiceError):
             self.service.risolvi(
                 articolo_id=_ARTICOLO,
@@ -163,12 +169,43 @@ class IvaResolverServiceTests(unittest.TestCase):
                 emittente_fiscale_id=_EMITTENTE,
             )
 
+    # Scopo: ⛔ nel consumo la seconda parte va sulla quota che il plafond NON
+    #        copre. Se portasse un titolo — o se la prima non lo portasse — il
+    #        giro scriverebbe un'esenzione non dovuta: ci si ferma.
+    def test_nel_consumo_due_parti_fuori_forma_si_fermano(self):
+        for parti in (
+            [_parte(), _parte()],
+            [_parte(origine="TITOLO", titolo_iva_id=5),
+             _parte(origine="TITOLO", titolo_iva_id=6)],
+            [_parte(), _parte(origine="TITOLO", titolo_iva_id=5)],
+        ):
+            with self.subTest(parti=[p["titolo_iva_id"] for p in parti]):
+                self.repo.resolve.return_value = parti
+                with self.assertRaises(ServiceError):
+                    self.service.risolvi(
+                        articolo_id=_ARTICOLO,
+                        data_riferimento=_DATA,
+                        emittente_fiscale_id=_EMITTENTE,
+                        consumo=True,
+                    )
+
+    # Scopo: `consumo` NULL lo rifiuta anche il DB; qui ci si ferma prima.
+    def test_consumo_non_booleano_si_ferma(self):
+        with self.assertRaises(ServiceError):
+            self.service.risolvi(
+                articolo_id=_ARTICOLO,
+                data_riferimento=_DATA,
+                emittente_fiscale_id=_EMITTENTE,
+                consumo=None,  # type: ignore[arg-type]
+            )
+        self.repo.resolve.assert_not_called()
+
     # ── 7-8. L'anteprima ──────────────────────────────────────────────────
-    # Scopo: ⚠️ `risolvi_anteprima` NON e' `risolvi()[0]`. Chiamare col totale
-    #        e prendere la prima parte darebbe il trattamento della sola quota
-    #        coperta applicandolo a TUTTA la riga — il difetto opposto a
-    #        quello che P1 evita. Si prova che l'imponibile non viene passato.
-    def test_anteprima_non_passa_mai_un_imponibile(self):
+    # Scopo: ⚠️ `risolvi_anteprima` NON e' la domanda di consumo presa alla
+    #        prima parte: quella da' il titolo anche a plafond esaurito, e
+    #        applicarlo a TUTTA la riga e' il difetto opposto a quello che P1
+    #        evita. Si prova che il consumo non viene chiesto.
+    def test_anteprima_non_chiede_mai_il_consumo(self):
         self.repo.resolve.return_value = [_parte()]
         self.service.risolvi_anteprima(
             articolo_id=_ARTICOLO,
@@ -177,7 +214,7 @@ class IvaResolverServiceTests(unittest.TestCase):
             billing_account_id=42,
         )
         kwargs = self.repo.resolve.call_args.kwargs
-        self.assertIsNone(kwargs["imponibile"])
+        self.assertIs(kwargs["consumo"], False)
         self.assertEqual(kwargs["billing_account_id"], 42)
 
     def test_anteprima_ritorna_la_parte_non_la_lista(self):

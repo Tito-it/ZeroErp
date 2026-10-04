@@ -130,11 +130,10 @@ Il livello si risolve poi per oggetto (`get_livello_oggetto`) se c'e' un model �
 
 La cache viene creata/letta su `request._zeroerp_perms_cache` (dict).
 Se non esiste ancora, `ZeroERPPermission._get_cache()` la crea caricandola da Redis (L2),
-se disponibile, e le chiamate successive nella stessa request la riusano senza query aggiuntive.
-Il middleware `JwtAuditMiddleware` prova a pre-popolarla in `process_view`.
-⚠️ Difetto noto ([S-2](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): per i client con token Bearer, in `process_view`
-`request.user` e' ancora anonimo, quindi il pre-caricamento del
-middleware non scatta. Il caricamento avviene di fatto in `_get_cache()`.
+se disponibile e solo col contesto di sessione segnato da `set_jwt_gucs`, e le chiamate
+successive nella stessa request la riusano senza query aggiuntive. È l'unico punto che la
+carica: nessun middleware la pre-popola (il tentativo in `JwtAuditMiddleware.process_view`
+è ritirato con M-1 e S-2 dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 Alla fine di ogni `has_permission` (blocco `finally`, anche in caso di diniego) la cache, se
 non vuota, viene salvata su Redis per le request successive.
 

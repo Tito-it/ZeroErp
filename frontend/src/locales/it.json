@@ -3363,6 +3363,7 @@
         "fattura_non_collegata": "La fattura non appartiene a questo lotto.",
         "fattura_non_pre_fiscale": "La fattura è oltre lo stato pre-fiscale: non può essere eliminata.",
         "fattura_numerata": "La fattura è già numerata: eliminarla aprirebbe un buco nella numerazione fiscale.",
+        "fattura_plafond_consumato": "La fattura ha già consumato il plafond di una dichiarazione d'intento: non si può eliminare. Porta avanti il lotto: il passaggio a definitiva non consuma il plafond due volte.",
         "righe_rettificate": "Il lotto contiene righe che rettificano un'altra fattura: l'accredito è già registrato e non si disfa da qui."
       },
       "azione_non_piu_disponibile": "Azione non più disponibile su questo lotto: la lista è stata aggiornata.",
