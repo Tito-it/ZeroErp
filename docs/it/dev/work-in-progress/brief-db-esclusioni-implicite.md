@@ -12,7 +12,7 @@
 > **Stato:** ✅ **DB chiuso per Q-4, Q-1, Q-3, `UPDATE OF`, v1 e Q-6** il 2026-10-04:
 > `20261004-80 → -86` applicati su dev (22:50, automazioni alle 23:19), pgTAP verdi (§10).
 > Cancello v1 in CI dalla prossima corsa. ⏳ **Q-2 rimandata** (§4): è la parte che tiene aperta D17.
-> ⏳ BE: R-1 di §9 (due codici nuovi). **Non committato.**
+> ✅ BE: R-1 di §9 chiusa il 2026-10-04 (policy rigenerate + ripieghi). **Non committato.**
 
 ## 1. Perché un brief solo
 
@@ -328,6 +328,11 @@ sviluppo»).
   (`config.messaggi_errore`), come per i fratelli `E_FATTURA_GIA_NUMERATA` e
   `E_FATTURA_NON_ANNULLABILE`, che nel frontend non compaiono. Nessuna interfaccia produce i due
   codici nel percorso normale: arrivano solo da una corsa (ritorno a DRAFT mentre si numera).
+  ✅ **Fatto dal BE il 2026-10-04**: rigenerato `error_policies_generated.py` (diff: solo le due
+  voci nuove, nessuna classe spostata; `--check` pulito) e scritti i due ripieghi senza `%s` in
+  `error_messages_fallback.py` — passo che il brief non nominava ma che è obbligatorio per ogni
+  codice vivo (`test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`). Cancelli verdi con
+  `ZEROERP_TEST_DB_E2E=1` (`test_error_policies_divergenza_db`, `test_error_policies_classi`).
 * **R-2 (BE)**: nessun cambio richiesto da Q-1. Il backend imposta già le GUC «tutto o niente»;
   da oggi una sessione con la veste e senza utente non vede niente, invece di vedere tutto.
 * **R-3 (BE/FE)**: nessun cambio per la propagazione dei kit: la correzione è tutta a DB.
@@ -355,9 +360,18 @@ Due rossi alla prima corsa, entrambi del test e non del DB, corretti lo stesso g
 
 ## 11. Resta aperto
 
-* **Q-2** (§4), rimandata da Tid: in un brief suo, partendo da `allow_lock_columns_override` e
-  `maintenance_reset_lotto_draft`.
-* **R-1** al BE (§9): i due codici nuovi in `error_policies_generated.py`.
-* **Da verificare** dal censimento `UPDATE OF` (§6.2): il registro scelto all'emissione di DDT e
-  resi senza il require «attivo», e `trgfn_clienti_set_parent_istanza` all'annullamento del cliente.
-* **Dati di dev**: i componenti dei kit con la quantità vecchia (§6.3), se servono, a mano.
+* **Q-2** (§4): resta aperta, rimandata da Tid (confermato il 2026-10-04). Si fa in un brief suo,
+  partendo da `allow_lock_columns_override` e `maintenance_reset_lotto_draft`.
+* **Da verificare — al team DB** (assegnato da Tid il 2026-10-04): i due punti ⚠️ del censimento
+  `UPDATE OF` (§6.2). Sono comportamento di trigger, dal BE non si chiudono.
+  1. **Il registro all'emissione di DDT e resi**: `registro_id` lo scrive un trigger `BEFORE`
+     (`trgfn_ddt_gen_numero_emesso`, `trgfn_resi_gen_numero`), quindi il require «registro
+     attivo» non scatta. Si legge `fn_get_registro_documento`: se sceglie già solo registri attivi,
+     il mancato scatto è innocuo e si annota; altrimenti un documento può essere numerato su un
+     registro disattivato, e il trigger va corretto.
+  2. **`trgfn_clienti_set_parent_istanza` all'annullamento del cliente**: `data_attivazione` la
+     azzera `trgfn_clienti_set_periodo`, e il trigger non scatta. Prima va deciso sul modello se
+     all'annullamento deve girare; se il corpo non lo rende evidente, la decisione è di Tid.
+
+**Chiuso senza azione:** i **dati di dev** dei kit con la quantità vecchia (§6.3) restano così
+(Tid, 2026-10-04): nessuna correzione a mano.
