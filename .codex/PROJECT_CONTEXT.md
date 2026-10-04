@@ -229,6 +229,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   negative restituiscono (comprende R-DB-B13). DB `20261004-02…-06` applicato il 2026-10-04, pgTAP verdi; poi
   un giro BE (R-BE-C1…C9): risolutore con `p_consumo` in coda, una chiamata alla madre per titolo.
   Strada A (§14): una fattura che ha consumato plafond non si disfa più (`20261004-07…-11`), applicato il 2026-10-04, pgTAP verdi. Lato DB chiuso; resta BE/FE (R-BE-A1, R-FE-A1).
+- **Un'esclusione del contratto non si modifica** (`work-in-progress/brief-db-contratto-esclusione-non-modificabile.md`,
+  decisione di Tid del 2026-10-04): DB applicato il 2026-10-04 (`20261004-12…-14`, lock su
+  `contratti_righe.tipo_eccezione`, due codici nuovi), pgTAP senza regressioni. Lato DB chiuso; resta BE/FE (§5).
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

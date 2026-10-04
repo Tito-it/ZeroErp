@@ -170,3 +170,16 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 **Le AGGIUNTA escono nell'UoM in cui la riga è quotata** (`20261004-01`). Prima uscivano nell'UoM base dell'articolo: quantità e prezzo comparivano accanto a un'UoM che non era la loro, a video, nell'export e in stampa. Inoltre il form di modifica, che non trovava l'UoM della riga, al primo salvataggio la riscriveva con quella dell'articolo. Una riga senza UoM operativa (succede solo quando non ha una quantità, cioè con fonte diversa da `FISSA`) ricade sulla base dell'articolo, come fa già [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) quando la riga viene scritta. Vale anche per i componenti di un bundle AGGIUNTA: ognuno esce nella sua UoM operativa.
 
 **Due colonne in coda**: `ordine` e `uom_operativa_id` della riga di `contratti_righe`, vuote sulle righe che vengono solo dal listino. Servono al form di modifica, che le rimanda al `PATCH`: senza, ogni modifica azzerava l'ordine della riga e l'UoM di un'eccezione andava indovinata. In tutto 24 colonne.
+
+<!-- rev-2026-10-04-esclusione-senza-modifica -->
+### 🔄 rev 2026-10-04 — un'esclusione non si modifica (brief-db-contratto-esclusione-non-modificabile)
+
+**La riga ESCLUSIONE ha un solo verbo: ripristina l'articolo** (`20261004-14`). Prima aveva anche «modifica», e il drawer, che rende i verbi del database, apriva il form di modifica su un articolo che il contratto non vende: il form ripiegava su erogazione a canone e fonte fissa, e al primo salvataggio scriveva sull'esclusione valori che nessuno aveva scelto. Un'esclusione si crea (Escludi) e si cancella (Ripristina articolo), e basta. Il database rifiuta anche la modifica diretta: lo fa il guard [vendite.trgfn_contratti_righe_guard_esclusione_immutabile](/dbzero/vendite/funzioni/trgfn_contratti_righe_guard_esclusione_immutabile). Le altre origini non cambiano.
+
+| Origine | Verbi |
+| --- | --- |
+| `DA_LISTINO` | `SOVRASCRIVI_PREZZO`, `ESCLUDI` |
+| `OVERRIDE` | `MODIFICA`, `RIPRISTINA_LISTINO` |
+| `ESCLUSIONE` | `RIPRISTINA_ARTICOLO` |
+| `AGGIUNTA` | `MODIFICA`, `RIMUOVI` |
+

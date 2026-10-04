@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Monta vendite.trgfn_contratti_righe_guard_esclusione_immutabile (20261004-12)
+# su vendite.contratti_righe.
+#
+# -- PERCHE' _a05_ ------------------------------------------------------
+#   «Questa riga non si tocca» deve parlare PRIMA dei guard _a10_ che giudicano
+#   il valore nuovo (aggiunta fuori listino, figlio di bundle, pending) e del
+#   CHECK chk_contrighe_prezzo_per_tipo_eccezione: un prezzo scritto su
+#   un'esclusione deve dire «l'esclusione non si modifica», non «un'esclusione
+#   non ha prezzo» (che suggerirebbe di togliere il prezzo e riprovare).
+#   Nella stessa fascia viene dopo trg_contratti_righe_a05_doc_righe_lock_
+#   fuori_bozza_ins_upd_dlt (ordine alfabetico, «doc» < «guard»): su un
+#   contratto non in bozza parla prima il rifiuto di documento, che vale per
+#   tutte le righe.
+#
+# -- WHEN sul vecchio tipo ----------------------------------------------
+#   La regola e' su cio' che la riga E', quindi OLD. Il cambio di tipo verso
+#   ESCLUSIONE (OVERRIDE -> ESCLUSIONE) non passa di qui: lo rifiuta il lock di
+#   colonna su tipo_eccezione (dbops.automation_lock_columns, R3 del brief).
+#
+# Brief: brief-db-contratto-esclusione-non-modificabile (R2).
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261004-13-create-trigger-contratti-righe-guard-esclusione-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20261004-13-create-trigger-contratti-righe-guard-esclusione-immutabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti_righe: trigger _a05_ BEFORE UPDATE, WHEN OLD.tipo_eccezione = ESCLUSIONE,
+        su vendite.trgfn_contratti_righe_guard_esclusione_immutabile. Brief:
+        brief-db-contratto-esclusione-non-modificabile (R2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_contratti_righe_guard_esclusione_immutabile';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_trigger
+                   WHERE tgrelid = 'vendite.contratti_righe'::regclass
+                     AND tgname = 'trg_contratti_righe_a05_guard_esclusione_immutabile_upd'
+                     AND NOT tgisinternal;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_contratti_righe_a05_guard_esclusione_immutabile_upd
+                BEFORE UPDATE ON vendite.contratti_righe
+                FOR EACH ROW
+                WHEN (OLD.tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_immutabile();
+
+              COMMENT ON TRIGGER trg_contratti_righe_a05_guard_esclusione_immutabile_upd ON vendite.contratti_righe IS
+                  'Una riga ESCLUSIONE non si modifica: si crea (Escludi) e si cancella (Ripristina '
+                  'articolo). Fascia _a05_: parla prima dei guard _a10_ e del CHECK sul prezzo, dopo il '
+                  'rifiuto «fuori bozza» del documento. WHEN sul tipo VECCHIO: il cambio di tipo verso '
+                  'ESCLUSIONE lo rifiuta il lock di colonna su tipo_eccezione. '
+                  'Brief: brief-db-contratto-esclusione-non-modificabile (R2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a05_guard_esclusione_immutabile_upd ON vendite.contratti_righe;
