@@ -9,11 +9,11 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| numero | character varying | NO |  |
+| numero | character varying(30) | NO |  |
 | billing_account_id | bigint | NO |  |
 | istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
-| ambito | character varying | YES | 'COMMODITY'::character varying |
+| ambito | character varying(24) | YES | 'COMMODITY'::character varying |
 | valido_dal | date | NO | CURRENT_DATE |
 | valido_al | date | YES |  |
 | parent_contratto_id | bigint | YES |  |
@@ -26,8 +26,8 @@
 | data | date | NO | CURRENT_DATE |
 | uid | uuid | NO | uuidv7() |
 | listino_id | bigint | YES |  |
-| tipo_variazione_globale | character varying | YES |  |
-| valore_variazione_globale | numeric | YES |  |
+| tipo_variazione_globale | character varying(16) | YES |  |
+| valore_variazione_globale | numeric(10,4) | YES |  |
 | categoria_cliente_id_snapshot | smallint | YES |  |
 | tx_id | uuid | YES |  |
 | validita | daterange | NO |  |
@@ -41,9 +41,9 @@
 | is_draft_snapshot | boolean | NO | false |
 | partecipa_overlap_snapshot | boolean | YES |  |
 | fatturazione_immediata | boolean | NO | false |
-| codice_cig | character varying | YES |  |
-| codice_cup | character varying | YES |  |
-| codice_commessa | character varying | YES |  |
+| codice_cig | character varying(15) | YES |  |
+| codice_cup | character varying(15) | YES |  |
+| codice_commessa | character varying(100) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

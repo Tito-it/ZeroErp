@@ -11,9 +11,9 @@
 | id | bigint | NO |  |
 | run_at | timestamp with time zone | NO | now() |
 | dry_run | boolean | NO | false |
-| source_types | ARRAY | YES |  |
+| source_types | text[] | YES |  |
 | risultato | jsonb | NO | '{}'::jsonb |
-| stato | character varying | NO |  |
+| stato | character varying(16) | NO |  |
 | durata_ms | integer | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

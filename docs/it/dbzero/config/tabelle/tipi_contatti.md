@@ -10,12 +10,12 @@
 |---------|------|----------|---------|
 | id | integer | NO |  |
 | descrizione | text | NO |  |
-| codice_interno | character varying | NO |  |
+| codice_interno | character varying(10) | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
-| codice | character varying | NO |  |
+| codice | character varying(15) | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

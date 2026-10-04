@@ -12,7 +12,7 @@
 | preventivo_id | bigint | NO |  |
 | iva_id | integer | YES |  |
 | natura_id | integer | YES |  |
-| esigibilita | character | YES |  |
+| esigibilita | character(1) | YES |  |
 | split_payment | boolean | YES |  |
 | imponibile | numeric | NO | 0 |
 | imposta | numeric | NO | 0 |

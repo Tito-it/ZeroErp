@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice_interno | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice_interno | character varying(16) | NO |  |
+| descrizione | character varying(120) | NO |  |
 | schema_tabella | text | NO |  |
 | nome_tabella | text | NO |  |
 | colonna_numero | text | NO |  |
@@ -23,12 +23,12 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | presidia_data_documento | boolean | NO | true |
-| prefisso_default | character varying | YES |  |
+| prefisso_default | character varying(8) | YES |  |
 | lunghezza_default | integer | NO | 7 |
 | colonna_serie | text | YES |  |
 | ammette_regole_fiscali | boolean | NO | false |
 | anno_nel_numero_default | boolean | NO | false |
-| codice | character varying | NO |  |
+| codice | character varying(32) | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

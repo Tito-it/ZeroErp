@@ -9,11 +9,11 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| code_pattern | character varying | NO |  |
-| match_mode | character varying | NO | 'EXACT'::character varying |
-| target_schema | character varying | NO |  |
-| target_table | character varying | NO |  |
-| target_column | character varying | NO | 'codice_interno'::character varying |
+| code_pattern | character varying(200) | NO |  |
+| match_mode | character varying(10) | NO | 'EXACT'::character varying |
+| target_schema | character varying(63) | NO |  |
+| target_table | character varying(63) | NO |  |
+| target_column | character varying(63) | NO | 'codice_interno'::character varying |
 | enabled | boolean | NO | true |
 | note | text | YES |  |
 | data_insert | timestamp with time zone | NO | now() |

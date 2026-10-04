@@ -13,9 +13,9 @@
 | fattura_riga_rettificata_id | bigint | NO |  |
 | qta | numeric | NO |  |
 | qta_partita | numeric | NO |  |
-| gruppo | character varying | NO |  |
+| gruppo | character varying(128) | NO |  |
 | commessa_attivita_id | bigint | NO |  |
-| note | character varying | YES |  |
+| note | character varying(255) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |

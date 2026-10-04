@@ -12,7 +12,7 @@
 | fattura_sorgente_id | bigint | NO |  |
 | tipo_fondo_fattura_id | bigint | NO |  |
 | importo | numeric | NO |  |
-| stato | character varying | NO |  |
+| stato | character varying(20) | NO |  |
 | fattura_figlia_id | bigint | YES |  |
 | data_assegnazione | timestamp with time zone | YES |  |
 | user_assegnazione | text | YES |  |
@@ -28,7 +28,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
-| origine | character varying | NO | 'AUTOMATICA'::character varying |
+| origine | character varying(20) | NO | 'AUTOMATICA'::character varying |
 | motivo | text | YES |  |
 
 ## 🔒 Vincoli

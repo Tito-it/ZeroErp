@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | iva_id | integer | NO |  |
 | stato_id | integer | NO |  |
-| aliquota_override | numeric | NO |  |
+| aliquota_override | numeric(5,2) | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |

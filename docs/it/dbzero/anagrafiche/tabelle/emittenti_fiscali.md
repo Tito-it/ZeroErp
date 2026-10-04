@@ -11,12 +11,12 @@
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
 | soggetto_ruolo_id | bigint | NO |  |
-| codice | character varying | NO |  |
+| codice | character varying(32) | NO |  |
 | attivo | boolean | NO | true |
-| regime_fiscale_rf | character varying | NO | 'RF01'::character varying |
+| regime_fiscale_rf | character varying(8) | NO | 'RF01'::character varying |
 | bollo_auto | boolean | YES |  |
-| bollo_soglia | numeric | YES |  |
-| rounding_policy | character varying | YES |  |
+| bollo_soglia | numeric(12,2) | YES |  |
+| rounding_policy | character varying(16) | YES |  |
 | brand_meta | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |

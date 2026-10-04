@@ -30,7 +30,7 @@
 --  3) Emittente fittizio (2) diverso da emittente reale (1)
 --  4) fn_is_super_admin: utente OPERATORE non-SA → false
 --  5) fn_is_super_admin: utente inesistente → false (fail-closed)
---  6) fn_check_user_emittente_scope: NULL user → true (batch)
+--  6) fn_check_user_emittente_scope: NULL user → false (rev 2026-10-04, Q-1)
 --  7) fn_check_user_emittente_scope: ADMIN → true qualunque emittente
 --  8) fn_check_user_emittente_scope: OPERATIVO senza whitelist → false (P-2a)
 --  9) legacy fn_get_emittenti_scope: DISMESSA (asserzione girata di segno)
@@ -151,14 +151,16 @@ SELECT is(
 -- 2. fn_check_user_emittente_scope — casi base
 -- ============================================================
 
--- 6) NULL user_id → true (batch job)
+-- 6) NULL user_id → false. Rev 2026-10-04 (Q-1, brief-db-esclusioni-implicite):
+--    era true («batch job»), e con la veste OPERATORE e l'utente vuoto una
+--    sessione vedeva tutte le aziende.
 SELECT is(
     script.fn_check_user_emittente_scope(
         NULL,
         (SELECT emittente_id_1 FROM tmp_emittenti)
     ),
-    true,
-    '6) fn_check_user_emittente_scope: NULL user → true (batch job)'
+    false,
+    '6) fn_check_user_emittente_scope: NULL user → false (era true, «batch job»)'
 );
 
 -- 7) ADMIN → true per qualunque emittente.

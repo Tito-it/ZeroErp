@@ -11,17 +11,17 @@
 | id | bigint | NO |  |
 | offerta_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| tipo_eccezione | USER-DEFINED | NO |  |
-| tipo_erogazione | character varying | YES |  |
-| fonte_quantita_attesa | character varying | YES |  |
-| periodicita | character varying | YES |  |
-| generazione_canone | character varying | YES |  |
-| competenza_canone | character varying | YES |  |
-| prezzo_unitario | numeric | YES |  |
-| quantita | numeric | YES |  |
-| qta_operativa | numeric | YES |  |
+| tipo_eccezione | vendite.tipo_eccezione_contratto | NO |  |
+| tipo_erogazione | character varying(16) | YES |  |
+| fonte_quantita_attesa | character varying(32) | YES |  |
+| periodicita | character varying(32) | YES |  |
+| generazione_canone | character varying(32) | YES |  |
+| competenza_canone | character varying(32) | YES |  |
+| prezzo_unitario | numeric(18,6) | YES |  |
+| quantita | numeric(18,6) | YES |  |
+| qta_operativa | numeric(18,6) | YES |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | YES |  |
+| factor_to_base | numeric(18,8) | YES |  |
 | ordine | smallint | YES | 0 |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -30,7 +30,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
-| stato_approvazione_prezzo | USER-DEFINED | YES |  |
+| stato_approvazione_prezzo | config.stato_approvazione_prezzo | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
 
 ## 🔒 Vincoli
@@ -77,12 +77,12 @@
 | trg_offerte_commerciali_eccezioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_offerte_commerciali_eccezioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_offerte_commerciali_eccezioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
 | trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
+| trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
 | trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_aggiunta_fuori_listino('OFFERTA', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_aggiunta_fuori_listino('OFFERTA', 'offerta_id')` |
-| trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('offerta_id')` |
+| trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_figlio_bundle('OFFERTA', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_figlio_bundle('OFFERTA', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_senza_dati('offerta_id')` |

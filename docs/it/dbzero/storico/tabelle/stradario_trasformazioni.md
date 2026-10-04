@@ -11,7 +11,7 @@
 | id | integer | NO |  |
 | via_id_orig | integer | NO |  |
 | via_id_nuovo | integer | NO |  |
-| tipo_evento | character | NO |  |
+| tipo_evento | character(1) | NO |  |
 | data_evento | date | NO |  |
 | note | text | YES |  |
 | data_insert | timestamp with time zone | YES | now() |

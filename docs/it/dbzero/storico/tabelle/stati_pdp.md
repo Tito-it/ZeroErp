@@ -6,7 +6,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO | nextval('storico.stati_pdp_id_seq'::regclass) |
 | stati_pdp_id | bigint | NO |  |
-| change_type | character | YES | 'A'::bpchar |
+| change_type | character(1) | YES | 'A'::bpchar |
 | tipo_operazione | smallint | YES |  |
 | snapshot | jsonb | YES |  |
 | user_insert | text | YES | CURRENT_USER |

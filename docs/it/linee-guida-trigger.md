@@ -56,13 +56,47 @@ trg_<schema_opzionale>_<tabella>_<fase>_<descrizione_breve>_<eventi>
 
 ## Scelta tra `UPDATE` vs `UPDATE OF colonna`
 
-* Se la logica riguarda **solo una o poche colonne specifiche**, usa **`UPDATE OF colonna1[, colonna2]`** → **più efficiente** (il trigger non scatta se non cambiano quelle colonne).
-* Se la logica dipende dal **record intero** o da **più colonne** in combinazione, usa `UPDATE` **senza `OF`**.
+### Cosa fa davvero `UPDATE OF`
 
-**Standard Zero ERP**
+`UPDATE OF colonna` **non** vuol dire «quando la colonna cambia». Vuol dire
+«quando la colonna è **scritta nel `SET`** dell'istruzione». Da qui due
+conseguenze, ed entrambe mordono:
 
-* Validazioni su singola colonna → `UPDATE OF colonna`.
-* Trigger di storico/audit che reagiscono a qualsiasi modifica → `UPDATE` senza `OF`.
+| Caso | `UPDATE OF colonna` |
+| --- | --- |
+| `SET colonna = <stesso valore>` | **scatta**, anche se non cambia niente |
+| la colonna la cambia **un altro trigger `BEFORE`** (un ricalcolo, una normalizzazione, un default) | **non scatta**, anche se il valore è cambiato |
+| la colonna la cambia una FK `ON UPDATE CASCADE` | scatta (la cascata scrive un `UPDATE … SET`) |
+
+⛔ **Il secondo caso è quello pericoloso.** Un guard o una propagazione
+agganciati con `UPDATE OF` su una colonna **derivata** — scritta da un altro
+trigger `BEFORE` della stessa tabella — si aggirano cambiando la colonna da cui
+deriva. Caso reale, chiuso il 2026-10-04: sulle righe dei documenti `quantita`
+la calcola `trgfn_qta_from_operativa` da `qta_operativa`, e la propagazione ai
+componenti del kit era `AFTER UPDATE OF quantita`. Un `UPDATE` del solo
+`qta_operativa` (quello che fa il backend sui preventivi) cambiava la quantità
+del padre e lasciava i componenti con quella vecchia.
+
+### La regola
+
+* **Se il trigger reagisce a un CAMBIO di valore**, si scrive `UPDATE` senza `OF`
+  e il confronto si mette nel `WHEN`:
+  `WHEN (OLD.colonna IS DISTINCT FROM NEW.colonna)`.
+  Il `WHEN` vede la riga **dopo** i trigger `BEFORE` che vengono prima in ordine
+  alfabetico; in un trigger `AFTER` vede la riga **finale**. È la forma da usare
+  per le propagazioni e per i guard su colonne che altri trigger possono
+  scrivere.
+* **`UPDATE OF` resta giusto** quando la domanda è proprio «qualcuno ha
+  **chiesto** di scrivere questa colonna?», e la colonna non ha scrittori
+  automatici sulla stessa tabella. Esempi: il lock di colonna
+  (`trgfn_lock_columns`), un guard su una colonna che solo l'operatore compila.
+  Il guard confronta comunque `OLD` e `NEW` nel corpo, perché `UPDATE OF` scatta
+  anche a valore uguale.
+* Prima di agganciare un trigger con `UPDATE OF colonna`, si guarda se un altro
+  trigger `BEFORE` della tabella scrive `NEW.colonna`. Se sì, `OF` è la forma
+  sbagliata.
+* Se la logica dipende dal **record intero** (storico, audit), si usa `UPDATE`
+  senza `OF` e senza `WHEN`.
 
 ---
 
@@ -70,7 +104,7 @@ trg_<schema_opzionale>_<tabella>_<fase>_<descrizione_breve>_<eventi>
 
 * **`_a10`**: prima linea di difesa (check & block).
 * **`_z90`**: azioni finali “a valle” (es. storico).
-* **`OF colonna`** quando possibile per performance.
+* **`WHEN (OLD.x IS DISTINCT FROM NEW.x)`** per reagire a un cambio di valore; **`OF colonna`** solo per «la colonna è stata chiesta nel `SET`» (vedi sopra).
 * Nomi **brevi e descrittivi**.
 * Usare la funzione progetto per errori: `script.fn_log_and_raise_error(...)`.
 
@@ -79,7 +113,7 @@ trg_<schema_opzionale>_<tabella>_<fase>_<descrizione_breve>_<eventi>
 ## Checklist rapida (da usare nei PR)
 
 * [ ] Nome con prefisso `trg_`, `_schema(opzionale)_tabella_` e fase corretta (`_a10_` / `_z90_`).
-* [ ] Eventi coerenti (`_ins/_upd/_dlt`); usare `UPDATE OF colonna` quando possibile.
+* [ ] Eventi coerenti (`_ins/_upd/_dlt`). Con `UPDATE OF colonna`, verificato che nessun altro trigger `BEFORE` della tabella scriva quella colonna; per reagire a un cambio di valore si usa `WHEN (OLD.x IS DISTINCT FROM NEW.x)`.
 * [ ] In `_a10_` usata `script.fn_log_and_raise_error(...)`.
 * [ ] Ordine lessicografico rispettato (niente prefissi “casuali”).
 * [ ] Commenti/descrizioni chiari in SQL o Liquibase.

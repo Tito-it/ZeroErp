@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | integer | NO |  |
 | articolo_id | uuid | NO |  |
-| descrizione | character varying | NO |  |
+| descrizione | character varying(255) | NO |  |
 | ordine | smallint | NO | 0 |
 | attivo | boolean | NO | true |
 | user_insert | text | NO | CURRENT_USER |

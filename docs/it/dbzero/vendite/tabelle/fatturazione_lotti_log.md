@@ -12,7 +12,7 @@
 | lotto_id | bigint | NO |  |
 | data_ora | timestamp with time zone | NO | clock_timestamp() |
 | messaggio | text | NO |  |
-| status | character | NO | 'W'::bpchar |
+| status | character(1) | NO | 'W'::bpchar |
 | disabilitato | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |

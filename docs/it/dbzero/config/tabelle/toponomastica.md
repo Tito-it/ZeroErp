@@ -9,7 +9,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| descrizione | character varying | NO |  |
+| descrizione | character varying(100) | NO |  |
 | stato_id | integer | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

@@ -9,9 +9,9 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
-| tipo_conto | character | NO |  |
+| codice | character varying(20) | NO |  |
+| descrizione | character varying(100) | NO |  |
+| tipo_conto | character(1) | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |

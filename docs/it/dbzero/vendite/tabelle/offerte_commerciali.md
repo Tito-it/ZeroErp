@@ -17,8 +17,8 @@
 | utility_id | integer | NO |  |
 | listino_id | bigint | NO |  |
 | listino_versione_id | bigint | YES |  |
-| valore_variazione_globale | numeric | YES | 0 |
-| tipo_variazione_globale | character varying | YES |  |
+| valore_variazione_globale | numeric(10,4) | YES | 0 |
+| tipo_variazione_globale | character varying(16) | YES |  |
 | validita_dal | date | NO |  |
 | validita_al | date | YES |  |
 | stato_doc_offerta_id | bigint | NO |  |

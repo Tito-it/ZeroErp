@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| descrizione | character | NO |  |
-| sigla | character | NO |  |
+| descrizione | character(80) | NO |  |
+| sigla | character(10) | NO |  |
 | regione_id | integer | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

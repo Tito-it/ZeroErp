@@ -10,8 +10,8 @@
 |---------|------|----------|---------|
 | id | integer | NO |  |
 | utility_id | integer | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO | ''::character varying |
+| codice | character varying(20) | NO |  |
+| descrizione | character varying(200) | NO | ''::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

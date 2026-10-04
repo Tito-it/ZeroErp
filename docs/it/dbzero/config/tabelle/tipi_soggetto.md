@@ -8,13 +8,13 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| id | character varying(10) | NO |  |
+| descrizione | character varying(100) | NO |  |
 | user_insert | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | user_update | text | YES |  |
 | data_update | timestamp with time zone | YES |  |
-| natura_soggetto | USER-DEFINED | NO |  |
+| natura_soggetto | config.natura_soggetto_enum | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

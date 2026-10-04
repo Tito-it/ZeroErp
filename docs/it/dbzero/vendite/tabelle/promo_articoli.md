@@ -9,12 +9,12 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(64) | NO |  |
+| descrizione | character varying(255) | NO |  |
 | articolo_id | uuid | NO |  |
 | uom_id | bigint | NO |  |
-| tipo_variazione | character varying | NO |  |
-| valore_variazione | numeric | NO |  |
+| tipo_variazione | character varying(16) | NO |  |
+| valore_variazione | numeric(10,4) | NO |  |
 | valido_dal | date | NO |  |
 | valido_al | date | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |

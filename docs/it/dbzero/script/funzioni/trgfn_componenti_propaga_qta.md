@@ -18,9 +18,18 @@ DECLARE
     -- TG_ARGV[2]: col FK figli->padre (es. 'riga_preventivo_id')
     v_sql text;
 BEGIN
-    -- Guard difensivo: quantita non cambiata
-    -- (UPDATE OF quantita garantisce gia' il cambio, ma
-    -- il guard protegge da chiamate dirette accidentali)
+    -- Quantita' non cambiata: niente da propagare.
+    -- ⚠️ Rev 2026-10-04 (brief-db-esclusioni-implicite): qui c'era
+    --    scritto «UPDATE OF quantita garantisce gia' il cambio». E'
+    --    falso due volte: UPDATE OF scatta se la colonna e' nel SET,
+    --    anche a valore uguale, e NON scatta se la cambia un altro
+    --    trigger BEFORE. Su queste righe quantita la calcola
+    --    trgfn_qta_from_operativa da qta_operativa: cambiare solo
+    --    qta_operativa (come fa il backend sui preventivi) lasciava i
+    --    componenti con la quantita' vecchia. I trigger ora sono AFTER
+    --    UPDATE con WHEN (OLD.quantita IS DISTINCT FROM NEW.quantita),
+    --    che guarda la riga finale; questo controllo resta per le
+    --    chiamate dirette.
     IF NEW.quantita IS NOT DISTINCT FROM OLD.quantita THEN
         RETURN NULL;
     END IF;
@@ -43,7 +52,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_componenti_propaga_qta()
-IS 'Trigger function AFTER UPDATE OF quantita su riga padre: propaga quantita ai figli attivi come coeff_qta_snapshot * NEW.quantita. TG_ARGV[0]=schema [1]=tab_figli [2]=col_fk_figli->padre. Usata su 5 tabelle sorgente CASO A.';
+IS 'Trigger function AFTER UPDATE su riga padre, WHEN (OLD.quantita IS DISTINCT FROM NEW.quantita): propaga quantita ai figli attivi come coeff_qta_snapshot * NEW.quantita. TG_ARGV[0]=schema [1]=tab_figli [2]=col_fk_figli->padre. Usata su 5 tabelle sorgente CASO A (preventivi, ordini, DDT, contratti, eccezioni d''offerta). Rev 2026-10-04 (brief-db-esclusioni-implicite): i trigger erano AFTER UPDATE OF quantita, che non scatta quando quantita la riscrive un trigger BEFORE (trgfn_qta_from_operativa da qta_operativa): cambiare solo qta_operativa lasciava i componenti con la quantita'' vecchia.';
 ```
 
 ---

@@ -13,7 +13,7 @@
 | soggetto_ruolo_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | parent_account_id | bigint | YES |  |
-| codice | character varying | NO |  |
+| codice | character varying(30) | NO |  |
 | valido_dal | date | YES | CURRENT_DATE |
 | valido_al | date | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
@@ -25,7 +25,7 @@
 | fatturazione_ordini | character varying | NO | 'CONFERMATO'::character varying |
 | valuta_id | integer | YES |  |
 | categoria_cliente_id | smallint | NO |  |
-| canale_origine | USER-DEFINED | NO | 'ADMIN'::config.canale_origine |
+| canale_origine | config.canale_origine | NO | 'ADMIN'::config.canale_origine |
 | validita | daterange | NO |  |
 
 ## 🔒 Vincoli

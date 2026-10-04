@@ -1,0 +1,263 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_user_emittente_scope: con l'utente NULL risponde FALSE, non
+# piu' TRUE (decisione di Tid, 2026-10-04, Q-1).
+#
+# -- IL DIFETTO ---------------------------------------------------------
+#   Il ramo 1 diceva «nessun utente = job batch = vede tutto». Le policy
+#   ef_whitelist restavano chiuse solo perche' combinano la veste
+#   (app.ruolo_applicativo = 'OPERATORE') con questa funzione: una sessione
+#   con la veste impostata e app.current_user_id vuoto — un difetto del
+#   middleware, una connessione riusata — vedeva TUTTE le aziende. Su un
+#   ERP e' il difetto che non da' errore.
+#
+# -- PERCHE' ADESSO E' UN RESIDUO ---------------------------------------
+#   Il 2026-09-04 (brief processi automatici) il guard di scrittura
+#   trgfn_guard_emittente_scope ha tolto lo stesso ramo: senza utente passa
+#   solo chi bypasserebbe comunque la RLS (row_security_active = false:
+#   proprietario senza FORCE, superuser, BYPASSRLS), e il guard decide quel
+#   caso PRIMA di chiamare qui. I processi automatici hanno un'identita'. La
+#   lettura e' rimasta indietro.
+#
+# -- CHI CHIAMA CON UTENTE NULL (censiti il 2026-10-04) -----------------
+#   · le policy: con la veste e senza utente adesso non vedono niente.
+#     Owner, superuser e BYPASSRLS non passano dalle policy;
+#   · i verbi DEFINER che ricopiano il filtro (magazzino.fn_posta_*,
+#     fn_apri/libera_blocco, vendite.fn_cambia_stato_ddt, fn_conferma/
+#     annulla_reso): nessun job li chiama; senza utente rispondono «non
+#     trovato», e i magazzino rifiutano gia' prima (fn_guard_azione);
+#   · fn_check_user_can_create_ba, fn_resolve_emittente_for_user: entrano
+#     qui solo con l'emittente attivo valorizzato, cioe' da una richiesta;
+#   · trgfn_guard_emittente_scope: tratta da se' l'utente NULL, invariato.
+#   Stesso giro: fn_scope_ef_whitelist_via_efba (-83) e
+#   fn_get_emittenti_scope_sr_effettivo (-84), che ripetevano la regola.
+#
+# Brief: brief-db-esclusioni-implicite (Q-1).
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261004-82-update-fn-check-user-emittente-scope-utente-nullo-mctit.yaml
+
+  - changeSet:
+      id: 20261004-82-update-fn-check-user-emittente-scope-utente-nullo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_user_emittente_scope: utente NULL -> false (era true, «job batch»). Brief:
+        brief-db-esclusioni-implicite (Q-1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_user_emittente_scope'
+                 AND pg_get_function_identity_arguments(p.oid) = 'p_auth_user_id integer, p_emittente_fiscale_id bigint';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_cnt    integer;
+                  v_attivo bigint;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Verifica se un utente ha accesso a uno specifico
+                  --   emittente fiscale. Sede unica read+write: la usano gli
+                  --   adapter RLS e i trigger di guardia.
+                  --
+                  -- Regole (refactor §4.6.B.5, + emittente attivo 2026-08-04,
+                  --         + P-2a 2026-08-18):
+                  --   1. p_auth_user_id NULL -> FALSE  ⬅ cambiato il 2026-10-04 (Q-1)
+                  --   2. Emittente attivo diverso da quello richiesto -> false
+                  --      (restringe CHIUNQUE, anche il super admin)
+                  --   3. fn_is_super_admin -> true (vede tutto)
+                  --   4. Assenza identita OPERATORE attiva -> false
+                  --      (defensive: utente disabilitato non accede)
+                  --   5. Whitelist vuota -> FALSE  ⬅ cambiato da P-2a
+                  --   6. Whitelist popolata -> EXISTS match
+                  -- =========================================================
+
+                  -- 1. Nessun utente -> nessun accesso.
+                  --    ⚠️ Rev 2026-10-04 (Q-1, brief-db-esclusioni-implicite): era
+                  --    `RETURN true` («job batch»). Le policy restavano chiuse solo
+                  --    perche' chiedono ANCHE la veste OPERATORE: una sessione con la
+                  --    veste impostata e l'utente vuoto vedeva TUTTE le aziende. Il
+                  --    guard di scrittura (trgfn_guard_emittente_scope) aveva gia'
+                  --    tolto lo stesso ramo il 2026-09-04: senza utente passa solo chi
+                  --    bypassa comunque la RLS (row_security_active), e quella
+                  --    decisione la prende lui, prima di chiamare qui. Un processo
+                  --    legittimo dice chi e' (brief processi automatici).
+                  IF p_auth_user_id IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 2. Emittente attivo (impersonazione di scope).
+                  --    Deve precedere il ramo super admin: e' l'unico punto in
+                  --    cui la selezione puo' restringere chi vede tutto.
+                  --    IS DISTINCT FROM: con p_emittente_fiscale_id NULL
+                  --    (riferimento non risolto dagli adapter) resta fail-closed.
+                  v_attivo := NULLIF(
+                                  current_setting('app.current_emittente_id', true),
+                                  ''
+                              )::bigint;
+
+                  IF v_attivo IS NOT NULL
+                     AND p_emittente_fiscale_id IS DISTINCT FROM v_attivo THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 3. Super admin? Bypass totale.
+                  --    ⭐ L'unico attore legittimamente multi-emittente
+                  --       (decisione Tid 2026-08-17). Non toccato da P-2a.
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN true;
+                  END IF;
+
+                  -- 4. Identita OPERATORE attiva (helper DRY §4.6.B.0).
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 5. Conta righe whitelist
+                  SELECT count(*)
+                    INTO v_cnt
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = p_auth_user_id;
+
+                  -- ⚠️ Rev 2026-08-18 (P-2a): era `RETURN true` con il commento
+                  --   «nessuna restrizione». Un operatore senza riga aveva cosi'
+                  --   accesso a QUALUNQUE emittente — mentre lo stesso utente,
+                  --   sul lato scrittura, non poteva nemmeno creare un billing
+                  --   account (fn_check_user_can_create_ba). Le due letture non
+                  --   potevano essere entrambe intenzionali: la riga mancante e'
+                  --   un errore di configurazione, non un permesso.
+                  --   Brief perimetro-emittente §2.5.
+                  IF v_cnt = 0 THEN
+                      RETURN false;  -- nessun accesso: la riga manca
+                  END IF;
+
+                  -- 6. Verifica match specifico
+                  RETURN EXISTS (
+                      SELECT 1
+                        FROM config.user_emittenti_fiscali uef
+                       WHERE uef.auth_user_id         = p_auth_user_id
+                         AND uef.emittente_fiscale_id = p_emittente_fiscale_id
+                  );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
+              IS 'Verifica accesso utente a emittente fiscale. Sede unica read+write: la usano gli adapter RLS (fn_scope_ef_whitelist e famiglia), i verbi DEFINER che ricopiano il filtro e i trigger di guardia. Regole, in ordine: utente NULL -> false (rev 2026-10-04, Q-1: era true, «job batch»; con la veste OPERATORE e l''utente vuoto una sessione vedeva tutte le aziende. Il guard di scrittura aveva tolto lo stesso ramo il 2026-09-04 e decide da se'' il caso senza utente con row_security_active); emittente attivo (GUC app.current_emittente_id) diverso da quello richiesto -> false, PRIMA del bypass super admin (impersonazione di scope: solo restringente, mai allargante, rev 2026-08-04); super admin -> true; identita'' OPERATORE mancante -> false; whitelist vuota -> false (P-2a, 2026-08-18: la riga mancante e'' un errore di configurazione, non un permesso); altrimenti match EXISTS. Brief perimetro-emittente §2.5, brief-db-esclusioni-implicite Q-1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_cnt    integer;
+                  v_attivo bigint;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Verifica se un utente ha accesso a uno specifico
+                  --   emittente fiscale. Sede unica read+write: la usano gli
+                  --   adapter RLS e i trigger di guardia.
+                  --
+                  -- Regole (refactor §4.6.B.5, + emittente attivo 2026-08-04,
+                  --         + P-2a 2026-08-18):
+                  --   1. p_auth_user_id NULL -> true (job batch)
+                  --   2. Emittente attivo diverso da quello richiesto -> false
+                  --      (restringe CHIUNQUE, anche il super admin)
+                  --   3. fn_is_super_admin -> true (vede tutto)
+                  --   4. Assenza identita OPERATORE attiva -> false
+                  --      (defensive: utente disabilitato non accede)
+                  --   5. Whitelist vuota -> FALSE  ⬅ cambiato da P-2a
+                  --   6. Whitelist popolata -> EXISTS match
+                  -- =========================================================
+
+                  -- 1. Job batch (nessun utente)
+                  IF p_auth_user_id IS NULL THEN
+                      RETURN true;
+                  END IF;
+
+                  -- 2. Emittente attivo (impersonazione di scope).
+                  --    Deve precedere il ramo super admin: e' l'unico punto in
+                  --    cui la selezione puo' restringere chi vede tutto.
+                  --    IS DISTINCT FROM: con p_emittente_fiscale_id NULL
+                  --    (riferimento non risolto dagli adapter) resta fail-closed.
+                  v_attivo := NULLIF(
+                                  current_setting('app.current_emittente_id', true),
+                                  ''
+                              )::bigint;
+
+                  IF v_attivo IS NOT NULL
+                     AND p_emittente_fiscale_id IS DISTINCT FROM v_attivo THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 3. Super admin? Bypass totale.
+                  --    ⭐ L'unico attore legittimamente multi-emittente
+                  --       (decisione Tid 2026-08-17). Non toccato da P-2a.
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN true;
+                  END IF;
+
+                  -- 4. Identita OPERATORE attiva (helper DRY §4.6.B.0).
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 5. Conta righe whitelist
+                  SELECT count(*)
+                    INTO v_cnt
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = p_auth_user_id;
+
+                  -- ⚠️ Rev 2026-08-18 (P-2a): era `RETURN true` con il commento
+                  --   «nessuna restrizione». Un operatore senza riga aveva cosi'
+                  --   accesso a QUALUNQUE emittente — mentre lo stesso utente,
+                  --   sul lato scrittura, non poteva nemmeno creare un billing
+                  --   account (fn_check_user_can_create_ba). Le due letture non
+                  --   potevano essere entrambe intenzionali: la riga mancante e'
+                  --   un errore di configurazione, non un permesso.
+                  --   Brief perimetro-emittente §2.5.
+                  IF v_cnt = 0 THEN
+                      RETURN false;  -- nessun accesso: la riga manca
+                  END IF;
+
+                  -- 6. Verifica match specifico
+                  RETURN EXISTS (
+                      SELECT 1
+                        FROM config.user_emittenti_fiscali uef
+                       WHERE uef.auth_user_id         = p_auth_user_id
+                         AND uef.emittente_fiscale_id = p_emittente_fiscale_id
+                  );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
+              IS 'Verifica accesso utente a emittente fiscale. Refactor §4.6.B.5: NULL user/SUPER_ADMIN -> true; identita OPERATORE mancante -> false; altrimenti match EXISTS. Post 2026-08-04: se la GUC app.current_emittente_id e'' valorizzata e diversa dall''emittente richiesto -> false, PRIMA del bypass super admin (impersonazione di scope: solo restringente, mai allargante). Post 2026-08-18 (P-2a): whitelist VUOTA -> false e non piu'' true. Un operatore senza riga in config.user_emittenti_fiscali non ha accesso a nessun emittente: la riga mancante e'' un errore di configurazione, non un permesso. Allinea la lettura alla scrittura, che gia'' rifiutava lo stesso utente. Brief perimetro-emittente §2.5.';

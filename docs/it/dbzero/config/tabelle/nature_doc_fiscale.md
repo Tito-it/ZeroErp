@@ -9,9 +9,9 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice_interno | character varying | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice_interno | character varying(32) | NO |  |
+| codice | character varying(32) | NO |  |
+| descrizione | character varying(120) | NO |  |
 | attivo | boolean | NO | true |
 | ordine | smallint | NO | 0 |
 | meta | jsonb | NO | '{}'::jsonb |

@@ -14,7 +14,7 @@
 | stato_sdi_id | bigint | NO |  |
 | data_invio | timestamp with time zone | YES |  |
 | data_ricezione | timestamp with time zone | YES |  |
-| identificativo_sdi | character varying | YES |  |
+| identificativo_sdi | character varying(64) | YES |  |
 | nome_file | text | YES |  |
 | messaggio_errore | text | YES |  |
 | critical | boolean | NO | false |

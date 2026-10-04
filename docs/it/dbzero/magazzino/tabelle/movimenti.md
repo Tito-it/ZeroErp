@@ -11,8 +11,8 @@
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
 | magazzino_id | bigint | NO |  |
-| qta | numeric | NO |  |
-| costo_unitario | numeric | YES |  |
+| qta | numeric(18,6) | NO |  |
+| costo_unitario | numeric(18,6) | YES |  |
 | data_mov | timestamp with time zone | NO | now() |
 | causale_id | bigint | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |

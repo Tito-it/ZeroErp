@@ -12,7 +12,7 @@
 | fattura_id | bigint | NO |  |
 | numero_rata | smallint | NO |  |
 | data_scadenza | date | NO |  |
-| importo | numeric | NO |  |
+| importo | numeric(18,6) | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |

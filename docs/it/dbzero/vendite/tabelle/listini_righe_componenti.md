@@ -13,7 +13,7 @@
 | articolo_componente_id | uuid | NO |  |
 | articolo_padre_id | uuid | NO |  |
 | articolo_figlio_id | uuid | NO |  |
-| prezzo | numeric | NO |  |
+| prezzo | numeric(18,6) | NO |  |
 | iva_id | bigint | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |

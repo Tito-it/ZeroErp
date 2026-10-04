@@ -10,10 +10,10 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | documento_generato_id | bigint | NO |  |
-| evento_tipo | character varying | NO |  |
+| evento_tipo | character varying(60) | NO |  |
 | evento_at | timestamp with time zone | NO | now() |
 | user_id | integer | YES |  |
-| esito | character varying | NO | 'OK'::character varying |
+| esito | character varying(30) | NO | 'OK'::character varying |
 | messaggio | text | YES |  |
 | detail | jsonb | NO | '{}'::jsonb |
 | meta | jsonb | NO | '{}'::jsonb |

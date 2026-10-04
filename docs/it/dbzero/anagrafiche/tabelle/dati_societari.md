@@ -10,14 +10,14 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | soggetto_id | uuid | NO |  |
-| capitale_sociale | numeric | NO |  |
+| capitale_sociale | numeric(15,2) | NO |  |
 | id_prov_iscri_rea | integer | NO |  |
-| iscrizione_rea | character varying | NO |  |
-| socio_unico | USER-DEFINED | NO | 'SU'::anagrafiche.socio_unico_enum |
-| liquidazione | USER-DEFINED | NO | 'LN'::anagrafiche.liquidazione_enum |
-| destinatario_fe | character | NO |  |
-| pec_fatturazione | character varying | YES |  |
-| codice_sdi | character varying | YES |  |
+| iscrizione_rea | character varying(30) | NO |  |
+| socio_unico | anagrafiche.socio_unico_enum | NO | 'SU'::anagrafiche.socio_unico_enum |
+| liquidazione | anagrafiche.liquidazione_enum | NO | 'LN'::anagrafiche.liquidazione_enum |
+| destinatario_fe | character(10) | NO |  |
+| pec_fatturazione | character varying(100) | YES |  |
+| codice_sdi | character varying(10) | YES |  |
 | data_costituzione | date | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

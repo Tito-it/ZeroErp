@@ -17,13 +17,13 @@
 | sorgente_uid | text | NO |  |
 | sorgente_riga | bigint | YES |  |
 | progressivo_sorgente | integer | NO |  |
-| stato | character varying | NO | 'GENERATO'::character varying |
+| stato | character varying(30) | NO | 'GENERATO'::character varying |
 | titolo | text | NO |  |
 | nome_file | text | NO |  |
 | context_json | jsonb | NO |  |
-| context_hash | character varying | NO |  |
-| template_hash | character varying | NO |  |
-| pdf_hash | character varying | NO |  |
+| context_hash | character varying(64) | NO |  |
+| template_hash | character varying(64) | NO |  |
+| pdf_hash | character varying(64) | NO |  |
 | generato_da_user_id | integer | YES |  |
 | generato_at | timestamp with time zone | NO | now() |
 | emittente_fiscale_id | bigint | NO |  |

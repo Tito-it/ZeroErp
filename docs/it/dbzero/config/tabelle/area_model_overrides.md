@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| app_label | character varying | NO |  |
-| model_name | character varying | NO |  |
+| app_label | character varying(100) | NO |  |
+| model_name | character varying(100) | NO |  |
 | area_id | integer | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | trasferimento_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| qta | numeric | NO |  |
+| qta | numeric(18,6) | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |

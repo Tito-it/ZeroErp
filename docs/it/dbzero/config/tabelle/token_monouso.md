@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| token_hash | character varying | NO |  |
-| tipo | character varying | NO |  |
+| token_hash | character varying(128) | NO |  |
+| tipo | character varying(50) | NO |  |
 | auth_user_id | integer | NO |  |
 | scadenza | timestamp with time zone | NO |  |
 | utilizzato | boolean | NO | false |

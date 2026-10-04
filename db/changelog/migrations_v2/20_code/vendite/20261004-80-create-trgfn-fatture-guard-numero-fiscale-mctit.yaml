@@ -1,0 +1,173 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE vendite.trgfn_fatture_guard_numero_fiscale: una fattura che ha un
+# numero fiscale non si cancella, e la sua identita' fiscale (registro, anno,
+# serie, numero) non cambia piu' (decisione di Tid, 2026-10-04, Q-4).
+#
+# -- LA REGOLA ----------------------------------------------------------
+#   La numerazione consuma un progressivo del registro e non torna indietro.
+#   Una fattura numerata che sparisce, o che cambia numero, lascia un buco
+#   nella sequenza fiscale. La regola c'era gia', ma solo nelle CHECK dei
+#   percorsi che cancellano (E_LOTTO_FATTURE_NUMERATE nel ritorno a DRAFT e
+#   nell'annullo del lotto, E_FATTURA_GIA_NUMERATA nell'eliminazione dal
+#   lotto). Adesso la tiene la tabella, per chiunque scriva.
+#
+# -- IL DIFETTO ---------------------------------------------------------
+#   1. La corsa. fn_riporta_lotto_a_draft (e le due sorelle) controllano
+#      «nessuna fattura numerata» PRIMA del lock, e il lock nomina la coppia
+#      (funzione, lotto): la numerazione (fn_assign_numero_fattura) blocca
+#      solo la riga della fattura e non lo prende mai. Il cleanup cancella
+#      poi con `WHERE id = ANY(...)`, senza `numero IS NULL`. Una numerazione
+#      che si chiude fra il controllo e la DELETE produce una fattura
+#      numerata cancellata. Nessun guard BEFORE DELETE la fermava: su
+#      vendite.fatture c'era solo lo storico.
+#   2. Il retro. `numero` non e' sotto lock di colonna (il lock generico
+#      blocca anche NULL -> valore, cioe' la numerazione stessa) e nessun
+#      guard lo legge: in EMESSA, prima del congelamento, un UPDATE poteva
+#      togliere il numero e una DELETE successiva passare comunque. Chiudere
+#      la sola DELETE avrebbe lasciato aperta la porta accanto.
+#
+# -- LA FORMA -----------------------------------------------------------
+#   · il discriminante e' OLD.numero, non lo stato: la fattura e' numerata
+#     mentre e' ancora EMESSA (pre-fiscale), e una soglia per stato
+#     lascerebbe una finestra. E' la scelta dei due fratelli
+#     (trgfn_fatture_guard_data_numerata, trgfn_fatture_numerata_non_annulabile);
+#   · la numerazione passa: parte da numero NULL e il WHEN del trigger
+#     (OLD.numero IS NOT NULL) la lascia fuori;
+#   · un UPDATE che non tocca registro/anno/serie/numero passa (note,
+#     snapshot, stato: ciascuno ha i suoi guard);
+#   · nessuna GUC di bypass: e' un invariante fiscale, non una regola di
+#     manutenzione (Q-2 del documento di valutazione);
+#   · nessuna fn_check_*: le tre CHECK dei percorsi esistono gia' e spengono
+#     i pulsanti col motivo. Questo e' la rete sotto: raggiungerlo vuol dire
+#     una corsa o un chiamante che non ha chiesto, quindi si solleva il codice
+#     diretto (linee-guida-sql §5, «la domanda che viene PRIMA»);
+#   · il trigger (20261004-81) sta nella fascia _a05_: «questa fattura non si
+#     tocca» parla prima dei guard _a10_ sull'UPDATE e prima dello storico
+#     _z90_ sulla DELETE.
+#
+# -- SCRITTORI censiti il 2026-10-04 -----------------------------------
+#   DELETE: solo vendite.fn_cleanup_fatture_by_ids (chiamato da
+#   fn_riporta_lotto_a_draft, fn_annulla_lotto_da_draft,
+#   fn_elimina_fattura_da_lotto, che rifiutano gia' le numerate). Nessuna FK
+#   con ON DELETE CASCADE verso fatture, nessuna DELETE nel backend.
+#   registro/anno/serie/numero: solo vendite.fn_assign_numero_fattura, da
+#   numero NULL. Il backend non li scrive.
+#
+# Brief: brief-db-esclusioni-implicite (Q-4).
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261004-80-create-trgfn-fatture-guard-numero-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20261004-80-create-trgfn-fatture-guard-numero-fiscale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_fatture_guard_numero_fiscale: una fattura numerata non si cancella
+        (E_FATTURA_NUMERATA_NON_CANCELLABILE) e non cambia registro, anno, serie o numero
+        (E_FATTURA_NUMERO_NON_MODIFICABILE). Brief: brief-db-esclusioni-implicite (Q-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'trgfn_fatture_guard_numero_fiscale';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.trgfn_fatture_guard_numero_fiscale()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: una fattura che ha un numero fiscale non si cancella, e
+              --   la sua identita' fiscale (registro, anno, serie, numero) non
+              --   cambia piu'. La numerazione consuma un progressivo che non
+              --   torna indietro: una numerata che sparisce, o che cambia
+              --   numero, lascia un buco nella sequenza.
+              -- Uso:   BEFORE UPDATE OR DELETE FOR EACH ROW
+              --        WHEN (OLD.numero IS NOT NULL), fascia _a05_.
+              -- Il discriminante e' OLD.numero, non lo stato: la fattura e'
+              --   numerata mentre e' ancora EMESSA, e una soglia per stato
+              --   lascerebbe una finestra (come i due fratelli: data numerata,
+              --   numerata non annullabile). Nessuna GUC di bypass.
+              DECLARE
+                  v_cambiate text[];
+              BEGIN
+                  IF TG_OP = 'DELETE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME::text,
+                          'E_FATTURA_NUMERATA_NON_CANCELLABILE',
+                          jsonb_build_object(
+                              'fattura_id',  OLD.id,
+                              'registro_id', OLD.registro_id,
+                              'anno',        OLD.anno,
+                              'serie',       OLD.serie,
+                              'numero',      OLD.numero,
+                              -- ⭐ Il bersaglio: la fattura su cui l'errore e'
+                              --    successo. Chi cancella la vede: altrimenti
+                              --    la RLS avrebbe gia' tolto la riga dalla DELETE.
+                              'bersaglio', jsonb_build_array(
+                                  jsonb_build_object('tipo', 'FATTURA',
+                                                     'id',   OLD.id::text))),
+                          NULL::uuid,
+                          -- Nel messaggio il NUMERO, non l'id: e' quello che
+                          -- compare sul documento.
+                          OLD.numero::text);
+                      RETURN OLD;
+                  END IF;
+
+                  v_cambiate := array_remove(ARRAY[
+                      CASE WHEN NEW.registro_id IS DISTINCT FROM OLD.registro_id THEN 'registro_id' END,
+                      CASE WHEN NEW.anno        IS DISTINCT FROM OLD.anno        THEN 'anno'        END,
+                      CASE WHEN NEW.serie       IS DISTINCT FROM OLD.serie       THEN 'serie'       END,
+                      CASE WHEN NEW.numero      IS DISTINCT FROM OLD.numero      THEN 'numero'      END
+                  ], NULL);
+
+                  -- Un UPDATE che non tocca l'identita' fiscale passa: note,
+                  -- snapshot e stato hanno ciascuno i propri guard.
+                  IF cardinality(v_cambiate) = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      TG_NAME::text,
+                      'E_FATTURA_NUMERO_NON_MODIFICABILE',
+                      jsonb_build_object(
+                          'fattura_id',  OLD.id,
+                          'registro_id', OLD.registro_id,
+                          'anno',        OLD.anno,
+                          'serie',       OLD.serie,
+                          'numero',      OLD.numero,
+                          'colonne',     to_jsonb(v_cambiate),
+                          'bersaglio', jsonb_build_array(
+                              jsonb_build_object('tipo', 'FATTURA',
+                                                 'id',   OLD.id::text))),
+                      NEW.tx_id,
+                      OLD.numero::text);
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fatture_guard_numero_fiscale()
+              IS 'Guard: una fattura che ha un numero fiscale non si cancella (E_FATTURA_NUMERATA_NON_CANCELLABILE) e non cambia registro_id, anno, serie o numero (E_FATTURA_NUMERO_NON_MODIFICABILE), entrambi CONFLITTO_STATO. La numerazione consuma un progressivo del registro che non torna indietro: una numerata che sparisce, o che cambia numero, lascia un buco nella sequenza fiscale. Il discriminante e'' OLD.numero, non lo stato (la fattura e'' numerata mentre e'' ancora EMESSA), come in trgfn_fatture_guard_data_numerata e trgfn_fatture_numerata_non_annulabile. La numerazione (fn_assign_numero_fattura, da numero NULL) resta fuori per il WHEN del trigger; un UPDATE che non tocca l''identita'' fiscale passa. Nessuna GUC di bypass: e'' un invariante fiscale. E'' la rete sotto le tre check dei percorsi che cancellano (E_LOTTO_FATTURE_NUMERATE, E_FATTURA_GIA_NUMERATA): chiude la corsa fra il loro controllo, che gira prima del lock, e la DELETE di fn_cleanup_fatture_by_ids, e il retro per cui un UPDATE poteva togliere il numero prima della DELETE. Trigger trg_fatture_a05_guard_numero_fiscale_upd_dlt, BEFORE UPDATE OR DELETE, WHEN (OLD.numero IS NOT NULL). Contesto: fattura_id, registro_id, anno, serie, numero, colonne (solo UPDATE), bersaglio. Nasce il 2026-10-04, brief-db-esclusioni-implicite Q-4 (decisione di Tid).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_fatture_guard_numero_fiscale();

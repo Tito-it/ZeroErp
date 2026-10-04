@@ -14,13 +14,13 @@
 | indirizzo_dettaglio_id | bigint | YES |  |
 | indirizzo_libero | text | YES |  |
 | stato_id | integer | YES |  |
-| administrative_area | character varying | YES |  |
-| locality | character varying | YES |  |
-| sublocality | character varying | YES |  |
-| postal_box | character varying | YES |  |
+| administrative_area | character varying(100) | YES |  |
+| locality | character varying(100) | YES |  |
+| sublocality | character varying(100) | YES |  |
+| postal_box | character varying(20) | YES |  |
 | comune_id | integer | YES |  |
 | codice_postale_id | integer | YES |  |
-| geoloc | USER-DEFINED | YES |  |
+| geoloc | geometry(Point,4326) | YES |  |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |

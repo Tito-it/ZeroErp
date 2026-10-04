@@ -14,13 +14,13 @@
 | ddt_riga_id | bigint | NO |  |
 | ordine_riga_id | bigint | YES |  |
 | articolo_id | uuid | NO |  |
-| descrizione | character varying | NO |  |
+| descrizione | character varying(255) | NO |  |
 | quantita | numeric | NO |  |
 | qta_operativa | numeric | YES |  |
 | uom_operativa_id | bigint | YES |  |
 | factor_to_base | numeric | NO | 1 |
 | tipo_reso_id | bigint | NO |  |
-| motivo | character varying | YES |  |
+| motivo | character varying(255) | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |

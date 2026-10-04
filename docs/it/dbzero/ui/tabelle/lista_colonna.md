@@ -10,17 +10,17 @@
 |---------|------|----------|---------|
 | id | integer | NO |  |
 | lista_id | integer | NO |  |
-| codice | character varying | NO |  |
-| etichetta | character varying | NO |  |
-| etichetta_estesa | character varying | YES |  |
-| campo_sorgente | character varying | YES |  |
-| tipo_colonna | USER-DEFINED | NO | 'informazione'::ui.tipo_colonna |
-| tipo_dato | USER-DEFINED | NO |  |
-| formato | character varying | YES |  |
+| codice | character varying(80) | NO |  |
+| etichetta | character varying(120) | NO |  |
+| etichetta_estesa | character varying(200) | YES |  |
+| campo_sorgente | character varying(120) | YES |  |
+| tipo_colonna | ui.tipo_colonna | NO | 'informazione'::ui.tipo_colonna |
+| tipo_dato | ui.tipo_dato | NO |  |
+| formato | character varying(40) | YES |  |
 | larghezza_default | integer | YES |  |
 | ordine_default | integer | NO |  |
-| allineamento | USER-DEFINED | NO | 'left'::ui.allineamento_colonna |
-| gruppo | character varying | YES |  |
+| allineamento | ui.allineamento_colonna | NO | 'left'::ui.allineamento_colonna |
+| gruppo | character varying(60) | YES |  |
 | gruppo_ordine | integer | YES |  |
 | filtrabile | boolean | NO | true |
 | ordinabile | boolean | NO | true |
@@ -29,10 +29,10 @@
 | sensibile | boolean | NO | false |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO |  |
+| user_insert | character varying(80) | NO |  |
 | data_update | timestamp with time zone | YES |  |
-| user_update | character varying | YES |  |
-| etichetta_i18n_key | character varying | YES |  |
+| user_update | character varying(80) | YES |  |
+| etichetta_i18n_key | character varying(120) | YES |  |
 | priorita | smallint | NO | 50 |
 
 ## 🔒 Vincoli

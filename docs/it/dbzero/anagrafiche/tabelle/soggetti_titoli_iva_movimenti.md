@@ -10,12 +10,12 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | titolo_iva_id | bigint | NO |  |
-| tipo_movimento | character varying | NO |  |
-| imponibile | numeric | NO |  |
+| tipo_movimento | character varying(24) | NO |  |
+| imponibile | numeric(15,2) | NO |  |
 | data_movimento | date | NO |  |
 | fattura_id | bigint | YES |  |
 | fattura_riga_id | bigint | YES |  |
-| motivo | character varying | YES |  |
+| motivo | character varying(255) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |

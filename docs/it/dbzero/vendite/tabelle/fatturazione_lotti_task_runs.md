@@ -12,13 +12,13 @@
 | lotto_id | bigint | NO |  |
 | pipeline_id | bigint | YES |  |
 | stato_doc_fiscale_id | integer | YES |  |
-| task_code | character varying | NO |  |
-| fase | character varying | YES |  |
+| task_code | character varying(64) | NO |  |
+| fase | character varying(255) | YES |  |
 | tentativo | smallint | NO | 1 |
-| task_stato | character varying | NO | 'IN_ESECUZIONE'::character varying |
+| task_stato | character varying(16) | NO | 'IN_ESECUZIONE'::character varying |
 | started_at | timestamp with time zone | NO | clock_timestamp() |
 | ended_at | timestamp with time zone | YES |  |
-| error_code | character varying | YES |  |
+| error_code | character varying(64) | YES |  |
 | error_message | text | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | attivo | boolean | NO | true |

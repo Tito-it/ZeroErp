@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | commessa_attivita_id | bigint | NO |  |
-| evento | character varying | NO |  |
+| evento | character varying(64) | NO |  |
 | dettaglio | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |

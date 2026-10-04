@@ -11,10 +11,10 @@
 | id | bigint | NO |  |
 | preventivo_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| descrizione | character varying | YES |  |
-| quantita | numeric | YES |  |
-| prezzo_unitario | numeric | NO |  |
-| sconto_percentuale | numeric | YES | 0 |
+| descrizione | character varying(200) | YES |  |
+| quantita | numeric(18,6) | YES |  |
+| prezzo_unitario | numeric(15,6) | NO |  |
+| sconto_percentuale | numeric(7,4) | YES | 0 |
 | iva_id | integer | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | ordine | smallint | YES | 0 |
@@ -23,10 +23,10 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
-| qta_operativa | numeric | NO |  |
+| qta_operativa | numeric(18,6) | NO |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | YES |  |
-| stato_approvazione_prezzo | USER-DEFINED | YES |  |
+| factor_to_base | numeric(18,6) | YES |  |
+| stato_approvazione_prezzo | config.stato_approvazione_prezzo | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
 | tx_id | uuid | YES |  |
 | natura_vendita_id | bigint | YES |  |
@@ -69,14 +69,14 @@
 | trg_preventivi_righe_a10_preventivi_righe_componenti_blo_4c13d0 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe_componenti', 'riga_preventivo_id', 'id', 'attivo')` |
 | trg_preventivi_righe_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true')` |
 | trg_preventivi_righe_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true')` |
-| trg_preventivi_righe_a10_set_natura_vendita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita()` |
 | trg_preventivi_righe_a10_set_natura_vendita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita()` |
+| trg_preventivi_righe_a10_set_natura_vendita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita()` |
 | trg_preventivi_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_preventivi_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_preventivi_righe_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_preventivi_righe_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_preventivi_righe_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_preventivi_righe_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_preventivi_righe_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_preventivi_righe_z90_propaga_qta_componenti_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_componenti_propaga_qta('vendite', 'preventivi_righe_componenti', 'riga_preventivo_id')` |
 | trg_preventivi_righe_z90_ricalcola_totali_dlt | AFTER | DELETE | `EXECUTE FUNCTION vendite.trgfn_preventivi_righe_ricalcola_totali()` |
 | trg_preventivi_righe_z90_ricalcola_totali_ins | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_righe_ricalcola_totali()` |

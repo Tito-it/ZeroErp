@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | smallint | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(32) | NO |  |
+| descrizione | character varying(255) | NO |  |
 | partecipa_promo | boolean | NO | true |
 | ordinamento | smallint | NO | 100 |
 | meta | jsonb | NO | '{}'::jsonb |

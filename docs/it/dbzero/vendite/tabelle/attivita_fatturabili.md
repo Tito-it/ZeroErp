@@ -13,7 +13,7 @@
 | billing_account_id | bigint | NO |  |
 | istanza_utility_id | bigint | NO |  |
 | data_attivita | date | NO |  |
-| quantita | numeric | NO |  |
+| quantita | numeric(18,6) | NO |  |
 | competenza_mese | date | NO |  |
 | approvato | boolean | YES | false |
 | meta | jsonb | YES | '{}'::jsonb |
@@ -26,39 +26,39 @@
 | sorgente_riga | bigint | YES | 0 |
 | posticipa_al | date | YES |  |
 | sospesa | boolean | YES | false |
-| exclude_reason | character varying | YES |  |
+| exclude_reason | character varying(200) | YES |  |
 | lock_in_fatturazione | boolean | YES | false |
 | lock_batch_id | uuid | YES |  |
 | fattura_riga_id | bigint | YES |  |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
 | uom_id | bigint | YES |  |
-| qta_operativa | numeric | YES |  |
+| qta_operativa | numeric(18,6) | YES |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | NO | 1 |
+| factor_to_base | numeric(18,6) | NO | 1 |
 | valuta_id | integer | YES |  |
-| prezzo_unitario | numeric | YES |  |
+| prezzo_unitario | numeric(20,8) | YES |  |
 | attivita_consumi_id | bigint | YES |  |
 | uid | uuid | NO | uuidv7() |
 | tipo_doc_fiscale_id | bigint | YES |  |
 | competenza_dal | date | NO |  |
 | competenza_al | date | NO |  |
 | area_geografica_id | bigint | YES |  |
-| stato_esecuzione | character varying | YES |  |
+| stato_esecuzione | character varying(16) | YES |  |
 | prezzo_bloccato | boolean | NO | false |
 | commessa_id | bigint | NO |  |
 | commessa_attivita_id | bigint | NO |  |
 | sorgente_origine_tipo_id | bigint | YES |  |
 | listino_riga_id | bigint | YES |  |
-| prezzo_base_snapshot | numeric | YES |  |
-| origine_prezzo | character varying | YES |  |
-| tipo_variazione_applicata | character varying | YES |  |
-| valore_variazione_applicata | numeric | YES |  |
+| prezzo_base_snapshot | numeric(22,10) | YES |  |
+| origine_prezzo | character varying(32) | YES |  |
+| tipo_variazione_applicata | character varying(16) | YES |  |
+| valore_variazione_applicata | numeric(10,4) | YES |  |
 | promo_id | bigint | YES |  |
 | contratto_id | bigint | YES |  |
 | categoria_cliente_id_snapshot | smallint | YES |  |
 | classe_utenza_id_snapshot | integer | YES |  |
-| tipo_movimento | character varying | NO | 'NORMALE'::character varying |
+| tipo_movimento | character varying(32) | NO | 'NORMALE'::character varying |
 | natura_doc_id | bigint | NO | config.fn_get_natura_doc_fiscale_id('FATTURA'::character varying) |
 | fattura_riga_rettificata_id | bigint | YES |  |
 | fatturato | boolean | NO |  |

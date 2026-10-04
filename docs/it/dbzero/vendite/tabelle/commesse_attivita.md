@@ -10,15 +10,15 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | commessa_id | bigint | NO |  |
-| segment_key | character varying | NO |  |
+| segment_key | character varying(128) | NO |  |
 | articolo_id | uuid | NO |  |
 | istanza_utility_id | bigint | NO |  |
 | data_attivita | date | NO |  |
 | uom_id | bigint | NO |  |
-| quantita | numeric | NO |  |
-| qta_operativa | numeric | YES |  |
+| quantita | numeric(18,6) | NO |  |
+| qta_operativa | numeric(18,6) | YES |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | NO | 1 |
+| factor_to_base | numeric(18,10) | NO | 1 |
 | competenza_mese | date | NO |  |
 | competenza_dal | date | NO |  |
 | competenza_al | date | NO |  |
@@ -27,12 +27,12 @@
 | valuta_id | integer | YES |  |
 | area_geografica_id | bigint | YES |  |
 | listino_versione_id | bigint | YES |  |
-| prezzo_snapshot | numeric | NO |  |
+| prezzo_snapshot | numeric(22,10) | NO |  |
 | prezzo_bloccato | boolean | NO | false |
-| pricing_mode | character varying | NO | 'FIXED'::character varying |
+| pricing_mode | character varying(16) | NO | 'FIXED'::character varying |
 | prezzo_da_riallineare | boolean | NO | false |
-| stato_approvazione | character varying | NO | 'BOZZA'::character varying |
-| stato_emissione | character varying | NO | 'NON_EMESSA'::character varying |
+| stato_approvazione | character varying(16) | NO | 'BOZZA'::character varying |
+| stato_emissione | character varying(16) | NO | 'NON_EMESSA'::character varying |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | text | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -43,15 +43,15 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | listino_riga_id | bigint | YES |  |
-| prezzo_base_snapshot | numeric | YES |  |
-| origine_prezzo | character varying | YES |  |
-| tipo_variazione_applicata | character varying | YES |  |
-| valore_variazione_applicata | numeric | YES |  |
+| prezzo_base_snapshot | numeric(22,10) | YES |  |
+| origine_prezzo | character varying(32) | YES |  |
+| tipo_variazione_applicata | character varying(16) | YES |  |
+| valore_variazione_applicata | numeric(10,4) | YES |  |
 | promo_id | bigint | YES |  |
 | contratto_id | bigint | YES |  |
 | categoria_cliente_id_snapshot | smallint | YES |  |
 | classe_utenza_id_snapshot | integer | YES |  |
-| tipo_movimento | character varying | NO | 'NORMALE'::character varying |
+| tipo_movimento | character varying(32) | NO | 'NORMALE'::character varying |
 | causale_onere_id | bigint | YES |  |
 | natura_doc_id | bigint | NO | config.fn_get_natura_doc_fiscale_id('FATTURA'::character varying) |
 | fattura_riga_rettificata_id | bigint | YES |  |

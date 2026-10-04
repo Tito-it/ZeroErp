@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
 | anno | smallint | YES |  |
-| numero | character varying | YES |  |
+| numero | character varying(32) | YES |  |
 | data | date | NO | CURRENT_DATE |
 | stato_doc_reso_id | bigint | NO |  |
 | sorgente_tipo_id | bigint | NO |  |

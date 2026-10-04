@@ -8,6 +8,7 @@
 --
 -- Elenco test:
 --  1) GUC app.current_user_id assente -> INSERT passa, nessun mapping
+--     (rev 2026-10-04: senza RETURNING, vedi il test)
 --  2) Operatore con EF assegnato -> INSERT passa, mapping specifico creato
 --  3) Mapping non duplicato (idempotenza)
 --  4) Super admin senza emittente di lavoro + esistono emittenti -> INSERT bloccata
@@ -179,6 +180,14 @@ CREATE TEMP TABLE tmp_link_results (
 -- ============================================================
 SELECT set_config('app.current_user_id', '', true);
 
+-- ⚠️ Rev 2026-10-04 (Q-1, brief-db-esclusioni-implicite): l'id si prende
+--   PRIMA, dalla sequenza, e l'INSERT non ha RETURNING. Con la veste OPERATORE
+--   e l'utente vuoto la policy di lettura rls_billing_account_ef_whitelist
+--   (fn_scope_ef_whitelist_via_efba) risponde ora FALSE — prima diceva TRUE,
+--   «attore nullo = nessun filtro» — e il RETURNING, che passa dalla policy di
+--   lettura, verrebbe rifiutato. Il soggetto del test resta il trigger
+--   d'aggancio: la scrittura passa (WITH CHECK della policy _ins, solo veste),
+--   e il mapping si conta su emittenti_fiscali_billing_account, senza RLS.
 DO $$
 DECLARE
     v_template tmp_link_templates%ROWTYPE;
@@ -193,20 +202,22 @@ BEGIN
     -- Nessuna DELETE del «template»: lo slot e' un'istanza NUOVA, la UNIQUE
     -- (istanza_utility_id, utility_id) non e' in gioco. Vedi la nota del seed.
 
+    v_new_id := nextval('anagrafiche.billing_account_id_seq');
+
     INSERT INTO anagrafiche.billing_account (
-        codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
+        id, codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
         -- NOT NULL arrivata dopo la scrittura di questo file.
         categoria_cliente_id
     )
     VALUES (
+        v_new_id,
         'PGTAP-AUTOLINK-1-' || floor(random()*1e9)::text,
         v_template.istanza_utility_id,
         v_template.soggetto_ruolo_id,
         v_template.utility_id,
         v_template.valido_dal,
         (SELECT id FROM anagrafiche.categorie_clienti WHERE codice_interno = 'STANDARD')
-    )
-    RETURNING id INTO v_new_id;
+    );
 
     SELECT COUNT(*)::int INTO v_mapping_count
       FROM anagrafiche.emittenti_fiscali_billing_account

@@ -13,8 +13,8 @@
 |---------|------|----------|---------|
 | id | integer | NO |  |
 | area_id | integer | NO |  |
-| permission_codename | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| permission_codename | character varying(100) | NO |  |
+| descrizione | character varying(200) | NO |  |
 | pericolosa | boolean | NO | false |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -22,7 +22,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
-| livello_minimo_area | USER-DEFINED | NO | 'TUTTO'::config.livello_accesso |
+| livello_minimo_area | config.livello_accesso | NO | 'TUTTO'::config.livello_accesso |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

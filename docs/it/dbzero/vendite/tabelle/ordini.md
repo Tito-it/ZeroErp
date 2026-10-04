@@ -12,18 +12,18 @@
 | uid | uuid | NO | uuidv7() |
 | soggetto_ruolo_id | bigint | NO |  |
 | billing_account_id | bigint | YES |  |
-| serie | character varying | YES |  |
-| numero | character varying | YES |  |
+| serie | character varying(8) | YES |  |
+| numero | character varying(20) | YES |  |
 | anno | smallint | YES |  |
 | data | date | NO | CURRENT_DATE |
 | stato_doc_ordine_id | bigint | NO |  |
 | valuta_id | integer | YES |  |
-| tasso_cambio | numeric | NO | 1 |
+| tasso_cambio | numeric(18,8) | NO | 1 |
 | modalita_pagamento_id | integer | YES |  |
-| imponibile_tot | numeric | YES |  |
-| sconto_tot | numeric | YES |  |
-| iva_tot | numeric | YES |  |
-| totale_doc | numeric | YES |  |
+| imponibile_tot | numeric(18,6) | YES |  |
+| sconto_tot | numeric(18,6) | YES |  |
+| iva_tot | numeric(18,6) | YES |  |
+| totale_doc | numeric(18,6) | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
@@ -35,11 +35,11 @@
 | sorgente_uid | uuid | YES |  |
 | termine_pagamento_id | bigint | YES |  |
 | fatturazione_trigger | character varying | NO |  |
-| canale_origine | USER-DEFINED | NO | 'ADMIN'::config.canale_origine |
+| canale_origine | config.canale_origine | NO | 'ADMIN'::config.canale_origine |
 | utility_id | integer | YES |  |
 | emittente_fiscale_id | bigint | NO |  |
 | agente_soggetto_ruolo_id | bigint | YES |  |
-| documento_origine_tipo | character varying | YES |  |
+| documento_origine_tipo | character varying(20) | YES |  |
 | documento_origine_id | bigint | YES |  |
 | fatturazione_immediata | boolean | NO | false |
 | registro_id | bigint | YES |  |

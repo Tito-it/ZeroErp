@@ -6,7 +6,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO | nextval('storico.inventari_righe_id_seq'::regclass) |
 | inventari_righe_id | bigint | NO |  |
-| change_type | character | YES | 'A'::bpchar |
+| change_type | character(1) | YES | 'A'::bpchar |
 | tipo_operazione | smallint | YES |  |
 | snapshot | jsonb | YES |  |
 | user_insert | text | YES | CURRENT_USER |

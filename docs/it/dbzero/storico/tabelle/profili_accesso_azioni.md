@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO | nextval('storico.profili_accesso_azioni_id_seq'::regclass) |
 | profili_accesso_azioni_id | integer | NO |  |
-| change_type | character | YES | 'A'::bpchar |
+| change_type | character(1) | YES | 'A'::bpchar |
 | tipo_operazione | smallint | YES |  |
 | snapshot | jsonb | YES |  |
 | user_insert | text | YES | CURRENT_USER |

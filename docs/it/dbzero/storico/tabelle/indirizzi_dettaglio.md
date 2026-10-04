@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | valid_from | date | NO | CURRENT_DATE |
 | valid_to | date | YES |  |
-| change_type | character | YES | 'A'::bpchar |
+| change_type | character(1) | YES | 'A'::bpchar |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | indirizzi_dettaglio_id | integer | NO |  |

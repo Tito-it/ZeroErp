@@ -50,14 +50,18 @@ BEGIN
     --   Dichiararla SAFE sarebbe una bugia al planner.
     -- =========================================================
 
-    -- Attore nullo (batch / canale di sistema): nessuno scope di
-    -- diritto da opporre. Convenzione della famiglia, ramo 1 di
-    -- fn_scope_ef_whitelist_via_efba.
-    -- ⚠️ La restrizione del chiamante resta pero' valida: e'
-    -- restringente, e ignorarla allargherebbe — che e'
-    -- esattamente cio' che questa funzione esiste per impedire.
+    -- Attore nullo: nessun accesso.
+    -- ⚠️ Rev 2026-10-04 (Q-1, brief-db-esclusioni-implicite): era
+    --    `RETURN p_richiesti`, cioe' «nessuno scope di diritto da
+    --    opporre», per la convenzione della famiglia. Con la
+    --    restrizione NULL voleva dire «vede tutto»: le due ricerche che
+    --    la chiamano (fn_search_soggetti_universale,
+    --    fn_get_search_detail) sono INVOKER e leggono l'utente dalla
+    --    GUC, quindi una sessione senza utente cercava su tutte le
+    --    aziende. La famiglia cambia nello stesso giro (canonica e
+    --    via_efba): l'utente NULL non vede niente.
     IF p_auth_user_id IS NULL THEN
-        RETURN p_richiesti;
+        RETURN '{}'::bigint[];
     END IF;
 
     v_diritto := script.fn_get_emittenti_scope_sr_ids(p_auth_user_id);
@@ -95,7 +99,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_get_emittenti_scope_sr_effettivo(p_auth_user_id integer, p_richiesti bigint[])
-IS 'Scope emittenti EFFETTIVO (soggetto_ruolo_id) = scope di diritto (fn_get_emittenti_scope_sr_ids) ∩ restrizione del chiamante, con NULL = universo su entrambi i lati. Semantica: NULL=tutto, ''{}''=nessuno, array=whitelist. Invariante: IL CHIAMANTE PUO'' SOLO RESTRINGERE, mai allargare — stesso principio dell''emittente attivo (rev 2026-08-04) applicato a un parametro. Attore nullo -> vale la sola restrizione del chiamante (convenzione famiglia). Esiste perche'' fn_search_soggetti_universale e fn_get_search_detail erano le uniche due funzioni di scope a fidarsi di un array calcolato fuori dal database: la convenzione a tre stati non sopravvive al viaggio attraverso Python, dove [] e None sono entrambi falsi. Brief perimetro-emittente §11.6 (Q2/C).';
+IS 'Scope emittenti EFFETTIVO (soggetto_ruolo_id) = scope di diritto (fn_get_emittenti_scope_sr_ids) ∩ restrizione del chiamante, con NULL = universo su entrambi i lati. Semantica: NULL=tutto, ''{}''=nessuno, array=whitelist. Invariante: IL CHIAMANTE PUO'' SOLO RESTRINGERE, mai allargare — stesso principio dell''emittente attivo (rev 2026-08-04) applicato a un parametro. Attore nullo -> ''{}'', nessun accesso (rev 2026-10-04, Q-1: prima valeva la sola restrizione del chiamante, cioe'' NULL = tutto per le due ricerche). Esiste perche'' fn_search_soggetti_universale e fn_get_search_detail erano le uniche due funzioni di scope a fidarsi di un array calcolato fuori dal database: la convenzione a tre stati non sopravvive al viaggio attraverso Python, dove [] e None sono entrambi falsi. Brief perimetro-emittente §11.6 (Q2/C). Brief: brief-db-esclusioni-implicite Q-1.';
 ```
 
 ---

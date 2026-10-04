@@ -9,16 +9,16 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| numero | character varying | NO |  |
+| numero | character varying(30) | NO |  |
 | rev | integer | NO | 0 |
 | billing_account_id | bigint | YES |  |
 | istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | validita_dal | date | YES |  |
 | validita_al | date | YES |  |
-| totale_imponibile | numeric | YES | 0 |
-| totale_iva | numeric | YES | 0 |
-| totale_documento | numeric | YES | 0 |
+| totale_imponibile | numeric(15,2) | YES | 0 |
+| totale_iva | numeric(15,2) | YES | 0 |
+| totale_documento | numeric(15,2) | YES | 0 |
 | valuta_id | integer | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |

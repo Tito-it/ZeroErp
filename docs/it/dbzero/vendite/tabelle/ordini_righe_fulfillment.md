@@ -11,8 +11,8 @@
 | id | bigint | NO |  |
 | ordine_riga_id | bigint | NO |  |
 | ddt_riga_id | bigint | NO |  |
-| qta_evasa | numeric | NO |  |
-| note | character varying | YES |  |
+| qta_evasa | numeric(18,6) | NO |  |
+| note | character varying(200) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |

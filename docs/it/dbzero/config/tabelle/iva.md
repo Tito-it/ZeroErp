@@ -5,10 +5,10 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
-| descrizione_breve | character varying | NO |  |
-| aliquota_iva | numeric | NO | 0 |
+| codice | character varying(50) | NO |  |
+| descrizione | character varying(80) | NO |  |
+| descrizione_breve | character varying(40) | NO |  |
+| aliquota_iva | numeric(5,2) | NO | 0 |
 | natura_iva_id | integer | YES |  |
 | conto_iva_acquisti_id | integer | YES |  |
 | conto_iva_vendita_id | integer | YES |  |
@@ -20,7 +20,7 @@
 | attivo | boolean | NO | true |
 | storicizza | boolean | YES | true |
 | assoggettamento_id | bigint | YES |  |
-| codice_interno | character varying | NO |  |
+| codice_interno | character varying(20) | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -11,7 +11,7 @@
 | id | uuid | NO | uuidv7() |
 | prodotto_id | uuid | NO |  |
 | componente_id | uuid | NO |  |
-| coeff_qta | numeric | NO | 1 |
+| coeff_qta | numeric(18,6) | NO | 1 |
 | obbligatorio | boolean | NO | true |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |
@@ -23,9 +23,9 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
 | attivo | boolean | NO | true |
-| note_target_tipo | character varying | YES |  |
+| note_target_tipo | character varying(32) | YES |  |
 | note_id | bigint | YES |  |
-| esposizione_in_fattura | character varying | NO | 'NASCOSTO'::character varying |
+| esposizione_in_fattura | character varying(40) | NO | 'NASCOSTO'::character varying |
 | validita | daterange | NO |  |
 
 ## 🔒 Vincoli

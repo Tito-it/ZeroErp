@@ -12,16 +12,16 @@
 | fattura_id | bigint | NO |  |
 | iva_id | integer | YES |  |
 | natura_id | integer | YES |  |
-| esigibilita | character | YES |  |
+| esigibilita | character(1) | YES |  |
 | split_payment | boolean | YES |  |
-| imponibile | numeric | NO | 0 |
-| imposta | numeric | NO | 0 |
-| arrotondamento | numeric | NO | 0 |
+| imponibile | numeric(18,6) | NO | 0 |
+| imposta | numeric(18,6) | NO | 0 |
+| arrotondamento | numeric(18,6) | NO | 0 |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
-| aliquota_iva | numeric | YES |  |
+| aliquota_iva | numeric(5,2) | YES |  |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | false |
 

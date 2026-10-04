@@ -12,7 +12,7 @@
 | listino_versione_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
 | uom_id | bigint | NO |  |
-| prezzo | numeric | NO |  |
+| prezzo | numeric(22,10) | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |

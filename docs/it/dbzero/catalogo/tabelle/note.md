@@ -5,11 +5,11 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| target_tipo | character varying | NO |  |
+| target_tipo | character varying(32) | NO |  |
 | target_id | uuid | NO |  |
 | target_riga_id | uuid | YES |  |
-| anchor_tipo | character varying | NO |  |
-| posizione | character varying | NO |  |
+| anchor_tipo | character varying(12) | NO |  |
+| posizione | character varying(12) | NO |  |
 | seq | integer | NO | 10 |
 | testo | text | YES |  |
 | testo_md | text | YES |  |
@@ -19,9 +19,9 @@
 | solo_stampa | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | character varying(80) | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | character varying(80) | YES | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

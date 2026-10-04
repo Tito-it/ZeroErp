@@ -9,9 +9,9 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice_interno | character varying | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice_interno | character varying(64) | NO |  |
+| codice | character varying(64) | NO |  |
+| descrizione | character varying(160) | NO |  |
 | ha_plafond | boolean | NO |  |
 | attivo | boolean | NO | true |
 | ordine | smallint | NO | 0 |

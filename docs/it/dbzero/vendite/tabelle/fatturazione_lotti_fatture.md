@@ -20,7 +20,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | stato_doc_fiscale_id | bigint | YES |  |
-| stato_esecuzione | character varying | NO | 'PENDING'::character varying |
+| stato_esecuzione | character varying(16) | NO | 'PENDING'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

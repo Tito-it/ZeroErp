@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | template_flusso_id | integer | NO |  |
-| esito_richiesto | character varying | YES |  |
+| esito_richiesto | character varying(50) | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |

@@ -11,13 +11,13 @@
 | id | bigint | NO |  |
 | contratto_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| tipo_erogazione | character varying | YES |  |
-| fonte_quantita_attesa | character varying | YES |  |
-| periodicita | character varying | YES |  |
-| generazione_canone | character varying | YES |  |
-| competenza_canone | character varying | YES |  |
-| prezzo_unitario | numeric | YES |  |
-| quantita | numeric | YES |  |
+| tipo_erogazione | character varying(16) | YES |  |
+| fonte_quantita_attesa | character varying(24) | YES |  |
+| periodicita | character varying(12) | YES |  |
+| generazione_canone | character varying(16) | YES |  |
+| competenza_canone | character varying(16) | YES |  |
+| prezzo_unitario | numeric(15,6) | YES |  |
+| quantita | numeric(18,6) | YES |  |
 | ordine | smallint | YES | 0 |
 | attivo | boolean | YES | true |
 | meta | jsonb | YES | '{}'::jsonb |
@@ -25,12 +25,12 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
-| qta_operativa | numeric | YES |  |
+| qta_operativa | numeric(18,6) | YES |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | YES |  |
+| factor_to_base | numeric(18,6) | YES |  |
 | tx_id | uuid | YES |  |
-| tipo_eccezione | USER-DEFINED | NO |  |
-| stato_approvazione_prezzo | USER-DEFINED | YES |  |
+| tipo_eccezione | vendite.tipo_eccezione_contratto | NO |  |
+| stato_approvazione_prezzo | config.stato_approvazione_prezzo | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
 
 ## 🔒 Vincoli
@@ -64,9 +64,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')` |
-| trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a05_guard_esclusione_immutabile_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_immutabile('contratto_id')` |
 | trg_contratti_righe_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_contratti_righe_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
@@ -75,22 +75,22 @@
 | trg_contratti_righe_a10_default_fonte_qta_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
 | trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_aggiunta_fuori_listino('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_aggiunta_fuori_listino('CONTRATTO', 'contratto_id')` |
-| trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('contratto_id')` |
 | trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('contratto_id')` |
+| trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('contratto_id')` |
 | trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_figlio_bundle('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_figlio_bundle('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a10_guard_esclusione_senza_dati_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_senza_dati('contratto_id')` |
 | trg_contratti_righe_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_pending('contratto_id')` |
 | trg_contratti_righe_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('tipo_eccezione', 'E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE')` |
 | trg_contratti_righe_a10_note_contratto_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'note_contratto', 'target_riga_id', 'id', 'attivo')` |
-| trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
 | trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
-| trg_contratti_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
+| trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
 | trg_contratti_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
+| trg_contratti_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_contratti_righe_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_contratti_righe_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_contratti_righe_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_contratti_righe_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_contratti_righe_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_contratti_righe_z90_propaga_qta_componenti_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_componenti_propaga_qta('vendite', 'contratti_righe_componenti', 'riga_contratto_id')` |
 
 ---

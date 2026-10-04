@@ -5,8 +5,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| codice_interno | character varying | NO |  |
+| codice | character varying(50) | NO |  |
+| codice_interno | character varying(50) | NO |  |
 | descrizione | text | NO |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |

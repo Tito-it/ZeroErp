@@ -10,8 +10,8 @@
 |---------|------|----------|---------|
 | id | integer | NO |  |
 | toponomastica_id | integer | NO |  |
-| descrizione | character varying | NO |  |
-| descrizione_breve | character varying | NO |  |
+| descrizione | character varying(100) | NO |  |
+| descrizione_breve | character varying(50) | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |

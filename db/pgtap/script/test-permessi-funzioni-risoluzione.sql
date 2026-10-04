@@ -55,7 +55,7 @@
 -- 11) fn_check_azione_processo: ADMIN → true
 -- 12) fn_check_azione_processo: override abilitata, area dell'azione TUTTO → true
 -- 13) legacy fn_get_emittenti_scope: DISMESSA (asserzione girata di segno)
--- 14) fn_check_user_emittente_scope: NULL user → true (batch)
+-- 14) fn_check_user_emittente_scope: NULL user → false (rev 2026-10-04, Q-1)
 -- 15) fn_check_user_emittente_scope: ADMIN → true
 -- 16) fn_check_user_emittente_scope: OPERATIVO senza whitelist → false (P-2a)
 -- 17) fn_check_user_emittente_scope: emittente in whitelist → true
@@ -471,14 +471,15 @@ SELECT hasnt_function(
     '13) legacy fn_get_emittenti_scope: DISMESSA (era il fail-open «senza whitelist → tutti»)'
 );
 
--- 14) fn_check NULL user → true (batch job)
+-- 14) fn_check NULL user → false. Rev 2026-10-04 (Q-1,
+--     brief-db-esclusioni-implicite): era true («batch job»).
 SELECT is(
     script.fn_check_user_emittente_scope(
         NULL,
         (SELECT emittente_id FROM tmp_ctx)
     ),
-    true,
-    '14) fn_check_user_emittente_scope: NULL user → true (batch)'
+    false,
+    '14) fn_check_user_emittente_scope: NULL user → false (era true, «batch»)'
 );
 
 -- 15) fn_check ADMIN → true

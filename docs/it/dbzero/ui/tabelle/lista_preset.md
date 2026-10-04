@@ -10,9 +10,9 @@
 |---------|------|----------|---------|
 | id | integer | NO |  |
 | lista_id | integer | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
-| ambito | USER-DEFINED | NO |  |
+| codice | character varying(80) | NO |  |
+| descrizione | character varying(200) | NO |  |
+| ambito | ui.ambito_preset | NO |  |
 | profilo_accesso_id | integer | YES |  |
 | emittente_fiscale_id | bigint | YES |  |
 | is_default | boolean | NO | false |
@@ -21,9 +21,9 @@
 | filtri_default | jsonb | YES |  |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO |  |
+| user_insert | character varying(80) | NO |  |
 | data_update | timestamp with time zone | YES |  |
-| user_update | character varying | YES |  |
+| user_update | character varying(80) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

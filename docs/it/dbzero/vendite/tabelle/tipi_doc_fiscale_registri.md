@@ -18,7 +18,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | natura_doc_id | bigint | NO | config.fn_get_natura_doc_fiscale_id('FATTURA'::character varying) |
-| serie | character varying | YES |  |
+| serie | character varying(8) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

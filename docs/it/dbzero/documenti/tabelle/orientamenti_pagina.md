@@ -8,10 +8,10 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice_interno | character varying | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | YES |  |
-| etichetta_key | character varying | NO |  |
+| codice_interno | character varying(40) | NO |  |
+| codice | character varying(40) | NO |  |
+| descrizione | character varying(255) | YES |  |
+| etichetta_key | character varying(120) | NO |  |
 | ordine | smallint | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

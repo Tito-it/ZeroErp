@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| gruppo_tariffa_ee | character varying | NO |  |
+| codice | character varying(20) | NO |  |
+| gruppo_tariffa_ee | character varying(2) | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

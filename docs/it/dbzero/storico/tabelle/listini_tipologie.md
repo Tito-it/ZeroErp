@@ -6,7 +6,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO | nextval('storico.listini_tipologie_id_seq'::regclass) |
 | listini_tipologie_id | smallint | NO |  |
-| change_type | character | YES | 'A'::bpchar |
+| change_type | character(1) | YES | 'A'::bpchar |
 | tipo_operazione | smallint | YES |  |
 | snapshot | jsonb | YES |  |
 | user_insert | text | YES | CURRENT_USER |

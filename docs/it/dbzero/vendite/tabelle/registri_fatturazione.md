@@ -10,11 +10,11 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(16) | NO |  |
+| descrizione | character varying(120) | NO |  |
 | emittente_soggetto_ruolo_id | bigint | NO |  |
-| serie_default | character varying | YES |  |
-| reset_policy | character varying | NO | 'ANNUALE'::character varying |
+| serie_default | character varying(8) | YES |  |
+| reset_policy | character varying(8) | NO | 'ANNUALE'::character varying |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |
@@ -24,12 +24,12 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
 | utility_id | integer | YES |  |
-| politica_data_documento | character varying | NO | 'OGGI'::character varying |
+| politica_data_documento | character varying(32) | NO | 'OGGI'::character varying |
 | limite_emissione_giorni | smallint | YES |  |
 | limite_emissione_giorno_mese | smallint | YES |  |
-| famiglia_documento | character varying | NO | 'FATTURA'::character varying |
-| prefisso | character varying | YES |  |
-| suffisso | character varying | YES |  |
+| famiglia_documento | character varying(16) | NO | 'FATTURA'::character varying |
+| prefisso | character varying(4) | YES |  |
+| suffisso | character varying(4) | YES |  |
 | lunghezza_numero | integer | NO | 7 |
 | anno_nel_numero | boolean | NO | false |
 

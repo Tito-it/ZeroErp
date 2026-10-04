@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | soggetto_ruolo_id | bigint | NO |  |
 | auth_user_id | integer | NO |  |
-| ruolo_applicativo | USER-DEFINED | NO |  |
+| ruolo_applicativo | config.ruolo_applicativo | NO |  |
 | attivo | boolean | NO | true |
 | valido_dal | date | NO | CURRENT_DATE |
 | valido_al | date | YES |  |

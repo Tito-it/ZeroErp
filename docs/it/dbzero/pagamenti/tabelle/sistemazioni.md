@@ -16,9 +16,9 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
-| destinazione | character varying | NO |  |
-| stato | character varying | NO | 'BOZZA'::character varying |
-| importo | numeric | NO |  |
+| destinazione | character varying(20) | NO |  |
+| stato | character varying(20) | NO | 'BOZZA'::character varying |
+| importo | numeric(14,2) | NO |  |
 | motivo | text | YES |  |
 | cliente_soggetto_ruolo_id | bigint | NO |  |
 | emittente_soggetto_ruolo_id | bigint | NO |  |

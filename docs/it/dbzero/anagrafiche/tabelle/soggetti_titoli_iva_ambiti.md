@@ -10,11 +10,11 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | titolo_iva_id | bigint | NO |  |
-| livello | character varying | NO |  |
+| livello | character varying(16) | NO |  |
 | articolo_id | uuid | YES |  |
 | gruppo_voce_id | bigint | YES |  |
 | tipo_voce_id | bigint | YES |  |
-| note | character varying | YES |  |
+| note | character varying(255) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |

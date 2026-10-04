@@ -12,16 +12,16 @@
 | eccezione_offerta_id | bigint | NO |  |
 | articolo_componente_id | uuid | NO |  |
 | componente_id | uuid | NO |  |
-| coeff_qta_snapshot | numeric | NO |  |
-| quantita | numeric | NO |  |
+| coeff_qta_snapshot | numeric(18,6) | NO |  |
+| quantita | numeric(18,6) | NO |  |
 | uom_operativa_id | bigint | NO |  |
-| factor_to_base | numeric | NO | 1 |
-| qta_operativa | numeric | YES |  |
-| prezzo_unitario | numeric | NO |  |
+| factor_to_base | numeric(18,8) | NO | 1 |
+| qta_operativa | numeric(18,6) | YES |  |
+| prezzo_unitario | numeric(18,6) | NO |  |
 | iva_id | integer | YES |  |
-| origine_prezzo | character varying | NO |  |
+| origine_prezzo | character varying(30) | NO |  |
 | prezzo_resolver_context | jsonb | YES |  |
-| stato_approvazione_prezzo | USER-DEFINED | YES |  |
+| stato_approvazione_prezzo | config.stato_approvazione_prezzo | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | ordine | smallint | YES | 0 |

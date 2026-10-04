@@ -9,16 +9,16 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
-| schema_dati | character varying | NO |  |
-| vista_sql | character varying | YES |  |
+| codice | character varying(80) | NO |  |
+| descrizione | character varying(200) | NO |  |
+| schema_dati | character varying(40) | NO |  |
+| vista_sql | character varying(120) | YES |  |
 | note | text | YES |  |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO |  |
+| user_insert | character varying(80) | NO |  |
 | data_update | timestamp with time zone | YES |  |
-| user_update | character varying | YES |  |
+| user_update | character varying(80) | YES |  |
 | multi_emittente | boolean | NO | false |
 | perimetro_emittente | boolean | NO | true |
 | ricerca_min_caratteri | smallint | NO | 3 |

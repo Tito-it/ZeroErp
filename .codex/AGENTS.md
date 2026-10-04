@@ -195,6 +195,7 @@ e muore in CI. Il perché e i casi reali sono in
 | un seed di macchina non dichiarato (`context: dati_macchina`) | 11.7 | — |
 | un `REVOKE` a `zeroerp_app` fuori dal loop dei grant | 11.8 | pgTAP di postura |
 | un privilegio dato a mano su una sola macchina | 11.9 | pgTAP di postura |
+| un file della prima generazione (`baseline/`, `migrations/`) aggiunto, tolto o modificato | 11.11 | `guardrail_v1_congelato.py` |
 
 ## Documentazione
 

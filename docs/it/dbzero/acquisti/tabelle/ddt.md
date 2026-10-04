@@ -11,8 +11,8 @@
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
 | anno | smallint | YES |  |
-| serie | character varying | YES |  |
-| numero | character varying | YES |  |
+| serie | character varying(8) | YES |  |
+| numero | character varying(40) | YES |  |
 | data | date | NO | CURRENT_DATE |
 | stato_doc_ddt_id | bigint | NO |  |
 | mittente_soggetto_ruolo_id | bigint | NO |  |
@@ -21,9 +21,9 @@
 | aspetto_bene_id | bigint | YES |  |
 | modalita_addebito_trasporto_id | bigint | YES |  |
 | num_colli | integer | YES |  |
-| peso_lordo | numeric | YES |  |
-| peso_netto | numeric | YES |  |
-| volume | numeric | YES |  |
+| peso_lordo | numeric(18,3) | YES |  |
+| peso_netto | numeric(18,3) | YES |  |
+| volume | numeric(18,3) | YES |  |
 | data_ora_consegna_eff | timestamp with time zone | YES |  |
 | ordine_id | bigint | YES |  |
 | sorgente_tipo_id | bigint | YES |  |
@@ -34,7 +34,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
-| hash_contenuto | character varying | YES |  |
+| hash_contenuto | character varying(64) | YES |  |
 | sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli

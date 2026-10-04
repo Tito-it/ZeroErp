@@ -16,7 +16,7 @@
 | risorsa_umana_id | bigint | YES |  |
 | unita_organizzativa_id | integer | YES |  |
 | sequenza | integer | NO | 0 |
-| esito | character varying | YES |  |
+| esito | character varying(20) | YES |  |
 | note_esito | text | YES |  |
 | data_scadenza | date | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |

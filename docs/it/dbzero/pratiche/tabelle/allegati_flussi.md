@@ -13,7 +13,7 @@
 | tipo_allegato_id | integer | NO |  |
 | nome_file | text | NO |  |
 | percorso | text | NO |  |
-| mime_type | character varying | YES |  |
+| mime_type | character varying(255) | YES |  |
 | dimensione | bigint | YES |  |
 | allegato_padre_id | bigint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |

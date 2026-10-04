@@ -11,11 +11,11 @@
 | id | bigint | NO |  |
 | soggetto_ruolo_id | bigint | NO |  |
 | conto_bancario_id | bigint | NO |  |
-| uso | character varying | NO | 'GENERICO'::character varying |
+| uso | character varying(16) | NO | 'GENERICO'::character varying |
 | predefinito | boolean | NO | false |
 | valido_dal | date | YES |  |
 | valido_al | date | YES |  |
-| intestazione_dichiarata | character varying | YES |  |
+| intestazione_dichiarata | character varying(140) | YES |  |
 | verificato | boolean | NO | false |
 | bloccato | boolean | NO | false |
 | meta | jsonb | YES | '{}'::jsonb |

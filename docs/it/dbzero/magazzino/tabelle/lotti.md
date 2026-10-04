@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| codice | character varying | NO |  |
+| codice | character varying(64) | NO |  |
 | data_arrivo | date | NO |  |
 | data_scadenza | date | YES |  |
 | attivo | boolean | NO | true |

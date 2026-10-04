@@ -9,11 +9,11 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice_interno | character varying | NO |  |
-| codice | character varying | NO |  |
+| codice_interno | character varying(50) | NO |  |
+| codice | character varying(50) | NO |  |
 | descrizione | text | NO |  |
-| classe | character varying | NO |  |
-| azione | character varying | YES |  |
+| classe | character varying(30) | NO |  |
+| azione | character varying(200) | YES |  |
 | ordine | smallint | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |

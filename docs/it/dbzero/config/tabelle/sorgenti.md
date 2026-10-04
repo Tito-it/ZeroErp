@@ -9,10 +9,10 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice_interno | character varying | NO |  |
-| codice | character varying | NO |  |
-| categoria | character varying | YES |  |
-| descrizione | character varying | YES |  |
+| codice_interno | character varying(50) | NO |  |
+| codice | character varying(50) | NO |  |
+| categoria | character varying(24) | YES |  |
+| descrizione | character varying(160) | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
@@ -22,9 +22,9 @@
 | target_table | regclass | YES |  |
 | key_selector | text | NO | 'id'::text |
 | tipo_doc_fiscale_id | bigint | YES |  |
-| scope | character varying | NO |  |
-| area | character varying | YES |  |
-| label_selector | character varying | YES |  |
+| scope | character varying(30) | NO |  |
+| area | character varying(30) | YES |  |
+| label_selector | character varying(63) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

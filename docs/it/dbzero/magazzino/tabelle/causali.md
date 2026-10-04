@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(32) | NO |  |
+| descrizione | character varying(255) | NO |  |
 | segno | smallint | NO |  |
 | ordine | smallint | NO | 0 |
 | attivo | boolean | NO | true |
@@ -24,7 +24,7 @@
 | is_installazione_asset | boolean | NO | false |
 | is_rettifica | boolean | NO | false |
 | consente_stock_negativo | boolean | NO | false |
-| codice_interno | character varying | YES |  |
+| codice_interno | character varying(32) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
