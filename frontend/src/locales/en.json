@@ -2363,6 +2363,7 @@
       "field_fonte_quantita_attesa": "Quantity source",
       "field_uom": "Unit of measure",
       "select_fonte_quantita": "Select quantity source...",
+      "select_tipo_erogazione": "Select delivery type...",
       "fonte_quantita_uso_atipico": "Atypical combination for this delivery type. Confirmed?",
       "fonte_quantita_value_fissa": "Fixed (contracted)",
       "fonte_quantita_value_manuale": "Manual (on document)",
@@ -3476,6 +3477,7 @@
       "select_tipo_utenza": "Select customer type...",
       "field_classe_utenza": "Customer class",
       "select_classe_utenza": "Select customer class...",
+      "select_tipo_erogazione": "Select delivery type...",
       "field_param_1_num": "Param 1 (number)",
       "field_param_2_txt": "Param 2 (text)",
       "field_tipo_eccezione": "Exception type",
@@ -5457,6 +5459,19 @@
       "tipo_allegato": "Attachment",
       "files_loading": "Loading files…",
       "files_empty": "No files available for this document."
+    },
+    "formati_template": {
+      "html": "HTML",
+      "html_markdown_blocks": "HTML with Markdown blocks"
+    },
+    "formati_pagina": {
+      "a4": "A4 (210 × 297 mm)",
+      "a3": "A3 (297 × 420 mm)",
+      "letter": "Letter (8.5 × 11 in)"
+    },
+    "orientamenti_pagina": {
+      "portrait": "Portrait",
+      "landscape": "Landscape"
     }
   },
   "config": {
@@ -5536,8 +5551,6 @@
         "versione_contesto_hint": "The system currently prepares this document's data in shape {forma}. A version is published and printed only if it reads that shape; a draft may declare another one to prepare it.",
         "versione_contesto_builder_assente": "This template's data builder is not registered: its versions cannot be published or printed.",
         "publish_forma": "This version reads the data in shape {versione}; the system prepares it in shape {builder}.",
-        "orientation_portrait": "Portrait",
-        "orientation_landscape": "Landscape",
         "asset": {
           "titolo": "Assets you can reference",
           "hint": "Assets of the template's issuer, active and valid today. Reference them in the template as asset:<internal code>.",

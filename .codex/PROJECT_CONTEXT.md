@@ -219,39 +219,36 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   resta R-4, che vuole un brief DB non ancora scritto. Chiuso il 2026-10-03
   `work-done/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
   dell'amministratore che rifiutano le credenziali di sistema).
-- **Kit in fattura** (`work-in-progress/brief-db-esposizione-componenti-kit-in-fattura.md`,
-  `work-in-progress/brief-db-bom-flag-quantita-e-kit-in-fattura.md`): BE/FE scritto; secondo giro
-  DB (R-DB-B8…B10, `20261003-05`/`-06`) applicato il 2026-10-03, baseline senza regressioni.
-  Plafond e kit (§11, D-5): DB `20261003-07…-09` applicato il 2026-10-03, baseline verdi.
-  Terzo giro BE/FE (§12: R-FE-B1 rivista, R-BE-B8, R-BE-P1…P6) scritto il 2026-10-03, non
-  committato; script R-BE-B5 lanciato; restano il migrate del CSV e la v7 da pubblicare.
-  ⭐ Decisione C di Tid (§13, 2026-10-04): il plafond si consuma sul **netto** della fattura, le righe
-  negative restituiscono (comprende R-DB-B13). DB `20261004-02…-06` applicato il 2026-10-04, pgTAP verdi; poi
-  un giro BE (R-BE-C1…C9): risolutore con `p_consumo` in coda, una chiamata alla madre per titolo.
-  Strada A (§14): una fattura che ha consumato plafond non si disfa più (`20261004-07…-11`), applicato il 2026-10-04, pgTAP verdi. Quarto giro BE/FE fatto (§15); quinto giro DB (§16:
-  ritiro della proiezione del risolutore, `20261004-15`; motivo singolare della porta «elimina
-  fattura», `20261004-16`) scritto il 2026-10-04, ⏳ da applicare.
+- **Kit in fattura** (`work-in-progress/brief-db-esposizione-componenti-kit-in-fattura.md`): resta
+  aperto questo brief (R-BE-6, R-FE-2/3, §10). ✅ Chiuso il 2026-10-04
+  `work-done/brief-db-bom-flag-quantita-e-kit-in-fattura.md`: flag della distinta ritirati, quantità
+  e UoM del padre congelate in fattura, plafond sul **netto** della fattura (decisione C), una
+  fattura che ha consumato plafond non si disfa più (strada A), proiezione del risolutore ritirata.
+  Template fattura v7 pubblicato.
 - **Un'esclusione del contratto non si modifica** (`work-in-progress/brief-db-contratto-esclusione-non-modificabile.md`,
   decisione di Tid del 2026-10-04): DB applicato il 2026-10-04 (`20261004-12…-14`, lock su
-  `contratti_righe.tipo_eccezione`, due codici nuovi), pgTAP senza regressioni. Lato DB chiuso; resta BE/FE (§5).
+  `contratti_righe.tipo_eccezione`, due codici nuovi), pgTAP senza regressioni. BE/FE fatto il 2026-10-04 (§7):
+  il cantiere è chiuso, il brief si può archiviare.
 - **Una riga che si fattura dice come si eroga** (`work-in-progress/brief-db-erogazione-obbligatoria-righe-fatturate.md`,
   richiesta del BE, decisione di Tid del 2026-10-04): `tipo_erogazione` obbligatoria su OVERRIDE/AGGIUNTA di contratto
   e offerta (`20261004-30…-32`, CHECK + guard, codice `E_RIGA_EROGAZIONE_OBBLIGATORIA`); il lister del push non
-  propone più le esclusioni e non ripiega su CANONE (`-33`). Applicato il 2026-10-04, pgTAP verdi. Lato DB
-  chiuso; resta BE/FE (§6).
-- **Valori ammessi di una versione di template: da CHECK a vocabolario**
-  (`work-in-progress/brief-db-vocabolari-versione-template.md`): DB scritto il 2026-10-04
-  (`20261004-20…-22`, tre vocabolari senza `attivo`, FK su `codice_interno`), applicato il 2026-10-04, pgTAP senza regressioni; le
-  sette chiavi i18n del FE (CI rossa finché non arrivano, accettato da Tid). Lato DB chiuso.
-  ✅ **D-1 decisa da Tid il 2026-10-04, strada A** (§5.6): oggi il motore di stampa non legge
-  `page_format`, `page_orientation` né i margini (un A3 orizzontale esce A4 verticale); R-BE-V2 gli fa
-  comporre la regola `@page` dalla versione. Aperto a parte: `HTML_MARKDOWN_BLOCKS` mai implementato.
+  propone più le esclusioni e non ripiega su CANONE (`-33`). Applicato il 2026-10-04, pgTAP verdi. BE/FE
+  scritto il 2026-10-04 (§8), non committato.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **`HTML_MARKDOWN_BLOCKS` si sceglie ma non fa niente** (BE `documenti`, ereditato il 2026-10-04
+  dalla chiusura di `work-done/brief-db-vocabolari-versione-template.md` §5.6): il valore sta nel
+  vocabolario `documenti.formati_template` (la Decisione 4, «markdown solo per blocchi controllati»),
+  ma il render tratta ogni versione come HTML e non legge `markdown_template`. Da decidere se
+  implementarlo o ritirarlo, quando si tocca il trattamento del markdown.
+- **Le versioni pubblicate stampano coi margini delle colonne (15 mm), non coi 18/16 mm del loro
+  CSS** (dal 2026-10-04, R-BE-V2a di Tid: la pagina la decidono le colonne). Per tornare ai 18/16 mm
+  servono versioni nuove con i margini nelle colonne; l'`@page` di formato e margini nel loro CSS
+  non ha più effetto (restano i piè di pagina). Le ristampe dei documenti già emessi escono coi 15 mm.
 - 🟡 **L'editor dei workflow perde le righe in compilazione senza chiedere** (FE, ereditato il
   2026-10-03 dalla chiusura di `work-done/analisi-fe-chrome-drawer.md`, D-13): `DefinizioneEditorView`
   e i pannelli di passi e archi (`useEditableCollection`) non tengono la fotografia del form di riga,

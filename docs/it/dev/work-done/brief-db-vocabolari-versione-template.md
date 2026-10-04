@@ -4,12 +4,12 @@
 > (`dev/db-tid`); poi BE/FE (§4).
 > **Origine:** revisione del drawer dei modelli di documento (richiesta di Tid, 2026-10-03), che ha
 > portato la versione in un drawer suo (`TemplateVersioneDrawer`).
-> **Stato:** ✅ **DB applicato il 2026-10-04** (`20261004-20…-22`, §5), pgTAP senza regressioni (§5.7).
-> **Lato DB chiuso.** Restano: le chiavi i18n del FE (§5.4 — la
-> CI resta rossa finché non arrivano, accettato da Tid il 2026-10-04: non blocca il DB); il giro
-> BE/FE di §4; e **R-BE-V2** (§5.6): il motore di stampa che onora le colonne di pagina, strada A
-> decisa da Tid il 2026-10-04.
-> **Da leggere per primo:** §5, poi §5.6.
+> **Stato:** ✅ **BRIEF CHIUSO il 2026-10-04.** DB applicato il 2026-10-04 (`20261004-20…-22`, §5);
+> BE/FE fatto lo stesso giorno (§6): R-FE-V1, R-BE-V1, R-FE-V2, R-BE-V2…V2b. R-BE-V2a deciso da Tid:
+> **vincono le colonne**. Resta fuori, dichiarato: `HTML_MARKDOWN_BLOCKS` (§5.6), passato in
+> PROJECT_CONTEXT § «Aperto — Media priorità», con la ricaduta sui margini delle versioni
+> pubblicate (§6.3).
+> **Da leggere per primo:** §5, poi §5.6 e §6.
 
 ## 1. Il problema
 
@@ -185,4 +185,64 @@ Lato DB chiuso. Il brief resta aperto per:
 * **R-BE-V2…V2b** (§5.6): il render onora formato, orientamento e margini.
 
 Quando i tre punti sono chiusi, il brief va in `work-done/`.
+
+## 6. Lato BE/FE (2026-10-04)
+
+> **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-04. **A chi:** Tid (commit).
+> **Decisioni di Tid nella sessione:** R-BE-V2a → **vincono le colonne**; il file
+> `documentiVersioniWhitelists.js` si cancella.
+> **Stato:** fatto, non committato.
+
+### 6.1 Le richieste
+
+| # | Stato | Dove |
+| --- | --- | --- |
+| R-FE-V1 | ✅ le sette chiavi in it ed en, sotto `documenti.formati_template` / `formati_pagina` / `orientamenti_pagina`. Ritirate le due `config.modelli_documenti.versioni.orientation_*`, che il drawer usava al loro posto. `check_i18n_keys` torna pulito | `it.json`, `en.json` |
+| R-BE-V1 | ✅ le tre voci fra le `_LOOKUP_SPECIALIZZATE` (`etichetta_key`, senza `attivo` né `obsoleto_dal`). Tolti i tre `frozenset` e `_validate_in_set`: il valore arriva al DB com'è e la FK decide. `_CHECK_CONSTRAINTS` perde i tre CHECK ritirati; nasce `_FK_CONSTRAINTS` coi nomi delle tre FK e il **campo** di ciascuna, passato a ogni `map_integrity_error` del service | `dbops_repository.py`, `template_versioni_admin_service.py` |
+| R-FE-V2 | ✅ le tre tendine del drawer da `useLookupEtichettato` sul `codice_interno`; `documentiVersioniWhitelists.js` cancellato | `TemplateVersioneDrawer.vue` |
+| R-BE-V2 | ✅ `render_pdf` compone `@page { size: <formato> <orientamento> !important; margin: … !important }` dalle colonne e lo passa a WeasyPrint **dopo** il CSS del template (`_regola_pagina`) | `render_service.py` |
+| R-BE-V2a | ✅ **vincono le colonne** (Tid). Restano del template le altre dichiarazioni dell'`@page` (i box di margine). Scritto nella doc API | `api_documenti_templates.md` |
+| R-BE-V2b | ✅ test 28 sulla libreria vera: una versione A3 orizzontale con `@page { size: A4 }` nel CSS **e** in uno `<style>` dell'HTML esce 420 × 297 mm (letto dal `/MediaBox` del PDF); la A4 verticale resta 210 × 297 | `test_render_service.py` |
+
+### 6.2 Scelte fatte scrivendo
+
+* **`!important` è necessario, non un vezzo.** WeasyPrint tratta i fogli passati con `stylesheets=`
+  come origine **user**, e un `@page` scritto in uno `<style>` dell'HTML è origine **author**: nella
+  cascata l'author batte lo user **qualunque sia l'ordine**. Provato il 2026-10-04: senza
+  `!important` un A3 orizzontale usciva A4 verticale, con margini 18/16. Solo un `!important` di
+  origine user batte l'author. Il test 28 mette l'`@page` concorrente proprio nello `<style>`.
+* **Niente ripiego.** I sei campi di pagina sono NOT NULL a DB: uno assente è una proiezione rotta,
+  e il render si ferma con `E_DOCUMENTI_RENDER_FAILED` e il campo nel `detail`, invece di stampare
+  un A4. Il formato e l'orientamento finiscono in un foglio CSS, quindi devono essere
+  identificatori (`[A-Za-z0-9_]+`), e un margine dev'essere un numero finito e non negativo.
+* **Il nome della FK provato sul DB vero.** Con un nome sbagliato nella mappa il rifiuto cadrebbe
+  nel ripiego senza campo, e nessun mock se ne accorgerebbe: test 3 di
+  `test_versione_contesto_db` (sulla bozza che quel file già costruisce) salva
+  `HTML_MARKDOWN_BLOCKS` / `A3` / `LANDSCAPE` e rifiuta `MARKDOWN`, `A5`, `OBLIQUO` con 400 e campo.
+
+### 6.3 ⚠️ Un fatto che smentisce il §5.5, e cosa ne segue
+
+Il §5.5 dice che nessun template di seed dichiara un `@page`. Letto su dbdev il 2026-10-04 (fatto
+datato): **tutte** le versioni pubblicate e in bozza (preventivo, contratto, offerta, ordine, DDT, fattura
+v7) hanno nel CSS `@page { size: A4; margin: 18mm 16mm 18mm 16mm; @bottom-left { … } }`, e alcune lo
+ripetono in uno `<style>` dell'HTML. Le loro colonne dicono A4 verticale e margini **15 mm**.
+
+Era la stessa cosa scritta in due sedi, già divergenti. Con la regola di Tid, dal 2026-10-04:
+
+* tutte stampano coi **15 mm** delle colonne, piè di pagina invariato;
+* la **ristampa fedele** dei documenti già emessi esce coi 15 mm, diversa dal PDF di allora (usa la
+  versione di allora, e le versioni pubblicate non si modificano);
+* per tornare ai 18/16 mm servono versioni **nuove** coi margini nelle colonne. Nel loro CSS
+  l'`@page` di formato e margini non ha più effetto, e conviene toglierlo, per non lasciare una
+  seconda sede che non conta.
+
+### 6.4 Come è stato provato
+
+* `apps.documenti`, `apps.core`, `apps.config`, `apps.vendite`, `apps.anagrafiche`: **4654 verdi**
+  (131 skip). Sul DB provvisto (`ZEROERP_TEST_DB_E2E=1`) `apps.documenti.tests.db` e
+  `test_lookup_specializzate` (il test 4 attraversa sul DB **ogni** specializzata, quindi anche le
+  tre nuove): **16 verdi**.
+* FE: vitest **662 verdi**, eslint pulito su `src/config`, `check_i18n_keys` pulito. Ruff pulito.
+* ⚠️ **Non provato**: il drawer a video (le tendine dal lookup) e un PDF vero generato da una
+  versione pubblicata dopo il cambio dei margini.
 

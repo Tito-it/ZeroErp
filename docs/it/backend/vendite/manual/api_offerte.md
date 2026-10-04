@@ -768,6 +768,14 @@ Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
   negativi ammessi); ammessa NULL per le altre fonti (la qta arriva downstream).
   Allineato a contratti/preventivi (refactor 2026-05-31)
 - `tipo_erogazione` ammesso (`chk_offerte_eccezioni_tipo_erog`)
+- **`tipo_erogazione` obbligatoria sulle righe che si fatturano**: OVERRIDE e AGGIUNTA si fatturano e devono dire come si erogano
+  (canone, una tantum, a ore, a consumo); l'ESCLUSIONE no. CHECK
+  `chk_offerte_eccezioni_erogazione_per_tipo_eccezione` + guard
+  `script.trgfn_righe_guard_erogazione_obbligatoria` →
+  `E_RIGA_EROGAZIONE_OBBLIGATORIA` (400, campo `tipo_erogazione` in
+  `error.fields`), in create e in un PATCH che la toglie. Il service non la
+  pre-valida: parla il DB (2026-10-04,
+  brief-db-erogazione-obbligatoria-righe-fatturate)
 - Coerenza canone (`chk_offerte_eccezioni_coerenza_canone`)
 - UNIQUE: max 1 `OVERRIDE`/`ESCLUSIONE` per `(offerta_id, articolo_id)`
   e max 1 `AGGIUNTA` per stessa coppia.
@@ -935,6 +943,7 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 | `E_VENDITE_NOT_FOUND`                               | 404                 | Service: offerta/eccezione/utility non trovata; ownership URL                                          | —                                                   |
 | `E_VENDITE_DUPLICATO`                               | 409                 | UNIQUE `uq_offerte_commerciali_codice` / `uq_offerte_commerciali_uid` / `uq_offerte_commerciali_utilities_offerta_id` / `uq_offerte_eccezioni_one_eccezione_per_articolo` / `uq_offerte_eccezioni_one_aggiunta_per_articolo` | —                                                   |
 | `E_VENDITE_FK`                                      | 400                 | FK su BA/emittente/istanza/utility/listino/articolo/uom/tipo/classe utenza                              | —                                                   |
+| `E_RIGA_EROGAZIONE_OBBLIGATORIA`                    | 400                 | DB P0001 (2026-10-04) — create o PATCH di un'eccezione OVERRIDE/AGGIUNTA senza `tipo_erogazione`. Campo `tipo_erogazione` in `error.fields`. Stesso codice sulle righe di contratto | `script.trgfn_righe_guard_erogazione_obbligatoria` |
 | `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`        | 409                 | DB P0001 — `BOZZA -> EMESSA` con `listino_versione_id` NULL                                            | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`   | 409                 | DB P0001 — `BOZZA -> EMESSA` con versione listino non in stato `ATTIVA`                                 | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`                 | 409                 | DB P0001 — transizione non presente in `config.stati_doc_offerte_transizioni` (es. EMESSA -> ANNULLATA, EMESSA -> BOZZA, qualsiasi uscita da stato terminale) | `trgfn_offerte_commerciali_guard_transizione`        |

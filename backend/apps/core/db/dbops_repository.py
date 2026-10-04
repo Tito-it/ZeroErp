@@ -162,6 +162,31 @@ _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
         "has_obsoleto": False,
         "has_attivo": False,
     },
+    # I tre vocabolari di una versione di template (formato del sorgente,
+    # formato e orientamento della pagina): le tendine del drawer della
+    # versione li rendono con `useLookupEtichettato` sul `codice_interno`, la
+    # chiave che la FK di `template_documenti_versioni` valida
+    # (brief-db-vocabolari-versione-template, R-BE-V1).
+    # ⚠️ Niente `attivo` e niente `obsoleto_dal` (§5.2): sono cio' che il
+    #    motore di stampa sa onorare, non una configurazione.
+    "documenti.formati_template": {
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
+    "documenti.formati_pagina": {
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
+    "documenti.orientamenti_pagina": {
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
 }
 
 

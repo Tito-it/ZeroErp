@@ -19,6 +19,7 @@ import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
 import { useAuthStore } from '../../stores/auth'
 import { USO_MISURA } from '../../core/misurePagina'
+import { toDateString } from '../../core/utils/date'
 
 export const usePraticheStore = defineStore('pratiche', () => {
   const { emitDataChanged } = useTabEvents()
@@ -30,7 +31,7 @@ export const usePraticheStore = defineStore('pratiche', () => {
   const _dataDa = new Date()
   _dataDa.setDate(1)
   _dataDa.setMonth(_dataDa.getMonth() - 1)
-  const defaultDataDa = `${_dataDa.getFullYear()}-${String(_dataDa.getMonth() + 1).padStart(2, '0')}-01`
+  const defaultDataDa = toDateString(_dataDa)
 
   // Lista eager col filtro data SEMPRE attivo (data_da default = inizio mese
   // precedente): carica sempre, senza richiedere una ricerca. La search

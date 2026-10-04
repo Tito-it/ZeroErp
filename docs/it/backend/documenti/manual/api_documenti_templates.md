@@ -321,11 +321,15 @@ nuovo template e disabilitare il precedente.
   - `versione_contesto`* (int positivo) — la forma dei dati che la versione
     legge. **Nessun default**, né qui né a DB: la dichiara chi scrive la
     versione (il frontend propone `versione_contesto_builder` del template)
-  - `formato_template` (string in `{HTML, HTML_MARKDOWN_BLOCKS}`, default `HTML`)
+  - `formato_template` (string, un `codice_interno` di `documenti.formati_template`, default `HTML`)
   - `css_template` (string nullable)
   - `markdown_template` (string nullable)
-  - `page_format` (string in `{A4, A3, LETTER}`, default `A4`)
-  - `page_orientation` (string in `{PORTRAIT, LANDSCAPE}`, default `PORTRAIT`)
+  - `page_format` (string, un `codice_interno` di `documenti.formati_pagina`, default `A4`)
+  - `page_orientation` (string, un `codice_interno` di `documenti.orientamenti_pagina`, default `PORTRAIT`)
+  - ⭐ I valori ammessi dei tre campi sono i **vocabolari** a DB (dal 2026-10-04,
+    `brief-db-vocabolari-versione-template`), non una lista del backend: il frontend li legge dal
+    lookup generico (`rel=documenti.formati_template` / `formati_pagina` / `orientamenti_pagina`,
+    con `etichetta_key`) e il rifiuto lo da' la FK, tradotto sul campo.
   - `margin_top_mm` / `margin_right_mm` / `margin_bottom_mm` / `margin_left_mm` (number >= 0, default 10; sono accettate anche stringhe numeriche come `"15.00"`, normalizzate dal service)
   - `valido_dal` (date ISO, nullable in BOZZA — diventa obbligatorio in pubblicazione)
   - `valido_al` (date ISO, nullable)
@@ -342,8 +346,8 @@ nuovo template e disabilitare il precedente.
   - `versione`: numero calcolato come `MAX(versione)+1` per il template.
   - `stato`: sempre `BOZZA` su create.
 - `400` `E_DOCUMENTI_VALIDATION`: chiave non whitelisted, campo richiesto
-  mancante (anche `versione_contesto`, col campo), formato/page_format/
-  orientation fuori whitelist, margine negativo, race su
+  mancante (anche `versione_contesto`, col campo), `formato_template`/`page_format`/
+  `page_orientation` fuori vocabolario (FK, col campo), margine negativo, race su
   `uq_template_documenti_versioni_template_versione` (riprovare).
 - `404` `E_DOCUMENTI_NOT_FOUND`: template inesistente o fuori scope.
 
@@ -364,7 +368,8 @@ nuovo template e disabilitare il precedente.
 
 - `200`: dettaglio della versione aggiornata.
 - `400` `E_DOCUMENTI_VALIDATION`: chiave extra, payload vuoto post-validation,
-  formato/orientation fuori whitelist, margine negativo o non numerico,
+  `formato_template`/`page_format`/`page_orientation` fuori vocabolario (FK, col
+  campo), margine negativo o non numerico,
   `attivo`/`is_default` esplicito a `null`. I margini provenienti dal DB come
   stringhe decimali (`"15.00"`) sono validi e vengono convertiti prima del write.
 - `404` `E_DOCUMENTI_NOT_FOUND`: template/versione inesistente o fuori scope.
@@ -754,4 +759,18 @@ se stesso. Se il file sullo storage non corrisponde allo `sha256` registrato, il
 render si ferma con `E_DOCUMENTI_STORAGE_FAILED`.
 
 Decisioni e motivi: `work-in-progress/brief-be-documenti-risorse-esterne-render-pdf.md`.
+
+**La pagina la decidono le colonne della versione** (dal 2026-10-04, D-1 strada A e R-BE-V2a di
+`brief-db-vocabolari-versione-template`): formato (`page_format`), orientamento
+(`page_orientation`) e i quattro margini (`margin_*_mm`). Il render compone una regola
+`@page { size: <formato> <orientamento>; margin: <top> <right> <bottom> <left>mm }` e la applica
+**sopra** il CSS del template:
+
+* un `@page` scritto nel template (nel CSS o in uno `<style>` dell'HTML) **non** cambia
+  formato, orientamento né margini: le colonne vincono sempre. Restano del template le altre
+  dichiarazioni dell'`@page`, cioè i box di margine (`@bottom-left` e simili: piè di pagina,
+  numeri di pagina);
+* un dato di pagina assente o non valido **ferma il render** con `E_DOCUMENTI_RENDER_FAILED`
+  e il campo nel `detail`: niente A4 di ripiego;
+* vale anche per la **ristampa fedele**, che usa le colonne della versione di allora.
 

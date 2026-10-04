@@ -45,6 +45,10 @@ Indice test eseguiti:
 11) CicloOperatoreDbTests.test_disabilitato_si_riattiva_col_reinvio_e_rientra
    (D-3: interruttore 400, rotta ritirata 404, reinvio che riapre il rapporto
     e non la porta, attivazione con un clic, rientro; valido_dal intatto)
+12) CicloOperatoreDbTests.test_operatore_disabilitato_entra_ancora_come_cliente_shop
+   (M-5 sul login: porta admin 403 E_VESTE_NON_ATTIVA, porta shop 200)
+13) CicloOperatoreDbTests.test_operatore_disabilitato_entra_ancora_come_cliente_portale
+   (lo stesso giro con la veste CLIENTE_PORTALE: porta portale 200)
 """
 
 from __future__ import annotations
@@ -68,6 +72,8 @@ from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_ann
 
 _PASSWORD = "Giusta-Per-Il-Test-2026!"
 _URL_LOGIN = "/api/v1/admin/token/"
+_URL_LOGIN_SHOP = "/api/v1/shop/token/"
+_URL_LOGIN_PORTALE = "/api/v1/portale/token/"
 # Con la credenziale il DB non legge l'impronta, ma la pretende (brief §13.6):
 # un check che la volesse solo per i nomi inesistenti darebbe al backend un
 # ramo in piu' da tenere uguale.
@@ -366,11 +372,34 @@ def _codice_fiscale() -> str:
 # pubblica attiva, il login entra. Solo l'email e' finta (se ne legge il link).
 class CicloOperatoreDbTests(_ViewVere):
 
+    # I test che vogliono il ruolo cliente (CL) di un'azienda, preparato
+    # prima del contesto operatore.
+    _CON_RUOLO_CLIENTE = frozenset({
+        "test_operatore_disabilitato_entra_ancora_come_cliente_shop",
+        "test_operatore_disabilitato_entra_ancora_come_cliente_portale",
+    })
+
     def setUp(self) -> None:
         super().setUp()
         self.enterContext(patch.object(PasswordResetRateThrottle, "allow_request", return_value=True))
         self.enterContext(patch.object(ConfermaTokenRateThrottle, "allow_request", return_value=True))
         with connection.cursor() as cur:
+            # ⚠️ I builder dei soggetti PRIMA del contesto operatore (scrivono
+            #    una saga, e dentro il contesto il controllo dell'indirizzo
+            #    obbligatorio la ferma): il ruolo cliente lo prepara qui chi
+            #    lo dichiara.
+            self.ruolo_cliente = None
+            if self._testMethodName in self._CON_RUOLO_CLIENTE:
+                cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_pg('Cliente shop di un operatore')")
+                cliente = cur.fetchone()[0]
+                cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_ruolo(%s, 'CL')", [cliente])
+                self.ruolo_cliente = cur.fetchone()[0]
+                # ⚠️ Il builder chiude la sua saga con i controlli IMMEDIATE, e
+                #    il modo vale per il resto della transazione: la madre che
+                #    crea l'operatore verrebbe controllata a meta' della sua
+                #    («Indirizzo obbligatorio mancante»). Si torna allo stato di
+                #    una transazione nuova, coi guard di completezza rimandati.
+                cur.execute("SET CONSTRAINTS ALL DEFERRED")
             self.admin_id = apri_contesto_operatore(cur)
             cur.execute("SELECT id FROM config.qualifiche WHERE codice = 'DIPENDENTE'")
             self.qualifica_id = cur.fetchone()[0]
@@ -517,6 +546,55 @@ class CicloOperatoreDbTests(_ViewVere):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertIs(self._veste_attiva(uid), True)
         self.assertEqual(self._login(nome, _PASSWORD, "198.51.100.32").status_code, 200)
+
+    # Scopo: ⭐ M-5 visto da chi entra (2026-10-04). Un operatore che e' anche
+    # cliente (dello shop o del portale), con UNA credenziale (D-6):
+    # disabilitato come operatore, dalla porta admin non entra piu', dalla
+    # porta del cliente SI'. Il DB lo dice gia' (la veste del cliente resta
+    # accesa, `is_active` e' l'OR delle vesti); qui lo si prova sul login,
+    # che e' l'esito che conta per la persona. Prima di M-5 disabilitare
+    # l'operatore toglieva l'accesso anche come cliente.
+    def _disabilitato_entra_ancora_come_cliente(self, ruolo_applicativo: str, url_porta: str) -> None:
+        nome = f"op_{uuid.uuid4().hex[:10]}"
+        uid = self._crea(email=f"{nome}@example.invalid", username=nome)["auth_user_id"]
+        r = self._post("/api/v1/auth/attivazione/", {
+            "token": self._invita(uid), "new_password": _PASSWORD, "new_password_confirm": _PASSWORD,
+        })
+        self.assertEqual(r.status_code, 200, r.content)
+
+        # La veste del cliente sulla stessa credenziale, sul ruolo cliente (CL)
+        # di un'azienda preparato dal setUp.
+        with connection.cursor() as cur:
+            cur.execute(
+                "INSERT INTO anagrafiche.identita_digitali "
+                "(soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo) "
+                "VALUES (%s, %s, %s, true)",
+                [self.ruolo_cliente, uid, ruolo_applicativo],
+            )
+        ip = "198.51.100.33"
+        self.assertEqual(self._login(nome, _PASSWORD, ip).status_code, 200)
+        r = self._post(url_porta, {"username": nome, "password": _PASSWORD}, ip)
+        self.assertEqual(r.status_code, 200, r.content)
+
+        r = self._admin("post", f"/api/v1/amm-software/operatori/{uid}/disabilita/")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIs(self._veste_attiva(uid), False)
+        # `is_active` resta acceso: c'e' ancora una veste utilizzabile.
+        self.assertIs(User.objects.get(id=uid).is_active, True)
+
+        # Porta admin chiusa: la credenziale e' valida ma la veste no.
+        r = self._login(nome, _PASSWORD, ip)
+        self.assertEqual(r.status_code, 403, r.content)
+        self.assertEqual(r.json()["error"]["code"], "E_VESTE_NON_ATTIVA")
+        # Porta del cliente aperta, con la stessa password.
+        r = self._post(url_porta, {"username": nome, "password": _PASSWORD}, ip)
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_operatore_disabilitato_entra_ancora_come_cliente_shop(self):
+        self._disabilitato_entra_ancora_come_cliente("SHOP_CUSTOMER", _URL_LOGIN_SHOP)
+
+    def test_operatore_disabilitato_entra_ancora_come_cliente_portale(self):
+        self._disabilitato_entra_ancora_come_cliente("CLIENTE_PORTALE", _URL_LOGIN_PORTALE)
 
     # Scopo: T-2. Il login a due passi per intero, sulle view e sul DB veri.
     def test_login_a_due_passi_col_secondo_fattore_attivo(self):

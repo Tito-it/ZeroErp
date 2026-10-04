@@ -6,7 +6,7 @@
 > `brief-db-liste-righe-documento` (§9.15-9.16), 2026-10-04.
 > **Decisione:** di Tid, 2026-10-04: «una esclusione non si modifica».
 > **Stato:** ✅ **DB chiuso** il 2026-10-04: applicato (`20261004-12…-14` + CSV), lock generato su dev,
-> pgTAP senza regressioni (§6.6). ✅ **BE/FE scritto** il 2026-10-04 (§7), non committato.
+> pgTAP senza regressioni (§6.6). ✅ **BE/FE fatto** il 2026-10-04 (§7).
 
 ## 1. La regola
 

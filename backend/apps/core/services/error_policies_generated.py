@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 974, di cui 99 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 975, di cui 99 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1196,6 +1196,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     # vendite.trgfn_doc_righe_lock_fuori_bozza (building block, 2026-09-22): si sta aggiungendo, modificando o togliendo una riga di un documento — DDT, ordine (solo DELETE), contratto — che non e' piu' in bozza. Nasce da D7 di brief-db-partita-merce-per-documento: una riga di DDT emesso, gia' instradata alla fatturazione, poteva essere disattivata o modificata senza che niente lo fermasse; la regola viveva nella capability (can_edit_righe) e nel backend (_STATI_RIGHE_MODIFICABILI = {DRAFT}) e a DB in due copie parziali (il lock delle righe di contratto, il ramo 1 del guard di cancellazione), ritirate nello stesso giro. · CONFLITTO_STATO e non DATO_ERRATO: non c'e' nessun campo da correggere, e' lo stato del documento che non lo consente — e per la regola delle capability l'azione non va nemmeno proposta. · ⭐ I VALORI: l'etichetta del documento (numero, o id se il numero non c'e' ancora), lo STATO, e il VERBO tentato (aggiungere / modificare / togliere) — la stessa frase per tre porte, che dice quale porta. Nessun nome di tabella, nessun id di riga: viaggiano nel contesto. · Sostituisce E_DELETE_RIGA_DOC_NON_BOZZA (ritirato lo stesso giorno). Gemello sulla testata: E_DELETE_DOC_NON_BOZZA, che non si fonde (il documento intero, rimedio diverso).
     "E_RIGA_DOC_NON_BOZZA": "CONFLITTO_STATO",
+    # script.trgfn_righe_guard_erogazione_obbligatoria (trigger _a10_ BEFORE INSERT OR UPDATE OF tipo_erogazione, tipo_eccezione su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni): una riga che si fattura (ogni tipo che non e' ESCLUSIONE: oggi OVERRIDE e AGGIUNTA) vuole tipo_erogazione. Sull'ESCLUSIONE resta libera: non si fattura e non si modifica. Stessa regola sulle due tabelle perche' fn_push_offerta_a_contratto ricopia l'erogazione dall'offerta al contratto. Rete: i CHECK chk_contrighe_erogazione_per_tipo_eccezione e chk_offerte_eccezioni_erogazione_per_tipo_eccezione. * DATO_ERRATO: c'e' un campo da correggere, campo = tipo_erogazione nel contesto (con riga_id, contratto_id o offerta_id, articolo_id, tipo_eccezione). * Frase chiusa, nessun valore: l'operatore e' gia' sulla riga. * Nasce il 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate, decisione di Tid).
+    "E_RIGA_EROGAZIONE_OBBLIGATORIA": "DATO_ERRATO",
     "E_RIGA_GIA_FATTURATA": "CONFLITTO_STATO",
     "E_RIGA_LISTINO_PROPAGATA": "CONFLITTO_STATO",
     # Trigger DB immutabilita' v5 su listini_righe / listini_righe_componenti · (script.fn_log_and_raise_error, P0001): blocca INS/UPD/DLT quando · la versione listino non e' in BOZZA. Solleva il service · `fn_save_bundle` quando l'admin tenta di modificare prezzi bundle · su versione ATTIVA/CHIUSA.

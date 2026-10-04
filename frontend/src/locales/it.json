@@ -2363,6 +2363,7 @@
       "field_fonte_quantita_attesa": "Fonte quantita'",
       "field_uom": "Unita' di misura",
       "select_fonte_quantita": "Seleziona fonte quantita'...",
+      "select_tipo_erogazione": "Seleziona tipo di erogazione...",
       "fonte_quantita_uso_atipico": "Combinazione atipica per questo tipo di erogazione. Confermata?",
       "fonte_quantita_value_fissa": "Fissa (contrattualizzata)",
       "fonte_quantita_value_manuale": "Manuale (sul documento)",
@@ -3476,6 +3477,7 @@
       "select_tipo_utenza": "Seleziona tipo utenza...",
       "field_classe_utenza": "Classe utenza",
       "select_classe_utenza": "Seleziona classe utenza...",
+      "select_tipo_erogazione": "Seleziona tipo di erogazione...",
       "field_param_1_num": "Parametro 1 (numero)",
       "field_param_2_txt": "Parametro 2 (testo)",
       "field_tipo_eccezione": "Tipo eccezione",
@@ -5457,6 +5459,19 @@
       "tipo_allegato": "Allegato",
       "files_loading": "Caricamento file…",
       "files_empty": "Nessun file disponibile per questo documento."
+    },
+    "formati_template": {
+      "html": "HTML",
+      "html_markdown_blocks": "HTML con blocchi Markdown"
+    },
+    "formati_pagina": {
+      "a4": "A4 (210 × 297 mm)",
+      "a3": "A3 (297 × 420 mm)",
+      "letter": "Letter (8,5 × 11 pollici)"
+    },
+    "orientamenti_pagina": {
+      "portrait": "Verticale",
+      "landscape": "Orizzontale"
     }
   },
   "config": {
@@ -5536,8 +5551,6 @@
         "versione_contesto_hint": "Il sistema prepara oggi i dati di questo documento nella forma {forma}. Una versione si pubblica e stampa solo se legge quella forma; una bozza puo' dichiararne un'altra per prepararla.",
         "versione_contesto_builder_assente": "Il generatore dei dati di questo template non e' registrato: le sue versioni non si pubblicano e non stampano.",
         "publish_forma": "Questa versione legge i dati nella forma {versione}; il sistema li prepara nella forma {builder}.",
-        "orientation_portrait": "Verticale",
-        "orientation_landscape": "Orizzontale",
         "asset": {
           "titolo": "Asset richiamabili",
           "hint": "Gli asset dell'emittente del template, attivi e validi oggi. Nel template si richiamano con asset:<codice interno>.",

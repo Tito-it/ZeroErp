@@ -38,8 +38,12 @@
 #  11  il VALORIZZATO porta il suo importo, legato al kit (kit_riga_nr); il
 #      padre porta solo il DESCRITTIVO (brief-db-esposizione-componenti-kit-
 #      in-fattura, 2026-10-01)
+#  8c  quantita' e UoM del padre congelate dal meta (`kit_qta`, `kit_uom_id`):
+#      la fattura non le ricava piu' dai componenti (brief-db-bom-flag-
+#      quantita-e-kit-in-fattura R-BE-B2, 2026-10-02)
 # ------------------------------------------------------------
 
+import json
 import uuid
 from decimal import Decimal
 
@@ -67,6 +71,9 @@ SQL_TEMPLATE = """
 """
 
 FAIL: list[str] = []
+
+# Quanti kit rappresentano le attivita' componente dello smoke (meta `qta_padre`).
+KIT_QTA_PADRE = Decimal("1")
 
 
 # Scopo: Registra ed emette l'esito di una singola asserzione dello smoke.
@@ -224,20 +231,25 @@ with transaction.atomic():
             for nome, art, esposizione in [("K1", altri[0], "VALORIZZATO"),
                                            ("K2", t["articolo_id"], "DESCRITTIVO")]:
                 seg = kit_meta.segment_key_componente(kit_padre_segment, art)
-                meta_kit = (
-                    '{"%s": "%s", "%s": "%s"}'
-                    % (kit_meta.META_KEY_COMPONENTE_DI, t["articolo_id"],
-                       kit_meta.META_KEY_ESPOSIZIONE, esposizione)
-                )
+                # Il meta come lo scrive il push: padre, modo di esposizione e
+                # quantita' e UoM della RIGA PADRE (R-BE-B2). Senza le ultime
+                # due il servizio si ferma, ed e' giusto: nessun ripiego.
+                # Un kit, componenti a 2 ciascuno; la UoM e' quella del padre
+                # (l'articolo del template).
+                meta_kit = {
+                    kit_meta.META_KEY_COMPONENTE_DI: str(t["articolo_id"]),
+                    kit_meta.META_KEY_ESPOSIZIONE: esposizione,
+                    kit_meta.META_KEY_QTA_PADRE: str(KIT_QTA_PADRE),
+                    kit_meta.META_KEY_UOM_PADRE: t["uom_id"],
+                }
                 ca = crea_commessa_attivita(
                     cur, t, segment_key=seg, articolo_id=art,
                     quantita=Decimal("2.000000"), prezzo=Decimal("5.00"),
-                    meta=meta_kit,
+                    meta=json.dumps(meta_kit),
                 )
                 # `segment_key` va anche nel meta dell'AF: e' da li' che il
                 # servizio riconosce il componente (il push lo copia sempre).
-                meta_af = meta_kit[:-1] + ', "%s": "%s"}' % (
-                    kit_meta.META_KEY_SEGMENT_KEY, seg)
+                meta_af = json.dumps({**meta_kit, kit_meta.META_KEY_SEGMENT_KEY: seg})
                 af[nome] = crea_attivita_fatturabile(
                     cur, t, ca_id=ca, lock_batch_id=lock_batch_id,
                     quantita=Decimal("2.000000"), prezzo=Decimal("5.00"),
@@ -256,7 +268,8 @@ with transaction.atomic():
             SELECT r.id, r.riga_nr, r.qta, r.prezzo_unitario, r.imponibile_riga,
                    r.sorgente_tipo_id, r.sorgente_uid, r.kit_key,
                    r.kit_esposizione, r.kit_articolo_padre_id,
-                   r.kit_descrizione_padre, r.meta, r.fattura_id
+                   r.kit_descrizione_padre, r.meta, r.fattura_id,
+                   r.kit_qta, r.kit_uom_id
               FROM vendite.fatture_righe r
               JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = r.fattura_id
              WHERE lf.lotto_id = %s
@@ -266,7 +279,7 @@ with transaction.atomic():
         )
         # Il driver restituisce `jsonb` come stringa: stessa coercion che
         # applica il repository (e' il difetto che questo smoke ha scoperto).
-        righe = [tuple(r[:11]) + (coerce_jsonb_dict(r[11]), r[12])
+        righe = [tuple(r[:11]) + (coerce_jsonb_dict(r[11]), r[12], r[13], r[14])
                  for r in cur.fetchall()]
         for r in righe:
             print(f"  riga {r[1]}: qta={r[2]} x {r[3]} = {r[4]} | kit={r[7]} "
@@ -330,6 +343,9 @@ with transaction.atomic():
                   esposizione.get("KIT_PADRE") == 1
                   and esposizione.get("KIT_COMPONENTE") == 2,
                   str(esposizione))
+            check("8c) quantita' e UoM del padre congelate dal meta",
+                  all(r[13] == KIT_QTA_PADRE and r[14] == t["uom_id"] for r in kit_righe),
+                  str([(r[13], r[14]) for r in kit_righe]))
             check("8b) il modo e' congelato col suo codice",
                   sorted(r[8] for r in kit_righe) == ["DESCRITTIVO", "VALORIZZATO"],
                   str(sorted(r[8] for r in kit_righe)))

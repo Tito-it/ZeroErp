@@ -16,7 +16,10 @@
 #            per HTML+CSS -> bytes PDF, con un `url_fetcher` NOSTRO: le
 #            risorse che un template puo' caricare sono una lista chiusa
 #            (`asset:<codice_interno>` e `data:`), il resto e' un errore
-#            (brief-be-documenti-risorse-esterne-render-pdf §4).
+#            (brief-be-documenti-risorse-esterne-render-pdf §4);
+#         4. la PAGINA (formato, orientamento, margini) la decidono le
+#            colonne della versione, non il CSS del template (D-1 strada A e
+#            R-BE-V2a, Tid 2026-10-04; `_regola_pagina`).
 #
 #        Errori applicativi mappati su `E_DOCUMENTI_RENDER_FAILED`:
 #         - engine non in whitelist applicativa
@@ -30,7 +33,9 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import unquote
 
@@ -112,7 +117,9 @@ def render_pdf(
     )
     css_source = template_versione.get("css_template") or ""
     return _render_with_weasyprint(
-        html_source, css_source, risolvi_asset=risolvi_asset,
+        html_source, css_source,
+        css_pagina=_regola_pagina(template_versione),
+        risolvi_asset=risolvi_asset,
     )
 
 
@@ -133,6 +140,73 @@ def _guard_versione_minima(versione: dict[str, Any]) -> None:
                 message=f"Versione template incompleta: campo '{key}' mancante.",
                 detail=f"versione_id={versione.get('id')!r}",
             )
+
+
+# I campi della versione da cui si compone la pagina: tutti NOT NULL a DB
+# (`template_documenti_versioni`), e `_VERSIONI_PROJECTION_DETAIL` li porta.
+_CAMPI_PAGINA = (
+    "page_format",
+    "page_orientation",
+    "margin_top_mm",
+    "margin_right_mm",
+    "margin_bottom_mm",
+    "margin_left_mm",
+)
+
+# Un codice di vocabolario e' un identificatore: finisce in un foglio CSS, e
+# qualunque altra cosa (spazi, `;`, `}`) vorrebbe dire una regola in piu'.
+_RE_CODICE_PAGINA = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+# Scopo: La regola `@page` dalle colonne della versione: formato e
+#        orientamento (codici dei vocabolari `documenti.formati_pagina` e
+#        `orientamenti_pagina`, che sono gia' parole CSS: `A4`, `A3`,
+#        `LETTER`, `PORTRAIT`, `LANDSCAPE` — in CSS il maiuscolo non conta) e
+#        i quattro margini in millimetri.
+# ⭐ VINCONO LE COLONNE (R-BE-V2a, Tid 2026-10-04): sono cio' che il drawer
+#    della versione fa scegliere. Il resto dell'`@page` del template (i
+#    margin box: pie' di pagina, numeri) resta suo.
+# ⛔ `!important` NON e' un vezzo: WeasyPrint tratta i fogli passati con
+#    `stylesheets=` come origine USER, che perde contro qualunque `@page`
+#    scritto in uno `<style>` dell'HTML (origine author) — a prescindere
+#    dall'ordine. Solo un `!important` di origine user batte l'author.
+#    Provato il 2026-10-04: senza, un A3 orizzontale usciva A4 verticale.
+# ⛔ Un campo assente e' una proiezione rotta, non un default: le colonne sono
+#    NOT NULL, quindi ci si ferma invece di stampare un A4 di ripiego.
+def _regola_pagina(versione: dict[str, Any]) -> str:
+    mancanti = [c for c in _CAMPI_PAGINA if versione.get(c) is None]
+    if mancanti:
+        ErrorManager.raise_error(
+            code=E_RENDER_FAILED,
+            message="Versione template incompleta: mancano i dati della pagina.",
+            detail=f"versione_id={versione.get('id')!r} campi={mancanti!r}",
+        )
+    formato = str(versione["page_format"])
+    orientamento = str(versione["page_orientation"])
+    for campo, codice in (("page_format", formato), ("page_orientation", orientamento)):
+        if not _RE_CODICE_PAGINA.match(codice):
+            ErrorManager.raise_error(
+                code=E_RENDER_FAILED,
+                message="Versione template con un valore di pagina non valido.",
+                detail=f"versione_id={versione.get('id')!r} {campo}={codice!r}",
+            )
+    margini = []
+    for campo in _CAMPI_PAGINA[2:]:
+        try:
+            mm = Decimal(str(versione[campo]))
+        except InvalidOperation:
+            mm = None
+        if mm is None or not mm.is_finite() or mm < 0:
+            ErrorManager.raise_error(
+                code=E_RENDER_FAILED,
+                message="Versione template con un margine di pagina non valido.",
+                detail=f"versione_id={versione.get('id')!r} {campo}={versione[campo]!r}",
+            )
+        margini.append(f"{mm:f}mm")
+    return (
+        f"@page {{ size: {formato} {orientamento} !important;"
+        f" margin: {' '.join(margini)} !important; }}"
+    )
 
 
 # Scopo: Render Jinja del sorgente HTML con `context` come namespace.
@@ -181,6 +255,7 @@ def _render_with_weasyprint(
     html_source: str,
     css_source: str,
     *,
+    css_pagina: str,
     risolvi_asset: RisolviAsset,
 ) -> bytes:
     # Lazy import: la libreria carica binding Pango/Cairo all'import time;
@@ -205,9 +280,11 @@ def _render_with_weasyprint(
     fetcher = _crea_fetcher(URLFetcher, URLFetcherResponse, risolvi_asset)
     try:
         document = HTML(string=html_source, url_fetcher=fetcher)
-        stylesheets = (
-            [CSS(string=css_source, url_fetcher=fetcher)] if css_source else None
-        )
+        # La regola della pagina per ULTIMA: e' quella delle colonne.
+        stylesheets = [
+            *([CSS(string=css_source, url_fetcher=fetcher)] if css_source else []),
+            CSS(string=css_pagina),
+        ]
         pdf_bytes = document.write_pdf(stylesheets=stylesheets)
     except FatalURLFetchingError as exc:
         # Il fetcher ha rifiutato una risorsa e WeasyPrint si e' fermato.
