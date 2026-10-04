@@ -69,6 +69,12 @@
 >   lista 103: le righe AGGIUNTA escono con l'UdM dell'articolo e non con quella
 >   della riga, e il form di modifica la riscrive al primo salvataggio.
 >   ⏳ **Richiesta al team DB in §9.11**: il FE del contratto la attende.
+> - ✅ **2026-10-04 (`dev/db-tid`): le due richieste DB aperte sono MIGRATE,
+>   pgTAP verdi, nessuna regressione** (esito di Tid). §9.11 → changeSet
+>   `20261004-01` + pgTAP nuovo (§9.11.1); §9.14 → tre celle di
+>   `lista_preset.csv` (§9.14.1). ✅ Doc auto-gen rigenerata.
+>   ⇒ **Parte DB di nuovo chiusa**: il FE del lotto D (§9.11, «Lato FE») può
+>   partire.
 
 ---
 
@@ -1888,7 +1894,11 @@ OpenAPI verdi su DB provvisto; `ruff` pulito. ⚠️ **Resta, dichiarata**: la
 lettura completa `list_righe` del BB su `ContrattoRigheListaRepository` duplica
 `ContrattiRepository.list_righe_preview` e non ha consumatori (§9.10).
 
-### 9.11 ⏳ Richiesta al team DB — la sorgente della lista 103 porta i dati della riga (2026-09-30)
+### 9.11 ✅ Richiesta al team DB — la sorgente della lista 103 porta i dati della riga (2026-09-30)
+
+> ✅ **Scritta dal team DB il 2026-10-04, MIGRATA lo stesso giorno, pgTAP verdi,
+> nessuna regressione** (esito di Tid): changeSet `20261004-01`, pgTAP
+> `test-contratto-righe-lista-uom-riga-v1.sql`. Consegna e prove in §9.11.1.
 
 > **Destinatario:** team DB (`dev/db-tid`). **Blocca** il FE del lotto D
 > (`ContrattoRigheDrawer` su `DrawerTabLista` + `useFormInline`): senza, la
@@ -1953,6 +1963,67 @@ ritirano `buildRigaActions`, `_row_key`, il filtro articolo lato client, lo
 shortcut F5 scritto a mano e la doppia sorgente `righeIniziali`/anteprima. Esce
 dal registro delle `DataTable` grezze.
 
+#### 9.11.1 Consegna DB (2026-10-04)
+
+**La risposta alla domanda di R-D1 («cosa significa NULL»), letta sul modello:**
+`uom_operativa_id` NULL vuol dire **l'UdM base dell'articolo**. È il ripiego che
+`script.trgfn_qta_from_operativa` fa già su ogni scrittura di
+`contratti_righe`: se manca l'UdM la riempie con `articoli.uom_id`. NULL resta
+solo quando la riga non ha quantità (`qta_operativa` NULL, ammesso con fonte
+diversa da `FISSA`), e lì la riga non ha scelto un'UdM. ⇒ Nessun vincolo nuovo:
+la funzione usa lo **stesso** ripiego, `COALESCE(cr.uom_operativa_id, a.uom_id)`.
+Escluderlo con un vincolo sarebbe un cantiere sulla tabella, non su questa
+lettura.
+
+| Cosa | Dove |
+| --- | --- |
+| R-D1: le AGGIUNTA (2a, 2b) escono nell'UdM della riga, id e codice | `20261004-01` |
+| ⭐ **Trovato nel giro, stesso difetto**: i **componenti** di un bundle AGGIUNTA uscivano nell'UdM base del componente (`af.uom_id`), e non in `contratti_righe_componenti.uom_operativa_id` (NOT NULL), quella in cui è quotato il loro `prezzo`. Corretto nello stesso changeSet. I componenti del **listino** (parte 1, dal core `fn_espandi_listino_versione`) non si toccano | `20261004-01` |
+| R-D2: in coda `ordine` e `uom_operativa_id` della riga di `contratti_righe`, NULL sulle `DA_LISTINO`; le 22 colonne di prima identiche e nello stesso ordine | `20261004-01` |
+| `riga_key` invariata: `L:<art>:<uom>` resta l'UdM del listino, `A:<id>` non porta l'UdM | — |
+| forma: `RETURNS TABLE` cambiato ⇒ DROP + CREATE + `GRANT EXECUTE` all'app; firma, `RETURNS TABLE`, `COMMENT`, `DROP` e `GRANT` ancorati (`%TYPE`); `SECURITY INVOKER` esplicito; corpo dalla doc auto-gen (verificato identico al `-53`) con sostituzioni contate. Nessuna vista né funzione dipende | `20261004-01` |
+| doc manuale | `dbzero/vendite/manual/fn_contratto_righe_preview.md` (firma, colonne, shape dei componenti, rev) |
+
+**Prove** (sullo scratch `zeroerp_ci`, come owner, in transazione annullata, con
+l'SQL **estratto** dallo YAML):
+
+- pgTAP nuovo **9/9**. Tutto costruito: articoli con un'UdM operativa U2 ≠ base,
+  una AGGIUNTA standalone in U2, una a consumo senza quantità (UdM NULL), un
+  bundle AGGIUNTA col componente in U2, un OVERRIDE e una riga dal listino.
+  ⚠️ Dal catalogo si leggono solo due UdM del seed.
+- **Mutazione** (stesso test sulla funzione di oggi): rossi il 2 (AGGIUNTA in
+  U2) e il 4 (componente in U2), e dal 5 in poi l'errore «la colonna "ordine" non
+  esiste». ⚠️ Il **3 resta verde anche sulla funzione di oggi**, ed è giusto:
+  presidia il ripiego (una riga con UdM NULL non deve sparire dalla lista né
+  uscire senza UdM), che coincide con il comportamento di prima.
+- Andata e ritorno: dopo il forward una sola funzione, stessi argomenti,
+  `INVOKER`, `STABLE`, EXECUTE all'app; dopo il rollback `prosrc` e risultato
+  **byte-identici** al vivo.
+- I sei pgTAP che nominano la funzione, con e senza l'SQL estratto in testa:
+  esiti **identici**, nessuna regressione. ⚠️ Fatto datato (2026-10-04, scratch):
+  `test-fn-contratto-righe-preview-nuovi-campi-v1` (2, 7, 8) e
+  `test-offerta-righe-espanse` (6, 7, 8) sono rossi **anche senza** questo
+  changeSet. Non sono di questo giro.
+- Guardrail statici verdi (runOnChange, preCondition/seed, letterali SQL,
+  timestamp, GRANT ai ruoli batch, DDL su trigger di automazione).
+
+✅ **Migrato da Tid il 2026-10-04, pgTAP verdi, nessuna regressione** (la corsa
+come app copre anche la RLS, che la prova pre-apply da owner non vedeva).
+✅ Doc auto-gen rigenerata da Tid il 2026-10-04 (la firma a 24 colonne è nella pagina della funzione).
+
+**Ricadute sul BE/FE** (nessuna modifica richiesta al BE, come scritto sopra):
+
+- il contesto di stampa del contratto passa la riga intera: compaiono le chiavi
+  `ordine` e `uom_operativa_id`, che nessun template legge; l'UdM stampata delle
+  AGGIUNTA, e dei componenti dei loro bundle, diventa quella giusta;
+- le due colonne nuove **non** entrano nel catalogo `ui.lista_colonna` della
+  103, ed è voluto: sono dati per il form, non colonne da mostrare. Il presidio
+  di proiezione (`test_lista_proiezione_campo_sorgente`) controlla una sola
+  direzione, «ogni colonna a catalogo arriva nella riga» (letto nel file il
+  2026-10-04), quindi due colonne in più nella sorgente non lo toccano;
+- FE (lotto D): il form legge `uom_operativa_id` e `ordine` dalla riga. Cade il
+  ripiego su 10 e l'UdM non va più indovinata.
+
 ### 9.12 Lotto E — chiuso (2026-09-30)
 
 | Voce | Esito |
@@ -1980,7 +2051,10 @@ Prove: vitest 65 file / 505 test, `npm run guards`, `vite build`, eslint verdi;
 backend: test di commesse e registro OpenAPI verdi, proiezione della lista 38
 su DB verde. ⚠️ **Non provato a video**.
 
-### 9.14 ⏳ Richiesta al team DB — tre liste di drawer con il preset a 25 (2026-09-30)
+### 9.14 ✅ Richiesta al team DB — tre liste di drawer con il preset a 25 (2026-09-30)
+
+> ✅ **Scritta dal team DB il 2026-10-04, MIGRATA lo stesso giorno** (esito di
+> Tid, nessuna regressione): §9.14.1.
 
 > **Destinatario:** team DB (`dev/db-tid`). Solo dato.
 
@@ -1999,3 +2073,16 @@ il preset di sistema a 25, che il BB applica al primo caricamento:
 ⇒ Serve che le tre partano dalla misura **compatta** del catalogo. Chi ha già
 salvato una sua personalizzazione la tiene.
 
+#### 9.14.1 Consegna DB (2026-10-04)
+
+`80_data/sql/ui/lista_preset.csv`, solo dato: `pagina_dimensione` da 25 a **10**
+sui preset 38 (`commesse_attivita_default`), 45 (`lotto_fatture_default`) e 67
+(`lotto_gruppi_default`). Nessun changeSet nuovo: lo rilegge il mirror
+`runOnChange` `20260507-08`, come per il §9.7. Il 10 è la misura `COMPATTA`
+di `ui.misure_pagina` e la FK del preset la accetta. Un `NULL` non andava bene:
+nel resolver vuol dire «il default `PAGINA`», cioè 25.
+
+**Prova:** il mirror reso offline (`updateSQL`, copia senza `preConditions`) col
+CSV del working tree, eseguito **per intero** sullo scratch `zeroerp_ci` in
+transazione annullata. Tutte le righe passano dai guard, e cambiano solo
+`38: 25→10, 45: 25→10, 67: 25→10`. ✅ Migrato da Tid il 2026-10-04.

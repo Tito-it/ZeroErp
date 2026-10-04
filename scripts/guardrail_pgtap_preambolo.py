@@ -73,7 +73,12 @@ RADICE = pathlib.Path(__file__).resolve().parent.parent / "db" / "pgtap"
 #   `throws_ok(..., NULL, NULL)`: passava con qualunque errore, anche uno della
 #   fixture. Riscritto come throws_like sulla frase del prezzo in attesa
 #   (brief-db-preventivi-congelamento-pricing).
-SOGLIA_THROWS_SENZA_DISCRIMINANTE = 117
+# 2026-10-04: 117 -> 115. Non un risanamento, un RITIRO: i test 6 e 7 di
+#   db/pgtap/catalogo/test-articoli-componenti-immutabilita.sql erano due
+#   `throws_ok(..., NULL, NULL)` sull'UPDATE di partecipa_qta e
+#   determina_qta_padre, colonne ritirate da brief-db-bom-flag-quantita-e-kit-in-fattura
+#   (commit b808393db, 2026-10-02): le asserzioni sono uscite con loro.
+SOGLIA_THROWS_SENZA_DISCRIMINANTE = 115
 
 RX_BEGIN = re.compile(r"^\s*BEGIN\s*;", re.M)
 RX_SETC = re.compile(r"SET\s+CONSTRAINTS\s+ALL\s+IMMEDIATE", re.I)
