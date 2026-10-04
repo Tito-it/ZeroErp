@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R3 — I SETTE TRIGGER DEL CATALOGO PERMESSI
+#   Brief: brief-db-permessi-catalogo-notify-cache, sezioni 1, 3 (R3, R4) e 6.1, 6.3
+#
+# -- PERCHE' QUESTE SETTE -----------------------------------------------------------------------
+#   Sono la parte di CATALOGO che la catena dei permessi legge (dai corpi di
+#   fn_get_permessi_effettivi_*, fn_get_permessi_ereditati_*, fn_get_profili_accesso_applicabili,
+#   fn_resolve_livello_area, fn_area_di_oggetto). Il resto che la catena legge e' per utente
+#   (user_override_*, identita_digitali, risorse_umane) e resta fuori: brief §3 e §6.1.
+#
+# -- FORMA --------------------------------------------------------------------------------------
+#   AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ... FOR EACH STATEMENT: un mirror CSV
+#   (loadUpdateData) fa un'istruzione per riga, e PostgreSQL fonde i payload identici della
+#   stessa transazione: un avviso per tabella per migrate. Il mirror non disattiva i trigger
+#   (nessun session_replication_role ne' DISABLE TRIGGER nei mirror di queste tabelle).
+#   Fase z90 (effetto terminale), come trg_risorse_umane_z90_notify_cambio_reparto_upd.
+#   ⚠️ Nome: _ins_upd_dlt anche se scatta su TRUNCATE. Con _trn la tabella piu' lunga
+#   (profili_accesso_bindings) arriverebbe a 64 caratteri, oltre il limite di 63
+#   (troncamento). Il TRUNCATE e' dichiarato nel COMMENT.
+#   Trigger scritti a mano in 20_code, non generati da ci_apply: il DDL su di essi e'
+#   ammesso (linee-guida-sql §11.5 vale per i generati).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261004-89-create-trg-notify-permessi-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261004-89-create-trg-notify-permessi-catalogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Sette trigger z90 AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE FOR EACH STATEMENT sul
+        catalogo dei permessi (config.azioni_processo, aree_funzionali, area_model_overrides,
+        profili_accesso, profili_accesso_aree, profili_accesso_azioni,
+        profili_accesso_bindings): NOTIFY permessi_catalogo al commit, il backend svuota la
+        cache permessi. Brief: brief-db-permessi-catalogo-notify-cache R3.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: azioni_processo }
+        - tableExists: { schemaName: config, tableName: aree_funzionali }
+        - tableExists: { schemaName: config, tableName: area_model_overrides }
+        - tableExists: { schemaName: config, tableName: profili_accesso }
+        - tableExists: { schemaName: config, tableName: profili_accesso_aree }
+        - tableExists: { schemaName: config, tableName: profili_accesso_azioni }
+        - tableExists: { schemaName: config, tableName: profili_accesso_bindings }
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_notify_permessi_catalogo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_azioni_processo_z90_notify_permessi_ins_upd_dlt ON config.azioni_processo;
+              CREATE TRIGGER trg_azioni_processo_z90_notify_permessi_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON config.azioni_processo
+                  FOR EACH STATEMENT
+                  EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo();
+              COMMENT ON TRIGGER trg_azioni_processo_z90_notify_permessi_ins_upd_dlt ON config.azioni_processo IS
+                  'NOTIFY permessi_catalogo al commit di ogni istruzione che scrive config.azioni_processo (anche TRUNCATE, che il suffisso non nomina: _trn sforerebbe i 63 caratteri sulla tabella piu'' lunga): il backend svuota la cache permessi di tutti. Brief: brief-db-permessi-catalogo-notify-cache R3.';
+
+              DROP TRIGGER IF EXISTS trg_aree_funzionali_z90_notify_permessi_ins_upd_dlt ON config.aree_funzionali;
+              CREATE TRIGGER trg_aree_funzionali_z90_notify_permessi_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON config.aree_funzionali
+                  FOR EACH STATEMENT
+                  EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo();
+              COMMENT ON TRIGGER trg_aree_funzionali_z90_notify_permessi_ins_upd_dlt ON config.aree_funzionali IS
+                  'NOTIFY permessi_catalogo al commit di ogni istruzione che scrive config.aree_funzionali (anche TRUNCATE, che il suffisso non nomina: _trn sforerebbe i 63 caratteri sulla tabella piu'' lunga): il backend svuota la cache permessi di tutti. Brief: brief-db-permessi-catalogo-notify-cache R3.';
+
+              DROP TRIGGER IF EXISTS trg_area_model_overrides_z90_notify_permessi_ins_upd_dlt ON config.area_model_overrides;
+              CREATE TRIGGER trg_area_model_overrides_z90_notify_permessi_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON config.area_model_overrides
+                  FOR EACH STATEMENT
+                  EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo();
+              COMMENT ON TRIGGER trg_area_model_overrides_z90_notify_permessi_ins_upd_dlt ON config.area_model_overrides IS
+                  'NOTIFY permessi_catalogo al commit di ogni istruzione che scrive config.area_model_overrides (anche TRUNCATE, che il suffisso non nomina: _trn sforerebbe i 63 caratteri sulla tabella piu'' lunga): il backend svuota la cache permessi di tutti. Brief: brief-db-permessi-catalogo-notify-cache R3.';
+
+              DROP TRIGGER IF EXISTS trg_profili_accesso_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso;
+              CREATE TRIGGER trg_profili_accesso_z90_notify_permessi_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON config.profili_accesso
+                  FOR EACH STATEMENT
+                  EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo();
+              COMMENT ON TRIGGER trg_profili_accesso_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso IS
+                  'NOTIFY permessi_catalogo al commit di ogni istruzione che scrive config.profili_accesso (anche TRUNCATE, che il suffisso non nomina: _trn sforerebbe i 63 caratteri sulla tabella piu'' lunga): il backend svuota la cache permessi di tutti. Brief: brief-db-permessi-catalogo-notify-cache R3.';
+
+              DROP TRIGGER IF EXISTS trg_profili_accesso_aree_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso_aree;
+              CREATE TRIGGER trg_profili_accesso_aree_z90_notify_permessi_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON config.profili_accesso_aree
+                  FOR EACH STATEMENT
+                  EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo();
+              COMMENT ON TRIGGER trg_profili_accesso_aree_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso_aree IS
+                  'NOTIFY permessi_catalogo al commit di ogni istruzione che scrive config.profili_accesso_aree (anche TRUNCATE, che il suffisso non nomina: _trn sforerebbe i 63 caratteri sulla tabella piu'' lunga): il backend svuota la cache permessi di tutti. Brief: brief-db-permessi-catalogo-notify-cache R3.';
+
+              DROP TRIGGER IF EXISTS trg_profili_accesso_azioni_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso_azioni;
+              CREATE TRIGGER trg_profili_accesso_azioni_z90_notify_permessi_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON config.profili_accesso_azioni
+                  FOR EACH STATEMENT
+                  EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo();
+              COMMENT ON TRIGGER trg_profili_accesso_azioni_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso_azioni IS
+                  'NOTIFY permessi_catalogo al commit di ogni istruzione che scrive config.profili_accesso_azioni (anche TRUNCATE, che il suffisso non nomina: _trn sforerebbe i 63 caratteri sulla tabella piu'' lunga): il backend svuota la cache permessi di tutti. Brief: brief-db-permessi-catalogo-notify-cache R3.';
+
+              DROP TRIGGER IF EXISTS trg_profili_accesso_bindings_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso_bindings;
+              CREATE TRIGGER trg_profili_accesso_bindings_z90_notify_permessi_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON config.profili_accesso_bindings
+                  FOR EACH STATEMENT
+                  EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo();
+              COMMENT ON TRIGGER trg_profili_accesso_bindings_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso_bindings IS
+                  'NOTIFY permessi_catalogo al commit di ogni istruzione che scrive config.profili_accesso_bindings (anche TRUNCATE, che il suffisso non nomina: _trn sforerebbe i 63 caratteri sulla tabella piu'' lunga): il backend svuota la cache permessi di tutti. Brief: brief-db-permessi-catalogo-notify-cache R3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_azioni_processo_z90_notify_permessi_ins_upd_dlt ON config.azioni_processo;
+              DROP TRIGGER IF EXISTS trg_aree_funzionali_z90_notify_permessi_ins_upd_dlt ON config.aree_funzionali;
+              DROP TRIGGER IF EXISTS trg_area_model_overrides_z90_notify_permessi_ins_upd_dlt ON config.area_model_overrides;
+              DROP TRIGGER IF EXISTS trg_profili_accesso_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso;
+              DROP TRIGGER IF EXISTS trg_profili_accesso_aree_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso_aree;
+              DROP TRIGGER IF EXISTS trg_profili_accesso_azioni_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso_azioni;
+              DROP TRIGGER IF EXISTS trg_profili_accesso_bindings_z90_notify_permessi_ins_upd_dlt ON config.profili_accesso_bindings;

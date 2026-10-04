@@ -167,7 +167,10 @@ Lo legge [vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programma
 
 Valori al 2026-09-11 (dal seed): `draina_coda_lavori` 10, `draina_coda_stampa`
 10, `send_pending_emails` 30, `digest_presidi` 11520 (la più larga delle due
-corsie), `listen_cambio_reparto` `SESSIONE`, `run_fatturazione_batch` `NULL`.
+corsie), `listen_cambio_reparto` `SESSIONE`, `run_fatturazione_batch` `NULL`. Dal 2026-10-04
+`listen_cambio_reparto` è ritirato (`attivo = false`, `obsoleto_dal`): lo sostituisce
+`listen_permessi`, `SESSIONE`, che ascolta anche il canale `permessi_catalogo`. Le corse
+storiche restano nel giornale col codice vecchio.
 
 ---
 

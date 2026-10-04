@@ -6,7 +6,7 @@
 > `livello_minimo_area` cambia solo a DB (seed al migrate), e il backend non lo sa.
 > **Decisione:** di Tid, 2026-10-04: soluzione LISTEN/NOTIFY, sul meccanismo che già esiste per
 > il cambio di reparto.
-> **Stato:** 🟡 da fare (DB). Nome del processo deciso (§4).
+> **Stato:** ✅ **DB chiuso**: `20261004-87 → -89` + mirror `processi` **applicati su dbdev e `zeroerp_ci` il 2026-10-04** (23:55), pgTAP verdi (Tid). R7 eseguito come riga nuova + ritiro (§6.2). ⏳ **Tocca al BE** (§7.4).
 
 ## 1. Il problema
 
@@ -89,3 +89,177 @@ servizio.
   systemd `zeroerp-listen-permessi` (`backend/deploy/systemd/`, poi `install-timers.sh` sugli host:
   la vecchia unità va disabilitata), `sveglie.json`, il test `core/tests/services/test_sveglie.py`
   e i commenti che citano il nome vecchio, nello stesso giro.
+
+## 6. Analisi del team DB (2026-10-04) — prima di scrivere
+
+> Letta la catena dalla doc auto-gen e il giro BE/FE del tetto (`b8ac544fe`). Il giro BE/FE
+> **non** chiede altro al DB: legge `fn_get_permessi_effettivi_azioni/_oggetti` con le colonne
+> consegnate, e `/me/` cambia solo nella descrizione OpenAPI. Il solo lavoro DB che resta del
+> cantiere del tetto è questo brief.
+
+### 6.1 Le sette tabelle sono quelle giuste
+
+Lette dai corpi (`fn_get_permessi_effettivi_*`, `fn_get_permessi_ereditati_*`,
+`fn_get_profili_accesso_applicabili`, `fn_resolve_livello_area`, `fn_area_di_oggetto`): la parte
+**di catalogo** che la catena legge è esattamente quella di §1. Il resto che legge è **per
+utente** (`user_override_*`, `identita_digitali`, `risorse_umane.unita_organizzativa_id`) e resta
+fuori, come dice §3.
+
+⚠️ **Residuo dichiarato, non di questo brief:** una scrittura fuori dall'app su
+`identita_digitali` (veste spenta, identità revocata) non svuota la cache fino al TTL. È lo
+stesso buco, ma per utente. La leva manuale è R1 (§6.4).
+
+### 6.2 ⛔ R7 così com'è rompe il migrate fuori dalla CI
+
+Il command `listen_cambio_reparto` apre un `registered_job(..., processo_codice=…)`: scrive in
+`maintenance.job_run_log.processo_codice`, che ha la FK `fk_job_run_log_processi` verso
+`dbops.processi(codice)`, **senza** `ON UPDATE`. Cambiare il codice della riga 24 nel CSV fa un
+`UPDATE` della chiave referenziata ⇒ il mirror `80_data/20260904-13` fallisce su **ogni database
+dove il listener è partito almeno una volta** (dbdev, ogni installazione). In CI, ricostruita da
+zero, non ci sono righe di giornale: **verde in CI, rosso su dbdev**.
+
+**Proposta:** non si rinomina, si **sostituisce** — è il meccanismo di deprecazione del catalogo:
+
+* riga nuova `46,listen_permessi,…` (stessi `classe`/`canale`/`segno_di_vita` della 24);
+* la riga 24 resta, con `attivo = f` e `obsoleto_dal = 2026-10-04`: la storia del giornale
+  resta legata al codice con cui è stata scritta, e `vw_processi_programmazione` la esclude già
+  (`attivo AND obsoleto_dal IS NULL`). Nessun guard di disattivazione su `dbops.processi`.
+
+Effetto collaterale buono: l'ordine di §4 si ammorbidisce. Col DB avanti, il listener vecchio
+scrive ancora nel giornale (la riga c'è) e il panorama segna `listen_permessi` MUTO fino al
+riavvio col nome nuovo: un rosso vero e transitorio, non un migrate fallito.
+
+✅ **Tid, 2026-10-04: rinomino confermato**, eseguito con la riga nuova + ritiro (§7.1).
+
+### 6.3 Il trigger: tre precisazioni
+
+* **Per istruzione, anche a zero righe.** Un trigger `FOR EACH STATEMENT` scatta anche su un
+  `UPDATE … WHERE false`: un avviso in più, cioè un `invalidate_all` innocuo. Non si filtra
+  (servirebbero le transition table); è anche ciò che rende il pgTAP pulito (§6.5).
+* **Il mirror li accende.** Nessun mirror delle sette tabelle usa `session_replication_role` o
+  `DISABLE TRIGGER` (cercato nei changelog: compaiono solo in changeSet di altre tabelle).
+  `loadUpdateData` fa un'istruzione per riga ⇒ N chiamate al trigger, **una** notifica per
+  tabella per transazione (payload identici fusi da PostgreSQL).
+* **Nome e TRUNCATE.** `trg_profili_accesso_bindings_z90_notify_permessi_catalogo_ins_upd_dlt`
+  supera i 63 caratteri (nome troncato, linee-guida-trigger). Si usa
+  `trg_<tabella>_z90_notify_permessi_ins_upd_dlt` (60 sulla più lunga). `TRUNCATE` sì, nello
+  stesso trigger e dichiarato nel `COMMENT`: un suffisso `_trn` sforerebbe di nuovo.
+
+### 6.4 R1 e R2: due funzioni, e la seconda copia c'è
+
+R1 ha due consumatori, non uno: il trigger (R2) e la **leva manuale**
+`SELECT script.fn_notify_permessi_catalogo('manuale')` dopo una correzione fuori dall'app su
+tabelle che il trigger non copre (§6.1). Va scritto nel `COMMENT` di R1.
+
+### 6.5 R5 si prova davvero, senza sporcare
+
+Il pgTAP del cambio di reparto prova solo `lives_ok`: la consegna non la vede. Qui si può fare
+meglio con due sessioni `dblink`, come `test-vw-processi-programmazione`:
+
+1. sessione A: `LISTEN permessi_catalogo`;
+2. sessione B, in autocommit, per ognuna delle sette tabelle un `UPDATE … SET id = id WHERE
+   false`: **committa senza cambiare una riga** (lo statement trigger scatta, gli audit `BEFORE
+   ROW` no);
+3. `dblink_get_notify('A')`: una notifica per tabella, col nome giusto nel payload;
+4. B: `BEGIN; UPDATE … WHERE false; ROLLBACK;` ⇒ nessuna notifica.
+
+⚠️ B deve poter scrivere sul catalogo (`zeroerp_app` può non avere `UPDATE` su queste
+tabelle: il privilegio si controlla prima del trigger). Se `dblink` non si apre o B non ha il
+privilegio, `skip()` motivato, come il precedente. In più, sul catalogo: i sette trigger
+esistono, sono `AFTER`, per istruzione, sui quattro eventi (`pg_trigger.tgtype`).
+
+### 6.6 Piano
+
+| # | Cosa |
+| --- | --- |
+| `20_code/script` | R1 `fn_notify_permessi_catalogo(p_tabella text)` + R2 `trgfn_notify_permessi_catalogo()` |
+| `20_code/config` | i sette trigger `z90`, un changeSet |
+| `80_data` CSV `processi` | riga 46 `listen_permessi`, riga 24 ritirata (§6.2), se Tid conferma il rinomino |
+| pgTAP | `config/test-notify-permessi-catalogo-v1` (§6.5) |
+| doc | `manual/` delle due funzioni, guida architettura permessi § cache |
+
+## 7. Consegna DB (2026-10-04) — ✅ applicata su dbdev e `zeroerp_ci`, pgTAP verdi
+
+### 7.1 ChangeSet e dati
+
+| # | File | Cosa |
+| --- | --- | --- |
+| `-87` | `20_code/script/…-create-fn-notify-permessi-catalogo` | R1: `pg_notify('permessi_catalogo', {"tabella": …})`; `p_tabella` NULL o vuoto → `E_PARAMETRO_INVALIDO`. VOLATILE, INVOKER, `GRANT EXECUTE` a `zeroerp_app` |
+| `-88` | `20_code/script/…-create-trgfn-notify-permessi-catalogo` | R2: chiama R1 con `TG_TABLE_SCHEMA.TG_TABLE_NAME`, nessun argomento di trigger |
+| `-89` | `20_code/config/…-create-trg-notify-permessi-catalogo` | R3: sette trigger `trg_<tabella>_z90_notify_permessi_ins_upd_dlt`, `AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE … FOR EACH STATEMENT` |
+| CSV | `80_data/sql/dbops/processi.csv` (mirror `20260904-13`) | R7: riga **46** `listen_permessi` (`AMMINISTRAZIONE`/`COMMAND`/`SESSIONE`); riga 24 `listen_cambio_reparto` → `attivo = f`, `obsoleto_dal = 2026-10-04`, descrizione che rimanda alla 46 |
+
+📌 *Fatto datato:* il 2026-10-04 su dbdev `maintenance.job_run_log` ha 14 righe con
+`processo_codice = 'listen_cambio_reparto'`: il rinomino diretto sarebbe morto sulla FK (§6.2). Il
+CSV, a parte le due righe, coincide con dbdev e con `zeroerp_ci` (confronto colonna per colonna):
+risvegliare il mirror non riscrive nient'altro.
+
+R4: nessun mirror delle sette tabelle spegne i trigger (§6.3). R6: `manual/` delle due funzioni,
+guida architettura permessi §6.1 («La cache fra una richiesta e l'altra», tabella di chi svuota
+cosa) e «Vedi anche»; `dbops/manual/processi.md` e la guida `processi-automatici-classe-e-identita`
+col nome nuovo.
+
+### 7.2 pgTAP — `db/pgtap/script/test-notify-permessi-catalogo-v1.sql` (15)
+
+1-4 la funzione (esiste, leva manuale, i due rifiuti); 5-11 i sette trigger cercati per
+**funzione** e tabella (`tgtype = 60`: AFTER, per istruzione, I/U/D/TRUNCATE; abilitato); 12 il
+trigger scatta come app; **13-15 la consegna vera**, con due sessioni `dblink` (§6.5): una notifica
+per tabella col nome giusto; nessuna su `ROLLBACK`; una sola per due istruzioni nella stessa
+transazione. Niente attese a tempo: ogni fase si chiude con una sentinella. Dove la seconda
+sessione non si apre, o un lock la ferma (`lock_timeout` 5 s: senza, la prova pre-apply resta
+appesa nello stallo fra le due sessioni), 13-15 vanno in `skip()` col motivo.
+
+### 7.3 Prove (2026-10-04)
+
+* **`zeroerp_ci`, da owner, in transazione annullata**: SQL estratto di `-87 → -89` con le loro
+  `preConditions` (attese 1, avute 1), mirror reso da `updateSQL` offline, poi il pgTAP. 1-12
+  verdi; 13-15 in skip per lock, come previsto: la DDL non committata tiene la tabella.
+  `plpgsql_check` a zero sulle due funzioni. Il panorama vede `listen_permessi` `MUTO` (nessuna
+  sessione lo porta ancora) e non vede più `listen_cambio_reparto`. DB lasciato com'era.
+* **Cluster PG18 usa-e-getta** (stub minimi per tabelle ed errore, SQL estratto, pgTAP
+  invariato): **15/15**. Ha trovato un difetto del test, non del codice: `dblink_exec` rifiuta un
+  `SELECT` (2F003), la sentinella non partiva e 13-15 andavano **sempre** in skip. Corretto (la
+  sentinella va in un `DO`).
+* **Mutazioni** sul cluster: trigger tolto su una tabella → rossi 6 e 13; trigger per riga → 7,
+  13, 15; payload senza nome tabella → 13, 15.
+* Guardrail statici verdi (preambolo pgTAP, `runOnChange`, preCondition/seed, DDL su trigger
+  generati, letterali SQL, GRANT batch, v1 congelato).
+* ⚠️ **Non provato qui:** l'apply, la corsa come app su dbdev (lì il DSN dblink è `service=`:
+  13-15 andranno in skip col motivo) e la CI da zero, dove il DSN è quello del proprietario e
+  13-15 girano davvero. È la corsa di Tid.
+
+### 7.3-bis Prima corsa di Tid su dbdev (2026-10-04) — test 12 rosso, corretto
+
+`42501 permesso negato per la tabella aree_funzionali`. Il difetto era **del test**, non del
+codice: per contratto (GRANT, uguale su dbdev e CI) l'app scrive sei tabelle su sette, e
+`config.aree_funzionali` per lei è in sola lettura (la scrivono il seed e il migratore). Il
+test pretendeva che l'app le scrivesse tutte e sette. La mia prova non lo vedeva perché girava da
+owner (§7.3). Ora il 12 prova le tabelle che il GRANT dà in scrittura a
+chi esegue (`has_table_privilege`), e se non ce n'è nessuna va rosso con `fail()`.
+`aree_funzionali` resta coperta dal 13, dove B scrive col DSN del proprietario. Cluster di nuovo
+15/15, prove con codice alterato invariate. ⏳ Da rilanciare (Tid).
+
+### 7.3-ter Apply e corsa (2026-10-04 sera)
+
+* Su dbdev (`zeroerp`) il `databasechangelog` registra `-87`, `-88`, `-89` `EXECUTED` alle 23:55 e
+  il mirror `20260904-13` `RERAN`; `dbops.processi`: riga 24 `listen_cambio_reparto` ritirata,
+  riga 46 `listen_permessi` attiva.
+* Corsa pgTAP di Tid: **verde**, test 12 compreso dopo la correzione di §7.3-bis.
+* Su `zeroerp_ci` il `databasechangelog` registra `-87`, `-88`, `-89` `EXECUTED` alle 23:55:30.
+
+### 7.4 Al BE — ⏳ si può partire (DB applicato)
+
+§5 resta valido, con due precisazioni:
+
+* l'**ordine** di §4 non è più stretto: col DB avanti il listener vecchio continua a scrivere il
+  suo run di avvio (la riga 24 c'è ancora) e il panorama segna `listen_permessi` `MUTO` finché il
+  servizio non riparte col nome nuovo. È il segnale atteso, non un guasto;
+* da allineare anche la guida `risorse-umane-e-accessi.md` (§ cambio di reparto e tabella dei
+  componenti: `listen_cambio_reparto`, `CambioRepartoListener`) e
+  `play-book-operativo-backend.md` (unità `zeroerp-listen-cambio-reparto`), che parlano di
+  oggetti del BE.
+
+### 7.5 Per Tid
+
+1. ~~Apply e corsa pgTAP~~ — ✅ fatti il 2026-10-04 (§7.3-ter).
+2. Dopo l'apply, finché il BE non riparte, il digest dei presidi conterà `listen_permessi` `MUTO`.

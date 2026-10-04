@@ -27,6 +27,7 @@
 > * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il write-guard di difesa in profondita'
 > * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) / [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) / [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin) / [script.fn_guard_utente_stesso](/dbzero/script/funzioni/fn_guard_utente_stesso) — il permesso nella prima riga di un verbo di scrittura
 > * [script.fn_area_di_oggetto](/dbzero/script/funzioni/fn_area_di_oggetto) — l'area a cui appartiene un oggetto, sede unica per DB e backend
+> * [script.fn_notify_permessi_catalogo](/dbzero/script/funzioni/fn_notify_permessi_catalogo) / [script.trgfn_notify_permessi_catalogo](/dbzero/script/funzioni/trgfn_notify_permessi_catalogo) — l'avviso al backend che il catalogo dei permessi è cambiato
 > * [config.fn_pannello_scrivi](/dbzero/config/funzioni/fn_pannello_scrivi) / [config.fn_pannello_colonne_scrivibili](/dbzero/config/funzioni/fn_pannello_colonne_scrivibili) — il verbo del pannello di configurazione e le colonne che scrive
 >
 > **Vedi anche** — API e service backend:
@@ -517,6 +518,27 @@ il resolver deve sapere per conto di **quale veste** si sta risolvendo.
   con indici mirati, l'helper `fn_get_profili_accesso_applicabili`
   restituisce un set unificato, e la mappa finale permessi viene
   calcolata una sola volta per richiesta (cache per-request).
+* **La cache fra una richiesta e l'altra, e chi la svuota.** Il backend
+  conserva i permessi risolti per qualche minuto (cache Redis, per utente).
+  Quando qualcosa li cambia, la cache va svuotata subito, altrimenti per
+  quei minuti l'utente lavora coi permessi vecchi. Chi la svuota dipende da
+  cosa è cambiato:
+
+  | Cosa cambia | Chi avvisa | Cosa si svuota |
+  | --- | --- | --- |
+  | un override dell'utente, dal pannello | l'applicazione stessa | quell'utente |
+  | il profilo di un reparto, dal pannello | l'applicazione stessa | il reparto |
+  | il reparto di una persona | il database (canale `cambio_reparto`) | quell'utente |
+  | il catalogo o i profili: aree, azioni (anche il loro livello minimo d'area), oggetti, profili e loro legami | il database (canale `permessi_catalogo`) | tutti |
+
+  ⭐ Gli avvisi del database partono **da qualunque scrittore**: applicazione,
+  aggiornamento del seed al migrate, correzione a mano. Partono al commit e
+  non partono se la scrittura viene annullata. Li raccoglie il processo
+  sempre acceso `listen_permessi`.
+  ⚠️ Una correzione a mano su una tabella **per utente** (per esempio
+  l'identità digitale) non avvisa nessuno: dopo, si chiama
+  `script.fn_notify_permessi_catalogo('manuale')`, che svuota la cache di
+  tutti.
 
 ### 6.2 Permission class DRF
 

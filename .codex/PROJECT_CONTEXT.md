@@ -219,16 +219,17 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   resta R-4, che vuole un brief DB non ancora scritto. Chiuso il 2026-10-03
   `work-done/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
   dell'amministratore che rifiutano le credenziali di sistema).
-- **Kit in fattura** (`work-in-progress/brief-db-esposizione-componenti-kit-in-fattura.md`): resta
-  aperto questo brief (R-BE-6, R-FE-2/3, §10). ✅ Chiuso il 2026-10-04
+- **Kit in fattura: chiuso** (`work-done/brief-db-esposizione-componenti-kit-in-fattura.md`, archiviato
+  il 2026-10-04): tre modi di esporre un componente (NASCOSTO, DESCRITTIVO, VALORIZZATO), DB, BE e FE
+  fatti; §9.1 e §9.2 confermati da Tid, l'ordine della tendina resta quello del lookup. ✅ Chiuso il 2026-10-04
   `work-done/brief-db-bom-flag-quantita-e-kit-in-fattura.md`: flag della distinta ritirati, quantità
   e UoM del padre congelate in fattura, plafond sul **netto** della fattura (decisione C), una
   fattura che ha consumato plafond non si disfa più (strada A), proiezione del risolutore ritirata.
   Template fattura v7 pubblicato.
-- **Un'esclusione del contratto non si modifica** (`work-in-progress/brief-db-contratto-esclusione-non-modificabile.md`,
+- **Un'esclusione del contratto non si modifica: chiuso** (`work-done/brief-db-contratto-esclusione-non-modificabile.md`,
   decisione di Tid del 2026-10-04): DB applicato il 2026-10-04 (`20261004-12…-14`, lock su
-  `contratti_righe.tipo_eccezione`, due codici nuovi), pgTAP senza regressioni. BE/FE fatto il 2026-10-04 (§7):
-  il cantiere è chiuso, il brief si può archiviare.
+  `contratti_righe.tipo_eccezione`, due codici nuovi), pgTAP senza regressioni; BE/FE in `dda5bda1d` (§7).
+  Il §7.1 l'ha chiuso il brief dell'erogazione obbligatoria. Archiviato il 2026-10-04.
 - **Una riga che si fattura dice come si eroga** (`work-in-progress/brief-db-erogazione-obbligatoria-righe-fatturate.md`,
   richiesta del BE, decisione di Tid del 2026-10-04): `tipo_erogazione` obbligatoria su OVERRIDE/AGGIUNTA di contratto
   e offerta (`20261004-30…-32`, CHECK + guard, codice `E_RIGA_EROGAZIONE_OBBLIGATORIA`); il lister del push non

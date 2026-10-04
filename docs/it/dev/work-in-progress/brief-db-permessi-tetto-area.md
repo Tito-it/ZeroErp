@@ -9,9 +9,8 @@
 > azioni e oggetti suggerisce una gerarchia che oggi il modello non applica.
 > **Decisioni:** di Tid, 2026-10-04 (§3).
 > **Stato:** ✅ **DB chiuso**: `20261004-50 → -59` + mirror del CSV **applicati il 2026-10-04**,
-> pgTAP verdi (Tid). ✅ **Giro BE/FE di §6 scritto** il 2026-10-04 (§10), non committato.
-> ✅ **Anteprima di §7.3 decisa (Tid, sì) e scritta** (§10.1). ✅ **Restyle del pannello (§7) scritto** (§10.2),
-> non committato. ⏳ Collaudo a video: [collaudo-in-app-ui-permessi-operatore.md](collaudo-in-app-ui-permessi-operatore.md) §5-bis.
+> pgTAP verdi (Tid). ✅ **Giro BE/FE di §6** (§10), **anteprima di §7.3** (Tid, sì; §10.1) e
+> **restyle del pannello (§7)** (§10.2): committati in `b8ac544fe` il 2026-10-04. ⏳ Collaudo a video: [collaudo-in-app-ui-permessi-operatore.md](collaudo-in-app-ui-permessi-operatore.md) §5-bis.
 > La cache (§6.5) prosegue in [brief-db-permessi-catalogo-notify-cache.md](brief-db-permessi-catalogo-notify-cache.md).
 
 ## 1. La regola
@@ -338,7 +337,7 @@ non lo scavalca: RAISE.
   (`test_permissions_audit`, `test_pannello_verbo_db`, `test_override_oggetti_catalogo_db`)
   provano scritture, non risoluzioni.
 
-## 10. Giro BE/FE di §6 (2026-10-04) — ✅ scritto, non committato
+## 10. Giro BE/FE di §6 (2026-10-04) — ✅ committato in `b8ac544fe`
 
 | Punto | Cosa è stato fatto |
 | --- | --- |
@@ -366,7 +365,7 @@ Chiavi i18n nuove (it/en): `amministrazione.limitata_da_area_azione`, `amministr
   risponde prima del tetto.
 * Chiave i18n nuova: `amministrazione.tetto_anteprima`.
 
-### 10.2 Restyle del pannello per area (§7) — ✅ scritto il 2026-10-04, non committato
+### 10.2 Restyle del pannello per area (§7) — ✅ committato in `b8ac544fe`
 
 * `OperatorePermessiTab`: due schede (*Aree, oggetti e azioni* / *Scope emittenti fiscali*);
   nella prima l'elenco delle aree a sinistra — livello a video (override o ereditato), numero di

@@ -165,6 +165,7 @@
 - [fn_magazzino_dell_emittente](funzioni/fn_magazzino_dell_emittente.md)
 - [fn_norm_testo](funzioni/fn_norm_testo.md) — (rev 2026-08-21)
 - [fn_norm_via](funzioni/fn_norm_via.md) — (rev 2026-08-21)
+- [fn_notify_permessi_catalogo](funzioni/fn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
 - [fn_pgtap_emittente_operatore](funzioni/fn_pgtap_emittente_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_emittente_sr_operatore](funzioni/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_registro_fattura](funzioni/fn_pgtap_registro_fattura.md)
@@ -274,6 +275,7 @@
 - [trgfn_listini_righe_comp_guard_coerenza_bom](funzioni/trgfn_listini_righe_comp_guard_coerenza_bom.md)
 - [trgfn_lock_columns](funzioni/trgfn_lock_columns.md) — -  Trigger function generica per **bloccare modifiche non autorizzate** su colonne specificate, integrando:
 - [trgfn_note_validate_generic](funzioni/trgfn_note_validate_generic.md) — La trigger function `script.trgfn_note_validate_generic()` valida la coerenza delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
+- [trgfn_notify_permessi_catalogo](funzioni/trgfn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
 - [trgfn_prevent_modification_generic](funzioni/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
 - [trgfn_qta_from_operativa](funzioni/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
 - [trgfn_righe_default_fonte_qta](funzioni/trgfn_righe_default_fonte_qta.md) — (rev 2026-08-21)
