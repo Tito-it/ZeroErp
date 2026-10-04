@@ -42,16 +42,16 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_template_documenti_versioni_context_schema_obj |  |
-| CHECK | chk_template_documenti_versioni_formato |  |
 | CHECK | chk_template_documenti_versioni_html_template_non_vuoto |  |
 | CHECK | chk_template_documenti_versioni_margini_non_neg |  |
-| CHECK | chk_template_documenti_versioni_orientation |  |
-| CHECK | chk_template_documenti_versioni_page_format |  |
 | CHECK | chk_template_documenti_versioni_stato |  |
 | CHECK | chk_template_documenti_versioni_titolo_non_vuoto |  |
 | CHECK | chk_template_documenti_versioni_valido_dal_pubblicata |  |
 | CHECK | chk_template_documenti_versioni_versione_contesto_pos |  |
 | CHECK | chk_template_documenti_versioni_versione_pos |  |
+| FOREIGN KEY | fk_template_documenti_versioni_formati_pagina | page_format |
+| FOREIGN KEY | fk_template_documenti_versioni_formati_template | formato_template |
+| FOREIGN KEY | fk_template_documenti_versioni_orientamenti_pagina | page_orientation |
 | FOREIGN KEY | template_documenti_versioni_render_engine_id_fkey | render_engine_id |
 | FOREIGN KEY | template_documenti_versioni_template_documento_id_fkey | template_documento_id |
 | PRIMARY KEY | template_documenti_versioni_pkey | id |

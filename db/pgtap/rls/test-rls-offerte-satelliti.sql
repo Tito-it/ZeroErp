@@ -109,14 +109,15 @@ SELECT c.lato, o.id AS offerta_id, o.emittente_fiscale_id,
 
 -- ⚠️ `AGGIUNTA` pretende un prezzo; `qta_operativa` la pretende
 --   `trgfn_qta_from_operativa`, che da li' deriva la quantita'.
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 CREATE TEMP TABLE _ecc AS
 WITH e AS (
     INSERT INTO vendite.offerte_commerciali_eccezioni
         (offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-         prezzo_unitario, qta_operativa)
+         prezzo_unitario, qta_operativa, tipo_erogazione)
     SELECT o.offerta_id,
            (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
-           'AGGIUNTA'::vendite.tipo_eccezione_contratto, 'FISSA', 100.00, 1
+           'AGGIUNTA'::vendite.tipo_eccezione_contratto, 'FISSA', 100.00, 1, 'CANONE'
       FROM _offerte o
     RETURNING id, offerta_id
 )
@@ -223,13 +224,15 @@ BEGIN
         true);
 
     -- ⛔ La scrittura sull'offerta altrui.
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate);
+    --   senza, il guard BEFORE ROW parlerebbe (P0001) prima della RLS che qui si prova.
     BEGIN
         INSERT INTO vendite.offerte_commerciali_eccezioni
             (offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-             prezzo_unitario, qta_operativa)
+             prezzo_unitario, qta_operativa, tipo_erogazione)
         VALUES (v_b.offerta_id,
                 (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
-                'AGGIUNTA'::vendite.tipo_eccezione_contratto, 'FISSA', 1.00, 1);
+                'AGGIUNTA'::vendite.tipo_eccezione_contratto, 'FISSA', 1.00, 1, 'CANONE');
         PERFORM set_config('pgtap.scrittura', 'PASSATA', true);
     EXCEPTION WHEN insufficient_privilege OR check_violation THEN
         PERFORM set_config('pgtap.scrittura', 'RIFIUTATA', true);

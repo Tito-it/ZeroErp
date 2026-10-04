@@ -380,11 +380,12 @@ BEGIN
         -- Negoziato puro: la riga AGGIUNTA con un prezzo e' cio' che rende il
         -- contratto «non vuoto» (DOCUMENTO_SENZA_RIGHE non deve coprire il
         -- motivo che si vuole vedere).
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         INSERT INTO vendite.contratti_righe
             (contratto_id, articolo_id, fonte_quantita_attesa, tipo_eccezione,
-             prezzo_unitario, qta_operativa)
+             prezzo_unitario, qta_operativa, tipo_erogazione)
         VALUES
-            (v_ctr, k.cmp_id, 'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, 100, 1)
+            (v_ctr, k.cmp_id, 'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, 100, 1, 'CANONE')
         RETURNING id INTO v_riga;
 
         UPDATE vendite.contratti_righe
@@ -471,12 +472,13 @@ BEGIN
              (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'BOZZA'))
         RETURNING id INTO v_off;
 
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         INSERT INTO vendite.offerte_commerciali_eccezioni
             (offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-             prezzo_unitario, qta_operativa)
+             prezzo_unitario, qta_operativa, tipo_erogazione)
         VALUES
             (v_off, CASE v_tag WHEN 'kit' THEN k.kit_id ELSE k.cmp_id END,
-             'AGGIUNTA'::vendite.tipo_eccezione_contratto, 'FISSA', 100, 1)
+             'AGGIUNTA'::vendite.tipo_eccezione_contratto, 'FISSA', 100, 1, 'CANONE')
         RETURNING id INTO v_ecc;
 
         v_comp := NULL;

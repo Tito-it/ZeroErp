@@ -92,8 +92,10 @@ SELECT 'PGTAP_S23_ATT',
   FROM tmp_s23_ctx c;
 
 -- Insert riga AGGIUNTA su ATT (mentre è DRAFT: lock non scatta)
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'AGGIUNTA', 99.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT ca.id, a.id, 'AGGIUNTA', 99.00, 1.00, 'CANONE'
   FROM vendite.contratti ca, tmp_s23_arts a
  WHERE ca.numero = 'PGTAP_S23_ATT' AND a.rn = 1;
 
@@ -120,8 +122,10 @@ SELECT 'PGTAP_S23_NEG_OK',
        c.id_draft, '2072-01-01', '2072-12-31'
   FROM tmp_s23_ctx c;
 
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'AGGIUNTA', 50.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT ca.id, a.id, 'AGGIUNTA', 50.00, 1.00, 'CANONE'
   FROM vendite.contratti ca, tmp_s23_arts a
  WHERE ca.numero = 'PGTAP_S23_NEG_OK' AND a.rn = 2;
 
@@ -282,8 +286,11 @@ SELECT lives_ok(
 -- 10) INSERT riga su contratto ATTIVO -> bloccato
 -- ============================================================
 SELECT throws_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'AGGIUNTA', 10.00, 1.00
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate);
+    --   senza, il P0001 atteso verrebbe dal guard nuovo e non da E_RIGA_DOC_NON_BOZZA.
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+             tipo_erogazione)
+      SELECT ca.id, a.id, 'AGGIUNTA', 10.00, 1.00, 'CANONE'
         FROM vendite.contratti ca, tmp_s23_arts a
        WHERE ca.numero = 'PGTAP_S23_ATT' AND a.rn = 2$$,
     'P0001',
@@ -322,8 +329,10 @@ SELECT throws_ok(
 -- 13) INSERT riga su contratto DRAFT -> ok
 -- ============================================================
 SELECT lives_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'AGGIUNTA', 20.00, 1.00
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+             tipo_erogazione)
+      SELECT ca.id, a.id, 'AGGIUNTA', 20.00, 1.00, 'CANONE'
         FROM vendite.contratti ca, tmp_s23_arts a
        WHERE ca.numero = 'PGTAP_S23_DRAFT' AND a.rn = 3$$,
     '13) INSERT riga su contratto DRAFT -> ok (lock non scatta)'

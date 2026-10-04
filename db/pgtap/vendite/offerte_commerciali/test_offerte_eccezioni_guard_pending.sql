@@ -91,10 +91,12 @@ BEGIN
     -- qta_operativa e' la SORGENTE (quantita la deriva trgfn_qta_from_operativa);
     -- fonte_quantita_attesa la imposta il default trigger. Pattern identico alla
     -- fixture gemella test-contratti-righe-guard-pending.
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
     INSERT INTO vendite.offerte_commerciali_eccezioni (
-        offerta_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa
+        offerta_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+        tipo_erogazione
     )
-    VALUES (v_off, v_ctx.articolo_id, 'AGGIUNTA', 100.00, 1.00)
+    VALUES (v_off, v_ctx.articolo_id, 'AGGIUNTA', 100.00, 1.00, 'CANONE')
     RETURNING id INTO v_ecc;
 
     INSERT INTO tmp_ofc_pnd_ids VALUES (v_off, v_ecc);

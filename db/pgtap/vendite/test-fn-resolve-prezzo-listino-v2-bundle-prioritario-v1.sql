@@ -358,9 +358,11 @@ BEGIN
            ctx.listino_id
       FROM tmp_bundle_ctx ctx;
 
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
     INSERT INTO vendite.contratti_righe(
-        contratto_id, articolo_id, prezzo_unitario, attivo, qta_operativa)
-    SELECT c.id, ctx.figlio_id, 999.00, TRUE, 1
+        contratto_id, articolo_id, prezzo_unitario, attivo, qta_operativa,
+        tipo_erogazione)
+    SELECT c.id, ctx.figlio_id, 999.00, TRUE, 1, 'CANONE'
       FROM vendite.contratti c, tmp_bundle_ctx ctx
      WHERE c.numero = 'PGTAP_BNDL_OVR';
 END

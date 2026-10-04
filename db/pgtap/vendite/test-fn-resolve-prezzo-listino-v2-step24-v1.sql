@@ -95,8 +95,10 @@ SELECT 'PGTAP_V2_OV',
        c.id_draft, '2070-01-01', '2070-12-31', c.listino_id
   FROM tmp_v2_ctx c WHERE c.listino_id IS NOT NULL;
 
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'OVERRIDE', 111.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT ca.id, a.id, 'OVERRIDE', 111.00, 1.00, 'CANONE'
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_OV' AND a.rn = 1;
 
@@ -135,8 +137,10 @@ SELECT 'PGTAP_V2_AGG',
        c.id_draft, '2072-01-01', '2072-12-31'
   FROM tmp_v2_ctx c;
 
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'AGGIUNTA', 222.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT ca.id, a.id, 'AGGIUNTA', 222.00, 1.00, 'CANONE'
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_AGG' AND a.rn = 1;
 

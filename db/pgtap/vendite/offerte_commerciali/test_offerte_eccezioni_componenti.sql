@@ -163,23 +163,25 @@ BEGIN
     -- fonte=FISSA richiede qta_operativa NOT NULL (trigger a10 qta_from_operativa,
     -- bind 20260531-11): si valorizza qta_operativa e il trigger deriva quantita.
     IF v_ctx.articolo_semplice_id IS NOT NULL THEN
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         INSERT INTO vendite.offerte_commerciali_eccezioni (
             offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, qta_operativa
+            prezzo_unitario, qta_operativa, tipo_erogazione
         )
-        VALUES (v_off_id, v_ctx.articolo_semplice_id, 'OVERRIDE', 'FISSA', 10.00, 1)
+        VALUES (v_off_id, v_ctx.articolo_semplice_id, 'OVERRIDE', 'FISSA', 10.00, 1, 'CANONE')
         RETURNING id INTO v_ecc_id;
         INSERT INTO tmp_oce_ids VALUES ('SEMPLICE', v_off_id, v_ecc_id);
     END IF;
 
     -- Eccezione con articolo composito (test 17-19)
     IF v_ctx.articolo_composito_id IS NOT NULL THEN
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         INSERT INTO vendite.offerte_commerciali_eccezioni (
             offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, quantita
+            prezzo_unitario, quantita, tipo_erogazione
         )
         VALUES (v_off_id, v_ctx.articolo_composito_id, 'OVERRIDE',
-                'DERIVATA_COMPONENTI', 0.00, 2)
+                'DERIVATA_COMPONENTI', 0.00, 2, 'CANONE')
         RETURNING id INTO v_ecc_id;
         INSERT INTO tmp_oce_ids VALUES ('COMPOSITA', v_off_id, v_ecc_id);
     END IF;
@@ -198,12 +200,13 @@ BEGIN
                DATE '2082-01-01', v_ctx.stato_accettata_id
         RETURNING id INTO v_off_consumo;
 
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         INSERT INTO vendite.offerte_commerciali_eccezioni (
             offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, quantita
+            prezzo_unitario, quantita, tipo_erogazione
         )
         VALUES (v_off_consumo, v_ctx.articolo_composito_id, 'OVERRIDE',
-                'LETTURE', 0.00, NULL)
+                'LETTURE', 0.00, NULL, 'CONSUMO')
         RETURNING id INTO v_ecc_id;
         INSERT INTO tmp_oce_ids VALUES ('CONSUMO', v_off_consumo, v_ecc_id);
     END IF;
@@ -457,12 +460,13 @@ BEGIN
 
     SELECT offerta_id INTO v_off_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA';
 
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
     INSERT INTO vendite.offerte_commerciali_eccezioni (
         offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-        prezzo_unitario, quantita
+        prezzo_unitario, quantita, tipo_erogazione
     )
     VALUES (v_off_id, (SELECT articolo_composito_id FROM tmp_oce_ctx),
-            'AGGIUNTA', 'DERIVATA_COMPONENTI', 0.00, 3)
+            'AGGIUNTA', 'DERIVATA_COMPONENTI', 0.00, 3, 'CANONE')
     RETURNING id INTO v_ovr_ecc_id;
 
     INSERT INTO tmp_oce_ids VALUES ('COMPOSITA-OVR', v_off_id, v_ovr_ecc_id);

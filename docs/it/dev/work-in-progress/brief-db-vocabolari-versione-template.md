@@ -4,8 +4,8 @@
 > (`dev/db-tid`); poi BE/FE (§4).
 > **Origine:** revisione del drawer dei modelli di documento (richiesta di Tid, 2026-10-03), che ha
 > portato la versione in un drawer suo (`TemplateVersioneDrawer`).
-> **Stato:** ⏳ **DB scritto il 2026-10-04, non applicato né committato** (`20261004-20…-22`, §5).
-> **Lato DB chiuso.** Restano: l'apply e la corsa pgTAP di Tid; le chiavi i18n del FE (§5.4 — la
+> **Stato:** ✅ **DB applicato il 2026-10-04** (`20261004-20…-22`, §5), pgTAP senza regressioni (§5.7).
+> **Lato DB chiuso.** Restano: le chiavi i18n del FE (§5.4 — la
 > CI resta rossa finché non arrivano, accettato da Tid il 2026-10-04: non blocca il DB); il giro
 > BE/FE di §4; e **R-BE-V2** (§5.6): il motore di stampa che onora le colonne di pagina, strada A
 > decisa da Tid il 2026-10-04.
@@ -56,7 +56,7 @@ copie.
 ## 5. Risposta del team DB (2026-10-04)
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-04. Valutata e scritta R-DB-1 e R-DB-2;
-> il ❓ di §3 è sciolto in §5.2. **Non applicato, non committato.**
+> il ❓ di §3 è sciolto in §5.2. ✅ **Applicato il 2026-10-04** (§5.7).
 
 ### 5.1 Che cosa è stato scritto
 
@@ -169,4 +169,20 @@ servono anche alla strada A, e i loro codici sono già parole CSS. Al DB non ser
 ⚠️ **Resta aperto, e non era dentro D-1**: `HTML_MARKDOWN_BLOCKS` (Decisione 4, mai
 implementata). Resta a catalogo; implementarlo o ritirarlo è una domanda a sé per Tid, da
 aprire quando si tocca il trattamento del markdown.
+
+### 5.7 ✅ Applicato (2026-10-04)
+
+Tid ha applicato `20261004-20…-22` su dbdev il 2026-10-04: **nessuna regressione** nella corsa
+pgTAP. Letto dal catalogo di sistema lo stesso giorno: esistono le tre tabelle
+`documenti.formati_template`, `formati_pagina`, `orientamenti_pagina` e le tre FK
+`fk_template_documenti_versioni_*`; i tre CHECK non ci sono più.
+
+Lato DB chiuso. Il brief resta aperto per:
+
+* **R-FE-V1**: le sette chiavi i18n — fino ad allora `check_i18n_keys.py` è rosso;
+* **R-BE-V1 / R-FE-V2** (§5.4): tendine dal lookup, via i `frozenset` e
+  `documentiVersioniWhitelists.js`, `map_integrity_error` sui nomi delle FK;
+* **R-BE-V2…V2b** (§5.6): il render onora formato, orientamento e margini.
+
+Quando i tre punti sono chiusi, il brief va in `work-done/`.
 

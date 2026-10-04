@@ -83,9 +83,11 @@ SELECT a.id
 
 -- Riga contratto AGGIUNTA (prezzo valorizzato, qta_operativa richiesta
 -- da trgfn_qta_from_operativa, tipo_eccezione richiesto NOT NULL dal refactor)
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(
-    contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT c.id, a.id, 'AGGIUNTA', 100.00, 1.00
+    contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+    tipo_erogazione)
+SELECT c.id, a.id, 'AGGIUNTA', 100.00, 1.00, 'CANONE'
   FROM vendite.contratti c, tmp_pnd_art a
  WHERE c.numero = 'PGTAP_PND_CNT';
 

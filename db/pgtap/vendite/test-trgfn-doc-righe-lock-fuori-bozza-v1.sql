@@ -230,8 +230,9 @@ BEGIN
           -- ⚠️ ex_contratti_no_overlap: stesso BA, validita' disgiunte per contratto.
           r.stato_con_draft_id, make_date(p_anno, 1, 1), make_date(p_anno, 12, 31), r.emittente_fiscale_id)
   RETURNING id INTO v_con;
-  INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-  VALUES (v_con, r.articolo_id, 'AGGIUNTA', 99.00, 1.00)
+  -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+  INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione)
+  VALUES (v_con, r.articolo_id, 'AGGIUNTA', 99.00, 1.00, 'CANONE')
   RETURNING id INTO v_riga;
   IF p_fino_a IN ('ATTIVO', 'CESSATO') THEN
     UPDATE vendite.contratti SET stato_doc_contratto_id = r.stato_con_attivo_id WHERE id = v_con;
@@ -409,12 +410,15 @@ SELECT pg_temp.lr_prova('14_ord_conf_upd',
   format('UPDATE vendite.ordini_righe SET descrizione = ''promessa di consegna'' WHERE id = %s', (SELECT id FROM tmp_fix WHERE chiave='ord_conf_riga')))
  WHERE EXISTS (SELECT 1 FROM tmp_fix WHERE chiave='ord_conf_riga');
 
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 SELECT pg_temp.lr_prova('15_con_bozza_ins',
-  format('INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa) VALUES (%s, %L, ''AGGIUNTA'', 10, 1)',
+  format('INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione) VALUES (%s, %L, ''AGGIUNTA'', 10, 1, ''CANONE'')',
          (SELECT id FROM tmp_fix WHERE chiave='con_bozza'), (SELECT articolo2_id FROM tmp_refs_lr)))
  WHERE EXISTS (SELECT 1 FROM tmp_fix WHERE chiave='con_bozza');
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate);
+--   senza, il guard nuovo potrebbe parlare al posto del lock fuori bozza che qui si prova.
 SELECT pg_temp.lr_prova('16_con_attivo_ins',
-  format('INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa) VALUES (%s, %L, ''AGGIUNTA'', 10, 1)',
+  format('INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione) VALUES (%s, %L, ''AGGIUNTA'', 10, 1, ''CANONE'')',
          (SELECT id FROM tmp_fix WHERE chiave='con_attivo'), (SELECT articolo2_id FROM tmp_refs_lr)))
  WHERE EXISTS (SELECT 1 FROM tmp_fix WHERE chiave='con_attivo');
 SELECT pg_temp.lr_prova('17a_con_attivo_upd',

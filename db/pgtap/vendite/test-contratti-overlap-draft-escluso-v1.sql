@@ -107,8 +107,10 @@ INSERT INTO vendite.contratti(numero, billing_account_id, istanza_utility_id,
        utility_id, ambito, emittente_fiscale_id, stato_doc_contratto_id, valido_dal, valido_al)
 SELECT 'PGTAP_OVL_A2', ba_id, istanza_utility_id, utility_id, ambito, emittente_fiscale_id, id_draft,
        '2082-01-01'::date, '2082-12-31'::date FROM tmp_ovl_ctx;
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT c.id, ctx.articolo_id, 'AGGIUNTA', 100.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT c.id, ctx.articolo_id, 'AGGIUNTA', 100.00, 1.00, 'CANONE'
   FROM vendite.contratti c, tmp_ovl_ctx ctx WHERE c.numero='PGTAP_OVL_A2';
 UPDATE vendite.contratti SET stato_doc_contratto_id = (SELECT id_attivo FROM tmp_ovl_ctx)
  WHERE numero = 'PGTAP_OVL_A2';
@@ -123,8 +125,10 @@ SELECT lives_ok(
 
 -- Riga AGGIUNTA anche su B2, cosi' l'attivazione supera il guard "no listino/righe"
 -- e arriva al check di overlap (altrimenti fallirebbe per il motivo sbagliato).
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT c.id, ctx.articolo_id, 'AGGIUNTA', 100.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT c.id, ctx.articolo_id, 'AGGIUNTA', 100.00, 1.00, 'CANONE'
   FROM vendite.contratti c, tmp_ovl_ctx ctx WHERE c.numero='PGTAP_OVL_B2';
 
 -- 6) Attivazione del DRAFT sovrapposto all'ATTIVO -> bloccata (23P01)

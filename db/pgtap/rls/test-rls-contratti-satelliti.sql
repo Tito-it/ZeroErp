@@ -94,15 +94,16 @@ SELECT c.lato, x.id AS contratto_id, x.emittente_fiscale_id,
 -- ⚠️ `AGGIUNTA` pretende un prezzo (`chk_contrighe_prezzo_per_tipo_eccezione`),
 --   `ESCLUSIONE` lo pretende NULL: si sceglie il primo perche' una riga con un
 --   prezzo e' quella che un operatore altrui non deve leggere.
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 CREATE TEMP TABLE _righe AS
 WITH r AS (
     INSERT INTO vendite.contratti_righe
         (contratto_id, articolo_id, fonte_quantita_attesa, tipo_eccezione,
-         prezzo_unitario, qta_operativa)
+         prezzo_unitario, qta_operativa, tipo_erogazione)
     SELECT k.contratto_id,
            (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
            'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto,
-           100.00, 1
+           100.00, 1, 'CANONE'
       FROM _contratti k
     RETURNING id, contratto_id
 )
@@ -204,13 +205,15 @@ BEGIN
         true);
 
     -- ⛔ La scrittura sul contratto altrui.
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate);
+    --   senza, il guard BEFORE ROW parlerebbe (P0001) prima della RLS che qui si prova.
     BEGIN
         INSERT INTO vendite.contratti_righe
             (contratto_id, articolo_id, fonte_quantita_attesa, tipo_eccezione,
-             prezzo_unitario, qta_operativa)
+             prezzo_unitario, qta_operativa, tipo_erogazione)
         VALUES (v_b.contratto_id,
                 (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
-                'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, 1.00, 1);
+                'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, 1.00, 1, 'CANONE');
         PERFORM set_config('pgtap.scrittura', 'PASSATA', true);
     EXCEPTION WHEN insufficient_privilege OR check_violation THEN
         PERFORM set_config('pgtap.scrittura', 'RIFIUTATA', true);

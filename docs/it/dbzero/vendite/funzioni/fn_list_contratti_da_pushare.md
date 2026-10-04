@@ -22,6 +22,11 @@ BEGIN
   -- rev 2026-07-27 (brief emissione mirata PARTE B): fatturazione_immediata
   -- proiettata dalla COLONNA (era la costante FALSE). Il valore instrada
   -- la corsia via chiave di dedup di fn_get_or_create_commessa.
+  -- rev 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate R4):
+  -- le righe ESCLUSIONE non si listano (l'esclusione non si fattura: prima
+  -- arrivavano in commessa senza prezzo, e il resolver risponde
+  -- E_ARTICOLO_ESCLUSO_DA_CONTRATTO); tipo_consumo e' l'erogazione della riga,
+  -- senza ripiego su CANONE (obbligatoria per CHECK su ogni riga listata).
   IF p_contratto_id IS NOT NULL AND p_contratto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_contratti_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -77,7 +82,10 @@ BEGIN
     (cr.prezzo_unitario IS NOT NULL),
     'FIXED'::varchar,
     'NORMALE'::varchar,
-    COALESCE(cr.tipo_erogazione, 'CANONE')::varchar,
+    -- Erogazione della riga, senza ripiego: obbligatoria su ogni riga che
+    -- non e' ESCLUSIONE (chk_contrighe_erogazione_per_tipo_eccezione), e le
+    -- ESCLUSIONE qui non arrivano.
+    cr.tipo_erogazione::varchar,
     NULL::integer,
     jsonb_build_object(
       'contratto_numero',    c.numero,
@@ -95,6 +103,9 @@ BEGIN
   JOIN vendite.contratti_righe cr
     ON cr.contratto_id = c.id
    AND COALESCE(cr.attivo, TRUE) IS TRUE
+   -- L'esclusione non si fattura: dice solo che il contratto non vende
+   -- quell'articolo del listino.
+   AND cr.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
   JOIN catalogo.articoli a ON a.id = cr.articolo_id
   WHERE c.billing_account_id IS NOT NULL
     AND (v_stato_attivo_id IS NULL OR c.stato_doc_contratto_id = v_stato_attivo_id)
@@ -115,7 +126,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_contratti_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_contratto_id bigint)
-IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna) rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE del mese via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.contratti.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta legato alla riga (prezzo valorizzato): l''accoppiamento flag/prezzo esiste solo sui preventivi. Espone termine_pagamento_id e modalita_pagamento_id a NULL: i contratti non hanno colonne di pagamento, la cascata scende al livello successivo (rev 2026-08-03, T.1).';
+IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna) rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE del mese via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.contratti.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta legato alla riga (prezzo valorizzato): l''accoppiamento flag/prezzo esiste solo sui preventivi. Espone termine_pagamento_id e modalita_pagamento_id a NULL: i contratti non hanno colonne di pagamento, la cascata scende al livello successivo (rev 2026-08-03, T.1). rev 2026-10-04: le righe ESCLUSIONE non si listano (non si fatturano; prima arrivavano in commessa senza prezzo, e per quell''articolo il resolver risponde E_ARTICOLO_ESCLUSO_DA_CONTRATTO) e tipo_consumo e'' l''erogazione della riga senza ripiego su CANONE, obbligatoria per CHECK su ogni riga che non e'' ESCLUSIONE — brief-db-erogazione-obbligatoria-righe-fatturate R4.';
 ```
 
 ---

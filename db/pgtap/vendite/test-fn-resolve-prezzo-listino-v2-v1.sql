@@ -220,10 +220,11 @@ SELECT 'PGTAP_V5_CONTR', t.ba_id, t.istanza_utility_id, t.utility_id,
        CURRENT_DATE, CURRENT_DATE, v.listino_id, NULL, NULL
   FROM tmp_ctx t, tmp_ctx_versione v;
 
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, prezzo_unitario,
-                                    tipo_eccezione, attivo, qta_operativa)
+                                    tipo_eccezione, attivo, qta_operativa, tipo_erogazione)
 SELECT c.id, t.articolo_id, 42,
-       'OVERRIDE'::vendite.tipo_eccezione_contratto, TRUE, 1
+       'OVERRIDE'::vendite.tipo_eccezione_contratto, TRUE, 1, 'CANONE'
   FROM vendite.contratti c, tmp_ctx t
  WHERE c.numero = 'PGTAP_V5_CONTR';
 

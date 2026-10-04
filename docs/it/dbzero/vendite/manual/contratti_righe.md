@@ -191,6 +191,18 @@ Ogni tipo ha i suoi dati e i suoi controlli, che valgono quando la riga nasce:
 un `OVERRIDE` portato a `ESCLUSIONE` sul posto creerebbe un'esclusione senza
 passare da Escludi. Per cambiare tipo si elimina la riga e se ne crea una nuova.
 
+#### Una riga che si fattura dice come si eroga (2026-10-04)
+
+Ogni riga che non è `ESCLUSIONE` (oggi `OVERRIDE` e `AGGIUNTA`) finisce in
+fattura, e la fattura deve sapere come conteggiarla: `tipo_erogazione` è
+obbligatoria. Sull'esclusione resta libera, perché non si fattura. Il trigger
+`trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd`
+(→ [`trgfn_righe_guard_erogazione_obbligatoria`](/dbzero/script/funzioni/trgfn_righe_guard_erogazione_obbligatoria))
+rifiuta l'`INSERT` o l'`UPDATE` che la lascia vuota → `E_RIGA_EROGAZIONE_OBBLIGATORIA`,
+col campo `tipo_erogazione` da evidenziare. Dietro c'è il vincolo
+`chk_contrighe_erogazione_per_tipo_eccezione`. La stessa regola vale sulle righe
+dell'offerta, da cui il contratto le copia.
+
 ---
 
 ### Vincoli e trigger rilevanti
@@ -199,6 +211,7 @@ passare da Escludi. Per cambiare tipo si elimina la riga e se ne crea una nuova.
 * **Trigger**:
   * `trg_contratti_righe_a05_guard_esclusione_immutabile_upd` — una riga ESCLUSIONE non si modifica (2026-10-04).
   * lock di colonna su `tipo_eccezione` (generato dal registro `dbops.automation_lock_columns`, 2026-10-04).
+  * `trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd` — una riga che si fattura vuole `tipo_erogazione` (2026-10-04).
   * `trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd` — blocca AGGIUNTA per articoli già in listino (Step 2.2).
   * `trg_contratti_righe_a10_default_fonte_qta_ins_upd` — normalizza `fonte_quantita_attesa` al default su INSERT e su UPDATE con tipo cambiato (20260519-06; ri-bindato alla funzione generica `script.trgfn_righe_default_fonte_qta` in 20260531-10).
   * `trg_contratti_righe_a10_qta_from_operativa_ins_upd` — calcolo quantita base da operativa.
