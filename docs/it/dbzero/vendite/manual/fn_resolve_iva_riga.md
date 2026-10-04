@@ -74,7 +74,7 @@ Ritorna **una o più righe**, ciascuna con:
 
 | Campo | Cosa dice |
 | --- | --- |
-| `quota` | la parte di imponibile coperta da questa riga: solo nella proiezione con l'importo; `NULL` in anteprima e nel consumo |
+| `quota` | sempre `NULL` dal 2026-10-04 (la proiezione con l'importo è ritirata): resta perché la firma non si riordina. Quanto copre il titolo lo dice la madre del consumo |
 | `iva_id` | il codice IVA da applicare |
 | `aliquota` | la percentuale, già risolta per lo stato dell'emittente |
 | `natura_codice` | la natura dell'operazione (`N1`…`N7`), quando c'è |
@@ -133,15 +133,18 @@ SELECT * FROM vendite.fn_resolve_iva_riga(
 );
 ```
 
-### Le tre domande
+### Le due domande
 
 | Come si chiama | Chi la fa | Cosa risponde |
 | --- | --- | --- |
 | senza importo, `p_consumo = false` (anteprima) | i documenti, i form | **una riga**, `quota` NULL: il trattamento del primo euro — il titolo se ha ancora capienza, l'ordinario se è esaurito |
-| con l'importo, `p_consumo = false` (proiezione) | — (era il giro del plafond) | la spezzatura **proiettata** sul residuo di adesso: una riga, o due quando il plafond finisce a metà |
 | senza importo, `p_consumo = true` (consumo) | il giro del plafond in fattura | con un titolo **a tetto**, **due righe sempre**, `quota` NULL: prima il titolo, poi l'ordinario. Senza titolo o con un titolo senza tetto, una riga |
 
-Il consumo con un importo **solleva**: sono due domande diverse.
+⛔ **Un importo solleva, con qualunque domanda.** La terza, la **proiezione**
+(`p_imponibile` valorizzato), è **ritirata** dal 2026-10-04 (`20261004-15`): il suo
+unico chiamante era il giro del plafond, passato al consumo. Il parametro resta
+nella firma, che non si riordina, e il guscio lo inoltra
+all'implementazione del paese, che lo rifiuta (`E_IVA_RESOLVE_NON_INVOCABILE`).
 
 > ⚠️ **Nel consumo il residuo non si legge.** Il plafond si consuma sul **netto**
 > della fattura (decisione C di Tid, 2026-10-04): una riga negativa restituisce
@@ -149,11 +152,6 @@ Il consumo con un importo **solleva**: sono due domande diverse.
 > questo, anche a residuo zero, il titolo resta nella risposta: è la madre del
 > consumo a dire che non copre più niente. Chi consuma deve iterare, non prendere
 > `LIMIT 1`, e l'ordine è parte del contratto.
->
-> ⚠️ La **proiezione** aveva il giro del plafond come unico chiamante: quando il
-> giro passa al consumo resta senza chiamanti. Per ora resta (la firma non si
-> riordina); ritirare il ramo è una decisione aperta nel brief
-> `brief-db-bom-flag-quantita-e-kit-in-fattura` §13.4.
 
 ---
 

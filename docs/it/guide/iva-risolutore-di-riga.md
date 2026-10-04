@@ -230,6 +230,11 @@ consuma davvero.
 > client il parametro con cui romperla.** L'endpoint di anteprima chiede sempre
 > l'**anteprima** e non accetta la domanda di consumo — quindi risponde con una
 > riga sola, e nessun form può inventare una spezzatura.
+>
+> ⛔ **E il risolutore non prende importi.** Una spezzatura «proiettata» sul plafond
+> residuo, riga per riga, era una terza domanda: non serviva più a nessuno e dava
+> un numero che il consumo sul netto avrebbe smentito. È stata ritirata, e chi
+> passa un importo riceve un errore invece di una risposta che sembra giusta.
 
 ---
 
@@ -267,7 +272,7 @@ dell'operazione: su un documento vecchio deve restare quella di allora.
 | Campo                   | Cosa dice                                                           |
 | ----------------------- | ------------------------------------------------------------------- |
 | `iva_id`                | il codice IVA da applicare                                          |
-| `quota`                 | la parte coperta, solo nella proiezione con l'importo; `NULL` in anteprima e nel consumo |
+| `quota`                 | sempre `NULL`: quanto copre il titolo lo dice la madre del consumo (la colonna resta per non cambiare la firma) |
 | `aliquota`              | la percentuale, già risolta per lo stato dell'emittente             |
 | `natura_codice`         | la natura dell'operazione (`N1`…`N7`), quando c'è                   |
 | `is_reverse_charge`     | se quella natura è un'inversione contabile                          |
@@ -437,12 +442,11 @@ niente):
 SELECT * FROM vendite.fn_resolve_iva_riga(
   p_articolo_id          => :articolo_id,
   p_data_riferimento     => :data_documento,
-  p_imponibile           => :imponibile,
   p_soggetto_id          => :soggetto_cliente_id,
   p_emittente_fiscale_id => :emittente_fiscale_id
 );
--- con p_consumo => true (in fondo, senza importo): quale titolo e i due trattamenti,
--- come nel giro del plafond
+-- con p_consumo => true (in fondo): quale titolo e i due trattamenti,
+-- come nel giro del plafond. Un importo (p_imponibile) non si passa: solleva.
 ```
 
 > ⚠️ `p_emittente_fiscale_id` è la **chiave primaria** di

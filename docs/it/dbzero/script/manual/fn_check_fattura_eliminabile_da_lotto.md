@@ -31,6 +31,14 @@ indietro. La domanda vive in un posto solo,
 [script.fn_check_fatture_con_plafond_consumato](/dbzero/script/funzioni/fn_check_fatture_con_plafond_consumato),
 condivisa dalle tre porte di reset e dalla pulizia.
 
+La **domanda** è della sede unica, la **frase** no: la sede unica parla del lotto
+(«il lotto contiene fatture che…»), e qui si toglie **una** fattura. Questa funzione
+cambia solo la `reason_key` del motivo 6 in
+`vendite.lotti.azione_reason.fattura_plafond_consumato`, così il pulsante spento dice
+«la fattura ha già consumato…»; codice, `reason` e dettaglio restano quelli della sede
+(dal 2026-10-04, scelta di Tid). È la stessa coppia singolare/plurale che i motivi 3 e 4
+hanno già con le porte del lotto (`fattura_numerata` / `fatture_numerate`).
+
 ---
 
 ### ⚠️ Il motivo 1 è l'allargamento, non un controllo nuovo

@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-DB-1 — LE TRE COLONNE DELLA VERSIONE SI LEGANO AI VOCABOLARI
+#   documenti.template_documenti_versioni
+#     formato_template -> documenti.formati_template(codice_interno)
+#     page_format      -> documenti.formati_pagina(codice_interno)
+#     page_orientation -> documenti.orientamenti_pagina(codice_interno)
+#   e i tre CHECK di 20260429-54 si ritirano: la FK e' la sede unica.
+#   Brief: brief-db-vocabolari-versione-template, sezione 5
+#
+# -- PERCHE' IN 80_data E NON IN 00_schema ---------------------------------
+#   Le FK puntano a righe di seed (20261004-21): in 00_schema il catalogo e'
+#   vuoto. Forma di 20261001-57.
+#
+# -- I SEED GIA' MERGIATI CHE COPIANO LE VERSIONI -------------------------------
+#   20260804-61, 20260805-09, 20260816-01 inseriscono versioni in 80_data con i
+#   valori della versione sorgente. Girano PRIMA di questo file (ordine dei
+#   nomi): li' vale ancora il CHECK, che ammette gli stessi valori. Nessun
+#   changeSet di 80_data/90_end nomina i tre CHECK (censito il 2026-10-04): il
+#   DROP qui non rompe nessuno che li pretenda.
+#
+# -- LA FORMA ------------------------------------------------------------------
+#   · FK su codice_interno, la chiave naturale (linee-guida-sql 6b): le colonne
+#     restano varchar e portano il codice, com'erano. ON UPDATE / ON DELETE
+#     RESTRICT: codice_interno e' immutabile (lock automatico) e una riga di
+#     catalogo non si cancella;
+#   · prima la FK, poi il DROP del CHECK, nello stesso changeSet: non c'e' un
+#     istante in cui la colonna resti senza cancello;
+#   · nessun `ALTER TABLE` scatena i trigger di riga: il guard A1 sulle versioni
+#     PUBBLICATE non e' coinvolto.
+#
+# -- IL CANCELLO PRIMA DELLA FK ------------------------------------------------
+#   I CHECK ammettevano esattamente i valori del seed, quindi la FK non puo'
+#   trovare valori fuori catalogo. Lo dice la FK stessa, fail-fast.
+#
+# -- A ci_apply ----------------------------------------------------------------
+#   I vocabolari non hanno `attivo`: nessuna coppia ATTIVO, voluto (vedi
+#   20261004-20). Gli indici delle FK: la policy e' opt-in,
+#   fn_populate_fk_index_policy le registra a consentito = false da sola;
+#   nessuna query entra dal vocabolario verso le versioni.
+#
+# -- RICADUTA SUL BACKEND ------------------------------------------------------
+#   Un valore fuori catalogo esce 23503 con il nome della FK, non piu' 23514 col
+#   nome del CHECK: map_integrity_error del service delle versioni va
+#   riallineato (brief, sezione 5.4). Finche' il BE tiene i frozenset il rifiuto
+#   arriva prima, quindi nessuna regressione nel frattempo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261004-22-fk-vocabolari-versione-template-mctit.yaml
+
+  - changeSet:
+      id: 20261004-22-fk-vocabolari-versione-template
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        FK da documenti.template_documenti_versioni.formato_template, page_format e
+        page_orientation su documenti.formati_template, formati_pagina e orientamenti_pagina
+        (codice_interno), al posto dei tre CHECK di 20260429-54. In 80_data perche' i
+        vocabolari nascono dal seed 20261004-21. Brief: brief-db-vocabolari-versione-template
+        (R-DB-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: documenti
+                tableName: formati_template
+            - tableExists:
+                schemaName: documenti
+                tableName: formati_pagina
+            - tableExists:
+                schemaName: documenti
+                tableName: orientamenti_pagina
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE c.conname IN ('fk_template_documenti_versioni_formati_template',
+                                       'fk_template_documenti_versioni_formati_pagina',
+                                       'fk_template_documenti_versioni_orientamenti_pagina');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.template_documenti_versioni
+                  ADD CONSTRAINT fk_template_documenti_versioni_formati_template
+                  FOREIGN KEY (formato_template)
+                  REFERENCES documenti.formati_template (codice_interno)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              ALTER TABLE documenti.template_documenti_versioni
+                  ADD CONSTRAINT fk_template_documenti_versioni_formati_pagina
+                  FOREIGN KEY (page_format)
+                  REFERENCES documenti.formati_pagina (codice_interno)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              ALTER TABLE documenti.template_documenti_versioni
+                  ADD CONSTRAINT fk_template_documenti_versioni_orientamenti_pagina
+                  FOREIGN KEY (page_orientation)
+                  REFERENCES documenti.orientamenti_pagina (codice_interno)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              ALTER TABLE documenti.template_documenti_versioni
+                  DROP CONSTRAINT IF EXISTS chk_template_documenti_versioni_formato,
+                  DROP CONSTRAINT IF EXISTS chk_template_documenti_versioni_page_format,
+                  DROP CONSTRAINT IF EXISTS chk_template_documenti_versioni_orientation;
+
+              COMMENT ON COLUMN documenti.template_documenti_versioni.formato_template IS
+                  'Formato della sorgente: codice_interno di documenti.formati_template (FK). '
+                  'Brief: brief-db-vocabolari-versione-template.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.page_format IS
+                  'Formato di pagina del PDF: codice_interno di documenti.formati_pagina (FK). '
+                  'Brief: brief-db-vocabolari-versione-template.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.page_orientation IS
+                  'Orientamento di pagina del PDF: codice_interno di documenti.orientamenti_pagina '
+                  '(FK). Brief: brief-db-vocabolari-versione-template.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE documenti.template_documenti_versioni
+                  ADD CONSTRAINT chk_template_documenti_versioni_formato
+                      CHECK (formato_template IN ('HTML', 'HTML_MARKDOWN_BLOCKS')),
+                  ADD CONSTRAINT chk_template_documenti_versioni_orientation
+                      CHECK (page_orientation IN ('PORTRAIT', 'LANDSCAPE')),
+                  ADD CONSTRAINT chk_template_documenti_versioni_page_format
+                      CHECK (page_format IN ('A4', 'A3', 'LETTER'));
+              ALTER TABLE documenti.template_documenti_versioni
+                  DROP CONSTRAINT IF EXISTS fk_template_documenti_versioni_orientamenti_pagina,
+                  DROP CONSTRAINT IF EXISTS fk_template_documenti_versioni_formati_pagina,
+                  DROP CONSTRAINT IF EXISTS fk_template_documenti_versioni_formati_template;

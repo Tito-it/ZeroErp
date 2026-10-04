@@ -252,7 +252,8 @@ UPDATE catalogo.articoli SET iva_id = (SELECT iva_ord FROM tmp_ec_iva)
 
 SELECT is(
   (SELECT COALESCE(r.esigibilita::text, 'NULL') || '/' || COALESCE(r.split_payment::text, 'NULL')
-     FROM vendite.fn_resolve_iva_riga((SELECT articolo_id FROM tmp_ec_art), current_date, 100.00,
+     -- ⚠️ p_imponibile NULL (l'anteprima): dal 20261004-15 un importo e' rifiutato.
+     FROM vendite.fn_resolve_iva_riga((SELECT articolo_id FROM tmp_ec_art), current_date, NULL,
                                       NULL, NULL,
                                       (SELECT cliente_soggetto_id FROM tmp_ec_iva),
                                       (SELECT emittente_fiscale_id FROM tmp_ec)) r),

@@ -72,20 +72,25 @@ tutto.
 ### Il plafond: due domande, scelte da `p_consumo`
 
 Alcuni titoli — la dichiarazione d'intento — hanno un **tetto di importo**. Su un
-titolo così la funzione risponde in tre modi:
+titolo così la funzione risponde in due modi:
 
 * **anteprima** (`p_consumo = false`, i documenti): **una riga**, quanto vale il
   **primo euro** — il titolo se ha ancora capienza, l'ordinario dello stadio A se è
   esaurito. È ciò che serve a un form quando l'operatore ha appena scelto
   l'articolo, e la spezzatura non si inventa;
-* **proiezione** (`p_consumo = false` con l'importo): la spezzatura proiettata sul
-  residuo di adesso, una riga o due (prima la quota coperta). Aveva il giro del
-  plafond come unico chiamante;
 * **consumo** (`p_consumo = true`, il giro del plafond in fattura): **due righe
   sempre**, prima il titolo col suo codice e poi l'ordinario dello stadio A,
   `quota` NULL, **senza leggere il residuo**. `p_consumo` è **in coda** alla
-  firma (dal 2026-10-04): le chiamate di prima non cambiano, e il consumo con un
-  importo solleva.
+  firma (dal 2026-10-04): le chiamate di prima non cambiano.
+
+⛔ **Nessuna delle due prende un importo.** Fino al 2026-10-04 c'era una terza
+domanda, la **proiezione** (`p_imponibile` valorizzato): la spezzatura proiettata
+sul residuo di adesso. Il suo unico chiamante era il giro del plafond, passato al
+consumo; è stata **ritirata** (`20261004-15`, decisione di Tid: orfana → si
+ritira). `p_imponibile` resta nella firma, che non si riordina, e **un valore
+qualunque solleva** `E_IVA_RESOLVE_NON_INVOCABILE`: un importo accettato e
+ignorato farebbe credere al chiamante di aver avuto una spezzatura. La colonna
+`quota` resta, ed esce sempre `NULL`.
 
 > ⭐ **Perché il consumo non guarda il residuo** (decisione C di Tid, 2026-10-04,
 > `brief-db-bom-flag-quantita-e-kit-in-fattura` §13): il plafond si consuma sul
@@ -100,10 +105,6 @@ titolo così la funzione risponde in tre modi:
 > all'emissione a fermarla.
 
 > ⛔ **La funzione NON consuma il plafond.** È sola lettura.
->
-> ⚠️ Quando il giro passa al consumo, la **proiezione** resta senza chiamanti.
-> Per ora resta (la firma non si riordina): ritirare il ramo è una decisione
-> aperta (`brief-db-bom-flag-quantita-e-kit-in-fattura` §13.4).
 
 ---
 
@@ -127,7 +128,7 @@ titolo così la funzione risponde in tre modi:
 
 | Codice | Quando |
 | --- | --- |
-| `E_IVA_RESOLVE_NON_INVOCABILE` | parametri mancanti (anche `p_consumo` passato `NULL`), il consumo chiesto con un importo, o articolo inesistente — è un **chiamante rotto**, non un errore dell'operatore |
+| `E_IVA_RESOLVE_NON_INVOCABILE` | parametri mancanti (anche `p_consumo` passato `NULL`), un importo in `p_imponibile` (con qualunque domanda: la proiezione è ritirata), o articolo inesistente — è un **chiamante rotto**, non un errore dell'operatore |
 | `E_IVA_TITOLI_AMBIGUI` | due titoli in pari specificità sulla stessa riga |
 
 ---
@@ -142,11 +143,11 @@ titolo così la funzione risponde in tre modi:
 SELECT * FROM vendite.fn_resolve_iva_riga(
   p_articolo_id          => :articolo_id,
   p_data_riferimento     => :data_documento,
-  p_imponibile           => :imponibile,
   p_soggetto_id          => :soggetto_cliente_id,
   p_emittente_fiscale_id => :emittente_fiscale_id
 );
--- il giro del plafond: senza p_imponibile, con p_consumo => true in fondo
+-- il giro del plafond: in più p_consumo => true in fondo.
+-- ⛔ p_imponibile non si passa mai: un valore solleva (proiezione ritirata).
 ```
 
 ---

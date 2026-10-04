@@ -6,7 +6,8 @@
 --   script.fn_check_fatture_con_plafond_consumato, le tre porte di reset e
 --   il guard di vendite.fn_cleanup_fatture_by_ids.
 --   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura §14 (strada A di Tid,
---   2026-10-04). changeSet: 20261004-07 … -11.
+--   2026-10-04). changeSet: 20261004-07 … -11; la reason_key della porta
+--   singola: 20261004-16 (R-DB-A2, §15.4).
 --
 -- IL CASO: il plafond si consuma all'emissione PRIMA della numerazione. Una
 --   fattura con un movimento nel registro e senza numero passava le tre porte
@@ -22,9 +23,9 @@
 --    2) su un insieme vuoto o NULL risponde [] (non e' un errore)
 --    3) su una fattura senza movimenti risponde []
 --    4) su una fattura con un movimento: E_FATTURE_PLAFOND_CONSUMATO, 1 fattura
---    5) porta «elimina fattura»: il motivo c'e'
---    6) porta «riporta a draft»: il motivo c'e'
---    7) porta «annulla lotto»: il motivo c'e'
+--    5) porta «elimina fattura»: il motivo c'e', con la frase della FATTURA
+--    6) porta «riporta a draft»: il motivo c'e', con la frase del LOTTO
+--    7) porta «annulla lotto»: il motivo c'e', con la frase del LOTTO
 --    8) la madre «elimina fattura» solleva il codice, non un 23503
 --    9) la pulizia, chiamata direttamente, solleva il codice
 --   10) la fattura senza movimenti si elimina dal lotto senza problemi
@@ -123,21 +124,28 @@ SELECT is(
 -- ============================================================
 -- 5..7 — le tre porte di reset
 -- ============================================================
+-- ⭐ rev 2026-10-04 bis (R-DB-A2): si asserisce anche la reason_key. La domanda
+--   e' una (la sede unica), le frasi due: la porta della fattura parla di
+--   QUELLA fattura, le due del lotto del lotto. Tre test che guardassero il
+--   solo codice resterebbero verdi con la frase sbagliata a video.
 SELECT ok(
     script.fn_check_fattura_eliminabile_da_lotto(
         (SELECT id FROM tmp_rpc_lotto), (SELECT fa FROM tmp_rpc_fatt))
-      @> '[{"codice": "E_FATTURE_PLAFOND_CONSUMATO"}]'::jsonb,
-    '5) «elimina fattura»: la fattura che ha consumato plafond porta il motivo');
+      @> '[{"codice": "E_FATTURE_PLAFOND_CONSUMATO",
+            "reason_key": "vendite.lotti.azione_reason.fattura_plafond_consumato"}]'::jsonb,
+    '5) «elimina fattura»: la fattura che ha consumato plafond porta il motivo, con la frase della fattura');
 
 SELECT ok(
     script.fn_check_lotto_riportabile_a_draft((SELECT id FROM tmp_rpc_lotto))
-      @> '[{"codice": "E_FATTURE_PLAFOND_CONSUMATO"}]'::jsonb,
-    '6) «riporta a draft»: il lotto con una fattura che ha consumato porta il motivo');
+      @> '[{"codice": "E_FATTURE_PLAFOND_CONSUMATO",
+            "reason_key": "vendite.lotti.azione_reason.plafond_consumato"}]'::jsonb,
+    '6) «riporta a draft»: il lotto con una fattura che ha consumato porta il motivo, con la frase del lotto');
 
 SELECT ok(
     script.fn_check_lotto_annullabile((SELECT id FROM tmp_rpc_lotto))
-      @> '[{"codice": "E_FATTURE_PLAFOND_CONSUMATO"}]'::jsonb,
-    '7) «annulla lotto»: il lotto con una fattura che ha consumato porta il motivo');
+      @> '[{"codice": "E_FATTURE_PLAFOND_CONSUMATO",
+            "reason_key": "vendite.lotti.azione_reason.plafond_consumato"}]'::jsonb,
+    '7) «annulla lotto»: il lotto con una fattura che ha consumato porta il motivo, con la frase del lotto');
 
 -- ============================================================
 -- 8..10 — le scritture si fermano col codice, non con un 23503
