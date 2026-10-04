@@ -23,6 +23,11 @@ sezione «Invito e attivazione di una veste»).
   2026-09-25 la sovrascriveva con una temporanea: A-1).
 - L'**attivazione** consuma il token e **accende la veste** nella stessa
   transazione (A-3).
+- ⭐ L'invito è anche **l'unica strada per riattivare** un operatore spento
+  (D-3, 2026-10-04): la riattivazione diretta (`operatori/{id}/riattiva/`,
+  PATCH `attivo: true`) è ritirata. Il gesto dell'amministratore riapre la
+  **risorsa umana** (il rapporto), la veste la accende la persona attivando:
+  nessuna veste torna attiva senza che la persona lo sappia.
 
 ---
 
@@ -30,11 +35,14 @@ sezione «Invito e attivazione di una veste»).
 
 ```text
 1. Admin crea l'operatore → veste OPERATORE spenta
+   (oppure: operatore disabilitato → veste spenta, risorsa umana chiusa)
    |
 2. Admin apre il drawer → «Invia invito» (visibile quando can_invite del DB)
    POST /amm-software/operatori/{id}/invita/
    → fn_check_operatore_invitabile (veste spenta, nella finestra, email)
    → la veste OPERATORE spenta della credenziale (una sola)
+   → risorsa umana riaperta se chiusa (attivo=true, valido_al=NULL,
+     valido_dal intatto), nella transazione del token (D-3)
    → token: INVITO_OPERATORE se la credenziale non ha una password vera,
      ATTIVAZIONE_OPERATORE_CROSS se ce l'ha (72 ore, meta con identita_id)
    → email con link {FRONTEND_URL}/attivazione/{token}
@@ -74,6 +82,16 @@ rev P-2 `20260925-43`, D-8; il drawer le legge come `can_invite` / `invite_reaso
    l'accesso c'è già, per una password dimenticata c'è il reset);
 3. la veste è nella sua finestra di validità (`valido_dal`/`valido_al`);
 4. la credenziale ha un indirizzo email.
+
+**Riapertura del rapporto (D-3, 2026-10-04).** Nella stessa transazione
+dell'emissione, prima del token, la risorsa umana della veste che si sta
+invitando (la stessa `identita_id` del token) si riapre se è chiusa:
+`attivo = true`, e `valido_al = NULL` solo se è già arrivata (oggi o prima,
+come la scrive «Disabilita»); una fine rapporto **futura** resta.
+`valido_dal` non si tocca (è l'inizio del rapporto). Su un operatore mai
+attivato è già aperta e non si scrive niente. Riaprire il padre prima che la
+persona accenda il figlio è l'ordine che il DB chiede (api.md §«Disattivazione
+record»). Sede: `RisorseUmaneCoreRepository.riapri_risorsa_umana_della_veste`.
 
 ⛔ Non contano più `last_login` (D-8) né `is_active` (derivato dalle vesti:
 falso per costruzione finché la veste è spenta). Il service invita **l'unica**
@@ -118,7 +136,9 @@ POST /api/v1/amm-software/operatori/{auth_user_id}/reinvia-invito/
 
 Invalida i token pendenti **della veste** e ne genera uno nuovo **nella stessa
 transazione** (prima l'invalidazione era una scrittura separata: se l'emissione
-falliva l'operatore restava senza link, A-4), poi rinvia l'email.
+falliva l'operatore restava senza link, A-4), poi rinvia l'email. È la stessa
+strada di `invita`, riapertura della risorsa umana compresa: è il pulsante con
+cui l'amministratore riattiva un operatore disabilitato (D-3).
 
 ---
 

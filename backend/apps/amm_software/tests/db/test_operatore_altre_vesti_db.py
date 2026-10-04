@@ -18,11 +18,13 @@
 """Indice test (opt-in `ZEROERP_TEST_DB_E2E=1`).
 
 1. test_salvare_l_operatore_non_tocca_la_veste_shop
-2. test_disabilitare_e_riattivare_non_toccano_la_veste_shop
+2. test_disabilitare_e_riattivare_non_toccano_la_veste_shop — D-3: disabilita, l'invito riapre il rapporto, l'attivazione la veste
+2a. test_l_interruttore_non_riaccende_e_il_salvataggio_non_richiude — D-3
+2b. test_riaprire_il_rapporto_tiene_una_fine_futura — azzera solo la `valido_al` arrivata
 3. test_il_super_admin_si_lega_alla_sola_veste_operatore
 4. test_la_lista_legge_la_veste_operatore_anche_disabilitata
 5. test_la_sola_veste_shop_non_e_un_operatore
-6. test_spegnere_l_operatore_chiude_le_sessioni_della_sola_veste_operatore — e ne invalida gli inviti pendenti
+6. test_spegnere_l_operatore_chiude_le_sessioni_della_sola_veste_operatore — e ne invalida gli inviti pendenti; le due strade chiudono il rapporto a oggi
 """
 
 from __future__ import annotations
@@ -33,6 +35,9 @@ from django.db import connection, transaction
 
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 from apps.amm_software.services.amm_software_service import AmmSoftwareService
+from apps.core.db.auth_repository import AuthRepository
+from apps.core.db.risorse_umane_core_repository import RisorseUmaneCoreRepository
+from apps.core.services.service_errors import ServiceError
 from apps.core.services.invito_veste import PORTA_OPERATORE, PORTA_SHOP
 from apps.core.services.token_service import TokenService
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
@@ -86,7 +91,7 @@ class OperatoreAltreVestiDbTests(TestCase):
                 apri_contesto_operatore(cur)
 
                 # Il salvataggio del drawer: prima E_SOGGETTI_RUOLI.
-                repo.update_operatore(uid, first_name="Altre", attivo=True)
+                repo.update_operatore(uid, first_name="Altre")
 
                 self.assertEqual(self._veste(cur, operatore), ("OPERATORE", True))
                 self.assertEqual(self._veste(cur, shop), ("SHOP_CUSTOMER", True))
@@ -94,6 +99,21 @@ class OperatoreAltreVestiDbTests(TestCase):
         except _Annulla:
             pass
 
+    @staticmethod
+    def _rapporto(cur, identita_id: int) -> tuple[bool, object, object]:
+        cur.execute(
+            "SELECT ru.attivo, ru.valido_dal, ru.valido_al "
+            "  FROM anagrafiche.risorse_umane ru "
+            "  JOIN anagrafiche.identita_digitali id ON id.soggetto_ruolo_id = ru.soggetto_ruolo_id "
+            " WHERE id.id = %s",
+            [identita_id],
+        )
+        return cur.fetchone()
+
+    # ⭐ D-3 (2026-10-04): il giro intero, senza riattivazione diretta.
+    #    Disabilitare chiude veste e rapporto; l'invito riapre il SOLO rapporto
+    #    (la veste resta spenta), e la veste la accende l'attivazione. Lo shop
+    #    della stessa credenziale non si muove mai.
     def test_disabilitare_e_riattivare_non_toccano_la_veste_shop(self):
         repo = AmmSoftwareRepository()
         try:
@@ -101,16 +121,78 @@ class OperatoreAltreVestiDbTests(TestCase):
                 # I builder PRIMA del contesto operatore, come nei pgTAP.
                 uid, operatore, shop = self._operatore_anche_cliente_shop(cur)
                 apri_contesto_operatore(cur)
+                _, valido_dal, _ = self._rapporto(cur, operatore)
 
                 repo.disabilita_operatore(uid)
                 # ⭐ R-DB-1 (2026-10-02): spenta, la veste TIENE il tipo.
                 self.assertEqual(self._veste(cur, operatore), ("OPERATORE", False))
+                self.assertFalse(self._rapporto(cur, operatore)[0])
                 # Il cliente non perde lo shop perche' lo si toglie come operatore.
                 self.assertEqual(self._veste(cur, shop), ("SHOP_CUSTOMER", True))
 
-                repo.riattiva_operatore(uid)
+                # L'invito: riapre il rapporto, non la porta.
+                self.assertEqual(RisorseUmaneCoreRepository().riapri_risorsa_umana_della_veste(operatore), 1)
+                self.assertEqual(self._rapporto(cur, operatore), (True, valido_dal, None))
+                self.assertEqual(self._veste(cur, operatore), ("OPERATORE", False))
+                # Un secondo invito non riscrive niente.
+                self.assertEqual(RisorseUmaneCoreRepository().riapri_risorsa_umana_della_veste(operatore), 0)
+
+                # L'attivazione della persona accende la veste.
+                self.assertTrue(AuthRepository().attiva_identita(
+                    operatore, auth_user_id=uid, ruoli_applicativi=PORTA_OPERATORE.ruoli,
+                ))
                 self.assertEqual(self._veste(cur, operatore), ("OPERATORE", True))
                 self.assertEqual(self._veste(cur, shop), ("SHOP_CUSTOMER", True))
+                raise _Annulla
+        except _Annulla:
+            pass
+
+    # Scopo: D-3 — l'interruttore non riaccende un operatore spento (400 sul
+    #        campo `attivo`), e salvare un operatore spento non richiude il
+    #        rapporto che l'invito ha riaperto.
+    def test_l_interruttore_non_riaccende_e_il_salvataggio_non_richiude(self):
+        service = AmmSoftwareService()
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                uid, operatore, _shop = self._operatore_anche_cliente_shop(cur)
+                apri_contesto_operatore(cur)
+
+                AmmSoftwareRepository().disabilita_operatore(uid)
+                RisorseUmaneCoreRepository().riapri_risorsa_umana_della_veste(operatore)
+
+                with self.assertRaises(ServiceError) as ctx:
+                    service.update_operatore(uid, {"attivo": True})
+                self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+                self.assertEqual(self._veste(cur, operatore), ("OPERATORE", False))
+
+                # Il salvataggio del drawer: `attivo: false` invariato.
+                service.update_operatore(uid, {"attivo": False, "first_name": "Altre"})
+                self.assertTrue(self._rapporto(cur, operatore)[0])
+                raise _Annulla
+        except _Annulla:
+            pass
+
+    # Scopo: Riaprire il rapporto azzera la `valido_al` arrivata (oggi o
+    #        prima), non una FUTURA: quella e' una fine rapporto prevista
+    #        dall'amministratore (Tid, 2026-10-04).
+    def test_riaprire_il_rapporto_tiene_una_fine_futura(self):
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                uid, operatore, _shop = self._operatore_anche_cliente_shop(cur)
+                apri_contesto_operatore(cur)
+                _, valido_dal, _ = self._rapporto(cur, operatore)
+                AmmSoftwareRepository().disabilita_operatore(uid)
+                cur.execute(
+                    "UPDATE anagrafiche.risorse_umane ru SET valido_al = CURRENT_DATE + 30 "
+                    "  FROM anagrafiche.identita_digitali id "
+                    " WHERE id.id = %s AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id",
+                    [operatore],
+                )
+                cur.execute("SELECT CURRENT_DATE + 30")
+                fine = cur.fetchone()[0]
+
+                self.assertEqual(RisorseUmaneCoreRepository().riapri_risorsa_umana_della_veste(operatore), 1)
+                self.assertEqual(self._rapporto(cur, operatore), (True, valido_dal, fine))
                 raise _Annulla
         except _Annulla:
             pass
@@ -265,6 +347,11 @@ class OperatoreAltreVestiDbTests(TestCase):
                         self.assertIn(s_operatore, bloccati)
                         self.assertNotIn(s_shop, bloccati)
                         self.assertEqual(self._veste(cur, shop), ("SHOP_CUSTOMER", True))
+                        # 2026-10-04: le due strade scrivono lo stesso spegnimento,
+                        # rapporto chiuso a oggi compreso.
+                        attivo, _, valido_al = self._rapporto(cur, operatore)
+                        cur.execute("SELECT CURRENT_DATE")
+                        self.assertEqual((attivo, valido_al), (False, cur.fetchone()[0]))
                         self.assertIsNone(inviti.validate(invito_operatore, PORTA_OPERATORE.token_invito))
                         self.assertIsNotNone(inviti.validate(invito_shop, PORTA_SHOP.token_invito))
                         raise _Annulla

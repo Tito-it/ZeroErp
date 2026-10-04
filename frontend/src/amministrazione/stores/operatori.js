@@ -18,7 +18,6 @@ import {
   createOperatore,
   updateOperatore,
   disabilitaOperatore,
-  riattivaOperatore,
   getOverrideAree,
   putOverrideAree,
   getOverrideAzioni,
@@ -103,13 +102,6 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     return res.data.data
   }
 
-  async function riattiva(authUserId) {
-    const res = await riattivaOperatore(authUserId)
-    currentOperatore.value = res.data.data
-    emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
-    return res.data.data
-  }
-
   // --- Override aree ---
   async function fetchOverrideAree(authUserId) {
     const res = await getOverrideAree(authUserId)
@@ -182,7 +174,6 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     create,
     update,
     disabilita,
-    riattiva,
 
     // Override
     overrideAree,

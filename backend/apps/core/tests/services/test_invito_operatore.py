@@ -17,6 +17,8 @@ Indice test eseguiti:
 5) InvitoTests.test_piu_vesti_spente_rifiuta
 6) InvitoTests.test_nessuna_veste_spenta_rifiuta
 7) InvitoTests.test_email_non_partita_risponde_inviato_false (F-3)
+8) InvitoTests.test_invito_riapre_il_rapporto_nella_transazione_dell_emissione (D-3)
+9) InvitoTests.test_non_invitabile_non_riapre_il_rapporto (D-3)
 """
 
 from unittest import TestCase
@@ -31,9 +33,12 @@ _SVC_PATH = "apps.anagrafiche.services.invito_operatore_service"
 def _servizio(*, invitabile=True, reason=None, reason_key=None, vesti=None):
     """Scopo: Il service con repository e BB finti. `vesti` = le OPERATORE."""
     with patch(f"{_SVC_PATH}.AuthRepository") as MockAuth, \
+         patch(f"{_SVC_PATH}.RisorseUmaneCoreRepository") as MockRu, \
          patch(f"{_SVC_PATH}.InvitoVeste") as MockInvito:
         from apps.anagrafiche.services.invito_operatore_service import InvitoOperatoreService
         svc = InvitoOperatoreService()
+    # Operatore mai attivato: il rapporto e' gia' aperto, niente da riaprire.
+    MockRu.return_value.riapri_risorsa_umana_della_veste.return_value = 0
     auth = MockAuth.return_value
     invito = MockInvito.return_value
     auth.find_identita_per_ruolo.return_value = (
@@ -54,6 +59,38 @@ def _servizio(*, invitabile=True, reason=None, reason_key=None, vesti=None):
 
 
 class InvitoTests(TestCase):
+
+    def setUp(self):
+        # La transazione dell'emissione (riapertura del rapporto + token):
+        # finta, il test non parla col DB.
+        patcher = patch(f"{_SVC_PATH}.transaction")
+        self.mock_tx = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    # Scopo: ⭐ D-3 (2026-10-04) — l'invito e' la strada per riaccendere un
+    # operatore spento: riapre il rapporto (risorsa umana) DENTRO la
+    # transazione dell'emissione, prima del token; la veste resta al BB, che
+    # non la accende.
+    def test_invito_riapre_il_rapporto_nella_transazione_dell_emissione(self):
+        svc, _, invito = _servizio()
+        ordine = MagicMock()
+        ordine.attach_mock(self.mock_tx.atomic.return_value.__enter__, "entra")
+        ordine.attach_mock(svc._ru_repo.riapri_risorsa_umana_della_veste, "riapri")
+        ordine.attach_mock(invito.emetti, "emetti")
+        ordine.attach_mock(self.mock_tx.atomic.return_value.__exit__, "esci")
+        svc.invia_invito(42, invitato_da_user_id=1)
+
+        nomi = [c[0] for c in ordine.mock_calls]
+        self.assertEqual(nomi, ["entra", "riapri", "emetti", "esci"])
+        # Il rapporto della veste che si sta invitando, non un secondo selettore.
+        svc._ru_repo.riapri_risorsa_umana_della_veste.assert_called_once_with(700)
+
+    # Scopo: Un operatore non invitabile non riapre niente: il check viene prima.
+    def test_non_invitabile_non_riapre_il_rapporto(self):
+        svc, _, _ = _servizio(invitabile=False, reason="VESTE_GIA_ATTIVA")
+        with self.assertRaises(ServiceError):
+            svc.invia_invito(42, invitato_da_user_id=1)
+        svc._ru_repo.riapri_risorsa_umana_della_veste.assert_not_called()
 
     # Scopo: Invito sulla veste OPERATORE spenta: emissione e spedizione del
     # BB con la porta OPERATORE, email mascherata nella risposta.

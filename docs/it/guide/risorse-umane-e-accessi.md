@@ -294,12 +294,16 @@ solo le risorse attive.
 
 Il vincolo di unicita ([R5](#r5--unicita-per-persona)) garantisce un solo record per persona in `risorse_umane`. Non e possibile creare un secondo record — e non serve: per il rientro di un ex-dipendente si **riattiva il record esistente**.
 
-La sequenza e l'inversa della cessazione:
+La sequenza e l'inversa della cessazione, e si fa in due tempi, da due persone diverse:
 
-1. Riattivare la risorsa: UPDATE `risorse_umane.attivo = true`, aggiornare `valido_dal`/`valido_al`
-2. Riattivare la veste: UPDATE `identita_digitali.attivo = true` — il trigger di sync imposta `auth_user.is_active = true` e il login viene riabilitato
+1. **L'amministratore reinvia l'invito** (drawer dell'operatore, «Reinvia invito»). Nella stessa transazione del token la risorsa si riapre: `risorse_umane.attivo = true`, e `valido_al` si azzera se è già arrivata (una fine rapporto futura resta); `valido_dal` resta l'inizio del rapporto. La veste resta spenta.
+2. **La persona attiva il link**: la veste si accende (`identita_digitali.attivo = true`), il trigger di sync imposta `auth_user.is_active = true` e il login torna possibile. Chi ha gia una password conferma con un clic.
 
-**Perche questo ordine?** E il verso inverso della cessazione, e la ragione e la stessa: la veste attiva e cio che tiene in piedi l'accesso, la risorsa attiva e cio che la rende sensata. Riattivando prima la risorsa si evita la finestra in cui la veste risulta attiva su una persona non ancora in forza.
+L'interruttore «Accesso attivo» del drawer spegne soltanto: da spento resta fermo, e non c'e un comando che riaccenda la veste direttamente.
+
+**Perche questo ordine?** E il verso inverso della cessazione, e la ragione e la stessa: la veste attiva e cio che tiene in piedi l'accesso, la risorsa attiva e cio che la rende sensata. Riaprendo prima la risorsa si evita la finestra in cui la veste risulta attiva su una persona non ancora in forza.
+
+**Perché in due tempi?** Riaprire il rapporto è una decisione dell'amministratore; riaprire la porta è un gesto della persona. Così nessuna veste torna attiva senza che la persona lo sappia.
 
 ### Assegnazione emittente fiscale (scope operativo)
 
@@ -848,9 +852,9 @@ Il `CambioRepartoListener` (vedi [Cambio reparto](#cambio-reparto)) usa una conn
 
 * Usa `risorse_umane` solo per descrivere **persone interne** (dipendenti, consulenti, collaboratori). I referenti esterni vanno su `contatti`.
 * Per il rientro di un ex-dipendente, **riattiva il record esistente** — non crearne uno nuovo.
-* Per sospendere un utente, metti la sua veste a `ruolo_applicativo = 'DISABILITATO'` (oppure `attivo = false`): la sync di `is_active` segue automaticamente.
+* Per sospendere un utente, spegni la sua veste (`attivo = false`, il tipo resta): la sync di `is_active` segue automaticamente. `DISABILITATO` non e piu un valore ammesso di `ruolo_applicativo`.
 * Per disattivare una risorsa che ha ancora una veste attiva, ricorda l'ordine: **veste prima, risorsa dopo** — il guard sulla risorsa rifiuta l'ordine inverso.
-* Per riattivare: **risorsa prima, veste dopo**.
+* Per riattivare: **risorsa prima, veste dopo** — la risorsa la riapre il reinvio dell'invito, la veste la accende la persona attivando.
 * Al cambio reparto la cache viene invalidata automaticamente — non serve intervento manuale.
 * Mantieni una policy chiara su `attivo` e periodi di validita: la scadenza overnight lavora ogni notte, ma la disattivazione esplicita e sempre preferibile per cessazioni programmate.
 * Per il primo accesso, usa sempre il flusso di **invito**: l'admin non deve comunicare password a voce o via messaggio.
