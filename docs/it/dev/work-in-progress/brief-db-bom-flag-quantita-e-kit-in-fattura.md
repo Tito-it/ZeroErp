@@ -31,6 +31,16 @@
 > ⛔ **E un difetto della madre da correggere (R-DB-B13, §12.5, Tid 2026-10-03)**:
 > `fn_consuma_plafond_titolo_iva_righe` rifiuta i componenti a imponibile `<= 0`, che il modello
 > ammette. Il BE oggi li tiene fuori dalla chiamata: è un ramo **provvisorio**, si ritira col fix.
+> ⭐ **Da leggere per primo: §13 — decisione C di Tid (2026-10-04)**: il plafond si consuma sul
+> **netto** della fattura, le righe negative restituiscono. Comprende R-DB-B13. ✅ Lato DB
+> **scritto il 2026-10-04** (§13.8: `20261004-02 → -06` + grant `90_end`), ✅ **applicato su dbdev
+> da Tid il 2026-10-04, pgTAP verdi, nessuna regressione**; poi un giro BE solo (§13.6, §13.9). Firme **aggiunte in coda**, nessuna riordinata: dopo
+> l'apply il BE di oggi continua a funzionare, tranne un caso (§13.9: il kit con un componente a
+> zero o negativo, finché il BE non fa il giro C).
+> ✅ **§14 — strada A di Tid (2026-10-04)**: una fattura che ha consumato plafond non si disfa più
+> (le tre porte di reset e la pulizia la fermano con `E_FATTURE_PLAFOND_CONSUMATO`). DB scritto
+> (`20261004-07 → -11` + CSV), ✅ applicato su dbdev da Tid il 2026-10-04, pgTAP verdi.
+> ✅ **Lato DB CHIUSO**. ➡️ Resta il giro BE/FE: R-BE-C1…C9 (§13.6, §13.9), R-BE-A1 e R-FE-A1 (§14.4).
 >
 > **In una riga:** (A) `partecipa_qta` e `determina_qta_padre` si impostano ma nessuna logica li
 > legge: si ritirano. (B) In fattura la riga del kit si ricava quantità e UoM **dai componenti**:
@@ -799,4 +809,310 @@ coperta del kit netto. Due strade:
 le righe del gruppo; si ritirano il filtro `consumanti` e il ramo `coperta is None` di `_spezza`
 (`qta × f`); i test 21 e 25 si riscrivono sulla risposta della madre, più un caso col componente
 negativo.
+
+> ⚠️ **§12.5 superato dal §13** (Tid, 2026-10-04): la strada (a) e le sue correzioni sono
+> diventate la decisione C, che le comprende e va oltre (le righe negative restituiscono plafond).
+
+## 13. Decisione C — il plafond si consuma sul NETTO della fattura (2026-10-04)
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-04. **A chi:** Tid, team BE (§13.6).
+> **Decisioni di Tid** (conversazione del 2026-10-03/04): R-DB-B13 con la strada (a) e i punti
+> 1-3 della proposta DB; sul punto 4 la **C**: *le righe negative si accettano e restituiscono
+> plafond*. «Non ho produzione, inutile fare mille giri»: un giro solo, in ordine, fino a C.
+
+### 13.1 La regola, in una frase
+
+Sotto un titolo con tetto, una fattura consuma il suo **valore netto**: le righe positive
+consumano, le negative restituiscono, e nessuna fattura consuma più della capienza né
+restituisce più di quanto essa stessa consuma.
+
+Esempio: plafond residuo 500, fattura con merce 1000 e uno sconto −100, tutto nell'ambito del
+titolo. Netto 900, coperti 500: merce 600 al titolo e 400 all'ordinaria, sconto −100 al titolo.
+Movimenti: +600 e −100, cioè 500 consumati. È lo stesso risultato che darebbe lo sconto spalmato
+su tutta la merce (900 netti, 500 coperti, 400 all'ordinaria), ma senza inventare una
+ripartizione dello sconto che in fattura non c'è.
+
+### 13.2 Come si calcola (la madre, per un titolo e una fattura)
+
+La madre riceve **tutte le righe della fattura che il chiamante ha attribuito a quel titolo**, in
+una chiamata sola, e:
+
+1. **raggruppa da sé**: le righe con la stessa `kit_key` sono un gruppo (un kit si spezza come
+   un'unità sola, D-5), ogni riga senza `kit_key` è un gruppo di uno. I gruppi vanno
+   nell'ordine della loro prima riga (`riga_nr`): è l'ordine di stampa, ed è lui che decide chi
+   resta coperto a plafond quasi esaurito;
+2. **legge l'imponibile dalla riga** (`fatture_righe.imponibile_riga`, `NOT NULL`). Il parametro
+   `p_imponibili` resta dov'è (la firma non si riordina, regola di Tid del 2026-10-04) e diventa un
+   **contratto di coerenza**: deve dire lo stesso della riga, o la chiamata si ferma (il chiamante
+   ha ragionato su una riga che nel frattempo è cambiata);
+3. calcola il **netto di ogni gruppo**: positivo, negativo o zero (un kit con un componente
+   negativo è positivo se il totale lo è);
+4. **i gruppi negativi** si coprono fino a quanto valgono i positivi della stessa chiamata
+   (`N− = min(negativi, positivi)`), in ordine: una fattura non restituisce più di quanto
+   consuma. Il negativo che avanza resta all'aliquota ordinaria: restituire plafond consumato da
+   un **altro** documento è il mestiere della nota di credito, che quel documento lo nomina (P4,
+   fuori da questo giro);
+5. **i gruppi positivi** si coprono, in ordine, fino a `min(positivi, capienza + N−)`: il
+   primo per intero, poi uno spezzato, poi gli altri all'ordinaria, come oggi;
+6. **un gruppo a netto zero** (un kit con un omaggio, o con +50 e −50) è coperto per intero,
+   frazione 1: non consuma niente, quindi il titolo non ha motivo di lasciarlo;
+7. dentro un gruppo la frazione è **una** (`f = quota del gruppo / netto del gruppo`): ogni
+   riga prende `round(imponibile × f, scala del suo imponibile)`, e il resto dei centesimi va
+   alla riga col **valore assoluto più grande dello stesso segno del gruppo** (a pari merito
+   l'ultima), poi, se non basta il suo margine, alla successiva. Così ogni quota resta fra zero e
+   il suo imponibile, col suo segno, e la somma è esatta;
+8. **un movimento per riga, col segno della riga**: positivo dove la quota è positiva, negativo
+   dove è negativa, nessuno dove è zero. Prima tutti i positivi, poi i negativi: l'accumulatore
+   rifiuta un conto sotto zero **riga per riga**, e un negativo scritto per primo su un titolo
+   intonso lo farebbe scattare;
+9. **idempotenza**: se una delle righe ha già un movimento su questo titolo e questa fattura, si
+   rilegge il registro (quota = movimento, zero dove non c'è) e la frazione di ogni gruppo si
+   ricava da lì (netto zero → 1). Con i movimenti col segno questa rilettura è esatta: era il
+   difetto della strada (a), dove movimenti e quote non coincidevano.
+
+Il titolo senza tetto copre tutto e non scrive, come oggi.
+
+### 13.3 Il registro: un movimento `FATTURA` può essere negativo
+
+`chk_stiva_movimenti_segno` oggi vuole `FATTURA > 0`. Diventa `FATTURA <> 0`.
+
+⭐ **Perché `FATTURA` col segno e non `NOTA_CREDITO`** (correzione di quanto avevo scritto il
+2026-10-03): il tipo dice **quale documento** ha prodotto il movimento. Una riga negativa di una
+fattura è la fattura che si nettizza, non una nota di credito: scriverla `NOTA_CREDITO`
+farebbe dire al registro che c'è un documento che non esiste, e la riconciliazione col fatturato
+cercherebbe una NC che non c'è. `NOTA_CREDITO` resta `< 0` e resta della P4. Lo zero resta
+vietato: non è un movimento.
+
+### 13.4 Il risolutore: nel giro serve sapere QUALE titolo, non quanto copre
+
+Per consumare sul netto il BE deve sapere, gruppo per gruppo, quale titolo vale e quali sono i due
+trattamenti (titolo e ordinario). Il risolutore oggi non lo dice in modo affidabile:
+
+* con un imponibile **proietta** la spezzatura sul residuo del momento: a residuo zero il titolo
+  sparisce dalla risposta, e con le righe negative la proiezione per gruppo è sbagliata per
+  costruzione (è la madre a sapere il netto);
+* un imponibile **negativo** lo rifiuta;
+* il trattamento ordinario esce solo quando la proiezione spezza.
+
+Si **aggiunge** una domanda, senza toccare quelle che ci sono:
+
+* parametro nuovo **in coda alla firma**: `p_consumo boolean DEFAULT false`, nel guscio (dopo
+  `p_e_cessione_beni`) e in `_it` (dopo `p_emittente_fiscale_id`). ⛔ `p_imponibile` e la colonna
+  `quota` **restano dove sono**: la firma non si riordina (Tid, 2026-10-04). ⚠️ La prima stesura
+  sostituiva `p_imponibile` in terza posizione e toglieva `quota`: corretta lo stesso giorno;
+* `p_consumo = false`: **tutto come prima** (anteprima con `p_imponibile` NULL, proiezione con
+  l'importo);
+* `p_consumo = true` (il giro): nessun titolo → una riga, l'ordinaria; titolo senza tetto → una
+  riga, il titolo; titolo con tetto → **due righe sempre**, prima il titolo e poi l'ordinaria,
+  `quota` NULL, **senza leggere il residuo**: la spezzatura la decide la madre;
+* guard nuovi: `p_consumo` NULL; `p_consumo` con `p_imponibile` valorizzato (il consumo non prende
+  un importo).
+
+⚠️ Aggiungere un parametro crea un overload: `DROP` della firma vecchia prima del `CREATE`.
+Chiamanti di oggi invariati: il BE (`iva_resolver_repository.py`, per posizione) continua a
+funzionare senza toccare niente, e i pgTAP esistenti del risolutore non cambiano.
+
+⚠️ **Da decidere (Tid)**: quando il BE passa al consumo (R-BE-C2), il ramo di **proiezione**
+(`p_imponibile` valorizzato) resta senza chiamanti. Per ora resta, dichiarato qui; ritirarlo è una
+decisione a sé (togliere il ramo, non il parametro).
+
+### 13.5 La forma a una riga si ritira
+
+`anagrafiche.fn_consuma_plafond_titolo_iva` (l'involucro del `-08`) non ha più chiamanti dal
+terzo giro BE (§12.2) e la firma della madre cambia: tenerlo vorrebbe dire riscriverlo per
+nessuno. Si **ritira**: `DROP`, `manual/` cancellato, il grant di `90_end/20260829-34`
+(`runOnChange`) passa alla madre, i due pgTAP che la usavano (`test-soggetti-titoli-iva` 18-22,
+`test-soggetti-titoli-iva-due-emittenti`) passano alla madre. Con lei va la forma storica «riga
+`NULL`»: un movimento di fattura nomina sempre la sua riga.
+
+### 13.6 Richieste al BE (un giro solo, sostituisce il §12.5 «Lato BE dopo il fix»)
+
+| # | Cosa | Dove |
+| --- | --- | --- |
+| **R-BE-C1** | Il repository del risolutore impara il parametro nuovo **in coda** (`p_consumo`, dopo `p_emittente_fiscale_id`; i tre paesi in mezzo restano NULL). Le chiamate di oggi non cambiano | `iva_resolver_repository.py`, `iva_resolver_service.py` |
+| **R-BE-C2** | Il giro risolve ogni gruppo (kit per `kit_key`, giudicato sul **padre**, D-5.1; riga sciolta sul suo articolo) con `p_consumo = true`. Nessun titolo → niente da fare; titolo senza tetto → tutto il gruppo al titolo, senza chiamare la madre; titolo con tetto → il gruppo va nel **secchio di quel titolo** | `plafond_fattura_service.py` |
+| **R-BE-C3** | Una chiamata alla madre **per titolo**, con tutte le righe del suo secchio, **firma invariata**: `(titolo, fattura, righe[], imponibili[], data, tx)`. Gli imponibili sono quelli delle righe lette (anche negativi e zero): la madre li confronta con la riga e si ferma se divergono. L'ordine non conta: lo decide la madre | `pipeline_repository.consuma_plafond_titolo_righe` |
+| **R-BE-C4** | Per gruppo, dalla frazione restituita: `1` → tutte le righe col trattamento del titolo; `0` → tutte col trattamento **ordinario**, scritto esplicitamente (la riga può essere nata col titolo dall'anteprima di generazione); altrimenti ogni riga si spezza: capofila = quota coperta col titolo, parte = resto con l'ordinario. Quantità coperta = `qta × quota_coperta / imponibile` se l'imponibile non è zero, `qta × f` se lo è; `kit_qta × f` come oggi | `_consuma_gruppo`, `_spezza` |
+| **R-BE-C5** | Si ritirano: il filtro `consumanti` e il ramo provvisorio `coperta is None`, il guard «prezzo effettivo > 0» (una riga negativa ha prezzo negativo o quantità negativa, e la formula del C4 regge entrambi), `_parte_ordinaria` con la sua seconda chiamata al risolutore (l'ordinario arriva sempre come seconda riga), l'ordinamento dei gruppi (lo fa la madre) | idem |
+| **R-BE-C6** | I commenti che nominano `fn_consuma_plafond_titolo_iva` (ritirata) | `titoli_iva_repository.py`, `titoli_iva_service.py` |
+| **R-BE-C7** | Test: lo sconto −100 su merce 1000 e plafond 500 (600 + −100 al titolo, 400 all'ordinaria); il kit con componente negativo; il gruppo a netto zero (frazione 1); la riga negativa senza positivi (ordinaria); i test 21 e 25 sulla risposta della madre | test del servizio |
+
+### 13.7 Lato DB — cosa si scrive
+
+| # | Fase | Cosa |
+| --- | --- | --- |
+| C-1 | `00_schema/anagrafiche` | `chk_stiva_movimenti_segno`: `FATTURA <> 0` (§13.3) |
+| C-2 | `20_code/vendite` | `fn_resolve_iva_riga_it`: `p_consumo` in coda (§13.4) |
+| C-3 | `20_code/vendite` | `fn_resolve_iva_riga` (guscio): idem |
+| C-4 | `20_code/anagrafiche` | `DROP` di `fn_consuma_plafond_titolo_iva` (§13.5) |
+| C-5 | `20_code/anagrafiche` | `fn_consuma_plafond_titolo_iva_righe` sul netto (§13.2), firma invariata |
+| C-6 | `90_end` | `20260829-34` (grant, `runOnChange`): EXECUTE dalla forma ritirata alla madre |
+
+pgTAP: la madre riscritta sui casi del §13.2; i due dei titoli IVA portati sulla madre; i due del
+risolutore sulla firma nuova. Doc: `manual/` della madre, del registro e del risolutore; guida
+`iva-risolutore-di-riga.md`; `manual/` della forma ritirata cancellato.
+
+### 13.8 Lato DB — scritto il 2026-10-04 (✅ applicato da Tid lo stesso giorno, pgTAP verdi)
+
+> ✅ **Apply e corsa pgTAP di Tid, 2026-10-04: verdi, nessuna regressione.** La prima corsa aveva
+> dato tre file rossi (la scala delle quote, §14.3 «Regressione»): il `-06` corretto è stato
+> rieseguito su dbdev con il giro `runOnChange: true` → migrate → `false` (il changeSet non era
+> ancora committato né pushato; `runOnChange` è di nuovo `false` nel file, come vuole il
+> guardrail). ⚠️ Lezione: il `-06` era già applicato quando l'ho riscritto — prima di ritoccare un
+> changeSet del giorno si legge il `databasechangelog`.
+
+| # | File | Cosa |
+| --- | --- | --- |
+| C-1 | `00_schema/anagrafiche/20261004-02-alter-chk-stiva-movimenti-segno-fattura-col-segno` | `FATTURA <> 0`; `COMMENT` della tabella aggiornato (nominava la forma ritirata) |
+| C-2 | `20_code/vendite/20261004-03-update-fn-resolve-iva-riga-it-domanda-di-consumo` | `DROP` + `CREATE`: `p_consumo` in coda, il resto invariato. Corpo dal vivo (`20261001-07`) con tre inserimenti mirati |
+| C-3 | `20_code/vendite/20261004-04-update-fn-resolve-iva-riga-guscio-domanda-di-consumo` | idem sul guscio (vivo = `20260829-50`) |
+| C-4 | `20_code/anagrafiche/20261004-05-drop-fn-consuma-plafond-titolo-iva` | ritiro della forma a una riga; il rollback la ricrea |
+| C-5 | `20_code/anagrafiche/20261004-06-update-fn-consuma-plafond-titolo-iva-righe-sul-netto` | `CREATE OR REPLACE` della madre sul netto, **firma e `RETURNS TABLE` del `-07`** |
+| C-6 | `90_end/20260829-34-grant-titoli-iva-app` (`runOnChange` + `ANY`) | EXECUTE dalla forma ritirata alla madre (firma del `-07`); intestazione aggiornata |
+
+Ogni changeSet ha una `preCondition` `HALT` sulla firma che trova (`to_regprocedure`) e il
+rollback col corpo di prima.
+
+**pgTAP**
+
+* `anagrafiche/test-consuma-plafond-titolo-iva-righe-v1` **riscritto, 21 test** (il 21: un
+  imponibile diverso da quello della riga è rifiutato): i casi di prima
+  (kit 0,4, centesimo, copertura piena, capienza zero, senza tetto, idempotenza) più lo sconto
+  (600 / −100, movimenti col segno, utilizzato 500), il kit con componente negativo (+50 / −15,
+  frazione 0,5), il kit a netto zero, la riga negativa sola, l'ordine di stampa, cinque guard
+  e la forma ritirata. Le righe si passano in ordine **inverso**: l'ordine lo decide la madre;
+* `anagrafiche/test-soggetti-titoli-iva` (18-22) e `test-soggetti-titoli-iva-due-emittenti`:
+  portati sulla madre con righe vere (300, 1000, 5000; 400, 1000), stesse asserzioni;
+* `vendite/test-fn-resolve-iva-riga`: i 15 di prima **invariati**; nuovi 16-18 (consumo = due
+  righe in ordine con `quota` NULL; a residuo zero il consumo vede ancora il titolo, l'anteprima
+  no; consumo con importo rifiutato). Lo smontaggio non cancella più i titoli (il 17 scrive una
+  forzatura, e il registro è append-only);
+* `vendite/test-esigibilita-iva-per-cassa-v1`: **invariato** (la firma esistente non cambia);
+* `vendite/test-cleanup-fattura-copertura-figlie-v1`: solo testo, vedi sotto.
+
+**Come è stato provato.** ⚠️ `zeroerp_ci` non era raggiungibile da questa sessione (le
+credenziali non sono leggibili), quindi:
+
+* cluster PostgreSQL 18 **usa-e-getta** con uno schema minimo (titoli, registro col CHECK nuovo e
+  la UNIQUE, accumulatore che rifiuta il conto sotto zero, righe di fattura con `kit_key`,
+  capofila e rettifica): **SQL estratto dai cinque YAML**, avanti e rollback in transazione,
+  puliti; dopo l'avanti una sola firma per funzione;
+* 23 casi della madre su quello schema (firma invariata, imponibili compresi): **23 verdi**
+  (seconda prova, dopo la correzione delle firme);
+* i due corpi del risolutore compilano (con stub dei tipi); cancelli statici tutti verdi
+  (letterali, `runOnChange`, preCondition, DDL su trigger, grant batch, preambolo pgTAP, fuso).
+
+⚠️ **Non provato prima dell'apply**: il DB vero (trigger delle righe, RLS come app, fixture
+vere), `plpgsql_check` e i presidi trasversali (`test-riferimenti-morti`,
+`test-catalogo-messaggi-errore-completo`), i cinque pgTAP toccati. Restano alla corsa di Tid.
+
+**Altri ritocchi dello stesso giro**
+
+* `codici_errore.csv` e `messaggi_errore.csv`: le note di `E_TITOLO_IVA_CONSUMO_NON_INVOCABILE` e
+  `E_TITOLO_IVA_CONSUMO_FUORI_VALIDITA` nominavano la forma ritirata; la prima ora elenca anche i
+  guard di gruppo. ⚠️ Svegliano i due mirror al migrate;
+* `manual/`: madre riscritta; registro (`FATTURA ±`), accumulatore, titoli, risolutore e guscio
+  aggiornati; `fn_consuma_plafond_titolo_iva.md` cancellato. Guida `iva-risolutore-di-riga.md`:
+  §4 riscritto (le due domande, il netto), `quota` tolta dal §6.
+
+**Da sapere (debiti trovati, non aperti da questo giro)**
+
+* ✅ ~~`test-cleanup-fattura-copertura-figlie-v1` classifica `soggetti_titoli_iva_movimenti` come
+  `SCOPERTA_NOTA` con il presupposto «nessuno scrittore», scaduto~~ → **deciso e fatto nel §14**
+  (strada A);
+* R-DB-B11 (gli apici raddoppiati in `codici_errore.csv`): corretti a mano da Tid il 2026-10-04;
+  ⚠️ resta la riga di `E_UTENTE_TECNICO_NON_TROVATO` (`E''`, `c''e''`).
+
+### 13.9 Richieste al BE, oltre al §13.6
+
+| # | Cosa |
+| --- | --- |
+| R-BE-C8 | Rigenerare `error_policies_generated.py` (e il ripiego dei messaggi, se lo legge) dopo il migrate: cambiano le note di due codici |
+| — | ⚠️ **Fra l'apply e il giro C del BE**: le firme sono invariate e quasi tutto funziona. Si ferma **un caso solo**: un kit con un componente a zero o negativo. Il ramo provvisorio del BE (§12.2) lo lascia fuori dalla chiamata, e la madre nuova vuole il kit **intero** (guard «kit incompleto», errore tecnico). Le righe sciolte negative il BE di oggi non le passa: restano all'ordinaria come oggi |
+| R-BE-C9 | `docs/it/backend/anagrafiche/manual/api_titoli_iva_soggetto.md` riga 206: nomina `fn_consuma_plafond_titolo_iva`, ritirata |
+
+## 14. Strada A — una fattura che ha consumato plafond non si disfa più (2026-10-04)
+
+> **Decisione di Tid, 2026-10-04**: strada A (la B — tornare indietro restituendo il plafond —
+> non regge: anche uno storno nomina la fattura, quindi la cancellazione resterebbe bloccata, a
+> meno di cancellare righe dal registro, cioè fatti contabili). Chiude la decisione I5 rimasta
+> aperta dal cantiere IVA.
+
+### 14.1 Il difetto
+
+Il plafond si consuma all'emissione, nel task `consuma_plafond_lotto`, **prima** di
+`numera_fatture`. Se fra i due qualcosa si ferma, la fattura ha movimenti nel registro e nessun
+numero. Le tre porte di reset (riporta a draft, annulla lotto, elimina fattura) rifiutano solo i
+documenti **numerati**: la lasciano passare, e `fn_cleanup_fatture_by_ids` esplode con un 23503
+grezzo sulle FK NO ACTION del registro (append-only).
+
+### 14.2 La regola
+
+Il consumo del plafond è un **punto di non ritorno**, come il numero. Il lotto va **avanti**:
+DEFINITIVA riprende fattura per fattura, e il consumo è idempotente (§13.2 punto 9).
+
+### 14.3 Lato DB — scritto il 2026-10-04 (✅ applicato da Tid lo stesso giorno, pgTAP verdi)
+
+| # | File | Cosa |
+| --- | --- | --- |
+| A-1 | `20_code/script/20261004-07-create-fn-check-fatture-con-plafond-consumato` | il building block, sullo stampo di `fn_check_fatture_con_rettifiche`: `[]` o `{E_FATTURE_PLAFOND_CONSUMATO, PLAFOND_CONSUMATO, reason_key, dettaglio = quante fatture}`. Conta qualunque movimento che nomini la fattura |
+| A-2 | `20_code/script/20261004-08-update-fn-check-fattura-eliminabile-da-lotto-plafond-consumato` | motivo 6 |
+| A-3 | `20_code/script/20261004-09-update-fn-check-lotto-riportabile-a-draft-plafond-consumato` | motivo 5 |
+| A-4 | `20_code/script/20261004-10-update-fn-check-lotto-annullabile-plafond-consumato` | motivo 5 |
+| A-5 | `20_code/vendite/20261004-11-update-fn-cleanup-fatture-by-ids-guard-plafond` | secondo guard fail-loud, accanto a quello delle rettifiche |
+| A-6 | `codici_errore.csv`, `messaggi_errore.csv` | `E_FATTURE_PLAFOND_CONSUMATO`, `CONFLITTO_STATO`, messaggio 1191: «Non si puo' disfare: %s fattura/e ha/hanno gia' consumato il plafond di una dichiarazione d'intento.» |
+
+Firme invariate dappertutto (`CREATE OR REPLACE`); il motivo nuovo va **in coda** all'elenco di
+ogni check, quindi i motivi di prima restano primi. Corpi dal vivo (doc auto-gen), con un solo
+inserimento ciascuno.
+
+**pgTAP**
+
+* **nuovo** `vendite/test-reset-fattura-plafond-consumato-v1` (11 test): la check (vuoto, senza
+  movimenti, con un movimento → 1 fattura su 2), le tre porte, la madre «elimina fattura» e la
+  pulizia che sollevano il codice invece del 23503, la fattura di controllo che si elimina
+  ancora, il codice a catalogo. Tutto costruito: cliente, due fatture DRAFT, un lotto DRAFT, un
+  titolo, un movimento;
+* `vendite/test-cleanup-fattura-copertura-figlie-v1`: il registro passa da `SCOPERTA_NOTA` a
+  `BLOCCO_VOLUTO` nei due inventari, esce dal test 5, e il test 9 pretende anche il guard nuovo.
+
+⚠️ **Correzione del 2026-10-04 (Tid)**: le firme di `-03`, `-04`, `-08`, `-09`, `-10`, `-11` (avanti
+e rollback) e i rollback di `-05` e `-06` erano state prese dalla doc auto-gen, che scioglie i
+`%TYPE`: riprese dall'ultimo YAML che le ancorava (`20260829-49`, `-50`, `20260909-52/-53/-54`,
+`20260912-34`, `20261003-07`, `-08`). Nella madre gli scalari che portano importi di riga sono ora
+ancorati a `fatture_righe.imponibile_riga` (non al registro, `numeric(15,2)`, che
+arrotonderebbe a metà calcolo). Riprovato: i dieci changeSet avanti, rollback e avanti puliti, le
+identità delle funzioni invariate, i 23 casi della madre verdi.
+
+⛔ **Regressione trovata dalla corsa di Tid (2026-10-04) e corretta lo stesso giorno**: tre file
+rossi (`test-consuma-plafond-titolo-iva-righe-v1` 5 e 7, `test-soggetti-titoli-iva` 19-22,
+`test-soggetti-titoli-iva-due-emittenti` 5), una causa sola. `fatture_righe.imponibile_riga` è
+`numeric(18,6)` (la doc auto-gen **non mostra la scala**) e il registro è `numeric(15,2)`. La madre
+del `-07` calcolava al centesimo **per caso**: la quota passava per una variabile ancorata al
+registro, che arrotondava. La prima stesura del `-06` calcolava a 6 decimali: quote come
+`3.333333`, e l'`INSERT` nel registro arrotondava in silenzio — una frazione di centesimo diventava
+uno zero rifiutato da `chk_stiva_movimenti_segno`, e il movimento smetteva di essere la quota.
+**Correzione, sul modello**: la quota diventa un movimento, quindi si calcola alla scala del
+registro, **dichiarata**: la madre legge la scala della colonna dal catalogo e calcola su
+`trunc(imponibile, scala)` (verso lo zero: una quota non supera mai il suo imponibile; le frazioni
+di centesimo restano nella quota ordinaria). Gli scalari del calcolo tornano ancorati al registro.
+L'imponibile restituito è quello dichiarato (`p_imponibili`, uguale alla riga per guard). Caso
+nuovo nel pgTAP (22): un articolo che arrotonda a 6 decimali, tre righe da 3,333333/3,333333/
+3,333334 su plafond 5 → movimenti 1,67 + 1,67 + 1,66. ⚠️ Il mio schema di prova non tipizzava le
+colonne come il DB vero: per questo non l'aveva visto. Riprovato con `numeric(18,6)` e
+`numeric(15,2)`.
+
+**Come è stato provato**: cluster usa-e-getta, SQL estratto dagli YAML. I quattro changeSet
+`script` avanti, rollback e di nuovo avanti puliti; con un movimento le tre porte rispondono col
+motivo e la fattura senza movimenti no. Il `-11` (pulizia) compila, avanti e rollback. Cancelli
+statici verdi. ⚠️ Non provati prima dell'apply: il DB vero, le fixture del pgTAP nuovo (lotto
+costruito a mano: se un trigger dei lotti pretende altro, il test lo dirà), i presidi
+trasversali (`test-riferimenti-morti`, `test-catalogo-messaggi-errore-completo`).
+
+### 14.4 Richieste a BE/FE
+
+| # | Cosa |
+| --- | --- |
+| R-FE-A1 | Chiave i18n `vendite.lotti.azione_reason.plafond_consumato` (it, en): il motivo spento dei tre pulsanti di reset. Testo proposto: «Il lotto contiene fatture che hanno già consumato il plafond di una dichiarazione d'intento: non si disfa, va portato avanti.» |
+| R-BE-A1 | Rigenerare `error_policies_generated.py` (codice nuovo, insieme a R-BE-C8) |
 

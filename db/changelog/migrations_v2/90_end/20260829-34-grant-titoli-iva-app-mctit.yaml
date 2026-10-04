@@ -49,10 +49,16 @@
 #
 # ── ℹ️ Le due funzioni ─────────────────────────────────────────────────
 #
-#   `fn_consuma_plafond_titolo_iva` la chiamera' il backend (o la madre della
-#   fattura) alla transizione a DEFINITIVA; `fn_check_titolo_iva_ambito` e' pura
-#   e serve anche a una diagnostica lato applicazione. Entrambe `SECURITY
-#   INVOKER`: l'EXECUTE non aggira niente, apre solo la porta.
+#   `fn_consuma_plafond_titolo_iva_righe` la chiama il backend nel giro del
+#   plafond in fattura; `fn_check_titolo_iva_ambito` e' pura e serve anche a
+#   una diagnostica lato applicazione. Entrambe `SECURITY INVOKER`: l'EXECUTE
+#   non aggira niente, apre solo la porta.
+#   ⚠️ Rev 2026-10-04 (brief-db-bom-flag-quantita-e-kit-in-fattura §13.5): il
+#   grant era sulla forma a una riga `fn_consuma_plafond_titolo_iva`, ritirata
+#   da `20_code/anagrafiche/20261004-05`. Su un database nuovo questo
+#   changeSet gira DOPO quel DROP: con la riga vecchia il grant fallirebbe.
+#   Passa alla madre (firma di `20261003-07`, invariata). Si tocca perche' e'
+#   `runOnChange` + `validCheckSums: ANY` (linee-guida-sql §11.1).
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -153,7 +159,7 @@ databaseChangeLog:
                 END IF;
 
                 EXECUTE format(
-                  'GRANT EXECUTE ON FUNCTION anagrafiche.fn_consuma_plafond_titolo_iva(bigint, bigint, numeric, date, bigint, uuid) TO %I',
+                  'GRANT EXECUTE ON FUNCTION anagrafiche.fn_consuma_plafond_titolo_iva_righe(bigint, bigint, bigint[], numeric[], date, uuid) TO %I',
                   v_app_role);
                 EXECUTE format(
                   'GRANT EXECUTE ON FUNCTION anagrafiche.fn_check_titolo_iva_ambito(bigint) TO %I',

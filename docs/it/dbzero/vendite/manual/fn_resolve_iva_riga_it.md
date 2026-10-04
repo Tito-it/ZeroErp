@@ -69,25 +69,41 @@ tutto.
 
 ---
 
-### Il plafond, e perché la riga si può spezzare
+### Il plafond: due domande, scelte da `p_consumo`
 
-Alcuni titoli — la dichiarazione d'intento — hanno un **tetto di importo**. Se la
-riga vale più del residuo, la funzione ritorna **due righe**:
+Alcuni titoli — la dichiarazione d'intento — hanno un **tetto di importo**. Su un
+titolo così la funzione risponde in tre modi:
 
-1. la parte coperta dal titolo, con il suo codice;
-2. il resto, con l'aliquota ordinaria dello stadio A.
+* **anteprima** (`p_consumo = false`, i documenti): **una riga**, quanto vale il
+  **primo euro** — il titolo se ha ancora capienza, l'ordinario dello stadio A se è
+  esaurito. È ciò che serve a un form quando l'operatore ha appena scelto
+  l'articolo, e la spezzatura non si inventa;
+* **proiezione** (`p_consumo = false` con l'importo): la spezzatura proiettata sul
+  residuo di adesso, una riga o due (prima la quota coperta). Aveva il giro del
+  plafond come unico chiamante;
+* **consumo** (`p_consumo = true`, il giro del plafond in fattura): **due righe
+  sempre**, prima il titolo col suo codice e poi l'ordinario dello stadio A,
+  `quota` NULL, **senza leggere il residuo**. `p_consumo` è **in coda** alla
+  firma (dal 2026-10-04): le chiamate di prima non cambiano, e il consumo con un
+  importo solleva.
 
-> ⚠️ **La seconda parte può uscire con `origine = 'ASSENTE'`, ed è corretto**: il
-> titolo copriva una parte, e sul resto nessuno sa dire l'aliquota. Sarà il
-> cancello all'emissione a fermarla.
+> ⭐ **Perché il consumo non guarda il residuo** (decisione C di Tid, 2026-10-04,
+> `brief-db-bom-flag-quantita-e-kit-in-fattura` §13): il plafond si consuma sul
+> **netto** della fattura, e una riga negativa restituisce capienza alle righe
+> prima. Una proiezione riga per riga non può saperlo; lo sa
+> [fn_consuma_plafond_titolo_iva_righe](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva_righe),
+> che prende il lock e decide la spezzatura. Per la stessa ragione, a residuo zero
+> il titolo resta nella risposta: è la madre a dire che non copre più niente.
 
-> ℹ️ **In anteprima (senza importo) la spezzatura non si calcola e non si
-> inventa**: si dice quanto vale il **primo euro**, che è ciò che serve a un form
-> quando l'operatore ha appena scelto l'articolo.
+> ⚠️ **La parte ordinaria può uscire con `origine = 'ASSENTE'`, ed è corretto**: il
+> titolo copre una parte, e sul resto nessuno sa dire l'aliquota. Sarà il cancello
+> all'emissione a fermarla.
 
-> ⛔ **La funzione NON consuma il plafond.** È sola lettura: la ripartizione è una
-> proiezione sul residuo di adesso. Il consumo è un atto contabile, e ha una
-> primitiva sua.
+> ⛔ **La funzione NON consuma il plafond.** È sola lettura.
+>
+> ⚠️ Quando il giro passa al consumo, la **proiezione** resta senza chiamanti.
+> Per ora resta (la firma non si riordina): ritirare il ramo è una decisione
+> aperta (`brief-db-bom-flag-quantita-e-kit-in-fattura` §13.4).
 
 ---
 
@@ -111,7 +127,7 @@ riga vale più del residuo, la funzione ritorna **due righe**:
 
 | Codice | Quando |
 | --- | --- |
-| `E_IVA_RESOLVE_NON_INVOCABILE` | parametri mancanti o articolo inesistente — è un **chiamante rotto**, non un errore dell'operatore |
+| `E_IVA_RESOLVE_NON_INVOCABILE` | parametri mancanti (anche `p_consumo` passato `NULL`), il consumo chiesto con un importo, o articolo inesistente — è un **chiamante rotto**, non un errore dell'operatore |
 | `E_IVA_TITOLI_AMBIGUI` | due titoli in pari specificità sulla stessa riga |
 
 ---
@@ -130,6 +146,7 @@ SELECT * FROM vendite.fn_resolve_iva_riga(
   p_soggetto_id          => :soggetto_cliente_id,
   p_emittente_fiscale_id => :emittente_fiscale_id
 );
+-- il giro del plafond: senza p_imponibile, con p_consumo => true in fondo
 ```
 
 ---

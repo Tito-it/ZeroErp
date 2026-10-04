@@ -28,6 +28,18 @@ chiude quel modo di lavorare: la precondizione è una, e la UI la legge.
 | --- | --- | --- | --- |
 | 1 | `STATO_NON_DRAFT` | `E_LOTTO_NON_ANNULLABILE` (798) | Il lotto non è in bozza |
 | 2 | `FATTURE_NON_PRE_FISCALI` | `E_LOTTO_FATTURE_NON_PRE_FISCALI` (799) | Almeno una fattura oltre il pre-fiscale |
+| 3 | `FATTURE_NUMERATE` | `E_LOTTO_FATTURE_NUMERATE` (801) | Almeno una fattura ha già un numero |
+| 4 | `RIGHE_RETTIFICATE` | `E_FATTURE_RIGHE_RETTIFICATE` (981) | su una riga è già registrato un accredito |
+| 5 | `PLAFOND_CONSUMATO` | `E_FATTURE_PLAFOND_CONSUMATO` (1191) | almeno una fattura ha già consumato il plafond di un titolo IVA |
+
+⭐ **Il motivo del plafond consumato** (dal 2026-10-04, decisione di Tid): il plafond di
+una dichiarazione d'intento si consuma all'emissione, **prima** della numerazione. Una
+fattura può quindi aver consumato plafond senza avere ancora il numero, e il motivo sul
+numero non la ferma. Il consumo è un fatto contabile — il registro dei movimenti non si
+cancella — quindi è un punto di non ritorno come il numero: il lotto va avanti, non
+indietro. La domanda vive in un posto solo,
+[script.fn_check_fatture_con_plafond_consumato](/dbzero/script/funzioni/fn_check_fatture_con_plafond_consumato),
+condivisa dalle tre porte di reset e dalla pulizia.
 
 Il motivo 1 esiste perché `ANNULLATA` **chiude** il lotto e non si riapre: l'annullamento
 si concede solo finché il lotto non ha prodotto nulla oltre la bozza. Da EMESSA la via

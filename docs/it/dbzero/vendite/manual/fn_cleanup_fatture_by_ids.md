@@ -37,6 +37,23 @@ avevano consumato.
 
 ---
 
+### ⛔ Due cose che non cancella mai: si ferma prima
+
+Prima di toccare qualunque riga la funzione controlla due casi, e se uno dei due c'è
+**rifiuta** con un errore che dice cosa fare, invece di esplodere a metà su una
+chiave esterna:
+
+| Caso | Codice | Perché non si cancella |
+| --- | --- | --- |
+| su una riga è già registrato un **accredito** | `E_FATTURE_RIGHE_RETTIFICATE` | il legame è il tetto dell'accredito e il riferimento della nota di credito |
+| la fattura ha già **consumato plafond** (dal 2026-10-04) | `E_FATTURE_PLAFOND_CONSUMATO` | il movimento del plafond è un fatto contabile: il registro non si cancella, e la fattura va portata avanti |
+
+Le tre porte di reset si fermano già prima, nelle loro funzioni di controllo, con gli
+stessi motivi: questi due controlli sono la difesa della porta che nessuno ha ancora
+scritto.
+
+---
+
 ### I tre chiamanti, e perché la divisione conta
 
 | chiamante | come lascia il lotto |

@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FORMA A UNA RIGA DEL CONSUMO DI PLAFOND SI RITIRA
+#   anagrafiche.fn_consuma_plafond_titolo_iva
+#   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura §13 (decisione C di Tid, 2026-10-04), §13.5.
+#
+#   Dal 20261003-08 era l'involucro a una riga di
+#   fn_consuma_plafond_titolo_iva_righe. Non ha piu' chiamanti: il BE consuma
+#   per gruppo dal terzo giro (brief §12.2), e dal -06 la madre rifiuta la
+#   forma storica «riga NULL» che questa passava. Tenerla vorrebbe dire
+#   riscriverla per nessuno: si ritira, e con lei la riga NULL.
+#
+#   Chiamanti censiti il 2026-10-04: dentro il DB nessuno; BE nessuno (solo
+#   commenti, R-BE-C6); pgTAP test-soggetti-titoli-iva e
+#   test-soggetti-titoli-iva-due-emittenti, portati sulla madre nello stesso
+#   giro. Il GRANT di 90_end/20260829-34 (runOnChange) passa alla madre nello
+#   stesso giro: su un database nuovo quel grant gira DOPO questo DROP.
+#
+#   Il rollback la ricrea dal corpo vivo (doc auto-gen = 20261003-08), che
+#   passa la riga NULL: funziona solo col corpo della madre di prima, quindi va
+#   eseguito dopo il rollback del -06.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261004-05-drop-fn-consuma-plafond-titolo-iva-mctit.yaml
+
+  - changeSet:
+      id: 20261004-05-drop-fn-consuma-plafond-titolo-iva
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_consuma_plafond_titolo_iva (forma a una riga, involucro della madre)
+        ritirata: nessun chiamante. Brief: brief-db-bom-flag-quantita-e-kit-in-fattura
+        §13.5.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('anagrafiche.fn_consuma_plafond_titolo_iva(bigint, bigint, numeric, date, bigint, uuid)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_consuma_plafond_titolo_iva(bigint, bigint, numeric, date, bigint, uuid);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_consuma_plafond_titolo_iva(
+                  p_titolo_iva_id   anagrafiche.soggetti_titoli_iva.id%TYPE,
+                  p_fattura_id      vendite.fatture.id%TYPE,
+                  p_imponibile      anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE,
+                  p_data_movimento  anagrafiche.soggetti_titoli_iva_movimenti.data_movimento%TYPE,
+                  p_fattura_riga_id vendite.fatture_righe.id%TYPE DEFAULT NULL,
+                  p_tx_id           anagrafiche.soggetti_titoli_iva_movimenti.tx_id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  quota_coperta   anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE,
+                  quota_ordinaria anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE,
+                  residuo_dopo    anagrafiche.soggetti_titoli_iva.plafond%TYPE,
+                  movimento_id    anagrafiche.soggetti_titoli_iva_movimenti.id%TYPE
+              )
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: consumare la capienza di un titolo IVA per UNA riga (o per
+              --   la sola fattura, riga NULL) e ritornare la RIPARTIZIONE fra parte
+              --   coperta e parte ordinaria (P2).
+              --   Perimetro: dal 2026-10-03 e' l'INVOLUCRO a una riga di
+              --   anagrafiche.fn_consuma_plafond_titolo_iva_righe, che e' la sede
+              --   delle regole (guard, lock D15-bis, validita', titolo senza tetto,
+              --   idempotenza, capienza): qui non se ne ricopia nessuna.
+              --   Firma e risultato invariati: i chiamanti non cambiano.
+              --   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura §11 (D-5).
+              DECLARE
+                  v_r record;
+              BEGIN
+                  SELECT g.quota_coperta, g.quota_ordinaria, g.residuo_dopo, g.movimento_id
+                    INTO v_r
+                    FROM anagrafiche.fn_consuma_plafond_titolo_iva_righe(
+                             p_titolo_iva_id,
+                             p_fattura_id,
+                             ARRAY[p_fattura_riga_id],
+                             ARRAY[p_imponibile],
+                             p_data_movimento,
+                             p_tx_id) g;
+
+                  quota_coperta   := v_r.quota_coperta;
+                  quota_ordinaria := v_r.quota_ordinaria;
+                  residuo_dopo    := v_r.residuo_dopo;
+                  movimento_id    := v_r.movimento_id;
+                  RETURN NEXT;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_consuma_plafond_titolo_iva(p_titolo_iva_id bigint, p_fattura_id bigint, p_imponibile numeric, p_data_movimento date, p_fattura_riga_id bigint, p_tx_id uuid)
+              IS 'La primitiva di consumo del plafond a UNA riga (D15-bis di brief-db-be-iva-risolutore-e-regime-cliente): ritorna la RIPARTIZIONE che P2 pretende, quota coperta dal titolo + quota che torna all''aliquota ordinaria, la cui somma e'' sempre l''imponibile passato. ⭐ Dal 2026-10-03 (brief-db-bom-flag-quantita-e-kit-in-fattura §11, D-5) e'' l''INVOLUCRO a una riga di anagrafiche.fn_consuma_plafond_titolo_iva_righe, che consuma per un GRUPPO di righe (un kit) con una frazione sola ed e'' la sede delle regole: guard, LOCK di riga sul titolo, validita'', titolo senza tetto (copre tutto e non scrive), idempotenza (la stessa fattura e riga non consuma due volte), capienza GREATEST(residuo, 0). Firma e risultato invariati. 🔴 Il lock non e'' prudenziale: due transizioni a DEFINITIVA in parallelo, senza lock, consumano la stessa capienza e mandano il plafond sotto zero IN SILENZIO. ⚠️ Il lock non basta e la seconda meta'' e'' DICHIARATA: l''ordine deterministico (data documento, poi numero) e'' del ciclo che chiama. ⭐ Ritorna una RIPARTIZIONE e non un numero (§2.7.3). ⛔ NON e'' il risolutore, che e'' STABLE e non consuma (D14), e non fa la restituzione della nota di credito (P4), che e'' un INSERT nel registro con importo negativo. I7 di brief-db-be-iva-risolutore-e-regime-cliente.';

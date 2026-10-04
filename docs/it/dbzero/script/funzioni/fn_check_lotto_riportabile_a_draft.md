@@ -118,12 +118,26 @@ BEGIN
                            FROM vendite.fatturazione_lotti_fatture lf
                           WHERE lf.lotto_id = p_lotto_id));
 
+  -- ⭐ MOTIVO 5 (2026-10-04) — fatture che hanno gia' CONSUMATO plafond.
+  -- Delegato, come il 4: sede unica condivisa dalle tre porte di reset.
+  -- ⚠️ NON e' coperto dal motivo 3: il plafond si consuma PRIMA della
+  -- numerazione (consuma_plafond_lotto precede numera_fatture), quindi una
+  -- fattura puo' avere consumato senza avere ancora il numero. Senza
+  -- questo motivo il reset passa il gate e poi esplode con una violazione
+  -- di chiave esterna grezza dentro fn_cleanup_fatture_by_ids.
+  -- Brief: brief-db-bom-flag-quantita-e-kit-in-fattura §14 (strada A).
+  v_motivi := v_motivi
+            || script.fn_check_fatture_con_plafond_consumato(
+                   ARRAY(SELECT lf.fattura_id
+                           FROM vendite.fatturazione_lotti_fatture lf
+                          WHERE lf.lotto_id = p_lotto_id));
+
   RETURN v_motivi;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_lotto_riportabile_a_draft(p_lotto_id bigint)
-IS 'Funzione PURA (fn_check_*): motivi ostativi al ritorno in bozza di un lotto. Ritorna [] se riportabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (codice 800). Motivo 2: fatture oltre il pre-fiscale (codice 799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Motivo 3: fatture gia'' NUMERATE (codice 801) — ⚠️ deliberatamente ridondante rispetto al 2 e da NON semplificare via: guarda il numero e non lo stato che dovrebbe implicarlo. ⭐ Motivo 4 (2026-08-22): righe di fattura gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ NON e'' coperto dal motivo 3, ed e'' il punto: l''accredito si registra PRIMA della numerazione (e'' ancorato alla coda dei resi), quindi la protezione dei documenti numerati non arriva fin li''. Senza, il reset passava il gate e poi esplodeva con un 23503 dentro fn_cleanup_fatture_by_ids. Sorgente UNICA condivisa da vendite.fn_riporta_lotto_a_draft (solleva) e script.fn_available_actions_lotto (espone enabled/reasons). rev 2026-08-22. rev 2026-09-09: la fase del lotto si legge da vendite.vw_lotti_fase (sede unica) e il confine pre-fiscale arriva gia'' fail-closed nel derivato pre_fiscale, invece di essere ricomposto qui con una COALESCE; parametri con %TYPE — nessuna decisione cambia.';
+IS 'Funzione PURA (fn_check_*): motivi ostativi al ritorno in bozza di un lotto. Ritorna [] se riportabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (codice 800). Motivo 2: fatture oltre il pre-fiscale (codice 799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Motivo 3: fatture gia'' NUMERATE (codice 801) — ⚠️ deliberatamente ridondante rispetto al 2 e da NON semplificare via: guarda il numero e non lo stato che dovrebbe implicarlo. ⭐ Motivo 4 (2026-08-22): righe di fattura gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ NON e'' coperto dal motivo 3, ed e'' il punto: l''accredito si registra PRIMA della numerazione (e'' ancorato alla coda dei resi), quindi la protezione dei documenti numerati non arriva fin li''. Senza, il reset passava il gate e poi esplodeva con un 23503 dentro fn_cleanup_fatture_by_ids. Sorgente UNICA condivisa da vendite.fn_riporta_lotto_a_draft (solleva) e script.fn_available_actions_lotto (espone enabled/reasons). rev 2026-08-22. rev 2026-09-09: la fase del lotto si legge da vendite.vw_lotti_fase (sede unica) e il confine pre-fiscale arriva gia'' fail-closed nel derivato pre_fiscale, invece di essere ricomposto qui con una COALESCE; parametri con %TYPE — nessuna decisione cambia. ⭐ Motivo 5 (2026-10-04): fatture che hanno gia'' CONSUMATO il plafond di un titolo IVA, delegato a script.fn_check_fatture_con_plafond_consumato — il consumo avviene PRIMA della numerazione, quindi il motivo sul numero non lo copre; un movimento e'' un fatto contabile e la fattura non si disfa piu'' (brief-db-bom-flag-quantita-e-kit-in-fattura §14, strada A).';
 ```
 
 ---
