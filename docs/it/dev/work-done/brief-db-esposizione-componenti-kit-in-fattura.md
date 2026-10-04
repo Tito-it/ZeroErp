@@ -4,7 +4,10 @@
 > poi BE/FE (§5).
 > **Origine:** collaudo della fattura con un kit (versione 4 del template, forma 2 del contesto,
 > `brief-db-documenti-versione-contesto-template` §13), 2026-10-01.
-> **Stato:** ✅ **E-1, E-2, E-3 decise da Tid il 2026-10-01** (§6). ✅ **Lato DB CHIUSO il
+> **Stato:** ✅ **CHIUSO E ARCHIVIATO il 2026-10-04**: DB, BE e FE fatti; §9.1 e §9.2 confermati da Tid,
+> l'ordine della tendina (§10.6) resta com'è (Tid). Niente di aperto.
+>
+> **Storia:** ✅ **E-1, E-2, E-3 decise da Tid il 2026-10-01** (§6). ✅ **Lato DB CHIUSO il
 > 2026-10-02**: changeSet `20261001-41 → -57` applicati su dbdev da Tid (dopo la correzione di
 > `-42`, §8.4), pgTAP **senza regressioni**, confermato due volte (§8.3); script una tantum del
 > meta pronto (§9.3). ➡️ **La palla passa al BE/FE** (decisione di Tid, 2026-10-02): richieste in §5
@@ -276,11 +279,11 @@ valore `NASCOSTO`), `parameter_fk_surrogate.csv` (riga 6: il valore si valida su
 
 ## 9. Punti da confermare (Tid)
 
-1. **E-2, la seconda metà** (§3): con valorizzati e descrittivi il kit porta la somma dei
+1. ✅ **Confermato da Tid il 2026-10-04.** **E-2, la seconda metà** (§3): con valorizzati e descrittivi il kit porta la somma dei
    descrittivi, non resta senza importo — altrimenti il loro valore uscirebbe dal documento. Così è
    scritto in `-46` e pinnato dal test 10. Se invece l'intento era un altro (per esempio «un
    descrittivo accanto a valorizzati diventa valorizzato»), è un cambio della vista e del test.
-2. **Il vocabolario senza `attivo`**: i tre valori sono la semantica della vista, non una
+2. ✅ **Confermato da Tid il 2026-10-04.** **Il vocabolario senza `attivo`**: i tre valori sono la semantica della vista, non una
    configurazione; con `attivo` la `ci_apply` monterebbe la coppia ATTIVO anche sulla colonna
    *snapshot* della fattura. Un modo si ritira con un cantiere.
 3. **Le attività già in commessa col meta vecchio** (`esposto_in_fattura: true|false`): quando il BE
@@ -372,7 +375,7 @@ Test: suite Django completa **6027 verdi** col secondo livello acceso (`ZEROERP_
 
 Il kit è arrivato per primo e ha preso **forma 3 / v5**. Il giro R-3 di
 `brief-db-esigibilita-iva-per-cassa-emittente.md` passa a **forma 4 / v6**: la sua bozza è stata
-rinominata [`template-fattura-v6.html`](../work-done/template-fattura-v6.html) e rifatta sopra la v5 (v5 + il solo
+rinominata [`template-fattura-v6.html`](template-fattura-v6.html) e rifatta sopra la v5 (v5 + il solo
 blocco annotazioni, verificato con `diff`); il brief è aggiornato (§11.3).
 
 ### 10.5 Risposta del team DB (2026-10-02, `dev/db-tid`)
@@ -410,7 +413,7 @@ suite completa ha **4 rossi estranei** — il DB di sviluppo è avanti rispetto 
 `E_RUOLO_APPLICATIVO_RITIRATO`) e il trigger che rifiuta il ruolo `DISABILITATO` in due test di
 `amm_software`. Policy **non** rigenerate: col DB avanti si rigenera dopo il merge di quel lavoro.
 
-**Aperto (decisione):** il lookup ordina per `descrizione` (default del lookup generico), quindi la
+✅ **Deciso da Tid il 2026-10-04: resta così.** Era aperto: il lookup ordina per `descrizione` (default del lookup generico), quindi la
 tendina esce NASCOSTO, VALORIZZATO, DESCRITTIVO e non nell'ordine della colonna `ordine`. Rispettarla
 vuole un'estensione dell'handler delle specializzate (un ordine naturale per `rel`): fuori da questo
 giro.

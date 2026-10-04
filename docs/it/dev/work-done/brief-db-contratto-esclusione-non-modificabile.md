@@ -5,8 +5,9 @@
 > **Origine:** verifica critica del codice non committato del
 > `brief-db-liste-righe-documento` (§9.15-9.16), 2026-10-04.
 > **Decisione:** di Tid, 2026-10-04: «una esclusione non si modifica».
-> **Stato:** ✅ **DB chiuso** il 2026-10-04: applicato (`20261004-12…-14` + CSV), lock generato su dev,
-> pgTAP senza regressioni (§6.6). ✅ **BE/FE fatto** il 2026-10-04 (§7).
+> **Stato:** ✅ **Chiuso e archiviato** il 2026-10-04. ✅ **DB chiuso** il 2026-10-04: applicato (`20261004-12…-14` + CSV), lock generato su dev,
+> pgTAP senza regressioni (§6.6). ✅ **BE/FE fatto** il 2026-10-04 (§7), committato in `dda5bda1d`.
+> ✅ **§7.1 chiuso** dal `brief-db-erogazione-obbligatoria-righe-fatturate` (§8). Niente di aperto.
 
 ## 1. La regola
 
@@ -181,7 +182,7 @@ Nessun percorso legittimo aggiorna un'esclusione.
 Verifica: test core (1653) e vendite (2267) con `ZEROERP_TEST_DB_E2E=1` verdi; vitest 662/662; eslint
 e `check_i18n_keys` puliti.
 
-### 7.1 Aperto — il ripiego di `tipo_erogazione` resta vivo, ma non sull'esclusione
+### 7.1 ✅ Chiuso altrove — il ripiego di `tipo_erogazione` (era aperto)
 
 Il §5 chiedeva di togliere «i ripieghi `tipo_erogazione`/fonte per le righe senza». Quello di
 `tipo_erogazione` (`r.tipo_erogazione || CANONE` in `_onEditRigaPersistita`) **non è morto**:
@@ -192,3 +193,14 @@ liste-righe, sulle righe che restano modificabili. Non toccato qui: togliere il 
 decidere come il form presenta un'erogazione assente (le fonti ammesse si filtrano per tipo, e con
 il tipo NULL la tendina resta vuota). Da decidere con Tid.
 
+✅ **Chiuso il 2026-10-04** dal `brief-db-erogazione-obbligatoria-righe-fatturate`: a DB l'erogazione è
+obbligatoria su OVERRIDE e AGGIUNTA (§5), e il drawer ha tolto il ripiego `r.tipo_erogazione || CANONE`
+(§8: in creazione il campo parte vuoto e obbligatorio, in modifica si legge com'è scritto).
+
+## 8. Dopo la chiusura
+
+La funzione del guard consegnata in §6.1 non c'è più col suo nome. Il
+`brief-db-righe-esclusione-solo-non-si-vende` l'ha resa comune a contratto e offerta:
+`script.trgfn_righe_guard_esclusione_immutabile` (`20261004-46`), e ha ritirato
+`vendite.trgfn_contratti_righe_guard_esclusione_immutabile` (`20261004-73`). La regola e il codice
+`E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE` restano gli stessi. Il contratto vivo lo dà la doc auto-gen.

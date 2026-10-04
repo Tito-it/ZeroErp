@@ -37,16 +37,19 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_profili_accesso_azioni_a10_azioni_processo_require_a_8dec3b | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_id', 'id')` |
 | trg_profili_accesso_azioni_a10_azioni_processo_require_a_8dec3b | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_id', 'id')` |
-| trg_profili_accesso_azioni_a10_profili_accesso_require_a_4c009c | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'profili_accesso', 'attivo', 'profilo_accesso_id', 'id')` |
+| trg_profili_accesso_azioni_a10_azioni_processo_require_a_8dec3b | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_id', 'id')` |
 | trg_profili_accesso_azioni_a10_profili_accesso_require_a_4c009c | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'profili_accesso', 'attivo', 'profilo_accesso_id', 'id')` |
-| trg_profili_accesso_azioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_profili_accesso_azioni_a10_profili_accesso_require_a_4c009c | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'profili_accesso', 'attivo', 'profilo_accesso_id', 'id')` |
 | trg_profili_accesso_azioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_profili_accesso_azioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_profili_accesso_azioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_profili_accesso_azioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_profili_accesso_azioni_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('profili_accesso_azioni_id')` |
+| trg_profili_accesso_azioni_z90_notify_permessi_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |
+| trg_profili_accesso_azioni_z90_notify_permessi_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |
+| trg_profili_accesso_azioni_z90_notify_permessi_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |
 | trg_profili_accesso_azioni_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('profili_accesso_azioni_id')` |
+| trg_profili_accesso_azioni_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('profili_accesso_azioni_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}
