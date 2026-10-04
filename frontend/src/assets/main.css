@@ -503,6 +503,29 @@ a {
   color: var(--p-primary-color);
 }
 
+/* La X del drawer con il suo tasto (`AppDrawer`, 2026-10-04): l'etichetta
+ * «Esc» accanto al pulsante. `.app-kbd` e' il tasto detto a video, riusabile
+ * ovunque si mostri una scorciatoia come tasto (non in un tooltip). */
+.app-drawer-chiudi {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.app-kbd {
+  display: inline-block;
+  padding: 0 0.35rem;
+  border: 1px solid var(--app-border-color);
+  border-bottom-width: 2px;
+  border-radius: var(--app-border-radius);
+  background: var(--app-surface-bg);
+  color: var(--app-text-muted);
+  font-family: inherit;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  user-select: none;
+}
+
 /* ===== Classe utility contenuto drawer =====
  * Layout standard per il contenuto di qualsiasi drawer laterale.
  * Gap tra sezioni, tipografia titoli (h4), font-size uniforme.

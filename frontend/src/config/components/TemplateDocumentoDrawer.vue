@@ -13,8 +13,9 @@
 //        Dropdown lookup standard:
 //          - tipi_documento_output, sorgenti, render_engine via LookupSelect
 //            (lista del lookup `config.tabelle_gestibili`);
-//          - context_builder_code via dropdown hardcoded (whitelist
-//            applicativa Decisione 18+74).
+//          - context_builder_code dal REGISTRO del backend
+//            (`GET /documenti/context-builders/`, dal 2026-10-03: prima era
+//            una copia scritta a mano nel frontend, col flag «registrato»).
 //        Emittente fiscale: gestito da `useEmittenteFiscaleField`. Per
 //        l'operatore standard (1-a-1 col proprio emittente) il valore e'
 //        derivato dal profilo e mostrato read-only; per l'admin globale
@@ -22,12 +23,14 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateDocumentiStore } from '../stores/templateDocumenti'
+import { listContextBuilders } from '../api/templateDocumenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerFormPreserve, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
+import { useLookup } from '../../core/composables/useLookup'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { DRAWER_WIDTH } from '../../core/constants'
-import { contextBuilderOptions } from '../constants/documentiContextBuilders'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
@@ -38,7 +41,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
 import Divider from 'primevue/divider'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useTemplateDocumentiStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
@@ -61,27 +64,41 @@ const isEdit = computed(() => localMode.value === 'edit' || createdId.value !== 
 const isReadOnlyEffective = computed(() => props.readonly || isReadonly.value)
 const effectiveId = computed(() => props.recordId || createdId.value)
 
-const contextBuilderOpts = computed(() => contextBuilderOptions(t))
-
-// Scopo: Avviso quando l'operatore seleziona un builder non ancora
-//        registrato lato BE (whitelist applicativa Decisione 18+74).
-//        Il template e' creabile, ma la generazione documento sollevera'
-//        E_DOCUMENTI_VALIDATION finche' un dominio sorgente non registra
-//        il builder corrispondente.
-const selectedContextBuilderInfo = computed(() => {
-  const code = form.value.context_builder_code
-  if (!code) return null
-  return contextBuilderOpts.value.find(o => o.code === code) || null
+// I builder registrati nel backend: la tendina li legge dal registro
+// (sede unica), con l'etichetta dai locales e ripiego sul codice.
+const { items: builderRegistrati, loaded: registroLetto, load: caricaBuilder } =
+  useLookup(listContextBuilders)
+// Scopo: le opzioni della tendina. Un template il cui codice NON e' nel
+//        registro (un builder ritirato, o un codice scritto altrove) lo
+//        mostra lo stesso, come opzione non registrata: sparire dalla
+//        tendina farebbe leggere un campo vuoto su un template che un codice
+//        ce l'ha.
+function opzioneBuilder(codice, registered) {
+  return {
+    code: codice,
+    label: labelOrCode(t, te, `documenti.context_builders.${codice}`, codice),
+    registered,
+  }
+}
+const contextBuilderOpts = computed(() => {
+  const opzioni = builderRegistrati.value.map(({ codice }) => opzioneBuilder(codice, true))
+  const corrente = form.value.context_builder_code
+  if (corrente && !opzioni.some(o => o.code === corrente)) {
+    opzioni.push(opzioneBuilder(corrente, false))
+  }
+  return opzioni
 })
+
+// Scopo: Avviso quando il codice del template non e' fra i registrati: il
+//        template si salva, ma la generazione sollevera' E_DOCUMENTI_VALIDATION
+//        finche' un dominio non registra quel builder. Si decide solo a
+//        registro letto: prima ogni codice sembrerebbe non registrato.
 const isSelectedBuilderUnregistered = computed(() =>
-  selectedContextBuilderInfo.value?.registered === false,
+  registroLetto.value
+    && contextBuilderOpts.value.find(o => o.code === form.value.context_builder_code)
+      ?.registered === false,
 )
 
-// Aggiornato via `@form-aperto` da TemplateVersioniSection: quando l'utente
-// e' nel form inline di nuova/modifica versione, nascondiamo la FormFooter
-// del drawer template (i suoi pulsanti non salvano la versione e creano
-// confusione). Stesso pattern di PreventiviDrawer/PreventiviRigheTable.
-const formVersioneAperto = ref(false)
 // L'emittente del template LETTO (non quello del form): e' il padre della
 // lista delle versioni. Il form, riaprendo un altro template, tiene i valori
 // del precedente finche' il dettaglio non arriva — la lista partirebbe col
@@ -143,6 +160,7 @@ watch(
   [() => props.visible, () => props.recordId, () => props.mode],
   ([visible, , mode]) => {
     if (!visible) return
+    caricaBuilder()
     localMode.value = mode
     createdId.value = null
     emittenteLetto.value = null
@@ -230,12 +248,6 @@ async function handleSave() {
     }
   }
 }
-
-// Il form inline delle versioni (sezione figlia) ha la sua fotografia: la
-// chiusura chiede conferma se UNO dei due e' modificato, con un dialog solo.
-const versioniRef = ref(null)
-const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
-  unisciFotografie({ modificato, chiudiConConferma }, () => versioniRef.value)
 </script>
 
 <template>
@@ -247,9 +259,8 @@ const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
     :action="isEdit ? t('common.edit') : t('common.new')"
     :width="DRAWER_WIDTH.COMPLEX"
     :readonly="isReadOnlyEffective"
-    :modificato="modificatoTutto"
-    :conferma-uscita="chiudiTutto"
-    :footer="formVersioneAperto ? 'nessuno' : 'form'"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
     :loading="loading"
     :save-disabled="!canSave"
     @update:visible="(v) => emit('update:visible', v)"
@@ -378,12 +389,10 @@ const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
     <template v-if="isEdit && effectiveId">
       <Divider />
       <TemplateVersioniSection
-        ref="versioniRef"
         :template-id="effectiveId"
         :emittente-fiscale-id="emittenteLetto"
         :versione-contesto-builder="versioneContestoBuilder"
         :readonly="isReadOnlyEffective"
-        @form-aperto="(v) => { formVersioneAperto = v }"
       />
     </template>
   </AppDrawer>

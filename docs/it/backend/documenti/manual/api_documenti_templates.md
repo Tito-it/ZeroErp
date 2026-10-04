@@ -332,6 +332,9 @@ nuovo template e disabilitare il precedente.
   - `context_schema` (jsonb object, default `{}`)
   - `meta` (jsonb object, default `{}`)
   - `attivo` (bool, default `true`)
+  - ⭐ Un campo **omesso** prende il default della **colonna** (formato, pagina, orientamento,
+    margini): il drawer della versione lascia vuoti quei campi in creazione e non li manda, cosi'
+    il default resta uno solo, a DB.
 
 #### Output
 
@@ -480,6 +483,21 @@ transazione la funzione:
 
 Il vincolo EXCLUDE resta il guardrail finale contro sovrapposizioni non
 gestibili automaticamente.
+
+### 12. Builder di contesto registrati (dal 2026-10-03)
+
+- Metodo: `GET`
+- Path: `/api/v1/documenti/context-builders/`
+- Permesso: livello d'area `documenti` (lettura)
+- Output `200`: `{"data": {"results": [{"codice", "versione_contesto"}]}}`, ordinati per codice
+  — l'envelope `results` dei lookup.
+
+Il **registro** dei builder (`context_builders.registry.builder_registrati`), cioè cio' che il
+processo backend sa davvero costruire, con la forma dei dati di ciascuno. ⭐ E' la tendina
+«Context builder» del drawer del template: fino al 2026-10-03 il frontend ne teneva una copia
+scritta a mano, con un flag «registrato» anch'esso a mano. Il registro e' di processo
+(`VenditeConfig.ready()`), non del DB. L'etichetta la danno i locales
+(`documenti.context_builders.<CODICE>`), con ripiego sul codice.
 
 ---
 

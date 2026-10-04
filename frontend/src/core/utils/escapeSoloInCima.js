@@ -29,8 +29,8 @@
 //    fuoco tornato nel dialog, ESC chiude il dialog.
 //
 // ⛔ Senza dialog aperti non si tocca niente: il Drawer si chiude con ESC come
-//    sempre. ⏳ Due drawer impilati si chiudono ancora insieme (stesso difetto
-//    di PrimeVue): fuori perimetro qui, e' il chrome del drawer.
+//    sempre. Due drawer impilati li regola il chrome del drawer, con la stessa
+//    idea: esce solo quello in cima (`useDrawerInCima`, in `AppDrawer`).
 
 // La maschera di ogni `Dialog` PrimeVue aperto (AppDialog e ConfirmDialog):
 // c'e' finche' il dialog e' montato, transizione di uscita compresa.

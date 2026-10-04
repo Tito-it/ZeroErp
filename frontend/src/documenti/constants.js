@@ -6,16 +6,13 @@
 //        ecc.). Estratte applicando la regola del 2 (memoria
 //        `feedback_regola_del_2_estrai_bb`): 3+ occorrenze di stringhe
 //        magic `'OFFERTA_COMMERCIALE'`/`'PREVENTIVO'`/`'CONTRATTO'` come
-//        sorgente-code nei drawer e store. La whitelist piena (con
-//        i18nKey + registered) vive in
-//        `config/constants/documentiContextBuilders.js` per il template
-//        editor; qui solo gli enum di codice riusabili da chiunque.
+//        sorgente-code nei drawer e store. Qui solo i codici che il
+//        frontend CONFRONTA; l'elenco dei builder registrati si legge dal
+//        backend (`GET /documenti/context-builders/`).
 // ------------------------------------------------------------
 
 // Codici sorgente documentale registrati lato BE
 // (`apps.documenti.services.context_builders.registry`).
-// Allineati alle voci `registered: true` di
-// `config/constants/documentiContextBuilders.js`.
 export const SORGENTE_CODES = Object.freeze({
   PREVENTIVO: 'PREVENTIVO',
   CONTRATTO: 'CONTRATTO',

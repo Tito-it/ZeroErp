@@ -28,6 +28,8 @@
 //  14) il footer nasce col contenuto: niente Salva durante lo slide
 //  15) `footerReadonly: false` riaccende il Salva dentro una catena in sola lettura
 //  16) `#footer-azioni` aggiunge pulsanti accanto ad Annulla/Salva, che restano del guscio
+//  17) ⭐ esce solo il drawer in cima: sotto un drawer aperto ESC/X non fanno niente
+//  18) ⭐ la X dice il suo tasto (etichetta + aria-label) e passa dalla conferma d'uscita
 // ------------------------------------------------------------
 
 import { describe, it, expect, beforeEach } from 'vitest'
@@ -43,9 +45,12 @@ const DrawerFinto = defineComponent({
   name: 'DrawerFinto',
   props: ['visible', 'dismissable', 'position'],
   emits: ['update:visible', 'after-show'],
-  setup(props, { slots, attrs }) {
+  setup(props, { slots, attrs, emit }) {
+    // Lo slot `closebutton` riceve la callback di uscita, come in PrimeVue
+    // (`hide()` emette `update:visible` false).
     return () =>
       h('div', { class: 'drawer-finto', style: attrs.style }, [
+        h('nav', slots.closebutton?.({ closeCallback: () => emit('update:visible', false) })),
         h('header', slots.header?.()),
         h('main', slots.default?.()),
         slots.footer ? h('footer', slots.footer()) : null,
@@ -222,5 +227,37 @@ describe('AppDrawer', () => {
     expect(pulsanti(w).map((b) => b.text())).toEqual(['Ripristina', 'common.cancel', 'common.save'])
     await pulsante(w, 'common.save').trigger('click')
     expect(w.emitted('save')).toHaveLength(1)
+  })
+
+  it('17) esce solo il drawer in cima: il padre sotto un figlio aperto ignora ESC/X', async () => {
+    // 🔴 Il difetto: ESC arriva a tutti i Drawer aperti, e il padre si
+    //    chiudeva smontando il figlio con le sue modifiche, senza chiedere.
+    let uscitePadre = 0
+    const padre = montaDrawer({ confermaUscita: () => { uscitePadre++ } })
+    const figlio = montaDrawer({ title: 'Figlio' })
+    padre.findComponent(DrawerFinto).vm.$emit('update:visible', false)
+    expect(uscitePadre).toBe(0)
+    // Il figlio, in cima, esce.
+    figlio.findComponent(DrawerFinto).vm.$emit('update:visible', false)
+    expect(figlio.emitted('update:visible')).toEqual([[false]])
+    // Chiuso il figlio, il padre torna in cima ed esce di nuovo.
+    await figlio.setProps({ visible: false })
+    padre.findComponent(DrawerFinto).vm.$emit('update:visible', false)
+    expect(uscitePadre).toBe(1)
+    figlio.unmount()
+    padre.unmount()
+  })
+
+  it('18) la X dice il suo tasto e passa dalla stessa conferma d`uscita', async () => {
+    let uscite = 0
+    const w = montaDrawer({ confermaUscita: () => { uscite++ } })
+    const x = w.find('nav button')
+    expect(w.find('nav kbd.app-kbd').exists()).toBe(true)
+    // La forma «azione (tasto)» passa dalla chiave, non e' scritta qui.
+    expect(x.attributes('aria-label')).toContain('common.con_scorciatoia')
+    await x.trigger('click')
+    expect(uscite).toBe(1)
+    expect(w.emitted('update:visible')).toBeUndefined()
+    w.unmount()
   })
 })

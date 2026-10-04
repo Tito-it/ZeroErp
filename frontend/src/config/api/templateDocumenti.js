@@ -11,6 +11,7 @@
 //         /api/v1/documenti/templates/<id>/versioni/<vid>/ GET | PATCH | DELETE
 //         /api/v1/documenti/templates/<id>/versioni/<vid>/clona/    POST
 //         /api/v1/documenti/templates/<id>/versioni/<vid>/pubblica/ POST
+//         /api/v1/documenti/context-builders/              GET (registro builder)
 // ------------------------------------------------------------
 
 import api from '../../core/api'
@@ -80,4 +81,11 @@ export function clonaTemplateVersione(templateId, versioneId, payload = {}) {
 //        EXCLUDE GiST DB blocca eventuali overlap con altre PUBBLICATA attive.
 export function pubblicaTemplateVersione(templateId, versioneId, payload) {
   return api.post(`${BASE}/${templateId}/versioni/${versioneId}/pubblica/`, payload)
+}
+
+// Scopo: I builder di contesto REGISTRATI nel backend, con la forma dei dati
+//        che producono (`{codice, versione_contesto}`, envelope `results`).
+//        E' la tendina del template: il registro si legge, non si ricopia.
+export function listContextBuilders() {
+  return api.get('/documenti/context-builders/')
 }

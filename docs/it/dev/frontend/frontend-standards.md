@@ -1875,6 +1875,20 @@ chiamante porta solo il **contenuto** (dettaglio nel catalogo BB frontend).
   Chiudi. Un drawer con un form gli passa il `chiudiConConferma` di
   `useDrawerFormPreserve` (o di `unisciFotografie`, se le fotografie sono più
   d'una).
+- ⭐ **Esce solo il drawer in cima** (`useDrawerInCima`, 2026-10-04, ok Tid):
+  con un drawer aperto sopra — figlio nello slot o montato accanto, o il
+  drawer dei filtri compatti — l'uscita di quello sotto non fa niente. ESC
+  arriva a tutti i drawer aperti (un listener su `document` per ciascuno), e il
+  padre si chiudeva smontando il figlio con le sue modifiche, senza chiedere.
+  Il chiamante non dichiara niente: niente `:dismissable="!figlioAperto"` per
+  un figlio **drawer** (resta per un figlio dialog, o `!loading`).
+- ⭐ **Una scorciatoia che funziona si dice** (2026-10-04, ok Tid), nella forma
+  unica «azione (tasto)» di `core/utils/scorciatoie.js`: la X del drawer ha
+  accanto l'etichetta «Esc» (`app-kbd`, nascosta su `ui.isCompatto`) e il
+  tooltip «Chiudi (Esc)»; il Salva di `FormFooter` il tooltip «Salva
+  (Ctrl+S)». ⭐ **Multilingua anche il tasto**: i nomi in `common.tasti.*`
+  (variante `_MAC`), la forma in `common.con_scorciatoia`. Lo fa il guscio:
+  il chiamante non scrive niente.
 - **La larghezza è un valore di `DRAWER_WIDTH`**, mai una stringa CSS:
   `check-drawer-width.mjs` ferma quella scritta a mano sul tag.
 - **La sola lettura protegge il corpo** (`app-readonly`) per default. Un drawer
@@ -2017,7 +2031,7 @@ Cosa centralizza:
 | ⛔ **Niente X in alto** (`closable: false`) | Il footer di un dialog è **sempre visibile** (`max-height: 90%`, footer in coda): ogni dialog ha già Annulla o Chiudi, e la X era un doppione con una semantica sua (chiude senza `cancel`). Nel **drawer** la X resta, per la ragione opposta — il footer di un form lungo sta sotto il fold (§`FormFooter`) |
 | ⭐ **`header` obbligatorio** (prop `required`) | Un `Dialog` PrimeVue senza titolo rende comunque la riga di testa, e con `justify-content: space-between` l'unico figlio — le azioni — finiva **a sinistra**: era la «X a sinistra» vista in-app, non un secondo chrome. Il titolo è un fatto dell'azione, non un ornamento |
 | **ESC = Annulla**, e **si spegne mentre lavora** (`closeOnEscape && !loading`) | La direzione sicura resta aperta da tastiera; a salvataggio in volo il dialog non si chiude sotto la risposta. Era riscritto a mano in due dialog (`ExportDialog`, `AttivaVersioneDialog`): ora lo fa il BB |
-| ⭐ **ESC chiude SOLO il dialog in cima**, mai il drawer sotto | In PrimeVue `Dialog` e `Drawer` hanno ciascuno un listener `keydown` su `document` e si chiudono per conto proprio: un ESC in un dialog aperto da un drawer chiudeva **entrambi** (rilievo di Tid, 2026-09-18). Il BB gestisce ESC **sulla propria radice** (`pt.root.onKeydown`, prima di `document` nella risalita) e tiene spento il listener di PrimeVue; `core/utils/escapeSoloInCima` — installato in `main.js` **prima** di ogni Drawer — ingoia l'ESC che sfugge alla radice quando c'è un dialog aperto. Il dialog vede l'ESC **per primo** (fase capture) e lo cede solo a un campo con la **tendina aperta** — segnale ARIA `aria-expanded="true"` sul controllo a fuoco (AutoComplete della lookup, Select, DatePicker): lì l'ESC chiude la tendina, il dialog resta. ⛔ Non `defaultPrevented`: l'AutoComplete di PrimeVue lo fa **sempre**, anche a tendina chiusa — con quel criterio ESC in «Abbina fattura» non chiudeva niente (rilievo di Tid, stesso giorno). Stessa forma sulla `ConfirmDialog` in `App.vue`. ⏳ Due **drawer** impilati si chiudono ancora insieme: chrome del drawer, fuori da questa regola |
+| ⭐ **ESC chiude SOLO il dialog in cima**, mai il drawer sotto | In PrimeVue `Dialog` e `Drawer` hanno ciascuno un listener `keydown` su `document` e si chiudono per conto proprio: un ESC in un dialog aperto da un drawer chiudeva **entrambi** (rilievo di Tid, 2026-09-18). Il BB gestisce ESC **sulla propria radice** (`pt.root.onKeydown`, prima di `document` nella risalita) e tiene spento il listener di PrimeVue; `core/utils/escapeSoloInCima` — installato in `main.js` **prima** di ogni Drawer — ingoia l'ESC che sfugge alla radice quando c'è un dialog aperto. Il dialog vede l'ESC **per primo** (fase capture) e lo cede solo a un campo con la **tendina aperta** — segnale ARIA `aria-expanded="true"` sul controllo a fuoco (AutoComplete della lookup, Select, DatePicker): lì l'ESC chiude la tendina, il dialog resta. ⛔ Non `defaultPrevented`: l'AutoComplete di PrimeVue lo fa **sempre**, anche a tendina chiusa — con quel criterio ESC in «Abbina fattura» non chiudeva niente (rilievo di Tid, stesso giorno). Stessa forma sulla `ConfirmDialog` in `App.vue`. Due **drawer** impilati: la stessa regola nel chrome del drawer, `useDrawerInCima` (§«Sede: `AppDrawer`») |
 | **Click fuori non chiude** (`dismissableMask: false`) | Terza via d'uscita accidentale, stessa ragione della X |
 | **Un footer c'è sempre** | Nessuna prop `hide-footer`: senza X, un dialog senza footer non avrebbe **nessuna** uscita visibile. Il caso speciale (wizard, terzo bottone) è lo slot `#footer`, che il chrome lo mantiene |
 
