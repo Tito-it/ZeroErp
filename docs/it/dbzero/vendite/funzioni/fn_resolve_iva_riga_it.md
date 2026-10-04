@@ -18,11 +18,10 @@ AS $function$
 --   Due stadi (D6/D7): A stabilisce l'aliquota che compete alla
 --   merce, B verifica se un titolo del soggetto la sostituisce SU
 --   QUESTA RIGA (D12).
---   Perimetro: sola lettura. NON consuma il plafond — la
---   ripartizione e' una proiezione sul residuo (D14).
---   Risultato: una riga nel caso ordinario, DUE quando il plafond
---   finisce a meta' riga (P2), nell'ordine «prima la quota coperta
---   dal titolo, poi il resto» — e l'ordine e' il contratto.
+--   Perimetro: sola lettura. NON consuma il plafond (D14).
+--   Risultato: una riga nell'anteprima; DUE nella domanda di consumo con
+--   un titolo a tetto, nell'ordine «prima il titolo, poi l'ordinario» — e
+--   l'ordine e' il contratto.
 --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, I2.
 -- ⭐ rev 2026-10-04 (decisione C, brief-db-bom-flag-quantita-e-kit-in-
 --   fattura §13): p_consumo, IN CODA alla firma, apre la domanda del giro
@@ -32,6 +31,14 @@ AS $function$
 --   copre il titolo lo decide anagrafiche.fn_consuma_plafond_titolo_iva_righe
 --   sul NETTO della fattura. Senza p_consumo (default false) tutto come
 --   prima: anteprima con p_imponibile NULL, proiezione con l'importo.
+-- ⛔ rev 2026-10-04 bis (R-DB-C10, brief-db-bom-flag-quantita-e-kit-in-
+--   fattura §15.4; decisione di Tid: orfano -> si ritira): la PROIEZIONE sul
+--   residuo (p_imponibile valorizzato) e' RITIRATA. Dal passaggio del BE al
+--   consumo nessuno la chiede piu', e dava una spezzatura che la madre del
+--   consumo sul netto avrebbe smentito. p_imponibile RESTA nella firma (non
+--   si riordina) e un valore qualunque SOLLEVA: un chiamante che credesse
+--   di chiedere una proiezione non deve ricevere in silenzio l'anteprima.
+--   La colonna quota resta nel RETURNS TABLE, ed esce sempre NULL.
 -- ⚠️ La data e' un PARAMETRO: mai CURRENT_DATE (D14).
 -- ⛔ Il congelamento oltre la DEFINITIVA (D15) NON si controlla
 --   qui: e' una proprieta' del documento, ed e' contratto dei
@@ -56,7 +63,6 @@ DECLARE
     v_tit_ha_plaf    config.tipi_titolo_iva.ha_plafond%TYPE;
     v_n_pari         bigint;
     v_residuo        anagrafiche.soggetti_titoli_iva.plafond%TYPE;
-    v_coperta        numeric;
     -- la ripartizione: al massimo due parti
     v_q1             numeric;
     v_iva1           config.iva.id%TYPE;
@@ -87,25 +93,23 @@ BEGIN
             jsonb_build_object('parametro', 'data_riferimento'), NULL::uuid, 'data_riferimento');
     END IF;
     -- ⚠️ NULL non e' «anteprima»: e' un chiamante che non ha detto quale
-    --   domanda fa. E il consumo non prende un importo: la proiezione sul
-    --   residuo e' un'altra domanda, e mescolarle darebbe una quota che il
-    --   consumo sul netto smentirebbe.
+    --   domanda fa.
     IF p_consumo IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_resolve_iva_riga_it', 'E_IVA_RESOLVE_NON_INVOCABILE',
             jsonb_build_object('parametro', 'consumo'), NULL::uuid, 'consumo');
     END IF;
-    IF p_consumo AND p_imponibile IS NOT NULL THEN
+    -- ⛔ rev 2026-10-04 bis (R-DB-C10): nessuna domanda prende piu' un
+    --   importo. La proiezione sul residuo e' ritirata, e il consumo non l'ha
+    --   mai preso (quanto copre il titolo lo decide la madre sul netto).
+    --   ⚠️ Si RIFIUTA invece di ignorarlo: un importo accettato e non usato
+    --   farebbe credere al chiamante di aver avuto una spezzatura.
+    --   Assorbe i due guard di prima (consumo con importo, importo negativo).
+    IF p_imponibile IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_resolve_iva_riga_it', 'E_IVA_RESOLVE_NON_INVOCABILE',
             jsonb_build_object('parametro', 'imponibile', 'valore', p_imponibile,
-                               'consumo', true),
-            NULL::uuid, 'imponibile');
-    END IF;
-    IF p_imponibile IS NOT NULL AND p_imponibile < 0 THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_resolve_iva_riga_it', 'E_IVA_RESOLVE_NON_INVOCABILE',
-            jsonb_build_object('parametro', 'imponibile', 'valore', p_imponibile),
+                               'consumo', p_consumo),
             NULL::uuid, 'imponibile');
     END IF;
 
@@ -246,11 +250,11 @@ BEGIN
     -- ══ LA RIPARTIZIONE ════════════════════════════════════════
     IF v_tit_id IS NULL THEN
         -- Nessun titolo: risponde lo stadio A.
-        v_q1 := p_imponibile; v_iva1 := v_iva_ord; v_org1 := v_origine_ord; v_tit1 := NULL;
+        v_q1 := NULL; v_iva1 := v_iva_ord; v_org1 := v_origine_ord; v_tit1 := NULL;
 
     ELSIF v_tit_ha_plaf IS NOT TRUE THEN
         -- Titolo senza tetto: sostituisce e basta.
-        v_q1 := p_imponibile; v_iva1 := v_tit_iva; v_org1 := 'TITOLO'; v_tit1 := v_tit_id;
+        v_q1 := NULL; v_iva1 := v_tit_iva; v_org1 := 'TITOLO'; v_tit1 := v_tit_id;
 
     ELSE
         -- ⚠️ GREATEST(..., 0): un titolo gia' sfondato da una
@@ -269,7 +273,7 @@ BEGIN
             v_q1 := NULL; v_iva1 := v_tit_iva; v_org1 := 'TITOLO'; v_tit1 := v_tit_id;
             v_due_parti := true;
             v_q2 := NULL; v_iva2 := v_iva_ord; v_org2 := v_origine_ord;
-        ELSIF p_imponibile IS NULL THEN
+        ELSE
             -- ⭐ Anteprima senza importo: la spezzatura non e'
             --   calcolabile e non si inventa. Si dice cosa vale sul
             --   PRIMO euro, che e' cio' che serve a un form quando
@@ -279,24 +283,6 @@ BEGIN
                 v_iva1 := v_tit_iva; v_org1 := 'TITOLO'; v_tit1 := v_tit_id;
             ELSE
                 v_iva1 := v_iva_ord; v_org1 := v_origine_ord; v_tit1 := NULL;
-            END IF;
-        ELSE
-            v_coperta := LEAST(p_imponibile, v_residuo);
-            IF v_coperta <= 0 THEN
-                -- Plafond esaurito: il titolo non copre piu' niente.
-                v_q1 := p_imponibile; v_iva1 := v_iva_ord; v_org1 := v_origine_ord; v_tit1 := NULL;
-            ELSE
-                v_q1 := v_coperta; v_iva1 := v_tit_iva; v_org1 := 'TITOLO'; v_tit1 := v_tit_id;
-                IF p_imponibile > v_coperta THEN
-                    -- ⭐ P2: il resto torna all'aliquota ordinaria.
-                    --   Puo' uscire con origine ASSENTE, ed e'
-                    --   corretto: il titolo copriva una parte, e sul
-                    --   resto nessuno sa dire l'aliquota. Il cancello
-                    --   all'emissione lo fermera'.
-                    v_due_parti := true;
-                    v_q2 := p_imponibile - v_coperta;
-                    v_iva2 := v_iva_ord; v_org2 := v_origine_ord;
-                END IF;
             END IF;
         END IF;
     END IF;
@@ -337,7 +323,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_iva_riga_it(p_articolo_id uuid, p_data_riferimento date, p_imponibile numeric, p_billing_account_id bigint, p_utility_id integer, p_soggetto_id uuid, p_emittente_fiscale_id bigint, p_consumo boolean)
-IS 'La logica ITALIANA del risolutore IVA di riga (I2 di brief-db-be-iva-risolutore-e-regime-cliente). Chi chiama passa dal guscio vendite.fn_resolve_iva_riga, che smista per paese (D21): qui c''e'' la regola italiana e basta, e il giorno che ne serve un''altra nasce una _xx accanto senza toccare il guscio. ⭐ DUE STADI che non competono (D6/D7): A stabilisce quale aliquota compete alla MERCE, B verifica se un TITOLO del soggetto la sostituisce — B non vince su A, sostituisce il risultato di A dopo che A ha risposto. STADIO A a due livelli: l''articolo, e l''uso della fornitura SOLO dove l''articolo tace (D17) — catalogo.articoli.iva_id e'' nullable, quindi l''articolo puo'' dichiarare di non avere un''opinione, mentre config.tipi_utenze.iva_id non ha modo di dire su quali merci vale e applicato per primo si prenderebbe ogni riga della fornitura, cauzioni comprese. ⛔ I bundle restano fuori (D16): l''aliquota accanto al prezzo esiste solo sui componenti, e la portano gia'' le *_righe_componenti del documento. STADIO B si valuta PER RIGA (D12), con specificita'' articolo > categoria > tutto e GRUPPO_VOCE/TIPO_VOCE nella stessa banda; a parita'' si solleva E_IVA_TITOLI_AMBIGUI invece di scegliere (D13). ⭐ RITORNA UN COMPOSITO (D18) e non un numerico: le operazioni non imponibili hanno tutte aliquota zero ma non sono la stessa cosa, e la fattura elettronica pretende che si dica QUALE zero — quindi accanto alla quota escono codice, aliquota, natura, inversione contabile, esigibilita'', split payment e riferimento normativo. ⚠️ esigibilita e split_payment sono TRASPORTATI e NON usati nella scelta del codice: e'' cio'' che tiene insieme D4 (la scissione non cambia l''aliquota, cambia chi versa) e D18 (chi costruisce la riga di fattura vuole un oggetto solo). ⚠️ Il riferimento normativo e'' config.iva.descrizione (D24): nessuna colonna nuova, perche'' config.iva e'' gia'' piu'' fine della natura — EC, VG e VF condividono natura 10 e differiscono solo per l''articolo citato, quindi il riferimento e'' l''identita'' della riga. ⭐ E RITORNA UNA RIPARTIZIONE (P2): il plafond puo'' finire a meta'' riga, e l''ORDINE delle righe e'' il contratto — prima la quota coperta dal titolo, poi il resto. ⚠️ STABLE: NON consuma, la ripartizione e'' una proiezione sul residuo (D14); il consumo lo fa anagrafiche.fn_consuma_plafond_titolo_iva alla DEFINITIVA, e per questo esce titolo_iva_id. ⚠️ La data e'' un parametro e mai CURRENT_DATE. ⛔ Il congelamento (D15) non si controlla qui: e'' una proprieta'' del documento, contratto dei chiamanti. ⚠️ Il CASE attorno a config.fn_get_aliquota_iva e'' la guardia che §R-3 ha insegnato: quella funzione solleva su un id nullo e un COALESCE non farebbe in tempo a difendere. ⚠️ SECURITY INVOKER (decisione di Tid): chi chiama deve avere un contesto che vede i titoli — l''applicazione passa l''emittente del documento, i ruoli batch hanno BYPASSRLS; un chiamante senza contesto legge zero titoli e ottiene l''aliquota ordinaria in silenzio, e qui il costo e'' un''imposta applicata dove non andava. ⛔ rev 2026-08-29 bis (D31): split_payment usciva NULL ogni volta che il soggetto non era noto, mentre esigibilita nello stesso composito usciva ''I'' - due risposte alla stessa domanda che dissentivano sulla stessa riga. Ora il flag e'' (v_split_sogg = ''S'') IS TRUE, cioe'' entrambe dicono «non scissa» quando il soggetto non e'' noto. Non si allinea verso il nullo perche'' fatture_righe.esigibilita non lo ammette. Trovato dal caso 6 di test-fn-resolve-iva-riga. ⛔ rev 2026-08-29 ter (D32): la revisione bis aveva allineato la coppia esigibilita/split VERSO IL VALORE, con una motivazione falsa - «esigibilita non ammette il nullo». vendite.fatture_righe.esigibilita e'' NULLABILE e non ha nemmeno un CHECK: quella frase non era stata letta dal catalogo. Il verso giusto e'' l''altro: senza il soggetto il regime di scissione non e'' stato determinato, e rispondere «immediata, non scissa» e'' un''AFFERMAZIONE su un documento che potrebbe essere verso una PA. Ora entrambi i campi escono NULL quando il soggetto non e'' noto - la stessa disciplina di origine = ''ASSENTE''. Sul percorso vero (I5) il soggetto c''e'' sempre. ⭐ rev 2026-10-01 (brief-db-esigibilita-iva-per-cassa-emittente, sezione 8.5): la coppia esigibilita/split_payment esce da script.fn_esigibilita_iva, la regola unica condivisa col trigger di riga della fattura, chiamata PER PARTE perche'' con l''IVA per cassa dipende anche dalla natura del codice (inversione contabile). Entrano il regime dell''emittente (config.regimi_fiscali.iva_per_cassa), scissione e partita IVA del soggetto. Senza soggetto: NULL/NULL; senza emittente, fuori dalla scissione: esigibilita NULL (regime non noto). ⭐ rev 2026-10-04 (decisione C, brief-db-bom-flag-quantita-e-kit-in-fattura §13): p_consumo, in CODA alla firma (default false = tutto come prima), apre la domanda del giro del plafond in fattura — con un titolo a tetto DUE righe sempre, prima il titolo e poi l''ordinario, quota NULL, senza leggere il residuo: quanto copre il titolo lo decide anagrafiche.fn_consuma_plafond_titolo_iva_righe sul NETTO della fattura, e una proiezione riga per riga sarebbe sbagliata per costruzione (una riga negativa restituisce capienza a quelle prima). A residuo zero il titolo resta nella risposta. Il consumo non prende un importo: p_consumo con p_imponibile valorizzato solleva E_IVA_RESOLVE_NON_INVOCABILE.';
+IS 'La logica ITALIANA del risolutore IVA di riga (I2 di brief-db-be-iva-risolutore-e-regime-cliente). Chi chiama passa dal guscio vendite.fn_resolve_iva_riga, che smista per paese (D21): qui c''e'' la regola italiana e basta, e il giorno che ne serve un''altra nasce una _xx accanto senza toccare il guscio. ⭐ DUE STADI che non competono (D6/D7): A stabilisce quale aliquota compete alla MERCE, B verifica se un TITOLO del soggetto la sostituisce — B non vince su A, sostituisce il risultato di A dopo che A ha risposto. STADIO A a due livelli: l''articolo, e l''uso della fornitura SOLO dove l''articolo tace (D17) — catalogo.articoli.iva_id e'' nullable, quindi l''articolo puo'' dichiarare di non avere un''opinione, mentre config.tipi_utenze.iva_id non ha modo di dire su quali merci vale e applicato per primo si prenderebbe ogni riga della fornitura, cauzioni comprese. ⛔ I bundle restano fuori (D16): l''aliquota accanto al prezzo esiste solo sui componenti, e la portano gia'' le *_righe_componenti del documento. STADIO B si valuta PER RIGA (D12), con specificita'' articolo > categoria > tutto e GRUPPO_VOCE/TIPO_VOCE nella stessa banda; a parita'' si solleva E_IVA_TITOLI_AMBIGUI invece di scegliere (D13). ⭐ RITORNA UN COMPOSITO (D18) e non un numerico: le operazioni non imponibili hanno tutte aliquota zero ma non sono la stessa cosa, e la fattura elettronica pretende che si dica QUALE zero — quindi accanto alla quota escono codice, aliquota, natura, inversione contabile, esigibilita'', split payment e riferimento normativo. ⚠️ esigibilita e split_payment sono TRASPORTATI e NON usati nella scelta del codice: e'' cio'' che tiene insieme D4 (la scissione non cambia l''aliquota, cambia chi versa) e D18 (chi costruisce la riga di fattura vuole un oggetto solo). ⚠️ Il riferimento normativo e'' config.iva.descrizione (D24): nessuna colonna nuova, perche'' config.iva e'' gia'' piu'' fine della natura — EC, VG e VF condividono natura 10 e differiscono solo per l''articolo citato, quindi il riferimento e'' l''identita'' della riga. ⭐ E RITORNA UNA RIPARTIZIONE: nella domanda di consumo, con un titolo a tetto, due righe, e l''ORDINE delle righe e'' il contratto — prima il titolo, poi l''ordinario. ⚠️ STABLE: NON consuma (D14); il consumo lo fa anagrafiche.fn_consuma_plafond_titolo_iva_righe all''emissione, sul netto della fattura, e per questo esce titolo_iva_id. ⚠️ La data e'' un parametro e mai CURRENT_DATE. ⛔ Il congelamento (D15) non si controlla qui: e'' una proprieta'' del documento, contratto dei chiamanti. ⚠️ Il CASE attorno a config.fn_get_aliquota_iva e'' la guardia che §R-3 ha insegnato: quella funzione solleva su un id nullo e un COALESCE non farebbe in tempo a difendere. ⚠️ SECURITY INVOKER (decisione di Tid): chi chiama deve avere un contesto che vede i titoli — l''applicazione passa l''emittente del documento, i ruoli batch hanno BYPASSRLS; un chiamante senza contesto legge zero titoli e ottiene l''aliquota ordinaria in silenzio, e qui il costo e'' un''imposta applicata dove non andava. ⛔ rev 2026-08-29 bis (D31): split_payment usciva NULL ogni volta che il soggetto non era noto, mentre esigibilita nello stesso composito usciva ''I'' - due risposte alla stessa domanda che dissentivano sulla stessa riga. Ora il flag e'' (v_split_sogg = ''S'') IS TRUE, cioe'' entrambe dicono «non scissa» quando il soggetto non e'' noto. Non si allinea verso il nullo perche'' fatture_righe.esigibilita non lo ammette. Trovato dal caso 6 di test-fn-resolve-iva-riga. ⛔ rev 2026-08-29 ter (D32): la revisione bis aveva allineato la coppia esigibilita/split VERSO IL VALORE, con una motivazione falsa - «esigibilita non ammette il nullo». vendite.fatture_righe.esigibilita e'' NULLABILE e non ha nemmeno un CHECK: quella frase non era stata letta dal catalogo. Il verso giusto e'' l''altro: senza il soggetto il regime di scissione non e'' stato determinato, e rispondere «immediata, non scissa» e'' un''AFFERMAZIONE su un documento che potrebbe essere verso una PA. Ora entrambi i campi escono NULL quando il soggetto non e'' noto - la stessa disciplina di origine = ''ASSENTE''. Sul percorso vero (I5) il soggetto c''e'' sempre. ⭐ rev 2026-10-01 (brief-db-esigibilita-iva-per-cassa-emittente, sezione 8.5): la coppia esigibilita/split_payment esce da script.fn_esigibilita_iva, la regola unica condivisa col trigger di riga della fattura, chiamata PER PARTE perche'' con l''IVA per cassa dipende anche dalla natura del codice (inversione contabile). Entrano il regime dell''emittente (config.regimi_fiscali.iva_per_cassa), scissione e partita IVA del soggetto. Senza soggetto: NULL/NULL; senza emittente, fuori dalla scissione: esigibilita NULL (regime non noto). ⭐ rev 2026-10-04 (decisione C, brief-db-bom-flag-quantita-e-kit-in-fattura §13): p_consumo, in CODA alla firma (default false = tutto come prima), apre la domanda del giro del plafond in fattura — con un titolo a tetto DUE righe sempre, prima il titolo e poi l''ordinario, quota NULL, senza leggere il residuo: quanto copre il titolo lo decide anagrafiche.fn_consuma_plafond_titolo_iva_righe sul NETTO della fattura, e una proiezione riga per riga sarebbe sbagliata per costruzione (una riga negativa restituisce capienza a quelle prima). A residuo zero il titolo resta nella risposta. Il consumo non prende un importo: p_consumo con p_imponibile valorizzato solleva E_IVA_RESOLVE_NON_INVOCABILE. ⛔ rev 2026-10-04 bis (R-DB-C10, brief-db-bom-flag-quantita-e-kit-in-fattura §15.4; decisione di Tid: orfano -> si ritira): la PROIEZIONE sul residuo (p_imponibile valorizzato) e'' RITIRATA, senza chiamanti dal passaggio del BE al consumo. p_imponibile resta nella firma, che non si riordina, e un valore qualunque solleva E_IVA_RESOLVE_NON_INVOCABILE: un importo accettato e non usato farebbe credere al chiamante di aver avuto una spezzatura. La colonna quota resta ed esce sempre NULL.';
 ```
 
 ---

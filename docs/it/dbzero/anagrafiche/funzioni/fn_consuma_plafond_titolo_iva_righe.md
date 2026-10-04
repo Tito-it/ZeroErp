@@ -44,11 +44,17 @@ DECLARE
     v_n_esist     integer;
     -- Le righe, nell'ordine dei gruppi (array paralleli).
     -- ⚠️ Array espliciti: `colonna%TYPE[]` non esiste in PostgreSQL.
-    --    v_ids sono fatture_righe.id, v_imp fatture_righe.imponibile_riga,
+    --    v_ids sono fatture_righe.id; v_imp l'imponibile DICHIARATO (uguale
+    --    a imponibile_riga, lo pretende il guard), quello che si restituisce;
+    --    v_impc lo stesso importo alla scala del REGISTRO, su cui si calcola;
     --    v_grp il numero d'ordine del gruppo (un contatore).
     v_ids         bigint[];
     v_imp         numeric[];
+    v_impc        numeric[];
     v_grp         integer[];
+    -- La scala di soggetti_titoli_iva_movimenti.imponibile, letta dal
+    -- catalogo: e' un attributo del tipo, non il valore di una colonna.
+    v_scala       integer;
     -- Per gruppo: netto e quota (importi di riga), frazione (un rapporto).
     v_netto       numeric[];
     v_quota_g     numeric[];
@@ -56,17 +62,20 @@ DECLARE
     -- Per riga: quota coperta (importo di riga) e movimento.
     v_quote       numeric[];
     v_mov_ids     bigint[];
-    -- ⭐ Gli scalari che portano IMPORTI DI RIGA si ancorano a
-    --    fatture_righe.imponibile_riga e NON al registro: il registro e'
-    --    numeric(15,2), e un %TYPE in DECLARE porta anche la scala —
-    --    arrotonderebbe in silenzio totali e resti a meta' calcolo.
-    v_tot_pos     vendite.fatture_righe.imponibile_riga%TYPE := 0;
-    v_tot_neg     vendite.fatture_righe.imponibile_riga%TYPE := 0;
-    v_resto_neg   vendite.fatture_righe.imponibile_riga%TYPE;
-    v_resto_pos   vendite.fatture_righe.imponibile_riga%TYPE;
-    v_consumo     vendite.fatture_righe.imponibile_riga%TYPE;
-    v_r           vendite.fatture_righe.imponibile_riga%TYPE;
-    v_d           vendite.fatture_righe.imponibile_riga%TYPE;
+    -- ⭐ Gli scalari del calcolo si ancorano al REGISTRO: ogni quota diventa
+    --    un movimento, quindi il calcolo si fa alla sua scala (v_impc). Un
+    --    importo di riga con piu' decimali (imponibile_riga e' numeric(18,6))
+    --    scritto nel registro verrebbe arrotondato dall'INSERT in silenzio: il
+    --    movimento non sarebbe piu' la quota, l'idempotenza rileggerebbe un
+    --    altro numero, e una quota di frazioni di centesimo diventerebbe uno
+    --    zero che chk_stiva_movimenti_segno rifiuta.
+    v_tot_pos     anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE := 0;
+    v_tot_neg     anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE := 0;
+    v_resto_neg   anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE;
+    v_resto_pos   anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE;
+    v_consumo     anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE;
+    v_r           anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE;
+    v_d           anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE;
     -- Il movimento riletto dal registro (idempotenza): il valore della colonna.
     v_q           anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE;
     v_mid         anagrafiche.soggetti_titoli_iva_movimenti.id%TYPE;
@@ -199,16 +208,17 @@ BEGIN
     --    senza kit_key = un gruppo da sola. I gruppi nell'ordine della
     --    loro prima riga (riga_nr, poi id), che e' l'ordine di stampa:
     --    a plafond quasi esaurito decide chi resta coperto.
-    -- ⭐ L'imponibile si legge dalla riga (imponibile_riga, NOT NULL): il
-    --    guard sopra ha gia' preteso che p_imponibili dica lo stesso.
+    -- ⭐ L'imponibile e' quello DICHIARATO (p_imponibili): il guard sopra ha
+    --    gia' preteso che sia uguale a imponibile_riga. Si porta quello perche'
+    --    e' cio' che il chiamante ha in mano e cio' che gli si restituisce.
     -- ⚠️ La chiave del gruppo e' la COPPIA (kit_key, id se kit_key e'
     --    NULL): un prefisso inventato su kit_key potrebbe collidere
     --    con una kit_key vera.
     WITH r AS (
-        SELECT fr.id, fr.riga_nr, fr.imponibile_riga AS imp, fr.kit_key,
+        SELECT fr.id, fr.riga_nr, d.imp, fr.kit_key,
                CASE WHEN fr.kit_key IS NULL THEN fr.id END AS sciolta
           FROM vendite.fatture_righe fr
-         WHERE fr.id = ANY (p_fattura_riga_ids)
+          JOIN unnest(p_fattura_riga_ids, p_imponibili) AS d(id, imp) ON d.id = fr.id
     ), gr AS (
         SELECT r.kit_key, r.sciolta,
                dense_rank() OVER (ORDER BY min(r.riga_nr), min(r.id)) AS ord
@@ -224,12 +234,29 @@ BEGIN
       JOIN gr ON gr.kit_key IS NOT DISTINCT FROM r.kit_key
              AND gr.sciolta IS NOT DISTINCT FROM r.sciolta;
 
+    -- ⭐ L'importo su cui si calcola e' alla scala del REGISTRO: ogni quota
+    --    diventa un movimento, e il movimento deve essere ESATTAMENTE la
+    --    quota. Troncato verso lo zero (trunc), cosi' la quota non supera
+    --    mai il suo imponibile; le frazioni di centesimo restano nella quota
+    --    ordinaria (imponibile - quota). Su un importo gia' alla scala del
+    --    registro — il caso normale, arrotondamento dell'articolo a 2 — e'
+    --    lo stesso numero.
+    SELECT CASE WHEN a.atttypmod > 0 THEN (a.atttypmod - 4) & 65535 END
+      INTO v_scala
+      FROM pg_attribute a
+     WHERE a.attrelid = 'anagrafiche.soggetti_titoli_iva_movimenti'::regclass
+       AND a.attname  = 'imponibile';
+    FOR i IN 1 .. v_n LOOP
+        v_impc[i] := CASE WHEN v_scala IS NULL THEN v_imp[i]
+                          ELSE trunc(v_imp[i], v_scala) END;
+    END LOOP;
+
     -- Il netto di ogni gruppo.
     FOR g IN 1 .. v_n_gruppi LOOP
         v_netto[g] := 0;
     END LOOP;
     FOR i IN 1 .. v_n LOOP
-        v_netto[v_grp[i]] := v_netto[v_grp[i]] + v_imp[i];
+        v_netto[v_grp[i]] := v_netto[v_grp[i]] + v_impc[i];
     END LOOP;
 
     -- ══ IL LOCK (D15-bis) ═══════════════════════════════════
@@ -322,7 +349,7 @@ BEGIN
                AND m.tipo_movimento  = 'FATTURA'
                AND m.fattura_id      = p_fattura_id
                AND m.fattura_riga_id = v_ids[i];
-            v_quote[i]   := COALESCE(v_q, v_imp[i] - v_imp[i]);
+            v_quote[i]   := COALESCE(v_q, v_impc[i] - v_impc[i]);
             v_mov_ids[i] := v_mid;
             v_quota_g[v_grp[i]] := v_quota_g[v_grp[i]] + v_quote[i];
         END LOOP;
@@ -392,11 +419,11 @@ BEGIN
     --    fra zero e l'imponibile, col suo segno.
     FOR i IN 1 .. v_n LOOP
         IF v_fraz[v_grp[i]] = 1 THEN
-            v_quote[i] := v_imp[i];
+            v_quote[i] := v_impc[i];
         ELSIF v_fraz[v_grp[i]] = 0 THEN
-            v_quote[i] := v_imp[i] - v_imp[i];
+            v_quote[i] := v_impc[i] - v_impc[i];
         ELSE
-            v_quote[i] := round(v_imp[i] * v_fraz[v_grp[i]], scale(v_imp[i]));
+            v_quote[i] := round(v_impc[i] * v_fraz[v_grp[i]], scale(v_impc[i]));
         END IF;
     END LOOP;
 
@@ -418,7 +445,7 @@ BEGIN
         CONTINUE WHEN v_r = 0;
         FOR v_rec IN
             SELECT x.i
-              FROM unnest(v_imp, v_grp) WITH ORDINALITY AS x(imp, grp, i)
+              FROM unnest(v_impc, v_grp) WITH ORDINALITY AS x(imp, grp, i)
              WHERE x.grp = g
              ORDER BY (sign(x.imp) = sign(v_netto[g])) DESC, abs(x.imp) DESC, x.i DESC
         LOOP
@@ -426,9 +453,9 @@ BEGIN
             -- fino a max(0, imponibile), verso il basso fino a
             -- min(0, imponibile).
             IF v_r > 0 THEN
-                v_d := LEAST(v_r, GREATEST(v_imp[v_rec.i], 0) - v_quote[v_rec.i]);
+                v_d := LEAST(v_r, GREATEST(v_impc[v_rec.i], 0) - v_quote[v_rec.i]);
             ELSE
-                v_d := GREATEST(v_r, LEAST(v_imp[v_rec.i], 0) - v_quote[v_rec.i]);
+                v_d := GREATEST(v_r, LEAST(v_impc[v_rec.i], 0) - v_quote[v_rec.i]);
             END IF;
             v_quote[v_rec.i] := v_quote[v_rec.i] + v_d;
             v_r := v_r - v_d;

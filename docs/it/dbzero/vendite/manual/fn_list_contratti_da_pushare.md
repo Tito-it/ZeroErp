@@ -128,4 +128,19 @@ Presidio a valle: dopo il push il flag non è più modificabile sul documento
 
 Brief: `brief-db-emissione-fattura-per-documento-sorgente` PARTE B (step B3).
 
+### Le esclusioni non si fatturano, e l'erogazione non si indovina (rev 2026-10-04)
+
+Dal changeSet `20261004-33`:
+
+* le righe `ESCLUSIONE` **non si listano**. Un'esclusione dice che il contratto
+  non vende quell'articolo: non è una riga da fatturare. Prima arrivava in
+  commessa senza prezzo, e per quell'articolo il calcolo del prezzo risponde
+  `E_ARTICOLO_ESCLUSO_DA_CONTRATTO`;
+* `tipo_consumo` è l'erogazione della riga, **senza ripiego** su `CANONE`.
+  L'erogazione è obbligatoria su ogni riga che non è un'esclusione (vedi
+  [`trgfn_righe_guard_erogazione_obbligatoria`](/dbzero/script/funzioni/trgfn_righe_guard_erogazione_obbligatoria)),
+  quindi su ogni riga che questa funzione restituisce.
+
+Brief: `brief-db-erogazione-obbligatoria-righe-fatturate` (R4).
+
 {% include-markdown "signature-core.md" %}

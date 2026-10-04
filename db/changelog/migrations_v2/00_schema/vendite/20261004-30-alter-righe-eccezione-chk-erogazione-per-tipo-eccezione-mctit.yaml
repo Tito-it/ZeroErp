@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA RIGA CHE SI FATTURA DICE COME SI EROGA
+#   vendite.contratti_righe:               CHECK chk_contrighe_erogazione_per_tipo_eccezione
+#   vendite.offerte_commerciali_eccezioni: CHECK chk_offerte_eccezioni_erogazione_per_tipo_eccezione
+#   Brief: brief-db-erogazione-obbligatoria-righe-fatturate (R1, R2; decisione di
+#   Tid, 2026-10-04)
+#
+# -- LA REGOLA ----------------------------------------------------
+#   OVERRIDE (prezzo forzato) e AGGIUNTA (articolo fuori listino) finiscono in
+#   fattura: devono dire come si erogano (CANONE, UNA_TANTUM, ORARIO, CONSUMO).
+#   L'ESCLUSIONE non si fattura e non si modifica (guard _a05_ del
+#   2026-10-04): l'erogazione resta libera.
+#   ⭐ Scritta come «tutto cio' che non e' ESCLUSIONE», non come «OVERRIDE o
+#   AGGIUNTA»: un tipo di riga aggiunto domani all'enum nasce vincolato, non
+#   aperto. E' la forma del CHECK gemello sul prezzo, letta dall'altro lato.
+#
+# -- IL DIFETTO ---------------------------------------------------
+#   tipo_erogazione era nullable su tutte e due le tabelle, e chi legge ripiega
+#   in silenzio: vendite.fn_list_contratti_da_pushare proietta
+#   COALESCE(cr.tipo_erogazione, 'CANONE'), il form del drawer pure. Una riga
+#   senza erogazione andava in fattura come canone senza che nessuno l'avesse
+#   scelto.
+#
+# -- SULLE DUE TABELLE, NELLO STESSO GIRO -------------------------
+#   vendite.fn_push_offerta_a_contratto ricopia tipo_erogazione dall'offerta al
+#   contratto 1:1. Con il vincolo solo sul contratto, il push di un'offerta
+#   valida per la SUA tabella farebbe nascere un contratto rifiutato dal suo
+#   stesso CHECK: l'errore arriverebbe al momento sbagliato, sul documento
+#   sbagliato.
+#
+# -- CHECK E GUARD ------------------------------------------------
+#   A parlare all'operatore e' il guard script.trgfn_righe_guard_erogazione_
+#   obbligatoria (20261004-31/-32): BEFORE ROW, scatta prima del CHECK e solleva
+#   E_RIGA_EROGAZIONE_OBBLIGATORIA col campo da accendere. Il CHECK resta la
+#   rete per le strade che il trigger non percorre (trigger spenti, COPY), ed
+#   e' la regola leggibile nella struttura della tabella.
+#
+#   preCondition HALT: una riga gia' scritta senza erogazione fermerebbe
+#   l'ADD CONSTRAINT a meta' migrate. Si corregge a mano prima (la query e'
+#   quella della preCondition; non siamo in produzione). Su un DB da zero le
+#   tabelle sono vuote e la preCondition passa.
+#   ⚠️ preCondition su dati di esercizio, non su un seed di 80_data: non e' il
+#   divieto di linee-guida-sql 11.4 (precedente: 20261002-43).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261004-30-alter-righe-eccezione-chk-erogazione-per-tipo-eccezione-mctit.yaml
+
+  - changeSet:
+      id: 20261004-30-alter-righe-eccezione-chk-erogazione-per-tipo-eccezione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti_righe e vendite.offerte_commerciali_eccezioni: CHECK che vuole
+        tipo_erogazione su ogni riga che non e' ESCLUSIONE (OVERRIDE e AGGIUNTA si fatturano).
+        Brief: brief-db-erogazione-obbligatoria-righe-fatturate (R1, R2).
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            Ci sono righe OVERRIDE/AGGIUNTA senza tipo_erogazione: vanno corrette a mano prima dei
+            CHECK chk_contrighe_erogazione_per_tipo_eccezione e
+            chk_offerte_eccezioni_erogazione_per_tipo_eccezione
+            (SELECT 'contratto', id, contratto_id FROM vendite.contratti_righe
+            WHERE tipo_eccezione <> 'ESCLUSIONE' AND tipo_erogazione IS NULL
+            UNION ALL SELECT 'offerta', id, offerta_id FROM vendite.offerte_commerciali_eccezioni
+            WHERE tipo_eccezione <> 'ESCLUSIONE' AND tipo_erogazione IS NULL).
+        - and:
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE (c.conrelid = 'vendite.contratti_righe'::regclass
+                          AND c.conname = 'chk_contrighe_erogazione_per_tipo_eccezione')
+                      OR (c.conrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
+                          AND c.conname = 'chk_offerte_eccezioni_erogazione_per_tipo_eccezione');
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT (SELECT count(*) FROM vendite.contratti_righe
+                           WHERE tipo_eccezione <> 'ESCLUSIONE' AND tipo_erogazione IS NULL)
+                       + (SELECT count(*) FROM vendite.offerte_commerciali_eccezioni
+                           WHERE tipo_eccezione <> 'ESCLUSIONE' AND tipo_erogazione IS NULL);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT chk_contrighe_erogazione_per_tipo_eccezione
+                  CHECK (tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                         OR tipo_erogazione IS NOT NULL);
+
+              COMMENT ON CONSTRAINT chk_contrighe_erogazione_per_tipo_eccezione ON vendite.contratti_righe IS
+                  'Una riga che si fattura (ogni tipo che non e'' ESCLUSIONE: oggi OVERRIDE e AGGIUNTA) '
+                  'dice come si eroga: tipo_erogazione obbligatoria. Sull''ESCLUSIONE resta libera: '
+                  'non si fattura e non si modifica. Scritto come «tutto tranne ESCLUSIONE», cosi'' un '
+                  'tipo nuovo nasce vincolato. A parlare all''operatore e'' il guard '
+                  'script.trgfn_righe_guard_erogazione_obbligatoria (E_RIGA_EROGAZIONE_OBBLIGATORIA, '
+                  'col campo): il CHECK e'' la rete. Gemello di '
+                  'chk_offerte_eccezioni_erogazione_per_tipo_eccezione, perche'' '
+                  'fn_push_offerta_a_contratto ricopia l''erogazione dall''offerta. Brief: '
+                  'brief-db-erogazione-obbligatoria-righe-fatturate (R1).';
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_erogazione_per_tipo_eccezione
+                  CHECK (tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                         OR tipo_erogazione IS NOT NULL);
+
+              COMMENT ON CONSTRAINT chk_offerte_eccezioni_erogazione_per_tipo_eccezione ON vendite.offerte_commerciali_eccezioni IS
+                  'Mirror di chk_contrighe_erogazione_per_tipo_eccezione: una riga dell''offerta che '
+                  'si fattura (ogni tipo che non e'' ESCLUSIONE) dice come si eroga. Senza, '
+                  'fn_push_offerta_a_contratto farebbe nascere un contratto rifiutato dal suo stesso '
+                  'CHECK. A parlare all''operatore e'' il guard '
+                  'script.trgfn_righe_guard_erogazione_obbligatoria. Brief: '
+                  'brief-db-erogazione-obbligatoria-righe-fatturate (R2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_erogazione_per_tipo_eccezione;
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_erogazione_per_tipo_eccezione;

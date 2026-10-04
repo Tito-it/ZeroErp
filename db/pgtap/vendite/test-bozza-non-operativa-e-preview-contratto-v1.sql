@@ -264,10 +264,12 @@ SELECT CASE
     WHEN NOT EXISTS (SELECT 1 FROM vendite.contratti WHERE numero = 'PGTAP_GA_CNT')
     THEN skip('Fixture PGTAP_GA_CNT non creata - skip', 1)
     ELSE lives_ok(
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         format(
             $$INSERT INTO vendite.contratti_righe(
-                contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-              SELECT c.id, %L::uuid, 'AGGIUNTA', 111.00, 1.00
+                contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+                tipo_erogazione)
+              SELECT c.id, %L::uuid, 'AGGIUNTA', 111.00, 1.00, 'CANONE'
                 FROM vendite.contratti c WHERE c.numero = 'PGTAP_GA_CNT'$$,
             (SELECT id FROM tmp_bozza_art LIMIT 1)
         ),

@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE script.trgfn_righe_guard_erogazione_obbligatoria: una riga di contratto
+# o di offerta che si fattura dice come si eroga (decisione di Tid, 2026-10-04).
+#
+# -- LA REGOLA ----------------------------------------------------------
+#   Ogni riga che non e' ESCLUSIONE (oggi OVERRIDE e AGGIUNTA) vuole
+#   tipo_erogazione. E' la stessa regola dei CHECK del 20261004-30: il guard
+#   la dice all'operatore, col codice E_RIGA_EROGAZIONE_OBBLIGATORIA e il
+#   campo da accendere nel contesto, invece del 23514 nudo del CHECK.
+#
+# -- LA FORMA -----------------------------------------------------------
+#   · UNA funzione per le due tabelle (vendite.contratti_righe e
+#     vendite.offerte_commerciali_eccezioni): e' una regola sola su due tabelle
+#     gemelle, come script.trgfn_righe_default_fonte_qta e
+#     script.trgfn_righe_guard_pending, che stanno qui per la stessa ragione.
+#     Due copie risponderebbero un giorno in due modi diversi;
+#   · TG_ARGV[0] = il nome della colonna del documento padre ('contratto_id',
+#     'offerta_id'): serve solo al contesto, come in trgfn_righe_guard_pending;
+#   · la condizione e' «tipo diverso da ESCLUSIONE», non «OVERRIDE o
+#     AGGIUNTA»: un tipo nuovo nasce vincolato. Stessa forma del CHECK;
+#   · nessuna fn_check_*: la regola non spegne un pulsante, dice quale campo
+#     manca in un form (linee-guida-sql §5, «la domanda che viene PRIMA»).
+#     Si solleva il codice diretto;
+#   · DATO_ERRATO e non CONFLITTO_STATO: c'e' un campo da correggere, e il
+#     frontend lo accende dal contesto (campo = tipo_erogazione).
+#   · il trigger (20261004-32) la monta nella fascia _a10_, BEFORE INSERT OR
+#     UPDATE OF tipo_erogazione, tipo_eccezione. Sulle righe ferme non serve
+#     guardare: il CHECK garantisce che non ce ne siano di fuori regola.
+#
+# Brief: brief-db-erogazione-obbligatoria-righe-fatturate (R1, R2, R3).
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261004-31-create-trgfn-righe-guard-erogazione-obbligatoria-mctit.yaml
+
+  - changeSet:
+      id: 20261004-31-create-trgfn-righe-guard-erogazione-obbligatoria
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_righe_guard_erogazione_obbligatoria: una riga di contratto o di offerta che
+        non e' ESCLUSIONE vuole tipo_erogazione (E_RIGA_EROGAZIONE_OBBLIGATORIA, campo
+        tipo_erogazione). Brief: brief-db-erogazione-obbligatoria-righe-fatturate (R1, R2, R3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'trgfn_righe_guard_erogazione_obbligatoria';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rifiutare una riga di contratto o di offerta che si fattura
+              --   (ogni tipo che non e' ESCLUSIONE) senza tipo_erogazione.
+              -- Uso:   BEFORE INSERT OR UPDATE OF tipo_erogazione, tipo_eccezione
+              --        FOR EACH ROW, fascia _a10_, su vendite.contratti_righe e
+              --        vendite.offerte_commerciali_eccezioni.
+              -- TG_ARGV[0]: nome della colonna del documento padre ('contratto_id',
+              --   'offerta_id'), solo per il contesto dell'errore.
+              DECLARE
+                  v_col_padre text := TG_ARGV[0];
+              BEGIN
+                  IF NEW.tipo_erogazione IS NOT NULL
+                     OR NEW.tipo_eccezione::text = 'ESCLUSIONE' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      TG_NAME::text,
+                      'E_RIGA_EROGAZIONE_OBBLIGATORIA',
+                      jsonb_build_object(
+                          'campo',          'tipo_erogazione',
+                          'riga_id',        NEW.id,
+                          v_col_padre,      to_jsonb(NEW) -> v_col_padre,
+                          'articolo_id',    NEW.articolo_id,
+                          'tipo_eccezione', NEW.tipo_eccezione),
+                      NEW.tx_id,
+                      VARIADIC ARRAY[]::text[]);
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria()
+              IS 'Guard: una riga di vendite.contratti_righe o di vendite.offerte_commerciali_eccezioni che si fattura (ogni tipo che non e'' ESCLUSIONE: oggi OVERRIDE e AGGIUNTA) vuole tipo_erogazione (E_RIGA_EROGAZIONE_OBBLIGATORIA, DATO_ERRATO, campo = tipo_erogazione). Sull''ESCLUSIONE l''erogazione resta libera. Una funzione per le due tabelle gemelle, come trgfn_righe_default_fonte_qta: fn_push_offerta_a_contratto ricopia l''erogazione dall''offerta, e la regola deve essere la stessa ai due capi. TG_ARGV[0] = colonna del documento padre (contratto_id, offerta_id), solo per il contesto. Trigger _a10_ BEFORE INSERT OR UPDATE OF tipo_erogazione, tipo_eccezione: parla prima dei CHECK chk_contrighe_erogazione_per_tipo_eccezione / chk_offerte_eccezioni_erogazione_per_tipo_eccezione, che restano la rete. Contesto: campo, riga_id, la colonna padre, articolo_id, tipo_eccezione. Nasce il 2026-10-04, brief-db-erogazione-obbligatoria-righe-fatturate (decisione di Tid).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.trgfn_righe_guard_erogazione_obbligatoria();

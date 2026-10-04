@@ -1,0 +1,3 @@
+id,codice_interno,codice,descrizione,etichetta_key,ordine
+1,HTML,HTML,"Sorgente HTML con il suo CSS",documenti.formati_template.html,10
+2,HTML_MARKDOWN_BLOCKS,HTML_MARKDOWN_BLOCKS,"Sorgente HTML con blocchi Markdown controllati",documenti.formati_template.html_markdown_blocks,20

@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-DB-1 (seed) — I VALORI AMMESSI DI UNA VERSIONE DI TEMPLATE
+#   documenti.formati_template    HTML, HTML_MARKDOWN_BLOCKS
+#   documenti.formati_pagina      A4, A3, LETTER
+#   documenti.orientamenti_pagina PORTRAIT, LANDSCAPE
+#   Brief: brief-db-vocabolari-versione-template, sezione 5
+#
+# ⭐ I valori sono quelli dei tre CHECK di 20260429-54, ne' uno di piu' ne' uno
+#   di meno: il cantiere sposta la sede dell'insieme, non lo cambia.
+# ⚠️ Mirror `loadUpdateData`, `runOnChange`: un valore si cambia nel CSV, mai
+#   con un UPDATE a parte (linee-guida-sql 11.2). Un CSV per tabella. Chiave
+#   del mirror: `id`, fisso nei CSV — le FK puntano a codice_interno, quindi un
+#   reseed con id diversi non sposta niente.
+# ⚠️ Colonne di audit lasciate ai DEFAULT del database.
+# ⚠️ etichetta_key: la legge scripts/check_i18n_keys.py dai CSV, quindi le sette
+#   chiavi documenti.formati_template.*, documenti.formati_pagina.*,
+#   documenti.orientamenti_pagina.* devono esistere nei locale del FE nello
+#   STESSO giro (richiesta nel brief, sezione 5.4): senza, la CI e' rossa.
+# ⚠️ Deve girare PRIMA di 20261004-22 (le FK), che lo presuppone: in 80_data
+#   l'ordine e' quello dei nomi dei file.
+# ⚠️ Seed di CATALOGO: nessuna FK verso anagrafiche.*, nessun `context`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261004-21-seed-vocabolari-versione-template-mctit.yaml
+
+  - changeSet:
+      id: 20261004-21-seed-vocabolari-versione-template
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed documenti.formati_template, documenti.formati_pagina,
+        documenti.orientamenti_pagina con i valori dei tre CHECK di 20260429-54.
+        codice_interno = chiave naturale stabile (puntata dalle FK); codice e descrizione per
+        l'operatore, etichetta_key per il FE. Mirror loadUpdateData. Brief:
+        brief-db-vocabolari-versione-template (R-DB-1).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: documenti
+            tableName: formati_template
+        - tableExists:
+            schemaName: documenti
+            tableName: formati_pagina
+        - tableExists:
+            schemaName: documenti
+            tableName: orientamenti_pagina
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/documenti/formati_template.csv
+            tableName: formati_template
+            schemaName: documenti
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: etichetta_key, type: STRING }
+              - column: { name: ordine, type: NUMERIC }
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/documenti/formati_pagina.csv
+            tableName: formati_pagina
+            schemaName: documenti
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: etichetta_key, type: STRING }
+              - column: { name: ordine, type: NUMERIC }
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/documenti/orientamenti_pagina.csv
+            tableName: orientamenti_pagina
+            schemaName: documenti
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: etichetta_key, type: STRING }
+              - column: { name: ordine, type: NUMERIC }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM documenti.orientamenti_pagina
+               WHERE codice_interno IN ('PORTRAIT', 'LANDSCAPE');
+              DELETE FROM documenti.formati_pagina
+               WHERE codice_interno IN ('A4', 'A3', 'LETTER');
+              DELETE FROM documenti.formati_template
+               WHERE codice_interno IN ('HTML', 'HTML_MARKDOWN_BLOCKS');

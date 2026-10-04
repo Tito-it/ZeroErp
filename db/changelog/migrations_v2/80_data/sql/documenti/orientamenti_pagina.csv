@@ -1,0 +1,3 @@
+id,codice_interno,codice,descrizione,etichetta_key,ordine
+1,PORTRAIT,PORTRAIT,"Verticale",documenti.orientamenti_pagina.portrait,10
+2,LANDSCAPE,LANDSCAPE,"Orizzontale",documenti.orientamenti_pagina.landscape,20

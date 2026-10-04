@@ -132,6 +132,20 @@ Avere `qta_operativa` valorizzata gia' a monte rende la copia 1:1 di
 
 ---
 
+### Una riga che si fattura dice come si eroga (2026-10-04)
+
+Come sul contratto: ogni riga che non è `ESCLUSIONE` vuole `tipo_erogazione`.
+Il trigger `trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd`
+(→ [`trgfn_righe_guard_erogazione_obbligatoria`](/dbzero/script/funzioni/trgfn_righe_guard_erogazione_obbligatoria))
+rifiuta la riga che la lascia vuota → `E_RIGA_EROGAZIONE_OBBLIGATORIA`, col campo
+`tipo_erogazione`; dietro c'è il vincolo
+`chk_offerte_eccezioni_erogazione_per_tipo_eccezione`. La regola deve stare
+anche qui perché `fn_push_offerta_a_contratto` copia l'erogazione nel
+contratto: senza, un'offerta accettata farebbe nascere un contratto che il
+contratto stesso rifiuta.
+
+---
+
 ### Note collegate
 
 Le note testuali sulle singole eccezioni risiedono in `vendite.note_offerte_commerciali`

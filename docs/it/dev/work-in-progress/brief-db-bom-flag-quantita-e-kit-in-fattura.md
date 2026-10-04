@@ -45,6 +45,10 @@
 > R-FE-A1, test verdi. ➡️ **Al team DB due richieste nuove (§15.4)**: ritirare il ramo di
 > proiezione del risolutore (decisione di Tid: orfano → si ritira) e dare alla fattura singola la
 > sua chiave di motivo (`fattura_plafond_consumato`, scelta A di Tid).
+> ✅ **Quinto giro DB scritto il 2026-10-04 (§16)**: R-DB-C10 (`20261004-15`: la proiezione si
+> ritira, un importo solleva) e R-DB-A2 (`20261004-16`), più il testo di
+> `E_IVA_RESOLVE_NON_INVOCABILE`. ⏳ **Da applicare** (Tid), poi corsa pgTAP. Al BE solo un
+> ritocco facoltativo (§16.4).
 >
 > **In una riga:** (A) `partecipa_qta` e `determina_qta_padre` si impostano ma nessuna logica li
 > legge: si ritirano. (B) In fattura la riga del kit si ricava quantità e UoM **dai componenti**:
@@ -1207,3 +1211,79 @@ passa `NULL::numeric`. Il ramo nel DB lo ritira il team DB (R-DB-C10).
   risultato (capienze indipendenti). ⚠️ Fra **lotti** concorrenti resta possibile un deadlock fra
   due titoli: PostgreSQL lo rileva, il task fallisce e il rilancio è idempotente.
 * Tre test nuovi (33-35). Suite `vendite`, `anagrafiche`, `core`: 4283 verdi (116 skip).
+
+## 16. Lato DB, quinto giro — le richieste del §15.4 (2026-10-04)
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-04. **A chi:** Tid (apply, pgTAP), poi BE
+> (§16.4, una cosa facoltativa).
+> **Stato:** scritto, ⏳ **da applicare** (Tid). Non committato.
+
+### 16.1 R-DB-C10 — la proiezione del risolutore si ritira
+
+`20_code/vendite/20261004-15-update-fn-resolve-iva-riga-it-ritiro-proiezione`, solo su
+`vendite.fn_resolve_iva_riga_it`. Il guscio non si tocca: inoltra `p_imponibile` senza logica sua.
+
+* si toglie il **ramo**, non il parametro: firma e `RETURNS TABLE` invariati (quelli del `-03`, coi
+  `%TYPE`), `CREATE OR REPLACE`;
+* `p_imponibile` valorizzato **solleva** `E_IVA_RESOLVE_NON_INVOCABILE`, con qualunque `p_consumo`
+  (la forma consigliata dal BE). Un solo guard, che assorbe i due di prima (consumo con importo,
+  importo negativo). Il perché: un importo accettato e ignorato farebbe credere al chiamante di aver
+  avuto una spezzatura;
+* `quota` resta ed esce sempre `NULL`; anteprima e consumo invariati;
+* corpo dal vivo (doc auto-gen = `-03`, verificato uguale), sostituzioni mirate contate; rollback =
+  il corpo del `-03`.
+
+⚠️ **Il messaggio del codice diceva il falso** per il caso nuovo (e già per «consumo con importo»):
+«Risoluzione IVA invocata **senza** imponibile», quando l'importo c'è. `messaggi_errore.csv`
+(1023) ora dice «invocata con un parametro assente o non valido: %s.», e la causa nomina l'importo.
+Un `%s` come prima. ⚠️ Sveglia il mirror al migrate.
+
+pgTAP:
+
+* `vendite/test-fn-resolve-iva-riga.sql`: **12** diventa il rifiuto di un importo, costruito sul
+  titolo a tetto incapiente, cioè dove la proiezione avrebbe risposto qualcosa di plausibile;
+  **13** l'anteprima sullo stesso titolo (una riga, `TITOLO`, quota `NULL`). Gli altri casi che
+  passavano `100.00` senza provare la proiezione (2-6, 8-11, 14, 15) passano `NULL`.
+  ⛔ L'11 era il caso pericoloso: con l'importo il guard nuovo avrebbe sollevato un `P0001` e il
+  `throws_ok` sui titoli ambigui sarebbe rimasto **verde per il motivo sbagliato**. Piano 18
+  invariato;
+* `vendite/test-esigibilita-iva-per-cassa-v1.sql` test 19: `100.00` → `NULL` (asserisce la coppia
+  esigibilità/split, non la quota).
+
+### 16.2 R-DB-A2 — eliminare una fattura: la frase parla di quella fattura
+
+`20_code/script/20261004-16-update-fn-check-fattura-eliminabile-da-lotto-motivo-plafond-singolare`.
+Il motivo 6 resta delegato alla sede unica (`fn_check_fatture_con_plafond_consumato`); sul suo
+risultato si sostituisce solo la `reason_key` con
+`vendite.lotti.azione_reason.fattura_plafond_consumato` (già in `it.json`/`en.json`). Codice,
+`reason` e dettaglio restano della sede; le due porte del lotto non cambiano.
+
+⚠️ Scritta con `motivo || jsonb_build_object('reason_key', '…')` e non con `jsonb_set`: è la forma
+che `scripts/check_i18n_keys.py` (controllo 4) riconosce, quindi la chiave resta presidiata contro
+i locales dopo la rigenerazione della doc.
+
+pgTAP: `vendite/test-reset-fattura-plafond-consumato-v1.sql`, test **5-7** pretendono anche la
+`reason_key`: quella della fattura sulla porta singola, quella del lotto sulle altre due. Prima
+guardavano il solo codice, e sarebbero rimasti verdi con la frase sbagliata a video. Piano 11
+invariato.
+
+### 16.3 Come è stato provato, e cosa la prova NON copre
+
+* **Cluster PostgreSQL 18 usa-e-getta**, stub con la forma della doc auto-gen, **SQL estratto
+  dagli YAML**: stato di prima (`-03`, `-04`, `-07`, `-08`), precondizioni (1 e 2), avanti `-15`
+  `-16`, rollback, di nuovo avanti — tutto pulito, una firma per funzione.
+* Casi: anteprima senza titolo (una riga, `ARTICOLO`); anteprima su titolo a tetto (una riga,
+  `TITOLO`); consumo (due righe, titolo poi ordinario); importo 250 sul titolo a tetto **accettato
+  prima, rifiutato dopo** e di nuovo accettato dopo il rollback; importo negativo e consumo con
+  importo rifiutati prima e dopo. Check: fattura con movimento → `fattura_plafond_consumato`
+  (prima: `plafond_consumato`), fattura senza → `[]`, sede unica invariata al plurale.
+* Cancelli statici verdi: letterali, `runOnChange`, preCondition, DDL su trigger, grant batch,
+  fuso, preambolo pgTAP (debito `throws_ok` 115, soglia 115: il `throws_like` nuovo non lo alza).
+* ⚠️ **Non copre**: il DB vero (RLS come app, fixture vere), `plpgsql_check`, i presidi trasversali,
+  i pgTAP toccati, il mirror di `messaggi_errore.csv`. Restano alla corsa di Tid.
+
+### 16.4 Al BE (facoltativo, nessun blocco)
+
+| # | Cosa |
+| --- | --- |
+| R-BE-C10 | `error_messages_fallback.py` 507, `E_IVA_RESOLVE_NON_INVOCABILE`: il ripiego dice «invocata senza i dati necessari…». Non è falso come lo era il catalogo, ma se il ripiego si allinea al catalogo va riletto dopo il migrate. Nessuna policy cambia (classe e codice invariati) |

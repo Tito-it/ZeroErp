@@ -8,7 +8,7 @@
 -- 2) Riferimenti minimi disponibili
 -- 3) Contratto ATTIVO in validita restituito
 -- 4) Segment key include competenza_mese (CONTR:<uid>:R:<id>:M:<YYYY-MM>)
--- 5) tipo_consumo = CANONE default (quando tipo_erogazione NULL)
+-- 5) tipo_consumo = l'erogazione della riga (UNA_TANTUM), senza ripiego
 -- 6) prezzo_bloccato = TRUE quando prezzo_unitario presente
 -- 7) Contratto non ATTIVO escluso
 -- 8) Filtro p_billing_account_id rispettato
@@ -49,46 +49,37 @@ SELECT ok(
 -- ============================================================
 -- 0b) Riferimenti minimi
 -- ============================================================
+-- 🔴 FIXTURE COSTRUITA, 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+--   Prima leggeva dal database il primo billing account e l'ultimo articolo:
+--   su un DB ricostruito da zero (CI) non c'e' nessun BA, e il file finiva in
+--   ERRORE_FIXTURE (baseline-rossi-ci). Ora cliente e articolo nascono qui dai
+--   builder; dal DB si leggono solo gli stati e la sorgente, che sono seed.
+--   Con il contesto aperto il builder lega il BA all'azienda di chi agisce.
+CREATE TEMP TABLE tmp_cli_contr AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('pgTAP lister contratti');
+
 CREATE TEMP TABLE tmp_refs_contr AS
 SELECT
-  (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS billing_account_id,
-  (SELECT ba.utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS utility_id,
-  (SELECT ba.istanza_utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS istanza_utility_id,
-  (SELECT a.id
-     FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1
-  ) AS articolo_id,
+  c.billing_account_id,
+  c.utility_id,
+  c.istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-LCP-' || substr(md5(clock_timestamp()::text), 1, 8)) AS articolo_id,
   (SELECT s.id
      FROM config.stati_doc_contratti s
-    WHERE s.codice = 'ATTIVO' AND s.attivo IS TRUE
+    WHERE s.codice_interno = 'ATTIVO' AND s.attivo IS TRUE
     LIMIT 1
   ) AS stato_attivo_id,
   (SELECT s.id
      FROM config.stati_doc_contratti s
-    WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE
     LIMIT 1
   ) AS stato_draft_id,
   (SELECT s.id
      FROM config.sorgenti s
-    WHERE s.codice = 'CONTRATTO' AND s.attivo IS TRUE
+    WHERE s.codice_interno = 'CONTRATTO' AND s.attivo IS TRUE
     LIMIT 1
-  ) AS sorgente_tipo_id;
+  ) AS sorgente_tipo_id
+FROM tmp_cli_contr c;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL
@@ -136,12 +127,16 @@ WITH ins AS (
 --   `FISSA` e' letteralmente «la quantita' e' quella scritta qui» — ed e' il
 --   valore di 23 righe su 24 in tabella. ⚠️ Non e' libero: il CHECK
 --   `chk_contrighe_coerenza_fonte_erogazione` lo incrocia con `tipo_erogazione`.
+  -- 🔴 tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04
+  --   (brief-db-erogazione-obbligatoria-righe-fatturate). UNA_TANTUM e non
+  --   CANONE: il test 3 deve vedere il valore della RIGA, e CANONE era anche il
+  --   vecchio ripiego del lister — con quello il test passerebbe per coincidenza.
   INSERT INTO vendite.contratti_righe (
-    contratto_id, articolo_id, prezzo_unitario,
+    contratto_id, articolo_id, prezzo_unitario, tipo_erogazione,
     qta_operativa, quantita, fonte_quantita_attesa, tipo_eccezione, attivo, meta
   )
   SELECT
-    c.id, r.articolo_id, 50.000000,
+    c.id, r.articolo_id, 50.000000, 'UNA_TANTUM',
     1.000000, 1.000000, 'FISSA',
     -- ⚠️ `tipo_eccezione` e' NOT NULL e il CHECK
     --   `chk_contrighe_prezzo_per_tipo_eccezione` lo lega al prezzo:
@@ -207,16 +202,20 @@ SELECT ok(
 );
 
 -- ============================================================
--- 3) tipo_consumo = CANONE default (tipo_erogazione NULL)
+-- 3) tipo_consumo = l'erogazione della riga
 -- ============================================================
+-- 🔴 Riscritto il 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate R4).
+--   Pinnava il ripiego COALESCE(tipo_erogazione, 'CANONE'): una riga senza
+--   erogazione andava in fattura come canone senza che nessuno l'avesse scelto.
+--   L'erogazione e' ora obbligatoria (CHECK + guard) e il lister la legge e basta.
 SELECT ok(
   EXISTS (
     SELECT 1
     FROM tmp_result_contr rc
     WHERE rc.contratto_id = (SELECT id FROM tmp_contratto)
-      AND rc.tipo_consumo = 'CANONE'
+      AND rc.tipo_consumo = 'UNA_TANTUM'
   ),
-  'tipo_consumo = CANONE default (quando tipo_erogazione NULL)'
+  'tipo_consumo = l''erogazione della riga (UNA_TANTUM), senza ripiego'
 );
 
 -- ============================================================
@@ -255,12 +254,13 @@ WITH ins AS (
 )
 SELECT * FROM ins;
 
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe (
-  contratto_id, articolo_id, prezzo_unitario,
+  contratto_id, articolo_id, prezzo_unitario, tipo_erogazione,
   qta_operativa, quantita, fonte_quantita_attesa, tipo_eccezione, attivo, meta
 )
 SELECT
-  c.id, r.articolo_id, 30.000000,
+  c.id, r.articolo_id, 30.000000, 'CANONE',
   1.000000, 1.000000, 'FISSA',
   'AGGIUNTA'::vendite.tipo_eccezione_contratto, true,
   jsonb_build_object('test_scope', 'pgtap_fn_list_contr', 'case', 'draft')

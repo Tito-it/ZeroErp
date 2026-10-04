@@ -228,11 +228,24 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   ⭐ Decisione C di Tid (§13, 2026-10-04): il plafond si consuma sul **netto** della fattura, le righe
   negative restituiscono (comprende R-DB-B13). DB `20261004-02…-06` applicato il 2026-10-04, pgTAP verdi; poi
   un giro BE (R-BE-C1…C9): risolutore con `p_consumo` in coda, una chiamata alla madre per titolo.
-  Strada A (§14): una fattura che ha consumato plafond non si disfa più (`20261004-07…-11`), applicato il 2026-10-04, pgTAP verdi. Lato DB chiuso; resta BE/FE (R-BE-A1, R-FE-A1).
+  Strada A (§14): una fattura che ha consumato plafond non si disfa più (`20261004-07…-11`), applicato il 2026-10-04, pgTAP verdi. Quarto giro BE/FE fatto (§15); quinto giro DB (§16:
+  ritiro della proiezione del risolutore, `20261004-15`; motivo singolare della porta «elimina
+  fattura», `20261004-16`) scritto il 2026-10-04, ⏳ da applicare.
 - **Un'esclusione del contratto non si modifica** (`work-in-progress/brief-db-contratto-esclusione-non-modificabile.md`,
   decisione di Tid del 2026-10-04): DB applicato il 2026-10-04 (`20261004-12…-14`, lock su
-  `contratti_righe.tipo_eccezione`, due codici nuovi), pgTAP senza regressioni. BE/FE scritto il 2026-10-04
-  (§7), non committato; aperto §7.1 (ripiego `tipo_erogazione` vivo sulle righe modificabili).
+  `contratti_righe.tipo_eccezione`, due codici nuovi), pgTAP senza regressioni. Lato DB chiuso; resta BE/FE (§5).
+- **Una riga che si fattura dice come si eroga** (`work-in-progress/brief-db-erogazione-obbligatoria-righe-fatturate.md`,
+  richiesta del BE, decisione di Tid del 2026-10-04): `tipo_erogazione` obbligatoria su OVERRIDE/AGGIUNTA di contratto
+  e offerta (`20261004-30…-32`, CHECK + guard, codice `E_RIGA_EROGAZIONE_OBBLIGATORIA`); il lister del push non
+  propone più le esclusioni e non ripiega su CANONE (`-33`). Applicato il 2026-10-04, pgTAP verdi. Lato DB
+  chiuso; resta BE/FE (§6).
+- **Valori ammessi di una versione di template: da CHECK a vocabolario**
+  (`work-in-progress/brief-db-vocabolari-versione-template.md`): DB scritto il 2026-10-04
+  (`20261004-20…-22`, tre vocabolari senza `attivo`, FK su `codice_interno`), applicato il 2026-10-04, pgTAP senza regressioni; le
+  sette chiavi i18n del FE (CI rossa finché non arrivano, accettato da Tid). Lato DB chiuso.
+  ✅ **D-1 decisa da Tid il 2026-10-04, strada A** (§5.6): oggi il motore di stampa non legge
+  `page_format`, `page_orientation` né i margini (un A3 orizzontale esce A4 verticale); R-BE-V2 gli fa
+  comporre la regola `@page` dalla versione. Aperto a parte: `HTML_MARKDOWN_BLOCKS` mai implementato.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

@@ -41,6 +41,10 @@ AS $function$
 --   · R-D2: due colonne in coda, ordine e uom_operativa_id della riga di
 --     contratti_righe (NULL sulle righe DA_LISTINO, che non ne hanno una):
 --     il form di modifica le rimanda al PATCH, e non deve indovinarle.
+-- rev 2026-10-04 (brief-db-contratto-esclusione-non-modificabile, R1): la
+--   riga ESCLUSIONE perde il verbo MODIFICA, resta RIPRISTINA_ARTICOLO. Il
+--   rifiuto dell'UPDATE e' di vendite.trgfn_contratti_righe_guard_esclusione_
+--   immutabile (trigger _a05_ sulla riga).
 DECLARE
     v_listino_id          vendite.contratti.listino_id%TYPE;
     v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
@@ -98,8 +102,11 @@ v_listino_versione_id := vendite.fn_listino_versione_in_vigore(v_listino_id, CUR
             CASE
                 WHEN cr.tipo_eccezione = 'OVERRIDE'
                     THEN ARRAY['MODIFICA', 'RIPRISTINA_LISTINO']
+                -- rev 2026-10-04 (brief-db-contratto-esclusione-non-modificabile,
+                -- R1): un'esclusione si crea e si cancella, non si modifica.
+                -- MODIFICA esce; il guard _a05_ della riga rifiuta l'UPDATE.
                 WHEN cr.tipo_eccezione = 'ESCLUSIONE'
-                    THEN ARRAY['MODIFICA', 'RIPRISTINA_ARTICOLO']
+                    THEN ARRAY['RIPRISTINA_ARTICOLO']
                 ELSE ARRAY['SOVRASCRIVI_PREZZO', 'ESCLUDI']
             END,
             -- Solo dove «Escludi» e' un'azione della riga (dal listino).
@@ -187,7 +194,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_contratto_righe_preview(p_contratto_id bigint)
-IS 'Le righe OPERATIVE di un contratto: parte 1 dal listino (core fn_espandi_listino_versione, standalone e bundle) con l''overlay delle eccezioni OVERRIDE/ESCLUSIONE; parte 2 le AGGIUNTA (standalone e bundle, componenti da contratti_righe_componenti). Versione del listino: fissata se il contratto e'' attivo, altrimenti la ATTIVA/CHIUSA valida oggi. ⭐ Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.4) e'' la SORGENTE della lista configurabile vendite.contratto_righe, per le due forme del contratto (senza listino restano le sole AGGIUNTA), e porta tre colonne in coda: riga_key (L:<articolo>:<uom> per le righe del listino, A:<id> per le aggiunte: la chiave che prima il frontend inventava), azioni (i verbi che l''origine ammette: DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> MODIFICA, RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI) e escludi_blocco_codice (il reason del primo motivo di script.fn_check_esclusione_articolo_contratto, NULL = «Escludi» ammesso: lo stesso predicato del guard). Il blocco «fuori bozza» non e'' qui: e'' di documento. 24 colonne. rev 2026-10-01: nel jsonb componenti la chiave esposto_in_fattura diventa esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) (brief-db-esposizione-componenti-kit-in-fattura). rev 2026-10-04 (brief-db-liste-righe-documento, sezione 9.11): le AGGIUNTA escono nell''UdM della RIGA (uom_operativa_id; NULL = la base dell''articolo, come trgfn_qta_from_operativa), e i componenti di un bundle AGGIUNTA nella loro; in coda ordine e uom_operativa_id della riga di contratti_righe (NULL sulle DA_LISTINO), che il form di modifica rimanda al PATCH.';
+IS 'Le righe OPERATIVE di un contratto: parte 1 dal listino (core fn_espandi_listino_versione, standalone e bundle) con l''overlay delle eccezioni OVERRIDE/ESCLUSIONE; parte 2 le AGGIUNTA (standalone e bundle, componenti da contratti_righe_componenti). Versione del listino: fissata se il contratto e'' attivo, altrimenti la ATTIVA/CHIUSA valida oggi. ⭐ Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.4) e'' la SORGENTE della lista configurabile vendite.contratto_righe, per le due forme del contratto (senza listino restano le sole AGGIUNTA), e porta tre colonne in coda: riga_key (L:<articolo>:<uom> per le righe del listino, A:<id> per le aggiunte: la chiave che prima il frontend inventava), azioni (i verbi che l''origine ammette: DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI) e escludi_blocco_codice (il reason del primo motivo di script.fn_check_esclusione_articolo_contratto, NULL = «Escludi» ammesso: lo stesso predicato del guard). Il blocco «fuori bozza» non e'' qui: e'' di documento. 24 colonne. rev 2026-10-01: nel jsonb componenti la chiave esposto_in_fattura diventa esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) (brief-db-esposizione-componenti-kit-in-fattura). rev 2026-10-04 (brief-db-liste-righe-documento, sezione 9.11): le AGGIUNTA escono nell''UdM della RIGA (uom_operativa_id; NULL = la base dell''articolo, come trgfn_qta_from_operativa), e i componenti di un bundle AGGIUNTA nella loro; in coda ordine e uom_operativa_id della riga di contratti_righe (NULL sulle DA_LISTINO), che il form di modifica rimanda al PATCH. rev 2026-10-04 (brief-db-contratto-esclusione-non-modificabile, R1): un''esclusione si crea e si cancella, non si modifica: la riga ESCLUSIONE perde MODIFICA e resta col solo RIPRISTINA_ARTICOLO; l''UPDATE lo rifiuta il guard vendite.trgfn_contratti_righe_guard_esclusione_immutabile.';
 ```
 
 ---
