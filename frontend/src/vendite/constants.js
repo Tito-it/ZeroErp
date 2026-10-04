@@ -215,8 +215,8 @@ export const TIPO_EROGAZIONE = Object.freeze({
 })
 
 // Fonti quantita su `vendite.contratti_righe.fonte_quantita_attesa`
-// (CHECK DB `chk_contrighe_fonte_qta`, NOT NULL dal 2026-05-19 via
-// migration 20260519-05). Coerenza con la matrice
+// (CHECK DB `chk_contrighe_fonte_qta`; obbligatoria su ogni riga che non e'
+// un'ESCLUSIONE, `chk_*_fonte_per_tipo_eccezione` dal 2026-10-04). Coerenza con la matrice
 // `tipo_erogazione x fonte_quantita_attesa` vincolata dal CHECK
 // `chk_contrighe_coerenza_fonte_erogazione` (migration 20260519-05):
 // 7 combinazioni vietate, vedi `_FONTE_VIETATE_PER_TIPO_EROGAZIONE`

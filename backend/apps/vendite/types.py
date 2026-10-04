@@ -1003,7 +1003,8 @@ class OffertaEccezioneRow(TypedDict):
     is_composito: bool
     tipo_eccezione: str
     tipo_erogazione: str | None
-    fonte_quantita_attesa: str
+    # NULL solo sull'ESCLUSIONE, che non porta dati di fatturazione (2026-10-04).
+    fonte_quantita_attesa: str | None
     periodicita: str | None
     generazione_canone: str | None
     competenza_canone: str | None
@@ -1012,7 +1013,7 @@ class OffertaEccezioneRow(TypedDict):
     qta_operativa: str | None
     uom_operativa_id: int | None
     uom_codice: str | None
-    factor_to_base: str
+    factor_to_base: str | None
     ordine: int | None
     attivo: bool
     meta: dict[str, Any]

@@ -3522,6 +3522,7 @@
       "eccezione_creata": "Exception created.",
       "eccezione_aggiornata": "Exception updated.",
       "eccezione_eliminata": "Exception deleted.",
+      "esclusione_non_modificabile": "An excluded item cannot be edited: delete the row to bring it back into the offer.",
       "errore_generico": "Error while saving the offer exception.",
       "richiedi_approvazione": "Request approval",
       "richiedi_approvazione_in_corso": "Sending approval request...",

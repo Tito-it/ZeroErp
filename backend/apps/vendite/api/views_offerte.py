@@ -84,7 +84,9 @@ _OFFERTA_PATCH_REQUEST = schema_da_contratto(
 )
 _ECCEZIONE_CREATE_REQUEST = schema_da_contratto(
     "VenditeOffertaEccezioneCreateReq", offerte_service.CREATE_KEYS_ECCEZIONE,
-    obbligatorie=("articolo_id", "tipo_eccezione", "fonte_quantita_attesa"),
+    # La fonte non e' fra le obbligatorie: l'ESCLUSIONE nasce senza (2026-10-04),
+    # e sulle righe che si fatturano la riempie il trigger DB dall'erogazione.
+    obbligatorie=("articolo_id", "tipo_eccezione"),
 )
 _ECCEZIONE_PATCH_REQUEST = schema_da_contratto(
     "VenditeOffertaEccezionePatchReq", offerte_service.UPDATE_KEYS_ECCEZIONE,

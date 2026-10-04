@@ -3522,6 +3522,7 @@
       "eccezione_creata": "Eccezione creata.",
       "eccezione_aggiornata": "Eccezione aggiornata.",
       "eccezione_eliminata": "Eccezione eliminata.",
+      "esclusione_non_modificabile": "Un articolo escluso non si modifica: per riaverlo in offerta elimina la riga.",
       "errore_generico": "Errore durante il salvataggio dell'eccezione offerta.",
       "richiedi_approvazione": "Richiedi approvazione",
       "richiedi_approvazione_in_corso": "Invio richiesta approvazione...",

@@ -923,7 +923,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     #        (refactor modalita 2026-05-15). `tipo_eccezione` NOT NULL nello
     #        schema; trigger DB chk_contrighe_prezzo_per_tipo_eccezione
     #        valida la coerenza prezzo_unitario per tipo. Trigger
-    #        trgfn_contratti_righe_guard_aggiunta_fuori_listino blocca
+    #        script.trgfn_righe_guard_aggiunta_fuori_listino blocca
     #        AGGIUNTA su articoli presenti nel listino di riferimento.
     def create_riga(self, contratto_id: int, data: dict[str, Any]) -> int:
         riga = execute_dynamic_insert(
@@ -952,7 +952,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "meta",
         # Workflow L3: la transizione PENDING -> APPROVED/REJECTED e
         # l'aggancio della pratica passano da qui (allowlist trigger
-        # `trgfn_contratti_righe_guard_pending` ammette workflow + meta
+        # `script.trgfn_righe_guard_pending` ammette workflow + meta
         # + audit, blocca ogni altra modifica struttura su righe PENDING).
         "stato_approvazione_prezzo",
         "pratica_approvazione_prezzo_id",

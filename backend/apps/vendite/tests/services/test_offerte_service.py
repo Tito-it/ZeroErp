@@ -1323,9 +1323,9 @@ class OfferteGatePrezzoTests(TestCase):
             1,
             {
                 "articolo_id": "00000000-0000-7000-8000-000000000abc",
+                # L'esclusione come la crea «Escludi»: articolo e tipo, niente
+                # dati di fatturazione (2026-10-04). Prima ci voleva la fonte.
                 "tipo_eccezione": "ESCLUSIONE",
-                "fonte_quantita_attesa": "MANUALE",
-                "prezzo_unitario": None,
             },
             auth_user_id=99,
         )
@@ -1476,7 +1476,6 @@ class OfferteScrittureBbTests(TestCase):
             svc.crea_eccezione(1, {
                 "articolo_id": "00000000-0000-7000-8000-000000000abc",
                 "tipo_eccezione": "ESCLUSIONE",
-                "fonte_quantita_attesa": "FISSA",
                 "meta": 42,
             })
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
