@@ -1369,7 +1369,8 @@ invarianti veri ma non scritti, che quando smettono di valere non danno errore:
   (linee-guida-sql §2). **Q-5** è passata in D8.
 
 Brief `work-in-progress/brief-db-esclusioni-implicite.md`; changeSet
-`20261004-80 → -86`, applicati su dev il 2026-10-04, pgTAP verdi. Resta Q-2 (§3).
+`20261004-80 → -86`, applicati su dev il 2026-10-04, pgTAP verdi; ricaduta BE (R-1, i
+due codici in `error_policies_generated.py` + ripieghi) chiusa lo stesso giorno. Resta Q-2 (§3).
 
 **Che cosa è cambiato nel sistema** — le forme, non i millisecondi:
 
