@@ -25,6 +25,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     conta_con_perimetro,
@@ -598,7 +599,7 @@ class CodaLavoriRepository:
         data_da: Any = None,
         data_a: Any = None,
         includi_archiviate: bool = False,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         sort_by: str = "started_at",
         sort_dir: str = "DESC",

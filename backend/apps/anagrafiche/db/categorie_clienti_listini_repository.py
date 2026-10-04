@@ -16,6 +16,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -154,7 +155,7 @@ class CategorieClientiListiniRepository:
         emittente_soggetto_ruolo_id: int | None = None,
         listino_id: int | None = None,
         valid_at: date | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "valido_dal",
         order_dir: str = "desc",

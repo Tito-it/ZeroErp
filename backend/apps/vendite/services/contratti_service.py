@@ -42,10 +42,14 @@ from typing import Any
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
-from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
+from apps.core.services.testata_guard import (
+    pagina_dopo_testata,
+    riga_del_padre_o_not_found,
+    testata_o_not_found,
+)
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
     auto_assegna_indirizzo_default,
@@ -615,7 +619,7 @@ class ContrattiService:
         data_a: date | None = None,
         scadenza_mese: str | None = None,
         auth_user_id: int | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "data",
         order_dir: str = "desc",
@@ -1124,64 +1128,8 @@ class ContrattiService:
         return self._repo.resolve_contesto_pricing_contratto(contratto_id)
 
     # =================================================================
-    # Righe contratto - preview pricing applicato
+    # Righe contratto - la lista operativa
     # =================================================================
-
-    # Scopo: Restituisce le righe operative del contratto in forma "con_listino",
-    #        cioe' la lista articoli con prezzo finale applicato (righe del
-    #        listino + eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA). Per forma
-    #        "senza_listino" ritorna lista vuota: in quel caso le righe
-    #        vivono solo in `contratti_righe` e sono lette da list_righe.
-    #
-    #        Il calcolo e' delegato a `repository.list_righe_preview` (single
-    #        SQL pass) che applica la stessa formula del resolver pricing.
-    #        Origini possibili: 'DA_LISTINO' (riga del listino senza eccezione),
-    #        'OVERRIDE' / 'ESCLUSIONE' / 'AGGIUNTA' (eccezione contrattuale).
-    #
-    #        L'envelope include la testata sintetica (forma, listino, versione
-    #        listino fissata, variazione globale) per permettere al FE di
-    #        renderizzare il banner contesto senza ulteriori chiamate.
-    def list_righe_preview(self, contratto_id: int) -> dict[str, Any]:
-        self._v.guard_positive_int(contratto_id, field="contratto_id")
-        contratto = self._get_contratto_or_raise(contratto_id, op="list_righe_preview")
-
-        # Forma derivata (non persistita) post refactor modalita 2026-05-15:
-        #   "con_listino"  : contratto ha un listino_id (variazione globale +
-        #                    eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA sono campi
-        #                    opzionali liberi)
-        #   "senza_listino": contratto interamente negoziato (le righe in
-        #                    `contratti_righe` sono tutte AGGIUNTA)
-        # Le vecchie modalita' A/B/C sono state rimosse — non esistono piu'
-        # nel modello dati ne' nell'UX.
-        listino_id = contratto.get("listino_id")
-        preview_rows: list[dict[str, Any]] = (
-            self._repo.list_righe_preview(contratto_id) if listino_id else []
-        )
-        forma = "con_listino" if listino_id is not None else "senza_listino"
-
-        # Flag per il FE: distingue il caso "listino senza versione operativa
-        # oggi" dal caso "senza_listino" (lista vuota by design) e dal caso
-        # con listino ma solo eccezioni extra-listino (righe presenti ma
-        # origine OVERRIDE/AGGIUNTA, nessuna 'DA_LISTINO'). Il flag e' True
-        # se il contratto ha listino ma la query non ha prodotto nemmeno una
-        # riga 'DA_LISTINO' (nessuna versione operativa o nessuna riga attiva).
-        listino_senza_versione_oggi = (
-            listino_id is not None
-            and not any(r.get("origine") == "DA_LISTINO" for r in preview_rows)
-        )
-
-        return {
-            "contratto_id": contratto_id,
-            "forma": forma,
-            "listino_id": listino_id,
-            "listino_versione_id": contratto.get("listino_versione_id"),
-            "listino_codice": contratto.get("listino_codice"),
-            "listino_descrizione": contratto.get("listino_descrizione"),
-            "tipo_variazione_globale": contratto.get("tipo_variazione_globale"),
-            "valore_variazione_globale": contratto.get("valore_variazione_globale"),
-            "listino_senza_versione_oggi": listino_senza_versione_oggi,
-            "righe": preview_rows,
-        }
 
     # Scopo: una PAGINA delle righe operative del contratto, per la lista
     #        configurabile `vendite.contratto_righe` (lotto D del
@@ -1193,23 +1141,14 @@ class ContrattiService:
     # ⭐ Una sorgente per le due forme: senza listino la funzione risponde le
     #    sole aggiunte, quindi qui non si decide niente per forma.
     def list_righe_pagina(
-        self,
-        contratto_id: int,
-        *,
-        search: str | None = None,
-        order_by: str | None = None,
-        order_dir: str | None = None,
-        limit: int,
-        offset: int = 0,
-        max_limit: int = MAX_LIMIT,
+        self, contratto_id: int, **opzioni: Any,
     ) -> tuple[list[dict[str, Any]], int]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
-        self._get_contratto_or_raise(
-            contratto_id, op="list_righe_pagina", getter=self._repo.get_stato_codice,
-        )
-        return ContrattoRigheListaRepository().list_righe_pagina(
-            contratto_id, search=search, order_by=order_by, order_dir=order_dir,
-            limit=limit, offset=offset, max_limit=max_limit,
+        return pagina_dopo_testata(
+            lambda: self._get_contratto_or_raise(
+                contratto_id, op="list_righe_pagina", getter=self._repo.get_stato_codice,
+            ),
+            ContrattoRigheListaRepository().list_righe_pagina, contratto_id, **opzioni,
         )
 
     # =================================================================

@@ -1014,6 +1014,30 @@ a {
   background: var(--app-table-hover-bg);
 }
 
+/* ===== Riga attiva e righe non cliccabili (ListaConfigurabile) =====
+ * `app-riga-attiva`: la riga aperta nel form inline sotto la lista (prop
+ * `riga-attiva`), evidenziata anche sotto il puntatore — e' il «dove sono».
+ * `app-riga-non-cliccabile`: il click non apre niente (documento in sola
+ * lettura, prop `righe-cliccabili`): niente hover ne' cursore a mano, la riga
+ * a righe alterne tiene il suo fondo.
+ * ⚠️ Le regole di hover delle righe non cliccabili escludono la riga attiva:
+ * con le due classi insieme (form aperto e documento che diventa non
+ * modificabile) vincerebbero per specificita' o per ordine, e l'evidenza
+ * sparirebbe sotto il puntatore. */
+.app-datatable .p-datatable-tbody > tr.app-riga-attiva,
+.app-datatable .p-datatable-tbody > tr.app-riga-attiva:hover {
+  background: var(--app-highlight-bg);
+}
+.app-datatable .p-datatable-tbody > tr.app-riga-non-cliccabile {
+  cursor: default;
+}
+.app-datatable .p-datatable-tbody > tr.app-riga-non-cliccabile:not(.app-riga-attiva):hover {
+  background: transparent;
+}
+.app-datatable .p-datatable-tbody > tr.p-datatable-row-odd.app-riga-non-cliccabile:not(.app-riga-attiva):hover {
+  background: var(--app-table-stripe-bg);
+}
+
 /* ===== Classe utility form field =====
  * Layout verticale label + input usato da tutti i form building block.
  * Singola source of truth — non duplicare in stili scoped dei componenti.

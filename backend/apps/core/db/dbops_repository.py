@@ -12,6 +12,7 @@ from typing import cast
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     colonne_identita,
     escape_ilike,
@@ -458,7 +459,7 @@ class DbopsRepository:
         *,
         attivo_only: bool = True,
         search: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[DominioTaskRow], int]:
         search_pattern = pattern_contiene(search)
@@ -494,7 +495,7 @@ class DbopsRepository:
         dominio_codice: str | None = None,
         attivo_only: bool = True,
         search: str | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[TaskRegistryRow], int]:
         search_pattern = pattern_contiene(search)
@@ -535,7 +536,7 @@ class DbopsRepository:
         task_code: str | None = None,
         dominio_codice: str | None = None,
         attivo_only: bool = True,
-        limit: int = 100,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[TaskRegistryImplRow], int]:
         rows, total_count = fetch_paged_with_total(
@@ -583,7 +584,7 @@ class DbopsRepository:
         date_from: str | None = None,
         date_to: str | None = None,
         search: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[AuditLogRow], int]:
         search_pattern = pattern_contiene(search)
@@ -673,7 +674,7 @@ class DbopsRepository:
         tx_id: str | None = None,
         data_da: str | None = None,
         data_a: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,

@@ -276,6 +276,8 @@ defineExpose({
       :page-actions="pageActions"
       :dirty="dirty"
       :perimetro-bloccato="perimetroBloccato"
+      :riga-attiva="rigaInModifica?.id ?? null"
+      :righe-cliccabili="isModificabile"
       @page="onPage"
       @sort="onSort"
       @row-click="apriRiga"

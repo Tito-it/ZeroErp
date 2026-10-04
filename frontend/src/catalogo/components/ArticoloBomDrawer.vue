@@ -496,6 +496,8 @@ const fotoDuplica = useFotografiaDialog(() => ({ chiudiAl: duplicaDialogChiudiAl
       :page-actions="pageActions"
       :dirty="dirty"
       :perimetro-bloccato="perimetroBloccato"
+      :riga-attiva="rigaInModifica?.id ?? null"
+      :righe-cliccabili="!isReadonly"
       @page="onPage"
       @sort="onSort"
       @row-click="onRowClick"

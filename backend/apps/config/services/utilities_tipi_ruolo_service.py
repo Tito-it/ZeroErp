@@ -14,6 +14,7 @@ from typing import Any
 
 from django.db import IntegrityError
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.config.db.utilities_tipi_ruolo_repository import (
     _ORDER_COLS,
     UtilitiesTipiRuoloRepository,
@@ -87,7 +88,7 @@ class UtilitiesTipiRuoloService:
         attivo: bool | None = None,
         utility_id: int | None = None,
         tipo_ruolo_id: int | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "utility_descrizione",
         order_dir: str = "asc",
@@ -206,7 +207,7 @@ class UtilitiesTipiRuoloService:
         search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         # Valida l'esistenza della riga matrice prima di leggere usage.

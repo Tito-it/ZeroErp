@@ -15,6 +15,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.catalogo.db.catalogo_bom_repository import (
     COMPONENTE_WRITE_COLUMNS,
     NOTA_WRITE_COLUMNS,
@@ -36,13 +37,13 @@ from apps.catalogo.db.catalogo_uom_repository import (
     UOM_OPERATIVA_WRITE_COLUMNS,
     CatalogoUomRepository,
 )
-from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import resolve_config_id_by_codice_interno
 from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.list_helpers import collezione_completa, validate_order_params
 from apps.core.services.parameter_service import ParameterService
+from apps.core.services.testata_guard import pagina_dopo_testata
 from apps.core.services.payload_helpers import (
     MISSING as _MISSING,
     MissingType as _MissingType,
@@ -1287,7 +1288,7 @@ def fn_list_articoli(
     data_a: date | None = None,
     order_by: str = "descrizione",
     order_dir: str = "asc",
-    limit: int = 25,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
     function_name = "catalogo.catalogo_service.fn_list_articoli"
@@ -1336,7 +1337,7 @@ def fn_get_articolo(articolo_id: UUID | str) -> dict[str, object]:
 
     articolo["uom_operative"] = uom_repository.list_uom_operative(articolo_id)
     articolo["componenti"] = (
-        bom_repository.list_componenti(articolo_id)
+        bom_repository.list_righe(articolo_id)
         if articolo.get("is_composito") is True
         else []
     )
@@ -1649,30 +1650,21 @@ def fn_delete_uom_operativa(articolo_id: UUID | str, uom_operativa_id: int) -> d
 def fn_list_componenti(articolo_id: UUID | str) -> dict[str, object]:
     _get_articolo_base(articolo_id)
     repository = CatalogoBomRepository()
-    return collezione_completa(repository.list_componenti(articolo_id))
+    return collezione_completa(repository.list_righe(articolo_id))
 
 
 # Scopo: UNA PAGINA della distinta dell'articolo, per la lista configurabile
 #        `catalogo.articolo_componenti` (brief-db-liste-righe-documento,
-#        lotto C). «Leggi prima la testata»: un articolo inesistente e' un 404,
-#        non una lista vuota. `valido_al` = il filtro «in vigore al» (None:
-#        tutte le versioni); il resto e' il contratto della lista.
+#        lotto C). «Leggi prima la testata» (BB core `pagina_dopo_testata`):
+#        un articolo inesistente e' un 404, non una lista vuota. Fra le
+#        opzioni, `valido_al` = il filtro «in vigore al» (None: tutte le
+#        versioni); il resto e' il contratto della lista.
 def fn_list_componenti_pagina(
-    articolo_id: UUID | str,
-    *,
-    valido_al: date | None = None,
-    search: str | None = None,
-    order_by: str | None = None,
-    order_dir: str | None = None,
-    limit: int,
-    offset: int = 0,
-    max_limit: int = MAX_LIMIT,
+    articolo_id: UUID | str, **opzioni: Any,
 ) -> tuple[list[dict[str, Any]], int]:
-    _get_articolo_base(articolo_id)
-    return CatalogoBomRepository().list_componenti_pagina(
-        articolo_id, valido_al=valido_al, search=search,
-        order_by=order_by, order_dir=order_dir,
-        limit=limit, offset=offset, max_limit=max_limit,
+    return pagina_dopo_testata(
+        lambda: _get_articolo_base(articolo_id),
+        CatalogoBomRepository().list_righe_pagina, articolo_id, **opzioni,
     )
 
 
@@ -1932,7 +1924,7 @@ def fn_list_uom_tipi(
     search: str | None = None,
     order_by: str = "descrizione",
     order_dir: str = "asc",
-    limit: int = 25,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
     function_name = "catalogo.catalogo_service.fn_list_uom_tipi"
@@ -2053,7 +2045,7 @@ def fn_list_unita_misura(
     search: str | None = None,
     order_by: str = "codice",
     order_dir: str = "asc",
-    limit: int = 25,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
     function_name = "catalogo.catalogo_service.fn_list_unita_misura"
@@ -2246,7 +2238,7 @@ def fn_list_conversioni(
     search: str | None = None,
     order_by: str = "uom_from_codice",
     order_dir: str = "asc",
-    limit: int = 25,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
     function_name = "catalogo.catalogo_service.fn_list_conversioni"

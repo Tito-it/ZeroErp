@@ -17,7 +17,7 @@ from typing import Any
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -5032,7 +5032,7 @@ class VenditeRepository:
         *,
         entity_type: str,
         entity_id: int,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         escludi_ritirate: bool = True,
         sort_by: str | None = None,
@@ -5069,7 +5069,7 @@ class VenditeRepository:
         self,
         *,
         lotto_id: int,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         escludi_ritirate: bool = True,
         escludi_info: bool = True,
@@ -5199,7 +5199,7 @@ class VenditeRepository:
         data_a: date | None = None,
         filo: str | None = None,
         solo_vive: bool = True,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         sort_by: str | None = None,
         sort_dir: str | None = None,

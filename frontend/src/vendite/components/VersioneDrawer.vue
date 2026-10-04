@@ -535,6 +535,7 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
       ref="listaRef"
       codice="vendite.listini_righe"
       data-key="row_key"
+      :riga-attiva="rigaInModifica?.row_key ?? null"
       :rows="store.items"
       :total="store.totalRecords"
       :loading="store.loading"

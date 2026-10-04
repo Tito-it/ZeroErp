@@ -15,7 +15,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -697,7 +697,7 @@ class PreventiviRepository(
     #    senza errore. La visibilita' resta alla RLS (vista `security_invoker`).
     def list_revisioni(
         self, preventivo_id: int, *,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str | None = "rev", order_dir: str | None = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)

@@ -33,6 +33,7 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.capability_blob import capabilities_o_vuoto
 from apps.core.services.testata_guard import testata_o_not_found
@@ -378,7 +379,7 @@ class OfferteService:
         validita_dal_min: str | None = None,
         validita_dal_max: str | None = None,
         solo_ultima_revisione: bool = True,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "data_insert",
         order_dir: str = "desc",
@@ -880,7 +881,7 @@ class OfferteService:
     #        `paginated_envelope`. Lettura libera in ogni stato.
     def list_revisioni(
         self, offerta_id: int, *,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str | None = None, order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")

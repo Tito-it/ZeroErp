@@ -632,84 +632,15 @@ sulla funzione `vendite.fn_contratto_righe_preview` (dal 2026-09-30, lotto D del
 brief-db-liste-righe-documento). Contratto comune alle righe dei documenti di
 vendita: [api_righe_documento.md](api_righe_documento.md).
 
-### Preview righe contratto `GET /api/v1/vendite/contratti/<id>/righe-preview/`
+### ~~Preview righe contratto `GET …/<id>/righe-preview/`~~ — ritirato il 2026-10-04
 
-Endpoint readonly che restituisce tutte le righe del drawer `ContrattoRigheDrawer`:
-articoli dal listino (con overlay eccezioni) + AGGIUNTA fuori-listino.
-Delega tutto a `vendite.fn_contratto_righe_preview` — il BE e' thin wrapper.
-
-**Shape risposta** (una riga per articolo padre; i bundle hanno `componenti` annidato):
-
-```json
-{
-  "data": [
-    {
-      "articolo_id": "uuid",
-      "articolo_codice": "GAS-STD",
-      "articolo_descrizione": "Gas Standard",
-      "is_composito": false,
-      "uom_id": 3,
-      "uom_codice": "MWh",
-      "prezzo_listino": "10.50",
-      "tipo_variazione": "PERCENTUALE",
-      "valore_variazione": "-5.00",
-      "override_riga_id": null,
-      "override_prezzo": null,
-      "tipo_eccezione": null,
-      "origine": "DA_LISTINO",
-      "prezzo_finale": "9.975",
-      "componenti": null
-    },
-    {
-      "articolo_id": "uuid-bundle",
-      "articolo_codice": "KIT-ATTIV",
-      "articolo_descrizione": "Kit attivazione",
-      "is_composito": true,
-      "uom_id": 1,
-      "uom_codice": "PZ",
-      "prezzo_listino": null,
-      "tipo_variazione": "PERCENTUALE",
-      "valore_variazione": "-5.00",
-      "override_riga_id": null,
-      "override_prezzo": null,
-      "tipo_eccezione": null,
-      "origine": "DA_LISTINO",
-      "prezzo_finale": "48.00",
-      "componenti": [
-        {
-          "componente_id": "uuid-figlio",
-          "componente_codice": "COMP-A",
-          "componente_descrizione": "Componente A",
-          "uom_id": 2,
-          "uom_codice": "H",
-          "coeff_qta": "2.0",
-          "prezzo": "15.00",
-          "obbligatorio": true,
-          "esposizione_in_fattura": "NASCOSTO"
-        },
-        {
-          "componente_id": "uuid-figlio2",
-          "componente_codice": "COMP-B",
-          "componente_descrizione": "Componente B",
-          "uom_id": 1,
-          "uom_codice": "PZ",
-          "coeff_qta": "1.0",
-          "prezzo": "18.00",
-          "obbligatorio": false,
-          "esposizione_in_fattura": "VALORIZZATO"
-        }
-      ]
-    }
-  ]
-}
-```
-
-**Valori `origine`**: `DA_LISTINO` | `OVERRIDE` | `ESCLUSIONE` | `AGGIUNTA`.  
-**Bundle** (`is_composito=true`): `prezzo_finale` = SUM aggregato in DB
-(`lrc.prezzo × ac.coeff_qta` da listino, o `prezzo_unitario` del padre AGGIUNTA).  
-**ESCLUSIONE**: `prezzo_finale = null`, articolo mostrato con badge "Escluso".  
-**Versione listino**: per contratti ATTIVI usa `listino_versione_id` snapshot;
-per DRAFT usa la versione operativa corrente (`stato IN ('ATTIVA','CHIUSA')`).
+L'anteprima intera delle righe operative non esiste più come endpoint
+(brief-db-liste-righe-documento §9.15): il suo solo consumatore, il drawer delle
+righe, legge la lista `…/righe/lista/` qui sopra, sulla stessa funzione
+`vendite.fn_contratto_righe_preview`. Il banner «listino senza versione oggi»
+viene da `…/contesto-pricing/`. La lettura completa della funzione resta nel
+backend (`ContrattiRepository.list_righe_preview`) per il contesto di stampa e
+`righe_count` del dettaglio.
 
 ### Utility 1:1 `POST /api/v1/vendite/contratti/<id>/utility/`
 
@@ -830,8 +761,8 @@ Il dettaglio (`GET /<id>/`) include:
 ```
 
 Ogni riga espone `is_composito` denormalizzato (JOIN `catalogo.articoli`) sia
-nel detail (`/righe` interne al contratto) sia nella preview righe applicate
-(`/righe-preview/`). Driver lato FE per detection auto-apertura
+nel detail (`/righe` interne al contratto) sia nella lista delle righe
+operative (`/righe/lista/`). Driver lato FE per detection auto-apertura
 `ComponentiDialog` e visibilita' `ComponentiPanel` in EDIT senza round-trip
 extra al catalogo.
 

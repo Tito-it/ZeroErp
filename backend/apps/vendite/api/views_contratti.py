@@ -415,47 +415,15 @@ class ApiContrattoContestoPricing(DomainAPIView):
         return success_response(data or {})
 
 
-class ApiContrattoRighePreview(DomainAPIView):
-    """GET preview righe applicate dal contratto.
-
-    Modalita' A: tutte le righe del listino con prezzo finale = prezzo
-    listino + variazione globale (origine='DA_LISTINO').
-
-    Modalita' B: tutte le righe del listino, con override applicato dove
-    presente in contratti_righe (origine='OVERRIDE') o variazione globale
-    sulle altre (origine='DA_LISTINO').
-
-    Modalita' C: lista righe vuota (le righe vivono in contratti_righe e
-    sono lette dall'endpoint standard /righe/).
-
-    Endpoint readonly: il FE lo usa per mostrare l'anteprima dei prezzi
-    applicati al cliente senza duplicare la formula di calcolo.
-    """
-
-    area_funzionale = "vendite"
-    model_permission = ("vendite", "contratto")
-
-    @extend_schema(
-        responses={200: inline_serializer(
-            name="VenditeContrattoRighePreviewResp",
-            fields={"data": serializers.DictField()},
-        )},
-    )
-    # Scopo: Restituisce envelope con testata sintetica + righe preview.
-    def get(self, request: Request, contratto_id: int) -> JsonResponse:
-        del request
-        return success_response(
-            ContrattiService().list_righe_preview(contratto_id)
-        )
-
-
 # ── Righe: la lista configurabile `vendite.contratto_righe` (103) ──
 # Pagina ed export dal factory condiviso `build_lista_figlia_views`
 # (brief-db-liste-righe-documento, lotto D). La closure legge il global di
 # modulo a call-time: i patch dei test sul service restano validi.
 # ⚠️ `GET …/righe/` resta la lettura delle righe PERSISTITE (e il POST di
-#    creazione), `…/righe-preview/` l'anteprima prezzi: la lista e' su
-#    `…/righe/lista/`, e legge le righe OPERATIVE dalla funzione.
+#    creazione): la lista e' su `…/righe/lista/`, e legge le righe OPERATIVE
+#    dalla funzione. L'anteprima intera `…/righe-preview/` e' ritirata il
+#    2026-10-04 (brief-db-liste-righe-documento §9.15): il drawer leggeva da
+#    li', e ora legge questa lista.
 _ContrattoRigheLista, _ContrattoRigheListaExport = build_lista_figlia_views(
     schema_prefix="ContrattoRighe",
     operation_id="vendite_contratti_righe_lista",

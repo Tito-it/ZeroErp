@@ -5,7 +5,7 @@ from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import (
@@ -81,6 +81,7 @@ from apps.vendite.services.commesse_service import (
     pr_run_commesse_push,
 )
 from apps.vendite.services.pipeline_service import (
+    LOTTO_LISTE_PAGINA_MAX,
     finestra_numerazione,
     esiti_fatturazione,
     fn_get_lotto_segnalazioni_summary,
@@ -501,7 +502,7 @@ class ApiLottoTaskRuns(DomainAPIView):
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Numero massimo task run restituiti (default 100, max 500).",
+                description=f"Numero massimo task run restituiti (default {DEFAULT_LIMIT_EVENTI}, max {LOTTO_LISTE_PAGINA_MAX}).",
             ),
             OpenApiParameter(
                 name="task_stato",
@@ -557,7 +558,7 @@ class ApiLottoTaskRuns(DomainAPIView):
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         q = request.query_params
         page_size = optional_int(
-            {"page_size": q.get("page_size") or q.get("limit") or "100"}, "page_size"
+            {"page_size": q.get("page_size") or q.get("limit") or str(DEFAULT_LIMIT_EVENTI)}, "page_size"
         )
         offset = optional_int({"offset": q.get("offset", "0")}, "offset")
         data = fn_get_lotto_task_runs(
@@ -1955,7 +1956,7 @@ class ApiCommessaRegistro(DomainAPIView):
             ),
             OpenApiParameter(
                 name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
-                description=f"Eventi per pagina (default 100, max {MAX_LIMIT}).",
+                description=f"Eventi per pagina (default {DEFAULT_LIMIT_EVENTI}, max {MAX_LIMIT}).",
             ),
             OpenApiParameter(
                 name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
@@ -1988,7 +1989,7 @@ class ApiCommessaRegistro(DomainAPIView):
                 commessa_attivita_id=optional_int(
                     {"v": qp.get("commessa_attivita_id")}, "v",
                 ),
-                limit=optional_int({"limit": qp.get("limit", "100")}, "limit"),
+                limit=optional_int({"limit": qp.get("limit", str(DEFAULT_LIMIT_EVENTI))}, "limit"),
                 offset=optional_int({"offset": qp.get("offset", "0")}, "offset"),
             )
         )

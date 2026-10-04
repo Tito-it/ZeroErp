@@ -37,7 +37,6 @@ from apps.vendite.api.views_contratti import (
     ApiContrattoRigheList,
     ApiContrattoRigheListaExportView,
     ApiContrattoRigheListaView,
-    ApiContrattoRighePreview,
     ApiContrattoUtility,
 )
 from apps.vendite.api.views_form_defaults import ApiContrattoFormDefaults
@@ -87,11 +86,6 @@ urlpatterns = [
          name="vendite-contratto-righe-lista"),
     path("<int:contratto_id>/righe/lista/export/", ApiContrattoRigheListaExportView.as_view(),
          name="vendite-contratto-righe-lista-export"),
-    path(
-        "<int:contratto_id>/righe-preview/",
-        ApiContrattoRighePreview.as_view(),
-        name="vendite-contratto-righe-preview",
-    ),
     path(
         "<int:contratto_id>/contesto-pricing/",
         ApiContrattoContestoPricing.as_view(),

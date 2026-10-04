@@ -26,6 +26,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -433,7 +434,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         solo_ultima_revisione: bool = True,
         order_by: str = "data_insert",
         order_dir: str | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         auth_user_id: int | None = None,
     ) -> list[dict[str, Any]]:
@@ -1137,7 +1138,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     #    filtro in piu' renderebbe un id sbagliato una lista vuota senza errore.
     def list_revisioni(
         self, offerta_id: int, *,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str | None = "revisione_numero", order_dir: str | None = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)

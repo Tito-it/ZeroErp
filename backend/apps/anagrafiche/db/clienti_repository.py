@@ -14,6 +14,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db._helpers import (
     RicercaFull,
@@ -276,7 +277,7 @@ class ClientiRepository:
         utility_id: int | None = None,
         stato_cliente_id: int | None = None,
         emittente_ids: list[int] | None = None,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(

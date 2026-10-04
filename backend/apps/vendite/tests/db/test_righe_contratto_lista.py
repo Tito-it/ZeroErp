@@ -36,8 +36,8 @@ import unittest
 from unittest.mock import patch
 
 from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
-from apps.vendite.db import _righe_repo_mixin
-from apps.vendite.db._righe_repo_mixin import RigheListaMixin
+from apps.core.db import righe_lista_mixin as _righe_repo_mixin
+from apps.core.db.righe_lista_mixin import RigheListaMixin
 from apps.vendite.db.contratti_repository import ContrattoRigheListaRepository
 
 _FUNZIONE = "vendite.fn_contratto_righe_preview"

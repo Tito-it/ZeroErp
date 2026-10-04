@@ -13,6 +13,7 @@ from uuid import UUID
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     pattern_contiene,
@@ -712,7 +713,7 @@ class CatalogoRepository:
     def list_conversioni(
         self, *, search: str | None = None, attivo: bool | None = True,
         uom_id: int | None = None,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str | None = "uom_from_codice", order_dir: str | None = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)

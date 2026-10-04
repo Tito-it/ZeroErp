@@ -25,6 +25,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import corsa_conclusa, fetch_paged_with_total, pattern_contiene
 from apps.core.types import JobRunLogRow
 
@@ -74,7 +75,7 @@ class MaintenanceRepository:
         date_from: str | None = None,
         date_to: str | None = None,
         search: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[JobRunLogRow], int]:
         search_pattern = pattern_contiene(search)
@@ -225,7 +226,7 @@ class MaintenanceRepository:
     def list_job_summary(
         self,
         *,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         jobname_prefix: str | None = None,
         meta_month_equals: tuple[str, str] | None = None,

@@ -14,6 +14,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -112,7 +113,7 @@ class UtilitiesTipiRuoloRepository:
         attivo: bool | None = None,
         utility_id: int | None = None,
         tipo_ruolo_id: int | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "utility_descrizione",
         order_dir: str = "asc",
@@ -294,7 +295,7 @@ class UtilitiesTipiRuoloRepository:
         search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)

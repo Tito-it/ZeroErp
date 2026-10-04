@@ -91,6 +91,7 @@ from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.commesse_push_orchestrator import PushReport
 from apps.vendite.services.commesse_source_handlers import HandlerResult
@@ -849,7 +850,7 @@ class CommesseServiceTests(TestCase):
             stato_emissione=None,
             stato_approvazione=None,
             competenza_mese=None,
-            limit=50,
+            limit=DEFAULT_LIMIT,
             offset=0,
             order_by="data_attivita",
             order_dir="desc",

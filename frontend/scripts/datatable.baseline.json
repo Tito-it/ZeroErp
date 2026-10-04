@@ -29,7 +29,6 @@
     "vendite/components/AlertScadenzeWidget.vue",
     "vendite/components/ApplicaVariazioneDialog.vue",
     "vendite/components/AttivaVersioneDialog.vue",
-    "vendite/components/ContrattoRigheDrawer.vue",
     "vendite/components/ListiniSearchTable.vue",
     "vendite/ddt/components/DdtResoDialog.vue",
     "vendite/offerte/components/OffertaEccezioniDrawer.vue",

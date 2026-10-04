@@ -22,7 +22,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -34,10 +34,10 @@ from apps.core.db._helpers import (
     rows_to_list,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.righe_lista_mixin import RigheListaMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
-from apps.vendite.db._righe_repo_mixin import RigheListaMixin
 
 
 # Colonne jsonb delle tabelle scritte qui (testata, righe, utility): dichiarate
@@ -348,7 +348,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         data_a: date | None = None,
         scadenza_mese: str | None = None,
         auth_user_id: int | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "data",
         order_dir: str = "desc",
@@ -1299,9 +1299,11 @@ class ContrattoRigheListaRepository(RigheListaMixin):
     un numero di riga (§8.13.5 del brief). La chiave `riga_key` fa da spareggio,
     e distingue le righe dello stesso articolo in due unita' di misura.
     ⚠️ Nessun filtro `attivo`: la funzione legge gia' le sole eccezioni attive.
-    ⚠️ La lettura completa del BB (`list_righe`) non ha consumatori: anteprima
-    prezzi, conteggio del dettaglio e contesto di stampa leggono
-    `ContrattiRepository.list_righe_preview`, nell'ordine della funzione.
+    ⭐ Solo la PAGINA (`RigheListaMixin`, non la lettura completa): conteggio
+    del dettaglio e contesto di stampa leggono
+    `ContrattiRepository.list_righe_preview`, nell'ordine della funzione. Una
+    seconda lettura completa ereditata dal BB non aveva consumatori, ed e'
+    uscita col BB a due livelli (2026-10-04, §9.16).
     """
 
     _righe_funzione = "vendite.fn_contratto_righe_preview"

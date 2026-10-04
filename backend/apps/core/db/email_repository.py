@@ -24,6 +24,7 @@ def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
         except (json.JSONDecodeError, TypeError):
             pass
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.email_constants import AMBITO_SISTEMA
 from apps.core.db._helpers import (
     fetch_paged_with_total,
@@ -115,7 +116,7 @@ class EmailRepository:
         *,
         search: str | None = None,
         attivo_only: bool = True,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,
@@ -317,7 +318,7 @@ class EmailRepository:
         search: str | None = None,
         codice: str | None = None,
         attivo_only: bool = True,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,
@@ -614,7 +615,7 @@ class EmailRepository:
         pratica_id: int | None = None,
         data_da: str | None = None,
         data_a: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,
@@ -792,7 +793,7 @@ class EmailRepository:
         unita_organizzativa_id: int | None = None,
         stato: str | None = None,
         pratica_id: int | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         conditions: list[str] = []

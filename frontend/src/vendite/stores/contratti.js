@@ -11,7 +11,7 @@ import { defaultFiltroDataDaString } from '../../core/utils/date'
 import {
   listContratti, getContratto, createContratto, updateContratto, cambiaStatoContratto,
   emettiContratto,
-  addRigaContratto, updateRigaContratto, deleteRigaContratto, listRighePreviewContratto,
+  addRigaContratto, updateRigaContratto, deleteRigaContratto,
   addUtilityContratto, updateUtilityContratto,
 } from '../api/contratti'
 import { useListaStoreCore } from '../../core/composables/useListaStoreCore'
@@ -101,13 +101,6 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
     return res.data.data
   }
 
-  // Anteprima righe applicate (modalita' A/B). Non emette tab event:
-  // e' una read-only view che non muta il dominio.
-  async function fetchRighePreview(contrattoId) {
-    const res = await listRighePreviewContratto(contrattoId)
-    return res.data.data
-  }
-
   // Utility 1:1
   async function addUtility(contrattoId, payload) {
     const res = await addUtilityContratto(contrattoId, payload)
@@ -125,7 +118,7 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
     // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
     ...lista,
     fetchDetail, create, update, cambiaStato, emetti,
-    addRiga, updateRiga, deleteRiga, fetchRighePreview,
+    addRiga, updateRiga, deleteRiga,
     addUtility, updateUtility,
   }
 }, {

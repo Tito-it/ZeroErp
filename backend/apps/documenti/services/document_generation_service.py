@@ -47,6 +47,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.parameter_service import ParameterService
@@ -539,7 +540,7 @@ class DocumentGenerationService:
         sorgente_tipo_id: int,
         sorgente_uid: str,
         sorgente_riga: int | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         search: str | None = None,
         order_by: str | None = None,

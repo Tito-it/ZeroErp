@@ -11,6 +11,7 @@ Indice test eseguiti:
 2) CatalogoServiceTests.test_fn_list_articoli_invalid_order
 4) CatalogoServiceTests.test_fn_get_articolo_ok
 5) CatalogoServiceTests.test_fn_get_articolo_not_found
+5b) CatalogoServiceTests.test_fn_list_componenti_pagina_legge_prima_l_articolo
 6) CatalogoServiceTests.test_fn_lookup_articoli_ok
 7) CatalogoServiceTests.test_fn_lookup_articoli_invalid_limit
 10) CatalogoServiceTests.test_fn_create_articolo_ok
@@ -112,7 +113,7 @@ class CatalogoServiceTests(TestCase):
             "is_composito": True,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = [{"id": 1, "uom_codice": "PZ"}]
-        mock_bom_repo_cls.return_value.list_componenti.return_value = [{"id": "comp-1"}]
+        mock_bom_repo_cls.return_value.list_righe.return_value = [{"id": "comp-1"}]
         # Shape allineata al pattern partizionato vendite (2026-05-22):
         # le note ritornano `id`/`testo_md` senza prefisso `nota_`.
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = [{"id": 9}]
@@ -135,6 +136,27 @@ class CatalogoServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             fn_get_articolo(999)
         self.assertEqual(ctx.exception.code, "E_CATALOGO_ARTICOLO_NOT_FOUND")
+
+    # Scopo: «Leggi prima la testata» sulla PAGINA della distinta (§9.6 del
+    #        brief-db-liste-righe-documento, 2026-10-04): un articolo che non
+    #        c'e' e' un 404, e le righe non si leggono.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_list_componenti_pagina_legge_prima_l_articolo(self, mock_repo_cls, mock_bom_cls):
+        from apps.catalogo.services.catalogo_service import fn_list_componenti_pagina
+
+        mock_repo_cls.return_value.get_articolo.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            fn_list_componenti_pagina("a-1", limit=10, valido_al=None)
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_ARTICOLO_NOT_FOUND")
+        mock_bom_cls.return_value.list_righe_pagina.assert_not_called()
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "a-1"}
+        mock_bom_cls.return_value.list_righe_pagina.return_value = ([], 0)
+        self.assertEqual(fn_list_componenti_pagina("a-1", limit=10, valido_al=None), ([], 0))
+        mock_bom_cls.return_value.list_righe_pagina.assert_called_once_with(
+            "a-1", limit=10, valido_al=None,
+        )
 
     # Scopo: Lookup articoli valido -> count e results coerenti.
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
@@ -195,7 +217,7 @@ class CatalogoServiceTests(TestCase):
     def test_una_collezione_intera_non_dichiara_troncamento(self, _mock_repo, mock_bom):
         from apps.catalogo.services.catalogo_service import fn_list_componenti
 
-        mock_bom.return_value.list_componenti.return_value = [{"id": 1}, {"id": 2}]
+        mock_bom.return_value.list_righe.return_value = [{"id": 1}, {"id": 2}]
 
         result = fn_list_componenti("00000000-0000-0000-0000-000000000001")
 
@@ -225,7 +247,7 @@ class CatalogoServiceTests(TestCase):
             "descrizione": "Articolo demo",
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_create_articolo(
@@ -284,7 +306,7 @@ class CatalogoServiceTests(TestCase):
             "descrizione_breve": None,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_update_articolo(
@@ -337,7 +359,7 @@ class CatalogoServiceTests(TestCase):
             },
         ]
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_disattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
@@ -359,7 +381,7 @@ class CatalogoServiceTests(TestCase):
             "attivo": False,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_disattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
@@ -380,7 +402,7 @@ class CatalogoServiceTests(TestCase):
             {"id": "019bbee2-5f6a-704f-bbd0-34ed84db252d", "codice": "ART-001", "attivo": True},
         ]
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
@@ -402,7 +424,7 @@ class CatalogoServiceTests(TestCase):
             "attivo": True,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
@@ -741,7 +763,7 @@ class CatalogoServiceTests(TestCase):
             "listino_tipologia_id": 3,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         fn_create_articolo(
@@ -793,7 +815,7 @@ class CatalogoServiceTests(TestCase):
             "natura_vendita_id": 2,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         fn_create_articolo(
@@ -845,7 +867,7 @@ class CatalogoServiceTests(TestCase):
             "id": "019bbee2-5f6a-704f-bbd0-34ed84db252d", "codice": "ART-001",
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         fn_update_articolo(

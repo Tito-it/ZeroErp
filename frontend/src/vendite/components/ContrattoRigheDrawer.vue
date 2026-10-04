@@ -1,28 +1,49 @@
 <script setup>
 // Scopo: Sub-drawer gestione righe contratto (modello unificato 2026-05-15)
-//        — pattern master-detail inline. Lista paginata sopra (10 righe/pagina),
-//        form dettaglio sotto. Click riga = edit, pulsante Nuovo = create,
-//        Salva/Annulla sempre in basso.
+//        — pattern master-detail inline. Lista paginata sopra (righe per
+//        pagina dal preset della lista), form dettaglio sotto. Click riga =
+//        edit, pulsante Nuovo = create, Salva/Annulla sempre in basso.
 //
 // Refactor modalita 2026-05-15: le righe sono ECCEZIONI tipizzate del listino
 // (tipo_eccezione = OVERRIDE / ESCLUSIONE / AGGIUNTA), non piu' "righe di
 // modalita C". La forma del contratto e' "con_listino" o "senza_listino",
 // derivata dalla testata. Le azioni "Modifica prezzo" (OVERRIDE), "Escludi"
 // (ESCLUSIONE), "Aggiungi articolo" (AGGIUNTA) corrispondono ai 3 tipi.
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+//
+// ⭐ DAL 2026-10-04 LE RIGHE SONO LA LISTA CONFIGURABILE `vendite.contratto_righe`
+//    (brief-db-liste-righe-documento, lotto D, §8.13.5 e §9.11). Fino a quel
+//    giorno qui c'era una `DataTable` grezza con DUE sorgenti — le righe del
+//    dettaglio del padre (`righeIniziali`) senza listino, l'anteprima prezzi
+//    con — una chiave inventata dal frontend (`_row_key`), il filtro articolo
+//    lato client e le azioni di riga decise qui per origine. Ora:
+//    · una sorgente per le due forme, `vendite.fn_contratto_righe_preview`
+//      (senza listino risponde le sole aggiunte), paginata e cercata dal
+//      backend, con colonne dal catalogo, ritiro nella riga espandibile,
+//      personalizzazione ed export;
+//    · la chiave e' `riga_key`, emessa dal DB;
+//    · i verbi della riga sono la colonna `azioni` (capability di riga): il
+//      drawer li RENDE, non li decide. «Escludi» spento porta il motivo da
+//      `escludi_blocco_codice`, lo stesso predicato del guard;
+//    · la riga salvata porta `ordine` e `uom_operativa_id` (§9.11, R-D2): il
+//      form li rimanda com'erano, senza ripieghi.
+import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
+import { useContrattoRigheStore } from '../stores/contrattoRighe'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFormInline } from '../../core/composables/useFormInline'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 import { useLimitiPricing } from '../composables/useLimitiPricing'
-import { FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE } from '../constants'
+import {
+  AZIONE_RIGA_CONTRATTO, FONTE_QUANTITA_ATTESA, FORMA_CONTRATTO, PRICING_ACTIONS, TIPO_ECCEZIONE,
+  TIPO_EROGAZIONE,
+} from '../constants'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
-import { formatCurrency, formatNumber } from '../../core/utils/format'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import {
@@ -31,9 +52,12 @@ import {
   updateRigaComponente as updateContrattoRigaComponente,
   deleteRigaComponente as deleteContrattoRigaComponente,
   getContrattoContestoPricing,
+  exportRigheLista,
 } from '../api/contratti'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerContextHeader from '../../core/components/DrawerContextHeader.vue'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import { rowComponenti, hasBundleComponenti } from '../_shared/componenti/rowComponenti'
@@ -43,21 +67,12 @@ import { useComponentiDialog } from '../_shared/componenti/useComponentiDialog'
 import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
 import L2ErrorBanner from '../_shared/pricing/L2ErrorBanner.vue'
 import { useL2SaveFlow } from '../_shared/pricing/useL2SaveFlow'
-// DataTable grezza: sono le RIGHE del contratto (righeIniziali dal dettaglio del
-// padre + anteprima /righe-preview/), dettaglio del master — Gruppo B (Tid, 02-09).
-// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
-import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
-import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import FiltriLista from '../../core/components/FiltriLista.vue'
-import { USO_MISURA, misuraDefault, misureOpzioni } from '../../core/misurePagina'
 
 const { t } = useI18n()
 const store = useContrattiStore()
@@ -85,13 +100,15 @@ const canVariarePrezzi = computed(() => auth.isActionAllowed(PRICING_ACTIONS.OVE
 const props = defineProps({
   visible: Boolean,
   contrattoId: { type: Number, required: true },
+  // L'emittente del contratto (PK di `anagrafiche.emittenti_fiscali`): il
+  // lasciapassare del cancello di perimetro della lista. Finche' manca la
+  // lista e' in attesa, non vuota (padre composto di `useListaStoreCore`).
+  emittenteFiscaleId: { type: Number, default: null },
   // Refactor modalita 2026-05-15: niente piu' modalita A/B/C. La "forma"
   // arriva dal parent (derivata dai campi testata) ed e' "con_listino" o
-  // "senza_listino". Default null: il drawer attende il dato dal parent
-  // o fallback a `previewMeta.forma` dopo loadPreview (recap §3.2 fix:
-  // niente piu' hardcoded 'B' default).
+  // "senza_listino". Default null: il drawer la legge dal contesto pricing.
+  // ⚠️ Serve SOLO al banner: la lista non decide niente per forma.
   contrattoForma: { type: String, default: null },
-  righeIniziali: { type: Array, default: () => [] },
   // Contesto contratto (per intestazione riepilogativa)
   contrattoNumero: { type: String, default: '' },
   contrattoCliente: { type: String, default: '' },
@@ -103,156 +120,27 @@ const props = defineProps({
 
 const emit = defineEmits(['update:visible', 'changed'])
 
-const righe = ref([])
-
-// === Preview righe applicate (refactor modalita 2026-05-15) ===
-// previewMeta: testata sintetica (forma, listino, listino_versione_id, variazione)
-// previewRighe: lista preview con origine = 'DA_LISTINO' | 'OVERRIDE' |
-//   'ESCLUSIONE' | 'AGGIUNTA' (post step 2.4 resolver BE)
-const previewMeta = ref(null)
-const previewRighe = ref([])
-const previewLoading = ref(false)
-
-// Righe espanse nel DataTable (bundle padre → figli annidati). Pattern
-// uniforme con preventivi (PreventiviRigheTable.vue). PrimeVue v-model
-// espone l'oggetto indicizzato per data-key. Stato locale, non persistito.
-const expandedRows = ref({})
-
 // === Contesto pricing contratto (FE 2.2) ===
 // Mutuato dal pattern preventivi `getContestoPricing`. Espone forma, listino
 // + versione fissata (post-attivazione) o corrente (DRAFT), variazione,
 // categoria cliente. Renderizzato come banner informativo nell'header drawer.
 const contestoPricing = ref(null)
 
-// Forma effettiva: priorita' al backend (previewMeta.forma o contestoPricing.forma),
-// fallback alla prop. None = drawer non ancora inizializzato.
-const formaEffettiva = computed(() =>
-  previewMeta.value?.forma
-  || contestoPricing.value?.forma
-  || props.contrattoForma,
-)
-const isSenzaListino = computed(() => formaEffettiva.value === 'senza_listino')
+// Forma effettiva: priorita' al backend (contesto pricing), fallback alla prop.
+const formaEffettiva = computed(() => contestoPricing.value?.forma || props.contrattoForma)
+const isSenzaListino = computed(() => formaEffettiva.value === FORMA_CONTRATTO.SENZA_LISTINO)
 
-// Filtro full-text articolo (codice + descrizione, case-insensitive).
-// Applicato client-side: la lista preview e' gia' paginata nel DataTable
-// e tipicamente sotto le 100-200 righe per listino. Per liste massive
-// si potrebbe muovere il filtro server-side (param query string) — per
-// ora MVP client.
-const filtroArticolo = ref('')
+// Listino associato ma senza versione operativa oggi: la lista ha le sole
+// eccezioni, e l'operatore deve attivare una versione del listino.
+// ⭐ Dal contesto pricing, che sceglie la versione con la regola del contratto:
+//    fino al 2026-10-04 lo diceva l'anteprima («nessuna riga DA_LISTINO»), che
+//    non e' piu' una lettura del drawer — e che scambiava per «senza versione»
+//    anche un listino con tutti gli articoli esclusi.
+const listinoSenzaVersione = computed(() => (
+  contestoPricing.value?.forma === FORMA_CONTRATTO.CON_LISTINO
+    && contestoPricing.value?.listino_versione_id == null
+))
 
-// Lista renderizzata. In A/B arricchiamo con `_row_key` sintetico univoco
-// (articolo_id + uom_id): un articolo con piu' UoM nel listino genera
-// piu' righe preview con stesso articolo_id, quindi articolo_id da solo
-// non e' un dataKey valido per il DataTable (PrimeVue v-model:selection
-// confonderebbe le righe). In C il dataKey resta `id` (PK contratti_righe).
-const righeView = computed(() => {
-  const filtro = (filtroArticolo.value || '').trim().toLowerCase()
-  const matchFiltro = (r) => {
-    if (!filtro) return true
-    const codice = (r.articolo_codice || '').toLowerCase()
-    const desc = (r.articolo_descrizione || '').toLowerCase()
-    return codice.includes(filtro) || desc.includes(filtro)
-  }
-  if (isSenzaListino.value) {
-    return righe.value.filter(matchFiltro)
-  }
-  return (previewRighe.value || [])
-    .filter(matchFiltro)
-    .map(r => ({
-      ...r,
-      _row_key: `${r.articolo_id}__${r.uom_id ?? 'null'}`,
-    }))
-})
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reloadList,
-  },
-  // Refactor 2026-05-18 (FE 2.2 Opzione C): l'unica azione globale di create
-  // diretta dalla toolbar e' "Aggiungi articolo" (tipo_eccezione=AGGIUNTA:
-  // articolo fuori-listino). Le azioni OVERRIDE/ESCLUSIONE si fanno
-  // contestualmente sulle righe DA_LISTINO via kebab. Gate L1 visibile per
-  // simmetria con le azioni di riga: senza permesso `prezzo_override_manuale`
-  // non puoi nemmeno aggiungere articoli.
-  // «Nuovo» del BB: nascosto a form aperto (un secondo ingresso butterebbe la
-  // riga in scrittura) e in sola lettura.
-  azioneNuovaRiga({
-    key: 'aggiungi-articolo',
-    label: t('common.new'),
-    tooltip: t('vendite.contratti.aggiungi_articolo_tooltip'),
-    visible: canVariarePrezzi.value,
-    command: onAggiungiArticolo,
-  }),
-])
-
-// Scopo: chiave riga coerente con la `data-key` dinamica del DataTable.
-// con_listino usa `_row_key` (preview, niente PK stabile per le righe
-// DA_LISTINO); senza_listino usa `id` (riga persistita in contratti_righe).
-// Senza questa coerenza l'expansion del ramo senza_listino non funziona
-// (key undefined -> no-op).
-function rowExpansionKey(row) {
-  return isSenzaListino.value ? row?.id : row?._row_key
-}
-
-// Scopo: stato espansione corrente della riga. v-model:expandedRows
-// PrimeVue indicizza per data-key value.
-function isExpanded(row) {
-  const key = rowExpansionKey(row)
-  if (key == null) return false
-  return Object.prototype.hasOwnProperty.call(expandedRows.value, key)
-}
-
-// Scopo: toggle espansione di una singola riga. Pattern uniforme con
-// PreventiviRigheTable (set/delete chiave nell'oggetto).
-function toggleExpansion(row) {
-  const key = rowExpansionKey(row)
-  if (key == null) return
-  const next = { ...expandedRows.value }
-  if (Object.prototype.hasOwnProperty.call(next, key)) {
-    delete next[key]
-  } else {
-    next[key] = true
-  }
-  expandedRows.value = next
-}
-
-// Scopo: classe CSS sulla riga DataTable. In readonly (permessi LETTURA o
-// contratto post-DRAFT) tutte le righe sono visualmente readonly. In edit
-// le righe con origine='DA_LISTINO' restano readonly perche' preview pure
-// senza record contratti_righe dietro. Coerente col guard BE Profilo A.
-function rowClass(data) {
-  if (isReadonly.value) return 'app-row-readonly'
-  if (data?.origine === 'DA_LISTINO') return 'app-row-readonly'
-  return null
-}
-
-async function loadPreview() {
-  if (!props.contrattoId) return
-  // Forma "senza_listino" (ex-modalita C): nessuna preview da caricare —
-  // le righe vivono direttamente in `contratti_righe` (tutte AGGIUNTA).
-  if (props.contrattoForma === 'senza_listino') {
-    previewMeta.value = { forma: 'senza_listino', righe: [] }
-    previewRighe.value = []
-    return
-  }
-  previewLoading.value = true
-  try {
-    const data = await store.fetchRighePreview(props.contrattoId)
-    previewMeta.value = data
-    previewRighe.value = data?.righe || []
-  } catch {
-    previewMeta.value = null
-    previewRighe.value = []
-  } finally {
-    previewLoading.value = false
-  }
-}
-
-// Carica il contesto pricing per il banner header (FE 2.2). Mutuato dal
-// pattern preventivi: best-effort, un fail non blocca il drawer.
 async function loadContestoPricing() {
   if (!props.contrattoId) {
     contestoPricing.value = null
@@ -268,20 +156,84 @@ async function loadContestoPricing() {
   }
 }
 
+// === Form inline ===
+// ⭐ La macchina del form inline e' il BB `useFormInline` (2026-10-03, regola
+//    del 2, ok Tid): `formMode` null/'create'/'edit', la riga in modifica, la
+//    conferma al cambio di riga (D-8) e la chiusura al cambio di contratto.
+//    Prima della lista: le sue azioni leggono «Nuova riga» da qui.
+const {
+  formMode, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({
+  padre: () => (props.visible ? props.contrattoId : null),
+  puoModificare: () => !isReadonly.value,
+  // D-8: letto al clic — la fotografia nasce piu' sotto.
+  confermaCambio: (procedi) => chiudiConConferma(procedi),
+})
+// L'id della riga di `contratti_righe` in modifica: nella sorgente della
+// lista e' `override_riga_id` (vuoto sulle righe che vengono solo dal listino).
+const rigaEditId = computed(() => rigaInModifica.value?.override_riga_id ?? null)
+// La riga del listino da cui e' partito un prezzo forzato: il form e' una
+// CREAZIONE (nessuna riga in modifica), ma a video va evidenziata quella.
+const rigaListinoAperta = ref(null)
+// La riga evidenziata nella lista (`riga_key`): quella in modifica, o quella
+// del listino da cui nasce il prezzo forzato.
+const rigaAttiva = computed(() => rigaInModifica.value?.riga_key ?? rigaListinoAperta.value)
+
+// === Lista righe (`vendite.contratto_righe`) ===
+// ⭐ Il padre e' COMPOSTO: il contratto e il suo emittente. Solo a drawer
+//    aperto: il `null` alla chiusura azzera la lista, o le righe del contratto
+//    precedente lampeggerebbero sotto il prossimo.
+// ⭐ Il contesto pricing e' l'extra della lista: si legge col padre, e
+//    «Ricarica» riallinea entrambi (banner e righe dipendono dalla stessa
+//    versione del listino).
+const righeStore = useContrattoRigheStore()
+const {
+  searchText, onPage, onSort, paginatorProps, tablePage, listaRef,
+  dirty, onConfigLoaded, pageActions, perimetroBloccato,
+  exportDialogVisible, exportLoading, onExportConfirm,
+} = useDrawerTabLista(righeStore, {
+  parentId: {
+    documentoId: () => (props.visible ? props.contrattoId : null),
+    emittenteId: () => (props.visible ? props.emittenteFiscaleId : null),
+  },
+  fetchExtra: () => loadContestoPricing(),
+  exportFn: (params) => exportRigheLista(props.contrattoId, params),
+  getExportParams: (formato) => ({ formato, ...righeStore.paramsExport() }),
+  // Refactor 2026-05-18 (FE 2.2 Opzione C): l'unica azione globale di create
+  // diretta dalla toolbar e' "Aggiungi articolo" (tipo_eccezione=AGGIUNTA:
+  // articolo fuori-listino). Le azioni OVERRIDE/ESCLUSIONE si fanno
+  // contestualmente sulle righe del listino. Gate L1 visibile per simmetria con
+  // le azioni di riga: senza permesso `prezzo_override_manuale` non puoi
+  // nemmeno aggiungere articoli.
+  // «Nuovo» del BB: nascosto a form aperto (un secondo ingresso butterebbe la
+  // riga in scrittura) e in sola lettura.
+  // ⚠️ Arrow lazy: la legge il computed delle azioni, non il setup.
+  extraActions: () => [
+    azioneNuovaRiga({
+      key: 'aggiungi-articolo',
+      label: t('common.new'),
+      tooltip: t('vendite.contratti.aggiungi_articolo_tooltip'),
+      visible: canVariarePrezzi.value,
+      command: onAggiungiArticolo,
+    }),
+  ],
+})
+
+// Scopo: rilegge la pagina corrente delle righe e avvisa il padre (dopo ogni
+//        scrittura: la testata conta le righe).
+async function rileggiRighe() {
+  await righeStore.fetchList()
+  emit('changed')
+}
+
 // Scopo: handler @changed di ComponentiPanel API-driven in EDIT su
 //        articolo composito. Dopo PATCH componente, il trigger DB
 //        `_z90_ricalcola_padre` ha aggiornato `prezzo_unitario` sulla
 //        riga padre. Risincronizza solo quel campo del form (UI mostra
 //        SUM aggiornato) senza chiudere/riaprire l'EDIT e senza perdere
-//        modifiche pending dell'utente (qty/ordine/ecc.). Forma A/B:
-//        refresh locale via `loadPreview()`. Forma senza_listino: la
-//        lista vive in `contratti_righe`, viene rinfrescata dal parent
-//        via `emit('changed')` → props.righeIniziali → watcher (vedi
-//        sotto). Simmetrico a OffertaEccezioniDrawer.reload 2026-05-29.
-// Flag attivato quando il refresh `righe` dal parent deve risincronizzare
-// `form.prezzo_unitario` (caso senza_listino: il parent ricarica async dopo
-// `emit('changed')`, il sync va deferred al watcher props.righeIniziali).
-const _componentiPanelChangedPending = ref(false)
+//        modifiche pending dell'utente (qty/ordine/ecc.).
+// ⚠️ Se la riga non sta nella pagina riletta il prezzo resta com'e': il
+//    componente e' salvato, il form lo mostra alla prossima apertura.
 
 // Scopo: il prezzo della riga composita riletto dopo che il ComponentiPanel ha
 //        GIA' salvato i componenti. E' un dato del server, non una modifica
@@ -294,81 +246,14 @@ function allineaPrezzoDalServer(prezzo) {
 }
 
 async function onComponentiPanelChanged() {
-  if (isSenzaListino.value) {
-    // Forma senza_listino: la riga vive in `contratti_righe` e arriva via
-    // props dal parent (ContrattoDrawer). Il parent ricarica async dopo
-    // `emit('changed')` → re-passa `props.righeIniziali` → watcher
-    // aggiorna `righe.value`. Il sync `form.prezzo_unitario` viene
-    // applicato dal watcher quando il flag pending è true.
-    _componentiPanelChangedPending.value = true
-    emit('changed')
-    return
-  }
-  emit('changed')
-  // Forma A/B: la lista vive in preview, refresh locale via loadPreview.
-  await loadPreview()
-  if (formMode.value === 'edit' && rigaEditId.value != null) {
-    // Match con LO STESSO ordine di `_onEditRigaPersistita` (riga 705):
-    // `rigaEditId = r.id ?? r.override_riga_id`. Cascade prezzi:
-    // snapshot OVERRIDE → override esplicito → prezzo finale applicato.
-    const refreshed = previewRighe.value.find(
-      (r) => (r.id ?? r.override_riga_id) === rigaEditId.value,
-    )
-    if (refreshed) {
-      const nuovoPrezzo = refreshed.prezzo_unitario
-        ?? refreshed.override_prezzo
-        ?? refreshed.prezzo_finale
-      if (nuovoPrezzo != null) allineaPrezzoDalServer(nuovoPrezzo)
-    }
-  }
+  await rileggiRighe()
+  if (formMode.value !== 'edit' || rigaEditId.value == null) return
+  const fresca = righeStore.items.find((r) => r.override_riga_id === rigaEditId.value)
+  if (fresca?.override_prezzo != null) allineaPrezzoDalServer(fresca.override_prezzo)
 }
-
-// Reload completo: in modalita' A/B ricarica la preview dal BE; in modalita'
-// C la lista contratti_righe viene rinfrescata dal parent (emit changed).
-// Usato sia dal pulsante Ricarica sia dallo shortcut F5 globale.
-async function reloadList() {
-  if (!props.visible) return
-  if (isSenzaListino.value) {
-    emit('changed')
-  } else {
-    await loadPreview()
-  }
-}
-
-// Shortcut F5: ricarica la lista senza reload del browser. Coerente con
-// il pattern useSearchTable usato dalle liste main. Attivo solo quando
-// il drawer e' visibile (registrato in onMounted, deregistrato in onUnmounted
-// — il drawer e' un componente persistente, non viene smontato a chiusura).
-function onKeydown(e) {
-  if (e.key === 'F5' && props.visible) {
-    e.preventDefault()
-    reloadList()
-  }
-}
-onMounted(() => { window.addEventListener('keydown', onKeydown) })
-onUnmounted(() => { window.removeEventListener('keydown', onKeydown) })
 
 // === Form state ===
-// ⭐ La macchina del form inline e' il BB `useFormInline` (2026-10-03, regola
-//    del 2, ok Tid — era riscritta qui a mano, «resta fuori col suo lotto L4»):
-//    `formMode` null/'create'/'edit', la riga in modifica, la conferma al
-//    cambio di riga (D-8) e la chiusura al cambio di contratto.
-const {
-  formMode, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
-} = useFormInline({
-  padre: () => props.contrattoId,
-  puoModificare: () => !isReadonly.value,
-  // D-8: letto al clic — la fotografia nasce piu' sotto.
-  confermaCambio: (procedi) => chiudiConConferma(procedi),
-})
-// L'id della riga in modifica: in A/B `override_riga_id` (preview), in C `id`
-// (riga persistita).
-const rigaEditId = computed(() => {
-  const r = rigaInModifica.value
-  return r ? (r.id ?? r.override_riga_id) : null
-})
 const form = ref({})
-const selectedRow = ref(null)
 
 // Articolo selezionato corrente con flag `is_composito` (dal lookup
 // `ArticoloLookup` o ricostruito in `_onEditRigaPersistita` per EDIT). Driver della
@@ -455,9 +340,9 @@ async function caricaUomConPickBase(articoloId) {
 
 // === Options ===
 const tipoErogazioneOptions = computed(() => [
-  { value: 'CANONE', label: t('vendite.contratti.tipo_erogazione_canone') },
-  { value: 'CONSUMO', label: t('vendite.contratti.tipo_erogazione_consumo') },
-  { value: 'UNA_TANTUM', label: t('vendite.contratti.tipo_erogazione_una_tantum') },
+  { value: TIPO_EROGAZIONE.CANONE, label: t('vendite.contratti.tipo_erogazione_canone') },
+  { value: TIPO_EROGAZIONE.CONSUMO, label: t('vendite.contratti.tipo_erogazione_consumo') },
+  { value: TIPO_EROGAZIONE.UNA_TANTUM, label: t('vendite.contratti.tipo_erogazione_una_tantum') },
 ])
 
 // Refactor 2026-05-19: matrice (tipo_erogazione × fonte_quantita_attesa).
@@ -468,23 +353,23 @@ const tipoErogazioneOptions = computed(() => [
 // TIMESHEET commentato finche' il modulo rendicontazione ore non esistera'.
 // Riferimento: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §3.
 const FONTI_PER_TIPO_EROGAZIONE = {
-  CANONE: [
+  [TIPO_EROGAZIONE.CANONE]: [
     { value: FONTE_QUANTITA_ATTESA.FISSA, default: true },
     { value: FONTE_QUANTITA_ATTESA.MANUALE, severity: 'warn' },
     { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
   ],
-  UNA_TANTUM: [
+  [TIPO_EROGAZIONE.UNA_TANTUM]: [
     { value: FONTE_QUANTITA_ATTESA.FISSA, default: true },
     { value: FONTE_QUANTITA_ATTESA.MANUALE },
     { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
   ],
-  ORARIO: [
+  [TIPO_EROGAZIONE.ORARIO]: [
     { value: FONTE_QUANTITA_ATTESA.FISSA, severity: 'warn' },
     { value: FONTE_QUANTITA_ATTESA.MANUALE, default: true },
     // { value: FONTE_QUANTITA_ATTESA.TIMESHEET },  // attivare quando il modulo timesheet esistera'
     { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI, severity: 'warn' },
   ],
-  CONSUMO: [
+  [TIPO_EROGAZIONE.CONSUMO]: [
     { value: FONTE_QUANTITA_ATTESA.MANUALE },
     { value: FONTE_QUANTITA_ATTESA.LETTURE, default: true },
     { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
@@ -522,11 +407,11 @@ const showQtaOperativa = computed(() => form.value?.fonte_quantita_attesa === FO
 // piu' ambiguita' "che tipo voglio creare?". Default AGGIUNTA: l'azione
 // toolbar e' il punto di ingresso piu' generico.
 function defaultForm(overrides = {}) {
-  const tipo = overrides.tipo_erogazione || 'CANONE'
+  const tipo = overrides.tipo_erogazione || TIPO_EROGAZIONE.CANONE
   return {
     articolo_id: null,
     articolo_obj: null,
-    tipo_eccezione: 'AGGIUNTA',
+    tipo_eccezione: TIPO_ECCEZIONE.AGGIUNTA,
     tipo_erogazione: tipo,
     // Refactor 2026-05-19: fonte derivata dalla matrice in base al tipo
     // (default = FISSA per CANONE/UNA_TANTUM). Il BE applica lo stesso
@@ -551,34 +436,15 @@ function resetComponentiState() {
 }
 
 // === Lifecycle ===
+// Righe e contesto pricing li legge la lista quando il padre e' completo
+// (`useDrawerTabLista`): qui solo il form, che all'apertura riparte chiuso.
 watch(() => props.visible, (v) => {
   if (v) {
-    righe.value = [...(props.righeIniziali || [])]
     closeForm()
-    loadPreview()
-    loadContestoPricing()
   } else {
     contestoPricing.value = null
   }
 })
-
-watch(() => props.righeIniziali, (v) => {
-  righe.value = [...(v || [])]
-  // Se il refresh arriva dal flusso ComponentiPanel @changed in
-  // senza_listino, ri-sincronizza `form.prezzo_unitario` dalla riga
-  // aggiornata (il trigger DB `_z90_ricalcola_padre` ha appena scritto
-  // il nuovo SUM). Senza questo handler il drawer mostrava il prezzo
-  // stantio mentre la lista in alto era già aggiornata (bug osservato
-  // 2026-05-29). Si reset comunque il flag a fine ciclo per non lasciare
-  // sync residui su refresh successivi (es. save eccezione altra).
-  if (_componentiPanelChangedPending.value
-      && formMode.value === 'edit'
-      && rigaEditId.value != null) {
-    const refreshed = (v || []).find((r) => r.id === rigaEditId.value)
-    if (refreshed?.prezzo_unitario != null) allineaPrezzoDalServer(refreshed.prezzo_unitario)
-    _componentiPanelChangedPending.value = false
-  }
-}, { deep: true })
 
 // Refactor 2026-05-19: reset di `fonte_quantita_attesa` al cambio
 // `tipo_erogazione` SOLO se la combo nuova diventa vietata
@@ -599,9 +465,9 @@ watch(() => form.value?.tipo_erogazione, (nuovoTipo, vecchioTipo) => {
 // Scopo: ingresso CREATE "Aggiungi articolo" (azione toolbar). Articolo
 //        libero (autocomplete), tipo_eccezione=AGGIUNTA (articolo fuori-listino).
 function onAggiungiArticolo() {
-  form.value = defaultForm({ tipo_eccezione: 'AGGIUNTA' })
+  form.value = defaultForm({ tipo_eccezione: TIPO_ECCEZIONE.AGGIUNTA })
   nuovaRiga()
-  selectedRow.value = null
+  rigaListinoAperta.value = null
   resetUomOptions()
   // resetComponentiState azzera anche selectedRowComponenti: articolo nuovo
   // fuori-listino, nessuna composizione sorgente da mostrare. Se composito,
@@ -612,13 +478,13 @@ function onAggiungiArticolo() {
   nextTick(fissa)
 }
 
-// Scopo: ingresso CREATE "Modifica prezzo" da kebab di una riga DA_LISTINO
-//        della preview. Pre-compila articolo (immutabile), UoM e prezzo dal
+// Scopo: ingresso CREATE "Modifica prezzo" dal click su una riga del listino
+//        (verbo SOVRASCRIVI_PREZZO). Pre-compila articolo (immutabile), UoM e prezzo dal
 //        listino: l'operatore deve solo cambiare il prezzo. tipo_eccezione
 //        derivato = OVERRIDE.
 function onModificaPrezzo(row) {
   form.value = defaultForm({
-    tipo_eccezione: 'OVERRIDE',
+    tipo_eccezione: TIPO_ECCEZIONE.OVERRIDE,
     articolo_id: row.articolo_id,
     articolo_obj: {
       id: row.articolo_id,
@@ -636,7 +502,7 @@ function onModificaPrezzo(row) {
   // articoloObj fuori dal form per i computed `isCompositoCorrente` & co.
   articoloObj.value = form.value.articolo_obj
   nuovaRiga()
-  selectedRow.value = null
+  rigaListinoAperta.value = row.riga_key
   // Carica le UoM operative dell'articolo per popolare uomOptions: senza
   // fetch il Select UoM mostrerebbe vuoto anche con uom_operativa_id
   // pre-selezionato (PrimeVue richiede che il valore sia nelle options).
@@ -654,22 +520,19 @@ function onModificaPrezzo(row) {
   nextTick(fissa)
 }
 
-// Scopo: azione one-click "Escludi" da kebab di una riga DA_LISTINO. Dialog
+// Scopo: azione one-click "Escludi" dal menu di una riga del listino. Dialog
 //        di conferma + salvataggio diretto come ESCLUSIONE (prezzo NULL,
 //        UoM dal listino). Niente form: la sola scelta dell'operatore e' SI/NO.
 function onEscludi(row) {
-  const label = row.articolo_codice
-    ? `${row.articolo_codice} — ${row.articolo_descrizione}`
-    : row.articolo_descrizione
   confirmAction({
     header: t('vendite.contratti.escludi_dialog_titolo'),
-    message: t('vendite.contratti.escludi_dialog_messaggio', { articolo: label }),
+    message: t('vendite.contratti.escludi_dialog_messaggio', { articolo: etichettaRiga(row) }),
     acceptLabel: t('vendite.contratti.escludi_dialog_conferma'),
     danger: true,
     onAccept: async () => {
       const payload = {
         articolo_id: row.articolo_id,
-        tipo_eccezione: 'ESCLUSIONE',
+        tipo_eccezione: TIPO_ECCEZIONE.ESCLUSIONE,
         prezzo_unitario: null,  // vincolo BE
         uom_operativa_id: row.uom_id ?? null,
         qta_operativa: '1',
@@ -679,40 +542,33 @@ function onEscludi(row) {
         () => store.addRiga(props.contrattoId, payload),
         { successMessage: t('vendite.contratti.articolo_escluso') },
       )
-      if (result !== null) {
-        if (!isSenzaListino.value) await loadPreview()
-        emit('changed')
-      }
+      if (result !== null) await rileggiRighe()
     },
   })
 }
 
 // Scopo: handler unificato click di riga (allineamento UX standard del progetto
 //        — frontend-standards §"Pattern lista": modifica = click riga, kebab
-//        riservato ad azioni secondarie).
+//        riservato ad azioni secondarie). Il click e' il verbo che la riga
+//        ammette (colonna `azioni` del DB), non una scelta per origine:
 //        - readonly: no-op
-//        - riga DA_LISTINO (preview): apre il form pre-compilato come OVERRIDE
-//          (delega a onModificaPrezzo, ex-azione "matita" rimossa dal kebab)
-//        - riga persistita (OVERRIDE/AGGIUNTA/ESCLUSIONE): apre edit normale
-//        Inoltre auto-espande la riga corrente se composita, cosi' l'operatore
-//        vede subito la composizione BoM inline durante l'edit (simmetria con
-//        PreventiviRigheTable).
-function onRowClick(event) {
-  const r = event.data
-  if (isReadonly.value) return
-  // Auto-expand inline se la riga e' un bundle composito: nessun click extra
-  // sul chevron, il dettaglio componenti diventa subito visibile.
-  if (hasBundleComponenti(r) && !isExpanded(r)) {
-    toggleExpansion(r)
-  }
-  // DA_LISTINO: pre-compila il form come OVERRIDE (era il vecchio "Modifica prezzo").
+//        - SOVRASCRIVI_PREZZO (riga del listino): apre il form pre-compilato
+//          come OVERRIDE (delega a onModificaPrezzo). Muta un prezzo, quindi
+//          vuole lo stesso permesso di «Nuovo» ed «Escludi»: senza, il click
+//          non apre un form che il backend rifiuterebbe (403)
+//        - MODIFICA (riga salvata: OVERRIDE/AGGIUNTA/ESCLUSIONE): apre l'edit
+// ⭐ Riceve la RIGA, non l'evento PrimeVue: e' la firma di `row-click` di
+//    `DrawerTabLista`.
+function onRowClick(r) {
+  if (isReadonly.value || !r) return
+  const azioni = r.azioni || []
   // E' una CREAZIONE: la conferma col form aperto e modificato si chiede qui
   // (`apriRiga`, sotto, la chiede da se').
-  if (r.origine === 'DA_LISTINO') {
-    chiudiConConferma(() => onModificaPrezzo(r))
+  if (azioni.includes(AZIONE_RIGA_CONTRATTO.SOVRASCRIVI_PREZZO)) {
+    if (canVariarePrezzi.value) chiudiConConferma(() => onModificaPrezzo(r))
     return
   }
-  _onEditRigaPersistita(r)
+  if (azioni.includes(AZIONE_RIGA_CONTRATTO.MODIFICA)) _onEditRigaPersistita(r)
 }
 
 // Scopo: apertura form EDIT per righe persistite (override/aggiunta/esclusione).
@@ -721,25 +577,33 @@ function _onEditRigaPersistita(r) {
   // `apriRiga` apre la modifica (l'id lo deriva `rigaEditId`) e, se un'altra
   // riga e' aperta e modificata, prima chiede: il riempimento sta in `poi`.
   apriRiga(r, () => {
+    rigaListinoAperta.value = null
     form.value = {
       articolo_id: r.articolo_id,
       articolo_obj: { id: r.articolo_id, codice: r.articolo_codice, descrizione: r.articolo_descrizione, _display: `${r.articolo_codice} — ${r.articolo_descrizione}` },
       // tipo_eccezione: immutabile in EDIT (refactor 2026-05-15). Mostrato
       // come Tag readonly nel template form. Fallback OVERRIDE per righe
       // legacy che non avevano ancora il campo (transitorio).
-      tipo_eccezione: r.tipo_eccezione || 'OVERRIDE',
-      tipo_erogazione: r.tipo_erogazione || 'CANONE',
+      tipo_eccezione: r.tipo_eccezione || TIPO_ECCEZIONE.OVERRIDE,
+      tipo_erogazione: r.tipo_erogazione || TIPO_EROGAZIONE.CANONE,
       // Refactor 2026-05-19: fonte_quantita_attesa NOT NULL post-migration
       // 20260519-05. Fallback dal default della matrice solo per righe legacy
       // che non avessero ancora il campo (transitorio, non dovrebbe accadere).
       fonte_quantita_attesa: r.fonte_quantita_attesa
-        || _defaultFontePerTipo(r.tipo_erogazione || 'CANONE'),
-      prezzo_unitario: (r.prezzo_unitario ?? r.override_prezzo) != null
-        ? Number(r.prezzo_unitario ?? r.override_prezzo)
-        : null,
+        || _defaultFontePerTipo(r.tipo_erogazione || TIPO_EROGAZIONE.CANONE),
+      // Il prezzo scritto sulla riga di `contratti_righe` (NULL su una
+      // ESCLUSIONE).
+      prezzo_unitario: r.override_prezzo != null ? Number(r.override_prezzo) : null,
       qta_operativa: r.qta_operativa != null ? Number(r.qta_operativa) : 1,
-      uom_operativa_id: r.uom_operativa_id ?? r.uom_id,
-      ordine: r.ordine || 10,
+      // ⭐ UdM e ordine COSI' COME SONO SCRITTI sulla riga (§9.11, R-D2):
+      //    il form li rimanda al PATCH. Fino al 2026-10-04 la sorgente non li
+      //    portava e il form ripiegava sull'UdM della riga di listino e su un
+      //    ordine 10 — il primo «Salva» cambiava UdM e azzerava l'ordine, in
+      //    silenzio. NULL resta NULL: l'UdM manca solo su una riga senza
+      //    quantita' (e vale la base dell'articolo, regola del DB), e un ordine
+      //    NULL il backend non lo tocca.
+      uom_operativa_id: r.uom_operativa_id ?? null,
+      ordine: r.ordine ?? null,
     }
     // Modello unificato BoM 2026-05-13: in EDIT articoloObj porta is_composito
     // se disponibile dalla riga (proiezione BE denormalizzata; fallback false
@@ -778,8 +642,8 @@ function onArticoloSelected(item) {
 
 function closeForm() {
   chiudiForm()
+  rigaListinoAperta.value = null
   form.value = {}
-  selectedRow.value = null
   resetUomOptions()
   resetComponentiState()
 }
@@ -789,7 +653,12 @@ const canSave = computed(() => {
   if (isReadonly.value) return false
   if (!formMode.value) return false
   if (!form.value.articolo_id) return false
-  if (!form.value.uom_operativa_id) return false
+  // L'UdM e' la misura della QUANTITA': obbligatoria dove la riga ha una
+  // quantita' (fonte FISSA). Una riga senza quantita' puo' non averla
+  // (`contratti_righe.uom_operativa_id` nullable: vale la base dell'articolo),
+  // e il form non deve inventarla per farla salvare (§9.11).
+  if (form.value.fonte_quantita_attesa === FONTE_QUANTITA_ATTESA.FISSA
+      && !form.value.uom_operativa_id) return false
   // Refactor 2026-05-19: fonte_quantita_attesa NOT NULL (CHECK DB).
   // Per FISSA serve qta_operativa valorizzata e diversa da zero (CHECK DB
   // `qta_operativa <> 0`: negativi ammessi, es. resi/note credito); per le
@@ -809,7 +678,7 @@ const canSave = computed(() => {
   const tipo = form.value.tipo_eccezione
   const prezzoMancante = form.value.prezzo_unitario == null
     || form.value.prezzo_unitario === ''
-  if (tipo !== 'ESCLUSIONE'
+  if (tipo !== TIPO_ECCEZIONE.ESCLUSIONE
       && !articoloObj.value?.is_composito
       && prezzoMancante) return false
   // Modello unificato BoM 2026-05-13: in CREATE su articolo composito,
@@ -850,9 +719,9 @@ function buildRigaPayload(extra = {}) {
   }
   if (formMode.value === 'create') {
     payload.articolo_id = f.articolo_id
-    payload.tipo_eccezione = f.tipo_eccezione || 'OVERRIDE'
+    payload.tipo_eccezione = f.tipo_eccezione || TIPO_ECCEZIONE.OVERRIDE
     // ESCLUSIONE: BE rifiuta prezzo non-null. Forziamo null per safety.
-    if (payload.tipo_eccezione === 'ESCLUSIONE') {
+    if (payload.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE) {
       payload.prezzo_unitario = null
     }
     // Modello unificato BoM 2026-05-13: includi `componenti_overrides`
@@ -872,13 +741,12 @@ function submitRiga(payload) {
 }
 
 // Save + richiedi-approvazione con gate L2 via BB condiviso (B12, regola del 2).
-// Side-effect di successo: refresh preview (forma con listino) + changed + close.
+// Side-effect di successo: rilettura delle righe + changed + close.
 const { save: onSave, richiediApprovazione: onRichiediApprovazione } = useL2SaveFlow({
   persist: submitRiga,
   buildPayload: buildRigaPayload,
   onSuccess: async () => {
-    if (!isSenzaListino.value) await loadPreview()
-    emit('changed')
+    await rileggiRighe()
     closeForm()
   },
   messages: {
@@ -891,23 +759,35 @@ const { save: onSave, richiediApprovazione: onRichiediApprovazione } = useL2Save
   l2ErrorCodes: L2_ERROR_CODES,
 })
 
+// Scopo: l'etichetta di una riga nei messaggi di conferma.
+function etichettaRiga(r) {
+  return r.articolo_codice
+    ? `${r.articolo_codice} — ${r.articolo_descrizione}`
+    : r.articolo_descrizione
+}
+
+// Scopo: cancella la riga di `contratti_righe` dietro la riga di lista (il
+//        suo `override_riga_id`) e rilegge. E' lo stesso gesto per «rimuovi»
+//        e per i due «ripristina»: cambia solo cio' che si dice all'operatore.
+async function cancellaRiga(r, successMessage) {
+  const rigaId = r.override_riga_id
+  const result = await execute(
+    () => store.deleteRiga(props.contrattoId, rigaId),
+    { successMessage },
+  )
+  if (result === null) return
+  // Se stavo modificando questa riga, chiudi il form.
+  if (rigaEditId.value === rigaId) closeForm()
+  await rileggiRighe()
+}
+
+// AGGIUNTA: "Elimina" semanticamente corretto — l'articolo non e' nel
+// listino, sparisce davvero dal contratto.
 function onDelete(r) {
-  // ID contratti_righe: in C sta in r.id, in B (preview) sta in r.override_riga_id.
-  const rigaId = r.id ?? r.override_riga_id
-  const label = r.articolo_codice || r.articolo_descrizione || `#${rigaId}`
-  confirmDelete(label, async () => {
-    const result = await execute(
-      () => store.deleteRiga(props.contrattoId, rigaId),
-      { successMessage: t('vendite.contratti.riga_eliminata') }
-    )
-    if (result !== null) {
-      // Se stavo editando questa riga, chiudi il form.
-      if (rigaEditId.value === rigaId) closeForm()
-      // In A/B la preview va ricaricata; in C il parent rilegge dalle righe.
-      if (!isSenzaListino.value) await loadPreview()
-      emit('changed')
-    }
-  })
+  confirmDelete(
+    r.articolo_codice || r.articolo_descrizione || `#${r.override_riga_id}`,
+    () => cancellaRiga(r, t('vendite.contratti.riga_eliminata')),
+  )
 }
 
 // Scopo: ripristino eccezione (refactor UX 2026-05-19). Stessa azione DB di
@@ -916,31 +796,14 @@ function onDelete(r) {
 //        dal contratto, torna al comportamento del listino. Riusato sia per
 //        OVERRIDE ("Ripristina prezzo di listino") sia per ESCLUSIONE
 //        ("Ripristina articolo nel contratto"): il backend e' identico, la
-//        differenza e' solo il testo del confirm.
-function onRipristina(r, origine) {
-  const rigaId = r.id ?? r.override_riga_id
-  const articoloLabel = r.articolo_codice
-    ? `${r.articolo_codice} — ${r.articolo_descrizione}`
-    : r.articolo_descrizione
-  const prefix = origine === TIPO_ECCEZIONE.OVERRIDE
-    ? 'ripristina_listino'
-    : 'ripristina_articolo'
+//        differenza e' solo il testo del confirm (`prefix` delle chiavi).
+function onRipristina(r, prefix) {
   confirmAction({
     header: t(`vendite.contratti.${prefix}_dialog_titolo`),
-    message: t(`vendite.contratti.${prefix}_dialog_messaggio`, { articolo: articoloLabel }),
+    message: t(`vendite.contratti.${prefix}_dialog_messaggio`, { articolo: etichettaRiga(r) }),
     acceptLabel: t(`vendite.contratti.${prefix}_dialog_conferma`),
     danger: false,
-    onAccept: async () => {
-      const result = await execute(
-        () => store.deleteRiga(props.contrattoId, rigaId),
-        { successMessage: t('vendite.contratti.riga_ripristinata') }
-      )
-      if (result !== null) {
-        if (rigaEditId.value === rigaId) closeForm()
-        if (!isSenzaListino.value) await loadPreview()
-        emit('changed')
-      }
-    },
+    onAccept: () => cancellaRiga(r, t('vendite.contratti.riga_ripristinata')),
   })
 }
 
@@ -949,71 +812,66 @@ function onRipristina(r, origine) {
 // AppDrawer con la stessa conferma (`conferma-uscita`).
 const annullaForm = () => chiudiConConferma(closeForm)
 
-// Scopo: azioni di riga del master-detail. Differenziate per origine.
-//        Allineamento UX standard del progetto (frontend-standards §"Pattern
-//        lista"): la modifica avviene per click di riga, il kebab espone
-//        solo azioni SECONDARIE distinte dall'edit.
-//   - DA_LISTINO (preview puro): "Escludi" (one-click ESCLUSIONE con conferma).
-//     La modifica prezzo arriva da onRowClick → onModificaPrezzo, niente matita.
-//   - OVERRIDE: "Ripristina prezzo di listino" (DELETE → l'articolo torna
-//     DA_LISTINO al prezzo originale). Refactor UX 2026-05-19.
-//   - ESCLUSIONE: "Ripristina articolo nel contratto" (DELETE → l'articolo
-//     torna disponibile al prezzo di listino). Refactor UX 2026-05-19.
-//   - AGGIUNTA: "Rimuovi dal contratto" (DELETE → l'articolo sparisce; non
-//     era nel listino, "elimina" semanticamente corretto).
-function buildRigaActions(data) {
-  if (data.origine === 'DA_LISTINO') {
-    return [
-      {
-        key: 'escludi',
-        label: t('vendite.contratti.azione_escludi'),
-        icon: MANAGE_ICONS.ESCLUDI,
-        severity: 'warn',
-        visible: !isReadonly.value && canVariarePrezzi.value,
-        command: () => onEscludi(data),
-      },
-    ]
-  }
-  if (data.origine === TIPO_ECCEZIONE.OVERRIDE) {
-    return [
-      {
-        key: 'ripristina-listino',
-        label: t('vendite.contratti.azione_ripristina_listino'),
-        icon: MANAGE_ICONS.RIPRISTINA_LISTINO,
-        severity: 'secondary',
-        visible: !isReadonly.value,
-        command: () => onRipristina(data, TIPO_ECCEZIONE.OVERRIDE),
-      },
-    ]
-  }
-  if (data.origine === TIPO_ECCEZIONE.ESCLUSIONE) {
-    return [
-      {
-        key: 'ripristina-articolo',
-        label: t('vendite.contratti.azione_ripristina_articolo'),
-        icon: MANAGE_ICONS.RIPRISTINA_LISTINO,
-        severity: 'secondary',
-        visible: !isReadonly.value,
-        command: () => onRipristina(data, TIPO_ECCEZIONE.ESCLUSIONE),
-      },
-    ]
-  }
-  // AGGIUNTA: "Elimina" semanticamente corretto — l'articolo non e' nel
-  // listino, sparisce davvero dal contratto.
-  return [
-    {
-      key: 'rimuovi-aggiunta',
-      label: t('vendite.contratti.azione_rimuovi_aggiunta'),
-      icon: MANAGE_ICONS.DELETE,
-      severity: 'danger',
-      visible: !isReadonly.value,
-      command: () => onDelete(data),
-    },
-  ]
+// Scopo: le voci del menu di riga, una per VERBO della colonna `azioni`.
+//        ⭐ Quali verbi valgono per la riga lo dice il DB (capability di riga,
+//        brief-db-liste-righe-documento D-8.4): fino al 2026-10-04 il drawer
+//        li decideva per origine, una seconda sede della stessa regola.
+//        SOVRASCRIVI_PREZZO e MODIFICA non sono qui: sono il click sulla riga
+//        (frontend-standards §"Pattern lista": modifica = click riga, kebab
+//        riservato ad azioni secondarie).
+//   - ESCLUDI (riga del listino): one-click ESCLUSIONE con conferma. Spento
+//     col motivo quando il DB lo rifiuterebbe (`escludi_blocco_codice`: lo
+//     stesso predicato del guard, es. un componente di un bundle del listino).
+//   - RIPRISTINA_LISTINO (OVERRIDE): DELETE → torna al prezzo di listino.
+//   - RIPRISTINA_ARTICOLO (ESCLUSIONE): DELETE → l'articolo torna disponibile.
+//   - RIMUOVI (AGGIUNTA): DELETE → l'articolo sparisce dal contratto.
+// ⚠️ Un verbo nuovo del DB senza voce qui non compare: e' un'azione che il
+//    drawer non sa ancora fare, non una da inventare.
+const VOCI_MENU_RIGA = {
+  [AZIONE_RIGA_CONTRATTO.ESCLUDI]: (r) => ({
+    key: 'escludi',
+    label: t('vendite.contratti.azione_escludi'),
+    icon: MANAGE_ICONS.ESCLUDI,
+    severity: 'warn',
+    // Gate L1 (`prezzo_override_manuale`): l'esclusione e' negoziazione.
+    visible: canVariarePrezzi.value,
+    disabled: !!r.escludi_blocco_codice,
+    tooltip: r.escludi_blocco_codice
+      ? t(`vendite.contratti.escludi_blocco.${r.escludi_blocco_codice.toLowerCase()}`)
+      : '',
+    command: () => onEscludi(r),
+  }),
+  [AZIONE_RIGA_CONTRATTO.RIPRISTINA_LISTINO]: (r) => ({
+    key: 'ripristina-listino',
+    label: t('vendite.contratti.azione_ripristina_listino'),
+    icon: MANAGE_ICONS.RIPRISTINA_LISTINO,
+    severity: 'secondary',
+    command: () => onRipristina(r, 'ripristina_listino'),
+  }),
+  [AZIONE_RIGA_CONTRATTO.RIPRISTINA_ARTICOLO]: (r) => ({
+    key: 'ripristina-articolo',
+    label: t('vendite.contratti.azione_ripristina_articolo'),
+    icon: MANAGE_ICONS.RIPRISTINA_LISTINO,
+    severity: 'secondary',
+    command: () => onRipristina(r, 'ripristina_articolo'),
+  }),
+  [AZIONE_RIGA_CONTRATTO.RIMUOVI]: (r) => ({
+    key: 'rimuovi-aggiunta',
+    label: t('vendite.contratti.azione_rimuovi_aggiunta'),
+    icon: MANAGE_ICONS.DELETE,
+    severity: 'danger',
+    command: () => onDelete(r),
+  }),
 }
 
-// Scopo: severity Tag per origine riga. Distinzione visiva delle 4 origini
-// nella tabella righe: DA_LISTINO neutra (preview), OVERRIDE info (prezzo
+function buildRigaActions(r) {
+  return (r.azioni || [])
+    .filter((verbo) => VOCI_MENU_RIGA[verbo])
+    .map((verbo) => VOCI_MENU_RIGA[verbo](r))
+}
+
+// Scopo: severity Tag per origine riga (cella `origine` della lista).
+// Distinzione visiva delle 4 origini: DA_LISTINO neutra (preview), OVERRIDE info (prezzo
 // personalizzato), AGGIUNTA success (articolo aggiunto al contratto),
 // ESCLUSIONE warn (articolo rimosso dal listino).
 function origineSeverity(origine) {
@@ -1106,126 +964,82 @@ function origineSeverity(origine) {
     </Message>
 
     <!-- Avviso: listino associato ma senza versione operativa oggi.
-         La preview e` vuota legittimamente, l'operatore deve attivare
-         una versione del listino prima che il pricing sia calcolato. -->
-    <Message v-if="previewMeta?.listino_senza_versione_oggi"
+         La lista ha le sole eccezioni, legittimamente: l'operatore deve
+         attivare una versione del listino prima che il pricing sia calcolato. -->
+    <Message v-if="listinoSenzaVersione"
       severity="warn" :closable="false" size="small">
       {{ t('vendite.contratti.preview_listino_senza_versione', {
-        codice: previewMeta.listino_codice || ''
+        codice: contestoPricing.listino_codice || ''
       }) }}
     </Message>
 
-    <!-- === MASTER: toolbar + lista paginata === -->
-    <div class="app-page-toolbar">
-      <!-- ⚠️ Nessuno `:store`: il filtro articolo e' CLIENT-SIDE su righe gia'
-           caricate, e `store` qui e' quello dei CONTRATTI — passarlo
-           accenderebbe il segno coi filtri di un'altra lista. Non serve: e' la
-           ricerca di questo elenco, quindi sta in `#sempre` e non c'e' nessun
-           filtro da portare nel drawer. -->
-      <FiltriLista>
-        <template #sempre>
-          <InputText v-model="filtroArticolo" class="app-filter-w-lg"
-            :placeholder="t('vendite.contratti.filtro_articolo_placeholder')" />
-        </template>
-      </FiltriLista>
-      <PageActionsBar :actions="pageActions" />
-    </div>
-
-    <DataTable
-      :value="righeView"
-      v-model:selection="selectedRow"
-      v-model:expanded-rows="expandedRows"
-      :loading="previewLoading"
-      selection-mode="single"
-      :data-key="isSenzaListino ? 'id' : '_row_key'"
-      :row-class="rowClass"
-      class="app-datatable app-datatable--inner"
-      striped-rows
-      paginator
-      :rows="misuraDefault(USO_MISURA.COMPATTA)"
-      :rows-per-page-options="misureOpzioni()"
-      paginator-position="top"
-      sort-field="articolo_descrizione"
-      :sort-order="1"
-      removable-sort
+    <!-- === MASTER: la lista `vendite.contratto_righe` ===
+         Colonne dal catalogo, ricerca ed export dal backend, chiave `riga_key`
+         dal DB. ⛔ «Non sono riuscito a leggere le righe» non e' «non ce ne
+         sono»: a lista vuota la tabella mostrerebbe lo stesso stato. -->
+    <Message v-if="righeStore.erroreCaricamento" severity="warn" :closable="false" size="small">
+      {{ t('common.righe_non_lette') }}
+    </Message>
+    <DrawerTabLista
+      ref="listaRef"
+      codice="vendite.contratto_righe"
+      :store="righeStore"
+      :emittente-esplicito="emittenteFiscaleId"
+      :rows="righeStore.items"
+      :total="righeStore.totalRecords"
+      :loading="righeStore.loading"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      :page-actions="pageActions"
+      :dirty="dirty"
+      :perimetro-bloccato="perimetroBloccato"
+      data-key="riga_key"
+      :riga-attiva="rigaAttiva"
+      :righe-cliccabili="!isReadonly"
+      @page="onPage"
+      @sort="onSort"
       @row-click="onRowClick"
+      @config-loaded="onConfigLoaded"
     >
-      <!-- Expander custom per bundle BoM: chevron visibile solo dove la
-           riga è padre composito con figli (componenti JSONB non vuoto).
-           @click.stop evita che il click apra anche il form di edit.
-           Presente in ENTRAMBE le forme: con_listino (componenti dalla
-           preview DB) e senza_listino (componenti aggregati da list_righe,
-           ramo AGGIUNTA bundle persistite). -->
-      <Column style="width: 2.5rem;" :exportable="false">
-        <template #body="{ data }">
-          <Button v-if="hasBundleComponenti(data)"
-            :icon="isExpanded(data) ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND"
-            text rounded size="small"
-            v-tooltip.top="t('vendite.contratti.componenti_bundle_tooltip')"
-            @click.stop="toggleExpansion(data)" />
-        </template>
-      </Column>
-      <Column field="articolo_codice" :header="t('vendite.contratti.col_articolo')" sortable style="width: 150px;" />
-      <Column field="articolo_descrizione" :header="t('vendite.contratti.col_descrizione')" sortable />
-      <Column :header="t('vendite.contratti.col_uom')" style="width: 80px;">
-        <template #body="{ data }">{{ data.uom_codice ?? '—' }}</template>
-      </Column>
-      <!-- Modalita' C: prezzo singolo. A/B: prezzo listino + prezzo finale + origine. -->
-      <template v-if="isSenzaListino">
-        <Column field="prezzo_unitario" :header="t('vendite.contratti.col_prezzo')" style="width: 90px;">
-          <template #body="{ data }">
-            {{ formatCurrency(data.prezzo_unitario, { placeholder: '—', maximumFractionDigits: 2 }) }}
-          </template>
-        </Column>
-        <Column field="qta_operativa" :header="t('vendite.contratti.col_qta')" style="width: 70px;">
-          <template #body="{ data }">
-            {{ formatNumber(data.qta_operativa, { placeholder: '—', minimumFractionDigits: 0, maximumFractionDigits: 4 }) }}
-          </template>
-        </Column>
-        <Column field="tipo_erogazione" :header="t('vendite.contratti.col_tipo_erogazione')" style="width: 100px;" />
+      <!-- La ricerca: codice e descrizione articolo (`ricerca_full` a
+           catalogo), lato server. L'export porta la stessa `search`. -->
+      <template #filtri-sempre>
+        <InputText v-model="searchText" class="app-filter-w-lg"
+          :placeholder="t('vendite.contratti.filtro_articolo_placeholder')" />
       </template>
-      <template v-else>
-        <Column :header="t('vendite.contratti.col_prezzo_listino')" style="width: 110px;">
-          <template #body="{ data }">
-            {{ formatCurrency(data.prezzo_listino, { placeholder: '—', maximumFractionDigits: 2 }) }}
-          </template>
-        </Column>
-        <Column :header="t('vendite.contratti.col_prezzo_finale')" style="width: 110px;">
-          <template #body="{ data }">
-            <span class="font-bold">
-              {{ formatCurrency(data.prezzo_finale, { placeholder: '—', maximumFractionDigits: 2 }) }}
-            </span>
-          </template>
-        </Column>
-        <Column :header="t('vendite.contratti.col_origine')" style="width: 110px;">
-          <template #body="{ data }">
-            <Tag :value="t(`vendite.contratti.origine_${data.origine?.toLowerCase()}`)"
-              :severity="origineSeverity(data.origine)" />
-          </template>
-        </Column>
+
+      <template #cell-origine="{ data }">
+        <Tag v-if="data.origine"
+          :value="t(`vendite.contratti.origine_${data.origine.toLowerCase()}`)"
+          :severity="origineSeverity(data.origine)" />
       </template>
-      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
-        </template>
-      </Column>
-      <!-- Sub-tabella componenti BoM: padre + figli annidati.
-           `ComponentiPanel` in modalita' data-driven (prop `initialData`):
-           salta la fetch, normalizza shape JSONB (`prezzo`/`coeff_qta`
-           dalla fn DB) sullo shape persistito e auto-nasconde le colonne
-           metadata (origine/approvazione/IVA) assenti nel preview.
-           I figli arrivano gia' aggregati nel JSONB `componenti` da
-           `fn_contratto_righe_preview` tanto per righe DA_LISTINO bundle
-           (figli in `listini_righe_componenti`) quanto per AGGIUNTA-bundle
-           persistite. Il coerce JSONB->Array e' interno al pannello. -->
-      <template #expansion="{ data }">
-        <div style="padding: 0.25rem 0 0.5rem 2rem; background: var(--app-table-stripe-bg);">
+
+      <!-- I componenti di un bundle, nella riga espandibile: arrivano gia'
+           aggregati nel jsonb `componenti` della funzione, tanto per i bundle
+           del listino quanto per le aggiunte. `ComponentiPanel` in modalita'
+           data-driven (`initialData`): niente fetch. -->
+      <template #row-expansion="{ data }">
+        <div v-if="hasBundleComponenti(data)" class="contratti-componenti-espansi">
           <ComponentiPanel
             :initial-data="rowComponenti(data)"
             i18n-prefix="vendite.componenti.panel" />
         </div>
       </template>
-    </DataTable>
+
+      <!-- In sola lettura (contratto fuori bozza, o permesso LETTURA) nessuna
+           voce: lo slot condizionato non monta la colonna. -->
+      <template v-if="!isReadonly" #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
+      </template>
+    </DrawerTabLista>
+
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @export="onExportConfirm"
+    />
 
     <!-- === DETAIL: form inserimento/modifica === -->
     <template v-if="formMode">
@@ -1244,7 +1058,7 @@ function origineSeverity(origine) {
           <ArticoloLookup
             v-model="form.articolo_obj"
             @update:modelValue="onArticoloSelected"
-            :disabled="formMode === 'edit' || form.tipo_eccezione !== 'AGGIUNTA'"
+            :disabled="formMode === 'edit' || form.tipo_eccezione !== TIPO_ECCEZIONE.AGGIUNTA"
             :filtri="{ soloComponenti: 'escludi' }"
             :placeholder="t('vendite.contratti.select_articolo')"
           />
@@ -1266,7 +1080,9 @@ function origineSeverity(origine) {
 
       <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('vendite.contratti.field_uom') }} *</label>
+          <!-- Obbligatoria solo dove la riga ha una quantita' (fonte FISSA):
+               la stessa regola di `canSave`. -->
+          <label>{{ t('vendite.contratti.field_uom') }}<span v-if="showQtaOperativa"> *</span></label>
           <Select v-model="form.uom_operativa_id"
             :options="uomOptions"
             option-value="uom_id"
@@ -1305,8 +1121,8 @@ function origineSeverity(origine) {
             {{ t('vendite.contratti.field_prezzo_unitario') }}
             <!-- Obbligatorio per OVERRIDE/AGGIUNTA (default tipo) non
                  composito. ESCLUSIONE = prezzo NULL. -->
-            <span v-if="form.tipo_eccezione !== 'ESCLUSIONE' && !articoloObj?.is_composito">*</span>
-            <Tag v-if="form.tipo_eccezione === 'ESCLUSIONE'"
+            <span v-if="form.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE && !articoloObj?.is_composito">*</span>
+            <Tag v-if="form.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE"
               severity="warn"
               :value="t('vendite.contratti.prezzo_esclusione_n_a')" />
             <Tag v-else-if="articoloObj?.is_composito"
@@ -1317,7 +1133,7 @@ function origineSeverity(origine) {
           </label>
           <InputNumber v-model="form.prezzo_unitario"
             :disabled="articoloObj?.is_composito === true
-                       || form.tipo_eccezione === 'ESCLUSIONE'"
+                       || form.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE"
             :min-fraction-digits="2" :max-fraction-digits="4" showButtons />
         </div>
       </div>
@@ -1435,6 +1251,10 @@ function origineSeverity(origine) {
   font-size: 0.65rem;
   margin-left: 0.4rem;
   padding: 0.05rem 0.3rem;
+}
+.contratti-componenti-espansi {
+  padding: 0.25rem 0 0.5rem 2rem;
+  background: var(--app-table-stripe-bg);
 }
 .contratti-componenti-create {
   display: flex;

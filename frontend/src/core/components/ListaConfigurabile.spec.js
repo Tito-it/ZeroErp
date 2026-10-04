@@ -35,6 +35,8 @@
 //   6) `paginata:true` (il default): il gate non si applica mai
 //   7) le colonne rese vengono dalla CONFIG, non dal caller
 //   8) una colonna `visibile:false` non si rende
+//   9) la riga aperta nel form (`riga-attiva`) e' evidenziata, le altre no
+//  10) `righe-cliccabili:false`: ogni riga lo dichiara (niente hover)
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -163,5 +165,26 @@ describe('ListaConfigurabile', () => {
     await w.vm.$nextTick()
     const intestazioni = w.findAll('th').map((th) => th.text())
     expect(intestazioni.some((h) => h.includes('Nascosta'))).toBe(false)
+  })
+
+  // §9.6 punto 2 del brief-db-liste-righe-documento (Tid, 2026-10-04): col form
+  // sotto la lista si deve vedere QUALE riga si sta modificando.
+  it('9) la riga aperta nel form (`riga-attiva`) e\' evidenziata, le altre no', async () => {
+    const w = montaLista({ rows: RIGHE, total: 2, paginata: false, rigaAttiva: 2 })
+    await w.vm.$nextTick()
+    const righe = w.findAll('tbody tr')
+    expect(righe[0].classes()).not.toContain('app-riga-attiva')
+    expect(righe[1].classes()).toContain('app-riga-attiva')
+  })
+
+  it('10) `righe-cliccabili:false`: ogni riga lo dichiara (niente hover)', async () => {
+    const w = montaLista({ rows: RIGHE, total: 2, paginata: false, righeCliccabili: false })
+    await w.vm.$nextTick()
+    const righe = w.findAll('tbody tr')
+    expect(righe.length).toBe(2)
+    righe.forEach((r) => expect(r.classes()).toContain('app-riga-non-cliccabile'))
+    const cliccabili = montaLista({ rows: RIGHE, total: 2, paginata: false })
+    await cliccabili.vm.$nextTick()
+    cliccabili.findAll('tbody tr').forEach((r) => expect(r.classes()).not.toContain('app-riga-non-cliccabile'))
   })
 })

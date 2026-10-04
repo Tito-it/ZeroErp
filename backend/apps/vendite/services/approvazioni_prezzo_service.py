@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 from django.db import connection, transaction
 from django.utils.timezone import now
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import resolve_config_id_by_codice_interno, row_to_dict
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
@@ -602,7 +603,7 @@ def rifiuta(
 def lista_coda(
     *,
     auth_user_id: int | None,
-    limit: int = 50,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,

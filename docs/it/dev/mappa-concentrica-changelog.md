@@ -32,6 +32,20 @@
 
 ---
 
+## 4 ottobre 2026
+
+**Righe di documento come liste: cantiere chiuso.** Le righe di preventivo,
+ordine, DDT, reso, fattura e contratto e la distinta base sono liste
+configurabili (97-103): finisce lo scroll orizzontale su tablet e smartphone.
+L'ultimo lotto è il contratto: una sorgente sola per le due forme (la funzione
+delle righe operative, con chiave di riga e verbi ammessi dal DB), l'unità di
+misura della riga corretta a DB, l'anteprima intera ritirata. Nella stessa
+chiusura la lettura delle righe sale in un building block di core (lo usa
+anche la distinta del catalogo), «leggi prima la testata» diventa un BB con un
+test per consumatore, e i default di pagina delle firme backend tornano alla
+fonte unica (liste di eventi comprese, con la loro costante) —
+[brief-db-liste-righe-documento](work-done/brief-db-liste-righe-documento.md).
+
 ## 1 ottobre 2026
 
 **Il registro di magazzino è un servizio dell'anello 2** (decisione di Tid). Con i Lotti 3 e 3-bis
@@ -270,7 +284,7 @@ rilievi drf-spectacular (W001 54 → 0, W002 73 → 0). ⚠️ Aperto: il lotto 
 delle righe documento (FE fermo sulla richiesta §9.11 al DB: le righe
 AGGIUNTA escono con l'UdM dell'articolo, non della riga). Vedi
 [brief-db-liste-datatable-grezze.md](work-done/brief-db-liste-datatable-grezze.md),
-[brief-db-liste-righe-documento.md](work-in-progress/brief-db-liste-righe-documento.md),
+[brief-db-liste-righe-documento.md](work-done/brief-db-liste-righe-documento.md),
 [brief-fe-filtri-lista-su-schermo-compatto.md](work-done/brief-fe-filtri-lista-su-schermo-compatto.md),
 [analisi-fe-regole-standard-violate-dal-codice.md](work-done/analisi-fe-regole-standard-violate-dal-codice.md).
 

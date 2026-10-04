@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
@@ -53,7 +54,7 @@ class IndirizziRepository:
         *,
         search: str | None = None,
         comune_id: int | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "indirizzo_normalizzato",
         order_dir: str = "asc",

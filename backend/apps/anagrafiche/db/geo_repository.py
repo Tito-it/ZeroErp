@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
@@ -176,7 +177,7 @@ class GeoRepository:
 
     # Scopo: Lista paginata toponomastica.
     def list_toponomastica(
-        self, *, search: str | None = None, limit: int = 25, offset: int = 0,
+        self, *, search: str | None = None, limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
@@ -220,7 +221,7 @@ class GeoRepository:
     #    JOIN stavano qui, e la sigla della provincia usciva con gli spazi in
     #    coda (`character(n)`); la vista la da' con TRIM.
     def list_comuni(
-        self, *, search: str | None = None, limit: int = 25, offset: int = 0,
+        self, *, search: str | None = None, limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
@@ -268,7 +269,7 @@ class GeoRepository:
     #    omonimi in province diverse non escono piu' identici.
     def list_codici_postali(
         self, *, search: str | None = None, comune_id: int | None = None,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str = "codice", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
@@ -319,7 +320,7 @@ class GeoRepository:
     #    confronta cosi' come si vedono.
     def list_province_paginated(
         self, *, search: str | None = None, regione_id: int | None = None,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
@@ -379,7 +380,7 @@ class GeoRepository:
     #    stessa cosa, `regioni.stato_id` e' NOT NULL.
     def list_regioni(
         self, *, search: str | None = None, stato_id: int | None = None,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
@@ -431,7 +432,7 @@ class GeoRepository:
 
     # Scopo: Lista paginata stati.
     def list_stati(
-        self, *, search: str | None = None, limit: int = 25, offset: int = 0,
+        self, *, search: str | None = None, limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(

@@ -128,27 +128,6 @@ class TestDetailGet(_BaseApiTest):
         self.assertEqual(resp.json()["data"]["id"], 7)
 
 
-class TestRighePreview(_BaseApiTest):
-    @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_SVC)
-    def test_get_righe_preview_ok(self, svc_cls, _auth):
-        svc_cls.return_value.list_righe_preview.return_value = {
-            "contratto_id": 7,
-            "modalita": "A",
-            "listino_id": 100,
-            "listino_codice": "COM-001",
-            "righe": [
-                {"articolo_id": "uuid", "prezzo_finale": "90.00", "origine": "DA_LISTINO"},
-            ],
-        }
-        resp = self.client.get(_BASE + "7/righe-preview/")
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()["data"]
-        self.assertEqual(body["modalita"], "A")
-        self.assertEqual(len(body["righe"]), 1)
-        self.assertEqual(body["righe"][0]["origine"], "DA_LISTINO")
-
-
 class TestDocumentiContratto(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)

@@ -824,7 +824,7 @@ def fetch_paged_with_total(
     data_sql: str,
     params: list[Any] | dict[str, Any],
     *,
-    offset: int,
+    offset: int | None = None,
     fallback_count_sql: str | None = None,
     fallback_params: list[Any] | dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -851,12 +851,21 @@ def fetch_paged_with_total(
     ⛔ Fino al 2026-09-28 il ripiego era facoltativo e ~25 liste non lo
     avevano: oltre l'ultima pagina il totale usciva 0, e il frontend
     (`useListaStoreCore`, che ora arretra da solo) non sapeva dove tornare.
-    `offset` e' obbligatorio per lo stesso motivo: senza, il ripiego non
-    scatta mai.
+    L'offset serve per lo stesso motivo: senza, il ripiego non scatta mai.
+
+    ⭐ **L'offset si ricava dalla query quando la query lo porta** (2026-10-04,
+    §9.6 punto 4 del brief-db-liste-righe-documento, Tid): con parametri
+    posizionali e la coda `LIMIT %s OFFSET %s` l'offset E' `params[-1]`, e
+    passarlo anche a parte era un secondo valore della stesso numero, libero di
+    divergere. Lo si passa (`offset=`) solo quando la query non lo dice da sé
+    (parametri con nome). ⛔ Passato E ricavabile, deve coincidere: due valori
+    diversi sono un errore del chiamante, e il ripiego scatterebbe (o no) sul
+    numero sbagliato.
 
     Regola del 2 (2026-07-18): unifica il pattern COUNT-OVER inline dei
     repository con la variante fallback nata per le code resi.
     """
+    offset = _offset_della_pagina(data_sql, params, offset)
     rilettura = None
     if fallback_count_sql is None:
         # ⛔ Si verifica SEMPRE, non solo quando serve: una query che non sa
@@ -880,6 +889,32 @@ def fetch_paged_with_total(
                 row = cursor.fetchone()
                 total_count = row[0] if row else 0
     return results, total_count
+
+
+# Scopo: l'offset della pagina per `fetch_paged_with_total`: dalla coda
+#        `LIMIT %s OFFSET %s` dei parametri posizionali quando c'e', altrimenti
+#        quello dichiarato. Vedi la docstring del BB per il perche'.
+def _offset_della_pagina(
+    data_sql: str, params: list[Any] | dict[str, Any], dichiarato: int | None,
+) -> int:
+    ricavabile = isinstance(params, list) and len(params) >= 2 and bool(
+        _CODA_LIMIT_OFFSET.search(data_sql)
+    )
+    if not ricavabile:
+        if dichiarato is None:
+            raise ValueError(
+                "fetch_paged_with_total: la query non porta l'offset nei parametri "
+                "posizionali (`LIMIT %s OFFSET %s` in coda): va passato `offset=`"
+            )
+        return dichiarato
+    assert isinstance(params, list)
+    dalla_query = int(params[-1])
+    if dichiarato is not None and int(dichiarato) != dalla_query:
+        raise ValueError(
+            f"fetch_paged_with_total: offset={dichiarato} diverso da quello della "
+            f"query ({dalla_query}): uno dei due e' sbagliato"
+        )
+    return dalla_query
 
 
 def fetch_con_sonda(

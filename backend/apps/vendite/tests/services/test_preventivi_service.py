@@ -2827,9 +2827,9 @@ class TestCoerceMetaToDict(unittest.TestCase):
 class TestPreventiviRepository(unittest.TestCase):
     # Scopo: Verifica che la lettura righe escluda le righe soft-delete
     #        (`attivo=false`), evitando che la UI mostri righe gia' eliminate.
-    # ⚠️ La query nasce nel BB `RigheDocumentoRepositoryMixin` (2026-09-28):
+    # ⚠️ La query nasce nel BB core `RigheListaCompletaMixin` (2026-10-04):
     #    la connessione si sostituisce la', non nel modulo del repository.
-    @patch("apps.vendite.db._righe_repo_mixin.connection")
+    @patch("apps.core.db.righe_lista_mixin.connection")
     def test_repository_list_righe_filtra_solo_attive(self, mock_connection):
         from apps.vendite.db.preventivi_repository import PreventiviRepository
 

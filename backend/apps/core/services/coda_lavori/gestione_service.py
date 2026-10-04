@@ -26,6 +26,7 @@ from collections.abc import Callable
 from datetime import date, timedelta
 from typing import Any
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db.emittente_scope_helpers import fetch_emittenti_scope_ids
 from apps.core.db.maintenance_repository import MaintenanceRepository
 from apps.core.db.processi_repository import ProcessiRepository
@@ -251,7 +252,7 @@ def elenca_coda_lavori(
     data_a: date | None = None,
     solo_vivi: bool = False,
     includi_archiviate: bool = False,
-    limit: int = 50,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     tutti: bool = False,
     sort_by: str | None = None,
@@ -324,7 +325,7 @@ def elenca_coda_stampa(
     data_a: date | None = None,
     solo_vivi: bool = False,
     includi_archiviate: bool = False,
-    limit: int = 50,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     tutti: bool = False,
     sort_by: str | None = None,

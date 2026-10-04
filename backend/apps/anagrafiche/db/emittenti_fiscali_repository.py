@@ -13,6 +13,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.core.db._helpers import (
@@ -173,7 +174,7 @@ class EmittentiFiscaliRepository:
         self, *,
         search: str | None = None,
         attivo: bool | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = _EMITTENTI_ORDER_DEFAULT,
         order_dir: str = "asc",
@@ -355,7 +356,7 @@ class EmittentiFiscaliBillingAccountRepository:
         emittente_soggetto_ruolo_id: int,
         *,
         search: str | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "billing_account_codice",
         order_dir: str = "asc",

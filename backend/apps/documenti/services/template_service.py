@@ -18,6 +18,7 @@ from typing import Any
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from PIL import Image, ImageOps
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -61,7 +62,7 @@ class TemplateService:
         search: str | None = None,
         order_by: str = "codice",
         order_dir: str = "asc",
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> dict[str, Any]:
         emittente_ids_scope = self._resolve_emittente_scope(user)
@@ -122,7 +123,7 @@ class TemplateService:
         search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> dict[str, Any]:
         self.get_template(user, template_id)  # 404 se fuori scope
@@ -172,7 +173,7 @@ class TemplateService:
         utilizzabili: bool | None = None,
         order_by: str = "codice",
         order_dir: str = "asc",
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> dict[str, Any]:
         emittente_ids_scope = self._resolve_emittente_scope(user)

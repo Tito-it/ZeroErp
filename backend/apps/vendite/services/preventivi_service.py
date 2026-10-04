@@ -32,7 +32,11 @@ from apps.vendite.services._pricing_gate_helpers import (
     validate_componenti_overrides_authorization,
 )
 from apps.core.services.payload_helpers import PayloadValidator
-from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
+from apps.core.services.testata_guard import (
+    pagina_dopo_testata,
+    riga_del_padre_o_not_found,
+    testata_o_not_found,
+)
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.services._smistamento_gate_helpers import (
     transiziona_a_evaso_se_smistato,
@@ -299,23 +303,14 @@ def list_righe(preventivo_id: int) -> list[dict[str, Any]]:
 
 
 # Scopo: Una PAGINA delle righe del preventivo, per la lista configurabile
-#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina. Legge prima la
-#        testata come `list_righe`. Ritorna `(righe, totale)`.
-def list_righe_pagina(
-    preventivo_id: int,
-    *,
-    search: str | None = None,
-    order_by: str | None = None,
-    order_dir: str | None = None,
-    limit: int,
-    offset: int = 0,
-    max_limit: int = MAX_LIMIT,
-) -> tuple[list[dict[str, Any]], int]:
+#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina dal BB del
+#        repository, dopo la testata (BB core `pagina_dopo_testata`).
+#        Ritorna `(righe, totale)`.
+def list_righe_pagina(preventivo_id: int, **opzioni: Any) -> tuple[list[dict[str, Any]], int]:
     repo = PreventiviRepository()
-    _get_testata_or_raise(repo, preventivo_id, op="list_righe_pagina")
-    return repo.list_righe_pagina(
-        preventivo_id, search=search, order_by=order_by, order_dir=order_dir,
-        limit=limit, offset=offset, max_limit=max_limit,
+    return pagina_dopo_testata(
+        lambda: _get_testata_or_raise(repo, preventivo_id, op="list_righe_pagina"),
+        repo.list_righe_pagina, preventivo_id, **opzioni,
     )
 
 
@@ -755,7 +750,7 @@ def crea_revisione(preventivo_id: int) -> dict[str, Any]:
 #        Paginata dal 2026-09-27: ritorna (righe, totale) per `paginated_envelope`.
 def list_revisioni(
     preventivo_id: int, *,
-    limit: int = 25, offset: int = 0,
+    limit: int = DEFAULT_LIMIT, offset: int = 0,
     order_by: str | None = None, order_dir: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     repo = PreventiviRepository()

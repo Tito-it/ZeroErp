@@ -13,6 +13,7 @@ from typing import Any
 
 from django.db import connection, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, limiti_pagina
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.core.services.error_manager import ErrorManager
@@ -1448,7 +1449,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         commessa_id: int,
         *,
         commessa_attivita_id: int | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIMIT_EVENTI,
         offset: int = 0,
     ) -> tuple[list[CommessaRegistroEventoRow], int]:
         where = ["ca.commessa_id = %s"]
@@ -1638,7 +1639,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         stato_emissione: str | None = None,
         stato_approvazione: str | None = None,
         competenza_mese: date | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str = "asc",

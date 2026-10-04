@@ -6,10 +6,13 @@ Le righe di un documento di vendita come **lista configurabile**: una pagina
 con ricerca e ordinamento, e il suo export. Endpoint identici sui documenti,
 generati dal factory condiviso `build_lista_figlia_views`
 (`apps/ui/api/lista_figlia_views.py`, lo stesso della distinta del catalogo) sopra il mixin repository
-`RigheListaMixin` / `RigheDocumentoRepositoryMixin` (`apps/vendite/db/_righe_repo_mixin.py`).
+`RigheListaMixin` / `RigheListaCompletaMixin` (`apps/core/db/righe_lista_mixin.py`, in core dal
+2026-10-04: lo usa anche la distinta del catalogo) e `RigheDocumentoRepositoryMixin`
+(`apps/vendite/db/_righe_repo_mixin.py`). «Leggi prima la testata» e' il BB
+`pagina_dopo_testata` (`apps/core/services/testata_guard.py`).
 
 Design-of-record:
-[brief-db-liste-righe-documento.md](../../../dev/work-in-progress/brief-db-liste-righe-documento.md).
+[brief-db-liste-righe-documento.md](../../../dev/work-done/brief-db-liste-righe-documento.md).
 
 | Documento | Base path | Lista a catalogo | Sorgente | Ordine del documento |
 |---|---|---|---|---|
@@ -61,8 +64,8 @@ Design-of-record:
 - «leggi prima la testata»: contratto inesistente o fuori perimetro → `404
   E_VENDITE_NOT_FOUND`, mai una lista vuota;
 - `GET …/righe/` resta la lettura delle righe **persistite** in
-  `contratti_righe` (e il `POST` di creazione), `…/righe-preview/` l'anteprima
-  prezzi del momento dell'inserimento.
+  `contratti_righe` (e il `POST` di creazione). L'anteprima intera
+  `…/righe-preview/` è ritirata dal 2026-10-04: questa lista ne ha preso il posto.
 
 ## Endpoint
 

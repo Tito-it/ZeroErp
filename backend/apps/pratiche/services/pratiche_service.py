@@ -14,6 +14,7 @@ from typing import Any, NoReturn
 
 from django.db import DatabaseError, IntegrityError, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
 from apps.core.services.db_error_fields import diagnostica_db
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import map_integrity_error
@@ -499,7 +500,7 @@ def cerca_pratiche(
     search: str | None = None,
     data_da: str | None = None,
     data_a: str | None = None,
-    limit: int = 50,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str = "data_insert",
     order_dir: str = "desc",
@@ -992,7 +993,7 @@ def dispatch_handler_eventi(
 
 # Scopo: Restituisce il giornale di bordo di una pratica.
 def get_giornale(
-    pratica_id: int, *, limit: int = 100, offset: int = 0,
+    pratica_id: int, *, limit: int = DEFAULT_LIMIT_EVENTI, offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     repo = PraticheRepository()
     return repo.get_giornale_pratica(pratica_id, limit=limit, offset=offset)
