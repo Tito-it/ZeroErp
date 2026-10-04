@@ -1015,8 +1015,11 @@ a {
 }
 
 /* ===== Riga attiva e righe non cliccabili (ListaConfigurabile) =====
- * `app-riga-attiva`: la riga aperta nel form inline sotto la lista (prop
- * `riga-attiva`), evidenziata anche sotto il puntatore — e' il «dove sono».
+ * `app-riga-attiva`: la riga aperta — nel form inline sotto la lista (prop
+ * `riga-attiva`) o in un drawer aperto dal suo click (da sola, dal
+ * 2026-10-04) —, evidenziata anche sotto il puntatore: e' il «dove sono».
+ * Tinta + barra a sinistra (`--app-riga-attiva-*` in theme.css, chiaro e
+ * scuro): sotto il velo del drawer una tinta sola non si legge.
  * `app-riga-non-cliccabile`: il click non apre niente (documento in sola
  * lettura, prop `righe-cliccabili`): niente hover ne' cursore a mano, la riga
  * a righe alterne tiene il suo fondo.
@@ -1026,7 +1029,10 @@ a {
  * sparirebbe sotto il puntatore. */
 .app-datatable .p-datatable-tbody > tr.app-riga-attiva,
 .app-datatable .p-datatable-tbody > tr.app-riga-attiva:hover {
-  background: var(--app-highlight-bg);
+  background: var(--app-riga-attiva-bg);
+}
+.app-datatable .p-datatable-tbody > tr.app-riga-attiva > td:first-child {
+  box-shadow: inset 3px 0 0 var(--app-riga-attiva-barra);
 }
 .app-datatable .p-datatable-tbody > tr.app-riga-non-cliccabile {
   cursor: default;
