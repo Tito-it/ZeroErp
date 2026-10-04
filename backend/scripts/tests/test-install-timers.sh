@@ -8,7 +8,8 @@
 # ------------------------------------------------------------
 #
 # 🔴 PERCHE' ESISTE. Il 2026-09-06 `install-timers.sh` classificava
-# `zeroerp-listen-cambio-reparto` fra gli SPENTI per uno slittamento di campi
+# `zeroerp-listen-cambio-reparto` (oggi `zeroerp-listen-permessi`) fra gli
+# SPENTI per uno slittamento di campi
 # (`read` con `IFS=$'\t'` collassa i TAB consecutivi, e un `oncalendar` vuoto —
 # il caso normale di un servizio sempre acceso — faceva scalare `abilita` sul
 # testo della nota). Il servizio veniva installato e mai avviato.
@@ -38,7 +39,7 @@
 #   se un template avesse ancora una riga cablata il timer e il pulsante
 #   potrebbero eseguire due cose diverse — in silenzio, perché entrambe girano.
 #
-# Indice test (0..7):
+# Indice test (0..8):
 #   0. il piano accende ESATTAMENTE gli unit dichiarati `abilita: true`
 #   1. gli unit dichiarati `abilita: false` non vengono accesi
 #   2. si accende il `.timer` dei timer e il `.service` dei servizi sempre accesi
@@ -47,6 +48,9 @@
 #   5. senza root e senza destinazione alternativa, si ferma
 #   6. nessun template `.service` ha un `ExecStart` cablato: tutti `__COMANDO__`
 #   7. l'unit reso esegue ESATTAMENTE l'argv di `sveglie.json`, senza residui
+#   8. una SVEGLIA installata e non più dichiarata si spegne e si toglie (timer
+#      prima del servizio, prima del daemon-reload); un `zeroerp-*` che non è una
+#      sveglia (`zeroerp-gunicorn`) e il resto non si toccano
 
 set -euo pipefail
 
@@ -124,6 +128,19 @@ for s in json.load(open(sys.argv[1], encoding="utf-8"))["sveglie"]:
 PY
 }
 
+# Scopo: i servizi sempre accesi dichiarati `abilita: true` (forma `servizio`,
+#        `oncalendar` vuoto), letti dalla stessa fonte — vale la nota di
+#        `attesi()`. Dal 2026-10-05: prima il nome del listener era scritto qui,
+#        e il suo rinomino (`listen_permessi`) lo ha reso una seconda copia.
+servizi_accesi() {
+  python3 - "$SVEGLIE" <<'PY'
+import json, sys
+for s in json.load(open(sys.argv[1], encoding="utf-8"))["sveglie"]:
+    if s.get("forma") == "servizio" and s.get("abilita") is True:
+        print(s["unit"])
+PY
+}
+
 # Scopo: per ogni unit dichiarata, la riga `ExecStart=` che l'unit reso DEVE
 #        avere: il wrapper di questo checkout più l'argv di `sveglie.json`,
 #        unito da spazi come fa l'installer. Letto dalla stessa fonte, non
@@ -168,11 +185,22 @@ fi
 # ── 2. suffisso giusto per forma ─────────────────────────────────────────
 # Un servizio sempre acceso si abilita come `.service`: non ha un `.timer`, e
 # accenderne uno inesistente fallirebbe sull'host.
-if grep -Fxq "enable --now zeroerp-listen-cambio-reparto.service" "$REGISTRO" \
-   && ! grep -q "zeroerp-listen-cambio-reparto.timer" "$REGISTRO"; then
-  ok "il servizio sempre acceso si abilita come .service, mai come .timer"
+# ⛔ Senza servizi dichiarati la prova non prova niente: rosso, non verde.
+SERVIZI="$(servizi_accesi)"
+SUFFISSO_ERRATO=""
+while read -r u; do
+  [ -n "$u" ] || continue
+  if ! grep -Fxq "enable --now ${u}.service" "$REGISTRO" \
+     || grep -q "${u}.timer" "$REGISTRO"; then
+    SUFFISSO_ERRATO="$SUFFISSO_ERRATO $u"
+  fi
+done <<< "$SERVIZI"
+if [ -z "$SERVIZI" ]; then
+  ko "nessun servizio sempre acceso dichiarato: i test 2 e 4 non provano niente"
+elif [ -z "$SUFFISSO_ERRATO" ]; then
+  ok "i servizi sempre accesi si abilitano come .service, mai come .timer (${SERVIZI//$'\n'/, })"
 else
-  ko "suffisso sbagliato per il servizio sempre acceso"
+  ko "suffisso sbagliato per il servizio sempre acceso:$SUFFISSO_ERRATO"
 fi
 
 # ── 3. daemon-reload prima degli enable ──────────────────────────────────
@@ -187,14 +215,20 @@ else
 fi
 
 # ── 4. REGRESSIONE: il campo vuoto non fa slittare i campi ───────────────
-# ⭐ È il test che vale: `zeroerp-listen-cambio-reparto` è l'unica voce con
-#    `oncalendar` vuoto, e con la vecchia lettura a TAB `abilita` diventava il
-#    testo della nota — quindi il servizio finiva fra gli spenti. Se un giorno
-#    il separatore tornasse a essere IFS-whitespace, questo diventa rosso.
-if grep -Fxq "enable --now zeroerp-listen-cambio-reparto.service" "$REGISTRO"; then
-  ok "campo vuoto: il listener è acceso (nessuno slittamento di campi)"
+# ⭐ È il test che vale: i servizi sempre accesi sono le voci con `oncalendar`
+#    vuoto, e con la vecchia lettura a TAB `abilita` diventava il testo della
+#    nota — quindi il servizio finiva fra gli spenti. Se un giorno il
+#    separatore tornasse a essere IFS-whitespace, questo diventa rosso.
+SPENTI_PER_SLITTAMENTO=""
+while read -r u; do
+  [ -n "$u" ] || continue
+  grep -Fxq "enable --now ${u}.service" "$REGISTRO" \
+    || SPENTI_PER_SLITTAMENTO="$SPENTI_PER_SLITTAMENTO $u"
+done <<< "$SERVIZI"
+if [ -n "$SERVIZI" ] && [ -z "$SPENTI_PER_SLITTAMENTO" ]; then
+  ok "campo vuoto: i servizi sempre accesi sono accesi (nessuno slittamento di campi)"
 else
-  ko "REGRESSIONE dello slittamento campi: il listener NON è stato acceso"
+  ko "REGRESSIONE dello slittamento campi: NON acceso:${SPENTI_PER_SLITTAMENTO:- nessun servizio dichiarato}"
 fi
 
 # ── 5. senza root e senza destinazione alternativa, si ferma ─────────────
@@ -252,6 +286,54 @@ if [ -z "$DIVERGENTI" ]; then
   ok "ogni unit reso esegue l'argv dichiarato in sveglie.json"
 else
   ko "unit resi che non eseguono l'argv dichiarato:$DIVERGENTI"
+fi
+
+# ── 8. il ritiro di ciò che non è più dichiarato ─────────────────────────
+# ⭐ Dal 2026-10-05: prima l'installer solo aggiungeva, e un unit rinominato
+#    (`zeroerp-listen-cambio-reparto` → `zeroerp-listen-permessi`) restava
+#    acceso accanto al nuovo. Si semina la destinazione con un orfano (coppia
+#    timer + servizio), un file che non è di questo programma e un dichiarato
+#    già installato; poi si guarda che cosa l'installer ha spento e tolto.
+# ⚠️ Nella corsa principale la destinazione è vuota: nessun `disable` atteso.
+if grep -q '^disable ' "$REGISTRO"; then
+  ko "destinazione pulita, eppure l'installer ha spento qualcosa: $(grep '^disable ' "$REGISTRO" | tr '\n' ' ')"
+fi
+SEMINA="$TMP/ritiro/units"
+mkdir -p "$SEMINA"
+# L'orfano porta la firma delle sveglie (il wrapper); `zeroerp-gunicorn` no.
+# 🔴 È il caso del 2026-10-05: la prima versione cancellò il backend del dbdev.
+printf '[Service]\nExecStart=%s/bin/run-command.sh comando_ritirato\n' "$APP_DIR" \
+  > "$SEMINA/zeroerp-vecchio.service"
+printf '[Timer]\nOnCalendar=daily\n' > "$SEMINA/zeroerp-vecchio.timer"
+printf '[Service]\nExecStart=%s/bin/start-gunicorn.sh\n' "$APP_DIR" \
+  > "$SEMINA/zeroerp-gunicorn.service"
+touch "$SEMINA/altro.service"
+UN_DICHIARATO="$(attesi true | head -1)"
+touch "$SEMINA/$UN_DICHIARATO"
+REG_RITIRO="$(esegui_installer ritiro)"
+SBAGLI_RITIRO=""
+RIGA_T="$(grep -nFx 'disable --now zeroerp-vecchio.timer' "$REG_RITIRO" | cut -d: -f1 || true)"
+RIGA_S="$(grep -nFx 'disable --now zeroerp-vecchio.service' "$REG_RITIRO" | cut -d: -f1 || true)"
+RIGA_R="$(grep -n '^daemon-reload$' "$REG_RITIRO" | head -1 | cut -d: -f1 || true)"
+if [ -z "$RIGA_T" ] || [ -z "$RIGA_S" ]; then
+  SBAGLI_RITIRO="$SBAGLI_RITIRO orfano-non-spento"
+elif [ "$RIGA_T" -gt "$RIGA_S" ] || [ -z "$RIGA_R" ] || [ "$RIGA_S" -gt "$RIGA_R" ]; then
+  SBAGLI_RITIRO="$SBAGLI_RITIRO ordine(timer=$RIGA_T,service=$RIGA_S,reload=$RIGA_R)"
+fi
+[ -e "$SEMINA/zeroerp-vecchio.service" ] && SBAGLI_RITIRO="$SBAGLI_RITIRO service-non-tolto"
+[ -e "$SEMINA/zeroerp-vecchio.timer" ] && SBAGLI_RITIRO="$SBAGLI_RITIRO timer-non-tolto"
+[ -e "$SEMINA/altro.service" ] || SBAGLI_RITIRO="$SBAGLI_RITIRO tolto-un-file-non-zeroerp"
+[ -e "$SEMINA/zeroerp-gunicorn.service" ] || SBAGLI_RITIRO="$SBAGLI_RITIRO TOLTO-GUNICORN"
+grep -q 'zeroerp-gunicorn' "$REG_RITIRO" && SBAGLI_RITIRO="$SBAGLI_RITIRO SPENTO-GUNICORN"
+grep -q 'ESTRANEO zeroerp-gunicorn.service' "$TMP/ritiro/stdout.txt" \
+  || SBAGLI_RITIRO="$SBAGLI_RITIRO estraneo-non-nominato"
+[ -e "$SEMINA/$UN_DICHIARATO" ] || SBAGLI_RITIRO="$SBAGLI_RITIRO tolto-un-dichiarato"
+N_DISABLE="$(grep -c '^disable ' "$REG_RITIRO" || true)"
+[ "$N_DISABLE" -eq 2 ] || SBAGLI_RITIRO="$SBAGLI_RITIRO disable-attesi-2-avuti-$N_DISABLE"
+if [ -z "$SBAGLI_RITIRO" ]; then
+  ok "l'orfano si spegne (timer prima del servizio, prima del reload) e si toglie; gunicorn e il resto non si toccano"
+else
+  ko "ritiro degli unit non dichiarati:$SBAGLI_RITIRO"
 fi
 
 echo

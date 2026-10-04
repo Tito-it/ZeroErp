@@ -534,7 +534,10 @@ il resolver deve sapere per conto di **quale veste** si sta risolvendo.
   ⭐ Gli avvisi del database partono **da qualunque scrittore**: applicazione,
   aggiornamento del seed al migrate, correzione a mano. Partono al commit e
   non partono se la scrittura viene annullata. Li raccoglie il processo
-  sempre acceso `listen_permessi`.
+  sempre acceso `listen_permessi`, che a ogni avvio e a ogni riconnessione
+  svuota comunque la cache di tutti: un avviso partito mentre il processo era
+  fermo (per esempio un migrate fatto col backend spento) è perso, perché il
+  database non lo conserva.
   ⚠️ Una correzione a mano su una tabella **per utente** (per esempio
   l'identità digitale) non avvisa nessuno: dopo, si chiama
   `script.fn_notify_permessi_catalogo('manuale')`, che svuota la cache di

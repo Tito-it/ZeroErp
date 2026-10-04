@@ -3,8 +3,11 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Management command long-running per avvio del listener
-#        LISTEN/NOTIFY sul canale 'cambio_reparto'.
-#        Invalida la cache permessi quando un utente cambia reparto.
+#        LISTEN/NOTIFY sui canali 'cambio_reparto' e 'permessi_catalogo'.
+#        Invalida la cache permessi quando un utente cambia reparto (la sua)
+#        e quando cambia il catalogo o un profilo dei permessi (di tutti).
+#        Fino al 2026-10-05 si chiamava `listen_cambio_reparto`
+#        (brief-db-permessi-catalogo-notify-cache.md §4).
 # Note: Pensato per essere eseguito come processo dedicato
 #        (systemd, supervisor, o in foreground durante lo sviluppo).
 # ------------------------------------------------------------
@@ -19,19 +22,21 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.anagrafiche.services.notify_listener import (
+    CANALI,
     DEFAULT_POLL_INTERVAL,
-    CambioRepartoListener,
+    PermessiListener,
 )
 from apps.core.services.job_run import ORIGINE_CRON, registered_job
-from apps.core.services.processi import PROCESSO_LISTEN_CAMBIO_REPARTO
+from apps.core.services.processi import PROCESSO_LISTEN_PERMESSI
 
 logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
     help = (
-        "Avvia il listener LISTEN/NOTIFY per il canale 'cambio_reparto'. "
-        "Invalida la cache permessi quando un utente cambia reparto. "
+        "Avvia il listener LISTEN/NOTIFY sui canali 'cambio_reparto' e "
+        "'permessi_catalogo'. Invalida la cache permessi quando un utente "
+        "cambia reparto e quando cambia il catalogo dei permessi. "
         "Processo long-running: terminare con SIGINT (Ctrl+C) o SIGTERM."
     )
 
@@ -70,14 +75,15 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Avvio listener cambio_reparto (poll_interval={poll_interval}s)..."
+                f"Avvio listener {', '.join(CANALI)} "
+                f"(poll_interval={poll_interval}s)..."
             )
         )
 
         # ⚠️ Il `with` si CHIUDE prima del ciclo: e' esattamente il punto.
         with registered_job(
-            PROCESSO_LISTEN_CAMBIO_REPARTO,
-            processo_codice=PROCESSO_LISTEN_CAMBIO_REPARTO,
+            PROCESSO_LISTEN_PERMESSI,
+            processo_codice=PROCESSO_LISTEN_PERMESSI,
             origine=ORIGINE_CRON,
         ) as job:
             job.set_message("listener avviato")
@@ -88,10 +94,10 @@ class Command(BaseCommand):
             })
 
         try:
-            listener = CambioRepartoListener(poll_interval=poll_interval)
+            listener = PermessiListener(poll_interval=poll_interval)
             listener.run()
         except Exception as exc:
-            logger.exception("Errore nel listener cambio_reparto")
+            logger.exception("Errore nel listener %s", PROCESSO_LISTEN_PERMESSI)
             raise CommandError(
                 f"Errore nel listener: {exc}"
             ) from exc

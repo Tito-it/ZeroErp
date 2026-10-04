@@ -166,6 +166,7 @@ piano [piano-be-fe-avvio-manuale-di-un-processo](../../../dev/work-done/piano-be
 | `test_avvio_manuale_tetto` | un tetto del sottoprocesso più largo della metà della tolleranza del drenatore o della soglia del reaper: `MUTO` a video, o un lavoro in `ERRORE` mentre il comando sta finendo |
 | `backend/scripts/tests/test-install-timers.sh` (test 0-5) | che si accendano unit diversi da quelli dichiarati (vedi sotto) |
 | `backend/scripts/tests/test-install-timers.sh` (test 6-7) | una **seconda sede** del comando: un template con `ExecStart` cablato, o un unit reso che non porta l'argv del JSON |
+| `backend/scripts/tests/test-install-timers.sh` (test 8) | una sveglia tolta o rinominata nel dichiarato che resta **accesa sull'host**: l'installer la spegne e la toglie; un `zeroerp-*` che non lancia `run-command.sh` (`zeroerp-gunicorn`) non si tocca (play-book §16.3-bis) |
 | `systemd-analyze verify` (CI) | un unit sintatticamente invalido |
 
 ⭐ **Le ultime due sono due metà distinte**: `systemd-analyze verify` dice che
@@ -202,6 +203,10 @@ Nessuna: è un file di progetto, e il modulo non apre connessioni.
   per un servizio sempre acceso; l'`ExecStart` è
   `__APP_DIR__/bin/run-command.sh __COMANDO__`, mai la riga scritta a mano) +
   `sudo backend/bin/install-timers.sh`. Niente altro.
+- **Togliere o rinominare una sveglia** = togliere voce e template, poi
+  `sudo backend/bin/install-timers.sh`: dal 2026-10-05 l'installer spegne e
+  toglie dall'host le sveglie (unit `zeroerp-*` che lanciano `run-command.sh`)
+  non più dichiarate.
 - **2026-09-14 — `comando` nel JSON, `__COMANDO__` nei template.** Gli otto
   `ExecStart` resi sono **identici** a prima (il campo è nato dalla riga che
   ogni template eseguiva): sugli host cambia il template, non l'unit

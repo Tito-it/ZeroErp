@@ -2,11 +2,11 @@
 
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-04. **A chi:** team DB
 > (`dev/db-tid`); poi BE (§5), che **attende** la consegna DB.
-> **Origine:** [brief-db-permessi-tetto-area.md](brief-db-permessi-tetto-area.md) §6.5 e §10:
+> **Origine:** [brief-db-permessi-tetto-area.md](../work-in-progress/brief-db-permessi-tetto-area.md) §6.5 e §10:
 > `livello_minimo_area` cambia solo a DB (seed al migrate), e il backend non lo sa.
 > **Decisione:** di Tid, 2026-10-04: soluzione LISTEN/NOTIFY, sul meccanismo che già esiste per
 > il cambio di reparto.
-> **Stato:** ✅ **DB chiuso**: `20261004-87 → -89` + mirror `processi` **applicati su dbdev e `zeroerp_ci` il 2026-10-04** (23:55), pgTAP verdi (Tid). R7 eseguito come riga nuova + ritiro (§6.2). ⏳ **Tocca al BE** (§7.4).
+> **Stato:** ✅ **CHIUSO il 2026-10-05.** DB: `20261004-87 → -89` + mirror `processi`, applicati su dbdev e `zeroerp_ci` il 2026-10-04, pgTAP verdi. BE: listener su due canali e rinomino `listen_permessi` (§8), installer che ritira le sveglie non più dichiarate (§8.4, con l'incidente gunicorn). Passaggio sull'host dbdev fatto da Tid il 2026-10-05 (§8.5).
 
 ## 1. Il problema
 
@@ -263,3 +263,85 @@ chi esegue (`has_table_privilege`), e se non ce n'è nessuna va rosso con `fail(
 
 1. ~~Apply e corsa pgTAP~~ — ✅ fatti il 2026-10-04 (§7.3-ter).
 2. Dopo l'apply, finché il BE non riparte, il digest dei presidi conterà `listen_permessi` `MUTO`.
+
+## 8. Consegna BE (2026-10-05)
+
+### 8.1 Il listener
+
+`apps/anagrafiche/services/notify_listener.py`, classe rinominata `PermessiListener` (era
+`CambioRepartoListener`):
+
+* `LISTEN` su `cambio_reparto` e `permessi_catalogo`, nomi in due costanti
+  (`CANALE_CAMBIO_REPARTO`, `CANALE_PERMESSI_CATALOGO`) e nella tupla `CANALI`; `CHANNEL` ritirata;
+* `_handle_notification` smista per canale: `cambio_reparto` → `invalidate_user` (come prima),
+  `permessi_catalogo` → `invalidate_all`, canale sconosciuto → warning e niente;
+* ⭐ sul canale del catalogo **un payload malformato invalida lo stesso**. Il segnale è la
+  notifica; `{"tabella": …}` serve solo al log. Scartare l'avviso perché la didascalia è rotta
+  lascerebbe i permessi vecchi fino al TTL. Questo si discosta dalla lettera di §5 («payload non
+  valido ignorato»), che resta vera per il canale del reparto, dove il payload porta il destinatario;
+* ⭐ `invalidate_all` **a ogni connessione** (avvio e riconnessione), **dopo** i `LISTEN`.
+  Nell'ordine inverso, una scrittura committata fra l'invalidazione e il `LISTEN` non svuoterebbe
+  niente e non arriverebbe come notifica.
+
+### 8.2 Il rinomino (§4)
+
+| Cosa | Prima | Ora |
+| --- | --- | --- |
+| costante (`core/services/processi.py`) | `PROCESSO_LISTEN_CAMBIO_REPARTO` | `PROCESSO_LISTEN_PERMESSI` = `listen_permessi` |
+| command | `listen_cambio_reparto` | `listen_permessi` (`git mv`, il vecchio non esiste più) |
+| unità systemd | `zeroerp-listen-cambio-reparto.service` | `zeroerp-listen-permessi.service` |
+| `deploy/sveglie.json` | voce `listen_cambio_reparto` | `unit`, `processo_codice`, `comando` col nome nuovo |
+| `application_name` della sessione | `listen_cambio_reparto` | `listen_permessi` (dalla costante: è ciò che la riga 46 cerca) |
+
+`test_sveglie.py` non chiedeva modifiche: legge `sveglie.json` e i template, e il rinomino li ha
+portati insieme. In `scripts/tests/test-install-timers.sh` i test 2 e 4 avevano il nome
+dell'unità **scritto a mano**, cioè una seconda copia del dichiarato, che lo stesso file vieta in
+`attesi()`. Ora leggono i servizi sempre accesi da `sveglie.json`, e con nessun servizio
+dichiarato vanno **rossi** invece che verdi per sottrazione.
+
+I commenti che raccontano il difetto del 2026-09-06 (`install-timers.sh`, `ci-validate.yaml`,
+`sveglie_processi.md`, `test_sveglie.py`) citano il nome vecchio **come storia** e restano così.
+
+### 8.3 Test e doc
+
+* `anagrafiche/tests/services/test_notify_listener.py`: 13 test (9 aggiornati, 4 nuovi). Il
+  catalogo invalida tutti; un payload malformato sul catalogo invalida lo stesso; un canale
+  sconosciuto non invalida niente; l'ordine `LISTEN`, `LISTEN`, `invalidate_all` si ripete a ogni
+  connessione (avvio e riconnessione). Il test 1 prova anche che un cambio di reparto **non** svuota tutti.
+* Corse del 2026-10-05: `apps.core.tests.services`, `apps.anagrafiche.tests.services` e i due test
+  API dei processi → 1194 OK; `test-install-timers.sh` OK; ruff verde.
+* Doc: guida architettura permessi §6.1 (lo svuotamento alla riconnessione),
+  `risorse-umane-e-accessi.md` (tre punti), play-book §16.1-16.2 (tabella e nome nuovo),
+  catalogo BB backend (consumer di `registered_job`; chi chiama `invalidate_all`),
+  `PROJECT_CONTEXT.md`.
+
+### 8.4 Il ritiro degli unit non più dichiarati (✅ Tid, 2026-10-05)
+
+Prima `install-timers.sh` solo aggiungeva, e col rinomino l'unità vecchia sarebbe rimasta
+accesa accanto alla nuova. Ora l'installer **spegne e toglie** le sveglie presenti sull'host e
+non più dichiarate in `sveglie.json`: è lo specchio sull'host di `test_nessun_template_orfano`.
+Una sveglia è un `zeroerp-*.service` che lancia `bin/run-command.sh`, la firma di ogni template.
+
+🔴 **Incidente del 2026-10-05.** La prima versione guardava il solo prefisso `zeroerp-`, e al
+primo giro di Tid sul dbdev ha spento e cancellato **`zeroerp-gunicorn.service`**. È `zeroerp-`
+ma non è una sveglia: lo installa il play-book §8. Effetto: backend giù, sessione persa, unità
+ricreata a mano dal §8 (il drop-in `override.conf` era sopravvissuto). Il test 8 non lo vedeva
+perché seminava solo un orfano e un file non `zeroerp-`, non un `zeroerp-` estraneo. Ora la firma
+decide, gli estranei si stampano come `ESTRANEO` e non si toccano, e il test 8 semina proprio
+`zeroerp-gunicorn`. La mutazione che torna al solo prefisso fa diventare il test rosso, e la
+simulazione sull'assetto reale del dbdev ritira la sola `zeroerp-listen-cambio-reparto`. Prima i timer, poi i servizi, prima del `daemon-reload`; se uno
+spegnimento fallisce l'installer si ferma senza cancellare il file. Il piano li stampa come
+`RITIRA`. Test 8 di `test-install-timers.sh` (orfano seminato, file non `zeroerp-` e unit
+dichiarato intatti); una mutazione sull'ordine timer/servizio lo fa diventare rosso. Doc:
+play-book §16.3-bis, `sveglie_processi.md`.
+
+### 8.5 Sull'host dbdev (✅ Tid, 2026-10-05)
+
+* `sudo backend/bin/install-timers.sh`, primo giro: ritirata `zeroerp-listen-cambio-reparto` e,
+  per il difetto di §8.4, anche `zeroerp-gunicorn`. Gunicorn ricreato dal play-book §8.
+* Secondo giro, con l'installer corretto: piano con 6 `ACCENDI`, 2 `SPENTO` (le fatturazioni),
+  `ESTRANEO zeroerp-gunicorn.service`, nessun `RITIRA`. Dopo il giro `zeroerp-gunicorn` e
+  `zeroerp-listen-permessi` sono `active`.
+* Pannello dei processi: `listen_permessi` `OK` (Tid).
+
+Su un host nuovo o non ancora aggiornato basta il deploy e `sudo backend/bin/install-timers.sh`.

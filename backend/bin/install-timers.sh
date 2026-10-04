@@ -25,6 +25,15 @@
 # catalogo e' ritirato a favore del gemello pgAgent `sync_auth_user_expired_daily`,
 # e unit, voce e costante sono spariti INSIEME — vedi `_ritirate` in sveglie.json.
 #
+# ⭐ DAL 2026-10-05 RITIRA CIO' CHE NON E' PIU' DICHIARATO (decisione di Tid). Una
+# sveglia installata sull'host (un `zeroerp-*` che lancia `run-command.sh`) e
+# assente da `sveglie.json` si spegne e si toglie: e' lo specchio sull'host di
+# `test_nessun_template_orfano`. ⛔ Solo le sveglie: `zeroerp-gunicorn` e gli
+# altri unit del play-book non si toccano (il difetto del primo giro, sotto). Prima
+# l'installer solo aggiungeva, e il rinomino `listen-cambio-reparto` →
+# `listen-permessi` avrebbe lasciato DUE listener accesi, uno dei quali muto
+# per il panorama (si presenta con un codice ritirato).
+#
 # Idempotente: riscrive gli unit a ogni run. Da eseguire come root:
 #   sudo backend/bin/install-timers.sh
 #
@@ -225,9 +234,14 @@ SVEGLIE_RIGHE="$(leggi_sveglie)"
 
 DA_ACCENDERE=()
 DA_LASCIARE_SPENTI=()
+# I FILE che il dichiarato produce (`.service`, più il `.timer` dei timer): è
+# l'insieme contro cui si cercano gli orfani sull'host, qui sotto.
+DICHIARATI=" "
 while IFS="$SEP" read -r unit forma comando oncalendar abilita nota; do
   [ -n "$unit" ] || continue
   render_unit "$unit" "$forma" "$comando" "$oncalendar"
+  DICHIARATI+="${unit}.service "
+  [ "$forma" = "timer" ] && DICHIARATI+="${unit}.timer "
   # Si abilita il .timer dove c'è, il .service dove il processo è sempre acceso.
   if [ "$forma" = "timer" ]; then target="${unit}.timer"; else target="${unit}.service"; fi
   if [ "$abilita" = "1" ]; then
@@ -237,6 +251,40 @@ while IFS="$SEP" read -r unit forma comando oncalendar abilita nota; do
     DA_LASCIARE_SPENTI+=("${target}${SEP}${nota}")
   fi
 done <<< "$SVEGLIE_RIGHE"
+
+# Scopo: le SVEGLIE installate in $DEST_DIR che il dichiarato non produce più.
+# Si spengono e si tolgono (vedi header).
+#
+# 🔴 IL PREFISSO NON BASTA, ed è un difetto vero del 2026-10-05: la prima
+#    versione ritirava ogni `zeroerp-*` non dichiarato, e al primo giro sul
+#    dbdev ha spento e cancellato `zeroerp-gunicorn.service` — il backend, che
+#    è `zeroerp-` ma non è una sveglia (lo installa il play-book §8, non
+#    questo script). ⇒ Si ritira solo ciò che questo programma può aver
+#    scritto: un `.service` il cui `ExecStart` lancia il wrapper delle sveglie
+#    (`$APP_DIR/bin/run-command.sh`), che è la firma che OGNI template porta
+#    (test 6 di `test-install-timers.sh`). Il suo `.timer` omonimo lo segue.
+#    Un `zeroerp-*` senza quella firma è ESTRANEO: si nomina e non si tocca.
+# ⭐ I `.timer` PRIMA dei `.service`: spegnere prima il servizio lascerebbe al
+#    timer ancora acceso l'occasione di rilanciarlo.
+DA_RITIRARE=()
+ESTRANEI=()
+RIT_TIMER=()
+RIT_SERVICE=()
+for f in "$DEST_DIR"/zeroerp-*.service; do
+  [ -f "$f" ] || continue   # glob senza corrispondenze: resta il letterale
+  nome="$(basename "$f")"
+  case "$DICHIARATI" in *" $nome "*) continue ;; esac
+  if grep -qF "ExecStart=${WRAPPER} " "$f"; then
+    RIT_SERVICE+=("$nome")
+    timer="${nome%.service}.timer"
+    if [ -f "${DEST_DIR}/${timer}" ]; then
+      case "$DICHIARATI" in *" $timer "*) ;; *) RIT_TIMER+=("$timer") ;; esac
+    fi
+  else
+    ESTRANEI+=("$nome")
+  fi
+done
+DA_RITIRARE=(${RIT_TIMER[@]+"${RIT_TIMER[@]}"} ${RIT_SERVICE[@]+"${RIT_SERVICE[@]}"})
 
 # ⭐ IL PIANO SI STAMPA IN ENTRAMBE LE MODALITA', e non è cosmesi.
 # 🔴 Il difetto del 2026-09-06 — `listen-cambio-reparto` classificato «spento»
@@ -255,11 +303,31 @@ for riga in ${DA_LASCIARE_SPENTI[@]+"${DA_LASCIARE_SPENTI[@]}"}; do
   IFS="$SEP" read -r u _nota <<< "$riga"
   echo "  SPENTO   $u"
 done
+for u in ${DA_RITIRARE[@]+"${DA_RITIRARE[@]}"}; do
+  echo "  RITIRA   $u (installato, non più dichiarato)"
+done
+for u in ${ESTRANEI[@]+"${ESTRANEI[@]}"}; do
+  echo "  ESTRANEO $u (non lancia run-command.sh: non è una sveglia, non si tocca)"
+done
 
 # In render-only (CI) ci si ferma qui: niente daemon-reload né enable.
 if [ "$RENDER_ONLY" -eq 1 ]; then
   echo "OK render-only: unit in $DEST_DIR"
   exit 0
+fi
+
+# Il ritiro viene PRIMA del daemon-reload: `disable --now` vuole il file ancora
+# presente, e il reload dopo la cancellazione fa dimenticare l'unit a systemd.
+# ⛔ Niente `|| true` sul `disable`: se lo spegnimento fallisce ci si ferma. Il
+#    file cancellato con il processo ancora vivo nasconderebbe il guasto
+#    peggiore, un processo acceso che nessun file descrive più.
+if [ ${#DA_RITIRARE[@]} -gt 0 ]; then
+  for u in "${DA_RITIRARE[@]}"; do
+    systemctl disable --now "$u"
+    rm -f "${DEST_DIR}/${u}"
+  done
+  echo
+  echo "OK, ritirati: ${DA_RITIRARE[*]}"
 fi
 
 systemctl daemon-reload

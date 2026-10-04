@@ -27,7 +27,12 @@ PROCESSO_RUN_FATTURAZIONE_BATCH = "run_fatturazione_batch"
 PROCESSO_DRAINA_CODA_STAMPA = "draina_coda_stampa"
 PROCESSO_DRAINA_CODA_LAVORI = "draina_coda_lavori"
 PROCESSO_SEND_PENDING_EMAILS = "send_pending_emails"
-PROCESSO_LISTEN_CAMBIO_REPARTO = "listen_cambio_reparto"
+# ⭐ 2026-10-05: era `listen_cambio_reparto`. Il listener ascolta anche il
+#    canale del catalogo dei permessi, e il nome vecchio non lo diceva piu'. A
+#    catalogo e' una riga NUOVA (46), non un rinomino: la 24 resta ritirata
+#    perche' il giornale ha righe col codice vecchio, legate dalla FK
+#    `fk_job_run_log_processi` (brief-db-permessi-catalogo-notify-cache.md §6.2).
+PROCESSO_LISTEN_PERMESSI = "listen_permessi"
 # ⭐ 2026-09-10: il DESTINATARIO che alle viste di presidio mancava. Classe
 #    `MANUTENZIONE` e canale `COMMAND` (riga 26 di `dbops.processi`): legge
 #    `dbops` e non i dati di un'azienda, quindi non vuole ne' identita' ne'
