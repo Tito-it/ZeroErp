@@ -106,9 +106,14 @@ export function useListaAzioni(
       {
         key: 'personalizza-colonne',
         kind: 'utility',
-        label: colonneNuove.value > 0
-          ? `${personalizzaLabel} (${colonneNuove.value})`
-          : personalizzaLabel,
+        label: personalizzaLabel,
+        // Le colonne nuove: pallino sull'icona e «(n)» nella voce di menu, li
+        // mette la barra (`badge`, `ActionBadge`). ⛔ Non nell'etichetta: il
+        // pulsante e' a sola icona, e li' il numero non si vedeva. Si azzera
+        // quando l'operatore SALVA la personalizzazione (`colonne_nuove` di
+        // `ui.fn_resolve_lista_config`: colonne del catalogo fuori dalla sua
+        // configurazione), non aprendo la modale.
+        badge: colonneNuove.value > 0 ? colonneNuove.value : null,
         tooltip: colonneNuove.value > 0
           ? t('lista_config.colonne_nuove_disponibili', { n: colonneNuove.value })
           : personalizzaLabel,

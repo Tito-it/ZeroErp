@@ -94,7 +94,7 @@ const {
   },
   searchTableOptions: { defaultSortField: 'versione', defaultSortOrder: 'desc' },
   extraActions: () => [{
-    key: 'new-versione',
+    key: 'new',
     kind: 'primary',
     label: t('common.new'),
     tooltip: t('config.modelli_documenti.versioni.new'),

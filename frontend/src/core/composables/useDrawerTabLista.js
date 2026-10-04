@@ -86,11 +86,12 @@ export function useDrawerTabLista(
   const lista = useListaConfigurabilePage(store, {
     ...listaOptions,
     // ⭐ Un tab-lista NON e' la lista di rotta: `incorporata` di default, cioe'
-    //    non segue la ricerca universale (`?search=`, `ctx.searchTerm`) e non
-    //    intercetta F5. Senza, un drawer aperto sotto KeepAlive si ritrovava
-    //    le righe filtrate dal termine cercato altrove (il codice del
-    //    documento: righe vuote), e ogni F5 ricaricava anche le liste dei tab
-    //    montati (verifica critica del 2026-09-28). Il caller puo' scavalcarlo.
+    //    non segue la ricerca universale (`?search=`, `ctx.searchTerm`).
+    //    Senza, un drawer aperto sotto KeepAlive si ritrovava le righe filtrate
+    //    dal termine cercato altrove (il codice del documento: righe vuote),
+    //    verifica critica del 2026-09-28. Il caller puo' scavalcarlo. F5 qui
+    //    ricarica la lista del tab A VIDEO col drawer in cima
+    //    (`useScorciatoie`, dal 2026-10-04).
     searchTableOptions: { incorporata: true, ...listaOptions.searchTableOptions },
     // ⚠️ Arrow lazy: `reloadAll` e' dichiarata piu' sotto e viene risolta al
     //    click, non adesso. Senza l'arrow sarebbe una TDZ silenziosa.

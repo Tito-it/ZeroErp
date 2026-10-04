@@ -68,6 +68,7 @@ import { MANAGE_ICONS } from '../constants'
 import { useUiStore } from '../../stores/ui'
 import { registraDrawerChiudibile } from '../composables/useDrawerChiusuraGlobale'
 import { useDrawerInCima } from '../composables/useDrawerInCima'
+import { conTastoDiAzione, useScorciatoie } from '../composables/useScorciatoie'
 import {
   SEGNO_DEFAULT,
   SEGNO_MODIFICATO,
@@ -126,7 +127,7 @@ const istanza = getCurrentInstance()
 //    tracciata — si calcolerebbe una volta sola e non si aggiornerebbe piu'
 //    (e' il difetto gia' scritto in `DrawerTabLista.slotInoltrati`).
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const ui = useUiStore()
 
 const drawerVisibile = ref(false)
@@ -226,12 +227,27 @@ function pulisci() {
   if (typeof props.store?.azzeraFiltri === 'function') props.store.azzeraFiltri()
   emit('pulisci')
 }
+
+// ⭐ F2 = «Pulisci filtri» (2026-10-04, ok Tid): i filtri si iscrivono ai
+//    tasti funzione delle liste come la barra (`useScorciatoie`), con la
+//    STESSA condizione del pulsante — `$slots.default && puoPulire`. Lo slot
+//    si legge al momento del tasto (non in una computed: vedi sopra).
+const radiceFiltri = ref(null)
+const AZIONE_PULISCI = Object.freeze({ key: 'pulisci-filtri', command: pulisci })
+useScorciatoie({
+  elemento: () => radiceFiltri.value,
+  azioni: () => (istanza?.slots.default && puoPulire.value ? [AZIONE_PULISCI] : []),
+  esegui: (a) => a.command(),
+})
+const tooltipPulisci = computed(() =>
+  conTastoDiAzione(t, te, t('common.pulisci_filtri'), AZIONE_PULISCI.key),
+)
 </script>
 
 <template>
   <!-- Desktop: la forma di sempre. `app-page-filters` resta la classe del
        gruppo, cosi' la resa e il flex-wrap non cambiano di una riga. -->
-  <div v-if="!compatto" class="app-page-filters" :inert="inert">
+  <div v-if="!compatto" ref="radiceFiltri" class="app-page-filters" :inert="inert">
     <slot v-if="conRicerca" name="sempre" />
     <slot />
     <!-- ⭐ «PULISCI FILTRI» ANCHE SU DESKTOP (decisione A3 di Tid, 2026-09-23).
@@ -256,7 +272,7 @@ function pulisci() {
       class="app-filtri-btn"
       :icon="MANAGE_ICONS.FILTRI_PULISCI"
       :aria-label="t('common.pulisci_filtri')"
-      v-tooltip.bottom="t('common.pulisci_filtri')"
+      v-tooltip.bottom="tooltipPulisci"
       severity="secondary"
       text
       @click="pulisci"
@@ -264,7 +280,7 @@ function pulisci() {
   </div>
 
   <!-- Compatta: la ricerca resta, i filtri diventano un gesto. -->
-  <div v-else class="app-page-filters app-page-filters--compatta" :inert="inert">
+  <div v-else ref="radiceFiltri" class="app-page-filters app-page-filters--compatta" :inert="inert">
     <slot v-if="conRicerca" name="sempre" />
     <!-- ⛔ IL BADGE NON VA NEL DEFAULT SLOT DEL BUTTON, e la prima stesura lo
          faceva: in PrimeVue lo slot di default SOSTITUISCE il rendering interno

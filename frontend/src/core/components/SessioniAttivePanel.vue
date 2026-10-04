@@ -51,7 +51,7 @@ const {
   listaRef, dirty, onConfigLoaded, pageActions,
 } = useListaConfigurabilePage(store, {
   // Allineato al preset `sessioni_attive_default` (`data_ultimo_evento desc`).
-  // Pannello della home, non lista di rotta: niente ricerca universale ne' F5.
+  // Pannello della home, non lista di rotta: niente ricerca universale.
   searchTableOptions: {
     defaultSortField: 'data_ultimo_evento', defaultSortOrder: 'desc', incorporata: true,
   },

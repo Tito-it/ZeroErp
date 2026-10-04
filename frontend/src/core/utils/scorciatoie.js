@@ -30,6 +30,15 @@ function suMac() {
 export const TASTO = Object.freeze({
   ESC: 'ESC',
   SALVA: 'SALVA',
+  // I tasti funzione delle liste (`useScorciatoie`): il codice e' il
+  // nome del tasto, ma passa lo stesso dai locales (una tastiera puo'
+  // chiamarli diversamente, e la regola resta una).
+  F2: 'F2',
+  F4: 'F4',
+  F5: 'F5',
+  F6: 'F6',
+  F8: 'F8',
+  F9: 'F9',
 })
 
 // Scopo: il nome del tasto, tradotto; su Mac la variante `_MAC` se esiste.

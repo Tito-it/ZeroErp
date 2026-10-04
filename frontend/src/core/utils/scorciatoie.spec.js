@@ -38,4 +38,21 @@ describe('scorciatoie', () => {
     expect(nomeTasto(t, te, TASTO.ESC, true)).toBe('Esc')
     expect(nomeTasto(t, te, TASTO.SALVA, false)).toBe('Ctrl+S')
   })
+
+  it('nessun testo dei locales scrive un tasto fra parentesi: lo aggiunge la sede', () => {
+    // 🔴 «Ricarica lista (F5)» era scritto nel testo, e col tooltip della
+    //    sede diventava «Ricarica lista (F5) (F5)» (2026-10-04).
+    const TASTO_SCRITTO = /\((F\d{1,2}|Esc|Ctrl\+\w|⌘\w)\)/
+    const trovati = []
+    function visita(nodo, percorso) {
+      if (typeof nodo === 'string') {
+        if (TASTO_SCRITTO.test(nodo)) trovati.push(percorso)
+      } else if (nodo && typeof nodo === 'object') {
+        for (const [k, v] of Object.entries(nodo)) visita(v, `${percorso}.${k}`)
+      }
+    }
+    visita(it_, 'it')
+    visita(en, 'en')
+    expect(trovati).toEqual([])
+  })
 })

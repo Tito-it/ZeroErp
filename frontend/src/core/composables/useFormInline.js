@@ -131,8 +131,12 @@ export function useFormInline({
   // ⚠️ `command` e' per il contenitore che all'apertura fa ANCHE altro
   //    (azzera il suo form, fissa la fotografia, precompila): il suo verbo
   //    deve chiamare `nuovaRiga()`, non riscrivere `formMode`.
+  // ⭐ Chiave `new`, quella del «Nuovo» di ogni barra: e' la chiave che la
+  //    scorciatoia F6 cerca (`useScorciatoie`, 2026-10-04). Fino a quel
+  //    giorno era `nuova-riga`, e altre sedi avevano `nuova`/`new-uom`/…:
+  //    stesso significato, cinque nomi.
   function azioneNuovaRiga({
-    key = 'nuova-riga',
+    key = 'new',
     label,
     tooltip,
     icon = MANAGE_ICONS.ADD,

@@ -283,7 +283,7 @@ function buildRigaActions(row) {
 //    l'unica delle dieci sedi a tenerlo a video disabilitato.
 const pageActions = computed(() => [
   azioneNuovaRiga({
-    key: 'new-uom',
+    key: 'new',
     label: t('common.new'),
     tooltip: t('catalogo.nuova_uom_operativa'),
     command: onStartNew,

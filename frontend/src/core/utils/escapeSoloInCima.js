@@ -36,11 +36,25 @@
 // c'e' finche' il dialog e' montato, transizione di uscita compresa.
 const MASCHERA_DIALOG = '.p-dialog-mask'
 
+// Scopo: c'e' un dialog aperto?
+export function dialogAperto(doc = document) {
+  return Boolean(doc.querySelector(MASCHERA_DIALOG))
+}
+
+// Scopo: la maschera del dialog IN CIMA, o null. PrimeVue teletrasporta ogni
+//        dialog in coda al `body` all'apertura: l'ultima maschera e' quella
+//        davanti. La usano le scorciatoie (`useScorciatoie`): con un dialog
+//        aperto agisce solo cio' che sta dentro di lui.
+export function dialogInCima(doc = document) {
+  const maschere = doc.querySelectorAll(MASCHERA_DIALOG)
+  return maschere.length ? maschere[maschere.length - 1] : null
+}
+
 // Scopo: la regola, pura — vero se l'ESC e' stato ingoiato. Separata
 //        dall'installazione per poterla provare senza DOM.
 export function escapeSoloInCima(event, doc) {
   if (event.code !== 'Escape') return false
-  if (!doc.querySelector(MASCHERA_DIALOG)) return false
+  if (!dialogAperto(doc)) return false
   event.stopImmediatePropagation()
   return true
 }

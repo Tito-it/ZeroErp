@@ -73,7 +73,7 @@ describe('useFormInline', () => {
     const azione = () => r.azioneNuovaRiga({ label: 'Nuova', visible: () => modificabile.value })
     expect(MANAGE_ICONS.ADD).toBeTruthy()
     expect(azione()).toMatchObject({
-      key: 'nuova-riga', kind: 'primary', label: 'Nuova', icon: MANAGE_ICONS.ADD,
+      key: 'new', kind: 'primary', label: 'Nuova', icon: MANAGE_ICONS.ADD,
       hideWhenReadonly: true, visible: true,
     })
     modificabile.value = false

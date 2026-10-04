@@ -23,7 +23,13 @@
     "tasti": {
       "ESC": "Esc",
       "SALVA": "Ctrl+S",
-      "SALVA_MAC": "⌘S"
+      "SALVA_MAC": "⌘S",
+      "F2": "F2",
+      "F4": "F4",
+      "F5": "F5",
+      "F6": "F6",
+      "F8": "F8",
+      "F9": "F9"
     },
     "new": "Nuovo",
     "create": "Crea",
@@ -34,7 +40,7 @@
     "remove": "Rimuovi",
     "view": "Visualizza",
     "search": "Cerca",
-    "reload_list": "Ricarica lista (F5)",
+    "reload_list": "Ricarica lista",
     "refresh": "Aggiorna",
     "saving": "Salvataggio...",
     "error": "Errore",

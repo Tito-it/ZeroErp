@@ -497,7 +497,7 @@ function onDeleteRow(row, event) {
 //    durante la modifica, e un clic buttava via la modifica in corso.
 const pageActions = computed(() => [
   azioneNuovaRiga({
-    key: 'nuova',
+    key: 'new',
     label: t('common.new'),
     tooltip: t('vendite.offerte.eccezione_nuova'),
     // ⚠️ `isReadonly` aggiunge «offerta non in BOZZA» al readonly dei
