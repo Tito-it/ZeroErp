@@ -1518,6 +1518,9 @@ class ContrattiService:
         # se il PATCH tocca prezzo_unitario, valida contro il tipo_eccezione
         # della riga esistente (immutabile). Pre-validation parlante invece
         # del fallback E_DATABASE sul CHECK DB chk_contrighe_prezzo_per_tipo_eccezione.
+        # Un'ESCLUSIONE non entra qui: non si modifica affatto, e lo dice il
+        # guard DB `_a05_` (E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE), che parla
+        # prima del CHECK sul prezzo — brief-db-contratto-esclusione-non-modificabile.
         # Refactor 2026-05-19: il caricamento di `existing_riga` serve anche
         # al gate L1+L2+L3 sotto — fatto qui per evitare double-fetch.
         existing_riga: dict[str, Any] | None = None
@@ -1530,19 +1533,7 @@ class ContrattiService:
             )
             tipo_existing = existing_riga.get("tipo_eccezione")
             nuovo_prezzo = data["prezzo_unitario"]
-            if tipo_existing == "ESCLUSIONE":
-                ErrorManager.require(
-                    nuovo_prezzo is None,
-                    code=E_VENDITE_VALIDATION,
-                    message=_MESSAGE_RIGA,
-                    detail=(
-                        "ESCLUSIONE: prezzo_unitario deve essere NULL "
-                        "(l'articolo non e' disponibile per questo contratto). "
-                        "Per cambiare tipo, eliminare la riga e crearne una nuova."
-                    ),
-                    context={"riga_id": riga_id, "tipo_eccezione": tipo_existing},
-                )
-            elif tipo_existing in ("OVERRIDE", "AGGIUNTA"):
+            if tipo_existing in ("OVERRIDE", "AGGIUNTA"):
                 ErrorManager.require(
                     nuovo_prezzo is not None,
                     code=E_VENDITE_VALIDATION,
@@ -1556,9 +1547,9 @@ class ContrattiService:
                 )
 
         # Gate L1+L2+L3 (refactor 2026-05-19): scatta solo se il PATCH tocca
-        # `prezzo_unitario` su una riga OVERRIDE o AGGIUNTA. Per ESCLUSIONE
-        # la coerenza prezzo NULL e' gia' garantita dal check sopra; nessun
-        # gate ulteriore. Riusiamo `existing_riga` per evitare double-fetch.
+        # `prezzo_unitario` su una riga OVERRIDE o AGGIUNTA. Un'ESCLUSIONE
+        # la rifiuta il guard DB nell'UPDATE qui sotto: nessun gate.
+        # Riusiamo `existing_riga` per evitare double-fetch.
         # riga_id noto subito: link inline alla pratica (no post-INSERT).
         # Fix analisi-fix-transazioni #6 (Classe B): gate L3 (crea + linka inline
         # la pratica di approvazione) e UPDATE riga in UN solo transaction.atomic().

@@ -57,7 +57,7 @@ del reso). Deciso: lo schema `magazzino` contiene il **registro** (anello 2, com
 `pratiche`: predisposto finché `acquisti` non diventa il secondo dominio consumatore) e i
 **documenti di magazzino** (anello 3); la regola «mai dipendenze laterali» resta intera. Il verso
 inverso è un debito: i posting tornano in `vendite`, e un presidio lo tiene a zero —
-[brief-db-magazzino-registro-anello-interno](work-in-progress/brief-db-magazzino-registro-anello-interno.md).
+[brief-db-magazzino-registro-anello-interno](work-done/brief-db-magazzino-registro-anello-interno.md).
 
 Lo stesso giorno il lavoro è **scritto** (`20261001-18 → -26`, da applicare): i posting in
 `vendite`, il cancello `dbops.vw_magazzino_dipendenze_inverse` in CI — e il cancello, al primo

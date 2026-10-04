@@ -231,7 +231,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   Strada A (§14): una fattura che ha consumato plafond non si disfa più (`20261004-07…-11`), applicato il 2026-10-04, pgTAP verdi. Lato DB chiuso; resta BE/FE (R-BE-A1, R-FE-A1).
 - **Un'esclusione del contratto non si modifica** (`work-in-progress/brief-db-contratto-esclusione-non-modificabile.md`,
   decisione di Tid del 2026-10-04): DB applicato il 2026-10-04 (`20261004-12…-14`, lock su
-  `contratti_righe.tipo_eccezione`, due codici nuovi), pgTAP senza regressioni. Lato DB chiuso; resta BE/FE (§5).
+  `contratti_righe.tipo_eccezione`, due codici nuovi), pgTAP senza regressioni. BE/FE scritto il 2026-10-04
+  (§7), non committato; aperto §7.1 (ripiego `tipo_erogazione` vivo sulle righe modificabili).
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il
@@ -313,7 +314,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (le 18 storiche e `20260925-22`/`-23`): è un cambio della forma di casa, del
   team DB.
 - 🔴 **Il tetto d'area dei permessi non esiste** (BE + DB, difetto di
-  modello, senza decisione; registrato il 2026-09-25 dall'analisi
+  modello; registrato il 2026-09-25 dall'analisi
   `work-in-progress/analisi-ui-permessi-operatore.md` §3, perché non si perda
   con la sua chiusura): un'area `BLOCCATO` **non** blocca le sue azioni di
   processo — `core/api/permissions.py` risponde con la sola
@@ -321,9 +322,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   **più permissivo** della sua area (`fn_resolve_livello_oggetto` sostituisce,
   non limita: «il più specifico vince», dichiarato nella guida di
   architettura §3). Passare a «l'area è un tetto» è un cambio di semantica, da
-  fare a DB e BE, mai solo a video. Le domande da decidere sono in §6
-  dell'analisi (vale anche sul profilo? limite o cancellazione degli override
-  sottostanti?). Non è della v3 dei permessi, che è dormiente
+  fare a DB e BE, mai solo a video. ✅ **Deciso da Tid il 2026-10-04** (tetto
+  sì, anche sul profilo, override dormienti, minimo d'area per azione):
+  `work-in-progress/brief-db-permessi-tetto-area.md`, che porta anche il
+  restyle del pannello per area (§7). Non è della v3 dei permessi, che è dormiente
 - **Il `codice` delle sei famiglie di documento di seed si perde al migrate**
   (DB, ereditata il 2026-09-24 dalla chiusura di
   `work-done/brief-be-ricerca-full-liste-residue.md`, §13.5): dal 24-09 il

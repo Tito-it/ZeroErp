@@ -6,7 +6,7 @@
 > `brief-db-liste-righe-documento` (§9.15-9.16), 2026-10-04.
 > **Decisione:** di Tid, 2026-10-04: «una esclusione non si modifica».
 > **Stato:** ✅ **DB chiuso** il 2026-10-04: applicato (`20261004-12…-14` + CSV), lock generato su dev,
-> pgTAP senza regressioni (§6.6). ⏳ Resta BE/FE (§5).
+> pgTAP senza regressioni (§6.6). ✅ **BE/FE scritto** il 2026-10-04 (§7), non committato.
 
 ## 1. La regola
 
@@ -166,6 +166,29 @@ Nessun percorso legittimo aggiorna un'esclusione.
 2. ✅ Lock generato su dev: `trg_contratti_righe_a10_lock_columns_upd` presente accanto a
    `trg_contratti_righe_a05_guard_esclusione_immutabile_upd`, quindi il test 15 gira davvero.
 3. ✅ pgTAP lanciati da Tid: nessuna regressione.
-4. ⏳ BE/FE (§5): codici nuovi in `error_policies_generated.py` / `error_messages_fallback.py`, ramo
-   `ESCLUSIONE` di `update_riga` da togliere, rami morti del form in `ContrattoRigheDrawer`, doc
-   `api_contratti.md`.
+4. ✅ BE/FE (§5): scritto il 2026-10-04, vedi §7.
+
+## 7. Consegna BE/FE (2026-10-04)
+
+| Pezzo | Cosa |
+| --- | --- |
+| Codici | `genera_error_policies`: le sole due voci nuove, entrambe `CONFLITTO_STATO`, zero classi mosse. Ripieghi senza `%s` in `error_messages_fallback.py` |
+| `contratti_service.update_riga` | tolto il ramo che pre-validava il prezzo di un'`ESCLUSIONE` (400 `E_VENDITE_VALIDATION`). Il PATCH arriva al DB e il codice strutturato del guard vince in `raise_from_database_error`: nessun marker da aggiungere. Il messaggio del service sul cambio di tipo resta (§5) |
+| Test BE | `vendite/tests/db/test_contratto_esclusione_non_modificabile_db` (nuovo, DB vero, mondo costruito come nel pgTAP): PATCH della quantità e PATCH del prezzo rispondono `E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE`. Il secondo va rosso col ramo vecchio (che rispondeva `E_VENDITE_VALIDATION`). Ritirato il test mock `test_update_riga_esclusione_prezzo_non_null_fallisce`, che provava il ramo tolto |
+| `ContrattoRigheDrawer` | tolti i rami del form morti per l'`ESCLUSIONE`: condizioni su `useComponentiDialog`, eccezione in `canSave`, forzatura del prezzo a NULL nel payload, Tag «prezzo n/a» e prezzo disabilitato. Tolti anche i ripieghi di `tipo_eccezione` e `fonte_quantita_attesa` in modifica: tutte e due NOT NULL, i ripieghi erano morti per contratto. Chiave i18n `prezzo_esclusione_n_a` ritirata (it, en). Il click continua a seguire i verbi del DB |
+| Doc | `api_contratti.md`: vincoli delle righe, PATCH riga, regola 7, i due codici nella tassonomia. `analisi-contratti-v1.md` non ne parla |
+
+Verifica: test core (1653) e vendite (2267) con `ZEROERP_TEST_DB_E2E=1` verdi; vitest 662/662; eslint
+e `check_i18n_keys` puliti.
+
+### 7.1 Aperto — il ripiego di `tipo_erogazione` resta vivo, ma non sull'esclusione
+
+Il §5 chiedeva di togliere «i ripieghi `tipo_erogazione`/fonte per le righe senza». Quello di
+`tipo_erogazione` (`r.tipo_erogazione || CANONE` in `_onEditRigaPersistita`) **non è morto**:
+`contratti_righe.tipo_erogazione` è nullable per **ogni** tipo di riga (doc auto-gen), quindi un
+OVERRIDE o un'AGGIUNTA senza erogazione, che il modello ammette, apre il form con `CANONE` e il
+primo «Salva» lo scrive senza che nessuno l'abbia scelto. È la classe del §9.11 del brief
+liste-righe, sulle righe che restano modificabili. Non toccato qui: togliere il ripiego chiede di
+decidere come il form presenta un'erogazione assente (le fonti ammesse si filtrano per tipo, e con
+il tipo NULL la tendina resta vuota). Da decidere con Tid.
+
