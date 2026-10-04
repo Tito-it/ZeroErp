@@ -138,6 +138,9 @@
 - [fn_ddt_riga_componenti_preview](manual/fn_ddt_riga_componenti_preview.md)
 - [fn_diagnostica_gruppi_fatturabili](manual/fn_diagnostica_gruppi_fatturabili.md) — (latest review 15-08-2026)
 - [fn_documento_lineage](manual/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
+- [fn_documento_listino_operativo](manual/fn_documento_listino_operativo.md) — (funzione nata il 2026-10-04, `20261004-42`)
+- [fn_documento_righe_eccezione](manual/fn_documento_righe_eccezione.md) — (funzione nata il 2026-10-04, `20261004-70`)
+- [fn_documento_righe_preview](manual/fn_documento_righe_preview.md) — (funzione nata il 2026-10-04, `20261004-71`, dal corpo di `fn_contratto_righe_preview`)
 - [fn_elimina_fattura_da_lotto](manual/fn_elimina_fattura_da_lotto.md) — (latest review 04-08-2026)   Toglie **una sola fattura** da un lotto **cancellandola**, senza toccare il lotto né le altre fatture. È il verbo per il caso in cui un documento è sbagliato e va rifatto, mentre il resto del giro è sano.
 - [fn_emit_attivita_fatturabili_da_commessa](manual/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 - [fn_escludi_documento_da_giro](manual/fn_escludi_documento_da_giro.md) — (latest review 2026-09-08)
@@ -205,6 +208,7 @@
 - [fn_offerta_eccezione_componenti_init](manual/fn_offerta_eccezione_componenti_init.md)
 - [fn_offerta_eccezione_componenti_preview](manual/fn_offerta_eccezione_componenti_preview.md)
 - [fn_offerta_righe_espanse](manual/fn_offerta_righe_espanse.md)
+- [fn_offerta_righe_preview](manual/fn_offerta_righe_preview.md) — (funzione nata il 2026-10-04, `20261004-72`)
 - [fn_ordine_ha_residuo_evasione](manual/fn_ordine_ha_residuo_evasione.md) — (rev 2026-07-13 — **reso-aware**)
 - [fn_ordine_riga_componenti_init](manual/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](manual/fn_ordine_riga_componenti_preview.md)
@@ -288,9 +292,6 @@
 - [trgfn_contratti_guard_transizione_stato](manual/trgfn_contratti_guard_transizione_stato.md) — (latest review 24-09-2026 — il prezzo non autorizzato dal building block; 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
 - [trgfn_contratti_lock_post_attivazione](manual/trgfn_contratti_lock_post_attivazione.md) — Il pricing di un contratto attivo è **immutabile per design** (§3-bis-A del brief): né listino, né variazione globale, né versione fissata possono essere cambiati dopo l'attivazione. Questo garantisce stabilità del calcolo prezzi per tutta la durata del contratto e coerenza dell'audit trail.
 - [trgfn_contratti_normalize](manual/trgfn_contratti_normalize.md) — La trigger function `vendite.trgfn_contratti_normalize()` completa i dati minimi del contratto in insert quando il numero documento e` presente.
-- [trgfn_contratti_righe_guard_aggiunta_fuori_listino](manual/trgfn_contratti_righe_guard_aggiunta_fuori_listino.md) — Un operatore che vuole modificare il prezzo di un articolo già in listino deve usare `OVERRIDE`, non `AGGIUNTA`. Questo guard è la **barriera DB-first** che rende impossibile la confusione tra i due tipi, anche da psql diretto o da chiamate API non validate.
-- [trgfn_contratti_righe_guard_esclusione_figlio_bundle](manual/trgfn_contratti_righe_guard_esclusione_figlio_bundle.md) — (rev 2026-08-21 — §6.1, 2026-05-16)
-- [trgfn_contratti_righe_guard_esclusione_immutabile](manual/trgfn_contratti_righe_guard_esclusione_immutabile.md) — (funzione nata il 2026-10-04, `20261004-12`; trigger `20261004-13`)
 - [trgfn_contratti_set_categoria_cliente_snapshot](manual/trgfn_contratti_set_categoria_cliente_snapshot.md) — (rev 2026-08-21)
 - [trgfn_contratti_snapshot_precontrattuali](manual/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 20/01/26) La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati precontrattuali **solo alla creazione del contratto**.   La scelta progettuale e` deliberata: il contratto diventa la **fonte stabile** per i dati tecnici/commerciali e le eventuali correzioni richiedono **un nuovo contratto**.
 - [trgfn_contratti_sync_is_abortito_snapshot](manual/trgfn_contratti_sync_is_abortito_snapshot.md) — (rev 2026-08-21 — funzione rev 2026-06-02)

@@ -7,8 +7,12 @@
 --
 -- Indice test (1..5):
 --   Struttura:
---   1)  Funzione trgfn_contratti_righe_guard_esclusione_figlio_bundle presente
---   2)  Trigger trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd presente
+--   1)  Funzione script.trgfn_righe_guard_esclusione_figlio_bundle presente (rev 2026-10-04)
+--   2)  Trigger trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd presente, sulla funzione generica
+--
+--   rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): la funzione e'
+--   generica per contratto e offerta (script); le esclusioni nascono VUOTE
+--   (prima portavano qta_operativa 1, che la regola nuova rifiuta).
 --
 --   Comportamento (COND: skip se nessun bundle in listini_righe_componenti):
 --   3)  ESCLUSIONE su figlio bundle nel listino del contratto → raise P0001
@@ -95,16 +99,16 @@ SELECT plan(5);
 -- ============================================================
 
 -- ============================================================
--- 1) trgfn_contratti_righe_guard_esclusione_figlio_bundle presente
+-- 1) script.trgfn_righe_guard_esclusione_figlio_bundle presente
 -- ============================================================
 SELECT ok(
     EXISTS (
         SELECT 1 FROM pg_proc p
           JOIN pg_namespace n ON n.oid = p.pronamespace
-         WHERE n.nspname = 'vendite'
-           AND p.proname = 'trgfn_contratti_righe_guard_esclusione_figlio_bundle'
+         WHERE n.nspname = 'script'
+           AND p.proname = 'trgfn_righe_guard_esclusione_figlio_bundle'
     ),
-    '1) Funzione trgfn_contratti_righe_guard_esclusione_figlio_bundle presente'
+    '1) Funzione script.trgfn_righe_guard_esclusione_figlio_bundle presente'
 );
 
 -- ============================================================
@@ -119,6 +123,7 @@ SELECT ok(
          WHERE n.nspname = 'vendite'
            AND c.relname = 'contratti_righe'
            AND t.tgname  = 'trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd'
+           AND t.tgfoid  = 'script.trgfn_righe_guard_esclusione_figlio_bundle()'::regprocedure
            AND NOT t.tgisinternal
     ),
     '2) Trigger trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd presente'
@@ -135,8 +140,8 @@ SELECT CASE
     ELSE throws_ok(
         format(
             $$INSERT INTO vendite.contratti_righe(
-                contratto_id, articolo_id, tipo_eccezione, qta_operativa)
-              SELECT c.id, %L::uuid, 'ESCLUSIONE', 1.00
+                contratto_id, articolo_id, tipo_eccezione)
+              SELECT c.id, %L::uuid, 'ESCLUSIONE'
                 FROM vendite.contratti c WHERE c.numero = 'PGTAP_ESC_CNT'$$,
             (SELECT figlio_id FROM tmp_esc_bundle LIMIT 1)
         ),
@@ -157,8 +162,8 @@ SELECT CASE
     ELSE lives_ok(
         format(
             $$INSERT INTO vendite.contratti_righe(
-                contratto_id, articolo_id, tipo_eccezione, qta_operativa)
-              SELECT c.id, %L::uuid, 'ESCLUSIONE', 1.00
+                contratto_id, articolo_id, tipo_eccezione)
+              SELECT c.id, %L::uuid, 'ESCLUSIONE'
                 FROM vendite.contratti c WHERE c.numero = 'PGTAP_ESC_CNT'$$,
             (SELECT padre_id FROM tmp_esc_bundle LIMIT 1)
         ),
@@ -177,8 +182,8 @@ SELECT CASE
     ELSE lives_ok(
         format(
             $$INSERT INTO vendite.contratti_righe(
-                contratto_id, articolo_id, tipo_eccezione, qta_operativa)
-              SELECT c.id, %L::uuid, 'ESCLUSIONE', 1.00
+                contratto_id, articolo_id, tipo_eccezione)
+              SELECT c.id, %L::uuid, 'ESCLUSIONE'
                 FROM vendite.contratti c WHERE c.numero = 'PGTAP_ESC_CNT'$$,
             (SELECT articolo_id FROM tmp_esc_standalone LIMIT 1)
         ),

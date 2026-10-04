@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE vendite.fn_documento_righe_eccezione: le righe eccezione di un
+# contratto o di un'offerta, nella stessa forma.
+#
+# -- PERCHE' ------------------------------------------------------------
+#   La lista delle righe (vendite.fn_documento_righe_preview, 20261004-71)
+#   e' una sola per contratto e offerta (R4, regola del 2), e legge le
+#   eccezioni in tre punti: l'overlay OVERRIDE/ESCLUSIONE sulle righe del
+#   listino, le AGGIUNTA standalone, le AGGIUNTA bundle. Le due tabelle sono
+#   gemelle per progetto (COMMENT di offerte_commerciali_eccezioni: «mirror
+#   fedele di contratti_righe»): questa funzione le rende con le stesse
+#   colonne, cosi' la lista non ripete la scelta della tabella tre volte.
+#
+# -- LA FORMA -----------------------------------------------------------
+#   · selettore p_documento ('CONTRATTO' | 'OFFERTA'); altro valore:
+#     E_DOC_TIPO_NON_GESTITO, come vendite.fn_documento_listino_operativo;
+#   · tutte le righe, attive e no: il filtro sullo stato lo decide chi legge
+#     (la lista tiene le attive, come prima);
+#   · SECURITY INVOKER: le due tabelle sono in RLS, e la lista legge
+#     dentro il perimetro di chi la chiede, come prima;
+#   · colonne ancorate a vendite.contratti_righe: l'offerta ha le stesse
+#     colonne con lo stesso tipo base (2026-10-04: cambia solo la scala di
+#     prezzo_unitario, 15,6 contro 18,6, e la lunghezza di
+#     fonte_quantita_attesa, 24 contro 32; una funzione non porta il typmod).
+#     `id` e' polimorfo (la riga di una delle due tabelle): ancorato al
+#     contratto per il tipo, che e' lo stesso.
+#
+# Brief: brief-db-righe-esclusione-solo-non-si-vende (R4).
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261004-70-create-fn-documento-righe-eccezione-mctit.yaml
+
+  - changeSet:
+      id: 20261004-70-create-fn-documento-righe-eccezione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_documento_righe_eccezione(documento, id): le righe di vendite.contratti_righe o di
+        vendite.offerte_commerciali_eccezioni di un documento, nella stessa forma. Brief:
+        brief-db-righe-esclusione-solo-non-si-vende (R4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_documento_righe_eccezione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_documento_righe_eccezione(
+                  p_documento    text,
+                  p_documento_id bigint)
+              RETURNS TABLE(
+                  id                    vendite.contratti_righe.id%TYPE,
+                  articolo_id           vendite.contratti_righe.articolo_id%TYPE,
+                  tipo_eccezione        vendite.contratti_righe.tipo_eccezione%TYPE,
+                  prezzo_unitario       vendite.contratti_righe.prezzo_unitario%TYPE,
+                  quantita              vendite.contratti_righe.quantita%TYPE,
+                  qta_operativa         vendite.contratti_righe.qta_operativa%TYPE,
+                  uom_operativa_id      vendite.contratti_righe.uom_operativa_id%TYPE,
+                  tipo_erogazione       vendite.contratti_righe.tipo_erogazione%TYPE,
+                  fonte_quantita_attesa vendite.contratti_righe.fonte_quantita_attesa%TYPE,
+                  ordine                vendite.contratti_righe.ordine%TYPE,
+                  attivo                vendite.contratti_righe.attivo%TYPE)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: le righe eccezione (OVERRIDE, ESCLUSIONE, AGGIUNTA) di un
+              --   contratto o di un'offerta, con le stesse colonne. Tutte, attive
+              --   e no: filtra chi legge.
+              -- ⚠️ p_documento e p_documento_id nudi DICHIARATI: un selettore
+              --   senza colonna-vocabolario e un id polimorfo (due testate).
+              BEGIN
+                  IF p_documento = 'CONTRATTO' THEN
+                      RETURN QUERY
+                      SELECT cr.id, cr.articolo_id, cr.tipo_eccezione, cr.prezzo_unitario,
+                             cr.quantita, cr.qta_operativa, cr.uom_operativa_id,
+                             cr.tipo_erogazione, cr.fonte_quantita_attesa, cr.ordine,
+                             cr.attivo
+                        FROM vendite.contratti_righe cr
+                       WHERE cr.contratto_id = p_documento_id;
+
+                  ELSIF p_documento = 'OFFERTA' THEN
+                      RETURN QUERY
+                      SELECT oe.id, oe.articolo_id, oe.tipo_eccezione, oe.prezzo_unitario,
+                             oe.quantita, oe.qta_operativa, oe.uom_operativa_id,
+                             oe.tipo_erogazione, oe.fonte_quantita_attesa, oe.ordine,
+                             oe.attivo
+                        FROM vendite.offerte_commerciali_eccezioni oe
+                       WHERE oe.offerta_id = p_documento_id;
+
+                  ELSE
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'fn_documento_righe_eccezione',
+                          'E_DOC_TIPO_NON_GESTITO',
+                          jsonb_build_object('documento',    p_documento,
+                                             'documento_id', p_documento_id),
+                          NULL::uuid,
+                          COALESCE(p_documento, '<null>'));
+                  END IF;
+
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_documento_righe_eccezione(text, bigint)
+              IS 'Le righe eccezione (OVERRIDE, ESCLUSIONE, AGGIUNTA) di un contratto (vendite.contratti_righe) o di un''offerta (vendite.offerte_commerciali_eccezioni), con le stesse colonne: le due tabelle sono gemelle per progetto. p_documento = CONTRATTO | OFFERTA; altro valore: E_DOC_TIPO_NON_GESTITO. Tutte le righe, attive e no. INVOKER: legge sotto la RLS di chi chiede. Colonne ancorate a contratti_righe (stesso tipo base sull''offerta; una funzione non porta il typmod). Consumatore: vendite.fn_documento_righe_preview, che senza di lei sceglierebbe la tabella in tre punti. Nasce il 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende (R4).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_documento_righe_eccezione(text, bigint);

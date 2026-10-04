@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FONTE DELLA QUANTITA' E' DI CHI SI FATTURA
+#   vendite.contratti_righe:               fonte_quantita_attesa DROP NOT NULL,
+#                                          chk_contrighe_fonte_per_tipo_eccezione
+#   vendite.offerte_commerciali_eccezioni: fonte_quantita_attesa DROP NOT NULL,
+#                                          chk_offerte_eccezioni_fonte_per_tipo_eccezione
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (R1; decisione di Tid,
+#   2026-10-04)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Un'ESCLUSIONE dice solo che il documento non vende l'articolo: non ha dati
+#   di vendita, e la fonte della quantita' attesa e' uno di quelli. La colonna
+#   era NOT NULL su ogni riga, e script.trgfn_righe_default_fonte_qta la
+#   riempiva (FISSA) anche sull'esclusione. Il NOT NULL scende a un CHECK con la
+#   forma di chk_*_erogazione_per_tipo_eccezione: obbligatoria su ogni riga
+#   che non e' ESCLUSIONE. «Tutto tranne ESCLUSIONE», cosi' un tipo nuovo
+#   nasce vincolato.
+#
+# -- E IL RESTO DELLA REGOLA ---------------------------------------
+#   «Sull'esclusione i dieci dati di vendita sono vuoti» e' il 20261004-76,
+#   che viene DOPO i trigger (-48/-49): prima di quel vincolo le esclusioni gia'
+#   scritte vanno svuotate, e svuotarle chiede che la fonte non sia piu' NOT NULL
+#   (questo changeSet) e che i trigger di valorizzazione non la riempiano di
+#   nuovo (-48/-49).
+#
+# -- IL CHECK DI STAMATTINA --------------------------------------
+#   chk_*_erogazione_per_tipo_eccezione (20261004-30) lasciava l'erogazione
+#   dell'esclusione «libera». Il suo testo resta (dice l'obbligo sulle altre
+#   righe); il «vuota» lo dice chk_*_esclusione_senza_dati (-76). Si aggiorna
+#   il COMMENT, che diceva «libera».
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   Nessuna preCondition sui dati: la colonna era NOT NULL, quindi nessuna riga
+#   ferma viola il CHECK nuovo. Su un DB da zero le tabelle sono vuote.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261004-40-alter-righe-eccezione-fonte-per-tipo-eccezione-mctit.yaml
+
+  - changeSet:
+      id: 20261004-40-alter-righe-eccezione-fonte-per-tipo-eccezione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti_righe e vendite.offerte_commerciali_eccezioni: fonte_quantita_attesa da
+        NOT NULL a obbligatoria (CHECK) solo sulle righe che non sono ESCLUSIONE. Brief:
+        brief-db-righe-esclusione-solo-non-si-vende (R1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint c
+               WHERE (c.conrelid = 'vendite.contratti_righe'::regclass
+                      AND c.conname = 'chk_contrighe_fonte_per_tipo_eccezione')
+                  OR (c.conrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
+                      AND c.conname = 'chk_offerte_eccezioni_fonte_per_tipo_eccezione');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── vendite.contratti_righe ─────────────────────────────────
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT chk_contrighe_fonte_per_tipo_eccezione
+                  CHECK (tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                         OR fonte_quantita_attesa IS NOT NULL);
+
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN fonte_quantita_attesa DROP NOT NULL;
+
+              COMMENT ON CONSTRAINT chk_contrighe_fonte_per_tipo_eccezione ON vendite.contratti_righe IS
+                  'Una riga che si fattura (ogni tipo che non e'' ESCLUSIONE) dice da dove viene la '
+                  'quantita'' attesa: fonte_quantita_attesa obbligatoria. Prende il posto del NOT NULL '
+                  'della colonna, che valeva anche per l''esclusione. Stessa forma di '
+                  'chk_contrighe_erogazione_per_tipo_eccezione. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R1).';
+
+              COMMENT ON CONSTRAINT chk_contrighe_erogazione_per_tipo_eccezione ON vendite.contratti_righe IS
+                  'Una riga che si fattura (ogni tipo che non e'' ESCLUSIONE: oggi OVERRIDE e AGGIUNTA) '
+                  'dice come si eroga: tipo_erogazione obbligatoria. Sull''ESCLUSIONE e'' vuota, come '
+                  'gli altri dati di vendita: lo dice chk_contrighe_esclusione_senza_dati (rev '
+                  '2026-10-04, brief-db-righe-esclusione-solo-non-si-vende). Scritto come «tutto '
+                  'tranne ESCLUSIONE», cosi'' un tipo nuovo nasce vincolato. A parlare all''operatore '
+                  'e'' il guard script.trgfn_righe_guard_erogazione_obbligatoria '
+                  '(E_RIGA_EROGAZIONE_OBBLIGATORIA, col campo): il CHECK e'' la rete. Brief: '
+                  'brief-db-erogazione-obbligatoria-righe-fatturate (R1).';
+
+              -- ── vendite.offerte_commerciali_eccezioni ────────────────────
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_fonte_per_tipo_eccezione
+                  CHECK (tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                         OR fonte_quantita_attesa IS NOT NULL);
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ALTER COLUMN fonte_quantita_attesa DROP NOT NULL;
+
+              COMMENT ON CONSTRAINT chk_offerte_eccezioni_fonte_per_tipo_eccezione ON vendite.offerte_commerciali_eccezioni IS
+                  'Mirror di chk_contrighe_fonte_per_tipo_eccezione: una riga dell''offerta che si '
+                  'fattura dice da dove viene la quantita'' attesa. Prende il posto del NOT NULL della '
+                  'colonna. Brief: brief-db-righe-esclusione-solo-non-si-vende (R1).';
+
+              COMMENT ON CONSTRAINT chk_offerte_eccezioni_erogazione_per_tipo_eccezione ON vendite.offerte_commerciali_eccezioni IS
+                  'Mirror di chk_contrighe_erogazione_per_tipo_eccezione: una riga dell''offerta che '
+                  'si fattura (ogni tipo che non e'' ESCLUSIONE) dice come si eroga. Sull''ESCLUSIONE e'' '
+                  'vuota: lo dice chk_offerte_eccezioni_esclusione_senza_dati (rev 2026-10-04). Senza, '
+                  'fn_push_offerta_a_contratto farebbe nascere un contratto rifiutato dal suo stesso '
+                  'CHECK. A parlare all''operatore e'' il guard '
+                  'script.trgfn_righe_guard_erogazione_obbligatoria. Brief: '
+                  'brief-db-erogazione-obbligatoria-righe-fatturate (R2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ALTER COLUMN fonte_quantita_attesa SET NOT NULL;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_fonte_per_tipo_eccezione;
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN fonte_quantita_attesa SET NOT NULL;
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_fonte_per_tipo_eccezione;

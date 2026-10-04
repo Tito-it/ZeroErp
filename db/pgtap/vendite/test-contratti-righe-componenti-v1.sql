@@ -411,51 +411,14 @@ SELECT ok(
 --     (SUM figli) farebbe scattare il CHECK -> errore.
 --     Data-dependent: skip se nessuna riga composito+ESCLUSIONE valida.
 -- =========================================================
-SELECT CASE
-    WHEN NOT EXISTS (
-        SELECT 1 FROM vendite.contratti_righe cr
-          JOIN catalogo.articoli a ON a.id = cr.articolo_id
-         WHERE COALESCE(a.is_composito, FALSE)
-           AND cr.tipo_eccezione = 'ESCLUSIONE'
-           AND cr.quantita IS NOT NULL
-         LIMIT 1
-    )
-    THEN skip('28) nessuna riga composito+ESCLUSIONE con quantita NOT NULL disponibile')
-    ELSE is(
-        (
-            -- RETURN 0 senza sollevare il CHECK
-            SELECT vendite.fn_contratto_riga_componenti_init(
-                (SELECT cr.id FROM vendite.contratti_righe cr
-                   JOIN catalogo.articoli a ON a.id = cr.articolo_id
-                  WHERE COALESCE(a.is_composito, FALSE)
-                    AND cr.tipo_eccezione = 'ESCLUSIONE'
-                    AND cr.quantita IS NOT NULL
-                  LIMIT 1),
-                1,
-                current_date
-            )
-        )
-        -- nessun componente inserito per quella riga
-        + (SELECT COUNT(*)::integer FROM vendite.contratti_righe_componenti crc
-            WHERE crc.riga_contratto_id = (
-                SELECT cr.id FROM vendite.contratti_righe cr
-                  JOIN catalogo.articoli a ON a.id = cr.articolo_id
-                 WHERE COALESCE(a.is_composito, FALSE)
-                   AND cr.tipo_eccezione = 'ESCLUSIONE'
-                   AND cr.quantita IS NOT NULL
-                 LIMIT 1))
-        -- prezzo padre ancora NULL -> +0; altrimenti +1000 (fa fallire il test)
-        + (SELECT CASE WHEN cr.prezzo_unitario IS NULL THEN 0 ELSE 1000 END
-             FROM vendite.contratti_righe cr
-             JOIN catalogo.articoli a ON a.id = cr.articolo_id
-            WHERE COALESCE(a.is_composito, FALSE)
-              AND cr.tipo_eccezione = 'ESCLUSIONE'
-              AND cr.quantita IS NOT NULL
-            LIMIT 1),
-        0,
-        '28) fn_contratto_riga_componenti_init: ESCLUSIONE composito -> 0, nessun componente, prezzo padre NULL'
-    )
-END;
+-- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): il caso non
+--   esiste piu' per costruzione. Un'esclusione non porta quantita'
+--   (chk_contrighe_esclusione_senza_dati, guard E_RIGA_ESCLUSIONE_CON_DATI), quindi
+--   una riga composito+ESCLUSIONE con quantita' NOT NULL non si puo' scrivere, e
+--   l'init su un'esclusione e' no-op gia' per la quantita' assente. Il test cercava
+--   quella riga nei dati: oggi passerebbe solo per coincidenza. Si dichiara, non si
+--   lascia verde a vuoto.
+SELECT skip('28) composito+ESCLUSIONE con quantita'' NOT NULL: impossibile per costruzione dal 2026-10-04 (un''esclusione non porta quantita'')', 1);
 
 SELECT * FROM finish();
 ROLLBACK;

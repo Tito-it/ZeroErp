@@ -8,7 +8,8 @@
 > in §6. Riaperto il 2026-10-04 dal restyle del pannello permessi (§7): raggruppare per area
 > azioni e oggetti suggerisce una gerarchia che oggi il modello non applica.
 > **Decisioni:** di Tid, 2026-10-04 (§3).
-> **Stato:** 🟡 da fare (DB).
+> **Stato:** ✅ **DB chiuso**: `20261004-50 → -59` + mirror del CSV **applicati il 2026-10-04**,
+> pgTAP verdi (Tid). ⏳ Resta il giro BE/FE (§9.7, poi §7). **Da leggere per primo: §9.7.**
 
 ## 1. La regola
 
@@ -195,3 +196,141 @@ sapere quali premere.
 3. **FE §7**: il restyle del pannello. ⭐ La parte di forma (master-detail, tab, filtro, Salva
    unico) **non dipende dal DB** e si può fare anche prima; le etichette del tetto (§7.3)
    aspettano R6.
+
+## 9. Consegna DB (2026-10-04) — ✅ applicata, pgTAP verdi
+
+> Numerazione da `-50`: un altro cantiere dello stesso giorno occupa `-40 … -49`.
+
+### 9.1 ChangeSet
+
+| # | File | Cosa |
+| --- | --- | --- |
+| `-50` | `00_schema/config/…-alter-azioni-processo-add-livello-minimo-area` | R1: `livello_minimo_area config.livello_accesso NOT NULL DEFAULT 'TUTTO'`, `chk_azioni_processo_livello_minimo_area` (≠ `BLOCCATO`) |
+| CSV | `80_data/sql/config/azioni_processo.csv` + mirror `80_data/20260228-18` | colonna in coda, `TUTTO` su **tutte** le 39 righe: rilette una per una, nessuna è di sola consultazione (anche `code_manage` agisce su code altrui). Mirror: `- column: livello_minimo_area` |
+| `-51` | `script.fn_area_consente_azione(livello_area, minimo)` | R3: la regola del tetto per le azioni, **sede unica** (`livello <= minimo`, NULL = no). Pura, IMMUTABLE |
+| `-52` | `script.fn_livello_con_tetto_area(specifico, area)` | R4: la regola del tetto per gli oggetti, sede unica (`GREATEST`, specifico NULL → area, area NULL → BLOCCATO) |
+| `-53` | `script.fn_get_permessi_effettivi_azioni(utente, codename DEFAULT NULL)` | R2/R3/R6: **la catena delle azioni scritta una volta**, col tetto. Colonne: `abilitata_specifica`, `livello_area`, `livello_minimo_area`, `abilitata`, `limitata_da_area` |
+| `-54` | `script.fn_get_permessi_effettivi_oggetti(utente, app DEFAULT NULL, model DEFAULT NULL)` | R4/R5/R6: **la catena degli oggetti scritta una volta**. Colonne: `area_schema_db`, `livello_override`, `livello_area`, `livello_specifico`, `livello`, `limitato_da_area` |
+| `-55` | `fn_check_azione_processo` | legge `-53` (una riga) |
+| `-56` | `fn_get_user_actions_map` | aggrega `-53` (azioni attive) |
+| `-57` | `fn_resolve_livello_oggetto` | legge `-54`; l'area è quella **dell'oggetto** |
+| `-58` | `fn_get_user_object_permissions_map` | aggrega `-54`: livello **effettivo** per ogni oggetto del catalogo |
+| `-59` | `dbops.fn_pgtap_concedi_azione` (fixture) | concedere un'azione ne apre anche l'area **al minimo** (vedi §9.4) |
+
+Rollback di `-55 → -59`: il corpo vivo preso dalla doc auto-gen.
+
+### 9.2 Le scelte, e dove si scostano dalla richiesta
+
+* ⭐ **R6 sono DUE funzioni, non una** (`fn_get_permessi_effettivi_azioni` e `…_oggetti`,
+  gemelle di `fn_get_permessi_ereditati_aree/_azioni`), invece di
+  `fn_get_permessi_effettivi_operatore`. Non è un'aggiunta per il pannello: sono **la sede
+  della catena**. Prima la catena delle azioni stava scritta due volte (resolver puntuale e
+  mappa); il pannello ne avrebbe voluto una terza. Ora resolver, mappe e pannello leggono la
+  stessa funzione: le copie sono ritirate in questo giro (regola del 2). Il presidio è il
+  test 5 di `test-permessi-tetto-area-v1`.
+  Il pannello (§6.4) chiama `SELECT … FROM script.fn_get_permessi_effettivi_azioni(%s)` e
+  `…_oggetti(%s)`, come fa già con gli ereditati.
+* ⚠️ **R4: il parametro `p_area_schema_db` NON si ritira.** La funzione ricava l'area da sé
+  (`fn_area_di_oggetto`) e il parametro non si legge più, ma resta in firma: il backend passa i
+  parametri per posizione, e una firma accorciata rompe ogni punto di chiamata e i pgTAP,
+  mentre tenerla non ne tocca nessuno (regola di Tid del 2026-10-04 sulle firme). Per il
+  backend non cambia niente: oggi gli passa `get_area_schema_db(app_label, model_name)`, che
+  è già la regola di `fn_area_di_oggetto`. ❓ **Il ritiro lo decide Tid** (§9.6). Quindi
+  §6.1 non serve più come allineamento di firma.
+* **R5: la mappa copre tutto il catalogo** `area_model_overrides`, non «override ∪ catalogo»:
+  un override esiste solo per un oggetto a catalogo (FK composita
+  `fk_user_override_oggetti_catalogo`), quindi l'unione è il catalogo. Riservati compresi
+  (valgono la loro area).
+* **R5 prende anche il gate.** La mappa vecchia dava gli override grezzi anche fuori dalla veste
+  OPERATORE e senza identità; ora, come gli altri resolver, lì è tutto `BLOCCATO`.
+* **Due casi limite che cambiano**, tutti e due chiamate rotte che oggi nessuno fa:
+  `fn_check_azione_processo` con codename NULL → `false` anche per il super admin (prima
+  `true`; `fn_guard_azione` la ferma comunque prima); `fn_resolve_livello_oggetto` con oggetto
+  NULL → `BLOCCATO` (prima: il livello dell'area passata).
+* Il codename fuori catalogo resta com'era: negato, **abilitato per il super admin**.
+
+### 9.3 R7 — chi chiama i quattro resolver (letto da `pg_proc` su dbdev e da `grep`)
+
+| Chiamante | Cosa eredita | Voluto? |
+| --- | --- | --- |
+| `script.fn_guard_azione` → i verbi (`fn_posta_*`, ecc.) | il tetto sulle azioni, senza modifiche | ✅ (test 11 del pgTAP nuovo) |
+| `script.fn_guard_livello` → `config.fn_pannello_scrivi` | il tetto sugli oggetti, senza modifiche | ✅ (test 18) |
+| `script.fn_get_user_profile` (`/me/`) | `azioni_abilitate` col tetto, `permessi_oggetto` effettivi | ✅ è R5 |
+| `ui.fn_resolve_dashboard_config` | un widget legato a un'azione fermata dall'area sparisce | ✅ |
+| BE `PermissionResolver` (`check_azione`, `get_livello_oggetto`), `permissions.py`, viste di magazzino e pagamenti, `dashboard_repository`, tool AI | il tetto, senza modifiche | ✅ |
+| policy RLS, viste, trigger, job | nessuno li chiama | — |
+
+Il gate di contesto resta il passo 0, prima di tutto (test 25-26).
+
+### 9.4 La fixture dei pgTAP (`-59`), il pezzo che non si vedeva
+
+37 pgTAP (magazzino e vendite) concedono un'azione all'operatore di
+`fn_pgtap_crea_emittente_operatore`, che ha **tutte** le aree `BLOCCATO`. Col tetto quell'override
+non basterebbe più, e i 37 file cadrebbero sul permesso invece che sul loro soggetto.
+`fn_pgtap_concedi_azione` ora apre l'area dell'azione **al minimo** (non di più), con un override
+d'area come lo scrive il pannello; se il test ha già chiuso l'area con un override suo, la fixture
+non lo scavalca: RAISE.
+
+### 9.5 Prova (2026-10-04, `zeroerp_ci`, da owner, SQL estratto con `updateSQL` offline)
+
+* Tutti i changeSet + il mirror del CSV (upsert su **tutte** le 39 righe) in una transazione
+  ritirata: verdi. `plpgsql_check`: zero errori sulle nove funzioni; un solo avviso, voluto
+  (`p_area_schema_db` non usato).
+* pgTAP con l'SQL in testa: `test-permessi-tetto-area-v1` **26/26** (nuovo);
+  `test-permessi-funzioni-risoluzione` 34/34, `test-fn-guard-azione-v1` 9/9,
+  `test-fn-guard-livello-v1` 12/12, `test-fn-resolve-regression-operatore` 11/11,
+  `test-fn-get-permessi-ereditati-v1` 27/27 (i cinque riscritti); `dbops/test-riferimenti-morti-v1`
+  9/9, `script/test-rubinetto-primo-motivo-v1` 7/7; profilo utente, dashboard e catalogo oggetti
+  verdi.
+* **Mutazione**: il pgTAP nuovo con i resolver VECCHI (senza `-55 → -58`) dà 14 rossi, cioè i
+  casi del tetto. Prova qualcosa.
+* I 37 pgTAP che usano `fn_pgtap_concedi_azione`: **stessi esiti con e senza** le modifiche,
+  file per file e asserzione per asserzione. I rossi che hanno (24 file) sono rossi da owner
+  che c'erano già (privilegi, scope emittente: la prova non gira come app).
+* ⚠️ Non provato qui: la corsa **come app** e su dbdev (lì la DDL vuole `titodb`), e
+  `test-fn-resolve-regression-operatore` gira a vuoto su `zeroerp_ci`, che non ha l'utente
+  `tid`. È la corsa di Tid dopo l'apply.
+
+#### pgTAP riscritti (⛔ riscritti sulla regola nuova, non cancellati)
+
+| File | Cosa cambia |
+| --- | --- |
+| `test-permessi-funzioni-risoluzione` | 8 e 12: l'area si apre (12: quella **dell'azione**); 31-34: la mappa dà il livello effettivo, non `{}` |
+| `test-fn-guard-azione-v1` | 7-9: vendite aperta; 9 non è più verde per coincidenza (oggetto a catalogo, area sbagliata nel quarto parametro → TUTTO) |
+| `test-fn-guard-livello-v1` | l'override d'area di magazzino si scrive dopo il test 5, non al test 11 |
+| `test-fn-resolve-regression-operatore` | l'area dell'azione si costruisce (prima era la seconda area per id, per caso) |
+| `test-fn-get-permessi-ereditati-v1` | test 4 (sede unica) su cinque funzioni; scarti delle azioni = ereditato **e** tetto; test 13 legge lo specifico |
+
+### 9.5-bis Apply e corsa (2026-10-04 sera)
+
+* Applicati `20261004-50 → -59` e il mirror `80_data/20260228-18`; su `zeroerp_ci` il
+  `databasechangelog` li registra alle 20:09.
+* Corsa pgTAP di Tid: **verde**. Copre quello che la prova pre-apply non poteva coprire (§9.5):
+  il percorso come app e la CI ricostruita da zero.
+
+### 9.6 Per Tid
+
+1. ~~Apply e corsa pgTAP~~ — ✅ fatti il 2026-10-04 (§9.5-bis).
+2. ❓ **Ritiro di `p_area_schema_db`** da `fn_resolve_livello_oggetto` (§9.2): tenerlo costa
+   un parametro morto, ritirarlo costa un giro BE + pgTAP. Raccomandazione: tenerlo finché un
+   cantiere non tocca comunque quella firma.
+3. Raggruppamento «Trasversali» delle aree (§7.2): **non fatto**, nessuna colonna nuova su
+   `aree_funzionali`. Resta una richiesta da valutare, non bloccante.
+
+### 9.7 Al BE/FE — ⏳ si può partire (aggiorna §6)
+
+* §6.1 **non serve**: firma invariata.
+* §6.3 `/me/` → `permessi_oggetto`: contiene **tutti** gli oggetti del catalogo col livello
+  effettivo (non più i soli override). `auth.js` `getLivelloOggetto` diventa
+  `permessiOggetto[key] ?? getLivelloArea(appLabel)`, nello stesso giro.
+* §6.4 pannello: leggere `fn_get_permessi_effettivi_azioni(uid)` e `…_oggetti(uid)`
+  (`abilitata`/`livello`, `limitata_da_area`/`limitato_da_area`, `livello_area`). Anche
+  l'anteprima FE di §7.3, se Tid la conferma, deve dare gli stessi esiti delle due regole
+  (`fn_area_consente_azione`, `fn_livello_con_tetto_area`): lo spec FE si costruisce sui casi
+  della tabella di §9.5 (test 3-4 del pgTAP).
+* §6.5 cache: anche il cambio di `livello_minimo_area` (seed).
+* ⚠️ **Test Django con DB vero** che danno un'azione con il solo override e poi la eseguono
+  (opt-in `ZEROERP_TEST_DB_E2E`): col tetto vanno rossi se non aprono anche l'area. Da censire
+  lato BE (`grep user_override_azioni apps/*/tests`); i file toccati dal `grep` di oggi
+  (`test_permissions_audit`, `test_pannello_verbo_db`, `test_override_oggetti_catalogo_db`)
+  provano scritture, non risoluzioni.

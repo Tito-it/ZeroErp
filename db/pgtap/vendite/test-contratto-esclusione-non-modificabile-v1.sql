@@ -117,7 +117,15 @@ RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
          tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
   SELECT (SELECT id FROM tmp_cen_contratto), a.id, p_tipo::vendite.tipo_eccezione_contratto,
-         p_prezzo, 'CANONE', 'FISSA', 1, 1, a.uom_id
+         p_prezzo,
+         -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): un'ESCLUSIONE
+         -- nasce vuota, senza dati di vendita; le altre righe coi dati di una riga
+         -- che si fattura.
+         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 'CANONE' END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 'FISSA' END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 1 END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 1 END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN a.uom_id END
     FROM catalogo.articoli a WHERE a.id = pg_temp.art(p_sigla)
   RETURNING id;
 $fx$;
@@ -156,7 +164,8 @@ SELECT ok(
         AND NOT t.tgisinternal
         AND t.tgname = 'trg_contratti_righe_a05_guard_esclusione_immutabile_upd'
         -- to_regprocedure: funzione assente = test rosso, non errore che ferma il file.
-        AND t.tgfoid = to_regprocedure('vendite.trgfn_contratti_righe_guard_esclusione_immutabile()')),
+        -- rev 2026-10-04: la funzione generica per contratto e offerta.
+        AND t.tgfoid = to_regprocedure('script.trgfn_righe_guard_esclusione_immutabile()')),
     '2) il guard e'' montato: _a05_, BEFORE UPDATE, per riga, WHEN sul tipo vecchio');
 
 SELECT is(
@@ -178,7 +187,7 @@ SELECT is(
 SELECT throws_like(
     format($$UPDATE vendite.contratti_righe SET quantita = 2, qta_operativa = 2 WHERE id = %s$$,
            pg_temp.rid('C')),
-    '%Un articolo escluso dal contratto non si modifica%',
+    '%Un articolo escluso non si modifica%',
     '5) R2: la quantita'' su un''esclusione e'' rifiutata');
 
 -- ⭐ Il caso che dice perche' _a05_: il CHECK chk_contrighe_prezzo_per_tipo_eccezione
@@ -186,25 +195,25 @@ SELECT throws_like(
 SELECT throws_like(
     format($$UPDATE vendite.contratti_righe SET prezzo_unitario = 10 WHERE id = %s$$,
            pg_temp.rid('C')),
-    '%Un articolo escluso dal contratto non si modifica%',
+    '%Un articolo escluso non si modifica%',
     '6) R2: il prezzo e'' rifiutato dal guard, prima del CHECK sul prezzo');
 
 SELECT throws_like(
     format($$UPDATE vendite.contratti_righe SET articolo_id = %L WHERE id = %s$$,
            pg_temp.art('A'), pg_temp.rid('C')),
-    '%Un articolo escluso dal contratto non si modifica%',
+    '%Un articolo escluso non si modifica%',
     '7) R2: spostare l''esclusione su un altro articolo e'' rifiutato');
 
 SELECT throws_like(
     format($$UPDATE vendite.contratti_righe SET attivo = false WHERE id = %s$$,
            pg_temp.rid('C')),
-    '%Un articolo escluso dal contratto non si modifica%',
+    '%Un articolo escluso non si modifica%',
     '8) R2: disattivarla e'' rifiutato (terrebbe occupato lo slot dell''articolo)');
 
 SELECT throws_like(
     format($$UPDATE vendite.contratti_righe SET tipo_eccezione = 'OVERRIDE', prezzo_unitario = 90 WHERE id = %s$$,
            pg_temp.rid('C')),
-    '%Un articolo escluso dal contratto non si modifica%',
+    '%Un articolo escluso non si modifica%',
     '9) R2: il cambio di tipo da esclusione parla col messaggio dell''esclusione');
 
 -- ============================================================
@@ -255,7 +264,7 @@ SELECT CASE
     THEN throws_like(
         format($$UPDATE vendite.contratti_righe SET tipo_eccezione = 'ESCLUSIONE', prezzo_unitario = NULL WHERE id = %s$$,
                pg_temp.rid('B')),
-        '%Il tipo di una riga del contratto non si cambia (colonna tipo_eccezione)%',
+        '%Il tipo di una riga non si cambia (colonna tipo_eccezione)%',
         '15) R3: il lock generato rifiuta OVERRIDE -> ESCLUSIONE')
     ELSE skip('15) lock su tipo_eccezione non ancora generato (ci_apply / job automations_lock_columns): niente da misurare', 1)
 END;

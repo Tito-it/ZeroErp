@@ -1,0 +1,180 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I trigger di vendite.contratti_righe per «l'esclusione e' solo non si vende»
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (R1, R2, R3, R5)
+#
+# -- TRE GUARD PASSANO ALLE FUNZIONI GENERICHE (stesso nome, stesso WHEN) --
+#   trg_contratti_righe_a05_guard_esclusione_immutabile_upd
+#     -> script.trgfn_righe_guard_esclusione_immutabile('contratto_id')        (20261004-46)
+#   trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd
+#     -> script.trgfn_righe_guard_aggiunta_fuori_listino('CONTRATTO', 'contratto_id')    (-45)
+#   trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd
+#     -> script.trgfn_righe_guard_esclusione_figlio_bundle('CONTRATTO', 'contratto_id')  (-44)
+#   I nomi restano: li leggono i pgTAP e i presidi, e l'ordine alfabetico fra
+#   i BEFORE ROW resta quello di oggi. Le funzioni vendite.trgfn_contratti_
+#   righe_* escono nel 20261004-73.
+#
+# -- DUE TRIGGER DI VALORIZZAZIONE SALTANO L'ESCLUSIONE (R2) -------------
+#   trg_contratti_righe_a10_default_fonte_qta_ins_upd: senza WHEN metteva
+#     FISSA su un'esclusione (la fonte vuota cade nel ramo ELSE della
+#     matrice), cioe' un dato di vendita che il CHECK ora rifiuta;
+#   trg_contratti_righe_a10_qta_from_operativa_ins_upd: con qta_operativa e
+#     fonte vuote solleverebbe E_QTA_MISSING (la fonte NULL non e' «diversa da
+#     FISSA»), e altrimenti riempirebbe UdM, fattore e quantita'.
+#   ⭐ La deroga sta nel WHEN del trigger, non nelle due funzioni: sono
+#   building block generici (qta_from_operativa serve sei tabelle) e non
+#   devono sapere che esiste un tipo di riga ESCLUSIONE. Chi sa che
+#   l'esclusione non ha quantita' e' la tabella.
+#   ⚠️ trg_contratti_righe_z90_propaga_qta_componenti_upd (AFTER UPDATE OF
+#   quantita) non cambia: un'esclusione non si aggiorna (guard _a05_) e non ha
+#   componenti (l'init li salta), quindi non scatta mai su di lei.
+#
+# -- UN GUARD NUOVO (R1, R8) -----------------------------------------------
+#   trg_contratti_righe_a10_guard_esclusione_senza_dati_ins
+#     -> script.trgfn_righe_guard_esclusione_senza_dati('contratto_id')        (-47)
+#   BEFORE INSERT WHEN (NEW.tipo_eccezione = 'ESCLUSIONE'). Fra gli _a10_
+#   viene dopo guard_esclusione_figlio_bundle («f» < «s»): «questo articolo
+#   non si esclude affatto» parla prima di «hai mandato dati». Solo INSERT:
+#   l'UPDATE di un'esclusione e' di _a05_guard_esclusione_immutabile, il
+#   cambio di tipo del lock di colonna (vedi 20261004-47).
+#
+#   Ordine dei BEFORE ROW su un INSERT di esclusione, dopo questo changeSet:
+#   a05_doc_righe_lock_fuori_bozza, a10_default_fonte_qta (saltato),
+#   a10_guard_aggiunta_fuori_listino (saltato), a10_guard_erogazione_
+#   obbligatoria (passa), a10_guard_esclusione_figlio_bundle,
+#   a10_guard_esclusione_senza_dati, a10_qta_from_operativa (saltato), audit,
+#   tx_id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261004-48-update-trigger-contratti-righe-esclusione-solo-non-si-vende-mctit.yaml
+
+  - changeSet:
+      id: 20261004-48-update-trigger-contratti-righe-esclusione-solo-non-si-vende
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti_righe: tre guard sulle funzioni generiche di script, default_fonte_qta e
+        qta_from_operativa saltano l'ESCLUSIONE, nasce il guard esclusione_senza_dati. Brief:
+        brief-db-righe-esclusione-solo-non-si-vende (R1, R2, R3, R5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "4"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('trgfn_righe_guard_esclusione_immutabile',
+                                       'trgfn_righe_guard_aggiunta_fuori_listino',
+                                       'trgfn_righe_guard_esclusione_figlio_bundle',
+                                       'trgfn_righe_guard_esclusione_senza_dati');
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_trigger
+                   WHERE NOT tgisinternal
+                     AND tgrelid = 'vendite.contratti_righe'::regclass
+                     AND tgname = 'trg_contratti_righe_a10_guard_esclusione_senza_dati_ins';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── tre guard sulle funzioni generiche ──────────────────────
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a05_guard_esclusione_immutabile_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a05_guard_esclusione_immutabile_upd
+                BEFORE UPDATE ON vendite.contratti_righe
+                FOR EACH ROW
+                WHEN (OLD.tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_immutabile('contratto_id');
+
+              COMMENT ON TRIGGER trg_contratti_righe_a05_guard_esclusione_immutabile_upd ON vendite.contratti_righe IS
+                  'Una riga ESCLUSIONE non si modifica: si crea (Escludi) e si cancella (Ripristina '
+                  'articolo). Fascia _a05_: parla prima dei guard _a10_ e dei CHECK, dopo il rifiuto '
+                  '«fuori bozza» del documento. WHEN sul tipo VECCHIO: il cambio di tipo verso '
+                  'ESCLUSIONE lo rifiuta il lock di colonna su tipo_eccezione. Funzione generica '
+                  'script.trgfn_righe_guard_esclusione_immutabile dal 2026-10-04 '
+                  '(brief-db-righe-esclusione-solo-non-si-vende, R3). Brief d''origine: '
+                  'brief-db-contratto-esclusione-non-modificabile (R2).';
+
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.contratti_righe
+                FOR EACH ROW
+                WHEN (NEW.tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_righe_guard_aggiunta_fuori_listino('CONTRATTO', 'contratto_id');
+
+              COMMENT ON TRIGGER trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd ON vendite.contratti_righe IS
+                  'Un''AGGIUNTA e'' un articolo fuori dal listino: rifiutata se l''articolo sta nella '
+                  'versione operativa del listino del contratto (E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO). '
+                  'Fascia _a10_. Stessa funzione sull''offerta. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R5b).';
+
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.contratti_righe
+                FOR EACH ROW
+                WHEN (NEW.tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_figlio_bundle('CONTRATTO', 'contratto_id');
+
+              COMMENT ON TRIGGER trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd ON vendite.contratti_righe IS
+                  'Si esclude il bundle, non il suo componente: primo motivo di '
+                  'script.fn_check_esclusione_articolo_documento (E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA). '
+                  'Fascia _a10_. Stessa funzione sull''offerta. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R5c).';
+
+              -- ── due valorizzazioni che saltano l'esclusione ─────────────
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_default_fonte_qta_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_default_fonte_qta_ins_upd
+                BEFORE INSERT OR UPDATE OF tipo_erogazione, fonte_quantita_attesa ON vendite.contratti_righe
+                FOR EACH ROW
+                WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta();
+
+              COMMENT ON TRIGGER trg_contratti_righe_a10_default_fonte_qta_ins_upd ON vendite.contratti_righe IS
+                  'Fonte della quantita'' attesa di default dalla matrice erogazione x fonte '
+                  '(script.trgfn_righe_default_fonte_qta). Salta l''ESCLUSIONE (WHEN): un''esclusione '
+                  'non ha fonte, e il default FISSA sarebbe un dato che nessuno ha scelto. La deroga '
+                  'sta qui e non nella funzione, che e'' generica. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R2).';
+
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_qta_from_operativa_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.contratti_righe
+                FOR EACH ROW
+                WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa');
+
+              COMMENT ON TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd ON vendite.contratti_righe IS
+                  'Quantita'' base da qta_operativa e UdM operativa (script.trgfn_qta_from_operativa). '
+                  'Salta l''ESCLUSIONE (WHEN): un''esclusione non ha quantita'', UdM ne'' fattore. La '
+                  'deroga sta qui e non nella funzione, che serve sei tabelle. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R2).';
+
+              -- ── il guard nuovo ──────────────────────────────────────────
+              CREATE TRIGGER trg_contratti_righe_a10_guard_esclusione_senza_dati_ins
+                BEFORE INSERT ON vendite.contratti_righe
+                FOR EACH ROW
+                WHEN (NEW.tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_senza_dati('contratto_id');
+
+              COMMENT ON TRIGGER trg_contratti_righe_a10_guard_esclusione_senza_dati_ins ON vendite.contratti_righe IS
+                  'Un''ESCLUSIONE non porta dati di vendita: E_RIGA_ESCLUSIONE_CON_DATI col campo, '
+                  'prima del CHECK chk_contrighe_esclusione_senza_dati. Fascia _a10_, dopo '
+                  'guard_esclusione_figlio_bundle. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R1, R8).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_esclusione_senza_dati_ins ON vendite.contratti_righe;

@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE vendite.fn_documento_listino_operativo: la versione di listino che
+# governa le righe di un contratto o di un'offerta, in un posto solo.
+#
+# -- PERCHE' ------------------------------------------------------------
+#   Tre regole delle righe del contratto devono valere anche sull'offerta
+#   (brief-db-righe-esclusione-solo-non-si-vende, R4 e R5): l'aggiunta fuori
+#   listino, l'esclusione del figlio di un bundle e la lista delle righe.
+#   Tutte e tre partono dalla stessa domanda: «quale versione del listino
+#   vale per questo documento?». Oggi la risposta e' scritta tre volte per
+#   il contratto (trgfn_contratti_righe_guard_aggiunta_fuori_listino,
+#   fn_check_esclusione_articolo_contratto, fn_contratto_righe_preview) e
+#   una per l'offerta (fn_offerta_righe_espanse). Portarle all'offerta
+#   copiandole farebbe sei copie: si estrae (regola del 2).
+#
+# -- LA RISPOSTA --------------------------------------------------------
+#   · listino_versione_id della testata, se c'e': e' la versione fissata
+#     (all'attivazione del contratto, all'emissione dell'offerta);
+#   · altrimenti, se c'e' un listino, la versione in vigore OGGI, dalla sede
+#     unica vendite.fn_listino_versione_in_vigore (ATTIVA o CHIUSA; la BOZZA
+#     non e' operativa);
+#   · nessun listino (solo il contratto puo' non averlo): versione NULL.
+#   Con la variazione globale della testata, che la lista serve a
+#   vendite.fn_espandi_listino_versione.
+#   ⭐ Documento assente (o fuori perimetro: la funzione e' INVOKER e la
+#   testata e' in RLS) = zero righe, come facevano le tre copie col loro
+#   IF NOT FOUND / ramo «nessun listino». Chi scrive passa comunque da
+#   policy e FK.
+#
+# -- LA FORMA -----------------------------------------------------------
+#   · selettore p_documento ('CONTRATTO' | 'OFFERTA'), come
+#     script.fn_get_stato_testata_documento: un altro valore e' un errore di
+#     chiamante (E_DOC_TIPO_NON_GESTITO, TECNICO, gia' in servizio);
+#   · in vendite, accanto a fn_listino_versione_in_vigore: legge testate di
+#     vendita;
+#   · SECURITY INVOKER, come le copie che sostituisce: la regola si chiede
+#     dentro il perimetro di chi scrive.
+#   · tipi: listino e versione ancorati alle loro tabelle; la variazione
+#     ancorata a vendite.contratti, che ha le stesse colonne con lo stesso
+#     tipo dell'offerta (varchar(16), numeric(10,4), letto il 2026-10-04).
+#     p_documento e p_documento_id sono nudi: un selettore senza vocabolario
+#     e un id POLIMORFO (di due testate diverse).
+#
+# Brief: brief-db-righe-esclusione-solo-non-si-vende (R4, R5).
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261004-42-create-fn-documento-listino-operativo-mctit.yaml
+
+  - changeSet:
+      id: 20261004-42-create-fn-documento-listino-operativo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_documento_listino_operativo(documento, id): listino, versione operativa
+        (fissata, o in vigore oggi) e variazione globale di un contratto o di un'offerta. Sede
+        unica per i guard e la lista delle righe. Brief:
+        brief-db-righe-esclusione-solo-non-si-vende (R4, R5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_documento_listino_operativo';
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_listino_versione_in_vigore';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_documento_listino_operativo(
+                  p_documento    text,
+                  p_documento_id bigint)
+              RETURNS TABLE(
+                  listino_id                vendite.listini.id%TYPE,
+                  listino_versione_id       vendite.listini_versioni.id%TYPE,
+                  tipo_variazione_globale   vendite.contratti.tipo_variazione_globale%TYPE,
+                  valore_variazione_globale vendite.contratti.valore_variazione_globale%TYPE)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la versione di listino che governa le righe di un
+              --   contratto o di un'offerta, con la variazione globale.
+              --   Versione fissata se c'e'; altrimenti quella in vigore oggi
+              --   (fn_listino_versione_in_vigore); NULL senza listino.
+              -- Ritorna: zero righe se il documento non c'e' (o non si vede).
+              -- ⚠️ p_documento e p_documento_id nudi DICHIARATI: un selettore
+              --   senza colonna-vocabolario e un id polimorfo (due testate).
+              BEGIN
+                  IF p_documento = 'CONTRATTO' THEN
+                      RETURN QUERY
+                      SELECT c.listino_id,
+                             COALESCE(c.listino_versione_id,
+                                      CASE WHEN c.listino_id IS NOT NULL THEN
+                                          vendite.fn_listino_versione_in_vigore(c.listino_id, CURRENT_DATE)
+                                      END),
+                             c.tipo_variazione_globale,
+                             c.valore_variazione_globale
+                        FROM vendite.contratti c
+                       WHERE c.id = p_documento_id;
+
+                  ELSIF p_documento = 'OFFERTA' THEN
+                      -- listino_id e' NOT NULL sull'offerta: il CASE resta per
+                      -- dire la stessa regola con le stesse parole.
+                      RETURN QUERY
+                      SELECT o.listino_id,
+                             COALESCE(o.listino_versione_id,
+                                      CASE WHEN o.listino_id IS NOT NULL THEN
+                                          vendite.fn_listino_versione_in_vigore(o.listino_id, CURRENT_DATE)
+                                      END),
+                             o.tipo_variazione_globale,
+                             o.valore_variazione_globale
+                        FROM vendite.offerte_commerciali o
+                       WHERE o.id = p_documento_id;
+
+                  ELSE
+                      -- Errore di CHIAMANTE, non di dato (stesso codice del
+                      -- lettore di stato delle testate).
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'fn_documento_listino_operativo',
+                          'E_DOC_TIPO_NON_GESTITO',
+                          jsonb_build_object('documento',    p_documento,
+                                             'documento_id', p_documento_id),
+                          NULL::uuid,
+                          COALESCE(p_documento, '<null>'));
+                  END IF;
+
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_documento_listino_operativo(text, bigint)
+              IS 'La versione di listino che governa le righe di un documento di vendita con eccezioni (p_documento = CONTRATTO | OFFERTA): listino_versione_id della testata se fissata (attivazione del contratto, emissione dell''offerta), altrimenti la versione in vigore oggi (vendite.fn_listino_versione_in_vigore: ATTIVA o CHIUSA, la BOZZA non e'' operativa), NULL senza listino. Porta anche la variazione globale della testata. Zero righe se il documento non c''e'' o non si vede (INVOKER, testate in RLS). Altro p_documento: E_DOC_TIPO_NON_GESTITO. Sede unica (regola del 2) per script.fn_check_esclusione_articolo_documento, script.trgfn_righe_guard_aggiunta_fuori_listino e vendite.fn_documento_righe_preview, che prima la riscrivevano ciascuno per il solo contratto. Nasce il 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende (R4, R5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_documento_listino_operativo(text, bigint);

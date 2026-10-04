@@ -4,7 +4,10 @@
 --
 -- Test: le righe del contratto come LISTA — vendite.fn_contratto_righe_preview
 --   con chiave di riga, azioni per origine e «Escludi» spento col motivo; la
---   check script.fn_check_esclusione_articolo_contratto e il guard che la chiama.
+--   check script.fn_check_esclusione_articolo_documento e il guard che la chiama
+--   (rev 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende: check e guard
+--   generici per contratto e offerta; la lista e' l'involucro di
+--   vendite.fn_documento_righe_preview; le esclusioni nascono vuote).
 --   Brief: brief-db-liste-righe-documento §8.4 (D-8.4), §8.13.
 --   changeSet: 20260928-29 (check), -31 (guard), -32 (anteprima).
 --
@@ -131,7 +134,15 @@ RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
          tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
   SELECT (SELECT id FROM tmp_crl_contratto), a.id, p_tipo::vendite.tipo_eccezione_contratto,
-         p_prezzo, 'CANONE', 'FISSA', 1, 1, a.uom_id
+         p_prezzo,
+         -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): un'ESCLUSIONE
+         -- nasce vuota, senza dati di vendita; le altre righe coi dati di una riga
+         -- che si fattura.
+         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 'CANONE' END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 'FISSA' END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 1 END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 1 END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN a.uom_id END
     FROM catalogo.articoli a WHERE a.id = pg_temp.art(p_sigla)
   RETURNING id;
 $fx$;
@@ -198,12 +209,12 @@ SELECT ok(
         AND m -> 0 ->> 'reason' = 'FIGLIO_DI_BUNDLE'
         AND m -> 0 ->> 'reason_key' = 'vendite.contratti.escludi_blocco.figlio_di_bundle'
         AND jsonb_array_length(m) = 1
-       FROM (SELECT script.fn_check_esclusione_articolo_contratto(
-                 (SELECT id FROM tmp_crl_contratto), pg_temp.art('F')) AS m) x),
+       FROM (SELECT script.fn_check_esclusione_articolo_documento(
+                 'CONTRATTO', (SELECT id FROM tmp_crl_contratto), pg_temp.art('F')) AS m) x),
     '8) la check su F: il codice a catalogo, il reason e la sua chiave');
 
 SELECT is(
-    script.fn_check_esclusione_articolo_contratto((SELECT id FROM tmp_crl_contratto), pg_temp.art('A')),
+    script.fn_check_esclusione_articolo_documento('CONTRATTO', (SELECT id FROM tmp_crl_contratto), pg_temp.art('A')),
     '[]'::jsonb,
     '9) la check su A: nessun motivo');
 
@@ -225,10 +236,10 @@ SELECT lives_ok(
 -- ⭐ Il presidio della §12.5.2: non «gli esiti coincidono», ma «la madre non
 --    contiene piu' il predicato». Commenti tolti prima di cercare.
 SELECT ok(
-    (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_contratto\s*\('
+    (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_documento\s*\('
         AND regexp_replace(prosrc, '--[^\n]*', '', 'g') !~ 'listini_righe_componenti'
        FROM pg_proc
-      WHERE oid = 'vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()'::regprocedure),
+      WHERE oid = 'script.trgfn_righe_guard_esclusione_figlio_bundle()'::regprocedure),
     '12) il guard chiama la check e non contiene piu'' il predicato');
 
 SELECT * FROM finish();

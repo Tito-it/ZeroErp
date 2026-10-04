@@ -335,7 +335,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   fare a DB e BE, mai solo a video. ✅ **Deciso da Tid il 2026-10-04** (tetto
   sì, anche sul profilo, override dormienti, minimo d'area per azione):
   `work-in-progress/brief-db-permessi-tetto-area.md`, che porta anche il
-  restyle del pannello per area (§7). Non è della v3 dei permessi, che è dormiente
+  restyle del pannello per area (§7). Non è della v3 dei permessi, che è dormiente.
+  DB scritto il 2026-10-04 (`20261004-50 → -59`, colonna `livello_minimo_area`, catena in due
+  building block `fn_get_permessi_effettivi_azioni/_oggetti`), applicato il 2026-10-04, pgTAP verdi.
+  Lato DB chiuso; resta BE/FE (§9.7)
 - **Il `codice` delle sei famiglie di documento di seed si perde al migrate**
   (DB, ereditata il 2026-09-24 dalla chiusura di
   `work-done/brief-be-ricerca-full-liste-residue.md`, §13.5): dal 24-09 il

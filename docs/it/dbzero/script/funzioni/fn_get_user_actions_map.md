@@ -13,28 +13,17 @@ CREATE OR REPLACE FUNCTION script.fn_get_user_actions_map(p_auth_user_id integer
  LANGUAGE plpgsql
  STABLE
 AS $function$
-DECLARE
-    v_has_identita boolean;   -- flag calcolato (fn_has_identita_attiva)
-    v_is_super     boolean;   -- flag calcolato (fn_is_super_admin)
-    v_ctx_ruolo    anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Mappa azioni_processo abilitate/disabilitate
     --   (single roundtrip). JSONB { "perm_codename": bool, ... }.
     --
-    -- Catena (context-aware dal 21-04-2026):
-    --   1. Guard parametro obbligatorio
-    --   2. Gate GUC: se app.ruolo_applicativo popolata e
-    --      != OPERATORE -> v_has_identita=false, v_is_super=false
-    --      (il CASE nel jsonb_object_agg produce false
-    --      per tutte le azioni).
-    --   3. Altrimenti pre-calcolo dei due flag.
-    --   4. Per azione attiva: override, poi ereditato
-    --      (fn_get_permessi_ereditati_azioni), poi false.
-    -- Rev 20260925-86: l'ereditato non si ricalcola qui (erano le
-    -- CTE abilitazioni_user/best_per_azione): lo da' il building
-    -- block, sede unica dello spareggio e della veste OPERATORE.
+    -- Catena (rev 20261004-56, brief-db-permessi-tetto-area):
+    --   la legge da script.fn_get_permessi_effettivi_azioni, sede
+    --   unica con fn_check_azione_processo: gate di contesto,
+    --   identita', super admin, override -> profilo -> negata, e il
+    --   tetto d'area. Qui solo le azioni attive.
     -- =========================================================
 
     -- 1. Guard parametro obbligatorio.
@@ -48,56 +37,20 @@ BEGIN
         );
     END IF;
 
-    -- 2-3. Gate contesto GUC + pre-calcolo flag.
-    v_ctx_ruolo := NULLIF(
-        current_setting('app.ruolo_applicativo', true), ''
-    )::config.ruolo_applicativo;
-
-    IF v_ctx_ruolo IS NOT NULL
-       AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
-        -- Fail-closed: mappa produrra' false per ogni azione.
-        v_has_identita := false;
-        v_is_super     := false;
-    ELSE
-        v_has_identita := script.fn_has_identita_attiva(
-                              p_auth_user_id,
-                              'OPERATORE'::config.ruolo_applicativo);
-        v_is_super     := script.fn_is_super_admin(p_auth_user_id);
-    END IF;
-
-    -- 4. Aggregazione jsonb: override, poi ereditato, poi false.
+    -- 2. Aggregazione dalla sede comune.
     RETURN (
         SELECT COALESCE(
-            jsonb_object_agg(
-                ap.permission_codename,
-                CASE
-                    WHEN NOT v_has_identita
-                        THEN false
-                    WHEN v_is_super
-                        THEN true
-                    ELSE COALESCE(
-                        uoa.abilitata,
-                        e.abilitata,
-                        false
-                    )
-                END
-            ),
+            jsonb_object_agg(e.permission_codename, e.abilitata),
             '{}'::jsonb
         )
-          FROM config.azioni_processo ap
-          LEFT JOIN config.user_override_azioni uoa
-            ON uoa.auth_user_id = p_auth_user_id
-           AND uoa.azione_id = ap.id
-           AND uoa.validita @> CURRENT_DATE
-          LEFT JOIN script.fn_get_permessi_ereditati_azioni(p_auth_user_id) e
-            ON e.azione_id = ap.id
-         WHERE ap.attivo = TRUE
+          FROM script.fn_get_permessi_effettivi_azioni(p_auth_user_id) e
+         WHERE e.attivo = TRUE
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_actions_map(p_auth_user_id integer)
-IS 'Mappa delle azioni di processo di un utente, tutte le azioni attive in una chiamata ({permission_codename: bool}). Stessa catena di script.fn_check_azione_processo: gate di contesto (veste diversa da OPERATORE -> tutto false), identita'' OPERATORE attiva, super admin -> true, override utente, ereditato dal profilo (script.fn_get_permessi_ereditati_azioni: sola veste OPERATORE), default negata. Rev 20260925-86 (brief-db-pgtap-permessi-ereditati, D-1 e D-2): l''ereditato non si ricalcola qui, e non conta piu'' i profili delle altre vesti dell''utente.';
+IS 'Mappa delle azioni di processo di un utente, tutte le azioni attive in una chiamata ({permission_codename: bool}). Legge la catena da script.fn_get_permessi_effettivi_azioni, la stessa di script.fn_check_azione_processo: gate di contesto (veste diversa da OPERATORE -> tutto false), identita'' OPERATORE attiva, super admin -> true, override utente, ereditato dal profilo, default negata, e il TETTO D''AREA (livello_minimo_area dell''azione, script.fn_area_consente_azione). Rev 20261004-56 (brief-db-permessi-tetto-area R3): la catena non si riscrive qui.';
 ```
 
 ---

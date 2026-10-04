@@ -35,6 +35,12 @@
 -- NOTA se operatore 'tid' non presente (CI minimale): skip graceful
 --      (count(*)=0 -> tutti gli assert passano banalmente).
 --
+-- ⚠️ Rev 2026-10-04 (brief-db-permessi-tetto-area, 20261004-55/-56): l'area e' un
+--   TETTO anche per le azioni abilitate dal profilo (D-2). I test 8 e 11 passavano
+--   perche' la prima azione del catalogo stava, per caso, nella seconda area per id
+--   (configurata TUTTO). Ora si COSTRUISCE: la seconda area del profilo e' l'area
+--   DELL'AZIONE (TUTTO), la prima e' un'altra area (LETTURA).
+--
 -- BEGIN; + rollback implicito a fine file.
 -- ------------------------------------------------------------
 
@@ -206,14 +212,30 @@ SELECT ok(
 -- =========================================================
 -- 4) Config permessi: 2 aree (LETTURA + TUTTO) + 1 azione (true)
 -- =========================================================
+-- L'azione prima delle aree: la sua area e' la seconda del profilo (TUTTO).
+CREATE TEMP TABLE _t_azione AS
+SELECT ap.id AS azione_id, ap.permission_codename, ap.area_id
+  FROM config.azioni_processo ap
+ WHERE ap.attivo = true
+ ORDER BY ap.id
+ LIMIT 1;
+
 CREATE TEMP TABLE _t_aree AS
-SELECT af.id AS area_id,
-       af.schema_db,
-       ROW_NUMBER() OVER (ORDER BY af.id) AS rn
-  FROM config.aree_funzionali af
- WHERE af.attivo = true
- ORDER BY af.id
- LIMIT 2;
+SELECT x.area_id, x.schema_db, x.rn
+  FROM (
+        -- rn 1: un'area diversa da quella dell'azione (LETTURA)
+        (SELECT af.id AS area_id, af.schema_db, 1 AS rn
+           FROM config.aree_funzionali af
+          WHERE af.attivo = true
+            AND af.id <> (SELECT area_id FROM _t_azione)
+          ORDER BY af.id
+          LIMIT 1)
+        UNION ALL
+        -- rn 2: l'area dell'azione (TUTTO): il tetto la lascia passare
+        (SELECT af.id, af.schema_db, 2
+           FROM config.aree_funzionali af
+          WHERE af.id = (SELECT area_id FROM _t_azione))
+       ) x;
 
 INSERT INTO config.profili_accesso_aree (profilo_accesso_id, area_id, livello)
 SELECT p.profilo_id,
@@ -223,13 +245,6 @@ SELECT p.profilo_id,
            ELSE 'TUTTO'::config.livello_accesso
        END
   FROM _t_profilo p, _t_aree a;
-
-CREATE TEMP TABLE _t_azione AS
-SELECT ap.id AS azione_id, ap.permission_codename
-  FROM config.azioni_processo ap
- WHERE ap.attivo = true
- ORDER BY ap.id
- LIMIT 1;
 
 INSERT INTO config.profili_accesso_azioni (profilo_accesso_id, azione_id, abilitata)
 SELECT p.profilo_id, az.azione_id, true

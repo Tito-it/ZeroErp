@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R5 — fn_get_user_object_permissions_map: /me/ DA' IL LIVELLO EFFETTIVO, NON L'OVERRIDE
+#   Brief: brief-db-permessi-tetto-area, sezione 4 (R5) e §6.3
+#
+#   Restituiva gli override GREZZI validi, e il frontend riscriveva la catena
+#   (auth.js getLivelloOggetto: override ?? area di app_label) — una seconda sede, e
+#   sbagliata due volte: senza tetto, e con l'area di app_label anche per gli oggetti che
+#   config.area_model_overrides mette in un'altra area. Ora: una chiave per ogni oggetto
+#   del catalogo, col livello effettivo letto da script.fn_get_permessi_effettivi_oggetti
+#   (-54). Per un oggetto fuori catalogo il frontend ripiega sull'area di app_label, che e'
+#   esattamente la regola di fn_area_di_oggetto.
+#   ⚠️ Cambiano significato e forma del campo /me/ -> permessi_oggetto (richiesta BE §6.3):
+#   «nessun override» non e' piu' {} ma il catalogo coi livelli d'area. E prende il gate di
+#   contesto e l'identita' (prima la mappa non li aveva): fuori veste OPERATORE tutto
+#   BLOCCATO.
+#   Guard sul parametro invariato. Firma invariata, CREATE OR REPLACE. RETURNS jsonb: una
+#   mappa. Rollback: il corpo vivo (20260412-32) dalla doc auto-gen.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261004-58-update-fn-get-user-object-permissions-map-effettivo-mctit.yaml
+
+  - changeSet:
+      id: 20261004-58-update-fn-get-user-object-permissions-map-effettivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_user_object_permissions_map: /me/ DA' IL LIVELLO EFFETTIVO, NON L'OVERRIDE.
+        Brief: brief-db-permessi-tetto-area.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname IN ('fn_get_permessi_effettivi_oggetti');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_user_object_permissions_map(
+                  p_auth_user_id config.user_override_oggetti.auth_user_id%TYPE
+              )
+              RETURNS jsonb   -- mappa { "app_label.model_name": livello }, nessuna colonna da ancorare
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Mappa dei livelli EFFETTIVI degli oggetti del catalogo per
+                  --   un utente, in un solo roundtrip (alimenta /me/ ->
+                  --   permessi_oggetto).
+                  --
+                  -- Ritorna:
+                  --   JSONB { "anagrafiche.conto_bancario": "BLOCCATO",
+                  --           "vendite.fattura": "LETTURA", ... }
+                  --
+                  -- Regole (rev 20261004-58, brief-db-permessi-tetto-area R5):
+                  --   - una chiave per ogni oggetto di config.area_model_overrides
+                  --     (il catalogo: un override esiste solo per un suo oggetto);
+                  --   - il valore e' il livello col tetto d'area, dalla sede comune
+                  --     script.fn_get_permessi_effettivi_oggetti, non piu' l'override
+                  --     grezzo: il frontend LEGGE, non ricalcola la catena;
+                  --   - un oggetto fuori catalogo vale la sua area di app_label
+                  --     (la regola di fn_area_di_oggetto).
+                  -- =========================================================
+
+                  -- Guard: parametro obbligatorio e valido
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_object_permissions_map',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  RETURN (
+                      SELECT COALESCE(
+                          jsonb_object_agg(e.app_label || '.' || e.model_name, e.livello::text),
+                          '{}'::jsonb
+                      )
+                        FROM script.fn_get_permessi_effettivi_oggetti(p_auth_user_id) e
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_user_object_permissions_map(config.user_override_oggetti.auth_user_id%TYPE) IS
+                  'Mappa dei livelli EFFETTIVI degli oggetti per un utente ({"app_label.model_name": livello}), una chiave per ogni oggetto del catalogo config.area_model_overrides. Il valore e'' il livello col tetto d''area (il piu'' restrittivo fra override valido e area dell''oggetto), letto da script.fn_get_permessi_effettivi_oggetti, la stessa catena di script.fn_resolve_livello_oggetto: gate di contesto e identita'' OPERATORE assente -> BLOCCATO, super admin -> TUTTO. Un oggetto fuori catalogo vale la sua area di app_label (la regola di script.fn_area_di_oggetto). Alimenta /me/ -> permessi_oggetto (fn_get_user_profile): il frontend legge, non ricalcola. Rev 20261004-58 (brief-db-permessi-tetto-area R5): fino a questa revisione restituiva i soli override grezzi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_user_object_permissions_map(p_auth_user_id integer)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Restituisce la mappa completa degli override oggetto
+                  --   attivi per un utente, in un solo roundtrip DB.
+                  --
+                  -- Ritorna:
+                  --   JSONB { "anagrafiche.conto_bancario": "BLOCCATO",
+                  --           "vendite.fattura": "LETTURA", ... }
+                  --
+                  -- Regole:
+                  --   - considera solo override attivi alla data corrente
+                  --   - nessun override attivo -> {}::jsonb
+                  -- =========================================================
+
+                  -- Guard: parametro obbligatorio e valido
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_object_permissions_map',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  RETURN (
+                      SELECT COALESCE(
+                          jsonb_object_agg(
+                              uo.app_label || '.' || uo.model_name,
+                              uo.livello::text
+                          ),
+                          '{}'::jsonb
+                      )
+                        FROM config.user_override_oggetti uo
+                       WHERE uo.auth_user_id = p_auth_user_id
+                         AND uo.validita @> CURRENT_DATE
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_user_object_permissions_map(p_auth_user_id integer)
+              IS 'Mappa override oggetti set-based. Migrazione daterange: filtro temporale via validita @>.';

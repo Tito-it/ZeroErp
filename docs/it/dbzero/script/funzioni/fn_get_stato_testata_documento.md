@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION script.fn_get_stato_testata_documento(p_documento tex
 AS $function$
 -- ⚠️ Tipi nudi DICHIARATI (rev 2026-09-28): p_documento e' un selettore senza
 --   colonna-vocabolario; p_testata_id e lo stato in uscita sono POLIMORFI —
---   l'id di cinque testate diverse, il codice_interno di cinque vocabolari
+--   l'id di sei testate diverse, il codice_interno di sei vocabolari
 --   diversi (e lo stato di una mail) — quindi non c'e' UNA colonna da ancorare.
 BEGIN
   -- =========================================================
@@ -38,7 +38,7 @@ BEGIN
   --    (EMAIL_BOZZA: `stato` e' NOT NULL sulla tabella stessa,
   --    ed e' gia' il codice — il contratto regge uguale.)
   --
-  -- Chi lo chiama (2026-09-25):
+  -- Chi lo chiama (2026-10-04):
   --   - vendite.trgfn_doc_righe_lock_fuori_bozza (il guard
   --     generico: righe di documento solo in bozza);
   --   - vendite.trgfn_dlt_block_ordrig_ddtrig (l'etichetta per i
@@ -48,7 +48,10 @@ BEGIN
   --   - vendite.trgfn_ddt_righe_prelievi_guard (i prelievi di una
   --     bolla, 2026-09-28);
   --   - vendite.trgfn_resi_righe_rientri_guard (i rientri di un
-  --     reso, 2026-09-28).
+  --     reso, 2026-09-28);
+  --   - script.trgfn_righe_guard_aggiunta_fuori_listino (il nome
+  --     del documento nel messaggio, contratto o offerta,
+  --     2026-10-04).
   -- =========================================================
   IF p_testata_id IS NULL OR p_testata_id <= 0 THEN
     RETURN;   -- nessuna riga: il chiamante lo legge come «assente»
@@ -78,6 +81,19 @@ BEGIN
       FROM vendite.contratti c
       JOIN config.stati_doc_contratti s ON s.id = c.stato_doc_contratto_id
      WHERE c.id = p_testata_id;
+
+  ELSIF p_documento = 'OFFERTA' THEN
+    -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende,
+    -- R5a): l'offerta commerciale, per il guard generico delle
+    -- righe. Lo stato di bozza qui si chiama BOZZA (lo dice il
+    -- trigger). Il codice e' NOT NULL: il ripiego sull'id resta
+    -- per simmetria con gli altri rami, non per un caso reale.
+    RETURN QUERY
+    SELECT s.codice_interno::text,
+           concat('Offerta ', COALESCE(o.codice, '#' || o.id::text))
+      FROM vendite.offerte_commerciali o
+      JOIN config.stati_doc_offerte s ON s.id = o.stato_doc_offerta_id
+     WHERE o.id = p_testata_id;
 
   ELSIF p_documento = 'EMAIL_BOZZA' THEN
     -- rev 2026-09-25: la bozza di una mail. Lo stato e' gia' il
@@ -118,7 +134,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_stato_testata_documento(p_documento text, p_testata_id bigint)
-IS 'Lettore SECURITY DEFINER dello stato e dell''etichetta di una testata di documento. Nasce il 2026-08-26 per vendite.trgfn_dlt_block_ordrig_ddtrig, che deve distinguere «la testata non c''e'' piu''» (CASCADE partito dalla testata) da «la testata non la vedo» (RLS). ⛔ SECURITY DEFINER perche'' quella distinzione e'' il perno della decisione: le testate hanno RLS — e dal 22-09 anche le righe (ddt_righe, ordini_righe, contratti_righe: letto dal catalogo) — e un guard che leggesse sotto RLS diventerebbe fail-open proprio per chi sta fuori perimetro. ⭐ CONTRATTO: zero righe = testata assente; una riga = stato (codice_interno) piu'' etichetta per l''operatore. Lo stato e'' NOT NULL su tutte le testate e la FK garantisce la riga di stato, quindi l''assenza di riga e'' un segnale non ambiguo. ⚠️ L''etichetta ripiega sull''id quando `numero` e'' NULL, che sui documenti in bozza e'' il caso normale, non un residuo. PERIMETRO: legge due colonne, non scrive, non espone dati riservati. Tipi ammessi: DDT | ORDINE | CONTRATTO (rev 2026-09-22, per vendite.trgfn_doc_righe_lock_fuori_bozza); qualunque altro valore e'' un errore di chiamante (E_DOC_TIPO_NON_GESTITO, TECNICO). Chiamanti: vendite.trgfn_doc_righe_lock_fuori_bozza, vendite.trgfn_dlt_block_ordrig_ddtrig. rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso): + RESO (vendite.resi, stato da config.stati_doc_reso, etichetta «Reso <numero>»), per vendite.trgfn_resi_righe_rientri_guard. Chiamanti anche vendite.trgfn_ddt_righe_prelievi_guard (Lotto 3) e vendite.trgfn_resi_righe_rientri_guard.';
+IS 'Lettore SECURITY DEFINER dello stato e dell''etichetta di una testata di documento. Nasce il 2026-08-26 per vendite.trgfn_dlt_block_ordrig_ddtrig, che deve distinguere «la testata non c''e'' piu''» (CASCADE partito dalla testata) da «la testata non la vedo» (RLS). ⛔ SECURITY DEFINER perche'' quella distinzione e'' il perno della decisione: le testate hanno RLS — e dal 22-09 anche le righe (ddt_righe, ordini_righe, contratti_righe: letto dal catalogo) — e un guard che leggesse sotto RLS diventerebbe fail-open proprio per chi sta fuori perimetro. ⭐ CONTRATTO: zero righe = testata assente; una riga = stato (codice_interno) piu'' etichetta per l''operatore. Lo stato e'' NOT NULL su tutte le testate e la FK garantisce la riga di stato, quindi l''assenza di riga e'' un segnale non ambiguo. ⚠️ L''etichetta ripiega sull''id quando `numero` e'' NULL, che sui documenti in bozza e'' il caso normale, non un residuo. PERIMETRO: legge due colonne, non scrive, non espone dati riservati. Tipi ammessi: DDT | ORDINE | CONTRATTO | OFFERTA | EMAIL_BOZZA | RESO; qualunque altro valore e'' un errore di chiamante (E_DOC_TIPO_NON_GESTITO, TECNICO). Chiamanti: vendite.trgfn_doc_righe_lock_fuori_bozza, vendite.trgfn_dlt_block_ordrig_ddtrig, config.trgfn_email_allegato_guard_solo_bozza, vendite.trgfn_ddt_righe_prelievi_guard, vendite.trgfn_resi_righe_rientri_guard, script.trgfn_righe_guard_aggiunta_fuori_listino. rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso): + RESO (vendite.resi, stato da config.stati_doc_reso, etichetta «Reso <numero>»). rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): + OFFERTA (vendite.offerte_commerciali, stato da config.stati_doc_offerte, etichetta «Offerta <codice>»), per il lock delle righe dell''offerta fuori bozza.';
 ```
 
 ---

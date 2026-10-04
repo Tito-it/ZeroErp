@@ -13,6 +13,14 @@
 --    1) esiste fn_get_permessi_ereditati_aree(integer)
 --    2) esiste fn_get_permessi_ereditati_azioni(integer)
 --    3) tutte e due LANGUAGE sql BEGIN ATOMIC, STABLE, INVOKER
+--    ⚠️ Rev 2026-10-04 (brief-db-permessi-tetto-area, 20261004-53/-55/-56): l'area e'
+--       un TETTO anche sull'ereditato (D-2). La catena delle azioni sta ora in
+--       script.fn_get_permessi_effettivi_azioni: e' LEI a chiamare il building block
+--       dell'ereditato, e i due resolver delle azioni la leggono. Il test 4 segue la
+--       sede (cinque funzioni); gli scarti delle azioni confrontano la colonna
+--       abilitata_specifica con l'ereditato, e il resolver e la mappa con
+--       «ereditato E l'area consente»; il test 13 legge lo specifico (il tetto lo
+--       prova test-permessi-tetto-area-v1).
 --    4) ⭐ SEDE UNICA: nessuno dei quattro resolver chiama piu'
 --       fn_get_profili_accesso_applicabili; ognuno chiama il suo building block
 --    5) la premessa dello spareggio determinato: i cinque indici unici
@@ -223,15 +231,27 @@ CREATE FUNCTION pg_temp.scarti_aree(p_user integer) RETURNS integer LANGUAGE sql
                  IS DISTINCT FROM COALESCE(e.livello, 'BLOCCATO'::config.livello_accesso)::text)
 $$;
 
+-- Rev 2026-10-04 (tetto d'area): lo SPECIFICO e' l'ereditato; resolver e mappa sono
+-- l'ereditato sotto il tetto (script.fn_area_consente_azione sul livello dell'area
+-- dell'azione, che scarti_aree prova a parte).
 CREATE FUNCTION pg_temp.scarti_azioni(p_user integer) RETURNS integer LANGUAGE sql STABLE AS $$
     SELECT count(*)::integer
       FROM config.azioni_processo ap
+      JOIN config.aree_funzionali af ON af.id = ap.area_id
       LEFT JOIN script.fn_get_permessi_ereditati_azioni(p_user) e ON e.azione_id = ap.id
+      LEFT JOIN script.fn_get_permessi_effettivi_azioni(p_user) x ON x.azione_id = ap.id
      WHERE ap.attivo
-       AND (   script.fn_check_azione_processo(p_user, ap.permission_codename)
-                 IS DISTINCT FROM COALESCE(e.abilitata, false)
+       AND (   x.abilitata_specifica IS DISTINCT FROM COALESCE(e.abilitata, false)
+            OR script.fn_check_azione_processo(p_user, ap.permission_codename)
+                 IS DISTINCT FROM (COALESCE(e.abilitata, false)
+                                   AND script.fn_area_consente_azione(
+                                           script.fn_resolve_livello_area(p_user, af.schema_db),
+                                           ap.livello_minimo_area))
             OR (script.fn_get_user_actions_map(p_user) ->> ap.permission_codename)::boolean
-                 IS DISTINCT FROM COALESCE(e.abilitata, false))
+                 IS DISTINCT FROM (COALESCE(e.abilitata, false)
+                                   AND script.fn_area_consente_azione(
+                                           script.fn_resolve_livello_area(p_user, af.schema_db),
+                                           ap.livello_minimo_area)))
 $$;
 
 -- ============================================================
@@ -264,13 +284,16 @@ SELECT is(
                     regexp_replace(p.prosrc, '--[^\n]*', '', 'g')
                       ~ CASE WHEN p.proname IN ('fn_resolve_livello_area', 'fn_get_user_permissions_map')
                              THEN 'script\.fn_get_permessi_ereditati_aree\s*\('
-                             ELSE 'script\.fn_get_permessi_ereditati_azioni\s*\(' END AS chiama_bb
+                             WHEN p.proname = 'fn_get_permessi_effettivi_azioni'
+                             THEN 'script\.fn_get_permessi_ereditati_azioni\s*\('
+                             ELSE 'script\.fn_get_permessi_effettivi_azioni\s*\(' END AS chiama_bb
                FROM pg_proc p
               WHERE p.pronamespace = 'script'::regnamespace
                 AND p.proname IN ('fn_resolve_livello_area', 'fn_check_azione_processo',
-                                  'fn_get_user_permissions_map', 'fn_get_user_actions_map')) x),
-    '0 su 4',
-    '4) sede unica: i quattro resolver chiamano il building block e non riscrivono lo spareggio');
+                                  'fn_get_user_permissions_map', 'fn_get_user_actions_map',
+                                  'fn_get_permessi_effettivi_azioni')) x),
+    '0 su 5',
+    '4) sede unica: i resolver chiamano il building block (le azioni passando dalla catena effettiva) e non riscrivono lo spareggio');
 
 -- La premessa dello spareggio determinato: sotto una veste, al massimo UN
 -- profilo per priorita'. Se uno di questi indici cade (o cambia colonne), due
@@ -356,7 +379,8 @@ SELECT is(
     || ' ' || (SELECT e.abilitata::text || '/' || e.profilo_tipo::text
                  FROM script.fn_get_permessi_ereditati_azioni(pg_temp.op('B')) e
                 WHERE e.azione_id = pg_temp.azione_id(2))
-    || ' ' || script.fn_check_azione_processo(pg_temp.op('B'), pg_temp.azione(2))::text,
+    || ' ' || (SELECT x.abilitata_specifica::text
+                 FROM script.fn_get_permessi_effettivi_azioni(pg_temp.op('B'), pg_temp.azione(2)) x),
     'LETTURA/REPARTO LETTURA true/REPARTO true',
     '13) B: area e azione del solo REPARTO scendono al REPARTO (spareggio per voce, non per utente)');
 

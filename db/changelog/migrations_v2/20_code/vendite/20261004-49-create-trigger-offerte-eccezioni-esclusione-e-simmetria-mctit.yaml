@@ -1,0 +1,209 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I trigger di vendite.offerte_commerciali_eccezioni: le stesse regole del
+# contratto
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (R1, R2, R3, R5)
+#
+# -- PERCHE' ------------------------------------------------------------
+#   vendite.fn_push_offerta_a_contratto copia le righe dell'offerta nel
+#   contratto 1:1, con la stessa versione di listino. Ogni regola che il
+#   contratto ha e l'offerta no e' un'offerta che passa e un contratto
+#   rifiutato al push, cioe' l'errore al momento sbagliato e sul documento
+#   sbagliato. Il giro le chiude tutte, con le stesse funzioni.
+#
+# -- I TRIGGER NUOVI ------------------------------------------------------
+#   trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt          (R5a)
+#     vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'offerta_id', 'BOZZA')
+#     Le righe si aggiungono, modificano e tolgono solo in BOZZA: lo diceva
+#     solo il backend. Lo stato di bozza dell'offerta si chiama BOZZA (terzo
+#     argomento; il default del building block e' DRAFT).
+#   trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd            (R3)
+#     script.trgfn_righe_guard_esclusione_immutabile('offerta_id'),
+#     WHEN (OLD.tipo_eccezione = 'ESCLUSIONE').
+#   trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd        (R5b)
+#     script.trgfn_righe_guard_aggiunta_fuori_listino('OFFERTA', 'offerta_id'),
+#     WHEN (NEW.tipo_eccezione = 'AGGIUNTA').
+#   trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd            (R5c)
+#     script.trgfn_righe_guard_esclusione_figlio_bundle('OFFERTA', 'offerta_id'),
+#     WHEN (NEW.tipo_eccezione = 'ESCLUSIONE').
+#   trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins         (R1)
+#     script.trgfn_righe_guard_esclusione_senza_dati('offerta_id'),
+#     WHEN (NEW.tipo_eccezione = 'ESCLUSIONE').
+#   Il quarto pezzo di R5, il lock di colonna su tipo_eccezione (R5d), non e'
+#   qui: sta nel registro dbops.automation_lock_columns (CSV dello stesso
+#   giro), unica sede dei lock dal 2026-09-26; il trigger lo genera ci_apply.
+#
+# -- I DUE TRIGGER DI VALORIZZAZIONE (R2) --------------------------------
+#   trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd e
+#   trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd: stessi eventi e
+#   argomenti, + WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'). Il perche' e'
+#   nel 20261004-48.
+#
+# -- I NOMI, E CHI PARLA PRIMA --------------------------------------------
+#   Fra i BEFORE ROW di una tabella parla per primo il nome minore. Su
+#   questa tabella i trigger generati da ci_apply hanno il prefisso lungo
+#   trg_offerte_commerciali_eccezioni_ (audit, tx_id, i due
+#   prevent_deactivate _a10_, e da oggi il lock_columns _a10_), e vengono
+#   prima di TUTTI quelli scritti a mano col prefisso trg_offerte_eccezioni_.
+#   ⭐ I due rifiuti _a05_ («fuori bozza», «non si modifica») devono parlare
+#   prima di quelli: hanno quindi il prefisso lungo, che e' anche quello della
+#   regola dei nomi (linee-guida-trigger: trg_<tabella>_…). Nomi accorciati
+#   per stare nei 63 caratteri di PostgreSQL (oltre, il nome si tronca e i
+#   presidi lo leggono): «doc_bozza» < «guard_escl_immut», quindi «fuori
+#   bozza» parla prima, come sul contratto.
+#   I tre guard _a10_ restano col prefisso corto dei fratelli scritti a mano
+#   (guard_erogazione_obbligatoria, guard_pending): l'ordine fra loro e' lo
+#   stesso del contratto (aggiunta < erogazione < escl_figlio <
+#   esclusione_senza_dati < pending).
+#
+# -- CHI SCRIVE GIA' FUORI BOZZA? (censito il 2026-10-04) -----------------
+#   Nessun percorso legittimo: fn_crea_revisione_offerta inserisce le righe
+#   in una revisione nata BOZZA; fn_push_offerta_a_contratto le legge e
+#   basta; il backend scrive solo in BOZZA (offerte_service); il workflow
+#   dei prezzi (approvazioni_prezzo_service) decide prima dell'emissione,
+#   perche' la transizione verso EMESSA rifiuta i prezzi non autorizzati.
+#   La cancellazione di un'offerta arriva in CASCADE: la testata non c'e'
+#   piu' e il building block passa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261004-49-create-trigger-offerte-eccezioni-esclusione-e-simmetria-mctit.yaml
+
+  - changeSet:
+      id: 20261004-49-create-trigger-offerte-eccezioni-esclusione-e-simmetria
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.offerte_commerciali_eccezioni: righe solo in BOZZA, esclusione immutabile e senza
+        dati, aggiunta fuori listino, esclusione del figlio di bundle (le regole del contratto);
+        default_fonte_qta e qta_from_operativa saltano l'ESCLUSIONE. Brief:
+        brief-db-righe-esclusione-solo-non-si-vende (R1, R2, R3, R5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "4"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('trgfn_righe_guard_esclusione_immutabile',
+                                       'trgfn_righe_guard_aggiunta_fuori_listino',
+                                       'trgfn_righe_guard_esclusione_figlio_bundle',
+                                       'trgfn_righe_guard_esclusione_senza_dati');
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_trigger
+                   WHERE NOT tgisinternal
+                     AND tgrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
+                     AND tgname IN ('trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt',
+                                    'trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd',
+                                    'trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd',
+                                    'trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd',
+                                    'trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── _a05_: i rifiuti «questa riga non si tocca» ────────────
+              CREATE TRIGGER trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt
+                BEFORE INSERT OR UPDATE OR DELETE ON vendite.offerte_commerciali_eccezioni
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'offerta_id', 'BOZZA');
+
+              COMMENT ON TRIGGER trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt ON vendite.offerte_commerciali_eccezioni IS
+                  'Le righe di un''offerta si aggiungono, modificano e tolgono solo in BOZZA '
+                  '(building block vendite.trgfn_doc_righe_lock_fuori_bozza, E_RIGA_DOC_NON_BOZZA). '
+                  'Prima lo diceva solo il backend. Fascia _a05_, prefisso lungo: parla prima dei '
+                  'trigger generati. Brief: brief-db-righe-esclusione-solo-non-si-vende (R5a).';
+
+              CREATE TRIGGER trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd
+                BEFORE UPDATE ON vendite.offerte_commerciali_eccezioni
+                FOR EACH ROW
+                WHEN (OLD.tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_immutabile('offerta_id');
+
+              COMMENT ON TRIGGER trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd ON vendite.offerte_commerciali_eccezioni IS
+                  'Una riga ESCLUSIONE dell''offerta non si modifica: si crea e si cancella '
+                  '(E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE). Fascia _a05_, dopo il rifiuto «fuori '
+                  'bozza». Stessa funzione del contratto. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R3).';
+
+              -- ── _a10_: i guard del contratto, ora anche qui ─────────────
+              CREATE TRIGGER trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.offerte_commerciali_eccezioni
+                FOR EACH ROW
+                WHEN (NEW.tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_righe_guard_aggiunta_fuori_listino('OFFERTA', 'offerta_id');
+
+              COMMENT ON TRIGGER trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd ON vendite.offerte_commerciali_eccezioni IS
+                  'Un''AGGIUNTA e'' un articolo fuori dal listino: rifiutata se l''articolo sta nella '
+                  'versione operativa del listino dell''offerta (E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO). '
+                  'Stessa funzione del contratto. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R5b).';
+
+              CREATE TRIGGER trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.offerte_commerciali_eccezioni
+                FOR EACH ROW
+                WHEN (NEW.tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_figlio_bundle('OFFERTA', 'offerta_id');
+
+              COMMENT ON TRIGGER trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd ON vendite.offerte_commerciali_eccezioni IS
+                  'Si esclude il bundle, non il suo componente '
+                  '(E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA). Stessa funzione e stessa check '
+                  'del contratto. Brief: brief-db-righe-esclusione-solo-non-si-vende (R5c).';
+
+              CREATE TRIGGER trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins
+                BEFORE INSERT ON vendite.offerte_commerciali_eccezioni
+                FOR EACH ROW
+                WHEN (NEW.tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_senza_dati('offerta_id');
+
+              COMMENT ON TRIGGER trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins ON vendite.offerte_commerciali_eccezioni IS
+                  'Un''ESCLUSIONE dell''offerta non porta dati di vendita: E_RIGA_ESCLUSIONE_CON_DATI '
+                  'col campo, prima del CHECK chk_offerte_eccezioni_esclusione_senza_dati. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R1, R8).';
+
+              -- ── due valorizzazioni che saltano l'esclusione ─────────────
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              CREATE TRIGGER trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd
+                BEFORE INSERT OR UPDATE OF tipo_erogazione, fonte_quantita_attesa ON vendite.offerte_commerciali_eccezioni
+                FOR EACH ROW
+                WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta();
+
+              COMMENT ON TRIGGER trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd ON vendite.offerte_commerciali_eccezioni IS
+                  'Fonte della quantita'' attesa di default (script.trgfn_righe_default_fonte_qta). '
+                  'Salta l''ESCLUSIONE (WHEN), come sul contratto. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R2).';
+
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              CREATE TRIGGER trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.offerte_commerciali_eccezioni
+                FOR EACH ROW
+                WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa');
+
+              COMMENT ON TRIGGER trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd ON vendite.offerte_commerciali_eccezioni IS
+                  'Quantita'' base da qta_operativa e UdM operativa (script.trgfn_qta_from_operativa). '
+                  'Salta l''ESCLUSIONE (WHEN), come sul contratto. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins ON vendite.offerte_commerciali_eccezioni;
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd ON vendite.offerte_commerciali_eccezioni;
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt ON vendite.offerte_commerciali_eccezioni;

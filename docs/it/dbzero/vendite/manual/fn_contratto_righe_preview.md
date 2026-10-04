@@ -4,6 +4,15 @@
 
 Preview completa delle righe per il drawer `ContrattoRigheDrawer`: ritorna tutti gli articoli visibili nel contesto del contratto — articoli dal listino con overlay eccezioni, e articoli AGGIUNTA fuori-listino. Sostituisce lo SQL inline di `contratti_repository.list_righe_preview`. Il BE diventa thin wrapper.
 
+
+> ⭐ **Dal 2026-10-04 è un ingresso di una riga** (`20261004-72`): il corpo vive in
+> [vendite.fn_documento_righe_preview](/dbzero/vendite/funzioni/fn_documento_righe_preview),
+> comune con l'offerta ([vendite.fn_offerta_righe_preview](/dbzero/vendite/funzioni/fn_offerta_righe_preview)).
+> Firma e colonne invariate. Le regole qui sotto valgono per i due documenti;
+> la versione del listino la dice [vendite.fn_documento_listino_operativo](/dbzero/vendite/funzioni/fn_documento_listino_operativo)
+> e «Escludi» lo spegne [script.fn_check_esclusione_articolo_documento](/dbzero/script/funzioni/fn_check_esclusione_articolo_documento).
+> Brief: brief-db-righe-esclusione-solo-non-si-vende (R4).
+
 **Nota architetturale (DB-ORD, 2026-06-04)**: la Parte 1 (espansione listino standalone + bundle, variazione globale, aggregazione BoM) è stata estratta nel core condiviso [vendite.fn_espandi_listino_versione](/dbzero/vendite/manual/fn_espandi_listino_versione), riusato anche da [vendite.fn_offerta_righe_espanse](/dbzero/vendite/manual/fn_offerta_righe_espanse) (regola del 2: una sola implementazione della logica listino+BoM). L'output di questa funzione **non cambia** (stesse 19 colonne, stessa semantica drawer); cambia solo l'organizzazione interna: Parte 1 = core + overlay OVERRIDE/ESCLUSIONE, Parte 2 (AGGIUNTA) invariata.
 
 > **Vedi anche**
@@ -154,15 +163,16 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 - **Colonne qta/tipo/fonte NULL per DA_LISTINO**: nelle parti 1a/1b, `quantita`, `qta_operativa`, `tipo_erogazione` e `fonte_quantita_attesa` vengono da `cr.*` via LEFT JOIN. Quando non c'è eccezione (DA_LISTINO puro) il JOIN non trova righe e i campi sono NULL. Per OVERRIDE/ESCLUSIONE il JOIN trova la riga eccezione e i campi sono valorizzati. Per AGGIUNTA (parti 2a/2b) il JOIN è diretto e i campi sono sempre valorizzati. Il consumer FE deve gestire NULL come "usa il default listino".
 - **`STABLE`**: nessun side effect, ottimizzabile dal planner per chiamate multiple nella stessa transazione.
 - **Duplicazioni**: mutualmente esclusivi per costruzione. 1a usa `is_composito=FALSE` da listino, 1b usa padri compositi da `listini_righe_componenti`, 2a/2b filtrano su `tipo_eccezione=AGGIUNTA` con rispettivo `is_composito`. Non ci sono doppioni tra le parti.
-- **AGGIUNTA su articolo già in listino**: la guard `trgfn_contratti_righe_guard_aggiunta_fuori_listino` lo previene in fase di INSERT. La fn non duplica questo check.
+- **AGGIUNTA su articolo già in listino**: la guard `script.trgfn_righe_guard_aggiunta_fuori_listino` lo previene in fase di INSERT. La fn non duplica questo check.
 - **Contratto inesistente**: se `p_contratto_id` non corrisponde a nessun contratto, la fn ritorna zero righe (non raise).
+
 
 ---
 
 <!-- rev-2026-09-28-liste-righe -->
 ### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
 
-**Diventa la sorgente della lista `vendite.contratto_righe`** per le due forme del contratto (`20260928-32`, D-8.4). Tre colonne in coda: `riga_key` (`L:<articolo>:<uom>` per le righe del listino, `A:<id>` per le aggiunte: la chiave che il frontend inventava), `azioni` (i verbi che l'origine ammette: dal listino sovrascrivi prezzo / escludi; prezzo forzato modifica / ripristina il listino; esclusione modifica / ripristina l'articolo; aggiunta modifica / rimuovi) ed `escludi_blocco_codice` (il motivo per cui «Escludi» è spento, da [script.fn_check_esclusione_articolo_contratto](/dbzero/script/funzioni/fn_check_esclusione_articolo_contratto), lo stesso predicato del guard). Il blocco «fuori bozza» resta di documento. La versione del listino in vigore per il contratto in bozza non è più scelta qui: la dice [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore) (`20260928-39`). Per ogni data la versione in vigore è **al più una**, per costruzione (nessuna sovrapposizione fra versioni ATTIVE e CHIUSE, date di una CHIUSA bloccate), quindi «la prima» e «tutte le valide» sono la stessa cosa. Stesso esito, provato sui dati di dev.
+**Diventa la sorgente della lista `vendite.contratto_righe`** per le due forme del contratto (`20260928-32`, D-8.4). Tre colonne in coda: `riga_key` (`L:<articolo>:<uom>` per le righe del listino, `A:<id>` per le aggiunte: la chiave che il frontend inventava), `azioni` (i verbi che l'origine ammette: dal listino sovrascrivi prezzo / escludi; prezzo forzato modifica / ripristina il listino; esclusione modifica / ripristina l'articolo; aggiunta modifica / rimuovi) ed `escludi_blocco_codice` (il motivo per cui «Escludi» è spento, da `script.fn_check_esclusione_articolo_contratto` — dal 2026-10-04 [script.fn_check_esclusione_articolo_documento](/dbzero/script/funzioni/fn_check_esclusione_articolo_documento), comune con l'offerta —, lo stesso predicato del guard). Il blocco «fuori bozza» resta di documento. La versione del listino in vigore per il contratto in bozza non è più scelta qui: la dice [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore) (`20260928-39`). Per ogni data la versione in vigore è **al più una**, per costruzione (nessuna sovrapposizione fra versioni ATTIVE e CHIUSE, date di una CHIUSA bloccate), quindi «la prima» e «tutte le valide» sono la stessa cosa. Stesso esito, provato sui dati di dev.
 
 <!-- rev-2026-10-04-uom-della-riga -->
 ### 🔄 rev 2026-10-04 — l'UoM della riga, e ordine (brief-db-liste-righe-documento §9.11)
@@ -174,7 +184,7 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 <!-- rev-2026-10-04-esclusione-senza-modifica -->
 ### 🔄 rev 2026-10-04 — un'esclusione non si modifica (brief-db-contratto-esclusione-non-modificabile)
 
-**La riga ESCLUSIONE ha un solo verbo: ripristina l'articolo** (`20261004-14`). Prima aveva anche «modifica», e il drawer, che rende i verbi del database, apriva il form di modifica su un articolo che il contratto non vende: il form ripiegava su erogazione a canone e fonte fissa, e al primo salvataggio scriveva sull'esclusione valori che nessuno aveva scelto. Un'esclusione si crea (Escludi) e si cancella (Ripristina articolo), e basta. Il database rifiuta anche la modifica diretta: lo fa il guard [vendite.trgfn_contratti_righe_guard_esclusione_immutabile](/dbzero/vendite/funzioni/trgfn_contratti_righe_guard_esclusione_immutabile). Le altre origini non cambiano.
+**La riga ESCLUSIONE ha un solo verbo: ripristina l'articolo** (`20261004-14`). Prima aveva anche «modifica», e il drawer, che rende i verbi del database, apriva il form di modifica su un articolo che il contratto non vende: il form ripiegava su erogazione a canone e fonte fissa, e al primo salvataggio scriveva sull'esclusione valori che nessuno aveva scelto. Un'esclusione si crea (Escludi) e si cancella (Ripristina articolo), e basta. Il database rifiuta anche la modifica diretta: lo fa il guard [vendite.trgfn_contratti_righe_guard_esclusione_immutabile](/dbzero/script/funzioni/trgfn_righe_guard_esclusione_immutabile). Le altre origini non cambiano.
 
 | Origine | Verbi |
 | --- | --- |

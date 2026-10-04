@@ -9,7 +9,7 @@
 -- Indice test (1..10):
 --   1)  Tabella vendite.offerte_commerciali_eccezioni esiste
 --   2)  tipo_eccezione usa enum vendite.tipo_eccezione_contratto (B3)
---   3)  fonte_quantita_attesa NOT NULL
+--   3)  fonte_quantita_attesa obbligatoria sulle righe che non sono ESCLUSIONE (CHECK)
 --   4)  CHECK chk_offerte_eccezioni_tipo_erog presente
 --   5)  CHECK chk_offerte_eccezioni_fonte_qta presente
 --   6)  CHECK chk_offerte_eccezioni_coerenza_canone presente
@@ -61,17 +61,17 @@ SELECT ok(
 );
 
 -- ============================================================
--- 3) fonte_quantita_attesa NOT NULL
+-- 3) fonte_quantita_attesa obbligatoria, tranne sull'ESCLUSIONE
 -- ============================================================
-SELECT ok(
-    EXISTS (
-        SELECT 1 FROM information_schema.columns
-         WHERE table_schema = 'vendite'
-           AND table_name   = 'offerte_commerciali_eccezioni'
-           AND column_name  = 'fonte_quantita_attesa'
-           AND is_nullable  = 'NO'
-    ),
-    '3) fonte_quantita_attesa NOT NULL (specchio contratti_righe I3)'
+-- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R1): il NOT
+--   NULL scende al CHECK chk_offerte_eccezioni_fonte_per_tipo_eccezione,
+--   specchio del contratto. Un'esclusione non ha fonte.
+SELECT is(
+    (SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c
+      WHERE c.conrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
+        AND c.conname  = 'chk_offerte_eccezioni_fonte_per_tipo_eccezione'),
+    'CHECK (((tipo_eccezione = ''ESCLUSIONE''::vendite.tipo_eccezione_contratto) OR (fonte_quantita_attesa IS NOT NULL)))',
+    '3) fonte_quantita_attesa obbligatoria sulle righe che non sono ESCLUSIONE (specchio contratti_righe)'
 );
 
 -- ============================================================

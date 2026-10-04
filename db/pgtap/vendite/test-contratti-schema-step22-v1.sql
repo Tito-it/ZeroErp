@@ -19,7 +19,8 @@
 --
 --   Comportamento CHECK e UNIQUE:
 --   8)  INSERT ESCLUSIONE + prezzo NULL -> ok
---   9)  INSERT ESCLUSIONE + prezzo NOT NULL -> fallisce CHECK (23514)
+--   9)  INSERT ESCLUSIONE + prezzo NOT NULL -> rifiutata (dal 2026-10-04 parla il guard
+--       E_RIGA_ESCLUSIONE_CON_DATI, P0001, prima del CHECK 23514, che resta la rete)
 --   10) INSERT OVERRIDE + prezzo NULL -> fallisce CHECK (23514)
 --   11) INSERT AGGIUNTA + prezzo NOT NULL su contratto senza listino -> ok
 --   12) INSERT 2° OVERRIDE stessa coppia -> fallisce UNIQUE (23505)
@@ -251,8 +252,8 @@ SELECT ok(
 -- 8) INSERT ESCLUSIONE + prezzo NULL -> ok
 -- ============================================================
 SELECT lives_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'ESCLUSIONE', NULL, 1.00
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario)
+      SELECT ca.id, a.id, 'ESCLUSIONE', NULL
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 1$$,
     '8) INSERT ESCLUSIONE + prezzo NULL -> ok (CHECK soddisfatto)'
@@ -261,14 +262,16 @@ SELECT lives_ok(
 -- ============================================================
 -- 9) INSERT ESCLUSIONE + prezzo NOT NULL -> fallisce CHECK
 -- ============================================================
-SELECT throws_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'ESCLUSIONE', 50.00, 1.00
+-- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): un'esclusione
+--   non porta dati di vendita, e a dirlo e' il guard col campo (P0001), prima
+--   del CHECK sul prezzo. Il CHECK resta la rete per le strade senza trigger.
+SELECT throws_like(
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario)
+      SELECT ca.id, a.id, 'ESCLUSIONE', 50.00
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 2$$,
-    '23514',
-    NULL,
-    '9) INSERT ESCLUSIONE + prezzo NOT NULL -> fallisce CHECK'
+    '%non porta prezzo, quantità né erogazione%',
+    '9) INSERT ESCLUSIONE + prezzo NOT NULL -> rifiutata dal guard dell''esclusione'
 );
 
 -- ============================================================
@@ -322,8 +325,8 @@ SELECT throws_ok(
 --     (OVERRIDE e ESCLUSIONE non possono coesistere sulla stessa coppia)
 -- ============================================================
 SELECT throws_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'ESCLUSIONE', NULL, 1.00
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario)
+      SELECT ca.id, a.id, 'ESCLUSIONE', NULL
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 4$$,
     '23505',

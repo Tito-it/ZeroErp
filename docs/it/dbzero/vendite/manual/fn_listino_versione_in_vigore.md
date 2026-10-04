@@ -5,9 +5,8 @@
 > **Consumatori:**
 >
 > • [vendite.fn_resolve_prezzo_listino_v2_esito](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2_esito) — il risolutore del prezzo, alla data del documento
-> • [vendite.fn_contratto_righe_preview](/dbzero/vendite/funzioni/fn_contratto_righe_preview) · [vendite.fn_offerta_righe_espanse](/dbzero/vendite/funzioni/fn_offerta_righe_espanse) — le righe operative di contratto e offerta
+> • [vendite.fn_documento_listino_operativo](/dbzero/vendite/funzioni/fn_documento_listino_operativo) — la versione che governa le righe di un contratto o di un'offerta (dal 2026-10-04 la chiedono a lei la lista delle righe, le righe espanse dell'offerta e i guard delle eccezioni)
 > • [vendite.trgfn_contratti_freeze_listino_versione](/dbzero/vendite/funzioni/trgfn_contratti_freeze_listino_versione) — la versione fissata all'attivazione del contratto
-> • [vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino](/dbzero/vendite/funzioni/trgfn_contratti_righe_guard_aggiunta_fuori_listino) · [script.fn_check_esclusione_articolo_contratto](/dbzero/script/funzioni/fn_check_esclusione_articolo_contratto) — i controlli sulle eccezioni del contratto
 >
 > **Ciò che la rende univoca:**
 >

@@ -88,6 +88,7 @@ per rifiutare*.
 | `vendite.ddt_righe` | `trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt` | INSERT, UPDATE, DELETE |
 | `vendite.ordini_righe` | `trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt` | **solo DELETE** |
 | `vendite.contratti_righe` | `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt` | INSERT, UPDATE, DELETE |
+| `vendite.offerte_commerciali_eccezioni` | `trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-04; stato bozza `BOZZA`, terzo argomento) | INSERT, UPDATE, DELETE |
 
 ⚠️ **Sugli ordini `INSERT` e `UPDATE` restano aperti, ed è una decisione**
 (Tid, 14 settembre, voce «la promessa di consegna dopo la conferma» in
@@ -172,3 +173,17 @@ del documento emesso.
 
 > 📎 changeSet `20260922-01 … -06`. Brief:
 > `brief-db-partita-merce-per-documento` (D7, giro 5).
+
+### 🔄 rev 2026-10-04 — l'offerta (brief-db-righe-esclusione-solo-non-si-vende, R5a)
+
+Le righe dell'offerta si scrivono solo in `BOZZA`: prima lo diceva solo il
+backend, e il push copia le righe dell'offerta nel contratto, che la regola ce
+l'ha. Il nome del trigger porta il prefisso lungo della tabella
+(`trg_offerte_commerciali_eccezioni_a05_…`) per parlare **prima** dei trigger
+generati di quella tabella, che hanno lo stesso prefisso.
+
+⚠️ **Conseguenza voluta (decisione di Tid, «lock pieno»):** dopo l'emissione
+anche lo stato di approvazione di un prezzo resta com'è. Cambiarlo su un
+componente ricalcola il prezzo della riga madre, e quell'aggiornamento è fuori
+bozza. Una nuova richiesta di approvazione passa da una revisione, che nasce in
+bozza.

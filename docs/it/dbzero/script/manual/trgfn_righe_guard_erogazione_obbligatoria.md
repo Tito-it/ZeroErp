@@ -19,7 +19,8 @@
 Un prezzo forzato (`OVERRIDE`) e un articolo aggiunto (`AGGIUNTA`) finiscono in
 fattura, e la fattura deve sapere se contarli come canone, una tantum, a ore o
 a consumo. Senza il tipo di erogazione il sistema dovrebbe indovinarlo.
-L'esclusione non si fattura: lì l'erogazione resta libera.
+L'esclusione non si fattura: lì l'erogazione è vuota, come gli altri dati di
+vendita (dal 2026-10-04, [`trgfn_righe_guard_esclusione_senza_dati`](/dbzero/script/funzioni/trgfn_righe_guard_esclusione_senza_dati)).
 
 Decisione di Tid, 2026-10-04.
 

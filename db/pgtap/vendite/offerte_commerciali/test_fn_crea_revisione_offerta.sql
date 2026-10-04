@@ -55,7 +55,18 @@ SELECT
     (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
     (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato = 'ATTIVA' ORDER BY lv.id LIMIT 1) AS listino_versione_id_attiva,
     (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE ORDER BY a.id LIMIT 1)  AS articolo_id_1,
-    (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE ORDER BY a.id OFFSET 1 LIMIT 1) AS articolo_id_2,
+    -- rev 2026-10-04: l'articolo dell'AGGIUNTA sta FUORI dalla versione di listino
+    --   dell'offerta (guard script.trgfn_righe_guard_aggiunta_fuori_listino, ora
+    --   anche sull'offerta), e diverso dal primo.
+    (SELECT a.id FROM catalogo.articoli a
+      WHERE a.attivo IS TRUE
+        AND a.id <> (SELECT a1.id FROM catalogo.articoli a1 WHERE a1.attivo IS TRUE ORDER BY a1.id LIMIT 1)
+        AND NOT EXISTS (
+            SELECT 1 FROM vendite.listini_righe lr
+             WHERE lr.articolo_id = a.id AND lr.attivo
+               AND lr.listino_versione_id = (SELECT lv.id FROM vendite.listini_versioni lv
+                                              WHERE lv.stato = 'ATTIVA' ORDER BY lv.id LIMIT 1))
+      ORDER BY a.id LIMIT 1) AS articolo_id_2,
     (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE ORDER BY a.id OFFSET 2 LIMIT 1) AS articolo_id_3,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')     AS stato_bozza_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')    AS stato_emessa_id,
@@ -77,10 +88,6 @@ WITH ins AS (
     RETURNING id
 )
 SELECT id FROM ins;
-
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rev_fn_ctx)
- WHERE id = (SELECT id FROM tmp_rev_fn_rev1);
 
 -- Eccezioni rev.1: 2 attive + 1 inattiva
 -- tipo_erogazione UNA_TANTUM + fonte FISSA: combinazione ammessa da tutti i CHECK.
@@ -123,6 +130,13 @@ SELECT r1.id, ctx.articolo_id_3, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto
  WHERE ctx.articolo_id_3 IS NOT NULL
    AND ctx.articolo_id_3 <> ctx.articolo_id_1
    AND ctx.articolo_id_3 <> ctx.articolo_id_2;
+
+-- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): le righe
+--   dell'offerta si scrivono solo in BOZZA. L'emissione viene quindi DOPO le
+--   eccezioni, come in un'offerta vera; prima le si aggiungeva a rev.1 gia' EMESSA.
+UPDATE vendite.offerte_commerciali
+   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rev_fn_ctx)
+ WHERE id = (SELECT id FROM tmp_rev_fn_rev1);
 
 -- Utility rev.1 (1:1)
 INSERT INTO vendite.offerte_commerciali_utilities (

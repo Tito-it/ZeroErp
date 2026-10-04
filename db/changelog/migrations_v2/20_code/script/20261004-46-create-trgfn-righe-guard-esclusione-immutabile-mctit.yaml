@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE script.trgfn_righe_guard_esclusione_immutabile: un'esclusione non si
+# modifica, sul contratto E sull'offerta.
+#
+# -- PERCHE' ------------------------------------------------------------
+#   Prende il posto di vendite.trgfn_contratti_righe_guard_esclusione_
+#   immutabile (20261004-12, ritirata nello stesso giro, 20261004-73), che
+#   valeva per il solo contratto. Sull'offerta un'esclusione si poteva
+#   modificare: «non si modifica» deve valere ai due capi del push
+#   (brief-db-righe-esclusione-solo-non-si-vende, R3). La richiesta stessa
+#   chiede di portarla in script, generica (regola del 2).
+#
+# -- LA REGOLA, invariata -----------------------------------------------
+#   Ammesse le sole colonne tecniche (data_update, user_update, tx_id), che
+#   i trigger della stessa riga riscrivono; tutto il resto, attivo e le FK
+#   comprese, e' contenuto. Elenco delle AMMESSE: una colonna nuova nasce
+#   bloccata. Le due tabelle hanno le stesse tre tecniche (letto il
+#   2026-10-04).
+#
+# -- LA FORMA -----------------------------------------------------------
+#   · TG_ARGV[0] = colonna del documento padre ('contratto_id',
+#     'offerta_id'), solo per il contesto, come trgfn_righe_guard_pending;
+#   · stesso codice, E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE (R8); il testo
+#     del messaggio diventa neutro nel CSV dello stesso giro («Un articolo
+#     escluso non si modifica…», senza «dal contratto»);
+#   · montata BEFORE UPDATE ... WHEN (OLD.tipo_eccezione = 'ESCLUSIONE'),
+#     fascia _a05_ (20261004-48/-49): «questa riga non si tocca» parla prima
+#     dei giudizi sul valore nuovo.
+#
+# Brief: brief-db-righe-esclusione-solo-non-si-vende (R3).
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261004-46-create-trgfn-righe-guard-esclusione-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20261004-46-create-trgfn-righe-guard-esclusione-immutabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_righe_guard_esclusione_immutabile: rifiuta l'UPDATE di una riga ESCLUSIONE di
+        contratto o di offerta (ammesse le sole colonne tecniche). Brief:
+        brief-db-righe-esclusione-solo-non-si-vende (R3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'trgfn_righe_guard_esclusione_immutabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.trgfn_righe_guard_esclusione_immutabile()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rifiutare l'UPDATE di una riga ESCLUSIONE di contratto o
+              --   di offerta. Un'esclusione si crea (Escludi) e si cancella
+              --   (Ripristina articolo, DELETE): non si modifica.
+              -- Uso:   BEFORE UPDATE FOR EACH ROW
+              --        WHEN (OLD.tipo_eccezione = 'ESCLUSIONE'), fascia _a05_,
+              --        su vendite.contratti_righe e
+              --        vendite.offerte_commerciali_eccezioni.
+              -- TG_ARGV[0]: colonna del documento padre ('contratto_id',
+              --   'offerta_id'), solo per il contesto dell'errore.
+              -- Ammesse: le sole colonne tecniche, che i trigger della stessa
+              --   riga riscrivono. Tutto il resto, `attivo` e le FK comprese, e'
+              --   contenuto: un elenco delle AMMESSE, cosi' una colonna nuova
+              --   nasce bloccata.
+              DECLARE
+                  c_tecniche CONSTANT text[] := ARRAY['data_update', 'user_update', 'tx_id'];
+                  v_col_padre text := TG_ARGV[0];
+                  v_cambiate  text[];
+              BEGIN
+                  SELECT array_agg(n.key ORDER BY n.key)
+                    INTO v_cambiate
+                    FROM jsonb_each(to_jsonb(NEW) - c_tecniche) AS n
+                    LEFT JOIN jsonb_each(to_jsonb(OLD) - c_tecniche) AS o
+                           ON o.key = n.key
+                   WHERE o.value IS DISTINCT FROM n.value;
+
+                  -- Un UPDATE che non cambia niente (o solo le tecniche) passa.
+                  IF v_cambiate IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      TG_NAME::text,
+                      'E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE',
+                      jsonb_build_object(
+                          'riga_id',     OLD.id,
+                          v_col_padre,   to_jsonb(OLD) -> v_col_padre,
+                          'articolo_id', OLD.articolo_id,
+                          'colonne',     to_jsonb(v_cambiate)),
+                      NEW.tx_id,
+                      VARIADIC ARRAY[]::text[]);
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_righe_guard_esclusione_immutabile()
+              IS 'Guard: una riga ESCLUSIONE di vendite.contratti_righe o di vendite.offerte_commerciali_eccezioni non si modifica (E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE, CONFLITTO_STATO, nessun valore). Si crea (Escludi) e si cancella (Ripristina articolo). Ammesse le sole colonne tecniche data_update, user_update, tx_id: elenco delle AMMESSE, una colonna nuova nasce bloccata; attivo e le FK sono vietate. TG_ARGV[0] = colonna del padre (contratto_id | offerta_id), solo per il contesto (riga_id, padre, articolo_id, colonne cambiate). Trigger _a05_ BEFORE UPDATE WHEN (OLD.tipo_eccezione = ''ESCLUSIONE''): parla prima dei guard _a10_ e dei CHECK. Prende il posto di vendite.trgfn_contratti_righe_guard_esclusione_immutabile (solo contratto, ritirata nello stesso giro). Nasce il 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende (R3); la regola e'' di brief-db-contratto-esclusione-non-modificabile (decisione di Tid).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.trgfn_righe_guard_esclusione_immutabile();

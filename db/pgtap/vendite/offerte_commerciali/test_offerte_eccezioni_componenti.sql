@@ -116,7 +116,14 @@ SELECT
         AS listino_versione_id,
 
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA')
-        AS stato_accettata_id;
+        AS stato_accettata_id,
+    -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): le righe
+    --   dell'offerta si scrivono solo in BOZZA. Le offerte nascono in BOZZA, e la
+    --   COMPOSITA va in EMESSA e poi ACCETTATA solo prima del push (test 20).
+    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')
+        AS stato_bozza_id,
+    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')
+        AS stato_emessa_id;
 
 -- Flag: dati composito disponibili?
 CREATE TEMP TABLE tmp_oce_has_composito AS
@@ -148,7 +155,7 @@ BEGIN
        OR v_ctx.emittente_fiscale_id IS NULL
     THEN RETURN; END IF;
 
-    -- Offerta in ACCETTATA (INSERT bypass trigger per stato terminale)
+    -- Offerta in BOZZA: le righe si scrivono solo li' (rev 2026-10-04, R5a).
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
         listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
@@ -156,7 +163,7 @@ BEGIN
     SELECT v_ctx.emittente_fiscale_id, v_ctx.billing_account_id,
            v_ctx.istanza_utility_id, v_ctx.utility_id,
            v_ctx.listino_id, v_ctx.listino_versione_id,
-           DATE '2082-01-01', v_ctx.stato_accettata_id
+           DATE '2082-01-01', v_ctx.stato_bozza_id
     RETURNING id INTO v_off_id;
 
     -- Eccezione con articolo semplice (test 15).
@@ -197,7 +204,7 @@ BEGIN
         SELECT v_ctx.emittente_fiscale_id, v_ctx.billing_account_id,
                v_ctx.istanza_utility_id, v_ctx.utility_id,
                v_ctx.listino_id, v_ctx.listino_versione_id,
-               DATE '2082-01-01', v_ctx.stato_accettata_id
+               DATE '2082-01-01', v_ctx.stato_bozza_id
         RETURNING id INTO v_off_consumo;
 
         -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
@@ -211,7 +218,12 @@ BEGIN
         INSERT INTO tmp_oce_ids VALUES ('CONSUMO', v_off_consumo, v_ecc_id);
     END IF;
 
-    -- Eccezione ESCLUSIONE su articolo composito con quantita NOT NULL (test 27).
+    -- Eccezione ESCLUSIONE su articolo composito (test 27).
+    -- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R1): l'esclusione
+    --   nasce VUOTA — niente fonte, niente quantita'. Prima portava quantita' 2 per
+    --   provare che l'init la salta pur avendo una quantita'; oggi un'esclusione con
+    --   quantita' non si scrive (E_RIGA_ESCLUSIONE_CON_DATI), e il test prova l'esito
+    --   (0 componenti, prezzo padre NULL) sull'esclusione come il modello la ammette.
     -- Offerta separata: l'unique parziale uq_offerte_eccezioni_one_eccezione_per_articolo
     -- ammette al piu' 1 riga OVERRIDE/ESCLUSIONE per (offerta, articolo) e la COMPOSITA
     -- ha gia' un OVERRIDE sullo stesso articolo. prezzo_unitario NULL (CHECK ESCLUSIONE).
@@ -223,15 +235,13 @@ BEGIN
         SELECT v_ctx.emittente_fiscale_id, v_ctx.billing_account_id,
                v_ctx.istanza_utility_id, v_ctx.utility_id,
                v_ctx.listino_id, v_ctx.listino_versione_id,
-               DATE '2082-01-01', v_ctx.stato_accettata_id
+               DATE '2082-01-01', v_ctx.stato_bozza_id
         RETURNING id INTO v_off_consumo;
 
         INSERT INTO vendite.offerte_commerciali_eccezioni (
-            offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, quantita
+            offerta_id, articolo_id, tipo_eccezione
         )
-        VALUES (v_off_consumo, v_ctx.articolo_composito_id, 'ESCLUSIONE',
-                'DERIVATA_COMPONENTI', NULL, 2)
+        VALUES (v_off_consumo, v_ctx.articolo_composito_id, 'ESCLUSIONE')
         RETURNING id INTO v_ecc_id;
         INSERT INTO tmp_oce_ids VALUES ('ESCLUSIONE', v_off_consumo, v_ecc_id);
     END IF;
@@ -458,7 +468,20 @@ DECLARE
 BEGIN
     IF NOT (SELECT disponibile FROM tmp_oce_has_composito) THEN RETURN; END IF;
 
-    SELECT offerta_id INTO v_off_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA';
+    -- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5b): prima
+    --   era un'AGGIUNTA dello stesso articolo composito, sulla stessa offerta che ne
+    --   forzava gia' il prezzo (OVERRIDE): cioe' un articolo del listino aggiunto
+    --   come fuori listino, che il guard dell'aggiunta ora rifiuta anche
+    --   sull'offerta. Il test prova l'override del prezzo di un componente, non il
+    --   tipo di riga: diventa un OVERRIDE su un'offerta sua, in BOZZA.
+    INSERT INTO vendite.offerte_commerciali (
+        emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+        listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
+    )
+    SELECT c.emittente_fiscale_id, c.billing_account_id, c.istanza_utility_id, c.utility_id,
+           c.listino_id, c.listino_versione_id, DATE '2082-01-01', c.stato_bozza_id
+      FROM tmp_oce_ctx c
+    RETURNING id INTO v_off_id;
 
     -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
     INSERT INTO vendite.offerte_commerciali_eccezioni (
@@ -466,7 +489,7 @@ BEGIN
         prezzo_unitario, quantita, tipo_erogazione
     )
     VALUES (v_off_id, (SELECT articolo_composito_id FROM tmp_oce_ctx),
-            'AGGIUNTA', 'DERIVATA_COMPONENTI', 0.00, 3, 'CANONE')
+            'OVERRIDE', 'DERIVATA_COMPONENTI', 0.00, 3, 'CANONE')
     RETURNING id INTO v_ovr_ecc_id;
 
     INSERT INTO tmp_oce_ids VALUES ('COMPOSITA-OVR', v_off_id, v_ovr_ecc_id);
@@ -516,6 +539,15 @@ BEGIN
                     (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA')
             ) > 0
     ) THEN RETURN; END IF;
+
+    -- rev 2026-10-04 (R5a): righe e componenti si scrivono in BOZZA; il push vuole
+    -- un'offerta ACCETTATA, e ci arriva per la sua strada: BOZZA -> EMESSA -> ACCETTATA.
+    UPDATE vendite.offerte_commerciali
+       SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_oce_ctx)
+     WHERE id = (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA');
+    UPDATE vendite.offerte_commerciali
+       SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_oce_ctx)
+     WHERE id = (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA');
 
     PERFORM vendite.fn_push_offerta_a_contratto(
         (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA'),
