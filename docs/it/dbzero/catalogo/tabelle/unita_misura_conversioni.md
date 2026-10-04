@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | uom_from_id | bigint | NO |  |
 | uom_to_id | bigint | NO |  |
-| fattore | numeric | NO |  |
+| fattore | numeric(18,6) | NO |  |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |
 | attivo | boolean | NO | true |

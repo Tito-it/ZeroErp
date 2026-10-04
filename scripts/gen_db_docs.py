@@ -114,12 +114,23 @@ def gen_table_md(schema, table, cur):
     cmt_row = cur.fetchone()
     lines += _descrizione_md(cmt_row["commento"] if cmt_row else None)
     # Colonne
+    # Il tipo si prende da format_type(atttypid, atttypmod) e NON da
+    # information_schema.columns.data_type, che toglie il typmod: «numeric» per
+    # numeric(18,6) e numeric(15,2), «character varying» senza lunghezza,
+    # «USER-DEFINED» per un enum, «ARRAY» per un array. La scala di un numeric
+    # e' contratto: chi copia un valore da una colonna all'altra deve vederla
+    # (2026-10-04, la quota del plafond calcolata a 6 decimali e scritta a 2).
     cur.execute(
         """
-        SELECT column_name, data_type, is_nullable, column_default
-        FROM information_schema.columns
-        WHERE table_schema=%s AND table_name=%s
-        ORDER BY ordinal_position
+        SELECT c.column_name,
+               format_type(a.atttypid, a.atttypmod) AS data_type,
+               c.is_nullable, c.column_default
+        FROM information_schema.columns c
+        JOIN pg_attribute a
+          ON a.attrelid = format('%%I.%%I', c.table_schema, c.table_name)::regclass
+         AND a.attname = c.column_name
+        WHERE c.table_schema=%s AND c.table_name=%s
+        ORDER BY c.ordinal_position
         """, (schema, table)
     )
     cols = cur.fetchall()

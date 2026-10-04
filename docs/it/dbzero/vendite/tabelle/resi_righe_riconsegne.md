@@ -12,7 +12,7 @@
 | resi_riga_id | bigint | NO |  |
 | ddt_riga_id | bigint | NO |  |
 | qta | numeric | NO |  |
-| note | character varying | YES |  |
+| note | character varying(255) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |

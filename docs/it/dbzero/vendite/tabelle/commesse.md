@@ -9,11 +9,11 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice | character varying | NO |  |
-| tipo_commessa | character varying | NO | 'AUTO'::character varying |
-| policy_fatturazione | character varying | NO | 'DA_DOCUMENTO'::character varying |
+| codice | character varying(64) | NO |  |
+| tipo_commessa | character varying(16) | NO | 'AUTO'::character varying |
+| policy_fatturazione | character varying(24) | NO | 'DA_DOCUMENTO'::character varying |
 | fatturazione_immediata | boolean | NO | false |
-| priorita_operativa | character varying | NO | 'NORMALE'::character varying |
+| priorita_operativa | character varying(16) | NO | 'NORMALE'::character varying |
 | billing_account_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | emittente_soggetto_ruolo_id | bigint | NO |  |
@@ -31,7 +31,7 @@
 | modalita_pagamento_id | integer | YES |  |
 | registro_id | bigint | YES |  |
 | anno | smallint | YES |  |
-| descrizione | character varying | YES |  |
+| descrizione | character varying(255) | YES |  |
 | data_apertura | date | NO | script.fn_data_operativa() |
 | responsabile_risorsa_umana_id | bigint | YES |  |
 

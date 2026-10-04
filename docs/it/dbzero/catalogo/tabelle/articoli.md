@@ -9,9 +9,9 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | uuid | NO | uuidv7() |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
-| descrizione_breve | character varying | YES |  |
+| codice | character varying(50) | NO |  |
+| descrizione | character varying(150) | NO |  |
+| descrizione_breve | character varying(80) | YES |  |
 | uom_id | bigint | NO |  |
 | tipo_voce_id | bigint | YES |  |
 | gruppo_voce_id | bigint | YES |  |
@@ -29,7 +29,7 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
 | attivo | boolean | NO | true |
-| note_target_tipo | character varying | YES |  |
+| note_target_tipo | character varying(32) | YES |  |
 | note_id | bigint | YES |  |
 | is_solo_componente | boolean | NO | false |
 | listino_tipologia_id | smallint | YES |  |

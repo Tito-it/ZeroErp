@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice_interno | character varying | NO |  |
-| codice | character varying | NO |  |
+| codice_interno | character varying(16) | NO |  |
+| codice | character varying(64) | NO |  |
 | descrizione | text | NO |  |
 | attivo | boolean | NO | true |
 | ordine | integer | NO | 10 |

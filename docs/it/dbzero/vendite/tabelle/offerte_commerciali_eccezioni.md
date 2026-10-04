@@ -11,17 +11,17 @@
 | id | bigint | NO |  |
 | offerta_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| tipo_eccezione | USER-DEFINED | NO |  |
-| tipo_erogazione | character varying | YES |  |
-| fonte_quantita_attesa | character varying | YES |  |
-| periodicita | character varying | YES |  |
-| generazione_canone | character varying | YES |  |
-| competenza_canone | character varying | YES |  |
-| prezzo_unitario | numeric | YES |  |
-| quantita | numeric | YES |  |
-| qta_operativa | numeric | YES |  |
+| tipo_eccezione | vendite.tipo_eccezione_contratto | NO |  |
+| tipo_erogazione | character varying(16) | YES |  |
+| fonte_quantita_attesa | character varying(32) | YES |  |
+| periodicita | character varying(32) | YES |  |
+| generazione_canone | character varying(32) | YES |  |
+| competenza_canone | character varying(32) | YES |  |
+| prezzo_unitario | numeric(18,6) | YES |  |
+| quantita | numeric(18,6) | YES |  |
+| qta_operativa | numeric(18,6) | YES |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | YES |  |
+| factor_to_base | numeric(18,8) | YES |  |
 | ordine | smallint | YES | 0 |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -30,7 +30,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
-| stato_approvazione_prezzo | USER-DEFINED | YES |  |
+| stato_approvazione_prezzo | config.stato_approvazione_prezzo | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
 
 ## 🔒 Vincoli

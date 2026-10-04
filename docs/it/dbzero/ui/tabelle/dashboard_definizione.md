@@ -9,14 +9,14 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(80) | NO |  |
+| descrizione | character varying(200) | NO |  |
 | note | text | YES |  |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO |  |
+| user_insert | character varying(80) | NO |  |
 | data_update | timestamp with time zone | YES |  |
-| user_update | character varying | YES |  |
+| user_update | character varying(80) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

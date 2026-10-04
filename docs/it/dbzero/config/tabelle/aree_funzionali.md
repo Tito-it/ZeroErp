@@ -9,10 +9,10 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| codice_interno | character varying | NO |  |
-| descrizione | character varying | NO |  |
-| schema_db | character varying | NO |  |
+| codice | character varying(50) | NO |  |
+| codice_interno | character varying(50) | NO |  |
+| descrizione | character varying(200) | NO |  |
+| schema_db | character varying(50) | NO |  |
 | attivo | boolean | NO | true |
 | ordinamento | smallint | NO | 0 |
 | meta | jsonb | NO | '{}'::jsonb |

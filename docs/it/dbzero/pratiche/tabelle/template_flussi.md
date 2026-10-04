@@ -11,11 +11,11 @@
 | id | integer | NO |  |
 | tipo_prestazione_id | integer | NO |  |
 | handler_id | integer | YES |  |
-| codice | character varying | NO |  |
+| codice | character varying(50) | NO |  |
 | descrizione | text | NO |  |
 | sequenza | integer | NO | 0 |
 | obbligatorio | boolean | NO | false |
-| direzione | character varying | NO | 'INTERNA'::character varying |
+| direzione | character varying(10) | NO | 'INTERNA'::character varying |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
@@ -25,11 +25,11 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | handler_params | jsonb | NO | '{}'::jsonb |
-| ripetibilita | character varying | NO | 'SE_NON_POSITIVO'::character varying |
+| ripetibilita | character varying(20) | NO | 'SE_NON_POSITIVO'::character varying |
 | chiude_pratica | boolean | NO | false |
 | azione_ui_id | integer | YES |  |
-| modalita_esito | character varying | NO | 'MANUALE'::character varying |
-| esito_default | character varying | YES |  |
+| modalita_esito | character varying(20) | NO | 'MANUALE'::character varying |
+| esito_default | character varying(20) | YES |  |
 | obsoleto_dal | date | YES |  |
 | definizione_id | integer | NO |  |
 | attende_sorgente_tipo_id | bigint | YES |  |

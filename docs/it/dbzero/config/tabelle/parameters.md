@@ -9,7 +9,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| code | character varying | NO |  |
+| code | character varying(100) | NO |  |
 | default_value | text | NO |  |
 | description | text | YES |  |
 | data_insert | timestamp with time zone | NO | now() |

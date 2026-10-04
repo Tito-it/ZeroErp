@@ -10,8 +10,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | fittizia | boolean | NO | false |
-| codice | character varying | NO |  |
-| proprietario_inquilino | character | NO | 'I'::bpchar |
+| codice | character varying(30) | NO |  |
+| proprietario_inquilino | character(1) | NO | 'I'::bpchar |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |

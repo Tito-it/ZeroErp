@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| handler_key | character varying | NO |  |
-| codice | character varying | NO |  |
+| handler_key | character varying(100) | NO |  |
+| codice | character varying(50) | NO |  |
 | descrizione | text | NO |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |

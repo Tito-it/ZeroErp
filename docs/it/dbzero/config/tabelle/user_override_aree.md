@@ -12,7 +12,7 @@
 | id | bigint | NO |  |
 | auth_user_id | integer | NO |  |
 | area_id | integer | NO |  |
-| livello | USER-DEFINED | NO |  |
+| livello | config.livello_accesso | NO |  |
 | motivo | text | YES |  |
 | valido_dal | date | YES | CURRENT_DATE |
 | valido_al | date | YES |  |

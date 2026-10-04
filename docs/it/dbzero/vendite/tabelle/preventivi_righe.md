@@ -11,10 +11,10 @@
 | id | bigint | NO |  |
 | preventivo_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| descrizione | character varying | YES |  |
-| quantita | numeric | YES |  |
-| prezzo_unitario | numeric | NO |  |
-| sconto_percentuale | numeric | YES | 0 |
+| descrizione | character varying(200) | YES |  |
+| quantita | numeric(18,6) | YES |  |
+| prezzo_unitario | numeric(15,6) | NO |  |
+| sconto_percentuale | numeric(7,4) | YES | 0 |
 | iva_id | integer | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | ordine | smallint | YES | 0 |
@@ -23,10 +23,10 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
-| qta_operativa | numeric | NO |  |
+| qta_operativa | numeric(18,6) | NO |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | YES |  |
-| stato_approvazione_prezzo | USER-DEFINED | YES |  |
+| factor_to_base | numeric(18,6) | YES |  |
+| stato_approvazione_prezzo | config.stato_approvazione_prezzo | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
 | tx_id | uuid | YES |  |
 | natura_vendita_id | bigint | YES |  |

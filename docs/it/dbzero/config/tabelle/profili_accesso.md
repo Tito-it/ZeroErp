@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| tipo | USER-DEFINED | NO |  |
-| codice | character varying | NO |  |
+| tipo | config.tipo_profilo_accesso | NO |  |
+| codice | character varying(100) | NO |  |
 | descrizione | text | NO |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |

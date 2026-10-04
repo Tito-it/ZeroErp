@@ -9,16 +9,16 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | YES |  |
+| codice | character varying(32) | NO |  |
+| descrizione | character varying(120) | YES |  |
 | attivo | boolean | NO | true |
 | ordine | smallint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
-| codice_interno | character varying | NO |  |
+| codice_interno | character varying(32) | NO |  |
 | applica_lotto | boolean | NO | false |
 | applica_fattura | boolean | NO | true |
 | chiude_lotto | boolean | NO | false |
-| fase | character varying | NO |  |
+| fase | character varying(20) | NO |  |
 | is_abortito | boolean | NO | false |
 | congela_fiscale | boolean | NO | true |
 

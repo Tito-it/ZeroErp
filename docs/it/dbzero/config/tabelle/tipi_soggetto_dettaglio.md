@@ -9,18 +9,18 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| tipo_soggetto_id | character varying | NO |  |
-| stato_iso2 | character varying | NO |  |
-| codice_interno | character varying | NO |  |
-| descrizione | character varying | YES |  |
-| formato_cf | character varying | NO |  |
-| formato_piva | character varying | NO |  |
+| tipo_soggetto_id | character varying(10) | NO |  |
+| stato_iso2 | character varying(2) | NO |  |
+| codice_interno | character varying(10) | NO |  |
+| descrizione | character varying(100) | YES |  |
+| formato_cf | character varying(20) | NO |  |
+| formato_piva | character varying(20) | NO |  |
 | user_insert | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | user_update | text | YES |  |
 | data_update | timestamp with time zone | YES |  |
 | stato_id | bigint | YES |  |
-| dati_societari_policy | USER-DEFINED | NO | 'NONE'::config.dati_societari_policy_enum |
+| dati_societari_policy | config.dati_societari_policy_enum | NO | 'NONE'::config.dati_societari_policy_enum |
 | piva_obbligatoria | boolean | NO | false |
 | cf_obbligatorio | boolean | NO | false |
 

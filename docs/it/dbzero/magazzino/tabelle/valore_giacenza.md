@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
 | magazzino_id | bigint | NO |  |
-| valore | numeric | NO | 0 |
+| valore | numeric(18,6) | NO | 0 |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

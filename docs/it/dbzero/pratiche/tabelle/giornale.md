@@ -11,8 +11,8 @@
 | id | bigint | NO |  |
 | pratica_id | bigint | NO |  |
 | flusso_id | bigint | YES |  |
-| azione | character varying | NO |  |
-| origine | character varying | NO | 'SISTEMA'::character varying |
+| azione | character varying(50) | NO |  |
+| origine | character varying(20) | NO | 'SISTEMA'::character varying |
 | dettaglio | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |

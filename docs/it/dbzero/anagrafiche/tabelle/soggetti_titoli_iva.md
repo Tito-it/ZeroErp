@@ -13,16 +13,16 @@
 | emittente_fiscale_id | bigint | NO |  |
 | tipo_titolo_iva_id | bigint | NO |  |
 | iva_id | integer | NO |  |
-| ambito | character varying | NO | 'TUTTO'::character varying |
+| ambito | character varying(16) | NO | 'TUTTO'::character varying |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |
-| protocollo | character varying | YES |  |
+| protocollo | character varying(64) | YES |  |
 | data_ricezione | date | YES |  |
-| riferimento | character varying | YES |  |
-| plafond | numeric | YES |  |
-| imponibile_utilizzato | numeric | NO | 0 |
+| riferimento | character varying(255) | YES |  |
+| plafond | numeric(15,2) | YES |  |
+| imponibile_utilizzato | numeric(15,2) | NO | 0 |
 | attivo | boolean | NO | true |
-| note | character varying | YES |  |
+| note | character varying(255) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |

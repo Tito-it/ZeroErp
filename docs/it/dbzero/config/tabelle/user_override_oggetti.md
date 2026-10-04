@@ -12,9 +12,9 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | auth_user_id | integer | NO |  |
-| app_label | character varying | NO |  |
-| model_name | character varying | NO |  |
-| livello | USER-DEFINED | NO |  |
+| app_label | character varying(100) | NO |  |
+| model_name | character varying(100) | NO |  |
+| livello | config.livello_accesso | NO |  |
 | motivo | text | YES |  |
 | valido_dal | date | YES | CURRENT_DATE |
 | valido_al | date | YES |  |

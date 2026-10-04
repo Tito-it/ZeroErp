@@ -12,15 +12,15 @@
 | soggetto_ruolo_conto_id | bigint | NO |  |
 | billing_account_id | bigint | YES |  |
 | istanza_utility_id | bigint | YES |  |
-| umr | character varying | NO |  |
-| schema | character varying | NO |  |
-| creditor_id | character varying | YES |  |
+| umr | character varying(35) | NO |  |
+| schema | character varying(8) | NO |  |
+| creditor_id | character varying(35) | YES |  |
 | data_firma | date | YES |  |
 | data_attivazione | date | YES |  |
 | data_revoca | date | YES |  |
-| stato | character varying | NO | 'IN_VALIDAZIONE'::character varying |
-| iban_snapshot | character varying | YES |  |
-| intestatario_snapshot | character varying | YES |  |
+| stato | character varying(16) | NO | 'IN_VALIDAZIONE'::character varying |
+| iban_snapshot | character varying(34) | YES |  |
+| intestatario_snapshot | character varying(140) | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |

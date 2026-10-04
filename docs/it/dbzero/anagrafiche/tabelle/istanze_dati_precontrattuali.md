@@ -12,8 +12,8 @@
 | istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | classe_utenza_id | integer | YES |  |
-| param_1_num | numeric | YES |  |
-| param_2_txt | character varying | YES |  |
+| param_1_num | numeric(18,6) | YES |  |
+| param_2_txt | character varying(80) | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |

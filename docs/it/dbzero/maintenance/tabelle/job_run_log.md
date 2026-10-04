@@ -16,7 +16,7 @@
 | error_detail | text | YES |  |
 | agent_host | text | YES | (inet_client_addr())::text |
 | run_uuid | uuid | NO | uuidv7() |
-| origine | character varying | NO | 'PGAGENT'::character varying |
+| origine | character varying(16) | NO | 'PGAGENT'::character varying |
 | meta | jsonb | NO | '{}'::jsonb |
 | processo_codice | text | YES |  |
 | auth_user_id | integer | YES |  |

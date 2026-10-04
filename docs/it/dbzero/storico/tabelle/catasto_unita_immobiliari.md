@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | valid_from | timestamp with time zone | NO | now() |
 | valid_to | timestamp with time zone | YES |  |
-| change_type | character | YES | 'A'::bpchar |
+| change_type | character(1) | YES | 'A'::bpchar |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | catasto_unita_immobiliari_id | bigint | NO |  |

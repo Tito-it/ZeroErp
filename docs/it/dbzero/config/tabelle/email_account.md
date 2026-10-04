@@ -9,17 +9,17 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
+| codice | character varying(50) | NO |  |
 | descrizione | text | NO |  |
 | unita_organizzativa_id | integer | YES |  |
-| smtp_host | character varying | NO |  |
+| smtp_host | character varying(255) | NO |  |
 | smtp_port | integer | NO | 587 |
 | smtp_use_tls | boolean | NO | true |
 | smtp_use_ssl | boolean | NO | false |
-| smtp_username | character varying | NO |  |
-| smtp_password_encrypted | character varying | NO |  |
-| email_from | character varying | NO |  |
-| email_reply_to | character varying | YES |  |
+| smtp_username | character varying(255) | NO |  |
+| smtp_password_encrypted | character varying(512) | NO |  |
+| email_from | character varying(255) | NO |  |
+| email_reply_to | character varying(255) | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |

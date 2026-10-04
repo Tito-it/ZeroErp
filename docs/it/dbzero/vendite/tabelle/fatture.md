@@ -12,7 +12,7 @@
 | uid | uuid | NO | uuidv7() |
 | registro_id | bigint | NO |  |
 | anno | smallint | YES |  |
-| serie | character varying | YES |  |
+| serie | character varying(8) | YES |  |
 | numero | bigint | YES |  |
 | data | date | NO | script.fn_data_operativa() |
 | tipo_doc_fiscale_id | bigint | YES |  |
@@ -21,15 +21,15 @@
 | billing_account_id | bigint | NO |  |
 | reseller_soggetto_ruolo_id | bigint | YES |  |
 | valuta_id | integer | YES |  |
-| tasso_cambio | numeric | NO | 1 |
+| tasso_cambio | numeric(18,8) | NO | 1 |
 | modalita_pagamento_id | integer | YES |  |
-| imponibile_tot | numeric | YES |  |
-| imposta_tot | numeric | YES |  |
+| imponibile_tot | numeric(18,6) | YES |  |
+| imposta_tot | numeric(18,6) | YES |  |
 | bollo_applicato | boolean | YES |  |
-| bollo_importo | numeric | YES |  |
-| arrotondamento_precedente | numeric | YES |  |
-| arrotondamento_attuale | numeric | YES |  |
-| totale_doc | numeric | YES |  |
+| bollo_importo | numeric(6,2) | YES |  |
+| arrotondamento_precedente | numeric(18,6) | YES |  |
+| arrotondamento_attuale | numeric(18,6) | YES |  |
+| totale_doc | numeric(18,6) | YES |  |
 | minimo | boolean | NO | false |
 | data_contabilizzazione | date | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -45,7 +45,7 @@
 | termine_pagamento_snapshot | jsonb | YES |  |
 | critical | boolean | NO | false |
 | totale_a_pagare | numeric | YES |  |
-| canale_origine | USER-DEFINED | NO | 'ADMIN'::config.canale_origine |
+| canale_origine | config.canale_origine | NO | 'ADMIN'::config.canale_origine |
 | emittente_snapshot | jsonb | YES |  |
 | cliente_snapshot | jsonb | YES |  |
 | utility_id | integer | YES |  |

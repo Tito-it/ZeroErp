@@ -11,8 +11,8 @@
 | id | bigint | NO |  |
 | sorgente_tipo_id | bigint | NO |  |
 | sorgente_uid | text | NO |  |
-| canale_codice | character varying | NO |  |
-| stato_canale | character varying | NO | 'APERTO'::character varying |
+| canale_codice | character varying(32) | NO |  |
+| stato_canale | character varying(16) | NO | 'APERTO'::character varying |
 | target_sorgente_tipo_id | bigint | YES |  |
 | target_sorgente_uid | text | YES |  |
 | motivo_blocco | text | YES |  |

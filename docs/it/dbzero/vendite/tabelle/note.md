@@ -5,11 +5,11 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| target_tipo | character varying | NO |  |
+| target_tipo | character varying(16) | NO |  |
 | target_id | bigint | NO |  |
 | target_riga_id | bigint | YES |  |
-| anchor_tipo | character varying | NO |  |
-| posizione | character varying | NO |  |
+| anchor_tipo | character varying(12) | NO |  |
+| posizione | character varying(12) | NO |  |
 | seq | integer | NO | 10 |
 | testo | text | YES |  |
 | testo_md | text | YES |  |

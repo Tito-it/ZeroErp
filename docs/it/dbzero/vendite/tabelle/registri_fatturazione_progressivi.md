@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | registro_id | bigint | NO |  |
 | anno | smallint | NO |  |
-| serie | character varying | NO | ''::character varying |
+| serie | character varying(8) | NO | ''::character varying |
 | last_numero | bigint | NO | 0 |
 | attivo | boolean | YES |  |
 | ultima_data | date | YES |  |

@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | pdp_id | bigint | NO |  |
-| tipo_operazione | character | NO |  |
+| tipo_operazione | character(1) | NO |  |
 | snapshot | jsonb | NO |  |
 | tx_id | uuid | NO |  |
 | valid_from | timestamp with time zone | NO | now() |

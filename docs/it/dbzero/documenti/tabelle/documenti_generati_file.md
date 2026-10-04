@@ -11,11 +11,11 @@
 | id | bigint | NO |  |
 | documento_generato_id | bigint | NO |  |
 | file_tipo_id | bigint | NO |  |
-| mime_type | character varying | NO |  |
+| mime_type | character varying(120) | NO |  |
 | file_name | text | NO |  |
 | file_size_bytes | bigint | NO |  |
 | storage_key | text | NO |  |
-| sha256 | character varying | NO |  |
+| sha256 | character varying(64) | NO |  |
 | ordinamento | integer | NO | 1 |
 | meta | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |

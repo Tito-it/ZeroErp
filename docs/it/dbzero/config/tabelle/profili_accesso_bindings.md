@@ -12,7 +12,7 @@
 | profilo_accesso_id | integer | NO |  |
 | unita_organizzativa_id | integer | YES |  |
 | identita_digitale_id | bigint | YES |  |
-| ruolo_applicativo | USER-DEFINED | YES |  |
+| ruolo_applicativo | config.ruolo_applicativo | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |

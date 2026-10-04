@@ -12,11 +12,11 @@
 | tipo_contatto_id | integer | NO |  |
 | soggetto_id | uuid | NO |  |
 | soggetto_ruolo_id | bigint | YES |  |
-| nominativo | character varying | NO |  |
-| email | character varying | YES |  |
-| telefono | character varying | YES |  |
-| cellulare | character varying | YES |  |
-| pec | character varying | YES |  |
+| nominativo | character varying(100) | NO |  |
+| email | character varying(100) | YES |  |
+| telefono | character varying(20) | YES |  |
+| cellulare | character varying(20) | YES |  |
+| pec | character varying(100) | YES |  |
 | note | text | YES |  |
 | user_insert | text | NO | CURRENT_USER |
 | user_update | text | NO | CURRENT_USER |
@@ -24,7 +24,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 | titolo_cortesia_id | integer | YES |  |
-| default_context | character varying | YES |  |
+| default_context | character varying(20) | YES |  |
 | tx_id | uuid | YES |  |
 | unita_organizzativa_id | integer | YES |  |
 | istanza_utility_id | bigint | YES |  |

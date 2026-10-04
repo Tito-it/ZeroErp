@@ -18,7 +18,7 @@
 | tx_id | uuid | YES |  |
 | snapshot | jsonb | YES |  |
 | tipo_operazione | smallint | YES |  |
-| change_type | character | NO | 'A'::bpchar |
+| change_type | character(1) | NO | 'A'::bpchar |
 | origine_schema | text | NO |  |
 | scope_emittente_fiscale_id | bigint | YES |  |
 

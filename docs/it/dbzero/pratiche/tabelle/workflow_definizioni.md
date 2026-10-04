@@ -12,7 +12,7 @@
 | tipo_prestazione_id | integer | NO |  |
 | emittente_fiscale_id | bigint | YES |  |
 | versione | integer | NO | 1 |
-| stato | character varying | NO | 'BOZZA'::character varying |
+| stato | character varying(20) | NO | 'BOZZA'::character varying |
 | preset_origine_id | integer | YES |  |
 | versione_origine | integer | YES |  |
 | descrizione | text | NO |  |

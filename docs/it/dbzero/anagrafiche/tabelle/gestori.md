@@ -10,8 +10,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | soggetto_ruolo_id | bigint | NO |  |
-| descrizione | character | NO |  |
-| cd_prod_software | character | NO |  |
+| descrizione | character(50) | NO |  |
+| cd_prod_software | character(20) | NO |  |
 | valuta_id | integer | NO |  |
 | user_insert | text | NO | CURRENT_USER |
 | user_update | text | NO | CURRENT_USER |

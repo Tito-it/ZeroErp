@@ -15,7 +15,7 @@
 | competenza_mese | date | NO |  |
 | periodo_dal | date | YES |  |
 | periodo_al | date | YES |  |
-| consumo_totale | numeric | YES |  |
+| consumo_totale | numeric(20,6) | YES |  |
 | uom_id | bigint | YES |  |
 | stato_calcolo | text | NO | 'OK'::text |
 | meta | jsonb | NO | '{}'::jsonb |

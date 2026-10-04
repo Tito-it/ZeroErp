@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | target_schema | text | NO |  |
 | target_table | text | NO |  |
-| key_columns | ARRAY | YES |  |
+| key_columns | text[] | YES |  |
 | valido_dal_col | text | NO | 'valido_dal'::text |
 | valido_al_col | text | NO | 'valido_al'::text |
 | range_bounds | text | NO | '[]'::text |
@@ -24,7 +24,7 @@
 | user_update | text | NO | CURRENT_USER |
 | range_col | text | YES |  |
 | where_predicate | text | YES |  |
-| key_expressions | ARRAY | YES |  |
+| key_expressions | text[] | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

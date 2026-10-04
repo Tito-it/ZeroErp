@@ -14,8 +14,8 @@
 | emittente_soggetto_ruolo_id | bigint | NO |  |
 | classe_utenza_id | integer | YES |  |
 | listino_id | bigint | NO |  |
-| tipo_variazione | character varying | YES |  |
-| valore_variazione | numeric | YES |  |
+| tipo_variazione | character varying(16) | YES |  |
+| valore_variazione | numeric(10,4) | YES |  |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |

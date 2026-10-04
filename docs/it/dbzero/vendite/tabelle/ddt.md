@@ -11,8 +11,8 @@
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
 | anno | smallint | YES |  |
-| serie | character varying | YES |  |
-| numero | character varying | YES |  |
+| serie | character varying(8) | YES |  |
+| numero | character varying(20) | YES |  |
 | data | date | NO | CURRENT_DATE |
 | stato_doc_ddt_id | bigint | NO |  |
 | mittente_soggetto_ruolo_id | bigint | YES |  |
@@ -22,14 +22,14 @@
 | aspetto_bene_id | bigint | YES |  |
 | modalita_addebito_trasporto_id | bigint | YES |  |
 | num_colli | integer | YES |  |
-| peso_lordo | numeric | YES |  |
-| peso_netto | numeric | YES |  |
-| volume | numeric | YES |  |
-| targa | character varying | YES |  |
-| autista | character varying | YES |  |
+| peso_lordo | numeric(18,3) | YES |  |
+| peso_netto | numeric(18,3) | YES |  |
+| volume | numeric(18,3) | YES |  |
+| targa | character varying(20) | YES |  |
+| autista | character varying(80) | YES |  |
 | data_ora_partenza | timestamp with time zone | YES |  |
 | data_ora_consegna_prev | timestamp with time zone | YES |  |
-| tracking_code | character varying | YES |  |
+| tracking_code | character varying(64) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |

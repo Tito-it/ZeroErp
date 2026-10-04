@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| seriale | character varying | NO |  |
+| seriale | character varying(64) | NO |  |
 | billing_account_id | bigint | YES |  |
 | data_stato | timestamp with time zone | NO | now() |
 | attivo | boolean | NO | true |

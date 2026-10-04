@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | auth_user_id | integer | NO |  |
-| secret_encrypted | character varying | NO |  |
+| secret_encrypted | character varying(512) | NO |  |
 | confermato | boolean | NO | false |
 | recovery_codes_hash | jsonb | NO | '[]'::jsonb |
 | ultimo_uso_at | timestamp with time zone | YES |  |

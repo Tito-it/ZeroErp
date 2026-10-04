@@ -9,20 +9,20 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| etichetta | character varying | NO |  |
-| etichetta_i18n_key | character varying | YES |  |
-| tipo_widget | USER-DEFINED | NO | 'kpi'::ui.tipo_widget |
+| codice | character varying(80) | NO |  |
+| etichetta | character varying(120) | NO |  |
+| etichetta_i18n_key | character varying(120) | YES |  |
+| tipo_widget | ui.tipo_widget | NO | 'kpi'::ui.tipo_widget |
 | deep_link | jsonb | YES |  |
-| contatore_key | character varying | YES |  |
+| contatore_key | character varying(120) | YES |  |
 | soglia | jsonb | YES |  |
 | area_id | integer | YES |  |
 | azione_id | integer | YES |  |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO |  |
+| user_insert | character varying(80) | NO |  |
 | data_update | timestamp with time zone | YES |  |
-| user_update | character varying | YES |  |
+| user_update | character varying(80) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

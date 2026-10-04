@@ -13,7 +13,7 @@
 | ragione_sociale | text | YES |  |
 | cognome | text | YES |  |
 | nome | text | YES |  |
-| sesso | character | YES | 'M'::bpchar |
+| sesso | character(1) | YES | 'M'::bpchar |
 | stato_id | integer | NO |  |
 | partita_iva | text | YES |  |
 | piva_gruppo_acquisto | text | YES |  |
@@ -33,8 +33,8 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
 | attivo | boolean | NO | true |
-| split_payment | character | NO | 'N'::bpchar |
-| cliente_pa | character | NO | 'N'::bpchar |
+| split_payment | character(1) | NO | 'N'::bpchar |
+| cliente_pa | character(1) | NO | 'N'::bpchar |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

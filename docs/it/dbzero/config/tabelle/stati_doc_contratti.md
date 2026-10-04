@@ -9,9 +9,9 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice_interno | character varying | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | YES |  |
+| codice_interno | character varying(32) | NO |  |
+| codice | character varying(32) | NO |  |
+| descrizione | character varying(120) | YES |  |
 | attivo | boolean | NO | true |
 | ordine | smallint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -21,8 +21,8 @@
 | user_update | text | YES | CURRENT_USER |
 | is_abortito | boolean | NO | false |
 | is_bozza | boolean | NO | false |
-| fase | character varying | NO |  |
-| esito | character varying | YES |  |
+| fase | character varying(20) | NO |  |
+| esito | character varying(50) | YES |  |
 | terminale | boolean | NO | false |
 | pdf_mode | character varying | NO |  |
 | pdf_allow_allegati | boolean | NO |  |

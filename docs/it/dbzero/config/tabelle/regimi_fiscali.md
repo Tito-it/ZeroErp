@@ -9,9 +9,9 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice_interno | character varying | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice_interno | character varying(40) | NO |  |
+| codice | character varying(40) | NO |  |
+| descrizione | character varying(255) | NO |  |
 | iva_per_cassa | boolean | NO | false |
 | annotazione_documento | text | YES |  |
 | attivo | boolean | NO | true |

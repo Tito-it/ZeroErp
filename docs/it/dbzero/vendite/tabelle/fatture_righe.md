@@ -12,13 +12,13 @@
 | fattura_id | bigint | NO |  |
 | riga_nr | integer | NO |  |
 | articolo_id | uuid | YES |  |
-| descrizione | character varying | NO |  |
+| descrizione | character varying(150) | NO |  |
 | uom_id | bigint | YES |  |
-| qta | numeric | NO |  |
-| prezzo_unitario | numeric | NO |  |
-| sconto_percentuale | numeric | YES | 0 |
+| qta | numeric(18,6) | NO |  |
+| prezzo_unitario | numeric(18,6) | NO |  |
+| sconto_percentuale | numeric(5,2) | YES | 0 |
 | iva_id | integer | YES |  |
-| esigibilita | character | YES |  |
+| esigibilita | character(1) | YES |  |
 | split_payment | boolean | YES |  |
 | dest_billing_account_id | bigint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -30,20 +30,20 @@
 | user_update | text | YES | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_riga | bigint | YES | 0 |
-| iva_natura | character varying | YES |  |
+| iva_natura | character varying(10) | YES |  |
 | sorgente_uid | uuid | YES |  |
-| imponibile_riga | numeric | NO |  |
+| imponibile_riga | numeric(18,6) | NO |  |
 | kit_key | text | YES |  |
-| kit_esposizione | character varying | YES |  |
+| kit_esposizione | character varying(40) | YES |  |
 | kit_articolo_padre_id | uuid | YES |  |
-| kit_descrizione_padre | character varying | YES |  |
+| kit_descrizione_padre | character varying(150) | YES |  |
 | riga_rettificata_id | bigint | YES |  |
-| aliquota_iva | numeric | YES |  |
+| aliquota_iva | numeric(5,2) | YES |  |
 | fattura_atto_id | bigint | YES |  |
 | riga_capofila_id | bigint | YES |  |
 | competenza_dal | date | NO |  |
 | competenza_al | date | NO |  |
-| kit_qta | numeric | YES |  |
+| kit_qta | numeric(18,6) | YES |  |
 | kit_uom_id | bigint | YES |  |
 
 ## 🔒 Vincoli

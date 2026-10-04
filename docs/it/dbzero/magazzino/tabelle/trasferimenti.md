@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
 | data | date | NO | CURRENT_DATE |
-| stato_trasferimento | character varying | NO | 'DRAFT'::character varying |
+| stato_trasferimento | character varying(16) | NO | 'DRAFT'::character varying |
 | magazzino_id_from | bigint | NO |  |
 | magazzino_id_to | bigint | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |

@@ -10,15 +10,15 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | magazzino_id | bigint | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | YES |  |
+| codice | character varying(64) | NO |  |
+| descrizione | character varying(120) | YES |  |
 | tipo_id | bigint | NO |  |
 | parent_id | bigint | YES |  |
-| area | character varying | YES |  |
-| corsia | character varying | YES |  |
-| scaffale | character varying | YES |  |
-| piano | character varying | YES |  |
-| posizione | character varying | YES |  |
+| area | character varying(32) | YES |  |
+| corsia | character varying(32) | YES |  |
+| scaffale | character varying(32) | YES |  |
+| piano | character varying(32) | YES |  |
+| posizione | character varying(32) | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |

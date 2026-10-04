@@ -10,8 +10,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(32) | NO |  |
+| descrizione | character varying(120) | NO |  |
 | indirizzo_dettaglio_id | bigint | NO |  |
 | attivo | boolean | NO | true |
 | predefinito | boolean | NO | false |

@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | soggetto_ruolo_id | bigint | NO |  |
-| codice | character varying | NO |  |
+| codice | character varying(32) | NO |  |
 | attivo | boolean | NO | true |
 | valuta_id | integer | YES |  |
 | modalita_pagamento_id | integer | YES |  |
@@ -18,11 +18,11 @@
 | fine_mese | boolean | YES |  |
 | split_payment | boolean | YES |  |
 | ritenuta_acconto | boolean | YES |  |
-| ritenuta_aliquota | numeric | YES |  |
-| regime_fiscale | character varying | YES |  |
+| ritenuta_aliquota | numeric(5,2) | YES |  |
+| regime_fiscale | character varying(8) | YES |  |
 | bollo_esente | boolean | YES |  |
-| canale_fe | character varying | YES |  |
-| pec_email | character varying | YES |  |
+| canale_fe | character varying(7) | YES |  |
+| pec_email | character varying(256) | YES |  |
 | rating | smallint | YES |  |
 | qualifica_scadenza | date | YES |  |
 | note | text | YES |  |

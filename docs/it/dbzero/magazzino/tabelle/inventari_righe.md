@@ -11,8 +11,8 @@
 | id | bigint | NO |  |
 | inventario_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| qta_contata | numeric | NO |  |
-| qta_sistema | numeric | YES |  |
+| qta_contata | numeric(18,6) | NO |  |
+| qta_sistema | numeric(18,6) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
@@ -23,7 +23,7 @@
 | ubicazione_id | bigint | YES |  |
 | lotto_id | bigint | YES |  |
 | asset_id | bigint | YES |  |
-| costo_unitario | numeric | YES |  |
+| costo_unitario | numeric(18,6) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

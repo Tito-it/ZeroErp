@@ -11,7 +11,7 @@
 | id | integer | NO |  |
 | profilo_accesso_id | integer | NO |  |
 | area_id | integer | NO |  |
-| livello | USER-DEFINED | NO | 'BLOCCATO'::config.livello_accesso |
+| livello | config.livello_accesso | NO | 'BLOCCATO'::config.livello_accesso |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |

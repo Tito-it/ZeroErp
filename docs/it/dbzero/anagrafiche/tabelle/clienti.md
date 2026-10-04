@@ -12,7 +12,7 @@
 | soggetto_ruolo_id | bigint | NO |  |
 | istanza_utility_id | bigint | NO |  |
 | modalita_pagamento_id | integer | YES |  |
-| codice_cliente_importato | character varying | YES |  |
+| codice_cliente_importato | character varying(30) | YES |  |
 | stato_cliente_id | integer | NO |  |
 | servizio_da_fatturare | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
@@ -27,8 +27,8 @@
 | data_sospensione | date | YES |  |
 | data_riattivazione | date | YES |  |
 | data_chiusura | date | YES |  |
-| garanzia_tipo | character | YES | 'D'::bpchar |
-| garanzia_importo | numeric | YES | 0 |
+| garanzia_tipo | character(1) | YES | 'D'::bpchar |
+| garanzia_importo | numeric(12,2) | YES | 0 |
 | periodo | daterange | YES |  |
 | termine_pagamento_id | bigint | YES |  |
 | billing_account_id | bigint | NO |  |

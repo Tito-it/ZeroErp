@@ -12,8 +12,8 @@
 | ddt_id | bigint | NO |  |
 | riga_nr | integer | NO |  |
 | articolo_id | uuid | NO |  |
-| descrizione | character varying | NO |  |
-| quantita | numeric | NO |  |
+| descrizione | character varying(150) | NO |  |
+| quantita | numeric(18,6) | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
@@ -21,9 +21,9 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
-| qta_operativa | numeric | YES |  |
+| qta_operativa | numeric(18,6) | YES |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | NO | 1 |
+| factor_to_base | numeric(18,6) | NO | 1 |
 | attivo | boolean | NO | true |
 | prezzo_unitario | numeric | YES |  |
 | sconto_percentuale | numeric | YES |  |

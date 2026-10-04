@@ -11,8 +11,8 @@
 | id | bigint | NO |  |
 | rettifica_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| qta_delta | numeric | NO |  |
-| motivo | character varying | YES |  |
+| qta_delta | numeric(18,6) | NO |  |
+| motivo | character varying(64) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
@@ -23,7 +23,7 @@
 | ubicazione_id | bigint | YES |  |
 | lotto_id | bigint | YES |  |
 | asset_id | bigint | YES |  |
-| costo_unitario | numeric | YES |  |
+| costo_unitario | numeric(18,6) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

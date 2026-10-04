@@ -12,10 +12,10 @@
 | ordine_id | bigint | NO |  |
 | riga_nr | integer | NO |  |
 | articolo_id | uuid | NO |  |
-| descrizione | character varying | NO |  |
-| quantita | numeric | NO |  |
-| prezzo_unitario | numeric | NO |  |
-| sconto_percentuale | numeric | YES | 0 |
+| descrizione | character varying(150) | NO |  |
+| quantita | numeric(18,6) | NO |  |
+| prezzo_unitario | numeric(18,6) | NO |  |
+| sconto_percentuale | numeric(5,2) | YES | 0 |
 | iva_id | integer | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |
@@ -28,9 +28,9 @@
 | sorgente_riga | bigint | YES | 0 |
 | stato_doc_ordine_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
-| qta_operativa | numeric | YES |  |
+| qta_operativa | numeric(18,6) | YES |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | NO | 1 |
+| factor_to_base | numeric(18,6) | NO | 1 |
 | attivo | boolean | NO | true |
 | preventivo_riga_id | bigint | YES |  |
 | data_consegna_richiesta_cliente | date | YES |  |

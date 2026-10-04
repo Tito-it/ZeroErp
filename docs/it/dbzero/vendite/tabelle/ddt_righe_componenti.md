@@ -19,9 +19,9 @@
 | qta_operativa | numeric | YES |  |
 | prezzo_unitario | numeric | YES |  |
 | iva_id | integer | YES |  |
-| origine_prezzo | character varying | YES |  |
+| origine_prezzo | character varying(30) | YES |  |
 | prezzo_resolver_context | jsonb | YES |  |
-| stato_approvazione_prezzo | USER-DEFINED | YES |  |
+| stato_approvazione_prezzo | config.stato_approvazione_prezzo | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | ordine | smallint | NO | 0 |

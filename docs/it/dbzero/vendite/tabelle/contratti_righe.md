@@ -11,13 +11,13 @@
 | id | bigint | NO |  |
 | contratto_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| tipo_erogazione | character varying | YES |  |
-| fonte_quantita_attesa | character varying | YES |  |
-| periodicita | character varying | YES |  |
-| generazione_canone | character varying | YES |  |
-| competenza_canone | character varying | YES |  |
-| prezzo_unitario | numeric | YES |  |
-| quantita | numeric | YES |  |
+| tipo_erogazione | character varying(16) | YES |  |
+| fonte_quantita_attesa | character varying(24) | YES |  |
+| periodicita | character varying(12) | YES |  |
+| generazione_canone | character varying(16) | YES |  |
+| competenza_canone | character varying(16) | YES |  |
+| prezzo_unitario | numeric(15,6) | YES |  |
+| quantita | numeric(18,6) | YES |  |
 | ordine | smallint | YES | 0 |
 | attivo | boolean | YES | true |
 | meta | jsonb | YES | '{}'::jsonb |
@@ -25,12 +25,12 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
-| qta_operativa | numeric | YES |  |
+| qta_operativa | numeric(18,6) | YES |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | YES |  |
+| factor_to_base | numeric(18,6) | YES |  |
 | tx_id | uuid | YES |  |
-| tipo_eccezione | USER-DEFINED | NO |  |
-| stato_approvazione_prezzo | USER-DEFINED | YES |  |
+| tipo_eccezione | vendite.tipo_eccezione_contratto | NO |  |
+| stato_approvazione_prezzo | config.stato_approvazione_prezzo | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
 
 ## 🔒 Vincoli

@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
 | data | date | NO | CURRENT_DATE |
-| stato_mag_rettifiche | character varying | NO | 'DRAFT'::character varying |
+| stato_mag_rettifiche | character varying(16) | NO | 'DRAFT'::character varying |
 | magazzino_id | bigint | NO |  |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |

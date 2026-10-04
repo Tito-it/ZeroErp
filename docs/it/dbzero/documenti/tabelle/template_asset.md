@@ -9,15 +9,15 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice | character varying | NO |  |
-| codice_interno | character varying | NO |  |
+| codice | character varying(120) | NO |  |
+| codice_interno | character varying(120) | NO |  |
 | descrizione | text | NO |  |
 | asset_tipo_id | bigint | NO |  |
-| mime_type | character varying | NO |  |
+| mime_type | character varying(120) | NO |  |
 | file_name | text | NO |  |
 | file_size_bytes | bigint | NO |  |
 | storage_key | text | NO |  |
-| sha256 | character varying | NO |  |
+| sha256 | character varying(64) | NO |  |
 | emittente_fiscale_id | bigint | NO |  |
 | valido_dal | date | NO | CURRENT_DATE |
 | valido_al | date | YES |  |
