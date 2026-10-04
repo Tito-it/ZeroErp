@@ -117,6 +117,12 @@ export const RICERCA = {
 // Centralizzato: cambiare qui per aggiornare tutte le date del sistema.
 export const DATE_FORMAT = 'dd/mm/yy'
 
+// Formato MESE (DatePicker con `view="month"`): MM/YYYY. ⭐ Regola del 2
+// (2026-10-04): due selettori del mese, uno con 'mm/yy' scritto sul posto
+// (lista contratti) e uno con DATE_FORMAT (accettazione preventivo), che
+// mostrava un giorno su un campo che non ne ha.
+export const MONTH_FORMAT = 'mm/yy'
+
 // Content tabs
 export const TABS = {
   MAX_OPEN: 10

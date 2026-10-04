@@ -52,11 +52,6 @@ E_VERSIONE_PUBBLICATA_IMMUTABILE = "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE"
 E_VERSIONE_DELETE_BLOCKED = "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED"
 E_VERSIONE_OVERLAP = "E_DOCUMENTI_VERSIONE_OVERLAP"
 
-# Whitelist set CHECK DDL.
-_FORMATI_VALIDI: frozenset[str] = frozenset({"HTML", "HTML_MARKDOWN_BLOCKS"})
-_PAGE_FORMATS_VALIDI: frozenset[str] = frozenset({"A4", "A3", "LETTER"})
-_PAGE_ORIENTATIONS_VALIDI: frozenset[str] = frozenset({"PORTRAIT", "LANDSCAPE"})
-
 # Chiavi ammesse in payload create versione (no `versione`/`stato` —
 # calcolati dal service; no `template_documento_id` — dal path).
 _CREATE_KEYS: frozenset[str] = frozenset({
@@ -118,6 +113,31 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
 }
 
 
+# I valori ammessi di formato del template, formato e orientamento della
+# pagina: la FK sui tre vocabolari (`documenti.formati_template`,
+# `formati_pagina`, `orientamenti_pagina`, chiave `codice_interno`).
+# ⛔ Nessuna copia dell'insieme qui: fino al 2026-10-04 erano tre `frozenset`
+#    accanto ai CHECK, e la copia del frontend era gia' divergente
+#    (brief-db-vocabolari-versione-template §2). Il rifiuto lo da' la FK.
+_FK_CONSTRAINTS: dict[str, tuple[str, str, str]] = {
+    "fk_template_documenti_versioni_formati_template": (
+        E_VALIDATION,
+        "Formato template non valido.",
+        "formato_template",
+    ),
+    "fk_template_documenti_versioni_formati_pagina": (
+        E_VALIDATION,
+        "Formato pagina non valido.",
+        "page_format",
+    ),
+    "fk_template_documenti_versioni_orientamenti_pagina": (
+        E_VALIDATION,
+        "Orientamento pagina non valido.",
+        "page_orientation",
+    ),
+}
+
+
 # Mapping CHECK constraint del DDL -> codici applicativi (frammento case-insensitive).
 _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "chk_template_documenti_versioni_versione_pos": (
@@ -127,18 +147,6 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "chk_template_documenti_versioni_stato": (
         E_VALIDATION,
         "Stato versione non valido.",
-    ),
-    "chk_template_documenti_versioni_formato": (
-        E_VALIDATION,
-        "Formato template non valido.",
-    ),
-    "chk_template_documenti_versioni_orientation": (
-        E_VALIDATION,
-        "Orientamento pagina non valido.",
-    ),
-    "chk_template_documenti_versioni_page_format": (
-        E_VALIDATION,
-        "Formato pagina non valido.",
     ),
     "chk_template_documenti_versioni_margini_non_neg": (
         E_VALIDATION,
@@ -211,6 +219,7 @@ class TemplateVersioniAdminService:
             map_integrity_error(
                 exc,
                 unique_constraints=_UNIQUE_CONSTRAINTS,
+                fk_constraints=_FK_CONSTRAINTS,
                 check_constraints=_CHECK_CONSTRAINTS,
                 fallback_code=E_VALIDATION,
                 fallback_message="Violazione vincolo DB su versione template.",
@@ -263,6 +272,7 @@ class TemplateVersioniAdminService:
             map_integrity_error(
                 exc,
                 unique_constraints=_UNIQUE_CONSTRAINTS,
+                fk_constraints=_FK_CONSTRAINTS,
                 check_constraints=_CHECK_CONSTRAINTS,
                 fallback_code=E_VALIDATION,
                 fallback_message="Violazione vincolo DB su versione template.",
@@ -405,6 +415,7 @@ class TemplateVersioniAdminService:
             map_integrity_error(
                 exc,
                 unique_constraints=_UNIQUE_CONSTRAINTS,
+                fk_constraints=_FK_CONSTRAINTS,
                 check_constraints=_CHECK_CONSTRAINTS,
                 fallback_code=E_VALIDATION,
                 fallback_message="Violazione vincolo DB nel clone versione.",
@@ -474,6 +485,7 @@ class TemplateVersioniAdminService:
                 map_integrity_error(
                     exc,
                     unique_constraints=_UNIQUE_CONSTRAINTS,
+                    fk_constraints=_FK_CONSTRAINTS,
                     check_constraints=_CHECK_CONSTRAINTS,
                     fallback_code=E_VALIDATION,
                     fallback_message="Violazione vincolo DB in pubblicazione versione.",
@@ -570,9 +582,9 @@ class TemplateVersioniAdminService:
         self, data: dict[str, Any], payload: dict[str, Any]
     ) -> None:
         if "formato_template" in payload:
-            value = self._v.require_string(payload, "formato_template", max_len=30)
-            self._validate_in_set(value, _FORMATI_VALIDI, "formato_template")
-            data["formato_template"] = value
+            data["formato_template"] = self._v.require_string(
+                payload, "formato_template", max_len=30
+            )
         if "css_template" in payload:
             v = payload["css_template"]
             data["css_template"] = (
@@ -588,15 +600,13 @@ class TemplateVersioniAdminService:
                 )
             )
         if "page_format" in payload:
-            value = self._v.require_string(payload, "page_format", max_len=30)
-            self._validate_in_set(value, _PAGE_FORMATS_VALIDI, "page_format")
-            data["page_format"] = value
-        if "page_orientation" in payload:
-            value = self._v.require_string(payload, "page_orientation", max_len=20)
-            self._validate_in_set(
-                value, _PAGE_ORIENTATIONS_VALIDI, "page_orientation"
+            data["page_format"] = self._v.require_string(
+                payload, "page_format", max_len=30
             )
-            data["page_orientation"] = value
+        if "page_orientation" in payload:
+            data["page_orientation"] = self._v.require_string(
+                payload, "page_orientation", max_len=20
+            )
         for key in (
             "margin_top_mm", "margin_right_mm", "margin_bottom_mm", "margin_left_mm",
         ):
@@ -622,18 +632,6 @@ class TemplateVersioniAdminService:
             m = self._v.optional_meta(payload)
             if m is not None:
                 data["meta"] = m
-
-    # Scopo: Verifica che `value` sia in `whitelist`, altrimenti solleva
-    #        E_DOCUMENTI_VALIDATION con elenco ammessi.
-    def _validate_in_set(
-        self, value: str, whitelist: frozenset[str], field: str
-    ) -> None:
-        if value not in whitelist:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message=f"Valore '{field}' non valido.",
-                detail=f"ammessi={sorted(whitelist)!r} ricevuto={value!r}",
-            )
 
 
 def _coerce_non_negative_number(value: Any, *, field: str) -> int | float:

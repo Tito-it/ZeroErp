@@ -14,6 +14,7 @@ import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { exportContratti } from '../api/contratti'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { defaultFiltroDataDa } from '../../core/utils/date'
+import { MONTH_FORMAT } from '../../core/constants'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
@@ -213,7 +214,7 @@ onMounted(() => {
                filtro a se', non un estremo di periodo. -->
           <DatePicker v-model="scadenzaMeseFilter" :placeholder="t('vendite.contratti.filtro_scadenza_mese')"
             class="app-filter-w-sm"
-            view="month" date-format="mm/yy" show-icon show-button-bar
+            view="month" :date-format="MONTH_FORMAT" show-icon show-button-bar
             :min-date="new Date()"
             @update:modelValue="onScadenzaMeseChange" />
         </FiltriLista>

@@ -4698,7 +4698,7 @@ Soggetto, indirizzi, contatti, conti bancari e geografia: fino al 2026-09-26 sta
 
 | Utility | Scopo | Esempio d'uso |
 | --- | --- | --- |
-| `date.js` → `toDateString(d)` | Converte Date/string in 'YYYY-MM-DD' (ora locale, no bug UTC) | TemplateVersioniSection |
+| `date.js` → `toDateString(d)` | Converte Date/string in 'YYYY-MM-DD' (ora locale, no bug UTC). ⛔ Mai `toISOString()` su una data del DatePicker: è la mezzanotte locale, in UTC diventa il giorno prima (la scadenza qualifica del fornitore si salvava così, corretto il 2026-10-04). Presidio: `core/utils/datePresidio.spec.js` (nessun `toISOString()` fuori da `date.js`) | TemplateVersioniSection |
 | `segnoFiltri.js` → `segnoFiltri(filtri, chiavi, defaults, neutri)` | Il segno dei filtri attivi in una funzione pura → `{stato, conteggio, modificato}`: niente / numero grigio (solo default) / numero blu. ⭐ `modificato` esce perché «niente restringe» e «c'è qualcosa da riportare al default» sono due domande diverse, e i valori neutri le hanno separate: la seconda è ciò che tiene vivo «Pulisci filtri» | `FiltriLista` |
 | `clonaFiltri.js` → `clonaValore` / `clonaFiltri` / `congelaProfondo` | Stacca un valore di filtro dal letterale che lo dichiara. ⛔ Lo spread e `Object.freeze` sono di **primo livello**: un default ad array resterebbe condiviso per riferimento, e il primo `push` del widget sposterebbe il metro insieme alla cosa misurata | `useContrattoFiltriLista` |
 
@@ -4707,7 +4707,7 @@ Soggetto, indirizzi, contatti, conti bancari e geografia: fino al 2026-09-26 sta
 | Costante | Scopo |
 | --- | --- |
 | `DRAWER_WIDTH` | Larghezze drawer: SIMPLE, STANDARD, COMPLEX, WIDE, WIDE_PLUS, XLARGE (§«Larghezze standard») |
-| `DATE_FORMAT` | Formato data PrimeVue DatePicker (`dd/mm/yy`). ⛔ Sede unica: ogni `DatePicker` lo riceve come `:date-format="DATE_FORMAT"`, e il locale di PrimeVue (`core/primevue-locale.js`) lo usa come default — fino al 2026-10-03 il letterale era scritto a mano in 27 punti |
+| `DATE_FORMAT` | Formato data PrimeVue DatePicker (`dd/mm/yy`). ⛔ Sede unica: ogni `DatePicker` lo riceve come `:date-format="DATE_FORMAT"`, e il locale di PrimeVue (`core/primevue-locale.js`) lo usa come default — fino al 2026-10-03 il letterale era scritto a mano in 27 punti. ⭐ Il selettore del **mese** (`view="month"`) riceve `MONTH_FORMAT` (`mm/yy`), mai `DATE_FORMAT` (mostrerebbe un giorno su un campo che non ne ha; regola del 2, 2026-10-04). Presidio: `core/utils/datePresidio.spec.js` (nessun formato letterale fuori da `constants.js`/`primevue-locale.js`) |
 | `TOAST_DURATION` | Durata toast: SUCCESS, INFO, WARN, ERROR, ERROR_CON_SOLUZIONE, SYSTEM_ERROR, AZIONI (§«Notifiche») |
 | `TABS` | Max tab aperti |
 | `BREAKPOINTS` | Breakpoint responsive (MOBILE, TABLET) |

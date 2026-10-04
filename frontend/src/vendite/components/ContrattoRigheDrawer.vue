@@ -46,6 +46,7 @@ import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../co
 import { displayDate } from '../../core/utils/date'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
+import { fontiPerErogazione, fonteDefaultPerErogazione } from '../_shared/righe/fontiQuantitaErogazione'
 import {
   previewRigaComponenti,
   listRigaComponenti as listContrattoRigaComponenti,
@@ -342,46 +343,10 @@ const tipoErogazioneOptions = computed(() => [
   { value: TIPO_EROGAZIONE.UNA_TANTUM, label: t('vendite.contratti.tipo_erogazione_una_tantum') },
 ])
 
-// Refactor 2026-05-19: matrice (tipo_erogazione × fonte_quantita_attesa).
-// Le fonti vietate (CHECK chk_contrighe_coerenza_fonte_erogazione, migration
-// 20260519-05) NON appaiono nelle liste — il Select e' filtrato per tipo.
-// severity: 'warn' = uso atipico (🟡 nella matrice), undefined = valida.
-// default: true = scelta predefinita pre-compilata in CREATE.
-// TIMESHEET commentato finche' il modulo rendicontazione ore non esistera'.
-// Riferimento: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §3.
-const FONTI_PER_TIPO_EROGAZIONE = {
-  [TIPO_EROGAZIONE.CANONE]: [
-    { value: FONTE_QUANTITA_ATTESA.FISSA, default: true },
-    { value: FONTE_QUANTITA_ATTESA.MANUALE, severity: 'warn' },
-    { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
-  ],
-  [TIPO_EROGAZIONE.UNA_TANTUM]: [
-    { value: FONTE_QUANTITA_ATTESA.FISSA, default: true },
-    { value: FONTE_QUANTITA_ATTESA.MANUALE },
-    { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
-  ],
-  [TIPO_EROGAZIONE.ORARIO]: [
-    { value: FONTE_QUANTITA_ATTESA.FISSA, severity: 'warn' },
-    { value: FONTE_QUANTITA_ATTESA.MANUALE, default: true },
-    // { value: FONTE_QUANTITA_ATTESA.TIMESHEET },  // attivare quando il modulo timesheet esistera'
-    { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI, severity: 'warn' },
-  ],
-  [TIPO_EROGAZIONE.CONSUMO]: [
-    { value: FONTE_QUANTITA_ATTESA.MANUALE },
-    { value: FONTE_QUANTITA_ATTESA.LETTURE, default: true },
-    { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
-  ],
-}
-
-function _fontiPerTipo(tipo) {
-  return FONTI_PER_TIPO_EROGAZIONE[tipo] || []
-}
-
-function _defaultFontePerTipo(tipo) {
-  return _fontiPerTipo(tipo).find(f => f.default)?.value ?? null
-}
-
-const fonteQuantitaOptions = computed(() => _fontiPerTipo(form.value?.tipo_erogazione).map(f => ({
+// La matrice erogazione × fonte (quali fonti, quale default, quali atipiche)
+// e' il BB `fontiQuantitaErogazione`, condiviso con le eccezioni di offerta:
+// le fonti vietate dal CHECK non appaiono nella tendina.
+const fonteQuantitaOptions = computed(() => fontiPerErogazione(form.value?.tipo_erogazione).map(f => ({
   value: f.value,
   label: t(`vendite.contratti.fonte_quantita_value_${f.value.toLowerCase()}`),
   severity: f.severity,
@@ -404,17 +369,20 @@ const showQtaOperativa = computed(() => form.value?.fonte_quantita_attesa === FO
 // piu' ambiguita' "che tipo voglio creare?". Default AGGIUNTA: l'azione
 // toolbar e' il punto di ingresso piu' generico.
 function defaultForm(overrides = {}) {
-  const tipo = overrides.tipo_erogazione || TIPO_EROGAZIONE.CANONE
+  // ⛔ L'erogazione parte VUOTA ed e' obbligatoria (brief-db-erogazione-
+  // obbligatoria-righe-fatturate, 2026-10-04): una riga che si fattura dice
+  // come si eroga, e la sceglie l'operatore. Fino a quel giorno partiva da
+  // CANONE, un valore che nessuno aveva scelto.
+  const tipo = overrides.tipo_erogazione ?? null
   return {
     articolo_id: null,
     articolo_obj: null,
     tipo_eccezione: TIPO_ECCEZIONE.AGGIUNTA,
     tipo_erogazione: tipo,
     // Refactor 2026-05-19: fonte derivata dalla matrice in base al tipo
-    // (default = FISSA per CANONE/UNA_TANTUM). Il BE applica lo stesso
-    // default se assente (defense-in-depth), ma pre-compilare in UI
-    // rende esplicita la scelta predefinita all'utente.
-    fonte_quantita_attesa: _defaultFontePerTipo(tipo),
+    // (default = FISSA per CANONE/UNA_TANTUM). Senza tipo resta vuota: la
+    // riempie il watch sotto quando l'operatore sceglie l'erogazione.
+    fonte_quantita_attesa: fonteDefaultPerErogazione(tipo),
     prezzo_unitario: null,
     qta_operativa: 1,
     uom_operativa_id: null,
@@ -451,9 +419,9 @@ watch(() => props.visible, (v) => {
 // del nuovo tipo solo quando necessario.
 watch(() => form.value?.tipo_erogazione, (nuovoTipo, vecchioTipo) => {
   if (!nuovoTipo || nuovoTipo === vecchioTipo) return
-  const fontiValide = _fontiPerTipo(nuovoTipo).map(f => f.value)
+  const fontiValide = fontiPerErogazione(nuovoTipo).map(f => f.value)
   if (!fontiValide.includes(form.value.fonte_quantita_attesa)) {
-    form.value.fonte_quantita_attesa = _defaultFontePerTipo(nuovoTipo)
+    form.value.fonte_quantita_attesa = fonteDefaultPerErogazione(nuovoTipo)
   }
 })
 
@@ -583,7 +551,8 @@ function _onEditRigaPersistita(r) {
       // tipo_eccezione: immutabile (lock di colonna a DB, 2026-10-04).
       // Mostrato come Tag readonly nel template form. NOT NULL: niente ripiego.
       tipo_eccezione: r.tipo_eccezione,
-      tipo_erogazione: r.tipo_erogazione || TIPO_EROGAZIONE.CANONE,
+      // Com'e' scritta: OVERRIDE e AGGIUNTA ce l'hanno per vincolo DB (2026-10-04).
+      tipo_erogazione: r.tipo_erogazione,
       // fonte_quantita_attesa NOT NULL (20260519-05): niente ripiego.
       fonte_quantita_attesa: r.fonte_quantita_attesa,
       // Il prezzo scritto sulla riga di `contratti_righe`.
@@ -647,6 +616,9 @@ const canSave = computed(() => {
   if (isReadonly.value) return false
   if (!formMode.value) return false
   if (!form.value.articolo_id) return false
+  // Erogazione obbligatoria: il form vede solo OVERRIDE e AGGIUNTA, righe che
+  // si fatturano (guard DB E_RIGA_EROGAZIONE_OBBLIGATORIA).
+  if (!form.value.tipo_erogazione) return false
   // L'UdM e' la misura della QUANTITA': obbligatoria dove la riga ha una
   // quantita' (fonte FISSA). Una riga senza quantita' puo' non averla
   // (`contratti_righe.uom_operativa_id` nullable: vale la base dell'articolo),
@@ -1078,9 +1050,11 @@ function origineSeverity(origine) {
             />
         </div>
         <div class="form-field">
-          <label>{{ t('vendite.contratti.field_tipo_erogazione') }}</label>
+          <label>{{ t('vendite.contratti.field_tipo_erogazione') }} *</label>
           <Select v-model="form.tipo_erogazione" :options="tipoErogazioneOptions"
-            option-label="label" option-value="value" />
+            option-label="label" option-value="value"
+            :placeholder="t('vendite.contratti.select_tipo_erogazione')"
+            :invalid="campiErrati.includes('tipo_erogazione')" />
         </div>
       </div>
 

@@ -34,6 +34,8 @@
 #  17. clone_copia_la_forma_dei_dati (2026-09-30)
 #  18. pubblica_passa_la_forma_del_builder_del_template (2026-09-30)
 #  19. pubblica_builder_non_registrato_rifiutata (2026-09-30)
+#  20. update_valori_di_vocabolario_vanno_al_db_senza_copia (2026-10-04)
+#  21. update_fk_vocabolario_mappata_sul_campo (2026-10-04)
 #
 #  `versione_contesto` (brief-db-documenti-versione-contesto-template): la
 #  forma dei dati che la versione legge. Obbligatoria in create, cambia solo
@@ -301,6 +303,49 @@ class TemplateVersioniAdminServiceUpdateTests(SimpleTestCase):
             svc.update_versione(_make_user(), 1, 11, {})
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.update_versione.assert_not_called()
+
+
+    # 20. Formato del sorgente, formato e orientamento della pagina: nessuna
+    #     copia dell'insieme nel service (brief-db-vocabolari-versione-template,
+    #     R-BE-V1). Un valore che il vocabolario non ha arriva al DB com'e':
+    #     il giudice e' la FK. `A5` e `MARKDOWN` sono quelli che la copia del
+    #     frontend offriva e il DB rifiutava (§2 del brief).
+    def test_update_valori_di_vocabolario_vanno_al_db_senza_copia(self) -> None:
+        svc, repo, _ = _service_with_mocks(
+            repo_methods={"update_versione": True},
+            reader_methods={"get_versione": dict(_BOZZA_VERSIONE)},
+        )
+        payload = {
+            "formato_template": "MARKDOWN",
+            "page_format": "A5",
+            "page_orientation": "OBLIQUO",
+        }
+        svc.update_versione(_make_user(), 1, 11, dict(payload))
+        self.assertEqual(repo.update_versione.call_args.args[1], payload)
+
+    # 21. La FK di ciascun vocabolario, violata, e' un 400 sul suo campo: il
+    #     form accende l'input giusto. Fino al 2026-10-04 la mappa nominava i
+    #     tre CHECK, ritirati dal DB: la violazione sarebbe caduta nel
+    #     ripiego senza campo.
+    def test_update_fk_vocabolario_mappata_sul_campo(self) -> None:
+        casi = {
+            "fk_template_documenti_versioni_formati_template": "formato_template",
+            "fk_template_documenti_versioni_formati_pagina": "page_format",
+            "fk_template_documenti_versioni_orientamenti_pagina": "page_orientation",
+        }
+        for vincolo, campo in casi.items():
+            with self.subTest(vincolo=vincolo):
+                svc, repo, _ = _service_with_mocks(
+                    reader_methods={"get_versione": dict(_BOZZA_VERSIONE)},
+                )
+                repo.update_versione.side_effect = IntegrityError(
+                    'insert or update on table "template_documenti_versioni" '
+                    f'violates foreign key constraint "{vincolo}"'
+                )
+                with self.assertRaises(ServiceError) as ctx:
+                    svc.update_versione(_make_user(), 1, 11, {campo: "X"})
+                self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+                self.assertEqual(ctx.exception.context.get("field"), campo)
 
 
 class TemplateVersioniAdminServiceDeleteTests(SimpleTestCase):

@@ -7,7 +7,7 @@
 > **Origine:** il seguito di `brief-db-contratto-esclusione-non-modificabile` (stessa giornata): chiusa
 > l'esclusione, restava la riga che si fattura senza dire come.
 > **Stato:** ✅ **DB chiuso** il 2026-10-04: applicato (`20261004-30…-33` + due CSV), pgTAP verdi
-> nella corsa di Tid (§7). ⏳ Resta BE/FE (§6).
+> nella corsa di Tid (§7). ✅ **BE/FE scritto** il 2026-10-04 (§8), non committato.
 
 ## 1. La regola
 
@@ -217,4 +217,26 @@ il DB ricostruito da zero:
 1. ✅ Scritti e applicati da Tid `20261004-30…-33` e i due CSV (scratch: `EXECUTED` 18:27).
 2. ✅ Prova sullo scratch dopo l'apply (§5.6).
 3. ✅ Migrazione applicata e pgTAP verdi nella corsa di Tid (2026-10-04).
-4. ⏳ BE/FE (§6).
+4. ✅ BE/FE (§6): scritto il 2026-10-04, vedi §8.
+
+## 8. Consegna BE/FE (2026-10-04)
+
+| Pezzo | Cosa |
+| --- | --- |
+| Codice | `genera_error_policies`: la sola voce nuova, `DATO_ERRATO`, zero classi mosse. Ripiego senza `%s` in `error_messages_fallback.py` |
+| Service | **nessuna pre-validazione**, come chiede il §6: parla il DB. Il codice strutturato vince nei due mapper (`_map_db_errors` del contratto, `translate_db_errors` dell'offerta) e il campo arriva in `error.fields` |
+| Test BE | `vendite/tests/db/test_righe_erogazione_obbligatoria_db` (nuovo, DB vero, mondo costruito): create senza erogazione e PATCH che la toglie, su contratto e su offerta. Ognuno asserisce codice **e** campo `tipo_erogazione` |
+| `ContrattoRigheDrawer` | in creazione l'erogazione parte **vuota** e obbligatoria (asterisco, `canSave`, segnaposto): niente `CANONE` precompilato. In modifica si legge com'è scritta: tolto il ripiego `r.tipo_erogazione \|\| CANONE`. Bordo rosso dal campo dell'errore (`campiErrati`) |
+| `OffertaEccezioniDrawer` | stessa regola, obbligatoria solo se il tipo non è `ESCLUSIONE` (qui l'esclusione passa dal form). Tolti i ripieghi di erogazione e fonte in `fromRow`. Con l'erogazione vuota la tendina delle fonti mostra tutte le fonti della matrice: la fonte resta NOT NULL, e una tendina vuota non avrebbe lasciato salvare l'esclusione |
+| i18n | `select_tipo_erogazione` in `vendite.contratti` e `vendite.offerte` (it, en) |
+| Commesse | `commesse_repository` chiama il lister e basta: niente dipendeva dalle righe ESCLUSIONE |
+| Doc | `api_contratti.md` e `api_offerte.md`: il vincolo nelle regole delle righe, il codice nella tassonomia |
+
+Verifica: test BE vendite + core (3924) con `ZEROERP_TEST_DB_E2E=1` verdi; vitest 662/662; eslint e build
+puliti; `check_i18n_keys` senza problemi nuovi (i 7 rossi `documenti.formati_pagina.*` c'erano già).
+
+⚠️ Da sapere: sull'**esclusione dell'offerta** il form chiede ancora una fonte quantità, che per
+un'esclusione non vuol dire niente. La vogliono il `NOT NULL` del DB e il service
+(`crea_eccezione` la richiede). Non toccato: fa parte della regola «vietare o lasciare libera
+l'erogazione sull'esclusione», fuori perimetro (§4).
+

@@ -30,11 +30,7 @@ import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPrese
 import { DRAWER_WIDTH } from '../../core/constants'
 import { parseIsoDate } from '../../core/utils/date'
 import { payloadVersione } from '../utils/templateVersionePayload'
-import {
-  FORMATI_TEMPLATE,
-  PAGE_FORMATS,
-  PAGE_ORIENTATIONS,
-} from '../constants/documentiVersioniWhitelists'
+import { useLookupEtichettato } from '../../core/composables/useLookupEtichettato'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import TemplateAssetRiferimenti from './TemplateAssetRiferimenti.vue'
@@ -61,15 +57,20 @@ const { t } = useI18n()
 const store = useTemplateVersioniStore()
 const { execute, loading, campiErrati } = useApiHandler()
 
-const formatOptions = computed(() => PAGE_FORMATS.map(v => ({ label: v, value: v })))
-const orientationOptions = computed(() =>
-  PAGE_ORIENTATIONS.map(v => ({
-    label: t(`config.modelli_documenti.versioni.orientation_${v.toLowerCase()}`),
-    value: v,
-  })),
+// Formato del sorgente, formato e orientamento della pagina: i tre
+// vocabolari a DB (brief-db-vocabolari-versione-template), con l'etichetta
+// che il DB dichiara riga per riga. Il valore e' il `codice_interno`, la
+// chiave che la FK della versione valida.
+// ⛔ Fino al 2026-10-04 erano tre array copiati dai CHECK, e la copia era
+//    gia' divergente (offriva `MARKDOWN` e `A5`, che il DB rifiutava).
+const { opzioni: formatoTemplateOptions } = useLookupEtichettato(
+  { rel: 'documenti.formati_template' }, { campoCodice: 'codice_interno' },
 )
-const formatoTemplateOptions = computed(() =>
-  FORMATI_TEMPLATE.map(v => ({ label: v, value: v })),
+const { opzioni: formatOptions } = useLookupEtichettato(
+  { rel: 'documenti.formati_pagina' }, { campoCodice: 'codice_interno' },
+)
+const { opzioni: orientationOptions } = useLookupEtichettato(
+  { rel: 'documenti.orientamenti_pagina' }, { campoCodice: 'codice_interno' },
 )
 
 // Lo stato della versione letta: solo una BOZZA si modifica.

@@ -41,7 +41,10 @@ import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constant
 import { displayDate } from '../../../core/utils/date'
 import { rowComponenti, hasBundleComponenti } from '../../_shared/componenti/rowComponenti'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
-import { FONTE_QUANTITA_ATTESA, TIPO_ECCEZIONE, TIPO_EROGAZIONE } from '../../constants'
+import { TIPO_ECCEZIONE, TIPO_EROGAZIONE } from '../../constants'
+import {
+  FONTI_PER_TIPO_EROGAZIONE, fontiPerErogazione, fonteDefaultPerErogazione,
+} from '../../_shared/righe/fontiQuantitaErogazione'
 import {
   previewEccezioneComponenti,
   listEccezioneComponenti,
@@ -191,33 +194,18 @@ const tipoErogazioneOptions = [
   { value: TIPO_EROGAZIONE.CONSUMO, label: t('vendite.offerte.tipo_erogazione_consumo') },
 ]
 
-// Matrice tipo_erogazione → fonti ammesse (specchio ridotto della logica
-// di contratti_righe; il CHECK DB applica gli stessi vincoli su
-// offerte_commerciali_eccezioni).
-const _FONTI_PER_TIPO = {
-  [TIPO_EROGAZIONE.CANONE]: [
-    { value: FONTE_QUANTITA_ATTESA.FISSA, default: true },
-    { value: FONTE_QUANTITA_ATTESA.MANUALE },
-    { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
-  ],
-  [TIPO_EROGAZIONE.UNA_TANTUM]: [
-    { value: FONTE_QUANTITA_ATTESA.FISSA, default: true },
-    { value: FONTE_QUANTITA_ATTESA.MANUALE },
-    { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
-  ],
-  [TIPO_EROGAZIONE.CONSUMO]: [
-    { value: FONTE_QUANTITA_ATTESA.MANUALE },
-    { value: FONTE_QUANTITA_ATTESA.LETTURE, default: true },
-    { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
-  ],
-}
+// La matrice erogazione × fonte e' il BB `fontiQuantitaErogazione`,
+// condiviso con le righe di contratto (stessi CHECK sulle due tabelle).
+// Senza erogazione (ammessa solo sull'ESCLUSIONE, che non si fattura) le
+// fonti sono tutte quelle della matrice: la fonte resta NOT NULL a DB, e una
+// tendina vuota non lascerebbe salvare ne' mostrerebbe il valore scritto.
+const _TUTTE_LE_FONTI = [
+  ...new Set(Object.values(FONTI_PER_TIPO_EROGAZIONE).flat().map((f) => f.value)),
+].map((value) => ({ value }))
 
 function _fontiPerTipo(tipo) {
-  return _FONTI_PER_TIPO[tipo] || []
-}
-
-function _defaultFontePerTipo(tipo) {
-  return _fontiPerTipo(tipo).find((f) => f.default)?.value ?? null
+  if (!tipo) return _TUTTE_LE_FONTI
+  return fontiPerErogazione(tipo)
 }
 
 const fonteOptions = computed(() => _fontiPerTipo(form.value?.tipo_erogazione).map((f) => ({
@@ -266,8 +254,12 @@ function newForm() {
     tipo_eccezione: TIPO_ECCEZIONE.OVERRIDE,
     articolo_id: null,
     articolo_obj: null,
-    tipo_erogazione: TIPO_EROGAZIONE.CANONE,
-    fonte_quantita_attesa: _defaultFontePerTipo(TIPO_EROGAZIONE.CANONE),
+    // ⛔ Vuota e obbligatoria su OVERRIDE/AGGIUNTA (brief-db-erogazione-
+    // obbligatoria-righe-fatturate, 2026-10-04): la sceglie l'operatore. Fino a
+    // quel giorno partiva da CANONE, un valore che nessuno aveva scelto. La
+    // fonte la riempie il watch quando l'erogazione c'e'.
+    tipo_erogazione: null,
+    fonte_quantita_attesa: null,
     prezzo_unitario: null,
     qta_operativa: null,
     uom_operativa_id: null,
@@ -288,9 +280,10 @@ function fromRow(row) {
           is_composito: row.is_composito === true,
         }
       : null,
-    tipo_erogazione: row.tipo_erogazione || TIPO_EROGAZIONE.CANONE,
-    fonte_quantita_attesa: row.fonte_quantita_attesa
-      || _defaultFontePerTipo(row.tipo_erogazione || TIPO_EROGAZIONE.CANONE),
+    // Come sono scritte: l'erogazione manca solo su un'ESCLUSIONE, la fonte e'
+    // NOT NULL. Niente ripieghi.
+    tipo_erogazione: row.tipo_erogazione,
+    fonte_quantita_attesa: row.fonte_quantita_attesa,
     prezzo_unitario: row.prezzo_unitario,
     qta_operativa: row.qta_operativa,
     uom_operativa_id: row.uom_operativa_id,
@@ -336,7 +329,7 @@ watch(() => form.value?.tipo_erogazione, (nuovoTipo) => {
   if (!nuovoTipo || !form.value) return
   const fontiValide = _fontiPerTipo(nuovoTipo).map((f) => f.value)
   if (!fontiValide.includes(form.value.fonte_quantita_attesa)) {
-    form.value.fonte_quantita_attesa = _defaultFontePerTipo(nuovoTipo)
+    form.value.fonte_quantita_attesa = fonteDefaultPerErogazione(nuovoTipo)
   }
 })
 
@@ -371,12 +364,19 @@ function onArticoloSelected(item) {
   caricaUomConPickBase(item.id)
 }
 
+const erogazioneObbligatoria = computed(
+  () => form.value?.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE,
+)
+
 const canSave = computed(() => {
   if (isReadonly.value) return false
   const f = form.value
   if (!f) return false
   if (!f.tipo_eccezione) return false
   if (!f.articolo_id) return false
+  // Erogazione obbligatoria sulle righe che si fatturano (guard DB
+  // E_RIGA_EROGAZIONE_OBBLIGATORIA); l'ESCLUSIONE non si fattura.
+  if (erogazioneObbligatoria.value && !f.tipo_erogazione) return false
   if (!f.fonte_quantita_attesa) return false
   // Blocco CREATE su articolo composito finche' la ComponentiDialog non
   // ha confermato i prezzi componenti (mirror contratti). In EDIT i
@@ -704,12 +704,14 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
 
       <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('vendite.offerte.field_tipo_erogazione') }}</label>
+          <label>{{ t('vendite.offerte.field_tipo_erogazione') }}<span v-if="erogazioneObbligatoria"> *</span></label>
           <Select
             v-model="form.tipo_erogazione"
             :options="tipoErogazioneOptions"
             option-label="label"
             option-value="value"
+            :placeholder="t('vendite.offerte.select_tipo_erogazione')"
+            :invalid="campiErrati.includes('tipo_erogazione')"
             show-clear
           />
         </div>

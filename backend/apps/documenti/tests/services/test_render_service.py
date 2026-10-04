@@ -13,7 +13,11 @@
 #         - integrazione WeasyPrint: chiamata avviene con HTML rendered
 #           + CSS opzionale; eccezione interna -> E_DOCUMENTI_RENDER_FAILED;
 #           bytes vuoti -> errore parlante;
-#         - css_template assente -> stylesheets None (no CSS).
+#         - css_template assente -> resta la sola regola della pagina;
+#         - la PAGINA dalle colonne della versione (R-BE-V2, 2026-10-04):
+#           regola composta, campi mancanti o non validi fermano il render,
+#           e sulla libreria vera le colonne vincono sull'`@page` del
+#           template (CSS e `<style>` dell'HTML).
 #
 # Indice test (0..N):
 #   0. render_pdf_happy_path_jinja_e_weasyprint_invocati
@@ -26,7 +30,7 @@
 #   7. render_pdf_weasyprint_exception_mapped
 #   8. render_pdf_weasyprint_empty_output_raises
 #   9. render_pdf_jinja_supporta_for_loop
-#  10. render_pdf_css_opzionale_none_quando_assente
+#  10. render_pdf_css_assente_resta_la_regola_della_pagina
 #  11. render_pdf_weasyprint_native_dep_mancante_mapped
 #  12. render_pdf_jinja_escapa_html_nei_valori_del_context
 #  13. rifiuto_inghiottito_da_weasyprint_ferma_il_render
@@ -43,13 +47,21 @@
 #  22. css_import_ciclico_fermato_dal_tetto
 #  23. svg_annidato_che_punta_a_file_rifiutato
 #  24. molte_immagini_data_non_toccano_il_tetto
+#  La pagina dalle colonne della versione (R-BE-V2, 2026-10-04):
+#  25. regola_pagina_dalle_colonne
+#  26. campo_di_pagina_mancante_ferma_il_render
+#  27. valore_di_pagina_non_identificatore_rifiutato
+#  28. [libreria vera] a3_orizzontale_vince_sull_at_page_del_template (R-BE-V2b)
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 import base64
 import builtins
+import re
 import types
+import zlib
+from decimal import Decimal
 from typing import Any
 from unittest import TestCase, skipUnless
 from unittest.mock import MagicMock, patch
@@ -109,12 +121,22 @@ def _versione(
     css: str | None = "body { font-family: sans-serif; }",
     engine: str = "WEASYPRINT",
     versione_id: int = 99,
+    **pagina: Any,
 ) -> dict[str, Any]:
+    # I campi della pagina sono NOT NULL a DB: la versione finta li porta
+    # tutti, coi default delle colonne; `pagina` li sovrascrive.
     return {
         "id": versione_id,
         "html_template": html,
         "css_template": css,
         "render_engine_codice_interno": engine,
+        "page_format": "A4",
+        "page_orientation": "PORTRAIT",
+        "margin_top_mm": Decimal("10"),
+        "margin_right_mm": Decimal("10"),
+        "margin_bottom_mm": Decimal("10"),
+        "margin_left_mm": Decimal("10"),
+        **pagina,
     }
 
 
@@ -334,8 +356,9 @@ class RenderPdfWeasyPrintTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_RENDER_FAILED")
         self.assertIn("vuoto", ctx.exception.message.lower())
 
-    # 10. css_template None/vuoto -> stylesheets=None passato a write_pdf.
-    def test_render_pdf_css_opzionale_none_quando_assente(self) -> None:
+    # 10. css_template None/vuoto: nessun foglio del template, resta la sola
+    #     regola della pagina composta dalle colonne.
+    def test_render_pdf_css_assente_resta_la_regola_della_pagina(self) -> None:
         fake_html_instance = MagicMock()
         fake_html_instance.write_pdf.return_value = b"PDF"
         fake_html = MagicMock(return_value=fake_html_instance)
@@ -349,9 +372,10 @@ class RenderPdfWeasyPrintTests(TestCase):
                 context={"nome": "x"},
                 risolvi_asset=_nessun_asset,
             )
-        # write_pdf invocato con stylesheets=None (no CSS).
         kwargs = fake_html_instance.write_pdf.call_args.kwargs
-        self.assertIsNone(kwargs.get("stylesheets"))
+        self.assertEqual(len(kwargs.get("stylesheets")), 1)
+        fake_css.assert_called_once()
+        self.assertIn("@page", fake_css.call_args.kwargs["string"])
 
     # 13. WeasyPrint in qualche punto inghiotte il rifiuto anche con
     #     `fail_on_errors` (es. `SVGImage.draw` cattura BaseException): il PDF
@@ -533,3 +557,107 @@ class RenderPdfFetcherLibreriaVeraTests(TestCase):
         pdf = self._render(immagini)
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertEqual(self.chiamate, [])
+
+
+# Scopo: le dimensioni (in punti) della prima pagina di un PDF di WeasyPrint.
+#        Le pagine stanno in object stream compressi: si decomprimono gli
+#        stream (stdlib) e si legge il primo `/MediaBox`.
+def _mediabox(pdf: bytes) -> tuple[float, float]:
+    testi = [pdf]
+    for flusso in re.findall(rb"stream\r?\n(.*?)\r?\nendstream", pdf, re.S):
+        try:
+            testi.append(zlib.decompress(flusso))
+        except zlib.error:
+            continue
+    for testo in testi:
+        m = re.search(rb"/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)", testo)
+        if m:
+            x0, y0, x1, y1 = (float(v) for v in m.groups())
+            return x1 - x0, y1 - y0
+    raise AssertionError("MediaBox non trovato nel PDF")
+
+
+class RenderPdfPaginaTests(TestCase):
+    """La pagina la decidono le colonne della versione (R-BE-V2, D-1 strada A,
+    R-BE-V2a di Tid del 2026-10-04)."""
+
+    # 25. La regola composta: formato e orientamento dai codici del
+    #     vocabolario, margini in mm nell'ordine CSS (top right bottom left),
+    #     tutto `!important` (vedi `_regola_pagina`).
+    def test_regola_pagina_dalle_colonne(self) -> None:
+        regola = render_service._regola_pagina(_versione(
+            page_format="A3", page_orientation="LANDSCAPE",
+            margin_top_mm=Decimal("15.00"), margin_right_mm=Decimal("16.5"),
+            margin_bottom_mm=0, margin_left_mm="18",
+        ))
+        self.assertEqual(
+            regola,
+            "@page { size: A3 LANDSCAPE !important;"
+            " margin: 15.00mm 16.5mm 0mm 18mm !important; }",
+        )
+
+    # 26. Un campo della pagina assente e' una proiezione rotta: niente A4 di
+    #     ripiego, il render si ferma e WeasyPrint non parte.
+    @patch("apps.documenti.services.render_service._render_with_weasyprint")
+    def test_campo_di_pagina_mancante_ferma_il_render(self, mock_weasy) -> None:
+        for campo in render_service._CAMPI_PAGINA:
+            with self.subTest(campo=campo):
+                with self.assertRaises(ServiceError) as ctx:
+                    render_service.render_pdf(
+                        template_versione=_versione(**{campo: None}),
+                        context={"nome": "x"},
+                        risolvi_asset=_nessun_asset,
+                    )
+                self.assertEqual(ctx.exception.code, "E_DOCUMENTI_RENDER_FAILED")
+                self.assertIn(campo, ctx.exception.detail)
+        mock_weasy.assert_not_called()
+
+    # 27. Il codice finisce in un foglio CSS: un valore che non e' un
+    #     identificatore (qui una regola in piu') si rifiuta, come un margine
+    #     negativo o non numerico.
+    def test_valore_di_pagina_non_identificatore_rifiutato(self) -> None:
+        for pagina in (
+            {"page_format": "A4; } body { display: none"},
+            {"page_orientation": "LANDSCAPE !important"},
+            {"margin_top_mm": Decimal("-1")},
+            {"margin_left_mm": "dieci"},
+        ):
+            with self.subTest(pagina=pagina):
+                with self.assertRaises(ServiceError) as ctx:
+                    render_service._regola_pagina(_versione(**pagina))
+                self.assertEqual(ctx.exception.code, "E_DOCUMENTI_RENDER_FAILED")
+
+    # 28. R-BE-V2b, sulla libreria vera: una versione A3 orizzontale esce A3
+    #     orizzontale anche se il template dichiara `@page { size: A4 }` sia
+    #     nel CSS sia in uno `<style>` dell'HTML — il caso che fino al
+    #     2026-10-04 usciva A4 verticale senza errore. Lo `<style>` e' il
+    #     caso duro: e' origine author, e senza `!important` vincerebbe.
+    @skipUnless(_weasyprint_disponibile(), "WeasyPrint o le dipendenze native mancano")
+    def test_a3_orizzontale_vince_sull_at_page_del_template(self) -> None:
+        html = (
+            "<html><head><style>@page { size: A4 portrait; margin: 18mm }</style>"
+            "</head><body><p>{{ nome }}</p></body></html>"
+        )
+        css = "@page { size: A4 portrait; margin: 18mm 16mm; }"
+        pdf = render_service.render_pdf(
+            template_versione=_versione(
+                html=html, css=css, page_format="A3", page_orientation="LANDSCAPE",
+            ),
+            context={"nome": "x"},
+            risolvi_asset=_nessun_asset,
+        )
+        larghezza, altezza = _mediabox(pdf)
+        mm = 25.4 / 72
+        self.assertAlmostEqual(larghezza * mm, 420, delta=0.5)
+        self.assertAlmostEqual(altezza * mm, 297, delta=0.5)
+
+        # E la versione A4 verticale resta A4 verticale.
+        pdf = render_service.render_pdf(
+            template_versione=_versione(html=html, css=css),
+            context={"nome": "x"},
+            risolvi_asset=_nessun_asset,
+        )
+        larghezza, altezza = _mediabox(pdf)
+        self.assertAlmostEqual(larghezza * mm, 210, delta=0.5)
+        self.assertAlmostEqual(altezza * mm, 297, delta=0.5)
+

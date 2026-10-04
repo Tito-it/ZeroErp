@@ -15,6 +15,7 @@ import { useCodiceField } from '../../core/composables/useCodiceField'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, DATE_FORMAT } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { statoFornitoreSeverity } from '../../core/utils/severity'
+import { toDateString } from '../../core/utils/date'
 import SoggettoResolver from './SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import SoggettoPreviewBadges from './SoggettoPreviewBadges.vue'
@@ -150,9 +151,10 @@ function buildEditablePayload() {
     canale_fe: f.canale_fe || null,
     pec_email: f.pec_email || null,
     rating: f.rating,
-    qualifica_scadenza: f.qualifica_scadenza
-      ? (f.qualifica_scadenza instanceof Date ? f.qualifica_scadenza.toISOString().slice(0, 10) : f.qualifica_scadenza)
-      : null,
+    // ⛔ Mai `toISOString()` su una data: il DatePicker da' la mezzanotte
+    //    LOCALE, e in UTC diventa il giorno prima — fino al 2026-10-04 la
+    //    scadenza si salvava un giorno prima di quella scelta.
+    qualifica_scadenza: toDateString(f.qualifica_scadenza),
     note: f.note || null,
   }
   if (isEdit.value) {

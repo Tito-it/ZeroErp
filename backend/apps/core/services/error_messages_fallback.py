@@ -506,7 +506,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_IVA_CONTO_ACQ_ERR": "Il conto indicato per l'IVA acquisti non e' un conto di tipo Acquisto.",
     "E_IVA_CONTO_VEN_ERR": "Il conto indicato per l'IVA vendite non e' un conto di tipo Vendita.",
     "E_IVA_PAESE_NON_IMPLEMENTATO": "Il trattamento IVA per il paese di questo emittente non e' ancora implementato.",
-    "E_IVA_RESOLVE_NON_INVOCABILE": "Risoluzione IVA invocata senza i dati necessari, o su un articolo che non esiste.",
+    "E_IVA_RESOLVE_NON_INVOCABILE": "Risoluzione IVA invocata con un parametro assente o non valido.",
     "E_IVA_TITOLI_AMBIGUI": "Su questa riga ricadono due o piu' titoli IVA del soggetto con la stessa specificita': il trattamento non e' determinabile. Restringere l'ambito di uno dei titoli, o chiuderne uno.",
     "E_IVA_TRATTAMENTO_IMMUTABILE": "Aliquota e natura di un codice IVA non si modificano: cambiarle riscriverebbe il trattamento dei documenti gia' emessi. Per un trattamento diverso si crea un codice nuovo.",
     # ⚠️ SENZA segnaposto: a catalogo il messaggio nomina il tipo di job e il
@@ -1034,6 +1034,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RIGA_CONTABILE_TARDIVA_STATO": "La riga contabile non e' sospesa: in ritardo si registra solo una riga sospesa.",
     "E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA": "La riga contabile non puo' passare a quello stato.",
     "E_RIGA_DOC_NON_BOZZA": "Il documento non e' piu' in bozza: le sue righe si possono aggiungere, modificare o togliere solo finche' e' in bozza.",
+    "E_RIGA_EROGAZIONE_OBBLIGATORIA": "Manca il tipo di erogazione: una riga che si fattura deve dire se e' un canone, una tantum, a ore o a consumo.",
     "E_RIGA_GIA_FATTURATA": "Riga gia' fatturata.",
     "E_RIGA_LISTINO_PROPAGATA": "Riga listino gia' propagata a valle: operazione non ammessa.",
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "Modifica righe listino non consentita: la versione non e' in stato BOZZA.",
