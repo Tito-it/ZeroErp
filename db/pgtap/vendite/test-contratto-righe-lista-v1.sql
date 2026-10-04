@@ -31,7 +31,7 @@
 --    2) ogni riga ha una chiave, e sono tutte diverse
 --    3) A: chiave L:<articolo>:<uom>, azioni sovrascrivi/escludi, nessun blocco
 --    4) B (OVERRIDE): modifica / ripristina il listino
---    5) C (ESCLUSIONE): modifica / ripristina l'articolo
+--    5) C (ESCLUSIONE): il solo ripristina l'articolo (rev 2026-10-04)
 --    6) X (AGGIUNTA): chiave A:<id della riga>, modifica / rimuovi
 --    7) ⭐ F: «Escludi» spento con FIGLIO_DI_BUNDLE
 --    8) la check su F: codice a catalogo, reason, reason_key
@@ -171,8 +171,11 @@ SELECT is(
 
 SELECT is(
     (SELECT azioni FROM tmp_crl_lista WHERE articolo_id = pg_temp.art('C') AND origine = 'ESCLUSIONE'),
-    ARRAY['MODIFICA', 'RIPRISTINA_ARTICOLO'],
-    '5) C escluso: modifica / ripristina l''articolo');
+    -- rev 2026-10-04 (brief-db-contratto-esclusione-non-modificabile, R1): un'esclusione
+    -- si crea e si cancella, non si modifica. Il rifiuto dell'UPDATE lo prova
+    -- test-contratto-esclusione-non-modificabile-v1.
+    ARRAY['RIPRISTINA_ARTICOLO'],
+    '5) C escluso: il solo ripristina l''articolo, niente modifica');
 
 SELECT ok(
     (SELECT riga_key = 'A:' || (SELECT id FROM tmp_crl_x)::text

@@ -172,12 +172,33 @@ INSERT/UPDATE/DELETE in ATTIVO, CESSATO e ANNULLATO → `E_RIGA_DOC_NON_BOZZA`.
 La copia dedicata ai contratti (che bloccava il solo ATTIVO) è stata ritirata il
 2026-09-22; il codice 452 resta al lock della testata.
 
+#### Un'esclusione non si modifica (2026-10-04)
+
+Una riga `ESCLUSIONE` dice una cosa sola: il contratto non vende quell'articolo
+del listino. Si crea (Escludi) e si cancella (Ripristina articolo, `DELETE`), e
+basta: prezzo, quantità, UoM, erogazione e fonte non la riguardano. Il trigger
+`trg_contratti_righe_a05_guard_esclusione_immutabile_upd`
+(→ [`trgfn_contratti_righe_guard_esclusione_immutabile`](/dbzero/vendite/funzioni/trgfn_contratti_righe_guard_esclusione_immutabile))
+rifiuta ogni `UPDATE` che cambi qualcosa di diverso dalle colonne tecniche →
+`E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE`. Anche `attivo`: un'esclusione spenta
+terrebbe occupato il posto dell'articolo in `uq_contrighe_one_eccezione_per_articolo`.
+
+#### Il tipo di una riga non si cambia (2026-10-04)
+
+`tipo_eccezione` è bloccato da un lock di colonna (registro
+`dbops.automation_lock_columns`) → `E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE`.
+Ogni tipo ha i suoi dati e i suoi controlli, che valgono quando la riga nasce:
+un `OVERRIDE` portato a `ESCLUSIONE` sul posto creerebbe un'esclusione senza
+passare da Escludi. Per cambiare tipo si elimina la riga e se ne crea una nuova.
+
 ---
 
 ### Vincoli e trigger rilevanti
 
 * **FK principali**: contratto, articolo, UoM operativa.
 * **Trigger**:
+  * `trg_contratti_righe_a05_guard_esclusione_immutabile_upd` — una riga ESCLUSIONE non si modifica (2026-10-04).
+  * lock di colonna su `tipo_eccezione` (generato dal registro `dbops.automation_lock_columns`, 2026-10-04).
   * `trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd` — blocca AGGIUNTA per articoli già in listino (Step 2.2).
   * `trg_contratti_righe_a10_default_fonte_qta_ins_upd` — normalizza `fonte_quantita_attesa` al default su INSERT e su UPDATE con tipo cambiato (20260519-06; ri-bindato alla funzione generica `script.trgfn_righe_default_fonte_qta` in 20260531-10).
   * `trg_contratti_righe_a10_qta_from_operativa_ins_upd` — calcolo quantita base da operativa.
@@ -192,6 +213,7 @@ La copia dedicata ai contratti (che bloccava il solo ATTIVO) è stata ritirata i
 * Impostare `tipo_erogazione` e `fonte_quantita_attesa` in modo coerente con la logica di calcolo.
 * Inserire in `meta` i soli parametri non coperti da colonne core.
 * Disattivare una riga (`attivo = false`) solo dopo aver gestito le note collegate.
+* Un'esclusione non si disattiva e non si modifica: si cancella («Ripristina articolo»).
 
 ---
 
