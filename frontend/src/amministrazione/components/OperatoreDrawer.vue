@@ -168,9 +168,11 @@ const formSalvato = computed(() => ({
 }))
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
 
-// Tab Permessi: ha i suoi Salva e la sua fotografia (espone `modificato` e
-// `chiudiConConferma`). Chiudere il drawer chiede conferma se UNO dei due ha
-// modifiche, con un solo dialog.
+// Tab Permessi: ha la sua fotografia e il suo Salva (espone `modificato`,
+// `chiudiConConferma`, `salva`, `puoSalvare`, `salvando`). Il footer e' uno:
+// sulla scheda Permessi Salva chiama `salva` della scheda, sui Dati `onSave`.
+// Chiudere il drawer chiede conferma se UNO dei due ha modifiche, con un
+// solo dialog.
 const permessiTab = ref(null)
 const tutto = unisciFotografie({ modificato, chiudiConConferma }, () => permessiTab.value)
 const modificatoTutto = tutto.modificato
@@ -399,6 +401,9 @@ const activeTab = ref('dati')
 // ℹ️ `XLARGE` è la taglia che la costante dedica alle «matrici
 // parametri-per-entità (utility, slot/override)»; il drawer dedicato
 // `OperatorePermessiDrawer` usa la stessa.
+// La scheda Permessi ha il suo Salva: il footer lo chiama quando e' attiva.
+const suPermessi = computed(() => activeTab.value === 'permessi')
+
 const larghezzaDrawer = computed(() =>
   activeTab.value === 'permessi' ? DRAWER_WIDTH.XLARGE : DRAWER_WIDTH.COMPLEX
 )
@@ -451,8 +456,10 @@ function onInvita() {
 <template>
   <!-- Il chrome e' di AppDrawer dal 2026-10-03
        (work-done/analisi-fe-chrome-drawer.md). -->
-  <!-- Il footer segue la scheda: Annulla/Salva fisso sui Dati, «Chiudi» sui
-       Permessi, dove ogni sezione ha il suo Salva. La larghezza pure
+  <!-- Il footer segue la scheda: era Annulla/Salva sui Dati e «Chiudi» sui
+       Permessi — sostituito il 2026-10-04: ora Annulla/Salva su tutte e due
+       le schede, e sui Permessi il Salva e' quello della scheda (§7.4 del
+       brief-db-permessi-tetto-area). La larghezza pure
        (`larghezzaDrawer`: XLARGE sui permessi, COMPLEX altrove). -->
   <AppDrawer
     :visible="props.visible"
@@ -463,12 +470,12 @@ function onInvita() {
     :readonly="isReadonly"
     :modificato="modificatoTutto"
     :conferma-uscita="tutto.chiudiConConferma"
-    :footer="activeTab === 'dati' ? 'form' : 'chiudi'"
-    :loading="loading || creazione.loading.value"
-    :save-disabled="!canSave"
+    footer="form"
+    :loading="suPermessi ? !!permessiTab?.salvando : (loading || creazione.loading.value)"
+    :save-disabled="suPermessi ? !permessiTab?.puoSalvare : !canSave"
     @update:visible="(v) => emit('update:visible', v)"
     @cancel="emit('cancelled')"
-    @save="onSave"
+    @save="suPermessi ? permessiTab?.salva() : onSave()"
   >
     <Tabs v-model:value="activeTab">
       <TabList>

@@ -10,6 +10,8 @@
 > **Stato:** ✅ **DB chiuso il 2026-10-04**: applicato da Tid (`20261004-40…-49`, `-70…-76` e i tre
 > CSV), pgTAP verdi nella sua corsa (§7). Due stop all'apply, corretti prima che il changeSet
 > entrasse (§5.7). ⏳ Resta il giro BE/FE (§6).
+> ✅ **BE/FE primo giro** fatto il 2026-10-04 (§9); il resto aspetta il §8.
+> ⏳ **Secondo giro DB richiesto** il 2026-10-04 dalla sessione BE/FE, decisione di Tid: §8.
 > **Da leggere per primo:** §6 (che cosa resta al BE/FE), poi §5.6 (la decisione R5a «lock
 > pieno», e che cosa comporta).
 
@@ -347,3 +349,70 @@ le ho adeguate leggendo il codice, le verifica solo la corsa su dbdev.
 3. ✅ pgTAP lanciati da Tid: verdi (2026-10-04), comprese le suite dell'offerta che lo scratch non
    sapeva eseguire.
 4. ⏳ BE/FE (§6). Quando è chiuso, il brief va in `work-done/`.
+
+## 8. Secondo giro DB — richiesta della sessione BE/FE (2026-10-04)
+
+> **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-04. **A chi:** team DB.
+> **Decisione:** di Tid, 2026-10-04: le due cose qui sotto si fanno adesso, in questo brief (niente
+> brief nuovo). Il resto del §6 lo fa il BE/FE senza aspettare.
+
+### 8.1 R-DB2-A — La lista delle righe dell'offerta, configurabile come quella del contratto
+
+Risponde a R-BE-5 (§6). Il drawer dell'offerta passa da una `DataTable` in memoria sulla tabella cruda
+a `DrawerTabLista`, come il contratto: stessa ricerca, export, colonne, verbi del DB.
+
+* Registrare la lista configurabile **`vendite.offerta_righe`** sulla funzione
+  `vendite.fn_offerta_righe_preview(offerta_id)`: `ui.lista_definizione`, `lista_colonna`, `lista_preset`.
+* **Stesse colonne, stesso ordine e stesso preset** di `vendite.contratto_righe` (lista 103):
+  `articolo_codice`, `articolo_descrizione`, `qta_operativa`, `prezzo_finale`, `override_prezzo`,
+  `uom_codice`, `tipo_erogazione`, `prezzo_listino`, `origine`, `azioni` (`tipo_colonna = azione`).
+  Stessi attributi (`multi_emittente`, `perimetro_emittente`, `ricerca_min_caratteri`) salvo una
+  ragione di modello, da scrivere.
+* Le chiavi i18n delle intestazioni: le stesse della 103 se il DB le condivide, altrimenti l'elenco
+  delle nuove, che il FE scrive nello stesso giro.
+
+Lato BE/FE, a consegna fatta: `OffertaRigheListaRepository` (`RigheListaMixin` su
+`fn_offerta_righe_preview`), le view `…/righe/lista/` ed export con `build_lista_figlia_views`, e il
+drawer su `DrawerTabLista`.
+
+### 8.2 R-DB2-B — I quattro punti del §5.8, chiusi
+
+| # | Cosa | Perché |
+| --- | --- | --- |
+| B1 | 🟠 **`fn_crea_revisione_offerta` copia anche `offerte_commerciali_eccezioni_componenti`**, con il remapping sulle eccezioni nuove; il commento della funzione («non ha tabelle figlie che richiedano remapping») va corretto | una revisione di un'offerta con un bundle nasce senza componenti, e il push la porta così nel contratto: difetto di modello, non di simmetria |
+| B2 | **Scale uguali fra le gemelle**: `prezzo_unitario` e `fonte_quantita_attesa` (e ogni altra colonna che il confronto trovasse diversa) con lo stesso tipo sulle due tabelle. Quale delle due scale vince lo decide il team DB sul modello | il push copia 1:1: un valore valido sull'offerta può fallire sul contratto |
+| B3 | **Lock «solo in bozza» sui componenti**, contratto e offerta: `trgfn_doc_righe_lock_fuori_bozza` (o la forma che il team DB ritiene giusta per una tabella nipote) su `contratti_righe_componenti` e `offerte_commerciali_eccezioni_componenti` | oggi li protegge di fatto il ricalcolo della riga madre (§5.6): è un effetto, non una regola |
+| B4 | **`contratti_righe.attivo` e `meta` NOT NULL** come sull'offerta (default già presenti) | simmetria fra le gemelle |
+
+pgTAP costruiti per ognuno: la revisione di un'offerta con un bundle porta i componenti (e il push li
+porta nel contratto); un valore al limite della scala passa da offerta a contratto; un componente fuori
+bozza rifiutato, sulle due tabelle; `attivo`/`meta` a NULL rifiutati sul contratto.
+
+Ricadute BE/FE attese: nessuna su B1, B2, B4. B3: un codice nuovo, se nasce, da registrare.
+
+## 9. Consegna BE/FE, primo giro (2026-10-04)
+
+Tutto il §6 che non dipende dal §8.
+
+| # | Fatto |
+| --- | --- |
+| R-BE-1 | `E_RIGA_ESCLUSIONE_CON_DATI` generato (`DATO_ERRATO`, zero classi mosse) e col ripiego senza `%s` |
+| R-BE-2 | ripieghi neutri per `E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE`, `E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE`, `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO`; policy rigenerate |
+| R-BE-3 | «Escludi» del contratto manda solo `articolo_id` e `tipo_eccezione`. Offerta: il service non pretende più la fonte in create (come il contratto, che non l'ha mai pretesa), e neppure lo schema OpenAPI; il form non mostra e non manda i dati di fatturazione sull'esclusione. Nessuna pre-validazione: parla il DB — ritirato anche il 400 dei due service sul **prezzo** di un'esclusione in create (stessa regola, altro codice), provato sul DB vero da `test_contratto_esclusione_con_prezzo_rifiutata_col_campo`. Offerta: un'esclusione aperta dalla lista si vede in sola lettura (anche `ordine`/`attivo`: il guard `_a05_` rifiuta ogni colonna) |
+| R-BE-4 | `OffertaEccezioneRow`: `fonte_quantita_attesa` e `factor_to_base` diventano `str \| None`. Gli altri lettori (stampe, commesse, push, assistente AI) non toccano la fonte; i due drawer la leggono già con guardia. Commenti «NOT NULL» corretti (drawer contratto, `constants.js`) |
+| R-BE-6 | nessun cambio: il controllo di bozza del service resta e parla prima. Il percorso «approva/rifiuta prezzo» dell'offerta non guarda lo stato, ma una riga in attesa non esiste su un'offerta emessa (l'emissione la blocca), e ora il DB rifiuta comunque |
+| Test | `test_contratto_esclusione_non_modificabile_db` riscritto sulle due tabelle (6 test, DB vero, mondo importato dal test gemello dell'erogazione): «Escludi» crea la riga vuota; un dato rifiutato col campo; il PATCH rifiutato. Due test mock dell'offerta non mandano più la fonte sull'esclusione |
+| Service, create | `contratti_service` non pre-valida piu' il prezzo di un'ESCLUSIONE in create (il 400 `E_VENDITE_VALIDATION`): e' uno dei dieci dati che il guard DB rifiuta col campo; il test mock ora prova che la richiesta arriva al repository |
+| Drawer offerta, modifica | un'esclusione aperta in modifica ha i campi spenti, il salvataggio spento e l'avviso `vendite.offerte.esclusione_non_modificabile` (it, en) |
+| Doc | `api_contratti.md`, `api_offerte.md`, `modello-contratti.md`: funzioni ritirate sostituite dalle generiche, regola «esclusione vuota», codice nuovo, le regole del contratto ora anche sull'offerta. Commenti BE con nomi vecchi corretti (anche `trgfn_contratti_righe_guard_pending` → `script.trgfn_righe_guard_pending`) |
+
+⏳ **Transitorio dichiarato, fino al §8.1**: sull'offerta l'esclusione si crea ancora dal form (vuota),
+perché «Escludi» nasce dalle righe del listino, che il drawer vedrà solo con la lista nuova. Allo stesso
+modo il click su un'esclusione dell'offerta apre ancora il form, ma in sola lettura con l'avviso: la regola
+la decide il DB (il salvataggio risponderebbe 409), il form la rispecchia finche' i verbi non arrivano.
+Con il §8.1 il drawer passa a `DrawerTabLista` coi verbi del DB, e l'opzione esce dal form (R-BE-5,
+R-BE-7).
+
+Verifica: test BE vendite + core (3930) con `ZEROERP_TEST_DB_E2E=1` verdi; vitest 668/668; eslint e
+build puliti; nessuna chiave i18n rotta.
+

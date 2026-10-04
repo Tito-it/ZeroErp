@@ -61,7 +61,7 @@ Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-
     immutabili dopo l'attivazione del contratto padre: la stessa regola «le
     righe si toccano solo in bozza» dei DDT e degli ordini, un trigger per
     documento, codice `E_RIGA_DOC_NON_BOZZA` (409)
-  - `trgfn_contratti_righe_guard_aggiunta_fuori_listino` — blocca AGGIUNTA
+  - `script.trgfn_righe_guard_aggiunta_fuori_listino` — blocca AGGIUNTA
     su articolo gia' presente nel listino
   - `trgfn_contratti_utilities_guard_tipo_classe`
   - CHECK `chk_contrighe_prezzo_per_tipo_eccezione` — ESCLUSIONE ↔ prezzo NULL
@@ -363,16 +363,25 @@ Tipi ammessi (allineati col CHECK DB `chk_contrighe_prezzo_per_tipo_eccezione`):
 Vincoli:
 
 - **AGGIUNTA su articolo presente nel listino**: bloccata dal trigger
-  `trgfn_contratti_righe_guard_aggiunta_fuori_listino` →
+  `script.trgfn_righe_guard_aggiunta_fuori_listino` (generica, la stessa dell'offerta) →
   `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` (422). L'operatore avrebbe dovuto
   usare OVERRIDE.
 - **Coerenza prezzo/tipo**: ESCLUSIONE con prezzo NOT NULL o
   OVERRIDE/AGGIUNTA con prezzo NULL → `E_VENDITE_VALIDATION` (pre-DB) o
   CHECK violation (DB).
+- **Un'ESCLUSIONE e' vuota** (decisione di Tid, 2026-10-04,
+  brief-db-righe-esclusione-solo-non-si-vende): dice solo «non si vende», quindi
+  `prezzo_unitario`, `quantita`, `qta_operativa`, `uom_operativa_id`,
+  `factor_to_base`, `tipo_erogazione`, `fonte_quantita_attesa`, `periodicita`,
+  `generazione_canone` e `competenza_canone` restano NULL. «Escludi» manda solo
+  `articolo_id` e `tipo_eccezione`. Un dato valorizzato lo rifiuta il guard
+  `script.trgfn_righe_guard_esclusione_senza_dati` → `E_RIGA_ESCLUSIONE_CON_DATI`
+  (400, campo in `error.fields`); CHECK `chk_contrighe_esclusione_senza_dati` come rete.
 - **Un'ESCLUSIONE non si modifica** (decisione di Tid, 2026-10-04): si crea
   («Escludi») e si cancella («Ripristina articolo», `DELETE`), e basta. Ogni
   `UPDATE` che cambia una colonna di contenuto — prezzo, quantita', `attivo`,
   FK — lo rifiuta il guard `trg_contratti_righe_a05_guard_esclusione_immutabile_upd`
+  (funzione `script.trgfn_righe_guard_esclusione_immutabile`, la stessa dell'offerta)
   → `E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE` (409). La riga non porta il verbo
   `MODIFICA` (solo `RIPRISTINA_ARTICOLO`), quindi il drawer non apre il form.
 - **`tipo_erogazione` obbligatoria sulle righe che si fatturano**: OVERRIDE e AGGIUNTA si fatturano e devono dire come si erogano
@@ -409,7 +418,8 @@ regola e' una sola, a DB.
 
 #### Campo `fonte_quantita_attesa` (refactor 2026-05-19)
 
-`fonte_quantita_attesa` (NOT NULL dal 2026-05-19 via migration `20260519-05`)
+`fonte_quantita_attesa` (obbligatoria su OVERRIDE/AGGIUNTA, NULL sull'ESCLUSIONE:
+CHECK `chk_contrighe_fonte_per_tipo_eccezione`, dal 2026-10-04)
 dichiara da dove arriva la quantita' che il motore di fatturazione applichera'
 in fase di push periodico verso le commesse. 5 valori CHECK DB:
 
@@ -880,11 +890,12 @@ alle righe di contratto via `target_riga_id`.
 | `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
 | `E_DATA_AL_MINORE_DAL` | 400 | DB P0001, campo `valido_al` — `valido_al < valido_dal` in create, PATCH testata e cessazione. Il service non lo anticipa (dal 2026-09-23). Frase del catalogo con le due date, soluzione in `hint`: `raise_from_database_error` fa vincere il codice del DB anche fuori da `_KNOWN_DB_ERROR_MARKERS` | `script.trgfn_guard_date_validita` (automazione `DATE_VALIDITA`) |
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` | 422 | DB P0001 (refactor modalita 2026-05-15) — attivazione di contratto senza listino senza righe AGGIUNTA con prezzo valorizzato | `trgfn_contratti_freeze_listino_versione` (guard interno) |
-| `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` | 422 | DB P0001 (refactor 2026-05-15) — INSERT/UPDATE riga `tipo_eccezione=AGGIUNTA` per articolo gia' presente nel listino di riferimento | `trgfn_contratti_righe_guard_aggiunta_fuori_listino` |
-| `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 422 | DB P0001 (§6.1 2026-05-16) — INSERT/UPDATE riga `tipo_eccezione=ESCLUSIONE` per articolo che e' `articolo_figlio_id` in un bundle del listino del contratto. L'ESCLUSIONE si applica al padre bundle, non al singolo componente | `trgfn_contratti_righe_guard_esclusione_figlio_bundle` |
-| `E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE` | 409 | DB P0001 (2026-10-04) — UPDATE di una riga ESCLUSIONE che cambia una colonna di contenuto (ammesse le sole tecniche). Parla prima dei guard `_a10_` e del CHECK sul prezzo. Nessun valore nel messaggio | `trgfn_contratti_righe_guard_esclusione_immutabile` (fascia `_a05_`) |
+| `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` | 422 | DB P0001 (refactor 2026-05-15) — INSERT/UPDATE riga `tipo_eccezione=AGGIUNTA` per articolo gia' presente nel listino di riferimento | `script.trgfn_righe_guard_aggiunta_fuori_listino` |
+| `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 422 | DB P0001 (§6.1 2026-05-16) — INSERT/UPDATE riga `tipo_eccezione=ESCLUSIONE` per articolo che e' `articolo_figlio_id` in un bundle del listino del contratto. L'ESCLUSIONE si applica al padre bundle, non al singolo componente | `script.trgfn_righe_guard_esclusione_figlio_bundle` |
+| `E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE` | 409 | DB P0001 (2026-10-04) — UPDATE di una riga ESCLUSIONE che cambia una colonna di contenuto (ammesse le sole tecniche). Parla prima dei guard `_a10_` e del CHECK sul prezzo. Nessun valore nel messaggio | `script.trgfn_righe_guard_esclusione_immutabile` (fascia `_a05_`) |
 | `E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE` | 409 | DB P0001 (2026-10-04) — UPDATE che cambia `tipo_eccezione` di una riga qualunque. Dall'API non si raggiunge: il service rifiuta la chiave prima | lock di colonna generato (`trg_contratti_righe_a10_lock_columns_upd`) |
 | `E_RIGA_EROGAZIONE_OBBLIGATORIA` | 400 | DB P0001 (2026-10-04) — create o PATCH di una riga OVERRIDE/AGGIUNTA senza `tipo_erogazione`. Campo `tipo_erogazione` in `error.fields`. Stesso codice sulle eccezioni dell'offerta | `script.trgfn_righe_guard_erogazione_obbligatoria` |
+| `E_RIGA_ESCLUSIONE_CON_DATI` | 400 | DB P0001 (2026-10-04) — INSERT di un'ESCLUSIONE con un dato di fatturazione valorizzato. Campo (il primo valorizzato) in `error.fields`. Stesso codice sull'offerta | `script.trgfn_righe_guard_esclusione_senza_dati` |
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` | 422 | DB P0001 (resolver pricing) — tentativo di prezzare un articolo che ha eccezione ESCLUSIONE sul contratto attivo del cliente | `fn_resolve_prezzo_listino_v2` (STADIO 1 eccezioni) |
 | `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` | 409 | DB P0001 (refactor §3-bis-A) — UPDATE su `listino_id`/`listino_versione_id`/`tipo_variazione_globale`/`valore_variazione_globale` di contratto ATTIVO (la sola **testata**, dal 2026-09-22) | `trgfn_contratti_lock_post_attivazione` |
 | `E_RIGA_DOC_NON_BOZZA` | 409 | DB P0001 (building block, 2026-09-22 — D7 di brief-db-partita-merce-per-documento) — INSERT/UPDATE/DELETE di un'eccezione su contratto non più in bozza; stesso codice sulle righe di DDT e (DELETE) di ordine. Lo solleva **anche il pre-check BE** (BB `richiedi_righe_in_bozza`) su righe e componenti, con la frase a catalogo (etichetta «Contratto <numero>», stato, verbo) | `trgfn_doc_righe_lock_fuori_bozza` + service |

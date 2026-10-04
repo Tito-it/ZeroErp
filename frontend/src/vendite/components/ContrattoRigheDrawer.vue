@@ -486,8 +486,8 @@ function onModificaPrezzo(row) {
 }
 
 // Scopo: azione one-click "Escludi" dal menu di una riga del listino. Dialog
-//        di conferma + salvataggio diretto come ESCLUSIONE (prezzo NULL,
-//        UoM dal listino). Niente form: la sola scelta dell'operatore e' SI/NO.
+//        di conferma + salvataggio diretto come ESCLUSIONE vuota. Niente form:
+//        la sola scelta dell'operatore e' SI/NO.
 function onEscludi(row) {
   confirmAction({
     header: t('vendite.contratti.escludi_dialog_titolo'),
@@ -495,13 +495,13 @@ function onEscludi(row) {
     acceptLabel: t('vendite.contratti.escludi_dialog_conferma'),
     danger: true,
     onAccept: async () => {
+      // ⛔ L'articolo e il tipo, NIENT'ALTRO: un'esclusione non porta dati di
+      // fatturazione, e il DB rifiuta quantita', UdM, fonte o erogazione col
+      // campo (E_RIGA_ESCLUSIONE_CON_DATI, brief-db-righe-esclusione-solo-non-si-vende).
+      // Fino al 2026-10-04 partivano quantita' 1 e UdM del listino.
       const payload = {
         articolo_id: row.articolo_id,
         tipo_eccezione: TIPO_ECCEZIONE.ESCLUSIONE,
-        prezzo_unitario: null,  // vincolo BE
-        uom_operativa_id: row.uom_id ?? null,
-        qta_operativa: '1',
-        tipo_erogazione: null,
       }
       const result = await execute(
         () => store.addRiga(props.contrattoId, payload),
@@ -550,10 +550,12 @@ function _onEditRigaPersistita(r) {
       articolo_obj: { id: r.articolo_id, codice: r.articolo_codice, descrizione: r.articolo_descrizione, _display: `${r.articolo_codice} — ${r.articolo_descrizione}` },
       // tipo_eccezione: immutabile (lock di colonna a DB, 2026-10-04).
       // Mostrato come Tag readonly nel template form. NOT NULL: niente ripiego.
+      // Il form vede solo OVERRIDE/AGGIUNTA: un'ESCLUSIONE non ha il verbo MODIFICA.
       tipo_eccezione: r.tipo_eccezione,
       // Com'e' scritta: OVERRIDE e AGGIUNTA ce l'hanno per vincolo DB (2026-10-04).
       tipo_erogazione: r.tipo_erogazione,
-      // fonte_quantita_attesa NOT NULL (20260519-05): niente ripiego.
+      // fonte_quantita_attesa obbligatoria su OVERRIDE/AGGIUNTA (vuota solo
+      // sull'ESCLUSIONE, che qui non arriva): niente ripiego.
       fonte_quantita_attesa: r.fonte_quantita_attesa,
       // Il prezzo scritto sulla riga di `contratti_righe`.
       prezzo_unitario: r.override_prezzo != null ? Number(r.override_prezzo) : null,
@@ -625,7 +627,7 @@ const canSave = computed(() => {
   // e il form non deve inventarla per farla salvare (§9.11).
   if (form.value.fonte_quantita_attesa === FONTE_QUANTITA_ATTESA.FISSA
       && !form.value.uom_operativa_id) return false
-  // Refactor 2026-05-19: fonte_quantita_attesa NOT NULL (CHECK DB).
+  // fonte_quantita_attesa obbligatoria sulle righe che si fatturano (CHECK DB).
   // Per FISSA serve qta_operativa valorizzata e diversa da zero (CHECK DB
   // `qta_operativa <> 0`: negativi ammessi, es. resi/note credito); per le
   // altre 4 fonti la quantita arriva downstream (manuale/timesheet/letture)

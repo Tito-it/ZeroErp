@@ -436,25 +436,32 @@ export const useAuthStore = defineStore('auth', () => {
     return getLivelloArea(schemaDb) === LIVELLO_ACCESSO.BLOCCATO
   }
 
-  // Mappa override oggetto: { 'anagrafiche.conto_bancario': 'BLOCCATO', ... }
-  // Popolata da /me/ campo permessi_oggetto (fn_get_user_object_permissions_map)
+  // Mappa livelli EFFETTIVI per oggetto: { 'anagrafiche.conto_bancario': 'LETTURA', ... }
+  // Popolata da /me/ campo permessi_oggetto (fn_get_user_object_permissions_map).
+  // ⭐ Dal 2026-10-04 (brief-db-permessi-tetto-area) la mappa copre TUTTO il
+  //    catalogo `area_model_overrides` col livello gia' deciso dal DB: override,
+  //    area dell'oggetto e tetto d'area. Prima portava i soli override grezzi e
+  //    la catena si riscriveva qui (override ?? area): col tetto quella copia
+  //    avrebbe dato TUTTO su un oggetto di un'area BLOCCATA.
   const permessiOggetto = computed(() => user.value?.permessi_oggetto || {})
 
-  // Scopo: Livello accesso per singolo model (override oggetto con fallback area).
-  function getLivelloOggetto(schemaDb, modelName) {
-    const key = `${schemaDb}.${modelName}`
-    if (permessiOggetto.value[key]) return permessiOggetto.value[key]
-    return getLivelloArea(schemaDb)
+  // Scopo: Livello accesso per singolo model. Si LEGGE la mappa del DB; un
+  //        oggetto fuori catalogo vale la sua area, che per un oggetto fuori
+  //        catalogo e' l'app_label (stessa regola di `script.fn_area_di_oggetto`).
+  // ⛔ Non ricalcolare qui override o tetto: la regola ha una sede sola, il DB.
+  function getLivelloOggetto(appLabel, modelName) {
+    const key = `${appLabel}.${modelName}`
+    return permessiOggetto.value[key] ?? getLivelloArea(appLabel)
   }
 
-  // Scopo: Model in sola lettura? (override LETTURA o fallback area LETTURA)
-  function isObjectReadonly(schemaDb, modelName) {
-    return getLivelloOggetto(schemaDb, modelName) === LIVELLO_ACCESSO.LETTURA
+  // Scopo: Model in sola lettura? (livello effettivo LETTURA, gia' col tetto)
+  function isObjectReadonly(appLabel, modelName) {
+    return getLivelloOggetto(appLabel, modelName) === LIVELLO_ACCESSO.LETTURA
   }
 
-  // Scopo: Model bloccato? (override BLOCCATO o fallback area BLOCCATO)
-  function isObjectBlocked(schemaDb, modelName) {
-    return getLivelloOggetto(schemaDb, modelName) === LIVELLO_ACCESSO.BLOCCATO
+  // Scopo: Model bloccato? (livello effettivo BLOCCATO, gia' col tetto)
+  function isObjectBlocked(appLabel, modelName) {
+    return getLivelloOggetto(appLabel, modelName) === LIVELLO_ACCESSO.BLOCCATO
   }
 
   // Mappa azioni abilitate: { genera_fatture_lotti: true, reset_lotto_draft: false, ... }

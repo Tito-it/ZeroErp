@@ -101,6 +101,27 @@ class UserProfileView(DomainAPIView):
                                     "Prodotta da script.fn_get_user_permissions_map."
                                 ),
                             ),
+                            "permessi_oggetto": serializers.DictField(
+                                help_text=(
+                                    "Livello EFFETTIVO per ogni oggetto del catalogo "
+                                    "config.area_model_overrides: "
+                                    "{'app_label.model_name': 'TUTTO'|'LETTURA'|'BLOCCATO'}. "
+                                    "Gia' risolto a DB (override, area dell'oggetto, "
+                                    "tetto d'area): il frontend lo legge, non lo ricalcola. "
+                                    "Un oggetto fuori catalogo vale l'area del suo app_label. "
+                                    "Prodotta da script.fn_get_user_object_permissions_map "
+                                    "(fino al 2026-10-04: i soli override grezzi)."
+                                ),
+                            ),
+                            "azioni_abilitate": serializers.DictField(
+                                help_text=(
+                                    "Azioni di processo: {permission_codename: bool}, "
+                                    "col tetto d'area (un'azione abilitata sotto "
+                                    "un'area che non arriva al suo livello_minimo_area "
+                                    "vale false). Prodotta da "
+                                    "script.fn_get_user_actions_map."
+                                ),
+                            ),
                             "obblighi_pendenti": serializers.ListField(
                                 child=serializers.ChoiceField(choices=sorted(TUTTI_GLI_OBBLIGHI)),
                                 help_text=(

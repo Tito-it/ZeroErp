@@ -1273,24 +1273,29 @@ class ContrattiServiceTests(TestCase):
         repo.create_riga.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_riga_esclusione_con_prezzo_fallisce(self, repo_cls):
+    def test_create_riga_esclusione_con_prezzo_arriva_al_db(self, repo_cls):
+        # ⛔ Nessun 400 del service sul prezzo di un'ESCLUSIONE: e' uno dei
+        #    dieci dati che il guard DB rifiuta col campo
+        #    (E_RIGA_ESCLUSIONE_CON_DATI, R-BE-3). Il rifiuto vero lo prova
+        #    `test_contratto_esclusione_non_modificabile_db` sul DB.
         from apps.vendite.services.contratti_service import ContrattiService
+
+        class _ArrivatoAlRepo(Exception):
+            pass
 
         repo = repo_cls.return_value
         repo.get_contratto.return_value = _testata_default()  # DRAFT
+        repo.create_riga.side_effect = _ArrivatoAlRepo
 
-        with self.assertRaises(ServiceError) as ctx:
+        with self.assertRaises(_ArrivatoAlRepo):
             ContrattiService().create_riga(
                 1,
                 {
                     "articolo_id": "00000000-0000-0000-0000-000000000001",
                     "tipo_eccezione": "ESCLUSIONE",
-                    "prezzo_unitario": "10",  # vietato su ESCLUSIONE
+                    "prezzo_unitario": "10",
                 },
             )
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertIn("prezzo_unitario deve essere NULL", ctx.exception.detail or "")
-        repo.create_riga.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_riga_tipo_eccezione_obbligatorio(self, repo_cls):

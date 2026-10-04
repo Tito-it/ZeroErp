@@ -35,11 +35,19 @@
 > la riclassificazione del 26-09 e il
 > [brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md)
 > — e il 29-09 a **31** (+2 standard), senza motivazione **11**, col lotto C del
-> [brief righe documento](brief-db-liste-righe-documento.md)
+> [brief righe documento](../work-done/brief-db-liste-righe-documento.md)
 > chiuso il 28-09 (D10, §9). Riletti con la loro data i numeri di §2 (presidi
 > FE da 6 a 13, file `.spec.js` da 3 a 57) e di D9 (test sul DB vero da 22 a
 > 82 file). Corretto il rimando di D2-b: la riga sull'`assert` sta in
 > `PROJECT_CONTEXT.md`, non in `AGENTS.md`. Le voci aperte restano le stesse.
+>
+> ✅ **Riallineato il 2026-10-04** sul repo: **D3-c** (chiusa il 28-09 ma
+> rimasta descritta in §3) passa in §9. Il
+> [brief righe documento](../work-done/brief-db-liste-righe-documento.md) è
+> **chiuso** (04-10) e il registro delle `DataTable` grezze scende a **30**
+> (senza motivazione resta **11**). Riletti con la data i numeri di §2.1
+> (`.spec.js` 93), §2.3 (codici) e D9 (96 file sul DB vero). In §3 restano
+> **D1-f, D2-b, D3-b, D9-a, D10-bis, D12**, tutte invariate nel merito.
 
 ---
 
@@ -112,7 +120,8 @@ fissano, non la superficie coperta. ⭐ Dal **2026-09-23** provano anche i
 **componenti** (D1-d-bis chiusa): il DOM si accende per file
 (`// @vitest-environment jsdom`), non globalmente, così i test puri — che
 restano la maggioranza — non pagano l'ambiente di chi monta. Al **2026-09-28**
-i file `.spec.js` in git sono **57**, e otto accendono il DOM.
+i file `.spec.js` in git sono **57**, e otto accendono il DOM; al
+**2026-10-04** sono **93**, e 27 accendono il DOM.
 
 ### 2.2 Analisi statica del backend — `ruff`, dal 2026-09-09
 
@@ -133,6 +142,8 @@ checker** (D2-b).
 | Codici vivi **senza** frase di ripiego                | **0**         |
 | Frasi di ripiego **orfane** / con `%s` non riempibile | **0** / **0** |
 
+Riletto il **2026-10-04**: **975** a catalogo, **99** ritirati, **876** vivi (in
+`apps/core/services/error_policies_generated.py`); gli zeri li tiene il test.
 Presidiato da `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` a ogni corsa.
 La classe non si deriva dallo status e viceversa; `UI_ACTION_PER_CLASSE` porta
 scritto perché su `DATO_ERRATO` il default è il banner e non l'evidenziazione.
@@ -207,7 +218,7 @@ testa al suo file in `frontend/scripts/`, e la tabella dice solo cosa tiene.
 | --- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | D1  | Il frontend non ha nessun cancello                                     | ✅ 09-09 e D1-d-bis 23-09 — **in §9** · resta la **decisione di D1-f**                           |
 | D2  | Backend senza analisi statica                                          | ✅ 09-09/10 — **in §9** · resta **D2-b** (type checker)                                          |
-| D3  | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | ✅ D3-a e la metà sicurezza di D3-b — **in §9** · restano **D3-b** (registro a zero dal 26-09; resta la decisione su `check --deploy` completo in CI), **D3-c** |
+| D3  | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | ✅ D3-a, la metà sicurezza di D3-b e D3-c (28-09) — **in §9** · resta **D3-b** (registro a zero dal 26-09; resta la decisione su `check --deploy` completo in CI) |
 | D4  | `hint` trasportato e mai reso a video                                  | ✅ 09-09 — **in §9**                                                                             |
 | D5  | `area_funzionale = "ai_assistant"` non a catalogo                      | ✅ 09-25 — **in §9**                                                                             |
 | D6  | Il `count` che è un'eco                                                | ✅ 09-10 — **in §9**                                                                             |
@@ -242,7 +253,7 @@ c'era scritto `AGENTS.md`, dove la riga non c'è.)
 ⚠️ È la metà che vedrebbe i difetti di giuntura che una suite mockata (D9) non
 può vedere.
 
-### D3 — Lo schema OpenAPI e il ramo `--deploy` — D3-a chiuso il 09-09 (§9), restano D3-b e D3-c
+### D3 — Lo schema OpenAPI e il ramo `--deploy` — D3-a chiuso il 09-09 e D3-c il 28-09 (§9), resta D3-b
 
 **D3-b, la metà drf-spectacular — registro a zero il 2026-09-26; resta la
 decisione sulla CI** (sotto). La metà sicurezza è chiusa lo stesso giorno (§9).
@@ -256,7 +267,7 @@ completo, 130 rilievi):
 | `drf_spectacular.W002`     | 66    | 73             | **0**        | view per cui lo schema non trova il serializer (violano la regola `@extend_schema` di `AGENTS.md`)         |
 | `drf_spectacular.W001`     | 54    | 54             | **0**        | collisioni di `operationId` (lista e dettaglio sullo stesso `…_retrieve`, risolte con `…_retrieve_2`)      |
 | `mail.E001`                | 1     | 1              | 1            | backend di posta di sviluppo: in CI va impostato quello giusto, non silenziato                             |
-| `security.W004` / `W008`   | —     | 1 + 1          | 1 + 1        | accettati dal cricchetto: sono D3-c                                                                         |
+| `security.W004` / `W008`   | —     | 1 + 1          | 1 + 1        | accettati dal cricchetto: erano D3-c — tolti il 28-09 con HSTS e redirect (§9)                          |
 | **Totale `check --deploy`** | —    | 130            | **3**        | nessun rilievo drf-spectacular rimasto                                                                      |
 
 ⚠️ Il **128** che il commento del passo CI riportava la mattina del 26-09 non
@@ -339,20 +350,7 @@ drf-spectacular; restano `mail.E001` (backend di posta dell'ambiente) e
 decidere se il test basta o se `check --deploy` completo entra in CI (serve
 anche `mail.E001` sistemato).
 
-**Aperto — D3-c**: `SECURE_HSTS_SECONDS` e `SECURE_SSL_REDIRECT` assenti dal
-ramo non-debug di `settings.py` (l'effetto lo decide il reverse proxy: da
-concordare con chi gestisce nginx); **nessuna CSP**, né in `settings.py` né in
-`index.html`, con i due token JWT in `localStorage`. La postura regge perché
-`v-html` è a zero e `axios` sta in un file solo — cioè perché **non c'è
-superficie** — ma nessun presidio la verifica. O si aggiunge la CSP, o si scrive
-perché no. Proposta pronta in
-[brief-be-fe-sicurezza-header-token-mfa.md](../work-done/brief-be-fe-sicurezza-header-token-mfa.md)
-§1 (decisione di Tid 2026-09-26: *«facciamo dopo»*); `W004`/`W008` sono
-nell'elenco a cricchetto del passo `check --deploy` e si tolgono a §1 chiusa.
-🟡 **2026-09-28: metà chiusa.** HSTS e redirect sono in `settings.py`, e
-`W004`/`W008` sono **tolti** dal cricchetto (restano `W005`/`W021`, sottodomini e
-preload spenti per scelta). ✅ **Chiusa il 2026-09-28** anche la **CSP**: applicata
-in Nginx su `backend-dev` dopo il collaudo a video in `Report-Only` (brief §1.6).
+✅ **D3-c è chiusa il 2026-09-28**: sta in §9.
 
 ### D9 — La suite è larga e poco profonda, e il livello profondo nessuno lo lancia — D9-b chiuso l'11-09 (§9), resta D9-a
 
@@ -362,7 +360,7 @@ giusto per validazione, dedup e not-found, non una copertura d'integrazione.
 
 ⭐ Il livello che attraversa la giuntura esiste e cresce da solo: **22 file** con
 `richiedi_db_provvisto` (rimisurato l'11-09; erano 19 il 09-09; **82** il
-2026-09-28), accesi in CI da `ZEROERP_TEST_DB_E2E=1`, registrati in `api.md`
+2026-09-28; **96** il 2026-10-04), accesi in CI da `ZEROERP_TEST_DB_E2E=1`, registrati in `api.md`
 §Test dal 09-09.
 
 **Aperto — D9-a**: gli smoke Python di `backend/scripts/tests/` (sedici al
@@ -385,8 +383,8 @@ Un registro è una buona invenzione **a condizione che scenda**. Stato:
 | -------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Errori `oxlint`                        | **0**                       | ✅ cancello in CI (`npm run lint`, senza `--fix`), dal 09-09                                                                                                                                                                                                          |
 | Rilievi `ruff`                         | **0**                       | ✅ cancello in pre-commit e CI, dal 09-09                                                                                                                                                                                                                             |
-| `DataTable` grezza in una view         | **31** grezze (+2 standard), 29-09; erano 33 il 28-09, 45 il 09-10 | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro. ⭐ **Cala davvero dal 26-09** (§9 D10)                  |
-| …di cui senza commento di motivazione  | **11**, 29-09; erano 12 il 28-09, 33 prima | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import). Dieci delle 11 sono **decisioni di Tid aperte** ([brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md) §5); le righe di `FatturaDrawer` sono uscite il 29-09 col lotto C del [brief righe documento](brief-db-liste-righe-documento.md) (con `ArticoloBomDrawer` fra le grezze); gli step di `PraticaFlussiTab` sono Gruppo B per il piano e manca solo il commento |
+| `DataTable` grezza in una view         | **30** grezze (+2 standard), 04-10; erano 31 il 29-09, 33 il 28-09, 45 il 09-10 | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro. ⭐ **Cala davvero dal 26-09** (§9 D10)                  |
+| …di cui senza commento di motivazione  | **11**, 29-09 (invariato al 04-10); erano 12 il 28-09, 33 prima | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import). Dieci delle 11 sono **decisioni di Tid aperte** ([brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md) §5); le righe di `FatturaDrawer` sono uscite il 29-09 col lotto C del [brief righe documento](../work-done/brief-db-liste-righe-documento.md) (con `ArticoloBomDrawer` fra le grezze), e `ContrattoRigheDrawer` il 04-10 alla chiusura dello stesso brief; gli step di `PraticaFlussiTab` sono Gruppo B per il piano e manca solo il commento |
 | Filtri di lista scritti a mano         | **0** su tre voci, dal 09-23 | ✅ cricchetto `check-filtri-lista.mjs` + `filtri-lista.baseline.json` (blocchi grezzi, larghezze inline, coppie di date a mano)                                                                                                                                        |
 | File tracciati senza header di licenza | 1.169 su 5.787 (09-10)      | ✅ cala davvero (erano 2.042 il 08-26); l'hook guarda i soli file aggiunti, per scelta                                                                                                                                                                                |
 | `baseline-smoke.tsv`                   | 2 su 16                     | ⛔ nessun verso: vive o muore con D9-a                                                                                                                                                                                                                                |
@@ -402,11 +400,11 @@ L'unica lettura rimasta è il commento che manca su `PraticaFlussiTab` (tabella
 degli step). La sede di
 quelle decisioni è il registro del
 [piano PrimeVue 5](piano-migrazione-primevue-5.md) (§«Gruppo B»), non questo
-documento. Il prossimo passo dichiarato è
-[brief-db-liste-righe-documento.md](brief-db-liste-righe-documento.md): le
-righe di un documento, oggi eccezione **nominata** (`RigheMasterDetailTable`),
-diventano `<ListaConfigurabile>` (decisione di Tid del 27-09; al 28-09 il
-lavoro non è ancora avviato e ci sono sette decisioni aperte al suo §8.9).
+documento. ✅ Il passo che era dichiarato qui —
+[brief-db-liste-righe-documento.md](../work-done/brief-db-liste-righe-documento.md),
+le righe di un documento su `<ListaConfigurabile>` — è **chiuso il
+2026-10-04**: righe di preventivo, ordine, DDT, reso, fattura, contratto e
+distinta base sono liste configurabili (97-103).
 
 ### D12 — La superficie dei portali esiste a database e non ha porte
 
@@ -423,6 +421,15 @@ endpoint esercita**: il giorno dello Stage C vanno considerate non collaudate.
 
 * ⛔ **`contabilita` vuoto su tutti e tre gli strati.** Fuori perimetro per
   decisione: se servirà sarà un aggancio a una contabilità esterna.
+* ⛔ **BE e FE di `acquisti`/`magazzino` indietro rispetto al DB.** È la
+  conseguenza di una scelta (Tid, chiarita il 2026-10-04): un anno sul solo DB
+  per fissarne nomi, trigger e regole, e poi BE e FE. Senza consumatori, i
+  refactor pesanti del modello — rinomine di colonne, la ripartenza in
+  `migrations_v2` — costavano un changeSet; con BE e FE già scritti, molti non
+  si sarebbero fatti, e il modello se li sarebbe tenuti. Il rovescio è che da
+  quando BE e FE esistono non ci sono stati refactor grandi del modello. Che un
+  dominio modellato aspetti il suo turno è l'ordine di costruzione, e
+  l'ordine non si vota (§5).
 * ⛔ **Le 11 view che ereditano `APIView` nudo.** Tutte e sole quelle
   pre-autenticazione (reset password, attivazione portale/shop, check email,
   stato AI).
@@ -455,13 +462,13 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Contratto d'errore — arrivo a video** | 🟠 medio | **8/10**   | `fields`, `targets`, `hint` a video (D4). Non è 10: chi chiama `notify.error` a mano resta fuori                                                                                                                       |
 | **Perimetro e permessi (applicativo)**  | 🟠 medio | **7,5/10** | Catena unica, fail-closed, reset GUC incondizionato. ✅ 25-09 D5 chiuso con presidio aree/catalogo. ✅ 12-09: lo skip muto (D15) deciso e chiuso su tutte e 15 le view, presidiato dagli attributi **e** dal percorso reale |
 | **Correttezza dei contratti di lista**  | 🟠 medio | **8/10**   | Lookup con `troncato`, presidiato sul DB vero (D6). Nessun cancello sui `count: len()` senza `LIMIT`                                                                                                                   |
-| **Simmetria del dominio**               | 🟠 medio | **4/10**   | `acquisti`/`magazzino` modellati a DB e vuoti su BE e FE. La decisione dell'11-09 dà un verso al debito, non scrive il codice: il voto si muove col comportamento                                                      |
-| **Building block — frontend**           | 🟡 basso | **9/10**   | Un solo punto HTTP (presidiato anche nei componenti dal 26-09), `bersagli`, contratto KeepAlive presidiato (D8), 13 guard. `DataTable` grezze 45 → 33 → **31** e senza motivo 33 → 12 → **11** (28/29-09): le rimaste aspettano una decisione di Tid (voto rivisto il 28-09; era 8,5) |
+| **Simmetria del dominio**               | 🟠 medio | **non votata** (04-10) | Che `acquisti` e `magazzino` abbiano BE e FE indietro rispetto al DB è l'**ordine di costruzione** scelto, non un difetto (§4). Il voto 4/10 dato fino al 04-10 misurava il calendario. Ciò che si presidia è la regola: *ogni decisione presa su `vendite` vale anche per `acquisti`* |
+| **Building block — frontend**           | 🟡 basso | **9/10**   | Un solo punto HTTP (presidiato anche nei componenti dal 26-09), `bersagli`, contratto KeepAlive presidiato (D8), 13 guard. `DataTable` grezze 45 → 33 → 31 → **30** e senza motivo 33 → 12 → **11** (28-09 → 04-10): le rimaste aspettano una decisione di Tid (voto rivisto il 28-09; era 8,5) |
 | **Multilingua**                         | 🟡 basso | **9/10**   | Parità perfetta e guard in CI. Il catalogo a monte è monolingue (§2.6)                                                                                                                                                 |
 | **Gestione del debito**                 | 🟡 basso | **8/10**   | Registri con cancello o cricchetto (D10), e quello delle `DataTable` è sceso davvero il 26-28/09. Senza verso: le letture cross-dominio con `skip_area_check` e la baseline smoke                                        |
 | **Documentazione di contesto**          | 🟡 basso | **9/10**   | Sette righe su sette chiuse (§1)                                                                                                                                                                                       |
 
-### Il giudizio, al 2026-09-12 (elenco degli aperti riallineato al 26-09)
+### Il giudizio, al 2026-09-12 (elenco degli aperti riallineato al 04-10)
 
 ⭐ **Il backend è costruito con lo stesso metodo del database**: contratto
 d'errore chiuso a chiave, catena dei permessi in una sede sola, reset GUC
@@ -474,7 +481,7 @@ prova che il codice si compila, non che faccia la cosa giusta. Resta aperto ciò
 che è **cantiere** e non configurazione — la profondità della suite backend e
 gli smoke in CI (D9-a) — più ciò che aspetta una decisione (D1-f, D2-b, D3-b
 cioè `check --deploy` completo in CI con registro drf-spectacular già a zero,
-D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
+D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
 
 ### Lezioni di metodo, in quattro righe
 
@@ -573,7 +580,8 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
       `DataTable` con cricchetto.
 * [x] **D10 (le `DataTable`)** — ✅ 2026-09-26/28: riclassificazione dei 44 file
       e brief delle liste grezze chiuso; registro 45 → 33, senza motivazione
-      33 → 12; il 29-09 → **31** e **11** col lotto C delle righe documento.
+      33 → 12; il 29-09 → **31** e **11** col lotto C delle righe documento,
+      il 04-10 → **30** alla chiusura di quel brief.
       Le rimaste aspettano decisioni di Tid (§3 D10).
 * [ ] **D10-bis** — gli `skip_area_check` (da leggere uno per uno) e la baseline
       degli smoke (con D9-a).
@@ -654,13 +662,12 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
 | #   | Cosa                                               | Perché sta qui                                                                                      |
 | --- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | 1   | **D1-f** — `npm audit` nel job                     | Registro a **zero** dal 13-09, e il lato backend (`pip-audit`) c'è dal 26-09                        |
-| 2   | ~~**D3-c** — CSP~~ ✅ chiusa il 28-09               | Applicata in Nginx dopo il collaudo a video (brief sicurezza §1.6)                                  |
-| 3   | **D2-b** — type checker                            | Una decisione: sì (e come) o no (e si toglie la riga da `PROJECT_CONTEXT.md`)                       |
-| 4   | **D10-bis** — le letture cross-dominio con lo skip | Lettura, non conteggio                                                                              |
+| 2   | **D2-b** — type checker                            | Una decisione: sì (e come) o no (e si toglie la riga da `PROJECT_CONTEXT.md`)                       |
+| 3   | **D10-bis** — le letture cross-dominio con lo skip | Lettura, non conteggio                                                                              |
 
 ### ⛔ Sembrano facili e non lo sono — sono cantieri veri
 
-* **Smoke in CI (D9-a).** Tutti e sedici cercano i soggetti nei dati esistenti:
+* **Smoke in CI (D9-a).** Tutti e diciassette cercano i soggetti nei dati esistenti:
   su un DB di CI ricostruito da zero il cancello nascerebbe verde per
   sottrazione. Prima devono fabbricarsi i soggetti.
 * **`check --deploy` completo in CI (D3-b).** Il registro drf-spectacular è a
@@ -668,8 +675,8 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
   CI toglie `--tag security`, e per farlo va sistemato `mail.E001`
   nell'ambiente di CI (il backend di posta giusto, non silenziato).
 * **`acquisti` / `magazzino` (D11).** Il cantiere è aperto (stato in
-  `PROJECT_CONTEXT.md`): `magazzino` avanza a lotti, `acquisti` è ancora a
-  zero. Il voto di simmetria (§5) si muove con quello.
+  `PROJECT_CONTEXT.md`): `magazzino` avanza a lotti, `acquisti` ha il solo
+  modello. È un cantiere, non un difetto (§4).
 
 ---
 
@@ -730,6 +737,19 @@ operazioni**, `check --deploy` da 677 a **124** problemi, i **607 `W001` a zero*
 (sicurezza)» in `ci-validate.yaml`: `--tag security`, chiave generata nel job,
 e un cricchetto che accetta solo `W004`/`W008` (cioè D3-c). La metà
 drf-spectacular resta in §3.
+
+✅ **D3-c — HSTS, redirect e CSP — 2026-09-28.** Il difetto: `SECURE_HSTS_SECONDS`
+e `SECURE_SSL_REDIRECT` assenti dal ramo non-debug di `settings.py`, nessuna
+CSP, e una postura che reggeva solo perché **non c'era superficie** (`v-html` a
+zero, `axios` in un file solo) senza che nessun presidio lo verificasse. Ora
+HSTS e redirect sono in `settings.py` e `W004`/`W008` sono **tolti** dal
+cricchetto del passo `check --deploy` (restano accettati `W005`/`W021`,
+sottodomini e preload spenti per scelta); la CSP è applicata in Nginx su
+`backend-dev` dopo il collaudo a video in `Report-Only`. Lo stesso brief ha
+portato il refresh JWT nel cookie `HttpOnly` (28-09) e il secondo fattore
+(02/03-10). Dettaglio:
+[brief-be-fe-sicurezza-header-token-mfa.md](../work-done/brief-be-fe-sicurezza-header-token-mfa.md)
+§1.
 
 ### ✅ D5 — `ai_assistant` a catalogo — 2026-09-25
 
@@ -824,7 +844,7 @@ giornale di fattura e lotto su un solo componente (`GiornaleEntitaTab`, su
 `vendite.giornale`), la catena delle revisioni dell'offerta a DB, e la
 validazione del catalogo liste contro la vista (`schema_dati`). Registro:
 **45 → 33** grezze, senza motivazione **33 → 12**; il 29-09, col lotto C del
-[brief righe documento](brief-db-liste-righe-documento.md), **31** e **11**.
+[brief righe documento](../work-done/brief-db-liste-righe-documento.md), **31** e **11**; il 04-10, alla chiusura del brief, **30** e **11**.
 Le rimaste sono in §3 D10.
 
 ### ✅ D11 — Quattro app scheletro: la decisione — 2026-09-11
@@ -891,7 +911,8 @@ riletti dopo portano la loro data. **Riordinato il 2026-09-20**: §3 contiene so
 i difetti aperti, le attività svolte stanno in §9 — con lo stesso numero in
 entrambe le sezioni quando una voce ha due facce. **Riallineato il 2026-09-26**
 (D1-d-bis, D5, D7, D13-quater e metà di D3-b in §9) e il **2026-09-28** (il
-registro delle `DataTable` in D10, i numeri di §2 e D9, il rimando di D2-b). Lo
+registro delle `DataTable` in D10, i numeri di §2 e D9, il rimando di D2-b) e
+il **2026-10-04** (D3-c in §9, brief righe documento chiuso, numeri datati). Lo
 strato DB è valutato
 separatamente in
 [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).*

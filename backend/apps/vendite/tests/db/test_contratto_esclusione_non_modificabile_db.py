@@ -2,113 +2,176 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: UN'ESCLUSIONE DEL CONTRATTO NON SI MODIFICA, vista dal backend sul
-#        DATABASE VERO (brief-db-contratto-esclusione-non-modificabile §5,
-#        decisione di Tid del 2026-10-04): il PATCH di una riga ESCLUSIONE
-#        arriva al guard DB `_a05_` e risponde il suo codice, 409.
+# Scopo: L'ESCLUSIONE E' SOLO «NON SI VENDE», vista dal backend sul DATABASE
+#        VERO, sul contratto e sull'offerta (decisioni di Tid del 2026-10-04:
+#        brief-db-contratto-esclusione-non-modificabile e
+#        brief-db-righe-esclusione-solo-non-si-vende):
+#          · «Escludi» crea l'esclusione VUOTA, e passa;
+#          · un'esclusione con un dato di fatturazione la rifiuta il guard DB,
+#            col campo (E_RIGA_ESCLUSIONE_CON_DATI);
+#          · il PATCH di un'esclusione lo rifiuta il guard `_a05_`
+#            (E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE), anche sul prezzo: fino
+#            al 2026-10-04 lo rifiutava il service con un 400 suo, che invitava
+#            a togliere il prezzo e riprovare.
 #
-# 🔴 PERCHE' SUL DB VERO. Fino al 2026-10-04 il service pre-validava il prezzo
-#    di un'esclusione con un 400 suo; quel ramo e' stato tolto perche' la regola
-#    ora e' una sola, a DB. Un test con il repository mockato non vede niente:
-#    il rifiuto nasce nel trigger, e la sola cosa che il backend deve fare e'
-#    lasciarlo passare col suo codice, senza coprirlo col ripiego del service.
+# 🔴 PERCHE' SUL DB VERO. Le tre regole vivono nei trigger: il backend deve solo
+#    lasciarle passare col loro codice e il loro campo, attraverso i mapper dei
+#    due service. Un repository mockato non le vede.
 #
-# ⭐ Il mondo si COSTRUISCE (regola zero), come nel pgTAP della parte DB
-#    `test-contratto-esclusione-non-modificabile-v1`: cliente, listino con una
-#    versione ATTIVA che copre oggi, un articolo, contratto in BOZZA e la riga
-#    ESCLUSIONE. Tutto in transazione ANNULLATA.
+# ⭐ Il mondo si COSTRUISCE (regola zero), con la fixture del test gemello
+#    `test_righe_erogazione_obbligatoria_db` (importata, non ricopiata).
+#    Tutto in transazione ANNULLATA.
 # ------------------------------------------------------------
 """
 Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
-1) test_patch_della_quantita_risponde_il_codice_del_guard
-2) test_patch_del_prezzo_parla_il_guard_non_il_check_sul_prezzo
+1) test_contratto_escludi_crea_l_esclusione_vuota
+2) test_contratto_esclusione_con_quantita_rifiutata_col_campo
+2b) test_contratto_esclusione_con_prezzo_rifiutata_col_campo
+3) test_contratto_patch_del_prezzo_dell_esclusione_rifiutato
+4) test_offerta_escludi_crea_l_esclusione_vuota
+5) test_offerta_esclusione_con_fonte_rifiutata_col_campo
+6) test_offerta_patch_dell_esclusione_rifiutato
 """
 from __future__ import annotations
 
 import unittest
+from collections.abc import Callable
 
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.vendite.services.contratti_service import ContrattiService
+from apps.vendite.services.offerte_service import OfferteService
+# ⚠️ Il MODULO, non la classe: una classe di test importata qui verrebbe
+#    scoperta e girata una seconda volta.
+from apps.vendite.tests.db import test_righe_erogazione_obbligatoria_db as _gemello
 
-_CODICE_GUARD = "E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE"
+_CODICE_NON_MODIFICABILE = "E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE"
+_CODICE_CON_DATI = "E_RIGA_ESCLUSIONE_CON_DATI"
 
-# Il mondo del pgTAP, ridotto a un articolo: la versione del builder finisce
-# nel 2020, quindi quella che copre oggi nasce qui (BOZZA, righe, ATTIVA).
-_FIXTURE = (
-    "CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('ESCLNM')",
-    "CREATE TEMP TABLE _l AS SELECT * FROM dbops.fn_pgtap_crea_listino("
-    " (SELECT utility_id FROM _m), 'ESCLNM', '2020-01-01'::date, '2020-12-31'::date)",
-    "CREATE TEMP TABLE _v AS WITH ins AS ("
-    " INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)"
-    " SELECT listino_id, 'ESCLNM_V2', '2021-01-01'::date, 'BOZZA' FROM _l RETURNING id"
-    ") SELECT id FROM ins",
-    "CREATE TEMP TABLE _a AS SELECT dbops.fn_pgtap_crea_articolo('ESCLNM-ART') AS id",
-    "UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _l)"
-    " WHERE id = (SELECT id FROM _a)",
-    "INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)"
-    " SELECT (SELECT id FROM _v), ar.id, ar.uom_id, 100.00"
-    " FROM catalogo.articoli ar WHERE ar.id = (SELECT id FROM _a)",
-    "UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM _v)",
-    "CREATE TEMP TABLE _c AS WITH ins AS ("
-    " INSERT INTO vendite.contratti (numero, billing_account_id, istanza_utility_id, utility_id,"
-    "  stato_doc_contratto_id, listino_id, valido_dal, valido_al)"
-    " SELECT 'ESCLNM-' || substr(gen_random_uuid()::text, 1, 8),"
-    "  m.billing_account_id, m.istanza_utility_id, m.utility_id,"
-    "  (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),"
-    "  (SELECT listino_id FROM _l), CURRENT_DATE, CURRENT_DATE + 365"
-    " FROM _m m RETURNING id"
-    ") SELECT id FROM ins",
+# I dieci dati di fatturazione che un'esclusione non porta (CHECK
+# `chk_*_esclusione_senza_dati`).
+_DATI_FATTURAZIONE = (
+    "prezzo_unitario", "quantita", "qta_operativa", "uom_operativa_id", "factor_to_base",
+    "tipo_erogazione", "fonte_quantita_attesa", "periodicita", "generazione_canone",
+    "competenza_canone",
 )
 
-# La riga ESCLUSIONE come nel pgTAP: senza prezzo (CHECK), con quantita' e UdM
-# operativa che i trigger della tabella pretendono.
-_ESCLUSIONE = (
-    "INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione,"
-    " tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)"
-    " SELECT (SELECT id FROM _c), ar.id, 'ESCLUSIONE', 'CANONE', 'FISSA', 1, 1, ar.uom_id"
-    " FROM catalogo.articoli ar WHERE ar.id = (SELECT id FROM _a)"
-    " RETURNING id"
-)
+_FIXTURE = _gemello._FIXTURE
+_contratto = _gemello.RigheErogazioneObbligatoriaDbTests._contratto
+_offerta = _gemello.RigheErogazioneObbligatoriaDbTests._offerta
 
 
 class _Annulla(Exception):
     """Esce dal blocco atomico annullandolo."""
 
 
-class EsclusioneNonModificabileDbTests(unittest.TestCase):
+# Scopo: il payload di «Escludi»: l'articolo e il tipo, nient'altro.
+def _escludi(cur) -> dict:
+    cur.execute("SELECT id FROM _a")
+    return {"articolo_id": str(cur.fetchone()[0]), "tipo_eccezione": "ESCLUSIONE"}
+
+
+class EsclusioneSoloNonSiVendeDbTests(unittest.TestCase):
     def setUp(self):
         richiedi_db_provvisto("dbops.fn_pgtap_crea_mondo_cliente(text,character varying)")
 
-    # Scopo: costruisce il mondo e la riga ESCLUSIONE, poi lancia il PATCH del
-    #        service e ritorna l'errore che risponde. Il blocco viene annullato.
-    def _patch_esclusione(self, payload: dict) -> ServiceError:
+    # Scopo: costruisce il mondo, lancia `azione(cur)` e ritorna cio' che
+    #        rende. Il blocco viene annullato.
+    def _nel_mondo(self, azione: Callable):
+        esito = None
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 for sql in _FIXTURE:
                     cur.execute(sql)
-                cur.execute(_ESCLUSIONE)
-                riga_id = cur.fetchone()[0]
-                with self.assertRaises(ServiceError) as ctx:
-                    ContrattiService().update_riga(riga_id, payload)
+                esito = azione(cur)
                 raise _Annulla
         except _Annulla:
             pass
-        return ctx.exception
+        return esito
 
-    # 1. Una colonna di contenuto qualunque: risponde il guard, col suo codice.
-    def test_patch_della_quantita_risponde_il_codice_del_guard(self):
-        errore = self._patch_esclusione({"quantita": "3"})
-        self.assertEqual(errore.code, _CODICE_GUARD)
+    # Scopo: come `_nel_mondo`, ma `azione` deve sollevare: ritorna l'errore.
+    def _errore(self, azione: Callable) -> ServiceError:
+        def _attesa(cur):
+            with self.assertRaises(ServiceError) as ctx:
+                azione(cur)
+            return ctx.exception
+        return self._nel_mondo(_attesa)
 
-    # 2. ⭐ Il prezzo: fino al 2026-10-04 lo rifiutava il service con un 400
-    #    («prezzo_unitario deve essere NULL»), che invitava a togliere il prezzo
-    #    e riprovare. Ora parla il guard `_a05_`, prima del CHECK sul prezzo.
-    def test_patch_del_prezzo_parla_il_guard_non_il_check_sul_prezzo(self):
-        errore = self._patch_esclusione({"prezzo_unitario": "10"})
-        self.assertEqual(errore.code, _CODICE_GUARD)
+    # Scopo: i dati di fatturazione della riga, tutti vuoti.
+    def _assert_vuota(self, cur, tabella: str, riga_id: int) -> None:
+        cur.execute(
+            f"SELECT {', '.join(_DATI_FATTURAZIONE)} FROM vendite.{tabella} WHERE id = %s",
+            [riga_id],
+        )
+        valori = dict(zip(_DATI_FATTURAZIONE, cur.fetchone(), strict=True))
+        self.assertEqual({k: v for k, v in valori.items() if v is not None}, {})
+
+    # ── contratto ──────────────────────────────────────────────
+
+    # 1. «Escludi» passa, e nessun trigger riempie la riga.
+    def test_contratto_escludi_crea_l_esclusione_vuota(self):
+        def azione(cur):
+            riga = ContrattiService().create_riga(_contratto(cur), _escludi(cur))
+            self._assert_vuota(cur, "contratti_righe", riga["id"])
+        self._nel_mondo(azione)
+
+    # 2. Il vecchio «Escludi» (quantita' 1): rifiutato col campo.
+    def test_contratto_esclusione_con_quantita_rifiutata_col_campo(self):
+        def azione(cur):
+            ContrattiService().create_riga(
+                _contratto(cur), {**_escludi(cur), "qta_operativa": "1"},
+            )
+        errore = self._errore(azione)
+        self.assertEqual(errore.code, _CODICE_CON_DATI)
+        self.assertTrue(set(errore.fields or ()) & set(_DATI_FATTURAZIONE))
+
+    # 2b. Il prezzo in create: parla il guard DB col campo, non un 400 del
+    #     service (ritirato il 2026-10-04, R-BE-3: stessa regola, altro codice).
+    def test_contratto_esclusione_con_prezzo_rifiutata_col_campo(self):
+        def azione(cur):
+            ContrattiService().create_riga(
+                _contratto(cur), {**_escludi(cur), "prezzo_unitario": "10"},
+            )
+        errore = self._errore(azione)
+        self.assertEqual(errore.code, _CODICE_CON_DATI)
+        self.assertIn("prezzo_unitario", errore.fields or ())
+
+    # 3. Un'esclusione non si modifica: sul prezzo parla il guard `_a05_`, prima
+    #    del CHECK sul prezzo e senza il vecchio 400 del service.
+    def test_contratto_patch_del_prezzo_dell_esclusione_rifiutato(self):
+        def azione(cur):
+            riga = ContrattiService().create_riga(_contratto(cur), _escludi(cur))
+            ContrattiService().update_riga(riga["id"], {"prezzo_unitario": "10"})
+        self.assertEqual(self._errore(azione).code, _CODICE_NON_MODIFICABILE)
+
+    # ── offerta: le stesse tre regole ──────────────────────────
+
+    # 4. «Escludi» sull'offerta passa vuoto: la fonte non si pretende piu'.
+    def test_offerta_escludi_crea_l_esclusione_vuota(self):
+        def azione(cur):
+            riga = OfferteService().crea_eccezione(_offerta(cur), _escludi(cur))
+            self._assert_vuota(cur, "offerte_commerciali_eccezioni", riga["id"])
+        self._nel_mondo(azione)
+
+    # 5. Il vecchio form dell'offerta (fonte sull'esclusione): rifiutato col campo.
+    def test_offerta_esclusione_con_fonte_rifiutata_col_campo(self):
+        def azione(cur):
+            OfferteService().crea_eccezione(
+                _offerta(cur), {**_escludi(cur), "fonte_quantita_attesa": "FISSA"},
+            )
+        errore = self._errore(azione)
+        self.assertEqual(errore.code, _CODICE_CON_DATI)
+        self.assertIn("fonte_quantita_attesa", errore.fields or ())
+
+    # 6. Sull'offerta, come sul contratto, l'esclusione non si modifica.
+    def test_offerta_patch_dell_esclusione_rifiutato(self):
+        def azione(cur):
+            offerta = _offerta(cur)
+            riga = OfferteService().crea_eccezione(offerta, _escludi(cur))
+            OfferteService().aggiorna_eccezione(offerta, riga["id"], {"ordine": 5})
+        self.assertEqual(self._errore(azione).code, _CODICE_NON_MODIFICABILE)
 
 
 if __name__ == "__main__":

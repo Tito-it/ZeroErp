@@ -939,6 +939,82 @@ curl -H "Authorization: Bearer <token>" \
 
 ---
 
+### 2.8 GET /api/v1/amm-software/operatori/{id}/permessi-effettivi/ -- Permessi effettivi col tetto d'area
+
+Restituisce, per ogni **azione di processo attiva** e per ogni **oggetto del
+catalogo** `config.area_model_overrides`, il valore che l'operatore ha
+**davvero**: la catena individuale (override, profilo) sotto il **tetto
+dell'area** (guida di architettura dei permessi §3). Sola lettura.
+
+⭐ **A cosa serve.** Un override piu' permissivo della sua area resta scritto
+ma **dormiente**: non vale finche' l'area non si riapre. Il pannello permessi
+lo mostra con l'etichetta «limitata dall'area»; senza questa lettura
+mostrerebbe «abilitata» su un'azione che il sistema nega.
+
+⛔ **Non e' `GET /api/v1/core/users/{id}/permessi-effettivi/`**, il riepilogo
+per area senza azioni. Il calcolo sta a DB
+(`script.fn_get_permessi_effettivi_azioni` / `..._oggetti`): sono la stessa
+catena che usano i resolver del backend e le mappe di `/me/`, non una copia.
+
+**Parametri path:** `id` (int) -- auth_user_id dell'utente.
+
+**Risposta:**
+
+```json
+{
+  "data": {
+    "azioni": [
+      {
+        "azione_id": 3,
+        "permission_codename": "genera_fatture_lotti",
+        "area_id": 2,
+        "abilitata_specifica": true,
+        "livello_area": "BLOCCATO",
+        "livello_minimo_area": "TUTTO",
+        "abilitata": false,
+        "limitata_da_area": true
+      }
+    ],
+    "oggetti": [
+      {
+        "app_label": "anagrafiche",
+        "model_name": "conto_bancario",
+        "area_schema_db": "anagrafiche",
+        "livello_override": "TUTTO",
+        "livello_area": "LETTURA",
+        "livello_specifico": "TUTTO",
+        "livello": "LETTURA",
+        "limitato_da_area": true
+      }
+    ]
+  }
+}
+```
+
+| Campo | Significato |
+| --- | --- |
+| `abilitata_specifica` / `livello_specifico` | il valore **senza** tetto: override, poi profilo (azioni) o area (oggetti) |
+| `livello_area` | il livello risolto dell'area della voce (per un oggetto: l'area **dell'oggetto**, `fn_area_di_oggetto`) |
+| `livello_minimo_area` | il minimo che l'azione chiede alla sua area (`config.azioni_processo`) |
+| `abilitata` / `livello` | il valore **applicato** |
+| `limitata_da_area` / `limitato_da_area` | `true` quando il tetto ferma il valore specifico: la voce e' dormiente |
+| `livello_override` | l'override individuale valido sull'oggetto, `null` se non c'e' |
+
+ℹ️ **Nessuna chiave `aree`**: il livello effettivo di un'area e' il suo
+override o l'ereditato (§2.7), che il pannello ha gia'. I valori riflettono lo
+stato **salvato**: il pannello li ricarica dopo ogni salvataggio di un
+override. Un id inesistente risponde con l'errore di operatore non trovato,
+non con «tutto negato».
+
+**Esempio curl:**
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://host/api/v1/amm-software/operatori/1/permessi-effettivi/"
+```
+
+---
+
 ## 3. Reparti
 
 ### 3.1 GET /api/v1/amm-software/reparti/ -- Lista reparti

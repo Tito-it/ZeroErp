@@ -43,7 +43,7 @@ import { rowComponenti, hasBundleComponenti } from '../../_shared/componenti/row
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { TIPO_ECCEZIONE, TIPO_EROGAZIONE } from '../../constants'
 import {
-  FONTI_PER_TIPO_EROGAZIONE, fontiPerErogazione, fonteDefaultPerErogazione,
+  fontiPerErogazione, fonteDefaultPerErogazione,
 } from '../../_shared/righe/fontiQuantitaErogazione'
 import {
   previewEccezioneComponenti,
@@ -196,19 +196,9 @@ const tipoErogazioneOptions = [
 
 // La matrice erogazione × fonte e' il BB `fontiQuantitaErogazione`,
 // condiviso con le righe di contratto (stessi CHECK sulle due tabelle).
-// Senza erogazione (ammessa solo sull'ESCLUSIONE, che non si fattura) le
-// fonti sono tutte quelle della matrice: la fonte resta NOT NULL a DB, e una
-// tendina vuota non lascerebbe salvare ne' mostrerebbe il valore scritto.
-const _TUTTE_LE_FONTI = [
-  ...new Set(Object.values(FONTI_PER_TIPO_EROGAZIONE).flat().map((f) => f.value)),
-].map((value) => ({ value }))
-
-function _fontiPerTipo(tipo) {
-  if (!tipo) return _TUTTE_LE_FONTI
-  return fontiPerErogazione(tipo)
-}
-
-const fonteOptions = computed(() => _fontiPerTipo(form.value?.tipo_erogazione).map((f) => ({
+// Senza erogazione la tendina resta vuota finche' l'operatore non la sceglie:
+// l'ESCLUSIONE, che non ne ha, non mostra nemmeno i due campi.
+const fonteOptions = computed(() => fontiPerErogazione(form.value?.tipo_erogazione).map((f) => ({
   value: f.value,
   label: f.value,
 })))
@@ -280,8 +270,8 @@ function fromRow(row) {
           is_composito: row.is_composito === true,
         }
       : null,
-    // Come sono scritte: l'erogazione manca solo su un'ESCLUSIONE, la fonte e'
-    // NOT NULL. Niente ripieghi.
+    // Come sono scritte: erogazione e fonte mancano solo su un'ESCLUSIONE,
+    // che non porta dati di fatturazione. Niente ripieghi.
     tipo_erogazione: row.tipo_erogazione,
     fonte_quantita_attesa: row.fonte_quantita_attesa,
     prezzo_unitario: row.prezzo_unitario,
@@ -327,7 +317,7 @@ function closeForm() {
 
 watch(() => form.value?.tipo_erogazione, (nuovoTipo) => {
   if (!nuovoTipo || !form.value) return
-  const fontiValide = _fontiPerTipo(nuovoTipo).map((f) => f.value)
+  const fontiValide = fontiPerErogazione(nuovoTipo).map((f) => f.value)
   if (!fontiValide.includes(form.value.fonte_quantita_attesa)) {
     form.value.fonte_quantita_attesa = fonteDefaultPerErogazione(nuovoTipo)
   }
@@ -364,20 +354,32 @@ function onArticoloSelected(item) {
   caricaUomConPickBase(item.id)
 }
 
-const erogazioneObbligatoria = computed(
-  () => form.value?.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE,
+// ⛔ L'ESCLUSIONE non porta dati di fatturazione (prezzo, quantita', UdM,
+// erogazione, fonte): il form non li mostra e il payload non li manda. Il DB
+// li rifiuta col campo (E_RIGA_ESCLUSIONE_CON_DATI, brief-db-righe-esclusione-
+// solo-non-si-vende, 2026-10-04). ⏳ Transitorio: l'esclusione sta ancora nel
+// form finche' la lista dell'offerta non porta i verbi del DB (§8.1 del brief):
+// allora nasce da «Escludi», come sul contratto.
+const isEsclusione = computed(
+  () => form.value?.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE,
+)
+// ⛔ Un'ESCLUSIONE salvata non si modifica, nemmeno ordine o attivo: il guard
+// DB `_a05_` rifiuta ogni colonna (E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE).
+// Il form la mostra in sola lettura; si toglie dal cestino della riga.
+const esclusioneInModifica = computed(
+  () => formMode.value === 'edit' && isEsclusione.value,
 )
 
 const canSave = computed(() => {
   if (isReadonly.value) return false
   const f = form.value
   if (!f) return false
+  if (esclusioneInModifica.value) return false
   if (!f.tipo_eccezione) return false
   if (!f.articolo_id) return false
-  // Erogazione obbligatoria sulle righe che si fatturano (guard DB
-  // E_RIGA_EROGAZIONE_OBBLIGATORIA); l'ESCLUSIONE non si fattura.
-  if (erogazioneObbligatoria.value && !f.tipo_erogazione) return false
-  if (!f.fonte_quantita_attesa) return false
+  // Erogazione e fonte obbligatorie sulle righe che si fatturano (guard DB
+  // E_RIGA_EROGAZIONE_OBBLIGATORIA, CHECK sulla fonte); l'ESCLUSIONE non le ha.
+  if (!isEsclusione.value && (!f.tipo_erogazione || !f.fonte_quantita_attesa)) return false
   // Blocco CREATE su articolo composito finche' la ComponentiDialog non
   // ha confermato i prezzi componenti (mirror contratti). In EDIT i
   // componenti viaggiano via ComponentiPanel.
@@ -387,12 +389,10 @@ const canSave = computed(() => {
 
 function buildPayload() {
   const f = form.value
-  // Coerenza prezzo_unitario / tipo_eccezione (simmetrico a
-  // ContrattoRigheDrawer.buildPayload 2026-05-29 + bugfix 2026-05-29 bis):
-  //   - ESCLUSIONE: il prezzo NON ha semantica (DB
-  //     `chk_offerte_eccezioni_prezzo_per_tipo_eccezione` impone NULL).
-  //     Forza null lato client.
-  //   - OVERRIDE / AGGIUNTA (anche su articolo composito): inviare il
+  // L'ESCLUSIONE: solo cio' che non e' fatturazione (e la si manda solo in
+  // CREATE: in modifica il form e' in sola lettura).
+  if (isEsclusione.value) return { attivo: f.attivo, ordine: f.ordine }
+  // Prezzo su OVERRIDE / AGGIUNTA (anche su articolo composito): inviare il
   //     valore del form. Per i compositi il form è valorizzato da
   //     `onComponentiConfirm` con `summary.total / qtaPadre` (anteprima
   //     del SUM); al save BE il trigger `_z90_ricalcola_padre` allinea
@@ -400,8 +400,7 @@ function buildPayload() {
   //     prezzo_unitario NOT NULL per OVERRIDE/AGGIUNTA quindi NON
   //     possiamo skipparlo (era il bug del fix precedente).
   let prezzoUnitarioPayload = null
-  if (f.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE
-      && f.prezzo_unitario != null
+  if (f.prezzo_unitario != null
       && f.prezzo_unitario !== '') {
     prezzoUnitarioPayload = String(f.prezzo_unitario)
   }
@@ -702,9 +701,12 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
         </div>
       </div>
 
+      <!-- L'ESCLUSIONE non porta dati di fatturazione: niente erogazione, fonte,
+           prezzo, quantita' ne' UdM. -->
+      <template v-if="!isEsclusione">
       <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('vendite.offerte.field_tipo_erogazione') }}<span v-if="erogazioneObbligatoria"> *</span></label>
+          <label>{{ t('vendite.offerte.field_tipo_erogazione') }} *</label>
           <Select
             v-model="form.tipo_erogazione"
             :options="tipoErogazioneOptions"
@@ -731,8 +733,7 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
           <label>{{ t('vendite.offerte.field_prezzo_unitario') }}</label>
           <InputNumber
             v-model="form.prezzo_unitario"
-            :disabled="form.articolo_obj?.is_composito === true
-                       || form.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE"
+            :disabled="form.articolo_obj?.is_composito === true"
             :min-fraction-digits="0"
             :max-fraction-digits="6"
           />
@@ -746,9 +747,10 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
           />
         </div>
       </div>
+      </template>
 
       <div class="form-grid-2col">
-        <div class="form-field">
+        <div v-if="!isEsclusione" class="form-field">
           <label>{{ t('vendite.offerte.field_uom_operativa') }}</label>
           <Select
             v-model="form.uom_operativa_id"
@@ -765,6 +767,7 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
         <div class="form-field">
           <label>{{ t('vendite.offerte.field_ordine') }}</label>
           <InputNumber v-model="form.ordine" :min="0"
+            :disabled="esclusioneInModifica"
             :invalid="campiErrati.includes('ordine')"
           />
         </div>
@@ -773,11 +776,15 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
       <div class="form-field">
         <label style="display: inline-flex; gap: 0.5rem; align-items: center;">
           <ToggleSwitch v-model="form.attivo"
+            :disabled="esclusioneInModifica"
             :invalid="campiErrati.includes('attivo')"
           />
           {{ t('vendite.offerte.field_attivo') }}
         </label>
       </div>
+      <small v-if="esclusioneInModifica" class="app-text-muted">
+        {{ t('vendite.offerte.esclusione_non_modificabile') }}
+      </small>
 
       <!-- Sezione componenti BoM (modello unificato, simmetria preventivi).
            CREATE: la ComponentiDialog si auto-apre al primo set valido

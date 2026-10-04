@@ -1043,6 +1043,61 @@ class AmmSoftwareRepository:
 
         return {"aree": aree, "azioni": azioni}
 
+    # Scopo: I permessi EFFETTIVI di un operatore su azioni e oggetti, col
+    #        tetto d'area (brief-db-permessi-tetto-area): per ogni voce il
+    #        valore senza tetto, quello applicato e se l'area lo ferma.
+    #        Alimenta l'etichetta «limitata dall'area» del pannello permessi:
+    #        senza, il pannello mostrerebbe un override «abilitata» che non
+    #        vale niente.
+    #
+    # ⭐ La catena sta a DB, in `script.fn_get_permessi_effettivi_azioni` e
+    #    `..._oggetti`: sono la SEDE UNICA che leggono anche i resolver
+    #    (`fn_check_azione_processo`, `fn_resolve_livello_oggetto`) e le mappe
+    #    di `/me/`. Qui non si confrontano livelli e non si applica il tetto:
+    #    si aggiungono solo le etichette del catalogo.
+    # ⚠️ L'enum `livello_accesso` e' ordinato TUTTO < LETTURA < BLOCCATO: chi
+    #    volesse confrontare livelli in Python sbaglierebbe il verso. Non serve:
+    #    `limitata_da_area` / `limitato_da_area` arrivano gia' calcolati.
+    # ℹ️ Niente chiave `aree`: il livello effettivo di un'area e' l'override o
+    #    l'ereditato, che il pannello ha gia' (override + `permessi-ereditati`).
+    #    Le azioni si limitano alle ATTIVE, come il catalogo del pannello; gli
+    #    oggetti sono tutto `config.area_model_overrides`, riservati compresi.
+    def get_permessi_effettivi(self, auth_user_id: int) -> dict[str, Any]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT e.azione_id,
+                          e.permission_codename,
+                          e.area_id,
+                          e.abilitata_specifica,
+                          e.livello_area::text        AS livello_area,
+                          e.livello_minimo_area::text AS livello_minimo_area,
+                          e.abilitata,
+                          e.limitata_da_area
+                     FROM script.fn_get_permessi_effettivi_azioni(%s) e
+                    WHERE e.attivo
+                    ORDER BY e.azione_id""",
+                [auth_user_id],
+            )
+            azioni = rows_to_list(cursor)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT e.app_label,
+                          e.model_name,
+                          e.area_schema_db,
+                          e.livello_override::text  AS livello_override,
+                          e.livello_area::text      AS livello_area,
+                          e.livello_specifico::text AS livello_specifico,
+                          e.livello::text           AS livello,
+                          e.limitato_da_area
+                     FROM script.fn_get_permessi_effettivi_oggetti(%s) e
+                    ORDER BY e.app_label, e.model_name""",
+                [auth_user_id],
+            )
+            oggetti = rows_to_list(cursor)
+
+        return {"azioni": azioni, "oggetti": oggetti}
+
     # Scopo: Sostituisce il profilo completo di un reparto (aree + azioni)
     #        scrivendo direttamente sul modello generalizzato profili_accesso_*
     #        (post-cutover PR-B). Operazione atomica:

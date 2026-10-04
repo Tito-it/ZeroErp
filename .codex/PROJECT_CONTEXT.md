@@ -233,7 +233,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   richiesta del BE, decisione di Tid del 2026-10-04): `tipo_erogazione` obbligatoria su OVERRIDE/AGGIUNTA di contratto
   e offerta (`20261004-30…-32`, CHECK + guard, codice `E_RIGA_EROGAZIONE_OBBLIGATORIA`); il lister del push non
   propone più le esclusioni e non ripiega su CANONE (`-33`). Applicato il 2026-10-04, pgTAP verdi. BE/FE
-  scritto il 2026-10-04 (§8), non committato.
+  fatto il 2026-10-04 (§8): il cantiere è chiuso, il brief si può archiviare.
+- **L'esclusione è solo «non si vende», contratto e offerta con le stesse regole**
+  (`work-in-progress/brief-db-righe-esclusione-solo-non-si-vende.md`, decisione di Tid del 2026-10-04): DB
+  applicato (`20261004-40…-49`, `-70…-76`), pgTAP verdi. BE/FE primo giro fatto il 2026-10-04 (§9). ⏳ Secondo giro DB richiesto (§8: lista configurabile dell'offerta; revisione che perde i
+  componenti, scale delle gemelle, lock dei componenti, `attivo`/`meta` NOT NULL); poi il drawer dell'offerta
+  passa ai verbi del DB e a «Escludi».
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

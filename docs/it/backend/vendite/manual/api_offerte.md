@@ -759,8 +759,23 @@ Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
   (`chk_offerte_eccezioni_prezzo_per_tipo_eccezione`)
 - Coerenza `(tipo_erogazione, fonte_quantita_attesa)`
   (`chk_offerte_eccezioni_coerenza_fonte_erogazione`)
-- `fonte_quantita_attesa` NOT NULL
-  (`chk_offerte_eccezioni_fonte_qta`)
+- `fonte_quantita_attesa` obbligatoria su OVERRIDE/AGGIUNTA, NULL sull'ESCLUSIONE
+  (`chk_offerte_eccezioni_fonte_per_tipo_eccezione`, dal 2026-10-04); in create
+  non si pretende: su OVERRIDE/AGGIUNTA la riempie il trigger dall'erogazione
+- **Un'ESCLUSIONE e' vuota** (decisione di Tid, 2026-10-04,
+  brief-db-righe-esclusione-solo-non-si-vende): dice solo «non si vende», quindi
+  `prezzo_unitario`, `quantita`, `qta_operativa`, `uom_operativa_id`,
+  `factor_to_base`, `tipo_erogazione`, `fonte_quantita_attesa`, `periodicita`,
+  `generazione_canone` e `competenza_canone` restano NULL. «Escludi» manda solo
+  `articolo_id` e `tipo_eccezione`. Un dato valorizzato lo rifiuta il guard
+  `script.trgfn_righe_guard_esclusione_senza_dati` → `E_RIGA_ESCLUSIONE_CON_DATI`
+  (400, campo in `error.fields`); CHECK `chk_offerte_eccezioni_esclusione_senza_dati` come rete.
+- **Le stesse regole del contratto** (2026-10-04): righe solo in bozza
+  (`trgfn_doc_righe_lock_fuori_bozza` → `E_RIGA_DOC_NON_BOZZA`), l'esclusione non si
+  modifica (`E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE`), AGGIUNTA fuori listino
+  (`E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO`), esclusione del componente di un bundle
+  vietata, tipo immutabile (lock di colonna). I codici dicono «CONTRATTO» per storia,
+  i messaggi sono neutri
 - **Quantità**: la sorgente è `qta_operativa` (UoM operativa). La colonna base
   `quantita` è **derivata dal trigger** `trgfn_qta_from_operativa`
   (`quantita = qta_operativa × factor_to_base`) e non va inviata. `qta_operativa`
@@ -944,6 +959,7 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 | `E_VENDITE_DUPLICATO`                               | 409                 | UNIQUE `uq_offerte_commerciali_codice` / `uq_offerte_commerciali_uid` / `uq_offerte_commerciali_utilities_offerta_id` / `uq_offerte_eccezioni_one_eccezione_per_articolo` / `uq_offerte_eccezioni_one_aggiunta_per_articolo` | —                                                   |
 | `E_VENDITE_FK`                                      | 400                 | FK su BA/emittente/istanza/utility/listino/articolo/uom/tipo/classe utenza                              | —                                                   |
 | `E_RIGA_EROGAZIONE_OBBLIGATORIA`                    | 400                 | DB P0001 (2026-10-04) — create o PATCH di un'eccezione OVERRIDE/AGGIUNTA senza `tipo_erogazione`. Campo `tipo_erogazione` in `error.fields`. Stesso codice sulle righe di contratto | `script.trgfn_righe_guard_erogazione_obbligatoria` |
+| `E_RIGA_ESCLUSIONE_CON_DATI`                        | 400                 | DB P0001 (2026-10-04) — INSERT di un'ESCLUSIONE con un dato di fatturazione. Campo in `error.fields`. Stesso codice sul contratto | `script.trgfn_righe_guard_esclusione_senza_dati` |
 | `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`        | 409                 | DB P0001 — `BOZZA -> EMESSA` con `listino_versione_id` NULL                                            | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`   | 409                 | DB P0001 — `BOZZA -> EMESSA` con versione listino non in stato `ATTIVA`                                 | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`                 | 409                 | DB P0001 — transizione non presente in `config.stati_doc_offerte_transizioni` (es. EMESSA -> ANNULLATA, EMESSA -> BOZZA, qualsiasi uscita da stato terminale) | `trgfn_offerte_commerciali_guard_transizione`        |

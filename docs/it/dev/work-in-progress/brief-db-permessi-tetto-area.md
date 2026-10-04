@@ -9,7 +9,10 @@
 > azioni e oggetti suggerisce una gerarchia che oggi il modello non applica.
 > **Decisioni:** di Tid, 2026-10-04 (§3).
 > **Stato:** ✅ **DB chiuso**: `20261004-50 → -59` + mirror del CSV **applicati il 2026-10-04**,
-> pgTAP verdi (Tid). ⏳ Resta il giro BE/FE (§9.7, poi §7). **Da leggere per primo: §9.7.**
+> pgTAP verdi (Tid). ✅ **Giro BE/FE di §6 scritto** il 2026-10-04 (§10), non committato.
+> ✅ **Anteprima di §7.3 decisa (Tid, sì) e scritta** (§10.1). ✅ **Restyle del pannello (§7) scritto** (§10.2),
+> non committato. ⏳ Collaudo a video: [collaudo-in-app-ui-permessi-operatore.md](collaudo-in-app-ui-permessi-operatore.md) §5-bis.
+> La cache (§6.5) prosegue in [brief-db-permessi-catalogo-notify-cache.md](brief-db-permessi-catalogo-notify-cache.md).
 
 ## 1. La regola
 
@@ -334,3 +337,58 @@ non lo scavalca: RAISE.
   lato BE (`grep user_override_azioni apps/*/tests`); i file toccati dal `grep` di oggi
   (`test_permissions_audit`, `test_pannello_verbo_db`, `test_override_oggetti_catalogo_db`)
   provano scritture, non risoluzioni.
+
+## 10. Giro BE/FE di §6 (2026-10-04) — ✅ scritto, non committato
+
+| Punto | Cosa è stato fatto |
+| --- | --- |
+| §6.1 firma | Niente da fare: firma invariata (§9.2). Il BE continua a passare `get_area_schema_db(...)`, che è la regola di `fn_area_di_oggetto`. |
+| §6.2 `permissions.py` | Nessun cambio: il tetto arriva da `check_azione` / `get_livello_oggetto`. Il diniego resta `AZIONE_NEGATA` senza dire «per l'area»: il motivo esiste solo nel pannello. |
+| §6.3 `/me/` | `me_view.py`: descritti nello schema OpenAPI `permessi_oggetto` (livello **effettivo**, tutto il catalogo) e `azioni_abilitate` (col tetto); prima non erano documentati. |
+| §6.3 FE | `stores/auth.js` `getLivelloOggetto(appLabel, model)` **legge** la mappa (`?? getLivelloArea(appLabel)` per un oggetto fuori catalogo): non ricostruisce più la catena. I chiamanti passano già lo schema = `app_label` (`READONLY_DOMAINS`). |
+| §6.4 pannello | Endpoint nuovo `GET amm-software/operatori/{id}/permessi-effettivi/` (`PermessiEffettiviOperatoreView` → `AmmSoftwareService.get_permessi_effettivi` → repository su `fn_get_permessi_effettivi_azioni` (sole attive) e `…_oggetti`). Test `amm_software/tests/api/test_permessi_effettivi_operatore.py` (6: risposta, operatore inesistente prima della lettura, sorgente = funzioni della catena, nessun `GREATEST`/regola pura riscritta nel BE, sole azioni attive, chiavi). Binding provato sul DB di sviluppo (38 azioni attive, 27 oggetti). Store `operatori.js`: `permessiEffettivi` + `fetchPermessiEffettivi`, ricaricato dopo ogni `saveOverride*`. Pannello: etichetta «limitata dall'area» sotto la tendina di azioni e oggetti, **solo dai valori del DB** (nessuna anteprima: §7.3 resta da decidere). |
+| §6.5 cache | ⚠️ Nessun punto applicativo da collegare: `livello_minimo_area` cambia solo dal seed al migrate. La cache permessi scade in `PERMISSIONS_CACHE_TTL` (300 s); `invalidate_all()` esiste ma non la chiama nessuno a fine migrate/deploy. È lo stesso per ogni cambio di seed dei permessi, non nasce qui: → **Tid, 2026-10-04: LISTEN/NOTIFY** sul catalogo, brief a sé: [brief-db-permessi-catalogo-notify-cache.md](brief-db-permessi-catalogo-notify-cache.md). Lo script di deploy non basterebbe: il DB migra per conto suo. |
+| §6.6 doc | Guida `architettura-permessi-e-autorizzazioni.md` §3 riscritta («l'area è un tetto», override dormienti, sede unica) e allineati §4.7, §4.8, §5, §7.3, §13.1; `api_amm_software.md` §2.8 (endpoint nuovo). |
+| §9.7 test Django su DB vero | Censiti i test con `richiedi_db_provvisto` che concedono azioni: `magazzino/tests/db/test_documento_interno_db.py` (usa `fn_pgtap_concedi_azione`, che dal `-59` apre l'area) e `core/tests/db/test_pannello_verbo_db.py` (scrive un override d'area). Verdi con `ZEROERP_TEST_DB_E2E=1`, insieme a `apps.amm_software`, `core.tests.api` e `test_permissions_resolver`: **689 test OK**; registro OpenAPI verde. FE: eslint pulito, `check_i18n_keys` pulito, spec `amministrazione` + `stores` 31/31. |
+
+Chiavi i18n nuove (it/en): `amministrazione.limitata_da_area_azione`, `amministrazione.limitato_da_area_oggetto`.
+
+### 10.1 Anteprima del tetto (§7.3) — ✅ Tid, 2026-10-04: sì
+
+* Copia **dichiarata** delle due regole pure in `frontend/src/amministrazione/tettoArea.js`
+  (`areaConsenteAzione`, `livelloConTettoArea`), presidiata da `tettoArea.spec.js`, che riproduce
+  gli esiti dei casi 3 e 4 del pgTAP `test-permessi-tetto-area-v1`. ⛔ Se la regola cambia a DB,
+  cambia quel pgTAP e lo spec si riallinea nello stesso giro.
+* `OperatorePermessiTab`: una voce **senza** modifiche non salvate (sue o della sua area) mostra il
+  valore del DB; **con** modifiche usa i valori a video e l'etichetta dice «(anteprima: non ancora
+  salvato)». Ogni pezzo non cambiato a video si prende comunque dal DB. Un override conta solo
+  dentro la sua validità. Niente anteprima per super admin e operatore con veste spenta: lì il DB
+  risponde prima del tetto.
+* Chiave i18n nuova: `amministrazione.tetto_anteprima`.
+
+### 10.2 Restyle del pannello per area (§7) — ✅ scritto il 2026-10-04, non committato
+
+* `OperatorePermessiTab`: due schede (*Aree, oggetti e azioni* / *Scope emittenti fiscali*);
+  nella prima l'elenco delle aree a sinistra — livello a video (override o ereditato), numero di
+  override dell'area (livello + oggetti + azioni), nome arancio con modifiche non salvate,
+  triangolo d'avviso con voci limitate dal tetto — e l'area scelta a destra (`MatriceOverride`
+  per livello, oggetti, azioni). Ricerca trasversale (area, oggetto, azione) e *Solo con override*
+  restringono la **vista**, mai il salvataggio. Una voce modificata resta a vista col filtro.
+* **Salva unico** (`salva()`, `puoSalvare`, `salvando` esposti): manda le sole sezioni
+  modificate, nell'ordine aree → azioni → oggetti → scope; ognuna si fissa appena il suo PUT
+  riesce. `OperatorePermessiDrawer` e `OperatoreDrawer` (scheda Permessi) hanno ora
+  `footer="form"` e chiamano `salva`.
+* Layout: classi globali `app-elenco-dettaglio*` in `main.css` (registrate nel catalogo BB FE);
+  in sola lettura elenco e filtri restano attivi. Sotto i 1024px l'elenco va sopra.
+* ⛔ **Non fatto**: il gruppo «Trasversali» (§7.2) — il catalogo non dice quali aree lo siano
+  (§9.6 punto 3). L'elenco è nell'ordine del catalogo.
+* Test: `OperatorePermessiTab.spec.js` (montato, 7: elenco e dettaglio per area, cambio area,
+  filtro, ricerca, segno del tetto nell'elenco, niente salvataggio senza modifiche, Salva unico
+  che manda la sola sezione modificata e ricarica gli effettivi), **provato per mutazione** (tre
+  mutazioni, tutte rosse). FE: eslint, guard e build verdi; `amministrazione` + `stores` 41/41.
+* i18n: nuove `amministrazione.permessi_tab_aree`, `permessi_cerca`, `permessi_solo_override`,
+  `permessi_livello_area`, `permessi_oggetti_area`, `permessi_azioni_area`,
+  `permessi_area_override`, `permessi_area_limitate`, `permessi_nessuna_area`,
+  `permessi_area_senza_voci`; ritirate `override_aree_title`, `override_azioni_title`,
+  `override_oggetti_title`, `cerca_azione`, `cerca_model` (senza più consumatori).
+

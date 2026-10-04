@@ -258,7 +258,7 @@ _CONTRATTO_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
 #     `count_eccezioni_bloccanti` (blocca OVERRIDE/ESCLUSIONE; AGGIUNTE OK
 #     perche' restano valide senza listino).
 #   - aggiunta (NULL → valore): AGGIUNTE per articoli ora nel nuovo listino
-#     diventano illegali (trigger DB `trgfn_contratti_righe_guard_aggiunta_fuori_listino`).
+#     diventano illegali (trigger DB `script.trgfn_righe_guard_aggiunta_fuori_listino`).
 #   - sostituzione (valore → altro valore): OVERRIDE/ESCLUSIONE puntano a
 #     articoli del listino vecchio, potrebbero non esistere nel nuovo.
 # Il check inline copre aggiunta + sostituzione (qualsiasi righe attiva blocca).
@@ -2187,8 +2187,9 @@ class ContrattiService:
     #        tipo_eccezione sono obbligatori in create; mutazione dei campi
     #        commerciali solo sui campi presenti. Il check di coerenza
     #        (ESCLUSIONE -> prezzo NULL, OVERRIDE/AGGIUNTA -> prezzo NOT NULL)
-    #        e' enforced dal CHECK DB chk_contrighe_prezzo_per_tipo_eccezione,
-    #        pre-validato qui per messaggio parlante.
+    #        e' enforced dal CHECK DB chk_contrighe_prezzo_per_tipo_eccezione;
+    #        qui si pre-valida, per messaggio parlante, il solo ramo
+    #        OVERRIDE/AGGIUNTA (l'ESCLUSIONE la rifiuta il guard DB col campo).
     def _build_data_riga(self, payload: dict[str, Any], *, for_create: bool) -> dict[str, Any]:
         data: dict[str, Any] = {}
         if for_create:
@@ -2203,8 +2204,12 @@ class ContrattiService:
             data["tipo_eccezione"] = tipo_eccezione
 
             # Coerenza prezzo_unitario / tipo_eccezione (pre-DB):
-            # - ESCLUSIONE -> prezzo NULL (l'articolo non e' disponibile)
             # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
+            # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei dieci
+            #    dati di fatturazione che il guard DB rifiuta col campo
+            #    (E_RIGA_ESCLUSIONE_CON_DATI, brief-db-righe-esclusione-solo-
+            #    non-si-vende R-BE-3). Un 400 nostro sul solo prezzo direbbe la
+            #    stessa regola con un altro codice.
             # Eccezione: articolo composito (modello unificato BoM 2026-05-13).
             # Il FE puo' omettere `prezzo_unitario` per padri compositi perche'
             # il prezzo padre = SUM(figli × coeff_qta) calcolato dal trigger
@@ -2216,18 +2221,7 @@ class ContrattiService:
             # Pattern simmetrico al preventivo (cfr. preventivi_service.py
             # `gestisci_riga` ~ linea 670, "Padre composito").
             prezzo_raw = payload.get("prezzo_unitario")
-            if tipo_eccezione == "ESCLUSIONE":
-                ErrorManager.require(
-                    prezzo_raw is None,
-                    code=E_VENDITE_VALIDATION,
-                    message=_MESSAGE_RIGA,
-                    detail=(
-                        "ESCLUSIONE: prezzo_unitario deve essere NULL "
-                        "(l'articolo non e' disponibile per questo contratto)."
-                    ),
-                    context={"tipo_eccezione": tipo_eccezione},
-                )
-            elif prezzo_raw is None:
+            if prezzo_raw is None and tipo_eccezione != "ESCLUSIONE":
                 # OVERRIDE / AGGIUNTA: prezzo None ammesso solo se composito.
                 articolo_id_val = data.get("articolo_id")
                 is_composito = bool(
