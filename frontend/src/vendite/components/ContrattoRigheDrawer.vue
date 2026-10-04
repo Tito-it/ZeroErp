@@ -281,13 +281,10 @@ const {
 } = useComponentiDialog({
   form,
   isCreate: () => formMode.value === 'create',
-  // ESCLUSIONE escluso: un articolo escluso non ha prezzo (il DB impone
-  // prezzo_unitario NULL) ne' senso di negoziarne i componenti BoM. Niente
-  // ComponentiDialog ne' invio `componenti_overrides` per le ESCLUSIONI.
-  isComposito: () => articoloObj.value?.is_composito === true
-    && form.value?.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE,
-  isPadreComposito: () => articoloObj.value?.is_composito === true
-    && form.value?.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE,
+  // Il form non vede mai un'ESCLUSIONE: nasce dal one-click «Escludi» e non
+  // ha il verbo MODIFICA (brief-db-contratto-esclusione-non-modificabile).
+  isComposito: () => articoloObj.value?.is_composito === true,
+  isPadreComposito: () => articoloObj.value?.is_composito === true,
 })
 
 // Modifiche non salvate del form inline (2026-10-03, D-1 di
@@ -556,7 +553,9 @@ function onEscludi(row) {
 //          come OVERRIDE (delega a onModificaPrezzo). Muta un prezzo, quindi
 //          vuole lo stesso permesso di «Nuovo» ed «Escludi»: senza, il click
 //          non apre un form che il backend rifiuterebbe (403)
-//        - MODIFICA (riga salvata: OVERRIDE/AGGIUNTA/ESCLUSIONE): apre l'edit
+//        - MODIFICA (riga salvata OVERRIDE/AGGIUNTA): apre l'edit. ⛔ Una
+//          ESCLUSIONE non ce l'ha (solo RIPRISTINA_ARTICOLO): «una esclusione
+//          non si modifica», e lo decide il DB — qui non si filtra per origine
 // ⭐ Riceve la RIGA, non l'evento PrimeVue: e' la firma di `row-click` di
 //    `DrawerTabLista`.
 function onRowClick(r) {
@@ -571,7 +570,7 @@ function onRowClick(r) {
   if (azioni.includes(AZIONE_RIGA_CONTRATTO.MODIFICA)) _onEditRigaPersistita(r)
 }
 
-// Scopo: apertura form EDIT per righe persistite (override/aggiunta/esclusione).
+// Scopo: apertura form EDIT per righe persistite (override/aggiunta).
 //        Estratto da onRowClick per non duplicare la logica di restore form.
 function _onEditRigaPersistita(r) {
   // `apriRiga` apre la modifica (l'id lo deriva `rigaEditId`) e, se un'altra
@@ -581,18 +580,13 @@ function _onEditRigaPersistita(r) {
     form.value = {
       articolo_id: r.articolo_id,
       articolo_obj: { id: r.articolo_id, codice: r.articolo_codice, descrizione: r.articolo_descrizione, _display: `${r.articolo_codice} — ${r.articolo_descrizione}` },
-      // tipo_eccezione: immutabile in EDIT (refactor 2026-05-15). Mostrato
-      // come Tag readonly nel template form. Fallback OVERRIDE per righe
-      // legacy che non avevano ancora il campo (transitorio).
-      tipo_eccezione: r.tipo_eccezione || TIPO_ECCEZIONE.OVERRIDE,
+      // tipo_eccezione: immutabile (lock di colonna a DB, 2026-10-04).
+      // Mostrato come Tag readonly nel template form. NOT NULL: niente ripiego.
+      tipo_eccezione: r.tipo_eccezione,
       tipo_erogazione: r.tipo_erogazione || TIPO_EROGAZIONE.CANONE,
-      // Refactor 2026-05-19: fonte_quantita_attesa NOT NULL post-migration
-      // 20260519-05. Fallback dal default della matrice solo per righe legacy
-      // che non avessero ancora il campo (transitorio, non dovrebbe accadere).
-      fonte_quantita_attesa: r.fonte_quantita_attesa
-        || _defaultFontePerTipo(r.tipo_erogazione || TIPO_EROGAZIONE.CANONE),
-      // Il prezzo scritto sulla riga di `contratti_righe` (NULL su una
-      // ESCLUSIONE).
+      // fonte_quantita_attesa NOT NULL (20260519-05): niente ripiego.
+      fonte_quantita_attesa: r.fonte_quantita_attesa,
+      // Il prezzo scritto sulla riga di `contratti_righe`.
       prezzo_unitario: r.override_prezzo != null ? Number(r.override_prezzo) : null,
       qta_operativa: r.qta_operativa != null ? Number(r.qta_operativa) : 1,
       // ⭐ UdM e ordine COSI' COME SONO SCRITTI sulla riga (§9.11, R-D2):
@@ -669,18 +663,13 @@ const canSave = computed(() => {
       && (form.value.qta_operativa == null || Number(form.value.qta_operativa) === 0)) {
     return false
   }
-  // Refactor modalita 2026-05-15: coerenza prezzo_unitario / tipo_eccezione
-  // (specchio del check BE _build_data_riga):
-  //   - ESCLUSIONE: prezzo NULL ammesso (l'articolo non e' disponibile)
-  //   - OVERRIDE / AGGIUNTA: prezzo obbligatorio (e' il prezzo finale),
-  //     EXCEPT articoli compositi dove il prezzo padre = SUM(componenti)
-  //     viene popolato dal trigger DB post-init.
-  const tipo = form.value.tipo_eccezione
+  // Refactor modalita 2026-05-15: prezzo obbligatorio (e' il prezzo finale
+  // di OVERRIDE / AGGIUNTA, le sole righe che passano dal form), EXCEPT
+  // articoli compositi dove il prezzo padre = SUM(componenti) viene
+  // popolato dal trigger DB post-init.
   const prezzoMancante = form.value.prezzo_unitario == null
     || form.value.prezzo_unitario === ''
-  if (tipo !== TIPO_ECCEZIONE.ESCLUSIONE
-      && !articoloObj.value?.is_composito
-      && prezzoMancante) return false
+  if (!articoloObj.value?.is_composito && prezzoMancante) return false
   // Modello unificato BoM 2026-05-13: in CREATE su articolo composito,
   // blocca il save finche' la ComponentiDialog non e' stata confermata
   // almeno una volta (componentiPayload != null). Se l'operatore annulla
@@ -720,10 +709,6 @@ function buildRigaPayload(extra = {}) {
   if (formMode.value === 'create') {
     payload.articolo_id = f.articolo_id
     payload.tipo_eccezione = f.tipo_eccezione || TIPO_ECCEZIONE.OVERRIDE
-    // ESCLUSIONE: BE rifiuta prezzo non-null. Forziamo null per safety.
-    if (payload.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE) {
-      payload.prezzo_unitario = null
-    }
     // Modello unificato BoM 2026-05-13: includi `componenti_overrides`
     // se l'articolo e' composito e la Dialog ha prodotto overrides delta.
     if (articoloObj.value?.is_composito === true
@@ -1119,21 +1104,16 @@ function origineSeverity(origine) {
         <div class="form-field">
           <label>
             {{ t('vendite.contratti.field_prezzo_unitario') }}
-            <!-- Obbligatorio per OVERRIDE/AGGIUNTA (default tipo) non
-                 composito. ESCLUSIONE = prezzo NULL. -->
-            <span v-if="form.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE && !articoloObj?.is_composito">*</span>
-            <Tag v-if="form.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE"
-              severity="warn"
-              :value="t('vendite.contratti.prezzo_esclusione_n_a')" />
-            <Tag v-else-if="articoloObj?.is_composito"
+            <!-- Obbligatorio per OVERRIDE/AGGIUNTA non composito. -->
+            <span v-if="!articoloObj?.is_composito">*</span>
+            <Tag v-if="articoloObj?.is_composito"
               severity="info"
               :value="t('vendite.componenti.panel.padre_calcolato')"
               v-tooltip.top="t('vendite.componenti.panel.padre_calcolato_tooltip')"
               class="contratti-componenti-padre-tag" />
           </label>
           <InputNumber v-model="form.prezzo_unitario"
-            :disabled="articoloObj?.is_composito === true
-                       || form.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE"
+            :disabled="articoloObj?.is_composito === true"
             :min-fraction-digits="2" :max-fraction-digits="4" showButtons />
         </div>
       </div>

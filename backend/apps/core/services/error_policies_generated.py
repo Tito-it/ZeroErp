@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 972, di cui 99 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 974, di cui 99 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -327,6 +327,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # ⚠️ RITIRATO il 2026-09-15
     "E_CONTRATTO_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
     "E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA": "NON_ESEGUIBILE",
+    # vendite.trgfn_contratti_righe_guard_esclusione_immutabile (trigger _a05_ BEFORE UPDATE su vendite.contratti_righe, WHEN OLD.tipo_eccezione = ESCLUSIONE): una riga ESCLUSIONE non si modifica. Un'esclusione dice solo che il contratto non vende quell'articolo del listino: si crea (Escludi) e si cancella (Ripristina articolo, DELETE), e basta. Ammesse le sole colonne tecniche (data_update, user_update, tx_id); attivo compresa fra le vietate (la riga spenta terrebbe occupato lo slot di uq_contrighe_one_eccezione_per_articolo). Contesto: riga_id, contratto_id, articolo_id, colonne cambiate. * CONFLITTO_STATO: non c'e' un campo da correggere, e' l'operazione a non essere ammessa su quella riga. * Nessun valore nel messaggio. * Nasce il 2026-10-04 (brief-db-contratto-esclusione-non-modificabile R2, decisione di Tid: «una esclusione non si modifica»).
+    "E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE": "CONFLITTO_STATO",
     "E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI": "NON_ESEGUIBILE",
     # Refactor 2026-05-18 (decisione §4.4 refactor-contratti-modalita): · un listino senza versione ATTIVA non e' selezionabile come · riferimento di un contratto. In assenza di una versione attiva non · ci sono righe da applicare, quindi il contratto sarebbe formalmente · "con listino" ma operativamente vuoto. Il vincolo si applica sia · in CREATE che in UPDATE (PATCH `listino_id`): l'errore parlante · arriva PRIMA del save evitando il flag `listino_senza_versione_oggi` · come zona grigia.
     "E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA": "NON_ESEGUIBILE",
@@ -342,6 +344,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTRATTO_NON_TROVATO": "NON_TROVATO",
     "E_CONTRATTO_OVERLAP_ESISTENTE": "CONFLITTO_STATO",
     "E_CONTRATTO_RIGA_NON_TROVATA": "NON_TROVATO",
+    # Lock di colonna (dbops.automation_lock_columns) su vendite.contratti_righe.tipo_eccezione: il tipo di una riga di contratto (OVERRIDE, ESCLUSIONE, AGGIUNTA) si sceglie alla nascita. Cambiarlo sul posto farebbe nascere un'esclusione o un'aggiunta senza passare dai guard della creazione, e lascerebbe alla riga dati che il tipo nuovo non ha (o le toglierebbe quelli che gli servono). Per cambiare tipo: eliminare la riga e crearne una nuova. * CONFLITTO_STATO come gli altri lock (E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE, E_OFFERTA_REVISIONE_CATENA_IMMUTABILE). * Il VARIADIC porta il nome della colonna, come nella famiglia dei lock. * Non si e' riusato CODICE_NON_MODIFICABILE: e' obsoleto_dal 2026-08-05. * Nasce il 2026-10-04 (brief-db-contratto-esclusione-non-modificabile R3).
+    "E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE": "CONFLITTO_STATO",
     "E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA": "CONFLITTO_STATO",
     # Date di successione incoerenti: dato semanticamente non processabile · (non un conflitto di stato) → 422.
     "E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA": "NON_ESEGUIBILE",

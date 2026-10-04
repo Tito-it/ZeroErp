@@ -10,10 +10,10 @@
 > merce, e la mappa dice *«mai dipendenze inverse o laterali»*. Discussa e decisa
 > da Tid il **2026-10-01** (§2).
 >
-> **Stato al 2026-10-01 (sera):** ✅ **scritto** — nove changeSet `20261001-18 → -26`,
-> le tre sedi della postura, un pgTAP nuovo e due adeguati, la doc `manual/`.
-> ✅ Prova pre-apply su `zeroerp_ci` verde (§7). ⏳ **Restano a Tid**: l'apply, la
-> corsa col runner (§7.3), la rigenerazione della doc auto-gen.
+> **Stato al 2026-10-04:** ✅ **chiuso** — nove changeSet `20261001-18 → -26`
+> applicati, le tre sedi della postura, un pgTAP nuovo e due adeguati, la doc
+> `manual/`; corsa col runner e doc auto-gen rigenerata (Tid). Verificato il
+> 2026-10-04: nessuna ricaduta su BE/FE (§9).
 >
 > **Perimetro:** spostare in `vendite` i due posting della bolla e del reso,
 > togliere la FK dell'asset verso il contratto (D-3), e mettere un presidio che
@@ -297,9 +297,9 @@ transazione.
 ## 8. Riferimenti
 
 - [Mappa concentrica](../../mappa-concentrica.md) — la regola degli anelli (§1), l'anello 2, la matrice.
-- [Lotto 3](brief-db-magazzino-lotto-3-scarico-da-ddt.md) (P-7, `fn_posta_ddt`) ·
-  [Lotto 3-bis](brief-db-magazzino-lotto-3-bis-carico-da-reso.md) (P-7, `fn_posta_reso`).
-- [Analisi carico e scarico](analisi-db-magazzino-carico-e-scarico.md) — M-2 (la primitiva), §6 (l'identità e le sorgenti).
+- [Lotto 3](../work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md) (P-7, `fn_posta_ddt`) ·
+  [Lotto 3-bis](../work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md) (P-7, `fn_posta_reso`).
+- [Analisi carico e scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) — M-2 (la primitiva), §6 (l'identità e le sorgenti).
 - Vista gemella del cancello: `dbops.vw_audit_log_scrittori_fuori_perimetro` (`20_code/dbops/20260911-32`).
 - [linee-guida-sql §11.8](../../linee-guida-sql.md) — le tre sedi della postura.
 
@@ -312,3 +312,4 @@ transazione.
 | 2026-10-01 | Prima stesura, dalla segnalazione sulla mappa. Misurato sulla struttura: il verso `magazzino` → `vendite` sono **solo** i due posting. ✅ **Tid**: D-1 (il registro è un servizio dell'anello 2, predisposto finché `acquisti` non è il secondo dominio) e D-2 (il posting sta nel dominio che muove la merce). Mappa aggiornata nello stesso giro. ⚠️ Emerso scrivendo: il DROP delle due funzioni va in `90_end`, perché due `preConditions` di `90_end` le pretendono esistenti |
 | 2026-10-01 (sera) | 🔴 **Il presidio smentisce §1 alla prima esecuzione**: oltre ai due posting c'è la FK `magazzino.assets.contratto_id` → `vendite.contratti`, mai letta né scritta. La prima lettura guardava funzioni e prosa, non `pg_depend`. ✅ **Tid, D-3: si toglie nello stesso giro.** |
 | 2026-10-01 (sera) | ✅ **Scritto, non applicato**: nove changeSet `20261001-18 → -26`, le tre sedi della postura, un pgTAP nuovo (14 test) e due adeguati, `manual/` di `assets` e della vista, mappa e changelog. Scostamenti dichiarati: il codice del guard di parametro (§2.1), il presidio dal catalogo e di natura `CANCELLO` (§4). 🔴 **Trovato provando**: `pg_identify_object` dà schema NULL a viste, trigger, policy e default — la lente era cieca sulle viste, l'ha detto il testimone; corretta, e tre testimoni in più. ✅ Prova pre-apply su `zeroerp_ci` (§7) |
+| 2026-10-04 | ✅ **Chiuso**: apply, corsa col runner come app e doc auto-gen rigenerata (Tid; la doc mostra i due posting in `vendite`, spariti da `magazzino`, la vista nuova, `assets` senza contratto). Riletto il codice: nessuna ricaduta su BE/FE — `backend/` e `frontend/src` non nominano i due posting né la vista, l'unica query su `magazzino.assets` (`lookup_assets`) non legge `contratto_id`, e `E_VENDITE_CHIAMATA_NON_VALIDA` ha già policy e ripiego. Spostato in `work-done/` |

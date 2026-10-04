@@ -327,7 +327,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (le 18 storiche e `20260925-22`/`-23`): è un cambio della forma di casa, del
   team DB.
 - 🔴 **Il tetto d'area dei permessi non esiste** (BE + DB, difetto di
-  modello, senza decisione; registrato il 2026-09-25 dall'analisi
+  modello; registrato il 2026-09-25 dall'analisi
   `work-in-progress/analisi-ui-permessi-operatore.md` §3, perché non si perda
   con la sua chiusura): un'area `BLOCCATO` **non** blocca le sue azioni di
   processo — `core/api/permissions.py` risponde con la sola
@@ -335,9 +335,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   **più permissivo** della sua area (`fn_resolve_livello_oggetto` sostituisce,
   non limita: «il più specifico vince», dichiarato nella guida di
   architettura §3). Passare a «l'area è un tetto» è un cambio di semantica, da
-  fare a DB e BE, mai solo a video. Le domande da decidere sono in §6
-  dell'analisi (vale anche sul profilo? limite o cancellazione degli override
-  sottostanti?). Non è della v3 dei permessi, che è dormiente
+  fare a DB e BE, mai solo a video. ✅ **Deciso da Tid il 2026-10-04** (tetto
+  sì, anche sul profilo, override dormienti, minimo d'area per azione):
+  `work-in-progress/brief-db-permessi-tetto-area.md`, che porta anche il
+  restyle del pannello per area (§7). Non è della v3 dei permessi, che è dormiente
 - **Il `codice` delle sei famiglie di documento di seed si perde al migrate**
   (DB, ereditata il 2026-09-24 dalla chiusura di
   `work-done/brief-be-ricerca-full-liste-residue.md`, §13.5): dal 24-09 il

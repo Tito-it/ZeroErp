@@ -998,25 +998,10 @@ class ContrattiServiceTests(TestCase):
         self.assertIn("prezzo_unitario obbligatorio", ctx.exception.detail or "")
         repo.update_riga.assert_not_called()
 
-    # Scopo: refactor 2026-05-15. update_riga non puo' settare prezzo NOT NULL
-    # su riga ESCLUSIONE esistente.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_riga_esclusione_prezzo_non_null_fallisce(self, repo_cls):
-        from apps.vendite.services.contratti_service import ContrattiService
-
-        repo = repo_cls.return_value
-        repo.get_riga.return_value = {
-            "id": 7, "contratto_id": 1, "tipo_eccezione": "ESCLUSIONE",
-            "prezzo_unitario": None,
-        }
-        repo.get_contratto.return_value = _testata_default()  # DRAFT
-
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_riga(7, {"prezzo_unitario": "10"})
-
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertIn("ESCLUSIONE", ctx.exception.detail or "")
-        repo.update_riga.assert_not_called()
+    # ⚠️ Il PATCH di una riga ESCLUSIONE non ha piu' un test qui: dal
+    # 2026-10-04 lo rifiuta il guard DB `_a05_` (E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE),
+    # e un repository mockato non lo vede. Lo prova
+    # `tests/db/test_contratto_esclusione_non_modificabile_db`.
 
     # Scopo: BE 2.6. get_contesto_pricing delega al repository e ritorna
     # l'envelope per il banner FE.
