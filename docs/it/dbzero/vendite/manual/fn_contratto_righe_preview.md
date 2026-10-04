@@ -36,16 +36,21 @@ RETURNS TABLE (
     valore_variazione     vendite.contratti.valore_variazione_globale%TYPE,
     override_riga_id      vendite.contratti_righe.id%TYPE,
     override_prezzo       vendite.contratti_righe.prezzo_unitario%TYPE,
-    tipo_eccezione        vendite.tipo_eccezione_contratto,
+    tipo_eccezione        vendite.contratti_righe.tipo_eccezione%TYPE,
     origine               varchar,
     prezzo_finale         vendite.listini_righe.prezzo%TYPE,
     componenti            jsonb,
     quantita              vendite.contratti_righe.quantita%TYPE,
     qta_operativa         vendite.contratti_righe.qta_operativa%TYPE,
     tipo_erogazione       vendite.contratti_righe.tipo_erogazione%TYPE,
-    fonte_quantita_attesa vendite.contratti_righe.fonte_quantita_attesa%TYPE
+    fonte_quantita_attesa vendite.contratti_righe.fonte_quantita_attesa%TYPE,
+    riga_key              text,
+    azioni                text[],
+    escludi_blocco_codice text,
+    ordine                vendite.contratti_righe.ordine%TYPE,
+    uom_operativa_id      vendite.contratti_righe.uom_operativa_id%TYPE
 )
-LANGUAGE plpgsql STABLE
+LANGUAGE plpgsql STABLE SECURITY INVOKER
 ```
 
 ## Logica — 4 parti
@@ -119,7 +124,8 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 `esposizione_in_fattura`: il codice interno del modo in cui il componente si vede in fattura sotto il suo kit (`NASCOSTO` | `DESCRITTIVO` | `VALORIZZATO`), letto da `catalogo.articoli_componenti`. Fino al 2026-10-01 la chiave era `esposto_in_fattura` (boolean: `false` → `NASCOSTO`, `true` → `DESCRITTIVO`), rev `20261001-53`.
 
 `coeff_qta`: in Parte 1b viene da `catalogo.articoli_componenti.coeff_qta`; in Parte 2b da `contratti_righe_componenti.coeff_qta_snapshot`.  
-`prezzo`: in Parte 1b è `listini_righe_componenti.prezzo`; in Parte 2b è `contratti_righe_componenti.prezzo_unitario`.
+`prezzo`: in Parte 1b è `listini_righe_componenti.prezzo`; in Parte 2b è `contratti_righe_componenti.prezzo_unitario`.  
+`uom_id` / `uom_codice`: in Parte 1b l'UoM base del componente; in Parte 2b `contratti_righe_componenti.uom_operativa_id`, l'UoM in cui è quotato il suo prezzo (dal 2026-10-04, `20261004-01`).
 
 ## Output — colonne principali
 
@@ -127,7 +133,7 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 |---|---|
 | `articolo_id` / `articolo_codice` / `articolo_descrizione` | Articolo padre |
 | `is_composito` | `TRUE` = bundle (ha `componenti`), `FALSE` = standalone |
-| `uom_id` / `uom_codice` | UoM: da `listini_righe.uom_id` per 1a, da `articoli.uom_id` per 1b/2a/2b |
+| `uom_id` / `uom_codice` | UoM: da `listini_righe.uom_id` per 1a, da `articoli.uom_id` per 1b; per 2a/2b l'UoM **della riga** (`contratti_righe.uom_operativa_id`), e se è NULL la base dell'articolo |
 | `prezzo_listino` | Prezzo raw dal listino (NULL per bundle e AGGIUNTA) |
 | `tipo_variazione` / `valore_variazione` | Variazione globale del contratto (NULL per Parte 2) |
 | `override_riga_id` / `override_prezzo` | `contratti_righe.id` e `prezzo_unitario` se eccezione presente |
@@ -139,6 +145,9 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 | `qta_operativa` | Quantita in UoM operativa; valorizzata solo per righe con eccezione, NULL per DA_LISTINO puro |
 | `tipo_erogazione` | `CANONE` / `UNA_TANTUM` / `ORARIO` / `CONSUMO`; valorizzato solo per righe con eccezione, NULL per DA_LISTINO puro |
 | `fonte_quantita_attesa` | `FISSA` / `MANUALE` / `TIMESHEET` / `LETTURE` / `DERIVATA_COMPONENTI`; valorizzata solo per righe con eccezione, NULL per DA_LISTINO puro |
+| `riga_key` / `azioni` / `escludi_blocco_codice` | Chiave di riga, verbi ammessi e motivo per cui «Escludi» è spento: vedi rev 2026-09-28 |
+| `ordine` | `contratti_righe.ordine` della riga persistita; NULL per DA_LISTINO puro |
+| `uom_operativa_id` | `contratti_righe.uom_operativa_id` così com'è scritto (NULL per DA_LISTINO puro, e per una riga senza quantità); è il dato che il form di modifica rimanda al `PATCH` |
 
 ## Note operative
 
@@ -154,3 +163,10 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 ### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
 
 **Diventa la sorgente della lista `vendite.contratto_righe`** per le due forme del contratto (`20260928-32`, D-8.4). Tre colonne in coda: `riga_key` (`L:<articolo>:<uom>` per le righe del listino, `A:<id>` per le aggiunte: la chiave che il frontend inventava), `azioni` (i verbi che l'origine ammette: dal listino sovrascrivi prezzo / escludi; prezzo forzato modifica / ripristina il listino; esclusione modifica / ripristina l'articolo; aggiunta modifica / rimuovi) ed `escludi_blocco_codice` (il motivo per cui «Escludi» è spento, da [script.fn_check_esclusione_articolo_contratto](/dbzero/script/funzioni/fn_check_esclusione_articolo_contratto), lo stesso predicato del guard). Il blocco «fuori bozza» resta di documento. La versione del listino in vigore per il contratto in bozza non è più scelta qui: la dice [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore) (`20260928-39`). Per ogni data la versione in vigore è **al più una**, per costruzione (nessuna sovrapposizione fra versioni ATTIVE e CHIUSE, date di una CHIUSA bloccate), quindi «la prima» e «tutte le valide» sono la stessa cosa. Stesso esito, provato sui dati di dev.
+
+<!-- rev-2026-10-04-uom-della-riga -->
+### 🔄 rev 2026-10-04 — l'UoM della riga, e ordine (brief-db-liste-righe-documento §9.11)
+
+**Le AGGIUNTA escono nell'UoM in cui la riga è quotata** (`20261004-01`). Prima uscivano nell'UoM base dell'articolo: quantità e prezzo comparivano accanto a un'UoM che non era la loro, a video, nell'export e in stampa. Inoltre il form di modifica, che non trovava l'UoM della riga, al primo salvataggio la riscriveva con quella dell'articolo. Una riga senza UoM operativa (succede solo quando non ha una quantità, cioè con fonte diversa da `FISSA`) ricade sulla base dell'articolo, come fa già [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) quando la riga viene scritta. Vale anche per i componenti di un bundle AGGIUNTA: ognuno esce nella sua UoM operativa.
+
+**Due colonne in coda**: `ordine` e `uom_operativa_id` della riga di `contratti_righe`, vuote sulle righe che vengono solo dal listino. Servono al form di modifica, che le rimanda al `PATCH`: senza, ogni modifica azzerava l'ordine della riga e l'UoM di un'eccezione andava indovinata. In tutto 24 colonne.
