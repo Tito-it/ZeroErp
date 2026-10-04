@@ -294,9 +294,9 @@ class TitoliIvaService:
     # Scopo: Registra una forzatura manuale sul plafond.
     # ⛔ DALL'API SI SCRIVE SOLO `FORZATURA`, ed e' la decisione Q3 — la piu'
     #    delicata di questo piano. `FATTURA` e `NOTA_CREDITO` li produce la
-    #    pipeline con I4, dentro la transizione a DEFINITIVA, passando da
-    #    `fn_consuma_plafond_titolo_iva`, che e' anche l'unica a prendere il lock
-    #    di D15-bis.
+    #    pipeline con I4, all'emissione del lotto, passando da
+    #    `fn_consuma_plafond_titolo_iva_righe`, che e' anche l'unica a prendere
+    #    il lock di D15-bis.
     # ⚠️ Un POST che accettasse `FATTURA` consumerebbe plafond SENZA una fattura:
     #    il CHECK di DB pretende `fattura_id NOT NULL` sui tipi non-forzatura,
     #    quindi il chiamante dovrebbe passare l'id di una fattura vera — e a quel

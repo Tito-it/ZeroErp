@@ -240,7 +240,7 @@ class TestOperatoriPatchView(TestCase):
         """Scopo: PATCH invalida la cache permessi dell'operatore modificato."""
         repo_instance = MockRepo.return_value
         repo_instance.get_categoria_accesso.return_value = "OPERATORE"
-        repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
+        repo_instance.get_operatore_detail.return_value = {**SAMPLE_DETAIL, "veste_attiva": True}
 
         view = OperatoriDetailView()
         view.check_permissions = MagicMock()
@@ -269,11 +269,12 @@ class TestOperatoriPatchView(TestCase):
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_patch_is_super_admin(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
-        """Scopo: Fase 7 — PATCH `is_super_admin: true, attivo: true` arriva
-        al repo come bool nel contract multi-face (no traduzione legacy)."""
+        """Scopo: Fase 7 — PATCH `is_super_admin: true` arriva al repo come
+        bool nel contract multi-face (no traduzione legacy); `attivo: true` su
+        una veste gia' accesa non e' una transizione: nessuno spegnimento (D-3)."""
         repo_instance = MockRepo.return_value
         repo_instance.get_categoria_accesso.return_value = "OPERATORE"
-        repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
+        repo_instance.get_operatore_detail.return_value = {**SAMPLE_DETAIL, "veste_attiva": True}
 
         view = OperatoriDetailView()
         view.check_permissions = MagicMock()
@@ -284,14 +285,15 @@ class TestOperatoriPatchView(TestCase):
 
         call_kwargs = repo_instance.update_operatore.call_args.kwargs
         self.assertTrue(call_kwargs["is_super_admin"])
-        self.assertTrue(call_kwargs["attivo"])
+        self.assertNotIn("attivo", call_kwargs)
         self.assertNotIn("ruolo_sistema", call_kwargs)
+        repo_instance.disabilita_operatore.assert_not_called()
 
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_patch_attivo(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
-        """Scopo: PATCH cambio attivo passa il valore corretto al repository,
-        e spegnere chiude le sessioni della sola veste operatore (A-5, D-5)."""
+        """Scopo: PATCH `attivo: false` spegne con la scrittura di «Disabilita»
+        (2026-10-04), e chiude le sessioni della sola veste operatore (A-5, D-5)."""
         repo_instance = MockRepo.return_value
         repo_instance.get_categoria_accesso.return_value = "OPERATORE"
         # Una veste ACCESA che si spegne: solo allora si chiudono sessioni e inviti.
@@ -302,8 +304,7 @@ class TestOperatoriPatchView(TestCase):
         view.check_permissions = MagicMock()
         view.patch(_admin_request(method="PATCH", data={"attivo": False}), auth_user_id=1)
 
-        call_kwargs = repo_instance.update_operatore.call_args.kwargs
-        self.assertFalse(call_kwargs["attivo"])
+        repo_instance.disabilita_operatore.assert_called_once_with(1)
         self.mock_invito.return_value.chiudi_veste_spenta.assert_called_once_with(
             PORTA_OPERATORE, auth_user_id=1, identita_id=7,
         )

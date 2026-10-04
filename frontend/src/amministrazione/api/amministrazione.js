@@ -34,9 +34,8 @@ export function disabilitaOperatore(authUserId) {
   return api.post(`${BASE}/operatori/${authUserId}/disabilita/`)
 }
 
-export function riattivaOperatore(authUserId) {
-  return api.post(`${BASE}/operatori/${authUserId}/riattiva/`)
-}
+// ⛔ Niente `riattivaOperatore` (ritirato il 2026-10-04, D-3): un operatore
+//    spento si riattiva col reinvio dell'invito (`reinviaInvito`).
 
 // --- Area «Accessi» (brief-db-be-fe-area-accessi) ---
 // I due tab accanto agli operatori: insieme censiscono TUTTE le credenziali,

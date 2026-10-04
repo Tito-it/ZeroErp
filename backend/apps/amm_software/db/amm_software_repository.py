@@ -302,8 +302,8 @@ class AmmSoftwareRepository:
     # Semantica lookup-by-id: la fn ritorna 0 righe per id NULL/<=0/inesistenti
     # (idioma standard per i lookup; diverge dalla regola AGENTS "guard
     # NULL/<=0" volutamente — i chiamanti gestiscono `None` come "non
-    # trovato"). I 3 service consumer (`get_operatore`, `update_operatore`,
-    # `disabilita_operatore`, `riattiva_operatore`) trasformano None in
+    # trovato"). I service consumer (`get_operatore`, `update_operatore`,
+    # `disabilita_operatore`) trasformano None in
     # E_AMM_OPERATORE_NOT_FOUND quando rilevante.
     #
     # GUC awareness: la fn DB usa `script.fn_is_super_admin` che e' gated
@@ -348,22 +348,6 @@ class AmmSoftwareRepository:
             row = cursor.fetchone()
         return int(row[0]) if row and row[0] is not None else None
 
-    # Scopo: Accende o spegne la VESTE OPERATORE della credenziale
-    # (`_VESTE_OPERATORE`), non le altre: una credenziale puo' avere anche
-    # vesti di portale o shop (D-6).
-    # ⛔ Spegnere vuol dire SOLO `attivo = false`, e il tipo resta (R-DB-1,
-    #    2026-10-02): la tabella rifiuta `DISABILITATO` con
-    #    `E_RUOLO_APPLICATIVO_RITIRATO`. Fino a quel giorno lo spegnimento
-    #    scriveva anche il ruolo, e la riattivazione lo ricostruiva perche' il
-    #    codice lo SAPEVA, non perche' il dato lo dicesse.
-    def _set_veste_attiva(self, auth_user_id: int, *, attivo: bool) -> None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "UPDATE anagrafiche.identita_digitali SET attivo = %s "  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
-                f"WHERE id = {_VESTE_OPERATORE.format(au='%s')}",
-                [attivo, auth_user_id],
-            )
-
     # Scopo: Aggiunge o rimuove il binding SUPER_ADMIN sull'identita
     # digitale dell'utente. Singola query atomica (no race SELECT+WRITE,
     # no-op se l'utente non ha identita). Il guard DB
@@ -398,7 +382,7 @@ class AmmSoftwareRepository:
                 )
 
     # Scopo: Aggiorna i campi modificabili di un operatore (auth_user +
-    # identita_digitali + bindings SUPER_ADMIN + risorse_umane).
+    # bindings SUPER_ADMIN + risorse_umane).
     # Dopo la modifica, il chiamante deve invalidare la cache permessi.
     # Transazione atomica: i 4-5 step devono succedere insieme o
     # nessuno (nessuno stato parziale inconsistente).
@@ -408,10 +392,11 @@ class AmmSoftwareRepository:
     #                               OPERATORE attiva)
     #   - `is_super_admin=False` -> binding SUPER_ADMIN DELETE (identita
     #                               OPERATORE attiva)
-    #   - `attivo=False`         -> veste operatore attivo=false (il tipo
-    #                               resta, R-DB-1)
-    #   - `attivo=True`          -> veste operatore attivo=true
-    # `is_super_admin` e `attivo` sono ortogonali e indipendenti.
+    # ⛔ Niente `attivo` (2026-10-04): spegnere e' `disabilita_operatore`,
+    #    che il service chiama anche dall'interruttore (Tid: «l'interruttore
+    #    fa come Disabilita»); accendere e' dell'attivazione dell'invito (D-3).
+    #    Fino a quel giorno l'interruttore spento scriveva qui una sua
+    #    versione dello spegnimento, senza `valido_al = oggi`.
     def update_operatore(
         self,
         auth_user_id: int,
@@ -421,7 +406,6 @@ class AmmSoftwareRepository:
         last_name: str | None = None,
         is_super_admin: bool | None = None,
         unita_organizzativa_id: int | None = None,
-        attivo: bool | None = None,
         valido_al: str | None = None,
     ) -> None:
         with transaction.atomic():
@@ -446,25 +430,17 @@ class AmmSoftwareRepository:
                         auth_params,
                     )
 
-            # 2) La veste operatore segue `attivo` (simmetrico a
-            #    disabilita/riattiva): solo `attivo`, il tipo resta.
-            if attivo is not None:
-                self._set_veste_attiva(auth_user_id, attivo=attivo)
-
-            # 3) Binding SUPER_ADMIN (ortogonale ad `attivo`).
+            # 2) Binding SUPER_ADMIN.
             if is_super_admin is True:
                 self._set_super_admin_binding(auth_user_id, enabled=True)
             elif is_super_admin is False:
                 self._set_super_admin_binding(auth_user_id, enabled=False)
 
-            # 4) Aggiorna la risorsa umana della VESTE OPERATORE (catena
+            # 3) Aggiorna la risorsa umana della VESTE OPERATORE (catena
             #    veste -> soggetto_ruolo): le altre vesti della credenziale
             #    hanno soggetti_ruoli loro, e non sono affari di questo comando.
             ru_fields: list[str] = []
             ru_params: list[Any] = []
-            if attivo is not None:
-                ru_fields.append("attivo = %s")
-                ru_params.append(attivo)
             if unita_organizzativa_id is not None:
                 ru_fields.append("unita_organizzativa_id = %s")
                 ru_params.append(unita_organizzativa_id)
@@ -483,8 +459,8 @@ class AmmSoftwareRepository:
                         ru_params + [auth_user_id],
                     )
 
-            # 5) Sync auth_user.is_active se stato cambiato
-            if attivo is not None or is_super_admin is not None:
+            # 4) Sync auth_user.is_active se il binding e' cambiato
+            if is_super_admin is not None:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "SELECT anagrafiche.fn_sync_auth_user_is_active(%s)",
@@ -511,15 +487,20 @@ class AmmSoftwareRepository:
             )
             return cursor.fetchone()[0]
 
-    # Scopo: Disabilita un operatore. Post-cutover (§13.3.2) il framework
+    # Scopo: Disabilita un operatore: la sede UNICA dello spegnimento, sia
+    # da «Disabilita» sia dall'interruttore «Accesso attivo» (2026-10-04).
+    # Post-cutover (§13.3.2) il framework
     # ATTIVO su risorse_umane valuta RUA.attivo come vista derivata da
     # identita_digitali.attivo, quindi l'ordine figlio→padre funziona
     # scrivendo su identita prima di RU. Transazione atomica per evitare
     # stato inconsistente se uno dei 3 step fallisce.
     def disabilita_operatore(self, auth_user_id: int) -> None:
         with transaction.atomic(), connection.cursor() as cursor:
-            # 1. Spegne la veste operatore (figlio): solo `attivo`, il tipo
-            #    resta (R-DB-1).
+            # 1. Spegne la veste operatore (figlio), non le altre: una
+            #    credenziale puo' avere anche vesti di portale o shop (D-6).
+            #    ⛔ Solo `attivo = false`, il tipo resta (R-DB-1, 2026-10-02):
+            #    la tabella rifiuta `DISABILITATO` con
+            #    `E_RUOLO_APPLICATIVO_RITIRATO`.
             cursor.execute(
                 "UPDATE anagrafiche.identita_digitali SET attivo = false "  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
                 f"WHERE id = {_VESTE_OPERATORE.format(au='%s')}",
@@ -534,35 +515,6 @@ class AmmSoftwareRepository:
                      FROM anagrafiche.identita_digitali id
                     WHERE id.id = {_VESTE_OPERATORE.format(au="%s")}
                       AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
-                [auth_user_id],
-            )
-            # 3. Sync auth_user.is_active
-            cursor.execute(
-                "SELECT anagrafiche.fn_sync_auth_user_is_active(%s)",
-                [auth_user_id],
-            )
-
-    # Scopo: Riattiva un operatore precedentemente disabilitato. Ordine
-    # inverso: padre→figlio per rispettare il framework ATTIVO
-    # (un figlio attivo richiede padre attivo). Transazione atomica.
-    def riattiva_operatore(self, auth_user_id: int) -> None:
-        with transaction.atomic(), connection.cursor() as cursor:
-            # 1. Riattiva risorse_umane (padre) + valido_dal=oggi, valido_al=NULL
-            cursor.execute(
-                f"""UPDATE anagrafiche.risorse_umane ru
-                      SET attivo = true,
-                          valido_dal = CURRENT_DATE,
-                          valido_al = NULL
-                     FROM anagrafiche.identita_digitali id
-                    WHERE id.id = {_VESTE_OPERATORE.format(au="%s")}
-                      AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
-                [auth_user_id],
-            )
-            # 2. Riaccende la veste operatore (figlio): il tipo non va
-            #    ricostruito, non l'ha mai perso (R-DB-1).
-            cursor.execute(
-                "UPDATE anagrafiche.identita_digitali SET attivo = true "  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
-                f"WHERE id = {_VESTE_OPERATORE.format(au='%s')}",
                 [auth_user_id],
             )
             # 3. Sync auth_user.is_active

@@ -23,7 +23,10 @@
 > ✅ **D-5 chiusa il 2026-10-02**, staccata da L-5 perché solo BE (§4.3-bis):
 > il refresh di una veste spenta è un 401 e chiude la sessione; spegnere una
 > veste (operatore, portale, shop) chiude le sessioni della **sola** veste.
-> ⏳ **Da fare**: L-4, il resto di L-5 (R-4 e D-3), L-6 (solo A-7).
+> ✅ **D-3 chiusa il 2026-10-04** (§4.3): niente più riattivazione diretta,
+> l'operatore spento si riattiva col reinvio dell'invito, che riapre la
+> risorsa umana; la veste la accende la persona. Con lei si chiudono M-5 e M-6.
+> ⏳ **Da fare**: L-4, il resto di L-5 (R-4, cioè D-4 e A-6), L-6 (solo A-7).
 > ⏳ **R-4 aspetta ancora un brief DB** (la revoca della veste).
 > Le tre domande di §6 sono decise (Tid, 2026-09-24).
 >
@@ -51,8 +54,8 @@ Il perché di ognuna sta nell'[analisi](../work-done/analisi-accessi-credenziale
 
 | Sigla | Cosa resta | Lotto |
 | --- | --- | --- |
-| **M-5** | 🟡 Quasi chiusa il 2026-10-02: le due strade (`disabilita_operatore` e `update_operatore` con `attivo=False`, l'interruttore di `OperatoreDrawer.vue`) toccano la **sola veste operatore** (la veste di riferimento del DB, §4.3) e la spengono con il **solo** `attivo` (R-5 consegnata, brief area Accessi). ✅ Sessioni per veste fatte il 2026-10-02 (D-5, §4.3-bis): «Disabilita» non chiude più la sessione shop della stessa persona. Resta la riattivazione diretta (M-6, D-3) | L-5 |
-| **M-6** | 🟡 Il difetto («tutte le identità a `OPERATORE`») è chiuso dallo stesso `_VESTE_OPERATORE`, con caso costruito. Resta la decisione D-3: **ritirare la riattivazione diretta** — `riattiva_operatore` **e** `update_operatore` con `attivo=True` — e riattivare col reinvio | L-5 |
+| ~~**M-5**~~ | ✅ Chiusa: le due strade di spegnimento toccano la **sola veste operatore** col **solo** `attivo` (2026-10-02, R-5) e chiudono le sessioni della sola veste (D-5); la riattivazione diretta, che restava, è ritirata con D-3 (2026-10-04) | ~~L-5~~ |
+| ~~**M-6**~~ | ✅ Chiusa: il difetto dal 2026-10-02 (`_VESTE_OPERATORE`, caso costruito); **D-3 fatta il 2026-10-04** — `riattiva_operatore` (repository, service, view, rotta, FE) ritirato, PATCH `attivo: true` su una veste spenta → 400 `E_AMM_VALIDAZIONE`; si riattiva col reinvio (§4.3) | ~~L-5~~ |
 | ~~**A-5**~~ | ✅ Chiusa il 2026-10-02 (§4.3-bis): «Disabilita», interruttore, portale e shop fanno le stesse tre cose sulla veste che spengono — inviti pendenti invalidati, sessioni della veste chiuse, cache a commit. L'operatore invalida gli inviti dentro `_spegni_veste_operatore` (`InvitoVeste.invalida` con `PORTA_OPERATORE`): prima un invito in volo poteva riaccendere la veste appena spenta | ~~L-5~~ |
 | **A-6** | Lo shop si riattiva da solo (`ProfileActivateShopView`) anche dopo una revoca dell'admin (D-4) | L-5 (R-4) |
 | **A-7** | `valido_dal`/`valido_al` della veste non applicati al login né a ogni richiesta | L-6 |
@@ -80,7 +83,7 @@ suo prerequisito DB (indice unico sull'email, P-2) è in vigore.
 | **L-2** | Blocco e sblocco dell'admin | P-1 (§3.3, ✅ a DB) | D-1 (blocco vero) | ✅ 2026-10-02 (brief area Accessi §8) |
 | **L-3** | Una persona, una credenziale; invito e attivazione operatore sulla regola unica; ultimo accesso | P-2, R-1, R-2, R-9, brief credenziale per email | D-6, D-8, A-1, A-2, A-3, A-4, A-9 | ✅ 2026-09-27 (collaudo 2026-10-02) |
 | **L-4** | Portale e shop entrano con l'email; il nome utente nell'invito operatore | P-2 (indice email, ✅) + R-3 (✅) | D-9 | 🟡 nome utente nell'invito fatto; login e reset per email da fare, nessuna dipendenza |
-| **L-5** | Disattivazione per veste, niente riattivazione diretta, revoca che tiene, sessioni per veste | **R-4** (R-5 ✅; D-5 nessuna, §4.3-bis) | M-5, M-6, D-3, D-4, D-5, A-5, A-6 | 🟡 sola veste operatore fatta (2026-10-02); D-5 chiusa (2026-10-02, §4.3-bis); il resto aspetta il secondo brief DB |
+| **L-5** | Disattivazione per veste, niente riattivazione diretta, revoca che tiene, sessioni per veste | **R-4** (R-5 ✅; D-5 nessuna, §4.3-bis) | M-5, M-6, D-3, D-4, D-5, A-5, A-6 | 🟡 sola veste operatore fatta (2026-10-02); D-5 chiusa (2026-10-02, §4.3-bis); D-3 chiusa (2026-10-04); resta D-4/A-6, che aspetta il secondo brief DB (R-4) |
 | **L-6** | Validità della veste al login e a ogni richiesta | niente | A-7 (A-8 ➡️ T-0, ✅) | ⏳ da fare |
 
 ---
@@ -400,17 +403,17 @@ sospeso). Collaudo a video
 > disabilitare e riattivare non toccano una veste shop; il SUPER_ADMIN si lega
 > alla sola veste operatore). ✅ R-5 consegnata (brief area Accessi, R-DB-1) e
 > ✅ D-5/A-5 chiuse (§4.3-bis). ⏳ **Il resto aspetta R-4**, cioè un brief DB
-> non ancora scritto: va scritto **prima** di riprendere D-4. D-3 (ritiro della
-> riattivazione diretta) non ha dipendenze DB.
+> non ancora scritto: va scritto **prima** di riprendere D-4. ✅ D-3 (ritiro
+> della riattivazione diretta) fatta il 2026-10-04, riga qui sotto.
 
 | Pezzo | Cosa cambia |
 | --- | --- |
-| `disabilita_operatore` **e** `update_operatore` con `attivo=False` | ✅ tocca **solo la veste OPERATORE** (2026-10-02). ✅ `ruolo_applicativo` **invariato** (§6 Q-2): R-5 consegnata (R-DB-1), nessuna delle due strade scrive più `DISABILITATO` (2026-10-02). ✅ Sessioni, inviti e cache della sola veste (§4.3-bis) |
-| `riattiva_operatore`, endpoint `…/riattiva/` **e** `update_operatore` con `attivo=True` | ⏳ **ritirati** (D-3): si riattiva col reinvio. Catena ancora in piedi: service `riattiva_operatore`, `OperatoriRiattivaView`, rotta `operatori/<id>/riattiva/`, FE `riattivaOperatore` e azione store `riattiva`. ~~FE: il pulsante «Riattiva» diventa «Reinvia invito»~~ → superato: nessun `.vue` ha più un pulsante «Riattiva»; la strada viva è l'**interruttore** «attivo» di `OperatoreDrawer.vue` (PATCH), ed è quello che va riportato al reinvio |
+| `disabilita_operatore` **e** `update_operatore` con `attivo=False` | ✅ **una scrittura sola dal 2026-10-04** (Tid: «l'interruttore fa come Disabilita»): il service, dall'interruttore, chiama `repo.disabilita_operatore` dopo i campi; il repository `update_operatore` non ha più `attivo`. Prima l'interruttore non scriveva `valido_al = oggi`. ✅ tocca **solo la veste OPERATORE** (2026-10-02). ✅ `ruolo_applicativo` **invariato** (§6 Q-2): R-5 consegnata (R-DB-1), nessuna delle due strade scrive più `DISABILITATO` (2026-10-02). ✅ Sessioni, inviti e cache della sola veste (§4.3-bis) |
+| `riattiva_operatore`, endpoint `…/riattiva/` **e** `update_operatore` con `attivo=True` | ✅ **ritirati il 2026-10-04** (D-3; Tid lo stesso giorno: la risorsa umana la riapre l'**invio dell'invito**, l'interruttore è **spento e bloccato**). Ritirati repository, service, `OperatoriRiattivaView`, rotta `operatori/<id>/riattiva/`, FE `riattivaOperatore` e azione store `riattiva`. PATCH `attivo: true` su una veste spenta → 400 `E_AMM_VALIDAZIONE` (`field: attivo`); `attivo` conta solo come transizione accesa → spenta, così salvare un operatore spento non richiude il rapporto riaperto. `InvitoOperatoreService.invia_invito` riapre la risorsa umana (`RisorseUmaneCoreRepository.riapri_risorsa_umana_della_veste`, sulla veste che si invita: `attivo`, `valido_al = NULL` solo se già arrivata — una fine futura resta —, `valido_dal` intatto — la riattivazione diretta lo riscriveva a oggi) nella transazione dell'emissione; la veste resta spenta finché la persona attiva. FE: l'interruttore «Accesso attivo» legge `veste_attiva` (prima `attivo`, che è la **risorsa umana**: un invitato non ancora attivato lo vedeva acceso) e da spento resta fermo con «si riattiva col reinvio dell'invito»; il pulsante d'invito (da `can_invite`) è la strada. Doc: `api_amm_software.md` §1.4/§1.6, `api_invito_operatore.md`, guida risorse-umane-e-accessi §Rientro, catalogo BB backend |
 | Revoca (D-4) | disattivare **dall'admin** marca la veste come revocata → §5 R-4; `ProfileActivateShopView` rifiuta una veste revocata; FE `AttivaAccessoShopButton` spento col motivo, `PortaleAccessoPanel` mostra «revocato» |
 | Sessioni (D-5) | ✅ ➡️ **§4.3-bis** (staccata e chiusa il 2026-10-02). Il disegno originale: un BB unico «chiudi le sessioni di una veste»: blacklist degli `OutstandingToken` della credenziale il cui claim `identita_id` è quello della veste. Usato da operatore, portale e shop. ⭐ Il BB della revoca esiste dal 2026-09-26 (`apps/core/services/revoca_token.blocca_token_sessioni`, filtro per `sid`): si estende con il filtro per veste, non se ne scrive un secondo. Fatto così: vedi §4.3-bis per cosa c'era prima |
 | Stessi effetti per tutte le vesti (A-5) | ✅ 2026-10-02 (§4.3-bis). Il disegno: invalidazione dei token d'invito pendenti **e** della cache permessi anche su portale/shop (oggi solo operatore la seconda, solo portale/shop la prima) |
-| Test | ⭐ M-6 **costruito**: credenziale con veste operatore + cliente portale → disattiva operatore → il portale resta attivo, il cliente entra; reinvio → attivazione → operatore di nuovo attivo, cliente intatto. Sul DB provvisto. 🟡 Metà fatta (2026-10-02): `test_operatore_altre_vesti_db` prova disattiva/riattiva con una veste shop; mancano il login del cliente dopo la disattivazione e il giro col reinvio, che nasce con D-3 |
+| Test | ⭐ M-6 **costruito**, sul DB vero (`test_operatore_altre_vesti_db`): credenziale con veste operatore + veste shop → disabilita (veste e rapporto chiusi, shop intatto) → riapertura del rapporto all'invito (veste ancora spenta, `valido_dal` intatto, idempotente) → attivazione (`attiva_identita`) → operatore acceso, shop intatto (n. 2, 2026-10-04); interruttore che non riaccende e salvataggio che non richiude (n. 2a). Giro HTTP intero sulle view vere (`core/tests/db/test_login_credenziale_db` n. 11, 2026-10-04): entra → disabilita (login 401) → PATCH `attivo: true` 400 → `…/riattiva/` 404 → reinvio (rapporto riaperto, `valido_dal` intatto, login ancora 401) → attivazione con un clic dal link dell'email → rientra con la sua password. FE: `OperatoreDrawer.spec.js` (4: invitato non attivato ⇒ interruttore spento e fermo col perché e invito presente; veste accesa ⇒ libero; il Salva manda `attivo: false` e non la risorsa umana; l'ultimo SUPER_ADMIN fa vincere il motivo del DB) — provato che morde: con la lettura vecchia due casi vanno rossi. Unitari: `test_invito_operatore` n. 8-9, `test_amm_software_service` 9a/9a-bis/9g. ➕ Nello stesso giro: l'email finta di `CicloOperatoreDbTests` restituiva un `MagicMock` invece di `(log_id, spedita)`, e ogni invito del test finiva nel log come email fallita (test verde lo stesso): ora ha la forma vera. ⚠️ Resta scoperto il login di un cliente portale/shop della stessa credenziale dopo la disattivazione dell'operatore (la veste shop resta accesa sul DB, provato; il login attraverso la sua porta no) |
 
 ### 4.3-bis D-5 — Sessioni per veste (solo BE, staccata da L-5 il 2026-10-02)
 
@@ -490,7 +493,7 @@ riprendere D-4.
 Riscritto il 2026-10-02 sul lavoro che resta (L-0, L-1, L-3 sono fatti):
 
 1. **L-6** (A-7) e **L-4** (login e reset per email): nessuna dipendenza.
-2. **D-3** (ritiro della riattivazione diretta): nessuna dipendenza DB.
+2. ~~**D-3** (ritiro della riattivazione diretta)~~ ✅ 2026-10-04.
 3. Il brief DB con **R-4**, poi D-4 e A-6.
 4. In parallelo, quando il DB consegna, le ricadute BE/FE del
    [brief credenziale e utenti di sistema](../work-done/brief-db-credenziale-verbi-amministratore.md).

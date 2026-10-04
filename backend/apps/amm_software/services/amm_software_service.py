@@ -283,6 +283,25 @@ class AmmSoftwareService:
             message="Campo 'ruolo_sistema' non ammesso: usa is_super_admin + attivo.",
         )
         operatore = self.get_operatore(auth_user_id)  # verifica esistenza
+        veste_attiva = operatore.get("veste_attiva") is True
+        # ⛔ D-3 (Tid, 2026-09-24/2026-10-04): l'accesso NON si riaccende da
+        #    qui. Un operatore spento si riattiva col reinvio dell'invito, che
+        #    riapre il rapporto, e la veste la accende la persona attivando:
+        #    nessuna veste torna attiva senza che la persona lo sappia.
+        #    Fino al 2026-10-04 `attivo: true` la riaccendeva subito, e cosi'
+        #    l'endpoint `…/riattiva/`, ritirato lo stesso giorno.
+        ErrorManager.require(
+            not (payload.get("attivo") is True and not veste_attiva),
+            code=E_AMM_VALIDAZIONE,
+            message="L'accesso si riattiva col reinvio dell'invito, non dall'interruttore.",
+            context={"field": "attivo", "auth_user_id": auth_user_id},
+        )
+        # `attivo` conta solo come TRANSIZIONE da accesa a spenta: il drawer lo
+        # manda a ogni salvataggio, e ripeterlo non e' un gesto. `true` su una
+        # veste accesa non cambia niente; `false` su una veste gia' spenta
+        # (spenta da poco, o mai attivata e in attesa dell'invito) non deve
+        # chiudere il rapporto che l'invito ha appena riaperto.
+        spegni = payload.get("attivo") is False and veste_attiva
 
         def _aggiorna() -> None:
             self._repo.update_operatore(
@@ -292,9 +311,18 @@ class AmmSoftwareService:
                 last_name=payload.get("last_name"),
                 is_super_admin=payload.get("is_super_admin"),
                 unita_organizzativa_id=payload.get("unita_organizzativa_id"),
-                attivo=payload.get("attivo"),
                 valido_al=payload.get("valido_al"),
             )
+
+        # ⛔ Spegnere dall'interruttore E' «Disabilita» (Tid, 2026-10-04):
+        #    la stessa scrittura del repository — veste spenta, rapporto
+        #    chiuso con `valido_al = oggi`, sync di `is_active`. Fino a quel
+        #    giorno l'interruttore ne aveva una sua, che lasciava `valido_al`
+        #    com'era. Dopo i campi: se il payload porta anche `valido_al`, la
+        #    chiusura del rapporto vince, come su «Disabilita».
+        def _aggiorna_e_spegni() -> None:
+            _aggiorna()
+            self._repo.disabilita_operatore(auth_user_id)
 
         # ⛔ L'interruttore «Accesso attivo» spento e' uno spegnimento come
         #    «Disabilita» (A-5): inviti, sessioni e cache della veste operatore,
@@ -304,8 +332,8 @@ class AmmSoftwareService:
         #    spento, correggere l'email arriva con `attivo: false` invariato, e
         #    trattarlo da spegnimento invaliderebbe l'invito appena spedito per
         #    riaccenderlo (D-3). Un salvataggio non e' un gesto di revoca.
-        if payload.get("attivo") is False and operatore.get("veste_attiva") is True:
-            self._spegni_veste_operatore(auth_user_id, _aggiorna)
+        if spegni:
+            self._spegni_veste_operatore(auth_user_id, _aggiorna_e_spegni)
         else:
             _run_or_raise_super_admin_guard(_aggiorna)
             invalidate_user(auth_user_id)
@@ -372,12 +400,9 @@ class AmmSoftwareService:
         )
         return self._repo.get_operatore_detail(auth_user_id) or {}
 
-    # Scopo: Riattiva operatore disabilitato, invalida cache.
-    def riattiva_operatore(self, auth_user_id: int) -> dict[str, Any]:
-        self.get_operatore(auth_user_id)  # verifica esistenza
-        self._repo.riattiva_operatore(auth_user_id)
-        invalidate_user(auth_user_id)
-        return self._repo.get_operatore_detail(auth_user_id) or {}
+    # ⛔ Niente `riattiva_operatore` (ritirato il 2026-10-04, D-3): un
+    #    operatore spento si riattiva col reinvio dell'invito
+    #    (`InvitoOperatoreService.invia_invito`).
 
     # =================================================================
     # Override permessi

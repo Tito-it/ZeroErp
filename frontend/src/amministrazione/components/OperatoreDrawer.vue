@@ -123,13 +123,21 @@ const disableBloccato = computed(() =>
 const demoteBloccato = computed(() =>
   isEdit.value && bloccoAttivo(store.currentOperatore, 'demote', 'can_demote_super_admin'))
 const disableReason = computed(() => motivoSeBloccato(disableBloccato.value, 'disable'))
+// Scopo: ⛔ D-3 (2026-10-04) — l'interruttore SPEGNE soltanto. Una veste
+// spenta (disabilitata, o mai attivata) si riaccende col reinvio
+// dell'invito, e la accende la persona attivando: da spento resta fermo col
+// perche', e il pulsante d'invito sotto (da `can_invite`) e' la strada. Il
+// backend rifiuta comunque `attivo: true` su una veste spenta.
+const vesteSpenta = computed(() =>
+  isEdit.value && !!store.currentOperatore && store.currentOperatore.veste_attiva !== true)
 const demoteReason = computed(() => motivoSeBloccato(demoteBloccato.value, 'demote'))
 const hasBeenInvited = computed(() => !!store.currentOperatore?.invito_inviato_at)
 
 // Multi-face auth Stage B: il vecchio radio ruolo_sistema (ADMIN/OPERATIVO/
 // DISABILITATO) e' sostituito da due toggle indipendenti:
 //   - is_super_admin: binding al profilo SUPER_ADMIN (id 9100)
-//   - attivo:         stato operativo dell'identita' digitale
+//   - attivo:         stato della veste OPERATORE (`veste_attiva`): si
+//                     spegne da qui, si riaccende solo con l'invito (D-3)
 // Il ruolo applicativo resta implicito = OPERATORE per questo drawer
 // (operatori interni). Portali e shop useranno drawer dedicati.
 const INITIAL_FORM = Object.freeze({
@@ -194,11 +202,13 @@ watch(() => props.visible, async (val) => {
         cognome: u.soggetto_cognome || u.last_name || '',
         nome: u.soggetto_nome || u.first_name || '',
         email: u.email || '',
-        // Multi-face auth: i flag nativi vengono dal BE (is_super_admin +
-        // attivo del detail). Fallback difensivo su is_active per setup
-        // vecchi che non hanno ancora aggiornato la proiezione.
+        // Multi-face auth: i flag nativi vengono dal BE. ⛔ L'interruttore
+        // «Accesso attivo» e' lo stato della VESTE (`veste_attiva`), non
+        // `attivo` del dettaglio, che e' la risorsa umana: un operatore
+        // invitato e non ancora attivato ha il rapporto aperto e la veste
+        // spenta, e fino al 2026-10-04 l'interruttore lo mostrava acceso.
         is_super_admin: u.is_super_admin === true,
-        attivo: u.attivo !== undefined ? !!u.attivo : !!u.is_active,
+        attivo: u.veste_attiva === true,
         qualifica_id: null,
         unita_organizzativa_id: u.unita_organizzativa_id,
         valido_dal: u.valido_dal || null,
@@ -252,6 +262,11 @@ function clearEditEmailInvalid() {
 // Contract multi-face (Fase 7): {is_super_admin, attivo, ...}. Il backend
 // gestisce binding SUPER_ADMIN + stato identita_digitali in modo
 // ortogonale tra i due flag.
+// ⛔ Spegnere l'interruttore E' «Disabilita» (2026-10-04): il backend chiude
+//    anche il rapporto a oggi, le sessioni e gli inviti della veste. Si
+//    conferma al Salva, dove avviene, e solo se la veste PASSA da accesa a
+//    spenta — la stessa transizione che il backend tratta da spegnimento: un
+//    operatore gia' spento si salva senza domande.
 async function onSave() {
   if (isEdit.value) {
     const payload = {
@@ -262,14 +277,25 @@ async function onSave() {
       attivo: form.value.attivo,
       unita_organizzativa_id: form.value.unita_organizzativa_id
     }
-    const result = await execute(
-      () => store.update(props.authUserId, payload),
-      { successMessage: t('notifications.save_success') }
-    )
-    if (result !== null) {
-      fissa()
-      emit('saved')
+    const aggiorna = async () => {
+      const result = await execute(
+        () => store.update(props.authUserId, payload),
+        { successMessage: t('notifications.save_success') }
+      )
+      if (result !== null) {
+        fissa()
+        emit('saved')
+      }
     }
+    if (!vesteSpenta.value && form.value.attivo === false) {
+      confirmAction({
+        header: t('amministrazione.disabilita_title'),
+        message: t('amministrazione.disabilita_confirm'),
+        onAccept: aggiorna,
+      })
+      return
+    }
+    await aggiorna()
   } else {
     // Validazione client-side per creazione
     const authErrors = auth.validate()
@@ -545,7 +571,7 @@ function onInvita() {
             <div class="form-field">
               <div class="operatore-toggle-row">
                 <ToggleSwitch v-model="form.attivo" input-id="tg-attivo"
-                  :disabled="disableBloccato"
+                  :disabled="disableBloccato || vesteSpenta"
                   :invalid="campiErrati.includes('attivo')"
                 />
                 <label for="tg-attivo" class="operatore-toggle-label">
@@ -554,6 +580,7 @@ function onInvita() {
                 </label>
               </div>
               <small v-if="disableReason" class="app-field-hint">{{ disableReason }}</small>
+              <small v-else-if="vesteSpenta" class="app-field-hint">{{ t('amministrazione.accesso_attivo.da_invito') }}</small>
             </div>
           </template>
 

@@ -35,7 +35,7 @@ Base URL: `/api/v1/amm-software/`
 >     `invito_inviato_at`, `deve_cambiare_password`, `emittenti_descrizione`.
 >   - Endpoint `disabilita`: nuovo errore `E_PROFILO_ULTIMO_SUPER_ADMIN`
 >     (HTTP 409) tradotto dal trigger DB.
->   - Nuovo endpoint `riattiva` (vedi §1.6).
+>   - ~~Nuovo endpoint `riattiva`~~ — ritirato il 2026-10-04 (D-3, vedi §1.6).
 > - **Fase 2** (LANDED): scope emittenti dichiarativo via
 >   `script.fn_get_user_emittenti_scope` / `fn_change_user_emittenti_scope`
 >   (vedi §2.5/§2.6). Shape `{scope_mode, emittenti_ids, ...capability}`,
@@ -325,13 +325,18 @@ Aggiorna i campi modificabili di un utente. Solo i campi presenti nel payload ve
 Dopo la modifica, la cache permessi dell'utente viene invalidata.
 
 **Contract Fase 1 multi-face**: il payload accetta `is_super_admin` + `attivo`.
-Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`. Il
-service traduce internamente la coppia in `ruolo_sistema` legacy per il repo
-(compat layer interno) secondo la regola:
+Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`. I due
+flag sono ortogonali, e nessuno dei due si traduce in `ruolo_sistema`:
 
-- `attivo` accende o spegne la sola veste OPERATORE di riferimento: **solo**
-  `attivo`, il tipo resta (R-DB-1, 2026-10-02 — prima lo spegnimento scriveva
-  `DISABILITATO`, e la tabella oggi lo rifiuta con `E_RUOLO_APPLICATIVO_RITIRATO`)
+- `attivo: false` è **«Disabilita»** (§1.5, dal 2026-10-04): la stessa scrittura —
+  veste OPERATORE di riferimento spenta, risorsa umana chiusa con
+  `valido_al = oggi`, sync di `is_active` — eseguita dopo gli altri campi del
+  payload (un `valido_al` nello stesso payload lo sovrascrive la chiusura).
+  Fino a quel giorno l'interruttore lasciava `valido_al` com'era. Sulla veste:
+  **solo** `attivo`, il tipo resta (R-DB-1, 2026-10-02 — prima lo spegnimento scriveva
+  `DISABILITATO`, e la tabella oggi lo rifiuta con `E_RUOLO_APPLICATIVO_RITIRATO`).
+  ⛔ **Non la riaccende** (D-3, 2026-10-04): una veste spenta si riattiva col
+  reinvio dell'invito (§«Invito operatore»), e la accende la persona attivando
 - `is_super_admin` lega o slega il profilo SUPER_ADMIN sulla stessa veste
 - payload senza `is_super_admin` ne' `attivo` → nessuno dei due tocchi
 
@@ -345,18 +350,24 @@ service traduce internamente la coppia in `ruolo_sistema` legacy per il repo
 | `first_name` | string | Nuovo nome (auth_user) |
 | `last_name` | string | Nuovo cognome (auth_user) |
 | `is_super_admin` | bool | `true` per binding profilo SUPER_ADMIN, `false` per rimuoverlo |
-| `attivo` | bool | Stato attivo identita digitale + risorsa umana |
+| `attivo` | bool | Stato della veste OPERATORE (`veste_attiva` del dettaglio). Conta solo come transizione: `false` su una veste accesa la spegne come «Disabilita» (risorsa umana chiusa a oggi); `false` su una veste già spenta e `true` su una accesa non cambiano niente; `true` su una veste spenta → 400 `E_AMM_VALIDAZIONE` (`field: attivo`) |
 | `unita_organizzativa_id` | int | Nuova unita' organizzativa |
 | `valido_al` | string | Data fine validita' (formato `YYYY-MM-DD`) |
 
 **Regole:**
 
 - Il payload con `ruolo_sistema` viene rifiutato con `E_AMM_VALIDAZIONE` (HTTP 400).
+- ⛔ `attivo: true` su una veste spenta (disabilitata, o mai attivata) viene
+  rifiutato con `E_AMM_VALIDAZIONE` (HTTP 400, `field: attivo`), senza
+  scrivere niente (D-3, 2026-10-04): l'accesso si riattiva col reinvio
+  dell'invito. Fino a quel giorno lo riaccendeva subito, all'insaputa della
+  persona.
 - Se la modifica equivale alla rimozione dell'**ultimo super admin attivo**,
   il trigger DB `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`
   blocca con `E_PROFILO_ULTIMO_SUPER_ADMIN` (HTTP 409) — vedi sezione "Errori".
-- Se `is_super_admin` o `attivo` vengono modificati, viene chiamata
-  `anagrafiche.fn_sync_auth_user_is_active` per sincronizzare `auth_user.is_active`
+- Se `is_super_admin` viene modificato, o la veste si spegne (dentro
+  «Disabilita»), viene chiamata `anagrafiche.fn_sync_auth_user_is_active` per
+  sincronizzare `auth_user.is_active`
 - La cache permessi dell'utente viene invalidata dopo ogni modifica
 - `attivo: false` (l'interruttore «Accesso attivo») spegne come §1.5: invalida
   gli inviti pendenti e chiude le sessioni della **sola veste operatore** nella
@@ -364,7 +375,8 @@ service traduce internamente la coppia in `ruolo_sistema` legacy per il repo
   2026-10-02 — prima solo la cache). ⛔ **Solo se la veste passa da accesa a
   spenta** (`veste_attiva` del dettaglio): il drawer manda `attivo` a ogni
   salvataggio, e salvare un operatore già spento non invalida l'invito spedito
-  per riaccenderlo (D-3). `attivo: true` o un payload senza `attivo` non
+  per riaccenderlo (D-3), e non richiude la risorsa umana che l'invito ha
+  riaperto. `attivo: true` su una veste accesa o un payload senza `attivo` non
   chiudono sessioni
 
 **Risposta:** dettaglio utente aggiornato (stesso formato di GET §1.3).
@@ -374,7 +386,7 @@ service traduce internamente la coppia in `ruolo_sistema` legacy per il repo
 ```bash
 curl -X PATCH -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"is_super_admin": true, "attivo": true, "unita_organizzativa_id": 3}' \
+  -d '{"is_super_admin": true, "unita_organizzativa_id": 3}' \
   "https://host/api/v1/amm-software/operatori/1/"
 ```
 
@@ -429,38 +441,22 @@ curl -X POST -H "Authorization: Bearer <token>" \
 
 ---
 
-### 1.6 POST /api/v1/amm-software/operatori/{id}/riattiva/ -- Riattiva utente
+### 1.6 ~~POST /api/v1/amm-software/operatori/{id}/riattiva/~~ -- Ritirato (D-3)
 
-Riattiva un utente precedentemente disabilitato. Ordine inverso rispetto
-a `/disabilita/`: padre (`risorse_umane`) prima del figlio
-(`identita_digitali`) per rispettare il framework ATTIVO (un figlio attivo
-richiede padre attivo).
+⛔ **Ritirato il 2026-10-04** (decisione D-3 di Tid, piano accessi L-5): la rotta
+non esiste più, e nemmeno la riattivazione via PATCH `attivo: true` (§1.4).
+Un operatore spento si riattiva col **reinvio dell'invito**
+(`POST operatori/{id}/reinvia-invito/`, [api_invito_operatore.md](../../core/manual/api_invito_operatore.md)):
 
-**Parametri path:** `id` (int) -- auth_user_id dell'utente.
+- il gesto dell'amministratore riapre la **risorsa umana** (il rapporto:
+  `attivo=true`, `valido_al=NULL`, `valido_dal` intatto) nella transazione
+  dell'emissione del token;
+- la **veste** (la porta) resta spenta finché la persona non attiva il link;
+  chi ha già una password lo fa con un clic (token CROSS).
 
-**Payload:** nessuno.
-
-**Regole:**
-
-- `risorse_umane`: `attivo=true`, `valido_dal=oggi`, `valido_al=NULL`.
-- veste OPERATORE di riferimento: `attivo=true` (il tipo non va ricostruito:
-  non l'ha mai perso, R-DB-1).
-- Sync `auth_user.is_active`.
-- Invalida la cache permessi dell'utente.
-- ✅ M-6 chiuso: si riaccende la sola veste operatore.
-- **Non riattiva il binding SUPER_ADMIN**: se l'utente era stato
-  precedentemente promosso e poi disabilitato, l'eventuale binding va
-  ri-impostato via PATCH `is_super_admin: true` (azione esplicita).
-
-**Risposta:** dettaglio utente aggiornato (con `is_active=true`,
-`attivo=true`, `veste_attiva=true`).
-
-**Esempio curl:**
-
-```bash
-curl -X POST -H "Authorization: Bearer <token>" \
-  "https://host/api/v1/amm-software/operatori/1/riattiva/"
-```
+Il perché: nessuna veste torna attiva senza che la persona lo sappia.
+L'endpoint ritirato riscriveva anche `valido_dal = oggi`, perdendo l'inizio
+del rapporto. Il binding SUPER_ADMIN, come prima, non si ripristina da sé.
 
 ---
 
@@ -1639,7 +1635,7 @@ lavori vivi si leggono con **una** query per tutte le unit del processo.
 | Codice | HTTP | Quando |
 |---|---|---|
 | `E_AMM_VALIDAZIONE` | 400 | Campi obbligatori mancanti, `ruolo_sistema` legacy nel payload (Fase 1), validazioni domain |
-| `E_AMM_OPERATORE_NOT_FOUND` | 404 | Operatore non trovato (dettaglio, aggiorna, disabilita, riattiva, scope) |
+| `E_AMM_OPERATORE_NOT_FOUND` | 404 | Operatore non trovato (dettaglio, aggiorna, disabilita, scope) |
 | `E_AMM_SCOPE_NON_AMMESSO` | 400 | (Fase 2) `scope_mode` non in `['GLOBAL','SINGLE']`, oppure `SINGLE` con array vuoto/multi-elemento |
 | `E_CREDENZIALE_DI_SISTEMA` | 409 | Blocco o accensione dell'obbligo del secondo fattore su una credenziale di categoria `SISTEMA` (§1-bis). Verbi `script.fn_blocca_credenziale` e `script.fn_imposta_totp_obbligatorio` |
 | `E_PROFILO_ULTIMO_SUPER_ADMIN` | 409 | (Fase 1) L'operazione (disabilita, demote, cambio scope) lascerebbe il sistema senza super admin attivi. Trigger DB `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` |

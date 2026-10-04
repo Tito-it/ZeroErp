@@ -42,6 +42,9 @@ Indice test eseguiti:
 10) CicloOperatoreDbTests.test_login_a_due_passi_col_secondo_fattore_attivo
    (T-2 del brief sicurezza §3.4-bis: password -> sfida -> codice -> sessione -> Bearer;
     il codice ripresentato e' rifiutato dall'anti-replay del DB)
+11) CicloOperatoreDbTests.test_disabilitato_si_riattiva_col_reinvio_e_rientra
+   (D-3: interruttore 400, rotta ritirata 404, reinvio che riapre il rapporto
+    e non la porta, attivazione con un clic, rientro; valido_dal intatto)
 """
 
 from __future__ import annotations
@@ -373,6 +376,10 @@ class CicloOperatoreDbTests(_ViewVere):
             self.qualifica_id = cur.fetchone()[0]
         email_finta = self.enterContext(patch("apps.core.services.invito_veste.EmailDispatchService"))
         self.email = email_finta.return_value
+        # La forma vera della risposta, `(log_id, spedita)`: un MagicMock
+        # nudo non si spacchetta, e `spedisci` lo registrava come email
+        # fallita (traceback nel log a ogni invito, test verde lo stesso).
+        self.email.send_email.return_value = (1, True)
 
     # Scopo: Crea l'operatore dal service vero (madre P-2).
     def _crea(self, *, email: str, username: str, codice_fiscale: str | None = None,
@@ -439,6 +446,77 @@ class CicloOperatoreDbTests(_ViewVere):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertIsNotNone(User.objects.get(id=uid).last_login)  # D-8
         self.assertIs(self._veste_attiva(uid), True)
+
+    # Scopo: Una chiamata dell'amministratore attraverso la view vera.
+    def _admin(self, metodo: str, url: str, dati: dict | None = None):
+        client = APIClient()
+        client.force_authenticate(User.objects.get(id=self.admin_id))
+        sid = transaction.savepoint_create()
+        risposta = getattr(client, metodo)(url, dati or {}, format="json")
+        if risposta.status_code == 200:
+            transaction.savepoint_commit(sid)
+        else:
+            transaction.savepoint_rollback(sid)
+        return risposta
+
+    # Scopo: Il rapporto della veste operatore: (attivo, valido_dal, valido_al).
+    def _rapporto(self, auth_user_id: int) -> tuple:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT ru.attivo, ru.valido_dal, ru.valido_al "
+                "  FROM anagrafiche.risorse_umane ru "
+                "  JOIN anagrafiche.identita_digitali id ON id.soggetto_ruolo_id = ru.soggetto_ruolo_id "
+                " WHERE id.id = script.fn_veste_di_riferimento(%s, 'OPERATORE')",
+                [auth_user_id],
+            )
+            return cur.fetchone()
+
+    # Scopo: ⭐ D-3 (2026-10-04), il giro intero sulle view vere: un operatore
+    # che e' entrato viene disabilitato; non si riaccende dall'interruttore
+    # (400) ne' dalla rotta ritirata (404); il reinvio riapre il rapporto ma
+    # non la porta (il login resta rifiutato); la persona attiva con un clic
+    # (ha gia' la sua password) e rientra. `valido_dal` resta l'inizio del
+    # rapporto. Solo l'email e' finta (se ne legge il link).
+    def test_disabilitato_si_riattiva_col_reinvio_e_rientra(self):
+        nome = f"op_{uuid.uuid4().hex[:10]}"
+        uid = self._crea(email=f"{nome}@example.invalid", username=nome)["auth_user_id"]
+        token = self._invita(uid)
+        r = self._post("/api/v1/auth/attivazione/", {
+            "token": token, "new_password": _PASSWORD, "new_password_confirm": _PASSWORD,
+        })
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(self._login(nome, _PASSWORD, "198.51.100.32").status_code, 200)
+        _, valido_dal, _ = self._rapporto(uid)
+
+        base = f"/api/v1/amm-software/operatori/{uid}/"
+        r = self._admin("post", base + "disabilita/")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIs(self._veste_attiva(uid), False)
+        self.assertIs(self._rapporto(uid)[0], False)
+        self.assertEqual(self._login(nome, _PASSWORD, "198.51.100.32").status_code, 401)
+
+        # L'interruttore non riaccende, e la vecchia rotta non c'e' piu'.
+        r = self._admin("patch", base, {"attivo": True})
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.json()["error"]["code"], "E_AMM_VALIDAZIONE")
+        self.assertEqual(self._admin("post", base + "riattiva/").status_code, 404)
+        self.assertIs(self._veste_attiva(uid), False)
+
+        # Il reinvio: rapporto riaperto, porta ancora chiusa.
+        self.email.send_email.reset_mock()
+        r = self._admin("post", base + "reinvia-invito/")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(self._rapporto(uid), (True, valido_dal, None))
+        self.assertIs(self._veste_attiva(uid), False)
+        self.assertEqual(self._login(nome, _PASSWORD, "198.51.100.32").status_code, 401)
+
+        # La persona ha gia' la password: un clic, poi rientra con la sua.
+        token = self.email.send_email.call_args.kwargs["variabili"]["link"].rsplit("/", 1)[1]
+        self.assertFalse(self._richiede_password(token))
+        r = self._post("/api/v1/auth/attivazione/", {"token": token})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIs(self._veste_attiva(uid), True)
+        self.assertEqual(self._login(nome, _PASSWORD, "198.51.100.32").status_code, 200)
 
     # Scopo: T-2. Il login a due passi per intero, sulle view e sul DB veri.
     def test_login_a_due_passi_col_secondo_fattore_attivo(self):

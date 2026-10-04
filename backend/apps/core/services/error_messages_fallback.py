@@ -399,6 +399,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_FATTURA_RIGA_CONGELATA": "Lo stato della fattura non consente piu' di modificare le righe.",
     "E_FATTURA_SATELLITE_CONGELATO": "Lo stato della fattura non consente piu' di modificare questi dati.",
     "E_FATTURA_SENZA_RIGHE": "Numerazione fiscale rifiutata: il documento non ha righe.",
+    "E_FATTURE_PLAFOND_CONSUMATO": "Non si puo' disfare: alcune di queste fatture hanno gia' consumato il plafond di una dichiarazione d'intento. Portare avanti il lotto: il passaggio a definitiva non consuma il plafond due volte.",
     "E_FATTURE_RIGHE_RETTIFICATE": "Non si puo' disfare: su alcune righe di queste fatture e' gia' stato registrato un accredito.",
     "E_FATT_IMMEDIATA_NON_MODIFICABILE": "La fatturazione immediata non e` piu` modificabile: il documento e` gia` stato inviato in commessa. Per fatturare subito questo lavoro usa l'emissione mirata dal cruscotto Competenza.",
     "E_FLUSSI_COMPETENZA_MANCANTE": "Operatore non abilitato per questo tipo di flusso.",

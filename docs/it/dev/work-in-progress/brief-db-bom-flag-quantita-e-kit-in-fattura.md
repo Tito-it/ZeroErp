@@ -41,6 +41,10 @@
 > (le tre porte di reset e la pulizia la fermano con `E_FATTURE_PLAFOND_CONSUMATO`). DB scritto
 > (`20261004-07 → -11` + CSV), ✅ applicato su dbdev da Tid il 2026-10-04, pgTAP verdi.
 > ✅ **Lato DB CHIUSO**. ➡️ Resta il giro BE/FE: R-BE-C1…C9 (§13.6, §13.9), R-BE-A1 e R-FE-A1 (§14.4).
+> ✅ **Quarto giro BE/FE scritto il 2026-10-04 (§15, non committato)**: R-BE-C1…C9, R-BE-A1,
+> R-FE-A1, test verdi. ➡️ **Al team DB due richieste nuove (§15.4)**: ritirare il ramo di
+> proiezione del risolutore (decisione di Tid: orfano → si ritira) e dare alla fattura singola la
+> sua chiave di motivo (`fattura_plafond_consumato`, scelta A di Tid).
 >
 > **In una riga:** (A) `partecipa_qta` e `determina_qta_padre` si impostano ma nessuna logica li
 > legge: si ritirano. (B) In fattura la riga del kit si ricava quantità e UoM **dai componenti**:
@@ -1116,3 +1120,90 @@ trasversali (`test-riferimenti-morti`, `test-catalogo-messaggi-errore-completo`)
 | R-FE-A1 | Chiave i18n `vendite.lotti.azione_reason.plafond_consumato` (it, en): il motivo spento dei tre pulsanti di reset. Testo proposto: «Il lotto contiene fatture che hanno già consumato il plafond di una dichiarazione d'intento: non si disfa, va portato avanti.» |
 | R-BE-A1 | Rigenerare `error_policies_generated.py` (codice nuovo, insieme a R-BE-C8) |
 
+## 15. Lato BE/FE, quarto giro — decisione C e strada A (2026-10-04)
+
+> **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-04. **A chi:** Tid (commit), team DB
+> (§15.4).
+> **Decisioni di Tid nella sessione:** chiave di motivo per la fattura singola → **(A)**, una sua,
+> chiesta al DB; ramo di proiezione del risolutore → **se orfano si ritira** (lo è, §15.3).
+> **Stato:** scritto, **non committato**. Test: `apps.vendite`, `apps.anagrafiche`, `apps.core`
+> 4280 verdi (116 skip); sul DB provvisto (`ZEROERP_TEST_DB_E2E=1`) `apps.vendite.tests.db` 144
+> verdi e i due presidi dei codici errore verdi; `check_i18n_keys` pulito.
+
+### 15.1 Le richieste
+
+| # | Stato | Dove |
+| --- | --- | --- |
+| R-BE-C1 | ✅ `p_consumo` passato **per nome** in coda (i tre parametri del dispatch restano al loro default); `p_imponibile` sempre `NULL` (§15.3) | `iva_resolver_repository.py` |
+| R-BE-C2 | ✅ ogni gruppo (kit sul padre, riga sciolta sul suo articolo) si risolve con `consumo=True`: nessun titolo → niente; titolo senza tetto → tutte le righe al titolo, la madre non si chiama; titolo a tetto → secchio del titolo | `plafond_fattura_service._consuma_fattura`, `_risolvi_gruppo` |
+| R-BE-C3 | ✅ una chiamata alla madre **per titolo**, con tutte le righe del secchio (negative e a zero comprese), firma invariata | `_consuma_titolo` |
+| R-BE-C4 | ✅ per gruppo dalla frazione: 1 → titolo, 0 → ordinario **scritto**, altrimenti spezzatura. ⚠️ Quantità coperta con una formula diversa da quella del §13.6, vedi §15.2 | `_consuma_titolo`, `_spezza` |
+| R-BE-C5 | ✅ ritirati: filtro `consumanti`, ramo `coperta is None`, guard «prezzo effettivo > 0», `_parte_ordinaria` con la seconda chiamata al risolutore, l'ordine dei gruppi come requisito (il raggruppamento resta: serve a chiedere il titolo una volta per kit) | `plafond_fattura_service.py` |
+| R-BE-C6 | ✅ i due commenti (e «dentro la transizione a DEFINITIVA» → «all'emissione del lotto», §14.1) | `titoli_iva_repository.py`, `titoli_iva_service.py` |
+| R-BE-C7 | ✅ 32 casi, fra cui i quattro del brief in `PlafondNettoTests` (sconto 600/−100, kit +50/−15, kit a netto zero, negativo solo) e i nuovi: domanda di consumo, frazione 0 scrive l'ordinario, titolo senza tetto, una chiamata per titolo, due titoli due chiamate, frazione fuori da [0, 1], capofila che ricalcola la quota con imponibile arrotondato | `test_plafond_fattura_service.py` |
+| R-BE-C8, R-BE-A1 | ✅ policy rigenerata dal catalogo e ripiego di `E_FATTURE_PLAFOND_CONSUMATO` (già nel commit `609df1f4a`) | `error_policies_generated.py`, `error_messages_fallback.py` |
+| R-BE-C9 | ✅ | `api_titoli_iva_soggetto.md` |
+| R-FE-A1 | ✅ `vendite.lotti.azione_reason.plafond_consumato` (già nel commit `609df1f4a`) e, per la scelta A, `fattura_plafond_consumato` (it, en): la usa il DB quando fa la R-DB-A2 | `it.json`, `en.json` |
+| — | `IvaResolverService.risolvi`: `imponibile` → `consumo`; il guard di forma diventa «una parte, oppure nel consumo due: la prima col titolo, la seconda senza». Test del BB aggiornati. Catalogo BB aggiornato | `iva_resolver_service.py`, `catalogo-building-block-backend.md` |
+
+### 15.2 Scelta fatta scrivendo — la quantità coperta (R-BE-C4)
+
+Il §13.6 dice `qta × quota_coperta / imponibile`. **Non l'ho usata**: `imponibile_riga` è
+**arrotondato** (`trgfn_fatture_righe_importo`, decimali e metodo dell'articolo), quindi quel
+rapporto non è l'inverso della formula del DB. Esempio: 3 × 3,333 = 9,999 → `imponibile_riga`
+10,00; quota 5,00 → `qta` 1,5 → la capofila ricalcola 4,9995, cioè un centesimo di distanza dal
+suo movimento a seconda del metodo. Due conseguenze: il documento e il registro dicono due numeri
+diversi, e al rilancio la madre rilegge il registro, vede una frazione diversa da 1 e spezza di
+nuovo.
+
+Resta il metodo già scelto da Tid, **esteso ai segni**: `qta = quota / prezzo_effettivo` (inverso
+esatto: la capofila ricalcola la quota, che è il movimento). Su una riga negativa quota e prezzo
+(o quota e quantità) hanno segni che si compensano, quindi regge senza guard. Solo a **prezzo
+effettivo zero** (omaggio, sconto 100%) la quota è zero e non c'è niente da invertire: lì
+`qta × f`, come dice il §13.6. Il guard «prezzo effettivo > 0» è ritirato come chiesto. Presidio:
+test 15.
+
+### 15.3 La proiezione del risolutore è orfana — ritirata dal BE
+
+Verificato sui chiamanti: dopo R-BE-C2 nessuno passa più un importo. Il giro del plafond usa il
+consumo; preventivi, ordini, DDT, righe di fattura e l'endpoint di anteprima usano
+`risolvi_anteprima`; nessuna funzione DB chiama `fn_resolve_iva_riga` con un importo. Dal lato
+BE: il parametro `imponibile` esce da `IvaResolverService.risolvi` e dal repository, e la query
+passa `NULL::numeric`. Il ramo nel DB lo ritira il team DB (R-DB-C10).
+
+### 15.4 Al team DB
+
+| # | Cosa | Perché |
+| --- | --- | --- |
+| **R-DB-C10** | `fn_resolve_iva_riga_it` (e il guscio, se ha logica sua sul ramo): togliere il ramo di **proiezione** (`p_imponibile` valorizzato con `p_consumo = false`). Il parametro **resta** (la firma non si riordina, §13.4); consiglio di **rifiutare** un `p_imponibile` valorizzato con lo stesso codice del guard «consumo con importo», così un chiamante futuro non riceve in silenzio l'anteprima credendo di aver chiesto una proiezione. pgTAP: i casi di proiezione del `test-fn-resolve-iva-riga` diventano casi di rifiuto | Decisione di Tid (2026-10-04): orfano → si ritira. Nessun chiamante dal BE (§15.3) |
+| **R-DB-A2** | `script.fn_check_fattura_eliminabile_da_lotto`, motivo 6: `reason_key` → `vendite.lotti.azione_reason.fattura_plafond_consumato` (la chiave esiste già in it ed en) | Scelta A di Tid: le due porte del lotto dicono «il lotto contiene fatture…», l'eliminazione di una fattura sola parla di **quella** fattura. È la stessa coppia che il catalogo ha già per i numeri (`fattura_numerata` / `fatture_numerate`) e lo stato (`fattura_non_pre_fiscale` / `fatture_non_pre_fiscali`). Fino ad allora il pulsante della fattura mostra il testo del lotto |
+
+### 15.5 Cosa la prova NON copre
+
+* I test del giro mockano repository e madre: la regola del netto la prova il pgTAP della madre,
+  qui si prova che il BE ne applica le risposte. Il **binding** della query del risolutore è
+  provato sul DB vero (`EXPLAIN` e una chiamata reale con `consumo` falso e vero), ma su un
+  articolo **senza** titolo: ⚠️ la risposta a due parti (titolo a tetto) e la madre con un secchio
+  misto (positivi e negativi) sul DB vero le prova solo il primo lotto con una dichiarazione
+  d'intento su dbdev.
+* Le righe senza articolo restano fuori dal giro (`list_righe_per_plafond`), come prima: senza
+  articolo il risolutore non ha niente da giudicare, quindi uno sconto **senza articolo** non
+  restituisce plafond. È coerente col modello di oggi (il titolo si giudica sull'articolo); lo
+  segnalo perché con la decisione C uno sconto in fattura diventa un caso che conta.
+
+
+### 15.6 Revisione critica del codice (2026-10-04)
+
+* **Ripieghi silenziosi tolti.** `prezzo_unitario` e `qta` sono NOT NULL e la madre dà sempre la
+  quota: la prima stesura trasformava un NULL in zero (`or Decimal(0)`), cioè una proiezione rotta
+  in una riga divisa con la frazione invece che con la quota. Ora il giro si ferma
+  (`E_PIPELINE_VALIDATION`), con un messaggio che distingue le righe mancanti dalle quote assenti.
+* **Articolo del kit scelto in modo esplicito.** Il ripiego «padre, altrimenti il componente»
+  avrebbe giudicato il kit sul primo componente se il padre fosse mancato: violazione muta di
+  D-5.1. Il padre lo garantisce `chk_fatture_righe_kit_coerente`; un `None` lo ferma il guard del
+  risolutore.
+* **Secchi in ordine di titolo.** Ogni chiamata tiene il lock del suo titolo fino a fine
+  transazione: un ordine fisso evita lock presi in versi opposti nello stesso giro. Non cambia il
+  risultato (capienze indipendenti). ⚠️ Fra **lotti** concorrenti resta possibile un deadlock fra
+  due titoli: PostgreSQL lo rileva, il task fallisce e il rilancio è idempotente.
+* Tre test nuovi (33-35). Suite `vendite`, `anagrafiche`, `core`: 4283 verdi (116 skip).

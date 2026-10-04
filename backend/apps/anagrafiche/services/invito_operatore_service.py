@@ -18,10 +18,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from django.db import connection
+from django.db import connection, transaction
 
 from apps.core.db._helpers import jsonb_out
 from apps.core.db.auth_repository import AuthRepository
+from apps.core.db.risorse_umane_core_repository import RisorseUmaneCoreRepository
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
@@ -37,6 +38,7 @@ class InvitoOperatoreService:
 
     def __init__(self) -> None:
         self._auth_repo = AuthRepository()
+        self._ru_repo = RisorseUmaneCoreRepository()
         self._invito = InvitoVeste(auth_repo=self._auth_repo)
 
     # Scopo: Invia (o reinvia) l'invito della veste OPERATORE spenta.
@@ -45,6 +47,11 @@ class InvitoOperatoreService:
     # l'unica OPERATORE spenta della credenziale. I token pendenti della veste
     # si invalidano sempre nella transazione del nuovo (BB, A-4): `reinvio`
     # serve solo al log.
+    # ⭐ D-3 (2026-10-04): l'invito e' l'UNICA strada per riaccendere un
+    # operatore spento. Il gesto dell'amministratore riapre la risorsa umana
+    # (il rapporto) nella transazione dell'emissione; la veste (la porta)
+    # resta spenta e la accende la persona attivando. Su un operatore mai
+    # attivato la risorsa umana e' gia' aperta: nessuna scrittura.
     # ⛔ Il rifiuto NON compone il testo col motivo (§16 del brief
     # blocco-login, 2026-09-27): il DB manda `reason` (codice macchina) e
     # `reason_key` (chiave i18n), non una frase. Il messaggio e' quello del
@@ -67,13 +74,15 @@ class InvitoOperatoreService:
         email = check["email"]
         identita_id = self._veste_da_invitare(auth_user_id)
 
-        emissione = self._invito.emetti(
-            PORTA_OPERATORE,
-            auth_user_id=auth_user_id,
-            identita_id=identita_id,
-            ruolo_applicativo=RUOLO_APPLICATIVO_OPERATORE,
-            invitato_da_user_id=invitato_da_user_id,
-        )
+        with transaction.atomic():
+            riaperta = self._ru_repo.riapri_risorsa_umana_della_veste(identita_id) > 0
+            emissione = self._invito.emetti(
+                PORTA_OPERATORE,
+                auth_user_id=auth_user_id,
+                identita_id=identita_id,
+                ruolo_applicativo=RUOLO_APPLICATIVO_OPERATORE,
+                invitato_da_user_id=invitato_da_user_id,
+            )
 
         nomi = self._auth_repo.get_nomi_credenziale(auth_user_id) or {}
         # ⭐ `inviato` e' l'esito della MAIL, non della chiamata (F-3): il
@@ -97,8 +106,10 @@ class InvitoOperatoreService:
         )
 
         logger.info(
-            "security.invito_inviato user_id=%s identita_id=%s da=%s reinvio=%s is_cross=%s inviato=%s",
-            auth_user_id, identita_id, invitato_da_user_id, reinvio, emissione.is_cross, inviato,
+            "security.invito_inviato user_id=%s identita_id=%s da=%s reinvio=%s is_cross=%s "
+            "inviato=%s risorsa_umana_riaperta=%s",
+            auth_user_id, identita_id, invitato_da_user_id, reinvio, emissione.is_cross,
+            inviato, riaperta,
         )
         return {"inviato": inviato, "email": maschera_email(email), "is_cross": emissione.is_cross}
 
