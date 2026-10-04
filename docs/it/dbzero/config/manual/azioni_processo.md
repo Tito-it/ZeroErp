@@ -33,6 +33,7 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 | `area_id` | Area funzionale a cui appartiene l'azione (raggruppamento UI) |
 | `permission_codename` | Chiave tecnica immutabile — riferimento al codename in `django.auth_permission` |
 | `pericolosa` | Flag per azioni critiche: la UI mostra un warning aggiuntivo |
+| `livello_minimo_area` | Il livello d'area che l'operatore deve avere perché l'azione valga: `TUTTO` (default, l'azione scrive) o `LETTURA` (l'azione consulta o esporta). Mai `BLOCCATO`. Dal 04-10-2026 |
 
 **Nota:** `permission_codename` fa le veci di `codice_interno` (chiave tecnica immutabile). Le azioni nascono nel codice Django (`Meta.permissions`) e questa tabella le rende visibili e gestibili nell'interfaccia admin.
 
@@ -76,17 +77,19 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 
 ### ⚠️ Catena di risoluzione azioni
 
-La risoluzione è separata dal CRUD e binaria:
+(riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 
 ```
-1. Override utente sull'azione? (GRANT/DENY)
-   → SI: applica
-   → NO: continua ↓
-
-2. Azione abilitata nel profilo reparto?
-   → SI: concessa
-   → NO: negata
+1. Override utente sull'azione (abilita / nega)?   → si applica
+   altrimenti il profilo (AD_HOC > REPARTO > PORTALE)
+   altrimenti negata
+2. E IN OGNI CASO il tetto d'area: l'azione vale solo se il livello
+   dell'operatore sull'area dell'azione arriva a livello_minimo_area
 ```
+
+Il super admin passa prima di tutto. Un'azione abilitata ma fermata dall'area
+è **dormiente**, non cancellata. La catena è scritta una volta sola, in
+[script.fn_get_permessi_effettivi_azioni](/dbzero/script/funzioni/fn_get_permessi_effettivi_azioni).
 
 ---
 

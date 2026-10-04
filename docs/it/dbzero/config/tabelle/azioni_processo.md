@@ -22,10 +22,12 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| livello_minimo_area | USER-DEFINED | NO | 'TUTTO'::config.livello_accesso |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_azioni_processo_livello_minimo_area |  |
 | FOREIGN KEY | fk_azioni_processo_aree_funzionali | area_id |
 | PRIMARY KEY | pk_azioni_processo | id |
 | UNIQUE | uq_azioni_processo_permission_codename | permission_codename |

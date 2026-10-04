@@ -1,96 +1,25 @@
-# fn_get_user_object_permissions_map
+## 📘 Documentazione Concettuale – Funzione `script.fn_get_user_object_permissions_map()`
 
-## Scopo
+> 👀 **Vedi anche**
+>
+> **La catena, scritta una volta:** [script.fn_get_permessi_effettivi_oggetti](/dbzero/script/funzioni/fn_get_permessi_effettivi_oggetti)
 
-Restituisce la mappa completa degli override oggetto attivi per un utente.
-La chiave JSONB e' `app_label.model_name`, il valore e' il livello di accesso
-configurato su `config.user_override_oggetti`.
+---
 
-## Schema
+### 🎯 Scopo Principale
+(riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 
-`script`
+Restituisce, in una sola chiamata, il livello **effettivo** di un utente su
+ogni oggetto del catalogo
+([area_model_overrides](/dbzero/config/tabelle/area_model_overrides)):
+`{"vendite.fattura": "LETTURA", …}`. Alimenta `/me/` → `permessi_oggetto` (via
+`fn_get_user_profile`).
 
-## Firma
+⚠️ Fino al 04-10-2026 restituiva solo gli override scritti, e il frontend
+ricalcolava il livello da sé. Ora il valore è già quello col **tetto d'area**,
+letto da
+[fn_get_permessi_effettivi_oggetti](/dbzero/script/funzioni/fn_get_permessi_effettivi_oggetti):
+il frontend lo legge e basta. Per un oggetto fuori catalogo vale l'area del suo
+`app_label`. Utente mancante o ≤ 0 → `E_ADMIN_VALIDAZIONE`.
 
-```sql
-script.fn_get_user_object_permissions_map(
-    p_auth_user_id  anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE
-) RETURNS jsonb
-```
-
-## Parametri
-
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:------------:|-------------|
-| `p_auth_user_id` | `risorse_umane_auth_user.auth_user_id%TYPE` | Si | ID utente Django (`auth_user.id`) |
-
-## Caratteristiche
-
-- **STABLE**: solo lettura
-- **SECURITY INVOKER**: esegue con i permessi del chiamante
-- Guard: `p_auth_user_id` obbligatorio e `> 0`
-
-## Output
-
-JSONB nel formato:
-
-```json
-{
-  "anagrafiche.conto_bancario": "BLOCCATO",
-  "vendite.fattura": "LETTURA"
-}
-```
-
-Se non esistono override attivi, ritorna:
-
-```json
-{}
-```
-
-## Logica
-
-1. Valida `p_auth_user_id`
-2. Legge `config.user_override_oggetti`
-3. Filtra solo gli override attivi alla `CURRENT_DATE`
-4. Aggrega con `jsonb_object_agg(app_label || '.' || model_name, livello::text)`
-5. Se il risultato e' nullo, ritorna `'{}'::jsonb`
-
-## Filtro validita' temporale
-
-Sono inclusi solo gli override che rispettano entrambe le condizioni:
-
-```sql
-(valido_dal IS NULL OR valido_dal <= CURRENT_DATE)
-AND (valido_al IS NULL OR valido_al >= CURRENT_DATE)
-```
-
-Override futuri o scaduti vengono ignorati.
-
-## Dipendenze
-
-- `config.user_override_oggetti`
-
-## Integrazione con fn_get_user_profile
-
-La funzione viene chiamata da `fn_get_user_profile` per popolare
-la chiave `permessi_oggetto` del profilo utente.
-
-## Note
-
-- La funzione restituisce solo gli **override espliciti attivi**
-- Non calcola il livello effettivo finale per tutti i model del sistema
-- Per il livello effettivo di un singolo model resta il resolver
-  `script.fn_resolve_livello_oggetto(...)`
-
-## Esempi
-
-```sql
--- Mappa completa override oggetto
-SELECT script.fn_get_user_object_permissions_map(1);
-
--- Lettura di una chiave specifica
-SELECT (script.fn_get_user_object_permissions_map(1))->>'vendite.fattura';
-
--- Uso indiretto nel profilo
-SELECT script.fn_get_user_profile(1);
-```
+{% include-markdown "signature-core.md" %}

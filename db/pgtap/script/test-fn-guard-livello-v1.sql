@@ -29,6 +29,12 @@
 --   La forma
 --   12) tutte e due INVOKER, e l'app le esegue
 --
+-- ⚠️ Rev 2026-10-04 (brief-db-permessi-tetto-area, 20261004-57): l'area e' un TETTO.
+--   Fino a quel giorno i test 6-8 davano il livello con il solo override sull'oggetto,
+--   sotto l'area magazzino BLOCCATO: col tetto varrebbero BLOCCATO. L'override d'area
+--   TUTTO su magazzino (era nel blocco 11) si scrive ora DOPO il test 5, che resta il
+--   caso «nessun livello concesso»; il test 11 lo trova gia' scritto.
+--
 -- ⚠️ Gira come l'APPLICAZIONE: override e area si scrivono come li scrive il
 --   pannello dei permessi. Operatore COSTRUITO (fn_pgtap_crea_emittente_operatore):
 --   tecnico, non super admin, nessun livello — lo dà il test.
@@ -57,7 +63,8 @@ END $$ LANGUAGE plpgsql;
 -- ⭐ E l'oggetto dei test 4-10, che riceve un override per oggetto: dal
 --   2026-09-28 un override esiste solo per un oggetto a catalogo (FK composita,
 --   brief-db-be-fe-catalogo-oggetti-permessi D-4), quindi entra anche lui. Area
---   magazzino: nei test 4-10 l'operatore non ha livelli d'area.
+--   magazzino: fino al test 5 l'operatore non ha livelli d'area, poi ha TUTTO su
+--   magazzino (il tetto lascia passare l'override).
 INSERT INTO config.area_model_overrides (app_label, model_name, area_id)
 SELECT 'pgtap_app', m.model_name, af.id
   FROM config.aree_funzionali af, (VALUES ('pgtap_oggetto'), ('pgtap_modello')) m(model_name)
@@ -84,6 +91,11 @@ SELECT is(pg_temp.codice_di(format($q$ SELECT script.fn_guard_livello(%s, 'pgtap
                                    (SELECT auth_user_id FROM _mondo))),
     'E_PERMESSO_NEGATO',
     '5) nessun livello concesso: negato');
+
+-- Il tetto: magazzino aperta a TUTTO, cosi' l'override sull'oggetto decide (restringe).
+INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
+SELECT m.auth_user_id, af.id, 'TUTTO', 'Fixture pgTAP'
+  FROM _mondo m, config.aree_funzionali af WHERE af.schema_db = 'magazzino';
 
 INSERT INTO config.user_override_oggetti (auth_user_id, app_label, model_name, livello, motivo)
 SELECT auth_user_id, 'pgtap_app', 'pgtap_modello', 'LETTURA', 'Fixture pgTAP' FROM _mondo;
@@ -120,14 +132,11 @@ SELECT is(pg_temp.codice_di(format($q$ SELECT script.fn_guard_livello(%s, 'pgtap
 
 -- ============================================================
 -- 11 L'area la da' fn_area_di_oggetto
---   Override d'area TUTTO su magazzino e LETTURA su pgtap_app (che non e' a
---   catalogo: nessun livello). L'oggetto di fixture sta in magazzino per
+--   Override d'area TUTTO su magazzino (scritto prima del test 6); pgtap_app non
+--   e' a catalogo: nessun livello. L'oggetto di fixture sta in magazzino per
 --   override: il guard deve passare. Un oggetto dello stesso app_label senza
 --   override non passa.
 -- ============================================================
-INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
-SELECT m.auth_user_id, af.id, 'TUTTO', 'Fixture pgTAP'
-  FROM _mondo m, config.aree_funzionali af WHERE af.schema_db = 'magazzino';
 
 SELECT is(
     pg_temp.codice_di(format($q$ SELECT script.fn_guard_livello(%s, 'pgtap_app', 'pgtap_oggetto', 'TUTTO') $q$,

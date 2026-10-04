@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R1 — IL MINIMO D'AREA DI UN'AZIONE: config.azioni_processo.livello_minimo_area
+#   Brief: brief-db-permessi-tetto-area, sezioni 3 (D-4) e 4 (R1)
+#
+# -- PERCHE' ------------------------------------------------------------------------------------
+#   Dal tetto d'area (D-1) un'azione abilitata vale solo se l'area dell'operatore arriva al
+#   livello che l'AZIONE dichiara (D-4): TUTTO per un'azione che scrive, LETTURA per una
+#   che consulta o esporta. La regola del confronto sta in script.fn_area_consente_azione
+#   (-51); qui il dato.
+#
+# -- IL VALORE ----------------------------------------------------------------------------------
+#   NOT NULL DEFAULT 'TUTTO': nel dubbio l'azione vuole l'area aperta. Il valore di ogni
+#   azione arriva dal CSV 80_data/sql/config/azioni_processo.csv (mirror 80_data/20260228-18,
+#   colonna nuova), mai da un UPDATE (linee-guida-sql §11.2). Il CHECK non e' legato a una
+#   riga di seed: vale per qualunque riga, quindi nasce qui e non in 90_end.
+#   ⛔ BLOCCATO non e' un minimo: «basta l'area bloccata» non vieterebbe niente.
+#
+# -- CHI LA SCRIVE ------------------------------------------------------------------------------
+#   Il seed. L'app ha INSERT/UPDATE sulla tabella (strada del backend di amministrazione):
+#   il CHECK vale anche li'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261004-50-alter-azioni-processo-add-livello-minimo-area-mctit.yaml
+
+  - changeSet:
+      id: 20261004-50-alter-azioni-processo-add-livello-minimo-area
+      author: mctit
+      failOnError: true
+      comment: >
+        config.azioni_processo.livello_minimo_area config.livello_accesso NOT NULL DEFAULT
+        'TUTTO' con CHECK <> 'BLOCCATO': il livello d'area minimo perche' l'azione valga (D-4).
+        Valori dal CSV. Brief: brief-db-permessi-tetto-area R1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: azioni_processo }
+            - not:
+                - columnExists:
+                    { schemaName: config, tableName: azioni_processo, columnName: livello_minimo_area }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.azioni_processo
+                  ADD COLUMN livello_minimo_area config.livello_accesso NOT NULL
+                      DEFAULT 'TUTTO'::config.livello_accesso;
+
+              ALTER TABLE config.azioni_processo
+                  ADD CONSTRAINT chk_azioni_processo_livello_minimo_area
+                  CHECK (livello_minimo_area <> 'BLOCCATO'::config.livello_accesso);
+
+              COMMENT ON COLUMN config.azioni_processo.livello_minimo_area IS
+                  'Il livello d''area che l''operatore deve avere perche'' l''azione valga (D-4): l''area e'' un tetto, e un''azione abilitata (override o profilo) sotto un''area piu'' restrittiva di questo minimo resta negata. TUTTO (default) = l''azione scrive e vuole l''area aperta; LETTURA = l''azione non scrive (consultazione, export) e le basta l''area in lettura. BLOCCATO non e'' ammesso: non vieterebbe niente (chk_azioni_processo_livello_minimo_area). ⚠️ L''enum e'' ordinato TUTTO < LETTURA < BLOCCATO: l''area consente se livello_area <= minimo, e la regola sta in script.fn_area_consente_azione. Valore dal CSV 80_data/sql/config/azioni_processo.csv. Brief: brief-db-permessi-tetto-area R1.';
+
+              COMMENT ON CONSTRAINT chk_azioni_processo_livello_minimo_area ON config.azioni_processo IS
+                  'Un minimo d''area BLOCCATO non vieterebbe niente: il minimo e'' TUTTO o LETTURA. Brief: brief-db-permessi-tetto-area R1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.azioni_processo DROP CONSTRAINT IF EXISTS chk_azioni_processo_livello_minimo_area;
+              ALTER TABLE config.azioni_processo DROP COLUMN IF EXISTS livello_minimo_area;

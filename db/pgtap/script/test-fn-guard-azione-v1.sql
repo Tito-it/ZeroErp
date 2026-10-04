@@ -21,7 +21,14 @@
 --   Il gate di fn_resolve_livello_oggetto
 --    7) override per oggetto LETTURA, veste OPERATORE -> LETTURA
 --    8) ...stesso override in veste CLIENTE_PORTALE -> BLOCCATO (il difetto chiuso)
---    9) ...senza override, veste OPERATORE -> il livello d'area (il fallback non cambia)
+--    9) ...senza override, veste OPERATORE -> il livello d'area dell'OGGETTO (il quarto
+--       parametro non conta piu', R4 del tetto d'area)
+--
+-- ⚠️ Rev 2026-10-04 (brief-db-permessi-tetto-area, 20261004-55/-57/-59): l'area e' un
+--   tetto. Il test 4 regge perche' dbops.fn_pgtap_concedi_azione apre anche l'area
+--   dell'azione al suo minimo; i test 7-9 aprono vendite a TUTTO, altrimenti l'override
+--   LETTURA sotto un'area BLOCCATO varrebbe BLOCCATO e il test 7 proverebbe il tetto,
+--   non il gate.
 --
 -- ⚠️ Gira come l'APPLICAZIONE: il guard deve funzionare con i privilegi dell'app,
 --   e l'override per oggetto si scrive come lo scrive il pannello. Operatore
@@ -83,6 +90,15 @@ SELECT is(
 INSERT INTO config.area_model_overrides (app_label, model_name, area_id)
 SELECT 'pgtap_app', 'pgtap_modello', af.id FROM config.aree_funzionali af WHERE af.schema_db = 'vendite';
 
+-- Il tetto: vendite aperta, cosi' l'override LETTURA si legge per quello che e'.
+INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
+SELECT m.auth_user_id, af.id, 'TUTTO', 'Fixture pgTAP'
+  FROM _mondo m, config.aree_funzionali af WHERE af.schema_db = 'vendite';
+
+-- Un secondo oggetto a catalogo in vendite, senza override, per il test 9.
+INSERT INTO config.area_model_overrides (app_label, model_name, area_id)
+SELECT 'pgtap_app', 'pgtap_senza_override', af.id FROM config.aree_funzionali af WHERE af.schema_db = 'vendite';
+
 INSERT INTO config.user_override_oggetti (auth_user_id, app_label, model_name, livello, motivo)
 SELECT auth_user_id, 'pgtap_app', 'pgtap_modello', 'LETTURA', 'Fixture pgTAP' FROM _mondo;
 
@@ -98,10 +114,15 @@ SELECT is(
     '8) stesso override in veste CLIENTE_PORTALE: BLOCCATO (prima del 20260924-40 rispondeva LETTURA)');
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo)); END $ctx$;
 
+-- ⚠️ Fino al 2026-10-04 l'oggetto era fuori catalogo ('pgtap_altra_app') con l'area
+--   'vendite' passata dal chiamante: BLOCCATO = BLOCCATO, verde per coincidenza. Col
+--   tetto l'area la ricava la funzione dall'oggetto: si chiede un oggetto di vendite
+--   con un'area SBAGLIATA nel quarto parametro, e deve tornare TUTTO.
 SELECT is(
-    script.fn_resolve_livello_oggetto((SELECT auth_user_id FROM _mondo), 'pgtap_altra_app', 'pgtap_altro', 'vendite'),
-    script.fn_resolve_livello_area((SELECT auth_user_id FROM _mondo), 'vendite'),
-    '9) senza override, veste OPERATORE: il livello d''area (il fallback non cambia)');
+    script.fn_resolve_livello_oggetto((SELECT auth_user_id FROM _mondo), 'pgtap_app', 'pgtap_senza_override', 'magazzino')::text
+    || ' ' || script.fn_resolve_livello_area((SELECT auth_user_id FROM _mondo), 'vendite')::text,
+    'TUTTO TUTTO',
+    '9) senza override, veste OPERATORE: il livello dell''area DELL''OGGETTO (il quarto parametro non conta)');
 
 SELECT * FROM finish();
 ROLLBACK;

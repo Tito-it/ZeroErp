@@ -16,16 +16,22 @@ AS $function$
 BEGIN
     -- =========================================================
     -- Scopo:
-    --   Restituisce la mappa completa degli override oggetto
-    --   attivi per un utente, in un solo roundtrip DB.
+    --   Mappa dei livelli EFFETTIVI degli oggetti del catalogo per
+    --   un utente, in un solo roundtrip (alimenta /me/ ->
+    --   permessi_oggetto).
     --
     -- Ritorna:
     --   JSONB { "anagrafiche.conto_bancario": "BLOCCATO",
     --           "vendite.fattura": "LETTURA", ... }
     --
-    -- Regole:
-    --   - considera solo override attivi alla data corrente
-    --   - nessun override attivo -> {}::jsonb
+    -- Regole (rev 20261004-58, brief-db-permessi-tetto-area R5):
+    --   - una chiave per ogni oggetto di config.area_model_overrides
+    --     (il catalogo: un override esiste solo per un suo oggetto);
+    --   - il valore e' il livello col tetto d'area, dalla sede comune
+    --     script.fn_get_permessi_effettivi_oggetti, non piu' l'override
+    --     grezzo: il frontend LEGGE, non ricalcola la catena;
+    --   - un oggetto fuori catalogo vale la sua area di app_label
+    --     (la regola di fn_area_di_oggetto).
     -- =========================================================
 
     -- Guard: parametro obbligatorio e valido
@@ -41,21 +47,16 @@ BEGIN
 
     RETURN (
         SELECT COALESCE(
-            jsonb_object_agg(
-                uo.app_label || '.' || uo.model_name,
-                uo.livello::text
-            ),
+            jsonb_object_agg(e.app_label || '.' || e.model_name, e.livello::text),
             '{}'::jsonb
         )
-          FROM config.user_override_oggetti uo
-         WHERE uo.auth_user_id = p_auth_user_id
-           AND uo.validita @> CURRENT_DATE
+          FROM script.fn_get_permessi_effettivi_oggetti(p_auth_user_id) e
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_object_permissions_map(p_auth_user_id integer)
-IS 'Mappa override oggetti set-based. Migrazione daterange: filtro temporale via validita @>.';
+IS 'Mappa dei livelli EFFETTIVI degli oggetti per un utente ({"app_label.model_name": livello}), una chiave per ogni oggetto del catalogo config.area_model_overrides. Il valore e'' il livello col tetto d''area (il piu'' restrittivo fra override valido e area dell''oggetto), letto da script.fn_get_permessi_effettivi_oggetti, la stessa catena di script.fn_resolve_livello_oggetto: gate di contesto e identita'' OPERATORE assente -> BLOCCATO, super admin -> TUTTO. Un oggetto fuori catalogo vale la sua area di app_label (la regola di script.fn_area_di_oggetto). Alimenta /me/ -> permessi_oggetto (fn_get_user_profile): il frontend legge, non ricalcola. Rev 20261004-58 (brief-db-permessi-tetto-area R5): fino a questa revisione restituiva i soli override grezzi.';
 ```
 
 ---

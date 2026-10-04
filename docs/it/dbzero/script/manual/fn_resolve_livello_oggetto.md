@@ -1,71 +1,27 @@
-## Documentazione Concettuale – Funzione `script.fn_resolve_livello_oggetto`
+## 📘 Documentazione Concettuale – Funzione `script.fn_resolve_livello_oggetto()`
 
-> **Vedi anche**
+> 👀 **Vedi anche**
 >
-**Tabelle correlate:**
->
-[config.user_override_oggetti](/dbzero/config/tabelle/user_override_oggetti)
-> [config.area_model_overrides](/dbzero/config/tabelle/area_model_overrides)
->
-**Funzioni correlate:**
->
-[script.fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area)
-> [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin)
-> [script.fn_has_identita_attiva](/dbzero/script/funzioni/fn_has_identita_attiva)
+> **La catena, scritta una volta:** [script.fn_get_permessi_effettivi_oggetti](/dbzero/script/funzioni/fn_get_permessi_effettivi_oggetti)
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 08-03-2026)
-La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso
-per un singolo model Django (`app_label` + `model_name`).
+(riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 
-Se esiste un override oggetto lo usa; altrimenti risale alla catena area
-via `fn_resolve_livello_area`.
+Restituisce il livello (`TUTTO`, `LETTURA`, `BLOCCATO`) di un utente su un
+oggetto (`app_label`, `model_name`). La chiamano il backend e
+[fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello).
 
----
+Non contiene la regola: legge la riga dell'oggetto da
+[fn_get_permessi_effettivi_oggetti](/dbzero/script/funzioni/fn_get_permessi_effettivi_oggetti),
+dove è spiegato il **tetto d'area**: l'override sull'oggetto può solo
+restringere il livello dell'area, mai allargarlo.
 
-### Parametri di input
-
-| Parametro          | Tipo                                                    | Descrizione                              |
-| ------------------ | ------------------------------------------------------- | ---------------------------------------- |
-| `p_auth_user_id`   | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django.                   |
-| `p_app_label`      | `config.user_override_oggetti.app_label%TYPE`           | App Django (es. `'vendite'`).            |
-| `p_model_name`     | `config.user_override_oggetti.model_name%TYPE`          | Nome model Django (es. `'fatture'`).     |
-| `p_area_schema_db` | `config.aree_funzionali.schema_db%TYPE`                 | Schema DB dell'area, usato per fallback. |
-
----
-
-### Output
-
-Ritorna `config.livello_accesso` (ENUM): `TUTTO`, `LETTURA` o `BLOCCATO`.
-
----
-
-### Catena di risoluzione
-
-1. **Ruolo sistema** — `NULL`/`DISABILITATO` → `BLOCCATO`; `ADMIN` → `TUTTO`
-2. **Override utente oggetto** — se presente e temporalmente valido
-3. **Fallback** → `fn_resolve_livello_area(p_auth_user_id, p_area_schema_db)`
-
----
-
-### Regole principali
-
-* Funzione **STABLE**.
-* L'override oggetto ha precedenza sull'area: consente di dare accesso
-  granulare a un singolo model indipendentemente dal livello area.
-* Il parametro `p_area_schema_db` e necessario per il fallback; il chiamante
-  deve fornirlo (tipicamente dal mapping `area_model_overrides`).
-
----
-
-### Esempio d'uso
-
-```sql
-SELECT script.fn_resolve_livello_oggetto(42, 'vendite', 'fatture', 'vendite');
--- Ritorna: 'TUTTO'::config.livello_accesso
-```
-
----
+⚠️ Il quarto parametro (`p_area_schema_db`) **non si legge più**: l'area è
+quella dell'oggetto, ricavata da
+[fn_area_di_oggetto](/dbzero/script/funzioni/fn_area_di_oggetto). Resta nella
+firma perché i chiamanti passano i parametri per posizione; se ritirarlo lo
+decide Tid. Oggetto mancante → `BLOCCATO`.
 
 {% include-markdown "signature-core.md" %}
