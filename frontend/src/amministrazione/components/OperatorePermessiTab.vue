@@ -1,7 +1,9 @@
 <script setup>
 // Scopo: Componente permessi operatore riutilizzabile.
-// Due schede: «Permessi» (per AREA: il livello dell'area, i suoi oggetti e le
-// sue azioni di processo) e «Scope emittenti».
+// Per AREA: il livello dell'area, i suoi oggetti e le sue azioni di processo.
+// ℹ️ Lo scope emittenti fiscali NON sta qui: e' nella scheda Dati del drawer
+//    operatore (Tid, 2026-10-06) — e' il perimetro dell'operatore, non una
+//    regola su area, oggetto o azione.
 // Usato sia dentro i Tabs di OperatoreDrawer sia dal
 // drawer dedicato OperatorePermessiDrawer (azione rapida dalla lista).
 // Reagisce automaticamente al cambio di authUserId.
@@ -29,7 +31,7 @@
 //    In particolare un'area BLOCCATA continua a NON bloccare le sue azioni di
 //    processo — e' un difetto di modello aperto, non lavoro di questa
 //    ristrutturazione (analisi-ui-permessi-operatore.md §3).
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useNotify } from '../../core/composables/useNotify'
@@ -38,23 +40,16 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { STATUS_ICONS } from '../../core/constants'
 import { listAreeFunzionali, listAzioniProcesso, getModelOverridesLookup } from '../api/amministrazione'
-import { listEmittentiFiscali } from '../../core/apiCore'
 import { LIVELLO_ACCESSO, buildLivelloOptions, getLivelloLabel, getLivelloSeverity } from '../constants'
 import { areaConsenteAzione, livelloConTettoArea } from '../tettoArea'
 import { toDateString } from '../../core/utils/date'
 import MatriceOverride from '../../core/components/MatriceOverride.vue'
 import FiltroToggle from '../../core/components/FiltroToggle.vue'
 import Select from 'primevue/select'
-import RadioButton from 'primevue/radiobutton'
 import Message from 'primevue/message'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import Badge from 'primevue/badge'
-import Tabs from 'primevue/tabs'
-import TabList from 'primevue/tablist'
-import Tab from 'primevue/tab'
-import TabPanels from 'primevue/tabpanels'
-import TabPanel from 'primevue/tabpanel'
 
 const { t } = useI18n()
 const store = useOperatoriStore()
@@ -73,7 +68,6 @@ const injectedReadonly = useInjectReadonly()
 const areeFunzionali = useLookup(listAreeFunzionali, { immediate: true })
 const azioniProcesso = useLookup(listAzioniProcesso, { immediate: true })
 const modelOverrides = useLookup(getModelOverridesLookup, { immediate: true })
-const emittentiFiscali = useLookup(listEmittentiFiscali, { immediate: true })
 
 const props = defineProps({
   authUserId: { type: Number, required: true },
@@ -84,14 +78,20 @@ const props = defineProps({
   visible: { type: Boolean, default: true }
 })
 
-const isReadonly = computed(() => props.readonly || injectedReadonly.value)
-
-const livelloOptions = buildLivelloOptions(t)
-
 // Multi-face auth: flag SUPER_ADMIN dal detail dell'operatore gestito
 // (non dal user corrente auth). Se il detail non e' ancora caricato,
 // loadAll() lo fetcha. Banner "admin ha accesso totale" guidato da qui.
+// ⚠️ E' il flag SALVATO: toglierlo nei Dati senza salvare non sblocca.
 const isSuperAdmin = computed(() => store.currentOperatore?.is_super_admin === true)
+
+// ⭐ Su un SUPER ADMIN il pannello e' in sola lettura (Tid, 2026-10-06): il
+//    flag scavalca la catena dei permessi, quindi un override scritto li' non
+//    ha effetto — e un pannello modificabile diceva il contrario (un admin ha
+//    messo Anagrafiche a «Lettura» su un super admin, e non e' successo
+//    niente). Per assegnargli permessi si toglie prima il flag.
+const isReadonly = computed(() => props.readonly || injectedReadonly.value || isSuperAdmin.value)
+
+const livelloOptions = buildLivelloOptions(t)
 
 // Stato locale editabile (mantenuto separato dallo store per permettere undo
 // logico tra un save e l'altro e per non mutare direttamente lo store).
@@ -107,28 +107,16 @@ const overrideAree = ref({})
 const overrideAzioni = ref({})
 const overrideOggetti = ref({})
 
-// Fase 2 multi-face: scope dichiarativo. `localScopeMode` e' la radio
-// attualmente selezionata; `localEmittenteId` e' l'id selezionato quando
-// scope_mode='SINGLE'. Salvataggio costruisce il payload
-// `{scope_mode, emittenti_ids}` dal couple.
-const localScopeMode = ref('GLOBAL')
-const localEmittenteId = ref(null)
-
 // Modifiche non salvate (BB useDrawerFormPreserve): UNA fotografia per
 // sezione, perche' ogni sezione ha il SUO endpoint — il Salva unico (`salva`)
 // manda solo le sezioni modificate, e un PUT che sostituisce la collezione
 // non va mandato per niente. Il drawer padre legge `modificato`/`puoSalvare`,
 // salva con `salva` e chiude con `chiudiConConferma` (defineExpose in fondo).
-// ⚠️ Lo scope si confronta COME LO MANDA il Salva (`_buildScopePayload`, piu'
-//    sotto): con GLOBAL l'emittente non viaggia, quindi un emittente scelto e
-//    poi abbandonato non e' una modifica.
-const scopeLocale = computed(() => _buildScopePayload())
 const _vis = { visibile: () => props.visible }
 const sezioni = {
   aree: useDrawerFormPreserve(overrideAree, _vis),
   azioni: useDrawerFormPreserve(overrideAzioni, _vis),
   oggetti: useDrawerFormPreserve(overrideOggetti, _vis),
-  emittenti: useDrawerFormPreserve(scopeLocale, _vis),
 }
 const modificato = computed(() => Object.values(sezioni).some(sz => sz.modificato.value))
 
@@ -141,7 +129,7 @@ function chiudiConConferma(chiudi) {
 
 // Scopo: Carica tutto lo stato necessario per il componente.
 //        Viene chiamato dal watch su authUserId (immediate) e garantisce
-//        che currentOperatore, overrideAree/azioni, emittentiScope siano
+//        che currentOperatore e overrideAree/azioni/oggetti siano
 //        coerenti con l'utente passato.
 async function loadAll(userId) {
   if (!userId) return
@@ -156,7 +144,6 @@ async function loadAll(userId) {
     store.fetchPermessiEreditati(userId),
     // Il tetto d'area: quali voci vale il loro override e quali l'area ferma.
     store.fetchPermessiEffettivi(userId),
-    store.fetchEmittentiScope(userId)
   ])
   syncLocal()
   Object.values(sezioni).forEach(sz => sz.fissa())
@@ -182,8 +169,6 @@ function syncLocal() {
   overrideOggetti.value = Object.fromEntries(
     store.overrideOggetti.map(o => [chiaveOggetto(o), { ...o }])
   )
-  localScopeMode.value = store.emittentiScope.scope_mode || 'GLOBAL'
-  localEmittenteId.value = (store.emittentiScope.emittenti_ids || [])[0] ?? null
 }
 
 // ═══ L'EREDITATO — cosa l'operatore ha GIA' dal profilo ════════════════════
@@ -339,15 +324,6 @@ const tettoOggetto = (voce) => {
     + _suffissoAnteprima(stato)
 }
 
-// Capability esposte dal BE: render condizionale e disable/tooltip.
-const allowedScopeModes = computed(() => store.emittentiScope.allowed_scope_modes || ['GLOBAL', 'SINGLE'])
-const canChangeScope = computed(() => store.emittentiScope.can_change_scope !== false)
-const changeScopeReason = computed(() => store.emittentiScope.change_scope_reason || null)
-const scopeModeOptions = computed(() => [
-  { value: 'GLOBAL', label: t('amministrazione.scope_mode_global'), disabled: !allowedScopeModes.value.includes('GLOBAL') },
-  { value: 'SINGLE', label: t('amministrazione.scope_mode_single'), disabled: !allowedScopeModes.value.includes('SINGLE') },
-])
-
 // ⛔ IL SALVATAGGIO MANDA SOLO LE RIGHE CON OVERRIDE VERO, e i mapper partono
 //    dai VALORI delle mappe — mai dalle voci del catalogo.
 //    Il `PUT` sostituisce l'intera collezione (`DELETE WHERE auth_user_id` +
@@ -380,26 +356,6 @@ const _toOggettoItem = (o) => ({
   valido_al: o.valido_al || null,
 })
 
-// Costruzione payload Fase 2: GLOBAL -> emittenti_ids: []; SINGLE -> [id].
-// La validazione e' centralizzata sul BE (E_AMM_SCOPE_NON_AMMESSO se SINGLE
-// senza emittente). Qui blocchiamo solo lato UX per evitare round-trip.
-function _buildScopePayload() {
-  if (localScopeMode.value === 'GLOBAL') {
-    return { scope_mode: 'GLOBAL', emittenti_ids: [] }
-  }
-  return { scope_mode: 'SINGLE', emittenti_ids: localEmittenteId.value != null ? [localEmittenteId.value] : [] }
-}
-
-const canSaveEmittenti = computed(() => {
-  if (!canChangeScope.value) return false
-  // Defense-in-depth: la modalita' selezionata deve essere ammessa dal BE.
-  // Se in futuro `allowed_scope_modes` venisse ridotto (es. lockdown sul
-  // SUPER_ADMIN), evita un round-trip che ritorna E_AMM_SCOPE_NON_AMMESSO.
-  if (!allowedScopeModes.value.includes(localScopeMode.value)) return false
-  if (localScopeMode.value === 'SINGLE' && localEmittenteId.value == null) return false
-  return true
-})
-
 // ═══ IL SALVA UNICO ═══════════════════════════════════════════════════════
 // Una modifica in un'area tocca spesso piu' di un endpoint (livello, oggetti,
 // azioni): con un Salva per sezione l'admin doveva sapere quali premere. Qui
@@ -410,11 +366,7 @@ const canSaveEmittenti = computed(() => {
 // useApiHandler.execute() e' SOLO per response axios (feedback_useapihandler_solo_axios).
 const salvando = ref(false)
 
-const puoSalvare = computed(() =>
-  !isReadonly.value
-  && modificato.value
-  && (!sezioni.emittenti.modificato.value || canSaveEmittenti.value)
-)
+const puoSalvare = computed(() => !isReadonly.value && modificato.value)
 
 // Scopo: Salva le sezioni modificate; `true` se tutte riescono.
 async function salva() {
@@ -433,14 +385,6 @@ async function salva() {
     if (sezioni.oggetti.modificato.value) {
       await store.saveOverrideOggetti(id, Object.values(overrideOggetti.value).map(_toOggettoItem))
       sezioni.oggetti.fissa()
-    }
-    if (sezioni.emittenti.modificato.value) {
-      await store.saveEmittentiScope(id, _buildScopePayload())
-      sezioni.emittenti.fissa()
-      // Refresh asincrono lista operatori (la `emittenti_descrizione` puo'
-      // essere cambiata): dopo il prossimo render frame per non interrompere
-      // l'animazione del toast.
-      nextTick(() => store.fetchList().catch(() => {}))
     }
     notify.success(t('notifications.save_success'))
     return true
@@ -581,16 +525,13 @@ const azioneOptions = computed(() => [
 // ⛔ Ricerca e filtro restringono la VISTA, mai il modello: il Salva parte
 //    dalle mappe degli override, non dalle voci a video.
 
-// Scheda attiva. ⚠️ Tab dentro un drawer: si riporta alla prima a ogni
-// apertura e a ogni cambio di operatore (frontend-standards §«Tab-View»).
-const scheda = ref('permessi')
+// La vista si azzera a ogni apertura e a ogni cambio di operatore.
 const areaScelta = ref(null)
 const termine = ref('')
 const soloOverride = ref(false)
 
 watch(() => [props.visible, props.authUserId], ([visibile]) => {
   if (!visibile) return
-  scheda.value = 'permessi'
   areaScelta.value = null
   termine.value = ''
   soloOverride.value = false
@@ -686,207 +627,160 @@ defineExpose({ modificato, chiudiConConferma, salva, puoSalvare, salvando })
       {{ t('amministrazione.admin_full_access') }}
     </Message>
 
-    <Tabs v-model:value="scheda">
-      <TabList>
-        <Tab value="permessi">{{ t('amministrazione.permessi_tab_aree') }}</Tab>
-        <Tab value="emittenti">{{ t('amministrazione.emittenti_scope_title') }}</Tab>
-      </TabList>
-      <TabPanels>
-        <!-- ═══ PERMESSI, PER AREA ═════════════════════════════════════════ -->
-        <TabPanel value="permessi">
-          <p class="app-permessi-nota">{{ t('amministrazione.permessi_nota') }}</p>
+    <p class="app-permessi-nota">{{ t('amministrazione.permessi_nota') }}</p>
 
-          <div class="app-elenco-dettaglio-filtri">
-            <InputText
-              v-model="termine"
-              :placeholder="t('amministrazione.permessi_cerca')"
-            />
-            <FiltroToggle
-              v-model="soloOverride"
-              :label="t('amministrazione.permessi_solo_override')"
-            />
-          </div>
+    <div class="app-elenco-dettaglio-filtri">
+      <InputText
+        v-model="termine"
+        :placeholder="t('amministrazione.permessi_cerca')"
+      />
+      <FiltroToggle
+        v-model="soloOverride"
+        :label="t('amministrazione.permessi_solo_override')"
+      />
+    </div>
 
-          <div class="app-elenco-dettaglio">
-            <!-- L'elenco delle aree: il colpo d'occhio che prima era la prima
-                 tabella, compresso. -->
-            <nav class="app-elenco-dettaglio-elenco">
-              <button
-                v-for="area in areeVisibili"
-                :key="area.id"
-                type="button"
-                class="app-elenco-dettaglio-voce"
-                :class="{
-                  'app-elenco-dettaglio-voce--attiva': areaCorrente?.id === area.id,
-                  'app-elenco-dettaglio-voce--modificata': riassunti[area.id].modificata,
-                }"
-                v-tooltip.right="riassunti[area.id].modificata ? t('common.modifiche_non_salvate.indicatore') : null"
-                @click="areaScelta = area.id"
-              >
-                <span class="app-elenco-dettaglio-voce-testo">{{ area.descrizione }}</span>
-                <i
-                  v-if="riassunti[area.id].limitate"
-                  v-tooltip.top="t('amministrazione.permessi_area_limitate', { n: riassunti[area.id].limitate })"
-                  :class="[STATUS_ICONS.ERRORE, 'app-permessi-tetto-icona']"
-                />
-                <Badge
-                  v-if="riassunti[area.id].conOverride"
-                  v-tooltip.top="t('amministrazione.permessi_area_override')"
-                  :value="riassunti[area.id].conOverride"
-                  severity="info"
-                />
-                <Tag
-                  :value="getLivelloLabel(t, livelloAreaVideo(area.id))"
-                  :severity="getLivelloSeverity(livelloAreaVideo(area.id))"
-                />
-              </button>
-              <span v-if="!areeVisibili.length" class="app-elenco-dettaglio-vuoto">
-                {{ t('amministrazione.permessi_nessuna_area') }}
-              </span>
-            </nav>
-
-            <!-- L'area scelta: il suo livello, i suoi oggetti, le sue azioni. -->
-            <section v-if="areaCorrente" class="app-elenco-dettaglio-dettaglio">
-              <h4>{{ areaCorrente.descrizione }}</h4>
-
-              <MatriceOverride
-                :voci="[areaCorrente]"
-                :chiave="a => a.id"
-                :overrides="overrideAree"
-                :label-voce="t('amministrazione.permessi_livello_area')"
-                :avviso="avvisoArea"
-                @reset="resetArea"
-              >
-                <template #voce>{{ t('amministrazione.permessi_livello_area') }}</template>
-                <template #ereditato="{ voce }">
-                  {{ getLivelloLabel(t, livelloEreditatoArea(voce.id)) }}
-                  <small class="app-permessi-fonte">{{ fonteArea(voce.id) }}</small>
-                </template>
-                <template #override="{ voce, valore }">
-                  <Select
-                    :model-value="valore?.livello ?? null"
-                    :options="livelloOptions"
-                    option-label="label"
-                    option-value="value"
-                    :placeholder="t('amministrazione.override_non_impostato')"
-                    :disabled="isReadonly"
-                    @update:model-value="v => setOverrideArea(voce.id, v)"
-                  />
-                </template>
-              </MatriceOverride>
-
-              <template v-if="oggettiVisibili(areaCorrente).length">
-                <h5>{{ t('amministrazione.permessi_oggetti_area') }}</h5>
-                <MatriceOverride
-                  :voci="oggettiVisibili(areaCorrente)"
-                  :chiave="chiaveOggetto"
-                  :overrides="overrideOggetti"
-                  :label-voce="t('amministrazione.col_model')"
-                  :avviso="avvisoOggetto"
-                  @reset="resetOggetto"
-                >
-                  <template #voce="{ voce }">{{ voce.label }}</template>
-                  <template #ereditato="{ voce }">
-                    {{ getLivelloLabel(t, livelloEreditatoOggetto(voce)) }}
-                    <small class="app-permessi-fonte">{{ fonteOggetto(voce) }}</small>
-                  </template>
-                  <template #override="{ voce, valore }">
-                    <span v-tooltip.top="modelOverrideReason(voce)">
-                      <Select
-                        :model-value="valore?.livello ?? null"
-                        :options="livelloOptions"
-                        option-label="label"
-                        option-value="value"
-                        :placeholder="t('amministrazione.override_non_impostato')"
-                        :disabled="isReadonly || !!modelOverrideReason(voce)"
-                        @update:model-value="v => setOverrideOggetto(voce, v)"
-                      />
-                    </span>
-                    <small v-if="tettoOggetto(voce)" class="app-permessi-tetto">{{ tettoOggetto(voce) }}</small>
-                  </template>
-                </MatriceOverride>
-              </template>
-
-              <template v-if="azioniVisibili(areaCorrente).length">
-                <h5>{{ t('amministrazione.permessi_azioni_area') }}</h5>
-                <MatriceOverride
-                  :voci="azioniVisibili(areaCorrente)"
-                  :chiave="a => a.id"
-                  :overrides="overrideAzioni"
-                  :label-voce="t('amministrazione.col_azione')"
-                  :avviso="avvisoAzione"
-                  @reset="resetAzione"
-                >
-                  <template #voce="{ voce }">{{ voce.descrizione }}</template>
-                  <template #ereditato="{ voce }">
-                    {{ abilitataEreditataAzione(voce.id) ? t('amministrazione.azione_abilitata') : t('amministrazione.azione_negata') }}
-                    <small class="app-permessi-fonte">{{ fonteAzione(voce.id) }}</small>
-                  </template>
-                  <template #override="{ voce, valore, haOverride }">
-                    <Select
-                      :model-value="haOverride ? valore.abilitata : null"
-                      :options="azioneOptions"
-                      option-label="label"
-                      option-value="value"
-                      :placeholder="t('amministrazione.override_non_impostato')"
-                      :disabled="isReadonly"
-                      @update:model-value="v => setOverrideAzione(voce.id, v)"
-                    />
-                    <small v-if="tettoAzione(voce.id)" class="app-permessi-tetto">{{ tettoAzione(voce.id) }}</small>
-                  </template>
-                </MatriceOverride>
-              </template>
-
-              <p
-                v-if="!(oggettiPerArea[areaCorrente.id] || []).length && !(azioniPerArea[areaCorrente.id] || []).length"
-                class="app-permessi-nota"
-              >
-                {{ t('amministrazione.permessi_area_senza_voci') }}
-              </p>
-            </section>
-          </div>
-        </TabPanel>
-
-        <!-- ═══ SCOPE EMITTENTI (Fase 2 multi-face) ═══════════════════════ -->
-        <!-- Non appartiene a nessuna area: e' l'unica cosa che merita una
-             scheda propria. Si salva col Salva unico del drawer. -->
-        <TabPanel value="emittenti">
-          <p class="app-text-muted">{{ t('amministrazione.emittenti_scope_hint') }}</p>
-          <!-- Radio scope: GLOBAL/SINGLE. `MULTI` non e' incluso in
-               allowed_scope_modes post Q2 (architetturalmente chiuso). -->
-          <div
-            class="scope-radio-group"
-            v-tooltip.bottom="!canChangeScope ? changeScopeReason : null"
-          >
-            <div
-              v-for="opt in scopeModeOptions"
-              :key="opt.value"
-              class="scope-radio-row"
-            >
-              <RadioButton
-                v-model="localScopeMode"
-                :value="opt.value"
-                :input-id="'scope-mode-' + opt.value"
-                :disabled="isReadonly || !canChangeScope || opt.disabled"
-              />
-              <label :for="'scope-mode-' + opt.value" class="scope-radio-label">{{ opt.label }}</label>
-            </div>
-          </div>
-
-          <!-- Select emittente: visibile solo in SINGLE -->
-          <Select
-            v-if="localScopeMode === 'SINGLE'"
-            v-model="localEmittenteId"
-            :options="emittentiFiscali.items.value"
-            option-label="ragione_sociale"
-            option-value="id"
-            :placeholder="t('amministrazione.select_emittenti')"
-            show-clear
-            :disabled="isReadonly || !canChangeScope"
+    <div class="app-elenco-dettaglio">
+      <!-- L'elenco delle aree: il colpo d'occhio che prima era la prima
+           tabella, compresso. -->
+      <nav class="app-elenco-dettaglio-elenco">
+        <button
+          v-for="area in areeVisibili"
+          :key="area.id"
+          type="button"
+          class="app-elenco-dettaglio-voce"
+          :class="{
+            'app-elenco-dettaglio-voce--attiva': areaCorrente?.id === area.id,
+            'app-elenco-dettaglio-voce--modificata': riassunti[area.id].modificata,
+          }"
+          v-tooltip.right="riassunti[area.id].modificata ? t('common.modifiche_non_salvate.indicatore') : null"
+          @click="areaScelta = area.id"
+        >
+          <span class="app-elenco-dettaglio-voce-testo">{{ area.descrizione }}</span>
+          <i
+            v-if="riassunti[area.id].limitate"
+            v-tooltip.top="t('amministrazione.permessi_area_limitate', { n: riassunti[area.id].limitate })"
+            :class="[STATUS_ICONS.ERRORE, 'app-permessi-tetto-icona']"
           />
-        </TabPanel>
-      </TabPanels>
-    </Tabs>
+          <Badge
+            v-if="riassunti[area.id].conOverride"
+            v-tooltip.top="t('amministrazione.permessi_area_override')"
+            :value="riassunti[area.id].conOverride"
+            severity="info"
+          />
+          <Tag
+            :value="getLivelloLabel(t, livelloAreaVideo(area.id))"
+            :severity="getLivelloSeverity(livelloAreaVideo(area.id))"
+          />
+        </button>
+        <span v-if="!areeVisibili.length" class="app-elenco-dettaglio-vuoto">
+          {{ t('amministrazione.permessi_nessuna_area') }}
+        </span>
+      </nav>
+
+      <!-- L'area scelta: il suo livello, i suoi oggetti, le sue azioni. -->
+      <section v-if="areaCorrente" class="app-elenco-dettaglio-dettaglio">
+        <h4>{{ areaCorrente.descrizione }}</h4>
+
+        <MatriceOverride
+          :voci="[areaCorrente]"
+          :readonly="isReadonly"
+          :chiave="a => a.id"
+          :overrides="overrideAree"
+          :label-voce="t('amministrazione.permessi_livello_area')"
+          :avviso="avvisoArea"
+          @reset="resetArea"
+        >
+          <template #voce>{{ t('amministrazione.permessi_livello_area') }}</template>
+          <template #ereditato="{ voce }">
+            {{ getLivelloLabel(t, livelloEreditatoArea(voce.id)) }}
+            <small class="app-permessi-fonte">{{ fonteArea(voce.id) }}</small>
+          </template>
+          <template #override="{ voce, valore }">
+            <Select
+              :model-value="valore?.livello ?? null"
+              :options="livelloOptions"
+              option-label="label"
+              option-value="value"
+              :placeholder="t('amministrazione.override_non_impostato')"
+              :disabled="isReadonly"
+              @update:model-value="v => setOverrideArea(voce.id, v)"
+            />
+          </template>
+        </MatriceOverride>
+
+        <template v-if="oggettiVisibili(areaCorrente).length">
+          <h5>{{ t('amministrazione.permessi_oggetti_area') }}</h5>
+          <MatriceOverride
+            :voci="oggettiVisibili(areaCorrente)"
+            :readonly="isReadonly"
+            :chiave="chiaveOggetto"
+            :overrides="overrideOggetti"
+            :label-voce="t('amministrazione.col_model')"
+            :avviso="avvisoOggetto"
+            @reset="resetOggetto"
+          >
+            <template #voce="{ voce }">{{ voce.label }}</template>
+            <template #ereditato="{ voce }">
+              {{ getLivelloLabel(t, livelloEreditatoOggetto(voce)) }}
+              <small class="app-permessi-fonte">{{ fonteOggetto(voce) }}</small>
+            </template>
+            <template #override="{ voce, valore }">
+              <span v-tooltip.top="modelOverrideReason(voce)">
+                <Select
+                  :model-value="valore?.livello ?? null"
+                  :options="livelloOptions"
+                  option-label="label"
+                  option-value="value"
+                  :placeholder="t('amministrazione.override_non_impostato')"
+                  :disabled="isReadonly || !!modelOverrideReason(voce)"
+                  @update:model-value="v => setOverrideOggetto(voce, v)"
+                />
+              </span>
+              <small v-if="tettoOggetto(voce)" class="app-permessi-tetto">{{ tettoOggetto(voce) }}</small>
+            </template>
+          </MatriceOverride>
+        </template>
+
+        <template v-if="azioniVisibili(areaCorrente).length">
+          <h5>{{ t('amministrazione.permessi_azioni_area') }}</h5>
+          <MatriceOverride
+            :voci="azioniVisibili(areaCorrente)"
+            :readonly="isReadonly"
+            :chiave="a => a.id"
+            :overrides="overrideAzioni"
+            :label-voce="t('amministrazione.col_azione')"
+            :avviso="avvisoAzione"
+            @reset="resetAzione"
+          >
+            <template #voce="{ voce }">{{ voce.descrizione }}</template>
+            <template #ereditato="{ voce }">
+              {{ abilitataEreditataAzione(voce.id) ? t('amministrazione.azione_abilitata') : t('amministrazione.azione_negata') }}
+              <small class="app-permessi-fonte">{{ fonteAzione(voce.id) }}</small>
+            </template>
+            <template #override="{ voce, valore, haOverride }">
+              <Select
+                :model-value="haOverride ? valore.abilitata : null"
+                :options="azioneOptions"
+                option-label="label"
+                option-value="value"
+                :placeholder="t('amministrazione.override_non_impostato')"
+                :disabled="isReadonly"
+                @update:model-value="v => setOverrideAzione(voce.id, v)"
+              />
+              <small v-if="tettoAzione(voce.id)" class="app-permessi-tetto">{{ tettoAzione(voce.id) }}</small>
+            </template>
+          </MatriceOverride>
+        </template>
+
+        <p
+          v-if="!(oggettiPerArea[areaCorrente.id] || []).length && !(azioniPerArea[areaCorrente.id] || []).length"
+          class="app-permessi-nota"
+        >
+          {{ t('amministrazione.permessi_area_senza_voci') }}
+        </p>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -899,19 +793,6 @@ h4 {
 }
 h5 {
   margin: 1rem 0 0.5rem;
-}
-.scope-radio-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-.scope-radio-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.scope-radio-label {
-  cursor: pointer;
 }
 .app-permessi-nota {
   font-size: 0.85rem;

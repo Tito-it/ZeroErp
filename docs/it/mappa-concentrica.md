@@ -586,18 +586,18 @@ operativo può prenderle al posto di una persona.
   5 `*SearchTable` di dominio che non passano dal building block. ⛔ Il presidio a
   un numero solo non sa distinguerli: finché resta così, misura la crescita del
   frontend più del debito
-- **Collaudi in-app aperti**: **sette copioni** scritti e da eseguire — il giro
+- **Collaudi in-app aperti**: **cinque copioni** scritti e da eseguire — il giro
   incassi ([ultimo giro](dev/work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md)),
   l'[osservabilità](dev/work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
   la [capability annidata e i prezzi autorizzati](dev/work-in-progress/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md),
   la [casella di ricerca delle liste](dev/work-in-progress/collaudo-in-app-casella-ricerca-liste.md)
   (§1 quasi tutto spuntato, §2-§4 no),
   [inventario e rettifica](dev/work-in-progress/collaudo-in-app-magazzino-inventario-e-rettifica.md)
-  (il FE del magazzino non è mai stato aperto in-app), i [permessi ereditati](dev/work-in-progress/collaudo-in-app-permessi-ereditati-veste-operatore.md)
-  e la [UI dei permessi dell'operatore](dev/work-in-progress/collaudo-in-app-ui-permessi-operatore.md) —
+  (il FE del magazzino non è mai stato aperto in-app) —
   più le due voci residue dell'area RESI. ⚠️ Di quei percorsi è provato il
   *cammino*, mai l'*esito*. Superati a video nel periodo: la soglia della ricerca
-  (26-09), le misure di pagina (30-09), i filtri compatti su dispositivi veri (24-09)
+  (26-09), le misure di pagina (30-09), i filtri compatti su dispositivi veri (24-09),
+  i permessi ereditati e la UI dei permessi dell'operatore (06-10)
 - **Perimetro dei dati**: **8 righe** in `dbops.rls_perimetro_debito` — sei
   figlie di tabella protetta (chiavi nullable o legami che definiscono il
   perimetro stesso) e le due policy inerti di `acquisti`, che sono D8 e non D4;

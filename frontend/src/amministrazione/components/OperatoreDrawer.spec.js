@@ -23,6 +23,12 @@
 //   5) spegnere una veste accesa e' «Disabilita»: il Salva chiede conferma,
 //      e si salva solo accettando
 //   6) salvare senza spegnere non chiede niente
+//
+//   Scope emittenti fiscali (nei Dati dal 2026-10-06):
+//   7) cambiato solo lo scope: il Salva manda lo scope, non i dati
+//   8) dati salvati e scope rifiutato: i dati restano salvati, e il Salva
+//      successivo manda il solo scope
+//   9) scope non modificabile: radio spente col motivo del BE
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -31,6 +37,8 @@ import { flushPromises } from '@vue/test-utils'
 
 const getOperatore = vi.fn()
 const updateOperatore = vi.fn()
+const getEmittentiScope = vi.fn()
+const putEmittentiScope = vi.fn()
 const confirmAction = vi.fn()
 
 vi.mock('../../core/composables/useConfirmAction', () => ({
@@ -51,10 +59,17 @@ vi.mock('../api/amministrazione', () => ({
   putOverrideAree: vi.fn(),
   getOverrideAzioni: vi.fn(),
   putOverrideAzioni: vi.fn(),
+  getEmittentiScope: (...a) => getEmittentiScope(...a),
+  putEmittentiScope: (...a) => putEmittentiScope(...a),
+}))
+vi.mock('../../core/apiCore', async (originale) => ({
+  ...(await originale()),
+  listEmittentiFiscali: () => Promise.resolve({ data: { data: { results: [{ id: 5, ragione_sociale: 'Emittente Uno' }] } } }),
 }))
 
 const { monta } = await import('../../../test/montaggio')
 const { default: OperatoreDrawer } = await import('./OperatoreDrawer.vue')
+const { default: Select } = await import('primevue/select')
 
 const ID = 42
 const comeAxios = (data) => ({ data: { data } })
@@ -88,8 +103,14 @@ function operatore(sovrascritture = {}) {
   }
 }
 
-async function apri(dettaglio) {
+const SCOPE_GLOBALE = Object.freeze({
+  scope_mode: 'GLOBAL', emittenti_ids: [], allowed_scope_modes: ['GLOBAL', 'SINGLE'],
+  can_change_scope: true, change_scope_reason: null,
+})
+
+async function apri(dettaglio, scope = SCOPE_GLOBALE) {
   getOperatore.mockResolvedValue(comeAxios(dettaglio))
+  getEmittentiScope.mockResolvedValue(comeAxios(scope))
   const w = monta(OperatoreDrawer, { visible: false, mode: 'edit', authUserId: ID }, {
     global: {
       stubs: {
@@ -173,5 +194,61 @@ describe('OperatoreDrawer — interruttore «Accesso attivo» (D-3)', () => {
     // Nei test nessuna chiave esiste (`te` falso): `bloccoMotivo` mostra il codice.
     expect(suggerimenti(w)).toContain('ULTIMO_SUPER_ADMIN')
     expect(suggerimenti(w)).not.toContain('amministrazione.accesso_attivo.da_invito')
+  })
+})
+
+describe('OperatoreDrawer — scope emittenti fiscali nei Dati', () => {
+  beforeEach(() => {
+    getOperatore.mockReset()
+    confirmAction.mockReset()
+    updateOperatore.mockReset().mockImplementation((_id, payload) =>
+      Promise.resolve(comeAxios(operatore({ ...payload, veste_attiva: true }))))
+    putEmittentiScope.mockReset().mockImplementation((_id, payload) =>
+      Promise.resolve(comeAxios({ ...SCOPE_GLOBALE, ...payload })))
+  })
+
+  // Scopo: porta lo scope a SINGLE sull'emittente 5, come farebbe l'operatore.
+  async function scegliEmittente(w) {
+    await w.find('#scope-mode-SINGLE').setValue(true)
+    const tendine = w.findAllComponents(Select)
+    tendine[tendine.length - 1].vm.$emit('update:modelValue', 5)
+    await flushPromises()
+  }
+
+  it('cambiato solo lo scope: si manda lo scope, non i dati', async () => {
+    const w = await apri(operatore({ veste_attiva: true, can_invite: false }))
+    await scegliEmittente(w)
+    await w.find('.salva-finto').trigger('click')
+    await flushPromises()
+    expect(updateOperatore).not.toHaveBeenCalled()
+    expect(putEmittentiScope).toHaveBeenCalledTimes(1)
+    expect(putEmittentiScope.mock.calls[0][1]).toEqual({ scope_mode: 'SINGLE', emittenti_ids: [5] })
+    expect(w.emitted('saved')).toHaveLength(1)
+  })
+
+  it('dati salvati e scope rifiutato: il Salva dopo manda il solo scope', async () => {
+    const w = await apri(operatore({ veste_attiva: true, can_invite: false }))
+    await w.find('input[type="text"]:not([disabled])').setValue('Bianchi')
+    await scegliEmittente(w)
+    putEmittentiScope.mockRejectedValueOnce(new Error('rifiutato'))
+    await w.find('.salva-finto').trigger('click')
+    await flushPromises()
+    expect(updateOperatore).toHaveBeenCalledTimes(1)
+    expect(putEmittentiScope).toHaveBeenCalledTimes(1)
+    // I dati sono salvati: la lista lo deve sapere.
+    expect(w.emitted('saved')).toHaveLength(1)
+
+    await w.find('.salva-finto').trigger('click')
+    await flushPromises()
+    expect(updateOperatore).toHaveBeenCalledTimes(1)
+    expect(putEmittentiScope).toHaveBeenCalledTimes(2)
+  })
+
+  it('scope non modificabile: radio spente col motivo del BE', async () => {
+    const w = await apri(operatore({ veste_attiva: true, can_invite: false }), {
+      ...SCOPE_GLOBALE, can_change_scope: false, change_scope_reason: 'Motivo del BE',
+    })
+    expect(w.find('#scope-mode-GLOBAL').attributes('disabled')).toBeDefined()
+    expect(w.find('#scope-mode-SINGLE').attributes('disabled')).toBeDefined()
   })
 })

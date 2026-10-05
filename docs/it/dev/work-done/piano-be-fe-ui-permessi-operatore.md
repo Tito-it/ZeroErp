@@ -7,7 +7,9 @@
 >
 > **Destinatario:** backend e frontend (`dev/backend-tid`).
 >
-> **Stato:** 🟢 **ESEGUITO (2026-09-05)** — BE, BB e conversione del tab fatti.
+> **Stato:** ✅ **CHIUSO il 2026-10-06** — collaudo a video verde (Tid,
+> [collaudo-in-app-ui-permessi-operatore.md](collaudo-in-app-ui-permessi-operatore.md)).
+> Eseguito il 2026-09-05: BE, BB e conversione del tab fatti.
 > **4434 test backend verdi**, lint e build frontend puliti. Resta il collaudo a
 > video (§6), che è l'unica verifica possibile: questo repo non ha una suite FE.
 >
@@ -19,7 +21,7 @@
 > aree) e in suite è rimasta la forma sorella che questo repo usa per i criteri:
 > si legge l'**SQL generato** e si prova che usa `fn_get_profili_accesso_applicabili`
 > e che sceglie per `h.priorita`. ⇒ La versione durevole è un **pgTAP**: ✅
-> fatta il 2026-09-25 ([brief](../work-done/brief-db-pgtap-permessi-ereditati.md)), e
+> fatta il 2026-09-25 ([brief](brief-db-pgtap-permessi-ereditati.md)), e
 > l'ereditato è passato a DB — il backend chiama la funzione dei resolver.
 >
 > ⚠️ **Perimetro**: **nessun cambio di funzionalità dei permessi.** Il tetto

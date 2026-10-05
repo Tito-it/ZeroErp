@@ -10,8 +10,8 @@
 > **Decisioni:** di Tid, 2026-10-04 (§3).
 > **Stato:** ✅ **DB chiuso**: `20261004-50 → -59` + mirror del CSV **applicati il 2026-10-04**,
 > pgTAP verdi (Tid). ✅ **Giro BE/FE di §6** (§10), **anteprima di §7.3** (Tid, sì; §10.1) e
-> **restyle del pannello (§7)** (§10.2): committati in `b8ac544fe` il 2026-10-04. ⏳ Collaudo a video: [collaudo-in-app-ui-permessi-operatore.md](collaudo-in-app-ui-permessi-operatore.md) §5-bis.
-> La cache (§6.5) prosegue in [brief-db-permessi-catalogo-notify-cache.md](../work-done/brief-db-permessi-catalogo-notify-cache.md).
+> **restyle del pannello (§7)** (§10.2): committati in `b8ac544fe` il 2026-10-04. ✅ **Collaudo a video verde il 2026-10-06** (Tid): [collaudo-in-app-ui-permessi-operatore.md](collaudo-in-app-ui-permessi-operatore.md) §5-bis. **Chiuso.**
+> La cache (§6.5) prosegue in [brief-db-permessi-catalogo-notify-cache.md](brief-db-permessi-catalogo-notify-cache.md).
 
 ## 1. La regola
 
@@ -346,7 +346,7 @@ non lo scavalca: RAISE.
 | §6.3 `/me/` | `me_view.py`: descritti nello schema OpenAPI `permessi_oggetto` (livello **effettivo**, tutto il catalogo) e `azioni_abilitate` (col tetto); prima non erano documentati. |
 | §6.3 FE | `stores/auth.js` `getLivelloOggetto(appLabel, model)` **legge** la mappa (`?? getLivelloArea(appLabel)` per un oggetto fuori catalogo): non ricostruisce più la catena. I chiamanti passano già lo schema = `app_label` (`READONLY_DOMAINS`). |
 | §6.4 pannello | Endpoint nuovo `GET amm-software/operatori/{id}/permessi-effettivi/` (`PermessiEffettiviOperatoreView` → `AmmSoftwareService.get_permessi_effettivi` → repository su `fn_get_permessi_effettivi_azioni` (sole attive) e `…_oggetti`). Test `amm_software/tests/api/test_permessi_effettivi_operatore.py` (6: risposta, operatore inesistente prima della lettura, sorgente = funzioni della catena, nessun `GREATEST`/regola pura riscritta nel BE, sole azioni attive, chiavi). Binding provato sul DB di sviluppo (38 azioni attive, 27 oggetti). Store `operatori.js`: `permessiEffettivi` + `fetchPermessiEffettivi`, ricaricato dopo ogni `saveOverride*`. Pannello: etichetta «limitata dall'area» sotto la tendina di azioni e oggetti, **solo dai valori del DB** (nessuna anteprima: §7.3 resta da decidere). |
-| §6.5 cache | ⚠️ Nessun punto applicativo da collegare: `livello_minimo_area` cambia solo dal seed al migrate. La cache permessi scade in `PERMISSIONS_CACHE_TTL` (300 s); `invalidate_all()` esiste ma non la chiama nessuno a fine migrate/deploy. È lo stesso per ogni cambio di seed dei permessi, non nasce qui: → **Tid, 2026-10-04: LISTEN/NOTIFY** sul catalogo, brief a sé: [brief-db-permessi-catalogo-notify-cache.md](../work-done/brief-db-permessi-catalogo-notify-cache.md). Lo script di deploy non basterebbe: il DB migra per conto suo. ✅ Chiuso il 2026-10-05 (DB 04-10, BE 05-10). |
+| §6.5 cache | ⚠️ Nessun punto applicativo da collegare: `livello_minimo_area` cambia solo dal seed al migrate. La cache permessi scade in `PERMISSIONS_CACHE_TTL` (300 s); `invalidate_all()` esiste ma non la chiama nessuno a fine migrate/deploy. È lo stesso per ogni cambio di seed dei permessi, non nasce qui: → **Tid, 2026-10-04: LISTEN/NOTIFY** sul catalogo, brief a sé: [brief-db-permessi-catalogo-notify-cache.md](brief-db-permessi-catalogo-notify-cache.md). Lo script di deploy non basterebbe: il DB migra per conto suo. ✅ Chiuso il 2026-10-05 (DB 04-10, BE 05-10). |
 | §6.6 doc | Guida `architettura-permessi-e-autorizzazioni.md` §3 riscritta («l'area è un tetto», override dormienti, sede unica) e allineati §4.7, §4.8, §5, §7.3, §13.1; `api_amm_software.md` §2.8 (endpoint nuovo). |
 | §9.7 test Django su DB vero | Censiti i test con `richiedi_db_provvisto` che concedono azioni: `magazzino/tests/db/test_documento_interno_db.py` (usa `fn_pgtap_concedi_azione`, che dal `-59` apre l'area) e `core/tests/db/test_pannello_verbo_db.py` (scrive un override d'area). Verdi con `ZEROERP_TEST_DB_E2E=1`, insieme a `apps.amm_software`, `core.tests.api` e `test_permissions_resolver`: **689 test OK**; registro OpenAPI verde. FE: eslint pulito, `check_i18n_keys` pulito, spec `amministrazione` + `stores` 31/31. |
 
@@ -368,7 +368,9 @@ Chiavi i18n nuove (it/en): `amministrazione.limitata_da_area_azione`, `amministr
 ### 10.2 Restyle del pannello per area (§7) — ✅ committato in `b8ac544fe`
 
 * `OperatorePermessiTab`: due schede (*Aree, oggetti e azioni* / *Scope emittenti fiscali*);
-  nella prima l'elenco delle aree a sinistra — livello a video (override o ereditato), numero di
+  ⚠️ **superato il 2026-10-06** (Tid): lo scope è uscito dal pannello ed è nella scheda *Dati*
+  di `OperatoreDrawer`, col suo endpoint e la sua fotografia; il pannello non ha più schede
+  interne. Nella prima l'elenco delle aree a sinistra — livello a video (override o ereditato), numero di
   override dell'area (livello + oggetti + azioni), nome arancio con modifiche non salvate,
   triangolo d'avviso con voci limitate dal tetto — e l'area scelta a destra (`MatriceOverride`
   per livello, oggetti, azioni). Ricerca trasversale (area, oggetto, azione) e *Solo con override*

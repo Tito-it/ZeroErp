@@ -12,13 +12,16 @@
 //
 // Indice test:
 //   1) l'elenco porta tutte le aree; il dettaglio e' la prima, con le SUE
-//      azioni e i SUOI oggetti (non quelli di un'altra area)
+//      azioni e i SUOI oggetti (non quelli di un'altra area). Lo scope
+//      emittenti non e' piu' qui (sta nei Dati dal 2026-10-06)
 //   2) il click su un'area cambia il dettaglio
 //   3) «Solo con override» lascia le sole aree con un override
 //   4) la ricerca di un'azione lascia la sola area che la contiene
 //   5) un'area con una voce limitata dal tetto lo dice nell'elenco
 //   6) senza modifiche non si salva niente
 //   7) il Salva unico manda la SOLA sezione modificata, e ricarica gli effettivi
+//   8) su un super admin il pannello e' in sola lettura: tendine spente, niente
+//      reset, niente Salva — ma l'elenco delle aree resta navigabile
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -46,10 +49,6 @@ vi.mock('../api/amministrazione', async (originale) => ({
   ...(await originale()),
   ...Object.fromEntries(Object.keys(api).map(k => [k, (...a) => api[k](...a)])),
 }))
-vi.mock('../../core/apiCore', async (originale) => ({
-  ...(await originale()),
-  listEmittentiFiscali: () => Promise.resolve(comeAxios({ results: [] })),
-}))
 
 const { monta } = await import('../../../test/montaggio')
 const { default: OperatorePermessiTab } = await import('./OperatorePermessiTab.vue')
@@ -71,8 +70,8 @@ const OGGETTI = [
   { app_label: 'vendite', model_name: 'fattura', area_id: 1, area_descrizione: 'Vendite', can_override: true },
 ]
 
-function preparaApi({ limitata = false } = {}) {
-  api.getOperatore.mockResolvedValue(comeAxios({ auth_user_id: ID, is_super_admin: false, veste_attiva: true }))
+function preparaApi({ limitata = false, superAdmin = false } = {}) {
+  api.getOperatore.mockResolvedValue(comeAxios({ auth_user_id: ID, is_super_admin: superAdmin, veste_attiva: true }))
   api.getOverrideAree.mockResolvedValue(comeAxios({ results: [] }))
   // Magazzino ha un override sull'azione: e' l'area «con override».
   api.getOverrideAzioni.mockResolvedValue(comeAxios({ results: [{ azione_id: 20, abilitata: true }] }))
@@ -92,9 +91,6 @@ function preparaApi({ limitata = false } = {}) {
       { app_label: 'vendite', model_name: 'fattura', area_schema_db: 'vendite', livello_override: null,
         livello_area: 'TUTTO', livello_specifico: 'TUTTO', livello: 'TUTTO', limitato_da_area: false },
     ],
-  }))
-  api.getEmittentiScope.mockResolvedValue(comeAxios({
-    scope_mode: 'GLOBAL', emittenti_ids: [], allowed_scope_modes: ['GLOBAL', 'SINGLE'], can_change_scope: true,
   }))
   api.listAreeFunzionali.mockResolvedValue(comeAxios({ results: AREE }))
   api.listAzioniProcesso.mockResolvedValue(comeAxios({ results: AZIONI }))
@@ -126,6 +122,7 @@ describe('OperatorePermessiTab — il pannello per area', () => {
     expect(testoDettaglio(w)).toContain('Genera fatture')
     expect(testoDettaglio(w)).toContain('vendite.fattura')
     expect(testoDettaglio(w)).not.toContain('Registra movimento')
+    expect(api.getEmittentiScope).not.toHaveBeenCalled()
   })
 
   it('2) il click su un\'area cambia il dettaglio', async () => {
@@ -188,5 +185,19 @@ describe('OperatorePermessiTab — il pannello per area', () => {
     expect(api.putEmittentiScope).not.toHaveBeenCalled()
     expect(api.getPermessiEffettivi).toHaveBeenCalledWith(ID)
     expect(w.vm.modificato).toBe(false)
+  })
+
+  it('8) su un super admin il pannello e\' in sola lettura, ma navigabile', async () => {
+    // Magazzino ha un override: senza il blocco avrebbe il pulsante di reset.
+    preparaApi({ superAdmin: true })
+    const w = await montaScheda()
+    expect(w.text()).toContain('amministrazione.admin_full_access')
+    await vociElenco(w)[1].trigger('click')
+    expect(titoloDettaglio(w)).toBe('Magazzino')
+    const tendine = w.find('.app-elenco-dettaglio-dettaglio').findAllComponents(Select)
+    expect(tendine.length).toBeGreaterThan(0)
+    tendine.forEach(s => expect(s.props('disabled')).toBe(true))
+    expect(w.find('.app-elenco-dettaglio-dettaglio button').exists()).toBe(false)
+    expect(w.vm.puoSalvare).toBe(false)
   })
 })

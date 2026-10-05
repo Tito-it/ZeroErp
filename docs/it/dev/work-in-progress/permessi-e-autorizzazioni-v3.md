@@ -103,8 +103,8 @@ a seconda del profilo dell'operatore, indipendentemente dal drawer padre.
 
 ## Problema UX: la lista piatta non scala
 
-> ✅ **Superato in parte il 2026-09-05** (`analisi-ui-permessi-operatore.md`,
-> `piano-be-fe-ui-permessi-operatore.md`). La tab Permessi del drawer operatore
+> ✅ **Superato in parte il 2026-09-05** (`work-done/analisi-ui-permessi-operatore.md`,
+> `work-done/piano-be-fe-ui-permessi-operatore.md`). La tab Permessi del drawer operatore
 > non è più una DataTable Model / Livello / Elimina con un form di aggiunta: è il
 > BB `MatriceOverride`, con **tutte** le voci del catalogo, lo stato
 > «Override» / «Ereditato», la colonna «ereditato» (per un oggetto: il livello

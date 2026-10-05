@@ -2,7 +2,8 @@
 // Scopo: Drawer unificato creazione/modifica operatore.
 // Sezioni: Soggetto (resolver in crea, banner in modifica),
 // Auth (solo crea), Dati anagrafici, Collocazione.
-// Tabs: Dati + Permessi (permessi solo in modifica).
+// Tabs: Dati + Permessi (permessi solo in modifica). Lo scope emittenti
+// fiscali sta nei Dati (solo modifica) dal 2026-10-06.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
@@ -11,6 +12,7 @@ import { useDrawerFormPreserve, unisciFotografie } from '../../core/composables/
 import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative, invitaOperatore, reinviaInvito, getCredenzialePerEmail } from '../api/amministrazione'
+import { listEmittentiFiscali } from '../../core/apiCore'
 import { TIPO_RUOLO_CODICE } from '../constants'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -33,6 +35,7 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import RadioButton from 'primevue/radiobutton'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Tab from 'primevue/tab'
 import Tabs from 'primevue/tabs'
@@ -77,6 +80,7 @@ const soggettoSelezionato = ref(null)
 
 // Lookup
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
+const emittentiFiscali = useLookup(listEmittentiFiscali, { immediate: true })
 
 const props = defineProps({
   visible: Boolean,
@@ -168,13 +172,60 @@ const formSalvato = computed(() => ({
 }))
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
 
+// ═══ SCOPE EMITTENTI FISCALI (solo modifica) ═══════════════════════════════
+// ⭐ Sta nei Dati, non nel pannello Permessi (Tid, 2026-10-06): e' il
+//    perimetro dell'operatore — quale emittente vede — come il reparto e' la
+//    sua collocazione, non una regola su area, oggetto o azione.
+// ⚠️ Ha il SUO endpoint (`PUT .../emittenti-scope/`), quindi la SUA
+//    fotografia: il Salva manda lo scope solo se e' cambiato, e se i dati
+//    passano e lo scope no, i dati restano salvati e lo scope resta da
+//    salvare (stessa regola del Salva unico dei permessi).
+// ⚠️ Si confronta COME LO MANDA il Salva: con GLOBAL l'emittente non viaggia,
+//    quindi un emittente scelto e poi abbandonato non e' una modifica.
+const scopeMode = ref('GLOBAL')
+const scopeEmittenteId = ref(null)
+
+// Scopo: Payload dello scope: GLOBAL -> emittenti_ids: []; SINGLE -> [id].
+// La validazione e' sul BE (E_AMM_SCOPE_NON_AMMESSO se SINGLE senza
+// emittente): qui si blocca solo il Salva, per evitare il round-trip.
+function buildScopePayload() {
+  if (scopeMode.value === 'GLOBAL') return { scope_mode: 'GLOBAL', emittenti_ids: [] }
+  return {
+    scope_mode: 'SINGLE',
+    emittenti_ids: scopeEmittenteId.value != null ? [scopeEmittenteId.value] : [],
+  }
+}
+const scopeLocale = computed(() => buildScopePayload())
+const scopeFoto = useDrawerFormPreserve(scopeLocale, { visibile: () => props.visible })
+
+// Capability esposte dal BE: modalita' ammesse e blocco col suo motivo.
+const allowedScopeModes = computed(() => store.emittentiScope.allowed_scope_modes || ['GLOBAL', 'SINGLE'])
+const canChangeScope = computed(() => store.emittentiScope.can_change_scope !== false)
+const changeScopeReason = computed(() => store.emittentiScope.change_scope_reason || null)
+const scopeModeOptions = computed(() => [
+  { value: 'GLOBAL', label: t('amministrazione.scope_mode_global'), disabled: !allowedScopeModes.value.includes('GLOBAL') },
+  { value: 'SINGLE', label: t('amministrazione.scope_mode_single'), disabled: !allowedScopeModes.value.includes('SINGLE') },
+])
+const canSaveScope = computed(() =>
+  canChangeScope.value
+  && allowedScopeModes.value.includes(scopeMode.value)
+  && (scopeMode.value !== 'SINGLE' || scopeEmittenteId.value != null)
+)
+
+// Scopo: Allinea lo scope a video a quello dello store e lo fotografa.
+function syncScope() {
+  scopeMode.value = store.emittentiScope.scope_mode || 'GLOBAL'
+  scopeEmittenteId.value = (store.emittentiScope.emittenti_ids || [])[0] ?? null
+  scopeFoto.fissa()
+}
+
 // Tab Permessi: ha la sua fotografia e il suo Salva (espone `modificato`,
 // `chiudiConConferma`, `salva`, `puoSalvare`, `salvando`). Il footer e' uno:
 // sulla scheda Permessi Salva chiama `salva` della scheda, sui Dati `onSave`.
 // Chiudere il drawer chiede conferma se UNO dei due ha modifiche, con un
 // solo dialog.
 const permessiTab = ref(null)
-const tutto = unisciFotografie({ modificato, chiudiConConferma }, () => permessiTab.value)
+const tutto = unisciFotografie({ modificato, chiudiConConferma }, scopeFoto, () => permessiTab.value)
 const modificatoTutto = tutto.modificato
 
 // Scopo: Reset form a valori iniziali.
@@ -196,7 +247,11 @@ watch(() => props.visible, async (val) => {
   emailEditInvalid.value = false
   activeTab.value = 'dati'
   if (isEdit.value && props.authUserId) {
-    await store.fetchDetail(props.authUserId)
+    await Promise.all([
+      store.fetchDetail(props.authUserId),
+      store.fetchEmittentiScope(props.authUserId),
+    ])
+    syncScope()
     const u = store.currentOperatore
     if (u) {
       form.value = {
@@ -218,7 +273,6 @@ watch(() => props.visible, async (val) => {
         soggetto_id: u.soggetto_id || null,
         ragione_sociale: u.ragione_sociale_completa || null,
         codice_fiscale: u.codice_fiscale || null,
-        emittenti_descrizione: u.emittenti_descrizione || '',
         last_login: u.last_login || null
       }
       fissa()
@@ -226,6 +280,9 @@ watch(() => props.visible, async (val) => {
   } else {
     resetForm()
     fissa()
+    scopeMode.value = 'GLOBAL'
+    scopeEmittenteId.value = null
+    scopeFoto.fissa()
   }
 })
 
@@ -279,15 +336,27 @@ async function onSave() {
       attivo: form.value.attivo,
       unita_organizzativa_id: form.value.unita_organizzativa_id
     }
+    // I dati si mandano sempre, salvo quando l'unica modifica e' lo scope:
+    // li' un PUT dei dati identici sarebbe una scrittura senza motivo.
+    const inviaDati = modificato.value || !scopeFoto.modificato.value
+    const inviaScope = scopeFoto.modificato.value
     const aggiorna = async () => {
-      const result = await execute(
-        () => store.update(props.authUserId, payload),
-        { successMessage: t('notifications.save_success') }
-      )
-      if (result !== null) {
+      if (inviaDati) {
+        const result = await execute(() => store.update(props.authUserId, payload))
+        if (result === null) return
         fissa()
-        emit('saved')
       }
+      if (inviaScope) {
+        const result = await execute(() => store.saveEmittentiScope(props.authUserId, buildScopePayload()))
+        if (result === null) {
+          // I dati, se c'erano, sono salvati: la lista lo deve sapere.
+          if (inviaDati) emit('saved')
+          return
+        }
+        scopeFoto.fissa()
+      }
+      notify.success(t('notifications.save_success'))
+      emit('saved')
     }
     if (!vesteSpenta.value && form.value.attivo === false) {
       confirmAction({
@@ -419,6 +488,7 @@ const canSaveCreate = computed(() =>
 // Computed: form modifica completo
 const canSaveEdit = computed(() =>
   isEmailValid(form.value.email)
+  && (!scopeFoto.modificato.value || canSaveScope.value)
 )
 
 const canSave = computed(() => isEdit.value ? canSaveEdit.value : canSaveCreate.value)
@@ -524,16 +594,10 @@ function onInvita() {
         <!-- === Sezione Dati anagrafici + Collocazione === -->
         <h4 v-if="!isEdit">{{ t('amministrazione.section_collocazione') }}</h4>
         <div class="form-grid">
-          <!-- Username + Emittente su stessa riga (solo modifica, sola lettura) -->
-          <div v-if="isEdit" class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('common.username') }}</label>
-              <InputText :model-value="form.username" disabled />
-            </div>
-            <div class="form-field">
-              <label>{{ t('amministrazione.field_emittente') }}</label>
-              <InputText :model-value="form.emittenti_descrizione || '—'" disabled />
-            </div>
+          <!-- Username (solo modifica, sola lettura) -->
+          <div v-if="isEdit" class="form-field">
+            <label>{{ t('common.username') }}</label>
+            <InputText :model-value="form.username" disabled />
           </div>
 
           <!-- Cognome + Nome su stessa riga (solo modifica) -->
@@ -617,6 +681,38 @@ function onInvita() {
               :loading="unitaOrg.loading.value"
               option-label="descrizione" option-value="id"
               :placeholder="t('amministrazione.select_reparto')" />
+          </div>
+
+          <!-- Scope emittenti fiscali (solo modifica): GLOBAL/SINGLE. `MULTI`
+               non e' in allowed_scope_modes (architetturalmente chiuso). -->
+          <div v-if="isEdit" class="form-field">
+            <label>{{ t('amministrazione.emittenti_scope_title') }}</label>
+            <div
+              class="scope-radio-group"
+              v-tooltip.bottom="!canChangeScope ? changeScopeReason : null"
+            >
+              <div v-for="opt in scopeModeOptions" :key="opt.value" class="scope-radio-row">
+                <RadioButton
+                  v-model="scopeMode"
+                  :value="opt.value"
+                  :input-id="'scope-mode-' + opt.value"
+                  :disabled="isReadonly || !canChangeScope || opt.disabled"
+                />
+                <label :for="'scope-mode-' + opt.value" class="scope-radio-label">{{ opt.label }}</label>
+              </div>
+            </div>
+            <Select
+              v-if="scopeMode === 'SINGLE'"
+              v-model="scopeEmittenteId"
+              :options="emittentiFiscali.items.value"
+              :loading="emittentiFiscali.loading.value"
+              option-label="ragione_sociale"
+              option-value="id"
+              :placeholder="t('amministrazione.select_emittenti')"
+              show-clear
+              :disabled="isReadonly || !canChangeScope"
+            />
+            <small class="app-field-hint">{{ t('amministrazione.emittenti_scope_hint') }}</small>
           </div>
 
           <!-- Validita' e ultimo accesso (solo modifica, sola lettura informativa) -->
@@ -720,6 +816,19 @@ function onInvita() {
   display: flex;
   flex-direction: column;
   line-height: 1.2;
+  cursor: pointer;
+}
+.scope-radio-group {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+.scope-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.scope-radio-label {
   cursor: pointer;
 }
 .riuso-vesti {
