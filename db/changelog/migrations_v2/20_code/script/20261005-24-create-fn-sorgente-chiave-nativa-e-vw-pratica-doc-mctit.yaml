@@ -1,0 +1,342 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO DEL DOCUMENTO DI UNA PRATICA SI CERCA PER CHIAVE NATIVA
+#   script.fn_sorgente_chiave_uuid / script.fn_sorgente_chiave_id (nuove, building
+#   block), pratiche.fn_stato_sorgente (le usa al posto della sua copia) e
+#   script.vw_pratica_doc_sorgente (le usa in una LATERAL).
+#   Seguito di 20261005-23 su richiesta di Tid (2026-10-05). Nessun brief, su
+#   indicazione di Tid.
+#
+# -- IL DIFETTO ----------------------------------------------------------
+#   vw_pratica_doc_sorgente (dettaglio e lista pratiche, BE
+#   pratiche_repository) faceva LEFT JOIN script.vw_stato_sorgente sulla forma
+#   TESTUALE della chiave (ss.sorgente_uid = ps.sorgente_uid). Sotto RLS quel
+#   confronto non arriva all'indice (uuid_out / int8out non sono leakproof):
+#   nested loop con la union delle sei tabelle-documento riletta per intero per
+#   OGNI collegamento della pratica. Costo = collegamenti x documenti.
+#
+# -- LA CURA -------------------------------------------------------------
+#   1. Due building block in script: la chiave testuale -> uuid / bigint, solo
+#      in forma CANONICA, NULL (mai un errore) altrimenti. Prima occorrenza era
+#      dentro fn_stato_sorgente (20261005-23); questa vista e' la seconda ->
+#      si estrae, e la copia in fn_stato_sorgente si ritira QUI (regola del 2).
+#      ⚠️ plpgsql, non sql: una sql si inlinea e con un argomento costante il
+#      planner piega il cast prima del controllo — provato: 22P02 su un uid
+#      passato alla gemella _id. STABLE come pg_input_is_valid.
+#   2. vw_pratica_doc_sorgente: LEFT JOIN LATERAL con due rami alternativi
+#      (sorgente_chiave_uuid / sorgente_chiave_id = fn(ps.sorgente_uid)).
+#      ⭐ La LATERAL e' la forma, non uno stile: dentro la sottoquery
+#      ps.sorgente_uid e' un riferimento esterno (parametro), la funzione non
+#      leakproof non tocca colonne della tabella protetta e il planner la porta
+#      all'Index Cond (provato come app: Index Cond: uid = fn(ps.sorgente_uid)
+#      su uq_preventivi_uid, id = fn(...) su pk_ordini / pk_contratti …). Come
+#      JOIN dello stesso livello resterebbe un Join Filter.
+#      Nessun recinto MATERIALIZED: il filtro per pratica di chi legge UNA
+#      pratica scende ancora su pratiche_sorgenti (Index Cond pratica_id).
+#   Equivalenza: una chiave e' al piu' di una specie (le due letture sono
+#   alternative); la forma canonica e' esattamente quella che il confronto
+#   testuale trovava; al piu' una riga per collegamento come prima (chiave
+#   unica per ramo, tipo filtrato).
+#
+# -- PROVA (prima dell'apply, dbdev, come zeroerp_app, 2026-10-05) -------
+#   SQL estratto da questo file, caricato come oggetti TEMP con lo stesso corpo:
+#   * vista nuova vs viva: EXCEPT ALL = 0 nei due versi; intera ~0,95 s ->
+#     ~0,06 s, una pratica 22 -> 6 ms;
+#   * fn_stato_sorgente nuova vs viva (20261005-23) su 386 chiavi (ogni
+#     documento visibile + casi limite): EXCEPT ALL = 0;
+#   * plpgsql_check: zero error sulle tre funzioni;
+#   * pgTAP test-proiezione-stato-sorgente 31/31, test-vw-stato-sorgente-ddt-
+#     reso-v1 13/13 (il 13 e' nuovo: collegamento a chiave id via la vista;
+#     verde anche sugli oggetti vivi, rosso con il ramo id della LATERAL rotto).
+#   Le misure sono un fatto datato; il motivo e' che leggere lo stato di N
+#   collegamenti non deve costare N volte tutti i documenti.
+#
+# -- FORMA ---------------------------------------------------------------
+#   Funzioni nuove con firma ancorata; RETURNS ancorato alle colonne native di
+#   script.vw_stato_sorgente (20261005-23). fn_stato_sorgente: corpo vivo del
+#   20261005-23 con il solo blocco di conversione sostituito dalle chiamate.
+#   Vista: CREATE OR REPLACE, stesse colonne nello stesso ordine,
+#   security_invoker=on ripetuto, GRANT sopravvive (stesso oid). COMMENT: vivo
+#   piu' la revisione di oggi.
+#   ⚠️ NON toccato: la LATERAL per-flusso del BE (_doc_sorgente_lateral,
+#   pratiche_repository.py) ha lo stesso join testuale: richiesta al team BE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261005-24-create-fn-sorgente-chiave-nativa-e-vw-pratica-doc-mctit.yaml
+
+  - changeSet:
+      id: 20261005-24-create-fn-sorgente-chiave-nativa-e-vw-pratica-doc
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Building block script.fn_sorgente_chiave_uuid / _id (chiave polimorfa nel suo tipo, forma
+        canonica); fn_stato_sorgente li usa al posto della sua copia; vw_pratica_doc_sorgente cerca
+        lo stato per chiave nativa in una LATERAL invece che col join testuale. Stesse righe.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'script' AND table_name = 'vw_stato_sorgente'
+                 AND column_name IN ('sorgente_chiave_uuid', 'sorgente_chiave_id');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_sorgente_chiave_uuid(
+                  p_sorgente_uid pratiche.pratiche_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS script.vw_stato_sorgente.sorgente_chiave_uuid%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              PARALLEL SAFE
+              AS $function$
+              -- Scopo: la chiave di una sorgente polimorfa (forma testuale, come in
+              --   pratiche_sorgenti.sorgente_uid e script.vw_stato_sorgente.sorgente_uid)
+              --   nel suo tipo uuid, per cercarla sulla colonna nativa
+              --   sorgente_chiave_uuid. NULL se il testo non e' un uuid in forma CANONICA.
+              -- ⭐ Perche' una funzione: sotto RLS un confronto sulla forma testuale non
+              --   arriva all'indice (uuid_out non e' leakproof); sulla chiave nativa si'.
+              --   Chi cerca converte il PARAMETRO, non la colonna.
+              -- ⚠️ Forma CANONICA, cioe' identica a uuid::text: il cast accetta anche
+              --   maiuscole, graffe, assenza di trattini — chiavi che il confronto testuale
+              --   non trovava. Il ritorno al testo tiene le due ricerche equivalenti.
+              -- ⚠️ Mai un errore: pg_input_is_valid prima del cast (22P02 altrimenti). Una
+              --   chiave che non e' un uuid e' semplicemente «non di questa specie».
+              -- ⚠️ plpgsql e non sql: una funzione sql si inlinea, e con un argomento
+              --   costante il planner piega il cast PRIMA del controllo (provato: 22P02 su
+              --   un uid passato alla gemella _id).
+              -- STABLE come pg_input_is_valid; NULL in ingresso -> NULL.
+              DECLARE
+                  v_chiave script.vw_stato_sorgente.sorgente_chiave_uuid%TYPE;
+              BEGIN
+                  IF NOT pg_input_is_valid(p_sorgente_uid, 'uuid') THEN
+                      RETURN NULL;
+                  END IF;
+                  v_chiave := p_sorgente_uid::uuid;
+                  IF v_chiave::text <> p_sorgente_uid THEN
+                      RETURN NULL;
+                  END IF;
+                  RETURN v_chiave;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_sorgente_chiave_uuid(pratiche.pratiche_sorgenti.sorgente_uid%TYPE) IS
+                  'Building block della sorgente polimorfa (20261005-24): la chiave testuale di una sorgente (pratiche_sorgenti.sorgente_uid, vw_stato_sorgente.sorgente_uid) nel suo tipo uuid, per cercarla su script.vw_stato_sorgente.sorgente_chiave_uuid. NULL se il testo non e'' un uuid in forma CANONICA (identica a uuid::text): maiuscole, graffe o trattini mancanti non trovano niente, come non lo trovava il confronto testuale. Mai un errore (pg_input_is_valid prima del cast). Esiste perche'' sotto RLS il confronto sul testo non arriva all''indice (uuid_out non e'' leakproof) e quello sull''uuid si'': chi cerca converte il parametro, non la colonna. plpgsql e non sql: una sql si inlinea e con un argomento costante il cast verrebbe piegato prima del controllo. Gemella: script.fn_sorgente_chiave_id. Consumatori: pratiche.fn_stato_sorgente, script.vw_pratica_doc_sorgente.';
+
+              CREATE OR REPLACE FUNCTION script.fn_sorgente_chiave_id(
+                  p_sorgente_uid pratiche.pratiche_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS script.vw_stato_sorgente.sorgente_chiave_id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              PARALLEL SAFE
+              AS $function$
+              -- Scopo: gemella di script.fn_sorgente_chiave_uuid per i tipi a
+              --   key_selector = id: la chiave testuale nel suo tipo bigint, per cercarla
+              --   su sorgente_chiave_id. NULL se il testo non e' un intero in forma
+              --   CANONICA (identica a bigint::text: niente zeri davanti, spazi, '+').
+              --   Stesse ragioni e stesse cautele della gemella (vedi la sua testata).
+              DECLARE
+                  v_chiave script.vw_stato_sorgente.sorgente_chiave_id%TYPE;
+              BEGIN
+                  IF NOT pg_input_is_valid(p_sorgente_uid, 'bigint') THEN
+                      RETURN NULL;
+                  END IF;
+                  v_chiave := p_sorgente_uid::bigint;
+                  IF v_chiave::text <> p_sorgente_uid THEN
+                      RETURN NULL;
+                  END IF;
+                  RETURN v_chiave;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_sorgente_chiave_id(pratiche.pratiche_sorgenti.sorgente_uid%TYPE) IS
+                  'Building block della sorgente polimorfa (20261005-24), gemella di script.fn_sorgente_chiave_uuid per i tipi a key_selector = id: la chiave testuale nel suo tipo bigint, per cercarla su script.vw_stato_sorgente.sorgente_chiave_id. NULL se il testo non e'' un intero in forma CANONICA (identica a bigint::text: niente zeri davanti, spazi, segno). Mai un errore. Stesse ragioni della gemella. Consumatori: pratiche.fn_stato_sorgente, script.vw_pratica_doc_sorgente.';
+
+              CREATE OR REPLACE FUNCTION pratiche.fn_stato_sorgente(
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_uid     pratiche.pratiche_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS TABLE (
+                  sorgente_tipo_id     config.sorgenti.id%TYPE,
+                  sorgente_uid         pratiche.pratiche_sorgenti.sorgente_uid%TYPE,
+                  risolto              BOOLEAN,
+                  stato_codice_interno TEXT,
+                  stato_codice         TEXT,
+                  stato_descrizione    TEXT,
+                  fase                 TEXT,
+                  esito                TEXT,
+                  terminale            BOOLEAN
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Descrittore normalizzato dello stato del documento sorgente
+              -- (contratto §4 brief design V10). Dispatch: lookup sulla union
+              -- script.vw_stato_sorgente (unica superficie, decisione A);
+              -- nessuna riga -> sentinella UNKNOWN, mai errore (additivita':
+              -- dominio senza resolver = comportamento di oggi).
+              DECLARE
+                  v_chiave_uuid script.vw_stato_sorgente.sorgente_chiave_uuid%TYPE;
+                  v_chiave_id   script.vw_stato_sorgente.sorgente_chiave_id%TYPE;
+              BEGIN
+                  -- Guard fail-fast sui parametri (id NULL/<=0, uid vuoto).
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0
+                     OR p_sorgente_uid IS NULL OR btrim(p_sorgente_uid) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.fn_stato_sorgente',
+                          'E_STATO_SORGENTE_PARAM_INVALIDO',
+                          jsonb_build_object(
+                              'sorgente_tipo_id', p_sorgente_tipo_id,
+                              'sorgente_uid',     p_sorgente_uid
+                          ),
+                          NULL,
+                          COALESCE(p_sorgente_tipo_id::text, 'NULL'),
+                          COALESCE(p_sorgente_uid, 'NULL')
+                      );
+                  END IF;
+
+                  -- ⭐ La chiave si cerca nel suo TIPO, non come testo (rev 2026-10-05,
+                  --   20261005-23). Il confronto sulla colonna testuale sorgente_uid
+                  --   (uid::text, id::text) sotto RLS non arriva mai all'indice — uuid_out e
+                  --   int8out non sono leakproof — e cercare UN documento scandiva per intero
+                  --   tutte le tabelle-documento. uuid_eq e int8eq sono leakproof: Index Cond
+                  --   sulla chiave del ramo, e il ramo dell'altro tipo ha la colonna a NULL
+                  --   costante e il planner lo scarta.
+                  --   La conversione — solo forma CANONICA, NULL e non un errore su una chiave
+                  --   malformata — sta dal 20261005-24 nei building block
+                  --   script.fn_sorgente_chiave_uuid / _id, gli stessi che usa
+                  --   script.vw_pratica_doc_sorgente: qui c'era la prima copia, ritirata.
+                  v_chiave_uuid := script.fn_sorgente_chiave_uuid(p_sorgente_uid);
+                  IF v_chiave_uuid IS NULL THEN
+                      v_chiave_id := script.fn_sorgente_chiave_id(p_sorgente_uid);
+                  END IF;
+
+                  -- Due letture statiche, una per specie di chiave: una stringa non e'
+                  -- mai insieme un uuid e un intero, quindi al piu' una delle due gira.
+                  -- Una chiave in nessuna delle due forme non puo' coincidere con nessun
+                  -- ramo: si va diritti alla sentinella.
+                  IF v_chiave_uuid IS NOT NULL THEN
+                      RETURN QUERY
+                      SELECT
+                          v.sorgente_tipo_id,
+                          v.sorgente_uid,
+                          v.risolto,
+                          v.stato_codice_interno,
+                          v.stato_codice,
+                          v.stato_descrizione,
+                          v.fase,
+                          v.esito,
+                          v.terminale
+                        FROM script.vw_stato_sorgente v
+                       WHERE v.sorgente_tipo_id     = p_sorgente_tipo_id
+                         AND v.sorgente_chiave_uuid = v_chiave_uuid;
+                  ELSIF v_chiave_id IS NOT NULL THEN
+                      RETURN QUERY
+                      SELECT
+                          v.sorgente_tipo_id,
+                          v.sorgente_uid,
+                          v.risolto,
+                          v.stato_codice_interno,
+                          v.stato_codice,
+                          v.stato_descrizione,
+                          v.fase,
+                          v.esito,
+                          v.terminale
+                        FROM script.vw_stato_sorgente v
+                       WHERE v.sorgente_tipo_id   = p_sorgente_tipo_id
+                         AND v.sorgente_chiave_id = v_chiave_id;
+                  END IF;
+
+                  -- Degrado con grazia: tipo senza resolver o documento non
+                  -- trovato -> sentinella UNKNOWN (risolto=false). fase=APERTO
+                  -- e' il default di routing; il consumer usa `risolto` per il
+                  -- fallback UI (milestone manuale come oggi).
+                  -- ⚠️ FOUND riflette l'ultimo RETURN QUERY eseguito; se non ne e' girato
+                  --   nessuno e' ancora false dall'ingresso nella funzione.
+                  IF NOT FOUND THEN
+                      RETURN QUERY
+                      SELECT
+                          p_sorgente_tipo_id,
+                          p_sorgente_uid,
+                          false,
+                          'UNKNOWN'::text,
+                          'UNKNOWN'::text,
+                          'n/d'::text,
+                          'APERTO'::text,
+                          NULL::text,
+                          false;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_stato_sorgente(config.sorgenti.id%TYPE, pratiche.pratiche_sorgenti.sorgente_uid%TYPE) IS
+                  'API di motore per il descrittore normalizzato dello stato del documento sorgente (D3, brief-db-proiezione-stato-dominio). Sempre esattamente 1 riga: proiezione da script.vw_stato_sorgente (risolto=true) oppure sentinella UNKNOWN (risolto=false, fase APERTO, esito NULL, terminale false) senza errore — un tipo senza resolver degrada al comportamento manuale odierno. Guard parametri: E_STATO_SORGENTE_PARAM_INVALIDO su tipo NULL/<=0 o uid vuoto. Per le liste joinare direttamente script.vw_stato_sorgente (niente N+1). rev 2026-07-01. ⭐ rev 2026-10-05 (20261005-23): cerca la chiave nel suo TIPO (sorgente_chiave_uuid / sorgente_chiave_id della union), non come testo. Il confronto testuale sotto RLS non arriva all''indice e per un documento solo leggeva per intero tutte le tabelle-documento (dbdev come applicazione, 2026-10-05: 391 chiamate 3,6 s -> 0,05 s). Stessi risultati del confronto testuale: si accetta solo la forma CANONICA (quella che uid::text / id::text producono — un uid maiuscolo o un id con zeri davanti restano UNKNOWN come prima), e una chiave che non e'' ne'' un uuid ne'' un intero da'' la sentinella senza errore (pg_input_is_valid prima del cast). ⭐ rev 2026-10-05 (20261005-24): la conversione della chiave nel suo tipo non e'' piu'' scritta qui ma nei building block script.fn_sorgente_chiave_uuid / script.fn_sorgente_chiave_id, gli stessi che usa script.vw_pratica_doc_sorgente (regola del 2: la copia di qui e'' ritirata nello stesso giro). Nessun cambio di comportamento.';
+
+              CREATE OR REPLACE VIEW script.vw_pratica_doc_sorgente
+              WITH (security_invoker=on) AS
+              SELECT DISTINCT ON (ps.pratica_id) ps.pratica_id,
+                  ps.sorgente_tipo_id,
+                  ps.sorgente_uid,
+                  ps.ruolo_link,
+                  so.descrizione AS sorgente_descrizione,
+                  COALESCE(ss.risolto, false) AS risolto,
+                  ss.stato_codice_interno,
+                  ss.stato_codice,
+                  ss.stato_descrizione,
+                  ss.fase,
+                  ss.esito,
+                  ss.terminale
+                 FROM pratiche.pratiche_sorgenti ps
+                   JOIN config.sorgenti so ON so.id = ps.sorgente_tipo_id
+                   -- ⭐ rev 2026-10-05 (20261005-24): il documento si cerca per CHIAVE NATIVA,
+                   --   in una LATERAL. Prima era un LEFT JOIN sulla forma testuale
+                   --   (ss.sorgente_uid = ps.sorgente_uid): sotto RLS non arrivava all'indice
+                   --   e la union delle sei tabelle-documento si rileggeva per intero per
+                   --   OGNI collegamento.
+                   --   ⚠️ La LATERAL non e' decorazione, e' la forma: dentro la sottoquery
+                   --   ps.sorgente_uid e' un riferimento ESTERNO, cioe' un parametro, e
+                   --   la conversione non e' leakproof ma non tocca le colonne della tabella
+                   --   protetta — il planner la porta all'Index Cond. Scritta come JOIN dello
+                   --   stesso livello resterebbe un Join Filter.
+                   --   Due rami alternativi: una chiave e' al piu' di una specie, e in ogni
+                   --   ramo della union la colonna dell'altra specie e' NULL costante, che il
+                   --   planner scarta. Al piu' una riga, come il LEFT JOIN di prima.
+                   LEFT JOIN LATERAL (
+                       SELECT v.risolto, v.stato_codice_interno, v.stato_codice,
+                              v.stato_descrizione, v.fase, v.esito, v.terminale
+                         FROM script.vw_stato_sorgente v
+                        WHERE v.sorgente_tipo_id     = ps.sorgente_tipo_id
+                          AND v.sorgente_chiave_uuid = script.fn_sorgente_chiave_uuid(ps.sorgente_uid)
+                       UNION ALL
+                       SELECT v.risolto, v.stato_codice_interno, v.stato_codice,
+                              v.stato_descrizione, v.fase, v.esito, v.terminale
+                         FROM script.vw_stato_sorgente v
+                        WHERE v.sorgente_tipo_id   = ps.sorgente_tipo_id
+                          AND v.sorgente_chiave_id = script.fn_sorgente_chiave_id(ps.sorgente_uid)
+                   ) ss ON true
+                ORDER BY ps.pratica_id, COALESCE(ss.risolto, false) DESC, (NOT COALESCE(ss.terminale, false)) DESC, ((ps.ruolo_link)::text = 'ROOT'::text) DESC, ps.id DESC;
+
+              COMMENT ON VIEW script.vw_pratica_doc_sorgente IS
+                  'D3b (brief-db-proiezione-stato-dominio roll-out §5b): una riga per pratica col descrittore del documento PIU'' VIVO tra i suoi link (ROOT+COLLEGATO). Regola d''ancora NULL-safe: risolto-first, poi vivo(non-terminale)-first, poi ROOT come tiebreak, poi link piu'' recente (ps.id). Accende l''ordine COLLEGATO vivo su una pratica preventivo->ordine SENZA regredire preventivo->commessa (la commessa non risolta perde per risolto-first). Fallback come il BE odierno: link non risolto -> risolto=false e stato_* NULL (non la sentinella UNKNOWN dello scalare fn_stato_sorgente). Promuove a DB la regola oggi inline in pratiche_repository._doc_sorgente_lateral; sede unica, riusabile da D4 (GUIDA). ⭐ rev 2026-10-05 (20261005-24): il documento si cerca per CHIAVE NATIVA in una LATERAL (script.fn_sorgente_chiave_uuid / _id su sorgente_chiave_uuid / sorgente_chiave_id di script.vw_stato_sorgente), non piu'' con un LEFT JOIN sulla forma testuale. Sotto RLS il confronto sul testo non arriva all''indice (uuid_out, int8out non leakproof) e la union delle sei tabelle-documento si rileggeva per intero per ogni collegamento (dbdev come applicazione, 2026-10-05: vista intera ~0,9 s -> ~0,03 s, una pratica 22 -> 6 ms; righe identiche). La LATERAL e'' la forma, non uno stile: dentro la sottoquery la chiave del collegamento e'' un parametro esterno e la conversione arriva all''Index Cond; allo stesso livello resterebbe un Join Filter. Stesse colonne, stesse righe, stessa regola d''ancora.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Corpi precedenti: fn_stato_sorgente in 20261005-23,
+              -- vw_pratica_doc_sorgente nella doc auto-gen di prima del 20261005-24.
+              SELECT 1;

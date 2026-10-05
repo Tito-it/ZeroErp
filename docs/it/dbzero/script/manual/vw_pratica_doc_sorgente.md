@@ -124,8 +124,19 @@ ha il flag?»*. È il criterio che ha trovato questa. Brief:
   vista serve l'àncora **a livello pratica** (dettaglio/lista), dove un ordine/commessa
   `COLLEGATO` senza `flusso_id` altrimenti non si vedrebbe.
 * Placement `script` (layer applicativo cross-dominio), coerente con `vw_stato_sorgente`.
+* **Come si trova il documento** (dal 2026-10-05): per **chiave nativa**, non confrontando la
+  chiave come testo. La chiave del collegamento si converte con
+  [script.fn_sorgente_chiave_uuid](/dbzero/script/funzioni/fn_sorgente_chiave_uuid) o
+  [script.fn_sorgente_chiave_id](/dbzero/script/funzioni/fn_sorgente_chiave_id) e si cerca
+  sulle colonne `sorgente_chiave_uuid` / `sorgente_chiave_id` di `script.vw_stato_sorgente`,
+  dentro una `LATERAL`. Sotto RLS il confronto sul testo non poteva usare l'indice, e per
+  ogni collegamento si rileggevano tutti i documenti di tutti i tipi.
+  ⚠️ La `LATERAL` non è una scelta di stile: lì dentro la chiave del collegamento arriva
+  come valore esterno e il database può usare l'indice; scritta come join allo stesso livello
+  tornerebbe a leggere tutto.
 * Test: `db/pgtap/pratiche/test-proiezione-stato-sorgente.sql` (casi 25-28, incl. la
-  regressione preventivo→commessa).
+  regressione preventivo→commessa) e `db/pgtap/vendite/test-vw-stato-sorgente-ddt-reso-v1.sql`
+  caso 13 (collegamento a chiave `id`).
 
 ---
 

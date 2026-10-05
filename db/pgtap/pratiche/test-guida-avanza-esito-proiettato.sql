@@ -35,6 +35,8 @@
 --     COMPLETATO con esito NEGATIVO (follow-up owner §5)
 -- 18) Ramo morto: con APPROVAZIONE NEGATIVO il prerequisito POSITIVO del passo a
 --     valle NON e' soddisfatto (la pratica puo' chiudersi, niente smistamento)
+-- 19) Senza aggancio a una pratica -> 0 avanzamenti anche con un verdetto
+--     (uscita anticipata prima di fn_stato_sorgente, 20261005-22)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -54,7 +56,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(21);
+SELECT plan(22);
 
 -- Provisioning stati flusso (idempotente).
 INSERT INTO config.stati_flussi_pratiche (codice, codice_interno, descrizione, attivo)
@@ -482,6 +484,22 @@ WITH ins AS (
           (SELECT fl_da_eseguire FROM tmp_g_refs))
   RETURNING id
 ) SELECT id AS flusso_id FROM ins;
+
+-- ============================================================
+-- 19) Senza aggancio -> 0, anche con un verdetto (rev 2026-10-05, 20261005-22)
+--   Il preventivo RIFIUTATO proietta NEGATIVO e il milestone che lo
+--   attenderebbe esiste gia', ma l'aggancio in pratiche_sorgenti non c'e'
+--   ancora: niente da riconciliare. E' il ramo dell'uscita anticipata, che
+--   salta il calcolo dell'esito. ⭐ L'altra meta' della prova e' il 17a, subito
+--   dopo l'aggancio: stesso documento, stesso verdetto, avanza 1 — un'uscita
+--   anticipata che scattasse anche CON l'aggancio lo farebbe tornare rosso.
+-- ============================================================
+SELECT is(
+  pratiche.fn_reconcile_sorgente(
+    (SELECT src_preventivo FROM tmp_g_refs),
+    (SELECT uid FROM tmp_g_prev_rif)),
+  0,
+  '19. preventivo RIFIUTATO senza aggancio a una pratica -> 0 avanzamenti');
 
 INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
 VALUES ((SELECT pratica_id FROM tmp_g_prat_neg), (SELECT src_preventivo FROM tmp_g_refs),

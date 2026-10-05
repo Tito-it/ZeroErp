@@ -240,6 +240,8 @@
 - [fn_search_stradario_generale](funzioni/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
 - [fn_snapshot_indirizzo](funzioni/fn_snapshot_indirizzo.md)
 - [fn_snapshot_indirizzo_soggetto](funzioni/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
+- [fn_sorgente_chiave_id](funzioni/fn_sorgente_chiave_id.md) — (scritta il 05-10-2026)
+- [fn_sorgente_chiave_uuid](funzioni/fn_sorgente_chiave_uuid.md) — (scritta il 05-10-2026)
 - [fn_stato_veste](funzioni/fn_stato_veste.md)
 - [fn_subentro_cliente](funzioni/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_totp_conferma_device](funzioni/fn_totp_conferma_device.md) — (scritta il 29-09-2026)

@@ -69,6 +69,14 @@ dai tipi delle tabelle di dominio (layering).
   fallback UI (milestone manuale).
 * **Wrapper scalare** su `script.vw_stato_sorgente`: unica superficie di dispatch, nessun
   dynamic SQL, nessun `resolver_key`.
+* **Cerca per chiave nativa** (dal 2026-10-05): riconosce se `p_sorgente_uid` è un uuid o
+  un intero e filtra su `sorgente_chiave_uuid` / `sorgente_chiave_id` della union, non sulla
+  forma testuale. Così, sotto RLS, ogni ramo arriva all'indice invece di leggere l'intera
+  tabella. La conversione sta nei building block
+  [script.fn_sorgente_chiave_uuid](/dbzero/script/funzioni/fn_sorgente_chiave_uuid) e
+  [script.fn_sorgente_chiave_id](/dbzero/script/funzioni/fn_sorgente_chiave_id). I risultati sono gli stessi del confronto testuale: vale solo la **forma
+  canonica** della chiave (un uid in maiuscolo o un id con zeri davanti danno `UNKNOWN`,
+  come prima) e una chiave malformata dà `UNKNOWN` senza errore.
 * **Per le liste** con molte pratiche **non** chiamare questa funzione per-riga (N+1):
   joinare direttamente `script.vw_stato_sorgente`.
 * Funzione `STABLE`, read-time: nessuna scrittura, nessun mirror di stato (il documento
