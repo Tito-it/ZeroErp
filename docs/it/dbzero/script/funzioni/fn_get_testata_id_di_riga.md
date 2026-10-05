@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION script.fn_get_testata_id_di_riga(p_documento text, p_
  RETURNS bigint
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 -- ⚠️ Tipi nudi DICHIARATI: p_riga_id e il ritorno sono POLIMORFI
 --   (l'id di tre tabelle di righe, l'id di tre testate): non c'e'

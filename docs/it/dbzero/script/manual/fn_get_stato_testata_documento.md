@@ -98,6 +98,12 @@ che si affidasse al solo numero sarebbe vuota proprio nel caso più frequente.
   riga cancellata.
 * **`search_path` fissato** nella firma e tutti gli oggetti qualificati per
   schema: su una `SECURITY DEFINER` è la differenza fra una lettura e una porta.
+  Il percorso è `pg_catalog, public, pg_temp`, con `pg_temp` **ultimo ed
+  esplicito**: se non è elencato PostgreSQL lo cerca per primo, e una tabella
+  temporanea del chiamante potrebbe prendere il posto di una relazione. `public`
+  resta perché il ramo d'errore chiama `script.fn_log_and_raise_error`, che gira
+  con il percorso di chi la chiama. Stessa forma del gemello
+  `script.fn_get_testata_id_di_riga`.
 * **Un guard sui parametri non serve, e non c'è**: un id nullo o `<= 0` non trova
   e basta — la risposta «zero righe» è già quella corretta. Solleva **solo** sul
   tipo documento non previsto, che è l'unico caso in cui il chiamante ha sbagliato

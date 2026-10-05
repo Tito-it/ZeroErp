@@ -284,7 +284,7 @@ SELECT is(
 SELECT ok(
     (SELECT p.prosecdef
             AND p.provolatile = 's'
-            AND p.proconfig @> ARRAY['search_path=pg_catalog, public']
+            AND p.proconfig @> ARRAY['search_path=pg_catalog, public, pg_temp']   -- pg_temp in coda dal 20261005-27 (D6-bis)
             AND (SELECT bool_and(c.relowner = p.proowner) AND count(*) = 3
                    FROM pg_class c
                   WHERE c.oid IN ('vendite.contratti_righe'::regclass,

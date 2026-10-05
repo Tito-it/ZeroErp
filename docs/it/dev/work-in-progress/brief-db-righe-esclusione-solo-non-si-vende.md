@@ -16,7 +16,9 @@
 > ✅ **BE/FE secondo giro** fatto il 2026-10-05 (§11): l'endpoint della lista, il drawer dell'offerta
 > sui verbi del DB col BB condiviso col contratto, le sette chiavi, le policy. Tutto il §6 e il §10.7
 > sono chiusi: ⏳ resta solo la decisione di archiviare il brief (§11.4).
-> **Da leggere per primo:** §11 (consegna BE/FE del secondo giro), poi §10.7 e §6.
+> ⚠️ **Correzione DB del 2026-10-05** (§12): `20261005-27`, `pg_temp` in coda al `search_path`
+> dei due lettori della testata. ⏳ Da applicare e da far girare (Tid).
+> **Da leggere per primo:** §12, poi §11 (consegna BE/FE del secondo giro), §10.7 e §6.
 
 ## 1. La regola
 
@@ -714,3 +716,37 @@ Verifica: vedi §11.5.
 * FE: vitest **681/681**; eslint e build puliti; `check_i18n_keys` pulito; tutti i guard
   `npm run guard:*` verdi (il registro delle `DataTable` grezze riscritto: una in meno).
 * Non provato: il drawer a video (collaudo di Tid).
+
+## 12. Correzione DB — `pg_temp` nei due lettori della testata (2026-10-05)
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-05. ⏳ Niente applicato: l'apply e la corsa
+> pgTAP sono di Tid.
+
+**Il rosso.** `dbops/test-security-definer-search-path-v1`, test 4 — il rubinetto D6-bis «DEFINER
+con `search_path` senza `pg_temp`, può solo calare» — ha contato 19 contro la soglia 18. La
+`SECURITY DEFINER` in più è `script.fn_get_testata_id_di_riga` (`-15`, §10.1), nata con
+`pg_catalog, public` perché copiava la forma del gemello `script.fn_get_stato_testata_documento`.
+
+**Perché è un difetto e non stile.** Un `search_path` che non elenca `pg_temp` non lo esclude:
+PostgreSQL lo cerca **per primo** per le relazioni. In una DEFINER è la porta classica — una tabella
+temporanea del chiamante con il nome di una relazione non qualificata. Elencarlo ultimo la chiude.
+
+**La correzione.** ⛔ La soglia non sale (lo dice il test stesso): si sana la funzione. Si sana
+anche il **gemello**, nello stesso giro, perché era il modello da cui la forma è stata copiata.
+
+| Cosa | Dove |
+| --- | --- |
+| `20261005-27-update-lettori-testata-documento-search-path-pg-temp`: `ALTER FUNCTION … SET search_path TO pg_catalog, public, pg_temp` sulle due, corpo invariato | `20_code/script` |
+| soglia del test 4 **18 → 17** | `db/pgtap/dbops/test-security-definer-search-path-v1.sql` |
+| test 5 pinnava `search_path=pg_catalog, public`: ora la forma nuova | `db/pgtap/vendite/test-righe-gemelle-secondo-giro-v1.sql` |
+| nota operativa sul percorso | `docs/it/dbzero/script/manual/fn_get_stato_testata_documento.md` |
+
+**Perché `public` resta.** Le due funzioni qualificano tutto ciò che leggono, ma nel ramo d'errore
+chiamano `script.fn_log_and_raise_error`, che è `SECURITY INVOKER` senza `search_path` proprio e gira
+con quello della DEFINER. Toglierlo sarebbe una decisione sui chiamati, non una pulizia: è la forma
+dei tre pin del 2026-09-12 (`20260912-39…-41`).
+
+**Prova.** I due `ALTER` in transazione annullata su dbdev, da owner: `proconfig` delle due =
+`search_path=pg_catalog, public, pg_temp`; il conteggio del test 4 scende a 17 (fatto datato,
+2026-10-05). ⏳ Da far girare: `dbops/test-security-definer-search-path-v1.sql` e
+`vendite/test-righe-gemelle-secondo-giro-v1.sql`, dopo l'apply.
