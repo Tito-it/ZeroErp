@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DEL CONTRATTO ACCETTANO TUTTO CIO' CHE L'OFFERTA ACCETTA
+#   vendite.contratti_righe:
+#     prezzo_unitario        numeric(15,6) -> numeric(18,6)
+#     fonte_quantita_attesa  varchar(24)   -> varchar(32)
+#     periodicita            varchar(12)   -> varchar(32)
+#     generazione_canone     varchar(16)   -> varchar(32)
+#     competenza_canone      varchar(16)   -> varchar(32)
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (§8.2 B2; decisione di
+#   Tid, 2026-10-04)
+#
+# -- PERCHE' --------------------------------------------------------
+#   vendite.fn_push_offerta_a_contratto copia le righe dell'offerta nel
+#   contratto 1:1. Con tipi diversi un valore valido sull'offerta poteva
+#   fallire sul contratto: un prezzo oltre 10^9 passava sull'offerta
+#   (numeric(18,6)) e moriva al push (numeric(15,6)); lo stesso per un codice
+#   piu' lungo della colonna del contratto.
+#
+# -- QUALE SCALA VINCE, SUL MODELLO ---------------------------------
+#   * prezzo_unitario: numeric(18,6). E' la scala del DESTINO del contratto
+#     (vendite.fatture_righe.prezzo_unitario) e delle righe di ordine e di
+#     offerta. Il contratto si allarga, non si stringe l'offerta.
+#   * i quattro codici: varchar(32), quella dell'offerta. Sono vocabolari
+#     chiusi, scritti nei CHECK delle due tabelle: la lunghezza non e' la
+#     regola, e' solo un tetto tecnico. Allargare non rifiuta niente di cio'
+#     che oggi passa, e non riscrive la tabella.
+#   * factor_to_base va nell'altro verso (offerta a numeric(18,6), la scala
+#     dell'articolo): e' il 20261005-11.
+#
+# -- IL TRIGGER DA RIMONTARE ----------------------------------------
+#   ALTER COLUMN ... TYPE rifiuta una colonna nominata nella lista
+#   UPDATE OF di un trigger. trg_contratti_righe_a10_default_fonte_qta_ins_upd
+#   e' UPDATE OF tipo_erogazione, fonte_quantita_attesa: si smonta e si
+#   rimonta identico (definizione e COMMENT del 20261004-48, letti dal
+#   catalogo di dbdev e dello scratch il 2026-10-05). E' scritto a mano in
+#   20_code, non lo genera ci_apply (linee-guida-sql §11.5).
+#   Nessuna vista legge queste colonne (pg_depend, 2026-10-05).
+#
+# -- E LE FIRME ------------------------------------------------------
+#   I %TYPE nelle firme non portano typmod: nessuna funzione va ricreata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261005-10-alter-contratti-righe-tipi-come-offerta-mctit.yaml
+
+  - changeSet:
+      id: 20261005-10-alter-contratti-righe-tipi-come-offerta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti_righe: prezzo_unitario numeric(18,6) e i quattro codici di erogazione
+        varchar(32), come sull'offerta, che il push copia 1:1. Brief:
+        brief-db-righe-esclusione-solo-non-si-vende (§8.2 B2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgrelid = 'vendite.contratti_righe'::regclass
+                 AND t.tgname = 'trg_contratti_righe_a10_default_fonte_qta_ins_upd'
+                 AND t.tgqual IS NOT NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_contratti_righe_a10_default_fonte_qta_ins_upd ON vendite.contratti_righe;
+
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN prezzo_unitario       TYPE numeric(18,6),
+                  ALTER COLUMN fonte_quantita_attesa TYPE varchar(32),
+                  ALTER COLUMN periodicita           TYPE varchar(32),
+                  ALTER COLUMN generazione_canone    TYPE varchar(32),
+                  ALTER COLUMN competenza_canone     TYPE varchar(32);
+
+              CREATE TRIGGER trg_contratti_righe_a10_default_fonte_qta_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione, fonte_quantita_attesa
+                  ON vendite.contratti_righe
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                  EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta();
+
+              COMMENT ON TRIGGER trg_contratti_righe_a10_default_fonte_qta_ins_upd ON vendite.contratti_righe IS
+                  'Fonte della quantita'' attesa di default dalla matrice erogazione x fonte '
+                  '(script.trgfn_righe_default_fonte_qta). Salta l''ESCLUSIONE (WHEN): un''esclusione '
+                  'non ha fonte, e il default FISSA sarebbe un dato che nessuno ha scelto. La deroga '
+                  'sta qui e non nella funzione, che e'' generica. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R2). Rimontato identico dal '
+                  '20261005-10 (cambio di tipo di fonte_quantita_attesa, §8.2 B2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_contratti_righe_a10_default_fonte_qta_ins_upd ON vendite.contratti_righe;
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN prezzo_unitario       TYPE numeric(15,6),
+                  ALTER COLUMN fonte_quantita_attesa TYPE varchar(24),
+                  ALTER COLUMN periodicita           TYPE varchar(12),
+                  ALTER COLUMN generazione_canone    TYPE varchar(16),
+                  ALTER COLUMN competenza_canone     TYPE varchar(16);
+              CREATE TRIGGER trg_contratti_righe_a10_default_fonte_qta_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione, fonte_quantita_attesa
+                  ON vendite.contratti_righe
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                  EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta();

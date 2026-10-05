@@ -1,0 +1,235 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «SOLO IN BOZZA» ANCHE PER LE TABELLE NIPOTI
+#   vendite.trgfn_doc_righe_lock_fuori_bozza() — quarto argomento opzionale,
+#   il LIVELLO della FK: 'TESTATA' (default, com'era) o 'RIGA'
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (§8.2 B3; decisione di
+#   Tid, 2026-10-04)
+#
+# -- PERCHE' --------------------------------------------------------
+#   I componenti di una riga di contratto o di offerta non avevano un lock
+#   proprio: li proteggeva di fatto il ricalcolo della riga madre (il suo
+#   UPDATE e' fuori bozza), che e' un effetto, non una regola. Chi cambiasse
+#   un componente in modo che il prezzo della madre non cambi passava.
+#   La regola «solo in bozza» e' la stessa delle righe: cambia solo che la FK
+#   del componente punta alla RIGA, non alla testata.
+#
+# -- REGOLA DEL 2: LA FORMA NIPOTE ESISTEVA GIA', DUE VOLTE -------------
+#   vendite.trgfn_resi_righe_rientri_guard e vendite.trgfn_ddt_righe_prelievi_guard
+#   risalgono ciascuno a mano dalla riga alla testata e sollevano
+#   E_RIGA_DOC_NON_BOZZA. I componenti sarebbero stati la terza e la quarta
+#   copia. Il building block impara il livello RIGA, e nello stesso giro:
+#   * i componenti di contratto e offerta lo adottano (20261005-17);
+#   * i rientri del reso ritirano la loro copia e lo adottano (20261005-18);
+#   * i prelievi della bolla NO: la loro regola non e' la stessa — in EMESSO e
+#     SPEDITO ammettono il cambio della sola ubicazione d'arrivo. Una regola
+#     con un'eccezione di dominio non e' una copia di quella senza.
+#
+# -- COME ----------------------------------------------------------------
+#   TG_ARGV[3] = 'RIGA': il valore della FK e' l'id di una riga del documento
+#   TG_ARGV[0]; la testata si chiede a script.fn_get_testata_id_di_riga
+#   (20261005-15, SECURITY DEFINER: le righe hanno RLS, come le testate). Riga
+#   assente = cascade partito dalla riga o FK che parlera': passa, come la
+#   testata assente. Nel contesto dell'errore entra anche `riga_documento_id`.
+#   Senza quarto argomento nulla cambia per i cinque adottanti di oggi.
+#   Un quarto argomento che non sia TESTATA o RIGA e' un errore di MONTAGGIO
+#   (E_DOC_RIGHE_LOCK_MONTAGGIO), come gli altri.
+#
+#   Corpo di partenza: la doc auto-generata (= 20260922-02, invariato da
+#   allora); COMMENT dalla doc auto-generata (rev fino al 2026-10-04) piu'
+#   la rev di oggi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261005-16-update-trgfn-doc-righe-lock-fuori-bozza-livello-riga-mctit.yaml
+
+  - changeSet:
+      id: 20261005-16-update-trgfn-doc-righe-lock-fuori-bozza-livello-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_doc_righe_lock_fuori_bozza: quarto argomento opzionale, il livello della FK
+        (TESTATA | RIGA), per le tabelle nipoti. Brief:
+        brief-db-righe-esclusione-solo-non-si-vende (§8.2 B3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_get_testata_id_di_riga';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- TG_ARGV[0]: tipo documento per script.fn_get_stato_testata_documento
+                v_documento    text;
+                -- TG_ARGV[1]: colonna della riga che porta l'id del padre
+                v_fk_col       text;
+                -- TG_ARGV[2] (opz.): codice_interno dello stato «bozza», default DRAFT
+                v_stato_bozza  text;
+                -- TG_ARGV[3] (opz.): livello del padre, TESTATA (default) o RIGA
+                v_livello      text;
+
+                v_riga         jsonb;          -- la riga che sta cambiando (NEW, o OLD sul DELETE)
+                v_padri        bigint[];       -- i padri coinvolti: uno, due se la riga cambia padre
+                v_padre_id     bigint;
+                v_testata_id   bigint;
+                v_stato        text;
+                v_etichetta    text;
+                v_verbo        text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Le righe di un documento si aggiungono, modificano e
+                --   tolgono SOLO finche' il documento e' in bozza. Fuori dalla
+                --   bozza il contenuto non e' piu' una proposta ma un fatto
+                --   (una spedizione, una merce instradata a fatturazione, un
+                --   pricing attivo): le correzioni passano da documenti di
+                --   rettifica, non da una riga che cambia.
+                --
+                -- Building block, montato per documento con fino a quattro
+                -- argomenti:
+                --   [0] tipo documento (DDT | ORDINE | CONTRATTO | OFFERTA |
+                --       RESO — decide il lettore script.fn_get_stato_testata_documento);
+                --   [1] colonna FK della riga verso il padre;
+                --   [2] (opz.) codice dello stato bozza, default 'DRAFT';
+                --   [3] (opz.) livello del padre: 'TESTATA' (default) se la FK
+                --       punta alla testata, 'RIGA' se punta a una riga del
+                --       documento (tabelle NIPOTI: componenti, rientri). Nel
+                --       secondo caso la testata la da'
+                --       script.fn_get_testata_id_di_riga (rev 2026-10-05).
+                --
+                -- ⛔ Stato e testata si leggono da lettori SECURITY DEFINER:
+                --    testate e righe hanno RLS, e un guard invoker non
+                --    distinguerebbe «non c'e'» da «non la vedo».
+                -- ⚠️ Padre assente = cascade partito dal padre (DELETE), o FK
+                --    che parlera' (INSERT/UPDATE): il guard PASSA. La regola di
+                --    stato sul padre l'ha gia' applicata il suo guard (la
+                --    testata col guard di testata, la riga con questo stesso
+                --    building block), e le FK sono NOT NULL: un figlio orfano
+                --    non esiste, quindi «assente» non puo' voler dire altro.
+                -- ⭐ Fascia _a05_: il rifiuto di stato deve parlare PRIMA dei
+                --    guard _a10_ sui legami (fulfillment, figli), o l'operatore
+                --    legge un rimedio che non e' il rimedio.
+                -- =========================================================
+
+                -- ── Argomenti: errore di MONTAGGIO, non di dato ───────────
+                IF COALESCE(array_length(TG_ARGV, 1), 0) < 2
+                   OR NULLIF(TG_ARGV[0], '') IS NULL
+                   OR NULLIF(TG_ARGV[1], '') IS NULL
+                   OR COALESCE(NULLIF(TG_ARGV[3], ''), 'TESTATA') NOT IN ('TESTATA', 'RIGA') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'tg_argv', TG_ARGV),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    'attesi: tipo documento, colonna FK della riga [, codice stato bozza [, livello TESTATA | RIGA]]');
+                END IF;
+
+                v_documento   := TG_ARGV[0];
+                v_fk_col      := TG_ARGV[1];
+                v_stato_bozza := COALESCE(NULLIF(TG_ARGV[2], ''), 'DRAFT');
+                v_livello     := COALESCE(NULLIF(TG_ARGV[3], ''), 'TESTATA');
+
+                -- ── La riga, letta una volta (niente SQL dinamico per riga) ─
+                v_riga := CASE WHEN TG_OP = 'DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;
+
+                IF NOT (v_riga ? v_fk_col) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'fk_col',  v_fk_col),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    format('la colonna %s non esiste sulla riga', v_fk_col));
+                END IF;
+
+                -- ── I padri da guardare ───────────────────────────────────
+                -- Su UPDATE anche quello di provenienza: spostare una riga da
+                -- un documento emesso a una bozza e' comunque una modifica del
+                -- documento emesso.
+                v_padri := ARRAY[(v_riga ->> v_fk_col)::bigint];
+                IF TG_OP = 'UPDATE'
+                   AND (to_jsonb(OLD) ->> v_fk_col) IS DISTINCT FROM (v_riga ->> v_fk_col) THEN
+                  v_padri := ARRAY[(to_jsonb(OLD) ->> v_fk_col)::bigint] || v_padri;
+                END IF;
+
+                v_verbo := CASE TG_OP
+                             WHEN 'INSERT' THEN 'aggiungere'
+                             WHEN 'UPDATE' THEN 'modificare'
+                             ELSE               'togliere'
+                           END;
+
+                FOREACH v_padre_id IN ARRAY v_padri LOOP
+                  v_stato := NULL;
+                  v_etichetta := NULL;
+
+                  -- Livello RIGA: dalla riga alla sua testata. Riga assente:
+                  -- cascade dalla riga, o FK che parlera'. Si passa.
+                  IF v_livello = 'RIGA' THEN
+                    v_testata_id := script.fn_get_testata_id_di_riga(v_documento, v_padre_id);
+                    CONTINUE WHEN v_testata_id IS NULL;
+                  ELSE
+                    v_testata_id := v_padre_id;
+                  END IF;
+
+                  SELECT t.stato, t.etichetta
+                    INTO v_stato, v_etichetta
+                    FROM script.fn_get_stato_testata_documento(v_documento, v_testata_id) AS t;
+
+                  -- Assente: cascade dalla testata, o FK che parlera'. Si passa.
+                  CONTINUE WHEN v_stato IS NULL;
+
+                  IF v_stato <> v_stato_bozza THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', TG_NAME::text, 'E_RIGA_DOC_NON_BOZZA',
+                      jsonb_build_object('table',      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                         'id',         v_riga ->> 'id',
+                                         'documento',  v_documento,
+                                         'testata_id', v_testata_id,
+                                         'stato',      v_stato,
+                                         'operazione', TG_OP)
+                      || CASE WHEN v_livello = 'RIGA'
+                              THEN jsonb_build_object('riga_documento_id', v_padre_id)
+                              ELSE '{}'::jsonb
+                         END,
+                      (v_riga ->> 'tx_id')::uuid,
+                      v_etichetta,
+                      v_stato,
+                      v_verbo);
+                  END IF;
+                END LOOP;
+
+                RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza()
+              IS 'Building block (2026-09-22): le righe di un documento si aggiungono, modificano e tolgono SOLO finche'' il documento e'' in bozza. BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW, TG_ARGV = [0] tipo documento per script.fn_get_stato_testata_documento (DDT | ORDINE | CONTRATTO | OFFERTA | RESO), [1] colonna FK della riga verso il padre, [2] (opz.) codice_interno dello stato bozza, default DRAFT, [3] (opz., dal 2026-10-05) livello del padre: TESTATA (default) o RIGA. Rifiuta con E_RIGA_DOC_NON_BOZZA (CONFLITTO_STATO; valori: etichetta, stato, verbo). ⛔ Stato e testata si leggono da lettori SECURITY DEFINER perche'' testate e righe hanno RLS: un guard invoker non distinguerebbe «non c''e''» da «non la vedo». Padre assente = cascade dal padre o FK che parlera'': passa. Su UPDATE guarda anche il padre di provenienza se la riga cambia padre. ⭐ Fascia _a05_: il rifiuto di stato parla PRIMA dei guard _a10_ sui legami (fulfillment, figli), o l''operatore legge un rimedio che non e'' il rimedio. Nasce da D7 di brief-db-partita-merce-per-documento (una riga di DDT gia'' instradata a fatturazione poteva essere disattivata) e ritira nello stesso giro le due copie che la regola aveva a DB: vendite.trgfn_contratti_righe_lock_post_attivazione (droppata) e il ramo 1 di vendite.trgfn_dlt_block_ordrig_ddtrig. Adottanti: vendite.ddt_righe (tre porte), vendite.ordini_righe (solo DELETE: INSERT/UPDATE restano aperti di proposito, data_consegna_confermata cambia dopo la conferma), vendite.contratti_righe (tre porte). Montaggio errato: E_DOC_RIGHE_LOCK_MONTAGGIO (TECNICO). rev 2026-09-29 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-h): quarto adottante, vendite.resi_righe (tre porte, tipo RESO, colonna reso_id): dal Lotto 3-bis la conferma del reso carica la merce, e una riga cambiata dopo farebbe divergere reso e registro. rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): quinto adottante, vendite.offerte_commerciali_eccezioni (tre porte, tipo OFFERTA, colonna offerta_id, stato bozza BOZZA come terzo argomento): fn_push_offerta_a_contratto copia le righe 1:1 nel contratto, e la regola che il backend diceva da solo ora sta ai due capi. rev 2026-10-05 (brief-db-righe-esclusione-solo-non-si-vende §8.2 B3): livello RIGA per le tabelle NIPOTI, la cui FK punta a una riga del documento: la testata la da'' script.fn_get_testata_id_di_riga (SECURITY DEFINER), e nel contesto entra riga_documento_id. Adottanti a livello RIGA: vendite.contratti_righe_componenti e vendite.offerte_commerciali_eccezioni_componenti (prima li proteggeva solo il ricalcolo della riga madre, un effetto), vendite.resi_righe_rientri (ritira la copia scritta a mano in vendite.trgfn_resi_righe_rientri_guard). Non adottante: vendite.ddt_righe_prelievi, la cui regola ammette in EMESSO/SPEDITO il cambio della sola ubicazione d''arrivo — un''altra regola, non una copia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' in 20260922-02.
+              SELECT 1;

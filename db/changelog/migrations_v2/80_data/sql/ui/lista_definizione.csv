@@ -104,3 +104,4 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 103,vendite.contratto_righe,Righe di un contratto,vendite,NULL,t,2026-09-28 00:00:00,mctit,f,t,3
 104,anagrafiche.accessi_altri,Altri accessi,anagrafiche,vw_accessi_altri,t,2026-10-02 00:00:00,mctit,f,f,3
 105,anagrafiche.accessi_sistema,Accessi di sistema,anagrafiche,vw_accessi_sistema,t,2026-10-02 00:00:00,mctit,t,t,3
+106,vendite.offerta_righe,Righe di un'offerta commerciale,vendite,NULL,t,2026-10-05 00:00:00,mctit,f,t,3

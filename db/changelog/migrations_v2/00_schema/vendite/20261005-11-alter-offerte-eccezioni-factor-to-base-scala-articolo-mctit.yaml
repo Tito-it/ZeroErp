@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL FATTORE DI CONVERSIONE DELL'OFFERTA HA LA SCALA DELL'ARTICOLO
+#   vendite.offerte_commerciali_eccezioni.factor_to_base
+#     numeric(18,8) -> numeric(18,6)
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (§8.2 B2; decisione di
+#   Tid, 2026-10-04)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il push copia la riga dell'offerta nel contratto 1:1, e sul contratto il
+#   fattore e' numeric(18,6): un fattore a otto decimali scritto sull'offerta
+#   arrivava sul contratto arrotondato in silenzio. Le due gemelle devono
+#   avere lo stesso tipo.
+#
+# -- QUALE SCALA VINCE, SUL MODELLO ---------------------------------
+#   numeric(18,6). factor_to_base e' la fotografia del fattore dell'unita'
+#   operativa dell'articolo (catalogo.articoli_uom_operativa.factor_to_base,
+#   numeric(18,6)): lo scrive script.trgfn_qta_from_operativa quando la riga
+#   non lo porta. Tutte le righe di documento lo tengono a numeric(18,6)
+#   (contratto, preventivo, ordine, DDT); l'offerta era la sola a otto. Due
+#   decimali in piu' di quelli che la fonte puo' avere non sono una
+#   precisione: sono un posto dove un valore estraneo all'articolo puo'
+#   entrare.
+#   ⚠️ Il fattore dei COMPONENTI va nell'altro verso (20261005-13): la sua
+#   famiglia sono le altre tabelle di componenti, tutte numeric senza scala.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   Stringere la scala ARROTONDA, e un arrotondamento fatto dal migrate
+#   sarebbe una normalizzazione silenziosa. La preCondition pretende che
+#   nessuna riga abbia piu' di sei decimali (expectedResult 0: un DB da zero
+#   la soddisfa, linee-guida-sql §11.4). Se una riga c'e', il migrate si
+#   ferma e la riga si guarda a mano: e' un dato che la fonte non sa produrre.
+#   La tabella si riscrive (cambio di scala): ALTER TYPE non fa scattare
+#   trigger di riga, e nessun trigger nomina la colonna in UPDATE OF; nessuna
+#   vista la legge (pg_depend, 2026-10-05).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261005-11-alter-offerte-eccezioni-factor-to-base-scala-articolo-mctit.yaml
+
+  - changeSet:
+      id: 20261005-11-alter-offerte-eccezioni-factor-to-base-scala-articolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.offerte_commerciali_eccezioni.factor_to_base a numeric(18,6), la scala del
+        fattore dell'articolo e del contratto. Brief: brief-db-righe-esclusione-solo-non-si-vende
+        (§8.2 B2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM vendite.offerte_commerciali_eccezioni e
+               WHERE e.factor_to_base IS DISTINCT FROM round(e.factor_to_base, 6);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ALTER COLUMN factor_to_base TYPE numeric(18,6);
+
+              COMMENT ON COLUMN vendite.offerte_commerciali_eccezioni.factor_to_base IS
+                  'Fattore di conversione dell''unita'' operativa verso l''unita'' base: fotografia di '
+                  'catalogo.articoli_uom_operativa.factor_to_base, scritta da '
+                  'script.trgfn_qta_from_operativa quando la riga non la porta. numeric(18,6), la '
+                  'scala dell''articolo e della riga del contratto in cui il push la copia (rev '
+                  '2026-10-05, 20261005-11: era numeric(18,8)). Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (§8.2 B2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ALTER COLUMN factor_to_base TYPE numeric(18,8);

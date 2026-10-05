@@ -2,17 +2,24 @@
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-04. **A chi:** Tid (apply, pgTAP, decisioni
 > aperte); poi BE/FE per le ricadute di §9.
-> **Origine:** §2-bis di [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md)
+> **Origine:** §2-bis di [migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md)
 > (valutazione qualitativa scritta dal BE il 2026-10-04), verificata dal team DB sul catalogo di
 > dbdev lo stesso giorno (§2-bis.8 del documento). Voce **D17** del documento.
 > **Decisioni di Tid (2026-10-04):** Q-4 sì (guard); Q-1 sì, come proposto; Q-6
 > `emittente_soggetto_ruolo_id`; il v1 non si tocca; `UPDATE OF`: doc corretta e guard censiti;
 > per Q-2 la madre del ritorno a DRAFT diventa DEFINER; Q-3 sì (presidio + §10.5). **Rimandata:** Q-2
 > nel suo insieme («lo facciamo dopo», Tid, 2026-10-04; §4).
-> **Stato:** ✅ **DB chiuso per Q-4, Q-1, Q-3, `UPDATE OF`, v1 e Q-6** il 2026-10-04:
+> **Stato:** ✅ **Chiuso e archiviato** il 2026-10-05. Ciò che resta ha una sede propria (§11):
+> Q-2 in D17 del [documento di valutazione](../work-in-progress/migliorie-generali-da-test-valutazione.md),
+> la catena delle istanze nel
+> [brief-db-catena-istanze-pdp.md](../work-in-progress/brief-db-catena-istanze-pdp.md).
+> ✅ **DB chiuso per Q-4, Q-1, Q-3, `UPDATE OF`, v1 e Q-6** il 2026-10-04:
 > `20261004-80 → -86` applicati su dev (22:50, automazioni alle 23:19), pgTAP verdi (§10).
 > Cancello v1 in CI dalla prossima corsa. ⏳ **Q-2 rimandata** (§4): è la parte che tiene aperta D17.
-> ✅ BE: R-1 di §9 chiusa il 2026-10-04 (policy rigenerate + ripieghi). **Non committato.**
+> ✅ BE: R-1 di §9 chiusa il 2026-10-04 (policy rigenerate + ripieghi, `63deeb194`). DB committato
+> in `4617fabe6`. Il censimento `UPDATE OF`,
+> verificato il 2026-10-05 (§6.2), ha trovato un difetto vero sulla catena delle istanze: passato
+> a un brief suo.
 
 ## 1. Perché un brief solo
 
@@ -271,7 +278,8 @@ che scrivono `NEW.<colonna>`: 34 coppie.
 | --- | --- |
 | 🔴 **Mordeva** | i cinque `z90_propaga_qta_componenti` (righe di preventivo, ordine, DDT, contratto, eccezione d'offerta): `AFTER UPDATE OF quantita`, ma `quantita` la ricalcola `trgfn_qta_from_operativa` da `qta_operativa`. Il backend sui preventivi aggiorna `qta_operativa` e `uom_operativa_id`, non `quantita` (`backend/apps/vendite/db/preventivi_repository.py`, `RIGA_UPDATE_COLUMNS`): i componenti del kit restavano con la quantità vecchia |
 | ✅ Innocue | `gen_codice` (scrive solo se NULL), `normalize` idempotenti, l'emittente dei DDT/resi (solo in INSERT), `tipo_doc_fiscale_id` delle attività (solo se NULL), la conferma del regime dell'emittente (lo scrittore è il percorso legittimo), `resi_righe_guard_quantita` (ha già `qta_operativa` fra le colonne) |
-| ⚠️ Da verificare | `registro_id` scritto da `trgfn_ddt_gen_numero_emesso` / `trgfn_resi_gen_numero` all'emissione: il require «registro attivo» non scatta (dipende da come `fn_get_registro_documento` sceglie il registro); `data_attivazione` azzerata da `trgfn_clienti_set_periodo` all'annullamento: `trgfn_clienti_set_parent_istanza` non scatta |
+| ✅ Innocua (verificata il 2026-10-05) | `registro_id` scritto da `trgfn_ddt_gen_numero_emesso` / `trgfn_resi_gen_numero` all'emissione: il require «registro attivo» non scatta, ma il registro lo sceglie `fn_assegna_numero_documento` → `fn_get_registro_documento` → `fn_lookup_registro_documento`, che filtra `r.attivo IS TRUE`. Lo scrittore è il percorso legittimo e garantisce da sé la regola del require |
+| 🔴 **Morde** (verificata il 2026-10-05) | `trg_clienti_z10_set_parent_istanza_ins_upd` è `BEFORE INSERT OR UPDATE OF pdp_id, data_attivazione`. All'annullamento il `SET` porta `stato_cliente_id`, e `data_attivazione` la azzera `trgfn_clienti_set_periodo` (BEFORE, viene prima per nome): il trigger non scatta. La funzione ha **due rami scritti apposta** per questo caso (`data_attivazione IS NULL` e stato `AN` → `parent_istanza_id = NULL`), e non li raggiunge mai da un UPDATE. L'istanza del cliente annullato resta agganciata al predecessore. `anagrafiche/test-istanza-cliente-chain` prova l'`AN` solo in INSERT, non la transizione `AT → AN` |
 
 ### 6.3 Consegna
 
@@ -358,20 +366,48 @@ Due rossi alla prima corsa, entrambi del test e non del DB, corretti lo stesso g
   `varchar(30)`, e il controllo 4 aspettava una quantità di componente scelta a mano che il modello
   non ammette (§6.3).
 
-## 11. Resta aperto
+## 11. Dopo la chiusura — dove va ciò che resta
 
-* **Q-2** (§4): resta aperta, rimandata da Tid (confermato il 2026-10-04). Si fa in un brief suo,
-  partendo da `allow_lock_columns_override` e `maintenance_reset_lotto_draft`.
-* **Da verificare — al team DB** (assegnato da Tid il 2026-10-04): i due punti ⚠️ del censimento
-  `UPDATE OF` (§6.2). Sono comportamento di trigger, dal BE non si chiudono.
-  1. **Il registro all'emissione di DDT e resi**: `registro_id` lo scrive un trigger `BEFORE`
-     (`trgfn_ddt_gen_numero_emesso`, `trgfn_resi_gen_numero`), quindi il require «registro
-     attivo» non scatta. Si legge `fn_get_registro_documento`: se sceglie già solo registri attivi,
-     il mancato scatto è innocuo e si annota; altrimenti un documento può essere numerato su un
-     registro disattivato, e il trigger va corretto.
-  2. **`trgfn_clienti_set_parent_istanza` all'annullamento del cliente**: `data_attivazione` la
-     azzera `trgfn_clienti_set_periodo`, e il trigger non scatta. Prima va deciso sul modello se
-     all'annullamento deve girare; se il corpo non lo rende evidente, la decisione è di Tid.
+Il brief si chiude il 2026-10-05. Ogni voce aperta ha una sede, e da qui non si segue più:
 
-**Chiuso senza azione:** i **dati di dev** dei kit con la quantità vecchia (§6.3) restano così
-(Tid, 2026-10-04): nessuna correzione a mano.
+| Voce | Sede |
+| --- | --- |
+| **Q-2** (§4), rimandata da Tid | D17 in §3 del [documento di valutazione](../work-in-progress/migliorie-generali-da-test-valutazione.md); la proposta di §4 resta qui come punto di partenza del suo brief, da `allow_lock_columns_override` e `maintenance_reset_lotto_draft` |
+| ✅ **R-1** al BE (§9): i due codici in `error_policies_generated.py` | chiusa dal team BE il 2026-10-04 (policy rigenerate + ripieghi, `63deeb194`) |
+| 🔴 **La catena delle istanze su un PDP** (§6.2): il trigger che non scatta all'annullamento, il successore che resta agganciato all'anello uscito, il calcolo che legge sotto RLS | [brief-db-catena-istanze-pdp.md](../work-in-progress/brief-db-catena-istanze-pdp.md); D18 del documento di valutazione |
+| **Dati di dev**: i componenti dei kit con la quantità vecchia (§6.3) | chiuso senza azione: restano così (Tid, 2026-10-04), nessuna correzione a mano |
+
+Il registro di DDT e resi (l'altro «da verificare» di §6.2) è risultato innocuo: niente da fare.
+
+## Seguito del 2026-10-05 — quattro fixture che toglievano il numero (regressione del Q-4)
+
+Alla corsa pgTAP di Tid del 2026-10-05 quattro file sono morti in fixture con
+`E_FATTURA_NUMERO_NON_MODIFICABILE` (*«La fattura 999999 ha già un numero fiscale…»*). Non è un
+difetto del guard (`20261004-80/-81`): i quattro test numeravano a mano una fattura per provare
+un rifiuto e poi le **toglievano** il numero (`UPDATE … SET numero = NULL`) per tornare alla
+fixture di partenza — esattamente ciò che il Q-4 vieta. Il giro del Q-4 aveva adeguato solo
+`test-numera-fattura-opz-emessa` (la DELETE in coda).
+
+Censimento sui sorgenti (sullo scratch questi file muoiono prima per dati mancanti, quindi non
+si potevano trovare lanciandoli): tutti gli `UPDATE vendite.fatture` che scrivono
+numero/anno/serie/registro e tutte le `DELETE` di fatture nei pgTAP. Solo questi quattro tolgono
+o cambiano il numero di una fattura numerata; le altre `DELETE` colpiscono fatture mai numerate,
+e il cambio di `registro_id` di `test-fatture-guard-registro-emittente` riguarda una fattura senza
+numero.
+
+| File | Correzione |
+| --- | --- |
+| `vendite/test-data-documento-v1.sql` | la controprova («senza numero la data si cambia») si fa **prima** della numerazione, con una data diversa da quella dei test 14-15 (lì dev'essere un cambio); test rinumerati 12-15 |
+| `vendite/test-elimina-fattura-da-lotto-v1.sql` (test 9-10) | il numero si mette **dentro una sottotransazione che si annulla da sola** (`RAISE … ERRCODE 'PGT01'` catturato): check e mutazione si interrogano lì, gli esiti si salvano in variabili, poi tutto torna indietro |
+| `vendite/test-riporta-lotto-a-draft-v1.sql` (test 5) | come sopra |
+| `vendite/test-numera-nota-credito-riferimento-v1.sql` (test 5) | come sopra; il test 6 non deve più togliere il numero al padre |
+
+⭐ La forma della sottotransazione è il modo pulito di «provare su un documento numerato e
+tornare indietro»: il rollback non è una modifica della fattura, è una numerazione che non è mai
+avvenuta. In più, se la mutazione provata dovesse riuscire per errore, viene annullata anche lei
+(prima avrebbe cancellato la fattura o riportato il lotto, contaminando i test successivi).
+⚠️ Non con un `SAVEPOINT` attorno alle asserzioni: pgTAP scrive i risultati in tabelle
+temporanee, e un `ROLLBACK TO` li cancellerebbe.
+
+Prova: solo statica (guardrail del preambolo verde, soglia invariata). I quattro file vanno
+rilanciati da Tid su dbdev.

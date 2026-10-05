@@ -11,9 +11,10 @@
 > CSV), pgTAP verdi nella sua corsa (§7). Due stop all'apply, corretti prima che il changeSet
 > entrasse (§5.7). ⏳ Resta il giro BE/FE (§6).
 > ✅ **BE/FE primo giro** fatto il 2026-10-04 (§9); il resto aspetta il §8.
-> ⏳ **Secondo giro DB richiesto** il 2026-10-04 dalla sessione BE/FE, decisione di Tid: §8.
-> **Da leggere per primo:** §6 (che cosa resta al BE/FE), poi §5.6 (la decisione R5a «lock
-> pieno», e che cosa comporta).
+> ✍️ **Secondo giro DB scritto il 2026-10-05** (§8 → risposta in §10): `20261005-10…-19`, la lista
+> `vendite.offerta_righe` (106) nei CSV, note di tre codici. Provato sullo scratch (§10.6). ⏳ **Da
+> applicare** (Tid), poi la corsa pgTAP; poi il giro BE/FE (§10.7).
+> **Da leggere per primo:** §10.7 (che cosa resta al BE/FE dopo il secondo giro), poi §6 e §5.6.
 
 ## 1. La regola
 
@@ -416,3 +417,217 @@ R-BE-7).
 Verifica: test BE vendite + core (3930) con `ZEROERP_TEST_DB_E2E=1` verdi; vitest 668/668; eslint e
 build puliti; nessuna chiave i18n rotta.
 
+
+## 10. Secondo giro DB — risposta (2026-10-05)
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-05. Tutti i punti del §8 scritti. ⏳ Niente
+> applicato: l'apply e la corsa pgTAP sono di Tid.
+
+### 10.1 Che cosa è stato scritto
+
+| changeSet | Fase | Cosa | § |
+| --- | --- | --- | --- |
+| `20261005-10-alter-contratti-righe-tipi-come-offerta` | `00_schema/vendite` | contratto: `prezzo_unitario` `numeric(18,6)`, i quattro codici di erogazione `varchar(32)`; smonta e rimonta identico `trg_contratti_righe_a10_default_fonte_qta_ins_upd` (`UPDATE OF fonte_quantita_attesa`) | B2 |
+| `-11-alter-offerte-eccezioni-factor-to-base-scala-articolo` | `00_schema/vendite` | offerta: `factor_to_base` `numeric(18,6)`; preCondition «nessuna riga con più di sei decimali» | B2 |
+| `-12-alter-contratti-righe-attivo-meta-not-null` | `00_schema/vendite` | contratto: `attivo`, `meta` `NOT NULL`; preCondition «nessuna riga a NULL» | B4 |
+| `-13-alter-offerte-eccezioni-componenti-tipi-come-famiglia` | `00_schema/vendite` | componenti dell'offerta: cinque colonne a `numeric` senza scala; smonta e rimonta `trg_oce_comp_a10_prezzo_obbligatorio_ins_upd` | B2 |
+| `-14-alter-offerte-eccezioni-componenti-ordine-not-null` | `00_schema/vendite` | componenti dell'offerta: `ordine` `NOT NULL`; preCondition «nessuna riga a NULL» | B2 |
+| `-15-create-fn-get-testata-id-di-riga` | `20_code/script` | **nasce** `script.fn_get_testata_id_di_riga(documento, riga)`: lettore `SECURITY DEFINER` riga → testata (CONTRATTO, OFFERTA, RESO) | B3 |
+| `-16-update-trgfn-doc-righe-lock-fuori-bozza-livello-riga` | `20_code/vendite` | il building block impara il quarto argomento, il **livello** (`TESTATA` default, `RIGA`) | B3 |
+| `-17-create-trigger-componenti-lock-fuori-bozza` | `20_code/vendite` | `trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt`, `trg_oce_comp_a05_doc_bozza_ins_upd_dlt` | B3 |
+| `-18-update-resi-righe-rientri-lock-su-bb` | `20_code/vendite` | rientri del reso: la loro copia della regola si **ritira**, adottano il building block a livello RIGA; il guard resta per la coerenza, in `_a10_` | B3, regola del 2 |
+| `-19-update-fn-crea-revisione-offerta-copia-componenti` | `20_code/vendite` | la revisione copia i componenti, rimappati riga per riga | B1 |
+| CSV `ui/lista_definizione`, `lista_colonna`, `lista_preset`, `lista_preset_colonna` | `80_data` | lista **106** `vendite.offerta_righe`, colonne **1100-1109**, preset **106** | R-DB2-A |
+| CSV `config/codici_errore` | `80_data` | solo note: `E_RIGA_DOC_NON_BOZZA` (i nipoti), `E_DOC_RIGHE_LOCK_MONTAGGIO` (il livello), `E_DOC_TIPO_NON_GESTITO` (il lettore nuovo) | B3 |
+| `db/pgtap/vendite/test-righe-gemelle-secondo-giro-v1.sql` | pgTAP | **nuovo**, 31 test, tutto costruito | tutti |
+
+Nessun codice errore nuovo (B3 riusa `E_RIGA_DOC_NON_BOZZA`). Doc `manual/`: nuova
+`script/manual/fn_get_testata_id_di_riga`; aggiornate `trgfn_doc_righe_lock_fuori_bozza`,
+`fn_crea_revisione_offerta`, `fn_get_stato_testata_documento`, `contratti_righe`,
+`offerte_commerciali_eccezioni`, `contratti_righe_componenti`,
+`offerte_commerciali_eccezioni_componenti` (la tabella «differenze» col contratto era stantia:
+diceva assenti `attivo`, `ordine`, `meta`), `resi_righe_rientri`.
+
+### 10.2 R-DB2-A — la lista `vendite.offerta_righe`
+
+Gemella della 103, campo per campo: sorgente `vendite.fn_offerta_righe_preview` (`vista_sql`
+NULL), `multi_emittente = f`, `perimetro_emittente = t`, `ricerca_min_caratteri = 3`; stesse dieci
+colonne con lo stesso `campo_sorgente`, tipo, formato, larghezza, ordine, flag e priorità; preset di
+default `offerta_righe_default` con le stesse colonne nello stesso ordine. Nessuna ragione di modello
+per un attributo diverso: le due funzioni hanno la stessa firma di uscita e lo stesso perimetro.
+
+**Le intestazioni hanno chiavi dell'offerta**, non quelle della 103: ogni lista di righe di
+documento ha il suo namespace (`vendite.preventivi.riga_*`, `vendite.ordini.riga_*`,
+`vendite.contratti.col_*`…). Due esistono già (`vendite.offerte.col_articolo` «Articolo»,
+`vendite.offerte.col_tipo_erogazione` «Erogazione»: per coerenza l'etichetta di ripiego della colonna
+è «Erogazione», non «Tipo» come sul contratto). **Sette sono nuove**, il FE le scrive:
+
+| Chiave | it | en (proposta) |
+| --- | --- | --- |
+| `vendite.offerte.col_descrizione` | Descrizione | Description |
+| `vendite.offerte.col_qta` | Qta | Qty |
+| `vendite.offerte.col_prezzo_finale` | Prezzo finale | Final price |
+| `vendite.offerte.col_prezzo_forzato` | Prezzo forzato | Forced price |
+| `vendite.offerte.col_uom` | UoM | UoM |
+| `vendite.offerte.col_prezzo_listino` | Prezzo listino | List price |
+| `vendite.offerte.col_origine` | Origine | Origin |
+
+⚠️ `check_i18n_keys` le segnala già (7 «intestazioni senza traduzione»), e gira anche in
+pre-commit sui CSV.
+
+### 10.3 B1 — la revisione porta con sé i componenti
+
+`fn_crea_revisione_offerta` copia le righe attive **una alla volta** con `RETURNING`, e per
+ciascuna i suoi componenti sull'id nuovo: la forma di `fn_push_offerta_a_contratto`. La gemella del
+preventivo rimappa con un `ROW_NUMBER` sui due insiemi, che regge finché gli id nuovi nascono
+nell'ordine della `SELECT`: qui la corrispondenza la dà l'inserimento stesso.
+
+* Si copiano **tutti** i componenti delle righe copiate, anche gli **opzionali spenti**: spegnere
+  un opzionale è una scelta dell'offerta (gli obbligatori non si spengono, c'è il guard), e la
+  revisione è la stessa offerta. È la regola del push.
+* Stato e pratica di approvazione 1:1, come sulle righe. Un componente in attesa non arriva fin
+  lì: il guard di testa (`fn_check_prezzi_in_attesa`) guarda anche i componenti attivi.
+* I trigger del componente lavorano come alla nascita: la quantità si ricalcola dalla madre, il
+  prezzo della madre dai componenti attivi — cioè lo stesso della rev N (test 14).
+* Il commento sbagliato del corpo («nessuna tabella figlia») è sostituito dalla spiegazione.
+
+### 10.4 B2 e B4 — quale scala vince, sul modello
+
+Il confronto colonna per colonna (catalogo di dbdev, 2026-10-05) ha trovato otto differenze sulle
+righe e sette sui componenti. ⭐ **La regola usata: vince la famiglia, non l'una o l'altra
+tabella** — per una colonna di riga contano le altre righe di documento e la fonte del dato, per
+una colonna di componente le altre tabelle di componenti.
+
+| Coppia | Colonna | Prima (contratto / offerta) | Dopo | Perché |
+| --- | --- | --- | --- | --- |
+| righe | `prezzo_unitario` | `(15,6)` / `(18,6)` | `(18,6)` | la scala del destino (`fatture_righe`) e di ordine e offerta: si allarga il contratto |
+| righe | `fonte_quantita_attesa`, `periodicita`, `generazione_canone`, `competenza_canone` | `varchar(24/12/16/16)` / `varchar(32)` | `varchar(32)` | vocabolari chiusi nei CHECK: la lunghezza è un tetto tecnico, allargare non rifiuta niente |
+| righe | `factor_to_base` | `(18,6)` / `(18,8)` | `(18,6)` | la fotografia del fattore dell'articolo (`articoli_uom_operativa`, `(18,6)`), come su tutte le altre righe: si stringe l'offerta |
+| righe | `attivo`, `meta` | nullable / `NOT NULL` | `NOT NULL` | B4 |
+| componenti | `coeff_qta_snapshot`, `quantita`, `factor_to_base`, `qta_operativa`, `prezzo_unitario` | `numeric` / `(18,6)` e `(18,8)` | `numeric` | le cinque tabelle di componenti: quattro senza scala, l'offerta la sola con: si allinea lei (il verso opposto avrebbe stretto quattro tabelle, arrotondando valori scritti) |
+| componenti | `ordine` | `NOT NULL` / nullable | `NOT NULL` | il push lo copia in una colonna `NOT NULL`: un `NULL` faceva morire il push |
+| componenti | `user_update` | nullable / `NOT NULL` | **invariato** | ⚠️ differenza **dichiarata**: `NOT NULL` è la regola delle colonne di audit (linee-guida §7), il push non la copia, la scrive il trigger di audit. Allentarla per simmetria toglierebbe un vincolo giusto; il debito è delle altre tabelle (§10.8) |
+
+**Le righe già scritte.** Nessuna correzione automatica: dove il vincolo nuovo può rifiutare una
+riga esistente (`-11` arrotonderebbe, `-12` e `-14` vietano il `NULL`) c'è una preCondition
+«nessuna riga cattiva» (`expectedResult 0`, legittima per §11.4: un DB da zero la soddisfa). Se
+su dbdev scatta, il migrate si ferma e la riga si guarda a mano: scegliere un valore al posto di chi
+l'ha scritta (un `attivo` NULL che diventa `true`) non è del migrate, e un `UPDATE` di bonifica
+incontrerebbe il lock «fuori bozza». ⚠️ `ALTER TYPE … USING COALESCE` non era una strada per
+`attivo`: la colonna è nella lista `UPDATE OF` dei trigger generati da `ci_apply`, e su quelli non
+si fa DDL (§11.5). Gli allargamenti non hanno preCondition sui dati: non possono rifiutare niente.
+
+**I trigger da rimontare.** `ALTER COLUMN … TYPE` rifiuta una colonna nominata in un trigger
+`UPDATE OF` (la doc auto-gen non lo mostra; letto da `pg_trigger.tgattr`): sono due, scritti a mano,
+smontati e rimontati identici nello stesso changeSet (definizione e COMMENT dal catalogo di dbdev e
+dello scratch). Nessuna vista legge le colonne toccate. Le firme con `%TYPE` non portano typmod:
+nessuna funzione da ricreare.
+
+### 10.5 B3 — «solo in bozza» per le tabelle nipoti
+
+**La forma.** Il building block `vendite.trgfn_doc_righe_lock_fuori_bozza` legge la testata dalla
+FK della riga; i componenti hanno la FK verso la **riga**. Impara un quarto argomento, il livello:
+con `'RIGA'` risale prima alla testata con `script.fn_get_testata_id_di_riga` (DEFINER del
+proprietario: le righe hanno RLS, e un guard invoker scambierebbe «non la vedo» per «non c'è»), poi
+fa il controllo di sempre. Riga assente ⇒ passa, come la testata assente. Nel contesto dell'errore
+entra `riga_documento_id`. Il lettore ha un elenco **chiuso** di tre tabelle (nessun nome dal
+chiamante, nessun SQL dinamico): un DEFINER «leggi la tabella che ti dico» sarebbe una porta su
+tutto.
+
+**Regola del 2.** La forma nipote c'era già, scritta a mano due volte: i rientri del reso
+(`trgfn_resi_righe_rientri_guard`) e i prelievi della bolla (`trgfn_ddt_righe_prelievi_guard`). I
+componenti sarebbero stati la terza e la quarta. Nello stesso giro:
+
+* i **rientri** ritirano la loro copia (`-18`): stesso codice, stessa frase, stessi valori
+  (`magazzino/test-reso-carico-v1` test 15 resta verde); la riga ora si legge dal DEFINER e non
+  sotto RLS; il guard tiene solo la coerenza del prelievo e scende in `_a10_`, su INSERT/UPDATE;
+* i **prelievi no**: in `EMESSO`/`SPEDITO` ammettono il cambio della sola ubicazione d'arrivo. Una
+  regola con un'eccezione di dominio non è una copia di quella senza.
+
+**Il difetto che la mutazione ha mostrato, e perché il test lo distingue.** Senza il lock sui
+componenti, una loro modifica fuori bozza era rifiutata **lo stesso**: il trigger AFTER che
+ricalcola il prezzo della madre fa un `UPDATE` della riga, e lì parla il lock delle righe — stesso
+codice, stessa frase. È l'«effetto» del §5.8. I test 16, 18, 24, 26 nella prima stesura passavano
+anche senza la regola; ora leggono **da dove** arriva il rifiuto (la pila dell'eccezione: non deve
+passare da `trgfn_componenti_ricalcola_padre`). La differenza non è accademica: col solo effetto,
+spegnere un componente obbligatorio su un'offerta emessa rispondeva «è obbligatorio» invece di
+«l'offerta non è più in bozza» (test 17), e il rifiuto dipendeva da un trigger nato per altro.
+
+**Nomi e ordine.** Contratto: prefisso della tabella, come i generati
+(`trg_contratti_righe_componenti_a05_…`). Offerta: prefisso corto dei fratelli scritti a mano
+(`trg_oce_comp_a05_…`; il lungo supera i 63 caratteri), che precede anche i generati. Rientri:
+`trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt` (il nome pieno supera i 63). Il test 10 verifica
+sul catalogo che su ogni nipote il lock sia il primo `BEFORE ROW`.
+
+**Chi scrive i componenti** (censito il 2026-10-05): le due `fn_*_componenti_init` (alla nascita
+della riga, in bozza), il push (contratto DRAFT), la revisione (offerta BOZZA), la propagazione
+della quantità dalla riga (già sotto lo stesso lock), il backend nei drawer e nel flusso di
+approvazione (in bozza; sull'offerta emessa vale già il «lock pieno» del §5.6). Nessuno li scrive
+fuori bozza per una strada legittima.
+
+### 10.6 La prova (2026-10-05)
+
+Sullo scratch `zeroerp_ci` (allineato a dbdev: tutti i `20261004-*` applicati), da owner, in
+transazioni annullate: l'SQL **estratto** dai dieci YAML (`yaml.safe_load`, in ordine di numero) **e
+le loro preConditions** eseguite prima di ciascuno (la lezione del primo giro), con `SET CONSTRAINTS
+ALL DEFERRED` davanti come Liquibase; le righe CSV nuove **simulate** con `INSERT … ON CONFLICT` (non
+prova il loader).
+
+* I dieci changeSet girano interi, preConditions comprese.
+* `test-righe-gemelle-secondo-giro-v1`: **31/31**. **Mutazione** (un changeSet tolto alla volta,
+  test finale): senza `-11` rosso 1; senza `-13` rosso 2; senza `-14` rosso 4; senza `-12` rossi 3,
+  21, 22; senza `-16` rossi 8, 16-18, 24-26; senza `-17/-18` rossi 9-11, 16-18, 24-26; senza `-19`
+  rossi 12, 13, 19 (e 24, 26 a valle: il contratto resta senza componenti); senza `-10` il push del
+  prezzo al limite muore per overflow e il file si ferma. Ogni pezzo ha i suoi rossi, e solo quelli.
+* **Confronto su 125 pgTAP** che toccano le tabelle, le funzioni, i registri delle liste e dei
+  codici, ciascuno com'è e con l'SQL nuovo dopo il suo `BEGIN`, in sequenza: **121 identici**, 4
+  diversi, tutti spiegati — `test-trgfn-doc-righe-lock-fuori-bozza` 2 diventa verde (l'elenco degli
+  adottanti, aggiornato); `test-contratti-righe-componenti` 13 (TAP 22) conta i trigger della
+  tabella, che diventano 14 (aggiornato, poi verde); i due `ui/test-fn-resolve-lista-config*` erano
+  un **artefatto della simulazione** — l'`INSERT` con `id` 106 esplicito non muove la sequenza e il
+  test, creando una sua lista, prendeva il 106; rilanciati passano, e nel migrate vero il resync
+  `runAlways` di `90_end/20260602-17` riallinea le sequenze. I rossi preesistenti sono identici
+  prima e dopo.
+* `plpgsql_check` sulle quattro funzioni nuove o riscritte: zero errori (un warning, «STABLE che
+  chiama una VOLATILE», lo stesso del lettore gemello). `dbops/test-riferimenti-morti-v1` 9/9,
+  `script/test-rubinetto-primo-motivo-v1` 7/7, `script/test-catalogo-messaggi-errore-completo` 7/7.
+* PreConditions **di catalogo** eseguite anche su dbdev (per nome): tutte al valore atteso; su
+  dbdev i trigger `UPDATE OF` sulle colonne cambiate sono esattamente i due rimontati.
+* I corpi di partenza (`20260922-02`, `20260928-90`, `20260924-35`) sono uguali al `prosrc` vivo di
+  dbdev e dello scratch.
+* Guardrail statici verdi: `run_on_change`, `precondition_seed`, `ddl_su_trigger_automazione`,
+  `grant_ruolo_batch`, `sql_letterali`, `timestamp_senza_fuso`, `v1_congelato`, `pgtap_preambolo`.
+
+**Non provati qui, restano a Tid:** le tre preConditions **sui dati** di dbdev (`-11`, `-12`, `-14`:
+come `zeroerp` lo schema `vendite` di dbdev non si legge; sullo scratch danno zero); il loader dei
+CSV e il resync delle sequenze; la corsa come app; le suite dell'offerta che sullo scratch vanno in
+errore di fixture già prima (`test_fn_crea_revisione_offerta`, `test_fn_push_offerta_a_contratto`,
+`test_push_offerta_fissa_qta_operativa`, `test_offerte_commerciali_end_to_end`): non nominano i
+componenti, ma le verifica solo la corsa su dbdev.
+
+### 10.7 Lato BE/FE, a secondo giro DB applicato
+
+| # | Cosa | Dove |
+| --- | --- | --- |
+| **R-BE-8** | ⛔ **Primo passo**: il seed della lista 106 accende tre test Django che leggono il catalogo — `test_lista_proiezione_campo_sorgente` (`_ESERCIZI`: ogni lista senza vista vuole il suo esercizio), `test_ricerca_full_seed` (la lista ricercabile dichiarata), `test_perimetro_emittente_copertura` (la view o un'esenzione). Sono rossi finché c'è il seed e non l'endpoint: fanno parte del giro di §8.1 (`OffertaRigheListaRepository` + view `…/righe/lista/` ed export) | BE |
+| **R-BE-9** | `scripts/gen_seed_lista.py`: la riga `vendite.offerta_righe` nella mappa delle whitelist (repository + costante dell'ordinamento), come per la 103 | BE |
+| **R-FE-1** | Le sette chiavi i18n del §10.2 (it, en) | FE |
+| **R-BE-10** | Rigenerare le policy degli errori: cambiano le note di `E_RIGA_DOC_NON_BOZZA`, `E_DOC_RIGHE_LOCK_MONTAGGIO`, `E_DOC_TIPO_NON_GESTITO`. Nessun codice nuovo | BE |
+| **R-BE-11** | Un componente di contratto o di offerta fuori bozza è rifiutato dal DB (`E_RIGA_DOC_NON_BOZZA`, `CONFLITTO_STATO`, già in policy) col nome del documento. Se un drawer propone azioni sui componenti di un documento non in bozza, vanno spente come quelle delle righe | BE + FE |
+| **R-BE-12** | `contratti_righe.attivo` e `meta`: un `null` **esplicito** è ora rifiutato (`23502`), come sull'offerta. `ContrattiRepository.create_riga`/`update_riga` li hanno nell'allowlist: non vanno inoltrati a `null` | BE |
+| — | Nessuna ricaduta per B1 (la revisione) e per i tipi di B2: il BE legge i valori, non le scale | — |
+
+### 10.8 Trovato nel giro, non corretto qui
+
+* 🟡 **`fn_crea_revisione_preventivo` copia solo i componenti attivi**, e rimappa le righe con un
+  `ROW_NUMBER` che si affida all'ordine di assegnazione degli id. La revisione dell'offerta ora fa
+  diversamente su entrambi i punti (§10.3). Da allineare quando si tocca il preventivo, con una
+  decisione su cosa significhi un componente spento in una revisione.
+* 🟡 **`user_update` nullable su tutte le righe e i componenti di documento** tranne il componente
+  dell'offerta: le linee guida (§7) lo vogliono `NOT NULL`. Debito della famiglia, scritto qui
+  perché il test 4 lo pinna come asimmetria dichiarata.
+* 🟡 **I componenti di preventivo, ordine e DDT non hanno il lock «solo in bozza»**. Il livello RIGA
+  del building block li rende un `CREATE TRIGGER` ciascuno; per il preventivo vale la cautela già
+  scritta per le sue righe (il flusso di approvazione dei prezzi va censito prima).
+* 🟡 `chk_contrighe_comp_quantita_pos` si chiama «positiva» ma vieta solo lo zero (come il gemello
+  `chk_oce_comp_quantita_nz`): il nome mente sulla regola.

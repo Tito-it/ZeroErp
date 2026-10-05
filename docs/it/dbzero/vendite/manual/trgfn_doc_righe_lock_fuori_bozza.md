@@ -3,6 +3,7 @@
 > 👀 **Vedi anche**
 >
 > [script.fn_get_stato_testata_documento](/dbzero/script/funzioni/fn_get_stato_testata_documento) — il lettore `SECURITY DEFINER` da cui prende lo stato
+> [script.fn_get_testata_id_di_riga](/dbzero/script/funzioni/fn_get_testata_id_di_riga) — il lettore `SECURITY DEFINER` riga → testata, per il livello RIGA (dal 2026-10-05)
 > [vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza) — la stessa regola, sulla testata
 > [vendite.trgfn_dlt_block_ordrig_ddtrig](/dbzero/vendite/funzioni/trgfn_dlt_block_ordrig_ddtrig) — il traduttore dei legami a valle, che parla dopo
 > [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe) · [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe) · [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe) — gli adottanti
@@ -21,13 +22,14 @@ pricing in vigore. Le correzioni passano da documenti di rettifica — reso,
 ri-consegna, nota — non da una riga che cambia.
 
 È un **building block**: una sola funzione, montata su ogni tabella di righe
-con tre argomenti.
+con due argomenti obbligatori e due facoltativi.
 
 | `TG_ARGV` | Cosa | Esempio |
 | --- | --- | --- |
-| `[0]` | tipo di documento, per il lettore di stato (`DDT`, `ORDINE`, `CONTRATTO`) | `'DDT'` |
-| `[1]` | colonna della riga che porta l'id della testata | `'ddt_id'` |
-| `[2]` (opz.) | `codice_interno` dello stato «bozza», default `DRAFT` | `'BOZZA'` per i resi |
+| `[0]` | tipo di documento, per il lettore di stato (`DDT`, `ORDINE`, `CONTRATTO`, `OFFERTA`, `RESO`) | `'DDT'` |
+| `[1]` | colonna della riga che porta l'id del padre | `'ddt_id'` |
+| `[2]` (opz.) | `codice_interno` dello stato «bozza», default `DRAFT` | `'BOZZA'` per l'offerta |
+| `[3]` (opz., dal 2026-10-05) | **livello** del padre: `TESTATA` (default) se la colonna punta alla testata, `RIGA` se punta a una riga del documento (tabelle *nipoti*) | `'RIGA'` per i componenti |
 
 ```sql
 CREATE TRIGGER trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
@@ -89,6 +91,9 @@ per rifiutare*.
 | `vendite.ordini_righe` | `trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt` | **solo DELETE** |
 | `vendite.contratti_righe` | `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt` | INSERT, UPDATE, DELETE |
 | `vendite.offerte_commerciali_eccezioni` | `trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-04; stato bozza `BOZZA`, terzo argomento) | INSERT, UPDATE, DELETE |
+| `vendite.contratti_righe_componenti` | `trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-05, livello `RIGA`) | INSERT, UPDATE, DELETE |
+| `vendite.offerte_commerciali_eccezioni_componenti` | `trg_oce_comp_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-05, livello `RIGA`, stato bozza `BOZZA`) | INSERT, UPDATE, DELETE |
+| `vendite.resi_righe_rientri` | `trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-05, livello `RIGA`) | INSERT, UPDATE, DELETE |
 
 ⚠️ **Sugli ordini `INSERT` e `UPDATE` restano aperti, ed è una decisione**
 (Tid, 14 settembre, voce «la promessa di consegna dopo la conferma» in
@@ -145,7 +150,7 @@ del documento emesso.
 | Codice | Classe | Quando | Valori |
 | --- | --- | --- | --- |
 | `E_RIGA_DOC_NON_BOZZA` | `CONFLITTO_STATO` | il documento non è più in bozza | etichetta del documento, stato, verbo (`aggiungere` / `modificare` / `togliere`) |
-| `E_DOC_RIGHE_LOCK_MONTAGGIO` | `TECNICO` | argomenti mancanti, o colonna FK che la riga non ha | trigger, tabella, nota |
+| `E_DOC_RIGHE_LOCK_MONTAGGIO` | `TECNICO` | argomenti mancanti, colonna FK che la riga non ha, o un livello che non è `TESTATA` né `RIGA` | trigger, tabella, nota |
 | `E_DOC_TIPO_NON_GESTITO` | `TECNICO` | tipo di documento sconosciuto al lettore (lo solleva il lettore) | il tipo ricevuto |
 
 * La frase è **una per tre porte**, ed è il verbo a dire quale: *«DDT 0023456
@@ -187,3 +192,34 @@ anche lo stato di approvazione di un prezzo resta com'è. Cambiarlo su un
 componente ricalcola il prezzo della riga madre, e quell'aggiornamento è fuori
 bozza. Una nuova richiesta di approvazione passa da una revisione, che nasce in
 bozza.
+
+### 🔄 rev 2026-10-05 — le tabelle *nipoti* (brief-db-righe-esclusione-solo-non-si-vende, §8.2 B3)
+
+Alcune tabelle non stanno sotto la testata ma sotto una **riga**: i componenti
+di una riga di kit (contratto e offerta), i rientri di una riga di reso. Per
+loro la regola è la stessa — si toccano solo col documento in bozza — ma la
+colonna che hanno punta alla riga. Col quarto argomento `'RIGA'` il building
+block prima risale alla testata con
+[`script.fn_get_testata_id_di_riga`](/dbzero/script/funzioni/fn_get_testata_id_di_riga)
+(anche lui `SECURITY DEFINER`, per la stessa ragione), poi fa il controllo di
+sempre. **Riga assente ⇒ passa**, come per la testata: è il figlio che se ne va
+insieme alla riga cancellata, o una chiave esterna che parlerà. Nel contesto
+dell'errore, per questi, c'è anche `riga_documento_id`.
+
+* **I componenti di contratto e offerta** prima li proteggeva solo un effetto:
+  cambiare un componente ricalcola il prezzo della riga madre, e
+  quell'aggiornamento della madre incontrava il lock delle righe. Il rifiuto
+  arrivava **dopo** i controlli del componente (spegnere un componente
+  obbligatorio rispondeva «è obbligatorio», non «il documento è emesso») e
+  dipendeva da un trigger nato per altro. Ora la regola sta sulla tabella del
+  componente, in fascia `_a05_`.
+* **I rientri del reso** avevano la regola scritta a mano dentro
+  `vendite.trgfn_resi_righe_rientri_guard`: era la seconda copia della forma
+  «nipote». È stata ritirata nello stesso giro, e quel guard tiene solo la
+  coerenza del prelievo (fascia `_a10_`).
+* **I prelievi della bolla no**: la loro regola, in `EMESSO` e `SPEDITO`,
+  ammette il cambio della sola ubicazione d'arrivo. È un'altra regola, non una
+  copia, e resta in `vendite.trgfn_ddt_righe_prelievi_guard`.
+
+> 📎 changeSet `20261005-15 … -18`. Presidio:
+> `db/pgtap/vendite/test-righe-gemelle-secondo-giro-v1.sql` (test 8-18, 23-26).
