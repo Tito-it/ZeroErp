@@ -51,6 +51,7 @@ const righeDrawer = ref({
   validoAl: null,
   statoCodice: '',
   statoDescrizione: '',
+  righeModificabili: false,
 })
 
 // Scopo: Apre il drawer righe direttamente dalla lista.
@@ -69,6 +70,8 @@ async function onOpenRighe(data) {
     validoAl: detail.valido_al,
     statoCodice: detail.stato_codice_interno,
     statoDescrizione: detail.stato_descrizione,
+    // La capability del DB (`can_edit_righe`): il drawer non rilegge lo stato.
+    righeModificabili: detail.capabilities?.can_edit_righe === true,
   }
 }
 </script>
@@ -101,6 +104,7 @@ async function onOpenRighe(data) {
       :contratto-valido-al="righeDrawer.validoAl"
       :contratto-stato-codice="righeDrawer.statoCodice"
       :contratto-stato-descrizione="righeDrawer.statoDescrizione"
+      :righe-modificabili="righeDrawer.righeModificabili"
     />
   </div>
 </template>

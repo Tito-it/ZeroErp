@@ -66,7 +66,7 @@ import {
 import { useOfferteStore } from '../stores/offerte'
 import { useOffertaRevisioniStore } from '../stores/offertaRevisioni'
 import RevisioniTab from '../../_shared/revisioni/RevisioniTab.vue'
-import OffertaEccezioniDrawer from './OffertaEccezioniDrawer.vue'
+import OffertaRigheDrawer from './OffertaRigheDrawer.vue'
 import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
 import OffertaEmissioneDialog from './dialogs/OffertaEmissioneDialog.vue'
 import OffertaEsitoDialog from './dialogs/OffertaEsitoDialog.vue'
@@ -765,10 +765,11 @@ async function onGeneraOrdine() {
 //      `genera_ordine` (conversione §7.4), che la fn espone solo se
 //      ACCETTATA e nessun ordine già generato (idempotenza 1:1): il bottone
 //      sparisce a conversione avvenuta come per `push_contratto`.
-//   2) Manage action `manage-eccezioni` per il sub-drawer eccezioni
-//      (master-detail inline). Allineato al pattern ContrattoDrawer:
-//      l'eccezione vive in un sub-drawer dedicato col proprio CRUD, non
-//      in una tab del drawer principale (UX UI 2026-05-26).
+//   2) Manage action `manage-eccezioni` per il sub-drawer delle righe
+//      (master-detail inline, `OffertaRigheDrawer`). Allineato al pattern
+//      ContrattoDrawer: le righe vivono in un sub-drawer dedicato, non in una
+//      tab del drawer principale (UX UI 2026-05-26). Il badge conta le
+//      eccezioni scritte, come il contratto conta le sue righe.
 //   3) Manage action `manage-note` per il sub-drawer note partizionate.
 const drawerActions = computed(() => {
   if (!isEdit.value || !detail.value) return []
@@ -787,7 +788,7 @@ const drawerActions = computed(() => {
     {
       key: 'manage-eccezioni',
       kind: 'manage',
-      label: t('vendite.offerte.gestisci_eccezioni'),
+      label: t('vendite.offerte.gestisci_righe'),
       icon: MANAGE_ICONS.RIGHE,
       badge: eccCount,
       command: () => { eccezioniDrawerVisible.value = true },
@@ -1162,18 +1163,20 @@ const footerDrawer = useFooterDocumento({
       </TabPanels>
     </Tabs>
 
-    <!-- Sub-drawer eccezioni (master-detail inline). -->
-    <OffertaEccezioniDrawer
+    <!-- Sub-drawer righe (master-detail inline): la lista `vendite.offerta_righe`
+         coi verbi del DB, gemella di quella del contratto. -->
+    <OffertaRigheDrawer
       v-if="isEdit && detail"
       v-model:visible="eccezioniDrawerVisible"
       :offerta-id="props.offertaId"
+      :emittente-fiscale-id="detail.emittente_fiscale_id ?? null"
       :offerta-codice="detail.codice"
       :offerta-stato-codice="stato"
+      :righe-modificabili="caps.flag('can_edit_eccezioni')"
       :offerta-stato-descrizione="detail.stato_descrizione"
       :offerta-cliente="detail.billing_account_display"
       :offerta-validita-dal="detail.validita_dal"
       :offerta-validita-al="detail.validita_al"
-      :eccezioni-iniziali="detail.eccezioni || []"
       @changed="refreshDetail"
     />
 

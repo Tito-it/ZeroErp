@@ -22,6 +22,7 @@ Design-of-record:
 | Reso | `/api/v1/vendite/resi/<id>/righe/lista/` | `vendite.reso_righe` | `vw_resi_righe_dettaglio` | `riga_nr` |
 | Fattura (sola lettura) | `/api/v1/vendite/fatture/<id>/righe/lista/` | `vendite.fattura_righe` | `vw_fattura_righe_lista` | `ordinamento, riga_nr` |
 | Contratto | `/api/v1/vendite/contratti/<id>/righe/lista/` | `vendite.contratto_righe` | funzione `fn_contratto_righe_preview` | `articolo_codice` |
+| Offerta | `/api/v1/vendite/offerte/<id>/righe/lista/` | `vendite.offerta_righe` | funzione `fn_offerta_righe_preview` | `articolo_codice` |
 
 ### La fattura, e cosa cambia (lotto C, 2026-09-28)
 
@@ -66,6 +67,28 @@ Design-of-record:
 - `GET …/righe/` resta la lettura delle righe **persistite** in
   `contratti_righe` (e il `POST` di creazione). L'anteprima intera
   `…/righe-preview/` è ritirata dal 2026-10-04: questa lista ne ha preso il posto.
+
+### L'offerta, gemella del contratto (2026-10-05)
+
+La lista `vendite.offerta_righe` (106) è la **gemella campo per campo** della 103
+(brief-db-righe-esclusione-solo-non-si-vende §8.1 e §10.2): stesse colonne,
+ordine, preset e attributi. La sorgente `vendite.fn_offerta_righe_preview` e
+`fn_contratto_righe_preview` sono involucri dello stesso corpo,
+`vendite.fn_documento_righe_preview(documento, id)`: stesse colonne, stessa
+`riga_key`, stessi verbi in `azioni`, stesso `escludi_blocco_codice`. Tutto ciò che
+è scritto qui sopra per il contratto vale per l'offerta, con tre differenze:
+
+- **l'offerta ha sempre un listino** (`listino_id` NOT NULL): non c'è la forma
+  «senza listino». Con una versione non operativa la lista ha le sole eccezioni;
+- **le intestazioni hanno chiavi dell'offerta** (`vendite.offerte.col_*`): ogni
+  lista di righe ha il suo namespace;
+- `GET …/eccezioni/` resta la lettura delle eccezioni **scritte** (e il `POST` di
+  creazione); il drawer legge questa lista.
+
+Backend: `OffertaRigheListaRepository` (`RigheListaMixin` sulla funzione),
+`OfferteService.list_righe_pagina` (`pagina_dopo_testata`: offerta inesistente
+o fuori perimetro → `404 E_VENDITE_NOT_FOUND`), view `ApiOffertaRigheListaView`
+ed export dal factory, permesso `("vendite", "offerta_commerciale")`.
 
 ## Endpoint
 

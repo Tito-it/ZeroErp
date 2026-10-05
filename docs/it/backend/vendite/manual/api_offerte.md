@@ -710,13 +710,27 @@ valorizzando `documento_origine = ('OFFERTA', offerta_id)` sull'ordine.
   [brief-db-univocita-offerta-ordine.md](../../../dev/work-done/brief-db-univocita-offerta-ordine.md)
   (univocità 1:1 + azione `genera_ordine`).
 
+### Lista righe `GET /api/v1/vendite/offerte/<id>/righe/lista/` (+ `export/`)
+
+Le righe **operative** dell'offerta come lista configurabile
+`vendite.offerta_righe` (106), paginata, con ricerca, ordinamento ed export,
+sulla funzione `vendite.fn_offerta_righe_preview`: le righe della versione
+operativa del listino con l'overlay delle eccezioni `OVERRIDE` / `ESCLUSIONE`,
+più le `AGGIUNTA`, ciascuna coi verbi che il DB ammette (`azioni`) e il motivo
+che spegne «Escludi» (`escludi_blocco_codice`). Gemella della lista righe del
+contratto, dal 2026-10-05 (brief-db-righe-esclusione-solo-non-si-vende §8.1).
+Contratto comune alle righe dei documenti di vendita:
+[api_righe_documento.md](api_righe_documento.md). È la lettura del drawer delle
+righe; il dettaglio dell'offerta porta ancora `eccezioni` (conteggio, note di riga).
+
 ### Eccezioni
 
 #### Lista `GET /api/v1/vendite/offerte/<id>/eccezioni/`
 
-Lettura libera in ogni stato. Output: array di eccezioni ordinate per
-`ordine` poi `id`. Include display fields da JOIN (`articolo_codice`,
-`articolo_descrizione`, `uom_codice`).
+Lettura libera in ogni stato. Output: array delle eccezioni **scritte**,
+ordinate per `ordine` poi `id`. Include display fields da JOIN
+(`articolo_codice`, `articolo_descrizione`, `uom_codice`). ⚠️ Dal 2026-10-05 il
+frontend non la legge più: il drawer delle righe legge `…/righe/lista/`.
 
 #### Create `POST /api/v1/vendite/offerte/<id>/eccezioni/`
 

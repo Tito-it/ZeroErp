@@ -542,6 +542,9 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # Le righe di un contratto (2026-09-30, lotto D): lista 103.
     ("vendite.contratto_righe",
      _da_costante("apps.vendite.db.contratti_repository", "_ORDER_COLS_RIGHE_CONTRATTO")),
+    # Le righe di un'offerta (2026-10-05): lista 106, gemella della 103.
+    ("vendite.offerta_righe",
+     _da_costante("apps.vendite.db.offerte_repository", "_ORDER_COLS_RIGHE_OFFERTA")),
     ("magazzino.inventario_righe",
      _da_costante("apps.magazzino.db.magazzino_repository", "INVENTARIO_RIGHE_SORT_COLUMNS")),
     ("magazzino.rettifica_righe",

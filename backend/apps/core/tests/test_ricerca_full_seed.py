@@ -198,6 +198,8 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
     ("vendite.fattura_righe", _da_costante(_V + "fatture_repository", "_RICERCA_RIGHE_FATTURA")),
     # Le righe di un contratto (2026-09-30, lotto D): lista 103 sulla funzione.
     ("vendite.contratto_righe", _da_costante(_V + "contratti_repository", "_RICERCA_RIGHE_CONTRATTO")),
+    # Le righe di un'offerta (2026-10-05, gemella della 103): lista 106 sulla funzione.
+    ("vendite.offerta_righe", _da_costante(_V + "offerte_repository", "_RICERCA_RIGHE_OFFERTA")),
 )
 
 # Liste con colonne `ricercabile_full = t` la cui ricerca e' ancora scritta a

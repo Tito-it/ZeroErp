@@ -240,8 +240,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   applicato (`20261004-40…-49`, `-70…-76`), pgTAP verdi. BE/FE primo giro fatto il 2026-10-04 (§9). Secondo giro
   DB **scritto** il 2026-10-05 (§10: `20261005-10…-19`, lista `vendite.offerta_righe` 106; la revisione copia i
   componenti, gemelle con gli stessi tipi, lock «solo in bozza» sui componenti col building block a livello RIGA —
-  i rientri del reso ritirano la loro copia), provato sullo scratch. ⏳ Apply e pgTAP di Tid, poi il giro BE/FE
-  (§10.7: endpoint della lista, sette chiavi i18n, il drawer dell'offerta sui verbi del DB e «Escludi»).
+  i rientri del reso ritirano la loro copia), applicato il 2026-10-05. BE/FE secondo giro fatto il 2026-10-05 (§11):
+  endpoint della lista 106, drawer dell'offerta sui verbi del DB col BB `RigheEccezioniDrawer` condiviso col
+  contratto (regola del 2, ok Tid), niente toggle «attivo». ⏳ Da decidere l'archiviazione (§11.4: i trovati DB
+  del §10.8 vogliono una sede).
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato
   il 2026-10-05): sotto RLS la lineage si ricalcolava per ogni riga della lista. `20261005-20` (lineage calcolata una
   volta per query) e `-21` (archi: tre letture una volta sola), applicati: le sette liste ~0,18 s la pagina (preventivi

@@ -86,6 +86,12 @@ _DOC_SORGENTE_SELECT = """
 # Riferimento semantico del fallback: pratiche.fn_stato_sorgente (sentinella
 # UNKNOWN); il join diretto alla vista e' la via sancita per le liste
 # (doc fn_stato_sorgente: "niente N+1").
+# ⚠️ Il resolver si cerca sulla chiave NATIVA (sorgente_chiave_uuid/_id), mai
+#    sulla forma testuale sorgente_uid: sotto RLS il confronto sul testo non
+#    arriva all'indice e rilegge i documenti per ogni riga. Si converte il
+#    PARAMETRO (script.fn_sorgente_chiave_uuid/_id, NULL se la chiave non e'
+#    di quella specie), un ramo per specie: stessa forma di
+#    script.vw_pratica_doc_sorgente.
 def _doc_sorgente_lateral(anchor_cond: str) -> str:
     return f"""
         LEFT JOIN LATERAL (
@@ -95,9 +101,19 @@ def _doc_sorgente_lateral(anchor_cond: str) -> str:
                    so.descrizione AS sorgente_descrizione
             FROM pratiche.pratiche_sorgenti ps
             JOIN config.sorgenti so ON so.id = ps.sorgente_tipo_id
-            LEFT JOIN script.vw_stato_sorgente ss
-              ON ss.sorgente_tipo_id = ps.sorgente_tipo_id
-             AND ss.sorgente_uid = ps.sorgente_uid
+            LEFT JOIN LATERAL (
+                SELECT v.risolto, v.stato_codice_interno, v.stato_descrizione,
+                       v.fase, v.esito, v.terminale
+                FROM script.vw_stato_sorgente v
+                WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
+                  AND v.sorgente_chiave_uuid = script.fn_sorgente_chiave_uuid(ps.sorgente_uid)
+                UNION ALL
+                SELECT v.risolto, v.stato_codice_interno, v.stato_descrizione,
+                       v.fase, v.esito, v.terminale
+                FROM script.vw_stato_sorgente v
+                WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
+                  AND v.sorgente_chiave_id = script.fn_sorgente_chiave_id(ps.sorgente_uid)
+            ) ss ON true
             WHERE {anchor_cond}
             ORDER BY (ps.ruolo_link = 'ROOT') DESC, ps.id DESC
             LIMIT 1

@@ -11,10 +11,12 @@
 > CSV), pgTAP verdi nella sua corsa (§7). Due stop all'apply, corretti prima che il changeSet
 > entrasse (§5.7). ⏳ Resta il giro BE/FE (§6).
 > ✅ **BE/FE primo giro** fatto il 2026-10-04 (§9); il resto aspetta il §8.
-> ✍️ **Secondo giro DB scritto il 2026-10-05** (§8 → risposta in §10): `20261005-10…-19`, la lista
-> `vendite.offerta_righe` (106) nei CSV, note di tre codici. Provato sullo scratch (§10.6). ⏳ **Da
-> applicare** (Tid), poi la corsa pgTAP; poi il giro BE/FE (§10.7).
-> **Da leggere per primo:** §10.7 (che cosa resta al BE/FE dopo il secondo giro), poi §6 e §5.6.
+> ✅ **Secondo giro DB** (§8 → risposta in §10): `20261005-10…-19`, la lista `vendite.offerta_righe`
+> (106) nei CSV, note di tre codici; applicato su dbdev il 2026-10-05 (letto da `databasechangelog`).
+> ✅ **BE/FE secondo giro** fatto il 2026-10-05 (§11): l'endpoint della lista, il drawer dell'offerta
+> sui verbi del DB col BB condiviso col contratto, le sette chiavi, le policy. Tutto il §6 e il §10.7
+> sono chiusi: ⏳ resta solo la decisione di archiviare il brief (§11.4).
+> **Da leggere per primo:** §11 (consegna BE/FE del secondo giro), poi §10.7 e §6.
 
 ## 1. La regola
 
@@ -631,3 +633,84 @@ componenti, ma le verifica solo la corsa su dbdev.
   scritta per le sue righe (il flusso di approvazione dei prezzi va censito prima).
 * 🟡 `chk_contrighe_comp_quantita_pos` si chiama «positiva» ma vieta solo lo zero (come il gemello
   `chk_oce_comp_quantita_nz`): il nome mente sulla regola.
+
+## 11. Consegna BE/FE, secondo giro (2026-10-05)
+
+> **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-05, a secondo giro DB applicato.
+> Due decisioni di Tid nel giro (§11.2).
+
+### 11.1 Che cosa è stato fatto
+
+| # | Fatto |
+| --- | --- |
+| R-BE-8 | **L'endpoint della lista 106.** `OffertaRigheListaRepository` (`RigheListaMixin` su `vendite.fn_offerta_righe_preview`, gemello di quello del contratto: ordine di partenza `articolo_codice`, chiave `riga_key`, niente filtro `attivo`), `OfferteService.list_righe_pagina` («leggi prima la testata», BB `pagina_dopo_testata`), view `GET offerte/<id>/righe/lista/` ed `export/` dal factory `build_lista_figlia_views` (permesso `offerta_commerciale`, cancello di perimetro sulla PK dell'emittente). I tre test di catalogo accesi dal seed (`test_lista_proiezione_campo_sorgente`, `test_ricerca_full_seed`, `test_perimetro_emittente_copertura`) sono verdi, con `test_liste_configurabili_seed` e `test_ricerca_full_db` |
+| R-BE-9 | `scripts/gen_seed_lista.py`: `vendite.offerta_righe` → `_ORDER_COLS_RIGHE_OFFERTA` (`--verifica-ordinamento`: ok) |
+| R-FE-1 | Le sette chiavi `vendite.offerte.col_*` (it, en). `check_i18n_keys`: pulito |
+| R-BE-10 | Policy rigenerate: cambiano esattamente le note di `E_RIGA_DOC_NON_BOZZA`, `E_DOC_RIGHE_LOCK_MONTAGGIO`, `E_DOC_TIPO_NON_GESTITO` |
+| R-BE-11 | Componenti fuori bozza spenti: il drawer delle righe è in sola lettura fuori bozza, sul contratto e sull'offerta (pannello componenti compreso). ⚠️ **Trovato nel giro e chiuso**: sul contratto il blocco arrivava solo dalla catena readonly di `ContrattoDrawer`; la lista dei contratti e il drawer del cliente aprono le righe direttamente, e su un contratto ATTIVO lasciavano verbi, form e componenti accesi (poi il rifiuto del DB). Ora il blocco lo dice l'involucro, chiunque lo monti, dalla **capability del DB** (`can_edit_righe` del contratto, `can_edit_eccezioni` dell'offerta, lette dal dettaglio dai quattro chiamanti), non dallo stato riletto nel frontend. Capability assente = bloccato, sui due documenti (verifica critica 2026-10-05) |
+| R-BE-12 | Nessun cambio di codice: il mapper della riga del contratto già non inoltra `attivo: null` e porta `meta: null` a `{}`. Ora un test lo fissa (`ContrattiRigaAttivoMetaNotNullTests`) |
+| R-BE-5, R-BE-7 | **Il drawer dell'offerta sui verbi del DB** (§11.2 per la forma): righe del listino con l'overlay delle eccezioni, «Escludi» one-click e vuoto sulla riga del listino, spento col motivo (`escludi_blocco_codice`, es. il componente di un bundle), «Ripristina articolo», «Ripristina prezzo di listino», «Rimuovi», ricerca, export, colonne personalizzabili. Chiude il transitorio del §9: l'esclusione non nasce più dal form e non si apre più in sola lettura |
+
+### 11.2 Le due decisioni di Tid (2026-10-05)
+
+* **Regola del 2 — nasce un BB.** Con la lista 106 il drawer dell'offerta sarebbe stato la seconda
+  copia di `ContrattoRigheDrawer`. Nasce `vendite/_shared/righe/RigheEccezioniDrawer.vue` dal corpo
+  vivo del contratto; `ContrattoRigheDrawer` (stessa interfaccia: tre chiamanti invariati) e
+  `OffertaRigheDrawer` (ex `OffertaEccezioniDrawer`) sono involucri che passano store, scritture, API
+  dei componenti, intestazione e blocco di stato; il contesto pricing resta del solo contratto (slot
+  `#avvisi`). Registrato nel catalogo BB FE. Sull'offerta escono la `DataTable` in memoria, il tipo di
+  eccezione in tendina, l'esclusione nel form e il loro avviso transitorio.
+* **Niente toggle «attivo» sull'offerta.** La lista legge le sole eccezioni attive (come quella del
+  contratto): un'eccezione spenta dal form sarebbe sparita senza modo di riaccenderla. Un'eccezione
+  c'è o si toglie, come sul contratto; la colonna resta a DB col suo default.
+
+⭐ **I testi del BB, due sedi.** Il vocabolario delle righe (origini, tipi, fonti, motivi di
+«Escludi», etichette dei campi) resta in `vendite.contratti.*` e vale per i due documenti, come i codici
+`E_CONTRATTO_*` riusati dal DB; i soli testi che **nominano il documento** («Rimuovi dall'offerta»)
+passano dal namespace del dominio. Quella chiave è costruita, quindi `check_i18n_keys` non la vede: la
+presidia `RigheEccezioniDrawer.spec.js`, che legge le chiavi dal sorgente e le cerca nei due
+namespace e nelle due lingue. Nuove in `vendite.offerte`: `drawer_righe_titolo`, `gestisci_righe`,
+`aggiungi_articolo_tooltip`, `articolo_escluso`, `azione_rimuovi_aggiunta`,
+`azione_ripristina_articolo`, `escludi_dialog_titolo`, `ripristina_articolo_dialog_titolo`,
+`ripristina_articolo_dialog_messaggio`, `field_qta_operativa_fissa`; `errore_generico` dice «riga»,
+non più «eccezione».
+
+### 11.3 Test
+
+* **Le gemelle girano gli stessi test**, non due copie: `test_righe_contratto_offerta_lista` (ex
+  `test_righe_contratto_lista`, SQL della pagina) e `test_righe_lista_contratto_offerta_api` (ex
+  `test_contratto_righe_lista_api`, view ed export) hanno una classe base e un caso per documento;
+  l'offerta entra in `test_righe_pagina_dopo_testata` (sette documenti) e in
+  `test_ricerca_liste_db` (DB vero: la riga del listino `L:<articolo>:<uom>`, l'altra gamba della
+  funzione rispetto all'aggiunta del contratto).
+* FE: `RigheEccezioniDrawer.spec.js` (3); il registro delle `DataTable` grezze scende di una.
+
+Verifica: vedi §11.5.
+
+### 11.4 Da decidere
+
+* **Archiviare il brief.** §6 e §10.7 sono chiusi. Restano i trovati del team DB, che non sono del
+  BE/FE e senza una sede si perderebbero con l'archiviazione: §10.8 (revisione del preventivo,
+  `user_update` nullable, componenti di preventivo/ordine/DDT senza lock, il nome di
+  `chk_contrighe_comp_quantita_pos`).
+* ✅ **Chiavi `vendite.offerte` senza lettore: tolte** (ok di Tid, 2026-10-05). 31 rimaste orfane col
+  vecchio drawer (`eccezioni_titolo`, `gestisci_eccezioni`, `eccezione_*`, `field_*` e `col_*` della
+  vecchia tabella, `tipo_erogazione_*`, `richiedi_approvazione*`, `esclusione_non_modificabile`…) e 5
+  gia' morte prima (`tab_eccezioni`, `eccezioni_intro`, `eccezioni_empty`,
+  `emissione_warn_versione_mancante`, `push_conferma`). ⚠️ Restano `azione_*`, `push_reason.*` e
+  `azione_reason`: il frontend non le scrive per esteso, ma le restituisce il DB (azioni disponibili
+  e motivi di blocco dell'offerta).
+* `GET offerte/<id>/eccezioni/` non ha più un consumatore nel frontend (il dettaglio porta già le
+  eccezioni): resta come API.
+
+
+### 11.5 Verifica (2026-10-05)
+
+* BE: `apps.vendite`, `apps.core`, `apps.ui` con `ZEROERP_TEST_DB_E2E=1` sul DB di sviluppo, in
+  sequenza: **4135 test, OK** (1 skip). ⚠️ Una prima corsa con `--parallel 4` si è fermata nel runner
+  («cannot pickle 'traceback'»: un errore di un test non serializzabile fra i processi) senza dire
+  quale; in sequenza tutto verde. Non indagato oltre.
+* `ruff` pulito sui file toccati; `manage.py check` pulito.
+* FE: vitest **681/681**; eslint e build puliti; `check_i18n_keys` pulito; tutti i guard
+  `npm run guard:*` verdi (il registro delle `DataTable` grezze riscritto: una in meno).
+* Non provato: il drawer a video (collaudo di Tid).
