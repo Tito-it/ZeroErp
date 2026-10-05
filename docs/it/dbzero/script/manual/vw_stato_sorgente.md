@@ -44,6 +44,13 @@ senza ramo semplicemente non ha righe = non risolto.
 Il **descrittore universale** (contratto §4 del brief design), tipi normalizzati a `text`:
 
 * **Chiave**: sorgente_tipo_id, sorgente_uid
+* **Chiave nel suo tipo** (dal 2026-10-05, in coda): sorgente_chiave_uuid (rami con
+  `key_selector = uid`) e sorgente_chiave_id (rami con `key_selector = id`). In ogni riga
+  una sola è valorizzata, e coincide con `sorgente_uid`. Servono a **cercare un documento**:
+  sotto RLS il confronto sulla forma testuale non può usare l'indice (le conversioni
+  `uuid → text` e `bigint → text` non sono `leakproof`), quello sulla chiave nativa sì.
+  `pratiche.fn_stato_sorgente` cerca su queste; `sorgente_uid` resta la chiave delle join
+  con `pratiche_sorgenti` e del lineage.
 * **Risoluzione**: risolto (sempre `true` sulle righe proiettate; il fallback `UNKNOWN`
   con `risolto=false` lo produce solo `fn_stato_sorgente`)
 * **Stato nativo**: stato_codice_interno (logica), stato_codice / stato_descrizione (display)
@@ -71,6 +78,9 @@ WHERE ps.pratica_id = 42;
 1. Il dominio dichiara la mappa `fase`/`esito`/`terminale` sulle proprie
    `config.stati_doc_<dominio>` (D1) e crea il resolver `<schema>.vw_stato_sorgente_<tipo>`
    (D2) con le **stesse colonne** e il contratto "al più una riga per (tipo, uid)".
+   ⚠️ Comprese le due colonne in coda: il ramo valorizza quella della sua specie di
+   chiave (`uid` o `id`) e mette l'altra a `NULL` tipizzato. Un ramo che le lasciasse
+   entrambe a `NULL` comparirebbe nella vista ma `fn_stato_sorgente` non lo troverebbe mai.
 2. Si aggiunge un ramo con un **nuovo changeset** (mai modificare quello già mergiato):
 
 ```sql
@@ -80,7 +90,8 @@ UNION ALL
 SELECT
     r.sorgente_tipo_id, r.sorgente_uid, true AS risolto,
     (r.stato_codice_interno)::text, (r.stato_codice)::text,
-    (r.stato_descrizione)::text, (r.fase)::text, (r.esito)::text, r.terminale
+    (r.stato_descrizione)::text, (r.fase)::text, (r.esito)::text, r.terminale,
+    r.sorgente_chiave_uuid, r.sorgente_chiave_id
   FROM vendite.vw_stato_sorgente_offerta r;               -- nuovo ramo
 ```
 

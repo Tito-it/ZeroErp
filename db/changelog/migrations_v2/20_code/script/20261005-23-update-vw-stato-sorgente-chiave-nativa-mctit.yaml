@@ -1,0 +1,448 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO DI UN DOCUMENTO SI CERCA PER CHIAVE NATIVA
+#   script.vw_stato_sorgente + le sei viste di ramo vendite.vw_stato_sorgente_*
+#   (due colonne in coda) e pratiche.fn_stato_sorgente (le legge).
+#   Richiesta di Tid del 2026-10-05 (analisi del pgTAP
+#   vendite/test-fn-push-preventivo-a-ordine-v1: «ottimizzare le funzioni reali
+#   che hanno impatto anche nella app»). Nessun brief, su indicazione di Tid.
+#   Coppia di 20261005-22 (fn_reconcile_sorgente esce senza aggancio): quello
+#   toglie la lettura a chi non ha pratiche, questo la rende economica per chi ce
+#   l'ha.
+#
+# -- IL DIFETTO ----------------------------------------------------------
+#   La union ha la chiave in forma TESTUALE (sorgente_uid = uid::text per
+#   preventivi/offerte, id::text per ordini/contratti/DDT/resi), e
+#   fn_stato_sorgente filtrava su quella. Sotto RLS il planner porta sotto la
+#   policy, e quindi all'indice, solo clausole leakproof: uuid_out e int8out
+#   non lo sono. Risultato: per UN documento, ognuno dei sei rami scandisce la
+#   sua tabella intera valutando la policy riga per riga, e solo il join con
+#   config.sorgenti scarta i cinque rami sbagliati. Costo proporzionale al
+#   numero di documenti, pagato a ogni cambio di stato di un preventivo
+#   agganciato a una pratica (trigger di riconciliazione) e da ogni chiamata
+#   diretta. Gli indici di espressione ix_preventivi_uid_text,
+#   ix_offerte_commerciali_uid_text, ix_ordini_id_text, ix_contratti_id_text
+#   nascono per questa ricerca ma servono solo all'owner: come applicazione non
+#   sono usabili (stessa ragione). Restano: li valuta il passo sulle join.
+#
+# -- LA CURA -------------------------------------------------------------
+#   1. Ogni vista di ramo espone IN CODA sorgente_chiave_uuid (uuid) e
+#      sorgente_chiave_id (bigint): una e' la chiave del documento, l'altra
+#      NULL tipizzato. In coda perche' CREATE OR REPLACE VIEW puo' solo
+#      appendere; sorgente_uid resta com'e' (lineage, join, BE).
+#   2. La union le riporta in coda.
+#   3. fn_stato_sorgente riconosce la specie della chiave dal testo
+#      (pg_input_is_valid), la converte, e filtra sulla colonna nativa:
+#      uuid_eq / int8eq sono leakproof -> Index Cond su uq_*_uid / pk; il ramo
+#      dell'altra specie ha la colonna a NULL costante e il planner lo scarta.
+#   ⭐ Equivalenza col confronto testuale, sul modello:
+#      * il vecchio confronto trovava un documento solo se p_sorgente_uid era
+#        IDENTICO a uid::text / id::text, cioe' nella forma canonica; il cast
+#        e' piu' largo (maiuscole, zeri davanti, spazi): per questo il valore
+#        convertito torna testo e deve coincidere, o la chiave vale NULL;
+#      * una stringa che non e' ne' uuid ne' intero non coincideva con nessun
+#        ramo: ora non entra in nessuna lettura e da' la sentinella, senza il
+#        22P02 che un cast diretto alzerebbe;
+#      * una stringa e' al piu' di una delle due specie: le due letture sono
+#        alternative (IF/ELSIF), non una UNION con un OR.
+#
+# -- PROVA (prima dell'apply, dbdev, come zeroerp_app, 2026-10-05) -------
+#   Viste e funzione caricate come oggetti TEMP con lo stesso corpo:
+#   * fn_stato_sorgente vecchia vs nuova su 391 chiavi (ogni documento visibile
+#     dei sei tipi + 13 casi limite: maiuscolo, zeri, spazio, '+', graffe,
+#     senza trattini, specie sbagliata, malformata, fuori range, tipo 99):
+#     EXCEPT ALL = 0 nei due versi; 3,6 s -> 0,05 s le 391 chiamate;
+#   * union vecchia vs nuova sulle colonne esistenti: EXCEPT ALL = 0;
+#   * chiave nativa coerente col testo su ogni riga: 0 incoerenti;
+#   * pgTAP test-proiezione-stato-sorgente (31/31) e
+#     test-vw-stato-sorgente-ddt-reso-v1 (12/12) verdi sugli oggetti nuovi;
+#     mutazione (tolto il ritorno alla forma canonica): rossi 29 e 11.
+#   Le misure sono un fatto datato; il motivo e' che cercare un documento non
+#   deve costare quanto leggerli tutti.
+#
+# -- FORMA ---------------------------------------------------------------
+#   Corpi presi dalla doc auto-gen (vivo). security_invoker=on ripetuto su ogni
+#   vista: CREATE OR REPLACE lo azzererebbe. GRANT e COMMENT sopravvivono al
+#   CREATE OR REPLACE (stesso oid); i COMMENT si riscrivono per accodare la
+#   revisione. Funzione: CREATE OR REPLACE con la firma ANCORATA del
+#   20260701-18 (RETURNS TABLE invariato -> nessun DROP); le variabili nuove
+#   ancorate alle colonne della union, creata prima nello stesso changeSet.
+#   ⚠️ Non toccati: script.vw_pratica_doc_sorgente e la LATERAL del backend
+#   (pratiche_repository.py) che JOINano su sorgente_uid — una join da una
+#   colonna testuale ha bisogno di un'altra forma, passo separato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261005-23-update-vw-stato-sorgente-chiave-nativa-mctit.yaml
+
+  - changeSet:
+      id: 20261005-23-update-vw-stato-sorgente-chiave-nativa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vw_stato_sorgente e le sei viste di ramo espongono in coda la chiave nel suo tipo
+        (sorgente_chiave_uuid / sorgente_chiave_id); fn_stato_sorgente cerca su quella, cosi'
+        sotto RLS usa l'indice invece di scandire tutte le tabelle-documento. Stessi risultati.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: script
+            viewName: vw_stato_sorgente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_preventivo
+              WITH (security_invoker=on) AS
+              SELECT s.id AS sorgente_tipo_id,
+                  (p.uid)::text AS sorgente_uid,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.codice AS stato_codice,
+                  sdp.descrizione AS stato_descrizione,
+                  sdp.fase,
+                  sdp.esito,
+                  sdp.terminale,
+                  p.uid AS sorgente_chiave_uuid,
+                  NULL::bigint AS sorgente_chiave_id
+                 FROM ((vendite.preventivi p
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'PREVENTIVO'::text) AND (s.attivo IS TRUE))))
+                   JOIN config.stati_doc_preventivi sdp ON ((sdp.id = p.stato_doc_preventivo_id)));
+
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_offerta
+              WITH (security_invoker=on) AS
+              SELECT s.id AS sorgente_tipo_id,
+                  (oc.uid)::text AS sorgente_uid,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.codice AS stato_codice,
+                  sdo.descrizione AS stato_descrizione,
+                  sdo.fase,
+                  sdo.esito,
+                  sdo.terminale,
+                  oc.uid AS sorgente_chiave_uuid,
+                  NULL::bigint AS sorgente_chiave_id
+                 FROM ((vendite.offerte_commerciali oc
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s.attivo IS TRUE))))
+                   JOIN config.stati_doc_offerte sdo ON ((sdo.id = oc.stato_doc_offerta_id)));
+
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_ordine
+              WITH (security_invoker=on) AS
+              SELECT s.id AS sorgente_tipo_id,
+                  (o.id)::text AS sorgente_uid,
+                  sdor.codice_interno AS stato_codice_interno,
+                  sdor.codice AS stato_codice,
+                  sdor.descrizione AS stato_descrizione,
+                  sdor.fase,
+                  sdor.esito,
+                  sdor.terminale,
+                  NULL::uuid AS sorgente_chiave_uuid,
+                  o.id AS sorgente_chiave_id
+                 FROM ((vendite.ordini o
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (s.attivo IS TRUE))))
+                   JOIN config.stati_doc_ordini sdor ON ((sdor.id = o.stato_doc_ordine_id)));
+
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_contratto
+              WITH (security_invoker=on) AS
+              SELECT s.id AS sorgente_tipo_id,
+                  (c.id)::text AS sorgente_uid,
+                  sdc.codice_interno AS stato_codice_interno,
+                  sdc.codice AS stato_codice,
+                  sdc.descrizione AS stato_descrizione,
+                  sdc.fase,
+                  sdc.esito,
+                  sdc.terminale,
+                  NULL::uuid AS sorgente_chiave_uuid,
+                  c.id AS sorgente_chiave_id
+                 FROM ((vendite.contratti c
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'CONTRATTO'::text) AND (s.attivo IS TRUE))))
+                   JOIN config.stati_doc_contratti sdc ON ((sdc.id = c.stato_doc_contratto_id)));
+
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_ddt
+              WITH (security_invoker=on) AS
+              SELECT s.id AS sorgente_tipo_id,
+                  (d.id)::text AS sorgente_uid,
+                  sdd.codice_interno AS stato_codice_interno,
+                  sdd.codice AS stato_codice,
+                  sdd.descrizione AS stato_descrizione,
+                  sdd.fase,
+                  (
+                      CASE
+                          WHEN sdd.is_abortito THEN 'NEGATIVO'::text
+                          WHEN ((sdd.fase)::text = 'CHIUSO'::text) THEN 'POSITIVO'::text
+                          ELSE NULL::text
+                      END)::character varying AS esito,
+                  ((sdd.fase)::text = 'CHIUSO'::text) AS terminale,
+                  NULL::uuid AS sorgente_chiave_uuid,
+                  d.id AS sorgente_chiave_id
+                 FROM ((vendite.ddt d
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'DDT_VENDITA'::text) AND (s.attivo IS TRUE))))
+                   JOIN config.stati_doc_ddt sdd ON ((sdd.id = d.stato_doc_ddt_id)));
+
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_reso
+              WITH (security_invoker=on) AS
+              SELECT s.id AS sorgente_tipo_id,
+                  (r.id)::text AS sorgente_uid,
+                  sdr.codice_interno AS stato_codice_interno,
+                  sdr.codice AS stato_codice,
+                  sdr.descrizione AS stato_descrizione,
+                  sdr.fase,
+                  (
+                      CASE
+                          WHEN sdr.is_abortito THEN 'NEGATIVO'::text
+                          WHEN ((sdr.fase)::text = 'CHIUSO'::text) THEN 'POSITIVO'::text
+                          ELSE NULL::text
+                      END)::character varying AS esito,
+                  ((sdr.fase)::text = 'CHIUSO'::text) AS terminale,
+                  NULL::uuid AS sorgente_chiave_uuid,
+                  r.id AS sorgente_chiave_id
+                 FROM ((vendite.resi r
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'RESO_VENDITA'::text) AND (s.attivo IS TRUE))))
+                   JOIN config.stati_doc_reso sdr ON ((sdr.id = r.stato_doc_reso_id)));
+
+              CREATE OR REPLACE VIEW script.vw_stato_sorgente
+              WITH (security_invoker=on) AS
+              SELECT r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true AS risolto,
+                  (r.stato_codice_interno)::text AS stato_codice_interno,
+                  (r.stato_codice)::text AS stato_codice,
+                  (r.stato_descrizione)::text AS stato_descrizione,
+                  (r.fase)::text AS fase,
+                  (r.esito)::text AS esito,
+                  r.terminale,
+                  r.sorgente_chiave_uuid,
+                  r.sorgente_chiave_id
+                 FROM vendite.vw_stato_sorgente_preventivo r
+              UNION ALL
+               SELECT r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true AS risolto,
+                  (r.stato_codice_interno)::text AS stato_codice_interno,
+                  (r.stato_codice)::text AS stato_codice,
+                  (r.stato_descrizione)::text AS stato_descrizione,
+                  (r.fase)::text AS fase,
+                  (r.esito)::text AS esito,
+                  r.terminale,
+                  r.sorgente_chiave_uuid,
+                  r.sorgente_chiave_id
+                 FROM vendite.vw_stato_sorgente_offerta r
+              UNION ALL
+               SELECT r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true AS risolto,
+                  (r.stato_codice_interno)::text AS stato_codice_interno,
+                  (r.stato_codice)::text AS stato_codice,
+                  (r.stato_descrizione)::text AS stato_descrizione,
+                  (r.fase)::text AS fase,
+                  (r.esito)::text AS esito,
+                  r.terminale,
+                  r.sorgente_chiave_uuid,
+                  r.sorgente_chiave_id
+                 FROM vendite.vw_stato_sorgente_ordine r
+              UNION ALL
+               SELECT r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true AS risolto,
+                  (r.stato_codice_interno)::text AS stato_codice_interno,
+                  (r.stato_codice)::text AS stato_codice,
+                  (r.stato_descrizione)::text AS stato_descrizione,
+                  (r.fase)::text AS fase,
+                  (r.esito)::text AS esito,
+                  r.terminale,
+                  r.sorgente_chiave_uuid,
+                  r.sorgente_chiave_id
+                 FROM vendite.vw_stato_sorgente_contratto r
+              UNION ALL
+               SELECT r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true AS risolto,
+                  (r.stato_codice_interno)::text AS stato_codice_interno,
+                  (r.stato_codice)::text AS stato_codice,
+                  (r.stato_descrizione)::text AS stato_descrizione,
+                  (r.fase)::text AS fase,
+                  (r.esito)::text AS esito,
+                  r.terminale,
+                  r.sorgente_chiave_uuid,
+                  r.sorgente_chiave_id
+                 FROM vendite.vw_stato_sorgente_ddt r
+              UNION ALL
+               SELECT r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true AS risolto,
+                  (r.stato_codice_interno)::text AS stato_codice_interno,
+                  (r.stato_codice)::text AS stato_codice,
+                  (r.stato_descrizione)::text AS stato_descrizione,
+                  (r.fase)::text AS fase,
+                  (r.esito)::text AS esito,
+                  r.terminale,
+                  r.sorgente_chiave_uuid,
+                  r.sorgente_chiave_id
+                 FROM vendite.vw_stato_sorgente_reso r;
+
+              CREATE OR REPLACE FUNCTION pratiche.fn_stato_sorgente(
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_uid     pratiche.pratiche_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS TABLE (
+                  sorgente_tipo_id     config.sorgenti.id%TYPE,
+                  sorgente_uid         pratiche.pratiche_sorgenti.sorgente_uid%TYPE,
+                  risolto              BOOLEAN,
+                  stato_codice_interno TEXT,
+                  stato_codice         TEXT,
+                  stato_descrizione    TEXT,
+                  fase                 TEXT,
+                  esito                TEXT,
+                  terminale            BOOLEAN
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Descrittore normalizzato dello stato del documento sorgente
+              -- (contratto §4 brief design V10). Dispatch: lookup sulla union
+              -- script.vw_stato_sorgente (unica superficie, decisione A);
+              -- nessuna riga -> sentinella UNKNOWN, mai errore (additivita':
+              -- dominio senza resolver = comportamento di oggi).
+              DECLARE
+                  v_chiave_uuid script.vw_stato_sorgente.sorgente_chiave_uuid%TYPE;
+                  v_chiave_id   script.vw_stato_sorgente.sorgente_chiave_id%TYPE;
+              BEGIN
+                  -- Guard fail-fast sui parametri (id NULL/<=0, uid vuoto).
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0
+                     OR p_sorgente_uid IS NULL OR btrim(p_sorgente_uid) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.fn_stato_sorgente',
+                          'E_STATO_SORGENTE_PARAM_INVALIDO',
+                          jsonb_build_object(
+                              'sorgente_tipo_id', p_sorgente_tipo_id,
+                              'sorgente_uid',     p_sorgente_uid
+                          ),
+                          NULL,
+                          COALESCE(p_sorgente_tipo_id::text, 'NULL'),
+                          COALESCE(p_sorgente_uid, 'NULL')
+                      );
+                  END IF;
+
+                  -- ⭐ La chiave si cerca nel suo TIPO, non come testo (rev 2026-10-05).
+                  --   Il confronto sulla colonna testuale sorgente_uid (uid::text, id::text)
+                  --   sotto RLS non arriva mai all'indice — uuid_out e int8out non sono
+                  --   leakproof — e cercare UN documento scandiva per intero tutte le
+                  --   tabelle-documento. uuid_eq e int8eq sono leakproof: Index Cond sulla
+                  --   chiave del ramo, e il ramo dell'altro tipo ha la colonna a NULL
+                  --   costante e il planner lo scarta.
+                  --   ⚠️ Equivalenza col confronto testuale: si accetta solo la forma
+                  --   CANONICA (quella che uid::text / id::text producono). Senza il
+                  --   ritorno al testo, 'ABC…' maiuscolo o '007' troverebbero un documento
+                  --   che il confronto testuale non trovava.
+                  --   ⚠️ pg_input_is_valid prima del cast: un uid malformato deve dare la
+                  --   sentinella, come prima, non un errore 22P02.
+                  IF pg_input_is_valid(p_sorgente_uid, 'uuid') THEN
+                      v_chiave_uuid := p_sorgente_uid::uuid;
+                      IF v_chiave_uuid::text <> p_sorgente_uid THEN
+                          v_chiave_uuid := NULL;
+                      END IF;
+                  ELSIF pg_input_is_valid(p_sorgente_uid, 'bigint') THEN
+                      v_chiave_id := p_sorgente_uid::bigint;
+                      IF v_chiave_id::text <> p_sorgente_uid THEN
+                          v_chiave_id := NULL;
+                      END IF;
+                  END IF;
+
+                  -- Due letture statiche, una per specie di chiave: una stringa non e'
+                  -- mai insieme un uuid e un intero, quindi al piu' una delle due gira.
+                  -- Una chiave in nessuna delle due forme non puo' coincidere con nessun
+                  -- ramo: si va diritti alla sentinella.
+                  IF v_chiave_uuid IS NOT NULL THEN
+                      RETURN QUERY
+                      SELECT
+                          v.sorgente_tipo_id,
+                          v.sorgente_uid,
+                          v.risolto,
+                          v.stato_codice_interno,
+                          v.stato_codice,
+                          v.stato_descrizione,
+                          v.fase,
+                          v.esito,
+                          v.terminale
+                        FROM script.vw_stato_sorgente v
+                       WHERE v.sorgente_tipo_id     = p_sorgente_tipo_id
+                         AND v.sorgente_chiave_uuid = v_chiave_uuid;
+                  ELSIF v_chiave_id IS NOT NULL THEN
+                      RETURN QUERY
+                      SELECT
+                          v.sorgente_tipo_id,
+                          v.sorgente_uid,
+                          v.risolto,
+                          v.stato_codice_interno,
+                          v.stato_codice,
+                          v.stato_descrizione,
+                          v.fase,
+                          v.esito,
+                          v.terminale
+                        FROM script.vw_stato_sorgente v
+                       WHERE v.sorgente_tipo_id   = p_sorgente_tipo_id
+                         AND v.sorgente_chiave_id = v_chiave_id;
+                  END IF;
+
+                  -- Degrado con grazia: tipo senza resolver o documento non
+                  -- trovato -> sentinella UNKNOWN (risolto=false). fase=APERTO
+                  -- e' il default di routing; il consumer usa `risolto` per il
+                  -- fallback UI (milestone manuale come oggi).
+                  -- ⚠️ FOUND riflette l'ultimo RETURN QUERY eseguito; se non ne e' girato
+                  --   nessuno e' ancora false dall'ingresso nella funzione.
+                  IF NOT FOUND THEN
+                      RETURN QUERY
+                      SELECT
+                          p_sorgente_tipo_id,
+                          p_sorgente_uid,
+                          false,
+                          'UNKNOWN'::text,
+                          'UNKNOWN'::text,
+                          'n/d'::text,
+                          'APERTO'::text,
+                          NULL::text,
+                          false;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_preventivo IS
+                  'Resolver di dominio D2 (brief-db-proiezione-stato-dominio): descrittore normalizzato dello stato vivo di ogni preventivo — stato nativo (alias fedeli) + fase/esito/terminale dichiarati su config.stati_doc_preventivi. Chiave (sorgente_tipo_id, sorgente_uid) coerente con pratiche.pratiche_sorgenti (key_selector=uid); al piu'' una riga per chiave. Read-time (nessun mirror); fotografa lo stato MEMORIZZATO: la transizione EMESSO->SCADUTO e'' asincrona (job notturno). Consumata dal motore solo via script.vw_stato_sorgente. ⭐ rev 2026-10-05 (20261005-23): espone in coda la chiave nel suo tipo — sorgente_chiave_uuid = uid (uuid), sorgente_chiave_id NULL — accanto alla forma testuale sorgente_uid, che resta la chiave del lineage e delle join. Serve a chi cerca UN documento: sotto RLS il confronto sul testo non arriva all''indice (uuid_out non e'' leakproof), quello sull''uuid si''.';
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_offerta IS
+                  'Resolver di dominio D2 (brief-db-proiezione-stato-dominio roll-out): descrittore normalizzato dello stato vivo di ogni offerta commerciale — stato nativo (alias fedeli) + fase/esito/terminale dichiarati su config.stati_doc_offerte. Chiave (sorgente_tipo_id, sorgente_uid) coerente con pratiche_sorgenti (key_selector=uid); al piu'' una riga per chiave. Read-time (nessun mirror). Consumata dal motore solo via script.vw_stato_sorgente. ⭐ rev 2026-10-05 (20261005-23): espone in coda la chiave nel suo tipo — sorgente_chiave_uuid = uid (uuid), sorgente_chiave_id NULL — accanto alla forma testuale sorgente_uid, che resta la chiave del lineage e delle join. Serve a chi cerca UN documento: sotto RLS il confronto sul testo non arriva all''indice (uuid_out non e'' leakproof), quello sull''uuid si''.';
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_ordine IS
+                  'Resolver di dominio D2 (brief-db-proiezione-stato-dominio roll-out): descrittore normalizzato dello stato vivo di ogni ordine di VENDITA — stato nativo (alias fedeli) + fase/esito/terminale da config.stati_doc_ordini (mappa centrata sul ciclo di vendita). Chiave (sorgente_tipo_id, sorgente_uid) con sorgente_uid=(id)::text (key_selector=id); al piu'' una riga per chiave. Read-time. Consumata dal motore solo via script.vw_stato_sorgente. ⭐ rev 2026-10-05 (20261005-23): espone in coda la chiave nel suo tipo — sorgente_chiave_id = id (bigint), sorgente_chiave_uuid NULL — accanto alla forma testuale sorgente_uid, che resta la chiave del lineage e delle join. Serve a chi cerca UN documento: sotto RLS il confronto sul testo non arriva all''indice (int8out non e'' leakproof), quello sul bigint si''.';
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_contratto IS
+                  'Resolver di dominio D2 (brief-db-proiezione-stato-dominio roll-out): descrittore normalizzato dello stato vivo di ogni contratto — stato nativo (alias fedeli) + fase/esito/terminale da config.stati_doc_contratti. Chiave (sorgente_tipo_id, sorgente_uid) con sorgente_uid=(id)::text (key_selector=id); al piu'' una riga per chiave. Read-time. Consumata dal motore solo via script.vw_stato_sorgente. ⭐ rev 2026-10-05 (20261005-23): espone in coda la chiave nel suo tipo — sorgente_chiave_id = id (bigint), sorgente_chiave_uuid NULL — accanto alla forma testuale sorgente_uid, che resta la chiave del lineage e delle join. Serve a chi cerca UN documento: sotto RLS il confronto sul testo non arriva all''indice (int8out non e'' leakproof), quello sul bigint si''.';
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_ddt IS
+                  'Quinto ramo della proiezione di stato (brief-db-fatturazione-ddt-resi §4a, step 6b): traduce lo stato del DDT nel vocabolario comune della sorgente polimorfa. Chiave = ddt.id::text, come dichiara config.sorgenti.key_selector per DDT_VENDITA (NON l''uid: quello e'' la colonna tipizzata diretta resi.sorgente_uid, meccanismo diverso). esito e terminale sono DERIVATI, perche'' config.stati_doc_ddt non li espone: is_abortito -> NEGATIVO, fase CHIUSO non abortito -> POSITIVO, altrimenti NULL; terminale = fase CHIUSO. Conseguenza voluta: lo stato RESO risulta POSITIVO/terminale, perche'' il catalogo lo dichiara non abortito (merce tornata != documento annullato). Cambiare quella semantica e'' materia di CATALOGO, non di questa vista. rev 2026-07-18. ⭐ rev 2026-10-05 (20261005-23): espone in coda la chiave nel suo tipo — sorgente_chiave_id = id (bigint), sorgente_chiave_uuid NULL — accanto alla forma testuale sorgente_uid, che resta la chiave del lineage e delle join. Serve a chi cerca UN documento: sotto RLS il confronto sul testo non arriva all''indice (int8out non e'' leakproof), quello sul bigint si''.';
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_reso IS
+                  'Sesto ramo della proiezione di stato (brief-db-fatturazione-ddt-resi §4a, step 6b): traduce lo stato del reso nel vocabolario comune della sorgente polimorfa. Chiave = resi.id::text (config.sorgenti.key_selector = id per RESO_VENDITA). esito/terminale derivati come nel ramo DDT: is_abortito -> NEGATIVO (ANNULLATO), fase CHIUSO non abortito -> POSITIVO, altrimenti NULL. Dal 2026-07-18 il catalogo dichiara CONFERMATO fase CHIUSO (correzione Tid: un reso confermato E'' concluso — la ri-consegna e'' un altro documento) -> un reso confermato proietta POSITIVO/terminale. La matrice ammette ancora CONFERMATO->ANNULLATO come storno guardato: terminale = conclusione commerciale, non lucchetto. rev 2026-07-18. ⭐ rev 2026-10-05 (20261005-23): espone in coda la chiave nel suo tipo — sorgente_chiave_id = id (bigint), sorgente_chiave_uuid NULL — accanto alla forma testuale sorgente_uid, che resta la chiave del lineage e delle join. Serve a chi cerca UN documento: sotto RLS il confronto sul testo non arriva all''indice (int8out non e'' leakproof), quello sul bigint si''.';
+
+              COMMENT ON VIEW script.vw_stato_sorgente IS
+                  'Traduttore di stato per la sorgente polimorfa: dato (sorgente_tipo_id, sorgente_uid) restituisce lo stato del documento nel vocabolario comune (fase/esito/terminale). SEI rami dal 2026-07-18 (step 6b, brief-db-fatturazione-ddt-resi §4a): preventivo, offerta, ordine, contratto, DDT, reso — tutti i tipi documento registrati hanno ora un ramo. La chiave sorgente_uid segue config.sorgenti.key_selector (uid per preventivo/offerta, id::text per gli altri): vedi config/manual/sorgenti.md §Convenzione chiave sorgente. risolto = true sempre: l''assenza di riga E'' il "non risolto". ⭐ rev 2026-10-05 (20261005-23): due colonne in coda, la chiave nel suo tipo — sorgente_chiave_uuid (rami a key_selector uid) e sorgente_chiave_id (rami a key_selector id); in ogni riga una sola e'' valorizzata e coincide con sorgente_uid. Le legge pratiche.fn_stato_sorgente: sotto RLS il confronto su sorgente_uid (uid::text, id::text) non arriva mai all''indice, perche'' uuid_out e int8out non sono leakproof, e cercare UN documento scandiva per intero tutte e sei le tabelle; sulla chiave nativa ogni ramo fa un Index Cond e quello dell''altra specie, con la colonna a NULL costante, il planner lo scarta. Un ramo nuovo deve valorizzare la sua colonna, o fn_stato_sorgente non lo trova (pgTAP: test-vw-stato-sorgente-ddt-reso-v1 test 12).';
+
+              COMMENT ON FUNCTION pratiche.fn_stato_sorgente(config.sorgenti.id%TYPE, pratiche.pratiche_sorgenti.sorgente_uid%TYPE) IS
+                  'API di motore per il descrittore normalizzato dello stato del documento sorgente (D3, brief-db-proiezione-stato-dominio). Sempre esattamente 1 riga: proiezione da script.vw_stato_sorgente (risolto=true) oppure sentinella UNKNOWN (risolto=false, fase APERTO, esito NULL, terminale false) senza errore — un tipo senza resolver degrada al comportamento manuale odierno. Guard parametri: E_STATO_SORGENTE_PARAM_INVALIDO su tipo NULL/<=0 o uid vuoto. Per le liste joinare direttamente script.vw_stato_sorgente (niente N+1). rev 2026-07-01. ⭐ rev 2026-10-05 (20261005-23): cerca la chiave nel suo TIPO (sorgente_chiave_uuid / sorgente_chiave_id della union), non come testo. Il confronto testuale sotto RLS non arriva all''indice e per un documento solo leggeva per intero tutte le tabelle-documento (dbdev come applicazione, 2026-10-05: 391 chiamate 3,6 s -> 0,05 s). Stessi risultati del confronto testuale: si accetta solo la forma CANONICA (quella che uid::text / id::text producono — un uid maiuscolo o un id con zeri davanti restano UNKNOWN come prima), e una chiave che non e'' ne'' un uuid ne'' un intero da'' la sentinella senza errore (pg_input_is_valid prima del cast).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le colonne in coda non si tolgono con CREATE OR REPLACE: servirebbe un
+              -- DROP CASCADE delle viste. Il corpo precedente della funzione e' in
+              -- 20260701-18.
+              SELECT 1;

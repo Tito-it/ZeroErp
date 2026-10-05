@@ -236,6 +236,14 @@ BEGIN
 END;
 $f$;
 
+-- ⚠️ CREATE/DROP TRIGGER prendono un lock su vendite.preventivi (il DROP
+--   ACCESS EXCLUSIVE) tenuto fino al ROLLBACK. Se un'altra sessione ha una
+--   transazione aperta che ha letto o scritto preventivi, il test resterebbe
+--   in attesa fino al timeout del runner — e intanto metterebbe in coda dietro
+--   di se' chiunque usi la tabella, app compresa. Con lock_timeout l'attesa
+--   diventa un errore immediato e leggibile («lock timeout»), non uno stallo.
+SET LOCAL lock_timeout = '5s';
+
 CREATE TRIGGER zzz_pgtap_fail_evaso
     BEFORE UPDATE ON vendite.preventivi
     FOR EACH ROW EXECUTE FUNCTION pg_temp.pgtap_fail_evaso();
@@ -248,6 +256,7 @@ SELECT throws_ok(
 );
 
 DROP TRIGGER zzz_pgtap_fail_evaso ON vendite.preventivi;
+RESET lock_timeout;
 
 SELECT is(
   (SELECT count(*) FROM vendite.ordini o
@@ -270,32 +279,43 @@ SELECT is(
 --   una promessa.
 --   ⚠️ Nella frase resta l'id numerico, ed e' voluto: due canali, due lettori.
 --   Brief: brief-db-bersaglio-errore §6 L6.
+--   ⚠️ CORRETTO IL 2026-10-05: il test 11 passava `-1`, che si ferma al guard
+--   d'ingresso (p_preventivo_id <= 0 -> E_VALIDAZIONE, senza bersaglio) e non
+--   arriva mai al ramo «preventivo che non esiste»: verde per il motivo
+--   sbagliato. Ora usa un id positivo che nessuna identity raggiunge, e
+--   ciascun test asserisce anche il CODICE, cosi' un rifiuto da un altro
+--   ramo non puo' piu' farlo passare.
 -- ============================================================
 CREATE OR REPLACE FUNCTION pg_temp.push_prev_bersaglio(p_prev_id bigint)
 RETURNS text AS $fn$
--- ⚠️ `text` esplicito: e' un canale dell'eccezione, non il valore di una colonna.
-DECLARE v_bers text;
+-- ⚠️ `text` esplicito: sono due canali dell'eccezione (codice | bersaglio),
+--   non il valore di una colonna.
+DECLARE v_codice text;
+        v_bers   text;
 BEGIN
   PERFORM vendite.fn_push_preventivo_a_ordine(p_prev_id);
   RETURN 'NESSUN ERRORE';
 EXCEPTION WHEN OTHERS THEN
-  GET STACKED DIAGNOSTICS v_bers = PG_DATATYPE_NAME;
-  RETURN COALESCE(v_bers, '');
+  GET STACKED DIAGNOSTICS v_codice = CONSTRAINT_NAME,
+                          v_bers   = PG_DATATYPE_NAME;
+  RETURN COALESCE(v_codice, '') || '|' || COALESCE(v_bers, '');
 END $fn$ LANGUAGE plpgsql;
 
 CREATE TEMP TABLE tmp_prev_bersaglio AS
 SELECT pg_temp.push_prev_bersaglio((SELECT id FROM tmp_prev_draft))     AS esistente,
-       pg_temp.push_prev_bersaglio(-1::bigint)                          AS inesistente;
+       -- bigint massimo: positivo (supera il guard d'ingresso) e mai assegnato.
+       pg_temp.push_prev_bersaglio(9223372036854775807::bigint)         AS inesistente;
 
 SELECT is(
   (SELECT esistente FROM tmp_prev_bersaglio),
-  'PREVENTIVO:' || (SELECT id FROM tmp_prev_draft)::text,
+  'E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO|PREVENTIVO:'
+    || (SELECT id FROM tmp_prev_draft)::text,
   '10) il rifiuto porta il bersaglio sul preventivo, e lo cita per ID (non uid)'
 );
 
 SELECT is(
   (SELECT inesistente FROM tmp_prev_bersaglio),
-  '',
+  'E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO|',
   '11) preventivo inesistente: il messaggio esce, il bersaglio no'
 );
 

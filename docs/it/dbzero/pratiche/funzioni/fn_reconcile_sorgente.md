@@ -41,6 +41,22 @@ BEGIN
       NULL::uuid,'p_sorgente_uid obbligatorio');
   END IF;
 
+  -- Nessun aggancio pratica<->documento -> niente da riconciliare.
+  -- ⭐ PRIMA dell'esito (rev 2026-10-05): senza agganci il ciclo
+  --   qui sotto non gira e il risultato e' 0 qualunque sia l'esito,
+  --   mentre fn_stato_sorgente legge script.vw_stato_sorgente, che
+  --   per UN documento scandisce tutte le tabelle-documento sotto
+  --   RLS. Stessa RLS del ciclo: «nessun aggancio visibile» e'
+  --   esattamente la condizione per cui il ciclo era vuoto.
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pratiche.pratiche_sorgenti ps
+     WHERE ps.sorgente_tipo_id = p_sorgente_tipo_id
+       AND ps.sorgente_uid = p_sorgente_uid
+  ) THEN
+    RETURN 0;
+  END IF;
+
   -- Descrittore normalizzato: esito e' SEMPRE un verdetto o NULL.
   SELECT d.esito INTO v_esito
     FROM pratiche.fn_stato_sorgente(p_sorgente_tipo_id, p_sorgente_uid) d;
@@ -147,7 +163,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_reconcile_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text)
-IS 'GUIDA D4/G3a: motore di avanzamento milestone su esito proiettato. Se il documento (tipo, uid) proietta un verdetto (fn_stato_sorgente.esito), completa i milestone in attesa (template_flussi.attende_sorgente_tipo_id + binding template_flussi_avanzamento_proiezione), a due salti (D-B2), idempotente sui non-terminali (D-B11). Tie-break multi-istanza via pratiche_sorgenti.flusso_id (D-B5) applicato SOLO se il flusso linkato attende esso stesso il tipo (v_link_usabile): un link ancorato al flusso d''ORIGINE non esclude piu'' il milestone in attesa. INVOKER (D-B4). Ritorna il numero di milestone avanzati.';
+IS 'GUIDA D4/G3a: motore di avanzamento milestone su esito proiettato. Se il documento (tipo, uid) proietta un verdetto (fn_stato_sorgente.esito), completa i milestone in attesa (template_flussi.attende_sorgente_tipo_id + binding template_flussi_avanzamento_proiezione), a due salti (D-B2), idempotente sui non-terminali (D-B11). Tie-break multi-istanza via pratiche_sorgenti.flusso_id (D-B5) applicato SOLO se il flusso linkato attende esso stesso il tipo (v_link_usabile): un link ancorato al flusso d''ORIGINE non esclude piu'' il milestone in attesa. INVOKER (D-B4). Ritorna il numero di milestone avanzati. ⭐ rev 2026-10-05 (20261005-22): se il documento non e'' agganciato a nessuna pratica (nessuna riga visibile di pratiche_sorgenti su tipo e uid) esce con 0 PRIMA di calcolarne l''esito. Stesso risultato di prima — senza agganci il ciclo non girava — ma il trigger AFTER UPDATE di stato sui documenti smette di pagare fn_stato_sorgente, che per un documento solo legge tutte le tabelle-documento sotto RLS (dbdev come applicazione, 2026-10-05: ~15 ms contro 0,16 ms dell''EXISTS su ix_pratiche_sorgenti_tipo_uid).';
 ```
 
 ---
