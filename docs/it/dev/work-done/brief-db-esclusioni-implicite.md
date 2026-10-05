@@ -155,6 +155,15 @@ pgTAP:
 Gli altri pgTAP che svuotano l'utente (22, censiti) si aspettano già un rifiuto o zero righe,
 oppure girano da owner, oppure leggono funzioni che non toccano `billing_account`.
 
+⚠️ **Sfuggita al censo, girata il 2026-10-05**: `rls/test-rls-event-log-ef-whitelist-write`
+(test 5) pinnava «utente vuoto = riga visibile» ed è diventata rossa dopo l'apply. Gira da owner,
+ma con `FORCE ROW LEVEL SECURITY` locale alla transazione: «gira da owner» non la esentava, perché
+la policy la subisce come l'applicazione. Ora si aspetta zero righe. Riletti gli altri otto file
+`rls/` che accendono `FORCE` e svuotano l'utente: lo fanno per pulire il contesto o con un'altra
+veste (SHOP, CLIENTE_PORTALE), e non asseriscono la visibilità con utente vuoto. In
+`rls/test-rls-pagamenti-perimetro` è stato allineato un commento che descriveva ancora la regola
+vecchia; la sua asserzione (test 14) verifica il ruolo e resta valida.
+
 ## 4. Q-2 — Le GUC di bypass legate al proprietario ⏳ rimandata (Tid, 2026-10-04)
 
 ### 4.1 In parole semplici

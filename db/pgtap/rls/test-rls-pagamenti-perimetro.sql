@@ -466,9 +466,10 @@ SELECT throws_like(
 -- ============================================================
 -- 14. Il cancello e' `app.ruolo_applicativo`
 -- ============================================================
--- ⚠️ NON si svuota `app.current_user_id`: quello non e' fail-closed — con
---    l'utente nullo le funzioni di scope rispondono come per un job batch. Il
---    cancello vero e' il ruolo applicativo, ed e' li' che si verifica.
+-- Qui si verifica il cancello del RUOLO. (Dal changeSet 20261004-82 chiude
+--    anche l'utente vuoto: le funzioni di scope rispondono false con l'utente
+--    NULL — brief-db-esclusioni-implicite, Q-1. Prima quel caso era «job
+--    batch, nessun filtro», ed e' per questo che il test non lo usava.)
 SELECT set_config('app.ruolo_applicativo', '', false);
 
 SELECT is(

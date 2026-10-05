@@ -20,7 +20,11 @@ Collega la ROOT source a una commessa in modo idempotente e coerente.
   * tipo a chiave `id` + valore uuid → **tradotto** in `id::text` via
     `target_table.uid` (i chiamanti storici BE restano intatti); se il target
     non ha colonna `uid` o l'uuid non risolve → `E_SORG_NORM_NON_RISOLTA` (547);
-  * formato non conforme al selector → `E_SORG_FORMATO` (546);
+  * formato non conforme al selector → `E_SORG_FORMATO` (546). Dal 2026-10-05 vale la
+    **forma canonica** (`id::text`, `uid::text` minuscolo), con la stessa regola del guard
+    ([script.fn_sorgente_chiave_id](/dbzero/script/funzioni/fn_sorgente_chiave_id) /
+    [_uuid](/dbzero/script/funzioni/fn_sorgente_chiave_uuid)). Gli spazi attorno alla chiave
+    il rubinetto li toglie da sé, prima del controllo;
   * tipo non censito/non attivo → `E_SORG_CONF`.
 * A valle, il guard `trgfn_guard_sorgente_polimorfa_testuale` sulla tabella
   ri-valida formato ed esistenza (difesa in profondita' per i writer che

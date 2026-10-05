@@ -95,7 +95,12 @@ BEGIN
             END IF;
 
             v_uid := v_norm;
-        ELSIF v_uid !~ '^[0-9]+$' THEN
+        -- ⭐ rev 2026-10-05 (20261005-25): forma CANONICA (id::text), con lo
+        --   stesso building block del guard e dei lettori. Prima '^[0-9]+$'
+        --   lasciava passare '007': chiave che esiste, ma che nessun lettore
+        --   risolve. v_uid e' gia' senza spazi (btrim in testa, normalizzazione
+        --   dichiarata di questo rubinetto).
+        ELSIF script.fn_sorgente_chiave_id(v_uid) IS NULL THEN
             PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_FORMATO',
                 jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
                                    'sorgente_uid', v_uid,
@@ -103,7 +108,10 @@ BEGIN
                 NULL::uuid, concat('atteso id numerico in testo, ricevuto ', v_uid));
         END IF;
     ELSIF v_selector = 'uid' THEN
-        IF v_uid !~ c_uuid_re THEN
+        -- ⭐ rev 2026-10-05 (20261005-25): forma CANONICA (uuid::text,
+        --   minuscolo). La regex accettava le maiuscole, e la chiave salvata
+        --   cosi' non la ritrova nessun lettore.
+        IF script.fn_sorgente_chiave_uuid(v_uid) IS NULL THEN
             PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_FORMATO',
                 jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
                                    'sorgente_uid', v_uid,
@@ -191,7 +199,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_sorgente_riga bigint, p_meta jsonb)
-IS 'Collega una sorgente a una commessa in modo idempotente decidendo il ruolo: prima sorgente -> ROOT, successive -> COLLEGATO (commessa multi-sorgente, aggregazione del fatturabile). NORMALIZZA la chiave secondo config.sorgenti.key_selector prima di idempotenza e insert (id -> id::text, traducendo l''uuid dei chiamanti storici via target_table.uid; uid -> uuid testuale); formato non conforme o uuid non risolvibile -> E_SORG_FORMATO / E_SORG_NORM_NON_RISOLTA. Una sorgente appartiene a una sola commessa (uq_commesse_sorgenti_src_uid): se gia su altra commessa solleva E_COMMESSA_SORGENTE_ALTRA_COMMESSA. Lock su vendite.commesse serializza la decisione del ruolo. rev 2026-07-18 (brief-db-guard-sorgente-polimorfa §2a).';
+IS 'Collega una sorgente a una commessa in modo idempotente decidendo il ruolo: prima sorgente -> ROOT, successive -> COLLEGATO (commessa multi-sorgente, aggregazione del fatturabile). NORMALIZZA la chiave secondo config.sorgenti.key_selector prima di idempotenza e insert (id -> id::text, traducendo l''uuid dei chiamanti storici via target_table.uid; uid -> uuid testuale); formato non conforme o uuid non risolvibile -> E_SORG_FORMATO / E_SORG_NORM_NON_RISOLTA. Una sorgente appartiene a una sola commessa (uq_commesse_sorgenti_src_uid): se gia su altra commessa solleva E_COMMESSA_SORGENTE_ALTRA_COMMESSA. Lock su vendite.commesse serializza la decisione del ruolo. rev 2026-07-18 (brief-db-guard-sorgente-polimorfa §2a). ⭐ rev 2026-10-05 (20261005-25): i due controlli di formato finali chiedono la FORMA CANONICA con i building block script.fn_sorgente_chiave_id / _uuid, gli stessi del guard trgfn_guard_sorgente_polimorfa_testuale: prima ''^[0-9]+$'' accettava ''007'' e la regex uuid le maiuscole. Restano le normalizzazioni dichiarate del rubinetto: btrim della chiave e traduzione uuid -> id::text per i tipi a chiave id (il risultato e'' gia'' canonico).';
 ```
 
 ---

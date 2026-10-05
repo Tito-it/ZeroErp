@@ -51,13 +51,22 @@ brief: eventuale verifica in fase 2 via colonna `target_righe_table` in config).
 2. Legge `target_table` + `key_selector` da `config.sorgenti` (solo `attivo=true`);
    mancanti → `E_SORG_CONF`.
 3. `btrim(NEW.sorgente_uid)` vuota/NULL → `E_SORG_KEY_MISSING`.
-4. **Formato** secondo il selector:
-   * `id`: la chiave deve essere testo numerico (`^[0-9]+$`) → altrimenti
-     `E_SORG_FORMATO` (546);
-   * `uid`: la chiave deve essere un uuid → altrimenti `E_SORG_FORMATO` (546);
+4. **Formato** secondo il selector, sul valore **così come verrà salvato** e in **forma
+   canonica** (dal 2026-10-05):
+   * `id`: la chiave deve essere un intero scritto come `id::text` — niente zeri davanti,
+     spazi, segno → altrimenti `E_SORG_FORMATO` (546);
+   * `uid`: la chiave deve essere un uuid scritto come `uid::text` — minuscolo, con i
+     trattini → altrimenti `E_SORG_FORMATO` (546);
    * selector fuori catalogo → `E_SORG_KEYSEL`.
+
+   Il controllo usa i building block
+   [script.fn_sorgente_chiave_id](/dbzero/script/funzioni/fn_sorgente_chiave_id) /
+   [script.fn_sorgente_chiave_uuid](/dbzero/script/funzioni/fn_sorgente_chiave_uuid): la stessa
+   regola con cui la chiave viene poi **cercata**. Prima il guard accettava `'007'`, `' 42 '` o un
+   uuid maiuscolo: il documento esisteva, ma la chiave salvata non veniva mai ritrovata da chi
+   legge lo stato o il lineage. Il guard **rifiuta**, non corregge.
 5. **Esistenza**: probe `SELECT 1 FROM <target_table> WHERE id|uid = $1`
-   (regclass + bind, cast dal testo) → non trovata → `E_SORG_NOT_FOUND`.
+   (regclass + bind, con la chiave già convertita) → non trovata → `E_SORG_NOT_FOUND`.
 
 ### 🚨 Codici errore
 

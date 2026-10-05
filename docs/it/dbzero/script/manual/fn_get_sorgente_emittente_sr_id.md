@@ -102,6 +102,12 @@ la seconda forma.
 Dedurla da chi chiama, invece che dal catalogo, produce una funzione che non
 trova mai niente. In silenzio.
 
+«Canonica» vuol dire anche **scritta come la scrive il database** (dal 2026-10-05): una
+chiave con maiuscole, zeri davanti o spazi riceve `E_SORG_FORMATO`. La regola è quella dei
+building block [script.fn_sorgente_chiave_id](/dbzero/script/funzioni/fn_sorgente_chiave_id) /
+[script.fn_sorgente_chiave_uuid](/dbzero/script/funzioni/fn_sorgente_chiave_uuid), la stessa del
+guard della sorgente polimorfa.
+
 ---
 
 ### Impatto e Vantaggi

@@ -8,13 +8,15 @@
 --   vendite.fn_check_commessa_sorgente_emittente_omogeneo()   (20260826-44)
 --   vendite.trgfn_commesse_sorgenti_guard_emittente()         (20260826-45)
 --
--- Elenco test (plan 6):
+-- Elenco test (plan 7):
 --  1) Precondizioni: BA dell'operatore + sorgente COMMESSA a catalogo
 --  2) Il risolutore risponde l'emittente giusto
 --  3) Il risolutore e' FAIL-CLOSED su una chiave che non risolve
 --  4) Il check risponde true per una sorgente dello stesso billing account
 --  5) Il collegamento reale passa (via vendite.fn_link_commessa_sorgente)
 --  6) ⭐ Il guard nuovo scatta DOPO il guard polimorfo
+--  7) Il risolutore chiede la chiave in forma CANONICA: l'id della commessa
+--     con zeri davanti -> E_SORG_FORMATO (rev 2026-10-05, 20261005-26)
 --
 -- Scopo:
 --  - la sorgente si fabbrica con il tipo COMMESSA (target vendite.commesse,
@@ -52,7 +54,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(6);
+SELECT plan(7);
 
 -- =========================================================
 -- 0) Riferimenti
@@ -173,6 +175,35 @@ SELECT ok(
     AND 'trg_commesse_sorgenti_a10_guard_sorgente_ins_upd'
       < 'trg_commesse_sorgenti_a10_guard_sorgente_omogeneita_ins_upd',
     'Il guard di omogeneita'' scatta DOPO quello che verifica l''esistenza del documento'
+);
+
+
+-- =========================================================
+-- 7) La chiave si chiede in FORMA CANONICA (20261005-26)
+-- =========================================================
+-- Il commento della funzione diceva gia' «chiave CANONICA», ma la regex
+-- '^[0-9]+$' accettava '007': la stessa commessa del test 2, con zeri
+-- davanti, rispondeva il suo emittente. Ora la regola e' quella del guard
+-- e del rubinetto (script.fn_sorgente_chiave_id). Si asserisce il CODICE.
+CREATE OR REPLACE FUNCTION pg_temp.codice_errore_emitt(p_sql text)
+RETURNS text AS $fn$
+-- ⚠️ `text` esplicito: e' il canale CONSTRAINT dell'eccezione, non una colonna.
+DECLARE v_codice text;
+BEGIN
+  EXECUTE p_sql;
+  RETURN 'NESSUN ERRORE';
+EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS v_codice = CONSTRAINT_NAME;
+  RETURN COALESCE(NULLIF(v_codice, ''), SQLSTATE);
+END $fn$ LANGUAGE plpgsql;
+
+SELECT is(
+    pg_temp.codice_errore_emitt(format(
+        $q$SELECT script.fn_get_sorgente_emittente_sr_id(%s, %L)$q$,
+        (SELECT sorgente_tipo_id FROM tmp_refs_sorg_emitt),
+        '0' || (SELECT root_id FROM tmp_ids_sorg_emitt)::text)),
+    'E_SORG_FORMATO',
+    'Il risolutore rifiuta la chiave non canonica (zeri davanti) con E_SORG_FORMATO'
 );
 
 SELECT * FROM finish();
