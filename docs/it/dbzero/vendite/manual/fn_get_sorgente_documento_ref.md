@@ -38,10 +38,17 @@ nuovo. La funzione legge la destinazione **dal catalogo**.
 
 ### Perché una sola funzione e non due
 
-La risoluzione della chiave (regex uuid, lettura di `target_table`,
-`key_selector`) è **identica** per l'id e per il numero. Due funzioni gemelle
+La risoluzione della chiave (riconoscere se è un uuid o un id, lettura di
+`target_table`, `key_selector`) è **identica** per l'id e per il numero. Due funzioni gemelle
 vorrebbero **due `EXECUTE` per riga di lista** e **due copie della stessa
 regola**: la copia sopravvissuta è quella che al primo ritocco diverge.
+
+Dal 2026-10-05 la chiave si riconosce con i building block
+[script.fn_sorgente_chiave_uuid](/dbzero/script/funzioni/fn_sorgente_chiave_uuid) /
+[script.fn_sorgente_chiave_id](/dbzero/script/funzioni/fn_sorgente_chiave_id): la stessa regola
+di chi la salva e di chi ne legge lo stato. Una chiave scritta in una forma diversa da quella
+del database (maiuscole, zeri davanti, spazi) **non si risolve**, come non si risolve altrove;
+e un numero troppo grande non fa più fallire la lista: la riga resta semplicemente vuota.
 
 ---
 

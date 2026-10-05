@@ -1,0 +1,459 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CHIAVE DI UNA SORGENTE POLIMORFA SI SALVA IN FORMA CANONICA
+#   script.trgfn_guard_sorgente_polimorfa_testuale (guard di pratiche_sorgenti
+#   e commesse_sorgenti) e vendite.fn_link_commessa_sorgente (rubinetto delle
+#   commesse). Seguito di 20261005-23/-24 su richiesta di Tid (2026-10-05).
+#   Nessun brief, su indicazione di Tid.
+#
+# -- IL DIFETTO ----------------------------------------------------------
+#   Il guard controllava btrim(NEW.sorgente_uid) con regex larghe
+#   ('^[0-9]+$', uuid con maiuscole) e lasciava salvare il valore NON ripulito.
+#   Passavano quindi '007', ' 42 ', un uuid maiuscolo: il documento esiste, la
+#   verifica di esistenza (cast) lo trova, ma la chiave salvata non coincide con
+#   id::text / uid::text e nessun lettore la ritrova mai (fn_stato_sorgente,
+#   vw_pratica_doc_sorgente, il lineage che confronta il testo). Il rubinetto
+#   fn_link_commessa_sorgente aveva una sua copia delle stesse regex.
+#
+# -- LA CURA -------------------------------------------------------------
+#   Guard e rubinetto chiedono la FORMA CANONICA con i building block del
+#   20261005-24 (script.fn_sorgente_chiave_id / _uuid): la regola con cui la
+#   chiave si salva e' la stessa con cui si cerca. Il guard controlla il valore
+#   che verra' SALVATO (NEW.sorgente_uid), e la verifica di esistenza usa la
+#   chiave gia' convertita (niente cast che possa esplodere: un id fuori range
+#   oggi da' E_SORG_FORMATO invece di un 22003).
+#   Il guard RIFIUTA, non normalizza: un guard non riscrive in silenzio il dato
+#   di chi chiama (linee-guida-sql §5). Il rubinetto mantiene le sue
+#   normalizzazioni dichiarate (btrim, traduzione uuid -> id::text per i tipi a
+#   chiave id), che producono gia' la forma canonica.
+#
+# -- RICADUTE ------------------------------------------------------------
+#   * Il trigger e' scritto a mano (20260718-18/-19), non generato da ci_apply:
+#     basta CREATE OR REPLACE della funzione (§11.5 non coinvolto).
+#   * Scatta su INSERT e UPDATE OF sorgente_tipo_id, sorgente_uid: una riga
+#     esistente non canonica non blocca le scritture sulle altre colonne.
+#     Fatto datato (dbdev come applicazione, 2026-10-05): 0 righe non canoniche
+#     su 86 in pratiche_sorgenti e 0 su 88 in commesse_sorgenti visibili.
+#   * Scrittori interni (fn_push_preventivo_a_ordine, fn_genera_pratica_da_
+#     preventivo, fn_push_offerta_a_contratto) scrivono gia' uid::text /
+#     id::text. Il BE (pratiche_repository.upsert_pratica_sorgente) passa la
+#     chiave che riceve: una forma non canonica ora riceve E_SORG_FORMATO invece
+#     di diventare un collegamento che non si risolve mai. Da comunicare al BE.
+#   * Lettori tolleranti NON toccati (fn_get_sorgente_documento_ref,
+#     fn_get_sorgente_emittente_sr_id): leggono chiavi gia' salvate, che da qui
+#     in poi sono canoniche.
+#
+# -- PROVA (prima dell'apply, dbdev, come zeroerp_app, 2026-10-05) -------
+#   SQL estratto da questo file, con guard e rubinetto caricati come funzioni
+#   TEMP, e pgTAP script/test-guard-sorgente-polimorfa-testuale-v1 (24 casi;
+#   19-23 nuovi, rossi sui corpi vivi di prima).
+#
+# -- FORMA ---------------------------------------------------------------
+#   Corpi presi dal vivo (doc auto-gen = pg_proc, verificato), con le sole
+#   sezioni di formato sostituite. Firme invariate: nessun DROP. COMMENT: vivo
+#   piu' la revisione di oggi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261005-25-update-guard-sorgente-polimorfa-forma-canonica-mctit.yaml
+
+  - changeSet:
+      id: 20261005-25-update-guard-sorgente-polimorfa-forma-canonica
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard della sorgente polimorfa testuale e fn_link_commessa_sorgente chiedono la chiave in
+        forma canonica (building block script.fn_sorgente_chiave_id / _uuid): niente piu' '007',
+        ' 42 ' o uuid maiuscoli salvati come collegamenti che nessun lettore ritrova.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_sorgente_chiave_id', 'fn_sorgente_chiave_uuid');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_guard_sorgente_polimorfa_testuale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- =========================================================
+                -- Scopo:
+                --   Validare la sorgente polimorfa delle tabelle di
+                --   collegamento a chiave unica TESTUALE (MODELLO B:
+                --   pratiche_sorgenti, commesse_sorgenti): NEW.sorgente_uid
+                --   TEXT deve rispettare il formato dettato da
+                --   config.sorgenti.key_selector (id::text per 'id', uuid
+                --   testuale per 'uid') ed esistere nella target_table.
+                --   NEW.sorgente_riga qui NON e' una chiave documento e non
+                --   viene validata (grana di riga del link; D4 fase 2).
+                -- =========================================================
+                -- ⭐ rev 2026-10-05 (20261005-25): il formato si controlla sulla FORMA
+                --   CANONICA della chiave, con i building block script.fn_sorgente_chiave_*
+                --   — la stessa regola con cui la chiave si cerca (fn_stato_sorgente,
+                --   vw_pratica_doc_sorgente). Prima: regex permissiva (maiuscole, zeri
+                --   davanti) e controllo su btrim(NEW.sorgente_uid) mentre la riga salvava
+                --   il valore NON ripulito. Passavano '007', ' 42 ', un uuid maiuscolo:
+                --   chiavi che esistono ma che nessun lettore risolve mai.
+                v_tbl       regclass;
+                v_selector  text;
+                v_uid       text;
+                v_exists    boolean;
+                v_chiave_id   script.vw_stato_sorgente.sorgente_chiave_id%TYPE;
+                v_chiave_uuid script.vw_stato_sorgente.sorgente_chiave_uuid%TYPE;
+              BEGIN
+                -- Se non e' valorizzata la sorgente, nessuna verifica
+                IF NEW.sorgente_tipo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Recupero configurazione sorgente attiva
+                SELECT s.target_table, s.key_selector
+                  INTO v_tbl, v_selector
+                  FROM config.sorgenti s
+                 WHERE s.id = NEW.sorgente_tipo_id
+                   AND s.attivo = true;
+
+                IF v_tbl IS NULL OR v_selector IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.trgfn_guard_sorgente_polimorfa_testuale',
+                    'E_SORG_CONF',
+                    jsonb_build_object(
+                      'detail','Configurazione sorgente mancante/errata',
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'target_table', COALESCE(v_tbl::text,'<NULL>'),
+                      'key_selector', COALESCE(v_selector,'<NULL>')
+                    ),
+                    NULL::uuid,
+                    concat(NEW.sorgente_tipo_id::text,
+                      ' target_table:', COALESCE(v_tbl::text,'<NULL>'),
+                      ' key_selector:', COALESCE(v_selector,'<NULL>'))
+                  );
+                END IF;
+
+                -- Chiave testuale obbligatoria
+                v_uid := btrim(NEW.sorgente_uid);
+                IF v_uid IS NULL OR v_uid = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.trgfn_guard_sorgente_polimorfa_testuale',
+                    'E_SORG_KEY_MISSING',
+                    jsonb_build_object(
+                      'detail','Chiave sorgente mancante: atteso sorgente_uid (text)',
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'key_selector', v_selector
+                    ),
+                    NULL::uuid,
+                    -- ⚠️ ARITA' (2026-08-18): il concat() componeva UN valore solo, ma
+                    --   E_SORG_KEY_MISSING ha due segnaposto -> format() alzava 22023.
+                    --   Gli altri tre punti di questa funzione passano un valore a messaggi
+                    --   con un segnaposto e stanno bene: era solo questo.
+                    NEW.sorgente_tipo_id::text, v_selector
+                  );
+                END IF;
+
+                -- Formato + esistenza secondo key_selector.
+                -- ⚠️ Si controlla NEW.sorgente_uid, cioe' il valore che verra' SALVATO, non
+                --   la sua copia ripulita: e' quello che i lettori confronteranno.
+                IF v_selector = 'id' THEN
+                  v_chiave_id := script.fn_sorgente_chiave_id(NEW.sorgente_uid);
+                  IF v_chiave_id IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'script.trgfn_guard_sorgente_polimorfa_testuale',
+                      'E_SORG_FORMATO',
+                      jsonb_build_object(
+                        'detail','Atteso id numerico in forma canonica (id::text: niente zeri davanti, spazi, segno)',
+                        'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                        'key_selector', v_selector,
+                        'sorgente_uid', NEW.sorgente_uid
+                      ),
+                      NULL::uuid,
+                      concat('atteso id::text, ricevuto «', NEW.sorgente_uid, '»')
+                    );
+                  END IF;
+
+                  EXECUTE format('SELECT true FROM %s WHERE id = $1', v_tbl::text)
+                    INTO v_exists
+                    USING v_chiave_id;
+
+                ELSIF v_selector = 'uid' THEN
+                  v_chiave_uuid := script.fn_sorgente_chiave_uuid(NEW.sorgente_uid);
+                  IF v_chiave_uuid IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'script.trgfn_guard_sorgente_polimorfa_testuale',
+                      'E_SORG_FORMATO',
+                      jsonb_build_object(
+                        'detail','Atteso uuid testuale in forma canonica (uuid::text: minuscolo, con i trattini)',
+                        'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                        'key_selector', v_selector,
+                        'sorgente_uid', NEW.sorgente_uid
+                      ),
+                      NULL::uuid,
+                      concat('atteso uuid, ricevuto «', NEW.sorgente_uid, '»')
+                    );
+                  END IF;
+
+                  EXECUTE format('SELECT true FROM %s WHERE uid = $1', v_tbl::text)
+                    INTO v_exists
+                    USING v_chiave_uuid;
+
+                ELSE
+                  -- Valore non consentito: config.sorgenti dovrebbe impedirlo con CHECK
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.trgfn_guard_sorgente_polimorfa_testuale',
+                    'E_SORG_KEYSEL',
+                    jsonb_build_object(
+                      'detail','key_selector non supportato',
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'key_selector', v_selector
+                    ),
+                    NULL::uuid,
+                    concat(NEW.sorgente_tipo_id::text, ' key_selector:', v_selector)
+                  );
+                END IF;
+
+                IF NOT COALESCE(v_exists, false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.trgfn_guard_sorgente_polimorfa_testuale',
+                    'E_SORG_NOT_FOUND',
+                    jsonb_build_object(
+                      'detail','Riferimento sorgente non trovato nella tabella target',
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'target_table', v_tbl::text,
+                      'key_selector', v_selector,
+                      'sorgente_uid', v_uid
+                    ),
+                    NULL::uuid,
+                    concat(NEW.sorgente_tipo_id::text,
+                      ' target_table ', v_tbl::text,
+                      ' key_selector ', v_selector,
+                      ' sorgente_uid ', v_uid)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_guard_sorgente_polimorfa_testuale() IS
+                  'Guard polimorfo MODELLO B (tabelle di collegamento a chiave unica testuale: pratiche.pratiche_sorgenti, vendite.commesse_sorgenti): valida che NEW.sorgente_uid TEXT rispetti il formato dettato da config.sorgenti.key_selector (id::text per i tipi id, uuid testuale per i tipi uid — E_SORG_FORMATO) e che la riga esista nella target_table (E_SORG_NOT_FOUND). NON valida sorgente_riga (grana di riga del link, non chiave documento; D4 rinviata). Sorella di trgfn_guard_sorgente_polimorfa_tipizzata (modello A). Brief-db-guard-sorgente-polimorfa, 2026-07-18. ⭐ rev 2026-10-05 (20261005-25): il formato si controlla sulla FORMA CANONICA con i building block script.fn_sorgente_chiave_id / script.fn_sorgente_chiave_uuid — la stessa regola con cui la chiave si cerca (fn_stato_sorgente, vw_pratica_doc_sorgente) — e sul valore che verra'' SALVATO (NEW.sorgente_uid), non sulla sua copia ripulita. Prima: regex larghe su btrim(sorgente_uid), e la riga salvava il valore non ripulito; passavano ''007'', '' 42 '', un uuid maiuscolo, chiavi che esistono ma che nessun lettore ritrova. Ora E_SORG_FORMATO. La verifica di esistenza usa la chiave gia'' convertita.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_sorgente_riga bigint DEFAULT NULL::bigint, p_meta jsonb DEFAULT '{}'::jsonb)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_link_id  vendite.commesse_sorgenti.id%TYPE;
+                  v_uid      text := btrim(p_sorgente_uid);
+                  v_existing vendite.commesse_sorgenti%ROWTYPE;
+                  v_ruolo    vendite.commesse_sorgenti.ruolo_link%TYPE;
+                  -- Normalizzazione chiave canonica (brief-db-guard-sorgente-polimorfa §2a)
+                  c_uuid_re  CONSTANT text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+                  v_target   regclass;
+                  v_selector text;
+                  v_norm     text;
+              BEGIN
+                  -- Guard: parametri obbligatori
+                  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_commessa_id', 'valore', p_commessa_id), NULL::uuid, 'p_commessa_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_sorgente_tipo_id', 'valore', p_sorgente_tipo_id), NULL::uuid, 'p_sorgente_tipo_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_sorgente_uid IS NULL OR v_uid = '' THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_sorgente_uid', 'valore', p_sorgente_uid), NULL::uuid, 'p_sorgente_uid obbligatoria');
+                  END IF;
+
+                  IF p_sorgente_riga IS NOT NULL AND p_sorgente_riga < 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_sorgente_riga', 'valore', p_sorgente_riga), NULL::uuid, 'p_sorgente_riga se fornita deve essere >= 0');
+                  END IF;
+
+                  -- Normalizzazione chiave canonica: la chiave stoccata segue
+                  -- config.sorgenti.key_selector ('id' -> id::text, 'uid' -> uuid).
+                  -- I chiamanti storici passano l'uid del documento anche per i
+                  -- tipi a chiave id: qui si traduce, prima di idempotenza e
+                  -- insert, cosi' uq_commesse_sorgenti_src_uid lavora sempre
+                  -- sulla forma canonica. Niente chiavi inventate: se l'uuid non
+                  -- risolve la fn fallisce in modo parlante.
+                  SELECT s.target_table, s.key_selector
+                    INTO v_target, v_selector
+                    FROM config.sorgenti s
+                   WHERE s.id = p_sorgente_tipo_id
+                     AND s.attivo = true;
+
+                  IF v_target IS NULL OR v_selector IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_CONF',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'target_table', COALESCE(v_target::text, '<NULL>'),
+                                             'key_selector', COALESCE(v_selector, '<NULL>')),
+                          NULL::uuid, concat('sorgente_tipo_id ', p_sorgente_tipo_id));
+                  END IF;
+
+                  IF v_selector = 'id' THEN
+                      IF v_uid ~ c_uuid_re THEN
+                          -- uuid ricevuto per tipo a chiave id: traduzione via colonna uid del target
+                          IF NOT EXISTS (SELECT 1 FROM pg_attribute
+                                          WHERE attrelid = v_target
+                                            AND attname  = 'uid'
+                                            AND attnum   > 0
+                                            AND NOT attisdropped) THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_NORM_NON_RISOLTA',
+                                  jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                     'sorgente_uid', v_uid,
+                                                     'target_table', v_target::text,
+                                                     'detail', 'target_table senza colonna uid'),
+                                  NULL::uuid, concat('target ', v_target::text, ' senza colonna uid; uid ', v_uid));
+                          END IF;
+
+                          EXECUTE format('SELECT id::text FROM %s WHERE uid = $1', v_target::text)
+                            INTO v_norm
+                            USING v_uid::uuid;
+
+                          IF v_norm IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_NORM_NON_RISOLTA',
+                                  jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                     'sorgente_uid', v_uid,
+                                                     'target_table', v_target::text,
+                                                     'detail', 'uuid non presente nella target_table'),
+                                  NULL::uuid, concat('uid ', v_uid, ' non trovato in ', v_target::text));
+                          END IF;
+
+                          v_uid := v_norm;
+                      -- ⭐ rev 2026-10-05 (20261005-25): forma CANONICA (id::text), con lo
+                      --   stesso building block del guard e dei lettori. Prima '^[0-9]+$'
+                      --   lasciava passare '007': chiave che esiste, ma che nessun lettore
+                      --   risolve. v_uid e' gia' senza spazi (btrim in testa, normalizzazione
+                      --   dichiarata di questo rubinetto).
+                      ELSIF script.fn_sorgente_chiave_id(v_uid) IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_FORMATO',
+                              jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                 'sorgente_uid', v_uid,
+                                                 'key_selector', v_selector),
+                              NULL::uuid, concat('atteso id numerico in testo, ricevuto ', v_uid));
+                      END IF;
+                  ELSIF v_selector = 'uid' THEN
+                      -- ⭐ rev 2026-10-05 (20261005-25): forma CANONICA (uuid::text,
+                      --   minuscolo). La regex accettava le maiuscole, e la chiave salvata
+                      --   cosi' non la ritrova nessun lettore.
+                      IF script.fn_sorgente_chiave_uuid(v_uid) IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_FORMATO',
+                              jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                 'sorgente_uid', v_uid,
+                                                 'key_selector', v_selector),
+                              NULL::uuid, concat('atteso uuid, ricevuto ', v_uid));
+                      END IF;
+                  ELSE
+                      -- key_selector fuori catalogo: config.sorgenti dovrebbe impedirlo con CHECK
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_KEYSEL',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'key_selector', v_selector),
+                          NULL::uuid, concat('key_selector ', v_selector));
+                  END IF;
+
+                  -- Verifica esistenza + LOCK commessa: serializza la decisione del
+                  -- ruolo (ROOT vs COLLEGATO) tra sessioni concorrenti sulla stessa
+                  -- commessa. Alla prima sorgente la ROOT non esiste ancora, quindi
+                  -- lockare la commessa (non la ROOT) e' il solo punto affidabile.
+                  PERFORM 1 FROM vendite.commesse c WHERE c.id = p_commessa_id FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('commessa_id', p_commessa_id), NULL::uuid, concat('commessa_id ', p_commessa_id));
+                  END IF;
+
+                  -- Unicita'/idempotenza sorgente: una sorgente (tipo+uid) appartiene
+                  -- a UNA sola commessa (uq_commesse_sorgenti_src_uid). Lookup globale
+                  -- sulla chiave GIA' normalizzata.
+                  SELECT cs.* INTO v_existing
+                    FROM vendite.commesse_sorgenti cs
+                   WHERE cs.sorgente_tipo_id = p_sorgente_tipo_id
+                     AND cs.sorgente_uid = v_uid
+                   FOR UPDATE;
+
+                  IF FOUND THEN
+                      IF v_existing.commessa_id <> p_commessa_id THEN
+                          -- Sorgente gia' agganciata ad ALTRA commessa: incoerente
+                          -- (un documento contribuisce a una sola commessa).
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_COMMESSA_SORGENTE_ALTRA_COMMESSA',
+                              jsonb_build_object(
+                                  'commessa_richiesta', p_commessa_id,
+                                  'commessa_esistente', v_existing.commessa_id,
+                                  'sorgente_tipo_id', p_sorgente_tipo_id,
+                                  'sorgente_uid', v_uid,
+                                  'ruolo_link', v_existing.ruolo_link
+                              ), NULL::uuid, v_existing.commessa_id::text);
+                      END IF;
+
+                      -- Stessa commessa, stessa sorgente: idempotente. Merge meta;
+                      -- ruolo e sorgente_riga gia' assegnati restano (link a livello
+                      -- documento, indipendente da p_sorgente_riga).
+                      UPDATE vendite.commesse_sorgenti cs
+                         SET meta = COALESCE(cs.meta, '{}'::jsonb) || COALESCE(p_meta, '{}'::jsonb)
+                       WHERE cs.id = v_existing.id
+                      RETURNING cs.id INTO v_link_id;
+
+                      RETURN v_link_id;
+                  END IF;
+
+                  -- Sorgente nuova per questa commessa: assegna il ruolo.
+                  --   commessa senza ROOT -> ROOT (primaria);
+                  --   commessa con ROOT   -> COLLEGATO (contributore).
+                  -- Serializzato dal lock sulla commessa (sopra).
+                  IF EXISTS (SELECT 1 FROM vendite.commesse_sorgenti cs
+                              WHERE cs.commessa_id = p_commessa_id AND cs.ruolo_link = 'ROOT') THEN
+                      v_ruolo := 'COLLEGATO';
+                  ELSE
+                      v_ruolo := 'ROOT';
+                  END IF;
+
+                  BEGIN
+                      INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, sorgente_riga, ruolo_link, meta)
+                      VALUES (p_commessa_id, p_sorgente_tipo_id, v_uid, p_sorgente_riga, v_ruolo, COALESCE(p_meta, '{}'::jsonb))
+                      RETURNING id INTO v_link_id;
+                  EXCEPTION
+                      WHEN unique_violation THEN
+                          -- Race su uq_commesse_sorgenti_src_uid: tra il SELECT e
+                          -- l'INSERT un'altra sessione ha agganciato la stessa sorgente.
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_COMMESSA_SORGENTE_ALTRA_COMMESSA',
+                              jsonb_build_object('commessa_richiesta', p_commessa_id, 'sorgente_tipo_id', p_sorgente_tipo_id, 'sorgente_uid', v_uid),
+                              NULL::uuid, p_commessa_id::text);
+                  END;
+
+                  RETURN v_link_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_link_commessa_sorgente(bigint, bigint, text, bigint, jsonb) IS
+                  'Collega una sorgente a una commessa in modo idempotente decidendo il ruolo: prima sorgente -> ROOT, successive -> COLLEGATO (commessa multi-sorgente, aggregazione del fatturabile). NORMALIZZA la chiave secondo config.sorgenti.key_selector prima di idempotenza e insert (id -> id::text, traducendo l''uuid dei chiamanti storici via target_table.uid; uid -> uuid testuale); formato non conforme o uuid non risolvibile -> E_SORG_FORMATO / E_SORG_NORM_NON_RISOLTA. Una sorgente appartiene a una sola commessa (uq_commesse_sorgenti_src_uid): se gia su altra commessa solleva E_COMMESSA_SORGENTE_ALTRA_COMMESSA. Lock su vendite.commesse serializza la decisione del ruolo. rev 2026-07-18 (brief-db-guard-sorgente-polimorfa §2a). ⭐ rev 2026-10-05 (20261005-25): i due controlli di formato finali chiedono la FORMA CANONICA con i building block script.fn_sorgente_chiave_id / _uuid, gli stessi del guard trgfn_guard_sorgente_polimorfa_testuale: prima ''^[0-9]+$'' accettava ''007'' e la regex uuid le maiuscole. Restano le normalizzazioni dichiarate del rubinetto: btrim della chiave e traduzione uuid -> id::text per i tipi a chiave id (il risultato e'' gia'' canonico).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Corpi precedenti: guard in 20260818-49, rubinetto in 20260718-15.
+              SELECT 1;

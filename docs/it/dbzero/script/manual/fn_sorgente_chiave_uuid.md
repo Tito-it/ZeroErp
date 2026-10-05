@@ -3,7 +3,7 @@
 > 👀 **Vedi anche**
 >
 > **Gemella:** [script.fn_sorgente_chiave_id](/dbzero/script/funzioni/fn_sorgente_chiave_id)
-> **Chi la chiama:** [pratiche.fn_stato_sorgente](/dbzero/pratiche/funzioni/fn_stato_sorgente) · [script.vw_pratica_doc_sorgente](/dbzero/script/views/vw_pratica_doc_sorgente)
+> **Chi la chiama:** [pratiche.fn_stato_sorgente](/dbzero/pratiche/funzioni/fn_stato_sorgente) · [script.vw_pratica_doc_sorgente](/dbzero/script/views/vw_pratica_doc_sorgente) · [script.trgfn_guard_sorgente_polimorfa_testuale](/dbzero/script/funzioni/trgfn_guard_sorgente_polimorfa_testuale) · [vendite.fn_link_commessa_sorgente](/dbzero/vendite/funzioni/fn_link_commessa_sorgente) (dal 20261005-25: la stessa regola per chi salva la chiave) · [vendite.fn_get_sorgente_documento_ref](/dbzero/vendite/funzioni/fn_get_sorgente_documento_ref) · [script.fn_get_sorgente_emittente_sr_id](/dbzero/script/funzioni/fn_get_sorgente_emittente_sr_id) (dal 20261005-26)
 > **Convenzione della chiave:** [config.sorgenti](/dbzero/config/tabelle/sorgenti) (`key_selector`)
 
 ---

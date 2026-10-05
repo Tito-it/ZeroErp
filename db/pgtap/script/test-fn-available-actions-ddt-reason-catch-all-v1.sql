@@ -426,9 +426,16 @@ ON CONFLICT DO NOTHING;
 UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs)
  WHERE id = (SELECT ddt_id FROM tmp_noba);
 
+-- ⚠️ Il seme si passa come VALORE (sottoquery), non come colonna laterale
+--    (`FROM tmp_noba n, fn_ddt_push_diagnosi(n.ddt_id)`): in forma laterale la
+--    diagnosi viene incorporata nella query esterna e fn_partite_merce paga
+--    ~4 s fissi come app, contro ~30 ms col valore (profilo del 2026-10-05).
+--    La forma laterale non la usa nessun chiamante: lister e capability
+--    passano un parametro.
 SELECT results_eq(
   $q$SELECT g.motivo_rank, g.motivo, g.billing_account_id, pg_temp.rca_push(n.ddt_id)
-       FROM tmp_noba n, vendite.fn_ddt_push_diagnosi(n.ddt_id) g$q$,
+       FROM tmp_noba n
+       CROSS JOIN vendite.fn_ddt_push_diagnosi((SELECT ddt_id FROM tmp_noba)) g$q$,
   $q$VALUES (3, 'DDT_SENZA_BA', NULL::bigint,
              'false|DDT_NON_PUSHABILE|vendite.ddt.push_commessa_reason.non_pushabile')$q$,
   '17) DDT senza ordine e senza billing account: rank 3 DDT_SENZA_BA, BA NULL, capability spenta');

@@ -32,6 +32,14 @@
 --       normalizzato a id::text
 --   17) censimento commesse_sorgenti: 0 righe non canoniche
 --   18) censimento pratiche_sorgenti: 0 righe non canoniche
+--   --- Forma CANONICA della chiave (rev 2026-10-05, 20261005-25) ---
+--   19) INSERT id con zeri davanti (documento esistente) -> E_SORG_FORMATO
+--   20) INSERT id con spazi attorno (documento esistente) -> E_SORG_FORMATO
+--   21) INSERT uuid MAIUSCOLO per PREVENTIVO -> E_SORG_FORMATO (non NOT_FOUND)
+--   22) fn_link id con zeri davanti -> E_SORG_FORMATO
+--   23) fn_link uuid MAIUSCOLO per PREVENTIVO -> E_SORG_FORMATO
+--   24) fn_link id con spazi attorno -> il rubinetto li toglie e stocca la
+--       forma canonica (normalizzazione dichiarata, il guard la accetta)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -51,7 +59,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(18);
+SELECT plan(24);
 
 -- ============================================================
 -- Fixture: riferimenti (BA con emittente fiscale) + tipi sorgente
@@ -347,13 +355,17 @@ SELECT is(
 --     (id-selector -> numerico; uid-selector -> uuid). Se questo test e'
 --     rosso, PRIMA di applicare i trigger serve la pulizia manuale
 --     (brief-db-guard-sorgente-polimorfa, Appendice A).
+--     ⚠️ rev 2026-10-05 (20261005-25): «nella convenzione» vuol dire in FORMA
+--     CANONICA, con gli stessi building block del guard e dei lettori. Prima
+--     il censimento aveva la sua regex (btrim, maiuscole ammesse): una quarta
+--     copia della regola, piu' larga di chi poi la chiave la cerca.
 -- ============================================================
 SELECT is(
   (SELECT count(*)::int
      FROM vendite.commesse_sorgenti cs
      JOIN config.sorgenti s ON s.id = cs.sorgente_tipo_id
-    WHERE (s.key_selector = 'id'  AND btrim(cs.sorgente_uid) !~ '^[0-9]+$')
-       OR (s.key_selector = 'uid' AND btrim(cs.sorgente_uid) !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
+    WHERE (s.key_selector = 'id'  AND script.fn_sorgente_chiave_id(cs.sorgente_uid) IS NULL)
+       OR (s.key_selector = 'uid' AND script.fn_sorgente_chiave_uuid(cs.sorgente_uid) IS NULL)),
   0,
   '17) commesse_sorgenti: nessuna riga viva fuori convenzione'
 );
@@ -362,10 +374,120 @@ SELECT is(
   (SELECT count(*)::int
      FROM pratiche.pratiche_sorgenti ps
      JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-    WHERE (s.key_selector = 'id'  AND btrim(ps.sorgente_uid) !~ '^[0-9]+$')
-       OR (s.key_selector = 'uid' AND btrim(ps.sorgente_uid) !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
+    WHERE (s.key_selector = 'id'  AND script.fn_sorgente_chiave_id(ps.sorgente_uid) IS NULL)
+       OR (s.key_selector = 'uid' AND script.fn_sorgente_chiave_uuid(ps.sorgente_uid) IS NULL)),
   0,
   '18) pratiche_sorgenti: nessuna riga viva fuori convenzione'
+);
+
+
+-- ============================================================
+-- 19-24) La chiave si salva in FORMA CANONICA (rev 2026-10-05, 20261005-25)
+--   Prima il guard controllava btrim(sorgente_uid) con regex larghe e salvava
+--   il valore non ripulito: '007', ' 42 ' e un uuid maiuscolo passavano —
+--   chiavi che esistono ma che nessun lettore (fn_stato_sorgente,
+--   vw_pratica_doc_sorgente, lineage) ritrova mai. Ora la regola e' quella
+--   con cui la chiave si cerca: script.fn_sorgente_chiave_id / _uuid.
+--   Si asserisce il CODICE, non solo «solleva»: 21 e 23 prima sollevavano
+--   gia', ma per E_SORG_NOT_FOUND — un rosso per il motivo sbagliato.
+-- ============================================================
+CREATE OR REPLACE FUNCTION pg_temp.codice_errore_sorgente(p_sql text)
+RETURNS text AS $fn$
+-- ⚠️ `text` esplicito: e' il canale CONSTRAINT dell'eccezione, non una colonna.
+DECLARE v_codice text;
+BEGIN
+  EXECUTE p_sql;
+  RETURN 'NESSUN ERRORE';
+EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS v_codice = CONSTRAINT_NAME;
+  RETURN COALESCE(NULLIF(v_codice, ''), SQLSTATE);
+END $fn$ LANGUAGE plpgsql;
+
+SELECT is(
+  pg_temp.codice_errore_sorgente(format(
+    $$INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+      VALUES (%s, %s, %L, 'COLLEGATO')$$,
+    (SELECT commessa_host FROM tmp_guard_commesse),
+    (SELECT src_commessa FROM tmp_guard_refs),
+    '0' || (SELECT commessa_src1::text FROM tmp_guard_commesse))),
+  'E_SORG_FORMATO',
+  '19) INSERT id con zeri davanti (documento esistente) -> E_SORG_FORMATO'
+);
+
+SELECT is(
+  pg_temp.codice_errore_sorgente(format(
+    $$INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+      VALUES (%s, %s, %L, 'COLLEGATO')$$,
+    (SELECT commessa_host FROM tmp_guard_commesse),
+    (SELECT src_commessa FROM tmp_guard_refs),
+    ' ' || (SELECT commessa_src1::text FROM tmp_guard_commesse) || ' ')),
+  'E_SORG_FORMATO',
+  '20) INSERT id con spazi attorno (documento esistente) -> E_SORG_FORMATO'
+);
+
+SELECT is(
+  pg_temp.codice_errore_sorgente(format(
+    $$INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+      VALUES (%s, %s, %L, 'COLLEGATO')$$,
+    (SELECT commessa_host FROM tmp_guard_commesse),
+    (SELECT src_preventivo FROM tmp_guard_refs),
+    upper(gen_random_uuid()::text))),
+  'E_SORG_FORMATO',
+  '21) INSERT uuid MAIUSCOLO per PREVENTIVO -> E_SORG_FORMATO (non E_SORG_NOT_FOUND)'
+);
+
+SELECT is(
+  pg_temp.codice_errore_sorgente(format(
+    $$SELECT vendite.fn_link_commessa_sorgente(%s, %s, %L, NULL, '{}'::jsonb)$$,
+    (SELECT commessa_host FROM tmp_guard_commesse),
+    (SELECT src_commessa FROM tmp_guard_refs),
+    '0' || (SELECT commessa_src1::text FROM tmp_guard_commesse))),
+  'E_SORG_FORMATO',
+  '22) fn_link id con zeri davanti -> E_SORG_FORMATO'
+);
+
+SELECT is(
+  pg_temp.codice_errore_sorgente(format(
+    $$SELECT vendite.fn_link_commessa_sorgente(%s, %s, %L, NULL, '{}'::jsonb)$$,
+    (SELECT commessa_host FROM tmp_guard_commesse),
+    (SELECT src_preventivo FROM tmp_guard_refs),
+    upper(gen_random_uuid()::text))),
+  'E_SORG_FORMATO',
+  '23) fn_link uuid MAIUSCOLO per PREVENTIVO -> E_SORG_FORMATO'
+);
+
+-- 24) Una terza commessa sorgente, libera per costruzione: gli spazi attorno
+--     li toglie il rubinetto (btrim in testa, normalizzazione dichiarata), e
+--     quello che arriva al guard e alla riga e' la forma canonica.
+CREATE TEMP TABLE tmp_guard_src3 AS
+SELECT vendite.fn_get_or_create_commessa(
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_guard_refs),
+    p_utility_id => (SELECT utility_id FROM tmp_guard_refs),
+    p_tipo_commessa => 'AUTO',
+    p_policy_fatturazione => 'DA_DOCUMENTO',
+    p_fatturazione_immediata => false,
+    p_priorita_operativa => 'NORMALE',
+    p_competenza_dal => DATE '2026-07-01',
+    p_competenza_al => DATE '2026-07-31',
+    p_meta => jsonb_build_object('test_scope', 'pgtap_guard_sorgente_src3'),
+    p_force_new => true
+  ) AS commessa_src3;
+
+-- Due passi (visibilita' per command id).
+CREATE TEMP TABLE tmp_guard_link24 AS
+SELECT vendite.fn_link_commessa_sorgente(
+    p_commessa_id => (SELECT commessa_host FROM tmp_guard_commesse),
+    p_sorgente_tipo_id => (SELECT src_commessa FROM tmp_guard_refs),
+    p_sorgente_uid => ' ' || (SELECT commessa_src3::text FROM tmp_guard_src3) || ' ',
+    p_sorgente_riga => NULL,
+    p_meta => '{}'::jsonb) AS link_id;
+
+SELECT is(
+  (SELECT cs.sorgente_uid
+     FROM vendite.commesse_sorgenti cs
+    WHERE cs.id = (SELECT link_id FROM tmp_guard_link24)),
+  (SELECT commessa_src3::text FROM tmp_guard_src3),
+  '24) fn_link id con spazi attorno -> stoccato in forma canonica (il rubinetto normalizza)'
 );
 
 SELECT * FROM finish();
