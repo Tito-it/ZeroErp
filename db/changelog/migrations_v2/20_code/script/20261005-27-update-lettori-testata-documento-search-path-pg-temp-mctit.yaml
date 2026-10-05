@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DUE LETTORI DELLA TESTATA ELENCANO pg_temp — D6-bis, una coppia sanata
+#   script.fn_get_testata_id_di_riga(p_documento text, p_riga_id bigint)
+#   script.fn_get_stato_testata_documento(p_documento text, p_testata_id bigint)
+#   search_path: pg_catalog, public  ->  pg_catalog, public, pg_temp
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (§8.2 B3);
+#   migliorie-generali-da-test-valutazione (D6-bis)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Un search_path che non elenca pg_temp non lo esclude: PostgreSQL lo cerca
+#   per PRIMO per le relazioni. In una SECURITY DEFINER e' la porta classica:
+#   chi chiama crea una tabella temporanea con il nome di una relazione non
+#   qualificata, e la funzione la legge con i diritti del proprietario.
+#   Elencarlo ULTIMO lo chiude.
+#
+#   fn_get_testata_id_di_riga (20261005-15) e' nata copiando la forma del
+#   gemello, e il rubinetto di dbops/test-security-definer-search-path-v1
+#   (test 4, «puo' solo calare») l'ha presa: 19 contro la soglia 18. ⛔ La
+#   soglia non sale: si sana la funzione nuova. E si sana anche il GEMELLO,
+#   nello stesso giro: era lui il modello da cui la forma e' stata copiata, e
+#   lasciarlo com'e' vuol dire che la prossima copia ripete il difetto.
+#
+# -- PERCHE' public RESTA ---------------------------------------------
+#   Le due funzioni qualificano tutto cio' che leggono, ma nel ramo d'errore
+#   chiamano script.fn_log_and_raise_error, che e' SECURITY INVOKER senza
+#   search_path proprio: gira con QUESTO path. Togliere public sarebbe una
+#   decisione sui chiamati (memoria «una DEFINER col search_path blindato
+#   accieca la INVOKER che chiama»), non una pulizia: qui si aggiunge pg_temp
+#   in coda e basta, come i tre pin del 2026-09-12 (20260912-39..41).
+#
+# -- PERCHE' ALTER FUNCTION E NON CREATE OR REPLACE ---------------------
+#   Cambia solo la clausola SET: il corpo non si tocca, e non lo si riscrive
+#   da una copia che potrebbe essere stantia. Il pin vive in proconfig e
+#   pg_get_functiondef lo ristampa; ⚠️ un CREATE OR REPLACE futuro che
+#   dimentica la clausola lo azzera (e il test 4 lo riprende).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261005-27-update-lettori-testata-documento-search-path-pg-temp-mctit.yaml
+
+  - changeSet:
+      id: 20261005-27-update-lettori-testata-documento-search-path-pg-temp
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_testata_id_di_riga e il gemello script.fn_get_stato_testata_documento
+        (SECURITY DEFINER) elencano pg_temp in coda al search_path: pg_catalog, public, pg_temp.
+        Corpo invariato. D6-bis; brief-db-righe-esclusione-solo-non-si-vende (§8.2 B3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.prosecdef
+                 AND (p.proname, pg_catalog.pg_get_function_identity_arguments(p.oid)) IN (
+                       ('fn_get_testata_id_di_riga',      'p_documento text, p_riga_id bigint'),
+                       ('fn_get_stato_testata_documento', 'p_documento text, p_testata_id bigint'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER FUNCTION script.fn_get_testata_id_di_riga(text, bigint)
+                SET search_path TO 'pg_catalog', 'public', 'pg_temp';
+
+              ALTER FUNCTION script.fn_get_stato_testata_documento(text, bigint)
+                SET search_path TO 'pg_catalog', 'public', 'pg_temp';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER FUNCTION script.fn_get_testata_id_di_riga(text, bigint)
+                SET search_path TO 'pg_catalog', 'public';
+
+              ALTER FUNCTION script.fn_get_stato_testata_documento(text, bigint)
+                SET search_path TO 'pg_catalog', 'public';

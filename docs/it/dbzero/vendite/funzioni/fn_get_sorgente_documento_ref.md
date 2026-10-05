@@ -14,10 +14,16 @@ CREATE OR REPLACE FUNCTION vendite.fn_get_sorgente_documento_ref(p_sorgente_tipo
  STABLE
 AS $function$
 DECLARE
-    -- Stessa forma usata da fn_link_commessa_sorgente: una sola
-    -- definizione di «che aspetto ha un uuid» in questo dominio.
-    c_uuid_re CONSTANT text :=
-        '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+    -- ⭐ rev 2026-10-05 (20261005-26): la chiave si riconosce con i building
+    --   block script.fn_sorgente_chiave_uuid / _id, la stessa regola con cui la
+    --   salvano il guard e il rubinetto e la cercano fn_stato_sorgente e
+    --   vw_pratica_doc_sorgente. Qui c'era una copia della regex (il commento
+    --   diceva gia' «una sola definizione»: ora lo e' davvero), piu' larga —
+    --   maiuscole, zeri davanti — e un cast '^[0-9]+$'::bigint che su un numero
+    --   fuori range sollevava 22003 dentro una lista, la cosa che questa
+    --   funzione ha promesso di non fare.
+    v_chiave_uuid script.vw_stato_sorgente.sorgente_chiave_uuid%TYPE;
+    v_chiave_id   script.vw_stato_sorgente.sorgente_chiave_id%TYPE;
 
     v_target   config.sorgenti.target_table%TYPE;
     v_selector config.sorgenti.key_selector%TYPE;
@@ -75,14 +81,17 @@ BEGIN
     --    suo uid e basta. Quindi si prova SEMPRE la traduzione.
     -- ⭐ Id ed etichetta nella STESSA lettura: e' la ragione per
     --    cui questa funzione ha sostituito la coppia.
-    IF v_uid ~ c_uuid_re THEN
+    -- ⚠️ Sul valore RICEVUTO, non sulla copia ripulita: una chiave con spazi
+    --   attorno non e' canonica, e altrove (stato, lineage) non si ritrova.
+    v_chiave_uuid := script.fn_sorgente_chiave_uuid(p_sorgente_uid);
+    IF v_chiave_uuid IS NOT NULL THEN
         -- La tabella arriva dal CATALOGO (regclass), non da un
         -- parametro: non c'e' testo di chiamante dentro il format.
         BEGIN
             EXECUTE format('SELECT t.id, %s FROM %s t WHERE t.uid = $1',
                            v_label_expr, v_target::text)
               INTO v_id, v_numero
-              USING v_uid::uuid;
+              USING v_chiave_uuid;
         EXCEPTION WHEN undefined_column OR undefined_table THEN
             -- Una destinazione senza colonna uid — o un
             -- `label_selector` che nomina una colonna che non
@@ -111,8 +120,9 @@ BEGIN
     -- commesse_sorgenti): un id in forma testuale su un tipo a
     -- chiave `id` e' se stesso. L'id non costa una lettura;
     -- l'etichetta si', e solo se e' stata dichiarata.
-    IF v_selector = 'id' AND v_uid ~ '^[0-9]+$' THEN
-        v_id := v_uid::bigint;
+    v_chiave_id := script.fn_sorgente_chiave_id(p_sorgente_uid);
+    IF v_selector = 'id' AND v_chiave_id IS NOT NULL THEN
+        v_id := v_chiave_id;
 
         IF v_label IS NOT NULL THEN
             BEGIN
@@ -141,7 +151,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_sorgente_documento_ref(p_sorgente_tipo_id bigint, p_sorgente_uid text)
-IS 'Il documento di origine di una riga a sorgente polimorfa, in DUE informazioni e UNA lettura: `documento_id` (l''id numerico, per l''azione «apri documento sorgente») e `documento_numero` (il numero che l''operatore legge — DDT0010839, ORD0000227, RESO0005122). Sostituisce vendite.fn_get_sorgente_documento_id, che faceva la sola prima meta'': una gemella per l''etichetta avrebbe voluto DUE EXECUTE per riga di lista e DUE copie della stessa regola di risoluzione. 🔴 La traduzione non e'' banale perche'' la chiave e'' polimorfa per costruzione: con config.sorgenti.key_selector = ''id'' il campo sorgente_uid contiene gia'' l''id in forma testuale, con ''uid'' contiene un UUID e l''id va LETTO sulla target_table — e nel dato reale (misurato 2026-08-16) 88 righe su 88 di commesse_attivita portano un UUID, ordini e DDT compresi. ⭐ L''ETICHETTA SI DICHIARA, NON SI INDOVINA: la colonna arriva da config.sorgenti.label_selector, gemella di key_selector — `numero` su preventivi, contratti, ordini, ddt, resi e fatture, `codice` su offerte commerciali e commesse. Un COALESCE(numero, codice) funzionerebbe oggi e diventerebbe una colonna vuota in silenzio alla terza convenzione. label_selector NULL (ATTIVITA, ATTIVITA_CONSUMI, le cinque *_RIGA) = nessun numero leggibile: `documento_numero` resta NULL e NON spegne `documento_id`. ⭐ RESTITUISCE SEMPRE UNA RIGA, anche tutta a NULL: una RETURNS TABLE che a volte torna zero righe funziona con LEFT JOIN LATERAL e CANCELLA la riga chiamante se un domani qualcuno scrive CROSS JOIN LATERAL per distrazione. ⚠️ NON SOLLEVA, ed e'' la differenza con vendite.fn_link_commessa_sorgente: quella scrive un legame e davanti a una chiave irrisolvibile alza E_SORG_NORM_NON_RISOLTA, perche'' un legame sbagliato e'' peggio di nessun legame; questa risponde a una lista, dove una sorgente non risolta deve solo far sparire l''azione — come per le voci manuali, gli oneri e le rettifiche, che un documento a monte non ce l''hanno per progetto. ⚠️ SECURITY INVOKER: le tabelle di destinazione hanno la RLS operatori, quindi NULL significa «non risolvibile O non visibile a chi chiede», non «non esiste». Richiesta BE del 2026-08-20 (punto 2), brief-design-note-credito-resi §40.1.4.';
+IS 'Il documento di origine di una riga a sorgente polimorfa, in DUE informazioni e UNA lettura: `documento_id` (l''id numerico, per l''azione «apri documento sorgente») e `documento_numero` (il numero che l''operatore legge — DDT0010839, ORD0000227, RESO0005122). Sostituisce vendite.fn_get_sorgente_documento_id, che faceva la sola prima meta'': una gemella per l''etichetta avrebbe voluto DUE EXECUTE per riga di lista e DUE copie della stessa regola di risoluzione. 🔴 La traduzione non e'' banale perche'' la chiave e'' polimorfa per costruzione: con config.sorgenti.key_selector = ''id'' il campo sorgente_uid contiene gia'' l''id in forma testuale, con ''uid'' contiene un UUID e l''id va LETTO sulla target_table — e nel dato reale (misurato 2026-08-16) 88 righe su 88 di commesse_attivita portano un UUID, ordini e DDT compresi. ⭐ L''ETICHETTA SI DICHIARA, NON SI INDOVINA: la colonna arriva da config.sorgenti.label_selector, gemella di key_selector — `numero` su preventivi, contratti, ordini, ddt, resi e fatture, `codice` su offerte commerciali e commesse. Un COALESCE(numero, codice) funzionerebbe oggi e diventerebbe una colonna vuota in silenzio alla terza convenzione. label_selector NULL (ATTIVITA, ATTIVITA_CONSUMI, le cinque *_RIGA) = nessun numero leggibile: `documento_numero` resta NULL e NON spegne `documento_id`. ⭐ RESTITUISCE SEMPRE UNA RIGA, anche tutta a NULL: una RETURNS TABLE che a volte torna zero righe funziona con LEFT JOIN LATERAL e CANCELLA la riga chiamante se un domani qualcuno scrive CROSS JOIN LATERAL per distrazione. ⚠️ NON SOLLEVA, ed e'' la differenza con vendite.fn_link_commessa_sorgente: quella scrive un legame e davanti a una chiave irrisolvibile alza E_SORG_NORM_NON_RISOLTA, perche'' un legame sbagliato e'' peggio di nessun legame; questa risponde a una lista, dove una sorgente non risolta deve solo far sparire l''azione — come per le voci manuali, gli oneri e le rettifiche, che un documento a monte non ce l''hanno per progetto. ⚠️ SECURITY INVOKER: le tabelle di destinazione hanno la RLS operatori, quindi NULL significa «non risolvibile O non visibile a chi chiede», non «non esiste». Richiesta BE del 2026-08-20 (punto 2), brief-design-note-credito-resi §40.1.4. ⭐ rev 2026-10-05 (20261005-26): la chiave si riconosce con i building block script.fn_sorgente_chiave_uuid / _id (forma CANONICA, mai un errore), la stessa regola del guard della sorgente polimorfa, del rubinetto fn_link_commessa_sorgente e dei lettori fn_stato_sorgente / vw_pratica_doc_sorgente. Prima una copia della regex, piu'' larga (maiuscole, zeri davanti), e un cast che su un id fuori range sollevava 22003 dentro una lista: ora quella chiave e'' semplicemente non risolta. Una chiave non canonica resta non risolta qui come altrove.';
 ```
 
 ---

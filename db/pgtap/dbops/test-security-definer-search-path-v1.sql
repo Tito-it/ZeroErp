@@ -31,8 +31,9 @@
 --   fa. Si escludono per DIPENDENZA (pg_depend deptype 'e'), non per nome.
 --
 -- ⚠️ I TEST 4 E 5 SONO RUBINETTI, non divieti. Le forme del path sono cinque
---   (D6), e 18 DEFINER non elencano pg_temp — quando non e' elencato PostgreSQL
---   lo cerca per PRIMO per le relazioni, che e' semantica e non stile. Vietarlo
+--   (D6), e 18 DEFINER non elencavano pg_temp il 2026-09-12 (17 dal
+--   2026-10-05) — quando non e' elencato PostgreSQL lo cerca per PRIMO per le
+--   relazioni, che e' semantica e non stile. Vietarlo
 --   oggi farebbe nascere il file rosso, e un cancello rosso il primo giorno
 --   viene spento. La soglia PUO' SOLO CALARE: chi sana una DEFINER la abbassa
 --   qui. ⛔ Se per far passare la CI la soglia dovesse SALIRE, il difetto e'
@@ -106,12 +107,16 @@ SELECT is(
 -- 4..5. I rubinetti di D6-bis
 -- ============================================================
 -- ⚠️ Soglie misurate il 2026-09-12 su dbdev. Possono solo CALARE.
+--   Test 4: 18 -> 17 il 2026-10-05 (20261005-27). La DEFINER nuova
+--   script.fn_get_testata_id_di_riga era nata senza pg_temp e aveva portato il
+--   conto a 19: si e' sanata lei, con il gemello da cui aveva copiato la forma
+--   (script.fn_get_stato_testata_documento), e la soglia e' scesa di uno.
 SELECT cmp_ok(
     (SELECT count(*) FROM _definer
       WHERE search_path IS NOT NULL
         AND search_path NOT LIKE '%pg_temp%'),
-    '<=', 18::bigint,
-    '4. ⚠️ DEFINER con search_path senza pg_temp: al massimo 18 (rubinetto D6-bis, puo'' solo calare)'
+    '<=', 17::bigint,
+    '4. ⚠️ DEFINER con search_path senza pg_temp: al massimo 17 (rubinetto D6-bis, puo'' solo calare)'
 );
 
 SELECT cmp_ok(

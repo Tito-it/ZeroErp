@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION script.fn_get_stato_testata_documento(p_documento tex
  RETURNS TABLE(stato text, etichetta text)
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 -- ⚠️ Tipi nudi DICHIARATI (rev 2026-09-28): p_documento e' un selettore senza
 --   colonna-vocabolario; p_testata_id e lo stato in uscita sono POLIMORFI —

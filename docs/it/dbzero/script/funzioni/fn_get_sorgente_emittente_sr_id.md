@@ -15,7 +15,6 @@ CREATE OR REPLACE FUNCTION script.fn_get_sorgente_emittente_sr_id(p_sorgente_tip
  SET search_path TO 'pg_catalog', 'public'
 AS $function$
 DECLARE
-    c_uuid_re CONSTANT text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
     v_target    regclass;
     v_selector  config.sorgenti.key_selector%TYPE;
     v_codice    config.sorgenti.codice_interno%TYPE;
@@ -82,24 +81,30 @@ BEGIN
     -- attesa e' quella CANONICA (quella che
     -- fn_link_commessa_sorgente NORMALIZZA in scrittura), non
     -- quella che il push passa in giro.
+    -- ⭐ rev 2026-10-05 (20261005-26): «canonica» lo controllano ora i
+    --   building block script.fn_sorgente_chiave_id / _uuid, la stessa regola
+    --   del guard e dei lettori; prima le regex larghe accettavano '007' e le
+    --   maiuscole, cioe' il commento qui sopra non era vero. Sul valore
+    --   RICEVUTO, non sulla copia senza spazi. Chiamati per nome qualificato:
+    --   questa funzione e' DEFINER con search_path stretto.
     IF v_selector = 'id' THEN
-        IF v_uid !~ '^[0-9]+$' THEN
+        IF script.fn_sorgente_chiave_id(p_sorgente_uid) IS NULL THEN
             PERFORM script.fn_log_and_raise_error(
                 'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
                 jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                                   'sorgente_uid', v_uid,
+                                   'sorgente_uid', p_sorgente_uid,
                                    'key_selector', v_selector),
-                NULL::uuid, concat('atteso id::text, ricevuto ', v_uid));
+                NULL::uuid, concat('atteso id::text, ricevuto «', p_sorgente_uid, '»'));
         END IF;
         v_colonna := 'id';
     ELSIF v_selector = 'uid' THEN
-        IF v_uid !~ c_uuid_re THEN
+        IF script.fn_sorgente_chiave_uuid(p_sorgente_uid) IS NULL THEN
             PERFORM script.fn_log_and_raise_error(
                 'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
                 jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                                   'sorgente_uid', v_uid,
+                                   'sorgente_uid', p_sorgente_uid,
                                    'key_selector', v_selector),
-                NULL::uuid, concat('atteso uuid, ricevuto ', v_uid));
+                NULL::uuid, concat('atteso uuid, ricevuto «', p_sorgente_uid, '»'));
         END IF;
         v_colonna := 'uid';
     ELSE
@@ -191,7 +196,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_sorgente_emittente_sr_id(p_sorgente_tipo_id bigint, p_sorgente_uid text)
-IS 'Risolve «CHI EMETTE questo documento» per la sorgente polimorfa: dato (sorgente_tipo_id, chiave CANONICA secondo config.sorgenti.key_selector) restituisce il soggetto_ruolo dell''emittente. ⛔ SOSTITUISCE script.fn_get_sorgente_billing_account_id (20260826-43), che passava dal BILLING ACCOUNT ed era la strada sbagliata: letto sulla doc auto-gen il 2026-08-26, billing_account_id e'' NULLABLE su QUATTRO tabelle sorgente su sei (ordini, preventivi, ddt, resi) — uno stato LEGALE del modello — mentre emittente_fiscale_id e'' NOT NULL su tutte e sei. Il risolutore vecchio si fermava fail-closed su documenti perfettamente validi, e un guard che rifiuta uno stato che il modello ammette non e'' severo: e'' rotto. Trovato da un pgTAP (vendite/test-ordini-guard-transizione-v1, che crea ordini con billing_account_id NULL di proposito), non da un ragionamento. ⭐ La correzione rende il guard piu'' FORTE e non piu'' debole: la tentazione era «BA nullo -> salta il controllo», che e'' cio'' che fanno i sei guard fratelli (trgfn_ordini_guard_emittente_ba e famiglia, «Skip: nessun BA su cui ancorare la coerenza») — li'' e'' giusto perche'' quei guard confrontano PROPRIO il BA con l''emittente, qui si confrontano DUE EMITTENTI e non c''e'' niente da saltare. TRE STRADE, in ordine di direttezza: (1) emittente_soggetto_ruolo_id se la target ce l''ha — commesse, fatture, lotti: nessuna traduzione, e'' una copia; (2) emittente_fiscale_id tradotto in SR con il join 1:1 su anagrafiche.emittenti_fiscali — i sei documenti; (3) billing_account_id delegato ad anagrafiche.fn_get_emittente_fiscale_id — attivita_consumi e attivita_fatturabili, che l''emittente non ce l''hanno. Nessuna delle tre -> E_SORG_CONF. ⛔ FAIL-CLOSED ovunque, mai un NULL silenzioso: documento inesistente o senza emittente risolvibile -> E_SORG_EMITTENTE_NON_RISOLTO; chiave malformata -> E_SORG_FORMATO; key_selector fuori catalogo -> E_SORG_KEYSEL. ⚠️ SECURITY DEFINER: le tabelle documento hanno la RLS, e da SECURITY INVOKER la sorgente di un altro emittente sarebbe invisibile — il chiamante concluderebbe «non esiste» invece di «e'' di un altro». ⚠️ La chiave attesa e'' quella CANONICA, cioe'' quella che vendite.fn_link_commessa_sorgente normalizza in scrittura, non quella che il push passa (guida /guide/sorgente-polimorfa §4a). Piano: brief-db-emittente-commessa-invariante, L6.';
+IS 'Risolve «CHI EMETTE questo documento» per la sorgente polimorfa: dato (sorgente_tipo_id, chiave CANONICA secondo config.sorgenti.key_selector) restituisce il soggetto_ruolo dell''emittente. ⛔ SOSTITUISCE script.fn_get_sorgente_billing_account_id (20260826-43), che passava dal BILLING ACCOUNT ed era la strada sbagliata: letto sulla doc auto-gen il 2026-08-26, billing_account_id e'' NULLABLE su QUATTRO tabelle sorgente su sei (ordini, preventivi, ddt, resi) — uno stato LEGALE del modello — mentre emittente_fiscale_id e'' NOT NULL su tutte e sei. Il risolutore vecchio si fermava fail-closed su documenti perfettamente validi, e un guard che rifiuta uno stato che il modello ammette non e'' severo: e'' rotto. Trovato da un pgTAP (vendite/test-ordini-guard-transizione-v1, che crea ordini con billing_account_id NULL di proposito), non da un ragionamento. ⭐ La correzione rende il guard piu'' FORTE e non piu'' debole: la tentazione era «BA nullo -> salta il controllo», che e'' cio'' che fanno i sei guard fratelli (trgfn_ordini_guard_emittente_ba e famiglia, «Skip: nessun BA su cui ancorare la coerenza») — li'' e'' giusto perche'' quei guard confrontano PROPRIO il BA con l''emittente, qui si confrontano DUE EMITTENTI e non c''e'' niente da saltare. TRE STRADE, in ordine di direttezza: (1) emittente_soggetto_ruolo_id se la target ce l''ha — commesse, fatture, lotti: nessuna traduzione, e'' una copia; (2) emittente_fiscale_id tradotto in SR con il join 1:1 su anagrafiche.emittenti_fiscali — i sei documenti; (3) billing_account_id delegato ad anagrafiche.fn_get_emittente_fiscale_id — attivita_consumi e attivita_fatturabili, che l''emittente non ce l''hanno. Nessuna delle tre -> E_SORG_CONF. ⛔ FAIL-CLOSED ovunque, mai un NULL silenzioso: documento inesistente o senza emittente risolvibile -> E_SORG_EMITTENTE_NON_RISOLTO; chiave malformata -> E_SORG_FORMATO; key_selector fuori catalogo -> E_SORG_KEYSEL. ⚠️ SECURITY DEFINER: le tabelle documento hanno la RLS, e da SECURITY INVOKER la sorgente di un altro emittente sarebbe invisibile — il chiamante concluderebbe «non esiste» invece di «e'' di un altro». ⚠️ La chiave attesa e'' quella CANONICA, cioe'' quella che vendite.fn_link_commessa_sorgente normalizza in scrittura, non quella che il push passa (guida /guide/sorgente-polimorfa §4a). Piano: brief-db-emittente-commessa-invariante, L6. ⭐ rev 2026-10-05 (20261005-26): il formato CANONICO della chiave lo controllano i building block script.fn_sorgente_chiave_id / _uuid (chiamati per nome qualificato: DEFINER con search_path stretto), la stessa regola del guard della sorgente polimorfa e del rubinetto. Prima le regex larghe accettavano ''007'' e gli uuid maiuscoli, contro quanto la funzione dichiarava.';
 ```
 
 ---
