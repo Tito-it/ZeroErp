@@ -34,10 +34,12 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.api.indirizzi_documento_views import (
     build_indirizzi_documento_views,
 )
+from apps.vendite.db.offerte_repository import OffertaRigheListaRepository
 from apps.vendite.services import offerte_service
 from apps.vendite.services.offerte_service import OfferteService
 from apps.core.api.openapi_params import param_ricerca_full
@@ -597,6 +599,39 @@ class ApiOffertaRevisioni(DomainAPIView):
             order_dir=p["order_dir"],
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+
+
+# =================================================================
+# Righe: la lista configurabile `vendite.offerta_righe` (106)
+# =================================================================
+# Pagina ed export dal factory condiviso `build_lista_figlia_views`, come le
+# righe del contratto (brief-db-righe-esclusione-solo-non-si-vende §8.1). La
+# closure legge il global di modulo a call-time: i patch dei test sul service
+# restano validi.
+# ⚠️ `GET …/eccezioni/` resta la lettura delle eccezioni SCRITTE (e il POST di
+#    creazione): la lista e' su `…/righe/lista/`, e legge le righe OPERATIVE
+#    (listino + eccezioni) dalla funzione, coi verbi del DB.
+_OffertaRigheLista, _OffertaRigheListaExport = build_lista_figlia_views(
+    schema_prefix="OffertaRighe",
+    operation_id="vendite_offerte_righe_lista",
+    area_funzionale="vendite",
+    lista_emittente_param=EMITTENTE_DOCUMENTO_PARAM,
+    url_kwarg="offerta_id",
+    model_permission=("vendite", "offerta_commerciale"),
+    pagina_call=lambda documento_id, **kw: OfferteService().list_righe_pagina(documento_id, **kw),
+    colonne_ordinabili=OffertaRigheListaRepository.righe_colonne_ordinabili(),
+    ordine_assente=OffertaRigheListaRepository.righe_ordine_di_partenza(),
+)
+
+
+# ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
+#    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
+class ApiOffertaRigheListaView(_OffertaRigheLista):
+    lista_codice = "vendite.offerta_righe"
+
+
+class ApiOffertaRigheListaExportView(_OffertaRigheListaExport):
+    lista_codice = "vendite.offerta_righe"
 
 
 # =================================================================

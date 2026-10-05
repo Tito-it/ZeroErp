@@ -33,12 +33,14 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     call_jsonb_fn,
+    colonne_identita,
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
     sql_order_clause,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.righe_lista_mixin import RigheListaMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
@@ -1165,3 +1167,44 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             fallback_params=params,
             offset=safe_offset,
         )
+
+
+# =================================================================
+# Righe dell'offerta come LISTA CONFIGURABILE (`vendite.offerta_righe`, 106)
+# =================================================================
+
+# Whitelist ORDER BY: i `campo_sorgente` `ordinabile = t` della lista 106,
+# gemella campo per campo della 103 del contratto (brief-db-righe-esclusione-
+# solo-non-si-vende §10.2), che la funzione espone con lo stesso nome.
+_ORDER_COLS_RIGHE_OFFERTA: dict[str, str] = colonne_identita(
+    "articolo_codice", "articolo_descrizione", "qta_operativa", "prezzo_finale",
+    "override_prezzo", "uom_codice", "tipo_erogazione", "prezzo_listino", "origine",
+)
+# Le `ricercabile_full = t` del seed. `test_ricerca_full_seed` legge questa costante.
+_RICERCA_RIGHE_OFFERTA = RicercaFull(
+    "vendite.offerta_righe", ("articolo_codice", "articolo_descrizione"),
+)
+
+
+class OffertaRigheListaRepository(RigheListaMixin):
+    """Le righe OPERATIVE di un'offerta come lista paginata (BB
+    `RigheListaMixin`): le righe della versione operativa del listino con
+    l'overlay delle eccezioni, piu' le aggiunte.
+
+    ⭐ La sorgente e' la FUNZIONE `vendite.fn_offerta_righe_preview`, involucro
+    del corpo comune col contratto (`vendite.fn_documento_righe_preview`):
+    stesse colonne, stessi verbi (`azioni`), stesso motivo che spegne
+    «Escludi» (`escludi_blocco_codice`). Il backend li trasporta, non li deduce.
+
+    ⚠️ Stesse scelte della gemella `ContrattoRigheListaRepository`: ordine di
+    partenza il codice articolo (le righe del listino non hanno un numero di
+    riga), `riga_key` come spareggio, nessun filtro `attivo` (la funzione
+    legge gia' le sole eccezioni attive), solo la PAGINA.
+    """
+
+    _righe_funzione = "vendite.fn_offerta_righe_preview"
+    _righe_ordine_documento = "articolo_codice"
+    _righe_chiave = "riga_key"
+    _righe_solo_attive = False
+    _righe_ordinamento = _ORDER_COLS_RIGHE_OFFERTA
+    _righe_ricerca = _RICERCA_RIGHE_OFFERTA

@@ -1192,6 +1192,7 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       :contratto-valido-al="detail.valido_al"
       :contratto-stato-codice="detail.stato_codice_interno"
       :contratto-stato-descrizione="detail.stato_descrizione"
+      :righe-modificabili="caps.flag('can_edit_righe')"
       @changed="refreshDetail"
     />
 

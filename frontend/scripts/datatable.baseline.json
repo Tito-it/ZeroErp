@@ -31,7 +31,6 @@
     "vendite/components/AttivaVersioneDialog.vue",
     "vendite/components/ListiniSearchTable.vue",
     "vendite/ddt/components/DdtResoDialog.vue",
-    "vendite/offerte/components/OffertaEccezioniDrawer.vue",
     "vendite/ordini/components/dialogs/OrdineEvasioneDialog.vue",
     "vendite/preventivi/components/dialogs/PreventiviSmistamentoDialog.vue",
     "vendite/resi/components/AccreditoEsitoDialog.vue",
@@ -47,7 +46,6 @@
     "core/components/SearchDrawer.vue",
     "pratiche/components/PraticaFlussiTab.vue",
     "vendite/components/AlertScadenzeWidget.vue",
-    "vendite/components/ListiniSearchTable.vue",
-    "vendite/offerte/components/OffertaEccezioniDrawer.vue"
+    "vendite/components/ListiniSearchTable.vue"
   ]
 }

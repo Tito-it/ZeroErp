@@ -3207,3 +3207,34 @@ class ContrattiCatenaUpdateTests(TestCase):
             "Colonne scrivibili dal repository che il service non accetta: "
             "capacità irraggiungibile (o whitelist da allargare).",
         )
+
+
+class ContrattiRigaAttivoMetaNotNullTests(TestCase):
+    """`contratti_righe.attivo` e `meta` sono NOT NULL dal 2026-10-05
+    (brief-db-righe-esclusione-solo-non-si-vende §10.7 R-BE-12, B4): un `null`
+    ESPLICITO del client non deve arrivare alla INSERT/UPDATE, dove sarebbe un
+    23502. Il mapper della riga lo tratta come «non toccare» (`attivo`) e come
+    reset all'oggetto vuoto (`meta`, BB `optional_meta`): la stessa regola
+    della gemella sull'offerta.
+
+    Indice test:
+    1) test_attivo_null_non_si_inoltra — create e update
+    2) test_meta_null_diventa_oggetto_vuoto — create e update
+    """
+
+    def _data(self, payload: dict, *, for_create: bool) -> dict:
+        from apps.vendite.services.contratti_service import ContrattiService
+        base = {"articolo_id": "11111111-1111-1111-1111-111111111111", "tipo_eccezione": "ESCLUSIONE"}
+        return ContrattiService()._build_data_riga(
+            {**(base if for_create else {}), **payload}, for_create=for_create,
+        )
+
+    def test_attivo_null_non_si_inoltra(self):
+        for for_create in (True, False):
+            with self.subTest(create=for_create):
+                self.assertNotIn("attivo", self._data({"attivo": None}, for_create=for_create))
+
+    def test_meta_null_diventa_oggetto_vuoto(self):
+        for for_create in (True, False):
+            with self.subTest(create=for_create):
+                self.assertEqual(self._data({"meta": None}, for_create=for_create)["meta"], {})

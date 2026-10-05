@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: «Leggi prima la testata» sulla PAGINA delle righe di ognuno dei sei
+# Scopo: «Leggi prima la testata» sulla PAGINA delle righe di ognuno dei sette
 #        documenti di vendita (preventivo, ordine, DDT, reso, fattura,
-#        contratto): con la testata che non si vede il service risponde il 404
+#        contratto, offerta — quest'ultima dal 2026-10-05): con la testata che non si vede il service risponde il 404
 #        del dominio e NON legge le righe.
 # Note: §9.6 punto 1 del brief-db-liste-righe-documento (2026-10-04). Fino a
 #       quel giorno nessun test lo provava: togliere la lettura della testata
@@ -17,8 +17,8 @@
 
 """
 Indice test eseguiti:
-1) test_testata_assente_404_e_nessuna_riga_letta  (sei documenti)
-2) test_testata_presente_la_pagina_riceve_le_opzioni (sei documenti)
+1) test_testata_assente_404_e_nessuna_riga_letta  (sette documenti)
+2) test_testata_presente_la_pagina_riceve_le_opzioni (sette documenti)
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from apps.core.services.service_errors import ServiceError
 from apps.vendite.services import (
     contratti_service,
     ddt_service,
+    offerte_service,
     ordini_service,
     preventivi_service,
     resi_service,
@@ -83,6 +84,11 @@ _CASI = (
     _Caso("contratto", repo_testata="apps.vendite.services.contratti_service.ContrattiRepository",
           getter="get_stato_codice", repo_righe="apps.vendite.services.contratti_service.ContrattoRigheListaRepository",
           pagina=lambda doc_id, **kw: contratti_service.ContrattiService().list_righe_pagina(doc_id, **kw),
+          codice="E_VENDITE_NOT_FOUND"),
+    # Gemella del contratto (2026-10-05): la lista 106 sulla stessa funzione comune.
+    _Caso("offerta", repo_testata="apps.vendite.services.offerte_service.OfferteRepository",
+          getter="get_stato_codice", repo_righe="apps.vendite.services.offerte_service.OffertaRigheListaRepository",
+          pagina=lambda doc_id, **kw: offerte_service.OfferteService().list_righe_pagina(doc_id, **kw),
           codice="E_VENDITE_NOT_FOUND"),
 )
 

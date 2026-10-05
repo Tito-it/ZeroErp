@@ -35,7 +35,6 @@ import {
   generaOrdineFromOfferta,
   getContrattoSovrapposto,
   getOfferta,
-  listEccezioni,
   listOfferte,
   pushOffertaAContratto,
   registraEsitoOfferta,
@@ -197,11 +196,6 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
 
   // --- Eccezioni ---
 
-  async function loadEccezioni(offertaId) {
-    const res = await listEccezioni(offertaId)
-    return res.data.data
-  }
-
   async function addEccezione(offertaId, payload) {
     const res = await createEccezione(offertaId, payload)
     emitDataChanged(TAB_ENTITIES.OFFERTA_COMMERCIALE, offertaId)
@@ -231,7 +225,7 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     generaOrdine,
     loadContrattoSovrapposto,
     // eccezioni
-    loadEccezioni, addEccezione, aggiornaEccezione, eliminaEccezione,
+    addEccezione, aggiornaEccezione, eliminaEccezione,
   }
 }, {
   userScoped: true,

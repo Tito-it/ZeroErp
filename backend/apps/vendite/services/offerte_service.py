@@ -36,13 +36,17 @@ from django.utils import timezone
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.capability_blob import capabilities_o_vuoto
-from apps.core.services.testata_guard import testata_o_not_found
+from apps.core.services.testata_guard import pagina_dopo_testata, testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
 )
 from apps.vendite.db.listini_repository import ListiniRepository
-from apps.vendite.db.offerte_repository import _ORDER_COLS_OFFERTE, OfferteRepository
+from apps.vendite.db.offerte_repository import (
+    _ORDER_COLS_OFFERTE,
+    OffertaRigheListaRepository,
+    OfferteRepository,
+)
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
     auto_assegna_indirizzo_default,
@@ -917,6 +921,24 @@ class OfferteService:
         # Verifica esistenza offerta per 404 esplicito.
         self._get_offerta_or_raise(offerta_id, op="list_eccezioni", getter=self._repo.get_stato_codice)
         return self._repo.list_eccezioni(offerta_id)
+
+    # Scopo: una PAGINA delle righe operative dell'offerta, per la lista
+    #        configurabile `vendite.offerta_righe` (brief-db-righe-esclusione-
+    #        solo-non-si-vende §8.1): ricerca dal catalogo, ordinamento dalla
+    #        whitelist, codice articolo quando nessuno chiede altro. Ritorna
+    #        `(righe, totale)`. Gemella di `ContrattiService.list_righe_pagina`.
+    # ⭐ «Leggi prima la testata»: un'offerta fuori perimetro e' un 404, non una
+    #    lista vuota (la funzione su un id che non vede risponde zero righe).
+    def list_righe_pagina(
+        self, offerta_id: int, **opzioni: Any,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        return pagina_dopo_testata(
+            lambda: self._get_offerta_or_raise(
+                offerta_id, op="list_righe_pagina", getter=self._repo.get_stato_codice,
+            ),
+            OffertaRigheListaRepository().list_righe_pagina, offerta_id, **opzioni,
+        )
 
     # Scopo: Crea un'eccezione. Solo in stato BOZZA.
     def crea_eccezione(

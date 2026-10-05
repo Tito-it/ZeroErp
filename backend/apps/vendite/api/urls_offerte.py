@@ -42,6 +42,8 @@ from apps.vendite.api.views_offerte import (
     ApiOffertaPushContratto,
     ApiOffertaRegistraEsito,
     ApiOffertaRevisioni,
+    ApiOffertaRigheListaExportView,
+    ApiOffertaRigheListaView,
     ApiOffertaUtility,
     ApiOffertaUtilityDetail,
     ApiOfferteExportView,
@@ -133,6 +135,12 @@ urlpatterns = [
         name="vendite-offerta-contratto-sovrapposto",
     ),
     # Eccezioni.
+    # La lista configurabile `vendite.offerta_righe` su un percorso suo, come
+    # il contratto: `…/eccezioni/` resta eccezioni scritte + creazione.
+    path("<int:offerta_id>/righe/lista/", ApiOffertaRigheListaView.as_view(),
+         name="vendite-offerta-righe-lista"),
+    path("<int:offerta_id>/righe/lista/export/", ApiOffertaRigheListaExportView.as_view(),
+         name="vendite-offerta-righe-lista-export"),
     path(
         "<int:offerta_id>/eccezioni/",
         ApiOffertaEccezioni.as_view(),

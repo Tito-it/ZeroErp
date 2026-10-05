@@ -15,7 +15,7 @@
 #        e non vedono la SQL; `EXPLAIN` dice che la SQL parte, non che TROVA.
 # Note: ⚠️ Il mondo si COSTRUISCE, non si cerca (regola zero, .codex/AGENTS.md):
 #       azienda, operatore, cliente, articolo, listino, promo, preventivo e la
-#       sua attivita' di competenza, un contratto con la sua riga nascono dai BB `dbops.fn_pgtap_*` e dalle
+#       sua attivita' di competenza, un contratto con la sua riga e un'offerta sul listino nascono dai BB `dbops.fn_pgtap_*` e dalle
 #       madri di dominio, in transazione ANNULLATA e col contesto operatore
 #       aperto dal builder. Le famiglie di documento sono SEED (contratto, non
 #       fotografia): se ne ritocca una riga, sempre in transazione annullata.
@@ -37,6 +37,7 @@ from apps.core.tests.db_e2e import richiedi_db_provvisto, verifica_ricerca_colon
 from apps.vendite.db.contratti_repository import ContrattoRigheListaRepository
 from apps.vendite.db.famiglie_repository import FamiglieDocumentoRepository
 from apps.vendite.db.listini_repository import ListiniRepository
+from apps.vendite.db.offerte_repository import OffertaRigheListaRepository
 from apps.vendite.db.promo_articoli_repository import PromoArticoliRepository
 from apps.vendite.db.vendite_repository import VenditeRepository
 
@@ -211,6 +212,24 @@ _FIXTURE: tuple[str, ...] = (
     )
     SELECT id AS riga_id FROM ins
     """,
+    # ── Le righe di un'offerta (lista 106, 2026-10-05) ─────────────────────
+    # Gemella della 103 sulla stessa funzione comune. L'offerta vuole un
+    # listino (`listino_id` NOT NULL): quello del mondo, in vigore oggi, quindi
+    # la riga e' quella DEL LISTINO sull'articolo costruito, con chiave
+    # `L:<articolo>:<uom>` — l'altra gamba della funzione rispetto al contratto.
+    """
+    CREATE TEMP TABLE _off AS
+    WITH ins AS (
+        INSERT INTO vendite.offerte_commerciali (emittente_fiscale_id, billing_account_id,
+               istanza_utility_id, utility_id, listino_id, validita_dal, stato_doc_offerta_id)
+        SELECT m.emittente_fiscale_id, m.billing_account_id, m.istanza_utility_id, m.utility_id,
+               (SELECT listino_id FROM _lst), current_date,
+               (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')
+          FROM _mondo m
+        RETURNING id
+    )
+    SELECT id AS offerta_id FROM ins
+    """,
     # ── La famiglia di documento: SEED, se ne ritocca una riga ─────────────
     # ⭐ `codice` e' la colonna nuova (changeSet `20260924-03…-07`), mutabile:
     #    e' quella che la lista mostra e cerca al posto del `codice_interno`.
@@ -321,6 +340,19 @@ class RicercaListeVenditeDbTests(unittest.TestCase):
                     {"articolo_codice": f"RVART-{sfx}", "articolo_descrizione": "ricdescart"},
                     lambda t: ContrattoRigheListaRepository().list_righe_pagina(
                         contratto, search=t, limit=200,
+                    )[0],
+                    chiave="riga_key",
+                )
+                cur.execute(
+                    "SELECT o.offerta_id, 'L:' || a.id || ':' || a.uom_id"
+                    " FROM _off o, catalogo.articoli a WHERE a.id = (SELECT articolo_id FROM _art)"
+                )
+                offerta, riga_offerta = cur.fetchone()
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "vendite.offerta_righe", riga_offerta,
+                    {"articolo_codice": f"RVART-{sfx}", "articolo_descrizione": "ricdescart"},
+                    lambda t: OffertaRigheListaRepository().list_righe_pagina(
+                        offerta, search=t, limit=200,
                     )[0],
                     chiave="riga_key",
                 )
