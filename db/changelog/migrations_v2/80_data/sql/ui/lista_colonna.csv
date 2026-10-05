@@ -1097,3 +1097,13 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1097,105,ultimo_accesso,Ultimo accesso,Data e ora dell ultimo accesso,ultimo_accesso,informazione,datetime,datetime_short,,70,left,,,f,t,t,f,f,t,2026-10-02 00:00:00,mctit,amministrazione.accessi.col_ultimo_accesso,40
 1098,102,periodo_dal,Periodo dal,Inizio del periodo di competenza (vuoto se la riga non ha un periodo),periodo_dal,informazione,date,date_short,110,22,left,,,f,f,t,f,f,t,2026-10-03 00:00:00,mctit,vendite.fatture.col_periodo_dal,25
 1099,102,periodo_al,Periodo al,Fine del periodo di competenza (vuoto se la riga non ha un periodo),periodo_al,informazione,date,date_short,110,24,left,,,f,f,t,f,f,t,2026-10-03 00:00:00,mctit,vendite.fatture.col_periodo_al,25
+1100,106,articolo_codice,Articolo,,articolo_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_articolo,100
+1101,106,descrizione,Descrizione,,articolo_descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_descrizione,95
+1102,106,qta_operativa,Qta,,qta_operativa,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_qta,90
+1103,106,prezzo_finale,Prezzo finale,,prezzo_finale,informazione,numeric,currency_eur_6,120,40,right,,,f,t,t,f,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_prezzo_finale,85
+1104,106,prezzo_forzato,Prezzo forzato,,override_prezzo,informazione,numeric,currency_eur_6,120,50,right,,,f,t,t,f,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_prezzo_forzato,70
+1105,106,uom_codice,UoM,,uom_codice,informazione,string,,100,60,left,,,f,t,t,f,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_uom,60
+1106,106,tipo_erogazione,Erogazione,,tipo_erogazione,informazione,string,,110,70,left,,,f,t,t,f,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_tipo_erogazione,45
+1107,106,prezzo_listino,Prezzo listino,,prezzo_listino,informazione,numeric,currency_eur_6,120,80,right,,,f,t,t,f,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_prezzo_listino,35
+1108,106,origine,Origine,,origine,informazione,string,,110,90,center,,,f,t,t,f,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_origine,30
+1109,106,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-10-05 00:00:00,mctit,common.col_azioni,100

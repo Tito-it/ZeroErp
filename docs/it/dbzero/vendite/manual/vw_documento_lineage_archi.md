@@ -307,4 +307,17 @@ pgTAP (`T` va da `RESO_VENDITA` a `DDT_VENDITA` ed è un avanzamento).
 
 ---
 
+### 🔄 rev 2026-10-05 — tre letture una volta sola
+
+Due rami (preventivo → commessa, ordine → commessa) collegano la commessa al
+documento d'origine con una chiave scritta come testo. Con la sicurezza per riga
+attiva il database rileggeva **tutta** la tabella dei preventivi, o degli ordini,
+per ogni collegamento; e i nodi del grafo si calcolavano due volte. Da
+`20261005-21` quelle tre letture si fanno una volta sola: stesse colonne, stesse
+righe, la vista da ~380 a ~90 ms (misura come applicazione su dbdev,
+2026-10-05). La regola di perimetro qui sopra non cambia: le letture passano
+ancora dalle tabelle dei documenti, con i loro permessi.
+
+---
+
 {% include-markdown "signature-core.md" %}

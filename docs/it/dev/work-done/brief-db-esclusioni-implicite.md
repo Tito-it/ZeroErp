@@ -372,3 +372,36 @@ Il brief si chiude il 2026-10-05. Ogni voce aperta ha una sede, e da qui non si 
 | **Dati di dev**: i componenti dei kit con la quantità vecchia (§6.3) | a mano, se servono |
 
 Il registro di DDT e resi (l'altro «da verificare» di §6.2) è risultato innocuo: niente da fare.
+
+## Seguito del 2026-10-05 — quattro fixture che toglievano il numero (regressione del Q-4)
+
+Alla corsa pgTAP di Tid del 2026-10-05 quattro file sono morti in fixture con
+`E_FATTURA_NUMERO_NON_MODIFICABILE` (*«La fattura 999999 ha già un numero fiscale…»*). Non è un
+difetto del guard (`20261004-80/-81`): i quattro test numeravano a mano una fattura per provare
+un rifiuto e poi le **toglievano** il numero (`UPDATE … SET numero = NULL`) per tornare alla
+fixture di partenza — esattamente ciò che il Q-4 vieta. Il giro del Q-4 aveva adeguato solo
+`test-numera-fattura-opz-emessa` (la DELETE in coda).
+
+Censimento sui sorgenti (sullo scratch questi file muoiono prima per dati mancanti, quindi non
+si potevano trovare lanciandoli): tutti gli `UPDATE vendite.fatture` che scrivono
+numero/anno/serie/registro e tutte le `DELETE` di fatture nei pgTAP. Solo questi quattro tolgono
+o cambiano il numero di una fattura numerata; le altre `DELETE` colpiscono fatture mai numerate,
+e il cambio di `registro_id` di `test-fatture-guard-registro-emittente` riguarda una fattura senza
+numero.
+
+| File | Correzione |
+| --- | --- |
+| `vendite/test-data-documento-v1.sql` | la controprova («senza numero la data si cambia») si fa **prima** della numerazione, con una data diversa da quella dei test 14-15 (lì dev'essere un cambio); test rinumerati 12-15 |
+| `vendite/test-elimina-fattura-da-lotto-v1.sql` (test 9-10) | il numero si mette **dentro una sottotransazione che si annulla da sola** (`RAISE … ERRCODE 'PGT01'` catturato): check e mutazione si interrogano lì, gli esiti si salvano in variabili, poi tutto torna indietro |
+| `vendite/test-riporta-lotto-a-draft-v1.sql` (test 5) | come sopra |
+| `vendite/test-numera-nota-credito-riferimento-v1.sql` (test 5) | come sopra; il test 6 non deve più togliere il numero al padre |
+
+⭐ La forma della sottotransazione è il modo pulito di «provare su un documento numerato e
+tornare indietro»: il rollback non è una modifica della fattura, è una numerazione che non è mai
+avvenuta. In più, se la mutazione provata dovesse riuscire per errore, viene annullata anche lei
+(prima avrebbe cancellato la fattura o riportato il lotto, contaminando i test successivi).
+⚠️ Non con un `SAVEPOINT` attorno alle asserzioni: pgTAP scrive i risultati in tabelle
+temporanee, e un `ROLLBACK TO` li cancellerebbe.
+
+Prova: solo statica (guardrail del preambolo verde, soglia invariata). I quattro file vanno
+rilanciati da Tid su dbdev.

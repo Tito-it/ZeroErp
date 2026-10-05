@@ -21,7 +21,7 @@
 | quantita | numeric(18,6) | YES |  |
 | qta_operativa | numeric(18,6) | YES |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric(18,8) | YES |  |
+| factor_to_base | numeric(18,6) | YES |  |
 | ordine | smallint | YES | 0 |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |

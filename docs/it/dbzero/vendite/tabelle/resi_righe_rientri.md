@@ -40,19 +40,21 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_resi_righe_rientri_a05_guard_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_resi_righe_rientri_guard()` |
-| trg_resi_righe_rientri_a05_guard_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_resi_righe_rientri_guard()` |
-| trg_resi_righe_rientri_a05_guard_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_resi_righe_rientri_guard()` |
-| trg_resi_righe_rientri_a10_resi_righe_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'resi_righe', 'attivo', 'resi_riga_id', 'id')` |
+| trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'resi_riga_id', 'DRAFT', 'RIGA')` |
+| trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'resi_riga_id', 'DRAFT', 'RIGA')` |
+| trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'resi_riga_id', 'DRAFT', 'RIGA')` |
+| trg_resi_righe_rientri_a10_guard_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_resi_righe_rientri_guard()` |
+| trg_resi_righe_rientri_a10_guard_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_resi_righe_rientri_guard()` |
 | trg_resi_righe_rientri_a10_resi_righe_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'resi_righe', 'attivo', 'resi_riga_id', 'id')` |
+| trg_resi_righe_rientri_a10_resi_righe_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'resi_righe', 'attivo', 'resi_riga_id', 'id')` |
 | trg_resi_righe_rientri_a10_ubicazioni_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'ubicazioni', 'attivo', 'ubicazione_id', 'id')` |
 | trg_resi_righe_rientri_a10_ubicazioni_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'ubicazioni', 'attivo', 'ubicazione_id', 'id')` |
-| trg_resi_righe_rientri_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_resi_righe_rientri_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_resi_righe_rientri_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_resi_righe_rientri_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_resi_righe_rientri_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_resi_righe_rientri_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('resi_righe_rientri_id')` |
 | trg_resi_righe_rientri_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('resi_righe_rientri_id')` |
+| trg_resi_righe_rientri_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('resi_righe_rientri_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

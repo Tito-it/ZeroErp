@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMPONENTI DI CONTRATTO E OFFERTA SI TOCCANO SOLO IN BOZZA
+#   vendite.contratti_righe_componenti:
+#     trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt
+#     -> vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'riga_contratto_id', 'DRAFT', 'RIGA')
+#   vendite.offerte_commerciali_eccezioni_componenti:
+#     trg_oce_comp_a05_doc_bozza_ins_upd_dlt
+#     -> vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'eccezione_offerta_id', 'BOZZA', 'RIGA')
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (§8.2 B3; decisione di
+#   Tid, 2026-10-04)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Fino a oggi un componente fuori bozza lo fermava solo il ricalcolo della
+#   riga madre (trg_*_z90_ricalcola_padre: il suo UPDATE della madre e' fuori
+#   bozza). E' un effetto, non una regola: passava ogni cambio che non muove
+#   il prezzo della madre, e il rifiuto arrivava dal trigger AFTER, dopo i
+#   guard del componente, col nome della riga e non del componente. Ora la
+#   regola e' quella delle righe, sulla tabella del componente, a livello RIGA
+#   (la FK punta alla riga; 20261005-16).
+#
+# -- CHI SCRIVE I COMPONENTI (censito il 2026-10-05) --------------------
+#   * vendite.fn_contratto_riga_componenti_init / fn_offerta_eccezione_componenti_init:
+#     alla nascita della riga, cioe' in bozza;
+#   * vendite.fn_push_offerta_a_contratto: nel contratto, che nasce DRAFT;
+#   * vendite.fn_crea_revisione_offerta (20261005-19): nella revisione, che
+#     nasce BOZZA;
+#   * script.trgfn_componenti_propaga_qta: dall'UPDATE della riga, che e' gia'
+#     sotto lo stesso lock;
+#   * il backend (mixin dei componenti, flusso di approvazione dei prezzi):
+#     in bozza; sull'offerta emessa la decisione «lock pieno» di Tid del
+#     2026-10-04 vale gia' (§5.6 del brief).
+#   Nessuno scrive un componente fuori bozza per una strada legittima.
+#
+# -- NOMI E ORDINE ------------------------------------------------------
+#   Fra i BEFORE ROW parla prima il nome minore, e il rifiuto di stato deve
+#   precedere i guard _a10_ del componente (pending, obbligatorio, coerenza
+#   BOM). Contratto: prefisso della tabella, come i generati; «a05» < «a10» e
+#   «trg_contratti_righe_componenti» < «trg_contrighe_comp» (a < i). Offerta:
+#   prefisso corto dei fratelli scritti a mano (il lungo supera i 63
+#   caratteri); «trg_oce» < «trg_off» (c < f), quindi precede anche i
+#   generati. Ordine verificato sul catalogo nel pgTAP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261005-17-create-trigger-componenti-lock-fuori-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261005-17-create-trigger-componenti-lock-fuori-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lock «solo in bozza» sui componenti di contratto e offerta: il building block
+        vendite.trgfn_doc_righe_lock_fuori_bozza a livello RIGA. Brief:
+        brief-db-righe-esclusione-solo-non-si-vende (§8.2 B3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgname IN ('trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt',
+                                  'trg_oce_comp_a05_doc_bozza_ins_upd_dlt');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.contratti_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'riga_contratto_id', 'DRAFT', 'RIGA');
+
+              COMMENT ON TRIGGER trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.contratti_righe_componenti IS
+                  'I componenti di una riga di contratto si aggiungono, modificano e tolgono solo con '
+                  'il contratto in DRAFT (building block vendite.trgfn_doc_righe_lock_fuori_bozza a '
+                  'livello RIGA, E_RIGA_DOC_NON_BOZZA). Prima li proteggeva solo il ricalcolo della '
+                  'riga madre, un effetto. Fascia _a05_: parla prima dei guard del componente. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (§8.2 B3).';
+
+              CREATE TRIGGER trg_oce_comp_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.offerte_commerciali_eccezioni_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'eccezione_offerta_id', 'BOZZA', 'RIGA');
+
+              COMMENT ON TRIGGER trg_oce_comp_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.offerte_commerciali_eccezioni_componenti IS
+                  'I componenti di una riga di offerta si aggiungono, modificano e tolgono solo con '
+                  'l''offerta in BOZZA (building block vendite.trgfn_doc_righe_lock_fuori_bozza a '
+                  'livello RIGA, E_RIGA_DOC_NON_BOZZA). Gemello del contratto, che il push riceve 1:1. '
+                  'Fascia _a05_, prefisso corto dei fratelli: parla prima dei loro guard e dei trigger '
+                  'generati. Brief: brief-db-righe-esclusione-solo-non-si-vende (§8.2 B3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_oce_comp_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.offerte_commerciali_eccezioni_componenti;
+              DROP TRIGGER IF EXISTS trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.contratti_righe_componenti;

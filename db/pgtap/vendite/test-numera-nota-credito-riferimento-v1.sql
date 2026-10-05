@@ -271,13 +271,32 @@ SELECT isnt(
 --    Il numero si mette a mano: qui interessa che il padre RISULTI numerato,
 --    non come ci sia arrivato — e passare dalla sua funzione vorrebbe dire
 --    soddisfare precondizioni che non sono il soggetto di questo file.
+--    ⚠️ Rev 2026-10-05: il numero si mette DENTRO UNA SOTTOTRANSAZIONE che si
+--    annulla da sola (errore proprio PGT01), dopo aver salvato l'esito in una
+--    variabile. Prima il test 6 lo TOGLIEVA con un UPDATE (numero = NULL) per
+--    tornare al padre bloccante; dal 20261004-80
+--    (vendite.trgfn_fatture_guard_numero_fiscale, Q-4 di
+--    brief-db-esclusioni-implicite) una fattura numerata non cambia identita'
+--    fiscale, e il file moriva li'. Il rollback non e' una modifica della
+--    fattura: e' una numerazione che non e' mai avvenuta. E se la NC venisse
+--    numerata qui dentro, torna indietro anche lei.
 -- ============================================================
-UPDATE vendite.fatture
-   SET numero = 999999, anno = 2026
- WHERE id = (SELECT fattura_id FROM tmp_padre);
-
-CREATE TEMP TABLE tmp_esito_3 AS
-SELECT pg_temp.nnc_esito((SELECT fattura_id FROM tmp_nc)) AS esito;
+CREATE TEMP TABLE tmp_esito_3 (esito text);
+DO $num$
+DECLARE
+  v_esito text;
+BEGIN
+  BEGIN
+    UPDATE vendite.fatture
+       SET numero = 999999, anno = 2026
+     WHERE id = (SELECT fattura_id FROM tmp_padre);
+    v_esito := pg_temp.nnc_esito((SELECT fattura_id FROM tmp_nc));
+    RAISE EXCEPTION USING ERRCODE = 'PGT01';   -- annulla il numero del padre
+  EXCEPTION WHEN SQLSTATE 'PGT01' THEN
+    NULL;
+  END;
+  INSERT INTO tmp_esito_3 VALUES (v_esito);
+END $num$;
 
 SELECT isnt(
   (SELECT esito FROM tmp_esito_3),
@@ -305,13 +324,10 @@ SELECT isnt(
 --    che sopravvive al tetto. Che li' ci sia il documento da numerare non e'
 --    piu' un dettaglio di resa, e' la garanzia che regge il messaggio.
 --
---    ⚠️ Il padre e' stato numerato dal test 5: gli si toglie il numero per
---    tornare alla condizione bloccante. Il verbo, di nuovo, in un'istruzione
+--    ⚠️ Il padre e' di nuovo senza numero: il test 5 l'ha numerato dentro una
+--    sottotransazione annullata. Il verbo, di nuovo, in un'istruzione
 --    separata dall'asserzione.
 -- ============================================================
-UPDATE vendite.fatture
-   SET numero = NULL
- WHERE id = (SELECT fattura_id FROM tmp_padre);
 
 CREATE TEMP TABLE tmp_bers_1 AS
 SELECT pg_temp.nnc_bersaglio((SELECT fattura_id FROM tmp_nc)) AS bersaglio;

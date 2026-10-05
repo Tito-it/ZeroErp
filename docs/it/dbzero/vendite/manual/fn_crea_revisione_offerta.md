@@ -5,6 +5,7 @@
 > Approfondimento tabelle:
 > [vendite.offerte_commerciali](/dbzero/vendite/tabelle/offerte_commerciali)
 > [vendite.offerte_commerciali_eccezioni](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni)
+> [vendite.offerte_commerciali_eccezioni_componenti](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni_componenti)
 > [vendite.offerte_commerciali_utilities](/dbzero/vendite/tabelle/offerte_commerciali_utilities)
 > [config.stati_doc_offerte](/dbzero/config/tabelle/stati_doc_offerte)
 >
@@ -27,7 +28,7 @@
 
 `vendite.fn_crea_revisione_offerta(p_offerta_id, p_user)` crea una **nuova
 revisione** (rev.N+1) di un'offerta commerciale, copiando testata, eccezioni
-attive e utility (1:1). Il pattern riusa concettualmente
+attive coi loro componenti e utility (1:1). Il pattern riusa concettualmente
 `fn_crea_revisione_preventivo` (§6.3 analisi offerta).
 
 ---
@@ -48,6 +49,10 @@ attive e utility (1:1). Il pattern riusa concettualmente
   valorizzati al momento delle proprie future transizioni.
 - **Eccezioni copiate**: solo righe con `attivo IS TRUE` (1:1, senza
   reinterpretazione).
+- **Componenti copiati** (dal 2026-10-05): per ogni eccezione copiata, **tutti**
+  i suoi componenti — anche gli opzionali spenti, che sono una scelta
+  dell'offerta — agganciati alla riga nuova, con stato e pratica di
+  approvazione 1:1. Vedi la revisione del 2026-10-05 qui sotto.
 - **Stato approvazione prezzo carry-forward** (rev2, 2026-06-01): le colonne
   `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` delle eccezioni
   (aggiunte da `20260601-01`) sono copiate **1:1** nella nuova revisione, **non**
@@ -73,7 +78,7 @@ attive e utility (1:1). Il pattern riusa concettualmente
 | Parametro     | Tipo                                      | Note                                        |
 | ------------- | ----------------------------------------- | ------------------------------------------- |
 | `p_offerta_id` | `vendite.offerte_commerciali.id%TYPE`    | ID offerta da revisionare. Obbligatorio, > 0. |
-| `p_user`      | `text`                                    | Utente che esegue l'operazione (audit).     |
+| `p_user`      | `vendite.offerte_commerciali.user_update%TYPE` | Utente che esegue l'operazione (audit).     |
 
 ---
 
@@ -132,6 +137,41 @@ solleva il primo motivo di
 ricopiata restava legata alla pratica della versione vecchia. La copia di approvato e
 rifiutato resta (`20260601-05`). Nello stesso changeSet firma e risultato sono ancorati con
 `%TYPE` e `SECURITY INVOKER` è esplicito.
+
+---
+
+### Rev 2026-10-05 — la revisione porta con sé i componenti
+
+(`20261005-19`, decisione di Tid; brief `brief-db-righe-esclusione-solo-non-si-vende`
+§8.2 B1.) Fino a questa data la funzione copiava le righe ma non i loro
+**componenti**, e un suo commento diceva che le righe dell'offerta «non hanno
+tabelle figlie». Le hanno: i componenti di una riga composita (un bundle, un
+kit) stanno in `vendite.offerte_commerciali_eccezioni_componenti`. Una
+revisione di un'offerta con un bundle nasceva quindi con la riga e senza i suoi
+pezzi, e il push verso il contratto — che i componenti li copia — la portava
+così nel contratto.
+
+Ora le righe si copiano **una alla volta**, e per ciascuna i suoi componenti
+sulla riga appena nata. È la stessa forma del push: la corrispondenza fra riga
+vecchia e riga nuova la dà l'inserimento stesso, non l'ordine in cui il database
+assegna i numeri.
+
+* Si copiano **tutti** i componenti, anche quelli spenti: spegnere un
+  componente opzionale è una scelta di chi ha fatto l'offerta (quelli
+  obbligatori non si possono spegnere), e la revisione è la stessa offerta.
+* Lo stato di approvazione del prezzo viaggia 1:1, come sulle righe. Un
+  componente in attesa non arriva fin qui: la revisione si rifiuta prima
+  (revisione del 2026-09-24).
+* I trigger del componente lavorano come alla nascita: la quantità si ricalcola
+  dalla riga madre, e il prezzo della madre dai componenti attivi — lo stesso
+  della versione precedente.
+
+⚠️ La gemella del preventivo (`fn_crea_revisione_preventivo`) copia solo i
+componenti **attivi**: è un'asimmetria nota, scritta nel brief, non corretta in
+questo giro.
+
+Presidio: `db/pgtap/vendite/test-righe-gemelle-secondo-giro-v1.sql` (test 12-14,
+19).
 
 ---
 

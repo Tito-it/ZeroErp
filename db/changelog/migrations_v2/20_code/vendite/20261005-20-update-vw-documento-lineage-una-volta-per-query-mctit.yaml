@@ -1,0 +1,301 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA LINEAGE SI CALCOLA UNA VOLTA PER QUERY
+#   vendite.vw_documento_lineage — stesse colonne, stesse righe; cambia il piano
+#   Brief: brief-db-liste-documento-lineage-lenta (richiesta di Tid del
+#   2026-10-05: «ottimizziamo anche le query reali che poi servono alla app»)
+#
+# -- IL DIFETTO (misurato come zeroerp_app su dbdev, 2026-10-05) --------
+#   Le sette viste di lista (preventivi, offerte, ordini, contratti, DDT,
+#   resi, fatture) fanno LEFT JOIN su questa vista per (tipo_id, uid). Sotto
+#   RLS il planner stima pochissime righe e sceglie un nested loop: la parte
+#   non ricorsiva del calcolo (inc, prat, disc, frontiera, i nodi) si
+#   riesegue PER OGNI RIGA della lista. Lista preventivi (168 righe):
+#   loops=168, 3,1 s il COUNT e 2,9 s la pagina da 25 — cioe' ~6 s per aprire
+#   la lista. In piu' gli archi (vw_documento_lineage_archi, ~360 ms) si
+#   leggevano due volte, in fwd e in inc. Da owner non si vede: senza RLS il
+#   planner sceglie da solo l'hash join.
+#
+# -- LA CURA ------------------------------------------------------------
+#   1. CTE archi AS MATERIALIZED: gli archi una volta sola.
+#   2. Ogni CTE MATERIALIZED, e il risultato finale in una CTE lineage
+#      MATERIALIZED: calcolato una volta per query, poi hash join.
+#   ⚠️ Recintare le sole CTE intermedie PEGGIORA (provato: 5,5 s): la SELECT
+#      finale sui nodi resta incollata nella query della lista e diventa lei
+#      la parte rieseguita per riga. Il collo si sposta di un posto.
+#
+# -- MISURE (dbdev, come zeroerp_app col contesto operatore, 2026-10-05) --
+#   lista preventivi: COUNT 3,1 -> 0,44 s; pagina 2,9 -> 0,45 s
+#   altre sei liste (pagina): ~0,9-1,1 -> ~0,44 s
+#   lineage di UN documento: 0,75 -> 0,43 s
+#   Righe identiche: EXCEPT ALL nei due versi sull'intera vista e su ogni
+#   lista. Le misure sono un fatto datato, non il motivo: il motivo e' che il
+#   calcolo non dipende dalla riga della lista, quindi non va rifatto per riga.
+#
+# -- IL PREZZO, DICHIARATO -----------------------------------------------
+#   Un recinto impedisce al filtro di chi legge UN documento di scendere nel
+#   calcolo: quel lettore paga la lineage di tutto cio' che vede. Gia' oggi
+#   le CTE ricorsive (fwd, walk) si calcolavano intere; e con gli archi letti
+#   una volta il caso del documento singolo e' comunque piu' veloce. Resta il
+#   costo fisso (~0,44 s, quasi tutto negli archi): e' il passo successivo
+#   del brief, non questo.
+#
+# -- FORMA ---------------------------------------------------------------
+#   CREATE OR REPLACE: stesse colonne nello stesso ordine (SELECT * FROM
+#   lineage). WITH (security_invoker=on) ripetuto: un CREATE OR REPLACE lo
+#   azzererebbe. GRANT come nel 20260829-02 (idempotente).
+#   Corpo di partenza: 20260829-02 (ultima definizione), con i suoi commenti;
+#   verificato equivalente al vivo di dbdev (EXCEPT ALL = 0 come app).
+#   COMMENT: quello vivo, piu' la revisione di oggi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261005-20-update-vw-documento-lineage-una-volta-per-query-mctit.yaml
+
+  - changeSet:
+      id: 20261005-20-update-vw-documento-lineage-una-volta-per-query
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_documento_lineage: archi letti una volta, CTE e risultato MATERIALIZED, cosi' le
+        viste di lista non rieseguono il calcolo per ogni riga. Stesse colonne e righe. Brief:
+        brief-db-liste-documento-lineage-lenta.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class c
+               WHERE c.oid = 'vendite.vw_documento_lineage'::regclass AND c.relkind = 'v';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage
+              WITH (security_invoker=on) AS
+              WITH RECURSIVE
+              archi AS MATERIALIZED (
+                  -- ⭐ rev 2026-10-05: gli archi si leggono UNA volta. fwd e inc li
+                  --   leggevano ciascuno per conto suo, e vw_documento_lineage_archi
+                  --   (sotto RLS) costa da sola ~360 ms come applicazione.
+                  SELECT * FROM vendite.vw_documento_lineage_archi
+              ),
+              fwd AS MATERIALIZED (
+                  -- grafo forward (esclude i rami di RITORNO: R reso, N nota di credito)
+                  -- ⭐ rev 2026-08-20: si filtra sulla PROPRIETA', non sulla lettera. Il
+                  --   filtro `arco <> 'R'` era scritto qui, venti righe piu' sotto, e una
+                  --   terza volta in fn_documento_lineage: con l'arrivo dell'arco N un solo
+                  --   posto dimenticato avrebbe fatto comparire la nota di credito come
+                  --   discendente forward della fattura che rettifica, cambiando la
+                  --   FRONTIERA di ogni riga di lista — e senza errori, solo con un valore
+                  --   diverso. Ora l'elenco dei rami di ritorno vive in
+                  --   vw_documento_lineage_archi.is_ramo_inverso e qui si legge.
+                  SELECT from_tipo_id, from_uid, to_tipo_id, to_uid,
+                         to_codice, to_stato_codice_interno, to_fase, to_is_abortito, ruolo
+                    FROM archi
+                   WHERE NOT is_ramo_inverso
+              ),
+              walk AS MATERIALIZED (
+                  -- livello 1: discendenti diretti di ogni nodo
+                  SELECT f.from_tipo_id AS o_tipo, f.from_uid AS o_uid,
+                         f.to_tipo_id   AS d_tipo, f.to_uid   AS d_uid,
+                         f.to_codice AS d_codice, f.to_stato_codice_interno AS d_stato,
+                         f.to_fase AS d_fase, f.to_is_abortito AS d_abortito,
+                         1 AS lvl,
+                         ARRAY[(f.from_tipo_id::text || ':' || f.from_uid),
+                               (f.to_tipo_id::text   || ':' || f.to_uid)] AS visited
+                    FROM fwd f
+                  UNION ALL
+                  SELECT w.o_tipo, w.o_uid,
+                         f.to_tipo_id, f.to_uid, f.to_codice, f.to_stato_codice_interno,
+                         f.to_fase, f.to_is_abortito,
+                         w.lvl + 1,
+                         w.visited || (f.to_tipo_id::text || ':' || f.to_uid)
+                    FROM walk w
+                    JOIN fwd f ON f.from_tipo_id = w.d_tipo AND f.from_uid = w.d_uid
+                   WHERE w.lvl < 10
+                     AND NOT ((f.to_tipo_id::text || ':' || f.to_uid) = ANY (w.visited))
+              ),
+              cand AS MATERIALIZED (
+                  -- candidati frontiera: il nodo stesso (lvl 0) + i discendenti forward
+                  SELECT n.tipo_id AS o_tipo, n.uid AS o_uid,
+                         n.tipo_id AS d_tipo, n.uid AS d_uid, n.codice AS d_codice,
+                         n.stato_codice_interno AS d_stato, n.fase AS d_fase,
+                         n.is_abortito AS d_abortito, 0 AS lvl
+                    FROM vendite.vw_documento_lineage_nodi n
+                  UNION ALL
+                  SELECT o_tipo, o_uid, d_tipo, d_uid, d_codice, d_stato, d_fase, d_abortito, lvl
+                    FROM walk
+              ),
+              frontiera AS MATERIALIZED (
+                  -- Scelta della frontiera per ogni nodo origine, in ordine:
+                  --  1. prima gli ATTIVI: fase<>CHIUSO AND NOT is_abortito
+                  --  2. poi il piu' PROFONDO: lvl DESC
+                  --  3. a parita' di livello, il piu' A VALLE nel flusso via
+                  --     pipeline_rank DESC [fattura>commessa>ddt>ordine=contratto>preventivo=offerta]
+                  --  4. tie-break finale deterministico: tipo, uid
+                  -- ⭐ rev 2026-08-28: si porta avanti anche nd.natura_doc_codice_interno. Il join
+                  --   sui nodi era GIA' QUI per il pipeline_rank: la natura della frontiera
+                  --   costa una colonna, non un accesso.
+                  SELECT c.o_tipo, c.o_uid, c.d_tipo, c.d_uid, c.d_codice, c.d_stato, c.d_fase,
+                         nd.natura_doc_codice_interno AS d_natura_doc_codice_interno,
+                         nd.tipo_codice_interno       AS d_tipo_codice_interno,
+                         ROW_NUMBER() OVER (
+                             PARTITION BY c.o_tipo, c.o_uid
+                             ORDER BY (CASE WHEN c.d_fase <> 'CHIUSO'
+                                             AND NOT COALESCE(c.d_abortito, false)
+                                            THEN 0 ELSE 1 END),
+                                      c.lvl DESC,
+                                      COALESCE(nd.pipeline_rank, 0) DESC,
+                                      c.d_tipo, c.d_uid
+                         ) AS rn
+                    FROM cand c
+                    LEFT JOIN vendite.vw_documento_lineage_nodi nd
+                           ON nd.tipo_id = c.d_tipo AND nd.uid = c.d_uid
+              ),
+              disc AS MATERIALIZED (
+                  -- conteggi discendenti diretti (lvl 1)
+                  SELECT o_tipo, o_uid,
+                         COUNT(DISTINCT (d_tipo::text || ':' || d_uid)) AS n_diretti,
+                         COUNT(DISTINCT (d_tipo::text || ':' || d_uid))
+                             FILTER (WHERE d_fase <> 'CHIUSO' AND NOT COALESCE(d_abortito, false))
+                             AS n_attivi
+                    FROM walk
+                   WHERE lvl = 1
+                   GROUP BY o_tipo, o_uid
+              ),
+              inc AS MATERIALIZED (
+                  -- archi forward ENTRANTI nel nodo (lato inverso; per lista commesse)
+                  -- ⭐ rev 2026-08-28: IL ROOT NON DIPENDE PIU' DA UN ID DI SEED.
+                  --   Il tie-break si spezzava su from_tipo_id, cioe' sulla PK di
+                  --   config.sorgenti, ogni volta che nessuna sorgente portava
+                  --   ruolo='ROOT' — ed e' il caso di ogni nota di credito, che ha la
+                  --   commessa via G e il reso via S, tutti e due con ruolo NULL. Oggi
+                  --   vinceva la commessa solo perche' 13 < 15: una riseminatura del
+                  --   catalogo avrebbe cambiato il root di ogni nota, senza un errore,
+                  --   senza un log, solo con un valore diverso.
+                  --   Adesso decide rango_origine, che e' DICHIARATO sull'arco — stessa
+                  --   sede e stessa forma di is_ramo_inverso.
+                  -- ⚠️ L'ORDINE DEI TRE CRITERI E' LA REGOLA, e va letto cosi':
+                  --   1. ruolo='ROOT' PRIMA DI TUTTO: quando una tabella ponte ha
+                  --      DICHIARATO qual e' l'origine (commesse_sorgenti.ruolo_link, sui
+                  --      rami B/E/F/U), quella dichiarazione batte qualunque scala. Un
+                  --      dato scritto da chi sa vale piu' di una regola generale.
+                  --   2. rango_origine: fra archi che un ruolo non ce l'hanno, vince la
+                  --      sorgente piu' a monte nel flusso.
+                  --   3. from_uid: tie-break residuo, e vale solo dove il modello NON ha
+                  --      una preferenza (E/F). E' immutabile, quindi il risultato e'
+                  --      stabile — non significativo, ma stabile, ed e' meglio dirlo che
+                  --      fingere una regola che non c'e'.
+                  -- ⛔ I tre array_agg devono avere lo STESSO ORDER BY, sempre: sono tre
+                  --   pezzi della stessa riga presi con tre aggregazioni diverse. Se uno
+                  --   solo divergesse, root_tipo, root_uid e root_codice verrebbero da
+                  --   archi DIVERSI — un root che non esiste, composto a pezzi, e nessun
+                  --   errore da nessuna parte.
+                  SELECT to_tipo_id AS tipo, to_uid AS uid,
+                         COUNT(*) AS n_sorgenti,
+                         (array_agg(from_tipo_id ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, rango_origine, from_uid))[1] AS root_tipo,
+                         (array_agg(from_uid     ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, rango_origine, from_uid))[1] AS root_uid,
+                         (array_agg(from_codice  ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, rango_origine, from_uid))[1] AS root_codice
+                    FROM archi
+                   WHERE NOT is_ramo_inverso   -- stessa regola del grafo forward, stessa sede
+                   GROUP BY to_tipo_id, to_uid
+              ),
+              prat AS MATERIALIZED (
+                  -- pratica 1:1 difensiva: prima per id + conteggio
+                  SELECT ps.sorgente_tipo_id AS tipo, ps.sorgente_uid AS uid,
+                         COUNT(DISTINCT ps.pratica_id) AS n_pratiche,
+                         (array_agg(p.id     ORDER BY p.id))[1] AS pratica_id,
+                         (array_agg(p.codice ORDER BY p.id))[1] AS pratica_numero
+                    FROM pratiche.pratiche_sorgenti ps
+                    JOIN pratiche.pratiche p ON p.id = ps.pratica_id
+                   GROUP BY ps.sorgente_tipo_id, ps.sorgente_uid
+              ),
+              lineage AS MATERIALIZED (
+                  -- ⭐ rev 2026-10-05: il RISULTATO e' recintato anche lui. Le viste di
+                  --   lista fanno LEFT JOIN su questa vista per (tipo, uid): senza recinto
+                  --   il planner, sotto RLS, sceglieva un nested loop e rieseguiva il
+                  --   calcolo per OGNI riga della lista (preventivi: loops=168, ~3 s).
+                  --   Recintare le sole CTE non basta: la SELECT finale, sui nodi, diventa
+                  --   lei la parte rieseguita (provato: 5,5 s). Calcolata una volta per
+                  --   query, poi hash join.
+              SELECT
+                  n.tipo_id,
+                  n.uid,
+                  n.codice,
+                  n.stato_codice_interno,
+                  n.stato_codice,
+                  n.stato_descrizione,
+                  n.fase,
+                  n.is_abortito,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  COALESCE(pr.n_pratiche, 0)          AS n_pratiche,
+                  fr.d_tipo                           AS frontiera_tipo_id,
+                  fr.d_uid                            AS frontiera_uid,
+                  fr.d_codice                         AS frontiera_codice,
+                  fr.d_stato                          AS frontiera_stato_codice_interno,
+                  fr.d_fase                           AS frontiera_fase,
+                  COALESCE(dc.n_diretti, 0)           AS n_discendenti_diretti,
+                  COALESCE(dc.n_attivi, 0)            AS n_discendenti_attivi,
+                  (COALESCE(dc.n_diretti, 0) > 0)     AS is_transitato,
+                  COALESCE(ic.n_sorgenti, 0)          AS n_sorgenti,
+                  ic.root_tipo                        AS root_tipo_id,
+                  ic.root_uid                         AS root_uid,
+                  ic.root_codice                      AS root_codice,
+                  -- ⭐ rev 2026-08-20: la natura del nodo, per le liste. Senza, una lista di
+                  --   fatture scrive «Fattura» anche sopra una nota di credito — che e' la
+                  --   stessa cecita' per cui, nei «Passaggi», due documenti della stessa
+                  --   commessa erano indistinguibili.
+                  n.natura_doc_codice_interno,
+                  n.natura_doc_descrizione,
+                  -- ⭐ rev 2026-08-28: la natura del nodo di FRONTIERA. E' la stessa cecita'
+                  --   di sopra, sull'altra colonna: il chip «Transito» decodifica il tipo, e
+                  --   il tipo di una nota di credito e' FATTURA.
+                  -- ⚠️ Sta in fondo e non accanto alle sorelle frontiera_* perche'
+                  --   CREATE OR REPLACE VIEW puo' solo APPENDERE: inserirla in mezzo
+                  --   vorrebbe dire DROP CASCADE delle viste di lista che leggono questa.
+                  -- ⛔ NULL qui NON e' «non lo so»: e' «la frontiera non e' un documento
+                  --   fiscale». La natura e' un asse diverso dal tipo ed esiste solo per le
+                  --   fatture; sugli altri sette tipi di nodo e' NULL ed e' corretto.
+                  fr.d_natura_doc_codice_interno              AS frontiera_natura_doc_codice_interno,
+                  -- ⭐ rev 2026-08-29 (richiesta BE): il CODICE del tipo accanto al suo id.
+                  --   Il grafo esponeva il tipo solo come tipo_id, e ogni consumatore se lo
+                  --   traduceva da se' con lo stesso join a config.sorgenti: DIECI copie
+                  --   scritte a mano nel backend, tutte fuori dalla portata del guardrail
+                  --   naming, che scansiona solo le viste.
+                                -- ⛔ Il nome NON e' `tipo_codice`, che il BE aveva chiesto: il valore e'
+                  --   `config.sorgenti.codice_interno` (immutabile, usato dal FE per la
+                  --   chiave i18n e per instradare, cioe' LOGICA) e §6c vieta
+                  --   `codice_interno AS *_codice`. Le dieci copie erano tutte mislabel;
+                  --   centralizzarle col nome sbagliato le avrebbe rese un errore CI.
+                  n.tipo_codice_interno,
+                  fr.d_tipo_codice_interno                    AS frontiera_tipo_codice_interno
+                FROM vendite.vw_documento_lineage_nodi n
+                LEFT JOIN prat pr      ON pr.tipo   = n.tipo_id AND pr.uid   = n.uid
+                LEFT JOIN frontiera fr ON fr.o_tipo = n.tipo_id AND fr.o_uid = n.uid AND fr.rn = 1
+                LEFT JOIN disc dc      ON dc.o_tipo = n.tipo_id AND dc.o_uid = n.uid
+                LEFT JOIN inc ic       ON ic.tipo   = n.tipo_id AND ic.uid   = n.uid
+              )
+              SELECT * FROM lineage;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage IS
+                  'Lineage documenti vendite (Step 3): summary per nodo per arricchire le liste. Espone pratica (1:1 difensiva + n_pratiche), fase propria, frontiera forward (piu'' a valle attivo, esclude i rami di RITORNO), discendenti diretti/attivi, is_transitato, lato inverso (n_sorgenti + ROOT), natura del documento e natura del documento di frontiera. security_invoker=on. ⭐ rev 2026-08-20 — DUE COSE. (1) i due filtri del grafo forward non nominano piu'' la lettera R ma leggono vw_documento_lineage_archi.is_ramo_inverso: con l''arrivo dell''arco N (fattura rettificata -> nota di credito) la lettera era scritta a mano in TRE posti, e il terzo dimenticato non avrebbe dato nessun errore — solo la nota di credito come discendente forward, cioe'' una FRONTIERA diversa su ogni riga di lista. (2) espone natura_doc_codice_interno/natura_doc_descrizione del nodo, cosi'' una lista di fatture smette di scrivere «Fattura» sopra una nota di credito. ⭐ rev 2026-08-28 — E ADESSO ANCHE frontiera_natura_doc_codice_interno, che e'' la TERZA versione di questa frase perche'' le prime due erano vere a meta''. Il 20260821-03 diceva «varrebbe sempre NULL»: falso, l''arco G (commessa -> fattura) non e'' un ramo di ritorno e una nota di credito E'' raggiungibile in avanti. Il 20260825-20 ha corretto in «il consumatore la ricava per conto suo»: vero per UNO — il pannello del drawer, che legge questa vista e ha frontiera_uid — e falso per tutti gli altri, perche'' le viste di LISTA proiettano frontiera_tipo_id/codice/stato/fase e la CHIAVE del nodo di frontiera si ferma li''. Senza quella chiave non c''e'' modo onesto di leggere la natura, e ogni lista chiama «Fattura» una nota di credito: sulla lista resi non e'' nemmeno un caso limite, e'' IL caso, perche'' l''arco S arriva sempre a una nota di credito (pgTAP 35). La ragione della colonna, al positivo: la chiave del nodo di frontiera non esce dalla summary, e senza la natura ogni lista dice la parola sbagliata proprio nel punto per cui la colonna «Transito» e'' stata seminata. ⭐ Costa una colonna e non un join: la CTE frontiera fa gia'' LEFT JOIN su vw_documento_lineage_nodi per il pipeline_rank del tie-break. ⚠️ Sta in ULTIMA posizione e non accanto alle sorelle frontiera_* perche'' CREATE OR REPLACE VIEW puo'' solo appendere colonne: metterla in mezzo richiederebbe un DROP CASCADE delle viste di lista che leggono questa. ⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento fiscale»: la natura e'' un asse diverso dal tipo ed esiste solo per le fatture. Si espone il solo CODICE e non la descrizione: il consumatore traduce dal codice, le chiavi i18n esistono gia''. ⭐ rev 2026-08-28 — IL ROOT NON DIPENDE PIU'' DA UN ID DI SEED. La CTE inc ordinava ORDER BY (ruolo=''ROOT'') DESC NULLS LAST, from_tipo_id, from_uid: ogni volta che nessuna sorgente portava un ruolo — cioe'' per ogni nota di credito, che ha la commessa via G e il reso via S, tutti e due con ruolo NULL — a decidere restava from_tipo_id, la PK di config.sorgenti. La commessa vinceva solo perche'' 13 < 15, e una riseminatura del catalogo avrebbe cambiato il root di OGNI nota di credito senza un errore e senza un log. Ora il secondo criterio e'' rango_origine, DICHIARATO sull''arco in vw_documento_lineage_archi — stessa sede e stessa forma di is_ramo_inverso. L''ordine dei tre criteri E'' la regola: (1) ruolo=''ROOT'' prima di tutto, perche'' una tabella ponte che ha dichiarato l''origine batte qualunque scala; (2) rango_origine, fra archi senza ruolo; (3) from_uid, tie-break residuo dove il modello non ha una preferenza — immutabile, quindi stabile, ma non significativo. ⛔ I tre array_agg devono avere sempre lo STESSO ORDER BY: sono tre pezzi della stessa riga, e uno che divergesse comporrebbe un root inesistente a pezzi, in silenzio. ⭐ rev 2026-10-05 (20261005-20, brief-db-liste-documento-lineage-lenta) — LA LINEAGE SI CALCOLA UNA VOLTA PER QUERY. Gli archi si leggono una volta (CTE archi, prima li leggevano fwd e inc ciascuno: ~360 ms l''una come applicazione), ogni CTE e il risultato finale sono MATERIALIZED. Senza recinto, le sette viste di lista che fanno LEFT JOIN su questa vista per (tipo, uid) finivano sotto RLS in un nested loop che rieseguiva il calcolo per ogni riga della lista (preventivi 168 righe: loops=168, 3,1 s il conteggio e 2,9 s la pagina). Misurato come zeroerp_app su dbdev il 2026-10-05: lista preventivi 3,1+2,9 s -> 0,44+0,45 s, le altre sei liste ~1 s -> ~0,44 s, la lineage di un documento 0,75 -> 0,43 s; righe identiche (EXCEPT ALL nei due versi, sulla vista intera e sulle liste). ⚠️ Recintare le sole CTE intermedie non basta: la SELECT finale sui nodi diventa lei la parte rieseguita per riga (provato: 5,5 s). Il prezzo dichiarato: chi legge UN documento paga la lineage di tutti quelli che vede, come gia'' oggi per le CTE ricorsive; resta piu'' veloce di prima perche'' gli archi si leggono una volta.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_documento_lineage TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' in 20260829-02.
+              SELECT 1;

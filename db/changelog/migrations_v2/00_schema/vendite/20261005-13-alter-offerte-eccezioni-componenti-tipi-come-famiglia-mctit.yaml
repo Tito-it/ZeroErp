@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMPONENTI DELL'OFFERTA HANNO I TIPI DEGLI ALTRI COMPONENTI
+#   vendite.offerte_commerciali_eccezioni_componenti, a numeric senza scala:
+#     coeff_qta_snapshot  numeric(18,6)
+#     quantita            numeric(18,6)
+#     factor_to_base      numeric(18,8)
+#     qta_operativa       numeric(18,6)
+#     prezzo_unitario     numeric(18,6)
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (§8.2 B2; decisione di
+#   Tid, 2026-10-04)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il push copia i componenti dell'offerta in vendite.contratti_righe_componenti
+#   1:1 (e, per un'offerta che diventa ordine, in ordini_righe_componenti). Le
+#   due gemelle devono avere gli stessi tipi.
+#
+# -- QUALE VERSO, SUL MODELLO ---------------------------------------
+#   Le tabelle di componenti dei documenti sono cinque: contratto, ordine,
+#   preventivo, DDT e offerta. Quattro hanno queste colonne a numeric senza
+#   scala (letto dal catalogo il 2026-10-05); l'offerta era la sola con una
+#   scala, ed e' lei che si allinea. Il verso opposto avrebbe stretto quattro
+#   tabelle, arrotondando valori gia' scritti, per un'offerta.
+#   ⚠️ Non e' la scelta fatta per le RIGHE (20261005-10/-11): li' la famiglia
+#   delle righe di documento ha scale dichiarate, e la gemella si allinea a
+#   quelle. In tutti e due i casi vince la famiglia, non l'una o l'altra tabella.
+#   Allargare a numeric senza scala non rifiuta niente di cio' che oggi passa,
+#   e non riscrive la tabella.
+#
+# -- IL TRIGGER DA RIMONTARE ----------------------------------------
+#   trg_oce_comp_a10_prezzo_obbligatorio_ins_upd e' UPDATE OF prezzo_unitario,
+#   articolo_componente_id: ALTER COLUMN ... TYPE lo rifiuterebbe. Si smonta e
+#   si rimonta identico (definizione del 20260526-23, letta dal catalogo di
+#   dbdev e dello scratch il 2026-10-05; non aveva COMMENT). Scritto a mano in
+#   20_code, non generato da ci_apply. Nessun altro trigger nomina queste
+#   colonne; nessuna vista le legge.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261005-13-alter-offerte-eccezioni-componenti-tipi-come-famiglia-mctit.yaml
+
+  - changeSet:
+      id: 20261005-13-alter-offerte-eccezioni-componenti-tipi-come-famiglia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.offerte_commerciali_eccezioni_componenti: coeff_qta_snapshot, quantita,
+        factor_to_base, qta_operativa e prezzo_unitario a numeric senza scala, come le altre
+        tabelle di componenti. Brief: brief-db-righe-esclusione-solo-non-si-vende (§8.2 B2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgrelid = 'vendite.offerte_commerciali_eccezioni_componenti'::regclass
+                 AND t.tgname = 'trg_oce_comp_a10_prezzo_obbligatorio_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_oce_comp_a10_prezzo_obbligatorio_ins_upd
+                  ON vendite.offerte_commerciali_eccezioni_componenti;
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                  ALTER COLUMN coeff_qta_snapshot TYPE numeric,
+                  ALTER COLUMN quantita           TYPE numeric,
+                  ALTER COLUMN factor_to_base     TYPE numeric,
+                  ALTER COLUMN qta_operativa      TYPE numeric,
+                  ALTER COLUMN prezzo_unitario    TYPE numeric;
+
+              CREATE TRIGGER trg_oce_comp_a10_prezzo_obbligatorio_ins_upd
+                  BEFORE INSERT OR UPDATE OF prezzo_unitario, articolo_componente_id
+                  ON vendite.offerte_commerciali_eccezioni_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_componenti_check_prezzo_obbligatorio();
+
+              COMMENT ON TRIGGER trg_oce_comp_a10_prezzo_obbligatorio_ins_upd
+                  ON vendite.offerte_commerciali_eccezioni_componenti IS
+                  'Prezzo del componente obbligatorio (script.trgfn_componenti_check_prezzo_obbligatorio). '
+                  'Gemello di trg_contrighe_comp_a10_prezzo_obbligatorio_ins_upd. Rimontato identico dal '
+                  '20261005-13 (cambio di tipo di prezzo_unitario). Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (§8.2 B2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_oce_comp_a10_prezzo_obbligatorio_ins_upd
+                  ON vendite.offerte_commerciali_eccezioni_componenti;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                  ALTER COLUMN coeff_qta_snapshot TYPE numeric(18,6),
+                  ALTER COLUMN quantita           TYPE numeric(18,6),
+                  ALTER COLUMN factor_to_base     TYPE numeric(18,8),
+                  ALTER COLUMN qta_operativa      TYPE numeric(18,6),
+                  ALTER COLUMN prezzo_unitario    TYPE numeric(18,6);
+              CREATE TRIGGER trg_oce_comp_a10_prezzo_obbligatorio_ins_upd
+                  BEFORE INSERT OR UPDATE OF prezzo_unitario, articolo_componente_id
+                  ON vendite.offerte_commerciali_eccezioni_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_componenti_check_prezzo_obbligatorio();

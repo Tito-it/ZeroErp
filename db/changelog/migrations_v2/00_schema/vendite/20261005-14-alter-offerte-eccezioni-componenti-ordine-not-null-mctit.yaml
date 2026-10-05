@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ORDINE DI UN COMPONENTE DELL'OFFERTA E' SEMPRE VALORIZZATO
+#   vendite.offerte_commerciali_eccezioni_componenti.ordine SET NOT NULL
+#   (default 0, gia' presente)
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (§8.2 B2; decisione di
+#   Tid, 2026-10-04)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il push copia `ordine` del componente in
+#   vendite.contratti_righe_componenti.ordine, che e' NOT NULL come su tutte
+#   le altre tabelle di componenti: un componente dell'offerta con ordine
+#   NULL faceva morire il push di un'offerta valida. La regola sta dove il
+#   dato nasce.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero righe a NULL (expectedResult 0: un DB da
+#   zero la soddisfa, linee-guida-sql §11.4). Se ce ne sono, il migrate si
+#   ferma e si guardano a mano: nessun valore scelto dal migrate.
+#
+# -- LA DIFFERENZA CHE RESTA, DI PROPOSITO ---------------------------
+#   user_update e' NOT NULL su questa tabella e nullable su
+#   contratti_righe_componenti (e su tutte le altre righe e componenti di
+#   documento). Non si tocca: NOT NULL e' la regola delle colonne di audit
+#   (linee-guida-sql §7), il push non copia la colonna e la scrive il trigger
+#   di audit. Allentarla qui per simmetria toglierebbe un vincolo giusto; il
+#   debito e' delle altre tabelle, ed e' scritto nel brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261005-14-alter-offerte-eccezioni-componenti-ordine-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261005-14-alter-offerte-eccezioni-componenti-ordine-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.offerte_commerciali_eccezioni_componenti.ordine NOT NULL, come sul componente
+        del contratto in cui il push lo copia. Brief: brief-db-righe-esclusione-solo-non-si-vende
+        (§8.2 B2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM vendite.offerte_commerciali_eccezioni_componenti c
+               WHERE c.ordine IS NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                  ALTER COLUMN ordine SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                  ALTER COLUMN ordine DROP NOT NULL;

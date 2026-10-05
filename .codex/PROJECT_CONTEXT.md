@@ -237,9 +237,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   fatto il 2026-10-04 (§8): il cantiere è chiuso, il brief si può archiviare.
 - **L'esclusione è solo «non si vende», contratto e offerta con le stesse regole**
   (`work-in-progress/brief-db-righe-esclusione-solo-non-si-vende.md`, decisione di Tid del 2026-10-04): DB
-  applicato (`20261004-40…-49`, `-70…-76`), pgTAP verdi. BE/FE primo giro fatto il 2026-10-04 (§9). ⏳ Secondo giro DB richiesto (§8: lista configurabile dell'offerta; revisione che perde i
-  componenti, scale delle gemelle, lock dei componenti, `attivo`/`meta` NOT NULL); poi il drawer dell'offerta
-  passa ai verbi del DB e a «Escludi».
+  applicato (`20261004-40…-49`, `-70…-76`), pgTAP verdi. BE/FE primo giro fatto il 2026-10-04 (§9). Secondo giro
+  DB **scritto** il 2026-10-05 (§10: `20261005-10…-19`, lista `vendite.offerta_righe` 106; la revisione copia i
+  componenti, gemelle con gli stessi tipi, lock «solo in bozza» sui componenti col building block a livello RIGA —
+  i rientri del reso ritirano la loro copia), provato sullo scratch. ⏳ Apply e pgTAP di Tid, poi il giro BE/FE
+  (§10.7: endpoint della lista, sette chiavi i18n, il drawer dell'offerta sui verbi del DB e «Escludi»).
+- **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato
+  il 2026-10-05): sotto RLS la lineage si ricalcolava per ogni riga della lista. `20261005-20` (lineage calcolata una
+  volta per query) e `-21` (archi: tre letture una volta sola), applicati: le sette liste ~0,18 s la pagina (preventivi
+  da ~6 s), l'albero del drawer 1,1 → 0,2-0,3 s, righe identiche. Nessun lavoro BE/FE.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

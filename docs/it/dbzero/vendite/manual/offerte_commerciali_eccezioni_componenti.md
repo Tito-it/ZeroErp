@@ -50,9 +50,9 @@ offerte, con le differenze intenzionali elencate di seguito.
 | Aspetto | `contratti_righe_componenti` | `offerte_commerciali_eccezioni_componenti` |
 |---|---|---|
 | FK padre | `riga_contratto_id → contratti_righe(id)` | `eccezione_offerta_id → offerte_commerciali_eccezioni(id)` |
-| Colonna `attivo` | Presente (`DEFAULT true`) | **Assente** — in offerta tutti i componenti sono sempre visibili |
-| Colonna `ordine` | Presente (`DEFAULT 0`) | **Assente** |
-| Colonna `meta` | Presente (`DEFAULT '{}'::jsonb`) | **Assente** |
+| Colonne `attivo`, `ordine`, `meta` | Presenti, `NOT NULL` | Presenti, `NOT NULL` (`ordine` lo e' dal 2026-10-05: il push lo copia in una colonna `NOT NULL`) |
+| Tipi numerici | `numeric` senza scala | `numeric` senza scala dal 2026-10-05 (prima `(18,6)` e `(18,8)`): come tutte le tabelle di componenti |
+| `user_update` | nullable | `NOT NULL` — differenza **voluta**: e' la regola delle colonne di audit, il push non la copia |
 | `stato_approvazione_prezzo` | Popolato in fase di negoziazione contratto | **Trasportato 1:1 dal push** offerta→contratto (NULL ammesso) |
 | `pratica_approvazione_prezzo_id` | Collegato al workflow L3 contratto | **Trasportato 1:1 dal push** (NULL ammesso) |
 | Guard pending | `trgfn_componenti_guard_pending('riga_contratto_id')` | `trgfn_componenti_guard_pending('eccezione_offerta_id')` |
@@ -83,6 +83,7 @@ componenti con una singola INSERT senza conversioni di colonne.
 
 | Trigger | Timing | Fase | Funzione |
 |---|---|---|---|
+| `_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-05) | BEFORE INS/UPD/DLT | `_a05_` | `vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'eccezione_offerta_id', 'BOZZA', 'RIGA')` |
 | `_a10_guard_bom_coerenza_ins_upd` | BEFORE INS/UPD | `_a10_` | `script.trgfn_componenti_guard_coerenza_bom` |
 | `_a10_guard_obbligatorio_upd` | BEFORE UPD | `_a10_` | `script.trgfn_componenti_guard_obbligatorio` |
 | `_a10_guard_pending_upd` | BEFORE UPD | `_a10_` | `script.trgfn_componenti_guard_pending('eccezione_offerta_id')` |
@@ -102,6 +103,8 @@ Sulla eccezione padre `offerte_commerciali_eccezioni` è registrato anche
 
 ### Note operative
 
+- **Solo in bozza** (dal 2026-10-05): un componente si aggiunge, modifica e toglie solo con l'offerta in BOZZA (`E_RIGA_DOC_NON_BOZZA`, la regola delle righe a livello RIGA). Parla prima dei guard del componente: spegnere un obbligatorio su un'offerta emessa risponde «l'offerta non è più in bozza», non «è obbligatorio». Brief: `brief-db-righe-esclusione-solo-non-si-vende` §8.2 B3.
+- **La revisione li copia** (dal 2026-10-05): `fn_crea_revisione_offerta` porta nella revisione tutti i componenti delle righe copiate, anche gli opzionali spenti (§8.2 B1 dello stesso brief). Prima la revisione nasceva senza.
 - **FK ON DELETE CASCADE**: l'eliminazione di una `offerte_commerciali_eccezioni` elimina automaticamente tutti i suoi componenti.
 - **UNIQUE (eccezione_offerta_id, articolo_componente_id)**: un componente BoM al massimo una volta per eccezione padre.
 - **Tutti i componenti attivi e validi della distinta**: dal modello unificato (rev 2026-05-27) `fn_offerta_eccezione_componenti_init` non filtra più la BoM sul vecchio flag `esposto_in_fattura`, e inserisce un componente per ogni voce attiva alla data. L'esposizione in fattura (`catalogo.articoli_componenti.esposizione_in_fattura`, dal 2026-10-01 a tre modi `NASCOSTO` | `DESCRITTIVO` | `VALORIZZATO`) è una regola di presentazione della fattura, non un filtro su queste righe.

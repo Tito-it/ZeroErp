@@ -39,8 +39,8 @@ Obiettivi principali:
 * **Fonte quantita attesa** (`fonte_quantita_attesa`) → origine della quantita attesa (vedi sezione dedicata).
 * **Periodicita** (`periodicita`) → intervallo di fatturazione (mensile, bimestrale, ecc.).
 * **Generazione/competenza canone** (`generazione_canone`, `competenza_canone`) → canone anticipato/posticipato e competenza.
-* **Prezzo unitario** (`prezzo_unitario`) e **quantita** (`quantita`) → base per righe a canone o una‑tantum.
-* **Meta** (`meta`) → estensioni specifiche (parametri di tariffa, flag tecnici, mapping esterni).
+* **Prezzo unitario** (`prezzo_unitario`, `numeric(18,6)` dal 2026-10-05) e **quantita** (`quantita`) → base per righe a canone o una‑tantum.
+* **Meta** (`meta`) → estensioni specifiche (parametri di tariffa, flag tecnici, mapping esterni). Sempre valorizzato (`NOT NULL`, default `{}`), come `attivo` (default `true`), dal 2026-10-05.
 
 ---
 
@@ -225,6 +225,19 @@ generazione e competenza del canone **restano vuoti**: lo dice il vincolo
 
 ---
 
+#### Gli stessi tipi della riga dell'offerta (2026-10-05)
+
+Il push copia la riga dell'offerta nel contratto così com'è: un valore valido
+sull'offerta non deve poter fallire qui. Dal 2026-10-05 le due tabelle hanno gli
+stessi tipi su ogni colonna comune: `prezzo_unitario` è `numeric(18,6)` (era
+`(15,6)`: un prezzo oltre il miliardo passava sull'offerta e moriva al push), i
+quattro codici di erogazione (`fonte_quantita_attesa`, `periodicita`,
+`generazione_canone`, `competenza_canone`) sono `varchar(32)`. Anche
+`attivo` e `meta` sono diventati obbligatori, come sull'offerta. Lo presidia
+`db/pgtap/vendite/test-righe-gemelle-secondo-giro-v1.sql` (test 1, 3), che
+confronta le due tabelle colonna per colonna: una divergenza futura è un rosso.
+Brief: `brief-db-righe-esclusione-solo-non-si-vende` §8.2 B2, B4.
+
 ### Vincoli e trigger rilevanti
 
 * **FK principali**: contratto, articolo, UoM operativa.
@@ -239,6 +252,7 @@ generazione e competenza del canone **restano vuoti**: lo dice il vincolo
   * `trg_contratti_righe_a10_qta_from_operativa_ins_upd` — calcolo quantita base da operativa. Salta l'esclusione dal 2026-10-04.
   * `trg_contratti_righe_a10_note_contratto_block_deact_upd` — blocca disattivazioni se presenti note figlie.
   * `trg_contratti_righe_a10_articoli_require_attivo_ins_upd` — articolo attivo obbligatorio.
+* **Componenti**: i componenti di una riga composita (`vendite.contratti_righe_componenti`) seguono la regola delle righe — si toccano solo in DRAFT — col loro trigger `_a05_` (dal 2026-10-05).
 
 ---
 

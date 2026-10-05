@@ -15,7 +15,7 @@ AS $function$
 -- Scopo:
 --   Creare una nuova revisione (rev.N+1) in stato BOZZA a partire
 --   da un'offerta in stato EMESSA. Copia testata, eccezioni attive
---   e utility (1:1). Il trigger z90 revisione (Step 6) marca
+--   coi loro componenti, e utility (1:1). Il trigger z90 revisione (Step 6) marca
 --   automaticamente il padre (rev.N) come SUPERATA al momento
 --   dell'INSERT della testata rev.N+1.
 --
@@ -28,6 +28,10 @@ AS $function$
 --     prezzo (stato_approvazione_prezzo + pratica_approvazione_prezzo_id)
 --     copiato 1:1 / carry-forward (rev2, 2026-06-01) per preservare
 --     l'invariante "prezzo fuori-policy sempre marcato".
+--   - componenti delle eccezioni copiate: TUTTI (anche gli opzionali
+--     spenti, che sono una scelta), rimappati sull'eccezione nuova;
+--     stato e pratica di approvazione 1:1 come sulle eccezioni
+--     (rev 2026-10-05: prima non si copiavano)
 --   - utility: copia 1:1 (un record per offerta)
 --   - timestamp transizione (data_emissione, ...) restano NULL
 --
@@ -38,6 +42,8 @@ DECLARE
     v_stato_corrente_cod  config.stati_doc_offerte.codice_interno%TYPE;
     v_stato_bozza_id      config.stati_doc_offerte.id%TYPE;
     v_new_id              vendite.offerte_commerciali.id%TYPE;
+    v_ecc                 vendite.offerte_commerciali_eccezioni%ROWTYPE;
+    v_new_ecc_id          vendite.offerte_commerciali_eccezioni.id%TYPE;
 BEGIN
     -- Guard: parametro obbligatorio
     IF p_offerta_id IS NULL OR p_offerta_id <= 0 THEN
@@ -169,58 +175,125 @@ BEGIN
     -- marcato il padre (p_offerta_id) come SUPERATA al momento
     -- dell'INSERT della testata rev.N+1 (AFTER INSERT, Step 6).
 
-    -- Copia eccezioni rev.N -> rev.N+1 (solo righe attive, 1:1).
+    -- Copia eccezioni rev.N -> rev.N+1 (solo righe attive, 1:1), e per
+    -- ciascuna i suoi componenti, rimappati sull'eccezione nuova.
     -- stato_approvazione_prezzo + pratica_approvazione_prezzo_id:
-    --   carry-forward 1:1 (rev2). Vedi header changelog per razionale
-    --   (invariante "prezzo fuori-policy sempre marcato").
-    -- Nessun remap FK necessario: offerte_commerciali_eccezioni
-    -- non ha tabelle figlie che richiedano remapping.
-    INSERT INTO vendite.offerte_commerciali_eccezioni (
-        offerta_id,
-        articolo_id,
-        tipo_eccezione,
-        tipo_erogazione,
-        fonte_quantita_attesa,
-        periodicita,
-        generazione_canone,
-        competenza_canone,
-        prezzo_unitario,
-        quantita,
-        qta_operativa,
-        uom_operativa_id,
-        factor_to_base,
-        ordine,
-        attivo,
-        meta,
-        stato_approvazione_prezzo,
-        pratica_approvazione_prezzo_id,
-        user_insert,
-        user_update
-    )
-    SELECT
-        v_new_id,
-        oce.articolo_id,
-        oce.tipo_eccezione,
-        oce.tipo_erogazione,
-        oce.fonte_quantita_attesa,
-        oce.periodicita,
-        oce.generazione_canone,
-        oce.competenza_canone,
-        oce.prezzo_unitario,
-        oce.quantita,
-        oce.qta_operativa,
-        oce.uom_operativa_id,
-        oce.factor_to_base,
-        oce.ordine,
-        oce.attivo,
-        oce.meta,
-        oce.stato_approvazione_prezzo,
-        oce.pratica_approvazione_prezzo_id,
-        COALESCE(p_user, CURRENT_USER),
-        COALESCE(p_user, CURRENT_USER)
-    FROM vendite.offerte_commerciali_eccezioni oce
-    WHERE oce.offerta_id = p_offerta_id
-      AND oce.attivo IS TRUE;
+    --   carry-forward 1:1 (rev2), sulle eccezioni e sui componenti.
+    --   Vedi header changelog per razionale (invariante "prezzo
+    --   fuori-policy sempre marcato").
+    -- ⭐ rev 2026-10-05 (brief-db-righe-esclusione-solo-non-si-vende
+    --   §8.2 B1): fino a oggi questo blocco diceva «nessun remap
+    --   necessario: le eccezioni non hanno tabelle figlie», e non era
+    --   vero — offerte_commerciali_eccezioni_componenti e' la figlia.
+    --   Una revisione di un'offerta con un bundle nasceva senza
+    --   componenti, e il push la portava cosi' nel contratto.
+    -- Una riga alla volta, con RETURNING, come fn_push_offerta_a_contratto:
+    --   la corrispondenza vecchia -> nuova e' quella dell'INSERT, non un
+    --   ordine di assegnazione degli id dato per scontato.
+    -- I componenti si copiano TUTTI, attivi e no: un opzionale spento e'
+    --   una scelta dell'offerta, e la revisione e' la stessa offerta
+    --   (stessa regola del push). I trigger del componente lavorano come
+    --   alla nascita: m50 ricalcola la quantita' dalla madre, z90 il
+    --   prezzo della madre dai componenti ATTIVI — cioe' lo stesso
+    --   prezzo della rev N, che lo stesso trigger aveva calcolato.
+    FOR v_ecc IN
+        SELECT oce.*
+          FROM vendite.offerte_commerciali_eccezioni oce
+         WHERE oce.offerta_id = p_offerta_id
+           AND oce.attivo IS TRUE
+         ORDER BY oce.id
+    LOOP
+        INSERT INTO vendite.offerte_commerciali_eccezioni (
+            offerta_id,
+            articolo_id,
+            tipo_eccezione,
+            tipo_erogazione,
+            fonte_quantita_attesa,
+            periodicita,
+            generazione_canone,
+            competenza_canone,
+            prezzo_unitario,
+            quantita,
+            qta_operativa,
+            uom_operativa_id,
+            factor_to_base,
+            ordine,
+            attivo,
+            meta,
+            stato_approvazione_prezzo,
+            pratica_approvazione_prezzo_id,
+            user_insert,
+            user_update
+        )
+        VALUES (
+            v_new_id,
+            v_ecc.articolo_id,
+            v_ecc.tipo_eccezione,
+            v_ecc.tipo_erogazione,
+            v_ecc.fonte_quantita_attesa,
+            v_ecc.periodicita,
+            v_ecc.generazione_canone,
+            v_ecc.competenza_canone,
+            v_ecc.prezzo_unitario,
+            v_ecc.quantita,
+            v_ecc.qta_operativa,
+            v_ecc.uom_operativa_id,
+            v_ecc.factor_to_base,
+            v_ecc.ordine,
+            v_ecc.attivo,
+            v_ecc.meta,
+            v_ecc.stato_approvazione_prezzo,
+            v_ecc.pratica_approvazione_prezzo_id,
+            COALESCE(p_user, CURRENT_USER),
+            COALESCE(p_user, CURRENT_USER)
+        )
+        RETURNING id INTO v_new_ecc_id;
+
+        INSERT INTO vendite.offerte_commerciali_eccezioni_componenti (
+            eccezione_offerta_id,
+            articolo_componente_id,
+            componente_id,
+            coeff_qta_snapshot,
+            quantita,
+            uom_operativa_id,
+            factor_to_base,
+            qta_operativa,
+            prezzo_unitario,
+            iva_id,
+            origine_prezzo,
+            prezzo_resolver_context,
+            stato_approvazione_prezzo,
+            pratica_approvazione_prezzo_id,
+            meta,
+            ordine,
+            attivo,
+            user_insert,
+            user_update
+        )
+        SELECT
+            v_new_ecc_id,
+            occ.articolo_componente_id,
+            occ.componente_id,
+            occ.coeff_qta_snapshot,
+            occ.quantita,
+            occ.uom_operativa_id,
+            occ.factor_to_base,
+            occ.qta_operativa,
+            occ.prezzo_unitario,
+            occ.iva_id,
+            occ.origine_prezzo,
+            occ.prezzo_resolver_context,
+            occ.stato_approvazione_prezzo,
+            occ.pratica_approvazione_prezzo_id,
+            occ.meta,
+            occ.ordine,
+            occ.attivo,
+            COALESCE(p_user, CURRENT_USER),
+            COALESCE(p_user, CURRENT_USER)
+        FROM vendite.offerte_commerciali_eccezioni_componenti occ
+        WHERE occ.eccezione_offerta_id = v_ecc.id
+        ORDER BY occ.id;
+    END LOOP;
 
     -- Copia utility rev.N -> rev.N+1 (1:1, un solo record per offerta).
     -- La UNIQUE (offerta_id) su offerte_commerciali_utilities garantisce
@@ -258,7 +331,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_offerta(p_offerta_id bigint, p_user text)
-IS 'Crea rev.N+1 di un''offerta EMESSA: copia testata + eccezioni attive + utility (1:1). Rev2 (2026-06-01): carry-forward 1:1 di stato_approvazione_prezzo + pratica_approvazione_prezzo_id sulle eccezioni (preserva l''invariante "prezzo fuori-policy sempre marcato"). uid e codice OFC-* generati ex novo. Il trigger z90 revisione (Step 6) marca automaticamente il padre SUPERATA. Guard: stato EMESSA obbligatorio. Parametri: p_offerta_id, p_user. rev 2026-09-24 (20260924-35, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (eccezioni e loro componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione»: un''eccezione in attesa ricopiata restava legata alla pratica della rev N. Approvato e rifiutato continuano a ricopiarsi. Firma e RETURNS ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-preventivi-congelamento-pricing §10.';
+IS 'Crea rev.N+1 di un''offerta EMESSA: copia testata + eccezioni attive coi loro componenti + utility (1:1). Rev2 (2026-06-01): carry-forward 1:1 di stato_approvazione_prezzo + pratica_approvazione_prezzo_id sulle eccezioni (preserva l''invariante "prezzo fuori-policy sempre marcato"). uid e codice OFC-* generati ex novo. Il trigger z90 revisione (Step 6) marca automaticamente il padre SUPERATA. Guard: stato EMESSA obbligatorio. Parametri: p_offerta_id, p_user. rev 2026-09-24 (20260924-35, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (eccezioni e loro componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione»: un''eccezione in attesa ricopiata restava legata alla pratica della rev N. Approvato e rifiutato continuano a ricopiarsi. Firma e RETURNS ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-10-05 (20261005-19, decisione di Tid): la revisione copia anche i COMPONENTI delle eccezioni copiate (vendite.offerte_commerciali_eccezioni_componenti), tutti, rimappati sull''eccezione nuova riga per riga con RETURNING, con stato e pratica di approvazione 1:1. Prima una revisione di un''offerta con un bundle nasceva senza componenti e il push la portava cosi'' nel contratto. Brief: brief-db-righe-esclusione-solo-non-si-vende §8.2 B1.';
 ```
 
 ---

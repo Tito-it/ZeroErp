@@ -58,7 +58,11 @@ il rientro lo crea da sé la conferma. Chi scrive un rientro su una riga si pren
 * **non più di quanto era uscito**: sommando i resi non annullati della stessa bolla, da un
   prelievo non rientra più della sua quantità (`E_RESO_RIENTRO_OLTRE_USCITO`, alla conferma);
 * **solo in bozza**: dopo la conferma il carico è scritto e i rientri non cambiano più
-  (`E_RIGA_DOC_NON_BOZZA`, come le righe);
+  (`E_RIGA_DOC_NON_BOZZA`, come le righe). Dal 2026-10-05 lo dice lo stesso
+  [building block delle righe](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza),
+  montato a livello RIGA (`trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt`); la copia della
+  regola che stava nel guard del rientro è stata ritirata, e il guard
+  (`trg_resi_righe_rientri_a10_guard_ins_upd`) tiene solo la coerenza col prelievo;
 * ogni rientro è la **sorgente** del suo carico di magazzino (`RESO_VENDITA_RIENTRO`): un rientro,
   un movimento `CARICO_RESO_VEN`, al costo dell'uscita d'origine. All'annullo del reso il carico si
   storna.

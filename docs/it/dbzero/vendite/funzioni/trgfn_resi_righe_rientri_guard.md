@@ -11,56 +11,29 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_resi_righe_rientri_guard()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: i rientri si scrivono solo con il reso in bozza, e nominano un
---   prelievo della riga di bolla da cui la riga di reso viene (D-3b-b).
---   Vedi l'intestazione del changeSet.
+-- Scopo: un rientro nomina un prelievo della riga di bolla da cui la
+--   riga di reso viene, e non cambia riga ne' prelievo (D-3b-b).
+--   «Solo in bozza» NON sta qui: lo dice il building block
+--   vendite.trgfn_doc_righe_lock_fuori_bozza a livello RIGA (rev
+--   2026-10-05), montato prima di questo guard.
 DECLARE
-    v_riga_id     vendite.resi_righe.id%TYPE;
     v_reso_id     vendite.resi_righe.reso_id%TYPE;
     v_riga_nr     vendite.resi_righe.riga_nr%TYPE;
     v_ddt_riga_id vendite.resi_righe.ddt_riga_id%TYPE;
     v_prel_riga   vendite.ddt_righe_prelievi.ddt_riga_id%TYPE;
-    v_stato       text;     -- dal lettore DEFINER, che torna text
-    v_etichetta   text;
     v_regola      text;     -- frase composta qui, nessuna colonna
 BEGIN
-    v_riga_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.resi_riga_id ELSE NEW.resi_riga_id END;
-
-    -- La riga di reso, sotto RLS. Assente = cascata dalla riga o dal reso
-    -- (la regola di stato l'hanno gia' applicata loro), oppure fuori
-    -- perimetro, che il WITH CHECK della policy rifiuta comunque.
+    -- La riga di reso, sotto RLS. Assente = fuori perimetro, che il
+    -- WITH CHECK della policy rifiuta comunque, o FK che parlera'.
     SELECT rr.reso_id, rr.riga_nr, rr.ddt_riga_id
       INTO v_reso_id, v_riga_nr, v_ddt_riga_id
       FROM vendite.resi_righe rr
-     WHERE rr.id = v_riga_id;
+     WHERE rr.id = NEW.resi_riga_id;
     IF NOT FOUND THEN
-        RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+        RETURN NEW;
     END IF;
 
-    -- 1. Lo stato del reso, dal lettore DEFINER dei documenti: fuori bozza
-    --    il rientro e' un fatto (la merce e' gia' a registro).
-    SELECT t.stato, t.etichetta INTO v_stato, v_etichetta
-      FROM script.fn_get_stato_testata_documento('RESO', v_reso_id) t;
-    IF v_stato IS NOT NULL AND v_stato <> 'DRAFT' THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'vendite.trgfn_resi_righe_rientri_guard',
-            'E_RIGA_DOC_NON_BOZZA',
-            jsonb_build_object('table', 'vendite.resi_righe_rientri',
-                               'documento', 'RESO', 'testata_id', v_reso_id,
-                               'riga_id', v_riga_id, 'stato', v_stato),
-            NULL::uuid,
-            COALESCE(v_etichetta, v_reso_id::text),
-            v_stato,
-            CASE TG_OP WHEN 'INSERT' THEN 'aggiungere'
-                       WHEN 'UPDATE' THEN 'modificare'
-                       ELSE 'togliere' END);
-    END IF;
-
-    IF TG_OP = 'DELETE' THEN
-        RETURN OLD;
-    END IF;
-
-    -- 2. Il prelievo e' della riga di bolla da cui viene la riga di reso.
+    -- Il prelievo e' della riga di bolla da cui viene la riga di reso.
     IF TG_OP = 'UPDATE'
        AND (NEW.resi_riga_id <> OLD.resi_riga_id
             OR NEW.ddt_riga_prelievo_id <> OLD.ddt_riga_prelievo_id) THEN
@@ -90,7 +63,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_resi_righe_rientri_guard()
-IS 'Guard BEFORE INSERT OR UPDATE OR DELETE su vendite.resi_righe_rientri. (1) Solo in bozza: fuori da DRAFT E_RIGA_DOC_NON_BOZZA (stesso codice e stessa frase delle righe dei documenti, stato dal lettore DEFINER script.fn_get_stato_testata_documento, tipo RESO). (2) E_RESO_RIENTRO_INCOERENTE, la regola nel VARIADIC: il prelievo nominato non e'' della riga di bolla della riga di reso (resi_righe.ddt_riga_id), o un rientro cambia riga o prelievo. Quadratura, tetto per prelievo e posizione (ubicazione secondo il magazzino) li giudica la check della conferma (script.fn_check_reso_merce). Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso.';
+IS 'Guard BEFORE INSERT OR UPDATE su vendite.resi_righe_rientri: E_RESO_RIENTRO_INCOERENTE, la regola nel VARIADIC — il prelievo nominato non e'' della riga di bolla della riga di reso (resi_righe.ddt_riga_id), o un rientro cambia riga o prelievo. Quadratura, tetto per prelievo e posizione (ubicazione secondo il magazzino) li giudica la check della conferma (script.fn_check_reso_merce). «Solo in bozza» (E_RIGA_DOC_NON_BOZZA) non sta piu'' qui dal 2026-10-05: lo dice il building block vendite.trgfn_doc_righe_lock_fuori_bozza a livello RIGA (trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt), e la copia scritta qui e'' stata ritirata (regola del 2; brief-db-righe-esclusione-solo-non-si-vende §8.2 B3). Brief d''origine: brief-db-magazzino-lotto-3-bis-carico-da-reso.';
 ```
 
 ---

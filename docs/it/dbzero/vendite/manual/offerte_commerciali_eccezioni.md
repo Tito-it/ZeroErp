@@ -106,7 +106,9 @@ Per la matrice completa e la semantica di ogni valore vedi la documentazione di
   `fonte_quantita_attesa ≠ 'FISSA'` (quantita da sorgente esterna); per `FISSA` e'
   obbligatoria (altrimenti `E_QTA_MISSING`).
 - `factor_to_base` — snapshot del fattore, **nullable**: se NULL il trigger lo deriva
-  dal mapping `catalogo.articoli_uom_operativa` e lo salva.
+  dal mapping `catalogo.articoli_uom_operativa` e lo salva. `numeric(18,6)` dal
+  2026-10-05 (era `(18,8)`): la scala del fattore dell'articolo e della riga del
+  contratto in cui il push lo copia.
 - `quantita` — **DERIVATA** (UoM base): la calcola il trigger
   `trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd` →
   `script.trgfn_qta_from_operativa('true','false','quantita','fonte_quantita_attesa')`
@@ -187,6 +189,19 @@ La lista del drawer, coi verbi che il DB ammette, è
 [`vendite.fn_offerta_righe_preview`](/dbzero/vendite/funzioni/fn_offerta_righe_preview).
 
 ---
+
+### Gli stessi tipi della riga del contratto (2026-10-05)
+
+Il push copia questa riga nel contratto 1:1, e il 2026-10-05 le due gemelle sono
+state allineate colonna per colonna: il contratto ha preso le scale dell'offerta
+sul prezzo e sui codici di erogazione, l'offerta quella dell'articolo sul
+fattore di conversione. Lo presidia
+`db/pgtap/vendite/test-righe-gemelle-secondo-giro-v1.sql` (test 1, 3). Brief:
+`brief-db-righe-esclusione-solo-non-si-vende` §8.2 B2.
+
+La **lista** di queste righe nel drawer dell'offerta è la lista configurabile
+`vendite.offerta_righe` (106), gemella di `vendite.contratto_righe` (103), sulla
+funzione `vendite.fn_offerta_righe_preview` (2026-10-05, §8.1 dello stesso brief).
 
 ### Note collegate
 

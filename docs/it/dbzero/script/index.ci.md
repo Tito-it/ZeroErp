@@ -117,6 +117,7 @@
 - [fn_get_stato_push_segment](manual/fn_get_stato_push_segment.md) — (creata 2026-07-19 — brief-db-push-commessa-gia-inviato §4b, rilievo ORD0000227)
 - [fn_get_stato_testata_documento](manual/fn_get_stato_testata_documento.md) — **Rispondere a una domanda sola: la testata di questo documento esiste ancora, e in che stato è?**
 - [fn_get_stradario](manual/fn_get_stradario.md) — * **Ricerca locale per comune**   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
+- [fn_get_testata_id_di_riga](manual/fn_get_testata_id_di_riga.md) — **Rispondere a una domanda sola: di quale documento è questa riga?**
 - [fn_get_tipo_contatto_id](manual/fn_get_tipo_contatto_id.md) — Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`cod_int_tipo_contatto`), garantendo al contempo il logging e la tracciabilità tramite un `tx_id` di sessione.
 - [fn_get_totp_device](manual/fn_get_totp_device.md) — (scritta il 29-09-2026)
 - [fn_get_uo_id_for_user](manual/fn_get_uo_id_for_user.md) — (latest review 19-04-2026)

@@ -179,26 +179,48 @@ END;
 -- fattura gia' numerata aprirebbe un buco IRREVERSIBILE nella numerazione
 -- fiscale, e un presidio che si fida di un'implicazione e' un presidio che
 -- cade il giorno che l'implicazione cambia.
--- Il numero si mette e si toglie dentro il test: la fixture torna com'era e i
--- test successivi lavorano sul lotto intatto.
-UPDATE vendite.fatture SET numero = 999999
- WHERE id = (SELECT lf.fattura_id FROM vendite.fatturazione_lotti_fatture lf
-              WHERE lf.lotto_id = (SELECT id FROM tmp_lotto_rld) ORDER BY lf.fattura_id LIMIT 1)
-   AND EXISTS (SELECT 1 FROM tmp_lotto_rld);
+-- Il numero si mette DENTRO UNA SOTTOTRANSAZIONE che si annulla da sola: il
+-- ritorno si tenta sul lotto con la fattura numerata, l'esito si salva in una
+-- variabile, poi il blocco esce con un errore proprio (PGT01) e il numero — e
+-- il ritorno, se per errore riuscisse — torna indietro. La fixture torna
+-- com'era e i test successivi lavorano sul lotto intatto.
+-- ⚠️ Rev 2026-10-05: prima il numero si TOGLIEVA con un UPDATE (numero =
+--   NULL). Dal 20261004-80 (vendite.trgfn_fatture_guard_numero_fiscale, Q-4 di
+--   brief-db-esclusioni-implicite) una fattura numerata non cambia identita'
+--   fiscale, e il file moriva li'. Il rollback di una sottotransazione non e'
+--   una modifica della fattura: e' una numerazione che non e' mai avvenuta.
+CREATE TEMP TABLE tmp_rld_numerata (esito text);
+DO $num$
+DECLARE
+  v_esito text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM tmp_lotto_rld) THEN
+    RETURN;
+  END IF;
+  BEGIN
+    UPDATE vendite.fatture SET numero = 999999
+     WHERE id = (SELECT lf.fattura_id FROM vendite.fatturazione_lotti_fatture lf
+                  WHERE lf.lotto_id = (SELECT id FROM tmp_lotto_rld) ORDER BY lf.fattura_id LIMIT 1);
+    BEGIN
+      PERFORM * FROM vendite.fn_riporta_lotto_a_draft((SELECT id FROM tmp_lotto_rld));
+      v_esito := 'NESSUN ERRORE';
+    EXCEPTION WHEN OTHERS THEN
+      v_esito := SQLSTATE;
+    END;
+    RAISE EXCEPTION USING ERRCODE = 'PGT01';   -- annulla il numero
+  EXCEPTION WHEN SQLSTATE 'PGT01' THEN
+    NULL;
+  END;
+  INSERT INTO tmp_rld_numerata VALUES (v_esito);
+END $num$;
 
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_lotto_rld) THEN NULL
-  ELSE throws_ok(
-         format($$ SELECT * FROM vendite.fn_riporta_lotto_a_draft(%s) $$, (SELECT id FROM tmp_lotto_rld)),
+  ELSE is(
+         (SELECT esito FROM tmp_rld_numerata),
          'P0001',
-         NULL,
          '5) Guard: con una fattura numerata il ritorno e rifiutato')
 END;
-
-UPDATE vendite.fatture SET numero = NULL
- WHERE id = (SELECT lf.fattura_id FROM vendite.fatturazione_lotti_fatture lf
-              WHERE lf.lotto_id = (SELECT id FROM tmp_lotto_rld) ORDER BY lf.fattura_id LIMIT 1)
-   AND EXISTS (SELECT 1 FROM tmp_lotto_rld);
 
 -- ============================================================
 -- 6-10) Il giro buono
