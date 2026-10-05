@@ -1,4 +1,7 @@
-# Template systemd — listener LISTEN/NOTIFY dei cambi di reparto.
+# Template systemd — listener LISTEN/NOTIFY della cache permessi (cambi di
+# reparto e cambi del catalogo dei permessi). Fino al 2026-10-05 si chiamava
+# `zeroerp-listen-cambio-reparto`: sugli host l'unità vecchia la spegne e la
+# toglie `install-timers.sh` (ritiro dei non dichiarati, play-book §16.3-bis).
 # Fonte di verità versionata: si edita QUI e si ri-renderizza con
 # `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
 # dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app),
@@ -7,8 +10,8 @@
 #
 # ⭐ NON HA UN TIMER, E NON E' UNA DIMENTICANZA. È l'unico dei sette processi
 # svegliati dal backend che **non ha una cadenza**: è un processo sempre acceso
-# che sta in ascolto su un canale PostgreSQL e invalida la cache permessi quando
-# un utente cambia reparto. Non c'è niente da programmare — c'è da tenerlo vivo.
+# che sta in ascolto su due canali PostgreSQL e invalida la cache permessi
+# quando un utente cambia reparto o quando cambia il catalogo dei permessi. Non c'è niente da programmare — c'è da tenerlo vivo.
 # ⇒ `Type=simple` + `Restart=always`, e si abilita il `.service`, non un
 # `.timer` che non esiste.
 #
@@ -30,7 +33,7 @@
 # righe ravvicinate su `job_run_log` è il sintomo di un DB che singhiozza, non
 # un difetto del giornale.
 [Unit]
-Description=ZeroERP listener cambi di reparto (LISTEN/NOTIFY)
+Description=ZeroERP listener cache permessi (LISTEN/NOTIFY)
 After=network.target
 
 [Service]

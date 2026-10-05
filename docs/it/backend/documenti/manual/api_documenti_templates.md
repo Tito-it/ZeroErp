@@ -758,7 +758,7 @@ render carica al massimo 50 risorse: e' il limite che ferma un CSS che importa
 se stesso. Se il file sullo storage non corrisponde allo `sha256` registrato, il
 render si ferma con `E_DOCUMENTI_STORAGE_FAILED`.
 
-Decisioni e motivi: `work-in-progress/brief-be-documenti-risorse-esterne-render-pdf.md`.
+Decisioni e motivi: `work-done/brief-be-documenti-risorse-esterne-render-pdf.md`.
 
 **La pagina la decidono le colonne della versione** (dal 2026-10-04, D-1 strada A e R-BE-V2a di
 `brief-db-vocabolari-versione-template`): formato (`page_format`), orientamento

@@ -12,11 +12,12 @@
 > **Stato:** ✅ **Chiuso e archiviato** il 2026-10-05. Ciò che resta ha una sede propria (§11):
 > Q-2 in D17 del [documento di valutazione](../work-in-progress/migliorie-generali-da-test-valutazione.md),
 > la catena delle istanze nel
-> [brief-db-catena-istanze-pdp.md](../work-in-progress/brief-db-catena-istanze-pdp.md), R-1 al BE.
+> [brief-db-catena-istanze-pdp.md](../work-in-progress/brief-db-catena-istanze-pdp.md).
 > ✅ **DB chiuso per Q-4, Q-1, Q-3, `UPDATE OF`, v1 e Q-6** il 2026-10-04:
 > `20261004-80 → -86` applicati su dev (22:50, automazioni alle 23:19), pgTAP verdi (§10).
 > Cancello v1 in CI dalla prossima corsa. ⏳ **Q-2 rimandata** (§4): è la parte che tiene aperta D17.
-> ⏳ BE: R-1 di §9 (due codici nuovi). Committato in `4617fabe6`. Il censimento `UPDATE OF`,
+> ✅ BE: R-1 di §9 chiusa il 2026-10-04 (policy rigenerate + ripieghi, `63deeb194`). DB committato
+> in `4617fabe6`. Il censimento `UPDATE OF`,
 > verificato il 2026-10-05 (§6.2), ha trovato un difetto vero sulla catena delle istanze: passato
 > a un brief suo.
 
@@ -335,6 +336,11 @@ sviluppo»).
   (`config.messaggi_errore`), come per i fratelli `E_FATTURA_GIA_NUMERATA` e
   `E_FATTURA_NON_ANNULLABILE`, che nel frontend non compaiono. Nessuna interfaccia produce i due
   codici nel percorso normale: arrivano solo da una corsa (ritorno a DRAFT mentre si numera).
+  ✅ **Fatto dal BE il 2026-10-04**: rigenerato `error_policies_generated.py` (diff: solo le due
+  voci nuove, nessuna classe spostata; `--check` pulito) e scritti i due ripieghi senza `%s` in
+  `error_messages_fallback.py` — passo che il brief non nominava ma che è obbligatorio per ogni
+  codice vivo (`test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`). Cancelli verdi con
+  `ZEROERP_TEST_DB_E2E=1` (`test_error_policies_divergenza_db`, `test_error_policies_classi`).
 * **R-2 (BE)**: nessun cambio richiesto da Q-1. Il backend imposta già le GUC «tutto o niente»;
   da oggi una sessione con la veste e senza utente non vede niente, invece di vedere tutto.
 * **R-3 (BE/FE)**: nessun cambio per la propagazione dei kit: la correzione è tutta a DB.
@@ -367,9 +373,9 @@ Il brief si chiude il 2026-10-05. Ogni voce aperta ha una sede, e da qui non si 
 | Voce | Sede |
 | --- | --- |
 | **Q-2** (§4), rimandata da Tid | D17 in §3 del [documento di valutazione](../work-in-progress/migliorie-generali-da-test-valutazione.md); la proposta di §4 resta qui come punto di partenza del suo brief, da `allow_lock_columns_override` e `maintenance_reset_lotto_draft` |
-| **R-1** al BE (§9): i due codici in `error_policies_generated.py` | team BE. Fino ad allora `test_error_policies_divergenza_db.py` è rosso |
+| ✅ **R-1** al BE (§9): i due codici in `error_policies_generated.py` | chiusa dal team BE il 2026-10-04 (policy rigenerate + ripieghi, `63deeb194`) |
 | 🔴 **La catena delle istanze su un PDP** (§6.2): il trigger che non scatta all'annullamento, il successore che resta agganciato all'anello uscito, il calcolo che legge sotto RLS | [brief-db-catena-istanze-pdp.md](../work-in-progress/brief-db-catena-istanze-pdp.md); D18 del documento di valutazione |
-| **Dati di dev**: i componenti dei kit con la quantità vecchia (§6.3) | a mano, se servono |
+| **Dati di dev**: i componenti dei kit con la quantità vecchia (§6.3) | chiuso senza azione: restano così (Tid, 2026-10-04), nessuna correzione a mano |
 
 Il registro di DDT e resi (l'altro «da verificare» di §6.2) è risultato innocuo: niente da fare.
 

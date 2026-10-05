@@ -526,9 +526,8 @@ building block che lega il bypass al **proprietario delle tabelle** (la forma di
 `zeroerp.ddt_cambio_stato`), i verbi del lotto DEFINER (approvato), circa 45 pgTAP
 da riscrivere perché usano quelle GUC come scorciatoia di fixture.
 
-⏳ **Al BE resta R-1** del brief: i due codici nuovi di Q-4 in
-`error_policies_generated.py`. Fino ad allora `test_error_policies_divergenza_db.py`
-è rosso.
+✅ **R-1 del brief chiusa dal BE il 2026-10-04**: i due codici nuovi di Q-4 in
+`error_policies_generated.py`, con i ripieghi (`63deeb194`).
 
 ### 🔴 D18 — La catena delle istanze su un PDP si rompe quando un anello esce o entra
 
@@ -1081,7 +1080,7 @@ D6 e il registro dei rossi in CI.
       dichiarato in millisecondi non è difendibile.
 * [ ] **D17** — Q-2, rimandata da Tid: legare le GUC di bypass al proprietario
       delle tabelle (proposta in `work-done/brief-db-esclusioni-implicite.md`
-      §4). Il resto di D17 è chiuso (§7); R-1 resta al BE.
+      §4). Il resto di D17 è chiuso (§7), R-1 del BE compresa.
 * [ ] **D18** — la catena delle istanze su un PDP: ricalcolo DEFINER della
       catena intera da un trigger `AFTER` senza `OF`; brief
       `work-in-progress/brief-db-catena-istanze-pdp.md`, da analizzare con Tid.
@@ -1462,8 +1461,9 @@ Brief `work-done/brief-db-esclusioni-implicite.md` (archiviato il 2026-10-05);
 changeSet `20261004-80 → -86`, applicati su dev il 2026-10-04, pgTAP verdi,
 committato in `4617fabe6`. Il 2026-10-05 sono state verificate le due voci «da
 verificare» del censimento `UPDATE OF`: il registro di DDT e resi è innocuo, la
-catena delle istanze è un difetto vero ed è diventata **D18**. Restano Q-2 (§3)
-e R-1 al BE.
+catena delle istanze è un difetto vero ed è diventata **D18**. Ricaduta BE (R-1, i
+due codici in `error_policies_generated.py` + ripieghi) chiusa il 2026-10-04
+(`63deeb194`). Resta Q-2 (§3).
 
 ---
 

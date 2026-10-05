@@ -395,6 +395,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_FATTURA_NON_EMETTIBILE_INCOMPLETA": "Fattura non emettibile: documento incompleto. Rieseguire lo step DRAFT del lotto (riscrive indirizzi e intestazione).",
     "E_FATTURA_NON_NUMERABILE_INCOERENTE": "Fattura non numerabile: totali, riepiloghi IVA o piano rate incoerenti. Il dettaglio dei motivi e' nei log della fattura.",
     "E_FATTURA_NON_TROVATA": "Fattura non trovata.",
+    "E_FATTURA_NUMERATA_NON_CANCELLABILE": "La fattura ha gia' un numero fiscale: non si puo' cancellare. Ricaricare la pagina; se e' sbagliata, si corregge con una nota di credito.",
+    "E_FATTURA_NUMERO_NON_MODIFICABILE": "La fattura ha gia' un numero fiscale: registro, anno, serie e numero non si possono piu' cambiare.",
     "E_FATTURA_REGISTRO_EMITTENTE_INCOERENTE": "La fattura e' su un registro di numerazione che appartiene a un altro emittente: ogni registro e' di un emittente solo, e due partite IVA non possono pescare dalla stessa serie.",
     "E_FATTURA_RETTIFICATA_SENZA_NUMERO": "Numerazione rifiutata: il documento rettifica righe di altri documenti che non risultano ancora numerati. Numerare prima quelli, poi ripetere. Se uno di essi non risulta accessibile e' fuori dal perimetro di chi opera, e va numerato da chi lo gestisce.",
     "E_FATTURA_RIGA_CAPOFILA_INCOERENTE": "Il legame fra una riga di fattura e la sua capofila non e' coerente: la catena deve restare a un solo passaggio, dalla capofila alle sue parti. E' un'anomalia tecnica del documento, non un dato da correggere a mano.",
