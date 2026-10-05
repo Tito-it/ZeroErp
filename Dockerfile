@@ -26,6 +26,8 @@ WORKDIR /app
 #    dei font ripiega su fontTools con l'avviso «will be unsupported in future
 #    versions» a ogni stampa — cioe' con la 71 una stampa che non esce. Va
 #    installato anche sulle macchine di sviluppo (`apt install`).
+# ⚠️ L'elenco e' ricopiato in `.github/workflows/ci-validate.yaml`
+#    (passo «Librerie native di WeasyPrint»): se cambia qui, cambia la'.
 RUN apt-get update \
   && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends \

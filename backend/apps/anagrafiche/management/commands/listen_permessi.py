@@ -34,9 +34,9 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = (
-        "Avvia il listener LISTEN/NOTIFY sui canali 'cambio_reparto' e "
-        "'permessi_catalogo'. Invalida la cache permessi quando un utente "
-        "cambia reparto e quando cambia il catalogo dei permessi. "
+        f"Avvia il listener LISTEN/NOTIFY sui canali {', '.join(CANALI)}. "
+        "Invalida la cache permessi quando un utente cambia reparto e quando "
+        "cambia il catalogo dei permessi. "
         "Processo long-running: terminare con SIGINT (Ctrl+C) o SIGTERM."
     )
 

@@ -335,6 +335,24 @@ spegnimento fallisce l'installer si ferma senza cancellare il file. Il piano li 
 dichiarato intatti); una mutazione sull'ordine timer/servizio lo fa diventare rosso. Doc:
 play-book §16.3-bis, `sveglie_processi.md`.
 
+#### 8.4-bis Revisione critica (2026-10-05, dopo il commit `87205cbfa`)
+
+* **Firma fragile**: `grep -F` cercava il wrapper in tutto il file, quindi un unit estraneo che lo
+  citava in un commento sarebbe stato ritirato. Ora si legge la sola riga `ExecStart=`, dall'inizio
+  (`e_una_sveglia`).
+* **Timer orfano di una sveglia dichiarata**: una voce passata da `timer` a `servizio` lasciava
+  il `.timer` vecchio acceso, e questo continuava a rilanciare il servizio. Ora un `.timer` non
+  dichiarato si ritira se il suo `.service` è una sveglia, dichiarata o no.
+* **Prefisso cablato senza contratto**: nessuna regola obbliga una sveglia a chiamarsi `zeroerp-*`.
+  Ora decide solo la firma, su tutti i `.service` della destinazione. Il prefisso resta come
+  etichetta `ESTRANEO` nel piano.
+* **Letterali**: il messaggio `ESTRANEO` usa `$WRAPPER`, e l'help di `listen_permessi` usa `CANALI`.
+* Test 8 esteso, con tre casi nuovi seminati. Tre mutazioni, una per correzione, lo fanno diventare
+  rosso. Simulazione sull'intera `/etc/systemd/system` del dbdev (17 file): nessun `RITIRA`.
+* ℹ️ Non corretto, dichiarato: `invalidate_all` / `invalidate_user` ingoiano un errore di Redis
+  (warning). Un'invalidazione persa così dura al massimo `PERMISSIONS_CACHE_TTL`: è il
+  comportamento del BB, non nasce qui.
+
 ### 8.5 Sull'host dbdev (✅ Tid, 2026-10-05)
 
 * `sudo backend/bin/install-timers.sh`, primo giro: ritirata `zeroerp-listen-cambio-reparto` e,

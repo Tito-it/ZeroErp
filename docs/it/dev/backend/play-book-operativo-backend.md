@@ -429,18 +429,21 @@ riparte col nome nuovo, il panorama dei processi segna `listen_permessi`
 Si toglie (o si rinomina) la voce in `deploy/sveglie.json` e il suo template in
 `deploy/systemd/`, poi si lancia `sudo backend/bin/install-timers.sh`. Niente
 passi a mano sull'host: l'installer cerca in `/etc/systemd/system` le
-**sveglie** installate, cioè gli unit `zeroerp-*.service` il cui `ExecStart`
-lancia `backend/bin/run-command.sh` (la firma di ogni template, §16.4). Quelle
-che il dichiarato non produce più le **spegne e toglie** (`systemctl disable
---now`, poi il file), col loro `.timer`, prima del `daemon-reload`. Il piano le
+**sveglie** installate, cioè gli unit il cui `ExecStart` **comincia** con
+`backend/bin/run-command.sh` di questo checkout (la firma di ogni template,
+§16.4). Decide la firma, non il nome. Quelle che il dichiarato non produce più
+le **spegne e toglie** (`systemctl disable --now`, poi il file), col loro
+`.timer`, prima del `daemon-reload`. Si ritira anche il `.timer` rimasto a una
+sveglia dichiarata, per esempio quando una voce passa da `timer` a `servizio`. Il piano le
 stampa come `RITIRA`, anche in `--render-only`.
 
 * i `.timer` si spengono prima dei `.service`, così un timer non rilancia il
   servizio che si sta spegnendo;
 * se uno spegnimento fallisce, l'installer si ferma senza cancellare il file;
-* ⛔ **un `zeroerp-*` che non lancia `run-command.sh` non si tocca**: è
-  `zeroerp-gunicorn` (§8) o un altro unit del play-book. Il piano lo stampa
-  come `ESTRANEO`. 🔴 La prima versione (2026-10-05) guardava il solo prefisso,
+* ⛔ **un unit che non lancia `run-command.sh` non si tocca**: per esempio
+  `zeroerp-gunicorn` (§8) o un altro unit del play-book. Gli `zeroerp-*` di
+  questo tipo il piano li stampa come `ESTRANEO`, per chi legge. Una citazione
+  del wrapper in un commento non conta: si guarda la sola riga `ExecStart=`. 🔴 La prima versione (2026-10-05) guardava il solo prefisso,
   e al primo giro sul dbdev ha spento e cancellato `zeroerp-gunicorn.service`:
   backend giù, ripristinato dal §8. Il test 8 ora semina proprio quel caso;
 * ⚠️ una sveglia creata a mano sull'host (wrapper `run-command.sh`) fuori da

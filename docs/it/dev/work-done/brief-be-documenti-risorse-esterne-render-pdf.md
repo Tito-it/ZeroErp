@@ -11,9 +11,11 @@
 > l'autoescape Jinja spento. **Quel difetto è chiuso** (§1). Questo brief tratta
 > quello che resta aperto dopo, e che non è una riga di configurazione.
 >
-> **Stato:** ✅ **consegnato a codice BE e FE il 2026-10-01** (§7, §8).
-> Tutte le decisioni sono prese da Tid lo stesso giorno. ⏳ Resta il
-> **collaudo a video** dell'editor (§8.4), poi si archivia in `work-done/`.
+> **Stato:** ✅ **chiuso e archiviato il 2026-10-05** su richiesta di Tid.
+> Consegnato a codice BE e FE il 2026-10-01 (§7, §8), con tutte le decisioni
+> prese da Tid lo stesso giorno. Il 2026-10-05 la CI installa Pango, così i
+> test sulla libreria vera girano anche lì (§7.4). Il collaudo a video
+> dell'editor (§8.4) lo fa Tid: la checklist resta qui come riferimento.
 >
 > **Da leggere per primo: §2 — perché «i template sono fidati» non basta.**
 
@@ -317,6 +319,13 @@ riferimento per `codice_interno` li inchioda.
   motivo. **Da verificare sul log della prima CI**. Se risultano saltati,
   si aggiunge Pango all'`apt-get` del job: è una decisione di Tid, perché
   tocca il workflow.
+  **Verificato il 2026-10-05 sulla CI del 2026-10-04 (run `37238609022`):
+  risultavano saltati** (`cannot load library 'libpango-1.0-0'`). Con l'ok di
+  Tid, `ci-validate.yaml` ha ora il passo «Librerie native di WeasyPrint
+  (Pango)» prima di «Django tests». Installa lo stesso elenco del
+  `Dockerfile`, che resta la sede, con un rimando in tutti e due i file. Il
+  passo finisce con `import weasyprint`: se le librerie mancano fallisce lui,
+  invece di far saltare i test in silenzio.
 - `tests/services/test_risolutore_asset.py` (nuovo, 6): perimetro, cache per
   render (non condivisa fra render), asset assente, impronta diversa.
 - Perimetro dei tre percorsi: asserzioni aggiunte negli happy path di
@@ -409,7 +418,7 @@ Esito il 2026-10-01: `apps.documenti` 305 OK, DB provvisto 11 OK; vitest
 66 file / 521 test OK; `npm run guards`, `check_i18n_keys.py`, eslint e
 build puliti.
 
-### 8.4 Collaudo a video (da fare)
+### 8.4 Collaudo a video (a cura di Tid)
 
 L'inserimento al cursore non ha un test automatico: monta
 `TemplateVersioniSection` intero, con store e drawer, ed è più onesto

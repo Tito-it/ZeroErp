@@ -746,6 +746,32 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
             -f scripts/sql/guardrail_riferimenti_morti.sql
 
+      - name: Librerie native di WeasyPrint (Pango)
+        # I test di `test_render_service` sulla libreria VERA (fetcher a lista
+        # chiusa: `file:`, `http:`, SVG annidato, `@import` ciclico) si
+        # saltano con `skipUnless` se WeasyPrint non trova Pango. Il runner
+        # `ubuntu-latest` non lo porta: fino al 2026-10-04 la CI li dava
+        # «skipped» (`cannot load library 'libpango-1.0-0'`), cioe' il
+        # presidio di sicurezza del render girava solo in locale.
+        # ⚠️ Stesso elenco del Dockerfile: la sede e' quella, qui si ricopia
+        #    perche' il runner non usa l'immagine. Se cambia la', cambia qui.
+        # ⭐ L'import finale fa fallire il passo invece di lasciar saltare i
+        #    test in silenzio: un «verde per sottrazione» e' il difetto da evitare.
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libpango-1.0-0 \
+            libpangoft2-1.0-0 \
+            libharfbuzz0b \
+            libharfbuzz-subset0 \
+            libfontconfig1 \
+            libcairo2 \
+            libgdk-pixbuf-2.0-0 \
+            shared-mime-info
+          source backend/.venv/bin/activate
+          python -c "import weasyprint; print('WeasyPrint', weasyprint.__version__)"
+
       - name: Django tests
         working-directory: ./backend
         env:

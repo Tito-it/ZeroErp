@@ -26,8 +26,9 @@
 # e unit, voce e costante sono spariti INSIEME — vedi `_ritirate` in sveglie.json.
 #
 # ⭐ DAL 2026-10-05 RITIRA CIO' CHE NON E' PIU' DICHIARATO (decisione di Tid). Una
-# sveglia installata sull'host (un `zeroerp-*` che lancia `run-command.sh`) e
-# assente da `sveglie.json` si spegne e si toglie: e' lo specchio sull'host di
+# sveglia installata sull'host (un unit il cui `ExecStart` lancia
+# `run-command.sh` di questo checkout) e assente da `sveglie.json` si spegne e
+# si toglie: e' lo specchio sull'host di
 # `test_nessun_template_orfano`. ⛔ Solo le sveglie: `zeroerp-gunicorn` e gli
 # altri unit del play-book non si toccano (il difetto del primo giro, sotto). Prima
 # l'installer solo aggiungeva, e il rinomino `listen-cambio-reparto` →
@@ -252,6 +253,17 @@ while IFS="$SEP" read -r unit forma comando oncalendar abilita nota; do
   fi
 done <<< "$SVEGLIE_RIGHE"
 
+# Scopo: dice se un `.service` installato è una SVEGLIA di questo checkout: il
+# suo `ExecStart` COMINCIA col wrapper delle sveglie (`$WRAPPER`), che è la
+# firma che ogni template porta (test 6 di `test-install-timers.sh`).
+# ⛔ Si legge la sola riga `ExecStart=`, dall'inizio: cercare il testo in tutto
+#    il file prenderebbe per sveglia un unit estraneo che CITA il wrapper in un
+#    commento — e lo ritirerebbe.
+e_una_sveglia() {
+  awk -v firma="ExecStart=${WRAPPER} " \
+    'index($0, firma) == 1 { trovata = 1 } END { exit !trovata }' "$1"
+}
+
 # Scopo: le SVEGLIE installate in $DEST_DIR che il dichiarato non produce più.
 # Si spengono e si tolgono (vedi header).
 #
@@ -259,29 +271,40 @@ done <<< "$SVEGLIE_RIGHE"
 #    versione ritirava ogni `zeroerp-*` non dichiarato, e al primo giro sul
 #    dbdev ha spento e cancellato `zeroerp-gunicorn.service` — il backend, che
 #    è `zeroerp-` ma non è una sveglia (lo installa il play-book §8, non
-#    questo script). ⇒ Si ritira solo ciò che questo programma può aver
-#    scritto: un `.service` il cui `ExecStart` lancia il wrapper delle sveglie
-#    (`$APP_DIR/bin/run-command.sh`), che è la firma che OGNI template porta
-#    (test 6 di `test-install-timers.sh`). Il suo `.timer` omonimo lo segue.
-#    Un `zeroerp-*` senza quella firma è ESTRANEO: si nomina e non si tocca.
+#    questo script). ⇒ DECIDE LA FIRMA (`e_una_sveglia`), non il nome: si
+#    guardano tutti i `.service` della destinazione, perché nessuna regola
+#    obbliga una sveglia a chiamarsi `zeroerp-*`.
+# ⭐ Un `.timer` non dichiarato si ritira se il suo `.service` omonimo è una
+#    sveglia, DICHIARATA o no: copre anche la sveglia passata da `timer` a
+#    `servizio`, il cui `.service` resta dichiarato e il cui `.timer` vecchio
+#    continuerebbe a rilanciarlo. Un timer senza `.service` sveglia è estraneo.
 # ⭐ I `.timer` PRIMA dei `.service`: spegnere prima il servizio lascerebbe al
 #    timer ancora acceso l'occasione di rilanciarlo.
-DA_RITIRARE=()
-ESTRANEI=()
+# ℹ️ ESTRANEI: i soli `zeroerp-*` non dichiarati e senza firma. È un'etichetta
+#    del piano, per chi legge, non un criterio: non decide niente.
+dichiarato() { case "$DICHIARATI" in *" $1 "*) return 0 ;; esac; return 1; }
 RIT_TIMER=()
 RIT_SERVICE=()
-for f in "$DEST_DIR"/zeroerp-*.service; do
+ESTRANEI=()
+for f in "$DEST_DIR"/*.service; do
   [ -f "$f" ] || continue   # glob senza corrispondenze: resta il letterale
   nome="$(basename "$f")"
-  case "$DICHIARATI" in *" $nome "*) continue ;; esac
-  if grep -qF "ExecStart=${WRAPPER} " "$f"; then
+  dichiarato "$nome" && continue
+  if e_una_sveglia "$f"; then
     RIT_SERVICE+=("$nome")
-    timer="${nome%.service}.timer"
-    if [ -f "${DEST_DIR}/${timer}" ]; then
-      case "$DICHIARATI" in *" $timer "*) ;; *) RIT_TIMER+=("$timer") ;; esac
-    fi
   else
-    ESTRANEI+=("$nome")
+    case "$nome" in zeroerp-*) ESTRANEI+=("$nome") ;; esac
+  fi
+done
+for f in "$DEST_DIR"/*.timer; do
+  [ -f "$f" ] || continue
+  nome="$(basename "$f")"
+  dichiarato "$nome" && continue
+  servizio="${DEST_DIR}/${nome%.timer}.service"
+  if [ -f "$servizio" ] && e_una_sveglia "$servizio"; then
+    RIT_TIMER+=("$nome")
+  else
+    case "$nome" in zeroerp-*) ESTRANEI+=("$nome") ;; esac
   fi
 done
 DA_RITIRARE=(${RIT_TIMER[@]+"${RIT_TIMER[@]}"} ${RIT_SERVICE[@]+"${RIT_SERVICE[@]}"})
@@ -307,7 +330,7 @@ for u in ${DA_RITIRARE[@]+"${DA_RITIRARE[@]}"}; do
   echo "  RITIRA   $u (installato, non più dichiarato)"
 done
 for u in ${ESTRANEI[@]+"${ESTRANEI[@]}"}; do
-  echo "  ESTRANEO $u (non lancia run-command.sh: non è una sveglia, non si tocca)"
+  echo "  ESTRANEO $u (non lancia $(basename "$WRAPPER"): non è una sveglia, non si tocca)"
 done
 
 # In render-only (CI) ci si ferma qui: niente daemon-reload né enable.

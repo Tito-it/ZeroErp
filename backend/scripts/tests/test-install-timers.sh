@@ -49,8 +49,10 @@
 #   6. nessun template `.service` ha un `ExecStart` cablato: tutti `__COMANDO__`
 #   7. l'unit reso esegue ESATTAMENTE l'argv di `sveglie.json`, senza residui
 #   8. una SVEGLIA installata e non più dichiarata si spegne e si toglie (timer
-#      prima del servizio, prima del daemon-reload); un `zeroerp-*` che non è una
-#      sveglia (`zeroerp-gunicorn`) e il resto non si toccano
+#      prima del servizio, prima del daemon-reload), anche senza prefisso
+#      `zeroerp-`, e così il `.timer` rimasto a un servizio dichiarato; un unit
+#      che non è una sveglia (`zeroerp-gunicorn`, chi cita il wrapper in un
+#      commento) e il resto non si toccano
 
 set -euo pipefail
 
@@ -308,6 +310,17 @@ printf '[Timer]\nOnCalendar=daily\n' > "$SEMINA/zeroerp-vecchio.timer"
 printf '[Service]\nExecStart=%s/bin/start-gunicorn.sh\n' "$APP_DIR" \
   > "$SEMINA/zeroerp-gunicorn.service"
 touch "$SEMINA/altro.service"
+# Una sveglia che non si chiama `zeroerp-*`: decide la firma, non il nome.
+printf '[Service]\nExecStart=%s/bin/run-command.sh altro_comando\n' "$APP_DIR" \
+  > "$SEMINA/senza-prefisso.service"
+# Un estraneo che CITA il wrapper in un commento: non è una sveglia.
+printf '[Service]\n# ExecStart=%s/bin/run-command.sh finto\nExecStart=/bin/true\n' "$APP_DIR" \
+  > "$SEMINA/zeroerp-cita-il-wrapper.service"
+# Il `.timer` rimasto a un servizio DICHIARATO (sveglia passata da timer a
+# servizio): il suo `.service` è una sveglia, quindi il timer si ritira.
+UN_SERVIZIO="$(servizi_accesi | head -1)"
+printf '[Service]\nExecStart=%s/bin/run-command.sh x\n' "$APP_DIR" > "$SEMINA/${UN_SERVIZIO}.service"
+printf '[Timer]\nOnCalendar=daily\n' > "$SEMINA/${UN_SERVIZIO}.timer"
 UN_DICHIARATO="$(attesi true | head -1)"
 touch "$SEMINA/$UN_DICHIARATO"
 REG_RITIRO="$(esegui_installer ritiro)"
@@ -328,8 +341,18 @@ grep -q 'zeroerp-gunicorn' "$REG_RITIRO" && SBAGLI_RITIRO="$SBAGLI_RITIRO SPENTO
 grep -q 'ESTRANEO zeroerp-gunicorn.service' "$TMP/ritiro/stdout.txt" \
   || SBAGLI_RITIRO="$SBAGLI_RITIRO estraneo-non-nominato"
 [ -e "$SEMINA/$UN_DICHIARATO" ] || SBAGLI_RITIRO="$SBAGLI_RITIRO tolto-un-dichiarato"
+grep -Fxq 'disable --now senza-prefisso.service' "$REG_RITIRO" \
+  || SBAGLI_RITIRO="$SBAGLI_RITIRO sveglia-senza-prefisso-non-ritirata"
+grep -q 'zeroerp-cita-il-wrapper' "$REG_RITIRO" \
+  && SBAGLI_RITIRO="$SBAGLI_RITIRO ritirato-chi-cita-il-wrapper-in-un-commento"
+[ -e "$SEMINA/zeroerp-cita-il-wrapper.service" ] || SBAGLI_RITIRO="$SBAGLI_RITIRO tolto-chi-cita-il-wrapper"
+grep -Fxq "disable --now ${UN_SERVIZIO}.timer" "$REG_RITIRO" \
+  || SBAGLI_RITIRO="$SBAGLI_RITIRO timer-vecchio-di-un-servizio-dichiarato-non-ritirato"
+grep -Fxq "disable --now ${UN_SERVIZIO}.service" "$REG_RITIRO" \
+  && SBAGLI_RITIRO="$SBAGLI_RITIRO SPENTO-UN-SERVIZIO-DICHIARATO"
+# Attesi: vecchio.timer, <servizio>.timer, vecchio.service, senza-prefisso.service.
 N_DISABLE="$(grep -c '^disable ' "$REG_RITIRO" || true)"
-[ "$N_DISABLE" -eq 2 ] || SBAGLI_RITIRO="$SBAGLI_RITIRO disable-attesi-2-avuti-$N_DISABLE"
+[ "$N_DISABLE" -eq 4 ] || SBAGLI_RITIRO="$SBAGLI_RITIRO disable-attesi-4-avuti-$N_DISABLE"
 if [ -z "$SBAGLI_RITIRO" ]; then
   ok "l'orfano si spegne (timer prima del servizio, prima del reload) e si toglie; gunicorn e il resto non si toccano"
 else
