@@ -466,7 +466,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `work-done/analisi-riavvio-processi-da-interfaccia.md`): «Esegui ora» è in
   esercizio dal 15-09 e non aveva bisogno di sapere su quale macchina gira —
   un timer è un comando che parla col DB. `systemctl restart` di un servizio
-  (oggi il solo `listen_cambio_reparto`) **sì**: senza un *host* nel modello
+  (oggi il solo `listen_permessi`) **sì**: senza un *host* nel modello
   il pulsante riavvia «un host a caso» alla seconda macchina, in silenzio.
   Cancello: **D1** — forma A (`ZEROERP_HOST` dichiarato in `env.sh`, `host`
   obbligatorio nella richiesta, claim del drenatore filtrato) o B (registro
