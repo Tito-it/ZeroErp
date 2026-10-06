@@ -215,6 +215,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
+- **I presidi parlano a chi deve agire** (`work-in-progress/brief-db-presidi-cosa-significa-cosa-fare.md`,
+  scritto il 2026-10-06 dal §5-bis del collaudo dell'osservabilità, chiuso e archiviato lo stesso giorno):
+  `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su `dbops.presidi`, con i testi
+  proposti per i 43 presidi che si accendono. ⏳ Decisioni D-1…D-4 da confermare da Tid, poi DB, poi BE/FE.
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
   resta R-4, che vuole un brief DB non ancora scritto. Chiuso il 2026-10-03
   `work-done/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
@@ -484,8 +488,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   gli emittenti» la lista chiede di sceglierne uno (422), come `Fatture`. Per
   certificarla serve `emittente_soggetto_ruolo_id` nei **quattro rami** della
   vista (le tabelle lo hanno o lo raggiungono) + la colonna a catalogo. Il
-  collaudo in-app dell'osservabilità (`work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md`,
-  scritto il 19-09, **da eseguire**) lo dichiara al §3.15
+  collaudo in-app dell'osservabilità (`work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md`,
+  chiuso il 2026-10-06) lo dichiara al §3.15
 - **Tendine del lookup generico senza `page_size`** (FE, residuo di
   `work-done/brief-db-registri-giornale-catalogo.md` §5.1): i siti che chiamano
   `lookupCodici(rel)` senza `page_size` ricevono la pagina di default (50) e la

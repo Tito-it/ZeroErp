@@ -11,7 +11,6 @@
     "amministrazione/components/RepartoProfiloEditor.vue",
     "amministrazione/views/DefinizioneEditorView.vue",
     "amministrazione/views/DefinizioniWorkflowListView.vue",
-    "amministrazione/views/PermessiRiepilogoView.vue",
     "catalogo/components/ArticoloUomDrawer.vue",
     "config/components/ImpostazioniSearchTable.vue",
     "core/components/ConfigTablePanel.vue",
@@ -39,7 +38,6 @@
   "senza_motivazione": [
     "amministrazione/components/EmittenteFiscaleUtilitiesTab.vue",
     "amministrazione/components/RepartoProfiloEditor.vue",
-    "amministrazione/views/PermessiRiepilogoView.vue",
     "catalogo/components/ArticoloUomDrawer.vue",
     "config/components/ImpostazioniSearchTable.vue",
     "core/components/NoteDrawer.vue",

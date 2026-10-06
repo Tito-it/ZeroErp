@@ -468,8 +468,7 @@ const activeTab = ref('dati')
 // per 13 aree, 34 azioni e 12 oggetti: a 800px le colonne si strizzano
 // proprio dove la schermata esiste per farsi leggere.
 // ℹ️ `XLARGE` è la taglia che la costante dedica alle «matrici
-// parametri-per-entità (utility, slot/override)»; il drawer dedicato
-// `OperatorePermessiDrawer` usa la stessa.
+// parametri-per-entità (utility, slot/override)».
 // La scheda Permessi ha il suo Salva: il footer lo chiama quando e' attiva.
 const suPermessi = computed(() => activeTab.value === 'permessi')
 

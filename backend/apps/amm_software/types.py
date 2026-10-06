@@ -25,6 +25,9 @@ class OperatoreRow(TypedDict):
     # Solo nella lista (2026-10-02): le altre vesti ATTIVE della credenziale
     # (codici di `config.ruolo_applicativo`), `[]` se non ne ha.
     altre_vesti: NotRequired[list[str]]
+    # Solo nella lista (2026-10-06): gli override dei permessi scritti, da
+    # `script.vw_override_operatore_area` (brief riepilogo-permessi).
+    override_count: NotRequired[int]
     is_super_admin: bool
     ruolo_applicativo: str | None
     is_active: bool

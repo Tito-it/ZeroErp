@@ -1107,4 +1107,4 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1107,106,prezzo_listino,Prezzo listino,,prezzo_listino,informazione,numeric,currency_eur_6,120,80,right,,,f,t,t,f,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_prezzo_listino,35
 1108,106,origine,Origine,,origine,informazione,string,,110,90,center,,,f,t,t,f,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_origine,30
 1109,106,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-10-05 00:00:00,mctit,common.col_azioni,100
-1110,28,override_count,Override,"Override dei permessi scritti per l operatore (aree, azioni e oggetti)",override_count,informazione,numeric,number,110,35,right,,,f,t,t,f,f,f,2026-10-06 00:00:00,mctit,amministrazione.col_override,70
+1110,28,override_count,Override,"Override dei permessi scritti per l operatore (aree, azioni e oggetti)",override_count,informazione,numeric,number,110,35,right,,,f,t,t,f,f,t,2026-10-06 00:00:00,mctit,amministrazione.col_override,70

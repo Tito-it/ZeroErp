@@ -149,8 +149,13 @@ export function putEmittentiScope(authUserId, payload) {
 
 // --- Riepilogo permessi ---
 
-export function getPermessiRiepilogo(params = {}) {
-  return api.get(`${BASE}/permessi-riepilogo/`, { params })
+// Scopo: il riepilogo PER AREA degli operatori indicati — una riga per
+//        (operatore, area attiva) con `livello`, `override_count`,
+//        `voci_limitate` (`script.fn_get_permessi_riepilogo_aree`). Si chiede
+//        per gli id di una PAGINA della lista operatori, o per uno solo (il
+//        pannello permessi).
+export function getPermessiRiepilogo(authUserIds) {
+  return api.get(`${BASE}/permessi-riepilogo/`, { params: { auth_user_ids: authUserIds.join(',') } })
 }
 
 // --- Processi automatici (registro + presidi + utenti tecnici) ---

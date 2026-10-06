@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -222,6 +223,12 @@ def paginated_envelope(
     }
 
 
+# Un intero scritto in una stringa: solo cifre ASCII. ⛔ Non `str.isdigit()`:
+# accetta anche «²» o «٣», e il primo poi fa fallire `int()` con un ValueError
+# che non e' il `{key}_invalid` atteso dai chiamanti.
+_INTERO_DECIMALE_RE = re.compile(r"[0-9]+")
+
+
 # Scopo: Valida e converte il campo opzionale `int` mantenendo `None` se assente.
 def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = False) -> int | None:
     value = payload.get(key)
@@ -233,7 +240,7 @@ def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = Fals
         raise ValueError(f"{key}_invalid")
     if isinstance(value, int):
         return value
-    if isinstance(value, str) and value.strip().isdigit():
+    if isinstance(value, str) and _INTERO_DECIMALE_RE.fullmatch(value.strip()):
         return int(value.strip())
     raise ValueError(f"{key}_invalid")
 

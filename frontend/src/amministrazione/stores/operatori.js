@@ -28,6 +28,7 @@ import {
   putEmittentiScope,
   getPermessiEreditati,
   getPermessiEffettivi,
+  getPermessiRiepilogo,
 } from '../api/amministrazione'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
@@ -65,6 +66,10 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   // Cambiano a ogni salvataggio di un override (l'ereditato no): i `save*`
   // qui sotto li ricaricano.
   const permessiEffettivi = ref({ azioni: [], oggetti: [] })
+  // Il riepilogo PER AREA dell'operatore corrente (livello, override scritti,
+  // voci limitate): il badge «override» dell'elenco aree del pannello. Stessa
+  // sede della lista operatori (`fn_get_permessi_riepilogo_aree`).
+  const riepilogoAree = ref([])
   // Fase 2 multi-face: shape dichiarativo da fn DB
   // `script.fn_get_user_emittenti_scope`. Sostituisce la vecchia lista grezza.
   const emittentiScope = ref({
@@ -116,7 +121,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideAree(authUserId, items) {
     const res = await putOverrideAree(authUserId, items)
     overrideAree.value = res.data.data.results
-    await fetchPermessiEffettivi(authUserId)
+    await Promise.all([fetchPermessiEffettivi(authUserId), fetchRiepilogoAree(authUserId)])
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
@@ -129,7 +134,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideAzioni(authUserId, items) {
     const res = await putOverrideAzioni(authUserId, items)
     overrideAzioni.value = res.data.data.results
-    await fetchPermessiEffettivi(authUserId)
+    await Promise.all([fetchPermessiEffettivi(authUserId), fetchRiepilogoAree(authUserId)])
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
@@ -142,7 +147,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideOggetti(authUserId, items) {
     const res = await putOverrideOggetti(authUserId, items)
     overrideOggetti.value = res.data.data.results
-    await fetchPermessiEffettivi(authUserId)
+    await Promise.all([fetchPermessiEffettivi(authUserId), fetchRiepilogoAree(authUserId)])
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
@@ -159,6 +164,12 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function fetchPermessiEffettivi(authUserId) {
     const res = await getPermessiEffettivi(authUserId)
     permessiEffettivi.value = res.data.data
+  }
+
+  // --- Riepilogo per area dell'operatore corrente (sola lettura) ---
+  async function fetchRiepilogoAree(authUserId) {
+    const res = await getPermessiRiepilogo([authUserId])
+    riepilogoAree.value = res.data.data.results
   }
 
   // --- Emittenti scope (Fase 2 multi-face: scope dichiarativo) ---
@@ -204,6 +215,8 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     fetchPermessiEreditati,
     permessiEffettivi,
     fetchPermessiEffettivi,
+    riepilogoAree,
+    fetchRiepilogoAree,
     fetchEmittentiScope,
     saveEmittentiScope
   }

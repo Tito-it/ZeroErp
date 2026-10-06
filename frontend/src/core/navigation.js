@@ -109,8 +109,6 @@ export const NAV_ICONS = Object.freeze({
   // piu' `pi-sitemap`, che portava anche i profili di reparto — due voci dello
   // stesso menu con un segno solo.
   DEFINIZIONI_WORKFLOW: 'pi pi-directions-alt',
-  // Stesso segno di `MANAGE_ICONS.PERMISSIONS`: lo stesso concetto.
-  PERMESSI: 'pi pi-shield',
   // Chi EMETTE i documenti fiscali. ⛔ Non `pi-id-card`, che e'
   // `MANAGE_ICONS.CONTATTI`.
   EMITTENTI_FISCALI: 'pi pi-file-check',
@@ -280,7 +278,10 @@ export const DOMAIN_MENUS = {
   'amm-software': [
     { key: 'accessi', icon: NAV_ICONS.ACCESSI, to: '/amm-software/accessi' },
     { key: 'profili-reparto', icon: NAV_ICONS.PROFILI_REPARTO, to: '/amm-software/profili-reparto' },
-    { key: 'permessi', icon: NAV_ICONS.PERMESSI, to: '/amm-software/permessi' },
+    // ℹ️ Niente piu' voce «Permessi» (2026-10-06, Tid): il riepilogo e'
+    //    «Mostra permessi» della lista in Accessi → Operatori, e una voce che
+    //    porta li' accendeva «Accessi» nel menu. Il vecchio path resta come
+    //    redirect (router).
     { key: 'emittenti-fiscali', icon: NAV_ICONS.EMITTENTI_FISCALI, to: '/amm-software/emittenti-fiscali' },
     // Accanto agli emittenti, ed e' la loro vicina di casa: i registri di
     // numerazione vivono nel drawer dell'emittente, la REGOLA che applicano

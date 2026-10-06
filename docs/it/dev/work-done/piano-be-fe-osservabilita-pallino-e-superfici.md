@@ -16,7 +16,7 @@
 > | **E** — Errori tecnici | ✅ `GET amm-software/error-log/`, `ErrorLogListView`, lista `dbops.error_log` a catalogo, `JsonBlocco` estratto | §4, §10 |
 > | **G** — Giornale eventi | ✅ `GET vendite/giornale/`, `GiornaleListView`, lista `vendite.giornale` a catalogo, test di perimetro a due emittenti, lookup `tipi-entita` dal catalogo | §3, §10 |
 > | **V** — verdetto «lotto fermo» letto dal DB | ✅ `fermo` chiesto per nome nel riepilogo; il BE trasporta | §5 |
-> | **Collaudo in-app** | ✏️ **da fare** — copione | [collaudo-in-app-osservabilita-giornale-errori-pallino.md](../work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md) |
+> | **Collaudo in-app** | ✅ **chiuso il 2026-10-06** | [collaudo-in-app-osservabilita-giornale-errori-pallino.md](collaudo-in-app-osservabilita-giornale-errori-pallino.md) |
 >
 > **Che cosa resta, e dove va:**
 >

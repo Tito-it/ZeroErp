@@ -4,8 +4,10 @@
 > (`dev/db-tid`); poi BE/FE (§5), che **attende** la consegna DB.
 > **Decisioni:** di Tid, 2026-10-06 (§2).
 > **Stato:** ✅ **DB applicato il 2026-10-06, pgTAP verdi** (§6): `20261006-01`, `-02`,
-> due righe di CSV e un pgTAP nuovo. ⏳ Tocca a BE/FE (§5, con le correzioni di §6.4).
-> **Da leggere per primo: §6.4.**
+> due righe di CSV e un pgTAP nuovo. ✅ **BE/FE fatto il 2026-10-06** (§7, con le
+> correzioni di §6.4), **non committato**. ⏳ Resta il collaudo a video, dopo il migrate
+> che accende la colonna *Override* (§7). 🔵 **Nuova richiesta al team DB in §8**: ritirare
+> la colonna «Azioni» della lista 28, rimasta senza kebab.
 
 ## 1. Perché
 
@@ -263,3 +265,72 @@ lette dalle funzioni del tetto (`identita_digitali`) e i presidi trasversali
 * La chiave `amministrazione.col_override` non c'è ancora in `it.json`/`en.json`
   (controllato il 2026-10-06): la aggiunge il FE. Con la colonna spenta
   `check_i18n_keys.py` non la chiede ancora.
+
+## 7. Giro BE/FE (2026-10-06) — ✅ fatto, da collaudare a video
+
+> **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-06. Non committato.
+
+⭐ **Una scelta di forma presa durante il giro (Tid):** il riepilogo non è una pagina
+sua con lo stesso catalogo, ma un **interruttore «Mostra permessi»** nella lista
+Operatori (*Accessi → Operatori*). Due pagine sullo stesso store si sarebbero passate
+filtri e pagina, e una seconda pagina con uno store suo avrebbe chiesto un componente
+lista estratto e una factory. La voce di menu *Riepilogo permessi*
+(`/amm-software/permessi`) resta come **redirect** con l'interruttore acceso
+(`?permessi=1`), così menu e preferiti salvati continuano a funzionare.
+
+| Pezzo | Dove | Cosa |
+| --- | --- | --- |
+| Colonna *Override* | `amm_software_repository.list_operatori` | `override_count` contato su `script.vw_override_operatore_area` (§6.4), in whitelist d'ordinamento; `OperatoreRow.override_count`. Riga **1110** del CSV accesa (`attivo = t`) nello stesso giro |
+| Riepilogo per area | `get_permessi_riepilogo` + `PermessiRiepilogoView` (BE) | `GET permessi-riepilogo/?auth_user_ids=1,2,3` → `{results: [...]}` da `fn_get_permessi_riepilogo_aree`, con `area_codice`/`area_descrizione`. Gli id che non sono operatori si scartano prima della funzione; al massimo `MAX_LIMIT` id; un id non valido, o nessun id, è un 400 (`E_AMM_VALIDAZIONE`); il pezzo lo legge `optional_int` (cifre ASCII, corretto nello stesso giro), più il tetto di un `integer` PG. **Ritirata** la query con un f-string per area, e i vecchi filtri dell'endpoint |
+| Lista operatori | `OperatoriListView.vue` | interruttore *Mostra permessi* (fuori dai filtri: cambia cosa si vede, non quali righe); espansione pilotata, tutta aperta a ogni caricamento con l'interruttore acceso; chip per area con livello, numero di override e triangolo del tetto; il riepilogo si chiede per le righe aperte della pagina in una chiamata e si scarta a ogni ricarica della lista (dopo un Salva nel drawer la ricarica già `useTabFreshness`); una lettura fallita lo dice sulla riga. Il `?permessi=1` vive in `QUERY_MOSTRA_PERMESSI*` (`amministrazione/constants`), letto da router e vista |
+| Pannello | `OperatorePermessiTab.vue`, store `riepilogoAree` | il badge dell'area legge il numero dalla funzione (D-4); un'area con modifiche non salvate lo conta a video, come anteprima (la stessa regola del tetto). Ricaricato a ogni Salva |
+| Pagina tolta | `PermessiRiepilogoView.vue` (FE) | cancellata; uscita dal registro `datatable.baseline.json` (28 grezze) |
+| CSS | `main.css` | `.app-permessi-tetto-icona` globale: ora la usano pannello e lista |
+| i18n | it/en | nuove `col_override`, `mostra_permessi`, `mostra_permessi_hint`; tolte le 7 chiavi della pagina ritirata (`permessi_col_*`, `permessi_filter_*`, `permessi_stato_super_admin`/`_operatore`), cercate anche in `db/` e `backend/` |
+
+**Test:**
+
+* BE: `test_permessi_riepilogo.py` (8: id, 400, tetto, forma della query, colonna e
+  whitelist); adattati `test_operatori_senza_utenti_tecnici` e
+  `test_operatore_altre_vesti_db`: al riepilogo si chiedono **apposta** gli id non
+  operatori, e deve scartarli lui. Suite `amm_software` verde; test su DB reale
+  (`ZEROERP_TEST_DB_E2E=1`) del dominio e del catalogo liste verdi (44).
+* FE: `OperatoriListView.spec.js` (5: deep link, chip, interruttore, cache scartata
+  alla ricarica — provato anche a rovescio —, lettura fallita e nuovo tentativo); `OperatorePermessiTab.spec.js`
+  test 9 (DB contro anteprima). Suite 700 verde, lint, guard e build puliti.
+
+**Verifica sul DB di sviluppo** (2026-10-06, sola lettura): `pochi` 23 override in
+lista, uguale alla somma delle sue aree (Anagrafiche 3, come nel pannello), e `fara`
+5 = 4 + 1.
+
+⚠️ **Prima del collaudo:** la riga 1110 del CSV la rilegge il mirror `runOnChange` al
+prossimo migrate. Finché non gira, su `dbdev` la colonna *Override* resta spenta,
+mentre interruttore e chip funzionano già. Il backend di sviluppo è stato ricaricato
+(`kill -HUP`).
+
+### 7.1 Ritocchi dopo la prima prova a video (Tid, 2026-10-06)
+
+| Cosa | Perché |
+| --- | --- |
+| **Tolta la voce di menu** *Riepilogo permessi* | portava ad *Accessi → Operatori*, e il menu evidenziava «Accessi»: fuorviante |
+| **Tolti il redirect** `/amm-software/permessi` **e il link** `?permessi=1` | senza la voce non li usava più nessuno (un segnalibro vecchio finisce sulla pagina di errore) |
+| **Tolto il kebab** *Gestisci permessi* **e il drawer** `OperatorePermessiDrawer` | apriva lo stesso pannello della scheda *Permessi* del drawer operatore, che si apre già cliccando la riga: due strade per la stessa cosa |
+| **Le chip vanno a capo** (`contain: inline-size`) | la tabella delle liste è larga quanto il contenuto, e il blocco delle chip contava come una riga sola: allargava la tabella e accendeva lo scroll orizzontale |
+
+Tolte anche l'etichetta di menu, la costante dell'icona e le chiavi
+`gestisci_permessi` / `permessi_operatore_title`, senza più usi (cercate anche in `db/` e
+`backend/`).
+
+## 8. Richiesta al team DB: ritirare la colonna «Azioni» della lista 28
+
+Senza kebab, la colonna `azioni` della lista `anagrafiche.operatori` (`ui/lista_colonna.csv`,
+riga **345**, `tipo_colonna = azione`) non viene più disegnata: `ListaConfigurabile` la rende
+solo se la pagina passa lo slot `#actions`. Ma la riga di catalogo resta, e in *Personalizza
+colonne* compare come una colonna da accendere che non fa niente.
+
+* `lista_colonna.csv` riga 345 → `attivo = f` (o la forma di ritiro di casa);
+* `lista_preset_colonna.csv` → la riga `28,345,90,t,f` del preset di default.
+
+Nessuna ricaduta BE/FE: il frontend non la chiede più. Se un giorno la lista avrà di nuovo
+azioni di riga (es. *Disabilita*, *Reinvia invito*), la colonna si riaccende.
+

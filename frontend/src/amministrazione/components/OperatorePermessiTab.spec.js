@@ -22,6 +22,8 @@
 //   7) il Salva unico manda la SOLA sezione modificata, e ricarica gli effettivi
 //   8) su un super admin il pannello e' in sola lettura: tendine spente, niente
 //      reset, niente Salva — ma l'elenco delle aree resta navigabile
+//   9) il numero di override di un'area viene dal DB (sede unica); un'area con
+//      modifiche non salvate lo conta a video, come anteprima
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -38,6 +40,7 @@ const api = {
   putOverrideOggetti: vi.fn(),
   getPermessiEreditati: vi.fn(),
   getPermessiEffettivi: vi.fn(),
+  getPermessiRiepilogo: vi.fn(),
   getEmittentiScope: vi.fn(),
   putEmittentiScope: vi.fn(),
   listAreeFunzionali: vi.fn(),
@@ -53,6 +56,7 @@ vi.mock('../api/amministrazione', async (originale) => ({
 const { monta } = await import('../../../test/montaggio')
 const { default: OperatorePermessiTab } = await import('./OperatorePermessiTab.vue')
 const { default: Select } = await import('primevue/select')
+const { default: Badge } = await import('primevue/badge')
 
 const ID = 42
 function comeAxios(data) { return { data: { data } } }
@@ -92,6 +96,13 @@ function preparaApi({ limitata = false, superAdmin = false } = {}) {
         livello_area: 'TUTTO', livello_specifico: 'TUTTO', livello: 'TUTTO', limitato_da_area: false },
     ],
   }))
+  // Il numero di override per area, dalla sede unica a DB: Magazzino ha l'override
+  // sull'azione 20.
+  api.getPermessiRiepilogo.mockResolvedValue(comeAxios({ results: [
+    { auth_user_id: ID, area_id: 1, livello: 'TUTTO', override_count: 0, voci_limitate: 0 },
+    { auth_user_id: ID, area_id: 2, livello: 'BLOCCATO', override_count: 1, voci_limitate: limitata ? 1 : 0 },
+    { auth_user_id: ID, area_id: 3, livello: 'BLOCCATO', override_count: 0, voci_limitate: 0 },
+  ] }))
   api.listAreeFunzionali.mockResolvedValue(comeAxios({ results: AREE }))
   api.listAzioniProcesso.mockResolvedValue(comeAxios({ results: AZIONI }))
   api.getModelOverridesLookup.mockResolvedValue(comeAxios({ results: OGGETTI }))
@@ -199,5 +210,22 @@ describe('OperatorePermessiTab — il pannello per area', () => {
     tendine.forEach(s => expect(s.props('disabled')).toBe(true))
     expect(w.find('.app-elenco-dettaglio-dettaglio button').exists()).toBe(false)
     expect(w.vm.puoSalvare).toBe(false)
+  })
+
+  it('9) il numero di un\'area viene dal DB; con modifiche non salvate, a video', async () => {
+    // Il DB conta 4 override su Vendite (es. oggetti che il catalogo a video non
+    // elenca): vale il DB, non le mappe locali (che ne hanno zero).
+    const righe = (await api.getPermessiRiepilogo()).data.data.results
+    api.getPermessiRiepilogo.mockResolvedValue(comeAxios({ results: righe.map(r =>
+      r.area_id === 1 ? { ...r, override_count: 4 } : r) }))
+    const w = await montaScheda()
+    expect(api.getPermessiRiepilogo).toHaveBeenCalledWith([ID])
+    expect(vociElenco(w)[0].findComponent(Badge).props('value')).toBe(4)
+
+    // Modifica non salvata su Vendite: ora conta l'anteprima a video (1).
+    const tendine = w.find('.app-elenco-dettaglio-dettaglio').findAllComponents(Select)
+    tendine[tendine.length - 1].vm.$emit('update:modelValue', true)
+    await flushPromises()
+    expect(vociElenco(w)[0].findComponent(Badge).props('value')).toBe(1)
   })
 })
