@@ -2,7 +2,7 @@
 
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-04. **A chi:** team DB
 > (`dev/db-tid`); poi BE (§5), che **attende** la consegna DB.
-> **Origine:** [brief-db-permessi-tetto-area.md](../work-in-progress/brief-db-permessi-tetto-area.md) §6.5 e §10:
+> **Origine:** [brief-db-permessi-tetto-area.md](brief-db-permessi-tetto-area.md) §6.5 e §10:
 > `livello_minimo_area` cambia solo a DB (seed al migrate), e il backend non lo sa.
 > **Decisione:** di Tid, 2026-10-04: soluzione LISTEN/NOTIFY, sul meccanismo che già esiste per
 > il cambio di reparto.

@@ -2,10 +2,10 @@
 
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-09-25. **A chi:** Tid
 > (decisioni, §4), poi team DB (`dev/db-tid`) e backend per la ricaduta.
-> **Origine:** [piano-be-fe-ui-permessi-operatore.md](../work-in-progress/piano-be-fe-ui-permessi-operatore.md),
+> **Origine:** [piano-be-fe-ui-permessi-operatore.md](piano-be-fe-ui-permessi-operatore.md),
 > stato in testa: *«la versione durevole è un pgTAP, ed è da chiedere al team
 > DB»*. Analisi madre:
-> [analisi-ui-permessi-operatore.md](../work-in-progress/analisi-ui-permessi-operatore.md) §7.7.
+> [analisi-ui-permessi-operatore.md](analisi-ui-permessi-operatore.md) §7.7.
 > **Stato:** ✅ **D-1 e D-2 decise da Tid il 2026-09-25** (§4): come proposto.
 > ✅ **D-3 decisa da Tid lo stesso giorno** (§3-bis): il reparto vince sul
 > profilo di veste.
@@ -19,7 +19,7 @@
 > 📁 **Spostato in `work-done/` il 2026-09-25**, su richiesta di Tid, a lavoro
 > DB e BE chiuso. Il collaudo a video ha un copione suo, in
 > `work-in-progress/`:
-> [collaudo-in-app-permessi-ereditati-veste-operatore.md](../work-in-progress/collaudo-in-app-permessi-ereditati-veste-operatore.md).
+> [collaudo-in-app-permessi-ereditati-veste-operatore.md](collaudo-in-app-permessi-ereditati-veste-operatore.md).
 > **Da leggere per primo:** §7 (consegna DB), poi §5.1 (consegna BE).
 >
 > **In una riga:** il pannello permessi mostra per ogni area e azione il valore
@@ -228,10 +228,10 @@ sul DB di sviluppo (vedi sopra).
 **Resta:**
 
 - ⏳ il collaudo a video di questo cambio, nel suo copione:
-  [collaudo-in-app-permessi-ereditati-veste-operatore.md](../work-in-progress/collaudo-in-app-permessi-ereditati-veste-operatore.md)
+  [collaudo-in-app-permessi-ereditati-veste-operatore.md](collaudo-in-app-permessi-ereditati-veste-operatore.md)
   (comincia col `kill -HUP` sul master gunicorn, senza il quale in app non
   cambia niente). Resta aperto anche il collaudo del pannello
-  ([collaudo-in-app-ui-permessi-operatore.md](../work-in-progress/collaudo-in-app-ui-permessi-operatore.md));
+  ([collaudo-in-app-ui-permessi-operatore.md](collaudo-in-app-ui-permessi-operatore.md));
 - ⏳ il commit, su richiesta di Tid.
 
 ---

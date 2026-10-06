@@ -337,22 +337,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   migrate successivo. Da decidere se portare a `CONTINUE` tutte le FK del ponte
   (le 18 storiche e `20260925-22`/`-23`): è un cambio della forma di casa, del
   team DB.
-- 🔴 **Il tetto d'area dei permessi non esiste** (BE + DB, difetto di
-  modello; registrato il 2026-09-25 dall'analisi
-  `work-in-progress/analisi-ui-permessi-operatore.md` §3, perché non si perda
-  con la sua chiusura): un'area `BLOCCATO` **non** blocca le sue azioni di
-  processo — `core/api/permissions.py` risponde con la sola
-  `check_azione` e non consulta l'area — e un override oggetto può essere
-  **più permissivo** della sua area (`fn_resolve_livello_oggetto` sostituisce,
-  non limita: «il più specifico vince», dichiarato nella guida di
-  architettura §3). Passare a «l'area è un tetto» è un cambio di semantica, da
-  fare a DB e BE, mai solo a video. ✅ **Deciso da Tid il 2026-10-04** (tetto
-  sì, anche sul profilo, override dormienti, minimo d'area per azione):
-  `work-in-progress/brief-db-permessi-tetto-area.md`, che porta anche il
-  restyle del pannello per area (§7). Non è della v3 dei permessi, che è dormiente.
-  DB scritto il 2026-10-04 (`20261004-50 → -59`, colonna `livello_minimo_area`, catena in due
-  building block `fn_get_permessi_effettivi_azioni/_oggetti`), applicato il 2026-10-04, pgTAP verdi.
-  Lato DB chiuso; resta BE/FE (§9.7)
+- 🟡 **Tetto d'area dei permessi — due decisioni residue di Tid**, non
+  bloccanti (brief §9.6). Il cantiere è ✅ **chiuso il 2026-10-06** (DB
+  `20261004-50 → -59`, BE/FE in `b8ac544fe`, collaudo a video verde):
+  `work-done/brief-db-permessi-tetto-area.md`. Restano: ritiro del parametro
+  morto `p_area_schema_db` da `fn_resolve_livello_oggetto` (raccomandato:
+  tenerlo finché un cantiere non tocca quella firma) e raggruppamento
+  «Trasversali» delle aree (servirebbe una colonna su `aree_funzionali`, brief
+  al team DB)
 - **Il `codice` delle sei famiglie di documento di seed si perde al migrate**
   (DB, ereditata il 2026-09-24 dalla chiusura di
   `work-done/brief-be-ricerca-full-liste-residue.md`, §13.5): dal 24-09 il

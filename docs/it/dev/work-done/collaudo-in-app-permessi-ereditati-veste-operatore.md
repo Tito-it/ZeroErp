@@ -2,7 +2,7 @@
 
 > **Cos'è.** Il copione della validazione a video, da tenere aperto accanto
 > all'applicazione e da spuntare. Il *perché* di ogni scelta sta nel
-> [brief](../work-done/brief-db-pgtap-permessi-ereditati.md): §3 e §3-bis per i
+> [brief](brief-db-pgtap-permessi-ereditati.md): §3 e §3-bis per i
 > difetti, §4 per le decisioni D-1 → D-3, §5.1 e §7 per le due consegne.
 > Qui c'è solo **cosa fare, cosa deve succedere, e cosa fare se non succede**.
 >
@@ -17,7 +17,7 @@
 > - **D-3**: a parità di veste vince il **reparto** sul profilo di veste
 >   (priorità AD_HOC 1, REPARTO 2, PORTALE 3).
 >
-> **Stato**: ✏️ scritto il 2026-09-25, da eseguire.
+> **Stato**: ✅ **ESEGUITO E VERDE il 2026-10-06** (Tid). Scritto il 2026-09-25.
 > **Ambiente**: sviluppo (`dbdev`).
 > **Utente**: un **super admin** per aprire il pannello e interrogare i
 > permessi degli altri, più le credenziali dell'operatore **`pochi`** per il §2.
@@ -122,7 +122,7 @@ qui a mano: sono **provati costruendoli** nel pgTAP
 
 | Esito | Allora |
 | --- | --- |
-| Tutto verde | Si segna qui la data, e questo documento va in `work-done/` accanto al brief. Se è verde anche il [collaudo del pannello](collaudo-in-app-ui-permessi-operatore.md), analisi e piano della UI permessi vanno in `work-done/` |
+| Tutto verde | ✅ **2026-10-06**: fatto. Si segna qui la data, e questo documento va in `work-done/` accanto al brief. Se è verde anche il [collaudo del pannello](collaudo-in-app-ui-permessi-operatore.md), analisi e piano della UI permessi vanno in `work-done/` |
 | Rosso al §1 o al §2 | ⛔ Difetto funzionale su una schermata di sicurezza: si apre prima di qualunque altra cosa. Prima si guarda la query di controllo, per capire se il difetto sta a DB o nel backend |
 | Rosso al §3 | Fuori dal perimetro del cambio, ma causato da lui: brief al team DB |
 | Rosso al §4 | Regressione: si annota la riga e il comportamento visto |

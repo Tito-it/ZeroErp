@@ -1,8 +1,15 @@
 # Analisi — La UI dei permessi di un operatore
 
 > **Tipo**: analisi · **Data**: 2026-09-05 · **Owner**: Tid ·
-> **Stato**: 🟡 **ESEGUITA, IN COLLAUDO** (aggiornato 2026-09-25) — perimetro
-> deciso il 2026-09-05 (§7), codice fatto lo stesso giorno
+> **Stato**: ✅ **CHIUSA il 2026-10-06** — collaudi a video verdi (Tid):
+> [pannello](collaudo-in-app-ui-permessi-operatore.md) e
+> [ereditato/veste](collaudo-in-app-permessi-ereditati-veste-operatore.md). Perimetro
+> deciso il 2026-09-05 (§7), codice fatto lo stesso giorno. Il tetto d'area, che qui
+> sotto risulta «aperto», è stato poi deciso e fatto in
+> [brief-db-permessi-tetto-area.md](brief-db-permessi-tetto-area.md) (2026-10-04), e
+> collaudato con questo pannello.
+>
+> 📍 *Il riquadro che segue è la fotografia al 2026-09-25, lasciata com'era.*
 >
 > 📍 **Dove siamo (2026-09-25)**
 >
@@ -12,7 +19,7 @@
 >   [collaudo-in-app-ui-permessi-operatore.md](collaudo-in-app-ui-permessi-operatore.md),
 >   da eseguire.
 > - ✅ **pgTAP «ereditato = resolver»** (2026-09-25):
->   [brief-db-pgtap-permessi-ereditati.md](../work-done/brief-db-pgtap-permessi-ereditati.md).
+>   [brief-db-pgtap-permessi-ereditati.md](brief-db-pgtap-permessi-ereditati.md).
 >   L'ereditato ora sta a DB, i resolver lo chiamano e il backend lo legge;
 >   applicato, con la ricaduta BE fatta. Il brief ha corretto anche un difetto:
 >   i resolver da operatore contavano i profili delle **altre vesti**
