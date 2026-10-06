@@ -7,7 +7,11 @@
 > **Origine:** il seguito di `brief-db-contratto-esclusione-non-modificabile` (stessa giornata): chiusa
 > l'esclusione, restava la riga che si fattura senza dire come.
 > **Stato:** ✅ **DB chiuso** il 2026-10-04: applicato (`20261004-30…-33` + due CSV), pgTAP verdi
-> nella corsa di Tid (§7). ✅ **BE/FE scritto** il 2026-10-04 (§8), non committato.
+> nella corsa di Tid (§7). ✅ **BE/FE fatto** il 2026-10-04 (§8, commit `dda5bda1d`).
+> ✅ **Chiuso e archiviato il 2026-10-06.** L'ultimo avviso del §8 (la fonte quantità chiesta
+> sull'esclusione dell'offerta, fuori perimetro per il §4) l'ha chiuso il brief successivo,
+> `brief-db-righe-esclusione-solo-non-si-vende` (`20261004-40`: sull'esclusione la fonte non è più
+> obbligatoria e l'erogazione resta vuota).
 
 ## 1. La regola
 
