@@ -5,7 +5,8 @@
 # Scopo: L'area «Accessi» sul percorso client -> middleware -> DRF -> view ->
 #        servizio (brief-db-be-fe-area-accessi): forma della risposta delle
 #        due liste, vocabolari dei filtri rifiutati con un 400, capability del
-#        blocco, `Idempotency-Key` sui due verbi, sessioni chiuse col blocco.
+#        blocco e dell'eliminazione, `Idempotency-Key` sui tre verbi, sessioni
+#        chiuse col blocco, i tre rifiuti dell'eliminazione col loro status.
 #        Finti: il repository, la revoca dei token, la transazione.
 # ------------------------------------------------------------
 
@@ -22,6 +23,11 @@ Indice test eseguiti:
  9) test_sblocca_non_tocca_le_sessioni
 10) test_vecchia_rotta_del_secondo_fattore_ritirata
 11) test_blocca_credenziale_di_sistema_e_un_409 — il rifiuto del verbo, classe CONFLITTO_STATO
+12) test_altri_la_capability_dell_eliminazione_passa_com_e — riga di lista, motivo del DB
+13) test_elimina_vuole_l_idempotency_key
+14) test_elimina_chiama_il_verbo — niente revoca dei token: senza veste non c'e' sessione
+15) test_elimina_rifiuti_del_verbo — CON_VESTI e CON_STORIA 409, STORIA_NON_VERIFICABILE 500
+16) test_elimina_credenziale_inesistente_404 — il verbo non si chiama
 """
 
 from unittest.mock import MagicMock, patch
@@ -36,6 +42,7 @@ _CRED = {
     "auth_user_id": 7, "username": "cliente7", "email": None, "categoria": "ALTRO",
     "bloccata": False, "bloccata_dal": None, "bloccata_da": None, "motivo_blocco": None,
     "can_block": True, "block_reason": None, "block_reason_key": None,
+    "can_delete": True, "delete_reason": None, "delete_reason_key": None, "delete_dettaglio": None,
 }
 
 
@@ -89,6 +96,18 @@ class AccessiListeTests(_Base):
         self.assertIs(kw["bloccata"], True)
         self.assertEqual((kw["limit"], kw["offset"]), (10, 20))
         self.assertEqual((kw["order_by"], kw["order_dir"]), ("ultimo_accesso", "desc"))
+
+    # Scopo: La terna dell'eliminazione sta sulla RIGA (il kebab la legge):
+    #        motivo, chiave e dettaglio del DB passano com'e'.
+    def test_altri_la_capability_dell_eliminazione_passa_com_e(self):
+        riga = {
+            "auth_user_id": 7, "vesti": [], "can_delete": False, "delete_reason": "CON_STORIA",
+            "delete_reason_key": "amministrazione.accessi.elimina_reason.con_storia",
+            "delete_dettaglio": {"auth_user_id": 7, "dove": ["config.email_log"]},
+        }
+        self.repo.list_accessi_altri.return_value = ([riga], 1)
+        data = self.client.get("/api/v1/amm-software/accessi/altri/").json()["data"]
+        self.assertEqual(data["results"][0], riga)
 
     def test_altri_vocabolario_estraneo_e_un_400(self):
         for param, valore in (("stato_accesso", "ATTIVA"), ("secondo_fattore_stato", "SI"),
@@ -167,3 +186,45 @@ class CredenzialeTests(_Base):
     def test_vecchia_rotta_del_secondo_fattore_ritirata(self):
         resp = self.client.get("/api/v1/amm-software/operatori/7/secondo-fattore/")
         self.assertEqual(resp.status_code, 404)
+
+
+class CredenzialeEliminaTests(_Base):
+    _URL = "/api/v1/amm-software/credenziali/7/"
+
+    def _delete(self, *, chiave: str | None = "k-del"):
+        headers = {"HTTP_IDEMPOTENCY_KEY": chiave} if chiave else {}
+        return self.client.delete(self._URL, **headers)
+
+    def test_elimina_vuole_l_idempotency_key(self):
+        resp = self._delete(chiave=None)
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.repo.elimina_credenziale.assert_not_called()
+
+    def test_elimina_chiama_il_verbo(self):
+        resp = self._delete()
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["data"], {"status": "ok", "auth_user_id": 7})
+        self.repo.elimina_credenziale.assert_called_once_with(7)
+        self.revoca.assert_not_called()
+
+    # Scopo: I tre motivi della check arrivano dal verbo col loro codice, e la
+    #        classe a catalogo decide lo status: lo stato della credenziale e'
+    #        un 409, i legami del DB che mancano un 500 (TECNICO).
+    def test_elimina_rifiuti_del_verbo(self):
+        for codice, status in (
+            ("E_CREDENZIALE_CON_VESTI", 409),
+            ("E_CREDENZIALE_CON_STORIA", 409),
+            ("E_CREDENZIALE_STORIA_NON_VERIFICABILE", 500),
+        ):
+            with self.subTest(codice=codice):
+                self.repo.elimina_credenziale.side_effect = DatabaseError(f"ERROR: {codice}: rifiutata.")
+                resp = self._delete(chiave=f"k-{codice}")
+                self.assertEqual(resp.status_code, status, resp.content)
+                self.assertEqual(resp.json()["error"]["code"], codice)
+
+    def test_elimina_credenziale_inesistente_404(self):
+        self.repo.get_credenziale.side_effect = lambda _uid: None
+        resp = self._delete()
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(resp.json()["error"]["code"], "E_CREDENZIALE_NON_TROVATA")
+        self.repo.elimina_credenziale.assert_not_called()

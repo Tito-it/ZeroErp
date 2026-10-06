@@ -219,11 +219,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   archiviato il 2026-10-06): `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su
   `dbops.presidi`; il pannello mostra azione → significato → a chi tocca, il digest raggruppa per chi agisce.
   Collaudo a video di Tid superato. I residui sono in § «Aperto — Media priorità».
-- **Una credenziale senza veste si elimina dall'applicazione** (`work-in-progress/brief-db-elimina-credenziale-senza-veste.md`,
-  2026-10-06, strada B decisa da Tid): il presidio `vw_credenziali_da_sanare` chiedeva all'amministratore un gesto che
-  non esisteva. Verbo `fn_elimina_credenziale` + check, testo del presidio riscritto. D-1…D-3 confermate da Tid (06-10).
-  DB **scritto** (`20261006-10 → -15`, §7 del brief: check derivata da `pg_constraint` e fail-closed senza il ponte
-  django, traccia in `config.credenziali_eliminate`, all'app tolto il `DELETE` su `django.auth_user`), **applicato il 2026-10-07**, pgTAP verdi. ⏳ BE/FE.
+- **Una credenziale senza veste si elimina dall'applicazione: chiuso** (`work-done/brief-db-elimina-credenziale-senza-veste.md`,
+  archiviato il 2026-10-07): verbo `script.fn_elimina_credenziale` + check derivata da `pg_constraint` e fail-closed senza
+  il ponte django, traccia in `config.credenziali_eliminate`, all'app tolto il `DELETE` su `django.auth_user`; BE/FE
+  «Elimina accesso» in kebab e drawer di «Altri accessi». Collaudo a video di Tid superato. Il residuo (D-4) sta nella
+  voce ❓ sul ponte django, sotto.
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
   resta R-4, che vuole un brief DB non ancora scritto. L-6 (date della veste) ha il suo brief,
   `work-in-progress/brief-db-veste-utilizzabile.md` (2026-10-06): la regola «veste utilizzabile» a DB
@@ -269,7 +269,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **Presidi, i residui del brief dei testi per chi agisce** (ereditati il 2026-10-06 dalla chiusura di
   `work-done/brief-db-presidi-cosa-significa-cosa-fare.md`):
   - ✅ **due nomi di schermata sbagliati nel CSV** `80_data/sql/dbops/presidi_testi.csv` (§9.3): corretti nel
-    giro di `work-in-progress/brief-db-elimina-credenziale-senza-veste.md` (§7.2), applicati il 2026-10-07;
+    giro di `work-done/brief-db-elimina-credenziale-senza-veste.md` (§7.2), applicati il 2026-10-07;
   - **D-4**, le quattro misure larghe per costruzione (`vw_codici_errore_forme_condizione`,
     `vw_codici_errore_da_dichiarare`, `vw_punti_primo_motivo`, `vw_punti_canale_campo`): il pannello le mostra
     come un numero da guardare. O diventano `INVENTARIO`, o la natura del pannello si separa da quella del
@@ -361,7 +361,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   team DB. ⚠️ Dal 2026-10-06 ha un effetto visibile: senza il ponte
   `script.fn_elimina_credenziale` rifiuta sempre (fail-closed,
   `E_CREDENZIALE_STORIA_NON_VERIFICABILE`, D-4 del brief elimina-credenziale),
-  quindi su un'installazione nuova nessuna credenziale si elimina.
+  quindi su un'installazione nuova nessuna credenziale si elimina (brief archiviato in `work-done/`).
 - 🟡 **Tetto d'area dei permessi — due decisioni residue di Tid**, non
   bloccanti (brief §9.6). Il cantiere è ✅ **chiuso il 2026-10-06** (DB
   `20261004-50 → -59`, BE/FE in `b8ac544fe`, collaudo a video verde):

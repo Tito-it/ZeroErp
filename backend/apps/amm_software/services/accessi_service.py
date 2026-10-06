@@ -102,6 +102,23 @@ class AccessiService:
             transaction.on_commit(lambda: invalidate_user(auth_user_id))
         return self.get_credenziale(auth_user_id)
 
+    # Scopo: Elimina una credenziale che non ha mai avuto una veste (verbo
+    #        `script.fn_elimina_credenziale`, brief-db-elimina-credenziale-
+    #        senza-veste). Il verbo pretende il SUPER_ADMIN e solleva il primo
+    #        motivo della check (`E_CREDENZIALE_CON_VESTI`, `_CON_STORIA`,
+    #        `_STORIA_NON_VERIFICABILE`): i rifiuti arrivano dal DB col loro
+    #        codice, qui non se ne tiene una copia.
+    # ⚠️ Le sessioni non si chiudono a mano: una credenziale senza veste non ha
+    #    un'identita' attiva, quindi nessun token che passi l'autenticazione;
+    #    i token in lista Django perdono il riferimento (SET NULL). La cache
+    #    dei permessi si invalida a COMMIT avvenuto, come per il blocco.
+    def elimina_credenziale(self, auth_user_id: int) -> dict[str, Any]:
+        self.get_credenziale(auth_user_id)
+        with transaction.atomic():
+            self._repo.elimina_credenziale(auth_user_id)
+            transaction.on_commit(lambda: invalidate_user(auth_user_id))
+        return {"status": "ok", "auth_user_id": auth_user_id}
+
     # Scopo: Toglie il blocco dell'amministratore (`script.fn_sblocca_credenziale`,
     #        idempotente). Le sessioni chiuse dal blocco non si riaprono: la
     #        persona entra di nuovo con la sua password.

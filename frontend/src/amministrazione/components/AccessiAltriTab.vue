@@ -11,7 +11,9 @@
 // ⭐ Le vesti sono badge della riga (tipo + stato, una per veste): si leggono
 //    qui, si governano dalla scheda del cliente o del fornitore (kebab «Apri la
 //    scheda», o il drawer). Le azioni della CREDENZIALE (blocco, secondo
-//    fattore) stanno nel drawer, come per gli operatori (A-5).
+//    fattore) stanno nel drawer, come per gli operatori (A-5); «Elimina
+//    accesso» sta anche nel kebab, spento col motivo dalla capability di riga
+//    (brief-db-elimina-credenziale-senza-veste §6).
 // ⚠️ Niente `useReadonlyMode`: in `amm-software` non c'e' un livello d'area da
 //    risolvere — o sei super admin e vedi tutto, o non arrivi alla pagina.
 import { onMounted } from 'vue'
@@ -32,6 +34,7 @@ import { etichettaRuoloApplicativo } from '../../core/utils/i18nLabel'
 import { buildBoolOptions, buildOptionsConTutti } from '../../core/utils/options'
 import { statoVesteSeverity } from '../../core/utils/severity'
 import { useAccessiAltriStore } from '../stores/accessiAltri'
+import { useEliminaCredenziale } from '../composables/useEliminaCredenziale'
 import { destinazioneVeste, useSchedaVeste } from '../composables/useSchedaVeste'
 import AccessoAltroDrawer from './AccessoAltroDrawer.vue'
 
@@ -39,6 +42,7 @@ const { t, te } = useI18n()
 const store = useAccessiAltriStore()
 const drawer = useDrawerState()
 const { apriSchedaVeste } = useSchedaVeste()
+const { eliminaSpenta, motivoEliminaSpenta, chiediElimina } = useEliminaCredenziale()
 
 // ⛔ Nessun `onNew` e nessun `exportFn`: una credenziale non nasce da qui (la
 //    veste la crea l'invito, dalla scheda del soggetto), e l'export non ha
@@ -88,9 +92,10 @@ function onRowClick(data) {
 }
 
 // Scopo: il kebab della riga: si va alla scheda del soggetto della veste, una
-//        voce per veste che ne ha una. Le vesti si governano li' (A-4).
+//        voce per veste che ne ha una (le vesti si governano li', A-4), e
+//        «Elimina accesso», spento col motivo quando la check lo rifiuta.
 function buildRowActions(data) {
-  return (data.vesti || [])
+  const schede = (data.vesti || [])
     .filter(v => destinazioneVeste(v))
     .map(v => ({
       key: `scheda-${v.identita_id}`,
@@ -101,6 +106,18 @@ function buildRowActions(data) {
       icon: MANAGE_ICONS.VAI_A,
       command: () => apriSchedaVeste(v),
     }))
+  return [
+    ...schede,
+    {
+      key: 'elimina',
+      label: t('amministrazione.accessi.elimina'),
+      icon: MANAGE_ICONS.DELETE,
+      severity: 'danger',
+      disabled: eliminaSpenta(data),
+      tooltip: motivoEliminaSpenta(data),
+      command: () => chiediElimina(data, { onEliminata: () => store.fetchList() }),
+    },
+  ]
 }
 
 function onDrawerChanged() {

@@ -1792,7 +1792,15 @@
         "credenziale_di_sistema": "È l'accesso di un processo automatico o di un sistema esterno: bloccarlo fermerebbe il suo lavoro.",
         "ultimo_super_admin": "È l'ultimo super amministratore raggiungibile: bloccarlo lascerebbe il sistema senza amministratori."
       },
-      "nessun_accesso_spiegazione": "Questo accesso non ha nessuna veste: non entra da nessuna porta. È un caso da sanare, e lo segnala anche il controllo delle credenziali da sanare.",
+      "elimina": "Elimina accesso",
+      "elimina_conferma": "L'accesso «{username}» non ha mai avuto una veste e viene eliminato. Resta traccia di chi l'ha eliminato e quando. L'operazione non si annulla.",
+      "eliminata_ok": "Accesso eliminato.",
+      "elimina_reason": {
+        "con_vesti": "Ha delle vesti, anche spente: appartiene a una persona o a un processo automatico, e non si elimina. Per togliere l'ingresso a una persona spegni le sue vesti dalla sua scheda.",
+        "con_storia": "Compare già fra i dati registrati ({dove}): non si elimina. Avvisa lo sviluppo riferendo questo messaggio.",
+        "storia_non_verificabile": "In questa installazione mancano i legami del database verso le credenziali: non si può verificare se ha una storia, e non si elimina. Avvisa chi amministra il database."
+      },
+      "nessun_accesso_spiegazione": "Questo accesso non ha nessuna veste: non entra da nessuna porta. È un caso da sanare, e lo segnala anche il controllo delle credenziali da sanare: se la persona deve entrare, invitala dalla sua scheda con la stessa email (l'invito riusa questo accesso); altrimenti eliminalo.",
       "invito_scade": "Invito valido fino al {quando}",
       "veste_valida_al": "Valida fino al {quando}",
       "apri_scheda": "Apri la scheda",

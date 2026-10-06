@@ -503,7 +503,11 @@ Riga: `auth_user_id`, `username`, `email`, `nome`, `cognome`,
 `soggetto_ruolo_id`, `soggetto`, **`cliente_ids` (array)**, `fornitore_id`),
 `vesti_elenco`, `soggetti_elenco`, `nessun_accesso`, `stato_accesso`,
 `is_active`, `secondo_fattore_stato`, `secondo_fattore_obbligatorio`,
-`bloccata`, `bloccata_dal`, `motivo_blocco`, `ultimo_accesso`.
+`bloccata`, `bloccata_dal`, `motivo_blocco`, `ultimo_accesso`, e la capability
+dell'eliminazione **`can_delete`**, `delete_reason`, `delete_reason_key`,
+`delete_dettaglio` (§1-bis.3: il kebab della riga la legge). ⚠️ La check gira
+per riga filtrata; con una veste esce subito, quindi la ricerca della storia
+tocca le sole credenziali senza vesti.
 
 ⚠️ `cliente_ids` e' un array perche' un soggetto_ruolo puo' avere piu' schede
 cliente (una per istanza utility): il FE con una apre quella scheda, con piu'
@@ -538,7 +542,10 @@ dal server (sessione del migratore), non dall'app.
   "categoria": "ALTRO",
   "bloccata": true, "bloccata_dal": "2026-10-02T10:00:00+00:00",
   "bloccata_da": "tid", "motivo_blocco": "abuso",
-  "can_block": true, "block_reason": null, "block_reason_key": null
+  "can_block": true, "block_reason": null, "block_reason_key": null,
+  "can_delete": false, "delete_reason": "CON_VESTI",
+  "delete_reason_key": "amministrazione.accessi.elimina_reason.con_vesti",
+  "delete_dettaglio": {"auth_user_id": 7}
 } }
 ```
 
@@ -551,6 +558,16 @@ Motivi e chiavi sono del DB; in ordine:
 | --- | --- | --- |
 | `CREDENZIALE_DI_SISTEMA` | `amministrazione.accessi.blocca_reason.credenziale_di_sistema` | credenziale di categoria `SISTEMA` |
 | `ULTIMO_SUPER_ADMIN` | `amministrazione.accessi.blocca_reason.ultimo_super_admin` | ultimo SUPER_ADMIN raggiungibile |
+
+`can_delete`, `delete_reason`, `delete_reason_key`, `delete_dettaglio` sono allo
+stesso modo il primo motivo di `script.fn_check_credenziale_eliminabile`, la check
+del verbo di §1-bis.5-bis (dal 2026-10-07). In ordine, e il primo vince:
+
+| `delete_reason` | `delete_reason_key` | Quando |
+| --- | --- | --- |
+| `CON_VESTI` | `amministrazione.accessi.elimina_reason.con_vesti` | almeno una veste, anche spenta: con questo motivo la storia non si cerca |
+| `STORIA_NON_VERIFICABILE` | `amministrazione.accessi.elimina_reason.storia_non_verificabile` | manca la FK di `identita_digitali` verso `django.auth_user` (installazione nuova, CI): fail-closed |
+| `CON_STORIA` | `amministrazione.accessi.elimina_reason.con_storia` | una riga la tiene con una FK `RESTRICT`/`NO ACTION`; `delete_dettaglio.dove` e' l'**array** delle tabelle `schema.tabella` (il FE lo unisce in testo per la frase) |
 
 Credenziale inesistente → 404
 `E_CREDENZIALE_NON_TROVATA`. Il blocco si legge da `config.credenziali`
@@ -573,6 +590,28 @@ di §1-bis.3.
 Nessun corpo, `Idempotency-Key` obbligatoria. `script.fn_sblocca_credenziale`:
 idempotente, non tocca i tentativi; le sessioni chiuse dal blocco non si
 riaprono. Risposta: lo stato di §1-bis.3.
+
+### 1-bis.5-bis DELETE /api/v1/amm-software/credenziali/{id}/ -- Elimina
+
+Dal 2026-10-07 (brief-db-elimina-credenziale-senza-veste): il gesto che il
+presidio `dbops.vw_credenziali_da_sanare` chiede per `NESSUNA_VESTE`. Nessun
+corpo, **`Idempotency-Key` obbligatoria** (irreversibile: senza, il doppio invio
+riceverebbe un 404 per un'operazione riuscita). Credenziale inesistente → 404
+`E_CREDENZIALE_NON_TROVATA` prima del verbo. Chiama `script.fn_elimina_credenziale`:
+SUPER_ADMIN alla prima riga, lock sulla riga di `auth_user`, primo motivo della
+check di §1-bis.3, traccia in `config.credenziali_eliminate` (chi, quando, id,
+username, email), poi il `DELETE` (le righe che le appartengono seguono in
+`CASCADE`). Rifiuti, col codice del DB:
+
+| Codice | Status | Quando |
+| --- | --- | --- |
+| `E_CREDENZIALE_CON_VESTI` | 409 | `CON_VESTI` (anche una veste nata durante il gesto: il lock la vede) |
+| `E_CREDENZIALE_CON_STORIA` | 409 | `CON_STORIA`: il messaggio nomina le tabelle |
+| `E_CREDENZIALE_STORIA_NON_VERIFICABILE` | 500 | `STORIA_NON_VERIFICABILE` (TECNICO: rimedia chi amministra il database) |
+
+Risposta `{"status": "ok", "auth_user_id": 7}`. Nessuna sessione da chiudere: una
+credenziale senza vesti non entra da nessuna porta. ⛔ L'app **non ha** il
+`DELETE` su `django.auth_user`: questa e' l'unica strada.
 
 ### 1-bis.6 Secondo fattore della credenziale
 
@@ -1714,6 +1753,9 @@ lavori vivi si leggono con **una** query per tutte le unit del processo.
 | `E_AMM_OPERATORE_NOT_FOUND` | 404 | Operatore non trovato (dettaglio, aggiorna, disabilita, scope) |
 | `E_AMM_SCOPE_NON_AMMESSO` | 400 | (Fase 2) `scope_mode` non in `['GLOBAL','SINGLE']`, oppure `SINGLE` con array vuoto/multi-elemento |
 | `E_CREDENZIALE_DI_SISTEMA` | 409 | Blocco o accensione dell'obbligo del secondo fattore su una credenziale di categoria `SISTEMA` (§1-bis). Verbi `script.fn_blocca_credenziale` e `script.fn_imposta_totp_obbligatorio` |
+| `E_CREDENZIALE_CON_VESTI` | 409 | Eliminazione di una credenziale che ha almeno una veste, anche spenta (§1-bis.5-bis). Verbo `script.fn_elimina_credenziale` |
+| `E_CREDENZIALE_CON_STORIA` | 409 | Eliminazione di una credenziale senza vesti che compare gia' fra i dati: il messaggio nomina le tabelle (§1-bis.5-bis) |
+| `E_CREDENZIALE_STORIA_NON_VERIFICABILE` | 500 | Eliminazione dove mancano le FK verso `django.auth_user` (installazione nuova, CI): fail-closed (§1-bis.5-bis) |
 | `E_PROFILO_ULTIMO_SUPER_ADMIN` | 409 | (Fase 1) L'operazione (disabilita, demote, cambio scope) lascerebbe il sistema senza super admin attivi. Trigger DB `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` |
 | `E_OPERATORE_SCOPE_PARAM_NON_VALIDO` | 400 | (Fase 5) `fn_change_user_emittenti_scope` rifiuta il payload (scope_mode invalido, array vuoto/multi-elemento). Codice stabile dal DB, sostituisce il `RAISE 22023` generico pre-Fase 5 |
 | `E_AUDIT_SUMMARY_PARAM_NON_VALIDO` | 400 | (Fase 5) `code` o `storico_id` assenti/malformati nella richiesta audit-summary |

@@ -11,7 +11,10 @@
 > invece di limitarsi a correggere il testo. **D-1…D-3 (§3) confermate da Tid il
 > 2026-10-06**, così come proposte.
 > **Stato:** ✅ DB **applicato** su dbdev il 2026-10-07 (`20261006-10 → -15` più tre CSV), pgTAP
-> verdi alla corsa di Tid (§7.8). ⏳ BE/FE (§6 e §7.6), poi il collaudo a video.
+> verdi alla corsa di Tid (§7.8). ✅ BE/FE fatti il 2026-10-07 (§8). ✅ Collaudo a video di Tid superato il 2026-10-07 (§8.4).
+> **✅ CHIUSO e archiviato il 2026-10-07.** Resta aperto, fuori da questo brief, il ponte django
+> che non nasce su un'installazione nuova (D-4: lì nessuna credenziale si elimina), voce ❓ di
+> PROJECT_CONTEXT § «Aperto — Media priorità».
 
 ## 1. Il difetto, sul modello
 
@@ -324,3 +327,56 @@ non col loader), il `42501` come app (test 18) e `check_i18n_keys`. I primi due 
 * ⏳ **Resta**: BE/FE secondo §6 e §7.6 (tre codici nella policy, le tre `reason_key` nei
   locales, capability e pulsante «Elimina accesso»), poi il collaudo: Tid elimina dall'applicazione
   le tre credenziali `_pgtap_sync_…`, e il presidio si spegne.
+
+## 8. Consegna BE/FE (2026-10-07, `dev/backend-tid`)
+
+### 8.1 Backend
+
+| Dove | Cosa |
+| --- | --- |
+| `amm_software/db/accessi_repository.py` | la terna `can_delete` · `delete_reason` · `delete_reason_key` + `delete_dettaglio` (decodificato) col BB `sql_lateral_primo_motivo` su `fn_check_credenziale_eliminabile`, **sulle righe** di «Altri accessi» e sul **dettaglio** della credenziale; `elimina_credenziale` chiama il verbo |
+| `amm_software/services/accessi_service.py` | `elimina_credenziale`: 404 `E_CREDENZIALE_NON_TROVATA` prima del verbo, verbo in `transaction.atomic()`, cache dei permessi invalidata al commit. Nessuna sessione da chiudere: senza vesti nessuna porta fa entrare, e il refresh vuole una veste accesa |
+| `amm_software/api/accessi_views.py` | `DELETE credenziali/<id>/` sulla view del dettaglio, `Idempotency-Key` obbligatoria (stampo del fondo fattura: il metodo dice il verbo) |
+| `core/services/error_policies_generated.py` | **rigenerato** dal catalogo: i tre codici (`CON_VESTI` e `CON_STORIA` 409, `STORIA_NON_VERIFICABILE` 500) |
+| `core/services/error_messages_fallback.py` | i tre ripieghi, **senza `%s`** (quello di `CON_STORIA` non nomina le tabelle) |
+
+Famiglia dei nomi: quella della superficie, `can_block`/`block_reason`/`block_reason_key`
+(api.md §«Capability di riga»), più il dettaglio perché `CON_STORIA` ha un parametro.
+
+### 8.2 Frontend
+
+| Dove | Cosa |
+| --- | --- |
+| `amministrazione/composables/useEliminaCredenziale.js` | spento?, frase del motivo, conferma + `DELETE`. Una sede per kebab e drawer, come `useSchedaVeste` (catalogo BB FE) |
+| `AccessoAltroDrawer.vue` | «Elimina accesso» sotto la sezione Accesso: spento col motivo (tooltip sull'involucro **e** scritto sotto: dice cosa fare), nascosto in sola lettura; eliminata, il drawer si chiude e la lista si ricarica |
+| `AccessiAltriTab.vue` | la stessa voce nel kebab, spenta col motivo reso nel popup |
+| `locales/it.json`, `en.json` | le tre `reason_key` del §7.3, etichette e conferma; `nessun_accesso_spiegazione` dice ora i due gesti (invito con la stessa email, o eliminazione) |
+
+⚠️ `delete_dettaglio.dove` è un **array**: `t()` lo renderebbe come JSON, quindi il
+composable lo unisce in testo prima di passarlo alla chiave.
+
+### 8.3 Prove
+
+* API (`test_accessi_views`, 16 test, +5): capability di riga che passa com'è,
+  `Idempotency-Key`, verbo chiamato, i tre codici col loro status, 404 prima del verbo.
+* DB vero (`test_accessi_db`, 13 test, +4), **due mondi** come il pgTAP: capability
+  da lista e dettaglio, eliminazione col verbo (traccia con autore e username, uscita
+  dalla lista), veste spenta → `CON_VESTI`, storia (un override di parametro) →
+  `CON_STORIA` con la tabella nel messaggio. Senza il ponte i rami attesi sono il
+  fail-closed. ⚠️ Fatto datato: la corsa del 2026-10-07 su dbdev è girata come
+  `zeroerp_app` **col** ponte, quindi il ramo che elimina è provato sul binding vero;
+  quello senza ponte lo prova la CI.
+* Cancelli: policy dal DB e registro, codici dichiarati, ripiego, schema OpenAPI,
+  atomicità, contratto `Idempotency-Key` FE↔BE, `npm run lint`, `npm run guards`,
+  `check_i18n_keys.py` (controllo 4 compreso): verdi.
+* FE (`AccessoAltroDrawer.spec.js`, 6 test): acceso, spento con `CON_VESTI` e con
+  `CON_STORIA` (le tabelle nella frase), sola lettura, conferma → verbo + chiusura +
+  ricarica, rifiuto → drawer aperto.
+
+### 8.4 ✅ Collaudo a video (Tid, superato il 2026-10-07)
+
+1. Amm. Software → Accessi → «Altri accessi», filtro «Nessun accesso» = sì: le
+   credenziali `_pgtap_sync_…` hanno «Elimina accesso» acceso (kebab e drawer).
+2. Una riga con vesti: la voce è spenta, e il popup del kebab dice perché.
+3. Eliminare le tre `_pgtap_sync_…`: conferma, toast, la lista si ricarica senza di loro.
+4. Il presidio `vw_credenziali_da_sanare` si spegne (pannello dei presidi).
