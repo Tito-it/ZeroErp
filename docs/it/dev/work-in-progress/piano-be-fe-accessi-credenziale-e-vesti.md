@@ -3,7 +3,7 @@
 > **Tipo documento**: piano di lavoro backend + frontend (`dev/backend-tid`).
 >
 > **Data**: 2026-09-24 · **Stato** (riallineato al codice e al DB il
-> 2026-10-02): 🟡 **IN CORSO** — ✅ **L-0** (2026-09-24, §2), ✅ **L-1**
+> 2026-10-06): 🟡 **IN CORSO** — ✅ **L-0** (2026-09-24, §2), ✅ **L-1**
 > (2026-09-25, §3.1-bis), ✅ **L-3** intero, consenso al riuso compreso (A-9:
 > B-20/F-4 il 2026-09-27, collaudo a video eseguito il 2026-10-02, §4.1-bis);
 > ✅ **A-8** chiuso fuori dal piano dal **T-0** del brief sicurezza
@@ -16,18 +16,22 @@
 > dell'operatore e degli altri accessi. ✅ **R-5 consegnata** dallo stesso brief
 > (R-DB-1: la veste spenta tiene il tipo, `DISABILITATO` voce storica) e allineata
 > dal BE/FE. **R-6 superata**: lo stato del blocco si legge da
-> `config.credenziali`, leggibile dall'app; resta la capability del blocco
-> come codice del DB (R-DB-A5, ora nel
-> [brief credenziale e utenti di sistema](../work-done/brief-db-credenziale-verbi-amministratore.md),
-> con R-DB-A4 e R-DB-A6). Il brief dell'area Accessi è chiuso (2026-10-02).
+> `config.credenziali`, leggibile dall'app; ✅ la capability del blocco come
+> codice del DB (R-DB-A5, `script.fn_check_credenziale_bloccabile`) è
+> consegnata dal
+> [brief credenziale e utenti di sistema](../work-done/brief-db-credenziale-verbi-amministratore.md)
+> (chiuso il 2026-10-03) e letta da `AccessiRepository`. Il brief dell'area
+> Accessi è chiuso (2026-10-02).
 > ✅ **D-5 chiusa il 2026-10-02**, staccata da L-5 perché solo BE (§4.3-bis):
 > il refresh di una veste spenta è un 401 e chiude la sessione; spegnere una
 > veste (operatore, portale, shop) chiude le sessioni della **sola** veste.
 > ✅ **D-3 chiusa il 2026-10-04** (§4.3): niente più riattivazione diretta,
 > l'operatore spento si riattiva col reinvio dell'invito, che riapre la
 > risorsa umana; la veste la accende la persona. Con lei si chiudono M-5 e M-6.
-> ⏳ **Da fare**: L-4, il resto di L-5 (R-4, cioè D-4 e A-6), L-6 (solo A-7).
-> ⏳ **R-4 aspetta ancora un brief DB** (la revoca della veste).
+> ⏳ **Da fare**: L-4, il resto di L-5 (R-4, cioè D-4 e A-6), L-6 (solo A-7),
+> il collaudo a video di D-5 (§4.3-bis).
+> ⏳ **R-4 aspetta ancora un brief DB** (la revoca della veste), non scritto
+> (verifica 2026-10-06).
 > Le tre domande di §6 sono decise (Tid, 2026-09-24).
 >
 > ⭐ **Questo piano è la sede unica del lavoro che resta** del cantiere accessi:
@@ -47,7 +51,7 @@
 
 ---
 
-## 0. Le sigle ancora aperte (2026-10-02)
+## 0. Le sigle ancora aperte (2026-10-06)
 
 Il perché di ognuna sta nell'[analisi](../work-done/analisi-accessi-credenziale-e-vesti.md)
 §3 e §5; qui solo **cosa** e **dove si chiude**.
@@ -76,7 +80,7 @@ suo prerequisito DB (indice unico sull'email, P-2) è in vigore.
 
 ## 1. I lotti in una tabella
 
-| Lotto | Cosa | Dipende da | Chiude | Stato (2026-10-02) |
+| Lotto | Cosa | Dipende da | Chiude | Stato (2026-10-06) |
 | --- | --- | --- | --- | --- |
 | **L-0** | L'IP del chiamante, fidato | niente (§6 Q-1) | prerequisito di L-1 | ✅ 2026-09-24 |
 | **L-1** | Login su tentativi, freno, attesa; cambio password obbligatorio per credenziale; azzeramento al reset | brief **P-1** | M-4, D-1 (il freno), D-2, D-7 | ✅ 2026-09-25, con R-7 e R-8 |
@@ -232,14 +236,24 @@ uno `skip` invece di essere assunta.
 
 ### 3.3 L-2 — Blocco e sblocco dell'admin
 
-> ⏳ **Stato 2026-10-02: da fare.** A DB i verbi ci sono
-> (`script.fn_blocca_credenziale`, `fn_sblocca_credenziale`, anti-lockout nel
-> trigger `trgfn_credenziali_guard_ultimo_super_admin`); manca la lettura dello
-> stato (**R-6**, secondo brief DB non scritto), e nel BE/FE non c'è niente
-> (nessun endpoint `blocca-credenziale`). Senza R-6 si potrebbero fare i due
-> verbi, ma il drawer non saprebbe dire se la credenziale è bloccata.
+> ✅ **Fatto il 2026-10-02** col
+> [brief dell'area Accessi](../work-done/brief-db-be-fe-area-accessi.md) §8.1
+> («§4 azioni») e §8.2, in una forma **diversa** dal disegno qui sotto, che
+> resta solo come traccia:
+>
+> - la sede è la **credenziale**, non l'operatore:
+>   `amm-software/credenziali/<id>/` (stato + capability del blocco),
+>   `…/blocca/` (motivo, `Idempotency-Key`, chiude tutte le sessioni nella
+>   stessa transazione), `…/sblocca/`. Così si chiude anche il ⚠️ «la porta sta
+>   nella scheda operatore»: il blocco si raggiunge pure dalla scheda «Altri
+>   accessi»;
+> - lo stato si legge da `config.credenziali` (R-6 superata); la capability
+>   «bloccabile» viene dal DB, `script.fn_check_credenziale_bloccabile`
+>   (R-DB-A5, consegnata il 2026-10-03);
+> - FE: `CredenzialeBlocco` dentro `CredenzialeAzioni`, montato dal drawer
+>   operatore e da quello degli altri accessi (regola del 2).
 
-**Backend** — `amm_software` (`AdminAPIView`, SUPER_ADMIN: la stessa regola
+**Disegno originale (superato)** — **Backend** — `amm_software` (`AdminAPIView`, SUPER_ADMIN: la stessa regola
 del verbo, D-B1):
 
 - `POST /amm-software/operatori/<id>/blocca-credenziale/` `{motivo}` →
@@ -367,7 +381,7 @@ sospeso). Collaudo a video
 
 ### 4.2 L-4 — Chiave d'ingresso per porta (D-9)
 
-> 🟡 **Stato 2026-10-02.** ✅ Nome utente nell'invito operatore (R-3 a DB,
+> 🟡 **Stato 2026-10-02, verificato invariato il 2026-10-06.** ✅ Nome utente nell'invito operatore (R-3 a DB,
 > B-15: `InvitoOperatoreService` passa `username`; template `_CROSS` per il
 > flusso con un clic, `PortaInvito.template_cross`). ⏳ Il resto è da fare e
 > non aspetta nessuno: `PortaleTokenSerializer` / `ShopTokenSerializer`
@@ -394,9 +408,11 @@ sospeso). Collaudo a video
 
 ### 4.3 L-5 — Disattivazione per veste, revoca, sessioni (M-5, M-6, D-3, D-4, D-5)
 
-> 🟡 **Stato 2026-10-02.** ✅ **Fatto oggi**:
-> `_VESTE_OPERATORE` in `amm_software/db/amm_software_repository.py` —
-> aggiornare (`_set_identita_state`, cioè l'interruttore), disabilitare,
+> 🟡 **Stato 2026-10-06.** ✅ **Fatto il 2026-10-02**:
+> `_VESTE_OPERATORE` in `amm_software/db/amm_software_repository.py` (poi
+> ritirato lo stesso giorno dal brief dell'area Accessi, R-BE-a/R-BE-b: la
+> veste comandata è quella di riferimento del DB,
+> `script.fn_veste_di_riferimento`) — aggiornare (`_set_identita_state`, cioè l'interruttore), disabilitare,
 > riattivare e il binding SUPER_ADMIN toccano la **sola veste operatore**
 > della credenziale (prima tutte). Prova sul DB vero, caso costruito:
 > `apps/amm_software/tests/db/test_operatore_altre_vesti_db.py` (salvare,
@@ -430,7 +446,7 @@ immediata.
 
 ### 4.4 L-6 — Validità della veste al login e a ogni richiesta (A-7)
 
-> ⏳ **Stato 2026-10-02: da fare**, nessuna dipendenza.
+> ⏳ **Stato 2026-10-06: da fare**, nessuna dipendenza.
 
 - La **finestra** `valido_dal`/`valido_al` della veste (oggi solo `attivo`):
   una veste scaduta non entra, anche se la credenziale ha un'altra veste
@@ -460,7 +476,8 @@ chiuso il 2026-09-27) e allineate dal BE/FE. ✅ **R-5** consegnata dal
 [brief area Accessi](../work-done/brief-db-be-fe-area-accessi.md) (R-DB-1, 2026-10-02).
 **R-6 superata** (lo stato del blocco si legge da `config.credenziali`): al suo posto
 la capability del blocco dal DB, R-DB-A5 nel
-[brief credenziale e utenti di sistema](../work-done/brief-db-credenziale-verbi-amministratore.md).
+[brief credenziale e utenti di sistema](../work-done/brief-db-credenziale-verbi-amministratore.md),
+✅ consegnata (2026-10-03) e allineata dal BE.
 ⏳ **Resta R-4**: va in un brief DB che **non esiste ancora**; si scrive prima di
 riprendere D-4.
 
@@ -490,13 +507,15 @@ riprendere D-4.
 
 ## 7. Ordine proposto
 
-Riscritto il 2026-10-02 sul lavoro che resta (L-0, L-1, L-3 sono fatti):
+Riscritto il 2026-10-02 sul lavoro che resta, riallineato il 2026-10-06
+(L-0, L-1, L-2, L-3 sono fatti):
 
 1. **L-6** (A-7) e **L-4** (login e reset per email): nessuna dipendenza.
 2. ~~**D-3** (ritiro della riattivazione diretta)~~ ✅ 2026-10-04.
 3. Il brief DB con **R-4**, poi D-4 e A-6.
-4. In parallelo, quando il DB consegna, le ricadute BE/FE del
-   [brief credenziale e utenti di sistema](../work-done/brief-db-credenziale-verbi-amministratore.md).
+4. ~~In parallelo, quando il DB consegna, le ricadute BE/FE del
+   brief credenziale e utenti di sistema~~ ✅ brief chiuso il 2026-10-03.
+5. Il collaudo a video di D-5 (§4.3-bis), quando si vuole: non blocca nulla.
 
 Ogni lotto chiude le sue righe nell'analisi e i «⚠️ Difetto noto» nelle doc
 `manual/` che rimandano a M-4, M-5, M-6.

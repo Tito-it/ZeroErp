@@ -71,4 +71,4 @@ cancella: serve anche una modifica al database che la tolga.
 
 ---
 
-*Brief: `docs/it/dev/work-in-progress/brief-db-presidi-cosa-significa-cosa-fare.md`.*
+*Brief: `docs/it/dev/work-done/brief-db-presidi-cosa-significa-cosa-fare.md`.*

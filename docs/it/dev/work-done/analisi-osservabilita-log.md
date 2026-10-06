@@ -20,7 +20,7 @@
 > | **C** — notifiche | ✅ digest + pallino in topbar (**P**) + sorgente «lotto fermo» a DB, letta dal BE (**V**) | piano §2 e §5, [brief DB lotto fermo/R-6/indici](brief-db-osservabilita-lotto-fermo-r6-indici.md) |
 > | **D** — retention | ✅ `cleanup_at` + purge, 18-09 | §4 Passo D |
 > | **R-1, R-6** | ✅ chiusi a DB | §3-quater |
-> | **Collaudo in-app** | ✅ **chiuso il 2026-10-06**; il §5-bis (testi dei presidi per chi agisce) è il [brief DB](../work-in-progress/brief-db-presidi-cosa-significa-cosa-fare.md) | [collaudo-in-app-osservabilita-giornale-errori-pallino.md](collaudo-in-app-osservabilita-giornale-errori-pallino.md) |
+> | **Collaudo in-app** | ✅ **chiuso il 2026-10-06**; il §5-bis (testi dei presidi per chi agisce) è il [brief DB](brief-db-presidi-cosa-significa-cosa-fare.md) | [collaudo-in-app-osservabilita-giornale-errori-pallino.md](collaudo-in-app-osservabilita-giornale-errori-pallino.md) |
 >
 > ⚠️ **La stessa sera, dal commit che chiude B, due rossi in CI** — entrambi
 > presidi che hanno funzionato, entrambi chiusi lato DB e da committare: la

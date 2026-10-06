@@ -35,6 +35,10 @@
 19. test_l_esito_viaggia_con_la_sua_data_anche_quando_e_fallito   ⭐ 14-09, il lunedi'
 20. test_le_date_delle_corse_sono_in_ora_locale_come_la_testata   14-09, cosmesi
 21. test_una_corsa_conclusa_senza_esito_scritto_si_dice
+22. test_il_testo_per_chi_agisce_viene_prima_della_nota   ⭐ 06-10
+23. test_senza_testo_resta_la_sola_nota
+24. test_i_presidi_accesi_si_raggruppano_per_chi_agisce   ⭐ 06-10
+25. test_ogni_chi_agisce_ha_il_suo_titolo
 """
 
 from __future__ import annotations
@@ -49,6 +53,10 @@ from django.utils import timezone
 from apps.core.db.presidi_repository import (
     CADENZA_GIORNALIERA,
     CADENZA_SETTIMANALE,
+    CHI_AGISCE,
+    CHI_AGISCE_AMMINISTRATORE,
+    CHI_AGISCE_SISTEMISTA,
+    CHI_AGISCE_SVILUPPO,
     NATURA_LAVORAZIONE,
     NATURA_REGISTRO,
     NATURA_ZERO,
@@ -58,6 +66,8 @@ from apps.core.db.presidi_repository import (
 )
 from apps.core.services import presidi_digest
 from apps.core.services.presidi_digest import (
+    TITOLI_CHI_AGISCE,
+    TITOLO_CHI_AGISCE_ASSENTE,
     calcola_digest,
     componi_messaggio,
     jobname_corsia,
@@ -76,6 +86,11 @@ def _riga(vista: str, natura: str, **override: Any) -> RigaPresidio:
         "cadenza": CADENZA_GIORNALIERA,
         "perimetro": PERIMETRO_LIBERO,
         "nota": f"nota di {vista}",
+        # ⚠️ Senza testo per chi agisce, di default: e' il ripiego, e i casi
+        #    col testo se lo costruiscono.
+        "chi_agisce": None,
+        "significato": None,
+        "azione": None,
         "descrizione": f"commento di {vista}",
         "esiste": True,
         "a_catalogo": True,
@@ -671,3 +686,85 @@ class PresidiDigestTests(SimpleTestCase):
         self.assertIn("14-09-2026 07:00:12 (esito non scritto)", testo)
         self.assertNotIn("(ok)", testo)
         self.assertNotIn("FALLITA", testo)
+
+    # 22. ⭐ IL TESTO PER CHI AGISCE (brief-db-presidi-cosa-significa-cosa-fare
+    #     §6). Chi apre la mail ha due domande — cosa vuol dire, cosa faccio — e
+    #     la risposta viene PRIMA della nota, che e' scritta per chi mantiene il
+    #     presidio. Si prova sulle DUE rese: il testo e l'HTML.
+    def test_il_testo_per_chi_agisce_viene_prima_della_nota(self) -> None:
+        repo = _RepoFinto(
+            [_riga(
+                "dbops.vw_zero", NATURA_ZERO,
+                chi_agisce=CHI_AGISCE_AMMINISTRATORE,
+                significato="Ci sono lotti fermi.",
+                azione="Rilancia o annulla i lotti.",
+            )],
+            {"dbops.vw_zero": 1},
+        )
+        digest = calcola_digest(CADENZA_GIORNALIERA, repo=repo)
+        voce = digest.allarmi[0]
+        self.assertEqual(
+            (voce.significato, voce.azione, voce.chi_agisce),
+            ("Ci sono lotti fermi.", "Rilancia o annulla i lotti.",
+             CHI_AGISCE_AMMINISTRATORE),
+        )
+        _oggetto, testo, html = componi_messaggio(digest)
+        for resa in (testo, html):
+            with self.subTest(resa=resa[:20]):
+                self.assertLess(resa.index("Ci sono lotti fermi."),
+                                resa.index("Rilancia o annulla i lotti."))
+                self.assertLess(resa.index("Rilancia o annulla i lotti."),
+                                resa.index("nota di dbops.vw_zero"))
+                self.assertIn("dettaglio tecnico", resa)
+
+    # 23. Senza testo (un presidio che il catalogo non ha ancora tradotto per
+    #     chi agisce) resta la nota com'era: nessuna riga vuota, nessuna
+    #     etichetta «dettaglio tecnico» sopra una frase che e' l'unica.
+    def test_senza_testo_resta_la_sola_nota(self) -> None:
+        repo = _RepoFinto([_riga("dbops.vw_zero", NATURA_ZERO)], {"dbops.vw_zero": 1})
+        _oggetto, testo, html = componi_messaggio(
+            calcola_digest(CADENZA_GIORNALIERA, repo=repo),
+        )
+        for resa in (testo, html):
+            with self.subTest(resa=resa[:20]):
+                self.assertIn("nota di dbops.vw_zero", resa)
+                self.assertNotIn("dettaglio tecnico", resa)
+                self.assertNotIn("→", resa)
+        # ⚠️ E finisce nel gruppo «senza indicazione», non sparisce.
+        self.assertIn(TITOLO_CHI_AGISCE_ASSENTE, testo)
+
+    # 24. ⭐ I GRUPPI. Prima cio' che si sistema dall'applicazione, poi cio' che
+    #     va inoltrato, in fondo cio' che non dice a chi tocca. L'ordine del
+    #     catalogo (alfabetico per vista) qui e' apposta il CONTRARIO, cosi' un
+    #     raggruppamento dimenticato non passa per caso.
+    def test_i_presidi_accesi_si_raggruppano_per_chi_agisce(self) -> None:
+        repo = _RepoFinto(
+            [
+                _riga("dbops.vw_a", NATURA_ZERO),
+                _riga("dbops.vw_b", NATURA_ZERO, chi_agisce=CHI_AGISCE_SVILUPPO),
+                _riga("dbops.vw_c", NATURA_ZERO, chi_agisce=CHI_AGISCE_SISTEMISTA),
+                _riga("dbops.vw_d", NATURA_ZERO, chi_agisce=CHI_AGISCE_AMMINISTRATORE),
+            ],
+            {"dbops.vw_a": 1, "dbops.vw_b": 1, "dbops.vw_c": 1, "dbops.vw_d": 1},
+        )
+        _oggetto, testo, html = componi_messaggio(
+            calcola_digest(CADENZA_GIORNALIERA, repo=repo),
+        )
+        attesi = [
+            (TITOLI_CHI_AGISCE[CHI_AGISCE_AMMINISTRATORE], "dbops.vw_d"),
+            (TITOLI_CHI_AGISCE[CHI_AGISCE_SISTEMISTA], "dbops.vw_c"),
+            (TITOLI_CHI_AGISCE[CHI_AGISCE_SVILUPPO], "dbops.vw_b"),
+            (TITOLO_CHI_AGISCE_ASSENTE, "dbops.vw_a"),
+        ]
+        for resa in (testo, html.replace("&#x27;", "'")):
+            with self.subTest(resa=resa[:20]):
+                posizioni = []
+                for titolo, vista in attesi:
+                    posizioni += [resa.index(titolo), resa.index(vista)]
+                self.assertEqual(posizioni, sorted(posizioni))
+
+    # 25. ⛔ Un valore del mirror senza titolo finirebbe fra i «senza
+    #     indicazione» in silenzio: il dizionario segue il mirror, che segue il
+    #     CHECK (`test_presidi_catalogo`).
+    def test_ogni_chi_agisce_ha_il_suo_titolo(self) -> None:
+        self.assertEqual(set(TITOLI_CHI_AGISCE), set(CHI_AGISCE))

@@ -203,4 +203,4 @@ transazione che si annulla.
 ---
 
 *Brief: `docs/it/dev/work-done/brief-db-un-destinatario-per-i-presidi.md`;
-`chi_agisce` e i testi: `docs/it/dev/work-in-progress/brief-db-presidi-cosa-significa-cosa-fare.md`.*
+`chi_agisce` e i testi: `docs/it/dev/work-done/brief-db-presidi-cosa-significa-cosa-fare.md`.*

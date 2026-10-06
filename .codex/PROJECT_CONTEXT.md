@@ -215,11 +215,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
-- **I presidi parlano a chi deve agire** (`work-in-progress/brief-db-presidi-cosa-significa-cosa-fare.md`,
-  scritto il 2026-10-06 dal §5-bis del collaudo dell'osservabilità, chiuso e archiviato lo stesso giorno):
-  `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su `dbops.presidi`, con i testi
-  proposti per i 43 presidi che si accendono. DB ✅ **applicato** il 2026-10-06 sulle proposte D-1…D-3 (`20261006-04…-07`,
-  pgTAP `dbops/test-presidi-testi-v1` verdi); D-4 resta un rilievo (§7). ⏳ Tocca al BE/FE (§6): il join è su `vista`.
+- **I presidi parlano a chi deve agire: chiuso** (`work-done/brief-db-presidi-cosa-significa-cosa-fare.md`,
+  archiviato il 2026-10-06): `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su
+  `dbops.presidi`; il pannello mostra azione → significato → a chi tocca, il digest raggruppa per chi agisce.
+  Collaudo a video di Tid superato. I residui sono in § «Aperto — Media priorità».
+- **Una credenziale senza veste si elimina dall'applicazione** (`work-in-progress/brief-db-elimina-credenziale-senza-veste.md`,
+  2026-10-06, strada B decisa da Tid): il presidio `vw_credenziali_da_sanare` chiedeva all'amministratore un gesto che
+  non esisteva. Verbo `fn_elimina_credenziale` + check, testo del presidio riscritto. D-1…D-3 confermate da Tid (06-10). ⏳ DB.
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
   resta R-4, che vuole un brief DB non ancora scritto. Chiuso il 2026-10-03
   `work-done/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
@@ -259,6 +261,16 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **Presidi, i residui del brief dei testi per chi agisce** (ereditati il 2026-10-06 dalla chiusura di
+  `work-done/brief-db-presidi-cosa-significa-cosa-fare.md`):
+  - 🟡 **due nomi di schermata sbagliati nel CSV** `80_data/sql/dbops/presidi_testi.csv` (§9.3): richiesti
+    nello stesso giro di `work-in-progress/brief-db-elimina-credenziale-senza-veste.md` §4.4;
+  - **D-4**, le quattro misure larghe per costruzione (`vw_codici_errore_forme_condizione`,
+    `vw_codici_errore_da_dichiarare`, `vw_punti_primo_motivo`, `vw_punti_canale_campo`): il pannello le mostra
+    come un numero da guardare. O diventano `INVENTARIO`, o la natura del pannello si separa da quella del
+    cancello (§7, decisione del team DB e di Tid);
+  - la **postura in sola lettura** di `dbops.presidi` e `dbops.presidi_testi` per l'app (§8.1): oggi il loop
+    dei grant di `ci_apply` dà anche la scrittura. Non chiesta, da decidere.
 - **`HTML_MARKDOWN_BLOCKS` si sceglie ma non fa niente** (BE `documenti`, ereditato il 2026-10-04
   dalla chiusura di `work-done/brief-db-vocabolari-versione-template.md` §5.6): il valore sta nel
   vocabolario `documenti.formati_template` (la Decisione 4, «markdown solo per blocchi controllati»),

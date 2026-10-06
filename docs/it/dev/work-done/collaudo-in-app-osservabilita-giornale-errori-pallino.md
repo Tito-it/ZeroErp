@@ -15,7 +15,7 @@
 > pgTAP, il `SELECT` su `job_run_log` che esisteva solo su dev).
 >
 > **Stato**: ✅ **chiuso il 2026-10-06** (Tid), archiviato in `work-done/`. Il
-> §5-bis è diventato un brief: [brief-db-presidi-cosa-significa-cosa-fare.md](../work-in-progress/brief-db-presidi-cosa-significa-cosa-fare.md).
+> §5-bis è diventato un brief: [brief-db-presidi-cosa-significa-cosa-fare.md](brief-db-presidi-cosa-significa-cosa-fare.md).
 > Il residuo del §3.15 (Giornale eventi non multi-emittente) sta in
 > `.codex/PROJECT_CONTEXT.md` § «Aperto — Media priorità».
 > **Ambiente**: sviluppo (`dbdev`). Le due liste a catalogo (`dbops.error_log`,
@@ -159,7 +159,7 @@ la descrizione tecnica sotto, ripiegabile. Lato BE/FE è una colonna in più
 nella proiezione del pannello e nel digest.
 
 ➡️ **Aperto il 2026-10-06** come
-[brief-db-presidi-cosa-significa-cosa-fare.md](../work-in-progress/brief-db-presidi-cosa-significa-cosa-fare.md).
+[brief-db-presidi-cosa-significa-cosa-fare.md](brief-db-presidi-cosa-significa-cosa-fare.md).
 Scrivendo le frasi presidio per presidio, la colonna unica è diventata tre fatti:
 **significato** e **azione** in una tabella di testi per lingua, e **chi agisce**
 sul catalogo.
@@ -172,4 +172,4 @@ sul catalogo.
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **2026-09-19** | ✏️ Stesura, alla chiusura dell'analisi e del piano (archiviati in `work-done/` lo stesso giorno). Tutto a codice, **niente visto a video**. Prima della stesura: i due rossi CI del commit `9c11a485b` — l'elenco delle liste globali nel pgTAP e il `SELECT` di `zeroerp_app` su `maintenance.job_run_log` che esisteva solo su dev — chiusi lato DB, da committare |
 | **2026-09-19** | Primo giro a video sul pannello Processi automatici (Tid): due presidi accesi erano entrambi **stati del dato** di dev, non difetti — spenti marcando un articolo a magazzino e chiudendo i 16 lotti di prova. Trovato che la descrizione mostrata è scritta per chi mantiene il presidio, non per chi deve agire → **§5-bis**, senza brief per ora                 |
-| **2026-10-06** | ✅ Collaudo chiuso da Tid e archiviato in `work-done/`. Il §5-bis diventa [brief-db-presidi-cosa-significa-cosa-fare.md](../work-in-progress/brief-db-presidi-cosa-significa-cosa-fare.md); il §3.15 resta in PROJECT_CONTEXT § «Aperto» |
+| **2026-10-06** | ✅ Collaudo chiuso da Tid e archiviato in `work-done/`. Il §5-bis diventa [brief-db-presidi-cosa-significa-cosa-fare.md](brief-db-presidi-cosa-significa-cosa-fare.md); il §3.15 resta in PROJECT_CONTEXT § «Aperto» |

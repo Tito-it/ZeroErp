@@ -1679,6 +1679,12 @@
       "presidi_a_zero": "At zero ({n})",
       "presidi_vedi_descrizione": "What it checks",
       "presidi_senza_descrizione": "The view has no description: it belongs in the view comment, on the database side.",
+      "presidi_dettaglio_tecnico": "Technical detail",
+      "chi_agisce": {
+        "amministratore": "You can fix it",
+        "sistemista": "Report it to whoever runs the server",
+        "sviluppo": "Report it to development"
+      },
       "presidi_badge_menu": "System checks",
       "presidi_badge_attesa": "System checks: reading…",
       "presidi_badge_tooltip_ok": "System checks: all clear — read at {ora}",

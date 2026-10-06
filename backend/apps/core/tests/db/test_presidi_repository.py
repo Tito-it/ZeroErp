@@ -45,6 +45,13 @@
      ⭐ Il pallino della topbar (2026-09-18): `con_righe=False` fa lo STESSO
      giro — stesse viste, stessi conteggi, stesso isolamento — e non chiama mai
      `prime_righe`. E' un parametro e non una copia del giro.
+9. test_il_testo_per_chi_agisce_si_legge_per_vista_con_ripiego_su_it
+     ⭐ 2026-10-06: il join e' su `vista` (non sull'id) e la lingua si sceglie
+     come per `config.messaggi_errore` — la GUC della richiesta, poi `it`.
+10. test_il_pannello_consegna_il_testo_per_chi_agisce
+11. test_un_presidio_non_letto_non_consegna_un_azione
+     ⛔ L'azione rimedia a righe accese: su un presidio che non si e' letto
+     direbbe di sistemare una cosa che nessuno ha visto.
 """
 
 from __future__ import annotations
@@ -56,6 +63,10 @@ from unittest.mock import MagicMock, patch
 from django.test import SimpleTestCase
 
 from apps.core.db import presidi_repository as modulo
+from apps.core.middleware.user_language_middleware import (
+    DEFAULT_LANGUAGE,
+    GUC_NAME,
+)
 from apps.core.db.presidi_repository import (
     _IN_ATTESA_DI_CATALOGO,
     CADENZE,
@@ -82,6 +93,11 @@ def _riga(**override: Any) -> RigaPresidio:
         "cadenza": "GIORNALIERA",
         "perimetro": PERIMETRO_LIBERO,
         "nota": "riga di prova",
+        # ⚠️ Senza testo per chi agisce, di default: e' il ripiego, e i casi
+        #    col testo se lo costruiscono.
+        "chi_agisce": None,
+        "significato": None,
+        "azione": None,
         "descrizione": None,
         "esiste": True,
         "a_catalogo": True,
@@ -177,6 +193,25 @@ class PresidiRepositoryGuardieTests(SimpleTestCase):
                 #    presidi §2): una voce senza motivo scritto non si aggiunge.
                 #    Vale anche per la copia che tiene il posto.
                 self.assertTrue(riga["nota"].strip())
+
+
+    # 9. ⭐ Il TRASPORTO del testo per chi agisce. Il join e' su `vista` — la
+    #    chiave della FK, non l'id, che vale su una macchina sola — e la lingua
+    #    ha la stessa cascata di `script.fn_get_messaggio`: la GUC impostata dal
+    #    middleware, poi `it`. ⚠️ SQL letta, non eseguita: che la query GIRI sul
+    #    database vero lo prova `test_presidi_catalogo` (e2e).
+    def test_il_testo_per_chi_agisce_si_legge_per_vista_con_ripiego_su_it(self) -> None:
+        with _cursore_finto() as cursore:
+            cursore.description = []
+            cursore.fetchall.return_value = []
+            self.repo.list_catalogo()
+        sql, params = cursore.execute.call_args[0]
+        self.assertIn("dbops.presidi_testi", sql)
+        self.assertIn("pt.vista = p.vista", sql)
+        self.assertIn("current_setting(%s, true)", sql)
+        self.assertEqual(params[:3], [GUC_NAME, DEFAULT_LANGUAGE, DEFAULT_LANGUAGE])
+        for colonna in ("p.chi_agisce", "t.significato", "t.azione"):
+            self.assertIn(colonna, sql)
 
 
 class PresidiPannelloTests(SimpleTestCase):
@@ -286,3 +321,34 @@ class PresidiPannelloTests(SimpleTestCase):
         self.assertEqual(acceso["righe"], [])
         self.assertFalse(acceso["troncato"])
         self.assertTrue(acceso["da_guardare"])
+
+    # 10. ⭐ Il pannello consegna i tre campi del testo per chi agisce, cosi'
+    #     come il catalogo li ha letti: e' il FE a decidere l'ordine a video, ma
+    #     non a ricostruirli.
+    def test_il_pannello_consegna_il_testo_per_chi_agisce(self) -> None:
+        repo = self._repo(
+            [_riga(vista="dbops.vw_zero", natura="ZERO", chi_agisce="AMMINISTRATORE",
+                   significato="cosa vuol dire", azione="cosa fare")],
+            {"dbops.vw_zero": 1},
+        )
+        acceso = repo.stato_presidi()[0]
+        self.assertEqual(
+            (acceso["significato"], acceso["azione"], acceso["chi_agisce"]),
+            ("cosa vuol dire", "cosa fare", "AMMINISTRATORE"),
+        )
+        # ⚠️ La descrizione resta: e' il «dettaglio tecnico» e il ripiego.
+        self.assertIn("descrizione", acceso)
+
+    # 11. ⛔ Non letto: il significato resta (dice COSA non si e' guardato),
+    #     l'azione e chi agisce no.
+    def test_un_presidio_non_letto_non_consegna_un_azione(self) -> None:
+        repo = self._repo(
+            [_riga(vista="dbops.vw_cade", natura="ZERO", chi_agisce="AMMINISTRATORE",
+                   significato="cosa vuol dire", azione="cosa fare")],
+            {"dbops.vw_cade": RuntimeError("giu'")},
+        )
+        with patch.object(modulo, "connection", MagicMock()):
+            caduto = repo.stato_presidi()[0]
+        self.assertEqual(caduto["significato"], "cosa vuol dire")
+        self.assertIsNone(caduto["azione"])
+        self.assertIsNone(caduto["chi_agisce"])
