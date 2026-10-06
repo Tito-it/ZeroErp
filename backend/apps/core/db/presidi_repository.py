@@ -34,8 +34,14 @@ from typing import Any, TypedDict
 from django.db import connection
 
 from apps.core.db._helpers import rows_to_list
+# ⭐ Il nome della GUC e la lingua di ripiego hanno UNA sede, il middleware che
+#    la imposta: ricopiarli qui sarebbe la seconda.
+from apps.core.middleware.user_language_middleware import (
+    DEFAULT_LANGUAGE as LINGUA_DEFAULT,
+    GUC_NAME as GUC_LINGUA,
+)
 
-# ⚠️ MIRROR DICHIARATI dei tre `CHECK` di `dbops.presidi`, e non una seconda
+# ⚠️ MIRROR DICHIARATI dei quattro `CHECK` di `dbops.presidi`, e non una seconda
 #    definizione: la regola sta a database e questi nomi servono al Python per
 #    poterla nominare (quali nature vanno in quale elenco del digest, quale
 #    cadenza sta girando, quando si possono mostrare le righe).
@@ -61,6 +67,18 @@ CADENZE = (CADENZA_GIORNALIERA, CADENZA_SETTIMANALE, CADENZA_MAI)
 PERIMETRO_LIBERO = "LIBERO"
 PERIMETRO_DEFINER = "DEFINER"
 PERIMETRI = (PERIMETRO_LIBERO, PERIMETRO_DEFINER)
+
+# ⭐ CHI LO SPEGNE (`chk_presidi_chi_agisce`, brief-db-presidi-cosa-significa-
+#    cosa-fare D-3). L'ORDINE DELLA TUPLA E' UN DATO: e' quello in cui il digest
+#    raggruppa i presidi accesi — prima cio' che chi legge puo' sistemare da se',
+#    poi cio' che va inoltrato.
+# ⚠️ `NULL` e' ammesso dal modello solo sugli `INVENTARIO`
+#    (`chk_presidi_chi_agisce_se_allarma`), che non si accendono: chi legge
+#    tratta comunque il `None`, e lo mette in fondo.
+CHI_AGISCE_AMMINISTRATORE = "AMMINISTRATORE"
+CHI_AGISCE_SISTEMISTA = "SISTEMISTA"
+CHI_AGISCE_SVILUPPO = "SVILUPPO"
+CHI_AGISCE = (CHI_AGISCE_AMMINISTRATORE, CHI_AGISCE_SISTEMISTA, CHI_AGISCE_SVILUPPO)
 
 # Il nome della vista arriva da una TABELLA e finisce interpolato nell'SQL che
 # ne legge le righe. ⛔ Il `CHECK chk_presidi_vista_qualificata` lo garantisce
@@ -88,6 +106,15 @@ class RigaPresidio(TypedDict):
     cadenza: str
     perimetro: str
     nota: str
+    # ⭐ IL TESTO PER CHI AGISCE (`dbops.presidi_testi`, dal 2026-10-06): cosa
+    #    vuol dire una riga e cosa fare per spegnerla, nella lingua di chi legge
+    #    con ripiego su `it`. La `nota` e la `descrizione` restano scritte per
+    #    chi MANTIENE il presidio: sono un altro lettore, non un doppione.
+    # ⚠️ `None` quando il presidio non ha testo (un `INVENTARIO`, o una vista in
+    #    attesa di catalogo): chi rende ripiega sulla descrizione, mai sul vuoto.
+    chi_agisce: str | None
+    significato: str | None
+    azione: str | None
     # ⭐ La prosa che il team DB ha scritto sulla vista: e' li' che sta la
     #    differenza fra «DEVE restare VUOTA» e «e' un registro che deve CALARE».
     #    Si legge da `obj_description`, non si ricopia.
@@ -122,6 +149,31 @@ class RigaPresidio(TypedDict):
 #    `_decora_in_attesa` non li percorre nessuno: sono DORMIENTI, non morti.
 _IN_ATTESA_DI_CATALOGO: tuple[RigaPresidio, ...] = ()
 
+# ⭐ La lingua del testo si sceglie COME per `config.messaggi_errore`
+#    (`script.fn_get_messaggio`): la GUC che il middleware imposta per richiesta,
+#    poi `it`. ⚠️ `NULLIF` perche' il middleware, a fine richiesta, la riporta a
+#    stringa vuota e non la toglie: su una connessione riusata il vuoto vuol dire
+#    «nessuna lingua», non una lingua che si chiama ''.
+# ⛔ Il ripiego e' PER PRESIDIO, non per pagina: una traduzione che manca su una
+#    vista sola fa parlare in italiano quella vista, non tutto il pannello.
+# ⚠️ Dal management command del digest la GUC non c'e': si legge `it`, che e'
+#    la lingua obbligatoria (il pgTAP `dbops/test-presidi-testi-v1` la pretende).
+_TESTO_PER_LINGUA = """
+    CROSS JOIN (
+        SELECT COALESCE(NULLIF(current_setting(%s, true), ''), %s) AS richiesta,
+               %s::text                                           AS ripiego
+    ) lingua
+    LEFT JOIN LATERAL (
+        SELECT pt.significato, pt.azione
+          FROM dbops.presidi_testi pt
+         WHERE pt.vista = p.vista
+           AND pt.lingua IN (lingua.richiesta, lingua.ripiego)
+         ORDER BY (pt.lingua = lingua.richiesta) DESC
+         LIMIT 1
+    ) t ON TRUE
+"""
+_TESTO_PER_LINGUA_PARAMS = (GUC_LINGUA, LINGUA_DEFAULT, LINGUA_DEFAULT)
+
 _COLONNE_CATALOGO = """
     p.vista,
     p.natura,
@@ -132,6 +184,9 @@ _COLONNE_CATALOGO = """
     p.cadenza,
     p.perimetro,
     p.nota,
+    p.chi_agisce,
+    t.significato,
+    t.azione,
     obj_description(to_regclass(p.vista), 'pg_class') AS descrizione,
     (to_regclass(p.vista) IS NOT NULL)               AS esiste,
     TRUE                                             AS a_catalogo
@@ -160,7 +215,8 @@ class PresidiRepository:
         self, *, cadenze: tuple[str, ...] | None = None,
     ) -> list[RigaPresidio]:
         condizioni = ["p.attivo", "p.obsoleto_dal IS NULL"]
-        params: list[Any] = []
+        # ⚠️ I parametri del join vengono PRIMA, nell'ordine in cui compaiono.
+        params: list[Any] = [*_TESTO_PER_LINGUA_PARAMS]
         if cadenze is not None:
             condizioni.append("p.cadenza = ANY(%s)")
             params.append(list(cadenze))
@@ -169,6 +225,7 @@ class PresidiRepository:
                 f"""
                 SELECT {_COLONNE_CATALOGO}
                   FROM dbops.presidi p
+                  {_TESTO_PER_LINGUA}
                  WHERE {' AND '.join(condizioni)}
                 """,  # noqa: S608 — frammenti costanti, i valori sono parametri
                 params,
@@ -287,6 +344,14 @@ class PresidiRepository:
                 esito.append({
                     "vista": riga["vista"],
                     "descrizione": riga["descrizione"],
+                    # ⭐ Il significato si consegna (dice COSA non si e'
+                    #    potuto guardare); l'azione e chi agisce NO: rimediano
+                    #    a righe accese, e qui il guasto e' la lettura — chi
+                    #    legge non deve «rilanciare i lotti» di un presidio
+                    #    che non si e' visto.
+                    "significato": riga["significato"],
+                    "azione": None,
+                    "chi_agisce": None,
                     "conteggio": None,
                     "righe": [],
                     "troncato": False,
@@ -306,6 +371,12 @@ class PresidiRepository:
                 #    catalogo: il pannello ha lo spazio per il contratto intero,
                 #    a differenza di un messaggio di posta.
                 "descrizione": riga["descrizione"],
+                # ⭐ Il testo per chi agisce (brief-db-presidi-cosa-significa-
+                #    cosa-fare §6): il pannello lo mette DAVANTI alla
+                #    descrizione, che resta come dettaglio tecnico.
+                "significato": riga["significato"],
+                "azione": riga["azione"],
+                "chi_agisce": riga["chi_agisce"],
                 "conteggio": conteggio,
                 "righe": righe,
                 # ⚠️ «Troncato» presuppone che le righe siano state chieste: su

@@ -1679,6 +1679,12 @@
       "presidi_a_zero": "A zero ({n})",
       "presidi_vedi_descrizione": "Cosa controlla",
       "presidi_senza_descrizione": "La vista non ha una descrizione: va scritta nel commento della vista, lato database.",
+      "presidi_dettaglio_tecnico": "Dettaglio tecnico",
+      "chi_agisce": {
+        "amministratore": "Puoi sistemarlo tu",
+        "sistemista": "Da segnalare a chi gestisce il server",
+        "sviluppo": "Da segnalare allo sviluppo"
+      },
       "presidi_badge_menu": "Presidi di sistema",
       "presidi_badge_attesa": "Presidi di sistema: lettura in corso…",
       "presidi_badge_tooltip_ok": "Presidi di sistema: tutto a posto — letti alle {ora}",

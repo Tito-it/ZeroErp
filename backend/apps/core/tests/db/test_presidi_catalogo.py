@@ -33,22 +33,32 @@
      ⚠️ Dal 2026-09-10 `_IN_ATTESA_DI_CATALOGO` e' VUOTA — il debito e' in pari,
      quindi questo test oggi gira a vuoto. E' la condizione giusta, non una
      copertura che manca: si riaccende da se' alla prossima vista in attesa.
+8. test_i_mirror_di_chi_agisce_seguono_il_check
+9. test_ogni_presidio_che_si_accende_arriva_col_testo_per_chi_agisce
+     ⭐ 2026-10-06: il join su `dbops.presidi_testi` GIRA sul database vero e
+     porta il testo. La completezza del catalogo la garantisce il pgTAP
+     `dbops/test-presidi-testi-v1`; qui si prova il TRASPORTO fino al Python.
+10. test_una_lingua_senza_testo_ripiega_su_it
 """
 
 from __future__ import annotations
 
 from unittest import TestCase
 
+from django.db import connection
+
 from apps.core.db.presidi_repository import (
     _IN_ATTESA_DI_CATALOGO,
     CADENZA_MAI,
     CADENZE,
+    CHI_AGISCE,
     NATURA_CANCELLO,
     NATURA_INVENTARIO,
     NATURE,
     PERIMETRI,
     PresidiRepository,
 )
+from apps.core.middleware.user_language_middleware import GUC_NAME
 from apps.core.services.presidi_digest import CADENZE_DEL_DIGEST
 from apps.core.tests.db_e2e import richiedi_db_provvisto, valori_check
 
@@ -187,4 +197,54 @@ class PresidiCatalogoGuardrail(TestCase):
             "queste viste sono ORA a catalogo: togliere la riga corrispondente "
             "da `_IN_ATTESA_DI_CATALOGO` in apps/core/db/presidi_repository.py "
             f"— il debito e' pagato ({rientrate}).",
+        )
+
+    # 8. Il quarto vocabolario: chi spegne il presidio. ⭐ Il suo ordine decide
+    #    i gruppi del digest, ma il confronto col CHECK e' sull'insieme.
+    def test_i_mirror_di_chi_agisce_seguono_il_check(self) -> None:
+        self.assertEqual(
+            set(CHI_AGISCE), valori_check("dbops.presidi", "chk_presidi_chi_agisce"),
+            "il vocabolario di chi agisce nel backend non segue il CHECK: un "
+            "valore nuovo finirebbe nel gruppo «senza indicazione» del digest e "
+            "senza badge nel pannello.",
+        )
+
+    # 9. ⭐ IL TRASPORTO DEL TESTO. Il modello dice che un presidio che si
+    #    accende (non INVENTARIO) ha chi agisce (`chk_presidi_chi_agisce_se_allarma`)
+    #    e la riga `it` (pgTAP): qui si prova che il join del repository li
+    #    porta davvero fino al Python — un join sulla colonna sbagliata
+    #    tornerebbe NULL per tutti, e il pannello ripiegherebbe in silenzio.
+    def test_ogni_presidio_che_si_accende_arriva_col_testo_per_chi_agisce(self) -> None:
+        si_accendono = [r for r in self.catalogo if r["natura"] != NATURA_INVENTARIO]
+        self.assertTrue(si_accendono, "nessun presidio che si accende: confronto a vuoto")
+        scoperti = sorted(
+            r["vista"] for r in si_accendono
+            if not (r["chi_agisce"] and r["significato"] and r["azione"])
+        )
+        self.assertEqual(
+            scoperti, [],
+            "presidi che si accendono senza testo per chi agisce: il pannello e "
+            "il digest ripiegherebbero sulla prosa tecnica.",
+        )
+
+    # 10. ⭐ IL RIPIEGO SULLA LINGUA, sul database vero: con la GUC su una
+    #     lingua diversa da `it` il testo arriva comunque — la riga `it` e'
+    #     obbligatoria, le altre no. Senza ripiego un operatore in inglese
+    #     vedrebbe il pannello tornare alla prosa tecnica.
+    # ⛔ Una lingua che il catalogo NON PUO' avere, non `en`: il giorno in cui
+    #    arrivano le righe inglesi il test passerebbe leggendo quelle, e il
+    #    ripiego non lo proverebbe piu' nessuno — sempre verde.
+    # ⚠️ La GUC e' di sessione: si rimette com'era, come fa il middleware.
+    def test_una_lingua_senza_testo_ripiega_su_it(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute("SELECT set_config(%s, 'zz', false)", [GUC_NAME])
+        try:
+            catalogo = PresidiRepository().list_catalogo()
+        finally:
+            with connection.cursor() as cur:
+                cur.execute("SELECT set_config(%s, '', false)", [GUC_NAME])
+        si_accendono = [r for r in catalogo if r["natura"] != NATURA_INVENTARIO]
+        self.assertTrue(si_accendono, "nessun presidio che si accende: confronto a vuoto")
+        self.assertEqual(
+            sorted(r["vista"] for r in si_accendono if not r["significato"]), [],
         )

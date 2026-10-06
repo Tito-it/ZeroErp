@@ -49,6 +49,10 @@ from apps.core.db.presidi_repository import (
     CADENZA_MAI,
     CADENZA_SETTIMANALE,
     CADENZE,
+    CHI_AGISCE,
+    CHI_AGISCE_AMMINISTRATORE,
+    CHI_AGISCE_SISTEMISTA,
+    CHI_AGISCE_SVILUPPO,
     NATURA_LAVORAZIONE,
     NATURA_REGISTRO,
     NATURA_ZERO,
@@ -198,6 +202,17 @@ class VocePresidio:
     perimetro: str
     righe: list[dict[str, Any]] = field(default_factory=list)
     troncato: bool = False
+    # ⭐ IL TESTO PER CHI AGISCE (`dbops.presidi_testi`, 2026-10-06): cosa vuol
+    #    dire una riga e cosa fare. Nel messaggio viene PRIMA della `nota`, che
+    #    resta come dettaglio tecnico: la nota e' scritta per chi mantiene il
+    #    presidio, e chi apre la mail ha due domande sole — cosa vuol dire, cosa
+    #    faccio.
+    # ⚠️ `None` = presidio senza testo: il messaggio ripiega sulla sola nota,
+    #    com'era prima, e non scrive una riga vuota.
+    significato: str | None = None
+    azione: str | None = None
+    # ⭐ Decide il GRUPPO in cui la voce finisce (`_per_chi_agisce`).
+    chi_agisce: str | None = None
     # ⭐ IL CONTEGGIO DICE N E L'ELENCO E' VUOTO, su una vista che il catalogo
     #    dichiara elencabile. Non e' un dettaglio: vuol dire che da qui quella
     #    vista non si legge — il numero arriva solo perche' passa dalla funzione
@@ -422,6 +437,9 @@ def calcola_digest(
                 and not righe
             ),
             nota=riga["nota"],
+            significato=riga["significato"],
+            azione=riga["azione"],
+            chi_agisce=riga["chi_agisce"],
             registro=riga["registro"],
             perimetro=riga["perimetro"],
             righe=righe,
@@ -520,6 +538,45 @@ def _leggi_battito(
 #  Il messaggio
 # ══════════════════════════════════════════════════════════
 
+# Scopo: il titolo di ogni gruppo di presidi accesi, per CHI LO SPEGNE.
+# ⭐ Sono le stesse tre risposte dei badge del pannello
+#    (`amministrazione.processi.chi_agisce.*`), dette per una mail: il digest va
+#    per posta e non ha i locali del frontend — ed e' il motivo per cui il testo
+#    dei presidi sta a DB e non in i18n (brief D-1).
+# ⛔ Una chiave per ogni valore del mirror `CHI_AGISCE`: lo presidia
+#    `test_ogni_chi_agisce_ha_il_suo_titolo`, perche' un valore nuovo senza
+#    titolo finirebbe nel gruppo «senza indicazione» senza che niente fallisca.
+TITOLI_CHI_AGISCE: dict[str, str] = {
+    CHI_AGISCE_AMMINISTRATORE: "Puoi sistemarlo tu, dall'applicazione",
+    CHI_AGISCE_SISTEMISTA: "Da segnalare a chi gestisce il server",
+    CHI_AGISCE_SVILUPPO: "Da segnalare allo sviluppo",
+}
+TITOLO_CHI_AGISCE_ASSENTE = "Senza indicazione di chi agisce"
+
+
+# Scopo: le voci di un elenco, raggruppate per chi le spegne, nell'ordine del
+#        mirror `CHI_AGISCE` — prima cio' che si sistema dall'applicazione, poi
+#        cio' che va inoltrato — e in fondo quelle senza indicazione.
+# ⭐ Una sede sola per le due rese: testo e HTML ricevono gli stessi gruppi
+#    nello stesso ordine, e non possono raccontare la stessa mail in due modi.
+# ⚠️ Un gruppo vuoto non si restituisce: un titolo senza voci sotto si legge
+#    come «qui c'era qualcosa e si e' perso».
+def _per_chi_agisce(
+    voci: list[VocePresidio],
+) -> list[tuple[str, list[VocePresidio]]]:
+    gruppi: list[tuple[str, list[VocePresidio]]] = [
+        (TITOLI_CHI_AGISCE[chi], dentro)
+        for chi in CHI_AGISCE
+        if (dentro := [v for v in voci if v.chi_agisce == chi])
+    ]
+    # ⛔ «Fuori vocabolario» e «assente» finiscono INSIEME in fondo, e non si
+    #    perdono: una voce che non trova il suo gruppo e' ancora un allarme.
+    resto = [v for v in voci if v.chi_agisce not in CHI_AGISCE]
+    if resto:
+        gruppi.append((TITOLO_CHI_AGISCE_ASSENTE, resto))
+    return gruppi
+
+
 # Scopo: Compone oggetto, corpo testo e corpo HTML del digest.
 #
 # ⭐ L'OGGETTO PORTA IL NUMERO, e non e' cosmesi: e' l'unica parte che si legge
@@ -571,16 +628,14 @@ def _corpo_testo(digest: Digest, quando: str) -> str:
 
     if digest.allarmi:
         r.append(f"ALLARMI ({len(digest.allarmi)}) — queste viste devono restare vuote")
-        for v in digest.allarmi:
-            r.extend(_voce_testo(v))
+        r.extend(_gruppi_testo(digest.allarmi))
         r.append("")
 
     if digest.registri:
         r.append(
             f"REGISTRI ({len(digest.registri)}) — voci che nessuno ha dichiarato"
         )
-        for v in digest.registri:
-            r.extend(_voce_testo(v))
+        r.extend(_gruppi_testo(digest.registri))
         r.append("")
 
     if digest.lavorazioni:
@@ -600,13 +655,30 @@ def _corpo_testo(digest: Digest, quando: str) -> str:
     return "\n".join(r)
 
 
-# Scopo: le righe di un presidio in allarme — il numero, il motivo, un esempio.
+# Scopo: un elenco di voci, a gruppi per chi le spegne (`_per_chi_agisce`).
+def _gruppi_testo(voci: list[VocePresidio]) -> list[str]:
+    r: list[str] = []
+    for titolo, dentro in _per_chi_agisce(voci):
+        r.append(f"  ▸ {titolo}")
+        for v in dentro:
+            r.extend(_voce_testo(v))
+    return r
+
+
+# Scopo: le righe di un presidio in allarme — il numero, cosa vuol dire, cosa
+#        fare, il motivo tecnico, un esempio.
+# ⭐ Prima il testo per chi agisce, poi quello per chi mantiene il presidio.
+#    ⚠️ Senza testo resta la sola nota, com'era prima del 2026-10-06.
 def _voce_testo(v: VocePresidio) -> list[str]:
     r = [f"  · {v.vista}: {v.conteggio}"]
+    if v.significato:
+        r.append(f"      {v.significato}")
+    if v.azione:
+        r.append(f"      → {v.azione}")
     if v.registro:
         r.append(f"      registro delle voci note: {v.registro}")
     if v.nota:
-        r.append(f"      {v.nota}")
+        r.append(f"      {_prefisso_nota(v)}{v.nota}")
     for riga in v.righe:
         r.append("      - " + _riga_compatta(riga))
     if v.troncato:
@@ -632,6 +704,13 @@ def _voce_testo(v: VocePresidio) -> list[str]:
         #    non mancano — non sono state chieste, e la notizia e' il numero.
         r.append("      (righe non elencabili da qui: la vista ha un perimetro)")
     return r
+
+
+# Scopo: l'etichetta della nota quando sopra c'e' il testo per chi agisce: la
+#        nota diventa il DETTAGLIO TECNICO, e va detto, o due frasi di fila si
+#        leggerebbero come una spiegazione sola.
+def _prefisso_nota(v: VocePresidio) -> str:
+    return "dettaglio tecnico: " if (v.significato or v.azione) else ""
 
 
 # Scopo: una riga di una vista, compatta e leggibile — `chiave=valore`.
@@ -816,35 +895,44 @@ def _corpo_html(digest: Digest, quando: str) -> str:
     ):
         if not voci:
             continue
-        p.append(f"<h3>{titolo} ({len(voci)})</h3><p>{sottotitolo}</p><ul>")
-        for v in voci:
-            p.append(
-                f"<li><code>{e(v.vista)}</code>: <strong>{e(v.conteggio)}</strong>"
-            )
-            if v.registro:
-                p.append(f"<br><span style=\"color:#666\">registro: <code>{e(v.registro)}</code></span>")
-            if v.nota:
-                p.append(f"<br><span style=\"color:#666\">{e(v.nota)}</span>")
-            if v.righe:
-                p.append("<ul>")
-                for riga in v.righe:
-                    p.append(f"<li>{e(_riga_compatta(riga))}</li>")
-                if v.troncato:
-                    p.append(f"<li>… e altre {e(v.conteggio - len(v.righe))}</li>")
-                p.append("</ul>")
-            elif v.cieco:
+        p.append(f"<h3>{titolo} ({len(voci)})</h3><p>{sottotitolo}</p>")
+        # ⭐ A gruppi per chi le spegne, come il testo (`_per_chi_agisce`).
+        for chi, dentro in _per_chi_agisce(voci):
+            p.append(f"<h4 style=\"margin:.6rem 0 .2rem\">{e(chi)}</h4><ul>")
+            for v in dentro:
                 p.append(
-                    f"<br><strong>⚠️ il conteggio dice {e(v.conteggio)} ma da qui "
-                    f"la vista risponde vuota</strong>: il perimetro dichiarato "
-                    f"(LIBERO) non regge, la riga di catalogo va corretta."
+                    f"<li><code>{e(v.vista)}</code>: <strong>{e(v.conteggio)}</strong>"
                 )
-            elif v.perimetro == PERIMETRO_DEFINER:
-                p.append(
-                    "<br><span style=\"color:#666\">righe non elencabili da qui: "
-                    "la vista ha un perimetro</span>"
-                )
-            p.append("</li>")
-        p.append("</ul>")
+                if v.significato:
+                    p.append(f"<br>{e(v.significato)}")
+                if v.azione:
+                    p.append(f"<br><strong>→ {e(v.azione)}</strong>")
+                if v.registro:
+                    p.append(f"<br><span style=\"color:#666\">registro: <code>{e(v.registro)}</code></span>")
+                if v.nota:
+                    p.append(
+                        f"<br><span style=\"color:#666\">{e(_prefisso_nota(v))}{e(v.nota)}</span>"
+                    )
+                if v.righe:
+                    p.append("<ul>")
+                    for riga in v.righe:
+                        p.append(f"<li>{e(_riga_compatta(riga))}</li>")
+                    if v.troncato:
+                        p.append(f"<li>… e altre {e(v.conteggio - len(v.righe))}</li>")
+                    p.append("</ul>")
+                elif v.cieco:
+                    p.append(
+                        f"<br><strong>⚠️ il conteggio dice {e(v.conteggio)} ma da qui "
+                        f"la vista risponde vuota</strong>: il perimetro dichiarato "
+                        f"(LIBERO) non regge, la riga di catalogo va corretta."
+                    )
+                elif v.perimetro == PERIMETRO_DEFINER:
+                    p.append(
+                        "<br><span style=\"color:#666\">righe non elencabili da qui: "
+                        "la vista ha un perimetro</span>"
+                    )
+                p.append("</li>")
+            p.append("</ul>")
 
     if digest.lavorazioni:
         p.append("<h3>In lavorazione (tendenza)</h3><ul>")

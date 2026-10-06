@@ -3,14 +3,17 @@
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-06. **A chi:** team DB
 > (`dev/db-tid`); poi BE/FE (§6), che **attende** la consegna DB.
 > **Origine:** §5-bis del collaudo in-app dell'osservabilità
-> ([collaudo-in-app-osservabilita-giornale-errori-pallino.md](../work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
+> ([collaudo-in-app-osservabilita-giornale-errori-pallino.md](collaudo-in-app-osservabilita-giornale-errori-pallino.md),
 > chiuso il 2026-10-06), trovato a video da Tid il 2026-09-19.
 > **Decisioni:** D-1…D-3 adottate **come proposte** (§3): il team DB ci ha
 > costruito i changeSet su richiesta di Tid («predisporre le modifiche») e Tid
 > li ha applicati il 2026-10-06. D-4 resta un rilievo aperto (§7).
-> **Stato:** ✅ DB **applicato da Tid il 2026-10-06, pgTAP verdi** (§8.6).
-> ⏳ Tocca al BE/FE (§6). Da leggere per primo: §8.3 (le correzioni ai testi del
-> §5) e §8.4 (il join è su `vista`).
+> **Stato:** ✅ **CHIUSO il 2026-10-06.** DB applicato da Tid, pgTAP verdi (§8.6);
+> BE/FE fatto (§9); collaudo a video di Tid superato lo stesso giorno («il messaggio
+> ora è perfettamente comprensibile»). Archiviato in `work-done/`.
+> ⏳ **Residui, con casa in PROJECT_CONTEXT § «Aperto — Media priorità»**: i due
+> nomi di schermata da correggere nel CSV dei testi (§9.3, lato DB), D-4 (§7) e la
+> postura in sola lettura del catalogo per l'app (§8.1).
 
 ## 1. Perché
 
@@ -350,3 +353,53 @@ lavori», «coda stampe», «lista Operatori», «Log Email», «drawer dell'art
   `80_data/sql/dbops/presidi_testi.csv`, lato DB.
 * Restano aperti, non bloccanti: D-4 (le quattro misure larghe, §7) e la postura
   in sola lettura del catalogo per l'app (§8.1, non chiesta).
+
+## 9. Consegna BE/FE
+
+> Sessione BE/FE (`dev/backend-tid`), 2026-10-06.
+
+### 9.1 Backend
+
+| Dove | Cosa |
+| --- | --- |
+| `apps/core/db/presidi_repository.py` | `list_catalogo` legge `p.chi_agisce` e, con un `LEFT JOIN LATERAL` su `dbops.presidi_testi` **per `vista`**, `significato` e `azione`. La lingua ha la cascata di `script.fn_get_messaggio`: GUC `myapp.user_language` (nome e ripiego presi dal middleware, non ricopiati), poi `it`; il ripiego è **per presidio**. `NULLIF` sul vuoto, perché il middleware a fine richiesta riporta la GUC a `''`. Mirror `CHI_AGISCE` accanto a `NATURE`: l'ordine della tupla è quello dei gruppi del digest. `stato_presidi` consegna i tre campi; su un presidio **non letto** consegna il significato ma non azione né chi agisce (rimediano a righe accese, e lì non si è visto niente) |
+| `apps/core/services/presidi_digest.py` | `VocePresidio` prende i tre campi. Sotto ogni presidio: significato, `→ azione`, poi la nota marcata «dettaglio tecnico»; senza testo resta la nota com'era. Allarmi e registri a **gruppi per chi agisce** (`_per_chi_agisce`, una sede per testo e HTML): amministratore, sistemista, sviluppo, in fondo «senza indicazione» |
+
+### 9.2 Frontend
+
+`PresidiProcessiPanel.vue`: il presidio acceso mostra **l'azione**, poi il
+significato, poi il badge (chiavi `amministrazione.processi.chi_agisce.{amministratore,sistemista,sviluppo}`);
+la descrizione della vista va in un `<details>` chiuso «Dettaglio tecnico». Senza
+testo la descrizione resta aperta, com'era.
+
+⚠️ **`PresidioChip` non è toccato**, ed è una scelta: il chip è un presidio **a
+zero**, e il suo popover risponde a «cosa controlla» — una frase come «ci sono
+lotti fermi» sotto un chip verde direbbe il contrario di ciò che si vede.
+
+### 9.3 Nomi di schermata nei testi — da correggere nel CSV (team DB)
+
+Verificati contro le etichette del menu (`nav_menu` e schede, `it.json`):
+
+| Testo nel CSV | A video | Vista |
+| --- | --- | --- |
+| «la coda stampe» | **Strumenti → Code di lavoro, scheda «Coda stampa»** | `vw_fatture_stampa_coda_da_guardare` |
+| «Dalla lista Operatori» | **Amm. Software → Accessi, scheda «Operatori»**: non c'è una voce «Operatori» nel menu | `vw_operatori_senza_emittente` |
+
+Gli altri tengono: «coda lavori» (scheda «Coda lavori» di Code di lavoro), «Log
+Email», «Processi automatici», «Esegui ora», «Accessi, fra gli altri accessi»
+(scheda «Altri accessi»). «drawer dell'articolo» è il gergo dello sviluppo: se
+Tid preferisce «scheda dell'articolo» è una parola nel CSV.
+
+### 9.4 Test e verifica
+
+* BE: `test_presidi_repository` (SQL del join su `vista` con i parametri della
+  lingua; i tre campi nel pannello; il non letto senza azione),
+  `test_presidi_digest` 22-25 (ordine testo → nota sulle due rese, ripiego,
+  gruppi, un titolo per ogni valore), `test_presidi_catalogo` 8-10 **sul DB vero**
+  (mirror contro `chk_presidi_chi_agisce`; ogni presidio che si accende arriva col
+  testo; con la GUC su `en` il testo arriva per ripiego). Suite `core` +
+  `amm_software` con `ZEROERP_TEST_DB_E2E=1`: 1882 verdi.
+* FE: `PresidiProcessiPanel.spec.js` (ordine, `<details>` chiuso, un badge per
+  valore, ripiego, non letto). Suite intera 706 verdi; `check_i18n_keys` pulito.
+* ✅ **Collaudo a video di Tid** (2026-10-06): Strumenti → Diagnostica →
+  Processi automatici con un presidio acceso — superato.
