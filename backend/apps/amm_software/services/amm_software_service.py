@@ -16,6 +16,7 @@ from typing import Any
 from django.contrib.auth.hashers import make_password
 from django.db import DatabaseError, transaction
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.auth_constants import CATEGORIA_ACCESSO_OPERATORE
 from apps.core.services.error_manager import ErrorManager
@@ -706,9 +707,18 @@ class AmmSoftwareService:
     # Riepilogo permessi
     # =================================================================
 
-    # Scopo: Matrice permessi effettivi per tutti gli operatori attivi.
-    def get_permessi_riepilogo(self, **params) -> dict:
-        return self._repo.get_permessi_riepilogo(**params)
+    # Scopo: Riepilogo permessi per area degli operatori indicati (le righe
+    #        di una pagina della lista operatori). Gli id arrivano gia' interi
+    #        dalla view; qui si tiene il tetto, perche' la funzione DB fa tre
+    #        letture per operatore.
+    def get_permessi_riepilogo(self, auth_user_ids: list[int]) -> list[dict[str, Any]]:
+        ErrorManager.require(
+            len(auth_user_ids) <= MAX_LIMIT,
+            code=E_AMM_VALIDAZIONE,
+            message=f"Al massimo {MAX_LIMIT} operatori per richiesta.",
+            context={"field": "auth_user_ids"},
+        )
+        return self._repo.get_permessi_riepilogo(auth_user_ids)
 
     # Scopo: Audit log globale modifiche permessi (Fase 5 — A13/A16).
     #        Ogni evento ora include `code`/`storico_id`/`area_funzionale` +

@@ -4,8 +4,8 @@
 // ℹ️ Lo scope emittenti fiscali NON sta qui: e' nella scheda Dati del drawer
 //    operatore (Tid, 2026-10-06) — e' il perimetro dell'operatore, non una
 //    regola su area, oggetto o azione.
-// Usato sia dentro i Tabs di OperatoreDrawer sia dal
-// drawer dedicato OperatorePermessiDrawer (azione rapida dalla lista).
+// Vive nella scheda «Permessi» di OperatoreDrawer (il drawer dedicato dei soli
+// permessi, aperto dal kebab della lista, e' stato ritirato il 2026-10-06).
 // Reagisce automaticamente al cambio di authUserId.
 //
 // ⭐ RESTYLE PER AREA 2026-10-04 (brief-db-permessi-tetto-area §7, Tid) —
@@ -54,12 +54,11 @@ import Badge from 'primevue/badge'
 const { t } = useI18n()
 const store = useOperatoriStore()
 const notify = useNotify()
-// Readonly: il tab vive dentro OperatoreDrawer o dentro
-// OperatorePermessiDrawer; in entrambi i casi i controlli di riga e i pulsanti
-// di salvataggio vanno disattivati.
-// ⛔ CUMULATIVA con la prop, e non solo iniettata: i due drawer espongono una
+// Readonly: i controlli di riga e il Salva si spengono con la sola lettura del
+// drawer che ospita la scheda.
+// ⛔ CUMULATIVA con la prop, e non solo iniettata: il drawer ospite espone una
 //    prop `readonly` propria (standard drawer admin), e senza questo la prop
-//    si fermerebbe al loro bordo — l'intestazione direbbe «sola lettura» e le
+//    si fermerebbe al suo bordo — l'intestazione direbbe «sola lettura» e le
 //    tendine dentro sarebbero premibili. Una guardia che sembra presente e non
 //    lo è.
 const injectedReadonly = useInjectReadonly()
@@ -144,6 +143,9 @@ async function loadAll(userId) {
     store.fetchPermessiEreditati(userId),
     // Il tetto d'area: quali voci vale il loro override e quali l'area ferma.
     store.fetchPermessiEffettivi(userId),
+    // Il numero di override per area: la sede unica a DB (D-4 del brief
+    // riepilogo-permessi), la stessa della lista operatori.
+    store.fetchRiepilogoAree(userId),
   ])
   syncLocal()
   Object.values(sezioni).forEach(sz => sz.fissa())
@@ -559,15 +561,29 @@ const livelloAreaVideo = (areaId) =>
   overrideAree.value[areaId]?.livello ?? livelloEreditatoArea(areaId)
 
 // Scopo: Riassunto di un'area per l'elenco a sinistra.
+// Il numero di override per area SALVATI: da `fn_get_permessi_riepilogo_aree`
+// (sede unica, la legge anche la lista operatori), ricaricato a ogni Salva.
+const overrideSalvatiPerArea = computed(() =>
+  Object.fromEntries(store.riepilogoAree.map(r => [r.area_id, r.override_count]))
+)
+
+// ⭐ DUE SORGENTI per il numero, con la regola del tetto: un'area senza
+//    modifiche non salvate legge il DB; un'area modificata conta a video gli
+//    override che il Salva scriverebbe — e' l'ANTEPRIMA, e come quella del
+//    tetto vale solo finche' non si salva. Fino al 2026-10-06 il numero era
+//    sempre contato a video: una seconda sede della regola, che la lista
+//    operatori non vedeva.
 function riassuntoArea(area) {
   const azioni = azioniPerArea.value[area.id] || []
   const oggetti = oggettiPerArea.value[area.id] || []
-  const conOverride = (overrideAree.value[area.id] ? 1 : 0)
-    + azioni.filter(az => overrideAzioni.value[az.id]).length
-    + oggetti.filter(o => overrideOggetti.value[chiaveOggetto(o)]).length
   const modificata = _diversa(overrideAree.value[area.id], salvatiAree.value[area.id], 'livello')
     || azioni.some(azioneModificata)
     || oggetti.some(oggettoModificato)
+  const conOverride = modificata
+    ? (overrideAree.value[area.id] ? 1 : 0)
+      + azioni.filter(az => overrideAzioni.value[az.id]).length
+      + oggetti.filter(o => overrideOggetti.value[chiaveOggetto(o)]).length
+    : (overrideSalvatiPerArea.value[area.id] ?? 0)
   const limitate = azioni.filter(az => statoTettoAzione(az.id)?.limitata).length
     + oggetti.filter(o => statoTettoOggetto(o)?.limitato).length
   return { conOverride, modificata, limitate }
@@ -809,9 +825,6 @@ h5 {
    col colore d'avviso: e' la riga che dice il falso se non lo si legge. */
 .app-permessi-tetto {
   display: block;
-  color: var(--app-warning-color);
-}
-.app-permessi-tetto-icona {
   color: var(--app-warning-color);
 }
 </style>

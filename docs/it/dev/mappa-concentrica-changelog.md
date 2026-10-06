@@ -573,7 +573,7 @@ questa tornata — `brief-db-magazzino-lotto-2-bis-be-fe.md` (BE/FE del Lotto 2)
 [brief-db-registri-giornale-catalogo.md](work-done/brief-db-registri-giornale-catalogo.md),
 il cui **lato DB è chiuso il 19-09** (`config.registri_giornale`, pgTAP
 13/13) — più il copione
-[collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
+[collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
 scritto e **da eseguire**; `vendite.fatturazione_lotti_log` con **17.223 pagine
 per 1.225 righe** dopo la retention del 18-09 (fatto datato: un `VACUUM` lo
 dirà); lo `.pyc` di `gen_seed_lista` **tracciato in git** e una lista mai

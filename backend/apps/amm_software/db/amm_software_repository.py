@@ -91,6 +91,7 @@ ALLOWED_ORDER_COLUMNS: dict[str, str] = {
     "ruolo_applicativo": "ruolo_applicativo",
     "is_active": "is_active",
     "unita_organizzativa_nome": "unita_organizzativa_nome",
+    "override_count": "override_count",
     "valido_dal": "ru.valido_dal",
     "valido_al": "COALESCE(ru.valido_al, 'infinity'::date)",
 }
@@ -267,6 +268,13 @@ class AmmSoftwareRepository:
                       LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
                      WHERE uef.auth_user_id = au.id
                    ) AS emittenti_descrizione,
+                   -- Override dei permessi SCRITTI (D-2 del brief
+                   -- riepilogo-permessi, validita' ignorata): dalla sede unica
+                   -- `script.vw_override_operatore_area`, la stessa che legge
+                   -- il riepilogo per area. Mai ricontati qui.
+                   (SELECT count(*)::int
+                      FROM script.vw_override_operatore_area vo
+                     WHERE vo.auth_user_id = au.id) AS override_count,
                    COUNT(*) OVER() AS total_count
               FROM auth_user au
               LEFT JOIN anagrafiche.identita_digitali id
@@ -1430,91 +1438,42 @@ class AmmSoftwareRepository:
         return events, total_count
 
     # ================================================================== #
-    # Riepilogo permessi (matrice operatori × aree)                        #
+    # Riepilogo permessi per area (chip della lista operatori)            #
     # ================================================================== #
 
-    # Scopo: Restituisce la matrice permessi effettivi per tutti gli operatori attivi.
-    # Ogni riga contiene dati operatore + una colonna per ogni area funzionale
-    # con il livello effettivo (TUTTO/LETTURA/BLOCCATO) calcolato dalla funzione SQL.
-    # Filtri opzionali: reparto, is_super_admin, emittente. Niente piu' enum
-    # legacy `ruolo_sistema` (Fase 7).
-    def get_permessi_riepilogo(
-        self,
-        *,
-        unita_organizzativa_id: int | None = None,
-        is_super_admin: bool | None = None,
-        emittente_fiscale_id: int | None = None,
-    ) -> dict[str, Any]:
-        # 1. Recupera aree funzionali attive (per le colonne)
-        aree = self.list_aree_funzionali()
-
-        # 2. Query operatori attivi con livello effettivo per ogni area
-        conditions: list[str] = ["au.is_active = true", _CATEGORIA_OPERATORE.format(au="au.id")]
-        params: list[Any] = []
-
-        if unita_organizzativa_id is not None:
-            conditions.append("ru.unita_organizzativa_id = %s")
-            params.append(unita_organizzativa_id)
-
-        if is_super_admin is not None:
-            conditions.append("script.fn_is_super_admin(au.id) = %s")
-            params.append(is_super_admin)
-
-        if emittente_fiscale_id is not None:
-            conditions.append(
-                "EXISTS (SELECT 1 FROM config.user_emittenti_fiscali uef"
-                " WHERE uef.auth_user_id = au.id AND uef.emittente_fiscale_id = %s)"
-            )
-            params.append(emittente_fiscale_id)
-
-        where_clause = " AND ".join(conditions)
-
-        # Genera una subquery per ogni area funzionale.
-        # `fn_resolve_livello_area` matcha sulla colonna IMMUTABILE
-        # `aree_funzionali.schema_db` (chiave tecnica), NON sul `codice`
-        # (etichetta mutabile rinominabile dall'utente): l'arg deve essere
-        # `schema_db`. L'alias colonna resta su `codice` perche' il FE mappa le
-        # colonne `area_<codice>` con la lista `aree` ricevuta in parallelo.
-        # Entrambi validati come identificatori sicuri (solo alfanumerici +
-        # underscore) per prevenire injection.
-        _SAFE_IDENT = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
-        area_columns = ", ".join(
-            f"script.fn_resolve_livello_area(au.id, '{a['schema_db']}')::text AS area_{a['codice']}"
-            for a in aree
-            if _SAFE_IDENT.match(a['codice']) and _SAFE_IDENT.match(a['schema_db'])
-        )
-
+    # Scopo: Il riepilogo dei permessi PER AREA di un insieme di operatori —
+    #        livello effettivo, override scritti, voci fermate dal tetto — per
+    #        le chip della lista operatori (brief riepilogo-permessi, 2026-10-06).
+    # ⭐ Tutto da `script.fn_get_permessi_riepilogo_aree`: la funzione legge le
+    #    sedi uniche (resolver d'area, funzioni del tetto, e
+    #    `vw_override_operatore_area` per il conteggio). Qui si aggiungono solo
+    #    le etichette dell'area. Fino al 2026-10-06 questo metodo costruiva con
+    #    un f-string una subquery per area, su TUTTI gli operatori.
+    # ⚠️ Riceve gli id della PAGINA della lista. Un id che non e' un operatore si
+    #    scarta prima della funzione (che altrimenti gli darebbe righe
+    #    `BLOCCATO`): il riepilogo resta perimetrato come la lista.
+    def get_permessi_riepilogo(self, auth_user_ids: list[int]) -> list[dict[str, Any]]:
+        if not auth_user_ids:
+            return []
         sql = f"""
-            SELECT au.id AS auth_user_id,
-                   au.username,
-                   COALESCE(s.cognome, au.last_name) AS cognome,
-                   COALESCE(s.nome, au.first_name) AS nome,
-                   script.fn_is_super_admin(au.id) AS is_super_admin,
-                   id.ruolo_applicativo::text AS ruolo_applicativo,
-                   id.attivo AS veste_attiva,
-                   au.is_active,
-                   uo.descrizione AS reparto,
-                   {area_columns}
-              FROM auth_user au
-              LEFT JOIN anagrafiche.identita_digitali id
-                ON id.id = {_VESTE_OPERATORE.format(au="au.id")}
-              LEFT JOIN anagrafiche.soggetti_ruoli sr
-                ON sr.id = id.soggetto_ruolo_id
-              LEFT JOIN anagrafiche.risorse_umane ru
-                ON ru.soggetto_ruolo_id = sr.id
-              LEFT JOIN anagrafiche.soggetti s
-                ON s.id = sr.soggetto_id
-              LEFT JOIN config.unita_organizzative uo
-                ON uo.id = ru.unita_organizzativa_id
-             WHERE {where_clause}
-             ORDER BY COALESCE(s.cognome, au.last_name), au.username
-        """  # noqa: S608 — colonne area da config.aree_funzionali filtrate da regex _SAFE_IDENT, WHERE letterale, valori come parametri
-
+            SELECT r.auth_user_id,
+                   r.area_id,
+                   af.codice      AS area_codice,
+                   af.descrizione AS area_descrizione,
+                   r.livello::text AS livello,
+                   r.override_count,
+                   r.voci_limitate
+              FROM script.fn_get_permessi_riepilogo_aree(
+                     ARRAY(SELECT x.id
+                             FROM unnest(%s::int[]) AS x(id)
+                            WHERE {_CATEGORIA_OPERATORE.format(au="x.id")})
+                   ) r
+              JOIN config.aree_funzionali af ON af.id = r.area_id
+             ORDER BY r.auth_user_id, af.ordinamento, af.codice
+        """  # noqa: S608 — frammento letterale _CATEGORIA_OPERATORE, id come parametro
         with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = rows_to_list(cursor)
-
-        return {"aree": aree, "operatori": rows}
+            cursor.execute(sql, [list(auth_user_ids)])
+            return rows_to_list(cursor)
 
     # ================================================================== #
     # Lookup: aree funzionali e azioni processo                            #

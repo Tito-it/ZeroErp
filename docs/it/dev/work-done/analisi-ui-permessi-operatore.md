@@ -190,8 +190,8 @@ prima di allora sarebbe una bugia gentile.
 
 **4.5 · Il drawer è il vincolo peggiore.** 59 righe con tre colonne non stanno
 in un drawer stretto. Esiste già
-[`PermessiRiepilogoView`](../../../../frontend/src/amministrazione/views/PermessiRiepilogoView.vue)
-(matrice operatori × aree, sola lettura): la strada naturale è una **pagina
+`PermessiRiepilogoView` (matrice operatori × aree, sola lettura; ritirata il
+2026-10-06, ora è «Mostra permessi» della lista operatori): la strada naturale è una **pagina
 intera** per l'editing, tenendo il drawer per la consultazione rapida.
 `getLivelloSeverity` / `getLivelloLabel` in `amministrazione/constants` sono già
 i mattoni dei badge.

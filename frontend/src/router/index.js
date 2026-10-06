@@ -176,12 +176,6 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'profili-reparto' }
         },
         {
-          path: 'amm-software/permessi',
-          name: 'amm-software-permessi',
-          component: () => import('../amministrazione/views/PermessiRiepilogoView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'permessi' }
-        },
-        {
           path: 'amm-software/emittenti-fiscali',
           name: 'amm-software-emittenti-fiscali',
           component: () => import('../amministrazione/views/EmittentiFiscaliListView.vue'),

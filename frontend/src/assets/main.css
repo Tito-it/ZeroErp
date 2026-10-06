@@ -1065,6 +1065,13 @@ a {
   gap: 0.5rem;
   flex-wrap: wrap;
 }
+/* Il triangolo del TETTO D'AREA: un'area che ferma qualche voce (override o
+   profilo) piu' permissiva di lei. Lo usano l'elenco aree del pannello
+   permessi e le chip della lista operatori (2026-10-06, seconda occorrenza). */
+.app-permessi-tetto-icona {
+  color: var(--app-warning-color);
+}
+
 .app-elenco-dettaglio {
   margin-top: 0.75rem;
   display: grid;

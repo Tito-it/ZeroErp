@@ -33,9 +33,10 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.amm_software.db.amm_software_repository import REPARTI_ORDER_COLUMNS
-from apps.amm_software.services.amm_software_service import AmmSoftwareService
+from apps.amm_software.services.amm_software_service import E_AMM_VALIDAZIONE, AmmSoftwareService
 from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS
 from apps.core.services.coda_lavori.scope import scope_operatore_da_request
+from apps.core.services.error_manager import ErrorManager
 from apps.core.services.processi_service import ProcessiService
 from apps.core.services.tracciamento_service import fn_list_error_logs
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
@@ -847,26 +848,64 @@ class ErrorLogExportView(AdminAPIView):
 
 
 class PermessiRiepilogoView(AdminAPIView):
-    """GET matrice permessi effettivi per tutti gli operatori attivi."""
+    """GET riepilogo permessi per area degli operatori indicati."""
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="unita_organizzativa_id", type=int, required=False),
-            OpenApiParameter(name="is_super_admin", type=bool, required=False),
-            OpenApiParameter(name="emittente_fiscale_id", type=int, required=False),
+            OpenApiParameter(
+                name="auth_user_ids", type=str, required=True,
+                description="Id degli operatori, separati da virgola (le righe di una pagina della lista).",
+            ),
         ],
         responses={200: inline_serializer(name="PermessiRiepilogoResp", fields={"data": serializers.DictField()})},
     )
-    # Scopo: Matrice operatori × aree con livello effettivo (Fase 7
-    #        multi-face: filtro `is_super_admin` sostituisce `ruolo_sistema`).
+    # Scopo: Le chip della lista operatori con i permessi aperti: una riga per
+    #        (operatore, area attiva) con livello effettivo, override scritti e
+    #        voci fermate dal tetto (brief riepilogo-permessi, 2026-10-06).
+    # ⚠️ Gli id sono quelli della PAGINA: la lista e' la sorgente degli
+    #    operatori, filtri compresi. Fino al 2026-10-06 questo endpoint aveva
+    #    filtri suoi e restituiva tutti gli operatori.
     def get(self, request: Request) -> JsonResponse:
-        qp = request.query_params
-        result = AmmSoftwareService().get_permessi_riepilogo(
-            unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
-            is_super_admin=_parse_optional_bool(qp.get("is_super_admin")),
-            emittente_fiscale_id=optional_int({"v": qp.get("emittente_fiscale_id")}, "v"),
+        ids = _parse_auth_user_ids(request.query_params.get("auth_user_ids"))
+        return success_response({"results": AmmSoftwareService().get_permessi_riepilogo(ids)})
+
+
+# Scopo: `?auth_user_ids=1,2,3` → `[1, 2, 3]`, senza duplicati e nell'ordine dato.
+#        Un pezzo che non e' un intero positivo e' un 400, non un id ignorato:
+#        la pagina chiede righe precise, e una che manca in silenzio sarebbe
+#        un operatore senza chip. Nessun id e' un 400 (il parametro e'
+#        obbligatorio): una chiamata senza operatori e' un chiamante rotto.
+# ⚠️ Il pezzo lo legge `optional_int` (cifre ASCII); qui si aggiunge il tetto
+#    di un `integer` PG (`auth_user.id`, argomento `integer[]` della funzione):
+#    oltre, il cast fallirebbe a DB — un 500 al posto di un 400.
+_PG_INT_MAX = 2_147_483_647
+
+
+def _parse_auth_user_ids(raw: str | None) -> list[int]:
+    ids: list[int] = []
+    for pezzo in (raw or "").split(","):
+        if not pezzo.strip():
+            continue
+        try:
+            valore = optional_int({"v": pezzo}, "v")
+        except ValueError:
+            valore = None
+        ErrorManager.require(
+            valore is not None and 0 < valore <= _PG_INT_MAX,
+            code=E_AMM_VALIDAZIONE,
+            message="auth_user_ids: attesi id interi positivi separati da virgola.",
+            context={"field": "auth_user_ids"},
         )
-        return success_response(result)
+        assert valore is not None
+        if valore not in ids:
+            ids.append(valore)
+    ErrorManager.require(
+        bool(ids),
+        code=E_AMM_VALIDAZIONE,
+        message="auth_user_ids: obbligatorio, almeno un id.",
+        context={"field": "auth_user_ids"},
+    )
+    return ids
 
 
 # ================================================================== #

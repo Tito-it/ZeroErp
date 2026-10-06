@@ -127,9 +127,12 @@ class OperatoriSenzaUtentiTecniciTests(unittest.TestCase):
         self.repo = AmmSoftwareRepository()
 
     # Scopo: gli id consegnati dalle due liste di Amm. Software.
+    # ⚠️ Dal 2026-10-06 il riepilogo non sceglie piu' i suoi operatori: riceve
+    #    gli id della pagina della lista. Gli si chiedono APPOSTA i tecnici
+    #    (piu' la persona): deve scartarli lui, non contare sul chiamante.
     def _id_dalle_due_liste(self) -> tuple[set[int], set[int]]:
         righe, _ = self.repo.list_operatori(limit=200)
-        riepilogo = self.repo.get_permessi_riepilogo()["operatori"]
+        riepilogo = self.repo.get_permessi_riepilogo(sorted(self.tecnici | {self.persona}))
         return (
             {r["auth_user_id"] for r in righe},
             {r["auth_user_id"] for r in riepilogo},

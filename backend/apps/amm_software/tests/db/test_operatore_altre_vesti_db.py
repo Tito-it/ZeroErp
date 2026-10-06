@@ -276,8 +276,9 @@ class OperatoreAltreVestiDbTests(TestCase):
 
                 righe, _totale = repo.list_operatori(search="solo_shop_altre_vesti", limit=50)
                 self.assertNotIn(uid, [r["auth_user_id"] for r in righe])
-                riepilogo = repo.get_permessi_riepilogo()
-                self.assertNotIn(uid, [r["auth_user_id"] for r in riepilogo["operatori"]])
+                # Chiesto APPOSTA: il riepilogo deve scartare chi non e' operatore.
+                riepilogo = repo.get_permessi_riepilogo([uid])
+                self.assertNotIn(uid, [r["auth_user_id"] for r in riepilogo])
                 raise _Annulla
         except _Annulla:
             pass
