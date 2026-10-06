@@ -5,8 +5,12 @@
 > **Origine:** §5-bis del collaudo in-app dell'osservabilità
 > ([collaudo-in-app-osservabilita-giornale-errori-pallino.md](../work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
 > chiuso il 2026-10-06), trovato a video da Tid il 2026-09-19.
-> **Decisioni:** ⏳ **da confermare da Tid** (§3). Le proposte sono marcate.
-> **Stato:** ✏️ scritto, da applicare.
+> **Decisioni:** D-1…D-3 adottate **come proposte** (§3): il team DB ci ha
+> costruito i changeSet su richiesta di Tid («predisporre le modifiche») e Tid
+> li ha applicati il 2026-10-06. D-4 resta un rilievo aperto (§7).
+> **Stato:** ✅ DB **applicato da Tid il 2026-10-06, pgTAP verdi** (§8.6).
+> ⏳ Tocca al BE/FE (§6). Da leggere per primo: §8.3 (le correzioni ai testi del
+> §5) e §8.4 (il join è su `vista`).
 
 ## 1. Perché
 
@@ -224,5 +228,125 @@ spetta al team DB e a Tid (D-4); intanto il §5 dà loro il testo onesto.
 
 ## 8. Consegna DB
 
-*(da compilare dal team DB: changeSet, correzioni ai testi del §5 col motivo,
-esito pgTAP)*
+> Sessione DB (`dev/db-tid`), 2026-10-06. Prova pre-apply sullo scratch
+> `zeroerp_ci` in transazione annullata (§8.5); ✅ **applicato da Tid lo stesso
+> giorno, pgTAP verdi** (§8.6).
+
+### 8.1 I changeSet
+
+| # | File | Cosa |
+| --- | --- | --- |
+| `20261006-04` | `00_schema/dbops/…-alter-presidi-add-chi-agisce` | colonna `chi_agisce text NULL` + `chk_presidi_chi_agisce` (i tre valori di D-3; `NULL` lo soddisfa) + `COMMENT`. Nessun `DEFAULT`: sceglierebbe a chi tocca al posto di chi scrive il presidio |
+| `20261006-05` | `00_schema/dbops/…-create-presidi-testi` | `dbops.presidi_testi`: `id` IDENTITY, `vista`, `lingua`, `significato`, `azione`, audit + `tx_id`; `uq_presidi_testi_vista_lingua`; due `CHECK` non vuoto; `COMMENT` su tabella e colonne; `GRANT SELECT` a `zeroerp_app` |
+| `20261006-06` | `80_data/changelog/…-upsert-dbops-presidi-testi` | mirror `loadUpdateData` di `80_data/sql/dbops/presidi_testi.csv` (43 righe `it`), `runOnChange` + `ANY`, chiave `vista,lingua`, `nullValue: "NULL"` |
+| `20261006-07` | `90_end/…-check-presidi-chi-agisce-se-allarma` | `chk_presidi_chi_agisce_se_allarma` (`natura = 'INVENTARIO' OR chi_agisce IS NOT NULL`) + `COMMENT` |
+| — | `80_data/sql/dbops/presidi.csv` | colonna `chi_agisce` in coda (11 `AMMINISTRATORE`, 4 `SISTEMISTA`, 28 `SVILUPPO`, `NULL` sui 9 `INVENTARIO`) |
+| — | `80_data/changelog/20260910-35-riancora-mirror-presidi` | `- column: chi_agisce` nell'elenco del mirror (mirror `ANY`, una tabella un CSV) |
+
+**Le scelte di forma che il §4 lasciava al team DB:**
+
+* **FK sulla chiave naturale `vista`**, non sull'`id`: `dbops.presidi.id` è
+  IDENTITY e vale su una macchina sola, il mirror del catalogo è chiavato su
+  `vista`, e un `loadUpdateData` non sa tradurre una chiave naturale in un id.
+  Con la FK su `uq_presidi_vista` il CSV dei testi nomina il presidio come lo
+  nomina il suo CSV, senza traduzioni. Precedente in casa:
+  `dbops.coda_lavori_tipi.processo_codice → dbops.processi`. `ON UPDATE CASCADE`;
+  in cancellazione nessuna azione (il ritiro è `obsoleto_dal`, e i testi si tolgono
+  apposta: test 3). ⇒ **La colonna si chiama `vista`, non `presidio`**: è la
+  chiave del join per il BE (`LEFT JOIN dbops.presidi_testi t ON t.vista = p.vista`).
+* **`lingua`**: FK su `config.lingue(codice_iso)` — lo stesso dominio di
+  `config.messaggi_errore.lingua`, che è una FK (`fk_cfg_messaggi_errore_lingua`),
+  non un `CHECK`.
+* **Il `CHECK` condizionale nasce in `90_end`, non accanto alla colonna**: il
+  valore lo scrive il mirror del CSV in `80_data`, che gira dopo `00_schema`. Su
+  dbdev le 43 righe esistono già con la colonna `NULL`, e il vincolo nascerebbe
+  violato.
+* **Il mirror `20260910-08`** (il primo dei due sullo stesso CSV) non è toccato:
+  carica la colonna dall'intestazione del CSV, ed è testo — verificato
+  nell'`updateSQL` offline (§8.5), dove entrambi i mirror scrivono `chi_agisce`,
+  `NULL` compreso.
+* **Postura**: solo `GRANT SELECT`, come `dbops.presidi`. ⚠️ Fatto, non scelta:
+  `dbops` è nel loop dei grant di `ci_apply` (`90_end/ci_apply/20260205-41`),
+  che dà all'app `SELECT, INSERT, UPDATE, DELETE` su tutte le tabelle dello
+  schema — anche su `dbops.presidi`, che oggi non è dichiarata in sola lettura.
+  Se si volesse il catalogo in sola lettura per l'app (scrive solo il seed), è
+  un lavoro a sé con le sue tre sedi (linee-guida-sql §11.8), per **entrambe** le
+  tabelle. Non chiesto dal brief, non fatto.
+* Niente RLS (catalogo letto da tutti), niente `storicizza` (come
+  `dbops.presidi`), nessun indice in più: la UNIQUE `(vista, lingua)` copre la FK
+  su `vista` per prefisso; quella su `lingua` la registra `fn_populate_fk_index_policy`
+  a `consentito = false` (nessuna query entra da lì).
+
+### 8.2 I pgTAP
+
+| File | Cosa |
+| --- | --- |
+| `db/pgtap/dbops/test-presidi-testi-v1.sql` (**nuovo**, plan 7, runner owner) | 1 misura non degradata · 2 completezza `it` (nomina le viste scoperte) · 3 nessun testo su un presidio obsoleto · 4 `chk_presidi_chi_agisce_se_allarma` rifiuta · 5 …e accetta un `INVENTARIO` · 6 `chk_presidi_chi_agisce` rifiuta un valore fuori dominio · 7 `has_table_privilege('zeroerp_app', …, 'SELECT')` |
+| `db/pgtap/dbops/test-catalogo-presidi-v1.sql` (**ritoccato**) | la fixture `ZERO` dei test 9-10 e la riga `CANCELLO` del test 7 portano ora `chi_agisce = 'SVILUPPO'`: senza, la fixture morirebbe sul vincolo nuovo, e il test 7 passerebbe per il vincolo sbagliato |
+
+I test 4 e 6 si leggono dal **nome** del vincolo (`throws_like`), non dal solo
+`23514`: `dbops.presidi` ha nove `CHECK`, e un altro vincolo farebbe passare il
+test per il motivo sbagliato.
+
+### 8.3 Correzioni ai testi del §5, col motivo
+
+Le altre 39 frasi sono entrate **come le ha scritte il BE**, verificate contro la
+`nota` di ogni presidio.
+
+| Vista | Cosa cambia | Motivo |
+| --- | --- | --- |
+| `vw_processi_programmazione_da_guardare` | **Chi: `AMMINISTRATORE` → `SISTEMISTA`.** Azione: «Avvisa chi gestisce il server: il programmatore dei processi, o il timer di quel processo, non sta girando. Intanto puoi lanciarlo a mano da Processi automatici con «Esegui ora». Se il processo è partito ma non ha lasciato traccia, avvisa anche lo sviluppo.» | Gli stati della vista (`MUTO`, `MAI_PARTITO`, `GIRA_E_NON_REGISTRA`) dicono tutti che lo schedulatore o il timer non fa il suo lavoro, oppure che il giornale non registra: nessuno dei due si spegne dall'applicazione. «Esegui ora» rimedia alla corsa mancata, non alla programmazione |
+| `vw_credenziali_da_sanare` | Azione: «Da Accessi, fra gli altri accessi, dai una veste alla credenziale oppure cancellala. Se ha le vesti di una persona e di un processo automatico, separale su due credenziali diverse.» Significato: aggiunto «che non entrano da nessuna parte» | La `nota` dice che dal 2026-10-02 una credenziale **senza veste non la mostra la lista Operatori**: l'azione mandava dove la riga non c'è. Sta in `anagrafiche.vw_accessi_altri` (endpoint «Altri accessi», filtro `nessun_accesso`). ⚠️ **Il nome a video lo verifichi il FE** |
+| `vw_magazzino_valore_giacenza_divergente` | Azione: «Non correggere giacenze o valori a mano: avvisa lo sviluppo. Il valore si ricalcola con la procedura apposita, che lancia chi gestisce il database, e va capito chi ha scritto fuori dalla procedura.» | La `nota` dà il rimedio: `magazzino.fn_ricalcola_valore_giacenza`, eseguita dal **proprietario** (l'app non la esegue dal 2026-09-24), **poi** capire chi ha scritto. La frase del BE diceva solo la seconda metà |
+| `vw_emittenti_non_serviti` | Azione: «Da Processi automatici, sul processo indicato, crea l'utente tecnico per quell'azienda emittente.» | Il verbo c'è nell'applicazione (`ProcessiService.crea_utente_tecnico`): l'azione ora dice **dove** si fa |
+| `vw_processi_che_bypassano` | Azione: «Avvisa subito chi gestisce il server e il database: è un rischio di sicurezza.» | Allineata al badge di `SISTEMISTA` («chi gestisce il server»): un ruolo con `BYPASSRLS` si toglie nel provisioning, che è del server |
+
+⚠️ **Da verificare a video dal FE**, perché il DB non vede il menu: «coda
+lavori», «coda stampe», «lista Operatori», «Log Email», «drawer dell'articolo»,
+«Accessi, fra gli altri accessi». Una parola diversa a video si corregge nel CSV.
+
+### 8.4 Ricadute per il BE/FE (§6), dette dal lato DB
+
+* Il join è su **`vista`** (§8.1). Ripiego sulla lingua: `lingua = <richiesta>`
+  con ripiego su `'it'`, come per `config.messaggi_errore`.
+* Il mirror `CHI_AGISCE` del BE si presidia contro `chk_presidi_chi_agisce`
+  (`db_e2e.valori_check`), come gli altri tre.
+* ⚠️ Se un test Django **inserisce** righe in `dbops.presidi` con natura diversa
+  da `INVENTARIO`, deve ora valorizzare `chi_agisce`. Censiti il 2026-10-06: nel
+  backend nessun `INSERT`/`UPDATE` su `dbops.presidi`.
+
+### 8.5 La prova (scratch `zeroerp_ci`, 2026-10-06)
+
+* SQL **estratto**, non riscritto: `updateSQL` offline dei sei changeSet toccati
+  (i quattro nuovi + i due mirror di `presidi.csv`), eseguito con
+  `ON_ERROR_STOP=1` dentro `BEGIN … ROLLBACK`. Il loader dei testi esce con
+  `WHERE vista = … AND lingua = 'it'`; i due mirror del catalogo scrivono
+  `chi_agisce`, `NULL` sugli inventari.
+* Ramo «dbdev» (catalogo già pieno, `UPDATE`): `test-presidi-testi-v1` **7/7**,
+  `test-catalogo-presidi-v1` **11/11**.
+* Ramo «da zero» (catalogo svuotato in transazione, poi i mirror: `INSERT`):
+  52 presidi, 9 con `chi_agisce` `NULL` (gli inventari), 43 testi, vincolo di
+  `90_end` aggiunto senza errori.
+* **Mutazione**: tolto un testo, ritirato un presidio senza togliere il suo
+  testo, tolto il vincolo → rossi **esattamente** i test 2, 3 e 4, con le viste
+  nominate nel messaggio.
+* Guardrail statici verdi: letterali SQL, `runOnChange`, preCondition/seed, DDL
+  su trigger d'automazione, GRANT a ruoli batch, timestamp senza fuso, v1
+  congelato.
+* ⚠️ **Cosa non copre**: lo scratch è un database a parte, quindi né l'apply
+  vero su dbdev né la corsa pgTAP completa (presidi trasversali compresi): sono
+  di Tid. E non prova ciò che vede l'**app** (la RLS non entra: catalogo senza RLS).
+
+### 8.6 Apply ed esito (2026-10-06)
+
+* ✅ **Tid ha applicato** `20261006-04…-07` su dbdev, insieme al CSV
+  `presidi.csv` con `chi_agisce` e al mirror `20260910-35` ritoccato.
+* ✅ **pgTAP verdi** nella corsa di Tid, compreso il nuovo
+  `dbops/test-presidi-testi-v1` e il ritoccato `dbops/test-catalogo-presidi-v1`.
+* ⏳ **Resta al BE/FE il §6**: `presidi_repository.py` (join su
+  `dbops.presidi_testi.vista`, ripiego su `it`, `chi_agisce`), il digest, il chip
+  del pannello coi tre badge, e la verifica a video dei nomi di schermata citati
+  nei testi (§8.3). Una parola diversa a video si corregge nel CSV
+  `80_data/sql/dbops/presidi_testi.csv`, lato DB.
+* Restano aperti, non bloccanti: D-4 (le quattro misure larghe, §7) e la postura
+  in sola lettura del catalogo per l'app (§8.1, non chiesta).

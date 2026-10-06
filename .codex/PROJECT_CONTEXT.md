@@ -218,7 +218,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **I presidi parlano a chi deve agire** (`work-in-progress/brief-db-presidi-cosa-significa-cosa-fare.md`,
   scritto il 2026-10-06 dal §5-bis del collaudo dell'osservabilità, chiuso e archiviato lo stesso giorno):
   `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su `dbops.presidi`, con i testi
-  proposti per i 43 presidi che si accendono. ⏳ Decisioni D-1…D-4 da confermare da Tid, poi DB, poi BE/FE.
+  proposti per i 43 presidi che si accendono. DB ✅ **applicato** il 2026-10-06 sulle proposte D-1…D-3 (`20261006-04…-07`,
+  pgTAP `dbops/test-presidi-testi-v1` verdi); D-4 resta un rilievo (§7). ⏳ Tocca al BE/FE (§6): il join è su `vista`.
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
   resta R-4, che vuole un brief DB non ancora scritto. Chiuso il 2026-10-03
   `work-done/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi

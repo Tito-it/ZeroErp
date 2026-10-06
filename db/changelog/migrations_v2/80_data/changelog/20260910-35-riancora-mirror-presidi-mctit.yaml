@@ -110,6 +110,13 @@ databaseChangeLog:
               - column: { name: attivo,        type: BOOLEAN }
               - column: { name: obsoleto_dal,  type: DATE }
               - column: { name: nota,          type: STRING }
+              # 2026-10-06, brief-db-presidi-cosa-significa-cosa-fare §4.2: chi
+              # spegne il presidio (colonna di 00_schema/20261006-04). NULL solo
+              # sugli INVENTARIO; l'obbligo sugli altri lo mette
+              # 90_end/20261006-07, dopo questo mirror. ⚠️ Il mirror -08 legge lo
+              # stesso CSV e carica la colonna dall'intestazione: e' testo,
+              # nessun tipo da dichiarare perche' arrivi giusta.
+              - column: { name: chi_agisce,    type: STRING }
       rollback:
         # ⛔ Niente DELETE, e vuoto DI PROPOSITO: il catalogo lo popola anche il
         #   20260910-08, quindi svuotare la tabella qui cancellerebbe il lavoro
