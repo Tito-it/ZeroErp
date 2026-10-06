@@ -2,9 +2,9 @@
 
 > **Cos'è.** Il copione della validazione a video: si tiene aperto accanto
 > all'applicazione e si spunta. Non è il piano: il *perché* sta nei due brief
-> chiusi, [brief-be-ricerca-full-liste-residue.md](../work-done/brief-be-ricerca-full-liste-residue.md)
+> chiusi, [brief-be-ricerca-full-liste-residue.md](brief-be-ricerca-full-liste-residue.md)
 > (§7-bis, §13.4, §13.5) e
-> [brief-db-ricerca-full-colonne-da-accendere.md](../work-done/brief-db-ricerca-full-colonne-da-accendere.md).
+> [brief-db-ricerca-full-colonne-da-accendere.md](brief-db-ricerca-full-colonne-da-accendere.md).
 > Qui c'è solo **cosa fare, cosa deve succedere, e cosa fare se non succede**.
 >
 > **Perché esiste.** Il pezzo condiviso (`store.ricercaFull` + `FiltriLista`)
@@ -14,7 +14,7 @@
 > l'ha visto solo chi l'ha scritto. Un difetto qui non dà errori: una casella
 > che manca, o una casella che non filtra niente.
 >
-> **Stato**: ✏️ scritto il 2026-09-24, da eseguire.
+> **Stato**: ✅ **chiuso il 2026-10-06** — tutti i passi spuntati da Tid (scritto il 2026-09-24).
 > **Ambiente**: sviluppo (`dbdev`). **Utente**: un operatore con lettura su
 > magazzino e pagamenti, e un amministratore per il passo 3.
 
@@ -43,21 +43,21 @@ quell'operatore (`GET /ui/liste/<codice>/config`). Controllare le colonne
 
 ## 2. Una lista su compatto
 
-☐ Sotto i 1024px (o su un tablet) la casella resta **fuori** dal drawer dei
+X Sotto i 1024px (o su un tablet) la casella resta **fuori** dal drawer dei
 filtri, in toolbar (slot `#sempre`).
 
 ## 3. L'amministratore spegne tutte le colonne
 
-☐ Da amministrazione liste, su una delle nove: `ricercabile_full = f` su
+X Da amministrazione liste, su una delle nove: `ricercabile_full = f` su
 **tutte** le colonne. Riaprire la lista: la casella **non c'è**.
 
-☐ Con la lista aperta su un `?search=…` (deep-link): spente le colonne, il
+X Con la lista aperta su un `?search=…` (deep-link): spente le colonne, il
 termine si svuota e la lista torna intera. **Se resta vuota**:
 `useListaConfigurabilePage.onConfigLoaded` non ha svuotato `searchText`.
 
-☐ Riaccendere le colonne: la casella torna.
+X Riaccendere le colonne: la casella torna.
 
 ## 4. Nessun lampeggio
 
-☐ Aprendo una lista che cerca, la casella c'è **da subito**, senza sparire e
+X Aprendo una lista che cerca, la casella c'è **da subito**, senza sparire e
 ricomparire mentre arriva la configurazione (`null` la lascia a video).

@@ -16,7 +16,7 @@
 > il mirror del `codice` delle famiglie (§13.5), la gamba bundle non provata
 > (§13.3 g) e il giornale in UTC (§10) in PROJECT_CONTEXT § «Aperto — Media
 > priorità»; il collaudo a video in
-> [collaudo-in-app-casella-ricerca-liste](../work-in-progress/collaudo-in-app-casella-ricerca-liste.md).
+> [collaudo-in-app-casella-ricerca-liste](collaudo-in-app-casella-ricerca-liste.md).
 >
 > **Stato 2026-09-24 sera (prima della chiusura):** 🟡 in corso — **BE chiuso** (passi 0-5, 7, 8;
 > §13), passo 6 FE fatto (§13.5, collaudo a video da fare), revisione del diff
