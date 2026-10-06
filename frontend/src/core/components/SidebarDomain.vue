@@ -3,12 +3,13 @@
 // Icona stella per impostare la pagina preferita per il dominio.
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { computed, inject, ref } from 'vue'
+import { computed, inject, nextTick, ref } from 'vue'
 import { useNavigationStore } from '../../stores/navigation'
 import { useNotify } from '../composables/useNotify'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { NAV_ICONS, resolveNavigationLabel } from '../navigation'
 import { MANAGE_ICONS } from '../constants'
+import Menu from 'primevue/menu'
 import SidebarItem from './SidebarItem.vue'
 
 const { t } = useI18n()
@@ -19,7 +20,15 @@ const notify = useNotify()
 const { isMenuItemAllowed } = useNavigationFavorites()
 const isCollapsed = inject('sidebarCollapsed', ref(false))
 
-const visibleMenu = computed(() => nav.currentMenu.filter(isMenuItemAllowed))
+// ⭐ Filtrati anche i figli di un gruppo, e il gruppo senza figli visibili
+//    sparisce. I cancelli del gruppo valgono gia' dal filtro sul gruppo; qui
+//    restano quelli che un figlio dichiarasse per se'.
+const visibleMenu = computed(() => nav.currentMenu
+  .filter(isMenuItemAllowed)
+  .map(item => (item.children
+    ? { ...item, children: item.children.filter(isMenuItemAllowed) }
+    : item))
+  .filter(item => !item.children || item.children.length > 0))
 
 const emit = defineEmits(['navigate'])
 const openGroups = ref({})
@@ -63,13 +72,51 @@ function handleLeafClick(item) {
   emit('navigate')
 }
 
-function handleMenuClick(item) {
+// ⭐ A sidebar chiusa un gruppo e' un'icona sola: il click apre le sue voci
+//    in un menu a comparsa ACCANTO al rail (Tid 2026-10-06). ⛔ Fino ad allora
+//    portava alla prima voce, e le altre del gruppo non si raggiungevano.
+const gruppoMenu = ref(null)
+const gruppoMenuItems = ref([])
+// L'icona a cui il popup si affianca: presa dall'evento, non dai campi
+// interni di PrimeVue (`target` del Menu), che un aggiornamento puo' cambiare.
+let gruppoAncora = null
+
+function apriGruppoAComparsa(item, event) {
+  gruppoAncora = event?.currentTarget ?? null
+  gruppoMenuItems.value = [{
+    label: itemLabel(item),
+    items: item.children.map(child => ({
+      key: child.key,
+      label: itemLabel(child),
+      icon: child.icon,
+      command: () => handleLeafClick(child),
+    })),
+  }]
+  gruppoMenu.value?.toggle(event)
+  // ⛔ Non basta `@show`: col popup aperto su un gruppo, il click su un ALTRO
+  //    gruppo lo chiude (listener di click esterno, in cattura) e lo riapre
+  //    nello stesso tick — PrimeVue non rientra in `onEnter`, niente `show`,
+  //    e il popup restava accanto al gruppo di prima con le voci del nuovo.
+  nextTick(affiancaAlRail)
+}
+
+// Scopo: il popup di PrimeVue si apre SOTTO l'icona, sopra le voci che
+//        seguono: lo si sposta a destra del rail, allineato all'icona.
+function affiancaAlRail() {
+  const el = gruppoMenu.value?.container
+  if (!el || !gruppoAncora) return
+  const r = gruppoAncora.getBoundingClientRect()
+  el.style.top = `${r.top + window.scrollY}px`
+  el.style.left = `${r.right + window.scrollX + 4}px`
+}
+
+function handleMenuClick(item, event) {
   if (!hasChildren(item)) {
     handleLeafClick(item)
     return
   }
   if (isCollapsed.value) {
-    handleLeafClick(item.children[0])
+    apriGruppoAComparsa(item, event)
     return
   }
   openGroups.value = {
@@ -111,7 +158,8 @@ function handleToggleFavorite(item) {
         :icon="item.icon"
         :label="itemLabel(item)"
         :active="isItemActive(item)"
-        @click="handleMenuClick(item)"
+        :gruppo="hasChildren(item)"
+        @click="handleMenuClick(item, $event)"
       >
         <span class="menu-item-label">
           {{ itemLabel(item) }}
@@ -153,6 +201,8 @@ function handleToggleFavorite(item) {
         </SidebarItem>
       </div>
     </template>
+
+    <Menu ref="gruppoMenu" :model="gruppoMenuItems" popup />
   </div>
 </template>
 

@@ -43,7 +43,7 @@ Entra come **super admin**.
 | --- | --- | --- | --- |
 | **1.1** | Guarda la topbar, **subito dopo** il pulsante delle code | Un pulsante con l'ingranaggio e un badge. A presidi tutti a posto: **un badge verde con `0`** — «visto e vuoto», non «niente da dire» | Se non c'è niente, il silenzio è di nuovo ambiguo: era il problema della #8 |
 | **1.2** | Passa col mouse | Tooltip «Presidi di sistema: tutto a posto — letti alle HH:MM», oppure «N da guardare, M non letti — letti alle …» | Senza l'ora non sai se è di adesso o di stamattina |
-| **1.3** | Click | Vai a **Amministrazione → Processi automatici**, senza schermate nuove | — |
+| **1.3** | Click | Vai a **Strumenti → Diagnostica → Processi automatici**, senza schermate nuove | — |
 | **1.4** | Nel pannello, premi **Ricarica** | Il pallino si aggiorna **subito** (non aspetta i 5 minuti): chi ha appena letto il dato vero non lascia il pallino indietro | Se resta vecchio, il patto col pannello non c'è |
 | **1.5** | Confronta i colori: testata del pannello e pallino | ⭐ **Lo stesso vocabolario**: allarmi (con righe) in **rosso**, non letti in **giallo**, in entrambi i posti. Il 19-09 dicevano il contrario l'uno dell'altro, corretto | Due sedi per un colore divergono |
 | **1.6** | Se hai un presidio con righe (o ne provochi uno): guarda il pallino | Badge **rosso col numero**; se c'è anche un non-letto, **due badge**, prima gli allarmi | — |
@@ -70,7 +70,7 @@ Super admin. È la lista **per chi ripara**, non per l'operatore.
 | **2.10** | Kebab riga → **Giornale di questa transazione** | ⭐ Il ponte: si apre **Vendite → Giornale eventi** già filtrato sul **Filo** di quel `tx_id`. È il percorso «dal guasto tecnico alla storia di dominio» | Se la voce non c'è: sei senza l'area vendite — è un'offerta, non una promessa |
 | **2.11** | Dal giornale, torna su Errori tecnici e riapri il giornale dal menu | ⭐ Il filo **non è più forzato**: l'URL si è pulito dopo l'uso | Se il `tx_id` rimane appeso a ogni ritorno, è il difetto corretto il 19-09 |
 | **2.12** | **Esporta** | Il file rispetta le colonne che hai scelto; **Causa** e **Soluzione** ci sono anche se a video no (esportabili, non visibili) | — |
-| **2.13** | 🔴 Come **operatore**, prova l'URL `/amm-software/error-log` | Rifiutato: è dietro il permesso dell'amministratore, come Audit Log | — |
+| **2.13** | 🔴 Come **operatore**, prova l'URL `/strumenti/diagnostica/error-log` (e che in Strumenti il gruppo «Diagnostica» non compaia) | Rifiutato: è dietro il permesso dell'amministratore, come Audit Log | — |
 
 ---
 
@@ -107,7 +107,7 @@ si può emettere basta).
 | | Cosa fare | Cosa deve succedere | Se non succede |
 | --- | --- | --- | --- |
 | **4.1** | Apri il lotto → il **banner** | Dice «fermo» con il motivo, e il pulsante del passo successivo è **spento** | — |
-| **4.2** | **Amministrazione → Processi automatici** (super admin) | Fra i presidi c'è **«lotti fermi»** (`dbops.vw_lotti_fermi_da_guardare`) e conta **lo stesso lotto** — dopo un'ora dal fermo, per costruzione | ⭐ È la prova che il verdetto è **uno**: banner, presidio, digest e pallino leggono la stessa colonna `fermo` a DB. Se il banner dice fermo e il presidio no (o viceversa), ci sono due sedi |
+| **4.2** | **Strumenti → Diagnostica → Processi automatici** (super admin) | Fra i presidi c'è **«lotti fermi»** (`dbops.vw_lotti_fermi_da_guardare`) e conta **lo stesso lotto** — dopo un'ora dal fermo, per costruzione | ⭐ È la prova che il verdetto è **uno**: banner, presidio, digest e pallino leggono la stessa colonna `fermo` a DB. Se il banner dice fermo e il presidio no (o viceversa), ci sono due sedi |
 | **4.3** | Risolvi il lotto (o annullalo) e ricarica | Banner e presidio **cambiano insieme** | — |
 | **4.4** | Scheda **Storia** del lotto e della fattura (ripasso del Passo A) | Le righe dei tre registri in ordine di tempo; sul `TASK_RUN` l'orario è l'inizio; il `context` **c'è** qui (è forense), mentre nel Giornale eventi **no** | — |
 

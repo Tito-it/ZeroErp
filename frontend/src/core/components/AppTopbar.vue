@@ -157,7 +157,7 @@ const presidiTooltip = computed(() => {
 })
 
 function apriProcessiAutomatici() {
-  router.push({ name: 'amm-software-processi-automatici' })
+  router.push({ name: 'strumenti-diagnostica-processi-automatici' })
 }
 
 // Scopo: classe CSS standard per le voci del kebab topbar. Tutte neutre/

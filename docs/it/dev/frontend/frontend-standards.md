@@ -70,7 +70,11 @@ src/
                         ognuna porta la sua con `requireArea` — code di lavoro
                         (`strumenti`), giornale eventi (`vendite`: vista e
                         client restano in `vendite/`), email dell'operatore
-                        (nessuna: `skip_area_check` BE, la vede ogni operatore)
+                        (nessuna: `skip_area_check` BE, la vede ogni operatore).
+                        Dal 2026-10-06 il gruppo «Diagnostica» (`adminOnly`
+                        sul gruppo, ereditato dai figli): processi automatici,
+                        audit log, errori tecnici, log email — viste ed
+                        endpoint restano di `amministrazione/` / `/amm-software/`
   documenti/          ← MOTORE: generazione ed emissione dei documenti (PDF,
                         scelta template), condivisa dai domini che stampano
   config/             ← configurazione (tabelle, impostazioni, modelli documenti)
@@ -3265,7 +3269,8 @@ stato espanso — invita a chiudere). Standard PrimeVue/Material allineato.
 PrimeVue usa `chevron-right` (chiusa) / `chevron-down` (aperta). Il toggle
 «espandi tutte» della lista usa la **stessa** coppia, `MANAGE_ICONS.ROW_EXPAND` /
 `MANAGE_ICONS.ROW_COLLAPSE`, così riga e lista portano lo stesso segno. Stessa
-coppia per i gruppi annidati della sidebar e per i toggler di riga scritti a mano
+coppia per i gruppi annidati della sidebar (a sidebar chiusa, `ROW_EXPAND`
+accanto all'icona del gruppo segnala che dentro ci sono altre voci) e per i toggler di riga scritti a mano
 nei drawer (`isExpanded(data) ? ROW_COLLAPSE : ROW_EXPAND`). ⛔ Mai il glifo
 `pi pi-chevron-*` cablato per un toggle di espansione.
 `EXPAND`/`COLLAPSE` restano per accordion, pannelli e tree.

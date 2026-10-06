@@ -1,6 +1,6 @@
 # Censimento icone per significato
 
-> Stato al **2026-09-27**. Documento di lavoro: si decide qui, poi si costruisce.
+> Stato al **2026-09-27** — ✅ **chiuso il 2026-10-06**. Documento di lavoro: si decide qui, poi si costruisce.
 > Regola: **il nome della costante dice il significato, non il disegno**. Due gesti
 > diversi non portano lo stesso segno, e lo stesso significato ne porta uno solo.
 > Nessuna icona `'pi pi-...'` scritta a mano fuori da `core/constants.js` e
@@ -18,9 +18,13 @@
 >    `frontend/src/core/icone.spec.js`.
 >
 > Nel frontend **nessun letterale di icona** è rimasto fuori da `constants.js` e
-> `navigation.js`, tranne l'eccezione dichiarata `useLottoAzioni.js`
-> (`LOTTO_AZIONE_ICONA`). Quella è in attesa di
-> [brief-db-icone-azioni-per-significato.md](../work-done/brief-db-icone-azioni-per-significato.md).
+> `navigation.js`. L'ultima eccezione, `useLottoAzioni.js` (`LOTTO_AZIONE_ICONA`,
+> `LOTTO_AZIONE_SEVERITY`), è ritirata il 2026-09-27 con
+> [brief-db-icone-azioni-per-significato.md](./brief-db-icone-azioni-per-significato.md):
+> icona e colore li dà il verbo (`core/aspettoAzioni.js`). In `icone.spec.js` la
+> mappa `ECCEZIONI` è vuota.
+>
+> ✅ **Chiuso il 2026-10-06** e spostato in `work-done/`.
 >
 > Regola scritta in frontend-standards §«Icone: un nome di significato, in un
 > punto solo».

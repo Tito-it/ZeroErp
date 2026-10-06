@@ -2,7 +2,7 @@
 
 > **Chi scrive:** sessione backend/frontend (`dev/backend-tid`), 2026-09-27.
 > **A chi:** Tid (decisione, §3), poi team DB (§4) e frontend (§5).
-> **Origine:** [censimento-icone-per-significato.md](../work-in-progress/censimento-icone-per-significato.md),
+> **Origine:** [censimento-icone-per-significato.md](./censimento-icone-per-significato.md),
 > approvato da Tid il 2026-09-27. Nel frontend ogni icona è ora una costante
 > con nome di significato. Il presidio `frontend/src/core/icone.spec.js` fa
 > fallire la CI se compare un `'pi pi-...'` scritto a mano.

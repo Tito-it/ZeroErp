@@ -59,6 +59,11 @@ export const NAV_ICONS = Object.freeze({
   // futuro giri/job). pi-wrench = cassetta attrezzi, non-tecnico.
   STRUMENTI: 'pi pi-wrench',
   CODE_LAVORO: 'pi pi-inbox',
+  // Il gruppo Diagnostica di Strumenti (2026-10-06): il battito del sistema —
+  // processi, audit, errori, email. Glifo non usato da altre chiavi.
+  // ⛔ Non `PROCESSI_AUTOMATICI` (`pi-cog`) ne' `ERROR_LOG`: sono due delle
+  //    voci DENTRO il gruppo, e il gruppo non e' nessuna di loro.
+  DIAGNOSTICA: 'pi pi-wave-pulse',
   // Dominio INCASSI. ⚠️ Nessuna e' l'icona del dominio (`pi-credit-card`): una
   // voce di menu che ripete l'icona del suo dominio non distingue niente.
   DISTINTE: 'pi pi-wallet',
@@ -264,6 +269,13 @@ export const DOMAINS = [
 //                               processo. La voce e' visibile se utente
 //                               admin o se almeno una delle azioni e'
 //                               abilitata. Filter applicato lato sidebar.
+//   adminOnly (opzionale, boolean) — solo il super admin. Per la voce che
+//                               vive in un dominio aperto a tutti ma il cui
+//                               backend e' `AdminAPIView` (Strumenti →
+//                               Diagnostica).
+//   ⚠️ I cancelli di un GRUPPO (voce con `children`) valgono per i figli:
+//      li applica `isMenuItemAllowed` risalendo `gruppo`, che mette
+//      `flattenMenu`. Un cancello si scrive una volta, sul gruppo.
 export const DOMAIN_MENUS = {
   'amm-software': [
     { key: 'accessi', icon: NAV_ICONS.ACCESSI, to: '/amm-software/accessi' },
@@ -277,14 +289,11 @@ export const DOMAIN_MENUS = {
     { key: 'categorie-clienti', icon: NAV_ICONS.CATEGORIE_CLIENTI, to: '/amm-software/categorie-clienti' },
     { key: 'definizioni-workflow', icon: NAV_ICONS.DEFINIZIONI_WORKFLOW, to: '/amm-software/definizioni-workflow' },
     { key: 'matrici', icon: NAV_ICONS.TABELLE, to: '/amm-software/matrici' },
-    { key: 'processi-automatici', icon: NAV_ICONS.PROCESSI_AUTOMATICI, to: '/amm-software/processi-automatici' },
-    { key: 'audit-log', icon: NAV_ICONS.AUDIT_LOG, to: '/amm-software/audit-log' },
-    // Il registro degli errori tecnici (`dbops.error_log`): stessa famiglia
-    // dei due diari accanto (audit e email).
-    { key: 'error-log', icon: NAV_ICONS.ERROR_LOG, to: '/amm-software/error-log' },
+    // ⭐ Processi automatici, audit, errori tecnici e log email stanno in
+    // Strumenti → Diagnostica dal 2026-10-06 (Tid): qui resta cio' che si
+    // CONFIGURA, li' cio' che si GUARDA.
     { key: 'email-accounts', icon: NAV_ICONS.ACCOUNT_EMAIL, to: '/amm-software/email-accounts' },
     { key: 'email-templates', icon: NAV_ICONS.TEMPLATE_EMAIL, to: '/amm-software/email-templates' },
-    { key: 'email-log', icon: NAV_ICONS.EMAIL, to: '/amm-software/email-log' },
     {
       key: 'personalizzazioni-liste-tecniche',
       icon: NAV_ICONS.PERSONALIZZAZIONI_LISTE,
@@ -379,7 +388,28 @@ export const DOMAIN_MENUS = {
     { key: 'giornale', icon: NAV_ICONS.GIORNALE, to: '/strumenti/giornale', requireArea: 'vendite' },
     // Le email dell'operatore (dal 2026-09-26). ⛔ Senza `requireArea`: e' la
     // forma a video dello `skip_area_check` di `/core/email/log/`.
-    { key: 'email', icon: NAV_ICONS.EMAIL, to: '/strumenti/email' }
+    { key: 'email', icon: NAV_ICONS.EMAIL, to: '/strumenti/email' },
+    // ⭐ Diagnostica (Tid 2026-10-06): i diari del sistema, prima in
+    // Amm. software. ⛔ `adminOnly` sul GRUPPO e su nessun figlio: le viste
+    // nominano TUTTE le aziende senza RLS e il backend le serve solo al super
+    // admin (`AdminAPIView`, endpoint rimasti sotto `/amm-software/`). I figli
+    // ereditano il cancello da `flattenMenu`, che lo porta anche al router
+    // guard: senza, il menu li nasconderebbe ma l'indirizzo li aprirebbe.
+    {
+      key: 'diagnostica',
+      icon: NAV_ICONS.DIAGNOSTICA,
+      adminOnly: true,
+      children: [
+        { key: 'processi-automatici', icon: NAV_ICONS.PROCESSI_AUTOMATICI, to: '/strumenti/diagnostica/processi-automatici' },
+        { key: 'audit-log', icon: NAV_ICONS.AUDIT_LOG, to: '/strumenti/diagnostica/audit-log' },
+        // Il registro degli errori tecnici (`dbops.error_log`): stessa
+        // famiglia dei diari accanto (audit e email).
+        { key: 'error-log', icon: NAV_ICONS.ERROR_LOG, to: '/strumenti/diagnostica/error-log' },
+        // Tutte le email inviate. ⚠️ Non e' la voce `email` qui sopra (le
+        // email dell'operatore, con la RLS): stessa lista, un'altra porta.
+        { key: 'email-log', icon: NAV_ICONS.EMAIL, to: '/strumenti/diagnostica/email-log' }
+      ]
+    }
   ],
   'pratiche': [
     { key: 'home', icon: NAV_ICONS.HOME, to: '/pratiche' },
@@ -415,16 +445,22 @@ export const HOME_ITEM = { key: 'home', icon: NAV_ICONS.HOME, to: '/' }
 // (L1 + figli L2), per cercare una voce per `key` o per `to` senza
 // dover conoscere la profondita' della struttura.
 // Centralizzata qui perche' consumata da piu' composable di
-// navigazione (preferiti, deep-link dei widget dashboard): e' la
-// definizione unica di "tutte le voci di questo dominio".
+// navigazione (preferiti, deep-link dei widget dashboard, router guard,
+// schede): e' la definizione unica di "tutte le voci di questo dominio".
+// ⛔ Ogni figlio esce con `gruppo` = la voce padre: e' cosi' che i cancelli
+//    del gruppo arrivano a `isMenuItemAllowed`. Il figlio e' una COPIA:
+//    nessuno confronti le voci per identita'.
 export function flattenMenu(items) {
   return (items || []).flatMap(item =>
-    item.children ? [item, ...item.children] : [item],
+    item.children
+      ? [item, ...item.children.map(child => ({ ...child, gruppo: item }))]
+      : [item],
   )
 }
 
 // Scopo: la voce di menu e' permessa all'utente? Filtro UNICO dei cancelli di
-// voce (`requireArea`, `requireAnyAction`), letto da sidebar, preferiti,
+// voce (`requireArea`, `requireAnyAction`, `adminOnly`, piu' quelli del
+// `gruppo` da cui il figlio viene, vedi `flattenMenu`), letto da sidebar, preferiti,
 // widget e router guard (estratto 2026-09-26, regola del 2, ok Tid).
 // ⛔ Il router DEVE leggere la stessa regola della sidebar: un cancello solo a
 // video lascia aprire la pagina dall'indirizzo, e l'utente trova una schermata
@@ -432,6 +468,8 @@ export function flattenMenu(items) {
 // `auth` e' lo store (passato, non importato: questo modulo resta puro).
 export function isMenuItemAllowed(item, auth) {
   if (!item) return false
+  if (item.gruppo && !isMenuItemAllowed(item.gruppo, auth)) return false
+  if (item.adminOnly && !auth.isSuperAdmin) return false
   if (item.requireArea && auth.isAreaBlocked(item.requireArea)) return false
   if (Array.isArray(item.requireAnyAction) && item.requireAnyAction.length > 0) {
     if (!auth.isSuperAdmin && !item.requireAnyAction.some(action => auth.isActionAllowed(action))) {
@@ -489,8 +527,7 @@ export function resolveTabDisplayLabel(tab, t, te = null) {
 export function resolveTabIcon(meta) {
   const { domain, menuKey } = meta
   if (menuKey && DOMAIN_MENUS[domain]) {
-    const item = DOMAIN_MENUS[domain]
-      .flatMap(m => m.children ? [m, ...m.children] : [m])
+    const item = flattenMenu(DOMAIN_MENUS[domain])
       .find(m => m.key === menuKey)
     if (item) return item.icon
   }
