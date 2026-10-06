@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_credenziale_ha_vesti: «questa credenziale ha almeno una veste,
+#   anche spenta?», in un posto solo.
+#   Brief: brief-db-elimina-credenziale-senza-veste, D-1 e §4.1
+#
+# ── ⭐ PERCHE' UN BUILDING BLOCK (regola del 2) ──────────────────────
+#   D-1: si elimina «solo una credenziale senza nessuna veste, nemmeno
+#   spenta: esattamente NESSUNA_VESTE del presidio, cioe'
+#   vw_accessi_altri.nessun_accesso, la stessa regola e non una seconda».
+#   La regola viveva come `(v.n_vesti IS NULL)` dentro la vista; la check
+#   nuova (20261006-13) ne avrebbe scritto la seconda copia (EXISTS su
+#   identita_digitali). Stesso significato, due testi: la regola del 2 vuole
+#   il BB alla seconda occorrenza e la prima ritirata nello STESSO giro
+#   (20261006-12 rifa' la vista sul BB).
+#   ⚠️ Oggi le due forme danno la stessa risposta: identita_digitali.
+#   soggetto_ruolo_id e' NOT NULL con FK, quindi i JOIN della vista non
+#   tolgono righe. Ma e' una coincidenza di struttura, non una regola.
+#
+# ── FORMA ─────────────────────────────────────────────────────────────
+#   LANGUAGE sql con corpo BEGIN ATOMIC: il corpo e' analizzato alla
+#   creazione e le dipendenze stanno in pg_depend, quindi una colonna
+#   rinominata non la lascia morta in silenzio (la trappola delle sql con
+#   corpo fra $$). STABLE, SECURITY INVOKER: identita_digitali non ha RLS.
+#   ⛔ Il BEGIN ATOMIC sta DA SOLO nel suo `- sql:` (pgjdbc non riprende a
+#   spezzare dopo l'END;): il COMMENT e' nel secondo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261006-11-create-fn-credenziale-ha-vesti-mctit.yaml
+
+  - changeSet:
+      id: 20261006-11-create-fn-credenziale-ha-vesti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_credenziale_ha_vesti(p_auth_user_id): true se la credenziale ha almeno una
+        veste in anagrafiche.identita_digitali, anche spenta. La regola unica di
+        NESSUNA_VESTE (vw_accessi_altri.nessun_accesso) e di CON_VESTI
+        (fn_check_credenziale_eliminabile). Brief: brief-db-elimina-credenziale-senza-veste D-1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_credenziale_ha_vesti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_credenziale_ha_vesti(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali idg
+                       WHERE idg.auth_user_id = p_auth_user_id);
+              END
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_credenziale_ha_vesti(p_auth_user_id integer) IS
+                  'true se la credenziale (django.auth_user.id) ha almeno una veste in '
+                  'anagrafiche.identita_digitali, anche spenta. La regola UNICA di «credenziale senza '
+                  'veste»: la leggono anagrafiche.vw_accessi_altri (nessun_accesso, da cui il motivo '
+                  'NESSUNA_VESTE di dbops.vw_credenziali_da_sanare) e script.fn_check_credenziale_eliminabile '
+                  '(motivo CON_VESTI). Una credenziale con sole vesti spente ha vesti: e'' una persona '
+                  'disattivata (V-3). NULL in ingresso -> false. STABLE, SECURITY INVOKER, corpo BEGIN '
+                  'ATOMIC. Brief: brief-db-elimina-credenziale-senza-veste (D-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_credenziale_ha_vesti(integer);

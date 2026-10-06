@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Il tab «Altri accessi» dell'area Accessi: una riga per credenziale di categoria ALTRO (script.fn_categoria_accesso), cioe' le persone senza veste operatore (portale clienti e fornitori, shop) e le credenziali senza alcuna veste (nessun_accesso). vesti = una voce per veste, anche spenta, con lo stato di script.fn_stato_veste e il soggetto collegato (cliente_ids e' un ARRAY: un soggetto_ruolo puo' avere piu' clienti; fornitore_id e' unico). vesti_elenco e stato_accesso (il migliore fra le vesti, NESSUNO senza vesti) servono a filtrare. Secondo fattore da fn_get_totp_device (solo lo stato) e fn_totp_obbligatorio; blocco da config.credenziali. Le credenziali vengono da script.fn_credenziali (una vista non nomina django.*). security_invoker: attraversa anagrafiche.clienti, che ha la RLS. Brief: brief-db-be-fe-area-accessi (R-DB-A2).
+> Il tab «Altri accessi» dell'area Accessi: una riga per credenziale di categoria ALTRO (script.fn_categoria_accesso), cioe' le persone senza veste operatore (portale clienti e fornitori, shop) e le credenziali senza alcuna veste (nessun_accesso, da script.fn_credenziale_ha_vesti: la regola unica, la stessa che rifiuta l'eliminazione in script.fn_check_credenziale_eliminabile). vesti = una voce per veste, anche spenta, con lo stato di script.fn_stato_veste e il soggetto collegato (cliente_ids e' un ARRAY: un soggetto_ruolo puo' avere piu' clienti; fornitore_id e' unico). vesti_elenco e stato_accesso (il migliore fra le vesti, NESSUNO senza vesti) servono a filtrare. Secondo fattore da fn_get_totp_device (solo lo stato) e fn_totp_obbligatorio; blocco da config.credenziali. Le credenziali vengono da script.fn_credenziali (una vista non nomina django.*). security_invoker: attraversa anagrafiche.clienti, che ha la RLS. Brief: brief-db-be-fe-area-accessi (R-DB-A2), brief-db-elimina-credenziale-senza-veste (D-1).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -19,7 +19,7 @@ SELECT c.auth_user_id,
     COALESCE(v.vesti, '[]'::jsonb) AS vesti,
     v.vesti_elenco,
     v.soggetti_elenco,
-    (v.n_vesti IS NULL) AS nessun_accesso,
+    (NOT script.fn_credenziale_ha_vesti(c.auth_user_id)) AS nessun_accesso,
     COALESCE(v.stato_accesso, 'NESSUNO'::text) AS stato_accesso,
     c.is_active,
     totp.stato AS secondo_fattore_stato,

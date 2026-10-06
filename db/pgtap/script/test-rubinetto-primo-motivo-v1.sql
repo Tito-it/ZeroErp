@@ -154,7 +154,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    31,
+    32,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -219,7 +219,13 @@ SELECT is(
     --   motivo di script.fn_check_credenziale_bloccabile (20261003-01), la
     --   stessa funzione da cui il dettaglio credenziale spegne «Blocca accesso»
     --   (brief-db-credenziale-verbi-amministratore R-DB-A5/A6).
-    'le trentuno funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-10-06: da 31 a 32. Un sito NUOVO nato sull'helper:
+    --   script.fn_elimina_credenziale (20261006-14) solleva il primo motivo di
+    --   script.fn_check_credenziale_eliminabile (20261006-13), la stessa
+    --   funzione da cui «Altri accessi» spegne «Elimina accesso». Due chiamate
+    --   (prima del DELETE e nella rete del 23503): si conta la FUNZIONE
+    --   (brief-db-elimina-credenziale-senza-veste §4.2).
+    'le trentadue funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la
