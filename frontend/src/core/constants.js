@@ -208,6 +208,9 @@ export const CANALE_LOGIN = {
     // Il secondo passo del login (secondo fattore): sotto /token/, quindi
     // l'interceptor non prova a rinnovare la sessione su un suo 401.
     secondoFattorePath: '/admin/token/secondo-fattore/',
+    // La chiave d'ingresso della porta, cioè il campo del corpo del login
+    // (L-4, D-9): il nome utente per l'operatore, l'email per portale e shop.
+    campoIngresso: 'username',
     i18n: 'auth.canale.admin'
   },
   PORTALE: {
@@ -215,6 +218,7 @@ export const CANALE_LOGIN = {
     tokenPath: '/portale/token/',
     refreshPath: '/portale/token/refresh/',
     secondoFattorePath: '/portale/token/secondo-fattore/',
+    campoIngresso: 'email',
     i18n: 'auth.canale.portale'
   },
   SHOP: {
@@ -222,6 +226,7 @@ export const CANALE_LOGIN = {
     tokenPath: '/shop/token/',
     refreshPath: '/shop/token/refresh/',
     secondoFattorePath: '/shop/token/secondo-fattore/',
+    campoIngresso: 'email',
     i18n: 'auth.canale.shop'
   }
 }

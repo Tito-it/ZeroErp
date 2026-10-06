@@ -19,6 +19,7 @@ Indice test eseguiti:
 3) secondo passo → access in memoria, profilo, codici di recupero rimasti
 4) secondo passo senza codice di recupero → rimasti null
 5) obbligo del secondo fattore → dal profilo (`obblighi_pendenti`), non ricalcolato
+6) la chiave d'ingresso è del canale: email per PORTALE e SHOP, nome utente per ADMIN (L-4)
 */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -103,6 +104,15 @@ describe('login a due passi (brief sicurezza §3.4-bis, T-4)', () => {
     const esito = await auth.completaSecondoPasso('sfida-1', { codice: '123456' })
     expect(apiPost).toHaveBeenCalledWith('/admin/token/secondo-fattore/', { sfida: 'sfida-1', codice: '123456' })
     expect(esito).toEqual({ codiciRecuperoRimasti: null })
+  })
+
+  it("6) la chiave d'ingresso è del canale: email per PORTALE e SHOP (L-4)", async () => {
+    apiPost.mockResolvedValue({ data: { two_factor_required: true, sfida: 's' } })
+    const auth = useAuthStore()
+    await auth.login('ada@example.it', 'pw', 'PORTALE')
+    expect(apiPost).toHaveBeenLastCalledWith('/portale/token/', { email: 'ada@example.it', password: 'pw' })
+    await auth.login('ada@example.it', 'pw', 'SHOP')
+    expect(apiPost).toHaveBeenLastCalledWith('/shop/token/', { email: 'ada@example.it', password: 'pw' })
   })
 
   it('5) obbligo del secondo fattore → dal profilo, non ricalcolato', () => {

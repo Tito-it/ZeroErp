@@ -41,7 +41,7 @@ sullo stesso `auth_user`, senza email/token.
 | `apply_new_password` | Set password + reset flag `deve_cambiare_password` in transazione |
 | `AuthRepository.auth_user_ha_password` | Discriminante dei due flussi: l'`auth_user` ha una password utilizzabile? |
 | `AuthRepository.attiva_identita` | UPDATE `attivo=true` su `identita_digitali` al consumo del token (entrambi i flussi), col guard su credenziale e porta |
-| `PortaleRepository.find_auth_user_by_email` | `script.fn_get_auth_user_id_for_email`: la credenziale dell'email senza maiuscole (P-2); email doppie → `E_CREDENZIALE_EMAIL_AMBIGUA` |
+| `AuthRepository.find_auth_user_id_per_email` (dal 2026-10-06; prima `PortaleRepository.find_auth_user_by_email`) | `script.fn_get_auth_user_id_for_email`: la credenziale dell'email senza maiuscole (P-2); email doppie → `E_CREDENZIALE_EMAIL_AMBIGUA` |
 | `PermissionResolver.get_ruolo_applicativo` | Filtro veste corrente per `ProfileActivateShopView` |
 | GUC `app.soggetto_ruolo_id` | Letto da `ProfileActivateShopView` per legare la nuova identita allo stesso `soggetto_ruolo` del portale corrente |
 

@@ -21,8 +21,8 @@ Il flusso e' completamente self-service. L'admin non interviene.
 ```text
 1. Operatore clicca "Password dimenticata?" nel frontend
    |
-2. POST /password-reset-request/ { username }
-   → Cerca utente attivo per username
+2. POST /password-reset-request/ { identificativo }
+   → Cerca la credenziale per email (se c'e' una «@»), poi per nome utente
    → Se trovato e ha email: genera token + invia email con link
    → Risposta SEMPRE 200 (non rivela se utente esiste)
    |
@@ -56,8 +56,17 @@ POST /api/v1/auth/password-reset-request/
 #### Input
 
 ```json
-{ "username": "mario.rossi" }
+{ "identificativo": "mario.rossi" }
 ```
+
+`identificativo` è il **nome utente o l'email** (dal 2026-10-06, L-4 del piano
+accessi, D-9: chi entra dal portale o dallo shop conosce la sua email). Con una
+«@» si cerca prima l'email, senza maiuscole (`credenziale_per_email`, la regola
+del login per email); se non trova niente, il nome utente esatto
+(`credenziale_per_nome_utente`), perché il modello non vieta una «@» nel nome
+utente. Vale per ogni credenziale: la prova
+è il possesso dell'email a cui arriva il link. Il campo `username` di prima non
+è più letto (risposta 200, nessuna ricerca).
 
 #### Output (sempre 200)
 

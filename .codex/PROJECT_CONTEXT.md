@@ -223,7 +223,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   2026-10-06, strada B decisa da Tid): il presidio `vw_credenziali_da_sanare` chiedeva all'amministratore un gesto che
   non esisteva. Verbo `fn_elimina_credenziale` + check, testo del presidio riscritto. D-1…D-3 confermate da Tid (06-10). ⏳ DB.
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
-  resta R-4, che vuole un brief DB non ancora scritto. Chiuso il 2026-10-03
+  resta R-4, che vuole un brief DB non ancora scritto. L-6 (date della veste) ha il suo brief,
+  `work-in-progress/brief-db-veste-utilizzabile.md` (2026-10-06): la regola «veste utilizzabile» a DB
+  in un BB, oggi in quattro versioni diverse (BE solo `attivo`); per l'operatore contano anche le date
+  del rapporto. ⏳ D-1…D-4 da Tid, poi DB. ✅ L-4 fatto il 2026-10-06: portale e shop entrano con
+  l'email, il reset accetta nome utente o email. Chiuso il 2026-10-03
   `work-done/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
   dell'amministratore che rifiutano le credenziali di sistema).
 - **Kit in fattura: chiuso** (`work-done/brief-db-esposizione-componenti-kit-in-fattura.md`, archiviato

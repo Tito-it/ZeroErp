@@ -75,7 +75,7 @@ class InvitoPortaleTests(TestCase):
             "nome": None,
             "codice_fiscale": None,
         }
-        repo.find_auth_user_by_email.return_value = None  # utente nuovo
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = None  # utente nuovo
         repo.create_auth_user_portale.return_value = 200
         MockAuth.return_value.auth_user_ha_password.return_value = False  # segnaposto `!`
         repo.find_identita_portale.return_value = None  # identita nuova
@@ -154,7 +154,7 @@ class InvitoPortaleTests(TestCase):
             "codice_fiscale": None,
             "pec_email": "pec@fornitore.test",
         }
-        repo.find_auth_user_by_email.return_value = None
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = None
         repo.create_auth_user_portale.return_value = 201
         MockAuth.return_value.auth_user_ha_password.return_value = False
         repo.find_identita_portale.return_value = None
@@ -230,7 +230,7 @@ class InvitoPortaleTests(TestCase):
             "attivo": False,
             "invito_inviato_at": None,
         }
-        repo.find_auth_user_by_email.return_value = 200
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 200
         MockAuth.return_value.set_deve_cambiare_password.return_value = True
         MockAuth.return_value.set_invito_inviato_at.return_value = True
         MockToken.return_value.create.return_value = "new_tk"
@@ -276,7 +276,7 @@ class InvitoPortaleTests(TestCase):
             "soggetto_id": "u",
             "ragione_sociale": "ACME",
         }
-        repo.find_auth_user_by_email.return_value = 200  # creato dal primo invito
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 200  # creato dal primo invito
         MockAuth.return_value.auth_user_ha_password.return_value = False  # mai attivato
         repo.find_identita_portale.return_value = {
             "identita_id": 500,
@@ -335,7 +335,7 @@ class InvitoPortaleTests(TestCase):
             "soggetto_id": "u",
             "ragione_sociale": "ACME",
         }
-        repo.find_auth_user_by_email.return_value = 999  # auth_user gia' esistente
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999  # auth_user gia' esistente
         MockAuth.return_value.auth_user_ha_password.return_value = True  # ... con una password vera
         repo.find_identita_portale.return_value = None  # ma identita CLIENTE_PORTALE nuova
         repo.create_identita_portale.return_value = 501
@@ -402,7 +402,7 @@ class InvitoPortaleTests(TestCase):
             "soggetto_id": "u",
             "ragione_sociale": "ACME",
         }
-        repo.find_auth_user_by_email.return_value = 999  # esistente → flow CROSS
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999  # esistente → flow CROSS
         MockAuth.return_value.auth_user_ha_password.return_value = True
         # Identita CROSS gia' creata in passato ma disattivata (invito
         # scaduto o revoca admin): riattivazione deve avvenire SOLO con
@@ -453,7 +453,7 @@ class InvitoPortaleTests(TestCase):
             "soggetto_id": "u",
             "ragione_sociale": "ACME",
         }
-        repo.find_auth_user_by_email.return_value = 999  # email esistente → CROSS
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999  # email esistente → CROSS
         repo.find_identita_portale.return_value = {
             "identita_id": 500,
             "auth_user_id": 999,
@@ -499,7 +499,7 @@ class InvitoPortaleTests(TestCase):
         }
         # auth_user risolto via email = 999 ma identita esistente punta
         # ad auth_user = 888 (incoerenza).
-        repo.find_auth_user_by_email.return_value = 999
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999
         repo.find_identita_portale.return_value = {
             "identita_id": 500,
             "auth_user_id": 888,
@@ -561,7 +561,7 @@ class InvitoShopCustomerTests(TestCase):
             "ragione_sociale": "ACME Shop",
             "cognome": None, "nome": None, "codice_fiscale": None,
         }
-        repo.find_auth_user_by_email.return_value = None
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = None
         repo.create_auth_user_portale.return_value = 300
         MockAuth.return_value.auth_user_ha_password.return_value = False
         repo.find_identita_portale.return_value = None
@@ -625,7 +625,7 @@ class InvitoShopCustomerTests(TestCase):
             "ragione_sociale": "ACME Shop",
             "cognome": None, "nome": None, "codice_fiscale": None,
         }
-        repo.find_auth_user_by_email.return_value = None
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = None
         repo.create_auth_user_portale.return_value = 300
         MockAuth.return_value.auth_user_ha_password.return_value = False
         repo.find_identita_portale.return_value = None
@@ -666,7 +666,7 @@ class InvitoShopCustomerTests(TestCase):
             "cognome": None, "nome": None, "codice_fiscale": None,
         }
         # Email gia' nota: l'auth_user esiste come operatore o altra veste.
-        repo.find_auth_user_by_email.return_value = 999
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999
         MockAuth.return_value.auth_user_ha_password.return_value = True
         repo.find_identita_portale.return_value = None  # nessuna SHOP ancora
         repo.create_identita_portale.return_value = 700
@@ -725,7 +725,7 @@ class InvitoShopCustomerTests(TestCase):
             "identita_id": 700, "auth_user_id": 999,
             "attivo": False, "invito_inviato_at": None,
         }
-        repo.find_auth_user_by_email.return_value = 999
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999
         # Flow CROSS: la credenziale ha una password vera. Riprende l'identita
         # gia' presente e la lascia disattivata (la attiva il token).
         MockAuth.return_value.auth_user_ha_password.return_value = True

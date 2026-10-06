@@ -28,7 +28,9 @@
 > ✅ **D-3 chiusa il 2026-10-04** (§4.3): niente più riattivazione diretta,
 > l'operatore spento si riattiva col reinvio dell'invito, che riapre la
 > risorsa umana; la veste la accende la persona. Con lei si chiudono M-5 e M-6.
-> ⏳ **Da fare**: L-4, il resto di L-5 (R-4, cioè D-4 e A-6), L-6 (solo A-7),
+> ✅ **L-4 fatto il 2026-10-06** (§4.2): portale e shop entrano con l'email,
+> il reset accetta nome utente o email.
+> ⏳ **Da fare**: il resto di L-5 (R-4, cioè D-4 e A-6), L-6 (solo A-7, brief DB),
 > il collaudo a video di D-5 (§4.3-bis).
 > ⏳ **R-4 aspetta ancora un brief DB** (la revoca della veste), non scritto
 > (verifica 2026-10-06).
@@ -62,9 +64,9 @@ Il perché di ognuna sta nell'[analisi](../work-done/analisi-accessi-credenziale
 | ~~**M-6**~~ | ✅ Chiusa: il difetto dal 2026-10-02 (`_VESTE_OPERATORE`, caso costruito); **D-3 fatta il 2026-10-04** — `riattiva_operatore` (repository, service, view, rotta, FE) ritirato, PATCH `attivo: true` su una veste spenta → 400 `E_AMM_VALIDAZIONE`; si riattiva col reinvio (§4.3) | ~~L-5~~ |
 | ~~**A-5**~~ | ✅ Chiusa il 2026-10-02 (§4.3-bis): «Disabilita», interruttore, portale e shop fanno le stesse tre cose sulla veste che spengono — inviti pendenti invalidati, sessioni della veste chiuse, cache a commit. L'operatore invalida gli inviti dentro `_spegni_veste_operatore` (`InvitoVeste.invalida` con `PORTA_OPERATORE`): prima un invito in volo poteva riaccendere la veste appena spenta | ~~L-5~~ |
 | **A-6** | Lo shop si riattiva da solo (`ProfileActivateShopView`) anche dopo una revoca dell'admin (D-4) | L-5 (R-4) |
-| **A-7** | `valido_dal`/`valido_al` della veste non applicati al login né a ogni richiesta | L-6 |
+| **A-7** | `valido_dal`/`valido_al` della veste non applicati al login né a ogni richiesta | L-6 ([brief DB](brief-db-veste-utilizzabile.md), ⏳) |
 | ~~**D-1**~~ | ✅ 2026-10-02: endpoint e FE del blocco dell'admin sulla credenziale (brief area Accessi §8) | ~~L-2~~ |
-| **D-9** | Portale e shop entrano con l'email; il reset accetta l'email. ✅ Il nome utente nell'invito operatore è fatto (R-3, B-15) | L-4 |
+| ~~**D-9**~~ | ✅ Chiusa il 2026-10-06 (§4.2): portale e shop entrano con l'email, il reset accetta nome utente o email; il nome utente nell'invito operatore era fatto (R-3, B-15). Le pagine di login di portale e shop nasceranno col campo email (Q-3) | ~~L-4~~ |
 
 ✅ **Chiuse dopo il 2026-09-28**: **A-8** dal T-0 del
 [brief sicurezza](../work-done/brief-be-fe-sicurezza-header-token-mfa.md)
@@ -73,7 +75,8 @@ ritirato; `af9c6f659`, 2026-10-01); **A-9** dal
 [brief credenziale per email](../work-done/brief-db-credenziale-per-email.md)
 (B-20, F-4; `e7be8858b`, 2026-09-27; collaudo eseguito il 2026-10-02).
 
-⭐ **L-6 non dipende dal DB** (§4.4): si può fare subito. **L-4** nemmeno: il
+~~**L-6 non dipende dal DB**~~ → dal 2026-10-06 sì: §4.4 e
+[brief-db-veste-utilizzabile.md](brief-db-veste-utilizzabile.md). **L-4** no: il
 suo prerequisito DB (indice unico sull'email, P-2) è in vigore.
 
 ---
@@ -86,9 +89,9 @@ suo prerequisito DB (indice unico sull'email, P-2) è in vigore.
 | **L-1** | Login su tentativi, freno, attesa; cambio password obbligatorio per credenziale; azzeramento al reset | brief **P-1** | M-4, D-1 (il freno), D-2, D-7 | ✅ 2026-09-25, con R-7 e R-8 |
 | **L-2** | Blocco e sblocco dell'admin | P-1 (§3.3, ✅ a DB) | D-1 (blocco vero) | ✅ 2026-10-02 (brief area Accessi §8) |
 | **L-3** | Una persona, una credenziale; invito e attivazione operatore sulla regola unica; ultimo accesso | P-2, R-1, R-2, R-9, brief credenziale per email | D-6, D-8, A-1, A-2, A-3, A-4, A-9 | ✅ 2026-09-27 (collaudo 2026-10-02) |
-| **L-4** | Portale e shop entrano con l'email; il nome utente nell'invito operatore | P-2 (indice email, ✅) + R-3 (✅) | D-9 | 🟡 nome utente nell'invito fatto; login e reset per email da fare, nessuna dipendenza |
+| **L-4** | Portale e shop entrano con l'email; il nome utente nell'invito operatore | P-2 (indice email, ✅) + R-3 (✅) | D-9 | ✅ 2026-10-06 (§4.2) |
 | **L-5** | Disattivazione per veste, niente riattivazione diretta, revoca che tiene, sessioni per veste | **R-4** (R-5 ✅; D-5 nessuna, §4.3-bis) | M-5, M-6, D-3, D-4, D-5, A-5, A-6 | 🟡 sola veste operatore fatta (2026-10-02); D-5 chiusa (2026-10-02, §4.3-bis); D-3 chiusa (2026-10-04); resta D-4/A-6, che aspetta il secondo brief DB (R-4) |
-| **L-6** | Validità della veste al login e a ogni richiesta | niente | A-7 (A-8 ➡️ T-0, ✅) | ⏳ da fare |
+| **L-6** | Validità della veste al login e a ogni richiesta | [brief DB](brief-db-veste-utilizzabile.md) (BB «veste utilizzabile») | A-7 (A-8 ➡️ T-0, ✅) | ⏳ brief scritto 2026-10-06, decisioni di Tid poi DB |
 
 ---
 
@@ -381,7 +384,9 @@ sospeso). Collaudo a video
 
 ### 4.2 L-4 — Chiave d'ingresso per porta (D-9)
 
-> 🟡 **Stato 2026-10-02, verificato invariato il 2026-10-06.** ✅ Nome utente nell'invito operatore (R-3 a DB,
+> ✅ **Fatto il 2026-10-06.** Resoconto in §4.2-bis. Sotto, lo stato di prima.
+>
+> 🟡 **Stato 2026-10-02.** ✅ Nome utente nell'invito operatore (R-3 a DB,
 > B-15: `InvitoOperatoreService` passa `username`; template `_CROSS` per il
 > flusso con un clic, `PortaInvito.template_cross`). ⏳ Il resto è da fare e
 > non aspetta nessuno: `PortaleTokenSerializer` / `ShopTokenSerializer`
@@ -405,6 +410,18 @@ sospeso). Collaudo a video
 - ⚠️ Il nome tentato del freno (R-7) si normalizza **con la stessa regola del
   lookup** (`nome_tentato.py`): passando all'email, lookup e impronta cambiano
   insieme (commento in `auth_views.py`, «Con l'email (L-4) si cambia il campo»).
+
+### 4.2-bis ✅ L-4 fatto (2026-10-06)
+
+| Pezzo | Fatto |
+| --- | --- |
+| Chiave d'ingresso per porta | Il serializer della porta la dichiara: `username_field` e `trova_credenziale`. `admin` resta sul nome utente; `portale` e `shop` ereditano da `_IngressoPerEmailSerializer` (regola del 2): campo `email` normalizzato (spazi, minuscole) da `EmailIngressoField`. La view del login legge campo e ricerca dal serializer: lookup, `authenticate` e impronta del freno (R-7) vedono **lo stesso** valore. Il nodo segnato in §4.2 («passando all'email, lookup e impronta cambiano insieme») è chiuso così |
+| Autenticazione | `CredenzialePerEmailBackend` (`apps/core/services/credenziale_ingresso.py`, che ospita anche `credenziale_per_nome_utente`, regola del 2 del 2026-10-07) in `AUTHENTICATION_BACKENDS` dopo `ModelBackend`. Risponde solo ad `authenticate(email=…)`: la firma senza `username` lo esclude dalla porta admin. Email sconosciuta → hash calcolato lo stesso, come `ModelBackend` |
+| Ricerca per email | Regola del 2: `AuthRepository.find_auth_user_id_per_email` (→ `script.fn_get_auth_user_id_for_email`) è la sede unica; ritirato `PortaleRepository.find_auth_user_by_email` (l'invito del portale passa da `AuthRepository`) |
+| Reset password | Corpo `{"identificativo"}`: con una «@» prima l'email, poi il nome utente esatto (il modello non vieta una «@» nel nome utente). ⭐ Vale per **ogni** credenziale, non solo per chi ha una veste portale/shop come diceva il disegno: la prova è il possesso dell'email a cui arriva il link, e restringere non proteggerebbe niente. Nel log la credenziale per id, non il valore digitato |
+| FE | `CANALE_LOGIN.*.campoIngresso` (`username` / `email`): lo store manda il campo del canale. Pagina di reset «Nome utente o email» (`identificativo`). Testi di fine attivazione di portale e shop: «accedi con la tua email». Le pagine di login di portale e shop non esistono ancora (Q-3): nasceranno sul campo del canale |
+| Prove | Unitari: `test_credenziale_ingresso` (11), `ChiaveIngressoPerPortaTests` (5), `test_password_reset` `RequestTests` (riscritti: i tre di prima non chiamavano la view). Sul DB vero: `test_login_credenziale_db` 7b (portale e shop trovano la credenziale per email senza maiuscole; `username` → 400), 7c (un'email inesistente con maiuscole diverse è lo stesso nome frenato), 12-13 sulle porte del cliente per email; `test_token_veste_db` 5 (reset chiesto con l'email). FE: `auth.spec.js` n. 6, `PasswordResetRequestView.spec.js` (etichetta per canale, esito per ciò che si è digitato) |
+| Doc | `api_multi_veste_token.md` §Login, `api_password_reset.md`, `api_invito_portale_shop.md`, api.md §Endpoint login, catalogo BB backend |
 
 ### 4.3 L-5 — Disattivazione per veste, revoca, sessioni (M-5, M-6, D-3, D-4, D-5)
 
@@ -446,7 +463,16 @@ immediata.
 
 ### 4.4 L-6 — Validità della veste al login e a ogni richiesta (A-7)
 
-> ⏳ **Stato 2026-10-06: da fare**, nessuna dipendenza.
+> ⏳ **Stato 2026-10-06: dipende dal DB**, non più «nessuna dipendenza».
+> Facendo il lotto è emerso che la regola sta già a DB in più versioni diverse
+> (`fn_has_identita_attiva`, `fn_sync_auth_user_is_active`, `fn_get_user_profile`,
+> più copie inline), e che per l'operatore le date sono due: il drawer modifica
+> quelle del **rapporto**, non quelle della veste. Un frammento Python sarebbe
+> stato la quinta versione. ➡️
+> [brief-db-veste-utilizzabile.md](brief-db-veste-utilizzabile.md): un BB a DB
+> per veste, le copie ritirate, il BE che lo legge nei suoi cinque punti (sono
+> cinque: c'è anche il refresh, `_veste_accesa`). ⏳ Decisioni D-1…D-4 da Tid.
+> Le note sotto sono il punto di partenza, superate dal brief.
 
 - La **finestra** `valido_dal`/`valido_al` della veste (oggi solo `attivo`):
   una veste scaduta non entra, anche se la credenziale ha un'altra veste
@@ -510,7 +536,8 @@ riprendere D-4.
 Riscritto il 2026-10-02 sul lavoro che resta, riallineato il 2026-10-06
 (L-0, L-1, L-2, L-3 sono fatti):
 
-1. **L-6** (A-7) e **L-4** (login e reset per email): nessuna dipendenza.
+1. ~~**L-4** (login e reset per email)~~ ✅ 2026-10-06. **L-6** (A-7): brief
+   DB scritto il 2026-10-06, attende le decisioni di Tid e il DB.
 2. ~~**D-3** (ritiro della riattivazione diretta)~~ ✅ 2026-10-04.
 3. Il brief DB con **R-4**, poi D-4 e A-6.
 4. ~~In parallelo, quando il DB consegna, le ricadute BE/FE del

@@ -34,6 +34,7 @@ from apps.core.services.auth_helpers import (
     valida_nuova_password,
     validate_and_extract_token,
 )
+from apps.core.services.credenziale_ingresso import credenziale_per_email, credenziale_per_nome_utente
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.invito_veste import nome_visualizzato
@@ -54,11 +55,12 @@ _email_service = EmailDispatchService()
 
 
 # I corpi che i due gestori leggono. La richiesta risponde sempre lo stesso
-# messaggio (anche senza `username`): nessun dato su chi esiste.
+# messaggio (anche senza `identificativo`): nessun dato su chi esiste.
 _RESET_REQUEST_REQUEST = inline_serializer(
     name="CorePasswordResetRequestReq",
-    fields={"username": serializers.CharField()},
+    fields={"identificativo": serializers.CharField(help_text="Nome utente o email")},
 )
+
 _RESET_CONFIRM_REQUEST = inline_serializer(
     name="CorePasswordResetConfirmReq",
     fields={
@@ -67,6 +69,22 @@ _RESET_CONFIRM_REQUEST = inline_serializer(
         "new_password_confirm": serializers.CharField(),
     },
 )
+
+
+# Scopo: La credenziale di chi chiede il reset, dal nome utente O dall'email
+# (L-4, D-9: chi entra dal portale o dallo shop conosce la sua email, non un
+# nome utente). Con una «@» si cerca prima l'email (`credenziale_per_email`,
+# la regola del login per email); se non trova niente, il nome utente esatto,
+# perche' il modello non vieta una «@» in un nome utente. Vale per ogni
+# credenziale: la prova e' il possesso dell'email a cui arriva il link, e
+# restringere l'email ad alcune porte non proteggerebbe niente.
+def _credenziale_del_reset(identificativo: str) -> User | None:
+    if "@" in identificativo:
+        user = credenziale_per_email(identificativo)
+        if user is not None:
+            return user
+    return credenziale_per_nome_utente(identificativo)
+
 
 class PasswordResetRequestView(APIView):
     """POST: richiesta reset password — invia email con link.
@@ -77,19 +95,21 @@ class PasswordResetRequestView(APIView):
     throttle_classes = [PasswordResetRateThrottle]
 
     @extend_schema(request=_RESET_REQUEST_REQUEST, summary="Richiesta reset password", responses={200: dict})
-    # Scopo: Riceve username, cerca utente attivo con email configurata,
+    # Scopo: Riceve nome utente o email, cerca utente attivo con email configurata,
     #        genera token e invia email con link reset.
     #        Risponde sempre 200 per non rivelare se l'utente esiste.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            username = (payload.get("username") or "").strip()
+            # Un valore che non e' testo (numero, lista) vale come assente: la
+            # risposta resta la stessa, mai un 500 su un endpoint pubblico.
+            grezzo = payload.get("identificativo")
+            identificativo = grezzo.strip() if isinstance(grezzo, str) else ""
             _MSG = "Se l'utente esiste e ha un'email configurata, ricevera' un link per reimpostare la password."
-            if not username:
+            if not identificativo:
                 return {"message": _MSG}
 
-            # Cerca utente attivo per username
-            user = User.objects.filter(username=username, is_active=True).first()
-            if user and user.email:
+            user = _credenziale_del_reset(identificativo)
+            if user and user.is_active and user.email:
                 # Genera token reset: vale solo l'ultimo link chiesto, e i
                 # precedenti si spengono nella stessa transazione del nuovo.
                 with transaction.atomic():
@@ -127,7 +147,9 @@ class PasswordResetRequestView(APIView):
                 except Exception:
                     logger.exception("Errore invio email reset per user_id=%s", user.id)
 
-                logger.info("security.password_reset_requested user_id=%s username=%s", user.id, username)
+                # La credenziale per id, mai il valore digitato: puo' essere
+                # un'email, o una password finita nel campo sbagliato (B-11).
+                logger.info("security.password_reset_requested user_id=%s", user.id)
 
             # Risposta identica sia che l'utente esista o no
             return {"message": _MSG}

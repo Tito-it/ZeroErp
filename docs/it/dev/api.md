@@ -1230,6 +1230,12 @@ e refresh che ammettono solo il subset di vesti che gli compete:
 Il vecchio path unificato `/api/v1/auth/token/` e' stato **rimosso senza
 alias** (breaking, grace 0). Client pre-refactor devono aggiornarsi.
 
+⭐ **La chiave d'ingresso e' della porta** (dal 2026-10-06, L-4 del piano
+accessi): `admin` vuole `{"username", "password"}`, `portale` e `shop`
+`{"email", "password"}` (email senza maiuscole). Il reset password accetta
+`{"identificativo"}`, nome utente o email. Dettaglio e sedi:
+[api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md) §Login.
+
 #### Il login a due passi (secondo fattore, dal 2026-10-01)
 
 Con il secondo fattore **attivo** sulla credenziale, il login risponde 200

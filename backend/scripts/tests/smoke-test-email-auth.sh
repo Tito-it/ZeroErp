@@ -222,7 +222,7 @@ fi
 # --- 9. Reset password request ---
 echo ""
 echo "-- 9. POST /auth/password-reset-request/ --"
-anon_post "/api/v1/auth/password-reset-request/" '{"email":"inesistente@nowhere.test"}'
+anon_post "/api/v1/auth/password-reset-request/" '{"identificativo":"inesistente@nowhere.test"}'
 if [[ "$LAST_STATUS" == "200" ]]; then
     log_ok "Reset request: HTTP 200 (risposta opaca)"
 elif [[ "$LAST_STATUS" == "429" ]]; then

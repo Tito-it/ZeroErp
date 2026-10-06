@@ -37,14 +37,26 @@ Il login deve discriminare quale "veste" sta usando l'utente: il claim
 
 ## Input
 
-### Login (tutti e 3)
+### Login
 
-```json
-{
-  "username": "tid",
-  "password": "***"
-}
-```
+La **chiave d'ingresso** è della porta (dal 2026-10-06, L-4 del piano accessi, D-9):
+
+| Porta | Corpo | Ricerca della credenziale |
+| --- | --- | --- |
+| `admin` | `{"username": "tid", "password": "***"}` | nome utente esatto (`ModelBackend`) |
+| `portale`, `shop` | `{"email": "ada@example.it", "password": "***"}` | email senza maiuscole: `script.fn_get_auth_user_id_for_email`, via `CredenzialePerEmailBackend` |
+
+* Il campo si normalizza nel serializer (spazi ai bordi; l'email anche in
+  minuscolo), e **lo stesso valore** va al lookup, ad `authenticate` e
+  all'impronta del nome tentato del freno (R-7): con un'email inesistente,
+  `Ada@x.it` e `ada@x.it` sono lo stesso nome frenato.
+* Il campo dell'altra porta non è il contratto: `{"username": …}` sul portale
+  è un **400** (campo `email` obbligatorio), non un tentativo.
+* La password arriva com'è digitata, su ogni porta (S-5).
+* Sede: `_IngressoPerEmailSerializer` (`username_field = "email"`,
+  `trova_credenziale`) in `multi_veste_token_serializer.py`; BB
+  `apps/core/services/credenziale_ingresso.py`; `AUTHENTICATION_BACKENDS` in
+  `settings.py` (il backend dell'email non si lega a una chiamata con `username`).
 
 Headers: nessun auth necessario (endpoint pubblico `AllowAny`).
 

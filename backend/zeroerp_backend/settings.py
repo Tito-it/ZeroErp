@@ -280,6 +280,15 @@ SPECTACULAR_SETTINGS = {
     """,
 }
 
+# Due chiavi d'ingresso (L-4 del piano accessi, D-9): il nome utente per la
+# porta admin (`ModelBackend`), l'email per portale e shop. Django prova ogni
+# backend la cui firma accetta le credenziali passate: `authenticate(email=…)`
+# arriva al secondo, `authenticate(username=…)` non lo attraversa mai.
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "apps.core.services.credenziale_ingresso.CredenzialePerEmailBackend",
+]
+
 SIMPLE_JWT = {
     # Access BREVE (decisione Tid 2026-09-28, brief sicurezza §2): il frontend
     # lo tiene solo in memoria e lo rinnova in silenzio dal cookie del

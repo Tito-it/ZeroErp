@@ -8,9 +8,11 @@
 
 """
 Indice test eseguiti:
-1) RequestTests.test_existing_email_creates_token_and_sends
-2) RequestTests.test_nonexistent_email_returns_200
-3) RequestTests.test_empty_email_returns_200
+1) RequestTests.test_email_trova_la_credenziale_e_spedisce
+2) RequestTests.test_con_chiocciola_senza_email_ripiega_sul_nome_utente
+2b) RequestTests.test_nome_utente_non_cerca_l_email
+2c) RequestTests.test_nessuna_credenziale_utilizzabile_stessa_risposta
+3) RequestTests.test_identificativo_vuoto_o_campo_vecchio_non_cerca (anche non testo: 200, mai 500)
 4) ValidateTests.test_valid_token
 5) ValidateTests.test_invalid_token
 6) ConfirmTests.test_valid_token_changes_password
@@ -24,6 +26,10 @@ Indice test eseguiti:
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from rest_framework.test import APIRequestFactory
+
+from apps.core.api.password_reset_views import PasswordResetRequestView
+from apps.core.api.throttling import PasswordResetRateThrottle
 from apps.core.services.service_errors import ServiceError
 
 _TOKEN_SVC = "apps.core.api.password_reset_views._token_service"
@@ -33,49 +39,88 @@ _USER_MODEL = "apps.core.api.password_reset_views.User"
 _GET_UO = "apps.core.api.password_reset_views._auth_repo.get_unita_organizzativa_id"
 _GET_IP = "apps.core.api.password_reset_views.get_client_ip"
 _DJANGO_SETTINGS = "django.conf.settings"
+_PER_EMAIL = "apps.core.api.password_reset_views.credenziale_per_email"
+_PER_NOME = "apps.core.api.password_reset_views.credenziale_per_nome_utente"
+_NOME_VIS = "apps.core.api.password_reset_views.nome_visualizzato"
+_ATOMIC = "apps.core.api.password_reset_views.transaction.atomic"
 
 
 class RequestTests(TestCase):
-    """Test per PasswordResetRequestView (richiesta reset)."""
+    """Test per PasswordResetRequestView (richiesta reset), sulla view vera.
 
-    # Scopo: Verifica che email esistente generi token + invio email.
-    @patch(_GET_UO, return_value=None)
-    @patch(_EMAIL_SVC)
-    @patch(_TOKEN_SVC)
-    @patch(_USER_MODEL)
-    def test_existing_email_creates_token_and_sends(self, MockUser, mock_token, mock_email, mock_uo):
-        mock_user = MagicMock()
-        mock_user.id = 42
-        mock_user.first_name = "Mario"
-        mock_user.username = "mario"
-        mock_user.email = "mario@test.com"
-        MockUser.objects.filter.return_value.first.return_value = mock_user
-        mock_token.create.return_value = "abc123token"
+    ⭐ Riscritti il 2026-10-06 (L-4): i tre test di prima non chiamavano mai la
+    view (uno chiamava a mano il mock che poi verificava), quindi erano verdi
+    qualunque cosa facesse il codice.
+    """
 
-        request = MagicMock()
-        request.body = b'{"email": "mario@test.com"}'
-        request.content_type = "application/json"
-        request.META = {"CONTENT_TYPE": "application/json"}
+    def setUp(self) -> None:
+        self.enterContext(patch.object(PasswordResetRateThrottle, "allow_request", return_value=True))
+        self.token = self.enterContext(patch(_TOKEN_SVC))
+        self.token.create.return_value = "token123"
+        self.email = self.enterContext(patch(_EMAIL_SVC))
+        self.enterContext(patch(_GET_UO, return_value=None))
+        self.enterContext(patch(_NOME_VIS, return_value="Mario"))
+        self.enterContext(patch(_ATOMIC))
 
-        # Simula handle_post_json chiamando _handler direttamente
-        mock_token.create.assert_not_called()
+    def _post(self, corpo: dict):
+        richiesta = APIRequestFactory().post(
+            "/api/v1/auth/password-reset-request/", corpo, format="json",
+        )
+        return PasswordResetRequestView.as_view()(richiesta)
 
-        # Test tramite _handler logic
-        mock_token.create.return_value = "token123"
-        # Il test verifica che create venga chiamato con tipo RESET_PASSWORD
-        mock_token.create(tipo="RESET_PASSWORD", auth_user_id=42, scadenza_ore=1)
-        mock_token.create.assert_called_with(tipo="RESET_PASSWORD", auth_user_id=42, scadenza_ore=1)
+    # Scopo: Con l'email (L-4) il link parte verso la credenziale di quell'email.
+    @patch(_PER_EMAIL)
+    def test_email_trova_la_credenziale_e_spedisce(self, mock_per_email):
+        mock_per_email.return_value = MagicMock(id=42, is_active=True, email="mario@test.com")
+        risposta = self._post({"identificativo": "  Mario@Test.com "})
+        self.assertEqual(risposta.status_code, 200)
+        mock_per_email.assert_called_once_with("Mario@Test.com")
+        self.assertEqual(self.token.create.call_args.kwargs["auth_user_id"], 42)
+        self.assertEqual(self.email.send_email.call_args.kwargs["destinatario"], "mario@test.com")
 
-    # Scopo: Verifica che email inesistente ritorni comunque 200 (sicurezza).
-    @patch(_USER_MODEL)
-    def test_nonexistent_email_returns_200(self, MockUser):
-        MockUser.objects.filter.return_value.first.return_value = None
-        # La logica ritorna sempre lo stesso messaggio — nessun token creato
+    # Scopo: Una «@» che non e' l'email di nessuno si cerca come nome utente:
+    # il modello non vieta una «@» nel nome utente.
+    @patch(_PER_NOME)
+    @patch(_PER_EMAIL, return_value=None)
+    def test_con_chiocciola_senza_email_ripiega_sul_nome_utente(self, _per_email, mock_per_nome):
+        mock_per_nome.return_value = MagicMock(id=7, is_active=True, email="a@b.it")
+        self._post({"identificativo": "nome@utente"})
+        mock_per_nome.assert_called_once_with("nome@utente")
+        self.assertEqual(self.token.create.call_args.kwargs["auth_user_id"], 7)
 
-    # Scopo: Verifica che email vuota ritorni 200 senza errore.
-    def test_empty_email_returns_200(self):
-        # Email vuota → ritorna messaggio generico senza cercare utente
-        pass
+    # Scopo: Senza «@» e' un nome utente: l'email non si cerca nemmeno.
+    @patch(_PER_NOME)
+    @patch(_PER_EMAIL)
+    def test_nome_utente_non_cerca_l_email(self, mock_per_email, mock_per_nome):
+        mock_per_nome.return_value = MagicMock(id=9, is_active=True, email="m@x.it")
+        self._post({"identificativo": "mario"})
+        mock_per_email.assert_not_called()
+        mock_per_nome.assert_called_once_with("mario")
+        self.assertEqual(self.token.create.call_args.kwargs["auth_user_id"], 9)
+
+    # Scopo: Credenziale sconosciuta, spenta o senza email: stessa risposta, niente token.
+    @patch(_PER_NOME)
+    @patch(_PER_EMAIL, return_value=None)
+    def test_nessuna_credenziale_utilizzabile_stessa_risposta(self, _per_email, mock_per_nome):
+        casi = (None, MagicMock(id=1, is_active=False, email="x@y.it"), MagicMock(id=2, is_active=True, email=""))
+        risposte = set()
+        for utente in casi:
+            mock_per_nome.return_value = utente
+            risposte.add(self._post({"identificativo": "chiunque"}).content)
+        self.token.create.assert_not_called()
+        self.email.send_email.assert_not_called()
+        self.assertEqual(len(risposte), 1)
+
+    # Scopo: Il campo vecchio (`username`) non e' piu' il contratto, e un valore
+    # che non e' testo vale come assente: stessa risposta, nessuna ricerca.
+    @patch(_PER_NOME)
+    @patch(_PER_EMAIL)
+    def test_identificativo_vuoto_o_campo_vecchio_non_cerca(self, mock_per_email, mock_per_nome):
+        for corpo in ({}, {"identificativo": "   "}, {"identificativo": 123}, {"username": "mario"}):
+            self.assertEqual(self._post(corpo).status_code, 200)
+        mock_per_email.assert_not_called()
+        mock_per_nome.assert_not_called()
+        self.token.create.assert_not_called()
 
 
 class ValidateTests(TestCase):
