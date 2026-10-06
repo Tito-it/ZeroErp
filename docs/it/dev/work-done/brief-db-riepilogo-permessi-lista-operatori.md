@@ -6,8 +6,9 @@
 > **Stato:** ✅ **DB applicato il 2026-10-06, pgTAP verdi** (§6): `20261006-01`, `-02`,
 > due righe di CSV e un pgTAP nuovo. ✅ **BE/FE fatto il 2026-10-06** (§7, con le
 > correzioni di §6.4), **non committato**. ⏳ Resta il collaudo a video, dopo il migrate
-> che accende la colonna *Override* (§7). 🔵 **Nuova richiesta al team DB in §8**: ritirare
-> la colonna «Azioni» della lista 28, rimasta senza kebab.
+> che accende la colonna *Override* (§7). ✅ **§8 (colonna «Azioni» della lista 28) fatto dal
+> team DB il 2026-10-06** (§8.1): colonna spenta nel CSV e `20261006-03` che la toglie dal
+> preset; si vede al prossimo migrate. 📦 **Archiviato il 2026-10-06** su indicazione di Tid.
 
 ## 1. Perché
 
@@ -333,4 +334,27 @@ colonne* compare come una colonna da accendere che non fa niente.
 
 Nessuna ricaduta BE/FE: il frontend non la chiede più. Se un giorno la lista avrà di nuovo
 azioni di riga (es. *Disabilita*, *Reinvia invito*), la colonna si riaccende.
+
+### 8.1 Risposta del team DB (2026-10-06) — ✅ fatto, da applicare col prossimo migrate
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-06. Non committato.
+
+* `lista_colonna.csv` riga **345** → `attivo = f`. È la forma di ritiro di casa: la riga
+  resta a catalogo e si riaccende con una cella, se la lista avrà di nuovo azioni di riga.
+  Nessun changeSet nuovo: la rilegge il mirror `runOnChange` `20260507-07`.
+* ~~La riga di preset `28,345,90,t,f` resta~~ — ⚠️ **superato lo stesso giorno (Tid: «procedi»)**:
+  la riga esce anche dal preset. Tolta da `lista_preset_colonna.csv` e cancellata da
+  `80_data/changelog/20261006-03-delete-ui-preset-operatori-colonna-azioni-mctit.yaml`
+  (il mirror `loadUpdateData` non cancella; chiavi naturali; idempotente: su un DB nuovo
+  tocca zero righe). Prova con l'SQL estratto su dbdev, in transazione annullata:
+  `DELETE 1`. Il primo ragionamento resta valido come fatto: anche senza il `DELETE` la
+  riga non si sarebbe vista (`fn_resolve_lista_config` legge solo colonne attive); il
+  `DELETE` toglie una riga morta. Se la colonna si riaccende, va rimessa anche nel preset.
+* Verifiche (2026-10-06): su `ui.lista_colonna` c'è solo il trigger di validazione del
+  `campo_sorgente`, nessun blocco di disattivazione: l'`UPDATE` del mirror passa (provato su
+  dbdev in una transazione annullata). Il presidio Django
+  `test_chi_fornisce_lo_slot_actions_ha_la_colonna_a_catalogo` resta verde: nessuna vista
+  monta `anagrafiche.operatori` con lo slot `#actions` (`OperatoriListView.vue`, letto il
+  2026-10-06). Se un giorno lo slot tornasse, quel test chiederebbe di riaccendere la 345.
+* Nessuna ricaduta BE/FE.
 

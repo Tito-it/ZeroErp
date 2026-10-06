@@ -2584,7 +2584,7 @@ un wrapper sottile da estrarre alla seconda occorrenza
 | ☐ | `amministrazione/components/UtilityTipoRuoloDrawer.vue` | 3 |
 | ☐ | `amministrazione/views/RepartiProfiloView.vue` | 3 |
 | ☐ | `core/components/ScadenzeSintesi.vue` | 3 |
-| ☐ | `amministrazione/views/PermessiRiepilogoView.vue` | 4 |
+| ➡️ | ~~`amministrazione/views/PermessiRiepilogoView.vue`~~ — **pagina ritirata** il 2026-10-06: il riepilogo è un interruttore *Mostra permessi* della lista `anagrafiche.operatori` (`OperatoriListView.vue`), file cancellato e uscito da `datatable.baseline.json` ([brief-db-riepilogo-permessi-lista-operatori](../work-done/brief-db-riepilogo-permessi-lista-operatori.md) §7) | 4 |
 | ✅ 26-09 → **Gruppo A** | `catalogo/components/UomConversioniDrawer.vue` | 4 | criterio in tre domande: le conversioni hanno endpoint e lista loro (`catalogo.conversioni_uom`). Convertito con `useDrawerTabLista` + store `uomConversioni`, fattore modificabile nello slot `cell-fattore`; chiuso il troncamento a 200 righe |
 | ☐ | `core/components/SessioniAttivePanel.vue` | 4 |
 | ☐ | `vendite/components/AlertScadenzeWidget.vue` | 4 |

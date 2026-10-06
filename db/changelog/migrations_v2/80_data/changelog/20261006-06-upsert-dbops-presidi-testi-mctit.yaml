@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-presidi-cosa-significa-cosa-fare §4.1 — il seed dei testi per chi
+# agisce: una riga `it` per ognuno dei presidi che possono accendersi (tutte
+# le nature tranne INVENTARIO).
+#
+# ── ⭐ CHIAVE DELL'UPSERT: (vista, lingua) ──────────────────────────
+#   La chiave naturale (uq_presidi_testi_vista_lingua), non l'`id`, che e'
+#   IDENTITY: il CSV non porta la colonna id. `vista` e' anche la FK verso
+#   dbops.presidi, quindi il presidio si nomina come lo nomina il suo CSV.
+#
+# ── ⚠️ ORDINE ───────────────────────────────────────────────────────
+#   La FK pretende la riga di dbops.presidi: il catalogo lo seminano
+#   20260910-08 e -35, che in 80_data vengono prima (l'ordine e' quello dei
+#   nomi dei file). config.lingue la semina 20260114-02, prima ancora.
+#
+# ⛔ La sede del testo e' il CSV: si edita il file, mai con UPDATE a parte
+#   (linee-guida-sql §11.2). Una riga tolta dal CSV non sparisce dal database
+#   (loadUpdateData non cancella): serve un DELETE forward-only — ed e' il caso
+#   del ritiro di un presidio, che il pgTAP dbops/test-presidi-testi-v1
+#   (test 2) pretende.
+# ⚠️ CATALOGO PURO: nessuna FK verso anagrafiche.*, nessun dato di macchina
+#   ⇒ nessun `context: dati_macchina`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261006-06-upsert-dbops-presidi-testi-mctit.yaml
+
+  - changeSet:
+      id: 20261006-06-upsert-dbops-presidi-testi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Mirror di dbops.presidi_testi dal CSV: significato e azione in
+        italiano per ogni presidio che puo' accendersi. Chiave (vista,
+        lingua). Catalogo puro. brief-db-presidi-cosa-significa-cosa-fare §4.1.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi_testi
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/presidi_testi.csv
+            tableName: presidi_testi
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            # Token letterale `NULL`, non la cella vuota (linee-guida-sql §11.7).
+            # Oggi nessuna colonna e' nullable: e' la forma di casa, perche' la
+            # prossima colonna non debba ricordarsene.
+            nullValue: "NULL"
+            primaryKey: "vista,lingua"
+            columns:
+              - column: { name: vista,       type: STRING }
+              - column: { name: lingua,      type: STRING }
+              - column: { name: significato, type: STRING }
+              - column: { name: azione,      type: STRING }
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.presidi_testi;

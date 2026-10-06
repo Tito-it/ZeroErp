@@ -182,9 +182,12 @@ SELECT throws_ok(
     'test 6 — una riga con la nota vuota e'' rifiutata dal database');
 
 SELECT throws_ok(
-    $$INSERT INTO dbops.presidi (vista, natura, cadenza, perimetro, nota)
+    -- ⚠️ chi_agisce valorizzata apposta (2026-10-06): senza, la riga la
+    --   rifiuterebbe ANCHE chk_presidi_chi_agisce_se_allarma, e il 23514
+    --   passerebbe per il vincolo sbagliato.
+    $$INSERT INTO dbops.presidi (vista, natura, cadenza, perimetro, nota, chi_agisce)
       VALUES ('dbops.vw_pgtap_cancello_muto', 'CANCELLO', 'MAI', 'LIBERO',
-              'un cancello che non dice dove vive')$$,
+              'un cancello che non dice dove vive', 'SVILUPPO')$$,
     '23514', NULL,
     'test 7 — una riga CANCELLO senza presidiato_da e'' rifiutata dal database');
 
@@ -206,12 +209,14 @@ SELECT * FROM (VALUES (1), (2), (3), (4)) AS t(n);
 -- ⚠️ Le viste PRIMA delle righe di catalogo: e' l'ordine in cui il test 3
 --   pretende che stiano le cose, e una fixture che lo viola insegnerebbe il
 --   contrario a chi la copia.
+-- ⚠️ chi_agisce dal 2026-10-06: un presidio che si accende deve dire a chi
+--   tocca (chk_presidi_chi_agisce_se_allarma, brief-db-presidi-cosa-significa-cosa-fare).
 INSERT INTO dbops.presidi (vista, natura, colonna_stato, stato_atteso,
-                           cadenza, perimetro, nota)
+                           cadenza, perimetro, nota, chi_agisce)
 VALUES ('pgtap_presidi_fixture.vw_finta', 'ZERO', 'stato', 'DEBITO_DICHIARATO',
-        'MAI', 'LIBERO', 'fixture pgTAP del catalogo dei presidi'),
+        'MAI', 'LIBERO', 'fixture pgTAP del catalogo dei presidi', 'SVILUPPO'),
        ('pgtap_presidi_fixture.vw_finta_intera', 'ZERO', NULL, NULL,
-        'MAI', 'LIBERO', 'fixture pgTAP: conteggio della vista intera');
+        'MAI', 'LIBERO', 'fixture pgTAP: conteggio della vista intera', 'SVILUPPO');
 
 -- ============================================================
 -- 8) Una vista non a catalogo non si conta: SOLLEVA

@@ -342,7 +342,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 342,28,valido_dal,Attivo dal,Inizio validita dell identita,valido_dal,informazione,date,date_short,,60,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_valido_dal,50
 343,28,valido_al,Valido fino al,Fine validita dell identita — vuoto significa senza scadenza,valido_al,informazione,date,date_short,,70,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_valido_al,50
 344,28,is_active,Stato,Identita attiva o disattivata,is_active,informazione,boolean,,,80,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_stato,50
-345,28,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-08-01 00:00:00,mctit,common.col_azioni,50
+345,28,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,f,2026-08-01 00:00:00,mctit,common.col_azioni,50
 346,29,codice,Codice,Codice dell account di posta,codice,identificatore,string,,,10,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_codice,50
 347,29,descrizione,Descrizione,Descrizione dell account,descrizione,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_descrizione,50
 348,29,smtp_host,Host SMTP,Server SMTP usato per l invio,smtp_host,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_smtp_host,50

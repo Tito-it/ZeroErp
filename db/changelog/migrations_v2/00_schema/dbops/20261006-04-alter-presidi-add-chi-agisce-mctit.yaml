@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-presidi-cosa-significa-cosa-fare §4.2 — CHI spegne un presidio.
+#
+# ── ⭐ PERCHE' E' UN DATO E NON UNA FRASE ───────────────────────────
+#   Dei presidi che possono accendersi, la maggior parte non li spegne chi
+#   legge il pannello: servono lo sviluppo o chi gestisce il server. Scritto
+#   dentro la frase dell'azione, il pannello non saprebbe distinguere «tocca a
+#   te» da «inoltra» (un badge, un ordinamento) e il digest non potrebbe
+#   raggrupparli. Tre valori, tre persone diverse (D-3):
+#     AMMINISTRATORE  si spegne dall'applicazione;
+#     SISTEMISTA      server, servizi, schedulatori, ruoli del database;
+#     SVILUPPO        serve una modifica al codice o al database.
+#
+# ── ⚠️ PERCHE' QUI C'E' SOLO IL DOMINIO, E IL VINCOLO «OBBLIGATORIA» NO ─
+#   La regola vera e' «un presidio che puo' accendersi non nasce senza sapere a
+#   chi tocca» (`chk_presidi_chi_agisce_se_allarma`). Ma il valore arriva dal
+#   CSV, cioe' dal mirror di 80_data, che gira DOPO 00_schema: su dbdev le
+#   righe esistono gia' e il vincolo nascerebbe violato; da zero i due mirror
+#   del 2026-09-10 inseriscono le righe e la colonna nello stesso INSERT, ma
+#   il vincolo legato a una riga di seed sta comunque dove la riga e' gia'
+#   scritta. ⇒ Il vincolo condizionale nasce in 90_end/20261006-07.
+#   Il CHECK di dominio invece nasce qui: NULL lo soddisfa, quindi non
+#   dipende dal seed.
+#
+# ⚠️ Nessun DEFAULT: un default sceglierebbe a chi tocca un presidio al posto
+#   di chi lo scrive, che e' esattamente la decisione che la colonna rende
+#   esplicita.
+# ⚠️ Catalogo puro: nessuna FK verso anagrafiche.*, nessun dato di macchina.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261006-04-alter-presidi-add-chi-agisce-mctit.yaml
+
+  - changeSet:
+      id: 20261006-04-alter-presidi-add-chi-agisce
+      author: mctit
+      failOnError: true
+      comment: >
+        Aggiunge dbops.presidi.chi_agisce (AMMINISTRATORE, SISTEMISTA,
+        SVILUPPO): chi puo' spegnere il presidio. Solo il CHECK di dominio;
+        l'obbligo sui presidi che si accendono nasce in 90_end/20261006-07,
+        dopo il mirror del CSV. brief-db-presidi-cosa-significa-cosa-fare §4.2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi
+        - not:
+            - columnExists:
+                schemaName: dbops
+                tableName: presidi
+                columnName: chi_agisce
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.presidi
+                  ADD COLUMN chi_agisce text NULL;
+
+              -- Il dominio. NULL lo soddisfa: l'obbligo sui presidi che si
+              -- accendono e' un altro vincolo, in 90_end (vedi intestazione).
+              ALTER TABLE dbops.presidi
+                  ADD CONSTRAINT chk_presidi_chi_agisce
+                  CHECK (chi_agisce IN ('AMMINISTRATORE', 'SISTEMISTA', 'SVILUPPO'));
+
+              COMMENT ON COLUMN dbops.presidi.chi_agisce IS
+                  'Chi puo'' spegnere il presidio. AMMINISTRATORE: si spegne dall''applicazione, quindi chi legge il pannello. SISTEMISTA: server, servizi, schedulatori, ruoli del database. SVILUPPO: serve una modifica al codice o al database. ⭐ E'' un DATO e non una frase dentro `dbops.presidi_testi.azione` perche'' il pannello deve poter distinguere «tocca a te» da «inoltra» e il digest deve poter raggruppare. Obbligatoria su ogni natura tranne INVENTARIO, che non si accende (chk_presidi_chi_agisce_se_allarma, nato in 90_end perche'' il valore lo scrive il mirror del CSV). Brief: brief-db-presidi-cosa-significa-cosa-fare §4.2.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.presidi DROP COLUMN IF EXISTS chi_agisce;
