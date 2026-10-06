@@ -291,7 +291,12 @@
     "strumenti": {
       "code-lavoro": "Code di lavoro",
       "giornale": "Giornale eventi",
-      "email": "Email"
+      "email": "Email",
+      "diagnostica": "Diagnostica",
+      "processi-automatici": "Processi automatici",
+      "audit-log": "Audit Log",
+      "error-log": "Errori tecnici",
+      "email-log": "Log Email"
     },
     "amm-software": {
       "accessi": "Accessi",
@@ -305,13 +310,9 @@
       "categorie-clienti": "Categorie cliente",
       "definizioni-workflow": "Definizioni workflow",
       "matrice-categorie-listini": "Matrice Categorie/Listini",
-      "audit-log": "Audit Log",
-      "error-log": "Errori tecnici",
       "email-accounts": "Account Email",
       "email-templates": "Template Email",
-      "email-log": "Log Email",
-      "personalizzazioni-liste-tecniche": "Personalizzazioni liste (tecnica)",
-      "processi-automatici": "Processi automatici"
+      "personalizzazioni-liste-tecniche": "Personalizzazioni liste (tecnica)"
     },
     "anagrafiche": {
       "soggetti": "Soggetti",

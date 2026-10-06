@@ -244,24 +244,6 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'matrice-categorie-listini' }
         },
         {
-          path: 'amm-software/processi-automatici',
-          name: 'amm-software-processi-automatici',
-          component: () => import('../amministrazione/views/ProcessiAutomaticiListView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'processi-automatici' }
-        },
-        {
-          path: 'amm-software/audit-log',
-          name: 'amm-software-audit-log',
-          component: () => import('../amministrazione/views/AuditLogView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'audit-log' }
-        },
-        {
-          path: 'amm-software/error-log',
-          name: 'amm-software-error-log',
-          component: () => import('../amministrazione/views/ErrorLogListView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'error-log' }
-        },
-        {
           path: 'amm-software/email-accounts',
           name: 'amm-software-email-accounts',
           component: () => import('../amministrazione/views/EmailAccountsListView.vue'),
@@ -272,12 +254,6 @@ const router = createRouter({
           name: 'amm-software-email-templates',
           component: () => import('../amministrazione/views/EmailTemplatesListView.vue'),
           meta: { domain: 'amm-software', menuKey: 'email-templates' }
-        },
-        {
-          path: 'amm-software/email-log',
-          name: 'amm-software-email-log',
-          component: () => import('../amministrazione/views/EmailLogsListView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'email-log' }
         },
         {
           path: 'amm-software/personalizzazioni-liste-tecniche',
@@ -435,6 +411,34 @@ const router = createRouter({
           name: 'strumenti-email',
           component: () => import('../strumenti/views/EmailLogView.vue'),
           meta: { domain: 'strumenti', menuKey: 'email' }
+        },
+        // Strumenti → Diagnostica (Tid 2026-10-06, prima in Amm. software): le
+        // viste restano in `amministrazione/` perche' endpoint e permesso
+        // (`AdminAPIView`) sono di li'. Il cancello super admin sta sul
+        // gruppo di menu `diagnostica` e lo applica il guard di voce.
+        {
+          path: 'strumenti/diagnostica/processi-automatici',
+          name: 'strumenti-diagnostica-processi-automatici',
+          component: () => import('../amministrazione/views/ProcessiAutomaticiListView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'processi-automatici' }
+        },
+        {
+          path: 'strumenti/diagnostica/audit-log',
+          name: 'strumenti-diagnostica-audit-log',
+          component: () => import('../amministrazione/views/AuditLogView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'audit-log' }
+        },
+        {
+          path: 'strumenti/diagnostica/error-log',
+          name: 'strumenti-diagnostica-error-log',
+          component: () => import('../amministrazione/views/ErrorLogListView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'error-log' }
+        },
+        {
+          path: 'strumenti/diagnostica/email-log',
+          name: 'strumenti-diagnostica-email-log',
+          component: () => import('../amministrazione/views/EmailLogsListView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'email-log' }
         },
         {
           path: 'vendite/preventivi',

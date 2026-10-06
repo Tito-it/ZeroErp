@@ -602,7 +602,9 @@ export const MANAGE_ICONS = {
   // Toggle delle EXPANSION ROW di una DataTable: la stessa coppia del toggler
   // di riga PrimeVue (chevron-right = chiusa, chevron-down = aperta), cosi'
   // «espandi tutte» nella barra della lista porta lo stesso segno della riga.
-  // Stessa coppia per i gruppi annidati della sidebar (SidebarDomain).
+  // Stessa coppia per i gruppi annidati della sidebar (SidebarDomain); a
+  // sidebar CHIUSA `ROW_EXPAND` sta accanto all'icona del gruppo e dice «qui
+  // dentro ci sono altre voci» (SidebarItem, prop `gruppo`, 2026-10-06).
   // Usare dinamicamente: `icon: isExpanded ? ROW_COLLAPSE : ROW_EXPAND`.
   ROW_EXPAND: 'pi pi-chevron-right',
   ROW_COLLAPSE: 'pi pi-chevron-down',
@@ -651,7 +653,7 @@ export const MANAGE_ICONS = {
   SUPER_ADMIN: 'pi pi-crown',
   //
   // ═══ Censimento icone per significato (2026-09-27, approvato da Tid) ══════
-  // docs/it/dev/work-in-progress/censimento-icone-per-significato.md. Il nome
+  // docs/it/dev/work-done/censimento-icone-per-significato.md. Il nome
   // dice il SIGNIFICATO, non il disegno: due gesti diversi non portano lo
   // stesso segno, e lo stesso significato ne porta uno solo.
   //

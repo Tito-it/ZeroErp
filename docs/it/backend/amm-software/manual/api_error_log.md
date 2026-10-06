@@ -116,8 +116,9 @@ Envelope paginato standard (`count`, `page`, `page_size`, `total_pages`, `result
 
 ## Frontend
 
-`ErrorLogListView` (`/amm-software/error-log`, voce «Errori tecnici» accanto
-ad Audit Log ed Email log): `<ListaConfigurabile codice="dbops.error_log">`,
+`ErrorLogListView` (`/strumenti/diagnostica/error-log`, voce «Errori tecnici»
+del gruppo Strumenti → Diagnostica, accanto ad Audit Log ed Email log; fino al
+2026-10-06 stava in Amm. software): `<ListaConfigurabile codice="dbops.error_log">`,
 store `amministrazione/stores/errorLog.js` (`createListaStore`, `userScoped`),
 toolbar con i sei filtri, export. Kebab di riga: **Dettaglio**
 (`ErrorLogDettaglioDrawer` — testata, frase/causa/soluzione, `context` reso dal

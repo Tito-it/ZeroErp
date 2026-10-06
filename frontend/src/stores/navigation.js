@@ -1,7 +1,7 @@
 // Scopo: gestione stato sidebar morfica — dominio attivo e menu corrente
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { DOMAINS, DOMAIN_MENUS } from '../core/navigation'
+import { DOMAINS, DOMAIN_MENUS, flattenMenu } from '../core/navigation'
 import { local, domainFavoriteKey, userScopedKey } from '../core/storage'
 
 const FAVORITES_PER_DOMAIN_MAX = 4
@@ -54,8 +54,10 @@ export const useNavigationStore = defineStore('navigation', () => {
     if (Array.isArray(domainFavorites) && domainFavorites.length > 0) {
       return domainFavorites[0]
     }
-    const menu = DOMAIN_MENUS[domainKey] || []
-    if (menu.length > 0) return menu[0].to
+    // ⚠️ La prima voce con una rotta: un GRUPPO (voce con `children`) non ne
+    //    ha una sua, e il suo `to` assente mandava il dominio a `undefined`.
+    const primaVoce = flattenMenu(DOMAIN_MENUS[domainKey]).find(item => item.to)
+    if (primaVoce) return primaVoce.to
     const domain = DOMAINS.find(d => d.key === domainKey)
     return domain?.to || null
   }

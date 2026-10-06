@@ -20,6 +20,9 @@
 //    dichiarato nel registro del piano.
 // ⚠️ Niente casella di ricerca: il backend non ha ricerca testuale — ogni
 //    filtro e' esatto o a prefisso e ha il suo indice (P-3).
+// ⚠️ Niente `useReadonlyMode` (tolto il 2026-10-06, Tid): dietro `adminOnly`
+//    di Strumenti → Diagnostica non c'e' un livello d'area da risolvere — o
+//    sei super admin, o non arrivi alla pagina. Come ProcessiAutomaticiListView.
 import { ref, computed, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -31,7 +34,6 @@ import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import ErrorLogDettaglioDrawer from '../components/ErrorLogDettaglioDrawer.vue'
-import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
@@ -45,7 +47,6 @@ import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t } = useI18n()
-useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const store = useErrorLogStore()
 const notify = useNotify()
 const auth = useAuthStore()

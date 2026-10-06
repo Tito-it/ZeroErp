@@ -291,7 +291,12 @@
     "strumenti": {
       "code-lavoro": "Work queues",
       "giornale": "Event journal",
-      "email": "Email"
+      "email": "Email",
+      "diagnostica": "Diagnostics",
+      "processi-automatici": "Automated processes",
+      "audit-log": "Audit Log",
+      "error-log": "Technical errors",
+      "email-log": "Email Log"
     },
     "amm-software": {
       "accessi": "Accesses",
@@ -305,13 +310,9 @@
       "categorie-clienti": "Client Categories",
       "definizioni-workflow": "Workflow definitions",
       "matrice-categorie-listini": "Categories/Price Lists Matrix",
-      "audit-log": "Audit Log",
-      "error-log": "Technical errors",
       "email-accounts": "Email Accounts",
       "email-templates": "Email Templates",
-      "email-log": "Email Log",
-      "personalizzazioni-liste-tecniche": "List customizations (technical)",
-      "processi-automatici": "Automated processes"
+      "personalizzazioni-liste-tecniche": "List customizations (technical)"
     },
     "anagrafiche": {
       "soggetti": "Subjects",
