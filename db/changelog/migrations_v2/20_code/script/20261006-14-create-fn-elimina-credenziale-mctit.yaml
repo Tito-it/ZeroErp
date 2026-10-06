@@ -1,0 +1,185 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_elimina_credenziale: il gesto che il presidio
+#   dbops.vw_credenziali_da_sanare chiedeva all'amministratore e che non
+#   esisteva — eliminare una credenziale senza nessuna veste.
+#   Brief: brief-db-elimina-credenziale-senza-veste §4.2 (D-1…D-3 di Tid,
+#   2026-10-06)
+#
+# ── IL PERCORSO ───────────────────────────────────────────────────────
+#   1. script.fn_guard_super_admin(app.current_user_id), prima riga (D-3):
+#      la gestione accessi e' amm_software (D-B1), come il blocco.
+#   2. Id non valido -> E_AUTH_CHIAMATA_NON_VALIDA; credenziale inesistente
+#      -> E_CREDENZIALE_NON_TROVATA (gli stessi del blocco).
+#   3. ⭐ SELECT … FOR UPDATE sulla riga di django.auth_user, PRIMA della
+#      check: chiude la gara con un invito concorrente. L'INSERT di una veste
+#      verifica la sua FK con un FOR KEY SHARE sulla stessa riga, che col FOR
+#      UPDATE confligge: o la veste e' gia' scritta (e la check la vede, perche'
+#      la sua lettura parte dopo il lock), o aspetta la fine di questa
+#      transazione e muore sulla FK. Senza il lock, fra la check e il DELETE
+#      poteva nascere una veste.
+#   4. script.fn_raise_primo_motivo_se_presente sui motivi di
+#      script.fn_check_credenziale_eliminabile: la regola non si riscrive
+#      (§12.5.2). Fra i motivi c'e' il fail-closed senza ponte django.
+#   5. La traccia in config.credenziali_eliminate (decisione di Tid), poi il
+#      DELETE. Le tabelle CASCADE seguono da sole.
+#   6. ⚠️ La rete: un 23503 dal DELETE si rilegge dalla check e se ne solleva
+#      il primo motivo (CON_VESTI per una veste nata nonostante il lock,
+#      CON_STORIA per una riga di storia arrivata nel frattempo). Se la check
+#      non lo spiega, si rilancia l'errore originale: e' un difetto della
+#      check (per esempio una FK verso una tabella che segue auth_user in
+#      CASCADE, che il pgTAP vieta), non un caso da tradurre a caso.
+#   ⚠️ Le FK DIFFERITE (le tre di Django: gruppi, permessi, admin log) si
+#   verificano al COMMIT, fuori da questa funzione: la check le conta, ma una
+#   riga scritta da un'altra transazione dopo la check arriverebbe come 23503
+#   al commit. Le tabelle di Django non le scrive l'applicazione.
+#
+# ── SECURITY DEFINER ──────────────────────────────────────────────────
+#   Del proprietario, search_path bloccato, come fn_blocca_credenziale.
+#   All'app NIENTE DELETE diretto su django.auth_user (forward
+#   90_end/20261006-15 e provision_db_roles.sql): la sola porta e' questa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261006-14-create-fn-elimina-credenziale-mctit.yaml
+
+  - changeSet:
+      id: 20261006-14-create-fn-elimina-credenziale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_elimina_credenziale(p_auth_user_id): elimina una credenziale senza vesti ne'
+        storia, per decisione di un SUPER_ADMIN. Guard di permesso in prima riga, lock della riga
+        di django.auth_user, primo motivo di fn_check_credenziale_eliminabile, traccia in
+        config.credenziali_eliminate, DELETE. SECURITY DEFINER. Brief:
+        brief-db-elimina-credenziale-senza-veste §4.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_elimina_credenziale';
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_credenziale_eliminabile';
+        - tableExists:
+            schemaName: config
+            tableName: credenziali_eliminate
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_elimina_credenziale(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: eliminare una credenziale che non ha mai avuto una veste
+              --   ne' lasciato storia, per decisione di un SUPER_ADMIN, e
+              --   lasciarne traccia.
+              DECLARE
+                  v_utente   config.credenziali_eliminate.eliminata_da%TYPE;
+                  -- Nudi: colonne di django.auth_user, niente %TYPE su django.*.
+                  v_username text;
+                  v_email    text;
+                  -- Nudo: l'array dei motivi di fn_check_credenziale_eliminabile.
+                  v_motivi   jsonb;
+              BEGIN
+                  -- Prima riga: chi agisce dev'essere SUPER_ADMIN (D-3).
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_super_admin(v_utente);
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_elimina_credenziale', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_elimina_credenziale',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  -- Il lock PRIMA della check: una veste che nasce adesso o e'
+                  -- gia' scritta, o aspetta questa transazione (vedi testata).
+                  SELECT au.username, au.email
+                    INTO v_username, v_email
+                    FROM django.auth_user au
+                   WHERE au.id = p_auth_user_id
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_elimina_credenziale', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- La regola sta nella check: qui la si chiama, non la si riscrive
+                  -- (linee-guida-sql §12.5.2).
+                  v_motivi := script.fn_check_credenziale_eliminabile(p_auth_user_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'database', 'script.fn_elimina_credenziale', v_motivi,
+                      p_context_extra => jsonb_build_object('auth_user_id', p_auth_user_id,
+                                                            'chi_agisce',   v_utente));
+
+                  -- La traccia: la riga di django.auth_user sta per sparire.
+                  INSERT INTO config.credenziali_eliminate
+                         (auth_user_id, username, email, eliminata_da)
+                  VALUES (p_auth_user_id, v_username, v_email, v_utente);
+
+                  BEGIN
+                      DELETE FROM django.auth_user au WHERE au.id = p_auth_user_id;
+                  EXCEPTION WHEN foreign_key_violation THEN
+                      -- La rete: la regola si rilegge, non si indovina.
+                      v_motivi := script.fn_check_credenziale_eliminabile(p_auth_user_id);
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database', 'script.fn_elimina_credenziale', v_motivi,
+                          p_context_extra => jsonb_build_object('auth_user_id', p_auth_user_id,
+                                                                'chi_agisce',   v_utente,
+                                                                'rete',         true));
+                      -- Nessun motivo lo spiega: e' un difetto della check, e
+                      -- l'errore originale e' la diagnosi giusta.
+                      RAISE;
+                  END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_elimina_credenziale(p_auth_user_id integer) IS
+                  'Elimina una CREDENZIALE (django.auth_user) che non ha nessuna veste ne'' storia: il gesto '
+                  'che il presidio dbops.vw_credenziali_da_sanare (NESSUNA_VESTE) chiede all''amministratore. '
+                  'Prima riga script.fn_guard_super_admin(app.current_user_id) (D-3). Id NULL o <= 0 -> '
+                  'E_AUTH_CHIAMATA_NON_VALIDA; credenziale inesistente -> E_CREDENZIALE_NON_TROVATA. Blocca la '
+                  'riga di django.auth_user (FOR UPDATE) PRIMA di leggere la check: una veste concorrente o '
+                  'e'' gia'' scritta o aspetta e muore sulla FK. Poi solleva il primo motivo di '
+                  'script.fn_check_credenziale_eliminabile, la stessa regola che spegne il pulsante '
+                  '(§12.5.2): CON_VESTI, STORIA_NON_VERIFICABILE (senza il ponte django, fail-closed), '
+                  'CON_STORIA. Scrive la traccia in config.credenziali_eliminate (id, username, email, chi, '
+                  'quando), poi il DELETE: le tabelle CASCADE (config.credenziali, preferenze, TOTP, token, '
+                  'override) seguono. Un 23503 dal DELETE si rilegge dalla check e ne solleva il primo motivo; '
+                  'se la check non lo spiega si rilancia l''originale. Le FK differite di Django si '
+                  'verificano al commit. SECURITY DEFINER del PROPRIETARIO, search_path bloccato: all''app '
+                  'niente DELETE diretto su django.auth_user. Brief: brief-db-elimina-credenziale-senza-veste §4.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_elimina_credenziale(integer);

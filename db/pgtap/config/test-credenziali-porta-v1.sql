@@ -32,7 +32,9 @@
 --    8) le quattro colonne della credenziale non esistono piu' su identita_digitali
 --    9) i due trigger della credenziale ci sono (anti-lockout, retention)
 --   10) cancellare l'auth_user si porta via lo stato (CASCADE) — skip() dove la
---       FK non esiste (CI: Liquibase gira prima di manage.py migrate)
+--       FK non esiste (CI: Liquibase gira prima di manage.py migrate). Dal
+--       2026-10-06 si cancella dal verbo script.fn_elimina_credenziale, da
+--       SUPER_ADMIN: l'app non ha piu' il DELETE diretto
 --   Le gemelle del nome tentato (R-7)
 --   11) config.nomi_tentati: all'app SELECT si', INSERT/UPDATE/DELETE no
 --   12) config.nomi_tentati_provenienze: idem
@@ -142,7 +144,14 @@ SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_config_credenzial
 
 -- La cancellazione si fa solo dove la FK c'e': altrimenti lascerebbe un orfano
 -- che il test non ha niente da dire.
-DELETE FROM django.auth_user WHERE id = (SELECT id FROM _u) AND (SELECT c FROM _fk);
+-- ⚠️ Dal 2026-10-06 l'app non ha piu' il DELETE su django.auth_user: una
+--   credenziale si elimina dal verbo script.fn_elimina_credenziale, da
+--   SUPER_ADMIN (brief-db-elimina-credenziale-senza-veste §4.2). La credenziale
+--   del test non ha vesti ne' storia, quindi il verbo la elimina; la sua
+--   regola la prova db/pgtap/config/test-elimina-credenziale-v1.sql.
+CREATE TEMP TABLE _sa AS SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-SA-porta', true);
+DO $sa$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _sa)); END $sa$;
+SELECT script.fn_elimina_credenziale((SELECT id FROM _u)) WHERE (SELECT c FROM _fk);
 
 SELECT CASE
     WHEN NOT (SELECT c FROM _fk)

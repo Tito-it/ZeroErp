@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA DELL'ELIMINAZIONE DI UNA CREDENZIALE
+#   Brief: brief-db-elimina-credenziale-senza-veste §4.2. Modello:
+#   brief-db-permesso-nel-verbo-di-scrittura, D-1 — una scrittura = un verbo.
+#
+# ── ⭐ COSA FA ───────────────────────────────────────────────────────
+#   1. config.credenziali_eliminate: all'app SOLO SELECT. La traccia la
+#      scrive soltanto script.fn_elimina_credenziale (DEFINER del
+#      proprietario): un registro che l'auditato puo' riscrivere non e' un
+#      registro.
+#   2. django.auth_user: all'app tolto il DELETE. L'unica porta per eliminare
+#      una credenziale e' il verbo, che chiede SUPER_ADMIN, controlla vesti e
+#      storia e lascia la traccia. Nessuna funzione e nessun punto del backend
+#      cancella auth_user (letto il 2026-10-06): il DELETE dell'app non serviva
+#      a nessuno. SELECT, INSERT e UPDATE restano: li usano Django e
+#      anagrafiche.fn_crea_auth_user.
+#
+# ── ⚠️ django.auth_user PUO' NON ESISTERE ───────────────────────────
+#   Su un'installazione nuova (e in CI) Liquibase gira prima di manage.py
+#   migrate: qui la tabella non c'e' ancora, e il ramo salta. La postura su
+#   `django` la porta il provisioning, che gira dopo il migrate di Django
+#   (linee-guida-sql §11.9). Niente preCondition sulla tabella di Django:
+#   fermerebbe il migrate proprio dove deve passare.
+#
+# ── 🔴 TRE SEDI, COME OGNI POSTURA PIU' STRETTA (linee-guida §11.8) ──
+#   · QUESTO changeSet, che agisce subito su dev;
+#   · per config.credenziali_eliminate l'elenco v_tabelle_sola_lettura_app del
+#     loop 90_end/ci_apply/20260205-41 (django non e' fra gli schemi del loop:
+#     li' la seconda sede non serve);
+#   · il blocco «POSTURA DICHIARATA» di scripts/sql/provision_db_roles.sql,
+#     per entrambe.
+#   Le tiene allineate db/pgtap/config/test-elimina-credenziale-v1.sql (test 13-14).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261006-15-revoke-app-scrittura-credenziali-eliminate-e-delete-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20261006-15-revoke-app-scrittura-credenziali-eliminate-e-delete-auth-user
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta dell'eliminazione di una credenziale: a zeroerp_app SELECT soltanto su
+        config.credenziali_eliminate e niente DELETE su django.auth_user (se la tabella esiste gia').
+        Scrive e cancella solo script.fn_elimina_credenziale. Postura resa stabile dal loop
+        20260205-41 e dal provisioning. Brief: brief-db-elimina-credenziale-senza-veste §4.2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: credenziali_eliminate
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta dell''eliminazione credenziale.';
+                      RETURN;
+                  END IF;
+
+                  -- La traccia: l'applicazione legge, scrive il verbo.
+                  GRANT  SELECT                 ON TABLE config.credenziali_eliminate TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE config.credenziali_eliminate FROM zeroerp_app;
+
+                  -- La credenziale: si elimina solo dal verbo. Prima di manage.py
+                  -- migrate la tabella non c'e' (installazione nuova, CI).
+                  IF to_regclass('django.auth_user') IS NOT NULL THEN
+                      REVOKE DELETE ON TABLE django.auth_user FROM zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'django.auth_user non presente: la postura la porta provision_db_roles.sql.';
+                  END IF;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Senza togliere le voci dal loop 20260205-41 e dal provisioning la
+              -- passata successiva richiude la porta.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE config.credenziali_eliminate TO zeroerp_app;
+              DO $r$ BEGIN
+                  IF to_regclass('django.auth_user') IS NOT NULL THEN
+                      GRANT DELETE ON TABLE django.auth_user TO zeroerp_app;
+                  END IF;
+              END $r$;
