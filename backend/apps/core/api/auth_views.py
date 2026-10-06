@@ -402,8 +402,10 @@ class AuditTokenObtainPairView(TokenObtainPairView):
     # lookup usava il valore grezzo: con « tid» non trovava la credenziale,
     # quindi blocco dell'admin, freno e attesa non si controllavano, mentre
     # `authenticate("tid")` faceva entrare. E due normalizzazioni diverse
-    # riaprono l'oracolo del nome (brief §13.3). Con l'email (L-4) si cambia
-    # il campo, e lookup e impronta lo seguono da soli.
+    # riaprono l'oracolo del nome (brief §13.3). ⭐ Il campo e' quello che la
+    # porta dichiara (`username_field` del serializer: il nome utente per
+    # admin, l'email per portale e shop dal 2026-10-06, L-4): lookup e
+    # impronta lo seguono da soli.
     # Ritorna None se il campo rifiuta il valore (assente, vuoto, non testo).
     def _nome_tentato(self, request: Request) -> str | None:
         dati = request.data
@@ -411,25 +413,24 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             return None
         # Senza contesto: i campi non ne dipendono, e cosi' il metodo non
         # chiede che `dispatch` abbia gia' impostato `self.request`.
-        campo = self.get_serializer_class()().fields[User.USERNAME_FIELD]
+        serializer = self.get_serializer_class()()
+        campo = serializer.fields[serializer.username_field]
         try:
-            return campo.run_validation(dati.get(User.USERNAME_FIELD, empty))
+            return campo.run_validation(dati.get(serializer.username_field, empty))
         except ValidationError:
             return None
 
-    @staticmethod
-    # Scopo: Trova user Django per username (best-effort, non lancia errore).
-    # Stessa ricerca di `ModelBackend` (`get_by_natural_key`: uguaglianza
-    # esatta), sul nome gia' normalizzato da `_nome_tentato`.
+    # Scopo: Trova la credenziale del nome tentato (best-effort, non lancia
+    # errore), con la ricerca della porta (`trova_credenziale` del serializer:
+    # nome utente esatto per admin, email senza maiuscole per portale e shop),
+    # sul nome gia' normalizzato da `_nome_tentato`.
     # ⛔ Nessun `except`: un guasto del DB qui NON e' «nome inesistente». Fino
     # al 2026-09-25 un `except Exception` lo trasformava in `None`, e il login
     # proseguiva col freno sul nome tentato invece che sulla credenziale —
     # cioe' senza controllare il blocco dell'admin — mentre `authenticate`
     # poteva far entrare. Fail-closed: l'errore sale e il login si ferma.
-    def _find_user(username: str) -> User | None:
-        if not username:
-            return None
-        return User.objects.filter(username=username).first()
+    def _find_user(self, nome: str) -> User | None:
+        return self.get_serializer_class().trova_credenziale(nome)
 
     @staticmethod
     # Scopo: Estrae user_id e sid dal refresh token nella response (no query DB extra).
@@ -463,7 +464,8 @@ class PortaleTokenView(AuditTokenObtainPairView):
     il blocco login e' legato ad auth_user (non a identita), e un
     cliente/fornitore che sbaglia password piu' volte deve comunque
     essere bloccato. Cambia solo il serializer per esporre la veste
-    CLIENTE_PORTALE | FORNITORE_PORTALE.
+    CLIENTE_PORTALE | FORNITORE_PORTALE. Si entra con l'EMAIL, non col nome
+    utente (L-4, D-9): corpo `{"email", "password"}`.
     """
 
     serializer_class = PortaleTokenSerializer
@@ -476,7 +478,7 @@ class ShopTokenView(AuditTokenObtainPairView):
     Stesso ciclo audit/throttle/blocco di AdminTokenView; cambia solo
     il serializer per esporre la veste SHOP_CUSTOMER. Stub PR-B4:
     il flusso utente completo (registrazione self-service, attivazione)
-    e' in PR-C.
+    e' in PR-C. Si entra con l'EMAIL (L-4, D-9): corpo `{"email", "password"}`.
     """
 
     serializer_class = ShopTokenSerializer

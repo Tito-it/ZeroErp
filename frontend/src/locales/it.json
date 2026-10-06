@@ -708,12 +708,12 @@
     "nuovo_utente_creato": "nuovo account creato",
     "activation_title": "Attivazione account portale",
     "activation_welcome": "Imposta la tua password per completare l'attivazione dell'account portale.",
-    "activation_success": "Account portale attivato. Reindirizzamento al login...",
+    "activation_success": "Account portale attivato: accedi con la tua email. Reindirizzamento al login...",
     "activation_token_invalid": "Il link non è valido o è scaduto. Contatta l'amministratore per richiedere un nuovo invito.",
     "activate_btn": "Attiva account",
     "activation_cross_welcome": "Stai per attivare l'accesso al portale con le tue credenziali esistenti. Non è richiesta una nuova password: potrai accedere con le stesse credenziali che usi già.",
     "activate_cross_btn": "Attiva accesso portale",
-    "activation_cross_success": "Accesso portale attivato. Effettua il login con le tue credenziali esistenti.",
+    "activation_cross_success": "Accesso portale attivato: accedi con la tua email e la password che hai già.",
     "profile": {
       "title": "Il tuo profilo",
       "anagrafica_title": "Dati anagrafici",
@@ -753,12 +753,12 @@
     "disattivato_errore": "Errore durante la disattivazione dell'accesso shop",
     "activation_title": "Attivazione account shop",
     "activation_welcome": "Imposta la tua password per completare l'attivazione dell'account shop.",
-    "activation_success": "Account shop attivato. Reindirizzamento al login...",
+    "activation_success": "Account shop attivato: accedi con la tua email. Reindirizzamento al login...",
     "activation_token_invalid": "Il link non è valido o è scaduto. Contatta l'amministratore per richiedere un nuovo invito.",
     "activate_btn": "Attiva account shop",
     "activation_cross_welcome": "Stai per attivare l'accesso allo shop con le tue credenziali esistenti. Non è richiesta una nuova password.",
     "activate_cross_btn": "Attiva accesso shop",
-    "activation_cross_success": "Accesso shop attivato. Effettua il login dal canale shop con le tue credenziali esistenti."
+    "activation_cross_success": "Accesso shop attivato: accedi allo shop con la tua email e la password che hai già."
   },
   "auth": {
     "username": "Username",
@@ -807,7 +807,7 @@
     "reset_password": "Reimposta password",
     "reset_email_label": "Inserisci la tua email",
     "reset_email_sent": "Se l'email e' registrata, riceverai un link per reimpostare la password.",
-    "reset_username_label": "Inserisci il tuo username",
+    "reset_identificativo_label": "Nome utente o email",
     "reset_username_sent": "Se l'utente esiste e ha un'email configurata, ricevera' un link per reimpostare la password.",
     "reset_confirm": "Imposta nuova password",
     "reset_success": "Password reimpostata. Accedi con la nuova password.",

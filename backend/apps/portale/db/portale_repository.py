@@ -94,18 +94,6 @@ class PortaleRepository:
             cursor.execute(sql, [soggetto_ruolo_id, ruolo_applicativo])
             return row_to_dict(cursor)
 
-    # Scopo: La credenziale di un'email, senza distinguere maiuscole e
-    # minuscole. La regola vive nel DB (`script.fn_get_auth_user_id_for_email`,
-    # P-2): la stessa della madre dell'operatore, cosi' portale e operatore
-    # riconoscono la stessa persona. Due credenziali con la stessa email →
-    # `E_CREDENZIALE_EMAIL_AMBIGUA` dal DB (prima un `LIMIT 1` ne sceglieva
-    # una a caso). Email vuota o sconosciuta → None.
-    def find_auth_user_by_email(self, email: str) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT script.fn_get_auth_user_id_for_email(%s)", [email])
-            row = cursor.fetchone()
-            return int(row[0]) if row and row[0] is not None else None
-
     # Scopo: Crea una nuova riga auth_user per un portale user.
     # Username derivato da email (prefisso prima della @), con suffisso
     # progressivo se gia' esistente. is_active=true: se la persona entra lo

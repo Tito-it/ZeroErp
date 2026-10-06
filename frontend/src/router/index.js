@@ -169,6 +169,14 @@ const router = createRouter({
           name: 'amm-software-operatori',
           redirect: { name: 'amm-software-accessi', query: { tab: ACCESSI_TABS.OPERATORI } }
         },
+        // Stessa ragione: la pagina «Riepilogo permessi» e' diventata «Mostra
+        // permessi» della lista operatori (2026-10-06). Ritirata senza
+        // redirect, un preferito salvato su di lei apriva «non trovato».
+        {
+          path: 'amm-software/permessi',
+          name: 'amm-software-permessi',
+          redirect: { name: 'amm-software-accessi', query: { tab: ACCESSI_TABS.OPERATORI } }
+        },
         {
           path: 'amm-software/profili-reparto',
           name: 'amm-software-profili-reparto',

@@ -708,12 +708,12 @@
     "nuovo_utente_creato": "new account created",
     "activation_title": "Portal account activation",
     "activation_welcome": "Set your password to complete the portal account activation.",
-    "activation_success": "Portal account activated. Redirecting to login...",
+    "activation_success": "Portal account activated: log in with your email. Redirecting to login...",
     "activation_token_invalid": "The link is invalid or has expired. Contact the administrator to request a new invitation.",
     "activate_btn": "Activate account",
     "activation_cross_welcome": "You are about to activate portal access with your existing credentials. No new password is required: you can log in with the credentials you already use.",
     "activate_cross_btn": "Activate portal access",
-    "activation_cross_success": "Portal access activated. Log in from the portal channel with your existing credentials.",
+    "activation_cross_success": "Portal access activated: log in with your email and the password you already have.",
     "profile": {
       "title": "Your profile",
       "anagrafica_title": "Profile data",
@@ -753,12 +753,12 @@
     "disattivato_errore": "Error disabling shop access",
     "activation_title": "Shop account activation",
     "activation_welcome": "Set your password to complete the shop account activation.",
-    "activation_success": "Shop account activated. Redirecting to login...",
+    "activation_success": "Shop account activated: log in with your email. Redirecting to login...",
     "activation_token_invalid": "The link is invalid or expired. Contact the administrator to request a new invite.",
     "activate_btn": "Activate shop account",
     "activation_cross_welcome": "You're about to activate shop access with your existing credentials. No new password required.",
     "activate_cross_btn": "Activate shop access",
-    "activation_cross_success": "Shop access activated. Log in from the shop channel with your existing credentials."
+    "activation_cross_success": "Shop access activated: log in to the shop with your email and the password you already have."
   },
   "auth": {
     "username": "Username",
@@ -807,7 +807,7 @@
     "reset_password": "Reset password",
     "reset_email_label": "Enter your email",
     "reset_email_sent": "If the email is registered, you will receive a reset link.",
-    "reset_username_label": "Enter your username",
+    "reset_identificativo_label": "Username or email",
     "reset_username_sent": "If the user exists and has an email configured, they will receive a link to reset the password.",
     "reset_confirm": "Set new password",
     "reset_success": "Password reset. Log in with your new password.",

@@ -54,6 +54,21 @@ class AuthRepository:
             cursor.execute(sql, params)
             return fetchone_scalar(cursor)
 
+    # Scopo: La credenziale di un'email, senza distinguere maiuscole e
+    # minuscole. La regola vive nel DB (`script.fn_get_auth_user_id_for_email`,
+    # P-2): la stessa della madre dell'operatore, cosi' portale, shop e
+    # operatore riconoscono la stessa persona. Due credenziali con la stessa
+    # email → `E_CREDENZIALE_EMAIL_AMBIGUA` dal DB (prima un `LIMIT 1` ne
+    # sceglieva una a caso). Email vuota o sconosciuta → None.
+    # ⭐ Sede unica (regola del 2, 2026-10-06): la leggono l'invito del
+    # portale, il login per email di portale e shop (L-4) e il reset password.
+    # Fino a quel giorno stava in `PortaleRepository`.
+    def find_auth_user_id_per_email(self, email: str) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT script.fn_get_auth_user_id_for_email(%s)", [email])
+            auth_user_id = fetchone_scalar(cursor)
+            return int(auth_user_id) if auth_user_id is not None else None
+
     # Scopo: Dice se il nome tentato puo' provare ad entrare da questa provenienza.
     # Solleva dal DB, nell'ordine: E_CREDENZIALE_BLOCCATA (blocco dell'admin),
     # E_UTENTE_BLOCCATO (freno su questa provenienza), E_LOGIN_ATTESA (attesa

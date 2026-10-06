@@ -19,6 +19,7 @@ Indice test eseguiti:
 2) TokenVesteDbTests.test_invalida_la_veste_e_non_l_altra
 3) TokenVesteDbTests.test_emissione_bb_spegne_solo_il_link_precedente_della_veste
 4) ResetPasswordDbTests.test_vale_solo_l_ultimo_link
+5) ResetPasswordDbTests.test_reset_chiesto_con_l_email_senza_maiuscole (L-4)
 """
 
 from __future__ import annotations
@@ -122,9 +123,9 @@ class ResetPasswordDbTests(_TransazioneAnnullata):
             patch("apps.core.api.password_reset_views._email_service")
         )
 
-    def _chiedi(self, username: str) -> str:
+    def _chiedi(self, identificativo: str) -> str:
         r = APIClient().post(
-            "/api/v1/auth/password-reset-request/", {"username": username}, format="json",
+            "/api/v1/auth/password-reset-request/", {"identificativo": identificativo}, format="json",
         )
         self.assertEqual(r.status_code, 200, r.content)
         link = self.email.send_email.call_args.kwargs["variabili"]["link"]
@@ -144,3 +145,15 @@ class ResetPasswordDbTests(_TransazioneAnnullata):
                 [utente.id],
             )
             self.assertEqual(cur.fetchone()[0], 1)
+
+    # Scopo: L-4, D-9: il reset si chiede anche con l'email, senza badare alle
+    # maiuscole (la regola del DB, `fn_get_auth_user_id_for_email`), e il link
+    # e' della credenziale di quell'email.
+    def test_reset_chiesto_con_l_email_senza_maiuscole(self):
+        utente = _credenziale()
+        token = self._chiedi(f"  {utente.email.upper()} ")
+        self.assertEqual(self.email.send_email.call_args.kwargs["destinatario"], utente.email)
+        trovato = TokenService().validate(token, "RESET_PASSWORD")
+        self.assertIsNotNone(trovato)
+        assert trovato is not None
+        self.assertEqual(trovato[0], utente.id)

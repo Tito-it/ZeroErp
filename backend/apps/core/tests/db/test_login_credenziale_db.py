@@ -36,6 +36,8 @@ Indice test eseguiti:
 6b) LoginViewDbTests.test_nome_inesistente_stesse_risposte_di_una_credenziale
 6c) LoginViewDbTests.test_nome_con_spazi_non_aggira_il_freno
 7) LoginViewDbTests.test_attesa_crescente_403_con_i_secondi_nel_messaggio
+7b) LoginViewDbTests.test_portale_e_shop_cercano_la_credenziale_per_email (L-4)
+7c) LoginViewDbTests.test_email_inesistente_frenata_a_prescindere_dalle_maiuscole (L-4)
 8) CicloOperatoreDbTests.test_operatore_nuovo_crea_invita_attiva_entra
 9) CicloOperatoreDbTests.test_credenziale_riusata_un_clic_e_password_intatta
    (con la lettura del dialog, B-20: la conferma dichiara l'id letto dall'endpoint)
@@ -46,7 +48,7 @@ Indice test eseguiti:
    (D-3: interruttore 400, rotta ritirata 404, reinvio che riapre il rapporto
     e non la porta, attivazione con un clic, rientro; valido_dal intatto)
 12) CicloOperatoreDbTests.test_operatore_disabilitato_entra_ancora_come_cliente_shop
-   (M-5 sul login: porta admin 403 E_VESTE_NON_ATTIVA, porta shop 200)
+   (M-5 sul login: porta admin 403 E_VESTE_NON_ATTIVA, porta shop 200 con l'email, L-4)
 13) CicloOperatoreDbTests.test_operatore_disabilitato_entra_ancora_come_cliente_portale
    (lo stesso giro con la veste CLIENTE_PORTALE: porta portale 200)
 """
@@ -353,6 +355,42 @@ class LoginViewDbTests(_ViewVere):
         # ⚠️ NON `detail`: li' arriva la causa del catalogo, senza numeri.
         self.assertRegex(errore["message"], r"\d+ secondi")
 
+    # Scopo: L-4, D-9. Le porte del cliente cercano la credenziale per EMAIL
+    # (backend `CredenzialePerEmailBackend` sul DB vero): la password giusta
+    # passa la verifica e si ferma alla veste, che questa credenziale non ha.
+    # Il nome utente della stessa credenziale non apre niente: 400, non un 401
+    # (non e' un tentativo, la password non si guarda).
+    def test_portale_e_shop_cercano_la_credenziale_per_email(self):
+        nome = f"test_login_{uuid.uuid4().hex[:12]}"
+        User.objects.create_user(username=nome, email=f"{nome}@example.invalid", password=_PASSWORD)
+        for i, url in enumerate((_URL_LOGIN_PORTALE, _URL_LOGIN_SHOP)):
+            with self.subTest(porta=url):
+                ip = f"198.51.100.{40 + i}"
+                r = self._post(url, {"email": f" {nome.upper()}@EXAMPLE.invalid", "password": _PASSWORD}, ip)
+                self.assertEqual(r.status_code, 403, r.content)
+                self.assertEqual(r.json()["error"]["code"], "E_VESTE_NON_ATTIVA")
+                r = self._post(url, {"email": f"{nome}@example.invalid", "password": "sbagliata"}, ip)
+                self.assertEqual(r.status_code, 401, r.content)
+                r = self._post(url, {"username": nome, "password": _PASSWORD}, ip)
+                self.assertEqual(r.status_code, 400, r.content)
+
+    # Scopo: R-7 con l'email: un'email inesistente scritta con maiuscole
+    # diverse e' lo STESSO nome tentato (lookup e impronta seguono la stessa
+    # normalizzazione), quindi n fallimenti misti la frenano come una
+    # credenziale vera. Con due normalizzazioni la variante di maiuscole
+    # ripartirebbe da zero solo per chi non esiste: l'oracolo del nome.
+    def test_email_inesistente_frenata_a_prescindere_dalle_maiuscole(self):
+        email = f"nessuno_{uuid.uuid4().hex[:12]}@example.invalid"
+        n = _parametri()["max_tentativi"]
+        for i in range(n):
+            variante = email.upper() if i % 2 else email
+            r = self._post(_URL_LOGIN_PORTALE, {"email": variante, "password": "sbagliata"}, "198.51.100.42")
+            self.assertEqual(r.status_code, 401, f"tentativo {i + 1}")
+
+        r = self._post(_URL_LOGIN_PORTALE, {"email": email.title(), "password": "sbagliata"}, "198.51.100.42")
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.json()["error"]["code"], "E_UTENTE_BLOCCATO")
+
 
 # Scopo: Un codice fiscale formalmente valido e sempre nuovo (le sei lettere
 # sono casuali), per fabbricare il soggetto dell'operatore.
@@ -573,8 +611,13 @@ class CicloOperatoreDbTests(_ViewVere):
             )
         ip = "198.51.100.33"
         self.assertEqual(self._login(nome, _PASSWORD, ip).status_code, 200)
-        r = self._post(url_porta, {"username": nome, "password": _PASSWORD}, ip)
+        # La porta del cliente si apre con l'EMAIL (L-4), senza badare alle
+        # maiuscole; il nome utente non e' il suo contratto (400, non un tentativo).
+        email = f"{nome.upper()}@Example.INVALID"
+        r = self._post(url_porta, {"email": email, "password": _PASSWORD}, ip)
         self.assertEqual(r.status_code, 200, r.content)
+        r = self._post(url_porta, {"username": nome, "password": _PASSWORD}, ip)
+        self.assertEqual(r.status_code, 400, r.content)
 
         r = self._admin("post", f"/api/v1/amm-software/operatori/{uid}/disabilita/")
         self.assertEqual(r.status_code, 200, r.content)
@@ -587,7 +630,7 @@ class CicloOperatoreDbTests(_ViewVere):
         self.assertEqual(r.status_code, 403, r.content)
         self.assertEqual(r.json()["error"]["code"], "E_VESTE_NON_ATTIVA")
         # Porta del cliente aperta, con la stessa password.
-        r = self._post(url_porta, {"username": nome, "password": _PASSWORD}, ip)
+        r = self._post(url_porta, {"email": email, "password": _PASSWORD}, ip)
         self.assertEqual(r.status_code, 200, r.content)
 
     def test_operatore_disabilitato_entra_ancora_come_cliente_shop(self):

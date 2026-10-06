@@ -416,7 +416,7 @@ class InvitoPortaleService:
     def _ensure_auth_user(
         self, *, email: str, nome_destinatario: str
     ) -> tuple[int, bool]:
-        existing = self._repo.find_auth_user_by_email(email)
+        existing = self._auth_repo.find_auth_user_id_per_email(email)
         if existing is not None:
             return existing, False
         # Split nome in first/last best-effort: usa l'unico campo

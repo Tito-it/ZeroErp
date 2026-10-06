@@ -169,12 +169,17 @@ export const useAuthStore = defineStore('auth', () => {
   //        risponde con una SFIDA e nessun token (brief sicurezza §3.4-bis).
   //        Ritorna `{ secondoPasso: true, sfida }`, e la view chiede il codice
   //        (`completaSecondoPasso`); altrimenti `{ secondoPasso: false }`.
-  async function login(username, password, canaleKey) {
+  //        `identificativo` è la chiave d'ingresso del canale (`campoIngresso`:
+  //        nome utente per ADMIN, email per PORTALE e SHOP — L-4).
+  async function login(identificativo, password, canaleKey) {
     if (canaleKey) {
       setLoginChannel(canaleKey)
     }
     const canale = resolveCanaleLogin(loginChannel.value)
-    const response = await api.post(canale.tokenPath, { username, password })
+    const response = await api.post(canale.tokenPath, {
+      [canale.campoIngresso]: identificativo,
+      password
+    })
     if (response.data?.two_factor_required) {
       return { secondoPasso: true, sfida: response.data.sfida }
     }

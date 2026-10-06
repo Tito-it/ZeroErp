@@ -1,9 +1,9 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
-import { CANALE_LOGIN } from '../constants'
+import { CANALE_LOGIN, resolveCanaleLogin } from '../constants'
 import { FRASE_MOTIVO_USCITA } from '../sessione'
 import { useNotify } from '../composables/useNotify'
 import { extractApiErrorCode } from '../utils/apiError'
@@ -22,13 +22,21 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 
-const username = ref('')
+// La chiave d'ingresso: nome utente o email, secondo il canale.
+const identificativo = ref('')
 const password = ref('')
 // UI attuale: solo operatori interni. Canale forzato ad ADMIN,
 // ignoriamo `auth.loginChannel` persistito (se un utente aveva scelto
 // PORTALE/SHOP in passato, qui lo riportiamo a ADMIN). Store e API
 // multi-canale restano attivi per future pagine dedicate portale/shop.
 const canale = ref(CANALE_LOGIN.ADMIN.key)
+// L'etichetta del primo campo segue la chiave d'ingresso del canale
+// (`campoIngresso`, L-4): il nome utente per ADMIN, l'email per PORTALE e
+// SHOP. ⛔ Mai fissa: la store manda il campo del canale, e un'etichetta
+// «Username» sulla porta dell'email chiederebbe la cosa sbagliata.
+const etichettaIngresso = computed(() =>
+  resolveCanaleLogin(canale.value).campoIngresso === 'email' ? t('common.email') : t('auth.username')
+)
 const errorMessage = ref('')
 const loading = ref(false)
 const notify = useNotify()
@@ -131,7 +139,7 @@ async function handleLogin() {
   try {
     // §8.5.2: la store usa `canale` per scegliere l'endpoint token
     // (/admin/token/ | /portale/token/ | /shop/token/). Default ADMIN.
-    const esito = await auth.login(username.value, password.value, canale.value)
+    const esito = await auth.login(identificativo.value, password.value, canale.value)
     if (esito?.secondoPasso) {
       sfida.value = esito.sfida
       // La password non serve piu': non resta in memoria durante il codice.
@@ -238,11 +246,11 @@ function tornaAllaPassword(azzeraMessaggio = true) {
 
         <div class="field">
           <InputText
-            id="username"
-            v-model="username"
+            id="identificativo"
+            v-model="identificativo"
             :disabled="loading"
-            :placeholder="t('auth.username')"
-            :aria-label="t('auth.username')"
+            :placeholder="etichettaIngresso"
+            :aria-label="etichettaIngresso"
             autocomplete="username"
             fluid
           />
@@ -266,7 +274,7 @@ function tornaAllaPassword(azzeraMessaggio = true) {
           type="submit"
           :label="t('auth.login')"
           :loading="loading"
-          :disabled="!username || !password"
+          :disabled="!identificativo || !password"
           class="auth-submit-btn"
         />
 

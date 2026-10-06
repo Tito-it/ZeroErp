@@ -175,7 +175,18 @@ export const useNavigationStore = defineStore('navigation', () => {
     reorderFavorites(domainKey, [])
   }
 
+  // Scopo: i path delle voci di menu di un dominio, cioe' gli unici che un
+  //        preferito puo' essere (lo crea la stella di una voce, `SidebarDomain`).
+  function vociDelDominio(domainKey) {
+    return new Set(flattenMenu(DOMAIN_MENUS[domainKey]).map(item => item.to).filter(Boolean))
+  }
+
   // Carica preferiti da localStorage. Senza userId niente da caricare.
+  // ⛔ Un preferito salvato su una voce poi RITIRATA dal menu si scarta qui:
+  //    `getDefaultRoute` mette il primo preferito davanti alla prima voce, e
+  //    un path che non e' piu' una pagina apriva il dominio su «non trovato»
+  //    (Amm. Software, voce «Permessi» ritirata il 2026-10-06). Il localStorage
+  //    sopravvive ai rilasci: il menu di oggi e' la sola fonte di cosa vale.
   // NB: storica versione di questa funzione faceva fallback sulla chiave base
   // globale come "legacy migration". E' stata RIMOSSA perche' la chiave base
   // e' condivisa tra utenti sullo stesso browser, quindi un secondo utente
@@ -195,9 +206,10 @@ export const useNavigationStore = defineStore('navigation', () => {
       } catch {
         parsed = raw
       }
-      const list = Array.isArray(parsed)
+      const list = (Array.isArray(parsed)
         ? normalizeFavoritesList(parsed)
         : normalizeFavoritesList([parsed])
+      ).filter(path => vociDelDominio(domain.key).has(path))
       if (list.length > 0) result[domain.key] = list
     }
     return result
