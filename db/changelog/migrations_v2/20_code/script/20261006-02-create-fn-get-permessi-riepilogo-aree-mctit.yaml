@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# §3.2 — IL RIEPILOGO PER AREA DI UN INSIEME DI OPERATORI:
+#   script.fn_get_permessi_riepilogo_aree(p_auth_user_ids integer[])
+#   Brief: brief-db-riepilogo-permessi-lista-operatori, §2 (D-3, D-4) e §3.2
+#
+# -- PERCHE' ------------------------------------------------------------------------------------
+#   Il riepilogo permessi diventa la lista operatori con i permessi aperti: sotto ogni riga,
+#   una chip per area con il livello effettivo, il numero di override e il triangolo se il
+#   tetto d'area ferma qualcosa. Oggi il backend costruisce una subquery per area con un
+#   f-string, su tutti gli operatori. Qui la stessa lettura sta in una funzione che riceve
+#   gli id della PAGINA.
+#
+# -- COSA RESTITUISCE ---------------------------------------------------------------------------
+#   Una riga per (operatore chiesto, area attiva), anche a zero override:
+#   * livello         = script.fn_resolve_livello_area (la catena d'area, sede unica);
+#   * override_count  = righe di script.vw_override_operatore_area (-01) per (utente, area);
+#   * voci_limitate   = azioni con limitata_da_area (script.fn_get_permessi_effettivi_azioni)
+#                       + oggetti con limitato_da_area (script.fn_get_permessi_effettivi_oggetti).
+#     Qui NON si ricalcola il tetto: si contano le risposte delle due sedi.
+#   ⭐ Nessun filtro «solo azioni attive», anche se il pannello mostra solo quelle: sul modello
+#     un'azione spenta non puo' essere limitata. limitata_da_area chiede abilitata_specifica,
+#     cioe' un override o una riga di profilo sull'azione; tutte e due le tabelle figlie
+#     (user_override_azioni, profili_accesso_azioni) non hanno «attivo», quindi qualunque loro
+#     riga blocca la disattivazione dell'azione (block_deact) e nessuna nasce su un'azione
+#     spenta (require_attivo). Il super admin, che non passa da li', non e' mai limitato.
+#     Il filtro sarebbe un ramo morto: la stessa ragione di -01.
+#   L'area di un oggetto arriva come schema_db (area_schema_db): si riporta all'id con
+#   aree_funzionali.schema_db, che e' UNIQUE.
+#
+# -- SUPER ADMIN, VESTE SPENTA, CONTESTO --------------------------------------------------------
+#   Nessun ramo proprio: livello e voci limitate sono quelli delle tre funzioni lette, che
+#   portano il bypass del super admin (TUTTO, mai limitato) e il fail-closed della veste
+#   OPERATORE spenta (BLOCCATO, niente limitato). override_count resta il numero scritto
+#   (D-2) anche li': un override scritto c'e' anche quando la veste e' spenta.
+#   Il gate di contesto delle tre funzioni guarda la sessione di CHI LEGGE
+#   (app.ruolo_applicativo), non l'operatore letto: e' lo stesso contesto in cui il
+#   pannello le chiama oggi per un operatore diverso da chi guarda.
+#
+# -- PARAMETRO ----------------------------------------------------------------------------------
+#   Un array di auth_user_id (la pagina). Duplicati e NULL nell'array si ignorano; array
+#   vuoto o NULL -> zero righe: nessun operatore chiesto, nessuna riga. Un id che non e' un
+#   operatore riceve le sue righe come le darebbero le tre funzioni (BLOCCATO, 0, 0).
+#
+# -- FORMA --------------------------------------------------------------------------------------
+#   plpgsql (come le tre sedi che legge), STABLE, INVOKER. Le colonne del RETURNS TABLE sono
+#   variabili OUT: ogni colonna delle query e' qualificata, le CTE hanno nomi propri.
+#   auth_user_id, area_id e livello sono proiezioni di colonne: ancorati con %TYPE. I due
+#   conteggi sono risposte calcolate: integer. L'array resta integer[] (colonna%TYPE[] non
+#   esiste). Ordine: operatore, poi area per ordinamento e codice (quello del pannello).
+#   Le due funzioni del tetto si chiamano una volta per operatore, non per area.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261006-02-create-fn-get-permessi-riepilogo-aree-mctit.yaml
+
+  - changeSet:
+      id: 20261006-02-create-fn-get-permessi-riepilogo-aree
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_permessi_riepilogo_aree(p_auth_user_ids integer[]): per ogni operatore
+        chiesto e ogni area attiva il livello effettivo, il numero di override scritti e le
+        voci (azioni e oggetti) che il tetto d'area ferma. Legge le sedi uniche, non
+        ricalcola. Brief: brief-db-riepilogo-permessi-lista-operatori §3.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_resolve_livello_area', 'fn_get_permessi_effettivi_azioni',
+                                   'fn_get_permessi_effettivi_oggetti');
+        - viewExists:
+            schemaName: script
+            viewName: vw_override_operatore_area
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_permessi_riepilogo_aree(
+                  p_auth_user_ids integer[]
+              )
+              RETURNS TABLE (
+                  auth_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  area_id         config.aree_funzionali.id%TYPE,
+                  livello         config.user_override_aree.livello%TYPE,
+                  override_count  integer,
+                  voci_limitate   integer
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: il riepilogo per area di un insieme di operatori (la pagina della lista):
+              --   livello effettivo, override scritti, voci fermate dal tetto d'area
+              --   (brief-db-riepilogo-permessi-lista-operatori §3.2). Legge le sedi uniche:
+              --   fn_resolve_livello_area, vw_override_operatore_area,
+              --   fn_get_permessi_effettivi_azioni e fn_get_permessi_effettivi_oggetti.
+              BEGIN
+                  RETURN QUERY
+                  WITH utenti AS (
+                      -- Gli operatori chiesti, una volta ciascuno.
+                      SELECT DISTINCT u.u_id
+                        FROM unnest(p_auth_user_ids) u(u_id)
+                       WHERE u.u_id IS NOT NULL
+                  ),
+                  aree AS (
+                      SELECT af.id AS a_id, af.schema_db AS a_schema,
+                             af.ordinamento AS a_ordinamento, af.codice AS a_codice
+                        FROM config.aree_funzionali af
+                       WHERE af.attivo
+                  ),
+                  overrides AS (
+                      -- §3.1: gli override scritti, per (utente, area).
+                      SELECT o.auth_user_id AS o_user, o.area_id AS o_area, count(*) AS o_n
+                        FROM script.vw_override_operatore_area o
+                        JOIN utenti u ON u.u_id = o.auth_user_id
+                       GROUP BY o.auth_user_id, o.area_id
+                  ),
+                  limitate AS (
+                      -- Le voci che il tetto ferma: le risposte delle due sedi, contate.
+                      SELECT u.u_id AS l_user, e.area_id AS l_area
+                        FROM utenti u
+                       CROSS JOIN LATERAL script.fn_get_permessi_effettivi_azioni(u.u_id) e
+                       WHERE e.limitata_da_area
+                      UNION ALL
+                      SELECT u.u_id, af.id
+                        FROM utenti u
+                       CROSS JOIN LATERAL script.fn_get_permessi_effettivi_oggetti(u.u_id) e
+                        JOIN config.aree_funzionali af ON af.schema_db = e.area_schema_db
+                       WHERE e.limitato_da_area
+                  ),
+                  limitate_n AS (
+                      SELECT l.l_user, l.l_area, count(*) AS l_n
+                        FROM limitate l
+                       GROUP BY l.l_user, l.l_area
+                  )
+                  SELECT u.u_id,
+                         a.a_id,
+                         script.fn_resolve_livello_area(u.u_id, a.a_schema),
+                         COALESCE(o.o_n, 0)::integer,
+                         COALESCE(ln.l_n, 0)::integer
+                    FROM utenti u
+                   CROSS JOIN aree a
+                    LEFT JOIN overrides o
+                      ON o.o_user = u.u_id AND o.o_area = a.a_id
+                    LEFT JOIN limitate_n ln
+                      ON ln.l_user = u.u_id AND ln.l_area = a.a_id
+                   ORDER BY u.u_id, a.a_ordinamento, a.a_codice;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_permessi_riepilogo_aree(integer[]) IS
+                'Il riepilogo permessi per area di un insieme di operatori (gli id della pagina della '
+                'lista operatori): una riga per (operatore, area attiva), anche a zero override. '
+                'livello = script.fn_resolve_livello_area; override_count = override scritti '
+                '(script.vw_override_operatore_area, D-2); voci_limitate = azioni con '
+                'limitata_da_area (script.fn_get_permessi_effettivi_azioni; un''azione spenta non '
+                'puo'' esserlo: override e profili ne bloccano la disattivazione) + oggetti con '
+                'limitato_da_area (script.fn_get_permessi_effettivi_oggetti). Non ricalcola il tetto '
+                'e non aggiunge rami: super admin, veste spenta e gate di contesto rispondono come le '
+                'funzioni lette. Duplicati e NULL nell''array si ignorano; array vuoto o NULL -> zero '
+                'righe. Ordine: operatore, area per ordinamento e codice. plpgsql, STABLE, INVOKER. '
+                'Brief: brief-db-riepilogo-permessi-lista-operatori §3.2 (2026-10-06).';
+
+              GRANT EXECUTE ON FUNCTION script.fn_get_permessi_riepilogo_aree(integer[]) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_permessi_riepilogo_aree(integer[]);
