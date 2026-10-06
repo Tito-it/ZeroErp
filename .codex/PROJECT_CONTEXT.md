@@ -235,11 +235,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   decisione di Tid del 2026-10-04): DB applicato il 2026-10-04 (`20261004-12…-14`, lock su
   `contratti_righe.tipo_eccezione`, due codici nuovi), pgTAP senza regressioni; BE/FE in `dda5bda1d` (§7).
   Il §7.1 l'ha chiuso il brief dell'erogazione obbligatoria. Archiviato il 2026-10-04.
-- **Una riga che si fattura dice come si eroga** (`work-in-progress/brief-db-erogazione-obbligatoria-righe-fatturate.md`,
-  richiesta del BE, decisione di Tid del 2026-10-04): `tipo_erogazione` obbligatoria su OVERRIDE/AGGIUNTA di contratto
-  e offerta (`20261004-30…-32`, CHECK + guard, codice `E_RIGA_EROGAZIONE_OBBLIGATORIA`); il lister del push non
-  propone più le esclusioni e non ripiega su CANONE (`-33`). Applicato il 2026-10-04, pgTAP verdi. BE/FE
-  fatto il 2026-10-04 (§8): il cantiere è chiuso, il brief si può archiviare.
+- **Una riga che si fattura dice come si eroga: chiuso** (`work-done/brief-db-erogazione-obbligatoria-righe-fatturate.md`,
+  archiviato il 2026-10-06): `tipo_erogazione` obbligatoria su OVERRIDE/AGGIUNTA di contratto e offerta
+  (`20261004-30…-33`, codice `E_RIGA_EROGAZIONE_OBBLIGATORIA`), BE/FE in `dda5bda1d`. L'ultimo avviso l'ha chiuso
+  `brief-db-righe-esclusione-solo-non-si-vende` (`20261004-40`).
 - **L'esclusione è solo «non si vende», contratto e offerta con le stesse regole**
   (`work-in-progress/brief-db-righe-esclusione-solo-non-si-vende.md`, decisione di Tid del 2026-10-04): DB
   applicato (`20261004-40…-49`, `-70…-76`), pgTAP verdi. BE/FE primo giro fatto il 2026-10-04 (§9). Secondo giro
