@@ -2177,6 +2177,10 @@ c'e' piu' nemmeno un `DISABILITATO` da rifiutare: una veste spenta e'
 | `E_GUC_RESET_FAILED`  | 500  | il reset GUC d'inizio richiesta è fallito (fail-closed, vedi §GUC)                                                                                                                                               |
 | `E_DB_ROLE_UNSAFE`    | 500  | la connessione del percorso richiesta è su un ruolo `BYPASSRLS` (guard fail-open RLS: `DB_USER` misconfigurato sul ruolo batch, o canale di sistema usato per errore nel web → richiesta rifiutata, fail-closed) |
 
+Non passare dal traduttore non li esenta dal catalogo: sono a catalogo come
+`TECNICO` (dal 2026-10-07), con frase di ripiego, e lo status scritto a mano dal
+middleware coincide con quello della classe.
+
 #### Codici auth multi-veste (§8.3 PR-B1)
 
 | Codice                  | HTTP | UI action         | Quando                                                                          |

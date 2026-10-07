@@ -72,9 +72,11 @@ connessione web non bypassi la RLS:
 - verifica fallita per `DatabaseError` → log, **500 `E_DB_ROLE_UNSAFE`**;
 - verifica superata → il flag passa a `True` e il controllo non si ripete nel processo.
 
-> ⚠️ Difetto noto (E-1): `E_GUC_RESET_FAILED` ed `E_DB_ROLE_UNSAFE` non sono a catalogo
-> (assenti da `CLASSE_PER_CODICE` in `error_policies_generated.py` e dai ripieghi). Vedi
-> [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+> `E_GUC_RESET_FAILED` ed `E_DB_ROLE_UNSAFE` sono a catalogo come `TECNICO` dal
+> 2026-10-07 (classe, frase di ripiego, causa e soluzione per chi gestisce la
+> macchina): prima mancavano, e chi leggeva `dbops.error_log` trovava un codice
+> che il catalogo non conosceva (E-1 dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+> La risposta resta costruita qui (`_json_error`, 500), non dal traduttore.
 
 ### 3. Path non API
 

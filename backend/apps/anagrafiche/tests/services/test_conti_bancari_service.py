@@ -19,11 +19,11 @@ Indice test eseguiti:
  9) test_create_conto_soggetto_missing_branch — filiale mancante
 10) test_create_conto_soggetto_invalid_uso — uso non valido
 11) test_create_conto_soggetto_by_conto_id — crea usando conto_bancario_id diretto
-12) test_create_conto_soggetto_conto_id_not_found — conto_bancario_id inesistente
+12) test_create_conto_soggetto_conto_id_not_found — conto_bancario_id inesistente (404)
 13) test_update_conto_soggetto_ok — aggiorna legame soggetto
 14) test_update_conto_soggetto_not_found — legame inesistente
 15) test_delete_conto_soggetto_ok — elimina legame soggetto
-16) test_delete_conto_soggetto_not_found — legame inesistente
+16) test_delete_conto_soggetto_not_found — legame inesistente (404)
 17) test_list_conti_ruolo_ok — lista conti ruolo + ereditati
 18) test_create_conto_ruolo_ok — crea legame ruolo
 19) test_update_conto_ruolo_ok — aggiorna legame ruolo
@@ -52,6 +52,7 @@ from unittest.mock import patch
 
 from django.db import IntegrityError
 
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.service_errors import ServiceError
 
 _CB_REPO = "apps.anagrafiche.services.conti_bancari_service.ContiBancariRepository"
@@ -225,6 +226,8 @@ class TestContiBancariSoggetto(TestCase):
                 "conto_bancario_id": 999,
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_CONTO_NOT_FOUND")
+        # 404 e non 400: il codice e' a catalogo come NON_TROVATO (E-1).
+        self.assertEqual(ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 404)
 
     @patch(_CB_REPO)
     @patch(_SOG_REPO)
@@ -275,6 +278,8 @@ class TestContiBancariSoggetto(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             ContiBancariService().delete_conto_soggetto(_FAKE_UUID, 999)
         self.assertEqual(ctx.exception.code, "E_ANAG_CONTO_SOGGETTO_NOT_FOUND")
+        # 404 e non 400: il codice e' a catalogo come NON_TROVATO (E-1).
+        self.assertEqual(ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 404)
 
 
 class TestContiBancariRuolo(TestCase):

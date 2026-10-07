@@ -3,14 +3,12 @@
 > **Chi scrive:** sessione backend (`dev/backend-tid`), 2026-10-07. **A chi:** team
 > DB (`dev/db-tid`), tramite Tid.
 > **Origine:** §7 di
-> [analisi-be-difetti-emersi-verifica-doc-api-core.md](analisi-be-difetti-emersi-verifica-doc-api-core.md)
+> [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)
 > (voci E-1, E-2, E-5, F-5). Fino a oggi quelle richieste stavano solo nell'analisi:
 > questo brief le porta al team (ok di Tid, 2026-10-07).
-> **Stato (2026-10-07 sera):** giro DB scritto (§7). Applicati da Tid `-70` e
-> `-71` (dbdev e scratch) e `-72` (solo scratch). ⏳ **Da applicare:** `-72` su
-> dbdev, `-73` ovunque, e il seed `80_data` dove non è passato. D-1 e §7.6 decisi da
-> Tid. Il BE agisce dopo l'apply (§5, più §7.5).
-> **Da leggere per primo:** §7, poi §7.7.
+> **Stato (2026-10-07 sera):** ✅ giro DB applicato su dbdev (`-70`…`-73` e seed,
+> verificato dal BE sul database), ✅ giro BE fatto (§8). ✅ **Chiuso il 2026-10-07.**
+> **Da leggere per primo:** §7, poi §7.7, poi §8.
 
 ## 1. Cosa si chiede
 
@@ -295,3 +293,34 @@ statici verdi.
 * `parameter_repository._altre_dimensioni_nulle`: col vincolo le condizioni «le
   altre dimensioni `IS NULL`» sono sempre vere. Restano corrette; toglierle è
   una scelta del BE (sarebbe la stessa pulizia del `-73`).
+
+## 8. Giro BE
+
+*(sessione backend, 2026-10-07 sera)*
+
+**Verifica dell'apply su dbdev** (come `zeroerp_app`): `-70`, `-71`, `-72`, `-73`
+in `databasechangelog`; `chk_parameter_overrides_un_ambito` e
+`uq_overrides_full_scope_v5` con `indnullsnotdistinct = true`;
+`fn_list_parameters_for_user` senza filtri `IS NULL`; i sei codici a catalogo
+con le classi del §7.1, `E_USER_DISABILITATO` con `obsoleto_dal = 2026-10-07`.
+La rigenerazione delle policy porta **solo** i sei codici e il ritiro: il DB non
+è avanti rispetto a git sul catalogo.
+
+| Cosa | Dove |
+| --- | --- |
+| Policy rigenerate (990 voci, 102 ritirate) | `core/services/error_policies_generated.py` |
+| Frasi di ripiego per i sei, senza segnaposto | `core/services/error_messages_fallback.py` |
+| `_DEBITO` del guardrail vuoto (E-1, E-2 chiuse) | `core/tests/test_error_codes_declared_guardrail.py` |
+| I due `*_NOT_FOUND` provati anche sullo status **404** | `anagrafiche/tests/services/test_conti_bancari_service.py` |
+| ⭐ §7.5 — l'upsert passa a `INSERT … ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE` (riattiva la riga come prima). Atomico: due upsert concorrenti sullo stesso ambito si serializzano sul vincolo, niente doppione e niente `23505` da tradurre. La CTE SELECT-poi-INSERT esce | `core/db/parameter_repository.py` |
+| §7.7 — via i filtri «altre dimensioni `IS NULL`» da upsert e delete, come il `-73` sulla lista: col CHECK sono una copia. La tupla `_DIMENSIONI_OVERRIDE` resta come elenco delle colonne di scope ammesse (`_colonna_di_scope`: il nome finisce nella SQL) | idem |
+| §7.7 — i due test che scrivevano righe miste diventano: la riga mista **non nasce** (`23514`), un upsert ripetuto aggiorna la stessa riga (una sola), la delete non tocca l'override di un altro utente | `core/tests/db/test_parameter_overrides_db.py` |
+| Il test della SQL per livello riscritto sul vincolo d'ambito | `core/tests/services/test_parameter_repository_dimensioni.py` |
+| Doc | `api_conti_bancari_ruolo.md`, `api_conti_bancari_soggetto.md` (404, via il «difetto noto»), `jwt_audit_middleware.md`, api.md §codici middleware-level, `api_parameter_settings.md`, catalogo BB backend (`ParameterRepository`), analisi difetti (E-1, F-5 lato DB, E-5 per `E_USER_DISABILITATO`) |
+
+D-1: nessuna modifica (nessun punto di chiamata nomina `E_USER_DISABILITATO`; le
+copie del catalogo lo portano come ritirato).
+
+**Prova:** `ZEROERP_TEST_DB_E2E=1`, suite `apps.core` + `apps.anagrafiche` —
+2262 test verdi (1 skip preesistente), i cinque di `test_parameter_overrides_db`
+eseguiti sul DB vero, non saltati.

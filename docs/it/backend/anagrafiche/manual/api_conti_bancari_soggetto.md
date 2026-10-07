@@ -197,18 +197,17 @@ per nome e codice filiale. Risposta `{"data": {"results": [...]}}` con `id`,
 | `E_CONTO_BANCARIO` | 400 | il conto del registro non è attivo | `anagrafiche.trgfn_soggetti_conti_bancari_guard` |
 | `E_ANAG_DUPLICATO` | 409 | legame già presente per lo stesso conto e uso; secondo predefinito per lo stesso uso (campo `predefinito`); conto di incasso già di un altro soggetto | mappa vincoli |
 | `E_ANAG_FK` | 400 | conto o soggetto inesistenti al momento della scrittura | mappa vincoli |
-| `E_ANAG_CONTO_NOT_FOUND` | ⚠️ 400 | `conto_bancario_id` non esiste nel registro | service |
-| `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` | ⚠️ 400 | DELETE: legame inesistente o di un altro soggetto | service |
+| `E_ANAG_CONTO_NOT_FOUND` | 404 | `conto_bancario_id` non esiste nel registro | service |
+| `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` | 404 | DELETE: legame inesistente o di un altro soggetto | service |
 | `E_VALIDATION_INPUT` | 400 | corpo illeggibile o che non è un oggetto JSON | `handle_post_json` / `corpo_oggetto` |
 
 La mappa vincoli è `_VINCOLI_LEGAME_SOGGETTO` di `conti_bancari_service.py`;
 il presidio `anagrafiche/tests/db/test_conti_bancari_vincoli_mappati_db.py`
 la confronta coi vincoli veri della tabella, nei due versi.
 
-⚠️ **Difetto noto** — E-1 di [analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md):
-`E_ANAG_CONTO_NOT_FOUND` ed `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` non sono a
-catalogo, quindi escono **400** «Errore di validazione.» invece di 404. Il seed
-è chiesto al team DB.
+`E_ANAG_CONTO_NOT_FOUND` ed `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` sono a catalogo
+come `NON_TROVATO` dal 2026-10-07: fino ad allora uscivano **400** «Errore di
+validazione.» (E-1 di [analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ---
 

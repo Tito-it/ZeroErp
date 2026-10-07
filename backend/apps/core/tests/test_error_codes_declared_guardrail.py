@@ -88,14 +88,7 @@ _ALLOWLIST: dict[str, str] = {}
 # ⚠️ IL DEBITO, che NON e' l'allowlist: codici usati e non (ancora) in pari,
 # ciascuno con la richiesta che lo chiude. Deve calare: una voce che e' tornata
 # in pari fa fallire `test_debito_non_pagato` finche' non la si toglie.
-_DEBITO: dict[str, str] = {
-    "E_ANAG_CONTO_NOT_FOUND": "seed a catalogo (NON_TROVATO) chiesto al team DB: E-1, §7 dell'analisi",
-    "E_ANAG_CONTO_SOGGETTO_NOT_FOUND": "seed a catalogo (NON_TROVATO) chiesto al team DB: E-1, §7 dell'analisi",
-    "E_GUC_RESET_FAILED": "seed a catalogo (TECNICO) chiesto al team DB: E-1, §7 dell'analisi",
-    "E_DB_ROLE_UNSAFE": "seed a catalogo (TECNICO) chiesto al team DB: E-1, §7 dell'analisi",
-    "E_CODA_JOB_STANTIO": "trovato da E-2 il 2026-10-07 (ultimo_errore del reaper): seed chiesto al team DB, §7",
-    "E_STAMPA_JOB_STANTIO": "trovato da E-2 il 2026-10-07 (ultimo_errore del reaper): seed chiesto al team DB, §7",
-}
+_DEBITO: dict[str, str] = {}
 
 
 # Scopo: raccoglie i codici dichiarati come chiave di `CLASSE_PER_CODICE`.
