@@ -16,6 +16,8 @@
 //  1. ogni chiave di `td` esiste nei namespace di contratto e offerta, it ed en
 //  2. ogni chiave letterale di `tv` esiste in `vendite.contratti`, it ed en
 //  3. i due involucri montano il BB col loro namespace
+//  4. ogni erogazione e ogni fonte ha la sua etichetta (chiave costruita dal
+//     valore che arriva dal DB: `tipo_erogazione_<v>`, `fonte_quantita_value_<v>`)
 // ------------------------------------------------------------
 import { describe, it, expect } from 'vitest'
 import it_ from '../../../locales/it.json'
@@ -23,6 +25,7 @@ import en from '../../../locales/en.json'
 import sorgenteBB from './RigheEccezioniDrawer.vue?raw'
 import sorgenteContratto from '../../components/ContrattoRigheDrawer.vue?raw'
 import sorgenteOfferta from '../../offerte/components/OffertaRigheDrawer.vue?raw'
+import { FONTE_QUANTITA_ATTESA, TIPO_EROGAZIONE } from '../../constants'
 
 const LINGUE = { it: it_, en }
 const NAMESPACE_DOCUMENTO = ['vendite.contratti', 'vendite.offerte']
@@ -69,5 +72,21 @@ describe('RigheEccezioniDrawer — testi', () => {
     expect(sorgenteContratto).toContain('lista-codice="vendite.contratto_righe"')
     expect(sorgenteOfferta).toContain('i18n-documento="vendite.offerte"')
     expect(sorgenteOfferta).toContain('lista-codice="vendite.offerta_righe"')
+  })
+
+  // Le tendine mostrano i valori che il DB dichiara per l'articolo: l'etichetta
+  // e' costruita dal valore, e una mancante si vedrebbe solo a video.
+  it('ogni erogazione e ogni fonte ha la sua etichetta', () => {
+    const chiavi = [
+      ...Object.values(TIPO_EROGAZIONE).map((v) => `tipo_erogazione_${v.toLowerCase()}`),
+      ...Object.values(FONTE_QUANTITA_ATTESA).map((v) => `fonte_quantita_value_${v.toLowerCase()}`),
+    ]
+    const mancanti = []
+    for (const [lingua, diz] of Object.entries(LINGUE)) {
+      for (const k of chiavi) {
+        if (typeof leggi(diz, `vendite.contratti.${k}`) !== 'string') mancanti.push(`${lingua}:${k}`)
+      }
+    }
+    expect(mancanti).toEqual([])
   })
 })

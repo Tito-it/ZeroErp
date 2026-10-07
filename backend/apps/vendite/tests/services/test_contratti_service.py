@@ -2237,26 +2237,24 @@ class ContrattiServiceComponentiTests(TestCase):
 
 
 class ContrattiServiceFonteQuantitaTests(TestCase):
-    """Suite refactor 2026-05-19: coerenza (tipo_erogazione, fonte_quantita_attesa)
-    e normalizzazione `quantita` in `_apply_fonte_quantita_logic`.
+    """Normalizzazione di `quantita` in base alla fonte, in
+    `_apply_fonte_quantita_logic`.
 
-    Defense-in-depth lato BE: il DB applica CHECK chk_contrighe_coerenza_fonte_erogazione
-    + trigger trg_contratti_righe_a10_default_fonte_qta_ins_upd (migrations
-    20260519-05/06). Qui verifichiamo che il service applichi la stessa logica
-    PRIMA del round-trip DB, con errore parlante.
+    ⛔ Dal 2026-10-07 il service NON giudica la coppia (tipo_erogazione,
+    fonte_quantita_attesa) e NON sceglie una fonte di default: lo fa il DB
+    dall'articolo (`vendite.fn_articolo_erogazioni`, eredita' + guard del
+    perimetro, brief-db-offerta-emissione-ed-erogazione B-R2/B-R3). La copia
+    Python della matrice (`_FONTE_VIETATE_PER_TIPO_EROGAZIONE`) e' ritirata.
 
     Riferimento: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §2.
 
     Indice test:
-    1) test_apply_default_fonte_per_tipo_in_create — 4 sub-test
-    2) test_apply_no_default_fonte_in_update — i default sono solo create
-    3) test_combinazione_vietata_solleva — 7 sub-test (matrice CHECK DB)
-    4) test_combinazione_ammessa_passa — sub-test sulle combo default/valide
-    5) test_fonte_fissa_richiede_quantita_positiva
-    6) test_fonte_downstream_forza_quantita_null — 3 sub-test (MANUALE/TIMESHEET/LETTURE)
-    7) test_fonte_downstream_forza_qta_operativa_anche_se_assente_dal_payload
+    1) test_nessun_giudizio_sulla_coppia_ne_default — la coppia la decide il DB
+    2) test_fonte_fissa_richiede_quantita_positiva
+    3) test_fonte_downstream_forza_quantita_null — 3 sub-test (MANUALE/TIMESHEET/LETTURE)
+    4) test_fonte_downstream_forza_qta_operativa_anche_se_assente_dal_payload
        (regressione bug 2026-05-19 asimmetria normalizzazione)
-    8) test_fonte_derivata_componenti_non_normalizza_quantita
+    5) test_fonte_derivata_componenti_non_normalizza_quantita
     """
 
     def _service(self):
@@ -2264,79 +2262,16 @@ class ContrattiServiceFonteQuantitaTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
         return ContrattiService()
 
-    # -- Default --------------------------------------------------------
-
-    def test_apply_default_fonte_per_tipo_in_create(self):
+    def test_nessun_giudizio_sulla_coppia_ne_default(self):
         svc = self._service()
-        attesi = {
-            "CANONE": "FISSA",
-            "UNA_TANTUM": "FISSA",
-            "ORARIO": "MANUALE",
-            "CONSUMO": "LETTURE",
-        }
-        for tipo, fonte_attesa in attesi.items():
-            with self.subTest(tipo=tipo):
-                data = {"tipo_erogazione": tipo, "quantita": Decimal("1")}
-                svc._apply_fonte_quantita_logic(data, for_create=True)
-                self.assertEqual(data.get("fonte_quantita_attesa"), fonte_attesa)
-
-    def test_apply_no_default_fonte_in_update(self):
-        # In update non auto-applichiamo default: la decisione del trigger DB
-        # (reset solo se la combo diventa vietata) e' speculare lato BE.
-        svc = self._service()
+        # Una coppia che la vecchia matrice vietava passa: la giudica il guard
+        # del perimetro a DB, sull'articolo.
+        data = {"tipo_erogazione": "CONSUMO", "fonte_quantita_attesa": "TIMESHEET"}
+        svc._apply_fonte_quantita_logic(data)
+        # Erogazione senza fonte: nessun default inventato qui, la eredita il DB.
         data = {"tipo_erogazione": "CANONE"}
-        svc._apply_fonte_quantita_logic(data, for_create=False)
+        svc._apply_fonte_quantita_logic(data)
         self.assertNotIn("fonte_quantita_attesa", data)
-
-    # -- Guard combinazioni vietate --------------------------------------
-
-    def test_combinazione_vietata_solleva(self):
-        svc = self._service()
-        vietate = [
-            ("CANONE", "TIMESHEET"),
-            ("CANONE", "LETTURE"),
-            ("UNA_TANTUM", "TIMESHEET"),
-            ("UNA_TANTUM", "LETTURE"),
-            ("ORARIO", "LETTURE"),
-            ("CONSUMO", "FISSA"),
-            ("CONSUMO", "TIMESHEET"),
-        ]
-        for tipo, fonte in vietate:
-            with self.subTest(tipo=tipo, fonte=fonte):
-                data = {
-                    "tipo_erogazione": tipo,
-                    "fonte_quantita_attesa": fonte,
-                    "quantita": Decimal("1"),
-                }
-                with self.assertRaises(ServiceError) as ctx:
-                    svc._apply_fonte_quantita_logic(data, for_create=True)
-                self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-                self.assertIn("Combinazione vietata", ctx.exception.detail or "")
-
-    def test_combinazione_ammessa_passa(self):
-        svc = self._service()
-        ammesse = [
-            ("CANONE", "FISSA"),
-            ("CANONE", "MANUALE"),
-            ("CANONE", "DERIVATA_COMPONENTI"),
-            ("UNA_TANTUM", "FISSA"),
-            ("ORARIO", "MANUALE"),
-            ("ORARIO", "TIMESHEET"),
-            ("CONSUMO", "MANUALE"),
-            ("CONSUMO", "LETTURE"),
-            ("CONSUMO", "DERIVATA_COMPONENTI"),
-        ]
-        for tipo, fonte in ammesse:
-            with self.subTest(tipo=tipo, fonte=fonte):
-                # Per FISSA serve qta positiva (guard 2.3); usiamo DERIVATA o
-                # qta_operativa per le altre per non rompere la guard FISSA.
-                data = {
-                    "tipo_erogazione": tipo,
-                    "fonte_quantita_attesa": fonte,
-                    "qta_operativa": Decimal("1") if fonte == "FISSA" else None,
-                }
-                # Non deve sollevare.
-                svc._apply_fonte_quantita_logic(data, for_create=True)
 
     # -- Normalizzazione quantita ---------------------------------------
 
@@ -2348,7 +2283,7 @@ class ContrattiServiceFonteQuantitaTests(TestCase):
             # nessuna quantita ne' qta_operativa
         }
         with self.assertRaises(ServiceError) as ctx:
-            svc._apply_fonte_quantita_logic(data, for_create=True)
+            svc._apply_fonte_quantita_logic(data)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         self.assertIn("diversa da zero", ctx.exception.detail or "")
 
@@ -2367,7 +2302,7 @@ class ContrattiServiceFonteQuantitaTests(TestCase):
                     "quantita": Decimal("5"),  # ignorata
                     "qta_operativa": Decimal("3"),  # ignorata
                 }
-                svc._apply_fonte_quantita_logic(data, for_create=True)
+                svc._apply_fonte_quantita_logic(data)
                 self.assertIsNone(data["quantita"])
                 self.assertIsNone(data["qta_operativa"])
 
@@ -2385,7 +2320,7 @@ class ContrattiServiceFonteQuantitaTests(TestCase):
             # nessuna quantita/qta_operativa nel data
         }
         # Payload vuoto (simula update parziale senza qta).
-        svc._apply_fonte_quantita_logic(data, for_create=False)
+        svc._apply_fonte_quantita_logic(data)
         self.assertIsNone(data.get("quantita"))
         self.assertIsNone(data.get("qta_operativa"))
 
@@ -2401,7 +2336,7 @@ class ContrattiServiceFonteQuantitaTests(TestCase):
             # nessuna quantita: il trigger DB la calcola
         }
         # Non deve sollevare ne' settare quantita.
-        svc._apply_fonte_quantita_logic(data, for_create=True)
+        svc._apply_fonte_quantita_logic(data)
         self.assertNotIn("quantita", data)
 
 
@@ -2430,11 +2365,16 @@ class ContrattiServicePricingGateTests(TestCase):
         repo.get_emittente_sr_id_by_fiscale_id.return_value = 999
         repo_cls.return_value = repo
 
+        # La versione di listino la dice il DB (`fn_documento_listino_operativo`):
+        # si finge la lettura, o il test interrogherebbe il DB col repo mockato.
         with patch(
             "apps.vendite.services.contratti_service."
             "resolve_emittente_sr_id_for_testata",
             return_value=999,
         ), patch(
+            "apps.vendite.services.contratti_service.listino_versione_operativa",
+            return_value=77,
+        ) as versione, patch(
             "apps.vendite.services.pricing_service.PricingService"
         ) as pricing_cls:
             pricing = MagicMock()
@@ -2466,6 +2406,10 @@ class ContrattiServicePricingGateTests(TestCase):
             self.assertEqual(kwargs["ba_id"], 10)
             self.assertEqual(kwargs["utility_id"], 3)
             self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 999)
+            # Fast path: la versione letta col selettore del contratto arriva
+            # al resolver.
+            versione.assert_called_once_with("CONTRATTO", 1)
+            self.assertEqual(kwargs["listino_versione_id_preferito"], 77)
 
     def test_suggerisci_prezzo_riga_articolo_mancante(self):
         """articolo_id None/vuoto → E_VENDITE_VALIDATION."""

@@ -38,6 +38,7 @@ from apps.vendite.api.views_offerte import (
     ApiOffertaEccezioneDetail,
     ApiOffertaEccezioni,
     ApiOffertaEccezionePreviewComponenti,
+    ApiOffertaRigaErogazioni,
     ApiOffertaGeneraOrdine,
     ApiOffertaPushContratto,
     ApiOffertaRegistraEsito,
@@ -141,6 +142,11 @@ urlpatterns = [
          name="vendite-offerta-righe-lista"),
     path("<int:offerta_id>/righe/lista/export/", ApiOffertaRigheListaExportView.as_view(),
          name="vendite-offerta-righe-lista-export"),
+    # Le combinazioni erogazione/fonte di una riga con l'articolo dato, col
+    # default in testa: il form delle righe le legge invece di ricopiare la
+    # matrice (brief-db-offerta-emissione-ed-erogazione B-R4).
+    path("<int:offerta_id>/righe/erogazioni/", ApiOffertaRigaErogazioni.as_view(),
+         name="vendite-offerta-righe-erogazioni"),
     path(
         "<int:offerta_id>/eccezioni/",
         ApiOffertaEccezioni.as_view(),

@@ -58,24 +58,28 @@ Il listino e' versionato (`listini_versioni.validita`): nel tempo escono
 versioni nuove. Il contratto deve essere blindato dai cambi di listino
 post-attivazione (Profilo A). La soluzione:
 
-- in **DRAFT**: `c.listino_versione_id` e' `NULL`. Il pricing legge la
-  versione corrente del listino alla data. Cambi del listino durante DRAFT
-  si propagano (utile per costruzione: il banner FE segnala il drift).
+- in **DRAFT**: `c.listino_versione_id` e' `NULL`. Righe, pricing e
+  capability leggono la versione **in vigore oggi**
+  (`vendite.fn_documento_listino_operativo`, una sede per le tre). Cambi del
+  listino durante DRAFT si propagano (utile per costruzione: il banner FE
+  segnala il drift).
 - alla **transizione DRAFT → ATTIVO**: il trigger
-  `trgfn_contratti_freeze_listino_versione` fissa
-  `c.listino_versione_id = lv.id` della versione **operativa** (stato
-  `IN ('ATTIVA','CHIUSA')`) alla data del contratto. Una eventuale BOZZA
-  con date sovrapposte viene ignorata — non e' mai snapshot (fix Bug A
-  2026-05-16). Da quel momento la versione e' **immutabile** (lock dal
-  trigger `trgfn_contratti_lock_post_attivazione`).
+  `trgfn_contratti_freeze_listino_versione` fissa quella versione, dopo
+  averla verificata con `script.fn_check_listino_congelabile` (la stessa
+  check che spegne «Attiva»). Una eventuale BOZZA con date sovrapposte viene
+  ignorata — non e' mai snapshot (fix Bug A 2026-05-16). Da quel momento la
+  versione e' **immutabile** (lock dal trigger
+  `trgfn_contratti_lock_post_attivazione`).
 - in **ATTIVO**: il pricing legge la versione fissata. Cambi futuri del
   listino non toccano il contratto.
 
-Caso limite: contratto attivato con listino senza versione attiva alla data
-(`lv.validita @> data` non matcha). `c.listino_versione_id` resta NULL, la
-preview ritorna vuota, il FE mostra un warning. Quando una versione viene
-attivata in futuro, il pricing inizia a usarla. Edge case raro ma ammesso
-dal modello.
+⛔ **Un contratto con listino senza una versione in vigore oggi non si
+attiva** (decisione A-D2 di Tid, 2026-10-07,
+brief-db-offerta-emissione-ed-erogazione): `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO`.
+Fino a quel giorno si attivava con `listino_versione_id` NULL e poi seguiva la
+versione in vigore di ogni giorno, cioe' cambiava prezzi in silenzio: l'opposto
+di «congela all'attivazione». Resta il caso del DRAFT, in cui la preview e'
+vuota e il drawer delle righe lo dice con un avviso.
 
 ## 4. Eccezioni: i 3 tipi
 
@@ -224,6 +228,35 @@ Il livello categoria viene alimentato dai service di dominio passando
 `script.fn_get_parameter_full`. Implementato nel BB condiviso
 `apps.vendite.services._pricing_gate_helpers` (vedi catalogo BB
 "Vendite — Gate autorizzazioni prezzi").
+
+## 8-bis. Come si eroga una riga: dall'articolo (2026-10-07)
+
+Ogni riga che si fattura (OVERRIDE, AGGIUNTA) dice **come si eroga**
+(`tipo_erogazione`: CANONE, UNA_TANTUM, CONSUMO; ORARIO modellato e non ancora
+ammesso) e **da dove arriva la quantita'** (`fonte_quantita_attesa`). Dal
+2026-10-07 (brief-db-offerta-emissione-ed-erogazione, decisioni di Tid B-D1…B-D6)
+non lo sceglie l'operatore da zero: **lo dice l'articolo**.
+
+- **La tipologia di listino dell'articolo** dichiara le combinazioni ammesse e
+  quella di default (`config.listini_tipologie_erogazioni`): per esempio
+  QUOTA_FISSA solo CANONE/FISSA, CONSUMO a letture o manuale, PRODOTTI una
+  tantum. **Senza tipologia** (solo un'AGGIUNTA puo' averlo: un OVERRIDE sta nel
+  listino, che la tipologia la pretende) decide la **natura di vendita**
+  (`config.nature_vendita_erogazioni`). Vince la tipologia. Il composito ammette
+  in piu' DERIVATA_COMPONENTI. Sede unica: `vendite.fn_articolo_erogazioni`.
+- **La riga eredita** erogazione e fonte che non indica (solo all'INSERT);
+  CANONE porta con se' la sua `generazione_canone`. La scelta dell'operatore
+  vince, dentro il perimetro.
+- **Il perimetro** e' la tipologia dell'articolo, e la tipologia dev'essere fra
+  quelle della utility del documento: una combinazione fuori →
+  `E_RIGA_EROGAZIONE_FUORI_PERIMETRO`; un articolo di una tipologia che la
+  utility non prevede → `E_RIGA_TIPOLOGIA_FUORI_UTILITY`. Le righe gia' scritte
+  restano come sono (B-D6).
+- **Il form** propone le sole combinazioni ammesse e preseleziona il default
+  (`GET …/righe/erogazioni/`). Il push offerta → contratto ricopia i valori
+  della riga, quindi quelli ereditati.
+
+Stesse regole sull'offerta: le due tabelle di riga hanno gli stessi trigger.
 
 ## 9. Glossario refactor 2026-05-15 (aggiornato 2026-05-18)
 

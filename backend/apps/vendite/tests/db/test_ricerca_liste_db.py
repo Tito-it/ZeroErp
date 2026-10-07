@@ -204,9 +204,12 @@ _FIXTURE: tuple[str, ...] = (
     """
     CREATE TEMP TABLE _cnt_riga AS
     WITH ins AS (
+        -- Erogazione e fonte VUOTE: le eredita dall'articolo (B-R2 di
+        -- brief-db-offerta-emissione-ed-erogazione). Scritte a mano, il guard
+        -- del perimetro le giudicherebbe sulla tipologia, e qui sono incidentali.
         INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
-               tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
-        SELECT (SELECT contratto_id FROM _cnt), a.id, 'AGGIUNTA', 40.00, 'CANONE', 'FISSA', 1, 1, a.uom_id
+               quantita, qta_operativa, uom_operativa_id)
+        SELECT (SELECT contratto_id FROM _cnt), a.id, 'AGGIUNTA', 40.00, 1, 1, a.uom_id
           FROM catalogo.articoli a WHERE a.id = (SELECT articolo_id FROM _art)
         RETURNING id
     )

@@ -14,9 +14,9 @@ import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative, invitaOperatore, reinviaInvito, getCredenzialePerEmail } from '../api/amministrazione'
 import { listEmittentiFiscali } from '../../core/apiCore'
 import { TIPO_RUOLO_CODICE } from '../constants'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { displayDate, displayTimestamp } from '../../core/utils/date'
+import { displayDate, displayTimestamp, parseIsoDate, toDateStringOrNull } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
 import { useNotify } from '../../core/composables/useNotify'
@@ -34,6 +34,7 @@ import AppDrawer from '../../core/components/AppDrawer.vue'
 import AppDialog from '../../core/components/AppDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import InputText from 'primevue/inputtext'
+import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
 import RadioButton from 'primevue/radiobutton'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -135,6 +136,16 @@ const disableReason = computed(() => motivoSeBloccato(disableBloccato.value, 'di
 const vesteSpenta = computed(() =>
   isEdit.value && !!store.currentOperatore && store.currentOperatore.veste_attiva !== true)
 const demoteReason = computed(() => motivoSeBloccato(demoteBloccato.value, 'demote'))
+// Scopo: La data di fine del RAPPORTO, spenta per l'ultimo SUPER_ADMIN senza
+// data di fine (`can_set_valido_al` di fn_get_operatore_detail, brief-db-veste-
+// utilizzabile §10): il DB la rifiuterebbe (409), il dettaglio lo dice prima.
+// Chi ha gia' una data di fine risponde `true`: la puo' cambiare o togliere.
+const validoAlBloccato = computed(() =>
+  isEdit.value && bloccoAttivo(store.currentOperatore, 'valido_al', 'can_set_valido_al'))
+const validoAlReason = computed(() => motivoSeBloccato(validoAlBloccato.value, 'valido_al'))
+// La fine non precede l'inizio (lo giudica il DB, E_DATA_AL_MINORE_DAL): il
+// calendario non la offre nemmeno.
+const validoAlMin = computed(() => parseIsoDate(form.value.valido_dal) ?? undefined)
 const hasBeenInvited = computed(() => !!store.currentOperatore?.invito_inviato_at)
 
 // Multi-face auth Stage B: il vecchio radio ruolo_sistema (ADMIN/OPERATIVO/
@@ -269,7 +280,7 @@ watch(() => props.visible, async (val) => {
         qualifica_id: null,
         unita_organizzativa_id: u.unita_organizzativa_id,
         valido_dal: u.valido_dal || null,
-        valido_al: u.valido_al || null,
+        valido_al: parseIsoDate(u.valido_al),
         soggetto_id: u.soggetto_id || null,
         ragione_sociale: u.ragione_sociale_completa || null,
         codice_fiscale: u.codice_fiscale || null,
@@ -336,6 +347,10 @@ async function onSave() {
       attivo: form.value.attivo,
       unita_organizzativa_id: form.value.unita_organizzativa_id
     }
+    // La data di fine viaggia solo se e' cambiata: `null` la TOGLIE, e un
+    // salvataggio che non la tocca non e' un gesto sulla scadenza.
+    const validoAl = toDateStringOrNull(form.value.valido_al)
+    if (validoAl !== (store.currentOperatore?.valido_al || null)) payload.valido_al = validoAl
     // I dati si mandano sempre, salvo quando l'unica modifica e' lo scope:
     // li' un PUT dei dati identici sarebbe una scrittura senza motivo.
     const inviaDati = modificato.value || !scopeFoto.modificato.value
@@ -714,7 +729,8 @@ function onInvita() {
             <small class="app-field-hint">{{ t('amministrazione.emittenti_scope_hint') }}</small>
           </div>
 
-          <!-- Validita' e ultimo accesso (solo modifica, sola lettura informativa) -->
+          <!-- Validita' e ultimo accesso (solo modifica). Si modifica solo la
+               fine del rapporto: l'inizio e l'ultimo accesso sono informativi. -->
           <template v-if="isEdit">
             <div class="form-field">
               <label>{{ t('amministrazione.field_ultimo_accesso') }}</label>
@@ -726,10 +742,19 @@ function onInvita() {
                 <InputText :model-value="form.valido_dal ? displayDate(form.valido_dal) : '—'" disabled />
               </div>
               <div class="form-field">
-                <label>{{ t('amministrazione.field_valido_al') }}</label>
-                <InputText :model-value="form.valido_al ? displayDate(form.valido_al) : t('amministrazione.valido_al_illimitato')" disabled />
+                <label for="dp-valido-al">{{ t('amministrazione.field_valido_al') }}</label>
+                <DatePicker v-model="form.valido_al" input-id="dp-valido-al"
+                  :date-format="DATE_FORMAT"
+                  :min-date="validoAlMin"
+                  :placeholder="t('amministrazione.valido_al_illimitato')"
+                  show-icon
+                  show-button-bar
+                  :disabled="validoAlBloccato"
+                  :invalid="campiErrati.includes('valido_al')" />
               </div>
             </div>
+            <small v-if="validoAlReason" class="app-field-hint">{{ validoAlReason }}</small>
+            <small v-else class="app-field-hint">{{ t('amministrazione.valido_al_hint') }}</small>
             <!-- Le azioni della CREDENZIALE — blocco e secondo fattore — valgono
                  per tutte le vesti della persona (A-5: le stesse del tab «Altri
                  accessi»). Immediate, non passano dal Salva. -->

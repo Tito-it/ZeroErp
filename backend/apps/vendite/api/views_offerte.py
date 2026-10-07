@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -36,6 +38,7 @@ from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api._riga_erogazioni_views import RigaErogazioniView
 from apps.vendite.api.indirizzi_documento_views import (
     build_indirizzi_documento_views,
 )
@@ -717,6 +720,22 @@ class ApiOffertaEccezioneDetail(DomainAPIView):
 #   POST /eccezioni/preview-componenti/        -> ComponentiDialog FE pre-save
 #   GET  /eccezioni/<eid>/componenti/          -> EDIT panel post-save
 #   PATCH/DELETE /eccezioni/<eid>/componenti/<cid>/  -> CRUD singolo
+
+
+class ApiOffertaRigaErogazioni(RigaErogazioniView):
+    """GET /api/v1/vendite/offerte/<id>/righe/erogazioni/?articolo_id=<uuid>
+
+    Come si puo' erogare l'articolo su una riga dell'offerta: le combinazioni
+    ammesse col default in testa (base `RigaErogazioniView`, gemella del
+    contratto).
+    """
+
+    model_permission = ("vendite", "offerta_commerciale")
+    url_kwarg = "offerta_id"
+
+    # Scopo: le combinazioni dal service dell'offerta.
+    def elenco(self, documento_id: int, articolo_id: Any) -> list[dict[str, Any]]:
+        return OfferteService().list_erogazioni_riga(documento_id, articolo_id)
 
 
 class ApiOffertaEccezionePreviewComponenti(DomainAPIView):

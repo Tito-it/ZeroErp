@@ -324,6 +324,36 @@ class TestUpdateOperatore(TestCase):
         self.assertTrue(kwargs["is_super_admin"])
         mock_repo.disabilita_operatore.assert_not_called()
 
+    # Scopo: `valido_al` (fine del rapporto) ha tre stati, brief-db-veste-
+    # utilizzabile §10: assente -> MISSING (non si tocca), una data -> date,
+    # `null` -> None (si toglie). Un formato sbagliato non arriva al repository.
+    @patch(INVALIDATE_USER)
+    @patch(REPO)
+    def test_update_operatore_valido_al_tre_stati(self, mock_repo_cls, _mock_invalidate):
+        from datetime import date
+
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        from apps.core.services.payload_helpers import MISSING
+
+        mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1, "veste_attiva": True}
+
+        AmmSoftwareService().update_operatore(1, {"first_name": "A"})
+        self.assertIs(mock_repo.update_operatore.call_args.kwargs["valido_al"], MISSING)
+
+        AmmSoftwareService().update_operatore(1, {"valido_al": "2026-12-31"})
+        self.assertEqual(mock_repo.update_operatore.call_args.kwargs["valido_al"], date(2026, 12, 31))
+
+        AmmSoftwareService().update_operatore(1, {"valido_al": None})
+        self.assertIsNone(mock_repo.update_operatore.call_args.kwargs["valido_al"])
+
+        mock_repo.update_operatore.reset_mock()
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().update_operatore(1, {"valido_al": "31/12/2026"})
+        self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        mock_repo.update_operatore.assert_not_called()
+
     # Scopo: D-3 — l'interruttore non riaccende una veste spenta: 400
     # E_AMM_VALIDAZIONE sul campo `attivo`, e niente arriva al repository.
     # Si riattiva col reinvio dell'invito.

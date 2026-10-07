@@ -41,6 +41,16 @@
 //    chiavi passate a `td(...)`, e ogni dominio le scrive tutte. ⚠️ La chiave
 //    e' costruita, quindi `check_i18n_keys` non la vede: le presidia
 //    `RigheEccezioniDrawer.spec.js`, che le legge da questo sorgente.
+//
+// ⭐ COME SI EROGA UNA RIGA LO DICE IL DB, DALL'ARTICOLO (brief-db-offerta-
+//    emissione-ed-erogazione B-R4, 2026-10-07): le erogazioni e le fonti che il
+//    form propone sono le combinazioni di `vendite.fn_documento_riga_erogazioni`
+//    (prop `erogazioniArticolo`), la stessa sede che il DB legge per l'eredita'
+//    e per il guard del perimetro. In creazione il form preseleziona la
+//    combinazione di default, cioe' quella che il DB scriverebbe. ⛔ Fino a quel
+//    giorno la matrice erogazione × fonte era ricopiata qui
+//    (`fontiQuantitaErogazione.js`, ritirato) e non sapeva niente di tipologia
+//    ne' di utility: su una utility BASE proponeva «Da letture utility».
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
@@ -48,15 +58,18 @@ import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPr
 import { useDrawerTabLista } from '../../../core/composables/useDrawerTabLista'
 import { useFormInline } from '../../../core/composables/useFormInline'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
+import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../../stores/auth'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import {
-  AZIONE_RIGA_CONTRATTO, FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE, TIPO_EROGAZIONE,
+  AZIONE_RIGA_CONTRATTO, FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE,
 } from '../../constants'
-import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../../core/constants'
 import { useArticoloUomOptions } from '../../../catalogo/composables/useArticoloUomOptions'
-import { fontiPerErogazione, fonteDefaultPerErogazione } from './fontiQuantitaErogazione'
+import {
+  combinazioneDefault, fonteDopoCambioErogazione, opzioniErogazione, opzioniFonte,
+} from './erogazioniRiga'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
 import DrawerTabLista from '../../../core/components/DrawerTabLista.vue'
 import ExportDialog from '../../../core/components/ExportDialog.vue'
@@ -100,6 +113,11 @@ const props = defineProps({
   esportaRighe: { type: Function, required: true },
   // Le API dei componenti BoM della riga: { anteprima, elenco, aggiorna, elimina }.
   apiComponenti: { type: Object, required: true },
+  // Come si puo' erogare un articolo su una riga del documento:
+  // (docId, articoloId) → la risposta axios, envelope `data.results` con le
+  // combinazioni { tipo_erogazione, fonte_quantita_attesa, e_default, … }, il
+  // default in testa (`GET …/righe/erogazioni/`).
+  erogazioniArticolo: { type: Function, required: true },
   // L'entita' del bus dei tab (`TAB_ENTITIES.*`) per il pannello componenti.
   tabEntity: { type: String, required: true },
   // Il namespace dei testi che nominano il documento (le chiavi di `td`).
@@ -121,6 +139,10 @@ const tv = (chiave, valori) => t(`${VOC}.${chiave}`, valori)
 const td = (chiave, valori) => t(`${props.i18nDocumento}.${chiave}`, valori)
 
 const { execute, loading, campiErrati } = useApiHandler()
+// Le letture del form (le combinazioni dell'articolo) hanno il loro handler:
+// `execute` azzera `campiErrati` e accende `loading`, che appartengono al
+// salvataggio.
+const { execute: executeLettura } = useApiHandler()
 const { confirmDelete, confirmAction } = useConfirmAction()
 const readonlyCatena = useInjectReadonly()
 const isReadonly = computed(() => readonlyCatena.value || props.bloccato)
@@ -293,22 +315,61 @@ async function caricaUomConPickBase(articoloId) {
   }
 }
 
-// === Options ===
-const tipoErogazioneOptions = computed(() => [
-  { value: TIPO_EROGAZIONE.CANONE, label: tv('tipo_erogazione_canone') },
-  { value: TIPO_EROGAZIONE.CONSUMO, label: tv('tipo_erogazione_consumo') },
-  { value: TIPO_EROGAZIONE.UNA_TANTUM, label: tv('tipo_erogazione_una_tantum') },
-])
+// === Come si eroga l'articolo (dal DB) ===
+// Le combinazioni (erogazione, fonte) che una riga con l'articolo del form puo'
+// avere su questo documento, il default in testa. `null` = non ancora lette (o
+// nessun articolo); `[]` = l'articolo non si vende su questo documento (la sua
+// tipologia non e' fra quelle della utility).
+const erogazioni = ref(null)
+const { tag: tagErogazioni, isCurrent: erogazioniCorrenti, invalidate: invalidaErogazioni } = useFetchVersion()
 
-// La matrice erogazione × fonte (quali fonti, quale default, quali atipiche)
-// e' il BB `fontiQuantitaErogazione`: le fonti vietate dal CHECK non appaiono.
-const fonteQuantitaOptions = computed(() => fontiPerErogazione(form.value?.tipo_erogazione).map(f => ({
-  value: f.value,
-  label: tv(`fonte_quantita_value_${f.value.toLowerCase()}`),
-  severity: f.severity,
-})))
+// Scopo: legge le combinazioni dell'articolo. Con `preseleziona` (creazione)
+//        mette nel form la combinazione di default, cioe' quella che il DB
+//        erediterebbe; in modifica la riga resta com'e' scritta.
+async function caricaErogazioni(articoloId, { preseleziona = false } = {}) {
+  invalidaErogazioni()
+  erogazioni.value = null
+  if (!articoloId) return
+  const token = tagErogazioni()
+  const data = await executeLettura(() => props.erogazioniArticolo(props.documentoId, articoloId))
+  // Arrivata tardi (l'articolo e' cambiato, o il form si e' chiuso): si scarta.
+  if (!erogazioniCorrenti(token) || formMode.value == null) return
+  // ⛔ Lettura fallita (`execute` → null, toast gia' mostrato): resta `null`,
+  // «non lette». Diventare `[]` direbbe «l'articolo non si vende qui» per un
+  // 403 o un 500, e spegnerebbe il Salva con un motivo falso.
+  if (data == null) return
+  erogazioni.value = data.results ?? []
+  if (!preseleziona) return
+  const predefinita = combinazioneDefault(erogazioni.value)
+  const eraPulito = !modificato.value
+  form.value.tipo_erogazione = predefinita?.tipo_erogazione ?? null
+  form.value.fonte_quantita_attesa = predefinita?.fonte_quantita_attesa ?? null
+  // La proposta del DB non e' una modifica dell'operatore.
+  if (eraPulito) fissa()
+}
 
-const fonteCorrente = computed(() => fonteQuantitaOptions.value.find(f => f.value === form.value?.fonte_quantita_attesa) || null)
+// L'articolo non si vende su questo documento: nessuna combinazione. ⭐ Solo
+// in CREAZIONE: il guard del perimetro scatta all'INSERT e quando cambiano
+// articolo, erogazione o fonte (B-D6). Una riga gia' scritta fuori perimetro
+// si aggiorna negli altri campi (il prezzo), e le tendine le tengono il valore
+// scritto (`erogazioniRiga`, `opzioni`).
+const articoloNonAmmesso = computed(() => formMode.value === 'create'
+  && Array.isArray(erogazioni.value) && erogazioni.value.length === 0)
+
+// Le tendine dalle combinazioni del DB (BB `erogazioniRiga`: mette in forma,
+// non decide).
+const tipoErogazioneOptions = computed(() => opzioniErogazione(
+  erogazioni.value,
+  form.value?.tipo_erogazione,
+  (v) => tv(`tipo_erogazione_${v.toLowerCase()}`),
+))
+
+const fonteQuantitaOptions = computed(() => opzioniFonte(
+  erogazioni.value,
+  form.value?.tipo_erogazione,
+  form.value?.fonte_quantita_attesa,
+  (v) => tv(`fonte_quantita_value_${v.toLowerCase()}`),
+))
 
 // Q.ta operativa visibile/obbligatoria solo per fonte FISSA. Per le altre
 // fonti il valore nasce downstream (documento, timesheet, letture) o dai
@@ -319,17 +380,14 @@ const showQtaOperativa = computed(() => form.value?.fonte_quantita_attesa === FO
 // apre il form («Nuovo» → AGGIUNTA, riga del listino → OVERRIDE). Il form lo
 // mostra come Tag. Default AGGIUNTA: l'ingresso piu' generico.
 function defaultForm(overrides = {}) {
-  // ⛔ L'erogazione parte VUOTA ed e' obbligatoria (brief-db-erogazione-
-  // obbligatoria-righe-fatturate, 2026-10-04): la sceglie l'operatore.
-  const tipo = overrides.tipo_erogazione ?? null
   return {
     articolo_id: null,
     articolo_obj: null,
     tipo_eccezione: TIPO_ECCEZIONE.AGGIUNTA,
-    tipo_erogazione: tipo,
-    // Senza erogazione la fonte resta vuota: la riempie il watch sotto quando
-    // l'operatore sceglie l'erogazione.
-    fonte_quantita_attesa: fonteDefaultPerErogazione(tipo),
+    // Erogazione e fonte partono VUOTE: le propone il DB quando l'articolo e'
+    // noto (`caricaErogazioni`, la combinazione di default dell'articolo).
+    tipo_erogazione: null,
+    fonte_quantita_attesa: null,
     prezzo_unitario: null,
     qta_operativa: 1,
     uom_operativa_id: null,
@@ -353,15 +411,14 @@ watch(() => props.visible, (v) => {
   if (v) closeForm()
 })
 
-// Al cambio di erogazione la fonte si resetta SOLO se la coppia nuova e'
-// vietata (speculare al trigger DB `default_fonte_qta`): la scelta
-// dell'operatore resta quando e' ancora valida.
+// Al cambio di erogazione la fonte resta se l'articolo la ammette ancora con
+// la nuova; altrimenti la sceglie l'operatore (resta vuota), salvo che ce ne
+// sia una sola (`fonteDopoCambioErogazione`).
 watch(() => form.value?.tipo_erogazione, (nuovoTipo, vecchioTipo) => {
-  if (!nuovoTipo || nuovoTipo === vecchioTipo) return
-  const fontiValide = fontiPerErogazione(nuovoTipo).map(f => f.value)
-  if (!fontiValide.includes(form.value.fonte_quantita_attesa)) {
-    form.value.fonte_quantita_attesa = fonteDefaultPerErogazione(nuovoTipo)
-  }
+  if (!nuovoTipo || nuovoTipo === vecchioTipo || !erogazioni.value) return
+  form.value.fonte_quantita_attesa = fonteDopoCambioErogazione(
+    erogazioni.value, nuovoTipo, form.value.fonte_quantita_attesa,
+  )
 })
 
 // === Azioni ===
@@ -409,6 +466,8 @@ function onModificaPrezzo(row) {
   // Le UoM dell'articolo, o il Select mostrerebbe vuoto il valore gia' scelto.
   loadUomPerArticolo(row.articolo_id)
   nextTick(fissa)
+  // Come si eroga, dal DB: la combinazione di default nel form.
+  caricaErogazioni(row.articolo_id, { preseleziona: true })
 }
 
 // Scopo: «Escludi» dal menu di una riga del listino: conferma e salvataggio
@@ -498,6 +557,8 @@ function _onEditRigaPersistita(r) {
     // UoM gia' scritta: niente autopick, solo le opzioni.
     loadUomPerArticolo(r.articolo_id)
     nextTick(fissa)
+    // Le combinazioni dell'articolo per le tendine; la riga resta com'e'.
+    caricaErogazioni(r.articolo_id)
   })
 }
 
@@ -510,11 +571,15 @@ function onArticoloSelected(item) {
   // Cambio articolo: la Dialog si puo' riaprire sul nuovo.
   resetComponentiDialog()
   caricaUomConPickBase(item?.id)
+  // Come si eroga il nuovo articolo: la combinazione di default nel form.
+  caricaErogazioni(item?.id, { preseleziona: true })
 }
 
 function closeForm() {
   chiudiForm()
   rigaListinoAperta.value = null
+  invalidaErogazioni()
+  erogazioni.value = null
   form.value = {}
   resetUomOptions()
   resetComponentiState()
@@ -525,6 +590,9 @@ const canSave = computed(() => {
   if (isReadonly.value) return false
   if (!formMode.value) return false
   if (!form.value.articolo_id) return false
+  // L'articolo non si vende su questo documento: il DB rifiuterebbe la riga
+  // (E_RIGA_TIPOLOGIA_FUORI_UTILITY), il form lo dice prima.
+  if (articoloNonAmmesso.value) return false
   // Erogazione obbligatoria: il form vede solo OVERRIDE e AGGIUNTA, righe che
   // si fatturano (guard DB E_RIGA_EROGAZIONE_OBBLIGATORIA).
   if (!form.value.tipo_erogazione) return false
@@ -853,6 +921,11 @@ function origineSeverity(origine) {
             :filtri="{ soloComponenti: 'escludi' }"
             :placeholder="tv('select_articolo')"
           />
+          <!-- Nessuna combinazione: la tipologia dell'articolo non e' fra
+               quelle della utility del documento. -->
+          <small v-if="articoloNonAmmesso" class="app-field-error">
+            {{ tv('erogazioni_articolo_non_ammesso') }}
+          </small>
         </div>
         <div class="form-field">
           <!-- Il tipo di eccezione lo da' il gesto che ha aperto il form: Tag
@@ -888,9 +961,8 @@ function origineSeverity(origine) {
         </div>
       </div>
 
-      <!-- La fonte della quantita', filtrata per erogazione (CHECK DB
-           `coerenza_fonte_erogazione`: le combinazioni vietate non appaiono).
-           Avviso sulle combinazioni rare. -->
+      <!-- Erogazione e fonte: le combinazioni che l'articolo ammette, dal DB
+           (`fn_documento_riga_erogazioni`); la fonte filtrata per erogazione. -->
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ tv('field_fonte_quantita_attesa') }} *</label>
@@ -898,10 +970,8 @@ function origineSeverity(origine) {
             :options="fonteQuantitaOptions"
             option-label="label" option-value="value"
             :placeholder="tv('select_fonte_quantita')"
+            :invalid="campiErrati.includes('fonte_quantita_attesa')"
             />
-          <small v-if="fonteCorrente?.severity === 'warn'" class="righe-eccezioni-fonte-uso-atipico">
-            <i :class="STATUS_ICONS.INFO" /> {{ tv('fonte_quantita_uso_atipico') }}
-          </small>
         </div>
         <div class="form-field">
           <label>
@@ -1026,14 +1096,5 @@ function origineSeverity(origine) {
 .righe-eccezioni-componenti-espansi {
   padding: 0.25rem 0 0.5rem 2rem;
   background: var(--app-table-stripe-bg);
-}
-.righe-eccezioni-fonte-uso-atipico {
-  display: block;
-  margin-top: 0.25rem;
-  /* PrimeVue yellow-700 hex come fallback: ne' --app-text-warn ne'
-     --p-yellow-700 sono definite nel tema custom; usiamo il pattern
-     dei componenti core (var + fallback hex esplicito). */
-  color: var(--p-yellow-700, #b45309);
-  font-size: 0.8rem;
 }
 </style>

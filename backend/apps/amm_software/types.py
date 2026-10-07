@@ -62,6 +62,10 @@ class OperatoreDetailRow(OperatoreRow):
     - ``can_demote_super_admin``/``demote_reason``/``demote_reason_key``:
       simmetrico per la rimozione del binding SUPER_ADMIN. Stesso codice di
       disable (la condizione e' una), chiave diversa (dice QUALE azione).
+    - ``can_set_valido_al``/``valido_al_reason``/``valido_al_reason_key``:
+      mettere una data di fine al rapporto (``20261007-27``). Stessa
+      condizione di disable (l'ultimo SUPER_ADMIN senza data di fine), chiave
+      sua. Un amministratore che ha gia' una data di fine risponde ``true``.
     """
     soggetto_id: str | None
     ragione_sociale_completa: str | None
@@ -88,6 +92,11 @@ class OperatoreDetailRow(OperatoreRow):
     invite_reason_key: str | None
     disable_reason_key: str | None
     demote_reason_key: str | None
+    # La terna della data di fine del rapporto (brief-db-veste-utilizzabile
+    # §10, `20261007-27`, in coda al RETURNS TABLE).
+    can_set_valido_al: bool
+    valido_al_reason: str | None
+    valido_al_reason_key: str | None
 
 
 class VesteCredenzialeRow(TypedDict):

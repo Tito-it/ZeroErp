@@ -25,12 +25,25 @@ qualunque combinazione di listino + variazione + eccezioni e' ammessa.
 ### Snapshot versione listino all'attivazione
 
 Il contratto referenzia `listino_id` + nuovo campo `listino_versione_id`.
-In `DRAFT` la versione e' NULL (il contratto segue la versione corrente del
-listino). All'attivazione, il trigger
-`trgfn_contratti_freeze_listino_versione` fissa la versione corrente:
+In `DRAFT` la versione e' NULL (il contratto segue la versione **in vigore
+oggi**, `vendite.fn_documento_listino_operativo`: la stessa per righe, pricing e
+capability). All'attivazione, il trigger
+`trgfn_contratti_freeze_listino_versione` fissa quella versione:
 da quel momento la versione e' **immutabile** (Profilo A), e cambi del
 listino non si propagano al contratto. Le eccezioni sono blindate in
 ogni fase.
+
+⛔ **Un contratto con listino non si attiva senza una versione in vigore**
+(decisione A-D2 di Tid, 2026-10-07, brief-db-offerta-emissione-ed-erogazione):
+il freeze lo rifiuta con `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO`
+(409), e la capability spegne «Attiva» col motivo (`reason_key`
+`vendite.contratti.azione_reason.listino_senza_versione_in_vigore`), dalla
+stessa check `script.fn_check_listino_congelabile`. Fino a quel giorno il
+contratto si attivava con la versione NULL e poi **galleggiava** sulla versione
+in vigore di ogni giorno: l'opposto di «congela all'attivazione» (§4.4 del
+2026-05-18, rovesciato). Una versione gia' fissata dal push dell'offerta resta,
+anche se nel frattempo si e' chiusa. Il negoziato puro (`listino_id` NULL)
+resta fuori.
 
 Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-modalita) §3-bis-A/A-schema.
 
@@ -317,8 +330,9 @@ Nuovo endpoint multipart 2026-05-28. Mirror del flusso offerta/preventivo
   `documenti_generati` con `sorgente_tipo=CONTRATTO,
   sorgente_id=contratto.id`.
 - Regole pre-attivazione (validate dal trigger DB):
-  - Listino operativo (`ATTIVA`/`CHIUSA`) valido alla data del contratto
-    (versioni `BOZZA` ignorate)
+  - Con listino: una versione in vigore oggi da congelare
+    (`script.fn_check_listino_congelabile`), altrimenti
+    `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO` (409, dal 2026-10-07)
   - Forma "senza_listino" → almeno una riga AGGIUNTA con prezzo
     valorizzato, altrimenti `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE`
     (422)
@@ -328,6 +342,8 @@ Nuovo endpoint multipart 2026-05-28. Mirror del flusso offerta/preventivo
   - `E_VENDITE_VALIDATION` (400) — contratto non in DRAFT
   - `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` (422) — forma senza_listino
     senza righe valorizzate
+  - `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO` (409) — il listino non ha
+    una versione in vigore oggi
   - `E_DOCUMENTI_VALIDATION` (400/422) — emittente non risolto / sorgente
     CONTRATTO non attiva / template assente / MIME/size allegato non
     ammesso
@@ -389,9 +405,9 @@ Vincoli:
   `chk_contrighe_erogazione_per_tipo_eccezione` + guard
   `script.trgfn_righe_guard_erogazione_obbligatoria` →
   `E_RIGA_EROGAZIONE_OBBLIGATORIA` (400, campo `tipo_erogazione` in
-  `error.fields`), in create e in un PATCH che la toglie. Il service non la
-  pre-valida: parla il DB (2026-10-04,
-  brief-db-erogazione-obbligatoria-righe-fatturate).
+  `error.fields`) in un PATCH che la toglie; in create, dal 2026-10-07, la riga
+  la eredita dall'articolo. Il service non la pre-valida: parla il DB
+  (2026-10-04, brief-db-erogazione-obbligatoria-righe-fatturate).
 - **Il tipo non si cambia**, per nessuna riga: lock di colonna su
   `tipo_eccezione` (`dbops.automation_lock_columns`) →
   `E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE` (409). Dall'API il service
@@ -431,29 +447,35 @@ in fase di push periodico verso le commesse. 5 valori CHECK DB:
 | `LETTURE` | Da letture utility | Forzata a NULL |
 | `DERIVATA_COMPONENTI` | Per padre composito: scritta automaticamente dal trigger `z90_propaga_qta_componenti` post-INSERT figli BoM | Lasciata vuota (gestita dal DB) |
 
-Matrice coerenza `(tipo_erogazione, fonte_quantita_attesa)` enforced sia dal
-CHECK DB `chk_contrighe_coerenza_fonte_erogazione` (migration `20260519-05`)
-sia dal service Python (`_apply_fonte_quantita_logic` in
-`contratti_service.py`). 7 combinazioni vietate:
+⭐ **Come si eroga una riga lo dice l'articolo, dal DB** (dal 2026-10-07,
+brief-db-offerta-emissione-ed-erogazione B-R1…B-R4). Le combinazioni
+`(tipo_erogazione, fonte_quantita_attesa)` ammesse e quella di default le
+dichiara la **tipologia di listino** dell'articolo
+(`config.listini_tipologie_erogazioni`), o la sua **natura di vendita** se non
+ha tipologia (`config.nature_vendita_erogazioni`); un composito ammette in più
+`DERIVATA_COMPONENTI`. Sede unica: `vendite.fn_articolo_erogazioni`.
 
-| `tipo_erogazione` | Fonti vietate |
-| --- | --- |
-| `CANONE` / `UNA_TANTUM` | `TIMESHEET`, `LETTURE` |
-| `ORARIO` | `LETTURE` |
-| `CONSUMO` | `FISSA`, `TIMESHEET` |
+- **Eredità** (solo INSERT): erogazione e fonte non indicate si ereditano dalla
+  combinazione di default; `CANONE` porta anche la sua `generazione_canone`
+  (`script.trgfn_righe_default_erogazione_da_articolo`). Su un UPDATE che cambia
+  la sola erogazione, la fonte si riallinea a quella che l'articolo ammette.
+- **Perimetro**: una combinazione che l'articolo non ammette →
+  `E_RIGA_EROGAZIONE_FUORI_PERIMETRO` (400, campo `tipo_erogazione` o
+  `fonte_quantita_attesa`); un articolo la cui tipologia la utility del contratto
+  non prevede → `E_RIGA_TIPOLOGIA_FUORI_UTILITY` (400, campo `articolo_id`).
+  Guard `script.trgfn_righe_guard_erogazione_perimetro`, su INSERT e quando
+  cambiano articolo, erogazione o fonte: le righe già scritte restano come sono
+  (B-D6).
+- **Rete**: la FK composta `(tipo_erogazione, fonte_quantita_attesa)` sul
+  vocabolario `config.erogazioni_fonti` (23503), che ha preso il posto dei CHECK
+  della matrice.
+- **Il form** legge le combinazioni da `GET …/righe/erogazioni/` (sotto) e
+  preseleziona il default.
 
-Default applicato in CREATE quando `fonte_quantita_attesa` non e' nel payload
-(stesso comportamento del trigger DB `trg_contratti_righe_a10_default_fonte_qta`):
-
-| `tipo_erogazione` | Fonte default |
-| --- | --- |
-| `CANONE` / `UNA_TANTUM` | `FISSA` |
-| `ORARIO` | `MANUALE` (diventera' `TIMESHEET` quando il modulo esistera') |
-| `CONSUMO` | `LETTURE` |
-
-In UPDATE che cambia `tipo_erogazione`, la fonte non viene auto-applicata:
-il trigger DB la resetta SOLO se la combo nuova diventa vietata, preservando
-le scelte legittime dell'utente.
+⛔ Il service **non ne tiene una copia**: fino al 2026-10-07 `contratti_service`
+ricopiava la matrice (`_FONTE_VIETATE_PER_TIPO_EROGAZIONE`) e i default
+(`_FONTE_DEFAULT_PER_TIPO_EROGAZIONE`), ritirati. `_apply_fonte_quantita_logic`
+fa solo la normalizzazione di `quantita` per fonte della tabella qui sopra.
 
 Combinazione vietata → `E_VENDITE_VALIDATION` con detail "Combinazione vietata:
 tipo_erogazione='...' non e' compatibile con fonte_quantita_attesa='...'".
@@ -493,9 +515,10 @@ direzione downstream (dashboard / log / pratiche); user_message generico
 
 **Fast path resolver per contratti** (refactor 2026-05-20). Il pricing gate L2
 invoca `fn_resolve_prezzo_listino_v2` passando come 9° argomento il
-`listino_versione_id` del contratto (snapshot se ATTIVO, lookup dinamico
-ATTIVA/CHIUSA @ `valido_dal` con BOZZA esclusa per DRAFT, replicato via
-`ContrattiRepository.get_listino_versione_attiva_alla_data`). Questo
+`listino_versione_id` letto da `vendite.fn_documento_listino_operativo`
+(la fissata se ATTIVO, altrimenti quella in vigore oggi: la stessa delle righe a
+video; dal 2026-10-07, prima una copia Python che la cercava a `valido_dal`).
+Questo
 attiva lo stadio `CONTRATTO_LISTINO` del resolver e impedisce il drift
 verso lo stadio `CATEGORIA` (che pesca da `categorie_clienti_listini` un
 listino diverso da quello del contratto). Senza fast path il check L2
@@ -591,6 +614,20 @@ create rolla back.
 Payload `POST /righe/` accetta anche `componenti_overrides` (opzionale,
 mappa `{componente_id: prezzo_numeric}`) per pre-impostare prezzi
 manuali su componenti specifici al momento della create.
+
+#### Come si eroga un articolo `GET /api/v1/vendite/contratti/<id>/righe/erogazioni/?articolo_id=<uuid>`
+
+Le combinazioni (`tipo_erogazione`, `fonte_quantita_attesa`) che una riga con
+l'articolo può avere sul contratto, col **default in testa** (`e_default`),
+`generazione_canone` da proporre sulle `CANONE` e `origine`
+(`TIPOLOGIA` | `NATURA` | `DISTINTA`). Envelope dei lookup:
+`{"data": {"results": [...]}}`. Lettura del form delle righe, gemella
+dell'offerta (base `RigaErogazioniView`, contratto completo in
+[api_offerte.md](api_offerte.md) § «Come si eroga un articolo»): le righe di
+`vendite.fn_documento_riga_erogazioni`, la stessa sede dell'eredità e del guard.
+Lista vuota = l'articolo non si vende su questo contratto (tipologia fuori dalla
+utility). Contratto che non si vede → 404; `articolo_id` assente o non UUID →
+400 col campo.
 
 #### Preview componenti `POST /api/v1/vendite/contratti/<id>/righe/preview-componenti/`
 
@@ -894,7 +931,10 @@ alle righe di contratto via `target_riga_id`.
 | `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 422 | DB P0001 (§6.1 2026-05-16) — INSERT/UPDATE riga `tipo_eccezione=ESCLUSIONE` per articolo che e' `articolo_figlio_id` in un bundle del listino del contratto. L'ESCLUSIONE si applica al padre bundle, non al singolo componente | `script.trgfn_righe_guard_esclusione_figlio_bundle` |
 | `E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE` | 409 | DB P0001 (2026-10-04) — UPDATE di una riga ESCLUSIONE che cambia una colonna di contenuto (ammesse le sole tecniche). Parla prima dei guard `_a10_` e del CHECK sul prezzo. Nessun valore nel messaggio | `script.trgfn_righe_guard_esclusione_immutabile` (fascia `_a05_`) |
 | `E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE` | 409 | DB P0001 (2026-10-04) — UPDATE che cambia `tipo_eccezione` di una riga qualunque. Dall'API non si raggiunge: il service rifiuta la chiave prima | lock di colonna generato (`trg_contratti_righe_a10_lock_columns_upd`) |
-| `E_RIGA_EROGAZIONE_OBBLIGATORIA` | 400 | DB P0001 (2026-10-04) — create o PATCH di una riga OVERRIDE/AGGIUNTA senza `tipo_erogazione`. Campo `tipo_erogazione` in `error.fields`. Stesso codice sulle eccezioni dell'offerta | `script.trgfn_righe_guard_erogazione_obbligatoria` |
+| `E_RIGA_EROGAZIONE_OBBLIGATORIA` | 400 | DB P0001 (2026-10-04) — PATCH che toglie `tipo_erogazione` a una riga OVERRIDE/AGGIUNTA (in create, dal 2026-10-07, la riga la eredita dall'articolo). Campo `tipo_erogazione` in `error.fields`. Stesso codice sulle eccezioni dell'offerta | `script.trgfn_righe_guard_erogazione_obbligatoria` |
+| `E_RIGA_EROGAZIONE_FUORI_PERIMETRO` | 400 | DB P0001 (2026-10-07) — combinazione `(tipo_erogazione, fonte_quantita_attesa)` che l'articolo non ammette. Campo in `error.fields`. Stesso codice sull'offerta | `script.trgfn_righe_guard_erogazione_perimetro` |
+| `E_RIGA_TIPOLOGIA_FUORI_UTILITY` | 400 | DB P0001 (2026-10-07) — articolo con una tipologia di listino che la utility del contratto non prevede. Campo `articolo_id`. Stesso codice sull'offerta | `script.trgfn_righe_guard_erogazione_perimetro` |
+| `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO` | 409 | DB P0001 (2026-10-07, A-D2) — attivazione di un contratto con listino che non ha una versione in vigore oggi | `trgfn_contratti_freeze_listino_versione` |
 | `E_RIGA_ESCLUSIONE_CON_DATI` | 400 | DB P0001 (2026-10-04) — INSERT di un'ESCLUSIONE con un dato di fatturazione valorizzato. Campo (il primo valorizzato) in `error.fields`. Stesso codice sull'offerta | `script.trgfn_righe_guard_esclusione_senza_dati` |
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` | 422 | DB P0001 (resolver pricing) — tentativo di prezzare un articolo che ha eccezione ESCLUSIONE sul contratto attivo del cliente | `fn_resolve_prezzo_listino_v2` (STADIO 1 eccezioni) |
 | `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` | 409 | DB P0001 (refactor §3-bis-A) — UPDATE su `listino_id`/`listino_versione_id`/`tipo_variazione_globale`/`valore_variazione_globale` di contratto ATTIVO (la sola **testata**, dal 2026-09-22) | `trgfn_contratti_lock_post_attivazione` |

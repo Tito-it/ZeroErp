@@ -17,9 +17,13 @@ conversioni semantiche.
 - **Mono-utility per offerta**: `istanza_utility_id` e `utility_id` NOT NULL
   sulla testata. Cliente con piu' utility → N offerte distinte (un eventuale
   raggruppamento "pacchetto commerciale" e' fuori dal v1).
-- **Versione listino fissata all'emissione**: in `BOZZA` `listino_versione_id`
-  puo' essere NULL; al passaggio `BOZZA -> EMESSA` il trigger guard rifiuta
-  se NULL o versione non ATTIVA. Da `EMESSA` in poi e' immutabile.
+- **Versione listino fissata all'emissione, dal DB**: in `BOZZA`
+  `listino_versione_id` e' NULL e l'offerta vive sulla versione **in vigore oggi**
+  (`vendite.fn_documento_listino_operativo`, la stessa per righe, pricing e
+  capability). Al passaggio `BOZZA -> EMESSA` il guard di transizione la
+  **congela** nella stessa scrittura, dopo averla verificata con
+  `script.fn_check_listino_congelabile`. Da `EMESSA` in poi e' immutabile
+  (brief-db-offerta-emissione-ed-erogazione, 2026-10-07).
 - **Eccezioni come mirror di `contratti_righe`** con i 5 CHECK constraint
   replicati (`chk_offerte_eccezioni_*`) **e** i gate prezzo L1/L2/L3
   (refactor-prezzi 2026-06-01). Le colonne `stato_approvazione_prezzo` e
@@ -47,9 +51,14 @@ conversioni semantiche.
   - verifica che la transizione sia in `config.stati_doc_offerte_transizioni`
   - valorizza `data_emissione` / `data_accettazione` / `data_rifiuto` /
     `data_annullamento` al passaggio
-  - rifiuta `BOZZA -> EMESSA` con `listino_versione_id` NULL o versione non
-    ATTIVA (codici `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO` /
-    `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`)
+  - su `BOZZA -> EMESSA` congela `listino_versione_id` sulla versione in vigore
+    oggi, e rifiuta col primo motivo di `script.fn_check_listino_congelabile`:
+    listino senza versione in vigore (`E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`)
+    o versione gia' fissata non piu' ATTIVA
+    (`E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`). La capability spegne
+    «Emetti» con la stessa check (`reason_key`
+    `vendite.offerte.azione_reason.listino_senza_versione_in_vigore` /
+    `…listino_versione_non_attiva`): pulsante e guard non possono dissentire
 - I codici errore `E_OFFERTA_*` sollevati dal trigger sono **estratti dal
   MESSAGE** del trigger via regex (`_DB_ERROR_CODE_RE`) e propagati al client
   come `ServiceError.code` originale, non come `E_VENDITE_VALIDATION` generico.
@@ -461,32 +470,32 @@ unificato cross-dominio).
   - `allegati` (file ripetuto, opzionale) — file secondari persistiti
     assieme al PDF principale
 
-Pre-step (refactor 2026-05-28): `OfferteService.emetti` esegue il
-**freeze at emission** della versione listino prima della transizione.
-Se `listino_versione_id` non è già fissata, il service cerca la versione
-del listino in stato `ATTIVA` (fallback `CHIUSA`) alla data odierna e la
-persiste con UPDATE atomico. Motivazione: il form CREATE offerta espone
-solo `listino_id` (non la versione); senza pre-fill il trigger DB
-`trgfn_offerte_commerciali_guard_transizione` rifiuterebbe la transizione
-con `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`. Errore parlante
-`E_VENDITE_VALIDATION` (422) se il listino selezionato non ha versioni
-operative valide oggi.
+⭐ **La versione di listino la congela il DB** (dal 2026-10-07,
+brief-db-offerta-emissione-ed-erogazione A-R1/A-R2). `OfferteService.emetti` fa
+solo il cambio stato; il guard `trgfn_offerte_commerciali_guard_transizione`, su
+`BOZZA -> EMESSA`:
 
-Trigger DB (post pre-fill):
+1. verifica la versione che verrebbe congelata con
+   `script.fn_check_listino_congelabile` — la fissata, altrimenti quella in
+   vigore oggi — e solleva il primo motivo:
+   `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO` (409, il listino non ha una
+   versione in vigore oggi) o `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`
+   (409, la versione gia' fissata si e' chiusa);
+2. congela `listino_versione_id` se e' vuota, nella stessa scrittura;
+3. valorizza `data_emissione = now()`.
 
-1. verifica `listino_versione_id` NOT NULL → altrimenti
-   `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO` (422)
-2. verifica versione listino in stato `ATTIVA` → altrimenti
-   `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA` (422)
-3. valorizza `data_emissione = now()`
+⛔ Fino al 2026-10-07 il congelamento lo faceva il service, in Python, prima del
+cambio stato (`_fissa_versione_listino_se_necessario`, ritirato): la capability
+leggeva la colonna nuda e spegneva «Emetti» proprio perche' quel passo non
+c'era ancora stato — un'offerta nuova non si emetteva.
 
 Da questo momento la versione del listino è "congelata": modifiche al
 listino sottostante non si propagano all'offerta.
 
 Semantica transazionale (refactor 2026-05-28): la view apre
 `transaction.atomic()` esterno che racchiude (in ordine):
-`OfferteService().emetti(offerta_id)` (con `atomic` nested per pre-fill +
-cambio stato) → `_resolve_contesto_offerta` →
+`OfferteService().emetti(offerta_id)` (cambio stato, che congela la versione) →
+`_resolve_contesto_offerta` →
 `DocumentGenerationService.genera_documento(allegati=...)` (render +
 persist su `documenti.documenti_generati` + evento `GENERATO`). Se il
 render fallisce o un allegato viola MIME/size, l'atomic esterno rollbacka
@@ -564,6 +573,11 @@ Body vuoto. Crea rev.N+1 in stato `BOZZA` a partire dall'offerta corrente
    brief DB).
 2. La fn DB copia testata + eccezioni attive + utility 1:1 nella nuova
    revisione, con `revisione_numero = N+1` e `revisione_padre_id = <id>`.
+   ⭐ **Tranne la versione di listino**: la revisione nasce con
+   `listino_versione_id` NULL e congela alla **sua** emissione (decisione A-D3
+   di Tid, 2026-10-07). Una revisione è una proposta nuova, mandata in un giorno
+   nuovo; con la copia, una versione chiusa nel frattempo l'avrebbe resa non
+   emettibile.
 3. Il codice `OFC-*` della nuova rev e' generato ex novo dal trigger
    `gen_codice` (uid e timestamp di transizione restano NULL).
 4. Il trigger `trg_offerte_commerciali_z90_revisione_ins` (step 6,
@@ -723,6 +737,35 @@ Contratto comune alle righe dei documenti di vendita:
 [api_righe_documento.md](api_righe_documento.md). È la lettura del drawer delle
 righe; il dettaglio dell'offerta porta ancora `eccezioni` (conteggio, note di riga).
 
+### Come si eroga un articolo `GET /api/v1/vendite/offerte/<id>/righe/erogazioni/?articolo_id=<uuid>`
+
+Le combinazioni (`tipo_erogazione`, `fonte_quantita_attesa`) che una riga con
+l'articolo può avere sull'offerta, col **default in testa** (`e_default`: quello
+che la riga erediterebbe senza indicarle). Lettura del form delle righe (B-R4 di
+brief-db-offerta-emissione-ed-erogazione, 2026-10-07), gemella del contratto
+(base `RigaErogazioniView`). ⛔ Il backend le trasporta, non le deduce: sono le
+righe di `vendite.fn_documento_riga_erogazioni`, la stessa sede che il DB legge
+per l'eredità e per il guard del perimetro.
+
+```json
+{ "data": { "results": [
+  { "tipo_erogazione": "UNA_TANTUM", "fonte_quantita_attesa": "FISSA",
+    "e_default": true, "generazione_canone": null, "origine": "TIPOLOGIA" },
+  { "tipo_erogazione": "UNA_TANTUM", "fonte_quantita_attesa": "MANUALE",
+    "e_default": false, "generazione_canone": null, "origine": "TIPOLOGIA" }
+] } }
+```
+
+- `origine`: `TIPOLOGIA` (la tipologia di listino dell'articolo), `NATURA` (la
+  natura di vendita, se l'articolo non ha tipologia), `DISTINTA`
+  (`DERIVATA_COMPONENTI` sull'articolo composito, mai di default).
+- **Lista vuota** = la tipologia dell'articolo non è fra quelle della utility
+  dell'offerta: lì l'articolo non si vende (`E_RIGA_TIPOLOGIA_FUORI_UTILITY` in
+  scrittura).
+- Prima la testata: offerta che non si vede → 404 `E_VENDITE_NOT_FOUND`, non una
+  lista vuota. `articolo_id` assente o non UUID → 400 `E_VENDITE_VALIDATION`
+  col campo `articolo_id`.
+
 ### Eccezioni
 
 #### Lista `GET /api/v1/vendite/offerte/<id>/eccezioni/`
@@ -771,11 +814,23 @@ Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
 
 - ESCLUSIONE ↔ prezzo NULL; OVERRIDE/AGGIUNTA ↔ prezzo NOT NULL
   (`chk_offerte_eccezioni_prezzo_per_tipo_eccezione`)
-- Coerenza `(tipo_erogazione, fonte_quantita_attesa)`
-  (`chk_offerte_eccezioni_coerenza_fonte_erogazione`)
+- **Come si eroga lo dice l'articolo** (dal 2026-10-07,
+  brief-db-offerta-emissione-ed-erogazione B-R2/B-R3): `tipo_erogazione` e
+  `fonte_quantita_attesa` **non indicati si ereditano** dall'articolo (trigger
+  `script.trgfn_righe_default_erogazione_da_articolo`, solo in INSERT: la
+  combinazione di default della sua tipologia, altrimenti della natura di
+  vendita). La scelta dell'operatore vince, dentro il **perimetro**
+  dell'articolo: una combinazione che non ammette →
+  `E_RIGA_EROGAZIONE_FUORI_PERIMETRO` (400, campo `tipo_erogazione` o
+  `fonte_quantita_attesa`); un articolo la cui tipologia la utility non prevede
+  → `E_RIGA_TIPOLOGIA_FUORI_UTILITY` (400, campo `articolo_id`). Guard
+  `script.trgfn_righe_guard_erogazione_perimetro`; le combinazioni ammesse le
+  legge il form da `…/righe/erogazioni/`. Rete: la FK composta
+  `fk_offerte_commerciali_eccezioni_erogazione_fonte` sul vocabolario
+  `config.erogazioni_fonti` (ha preso il posto dei CHECK della matrice)
 - `fonte_quantita_attesa` obbligatoria su OVERRIDE/AGGIUNTA, NULL sull'ESCLUSIONE
   (`chk_offerte_eccezioni_fonte_per_tipo_eccezione`, dal 2026-10-04); in create
-  non si pretende: su OVERRIDE/AGGIUNTA la riempie il trigger dall'erogazione
+  non si pretende: la eredita dall'articolo
 - **Un'ESCLUSIONE e' vuota** (decisione di Tid, 2026-10-04,
   brief-db-righe-esclusione-solo-non-si-vende): dice solo «non si vende», quindi
   `prezzo_unitario`, `quantita`, `qta_operativa`, `uom_operativa_id`,
@@ -796,15 +851,14 @@ Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
   obbligatoria per `fonte = FISSA` (CHECK `qta_operativa <> 0`: zero vietato,
   negativi ammessi); ammessa NULL per le altre fonti (la qta arriva downstream).
   Allineato a contratti/preventivi (refactor 2026-05-31)
-- `tipo_erogazione` ammesso (`chk_offerte_eccezioni_tipo_erog`)
 - **`tipo_erogazione` obbligatoria sulle righe che si fatturano**: OVERRIDE e AGGIUNTA si fatturano e devono dire come si erogano
   (canone, una tantum, a ore, a consumo); l'ESCLUSIONE no. CHECK
   `chk_offerte_eccezioni_erogazione_per_tipo_eccezione` + guard
   `script.trgfn_righe_guard_erogazione_obbligatoria` →
   `E_RIGA_EROGAZIONE_OBBLIGATORIA` (400, campo `tipo_erogazione` in
-  `error.fields`), in create e in un PATCH che la toglie. Il service non la
-  pre-valida: parla il DB (2026-10-04,
-  brief-db-erogazione-obbligatoria-righe-fatturate)
+  `error.fields`) in un PATCH che la toglie; in create, dal 2026-10-07, la riga
+  la eredita dall'articolo. Il service non la pre-valida: parla il DB
+  (2026-10-04, brief-db-erogazione-obbligatoria-righe-fatturate)
 - Coerenza canone (`chk_offerte_eccezioni_coerenza_canone`)
 - UNIQUE: max 1 `OVERRIDE`/`ESCLUSIONE` per `(offerta_id, articolo_id)`
   e max 1 `AGGIUNTA` per stessa coppia.
@@ -972,10 +1026,12 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 | `E_VENDITE_NOT_FOUND`                               | 404                 | Service: offerta/eccezione/utility non trovata; ownership URL                                          | —                                                   |
 | `E_VENDITE_DUPLICATO`                               | 409                 | UNIQUE `uq_offerte_commerciali_codice` / `uq_offerte_commerciali_uid` / `uq_offerte_commerciali_utilities_offerta_id` / `uq_offerte_eccezioni_one_eccezione_per_articolo` / `uq_offerte_eccezioni_one_aggiunta_per_articolo` | —                                                   |
 | `E_VENDITE_FK`                                      | 400                 | FK su BA/emittente/istanza/utility/listino/articolo/uom/tipo/classe utenza                              | —                                                   |
-| `E_RIGA_EROGAZIONE_OBBLIGATORIA`                    | 400                 | DB P0001 (2026-10-04) — create o PATCH di un'eccezione OVERRIDE/AGGIUNTA senza `tipo_erogazione`. Campo `tipo_erogazione` in `error.fields`. Stesso codice sulle righe di contratto | `script.trgfn_righe_guard_erogazione_obbligatoria` |
+| `E_RIGA_EROGAZIONE_OBBLIGATORIA`                    | 400                 | DB P0001 (2026-10-04) — PATCH che toglie `tipo_erogazione` a un'eccezione OVERRIDE/AGGIUNTA (in create, dal 2026-10-07, la riga la eredita). Campo `tipo_erogazione` in `error.fields`. Stesso codice sulle righe di contratto | `script.trgfn_righe_guard_erogazione_obbligatoria` |
+| `E_RIGA_EROGAZIONE_FUORI_PERIMETRO`                 | 400                 | DB P0001 (2026-10-07) — combinazione `(tipo_erogazione, fonte_quantita_attesa)` che l'articolo non ammette. Campo `tipo_erogazione` o `fonte_quantita_attesa` in `error.fields`. Stesso codice sul contratto | `script.trgfn_righe_guard_erogazione_perimetro` |
+| `E_RIGA_TIPOLOGIA_FUORI_UTILITY`                    | 400                 | DB P0001 (2026-10-07) — articolo con una tipologia di listino che la utility dell'offerta non prevede. Campo `articolo_id`. Stesso codice sul contratto | `script.trgfn_righe_guard_erogazione_perimetro` |
 | `E_RIGA_ESCLUSIONE_CON_DATI`                        | 400                 | DB P0001 (2026-10-04) — INSERT di un'ESCLUSIONE con un dato di fatturazione. Campo in `error.fields`. Stesso codice sul contratto | `script.trgfn_righe_guard_esclusione_senza_dati` |
-| `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`        | 409                 | DB P0001 — `BOZZA -> EMESSA` con `listino_versione_id` NULL                                            | `trgfn_offerte_commerciali_guard_transizione`        |
-| `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`   | 409                 | DB P0001 — `BOZZA -> EMESSA` con versione listino non in stato `ATTIVA`                                 | `trgfn_offerte_commerciali_guard_transizione`        |
+| `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`        | 409                 | DB P0001 — `BOZZA -> EMESSA` su un listino che non ha una versione in vigore oggi (dal 2026-10-07: prima «versione NULL», che il guard ora congela da sé) | `trgfn_offerte_commerciali_guard_transizione`        |
+| `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`   | 409                 | DB P0001 — `BOZZA -> EMESSA` con una versione già fissata che non è più `ATTIVA`                         | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`                 | 409                 | DB P0001 — transizione non presente in `config.stati_doc_offerte_transizioni` (es. EMESSA -> ANNULLATA, EMESSA -> BOZZA, qualsiasi uscita da stato terminale) | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`             | 409                 | DB P0001 — `crea_revisione` da stato != EMESSA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_crea_revisione_offerta`                          |
 | `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                  | 409                 | DB P0001 — `push_a_contratto` da stato ≠ ACCETTATA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_push_offerta_a_contratto`                        |

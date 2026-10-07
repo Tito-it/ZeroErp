@@ -406,6 +406,21 @@ Entry point pricing per le righe contratto, simmetrici al pattern preventivi
 
 ---
 
+## Vendite — Documenti con listino ed eccezioni: le letture comuni (`apps/vendite/`)
+
+Contratto e offerta commerciale fanno al DB le stesse domande, e il DB risponde
+con **una** funzione che prende il documento come selettore
+(`'CONTRATTO'` | `'OFFERTA'`). Il backend le legge una volta sola (regola del 2,
+brief-db-offerta-emissione-ed-erogazione, 2026-10-07).
+
+| Building Block | File | Descrizione |
+| --- | --- | --- |
+| `listino_versione_operativa(documento, documento_id)` | [_documento_eccezioni_repo.py](../../../../backend/apps/vendite/db/_documento_eccezioni_repo.py) | **La versione di listino che governa il documento**: la fissata se c'è, altrimenti quella in vigore oggi; `None` senza listino, senza versione in vigore o su un documento che non si vede. Legge `vendite.fn_documento_listino_operativo`, la stessa regola delle righe a video e del congelamento all'emissione/attivazione. Consumer: `_load_offerta_context_for_pricing`, `_load_contratto_context_for_pricing` (`listino_versione_id_preferito`, fast path del resolver). ⛔ Ha ritirato due copie Python già divergenti (`ListiniRepository.get_versione_attiva_alla_data`, `ContrattiRepository.get_listino_versione_attiva_alla_data`): cercavano la versione alla data d'inizio del documento, le righe quella di oggi. |
+| `list_erogazioni_riga(documento, documento_id, articolo_id)` | [_documento_eccezioni_repo.py](../../../../backend/apps/vendite/db/_documento_eccezioni_repo.py) | **Come si può erogare un articolo su una riga del documento**: le combinazioni `(tipo_erogazione, fonte_quantita_attesa)` di `vendite.fn_documento_riga_erogazioni`, default (`e_default`) in testa, con `generazione_canone` e `origine`. Lista vuota se la tipologia dell'articolo è fuori dalla utility — e anche su un documento che non si vede: ⚠️ chi chiama legge **prima** la testata (`ContrattiService.list_erogazioni_riga`, `OfferteService.list_erogazioni_riga` → 404). Ha preso il posto della matrice ricopiata in `contratti_service` (`_FONTE_VIETATE_PER_TIPO_EROGAZIONE`, ritirata) e nel frontend. |
+| `RigaErogazioniView` | [_riga_erogazioni_views.py](../../../../backend/apps/vendite/api/_riga_erogazioni_views.py) | Base della rotta `GET …/<id>/righe/erogazioni/?articolo_id=<uuid>`, envelope dei lookup `{"results": [...]}`. Le sottoclassi (`ApiContrattoRigaErogazioni`, `ApiOffertaRigaErogazioni`) dichiarano solo `model_permission`, `url_kwarg` e `elenco()` (il service del dominio). Presidio: `tests/api/test_riga_erogazioni_api.py` (forma dell'envelope, permesso, 404 prima della lettura, 400 col campo, selettore — stessi test sui due documenti). |
+
+---
+
 ## Anagrafiche — Istanze utility (`apps/anagrafiche/`)
 
 | Building Block                                            | File                                                                                                   | Descrizione                                                                                                                                                                                                                                                                                                                                                                                                                     |

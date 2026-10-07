@@ -1282,6 +1282,7 @@
     "field_valido_dal": "Valid from",
     "field_valido_al": "Valid until",
     "valido_al_illimitato": "Unlimited",
+    "valido_al_hint": "End of the employment: from the following day the operator can no longer sign in. Empty = no end date.",
     "select_reparto": "Select department",
     "field_qualifica": "Qualification",
     "select_qualifica": "Select qualification",
@@ -1302,6 +1303,9 @@
       },
       "rimuovi_super_admin_reason": {
         "ultimo_super_admin": "This is the only administrator without an end date: the role cannot be removed."
+      },
+      "valido_al_reason": {
+        "ultimo_super_admin": "This is the only administrator without an end date: an end date cannot be set."
       }
     },
     "invito_inviato": "Invitation sent",
@@ -2377,7 +2381,6 @@
       "field_uom": "Unit of measure",
       "select_fonte_quantita": "Select quantity source...",
       "select_tipo_erogazione": "Select delivery type...",
-      "fonte_quantita_uso_atipico": "Atypical combination for this delivery type. Confirmed?",
       "fonte_quantita_value_fissa": "Fixed (contracted)",
       "fonte_quantita_value_manuale": "Manual (on document)",
       "fonte_quantita_value_timesheet": "From time tracking",
@@ -2500,6 +2503,11 @@
       "tipo_erogazione_canone": "Subscription",
       "tipo_erogazione_consumo": "Consumption",
       "tipo_erogazione_una_tantum": "One-off",
+      "tipo_erogazione_orario": "Hourly",
+      "erogazioni_articolo_non_ammesso": "This item cannot be sold on this document: its type is not among those allowed by the utility.",
+      "azione_reason": {
+        "listino_senza_versione_in_vigore": "The price list has no version in force today: the contract cannot be activated."
+      },
       "pdf": {
         "label_anteprima": "Preview",
         "tooltip_anteprima": "Preview PDF (not saved)",
@@ -3564,7 +3572,7 @@
       "successione_senza_fine": "no end date",
       "successione_effetto": "On confirmation, the existing contract will be closed on {data} and the new draft contract will be generated.",
       "azione_reason": {
-        "listino_versione_mancante": "Price list version is missing: required to issue the offer.",
+        "listino_senza_versione_in_vigore": "The price list has no version in force today: publish one or choose another price list.",
         "listino_versione_non_attiva": "The linked price list version is not ACTIVE."
       },
       "col_descrizione": "Description",

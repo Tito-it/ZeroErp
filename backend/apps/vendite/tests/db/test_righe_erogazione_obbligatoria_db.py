@@ -4,8 +4,10 @@
 # Doc: Python
 # Scopo: UNA RIGA CHE SI FATTURA DICE COME SI EROGA, vista dal backend sul
 #        DATABASE VERO (brief-db-erogazione-obbligatoria-righe-fatturate §6,
-#        decisione di Tid del 2026-10-04): una riga OVERRIDE/AGGIUNTA di
-#        contratto o di offerta senza `tipo_erogazione` risponde il codice del
+#        decisione di Tid del 2026-10-04). Dal 2026-10-07
+#        (brief-db-offerta-emissione-ed-erogazione B-R2) una riga OVERRIDE/
+#        AGGIUNTA che NASCE senza `tipo_erogazione` la EREDITA dall'articolo;
+#        il guard d'obbligo resta, e morde il PATCH che la svuota: codice del
 #        guard DB, 400, col campo da evidenziare nel form.
 #
 # 🔴 PERCHE' SUL DB VERO. Il service non pre-valida l'erogazione, per scelta:
@@ -21,9 +23,9 @@
 # ------------------------------------------------------------
 """
 Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
-1) test_contratto_create_senza_erogazione
+1) test_contratto_create_senza_erogazione_la_eredita
 2) test_contratto_patch_che_toglie_l_erogazione
-3) test_offerta_create_senza_erogazione
+3) test_offerta_create_senza_erogazione_la_eredita
 4) test_offerta_patch_che_toglie_l_erogazione
 """
 from __future__ import annotations
@@ -72,21 +74,38 @@ _CONTRATTO = (
 )
 
 # Una riga OVERRIDE con l'erogazione, al prezzo del listino: il bersaglio del
-# PATCH che la toglie.
+# PATCH che la toglie. ⭐ La combinazione e' quella di default che il DB dichiara
+# per l'articolo (`vendite.fn_articolo_erogazioni`): una scritta a mano
+# (CANONE/FISSA) il perimetro la rifiuterebbe, se la tipologia non la ammette.
+_RIGA_DEFAULT = (
+    " SELECT %s, ar.id, 'OVERRIDE', 100.00, ae.tipo_erogazione, ae.fonte_quantita_attesa,"
+    " CASE WHEN ae.fonte_quantita_attesa = 'FISSA' THEN 1 END,"
+    " CASE WHEN ae.fonte_quantita_attesa = 'FISSA' THEN 1 END, ar.uom_id"
+    " FROM catalogo.articoli ar"
+    " JOIN vendite.fn_articolo_erogazioni(ar.id) ae ON ae.e_default"
+    " WHERE ar.id = (SELECT id FROM _a) RETURNING id"
+)
+
 _RIGA_CONTRATTO = (
     "INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione,"
     " prezzo_unitario, tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa,"
-    " uom_operativa_id)"
-    " SELECT %s, ar.id, 'OVERRIDE', 100.00, 'CANONE', 'FISSA', 1, 1, ar.uom_id"
-    " FROM catalogo.articoli ar WHERE ar.id = (SELECT id FROM _a) RETURNING id"
+    " uom_operativa_id)" + _RIGA_DEFAULT
 )
 
 _ECCEZIONE_OFFERTA = (
     "INSERT INTO vendite.offerte_commerciali_eccezioni (offerta_id, articolo_id,"
     " tipo_eccezione, prezzo_unitario, tipo_erogazione, fonte_quantita_attesa, quantita,"
-    " qta_operativa, uom_operativa_id)"
-    " SELECT %s, ar.id, 'OVERRIDE', 100.00, 'CANONE', 'FISSA', 1, 1, ar.uom_id"
-    " FROM catalogo.articoli ar WHERE ar.id = (SELECT id FROM _a) RETURNING id"
+    " qta_operativa, uom_operativa_id)" + _RIGA_DEFAULT
+)
+
+# La combinazione con cui e' nata una riga, accanto a quella di default che il
+# DB dichiara per il suo articolo: l'eredita' si legge dalla sede, non si ricopia.
+_EREDITATA = (
+    "SELECT r.tipo_erogazione, r.fonte_quantita_attesa, ae.tipo_erogazione,"
+    " ae.fonte_quantita_attesa"
+    " FROM {tabella} r"
+    " JOIN vendite.fn_articolo_erogazioni(r.articolo_id) ae ON ae.e_default"
+    " WHERE r.id = %s"
 )
 
 
@@ -94,16 +113,15 @@ class _Annulla(Exception):
     """Esce dal blocco atomico annullandolo."""
 
 
-# Scopo: il payload di una riga OVERRIDE completa tranne l'erogazione.
+# Scopo: il payload di una riga OVERRIDE senza erogazione e senza fonte: le
+#        eredita dall'articolo (B-R2).
 def _override_senza_erogazione(cur) -> dict:
     cur.execute("SELECT id, uom_id FROM catalogo.articoli WHERE id = (SELECT id FROM _a)")
     articolo_id, uom_id = cur.fetchone()
     return {
         "articolo_id": str(articolo_id),
         "tipo_eccezione": "OVERRIDE",
-        "fonte_quantita_attesa": "FISSA",
         "prezzo_unitario": "100.00",
-        "qta_operativa": "1",
         "uom_operativa_id": uom_id,
     }
 
@@ -125,6 +143,29 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
         except _Annulla:
             pass
         return ctx.exception
+
+    # Scopo: costruisce il mondo, lancia `azione(cur)` (che ritorna l'id della
+    #        riga creata) e ritorna (ereditata, default dell'articolo). Il blocco
+    #        viene annullato.
+    def _ereditata(self, azione: Callable, tabella: str) -> tuple:
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                for sql in _FIXTURE:
+                    cur.execute(sql)
+                riga_id = azione(cur)
+                cur.execute(_EREDITATA.format(tabella=tabella), [riga_id])
+                esito = cur.fetchone()
+                raise _Annulla
+        except _Annulla:
+            pass
+        return esito
+
+    # Scopo: la riga e' nata con la combinazione di default del suo articolo.
+    def _assert_ereditata(self, esito: tuple) -> None:
+        self.assertIsNotNone(esito)
+        tipo, fonte, tipo_default, fonte_default = esito
+        self.assertIsNotNone(tipo)
+        self.assertEqual((tipo, fonte), (tipo_default, fonte_default))
 
     # Scopo: il codice del guard, col campo nel canale strutturato.
     def _assert_codice_e_campo(self, errore: ServiceError) -> None:
@@ -157,11 +198,14 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
             "stato_doc_offerta_id": repo.get_stato_id_by_codice("BOZZA"),
         })
 
-    # 1. Contratto, create: l'OVERRIDE senza erogazione non nasce.
-    def test_contratto_create_senza_erogazione(self):
+    # 1. Contratto, create: l'OVERRIDE senza erogazione la eredita dall'articolo.
+    def test_contratto_create_senza_erogazione_la_eredita(self):
         def azione(cur):
-            ContrattiService().create_riga(self._contratto(cur), _override_senza_erogazione(cur))
-        self._assert_codice_e_campo(self._errore(azione))
+            riga = ContrattiService().create_riga(
+                self._contratto(cur), _override_senza_erogazione(cur),
+            )
+            return riga["id"]
+        self._assert_ereditata(self._ereditata(azione, "vendite.contratti_righe"))
 
     # 2. Contratto, PATCH: togliere l'erogazione a un OVERRIDE e' rifiutato.
     def test_contratto_patch_che_toglie_l_erogazione(self):
@@ -171,10 +215,15 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
         self._assert_codice_e_campo(self._errore(azione))
 
     # 3. Offerta, create: la stessa regola (il push la ricopia nel contratto).
-    def test_offerta_create_senza_erogazione(self):
+    def test_offerta_create_senza_erogazione_la_eredita(self):
         def azione(cur):
-            OfferteService().crea_eccezione(self._offerta(cur), _override_senza_erogazione(cur))
-        self._assert_codice_e_campo(self._errore(azione))
+            riga = OfferteService().crea_eccezione(
+                self._offerta(cur), _override_senza_erogazione(cur),
+            )
+            return riga["id"]
+        self._assert_ereditata(
+            self._ereditata(azione, "vendite.offerte_commerciali_eccezioni"),
+        )
 
     # 4. Offerta, PATCH: togliere l'erogazione a un OVERRIDE e' rifiutato.
     def test_offerta_patch_che_toglie_l_erogazione(self):

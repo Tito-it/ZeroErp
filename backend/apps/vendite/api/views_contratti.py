@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -32,6 +34,7 @@ from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api._riga_erogazioni_views import RigaErogazioniView
 from apps.vendite.api.indirizzi_documento_views import (
     build_indirizzi_documento_views,
 )
@@ -527,6 +530,22 @@ class ApiContrattoUtility(DomainAPIView):
 #   POST /righe/preview-componenti/    -> ComponentiDialog FE pre-save
 #   GET  /righe/<rid>/componenti/      -> EDIT panel post-save
 #   PATCH/DELETE /righe/<rid>/componenti/<cid>/  -> CRUD singolo componente
+
+
+class ApiContrattoRigaErogazioni(RigaErogazioniView):
+    """GET /api/v1/vendite/contratti/<id>/righe/erogazioni/?articolo_id=<uuid>
+
+    Come si puo' erogare l'articolo su una riga del contratto: le combinazioni
+    ammesse col default in testa (base `RigaErogazioniView`, gemella
+    dell'offerta).
+    """
+
+    model_permission = ("vendite", "contratto")
+    url_kwarg = "contratto_id"
+
+    # Scopo: le combinazioni dal service del contratto.
+    def elenco(self, documento_id: int, articolo_id: Any) -> list[dict[str, Any]]:
+        return ContrattiService().list_erogazioni_riga(documento_id, articolo_id)
 
 
 class ApiContrattoRigaPreviewComponenti(DomainAPIView):

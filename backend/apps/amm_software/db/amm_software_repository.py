@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from functools import lru_cache
 from typing import Any, ClassVar, cast
 
@@ -33,6 +34,7 @@ from apps.core.services.auth_constants import (
     TIPO_PROFILO_SUPER_ADMIN,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import MISSING, MissingType
 from apps.amm_software.constants import DEFAULT_LIMIT
 from apps.amm_software.types import CredenzialePerEmailRow, OperatoreDetailRow, OperatoreRow
 
@@ -414,7 +416,7 @@ class AmmSoftwareRepository:
         last_name: str | None = None,
         is_super_admin: bool | None = None,
         unita_organizzativa_id: int | None = None,
-        valido_al: str | None = None,
+        valido_al: date | str | MissingType | None = MISSING,
     ) -> None:
         with transaction.atomic():
             # 1) Aggiorna auth_user (name/email)
@@ -452,7 +454,14 @@ class AmmSoftwareRepository:
             if unita_organizzativa_id is not None:
                 ru_fields.append("unita_organizzativa_id = %s")
                 ru_params.append(unita_organizzativa_id)
-            if valido_al is not None:
+            # ⭐ `valido_al` ha TRE stati (brief-db-veste-utilizzabile §10):
+            #    assente (MISSING) non tocca, una data la mette, `None` la
+            #    TOGLIE (rapporto senza scadenza). Fino al 2026-10-07 `None`
+            #    voleva dire «non toccare», e una data di fine messa non si
+            #    poteva piu' togliere. Togliere passa sempre anche sull'ultimo
+            #    SUPER_ADMIN: il guard ferma solo le scritture che riducono la
+            #    garanzia.
+            if valido_al is not MISSING:
                 ru_fields.append("valido_al = %s::date")
                 ru_params.append(valido_al)
 

@@ -175,7 +175,8 @@ class OperatoriDetailView(AdminAPIView):
             "is_super_admin": serializers.BooleanField(required=False),
             "attivo": serializers.BooleanField(required=False),
             "unita_organizzativa_id": serializers.IntegerField(required=False),
-            "valido_al": serializers.DateField(required=False),
+            # Fine del rapporto: `null` la toglie, assente non la tocca.
+            "valido_al": serializers.DateField(required=False, allow_null=True),
         }),
         responses={200: inline_serializer(name="OperatorePatchResp", fields={"data": serializers.DictField()})},
     )

@@ -1,7 +1,7 @@
 # Brief DB — I test RLS dei documenti costruiscono il loro documento
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-07. **A chi:** Tid.
-> **Origine:** [brief-db-veste-utilizzabile](../work-in-progress/brief-db-veste-utilizzabile.md) §7.4: la
+> **Origine:** [brief-db-veste-utilizzabile](brief-db-veste-utilizzabile.md) §7.4: la
 > correzione delle fixture-operatore ha lasciato un debito che non era di quel cantiere.
 > Figlio del cantiere «fixture che costruiscono»
 > ([migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md)

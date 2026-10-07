@@ -31,7 +31,6 @@ from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
-from django.utils import timezone
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
@@ -41,7 +40,10 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
 )
-from apps.vendite.db.listini_repository import ListiniRepository
+from apps.vendite.db._documento_eccezioni_repo import (
+    list_erogazioni_riga,
+    listino_versione_operativa,
+)
 from apps.vendite.db.offerte_repository import (
     _ORDER_COLS_OFFERTE,
     OffertaRigheListaRepository,
@@ -680,69 +682,22 @@ class OfferteService:
     # Transizioni di stato manuali
     # =================================================================
 
-    # Scopo: BOZZA -> EMESSA. Pre-step: "freeze at emission" della versione
-    #        listino (lookup ATTIVA alla data odierna + UPDATE offerta) se
-    #        non e' gia' fissata; il trigger DB
-    #        `trgfn_offerte_commerciali_guard_transizione` richiede infatti
-    #        `listino_versione_id NOT NULL` per autorizzare la transizione
-    #        (E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO) e l'utente nel
-    #        form CREATE seleziona solo il listino, non la versione.
-    #        Tutto nella stessa transazione del caller (la view che chiama
-    #        `emetti` apre un atomic esterno che include anche la
-    #        generazione documento + allegati).
+    # Scopo: BOZZA -> EMESSA. ⭐ La versione di listino la CONGELA il DB, nella
+    #        stessa scrittura del cambio stato: il guard
+    #        `trgfn_offerte_commerciali_guard_transizione` fissa
+    #        `listino_versione_id` sulla versione in vigore oggi se e' vuota,
+    #        dopo averla verificata con `script.fn_check_listino_congelabile`
+    #        (la stessa regola che spegne «Emetti» nella capability). Listino
+    #        senza versione in vigore: E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO
+    #        dal DB (brief-db-offerta-emissione-ed-erogazione A-R1, A-R2).
+    #        ⛔ Fino al 2026-10-07 il congelamento era qui, in Python, PRIMA del
+    #        cambio stato: la capability spegneva «Emetti» proprio perche' quel
+    #        passo non c'era ancora stato, e un'offerta nuova non si emetteva.
     def emetti(self, offerta_id: int) -> dict[str, Any]:
-        # `transaction.atomic()` (nested = savepoint se c'e' gia' un atomic
-        # esterno della view, tx vera altrimenti) garantisce che il pre-fill
-        # di `listino_versione_id` e il cambio stato siano atomici anche se
-        # `emetti` viene invocato standalone (es. command, sync job, test
-        # integration). Senza wrap, lo standalone potrebbe lasciare
-        # l'offerta con la versione fissata e lo stato ancora BOZZA in
-        # caso di errore del trigger del cambio stato.
-        with transaction.atomic():
-            self._fissa_versione_listino_se_necessario(offerta_id)
-            return self._cambia_stato_manuale(
-                offerta_id,
-                target_codice=StatoOfferta.EMESSA,
-                expected_from=_STATI_EDITABILI,
-            )
-
-    # Scopo: Se l'offerta ha un listino selezionato ma nessuna versione
-    #        fissata, cerca la versione ATTIVA (o CHIUSA come fallback)
-    #        del listino oggi e la persiste su `listino_versione_id`.
-    #        Errore parlante se il listino esiste ma non ha versioni
-    #        operative valide oggi. Idempotente: no-op se gia' fissata o
-    #        offerta senza listino (caso quest'ultimo lasciato al trigger
-    #        DB per coerenza con la sua signaling).
-    def _fissa_versione_listino_se_necessario(self, offerta_id: int) -> None:
-        offerta = self._repo.get_offerta(offerta_id)
-        if offerta is None:
-            return  # 404 verra' segnalato da `_cambia_stato_manuale`.
-        if offerta.get("listino_versione_id") is not None:
-            return
-        listino_id = offerta.get("listino_id")
-        if listino_id is None:
-            return  # nessun listino: gestito dai check di stato del DB.
-        today = timezone.localdate()
-        versione_id = ListiniRepository().get_versione_attiva_alla_data(
-            int(listino_id), today,
-        )
-        ErrorManager.require(
-            versione_id is not None,
-            code=E_VENDITE_VALIDATION,
-            message=(
-                "Il listino di riferimento non ha una versione attiva "
-                "alla data odierna. Impossibile emettere l'offerta: "
-                "pubblicare prima una versione del listino."
-            ),
-            context={
-                "offerta_id": offerta_id,
-                "listino_id": listino_id,
-                "data": today.isoformat(),
-            },
-        )
-        assert versione_id is not None
-        self._repo.update_offerta(
-            offerta_id, {"listino_versione_id": versione_id},
+        return self._cambia_stato_manuale(
+            offerta_id,
+            target_codice=StatoOfferta.EMESSA,
+            expected_from=_STATI_EDITABILI,
         )
 
     # Scopo: EMESSA -> ACCETTATA (esito cliente positivo). Il trigger DB
@@ -1202,6 +1157,26 @@ class OfferteService:
             payload["pratica_approvazione_prezzo_id"] = pratica_id_l3
         return pratica_id_l3, testata_gate
 
+    # Scopo: Le combinazioni (tipo_erogazione, fonte_quantita_attesa) che una
+    #        riga con questo articolo puo' avere sull'offerta, col default che
+    #        erediterebbe in testa: il form delle righe le propone e
+    #        preseleziona il default (brief-db-offerta-emissione-ed-erogazione
+    #        B-R4). Le dice il DB (`vendite.fn_documento_riga_erogazioni`), la
+    #        stessa sede che leggono l'eredita' e il guard del perimetro.
+    #        Prima la testata: un'offerta che non si vede e' un 404, non una
+    #        lista vuota. Lista vuota = l'articolo ha una tipologia che la
+    #        utility dell'offerta non prevede. Gemello di
+    #        `ContrattiService.list_erogazioni_riga`.
+    def list_erogazioni_riga(
+        self, offerta_id: int, articolo_id: Any,
+    ) -> list[dict[str, Any]]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        articolo = self._v.require_uuid({"articolo_id": articolo_id}, "articolo_id")
+        self._get_offerta_or_raise(
+            offerta_id, op="list_erogazioni_riga", getter=self._repo.get_stato_codice,
+        )
+        return list_erogazioni_riga("OFFERTA", offerta_id, articolo)
+
     # =================================================================
     # Componenti BoM su eccezione (mirror contratti, simmetria 2026-05-26)
     # =================================================================
@@ -1628,15 +1603,10 @@ def _load_offerta_context_for_pricing(
     assert emittente_sr_id is not None
 
     # Fast path CONTRATTO_LISTINO via `listino_versione_id_preferito` (come
-    # contratti). In BOZZA la versione e' fissata solo all'emissione → se NULL,
-    # lookup dinamico della versione operativa alla data (ATTIVA/CHIUSA).
-    listino_versione_id_preferito = testata.get("listino_versione_id")
-    if listino_versione_id_preferito is None:
-        listino_id_raw = testata.get("listino_id")
-        if listino_id_raw is not None:
-            listino_versione_id_preferito = ListiniRepository().get_versione_attiva_alla_data(
-                int(listino_id_raw), data_riferimento,
-            )
+    # contratti). La versione la dice il DB, con la regola che governa le righe
+    # a video e che congela all'emissione: la fissata, altrimenti quella in
+    # vigore oggi (`vendite.fn_documento_listino_operativo`).
+    listino_versione_id_preferito = listino_versione_operativa("OFFERTA", offerta_id)
 
     return {
         "testata": testata,

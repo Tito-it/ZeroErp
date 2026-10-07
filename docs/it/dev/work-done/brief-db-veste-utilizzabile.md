@@ -3,7 +3,7 @@
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-06. **A chi:** team DB
 > (`dev/db-tid`); poi BE/FE (§6), che **attende** la consegna DB.
 > **Origine:** L-6 del
-> [piano accessi](piano-be-fe-accessi-credenziale-e-vesti.md) §4.4 (A-7 dell'analisi
+> [piano accessi](../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md) §4.4 (A-7 dell'analisi
 > accessi). Il piano diceva «si estrae un frammento comune» lato Python e «il lotto
 > decide se la regola comune è quella di `fn_get_user_profile`». Facendo il lotto è
 > emerso che la regola **c'è già a DB**, scritta in più sedi e non uguale, e che il
@@ -15,9 +15,10 @@
 > ✅ **Giro 2 applicato** (§8, `-16 → -22`; Tid, 2026-10-07): pgTAP senza regressioni.
 > ✅ **Giri 1-2 DB chiusi.** ✅ **BE/FE fatto** (§9, 2026-10-07): test Django verdi
 > sul DB vero. ✅ **Giro 3 DB applicato** (§10.4, `20261007-27`; Tid, 2026-10-07): la
-> capability della data di fine nel dettaglio operatore, pgTAP verdi. ⏳ **BE/FE** (§10.3):
-> spegne il campo «Valido al» col motivo; poi l'archiviazione.
-> **Da leggere per primo:** §3-bis (le decisioni), §8 (il giro 2), §9 (il BE/FE), §10.4.
+> capability della data di fine nel dettaglio operatore, pgTAP verdi. ✅ **BE/FE del giro 3
+> fatto** (§10.5, 2026-10-07): «Valido al» diventa modificabile (era in sola lettura,
+> decisione di Tid) e si spegne col motivo; `null` toglie la data. ✅ **Chiuso.**
+> **Da leggere per primo:** §3-bis (le decisioni), §8 (il giro 2), §9 (il BE/FE), §10.4, §10.5.
 
 ## 1. Il difetto, sul modello
 
@@ -95,7 +96,7 @@ sistemano a mano).
 La proposta di D-2 («per l'operatore valgono **tutte e due** le finestre, veste e
 rapporto») rimette la risorsa umana dentro la regola dell'accesso. Il 12-09 Tid
 aveva deciso il contrario: *«tutto deve entrare in `identita_digitali`»*
-([analisi-software-per-dati-morti](../work-done/analisi-software-per-dati-morti.md)
+([analisi-software-per-dati-morti](analisi-software-per-dati-morti.md)
 §2.1, changeSet `20260912-21`). La regola «rapporto scaduto ⇒ accesso spento» doveva
 essere **assorbita** dalla `valido_al` della veste.
 
@@ -314,7 +315,7 @@ CSV hanno già i loro mirror.
   `test-rls-resi-ef-whitelist-write` (mondi costruiti con `fn_pgtap_crea_emittente_operatore`
   e `fn_pgtap_crea_cliente_ba`): è del cantiere «fixture che costruiscono».
   ✅ **Fatto il 2026-10-07**:
-  [brief-db-fixture-rls-documenti-costruiti](../work-done/brief-db-fixture-rls-documenti-costruiti.md)
+  [brief-db-fixture-rls-documenti-costruiti](brief-db-fixture-rls-documenti-costruiti.md)
   (tre giri, quattro builder nuovi, sette file che costruiscono il loro documento).
 * **Presidi trasversali** prima/dopo (riferimenti morti, catalogo messaggi completo,
   rubinetto primo motivo, codici obsoleti, costanti citate…: 21 file): tutti uguali.
@@ -568,7 +569,7 @@ In `script.fn_get_operatore_detail`, in coda al `RETURNS TABLE` come le chiavi d
 * ⚠️ Cambia il `RETURNS TABLE`: `DROP` + `CREATE`. Il BE legge le colonne per nome
   (`row_to_dict`), quindi una colonna in coda non rompe niente.
 
-### 10.3 Dopo la consegna — lato BE/FE (attende)
+### 10.3 Dopo la consegna — lato BE/FE (✅ fatto: §10.5)
 
 * BE: `OperatoreDetail` (`amm_software/types.py`) prende la terna; nessuna logica.
 * FE: `OperatoreDrawer.vue` spegne «Valido al» con `bloccoAttivo(…, 'valido_al',
@@ -624,6 +625,46 @@ scratch ha già i giri 1-2, `-01 → -26`):
   `test-emittente-denominazione-da-soggetto-v1` 14/14, uguali.
 * Guardrail statici del repo: verdi.
 * ✅ Dopo l'apply (Tid, 2026-10-07): corsa pgTAP verde.
+
+### 10.5 Consegna BE/FE (2026-10-07)
+
+⚠️ **La premessa del §10.1 non reggeva sul FE.** «Il campo "Valido al" è acceso,
+l'amministratore scrive una data, salva, e riceve un 409»: in realtà dal Multi-face
+Stage B (`0490928a8`) il drawer mostrava «Valido al» come `InputText` **disabilitato**,
+e nessun gesto FE scriveva la data di fine. La scriveva solo il PATCH, che il test n. 16
+usava a mano. E il PATCH sapeva solo **mettere** una data: `valido_al is not None` nel
+repository, quindi una data di fine messa non si poteva più togliere.
+✅ **Decisione di Tid (2026-10-07): il campo diventa modificabile**, spento col motivo.
+
+| Lato | Cosa |
+| --- | --- |
+| BE, tipo | `OperatoreDetailRow` prende la terna `can_set_valido_al` / `valido_al_reason` / `valido_al_reason_key`, senza logica |
+| BE, PATCH | `valido_al` ha **tre stati**: assente non si tocca (`MISSING` del core), una data la mette, `null` la **toglie**. Il formato lo controlla `PayloadValidator.optional_date` (400 `E_AMM_VALIDAZIONE`); l'ordine con `valido_dal` (`E_DATA_AL_MINORE_DAL`) e l'ultimo SUPER_ADMIN senza scadenza (409 `E_PROFILO_ULTIMO_SUPER_ADMIN`) li giudica il DB. Schema OpenAPI: `allow_null` |
+| FE | `OperatoreDrawer.vue`: `DatePicker` «Valido al» (`DATE_FORMAT`, svuotabile, `min-date` = inizio del rapporto) spento con `bloccoAttivo(…, 'valido_al', 'can_set_valido_al')`. Il motivo si mostra come quelli degli interruttori, `app-field-hint` sotto il campo (non un tooltip, come chiedeva il §10.3); senza blocco l'hint dice cosa fa la data. Il PATCH manda la data **solo se è cambiata**: un salvataggio che non la tocca non è un gesto sulla scadenza |
+| i18n | `amministrazione.operatori.valido_al_reason.ultimo_super_admin` (seminata a mano: è in un `CASE`, il guard non la vede) e `amministrazione.valido_al_hint`, in it e en |
+
+**Prove**
+
+* **Sul DB vero**, file nuovo `amm_software/tests/db/test_operatore_valido_al_db.py`, che
+  costruisce l'ultimo SUPER_ADMIN senza scadenza come il pgTAP del giro 2: due
+  amministratori dalla madre, agli altri una data di fine lontana. ⭐ Chiude il «non
+  provato» del §9.3: il 409 sul DB vero. Casi: con due amministratori la terna è
+  `true`/`NULL`/`NULL`; data di fine ad A → B risponde `false` + `ULTIMO_SUPER_ADMIN` + la
+  chiave, A `true`; il PATCH su B è 409 e il rapporto resta senza fine. Una data messa,
+  un salvataggio senza la chiave che non la tocca, `null` che la toglie. Formato sbagliato
+  400 `E_AMM_VALIDAZIONE`, fine prima dell'inizio `E_DATA_AL_MINORE_DAL`.
+* Unitario del service: i tre stati arrivano al repository come `MISSING` / `date` / `None`.
+* Suite `amm_software` sul DB vero (`ZEROERP_TEST_DB_E2E=1`): 227 verdi. Registro OpenAPI
+  verde. `ruff` pulito.
+* Spec del drawer, casi 10-12 nuovi: calendario spento col motivo anche con l'interruttore
+  libero; la data non viaggia se non toccata; messa viaggia ISO, tolta `null`. Mutazione
+  (`:disabled` sempre falso): rosso il 10. Suite FE intera 727/727, eslint, oxlint e guard
+  i18n puliti.
+* ⚠️ **Non provato**: il collaudo a video.
+
+Doc aggiornate: `api.md` (tabella delle capability), la guida `risorse-umane-e-accessi`
+(la data si toglie; cosa resta spento per l'ultimo amministratore), il piano accessi,
+PROJECT_CONTEXT.
 
 ---
 {% include-markdown "signature-core.md" %}
