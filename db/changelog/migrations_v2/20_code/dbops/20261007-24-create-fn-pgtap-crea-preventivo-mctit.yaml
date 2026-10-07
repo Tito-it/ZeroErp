@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Helper di fixture pgTAP: un PREVENTIVO del mondo, in una chiamata sola —
+#   l'azienda, l'operatore, il cliente fatturabile e la testata nello
+#   stato scelto.
+#   Brief: brief-db-fixture-rls-documenti-costruiti (giro 2).
+#
+# -- IL DIFETTO ------------------------------------------------------
+#   Gemello di 20261007-23 (l'ordine): un preventivo si scrive a mano in
+#   decine di pgTAP, ognuno con la sua ricetta (chi lo pesca dal DB, chi lo
+#   scrive col billing account e chi senza, chi sceglie validita' e valuta
+#   a modo suo). Regola del 2: una sede sola.
+#
+# -- LA CATENA, e cosa decide il dominio -----------------------------
+#   * il mondo lo da' dbops.fn_pgtap_crea_mondo_cliente (vedi 20261007-23);
+#   * l'emittente ESPLICITO, quello del mondo: lo pretende dal billing
+#     account trgfn_preventivi_guard_emittente_ba, e l'istanza e la utility
+#     sono quelle del BA, che trgfn_preventivi_guard_utility_istanza_coerenza
+#     verifica;
+#   * il numero lo assegna trgfn_preventivi_gen_codice: qui non si scrive;
+#   * la valuta ESPLICITA, la prima del catalogo: il default del dominio
+#     (trgfn_preventivi_default_valuta -> vendite.fn_get_valuta_id, catena
+#     «BA -> emittente -> gestore») su un database ricostruito non regge da
+#     sola. Stessa scelta di dbops.fn_pgtap_crea_fattura;
+#   * una finestra di validita' di trenta giorni da oggi: un preventivo
+#     emesso ne ha una, e un caso che la vuole diversa la scrive lui.
+#
+# -- COSA NON ENTRA --------------------------------------------------
+#   * le righe: sono il CASO del test;
+#   * il cambio di stato: vendite.preventivi ha un guard di transizione. Lo
+#     stato si sceglie alla nascita, col secondo parametro.
+#
+# Permessi: funzione di chi migra, non SECURITY DEFINER, non in
+# dbops.sec_functions_owner. Stessa forma di 20260923-04.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261007-24-create-fn-pgtap-crea-preventivo-mctit.yaml
+
+  - changeSet:
+      id: 20261007-24-create-fn-pgtap-crea-preventivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Helper di fixture pgTAP: dbops.fn_pgtap_crea_preventivo() costruisce un
+        preventivo del mondo (azienda, operatore, cliente fatturabile) nello
+        stato scelto e ne ritorna tutte le chiavi. Le righe restano al test.
+        Brief: brief-db-fixture-rls-documenti-costruiti.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_preventivo(
+                  p_etichetta            text DEFAULT 'pgTAP',
+                  p_stato_codice_interno config.stati_doc_preventivi.codice_interno%TYPE DEFAULT 'DRAFT'
+              )
+               RETURNS TABLE (
+                  preventivo_id               vendite.preventivi.id%TYPE,
+                  preventivo_uid              vendite.preventivi.uid%TYPE,
+                  emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                  emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  cliente_soggetto_ruolo_id   anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                  utility_id                  anagrafiche.billing_account.utility_id%TYPE,
+                  stato_doc_preventivo_id     config.stati_doc_preventivi.id%TYPE,
+                  valuta_id                   config.valute.id%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un PREVENTIVO del mondo in una
+              --   chiamata: azienda, operatore, cliente e testata.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_p AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_preventivo('rls preventivi');
+              -- ⛔ Le righe NON le scrive: sono il caso del test.
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_ef_id      anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_sr_id   anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_ba_id      anagrafiche.billing_account.id%TYPE;
+                  v_ist_id     anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_cli_sr_id  anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+                  v_utility    anagrafiche.billing_account.utility_id%TYPE;
+                  v_stato_id   config.stati_doc_preventivi.id%TYPE;
+                  v_valuta_id  config.valute.id%TYPE;
+                  v_preventivo vendite.preventivi.id%TYPE;
+                  v_uid        vendite.preventivi.uid%TYPE;
+              BEGIN
+                  -- Il guard sul parametro PRIMA di costruire: uno stato
+                  -- sbagliato non deve lasciare un mondo a meta'.
+                  SELECT s.id INTO v_stato_id
+                    FROM config.stati_doc_preventivi s
+                   WHERE s.codice_interno = p_stato_codice_interno;
+
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_preventivo: nessuno stato documento preventivo con codice_interno = %',
+                          p_stato_codice_interno;
+                  END IF;
+
+                  SELECT m.emittente_fiscale_id, m.emittente_soggetto_ruolo_id,
+                         m.auth_user_id, m.billing_account_id, m.istanza_utility_id,
+                         m.cliente_soggetto_ruolo_id, m.utility_id
+                    INTO v_ef_id, v_ef_sr_id, v_user_id, v_ba_id, v_ist_id,
+                         v_cli_sr_id, v_utility
+                    FROM dbops.fn_pgtap_crea_mondo_cliente(p_etichetta) m;
+
+                  SELECT v.id INTO v_valuta_id
+                    FROM config.valute v ORDER BY v.id LIMIT 1;
+
+                  INSERT INTO vendite.preventivi (
+                      billing_account_id, istanza_utility_id, utility_id,
+                      validita_dal, validita_al, valuta_id,
+                      stato_doc_preventivo_id, emittente_fiscale_id, meta)
+                  VALUES (v_ba_id, v_ist_id, v_utility,
+                          CURRENT_DATE, CURRENT_DATE + 30, v_valuta_id,
+                          v_stato_id, v_ef_id,
+                          jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
+                  RETURNING id, uid INTO v_preventivo, v_uid;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT v_preventivo, v_uid, v_ef_id, v_ef_sr_id, v_user_id,
+                         v_ba_id, v_ist_id, v_cli_sr_id, v_utility,
+                         v_stato_id, v_valuta_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_preventivo(text, config.stati_doc_preventivi.codice_interno%TYPE)
+              IS 'Fixture pgTAP: un PREVENTIVO del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata nello stato scelto alla nascita, con l''emittente del mondo, il suo billing account, la sua istanza e utility, la prima valuta del catalogo e una validita'' di trenta giorni da oggi. Il numero lo assegna il trigger del dominio, come in produzione. ⛔ NON scrive righe: sono il caso del test. ⛔ Non cambia stato: vendite.preventivi ha un guard di transizione, lo stato si sceglie col secondo parametro. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_preventivo(text, character varying);

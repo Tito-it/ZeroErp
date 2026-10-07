@@ -1,0 +1,68 @@
+## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_ordine`
+
+> 👀 **Vedi anche**
+>
+> • [dbops.fn_pgtap_crea_mondo_cliente](/dbzero/dbops/funzioni/fn_pgtap_crea_mondo_cliente) — il mondo su cui questa funzione appoggia la testata
+>
+> • [dbops.fn_pgtap_crea_preventivo](/dbzero/dbops/funzioni/fn_pgtap_crea_preventivo) — il gemello, per il preventivo
+>
+Guide: [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test) · brief `brief-db-fixture-rls-documenti-costruiti` (giro 2)
+
+---
+### 🎯 Scopo Principale
+
+(rev 2026-10-07)
+
+**Un ordine di vendita del mondo, in una chiamata sola**: l'azienda con il suo operatore,
+il cliente fatturabile e la testata nello stato scelto. Torna tutte le chiavi, `uid`
+compreso (serve a chi lega un documento a valle con la sua sorgente).
+
+```sql
+CREATE TEMP TABLE tmp_o AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine('rls ordini');
+-- un ordine già confermato:
+SELECT * FROM dbops.fn_pgtap_crea_ordine('consegne', 'CONFERMATO');
+```
+
+---
+### 🧭 Perché esiste
+
+L'ordine si scriveva a mano in molti pgTAP, ognuno con la sua ricetta: chi pescava cliente
+ed emittente dal database (e su uno ricostruito da zero non trovava niente), chi li prendeva
+da un mondo costruito ma sceglieva valuta, utility ed emittente a modo suo. Era la stessa
+regola scritta più volte (regola del 2): ora ha una sede.
+
+---
+### 🔗 Cosa decide la funzione e cosa decide il dominio
+
+* **Il mondo** viene da `fn_pgtap_crea_mondo_cliente`: senza contesto lo costruisce e apre
+  il contesto sull'operatore che costruisce; con un contesto aperto riusa l'azienda di chi
+  agisce, e ogni chiamata porta un cliente nuovo.
+* **L'emittente** è quello del mondo, scritto esplicito: è lo stesso che il guard
+  emittente/billing account pretende.
+* **La valuta** è la prima del catalogo, scritta esplicita: la catena di default
+  («cliente → azienda → gestore») su un database ricostruito non regge da sola. È la stessa
+  scelta di `fn_pgtap_crea_fattura`.
+* **Numero, anno, registro e momento di fatturazione** non li scrive: li assegnano i
+  trigger del dominio, come in produzione.
+
+---
+### 🚫 Cosa NON scrive
+
+* **Le righe**: sono il caso del test.
+* **Il cambio di stato**: l'ordine ha un guard di transizione, e una fixture che lo
+  attraversasse proverebbe quello invece del proprio caso. Lo stato si sceglie alla
+  nascita, col secondo parametro; uno stato che non esiste viene rifiutato per nome.
+
+---
+### ⚠️ Il contratto sui vincoli differiti
+
+Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
+
+---
+### 🧪 Il presidio
+
+`db/pgtap/dbops/test-fn-pgtap-crea-ordine-v1.sql` (7 casi) pinna il **contratto**: la
+testata esiste ed è quella tornata, l'emittente è quello del billing account, numero e
+registro vengono dal dominio, lo stato è quello chiesto, la seconda chiamata riusa
+l'azienda, e uno stato inesistente parla.
