@@ -26,9 +26,15 @@
 --     assoggetta anche l'owner (titodb, non-superuser) senza SET ROLE, che
 --     titodb non potrebbe fare. Il ROLLBACK finale annulla tutto.
 --   - GUC simulati con set_config(..., is_local => true).
---   - Fixture LOW-RISK: usa una fattura ESISTENTE, non ne crea (FK pesanti).
---     Se il DB non ne ha una idonea -> SOFT-SKIP (i test passano banalmente),
---     cosi' la CI su DB senza dati non rompe.
+--   - ⭐ Rev 2026-10-07 (brief-db-fixture-rls-documenti-costruiti, giro 3):
+--     IL MONDO SI COSTRUISCE. Fino a oggi il file pescava «una fattura con
+--     righe e riepiloghi, possibilmente in DRAFT/EMESSA» e «il primo altro
+--     emittente», e senza dati andava in SOFT-SKIP: su zeroerp_ci (da zero) i
+--     dodici casi passavano senza misurare niente. Ora due aziende costruite —
+--     A possiede la fattura, B e' l'estranea — e la fattura di A in DRAFT
+--     (dbops.fn_pgtap_crea_fattura) con DUE righe scritte qui e il riepilogo
+--     ricalcolato dalla funzione del dominio, tutto PRIMA del FORCE. Se
+--     qualcosa non si costruisce il file va ROSSO.
 --
 -- ⭐ IL TEST CHE CONTA sono il 5 e l'8, non i primi quattro. Verificano
 -- l'INVARIANTE su cui poggia tutta la slice: il filtro e' TUTTO-O-NIENTE PER
@@ -49,8 +55,7 @@
 -- UPDATE no-op su `meta`: `meta` non e' fra le colonne-input protette dal
 -- guard di congelamento (qta, prezzo_unitario, sconto_percentuale, iva_id),
 -- ma quel guard rifiuta comunque OGNI scrittura su una fattura oltre
--- DRAFT/EMESSA -> la fixture preferisce una fattura in quegli stati e i due
--- test si auto-skippano se non ne esiste.
+-- DRAFT/EMESSA -> la fixture la costruisce in DRAFT.
 --
 -- ⚠️ LIMITE DICHIARATO. Di ba_ownership si prova qui la sola direzione di
 -- NEGAZIONE (test 12): una veste CLIENTE_PORTALE che NON possiede la fattura
@@ -61,7 +66,8 @@
 -- critica: un falso negativo nega un accesso legittimo, un falso positivo
 -- espone i dati di un altro cliente.
 -- ------------------------------------------------------------
--- Indice test (1..12):
+-- Indice test (0..12):
+--   0   fixture: fattura di A in DRAFT con due righe e il riepilogo, B e' un'altra azienda
 --   1   righe: operatore whitelist VUOTA          -> NON visibili (fail-closed, P-2a)
 --   2   righe: whitelist = emittente fattura      -> visibili
 --   3   righe: whitelist = ALTRO emittente        -> NON visibili
@@ -90,49 +96,58 @@ BEGIN;
 --   lo consegna COMPLETO: la riga torna, e i guard del soggetto si esercitano.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(13);
 
 -- =========================================================
--- Fixture: fattura esistente CON righe e riepiloghi + 2 emittenti + operatore
+-- Fixture: due aziende, la fattura di A con righe e riepilogo
 -- =========================================================
--- Requisiti della fattura scelta: emittente risolvibile (evita righe legacy
--- con emittente_soggetto_ruolo_id orfano), almeno una riga e almeno un
--- riepilogo IVA. Ordinamento che PREFERISCE DRAFT/EMESSA: sono gli unici
--- stati in cui il guard di congelamento lascia scrivere, e i test 9-10 ne
--- hanno bisogno. Se non ce n'e' nessuna, si ripiega su un'altra e i due test
--- di scrittura si skippano da soli.
+-- B prima di tutto, e PRIMA di qualunque contesto: e' un builder atomico.
+CREATE TEMP TABLE _b AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+-- A: senza contesto aperto, il builder costruisce l'azienda, l'operatore
+-- (tecnico), il cliente e la fattura in DRAFT — l'unico stato, con EMESSA, in
+-- cui il guard di congelamento lascia scrivere (test 9-10).
+CREATE TEMP TABLE _a AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('rls satelliti');
+
+-- DUE righe e non una: il «tutto-o-niente» (5, 8) con una riga sola non
+-- distinguerebbe «tutte» da «almeno una».
+INSERT INTO vendite.fatture_righe (
+    fattura_id, riga_nr, descrizione, qta, prezzo_unitario, imponibile_riga,
+    competenza_dal, competenza_al, iva_id)
+SELECT a.fattura_id, n, 'Riga pgTAP RLS satelliti ' || n, 1, 10 * n, 10 * n,
+       CURRENT_DATE, CURRENT_DATE,
+       (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1)
+  FROM _a a, generate_series(1, 2) n;
+
+-- Il riepilogo lo scrive la funzione del dominio, non la fixture.
+SELECT vendite.fn_ricalcola_riepilogo_iva_fattura((SELECT fattura_id FROM _a));
+
+-- ⚠️ Il builder ha lasciato aperto il contesto del SUO operatore. Qui l'identita'
+--   la dichiara ogni caso: si riparte da «nessuno».
+SELECT set_config('app.ruolo_applicativo', '', false),
+       set_config('app.current_user_id',   '', false);
+
 CREATE TEMP TABLE _refs AS
-WITH f AS (
-    SELECT fa.id                          AS fattura_id,
-           fa.emittente_soggetto_ruolo_id AS emit_sr,
-           ef.id                           AS emit_pk,
-           (s.codice_interno IN ('DRAFT', 'EMESSA')) AS scrivibile
-      FROM vendite.fatture fa
-      JOIN anagrafiche.emittenti_fiscali ef
-        ON ef.soggetto_ruolo_id = fa.emittente_soggetto_ruolo_id
-      JOIN config.stati_doc_fiscale s
-        ON s.id = fa.stato_doc_fiscale_id
-     WHERE EXISTS (SELECT 1 FROM vendite.fatture_righe fr WHERE fr.fattura_id = fa.id)
-       AND EXISTS (SELECT 1 FROM vendite.fatture_riepiloghi_iva ri WHERE ri.fattura_id = fa.id)
-     ORDER BY (s.codice_interno IN ('DRAFT', 'EMESSA')) DESC, fa.id
-     LIMIT 1
-)
 SELECT
-    f.fattura_id,
-    f.emit_sr,
-    f.emit_pk,
-    f.scrivibile,
-    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-      WHERE ef.id <> f.emit_pk
-      ORDER BY ef.id LIMIT 1)                       AS other_pk,
+    a.fattura_id,
+    a.emittente_soggetto_ruolo_id AS emit_sr,
+    a.emittente_fiscale_id        AS emit_pk,
+    b.emittente_fiscale_id        AS other_pk,
     -- Conteggi REALI, presi da owner PRIMA di armare la RLS: sono il metro
     -- dei test 5 e 8. Presi dopo, sarebbero gia' filtrati e il confronto
     -- misurerebbe se' stesso.
     (SELECT count(*) FROM vendite.fatture_righe fr
-      WHERE fr.fattura_id = f.fattura_id)           AS n_righe_reali,
+      WHERE fr.fattura_id = a.fattura_id)           AS n_righe_reali,
     (SELECT count(*) FROM vendite.fatture_riepiloghi_iva ri
-      WHERE ri.fattura_id = f.fattura_id)           AS n_riep_reali
-  FROM f;
+      WHERE ri.fattura_id = a.fattura_id)           AS n_riep_reali
+  FROM _a a, _b b;
+
+SELECT ok(
+    (SELECT r.n_righe_reali = 2 AND r.n_riep_reali >= 1 AND r.emit_pk <> r.other_pk
+       FROM _refs r),
+    '0. Fixture: fattura di A in DRAFT con due righe e il riepilogo, B e'' un''altra azienda');
 
 -- Un operatore umano, dalla madre.
 CREATE TEMP TABLE _op (auth_user_id int, soggetto_id uuid, sr_id bigint, identita_id bigint);
@@ -150,13 +165,6 @@ CREATE TEMP TABLE _op (auth_user_id int, soggetto_id uuid, sr_id bigint, identit
 INSERT INTO _op
 SELECT o.auth_user_id, o.soggetto_id, o.soggetto_ruolo_id, o.identita_id
   FROM dbops.fn_pgtap_crea_operatore_umano('rls satelliti') o;
-
--- COALESCE garantisce SEMPRE una riga booleana (anche con _refs vuota).
-CREATE TEMP TABLE _flags AS
-SELECT
-  COALESCE((SELECT fattura_id IS NOT NULL AND emit_pk IS NOT NULL AND other_pk IS NOT NULL
-              FROM _refs LIMIT 1), false)                              AS prereq,
-  COALESCE((SELECT scrivibile FROM _refs LIMIT 1), false)              AS prereq_write;
 
 -- Arma la RLS solo dentro questa transazione (FORCE assoggetta l'owner).
 ALTER TABLE vendite.fatture_righe          ENABLE ROW LEVEL SECURITY;
@@ -212,7 +220,6 @@ $sp$;
 --    rientrato.
 DO $c1$
 BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
     CALL pg_temp.set_op('none');
     INSERT INTO _res SELECT 'c1', EXISTS (
         SELECT 1 FROM vendite.fatture_righe WHERE fattura_id = (SELECT fattura_id FROM _refs)), NULL;
@@ -221,7 +228,6 @@ END $c1$;
 -- ---- Caso 2 + 5: whitelist = emittente della fattura -> visibili, e TUTTE ----
 DO $c2$
 BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
     CALL pg_temp.set_op('own');
     INSERT INTO _res
     SELECT 'c2',
@@ -233,7 +239,6 @@ END $c2$;
 -- ---- Caso 3: whitelist = ALTRO emittente -> NON visibili ----
 DO $c3$
 BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
     CALL pg_temp.set_op('other');
     INSERT INTO _res SELECT 'c3', EXISTS (
         SELECT 1 FROM vendite.fatture_righe WHERE fattura_id = (SELECT fattura_id FROM _refs)), NULL;
@@ -242,7 +247,6 @@ END $c3$;
 -- ---- Caso 4: ruolo NON OPERATORE (gate della policy) -> NON visibili ----
 DO $c4$
 BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
     CALL pg_temp.set_op('own');
     PERFORM set_config('app.ruolo_applicativo', '', true);
     INSERT INTO _res SELECT 'c4', EXISTS (
@@ -252,7 +256,6 @@ END $c4$;
 -- ---- Caso 6 + 8: riepiloghi IVA in scope -> visibili, e TUTTI ----
 DO $c6$
 BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
     CALL pg_temp.set_op('own');
     INSERT INTO _res
     SELECT 'c6', count(*) > 0, count(*)
@@ -262,7 +265,6 @@ END $c6$;
 -- ---- Caso 7: riepiloghi IVA fuori scope -> NON visibili ----
 DO $c7$
 BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
     CALL pg_temp.set_op('other');
     INSERT INTO _res SELECT 'c7', EXISTS (
         SELECT 1 FROM vendite.fatture_riepiloghi_iva
@@ -273,7 +275,6 @@ END $c7$;
 DO $c9$
 DECLARE v_n bigint;
 BEGIN
-    IF NOT (SELECT prereq AND prereq_write FROM _flags) THEN RETURN; END IF;
     CALL pg_temp.set_op('own');
     -- No-op su `meta`: non tocca le colonne-input del guard di congelamento.
     UPDATE vendite.fatture_righe SET meta = meta
@@ -286,7 +287,6 @@ END $c9$;
 DO $c10$
 DECLARE v_n bigint;
 BEGIN
-    IF NOT (SELECT prereq AND prereq_write FROM _flags) THEN RETURN; END IF;
     CALL pg_temp.set_op('other');
     UPDATE vendite.fatture_righe SET meta = meta
      WHERE fattura_id = (SELECT fattura_id FROM _refs);
@@ -300,7 +300,6 @@ END $c10$;
 -- quella che protegge i dati di un altro cliente (vedi limite in testa).
 DO $c12$
 BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
     PERFORM set_config('app.ruolo_applicativo', 'CLIENTE_PORTALE', true);
     PERFORM set_config('app.current_identita_id', (SELECT identita_id FROM _op)::text, true);
     PERFORM set_config('app.current_user_id', '', true);
@@ -319,40 +318,36 @@ SELECT 'c11', EXISTS (
     SELECT 1 FROM vendite.fatture_righe WHERE fattura_id = (SELECT fattura_id FROM _refs)), NULL;
 
 -- =========================================================
--- Asserzioni (soft-skip: NOT prereq -> pass banale)
+-- Asserzioni
 -- =========================================================
-SELECT ok((SELECT NOT prereq FROM _flags) OR NOT (SELECT visibile FROM _res WHERE caso='c1'),
+SELECT ok(NOT (SELECT visibile FROM _res WHERE caso='c1'),
     '1. righe: operatore whitelist vuota -> NON visibili (fail-closed, P-2a)');
-SELECT ok((SELECT NOT prereq FROM _flags) OR     (SELECT visibile FROM _res WHERE caso='c2'),
+SELECT ok((SELECT visibile FROM _res WHERE caso='c2'),
     '2. righe: whitelist = emittente fattura -> visibili');
-SELECT ok((SELECT NOT prereq FROM _flags) OR NOT (SELECT visibile FROM _res WHERE caso='c3'),
+SELECT ok(NOT (SELECT visibile FROM _res WHERE caso='c3'),
     '3. righe: whitelist = altro emittente -> NON visibili');
-SELECT ok((SELECT NOT prereq FROM _flags) OR NOT (SELECT visibile FROM _res WHERE caso='c4'),
+SELECT ok(NOT (SELECT visibile FROM _res WHERE caso='c4'),
     '4. righe: ruolo non OPERATORE -> NON visibili (gate policy)');
 
 -- ⭐ L'invariante: in scope si vedono TUTTE le righe, non una parte.
-SELECT ok((SELECT NOT prereq FROM _flags) OR
-          (SELECT n FROM _res WHERE caso='c2') = (SELECT n_righe_reali FROM _refs),
+SELECT ok((SELECT n FROM _res WHERE caso='c2') = (SELECT n_righe_reali FROM _refs),
     '5. righe: TUTTO-O-NIENTE — in scope il count sotto RLS = count reale');
 
-SELECT ok((SELECT NOT prereq FROM _flags) OR     (SELECT visibile FROM _res WHERE caso='c6'),
+SELECT ok((SELECT visibile FROM _res WHERE caso='c6'),
     '6. riepiloghi IVA: whitelist = emittente -> visibili');
-SELECT ok((SELECT NOT prereq FROM _flags) OR NOT (SELECT visibile FROM _res WHERE caso='c7'),
+SELECT ok(NOT (SELECT visibile FROM _res WHERE caso='c7'),
     '7. riepiloghi IVA: whitelist = altro emittente -> NON visibili');
-SELECT ok((SELECT NOT prereq FROM _flags) OR
-          (SELECT n FROM _res WHERE caso='c6') = (SELECT n_riep_reali FROM _refs),
+SELECT ok((SELECT n FROM _res WHERE caso='c6') = (SELECT n_riep_reali FROM _refs),
     '8. riepiloghi IVA: TUTTO-O-NIENTE — in scope il count sotto RLS = count reale');
 
-SELECT ok((SELECT NOT (prereq AND prereq_write) FROM _flags) OR
-          (SELECT visibile FROM _res WHERE caso='c9'),
+SELECT ok((SELECT visibile FROM _res WHERE caso='c9'),
     '9. scrittura in-scope -> consentita (la policy e'' FOR ALL, non FOR SELECT)');
-SELECT ok((SELECT NOT (prereq AND prereq_write) FROM _flags) OR
-          (SELECT n FROM _res WHERE caso='c10') = 0,
+SELECT ok((SELECT n FROM _res WHERE caso='c10') = 0,
     '10. scrittura off-scope -> 0 righe aggiornate (USING le nasconde)');
 
-SELECT ok((SELECT NOT prereq FROM _flags) OR     (SELECT visibile FROM _res WHERE caso='c11'),
+SELECT ok((SELECT visibile FROM _res WHERE caso='c11'),
     '11. DISABLE RLS (kill-switch) -> righe di nuovo visibili');
-SELECT ok((SELECT NOT prereq FROM _flags) OR NOT (SELECT visibile FROM _res WHERE caso='c12'),
+SELECT ok(NOT (SELECT visibile FROM _res WHERE caso='c12'),
     '12. veste CLIENTE_PORTALE non proprietaria -> NON visibili (ba_ownership nega)');
 
 SELECT * FROM finish();

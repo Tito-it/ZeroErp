@@ -1,0 +1,108 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Test: dbops.fn_pgtap_crea_preventivo — il BB del preventivo
+-- Riferimento: brief-db-fixture-rls-documenti-costruiti (giro 2).
+--
+-- Semantica attesa (il contratto, non l'implementazione):
+--   - costruisce il mondo e la testata, e la testata e' SCRIVIBILE: e' la
+--     prova che i guard del dominio la accettano;
+--   - l'emittente e' quello che il billing account pretende, l'istanza e la
+--     utility sono quelle del billing account;
+--   - il numero lo assegna il dominio, non la fixture;
+--   - lo stato si sceglie alla nascita, e uno inesistente parla;
+--   - una seconda chiamata riusa l'azienda di chi agisce, con un cliente nuovo.
+--
+-- Elenco test (plan 7):
+--   1) la funzione esiste con la firma dichiarata
+--   2) la testata esiste, col billing account e l'istanza tornati
+--   3) l'emittente e' quello del billing account (il guard emittente/BA)
+--   4) numero assegnato dal dominio, validita' aperta da oggi
+--   5) stato: quello chiesto alla nascita (EMESSO, non il default)
+--   6) seconda chiamata: stessa azienda, cliente nuovo
+--   7) guard: uno stato che non esiste parla invece di scrivere NULL
+-- ------------------------------------------------------------
+
+BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: in testa. Gli helper aprono e RICHIUDONO da se' la
+--   finestra dove serve (e' il loro contratto).
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- pgtap-contesto: escluso — il contesto lo apre la funzione esaminata, che qui
+--   viene chiamata come la chiamera' un file su un database ricostruito: senza
+--   nessuna veste in sessione. Aprirlo prima nasconderebbe meta' del contratto.
+
+SELECT plan(7);
+
+-- 1) La firma
+SELECT has_function(
+    'dbops', 'fn_pgtap_crea_preventivo',
+    ARRAY['text', 'character varying'],
+    'dbops.fn_pgtap_crea_preventivo(text, character varying) esiste con la firma dichiarata'
+);
+
+-- Fixture: il primo preventivo, dal nulla
+CREATE TEMP TABLE t_p1 AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('presidio preventivo 1');
+
+-- 2) La testata c'e', ed e' quella tornata
+SELECT is(
+    (SELECT p.billing_account_id::text || '/' || p.istanza_utility_id::text
+            || '/' || p.utility_id::text
+       FROM vendite.preventivi p
+      WHERE p.id = (SELECT preventivo_id FROM t_p1)),
+    (SELECT billing_account_id::text || '/' || istanza_utility_id::text
+            || '/' || utility_id::text FROM t_p1),
+    'la testata esiste e porta billing account, istanza e utility tornati dalla funzione'
+);
+
+-- 3) L'emittente e' quello che il billing account pretende
+SELECT is(
+    (SELECT p.emittente_fiscale_id FROM vendite.preventivi p
+      WHERE p.id = (SELECT preventivo_id FROM t_p1)),
+    anagrafiche.fn_get_emittente_fiscale_pk((SELECT billing_account_id FROM t_p1)),
+    'l''emittente della testata e'' quello del billing account (trgfn_preventivi_guard_emittente_ba)'
+);
+
+-- 4) Numero dal dominio, validita' da oggi
+SELECT ok(
+    (SELECT p.numero IS NOT NULL AND p.validita_dal = CURRENT_DATE
+            AND p.validita_al > p.validita_dal
+       FROM vendite.preventivi p WHERE p.id = (SELECT preventivo_id FROM t_p1)),
+    'il numero lo assegna il dominio (trgfn_preventivi_gen_codice); validita'' aperta da oggi'
+);
+
+-- 5) Lo stato si sceglie alla nascita
+CREATE TEMP TABLE t_em AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('presidio preventivo emesso', 'EMESSO');
+
+SELECT is(
+    (SELECT s.codice_interno
+       FROM vendite.preventivi p
+       JOIN config.stati_doc_preventivi s ON s.id = p.stato_doc_preventivo_id
+      WHERE p.id = (SELECT preventivo_id FROM t_em)),
+    'EMESSO'::character varying,
+    'lo stato e'' quello chiesto alla nascita, non il default'
+);
+
+-- 6) Seconda chiamata: il contesto e' ormai aperto, l'azienda si riusa
+SELECT is(
+    (SELECT (e.emittente_fiscale_id = p1.emittente_fiscale_id)::text
+         || ' ' || (e.billing_account_id <> p1.billing_account_id)::text
+       FROM t_p1 p1, t_em e),
+    'true true',
+    'seconda chiamata: stessa azienda di chi agisce, cliente nuovo'
+);
+
+-- 7) Guard: uno stato che non esiste
+SELECT throws_like($$
+    SELECT dbops.fn_pgtap_crea_preventivo('presidio stato', 'NON_ESISTE')
+$$,
+    '%nessuno stato documento preventivo%',
+    'guard: uno stato inesistente parla, invece di scrivere un NULL nella testata'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

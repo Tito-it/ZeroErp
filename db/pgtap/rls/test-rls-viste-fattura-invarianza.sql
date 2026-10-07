@@ -41,12 +41,38 @@
 -- Le altre due viste joinano in INNER: se qualcosa andasse storto perdono
 -- righe, il che e' brutto ma rumoroso.
 -- ------------------------------------------------------------
--- Indice test (1..4):
+-- ⭐ Rev 2026-10-07 (brief-db-fixture-rls-documenti-costruiti, giro 3): IL
+-- MONDO SI COSTRUISCE. Fino a oggi il file pescava «un emittente con una
+-- fattura con righe» e misurava cio' che quell'emittente aveva nel DB: su
+-- zeroerp_ci (da zero) le viste erano vuote e le quattro uguaglianze passavano
+-- come 0 = 0, cioe' senza misurare niente — anche il test 2, il solo che
+-- conta. Ora la catena intera, ciascun passo dal dominio: commessa e attivita'
+-- (dbops.fn_pgtap_crea_commessa / _attivita), emissione delle attivita'
+-- fatturabili (vendite.fn_emit_attivita_fatturabili_da_commessa), fattura
+-- dello stesso cliente con la sua riga (dbops.fn_pgtap_crea_fattura), e il
+-- legame attivita' -> riga di fattura, che in esercizio scrive il backend
+-- (pipeline di fatturazione) e qui scrive la fixture con lo stesso UPDATE.
+-- Il caso 0 dice che il caso del test 2 ESISTE prima di confrontarlo.
+-- ------------------------------------------------------------
+-- Indice test (0..4):
+--   0   senza RLS l'operatore vede l'attivita' di A CON la fattura agganciata, e il suo arco
 --   1   vw_dash_competenza_attivita  — stesso numero di righe
 --   2   ⭐ vw_dash_competenza_attivita — stesso numero di righe con fattura
 --       agganciata (il fallimento SILENZIOSO del LEFT JOIN)
 --   3   vw_dash_competenza_errori    — stesso numero di righe
---   4   vw_documento_lineage_archi   — stesso numero di righe
+--   4   vw_documento_lineage_archi   — stessi archi DEI DOCUMENTI DI A
+--
+-- ⚠️ IL LINEAGE SI MISURA SUI DOCUMENTI DI A, NON SUL GRAFO INTERO (rev
+--   2026-10-07). vw_documento_lineage_archi non ha un filtro di emittente suo:
+--   e' security_invoker, e il suo perimetro E' la RLS delle tabelle di base
+--   (tutte con la RLS attiva: per l'applicazione il grafo e' gia' nel
+--   perimetro). Da owner, armando il FORCE sulla sola fatture_righe, gli archi
+--   verso le fatture delle ALTRE aziende spariscono — ed e' giusto: e' la RLS
+--   che lavora. Il conteggio globale quindi DEVE cambiare, e confrontarlo
+--   pretendeva una proprieta' che la vista non ha. Fino al 2026-10-07 era verde
+--   perche' la fixture pescava l'emittente che su dbdev possedeva tutte quelle
+--   fatture: un verde dovuto ai dati. La domanda vera e' l'altra: armare la RLS
+--   non deve far sparire gli archi dei PROPRI documenti.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -63,17 +89,78 @@ BEGIN;
 --   lo consegna COMPLETO: la riga torna, e i guard del soggetto si esercitano.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(4);
+SELECT plan(5);
 
 -- =========================================================
--- Operatore di test, whitelistato su un emittente reale
+-- Fixture: la catena commessa -> attivita' -> fattura dell'azienda A
 -- =========================================================
+-- Il builder apre il contesto sul SUO operatore (tecnico) di A: la catena gira
+-- nei panni di chi lavora per A, come la gira l'applicazione.
+CREATE TEMP TABLE _a AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa('rls viste fattura');
+
+CREATE TEMP TABLE _att AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM _a));
+
+-- L'emissione: la commessa legata alla sorgente, pronta alla fatturazione, e
+-- la madre che scrive le attivita' fatturabili.
+SELECT vendite.fn_link_commessa_sorgente(
+    p_commessa_id      => (SELECT commessa_id FROM _a),
+    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
+                            WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
+    p_sorgente_uid     => (SELECT commessa_id FROM _a)::text);
+
+UPDATE vendite.commesse
+   SET stato_commessa_id = (SELECT s.id FROM vendite.stati_commessa s
+                             WHERE s.codice_interno = 'PRONTA_FATTURAZIONE')
+ WHERE id = (SELECT commessa_id FROM _a);
+
+CREATE TEMP TABLE _emit AS
+SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
+    p_commessa_id   => (SELECT commessa_id FROM _a),
+    p_only_approved => true,
+    p_dry_run       => false);
+
+-- La fattura dello STESSO cliente (terzo parametro) e la sua riga.
+CREATE TEMP TABLE _f AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'rls viste fattura', 'DRAFT', (SELECT billing_account_id FROM _a));
+
+CREATE TEMP TABLE _fr AS
+WITH ins AS (
+    INSERT INTO vendite.fatture_righe (
+        fattura_id, riga_nr, descrizione, qta, prezzo_unitario, imponibile_riga,
+        competenza_dal, competenza_al, iva_id)
+    SELECT f.fattura_id, 1, 'Riga pgTAP viste fattura', 1, 10, 10,
+           t.competenza_dal, t.competenza_al,
+           (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1)
+      FROM _f f, _att t
+    RETURNING id)
+SELECT id AS fattura_riga_id FROM ins;
+
+-- ⚠️ Il legame attivita' -> riga di fattura in esercizio lo scrive il BACKEND
+--   (la pipeline di fatturazione), non una funzione del database: la fixture
+--   fa quel passo con lo stesso UPDATE, come il builder dell'operatore fa
+--   quello dell'invito accettato.
+UPDATE vendite.attivita_fatturabili
+   SET fattura_riga_id = (SELECT fattura_riga_id FROM _fr)
+ WHERE commessa_attivita_id = (SELECT attivita_id FROM _att);
+
+-- Da qui l'identita' la dichiara il file: si riparte da «nessuno».
+SELECT set_config('app.ruolo_applicativo', '', false),
+       set_config('app.current_user_id',   '', false);
+
 CREATE TEMP TABLE _refs AS
-SELECT
-    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-      JOIN vendite.fatture fa ON fa.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
-      WHERE EXISTS (SELECT 1 FROM vendite.fatture_righe fr WHERE fr.fattura_id = fa.id)
-      ORDER BY ef.id LIMIT 1) AS emit_pk;
+SELECT emittente_fiscale_id AS emit_pk FROM _a;
+
+-- I nodi di A nel grafo del lineage: la commessa e la fattura costruite.
+CREATE TEMP TABLE _nodi_a (tipo_id bigint, uid text);
+INSERT INTO _nodi_a
+SELECT s.id, (SELECT commessa_id FROM _a)::text
+  FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA' AND s.attivo
+UNION ALL
+SELECT s.id, (SELECT fattura_id FROM _f)::text
+  FROM config.sorgenti s WHERE s.codice_interno = 'FATTURA' AND s.attivo;
 
 CREATE TEMP TABLE _op (auth_user_id int, soggetto_id uuid, sr_id bigint, identita_id bigint);
 
@@ -91,22 +178,14 @@ INSERT INTO _op
 SELECT o.auth_user_id, o.soggetto_id, o.soggetto_ruolo_id, o.identita_id
   FROM dbops.fn_pgtap_crea_operatore_umano('rls viste fattura') o;
 
-CREATE TEMP TABLE _flags AS
-SELECT COALESCE((SELECT emit_pk IS NOT NULL FROM _refs LIMIT 1), false) AS prereq;
-
--- Whitelist = emittente scelto, con la funzione di dominio (l'operatore nasce
--- senza azienda, come in produzione).
-DO $wl$
-BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
-    PERFORM script.fn_change_user_emittenti_scope(
-        (SELECT auth_user_id FROM _op), ARRAY[(SELECT emit_pk FROM _refs)]);
-END $wl$;
+-- Whitelist = A, con la funzione di dominio (l'operatore nasce senza azienda,
+-- come in produzione).
+SELECT script.fn_change_user_emittenti_scope(
+    (SELECT auth_user_id FROM _op), ARRAY[(SELECT emit_pk FROM _refs)]);
 
 -- Sessione operatore: resta identica per entrambe le misure.
 SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true);
-SELECT set_config('app.current_user_id',
-    COALESCE((SELECT auth_user_id FROM _op)::text, ''), true);
+SELECT set_config('app.current_user_id', (SELECT auth_user_id FROM _op)::text, true);
 
 CREATE TEMP TABLE _m (fase text, vista text, n bigint);
 
@@ -117,7 +196,16 @@ INSERT INTO _m SELECT 'off', 'attivita',        count(*) FROM vendite.vw_dash_co
 INSERT INTO _m SELECT 'off', 'attivita_fatt',   count(*) FROM vendite.vw_dash_competenza_attivita
                                                  WHERE fattura_id IS NOT NULL;
 INSERT INTO _m SELECT 'off', 'errori',          count(*) FROM vendite.vw_dash_competenza_errori;
-INSERT INTO _m SELECT 'off', 'lineage',         count(*) FROM vendite.vw_documento_lineage_archi;
+INSERT INTO _m SELECT 'off', 'lineage',         count(*) FROM vendite.vw_documento_lineage_archi a
+                                                 WHERE (a.from_tipo_id, a.from_uid) IN (SELECT tipo_id, uid FROM _nodi_a)
+                                                    OR (a.to_tipo_id,   a.to_uid)   IN (SELECT tipo_id, uid FROM _nodi_a);
+
+-- ⭐ I casi che i test 2 e 4 proteggono devono ESISTERE: senza, le
+--   uguaglianze passerebbero come 0 = 0.
+SELECT ok(
+    (SELECT n FROM _m WHERE fase = 'off' AND vista = 'attivita_fatt') >= 1
+    AND (SELECT n FROM _m WHERE fase = 'off' AND vista = 'lineage') >= 1,
+    '0. senza RLS l''operatore vede l''attivita'' di A con la fattura agganciata, e il suo arco nel lineage: i casi dei test 2 e 4 esistono');
 
 -- =========================================================
 -- MISURA 2 — stessa sessione, RLS ARMATA e FORZATA
@@ -131,13 +219,15 @@ INSERT INTO _m SELECT 'on',  'attivita',        count(*) FROM vendite.vw_dash_co
 INSERT INTO _m SELECT 'on',  'attivita_fatt',   count(*) FROM vendite.vw_dash_competenza_attivita
                                                  WHERE fattura_id IS NOT NULL;
 INSERT INTO _m SELECT 'on',  'errori',          count(*) FROM vendite.vw_dash_competenza_errori;
-INSERT INTO _m SELECT 'on',  'lineage',         count(*) FROM vendite.vw_documento_lineage_archi;
+INSERT INTO _m SELECT 'on',  'lineage',         count(*) FROM vendite.vw_documento_lineage_archi a
+                                                 WHERE (a.from_tipo_id, a.from_uid) IN (SELECT tipo_id, uid FROM _nodi_a)
+                                                    OR (a.to_tipo_id,   a.to_uid)   IN (SELECT tipo_id, uid FROM _nodi_a);
 
 ALTER TABLE vendite.fatture_righe          NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE vendite.fatture_riepiloghi_iva NO FORCE ROW LEVEL SECURITY;
 
 -- =========================================================
--- Asserzioni (soft-skip se il DB non ha una fattura con righe)
+-- Asserzioni
 -- =========================================================
 SELECT is(
     (SELECT n FROM _m WHERE fase='on'  AND vista='attivita'),
@@ -158,7 +248,7 @@ SELECT is(
 SELECT is(
     (SELECT n FROM _m WHERE fase='on'  AND vista='lineage'),
     (SELECT n FROM _m WHERE fase='off' AND vista='lineage'),
-    '4. vw_documento_lineage_archi: stesso numero di righe con e senza RLS');
+    '4. vw_documento_lineage_archi: gli archi dei documenti di A restano con e senza RLS');
 
 SELECT set_config('app.ruolo_applicativo', '', true);
 SELECT set_config('app.current_user_id', '', true);

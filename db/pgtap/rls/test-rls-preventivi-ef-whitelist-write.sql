@@ -19,11 +19,18 @@
 -- Obiettivo: dimostrare che dopo il fix una SCRITTURA in-scope passa
 -- (la policy FOR ALL la consente), mentre fuori-scope / senza ruolo no.
 -- Tecnica (come gli altri test RLS funzionali del repo):
---   - UPDATE no-op (SET meta = meta) su un preventivo ESISTENTE: niente
---     fixture pesante, l'emittente resta invariato -> WITH CHECK valutata
---     sulla stessa riga in-scope.
+--   - UPDATE no-op (SET meta = meta) sul preventivo di A: l'emittente resta
+--     invariato -> WITH CHECK valutata sulla stessa riga in-scope.
 --   - ENABLE + FORCE locale alla tx (owner titodb non-superuser -> soggetto).
---   - GUC via set_config; soft-skip se non esiste un preventivo idoneo.
+--   - GUC via set_config.
+--
+-- ⭐ Rev 2026-10-07 (brief-db-fixture-rls-documenti-costruiti, giro 2): IL
+--   MONDO SI COSTRUISCE. Fino a oggi il file pescava «il primo preventivo con un
+--   emittente» e «il primo altro emittente», e senza dati andava in SOFT-SKIP:
+--   su zeroerp_ci (da zero) i casi passavano senza misurare niente. Ora due
+--   aziende costruite — A possiede il preventivo, B e' l'estranea — e il preventivo
+--   di A (dbops.fn_pgtap_crea_preventivo), tutto PRIMA del FORCE. Se qualcosa non si
+--   costruisce il file va ROSSO. Modello: test-rls-resi-ef-whitelist-write.
 --
 -- NB di modello: config.user_emittenti_fiscali ha UNIQUE su auth_user_id
 -- (1 sola riga/utente), DELETE vietato (guard) e emittente_fiscale_id
@@ -35,7 +42,8 @@
 --   off-scope -> 0 righe (USING nasconde la riga)
 --   no ruolo  -> 0 righe (gate fail-closed)
 --
--- Indice test (1..4):
+-- Indice test (0..4):
+--   0. fixture: preventivo di A costruito, B e' un'altra azienda
 --   1. OPERATORE in-scope (whitelist = emittente preventivo) -> UPDATE 1 riga
 --   2. OPERATORE off-scope (whitelist = ALTRO emittente)       -> UPDATE 0 righe
 --   3. nessun ruolo (GUC vuoto)                                -> UPDATE 0 righe
@@ -58,21 +66,33 @@ BEGIN;
 --   lo consegna COMPLETO: la riga torna, e i guard del soggetto si esercitano.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(4);
+SELECT plan(5);
 
--- Preventivo ESISTENTE con emittente risolvibile + un altro emittente.
+-- Le due aziende e il preventivo di A.
+-- B prima di tutto, e PRIMA di qualunque contesto: e' un builder atomico.
+CREATE TEMP TABLE _b AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+-- A: senza contesto aperto, il builder costruisce l'azienda, l'operatore
+-- (tecnico), il cliente e il preventivo, e apre il contesto su quell'operatore.
+CREATE TEMP TABLE _a AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('rls preventivi');
+
+-- ⚠️ Il builder ha lasciato aperto il contesto del SUO operatore. Qui l'identita'
+--   la dichiara ogni caso: si riparte da «nessuno».
+SELECT set_config('app.ruolo_applicativo', '', false),
+       set_config('app.current_user_id',   '', false);
+
 CREATE TEMP TABLE _refs AS
-WITH p AS (
-    SELECT id AS prev_id, emittente_fiscale_id AS emit_pk
-      FROM vendite.preventivi
-     WHERE emittente_fiscale_id IS NOT NULL
-     ORDER BY id
-     LIMIT 1
-)
-SELECT p.prev_id, p.emit_pk,
-       (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-         WHERE ef.id <> p.emit_pk ORDER BY ef.id LIMIT 1) AS other_pk
-  FROM p;
+SELECT a.preventivo_id        AS prev_id,
+       a.emittente_fiscale_id AS emit_pk,
+       b.emittente_fiscale_id AS other_pk
+  FROM _a a, _b b;
+
+SELECT ok(
+    (SELECT p.emittente_fiscale_id = r.emit_pk AND r.emit_pk <> r.other_pk
+       FROM _refs r JOIN vendite.preventivi p ON p.id = r.prev_id),
+    '0. Fixture: preventivo di A costruito, B e'' un''altra azienda');
 
 -- Due operatori OPERATORE distinti: in-scope e off-scope.
 CREATE TEMP TABLE _op (ruolo text, auth_user_id int);
@@ -105,21 +125,10 @@ $fn$;
 
 DO $fix$
 BEGIN
-    IF (SELECT prev_id IS NOT NULL AND emit_pk IS NOT NULL AND other_pk IS NOT NULL
-          FROM _refs LIMIT 1) THEN
-        PERFORM pg_temp.mk_op('in', (SELECT emit_pk  FROM _refs));
-        PERFORM pg_temp.mk_op('out', (SELECT other_pk FROM _refs));
-    END IF;
+    PERFORM pg_temp.mk_op('in',  (SELECT emit_pk  FROM _refs));
+    PERFORM pg_temp.mk_op('out', (SELECT other_pk FROM _refs));
 END
 $fix$;
-
--- prereq: preventivo + emittente + altro emittente disponibili.
-CREATE TEMP TABLE _flags AS
-SELECT COALESCE(
-    (SELECT prev_id IS NOT NULL AND emit_pk IS NOT NULL AND other_pk IS NOT NULL
-       FROM _refs LIMIT 1),
-    false
-) AS prereq;
 
 -- Attiva RLS + FORCE solo dentro questa transazione.
 ALTER TABLE vendite.preventivi ENABLE ROW LEVEL SECURITY;
@@ -131,16 +140,12 @@ CREATE TEMP TABLE _res (caso text, n_righe integer);
 DO $c1$
 DECLARE v_n integer;
 BEGIN
-    IF (SELECT prereq FROM _flags) THEN
-        PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
-        PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE ruolo='in')::text, true);
-        UPDATE vendite.preventivi SET meta = meta WHERE id = (SELECT prev_id FROM _refs);
-        GET DIAGNOSTICS v_n = ROW_COUNT;
-        PERFORM set_config('app.ruolo_applicativo', '', true);
-        PERFORM set_config('app.current_user_id', '', true);
-    ELSE
-        v_n := 1;  -- soft-skip
-    END IF;
+    PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
+    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE ruolo='in')::text, true);
+    UPDATE vendite.preventivi SET meta = meta WHERE id = (SELECT prev_id FROM _refs);
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    PERFORM set_config('app.ruolo_applicativo', '', true);
+    PERFORM set_config('app.current_user_id', '', true);
     INSERT INTO _res VALUES ('c1', v_n);
 END
 $c1$;
@@ -149,16 +154,12 @@ $c1$;
 DO $c2$
 DECLARE v_n integer;
 BEGIN
-    IF (SELECT prereq FROM _flags) THEN
-        PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
-        PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE ruolo='out')::text, true);
-        UPDATE vendite.preventivi SET meta = meta WHERE id = (SELECT prev_id FROM _refs);
-        GET DIAGNOSTICS v_n = ROW_COUNT;
-        PERFORM set_config('app.ruolo_applicativo', '', true);
-        PERFORM set_config('app.current_user_id', '', true);
-    ELSE
-        v_n := 0;
-    END IF;
+    PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
+    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE ruolo='out')::text, true);
+    UPDATE vendite.preventivi SET meta = meta WHERE id = (SELECT prev_id FROM _refs);
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    PERFORM set_config('app.ruolo_applicativo', '', true);
+    PERFORM set_config('app.current_user_id', '', true);
     INSERT INTO _res VALUES ('c2', v_n);
 END
 $c2$;
@@ -167,14 +168,10 @@ $c2$;
 DO $c3$
 DECLARE v_n integer;
 BEGIN
-    IF (SELECT prereq FROM _flags) THEN
-        PERFORM set_config('app.ruolo_applicativo', '', true);
-        PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE ruolo='in')::text, true);
-        UPDATE vendite.preventivi SET meta = meta WHERE id = (SELECT prev_id FROM _refs);
-        GET DIAGNOSTICS v_n = ROW_COUNT;
-    ELSE
-        v_n := 0;
-    END IF;
+    PERFORM set_config('app.ruolo_applicativo', '', true);
+    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE ruolo='in')::text, true);
+    UPDATE vendite.preventivi SET meta = meta WHERE id = (SELECT prev_id FROM _refs);
+    GET DIAGNOSTICS v_n = ROW_COUNT;
     INSERT INTO _res VALUES ('c3', v_n);
 END
 $c3$;
@@ -185,24 +182,20 @@ ALTER TABLE vendite.preventivi DISABLE ROW LEVEL SECURITY;
 DO $c4$
 DECLARE v_n integer;
 BEGIN
-    IF (SELECT prereq FROM _flags) THEN
-        UPDATE vendite.preventivi SET meta = meta WHERE id = (SELECT prev_id FROM _refs);
-        GET DIAGNOSTICS v_n = ROW_COUNT;
-    ELSE
-        v_n := 1;
-    END IF;
+    UPDATE vendite.preventivi SET meta = meta WHERE id = (SELECT prev_id FROM _refs);
+    GET DIAGNOSTICS v_n = ROW_COUNT;
     INSERT INTO _res VALUES ('c4', v_n);
 END
 $c4$;
 
 -- ===================== Asserzioni =====================
-SELECT ok((SELECT NOT prereq FROM _flags) OR (SELECT n_righe = 1 FROM _res WHERE caso='c1'),
+SELECT ok((SELECT n_righe = 1 FROM _res WHERE caso='c1'),
     '1. OPERATORE in-scope: UPDATE tocca la riga (FOR ALL sblocca la scrittura)');
-SELECT ok((SELECT NOT prereq FROM _flags) OR (SELECT n_righe = 0 FROM _res WHERE caso='c2'),
+SELECT ok((SELECT n_righe = 0 FROM _res WHERE caso='c2'),
     '2. OPERATORE off-scope: UPDATE tocca 0 righe (USING isola per emittente)');
-SELECT ok((SELECT NOT prereq FROM _flags) OR (SELECT n_righe = 0 FROM _res WHERE caso='c3'),
+SELECT ok((SELECT n_righe = 0 FROM _res WHERE caso='c3'),
     '3. Nessun ruolo: UPDATE tocca 0 righe (gate fail-closed)');
-SELECT ok((SELECT NOT prereq FROM _flags) OR (SELECT n_righe = 1 FROM _res WHERE caso='c4'),
+SELECT ok((SELECT n_righe = 1 FROM _res WHERE caso='c4'),
     '4. Kill-switch DISABLE: UPDATE di nuovo libero');
 
 SELECT * FROM finish();

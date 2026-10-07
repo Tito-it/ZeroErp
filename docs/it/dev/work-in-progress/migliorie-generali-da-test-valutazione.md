@@ -642,7 +642,8 @@ asserzione: sono aree che *sembrano* coperte.
 La ricetta è stabilita e i builder ci sono (§7 D7: la riga di contesto che
 costruisce se il DB è vuoto, il BB di composizione
 `dbops.fn_pgtap_crea_mondo_cliente()`, i builder di fattura, filiale, gestore,
-operatore umano, PDP e listino). Resta applicarla, e ciò che il giro 2 ha
+operatore umano, PDP e listino, e dal 2026-10-07 quelli di **ordine, preventivo,
+commessa e attività di commessa**). Resta applicarla, e ciò che il giro 2 ha
 lasciato
 ([brief-db-fixture-che-costruiscono-giro-2.md](../work-done/brief-db-fixture-che-costruiscono-giro-2.md)
 §5, §7, §9, §11):
@@ -656,6 +657,12 @@ lasciato
 * ⏳ **lotto 3** — `pratiche` (37 a registro, quasi tutti verdi nella simulazione
   del 20-09) — e **lotto 4** — `vendite` (211), a famiglie: dash, resi,
   fatture, DDT, preventivi;
+* ⏳ **le copie a mano dei documenti di vendita** (2026-10-07): un ordine scritto
+  a mano in 54 pgTAP, un preventivo in 40, una commessa in 36, un'attività di
+  commessa in 32. I builder ci sono (`dbops.fn_pgtap_crea_ordine`, `_preventivo`,
+  `_commessa`, `_commessa_attivita`): si migrano con il lotto 4, per famiglia
+  ([brief-db-fixture-rls-documenti-costruiti.md](../work-done/brief-db-fixture-rls-documenti-costruiti.md)
+  §6);
 * ⏳ i file che fissano `SET LOCAL app.current_user_id = '1'` (28 al 22-09:
   l'utente 1 non esiste in CI) — una ricetta a sé, l'utente di sessione è
   quello del mondo costruito;
@@ -1216,6 +1223,16 @@ registro**, e da allora i rientrati li toglie
 `scripts/pgtap-baseline-ci-rientrati.sh` **leggendo il log della corsa**, non una
 mano. Il debito che resta è in §3 D7. Brief
 `brief-db-fixture-che-costruiscono-d7-d6-d4.md` (in `work-done/` dal 19-09).
+
+### ✅ D7 — I test RLS dei documenti costruiscono il loro documento — 2026-10-07
+
+I sette `rls/` che **cercavano** il documento da provare (commessa, DDT, ordine,
+preventivo, fattura) e andavano in soft-skip su un database ricostruito ora lo
+**costruiscono**, con due aziende (A lo possiede, B è l'estranea) e senza soft-skip.
+Quattro builder nuovi in `dbops` (ordine, preventivo, commessa, attività; gli ultimi due
+compongono le madri del dominio). Emersi e corretti due verdi dovuti ai dati, fra cui
+l'invarianza del lineage misurata sul grafo intero. Brief
+`brief-db-fixture-rls-documenti-costruiti.md` (in `work-done/`).
 
 ### ✅ D7 — Il giro 2: la fixture che costruisce il mondo — 20-09 → 24-09
 

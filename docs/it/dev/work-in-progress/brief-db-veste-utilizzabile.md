@@ -312,6 +312,9 @@ CSV hanno già i loro mirror.
   costruito da zero finiscono nel soft-skip. La forma giusta è quella di
   `test-rls-resi-ef-whitelist-write` (mondi costruiti con `fn_pgtap_crea_emittente_operatore`
   e `fn_pgtap_crea_cliente_ba`): è del cantiere «fixture che costruiscono».
+  ✅ **Fatto il 2026-10-07**:
+  [brief-db-fixture-rls-documenti-costruiti](../work-done/brief-db-fixture-rls-documenti-costruiti.md)
+  (tre giri, quattro builder nuovi, sette file che costruiscono il loro documento).
 * **Presidi trasversali** prima/dopo (riferimenti morti, catalogo messaggi completo,
   rubinetto primo motivo, codici obsoleti, costanti citate…: 21 file): tutti uguali.
 * Guardrail statici del repo: verdi.

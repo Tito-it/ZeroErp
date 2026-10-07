@@ -22,10 +22,18 @@
 --
 -- Meccanismo identico a test-rls-fatture-ef-whitelist-functional.sql:
 -- ENABLE+FORCE locale alla tx (titodb owner non-superuser -> soggetto),
--- GUC via set_config, fattura/ordine ESISTENTE (no fixture pesante),
--- soft-skip se mancano dati.
+-- GUC via set_config.
 --
--- Indice test (1..5) — visibilita' di un ordine noto:
+-- ⭐ Rev 2026-10-07 (brief-db-fixture-rls-documenti-costruiti, giro 2): IL
+--   MONDO SI COSTRUISCE. Fino a oggi il file pescava «il primo ordine con un
+--   emittente» e «il primo altro emittente», e senza dati andava in SOFT-SKIP:
+--   su zeroerp_ci (da zero) i casi passavano senza misurare niente. Ora due
+--   aziende costruite — A possiede l'ordine, B e' l'estranea — e l'ordine
+--   di A (dbops.fn_pgtap_crea_ordine), tutto PRIMA del FORCE. Se qualcosa non si
+--   costruisce il file va ROSSO. Modello: test-rls-resi-ef-whitelist-write.
+--
+-- Indice test (0..5) — visibilita' dell'ordine di A:
+--   0. fixture: ordine di A costruito, B e' un'altra azienda
 --   1. OPERATORE, whitelist = emittente ordine  -> visibile (policy EF)
 --   2. OPERATORE, whitelist = ALTRO emittente    -> NON visibile
 --      (EF fallisce; cliente/shop gated off -> nessun leak)
@@ -45,22 +53,34 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(5);
+SELECT plan(6);
 
--- Ordine ESISTENTE con emittente risolvibile (emittente_fiscale_id e' PK
--- diretta su emittenti_fiscali -> NOT NULL garantisce l'esistenza).
+-- Le due aziende e l'ordine di A.
+-- B prima di tutto, e PRIMA di qualunque contesto: e' un builder atomico.
+CREATE TEMP TABLE _b AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+-- A: senza contesto aperto, il builder costruisce l'azienda, l'operatore
+-- (tecnico), il cliente e l'ordine, e apre il contesto su quell'operatore.
+CREATE TEMP TABLE _a AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine('rls ordini');
+
+-- ⚠️ Il builder ha lasciato aperto il contesto del SUO operatore. Qui l'identita'
+--   la dichiara ogni caso: si riparte da «nessuno».
+SELECT set_config('app.ruolo_applicativo', '', false),
+       set_config('app.current_user_id',   '', false);
+
 CREATE TEMP TABLE _refs AS
-WITH o AS (
-    SELECT id AS ordine_id, emittente_fiscale_id AS emit_pk, soggetto_ruolo_id
-      FROM vendite.ordini
-     WHERE emittente_fiscale_id IS NOT NULL
-     ORDER BY id
-     LIMIT 1
-)
-SELECT o.ordine_id, o.emit_pk, o.soggetto_ruolo_id,
-       (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-         WHERE ef.id <> o.emit_pk ORDER BY ef.id LIMIT 1) AS other_pk
-  FROM o;
+SELECT a.ordine_id,
+       a.emittente_fiscale_id      AS emit_pk,
+       a.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
+       b.emittente_fiscale_id      AS other_pk
+  FROM _a a, _b b;
+
+SELECT ok(
+    (SELECT o.emittente_fiscale_id = r.emit_pk AND r.emit_pk <> r.other_pk
+       FROM _refs r JOIN vendite.ordini o ON o.id = r.ordine_id),
+    '0. Fixture: ordine di A costruito, B e'' un''altra azienda');
 
 -- Due operatori di test, uno per emittente: operatore dalla madre + UNA riga
 -- di whitelist.
@@ -101,18 +121,9 @@ $fn$;
 
 DO $ops$
 BEGIN
-    IF (SELECT count(*) FROM _refs
-         WHERE ordine_id IS NOT NULL AND emit_pk IS NOT NULL AND other_pk IS NOT NULL) = 1 THEN
-        PERFORM pg_temp.mk_op('in',  (SELECT emit_pk  FROM _refs));
-        PERFORM pg_temp.mk_op('out', (SELECT other_pk FROM _refs));
-    END IF;
+    PERFORM pg_temp.mk_op('in',  (SELECT emit_pk  FROM _refs));
+    PERFORM pg_temp.mk_op('out', (SELECT other_pk FROM _refs));
 END $ops$;
-
-CREATE TEMP TABLE _flags AS
-SELECT COALESCE(
-    (SELECT ordine_id IS NOT NULL AND emit_pk IS NOT NULL AND other_pk IS NOT NULL
-       FROM _refs LIMIT 1), false)
-   AND (SELECT count(*) = 2 FROM _op) AS prereq;
 
 -- RLS gia' ENABLED (Ondata 2-A); aggiungo FORCE locale per assoggettare
 -- l'owner titodb (non-superuser). Rollback ripristina lo stato committato.
@@ -124,7 +135,6 @@ CREATE TEMP TABLE _res (caso text, visibile boolean);
 -- c1: OPERATORE, whitelist = emittente ordine -> visibile
 DO $c1$
 BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
     -- L'operatore 'in' ha in whitelist l'emittente dell'ordine.
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
     PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE tag = 'in')::text, true);
@@ -134,7 +144,6 @@ END $c1$;
 -- c2: OPERATORE, whitelist = ALTRO emittente -> NON visibile (no leak cliente/shop)
 DO $c2$
 BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
     -- L'operatore 'out' ha in whitelist un ALTRO emittente.
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
     PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE tag = 'out')::text, true);
@@ -144,7 +153,6 @@ END $c2$;
 -- c3: CLIENTE_PORTALE con identita NON proprietaria -> NON visibile (non eredita)
 DO $c3$
 BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
     -- whitelist match (irrilevante: ef policy gated off perche' ruolo != OPERATORE)
     PERFORM set_config('app.ruolo_applicativo', 'CLIENTE_PORTALE', true);
     PERFORM set_config('app.current_identita_id', (SELECT identita_id FROM _op WHERE tag = 'in')::text, true);
@@ -155,7 +163,6 @@ END $c3$;
 -- c4: nessun ruolo -> NON visibile (fail-closed)
 DO $c4$
 BEGIN
-    IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
     PERFORM set_config('app.ruolo_applicativo', '', true);
     PERFORM set_config('app.current_identita_id', '', true);
     PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE tag = 'in')::text, true);
@@ -168,16 +175,16 @@ ALTER TABLE vendite.ordini DISABLE ROW LEVEL SECURITY;
 INSERT INTO _res
 SELECT 'c5', EXISTS (SELECT 1 FROM vendite.ordini WHERE id = (SELECT ordine_id FROM _refs));
 
--- Asserzioni (soft-skip se prereq mancante)
-SELECT ok((SELECT NOT prereq FROM _flags) OR      (SELECT visibile FROM _res WHERE caso='c1'),
+-- Asserzioni
+SELECT ok((SELECT visibile FROM _res WHERE caso='c1'),
     '1. OPERATORE whitelist = emittente ordine -> visibile (policy EF)');
-SELECT ok((SELECT NOT prereq FROM _flags) OR  NOT (SELECT visibile FROM _res WHERE caso='c2'),
+SELECT ok(NOT (SELECT visibile FROM _res WHERE caso='c2'),
     '2. OPERATORE whitelist = altro emittente -> NON visibile (no leak cliente/shop)');
-SELECT ok((SELECT NOT prereq FROM _flags) OR  NOT (SELECT visibile FROM _res WHERE caso='c3'),
+SELECT ok(NOT (SELECT visibile FROM _res WHERE caso='c3'),
     '3. CLIENTE_PORTALE identita non proprietaria -> NON visibile (non eredita)');
-SELECT ok((SELECT NOT prereq FROM _flags) OR  NOT (SELECT visibile FROM _res WHERE caso='c4'),
+SELECT ok(NOT (SELECT visibile FROM _res WHERE caso='c4'),
     '4. nessun ruolo -> NON visibile (fail-closed)');
-SELECT ok((SELECT NOT prereq FROM _flags) OR      (SELECT visibile FROM _res WHERE caso='c5'),
+SELECT ok((SELECT visibile FROM _res WHERE caso='c5'),
     '5. DISABLE RLS (kill-switch) -> ordine di nuovo visibile');
 
 SELECT * FROM finish();

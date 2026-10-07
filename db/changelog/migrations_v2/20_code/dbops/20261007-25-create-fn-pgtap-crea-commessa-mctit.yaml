@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Helper di fixture pgTAP: una COMMESSA del mondo, in una chiamata sola —
+#   l'azienda, l'operatore, il cliente fatturabile e la commessa, aperta
+#   dalla madre del dominio.
+#   Brief: brief-db-fixture-rls-documenti-costruiti (giro 3).
+#
+# -- IL DIFETTO ------------------------------------------------------
+#   La commessa si scrive a mano in decine di pgTAP (INSERT con un codice
+#   inventato, emittente e billing account pescati), oppure chiamando la
+#   madre con dieci argomenti ricopiati. Stessa regola, piu' ricette
+#   (regola del 2).
+#
+# -- LA CATENA, e cosa decide il dominio -----------------------------
+#   * il mondo lo da' dbops.fn_pgtap_crea_mondo_cliente: senza contesto lo
+#     costruisce e apre il contesto, con un contesto aperto riusa
+#     l'azienda di chi agisce;
+#   * la commessa la apre la MADRE vendite.fn_get_or_create_commessa, con
+#     p_force_new: codice, emittente (dal billing account) e stato iniziale
+#     li decide lei, come in produzione. La fixture non li scrive;
+#   * la competenza e' il mese corrente: le attivita' di
+#     dbops.fn_pgtap_crea_commessa_attivita (20261007-26) ci cadono dentro.
+#
+# -- COSA NON ENTRA --------------------------------------------------
+#   * le attivita': sono il caso del test (o del builder gemello);
+#   * il cambio di stato: vendite.commesse ha un guard di transizione, la
+#     commessa nasce nello stato che la madre le da'.
+#
+# Permessi: funzione di chi migra, non SECURITY DEFINER, non in
+# dbops.sec_functions_owner. Stessa forma di 20260923-04.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261007-25-create-fn-pgtap-crea-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20261007-25-create-fn-pgtap-crea-commessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Helper di fixture pgTAP: dbops.fn_pgtap_crea_commessa() costruisce una
+        commessa del mondo (azienda, operatore, cliente fatturabile) aperta
+        dalla madre vendite.fn_get_or_create_commessa, con competenza nel mese
+        corrente, e ne ritorna tutte le chiavi. Le attivita' restano al test.
+        Brief: brief-db-fixture-rls-documenti-costruiti.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_commessa(
+                  p_etichetta text DEFAULT 'pgTAP'
+              )
+               RETURNS TABLE (
+                  commessa_id                 vendite.commesse.id%TYPE,
+                  commessa_codice             vendite.commesse.codice%TYPE,
+                  emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                  emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  cliente_soggetto_ruolo_id   anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                  utility_id                  anagrafiche.billing_account.utility_id%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una COMMESSA del mondo in una
+              --   chiamata: azienda, operatore, cliente e commessa aperta
+              --   dalla madre del dominio.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_c AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_commessa('rls commesse');
+              -- ⛔ Le attivita' NON le scrive: sono il caso del test
+              --   (dbops.fn_pgtap_crea_commessa_attivita ne da' una).
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_ba_id     anagrafiche.billing_account.id%TYPE;
+                  v_ist_id    anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_cli_sr_id anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+                  v_utility   anagrafiche.billing_account.utility_id%TYPE;
+                  v_commessa  vendite.commesse.id%TYPE;
+                  v_codice    vendite.commesse.codice%TYPE;
+              BEGIN
+                  SELECT m.emittente_fiscale_id, m.emittente_soggetto_ruolo_id,
+                         m.auth_user_id, m.billing_account_id, m.istanza_utility_id,
+                         m.cliente_soggetto_ruolo_id, m.utility_id
+                    INTO v_ef_id, v_ef_sr_id, v_user_id, v_ba_id, v_ist_id,
+                         v_cli_sr_id, v_utility
+                    FROM dbops.fn_pgtap_crea_mondo_cliente(p_etichetta) m;
+
+                  -- La madre: codice, emittente e stato li decide lei.
+                  v_commessa := vendite.fn_get_or_create_commessa(
+                      p_billing_account_id => v_ba_id,
+                      p_utility_id         => v_utility,
+                      p_competenza_dal     => date_trunc('month', CURRENT_DATE)::date,
+                      p_competenza_al      => (date_trunc('month', CURRENT_DATE)
+                                               + interval '1 month - 1 day')::date,
+                      p_meta               => jsonb_build_object('test_scope', 'pgtap_' || p_etichetta),
+                      p_force_new          => true);
+
+                  SELECT c.codice INTO v_codice
+                    FROM vendite.commesse c
+                   WHERE c.id = v_commessa;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT v_commessa, v_codice, v_ef_id, v_ef_sr_id, v_user_id,
+                         v_ba_id, v_ist_id, v_cli_sr_id, v_utility;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_commessa(text)
+              IS 'Fixture pgTAP: una COMMESSA del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la commessa aperta dalla madre vendite.fn_get_or_create_commessa (p_force_new), con competenza nel mese corrente. Codice, emittente e stato iniziale li decide la madre, come in produzione. ⛔ NON scrive attivita'': sono il caso del test (dbops.fn_pgtap_crea_commessa_attivita ne da'' una). ⛔ Non cambia stato: vendite.commesse ha un guard di transizione. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_commessa(text);

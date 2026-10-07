@@ -103,6 +103,10 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | --- | --- |
 | **il mondo di un test di dominio**: azienda + operatore + contesto aperto + un cliente fatturabile legato a quell'azienda | `dbops.fn_pgtap_crea_mondo_cliente('<etichetta>')` |
 | **una fattura** del mondo (registro coerente, coppia emittente/utility configurata, stato scelto alla nascita) | `dbops.fn_pgtap_crea_fattura('<etichetta>'[, '<stato>'[, <ba_id>]])` |
+| **un ordine** di vendita del mondo (emittente del cliente, numero dal dominio, stato scelto alla nascita) | `dbops.fn_pgtap_crea_ordine('<etichetta>'[, '<stato>'])` |
+| **un preventivo** del mondo (emittente del cliente, numero dal dominio, validità da oggi, stato scelto alla nascita) | `dbops.fn_pgtap_crea_preventivo('<etichetta>'[, '<stato>'])` |
+| **una commessa** del mondo, aperta dalla madre del dominio (codice ed emittente dal dominio, competenza nel mese corrente) | `dbops.fn_pgtap_crea_commessa('<etichetta>')` |
+| **un'attività** approvata su una commessa costruita, scritta dalla madre (articolo costruito, pronta per l'emissione) | `dbops.fn_pgtap_crea_commessa_attivita(<commessa_id>[, <prezzo>])` |
 | una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')` |
 | il **gestore** dell'installazione (lo prende se c'è, lo costruisce se non c'è) | `dbops.fn_pgtap_crea_gestore('<etichetta>')` |
 | un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |
