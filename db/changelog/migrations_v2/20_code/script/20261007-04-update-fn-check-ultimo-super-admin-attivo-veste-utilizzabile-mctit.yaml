@@ -1,0 +1,218 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_ultimo_super_admin_attivo: LA VESTE CONTA SE E' UTILIZZABILE OGGI
+#   Brief: brief-db-veste-utilizzabile (building block: 20261007-01)
+#
+#   Le due copie di attivo + finestra (target e «nessun altro») diventano il
+#   building block. ⭐ Ora dice la stessa regola di
+#   fn_check_almeno_un_super_admin_attivo (-05), che la finestra non la guardava:
+#   le due funzioni dell'anti-lockout rispondevano su due regole diverse.
+#
+#   Corpo vivo = pg_get_functiondef su dbdev il 2026-10-07 (uguale alla doc
+#   auto-gen); sostituzioni contate. Firma, RETURNS, DECLARE e firma del
+#   COMMENT ancorati a %TYPE dove c'e' una colonna dietro; dove non c'e', il
+#   tipo esplicito porta il perche' accanto. I %TYPE si risolvono negli STESSI
+#   tipi di oggi (provato: nessun overload), quindi i chiamanti (comprese le
+#   BEGIN ATOMIC) restano validi. Il rollback e' il corpo vivo di prima, con la
+#   stessa firma ancorata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-04-update-fn-check-ultimo-super-admin-attivo-veste-utilizzabile-mctit.yaml
+
+  - changeSet:
+      id: 20261007-04-update-fn-check-ultimo-super-admin-attivo-veste-utilizzabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_check_ultimo_super_admin_attivo: la veste conta se utilizzabile oggi (script.fn_veste_utilizzabile), come in fn_check_almeno_un_super_admin_attivo. Brief: brief-db-veste-utilizzabile.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_ultimo_super_admin_attivo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_ultimo_super_admin_attivo(p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE)
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- =========================================================
+                  -- Scopo:
+                  --   Predicato per-utente: true sse rimuovere il privilegio
+                  --   SUPER_ADMIN da p_auth_user_id porterebbe il sistema a
+                  --   0 super-admin attivi (lockout).
+                  --
+                  -- Algoritmo (single-pass, due EXISTS short-circuit):
+                  --   1) p_auth_user_id IS NOT NULL.
+                  --   2) Target e' SA attivo (EXISTS si ferma alla prima riga).
+                  --   3) NESSUN altro auth_user e' SA attivo (NOT EXISTS si
+                  --      ferma alla prima riga "altra").
+                  --
+                  -- Filtri SA coerenti con script.fn_is_super_admin (single
+                  -- source of truth concettuale):
+                  --   veste OPERATORE utilizzabile oggi (script.fn_veste_utilizzabile,
+                  --   rev 2026-10-07: prima attiva + finestra ricopiate qui),
+                  --   binding attivo, profilo attivo, tipo SUPER_ADMIN.
+                  --   ⭐ rev 2026-09-25: e credenziale NON bloccata
+                  --   dall'amministratore (config.credenziali.bloccata_at),
+                  --   come fn_check_almeno_un_super_admin_attivo — un SUPER_ADMIN
+                  --   bloccato non e' raggiungibile. Brief:
+                  --   brief-db-blocco-login-per-credenziale §3.3.
+                  --
+                  -- NB: la duplicazione del blocco filtri e' voluta. Una CTE
+                  -- referenziata 2 volte verrebbe materializzata da PG e
+                  -- valutata interamente; con EXISTS+NOT EXISTS l'optimizer
+                  -- usa indici partial (uq_identita_digitali_*_attivo) e
+                  -- short-circuita.
+                  -- =========================================================
+                  SELECT
+                          p_auth_user_id IS NOT NULL
+                      AND EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.identita_digitali       id
+                            JOIN config.profili_accesso_bindings     pab
+                              ON pab.identita_digitale_id = id.id
+                            JOIN config.profili_accesso              pa
+                              ON pa.id = pab.profilo_accesso_id
+                           WHERE id.auth_user_id      = p_auth_user_id
+                             AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                             AND script.fn_veste_utilizzabile(id.id)
+                             AND pab.attivo = true
+                             AND pa.attivo  = true
+                             AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                             AND NOT EXISTS (
+                                 SELECT 1
+                                   FROM config.credenziali c
+                                  WHERE c.auth_user_id = id.auth_user_id
+                                    AND c.bloccata_at IS NOT NULL
+                             )
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.identita_digitali       id
+                            JOIN config.profili_accesso_bindings     pab
+                              ON pab.identita_digitale_id = id.id
+                            JOIN config.profili_accesso              pa
+                              ON pa.id = pab.profilo_accesso_id
+                           WHERE id.auth_user_id     <> p_auth_user_id
+                             AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                             AND script.fn_veste_utilizzabile(id.id)
+                             AND pab.attivo = true
+                             AND pa.attivo  = true
+                             AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                             AND NOT EXISTS (
+                                 SELECT 1
+                                   FROM config.credenziali c
+                                  WHERE c.auth_user_id = id.auth_user_id
+                                    AND c.bloccata_at IS NOT NULL
+                             )
+                      );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_check_ultimo_super_admin_attivo(anagrafiche.identita_digitali.auth_user_id%TYPE) IS 'Predicato per-utente: true sse questo auth_user e'' l''unico SUPER_ADMIN attivo e raggiungibile del sistema (rimuovergli il privilegio causerebbe lockout). Raggiungibile = identita OPERATORE attiva e in finestra, binding e profilo SUPER_ADMIN attivi, credenziale NON bloccata dall''amministratore (config.credenziali.bloccata_at; rev 2026-09-25, stesso gate di fn_check_almeno_un_super_admin_attivo). Usato per le capability can_disable / can_demote_super_admin del drawer Operatore. LANGUAGE sql STABLE, pure check, nessun raise. Param INTEGER esplicito (django.auth_user.id; niente %TYPE su colonne django.*). Rev 2026-10-07 (brief-db-veste-utilizzabile): la veste conta se e'''' utilizzabile oggi secondo script.fn_veste_utilizzabile, la stessa regola di fn_check_almeno_un_super_admin_attivo (prima questa guardava la finestra e quella no).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_ultimo_super_admin_attivo(p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE)
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- =========================================================
+                  -- Scopo:
+                  --   Predicato per-utente: true sse rimuovere il privilegio
+                  --   SUPER_ADMIN da p_auth_user_id porterebbe il sistema a
+                  --   0 super-admin attivi (lockout).
+                  --
+                  -- Algoritmo (single-pass, due EXISTS short-circuit):
+                  --   1) p_auth_user_id IS NOT NULL.
+                  --   2) Target e' SA attivo (EXISTS si ferma alla prima riga).
+                  --   3) NESSUN altro auth_user e' SA attivo (NOT EXISTS si
+                  --      ferma alla prima riga "altra").
+                  --
+                  -- Filtri SA coerenti con script.fn_is_super_admin (single
+                  -- source of truth concettuale):
+                  --   identita attiva, ruolo OPERATORE, in finestra,
+                  --   binding attivo, profilo attivo, tipo SUPER_ADMIN.
+                  --   ⭐ rev 2026-09-25: e credenziale NON bloccata
+                  --   dall'amministratore (config.credenziali.bloccata_at),
+                  --   come fn_check_almeno_un_super_admin_attivo — un SUPER_ADMIN
+                  --   bloccato non e' raggiungibile. Brief:
+                  --   brief-db-blocco-login-per-credenziale §3.3.
+                  --
+                  -- NB: la duplicazione del blocco filtri e' voluta. Una CTE
+                  -- referenziata 2 volte verrebbe materializzata da PG e
+                  -- valutata interamente; con EXISTS+NOT EXISTS l'optimizer
+                  -- usa indici partial (uq_identita_digitali_*_attivo) e
+                  -- short-circuita.
+                  -- =========================================================
+                  SELECT
+                          p_auth_user_id IS NOT NULL
+                      AND EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.identita_digitali       id
+                            JOIN config.profili_accesso_bindings     pab
+                              ON pab.identita_digitale_id = id.id
+                            JOIN config.profili_accesso              pa
+                              ON pa.id = pab.profilo_accesso_id
+                           WHERE id.auth_user_id      = p_auth_user_id
+                             AND id.attivo            = true
+                             AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                             AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                             AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                             AND pab.attivo = true
+                             AND pa.attivo  = true
+                             AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                             AND NOT EXISTS (
+                                 SELECT 1
+                                   FROM config.credenziali c
+                                  WHERE c.auth_user_id = id.auth_user_id
+                                    AND c.bloccata_at IS NOT NULL
+                             )
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.identita_digitali       id
+                            JOIN config.profili_accesso_bindings     pab
+                              ON pab.identita_digitale_id = id.id
+                            JOIN config.profili_accesso              pa
+                              ON pa.id = pab.profilo_accesso_id
+                           WHERE id.auth_user_id     <> p_auth_user_id
+                             AND id.attivo            = true
+                             AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                             AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                             AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                             AND pab.attivo = true
+                             AND pa.attivo  = true
+                             AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                             AND NOT EXISTS (
+                                 SELECT 1
+                                   FROM config.credenziali c
+                                  WHERE c.auth_user_id = id.auth_user_id
+                                    AND c.bloccata_at IS NOT NULL
+                             )
+                      );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_check_ultimo_super_admin_attivo(anagrafiche.identita_digitali.auth_user_id%TYPE) IS 'Predicato per-utente: true sse questo auth_user e'' l''unico SUPER_ADMIN attivo e raggiungibile del sistema (rimuovergli il privilegio causerebbe lockout). Raggiungibile = identita OPERATORE attiva e in finestra, binding e profilo SUPER_ADMIN attivi, credenziale NON bloccata dall''amministratore (config.credenziali.bloccata_at; rev 2026-09-25, stesso gate di fn_check_almeno_un_super_admin_attivo). Usato per le capability can_disable / can_demote_super_admin del drawer Operatore. LANGUAGE sql STABLE, pure check, nessun raise. Param INTEGER esplicito (django.auth_user.id; niente %TYPE su colonne django.*).';

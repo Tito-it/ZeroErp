@@ -870,7 +870,10 @@ def verifica_visibilita(cur):
 
 # Main
 def main():
-    conn = psycopg.connect(DB_DSN, row_factory=dict_row)
+    # ⚠️ autocommit: in una transazione unica ogni `::regclass` lascia un
+    #   AccessShareLock su ogni tabella fino alla fine del giro, e un DDL
+    #   concorrente (migrate, pgTAP) finisce in deadlock con lo script.
+    conn = psycopg.connect(DB_DSN, row_factory=dict_row, autocommit=True)
     cur = conn.cursor()
     # ⚠️ Il search_path NON puo' dipendere da chi lancia lo script.
     #   `information_schema.triggers.action_statement` qualifica il nome della

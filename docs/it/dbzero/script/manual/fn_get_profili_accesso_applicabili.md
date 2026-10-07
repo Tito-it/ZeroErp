@@ -79,8 +79,10 @@ Binding diretto sull'identità digitale dell'utente. Rappresenta un **override
 personale** che vince su qualsiasi default di gruppo.
 
 Filtri:
-- `identita_digitali.attivo = true`
-- Identità nella finestra temporale (`valido_dal <= oggi <= valido_al`)
+- identità **utilizzabile oggi**:
+  [fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
+  (dal 07-10-2026; vale per tutti e tre i rami, prima erano `attivo` e la
+  finestra ricopiati tre volte)
 - `profili_accesso_bindings.attivo = true`
 - `profili_accesso.attivo = true` e `tipo = 'AD_HOC'`
 
@@ -92,7 +94,9 @@ Binding per `unita_organizzativa_id` dell'operatore interno, risolta via
 
 Filtri aggiuntivi:
 - `ruolo_applicativo = 'OPERATORE'` (solo operatori)
-- `risorse_umane.attivo = true`
+- il rapporto non si controlla più qui (era `risorse_umane.attivo = true`):
+  lo guarda il building block, che per l'operatore umano pretende il rapporto
+  attivo **e** nelle sue date (dal 07-10-2026)
 
 #### 3. `PORTALE` (priorità 3)
 

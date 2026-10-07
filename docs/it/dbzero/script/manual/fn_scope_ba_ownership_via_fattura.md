@@ -45,10 +45,17 @@ dell'identità, `false` altrimenti.
 
 | Caso | Risultato |
 |------|-----------|
-| Identità inesistente / non attiva | `false` |
+| Identità inesistente / non utilizzabile oggi | `false` |
 | Fattura inesistente | `false` |
 | Fattura con BA di altro cliente | `false` |
-| Match completo (SR identità = SR BA della fattura + identità attiva) | `true` |
+| Match completo (SR identità = SR BA della fattura + identità utilizzabile oggi) | `true` |
+
+⭐ **Dal 07-10-2026** (brief `brief-db-veste-utilizzabile`): l'identità deve essere
+**utilizzabile oggi** secondo
+[script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
+(accesa, nelle sue date, soggetto attivo), non solo accesa. Prima una veste
+scaduta, ma ancora accesa, continuava a vedere i suoi dati.
+
 
 ---
 
@@ -63,12 +70,12 @@ SELECT EXISTS (
         ON id.soggetto_ruolo_id = ba.soggetto_ruolo_id
      WHERE f.id      = p_fattura_id
        AND id.id     = p_identita_id
-       AND id.attivo = true
+       AND script.fn_veste_utilizzabile(id.id)
 );
 ```
 
-* `LANGUAGE sql STABLE` — inlineable dal planner (la query può essere
-  fusa nel piano della RLS host).
+* `LANGUAGE sql STABLE`. ⚠️ Non inlineabile (contiene `EXISTS`): la policy la
+  chiama per riga.
 * Single `EXISTS` short-circuit.
 
 ---

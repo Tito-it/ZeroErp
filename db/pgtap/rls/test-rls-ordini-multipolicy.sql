@@ -62,8 +62,8 @@ SELECT o.ordine_id, o.emit_pk, o.soggetto_ruolo_id,
          WHERE ef.id <> o.emit_pk ORDER BY ef.id LIMIT 1) AS other_pk
   FROM o;
 
--- Due operatori di test, uno per emittente: auth_user + soggetto PF + SR
--- RIS_UMANA + identita OPERATORE attiva + UNA riga di whitelist.
+-- Due operatori di test, uno per emittente: operatore dalla madre + UNA riga
+-- di whitelist.
 --
 -- ⚠️ DUE UTENTI, E NON UNO CHE SI RIPUNTA. Il giro originale era «DELETE dalla
 --   whitelist + INSERT dell'altro emittente» sullo stesso utente: era lecito
@@ -75,71 +75,29 @@ SELECT o.ordine_id, o.emit_pk, o.soggetto_ruolo_id,
 --   e la fixture non ha piu' bisogno di scrivere dove l'applicazione non scrive.
 CREATE TEMP TABLE _op (tag text, auth_user_id int, identita_id bigint);
 
-CREATE FUNCTION pg_temp.mk_op(p_tag text, p_emit bigint)
+-- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): l'operatore viene dalla
+--   MADRE (dbops.fn_pgtap_crea_operatore_umano: persona fisica completa,
+--   risorsa umana, veste OPERATORE accesa come all'invito accettato) e
+--   l'emittente gli si da' con la funzione di dominio
+--   script.fn_change_user_emittenti_scope. Prima la fixture costruiva
+--   soggetto, soggetto_ruolo e veste a mano, senza risorsa umana: uno stato
+--   che la madre non produce, e che da D-2 (l'operatore umano vale finche'
+--   vale il suo rapporto, script.fn_veste_utilizzabile) non e' piu' un
+--   operatore valido. Il builder esce con i vincoli IMMEDIATE: niente piu'
+--   finestra differita da riaprire per lui.
+CREATE OR REPLACE FUNCTION pg_temp.mk_op(p_tag text, p_emit bigint)
 RETURNS void LANGUAGE plpgsql AS $fn$
-DECLARE v_uid int; v_sog uuid; v_sr bigint; v_idn bigint; v_sfx text;
+DECLARE v_op record;
 BEGIN
-    v_sfx := substring(md5(clock_timestamp()::text || p_tag) from 1 for 8);
+    SELECT * INTO v_op
+      FROM dbops.fn_pgtap_crea_operatore_umano('rls ordini ' || p_tag);
 
-    INSERT INTO django.auth_user (username, password, is_active, is_staff,
-        is_superuser, first_name, last_name, email, date_joined)
-    VALUES ('_pgtap_rls_ord_' || v_sfx, '!', true, false, false, '', '', '', now())
-    RETURNING id INTO v_uid;
+    -- Istruzione separata: cio' che il builder scrive si legge da qui in poi.
+    PERFORM script.fn_change_user_emittenti_scope(v_op.auth_user_id, ARRAY[p_emit]);
 
-    -- ⭐ FINESTRA DIFFERITA. Un soggetto non e' un INSERT, e' una SAGA: testata
-    --   + indirizzi obbligatori + contatto. I guard di completezza su
-    --   anagrafiche.soggetti sono DEFERRABLE INITIALLY DEFERRED apposta, perche'
-    --   la completezza ha senso verificarla a saga finita. Il preambolo
-    --   obbligatorio (SET CONSTRAINTS ALL IMMEDIATE, in testa al file) li fa
-    --   scattare sul PRIMO insert, cioe' prima che un indirizzo possa esistere:
-    --   e' l'altra ragione per cui questo file moriva con ZERO asserzioni.
-    --   Si apre la finestra, si costruisce, e si RICHIUDE a saga completa: la
-    --   verifica non si perde, si sposta dove il modello la vuole. Stessa
-    --   ricetta di dbops.fn_pgtap_crea_soggetto_pg (20260818-76), qui su una
-    --   persona FISICA.
-    SET CONSTRAINTS ALL DEFERRED;
-
-    -- CF dal generatore: un codice fisso e' una scommessa sul fatto che nessuna
-    -- corsa precedente ne abbia lasciato uno uguale (20260818-77). E qui servono
-    -- DUE soggetti nella stessa transazione: un fisso non basterebbe comunque.
-    v_sog := anagrafiche.fn_crea_soggetto_pf(
-        p_cognome := 'PnzTestScopeOrd' || p_tag, p_nome := 'Fdn',
-        p_codice_fiscale := dbops.fn_pgtap_cf_libero(),
-        p_email := 'pgtap_rls_ord_' || v_sfx || '@test.local',
-        p_data_nascita := DATE '1978-01-01', p_sesso := 'M', p_stato_iso2 := 'IT',
-        p_comune_nascita_id := (SELECT id FROM config.comuni ORDER BY id LIMIT 1),
-        p_tipo_contatto_id := NULL);
-
-    -- Quali indirizzi siano obbligatori lo decide la matrice del TIPO SOGGETTO
-    -- DETTAGLIO (config.tipi_soggetto_dettaglio_tipi_indirizzo), non quella dei
-    -- ruoli: si legge la configurazione invece di elencare i codici a mano.
-    INSERT INTO anagrafiche.indirizzi_soggetti (
-        soggetto_id, tipo_indirizzo_id,
-        indirizzo_libero, stato_id, locality, postal_box, administrative_area)
-    SELECT v_sog, m.tipo_indirizzo_id,
-           'Via pgTAP 1', 1, 'Roma', '00100', 'RM'
-      FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
-      JOIN anagrafiche.soggetti s ON s.id = v_sog
-     WHERE m.tipo_soggetto_dettaglio_id = s.tipo_soggetto_dettaglio_id
-       AND m.attivo
-       AND m.obbligatorio;
-
-    -- Saga completa: i guard differiti scattano QUI, su un soggetto finito.
-    SET CONSTRAINTS ALL IMMEDIATE;
-
-    v_sr := script.fn_get_or_create_soggetto_ruolo(
-        p_soggetto_id := v_sog, p_cd_int_ruolo := 'RIS_UMANA');
-
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr, v_uid, 'OPERATORE', true)
-    RETURNING id INTO v_idn;
-
-    INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-    VALUES (v_uid, p_emit);
-
-    INSERT INTO _op VALUES (p_tag, v_uid, v_idn);
-END $fn$;
+    INSERT INTO _op VALUES (p_tag, v_op.auth_user_id, v_op.identita_id);
+END
+$fn$;
 
 DO $ops$
 BEGIN

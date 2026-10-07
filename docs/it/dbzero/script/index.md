@@ -150,6 +150,7 @@
 - [fn_guard_utente_stesso](funzioni/fn_guard_utente_stesso.md) — (scritta il 29-09-2026)
 - [fn_guard_utility_tipo_ruolo](funzioni/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
 - [fn_has_identita_attiva](funzioni/fn_has_identita_attiva.md) — (latest review 19-04-2026)
+- [fn_identita_super_admin_senza_scadenza](funzioni/fn_identita_super_admin_senza_scadenza.md)
 - [fn_imponibile_riga](funzioni/fn_imponibile_riga.md) — (funzione nata il 2026-09-28, `20260928-16`)
 - [fn_imposta_deve_cambiare_password](funzioni/fn_imposta_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_imposta_totp_obbligatorio](funzioni/fn_imposta_totp_obbligatorio.md) — (scritta il 29-09-2026)
@@ -261,6 +262,7 @@
 - [fn_validate_cf_piva_it](funzioni/fn_validate_cf_piva_it.md) — * **Centralizzazione Validazioni**: Unico punto per verificare CF e P.IVA in accordo ai formati configurati. * **Dinamicità**: I formati (alfanumerico, numerico, lunghezza) sono letti da `config.tipi_soggetto_dettaglio` e possono variare per Stato. * **Estendibilità**: Aggiunta futura di funzioni con suffissi di Stato, es. `_FR`, `_DE`, `_UK`.
 - [fn_veste_di_riferimento](funzioni/fn_veste_di_riferimento.md)
 - [fn_veste_di_sistema](funzioni/fn_veste_di_sistema.md)
+- [fn_veste_utilizzabile](funzioni/fn_veste_utilizzabile.md)
 - [log](funzioni/log.md) — (rev 2026-08-21)
 - [trgfn_audit_data_user_generic](funzioni/trgfn_audit_data_user_generic.md) — * **Audit automatico su INSERT e UPDATE**   Assicura che ogni inserimento e modifica sia registrato con timestamp (`data_update`) e utente reale (`user_update` / `user_insert`). * **Centralizzare la logica di audit**   Un'unica trigger function per tutte le tabelle, evitando duplicazione di logica. * **Tracciare l'utente reale (JWT)**   Utilizza la GUC `app.jwt_user` impostata dal middleware Django per registrare   l'utente che ha effettuato la chiamata API, non il ruolo DB della connessione.
 - [trgfn_canale_origine_immutable](funzioni/trgfn_canale_origine_immutable.md) — (latest review 20-04-2026)

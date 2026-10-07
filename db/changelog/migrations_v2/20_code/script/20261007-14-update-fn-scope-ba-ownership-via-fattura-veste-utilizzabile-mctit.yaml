@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_scope_ba_ownership_via_fattura: LA VESTE CONTA SE E' UTILIZZABILE OGGI
+#   Brief: brief-db-veste-utilizzabile (building block: 20261007-01)
+#
+#   Come il -13, attraverso la fattura.
+#
+#   Corpo vivo = pg_get_functiondef su dbdev il 2026-10-07 (uguale alla doc
+#   auto-gen); sostituzioni contate. Firma, RETURNS, DECLARE e firma del
+#   COMMENT ancorati a %TYPE dove c'e' una colonna dietro; dove non c'e', il
+#   tipo esplicito porta il perche' accanto. I %TYPE si risolvono negli STESSI
+#   tipi di oggi (provato: nessun overload), quindi i chiamanti (comprese le
+#   BEGIN ATOMIC) restano validi. Il rollback e' il corpo vivo di prima, con la
+#   stessa firma ancorata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-14-update-fn-scope-ba-ownership-via-fattura-veste-utilizzabile-mctit.yaml
+
+  - changeSet:
+      id: 20261007-14-update-fn-scope-ba-ownership-via-fattura-veste-utilizzabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_scope_ba_ownership_via_fattura: l'identita' deve essere utilizzabile oggi (script.fn_veste_utilizzabile). Brief: brief-db-veste-utilizzabile.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_scope_ba_ownership_via_fattura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership_via_fattura(p_identita_id anagrafiche.identita_digitali.id%TYPE, p_fattura_id vendite.fatture.id%TYPE)
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Join fattura -> billing_account -> identita: il cliente
+                  -- dell'identita e quello del BA della fattura devono
+                  -- coincidere. Fattura inesistente -> false (fail-closed).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.fatture              f
+                        JOIN anagrafiche.billing_account  ba
+                          ON ba.id = f.billing_account_id
+                        JOIN anagrafiche.identita_digitali id
+                          ON id.soggetto_ruolo_id = ba.soggetto_ruolo_id
+                       WHERE f.id      = p_fattura_id
+                         AND id.id     = p_identita_id
+                         -- Rev 2026-10-07: utilizzabile oggi, non solo accesa.
+                         AND script.fn_veste_utilizzabile(id.id)
+                  );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership_via_fattura(anagrafiche.identita_digitali.id%TYPE, vendite.fatture.id%TYPE) IS 'Scope policy BA_OWNERSHIP via fattura: ritorna true se il billing_account della fattura target appartiene al soggetto_ruolo dell''identita (via BA.soggetto_ruolo_id). Wrapper per tabelle figlie senza billing_account_id diretto (es. vendite.fatture_scadenze). STABLE, inlineable. Rev 2026-10-07 (brief-db-veste-utilizzabile): l''''identita'''' deve essere utilizzabile oggi (script.fn_veste_utilizzabile), non solo accesa.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership_via_fattura(p_identita_id anagrafiche.identita_digitali.id%TYPE, p_fattura_id vendite.fatture.id%TYPE)
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Join fattura -> billing_account -> identita: il cliente
+                  -- dell'identita e quello del BA della fattura devono
+                  -- coincidere. Fattura inesistente -> false (fail-closed).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.fatture              f
+                        JOIN anagrafiche.billing_account  ba
+                          ON ba.id = f.billing_account_id
+                        JOIN anagrafiche.identita_digitali id
+                          ON id.soggetto_ruolo_id = ba.soggetto_ruolo_id
+                       WHERE f.id      = p_fattura_id
+                         AND id.id     = p_identita_id
+                         AND id.attivo = true
+                  );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership_via_fattura(anagrafiche.identita_digitali.id%TYPE, vendite.fatture.id%TYPE) IS 'Scope policy BA_OWNERSHIP via fattura: ritorna true se il billing_account della fattura target appartiene al soggetto_ruolo dell''identita (via BA.soggetto_ruolo_id). Wrapper per tabelle figlie senza billing_account_id diretto (es. vendite.fatture_scadenze). STABLE, inlineable.';

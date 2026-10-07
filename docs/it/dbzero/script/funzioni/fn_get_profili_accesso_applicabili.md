@@ -32,6 +32,13 @@ AS $function$
     --   profilo (indici unici dei binding e di risorse_umane):
     --   chi ordina per priorita' ha uno spareggio determinato.
     --   Con NULL no: due vesti di portale danno due PORTALE.
+    -- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): in tutti e
+    --   tre i rami la veste conta se e' UTILIZZABILE oggi, cioe'
+    --   script.fn_veste_utilizzabile, non piu' attivo + finestra
+    --   ricopiati tre volte. Nel ramo REPARTO cade `ru.attivo`: il
+    --   rapporto dell'operatore umano lo guarda il building block
+    --   (attivo E nelle sue date), e la risorsa umana e' una sola
+    --   per soggetto_ruolo.
     -- =========================================================
 
     -- 1) AD_HOC: binding diretto sull'identita
@@ -44,11 +51,9 @@ AS $function$
       JOIN config.profili_accesso pa
         ON pa.id = pab.profilo_accesso_id
      WHERE id.auth_user_id      = p_auth_user_id
-       AND id.attivo            = true
        AND (p_ruolo_applicativo IS NULL
             OR id.ruolo_applicativo = p_ruolo_applicativo)
-       AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
-       AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+       AND script.fn_veste_utilizzabile(id.id)
        AND pab.attivo = true
        AND pa.attivo  = true
        AND pa.tipo    = 'AD_HOC'::config.tipo_profilo_accesso
@@ -67,13 +72,10 @@ AS $function$
       JOIN config.profili_accesso pa
         ON pa.id = pab.profilo_accesso_id
      WHERE id.auth_user_id      = p_auth_user_id
-       AND id.attivo            = true
        AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
        AND (p_ruolo_applicativo IS NULL
             OR p_ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo)
-       AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
-       AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
-       AND ru.attivo  = true
+       AND script.fn_veste_utilizzabile(id.id)
        AND pab.attivo = true
        AND pa.attivo  = true
        AND pa.tipo    = 'REPARTO'::config.tipo_profilo_accesso
@@ -90,18 +92,16 @@ AS $function$
       JOIN config.profili_accesso pa
         ON pa.id = pab.profilo_accesso_id
      WHERE id.auth_user_id      = p_auth_user_id
-       AND id.attivo            = true
        AND (p_ruolo_applicativo IS NULL
             OR id.ruolo_applicativo = p_ruolo_applicativo)
-       AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
-       AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+       AND script.fn_veste_utilizzabile(id.id)
        AND pab.attivo = true
        AND pa.attivo  = true
        AND pa.tipo    = 'PORTALE'::config.tipo_profilo_accesso;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_profili_accesso_applicabili(p_auth_user_id integer, p_ruolo_applicativo config.ruolo_applicativo)
-IS 'Profili applicabili a un auth_user, dal piu'' specifico al piu'' generale: AD_HOC priorita'' 1 (sull''identita''), REPARTO 2 (sull''unita'' organizzativa), PORTALE 3 (sulla veste). Rev 20260925-80 (D-3 di brief-db-pgtap-permessi-ereditati): PORTALE era 2, a pari merito col REPARTO, e sotto la veste OPERATORE lo spareggio per priorita'' sceglieva a caso. p_ruolo_applicativo NULL = tutte le vesti (legacy), valorizzato = solo quella veste; con una veste sola ogni priorita'' ha al massimo un profilo (indici unici dei binding e di risorse_umane). I resolver dei permessi da operatore passano ''OPERATORE'' tramite script.fn_get_permessi_ereditati_aree / _azioni (D-1). Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): una veste spenta si riconosce solo da attivo; il controllo su DISABILITATO (rami AD_HOC e PORTALE) e'' caduto con il tipo.';
+IS 'Profili applicabili a un auth_user, dal piu'' specifico al piu'' generale: AD_HOC priorita'' 1 (sull''identita''), REPARTO 2 (sull''unita'' organizzativa), PORTALE 3 (sulla veste). Rev 20260925-80 (D-3 di brief-db-pgtap-permessi-ereditati): PORTALE era 2, a pari merito col REPARTO, e sotto la veste OPERATORE lo spareggio per priorita'' sceglieva a caso. p_ruolo_applicativo NULL = tutte le vesti (legacy), valorizzato = solo quella veste; con una veste sola ogni priorita'' ha al massimo un profilo (indici unici dei binding e di risorse_umane). I resolver dei permessi da operatore passano ''OPERATORE'' tramite script.fn_get_permessi_ereditati_aree / _azioni (D-1). Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): una veste spenta si riconosce solo da attivo; il controllo su DISABILITATO (rami AD_HOC e PORTALE) e'' caduto con il tipo. Rev 2026-10-07 (brief-db-veste-utilizzabile): la veste conta se e'' utilizzabile oggi (script.fn_veste_utilizzabile) in tutti e tre i rami; nel ramo REPARTO il controllo del rapporto (prima solo ru.attivo) e'' quello del building block, con le date.';
 ```
 
 ---

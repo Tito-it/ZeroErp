@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_scope_cliente_ownership: LA VESTE CONTA SE E' UTILIZZABILE OGGI
+#   Brief: brief-db-veste-utilizzabile (building block: 20261007-01)
+#
+#   La veste cliente vedeva i suoi dati anche scaduta: guardava solo attivo. Ora
+#   il building block. Il backend popola la GUC solo per una veste utilizzabile,
+#   ma questa funzione e' la regola anche fuori dal giro HTTP (job, processi).
+#
+#   Corpo vivo = pg_get_functiondef su dbdev il 2026-10-07 (uguale alla doc
+#   auto-gen); sostituzioni contate. Firma, RETURNS, DECLARE e firma del
+#   COMMENT ancorati a %TYPE dove c'e' una colonna dietro; dove non c'e', il
+#   tipo esplicito porta il perche' accanto. I %TYPE si risolvono negli STESSI
+#   tipi di oggi (provato: nessun overload), quindi i chiamanti (comprese le
+#   BEGIN ATOMIC) restano validi. Il rollback e' il corpo vivo di prima, con la
+#   stessa firma ancorata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-11-update-fn-scope-cliente-ownership-veste-utilizzabile-mctit.yaml
+
+  - changeSet:
+      id: 20261007-11-update-fn-scope-cliente-ownership-veste-utilizzabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_scope_cliente_ownership: l'identita' deve essere utilizzabile oggi (script.fn_veste_utilizzabile). Brief: brief-db-veste-utilizzabile.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_scope_cliente_ownership';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership(p_identita_id anagrafiche.identita_digitali.id%TYPE, p_cliente_sr_id anagrafiche.soggetti_ruoli.id%TYPE)
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Match diretto: il target soggetto_ruolo e' quello
+                  -- dell'identita, e l'identita e' in veste CLIENTE_PORTALE
+                  -- oppure SHOP_CUSTOMER (i due ruoli applicativi che
+                  -- condividono il ruolo anagrafico CL). Evita false positive
+                  -- su altre identita collegate allo stesso SR con veste
+                  -- diversa (es. FORNITORE_PORTALE su SR misto CL/FO).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                       WHERE id.id                = p_identita_id
+                         AND id.soggetto_ruolo_id = p_cliente_sr_id
+                         AND id.ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                         -- Rev 2026-10-07: utilizzabile oggi, non solo accesa.
+                         AND script.fn_veste_utilizzabile(id.id)
+                  );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_scope_cliente_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.soggetti_ruoli.id%TYPE) IS 'Scope policy CLIENTE_OWNERSHIP: ritorna true se il soggetto_ruolo cliente target coincide con il soggetto_ruolo dell''identita e l''identita e'' in veste CLIENTE_PORTALE o SHOP_CUSTOMER attiva. STABLE, inlineable. Rev 2026-10-07 (brief-db-veste-utilizzabile): l''''identita'''' deve essere utilizzabile oggi (script.fn_veste_utilizzabile), non solo accesa: una veste scaduta non vede piu'''' i suoi dati.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership(p_identita_id anagrafiche.identita_digitali.id%TYPE, p_cliente_sr_id anagrafiche.soggetti_ruoli.id%TYPE)
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Match diretto: il target soggetto_ruolo e' quello
+                  -- dell'identita, e l'identita e' in veste CLIENTE_PORTALE
+                  -- oppure SHOP_CUSTOMER (i due ruoli applicativi che
+                  -- condividono il ruolo anagrafico CL). Evita false positive
+                  -- su altre identita collegate allo stesso SR con veste
+                  -- diversa (es. FORNITORE_PORTALE su SR misto CL/FO).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                       WHERE id.id                = p_identita_id
+                         AND id.soggetto_ruolo_id = p_cliente_sr_id
+                         AND id.ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                         AND id.attivo            = true
+                  );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_scope_cliente_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.soggetti_ruoli.id%TYPE) IS 'Scope policy CLIENTE_OWNERSHIP: ritorna true se il soggetto_ruolo cliente target coincide con il soggetto_ruolo dell''identita e l''identita e'' in veste CLIENTE_PORTALE o SHOP_CUSTOMER attiva. STABLE, inlineable.';

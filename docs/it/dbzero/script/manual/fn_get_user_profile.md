@@ -64,11 +64,16 @@ La funzione aggrega in una sola chiamata:
 | `p_auth_user_id` NULL o `<= 0` | `E_ADMIN_VALIDAZIONE` | blocco immediato |
 | `auth_user` inesistente | `E_ADMIN_VALIDAZIONE` | profilo non costruibile |
 | nessuna `identita_digitali` OPERATORE | `E_ADMIN_VALIDAZIONE` | user non collegato a risorsa |
-| veste OPERATORE di riferimento spenta (`attivo = false`) | `E_UTENTE_DISABILITATO` | login bloccato; il segnaposto è lo username |
-| nessun record `risorse_umane` | `E_ADMIN_VALIDAZIONE` | catena utente incompleta |
-| `risorse_umane.attivo = false` | `E_UTENTE_DISABILITATO` | utente disattivato |
-| `CURRENT_DATE < valido_dal` (identita o ru) | `E_UTENTE_NON_ATTIVO` | utente non ancora attivo |
-| `CURRENT_DATE > valido_al` (identita o ru) | `E_UTENTE_SCADUTO` | utente scaduto |
+| nessun record `risorse_umane` | `E_ADMIN_VALIDAZIONE` | catena utente incompleta (viene **prima** del guard sotto: è un difetto di dati, non un accesso chiuso) |
+| veste OPERATORE di riferimento **non utilizzabile oggi** ([fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)): spenta o fuori dalle sue date, oppure rapporto spento o fuori dalle sue date | `E_UTENTE_DISABILITATO` | login bloccato; il segnaposto è lo username |
+
+⭐ **Dal 07-10-2026** (brief `brief-db-veste-utilizzabile`, D-4) i sei guard di prima
+(veste spenta, veste non ancora valida, veste scaduta, rapporto spento, rapporto non
+ancora valido, rapporto scaduto) sono **un guard solo**, sul building block, con **un
+codice solo**. La data non cambia cosa fa chi non entra: chiede all'amministratore,
+che le date le vede nel dettaglio. I due codici delle date, `E_UTENTE_NON_ATTIVO` ed
+`E_UTENTE_SCADUTO`, sono ritirati con `obsoleto_dal`: le righe restano a catalogo
+perché il diario degli errori deve restare leggibile.
 
 Tutti i guard usano `script.fn_log_and_raise_error`.
 

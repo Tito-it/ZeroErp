@@ -21,8 +21,14 @@ Architettura di riferimento:
 (latest review 19-04-2026)
 
 La funzione **`script.fn_has_identita_attiva`** è un **helper DRY** che
-incapsula il check "l'utente ha un'identità digitale attiva, nella finestra
-temporale, per un dato ruolo applicativo".
+incapsula il check "la credenziale ha una veste **utilizzabile oggi** di un
+dato ruolo applicativo".
+
+⭐ **Dal 07-10-2026** (brief `brief-db-veste-utilizzabile`) «utilizzabile» non
+si scrive più qui: lo decide
+[script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile),
+la sede unica della regola. Questa funzione resta perché fa un'altra domanda:
+chiede **per credenziale e tipo**, non per veste.
 
 Introdotta nel refactor §4.6.B.0 WIP multi-face-auth per eliminare la
 duplicazione dello stesso `EXISTS` ripetuto in oltre una decina di funzioni
@@ -55,9 +61,11 @@ riga che soddisfa **tutte** le condizioni:
 
 1. `auth_user_id = p_auth_user_id`
 2. `ruolo_applicativo = p_ruolo_applicativo`
-3. `attivo = true`
-4. `valido_dal IS NULL OR valido_dal <= CURRENT_DATE`
-5. `valido_al IS NULL OR valido_al >= CURRENT_DATE`
+3. la veste è utilizzabile oggi secondo
+   [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile):
+   accesa, nelle sue date, soggetto attivo e, per l'operatore umano, rapporto
+   attivo e nelle sue date. Prima del 07-10-2026 qui c'erano solo `attivo` e la
+   finestra della veste.
 
 Fail-closed: se una qualsiasi condizione non è verificata (o se l'identità
 non esiste), ritorna `false`.
@@ -66,9 +74,8 @@ non esiste), ritorna `false`.
 
 ### Regole implementative
 
-* `LANGUAGE sql`, `STABLE`: inlineable dal planner (zero overhead rispetto
-  all'implementazione inline), cache-friendly per query ripetute nella
-  stessa statement.
+* `LANGUAGE sql`, `STABLE`. ⚠️ Non è inlineabile: un `EXISTS` è una
+  sotto-interrogazione, e il planner incorpora solo le funzioni senza.
 * Nessuna variabile PL/pgSQL: un singolo `SELECT EXISTS(...)` compatto.
 * `p_auth_user_id IS NULL` → `EXISTS` restituisce naturalmente `false`
   (fail-closed implicito, nessun check esplicito necessario).

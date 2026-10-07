@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_almeno_un_super_admin_attivo: LA VESTE CONTA SE E' UTILIZZABILE OGGI
+#   Brief: brief-db-veste-utilizzabile (building block: 20261007-01)
+#
+#   Bastava id.attivo: un amministratore SCADUTO contava come raggiungibile, mentre
+#   fn_check_ultimo_super_admin_attivo la finestra la guardava. Ora tutte e due
+#   leggono il building block. ⚠️ Il guard dell'anti-lockout scatta su una
+#   scrittura (veste spenta, credenziale bloccata): una data che passa non scrive
+#   niente, quindi nessun guard puo' impedire che l'ultimo SUPER_ADMIN scada col
+#   tempo. Dichiarato nel brief, non e' una regressione di questo giro.
+#
+#   Corpo vivo = pg_get_functiondef su dbdev il 2026-10-07 (uguale alla doc
+#   auto-gen); sostituzioni contate. Firma, RETURNS, DECLARE e firma del
+#   COMMENT ancorati a %TYPE dove c'e' una colonna dietro; dove non c'e', il
+#   tipo esplicito porta il perche' accanto. I %TYPE si risolvono negli STESSI
+#   tipi di oggi (provato: nessun overload), quindi i chiamanti (comprese le
+#   BEGIN ATOMIC) restano validi. Il rollback e' il corpo vivo di prima, con la
+#   stessa firma ancorata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-05-update-fn-check-almeno-un-super-admin-attivo-veste-utilizzabile-mctit.yaml
+
+  - changeSet:
+      id: 20261007-05-update-fn-check-almeno-un-super-admin-attivo-veste-utilizzabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_check_almeno_un_super_admin_attivo: l'identita' conta se utilizzabile oggi (script.fn_veste_utilizzabile), non solo accesa. Brief: brief-db-veste-utilizzabile.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_almeno_un_super_admin_attivo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_almeno_un_super_admin_attivo()
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Condizione di sicurezza: il sistema mantiene almeno un
+                  -- amministratore raggiungibile. Quattro livelli AND obbligatori:
+                  --   1) profilo_accesso.tipo = 'SUPER_ADMIN' (enum stabile) (+ attivo)
+                  --   2) binding attivo verso quel profilo, di tipo AD_HOC
+                  --      (identita_digitale_id valorizzato)
+                  --   3) identita_digitali utilizzabile oggi: script.fn_veste_utilizzabile
+                  --      (rev 2026-10-07; prima solo attivo, senza finestra, mentre
+                  --      fn_check_ultimo_super_admin_attivo la guardava)
+                  --   4) credenziale NON bloccata dall'amministratore
+                  --      (config.credenziali.bloccata_at; assenza della riga = non
+                  --      bloccata) — rev 2026-09-25, brief-db-blocco-login-per-credenziale
+                  -- Un unico EXISTS short-circuita: sufficiente trovare uno.
+                  -- rev 2026-06-29: tipo (enum) invece di codice (mutabile) -- §4a.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.profili_accesso           pa
+                        JOIN config.profili_accesso_bindings  pab
+                          ON pab.profilo_accesso_id = pa.id
+                        JOIN anagrafiche.identita_digitali    id
+                          ON id.id = pab.identita_digitale_id
+                       WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pa.attivo = true
+                         AND pab.attivo = true
+                         AND script.fn_veste_utilizzabile(id.id)
+                         AND NOT EXISTS (
+                             SELECT 1
+                               FROM config.credenziali c
+                              WHERE c.auth_user_id = id.auth_user_id
+                                AND c.bloccata_at IS NOT NULL
+                         )
+                  );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_check_almeno_un_super_admin_attivo() IS 'Ritorna true se esiste almeno un''identita attiva con binding attivo verso un profilo SUPER_ADMIN (identificato per tipo enum) la cui CREDENZIALE non e'' bloccata dall''amministratore (config.credenziali.bloccata_at; rev 2026-09-25). Usato dai guard anti-lockout su profili_accesso_bindings, identita_digitali e credenziali: e'' la sede unica della condizione «almeno un amministratore raggiungibile». LANGUAGE sql, legge config.credenziali come il chiamante (l''app ha SELECT). STABLE, fail-closed nessun raise. rev 2026-06-29: tipo invece di codice (§4a). Rev 2026-10-07 (brief-db-veste-utilizzabile): l''''identita'''' conta se e'''' utilizzabile oggi (script.fn_veste_utilizzabile: accesa, nelle sue date, soggetto attivo, rapporto per l''''operatore umano). Prima bastava attivo: un amministratore scaduto contava come raggiungibile, e fn_check_ultimo_super_admin_attivo, che la finestra la guardava, rispondeva su un''''altra regola.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_almeno_un_super_admin_attivo()
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Condizione di sicurezza: il sistema mantiene almeno un
+                  -- amministratore raggiungibile. Quattro livelli AND obbligatori:
+                  --   1) profilo_accesso.tipo = 'SUPER_ADMIN' (enum stabile) (+ attivo)
+                  --   2) binding attivo verso quel profilo, di tipo AD_HOC
+                  --      (identita_digitale_id valorizzato)
+                  --   3) identita_digitali attiva
+                  --   4) credenziale NON bloccata dall'amministratore
+                  --      (config.credenziali.bloccata_at; assenza della riga = non
+                  --      bloccata) — rev 2026-09-25, brief-db-blocco-login-per-credenziale
+                  -- Un unico EXISTS short-circuita: sufficiente trovare uno.
+                  -- rev 2026-06-29: tipo (enum) invece di codice (mutabile) -- §4a.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.profili_accesso           pa
+                        JOIN config.profili_accesso_bindings  pab
+                          ON pab.profilo_accesso_id = pa.id
+                        JOIN anagrafiche.identita_digitali    id
+                          ON id.id = pab.identita_digitale_id
+                       WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pa.attivo = true
+                         AND pab.attivo = true
+                         AND id.attivo  = true
+                         AND NOT EXISTS (
+                             SELECT 1
+                               FROM config.credenziali c
+                              WHERE c.auth_user_id = id.auth_user_id
+                                AND c.bloccata_at IS NOT NULL
+                         )
+                  );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_check_almeno_un_super_admin_attivo() IS 'Ritorna true se esiste almeno un''identita attiva con binding attivo verso un profilo SUPER_ADMIN (identificato per tipo enum) la cui CREDENZIALE non e'' bloccata dall''amministratore (config.credenziali.bloccata_at; rev 2026-09-25). Usato dai guard anti-lockout su profili_accesso_bindings, identita_digitali e credenziali: e'' la sede unica della condizione «almeno un amministratore raggiungibile». LANGUAGE sql, legge config.credenziali come il chiamante (l''app ha SELECT). STABLE, fail-closed nessun raise. rev 2026-06-29: tipo invece di codice (§4a).';

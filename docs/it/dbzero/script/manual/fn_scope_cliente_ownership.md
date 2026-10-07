@@ -48,18 +48,25 @@ si usa dove la tabella ha `soggetto_ruolo_id` NOT NULL direttamente e
 
 | Caso | Risultato |
 |------|-----------|
-| Identità inesistente / non attiva | `false` |
+| Identità inesistente / non utilizzabile oggi | `false` |
 | Identità in veste diversa da `CLIENTE_PORTALE` o `SHOP_CUSTOMER` | `false` |
 | SR target diverso dal SR dell'identità | `false` |
-| Match completo (SR uguale + veste CL/SHOP + attiva) | `true` |
+| Match completo (SR uguale + veste CL/SHOP + utilizzabile oggi) | `true` |
+
+⭐ **Dal 07-10-2026** (brief `brief-db-veste-utilizzabile`): l'identità deve essere
+**utilizzabile oggi** secondo
+[script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
+(accesa, nelle sue date, soggetto attivo), non solo accesa. Prima una veste
+scaduta, ma ancora accesa, continuava a vedere i suoi dati.
+
 
 ---
 
 ### Regole implementative
 
-* `LANGUAGE sql`, `STABLE`: inlineable dal planner.
+* `LANGUAGE sql`, `STABLE`.
 * `%TYPE` su firma per allineamento alle colonne sorgente.
-* Gate `id.attivo = true` + `ruolo_applicativo IN (CLIENTE_PORTALE, SHOP_CUSTOMER)`.
+* Gate `script.fn_veste_utilizzabile(id.id)` + `ruolo_applicativo IN (CLIENTE_PORTALE, SHOP_CUSTOMER)`.
 * Single `EXISTS`: short-circuit alla prima corrispondenza.
 
 ---

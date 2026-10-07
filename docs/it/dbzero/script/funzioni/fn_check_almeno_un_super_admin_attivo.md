@@ -14,38 +14,31 @@ CREATE OR REPLACE FUNCTION script.fn_check_almeno_un_super_admin_attivo()
  STABLE
 AS $function$
     -- Condizione di sicurezza: il sistema mantiene almeno un
-    -- amministratore raggiungibile. Quattro livelli AND obbligatori:
-    --   1) profilo_accesso.tipo = 'SUPER_ADMIN' (enum stabile) (+ attivo)
-    --   2) binding attivo verso quel profilo, di tipo AD_HOC
-    --      (identita_digitale_id valorizzato)
-    --   3) identita_digitali attiva
-    --   4) credenziale NON bloccata dall'amministratore
-    --      (config.credenziali.bloccata_at; assenza della riga = non
-    --      bloccata) — rev 2026-09-25, brief-db-blocco-login-per-credenziale
-    -- Un unico EXISTS short-circuita: sufficiente trovare uno.
-    -- rev 2026-06-29: tipo (enum) invece di codice (mutabile) -- §4a.
+    -- amministratore raggiungibile OGGI E DOMANI.
+    -- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile, decisione di Tid):
+    --   la condizione e' «esiste almeno un SUPER_ADMIN SENZA SCADENZA»,
+    --   letta da script.fn_identita_super_admin_senza_scadenza
+    --   (utilizzabile oggi, nessuna data di fine su veste e rapporto,
+    --   credenziale non bloccata).
+    --   Perche' «senza scadenza» e non «attivo»: una data che passa non
+    --   scrive niente, e nessun guard puo' fermare il calendario. La
+    --   garanzia si chiede quindi sulla SCRITTURA che mette la data di
+    --   fine (guard su veste e rapporto), finche' resta almeno un
+    --   amministratore che non scade.
+    --   Prima qui bastava identita_digitali.attivo: un amministratore
+    --   gia' scaduto contava come raggiungibile.
+    -- Il prefiltro sui binding con identita (AD_HOC) e' solo una scorciatoia:
+    -- la regola intera e' nel building block.
     SELECT EXISTS (
         SELECT 1
-          FROM config.profili_accesso           pa
-          JOIN config.profili_accesso_bindings  pab
-            ON pab.profilo_accesso_id = pa.id
-          JOIN anagrafiche.identita_digitali    id
-            ON id.id = pab.identita_digitale_id
-         WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-           AND pa.attivo = true
-           AND pab.attivo = true
-           AND id.attivo  = true
-           AND NOT EXISTS (
-               SELECT 1
-                 FROM config.credenziali c
-                WHERE c.auth_user_id = id.auth_user_id
-                  AND c.bloccata_at IS NOT NULL
-           )
+          FROM config.profili_accesso_bindings pab
+         WHERE pab.identita_digitale_id IS NOT NULL
+           AND script.fn_identita_super_admin_senza_scadenza(pab.identita_digitale_id)
     );
 $function$
 
 COMMENT ON FUNCTION script.fn_check_almeno_un_super_admin_attivo()
-IS 'Ritorna true se esiste almeno un''identita attiva con binding attivo verso un profilo SUPER_ADMIN (identificato per tipo enum) la cui CREDENZIALE non e'' bloccata dall''amministratore (config.credenziali.bloccata_at; rev 2026-09-25). Usato dai guard anti-lockout su profili_accesso_bindings, identita_digitali e credenziali: e'' la sede unica della condizione «almeno un amministratore raggiungibile». LANGUAGE sql, legge config.credenziali come il chiamante (l''app ha SELECT). STABLE, fail-closed nessun raise. rev 2026-06-29: tipo invece di codice (§4a).';
+IS 'Ritorna true se esiste almeno un SUPER_ADMIN SENZA SCADENZA (script.fn_identita_super_admin_senza_scadenza: identita'' utilizzabile oggi, nessuna data di fine su veste e rapporto, binding e profilo SUPER_ADMIN attivi, credenziale non bloccata). E'' la sede unica della condizione «il sistema ha un amministratore che non scade», usata dai guard anti-lockout su profili_accesso_bindings, identita_digitali (attivo e date), risorse_umane (attivo e date) e credenziali. LANGUAGE sql, STABLE, fail-closed, nessun raise. Rev 2026-10-07 (brief-db-veste-utilizzabile, decisione di Tid): prima bastava identita_digitali.attivo; un amministratore scaduto contava come raggiungibile, e una data di fine non era fermata da nessun guard, perche'' il calendario non scrive.';
 ```
 
 ---
